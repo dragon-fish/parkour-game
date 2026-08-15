@@ -63,6 +63,7 @@ func test_releasing_input_brings_the_player_to_rest() -> void:
 func test_leaving_the_floor_edge_does_not_start_with_a_downward_jolt() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
+	var cfg: MovementConfig = player.config
 
 	# The test floor is a 200x200 slab; teleport the player just past its
 	# edge without jumping, so GroundState's non-jump exit path (walking off
@@ -72,8 +73,25 @@ func test_leaving_the_floor_edge_does_not_start_with_a_downward_jolt() -> void:
 
 	check(player.state_machine.current_name == &"Air", \
 		"precondition: should have left the floor, got %s" % player.state_machine.current_name)
-	check(player.velocity.y > -1.0, \
-		"leaving the floor edge produced a downward jolt, velocity.y = %f" % player.velocity.y)
+
+	# GroundState must zero its downward floor-snap bias (velocity.y =
+	# -floor_snap_speed) before handing off to Air, instead of letting Air
+	# add gravity on top of a bias that was never cleared. Express the bound
+	# against cfg rather than a literal number so raising gravity or
+	# floor_snap_speed by hand in the F1 panel can never break this test:
+	# - correct behaviour is bounded above (in magnitude) by one gravity
+	#   tick alone, since the bias is cleared on the same tick the ledge is
+	#   detected;
+	# - the bug this guards against adds a full extra floor_snap_speed on
+	#   top of that.
+	# Two gravity ticks plus the full snap bias sits strictly between the
+	# two for any positive gravity, so it never trips on correct behaviour
+	# but always catches the bias leaking into Air.
+	var tick := 1.0 / Engine.physics_ticks_per_second
+	var jolt_threshold: float = -(2.0 * cfg.gravity * tick + cfg.floor_snap_speed)
+	check(player.velocity.y > jolt_threshold, \
+		"leaving the floor edge produced a downward jolt, velocity.y = %f (threshold %f)" \
+			% [player.velocity.y, jolt_threshold])
 
 	TestWorld.teardown(world)
 	await step(1)

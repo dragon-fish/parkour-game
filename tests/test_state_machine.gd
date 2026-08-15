@@ -101,6 +101,20 @@ func test_returning_own_name_is_a_noop() -> void:
 # an error but leave the machine on its current state instead of advancing
 # current_name to a name with no matching state (which would otherwise null
 # out _current and freeze physics_update() permanently, silently, forever).
+func test_restarting_a_running_machine_exits_the_outgoing_state() -> void:
+	await step(1)
+	var parts := _build()
+	var sm: StateMachine = parts[0]
+	var a: StubState = parts[1]
+	var b: StubState = parts[2]
+	sm.start(&"A")
+	a.events.clear()
+	sm.start(&"B")
+	check(a.events == ["exit"], "start() on a live machine did not exit the outgoing state")
+	check(b.events == ["enter:"], "start() must still enter the new state with an empty previous name")
+	check(sm.current_name == &"B", "current_name not updated by a restart")
+	sm.free()
+
 func test_unknown_transition_leaves_the_machine_running() -> void:
 	await step(1)
 	var parts := _build()

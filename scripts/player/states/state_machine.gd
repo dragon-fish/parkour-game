@@ -16,6 +16,13 @@ func start(state_name: StringName) -> void:
 	if not _states.has(state_name):
 		push_error("StateMachine.start: unknown state: %s" % state_name)
 		return
+	# A live machine can already be mid-state when start() is called again
+	# (e.g. Arena.reset_player() restarting into Ground while the machine is
+	# still in Air). Exit the outgoing state first so states with exit side
+	# effects (P1's SlideState restoring the standing collision shape) do not
+	# get skipped and leave the player stuck in a partial state.
+	if _current != null:
+		_current.exit()
 	_current = _states[state_name]
 	current_name = state_name
 	_current.enter(&"")
