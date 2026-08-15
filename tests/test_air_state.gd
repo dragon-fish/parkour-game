@@ -5,8 +5,7 @@ func _spawn() -> Dictionary:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(10)
-	world["config"] = cfg
+	await step(15)
 	return world
 
 func test_jump_leaves_the_ground() -> void:
@@ -47,7 +46,7 @@ func test_air_control_is_weaker_than_ground_control() -> void:
 	var ground_world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(ground_world)
-	await step(2)
+	await step(15)
 	var ground_player: Player = ground_world["player"]
 	ground_world["input"].state.move = Vector2(0.0, 1.0)
 	await step(10)
@@ -60,7 +59,7 @@ func test_air_control_is_weaker_than_ground_control() -> void:
 	await step(1)
 	air_world["floor"].global_position = Vector3(0.0, -60.0, 0.0)
 	air_world["player"].global_position = Vector3(0.0, 0.0, 0.0)
-	await step(2)
+	await step(10)
 	var air_player: Player = air_world["player"]
 	air_world["input"].state.move = Vector2(0.0, 1.0)
 	await step(10)

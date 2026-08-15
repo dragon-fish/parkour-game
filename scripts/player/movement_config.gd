@@ -14,6 +14,10 @@ extends Resource
 @export var ground_accel: float = 60.0
 ## Deceleration applied when there is no movement input, in m/s^2.
 @export var ground_friction: float = 40.0
+## Downward bias GroundState writes into velocity.y every tick to keep the
+## body glued to the floor across seams and gentle slopes; without it,
+## is_on_floor() flickers while running.
+@export var floor_snap_speed: float = 2.0
 
 @export_group("Air")
 ## Air acceleration. Deliberately far below ground_accel: committing to a

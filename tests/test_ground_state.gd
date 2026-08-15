@@ -1,14 +1,11 @@
 extends TestCase
 
-const TICK := 1.0 / 60.0
-
 func _spawn() -> Dictionary:
 	var cfg := MovementConfig.new()
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(10)
-	world["config"] = cfg
+	await step(15)
 	return world
 
 func test_player_starts_grounded() -> void:
@@ -60,5 +57,23 @@ func test_releasing_input_brings_the_player_to_rest() -> void:
 	await step(60)
 	check(player.horizontal_speed() < 0.2, \
 		"friction did not stop the player, speed = %f" % player.horizontal_speed())
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_leaving_the_floor_edge_does_not_start_with_a_downward_jolt() -> void:
+	var world := await _spawn()
+	var player: Player = world["player"]
+
+	# The test floor is a 200x200 slab; teleport the player just past its
+	# edge without jumping, so GroundState's non-jump exit path (walking off
+	# a ledge) is what fires, not the jump path.
+	player.global_position.x = 150.0
+	await step(2)
+
+	check(player.state_machine.current_name == &"Air", \
+		"precondition: should have left the floor, got %s" % player.state_machine.current_name)
+	check(player.velocity.y > -1.0, \
+		"leaving the floor edge produced a downward jolt, velocity.y = %f" % player.velocity.y)
+
 	TestWorld.teardown(world)
 	await step(1)

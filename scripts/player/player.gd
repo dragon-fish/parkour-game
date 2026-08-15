@@ -99,6 +99,19 @@ func air_accelerate(wish_dir: Vector3, delta: float) -> void:
 	var headroom := config.air_max_speed - speed_along_wish
 	if headroom <= 0.0:
 		return
-	horizontal += wish_dir * minf(config.air_accel * delta, headroom)
-	velocity.x = horizontal.x
-	velocity.z = horizontal.z
+	var candidate := horizontal + wish_dir * minf(config.air_accel * delta, headroom)
+	# INVARIANT: air control must never brake — only redirect/add speed.
+	# The Quake-style projection above adds speed along wish_dir, but when
+	# wish_dir opposes the existing velocity that addition can still shrink
+	# the resultant horizontal SPEED even though it grows along wish_dir
+	# (e.g. horizontal (0,0,-5), wish_dir (0,0,1): adding a small amount
+	# along +z takes the resultant length from 5.0 down to 4.8). This guard
+	# is what actually enforces the invariant: only commit the candidate
+	# when it does not shrink horizontal speed, otherwise leave velocity
+	# untouched for this tick. Do not remove this check as a "simplification"
+	# — without it, holding the opposite key can brake a jump or erase a
+	# slide boost carried into the air.
+	if candidate.length() < horizontal.length():
+		return
+	velocity.x = candidate.x
+	velocity.z = candidate.z

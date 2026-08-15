@@ -16,9 +16,14 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 	# A small downward bias keeps the body glued to the floor across seams and
 	# gentle slopes; without it is_on_floor() flickers while running.
-	player.velocity.y = -2.0
+	player.velocity.y = -config.floor_snap_speed
 	player.move_and_slide()
 
 	if not player.is_on_floor():
+		# Leaving the floor here means walking off a ledge, not jumping - the
+		# jump path above already returned before this line. Clear the snap
+		# bias so a ledge exit starts from a clean zero instead of carrying
+		# the downward glue velocity into AirState as a jolt.
+		player.velocity.y = 0.0
 		return AIR
 	return KEEP
