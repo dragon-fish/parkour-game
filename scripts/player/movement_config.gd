@@ -46,6 +46,10 @@ extends Resource
 @export var fov_lerp_speed: float = 6.0
 @export var bob_frequency: float = 1.6
 @export var bob_amplitude: float = 0.055
+## How fast head bob fades in and out as the player leaves and regains the
+## ground. Fading rather than hard-cutting the bob offset is what prevents a
+## visible snap in camera height at the moment of a jump or a landing.
+@export var bob_fade_speed: float = 6.0
 @export var land_dip_max: float = 0.32
 @export var land_dip_recover: float = 2.2
 ## Fall speed that produces a full-strength landing dip.

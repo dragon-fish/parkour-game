@@ -10,6 +10,7 @@ extends Node3D
 var _config: MovementConfig
 var _pitch: float = 0.0
 var _bob_phase: float = 0.0
+var _bob_weight: float = 0.0
 var _dip: float = 0.0
 
 func setup(cfg: MovementConfig) -> void:
@@ -35,10 +36,15 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var target_fov := lerpf(_config.fov_base, _config.fov_max, speed_ratio)
 	camera.fov = lerpf(camera.fov, target_fov, clampf(_config.fov_lerp_speed * delta, 0.0, 1.0))
 
-	var bob := 0.0
+	var bob_target := 1.0 if grounded else 0.0
+	_bob_weight = move_toward(_bob_weight, bob_target, _config.bob_fade_speed * delta)
+
 	if grounded:
 		_bob_phase += delta * _config.bob_frequency * horizontal_speed
-		bob = sin(_bob_phase) * _config.bob_amplitude * speed_ratio
+	# The phase freezes while airborne, so the offset it produces here holds
+	# steady from the moment of leaving the ground; _bob_weight is what fades
+	# it toward zero instead of letting it vanish in a single frame.
+	var bob := sin(_bob_phase) * _config.bob_amplitude * speed_ratio * _bob_weight
 
 	_dip = move_toward(_dip, 0.0, _config.land_dip_recover * delta)
 	camera.position.y = bob - _dip

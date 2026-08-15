@@ -68,3 +68,31 @@ func test_pitch_is_clamped() -> void:
 	rig.queue_free()
 	body.queue_free()
 	await step(1)
+
+func test_bob_fades_instead_of_snapping_at_liftoff() -> void:
+	var cfg := MovementConfig.new()
+	var rig := _make_rig()
+	await step(1)
+	rig.setup(cfg)
+
+	var speed := cfg.fov_speed_ref
+	# Advance to (near) the first bob peak so the recorded offset is clearly
+	# non-zero regardless of the config's tuning values, rather than hoping a
+	# fixed frame count happens to land away from a zero crossing.
+	var frames_to_peak := int(round((PI / 2.0) / (TICK * cfg.bob_frequency * speed)))
+	for i in frames_to_peak:
+		rig.update_effects(TICK, speed, true)
+	var grounded_offset := rig.camera.position.y
+	check_greater(absf(grounded_offset), cfg.bob_amplitude * 0.5, "bob offset was not clearly non-zero while grounded")
+
+	# The instant the player leaves the ground, the offset must fade, not snap.
+	rig.update_effects(TICK, speed, false)
+	var just_after_takeoff := rig.camera.position.y
+	check(absf(just_after_takeoff - grounded_offset) < absf(just_after_takeoff), "bob offset collapsed toward zero the instant the player left the ground")
+
+	for i in 300:
+		rig.update_effects(TICK, speed, false)
+	check_approx(rig.camera.position.y, 0.0, 0.01, "bob offset did not fade toward zero while airborne")
+
+	rig.queue_free()
+	await step(1)
