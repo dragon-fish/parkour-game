@@ -22,16 +22,30 @@
 - 测试：**只断言关系，不断言绝对数值**。不测手感。不追求覆盖率。
 - 不引入任何第三方插件
 
+### 无人值守约束
+
+本计划在使用者不在场的情况下执行。**任何要求人在 Godot 编辑器里手动操作的步骤都不可用**，因此：
+
+- **场景不手工编辑。** 所有 `.tscn` 由 `tools/build_*.gd` 生成器脚本产出：在代码中搭好节点树，用 `PackedScene.pack()` + `ResourceSaver.save()` 让引擎自己写文件。格式由引擎保证，不手写、不猜测。
+- **视觉验收靠截图。** `tools/capture.gd` 以真实渲染器运行目标场景、推进若干帧、`root.get_texture().get_image().save_png()` 存图，由控制者读取 PNG 判断画面是否正确。
+- 无法自动化的验收项（例如"鼠标手感是否跟手"）**不要伪装成已验证**，在报告中明确标注为待人工确认。
+
 ### 实测得出的引擎行为（不要重新试错）
 
-这四条来自本计划编写前的 headless 探针，直接采用：
+以下每一条都来自实际运行的探针，直接采用：
 
 1. `extends SceneTree` 的脚本可通过 `--headless --path . --script res://...` 运行，`await physics_frame` 会真实推进物理。
 2. **`root.add_child(node)` 之后节点不会立即入树**。此时读写 `global_position` / `global_transform` 会报
    `ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()`。
    **必须先 `await physics_frame` 再操作全局变换**，或改用局部 `position`。
-3. 碰撞在 headless 下正常工作：`is_on_floor()`、`get_floor_normal()` 均有效。
+3. 碰撞在 headless 下正常工作：`is_on_floor()`、`get_floor_normal()` 均有效。物理帧率为 60。
 4. `await some_refcounted.call("method_name")` 对协程方法和同步方法**都能安全处理**，不会报错或卡死。
+5. **新增或改名 `class_name` 后必须先跑一次 `--headless --path . --import`**，否则 headless 运行会直接解析失败：
+   `SCRIPT ERROR: Parse Error: Identifier "Xxx" not declared in the current scope.`
+   全局类名索引存放在 `.godot/global_script_class_cache.cfg`，只有编辑器扫描（`--import` 会触发）才会刷新它。
+   `tools/run_tests.ps1` 已内置这一步，直接用脚本跑测试即可。
+6. `PackedScene.pack()` + `ResourceSaver.save()` 的往返完整可靠：节点结构、`transform`、内联子资源、`set_script()` 附加的脚本、`@export` 的资源引用**以及 `@export` 的同场景节点引用**（序列化为 `node_paths=PackedStringArray(...)` + `NodePath`）全部原样还原。
+7. 去掉 `--headless` 后 `--script` 会创建真实渲染上下文。连续 `await process_frame` 若干帧、再 `await RenderingServer.frame_post_draw`，即可用 `root.get_texture().get_image()` 取到画面。
 
 ---
 
@@ -42,7 +56,13 @@
 | `tests/test_case.gd` | 测试基类：断言辅助、物理步进辅助 |
 | `tests/test_runner.gd` | `SceneTree` 入口：发现并运行所有 `tests/test_*.gd`，汇总结果，设置退出码 |
 | `tests/test_world.gd` | 测试世界搭建辅助：造地面、造玩家、步进 |
-| `tools/run_tests.ps1` | 一条命令跑全部测试 |
+| `tests/test_player_scene.gd` | 断言生成出的 `player.tscn` 结构与导出引用正确 |
+| `tests/test_arena.gd` | 断言靶场装配、重置、HUD 与调参面板的接线 |
+| `tools/run_tests.ps1` | 一条命令跑全部测试（内含 `--import` 刷新类缓存） |
+| `tools/build_player_scene.gd` | 生成 `scenes/player/player.tscn` |
+| `tools/build_main_scene.gd` | 生成 `scenes/main.tscn`（含跳跃区、HUD、调参面板） |
+| `tools/capture.gd` | 渲染任意场景并存 PNG，供控制者目视验收 |
+| `tools/capture_panel.gd` | 同上，但先展开调参面板 |
 | `scripts/player/movement_config.gd` | 所有手感数值的唯一来源 |
 | `scripts/player/input/move_input.gd` | 单帧输入快照（纯数据） |
 | `scripts/player/input/input_source.gd` | 输入源抽象基类 |
@@ -248,6 +268,11 @@ $godot = Join-Path $root '.engine\Godot_v4.7.1-stable_win64_console.exe'
 if (-not (Test-Path $godot)) {
     Write-Error "Godot not found at $godot (is the .engine junction present?)"
 }
+
+# Refresh .godot/global_script_class_cache.cfg first. Without this, any
+# class_name declared since the last editor scan fails to resolve and every
+# test dies with 'Identifier "Xxx" not declared in the current scope'.
+& $godot --headless --path $root --import | Out-Null
 
 & $godot --headless --path $root --script res://tests/test_runner.gd
 exit $LASTEXITCODE
@@ -606,7 +631,9 @@ git commit -m "feat: add input abstraction with a scripted test double"
 **Interfaces:**
 - Consumes: `MoveInput`（Task 3）
 - Produces:
-  - `PlayerState extends Node`：常量 `KEEP: StringName = &""`；字段 `player`、`config: MovementConfig`；方法 `enter(previous: StringName) -> void`、`physics_update(delta: float, input: MoveInput) -> StringName`、`exit() -> void`
+  - `PlayerState extends Node`：常量 `KEEP: StringName = &""`、`GROUND: StringName = &"Ground"`、`AIR: StringName = &"Air"`；字段 `player`（无类型）、`config: MovementConfig`；方法 `enter(previous: StringName) -> void`、`physics_update(delta: float, input: MoveInput) -> StringName`、`exit() -> void`
+
+**依赖方向（必须遵守）：** `Player -> 各状态 -> PlayerState`，单向。状态脚本**不得引用 `Player` 类**（不得写 `Player.AIR`、不得把 `player` 字段声明为 `Player` 类型）。GDScript 在解析期就要解析 `class_name` 全局符号，双向引用会构成循环并导致解析失败。
   - `StateMachine extends Node`：信号 `state_changed(from: StringName, to: StringName)`；字段 `current_name: StringName`；方法 `register(state_name: StringName, state: PlayerState) -> void`、`start(state_name: StringName) -> void`、`physics_update(delta: float, input: MoveInput) -> void`
 
 - [ ] **Step 1: 写失败的测试**
@@ -720,8 +747,16 @@ extends Node
 ## Returned from physics_update to stay in the current state.
 const KEEP: StringName = &""
 
-## Set by Player before the state machine starts. Untyped to avoid a cyclic
-## dependency between Player and PlayerState.
+# State names live here rather than on Player. GDScript resolves class_name
+# globals at parse time, so if the states referenced Player.AIR while Player
+# referenced GroundState, the two scripts would form a cycle and fail to
+# resolve. Keeping the names on the state layer makes the dependency
+# one-directional: Player -> states -> PlayerState.
+const GROUND: StringName = &"Ground"
+const AIR: StringName = &"Air"
+
+## Set by Player before the state machine starts. Untyped for the same
+## reason: a typed reference would reintroduce the cycle.
 var player
 var config: MovementConfig
 
@@ -939,9 +974,9 @@ extends CharacterBody3D
 
 # Owns the shared movement data and the movement primitives. It deliberately
 # contains no transition logic — that belongs to the states.
-
-const GROUND := &"Ground"
-const AIR := &"Air"
+#
+# State names live on PlayerState, not here: Player references the state
+# classes, so the states must not reference Player back.
 
 var config: MovementConfig
 var input_source: InputSource
@@ -971,9 +1006,9 @@ func _build_state_machine() -> void:
 		s.config = config
 		state_machine.add_child(s)
 
-	state_machine.register(GROUND, ground)
-	state_machine.register(AIR, air)
-	state_machine.start(GROUND)
+	state_machine.register(PlayerState.GROUND, ground)
+	state_machine.register(PlayerState.AIR, air)
+	state_machine.start(PlayerState.GROUND)
 
 func _physics_process(delta: float) -> void:
 	if state_machine == null:
@@ -1059,7 +1094,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if player.consume_jump():
 		player.velocity.y = config.jump_velocity
 		player.move_and_slide()
-		return Player.AIR
+		return AIR
 
 	# A small downward bias keeps the body glued to the floor across seams and
 	# gentle slopes; without it is_on_floor() flickers while running.
@@ -1067,7 +1102,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	player.move_and_slide()
 
 	if not player.is_on_floor():
-		return Player.AIR
+		return AIR
 	return KEEP
 ```
 
@@ -1225,7 +1260,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 	if player.is_on_floor():
 		player.last_landing_speed = impact_speed
-		return Player.GROUND
+		return GROUND
 	return KEEP
 ```
 
@@ -1449,16 +1484,120 @@ func _input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 ```
 
-- [ ] **Step 6: 建玩家场景**
+- [ ] **Step 6: 写玩家场景生成器并生成场景**
 
-在 Godot 编辑器中新建场景，保存为 `scenes/player/player.tscn`：
+创建 `tools/build_player_scene.gd`：
 
-1. 根节点选 `CharacterBody3D`，重命名为 `Player`，附加脚本 `scripts/player/player.gd`
-2. 添加子节点 `CollisionShape3D`，Shape 设为 `CapsuleShape3D`，`height = 1.8`、`radius = 0.4`
-3. 添加子节点 `Node3D`，重命名为 `CameraRig`，附加脚本 `scripts/camera/camera_rig.gd`，`position.y = 0.7`
-4. 在 `CameraRig` 下添加 `Camera3D`（名字保持 `Camera3D`，脚本用 `$Camera3D` 取它）
-5. 添加子节点 `Node3D`，重命名为 `BodyRoot`（P5 骨骼模型预留，现在留空）
-6. 选中根节点 `Player`，在检查器中把 `Camera Rig` 属性指向场景内的 `CameraRig`
+```gdscript
+extends SceneTree
+
+# Generates scenes/player/player.tscn. Scenes are built in code rather than by
+# hand so the whole project is reproducible without an editor session.
+#
+# Run with:
+#   .engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . \
+#       --script res://tools/build_player_scene.gd
+#
+# One-shot scaffolding: once the .tscn exists it is the source of truth, and
+# re-running this would discard any later edits made in the editor.
+
+const OUTPUT := "res://scenes/player/player.tscn"
+
+func _initialize() -> void:
+	_run()
+
+func _run() -> void:
+	var player := CharacterBody3D.new()
+	player.name = "Player"
+	player.set_script(load("res://scripts/player/player.gd"))
+
+	var shape := CollisionShape3D.new()
+	shape.name = "CollisionShape3D"
+	var capsule := CapsuleShape3D.new()
+	capsule.height = 1.8
+	capsule.radius = 0.4
+	shape.shape = capsule
+	player.add_child(shape)
+	shape.owner = player
+
+	var rig := Node3D.new()
+	rig.name = "CameraRig"
+	rig.set_script(load("res://scripts/camera/camera_rig.gd"))
+	# Eye height: 0.7 above the capsule centre puts the view near the top of a
+	# 1.8 m body without clipping through the collision shape.
+	rig.position = Vector3(0.0, 0.7, 0.0)
+	player.add_child(rig)
+	rig.owner = player
+
+	var cam := Camera3D.new()
+	cam.name = "Camera3D"
+	rig.add_child(cam)
+	cam.owner = player
+
+	# Reserved for the P5 procedural first-person body. Empty for now, but
+	# present so adding a skeleton later does not restructure the scene.
+	var body_root := Node3D.new()
+	body_root.name = "BodyRoot"
+	player.add_child(body_root)
+	body_root.owner = player
+
+	player.camera_rig = rig
+
+	DirAccess.make_dir_recursive_absolute("res://scenes/player")
+	var packed := PackedScene.new()
+	var pack_error := packed.pack(player)
+	assert(pack_error == OK, "pack failed: %d" % pack_error)
+	var save_error := ResourceSaver.save(packed, OUTPUT)
+	assert(save_error == OK, "save failed: %d" % save_error)
+	print("wrote ", OUTPUT)
+	quit(0)
+```
+
+运行生成器：
+
+```powershell
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . --import | Out-Null
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . --script res://tools/build_player_scene.gd
+```
+
+Expected: 输出 `wrote res://scenes/player/player.tscn`，退出码 0。
+
+- [ ] **Step 6b: 写场景结构测试**
+
+创建 `tests/test_player_scene.gd`。生成器只保证"写出去了"，这个测试保证"写对了"：
+
+```gdscript
+extends TestCase
+
+const SCENE := "res://scenes/player/player.tscn"
+
+func test_player_scene_has_the_expected_structure() -> void:
+	await step(1)
+	check(ResourceLoader.exists(SCENE), "player.tscn was not generated")
+	var packed: PackedScene = ResourceLoader.load(SCENE, "", ResourceLoader.CACHE_MODE_IGNORE)
+	var player = packed.instantiate()
+	tree.root.add_child(player)
+	await step(1)
+
+	check(player is CharacterBody3D, "root is not a CharacterBody3D")
+	check(player.get_node_or_null("CollisionShape3D") != null, "CollisionShape3D missing")
+	check(player.get_node_or_null("CameraRig") != null, "CameraRig missing")
+	check(player.get_node_or_null("CameraRig/Camera3D") != null, "Camera3D missing")
+	check(player.get_node_or_null("BodyRoot") != null, "BodyRoot (P5 reservation) missing")
+
+	# The exported reference must survive serialisation, or the camera silently
+	# does nothing at runtime.
+	check(player.camera_rig != null, "camera_rig export was not wired")
+	check(player.camera_rig == player.get_node("CameraRig"), "camera_rig points at the wrong node")
+
+	var capsule := (player.get_node("CollisionShape3D") as CollisionShape3D).shape as CapsuleShape3D
+	check(capsule != null, "collision shape is not a capsule")
+	check_approx(capsule.height, 1.8, 0.001, "capsule height wrong")
+	check_approx(capsule.radius, 0.4, 0.001, "capsule radius wrong")
+
+	player.queue_free()
+	await step(1)
+```
 
 - [ ] **Step 7: 运行测试确认没有回归**
 
@@ -1468,7 +1607,7 @@ Expected: PASS，`failures: 0`。
 - [ ] **Step 8: 提交**
 
 ```bash
-git add scripts/camera/ scripts/player/player.gd scenes/player/player.tscn tests/test_camera_rig.gd
+git add scripts/camera/ scripts/player/player.gd scenes/player/player.tscn tools/build_player_scene.gd tests/test_camera_rig.gd tests/test_player_scene.gd
 git commit -m "feat: add camera rig with speed FOV, head bob, and landing dip"
 ```
 
@@ -1534,91 +1673,320 @@ func reset_player() -> void:
 	player.rotation = Vector3.ZERO
 ```
 
-- [ ] **Step 2: 搭建主场景**
+- [ ] **Step 2: 写靶场生成器并生成主场景**
 
-在 Godot 编辑器中新建场景，保存为 `scenes/main.tscn`：
+创建 `tools/build_main_scene.gd`。几何体用 `StaticBody3D` + `BoxShape3D` + `BoxMesh` 组合，**不用 `CSGBox3D`** —— CSG 的碰撞体是运行时生成的，在无编辑器环境下时序不可靠，而显式碰撞体没有这个问题。
 
-1. 根节点选 `Node3D`，重命名为 `Arena`，附加脚本 `scripts/level/arena.gd`
-2. 添加 `DirectionalLight3D`，旋转 `x = -50°`、`y = -30°`，勾选 `Shadow > Enabled`
-3. 添加 `WorldEnvironment`，新建 `Environment` 资源，`Background Mode` 设为 `Sky`，新建 `ProceduralSkyMaterial`
-4. 添加 `Marker3D`，重命名为 `SpawnPoint`，`position = (0, 1, 0)`
-5. 添加 `CSGBox3D`，重命名为 `Floor`，`size = (60, 1, 60)`、`position = (0, -0.5, 0)`，勾选 `Use Collision`
-6. 实例化 `scenes/player/player.tscn` 到场景中
-7. 选中根节点 `Arena`，把 `Player` 指向玩家实例、`Spawn Point` 指向 `SpawnPoint`
+```gdscript
+extends SceneTree
 
-- [ ] **Step 3: 搭建北侧跳跃区**
+# Generates scenes/main.tscn: the graybox arena. P0 only builds the northern
+# jump area; the slide / vault / wall-run areas arrive with P1-P3 so we never
+# carry geometry nothing uses yet.
+#
+# Run with:
+#   .engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . \
+#       --script res://tools/build_main_scene.gd
 
-在 `Arena` 下新建 `Node3D`，重命名为 `JumpArea`，`position = (0, 0, -12)`。区内全部使用勾选了 `Use Collision` 的 `CSGBox3D`。
+const OUTPUT := "res://scenes/main.tscn"
 
-**递增间距平台**（一排 6 个，用于测出最大跳跃距离）：
+var _root: Node3D
 
-| 名称 | size | position |
-| --- | --- | --- |
-| `Gap1` | `(3, 1, 3)` | `(-9, 0.5, 0)` |
-| `Gap2` | `(3, 1, 3)` | `(-9, 0.5, -5)` |
-| `Gap3` | `(3, 1, 3)` | `(-9, 0.5, -10.5)` |
-| `Gap4` | `(3, 1, 3)` | `(-9, 0.5, -16.5)` |
-| `Gap5` | `(3, 1, 3)` | `(-9, 0.5, -23)` |
-| `Gap6` | `(3, 1, 3)` | `(-9, 0.5, -30)` |
+func _initialize() -> void:
+	_run()
 
-间距依次为 2、2.5、3、3.5、4 米，玩家能跳到第几块就知道最大跳跃距离落在哪一档。
+## Solid box with explicit collision. CSGBox3D is avoided on purpose: its
+## collision body is generated at runtime and is not reliably present on the
+## first physics frame in a headless run.
+func _box(box_name: String, size: Vector3, pos: Vector3, colour: Color) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.name = box_name
+	body.position = pos
 
-**递增高度台阶**（一排 6 个，用于测出最大跳跃高度）：
+	var shape := CollisionShape3D.new()
+	shape.name = "Collision"
+	var box := BoxShape3D.new()
+	box.size = size
+	shape.shape = box
+	body.add_child(shape)
 
-| 名称 | size | position |
-| --- | --- | --- |
-| `Step1` | `(3, 1, 3)` | `(0, 0.5, 0)` |
-| `Step2` | `(3, 2, 3)` | `(0, 1.0, -4)` |
-| `Step3` | `(3, 3, 3)` | `(0, 1.5, -8)` |
-| `Step4` | `(3, 4, 3)` | `(0, 2.0, -12)` |
-| `Step5` | `(3, 5, 3)` | `(0, 2.5, -16)` |
-| `Step6` | `(3, 6, 3)` | `(0, 3.0, -20)` |
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.name = "Mesh"
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	var material := StandardMaterial3D.new()
+	material.albedo_color = colour
+	mesh.material = material
+	mesh_instance.mesh = mesh
+	body.add_child(mesh_instance)
 
-**落地测试塔**（用于观察落地下沉效果的强度差异）：
+	return body
 
-| 名称 | size | position |
-| --- | --- | --- |
-| `DropLow` | `(4, 1, 4)` | `(9, 3, 0)` |
-| `DropMid` | `(4, 1, 4)` | `(9, 8, -6)` |
-| `DropHigh` | `(4, 1, 4)` | `(9, 15, -12)` |
+func _attach(parent: Node3D, child: Node3D) -> void:
+	parent.add_child(child)
+	child.owner = _root
+	for grandchild in child.get_children():
+		grandchild.owner = _root
 
-三座塔之间不连通，通过编辑器手动把玩家放上去测试；P2 加入抓边缘后会补上通往塔顶的攀爬路径。
+func _run() -> void:
+	_root = Node3D.new()
+	_root.name = "Arena"
+	_root.set_script(load("res://scripts/level/arena.gd"))
 
-- [ ] **Step 4: 设置主场景**
+	var light := DirectionalLight3D.new()
+	light.name = "Sun"
+	light.rotation = Vector3(deg_to_rad(-50.0), deg_to_rad(-30.0), 0.0)
+	light.shadow_enabled = true
+	_attach(_root, light)
 
-编辑器中 `项目 → 项目设置 → 应用 → 运行 → 主场景`，选择 `res://scenes/main.tscn`。
+	var world_env := WorldEnvironment.new()
+	world_env.name = "WorldEnvironment"
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
+	sky.sky_material = ProceduralSkyMaterial.new()
+	environment.sky = sky
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	world_env.environment = environment
+	_attach(_root, world_env)
 
-确认 `project.godot` 中出现：
+	var spawn := Marker3D.new()
+	spawn.name = "SpawnPoint"
+	spawn.position = Vector3(0.0, 1.0, 0.0)
+	_attach(_root, spawn)
+
+	var ground := Color(0.42, 0.44, 0.47)
+	var gap_colour := Color(0.38, 0.52, 0.62)
+	var step_colour := Color(0.56, 0.50, 0.38)
+	var drop_colour := Color(0.58, 0.40, 0.44)
+
+	_attach(_root, _box("Floor", Vector3(60.0, 1.0, 60.0), Vector3(0.0, -0.5, 0.0), ground))
+
+	var jump_area := Node3D.new()
+	jump_area.name = "JumpArea"
+	jump_area.position = Vector3(0.0, 0.0, -12.0)
+	_attach(_root, jump_area)
+
+	# Increasing gaps: 2.0, 2.5, 3.0, 3.5, 4.0 m between platform edges.
+	# Whichever platform the player can still reach reveals the jump range.
+	var gap_z := [0.0, -5.0, -10.5, -16.5, -23.0, -30.0]
+	for i in gap_z.size():
+		_attach(jump_area, _box("Gap%d" % (i + 1), Vector3(3.0, 1.0, 3.0),
+			Vector3(-9.0, 0.5, gap_z[i]), gap_colour))
+
+	# Increasing heights: 1..6 m, for reading off the maximum step-up.
+	for i in 6:
+		var height := float(i + 1)
+		_attach(jump_area, _box("Step%d" % (i + 1), Vector3(3.0, height, 3.0),
+			Vector3(0.0, height * 0.5, -4.0 * i), step_colour))
+
+	# Drop towers, for comparing landing-dip strength across fall heights.
+	_attach(jump_area, _box("DropLow", Vector3(4.0, 1.0, 4.0), Vector3(9.0, 3.0, 0.0), drop_colour))
+	_attach(jump_area, _box("DropMid", Vector3(4.0, 1.0, 4.0), Vector3(9.0, 8.0, -6.0), drop_colour))
+	_attach(jump_area, _box("DropHigh", Vector3(4.0, 1.0, 4.0), Vector3(9.0, 15.0, -12.0), drop_colour))
+
+	var player_scene: PackedScene = load("res://scenes/player/player.tscn")
+	var player := player_scene.instantiate()
+	player.name = "Player"
+	_root.add_child(player)
+	player.owner = _root
+	# An instantiated sub-scene keeps its own internal ownership; marking only
+	# the instance root is what makes it serialise as an instance rather than
+	# an expanded copy.
+
+	_root.player = player
+	_root.spawn_point = spawn
+
+	DirAccess.make_dir_recursive_absolute("res://scenes")
+	var packed := PackedScene.new()
+	var pack_error := packed.pack(_root)
+	assert(pack_error == OK, "pack failed: %d" % pack_error)
+	var save_error := ResourceSaver.save(packed, OUTPUT)
+	assert(save_error == OK, "save failed: %d" % save_error)
+	print("wrote ", OUTPUT)
+	quit(0)
+```
+
+运行：
+
+```powershell
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . --import | Out-Null
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . --script res://tools/build_main_scene.gd
+```
+
+Expected: 输出 `wrote res://scenes/main.tscn`，退出码 0。
+
+- [ ] **Step 3: 设置主场景**
+
+直接编辑 `project.godot`，在 `[application]` 段内加入：
 
 ```ini
 run/main_scene="res://scenes/main.tscn"
 ```
 
-**同时确认 `renderer/rendering_method` 仍为 `gl_compatibility`**（Global Constraints 锁定项）。
+**改完后必须确认 `renderer/rendering_method` 仍为 `gl_compatibility`**（Global Constraints 锁定项，Web 导出的唯一可行渲染器）。用以下命令核对：
 
-- [ ] **Step 5: 手动验收**
+```powershell
+Select-String -Path project.godot -Pattern "main_scene|rendering_method"
+```
 
-用编辑器运行游戏（F5），逐条确认：
+- [ ] **Step 4: 写靶场测试**
 
-1. 鼠标被捕获，移动鼠标能自由转视角，抬头低头有限位不会翻转
-2. WASD 移动方向与视角一致
-3. 按住 Shift 明显更快，同时 FOV 变宽
-4. 空格能跳，落地时画面有下沉再回弹
-5. 从 `DropHigh` 跳下的下沉幅度明显大于从 `DropLow` 跳下
-6. 按 `R` 回到出生点
-7. 按 `Esc` 释放鼠标，按 `F11` 重新捕获
+创建 `tests/test_arena.gd`。这些断言替代了原本交给人做的验收项中可自动化的部分：
 
-**任何一条不满足都不要进入下一个任务。** 这是 P0 的第一个可玩里程碑。
+```gdscript
+extends TestCase
 
-- [ ] **Step 6: 运行测试确认没有回归**
+const SCENE := "res://scenes/main.tscn"
+
+func _load_arena() -> Node3D:
+	var packed: PackedScene = ResourceLoader.load(SCENE, "", ResourceLoader.CACHE_MODE_IGNORE)
+	var arena = packed.instantiate()
+	tree.root.add_child(arena)
+	await step(3)
+	return arena
+
+func test_arena_scene_is_wired() -> void:
+	await step(1)
+	check(ResourceLoader.exists(SCENE), "main.tscn was not generated")
+	var arena = await _load_arena()
+
+	check(arena.player != null, "Arena.player export was not wired")
+	check(arena.spawn_point != null, "Arena.spawn_point export was not wired")
+	check(arena.config != null, "Arena did not create a default MovementConfig")
+	check(arena.get_node_or_null("Floor") != null, "Floor missing")
+	check(arena.get_node_or_null("JumpArea/Gap6") != null, "jump area geometry missing")
+	check(arena.get_node_or_null("JumpArea/DropHigh") != null, "drop towers missing")
+
+	arena.queue_free()
+	await step(1)
+
+func test_player_and_panel_share_one_config_instance() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	# If these are different objects, dragging a slider changes nothing.
+	check(arena.player.config == arena.config, "player does not share the arena's config")
+	arena.queue_free()
+	await step(1)
+
+func test_player_settles_on_the_floor_at_spawn() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	await step(60)
+	check(arena.player.is_on_floor(), "player did not settle onto the arena floor")
+	check(arena.player.state_machine.current_name == &"Ground", "player is not in Ground at rest")
+	arena.queue_free()
+	await step(1)
+
+func test_reset_returns_the_player_to_spawn() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	arena.player.global_position = Vector3(20.0, 12.0, -20.0)
+	await step(5)
+	arena.reset_player()
+	await step(1)
+	var offset: float = arena.player.global_position.distance_to(arena.spawn_point.global_position)
+	check(offset < 0.01, "reset did not return the player to spawn (offset %f)" % offset)
+	check(arena.player.velocity.length() < 0.01, "reset did not clear velocity")
+	arena.queue_free()
+	await step(1)
+
+func test_movement_follows_the_view_direction() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	await step(30)
+	var player = arena.player
+
+	# Face -X by yawing 90 degrees, then hold forward. Velocity must follow the
+	# body's facing, not a fixed world axis.
+	player.rotation.y = deg_to_rad(90.0)
+	var input := ScriptedInputSource.new()
+	input.state.move = Vector2(0.0, 1.0)
+	player.input_source = input
+	await step(30)
+
+	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	check_greater(horizontal.length(), 1.0, "player did not move")
+	check(horizontal.normalized().x < -0.9, \
+		"movement did not follow the view direction, dir = %s" % horizontal.normalized())
+
+	arena.queue_free()
+	await step(1)
+```
+
+- [ ] **Step 5: 截图验收**
+
+创建 `tools/capture.gd`：
+
+```gdscript
+extends SceneTree
+
+# Renders a scene off the main game loop and writes a PNG, so visual checks do
+# not need a human at the keyboard.
+#
+# Run with (note: no --headless, a real rendering context is required):
+#   .engine\Godot_v4.7.1-stable_win64_console.exe --path . --resolution 960x540 \
+#       --script res://tools/capture.gd -- <scene_path> <output_png> [settle_frames]
+
+func _initialize() -> void:
+	_run()
+
+func _run() -> void:
+	var args := OS.get_cmdline_user_args()
+	var scene_path := args[0] if args.size() > 0 else "res://scenes/main.tscn"
+	var output := args[1] if args.size() > 1 else "res://capture.png"
+	var settle := int(args[2]) if args.size() > 2 else 90
+
+	var packed: PackedScene = load(scene_path)
+	var instance = packed.instantiate()
+	root.add_child(instance)
+
+	# The arena grabs the mouse in _ready(); give it straight back so a capture
+	# run never steals the pointer from whoever is using the machine.
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+	for i in settle:
+		await process_frame
+	await RenderingServer.frame_post_draw
+
+	var image := root.get_texture().get_image()
+	if image == null:
+		push_error("viewport image was null")
+		quit(1)
+		return
+	var error := image.save_png(output)
+	print("capture: %s -> %s (err %d)" % [scene_path, output, error])
+	quit(0 if error == OK else 1)
+```
+
+运行截图：
+
+```powershell
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --path . --resolution 960x540 --script res://tools/capture.gd -- res://scenes/main.tscn res://.captures/p0_arena.png 120
+```
+
+把生成的 PNG 路径写进任务报告。**控制者会实际查看这张图**，确认：地面与跳跃区几何体可见、光照正常、天空盒渲染、玩家视角高度合理、画面不是黑屏或纯色。
+
+`.captures/` 目录加入 `.gitignore`（截图是验证产物，不是源码）。
+
+- [ ] **Step 6: 无法自动验证的项（如实上报，不要假装已验证）**
+
+以下几项依赖真人操作，本任务**不予验证**，在报告中原样列出留待使用者确认：
+
+1. 鼠标转视角是否跟手、灵敏度是否合适
+2. `Shift` 冲刺、`Space` 跳跃的实际手感
+3. `Esc` 释放鼠标 / `F11` 重新捕获
+4. 落地下沉的观感强度
+
+- [ ] **Step 7: 运行测试确认没有回归**
 
 Run: `pwsh tools/run_tests.ps1`
 Expected: PASS，`failures: 0`。
 
-- [ ] **Step 7: 提交**
+- [ ] **Step 8: 提交**
 
 ```bash
-git add scenes/main.tscn scripts/level/arena.gd project.godot
+git add scenes/main.tscn scripts/level/arena.gd tools/build_main_scene.gd tools/capture.gd tests/test_arena.gd project.godot .gitignore
 git commit -m "feat: add graybox arena with the jump practice area"
 ```
 
@@ -1679,23 +2047,68 @@ func _process(_delta: float) -> void:
 	])
 ```
 
-- [ ] **Step 2: 挂进主场景**
+- [ ] **Step 2: 把 HUD 加进靶场生成器并重新生成**
 
-在 `scenes/main.tscn` 的 `Arena` 下添加 `CanvasLayer`，重命名为 `DebugHud`，附加脚本 `scripts/debug/debug_hud.gd`，把 `Player` 属性指向玩家实例。
+修改 `tools/build_main_scene.gd`：在 `_run()` 中把玩家实例化并赋给 `_root.player` 之后、打包之前，加入：
 
-- [ ] **Step 3: 手动验收**
+```gdscript
+	var hud := CanvasLayer.new()
+	hud.name = "DebugHud"
+	hud.set_script(load("res://scripts/debug/debug_hud.gd"))
+	_root.add_child(hud)
+	hud.owner = _root
+	hud.player = player
+```
 
-F5 运行，确认：
+重新生成主场景：
 
-1. 左上角显示状态、速度、坐标等信息
-2. 跑动时 `speed h` 上升，松开按键后回落到 0
-3. 起跳后 `state` 变为 `Air`，落地后变回 `Ground`
-4. 按 `Tab` 能隐藏与恢复
+```powershell
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . --import | Out-Null
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . --script res://tools/build_main_scene.gd
+```
 
-- [ ] **Step 4: 提交**
+- [ ] **Step 3: 写 HUD 测试**
+
+在 `tests/test_arena.gd` 末尾追加：
+
+```gdscript
+func test_debug_hud_is_wired_and_reports_state() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var hud = arena.get_node_or_null("DebugHud")
+	check(hud != null, "DebugHud node missing from the arena")
+	check(hud.player == arena.player, "DebugHud.player export was not wired")
+
+	await step(30)
+	# _process only refreshes while visible, which is the default.
+	check(hud.visible, "HUD should start visible")
+	var text: String = hud._label.text
+	check(text.contains("state"), "HUD text missing the state line")
+	check(text.contains("Ground"), "HUD did not report the resting state, text = %s" % text)
+
+	arena.queue_free()
+	await step(1)
+```
+
+- [ ] **Step 4: 截图验收**
+
+```powershell
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --path . --resolution 960x540 --script res://tools/capture.gd -- res://scenes/main.tscn res://.captures/p0_hud.png 120
+```
+
+报告中给出 PNG 路径。**控制者会查看该图**，确认左上角 HUD 文本可读、行内容合理（state / speed / position / grounded / fps）。
+
+`Tab` 切换属于键盘交互，headless 不予验证，留待使用者确认。
+
+- [ ] **Step 5: 运行测试确认没有回归**
+
+Run: `pwsh tools/run_tests.ps1`
+Expected: PASS，`failures: 0`。
+
+- [ ] **Step 6: 提交**
 
 ```bash
-git add scripts/debug/debug_hud.gd scenes/main.tscn
+git add scripts/debug/debug_hud.gd scenes/main.tscn tools/build_main_scene.gd tests/test_arena.gd
 git commit -m "feat: add tab-toggled debug HUD"
 ```
 
@@ -1865,30 +2278,140 @@ func _on_load() -> void:
 
 - [ ] **Step 2: 挂进主场景**
 
-在 `scenes/main.tscn` 的 `Arena` 下添加 `CanvasLayer`，**节点名必须是 `TuningPanel`**（`Arena._ready()` 用 `get_node_or_null("TuningPanel")` 找它），附加脚本 `scripts/debug/tuning_panel.gd`。
+修改 `tools/build_main_scene.gd`，在 HUD 之后加入：
 
-检查器里的 `config` 属性**留空**——`Arena._ready()`（Task 8 已写入该逻辑）会在运行时注入共享的那一个 `MovementConfig` 实例。这一点很关键：面板和玩家必须操作**同一个对象**，否则拖动滑块不会影响移动。
+```gdscript
+	var panel := CanvasLayer.new()
+	# The node name is load-bearing: Arena._ready() finds it with
+	# get_node_or_null("TuningPanel") to inject the shared config.
+	panel.name = "TuningPanel"
+	panel.set_script(load("res://scripts/debug/tuning_panel.gd"))
+	_root.add_child(panel)
+	panel.owner = _root
+```
 
-- [ ] **Step 3: 手动验收**
+`config` **不在生成器里赋值**——`Arena._ready()`（Task 8 已写入该逻辑）在运行时注入共享的那一个 `MovementConfig` 实例。这一点很关键：面板和玩家必须操作**同一个对象**，否则拖动滑块不会影响移动。
 
-F5 运行，确认：
+重新生成主场景：
 
-1. 按 `F1` 弹出面板，鼠标自动释放，可以拖动滑块
-2. 拖动 `walk_speed`，**不重启**的情况下移动速度立刻改变
-3. 拖动 `fov_max`，跑起来时视野变化幅度立刻改变
-4. 拖动 `gravity` 和 `jump_velocity`，跳跃弧线立刻改变
-5. 在输入框填名字点 `Save`，改几个滑块后点 `Load`，**滑块位置和实际手感都应恢复**
-6. 再按 `F1` 关闭面板，鼠标重新被捕获，可以继续跑
+```powershell
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . --import | Out-Null
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . --script res://tools/build_main_scene.gd
+```
 
-- [ ] **Step 4: 运行测试确认没有回归**
+- [ ] **Step 3: 写调参面板测试**
+
+在 `tests/test_arena.gd` 末尾追加。重点验证**滑块确实写回共享 config**，以及预设存取的往返：
+
+```gdscript
+func test_tuning_panel_writes_back_into_the_shared_config() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var panel = arena.get_node_or_null("TuningPanel")
+	check(panel != null, "TuningPanel node missing from the arena")
+	check(panel.config == arena.config, "panel was not given the shared config instance")
+
+	# _build_ui is deferred, so give it a frame to construct the sliders.
+	await step(2)
+	var sliders: Array = panel._sliders()
+	check_greater(float(sliders.size()), 10.0, "expected a slider per float parameter")
+
+	var target: HSlider = null
+	for s in sliders:
+		if s.get_meta("property_name") == "walk_speed":
+			target = s
+			break
+	check(target != null, "no slider was generated for walk_speed")
+
+	var before: float = arena.config.walk_speed
+	target.value = before + 1.0
+	await step(1)
+	check_approx(arena.config.walk_speed, before + 1.0, 0.001, \
+		"moving the slider did not write back into the shared config")
+	# The player must see it too, since it holds the same object.
+	check_approx(arena.player.config.walk_speed, before + 1.0, 0.001, \
+		"the player does not observe the tuned value")
+
+	arena.queue_free()
+	await step(1)
+
+func test_preset_save_and_load_round_trips() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var panel = arena.get_node_or_null("TuningPanel")
+	await step(2)
+
+	panel._preset_name.text = "test_roundtrip"
+	arena.config.walk_speed = 3.25
+	panel._on_save()
+
+	arena.config.walk_speed = 99.0
+	panel._on_load()
+	check_approx(arena.config.walk_speed, 3.25, 0.001, \
+		"preset load did not restore the saved value")
+
+	DirAccess.remove_absolute("user://presets/test_roundtrip.tres")
+	arena.queue_free()
+	await step(1)
+```
+
+- [ ] **Step 4: 截图验收**
+
+面板默认隐藏，截图前需要打开它。创建 `tools/capture_panel.gd`：
+
+```gdscript
+extends SceneTree
+
+# Same idea as capture.gd, but reveals the tuning panel first so the captured
+# frame actually shows it.
+
+func _initialize() -> void:
+	_run()
+
+func _run() -> void:
+	var packed: PackedScene = load("res://scenes/main.tscn")
+	var arena = packed.instantiate()
+	root.add_child(arena)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+	for i in 30:
+		await process_frame
+	arena.get_node("TuningPanel").visible = true
+
+	for i in 60:
+		await process_frame
+	await RenderingServer.frame_post_draw
+
+	var image := root.get_texture().get_image()
+	if image == null:
+		push_error("viewport image was null")
+		quit(1)
+		return
+	var error := image.save_png("res://.captures/p0_tuning_panel.png")
+	print("capture err ", error)
+	quit(0 if error == OK else 1)
+```
+
+```powershell
+.\.engine\Godot_v4.7.1-stable_win64_console.exe --path . --resolution 1280x720 --script res://tools/capture_panel.gd
+```
+
+**控制者会查看该图**，确认面板可见、滑块与标签排布正常、分组标题存在、数值文本可读。
+
+- [ ] **Step 5: 无法自动验证的项（如实上报）**
+
+1. 按 `F1` 开关面板、鼠标释放与重新捕获
+2. 拖动滑块时手感的实际变化是否符合预期
+
+- [ ] **Step 6: 运行测试确认没有回归**
 
 Run: `pwsh tools/run_tests.ps1`
 Expected: PASS，`failures: 0`。
 
-- [ ] **Step 5: 提交**
+- [ ] **Step 7: 提交**
 
 ```bash
-git add scripts/debug/tuning_panel.gd scripts/level/arena.gd scenes/main.tscn
+git add scripts/debug/tuning_panel.gd scenes/main.tscn tools/build_main_scene.gd tools/capture_panel.gd tests/test_arena.gd
 git commit -m "feat: add F1 runtime tuning panel with preset save and load"
 ```
 
@@ -1898,12 +2421,23 @@ git commit -m "feat: add F1 runtime tuning panel with preset save and load"
 
 全部任务完成后应当满足：
 
+**自动可验证（本计划内必须全部达成）：**
+
 - [ ] `pwsh tools/run_tests.ps1` 通过，退出码 0
-- [ ] F5 能跑起来，鼠标视角、WASD 移动、Shift 冲刺、空格跳跃全部可用
-- [ ] FOV 随速度变化，跑动有步频晃动，落地有下沉回弹且强度随落差变化
-- [ ] `Tab` 显示调试 HUD，`F1` 弹出调参面板并可实时改变手感
-- [ ] `R` 重置到出生点
-- [ ] 跳跃区能测出最大跳跃距离与高度落在哪一档
+- [ ] `scenes/player/player.tscn` 与 `scenes/main.tscn` 均由生成器产出，结构测试通过
+- [ ] 玩家在靶场中落地并稳定处于 `Ground`；移动方向跟随视角
+- [ ] `R` 重置能回到出生点并清零速度
+- [ ] 调参面板的滑块写回共享 `MovementConfig`，玩家能观测到；预设存取往返正确
+- [ ] HUD 报告当前状态且文本内容合理
+- [ ] 靶场截图渲染正常（非黑屏、几何体与光照可见）
+- [ ] 调参面板截图排布正常
 - [ ] `project.godot` 中 `renderer/rendering_method` 仍为 `gl_compatibility`
 
-**最后一步由人类完成：实际游玩并给出手感反馈。** 自动化测试只能保证逻辑没错，跑起来爽不爽是 P1 之前唯一需要回答的问题。
+**留待使用者确认（不得声称已验证）：**
+
+- [ ] 鼠标转视角的跟手程度与灵敏度
+- [ ] `Shift` 冲刺 / `Space` 跳跃 / `Tab` / `F1` / `Esc` / `F11` 的键盘交互
+- [ ] 落地下沉、步频晃动、FOV 变化的观感强度
+- [ ] **手感本身**——跑起来爽不爽
+
+自动化测试只能保证逻辑没错。手感优劣是 P1 之前唯一需要人来回答的问题。

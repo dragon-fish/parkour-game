@@ -21,3 +21,10 @@ mono_crash.*.json
 
 # the Godot editor binary
 .engine/
+Godot_*.exe
+
+# Editor-local workspace config
+.vscode/
+
+# Screenshot artifacts from tools/capture*.gd (verification output, not source)
+.captures/
