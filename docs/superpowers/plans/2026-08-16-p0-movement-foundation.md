@@ -55,7 +55,9 @@
 | --- | --- |
 | `tests/test_case.gd` | 测试基类：断言辅助、物理步进辅助 |
 | `tests/test_runner.gd` | `SceneTree` 入口：发现并运行所有 `tests/test_*.gd`，汇总结果，设置退出码 |
-| `tests/test_world.gd` | 测试世界搭建辅助：造地面、造玩家、步进 |
+| `tests/world_fixture.gd` | 测试世界搭建辅助：造地面、造玩家、步进 |
+
+> **命名约定（执行中发现的硬约束）：** `tests/` 下**只有真正的测试文件**才能以 `test_` 开头。辅助/夹具文件必须换个前缀（如 `world_fixture.gd`），否则会被 `test_runner.gd` 的发现逻辑捞进去当测试用例跑——而它不是 `TestCase`，赋值 `tree` 时会抛错、协程死亡、**整个进程挂死且没有退出码**。运行器已加守卫拒绝非 `TestCase` 的脚本，但命名约定仍是第一道防线。`class_name` 不受此限制：文件名与类名不必一致。
 | `tests/test_player_scene.gd` | 断言生成出的 `player.tscn` 结构与导出引用正确 |
 | `tests/test_arena.gd` | 断言靶场装配、重置、HUD 与调参面板的接线 |
 | `tools/run_tests.ps1` | 一条命令跑全部测试（内含 `--import` 刷新类缓存） |
@@ -827,10 +829,13 @@ git commit -m "feat: add player state machine with self-declared transitions"
 
 ## Task 5: Player 核心与 GroundState
 
+> **执行中合并：Task 5 与 Task 6 作为同一个任务实施。**
+> `Player._build_state_machine()` 同时注册 `GroundState` 与 `AirState`，而 `StateMachine.start()` 要求它们都已存在——状态机没有两个状态根本起不来。把 Player + Ground 与 Air 拆成两个任务是错误的边界划分，三者是一个原子单元。两个测试文件先红、再一次实现、再转绿。
+
 **Files:**
 - Create: `scripts/player/player.gd`
 - Create: `scripts/player/states/ground_state.gd`
-- Create: `tests/test_world.gd`
+- Create: `tests/world_fixture.gd`
 - Test: `tests/test_ground_state.gd`
 
 **Interfaces:**
@@ -844,7 +849,7 @@ git commit -m "feat: add player state machine with self-declared transitions"
 
 - [ ] **Step 1: 写测试世界辅助**
 
-创建 `tests/test_world.gd`：
+创建 `tests/world_fixture.gd`：
 
 ```gdscript
 class_name TestWorld
@@ -1654,7 +1659,12 @@ func _ready() -> void:
 
 	# Session-level concern, deliberately not in Player: headless tests
 	# instantiate Player directly and must not touch the display server.
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	#
+	# The headless guard matters: tests/test_arena.gd instantiates this whole
+	# scene under --headless, where there is no real display server to capture
+	# a pointer with.
+	if DisplayServer.get_name() != "headless":
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 	var panel := get_node_or_null("TuningPanel")
 	if panel != null:
