@@ -67,6 +67,143 @@
 
 ---
 
+## Task 0: 把着地判定从 `is_on_floor()` 收归状态机
+
+**必须先做这一步，否则本阶段的两个状态都会静默出错。**
+
+P0 的最终整分支审查标出了这个隐患：`is_on_floor()` 是目前唯一的着地判定来源，而它**只在 `move_and_slide()` 被调用时刷新**。P2 引入的脚本化位移状态直接写 `global_position`、完全不调用 `move_and_slide()`，于是在翻越或攀爬期间：
+
+- `Player._tick_timers()` 读到陈旧的"在地面上"，**coyote time 被错误续期**，攀爬途中可以凭空起跳
+- 相机的步频晃动以为还在跑，**继续累积相位**
+- 退出脚本化位移时，`was_airborne` 的边缘检测可能触发 `punch_landing()`，用一个**过期的落地速度**打出一次不该有的相机下沉
+
+**Files:**
+- Modify: `scripts/player/player.gd`
+- Modify: `scripts/player/states/ground_state.gd`、`air_state.gd`、`slide_state.gd`
+- Test: `tests/test_grounded_oracle.gd`
+
+**Interfaces:**
+- Produces：
+  - `Player.grounded: bool` —— 由状态每帧显式声明，取代对 `is_on_floor()` 的直接读取
+  - `Player.set_grounded(value: bool) -> void`
+  - `Player.notify_landed(impact_speed: float) -> void` —— 落地事件由状态主动上报，且只消费一次
+  - `Player.consume_landing() -> float` —— 返回本帧的落地冲击速度，无落地则返回 `-1.0`
+
+- [ ] **Step 1: 写失败的测试**
+
+创建 `tests/test_grounded_oracle.gd`：
+
+```gdscript
+extends TestCase
+
+# The grounded flag must be something states DECLARE, not something inferred
+# from a physics call that a scripted-move state never makes.
+
+func _spawn() -> Dictionary:
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(15)
+	return world
+
+func test_grounded_tracks_the_ground_state() -> void:
+	var world := await _spawn()
+	var player: Player = world["player"]
+	check(player.grounded, "a resting player should be grounded")
+
+	world["input"].press_jump()
+	await step(4)
+	check(not player.grounded, "a jumping player should not be grounded")
+
+	for i in 300:
+		await step(1)
+		if player.state_machine.current_name == &"Ground":
+			break
+	check(player.grounded, "a landed player should be grounded again")
+
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_a_landing_is_reported_exactly_once() -> void:
+	var world := await _spawn()
+	var player: Player = world["player"]
+
+	world["input"].press_jump()
+	await step(4)
+	world["input"].release_jump()
+
+	var landings := 0
+	for i in 300:
+		await step(1)
+		if player.last_landing_speed > 0.0 and player.state_machine.current_name == &"Ground":
+			landings += 1
+			break
+	check(landings == 1, "the landing should be reported exactly once")
+
+	# Sitting on the ground must not keep re-reporting a landing.
+	await step(60)
+	check(player.consume_landing() < 0.0, \
+		"resting on the ground must not report further landings")
+
+	TestWorld.teardown(world)
+	await step(1)
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+- [ ] **Step 3: 实现**
+
+`scripts/player/player.gd`：
+
+```gdscript
+## Whether the player is standing on something. DECLARED by the active state
+## rather than read from is_on_floor(), because scripted-move states drive the
+## body's position directly and never call move_and_slide() — is_on_floor()
+## would report whatever was true before the move began.
+var grounded: bool = false
+
+var _pending_landing: float = -1.0
+
+func set_grounded(value: bool) -> void:
+	grounded = value
+
+## Reported by a state at the moment it detects a landing.
+func notify_landed(impact_speed: float) -> void:
+	_pending_landing = impact_speed
+	last_landing_speed = impact_speed
+
+## Returns this tick's landing impact speed, or -1.0 if there was none. The
+## event is consumed, so a landing can only ever be acted on once.
+func consume_landing() -> float:
+	var value := _pending_landing
+	_pending_landing = -1.0
+	return value
+```
+
+把 `player.gd` 里所有对 `is_on_floor()` 的判断改为读 `grounded`：
+
+- `_tick_timers()` 的 coyote 续期
+- 相机的 `update_effects(delta, horizontal_speed(), grounded)`
+- 落地下沉改为由 `consume_landing()` 驱动，删掉原先的 `was_airborne` 边缘检测
+
+各状态在自己的 `physics_update()` 中声明：
+
+- `GroundState`：`move_and_slide()` 之后 `player.set_grounded(player.is_on_floor())`
+- `SlideState`：同上
+- `AirState`：落地时 `player.set_grounded(true)` 并 `player.notify_landed(impact_speed)`；否则 `player.set_grounded(false)`
+
+本阶段随后新增的 `VaultState` 与 `LedgeHangState` 必须在 `enter()` 中 `player.set_grounded(false)`，并在结束时按落点声明。
+
+- [ ] **Step 4: 运行测试确认通过并提交**
+
+```bash
+git add scripts/player/ tests/test_grounded_oracle.gd
+git commit -m "refactor: let states declare grounded-ness instead of inferring it"
+```
+
+---
+
 ## Task 1: 探测射线
 
 翻越与抓边缘的全部判定都建立在探测结果上，所以先把它做对、单独测好，后面两个状态才有可靠地基。
