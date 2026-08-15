@@ -13,6 +13,8 @@ var state_machine: StateMachine
 
 ## Downward speed at the moment of the most recent landing. Read by CameraRig.
 var last_landing_speed: float = 0.0
+## True when the most recent landing was a roll. Read by the camera and HUD.
+var last_landing_rolled: bool = false
 ## Last polled input, exposed for the debug HUD.
 var last_input: MoveInput = MoveInput.new()
 

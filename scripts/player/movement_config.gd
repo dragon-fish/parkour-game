@@ -45,6 +45,18 @@ extends Resource
 ## other parameter.
 @export var fall_recovery_depth: float = 20.0
 
+@export_group("Landing")
+## Fraction of horizontal speed kept after a flat landing at land_dip_speed_ref
+## fall speed. Below that fall speed the loss scales down proportionally; this
+## is the "speed is easy to lose" half of the momentum design.
+@export var land_speed_keep: float = 0.55
+## Same, but for a landing where the crouch key was held — the reward for
+## knowing the roll is there.
+@export var roll_speed_keep: float = 0.94
+## Minimum fall speed at which crouching counts as a roll. Below it a crouched
+## landing is just a landing, so tapping crouch constantly earns nothing.
+@export var roll_min_fall_speed: float = 5.0
+
 @export_group("Camera")
 ## Height of the camera rig above the player's origin. Baked into player.tscn
 ## as CameraRig's initial local position by tools/build_player_scene.gd, but

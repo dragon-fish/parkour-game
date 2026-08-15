@@ -19,5 +19,19 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 	if player.is_on_floor():
 		player.last_landing_speed = impact_speed
+		_apply_landing_cost(impact_speed, input)
 		return GROUND
 	return KEEP
+
+## Landing bleeds horizontal speed in proportion to how hard the impact was.
+## Rolling — crouch held on a fast enough landing — bleeds far less. Neither
+## path ever ADDS speed, so a landing can only ever cost momentum.
+func _apply_landing_cost(impact_speed: float, input: MoveInput) -> void:
+	var severity := clampf(impact_speed / maxf(config.land_dip_speed_ref, 0.001), 0.0, 1.0)
+	var rolled: bool = input.crouch_held and impact_speed >= config.roll_min_fall_speed
+	player.last_landing_rolled = rolled
+
+	var keep_at_full: float = config.roll_speed_keep if rolled else config.land_speed_keep
+	var keep := lerpf(1.0, keep_at_full, severity)
+	player.velocity.x *= keep
+	player.velocity.z *= keep
