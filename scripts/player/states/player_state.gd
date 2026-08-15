@@ -15,6 +15,7 @@ const KEEP: StringName = &""
 # one-directional: Player -> states -> PlayerState.
 const GROUND: StringName = &"Ground"
 const AIR: StringName = &"Air"
+const SLIDE: StringName = &"Slide"
 
 ## Set by Player before the state machine starts. Untyped for the same
 ## reason: a typed reference would reintroduce the cycle.

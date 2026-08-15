@@ -21,6 +21,12 @@ static func build(tree: SceneTree, cfg: MovementConfig) -> Dictionary:
 
 	var player := Player.new()
 	var body_shape := CollisionShape3D.new()
+	# Matches the node name player.tscn uses, so lookups like
+	# get_node("CollisionShape3D") (Player.setup()'s capsule duplication, P1's
+	# SlideState tests) behave the same whether the player comes from the
+	# scene or from this fixture. Without an explicit name, add_child()
+	# assigns an internal placeholder like "@CollisionShape3D@3" instead.
+	body_shape.name = "CollisionShape3D"
 	var capsule := CapsuleShape3D.new()
 	capsule.height = 1.8
 	capsule.radius = 0.4

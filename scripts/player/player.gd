@@ -21,12 +21,41 @@ var last_input: MoveInput = MoveInput.new()
 ## Assigned in player.tscn. Optional so headless tests can run without one.
 @export var camera_rig: CameraRig
 
+@onready var _collision_shape: CollisionShape3D = $CollisionShape3D
+
+var _standing_height: float = 0.0
+
 var _coyote_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
+
+func standing_height() -> float:
+	return _standing_height
+
+## Resizes the capsule while keeping its BOTTOM fixed relative to the body
+## origin, so footing and is_on_floor() are unaffected by the change.
+func set_capsule_height(height: float) -> void:
+	var capsule := _collision_shape.shape as CapsuleShape3D
+	if capsule == null:
+		return
+	if _standing_height <= 0.0:
+		_standing_height = capsule.height
+	capsule.height = height
+	_collision_shape.position.y = -(_standing_height - height) * 0.5
 
 func setup(cfg: MovementConfig, src: InputSource) -> void:
 	config = cfg
 	input_source = src
+
+	# The capsule resource is shared by every instance of player.tscn, so
+	# resizing it in place would let one player's slide shrink every other
+	# player in the scene — including, in tests, worlds from previous cases.
+	var shape_node := $CollisionShape3D as CollisionShape3D
+	var capsule := shape_node.shape as CapsuleShape3D
+	if capsule != null:
+		var owned := capsule.duplicate() as CapsuleShape3D
+		shape_node.shape = owned
+		_standing_height = owned.height
+
 	_build_state_machine()
 
 ## Clears per-life transient state that outlives a single frame: the coyote
@@ -54,6 +83,13 @@ func _build_state_machine() -> void:
 
 	state_machine.register(PlayerState.GROUND, ground)
 	state_machine.register(PlayerState.AIR, air)
+
+	var slide := SlideState.new()
+	slide.player = self
+	slide.config = config
+	state_machine.add_child(slide)
+	state_machine.register(PlayerState.SLIDE, slide)
+
 	state_machine.start(PlayerState.GROUND)
 
 func _physics_process(delta: float) -> void:

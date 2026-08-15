@@ -14,6 +14,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.move_and_slide()
 		return AIR
 
+	# A slide has to be earned: crouching below the entry speed just crouches.
+	if input.crouch_held and player.horizontal_speed() >= config.slide_entry_speed:
+		return SLIDE
+
 	# A small downward bias keeps the body glued to the floor across seams and
 	# gentle slopes; without it is_on_floor() flickers while running.
 	player.velocity.y = -config.floor_snap_speed

@@ -57,6 +57,26 @@ extends Resource
 ## landing is just a landing, so tapping crouch constantly earns nothing.
 @export var roll_min_fall_speed: float = 5.0
 
+@export_group("Slide")
+## Minimum horizontal speed required to start a slide. Below it, crouching just
+## crouches — a slide has to be earned with speed already on the clock.
+@export var slide_entry_speed: float = 4.0
+## One-off speed added on entering a slide. This is the payoff that makes
+## sliding worth doing rather than just running.
+@export var slide_boost: float = 2.5
+## Deceleration while sliding, in m/s^2. Well below ground_friction, which is
+## what makes a slide carry.
+@export var slide_friction: float = 5.0
+## Sliding ends when speed decays to this.
+@export var slide_exit_speed: float = 2.0
+## Hard cap on slide duration so a slide cannot be held indefinitely on a slope.
+@export var slide_max_duration: float = 1.8
+## Capsule height while sliding.
+@export var slide_capsule_height: float = 0.9
+## How fast the slide direction can be steered, in radians per second. Low on
+## purpose: a slide commits you to a line.
+@export var slide_steer_rate: float = 1.2
+
 @export_group("Camera")
 ## Height of the camera rig above the player's origin. Baked into player.tscn
 ## as CameraRig's initial local position by tools/build_player_scene.gd, but
