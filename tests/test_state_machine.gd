@@ -82,3 +82,36 @@ func test_state_changed_signal_reports_both_names() -> void:
 	sm.physics_update(1.0 / 60.0, MoveInput.new())
 	check(seen == ["->A", "A->B"], "state_changed payload wrong: %s" % str(seen))
 	sm.free()
+
+func test_returning_own_name_is_a_noop() -> void:
+	await step(1)
+	var parts := _build()
+	var sm: StateMachine = parts[0]
+	var a: StubState = parts[1]
+	sm.start(&"A")
+	a.events.clear()
+	a.next_state = &"A"
+	sm.physics_update(1.0 / 60.0, MoveInput.new())
+	check(a.events == ["update"], "returning the current state name must not trigger exit()/enter()")
+	check(sm.current_name == &"A", "current_name must stay unchanged when a state returns its own name")
+	sm.free()
+
+# The reviewer flagged that assert() is stripped in release exports, so an
+# unregistered transition target must also degrade safely without it: push
+# an error but leave the machine on its current state instead of advancing
+# current_name to a name with no matching state (which would otherwise null
+# out _current and freeze physics_update() permanently, silently, forever).
+func test_unknown_transition_leaves_the_machine_running() -> void:
+	await step(1)
+	var parts := _build()
+	var sm: StateMachine = parts[0]
+	var a: StubState = parts[1]
+	sm.start(&"A")
+	a.events.clear()
+	a.next_state = &"Nonexistent"
+	sm.physics_update(1.0 / 60.0, MoveInput.new())
+	check(sm.current_name == &"A", "an unknown transition target must not change current_name")
+	a.events.clear()
+	sm.physics_update(1.0 / 60.0, MoveInput.new())
+	check(a.events == ["update"], "state machine must keep responding after an unknown transition")
+	sm.free()

@@ -13,6 +13,9 @@ func register(state_name: StringName, state: PlayerState) -> void:
 
 func start(state_name: StringName) -> void:
 	assert(_states.has(state_name), "unknown state: %s" % state_name)
+	if not _states.has(state_name):
+		push_error("StateMachine.start: unknown state: %s" % state_name)
+		return
 	_current = _states[state_name]
 	current_name = state_name
 	_current.enter(&"")
@@ -25,6 +28,9 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	if next == PlayerState.KEEP or next == current_name:
 		return
 	assert(_states.has(next), "transition to unknown state: %s" % next)
+	if not _states.has(next):
+		push_error("StateMachine.physics_update: transition to unknown state: %s" % next)
+		return
 	var from := current_name
 	_current.exit()
 	_current = _states[next]
