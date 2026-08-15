@@ -78,17 +78,19 @@ func test_leaving_the_floor_edge_does_not_start_with_a_downward_jolt() -> void:
 	# -floor_snap_speed) before handing off to Air, instead of letting Air
 	# add gravity on top of a bias that was never cleared. Express the bound
 	# against cfg rather than a literal number so raising gravity or
-	# floor_snap_speed by hand in the F1 panel can never break this test:
-	# - correct behaviour is bounded above (in magnitude) by one gravity
-	#   tick alone, since the bias is cleared on the same tick the ledge is
-	#   detected;
-	# - the bug this guards against adds a full extra floor_snap_speed on
-	#   top of that.
-	# Two gravity ticks plus the full snap bias sits strictly between the
-	# two for any positive gravity, so it never trips on correct behaviour
-	# but always catches the bias leaking into Air.
+	# floor_snap_speed by hand in the F1 panel can never break this test.
+	#
+	# Correct behaviour after this test's exact step(2): the bias is cleared
+	# on the tick the ledge is detected, so Air applies exactly one gravity
+	# tick on top of zero: velocity.y = -g*t.
+	# Regressed behaviour (the bias leaking into Air): velocity.y =
+	# -(f + g*t), where f = floor_snap_speed.
+	# A threshold of -(g*t + f/2) sits strictly between the two at ANY
+	# tuning:
+	#   correct passes:   -g*t        > -(g*t + f/2)  <=>  0  > -f/2   (true for any f > 0)
+	#   regressed fails:  -(f + g*t)  > -(g*t + f/2)  <=>  -f > -f/2   (false for any f > 0)
 	var tick := 1.0 / Engine.physics_ticks_per_second
-	var jolt_threshold: float = -(2.0 * cfg.gravity * tick + cfg.floor_snap_speed)
+	var jolt_threshold: float = -(cfg.gravity * tick + cfg.floor_snap_speed * 0.5)
 	check(player.velocity.y > jolt_threshold, \
 		"leaving the floor edge produced a downward jolt, velocity.y = %f (threshold %f)" \
 			% [player.velocity.y, jolt_threshold])
