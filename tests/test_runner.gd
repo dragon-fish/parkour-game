@@ -19,6 +19,13 @@ func _run_all() -> void:
 
 	for path in files:
 		var script: GDScript = load(path)
+		# load() on a script with a parse/syntax error does not reliably return
+		# null in Godot 4.7 — it can hand back a GDScript that fails to compile,
+		# whose new() is not callable. can_instantiate() catches both cases.
+		if script == null or not script.can_instantiate():
+			all_failures.append("%s  failed to load (parse/syntax error)" % path.get_file())
+			print("  %-32s LOAD FAILED" % path.get_file())
+			continue
 		var case = script.new()
 		case.tree = self
 		var ran := 0
