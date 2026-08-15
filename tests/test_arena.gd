@@ -1,0 +1,77 @@
+extends TestCase
+
+const SCENE := "res://scenes/main.tscn"
+
+func _load_arena() -> Node3D:
+	var packed: PackedScene = ResourceLoader.load(SCENE, "", ResourceLoader.CACHE_MODE_IGNORE)
+	var arena = packed.instantiate()
+	tree.root.add_child(arena)
+	await step(3)
+	return arena
+
+func test_arena_scene_is_wired() -> void:
+	await step(1)
+	check(ResourceLoader.exists(SCENE), "main.tscn was not generated")
+	var arena = await _load_arena()
+
+	check(arena.player != null, "Arena.player export was not wired")
+	check(arena.spawn_point != null, "Arena.spawn_point export was not wired")
+	check(arena.config != null, "Arena did not create a default MovementConfig")
+	check(arena.get_node_or_null("Floor") != null, "Floor missing")
+	check(arena.get_node_or_null("JumpArea/Gap6") != null, "jump area geometry missing")
+	check(arena.get_node_or_null("JumpArea/DropHigh") != null, "drop towers missing")
+
+	arena.queue_free()
+	await step(1)
+
+func test_player_and_panel_share_one_config_instance() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	# If these are different objects, dragging a slider changes nothing.
+	check(arena.player.config == arena.config, "player does not share the arena's config")
+	arena.queue_free()
+	await step(1)
+
+func test_player_settles_on_the_floor_at_spawn() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	await step(60)
+	check(arena.player.is_on_floor(), "player did not settle onto the arena floor")
+	check(arena.player.state_machine.current_name == &"Ground", "player is not in Ground at rest")
+	arena.queue_free()
+	await step(1)
+
+func test_reset_returns_the_player_to_spawn() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	arena.player.global_position = Vector3(20.0, 12.0, -20.0)
+	await step(5)
+	arena.reset_player()
+	await step(1)
+	var offset: float = arena.player.global_position.distance_to(arena.spawn_point.global_position)
+	check(offset < 0.01, "reset did not return the player to spawn (offset %f)" % offset)
+	check(arena.player.velocity.length() < 0.01, "reset did not clear velocity")
+	arena.queue_free()
+	await step(1)
+
+func test_movement_follows_the_view_direction() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	await step(30)
+	var player = arena.player
+
+	# Face -X by yawing 90 degrees, then hold forward. Velocity must follow the
+	# body's facing, not a fixed world axis.
+	player.rotation.y = deg_to_rad(90.0)
+	var input := ScriptedInputSource.new()
+	input.state.move = Vector2(0.0, 1.0)
+	player.input_source = input
+	await step(30)
+
+	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	check_greater(horizontal.length(), 1.0, "player did not move")
+	check(horizontal.normalized().x < -0.9, \
+		"movement did not follow the view direction, dir = %s" % horizontal.normalized())
+
+	arena.queue_free()
+	await step(1)
