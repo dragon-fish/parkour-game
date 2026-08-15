@@ -13,6 +13,18 @@ func accumulate_look(delta: Vector2) -> void:
 	_look_accumulator += delta
 
 func poll() -> MoveInput:
+	# While the mouse is released (F1 panel open, or right after Esc) the
+	# physical keys are being used to interact with UI — typing a preset
+	# name, clicking a slider — not to move the character. Stop polling them
+	# so e.g. the 'a' in a typed preset name cannot strafe the player.
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		_look_accumulator = Vector2.ZERO
+		# Resync to the physical key state rather than leaving it stale, so a
+		# jump held across the capture/release boundary does not read as a
+		# fresh press the moment the mouse is recaptured.
+		_jump_was_held = Input.is_physical_key_pressed(KEY_SPACE)
+		return MoveInput.new()
+
 	var out := MoveInput.new()
 
 	var forward := 0.0
