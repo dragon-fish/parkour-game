@@ -32,9 +32,12 @@ func _run() -> void:
 	var rig := Node3D.new()
 	rig.name = "CameraRig"
 	rig.set_script(load("res://scripts/camera/camera_rig.gd"))
-	# Eye height: 0.7 above the capsule centre puts the view near the top of a
-	# 1.8 m body without clipping through the collision shape.
-	rig.position = Vector3(0.0, 0.7, 0.0)
+	# Baked from MovementConfig's own default rather than a separate literal,
+	# so this scaffold can never drift from the value CameraRig.setup() will
+	# overwrite it with at runtime anyway. eye_height above the capsule centre
+	# puts the view near the top of a 1.8 m body without clipping through the
+	# collision shape; the F1 panel can tune it live from here.
+	rig.position = Vector3(0.0, MovementConfig.new().eye_height, 0.0)
 	player.add_child(rig)
 	rig.owner = player
 

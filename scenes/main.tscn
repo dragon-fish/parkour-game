@@ -140,175 +140,175 @@ size = Vector3(4, 1, 4)
 material = SubResource("StandardMaterial3D_chjal")
 size = Vector3(4, 1, 4)
 
-[node name="Arena" type="Node3D" unique_id=92952804 node_paths=PackedStringArray("player", "spawn_point")]
+[node name="Arena" type="Node3D" unique_id=1792587737 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_tbgi4")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
 
-[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1610857393]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=482926185]
 transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 0, 0)
 shadow_enabled = true
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=394785227]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=945626021]
 environment = SubResource("Environment_eb6dy")
 
-[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1394431129]
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=464867327]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 
-[node name="Floor" type="StaticBody3D" parent="." unique_id=2010880359]
+[node name="Floor" type="StaticBody3D" parent="." unique_id=1015680057]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=1248723300]
+[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=1173881408]
 shape = SubResource("BoxShape3D_trceg")
 
-[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=685404244]
+[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=2016616702]
 mesh = SubResource("BoxMesh_jkv2x")
 
-[node name="JumpArea" type="Node3D" parent="." unique_id=291795780]
+[node name="JumpArea" type="Node3D" parent="." unique_id=1996283777]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -12)
 
-[node name="Gap1" type="StaticBody3D" parent="JumpArea" unique_id=215810458]
+[node name="Gap1" type="StaticBody3D" parent="JumpArea" unique_id=514850515]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 0.5, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap1" unique_id=2123059349]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap1" unique_id=779007132]
 shape = SubResource("BoxShape3D_jbj1t")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap1" unique_id=792924939]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap1" unique_id=1022469761]
 mesh = SubResource("BoxMesh_dp3eg")
 
-[node name="Gap2" type="StaticBody3D" parent="JumpArea" unique_id=1249307018]
+[node name="Gap2" type="StaticBody3D" parent="JumpArea" unique_id=1181489931]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 0.5, -5)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap2" unique_id=24799563]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap2" unique_id=1264703209]
 shape = SubResource("BoxShape3D_0ld40")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap2" unique_id=1514570518]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap2" unique_id=938382488]
 mesh = SubResource("BoxMesh_gqmmt")
 
-[node name="Gap3" type="StaticBody3D" parent="JumpArea" unique_id=76657073]
+[node name="Gap3" type="StaticBody3D" parent="JumpArea" unique_id=1550682345]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 0.5, -10.5)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap3" unique_id=2138793026]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap3" unique_id=680468397]
 shape = SubResource("BoxShape3D_yc10j")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap3" unique_id=1949128374]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap3" unique_id=87742354]
 mesh = SubResource("BoxMesh_jscy8")
 
-[node name="Gap4" type="StaticBody3D" parent="JumpArea" unique_id=100082]
+[node name="Gap4" type="StaticBody3D" parent="JumpArea" unique_id=1542321591]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 0.5, -16.5)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap4" unique_id=583070855]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap4" unique_id=1237498691]
 shape = SubResource("BoxShape3D_pm3ni")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap4" unique_id=333486168]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap4" unique_id=123097457]
 mesh = SubResource("BoxMesh_y6deb")
 
-[node name="Gap5" type="StaticBody3D" parent="JumpArea" unique_id=89740695]
+[node name="Gap5" type="StaticBody3D" parent="JumpArea" unique_id=1987180573]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 0.5, -23)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap5" unique_id=1013512688]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap5" unique_id=141364583]
 shape = SubResource("BoxShape3D_og1vs")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap5" unique_id=511232002]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap5" unique_id=2041343056]
 mesh = SubResource("BoxMesh_2wyq8")
 
-[node name="Gap6" type="StaticBody3D" parent="JumpArea" unique_id=560369654]
+[node name="Gap6" type="StaticBody3D" parent="JumpArea" unique_id=1776254189]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 0.5, -30)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap6" unique_id=803113561]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Gap6" unique_id=2116469824]
 shape = SubResource("BoxShape3D_vxglm")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap6" unique_id=1340281604]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Gap6" unique_id=1815463860]
 mesh = SubResource("BoxMesh_2f3dj")
 
-[node name="Step1" type="StaticBody3D" parent="JumpArea" unique_id=572512757]
+[node name="Step1" type="StaticBody3D" parent="JumpArea" unique_id=2012950238]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step1" unique_id=1713116268]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step1" unique_id=1791824640]
 shape = SubResource("BoxShape3D_yq6so")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step1" unique_id=1239230210]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step1" unique_id=1308786264]
 mesh = SubResource("BoxMesh_tel4y")
 
-[node name="Step2" type="StaticBody3D" parent="JumpArea" unique_id=363616366]
+[node name="Step2" type="StaticBody3D" parent="JumpArea" unique_id=888884977]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -4)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step2" unique_id=187598144]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step2" unique_id=1733733712]
 shape = SubResource("BoxShape3D_qkpxi")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step2" unique_id=340076479]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step2" unique_id=2087348521]
 mesh = SubResource("BoxMesh_5q0nq")
 
-[node name="Step3" type="StaticBody3D" parent="JumpArea" unique_id=1978630603]
+[node name="Step3" type="StaticBody3D" parent="JumpArea" unique_id=777824783]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -8)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step3" unique_id=1097986737]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step3" unique_id=1728050888]
 shape = SubResource("BoxShape3D_dgi5k")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step3" unique_id=899366407]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step3" unique_id=812044159]
 mesh = SubResource("BoxMesh_j8jky")
 
-[node name="Step4" type="StaticBody3D" parent="JumpArea" unique_id=1115599770]
+[node name="Step4" type="StaticBody3D" parent="JumpArea" unique_id=568927402]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -12)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step4" unique_id=324365580]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step4" unique_id=391862825]
 shape = SubResource("BoxShape3D_kmb1v")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step4" unique_id=2073272037]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step4" unique_id=281854365]
 mesh = SubResource("BoxMesh_fuf3a")
 
-[node name="Step5" type="StaticBody3D" parent="JumpArea" unique_id=502868929]
+[node name="Step5" type="StaticBody3D" parent="JumpArea" unique_id=2092733721]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, -16)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step5" unique_id=637534346]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step5" unique_id=1393394720]
 shape = SubResource("BoxShape3D_pibwh")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step5" unique_id=404670940]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step5" unique_id=1431676603]
 mesh = SubResource("BoxMesh_c6pm6")
 
-[node name="Step6" type="StaticBody3D" parent="JumpArea" unique_id=2082394502]
+[node name="Step6" type="StaticBody3D" parent="JumpArea" unique_id=353712953]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, -20)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step6" unique_id=1641280914]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/Step6" unique_id=884001039]
 shape = SubResource("BoxShape3D_5he1u")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step6" unique_id=546960366]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/Step6" unique_id=2058729984]
 mesh = SubResource("BoxMesh_5poiv")
 
-[node name="DropLow" type="StaticBody3D" parent="JumpArea" unique_id=1487523873]
+[node name="DropLow" type="StaticBody3D" parent="JumpArea" unique_id=379337043]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 3, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/DropLow" unique_id=344997508]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/DropLow" unique_id=257664962]
 shape = SubResource("BoxShape3D_2cjbq")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/DropLow" unique_id=828743901]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/DropLow" unique_id=1560470614]
 mesh = SubResource("BoxMesh_cjqg0")
 
-[node name="DropMid" type="StaticBody3D" parent="JumpArea" unique_id=1038993788]
+[node name="DropMid" type="StaticBody3D" parent="JumpArea" unique_id=147397071]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 8, -6)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/DropMid" unique_id=1578404834]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/DropMid" unique_id=1840136736]
 shape = SubResource("BoxShape3D_vchkt")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/DropMid" unique_id=1923803885]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/DropMid" unique_id=316486169]
 mesh = SubResource("BoxMesh_txyw0")
 
-[node name="DropHigh" type="StaticBody3D" parent="JumpArea" unique_id=827848161]
+[node name="DropHigh" type="StaticBody3D" parent="JumpArea" unique_id=744719160]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 15, -12)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpArea/DropHigh" unique_id=1563926808]
+[node name="Collision" type="CollisionShape3D" parent="JumpArea/DropHigh" unique_id=1404550243]
 shape = SubResource("BoxShape3D_vc5cj")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpArea/DropHigh" unique_id=1580138211]
+[node name="Mesh" type="MeshInstance3D" parent="JumpArea/DropHigh" unique_id=690910800]
 mesh = SubResource("BoxMesh_nvyfr")
 
-[node name="Player" type="CharacterBody3D" parent="." unique_id=1338591407 node_paths=PackedStringArray("camera_rig") instance=ExtResource("2_tefeu")]
+[node name="Player" type="CharacterBody3D" parent="." unique_id=1484654466 node_paths=PackedStringArray("camera_rig") instance=ExtResource("2_tefeu")]
 script = ExtResource("3_o6xl0")
 camera_rig = NodePath("CameraRig")
 
-[node name="DebugHud" type="CanvasLayer" parent="." unique_id=893692942 node_paths=PackedStringArray("player")]
+[node name="DebugHud" type="CanvasLayer" parent="." unique_id=18942237 node_paths=PackedStringArray("player")]
 script = ExtResource("4_tipki")
 player = NodePath("../Player")
 
-[node name="TuningPanel" type="CanvasLayer" parent="." unique_id=5994820]
+[node name="TuningPanel" type="CanvasLayer" parent="." unique_id=100296438]
 script = ExtResource("5_85g3d")

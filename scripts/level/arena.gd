@@ -40,6 +40,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.physical_keycode == KEY_R:
 			reset_player()
 
+## Recovers a player who fell out of the level — e.g. a missed jump past the
+## practice gaps, which extend beyond the floor's edge on purpose so their
+## spacing keeps reading off increasing jump distances. Checked every tick
+## rather than relying on the player to press R, since falling forever is not
+## a state a human should have to notice and self-rescue from.
+func _physics_process(_delta: float) -> void:
+	if is_instance_valid(player) and player.global_position.y < -config.fall_recovery_depth:
+		reset_player()
+
 ## Teleports the player to spawn and clears its velocity.
 ##
 ## NOT synchronous: this spans a physics frame (see below), so it completes
@@ -50,6 +59,9 @@ func reset_player() -> void:
 	player.velocity = Vector3.ZERO
 	player.global_position = spawn_point.global_position
 	player.rotation = Vector3.ZERO
+	player.reset_state()
+	if player.camera_rig != null:
+		player.camera_rig.reset_state()
 	# Restart the state machine in Ground so a reset behaves like a fresh
 	# spawn (matching _ready()) rather than leaving the machine wherever it
 	# was — e.g. still Air if the reset happened mid-fall.

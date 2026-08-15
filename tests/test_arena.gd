@@ -54,6 +54,82 @@ func test_reset_returns_the_player_to_spawn() -> void:
 	arena.queue_free()
 	await step(1)
 
+func test_reset_restores_a_level_view_and_does_not_fire_a_buffered_jump() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var player = arena.player
+	await step(30)
+
+	# Pitch the camera through the same public path real mouse input takes.
+	player.camera_rig.apply_look(Vector2(0.0, -500.0), player)
+	await step(1)
+	check(absf(player.camera_rig.rotation.x) > 0.01, "precondition: camera should be pitched")
+
+	# Force the player airborne and let coyote time fully decay, then buffer
+	# a jump press while still in the air. Both conditions consume_jump()
+	# checks land on the SAME tick only if it fires immediately, so this
+	# reproduces "pressed jump slightly before pressing R" without the jump
+	# firing before the reset even happens.
+	player.state_machine.start(PlayerState.AIR)
+	player.global_position = arena.spawn_point.global_position + Vector3(0.0, 5.0, 0.0)
+	await step(20)
+	check(player.state_machine.current_name == &"Air", \
+		"precondition: player should still be airborne")
+
+	var input := ScriptedInputSource.new()
+	player.input_source = input
+	input.press_jump()
+	await step(1)
+	check(player.velocity.y < 4.0, \
+		"precondition: the buffered jump must not have fired yet, velocity.y = %f" % player.velocity.y)
+
+	arena.reset_player()
+	await step(1)
+	check_approx(player.camera_rig.rotation.x, 0.0, 0.001, "reset did not restore a level camera view")
+
+	# reset_player() itself freezes Player physics for exactly one tick, and
+	# the player then takes several more ticks to actually settle onto the
+	# floor and refresh coyote time — a stale leftover jump buffer would only
+	# fire on the tick coyote refreshes, not immediately. Watch a window well
+	# past that settling point (~5-6 ticks; test_player_settles_on_the_floor
+	# _at_spawn gives it up to 60) rather than a single frame, and look for
+	# the unmistakable signature of a fired jump — velocity.y jumping to
+	# roughly jump_velocity — rather than merely "not currently in Ground",
+	# since brief airborne settling ticks are normal and not a bug.
+	var cfg: MovementConfig = player.config
+	var jumped := false
+	for i in 20:
+		await step(1)
+		if player.velocity.y > cfg.jump_velocity * 0.5:
+			jumped = true
+	check(not jumped, "a buffered jump fired after reset instead of staying grounded")
+	check(player.state_machine.current_name == &"Ground", \
+		"player did not settle back into Ground after the reset, state = %s" \
+			% player.state_machine.current_name)
+
+	arena.queue_free()
+	await step(1)
+
+func test_falling_out_of_the_level_respawns_the_player() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	await step(30)
+
+	# Past the floor's south edge, the practice gaps deliberately extend
+	# further than the floor so their spacing keeps reading off increasing
+	# jump distances (see tools/build_main_scene.gd) — a missed jump falls
+	# forever there without the kill-plane recovery this test checks for.
+	var fall_depth: float = arena.config.fall_recovery_depth + 5.0
+	arena.player.global_position = arena.spawn_point.global_position + Vector3(0.0, -fall_depth, 0.0)
+	for i in 5:
+		await step(1)
+
+	var offset: float = arena.player.global_position.distance_to(arena.spawn_point.global_position)
+	check(offset < 1.0, "falling below the kill plane did not return the player to spawn (offset %f)" % offset)
+
+	arena.queue_free()
+	await step(1)
+
 func test_debug_hud_is_wired_and_reports_state() -> void:
 	await step(1)
 	var arena = await _load_arena()

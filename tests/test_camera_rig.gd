@@ -69,6 +69,23 @@ func test_pitch_is_clamped() -> void:
 	body.queue_free()
 	await step(1)
 
+func test_eye_height_is_applied_and_stays_live_tunable() -> void:
+	var cfg := MovementConfig.new()
+	var rig := _make_rig()
+	await step(1)
+	rig.setup(cfg)
+
+	check_approx(rig.position.y, cfg.eye_height, 0.001, "setup() did not apply eye_height")
+
+	# The F1 panel writes straight into the shared config at runtime; a live
+	# rig must pick that up on the next tick rather than only at setup().
+	cfg.eye_height = cfg.eye_height + 1.0
+	rig.update_effects(TICK, 0.0, true)
+	check_approx(rig.position.y, cfg.eye_height, 0.001, "eye_height change was not applied live")
+
+	rig.queue_free()
+	await step(1)
+
 func test_bob_fades_instead_of_snapping_at_liftoff() -> void:
 	var cfg := MovementConfig.new()
 	var rig := _make_rig()

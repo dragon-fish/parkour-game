@@ -27,6 +27,18 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	input_source = src
 	_build_state_machine()
 
+## Clears per-life transient state that outlives a single frame: the coyote
+## and jump-buffer timers, and the last landing speed CameraRig reads for its
+## dip. Called on a manual reset (Arena's R key) so a leftover buffered jump
+## from just before the reset cannot fire the instant the player respawns
+## grounded, and so a landing dip from the old life cannot appear after a
+## fresh spawn. Does not touch the state machine itself — callers restart
+## that separately.
+func reset_state() -> void:
+	_coyote_timer = 0.0
+	_jump_buffer_timer = 0.0
+	last_landing_speed = 0.0
+
 func _build_state_machine() -> void:
 	state_machine = StateMachine.new()
 	add_child(state_machine)

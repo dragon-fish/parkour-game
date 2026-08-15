@@ -36,7 +36,21 @@ extends Resource
 ## How long a jump press is remembered before landing.
 @export var jump_buffer_time: float = 0.12
 
+@export_group("World")
+## How far below the floor (world Y = 0) the player must fall — e.g. a missed
+## jump over the practice gaps — before being considered out of the level and
+## teleported back to spawn. Stored as a positive depth rather than a raw
+## negative Y so the tuning panel's auto-generated slider (which assumes a
+## positive default and floors its range at zero) works for it like any
+## other parameter.
+@export var fall_recovery_depth: float = 20.0
+
 @export_group("Camera")
+## Height of the camera rig above the player's origin. Baked into player.tscn
+## as CameraRig's initial local position by tools/build_player_scene.gd, but
+## CameraRig.setup()/update_effects() re-apply this every frame so the F1
+## panel can tune it live like every other camera value.
+@export var eye_height: float = 0.7
 @export var mouse_sensitivity: float = 0.0022
 @export var pitch_limit_deg: float = 89.0
 @export var fov_base: float = 75.0
