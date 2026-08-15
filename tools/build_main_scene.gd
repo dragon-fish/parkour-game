@@ -132,6 +132,13 @@ func _run() -> void:
 	_root.player = player
 	_root.spawn_point = spawn
 
+	var hud := CanvasLayer.new()
+	hud.name = "DebugHud"
+	hud.set_script(load("res://scripts/debug/debug_hud.gd"))
+	_root.add_child(hud)
+	hud.owner = _root
+	hud.player = player
+
 	DirAccess.make_dir_recursive_absolute("res://scenes")
 	var packed := PackedScene.new()
 	var pack_error := packed.pack(_root)

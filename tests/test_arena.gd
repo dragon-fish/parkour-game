@@ -54,6 +54,23 @@ func test_reset_returns_the_player_to_spawn() -> void:
 	arena.queue_free()
 	await step(1)
 
+func test_debug_hud_is_wired_and_reports_state() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var hud = arena.get_node_or_null("DebugHud")
+	check(hud != null, "DebugHud node missing from the arena")
+	check(hud.player == arena.player, "DebugHud.player export was not wired")
+
+	await step(30)
+	# _process only refreshes while visible, which is the default.
+	check(hud.visible, "HUD should start visible")
+	var text: String = hud._label.text
+	check(text.contains("state"), "HUD text missing the state line")
+	check(text.contains("Ground"), "HUD did not report the resting state, text = %s" % text)
+
+	arena.queue_free()
+	await step(1)
+
 func test_movement_follows_the_view_direction() -> void:
 	await step(1)
 	var arena = await _load_arena()
