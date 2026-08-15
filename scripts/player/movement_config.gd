@@ -1,0 +1,48 @@
+class_name MovementConfig
+extends Resource
+
+# Single source of truth for every feel-related number. Nothing in the state
+# scripts may hardcode a value; the F1 tuning panel writes back into an
+# instance of this resource at runtime.
+
+@export_group("Ground")
+## Target horizontal speed with no sprint key held.
+@export var walk_speed: float = 5.0
+## Target horizontal speed while sprinting.
+@export var sprint_speed: float = 9.0
+## How fast horizontal velocity converges on the target, in m/s^2.
+@export var ground_accel: float = 60.0
+## Deceleration applied when there is no movement input, in m/s^2.
+@export var ground_friction: float = 40.0
+
+@export_group("Air")
+## Air acceleration. Deliberately far below ground_accel: committing to a
+## jump is the core of the movement feel.
+@export var air_accel: float = 12.0
+## Upper bound on the speed air control alone can reach. Momentum carried in
+## from other states is never reduced by air control.
+@export var air_max_speed: float = 9.0
+@export var gravity: float = 24.0
+@export var terminal_velocity: float = 60.0
+
+@export_group("Jump")
+@export var jump_velocity: float = 7.5
+## Grace period after leaving a ledge during which a jump still works.
+@export var coyote_time: float = 0.12
+## How long a jump press is remembered before landing.
+@export var jump_buffer_time: float = 0.12
+
+@export_group("Camera")
+@export var mouse_sensitivity: float = 0.0022
+@export var pitch_limit_deg: float = 89.0
+@export var fov_base: float = 75.0
+@export var fov_max: float = 95.0
+## Horizontal speed at which FOV reaches fov_max.
+@export var fov_speed_ref: float = 9.0
+@export var fov_lerp_speed: float = 6.0
+@export var bob_frequency: float = 1.6
+@export var bob_amplitude: float = 0.055
+@export var land_dip_max: float = 0.32
+@export var land_dip_recover: float = 2.2
+## Fall speed that produces a full-strength landing dip.
+@export var land_dip_speed_ref: float = 18.0
