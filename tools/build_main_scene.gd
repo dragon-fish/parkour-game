@@ -12,8 +12,22 @@ const OUTPUT := "res://scenes/main.tscn"
 
 var _root: Node3D
 
+## Colour -> StandardMaterial3D, so boxes sharing a colour (all 6 gaps, all 6
+## steps, all 3 drop towers) share one material resource instead of each
+## getting a byte-identical copy. Shapes and meshes are deliberately NOT
+## cached here: every box's size genuinely differs, so there is nothing to
+## share for those.
+var _materials: Dictionary = {}
+
 func _initialize() -> void:
 	_run()
+
+func _material_for(colour: Color) -> StandardMaterial3D:
+	if not _materials.has(colour):
+		var material := StandardMaterial3D.new()
+		material.albedo_color = colour
+		_materials[colour] = material
+	return _materials[colour]
 
 ## Solid box with explicit collision. CSGBox3D is avoided on purpose: its
 ## collision body is generated at runtime and is not reliably present on the
@@ -34,9 +48,7 @@ func _box(box_name: String, size: Vector3, pos: Vector3, colour: Color) -> Stati
 	mesh_instance.name = "Mesh"
 	var mesh := BoxMesh.new()
 	mesh.size = size
-	var material := StandardMaterial3D.new()
-	material.albedo_color = colour
-	mesh.material = material
+	mesh.material = _material_for(colour)
 	mesh_instance.mesh = mesh
 	body.add_child(mesh_instance)
 

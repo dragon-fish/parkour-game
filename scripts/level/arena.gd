@@ -10,6 +10,9 @@ extends Node3D
 ## Leave empty to create a fresh MovementConfig with default values at runtime.
 @export var config: MovementConfig
 
+## Re-entrancy guard for reset_player(); see the comment above that function.
+var _resetting_physics: bool = false
+
 func _ready() -> void:
 	if config == null:
 		config = MovementConfig.new()
@@ -37,6 +40,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.physical_keycode == KEY_R:
 			reset_player()
 
+## Teleports the player to spawn and clears its velocity.
+##
+## NOT synchronous: this spans a physics frame (see below), so it completes
+## one tick after the call returns. Callers must not assume the player is
+## already at spawn immediately after calling this — await a physics_frame
+## first if the result needs to be observed.
 func reset_player() -> void:
 	player.velocity = Vector3.ZERO
 	player.global_position = spawn_point.global_position
@@ -47,15 +56,42 @@ func reset_player() -> void:
 	player.state_machine.start(PlayerState.GROUND)
 
 	# Skip exactly one physics tick before the state machine runs again. The
-	# spawn point sits slightly above the floor on purpose (it produces a
-	# small landing dip on first settle), so whichever state is active would
-	# immediately perturb the teleport on the very next tick: Air applies
-	# gravity, Ground applies its floor-snap glue bias — both are sized for
-	# normal per-frame movement, not for a mid-air-to-exact-spawn teleport,
-	# so either one reintroduces a small but real velocity/position drift in
+	# spawn point sits slightly above the floor to leave clearance so the
+	# capsule never spawns interpenetrating the floor collider — NOT to
+	# produce a landing dip (a 0.1 m drop reaches only ~1.4 m/s, versus
+	# land_dip_speed_ref = 18 for a full-strength dip, so the dip from this
+	# gap alone is a few millimetres and not visually meaningful). Because of
+	# that gap, whichever state is active would immediately perturb the
+	# teleport on the very next tick if we let it run: Air applies gravity,
+	# Ground applies its floor-snap glue bias — both are sized for normal
+	# per-frame movement, not for a mid-air-to-exact-spawn teleport, so
+	# either one reintroduces a small but real velocity/position drift in
 	# that single frame. This is the same class of single-frame jolt
 	# ground_state.gd already guards against on ledge exits; skip one tick so
 	# the teleport actually sticks before physics resumes.
+	#
+	# This ordering is also what test_reset_returns_the_player_to_spawn
+	# relies on to pass: it reads player state right after a single
+	# `await step(1)` (one tree.physics_frame), so that signal must fire
+	# strictly after the physics step it gates and before player's own
+	# _physics_process resumes — that is Godot's documented behaviour here,
+	# but it is exactly the assumption this whole mechanism is built on, so
+	# it is worth stating plainly rather than leaving it implicit.
+	#
+	# Re-entrancy: mashing the reset key calls this again before the await
+	# below resolves. _resetting_physics makes that idempotent — a reset
+	# that lands mid-cycle still re-teleports immediately (the assignments
+	# above already ran), but does not start a second, overlapping
+	# disable/await/enable pair; the one cycle already in flight is left to
+	# finish and re-enable physics processing once.
+	if _resetting_physics:
+		return
+	_resetting_physics = true
 	player.set_physics_process(false)
 	await get_tree().physics_frame
-	player.set_physics_process(true)
+	_resetting_physics = false
+	# player (or the whole arena) may have been freed while this coroutine
+	# was suspended — e.g. queue_free() called shortly after a reset — so
+	# guard the resumed access rather than touching a freed instance.
+	if is_instance_valid(player):
+		player.set_physics_process(true)

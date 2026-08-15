@@ -5,7 +5,13 @@ extends SceneTree
 #
 # Run with (note: no --headless, a real rendering context is required):
 #   .engine\Godot_v4.7.1-stable_win64_console.exe --path . --resolution 960x540 \
-#       --script res://tools/capture.gd -- <scene_path> <output_png> [settle_frames]
+#       --quit-after 300 --script res://tools/capture.gd -- <scene_path> <output_png> [settle_frames]
+#
+# --quit-after <N> is a hard backstop, not the normal exit path: this script
+# always calls quit() itself once the PNG is written. It forces the engine to
+# terminate after N frames regardless, in case a windowed run somehow doesn't
+# exit on its own — pick N comfortably above the settle_frames you pass plus
+# a small margin.
 
 func _initialize() -> void:
 	_run()
@@ -29,10 +35,20 @@ func _run() -> void:
 	await RenderingServer.frame_post_draw
 
 	var image := root.get_texture().get_image()
+	var error := OK
 	if image == null:
 		push_error("viewport image was null")
-		quit(1)
-		return
-	var error := image.save_png(output)
-	print("capture: %s -> %s (err %d)" % [scene_path, output, error])
+		error = FAILED
+	else:
+		error = image.save_png(output)
+		print("capture: %s -> %s (err %d)" % [scene_path, output, error])
+
+	# Free the instantiated scene before quitting. Leaving it live in the
+	# tree at shutdown means quit() has to tear down a whole running scene
+	# (player physics, camera, viewport texture) with a real rendering
+	# context attached — the plausible cause of a windowed process
+	# surviving quit() instead of exiting cleanly.
+	root.remove_child(instance)
+	instance.free()
+
 	quit(0 if error == OK else 1)
