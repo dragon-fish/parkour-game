@@ -600,6 +600,30 @@ git commit -m "feat: add slide state with an entry boost and committed steering"
 **Interfaces:**
 - Produces：`Player.has_headroom() -> bool`；`CameraRig.set_crouch_amount(amount: float)`
 
+- [ ] **Step 0: 让测试夹具使用真实的玩家场景**
+
+**必须先做，否则本任务的净空测试注定失败。** `TestWorld.build()` 目前用 `Player.new()` 手工拼装一个裸角色，上面没有 `StandClearance` 探测节点，于是 `has_headroom()` 永远返回 true，天花板测试永远通不过。
+
+把 `tests/world_fixture.gd` 的 `build()` 改为实例化 `res://scenes/player/player.tscn`，而不是手工拼装：
+
+```gdscript
+	var player_scene: PackedScene = load("res://scenes/player/player.tscn")
+	var player: Player = player_scene.instantiate()
+	tree.root.add_child(player)
+
+	var input := ScriptedInputSource.new()
+	player.setup(cfg, input)
+	# The rig is present in the real scene, so give it the same config the
+	# player got — otherwise its update_effects() no-ops and the tests exercise
+	# a different code path than the game does.
+	if player.camera_rig != null:
+		player.camera_rig.setup(cfg)
+```
+
+**这个改动本身有价值，超出本任务：** 测试从此跑的是真实玩家场景而非近似物，P2/P3 还会往场景里加更多探测节点，届时测试自动就能用上。
+
+改完先跑一遍全量测试，**确认 P0 的既有测试没有因此回归**。若有测试因为相机现在真的在跑而失败，那说明它原本就依赖了不真实的环境——修测试，不要退回手工拼装。
+
 - [ ] **Step 1: 写失败的测试**
 
 追加到 `tests/test_slide_state.gd`：
@@ -791,12 +815,14 @@ git commit -m "feat: block standing under ceilings and drop the camera while sli
 | --- | --- | --- | --- |
 | `RampUp` | `(6, 1, 10)` | `(0, 1.2, -6)`，绕 X 轴旋转 `-12°` | 下坡，测滑铲加速 |
 | `TunnelFloor` | `(6, 1, 14)` | `(0, 0.5, -18)` | 通道地面 |
-| `TunnelRoof` | `(6, 1, 14)` | `(0, 2.1, -18)` | 只有滑铲能通过的顶板 |
+| `TunnelRoof` | `(6, 1, 14)` | `(0, 2.7, -18)` | 只有滑铲能通过的顶板 |
 | `TunnelWallL` | `(1, 3, 14)` | `(-3.5, 1.5, -18)` | 侧墙 |
 | `TunnelWallR` | `(1, 3, 14)` | `(3.5, 1.5, -18)` | 侧墙 |
 | `Runway` | `(6, 1, 20)` | `(0, 0.5, -35)` | 出口跑道，测滑铲出口速度 |
 
-顶板底面在 `y = 1.6`，通道地面顶面在 `y = 1.0`，净高 0.6 m——站立胶囊（1.8 m）过不去，滑铲胶囊（0.9 m）可以。
+**净高的算法要核对清楚，这里很容易算错：** 顶板中心 `y = 2.7`、厚 1，底面在 `y = 2.2`；通道地面中心 `y = 0.5`、厚 1，顶面在 `y = 1.0`。净高 **1.2 m**。站立胶囊 1.8 m 过不去，滑铲胶囊 0.9 m 通过且有 0.3 m 余量。
+
+若把顶板放在 `y = 2.1`（底面 1.6），净高只有 0.6 m —— **比滑铲胶囊本身还矮，滑铲也过不去**，通道就成了一堵墙。生成后务必用测试验证，不要凭表格想当然。
 
 - [ ] **Step 1: 写失败的测试**
 
@@ -817,10 +843,16 @@ func test_the_slide_area_exists_and_is_low_enough_to_require_sliding() -> void:
 		- (floor_node.position.y + floor_box.size.y * 0.5)
 
 	# The tunnel only earns its place if standing cannot fit and sliding can.
-	check(clearance < arena.config.slide_capsule_height + 0.4, \
-		"the tunnel is too tall to require a slide (clearance %f)" % clearance)
-	check_greater(clearance, arena.config.slide_capsule_height * 0.5, \
-		"the tunnel is too short for even a slide to pass")
+	# Both bounds are read from the live capsule and config, so tuning either
+	# one cannot leave the tunnel silently impassable or silently pointless.
+	var standing := ((arena.player.get_node("CollisionShape3D") as CollisionShape3D).shape \
+		as CapsuleShape3D).height
+	check(clearance < standing, \
+		"the tunnel is tall enough to walk through, so it teaches nothing (clearance %f vs standing %f)" \
+		% [clearance, standing])
+	check_greater(clearance, arena.config.slide_capsule_height, \
+		"the tunnel is lower than the sliding capsule, so even a slide cannot pass (clearance %f vs slide %f)" \
+		% [clearance, arena.config.slide_capsule_height])
 
 	arena.queue_free()
 	await step(1)
