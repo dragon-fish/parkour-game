@@ -51,6 +51,24 @@ func _run_all() -> void:
 		total_checks += case.checks
 		print("  %-32s %d test(s)" % [path.get_file(), ran])
 
+		# Purge anything a broken test left behind. Well-behaved tests already
+		# queue_free() their own scene tree and await a frame before
+		# returning, but that cleanup only runs when a test reaches its own
+		# end. A test that errors out partway (e.g. an unguarded null access,
+		# an assertion failure outside check()) skips its own teardown and
+		# leaves its player/floor/etc still parented under root. The next
+		# test file then builds a fresh world at the origin on top of those
+		# leftovers -- e.g. two overlapping capsules physically shoving each
+		# other -- corrupting completely unrelated measurements in whatever
+		# runs next. This project has no autoloads, so root has no children
+		# worth preserving between files; free everything unconditionally and
+		# let a frame elapse so the physics server has actually let go of the
+		# freed bodies before the next file's tests begin.
+		for leftover in root.get_children():
+			root.remove_child(leftover)
+			leftover.free()
+		await physics_frame
+
 	print("")
 	print("checks: %d   failures: %d" % [total_checks, all_failures.size()])
 	for f in all_failures:

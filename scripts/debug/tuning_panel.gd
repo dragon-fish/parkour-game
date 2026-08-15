@@ -48,18 +48,28 @@ func _build_ui() -> void:
 	_add_preset_row(column)
 
 	var defaults := MovementConfig.new()
-	var current_group := ""
+	# Headings are created lazily, right before the first float property that
+	# actually belongs to them, rather than the moment a GROUP marker is seen.
+	# get_property_list() includes Godot's own built-in "Resource" group (with
+	# no float members of its own) ahead of the script's @export_groups; a
+	# heading created eagerly for every GROUP marker would print a spurious
+	# "— Resource —" line above the real ones. This approach needs no special
+	# case for that name and stays correct if the engine adds other built-in
+	# groups later.
+	var pending_heading := ""
 	for property in config.get_property_list():
 		if property.usage & PROPERTY_USAGE_GROUP:
-			current_group = property.name
-			var heading := Label.new()
-			heading.text = "— %s —" % current_group
-			column.add_child(heading)
+			pending_heading = property.name
 			continue
 		if not (property.usage & PROPERTY_USAGE_EDITOR):
 			continue
 		if property.type != TYPE_FLOAT:
 			continue
+		if pending_heading != "":
+			var heading := Label.new()
+			heading.text = "— %s —" % pending_heading
+			column.add_child(heading)
+			pending_heading = ""
 		_add_slider(column, property.name, defaults.get(property.name))
 
 func _add_preset_row(column: VBoxContainer) -> void:
@@ -101,8 +111,20 @@ func _add_slider(column: VBoxContainer, property_name: String, default_value: fl
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slider.min_value = 0.0
 	slider.max_value = maxf(absf(default_value) * RANGE_FACTOR, 0.01)
-	slider.step = slider.max_value / 500.0
-	slider.value = config.get(property_name)
+	# Continuous, not stepped. A nonzero step here used to snap the seeded
+	# value to the nearest increment (e.g. walk_speed's default 5.0 -> 5.01)
+	# and, worse, do it via a plain `slider.value = ...` assignment below,
+	# whose value_changed signal wrote the snapped value straight back into
+	# the shared config the instant the panel built its UI — perturbing every
+	# feel parameter before a human ever touched a slider. For feel tuning,
+	# continuous is what you want anyway: the label already formats to four
+	# decimals, and nobody is hunting for round numbers.
+	slider.step = 0.0
+	# set_value_no_signal, not `slider.value = ...`: even with step = 0, a
+	# plain assignment would fire value_changed before the callback below is
+	# connected, which is harmless today but fragile. Seeding without a
+	# signal keeps "construction never writes into config" true regardless.
+	slider.set_value_no_signal(config.get(property_name))
 	row.add_child(slider)
 
 	value_label.text = "%.4f" % slider.value
@@ -140,11 +162,13 @@ func _on_load() -> void:
 			config.set(property.name, loaded.get(property.name))
 	for slider in _sliders():
 		# set_value_no_signal, not `slider.value = ...`: a plain assignment
-		# snaps to the nearest step AND fires value_changed, which would run
-		# straight back through the connected callback and clobber the exact
-		# value we just loaded into config with the snapped one. Using the
-		# no-signal setter keeps config authoritative; only the on-screen
-		# label (read back from the now-snapped slider) can be a hair off.
+		# fires value_changed, which would run straight back through the
+		# connected callback and re-set(...) the value we just loaded into
+		# config. Harmless in itself now that sliders are continuous
+		# (step = 0, so nothing gets snapped in the process), but it would
+		# still be a pointless round-trip through the signal for every
+		# slider on every load, so keep using the no-signal setter and
+		# refresh the label manually instead.
 		var property_name: String = slider.get_meta("property_name")
 		slider.set_value_no_signal(config.get(property_name))
 		var value_label := slider.get_parent().get_child(1) as Label
