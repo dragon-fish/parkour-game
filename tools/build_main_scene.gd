@@ -139,6 +139,14 @@ func _run() -> void:
 	hud.owner = _root
 	hud.player = player
 
+	var panel := CanvasLayer.new()
+	# The node name is load-bearing: Arena._ready() finds it with
+	# get_node_or_null("TuningPanel") to inject the shared config.
+	panel.name = "TuningPanel"
+	panel.set_script(load("res://scripts/debug/tuning_panel.gd"))
+	_root.add_child(panel)
+	panel.owner = _root
+
 	DirAccess.make_dir_recursive_absolute("res://scenes")
 	var packed := PackedScene.new()
 	var pack_error := packed.pack(_root)

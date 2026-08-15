@@ -71,6 +71,56 @@ func test_debug_hud_is_wired_and_reports_state() -> void:
 	arena.queue_free()
 	await step(1)
 
+func test_tuning_panel_writes_back_into_the_shared_config() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var panel = arena.get_node_or_null("TuningPanel")
+	check(panel != null, "TuningPanel node missing from the arena")
+	check(panel.config == arena.config, "panel was not given the shared config instance")
+
+	# _build_ui is deferred, so give it a frame to construct the sliders.
+	await step(2)
+	var sliders: Array = panel._sliders()
+	check_greater(float(sliders.size()), 10.0, "expected a slider per float parameter")
+
+	var target: HSlider = null
+	for s in sliders:
+		if s.get_meta("property_name") == "walk_speed":
+			target = s
+			break
+	check(target != null, "no slider was generated for walk_speed")
+
+	var before: float = arena.config.walk_speed
+	target.value = before + 1.0
+	await step(1)
+	check_approx(arena.config.walk_speed, before + 1.0, 0.001, \
+		"moving the slider did not write back into the shared config")
+	# The player must see it too, since it holds the same object.
+	check_approx(arena.player.config.walk_speed, before + 1.0, 0.001, \
+		"the player does not observe the tuned value")
+
+	arena.queue_free()
+	await step(1)
+
+func test_preset_save_and_load_round_trips() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var panel = arena.get_node_or_null("TuningPanel")
+	await step(2)
+
+	panel._preset_name.text = "test_roundtrip"
+	arena.config.walk_speed = 3.25
+	panel._on_save()
+
+	arena.config.walk_speed = 99.0
+	panel._on_load()
+	check_approx(arena.config.walk_speed, 3.25, 0.001, \
+		"preset load did not restore the saved value")
+
+	DirAccess.remove_absolute("user://presets/test_roundtrip.tres")
+	arena.queue_free()
+	await step(1)
+
 func test_movement_follows_the_view_direction() -> void:
 	await step(1)
 	var arena = await _load_arena()
