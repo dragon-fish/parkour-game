@@ -266,7 +266,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $godot = Join-Path $root '.engine\Godot_v4.7.1-stable_win64_console.exe'
 
 if (-not (Test-Path $godot)) {
-    Write-Error "Godot not found at $godot (is the .engine junction present?)"
+	Write-Error "Godot not found at $godot (is the .engine junction present?)"
 }
 
 # Refresh .godot/global_script_class_cache.cfg first. Without this, any
@@ -837,8 +837,8 @@ git commit -m "feat: add player state machine with self-declared transitions"
 - Consumes: `MovementConfig`、`MoveInput`、`InputSource`、`StateMachine`、`PlayerState`
 - Produces:
   - `Player extends CharacterBody3D`：
-    - 字段 `config: MovementConfig`、`input_source: InputSource`、`state_machine: StateMachine`、`last_landing_speed: float`
-    - 方法 `setup(cfg: MovementConfig, src: InputSource) -> void`、`wish_direction(input: MoveInput) -> Vector3`、`ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> void`、`air_accelerate(wish_dir: Vector3, delta: float) -> void`、`consume_jump() -> bool`、`horizontal_speed() -> float`
+	- 字段 `config: MovementConfig`、`input_source: InputSource`、`state_machine: StateMachine`、`last_landing_speed: float`
+	- 方法 `setup(cfg: MovementConfig, src: InputSource) -> void`、`wish_direction(input: MoveInput) -> Vector3`、`ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> void`、`air_accelerate(wish_dir: Vector3, delta: float) -> void`、`consume_jump() -> bool`、`horizontal_speed() -> float`
   - `GroundState extends PlayerState`
   - `TestWorld`（`class_name`）：静态方法 `build(tree: SceneTree, cfg: MovementConfig) -> Dictionary`，返回 `{"player": Player, "input": ScriptedInputSource, "floor": StaticBody3D}`；静态方法 `teardown(world: Dictionary) -> void`
 
