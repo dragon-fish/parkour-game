@@ -16,6 +16,9 @@ var last_landing_speed: float = 0.0
 ## Last polled input, exposed for the debug HUD.
 var last_input: MoveInput = MoveInput.new()
 
+## Assigned in player.tscn. Optional so headless tests can run without one.
+@export var camera_rig: CameraRig
+
 var _coyote_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
 
@@ -45,7 +48,26 @@ func _physics_process(delta: float) -> void:
 	var input := input_source.poll()
 	last_input = input
 	_tick_timers(delta, input)
+
+	var was_airborne := not is_on_floor()
+	if camera_rig != null:
+		camera_rig.apply_look(input.look, self)
+
 	state_machine.physics_update(delta, input)
+
+	if camera_rig != null:
+		if was_airborne and is_on_floor():
+			camera_rig.punch_landing(last_landing_speed)
+		camera_rig.update_effects(delta, horizontal_speed(), is_on_floor())
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and input_source is KeyboardInputSource:
+		(input_source as KeyboardInputSource).accumulate_look(event.relative)
+	elif event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_ESCAPE:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		elif event.physical_keycode == KEY_F11:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	if is_on_floor():

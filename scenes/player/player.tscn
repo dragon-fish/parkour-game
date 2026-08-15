@@ -1,0 +1,23 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_dovo2"]
+[ext_resource type="Script" path="res://scripts/camera/camera_rig.gd" id="2_gmlin"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_lvxji"]
+radius = 0.4
+height = 1.8
+
+[node name="Player" type="CharacterBody3D" unique_id=1338591407 node_paths=PackedStringArray("camera_rig")]
+script = ExtResource("1_dovo2")
+camera_rig = NodePath("CameraRig")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1700303210]
+shape = SubResource("CapsuleShape3D_lvxji")
+
+[node name="CameraRig" type="Node3D" parent="." unique_id=808815596]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
+script = ExtResource("2_gmlin")
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=520361066]
+
+[node name="BodyRoot" type="Node3D" parent="." unique_id=1679089049]
