@@ -27,6 +27,16 @@ func _run_all() -> void:
 			print("  %-32s LOAD FAILED" % path.get_file())
 			continue
 		var case = script.new()
+		# A tests/test_*.gd file that isn't a TestCase (e.g. a fixture helper)
+		# would otherwise die on the "case.tree = self" assignment below in a
+		# way that silently kills this coroutine instead of raising a normal
+		# GDScript error - the SceneTree is left idling forever with nothing
+		# left to process, and quit() never runs. Guard it explicitly so a
+		# misplaced fixture fails loudly instead of hanging the whole suite.
+		if not (case is TestCase):
+			all_failures.append("%s  is not a TestCase (does not extend TestCase)" % path.get_file())
+			print("  %-32s SKIPPED (not a TestCase)" % path.get_file())
+			continue
 		case.tree = self
 		var ran := 0
 		for m in case.get_method_list():
