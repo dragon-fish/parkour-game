@@ -49,9 +49,17 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if not player.is_on_floor():
 		player.velocity.y = 0.0
 		return AIR
+
+	# Read speed back AFTER move_and_slide(): a collision (e.g. sliding into a
+	# wall) can shave it down well below the friction-only decay computed
+	# above. Using the pre-move value here would let a wall impact leave the
+	# slide "stuck" in place until slide_max_duration expires instead of
+	# ending promptly.
+	var post_move_speed := Vector2(player.velocity.x, player.velocity.z).length()
+
 	if not input.crouch_held:
 		return GROUND
-	if speed <= config.slide_exit_speed:
+	if post_move_speed <= config.slide_exit_speed:
 		return GROUND
 	if _elapsed >= config.slide_max_duration:
 		return GROUND

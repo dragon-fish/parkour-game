@@ -15,7 +15,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return AIR
 
 	# A slide has to be earned: crouching below the entry speed just crouches.
-	if input.crouch_held and player.horizontal_speed() >= config.slide_entry_speed:
+	# Gated on a fresh press (not crouch_held) so holding crouch while running
+	# cannot immediately re-enter Slide the instant a slide ends — that would
+	# strobe Slide<->Ground every couple of frames instead of committing.
+	if input.crouch_pressed and player.horizontal_speed() >= config.slide_entry_speed:
+		player.move_and_slide()
 		return SLIDE
 
 	# A small downward bias keeps the body glued to the floor across seams and

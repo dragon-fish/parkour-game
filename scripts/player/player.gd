@@ -21,8 +21,6 @@ var last_input: MoveInput = MoveInput.new()
 ## Assigned in player.tscn. Optional so headless tests can run without one.
 @export var camera_rig: CameraRig
 
-@onready var _collision_shape: CollisionShape3D = $CollisionShape3D
-
 var _standing_height: float = 0.0
 
 var _coyote_timer: float = 0.0
@@ -33,14 +31,21 @@ func standing_height() -> float:
 
 ## Resizes the capsule while keeping its BOTTOM fixed relative to the body
 ## origin, so footing and is_on_floor() are unaffected by the change.
+## Looks the node up live via $CollisionShape3D rather than caching it in an
+## @onready var: setup() (below) calls the same lookup before this player's
+## own _ready()/onready pass has necessarily run — TestWorld.build() calls
+## setup() on the same tick a fixture-built player enters the tree, one
+## physics frame before _ready() fires. An @onready-cached reference would be
+## null at that point.
 func set_capsule_height(height: float) -> void:
-	var capsule := _collision_shape.shape as CapsuleShape3D
+	var shape_node := $CollisionShape3D as CollisionShape3D
+	var capsule := shape_node.shape as CapsuleShape3D
 	if capsule == null:
 		return
 	if _standing_height <= 0.0:
 		_standing_height = capsule.height
 	capsule.height = height
-	_collision_shape.position.y = -(_standing_height - height) * 0.5
+	shape_node.position.y = -(_standing_height - height) * 0.5
 
 func setup(cfg: MovementConfig, src: InputSource) -> void:
 	config = cfg

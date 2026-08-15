@@ -15,7 +15,16 @@ func release_jump() -> void:
 	state.jump_pressed = false
 	state.jump_held = false
 
+func press_crouch() -> void:
+	state.crouch_pressed = true
+	state.crouch_held = true
+
+func release_crouch() -> void:
+	state.crouch_pressed = false
+	state.crouch_held = false
+
 func poll() -> MoveInput:
 	var snapshot := state.copy()
 	state.jump_pressed = false
+	state.crouch_pressed = false
 	return snapshot
