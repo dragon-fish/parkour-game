@@ -55,12 +55,11 @@ func _run() -> void:
 
 	# Standing-clearance probe: a capsule the size of the STANDING body, tested
 	# in place. A ray would miss geometry the capsule's radius would hit.
+	# Duplicated from the body capsule (not a separate 1.8/0.4 literal) so the
+	# probe can never silently drift out of sync with the actual body size.
 	var clearance := ShapeCast3D.new()
 	clearance.name = "StandClearance"
-	var probe_shape := CapsuleShape3D.new()
-	probe_shape.height = 1.8
-	probe_shape.radius = 0.4
-	clearance.shape = probe_shape
+	clearance.shape = capsule.duplicate()
 	clearance.target_position = Vector3.ZERO
 	clearance.enabled = true
 	player.add_child(clearance)

@@ -11,21 +11,21 @@ height = 1.8
 radius = 0.4
 height = 1.8
 
-[node name="Player" type="CharacterBody3D" unique_id=1973369542 node_paths=PackedStringArray("camera_rig")]
+[node name="Player" type="CharacterBody3D" unique_id=1592150355 node_paths=PackedStringArray("camera_rig")]
 script = ExtResource("1_dovo2")
 camera_rig = NodePath("CameraRig")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=767813748]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1628761211]
 shape = SubResource("CapsuleShape3D_lvxji")
 
-[node name="CameraRig" type="Node3D" parent="." unique_id=657487232]
+[node name="CameraRig" type="Node3D" parent="." unique_id=918329287]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
 script = ExtResource("2_gmlin")
 
-[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=1155101629]
+[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=1227431655]
 
-[node name="BodyRoot" type="Node3D" parent="." unique_id=769239205]
+[node name="BodyRoot" type="Node3D" parent="." unique_id=536135531]
 
-[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=1336123352]
+[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=421227271]
 shape = SubResource("CapsuleShape3D_p47bc")
 target_position = Vector3(0, 0, 0)

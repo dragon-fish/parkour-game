@@ -215,7 +215,7 @@ func test_a_low_ceiling_keeps_the_player_sliding() -> void:
 	tree.root.add_child(ceiling)
 	await step(1)
 
-	world["input"].state.crouch_held = false
+	world["input"].release_crouch()
 	await step(10)
 	check(player.state_machine.current_name == &"Slide", \
 		"the player must not stand up into a ceiling, got %s" % player.state_machine.current_name)
@@ -243,7 +243,17 @@ func test_the_camera_drops_while_sliding() -> void:
 	await step(20)
 	check(rig.position.y < standing_y, "the camera must drop while sliding")
 
-	world["input"].state.crouch_held = false
+	# A direction-only check would still pass a regression where the drop is
+	# capped at a single frame's worth of crouch_lerp_speed * delta instead of
+	# actually reaching slide_camera_drop (exactly the bug the persistent
+	# _crouch_offset in CameraRig fixes). 20 steps is well past the time
+	# crouch_lerp_speed needs to cover slide_camera_drop, so the drop should
+	# have fully settled by now — assert its settled SIZE against config, not
+	# a pinned number, so this still passes under tuning.
+	check_approx(standing_y - rig.position.y, cfg.slide_camera_drop, 0.01, \
+		"the camera must settle at the full configured slide_camera_drop, not just move in that direction")
+
+	world["input"].release_crouch()
 	await step(60)
 	check_approx(rig.position.y, standing_y, 0.01, "the camera must rise back after the slide")
 	TestWorld.teardown(world)

@@ -44,9 +44,12 @@ func has_headroom() -> bool:
 ## Looks the node up live via $CollisionShape3D rather than caching it in an
 ## @onready var: setup() (below) calls the same lookup before this player's
 ## own _ready()/onready pass has necessarily run — TestWorld.build() calls
-## setup() on the same tick a fixture-built player enters the tree, one
-## physics frame before _ready() fires. An @onready-cached reference would be
-## null at that point.
+## setup() on the same tick a player enters the tree, and add_child() does
+## not run @onready/_ready() synchronously, so it has not fired yet. Verified
+## against both a hand-built player and one instantiated from player.tscn
+## (tests/world_fixture.gd uses the latter): @onready vars are still null
+## immediately after add_child() returns in either case. An @onready-cached
+## reference would be null at that point.
 func set_capsule_height(height: float) -> void:
 	var shape_node := $CollisionShape3D as CollisionShape3D
 	var capsule := shape_node.shape as CapsuleShape3D
