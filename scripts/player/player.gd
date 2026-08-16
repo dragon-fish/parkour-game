@@ -150,13 +150,14 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	if probes != null:
 		probes.setup(config, _standing_height * 0.5)
 
-## Clears per-life transient state that outlives a single frame: the coyote
-## and jump-buffer timers, and the last landing speed CameraRig reads for its
-## dip. Called on a manual reset (Arena's R key) so a leftover buffered jump
-## from just before the reset cannot fire the instant the player respawns
-## grounded, and so a landing dip from the old life cannot appear after a
-## fresh spawn. Does not touch the state machine itself — callers restart
-## that separately.
+## Clears per-life transient state that outlives a single frame: the coyote,
+## jump-buffer, and ledge-regrab-cooldown timers, and the last landing speed
+## CameraRig reads for its dip. Called on a manual reset (Arena's R key) so a
+## leftover buffered jump from just before the reset cannot fire the instant
+## the player respawns grounded, so a landing dip from the old life cannot
+## appear after a fresh spawn, and so a ledge cooldown from the old life
+## cannot withhold a grab the new one should be free to make. Does not touch
+## the state machine itself — callers restart that separately.
 ##
 ## grounded is also cleared here rather than left to whatever the previous
 ## life last declared: Arena.reset_player() teleports to spawn and then skips
@@ -170,6 +171,7 @@ func reset_state() -> void:
 	_coyote_timer = 0.0
 	_jump_buffer_timer = 0.0
 	_crouch_buffer_timer = 0.0
+	_ledge_cooldown = 0.0
 	last_landing_speed = 0.0
 	grounded = false
 	_pending_landing = -1.0
