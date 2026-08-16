@@ -396,6 +396,204 @@ func test_the_slide_course_can_be_run_end_to_end() -> void:
 	arena.queue_free()
 	await step(1)
 
+## Drives the player toward a world-space waypoint, recomputing the input
+## direction every tick, and records which states it passed through on the way.
+## The body is never yawed by these tests, so its basis is identity and
+## MoveInput's local (x, y) maps to world (+x, -z) — that is what lets a
+## waypoint be expressed in world space at all.
+##
+## Returns the same shape as _advance_until_z so _where() can report it.
+func _drive_to(player: Player, input: ScriptedInputSource, target: Vector3, \
+		tolerance: float, budget: int, seen: Dictionary) -> Dictionary:
+	var best := INF
+	var stalled := 0
+	var ticks := 0
+	var reached := false
+	for i in budget:
+		var to_target := target - player.global_position
+		to_target.y = 0.0
+		input.state.move = Vector2(to_target.x, -to_target.z).normalized()
+		await step(1)
+		ticks += 1
+		seen[player.state_machine.current_name] = true
+
+		to_target = target - player.global_position
+		to_target.y = 0.0
+		var distance := to_target.length()
+		if distance <= tolerance:
+			reached = true
+			break
+		if distance < best - 0.01:
+			best = distance
+			stalled = 0
+		else:
+			stalled += 1
+		# Three seconds of no progress at all. Deliberately generous: a mantle
+		# holds the body on a scripted arc that can briefly move AWAY from a
+		# waypoint, and running into an obstacle before vaulting it is a stall
+		# by this measure too.
+		if stalled > 180:
+			break
+	return {
+		"reached": reached,
+		"ticks": ticks,
+		"position": player.global_position,
+		"state": player.state_machine.current_name,
+		"speed": player.horizontal_speed(),
+	}
+
+## Holds forward and jumps repeatedly until the ledge in front is grabbed, then
+## holds forward through the mantle until it hands back to Ground.
+##
+## Jumping is what makes a ledge grab possible at all: AirState is the only
+## state that runs the ledge probe, and a ledge sitting ledge_min_height or more
+## above the feet is by definition above head height from the floor, so the
+## player has to leave the ground to reach it. The press is repeated rather than
+## timed because the grab window is the first airborne tick of a jump taken from
+## within ledge_reach of the face — pressing on every grounded tick guarantees
+## one lands there without the test having to know where "there" is.
+func _grab_and_mantle(player: Player, input: ScriptedInputSource, budget: int) -> Dictionary:
+	input.state.move = Vector2(0.0, 1.0)
+	input.state.sprint_held = false
+	var grabbed := false
+	var ticks := 0
+	for i in budget:
+		if player.is_on_floor():
+			input.press_jump()
+		await step(1)
+		ticks += 1
+		if player.state_machine.current_name == PlayerState.LEDGE:
+			grabbed = true
+			break
+	if not grabbed:
+		return {"reached": false, "ticks": ticks, "position": player.global_position, \
+			"state": player.state_machine.current_name, "speed": player.horizontal_speed()}
+
+	# Forward is also the mantle's commitment input, so simply keeping it held
+	# climbs. Wait for the hand-off, then let GroundState settle.
+	for i in budget:
+		await step(1)
+		ticks += 1
+		if player.state_machine.current_name != PlayerState.LEDGE:
+			break
+	input.state.move = Vector2.ZERO
+	await step(20)
+	ticks += 20
+	return {"reached": true, "ticks": ticks, "position": player.global_position, \
+		"state": player.state_machine.current_name, "speed": player.horizontal_speed()}
+
+## The vault/ledge area's counterpart to test_the_slide_course_can_be_run_end_to
+## _end. Until this existed the whole area had only STRUCTURAL assertions —
+## "LedgeMid's box is between ledge_min_height and ledge_max_height" — and that
+## asymmetry is exactly why an inverted mantle_forward_offset could ship: every
+## test agreed the geometry was correct and none of them ever tried to climb it.
+##
+## Every landmark is read off the live geometry rather than hardcoded, so
+## re-laying out the course cannot leave this quietly measuring the wrong place,
+## and each phase reports WHERE the player stopped when it fails.
+func test_the_vault_and_ledge_course_can_be_run_end_to_end() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var player: Player = arena.player
+
+	var vault_low := _world_aabb(arena.get_node("VaultArea/VaultLow"))
+	var vault_high := _world_aabb(arena.get_node("VaultArea/VaultHigh"))
+	var wall := _world_aabb(arena.get_node("VaultArea/WallTooTall"))
+	var ledge_low := _world_aabb(arena.get_node("VaultArea/LedgeLow"))
+	var ledge_mid := _world_aabb(arena.get_node("VaultArea/LedgeMid"))
+	var deck := _floor_top(arena)
+	var lane_x: float = vault_low.get_center().x
+
+	# Count the two manoeuvres this course exists to teach, over the whole run.
+	# Without these the test could be satisfied by a player who simply walked
+	# around everything: the vault obstacles are only 4 m wide on a 60 m floor.
+	var vaults := [0]
+	var mantles := [0]
+	player.state_machine.state_changed.connect(func(from: StringName, to: StringName) -> void:
+		if to == PlayerState.VAULT:
+			vaults[0] += 1
+		elif from == PlayerState.LEDGE and to == PlayerState.GROUND:
+			mantles[0] += 1)
+
+	player.global_position = Vector3(lane_x, deck + 1.0, vault_low.end.z + 6.0)
+	player.velocity = Vector3.ZERO
+	player.rotation = Vector3.ZERO
+	await step(20)
+	check(player.is_on_floor(), "precondition: the player did not settle onto the course approach")
+
+	var input := ScriptedInputSource.new()
+	player.input_source = input
+	input.state.sprint_held = true
+
+	var seen: Dictionary = {}
+
+	# Phase 1 — the three vaultable obstacles, in the lane, at sprint speed.
+	var vault_run := await _drive_to(player, input, \
+		Vector3(lane_x, 0.0, vault_high.position.z - 1.5), 1.0, 900, seen)
+	check(vault_run["reached"], \
+		"the player could not get past the vault obstacles: %s" % _where(vault_run))
+	check_greater(float(vaults[0]), 2.5, \
+		"the player crossed all three vaultable obstacles having vaulted %d of them — the route did not require vaulting: %s" \
+		% [vaults[0], _where(vault_run)])
+
+	# Phase 2 — WallTooTall is deliberately unvaultable and deliberately only
+	# partly across the lane, so the way past it is around its open side.
+	var bypass_x: float = wall.end.x + 0.7
+	var bypass := await _drive_to(player, input, Vector3(bypass_x, 0.0, wall.end.z - 0.5), 1.0, 900, seen)
+	check(bypass["reached"], \
+		"the player could not reach the open side of WallTooTall: %s" % _where(bypass))
+	var past_wall := await _drive_to(player, input, Vector3(bypass_x, 0.0, wall.position.z - 2.0), 1.0, 900, seen)
+	check(past_wall["reached"], \
+		"the player could not get past WallTooTall: %s" % _where(past_wall))
+	check(not seen.has(PlayerState.VAULT) or vaults[0] == 3, \
+		"WallTooTall was vaulted; it exists to prove the height limit is real")
+
+	# Phase 3 — back into the lane and up LedgeLow.
+	var realign := await _drive_to(player, input, \
+		Vector3(lane_x, 0.0, ledge_low.end.z + 1.4), 0.6, 900, seen)
+	check(realign["reached"], \
+		"the player could not line up on LedgeLow: %s" % _where(realign))
+
+	input.state.sprint_held = false
+	var climb_low := await _grab_and_mantle(player, input, 600)
+	check(climb_low["reached"], "the player never grabbed LedgeLow: %s" % _where(climb_low))
+	check(player.state_machine.current_name == PlayerState.GROUND and player.grounded, \
+		"the player did not end up standing on LedgeLow: %s" % _where(climb_low))
+	check_approx(player.global_position.y, ledge_low.end.y + 0.9, 0.35, \
+		"the player is not standing on top of LedgeLow (top y=%f): %s" \
+		% [ledge_low.end.y, _where(climb_low)])
+
+	# Phase 4 — off the far side of LedgeLow, across the gap, and up LedgeMid,
+	# which is the tallest thing in the area that can still be grabbed.
+	var descend := await _drive_to(player, input, \
+		Vector3(lane_x, 0.0, ledge_mid.end.z + 1.4), 0.6, 900, seen)
+	check(descend["reached"], \
+		"the player could not cross from LedgeLow to LedgeMid: %s" % _where(descend))
+
+	var climb_mid := await _grab_and_mantle(player, input, 600)
+	check(climb_mid["reached"], "the player never grabbed LedgeMid: %s" % _where(climb_mid))
+
+	# The end condition: past the far end of the reachable course, on solid
+	# ground, at LedgeMid's own height — which is 2.7 m of sheer face, so there
+	# is no way to be standing here that did not involve climbing it.
+	check(player.state_machine.current_name == PlayerState.GROUND, \
+		"the player did not finish the course in Ground: %s" % _where(climb_mid))
+	check(player.grounded, "the player did not finish the course on solid ground: %s" % _where(climb_mid))
+	check_approx(player.global_position.y, ledge_mid.end.y + 0.9, 0.35, \
+		"the player is not standing on top of LedgeMid (top y=%f): %s" \
+		% [ledge_mid.end.y, _where(climb_mid)])
+	check(player.global_position.z < ledge_mid.end.z, \
+		"the player finished short of LedgeMid's near face (z=%f): %s" \
+		% [ledge_mid.end.z, _where(climb_mid)])
+
+	check_greater(float(mantles[0]), 1.5, \
+		"the course was completed with %d mantle(s); both ledges must be climbed, not walked around" % mantles[0])
+	check_greater(float(vaults[0]), 2.5, \
+		"the course was completed with %d vault(s); all three vaultable obstacles must be vaulted" % vaults[0])
+
+	arena.queue_free()
+	await step(1)
+
 ## Recursively collects every StaticBody3D with a box-shaped "Collision"
 ## child under node, used by test_practice_areas_do_not_overlap_each_other.
 func _collect_box_bodies(node: Node, out: Array) -> void:

@@ -534,6 +534,48 @@ func test_slide_can_only_reach_ground_and_air() -> void:
 		"Slide must be able to reach exactly Ground and Air, but slide_state.gd references %s" \
 		% str(referenced))
 
+## Companion tripwire to the test above, closing the one hole it has. That one
+## enumerates PlayerState's constant map and looks for each name in the source,
+## so it cannot see a transition written as a bare StringName —
+## `return &"WallRun"` needs no PlayerState constant to exist, and the loop
+## therefore has nothing to search for. This one reads the RETURN statements
+## themselves, so the set of states reachable from Slide is pinned regardless of
+## how a future author spells the target.
+##
+## Written NOW, before wall running exists, on purpose: the spec forbids a
+## direct Slide -> WallRun transition (section 5), and a tripwire laid before
+## the temptation arrives is worth more than one written after someone has
+## already reached for it. Updating the expected set below is meant to be a
+## deliberate act with a spec argument attached, not a red-test cleanup.
+func test_slide_returns_only_ground_air_or_keep() -> void:
+	await step(1)
+	var source := FileAccess.get_file_as_string("res://scripts/player/states/slide_state.gd")
+	check(source.length() > 0, "could not read slide_state.gd")
+
+	var targets: Dictionary = {}
+
+	# Constant-style returns: `return GROUND`, `return AIR`, `return KEEP`, and
+	# whatever a later phase adds. Restricted to SCREAMING_CASE identifiers so
+	# ordinary value returns (`return _crawling`, `return _direction`) are not
+	# mistaken for transitions.
+	var identifier := RegEx.new()
+	identifier.compile("return\\s+([A-Z][A-Z0-9_]*)\\b")
+	for found_match in identifier.search_all(source):
+		targets[found_match.get_string(1)] = true
+
+	# ...and literal-style ones: `return &"WallRun"` or `return "WallRun"`.
+	var literal := RegEx.new()
+	literal.compile("return\\s+&?\"([^\"]*)\"")
+	for found_match in literal.search_all(source):
+		targets['&"%s"' % found_match.get_string(1)] = true
+
+	var returned: Array = targets.keys()
+	returned.sort()
+	var allowed := ["AIR", "GROUND", "KEEP"]
+	check(returned == allowed, \
+		"SlideState returns %s; the spec allows it to reach only Ground and Air (plus KEEP). A direct Slide -> WallRun transition is forbidden by spec section 5 — if this set is meant to change, change the spec first" \
+		% str(returned))
+
 func test_the_camera_drops_while_sliding() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
