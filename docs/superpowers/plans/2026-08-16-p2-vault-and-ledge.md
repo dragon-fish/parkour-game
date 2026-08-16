@@ -35,6 +35,9 @@
 7. `capture.gd` 退出前必须释放实例。
 8. **`CapsuleShape3D` 是共享资源**，`Player.setup()` 已改为持有自己的副本。
 9. **UI 控件回写配置要用 `set_value_no_signal()`**，否则 `value_changed` 会把量化后的值写回，静默篡改参数。
+10. **测试里往场景加几何体时，必须先设 `position` 再 `add_child()`。** 本文档的测试代码里若出现"先 `add_child()`、等一帧、再设 `global_position`"的写法，**那是错的，请自行改正**——那一帧里物体停在世界原点，会与地面和玩家重叠，把玩家物理弹飞进空中，产生一个与被测行为毫无关系的假失败。P1 有一个测试正是栽在这上面。用局部的 `position`（出树可用且此处父节点在原点，等价于全局），不要用 `global_position`（出树会报错）。
+11. **`CameraRig.update_effects()` 每帧硬性重置 `position.y = eye_height`**（为了让 F1 的眼高滑块实时生效）。任何想改变相机高度的新效果都必须实现成**独立累加的偏移量**（照抄既有的落地下沉 `_dip` 写法），直接 lerp `position.y` 会被每帧抹掉。
+12. **入口类判定用按下沿，持续类判定用按住。** 滑铲进入用 `crouch_pressed`、维持用 `crouch_held`；测试里用 `press_crouch()` / `release_crouch()` 而非直接写 `state.crouch_held`。
 
 ### P0/P1 既有 API
 
