@@ -27,11 +27,19 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 ## Rolling — crouch held on a fast enough landing — bleeds far less. Neither
 ## path ever ADDS speed, so a landing can only ever cost momentum.
 func _apply_landing_cost(impact_speed: float, input: MoveInput) -> void:
-	var severity := clampf(impact_speed / maxf(config.land_dip_speed_ref, 0.001), 0.0, 1.0)
+	# land_cost_speed_ref, NOT the camera's land_dip_speed_ref: the two happen
+	# to share a default, but they are independent knobs. Reading the camera
+	# value here meant tuning how hard the view drops silently retuned how much
+	# momentum a landing costs.
+	var severity := clampf(impact_speed / maxf(config.land_cost_speed_ref, 0.001), 0.0, 1.0)
 	var rolled: bool = input.crouch_held and impact_speed >= config.roll_min_fall_speed
 	player.last_landing_rolled = rolled
 
-	var keep_at_full: float = config.roll_speed_keep if rolled else config.land_speed_keep
+	# Clamped to 1.0 so the invariant above holds for every reachable config.
+	# The tuning panel generates each slider's range as default * 3, which puts
+	# both keep ratios well past 1.0 — without this clamp, a slider drag could
+	# make landing a source of free speed.
+	var keep_at_full: float = minf(config.roll_speed_keep if rolled else config.land_speed_keep, 1.0)
 	var keep := lerpf(1.0, keep_at_full, severity)
 	player.velocity.x *= keep
 	player.velocity.z *= keep
