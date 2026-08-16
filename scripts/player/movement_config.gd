@@ -178,11 +178,12 @@ extends Resource
 @export var wall_accel: float = 18.0
 ## Upper bound on speed the wall itself can push you to.
 @export var wall_max_speed: float = 11.0
-## Wall running ends once along-wall speed decays below this. Kept as its own
-## value rather than a fraction of wall_min_speed, mirroring Slide's separate
-## slide_entry_speed/slide_exit_speed: attaching and staying attached are
-## different questions, and a run should not drop the instant it dips just
-## under the speed that started it.
+## Wall running ends once total horizontal speed decays below this (measured
+## the same way as wall_min_speed, not projected onto the wall's tangent).
+## Kept as its own value rather than a fraction of wall_min_speed, mirroring
+## Slide's separate slide_entry_speed/slide_exit_speed: attaching and staying
+## attached are different questions, and a run should not drop the instant it
+## dips just under the speed that started it.
 @export var wall_exit_speed: float = 2.5
 ## Hard cap on one wall run.
 @export var wall_max_duration: float = 1.5
@@ -191,8 +192,11 @@ extends Resource
 ## Impulse away from the wall surface.
 @export var wall_jump_push: float = 6.0
 ## After leaving a wall, how long before a wall with a SIMILAR normal can be
-## attached again. Without it, jumping between the same two faces climbs
-## forever — the classic wall-run exploit.
+## attached again. This blocks re-climbing the SAME face over and over --
+## it deliberately does NOT block zig-zagging between two DIFFERENTLY-facing
+## walls, which stays allowed and is what the practice area's chaining relies
+## on. Without this cooldown, bouncing straight back onto the very face just
+## left would climb forever — the classic wall-run exploit.
 @export var wall_reattach_cooldown: float = 0.5
 ## How alike two wall normals must be to count as "the same wall", as a dot
 ## product. 1.0 means identical facing.

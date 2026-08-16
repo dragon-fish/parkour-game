@@ -5,12 +5,42 @@ extends PlayerState
 # player keeps real velocity and real collisions, gravity is merely weakened
 # and a push is applied along the wall.
 
+## Shape returned by _query_wall() when there is no probe to ask, matching
+## Probes.wall_query()'s own "nothing found" shape.
+const _NO_WALL := {"valid": false, "normal": Vector3.ZERO, "side": 0}
+
 var _elapsed: float = 0.0
 var _normal: Vector3 = Vector3.ZERO
 var _along: Vector3 = Vector3.ZERO
+## Set in enter() when the wall query comes back invalid: there is nothing to
+## run along, so physics_update() hands straight back to Air without ever
+## touching velocity or the reattach cooldown. See enter()'s note.
+var _aborted: bool = false
+
+## Guarded the same way VaultState/LedgeHangState guard their own probe
+## lookups: `player.probes` is null-checked at every call site rather than
+## dereferenced directly, so this state degrades the same way its siblings do
+## for a hand-built player with no probe rig, instead of crashing.
+func _query_wall() -> Dictionary:
+	if player.probes == null:
+		# .duplicate(), never the const itself: see probes.gd's own NO_HIT note
+		# -- a const Dictionary is read-only, and returning the shared instance
+		# directly would hand every caller the same read-only object.
+		return _NO_WALL.duplicate()
+	return player.probes.wall_query()
+
+## Recomputes _along from the CURRENT _normal and the player's CURRENT
+## horizontal velocity. Called every time _normal is (re)assigned -- once in
+## enter(), and again every tick in physics_update() -- so the tangent tracks
+## the true wall surface instead of the angle it happened to have on attach.
+func _derive_along() -> void:
+	var tangent: Vector3 = _normal.cross(Vector3.UP).normalized()
+	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	_along = tangent if tangent.dot(horizontal) >= 0.0 else -tangent
 
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
+	_aborted = false
 	# Wall running IS physics-driven, but grounded-ness is still DECLARED, never
 	# inferred -- P2 replaced is_on_floor() as the authority precisely so that
 	# no state can leave a stale value behind. This first declaration covers
@@ -20,15 +50,26 @@ func enter(_previous: StringName) -> void:
 	# CRITICAL note there for why a single declaration here would not be
 	# enough.
 	player.set_grounded(false)
-	var query: Dictionary = player.probes.wall_query()
+
+	# AirState already null-checks player.probes AND requires a valid
+	# wall_query() before ever transitioning here, so this branch is not
+	# reachable in normal play. Kept as a genuinely safe guard for a future
+	# caller that skips that gate, mirroring VaultState's/LedgeHangState's own
+	# _aborted pattern: a zero normal would give _derive_along() a zero
+	# tangent (no push direction at all) and would poison the reattach
+	# cooldown with a zero-vector "wall" on exit (see note_wall_detach()) --
+	# there is no safe wall to attach to when the probe found nothing, so
+	# attach to none and let the player fall.
+	var query: Dictionary = _query_wall()
+	if not query["valid"]:
+		_aborted = true
+		return
 	_normal = query["normal"]
 	player.wall_side = query["side"]
 
 	# Run along the wall in whichever of the two tangent directions the player
 	# is already moving. A wall never reverses you.
-	var tangent: Vector3 = _normal.cross(Vector3.UP).normalized()
-	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	_along = tangent if tangent.dot(horizontal) >= 0.0 else -tangent
+	_derive_along()
 
 	# Kill any velocity going INTO the wall, or the body grinds against it.
 	# `player` is deliberately untyped (see PlayerState), so `player.velocity`
@@ -41,22 +82,57 @@ func enter(_previous: StringName) -> void:
 
 func exit() -> void:
 	player.wall_side = 0
-	player.note_wall_detach(_normal)
+	# Only a wall this state actually attached to should arm the reattach
+	# cooldown -- an aborted entry (see enter()'s note) never assigned a real
+	# _normal, and keying the cooldown to Vector3.ZERO would either poison
+	# every future attach (ZERO.dot(anything) == 0, which is never >=
+	# wall_same_normal_dot, so harmlessly it would just never match -- but
+	# relying on that coincidence instead of stating the guard explicitly is
+	# exactly the kind of thing review flagged) or waste a cooldown slot on a
+	# wall that was never actually run.
+	if not _aborted:
+		player.note_wall_detach(_normal)
 
-func physics_update(delta: float, input: MoveInput) -> StringName:
+func physics_update(delta: float, _input: MoveInput) -> StringName:
+	if _aborted:
+		return AIR
 	_elapsed += delta
 
-	# A wall jump is a fresh, edge-triggered press, not a buffered/coyote
-	# ground jump: player.consume_jump() requires BOTH the jump buffer AND
-	# the coyote timer to be alive, and the coyote timer only ever refills
-	# while player.grounded is true -- which this state, being airborne by
-	# definition, never declares. Using consume_jump() here would mean the
-	# wall jump could fire only in the rare case a ground-jump's coyote grace
-	# happened to still be running, i.e. essentially never. Read the raw press
-	# instead, the same way LedgeHangState reads input.jump_pressed directly
-	# for its own climb trigger rather than going through the ground-jump
-	# buffer.
-	if input.jump_pressed:
+	# Refresh the wall's geometry EVERY tick from a fresh query, not just
+	# once at entry. IMPORTANT (review): _normal used to be captured once in
+	# enter() and never refreshed, even though a query was already being made
+	# every tick to check validity. On a curved or angled wall that meant (a)
+	# the jump push and stick force kept pointing along the STALE entry
+	# normal, (b) _along drifted off the true tangent and bled speed into the
+	# wall, and (c) exit() keyed the reattach cooldown on the entry normal
+	# too, so a wall curved enough could be immediately re-attached the
+	# instant it was left -- the exact exploit the cooldown exists to stop.
+	# Reusing the query already being paid for here (rather than adding a
+	# second one) fixes all three at once: everything below this point reads
+	# the CURRENT surface.
+	var query: Dictionary = _query_wall()
+	if not query["valid"]:
+		return AIR
+	_normal = query["normal"]
+	player.wall_side = query["side"]
+	_derive_along()
+
+	# A wall jump is a fresh press, not a ground-style coyote jump: the
+	# jump/coyote timer only refills while player.grounded is true, and this
+	# state truthfully declares grounded=false every tick, so
+	# player.consume_jump() is permanently dead here. But a plain
+	# `_input.jump_pressed` edge check is ALSO wrong (verified, see
+	# task-1-report.md): AirState hands off to this state's enter() the
+	# moment it detects a wall, before this state's own first
+	# physics_update() ever runs, so a press made on the attach tick -- or
+	# any of the up-to jump_buffer_time ticks before it, exactly like every
+	# other buffered jump in this game -- would land on a tick this state
+	# never sees jump_pressed==true on, and get silently dropped on the most
+	# timing-sensitive move there is. consume_buffered_jump() reads the same
+	# buffer GroundState/AirState do, just without the coyote requirement
+	# that would otherwise be impossible to satisfy here, and spends it so a
+	# consumed press cannot also fire a second jump later.
+	if player.consume_buffered_jump():
 		player.velocity.y = config.wall_jump_up
 		player.velocity += _normal * config.wall_jump_push
 		player.move_and_slide()
@@ -87,16 +163,16 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# again would satisfy that check while lying for the rest of its run. Here
 	# it is never stale: move_and_slide() just ran this tick, so is_on_floor()
 	# is a fresh, true reading every time this line executes, for every branch
-	# below (GROUND, AIR, and KEEP alike).
+	# below (GROUND and AIR alike, and the fall-through KEEP).
 	player.set_grounded(player.is_on_floor())
 
 	if player.grounded:
 		return GROUND
 	if _elapsed >= config.wall_max_duration:
 		return AIR
+	# wall_exit_speed is measured as TOTAL horizontal speed (matching
+	# wall_min_speed's own measurement), not projected onto _along -- see
+	# MovementConfig's own note on this field.
 	if Vector2(player.velocity.x, player.velocity.z).length() < config.wall_exit_speed:
-		return AIR
-	var query: Dictionary = player.probes.wall_query()
-	if not query["valid"]:
 		return AIR
 	return KEEP

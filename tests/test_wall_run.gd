@@ -133,6 +133,219 @@ func test_a_wall_jump_pushes_away_from_the_wall_and_upward() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
+## IMPORTANT (review): a wall jump used to read `input.jump_pressed` (a
+## single-tick edge) directly. AirState hands off to WallRunState's enter()
+## the moment it detects a wall, before this state's own first
+## physics_update() ever runs -- so a press made a few ticks before the
+## actual attach landed on a tick this state never saw jump_pressed==true on,
+## and was silently dropped on the most timing-sensitive move in the game.
+## This presses jump while the player is still airborne and away from the
+## wall, then arrives at the attach point a few ticks later (well within
+## jump_buffer_time), and asserts the wall jump still fires on this state's
+## very first update.
+func test_a_jump_pressed_shortly_before_reaching_the_wall_still_wall_jumps() -> void:
+	await step(1)
+	var world := await _wall_world(0.95)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+
+	# Airborne, far from the wall (x=5.0; the wall's near face sits at x=0.45,
+	# well outside wall_reach), moving toward where the wall will be reached.
+	player.velocity = Vector3(0.0, 0.0, -6.0)
+	player.global_position = Vector3(5.0, 5.0, -10.0)
+	player.state_machine.start(PlayerState.AIR)
+	# state_machine.start() does not touch `grounded` itself, so it is still
+	# whatever this player last declared -- true, left over from resting on
+	# the floor a moment ago -- until explicitly cleared. Clearing it stops a
+	# stale read from wrongly refilling coyote time on the very next
+	# _tick_timers() call, but that is only HALF the landmine: _coyote_timer
+	# ITSELF is a separate variable that _tick_timers() only ever DECAYS, and
+	# by the time this player was genuinely resting on the floor a moment
+	# ago, it had already been legitimately refilled to a full
+	# config.coyote_time. In real play that grace gets SPENT the instant an
+	# actual jump fires (consume_jump() zeroes both timers together); this
+	# hand-built setup never spends it, so it survives as a leftover grace
+	# period into the airborne test below. Found this exact way: with only
+	# `set_grounded(false)` and no wait, the very next press_jump() still
+	# fired an ordinary COYOTE-gated ground-style air jump (velocity.y jumped
+	# to ~7) before the wall-buffer logic this test means to isolate ever
+	# got a chance to run. Waiting out coyote_time (mirroring
+	# tests/test_arena.gd's own `await step(20)` after this exact same
+	# state_machine.start(PlayerState.AIR) call) lets it fully decay first.
+	player.set_grounded(false)
+	await step(10)
+
+	input.press_jump()
+	await step(3)
+	check(player.state_machine.current_name == &"Air", \
+		"precondition: should still be airborne, away from the wall")
+
+	# Arrive beside the wall. This test isolates the BUFFER timing, not the
+	# approach, so the position is set directly rather than simulated by
+	# running the player over.
+	player.global_position.x = 0.0
+	await step(1)
+	check(player.state_machine.current_name == &"Wall", \
+		"precondition: should have attached to the wall")
+
+	await step(1)
+	check(player.state_machine.current_name == &"Air", \
+		"a jump pressed shortly before reaching the wall should still produce a wall jump")
+	check_greater(player.velocity.y, 0.0, "the buffered wall jump should send the player upward")
+	check(player.velocity.x < 0.0, "the buffered wall jump should push away from the wall")
+
+	world["wall"].queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
+## IMPORTANT (review): _normal used to be captured ONCE in enter() and never
+## refreshed, even though wall_query() was already being called every tick to
+## check validity. Three consequences follow from that: the jump push and
+## stick force keep pointing along the STALE entry normal, _along drifts off
+## the true tangent, and exit() poisons the reattach cooldown with the wrong
+## normal too. The existing wall geometry in this file is perfectly flat for
+## its whole length, so none of the other tests can tell a stale normal from
+## a fresh one -- they are identical on a flat wall. This proves the refresh
+## actually happens by SWAPPING which wall is detected mid-run: attach beside
+## a RIGHT-facing wall, then teleport beside a LEFT-facing one with a
+## completely different Z span (a deliberately extreme "bend" -- the two
+## walls never overlap, so wall_query() genuinely finds a different surface
+## rather than a smoothly curved one, but it exercises exactly the same code
+## path a true curve would: re-querying and re-deriving _normal/_along every
+## tick). Asserts the wall jump off the second wall pushes toward the SECOND
+## wall's own away direction (not the stale first one), and that leaving it
+## arms the second wall's own cooldown.
+func test_wall_run_tracks_the_currently_detected_walls_normal_not_the_entry_one() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(15)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+
+	# Wall A: to the RIGHT, spanning Z in [-15, 5] only -- far enough from
+	# wall B below that it cannot still be "seen" once beside wall B.
+	var wall_a := StaticBody3D.new()
+	var shape_a := CollisionShape3D.new()
+	var box_a := BoxShape3D.new()
+	box_a.size = Vector3(1.0, 8.0, 20.0)
+	shape_a.shape = box_a
+	wall_a.add_child(shape_a)
+	wall_a.position = Vector3(0.95, 4.0, -5.0)
+	tree.root.add_child(wall_a)
+	await step(3)
+
+	# Wall B: to the LEFT (an opposite-facing normal), spanning a completely
+	# different Z range.
+	var wall_b := StaticBody3D.new()
+	var shape_b := CollisionShape3D.new()
+	var box_b := BoxShape3D.new()
+	box_b.size = Vector3(1.0, 8.0, 20.0)
+	shape_b.shape = box_b
+	wall_b.add_child(shape_b)
+	wall_b.position = Vector3(-0.95, 4.0, -30.0)
+	tree.root.add_child(wall_b)
+	await step(3)
+
+	player.velocity = Vector3(0.0, 0.0, -6.0)
+	# y=5.0, not the resting floor height: this test needs the player to stay
+	# genuinely AIRBORNE through the 10-tick coyote-decay wait below, not fall
+	# through move_and_slide() onto the floor before ever reaching wall A.
+	player.global_position = Vector3(0.0, 5.0, -5.0)
+	player.state_machine.start(PlayerState.AIR)
+	# See the matching comment on test_a_jump_pressed_shortly_before_reaching_
+	# the_wall_still_wall_jumps() earlier in this file: wait out the leftover
+	# coyote grace from resting on the floor a moment ago before this test
+	# ever touches jump.
+	player.set_grounded(false)
+	await step(10)
+
+	var query_a: Dictionary = player.probes.wall_query()
+	check(query_a["valid"] and query_a["side"] == 1, \
+		"precondition: should be reading wall A, on the right")
+
+	await step(1)
+	check(player.state_machine.current_name == &"Wall", "precondition: should have attached to wall A")
+
+	# Teleport beside wall B instead -- see the note above for why this still
+	# exercises the same refresh logic a smoother curve would.
+	player.global_position = Vector3(0.0, player.global_position.y, -30.0)
+	await step(1)
+	check(player.state_machine.current_name == &"Wall", \
+		"precondition: should still be wall running, now beside wall B")
+
+	var query_b: Dictionary = player.probes.wall_query()
+	check(query_b["valid"] and query_b["side"] == -1, \
+		"precondition: should now be reading wall B, on the left")
+	check(query_a["normal"].dot(query_b["normal"]) < cfg.wall_same_normal_dot, \
+		"precondition: wall A and wall B must have genuinely different normals")
+
+	input.press_jump()
+	await step(2)
+	check(player.state_machine.current_name == &"Air", "a wall jump off wall B should leave the wall")
+	# Wall B sits at -X, so a jump that correctly tracks the CURRENTLY
+	# detected wall must push toward +X -- the opposite of what the stale
+	# entry-time normal (wall A, at +X) would have produced.
+	check(player.velocity.x > 0.0, \
+		"a wall jump must push away from the CURRENTLY detected wall, not the one first attached to")
+	check(not player.can_attach_wall(query_b["normal"]), \
+		"leaving wall B must arm wall B's OWN cooldown, not a stale copy of wall A's")
+
+	wall_a.queue_free()
+	wall_b.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
+## IMPORTANT (review): the Wall -> Ground transition (running a wall down onto
+## the floor -- an ordinary way for a wall run to end) had no test at all.
+## Reverting the per-tick grounded declaration to enter()-only silently killed
+## this transition (grounded never becomes true again) while the suite stayed
+## green, since nothing exercised it. Starts the player airborne right at the
+## normal resting floor height beside the wall, so weakened wall gravity
+## carries the body onto the floor within a handful of ticks -- comfortably
+## inside wall_max_duration (1.5 s = 90 ticks) and above wall_exit_speed, so
+## landing is what ends this run, not either of those other exit paths.
+func test_a_wall_run_can_end_by_landing_on_the_floor() -> void:
+	await step(1)
+	var world := await _wall_world(0.95)
+	var player: Player = world["player"]
+
+	player.velocity = Vector3(0.0, 0.0, -6.0)
+	player.global_position = Vector3(0.0, 0.95, -10.0)
+	player.state_machine.start(PlayerState.AIR)
+	# See the matching comment on the buffered-jump test above: start() leaves
+	# `grounded` stale (true, from resting on the floor a moment ago), which
+	# would otherwise wrongly refill coyote time for one tick. Harmless here
+	# since nothing in this test presses jump, but cleared anyway so this
+	# forced-AIR setup is not a landmine for whoever edits it next.
+	player.set_grounded(false)
+	await step(1)
+	check(player.state_machine.current_name == &"Wall", "precondition: should have attached to the wall")
+
+	var previous: StringName = player.state_machine.current_name
+	var landed_on_ground := false
+	var went_via_air := false
+	for i in 30:
+		await step(1)
+		var now: StringName = player.state_machine.current_name
+		if previous == &"Wall" and now == &"Air":
+			went_via_air = true
+		if now == &"Ground":
+			landed_on_ground = true
+			break
+		previous = now
+	check(landed_on_ground, \
+		"a wall run over the floor must be able to end by landing on Ground")
+	check(not went_via_air, \
+		"landing on the floor should transition Wall -> Ground directly, not through Air")
+	check(player.grounded, "landing on Ground must leave grounded declared true")
+
+	world["wall"].queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
 func test_the_same_wall_cannot_be_reattached_immediately() -> void:
 	await step(1)
 	var world := await _wall_world(0.95)
@@ -152,6 +365,56 @@ func test_the_same_wall_cannot_be_reattached_immediately() -> void:
 		await step(1)
 		check(player.state_machine.current_name != &"Wall", \
 			"re-attached to the same wall during the cooldown")
+
+	world["wall"].queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
+## IMPORTANT (review): a single {normal, cooldown} slot on Player was found to
+## be bypassable in any corner -- leaving wall A, then briefly touching a
+## genuinely different (perpendicular) wall B, would overwrite A's entry the
+## moment B's own exit rekeyed the cooldown, making A immediately
+## re-attachable one tick later. In a corner this is unbounded vertical
+## climbing. This drives a REAL attach-and-detach on wall A (so its cooldown
+## is armed exactly the way gameplay arms it, through WallRunState.exit()),
+## then simulates briefly touching wall B through the same public
+## note_wall_detach() hook WallRunState.exit() itself calls -- physically
+## maneuvering the player into a second real wall for one tick is orthogonal
+## to what this bug is about, which is Player's own cooldown bookkeeping, not
+## wall detection -- and asserts wall A is still refused afterward.
+func test_leaving_a_wall_and_briefly_touching_a_perpendicular_one_does_not_clear_the_first_walls_cooldown() -> void:
+	await step(1)
+	var world := await _wall_world(0.95)
+	var player: Player = world["player"]
+	await _launch_beside_wall(world)
+
+	for i in 60:
+		await step(1)
+		if player.state_machine.current_name == &"Wall":
+			break
+	check(player.state_machine.current_name == &"Wall", "precondition: should be wall running")
+
+	# Capture wall A's real normal before leaving it, so the refusal check
+	# below asks about the EXACT wall that was left, not an assumed one.
+	var wall_a_query: Dictionary = player.probes.wall_query()
+	check(wall_a_query["valid"], "precondition: should still be reading a valid wall normal")
+	var normal_a: Vector3 = wall_a_query["normal"]
+
+	world["input"].press_jump()
+	await step(2)
+	check(player.state_machine.current_name != &"Wall", \
+		"precondition: the wall jump should have left the wall")
+	check(not player.can_attach_wall(normal_a), \
+		"precondition: wall A's own cooldown should be armed immediately after leaving it")
+
+	# Briefly touch a genuinely different (perpendicular) wall B.
+	var normal_b := Vector3(0.0, 0.0, 1.0)
+	check(normal_a.dot(normal_b) < player.config.wall_same_normal_dot, \
+		"precondition: wall B must be genuinely different from wall A for this test to mean anything")
+	player.note_wall_detach(normal_b)
+
+	check(not player.can_attach_wall(normal_a), \
+		"leaving a perpendicular wall B must not clear wall A's own cooldown")
 
 	world["wall"].queue_free()
 	TestWorld.teardown(world)
@@ -307,6 +570,13 @@ func test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach() -> void:
 	# Fast enough to satisfy wall_min_speed, moving toward the ledge.
 	player.velocity = Vector3(0.0, 0.0, -6.0)
 	player.state_machine.start(PlayerState.AIR)
+	# See the matching comment on test_a_jump_pressed_shortly_before_reaching_
+	# the_wall_still_wall_jumps() earlier in this file: start() leaves
+	# `grounded` stale (true, from resting on the floor a moment ago), which
+	# would otherwise wrongly refill coyote time for one tick. Harmless here
+	# since nothing in this test presses jump, but cleared anyway so this
+	# forced-AIR setup is not a landmine for whoever edits it next.
+	player.set_grounded(false)
 
 	var attached_wall := false
 	for i in 5:
