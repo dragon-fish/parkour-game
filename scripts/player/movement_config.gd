@@ -214,6 +214,12 @@ extends Resource
 ## How fast the camera rolls into and out of the wall tilt, in degrees/second.
 @export var wall_camera_roll_speed: float = 56.0
 
+@export_group("Animation")
+## Horizontal ground speed above which CharacterAnimator plays the run clip
+## instead of idle. A feel/readability value like every other threshold here
+## -- it drives no physics, only which animation reads as "moving".
+@export var run_animation_speed_threshold: float = 1.0
+
 @export_group("Camera")
 ## Height of the camera rig above the player's origin. Baked into player.tscn
 ## as CameraRig's initial local position by tools/build_player_scene.gd, but
