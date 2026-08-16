@@ -7,7 +7,7 @@ func _running_world(cfg: MovementConfig) -> Dictionary:
 	await step(30)
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(90)
 	return world
 
@@ -53,7 +53,7 @@ func test_slide_gives_a_one_time_speed_boost() -> void:
 ## crouch repeatedly chained that addition — tools/probe_speed_exploit.gd
 ## measured it against the real Player and found it uncapped: 9.00 -> 19.92,
 ## +1.33 EVERY cycle, running all the way to the slide_max_speed safety rail
-## (more than double sprint_speed). The fix makes the boost an EXCHANGE
+## (more than double ground_speed). The fix makes the boost an EXCHANGE
 ## instead of a stackable bonus: it only applies when entering at or below
 ## slide_boost_entry_threshold, and the boosted result is capped at
 ## threshold + boost. Reverting SlideState.enter() to the old unconditional
@@ -98,7 +98,7 @@ func test_chained_slides_cannot_stack_the_entry_boost() -> void:
 	check_greater(slide_entries, 5, \
 		"precondition: chained crouch taps should have entered Slide repeatedly, only saw %d entries" \
 		% slide_entries)
-	check_greater(peak, cfg.sprint_speed, \
+	check_greater(peak, cfg.ground_speed, \
 		"precondition: chained taps never reached a boosted speed, so this test proves nothing (peak %f)" \
 		% peak)
 	check(peak <= ceiling + 0.1, \
@@ -163,17 +163,51 @@ func test_slide_decays_and_returns_to_ground() -> void:
 	var cfg := MovementConfig.new()
 	var world := await _running_world(cfg)
 	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	input.press_crouch()
+	await step(2)
+	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+
+	# Hold crouch and let friction do its work. With the key still held, a
+	# decayed slide settles into Crouch rather than standing on its own — see
+	# test_slide_decaying_with_crouch_held_settles_into_crouch_not_ground for
+	# that behaviour pinned directly. Releasing crouch is what actually asks
+	# to stand, same as it always has.
+	for i in 600:
+		await step(1)
+		if player.state_machine.current_name == &"Crouch":
+			break
+	check(player.state_machine.current_name == &"Crouch", \
+		"a slide must eventually decay into Crouch while the key is held")
+
+	input.release_crouch()
+	await step(10)
+	check(player.state_machine.current_name == &"Ground", \
+		"releasing crouch after the slide has decayed should stand the player up")
+	TestWorld.teardown(world)
+	await step(1)
+
+## The bug this guards: before Crouch existed, a slide that decayed or timed
+## out went straight to Ground the instant it did, whether or not the key was
+## still held — GBA_Crouch's downward branch snapped the player upright the
+## moment speed ran out instead of settling into a crouch. Held throughout
+## (never released), so the ONLY way this reaches Ground is the old bug.
+func test_slide_decaying_with_crouch_held_settles_into_crouch_not_ground() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := await _running_world(cfg)
+	var player: Player = world["player"]
 	world["input"].press_crouch()
 	await step(2)
 	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
 
-	# Hold crouch and let friction do its work.
 	for i in 600:
 		await step(1)
-		if player.state_machine.current_name == &"Ground":
+		if player.state_machine.current_name != &"Slide":
 			break
-	check(player.state_machine.current_name == &"Ground", \
-		"a slide must eventually decay back to Ground")
+	check(player.state_machine.current_name == &"Crouch", \
+		"a slide that decays while crouch is still held must settle into Crouch, not %s" \
+		% player.state_machine.current_name)
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -468,7 +502,6 @@ func test_a_long_covered_downslope_cannot_outrun_the_slide_speed_cap() -> void:
 
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
 	await step(60)
 	input.press_crouch()
 	await step(2)
@@ -533,7 +566,6 @@ func _speed_after_sliding(slope_deg: float, ticks: int) -> float:
 
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
 	await step(90)
 	input.press_crouch()
 	await step(2)
@@ -566,7 +598,6 @@ func test_a_crouch_pressed_just_before_landing_opens_a_slide_on_touchdown() -> v
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
 	await step(90)
 
 	# Lift the runner without touching its horizontal motion, then press crouch
@@ -604,11 +635,18 @@ func test_a_crouch_pressed_just_before_landing_opens_a_slide_on_touchdown() -> v
 ## The spec forbids a direct Slide -> WallRun transition (section 5), and wall
 ## running arrives next phase. Nothing at runtime would notice such a
 ## transition being added, so this asserts it structurally: of every state name
-## PlayerState declares, slide_state.gd may only ever mention Ground and Air.
-## Adding a new state and returning it from SlideState fails here — as does
-## merely naming it in a comment, which is a deliberate false positive: a
+## PlayerState declares, slide_state.gd may only ever mention Ground, Air and
+## Crouch. Adding a new state and returning it from SlideState fails here — as
+## does merely naming it in a comment, which is a deliberate false positive: a
 ## tripwire is worth more than a clean read.
-func test_slide_can_only_reach_ground_and_air() -> void:
+##
+## CROUCH was added deliberately, not by accident: a slide that decays or
+## times out while the key is still held now settles into Crouch instead of
+## snapping the player upright (see SlideState.physics_update's own comment).
+## Reaching Crouch does not weaken the WallRun exclusion this test still
+## guards — Crouch itself can only reach Ground or Air, see
+## tests/test_crouch_state.gd's own tripwire.
+func test_slide_can_only_reach_ground_air_or_crouch() -> void:
 	await step(1)
 	var source := FileAccess.get_file_as_string("res://scripts/player/states/slide_state.gd")
 	check(source.length() > 0, "could not read slide_state.gd")
@@ -624,9 +662,9 @@ func test_slide_can_only_reach_ground_and_air() -> void:
 		if pattern.search(source) != null:
 			referenced.append(constant_name)
 	referenced.sort()
-	var expected: Array[String] = ["AIR", "GROUND"]
+	var expected: Array[String] = ["AIR", "CROUCH", "GROUND"]
 	check(referenced == expected, \
-		"Slide must be able to reach exactly Ground and Air, but slide_state.gd references %s" \
+		"Slide must be able to reach exactly Ground, Air and Crouch, but slide_state.gd references %s" \
 		% str(referenced))
 
 ## Companion tripwire to the test above, closing the one hole it has. That one
@@ -666,9 +704,9 @@ func test_slide_returns_only_ground_air_or_keep() -> void:
 
 	var returned: Array = targets.keys()
 	returned.sort()
-	var allowed := ["AIR", "GROUND", "KEEP"]
+	var allowed := ["AIR", "CROUCH", "GROUND", "KEEP"]
 	check(returned == allowed, \
-		"SlideState returns %s; the spec allows it to reach only Ground and Air (plus KEEP). A direct Slide -> WallRun transition is forbidden by spec section 5 — if this set is meant to change, change the spec first" \
+		"SlideState returns %s; the spec allows it to reach only Ground, Air and Crouch (plus KEEP). A direct Slide -> WallRun transition is forbidden by spec section 5 — if this set is meant to change, change the spec first" \
 		% str(returned))
 
 func test_the_camera_drops_while_sliding() -> void:

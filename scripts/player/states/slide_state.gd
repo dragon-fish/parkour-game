@@ -109,16 +109,27 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# ending promptly.
 	var post_move_speed := Vector2(player.velocity.x, player.velocity.z).length()
 
-	# Every exit to standing passes the same gate: crouch-release, speed decay
-	# and timeout alike. Stand up into a ceiling once and the body clips
-	# through it, so a blocked slide simply continues — crawling, by then.
+	# Every exit passes the same headroom gate: crouch-release, speed decay and
+	# timeout alike. Stand up into a ceiling once and the body clips through
+	# it, so a blocked slide simply continues — crawling, by then.
 	# has_headroom() is re-asked here rather than reusing `blocked`, because
 	# the move_and_slide() above may have carried the body clear of the roof
 	# on this very tick.
-	var wants_to_stand := (not input.crouch_held) \
-		or post_move_speed <= config.slide_exit_speed \
-		or _elapsed >= config.slide_max_duration
-	if wants_to_stand and player.has_headroom():
+	#
+	# A slide that ran itself out (speed decay or timeout, NOT the key being
+	# released) settles into CROUCH when the key is still held, rather than
+	# snapping the player upright the instant speed runs out -- the owner's
+	# direction on GBA_Crouch's downward branch. No separate headroom check is
+	# needed for the Crouch hand-off: crouch_capsule_height defaults to the
+	# same number as slide_capsule_height (see MovementConfig's own comment),
+	# so anywhere the slide capsule already fits, the crouch capsule fits too.
+	# Releasing the key still asks for the full standing capsule, exactly as
+	# before.
+	var spent := post_move_speed <= config.slide_exit_speed or _elapsed >= config.slide_max_duration
+	var wants_to_exit := (not input.crouch_held) or spent
+	if wants_to_exit and player.has_headroom():
+		if input.crouch_held:
+			return CROUCH
 		return GROUND
 	return KEEP
 
