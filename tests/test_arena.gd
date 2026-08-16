@@ -219,18 +219,25 @@ func test_movement_follows_the_view_direction() -> void:
 	arena.queue_free()
 	await step(1)
 
+## Top surface of the arena's base floor slab, which is also the slide
+## tunnel's deck — there is deliberately no separate tunnel floor box.
+func _floor_top(arena) -> float:
+	var floor_node := arena.get_node("Floor") as StaticBody3D
+	var box: BoxShape3D = (floor_node.get_node("Collision") as CollisionShape3D).shape
+	return floor_node.global_position.y + box.size.y * 0.5
+
 func test_the_slide_area_exists_and_is_low_enough_to_require_sliding() -> void:
 	await step(1)
 	var arena = await _load_arena()
 	var roof = arena.get_node_or_null("SlideArea/TunnelRoof")
-	var floor_node = arena.get_node_or_null("SlideArea/TunnelFloor")
 	check(roof != null, "the slide tunnel roof is missing")
-	check(floor_node != null, "the slide tunnel floor is missing")
 
-	var roof_box := ((roof.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
-	var floor_box := ((floor_node.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
-	var clearance: float = (roof.position.y - roof_box.size.y * 0.5) \
-		- (floor_node.position.y + floor_box.size.y * 0.5)
+	# The tunnel deck IS the arena floor: measuring against a raised deck box
+	# is what let the previous layout pass this test while sitting 1 m above
+	# everything the player could actually reach.
+	var deck := _floor_top(arena)
+	var roof_aabb := _world_aabb(roof)
+	var clearance: float = roof_aabb.position.y - deck
 
 	# The tunnel only earns its place if standing cannot fit and sliding can.
 	# Both bounds are read from the live capsule and config, so tuning either
@@ -243,6 +250,120 @@ func test_the_slide_area_exists_and_is_low_enough_to_require_sliding() -> void:
 	check_greater(clearance, arena.config.slide_capsule_height, \
 		"the tunnel is lower than the sliding capsule, so even a slide cannot pass (clearance %f vs slide %f)" \
 		% [clearance, arena.config.slide_capsule_height])
+
+	# ...and the deck has to be continuous with the floor, not a step up onto
+	# one. Assert that literally: nothing in the slide area may occupy the
+	# volume between the walls, from just above the deck to just under the
+	# roof. A tunnel floor raised even 0.1 m would be a lip a slide cannot
+	# climb, and the clearance arithmetic above would never notice.
+	var wall_l = arena.get_node_or_null("SlideArea/TunnelWallL")
+	var wall_r = arena.get_node_or_null("SlideArea/TunnelWallR")
+	check(wall_l != null and wall_r != null, "the slide tunnel walls are missing")
+	var interior_min := Vector3(_world_aabb(wall_l).end.x, deck, roof_aabb.position.z)
+	var interior_max := Vector3(_world_aabb(wall_r).position.x, roof_aabb.position.y, roof_aabb.end.z)
+	# Shrunk so boxes that legitimately END at the tunnel mouth or rest
+	# against a wall are not counted as intruding.
+	var interior := AABB(interior_min, interior_max - interior_min).grow(-0.05)
+	var boxes: Array = []
+	_collect_box_bodies(arena.get_node("SlideArea"), boxes)
+	for body in boxes:
+		if body == wall_l or body == wall_r or body == roof:
+			continue
+		check(not _world_aabb(body).intersects(interior), \
+			"SlideArea/%s intrudes into the tunnel — the deck must be the bare arena floor, with no lip or step" \
+			% body.name)
+
+	arena.queue_free()
+	await step(1)
+
+## Steps the player forward (travelling toward -Z) until it passes target_z,
+## for at most `budget` physics ticks, giving up early if it makes no forward
+## progress at all for three seconds. Returns where it got to and whether it
+## was ever in Slide along the way, so a failure can report WHERE the player
+## stopped instead of only that an assertion failed.
+func _advance_until_z(player: Player, target_z: float, budget: int) -> Dictionary:
+	var best_z: float = player.global_position.z
+	var stalled := 0
+	var slid := false
+	var ticks := 0
+	for i in budget:
+		await step(1)
+		ticks += 1
+		if player.state_machine.current_name == PlayerState.SLIDE:
+			slid = true
+		var z: float = player.global_position.z
+		if z < best_z - 0.005:
+			best_z = z
+			stalled = 0
+		else:
+			stalled += 1
+		if z <= target_z:
+			break
+		if stalled > 180:
+			break
+	var position: Vector3 = player.global_position
+	return {
+		"reached": position.z <= target_z,
+		"slid": slid,
+		"ticks": ticks,
+		"position": position,
+		"state": player.state_machine.current_name,
+		"speed": player.horizontal_speed(),
+	}
+
+func _where(result: Dictionary) -> String:
+	var position: Vector3 = result["position"]
+	return "stopped at (%.2f, %.2f, %.2f) in state %s at %.2f m/s after %d ticks" \
+		% [position.x, position.y, position.z, result["state"], result["speed"], result["ticks"]]
+
+## The clearance test above measures a cross-section; it says nothing about
+## whether the tunnel can be REACHED. This one is the reachability oracle: it
+## drives the player through the whole course under scripted input and checks
+## that it comes out the far side, having actually slid to get there. Every
+## landmark is read off the live geometry rather than hardcoded, so re-laying
+## out the course cannot leave this test quietly measuring the wrong place.
+func test_the_slide_course_can_be_run_end_to_end() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var player: Player = arena.player
+
+	var up_ramp_aabb := _world_aabb(arena.get_node("SlideArea/UpRamp"))
+	var platform_aabb := _world_aabb(arena.get_node("SlideArea/Platform"))
+	var roof_aabb := _world_aabb(arena.get_node("SlideArea/TunnelRoof"))
+	var deck := _floor_top(arena)
+	var lane_x: float = platform_aabb.get_center().x
+
+	# Start on the flat approach, well short of the climb, with room to reach
+	# sprint speed before the ramp.
+	player.global_position = Vector3(lane_x, deck + 1.0, up_ramp_aabb.end.z + 8.0)
+	player.velocity = Vector3.ZERO
+	player.rotation = Vector3.ZERO
+	await step(20)
+	check(player.is_on_floor(), "precondition: the player did not settle onto the approach")
+
+	var input := ScriptedInputSource.new()
+	player.input_source = input
+	input.state.move = Vector2(0.0, 1.0)
+	input.state.sprint_held = true
+
+	# Phase 1 — approach and climb, ending a metre onto the raised platform.
+	var climb := await _advance_until_z(player, platform_aabb.end.z - 1.0, 900)
+	check(climb["reached"], \
+		"the player could not reach the raised platform: %s" % _where(climb))
+	check_approx(player.global_position.y, platform_aabb.end.y + 0.9, 0.35, \
+		"the player reached the platform's z but not its height — it is not standing on the platform: %s" \
+		% _where(climb))
+
+	# Phase 2 — commit to the slide and ride it down the ramp, through the
+	# tunnel, and out past the far mouth.
+	input.press_crouch()
+	var run := await _advance_until_z(player, roof_aabb.position.z - 1.5, 1800)
+	check(run["reached"], \
+		"the player never came out the far side of the tunnel: %s" % _where(run))
+	check(run["slid"] or climb["slid"], \
+		"the player crossed the course without ever entering Slide, so the route did not require sliding")
+	check_approx(player.global_position.y, deck + 0.9, 0.35, \
+		"the player left the course vertically instead of running it: %s" % _where(run))
 
 	arena.queue_free()
 	await step(1)
@@ -282,6 +403,15 @@ func test_practice_areas_do_not_overlap_each_other() -> void:
 	var area_names: Array = areas.keys()
 	check_greater(float(area_names.size()), 1.0, \
 		"expected at least two practice areas to compare, found %d" % area_names.size())
+
+	# _collect_box_bodies only recognises a solid whose collision child is
+	# named exactly "Collision" with a BoxShape3D on it — the convention
+	# _box() follows. An area built some other way would contribute zero
+	# boxes and be silently excluded from every comparison below, so the
+	# whole test would pass by not looking. Fail loudly instead.
+	for area_name in area_names:
+		check_greater(float(areas[area_name].size()), 0.0, \
+			"%s contributed no box solids, so it was silently skipped by the overlap check" % area_name)
 
 	# Boxes touching face-to-face (e.g. the tunnel roof resting on its walls)
 	# are legitimate and must not be flagged, so each box is shrunk slightly
