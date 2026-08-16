@@ -18,9 +18,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	player.move_and_slide()
 
 	if player.is_on_floor():
-		player.last_landing_speed = impact_speed
+		player.set_grounded(true)
+		player.notify_landed(impact_speed)
 		_apply_landing_cost(impact_speed, input)
 		return GROUND
+	player.set_grounded(false)
 	return KEEP
 
 ## Landing bleeds horizontal speed in proportion to how hard the impact was.

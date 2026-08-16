@@ -69,11 +69,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if not blocked and player.consume_jump():
 		player.velocity.y = config.jump_velocity
 		player.move_and_slide()
+		player.set_grounded(player.is_on_floor())
 		return AIR
 
 	player.move_and_slide()
+	player.set_grounded(player.is_on_floor())
 
-	if not player.is_on_floor():
+	if not player.grounded:
 		player.velocity.y = 0.0
 		return AIR
 
@@ -159,7 +161,7 @@ func _crawl(input: MoveInput) -> void:
 ## against, which makes every caller behave exactly as it did before slopes
 ## existed.
 func _slope_direction() -> Vector3:
-	if _direction == Vector3.ZERO or not player.is_on_floor():
+	if _direction == Vector3.ZERO or not player.grounded:
 		return _direction
 	var normal: Vector3 = player.get_floor_normal()
 	if normal.length_squared() < 0.0001:

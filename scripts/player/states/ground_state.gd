@@ -12,6 +12,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if player.consume_jump():
 		player.velocity.y = config.jump_velocity
 		player.move_and_slide()
+		player.set_grounded(player.is_on_floor())
 		return AIR
 
 	# A slide has to be earned: crouching below the entry speed just crouches.
@@ -29,14 +30,16 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# and bounce straight back out to Air.
 		player.velocity.y = -config.floor_snap_speed
 		player.move_and_slide()
+		player.set_grounded(player.is_on_floor())
 		return SLIDE
 
 	# A small downward bias keeps the body glued to the floor across seams and
 	# gentle slopes; without it is_on_floor() flickers while running.
 	player.velocity.y = -config.floor_snap_speed
 	player.move_and_slide()
+	player.set_grounded(player.is_on_floor())
 
-	if not player.is_on_floor():
+	if not player.grounded:
 		# Leaving the floor here means walking off a ledge, not jumping - the
 		# jump path above already returned before this line. Clear the snap
 		# bias so a ledge exit starts from a clean zero instead of carrying

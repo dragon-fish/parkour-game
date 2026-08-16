@@ -30,7 +30,7 @@ func _process(_delta: float) -> void:
 		"speed h    %.2f m/s" % player.horizontal_speed(),
 		"speed v    %.2f m/s" % player.velocity.y,
 		"position   (%.1f, %.1f, %.1f)" % [pos.x, pos.y, pos.z],
-		"grounded   %s" % ("yes" if player.is_on_floor() else "no"),
+		"grounded   %s" % ("yes" if player.grounded else "no"),
 		"last land  %.2f m/s" % player.last_landing_speed,
 		"fps        %d" % Engine.get_frames_per_second(),
 		"",

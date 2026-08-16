@@ -18,6 +18,29 @@ var last_landing_rolled: bool = false
 ## Last polled input, exposed for the debug HUD.
 var last_input: MoveInput = MoveInput.new()
 
+## Whether the player is standing on something. DECLARED by the active state
+## rather than read from is_on_floor(), because scripted-move states drive the
+## body's position directly and never call move_and_slide() — is_on_floor()
+## would report whatever was true before the move began.
+var grounded: bool = false
+
+var _pending_landing: float = -1.0
+
+func set_grounded(value: bool) -> void:
+	grounded = value
+
+## Reported by a state at the moment it detects a landing.
+func notify_landed(impact_speed: float) -> void:
+	_pending_landing = impact_speed
+	last_landing_speed = impact_speed
+
+## Returns this tick's landing impact speed, or -1.0 if there was none. The
+## event is consumed, so a landing can only ever be acted on once.
+func consume_landing() -> float:
+	var value := _pending_landing
+	_pending_landing = -1.0
+	return value
+
 ## Assigned in player.tscn. Optional so headless tests can run without one.
 @export var camera_rig: CameraRig
 
@@ -159,17 +182,19 @@ func _physics_process(delta: float) -> void:
 	# on the first tick there is room for it.
 	_service_pending_capsule_restore()
 
-	var was_airborne := not is_on_floor()
 	if camera_rig != null:
 		camera_rig.apply_look(input.look, self)
 
 	state_machine.physics_update(delta, input)
 
+	# Always drained, camera_rig or not, so a landing can only ever be acted
+	# on once regardless of whether anything is listening this tick.
+	var landing_impact := consume_landing()
 	if camera_rig != null:
-		if was_airborne and is_on_floor():
-			camera_rig.punch_landing(last_landing_speed)
+		if landing_impact >= 0.0:
+			camera_rig.punch_landing(landing_impact)
 		camera_rig.set_crouch_amount(1.0 if state_machine.current_name == PlayerState.SLIDE else 0.0)
-		camera_rig.update_effects(delta, horizontal_speed(), is_on_floor())
+		camera_rig.update_effects(delta, horizontal_speed(), grounded)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and input_source is KeyboardInputSource:
@@ -185,7 +210,7 @@ func _input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _tick_timers(delta: float, input: MoveInput) -> void:
-	if is_on_floor():
+	if grounded:
 		_coyote_timer = config.coyote_time
 	else:
 		_coyote_timer = maxf(_coyote_timer - delta, 0.0)
