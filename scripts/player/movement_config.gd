@@ -176,8 +176,13 @@ extends Resource
 @export var wall_gravity_scale: float = 0.35
 ## Forward push applied along the wall, in m/s^2.
 @export var wall_accel: float = 18.0
-## Upper bound on speed the wall itself can push you to.
-@export var wall_max_speed: float = 11.0
+## Upper bound on speed the wall itself can push you to. Held at or below
+## sprint_speed and air_max_speed on purpose -- wall_min_speed's own doc
+## comment says the wall is "a way to CARRY speed, never a way to create it
+## from nothing", so its own accel must never top the player up past what
+## foot speed alone can already reach. See
+## tests/test_movement_config.gd's own relationship test pinning this.
+@export var wall_max_speed: float = 9.0
 ## Wall running ends once total horizontal speed decays below this (measured
 ## the same way as wall_min_speed, not projected onto the wall's tangent).
 ## Kept as its own value rather than a fraction of wall_min_speed, mirroring

@@ -23,3 +23,20 @@ func test_terminal_velocity_exceeds_jump_velocity() -> void:
 	await step(1)
 	var c := MovementConfig.new()
 	check_greater(c.terminal_velocity, c.jump_velocity, "terminal velocity must exceed jump velocity")
+
+## wall_min_speed's own doc comment says wall running is "a way to CARRY
+## speed, never a way to create it from nothing" -- if wall_max_speed exceeded
+## what foot speed alone can reach, the wall's own accel would top the player
+## up past sprint or air control, creating speed no other move can, which
+## directly contradicts that comment and the spec's "speed is hard to earn,
+## easy to lose". Pinned against BOTH ceilings a player can otherwise reach,
+## since either one alone could rise past the wall's cap under future tuning.
+func test_wall_running_cannot_create_speed_beyond_what_foot_speed_reaches() -> void:
+	await step(1)
+	var c := MovementConfig.new()
+	check(c.wall_max_speed <= c.sprint_speed, \
+		"wall_max_speed (%f) exceeds sprint_speed (%f) -- the wall creates speed sprinting never could" \
+			% [c.wall_max_speed, c.sprint_speed])
+	check(c.wall_max_speed <= c.air_max_speed, \
+		"wall_max_speed (%f) exceeds air_max_speed (%f) -- the wall creates speed air control never could" \
+			% [c.wall_max_speed, c.air_max_speed])
