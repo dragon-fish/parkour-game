@@ -19,23 +19,17 @@ static func build(tree: SceneTree, cfg: MovementConfig) -> Dictionary:
 	floor_body.add_child(floor_shape)
 	tree.root.add_child(floor_body)
 
-	var player := Player.new()
-	var body_shape := CollisionShape3D.new()
-	# Matches the node name player.tscn uses, so lookups like
-	# get_node("CollisionShape3D") (Player.setup()'s capsule duplication, P1's
-	# SlideState tests) behave the same whether the player comes from the
-	# scene or from this fixture. Without an explicit name, add_child()
-	# assigns an internal placeholder like "@CollisionShape3D@3" instead.
-	body_shape.name = "CollisionShape3D"
-	var capsule := CapsuleShape3D.new()
-	capsule.height = 1.8
-	capsule.radius = 0.4
-	body_shape.shape = capsule
-	player.add_child(body_shape)
+	var player_scene: PackedScene = load("res://scenes/player/player.tscn")
+	var player: Player = player_scene.instantiate()
 	tree.root.add_child(player)
 
 	var input := ScriptedInputSource.new()
 	player.setup(cfg, input)
+	# The rig is present in the real scene, so give it the same config the
+	# player got — otherwise its update_effects() no-ops and the tests exercise
+	# a different code path than the game does.
+	if player.camera_rig != null:
+		player.camera_rig.setup(cfg)
 
 	return {"player": player, "input": input, "floor": floor_body}
 

@@ -26,8 +26,18 @@ var _standing_height: float = 0.0
 var _coyote_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
 
+@onready var _stand_clearance: ShapeCast3D = get_node_or_null("StandClearance")
+
 func standing_height() -> float:
 	return _standing_height
+
+## True when the standing-size capsule fits where the body currently is.
+## Tests that build a Player by hand have no probe node, so absence means yes.
+func has_headroom() -> bool:
+	if _stand_clearance == null:
+		return true
+	_stand_clearance.force_shapecast_update()
+	return not _stand_clearance.is_colliding()
 
 ## Resizes the capsule while keeping its BOTTOM fixed relative to the body
 ## origin, so footing and is_on_floor() are unaffected by the change.
@@ -113,6 +123,7 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		if was_airborne and is_on_floor():
 			camera_rig.punch_landing(last_landing_speed)
+		camera_rig.set_crouch_amount(1.0 if state_machine.current_name == PlayerState.SLIDE else 0.0)
 		camera_rig.update_effects(delta, horizontal_speed(), is_on_floor())
 
 func _input(event: InputEvent) -> void:

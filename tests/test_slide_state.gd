@@ -175,3 +175,76 @@ func test_sliding_off_an_edge_enters_air() -> void:
 		"leaving the ground mid-slide must enter Air")
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_a_low_ceiling_keeps_the_player_sliding() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := await _running_world(cfg)
+	var player: Player = world["player"]
+	# NOTE: deviates from the brief, which set world["input"].state.crouch_held
+	# = true directly here. ScriptedInputSource only raises the crouch_pressed
+	# edge inside press_crouch(); GroundState gates slide entry on that edge
+	# (not on crouch_held) specifically to prevent held-key strobing, so a bare
+	# state.crouch_held = true never enters Slide at all. Verified by running
+	# the brief's code verbatim: the precondition below failed regardless of
+	# the headroom fix, i.e. the test could never go green. Every other slide
+	# entry in this file already uses press_crouch(); matching that.
+	world["input"].press_crouch()
+	await step(2)
+	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+
+	# Drop a slab just above the sliding capsule, across the player's path.
+	# NOTE: deviates from the brief, which parented `shape` and added `ceiling`
+	# to the tree BEFORE setting its position, leaving the (still zero-position)
+	# 40x40 slab briefly overlapping the floor and the player's actual collider
+	# at the world origin for one physics frame. Since ceiling.position is set
+	# before add_child() below, no such frame at the origin. Verified by
+	# reproducing the brief's ordering standalone: that transient overlap
+	# physically shoves the player upward, is_on_floor() flips false, and
+	# SlideState exits straight to Air — which lands on Ground the very next
+	# frame WITHOUT ever consulting has_headroom() (Air->Ground is
+	# intentionally out of this gate's scope). So the observed "stood up
+	# into the ceiling" failure was this ordering bug, not a missing gate.
+	var ceiling := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(40.0, 0.5, 40.0)
+	shape.shape = box
+	ceiling.add_child(shape)
+	ceiling.position = player.global_position + Vector3(0.0, 0.45, 0.0)
+	tree.root.add_child(ceiling)
+	await step(1)
+
+	world["input"].state.crouch_held = false
+	await step(10)
+	check(player.state_machine.current_name == &"Slide", \
+		"the player must not stand up into a ceiling, got %s" % player.state_machine.current_name)
+
+	ceiling.queue_free()
+	await step(2)
+	await step(20)
+	check(player.state_machine.current_name == &"Ground", \
+		"once the ceiling is gone the player should stand up")
+
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_the_camera_drops_while_sliding() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := await _running_world(cfg)
+	var player: Player = world["player"]
+	var rig: CameraRig = player.get_node("CameraRig")
+	var standing_y := rig.position.y
+
+	# Same deviation as test_a_low_ceiling_keeps_the_player_sliding above:
+	# press_crouch() is required to actually enter Slide.
+	world["input"].press_crouch()
+	await step(20)
+	check(rig.position.y < standing_y, "the camera must drop while sliding")
+
+	world["input"].state.crouch_held = false
+	await step(60)
+	check_approx(rig.position.y, standing_y, 0.01, "the camera must rise back after the slide")
+	TestWorld.teardown(world)
+	await step(1)

@@ -57,10 +57,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# ending promptly.
 	var post_move_speed := Vector2(player.velocity.x, player.velocity.z).length()
 
-	if not input.crouch_held:
-		return GROUND
-	if post_move_speed <= config.slide_exit_speed:
-		return GROUND
-	if _elapsed >= config.slide_max_duration:
+	# Every exit to standing passes the same gate: crouch-release, speed decay
+	# and timeout alike. Stand up into a ceiling once and the body clips
+	# through it, so a blocked slide simply continues.
+	var wants_to_stand := (not input.crouch_held) \
+		or post_move_speed <= config.slide_exit_speed \
+		or _elapsed >= config.slide_max_duration
+	if wants_to_stand and player.has_headroom():
 		return GROUND
 	return KEEP

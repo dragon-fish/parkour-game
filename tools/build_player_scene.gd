@@ -53,6 +53,19 @@ func _run() -> void:
 	player.add_child(body_root)
 	body_root.owner = player
 
+	# Standing-clearance probe: a capsule the size of the STANDING body, tested
+	# in place. A ray would miss geometry the capsule's radius would hit.
+	var clearance := ShapeCast3D.new()
+	clearance.name = "StandClearance"
+	var probe_shape := CapsuleShape3D.new()
+	probe_shape.height = 1.8
+	probe_shape.radius = 0.4
+	clearance.shape = probe_shape
+	clearance.target_position = Vector3.ZERO
+	clearance.enabled = true
+	player.add_child(clearance)
+	clearance.owner = player
+
 	player.camera_rig = rig
 
 	DirAccess.make_dir_recursive_absolute("res://scenes/player")

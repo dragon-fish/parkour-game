@@ -100,3 +100,7 @@ extends Resource
 @export var land_dip_recover: float = 2.2
 ## Fall speed that produces a full-strength landing dip.
 @export var land_dip_speed_ref: float = 18.0
+## How far the camera drops while sliding, in metres.
+@export var slide_camera_drop: float = 0.45
+## How fast the camera moves between standing and sliding height.
+@export var crouch_lerp_speed: float = 9.0
