@@ -1,5 +1,14 @@
 extends TestCase
 
+# Trigger a jump on a run-up that has actually reached (most of) sprint speed,
+# not merely "faster than a walk" -- with air control now barely able to
+# change anything (see air_accel's own comment in movement_config.gd), the
+# speed at the MOMENT of takeoff is what determines the whole arc, so a jump
+# fired too early lands short in a way a fast, weak-air-control jump cannot
+# correct for. Every _jump_at_ledge* caller below presses jump on this same
+# gate rather than each hand-rolling its own threshold.
+const JUMP_TRIGGER_RATIO := 0.9
+
 func _jump_at_ledge(block_height: float) -> Dictionary:
 	return await _jump_at_ledge_with(block_height, 4.0, MovementConfig.new())
 
@@ -13,6 +22,51 @@ func _jump_at_ledge_with(block_height: float, depth: float, cfg: MovementConfig)
 	TestWorld.place(world)
 	await step(30)
 
+	# Placed near the FAR end of a full jump's reach, not partway through it.
+	# ledge_query()'s height gate only opens in a narrow window near the
+	# BOTTOM of the arc (mirrors the reasoning behind VaultArea's own
+	# LEDGE_RUNUP_MARGIN in tools/arena_builder.gd) -- a block placed mid-arc
+	# leaves the player still rising, or at apex, too high above the block's
+	# top to ever register as a grab under the new floaty jump. Closed-form
+	# projectile arithmetic on the run-up speed (the ground speed cap, same
+	# formula as MovementConfig.gravity's own comment), with a margin under
+	# the theoretical ceiling since the run-up here starts from a dead stop,
+	# not already at speed.
+	var jump_airtime: float = 2.0 * cfg.jump_velocity / maxf(cfg.gravity, 0.001)
+	var max_jump_distance: float = cfg.sprint_speed * jump_airtime
+	# The margin places the NEAR FACE, not the block's centre: ledge_query()'s
+	# forward probe and its height gate both care about where the FACE is, not
+	# where the block's z-centre happens to sit, so measuring from the centre
+	# would silently shift the actual approach distance by depth/2 every time
+	# a caller passes a different depth.
+	#
+	# The margin itself, measured directly rather than derived, differs by
+	# platform depth, and that split is load-bearing, not incidental:
+	#   - depth >= 1.0 (the normal 4.0 m platform every hang/mantle test
+	#     uses): 0.95 is the closest margin that grabs at all (anything lower
+	#     flies over every time, matching arena_builder.gd's own
+	#     LEDGE_RUNUP_MARGIN reasoning), but 0.95-1.2 all grab at the SAME
+	#     height, high enough up the block's face that the fall to the floor
+	#     afterward takes longer than ledge_regrab_cooldown (0.45 s) --
+	#     test_dropping_off_a_ledge_does_not_instantly_regrab_it catches this
+	#     directly: cooldown expires mid-fall, still inside the grab height
+	#     window, and the ledge gets grabbed a second time. 1.3 is the first
+	#     margin where the grab happens late enough in the arc (closer to the
+	#     ground) that the remaining fall clears inside the cooldown.
+	#   - depth < 1.0 (the shallow 0.6 m platform test_a_mantle_that_finds_no_
+	#     floor_arms_the_regrab_cooldown uses, specifically so the mantle
+	#     overshoots it): 1.3 no longer grabs at all -- a shallower platform's
+	#     top face is a much smaller target for the same forward+down probe
+	#     pair, and by 1.25-1.3 it is missed outright. 1.1 sits in the middle
+	#     of the range (1.0-1.2) that reliably grabs a platform this shallow.
+	# Neither figure is a closed-form quantity -- ledge_query()'s exact height
+	# at grab time is a property of its own probe geometry, not something this
+	# generator can derive -- so both are pinned to what was actually measured
+	# against the live states, against the specific tests each one guards.
+	var block_distance_margin: float = 1.3 if depth >= 1.0 else 1.1
+	var near_face_z: float = -max_jump_distance * block_distance_margin
+	var block_z: float = near_face_z - depth * 0.5
+
 	var block := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -21,7 +75,7 @@ func _jump_at_ledge_with(block_height: float, depth: float, cfg: MovementConfig)
 	block.add_child(shape)
 	tree.root.add_child(block)
 	await step(1)
-	block.global_position = Vector3(0.0, block_height * 0.5, -6.0)
+	block.global_position = Vector3(0.0, block_height * 0.5, block_z)
 	await step(1)
 
 	world["input"].state.move = Vector2(0.0, 1.0)
@@ -29,8 +83,8 @@ func _jump_at_ledge_with(block_height: float, depth: float, cfg: MovementConfig)
 	world["block"] = block
 	world["block_top"] = block_height
 	# The player runs toward -Z, so the face it climbs is the block's +Z one.
-	world["block_near_face_z"] = -6.0 + depth * 0.5
-	world["block_far_face_z"] = -6.0 - depth * 0.5
+	world["block_near_face_z"] = block_z + depth * 0.5
+	world["block_far_face_z"] = block_z - depth * 0.5
 	return world
 
 func test_reaching_a_ledge_grabs_it() -> void:
@@ -41,7 +95,7 @@ func test_reaching_a_ledge_grabs_it() -> void:
 	var grabbed := false
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > 5.0 and player.is_on_floor():
+		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			grabbed = true
@@ -66,7 +120,7 @@ func test_hanging_applies_no_gravity() -> void:
 	var player: Player = world["player"]
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > 5.0 and player.is_on_floor():
+		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -112,7 +166,7 @@ func test_pressing_forward_mantles_onto_the_ledge() -> void:
 	var player: Player = world["player"]
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > 5.0 and player.is_on_floor():
+		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -177,7 +231,7 @@ func test_rotating_mid_climb_still_lands_on_the_grabbed_ledge() -> void:
 	var player: Player = world["player"]
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > 5.0 and player.is_on_floor():
+		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -238,7 +292,7 @@ func test_turning_while_hanging_changes_where_the_mantle_lands() -> void:
 	var player: Player = world["player"]
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > 5.0 and player.is_on_floor():
+		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -401,7 +455,7 @@ func test_dropping_off_a_ledge_does_not_instantly_regrab_it() -> void:
 
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > 5.0 and player.is_on_floor():
+		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -453,7 +507,7 @@ func test_a_mantle_that_finds_no_floor_arms_the_regrab_cooldown() -> void:
 
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > 5.0 and player.is_on_floor():
+		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -500,7 +554,7 @@ func test_crouching_releases_the_ledge() -> void:
 	var player: Player = world["player"]
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > 5.0 and player.is_on_floor():
+		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
