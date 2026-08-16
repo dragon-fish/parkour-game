@@ -25,12 +25,48 @@ extends Resource
 @export var floor_snap_speed: float = 2.0
 
 @export_group("Air")
-## Air acceleration. Deliberately far below ground_accel: committing to a
-## jump is the core of the movement feel.
-@export var air_accel: float = 12.0
-## Upper bound on the speed air control alone can reach. Momentum carried in
+## Source: docs/mirrors-edge-deep-research/09-Godot移植指南.md §9.1 / 02-速度系统.md
+## §2.3 -- ME's `AirControl = 0.025` is not an acceleration in its own right;
+## the guide reads it as a MULTIPLIER on ground accel ("AirControl 0.025 ×
+## 加速度"). Applied to this project's own ground_accel (60.0, itself already
+## ~= ME's AccelRate 61.44, see ground_accel's own comment) rather than to
+## ME's raw AccelRate, since this is the number our air_accelerate() actually
+## gets compared against:
+##   air_accel = ground_accel * 0.025 = 60.0 * 0.025 = 1.5
+## This is deliberately not a speed-ceiling fix (see air_max_speed below for
+## why the old air_max_speed = 9.0 was the wrong lever entirely) -- with the
+## post-retune 1.58 s hangtime (gravity 24.0 -> 8.0, see MovementConfig.gravity),
+## the old air_accel (12.0) could ratchet horizontal speed past sprint_speed
+## over repeated jumps; at 1.5, a full hangtime of continuous same-direction
+## air control adds at most air_accel * 1.58 =~ 2.4 m/s, and landing's own
+## speed cost (_apply_landing_cost) removes far more than that on any landing
+## hard enough to matter -- see
+## tests/test_air_state.gd's test_air_strafing_across_chained_jumps_never_
+## exceeds_the_ground_speed_cap for a direct, driven-state measurement.
+@export var air_accel: float = 1.5
+## Outer bound on the speed air control alone can reach. Momentum carried in
 ## from other states is never reduced by air control.
-@export var air_max_speed: float = 9.0
+## Source: docs/mirrors-edge-deep-research/09-Godot移植指南.md §9.1 -- ME's
+## `AirSpeed 2400` uu/s -> 24.0 m/s at this project's confirmed 1 uu = 1 cm
+## scale, i.e. essentially uncapped (3.3x GroundSpeed's own 720 uu/s). This
+## replaces the OLD model this field encoded (a hard ceiling close to
+## sprint_speed, meant to prevent air control from creating speed on its own)
+## with ME's actual one: air speed is barely bounded at all, because the real
+## defence against an air-control exploit is air_accel being almost zero (see
+## its own comment), not a low ceiling here.
+## Player.air_accelerate() never actually targets this value alone -- its real,
+## PRACTICAL ceiling is min(air_max_speed, max(sprint_speed, current speed
+## along the wish direction)), so this field only matters for momentum ALREADY
+## above sprint_speed (a wall-run or slide boost carried into the air), which
+## it never reduces. Below sprint_speed, air control tops out at sprint_speed
+## itself, however long the flight -- otherwise mere AIRTIME (a long fall, not
+## even a deliberate exploit) could slowly climb toward this field's own 24.0
+## and manufacture speed no ground state could reach on its own, which is
+## exactly what a plain long fall did before this ceiling existed: see
+## tests/test_landing.gd's test_a_landing_can_never_add_speed_however_the_
+## keep_ratio_is_tuned and tests/test_slide_state.gd's
+## test_chained_slide_then_jump_cannot_stack_the_entry_boost.
+@export var air_max_speed: float = 24.0
 ## Source: docs/mirrors-edge-deep-research/09-Godot移植指南.md §9.1 Ground/Air/
 ## Jump table -- ME's DefaultGravityZ 800 uu/s^2 -> 8.0 m/s^2 at this project's
 ## confirmed 1 uu = 1 cm scale (see the research README's unit derivation).

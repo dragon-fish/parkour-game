@@ -696,15 +696,35 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> 
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 
-## Air movement: only ever adds speed along wish_dir, and only up to
-## air_max_speed measured along that direction. It never brakes, so momentum
+## Air movement: only ever adds speed along wish_dir, and only up to a
+## ceiling measured along that direction. It never brakes, so momentum
 ## carried in from another state survives — P1's slide depends on this.
+##
+## The ceiling is NOT a flat air_max_speed: it is
+## min(air_max_speed, max(sprint_speed, speed_along_wish)). air_max_speed
+## itself (see its own comment in movement_config.gd -- ME's AirSpeed,
+## essentially uncapped) is deliberately too high to ever bind in practice;
+## it exists so momentum carried in from elsewhere (a wall-run or slide boost
+## exceeding sprint_speed) is never reduced by air control, matching this
+## function's own "never brakes" rule. sprint_speed is the floor UNDER that:
+## with air_accel now tiny (see its own comment), a long fall or a chain of
+## jumps has plenty of TIME to slowly climb toward air_max_speed even without
+## any exploit-like input, which would let mere airtime manufacture speed no
+## ground state could reach on its own -- exactly the invariant
+## tests/test_landing.gd's test_a_landing_can_never_add_speed_however_the_
+## keep_ratio_is_tuned and tests/test_slide_state.gd's
+## test_chained_slide_then_jump_cannot_stack_the_entry_boost both pin. Taking
+## the max with the CURRENT speed_along_wish (not a flat sprint_speed cap) is
+## what keeps the "never reduces carried-in momentum" half of the contract
+## intact: a player already faster than sprint_speed gets zero headroom here
+## (the ceiling sits at their own current speed), never a forced slowdown.
 func air_accelerate(wish_dir: Vector3, delta: float) -> void:
 	if wish_dir == Vector3.ZERO:
 		return
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	var speed_along_wish := horizontal.dot(wish_dir)
-	var headroom := config.air_max_speed - speed_along_wish
+	var ceiling := minf(config.air_max_speed, maxf(config.sprint_speed, speed_along_wish))
+	var headroom := ceiling - speed_along_wish
 	if headroom <= 0.0:
 		return
 	var candidate := horizontal + wish_dir * minf(config.air_accel * delta, headroom)

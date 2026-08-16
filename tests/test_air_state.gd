@@ -107,6 +107,55 @@ func test_chained_jumps_do_not_stack_speed() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
+## Companion to test_chained_jumps_do_not_stack_speed, which only ever holds
+## a fixed forward input. This drives an actual air-strafe pattern -- a
+## rotating wish_dir every few ticks while airborne, the way a player trying
+## to exploit air_accelerate()'s Quake-style projection would -- across a
+## full chain of jumps, and pins the result against MovementConfig.sprint_speed
+## itself (never a literal), per the guide's AirControl = 0.025 model: air
+## control is not blocked by a low air_max_speed ceiling (see that field's own
+## comment), so the only thing standing between this and a repeat of the old
+## air_accel=12.0 / air_max_speed=9.0 ratchet (confirmed via
+## tools/probe_speed_exploit.gd against the live states before this test was
+## written: flat at sprint_speed across 8 chained hops, both with and without
+## strafing) is air_accel being small enough that a full hangtime of
+## continuous strafing cannot add meaningful speed. The 1.1x allowance is
+## itself relative to sprint_speed, not a bare number, so a future retune of
+## sprint_speed alone does not silently loosen this pin.
+func test_air_strafing_across_chained_jumps_never_exceeds_the_ground_speed_cap() -> void:
+	var world := await _spawn()
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	var cfg: MovementConfig = player.config
+
+	input.state.move = Vector2(0.0, 1.0)
+	input.state.sprint_held = true
+	await step(90)
+
+	var cap: float = cfg.sprint_speed * 1.1
+	var strafe_ticks := 0
+	for hop in 8:
+		input.press_jump()
+		var guard := 0
+		while player.state_machine.current_name != &"Ground" and guard < 300:
+			# Rotating wish_dir: the closest this project's simple projection
+			# model has to a strafe-jump's "keep wish_dir just ahead of
+			# velocity" technique.
+			var t := float(strafe_ticks) * 0.15
+			input.state.move = Vector2(sin(t), 1.0).normalized()
+			await step(1)
+			strafe_ticks += 1
+			guard += 1
+		input.release_jump()
+		input.state.move = Vector2(0.0, 1.0)
+		check(player.horizontal_speed() <= cap, \
+			"hop %d landed at %f m/s, above %f (sprint_speed %f x 1.1) -- air-strafing must not ratchet speed past the ground cap" \
+			% [hop + 1, player.horizontal_speed(), cap, cfg.sprint_speed])
+		await step(10)
+
+	TestWorld.teardown(world)
+	await step(1)
+
 func test_coyote_time_allows_a_jump_just_after_leaving_ground() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
