@@ -17,6 +17,21 @@ var _crouch_offset: float = 0.0
 var _wall_side: int = 0
 var _roll: float = 0.0
 
+## The attached body's head/neck node position, in THIS rig's PARENT's
+## (Player's) local space -- i.e. Player.to_local(head_node.global_position)
+## -- as of the most recent set_head_position() call. Meaningless whenever
+## _has_head is false. Driven by Player every physics tick, mirroring
+## set_wall_side()/set_crouch_amount(); see update_effects()'s own use of it
+## for the head-follow camera.
+var _head_local_position: Vector3 = Vector3.ZERO
+## True only for ticks Player actually supplied a head position -- i.e. a
+## body is attached AND Player._find_head_node() matched something visible
+## in it. update_effects() must gate on this rather than comparing
+## _head_local_position against a sentinel: Vector3.ZERO is itself a
+## perfectly legitimate head position, so treating it as "no head" would
+## silently misread a real, if centred, head as absent.
+var _has_head: bool = false
+
 func setup(cfg: MovementConfig) -> void:
 	_config = cfg
 	position.y = cfg.eye_height
@@ -33,6 +48,21 @@ func set_crouch_amount(amount: float) -> void:
 func set_wall_side(side: int) -> void:
 	_wall_side = side
 
+## The attached body's head/neck node position, in Player's local space
+## (Player.to_local(head_node.global_position)) -- see _head_local_position's
+## own comment. Called by Player every tick a head is available.
+func set_head_position(local_position: Vector3) -> void:
+	_head_local_position = local_position
+	_has_head = true
+
+## Called by Player every tick NO head is available -- no body attached, or
+## the attached body has nothing _find_head_node() could match. Must be
+## called explicitly rather than relying on a timeout: a stale _has_head left
+## true from a body that has since gone away would otherwise keep blending
+## toward a head position nothing is updating any more.
+func clear_head_position() -> void:
+	_has_head = false
+
 ## Levels the view and clears landing/bob state. Called on a manual reset
 ## (Arena's R key) so the camera snaps back to a fresh-spawn look instead of
 ## keeping whatever pitch, landing dip, or bob phase it had the instant
@@ -45,6 +75,7 @@ func reset_state() -> void:
 	_crouch_offset = 0.0
 	_wall_side = 0
 	_roll = 0.0
+	_has_head = false
 	rotation.x = 0.0
 	rotation.z = 0.0
 	if camera != null:
@@ -97,6 +128,25 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var target_offset := _config.slide_camera_drop * _crouch_amount
 	_crouch_offset = move_toward(_crouch_offset, target_offset, _config.crouch_lerp_speed * delta)
 	position.y -= _crouch_offset
+
+	# Blend the eye position toward the attached body's head/neck node, LAST
+	# among the position.* writes above -- lerp(t=0.0) returns `position`
+	# bit-for-bit (Vector3.lerp is exactly a + (b-a)*t, and any finite delta
+	# times 0.0 is exactly 0.0 in IEEE 754), which is what makes
+	# camera_head_follow_strength == 0.0 degrade to EXACTLY today's camera
+	# rather than merely close to it -- and _has_head being false (no body,
+	# or nothing in it matched _find_head_node()) skips this block entirely,
+	# the same guarantee. Deliberately no move_toward/easing layer of its
+	# own: the attached body's own AnimationPlayer already supplies whatever
+	# motion this tracks, and the strength dial is meant to scale that
+	# directly, not add a second lag on top of it. Clamped independently of
+	# whatever range the F1 panel's slider can reach (see
+	# MovementConfig.camera_head_follow_strength's own comment on why its
+	# range and this clamp can disagree) so a value pushed past 1.0 can never
+	# overshoot past the bone's own position.
+	if _has_head:
+		var strength := clampf(_config.camera_head_follow_strength, 0.0, 1.0)
+		position = position.lerp(_head_local_position, strength)
 
 	# rotation.z, unlike position.y above, is never hard-reset elsewhere in
 	# this function, so a plain move_toward accumulates correctly frame to

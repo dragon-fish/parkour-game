@@ -253,3 +253,24 @@ extends Resource
 @export var slide_camera_drop: float = 0.75
 ## How fast the camera moves between standing and sliding height.
 @export var crouch_lerp_speed: float = 9.0
+## How much the camera follows the attached body's head/neck node's
+## POSITION each tick, from 0 (ignore it completely -- today's camera,
+## eye_height plus bob/dip/crouch only) to 1 (sit exactly at the node's
+## current position). ORIENTATION is never affected by this value -- see
+## CameraRig.update_effects()'s own comment -- only translation.
+##
+## Defaulted LOW, not somewhere in the middle: this project's own body
+## wrapper's run/jump clips were authored to be watched from behind, not worn
+## as a first-person view, and a full-strength follow is expected to read as
+## nauseating rather than merely "a bit much". The intent is for an owner to
+## dial UP from a calm baseline until it starts to bother them, not dial DOWN
+## from something already uncomfortable.
+##
+## NOTE: the F1 panel's sliders size themselves to RANGE_FACTOR (3x) the
+## property's own default with no upper-bound hint of their own (see
+## tuning_panel.gd) -- at this low a default the live slider cannot reach the
+## full 1.0 "follows the node completely" end at all. CameraRig.update_effects()
+## clamps to [0, 1] regardless, so this is a live-tuning reach limitation, not
+## a correctness one; a preset .tres file or a direct script edit can still
+## reach 1.0 if that is ever worth doing.
+@export var camera_head_follow_strength: float = 0.15

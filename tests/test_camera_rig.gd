@@ -194,6 +194,104 @@ func test_roll_and_pitch_compose_without_clobbering() -> void:
 	body.queue_free()
 	await step(1)
 
+## Direct proportionality, not just "a bigger strength moves it more": with
+## no other camera effect in play (grounded speed 0, no landing, no crouch,
+## no wall), update_effects() reduces to `position = eye_height.lerp(head,
+## strength)`, so the OFFSET from the strength=0 baseline must equal
+## `(head - eye_height) * strength` exactly, for more than one strength
+## value. A test that only checked "offset grows with strength" could still
+## pass a head-follow that saturates, or one silently scaled by something
+## other than the configured value (e.g. hardcoded to always follow at a
+## fixed 50%).
+func test_head_follow_offset_scales_with_configured_strength() -> void:
+	var cfg := MovementConfig.new()
+
+	# A head position clearly off in every axis, so a bug that only follows
+	# (say) Y cannot hide behind a head position that happens to be pure Y.
+	var head := Vector3(0.3, 1.1, -0.2)
+	var baseline := Vector3(0.0, cfg.eye_height, 0.0)
+
+	# A FRESH rig per strength value, not one rig reused across iterations:
+	# update_effects() only hard-resets position.Y each call (see its own
+	# comment on why); X/Z are written ONLY by the head-follow lerp, so a
+	# rig that already followed the head once at strength 0.25 carries that
+	# X/Z into the next iteration's starting `position` -- comparing against
+	# a fixed `baseline` computed once, up front, would then be comparing
+	# against a position the rig was never actually AT going into that call.
+	for strength: float in [0.25, 0.6, 1.0]:
+		cfg.camera_head_follow_strength = strength
+		var rig := _make_rig()
+		await step(1)
+		rig.setup(cfg)
+		rig.set_head_position(head)
+		rig.update_effects(TICK, 0.0, true)
+		var expected: Vector3 = baseline + (head - baseline) * strength
+		check(rig.position.distance_to(expected) < 0.001, \
+			"strength %f: expected position ~%s, got %s" % [strength, expected, rig.position])
+		rig.queue_free()
+
+	await step(1)
+
+## strength = 0 must reproduce the no-body camera EXACTLY, not merely
+## approximately -- see update_effects()'s own comment on why lerp(t=0.0) is
+## bit-exact for this. Sampled across a moving/airborne/landing sequence, not
+## just at rest: `position` (as opposed to `camera.position`, which carries
+## bob/dip and is deliberately NOT what this checks) is written only by the
+## eye_height reset, the crouch offset (pinned at 0 here -- set_crouch_amount()
+## is never called in this test), and the head-follow lerp itself, so a
+## SINGLE rig's `position` before vs. after a head position is supplied is a
+## direct, bit-exact comparison with nothing else able to explain a
+## difference.
+func test_head_follow_at_zero_strength_matches_no_body_exactly() -> void:
+	var cfg := MovementConfig.new()
+	cfg.camera_head_follow_strength = 0.0
+	var rig := _make_rig()
+	await step(1)
+	rig.setup(cfg)
+
+	for i in 60:
+		var speed := 6.0 if i < 40 else 0.0
+		var grounded := i < 30 or i >= 45
+		if i == 35:
+			rig.punch_landing(cfg.land_dip_speed_ref)
+		rig.update_effects(TICK, speed, grounded)
+	var without_head := rig.position
+
+	# A head position clearly off in every axis, so a bug that only zeroes
+	# out ONE component (or a fixed Vector3.ZERO fallback rather than truly
+	# gating on _has_head) cannot hide here.
+	rig.set_head_position(Vector3(5.0, -5.0, 5.0))
+	rig.update_effects(TICK, 0.0, true)
+	var with_head_at_zero_strength := rig.position
+
+	check(with_head_at_zero_strength == without_head, \
+		"strength 0.0 must reproduce the no-body camera bit-for-bit, got %s vs %s" \
+			% [with_head_at_zero_strength, without_head])
+
+	rig.queue_free()
+	await step(1)
+
+## Never having called set_head_position() at all -- the "no body attached,
+## or Player never found a head/neck node" case -- must degrade the same way
+## a zero strength does, not error and not silently apply some stale/default
+## head position (Vector3.ZERO is a legitimate head position elsewhere in
+## this file, so falling back to it here would be wrong, not merely unlucky).
+func test_head_follow_degrades_without_error_when_no_head_was_ever_set() -> void:
+	var cfg := MovementConfig.new()
+	cfg.camera_head_follow_strength = 1.0
+	var rig := _make_rig()
+	await step(1)
+	rig.setup(cfg)
+
+	# No set_head_position() call anywhere above this line.
+	for i in 30:
+		rig.update_effects(TICK, 3.0, true)
+	check_approx(rig.position.y, cfg.eye_height, 0.01, \
+		"a rig that was never told about a head must keep behaving like today's stable camera")
+
+	rig.queue_free()
+	await step(1)
+
 func test_reset_state_clears_camera_roll() -> void:
 	var cfg := MovementConfig.new()
 	var rig := _make_rig()

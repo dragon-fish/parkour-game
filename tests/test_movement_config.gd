@@ -31,6 +31,21 @@ func test_terminal_velocity_exceeds_jump_velocity() -> void:
 ## directly contradicts that comment and the spec's "speed is hard to earn,
 ## easy to lose". Pinned against BOTH ceilings a player can otherwise reach,
 ## since either one alone could rise past the wall's cap under future tuning.
+## camera_head_follow_strength is a lerp weight -- meaningless outside
+## [0, 1] -- and its own doc comment commits to defaulting LOW so an owner
+## dials UP from a stable camera rather than DOWN from a nauseating one.
+## "Low" is checked as "in the bottom half of the valid range", not a bare
+## value pin, so this survives a future retune that keeps the design intent
+## but nudges the exact number.
+func test_camera_head_follow_strength_defaults_low_and_in_range() -> void:
+	await step(1)
+	var c := MovementConfig.new()
+	check(c.camera_head_follow_strength >= 0.0, "camera_head_follow_strength must not default negative")
+	check(c.camera_head_follow_strength <= 1.0, "camera_head_follow_strength must not default above 1.0")
+	check(c.camera_head_follow_strength < 0.5, \
+		"camera_head_follow_strength (%f) must default low, in the bottom half of [0, 1]" \
+			% c.camera_head_follow_strength)
+
 func test_wall_running_cannot_create_speed_beyond_what_foot_speed_reaches() -> void:
 	await step(1)
 	var c := MovementConfig.new()
