@@ -67,6 +67,51 @@ func _run() -> void:
 
 	player.camera_rig = rig
 
+	# Probe rig. Heights are expressed relative to the body origin, which sits
+	# at the capsule centre — feet are 0.9 m below it.
+	var probes := Node3D.new()
+	probes.name = "Probes"
+	probes.set_script(load("res://scripts/player/probes.gd"))
+	player.add_child(probes)
+	probes.owner = player
+
+	# Forward ray at shin height: does something block the way at all?
+	var vault_low := RayCast3D.new()
+	vault_low.name = "VaultLow"
+	vault_low.position = Vector3(0.0, -0.55, 0.0)
+	vault_low.target_position = Vector3(0.0, 0.0, -1.4)
+	vault_low.enabled = true
+	probes.add_child(vault_low)
+	vault_low.owner = player
+
+	# Forward ray at chest height: if THIS hits too, the obstacle is a wall,
+	# not something to vault.
+	var vault_high := RayCast3D.new()
+	vault_high.name = "VaultHigh"
+	vault_high.position = Vector3(0.0, 0.45, 0.0)
+	vault_high.target_position = Vector3(0.0, 0.0, -1.4)
+	vault_high.enabled = true
+	probes.add_child(vault_high)
+	vault_high.owner = player
+
+	# Downward ray from above and ahead: finds the top surface to land on.
+	#
+	# The start height is load-bearing. Heights in MovementConfig are measured
+	# from the FEET, which sit 0.9 m below this origin, so a ledge at the
+	# configured maximum of 2.8 m sits at +1.9 m here. Starting the ray at
+	# +1.6 would put its origin BELOW the highest ledge it is supposed to find,
+	# and tall ledges would silently never be detected. Start above the
+	# configured maximum, and reach below the feet.
+	var surface := RayCast3D.new()
+	surface.name = "SurfaceDown"
+	surface.position = Vector3(0.0, 2.2, -1.0)
+	surface.target_position = Vector3(0.0, -3.2, 0.0)
+	surface.enabled = true
+	probes.add_child(surface)
+	surface.owner = player
+
+	player.probes = probes
+
 	DirAccess.make_dir_recursive_absolute("res://scenes/player")
 	var packed := PackedScene.new()
 	var pack_error := packed.pack(player)

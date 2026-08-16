@@ -112,6 +112,23 @@ extends Resource
 ## a slide on touchdown without reopening one every time a slide ends.
 @export var crouch_buffer_time: float = 0.15
 
+@export_group("Vault")
+## Highest obstacle top, measured from the player's feet, that can be vaulted.
+@export var vault_max_height: float = 1.3
+## How far ahead of the body the vault probe reaches.
+@export var vault_reach: float = 1.4
+## Minimum horizontal speed required to vault. Vaulting from a standstill would
+## turn every waist-high box into a free elevator.
+@export var vault_min_speed: float = 2.5
+
+@export_group("Ledge")
+## Lowest and highest ledge tops, measured from the player's feet, that can be
+## grabbed. The lower bound keeps low ledges going through Vault instead.
+@export var ledge_min_height: float = 1.4
+@export var ledge_max_height: float = 2.8
+## How far ahead of the body a ledge can be reached.
+@export var ledge_reach: float = 1.0
+
 @export_group("Camera")
 ## Height of the camera rig above the player's origin. Baked into player.tscn
 ## as CameraRig's initial local position by tools/build_player_scene.gd, but

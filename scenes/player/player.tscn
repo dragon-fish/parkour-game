@@ -1,31 +1,48 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_dovo2"]
-[ext_resource type="Script" path="res://scripts/camera/camera_rig.gd" id="2_gmlin"]
+[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_gmlin"]
+[ext_resource type="Script" path="res://scripts/camera/camera_rig.gd" id="2_lvxji"]
+[ext_resource type="Script" path="res://scripts/player/probes.gd" id="3_p47bc"]
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_lvxji"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_75vfm"]
 radius = 0.4
 height = 1.8
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_p47bc"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_0owmy"]
 radius = 0.4
 height = 1.8
 
-[node name="Player" type="CharacterBody3D" unique_id=1592150355 node_paths=PackedStringArray("camera_rig")]
-script = ExtResource("1_dovo2")
+[node name="Player" type="CharacterBody3D" unique_id=1499928298 node_paths=PackedStringArray("camera_rig", "probes")]
+script = ExtResource("1_gmlin")
 camera_rig = NodePath("CameraRig")
+probes = NodePath("Probes")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1628761211]
-shape = SubResource("CapsuleShape3D_lvxji")
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=885335274]
+shape = SubResource("CapsuleShape3D_75vfm")
 
-[node name="CameraRig" type="Node3D" parent="." unique_id=918329287]
+[node name="CameraRig" type="Node3D" parent="." unique_id=171728486]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
-script = ExtResource("2_gmlin")
+script = ExtResource("2_lvxji")
 
-[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=1227431655]
+[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=19692598]
 
-[node name="BodyRoot" type="Node3D" parent="." unique_id=536135531]
+[node name="BodyRoot" type="Node3D" parent="." unique_id=1188513559]
 
-[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=421227271]
-shape = SubResource("CapsuleShape3D_p47bc")
+[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=600230810]
+shape = SubResource("CapsuleShape3D_0owmy")
 target_position = Vector3(0, 0, 0)
+
+[node name="Probes" type="Node3D" parent="." unique_id=684805494]
+script = ExtResource("3_p47bc")
+
+[node name="VaultLow" type="RayCast3D" parent="Probes" unique_id=1709473783]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.55, 0)
+target_position = Vector3(0, 0, -1.4)
+
+[node name="VaultHigh" type="RayCast3D" parent="Probes" unique_id=106446777]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+target_position = Vector3(0, 0, -1.4)
+
+[node name="SurfaceDown" type="RayCast3D" parent="Probes" unique_id=1202646227]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, -1)
+target_position = Vector3(0, -3.2, 0)

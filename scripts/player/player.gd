@@ -54,6 +54,9 @@ func consume_landing() -> float:
 ## Assigned in player.tscn. Optional so headless tests can run without one.
 @export var camera_rig: CameraRig
 
+## Assigned in player.tscn. Optional so hand-built test players still work.
+@export var probes: Probes
+
 var _standing_height: float = 0.0
 
 var _coyote_timer: float = 0.0
@@ -139,6 +142,9 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 		_standing_height = owned.height
 
 	_build_state_machine()
+
+	if probes != null:
+		probes.setup(config, _standing_height * 0.5)
 
 ## Clears per-life transient state that outlives a single frame: the coyote
 ## and jump-buffer timers, and the last landing speed CameraRig reads for its
