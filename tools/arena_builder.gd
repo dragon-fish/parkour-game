@@ -104,6 +104,54 @@ func _attach(parent: Node3D, child: Node) -> void:
 	for grandchild in child.get_children():
 		grandchild.owner = _root
 
+## Recursively collects every StaticBody3D with a box-shaped "Collision" child
+## under node -- the same convention _box() always builds. Duplicated rather
+## than shared with tests/test_arena.gd's own identically-named helper: this
+## runs at BUILD time, on a tree that may never be added to a SceneTree (see
+## build()'s own header comment), so it cannot depend on anything under
+## tests/.
+func _collect_box_bodies(node: Node, out: Array) -> void:
+	if node is StaticBody3D:
+		var collision := node.get_node_or_null("Collision")
+		if collision is CollisionShape3D and collision.shape is BoxShape3D:
+			out.append(node)
+	for child in node.get_children():
+		_collect_box_bodies(child, out)
+
+## Composes `node`'s transform up through its Node3D ancestors by hand.
+##
+## NOT the same as node.global_transform: that getter requires the node to
+## actually be INSIDE a live SceneTree (Node.is_inside_tree()) and silently
+## returns IDENTITY -- logging "Condition "!is_inside_tree()" is true" -- when
+## it is not. build() constructs its ENTIRE tree off-tree (see its own header
+## comment: callers pack it or inspect it directly, neither of which requires
+## adding it to a SceneTree first), so every body._collect_box_bodies() below
+## finds is in exactly that state at the point the Floor block calls this.
+## Verified directly: computing the floor's bounds via global_transform first
+## produced a nonsensical ~28x35 slab (every body's world-space box collapsed
+## to its LOCAL box size centred on the origin, identity transform applied to
+## each), rather than the true, much larger footprint -- this walk fixes that
+## by using `transform` (always valid regardless of tree membership) at every
+## step instead.
+func _global_transform_offline(node: Node3D) -> Transform3D:
+	var xform := node.transform
+	var parent := node.get_parent()
+	while parent is Node3D:
+		xform = (parent as Node3D).transform * xform
+		parent = parent.get_parent()
+	return xform
+
+## World-space AABB of a box body, computed from its transform so a rotated
+## box (SlideArea's UpRamp/DownRamp) is handled correctly, not just a
+## translated one -- see _global_transform_offline()'s own comment for why
+## this cannot simply read body.global_transform the way
+## tests/test_arena.gd's identically-named helper does (that one runs AFTER
+## the arena is loaded into a live tree, where global_transform is valid).
+func _world_aabb(body: Node3D) -> AABB:
+	var box: BoxShape3D = (body.get_node("Collision") as CollisionShape3D).shape
+	var half := box.size * 0.5
+	return _global_transform_offline(body) * AABB(-half, box.size)
+
 ## Builds and returns the full arena tree, unparented and not yet added to
 ## any SceneTree. Caller owns it: pack it (tools/build_main_scene.gd) or
 ## inspect it directly and free() it (tests/test_arena.gd).
@@ -171,38 +219,9 @@ func build() -> Node3D:
 	var jump_peak_height: float = (config.jump_velocity * config.jump_velocity) \
 		/ (2.0 * maxf(config.gravity, 0.001))
 
-	# 60 wide, but no longer a fixed 100 long: P3's WallArea (north, +Z) and
-	# P4's VaultArea ledges (south, -Z) both needed more room than the
-	# original 60x60 slab left free, and the fix in both directions is to
-	# enlarge the floor rather than let anything hang over its edge. x is
-	# untouched on both.
-	#
-	# North stays the WallArea's own fixed budget (see the WallArea comment
-	# for the exact math) -- unaffected by this task's changes, so held as a
-	# plain constant rather than re-derived here.
-	const FLOOR_NORTH_EDGE := 70.0
-	# South is new: VaultArea's ledge spacing (see its own comment further
-	# down) now runs off a run-up-and-jump distance close to
-	# max_jump_distance, TWICE in a row (LedgeLow, then LedgeMid), which the
-	# arena's old fixed -30 edge no longer comfortably contains. This has to
-	# be computed HERE, before VaultArea exists to ask -- every _attach() call
-	# below needs Floor already present as _root's sibling -- so it is a
-	# deliberately generous bound on VaultArea's own arithmetic (mirrored, not
-	# read back from it) rather than an exact figure: FLOOR_SOUTH_MARGIN
-	# stands in for WallTooTall's own offset, the two REALIGN_BUFFER gaps, the
-	# ledge boxes' own depth and LedgeTooHigh's trailing gap, all fixed
-	# distances in VaultArea's own layout, with headroom on top; the
-	# max_jump_distance term is the part that actually needs to track a
-	# future retune, doubled for the two chained ledge jumps. JumpArea's
-	# Gap5/Gap6 and Step5/Step6 still deliberately extend past this edge into
-	# open air regardless of exactly where it sits (the "missed jump falls
-	# forever" case test_falling_out_of_the_level_respawns_the_player covers).
-	const FLOOR_SOUTH_MARGIN := 25.0
-	var floor_south_edge: float = -(FLOOR_SOUTH_MARGIN + 2.0 * max_jump_distance)
-	var floor_length: float = FLOOR_NORTH_EDGE - floor_south_edge
-	var floor_center_z: float = (FLOOR_NORTH_EDGE + floor_south_edge) * 0.5
-	_attach(_root, _box("Floor", Vector3(60.0, 1.0, floor_length),
-		Vector3(0.0, -0.5, floor_center_z), ground))
+	# Floor is built LAST (see the bottom of this function), sized from the
+	# union of every practice area's own bounds once they all exist, rather
+	# than the other way round -- see that comment for why.
 
 	var jump_area := Node3D.new()
 	jump_area.name = "JumpArea"
@@ -253,9 +272,10 @@ func build() -> Node3D:
 
 	# --- Slide course -------------------------------------------------------
 	#
-	# One continuous route, run from +Z toward -Z, entirely inside the 60x60
-	# Floor slab (z = -30..30) so every flat section IS the arena floor rather
-	# than a deck raised above it. Local z here equals world z; the area's only
+	# One continuous route, run from +Z toward -Z, entirely inside the arena
+	# Floor slab (sized to contain every practice area, see the Floor comment
+	# further down) so every flat section IS the arena floor rather than a
+	# deck raised above it. Local z here equals world z; the area's only
 	# offset is x = 18.
 	#
 	#   z  +26 .. +16   approach   bare arena floor, 10 m to reach sprint speed
@@ -374,7 +394,8 @@ func build() -> Node3D:
 	# course runs: JumpArea's boxes span roughly world x -10.5..11, SlideArea's
 	# roughly x 14..22, and everything below sits at world x -23..-16 — clear
 	# of both with several metres to spare on every side, and still well
-	# inside the 60x60 Floor slab (x, z each ±30).
+	# inside the arena Floor slab (sized to contain every practice area, see
+	# the Floor comment further down).
 	#
 	# Every obstacle here rests directly on the floor (its box is centred at
 	# y = height * 0.5, exactly like JumpArea's Step boxes), so there is no
@@ -548,9 +569,12 @@ func build() -> Node3D:
 	# retuning any of those keeps this comment true without anyone having to
 	# hand-edit a z value here.
 	#
-	# The floor was enlarged (see the Floor comment above) specifically to
-	# fit this without anything hanging over its edge: the course's own
-	# northern approach ends at z=65, 5 m short of the new edge at z=70.
+	# The floor is sized AFTER this area (see the Floor comment further down)
+	# specifically so nothing here can ever hang over its edge: the floor's
+	# footprint is derived from the union of every area's own bounds, this one
+	# included, plus a fixed margin -- so a future change to LongWall's own
+	# length or the zig-zag's own spacing keeps the floor covering it
+	# automatically instead of needing a hand-tuned edge coordinate here.
 	var wall_config := MovementConfig.new()
 	var wall_area := Node3D.new()
 	wall_area.name = "WallArea"
@@ -573,31 +597,29 @@ func build() -> Node3D:
 	# during a real run does not fall outside reach.
 	const WALL_NEAR_FACE := 0.45
 	const WALL_THICKNESS := 1.0
-	# Tall enough to contain a CHAINED climb, not just one attach. Measured
-	# directly (see this task's own report): wall_run_state.gd's
-	# consume_buffered_jump() branch ASSIGNS velocity.y = wall_jump_up on every
-	# wall-jump -- it does not add to whatever vertical speed the player
-	# already had -- and wall_gravity_scale only weakly decays it while
-	# attached. Under the pre-retune gravity (24.0, 3x the current value) that
-	# decay outran the reset fast enough that this never mattered; under the
-	# new gravity (see MovementConfig.gravity's own comment) it does not, and
-	# a fast run through the zig-zag chain nets real height EVERY cycle,
-	# climbing straight through an 8 m ceiling instead of running along it.
-	# wall_jump_up^2 / (2 * effective wall gravity) is the textbook peak rise
-	# of one upward kick decelerating at a constant rate -- an upper bound on
-	# what a SINGLE cycle can add, reached only if the player rides out the
-	# whole rise before jumping again (a real chained run leaves earlier, so
-	# this over-estimates each cycle on purpose). Multiplying by how many
-	# walls the zig-zag chain actually has (see zig_walls below) bounds the
-	# WORST case across the whole chain, closed-form rather than hand-picked,
-	# so a future retune of gravity/wall_gravity_scale/wall_jump_up keeps this
-	# tall enough automatically instead of needing its own separate fix.
+	# Tall enough to contain a CHAINED climb, though no longer sized to hide an
+	# unbounded one -- a PREVIOUS pass here found that wall_run_state.gd's
+	# consume_buffered_jump() branch ASSIGNED velocity.y = wall_jump_up on
+	# every wall-jump with no reference to how much height a chain had already
+	# banked, and "fixed" the symptom by making these walls tall enough to
+	# contain the worst case instead of touching the mechanic (see this task's
+	# own report on why that was a band-aid). WallRunState now bounds the
+	# climb itself: a chain of wall-jumps can never lift the player more than
+	# jump_peak_height (one plain jump's own reach) plus one wall_jump's own
+	# textbook peak rise above the ground it started from -- see
+	# wall_run_state.gd's own comment on that fix for the reasoning. This
+	# mirrors that SAME derivation, using PLAIN gravity rather than
+	# wall_gravity_scale-weakened gravity to match it exactly (gravity is
+	# never weakened the instant a wall-jump hands off to AirState;
+	# wall_gravity_scale only applies while actually attached), so a future
+	# retune of gravity/jump_velocity/wall_jump_up keeps this tall enough
+	# automatically without needing its own separate fix -- and no longer
+	# needs multiplying by the zig-zag's own wall count, since the bound no
+	# longer grows with chain length.
 	var wall_jump_peak_rise: float = (wall_config.wall_jump_up * wall_config.wall_jump_up) \
-		/ (2.0 * maxf(wall_config.gravity * wall_config.wall_gravity_scale, 0.001))
-	const ZIG_CHAIN_LENGTH := 4  # ZigLeft1, ZigRight1, ZigLeft2, ZigRight2 -- see zig_walls below
+		/ (2.0 * maxf(wall_config.gravity, 0.001))
 	const WALL_HEIGHT_MARGIN := 1.3
-	var wall_run_height: float = (jump_peak_height + ZIG_CHAIN_LENGTH * wall_jump_peak_rise) \
-		* WALL_HEIGHT_MARGIN
+	var wall_run_height: float = (jump_peak_height + wall_jump_peak_rise) * WALL_HEIGHT_MARGIN
 
 	# Long enough to exhaust a FULL wall_max_duration run, not merely the
 	# brief's minimum bar (half of wall_max_speed * wall_max_duration, which
@@ -683,6 +705,69 @@ func build() -> Node3D:
 		var far_z: float = near_z - zig_length
 		_attach(wall_area, _box(wall_name, Vector3(WALL_THICKNESS, wall_run_height, zig_length),
 			Vector3(side * ZIG_X, wall_run_height * 0.5, (near_z + far_z) * 0.5), wall_colour))
+
+	# --- Floor ----------------------------------------------------------------
+	#
+	# Sized from the union of every practice area's OWN bounds, not the other
+	# way round: every course above already derives its own geometry from the
+	# live jump arc (see each area's comments), so the floor is the one piece
+	# of geometry that must ADAPT to whatever they need, not something they are
+	# squeezed to fit inside. A fixed footprint (this used to be a hardcoded
+	# FLOOR_NORTH_EDGE=70 / FLOOR_SOUTH_MARGIN=25, sized to fit only VaultArea's
+	# own worst case) silently stopped covering JumpArea's gap ladder once the
+	# jump arc roughly doubled: Gap5 and Gap6 ended up sitting 14-32 m past the
+	# floor's south edge with nothing underneath them, which sent a missed jump
+	# there into an endless fall and the fall-recovery teleport instead of back
+	# onto solid practice ground -- silently destroying the thing the ladder
+	# exists to teach. Nothing caught it because the containment test of the
+	# time only ever checked VaultArea and WallArea by name; see
+	# tests/test_arena.gd's test_every_practice_area_fits_inside_the_arena_floor
+	# for the generalised replacement that closes that gap.
+	#
+	# Areas are discovered the same "XxxArea" naming convention
+	# test_practice_areas_do_not_overlap_each_other and the containment test
+	# above both already use, so a newly added area is covered the moment it
+	# exists, with no separate floor-sizing code to remember to update.
+	var practice_bounds: AABB
+	var has_practice_bounds := false
+	for area in _root.get_children():
+		if not (area is Node3D and String(area.name).ends_with("Area")):
+			continue
+		var boxes: Array = []
+		_collect_box_bodies(area, boxes)
+		for body in boxes:
+			var body_aabb := _world_aabb(body)
+			if not has_practice_bounds:
+				practice_bounds = body_aabb
+				has_practice_bounds = true
+			else:
+				practice_bounds = practice_bounds.merge(body_aabb)
+
+	# Generous, uniform headroom beyond the outermost body on every side --
+	# not a tight fit. Sized to comfortably clear the largest known approach
+	# runway in the arena: WallArea's own north approach starts the player 8 m
+	# north of LongWall's near face (see
+	# tests/test_arena.gd's test_the_wall_run_course_can_be_run_end_to_end),
+	# and LongWall's near face is the arena's northernmost solid body, so a
+	# margin under 8 m there would put that test's own start position off the
+	# floor. This is a fixed design buffer, like GAP_PLATFORM_LENGTH or
+	# LEDGE_DEPTH above -- not something that scales with the jump arc.
+	const FLOOR_MARGIN := 10.0
+	var floor_min_x: float = practice_bounds.position.x - FLOOR_MARGIN
+	var floor_max_x: float = practice_bounds.end.x + FLOOR_MARGIN
+	var floor_min_z: float = practice_bounds.position.z - FLOOR_MARGIN
+	var floor_max_z: float = practice_bounds.end.z + FLOOR_MARGIN
+	var floor_size := Vector3(floor_max_x - floor_min_x, 1.0, floor_max_z - floor_min_z)
+	var floor_center := Vector3((floor_min_x + floor_max_x) * 0.5, -0.5,
+		(floor_min_z + floor_max_z) * 0.5)
+	var floor_body := _box("Floor", floor_size, floor_center, ground)
+	_attach(_root, floor_body)
+	# Purely cosmetic in the resulting tree/.tscn: index 3 keeps Floor reading
+	# as "the ground, before the courses standing on it" (right after Sun,
+	# WorldEnvironment, SpawnPoint), matching where it always used to sit.
+	# Nothing depends on this ordering -- containment and overlap checks alike
+	# find bodies by name/path, not by sibling index.
+	_root.move_child(floor_body, 3)
 
 	var player_scene: PackedScene = load("res://scenes/player/player.tscn")
 	var player := player_scene.instantiate()

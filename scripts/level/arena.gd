@@ -40,11 +40,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.physical_keycode == KEY_R:
 			reset_player()
 
-## Recovers a player who fell out of the level — e.g. a missed jump past the
-## practice gaps, which extend beyond the floor's edge on purpose so their
-## spacing keeps reading off increasing jump distances. Checked every tick
-## rather than relying on the player to press R, since falling forever is not
-## a state a human should have to notice and self-rescue from.
+## Recovers a player who fell out of the level entirely -- off the far edge of
+## the (generously sized, see tools/arena_builder.gd's own Floor comment)
+## arena floor, or through a genuine hole in the geometry. The practice gaps
+## themselves land safely ON the floor now (a missed jump there is a
+## teachable "you came up short", not an endless fall -- see this task's own
+## report on why that used to be the opposite), so this exists for the
+## edge-of-the-world case, not as their landing net. Checked every tick rather
+## than relying on the player to press R, since falling forever is not a
+## state a human should have to notice and self-rescue from.
 func _physics_process(_delta: float) -> void:
 	if is_instance_valid(player) and player.global_position.y < -config.fall_recovery_depth:
 		reset_player()

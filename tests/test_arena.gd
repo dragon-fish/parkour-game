@@ -115,10 +115,12 @@ func test_falling_out_of_the_level_respawns_the_player() -> void:
 	var arena = await _load_arena()
 	await step(30)
 
-	# Past the floor's south edge, the practice gaps deliberately extend
-	# further than the floor so their spacing keeps reading off increasing
-	# jump distances (see tools/build_main_scene.gd) — a missed jump falls
-	# forever there without the kill-plane recovery this test checks for.
+	# The floor now contains every practice area (see arena_builder.gd's own
+	# Floor comment and test_every_practice_area_fits_inside_the_arena_floor),
+	# so a missed jump there lands on solid ground, not in open air -- this
+	# test instead drives the recovery directly, the same way falling off the
+	# far edge of the world (or through a genuine hole in the geometry) would,
+	# without needing the arena to be that large to prove the kill plane works.
 	var fall_depth: float = arena.config.fall_recovery_depth + 5.0
 	arena.player.global_position = arena.spawn_point.global_position + Vector3(0.0, -fall_depth, 0.0)
 	for i in 5:
@@ -712,13 +714,32 @@ func test_the_ledge_platforms_bracket_the_configured_range() -> void:
 	arena.queue_free()
 	await step(1)
 
-## The hard constraint from this task's brief: every body in the new practice
-## area must sit entirely inside the arena floor's footprint, or a missed
-## attempt drops the player through open air into the fall-recovery
-## teleport instead of back onto solid ground. Read the floor's own live
-## extent rather than hardcoding a +-30 literal, so a future floor resize
-## cannot leave this test quietly checking the wrong bound.
-func test_the_vault_area_fits_inside_the_arena_floor() -> void:
+## The hard constraint from this task's brief, generalised to EVERY practice
+## area rather than just Vault and Wall: every solid body anywhere in the
+## arena must sit entirely inside the arena floor's real footprint, or a
+## missed attempt drops the player through open air into the fall-recovery
+## teleport instead of back onto solid ground -- silently destroying whatever
+## that area exists to teach.
+##
+## THIS IS A GENERALISATION OF A GAP, NOT JUST A NEW CHECK: this test replaces
+## two predecessors, test_the_vault_area_fits_inside_the_arena_floor and
+## test_the_wall_area_fits_inside_the_arena_floor, which checked VaultArea and
+## WallArea BY NAME and nothing else. JumpArea and SlideArea were never
+## checked at all -- and JumpArea is exactly where the gap was: once the jump
+## arc roughly doubled, its Gap5/Gap6 platforms ended up sitting 14-32 m past
+## the floor's south edge with nothing underneath them, and nothing here ever
+## looked. Confirmed directly: running this test against the geometry as it
+## stood before arena_builder.gd's Floor was re-derived (see its own comment)
+## failed exactly this way, naming JumpArea/Gap5 and JumpArea/Gap6 as the
+## offending bodies -- that failure, on real repo history, is this test's own
+## bite-proofing.
+##
+## Areas are discovered the same "XxxArea" naming convention
+## test_practice_areas_do_not_overlap_each_other already uses, so a newly
+## added area is covered the moment it exists, and the floor's own live
+## extent is read rather than hardcoding a literal, so a future floor resize
+## cannot leave this quietly checking the wrong bound.
+func test_every_practice_area_fits_inside_the_arena_floor() -> void:
 	await step(1)
 	var arena = await _load_arena()
 
@@ -726,49 +747,27 @@ func test_the_vault_area_fits_inside_the_arena_floor() -> void:
 	var floor_box: BoxShape3D = (floor_node.get_node("Collision") as CollisionShape3D).shape
 	var floor_aabb := AABB(floor_node.global_position - floor_box.size * 0.5, floor_box.size)
 
-	var boxes: Array = []
-	_collect_box_bodies(arena.get_node("VaultArea"), boxes)
-	check_greater(float(boxes.size()), 0.0, \
-		"VaultArea contributed no box solids, so this test silently checked nothing")
+	var area_count := 0
+	for area in arena.get_children():
+		if not (area is Node3D and String(area.name).ends_with("Area")):
+			continue
+		area_count += 1
+		var boxes: Array = []
+		_collect_box_bodies(area, boxes)
+		check_greater(float(boxes.size()), 0.0, \
+			"%s contributed no box solids, so it was silently skipped by the containment check" % area.name)
 
-	for body in boxes:
-		var body_aabb := _world_aabb(body)
-		check(body_aabb.position.x >= floor_aabb.position.x and body_aabb.end.x <= floor_aabb.end.x, \
-			"VaultArea/%s extends past the floor's x extent (body %s, floor %s)" \
-			% [body.name, body_aabb, floor_aabb])
-		check(body_aabb.position.z >= floor_aabb.position.z and body_aabb.end.z <= floor_aabb.end.z, \
-			"VaultArea/%s extends past the floor's z extent (body %s, floor %s)" \
-			% [body.name, body_aabb, floor_aabb])
+		for body in boxes:
+			var body_aabb := _world_aabb(body)
+			check(body_aabb.position.x >= floor_aabb.position.x and body_aabb.end.x <= floor_aabb.end.x, \
+				"%s/%s extends past the floor's x extent (body %s, floor %s)" \
+				% [area.name, body.name, body_aabb, floor_aabb])
+			check(body_aabb.position.z >= floor_aabb.position.z and body_aabb.end.z <= floor_aabb.end.z, \
+				"%s/%s extends past the floor's z extent (body %s, floor %s)" \
+				% [area.name, body.name, body_aabb, floor_aabb])
 
-	arena.queue_free()
-	await step(1)
-
-## The hard constraint applied to the new P3 area too, mirroring
-## test_the_vault_area_fits_inside_the_arena_floor exactly: every body must
-## sit entirely inside the arena floor's (now enlarged, see arena_builder.gd's
-## Floor comment) footprint, or a missed attempt drops the player into the
-## fall-recovery teleport instead of back onto solid ground.
-func test_the_wall_area_fits_inside_the_arena_floor() -> void:
-	await step(1)
-	var arena = await _load_arena()
-
-	var floor_node := arena.get_node("Floor") as StaticBody3D
-	var floor_box: BoxShape3D = (floor_node.get_node("Collision") as CollisionShape3D).shape
-	var floor_aabb := AABB(floor_node.global_position - floor_box.size * 0.5, floor_box.size)
-
-	var boxes: Array = []
-	_collect_box_bodies(arena.get_node("WallArea"), boxes)
-	check_greater(float(boxes.size()), 0.0, \
-		"WallArea contributed no box solids, so this test silently checked nothing")
-
-	for body in boxes:
-		var body_aabb := _world_aabb(body)
-		check(body_aabb.position.x >= floor_aabb.position.x and body_aabb.end.x <= floor_aabb.end.x, \
-			"WallArea/%s extends past the floor's x extent (body %s, floor %s)" \
-			% [body.name, body_aabb, floor_aabb])
-		check(body_aabb.position.z >= floor_aabb.position.z and body_aabb.end.z <= floor_aabb.end.z, \
-			"WallArea/%s extends past the floor's z extent (body %s, floor %s)" \
-			% [body.name, body_aabb, floor_aabb])
+	check_greater(float(area_count), 1.0, \
+		"expected at least two practice areas to check, found %d" % area_count)
 
 	arena.queue_free()
 	await step(1)
