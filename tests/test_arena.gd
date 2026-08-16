@@ -462,3 +462,169 @@ func test_practice_areas_do_not_overlap_each_other() -> void:
 
 	arena.queue_free()
 	await step(1)
+
+func test_the_vault_area_spans_the_configured_limits() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	for name in ["VaultLow", "VaultMid", "VaultHigh", "WallTooTall", "LedgeLow", "LedgeMid", "LedgeTooHigh"]:
+		check(arena.get_node_or_null("VaultArea/%s" % name) != null, "%s is missing" % name)
+
+	# The area is only useful if it brackets the configured limits: something
+	# just inside each bound and something just outside it.
+	var high = arena.get_node("VaultArea/VaultHigh")
+	var high_box := ((high.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
+	check(high_box.size.y <= arena.config.vault_max_height, \
+		"VaultHigh should sit at or under the vault limit")
+
+	var wall = arena.get_node("VaultArea/WallTooTall")
+	var wall_box := ((wall.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
+	check_greater(wall_box.size.y, arena.config.vault_max_height, \
+		"WallTooTall should exceed the vault limit, or it teaches nothing")
+
+	arena.queue_free()
+	await step(1)
+
+## Companion to test_the_vault_area_spans_the_configured_limits, covering the
+## ledge half of the same area: LedgeLow and LedgeMid must each fall inside
+## [ledge_min_height, ledge_max_height], bracketing the two ends of that
+## range, and LedgeTooHigh must clearly exceed it.
+func test_the_ledge_platforms_bracket_the_configured_range() -> void:
+	await step(1)
+	var arena = await _load_arena()
+
+	var low = arena.get_node("VaultArea/LedgeLow")
+	var low_box := ((low.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
+	check(low_box.size.y >= arena.config.ledge_min_height, \
+		"LedgeLow should sit at or above the ledge minimum, or it can never be grabbed")
+	check(low_box.size.y <= arena.config.ledge_max_height, \
+		"LedgeLow should still be within the reachable ledge range")
+
+	var mid = arena.get_node("VaultArea/LedgeMid")
+	var mid_box := ((mid.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
+	check(mid_box.size.y <= arena.config.ledge_max_height, \
+		"LedgeMid should sit at or under the ledge maximum")
+	check_greater(mid_box.size.y, arena.config.ledge_min_height, \
+		"LedgeMid should still be within the reachable ledge range")
+
+	var too_high = arena.get_node("VaultArea/LedgeTooHigh")
+	var too_high_box := ((too_high.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
+	check_greater(too_high_box.size.y, arena.config.ledge_max_height, \
+		"LedgeTooHigh should exceed the ledge limit, or it teaches nothing")
+
+	arena.queue_free()
+	await step(1)
+
+## The hard constraint from this task's brief: every body in the new practice
+## area must sit entirely inside the arena floor's footprint, or a missed
+## attempt drops the player through open air into the fall-recovery
+## teleport instead of back onto solid ground. Read the floor's own live
+## extent rather than hardcoding a +-30 literal, so a future floor resize
+## cannot leave this test quietly checking the wrong bound.
+func test_the_vault_area_fits_inside_the_arena_floor() -> void:
+	await step(1)
+	var arena = await _load_arena()
+
+	var floor_node := arena.get_node("Floor") as StaticBody3D
+	var floor_box: BoxShape3D = (floor_node.get_node("Collision") as CollisionShape3D).shape
+	var floor_aabb := AABB(floor_node.global_position - floor_box.size * 0.5, floor_box.size)
+
+	var boxes: Array = []
+	_collect_box_bodies(arena.get_node("VaultArea"), boxes)
+	check_greater(float(boxes.size()), 0.0, \
+		"VaultArea contributed no box solids, so this test silently checked nothing")
+
+	for body in boxes:
+		var body_aabb := _world_aabb(body)
+		check(body_aabb.position.x >= floor_aabb.position.x and body_aabb.end.x <= floor_aabb.end.x, \
+			"VaultArea/%s extends past the floor's x extent (body %s, floor %s)" \
+			% [body.name, body_aabb, floor_aabb])
+		check(body_aabb.position.z >= floor_aabb.position.z and body_aabb.end.z <= floor_aabb.end.z, \
+			"VaultArea/%s extends past the floor's z extent (body %s, floor %s)" \
+			% [body.name, body_aabb, floor_aabb])
+
+	arena.queue_free()
+	await step(1)
+
+## Recursively builds a semantic snapshot of a node tree for structural
+## comparison: node path, class, script identity, local transform, and (for a
+## CollisionShape3D wrapping a BoxShape3D) its shape size. Deliberately
+## excludes anything belonging to the on-disk .tscn FORMAT rather than the
+## live objects it describes — unique_id values and sub_resource/ext_resource
+## numbering both churn on every save, which is exactly why a plain text diff
+## of scenes/main.tscn against itself is useless here. None of that is
+## visible through the node/resource API this walks, so it is excluded by
+## construction rather than by filtering it back out afterward.
+func _snapshot(node: Node, path: String, out: Dictionary) -> void:
+	var entry := {
+		"class": node.get_class(),
+		"script": node.get_script().resource_path if node.get_script() != null else "",
+	}
+	if node is Node3D:
+		entry["position"] = node.position
+		entry["rotation"] = node.rotation
+		entry["scale"] = node.scale
+	if node is CollisionShape3D and node.shape is BoxShape3D:
+		entry["box_size"] = (node.shape as BoxShape3D).size
+	out[path] = entry
+	for child in node.get_children():
+		_snapshot(child, path + "/" + String(child.name), out)
+
+## Regenerating scenes/main.tscn must never be able to silently diverge from
+## what is actually committed — that is exactly how a hand-edited .tscn (a
+## Floor resized from 60x1x60 to 60x1x80.84 by something other than this
+## generator) once sat undetected in this repo. ArenaBuilder.build() is the
+## single source of truth both tools/build_main_scene.gd and this test call,
+## so comparing its live, unsaved output against what ResourceLoader reads
+## back from disk is a direct test of "the committed file IS this generator's
+## output", not an approximation of it.
+func test_regenerating_the_scene_matches_what_is_committed() -> void:
+	await step(1)
+
+	var builder_script: GDScript = load("res://tools/arena_builder.gd")
+	var fresh: Node3D = builder_script.new().build()
+	var fresh_snapshot: Dictionary = {}
+	_snapshot(fresh, fresh.name, fresh_snapshot)
+	fresh.free()  # never entered a tree — an immediate free() is correct here
+
+	var packed: PackedScene = ResourceLoader.load(SCENE, "", ResourceLoader.CACHE_MODE_IGNORE)
+	var committed: Node3D = packed.instantiate()
+	var committed_snapshot: Dictionary = {}
+	_snapshot(committed, committed.name, committed_snapshot)
+	committed.free()
+
+	var fresh_paths: Array = fresh_snapshot.keys()
+	var committed_paths: Array = committed_snapshot.keys()
+
+	var only_fresh: Array = []
+	for p in fresh_paths:
+		if not committed_snapshot.has(p):
+			only_fresh.append(p)
+	var only_committed: Array = []
+	for p in committed_paths:
+		if not fresh_snapshot.has(p):
+			only_committed.append(p)
+	check(only_fresh.is_empty() and only_committed.is_empty(), \
+		"regenerating produces a different node set than what is committed — only in regenerated: %s, only in committed: %s" \
+		% [only_fresh, only_committed])
+
+	for path in fresh_paths:
+		if not committed_snapshot.has(path):
+			continue  # already reported above
+		var a: Dictionary = fresh_snapshot[path]
+		var b: Dictionary = committed_snapshot[path]
+		check(a["class"] == b["class"], \
+			"%s: class differs between regenerated (%s) and committed (%s)" % [path, a["class"], b["class"]])
+		check(a["script"] == b["script"], \
+			"%s: script differs between regenerated (%s) and committed (%s)" % [path, a["script"], b["script"]])
+		if a.has("position"):
+			check((a["position"] as Vector3).is_equal_approx(b["position"]), \
+				"%s: position differs between regenerated (%s) and committed (%s)" % [path, a["position"], b["position"]])
+			check((a["rotation"] as Vector3).is_equal_approx(b["rotation"]), \
+				"%s: rotation differs between regenerated (%s) and committed (%s)" % [path, a["rotation"], b["rotation"]])
+			check((a["scale"] as Vector3).is_equal_approx(b["scale"]), \
+				"%s: scale differs between regenerated (%s) and committed (%s)" % [path, a["scale"], b["scale"]])
+		if a.has("box_size"):
+			check((a["box_size"] as Vector3).is_equal_approx(b["box_size"]), \
+				"%s: collision box size differs between regenerated (%s) and committed (%s)" % [path, a["box_size"], b["box_size"]])
+
+	await step(1)
