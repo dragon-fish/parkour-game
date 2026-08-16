@@ -55,8 +55,17 @@ $errorPattern = '^(SCRIPT ERROR|USER ERROR|ERROR):'
 # assert's exact message text, not the file name or the bogus state name,
 # so a real new crash anywhere in test_state_machine.gd cannot hide behind
 # this entry.
+# The second entry is the same arrangement for the grounded-declaration
+# invariant: tests/test_grounded_oracle.gd's
+# test_a_state_that_never_declares_grounded_does_not_inherit_it registers a
+# state that deliberately never calls set_grounded(), to prove
+# StateMachine._check_declared_grounded() catches it -- the guard firing IS
+# that test passing. Matched on the invariant's own message text (which both
+# the assert and the push_error carry), not on a file or state name, so a real
+# state forgetting the call anywhere else still fails the run.
 $allowlist = @(
-    'Assertion failed: transition to unknown state: Nonexistent'
+    'Assertion failed: transition to unknown state: Nonexistent',
+    'state Silent did not declare grounded-ness'
 )
 
 $unexpected = @()

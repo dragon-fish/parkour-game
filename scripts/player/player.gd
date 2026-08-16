@@ -33,8 +33,26 @@ var grounded: bool = false
 ## (matches the brief's declared interface) rather than widening it.
 var _pending_landing: float = -1.0
 
+## Number of set_grounded() calls made so far, ever. Read ONLY by StateMachine,
+## which snapshots it when a state is entered and checks it has moved by the end
+## of that state's first physics_update — that is how "a state DECLARES its
+## grounded-ness" is enforced structurally instead of by convention. The
+## absolute value is meaningless; only differences between snapshots are.
+var grounded_declarations: int = 0
+
 func set_grounded(value: bool) -> void:
 	grounded = value
+	grounded_declarations += 1
+
+## Clears `grounded` WITHOUT counting as a declaration. Called only by
+## StateMachine, as the fail-safe half of the invariant above: a state that
+## never declared must not go on inheriting the previous state's value — a
+## WallRun that forgot the call would inherit Ground's `true` and refill coyote
+## time every tick, i.e. infinite jumps. Deliberately not routed through
+## set_grounded(), or the fail-safe would satisfy the very check it exists to
+## keep reporting.
+func clear_grounded_undeclared() -> void:
+	grounded = false
 
 ## Reported by a state at the moment it detects a landing. impact_speed must
 ## be >= 0.0 — see the sentinel note on _pending_landing above.
@@ -58,6 +76,9 @@ func consume_landing() -> float:
 @export var probes: Probes
 
 var _standing_height: float = 0.0
+
+## Backing store for travel_speed(); see its doc comment.
+var _travel_speed: float = 0.0
 
 var _coyote_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
@@ -172,6 +193,9 @@ func reset_state() -> void:
 	_jump_buffer_timer = 0.0
 	_crouch_buffer_timer = 0.0
 	_ledge_cooldown = 0.0
+	# A respawn teleport is not travel: leave the camera's speed cue at rest
+	# rather than letting the first tick after the reset read the old life's.
+	_travel_speed = 0.0
 	last_landing_speed = 0.0
 	grounded = false
 	_pending_landing = -1.0
@@ -219,6 +243,10 @@ func _build_state_machine() -> void:
 func _physics_process(delta: float) -> void:
 	if state_machine == null:
 		return
+	# Sampled at the START of the tick, not carried over from the end of the
+	# previous one, so a teleport made from outside this function (the arena's
+	# respawn, a test placing the body) is never measured as travel.
+	var tick_start_position := global_position
 	var input := input_source.poll()
 	last_input = input
 	_tick_timers(delta, input)
@@ -232,6 +260,9 @@ func _physics_process(delta: float) -> void:
 
 	state_machine.physics_update(delta, input)
 
+	var travelled := global_position - tick_start_position
+	_travel_speed = Vector2(travelled.x, travelled.z).length() / maxf(delta, 0.0001)
+
 	# Always drained, camera_rig or not, so a landing can only ever be acted
 	# on once regardless of whether anything is listening this tick.
 	var landing_impact := consume_landing()
@@ -239,7 +270,9 @@ func _physics_process(delta: float) -> void:
 		if landing_impact >= 0.0:
 			camera_rig.punch_landing(landing_impact)
 		camera_rig.set_crouch_amount(1.0 if state_machine.current_name == PlayerState.SLIDE else 0.0)
-		camera_rig.update_effects(delta, horizontal_speed(), grounded)
+		# travel_speed(), NOT horizontal_speed() — see travel_speed()'s note on
+		# why velocity lies through a vault or a mantle.
+		camera_rig.update_effects(delta, travel_speed(), grounded)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and input_source is KeyboardInputSource:
@@ -314,6 +347,31 @@ func wish_direction(input: MoveInput) -> Vector3:
 
 func horizontal_speed() -> float:
 	return Vector2(velocity.x, velocity.z).length()
+
+## How fast the body ACTUALLY moved horizontally last physics tick, measured
+## from its displacement rather than from `velocity`.
+##
+## This exists because `velocity` lies during a scripted move: VaultState and
+## LedgeHangState drive global_position directly and deliberately zero velocity
+## for the duration (see ScriptedMove), so horizontal_speed() reads 0 through
+## the whole vault or mantle. Feeding that to the camera collapsed the FOV back
+## toward fov_base at precisely the moment the player is moving fastest — a
+## visible slow-down cue on the one action that is supposed to read as a burst.
+##
+## Displacement never lies, in any state, so the camera gets this instead of
+## horizontal_speed(). Note what it honestly DOES report: ScriptedMove's arc is
+## ease-out, so the last few ticks of a vault or mantle really are slow and the
+## FOV really does ease back over them. That is the manoeuvre ending, not a
+## false slow-down at its peak — measured on a sprint vault, the FOV now rides
+## 92.6 -> 93.7 -> 85.4 across the move where feeding velocity took it to 77.2.
+##
+## The physics states are unaffected: their speed gates
+## (slide entry, vault_min_speed, slide decay) are all questions about
+## VELOCITY — what the body is carrying and will keep carrying — not about
+## distance covered, and a scripted move's 0 velocity is the correct answer for
+## those.
+func travel_speed() -> float:
+	return _travel_speed
 
 ## Ground movement: converge on the target velocity, and brake when idle.
 func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> void:

@@ -29,6 +29,61 @@ func test_grounded_tracks_the_ground_state() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
+## A state that never calls set_grounded() at all. This is the shape of mistake
+## the invariant in StateMachine exists for -- P3's WallRun is exactly such a
+## state, and forgetting the call there would inherit GroundState's `true`,
+## refill coyote time every tick through Player._tick_timers(), and hand the
+## player infinite jumps with nothing failing.
+class SilentState:
+	extends PlayerState
+
+	func physics_update(_delta: float, _input: MoveInput) -> StringName:
+		return KEEP
+
+## Closes the hole structurally rather than by convention: an undeclared state
+## must NOT inherit whatever the outgoing state left behind.
+##
+## NOTE: this deliberately provokes the engine error that guard emits. Its exact
+## message text is allowlisted in tools/run_tests.ps1 for that reason -- the
+## error IS the guard working, the same arrangement
+## test_unknown_transition_leaves_the_machine_running already uses.
+func test_a_state_that_never_declares_grounded_does_not_inherit_it() -> void:
+	var world := await _spawn()
+	var player: Player = world["player"]
+	check(player.grounded, "precondition: a resting player should be grounded")
+
+	var silent := SilentState.new()
+	silent.player = player
+	silent.config = player.config
+	player.state_machine.add_child(silent)
+	player.state_machine.register(&"Silent", silent)
+	player.state_machine.start(&"Silent")
+	check(player.grounded, \
+		"precondition: entering the silent state must not itself clear the flag -- the point is that nothing DECLARED it")
+
+	await step(1)
+	check(not player.grounded, \
+		"a state that never called set_grounded() kept the previous state's `true` -- coyote time refills every tick from it, which is infinite jumps")
+
+	# And it does not spontaneously come back on later ticks either.
+	await step(10)
+	check(not player.grounded, "the undeclared flag came back after further ticks")
+
+	player.state_machine.start(PlayerState.GROUND)
+	TestWorld.teardown(world)
+	await step(1)
+
+## Complement to the above: a state that DOES declare must be believed, so the
+## guard cannot be satisfied by simply pinning `grounded` to false forever.
+func test_a_state_that_declares_grounded_keeps_its_value() -> void:
+	var world := await _spawn()
+	var player: Player = world["player"]
+	await step(5)
+	check(player.grounded, \
+		"a resting player in GroundState -- which declares grounded every tick -- must stay grounded")
+	TestWorld.teardown(world)
+	await step(1)
+
 func test_a_landing_is_reported_exactly_once() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
