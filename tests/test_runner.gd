@@ -44,7 +44,20 @@ func _run_all() -> void:
 			if not method_name.begins_with("test_"):
 				continue
 			ran += 1
+			# Cheap SECONDARY signal, not the primary gate against a crashed
+			# coroutine (that's tools/run_tests.ps1 scanning the engine's own
+			# error output — case.checks/case.failures cannot see an aborted
+			# method at all). This catches a different, narrower thing: a
+			# method that ran to completion without ever calling check*() —
+			# e.g. a loop that breaks before its assertion, or an early
+			# return — which produces no engine error and so the ps1-level
+			# scan cannot catch it either. case.checks is never reset between
+			# methods, so a delta is required rather than an absolute count.
+			var checks_before: int = case.checks
 			await case.call(method_name)
+			if case.checks == checks_before:
+				all_failures.append("%s::%s  recorded no checks (method returned without calling check*())" \
+					% [path.get_file(), method_name])
 			for f in case.failures:
 				all_failures.append("%s::%s  %s" % [path.get_file(), method_name, f])
 			case.failures.clear()

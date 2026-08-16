@@ -24,18 +24,28 @@ var last_input: MoveInput = MoveInput.new()
 ## would report whatever was true before the move began.
 var grounded: bool = false
 
+## SENTINEL, not a real reading: -1.0 means "no landing pending", never an
+## actual impact speed. A landing's impact_speed is itself a legitimate 0.0
+## (e.g. a state arriving next that can land at rest) — callers must always
+## branch on `>= 0.0`, never `> 0.0`, or a genuinely zero-speed landing gets
+## silently treated as "nothing happened". Chose documentation over a
+## parallel `bool` flag to keep consume_landing()'s single-float contract
+## (matches the brief's declared interface) rather than widening it.
 var _pending_landing: float = -1.0
 
 func set_grounded(value: bool) -> void:
 	grounded = value
 
-## Reported by a state at the moment it detects a landing.
+## Reported by a state at the moment it detects a landing. impact_speed must
+## be >= 0.0 — see the sentinel note on _pending_landing above.
 func notify_landed(impact_speed: float) -> void:
 	_pending_landing = impact_speed
 	last_landing_speed = impact_speed
 
-## Returns this tick's landing impact speed, or -1.0 if there was none. The
-## event is consumed, so a landing can only ever be acted on once.
+## Returns this tick's landing impact speed, or -1.0 if there was none — a
+## real landing can itself be 0.0, so callers must check `>= 0.0`, not
+## `> 0.0` (see the sentinel note on _pending_landing above). The event is
+## consumed, so a landing can only ever be acted on once.
 func consume_landing() -> float:
 	var value := _pending_landing
 	_pending_landing = -1.0
@@ -137,11 +147,22 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 ## grounded, and so a landing dip from the old life cannot appear after a
 ## fresh spawn. Does not touch the state machine itself — callers restart
 ## that separately.
+##
+## grounded is also cleared here rather than left to whatever the previous
+## life last declared: Arena.reset_player() teleports to spawn and then skips
+## exactly one physics tick before the state machine resumes (see its own
+## comment), and _tick_timers() runs on the very first re-enabled tick —
+## before GroundState has had a chance to declare anything. Without this, that
+## one tick reads last life's grounded value and can wrongly refill coyote
+## time (if the old life ended airborne, a resting spawn would start with
+## none) or wrongly withhold it (the reverse).
 func reset_state() -> void:
 	_coyote_timer = 0.0
 	_jump_buffer_timer = 0.0
 	_crouch_buffer_timer = 0.0
 	last_landing_speed = 0.0
+	grounded = false
+	_pending_landing = -1.0
 	# A reset teleports the player to a known-clear spawn, so a restore owed
 	# from a slide under some ceiling is both stale and satisfiable right now.
 	# request_standing_capsule() clears the flag on the way through, and
