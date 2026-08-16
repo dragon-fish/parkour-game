@@ -14,6 +14,8 @@ var _bob_weight: float = 0.0
 var _dip: float = 0.0
 var _crouch_amount: float = 0.0
 var _crouch_offset: float = 0.0
+var _wall_side: int = 0
+var _roll: float = 0.0
 
 func setup(cfg: MovementConfig) -> void:
 	_config = cfg
@@ -25,6 +27,12 @@ func setup(cfg: MovementConfig) -> void:
 func set_crouch_amount(amount: float) -> void:
 	_crouch_amount = clampf(amount, 0.0, 1.0)
 
+## -1 wall on the left, +1 on the right, 0 none. Driven by Player each tick
+## from Player.wall_side, itself set by WallRunState. update_effects() eases
+## rotation.z toward the corresponding tilt every frame.
+func set_wall_side(side: int) -> void:
+	_wall_side = side
+
 ## Levels the view and clears landing/bob state. Called on a manual reset
 ## (Arena's R key) so the camera snaps back to a fresh-spawn look instead of
 ## keeping whatever pitch, landing dip, or bob phase it had the instant
@@ -35,7 +43,10 @@ func reset_state() -> void:
 	_bob_phase = 0.0
 	_crouch_amount = 0.0
 	_crouch_offset = 0.0
+	_wall_side = 0
+	_roll = 0.0
 	rotation.x = 0.0
+	rotation.z = 0.0
 	if camera != null:
 		camera.position.y = 0.0
 
@@ -86,6 +97,13 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var target_offset := _config.slide_camera_drop * _crouch_amount
 	_crouch_offset = move_toward(_crouch_offset, target_offset, _config.crouch_lerp_speed * delta)
 	position.y -= _crouch_offset
+
+	# rotation.z, unlike position.y above, is never hard-reset elsewhere in
+	# this function, so a plain move_toward accumulates correctly frame to
+	# frame instead of needing the offset workaround the crouch drop uses.
+	var target_roll := deg_to_rad(_config.wall_camera_roll_deg) * float(_wall_side)
+	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.wall_camera_roll_speed) * delta)
+	rotation.z = _roll
 
 ## Called on landing. `speed` is the downward speed at the moment of impact.
 func punch_landing(speed: float) -> void:

@@ -295,6 +295,7 @@ func _physics_process(delta: float) -> void:
 		if landing_impact >= 0.0:
 			camera_rig.punch_landing(landing_impact)
 		camera_rig.set_crouch_amount(1.0 if state_machine.current_name == PlayerState.SLIDE else 0.0)
+		camera_rig.set_wall_side(wall_side)
 		# travel_speed(), NOT horizontal_speed() — see travel_speed()'s note on
 		# why velocity lies through a vault or a mantle.
 		camera_rig.update_effects(delta, travel_speed(), grounded)
