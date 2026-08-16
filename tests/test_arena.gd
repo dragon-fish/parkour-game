@@ -860,6 +860,121 @@ func test_the_wall_area_alternates_facing_so_chaining_is_possible() -> void:
 	arena.queue_free()
 	await step(1)
 
+## Companion to test_the_wall_run_course_can_be_run_end_to_end, which
+## deliberately stops the instant the player clears LongWall's far end --
+## nothing in that test, or anywhere else, ever drives the player through the
+## zig-zag section itself. That gap is exactly what let ZIG_STEP's hardcoded
+## 4.0 (see arena_builder.gd's own note on it) ship without anything noticing
+## it could refuse the third wall mid-chain: every structural assertion about
+## the zig-zag (test_the_wall_area_alternates_facing_so_chaining_is_possible)
+## checks the geometry, never whether a real run through it actually chains.
+##
+## This drives the player at the zig-zag's own top speed, jumping off each
+## wall once it nears that wall's OWN far face (JUMP_MARGIN short of it) --
+## the same cadence the reviewer's own report describes ("leaves ZigLeft1
+## around z~=31.5", close to its far end, not the moment it attaches): a
+## player running it well extracts as much of each wall's own length (and
+## wall_accel) as the geometry allows before committing to the next jump,
+## which is also the fastest -- and therefore most cooldown-punishing --way
+## through. A fixed tick-count cadence was tried first and does NOT model
+## this: it left each wall while still deep inside its span, long before the
+## next wall existed at that Z at all, so the chain broke on a geometry miss
+## having nothing to do with the cooldown this fix targets (verified with a
+## standalone trace -- see the phase-final-fixes report). Reading each wall's
+## own far_z from live geometry, in traversal order, is what keeps the timing
+## honest as ZIG_STEP/ZIG_LENGTH move with config.
+##
+## Asserts more than one DISTINCT Wall attachment happens along the way --
+## counting transitions, not just "ended up in Wall at some point", since a
+## single attach that is then refused forever downstream would otherwise
+## still read as a pass.
+func test_the_zig_zag_wall_section_chains_multiple_walls() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var player: Player = arena.player
+
+	var long_wall_aabb := _world_aabb(arena.get_node("WallArea/LongWall"))
+	# In traversal order (+Z to -Z): ZigLeft1, ZigRight1, ZigLeft2, ZigRight2.
+	var zig_aabbs := [
+		_world_aabb(arena.get_node("WallArea/ZigLeft1")),
+		_world_aabb(arena.get_node("WallArea/ZigRight1")),
+		_world_aabb(arena.get_node("WallArea/ZigLeft2")),
+		_world_aabb(arena.get_node("WallArea/ZigRight2")),
+	]
+	var deck := _floor_top(arena)
+	# The zig-zag's centreline: ZigLeft1/ZigRight1 straddle local x = 0
+	# symmetrically (see arena_builder.gd's ZIG_X), same as LongWall's own
+	# lane_x in the sibling test above.
+	var lane_x := 0.0
+	# South end of the whole section, read off the LAST wall's own far face
+	# rather than hardcoded, so a future change to the wall count or spacing
+	# cannot leave this quietly measuring the wrong place.
+	var section_far_z: float = zig_aabbs[3].position.z
+
+	# Start in the gap between LongWall and ZigLeft1, not just "north of
+	# ZigLeft1" by a fixed offset: LongWall's own far end (long_wall_aabb) is
+	# ALSO config-derived (wall_max_speed * wall_max_duration) and moves when
+	# either value is tuned. Ran into this directly while writing this test:
+	# a flat "+8 m north of ZigLeft1" landed inside LongWall's still-shortened
+	# span after Fix 3 lowered wall_max_speed, so the player attached to
+	# LongWall first and its own wall jump threw the player sideways away
+	# from the zig-zag entirely before it ever got there. The gap's own
+	# midpoint is safe from either wall's span regardless of how each is
+	# tuned.
+	var gap_mid_z: float = (long_wall_aabb.position.z + zig_aabbs[0].end.z) * 0.5
+	player.global_position = Vector3(lane_x, deck + 1.0, gap_mid_z)
+	player.velocity = Vector3.ZERO
+	player.rotation = Vector3.ZERO
+	await step(20)
+	check(player.is_on_floor(), "precondition: the player did not settle before the zig-zag section")
+
+	var input := ScriptedInputSource.new()
+	player.input_source = input
+	input.state.move = Vector2(0.0, 1.0)
+	input.state.sprint_held = true
+
+	# far_z of each wall in traversal order, read off live geometry (AABB
+	# position is the min corner in Godot, i.e. the far/-Z face here).
+	var far_zs: Array = []
+	for aabb in zig_aabbs:
+		far_zs.append(aabb.position.z)
+	const JUMP_MARGIN := 1.0
+
+	var attach_count := 0
+	var was_wall := false
+	for i in 900:
+		var now_wall: bool = player.state_machine.current_name == PlayerState.WALL
+		if now_wall and not was_wall:
+			attach_count += 1
+		if now_wall:
+			# attach_count also indexes which wall (1st, 2nd, ...) this is,
+			# since attach_count only increments on a fresh attach.
+			var idx: int = attach_count - 1
+			var threshold: float = far_zs[idx] + JUMP_MARGIN if idx < far_zs.size() else -INF
+			if player.global_position.z <= threshold:
+				input.press_jump()
+		elif player.is_on_floor():
+			input.press_jump()
+		was_wall = now_wall
+		await step(1)
+		if player.global_position.z <= section_far_z:
+			break
+
+	# Requires EVERY wall in the chain, not just "more than one": bite-proofing
+	# this against the exact defect (a hardcoded ZIG_STEP too small to clear
+	# the reattach cooldown) found that a severely broken spacing still let
+	# the player reach a SECOND wall before the cooldown ever bound -- it was
+	# the THIRD (the first SAME-facing one, two walls back) that got refused,
+	# matching the reviewer's report exactly. A ">1" bar would have missed
+	# that case outright (2 > 1 is already true), so this checks the whole
+	# chain completes instead.
+	check_greater(float(attach_count), float(far_zs.size()) - 0.5, \
+		"a fast run through the zig-zag attached to %d of %d wall(s) in sequence, expected the whole chain: %s" \
+			% [attach_count, far_zs.size(), player.global_position])
+
+	arena.queue_free()
+	await step(1)
+
 ## Recursively builds a semantic snapshot of a node tree for structural
 ## comparison: node path, class, script identity, local transform, and (for a
 ## CollisionShape3D wrapping a BoxShape3D) its shape size. Deliberately

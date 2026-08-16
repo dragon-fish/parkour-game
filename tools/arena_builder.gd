@@ -358,14 +358,20 @@ func build() -> Node3D:
 	#
 	# Course, run from +Z toward -Z like every other area here:
 	#
-	#   z ~65 .. 55   approach   bare arena floor -- ground_accel (60 m/s^2)
-	#                            reaches wall_min_speed (5 m/s) in well under
-	#                            a metre, so this is about pacing, not need
-	#   z  55 .. 38.5 LongWall   one continuous wall, length derived below
-	#   z 38.5 .. 35.5 gap       bare floor: a beat to land and reset after
-	#                            LongWall before the zig-zag starts
-	#   z 35.5 .. 17.5 zig-zag   four walls alternating sides, chained by
-	#                            wall jumps -- see the note above the loop
+	#   z ~65 .. 55         approach  bare arena floor -- ground_accel (60 m/s^2)
+	#                                 reaches wall_min_speed (5 m/s) in well under
+	#                                 a metre, so this is about pacing, not need
+	#   z  55 .. LongWall's far z     one continuous wall, length derived below
+	#   z  LongWall's far z .. 35.5   gap: bare floor, a beat to land and reset
+	#                                 before the zig-zag starts
+	#   z  35.5 .. the zig-zag's own far z     four walls alternating sides,
+	#                                 chained by wall jumps -- see the note
+	#                                 above the loop
+	#
+	# Both derived spans above move with wall_config (wall_max_speed,
+	# wall_max_duration, wall_reattach_cooldown) rather than holding still, so
+	# retuning any of those keeps this comment true without anyone having to
+	# hand-edit a z value here.
 	#
 	# The floor was enlarged (see the Floor comment above) specifically to
 	# fit this without anything hanging over its edge: the course's own
@@ -435,13 +441,40 @@ func build() -> Node3D:
 	# each side to run it without scraping either wall.
 	const ZIG_HALF_WIDTH := 0.7
 	const ZIG_X := ZIG_HALF_WIDTH + WALL_THICKNESS * 0.5
-	const ZIG_LENGTH := 6.0
-	# Less than ZIG_LENGTH on purpose: consecutive walls overlap by 2 m in Z,
-	# so the transition point (where a jump off one wall must land within
-	# wall_reach of the next) is comfortably inside both walls' spans rather
-	# than balanced on their shared edge.
-	const ZIG_STEP := 4.0
 	const ZIG_START_Z := 35.5
+
+	# ZIG_STEP -- the distance between CONSECUTIVE zig walls' near faces --
+	# used to be a hardcoded 4.0, the one length in this whole area that was
+	# not derived from config. That let it silently fall out of sync with the
+	# very cooldown it has to clear: ZigLeft1 and ZigLeft2 share a normal (two
+	# walls apart, so 2 * ZIG_STEP in Z), and player.can_attach_wall() refuses
+	# a same-facing wall until wall_reattach_cooldown has elapsed. A player
+	# chaining the walls well does not ride each one to its far end before
+	# jumping off -- they leave via the wall jump long before that, so the
+	# REAL forward distance covered between leaving one same-facing wall and
+	# reaching the next tracks closer to ZIG_STEP alone than to the full
+	# nominal 2 * ZIG_STEP gap between them (this is what let the old 4.0
+	# hardcode look safe on paper -- 2 * 4.0 = 8 m against an 11 m/s wall's
+	# 5.5 m cooldown reach -- while still refusing the third wall for ~0.14 s
+	# in an actual fast run). ZIG_STEP is therefore held, on its own, to
+	# comfortably clear the distance a player moving at wall_max_speed the
+	# whole time would cover before the cooldown expires -- a flat break-even
+	# value would just move the same failure to whichever knob gets tuned
+	# next, so ZIG_STEP_SAFETY_MARGIN keeps real headroom over it. Verified
+	# against actual chained play, not just this arithmetic: see
+	# tests/test_arena.gd's test_the_zig_zag_wall_section_chains_multiple_walls.
+	const ZIG_STEP_SAFETY_MARGIN := 1.5
+	var zig_step: float = wall_config.wall_max_speed * wall_config.wall_reattach_cooldown \
+		* ZIG_STEP_SAFETY_MARGIN
+	# Consecutive walls must still overlap in Z, or a wall jump timed to land
+	# between them finds neither -- wall_query() only sees a wall where its
+	# collision box actually is, so a Z gap between them would be a dead
+	# stretch no cooldown fix could rescue. ZIG_OVERLAP is the same 2 m this
+	# area always used; ZIG_LENGTH now tracks ZIG_STEP (rather than the
+	# reverse) specifically so growing ZIG_STEP to satisfy the cooldown above
+	# can never shrink -- or invert -- that overlap.
+	const ZIG_OVERLAP := 2.0
+	var zig_length: float = zig_step + ZIG_OVERLAP
 
 	# name, side sign (-1 = left/-x, +1 = right/+x), position in the sequence
 	var zig_walls := [
@@ -454,9 +487,9 @@ func build() -> Node3D:
 		var wall_name: String = entry[0]
 		var side: float = entry[1]
 		var index: int = entry[2]
-		var near_z: float = ZIG_START_Z - ZIG_STEP * index
-		var far_z: float = near_z - ZIG_LENGTH
-		_attach(wall_area, _box(wall_name, Vector3(WALL_THICKNESS, WALL_HEIGHT, ZIG_LENGTH),
+		var near_z: float = ZIG_START_Z - zig_step * index
+		var far_z: float = near_z - zig_length
+		_attach(wall_area, _box(wall_name, Vector3(WALL_THICKNESS, WALL_HEIGHT, zig_length),
 			Vector3(side * ZIG_X, WALL_HEIGHT * 0.5, (near_z + far_z) * 0.5), wall_colour))
 
 	var player_scene: PackedScene = load("res://scenes/player/player.tscn")
