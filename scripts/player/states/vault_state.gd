@@ -8,24 +8,39 @@ extends ScriptedMove
 
 var _exit_speed: float = 0.0
 var _exit_direction: Vector3 = Vector3.ZERO
+## Set in enter() when the vault query comes back invalid: there is no probed
+## top to land on, so physics_update() hands straight back to Ground without
+## ever moving the body. See enter()'s note for what the old fallback did.
+var _aborted: bool = false
 
 func enter(_previous: StringName) -> void:
 	# grounded is DECLARED, not read from is_on_floor(): this state never calls
 	# move_and_slide(), so is_on_floor() would keep reporting whatever GroundState
 	# left behind for the whole vault — stale coyote time, head bob, etc.
 	player.set_grounded(false)
+	_aborted = false
 
-	# GroundState already null-checks player.probes before ever transitioning
-	# here, so this branch is currently unreachable in normal play — kept as a
-	# defensive guard anyway (not re-plumbed through a passed-in query) so a
-	# future caller into Vault that skips GroundState's gate degenerates to
-	# "nowhere to land" instead of a null-dereference crash.
+	# GroundState already null-checks player.probes AND requires a valid
+	# vault_query() before ever transitioning here, so neither branch below is
+	# reachable in normal play. They are kept as a guard for a future caller
+	# that skips that gate -- but as a GENUINELY safe one. The previous version
+	# fell back to `top = player.global_position`, which is not "nowhere to
+	# land": the landing is then built as `top + forward * vault_exit_forward`
+	# with `landing.y = top.y + standing_height/2`, so that fallback would have
+	# driven the body 0.9 m up and 0.6 m forward, through whatever was there.
+	# There is no safe destination to invent when the probe found nothing, so
+	# invent none: abort the vault and hand back to Ground with the body
+	# untouched and its velocity intact.
 	var query: Dictionary = player.probes.vault_query() if player.probes != null else Probes.NO_HIT.duplicate()
+	if not query["valid"]:
+		_aborted = true
+		return
+
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	_exit_speed = horizontal.length() * config.vault_speed_keep
 	_exit_direction = horizontal.normalized() if horizontal.length_squared() > 0.0001 else -player.global_transform.basis.z
 
-	var top: Vector3 = query["top"] if query["valid"] else player.global_position
+	var top: Vector3 = query["top"]
 	var landing := top + _exit_direction * config.vault_exit_forward
 	landing.y = top.y + player.standing_height() * 0.5
 
@@ -33,6 +48,9 @@ func enter(_previous: StringName) -> void:
 	player.velocity = Vector3.ZERO
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
+	if _aborted:
+		return GROUND
+
 	if advance(delta):
 		player.velocity = _exit_direction * _exit_speed
 		# Deliberately NOT declared grounded here. landing.y is pinned to the

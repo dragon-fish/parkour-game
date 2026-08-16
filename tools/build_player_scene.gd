@@ -69,6 +69,14 @@ func _run() -> void:
 
 	# Probe rig. Heights are expressed relative to the body origin, which sits
 	# at the capsule centre — feet are 0.9 m below it.
+	#
+	# Every ray's LENGTH, and SurfaceDown's whole vertical placement, is
+	# recomputed from the live MovementConfig on every query (see probes.gd's
+	# _aim_forward()/_query_surface()), because the F1 tuning panel writes into
+	# that config while the game runs. The values baked here are therefore only
+	# the scene's initial state, never the values the queries actually use —
+	# they are written to match the shipped defaults so the scene file reads
+	# sensibly in an editor, not because anything depends on them.
 	var probes := Node3D.new()
 	probes.name = "Probes"
 	probes.set_script(load("res://scripts/player/probes.gd"))
@@ -102,12 +110,15 @@ func _run() -> void:
 
 	# Downward ray from above and ahead: finds the top surface to land on.
 	#
-	# The start height is load-bearing. Heights in MovementConfig are measured
-	# from the FEET, which sit 0.9 m below this origin, so a ledge at the
-	# configured maximum of 2.8 m sits at +1.9 m here. Starting the ray at
-	# +1.6 would put its origin BELOW the highest ledge it is supposed to find,
-	# and tall ledges would silently never be detected. Start above the
-	# configured maximum, and reach below the feet.
+	# The start height is load-bearing, which is exactly why probes.gd derives
+	# it from the config at query time rather than trusting what is baked here.
+	# Heights in MovementConfig are measured from the FEET, which sit 0.9 m
+	# below this origin, so a ledge at the configured maximum of 2.8 m sits at
+	# +1.9 m here. An origin BELOW the highest reachable ledge means tall ledges
+	# are silently never detected — and the panel can drive ledge_max_height to
+	# three times its default, so a fixed origin would put the knob past the
+	# ray's sight without any sign that it had stopped working. The values here
+	# are what probes.gd's derivation produces at the shipped defaults.
 	var surface := RayCast3D.new()
 	surface.name = "SurfaceDown"
 	surface.position = Vector3(0.0, 2.2, -1.0)

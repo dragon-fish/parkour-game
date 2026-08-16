@@ -184,6 +184,68 @@ func test_an_obstacle_over_the_height_limit_is_not_vaulted() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
+## A vault is the fastest the player ever moves, and the FOV widening is the
+## cue that says so. It used to say the opposite: the camera was fed
+## horizontal_speed(), and a scripted move deliberately zeroes velocity for its
+## whole duration (it drives global_position directly and never calls
+## move_and_slide), so the FOV read 0 m/s and lerped back toward fov_base
+## throughout — a slow-down cue delivered at the exact moment of the burst.
+##
+## Player.travel_speed() measures the body's actual displacement instead, which
+## is true in every state, scripted or not. Note the residual: ScriptedMove's
+## arc is deliberately EASE-OUT, so the last few ticks of a vault genuinely are
+## slow and the FOV genuinely eases back over them. That is the manoeuvre
+## finishing, not a lie about it, and it is bounded — hence a floor on the
+## MINIMUM below rather than a demand that the FOV hold flat.
+func test_the_fov_does_not_collapse_during_a_vault() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := await _running_at_obstacle(1.0, cfg)
+	var player: Player = world["player"]
+	var rig: CameraRig = player.camera_rig
+	check(rig != null, "precondition: the test player needs a camera rig")
+
+	var approach := 0.0
+	for i in 400:
+		await step(1)
+		if player.state_machine.current_name == &"Vault":
+			break
+		approach = player.travel_speed()
+	check(player.state_machine.current_name == &"Vault", "precondition: the obstacle should have been vaulted")
+	check_greater(approach, cfg.vault_min_speed, "precondition: the approach should be a real run-up")
+
+	var lowest_fov := INF
+	var fastest_travel := 0.0
+	var velocity_ever_nonzero := false
+	for i in 400:
+		await step(1)
+		if player.state_machine.current_name != &"Vault":
+			break
+		lowest_fov = minf(lowest_fov, rig.camera.fov)
+		fastest_travel = maxf(fastest_travel, player.travel_speed())
+		if player.horizontal_speed() > 0.001:
+			velocity_ever_nonzero = true
+
+	# The premise: velocity really is zero for the whole scripted move, so
+	# anything reading it would have had nothing but 0 m/s to go on.
+	check(not velocity_ever_nonzero, \
+		"precondition: a scripted move should report zero velocity throughout — if it does not, this test is no longer exercising the case it was written for")
+	check_greater(fastest_travel, approach * 0.8, \
+		"the body's measured travel during the vault (%f) fell well below the approach speed (%f)" \
+		% [fastest_travel, approach])
+
+	# Fed velocity, the FOV decays from near fov_max to about fov_base + 2 over
+	# the vault's ~19 ticks (measured). Fed real travel it stays in the top half
+	# of the range until the ease-out tail.
+	var floor_fov: float = cfg.fov_base + 0.35 * (cfg.fov_max - cfg.fov_base)
+	check_greater(lowest_fov, floor_fov, \
+		"the FOV fell to %f during the vault, below %f — the camera is being told the player slowed down at the moment they are moving fastest" \
+		% [lowest_fov, floor_fov])
+
+	world["obstacle"].queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
 func test_a_vault_over_a_thin_obstacle_does_not_falsely_declare_grounded() -> void:
 	await step(1)
 	# A THIN obstacle: vault_exit_forward (0.6 m default) alone comfortably
