@@ -70,6 +70,7 @@ func start(state_name: StringName) -> void:
 	# Snapshot BEFORE enter(), so a declaration made in enter() counts.
 	_arm_declaration_check()
 	_current.enter(&"")
+	_clear_stale_grounded_after_start()
 	state_changed.emit(&"", state_name)
 
 func physics_update(delta: float, input: MoveInput) -> void:
@@ -93,6 +94,33 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	_arm_declaration_check()
 	_current.enter(from)
 	state_changed.emit(from, next)
+
+## Fail-safe half only, no reporting: start() can be the FIRST tick of a
+## state's life, so its own first physics_update() has not run yet -- a state
+## whose enter() legitimately defers declaring (GroundState is exactly this
+## shape) has not yet violated the invariant, and _check_declared_grounded()'s
+## "did not declare" report would be a false positive here.
+##
+## But Player._physics_process() calls _tick_timers() BEFORE
+## state_machine.physics_update() every frame, and _tick_timers() reads
+## `grounded` to refill coyote time. Without this, a restart whose new state
+## does not declare in enter() would leave whatever `grounded` held a moment
+## earlier -- the OUTGOING state's value, or older still -- readable by
+## _tick_timers() for one whole tick before the new state's first
+## physics_update() ever gets a chance to correct it. Real play was covered
+## only by a coincidence of caller order (Arena.reset_player() clears
+## `grounded` via reset_state() before calling start()); this closes the gap
+## in start() itself so the guarantee no longer depends on that order.
+##
+## Mirrors the fail-safe half of _check_declared_grounded() exactly -- a state
+## that DID declare in enter() (VaultState, LedgeHangState) is untouched,
+## since the count comparison below then differs.
+func _clear_stale_grounded_after_start() -> void:
+	if _entry_declarations < 0:
+		return
+	if _declaration_count() > _entry_declarations:
+		return
+	_current.player.clear_grounded_undeclared()
 
 ## Player's declaration counter, or -1 when there is no player to read it from
 ## (tests/test_state_machine.gd drives this class with bare stub states that

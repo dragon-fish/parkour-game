@@ -58,8 +58,12 @@ func test_a_state_that_never_declares_grounded_does_not_inherit_it() -> void:
 	player.state_machine.add_child(silent)
 	player.state_machine.register(&"Silent", silent)
 	player.state_machine.start(&"Silent")
-	check(player.grounded, \
-		"precondition: entering the silent state must not itself clear the flag -- the point is that nothing DECLARED it")
+	# start() itself now applies the same fail-safe physics_update() does (see
+	# StateMachine._clear_stale_grounded_after_start()), so the stale `true`
+	# does not even survive until the next tick -- it is gone the instant
+	# start() returns, before this state's own first physics_update() has run.
+	check(not player.grounded, \
+		"start() must not let an undeclared state inherit the previous state's `true`, not even for the one tick before its first physics_update() runs")
 
 	await step(1)
 	check(not player.grounded, \
@@ -68,6 +72,29 @@ func test_a_state_that_never_declares_grounded_does_not_inherit_it() -> void:
 	# And it does not spontaneously come back on later ticks either.
 	await step(10)
 	check(not player.grounded, "the undeclared flag came back after further ticks")
+
+	player.state_machine.start(PlayerState.GROUND)
+	TestWorld.teardown(world)
+	await step(1)
+
+## Step Zero follow-up: closes the fail-safe gap in start() itself, so a
+## restart cannot leave a previous life's grounded-ness behind regardless of
+## what the caller happens to do first. Real play was covered only by a
+## coincidence of call order -- Arena.reset_player() clears `grounded` via
+## reset_state() before calling start() -- so this drives start() directly,
+## WITHOUT reset_state(), to prove the guarantee no longer depends on that
+## order.
+func test_a_restart_does_not_inherit_the_previous_life_s_grounded_value() -> void:
+	var world := await _spawn()
+	var player: Player = world["player"]
+	check(player.grounded, "precondition: a resting player should be grounded")
+
+	# AirState.enter() does not declare grounded -- only its physics_update()
+	# does, from move_and_slide()'s result -- exactly the shape that would
+	# leak a stale `true` for one tick without the fail-safe in start().
+	player.state_machine.start(PlayerState.AIR)
+	check(not player.grounded, \
+		"a restart must not inherit the previous life's grounded value, not even for the one tick before the new state's first physics_update() runs")
 
 	player.state_machine.start(PlayerState.GROUND)
 	TestWorld.teardown(world)
