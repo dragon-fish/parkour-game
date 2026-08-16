@@ -29,6 +29,16 @@ func _material_for(colour: Color) -> StandardMaterial3D:
 		_materials[colour] = material
 	return _materials[colour]
 
+## Constant-acceleration kinematics: sqrt(max(v0^2 + 2*accel*distance, 0)).
+## Used to derive how much of SlideState's own speed model (friction, slope
+## accel, the entry boost -- see slide_state.gd) a stretch of course geometry
+## actually costs or grants, so a course length can be SIZED from that instead
+## of hand-tuned by trial and error. Clamped at 0 under the sqrt so a segment
+## long enough to fully arrest the given accel does not attempt a negative
+## square root.
+func _speed_after(v0: float, accel: float, distance: float) -> float:
+	return sqrt(maxf(v0 * v0 + 2.0 * accel * distance, 0.0))
+
 ## Solid box with explicit collision. CSGBox3D is avoided on purpose: its
 ## collision body is generated at runtime and is not reliably present on the
 ## first physics frame in a headless run.
@@ -141,33 +151,91 @@ func build() -> Node3D:
 	var blocked_colour := Color(0.55, 0.30, 0.30)
 	var ledge_colour := Color(0.45, 0.42, 0.62)
 
-	# 60x100, not 60x60: P3's WallArea (built below, north of spawn at +Z)
-	# needed more +Z room than the original 60x60 slab left free, and the
-	# fix is to enlarge the floor rather than let anything hang over its
-	# edge (see the WallArea comment for the exact budget). The extra 40 m
-	# is added entirely on the +Z side -- x is untouched and the -Z edge
-	# stays at -30 exactly, because JumpArea's Gap5/Gap6 and Step5/Step6
-	# deliberately extend past that edge into open air (the "missed jump
-	# falls forever" case test_falling_out_of_the_level_respawns_the_player
-	# covers) and moving that edge would silently turn them into solid
-	# ground.
-	_attach(_root, _box("Floor", Vector3(60.0, 1.0, 100.0), Vector3(0.0, -0.5, 20.0), ground))
+	# Shared jump-arc quantities, derived from a fresh MovementConfig exactly
+	# the way Arena._ready() falls back to one when scenes/main.tscn wires no
+	# explicit config (see the VaultArea comment below, which already does
+	# this for vault/ledge heights) -- so JumpArea's gap and step ladders keep
+	# testing the REAL limits of whatever gravity/jump_velocity/sprint_speed
+	# are currently set to, instead of a snapshot from whenever this file was
+	# last hand-edited. Both are closed-form projectile arithmetic on a flat
+	# takeoff-to-landing arc:
+	#   airtime   = 2 * jump_velocity / gravity          (up and back down)
+	#   distance  = sprint_speed * airtime                (run-up speed is the
+	#               ground speed cap -- momentum carried into a jump, not
+	#               something air control can add to; see air_accel's own
+	#               comment in movement_config.gd)
+	#   peak height = jump_velocity^2 / (2 * gravity)
+	var config := MovementConfig.new()
+	var jump_airtime: float = 2.0 * config.jump_velocity / maxf(config.gravity, 0.001)
+	var max_jump_distance: float = config.sprint_speed * jump_airtime
+	var jump_peak_height: float = (config.jump_velocity * config.jump_velocity) \
+		/ (2.0 * maxf(config.gravity, 0.001))
+
+	# 60 wide, but no longer a fixed 100 long: P3's WallArea (north, +Z) and
+	# P4's VaultArea ledges (south, -Z) both needed more room than the
+	# original 60x60 slab left free, and the fix in both directions is to
+	# enlarge the floor rather than let anything hang over its edge. x is
+	# untouched on both.
+	#
+	# North stays the WallArea's own fixed budget (see the WallArea comment
+	# for the exact math) -- unaffected by this task's changes, so held as a
+	# plain constant rather than re-derived here.
+	const FLOOR_NORTH_EDGE := 70.0
+	# South is new: VaultArea's ledge spacing (see its own comment further
+	# down) now runs off a run-up-and-jump distance close to
+	# max_jump_distance, TWICE in a row (LedgeLow, then LedgeMid), which the
+	# arena's old fixed -30 edge no longer comfortably contains. This has to
+	# be computed HERE, before VaultArea exists to ask -- every _attach() call
+	# below needs Floor already present as _root's sibling -- so it is a
+	# deliberately generous bound on VaultArea's own arithmetic (mirrored, not
+	# read back from it) rather than an exact figure: FLOOR_SOUTH_MARGIN
+	# stands in for WallTooTall's own offset, the two REALIGN_BUFFER gaps, the
+	# ledge boxes' own depth and LedgeTooHigh's trailing gap, all fixed
+	# distances in VaultArea's own layout, with headroom on top; the
+	# max_jump_distance term is the part that actually needs to track a
+	# future retune, doubled for the two chained ledge jumps. JumpArea's
+	# Gap5/Gap6 and Step5/Step6 still deliberately extend past this edge into
+	# open air regardless of exactly where it sits (the "missed jump falls
+	# forever" case test_falling_out_of_the_level_respawns_the_player covers).
+	const FLOOR_SOUTH_MARGIN := 25.0
+	var floor_south_edge: float = -(FLOOR_SOUTH_MARGIN + 2.0 * max_jump_distance)
+	var floor_length: float = FLOOR_NORTH_EDGE - floor_south_edge
+	var floor_center_z: float = (FLOOR_NORTH_EDGE + floor_south_edge) * 0.5
+	_attach(_root, _box("Floor", Vector3(60.0, 1.0, floor_length),
+		Vector3(0.0, -0.5, floor_center_z), ground))
 
 	var jump_area := Node3D.new()
 	jump_area.name = "JumpArea"
 	jump_area.position = Vector3(0.0, 0.0, -12.0)
 	_attach(_root, jump_area)
 
-	# Increasing gaps: 2.0, 2.5, 3.0, 3.5, 4.0 m between platform edges.
-	# Whichever platform the player can still reach reveals the jump range.
-	var gap_z := [0.0, -5.0, -10.5, -16.5, -23.0, -30.0]
+	# Increasing gaps, as FRACTIONS of max_jump_distance rather than fixed
+	# metres, so the ladder keeps bracketing the true limit -- some rungs
+	# clearable, at least one not -- across any future retune of gravity,
+	# jump_velocity or sprint_speed, instead of quietly becoming either
+	# trivial (every gap far under the limit) or impossible (every gap far
+	# over it). 0.9 and 1.1 straddle 1.0 without landing exactly on it, which
+	# would leave that one rung's reachability riding on float noise.
+	const GAP_FRACTIONS := [0.5, 0.7, 0.9, 1.1, 1.35]
+	const GAP_PLATFORM_LENGTH := 3.0
+	var gap_z: Array[float] = [0.0]
+	for fraction in GAP_FRACTIONS:
+		var gap: float = max_jump_distance * fraction
+		gap_z.append(gap_z[gap_z.size() - 1] - gap - GAP_PLATFORM_LENGTH)
 	for i in gap_z.size():
-		_attach(jump_area, _box("Gap%d" % (i + 1), Vector3(3.0, 1.0, 3.0),
+		_attach(jump_area, _box("Gap%d" % (i + 1), Vector3(GAP_PLATFORM_LENGTH, 1.0, GAP_PLATFORM_LENGTH),
 			Vector3(-9.0, 0.5, gap_z[i]), gap_colour))
 
-	# Increasing heights: 1..6 m, for reading off the maximum step-up.
-	for i in 6:
-		var height := float(i + 1)
+	# Increasing heights, as FRACTIONS of jump_peak_height for the same reason
+	# the gap ladder above uses fractions of max_jump_distance: a step sits
+	# directly against the running lane (no horizontal gap to clear), so the
+	# tallest one a jump can reach is bounded by how high a jump rises, full
+	# stop -- there is no run-up distance to trade against it the way there is
+	# for a gap. Six rungs, the middle pair straddling 1.0 without landing on
+	# it exactly, mirroring the gap ladder's own margin choice above.
+	const STEP_FRACTIONS := [0.4, 0.6, 0.8, 0.95, 1.15, 1.4]
+	for i in STEP_FRACTIONS.size():
+		var height: float = jump_peak_height * STEP_FRACTIONS[i]
 		_attach(jump_area, _box("Step%d" % (i + 1), Vector3(3.0, height, 3.0),
 			Vector3(0.0, height * 0.5, -4.0 * i), step_colour))
 
@@ -196,42 +264,84 @@ func build() -> Node3D:
 	#   z   +3 ..  -7   DownRamp   16.7 deg descent, 3 -> 0 m: the only slope
 	#                              in the arena a downhill slide can be felt on
 	#   z   -7 ..  -9   run-in     bare arena floor, flat, no lip
-	#   z   -9 .. -16   Tunnel     7 m of 1.3 m clearance over the arena floor
-	#   z  -16 .. -30   exit       bare arena floor, 14 m to read off the
-	#                              speed the slide delivered
+	#   z   -9 .. TUNNEL_FAR_Z     Tunnel, length DERIVED below
+	#   z  TUNNEL_FAR_Z .. -30     exit, bare arena floor
 	#
-	# The tunnel length is sized so slide MOMENTUM clears it with room to
-	# spare, not so the crawl has to rescue every attempt: a slide entered on
-	# the platform at sprint speed reaches the far mouth still doing about
-	# 6.1 m/s, well over slide_crawl_speed. SlideState's crawl exists for the
-	# player who commits too late or too slow, and this must not become the
-	# normal way through — the traversability test asserts the crawl never
-	# latches during the run, so shortening this is a change with a tripwire
-	# on it.
-	#
-	# The ascent is a walkable slope, not a step: it has NO vertical rise at
-	# all, so it cannot become unclimbable if jump_velocity or gravity are
-	# tuned. The tunnel deck is the arena floor itself — there is deliberately
-	# no TunnelFloor box, because any such box would either sit above the floor
-	# (a lip the slide has to climb) or z-fight with it.
+	# The tunnel length is DERIVED, not hand-tuned, from SlideState's own speed
+	# model (slide_state.gd) applied to this exact geometry via _speed_after():
+	# the entry boost on the platform, friction over the platform's remaining
+	# length, the DownRamp's net acceleration (slide_slope_accel * grade -
+	# slide_friction; ME's downhill slides must resist decay, see
+	# slide_slope_accel's own comment), then friction again over the flat
+	# run-in. That gives the speed AT THE TUNNEL'S OWN MOUTH, from which the
+	# longest tunnel that still clears with real headroom over slide_crawl_speed
+	# follows from plain kinematics (v^2 = u^2 - 2*a*d, solved for d). This is
+	# what keeps "the tunnel is clearable on slide momentum alone" true across
+	# a future retune of sprint_speed, slide_friction or the ramp geometry,
+	# instead of silently going stale the way the fixed 7 m tunnel did when
+	# sprint_speed dropped from 9.0 to 7.2 (see the numbers-only retune's own
+	# report on this exact test failing as a result).
 	const COURSE_WIDTH := 6.0
 	const DECK_Y := 0.0            # top of the arena Floor slab
 	const PLATFORM_Y := 3.0
-	const TUNNEL_NEAR_Z := -9.0
-	const TUNNEL_FAR_Z := -16.0
+	const PLATFORM_NEAR_Z := 7.0   # where UpRamp hands off to the flat deck
+	const PLATFORM_FAR_Z := 3.0    # where DownRamp begins
+	# "1 m onto the platform" -- matches test_the_slide_course_can_be_run_end_
+	# to_end's own Phase 1 target (platform_aabb.end.z - 1.0), i.e. where the
+	# test actually presses crouch and SlideState.enter() actually samples the
+	# entry speed, not the platform's near edge.
+	const PLATFORM_ENTRY_MARGIN := 1.0
+	const DOWNRAMP_FAR_Z := -7.0    # where DownRamp meets the floor again
+	const RUN_IN_LENGTH := 2.0      # flat floor between DownRamp and the tunnel
+	const TUNNEL_NEAR_Z := DOWNRAMP_FAR_Z - RUN_IN_LENGTH
 	const TUNNEL_CLEARANCE := 1.3  # > slide_capsule_height 0.9, < standing 1.8
+	# How far above slide_crawl_speed the tunnel must still be moving at the
+	# far mouth -- a MULTIPLE of it, not a bare number, so this margin scales
+	# with any future retune of slide_crawl_speed itself rather than needing
+	# its own separate adjustment.
+	const TUNNEL_EXIT_SPEED_MARGIN := 1.5
 
 	_attach(slide_area, _ramp("UpRamp", COURSE_WIDTH, 1.0,
-		16.0, DECK_Y, 7.0, PLATFORM_Y, slide_colour))
+		16.0, DECK_Y, PLATFORM_NEAR_Z, PLATFORM_Y, slide_colour))
 	_attach(slide_area, _box("Platform", Vector3(COURSE_WIDTH, PLATFORM_Y, 4.0),
 		Vector3(0.0, PLATFORM_Y * 0.5, 5.0), slide_colour))
 	_attach(slide_area, _ramp("DownRamp", COURSE_WIDTH, 1.0,
-		3.0, PLATFORM_Y, -7.0, DECK_Y, slide_colour))
+		PLATFORM_FAR_Z, PLATFORM_Y, DOWNRAMP_FAR_Z, DECK_Y, slide_colour))
+
+	# SlideState.enter()'s own boost formula (slide_state.gd), applied to the
+	# ground speed cap: entering at or under slide_boost_entry_threshold grants
+	# slide_boost, capped the same way. Mirrored here rather than imported so
+	# this course sizing keeps tracking slide_state.gd's own math if it is
+	# ever retuned independently.
+	var slide_entry_speed: float = config.sprint_speed
+	if slide_entry_speed <= config.slide_boost_entry_threshold:
+		slide_entry_speed = minf(slide_entry_speed + config.slide_boost, \
+			config.slide_boost_entry_threshold + config.slide_boost)
+
+	var down_ramp_length: float = PLATFORM_FAR_Z - DOWNRAMP_FAR_Z
+	var down_ramp_rise: float = PLATFORM_Y - DECK_Y
+	# sin(descent angle), i.e. -slope_dir.y the way slide_state.gd's own
+	# _slope_direction() computes grade, without a redundant atan2 -> sin
+	# round trip.
+	var down_ramp_grade: float = down_ramp_rise / sqrt(down_ramp_rise * down_ramp_rise \
+		+ down_ramp_length * down_ramp_length)
+
+	var platform_remaining: float = (PLATFORM_NEAR_Z - PLATFORM_FAR_Z) - PLATFORM_ENTRY_MARGIN
+	var speed_after_platform: float = _speed_after(slide_entry_speed, -config.slide_friction, \
+		platform_remaining)
+	var speed_after_ramp: float = _speed_after(speed_after_platform, \
+		config.slide_slope_accel * down_ramp_grade - config.slide_friction, down_ramp_length)
+	var speed_at_tunnel_mouth: float = _speed_after(speed_after_ramp, -config.slide_friction, \
+		RUN_IN_LENGTH)
+
+	var tunnel_exit_target_speed: float = config.slide_crawl_speed * TUNNEL_EXIT_SPEED_MARGIN
+	var tunnel_length: float = maxf((speed_at_tunnel_mouth * speed_at_tunnel_mouth \
+		- tunnel_exit_target_speed * tunnel_exit_target_speed) / (2.0 * config.slide_friction), 1.0)
+	var tunnel_far_z: float = TUNNEL_NEAR_Z - tunnel_length
 
 	# Tunnel: walls stand on the floor, the roof spans between them with its
 	# underside at DECK_Y + TUNNEL_CLEARANCE. Only a slide fits.
-	var tunnel_length: float = TUNNEL_NEAR_Z - TUNNEL_FAR_Z
-	var tunnel_mid: float = (TUNNEL_NEAR_Z + TUNNEL_FAR_Z) * 0.5
+	var tunnel_mid: float = (TUNNEL_NEAR_Z + tunnel_far_z) * 0.5
 	var wall_height := TUNNEL_CLEARANCE + 0.7
 	for side in [-1.0, 1.0]:
 		_attach(slide_area, _box("TunnelWall%s" % ("L" if side < 0.0 else "R"),
@@ -249,7 +359,7 @@ func build() -> Node3D:
 	# Each entry is [name, near z, far z]; the approach runs from the foot of
 	# the climb back to the floor's edge, the exit from the far tunnel mouth to
 	# the other edge.
-	for spec in [["Approach", 26.0, 16.0], ["Exit", TUNNEL_FAR_Z, -30.0]]:
+	for spec in [["Approach", 26.0, 16.0], ["Exit", tunnel_far_z, -30.0]]:
 		var kerb_length: float = spec[1] - spec[2]
 		var kerb_mid: float = (spec[1] + spec[2]) * 0.5
 		for side in [-1.0, 1.0]:
@@ -319,24 +429,89 @@ func build() -> Node3D:
 	# leaves x 1.. open floor (nothing else in this area extends past x = 2)
 	# for the player to sidestep around and continue toward the ledges.
 	var vault_wall_height: float = vault_config.vault_max_height + 2.0
-	_attach(vault_area, _box("WallTooTall", Vector3(6.0, vault_wall_height, 2.0),
-		Vector3(-2.0, vault_wall_height * 0.5, -2.0), blocked_colour))
+	const WALL_TOO_TALL_Z := -2.0
+	const WALL_TOO_TALL_DEPTH := 2.0
+	_attach(vault_area, _box("WallTooTall", Vector3(6.0, vault_wall_height, WALL_TOO_TALL_DEPTH),
+		Vector3(-2.0, vault_wall_height * 0.5, WALL_TOO_TALL_Z), blocked_colour))
 
-	# Two grabbable ledges bracketing the reachable range: one just above
-	# ledge_min_height (below this, Probes.ledge_query() would never even
-	# see it as tall enough to register), one just under ledge_max_height.
-	var ledge_low_height: float = vault_config.ledge_min_height + 0.1
+	# Ledge spacing: a run-up-and-jump distance, the same closed-form arc
+	# JumpArea's gap ladder uses (max_jump_distance = sprint_speed * airtime;
+	# see its own comment). test_the_vault_and_ledge_course_can_be_run_end_to_
+	# end drops sprint_held right before each grab-and-mantle phase, but that
+	# only changes GroundState's future acceleration TARGET -- the velocity
+	# already on the body from the sprint-held approach that came before it
+	# (Phase 1's vault run, or the previous ledge's own mantle exit) is what
+	# actually carries into the jump, so sprint_speed remains the real ground
+	# speed cap here, not walk_speed (measured directly: the player is still
+	# at exactly sprint_speed when it leaves the ground for LedgeLow).
+	# Grabbing a ledge, unlike clearing a gap, only works late in the arc (near
+	# the bottom of the parabola, just before landing -- ledge_query()'s own
+	# height gate is too narrow a window anywhere near the apex), so the
+	# ledges sit a nearly-full jump's reach apart rather than somewhere in the
+	# middle of it. LEDGE_RUNUP_MARGIN keeps the target comfortably inside
+	# that theoretical ceiling: the run-up never starts from a dead stop with
+	# the whole distance clear ahead of it (REALIGN_BUFFER below is the short
+	# manoeuvre that eats into it), so a margin is what keeps this reliably
+	# reachable rather than resting on float precision. Verified against an
+	# actual driven run at this value, not just the arithmetic.
+	const LEDGE_RUNUP_MARGIN := 0.95
+	const REALIGN_BUFFER := 2.0
+	const LEDGE_DEPTH := 2.0
+	var ledge_gap: float = max_jump_distance * LEDGE_RUNUP_MARGIN
+
+	var wall_too_tall_far_z: float = WALL_TOO_TALL_Z - WALL_TOO_TALL_DEPTH * 0.5
+
+	# Two grabbable ledges bracketing the reachable range. LedgeMid sits just
+	# under ledge_max_height, straightforwardly -- a tall target is grabbable
+	# the instant the forward probe is in range, so nothing about the new arc
+	# changes how close to the ceiling it can safely sit.
+	#
+	# LedgeLow is NOT simply "just above ledge_min_height" any more, and this
+	# needed measuring, not just reasoning about: ledge_query()'s height gate
+	# (probes.gd) only opens while `ledge_top - feet_height` sits inside
+	# [ledge_min_height, ledge_max_height], and a low target's feet_height
+	# crosses out of that window within a few HUNDREDTHS of a second of
+	# leaving the ground (verified directly -- a target at ledge_min_height +
+	# 0.1 was never once grabbed across a range of approach distances). The
+	# test's own realign phase (test_the_vault_and_ledge_course_can_be_run_
+	# end_to_end's Phase 3/4) always parks the run-up ~1.4 m short of the
+	# ledge before jumping, regardless of where this generator places it, so
+	# the height gate has to still be open at the moment ledge_reach first
+	# lets the forward probe see the wall, not merely at some point during
+	# the flight. GRAB_SAFETY_TIME is headroom past that moment for ordinary
+	# tick-to-tick timing jitter, not a hand-picked height:
+	#   time to close to ledge_reach = max(REALIGN_OFFSET - ledge_reach, 0) / sprint_speed
+	#   height risen by then + GRAB_SAFETY_TIME more   (closed-form projectile
+	#     arithmetic again: h(t) = jump_velocity*t - 0.5*gravity*t^2)
+	# added to ledge_min_height, so this still tracks any future retune of
+	# gravity/jump_velocity/sprint_speed/ledge_reach instead of needing its
+	# own separate fix the way the flat +0.1 did.
+	const REALIGN_OFFSET := 1.4  # mirrors test_arena.gd's own realign target, ledge.end.z + 1.4
+	const GRAB_SAFETY_TIME := 0.12
+	var time_to_ledge_reach: float = maxf(REALIGN_OFFSET - vault_config.ledge_reach, 0.0) / config.sprint_speed
+	var grab_time: float = time_to_ledge_reach + GRAB_SAFETY_TIME
+	var height_risen_at_grab: float = config.jump_velocity * grab_time - 0.5 * config.gravity * grab_time * grab_time
+	var ledge_low_height: float = vault_config.ledge_min_height + height_risen_at_grab
 	var ledge_mid_height: float = vault_config.ledge_max_height - 0.1
-	_attach(vault_area, _box("LedgeLow", Vector3(4.0, ledge_low_height, 2.0),
-		Vector3(0.0, ledge_low_height * 0.5, -10.0), ledge_colour))
-	_attach(vault_area, _box("LedgeMid", Vector3(4.0, ledge_mid_height, 2.0),
-		Vector3(0.0, ledge_mid_height * 0.5, -18.0), ledge_colour))
+	var ledge_low_z: float = wall_too_tall_far_z - REALIGN_BUFFER - ledge_gap
+	_attach(vault_area, _box("LedgeLow", Vector3(4.0, ledge_low_height, LEDGE_DEPTH),
+		Vector3(0.0, ledge_low_height * 0.5, ledge_low_z), ledge_colour))
+	var ledge_low_far_z: float = ledge_low_z - LEDGE_DEPTH * 0.5
+	var ledge_mid_z: float = ledge_low_far_z - REALIGN_BUFFER - ledge_gap
+	_attach(vault_area, _box("LedgeMid", Vector3(4.0, ledge_mid_height, LEDGE_DEPTH),
+		Vector3(0.0, ledge_mid_height * 0.5, ledge_mid_z), ledge_colour))
 
 	# And a platform clearly beyond ledge_max_height, so "too high to grab"
-	# has something to point at too.
+	# has something to point at too. Never driven at by the traversal test
+	# (only checked structurally, by test_the_ledge_platforms_bracket_the_
+	# configured_range), so it stays a short, fixed hop past LedgeMid rather
+	# than another full run-up-and-jump away.
+	const LEDGE_TOO_HIGH_GAP := 6.0
+	var ledge_mid_far_z: float = ledge_mid_z - LEDGE_DEPTH * 0.5
+	var ledge_too_high_z: float = ledge_mid_far_z - LEDGE_TOO_HIGH_GAP
 	var ledge_too_high_height: float = vault_config.ledge_max_height + 1.5
-	_attach(vault_area, _box("LedgeTooHigh", Vector3(4.0, ledge_too_high_height, 2.0),
-		Vector3(0.0, ledge_too_high_height * 0.5, -26.0), blocked_colour))
+	_attach(vault_area, _box("LedgeTooHigh", Vector3(4.0, ledge_too_high_height, LEDGE_DEPTH),
+		Vector3(0.0, ledge_too_high_height * 0.5, ledge_too_high_z), blocked_colour))
 
 	# --- Wall run course -----------------------------------------------------
 	#
@@ -398,14 +573,31 @@ func build() -> Node3D:
 	# during a real run does not fall outside reach.
 	const WALL_NEAR_FACE := 0.45
 	const WALL_THICKNESS := 1.0
-	# Tall enough that a wall run's modest vertical drift (gravity is only
-	# wall_gravity_scale of normal while attached) and a wall jump's vertical
-	# impulse (wall_jump_up, decaying under full gravity the instant the
-	# player leaves the wall) cannot carry the player's attach point above
-	# the wall's top edge mid-run -- matches the height
-	# tests/test_wall_run.gd's own fixture already runs every wall-run test
-	# against without that ever happening.
-	const WALL_HEIGHT := 8.0
+	# Tall enough to contain a CHAINED climb, not just one attach. Measured
+	# directly (see this task's own report): wall_run_state.gd's
+	# consume_buffered_jump() branch ASSIGNS velocity.y = wall_jump_up on every
+	# wall-jump -- it does not add to whatever vertical speed the player
+	# already had -- and wall_gravity_scale only weakly decays it while
+	# attached. Under the pre-retune gravity (24.0, 3x the current value) that
+	# decay outran the reset fast enough that this never mattered; under the
+	# new gravity (see MovementConfig.gravity's own comment) it does not, and
+	# a fast run through the zig-zag chain nets real height EVERY cycle,
+	# climbing straight through an 8 m ceiling instead of running along it.
+	# wall_jump_up^2 / (2 * effective wall gravity) is the textbook peak rise
+	# of one upward kick decelerating at a constant rate -- an upper bound on
+	# what a SINGLE cycle can add, reached only if the player rides out the
+	# whole rise before jumping again (a real chained run leaves earlier, so
+	# this over-estimates each cycle on purpose). Multiplying by how many
+	# walls the zig-zag chain actually has (see zig_walls below) bounds the
+	# WORST case across the whole chain, closed-form rather than hand-picked,
+	# so a future retune of gravity/wall_gravity_scale/wall_jump_up keeps this
+	# tall enough automatically instead of needing its own separate fix.
+	var wall_jump_peak_rise: float = (wall_config.wall_jump_up * wall_config.wall_jump_up) \
+		/ (2.0 * maxf(wall_config.gravity * wall_config.wall_gravity_scale, 0.001))
+	const ZIG_CHAIN_LENGTH := 4  # ZigLeft1, ZigRight1, ZigLeft2, ZigRight2 -- see zig_walls below
+	const WALL_HEIGHT_MARGIN := 1.3
+	var wall_run_height: float = (jump_peak_height + ZIG_CHAIN_LENGTH * wall_jump_peak_rise) \
+		* WALL_HEIGHT_MARGIN
 
 	# Long enough to exhaust a FULL wall_max_duration run, not merely the
 	# brief's minimum bar (half of wall_max_speed * wall_max_duration, which
@@ -416,8 +608,8 @@ func build() -> Node3D:
 	const LONG_WALL_NEAR_Z := 55.0
 	var long_wall_far_z: float = LONG_WALL_NEAR_Z - long_wall_length
 	_attach(wall_area, _box("LongWall",
-		Vector3(WALL_THICKNESS, WALL_HEIGHT, long_wall_length),
-		Vector3(WALL_NEAR_FACE + WALL_THICKNESS * 0.5, WALL_HEIGHT * 0.5,
+		Vector3(WALL_THICKNESS, wall_run_height, long_wall_length),
+		Vector3(WALL_NEAR_FACE + WALL_THICKNESS * 0.5, wall_run_height * 0.5,
 			(LONG_WALL_NEAR_Z + long_wall_far_z) * 0.5),
 		wall_colour))
 
@@ -489,8 +681,8 @@ func build() -> Node3D:
 		var index: int = entry[2]
 		var near_z: float = ZIG_START_Z - zig_step * index
 		var far_z: float = near_z - zig_length
-		_attach(wall_area, _box(wall_name, Vector3(WALL_THICKNESS, WALL_HEIGHT, zig_length),
-			Vector3(side * ZIG_X, WALL_HEIGHT * 0.5, (near_z + far_z) * 0.5), wall_colour))
+		_attach(wall_area, _box(wall_name, Vector3(WALL_THICKNESS, wall_run_height, zig_length),
+			Vector3(side * ZIG_X, wall_run_height * 0.5, (near_z + far_z) * 0.5), wall_colour))
 
 	var player_scene: PackedScene = load("res://scenes/player/player.tscn")
 	var player := player_scene.instantiate()
