@@ -120,6 +120,13 @@ extends Resource
 ## Minimum horizontal speed required to vault. Vaulting from a standstill would
 ## turn every waist-high box into a free elevator.
 @export var vault_min_speed: float = 2.5
+## How long the vault motion takes. Short enough to feel snappy, long enough
+## to read as a deliberate action rather than a teleport.
+@export var vault_duration: float = 0.32
+## Fraction of the approach speed carried out the far side.
+@export var vault_speed_keep: float = 0.85
+## How far past the obstacle top the vault places the player.
+@export var vault_exit_forward: float = 0.6
 
 @export_group("Ledge")
 ## Lowest and highest ledge tops, measured from the player's feet, that can be

@@ -33,6 +33,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.set_grounded(player.is_on_floor())
 		return SLIDE
 
+	# Vaulting has to be earned with speed, or every waist-high box becomes a
+	# free elevator.
+	if player.probes != null and player.horizontal_speed() >= config.vault_min_speed:
+		if player.probes.vault_query()["valid"]:
+			return VAULT
+
 	# A small downward bias keeps the body glued to the floor across seams and
 	# gentle slopes; without it is_on_floor() flickers while running.
 	player.velocity.y = -config.floor_snap_speed

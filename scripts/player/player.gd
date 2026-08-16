@@ -196,6 +196,12 @@ func _build_state_machine() -> void:
 	state_machine.add_child(slide)
 	state_machine.register(PlayerState.SLIDE, slide)
 
+	var vault := VaultState.new()
+	vault.player = self
+	vault.config = config
+	state_machine.add_child(vault)
+	state_machine.register(PlayerState.VAULT, vault)
+
 	state_machine.start(PlayerState.GROUND)
 
 func _physics_process(delta: float) -> void:
