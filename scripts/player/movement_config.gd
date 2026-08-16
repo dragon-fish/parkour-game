@@ -147,6 +147,25 @@ extends Resource
 @export var ledge_max_height: float = 2.8
 ## How far ahead of the body a ledge can be reached.
 @export var ledge_reach: float = 1.0
+## How far below the ledge top the body hangs.
+@export var ledge_hang_drop: float = 1.1
+## How long the mantle motion takes.
+@export var mantle_duration: float = 0.42
+## Horizontal speed granted on top after a mantle.
+@export var mantle_exit_speed: float = 2.0
+## After releasing a ledge, how long before another can be grabbed. Without
+## this, dropping off a ledge instantly re-grabs the same one.
+@export var ledge_regrab_cooldown: float = 0.45
+## How far past the ledge edge the mantle's landing point sits, so the body
+## ends up standing ON the platform rather than teetering right at its lip.
+## Mirrors vault_exit_forward's role for VaultState.
+@export var mantle_forward_offset: float = 0.4
+## Peak height of the vertical arc ScriptedMove.advance() adds over the
+## straight line from the hang position to the mantle's landing point, so the
+## body reads as climbing up and over the lip instead of clipping through it.
+## Mirrors vault_arc_height's role for VaultState -- see ScriptedMove's own
+## note on why the arc is a per-call value rather than a shared literal.
+@export var mantle_arc_height: float = 0.3
 
 @export_group("Camera")
 ## Height of the camera rig above the player's origin. Baked into player.tscn

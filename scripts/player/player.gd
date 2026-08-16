@@ -62,6 +62,10 @@ var _standing_height: float = 0.0
 var _coyote_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
 var _crouch_buffer_timer: float = 0.0
+## Counts down after releasing a ledge; while positive, can_grab_ledge()
+## refuses a re-grab. Without this, dropping off a ledge (e.g. via crouch)
+## would immediately re-grab the very same ledge on the next tick.
+var _ledge_cooldown: float = 0.0
 ## True when a state has asked for the standing capsule back but a ceiling was
 ## in the way. See request_standing_capsule().
 var _standing_restore_pending: bool = false
@@ -202,6 +206,12 @@ func _build_state_machine() -> void:
 	state_machine.add_child(vault)
 	state_machine.register(PlayerState.VAULT, vault)
 
+	var ledge := LedgeHangState.new()
+	ledge.player = self
+	ledge.config = config
+	state_machine.add_child(ledge)
+	state_machine.register(PlayerState.LEDGE, ledge)
+
 	state_machine.start(PlayerState.GROUND)
 
 func _physics_process(delta: float) -> void:
@@ -262,6 +272,8 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 	else:
 		_crouch_buffer_timer = maxf(_crouch_buffer_timer - delta, 0.0)
 
+	_ledge_cooldown = maxf(_ledge_cooldown - delta, 0.0)
+
 ## Spends a buffered jump if one is pending and the player is still within
 ## coyote time. Returns true at most once per press.
 func consume_jump() -> bool:
@@ -279,6 +291,16 @@ func consume_crouch() -> bool:
 		_crouch_buffer_timer = 0.0
 		return true
 	return false
+
+## Called by LedgeHangState when the player drops off a ledge (crouch), so
+## can_grab_ledge() refuses to re-grab the very same ledge on the next tick.
+func start_ledge_cooldown() -> void:
+	_ledge_cooldown = config.ledge_regrab_cooldown
+
+## True once the post-release cooldown started by start_ledge_cooldown() has
+## expired. AirState gates its ledge-grab check on this.
+func can_grab_ledge() -> bool:
+	return _ledge_cooldown <= 0.0
 
 ## World-space horizontal direction the player is asking to move in.
 func wish_direction(input: MoveInput) -> Vector3:

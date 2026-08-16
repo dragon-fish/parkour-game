@@ -13,6 +13,16 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	player.velocity.y -= config.gravity * delta
 	player.velocity.y = maxf(player.velocity.y, -config.terminal_velocity)
 
+	# Checked before this tick's own move_and_slide(), same as GroundState's
+	# vault check: if it fires, this state hands off to LedgeHangState (which
+	# drives the body directly, see its own note) without this tick's physics
+	# ever having moved the body at all. can_grab_ledge() enforces the
+	# post-release cooldown so dropping off a ledge cannot instantly re-grab
+	# the very same one.
+	if player.probes != null and player.can_grab_ledge():
+		if player.probes.ledge_query()["valid"]:
+			return LEDGE
+
 	# Capture the impact speed before move_and_slide() zeroes it on contact.
 	var impact_speed := maxf(-player.velocity.y, 0.0)
 	player.move_and_slide()
