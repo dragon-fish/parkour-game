@@ -15,7 +15,12 @@ func enter(_previous: StringName) -> void:
 	# left behind for the whole vault — stale coyote time, head bob, etc.
 	player.set_grounded(false)
 
-	var query: Dictionary = player.probes.vault_query()
+	# GroundState already null-checks player.probes before ever transitioning
+	# here, so this branch is currently unreachable in normal play — kept as a
+	# defensive guard anyway (not re-plumbed through a passed-in query) so a
+	# future caller into Vault that skips GroundState's gate degenerates to
+	# "nowhere to land" instead of a null-dereference crash.
+	var query: Dictionary = player.probes.vault_query() if player.probes != null else Probes.NO_HIT.duplicate()
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	_exit_speed = horizontal.length() * config.vault_speed_keep
 	_exit_direction = horizontal.normalized() if horizontal.length_squared() > 0.0001 else -player.global_transform.basis.z
@@ -24,15 +29,26 @@ func enter(_previous: StringName) -> void:
 	var landing := top + _exit_direction * config.vault_exit_forward
 	landing.y = top.y + player.standing_height() * 0.5
 
-	begin(player.global_position, landing, config.vault_duration)
+	begin(player.global_position, landing, config.vault_duration, config.vault_arc_height)
 	player.velocity = Vector3.ZERO
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if advance(delta):
 		player.velocity = _exit_direction * _exit_speed
-		# Landing on the far side is grounded again — declared here rather than
-		# left for GroundState's own first tick, which would otherwise read
-		# whatever this state left behind (false) for one extra frame.
-		player.set_grounded(true)
+		# Deliberately NOT declared grounded here. landing.y is pinned to the
+		# probed obstacle TOP plus vault_exit_forward's un-probed horizontal
+		# push -- past a thin obstacle that push can overshoot the obstacle's
+		# own footprint into open air over the real floor, which the body has
+		# never actually touched. Asserting grounded=true at that point was
+		# exactly the bug review caught: it silently re-arms coyote time (a
+		# jump buffered mid-vault would fire from mid-air) before GroundState's
+		# OWN move_and_slide() gets a chance to check anything. Leaving it
+		# false (unchanged from enter()) means GroundState's very next
+		# floor-snap tick is what first calls set_grounded() for real, exactly
+		# like every other transition into Ground (Air, Slide) already
+		# requires of itself. The cost is at most one tick of GroundState
+		# running before grounded is confirmed -- harmless, since GroundState
+		# always drives with ground_accelerate() regardless of this flag, so
+		# no air control leaks in during that tick.
 		return GROUND
 	return KEEP
