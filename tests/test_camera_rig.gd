@@ -93,10 +93,23 @@ func test_bob_fades_instead_of_snapping_at_liftoff() -> void:
 	rig.setup(cfg)
 
 	var speed := cfg.fov_speed_ref
-	# Advance to (near) the first bob peak so the recorded offset is clearly
-	# non-zero regardless of the config's tuning values, rather than hoping a
-	# fixed frame count happens to land away from a zero crossing.
-	var frames_to_peak := int(round((PI / 2.0) / (TICK * cfg.bob_frequency * speed)))
+	# Advance to (near) a bob peak so the recorded offset is clearly non-zero
+	# regardless of the config's tuning values, rather than hoping a fixed
+	# frame count happens to land away from a zero crossing.
+	#
+	# The peak must also land AFTER bob_weight has fully faded in (see
+	# MovementConfig.bob_fade_speed): bob_weight ramps in independently of
+	# bob_frequency, at a fixed per-tick rate, so a high enough bob_frequency
+	# reaches its first phase peak in fewer frames than the weight fade-in
+	# takes -- sampling THAT peak would read an offset still scaled down by a
+	# mid-fade weight, not the full-amplitude offset this test means to
+	# check. Keep walking forward by whole cycles until the candidate peak
+	# frame is past the weight's saturation point.
+	var phase_step := TICK * cfg.bob_frequency * speed
+	var weight_saturation_frames := ceilf(1.0 / (cfg.bob_fade_speed * TICK))
+	var frames_to_peak := int(round((PI / 2.0) / phase_step))
+	while frames_to_peak < weight_saturation_frames:
+		frames_to_peak += int(round((2.0 * PI) / phase_step))
 	for i in frames_to_peak:
 		rig.update_effects(TICK, speed, true)
 	var grounded_offset := rig.camera.position.y
