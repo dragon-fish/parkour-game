@@ -5,6 +5,11 @@ extends ScriptedMove
 # mantling (a scripted move onto the top). They share the same ledge data, and
 # splitting them would mean handing that data across a state boundary.
 
+## Set in enter() when the ledge query comes back invalid: there is nothing to
+## hang from, so physics_update() hands straight back to Air without ever
+## touching the body. See enter()'s note for what the old fallback did instead.
+var _aborted: bool = false
+
 var _edge: Vector3 = Vector3.ZERO
 ## The direction the mantle pushes and exits along. Captured ONCE, at
 ## COMMITMENT -- the moment forward or jump is pressed and begin() is called,
@@ -31,18 +36,29 @@ func enter(_previous: StringName) -> void:
 	# (hands off to Ground) and a crouch-release drop (hands off to Air)
 	# correctly leave it false -- the mantle case deliberately mirrors
 	# VaultState's own hand-off to Ground (see the note on that return below).
+	# It is also what satisfies StateMachine's declaration invariant for this
+	# state, which never calls set_grounded() again after this line.
 	player.set_grounded(false)
 
-	# AirState already null-checks player.probes before ever transitioning
-	# here (see its own ledge-grab check), so this branch is currently
-	# unreachable in normal play -- kept as a defensive guard anyway, matching
-	# VaultState.enter()'s identical guard, so a future caller into Ledge that
-	# skips that gate degenerates to "hang in place" instead of a
-	# null-dereference crash.
-	var query: Dictionary = player.probes.ledge_query() if player.probes != null else Probes.NO_HIT.duplicate()
-	_edge = query["edge"] if query["valid"] else player.global_position
-
+	_aborted = false
 	_mantling = false
+
+	# AirState already null-checks player.probes AND requires a valid
+	# ledge_query() before ever transitioning here, so neither branch below is
+	# reachable in normal play. They are kept as a guard for a future caller
+	# that skips that gate -- but as a GENUINELY safe one. The previous version
+	# fell back to `_edge = player.global_position`, which is not "nowhere to
+	# hang": the mantle target is built as `_edge + up * standing_height/2 +
+	# forward * mantle_forward_offset`, so that fallback would have teleported
+	# the body 0.9 m up and 0.4 m forward, through whatever was there. There is
+	# no safe destination to invent when the probe found nothing, so invent
+	# none: abort and let the player fall.
+	var query: Dictionary = player.probes.ledge_query() if player.probes != null else Probes.NO_HIT.duplicate()
+	if not query["valid"]:
+		_aborted = true
+		return
+	_edge = query["edge"]
+
 	player.velocity = Vector3.ZERO
 	# The body holds exactly wherever it grabbed -- NO repositioning, up or
 	# down. ledge_query()'s "height" is measured against the player's CURRENT
@@ -59,7 +75,27 @@ func enter(_previous: StringName) -> void:
 	# from there within mantle_duration -- the climb is a fixed-time lerp,
 	# not a fixed-speed one, so distance never affects how long it takes.)
 
+## Started on EVERY exit, not just the deliberate crouch-drop, and here rather
+## than at each `return` so a future exit path cannot forget it. The mantle
+## hand-off used to leave the cooldown at zero: a landing that found no floor
+## dropped to Air and AirState's very next ledge_query() could re-grab on the
+## same tick, with no gate of any kind between the two. That is an unbounded
+## oscillation whenever the landing point is not standing room -- the inverted
+## mantle_forward_offset sign made every running grab exactly that case, but
+## fixing the sign only removes today's trigger, not the hole. The cooldown is
+## the hole's actual lid.
+##
+## Harmless on the paths that were already fine: a completed mantle leaves the
+## player standing on top of the platform, where there is no ledge in front of
+## them to re-grab anyway, so withholding grabs for ledge_regrab_cooldown costs
+## nothing a player can feel.
+func exit() -> void:
+	player.start_ledge_cooldown()
+
 func physics_update(delta: float, input: MoveInput) -> StringName:
+	if _aborted:
+		return AIR
+
 	if _mantling:
 		if advance(delta):
 			player.velocity = _exit_direction * config.mantle_exit_speed
@@ -84,8 +120,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# path here that would move it. Matches VaultState, which likewise zeros
 	# velocity once at enter() rather than every tick of its own scripted move.
 
+	# The re-grab cooldown this drop needs is started by exit(), which covers
+	# this path and the mantle hand-off alike -- see the note on exit().
 	if input.crouch_held:
-		player.start_ledge_cooldown()
 		return AIR
 
 	# Pushing forward, or jumping, climbs up. This IS the moment of
@@ -101,7 +138,23 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if input.move.y > 0.5 or input.jump_pressed:
 		_exit_direction = -player.global_transform.basis.z
 		var top := _edge + Vector3(0.0, player.standing_height() * 0.5, 0.0)
-		top -= _exit_direction * config.mantle_forward_offset
+		# PLUS, not minus. _exit_direction is FORWARD (-basis.z), and the
+		# landing has to sit mantle_forward_offset PAST the lip, standing on
+		# the platform -- exactly what VaultState does with vault_exit_forward,
+		# and exactly what MovementConfig documents this knob as doing. The
+		# original brief wrote `top -= basis.z * 0.4`, where basis.z is
+		# BACKWARD, so that `-=` was already a forward push; a later refactor
+		# introduced `_exit_direction = -basis.z` but kept the `-=`,
+		# double-negating it. _edge is the SurfaceDown hit exactly ledge_reach
+		# ahead of the body, so subtracting here put the landing
+		# (ledge_reach - offset) ahead of the body: for a running grab (body
+		# 0.85-1.0 m off the face) that is 0.25-0.4 m IN FRONT of the wall,
+		# feet at platform height over open air. Measured on the test rig with
+		# the sign inverted, the body then settles balanced on the block's top
+		# EDGE, outside the platform -- and on the arena's LedgeMid it drops,
+		# slides back down the face and re-grabs: climb / fall / re-climb on
+		# every approach.
+		top += _exit_direction * config.mantle_forward_offset
 		begin(player.global_position, top, config.mantle_duration, config.mantle_arc_height)
 		_mantling = true
 	return KEEP
