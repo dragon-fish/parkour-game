@@ -141,7 +141,17 @@ func build() -> Node3D:
 	var blocked_colour := Color(0.55, 0.30, 0.30)
 	var ledge_colour := Color(0.45, 0.42, 0.62)
 
-	_attach(_root, _box("Floor", Vector3(60.0, 1.0, 60.0), Vector3(0.0, -0.5, 0.0), ground))
+	# 60x100, not 60x60: P3's WallArea (built below, north of spawn at +Z)
+	# needed more +Z room than the original 60x60 slab left free, and the
+	# fix is to enlarge the floor rather than let anything hang over its
+	# edge (see the WallArea comment for the exact budget). The extra 40 m
+	# is added entirely on the +Z side -- x is untouched and the -Z edge
+	# stays at -30 exactly, because JumpArea's Gap5/Gap6 and Step5/Step6
+	# deliberately extend past that edge into open air (the "missed jump
+	# falls forever" case test_falling_out_of_the_level_respawns_the_player
+	# covers) and moving that edge would silently turn them into solid
+	# ground.
+	_attach(_root, _box("Floor", Vector3(60.0, 1.0, 100.0), Vector3(0.0, -0.5, 20.0), ground))
 
 	var jump_area := Node3D.new()
 	jump_area.name = "JumpArea"
@@ -270,6 +280,10 @@ func build() -> Node3D:
 	# default the running game actually uses. Deriving from config, not
 	# copying its current numbers by hand, is what keeps this course meaningful
 	# after a future tuning pass changes vault_max_height or the ledge bounds.
+	#
+	# This area's own x/z stay within the ORIGINAL ±30 footprint on both
+	# axes (only the +Z side was later extended, for WallArea below), so
+	# every distance claim in this comment block still holds unchanged.
 	var vault_config := MovementConfig.new()
 	var vault_area := Node3D.new()
 	vault_area.name = "VaultArea"
@@ -323,6 +337,127 @@ func build() -> Node3D:
 	var ledge_too_high_height: float = vault_config.ledge_max_height + 1.5
 	_attach(vault_area, _box("LedgeTooHigh", Vector3(4.0, ledge_too_high_height, 2.0),
 		Vector3(0.0, ledge_too_high_height * 0.5, -26.0), blocked_colour))
+
+	# --- Wall run course -----------------------------------------------------
+	#
+	# North of spawn (+Z), not east/west like Slide/Vault: JumpArea, SlideArea
+	# and VaultArea between them already occupy every x column at z <= ~26
+	# (JumpArea's own boxes never reach z > 0 at all -- see its gap_z/Step
+	# loops above), so the +Z half of the floor past that is untouched. This
+	# area's own boxes stay inside x [-1.7, 1.7] and z [17.5, 55] -- nowhere
+	# near SlideArea's x [14, 22] or VaultArea's x [-23, -16] -- so there is
+	# no overlap to compute here beyond confirming those ranges don't touch,
+	# which they don't by more than 12 m on every side.
+	#
+	# WallArea.position is deliberately left at the origin (unlike every
+	# other area here, which offsets to keep ITS OWN local numbers small):
+	# with no offset, a child's `position` (local) and world coordinates are
+	# the same numbers, which is what let the non-overlap claim above be
+	# checked directly against Slide/Vault/Jump's own world-space comments
+	# without a conversion step.
+	#
+	# Course, run from +Z toward -Z like every other area here:
+	#
+	#   z ~65 .. 55   approach   bare arena floor -- ground_accel (60 m/s^2)
+	#                            reaches wall_min_speed (5 m/s) in well under
+	#                            a metre, so this is about pacing, not need
+	#   z  55 .. 38.5 LongWall   one continuous wall, length derived below
+	#   z 38.5 .. 35.5 gap       bare floor: a beat to land and reset after
+	#                            LongWall before the zig-zag starts
+	#   z 35.5 .. 17.5 zig-zag   four walls alternating sides, chained by
+	#                            wall jumps -- see the note above the loop
+	#
+	# The floor was enlarged (see the Floor comment above) specifically to
+	# fit this without anything hanging over its edge: the course's own
+	# northern approach ends at z=65, 5 m short of the new edge at z=70.
+	var wall_config := MovementConfig.new()
+	var wall_area := Node3D.new()
+	wall_area.name = "WallArea"
+	_attach(_root, wall_area)
+
+	# Colour distinct from every area above: a cool steel blue that has not
+	# been used for ground (blue-grey), gap (blue-cyan), slide (green), vault
+	# (amber), or ledge (violet) — chosen furthest in hue from slide_colour
+	# and gap_colour, the two nearest neighbours in this palette.
+	var wall_colour := Color(0.32, 0.52, 0.68)
+
+	# How far a wall's near face may sit from the running lane's centreline
+	# (local x = 0) and still be within wall_reach (0.75 m default) of a
+	# player running straight down it — proven in practice, not just in
+	# theory: this is the exact offset tests/test_wall_run.gd's own
+	# `_wall_world()` fixture uses (wall centred at x=0.95, this thickness),
+	# and every wall-attach test in that file passes against it. Kept well
+	# under wall_reach itself (0.75) rather than pushed right up against it,
+	# so a player drifting a few centimetres off the lane's exact centre
+	# during a real run does not fall outside reach.
+	const WALL_NEAR_FACE := 0.45
+	const WALL_THICKNESS := 1.0
+	# Tall enough that a wall run's modest vertical drift (gravity is only
+	# wall_gravity_scale of normal while attached) and a wall jump's vertical
+	# impulse (wall_jump_up, decaying under full gravity the instant the
+	# player leaves the wall) cannot carry the player's attach point above
+	# the wall's top edge mid-run -- matches the height
+	# tests/test_wall_run.gd's own fixture already runs every wall-run test
+	# against without that ever happening.
+	const WALL_HEIGHT := 8.0
+
+	# Long enough to exhaust a FULL wall_max_duration run, not merely the
+	# brief's minimum bar (half of wall_max_speed * wall_max_duration, which
+	# only proves the duration cap is reachable in principle) -- using the
+	# whole product means a run that holds along this wall the entire time
+	# actually hits the timer, not just clears the test's threshold.
+	var long_wall_length: float = wall_config.wall_max_speed * wall_config.wall_max_duration
+	const LONG_WALL_NEAR_Z := 55.0
+	var long_wall_far_z: float = LONG_WALL_NEAR_Z - long_wall_length
+	_attach(wall_area, _box("LongWall",
+		Vector3(WALL_THICKNESS, WALL_HEIGHT, long_wall_length),
+		Vector3(WALL_NEAR_FACE + WALL_THICKNESS * 0.5, WALL_HEIGHT * 0.5,
+			(LONG_WALL_NEAR_Z + long_wall_far_z) * 0.5),
+		wall_colour))
+
+	# --- Zig-zag section ------------------------------------------------------
+	#
+	# The reason this area exists: adjacent walls face OPPOSITE directions
+	# (one on each side of the running lane), so player.can_attach_wall()'s
+	# same-wall cooldown -- which blocks re-attaching a wall whose normal is
+	# too close to one just left, precisely to stop climbing one face forever
+	# -- never triggers between them (opposite normals dot to -1, nowhere near
+	# wall_same_normal_dot's 0.85 threshold). A wall jump off one throws the
+	# player toward the other, which is what makes relaying UP between them
+	# possible at all; two walls facing the SAME way here would teach the
+	# opposite lesson, or nothing.
+	#
+	# Half-width kept under wall_reach exactly like LongWall's WALL_NEAR_FACE,
+	# but a little looser (0.7 vs 0.45): LongWall only ever needs to be
+	# reached from one fixed side, but this corridor needs BOTH faces inside
+	# reach from the same centred running line, while still leaving the 0.4 m
+	# player capsule (see tools/build_player_scene.gd) 0.3 m of clearance on
+	# each side to run it without scraping either wall.
+	const ZIG_HALF_WIDTH := 0.7
+	const ZIG_X := ZIG_HALF_WIDTH + WALL_THICKNESS * 0.5
+	const ZIG_LENGTH := 6.0
+	# Less than ZIG_LENGTH on purpose: consecutive walls overlap by 2 m in Z,
+	# so the transition point (where a jump off one wall must land within
+	# wall_reach of the next) is comfortably inside both walls' spans rather
+	# than balanced on their shared edge.
+	const ZIG_STEP := 4.0
+	const ZIG_START_Z := 35.5
+
+	# name, side sign (-1 = left/-x, +1 = right/+x), position in the sequence
+	var zig_walls := [
+		["ZigLeft1", -1.0, 0],
+		["ZigRight1", 1.0, 1],
+		["ZigLeft2", -1.0, 2],
+		["ZigRight2", 1.0, 3],
+	]
+	for entry in zig_walls:
+		var wall_name: String = entry[0]
+		var side: float = entry[1]
+		var index: int = entry[2]
+		var near_z: float = ZIG_START_Z - ZIG_STEP * index
+		var far_z: float = near_z - ZIG_LENGTH
+		_attach(wall_area, _box(wall_name, Vector3(WALL_THICKNESS, WALL_HEIGHT, ZIG_LENGTH),
+			Vector3(side * ZIG_X, WALL_HEIGHT * 0.5, (near_z + far_z) * 0.5), wall_colour))
 
 	var player_scene: PackedScene = load("res://scenes/player/player.tscn")
 	var player := player_scene.instantiate()

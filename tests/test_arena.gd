@@ -743,6 +743,123 @@ func test_the_vault_area_fits_inside_the_arena_floor() -> void:
 	arena.queue_free()
 	await step(1)
 
+## The hard constraint applied to the new P3 area too, mirroring
+## test_the_vault_area_fits_inside_the_arena_floor exactly: every body must
+## sit entirely inside the arena floor's (now enlarged, see arena_builder.gd's
+## Floor comment) footprint, or a missed attempt drops the player into the
+## fall-recovery teleport instead of back onto solid ground.
+func test_the_wall_area_fits_inside_the_arena_floor() -> void:
+	await step(1)
+	var arena = await _load_arena()
+
+	var floor_node := arena.get_node("Floor") as StaticBody3D
+	var floor_box: BoxShape3D = (floor_node.get_node("Collision") as CollisionShape3D).shape
+	var floor_aabb := AABB(floor_node.global_position - floor_box.size * 0.5, floor_box.size)
+
+	var boxes: Array = []
+	_collect_box_bodies(arena.get_node("WallArea"), boxes)
+	check_greater(float(boxes.size()), 0.0, \
+		"WallArea contributed no box solids, so this test silently checked nothing")
+
+	for body in boxes:
+		var body_aabb := _world_aabb(body)
+		check(body_aabb.position.x >= floor_aabb.position.x and body_aabb.end.x <= floor_aabb.end.x, \
+			"WallArea/%s extends past the floor's x extent (body %s, floor %s)" \
+			% [body.name, body_aabb, floor_aabb])
+		check(body_aabb.position.z >= floor_aabb.position.z and body_aabb.end.z <= floor_aabb.end.z, \
+			"WallArea/%s extends past the floor's z extent (body %s, floor %s)" \
+			% [body.name, body_aabb, floor_aabb])
+
+	arena.queue_free()
+	await step(1)
+
+## Structural-only assertions ("the zig walls alternate", "the long wall is
+## long enough") say nothing about whether a player can actually reach and
+## use any of it — the same gap test_the_slide_course_can_be_run_end_to_end
+## and test_the_vault_and_ledge_course_can_be_run_end_to_end were added to
+## close for their own areas, and the brief calls out by name as the kind of
+## test that would have caught the ledge mantle's sign error. Wall running
+## additionally requires being AIRBORNE beside the wall (only AirState ever
+## runs wall_query() — see air_state.gd), which sprinting alone does not
+## provide, so this drives the player at LongWall with a repeated jump press
+## (same pattern _grab_and_mantle above uses to time a ledge grab without the
+## test having to know exactly when the player leaves the ground) rather than
+## a single scripted jump.
+func test_the_wall_run_course_can_be_run_end_to_end() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var player: Player = arena.player
+
+	var long_wall_aabb := _world_aabb(arena.get_node("WallArea/LongWall"))
+	var deck := _floor_top(arena)
+	# The running lane's centreline: LongWall's near face sits at lane_x +
+	# WALL_NEAR_FACE (0.45, see arena_builder.gd), well inside wall_reach.
+	var lane_x := 0.0
+
+	# Start north of the wall's near end, with room to clear wall_min_speed
+	# on bare floor before ever getting close to it.
+	player.global_position = Vector3(lane_x, deck + 1.0, long_wall_aabb.end.z + 8.0)
+	player.velocity = Vector3.ZERO
+	player.rotation = Vector3.ZERO
+	await step(20)
+	check(player.is_on_floor(), "precondition: the player did not settle onto the wall course approach")
+
+	var input := ScriptedInputSource.new()
+	player.input_source = input
+	input.state.move = Vector2(0.0, 1.0)
+	input.state.sprint_held = true
+
+	var attached := false
+	var ticks := 0
+	for i in 300:
+		ticks += 1
+		if player.is_on_floor():
+			input.press_jump()
+		await step(1)
+		if player.state_machine.current_name == PlayerState.WALL:
+			attached = true
+			break
+		# Stop the INSTANT the player clears LongWall's far end, attached or
+		# not: past that point lies the gap and then the zig-zag section's own
+		# walls, which are close enough to reach from the same lane. Reading
+		# any further would let a genuinely broken LongWall (e.g. placed
+		# outside wall_reach) still read as a pass on the strength of the
+		# zig-zag walls the player runs into next, silently defeating the
+		# very thing this test names.
+		if player.global_position.z <= long_wall_aabb.position.z:
+			break
+	check(attached, \
+		"the player ran the length of LongWall without ever entering Wall, stopped at %s after %d ticks" \
+		% [player.global_position, ticks])
+
+	arena.queue_free()
+	await step(1)
+
+## Verbatim from this task's brief: the zig-zag walls must face each other
+## across the run line (the same-wall cooldown blocks re-attaching a similar
+## facing but permits a genuinely different one, which is what lets a player
+## chain upward), and the long wall must be long enough to exercise a
+## full-duration wall run.
+func test_the_wall_area_alternates_facing_so_chaining_is_possible() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var left = arena.get_node_or_null("WallArea/ZigLeft1")
+	var right = arena.get_node_or_null("WallArea/ZigRight1")
+	check(left != null and right != null, "the zig-zag walls are missing")
+	# They must sit on opposite sides of the run line, or the reattach cooldown
+	# blocks the chain the area exists to teach.
+	check(left.position.x * right.position.x < 0.0, \
+		"the zig-zag walls must face each other across the run line")
+
+	var long_wall = arena.get_node_or_null("WallArea/LongWall")
+	check(long_wall != null, "the long wall is missing")
+	var box := ((long_wall.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
+	check_greater(box.size.z, arena.config.wall_max_speed * arena.config.wall_max_duration * 0.5, \
+		"the long wall is too short to exercise a full-duration wall run")
+
+	arena.queue_free()
+	await step(1)
+
 ## Recursively builds a semantic snapshot of a node tree for structural
 ## comparison: node path, class, script identity, local transform, and (for a
 ## CollisionShape3D wrapping a BoxShape3D) its shape size. Deliberately
