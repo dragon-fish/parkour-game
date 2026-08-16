@@ -97,3 +97,77 @@ func test_leaving_the_floor_edge_does_not_start_with_a_downward_jolt() -> void:
 
 	TestWorld.teardown(world)
 	await step(1)
+
+## GroundState's Slide/Vault entry checks must never fire on a tick where
+## player.grounded has not itself been verified by a move_and_slide() —
+## exactly the situation a ScriptedMove (Vault, and now Ledge's mantle) hands
+## GroundState the very first tick after it completes: grounded is
+## deliberately left false there, because the scripted move drove the body's
+## position directly and never checked it against real geometry. Calls
+## GroundState.physics_update() directly (bypassing StateMachine) so the
+## exact same position/velocity/grounded combination can be replayed twice —
+## once with grounded forced false, once with it legitimately true — proving
+## the GATE, not mere geometry, is what makes the difference.
+func test_a_scripted_move_cannot_enter_on_an_unverified_tick() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(15)
+
+	var player: Player = world["player"]
+
+	# A vaultable block: tall enough to block VaultLow (shin height), short
+	# enough to clear VaultHigh (chest height), well within vault_max_height.
+	var block := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(8.0, 1.0, 1.0)
+	shape.shape = box
+	block.add_child(shape)
+	tree.root.add_child(block)
+	await step(1)
+	block.global_position = Vector3(0.0, 0.5, -5.0)
+	await step(1)
+
+	# Hand-placed so Probes.vault_query() reads the block as valid: within
+	# vault_reach (1.4 default) of its near face (z = -4.5), with the downward
+	# probe's forward offset (also vault_reach ahead) still landing on the
+	# block's own top (z spans -5.5..-4.5) rather than past its far edge. See
+	# tools/build_player_scene.gd for the ray geometry this is derived from.
+	var start_pos := Vector3(0.0, 0.95, -3.5)
+	player.global_position = start_pos
+	player.velocity = Vector3(0.0, 0.0, -cfg.sprint_speed)
+	await step(1)
+
+	check(player.probes.vault_query()["valid"], \
+		"precondition: the block should read as a valid vault target from this position")
+
+	var ground_state: PlayerState = player.state_machine.state_for(PlayerState.GROUND)
+	var input := MoveInput.new()
+	input.move = Vector2(0.0, 1.0)
+	input.sprint_held = true
+
+	# Simulate the tick right after a ScriptedMove hands off with grounded
+	# still unverified.
+	player.global_position = start_pos
+	player.velocity = Vector3(0.0, 0.0, -cfg.sprint_speed)
+	player.grounded = false
+	var result_unverified: StringName = ground_state.physics_update(1.0 / 60.0, input)
+	check(result_unverified != PlayerState.VAULT, \
+		"GroundState entered a scripted move (Vault) on a tick where grounded had not yet been verified")
+
+	# Replay the IDENTICAL position/velocity with grounded legitimately true,
+	# to prove the check above is exercising the gate and not just a setup
+	# that never vaults at all.
+	player.global_position = start_pos
+	player.velocity = Vector3(0.0, 0.0, -cfg.sprint_speed)
+	player.grounded = true
+	var result_verified: StringName = ground_state.physics_update(1.0 / 60.0, input)
+	check(result_verified == PlayerState.VAULT, \
+		"precondition: with grounded verified, the identical setup should still vault")
+
+	block.queue_free()
+	TestWorld.teardown(world)
+	await step(1)

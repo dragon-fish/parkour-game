@@ -15,29 +15,44 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.set_grounded(player.is_on_floor())
 		return AIR
 
-	# A slide has to be earned: crouching below the entry speed just crouches.
-	# Gated on a fresh PRESS (never on crouch_held) so holding crouch while
-	# running cannot immediately re-enter Slide the instant a slide ends —
-	# that would strobe Slide<->Ground every couple of frames instead of
-	# committing. The press is read through the buffer rather than straight off
-	# this tick's input, so a crouch pressed just before touchdown — which is
-	# exactly what a roll is — still opens a slide on landing instead of being
-	# discarded in mid-air. The speed test is evaluated FIRST so its
-	# short-circuit leaves a too-slow press buffered rather than spending it.
-	if player.horizontal_speed() >= config.slide_entry_speed and player.consume_crouch():
-		# Same floor-snap bias as the fall-through path below. Without it, a
-		# slide started on a downslope can leave the floor on this very tick
-		# and bounce straight back out to Air.
-		player.velocity.y = -config.floor_snap_speed
-		player.move_and_slide()
-		player.set_grounded(player.is_on_floor())
-		return SLIDE
+	# Slide and Vault entry are both gated on player.grounded being TRUE —
+	# i.e. already verified by a move_and_slide() this tick or a prior one —
+	# not merely assumed. The only time it can be false on entry to
+	# GroundState is the tick right after a ScriptedMove (e.g. Vault) hands
+	# off: that state deliberately leaves grounded false because its own
+	# landing position was driven directly and never checked against real
+	# geometry (see VaultState.physics_update()'s note on this). Without this
+	# gate, that unverified position was itself enough to immediately chain
+	# into a SECOND scripted move — return VAULT below, again without ever
+	# calling move_and_slide() — if a further obstacle happened to be in
+	# reach. The gate costs nothing on the legitimate path: every real
+	# Air/Slide->Ground transition already has grounded==true by the time
+	# GroundState runs.
+	if player.grounded:
+		# A slide has to be earned: crouching below the entry speed just
+		# crouches. Gated on a fresh PRESS (never on crouch_held) so holding
+		# crouch while running cannot immediately re-enter Slide the instant a
+		# slide ends — that would strobe Slide<->Ground every couple of frames
+		# instead of committing. The press is read through the buffer rather
+		# than straight off this tick's input, so a crouch pressed just before
+		# touchdown — which is exactly what a roll is — still opens a slide on
+		# landing instead of being discarded in mid-air. The speed test is
+		# evaluated FIRST so its short-circuit leaves a too-slow press
+		# buffered rather than spending it.
+		if player.horizontal_speed() >= config.slide_entry_speed and player.consume_crouch():
+			# Same floor-snap bias as the fall-through path below. Without it, a
+			# slide started on a downslope can leave the floor on this very tick
+			# and bounce straight back out to Air.
+			player.velocity.y = -config.floor_snap_speed
+			player.move_and_slide()
+			player.set_grounded(player.is_on_floor())
+			return SLIDE
 
-	# Vaulting has to be earned with speed, or every waist-high box becomes a
-	# free elevator.
-	if player.probes != null and player.horizontal_speed() >= config.vault_min_speed:
-		if player.probes.vault_query()["valid"]:
-			return VAULT
+		# Vaulting has to be earned with speed, or every waist-high box becomes a
+		# free elevator.
+		if player.probes != null and player.horizontal_speed() >= config.vault_min_speed:
+			if player.probes.vault_query()["valid"]:
+				return VAULT
 
 	# A small downward bias keeps the body glued to the floor across seams and
 	# gentle slopes; without it is_on_floor() flickers while running.
