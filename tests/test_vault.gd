@@ -294,3 +294,66 @@ func test_a_vault_over_a_thin_obstacle_does_not_falsely_declare_grounded() -> vo
 	world["obstacle"].queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+
+## A climbable ramp must never read as something to vault over. Reported from
+## play: walking up the arena's ramp re-triggered the vault every few steps and
+## caught the player's feet. The cause was that a ramp satisfies every other
+## gate — its rising surface stops the shin ray, no realistic ramp angle
+## reaches the chest ray, and its own walkable top sits within vault_max_height
+## of the feet — so only the surface normal distinguishes it from an obstacle.
+func test_running_up_a_ramp_never_vaults() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(15)
+
+	# A ramp the player can simply walk up. Rotating about +X lifts the -Z end,
+	# which is the direction the player runs. The angle is deliberately well
+	# inside Godot's walkable limit so this is unambiguously ground, not an
+	# obstacle: its surface normal stays above min_walkable_normal_y.
+	var ramp := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(8.0, 1.0, 12.0)
+	shape.shape = box
+	ramp.add_child(shape)
+	# Position BEFORE add_child: a body added first sits at the world origin
+	# for a frame, overlaps the player and launches it.
+	ramp.position = Vector3(0.0, 1.367, -10.0)
+	ramp.rotation = Vector3(deg_to_rad(18.4), 0.0, 0.0)
+	tree.root.add_child(ramp)
+	await step(2)
+
+	var player: Player = world["player"]
+	var start_y := player.global_position.y
+	world["input"].state.move = Vector2(0.0, 1.0)
+	world["input"].state.sprint_held = true
+
+	var vaulted := false
+	# Track the PEAK height, not the final one. The player runs off the far end
+	# of the ramp and lands back on the floor well inside this window, so a
+	# reading taken after the loop reports roughly zero climb and the
+	# precondition below would fail even though the ramp worked perfectly.
+	var peak_y := start_y
+	for i in 240:
+		await step(1)
+		peak_y = maxf(peak_y, player.global_position.y)
+		if player.state_machine.current_name == &"Vault":
+			vaulted = true
+			break
+
+	var climbed := peak_y - start_y
+
+	# Precondition first, so a mis-oriented ramp fails loudly here rather than
+	# letting the real assertion pass for the wrong reason — the player has to
+	# actually have gone UP something for "did not vault it" to mean anything.
+	check_greater(climbed, 1.0, \
+		"precondition: the player should have climbed the ramp, but only rose %f m" % climbed)
+	check(not vaulted, \
+		"running up a walkable ramp must never trigger a vault (climbed %f m first)" % climbed)
+
+	ramp.queue_free()
+	TestWorld.teardown(world)
+	await step(1)

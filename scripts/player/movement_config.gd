@@ -125,6 +125,28 @@ extends Resource
 ## a slide on touchdown without reopening one every time a slide ends.
 @export var crouch_buffer_time: float = 0.15
 
+@export_group("Probes")
+## Smallest upward (Y) component a surface normal may have and still count as
+## ground CharacterBody3D's own locomotion already walks, rather than
+## something Probes.gd should react to -- roughly matching floor_max_angle
+## (45 degrees at Godot's default; 0.7 ~= cos(45.6 degrees)). This is the
+## single stated definition of "walkable" the vault and ledge probes share,
+## read two opposite ways depending on which ray is asking:
+##   - a DOWNWARD probe's hit (vault_query's and ledge_query's landing
+##     surface) must be AT OR ABOVE this to count as a top worth standing on;
+##   - a FORWARD probe's hit (vault_query's shin-height obstacle check) must
+##     be BELOW this to count as a genuine face rather than a slope the
+##     player would simply walk up.
+## One number, because a ramp reads as flat ground either way it is probed:
+## measured directly, a shin ray planted on the arena's 18.4 degree UpRamp
+## reports normal (0, 0.949, 0.316) -- comfortably above this threshold, i.e.
+## walkable ground, not an obstacle face -- which is exactly what used to let
+## a plain climbable ramp read as a vaultable obstacle and re-trigger on every
+## step. Previously two separate hardcoded literals inside probes.gd (one per
+## query) that happened to agree; moved here so there is one knob instead of
+## two copies that could silently drift apart.
+@export var min_walkable_normal_y: float = 0.7
+
 @export_group("Vault")
 ## Highest obstacle top, measured from the player's feet, that can be vaulted.
 @export var vault_max_height: float = 1.3
