@@ -1,57 +1,97 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_gmlin"]
-[ext_resource type="Script" path="res://scripts/camera/camera_rig.gd" id="2_lvxji"]
-[ext_resource type="Script" path="res://scripts/player/probes.gd" id="3_p47bc"]
+[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_p47bc"]
+[ext_resource type="Script" path="res://scripts/camera/camera_rig.gd" id="2_75vfm"]
+[ext_resource type="Script" path="res://scripts/player/character_animator.gd" id="3_0owmy"]
+[ext_resource type="Script" path="res://scripts/player/probes.gd" id="4_qek5x"]
+[ext_resource type="PackedScene" path="res://scenes/player/whine_fox_player_nohead.tscn" id="5_5gtgg"]
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_75vfm"]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_h17s1"]
 radius = 0.4
 height = 1.8
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_0owmy"]
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_je7p5"]
+animation = &"idle"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_fm80t"]
+animation = &"jump"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_gx1jg"]
+animation = &"run"
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_ugbui"]
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_fcs02"]
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_myrg7"]
+
+[sub_resource type="AnimationNodeStateMachine" id="AnimationNodeStateMachine_kvlxm"]
+states/idle/node = SubResource("AnimationNodeAnimation_je7p5")
+states/idle/position = Vector2(0, 0)
+states/jump/node = SubResource("AnimationNodeAnimation_fm80t")
+states/jump/position = Vector2(0, 0)
+states/run/node = SubResource("AnimationNodeAnimation_gx1jg")
+states/run/position = Vector2(0, 0)
+transitions = ["Start", "idle", SubResource("AnimationNodeStateMachineTransition_ugbui"), "idle", "run", SubResource("AnimationNodeStateMachineTransition_fcs02"), "run", "End", SubResource("AnimationNodeStateMachineTransition_myrg7")]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_uf5tr"]
 radius = 0.4
 height = 1.8
 
-[node name="Player" type="CharacterBody3D" unique_id=326532671 node_paths=PackedStringArray("camera_rig", "probes")]
-script = ExtResource("1_gmlin")
+[node name="Player" type="CharacterBody3D" unique_id=1129575188 node_paths=PackedStringArray("camera_rig", "probes")]
+script = ExtResource("1_p47bc")
 camera_rig = NodePath("CameraRig")
 probes = NodePath("Probes")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1131068641]
-shape = SubResource("CapsuleShape3D_75vfm")
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1663351148]
+shape = SubResource("CapsuleShape3D_h17s1")
 
-[node name="CameraRig" type="Node3D" parent="." unique_id=1995507210]
+[node name="CameraRig" type="Node3D" parent="." unique_id=1936913962]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
-script = ExtResource("2_lvxji")
+script = ExtResource("2_75vfm")
 
-[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=1105144939]
+[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=1031543385]
 
-[node name="BodyRoot" type="Node3D" parent="." unique_id=716917409]
+[node name="BodyRoot" type="Node3D" parent="." unique_id=348797000]
 
-[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=55797394]
-shape = SubResource("CapsuleShape3D_0owmy")
+[node name="AnimationTree" type="AnimationTree" parent="BodyRoot" unique_id=1151883593]
+root_node = NodePath("../../wine_fox")
+callback_mode_process = 0
+tree_root = SubResource("AnimationNodeStateMachine_kvlxm")
+anim_player = NodePath("../../wine_fox/AnimationPlayer")
+
+[node name="CharacterAnimator" type="Node" parent="BodyRoot" unique_id=271090759 node_paths=PackedStringArray("anim_tree", "player")]
+script = ExtResource("3_0owmy")
+anim_tree = NodePath("../AnimationTree")
+player = NodePath("../..")
+
+[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=30668896]
+shape = SubResource("CapsuleShape3D_uf5tr")
 target_position = Vector3(0, 0, 0)
 
-[node name="Probes" type="Node3D" parent="." unique_id=2056875636]
-script = ExtResource("3_p47bc")
+[node name="Probes" type="Node3D" parent="." unique_id=232457897]
+script = ExtResource("4_qek5x")
 
-[node name="VaultLow" type="RayCast3D" parent="Probes" unique_id=328870784]
+[node name="VaultLow" type="RayCast3D" parent="Probes" unique_id=2022245159]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.55, 0)
 target_position = Vector3(0, 0, -1.4)
 
-[node name="VaultHigh" type="RayCast3D" parent="Probes" unique_id=1335396715]
+[node name="VaultHigh" type="RayCast3D" parent="Probes" unique_id=603218448]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
 target_position = Vector3(0, 0, -1.4)
 
-[node name="SurfaceDown" type="RayCast3D" parent="Probes" unique_id=992932639]
+[node name="SurfaceDown" type="RayCast3D" parent="Probes" unique_id=1030303472]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, -1)
 target_position = Vector3(0, -3.2, 0)
 hit_from_inside = true
 
-[node name="WallLeft" type="RayCast3D" parent="Probes" unique_id=366782902]
+[node name="WallLeft" type="RayCast3D" parent="Probes" unique_id=773176672]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
 target_position = Vector3(-0.75, 0, 0)
 
-[node name="WallRight" type="RayCast3D" parent="Probes" unique_id=987911967]
+[node name="WallRight" type="RayCast3D" parent="Probes" unique_id=44285579]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
 target_position = Vector3(0.75, 0, 0)
+
+[node name="wine_fox" type="Node3D" parent="." unique_id=1570358900 instance=ExtResource("5_5gtgg")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.85626817, 0.1185838)

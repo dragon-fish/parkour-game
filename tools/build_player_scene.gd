@@ -7,8 +7,10 @@ extends SceneTree
 #   .engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . \
 #       --script res://tools/build_player_scene.gd
 #
-# One-shot scaffolding: once the .tscn exists it is the source of truth, and
-# re-running this would discard any later edits made in the editor.
+# NOT one-shot: this is re-run on every phase of the project, same as
+# tools/build_main_scene.gd. Anything a human wires up by hand in the editor
+# (the character model, its AnimationTree -- see below) belongs IN THIS FILE,
+# or the next regeneration silently discards it.
 
 const OUTPUT := "res://scenes/player/player.tscn"
 
@@ -46,12 +48,76 @@ func _run() -> void:
 	rig.add_child(cam)
 	cam.owner = player
 
-	# Reserved for the P5 procedural first-person body. Empty for now, but
-	# present so adding a skeleton later does not restructure the scene.
+	# Mount point for the visible character body. Originally reserved empty
+	# for the P5 procedural first-person body; now also where the
+	# AnimationTree driving it lives (the body mesh itself is instanced
+	# directly under the player root below, matching the owner's own
+	# hand-wired arrangement -- see the AnimationTree's root_node/anim_player
+	# NodePaths just below for why).
 	var body_root := Node3D.new()
 	body_root.name = "BodyRoot"
 	player.add_child(body_root)
 	body_root.owner = player
+
+	# --- Character animation ---------------------------------------------
+	#
+	# Moved here from a hand-edited scenes/player/player.tscn: this file is
+	# generator OUTPUT (see the module comment above), so a hand edit to it
+	# is silently discarded the next time anyone regenerates the scene. This
+	# block reproduces that hand-wiring so regeneration can no longer lose it.
+	#
+	# Three animations only (idle/run/jump) -- see
+	# scripts/player/character_animator.gd for the driver that actually
+	# selects between them at runtime; this block only builds the graph.
+	var idle_anim := AnimationNodeAnimation.new()
+	idle_anim.animation = &"idle"
+	var jump_anim := AnimationNodeAnimation.new()
+	jump_anim.animation = &"jump"
+	var run_anim := AnimationNodeAnimation.new()
+	run_anim.animation = &"run"
+
+	var state_machine := AnimationNodeStateMachine.new()
+	state_machine.add_node("idle", idle_anim)
+	state_machine.add_node("jump", jump_anim)
+	state_machine.add_node("run", run_anim)
+
+	# advance_mode = ENABLED, deliberately NOT the AUTO the owner's hand-wired
+	# graph used (advance_mode = 2 in the .tscn diff this block replaces).
+	# Verified experimentally: with AUTO and no advance_condition set, a
+	# transition fires the instant it is evaluated -- not when its animation
+	# finishes -- so an AUTO Start->idle->run->End chain races itself to End
+	# within a single physics frame regardless of what CharacterAnimator asks
+	# for, making idle and run permanently unreachable. ENABLED transitions
+	# never fire on their own; travel() calls from CharacterAnimator are the
+	# only thing that ever moves this graph, which is the whole point of
+	# giving it a driver.
+	var start_to_idle := AnimationNodeStateMachineTransition.new()
+	start_to_idle.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
+	state_machine.add_transition("Start", "idle", start_to_idle)
+	var idle_to_run := AnimationNodeStateMachineTransition.new()
+	idle_to_run.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
+	state_machine.add_transition("idle", "run", idle_to_run)
+	var run_to_end := AnimationNodeStateMachineTransition.new()
+	run_to_end.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
+	state_machine.add_transition("run", "End", run_to_end)
+
+	var anim_tree := AnimationTree.new()
+	anim_tree.name = "AnimationTree"
+	anim_tree.tree_root = state_machine
+	# Every other system in this project (movement, camera, probes) runs
+	# exclusively off _physics_process, which is also what tests/test_case.gd's
+	# step() advances -- an AnimationTree left on its IDLE-process default
+	# would never see a frame in a headless physics-only test loop (verified:
+	# it simply never processes, so travel() calls have nothing to apply
+	# them). PHYSICS keeps this node consistent with the rest of the project
+	# and testable the same way.
+	anim_tree.process_callback = AnimationTree.ANIMATION_PROCESS_PHYSICS
+	# active defaults to true (verified), so this is a no-op today -- kept
+	# explicit because "the tree actually plays" is load-bearing enough to
+	# state rather than leave to a default a future Godot version could flip.
+	anim_tree.active = true
+	body_root.add_child(anim_tree)
+	anim_tree.owner = player
 
 	# Standing-clearance probe: a capsule the size of the STANDING body, tested
 	# in place. A ray would miss geometry the capsule's radius would hit.
@@ -159,6 +225,36 @@ func _run() -> void:
 	wall_right.owner = player
 
 	player.probes = probes
+
+	# The visible mesh: instanced directly under the player root (a sibling of
+	# BodyRoot, not a child of it) because that is where the owner's own
+	# hand-wired copy put it -- reproduced as-is rather than moved under
+	# BodyRoot, which would only have changed the AnimationTree's
+	# root_node/anim_player NodePaths for no behavioural gain.
+	var body_scene: PackedScene = load("res://scenes/player/whine_fox_player_nohead.tscn")
+	var body := body_scene.instantiate() as Node3D
+	body.name = "wine_fox"
+	body.transform = Transform3D(Basis.IDENTITY, Vector3(0.0, -0.85626817, 0.1185838))
+	player.add_child(body)
+	body.owner = player
+	# An instantiated sub-scene keeps its own internal ownership; marking only
+	# the instance root is what makes it serialise as an instance rather than
+	# an expanded copy (same reasoning as arena_builder.gd's Player instance).
+
+	# NodePaths computed rather than hardcoded so they can never drift from
+	# the actual hierarchy built above.
+	anim_tree.root_node = anim_tree.get_path_to(body)
+	anim_tree.anim_player = anim_tree.get_path_to(body.get_node("AnimationPlayer"))
+
+	# Drives the state machine above from the player's real movement state
+	# every physics tick -- see scripts/player/character_animator.gd.
+	var animator := Node.new()
+	animator.name = "CharacterAnimator"
+	animator.set_script(load("res://scripts/player/character_animator.gd"))
+	body_root.add_child(animator)
+	animator.owner = player
+	animator.anim_tree = anim_tree
+	animator.player = player
 
 	DirAccess.make_dir_recursive_absolute("res://scenes/player")
 	var packed := PackedScene.new()
