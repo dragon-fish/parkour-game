@@ -11,7 +11,7 @@ func _running_at_obstacle(height: float, cfg: MovementConfig = null, depth: floa
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 
 	var obstacle := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
@@ -307,7 +307,7 @@ func test_running_up_a_ramp_never_vaults() -> void:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 
 	# A ramp the player can simply walk up. Rotating about +X lifts the -Z end,
 	# which is the direction the player runs. The angle is deliberately well

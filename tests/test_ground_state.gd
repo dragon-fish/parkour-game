@@ -5,7 +5,7 @@ func _spawn() -> Dictionary:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	return world
 
 func test_player_starts_grounded() -> void:
@@ -114,7 +114,7 @@ func test_a_scripted_move_cannot_enter_on_an_unverified_tick() -> void:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 
 	var player: Player = world["player"]
 

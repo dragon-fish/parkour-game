@@ -8,7 +8,7 @@ func _spawn() -> Dictionary:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	return world
 
 func test_grounded_tracks_the_ground_state() -> void:

@@ -8,7 +8,7 @@ func _airborne_world(cfg: MovementConfig, drop_height: float) -> Dictionary:
 	await step(1)
 	world["floor"].global_position = Vector3(0.0, -0.5, 0.0)
 	world["player"].global_position = Vector3(0.0, drop_height, 0.0)
-	await step(15)
+	await step(30)
 	return world
 
 ## Runs the player up to speed on the ground, then drops it from `height` with
@@ -22,7 +22,7 @@ func _speed_after_drop_with(cfg: MovementConfig, height: float, crouch: bool) ->
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
@@ -50,7 +50,7 @@ func test_a_plain_landing_costs_speed() -> void:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
@@ -82,8 +82,9 @@ func test_a_higher_fall_costs_more_speed() -> void:
 
 func test_the_camera_dip_reference_does_not_retune_the_landing_cost() -> void:
 	await step(1)
-	# A 4 m drop lands at roughly 12 m/s, which is BELOW land_cost_speed_ref's
-	# default of 18 — so the severity curve is still on its ramp and a change
+	# A 4 m drop lands at roughly 8 m/s (v = sqrt(2 * gravity * height) at the
+	# post-retune gravity of 8.0 m/s^2), which is BELOW land_cost_speed_ref's
+	# default of 9.21 — so the severity curve is still on its ramp and a change
 	# of reference actually moves the result. Dropping from high enough to
 	# saturate the curve would make this test pass no matter what it read.
 	var default_speed := await _speed_after_drop(4.0, false)
@@ -112,7 +113,7 @@ func test_a_landing_can_never_add_speed_however_the_keep_ratio_is_tuned() -> voi
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)

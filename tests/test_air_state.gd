@@ -5,7 +5,7 @@ func _spawn() -> Dictionary:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	return world
 
 func test_jump_leaves_the_ground() -> void:
@@ -46,7 +46,7 @@ func test_air_control_is_weaker_than_ground_control() -> void:
 	var ground_world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(ground_world)
-	await step(15)
+	await step(30)
 	var ground_player: Player = ground_world["player"]
 	ground_world["input"].state.move = Vector2(0.0, 1.0)
 	await step(10)

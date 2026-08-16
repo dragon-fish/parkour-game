@@ -7,7 +7,7 @@ func _wall_world(wall_x: float) -> Dictionary:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 
 	var wall := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
@@ -221,7 +221,7 @@ func test_wall_run_tracks_the_currently_detected_walls_normal_not_the_entry_one(
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 
@@ -527,7 +527,7 @@ func test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach() -> void:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	var player: Player = world["player"]
 
 	# A wall to the player's right, spanning a wide Z range so the fixed test

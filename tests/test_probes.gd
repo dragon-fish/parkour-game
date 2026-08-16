@@ -8,7 +8,7 @@ func _world_with_obstacle(height: float, distance: float, depth: float = 2.0) ->
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 
 	var obstacle := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
@@ -74,7 +74,7 @@ func test_nothing_ahead_is_not_vaultable() -> void:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	var player: Player = world["player"]
 	check(not player.probes.vault_query()["valid"], "empty space must not report as vaultable")
 	TestWorld.teardown(world)
@@ -86,7 +86,7 @@ func test_a_reachable_ledge_is_detected() -> void:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 
 	# A tall block whose top is just above the player's head.
 	var block := StaticBody3D.new()
@@ -117,7 +117,7 @@ func test_a_ledge_far_above_reach_is_not_detected() -> void:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 
 	var block := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
@@ -187,7 +187,7 @@ func test_raising_the_configured_ledge_maximum_raises_what_the_probe_can_see() -
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 
 	# A block whose top is well above the DEFAULT ledge_max_height (2.8) but
 	# still a plausible ledge once the maximum is raised.

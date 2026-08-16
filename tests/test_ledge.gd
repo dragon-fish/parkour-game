@@ -11,7 +11,7 @@ func _jump_at_ledge_with(block_height: float, depth: float, cfg: MovementConfig)
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 
 	var block := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
@@ -332,7 +332,7 @@ func test_mantling_completes_from_the_top_of_the_grab_range() -> void:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	var player: Player = world["player"]
 
 	# A tall block: its own height above the FLOOR is irrelevant to

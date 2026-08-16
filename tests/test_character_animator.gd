@@ -23,7 +23,7 @@ func _spawn() -> Dictionary:
 	var world := TestWorld.build(tree, cfg, TestWorld.build_stub_body("", Vector3.ZERO, true))
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	return world
 
 func _current_clip(player: Player) -> StringName:

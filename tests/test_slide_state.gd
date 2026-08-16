@@ -4,7 +4,7 @@ func _running_world(cfg: MovementConfig) -> Dictionary:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
 	input.state.sprint_held = true
@@ -149,7 +149,7 @@ func test_crouching_from_a_standstill_does_not_slide() -> void:
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	var player: Player = world["player"]
 	world["input"].press_crouch()
 	await step(5)
@@ -562,7 +562,7 @@ func test_a_crouch_pressed_just_before_landing_opens_a_slide_on_touchdown() -> v
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
 	TestWorld.place(world)
-	await step(15)
+	await step(30)
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
