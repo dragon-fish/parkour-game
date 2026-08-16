@@ -592,3 +592,141 @@ func test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach() -> void:
 	ledge.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+
+## IMPORTANT (this task's report): a chain of wall-jumps between two CLOSE,
+## oppositely-facing walls used to climb without bound. WallRunState's
+## consume_buffered_jump() branch ASSIGNED velocity.y = wall_jump_up on every
+## wall-jump, with no reference to how much height a chain had already banked
+## -- and the same-wall cooldown (can_attach_wall()) deliberately never blocks
+## an OPPOSITE normal, which is exactly what lets a zig-zag chain work at all.
+## A fast run between two such walls reattaches almost instantly, leaving
+## gravity no real time to claw back the previous kick before the next one
+## overwrote it anyway -- every hop granted the same fixed rise, so total
+## height grew linearly with hop count, unbounded given enough wall. A
+## previous pass "fixed" this by making the practice arena's own walls tall
+## enough to contain the worst case (see arena_builder.gd's history and this
+## task's own report) instead of touching the mechanic.
+##
+## This builds a short corridor of alternating walls (six -- half again the
+## practice arena's own four, enough to show a trend without paying for a
+## long simulated chase) and drives a real chain of jump-and-reattach cycles
+## across them, exactly the way tests/test_arena.gd's own
+## test_the_zig_zag_wall_section_chains_multiple_walls drives the real
+## arena's chain (jump near each wall's own far end, the cadence a player
+## extracting the most out of each wall before committing to the next one
+## actually produces).
+##
+## Asserts on the per-jump height GAIN, not on how high the chain eventually
+## climbs: unbounded growth is provable from the trend across a handful of
+## hops in well under a hundred ticks each; watching the player actually
+## climb to some destination height would need many times that just to prove
+## the SAME thing more slowly and more expensively -- this suite is already
+## the slow part of the project's loop, and a test that burns a minute of
+## simulated time gets paid for on every future run. The height GAINED by the
+## LAST hop in the chain must be markedly smaller than the FIRST -- a
+## genuinely unbounded climb (the pre-fix behaviour: a flat
+## `velocity.y = wall_jump_up` reset every time) grants close to the SAME
+## fixed rise on every hop, so the two would stay roughly equal instead.
+## Bite-proofed directly: reverting the fix reproduces exactly that flat,
+## non-shrinking trend and fails the ratio check below.
+func test_a_chain_of_wall_jumps_between_opposing_walls_cannot_climb_without_bound() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+
+	# Spaced and sized exactly the way arena_builder.gd's own ZigLeft/ZigRight
+	# pairs are (see its own ZIG_STEP comment): close enough, and overlapping
+	# enough in Z, that a player chaining wall-jumps at speed reaches the next
+	# wall almost immediately -- the "fast reattach leaves gravity no time to
+	# decay anything" condition the original defect depended on. WALL_HEIGHT
+	# is tall enough that this test cannot pass merely by the player running
+	# out of wall to climb.
+	const WALL_COUNT := 6
+	const WALL_HEIGHT := 30.0
+	var zig_step: float = cfg.wall_max_speed * cfg.wall_reattach_cooldown * 1.5
+	var zig_length: float = zig_step + 2.0
+	var walls: Array[StaticBody3D] = []
+	var far_zs: Array[float] = []
+	for i in WALL_COUNT:
+		var side: float = -1.0 if i % 2 == 0 else 1.0
+		var near_z: float = -5.0 - zig_step * i
+		var far_z: float = near_z - zig_length
+		far_zs.append(far_z)
+		var wall := StaticBody3D.new()
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(1.0, WALL_HEIGHT, zig_length)
+		shape.shape = box
+		wall.add_child(shape)
+		wall.position = Vector3(side * 0.95, WALL_HEIGHT * 0.5, (near_z + far_z) * 0.5)
+		tree.root.add_child(wall)
+		walls.append(wall)
+	await step(3)
+
+	player.global_position = Vector3(0.0, 0.95, 5.0)
+	player.velocity = Vector3.ZERO
+	player.rotation = Vector3.ZERO
+	await step(20)
+	check(player.is_on_floor(), "precondition: the player did not settle before the chain")
+
+	input.state.move = Vector2(0.0, 1.0)
+	input.state.sprint_held = true
+
+	# Height at the moment of each NEW wall attach, index 0 being the player's
+	# resting height before the chain starts -- so attach_heights[i+1] -
+	# attach_heights[i] is exactly the height GAINED by the i-th wall-jump
+	# (the jump that ended attach i and produced attach i+1).
+	var attach_heights: Array[float] = [player.global_position.y]
+	var attach_count := 0
+	var was_wall := false
+	const JUMP_MARGIN := 1.0
+	for i in 900:
+		var now_wall: bool = player.state_machine.current_name == PlayerState.WALL
+		if now_wall and not was_wall:
+			attach_count += 1
+			attach_heights.append(player.global_position.y)
+		if now_wall:
+			var idx: int = attach_count - 1
+			var threshold: float = far_zs[idx] + JUMP_MARGIN if idx < far_zs.size() else -INF
+			if player.global_position.z <= threshold:
+				input.press_jump()
+		elif player.is_on_floor():
+			input.press_jump()
+		was_wall = now_wall
+		await step(1)
+		if attach_count >= WALL_COUNT:
+			break
+
+	check_greater(float(attach_count), float(WALL_COUNT) - 1.5, \
+		"the chain only attached %d of %d walls -- this needs a real multi-wall chain to mean anything" \
+			% [attach_count, WALL_COUNT])
+
+	var gains: Array[float] = []
+	for i in range(1, attach_heights.size()):
+		gains.append(attach_heights[i] - attach_heights[i - 1])
+	check_greater(float(gains.size()), 3.0, \
+		"only %d hop(s) were measured -- too few to show a trend" % gains.size())
+
+	var first_gain: float = gains[0]
+	var last_gain: float = gains[gains.size() - 1]
+	check_greater(first_gain, 0.1, \
+		"precondition: the first wall-jump must gain real height, or this test proves nothing (gained %f)" \
+			% first_gain)
+	# The unbounded pre-fix behaviour grants roughly the SAME fixed rise every
+	# hop; a mechanic that is actually bounded must instead show the LAST
+	# hop's gain fall well short of the FIRST's, well outside per-tick physics
+	# noise. Half is a generous bar -- a converging chain typically shows a
+	# much sharper drop-off than this by the fourth or fifth hop.
+	check(last_gain < first_gain * 0.5, \
+		"the last wall-jump gained %f m, not markedly less than the first hop's %f m -- the climb is not bounded (per-hop gains: %s)" \
+			% [last_gain, first_gain, gains])
+
+	for wall in walls:
+		wall.queue_free()
+	TestWorld.teardown(world)
+	await step(1)

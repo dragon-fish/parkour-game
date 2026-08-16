@@ -29,6 +29,24 @@ func _query_wall() -> Dictionary:
 		return _NO_WALL.duplicate()
 	return player.probes.wall_query()
 
+## Highest Y a chain of wall-jumps may lift the player above the last real
+## ground contact (player.ground_reference_y) -- see the wall-jump branch of
+## physics_update() below for the full reasoning. Factored out because it is
+## enforced at TWO points, not one: once at the instant a wall-jump fires
+## (clamping the impulse itself), and once every tick this state is active
+## (clamping the CLIMB, since leftover positive vy from the previous kick can
+## otherwise still creep past this same ceiling while running along the next
+## wall under weakened wall_gravity_scale, before the next jump ever fires --
+## confirmed directly: without this second clamp, a synthetic long chain
+## overshot the kick-time-only ceiling by nearly a metre). Both call sites
+## must agree on the exact same number, so this is computed once, not copied.
+func _height_ceiling() -> float:
+	var jump_peak_height: float = (config.jump_velocity * config.jump_velocity) \
+		/ (2.0 * maxf(config.gravity, 0.001))
+	var wall_jump_peak_rise: float = (config.wall_jump_up * config.wall_jump_up) \
+		/ (2.0 * maxf(config.gravity, 0.001))
+	return player.ground_reference_y + jump_peak_height + wall_jump_peak_rise
+
 ## Recomputes _along from the CURRENT _normal and the player's CURRENT
 ## horizontal velocity. Called every time _normal is (re)assigned -- once in
 ## enter(), and again every tick in physics_update() -- so the tangent tracks
@@ -133,7 +151,50 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# that would otherwise be impossible to satisfy here, and spends it so a
 	# consumed press cannot also fire a second jump later.
 	if player.consume_buffered_jump():
-		player.velocity.y = config.wall_jump_up
+		# BOUNDING A CHAINED CLIMB (see this task's own report): this used
+		# to unconditionally ASSIGN velocity.y = config.wall_jump_up on
+		# every wall-jump, with no reference to how much height the chain
+		# had already banked. Between two CLOSE, oppositely-facing walls
+		# (the zig-zag section's own ZigLeft/ZigRight pairs are built to
+		# allow exactly this -- their same-wall cooldown deliberately
+		# never blocks an opposite normal, see can_attach_wall()'s own
+		# comment) the reattach happens almost instantly, leaving gravity
+		# no real time to claw any of the previous kick back before this
+		# one erased it anyway. The result: every hop granted the SAME
+		# fixed rise regardless of hop count, so total height grew
+		# linearly with the number of wall-jumps in the chain -- unbounded
+		# given enough wall.
+		#
+		# The research (04-墙面动作.md §4.4, 09-Godot移植指南.md §9.1) has no
+		# sourced number for a total-climb ceiling -- ME's own WallrunJump
+		# push is a bounded PER-USE skill gradient (Noob 120 -> Pro 520
+		# uu/s, i.e. a single-kick range, not something that compounds
+		# across hops), and wall running there ends via horizontal
+		# velocity decay, not a timer or a height governor. Lacking a
+		# sourced total-height rule, this generalises a rule this
+		# codebase ALREADY states for the horizontal axis instead of
+		# inventing a new one: wall_min_speed's own comment says wall
+		# running "is a way to CARRY speed, never a way to create it from
+		# nothing" (also pinned by
+		# tests/test_movement_config.gd's test_wall_running_cannot_
+		# create_speed_beyond_what_foot_speed_reaches). Applied to height:
+		# a wall-jump chain may CARRY the player up, but the total it can
+		# add above the last real ground contact is capped at what a
+		# single ground jump reaches (jump_peak_height) plus one
+		# wall-jump's own textbook peak rise (wall_jump_up^2 / (2 *
+		# gravity), decelerating under PLAIN gravity -- never weakened,
+		# since gravity is only ever scaled by wall_gravity_scale while
+		# actually ATTACHED, not during the brief airborne hop between
+		# two walls) -- one bonus kick's worth on top of an ordinary jump,
+		# not a fresh full kick minted every time a hand touches a wall.
+		# Further hops within the same climb redistribute that budget
+		# rather than stacking a new one, so the impulse smoothly shrinks
+		# toward zero as the ceiling is approached instead of hitting an
+		# arbitrary hard wall.
+		var height_ceiling: float = _height_ceiling()
+		var remaining_height: float = maxf(height_ceiling - player.global_position.y, 0.0)
+		var max_vy: float = sqrt(2.0 * maxf(config.gravity, 0.001) * remaining_height)
+		player.velocity.y = minf(config.wall_jump_up, max_vy)
 		player.velocity += _normal * config.wall_jump_push
 		player.move_and_slide()
 		# Declared even on this away-transitioning tick, mirroring
@@ -154,6 +215,20 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# through small surface irregularities.
 	player.velocity.y -= config.gravity * config.wall_gravity_scale * delta
 	player.velocity -= _normal * config.wall_stick_force
+
+	# SECOND enforcement point for the same climb bound the wall-jump branch
+	# above clamps at kick-time -- see _height_ceiling()'s own comment on why
+	# one clamp alone is not enough. A player can reattach to the next wall
+	# still carrying leftover positive vy from the last kick (the free-flight
+	# arc between two close walls does not always have time to peak before
+	# the next one is reached); left alone, THIS state's own weakened gravity
+	# then lets that leftover velocity keep lifting the player, tick after
+	# tick, well past the kick-time ceiling before the next jump ever fires.
+	# Only ever removes upward drift once AT the ceiling -- ordinary gravity
+	# above still applies every tick regardless, so this never pulls the
+	# player down through a wall they legitimately reached.
+	if player.velocity.y > 0.0 and player.global_position.y >= _height_ceiling():
+		player.velocity.y = 0.0
 
 	player.move_and_slide()
 

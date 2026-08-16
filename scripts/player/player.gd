@@ -24,6 +24,14 @@ var last_input: MoveInput = MoveInput.new()
 ## would report whatever was true before the move began.
 var grounded: bool = false
 
+## World-space Y the player was last known to be resting on solid ground,
+## refreshed every tick set_grounded(true) is declared (so it tracks a sloped
+## or stepped floor, not just the very first tick of a Ground stint). Read by
+## WallRunState to bound how much height a chain of wall-jumps can add above
+## real ground -- see its own comment on why that bound has to be measured
+## from here rather than from a fixed reference.
+var ground_reference_y: float = 0.0
+
 ## SENTINEL, not a real reading: -1.0 means "no landing pending", never an
 ## actual impact speed. A landing's impact_speed is itself a legitimate 0.0
 ## (e.g. a state arriving next that can land at rest) — callers must always
@@ -43,6 +51,8 @@ var grounded_declarations: int = 0
 func set_grounded(value: bool) -> void:
 	grounded = value
 	grounded_declarations += 1
+	if value:
+		ground_reference_y = global_position.y
 
 ## Clears `grounded` WITHOUT counting as a declaration. Called only by
 ## StateMachine, as the fail-safe half of the invariant above: a state that
@@ -242,6 +252,13 @@ func reset_state() -> void:
 	_travel_speed = 0.0
 	last_landing_speed = 0.0
 	grounded = false
+	# Set directly rather than through set_grounded(true) (which would also
+	# flip `grounded` back on, contradicting the line above): global_position
+	# has already been moved to the spawn point by the time Arena.reset_player()
+	# calls this (see its own comment on ordering), so this is the correct
+	# fresh reference immediately, without waiting for GroundState's first
+	# declaration a tick or two after the reset.
+	ground_reference_y = global_position.y
 	_pending_landing = -1.0
 	# A reset teleports the player to a known-clear spawn, so a restore owed
 	# from a slide under some ceiling is both stale and satisfiable right now.
