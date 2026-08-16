@@ -72,6 +72,19 @@ extends Resource
 ## One-off speed added on entering a slide. This is the payoff that makes
 ## sliding worth doing rather than just running.
 @export var slide_boost: float = 2.5
+## Highest horizontal speed at which entering a slide still grants
+## slide_boost. At or below this, a slide converts running speed into a
+## burst, capped at this threshold plus slide_boost. ABOVE it, entering a
+## slide grants no boost at all — you cannot spend speed you have not
+## rebuilt. This is what makes a slide an EXCHANGE rather than a stackable
+## bonus: without it, tapping crouch repeatedly nets a boost every single
+## time, chaining slides past sprint_speed and on toward the slide_max_speed
+## safety rail. Defaults to sprint_speed, independently of it (not a
+## reference to it, mirroring land_cost_speed_ref/land_dip_speed_ref's own
+## note on sharing a default without sharing a variable) so a slide entered
+## at a dead sprint still pays its full boost, but tapping crouch again while
+## still at or above sprint speed pays nothing until speed decays back down.
+@export var slide_boost_entry_threshold: float = 9.0
 ## Deceleration while sliding, in m/s^2. Well below ground_friction, which is
 ## what makes a slide carry.
 @export var slide_friction: float = 5.0

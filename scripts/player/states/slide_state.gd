@@ -29,8 +29,19 @@ func enter(_previous: StringName) -> void:
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	_direction = horizontal.normalized() if horizontal.length_squared() > 0.0001 else Vector3.ZERO
 
-	# The boost is applied once, on entry — never per tick.
-	var boosted := horizontal.length() + config.slide_boost
+	# The boost is applied once, on entry — never per tick — and only when
+	# entering at or below slide_boost_entry_threshold. A slide CONVERTS
+	# running speed into a burst; it is not a stackable bonus. Above the
+	# threshold, entering a slide adds nothing, so chaining crouch taps while
+	# already fast cannot chain the boost too — the player has to let speed
+	# decay back down before another slide pays out. Below it, the result is
+	# capped at threshold + boost so the payoff is bounded the same way either
+	# side of the gate.
+	var entry_speed := horizontal.length()
+	var boosted := entry_speed
+	if entry_speed <= config.slide_boost_entry_threshold:
+		boosted = minf(entry_speed + config.slide_boost, \
+			config.slide_boost_entry_threshold + config.slide_boost)
 	player.velocity.x = _direction.x * boosted
 	player.velocity.z = _direction.z * boosted
 

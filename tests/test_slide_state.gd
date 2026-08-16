@@ -48,6 +48,101 @@ func test_slide_gives_a_one_time_speed_boost() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
+## The bug this guards: SlideState.enter() used to add slide_boost to
+## whatever speed the player already had, unconditionally, every time. Tapping
+## crouch repeatedly chained that addition — tools/probe_speed_exploit.gd
+## measured it against the real Player and found it uncapped: 9.00 -> 19.92,
+## +1.33 EVERY cycle, running all the way to the slide_max_speed safety rail
+## (more than double sprint_speed). The fix makes the boost an EXCHANGE
+## instead of a stackable bonus: it only applies when entering at or below
+## slide_boost_entry_threshold, and the boosted result is capped at
+## threshold + boost. Reverting SlideState.enter() to the old unconditional
+## `horizontal.length() + config.slide_boost` reproduces the climb and fails
+## this test.
+func test_chained_slides_cannot_stack_the_entry_boost() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := await _running_world(cfg)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+
+	var ceiling := cfg.slide_boost_entry_threshold + cfg.slide_boost
+	var peak := player.horizontal_speed()
+	var slide_entries := 0
+	var was_sliding := false
+
+	# Tap crouch as fast as the state machine allows: press, wait just long
+	# enough to enter Slide, release immediately (which ends the slide on its
+	# very next tick), then wait for Ground before tapping again. This is the
+	# exact rapid-tap pattern the probe used to find the exploit.
+	for cycle in 15:
+		input.press_crouch()
+		await step(2)
+		var sliding: bool = player.state_machine.current_name == &"Slide"
+		if sliding and not was_sliding:
+			slide_entries += 1
+		was_sliding = sliding
+		peak = maxf(peak, player.horizontal_speed())
+
+		input.release_crouch()
+		var guard := 0
+		while player.state_machine.current_name != &"Ground" and guard < 300:
+			await step(1)
+			sliding = player.state_machine.current_name == &"Slide"
+			if sliding and not was_sliding:
+				slide_entries += 1
+			was_sliding = sliding
+			peak = maxf(peak, player.horizontal_speed())
+			guard += 1
+
+	check_greater(slide_entries, 5, \
+		"precondition: chained crouch taps should have entered Slide repeatedly, only saw %d entries" \
+		% slide_entries)
+	check_greater(peak, cfg.sprint_speed, \
+		"precondition: chained taps never reached a boosted speed, so this test proves nothing (peak %f)" \
+		% peak)
+	check(peak <= ceiling + 0.1, \
+		"chained slide taps climbed past the boost ceiling (peak %f vs slide_boost_entry_threshold %f + slide_boost %f = %f) -- the entry boost is stacking instead of gating on entry speed" \
+		% [peak, cfg.slide_boost_entry_threshold, cfg.slide_boost, ceiling])
+	TestWorld.teardown(world)
+	await step(1)
+
+## Companion to the chain test above: a slide -> jump -> slide chain never
+## routes back through Ground for long, but the boost gate keys off entry
+## speed, not the exit that preceded it, so the same ceiling must hold
+## whether a slide is exited by standing up or by jumping out. The probe
+## measured this pattern as self-limiting even before this fix (+0.15 once,
+## then flat), so this is cheap insurance pinned to the same invariant.
+func test_chained_slide_then_jump_cannot_stack_the_entry_boost() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := await _running_world(cfg)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+
+	var ceiling := cfg.slide_boost_entry_threshold + cfg.slide_boost
+	var peak := player.horizontal_speed()
+
+	for cycle in 8:
+		input.press_crouch()
+		await step(2)
+		peak = maxf(peak, player.horizontal_speed())
+		input.press_jump()
+		await step(1)
+		input.release_jump()
+		input.release_crouch()
+		var guard := 0
+		while player.state_machine.current_name != &"Ground" and guard < 300:
+			await step(1)
+			peak = maxf(peak, player.horizontal_speed())
+			guard += 1
+
+	check(peak <= ceiling + 0.1, \
+		"chained slide->jump climbed past the boost ceiling (peak %f vs slide_boost_entry_threshold %f + slide_boost %f = %f)" \
+		% [peak, cfg.slide_boost_entry_threshold, cfg.slide_boost, ceiling])
+	TestWorld.teardown(world)
+	await step(1)
+
 func test_crouching_from_a_standstill_does_not_slide() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()

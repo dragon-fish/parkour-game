@@ -70,6 +70,43 @@ func test_air_control_is_weaker_than_ground_control() -> void:
 	check_greater(ground_gain, air_gain, \
 		"air control must be weaker than ground control (ground %f vs air %f)" % [ground_gain, air_gain])
 
+## tools/probe_speed_exploit.gd measured chained jumps (no air-strafe) against
+## the real Player and found them flat: 9.00 -> 9.00 every hop, +0.00. Cheap
+## insurance against a future landing-cost or air-control change silently
+## turning jump-chaining into the same kind of stacking exploit chained
+## slides had. Compares an early hop's landing speed to a late one in the
+## same run, so this holds under tuning -- growth ACROSS the chain is what a
+## stacking exploit looks like, not any particular absolute speed.
+func test_chained_jumps_do_not_stack_speed() -> void:
+	var world := await _spawn()
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+
+	input.state.move = Vector2(0.0, 1.0)
+	input.state.sprint_held = true
+	await step(90)
+
+	var first_after := 0.0
+	var last_after := 0.0
+	for hop in 8:
+		input.press_jump()
+		await step(3)
+		input.release_jump()
+		var guard := 0
+		while player.state_machine.current_name != &"Ground" and guard < 300:
+			await step(1)
+			guard += 1
+		if hop == 0:
+			first_after = player.horizontal_speed()
+		last_after = player.horizontal_speed()
+
+	check(last_after <= first_after + 0.1, \
+		"chained jumps grew horizontal speed across the chain (hop 1 landed at %f, hop 8 at %f) -- jumping must not be a way to gain speed" \
+		% [first_after, last_after])
+
+	TestWorld.teardown(world)
+	await step(1)
+
 func test_coyote_time_allows_a_jump_just_after_leaving_ground() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
