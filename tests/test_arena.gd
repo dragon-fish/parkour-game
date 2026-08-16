@@ -218,3 +218,31 @@ func test_movement_follows_the_view_direction() -> void:
 
 	arena.queue_free()
 	await step(1)
+
+func test_the_slide_area_exists_and_is_low_enough_to_require_sliding() -> void:
+	await step(1)
+	var arena = await _load_arena()
+	var roof = arena.get_node_or_null("SlideArea/TunnelRoof")
+	var floor_node = arena.get_node_or_null("SlideArea/TunnelFloor")
+	check(roof != null, "the slide tunnel roof is missing")
+	check(floor_node != null, "the slide tunnel floor is missing")
+
+	var roof_box := ((roof.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
+	var floor_box := ((floor_node.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
+	var clearance: float = (roof.position.y - roof_box.size.y * 0.5) \
+		- (floor_node.position.y + floor_box.size.y * 0.5)
+
+	# The tunnel only earns its place if standing cannot fit and sliding can.
+	# Both bounds are read from the live capsule and config, so tuning either
+	# one cannot leave the tunnel silently impassable or silently pointless.
+	var standing := ((arena.player.get_node("CollisionShape3D") as CollisionShape3D).shape \
+		as CapsuleShape3D).height
+	check(clearance < standing, \
+		"the tunnel is tall enough to walk through, so it teaches nothing (clearance %f vs standing %f)" \
+		% [clearance, standing])
+	check_greater(clearance, arena.config.slide_capsule_height, \
+		"the tunnel is lower than the sliding capsule, so even a slide cannot pass (clearance %f vs slide %f)" \
+		% [clearance, arena.config.slide_capsule_height])
+
+	arena.queue_free()
+	await step(1)

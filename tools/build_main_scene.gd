@@ -94,6 +94,11 @@ func _run() -> void:
 	var gap_colour := Color(0.38, 0.52, 0.62)
 	var step_colour := Color(0.56, 0.50, 0.38)
 	var drop_colour := Color(0.58, 0.40, 0.44)
+	# Distinct from every JumpArea colour above so the slide practice area
+	# reads as its own thing at a glance, and its walkable surfaces don't
+	# blend into the base Floor colour in screenshots.
+	var slide_colour := Color(0.40, 0.58, 0.42)
+	var tunnel_colour := Color(0.32, 0.34, 0.38)
 
 	_attach(_root, _box("Floor", Vector3(60.0, 1.0, 60.0), Vector3(0.0, -0.5, 0.0), ground))
 
@@ -119,6 +124,28 @@ func _run() -> void:
 	_attach(jump_area, _box("DropLow", Vector3(4.0, 1.0, 4.0), Vector3(9.0, 3.0, 0.0), drop_colour))
 	_attach(jump_area, _box("DropMid", Vector3(4.0, 1.0, 4.0), Vector3(9.0, 8.0, -6.0), drop_colour))
 	_attach(jump_area, _box("DropHigh", Vector3(4.0, 1.0, 4.0), Vector3(9.0, 15.0, -12.0), drop_colour))
+
+	var slide_area := Node3D.new()
+	slide_area.name = "SlideArea"
+	slide_area.position = Vector3(14.0, 0.0, 0.0)
+	_attach(_root, slide_area)
+
+	# Downhill ramp into the tunnel, for feeling out whether a slide carries
+	# speed downhill. Rotated, so it cannot come from _box() alone.
+	var ramp_up := _box("RampUp", Vector3(6.0, 1.0, 10.0), Vector3(0.0, 1.2, -6.0), slide_colour)
+	ramp_up.rotation.x = deg_to_rad(-12.0)
+	_attach(slide_area, ramp_up)
+
+	# Tunnel: roof underside at y=2.2, floor top at y=1.0, clearance 1.2 m.
+	# Taller than the sliding capsule (0.9 m) and shorter than standing
+	# (1.8 m) — only a slide fits. See task-4-brief.md for the arithmetic.
+	_attach(slide_area, _box("TunnelFloor", Vector3(6.0, 1.0, 14.0), Vector3(0.0, 0.5, -18.0), slide_colour))
+	_attach(slide_area, _box("TunnelRoof", Vector3(6.0, 1.0, 14.0), Vector3(0.0, 2.7, -18.0), tunnel_colour))
+	_attach(slide_area, _box("TunnelWallL", Vector3(1.0, 3.0, 14.0), Vector3(-3.5, 1.5, -18.0), tunnel_colour))
+	_attach(slide_area, _box("TunnelWallR", Vector3(1.0, 3.0, 14.0), Vector3(3.5, 1.5, -18.0), tunnel_colour))
+
+	# Exit runway, for reading off how much speed the slide delivered.
+	_attach(slide_area, _box("Runway", Vector3(6.0, 1.0, 20.0), Vector3(0.0, 0.5, -35.0), slide_colour))
 
 	var player_scene: PackedScene = load("res://scenes/player/player.tscn")
 	var player := player_scene.instantiate()
