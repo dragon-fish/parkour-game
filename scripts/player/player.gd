@@ -25,6 +25,7 @@ var _standing_height: float = 0.0
 
 var _coyote_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
+var _crouch_buffer_timer: float = 0.0
 
 @onready var _stand_clearance: ShapeCast3D = get_node_or_null("StandClearance")
 
@@ -86,6 +87,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 func reset_state() -> void:
 	_coyote_timer = 0.0
 	_jump_buffer_timer = 0.0
+	_crouch_buffer_timer = 0.0
 	last_landing_speed = 0.0
 
 func _build_state_machine() -> void:
@@ -153,12 +155,30 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 	else:
 		_jump_buffer_timer = maxf(_jump_buffer_timer - delta, 0.0)
 
+	# Deliberately keyed on crouch_PRESSED, not crouch_held: this buffer stores
+	# presses, so holding the key down refills it exactly once. A held-state
+	# version would re-arm every tick and let a slide re-enter the instant the
+	# previous one ended, which is the strobing this gate exists to prevent.
+	if input.crouch_pressed:
+		_crouch_buffer_timer = config.crouch_buffer_time
+	else:
+		_crouch_buffer_timer = maxf(_crouch_buffer_timer - delta, 0.0)
+
 ## Spends a buffered jump if one is pending and the player is still within
 ## coyote time. Returns true at most once per press.
 func consume_jump() -> bool:
 	if _jump_buffer_timer > 0.0 and _coyote_timer > 0.0:
 		_jump_buffer_timer = 0.0
 		_coyote_timer = 0.0
+		return true
+	return false
+
+## Spends a buffered crouch press if one is pending. Returns true at most once
+## per press — this is what keeps the roll-into-slide chain reachable without
+## reopening the held-key strobe.
+func consume_crouch() -> bool:
+	if _crouch_buffer_timer > 0.0:
+		_crouch_buffer_timer = 0.0
 		return true
 	return false
 

@@ -229,6 +229,208 @@ func test_a_low_ceiling_keeps_the_player_sliding() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
+## Parks a slab just above the sliding capsule, across the player's path, so
+## has_headroom() is false and every route back to Ground is gated shut. Same
+## construction (and the same ordering care) as
+## test_a_low_ceiling_keeps_the_player_sliding above.
+func _add_ceiling_over(player: Player) -> StaticBody3D:
+	var ceiling := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(80.0, 0.5, 80.0)
+	shape.shape = box
+	ceiling.add_child(shape)
+	ceiling.position = player.global_position + Vector3(0.0, 0.45, 0.0)
+	tree.root.add_child(ceiling)
+	return ceiling
+
+func test_a_spent_slide_under_a_ceiling_can_still_crawl_out() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := await _running_world(cfg)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	input.press_crouch()
+	await step(2)
+	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+
+	var ceiling := _add_ceiling_over(player)
+	await step(1)
+
+	# Let the slide spend itself completely with no input at all. Friction only
+	# ever removes speed and every exit to standing is gated on headroom, so
+	# without the crawl this is a terminal state: horizontal speed reaches zero
+	# and nothing in Slide can ever generate any again.
+	input.state.move = Vector2.ZERO
+	for i in 240:
+		await step(1)
+		if player.horizontal_speed() < 0.01:
+			break
+	check(player.state_machine.current_name == &"Slide", \
+		"precondition: a blocked slide must not have stood up, got %s" % player.state_machine.current_name)
+	check(player.horizontal_speed() < 0.5, \
+		"precondition: the slide should have decayed to a stop, speed = %f" % player.horizontal_speed())
+
+	# Now hold forward. The player is still stuck under the roof, but must be
+	# able to move out from under it.
+	var stuck_at: Vector3 = player.global_position
+	input.state.move = Vector2(0.0, 1.0)
+	await step(60)
+	var travelled: float = Vector2(player.global_position.x - stuck_at.x, \
+		player.global_position.z - stuck_at.z).length()
+	check_greater(travelled, 0.5, \
+		"a spent slide under a ceiling made no progress under forward input — the player is stranded at %s in state %s" \
+		% [player.global_position, player.state_machine.current_name])
+
+	ceiling.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_jumping_out_of_a_blocked_slide_is_refused() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := await _running_world(cfg)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	input.press_crouch()
+	await step(2)
+	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+
+	var ceiling := _add_ceiling_over(player)
+	await step(1)
+
+	# The jump branch exits to Air, and exit() restores the STANDING capsule on
+	# the way — straight into the roof. Physically you cannot jump into a
+	# ceiling either, so the press must simply not take.
+	input.press_jump()
+	await step(5)
+	check(player.state_machine.current_name == &"Slide", \
+		"a jump under a ceiling must not leave the slide, got %s" % player.state_machine.current_name)
+	check(player.velocity.y <= 0.1, \
+		"a jump under a ceiling must not launch the player, velocity.y = %f" % player.velocity.y)
+
+	ceiling.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
+## Runs the player up to speed, slides, and returns how much horizontal speed
+## survives `ticks` frames of that slide. `slope_deg` tilts the floor so the
+## slide runs DOWN it; 0 leaves the floor flat. The slope is built here rather
+## than taken from the arena so the comparison is like-for-like apart from the
+## tilt.
+func _speed_after_sliding(slope_deg: float, ticks: int) -> float:
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	var player: Player = world["player"]
+	var floor_body: StaticBody3D = world["floor"]
+
+	# Tilt about X so that running toward -Z (the player's default facing) goes
+	# DOWNHILL. Verified by the same sign convention the arena ramps use: a
+	# positive rotation.x raises the -Z end, so a descent needs a negative one.
+	floor_body.rotation.x = deg_to_rad(-slope_deg)
+	floor_body.global_position = Vector3(0.0, -0.5, 0.0)
+	player.global_position = Vector3(0.0, 1.2, 0.0)
+	await step(30)
+
+	var input: ScriptedInputSource = world["input"]
+	input.state.move = Vector2(0.0, 1.0)
+	input.state.sprint_held = true
+	await step(90)
+	input.press_crouch()
+	await step(2)
+	var sliding: bool = player.state_machine.current_name == &"Slide"
+	for i in ticks:
+		await step(1)
+	var speed := player.horizontal_speed()
+	check(sliding, "precondition: _speed_after_sliding(%f) never entered Slide" % slope_deg)
+	TestWorld.teardown(world)
+	await step(1)
+	return speed
+
+func test_sliding_downhill_keeps_more_speed_than_sliding_on_the_flat() -> void:
+	await step(1)
+	# Sampled part-way into the slide, while both are still sliding, so this
+	# compares the DECAY of the two rather than two end states.
+	var flat := await _speed_after_sliding(0.0, 45)
+	var downhill := await _speed_after_sliding(20.0, 45)
+	check_greater(downhill, flat, \
+		"a slide down a slope must keep more speed than the same slide on flat ground (downhill %f vs flat %f)" \
+		% [downhill, flat])
+
+func test_a_crouch_pressed_just_before_landing_opens_a_slide_on_touchdown() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(15)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	input.state.move = Vector2(0.0, 1.0)
+	input.state.sprint_held = true
+	await step(90)
+
+	# Lift the runner without touching its horizontal motion, then press crouch
+	# on the way down and HOLD it through the impact — which is what a roll is.
+	# The press edge fires in mid-air, so before the crouch buffer existed it
+	# was gone by the time GroundState looked, and the player had to release
+	# and re-tap after landing for the roll-into-slide chain to work at all.
+	player.global_position = Vector3(player.global_position.x, 3.2, player.global_position.z)
+	await step(2)
+
+	var pressed := false
+	var slid := false
+	var landed := false
+	for i in 300:
+		await step(1)
+		if not pressed and player.global_position.y < 1.6:
+			input.press_crouch()
+			pressed = true
+		if player.state_machine.current_name == &"Slide":
+			slid = true
+		if player.last_landing_speed > 0.0:
+			landed = true
+		if slid:
+			break
+	check(pressed, "precondition: the test never got close enough to the ground to press crouch")
+	check(landed, "precondition: the player never landed")
+	check(player.last_landing_rolled, \
+		"precondition: crouch was not held through the impact, so this was not a roll")
+	check(slid, \
+		"a crouch held through a roll must chain into a slide on touchdown, state = %s, speed = %f" \
+		% [player.state_machine.current_name, player.horizontal_speed()])
+	TestWorld.teardown(world)
+	await step(1)
+
+## The spec forbids a direct Slide -> WallRun transition (section 5), and wall
+## running arrives next phase. Nothing at runtime would notice such a
+## transition being added, so this asserts it structurally: of every state name
+## PlayerState declares, slide_state.gd may only ever mention Ground and Air.
+## Adding a new state and returning it from SlideState fails here — as does
+## merely naming it in a comment, which is a deliberate false positive: a
+## tripwire is worth more than a clean read.
+func test_slide_can_only_reach_ground_and_air() -> void:
+	await step(1)
+	var source := FileAccess.get_file_as_string("res://scripts/player/states/slide_state.gd")
+	check(source.length() > 0, "could not read slide_state.gd")
+
+	var state_script: GDScript = load("res://scripts/player/states/player_state.gd")
+	var referenced: Array[String] = []
+	for key in state_script.get_script_constant_map().keys():
+		var constant_name := String(key)
+		if constant_name == "KEEP":
+			continue
+		var pattern := RegEx.new()
+		pattern.compile("\\b%s\\b" % constant_name)
+		if pattern.search(source) != null:
+			referenced.append(constant_name)
+	referenced.sort()
+	var expected: Array[String] = ["AIR", "GROUND"]
+	check(referenced == expected, \
+		"Slide must be able to reach exactly Ground and Air, but slide_state.gd references %s" \
+		% str(referenced))
+
 func test_the_camera_drops_while_sliding() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()

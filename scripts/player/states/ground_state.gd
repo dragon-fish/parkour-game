@@ -15,10 +15,19 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return AIR
 
 	# A slide has to be earned: crouching below the entry speed just crouches.
-	# Gated on a fresh press (not crouch_held) so holding crouch while running
-	# cannot immediately re-enter Slide the instant a slide ends — that would
-	# strobe Slide<->Ground every couple of frames instead of committing.
-	if input.crouch_pressed and player.horizontal_speed() >= config.slide_entry_speed:
+	# Gated on a fresh PRESS (never on crouch_held) so holding crouch while
+	# running cannot immediately re-enter Slide the instant a slide ends —
+	# that would strobe Slide<->Ground every couple of frames instead of
+	# committing. The press is read through the buffer rather than straight off
+	# this tick's input, so a crouch pressed just before touchdown — which is
+	# exactly what a roll is — still opens a slide on landing instead of being
+	# discarded in mid-air. The speed test is evaluated FIRST so its
+	# short-circuit leaves a too-slow press buffered rather than spending it.
+	if player.horizontal_speed() >= config.slide_entry_speed and player.consume_crouch():
+		# Same floor-snap bias as the fall-through path below. Without it, a
+		# slide started on a downslope can leave the floor on this very tick
+		# and bounce straight back out to Air.
+		player.velocity.y = -config.floor_snap_speed
 		player.move_and_slide()
 		return SLIDE
 

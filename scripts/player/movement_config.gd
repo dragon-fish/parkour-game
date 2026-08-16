@@ -46,12 +46,20 @@ extends Resource
 @export var fall_recovery_depth: float = 20.0
 
 @export_group("Landing")
-## Fraction of horizontal speed kept after a flat landing at land_dip_speed_ref
+## Fall speed at which a landing costs its FULL speed penalty; below it the
+## loss scales down proportionally. Deliberately separate from the camera's
+## land_dip_speed_ref even though the two share a default: the camera dip and
+## the momentum cost are independent design knobs, and tuning how hard the view
+## drops must not silently retune the physics.
+@export var land_cost_speed_ref: float = 18.0
+## Fraction of horizontal speed kept after a flat landing at land_cost_speed_ref
 ## fall speed. Below that fall speed the loss scales down proportionally; this
 ## is the "speed is easy to lose" half of the momentum design.
+## Values above 1.0 are clamped in code — see AirState._apply_landing_cost.
 @export var land_speed_keep: float = 0.55
 ## Same, but for a landing where the crouch key was held — the reward for
-## knowing the roll is there.
+## knowing the roll is there. Also clamped to 1.0: a landing may cost speed or
+## cost nothing, but it must never ADD any.
 @export var roll_speed_keep: float = 0.94
 ## Minimum fall speed at which crouching counts as a roll. Below it a crouched
 ## landing is just a landing, so tapping crouch constantly earns nothing.
@@ -76,6 +84,25 @@ extends Resource
 ## How fast the slide direction can be steered, in radians per second. Low on
 ## purpose: a slide commits you to a line.
 @export var slide_steer_rate: float = 1.2
+## Speed the player can shuffle at when a spent slide cannot stand up because
+## something is directly overhead. Without this, a slide that stops under a low
+## roof has no exit at all: speed only ever decays, every route back to Ground
+## is gated on headroom, and nothing in the Slide state can generate speed —
+## the player is stranded until they hit the arena's reset key.
+@export var slide_crawl_speed: float = 2.5
+## Acceleration a fully vertical drop would add to a slide, scaled by the
+## downhill component of the floor under it (so a 20 degree descent contributes
+## sin(20 degrees) of this). Spec section 6 requires a downhill slide to resist
+## decay or net-accelerate; at the default this outruns slide_friction on
+## anything steeper than about 16 degrees.
+@export var slide_slope_accel: float = 18.0
+## How long a crouch press is remembered before landing, mirroring
+## jump_buffer_time. This is what makes the roll-into-slide chain reachable: a
+## roll needs crouch HELD through the impact, but Slide entry keys off the
+## press EDGE (to stop a held key strobing in and out of Slide), and that edge
+## fires in mid-air. Buffering the press — never the held state — lets it open
+## a slide on touchdown without reopening one every time a slide ends.
+@export var crouch_buffer_time: float = 0.15
 
 @export_group("Camera")
 ## Height of the camera rig above the player's origin. Baked into player.tscn
