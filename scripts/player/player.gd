@@ -26,6 +26,9 @@ var _standing_height: float = 0.0
 var _coyote_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
 var _crouch_buffer_timer: float = 0.0
+## True when a state has asked for the standing capsule back but a ceiling was
+## in the way. See request_standing_capsule().
+var _standing_restore_pending: bool = false
 
 @onready var _stand_clearance: ShapeCast3D = get_node_or_null("StandClearance")
 
@@ -52,6 +55,10 @@ func has_headroom() -> bool:
 ## immediately after add_child() returns in either case. An @onready-cached
 ## reference would be null at that point.
 func set_capsule_height(height: float) -> void:
+	# Any explicit resize supersedes a restore that was still owed — most
+	# importantly a fresh slide entered while one was pending, which must not
+	# later have the player stood up mid-slide by the deferred restore.
+	_standing_restore_pending = false
 	var shape_node := $CollisionShape3D as CollisionShape3D
 	var capsule := shape_node.shape as CapsuleShape3D
 	if capsule == null:
@@ -60,6 +67,29 @@ func set_capsule_height(height: float) -> void:
 		_standing_height = capsule.height
 	capsule.height = height
 	shape_node.position.y = -(_standing_height - height) * 0.5
+
+## Asks for the standing capsule back, honouring the roof. Restores it at once
+## when there is room, otherwise records that a restore is OWED and performs it
+## on the first tick headroom permits.
+##
+## This exists because gating the restore on the caller's side cannot work: a
+## slide that runs off a ledge must transition to Air whether or not there is a
+## ceiling — a player who walks off an edge falls, roof or no roof — so that
+## exit path cannot be headroom-gated the way the jump path is. Deferring at
+## the CAPSULE instead covers every exit uniformly: jump, crouch release,
+## speed decay, timeout, and walking off an edge mid-crawl alike can never
+## spawn a 1.8 m capsule inside geometry.
+func request_standing_capsule() -> void:
+	if has_headroom():
+		set_capsule_height(_standing_height)
+	else:
+		# Set AFTER the branch above, never before: set_capsule_height() clears
+		# this flag, so ordering the two the other way round would drop it.
+		_standing_restore_pending = true
+
+func _service_pending_capsule_restore() -> void:
+	if _standing_restore_pending and has_headroom():
+		set_capsule_height(_standing_height)
 
 func setup(cfg: MovementConfig, src: InputSource) -> void:
 	config = cfg
@@ -89,6 +119,12 @@ func reset_state() -> void:
 	_jump_buffer_timer = 0.0
 	_crouch_buffer_timer = 0.0
 	last_landing_speed = 0.0
+	# A reset teleports the player to a known-clear spawn, so a restore owed
+	# from a slide under some ceiling is both stale and satisfiable right now.
+	# request_standing_capsule() clears the flag on the way through, and
+	# re-arms it in the impossible case that the spawn is itself blocked.
+	_standing_restore_pending = false
+	request_standing_capsule()
 
 func _build_state_machine() -> void:
 	state_machine = StateMachine.new()
@@ -118,6 +154,10 @@ func _physics_process(delta: float) -> void:
 	var input := input_source.poll()
 	last_input = input
 	_tick_timers(delta, input)
+	# Before the states run, so the body moves this tick at whatever size it is
+	# now entitled to. A restore owed from an exit under a ceiling comes back
+	# on the first tick there is room for it.
+	_service_pending_capsule_restore()
 
 	var was_airborne := not is_on_floor()
 	if camera_rig != null:

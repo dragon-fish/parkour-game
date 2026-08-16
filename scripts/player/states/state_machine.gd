@@ -11,6 +11,13 @@ var _states: Dictionary = {}
 func register(state_name: StringName, state: PlayerState) -> void:
 	_states[state_name] = state
 
+## The registered instance for a state name, or null. Exposed for tests that
+## need to observe a state's own internals — SlideState.is_crawling(), which
+## nothing outside the state can otherwise distinguish from ordinary sliding.
+## Normal operation never hands a state out.
+func state_for(state_name: StringName) -> PlayerState:
+	return _states.get(state_name)
+
 func start(state_name: StringName) -> void:
 	assert(_states.has(state_name), "unknown state: %s" % state_name)
 	if not _states.has(state_name):

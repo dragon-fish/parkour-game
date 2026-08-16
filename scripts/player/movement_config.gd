@@ -94,8 +94,16 @@ extends Resource
 ## downhill component of the floor under it (so a 20 degree descent contributes
 ## sin(20 degrees) of this). Spec section 6 requires a downhill slide to resist
 ## decay or net-accelerate; at the default this outruns slide_friction on
-## anything steeper than about 16 degrees.
-@export var slide_slope_accel: float = 18.0
+## anything steeper than about 13 degrees, which puts the arena's 16.7 degree
+## descent comfortably on the accelerating side rather than balanced on the
+## break-even point where any tuning of either knob flips its sign.
+@export var slide_slope_accel: float = 22.0
+## Hard ceiling on a slide's horizontal speed. A safety RAIL rather than a
+## tuning knob: slide_max_duration is gated on headroom, so a long COVERED
+## downslope has nothing else bounding it and slide_slope_accel would
+## accelerate the player without limit. Set far above anything the arena's
+## ramp produces (which peaks near 11.5 m/s), so it never binds in normal play.
+@export var slide_max_speed: float = 20.0
 ## How long a crouch press is remembered before landing, mirroring
 ## jump_buffer_time. This is what makes the roll-into-slide chain reachable: a
 ## roll needs crouch HELD through the impact, but Slide entry keys off the

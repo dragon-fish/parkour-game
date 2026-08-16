@@ -186,11 +186,20 @@ Expected: FAIL —— `last_landing_rolled` 未定义，且保速关系不成立
 
 在 `scripts/player/movement_config.gd` 的 Camera 组**之前**插入：
 
+> **已修正（P1 phase-final review）**：最初这里让落地扣速曲线复用相机的
+> `land_dip_speed_ref`，等于把「相机下沉多深」和「落地扣多少速」绑在同一个滑块上——
+> 调相机会静默改物理。实际落地的是独立的 `land_cost_speed_ref`。下面已按实装更新。
+
 ```gdscript
 @export_group("Landing")
-## Fraction of horizontal speed kept after a flat landing at land_dip_speed_ref
+## Fall speed at which a landing costs its FULL speed penalty; below it the
+## loss scales down proportionally. Deliberately separate from the camera's
+## land_dip_speed_ref even though the two share a default.
+@export var land_cost_speed_ref: float = 18.0
+## Fraction of horizontal speed kept after a flat landing at land_cost_speed_ref
 ## fall speed. Below that fall speed the loss scales down proportionally; this
 ## is the "speed is easy to lose" half of the momentum design.
+## Values above 1.0 are clamped in code — see AirState._apply_landing_cost.
 @export var land_speed_keep: float = 0.55
 ## Same, but for a landing where the crouch key was held — the reward for
 ## knowing the roll is there.
@@ -224,11 +233,14 @@ var last_landing_rolled: bool = false
 ## Rolling — crouch held on a fast enough landing — bleeds far less. Neither
 ## path ever ADDS speed, so a landing can only ever cost momentum.
 func _apply_landing_cost(impact_speed: float, input: MoveInput) -> void:
-	var severity := clampf(impact_speed / maxf(config.land_dip_speed_ref, 0.001), 0.0, 1.0)
+	# land_cost_speed_ref, NOT the camera's land_dip_speed_ref.
+	var severity := clampf(impact_speed / maxf(config.land_cost_speed_ref, 0.001), 0.0, 1.0)
 	var rolled: bool = input.crouch_held and impact_speed >= config.roll_min_fall_speed
 	player.last_landing_rolled = rolled
 
-	var keep_at_full: float = config.roll_speed_keep if rolled else config.land_speed_keep
+	# Clamped: the tuning panel's slider range is default * 3, so both keep
+	# ratios are draggable past 1.0 and a landing could otherwise ADD speed.
+	var keep_at_full: float = minf(config.roll_speed_keep if rolled else config.land_speed_keep, 1.0)
 	var keep := lerpf(1.0, keep_at_full, severity)
 	player.velocity.x *= keep
 	player.velocity.z *= keep
@@ -809,54 +821,88 @@ git commit -m "feat: block standing under ceilings and drop the camera while sli
 - Modify: `tools/build_main_scene.gd`
 - Test: 追加到 `tests/test_arena.gd`
 
-东侧滑铲区（`Node3D` 名为 `SlideArea`，`position = (14, 0, 0)`），全部沿用生成器里既有的 `_box()` 辅助函数与颜色约定：
+> **本节已按实装重写（P1 phase-final review）。** 原先这里给的是一张手写坐标表
+> （`RampUp` / `TunnelFloor` / `Runway`），它生成出来的滑铲区**根本走不到**：
+> `TunnelFloor` 把通道地面抬到地板上方 1.0 m，而洞口只有 1.2 m 高——滑铲爬不上
+> 1.0 m 的立面，跳跃能上 1.17 m 但落地时 1.8 m 的站立胶囊塞不进 1.2 m 的缝；
+> `RampUp` 也接不上，它的高端悬在地面上方 2.73 m 处、下方无路可上，低端则卡在
+> 0.65 m 的台阶上、又比通道地面低 0.35 m。净高测试之所以通过，是因为它只量
+> 「顶板减地面」这一个截面，**没有任何东西断言通道到得了**。
+>
+> 教训：**这一区不要再手写坐标。** 下面给的是「必须满足的性质」加上实际落地的
+> 布局；坐标由性质推导，并由 `test_the_slide_course_can_be_run_end_to_end`
+> 真正驱动角色跑一遍来验证，而不是靠读表。
 
-| 名称 | size | position | 用途 |
-| --- | --- | --- | --- |
-| `RampUp` | `(6, 1, 10)` | `(0, 1.2, -6)`，绕 X 轴旋转 `-12°` | 下坡，测滑铲加速 |
-| `TunnelFloor` | `(6, 1, 14)` | `(0, 0.5, -18)` | 通道地面 |
-| `TunnelRoof` | `(6, 1, 14)` | `(0, 2.7, -18)` | 只有滑铲能通过的顶板 |
-| `TunnelWallL` | `(1, 3, 14)` | `(-3.5, 1.5, -18)` | 侧墙 |
-| `TunnelWallR` | `(1, 3, 14)` | `(3.5, 1.5, -18)` | 侧墙 |
-| `Runway` | `(6, 1, 20)` | `(0, 0.5, -35)` | 出口跑道，测滑铲出口速度 |
+东侧滑铲区（`Node3D` 名为 `SlideArea`，`position = (18, 0, 0)`——`x = 14` 会让
+侧墙落在世界 `x = 10..11`，正好压在跳跃区的落差塔上），沿用生成器里既有的
+`_box()` / `_attach()` / `_material_for()` 辅助函数与颜色约定。
 
-**净高的算法要核对清楚，这里很容易算错：** 顶板中心 `y = 2.7`、厚 1，底面在 `y = 2.2`；通道地面中心 `y = 0.5`、厚 1，顶面在 `y = 1.0`。净高 **1.2 m**。站立胶囊 1.8 m 过不去，滑铲胶囊 0.9 m 通过且有 0.3 m 余量。
+**必须满足的性质（验收看这个，不看坐标）：**
 
-若把顶板放在 `y = 2.1`（底面 1.6），净高只有 0.6 m —— **比滑铲胶囊本身还矮，滑铲也过不去**，通道就成了一堵墙。生成后务必用测试验证，不要凭表格想当然。
+1. 地板上有一段助跑区，够加速到冲刺速度。
+2. 有一条**上得去**的通往高台的路：任何单级垂直落差都不得超过跳跃高度（台阶可以，
+   北侧跳跃区已有现成写法）。
+3. 从高台往下有一条**真正的下坡**，长到值得滑一次——这是全场唯一能测下坡滑铲的
+   地方，`slide_slope_accel` 只有在这里能被感觉到。
+4. 坡底有一条矮通道，其地面与坡底、与场地地板**连续**：不许有唇、不许有台阶；
+   净高要挡住站立胶囊、放过滑铲胶囊。
+5. 通道之后有一段出口跑道，长到能读出还剩多少速度。
+
+**实装布局**（局部 z 即世界 z；整条路线都落在 60×60 的 `Floor` 板内，
+`z = -30..30`，所以每一段平地**就是**场地地板本身，而不是架在它上面的甲板）：
+
+| z 区间 | 部件 | y |
+| --- | --- | --- |
+| +26 .. +16 | 助跑（裸地板，两侧 `ApproachKerbL/R` 标线） | 0 |
+| +16 .. +7 | `UpRamp`，18.43° 可行走上坡 | 0 → 3 |
+| +7 .. +3 | `Platform` | 3 |
+| +3 .. -7 | `DownRamp`，16.70° 下坡 | 3 → 0 |
+| -7 .. -9 | 缓冲平地（裸地板） | 0 |
+| -9 .. -16 | `TunnelRoof` / `TunnelWallL` / `TunnelWallR` | 通道地面 0，顶板底面 1.3 |
+| -16 .. -30 | 出口跑道（裸地板，两侧 `ExitKerbL/R` 标线） | 0 |
+
+几处关键决策：
+
+- **上坡用可行走斜面，不用台阶。** 18.43° 远低于 `floor_max_angle`（45°），而且它
+  **完全没有垂直落差**，所以将来调 `jump_velocity` 或 `gravity` 都不可能把它调成
+  上不去。台阶方案也能work，但会把靶场几何和跳跃数值绑死。
+- **没有 `TunnelFloor` 这个盒子。** 通道地面就是场地地板。任何独立的地面盒要么高
+  于地板（成为滑铲爬不上的唇），要么与它共面（渲染 z-fighting）。净高 1.3 m：
+  高于 `slide_capsule_height` 0.9（滑铲过得去，余 0.4 m），低于站立胶囊 1.8。
+- **斜面由新的 `_ramp()` 辅助函数生成**，它建立在 `_box()` 之上，把坡道的**上表面**
+  摆到指定的两个点上（而不是摆盒子中心）——这正是坡脚能与地板严丝合缝、不留唇的
+  原因，盒子的其余部分安全地埋在地板板内。
+- **旋转方向必须实测，不许推导。** 上一版就是把符号搞反了。实测结论：
+  `rotation.x` 为**正**会抬高盒子的 -Z 端，所以朝 -Z 下降的坡道需要**负**的
+  `rotation.x`。`_ramp()` 里用 `atan2(rise, run)` 自然得到这个符号。
+- **通道长度按「靠动量过得去」来定，不是按「靠 crawl 兜底」。** 最初取 10 m 时滑铲
+  差 2.3 m 走不完，只有 `SlideState` 的 crawl 能把人捞出来——那等于让安全网变成
+  正常路径。缩到 7 m、缓冲平地缩到 2 m 之后，从高台起滑到远端洞口仍有约 6.1 m/s。
+  这一条由测试直接断言：crawl 不得在整段路程中触发。
 
 - [ ] **Step 1: 写失败的测试**
 
-追加到 `tests/test_arena.gd`：
+追加到 `tests/test_arena.gd`。**两个测试，缺一不可**——这正是原版漏掉的那一半：
 
-```gdscript
-func test_the_slide_area_exists_and_is_low_enough_to_require_sliding() -> void:
-	await step(1)
-	var arena = await _load_arena()
-	var roof = arena.get_node_or_null("SlideArea/TunnelRoof")
-	var floor_node = arena.get_node_or_null("SlideArea/TunnelFloor")
-	check(roof != null, "the slide tunnel roof is missing")
-	check(floor_node != null, "the slide tunnel floor is missing")
+1. `test_the_slide_area_exists_and_is_low_enough_to_require_sliding`：量净高。
+   上界读**活的**站立胶囊、下界读 `config.slide_capsule_height`，所以调任何一边都
+   不会让通道变成静默不可通行或静默毫无意义。基准面取场地 `Floor` 的顶面（因为通道
+   地面就是它），并额外断言**通道内部体积是空的**——`SlideArea` 里任何盒子都不许
+   占据两墙之间、从地面到顶板的那块空间，一个抬高 0.1 m 的地面盒就会被抓出来。
 
-	var roof_box := ((roof.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
-	var floor_box := ((floor_node.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
-	var clearance: float = (roof.position.y - roof_box.size.y * 0.5) \
-		- (floor_node.position.y + floor_box.size.y * 0.5)
+2. `test_the_slide_course_can_be_run_end_to_end`：**可达性**。截面测试对「到不到得
+   了」一个字都没说，所以这个测试用脚本输入真的把角色从助跑区一路开过去——爬上高台、
+   滑下坡、穿过通道、从另一头出来——并断言它**到了**、途中**确实进过 Slide**、而且
+   **不是靠 crawl 捞出来的**（crawl 在状态上同样是 Slide，只看状态名分不出来，所以
+   读 `SlideState.is_crawling()`，并要求远端洞口速度高于 `slide_crawl_speed`）。
 
-	# The tunnel only earns its place if standing cannot fit and sliding can.
-	# Both bounds are read from the live capsule and config, so tuning either
-	# one cannot leave the tunnel silently impassable or silently pointless.
-	var standing := ((arena.player.get_node("CollisionShape3D") as CollisionShape3D).shape \
-		as CapsuleShape3D).height
-	check(clearance < standing, \
-		"the tunnel is tall enough to walk through, so it teaches nothing (clearance %f vs standing %f)" \
-		% [clearance, standing])
-	check_greater(clearance, arena.config.slide_capsule_height, \
-		"the tunnel is lower than the sliding capsule, so even a slide cannot pass (clearance %f vs slide %f)" \
-		% [clearance, arena.config.slide_capsule_height])
+   所有地标都从**活的几何**上读（各盒子的世界 AABB、`Floor` 顶面），一个都不硬编码，
+   这样重新排布路线不会让测试悄悄量错地方。驱动方式按「到达的位置」而不是精确帧数，
+   预算给足，连续 3 秒没有前进就提前放弃，失败信息必须报出**卡在哪**——
+   `stuck at z=-13.4 in state Slide` 比十条 `assertion failed` 都值钱。
 
-	arena.queue_free()
-	await step(1)
-```
+具体实现见仓库中的 `tests/test_arena.gd`；这里不再抄一遍代码，因为上一版正是照抄
+表格与代码块而没有验证，才把不可达的几何一路带到了阶段末尾。
 
 - [ ] **Step 2: 运行测试确认失败**
 
@@ -865,7 +911,10 @@ Expected: FAIL —— `SlideArea` 不存在。
 
 - [ ] **Step 3: 生成器加入滑铲区**
 
-按上表在 `tools/build_main_scene.gd` 中构造 `SlideArea`，紧随 `JumpArea` 之后。`RampUp` 需要旋转，因此不能直接用 `_box()` 的返回值——先取得节点再设 `rotation.x = deg_to_rad(-12.0)`。
+按上面的**性质**（不是坐标）在 `tools/build_main_scene.gd` 中构造 `SlideArea`，紧随
+`JumpArea` 之后。斜面需要旋转，`_box()` 单独给不出来，所以走 `_ramp()`：它取
+`_box()` 的返回值再设 `rotation.x`，并把坡面的上表面对准指定的两个点。**旋转符号
+先实测再写**（正的 `rotation.x` 抬高 -Z 端 ⇒ 朝 -Z 的下坡取负值）。
 
 重新生成主场景（先 `--import`）。
 

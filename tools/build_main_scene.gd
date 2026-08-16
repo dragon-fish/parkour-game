@@ -182,10 +182,12 @@ func _run() -> void:
 	#
 	# The tunnel length is sized so slide MOMENTUM clears it with room to
 	# spare, not so the crawl has to rescue every attempt: a slide entered on
-	# the platform at sprint speed arrives at the far mouth still doing about
-	# 4 m/s, having covered roughly 9 m of usable slide across a 7 m tunnel.
-	# SlideState's crawl exists for the player who commits too late or too
-	# slow, and this must not become the normal way through.
+	# the platform at sprint speed reaches the far mouth still doing about
+	# 6.1 m/s, well over slide_crawl_speed. SlideState's crawl exists for the
+	# player who commits too late or too slow, and this must not become the
+	# normal way through — the traversability test asserts the crawl never
+	# latches during the run, so shortening this is a change with a tripwire
+	# on it.
 	#
 	# The ascent is a walkable slope, not a step: it has NO vertical rise at
 	# all, so it cannot become unclimbable if jump_velocity or gravity are

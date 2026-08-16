@@ -285,12 +285,18 @@ func _advance_until_z(player: Player, target_z: float, budget: int) -> Dictionar
 	var best_z: float = player.global_position.z
 	var stalled := 0
 	var slid := false
+	var crawled := false
 	var ticks := 0
+	# Crawling is also state Slide, so `slid` alone cannot tell "cleared it on
+	# momentum" from "rescued by the safety net". Watch the latch itself.
+	var slide_state = player.state_machine.state_for(PlayerState.SLIDE)
 	for i in budget:
 		await step(1)
 		ticks += 1
 		if player.state_machine.current_name == PlayerState.SLIDE:
 			slid = true
+			if slide_state != null and slide_state.is_crawling():
+				crawled = true
 		var z: float = player.global_position.z
 		if z < best_z - 0.005:
 			best_z = z
@@ -305,6 +311,7 @@ func _advance_until_z(player: Player, target_z: float, budget: int) -> Dictionar
 	return {
 		"reached": position.z <= target_z,
 		"slid": slid,
+		"crawled": crawled,
 		"ticks": ticks,
 		"position": position,
 		"state": player.state_machine.current_name,
@@ -354,16 +361,37 @@ func test_the_slide_course_can_be_run_end_to_end() -> void:
 		"the player reached the platform's z but not its height — it is not standing on the platform: %s" \
 		% _where(climb))
 
-	# Phase 2 — commit to the slide and ride it down the ramp, through the
-	# tunnel, and out past the far mouth.
+	# Phase 2 — commit to the slide and ride it down the ramp and through the
+	# tunnel, stopping the measurement exactly AT the far mouth. Sampling there
+	# rather than after the exit matters: once the player is clear of the roof
+	# it stands up and GroundState winds it straight back to sprint speed, so a
+	# reading taken a few metres later would be 9 m/s no matter how the tunnel
+	# was crossed.
 	input.press_crouch()
-	var run := await _advance_until_z(player, roof_aabb.position.z - 1.5, 1800)
+	var run := await _advance_until_z(player, roof_aabb.position.z, 1800)
 	check(run["reached"], \
-		"the player never came out the far side of the tunnel: %s" % _where(run))
-	check(run["slid"] or climb["slid"], \
+		"the player never reached the far mouth of the tunnel: %s" % _where(run))
+	check(run["slid"], \
 		"the player crossed the course without ever entering Slide, so the route did not require sliding")
+
+	# The tunnel must be passable on slide MOMENTUM, with the crawl as a safety
+	# net for the player who commits too late — not as the normal way through.
+	# Two independent readings of that, because they fail differently: the
+	# crawl latching at all, and the speed at the mouth collapsing to what a
+	# crawl would produce even if the latch has not tripped yet.
+	check(not run["crawled"], \
+		"the player only got through because the crawl rescued it; the tunnel must be clearable on slide momentum: %s" \
+		% _where(run))
+	check_greater(run["speed"], arena.config.slide_crawl_speed, \
+		"speed at the far mouth is no better than a crawl would give, so the slide did not carry the player: %s" \
+		% _where(run))
+
+	# Phase 3 — and it actually comes out the other side.
+	var exit_run := await _advance_until_z(player, roof_aabb.position.z - 1.5, 600)
+	check(exit_run["reached"], \
+		"the player reached the far mouth but never came out of it: %s" % _where(exit_run))
 	check_approx(player.global_position.y, deck + 0.9, 0.35, \
-		"the player left the course vertically instead of running it: %s" % _where(run))
+		"the player left the course vertically instead of running it: %s" % _where(exit_run))
 
 	arena.queue_free()
 	await step(1)
@@ -379,7 +407,8 @@ func _collect_box_bodies(node: Node, out: Array) -> void:
 		_collect_box_bodies(child, out)
 
 ## World-space AABB of a box body, computed from its live global transform so
-## rotated boxes (RampUp) are handled correctly, not just translated ones.
+## rotated boxes (the slide course's UpRamp and DownRamp) are handled
+## correctly, not just translated ones.
 func _world_aabb(body: Node3D) -> AABB:
 	var box: BoxShape3D = (body.get_node("Collision") as CollisionShape3D).shape
 	var half := box.size * 0.5

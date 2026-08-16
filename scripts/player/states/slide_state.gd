@@ -24,8 +24,21 @@ func enter(_previous: StringName) -> void:
 
 	player.set_capsule_height(config.slide_capsule_height)
 
+## Deliberately a REQUEST, not an unconditional restore. The off-edge exit
+## below returns AIR whether or not there is headroom — a player who walks off
+## a ledge must fall, ceiling or not, so that path cannot be headroom-gated the
+## way the jump path is — and _crawl() shuffling off a ledge reaches it too.
+## Restoring the 1.8 m capsule here regardless would spawn it inside the roof.
+## Player owes the restore and performs it the moment there is room.
 func exit() -> void:
-	player.set_capsule_height(player.standing_height())
+	player.request_standing_capsule()
+
+## True while a spent slide is shuffling out from under a ceiling rather than
+## sliding. Both are state Slide, so nothing else can tell them apart — the
+## arena's traversability test reads this to prove the tunnel is cleared on
+## momentum rather than rescued by the safety net.
+func is_crawling() -> bool:
+	return _crawling
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	_elapsed += delta
@@ -47,9 +60,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	else:
 		_slide(delta, input, speed)
 
-	# A jump out of a slide restores the standing capsule on the way out
-	# (exit() does), so it needs somewhere to stand up INTO — and physically
-	# you cannot jump into a ceiling anyway. has_headroom() is checked BEFORE
+	# A jump out of a slide is refused under a roof on its own merits, quite
+	# apart from the capsule: you cannot jump into a ceiling. (The capsule is
+	# separately safe either way — see exit().) has_headroom() is checked BEFORE
 	# consume_jump() so the short-circuit leaves the buffered press unspent:
 	# press jump inside the tunnel and it fires the moment you clear the roof,
 	# rather than being silently eaten.
@@ -99,7 +112,14 @@ func _slide(delta: float, input: MoveInput, speed: float) -> void:
 	# the plain friction decay it replaced.
 	var slope_dir := _slope_direction()
 	var grade := -slope_dir.y
-	speed = maxf(speed + (config.slide_slope_accel * grade - config.slide_friction) * delta, 0.0)
+	# slide_max_speed is a safety RAIL, not a tuning knob: the duration cap is
+	# headroom-gated, so a long COVERED downslope has nothing else bounding it
+	# and would accelerate without limit — the panel can drive
+	# slide_slope_accel to three times its default. The default sits far above
+	# anything the arena produces, so it never binds in normal play. The entry
+	# boost is not separately clamped because this runs on the very next tick.
+	speed = clampf(speed + (config.slide_slope_accel * grade - config.slide_friction) * delta, \
+		0.0, config.slide_max_speed)
 
 	# Drive along the SLOPE, scaled so the horizontal magnitude is still
 	# `speed`. Steering the body horizontally instead would leave a descent to

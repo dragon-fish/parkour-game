@@ -313,6 +313,109 @@ func test_jumping_out_of_a_blocked_slide_is_refused() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
+func test_sliding_off_an_edge_under_a_ceiling_does_not_restore_the_capsule() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	var world := await _running_world(cfg)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	var shape := (player.get_node("CollisionShape3D") as CollisionShape3D).shape as CapsuleShape3D
+	var standing := player.standing_height()
+
+	input.press_crouch()
+	await step(2)
+	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+
+	var ceiling := _add_ceiling_over(player)
+	await step(1)
+	check_approx(shape.height, cfg.slide_capsule_height, 0.001, \
+		"precondition: the capsule should be crouched while sliding")
+
+	# Take the ground away. The off-edge exit returns AIR whether or not there
+	# is headroom — a player who walks off a ledge falls, ceiling or not — so
+	# this path cannot be headroom-gated the way the jump path is. exit() must
+	# therefore not restore the standing capsule here: it would spawn a 1.8 m
+	# body inside the roof that is still directly overhead.
+	world["floor"].global_position = Vector3(0.0, -80.0, 0.0)
+	await step(3)
+	check(player.state_machine.current_name == &"Air", \
+		"precondition: leaving the ground mid-slide must enter Air, got %s" \
+		% player.state_machine.current_name)
+	check(shape.height < standing, \
+		"the capsule stood back up into the ceiling on the way out of the slide (height %f)" % shape.height)
+
+	# ...and it must come back on its own the moment there is room, or the
+	# player is left permanently crouched.
+	ceiling.queue_free()
+	await step(10)
+	check_approx(shape.height, standing, 0.001, \
+		"the standing capsule was never restored once the ceiling was gone (height %f)" % shape.height)
+
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_a_long_covered_downslope_cannot_outrun_the_slide_speed_cap() -> void:
+	await step(1)
+	var cfg := MovementConfig.new()
+	# The tuning panel builds every slider's range as default * 3, so this is a
+	# position a human can actually drag to.
+	cfg.slide_slope_accel = cfg.slide_slope_accel * 3.0
+
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	var player: Player = world["player"]
+	var floor_body: StaticBody3D = world["floor"]
+	var slope := deg_to_rad(-30.0)
+	floor_body.rotation.x = slope
+	floor_body.global_position = Vector3(0.0, -0.5, 0.0)
+	player.global_position = Vector3(0.0, 1.2, 0.0)
+	await step(30)
+
+	var input: ScriptedInputSource = world["input"]
+	input.state.move = Vector2(0.0, 1.0)
+	input.state.sprint_held = true
+	await step(60)
+	input.press_crouch()
+	await step(2)
+	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+
+	# Roof the whole slope, parallel to it. slide_max_duration is gated on
+	# headroom, so under cover the slide has no time limit either — which is
+	# exactly the case where nothing but slide_max_speed bounds it. Added after
+	# the capsule has already shrunk, so the slab never intersects a standing
+	# body. Offset along the slope's own normal by half the floor thickness +
+	# the clearance + half the roof thickness.
+	var normal := Vector3(0.0, cos(slope), sin(slope))
+	var ceiling := StaticBody3D.new()
+	var ceiling_shape := CollisionShape3D.new()
+	var ceiling_box := BoxShape3D.new()
+	ceiling_box.size = Vector3(40.0, 1.0, 200.0)
+	ceiling_shape.shape = ceiling_box
+	ceiling.add_child(ceiling_shape)
+	ceiling.rotation.x = slope
+	ceiling.position = floor_body.global_position + normal * 2.3
+	tree.root.add_child(ceiling)
+	await step(1)
+
+	var peak := 0.0
+	for i in 180:
+		await step(1)
+		peak = maxf(peak, player.horizontal_speed())
+	check(player.state_machine.current_name == &"Slide", \
+		"precondition: the covered slide should still be running, got %s" \
+		% player.state_machine.current_name)
+	check(peak <= cfg.slide_max_speed + 0.1, \
+		"a long covered downslope accelerated past the cap (peak %f vs slide_max_speed %f)" \
+		% [peak, cfg.slide_max_speed])
+	# ...and the run has to actually press against the cap, or this passes by
+	# never getting near it and would not notice the cap being removed.
+	check_greater(peak, cfg.slide_max_speed - 0.5, \
+		"the slide never reached the cap, so this test proves nothing about it (peak %f)" % peak)
+
+	ceiling.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
 ## Runs the player up to speed, slides, and returns how much horizontal speed
 ## survives `ticks` frames of that slide. `slope_deg` tilts the floor so the
 ## slide runs DOWN it; 0 leaves the floor flat. The slope is built here rather
