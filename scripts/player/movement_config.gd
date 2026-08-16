@@ -339,10 +339,34 @@ extends Resource
 @export var eye_height: float = 0.7
 @export var mouse_sensitivity: float = 0.0022
 @export var pitch_limit_deg: float = 89.0
-@export var fov_base: float = 75.0
-@export var fov_max: float = 95.0
-## Horizontal speed at which FOV reaches fov_max.
-@export var fov_speed_ref: float = 9.0
+## DIVERGENCE FROM SOURCE, KEPT DELIBERATELY -- do not "correct" this back to
+## ME's own value. The research (09-Godot移植指南.md §9.1 Camera table) confirms
+## the original uses a FIXED 90 degrees with no speed-driven FOV at all: DICE's
+## own account is that they opened the FOV to the widest angle before the image
+## visibly bows, then left it there, and got their sense of speed from camera
+## motion (landing dip, wallrun roll) instead.
+##
+## The owner has explicitly decided NOT to follow that: ME's fixed 90 was
+## chosen for 2008 console viewing distances and reads as uncomfortably narrow
+## on a PC monitor. Speed-driven FOV (90 at rest, 105 at top speed) is kept
+## instead -- it is the common idiom for modern first-person parkour (Titanfall,
+## Ghostrunner both use it), and the owner finds it more comfortable to play,
+## even though the original explicitly rejects the technique. See
+## docs/decisions-pending-your-review.md for the owner's own record of this
+## choice.
+@export var fov_base: float = 90.0
+@export var fov_max: float = 105.0
+## Horizontal speed at which FOV reaches fov_max -- i.e. "top speed" in the
+## fov_base/fov_max comment above. Defaults to sprint_speed's OWN value,
+## independently of it (mirroring land_cost_speed_ref/land_dip_speed_ref and
+## slide_boost_entry_threshold's own note on sharing a default without sharing
+## a variable): wall_max_speed is capped at sprint_speed too (see its own
+## comment), so foot speed alone already IS the practical top speed a player
+## can sustain. Previously left at a stale 9.0 (this project's OLD sprint
+## speed) after the gravity/jump/sprint retune dropped sprint_speed to 7.2 --
+## at that stale value the FOV never actually reached fov_max under ordinary
+## sprinting, silently breaking the "105 at top speed" claim above.
+@export var fov_speed_ref: float = 7.2
 @export var fov_lerp_speed: float = 6.0
 ## DIVERGENCE FROM SOURCE, KEPT DELIBERATELY: the research (09-Godot移植指南.md
 ## §9.1 Camera table) records that DICE ultimately REMOVED head bob entirely,
