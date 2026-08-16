@@ -12,37 +12,38 @@ height = 1.8
 radius = 0.4
 height = 1.8
 
-[node name="Player" type="CharacterBody3D" unique_id=1499928298 node_paths=PackedStringArray("camera_rig", "probes")]
+[node name="Player" type="CharacterBody3D" unique_id=1082204191 node_paths=PackedStringArray("camera_rig", "probes")]
 script = ExtResource("1_gmlin")
 camera_rig = NodePath("CameraRig")
 probes = NodePath("Probes")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=885335274]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1801759369]
 shape = SubResource("CapsuleShape3D_75vfm")
 
-[node name="CameraRig" type="Node3D" parent="." unique_id=171728486]
+[node name="CameraRig" type="Node3D" parent="." unique_id=1247393216]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
 script = ExtResource("2_lvxji")
 
-[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=19692598]
+[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=179581428]
 
-[node name="BodyRoot" type="Node3D" parent="." unique_id=1188513559]
+[node name="BodyRoot" type="Node3D" parent="." unique_id=1511632766]
 
-[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=600230810]
+[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=1277091719]
 shape = SubResource("CapsuleShape3D_0owmy")
 target_position = Vector3(0, 0, 0)
 
-[node name="Probes" type="Node3D" parent="." unique_id=684805494]
+[node name="Probes" type="Node3D" parent="." unique_id=1387841384]
 script = ExtResource("3_p47bc")
 
-[node name="VaultLow" type="RayCast3D" parent="Probes" unique_id=1709473783]
+[node name="VaultLow" type="RayCast3D" parent="Probes" unique_id=878135629]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.55, 0)
 target_position = Vector3(0, 0, -1.4)
 
-[node name="VaultHigh" type="RayCast3D" parent="Probes" unique_id=106446777]
+[node name="VaultHigh" type="RayCast3D" parent="Probes" unique_id=1473278211]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
 target_position = Vector3(0, 0, -1.4)
 
-[node name="SurfaceDown" type="RayCast3D" parent="Probes" unique_id=1202646227]
+[node name="SurfaceDown" type="RayCast3D" parent="Probes" unique_id=1759609595]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, -1)
 target_position = Vector3(0, -3.2, 0)
+hit_from_inside = true

@@ -76,6 +76,12 @@ func _run() -> void:
 	probes.owner = player
 
 	# Forward ray at shin height: does something block the way at all?
+	# World y = feet + 0.35 (body origin sits at feet + 0.9). An obstacle
+	# shorter than that -- a kerb, a low curb -- passes entirely under this
+	# ray and is invisible to vault_query() no matter how low vault_max_height
+	# allows; it reads as "nothing ahead", not "too short to vault". This is a
+	# real, intentional limit of a two-ray shin/chest rig, not a bug: obstacles
+	# that short are already walkable over.
 	var vault_low := RayCast3D.new()
 	vault_low.name = "VaultLow"
 	vault_low.position = Vector3(0.0, -0.55, 0.0)
@@ -107,6 +113,19 @@ func _run() -> void:
 	surface.position = Vector3(0.0, 2.2, -1.0)
 	surface.target_position = Vector3(0.0, -3.2, 0.0)
 	surface.enabled = true
+	# Without this, a wall/overhang tall enough to swallow this ray's ORIGIN
+	# (world y = feet + 3.1 -- e.g. anything with a surface above feet + 3.1
+	# directly ahead) is invisible to the ray entirely: RayCast3D does not
+	# report a hit for a shape it starts inside by default, so the ray simply
+	# passes through the wall and reports whatever is below it (the floor, or
+	# nothing), and vault_query()/ledge_query() would then reason about THAT
+	# surface instead of correctly finding no valid vault/ledge. Verified: with
+	# this off, an 8 m wall's "no ledge" result came from the floor at y=0
+	# sneaking under ledge_min_height, not from ledge_max_height rejecting the
+	# wall -- the upper bound had no real coverage. With this on, the ray
+	# reports its own origin as the hit when it starts inside solid geometry,
+	# which is what lets the height bounds actually reject it.
+	surface.hit_from_inside = true
 	probes.add_child(surface)
 	surface.owner = player
 
