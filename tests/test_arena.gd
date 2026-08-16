@@ -984,7 +984,22 @@ func test_the_zig_zag_wall_section_chains_multiple_walls() -> void:
 ## of scenes/main.tscn against itself is useless here. None of that is
 ## visible through the node/resource API this walks, so it is excluded by
 ## construction rather than by filtering it back out afterward.
-func _snapshot(node: Node, path: String, out: Dictionary) -> void:
+##
+## Stops descending at the root of an INSTANCED sub-scene (any node past the
+## top level whose scene_file_path is non-empty, e.g. the Player instanced
+## from player.tscn) — that node's own class/script/transform is still
+## snapshotted and compared, but what is inside it is that sub-scene's own
+## generator's business, not ArenaBuilder's. Without this, the character
+## model instanced under Player.BodyRoot (P5's wine_fox, several hundred bone
+## nodes) got walked too, on the strength of ArenaBuilder merely
+## instantiating player.tscn as a child — turning a check on 6 practice
+## areas' worth of arena wiring into one dominated by a model this generator
+## does not build and cannot diverge on. is_root defaults true so the
+## top-level call always walks its own children regardless of ITS OWN
+## scene_file_path — which IS set when `committed` below comes from
+## ResourceLoader.load(SCENE).instantiate(), and would otherwise stop the
+## walk before it ever started.
+func _snapshot(node: Node, path: String, out: Dictionary, is_root: bool = true) -> void:
 	var entry := {
 		"class": node.get_class(),
 		"script": node.get_script().resource_path if node.get_script() != null else "",
@@ -996,8 +1011,10 @@ func _snapshot(node: Node, path: String, out: Dictionary) -> void:
 	if node is CollisionShape3D and node.shape is BoxShape3D:
 		entry["box_size"] = (node.shape as BoxShape3D).size
 	out[path] = entry
+	if not is_root and node.scene_file_path != "":
+		return
 	for child in node.get_children():
-		_snapshot(child, path + "/" + String(child.name), out)
+		_snapshot(child, path + "/" + String(child.name), out, false)
 
 ## Regenerating scenes/main.tscn must never be able to silently diverge from
 ## what is actually committed — that is exactly how a hand-edited .tscn (a
