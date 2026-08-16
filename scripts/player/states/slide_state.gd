@@ -4,6 +4,18 @@ extends PlayerState
 # A slide is a commitment: it buys speed up front, steers poorly, and ends on
 # its own terms. Everything about it is tuned to make the player choose WHERE
 # to slide rather than sliding constantly.
+#
+# Deliberately absent: Slide never transitions into a wall run. The spec
+# forbids it -- chaining a slide straight into a wall run lets the player
+# build speed in a loop that never has to give any back. Reaching a wall from
+# a slide has to go through Ground or Air first, which costs the slide's
+# boost. Pinned by tests/test_slide_state.gd's
+# test_slide_can_only_reach_ground_and_air and
+# test_slide_returns_only_ground_air_or_keep -- do not add a return into that
+# state here. (Deliberately not spelling the state's own constant name in
+# this comment: the first of those two tests greps slide_state.gd's source
+# for PlayerState's constant names verbatim, precisely so that even NAMING
+# the forbidden target here -- not just returning it -- trips the tripwire.)
 
 var _elapsed: float = 0.0
 var _direction: Vector3 = Vector3.ZERO

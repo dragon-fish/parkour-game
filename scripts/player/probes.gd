@@ -36,6 +36,12 @@ const MIN_HEIGHT_EPSILON := 0.02
 ## for the same decision to drift apart.
 const MIN_WALKABLE_NORMAL_Y := 0.7
 
+## Largest vertical component a side-ray hit's normal may have and still count
+## as a wall to run along (~17 degrees off vertical). Well below
+## MIN_WALKABLE_NORMAL_Y's ~45 degrees on purpose: this gate excludes a floor
+## or a shallow ramp a side ray could graze, not merely "too steep to walk on".
+const MAX_WALL_NORMAL_Y := 0.3
+
 ## SurfaceDown's origin is placed this far ABOVE the tallest surface the config
 ## says is reachable. Without headroom the ray starts level with the very ledge
 ## it is supposed to find and hit_from_inside reports its own origin instead.
@@ -54,6 +60,8 @@ const SURFACE_UNDERSHOOT := 0.1
 var _vault_low: RayCast3D
 var _vault_high: RayCast3D
 var _surface: RayCast3D
+var _wall_left: RayCast3D
+var _wall_right: RayCast3D
 
 var _config: MovementConfig
 var _foot_offset: float = 0.9
@@ -65,6 +73,10 @@ func _ensure_rays() -> void:
 		_vault_high = get_node("VaultHigh")
 	if _surface == null:
 		_surface = get_node("SurfaceDown")
+	if _wall_left == null:
+		_wall_left = get_node("WallLeft")
+	if _wall_right == null:
+		_wall_right = get_node("WallRight")
 
 ## NOTE: this deliberately assigns NO ray geometry. Every ray's length and
 ## position is derived from the live config at query time instead (see
@@ -188,3 +200,39 @@ func ledge_query() -> Dictionary:
 			or height > _config.ledge_max_height:
 		return _no_hit()
 	return {"valid": true, "top": edge, "edge": edge, "normal": normal}
+
+## Points a side ray at the given reach and fires it. Aimed live from the
+## config on every call, same as _aim_forward() above and for the same
+## reason: baking wall_reach into the ray once (e.g. in setup()) would freeze
+## it at whatever the config held on the tick the player spawned, and the F1
+## panel's wall_reach slider would silently stop doing anything the moment
+## setup() had already run.
+func _aim_side(ray: RayCast3D, side_sign: float, reach: float) -> void:
+	ray.target_position = Vector3(side_sign * reach, 0.0, 0.0)
+	ray.force_raycast_update()
+
+## A wall close enough on either side to run along. `side` is -1 for a wall on
+## the player's left and +1 for one on the right; the normal points AWAY from
+## the wall surface, i.e. back toward the player.
+func wall_query() -> Dictionary:
+	if _config == null:
+		return {"valid": false, "normal": Vector3.ZERO, "side": 0}
+	_ensure_rays()
+
+	_aim_side(_wall_left, -1.0, _config.wall_reach)
+	if _wall_left.is_colliding():
+		var normal: Vector3 = _wall_left.get_collision_normal()
+		# Only a near-vertical surface counts as a wall -- MAX_WALL_NORMAL_Y is
+		# a stricter gate than vault/ledge's MIN_WALKABLE_NORMAL_Y (which admits
+		# anything up to ~45 degrees): a wall to run along must be close to
+		# vertical, not merely "too steep to stand on".
+		if absf(normal.y) < MAX_WALL_NORMAL_Y:
+			return {"valid": true, "normal": normal, "side": -1}
+
+	_aim_side(_wall_right, 1.0, _config.wall_reach)
+	if _wall_right.is_colliding():
+		var normal: Vector3 = _wall_right.get_collision_normal()
+		if absf(normal.y) < MAX_WALL_NORMAL_Y:
+			return {"valid": true, "normal": normal, "side": 1}
+
+	return {"valid": false, "normal": Vector3.ZERO, "side": 0}

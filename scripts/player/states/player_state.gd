@@ -18,6 +18,7 @@ const AIR: StringName = &"Air"
 const SLIDE: StringName = &"Slide"
 const VAULT: StringName = &"Vault"
 const LEDGE: StringName = &"Ledge"
+const WALL: StringName = &"Wall"
 
 ## Set by Player before the state machine starts. Untyped for the same
 ## reason: a typed reference would reintroduce the cycle.

@@ -165,6 +165,46 @@ extends Resource
 ## note on why the arc is a per-call value rather than a shared literal.
 @export var mantle_arc_height: float = 0.3
 
+@export_group("Wall Run")
+## Minimum horizontal speed required to attach to a wall. Wall running is a
+## way to CARRY speed, never a way to create it from nothing.
+@export var wall_min_speed: float = 5.0
+## How far sideways a wall may be and still be grabbed.
+@export var wall_reach: float = 0.75
+## Gravity multiplier while on a wall. Well below 1 so the run reads as
+## defying gravity, above 0 so it still has a clock.
+@export var wall_gravity_scale: float = 0.35
+## Forward push applied along the wall, in m/s^2.
+@export var wall_accel: float = 18.0
+## Upper bound on speed the wall itself can push you to.
+@export var wall_max_speed: float = 11.0
+## Wall running ends once along-wall speed decays below this. Kept as its own
+## value rather than a fraction of wall_min_speed, mirroring Slide's separate
+## slide_entry_speed/slide_exit_speed: attaching and staying attached are
+## different questions, and a run should not drop the instant it dips just
+## under the speed that started it.
+@export var wall_exit_speed: float = 2.5
+## Hard cap on one wall run.
+@export var wall_max_duration: float = 1.5
+## Vertical impulse from a wall jump.
+@export var wall_jump_up: float = 6.5
+## Impulse away from the wall surface.
+@export var wall_jump_push: float = 6.0
+## After leaving a wall, how long before a wall with a SIMILAR normal can be
+## attached again. Without it, jumping between the same two faces climbs
+## forever — the classic wall-run exploit.
+@export var wall_reattach_cooldown: float = 0.5
+## How alike two wall normals must be to count as "the same wall", as a dot
+## product. 1.0 means identical facing.
+@export var wall_same_normal_dot: float = 0.85
+## Gentle pull toward the wall surface, in m/s per tick, so the body stays
+## glued through small surface irregularities instead of drifting off.
+@export var wall_stick_force: float = 0.5
+## Camera roll while wall running, in degrees.
+@export var wall_camera_roll_deg: float = 14.0
+## How fast the camera rolls into and out of the wall tilt, in degrees/second.
+@export var wall_camera_roll_speed: float = 56.0
+
 @export_group("Camera")
 ## Height of the camera rig above the player's origin. Baked into player.tscn
 ## as CameraRig's initial local position by tools/build_player_scene.gd, but

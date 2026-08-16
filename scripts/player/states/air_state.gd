@@ -13,6 +13,28 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	player.velocity.y -= config.gravity * delta
 	player.velocity.y = maxf(player.velocity.y, -config.terminal_velocity)
 
+	# PRIORITY DECISION: wall running is checked BEFORE the ledge grab below,
+	# and wins whenever both are in reach at once. This is deliberate, not an
+	# accident of ordering -- ledge_query() is unconditional and was already
+	# first here, so leaving the wall check after it would mean the wall check
+	# could never win a single contested tick: a player flying fast along a
+	# wall who clips any incidental ledge in range would always mantle
+	# instead of wall-running, no matter how clearly wall running is what the
+	# geometry and their speed are asking for.
+	#
+	# Grabbing a ledge is a RECOVERY from a misjudged jump -- something that
+	# happens to you. Wall running is a ROUTE the player deliberately chose by
+	# building speed and running alongside a wall; wall_min_speed already
+	# gates it on exactly that commitment (see MovementConfig's own note: wall
+	# running CARRIES speed, it does not create it). At speed beside a wall,
+	# the wall is what the player is asking for. See
+	# test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach in
+	# tests/test_wall_run.gd for the contested-geometry case this decides.
+	if player.probes != null and player.horizontal_speed() >= config.wall_min_speed:
+		var wall: Dictionary = player.probes.wall_query()
+		if wall["valid"] and player.can_attach_wall(wall["normal"]):
+			return WALL
+
 	# Checked before this tick's own move_and_slide(), same as GroundState's
 	# vault check: if it fires, this state hands off to LedgeHangState (which
 	# drives the body directly, see its own note) without this tick's physics

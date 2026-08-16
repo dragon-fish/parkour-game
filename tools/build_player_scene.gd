@@ -140,6 +140,24 @@ func _run() -> void:
 	probes.add_child(surface)
 	surface.owner = player
 
+	# Side rays for wall detection, at chest height so a low kerb never counts
+	# as a wall. Local +X is the body's right.
+	var wall_left := RayCast3D.new()
+	wall_left.name = "WallLeft"
+	wall_left.position = Vector3(0.0, 0.2, 0.0)
+	wall_left.target_position = Vector3(-0.75, 0.0, 0.0)
+	wall_left.enabled = true
+	probes.add_child(wall_left)
+	wall_left.owner = player
+
+	var wall_right := RayCast3D.new()
+	wall_right.name = "WallRight"
+	wall_right.position = Vector3(0.0, 0.2, 0.0)
+	wall_right.target_position = Vector3(0.75, 0.0, 0.0)
+	wall_right.enabled = true
+	probes.add_child(wall_right)
+	wall_right.owner = player
+
 	player.probes = probes
 
 	DirAccess.make_dir_recursive_absolute("res://scenes/player")

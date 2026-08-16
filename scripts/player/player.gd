@@ -91,6 +91,15 @@ var _ledge_cooldown: float = 0.0
 ## in the way. See request_standing_capsule().
 var _standing_restore_pending: bool = false
 
+## The normal of the wall most recently left, and how long the reattach
+## cooldown keyed on it still has to run. See note_wall_detach()/
+## can_attach_wall().
+var _last_wall_normal: Vector3 = Vector3.ZERO
+var _wall_cooldown: float = 0.0
+## Which side the current wall is on: -1 left, +1 right, 0 none. Read by the
+## camera to decide which way to roll.
+var wall_side: int = 0
+
 @onready var _stand_clearance: ShapeCast3D = get_node_or_null("StandClearance")
 
 func standing_height() -> float:
@@ -193,6 +202,10 @@ func reset_state() -> void:
 	_jump_buffer_timer = 0.0
 	_crouch_buffer_timer = 0.0
 	_ledge_cooldown = 0.0
+	# Same reasoning as the ledge cooldown above: a wall cooldown left over
+	# from the previous life must not withhold a fresh life's first attach.
+	_wall_cooldown = 0.0
+	wall_side = 0
 	# A respawn teleport is not travel: leave the camera's speed cue at rest
 	# rather than letting the first tick after the reset read the old life's.
 	_travel_speed = 0.0
@@ -237,6 +250,12 @@ func _build_state_machine() -> void:
 	ledge.config = config
 	state_machine.add_child(ledge)
 	state_machine.register(PlayerState.LEDGE, ledge)
+
+	var wall := WallRunState.new()
+	wall.player = self
+	wall.config = config
+	state_machine.add_child(wall)
+	state_machine.register(PlayerState.WALL, wall)
 
 	state_machine.start(PlayerState.GROUND)
 
@@ -308,6 +327,7 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 		_crouch_buffer_timer = maxf(_crouch_buffer_timer - delta, 0.0)
 
 	_ledge_cooldown = maxf(_ledge_cooldown - delta, 0.0)
+	_wall_cooldown = maxf(_wall_cooldown - delta, 0.0)
 
 ## Spends a buffered jump if one is pending and the player is still within
 ## coyote time. Returns true at most once per press.
@@ -336,6 +356,21 @@ func start_ledge_cooldown() -> void:
 ## expired. AirState gates its ledge-grab check on this.
 func can_grab_ledge() -> bool:
 	return _ledge_cooldown <= 0.0
+
+## Called by WallRunState when it exits, so a wall facing roughly the same way
+## as the one just left cannot be re-attached until the cooldown runs out.
+func note_wall_detach(normal: Vector3) -> void:
+	_last_wall_normal = normal
+	_wall_cooldown = config.wall_reattach_cooldown
+
+## False while the cooldown is running AND the candidate wall faces roughly the
+## same way as the one just left. A genuinely different wall is always allowed,
+## which is what makes zig-zag wall chaining work while blocking same-wall
+## climbing.
+func can_attach_wall(normal: Vector3) -> bool:
+	if _wall_cooldown <= 0.0:
+		return true
+	return normal.dot(_last_wall_normal) < config.wall_same_normal_dot
 
 ## World-space horizontal direction the player is asking to move in.
 func wish_direction(input: MoveInput) -> Vector3:
