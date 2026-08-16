@@ -212,7 +212,15 @@ func test_raising_the_configured_ledge_maximum_raises_what_the_probe_can_see() -
 	var query: Dictionary = player.probes.ledge_query()
 	check(query["valid"], \
 		"raising ledge_max_height did not bring the 4.2 m top into view -- the probe's reach is not following the live config")
-	check_approx(query["edge"].y, 4.2, 0.15, "the reported edge height should match the block top")
+	# The DECISIVE assertion, and not a redundant one: with the ray's origin
+	# left baked at its old fixed height it sits INSIDE this block, and
+	# hit_from_inside makes it report its own origin as the hit. That is a
+	# phantom ledge a metre below the real top -- "valid" above still passes,
+	# at a height the player would grab at and a surface that is not there.
+	# Measured with the derivation reverted: edge.y comes back as 3.10 rather
+	# than 4.20. Checking only validity would miss it entirely.
+	check_approx(query["edge"].y, 4.2, 0.15, \
+		"the probe reported an edge at the wrong height -- with a fixed ray origin buried inside the block, hit_from_inside reports the ray's own origin as a phantom ledge")
 
 	block.queue_free()
 	TestWorld.teardown(world)
