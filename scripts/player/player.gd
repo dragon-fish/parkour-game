@@ -75,6 +75,31 @@ func consume_landing() -> float:
 ## Assigned in player.tscn. Optional so hand-built test players still work.
 @export var probes: Probes
 
+## The visible character body to attach under BodyRoot at runtime, or null
+## for none. Deliberately NOT wired by tools/build_player_scene.gd -- see
+## BodyRoot's own comment there: a committed player.tscn can never reference
+## a specific model, licensed or otherwise, so this is left for a LOCAL,
+## untracked override to set (e.g. an inherited scene of player.tscn that
+## points body_scene at an owner's own model) rather than for generator
+## output to carry. Instanced once, in _ready(), by _attach_body(). A body
+## is entirely optional: everything downstream (CharacterAnimator, the
+## head-follow camera) is built to no-op cleanly with none attached, not
+## merely "usually work" -- see tests/test_body_attachment.gd.
+@export var body_scene: PackedScene
+
+## The instance of body_scene actually attached under BodyRoot, or null if
+## none. Exposed as a plain var (not just a BodyRoot child lookup) so tests
+## and other systems can inspect what got attached without reaching into
+## BodyRoot's children by name.
+var body: Node3D = null
+
+## The head- or neck-shaped node found in `body` for the head-follow camera
+## to track, or null if there is no body or nothing in it matched. Resolved
+## once, in _attach_body(), by _find_head_node() -- see its own comment for
+## the search. Read every physics tick by _physics_process() to feed
+## CameraRig.set_head_position()/clear_head_position().
+var head_node: Node3D = null
+
 var _standing_height: float = 0.0
 
 ## Backing store for travel_speed(); see its doc comment.
@@ -265,6 +290,204 @@ func _build_state_machine() -> void:
 
 	state_machine.start(PlayerState.GROUND)
 
+func _ready() -> void:
+	if body_scene != null:
+		_attach_body(body_scene)
+
+## Instances `scene` under BodyRoot and wires up everything that depends on
+## having a real body: the idle/run/jump AnimationTree (see
+## _wire_body_animation()) and the head-follow camera's target node (see
+## _find_head_node()). Does nothing -- not even instancing -- if BodyRoot is
+## missing or `scene` fails to instance as a Node3D, so a malformed
+## body_scene degrades to "no body" rather than crashing startup.
+func _attach_body(scene: PackedScene) -> void:
+	var body_root := get_node_or_null("BodyRoot") as Node3D
+	if body_root == null:
+		return
+	var instance := scene.instantiate()
+	if not (instance is Node3D):
+		return
+	body = instance as Node3D
+	body_root.add_child(body)
+	_wire_body_animation(body)
+	head_node = _find_head_node(body)
+
+## Runtime twin of the AnimationTree/CharacterAnimator block that used to be
+## baked directly into player.tscn by tools/build_player_scene.gd (see JOB 1
+## report for why that had to move here): the idle/run/jump graph itself is
+## completely generic, but root_node/anim_player can only be resolved once a
+## real body -- with a real AnimationPlayer -- exists to point them at,
+## which is exactly the thing the committed scene must never assume it has.
+## A body with no child literally named "AnimationPlayer" is a supported,
+## silently animation-less body, not an error: CharacterAnimator already
+## no-ops cleanly with anim_tree left null (see its own _ready()/
+## _physics_process()), so simply never creating one here is enough.
+func _wire_body_animation(body_node: Node3D) -> void:
+	var anim_player := body_node.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if anim_player == null:
+		return
+
+	# Loop fix: verified directly against the real asset (not assumed) that
+	# every imported clip -- idle, run, jump alike -- comes in with
+	# Animation.loop_mode == LOOP_NONE. glTF itself carries no "this clip
+	# loops" flag; in Godot 4.7 that is purely an IMPORT-TIME setting
+	# (Advanced Import Settings' per-animation loop_mode override, written
+	# into the asset's own .import file) with no equivalent on the
+	# AnimationNodeStateMachine/AnimationTree side to compensate. That
+	# import-time fix is unusable here: the .import file lives inside the
+	# untracked, CC BY-NC-SA model's own directory (see JOB 1), so nothing
+	# there can be part of a fix required to live in tracked project code
+	# and to survive the model being entirely absent. Enforced here instead,
+	# on whatever body actually attaches, every time, regardless of how (or
+	# whether) it was imported. idle and run are sustained, stand-or-run-
+	# forever clips that must repeat for as long as the state holds; jump is
+	# a discrete one-shot action and is deliberately left alone.
+	for looping_clip in [&"idle", &"run"]:
+		_ensure_clip_loops(anim_player, looping_clip)
+
+	var idle_anim := AnimationNodeAnimation.new()
+	idle_anim.animation = &"idle"
+	var jump_anim := AnimationNodeAnimation.new()
+	jump_anim.animation = &"jump"
+	var run_anim := AnimationNodeAnimation.new()
+	run_anim.animation = &"run"
+
+	var state_machine := AnimationNodeStateMachine.new()
+	state_machine.add_node("idle", idle_anim)
+	state_machine.add_node("jump", jump_anim)
+	state_machine.add_node("run", run_anim)
+
+	# advance_mode = ENABLED, not AUTO -- the same decision, and for the same
+	# reason, that used to be documented on this exact block in
+	# tools/build_player_scene.gd before it moved here: an unconditioned AUTO
+	# transition fires the instant it is evaluated, not when its animation
+	# finishes, racing the whole idle->run->End chain to End within a single
+	# physics frame regardless of what CharacterAnimator asks for. ENABLED
+	# transitions never fire on their own; travel() calls from
+	# CharacterAnimator are the only thing that ever moves this graph.
+	var start_to_idle := AnimationNodeStateMachineTransition.new()
+	start_to_idle.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
+	state_machine.add_transition("Start", "idle", start_to_idle)
+	var idle_to_run := AnimationNodeStateMachineTransition.new()
+	idle_to_run.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
+	state_machine.add_transition("idle", "run", idle_to_run)
+	var run_to_end := AnimationNodeStateMachineTransition.new()
+	run_to_end.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
+	state_machine.add_transition("run", "End", run_to_end)
+
+	var anim_tree := AnimationTree.new()
+	anim_tree.name = "AnimationTree"
+	anim_tree.tree_root = state_machine
+	# PHYSICS, matching every other system in this project (movement, camera,
+	# probes) and the tests/test_case.gd step() loop they run under -- an
+	# AnimationTree left on its IDLE-process default never sees a frame in a
+	# headless physics-only test loop.
+	anim_tree.process_callback = AnimationTree.ANIMATION_PROCESS_PHYSICS
+	anim_tree.active = true
+	_body_root().add_child(anim_tree)
+	# Computed, not hardcoded, so these NodePaths can never drift from the
+	# actual hierarchy just built.
+	anim_tree.root_node = anim_tree.get_path_to(body_node)
+	anim_tree.anim_player = anim_tree.get_path_to(anim_player)
+
+	var animator := CharacterAnimator.new()
+	animator.name = "CharacterAnimator"
+	# anim_tree/player set BEFORE add_child(), not after: unlike
+	# tools/build_player_scene.gd's old copy of this block (which built its
+	# whole player hierarchy OUT OF TREE and only ever wired properties
+	# on nodes that would not fire _ready() until the SAVED scene was later
+	# instanced, by which point the scene loader had already set every
+	# exported property first), this code runs at real runtime on a Player
+	# ALREADY inside the live SceneTree -- add_child() here fires
+	# CharacterAnimator._ready() SYNCHRONOUSLY, which reads anim_tree to
+	# cache _playback. Setting these after add_child() left anim_tree null
+	# at exactly that moment, permanently disabling _playback and silently
+	# freezing every attached body's animation at "Start" -- caught by
+	# running a live repro (tools/_tmp_debug_stub_anim.gd, not committed),
+	# not by inspection; see the JOB 1 report.
+	animator.anim_tree = anim_tree
+	animator.player = self
+	_body_root().add_child(animator)
+
+## Makes `clip_name` repeat by replacing this ONE AnimationPlayer's own
+## DEFAULT ("") library with a deep-duplicated copy that has loop_mode
+## forced to LOOP_LINEAR -- never by mutating the shared original in place.
+## Required, not just cautious: verified directly that Godot shares both the
+## AnimationLibrary AND the Animation resources inside it across every
+## instantiate() of the same body_scene (an imported sub-resource is not
+## "local to scene" by default) -- so editing either the clip's OWN
+## loop_mode property, or even just the shared library's name->clip entries,
+## in place would silently change every OTHER attached body's copy too,
+## exactly the class of bug Player.setup() already guards against for the
+## collision capsule, for the same underlying reason. A shallow
+## duplicate(false) (the Resource default) would only copy the library's own
+## Dictionary, not the Animation resources it points to, so this uses
+## duplicate(true) specifically.
+##
+## remove_animation_library()/add_animation_library() are per-NODE calls --
+## AnimationPlayer keeps its own library mapping independent of any other
+## node's, even one that currently points at the exact same shared
+## AnimationLibrary resource -- so swapping THIS player's mapping to the
+## private copy cannot affect any other attached body's AnimationPlayer.
+##
+## Looks the clip up only in the DEFAULT ("") library, never a named one:
+## every body this project builds -- the real asset (verified:
+## AnimationPlayer.get_animation_list() returns bare clip names, no
+## "library/" prefix) and every stub body tests/world_fixture.gd builds --
+## registers its clips there. A clip that exists but sits in some other,
+## named library is left exactly as imported rather than guessed at; a
+## missing library or clip is a no-op, not an error -- both are supported,
+## silent degradations, same as everywhere else a body's exact contents
+## cannot be assumed.
+func _ensure_clip_loops(anim_player: AnimationPlayer, clip_name: StringName) -> void:
+	var original_library := anim_player.get_animation_library("")
+	if original_library == null or not original_library.has_animation(clip_name):
+		return
+	var library := original_library.duplicate(true) as AnimationLibrary
+	library.get_animation(clip_name).loop_mode = Animation.LOOP_LINEAR
+	anim_player.remove_animation_library("")
+	anim_player.add_animation_library("", library)
+
+## Small helper so _wire_body_animation() does not repeat the
+## get_node("BodyRoot") lookup -- BodyRoot is guaranteed present here, since
+## _attach_body() already returned early if it were not.
+func _body_root() -> Node3D:
+	return get_node("BodyRoot") as Node3D
+
+## Locates the node the head-follow camera should track: the SHALLOWEST
+## descendant of `body_node` whose name contains "neck", or failing that
+## "head" (case-insensitive substring, not an exact match -- this project's
+## own body wrapper names its actual head mount "MHead" rather than "Head"
+## outright; verified against the real asset's node tree and animation
+## tracks, see the JOB 2 report). A breadth-first search, not a depth-first
+## one, so "shallowest" is genuinely global across the whole tree rather
+## than an accident of which sibling subtree happens to be walked first.
+##
+## Hidden branches are skipped ENTIRELY, not merely deprioritised: this
+## project's own body wrapper ships a second, alternate-form hierarchy
+## (visible = false) with its own head-shaped node, and a camera should
+## never track a bone the player cannot currently see. Returns null -- a
+## fully supported outcome, see CameraRig.update_effects() -- if nothing
+## visible matches.
+func _find_head_node(body_node: Node3D) -> Node3D:
+	for needle in ["neck", "head"]:
+		var found := _bfs_find_by_name(body_node, needle)
+		if found != null:
+			return found
+	return null
+
+func _bfs_find_by_name(root: Node3D, needle: String) -> Node3D:
+	var queue: Array[Node] = [root]
+	while not queue.is_empty():
+		var node: Node = queue.pop_front()
+		if node is Node3D and not (node as Node3D).visible:
+			continue
+		if String(node.name).to_lower().contains(needle):
+			return node as Node3D
+		for child in node.get_children():
+			queue.append(child)
+	return null
+
 func _physics_process(delta: float) -> void:
 	if state_machine == null:
 		return
@@ -296,6 +519,14 @@ func _physics_process(delta: float) -> void:
 			camera_rig.punch_landing(landing_impact)
 		camera_rig.set_crouch_amount(1.0 if state_machine.current_name == PlayerState.SLIDE else 0.0)
 		camera_rig.set_wall_side(wall_side)
+		# Fed as a plain local-space Vector3, not a Node3D reference —
+		# CameraRig stays decoupled from the scene-tree/body-search concerns
+		# that produced it, matching how every other per-tick input here
+		# (speed, grounded, wall_side) is already a value, not an object.
+		if head_node != null:
+			camera_rig.set_head_position(to_local(head_node.global_position))
+		else:
+			camera_rig.clear_head_position()
 		# travel_speed(), NOT horizontal_speed() — see travel_speed()'s note on
 		# why velocity lies through a vault or a mantle.
 		camera_rig.update_effects(delta, travel_speed(), grounded)

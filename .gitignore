@@ -28,3 +28,16 @@ Godot_*.exe
 
 # Screenshot artifacts from tools/capture*.gd (verification output, not source)
 .captures/
+
+# The owner's local CC BY-NC-SA character model experiment and its generated
+# wrapper scene. NonCommercial + ShareAlike are both incompatible with this
+# project, so these must never be committed -- see docs/asset-candidates.md
+# and scripts/player/player.gd's body_scene export for the supported
+# runtime-attachment path instead. Listed by exact path, not as a directory
+# pattern: assets/models/ itself stays trackable for a future, properly
+# licensed model.
+assets/models/大正女仆酒狐.gltf
+assets/models/大正女仆酒狐.gltf.import
+assets/models/大正女仆酒狐_0.png
+assets/models/大正女仆酒狐_0.png.import
+scenes/player/whine_fox_player_nohead.tscn

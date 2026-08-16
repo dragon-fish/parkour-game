@@ -12,7 +12,15 @@ extends TestCase
 
 func _spawn() -> Dictionary:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	# A stub body, not the owner's real (untracked, CC BY-NC-SA) model -- see
+	# JOB 1's report. TestWorld.build_stub_body(with_animation_player=true)
+	# gives Player._wire_body_animation() a real "AnimationPlayer" child with
+	# idle/jump/run clips to wire the SAME AnimationTree/CharacterAnimator
+	# graph against, so these tests still exercise the real node wiring
+	# (Player -> CharacterAnimator -> AnimationTree.travel()) end to end,
+	# just without needing the licensed asset to exist on whatever machine
+	# runs this suite.
+	var world := TestWorld.build(tree, cfg, TestWorld.build_stub_body("", Vector3.ZERO, true))
 	await step(1)
 	TestWorld.place(world)
 	await step(15)

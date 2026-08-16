@@ -10,7 +10,15 @@ extends RefCounted
 # This is a RefCounted helper, not a TestCase, so it must stay outside that
 # glob or the runner hangs trying to treat it as one.
 
-static func build(tree: SceneTree, cfg: MovementConfig) -> Dictionary:
+## `body_scene`, if given, is set on the instanced Player's body_scene export
+## BEFORE it enters the tree -- the same order a local, untracked override of
+## player.tscn would set it in -- so Player._ready() attaches it exactly as
+## it would in the real game. Left null (the default), a world has no body at
+## all, which is what every EXISTING caller of this function wants: the
+## committed player.tscn ships no model (see JOB 1's report), so this is not
+## a special "bodyless" mode, it is simply what building a player from the
+## real scene now does by default.
+static func build(tree: SceneTree, cfg: MovementConfig, body_scene: PackedScene = null) -> Dictionary:
 	var floor_body := StaticBody3D.new()
 	var floor_shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -21,6 +29,8 @@ static func build(tree: SceneTree, cfg: MovementConfig) -> Dictionary:
 
 	var player_scene: PackedScene = load("res://scenes/player/player.tscn")
 	var player: Player = player_scene.instantiate()
+	if body_scene != null:
+		player.body_scene = body_scene
 	tree.root.add_child(player)
 
 	var input := ScriptedInputSource.new()
@@ -42,3 +52,49 @@ static func place(world: Dictionary) -> void:
 static func teardown(world: Dictionary) -> void:
 	world["player"].queue_free()
 	world["floor"].queue_free()
+
+## Builds an in-memory PackedScene standing in for a real character body, for
+## tests that need Player.body_scene to have SOMETHING attached without
+## depending on the owner's licensed, untracked model (see JOB 1's report --
+## the whole point of body_scene is that nothing committed, tests included,
+## may require that model to exist).
+##
+## `head_name`, if non-empty, adds a plain Node3D child by that name at
+## `head_local_position` -- a stand-in for whatever node
+## Player._find_head_node() would match in a real body.
+##
+## `with_animation_player` adds a child literally named "AnimationPlayer"
+## carrying empty "idle", "jump", and "run" animations in the DEFAULT ("")
+## library, matching how the real asset's own AnimationPlayer exposes its
+## clips (verified against it directly, see the JOB 2 report). Empty
+## Animation resources are enough: CharacterAnimator only needs these clips
+## to be SELECTABLE by name, never to contain real keyframes.
+static func build_stub_body(head_name: String = "", head_local_position := Vector3.ZERO, \
+		with_animation_player: bool = false) -> PackedScene:
+	var root := Node3D.new()
+	root.name = "StubBody"
+
+	if with_animation_player:
+		var anim_player := AnimationPlayer.new()
+		anim_player.name = "AnimationPlayer"
+		var library := AnimationLibrary.new()
+		for clip_name in ["idle", "jump", "run"]:
+			var clip := Animation.new()
+			clip.length = 1.0
+			library.add_animation(clip_name, clip)
+		anim_player.add_animation_library("", library)
+		root.add_child(anim_player)
+		anim_player.owner = root
+
+	if head_name != "":
+		var head := Node3D.new()
+		head.name = head_name
+		head.position = head_local_position
+		root.add_child(head)
+		head.owner = root
+
+	var packed := PackedScene.new()
+	var pack_error := packed.pack(root)
+	root.free()
+	assert(pack_error == OK, "TestWorld.build_stub_body: pack failed: %d" % pack_error)
+	return packed
