@@ -9,7 +9,12 @@ extends Resource
 ## Target horizontal speed with no sprint key held.
 @export var walk_speed: float = 5.0
 ## Target horizontal speed while sprinting.
-@export var sprint_speed: float = 9.0
+## Source: docs/mirrors-edge-deep-research/09-Godot移植指南.md §9.1 -- ME's
+## GroundSpeed 720 uu/s -> 7.2 m/s. Part of the gravity/jump_velocity/
+## sprint_speed trio; see MovementConfig.gravity's own comment for why these
+## three move together (ME runs slower than this project did, but jumps
+## roughly twice as far, because gravity dropped by a third).
+@export var sprint_speed: float = 7.2
 ## How fast horizontal velocity converges on the target, in m/s^2.
 @export var ground_accel: float = 60.0
 ## Deceleration applied when there is no movement input, in m/s^2.
@@ -26,11 +31,22 @@ extends Resource
 ## Upper bound on the speed air control alone can reach. Momentum carried in
 ## from other states is never reduced by air control.
 @export var air_max_speed: float = 9.0
-@export var gravity: float = 24.0
+## Source: docs/mirrors-edge-deep-research/09-Godot移植指南.md §9.1 Ground/Air/
+## Jump table -- ME's DefaultGravityZ 800 uu/s^2 -> 8.0 m/s^2 at this project's
+## confirmed 1 uu = 1 cm scale (see the research README's unit derivation).
+## Changed together with jump_velocity and sprint_speed -- the guide is
+## explicit that retuning any one of the three alone makes the feel worse,
+## not better. Gravity a third of the old value is what turns a 0.63 s hop
+## into a 1.58 s arc: the floaty, committed jump IS the Mirror's Edge feel,
+## not a side effect of it.
+@export var gravity: float = 8.0
 @export var terminal_velocity: float = 60.0
 
 @export_group("Jump")
-@export var jump_velocity: float = 7.5
+## Source: same table as gravity above -- ME's BaseJumpZ 630 uu/s -> 6.3 m/s.
+## Part of the gravity/jump_velocity/sprint_speed trio; see gravity's own
+## comment for why these three move together.
+@export var jump_velocity: float = 6.3
 ## Grace period after leaving a ledge during which a jump still works.
 @export var coyote_time: float = 0.12
 ## How long a jump press is remembered before landing.
@@ -51,7 +67,17 @@ extends Resource
 ## land_dip_speed_ref even though the two share a default: the camera dip and
 ## the momentum cost are independent design knobs, and tuning how hard the view
 ## drops must not silently retune the physics.
-@export var land_cost_speed_ref: float = 18.0
+## Source: docs/mirrors-edge-deep-research/09-Godot移植指南.md §9.1 Landing
+## table -- ME's HardLandingHeight 530 uu -> a 9.21 m/s impact speed at the
+## confirmed 1 uu = 1 cm scale, the fall speed at which ME's own landing
+## penalty is fully severe. The prior default (18.0) was roughly double that.
+## Re-anchoring this after the gravity retune (24.0 -> 8.0, see
+## MovementConfig.gravity) rather than before it: under the new, ME-accurate
+## gravity a given fall height now produces a lower impact speed than it used
+## to (v = sqrt(2*g*h) scales with sqrt(g)), so the two changes are meant to
+## land together -- this value was never reachable at anything but very tall
+## drops under the old gravity either way.
+@export var land_cost_speed_ref: float = 9.21
 ## Fraction of horizontal speed kept after a flat landing at land_cost_speed_ref
 ## fall speed. Below that fall speed the loss scales down proportionally; this
 ## is the "speed is easy to lose" half of the momentum design.
@@ -217,7 +243,13 @@ extends Resource
 ## from nothing", so its own accel must never top the player up past what
 ## foot speed alone can already reach. See
 ## tests/test_movement_config.gd's own relationship test pinning this.
-@export var wall_max_speed: float = 9.0
+## Held equal to sprint_speed, mirroring the pre-retune default (both were
+## 9.0) -- when the gravity/jump/speed trio dropped sprint_speed to 7.2 (see
+## MovementConfig.gravity's own comment), this followed it down for the same
+## reason: leaving it at the old 9.0 would let the wall push the player
+## faster than sprinting itself now can, which is exactly the "wall creates
+## speed" case the check above exists to catch.
+@export var wall_max_speed: float = 7.2
 ## Wall running ends once total horizontal speed decays below this (measured
 ## the same way as wall_min_speed, not projected onto the wall's tangent).
 ## Kept as its own value rather than a fraction of wall_min_speed, mirroring
@@ -244,8 +276,16 @@ extends Resource
 ## Gentle pull toward the wall surface, in m/s per tick, so the body stays
 ## glued through small surface irregularities instead of drifting off.
 @export var wall_stick_force: float = 0.5
-## Camera roll while wall running, in degrees.
-@export var wall_camera_roll_deg: float = 14.0
+## Camera roll while wall running, in degrees. Lowered from 14.0 alongside
+## the camera bob amplitude cut (see MovementConfig.bob_amplitude) per the
+## owner's playtest direction that camera roll should come down together
+## with bob amplitude -- this is the only roll-amplitude value the camera
+## system has (see camera_rig.gd's update_effects()), so it is what that
+## direction is read as targeting. Not sourced from the research: the ME
+## data has no value for this field either (09-Godot移植指南.md §9.1 marks it
+## "not found in ME's config"), only a note that the wall-tilt DIRECTION this
+## project already uses is right.
+@export var wall_camera_roll_deg: float = 8.0
 ## How fast the camera rolls into and out of the wall tilt, in degrees/second.
 @export var wall_camera_roll_speed: float = 56.0
 
@@ -268,8 +308,52 @@ extends Resource
 ## Horizontal speed at which FOV reaches fov_max.
 @export var fov_speed_ref: float = 9.0
 @export var fov_lerp_speed: float = 6.0
-@export var bob_frequency: float = 1.6
-@export var bob_amplitude: float = 0.055
+## DIVERGENCE FROM SOURCE, KEPT DELIBERATELY: the research (09-Godot移植指南.md
+## §9.1 Camera table) records that DICE ultimately REMOVED head bob entirely,
+## citing vestibular conflict, and that ME's sense of speed comes from camera
+## motion (landing dip, wallrun roll) rather than bob or FOV scaling. This
+## project keeps bob -- the owner wants it tuned, not deleted -- so this is a
+## known, recorded choice, not an oversight carried over from before the
+## research existed.
+##
+## Tuned instead per the owner's own playtest direction: cycle once per
+## footstep (up from the old, slower cadence) with lower amplitude -- high
+## frequency, low amplitude, rather than a guessed multiplier on the old
+## value.
+##
+## _bob_phase in camera_rig.gd accumulates as
+## `delta * bob_frequency * horizontal_speed`, i.e. by DISTANCE travelled
+## (speed * delta), not by wall-clock time -- so bob_frequency is radians of
+## phase per METRE covered, and one full 2*PI cycle happens every
+## `2*PI / bob_frequency` metres, independent of current speed. Deriving "one
+## cycle per footstep" therefore means picking a footstep distance, not a
+## frequency in Hz directly:
+##   - step rate assumed: 180 steps/min = 3.0 Hz, the widely-cited running
+##     cadence benchmark (commonly attributed to Jack Daniels' observation
+##     that distance runners cluster near 180 spm across a range of paces) --
+##     used here as the closest well-established real-world anchor, since
+##     neither this project's own animations nor the ME research fix a
+##     footstep rate.
+##   - at the new top speed (sprint_speed = 7.2 m/s, see its own comment),
+##     distance per footstep = 7.2 / 3.0 = 2.4 m.
+##   - bob_frequency = 2*PI / 2.4 = 2.618 (rad/m), so a full bob cycle
+##     completes every 2.4 m of ground covered -- one cycle per footstep at
+##     top speed, matching the owner's direction, without hand-tuning a
+##     multiplier.
+## (Sanity check against the OLD value: 1.6 rad/m -> 2*PI/1.6 = 3.93 m per
+## cycle, which at the OLD top speed of 9.0 m/s worked out to roughly 2.3 Hz
+## -- appreciably slower than a real footstep cadence, which is exactly the
+## "slower than it should be" the owner was reacting to.)
+@export var bob_frequency: float = 2.618
+## Lowered alongside the frequency increase above, per the owner's explicit
+## "high frequency, low amplitude" direction rather than a sourced number --
+## the research has no target here since ME removed bob outright (see the
+## divergence note on bob_frequency). 0.03 m sits within the real-world range
+## commonly cited for a runner's vertical centre-of-mass oscillation
+## (roughly 3-5 cm), which is a reasonable anchor now that the frequency
+## above is itself locked to a real footstep cadence rather than an
+## arbitrary multiple.
+@export var bob_amplitude: float = 0.03
 ## How fast head bob fades in and out as the player leaves and regains the
 ## ground. Fading rather than hard-cutting the bob offset is what prevents a
 ## visible snap in camera height at the moment of a jump or a landing.
