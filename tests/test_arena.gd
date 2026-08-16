@@ -246,3 +246,60 @@ func test_the_slide_area_exists_and_is_low_enough_to_require_sliding() -> void:
 
 	arena.queue_free()
 	await step(1)
+
+## Recursively collects every StaticBody3D with a box-shaped "Collision"
+## child under node, used by test_practice_areas_do_not_overlap_each_other.
+func _collect_box_bodies(node: Node, out: Array) -> void:
+	if node is StaticBody3D:
+		var collision := node.get_node_or_null("Collision")
+		if collision is CollisionShape3D and collision.shape is BoxShape3D:
+			out.append(node)
+	for child in node.get_children():
+		_collect_box_bodies(child, out)
+
+## World-space AABB of a box body, computed from its live global transform so
+## rotated boxes (RampUp) are handled correctly, not just translated ones.
+func _world_aabb(body: Node3D) -> AABB:
+	var box: BoxShape3D = (body.get_node("Collision") as CollisionShape3D).shape
+	var half := box.size * 0.5
+	return body.global_transform * AABB(-half, box.size)
+
+func test_practice_areas_do_not_overlap_each_other() -> void:
+	await step(1)
+	var arena = await _load_arena()
+
+	# Practice areas are discovered by the existing "XxxArea" naming
+	# convention (JumpArea, SlideArea, and whatever P2/P3 add) rather than
+	# hardcoded, so a newly added area is covered the moment it exists. Floor,
+	# SpawnPoint, Player, etc. don't match and are excluded automatically.
+	var areas: Dictionary = {}  # area name -> Array[StaticBody3D]
+	for child in arena.get_children():
+		if child is Node3D and String(child.name).ends_with("Area"):
+			var boxes: Array = []
+			_collect_box_bodies(child, boxes)
+			areas[child.name] = boxes
+
+	var area_names: Array = areas.keys()
+	check_greater(float(area_names.size()), 1.0, \
+		"expected at least two practice areas to compare, found %d" % area_names.size())
+
+	# Boxes touching face-to-face (e.g. the tunnel roof resting on its walls)
+	# are legitimate and must not be flagged, so each box is shrunk slightly
+	# before the intersection test. Only comparisons ACROSS different areas
+	# are made — two boxes inside the same area are allowed to touch or even
+	# be designed to abut, and are never compared here.
+	const TOLERANCE := 0.01
+	for i in area_names.size():
+		for j in range(i + 1, area_names.size()):
+			var name_a: String = area_names[i]
+			var name_b: String = area_names[j]
+			for body_a in areas[name_a]:
+				var aabb_a: AABB = _world_aabb(body_a).grow(-TOLERANCE)
+				for body_b in areas[name_b]:
+					var aabb_b: AABB = _world_aabb(body_b).grow(-TOLERANCE)
+					check(not aabb_a.intersects(aabb_b), \
+						"%s/%s overlaps %s/%s — practice areas must not intersect each other" \
+						% [name_a, body_a.name, name_b, body_b.name])
+
+	arena.queue_free()
+	await step(1)

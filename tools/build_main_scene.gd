@@ -127,7 +127,9 @@ func _run() -> void:
 
 	var slide_area := Node3D.new()
 	slide_area.name = "SlideArea"
-	slide_area.position = Vector3(14.0, 0.0, 0.0)
+	# x=14 put TunnelWallL at world x 10..11, overlapping the drop towers
+	# (world x 7..11). x=18 puts it at 14..15, leaving 3 m clear.
+	slide_area.position = Vector3(18.0, 0.0, 0.0)
 	_attach(_root, slide_area)
 
 	# Downhill ramp into the tunnel, for feeling out whether a slide carries
