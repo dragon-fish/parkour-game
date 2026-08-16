@@ -1,0 +1,59 @@
+[gd_scene format=3 uid="uid://lq3dqgc2iapg"]
+
+[ext_resource type="Script" uid="uid://c0r485cb3u71f" path="res://scripts/level/arena.gd" id="1_tbgi4"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="2_tefeu"]
+[ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="4_tipki"]
+[ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="5_85g3d"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_choun"]
+
+[sub_resource type="Sky" id="Sky_ya4ey"]
+sky_material = SubResource("ProceduralSkyMaterial_choun")
+
+[sub_resource type="Environment" id="Environment_eb6dy"]
+background_mode = 2
+sky = SubResource("Sky_ya4ey")
+ambient_light_source = 3
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_trceg"]
+size = Vector3(60, 1, 60)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_a8y0u"]
+albedo_color = Color(0.42, 0.44, 0.47, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_jkv2x"]
+material = SubResource("StandardMaterial3D_a8y0u")
+size = Vector3(60, 1, 60)
+
+[node name="Arena" type="Node3D" unique_id=411242539 node_paths=PackedStringArray("player", "spawn_point")]
+script = ExtResource("1_tbgi4")
+player = NodePath("Player")
+spawn_point = NodePath("SpawnPoint")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=620715121]
+transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 0, 0)
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=789892568]
+environment = SubResource("Environment_eb6dy")
+
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1155736096]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+
+[node name="Floor" type="StaticBody3D" parent="." unique_id=690524087]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=1922851733]
+shape = SubResource("BoxShape3D_trceg")
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=1043381304]
+mesh = SubResource("BoxMesh_jkv2x")
+
+[node name="Player" parent="." unique_id=1082204191 instance=ExtResource("2_tefeu")]
+
+[node name="DebugHud" type="CanvasLayer" parent="." unique_id=1661949397 node_paths=PackedStringArray("player")]
+script = ExtResource("4_tipki")
+player = NodePath("../Player")
+
+[node name="TuningPanel" type="CanvasLayer" parent="." unique_id=7979039]
+script = ExtResource("5_85g3d")
