@@ -83,7 +83,7 @@ func test_chained_jumps_do_not_stack_speed() -> void:
 	var input: ScriptedInputSource = world["input"]
 
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(90)
 
 	var first_after := 0.0
@@ -111,17 +111,17 @@ func test_chained_jumps_do_not_stack_speed() -> void:
 ## a fixed forward input. This drives an actual air-strafe pattern -- a
 ## rotating wish_dir every few ticks while airborne, the way a player trying
 ## to exploit air_accelerate()'s Quake-style projection would -- across a
-## full chain of jumps, and pins the result against MovementConfig.sprint_speed
+## full chain of jumps, and pins the result against MovementConfig.ground_speed
 ## itself (never a literal), per the guide's AirControl = 0.025 model: air
 ## control is not blocked by a low air_max_speed ceiling (see that field's own
 ## comment), so the only thing standing between this and a repeat of the old
 ## air_accel=12.0 / air_max_speed=9.0 ratchet (confirmed via
 ## tools/probe_speed_exploit.gd against the live states before this test was
-## written: flat at sprint_speed across 8 chained hops, both with and without
+## written: flat at ground_speed across 8 chained hops, both with and without
 ## strafing) is air_accel being small enough that a full hangtime of
 ## continuous strafing cannot add meaningful speed. The 1.1x allowance is
-## itself relative to sprint_speed, not a bare number, so a future retune of
-## sprint_speed alone does not silently loosen this pin.
+## itself relative to ground_speed, not a bare number, so a future retune of
+## ground_speed alone does not silently loosen this pin.
 func test_air_strafing_across_chained_jumps_never_exceeds_the_ground_speed_cap() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
@@ -129,10 +129,10 @@ func test_air_strafing_across_chained_jumps_never_exceeds_the_ground_speed_cap()
 	var cfg: MovementConfig = player.config
 
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(90)
 
-	var cap: float = cfg.sprint_speed * 1.1
+	var cap: float = cfg.ground_speed * 1.1
 	var strafe_ticks := 0
 	for hop in 8:
 		input.press_jump()
@@ -149,8 +149,8 @@ func test_air_strafing_across_chained_jumps_never_exceeds_the_ground_speed_cap()
 		input.release_jump()
 		input.state.move = Vector2(0.0, 1.0)
 		check(player.horizontal_speed() <= cap, \
-			"hop %d landed at %f m/s, above %f (sprint_speed %f x 1.1) -- air-strafing must not ratchet speed past the ground cap" \
-			% [hop + 1, player.horizontal_speed(), cap, cfg.sprint_speed])
+			"hop %d landed at %f m/s, above %f (ground_speed %f x 1.1) -- air-strafing must not ratchet speed past the ground cap" \
+			% [hop + 1, player.horizontal_speed(), cap, cfg.ground_speed])
 		await step(10)
 
 	TestWorld.teardown(world)

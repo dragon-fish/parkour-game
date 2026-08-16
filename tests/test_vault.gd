@@ -2,7 +2,7 @@ extends TestCase
 
 ## Builds a world with a box obstacle `depth` metres deep (default 1.0, matching
 ## the original brief geometry) and `height` metres tall, `distance`-ish ahead
-## of the player, then arms sprint-forward input. `cfg` lets callers exercise a
+## of the player, then arms forward input. `cfg` lets callers exercise a
 ## non-default MovementConfig (e.g. a loosened vault_max_height) without
 ## duplicating the whole setup.
 func _running_at_obstacle(height: float, cfg: MovementConfig = null, depth: float = 1.0) -> Dictionary:
@@ -25,7 +25,7 @@ func _running_at_obstacle(height: float, cfg: MovementConfig = null, depth: floa
 	await step(1)
 
 	world["input"].state.move = Vector2(0.0, 1.0)
-	world["input"].state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	world["obstacle"] = obstacle
 	world["obstacle_depth"] = depth
 	return world
@@ -260,7 +260,7 @@ func test_a_vault_over_a_thin_obstacle_does_not_falsely_declare_grounded() -> vo
 	#
 	# 0.3 m, not thinner: Probes.vault_query()'s downward ray samples once per
 	# physics tick at a FIXED forward offset that moves with the player, so at
-	# sprint speed (~9 m/s / 60 Hz ~= 0.15 m per tick) an obstacle much
+	# ground speed (~9 m/s / 60 Hz ~= 0.15 m per tick) an obstacle much
 	# thinner than one tick's travel can be stepped clean over between two
 	# samples and never register a hit at all -- a sampling-resolution
 	# artifact of this test, not the bug under test. 0.3 m gives a
@@ -329,7 +329,7 @@ func test_running_up_a_ramp_never_vaults() -> void:
 	var player: Player = world["player"]
 	var start_y := player.global_position.y
 	world["input"].state.move = Vector2(0.0, 1.0)
-	world["input"].state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 
 	var vaulted := false
 	# Track the PEAK height, not the final one. The player runs off the far end

@@ -343,7 +343,7 @@ func test_the_slide_course_can_be_run_end_to_end() -> void:
 	var lane_x: float = platform_aabb.get_center().x
 
 	# Start on the flat approach, well short of the climb, with room to reach
-	# sprint speed before the ramp.
+	# top speed before the ramp.
 	player.global_position = Vector3(lane_x, deck + 1.0, up_ramp_aabb.end.z + 8.0)
 	player.velocity = Vector3.ZERO
 	player.rotation = Vector3.ZERO
@@ -353,7 +353,7 @@ func test_the_slide_course_can_be_run_end_to_end() -> void:
 	var input := ScriptedInputSource.new()
 	player.input_source = input
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 
 	# Phase 1 — approach and climb, ending a metre onto the raised platform.
 	var climb := await _advance_until_z(player, platform_aabb.end.z - 1.0, 900)
@@ -366,7 +366,7 @@ func test_the_slide_course_can_be_run_end_to_end() -> void:
 	# Phase 2 — commit to the slide and ride it down the ramp and through the
 	# tunnel, stopping the measurement exactly AT the far mouth. Sampling there
 	# rather than after the exit matters: once the player is clear of the roof
-	# it stands up and GroundState winds it straight back to sprint speed, so a
+	# it stands up and GroundState winds it straight back to ground speed, so a
 	# reading taken a few metres later would be 9 m/s no matter how the tunnel
 	# was crossed.
 	input.press_crouch()
@@ -456,7 +456,8 @@ func _drive_to(player: Player, input: ScriptedInputSource, target: Vector3, \
 ## one lands there without the test having to know where "there" is.
 func _grab_and_mantle(player: Player, input: ScriptedInputSource, budget: int) -> Dictionary:
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = false
+	# No sprint key: ground speed is unconditional, so there is nothing to
+	# drop before the grab-and-mantle phase any more.
 	var grabbed := false
 	var ticks := 0
 	for i in budget:
@@ -525,11 +526,11 @@ func test_the_vault_and_ledge_course_can_be_run_end_to_end() -> void:
 
 	var input := ScriptedInputSource.new()
 	player.input_source = input
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 
 	var seen: Dictionary = {}
 
-	# Phase 1 — the three vaultable obstacles, in the lane, at sprint speed.
+	# Phase 1 — the three vaultable obstacles, in the lane, at ground speed.
 	var vault_run := await _drive_to(player, input, \
 		Vector3(lane_x, 0.0, vault_high.position.z - 1.5), 1.0, 900, seen)
 	check(vault_run["reached"], \
@@ -556,7 +557,6 @@ func test_the_vault_and_ledge_course_can_be_run_end_to_end() -> void:
 	check(realign["reached"], \
 		"the player could not line up on LedgeLow: %s" % _where(realign))
 
-	input.state.sprint_held = false
 	var climb_low := await _grab_and_mantle(player, input, 600)
 	check(climb_low["reached"], "the player never grabbed LedgeLow: %s" % _where(climb_low))
 	check(player.state_machine.current_name == PlayerState.GROUND and player.grounded, \
@@ -779,7 +779,7 @@ func test_every_practice_area_fits_inside_the_arena_floor() -> void:
 ## close for their own areas, and the brief calls out by name as the kind of
 ## test that would have caught the ledge mantle's sign error. Wall running
 ## additionally requires being AIRBORNE beside the wall (only AirState ever
-## runs wall_query() — see air_state.gd), which sprinting alone does not
+## runs wall_query() — see air_state.gd), which forward running alone does not
 ## provide, so this drives the player at LongWall with a repeated jump press
 ## (same pattern _grab_and_mantle above uses to time a ledge grab without the
 ## test having to know exactly when the player leaves the ground) rather than
@@ -806,7 +806,7 @@ func test_the_wall_run_course_can_be_run_end_to_end() -> void:
 	var input := ScriptedInputSource.new()
 	player.input_source = input
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 
 	var attached := false
 	var ticks := 0
@@ -930,7 +930,7 @@ func test_the_zig_zag_wall_section_chains_multiple_walls() -> void:
 	var input := ScriptedInputSource.new()
 	player.input_source = input
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 
 	# far_z of each wall in traversal order, read off live geometry (AABB
 	# position is the min corner in Godot, i.e. the far/-Z face here).

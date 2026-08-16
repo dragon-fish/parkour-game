@@ -10,7 +10,10 @@ var look := Vector2.ZERO
 ## True only on the tick the jump key transitioned from up to down.
 var jump_pressed := false
 var jump_held := false
-var sprint_held := false
+## True while the walk modifier is held. Slows ground movement to
+## MovementConfig.walk_speed; there is no sprint key -- ground speed is a
+## single top speed (MovementConfig.ground_speed) by default.
+var walk_held := false
 var crouch_held := false
 ## True only on the tick the crouch key transitioned from up to down.
 var crouch_pressed := false
@@ -21,7 +24,7 @@ func copy() -> MoveInput:
 	out.look = look
 	out.jump_pressed = jump_pressed
 	out.jump_held = jump_held
-	out.sprint_held = sprint_held
+	out.walk_held = walk_held
 	out.crouch_held = crouch_held
 	out.crouch_pressed = crouch_pressed
 	return out

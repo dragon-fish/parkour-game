@@ -1,6 +1,6 @@
 extends TestCase
 
-# Trigger a jump on a run-up that has actually reached (most of) sprint speed,
+# Trigger a jump on a run-up that has actually reached (most of) ground speed,
 # not merely "faster than a walk" -- with air control now barely able to
 # change anything (see air_accel's own comment in movement_config.gd), the
 # speed at the MOMENT of takeoff is what determines the whole arc, so a jump
@@ -33,7 +33,7 @@ func _jump_at_ledge_with(block_height: float, depth: float, cfg: MovementConfig)
 	# the theoretical ceiling since the run-up here starts from a dead stop,
 	# not already at speed.
 	var jump_airtime: float = 2.0 * cfg.jump_velocity / maxf(cfg.gravity, 0.001)
-	var max_jump_distance: float = cfg.sprint_speed * jump_airtime
+	var max_jump_distance: float = cfg.ground_speed * jump_airtime
 	# The margin places the NEAR FACE, not the block's centre: ledge_query()'s
 	# forward probe and its height gate both care about where the FACE is, not
 	# where the block's z-centre happens to sit, so measuring from the centre
@@ -79,7 +79,7 @@ func _jump_at_ledge_with(block_height: float, depth: float, cfg: MovementConfig)
 	await step(1)
 
 	world["input"].state.move = Vector2(0.0, 1.0)
-	world["input"].state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	world["block"] = block
 	world["block_top"] = block_height
 	# The player runs toward -Z, so the face it climbs is the block's +Z one.
@@ -95,7 +95,7 @@ func test_reaching_a_ledge_grabs_it() -> void:
 	var grabbed := false
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
+		if player.horizontal_speed() > player.config.ground_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			grabbed = true
@@ -120,7 +120,7 @@ func test_hanging_applies_no_gravity() -> void:
 	var player: Player = world["player"]
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
+		if player.horizontal_speed() > player.config.ground_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -166,7 +166,7 @@ func test_pressing_forward_mantles_onto_the_ledge() -> void:
 	var player: Player = world["player"]
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
+		if player.horizontal_speed() > player.config.ground_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -181,12 +181,11 @@ func test_pressing_forward_mantles_onto_the_ledge() -> void:
 	check(handed_off, "the mantle never handed off to Ground")
 
 	# Drop the input before the settle window. The block is only 4 m deep, so
-	# holding sprint-forward for another half second would simply run the player
-	# off its FAR edge -- a fall this test would then wrongly report as a failed
+	# holding forward for another half second would simply run the player off
+	# its FAR edge -- a fall this test would then wrongly report as a failed
 	# mantle. Standing still is the honest question here: does the ground the
 	# mantle put the player on hold them up?
 	world["input"].state.move = Vector2.ZERO
-	world["input"].state.sprint_held = false
 	await step(30)
 
 	check(player.state_machine.current_name == &"Ground", \
@@ -231,7 +230,7 @@ func test_rotating_mid_climb_still_lands_on_the_grabbed_ledge() -> void:
 	var player: Player = world["player"]
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
+		if player.horizontal_speed() > player.config.ground_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -292,7 +291,7 @@ func test_turning_while_hanging_changes_where_the_mantle_lands() -> void:
 	var player: Player = world["player"]
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
+		if player.horizontal_speed() > player.config.ground_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -455,7 +454,7 @@ func test_dropping_off_a_ledge_does_not_instantly_regrab_it() -> void:
 
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
+		if player.horizontal_speed() > player.config.ground_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -463,7 +462,6 @@ func test_dropping_off_a_ledge_does_not_instantly_regrab_it() -> void:
 	check(grabs[0] == 1, "precondition: exactly one grab so far, saw %d" % grabs[0])
 
 	world["input"].state.move = Vector2.ZERO
-	world["input"].state.sprint_held = false
 	world["input"].state.crouch_held = true
 	await step(60)
 
@@ -507,7 +505,7 @@ func test_a_mantle_that_finds_no_floor_arms_the_regrab_cooldown() -> void:
 
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
+		if player.horizontal_speed() > player.config.ground_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
@@ -554,7 +552,7 @@ func test_crouching_releases_the_ledge() -> void:
 	var player: Player = world["player"]
 	for i in 400:
 		await step(1)
-		if player.horizontal_speed() > player.config.sprint_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
+		if player.horizontal_speed() > player.config.ground_speed * JUMP_TRIGGER_RATIO and player.is_on_floor():
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break

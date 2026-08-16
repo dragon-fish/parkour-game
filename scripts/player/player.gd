@@ -287,6 +287,12 @@ func _build_state_machine() -> void:
 	state_machine.add_child(slide)
 	state_machine.register(PlayerState.SLIDE, slide)
 
+	var crouch := CrouchState.new()
+	crouch.player = self
+	crouch.config = config
+	state_machine.add_child(crouch)
+	state_machine.register(PlayerState.CROUCH, crouch)
+
 	var vault := VaultState.new()
 	vault.player = self
 	vault.config = config
@@ -534,7 +540,9 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		if landing_impact >= 0.0:
 			camera_rig.punch_landing(landing_impact)
-		camera_rig.set_crouch_amount(1.0 if state_machine.current_name == PlayerState.SLIDE else 0.0)
+		var crouched := state_machine.current_name == PlayerState.SLIDE \
+			or state_machine.current_name == PlayerState.CROUCH
+		camera_rig.set_crouch_amount(1.0 if crouched else 0.0)
 		camera_rig.set_wall_side(wall_side)
 		# Fed as a plain local-space Vector3, not a Node3D reference —
 		# CameraRig stays decoupled from the scene-tree/body-search concerns
@@ -692,7 +700,7 @@ func horizontal_speed() -> float:
 ## horizontal_speed(). Note what it honestly DOES report: ScriptedMove's arc is
 ## ease-out, so the last few ticks of a vault or mantle really are slow and the
 ## FOV really does ease back over them. That is the manoeuvre ending, not a
-## false slow-down at its peak — measured on a sprint vault, the FOV now rides
+## false slow-down at its peak — measured on a fast vault, the FOV now rides
 ## 92.6 -> 93.7 -> 85.4 across the move where feeding velocity took it to 77.2.
 ##
 ## The physics states are unaffected: their speed gates
@@ -718,12 +726,12 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> 
 ## carried in from another state survives — P1's slide depends on this.
 ##
 ## The ceiling is NOT a flat air_max_speed: it is
-## min(air_max_speed, max(sprint_speed, speed_along_wish)). air_max_speed
+## min(air_max_speed, max(ground_speed, speed_along_wish)). air_max_speed
 ## itself (see its own comment in movement_config.gd -- ME's AirSpeed,
 ## essentially uncapped) is deliberately too high to ever bind in practice;
 ## it exists so momentum carried in from elsewhere (a wall-run or slide boost
-## exceeding sprint_speed) is never reduced by air control, matching this
-## function's own "never brakes" rule. sprint_speed is the floor UNDER that:
+## exceeding ground_speed) is never reduced by air control, matching this
+## function's own "never brakes" rule. ground_speed is the floor UNDER that:
 ## with air_accel now tiny (see its own comment), a long fall or a chain of
 ## jumps has plenty of TIME to slowly climb toward air_max_speed even without
 ## any exploit-like input, which would let mere airtime manufacture speed no
@@ -731,16 +739,16 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> 
 ## tests/test_landing.gd's test_a_landing_can_never_add_speed_however_the_
 ## keep_ratio_is_tuned and tests/test_slide_state.gd's
 ## test_chained_slide_then_jump_cannot_stack_the_entry_boost both pin. Taking
-## the max with the CURRENT speed_along_wish (not a flat sprint_speed cap) is
+## the max with the CURRENT speed_along_wish (not a flat ground_speed cap) is
 ## what keeps the "never reduces carried-in momentum" half of the contract
-## intact: a player already faster than sprint_speed gets zero headroom here
+## intact: a player already faster than ground_speed gets zero headroom here
 ## (the ceiling sits at their own current speed), never a forced slowdown.
 func air_accelerate(wish_dir: Vector3, delta: float) -> void:
 	if wish_dir == Vector3.ZERO:
 		return
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	var speed_along_wish := horizontal.dot(wish_dir)
-	var ceiling := minf(config.air_max_speed, maxf(config.sprint_speed, speed_along_wish))
+	var ceiling := minf(config.air_max_speed, maxf(config.ground_speed, speed_along_wish))
 	var headroom := ceiling - speed_along_wish
 	if headroom <= 0.0:
 		return

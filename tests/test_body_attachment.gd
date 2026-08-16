@@ -62,7 +62,7 @@ func test_body_without_animation_player_degrades_without_animator() -> void:
 	var input: ScriptedInputSource = world["input"]
 	var start := player.global_position
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(30)
 	check_greater(player.global_position.distance_to(start), 0.5, \
 		"a player with an animation-less body did not move")

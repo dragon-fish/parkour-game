@@ -3,10 +3,14 @@ extends TestCase
 # These assert relationships between parameters, never their values, so they
 # survive tuning. If a relationship here breaks, the feel is broken too.
 
-func test_sprint_is_faster_than_walk() -> void:
+## No sprint key any more: walk_speed is now the Ctrl walk-modifier speed, and
+## ground_speed is the single top ground speed (see JOB 1's report). The
+## relationship this test pins survives that redesign unchanged in spirit —
+## the walk modifier must still be slower than plain running.
+func test_ground_speed_is_faster_than_walk() -> void:
 	await step(1)
 	var c := MovementConfig.new()
-	check_greater(c.sprint_speed, c.walk_speed, "sprint must be faster than walk")
+	check_greater(c.ground_speed, c.walk_speed, "ground_speed must be faster than the walk modifier")
 
 func test_air_control_is_weaker_than_ground_control() -> void:
 	await step(1)
@@ -49,9 +53,9 @@ func test_camera_head_follow_strength_defaults_low_and_in_range() -> void:
 func test_wall_running_cannot_create_speed_beyond_what_foot_speed_reaches() -> void:
 	await step(1)
 	var c := MovementConfig.new()
-	check(c.wall_max_speed <= c.sprint_speed, \
-		"wall_max_speed (%f) exceeds sprint_speed (%f) -- the wall creates speed sprinting never could" \
-			% [c.wall_max_speed, c.sprint_speed])
+	check(c.wall_max_speed <= c.ground_speed, \
+		"wall_max_speed (%f) exceeds ground_speed (%f) -- the wall creates speed running never could" \
+			% [c.wall_max_speed, c.ground_speed])
 	check(c.wall_max_speed <= c.air_max_speed, \
 		"wall_max_speed (%f) exceeds air_max_speed (%f) -- the wall creates speed air control never could" \
 			% [c.wall_max_speed, c.air_max_speed])

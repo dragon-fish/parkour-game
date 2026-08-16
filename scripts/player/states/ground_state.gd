@@ -6,7 +6,9 @@ func enter(_previous: StringName) -> void:
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	var wish_dir: Vector3 = player.wish_direction(input)
-	var target_speed: float = config.sprint_speed if input.sprint_held else config.walk_speed
+	# No sprint key: ground speed is a single top speed, unless the walk
+	# modifier (Ctrl) is held, which slows it down deliberately.
+	var target_speed: float = config.walk_speed if input.walk_held else config.ground_speed
 	player.ground_accelerate(wish_dir, target_speed, delta)
 
 	if player.consume_jump():

@@ -203,19 +203,19 @@ func build() -> Node3D:
 	# the way Arena._ready() falls back to one when scenes/main.tscn wires no
 	# explicit config (see the VaultArea comment below, which already does
 	# this for vault/ledge heights) -- so JumpArea's gap and step ladders keep
-	# testing the REAL limits of whatever gravity/jump_velocity/sprint_speed
+	# testing the REAL limits of whatever gravity/jump_velocity/ground_speed
 	# are currently set to, instead of a snapshot from whenever this file was
 	# last hand-edited. Both are closed-form projectile arithmetic on a flat
 	# takeoff-to-landing arc:
 	#   airtime   = 2 * jump_velocity / gravity          (up and back down)
-	#   distance  = sprint_speed * airtime                (run-up speed is the
+	#   distance  = ground_speed * airtime                (run-up speed is the
 	#               ground speed cap -- momentum carried into a jump, not
 	#               something air control can add to; see air_accel's own
 	#               comment in movement_config.gd)
 	#   peak height = jump_velocity^2 / (2 * gravity)
 	var config := MovementConfig.new()
 	var jump_airtime: float = 2.0 * config.jump_velocity / maxf(config.gravity, 0.001)
-	var max_jump_distance: float = config.sprint_speed * jump_airtime
+	var max_jump_distance: float = config.ground_speed * jump_airtime
 	var jump_peak_height: float = (config.jump_velocity * config.jump_velocity) \
 		/ (2.0 * maxf(config.gravity, 0.001))
 
@@ -231,7 +231,7 @@ func build() -> Node3D:
 	# Increasing gaps, as FRACTIONS of max_jump_distance rather than fixed
 	# metres, so the ladder keeps bracketing the true limit -- some rungs
 	# clearable, at least one not -- across any future retune of gravity,
-	# jump_velocity or sprint_speed, instead of quietly becoming either
+	# jump_velocity or ground_speed, instead of quietly becoming either
 	# trivial (every gap far under the limit) or impossible (every gap far
 	# over it). 0.9 and 1.1 straddle 1.0 without landing exactly on it, which
 	# would leave that one rung's reachability riding on float noise.
@@ -278,7 +278,7 @@ func build() -> Node3D:
 	# deck raised above it. Local z here equals world z; the area's only
 	# offset is x = 18.
 	#
-	#   z  +26 .. +16   approach   bare arena floor, 10 m to reach sprint speed
+	#   z  +26 .. +16   approach   bare arena floor, 10 m to reach ground_speed
 	#   z  +16 ..  +7   UpRamp     walkable 18.4 deg climb, 0 -> 3 m
 	#   z   +7 ..  +3   Platform   4 m of flat deck at y = 3 to commit from
 	#   z   +3 ..  -7   DownRamp   16.7 deg descent, 3 -> 0 m: the only slope
@@ -297,9 +297,9 @@ func build() -> Node3D:
 	# longest tunnel that still clears with real headroom over slide_crawl_speed
 	# follows from plain kinematics (v^2 = u^2 - 2*a*d, solved for d). This is
 	# what keeps "the tunnel is clearable on slide momentum alone" true across
-	# a future retune of sprint_speed, slide_friction or the ramp geometry,
+	# a future retune of ground_speed, slide_friction or the ramp geometry,
 	# instead of silently going stale the way the fixed 7 m tunnel did when
-	# sprint_speed dropped from 9.0 to 7.2 (see the numbers-only retune's own
+	# ground_speed dropped from 9.0 to 7.2 (see the numbers-only retune's own
 	# report on this exact test failing as a result).
 	const COURSE_WIDTH := 6.0
 	const DECK_Y := 0.0            # top of the arena Floor slab
@@ -333,7 +333,7 @@ func build() -> Node3D:
 	# slide_boost, capped the same way. Mirrored here rather than imported so
 	# this course sizing keeps tracking slide_state.gd's own math if it is
 	# ever retuned independently.
-	var slide_entry_speed: float = config.sprint_speed
+	var slide_entry_speed: float = config.ground_speed
 	if slide_entry_speed <= config.slide_boost_entry_threshold:
 		slide_entry_speed = minf(slide_entry_speed + config.slide_boost, \
 			config.slide_boost_entry_threshold + config.slide_boost)
@@ -456,15 +456,12 @@ func build() -> Node3D:
 		Vector3(-2.0, vault_wall_height * 0.5, WALL_TOO_TALL_Z), blocked_colour))
 
 	# Ledge spacing: a run-up-and-jump distance, the same closed-form arc
-	# JumpArea's gap ladder uses (max_jump_distance = sprint_speed * airtime;
-	# see its own comment). test_the_vault_and_ledge_course_can_be_run_end_to_
-	# end drops sprint_held right before each grab-and-mantle phase, but that
-	# only changes GroundState's future acceleration TARGET -- the velocity
-	# already on the body from the sprint-held approach that came before it
-	# (Phase 1's vault run, or the previous ledge's own mantle exit) is what
-	# actually carries into the jump, so sprint_speed remains the real ground
-	# speed cap here, not walk_speed (measured directly: the player is still
-	# at exactly sprint_speed when it leaves the ground for LedgeLow).
+	# JumpArea's gap ladder uses (max_jump_distance = ground_speed * airtime;
+	# see its own comment). There is no sprint key any more -- ground speed is
+	# a single top speed GroundState always targets (see MovementConfig.
+	# ground_speed's own comment) -- so ground_speed remains the real ground
+	# speed cap here unconditionally (measured directly: the player is still
+	# at exactly ground_speed when it leaves the ground for LedgeLow).
 	# Grabbing a ledge, unlike clearing a gap, only works late in the arc (near
 	# the bottom of the parabola, just before landing -- ledge_query()'s own
 	# height gate is too narrow a window anywhere near the apex), so the
@@ -501,15 +498,15 @@ func build() -> Node3D:
 	# lets the forward probe see the wall, not merely at some point during
 	# the flight. GRAB_SAFETY_TIME is headroom past that moment for ordinary
 	# tick-to-tick timing jitter, not a hand-picked height:
-	#   time to close to ledge_reach = max(REALIGN_OFFSET - ledge_reach, 0) / sprint_speed
+	#   time to close to ledge_reach = max(REALIGN_OFFSET - ledge_reach, 0) / ground_speed
 	#   height risen by then + GRAB_SAFETY_TIME more   (closed-form projectile
 	#     arithmetic again: h(t) = jump_velocity*t - 0.5*gravity*t^2)
 	# added to ledge_min_height, so this still tracks any future retune of
-	# gravity/jump_velocity/sprint_speed/ledge_reach instead of needing its
+	# gravity/jump_velocity/ground_speed/ledge_reach instead of needing its
 	# own separate fix the way the flat +0.1 did.
 	const REALIGN_OFFSET := 1.4  # mirrors test_arena.gd's own realign target, ledge.end.z + 1.4
 	const GRAB_SAFETY_TIME := 0.12
-	var time_to_ledge_reach: float = maxf(REALIGN_OFFSET - vault_config.ledge_reach, 0.0) / config.sprint_speed
+	var time_to_ledge_reach: float = maxf(REALIGN_OFFSET - vault_config.ledge_reach, 0.0) / config.ground_speed
 	var grab_time: float = time_to_ledge_reach + GRAB_SAFETY_TIME
 	var height_risen_at_grab: float = config.jump_velocity * grab_time - 0.5 * config.gravity * grab_time * grab_time
 	var ledge_low_height: float = vault_config.ledge_min_height + height_risen_at_grab

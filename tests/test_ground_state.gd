@@ -27,20 +27,25 @@ func test_forward_input_accelerates_the_player() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
-func test_sprint_reaches_a_higher_speed_than_walk() -> void:
+## No sprint key any more: ground speed is a single top speed by default, and
+## the walk modifier (Ctrl) is what slows it down. The two-tier walk/sprint
+## relationship this test used to pin is gone by design (see JOB 1's report);
+## what replaces it is this one, symmetrical relationship — holding the walk
+## key must reach a LOWER speed than plain forward input, not a higher one.
+func test_the_walk_modifier_reaches_a_lower_speed_than_plain_running() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 
 	input.state.move = Vector2(0.0, 1.0)
 	await step(90)
+	var run_speed := player.horizontal_speed()
+
+	input.state.walk_held = true
+	await step(90)
 	var walk_speed := player.horizontal_speed()
 
-	input.state.sprint_held = true
-	await step(90)
-	var sprint_speed := player.horizontal_speed()
-
-	check_greater(sprint_speed, walk_speed, "sprinting was not faster than walking")
+	check_greater(run_speed, walk_speed, "holding the walk modifier was not slower than plain running")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -138,7 +143,7 @@ func test_a_scripted_move_cannot_enter_on_an_unverified_tick() -> void:
 	# tools/build_player_scene.gd for the ray geometry this is derived from.
 	var start_pos := Vector3(0.0, 0.95, -3.5)
 	player.global_position = start_pos
-	player.velocity = Vector3(0.0, 0.0, -cfg.sprint_speed)
+	player.velocity = Vector3(0.0, 0.0, -cfg.ground_speed)
 	await step(1)
 
 	check(player.probes.vault_query()["valid"], \
@@ -147,12 +152,11 @@ func test_a_scripted_move_cannot_enter_on_an_unverified_tick() -> void:
 	var ground_state: PlayerState = player.state_machine.state_for(PlayerState.GROUND)
 	var input := MoveInput.new()
 	input.move = Vector2(0.0, 1.0)
-	input.sprint_held = true
 
 	# Simulate the tick right after a ScriptedMove hands off with grounded
 	# still unverified.
 	player.global_position = start_pos
-	player.velocity = Vector3(0.0, 0.0, -cfg.sprint_speed)
+	player.velocity = Vector3(0.0, 0.0, -cfg.ground_speed)
 	player.grounded = false
 	var result_unverified: StringName = ground_state.physics_update(1.0 / 60.0, input)
 	check(result_unverified != PlayerState.VAULT, \
@@ -162,7 +166,7 @@ func test_a_scripted_move_cannot_enter_on_an_unverified_tick() -> void:
 	# to prove the check above is exercising the gate and not just a setup
 	# that never vaults at all.
 	player.global_position = start_pos
-	player.velocity = Vector3(0.0, 0.0, -cfg.sprint_speed)
+	player.velocity = Vector3(0.0, 0.0, -cfg.ground_speed)
 	player.grounded = true
 	var result_verified: StringName = ground_state.physics_update(1.0 / 60.0, input)
 	check(result_verified == PlayerState.VAULT, \

@@ -109,12 +109,12 @@ func test_player_scene_with_no_body_still_moves() -> void:
 
 	var start_position := player.global_position
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(60)
 
 	var travelled := player.global_position.distance_to(start_position)
 	check_greater(travelled, 1.0, \
-		"a body-less player travelled only %f m in one second of sprint input" % travelled)
+		"a body-less player travelled only %f m in one second of forward input" % travelled)
 
 	TestWorld.teardown(world)
 	await step(1)

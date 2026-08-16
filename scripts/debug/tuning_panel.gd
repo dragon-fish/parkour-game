@@ -112,7 +112,7 @@ func _add_slider(column: VBoxContainer, property_name: String, default_value: fl
 	slider.min_value = 0.0
 	slider.max_value = maxf(absf(default_value) * RANGE_FACTOR, 0.01)
 	# Continuous, not stepped. A nonzero step here used to snap the seeded
-	# value to the nearest increment (e.g. walk_speed's default 5.0 -> 5.01)
+	# value to the nearest increment (e.g. ground_speed's default 7.2 -> 7.21)
 	# and, worse, do it via a plain `slider.value = ...` assignment below,
 	# whose value_changed signal wrote the snapped value straight back into
 	# the shared config the instant the panel built its UI — perturbing every

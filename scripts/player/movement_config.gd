@@ -6,15 +6,30 @@ extends Resource
 # instance of this resource at runtime.
 
 @export_group("Ground")
-## Target horizontal speed with no sprint key held.
-@export var walk_speed: float = 5.0
-## Target horizontal speed while sprinting.
+## Target horizontal speed while the walk modifier (Ctrl) is held. There is no
+## sprint key: the original reaches its top speed through an acceleration
+## curve over time, not by holding a button, so ground speed is otherwise a
+## single top speed (ground_speed below) rather than a walk/sprint pair. This
+## field's OLD meaning ("no sprint held") is gone; it is now the slow,
+## deliberate walk GBA_WalkMod produces.
+## Source: docs/mirrors-edge-deep-research/02-速度系统.md §2.2 -- ME's
+## `WalkVelocity` = 50 uu/s -> 0.5 m/s. The same section flags this discrete
+## tier (and its four siblings) as MORE LIKELY an animation-blend threshold
+## than a true speed clamp ("这五个值更可能是动画混合的阈值...而非速度钳制值"),
+## since the real ground ceiling is the speed curve (GroundSpeed). Used anyway,
+## per the owner's own direction that Ctrl should move the player "very
+## slowly" -- 0.5 m/s (7% of ground_speed) reads as exactly that, not as an
+## implausible number, so there was no reason to substitute a different one.
+@export var walk_speed: float = 0.5
+## Target ground speed. There is no sprint key -- see walk_speed's own comment
+## -- so this is simply the top speed running reaches, unconditionally; the
+## original's acceleration-curve build-up toward it is separate, later work.
 ## Source: docs/mirrors-edge-deep-research/09-Godot移植指南.md §9.1 -- ME's
 ## GroundSpeed 720 uu/s -> 7.2 m/s. Part of the gravity/jump_velocity/
-## sprint_speed trio; see MovementConfig.gravity's own comment for why these
+## ground_speed trio; see MovementConfig.gravity's own comment for why these
 ## three move together (ME runs slower than this project did, but jumps
 ## roughly twice as far, because gravity dropped by a third).
-@export var sprint_speed: float = 7.2
+@export var ground_speed: float = 7.2
 ## How fast horizontal velocity converges on the target, in m/s^2.
 @export var ground_accel: float = 60.0
 ## Deceleration applied when there is no movement input, in m/s^2.
@@ -36,7 +51,7 @@ extends Resource
 ## This is deliberately not a speed-ceiling fix (see air_max_speed below for
 ## why the old air_max_speed = 9.0 was the wrong lever entirely) -- with the
 ## post-retune 1.58 s hangtime (gravity 24.0 -> 8.0, see MovementConfig.gravity),
-## the old air_accel (12.0) could ratchet horizontal speed past sprint_speed
+## the old air_accel (12.0) could ratchet horizontal speed past ground_speed
 ## over repeated jumps; at 1.5, a full hangtime of continuous same-direction
 ## air control adds at most air_accel * 1.58 =~ 2.4 m/s, and landing's own
 ## speed cost (_apply_landing_cost) removes far more than that on any landing
@@ -50,15 +65,15 @@ extends Resource
 ## `AirSpeed 2400` uu/s -> 24.0 m/s at this project's confirmed 1 uu = 1 cm
 ## scale, i.e. essentially uncapped (3.3x GroundSpeed's own 720 uu/s). This
 ## replaces the OLD model this field encoded (a hard ceiling close to
-## sprint_speed, meant to prevent air control from creating speed on its own)
+## ground_speed, meant to prevent air control from creating speed on its own)
 ## with ME's actual one: air speed is barely bounded at all, because the real
 ## defence against an air-control exploit is air_accel being almost zero (see
 ## its own comment), not a low ceiling here.
 ## Player.air_accelerate() never actually targets this value alone -- its real,
-## PRACTICAL ceiling is min(air_max_speed, max(sprint_speed, current speed
+## PRACTICAL ceiling is min(air_max_speed, max(ground_speed, current speed
 ## along the wish direction)), so this field only matters for momentum ALREADY
-## above sprint_speed (a wall-run or slide boost carried into the air), which
-## it never reduces. Below sprint_speed, air control tops out at sprint_speed
+## above ground_speed (a wall-run or slide boost carried into the air), which
+## it never reduces. Below ground_speed, air control tops out at ground_speed
 ## itself, however long the flight -- otherwise mere AIRTIME (a long fall, not
 ## even a deliberate exploit) could slowly climb toward this field's own 24.0
 ## and manufacture speed no ground state could reach on its own, which is
@@ -70,7 +85,7 @@ extends Resource
 ## Source: docs/mirrors-edge-deep-research/09-Godot移植指南.md §9.1 Ground/Air/
 ## Jump table -- ME's DefaultGravityZ 800 uu/s^2 -> 8.0 m/s^2 at this project's
 ## confirmed 1 uu = 1 cm scale (see the research README's unit derivation).
-## Changed together with jump_velocity and sprint_speed -- the guide is
+## Changed together with jump_velocity and ground_speed -- the guide is
 ## explicit that retuning any one of the three alone makes the feel worse,
 ## not better. Gravity a third of the old value is what turns a 0.63 s hop
 ## into a 1.58 s arc: the floaty, committed jump IS the Mirror's Edge feel,
@@ -80,7 +95,7 @@ extends Resource
 
 @export_group("Jump")
 ## Source: same table as gravity above -- ME's BaseJumpZ 630 uu/s -> 6.3 m/s.
-## Part of the gravity/jump_velocity/sprint_speed trio; see gravity's own
+## Part of the gravity/jump_velocity/ground_speed trio; see gravity's own
 ## comment for why these three move together.
 @export var jump_velocity: float = 6.3
 ## Grace period after leaving a ledge during which a jump still works.
@@ -140,12 +155,12 @@ extends Resource
 ## slide grants no boost at all — you cannot spend speed you have not
 ## rebuilt. This is what makes a slide an EXCHANGE rather than a stackable
 ## bonus: without it, tapping crouch repeatedly nets a boost every single
-## time, chaining slides past sprint_speed and on toward the slide_max_speed
-## safety rail. Defaults to sprint_speed, independently of it (not a
+## time, chaining slides past ground_speed and on toward the slide_max_speed
+## safety rail. Defaults to ground_speed, independently of it (not a
 ## reference to it, mirroring land_cost_speed_ref/land_dip_speed_ref's own
 ## note on sharing a default without sharing a variable) so a slide entered
-## at a dead sprint still pays its full boost, but tapping crouch again while
-## still at or above sprint speed pays nothing until speed decays back down.
+## at a dead run still pays its full boost, but tapping crouch again while
+## still at or above ground_speed pays nothing until speed decays back down.
 @export var slide_boost_entry_threshold: float = 9.0
 ## Deceleration while sliding, in m/s^2. Well below ground_friction, which is
 ## what makes a slide carry.
@@ -186,6 +201,29 @@ extends Resource
 ## fires in mid-air. Buffering the press — never the held state — lets it open
 ## a slide on touchdown without reopening one every time a slide ends.
 @export var crouch_buffer_time: float = 0.15
+
+@export_group("Crouch")
+## Fraction of ground_speed the player moves at while standing-crouched (not
+## sliding). Source: docs/mirrors-edge-deep-research/03-损速机制.md §3.4's
+## confirmed loss-mechanism table -- ME's `CrouchedPct = 0.4` ("下蹲 | 速度 ×
+## 0.4"), also recorded as the Pawn-level "下蹲速度倍率" in
+## 02-速度系统.md §2.3. Chosen over 05-动作库总览.md's `TdMove_Crouch:
+## SpeedModifier=0.2` -- that value appears once, in a bare parameter dump
+## with no narrative, while CrouchedPct is independently confirmed (✅) and
+## explained in two separate sections; CrouchedPct is also the Pawn-wide
+## multiplier, matching what this state actually needs (a flat fraction of
+## ground_speed), rather than some other Move class's own, undocumented
+## modifier.
+@export var crouch_speed_pct: float = 0.4
+## Capsule height while standing-crouched. Defaults to the SAME number as
+## slide_capsule_height, independently of it (not a reference — mirroring
+## land_cost_speed_ref/land_dip_speed_ref's own note on sharing a default
+## without sharing a variable): a slide that decays into Crouch while the key
+## is still held must not visibly pop, and a mismatched height would also
+## reopen the exact headroom problem crouch exists to solve under a roof a
+## slide already fits under. Independently tunable anyway, like every other
+## pair in this file that happens to share a number.
+@export var crouch_capsule_height: float = 0.9
 
 @export_group("Probes")
 ## Smallest upward (Y) component a surface normal may have and still count as
@@ -274,16 +312,16 @@ extends Resource
 ## Forward push applied along the wall, in m/s^2.
 @export var wall_accel: float = 18.0
 ## Upper bound on speed the wall itself can push you to. Held at or below
-## sprint_speed and air_max_speed on purpose -- wall_min_speed's own doc
+## ground_speed and air_max_speed on purpose -- wall_min_speed's own doc
 ## comment says the wall is "a way to CARRY speed, never a way to create it
 ## from nothing", so its own accel must never top the player up past what
 ## foot speed alone can already reach. See
 ## tests/test_movement_config.gd's own relationship test pinning this.
-## Held equal to sprint_speed, mirroring the pre-retune default (both were
-## 9.0) -- when the gravity/jump/speed trio dropped sprint_speed to 7.2 (see
+## Held equal to ground_speed, mirroring the pre-retune default (both were
+## 9.0) -- when the gravity/jump/speed trio dropped ground_speed to 7.2 (see
 ## MovementConfig.gravity's own comment), this followed it down for the same
 ## reason: leaving it at the old 9.0 would let the wall push the player
-## faster than sprinting itself now can, which is exactly the "wall creates
+## faster than running itself now can, which is exactly the "wall creates
 ## speed" case the check above exists to catch.
 @export var wall_max_speed: float = 7.2
 ## Wall running ends once total horizontal speed decays below this (measured
@@ -357,15 +395,16 @@ extends Resource
 @export var fov_base: float = 90.0
 @export var fov_max: float = 105.0
 ## Horizontal speed at which FOV reaches fov_max -- i.e. "top speed" in the
-## fov_base/fov_max comment above. Defaults to sprint_speed's OWN value,
+## fov_base/fov_max comment above. Defaults to ground_speed's OWN value,
 ## independently of it (mirroring land_cost_speed_ref/land_dip_speed_ref and
 ## slide_boost_entry_threshold's own note on sharing a default without sharing
-## a variable): wall_max_speed is capped at sprint_speed too (see its own
+## a variable): wall_max_speed is capped at ground_speed too (see its own
 ## comment), so foot speed alone already IS the practical top speed a player
 ## can sustain. Previously left at a stale 9.0 (this project's OLD sprint
-## speed) after the gravity/jump/sprint retune dropped sprint_speed to 7.2 --
-## at that stale value the FOV never actually reached fov_max under ordinary
-## sprinting, silently breaking the "105 at top speed" claim above.
+## speed, from before the sprint key was removed) after the gravity/jump/
+## speed retune dropped ground_speed to 7.2 -- at that stale value the FOV
+## never actually reached fov_max under ordinary running, silently breaking
+## the "105 at top speed" claim above.
 @export var fov_speed_ref: float = 7.2
 @export var fov_lerp_speed: float = 6.0
 ## DIVERGENCE FROM SOURCE, KEPT DELIBERATELY: the research (09-Godot移植指南.md
@@ -394,7 +433,7 @@ extends Resource
 ##     used here as the closest well-established real-world anchor, since
 ##     neither this project's own animations nor the ME research fix a
 ##     footstep rate.
-##   - at the new top speed (sprint_speed = 7.2 m/s, see its own comment),
+##   - at the new top speed (ground_speed = 7.2 m/s, see its own comment),
 ##     distance per footstep = 7.2 / 3.0 = 2.4 m.
 ##   - bob_frequency = 2*PI / 2.4 = 2.618 (rad/m), so a full bob cycle
 ##     completes every 2.4 m of ground covered -- one cycle per footstep at

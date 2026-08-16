@@ -27,7 +27,7 @@ func _speed_after_drop_with(cfg: MovementConfig, height: float, crouch: bool) ->
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(90)
 
 	# Lift the runner to the drop height without changing its horizontal motion.
@@ -54,7 +54,7 @@ func test_a_plain_landing_costs_speed() -> void:
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(90)
 	var running_speed := player.horizontal_speed()
 
@@ -117,7 +117,7 @@ func test_a_landing_can_never_add_speed_however_the_keep_ratio_is_tuned() -> voi
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(90)
 	var running_speed := player.horizontal_speed()
 

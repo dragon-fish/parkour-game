@@ -24,7 +24,7 @@ func poll() -> MoveInput:
 		# jump or crouch held across the capture/release boundary does not
 		# read as a fresh press the moment the mouse is recaptured.
 		_jump_was_held = Input.is_physical_key_pressed(KEY_SPACE)
-		_crouch_was_held = Input.is_physical_key_pressed(KEY_CTRL)
+		_crouch_was_held = Input.is_physical_key_pressed(KEY_SHIFT)
 		return MoveInput.new()
 
 	var out := MoveInput.new()
@@ -53,9 +53,9 @@ func poll() -> MoveInput:
 	out.jump_held = jump_held
 	_jump_was_held = jump_held
 
-	out.sprint_held = Input.is_physical_key_pressed(KEY_SHIFT)
+	out.walk_held = Input.is_physical_key_pressed(KEY_CTRL)
 
-	var crouch_held := Input.is_physical_key_pressed(KEY_CTRL)
+	var crouch_held := Input.is_physical_key_pressed(KEY_SHIFT)
 	out.crouch_held = crouch_held
 	out.crouch_pressed = crouch_held and not _crouch_was_held
 	_crouch_was_held = crouch_held

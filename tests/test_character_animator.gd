@@ -53,10 +53,10 @@ func test_running_above_the_threshold_plays_run() -> void:
 	var input: ScriptedInputSource = world["input"]
 
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(30)
 	check(player.state_machine.current_name == PlayerState.GROUND, \
-		"precondition: sprinting on flat ground should stay in Ground, got %s" % player.state_machine.current_name)
+		"precondition: running on flat ground should stay in Ground, got %s" % player.state_machine.current_name)
 	check_greater(player.horizontal_speed(), player.config.run_animation_speed_threshold, \
 		"precondition: the player should be moving above the run threshold")
 

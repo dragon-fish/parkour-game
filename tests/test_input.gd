@@ -7,10 +7,10 @@ func test_scripted_source_returns_what_was_set() -> void:
 	await step(1)
 	var src := ScriptedInputSource.new()
 	src.state.move = Vector2(0.0, 1.0)
-	src.state.sprint_held = true
+	src.state.walk_held = true
 	var snapshot := src.poll()
 	check(snapshot.move == Vector2(0.0, 1.0), "move was not passed through")
-	check(snapshot.sprint_held, "sprint_held was not passed through")
+	check(snapshot.walk_held, "walk_held was not passed through")
 
 func test_jump_pressed_is_an_edge_lasting_one_poll() -> void:
 	await step(1)

@@ -28,7 +28,7 @@ func _wall_world(wall_x: float) -> Dictionary:
 func _launch_beside_wall(world: Dictionary) -> void:
 	var input: ScriptedInputSource = world["input"]
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(90)
 	input.press_jump()
 	await step(4)
@@ -466,7 +466,7 @@ func test_sliding_cannot_become_a_wall_run() -> void:
 	var input: ScriptedInputSource = world["input"]
 
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 	await step(90)
 	# NOTE: deviates from the brief, which set input.state.crouch_held = true
 	# directly here. ScriptedInputSource only raises the crouch_pressed edge
@@ -675,7 +675,7 @@ func test_a_chain_of_wall_jumps_between_opposing_walls_cannot_climb_without_boun
 	check(player.is_on_floor(), "precondition: the player did not settle before the chain")
 
 	input.state.move = Vector2(0.0, 1.0)
-	input.state.sprint_held = true
+	# No sprint key: forward input alone already reaches ground_speed.
 
 	# Height at the moment of each NEW wall attach, index 0 being the player's
 	# resting height before the chain starts -- so attach_heights[i+1] -
