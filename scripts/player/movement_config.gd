@@ -147,8 +147,6 @@ extends Resource
 @export var ledge_max_height: float = 2.8
 ## How far ahead of the body a ledge can be reached.
 @export var ledge_reach: float = 1.0
-## How far below the ledge top the body hangs.
-@export var ledge_hang_drop: float = 1.1
 ## How long the mantle motion takes.
 @export var mantle_duration: float = 0.42
 ## Horizontal speed granted on top after a mantle.

@@ -6,10 +6,14 @@ extends ScriptedMove
 # splitting them would mean handing that data across a state boundary.
 
 var _edge: Vector3 = Vector3.ZERO
-## The direction the mantle pushes and exits along. Captured ONCE, in
-## enter() -- see the note there for why sampling it again later (at
-## climb-start for the landing point, or at mantle-completion for the exit
-## push, as an earlier version of this file did) is wrong.
+## The direction the mantle pushes and exits along. Captured ONCE, at
+## COMMITMENT -- the moment forward or jump is pressed and begin() is called,
+## in physics_update()'s climb-trigger branch below -- NOT at grab time.
+## Grabbing a ledge does not commit to a direction: the player can hang and
+## turn freely first, and only the facing at the moment they actually choose
+## to climb should decide where that climb goes. See the note on the
+## climb-trigger branch for the full reasoning (and why an earlier version of
+## this file, which captured in enter(), got this wrong).
 var _exit_direction: Vector3 = Vector3.ZERO
 var _mantling: bool = false
 
@@ -38,34 +42,22 @@ func enter(_previous: StringName) -> void:
 	var query: Dictionary = player.probes.ledge_query() if player.probes != null else Probes.NO_HIT.duplicate()
 	_edge = query["edge"] if query["valid"] else player.global_position
 
-	# Captured here, once, same as VaultState's _exit_direction: CameraRig.apply_look()
-	# turns the player's yaw every physics tick regardless of state, so it is
-	# free to change both while hanging (before the player decides to climb)
-	# and during the scripted mantle itself (0.42 s of travel time). Sampling
-	# facing again later -- at climb-start for the landing point, or at
-	# mantle-completion for the exit push -- would let a turn made in either
-	# window aim that later step off the ledge actually grabbed. Freezing it
-	# here is also the direction the forward probe rays that FOUND _edge were
-	# themselves pointing along, so it is the one direction guaranteed to
-	# still face the platform.
-	_exit_direction = -player.global_transform.basis.z
-
 	_mantling = false
 	player.velocity = Vector3.ZERO
-	# Hang with the head just under the lip -- but never SNAP the body
-	# upward to get there. ledge_query()'s "height" is measured against the
-	# player's CURRENT feet at the moment of the grab, which can be anywhere
-	# within [ledge_min_height, ledge_max_height] above the edge; a grab near
-	# the top of that range already has the feet close to (or below) the
-	# standard hang drop, and forcing them down to it regardless would be a
-	# visible upward pop. Taking the LOWER of the two only ever pulls the
-	# body down (or leaves it alone) -- a high-reach grab simply hangs at
-	# full stretch instead, which is also what it should look like.
-	var standard_y := _edge.y - config.ledge_hang_drop
-	player.global_position = Vector3(
-		player.global_position.x,
-		minf(player.global_position.y, standard_y),
-		player.global_position.z)
+	# The body holds exactly wherever it grabbed -- NO repositioning, up or
+	# down. ledge_query()'s "height" is measured against the player's CURRENT
+	# feet at the moment of the grab, so a valid grab can land anywhere in
+	# [ledge_min_height, ledge_max_height] above them. Snapping to any FIXED
+	# offset from the edge from there would, for most of that range, be
+	# either an upward pop (pulling the body toward the edge) or a downward
+	# drop (pushing it away) the player never asked for -- holding position
+	# is the correct behaviour on its own merits, not a simplification of a
+	# "real" reposition. (A grab near the top of the reachable range now
+	# hangs at full stretch, well below the edge; see
+	# test_mantling_completes_from_the_top_of_the_grab_range in
+	# tests/test_ledge.gd for confirmation the mantle still completes fine
+	# from there within mantle_duration -- the climb is a fixed-time lerp,
+	# not a fixed-speed one, so distance never affects how long it takes.)
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _mantling:
@@ -96,8 +88,18 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.start_ledge_cooldown()
 		return AIR
 
-	# Pushing forward, or jumping, climbs up.
+	# Pushing forward, or jumping, climbs up. This IS the moment of
+	# commitment: the player has been free to turn at any point while
+	# hanging, right up until this tick, and CameraRig.apply_look() keeps
+	# turning the body every physics tick regardless of state -- so facing is
+	# sampled HERE, fresh, rather than reusing whatever _edge's grab-time
+	# probe happened to see. This is also the ONLY place _exit_direction is
+	# ever written: both the landing point immediately below and the exit
+	# push on mantle completion (above) read it back rather than re-sampling
+	# facing themselves, so a further turn made DURING the 0.42 s scripted
+	# climb cannot retroactively change either one either.
 	if input.move.y > 0.5 or input.jump_pressed:
+		_exit_direction = -player.global_transform.basis.z
 		var top := _edge + Vector3(0.0, player.standing_height() * 0.5, 0.0)
 		top -= _exit_direction * config.mantle_forward_offset
 		begin(player.global_position, top, config.mantle_duration, config.mantle_arc_height)
