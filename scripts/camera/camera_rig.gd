@@ -101,7 +101,24 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# rotation.z, unlike position.y above, is never hard-reset elsewhere in
 	# this function, so a plain move_toward accumulates correctly frame to
 	# frame instead of needing the offset workaround the crouch drop uses.
-	var target_roll := deg_to_rad(_config.wall_camera_roll_deg) * float(_wall_side)
+	#
+	# SIGN, verified empirically against this exact Godot build rather than
+	# assumed (see the verification script referenced in the phase-final-
+	# fixes report): a positive rotation.z rotates local up toward -X --
+	# `n.rotation.z = deg_to_rad(10); n.transform.basis.y` prints
+	# (-0.17, 0.98, 0). So a plain `roll_deg * wall_side` (positive for
+	# wall_side=+1, a wall on the right) tilts the head's up vector toward -X,
+	# i.e. LEFT -- away from a wall on the right, not into it. "Roll toward
+	# the wall" (the phase's own stated intent, and the Mirror's Edge /
+	# Titanfall convention it cites) needs the OPPOSITE sign: negated here so
+	# wall_side=+1 (right) produces a NEGATIVE rotation.z, whose up vector
+	# tilts toward +X -- into the wall on the right -- and wall_side=-1
+	# (left) produces a positive rotation.z, tilting toward -X into the wall
+	# on the left. tests/test_camera_rig.gd's
+	# test_the_camera_rolls_toward_the_wall_side pins this against the
+	# camera's own world-space up vector, not just "the two sides are
+	# opposite" (which an inverted-but-still-symmetric roll would also pass).
+	var target_roll := -deg_to_rad(_config.wall_camera_roll_deg) * float(_wall_side)
 	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.wall_camera_roll_speed) * delta)
 	rotation.z = _roll
 

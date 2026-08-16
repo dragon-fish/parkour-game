@@ -114,6 +114,18 @@ func test_bob_fades_instead_of_snapping_at_liftoff() -> void:
 	rig.queue_free()
 	await step(1)
 
+## IMPORTANT (review): asserting only that the two sides roll opposite ways
+## cannot catch a sign INVERSION -- a roll flipped on both sides together is
+## still "opposite ways". This additionally checks each side against an
+## independent, world-space quantity the sign has to agree with: the camera's
+## own up vector. Verified empirically against this exact Godot build first
+## (not assumed): a positive rotation.z rotates local up toward -X --
+## `n.rotation.z = deg_to_rad(10); n.transform.basis.y` prints
+## approximately (-0.17, 0.98, 0). "Roll toward the wall" (the phase's stated
+## intent, and the Mirror's Edge / Titanfall convention it cites) means a
+## wall on the right (side=+1, +X) must tilt the up vector's X component
+## POSITIVE -- into the wall -- which requires a NEGATIVE rotation.z, the
+## opposite of the naive `roll_deg * wall_side` sign.
 func test_the_camera_rolls_toward_the_wall_side() -> void:
 	var cfg := MovementConfig.new()
 	var rig := _make_rig()
@@ -128,15 +140,21 @@ func test_the_camera_rolls_toward_the_wall_side() -> void:
 	# a roll capped at one frame's worth of motion (e.g. a lerp reset every
 	# tick, the same class of bug update_effects()'s eye_height re-apply has
 	# already produced once in this file) would still pass a direction-only
-	# check.
-	check_approx(right_roll, deg_to_rad(cfg.wall_camera_roll_deg), 0.001, "roll did not settle at the configured angle for a wall on the right")
+	# check. Negative: see the derivation above.
+	check_approx(right_roll, -deg_to_rad(cfg.wall_camera_roll_deg), 0.001, "roll did not settle at the configured angle for a wall on the right")
+	var right_up: Vector3 = rig.transform.basis.y
+	check_greater(right_up.x, 0.0, \
+		"a wall on the right must roll the camera's up vector toward +X (into the wall), got up.x = %f" % right_up.x)
 
 	rig.set_wall_side(-1)
 	for i in 120:
 		rig.update_effects(TICK, 8.0, false)
 	var left_roll := rig.rotation.z
-	check_approx(left_roll, -deg_to_rad(cfg.wall_camera_roll_deg), 0.001, "roll did not settle at the configured angle for a wall on the left")
+	check_approx(left_roll, deg_to_rad(cfg.wall_camera_roll_deg), 0.001, "roll did not settle at the configured angle for a wall on the left")
 	check(right_roll * left_roll < 0.0, "the two wall sides must roll opposite ways")
+	var left_up: Vector3 = rig.transform.basis.y
+	check(left_up.x < 0.0, \
+		"a wall on the left must roll the camera's up vector toward -X (into the wall), got up.x = %f" % left_up.x)
 
 	rig.set_wall_side(0)
 	for i in 200:
