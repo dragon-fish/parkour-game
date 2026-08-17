@@ -15,6 +15,12 @@ var move_manager: MoveManager
 var last_landing_speed: float = 0.0
 ## True when the most recent landing was a roll. Read by the camera and HUD.
 var last_landing_rolled: bool = false
+## Accumulated fall height the most recent landing was judged on -- i.e.
+## fall_tracker.fall_height read the instant before set_grounded() reset it.
+## Exists because that value is otherwise unobservable from outside the same
+## physics tick: the counter is gone by the time anything else runs. Set by
+## FallingMove alongside last_landing_rolled.
+var last_landing_fall_height: float = 0.0
 ## Last polled input, exposed for the debug HUD.
 var last_input: MoveInput = MoveInput.new()
 
@@ -402,6 +408,7 @@ func reset_state() -> void:
 	# rather than letting the first tick after the reset read the old life's.
 	_travel_speed = 0.0
 	last_landing_speed = 0.0
+	last_landing_fall_height = 0.0
 	grounded = false
 	# Set directly rather than through set_grounded(true) (which would also
 	# flip `grounded` back on, contradicting the line above): global_position

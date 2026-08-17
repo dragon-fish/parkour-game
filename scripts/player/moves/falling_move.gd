@@ -61,11 +61,29 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	player.move_and_slide()
 
 	if player.is_on_floor():
+		# Player._physics_process() already fed fall_tracker THIS tick, but
+		# before this move ran -- so that call only ever sees LAST tick's
+		# velocity/position. This tick's own descent, the one that actually
+		# ends in the floor contact just detected, was never counted, and is
+		# about to be thrown away by set_grounded() below. One more update(),
+		# using the pre-impact velocity already captured as impact_speed and
+		# the just-landed position, folds that final increment in before the
+		# reset -- otherwise every fall undercounts by ~one tick's worth of
+		# descent (~0.09 m at 5.6 m/s, 1/60 s), which is exactly the kind of
+		# error a task calibrating fall-height THRESHOLDS cannot absorb.
+		player.fall_tracker.update(delta, -impact_speed, player.global_position.y)
 		# Read BEFORE set_grounded(), which resets the counter.
 		var fall_height: float = player.fall_tracker.fall_height
-		var rolled: bool = player.consume_roll() \
-			and fall_height >= config.pawn.skill_roll_landing_height
+		# fall_height must gate consume_roll(), not the other way round: `and`
+		# short-circuits left-to-right, so with consume_roll() on the left it
+		# would ALWAYS spend the buffered press -- even on a landing nowhere
+		# near the roll threshold -- eating a crouch meant for the slide-entry
+		# check in walking_move.gd on the very next tick. Keeping the height
+		# check first means an ordinary landing leaves the buffer untouched.
+		var rolled: bool = fall_height >= config.pawn.skill_roll_landing_height \
+			and player.consume_roll()
 		player.last_landing_rolled = rolled
+		player.last_landing_fall_height = fall_height
 		player.set_grounded(true)
 		player.notify_landed(impact_speed)
 		_apply_landing_cost(fall_height, rolled)
