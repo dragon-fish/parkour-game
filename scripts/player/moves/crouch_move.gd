@@ -21,7 +21,7 @@ func exit() -> void:
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	var wish_dir: Vector3 = player.wish_direction(input)
-	var target_speed: float = config.pawn.ground_speed * config.crouch.speed_modifier
+	var target_speed: float = player.speed_cap() * cfg.speed_modifier
 	player.ground_accelerate(wish_dir, target_speed, delta)
 
 	# Same floor-snap bias as Walking/Slide, so a crouched walk does not

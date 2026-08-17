@@ -8,45 +8,24 @@ extends Resource
 
 @export_group("Locomotion")
 ## Source: 02 §2.3 `GroundSpeed = 720` uu/s. ✅
-## From Task 6 this stops being the target speed directly and becomes the
+## From Task 7 this stops being the target speed directly and becomes the
 ## CEILING of the speed-energy curve (02 §2.1); it keeps the same value.
+## Read only by SpeedEnergy.cap() -- every move asks Player.speed_cap()
+## instead of this field directly.
 @export var ground_speed: float = 7.2
 ## Source: 02 §2.3 `AirSpeed = 2400` uu/s. ✅ Essentially uncapped (3.3x
 ## GroundSpeed) -- the defence against an air-control exploit is air_control
 ## being almost zero, not a low ceiling here.
 @export var air_speed: float = 24.0
 ## Source: 02 §2.3 `AccelRate = 6144` uu/s^2 -> 61.44. ✅
-## MIGRATION NOTE: carried over from the old `ground_accel = 60.0`, NOT yet
-## re-pointed at the confirmed 61.44 -- this task changes no values. Task 6
-## corrects it.
-@export var accel_rate: float = 60.0
+@export var accel_rate: float = 61.44
 ## Source: 02 §2.3 `AirControl = 0.025`. ✅ Engine default is 0.05; DICE
-## halved it. Used as a multiplier on accel_rate (09 §9.1).
-## MIGRATION NOTE: the old flat `air_accel = 1.5` is carried in air_accel
-## below until Task 6 derives it from this instead.
+## halved it. Used as a multiplier on accel_rate (09 §9.1):
+## air_accel = accel_rate * air_control = 61.44 * 0.025 = 1.536 m/s^2,
+## derived inline in Player.air_accelerate() rather than stored as its own
+## field -- see that function's own comment for why a full hang time can
+## shed at most ~2.1 m/s even against continuous opposite input.
 @export var air_control: float = 0.025
-## Source: 09 §9.1 / 02 §2.3 -- ME's `AirControl = 0.025` is not an
-## acceleration in its own right; the guide reads it as a MULTIPLIER on
-## ground accel ("AirControl 0.025 × 加速度"). Applied to this project's own
-## accel_rate (60.0, itself already ~= ME's AccelRate 61.44, see accel_rate's
-## own comment) rather than to ME's raw AccelRate, since this is the number
-## Player.air_accelerate() actually gets compared against:
-##   air_accel = accel_rate * 0.025 = 60.0 * 0.025 = 1.5
-## Deliberately not a speed-ceiling fix (see air_speed's own comment for why
-## the old air_max_speed = 9.0 was the wrong lever entirely) -- with the
-## post-retune 1.58 s hangtime (gravity 24.0 -> 8.0, see gravity's own
-## comment), the old air_accel (12.0) could ratchet horizontal speed past
-## ground_speed over repeated jumps; at 1.5, a full hangtime of continuous
-## same-direction air control adds at most air_accel * 1.58 =~ 2.4 m/s, and
-## landing's own speed cost removes far more than that on any landing hard
-## enough to matter -- was pinned by tests/legacy/test_air_state.gd's
-## test_air_strafing_across_chained_jumps_never_exceeds_the_ground_speed_cap
-## -- ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
-## this today; restore the pin when the behavioural suite is rewritten.
-## MIGRATION NOTE: this is the stored value carried from before air_control
-## existed. Task 7 deletes this field and derives air_accel inline instead,
-## as `config.pawn.accel_rate * config.pawn.air_control`.
-@export var air_accel: float = 1.5
 ## Source: 09 §9.1 `DefaultGravityZ = 800` uu/s^2. ✅
 ## Part of the gravity/base_jump_z/ground_speed trio: the guide is explicit
 ## that retuning any one of the three alone makes the feel worse, not
@@ -88,13 +67,10 @@ extends Resource
 ## 09 §9.1 is explicit that retuning any one of jump/gravity/landing alone
 ## makes the feel worse, not better.
 @export var base_jump_z: float = 5.6
-## Source: 02 §2.4 `JumpAddXY = 100` uu/s. ⚠️ Inferred as extra horizontal
-## speed along the facing at the moment of take-off; whether it adds or sets
-## a minimum is unverified. STILL UNWIRED: an earlier note here claimed this
-## task would wire it, but Task 6's brief scopes the jump/landing calibration
-## to base_jump_z and the four landing tiers only -- this field is unread by
-## any move. Left for whichever future task actually implements take-off
-## horizontal boost.
+## Source: 02 §2.4 `JumpAddXY = 100` uu/s. ⚠️ Inferred as an ADDITION along
+## the facing at take-off (whether it adds or sets a minimum is unverified);
+## taking off is itself a small forward commitment. Wired in WalkingMove and
+## SlideMove's jump branches.
 @export var jump_add_xy: float = 1.0
 ## No confirmed counterpart in the original (02 §2.4 searched and found
 ## none). Kept as a modern quality-of-life affordance.

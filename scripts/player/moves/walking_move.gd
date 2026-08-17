@@ -6,13 +6,20 @@ func enter(_previous: StringName) -> void:
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	var wish_dir: Vector3 = player.wish_direction(input)
-	# No sprint key: ground speed is a single top speed, unless the walk
-	# modifier (Ctrl) is held, which slows it down deliberately.
-	var target_speed: float = config.pawn.walk_velocity if input.walk_held else config.pawn.ground_speed
+	# No sprint key: the curve IS the sprint (02 §2.1). The walk modifier is
+	# the one thing that overrides it, with its own confirmed hard cap.
+	var target_speed: float = config.pawn.walk_velocity if input.walk_held \
+		else player.speed_cap() * cfg.speed_modifier
 	player.ground_accelerate(wish_dir, target_speed, delta)
 
 	if player.consume_jump():
 		player.velocity.y = config.pawn.base_jump_z
+		# Source: 02 §2.4 `JumpAddXY = 100` uu/s. ⚠️ Inferred as an ADDITION
+		# along the facing at take-off (whether it adds or sets a minimum is
+		# unverified); taking off is itself a small forward commitment.
+		var facing: Vector3 = -player.global_transform.basis.z
+		player.velocity.x += facing.x * config.pawn.jump_add_xy
+		player.velocity.z += facing.z * config.pawn.jump_add_xy
 		player.move_and_slide()
 		player.set_grounded(player.is_on_floor())
 		return FALLING

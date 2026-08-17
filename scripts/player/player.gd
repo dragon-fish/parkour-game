@@ -99,6 +99,13 @@ enum { TIER_FREE, TIER_SOFT, TIER_ROLLABLE, TIER_HARD }
 ## Accumulated fall height since the last ground contact. Built in setup().
 var fall_tracker: FallTracker
 
+## The ground-speed curve (02 §2.1/02 §2.5): layer 2 of the two-layer speed
+## model, see SpeedEnergy's own header comment. Built in setup(), driven every
+## tick by _update_speed_energy(). Every move that wants "top speed" reads
+## speed_cap() below rather than config.pawn.ground_speed directly -- that
+## field is now only the curve's own upper bound.
+var speed_energy: SpeedEnergy
+
 func landing_tier(fall_height: float) -> int:
 	var pawn := config.pawn
 	if fall_height < pawn.skill_roll_landing_height:
@@ -360,6 +367,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	config = cfg
 	input_source = src
 	fall_tracker = FallTracker.new(config.pawn)
+	speed_energy = SpeedEnergy.new(config.pawn)
 
 	# The capsule resource is shared by every instance of player.tscn, so
 	# resizing it in place would let one player's slide shrink every other
@@ -400,6 +408,8 @@ func reset_state() -> void:
 	_ledge_cooldown = 0.0
 	if fall_tracker != null:
 		fall_tracker.reset()
+	if speed_energy != null:
+		speed_energy.reset()
 	# Same reasoning as the ledge cooldown above: wall cooldowns left over
 	# from the previous life must not withhold a fresh life's first attach.
 	_recent_walls.clear()
@@ -716,6 +726,10 @@ func _physics_process(delta: float) -> void:
 
 	move_manager.physics_update(delta, input)
 
+	# After the moves run, so grounded and horizontal_speed() both read this
+	# tick's own result rather than last tick's.
+	_update_speed_energy(delta, input)
+
 	var travelled := global_position - tick_start_position
 	_travel_speed = Vector2(travelled.x, travelled.z).length() / maxf(delta, 0.0001)
 
@@ -958,6 +972,44 @@ func horizontal_speed() -> float:
 func travel_speed() -> float:
 	return _travel_speed
 
+## The current ground speed ceiling. Every move that wants "top speed" asks
+## here rather than reading pawn.ground_speed, which is now only the curve's
+## own upper bound rather than a target anything reaches directly.
+func speed_cap() -> float:
+	return speed_energy.cap()
+
+## Which accumulation factor this tick's input asks for. The original
+## declares three (02 §2.1) and this is the reading that makes all three
+## usable: ordinary running is the sprint factor (there is no sprint key --
+## the curve IS the sprint), the walk modifier drops to the walk factor, and
+## a mostly-lateral input takes the strafe factor.
+func _energy_mode(input: MoveInput) -> int:
+	if input.walk_held:
+		return SpeedEnergy.WALK
+	if absf(input.move.x) > absf(input.move.y):
+		return SpeedEnergy.STRAFE
+	return SpeedEnergy.SPRINT
+
+## Energy accrues only while GROUNDED, actually asking to move, and actually
+## travelling near the ceiling that energy has already bought. Held (neither
+## banked nor bled) while airborne: 10.1 mechanic 2 is explicit that speed
+## earned before take-off is carried across the jump intact, and bleeding the
+## energy that BOUGHT that speed mid-flight would contradict it.
+func _update_speed_energy(delta: float, input: MoveInput) -> void:
+	if not grounded:
+		return
+	var wish := wish_direction(input)
+	if wish == Vector3.ZERO:
+		speed_energy.decay(delta)
+		return
+	if horizontal_speed() >= speed_cap() * config.pawn.energy_accumulate_speed_ratio:
+		speed_energy.accumulate(delta, _energy_mode(input))
+	else:
+		# Asking to move but not actually getting anywhere -- shoved into
+		# geometry, or still climbing toward a ceiling already paid for.
+		# Neither banks anything; neither is a reason to bleed, either.
+		pass
+
 ## Ground movement: converge on the target velocity, and brake when idle.
 func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> void:
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
@@ -968,19 +1020,26 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> 
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 
-## Air movement: only ever adds speed along wish_dir, and only up to a
-## ceiling measured along that direction. It never brakes, so momentum
-## carried in from another state survives — P1's slide depends on this.
+## Air movement, the original's way: a Quake-style projection scaled by
+## air_control.
 ##
-## The ceiling is NOT a flat air_speed: it is
-## min(air_speed, max(ground_speed, speed_along_wish)). air_speed
+## An earlier version of this project forbade the projection from ever
+## reducing horizontal speed, so holding the opposite key in mid-air did
+## nothing at all. That guard is gone: the original uses ordinary low air
+## control, and "commit to the jump you made" comes from air_control being
+## 0.025 -- half the engine's own default -- not from a special rule. At
+## 1.536 m/s^2 a full 1.40 s hang time can shed at most ~2.1 m/s even if the
+## player holds backward the whole way, which is a correction, not a brake.
+##
+## Only ever adds speed along wish_dir, and only up to a ceiling measured
+## along that direction. The ceiling is NOT a flat air_speed: it is
+## min(air_speed, max(speed_cap(), speed_along_wish)). air_speed
 ## itself (see its own comment in pawn_config.gd -- ME's AirSpeed,
 ## essentially uncapped) is deliberately too high to ever bind in practice;
 ## it exists so momentum carried in from elsewhere (a wall-run or slide boost
-## exceeding ground_speed) is never reduced by air control, matching this
-## function's own "never brakes" rule. ground_speed is the floor UNDER that:
-## with air_accel now tiny (see its own comment), a long fall or a chain of
-## jumps has plenty of TIME to slowly climb toward air_speed even without
+## exceeding speed_cap()) is never reduced by air control. speed_cap() is the
+## floor UNDER that: with air_accel tiny (see above), a long fall or a chain
+## of jumps has plenty of TIME to slowly climb toward air_speed even without
 ## any exploit-like input, which would let mere airtime manufacture speed no
 ## ground state could reach on its own -- exactly the invariant
 ## tests/legacy/test_landing.gd's test_a_landing_can_never_add_speed_however_the_
@@ -988,32 +1047,22 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> 
 ## test_chained_slide_then_jump_cannot_stack_the_entry_boost used to pin --
 ## both ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
 ## this today; restore the pins when the behavioural suite is rewritten. Taking
-## the max with the CURRENT speed_along_wish (not a flat ground_speed cap) is
-## what keeps the "never reduces carried-in momentum" half of the contract
-## intact: a player already faster than ground_speed gets zero headroom here
-## (the ceiling sits at their own current speed), never a forced slowdown.
+## the max with the CURRENT speed_along_wish (not a flat speed_cap()) is what
+## keeps carried-in momentum from being reduced here: a player already faster
+## than the cap gets zero headroom (the ceiling sits at their own current
+## speed), never a forced slowdown.
 func air_accelerate(wish_dir: Vector3, delta: float) -> void:
 	if wish_dir == Vector3.ZERO:
 		return
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	var speed_along_wish := horizontal.dot(wish_dir)
-	var ceiling := minf(config.pawn.air_speed, maxf(config.pawn.ground_speed, speed_along_wish))
+	var ceiling := minf(config.pawn.air_speed, maxf(speed_cap(), speed_along_wish))
 	var headroom := ceiling - speed_along_wish
 	if headroom <= 0.0:
 		return
-	var candidate := horizontal + wish_dir * minf(config.pawn.air_accel * delta, headroom)
-	# INVARIANT: air control must never brake — only redirect/add speed.
-	# The Quake-style projection above adds speed along wish_dir, but when
-	# wish_dir opposes the existing velocity that addition can still shrink
-	# the resultant horizontal SPEED even though it grows along wish_dir
-	# (e.g. horizontal (0,0,-5), wish_dir (0,0,1): adding a small amount
-	# along +z takes the resultant length from 5.0 down to 4.8). This guard
-	# is what actually enforces the invariant: only commit the candidate
-	# when it does not shrink horizontal speed, otherwise leave velocity
-	# untouched for this tick. Do not remove this check as a "simplification"
-	# — without it, holding the opposite key can brake a jump or erase a
-	# slide boost carried into the air.
-	if candidate.length() < horizontal.length():
-		return
+	# AirControl is a MULTIPLIER on ground acceleration (09 §9.1), not an
+	# acceleration in its own right: 61.44 * 0.025 = 1.536 m/s^2.
+	var air_accel: float = config.pawn.accel_rate * config.pawn.air_control
+	var candidate := horizontal + wish_dir * minf(air_accel * delta, headroom)
 	velocity.x = candidate.x
 	velocity.z = candidate.z

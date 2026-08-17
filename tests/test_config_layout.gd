@@ -36,7 +36,7 @@ func test_migrated_values_are_unchanged() -> void:
 	var config := MovementConfig.new()
 	check_approx(config.pawn.gravity, 8.0, 0.0001, "gravity moved but changed")
 	check_approx(config.pawn.ground_speed, 7.2, 0.0001, "ground_speed moved but changed")
-	check_approx(config.pawn.accel_rate, 60.0, 0.0001, "ground_accel moved but changed")
+	check_approx(config.pawn.accel_rate, 61.44, 0.0001, "accel_rate is not the confirmed 61.44")
 	check_approx(config.camera.fov_base, 90.0, 0.0001, "fov_base moved but changed")
 	check_approx(config.camera.eye_height, 0.7, 0.0001, "eye_height moved but changed")
 	check_approx(config.slide.slide_capsule_height, 0.9, 0.0001, "slide capsule moved but changed")
