@@ -215,15 +215,30 @@ func _on_load() -> void:
 		return
 	# CACHE_MODE_IGNORE forces a fresh read: without it, repeated loads of the
 	# same path return the cached instance and the panel appears to do nothing.
-	var loaded: TuningPreset = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+	#
+	# Loaded as a plain Resource, not TuningPreset: a statically-typed
+	# `var loaded: TuningPreset = ResourceLoader.load(...)` throws a SCRIPT
+	# ERROR on assignment the moment the file holds any OTHER resource type --
+	# in particular a preset saved by the pre-Task-3 panel, which serialized
+	# a whole MovementConfig instead of a TuningPreset. That assignment fails
+	# before the `loaded == null` check below ever runs, so _on_load() would
+	# abort mid-function with no status update -- silent to the user, unlike
+	# every other failure path in this function. Checking `is TuningPreset`
+	# explicitly turns that crash into the same graceful "load failed" shape
+	# the rest of this function already uses.
+	var loaded: Resource = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
 	if loaded == null:
 		_status.text = "load failed"
 		return
+	if not (loaded is TuningPreset):
+		_status.text = "%s is not a tuning preset (old-format save?)" % path
+		return
+	var preset: TuningPreset = loaded
 	# A path in the file that no longer exists in the config is skipped
 	# silently (configs change across tasks); a path in the config absent
 	# from the file keeps its current value.
 	for row in collect_tunables(config):
-		if loaded.values.has(row["path"]):
-			row["owner"].set(row["property"], loaded.values[row["path"]])
+		if preset.values.has(row["path"]):
+			row["owner"].set(row["property"], preset.values[row["path"]])
 	_refresh_sliders()
 	_status.text = "loaded %s" % path

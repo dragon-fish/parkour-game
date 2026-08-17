@@ -77,11 +77,23 @@ func test_preset_round_trip_preserves_a_value_equal_to_a_different_declared_defa
 	# needs `config` to be set (normally done by Arena's injection, mimicked
 	# here by setting it before the call), and building it manually skips the
 	# call_deferred("_build_ui") race that _ready() would otherwise set up.
+	#
+	# Because _ready() is skipped, its DirAccess.make_dir_recursive_absolute()
+	# call never runs either -- PRESET_DIR must not be assumed to already
+	# exist. On a machine that has never launched the actual game (a fresh
+	# checkout, CI), user://presets does not exist yet, and _on_save() below
+	# would fail with "Cannot save file ..." instead of exercising the
+	# round-trip. Creating it here makes the test hermetic instead of
+	# incidentally depending on some earlier run (in-game or another test)
+	# having created the directory first.
+	DirAccess.make_dir_recursive_absolute(TuningPanel.PRESET_DIR)
+
 	var config := MovementConfig.new()
 	var panel := TuningPanel.new()
 	panel.config = config
 	panel._build_ui()
-	panel._preset_name.text = "test_round_trip_crouch"
+	var preset_name := "test_round_trip_crouch"
+	panel._preset_name.text = preset_name
 
 	config.crouch.speed_modifier = 1.0
 	panel._on_save()
@@ -91,3 +103,8 @@ func test_preset_round_trip_preserves_a_value_equal_to_a_different_declared_defa
 	check_approx(config.crouch.speed_modifier, 1.0, 0.0001, \
 		"crouch speed_modifier did not round-trip through save/load")
 	panel.free()
+
+	# Leave no residue next to the owner's real presets.
+	var preset_path := "%s/%s.tres" % [TuningPanel.PRESET_DIR, preset_name]
+	if FileAccess.file_exists(preset_path):
+		DirAccess.remove_absolute(preset_path)
