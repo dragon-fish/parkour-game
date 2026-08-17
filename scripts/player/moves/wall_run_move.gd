@@ -81,13 +81,23 @@ func enter(_previous: StringName) -> void:
 	# One-off lift on attaching. ⚠️ Read as a one-off vertical boost rather
 	# than a sustained force: WallRunningHorisontalInitialZHeight is stored as
 	# a HEIGHT (170 uu / 1.7 m), converted here at the point of use into the
-	# vertical speed that reaches that height under plain gravity, matching
-	# how this project reads every other `*ZHeight` field (spec §2.5). Never
-	# LOWERS an already-faster upward speed (e.g. a jump that grabbed a wall
-	# mid-rise) -- only ever raises it to the floor this represents.
+	# vertical speed that reaches that height, matching how this project reads
+	# every other `*ZHeight` field (spec §2.5) -- EXCEPT that this one
+	# deliberately does NOT use plain gravity the way those others do. The
+	# rise happens WHILE ATTACHED, where gravity is already weakened by
+	# wall_gravity_scale (applied a few lines below, every tick this move is
+	# active); converting against plain config.pawn.gravity instead would ask
+	# "how fast to reach 1.7 m under gravity this move never actually uses",
+	# overshooting the real rise by 1 / wall_gravity_scale (a factor of
+	# ~2.86x at the default 0.35 -- confirmed directly: plain gravity gives
+	# 5.2154 m/s and an actual ~4.86 m rise; the wall run's own effective
+	# gravity gives 3.0854 m/s and the intended 1.7 m).
+	# Never LOWERS an already-faster upward speed (e.g. a jump that grabbed a
+	# wall mid-rise) -- only ever raises it to the floor this represents.
 	var lift: float = config.wall_run.wall_running_horisontal_initial_z_height
 	if lift > 0.0:
-		player.velocity.y = maxf(player.velocity.y, sqrt(2.0 * config.pawn.gravity * lift))
+		var wall_gravity: float = config.pawn.gravity * config.wall_run.wall_gravity_scale
+		player.velocity.y = maxf(player.velocity.y, sqrt(2.0 * wall_gravity * lift))
 
 func exit() -> void:
 	player.wall_side = 0

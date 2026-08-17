@@ -48,29 +48,51 @@ func test_a_faster_entry_stays_on_the_wall_longer() -> void:
 	var fast := await _measure_wall_ticks(7.0)
 	check_greater(fast, slow, "a faster entry did not last longer (%d vs %d ticks)" % [fast, slow])
 
-## Drives a player into a wall at `entry_speed` and returns how many ticks the
-## wall run lasted. Implemented with a direct velocity assignment rather than
-## by running the speed curve up first, so the two cases differ ONLY in entry
-## speed.
-##
-## The player is deliberately lifted off the ground (rather than left resting
-## from TestWorld.place()) before the velocity is assigned: FallingMove is the
-## ONLY move that ever queries for a wall (see its own note -- WalkingMove
-## never checks), so the wall-run entry gate simply never runs while the
-## player is grounded. Mirrors the up-teleport pattern
-## tests/test_falling_move_integration.gd already uses to reliably force a
-## WALKING -> FALLING transition in exactly one tick.
-func _measure_wall_ticks(entry_speed: float) -> int:
+func test_a_wall_run_ends_when_vertical_speed_sinks_past_the_stop_limit() -> void:
+	# Distinguishes the vertical stop-limit exit from the horizontal one.
+	# Left to decay naturally this takes ~2.9 s (174 ticks) at a 7.2 m/s
+	# entry -- the horizontal exit (~1.04 s) always fires first in ordinary
+	# play, which is fine (the original also ends runs primarily on
+	# horizontal decay; the vertical limit is a backstop) but means this path
+	# would otherwise never be exercised by anything. Forced directly here:
+	# velocity.y is set below the limit while horizontal speed is kept high,
+	# so if the run ends, it can only be this condition -- not decay, which
+	# is independently confirmed still comfortably above wall_running_min_speed
+	# on the very same tick.
 	var world := _world_with_wall(0.0)
-	# Positioned BEFORE the first physics step, not after: the wall's own
-	# default pose (origin, unrotated) overlaps where the player spawns, and a
-	# single physics tick with the wall still there is enough for
-	# move_and_slide()'s own depenetration to shove the player sideways --
-	# confirmed directly by isolating it (moving the wall far away left the
-	# drift identical either way, which is what pointed at a SEPARATE cause
-	# below instead).
-	world["wall"].global_position = Vector3(1.0, 3.0, 0.0)
+	# x = 0.95 -> near face at 0.45 (thickness 1.0 halved), the midpoint of the
+	# only window that both clears the capsule (radius 0.4, so near face must
+	# exceed that or the body overlaps the wall) and stays inside the probe's
+	# own reach (wall_running_forward_check_distance, 0.5). Confirmed directly:
+	# x = 1.0 (near face exactly AT the 0.5 reach boundary) intermittently
+	# failed to attach at all -- wall_query() returned invalid, most likely a
+	# floating-point coin flip on an exact tangency. 0.95 leaves real margin
+	# on both sides (0.05 m each), mirroring the same tight window
+	# tools/arena_builder.gd's own zig-zag corridor derivation now works within.
+	world["wall"].global_position = Vector3(0.95, 3.0, 0.0)
 	world["wall"].rotation = Vector3(0.0, PI * 0.5, 0.0)
+	var player: Player = await _attach_to_wall(world, 7.0)
+
+	var stop_limit: float = player.config.wall_run.wall_running_velocity_stop_limit
+	var min_speed: float = player.config.wall_run.wall_running_min_speed
+	player.velocity = Vector3(0.0, stop_limit - 1.0, player.velocity.z)
+	await step(1)
+
+	check(Vector2(player.velocity.x, player.velocity.z).length() >= min_speed, \
+		"test setup is wrong: horizontal speed decayed enough on its own to also explain this exit")
+	check(player.move_manager.current_name == Move.FALLING, \
+		"a vertical speed past the stop limit did not end the wall run")
+
+	world["wall"].queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
+## Settles the player onto the floor, lifts it airborne, and drives it into
+## `world`'s wall at `entry_speed`, returning once WALL_RUN is confirmed
+## active. Factored out of _measure_wall_ticks() so
+## test_a_wall_run_ends_when_vertical_speed_sinks_past_the_stop_limit() can
+## reach the same attached state without duplicating the settle/lift dance.
+func _attach_to_wall(world: Dictionary, entry_speed: float) -> Player:
 	var player: Player = world["player"]
 	await step(1)
 	TestWorld.place(world)
@@ -95,16 +117,39 @@ func _measure_wall_ticks(entry_speed: float) -> int:
 		"test setup is wrong: the up-teleport did not send the player airborne")
 
 	# Heading is parallel to the wall's face (the wall's near face is a plane
-	# in Y/Z after the 90-degree yaw above; running along -Z is a STRAFE-style
-	# approach, well clear of the forward/strafe hysteresis band around the
-	# incidence angle's 57-60 degree gap).
+	# in Y/Z after the 90-degree yaw the caller applies, running along -Z is a
+	# STRAFE-style approach, well clear of the forward/strafe hysteresis band
+	# around the incidence angle's 57-60 degree gap).
 	player.velocity = Vector3(0.0, player.velocity.y, -entry_speed)
-	var ticks := 0
+	await step(1)
+	check(player.move_manager.current_name == Move.WALL_RUN, \
+		"test setup is wrong: the player never attached to the wall")
+	return player
+
+## Drives a player into a wall at `entry_speed` and returns how many ticks the
+## wall run lasted. Implemented with a direct velocity assignment rather than
+## by running the speed curve up first, so the two cases differ ONLY in entry
+## speed.
+func _measure_wall_ticks(entry_speed: float) -> int:
+	var world := _world_with_wall(0.0)
+	# Positioned BEFORE the first physics step, not after: the wall's own
+	# default pose (origin, unrotated) overlaps where the player spawns, and a
+	# single physics tick with the wall still there is enough for
+	# move_and_slide()'s own depenetration to shove the player sideways --
+	# confirmed directly by isolating it (moving the wall far away left the
+	# drift identical either way, which is what pointed at a SEPARATE cause
+	# below instead).
+	world["wall"].global_position = Vector3(0.95, 3.0, 0.0)
+	world["wall"].rotation = Vector3(0.0, PI * 0.5, 0.0)
+	var player: Player = await _attach_to_wall(world, entry_speed)
+	# _attach_to_wall() already confirmed WALL_RUN is active for one tick;
+	# count that one and keep counting until it ends.
+	var ticks := 1
 	for i in 400:
 		await step(1)
 		if player.move_manager.current_name == Move.WALL_RUN:
 			ticks += 1
-		elif ticks > 0:
+		else:
 			break
 	world["wall"].queue_free()
 	TestWorld.teardown(world)

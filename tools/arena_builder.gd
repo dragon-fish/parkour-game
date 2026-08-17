@@ -614,15 +614,30 @@ func build() -> Node3D:
 	# and gap_colour, the two nearest neighbours in this palette.
 	var wall_colour := Color(0.32, 0.52, 0.68)
 
-	# How far a wall's near face may sit from the running lane's centreline
-	# (local x = 0) and still be within reach (Probes.wall_query()'s side rays
-	# now read wall_running_forward_check_distance, 0.5 m default -- see
+	# The probe's own reach (Probes.wall_query()'s side rays now read
+	# wall_running_forward_check_distance, 0.5 m default -- see
 	# WallRunConfig's own note; this replaced the project's former wall_reach,
-	# 0.75 m) of a player running straight down it. Kept well under that reach
-	# rather than pushed right up against it, so a player drifting a few
-	# centimetres off the lane's exact centre during a real run does not fall
-	# outside reach.
-	const WALL_NEAR_FACE := 0.3
+	# 0.75 m) and the running capsule's radius (tools/build_player_scene.gd's
+	# own capsule.radius -- not exposed through MovementConfig, so mirrored
+	# here as its own named constant rather than hand-picked geometry).
+	# Read once, ahead of every wall placement below that has to fit inside
+	# the window these two numbers bound.
+	var reach: float = wall_config.wall_run.wall_running_forward_check_distance
+	const PLAYER_CAPSULE_RADIUS := 0.4
+
+	# DERIVED, not hand-picked: how far a wall's near face may sit from the
+	# running lane's centreline (local x = 0) and still be within `reach` of a
+	# player running straight down it. WALL_REACH_SLACK is held back from the
+	# reach ceiling so a player drifting a few centimetres off the lane's
+	# exact centre during a real run does not fall outside it. A future
+	# retune of wall_running_forward_check_distance moves this with it
+	# automatically instead of silently drifting out of sync with a
+	# hand-picked number. No matching lower bound from the capsule radius the
+	# way the zig-zag corridor below needs one: LongWall is reached from only
+	# ONE side, and the capsule nearly touching (or briefly overlapping) it
+	# IS wall running, not something to avoid.
+	const WALL_REACH_SLACK := 0.2
+	var WALL_NEAR_FACE: float = maxf(reach - WALL_REACH_SLACK, 0.05)
 	const WALL_THICKNESS := 1.0
 	# Tall enough for a SINGLE wall-run + wall-jump excursion above the ground
 	# it started from -- NO LONGER sized to contain a CHAINED climb.
@@ -679,20 +694,31 @@ func build() -> Node3D:
 	# are no longer specially exempt; they just have to wait out the same
 	# short window every wall does.
 	#
-	# Half-width kept under the probe's own reach
-	# (wall_running_forward_check_distance, 0.5 m -- see WallRunConfig's own
-	# note, this replaced the project's former wall_reach of 0.75). That 0.25 m
-	# smaller reach leaves far less room than before to ALSO keep the 0.4 m
-	# player capsule (see tools/build_player_scene.gd's capsule.radius) clear
-	# of both walls at once: the old corridor (half-width 0.7) gave a full
-	# 0.3 m of clearance per side; the smaller reach's own ceiling (0.5)
-	# barely exceeds the capsule's own radius (0.4), so 0.05 m per side is the
-	# most this corridor can offer while staying within reach. Genuinely
-	# tighter than before -- a direct, documented consequence of the smaller
-	# confirmed reach value, not an oversight; Step 8's own manual pass
-	# through this section is what will show whether it reads as too tight.
-	const ZIG_HALF_WIDTH := 0.45
-	const ZIG_X := ZIG_HALF_WIDTH + WALL_THICKNESS * 0.5
+	# DERIVED, not hand-picked -- this corridor is constrained on BOTH sides at
+	# once, unlike LongWall above: it needs walls within `reach` of the
+	# centreline the same way LongWall does, AND has to keep the running
+	# capsule (PLAYER_CAPSULE_RADIUS) clear of EITHER wall while doing it,
+	# since running down the middle of a corridor (rather than hugging one
+	# fixed wall) is the whole point here. The available window is
+	# `reach - PLAYER_CAPSULE_RADIUS`; splitting it down the middle rather
+	# than pushing against either edge means a future retune of the confirmed
+	# reach OR the capsule radius keeps BOTH guarantees (probe reach, capsule
+	# clearance) satisfied automatically, instead of a hand-picked constant
+	# silently violating whichever one it used to assume.
+	#
+	# At the confirmed reach (0.5) and capsule radius (0.4) that window is
+	# only 0.1 m wide, half of it going to each side: 0.05 m of capsule
+	# clearance AND 0.05 m of probe-reach margin, both real numbers rather
+	# than a coin flip against an exact boundary (which is exactly what broke
+	# this task's own wall-run entry test at first -- see
+	# tests/test_wall_run_entry.gd's own note on that). Genuinely tighter than
+	# the pre-Task-11 corridor (half-width 0.7, a full 0.3 m of clearance per
+	# side) -- a direct, documented consequence of the smaller confirmed reach
+	# value, not an oversight; Step 8's own manual pass through this section
+	# is what will show whether it reads as too tight.
+	var zig_window: float = maxf(reach - PLAYER_CAPSULE_RADIUS, 0.0)
+	var ZIG_HALF_WIDTH: float = PLAYER_CAPSULE_RADIUS + zig_window * 0.5
+	var ZIG_X: float = ZIG_HALF_WIDTH + WALL_THICKNESS * 0.5
 	const ZIG_START_Z := 35.5
 
 	# ZIG_STEP -- the distance between CONSECUTIVE zig walls' near faces --
