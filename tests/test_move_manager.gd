@@ -112,3 +112,33 @@ func test_current_config_defaults_to_the_moves_own_cfg() -> void:
 	# scope, and leaving this out trips run_tests.ps1's own "resources still
 	# in use at exit" scan even though every check() above already passed.
 	move.free()
+
+func test_current_move_friction_modifier_reads_the_active_moves_cfg() -> void:
+	var manager := _manager([Move.WALKING])
+	manager.start(Move.WALKING)
+	(manager.move_for(Move.WALKING) as StubMove).cfg.friction_modifier = 0.1
+	check_approx(manager.current_move_friction_modifier(), 0.1, 0.0001, \
+		"did not read the active move's own friction_modifier")
+	manager.queue_free()
+	await step(1)
+
+func test_current_move_friction_modifier_defaults_to_one_with_no_current_move() -> void:
+	var manager := MoveManager.new()
+	tree.root.add_child(manager)
+	check_approx(manager.current_move_friction_modifier(), 1.0, 0.0001, \
+		"did not default to 1.0 with no current move at all")
+	manager.queue_free()
+	await step(1)
+
+func test_current_move_friction_modifier_defaults_to_one_with_no_cfg() -> void:
+	var manager := MoveManager.new()
+	tree.root.add_child(manager)
+	var move := StubMove.new()
+	move.cfg = null
+	manager.add_child(move)
+	manager.register(Move.WALKING, move)
+	manager.start(Move.WALKING)
+	check_approx(manager.current_move_friction_modifier(), 1.0, 0.0001, \
+		"did not default to 1.0 when the active move has no cfg")
+	manager.queue_free()
+	await step(1)

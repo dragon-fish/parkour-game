@@ -1,6 +1,8 @@
 class_name TestFriction
 extends TestCase
 
+const TestWorld = preload("res://tests/world_fixture.gd")
+
 # 03 §3.3's confirmed multiplier chain. All eight scales are confirmed
 # values; base_friction is the one number with no counterpart in the original
 # and is expected to move during playtest, so every assertion here is stated
@@ -50,3 +52,28 @@ func test_friction_is_never_negative() -> void:
 	var pawn := PawnConfig.new()
 	pawn.downward_slide_friction_scale = -3.0
 	check_greater(Friction.slide_friction(pawn, 1.0, 1.0) + 0.0001, 0.0, "friction went negative")
+
+func test_flat_ground_grade_is_zero() -> void:
+	# End-to-end regression test for Player.ground_grade(), the wiring that
+	# turns real floor geometry into the `grade` the tests above only ever
+	# receive as a literal argument. The brief's own rejected formula --
+	# `-get_floor_normal().y` alone, with no projection of a direction onto
+	# the floor -- is direction-independent and evaluates to -1 on a
+	# perfectly flat floor (normal (0,1,0)), which after Friction's own
+	# clampf(grade, -1, 1) reads as "straight uphill", permanently, even
+	# standing still on level ground. None of the tests above could ever have
+	# caught that: they never touch real floor geometry, only Friction's pure
+	# functions. See Player.ground_grade()'s own comment for the fix.
+	var world := TestWorld.build(tree, MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+
+	var player: Player = world["player"]
+	check(player.grounded, "player did not settle onto the floor -- test setup is wrong")
+
+	var grade := player.ground_grade(Vector3(1.0, 0.0, 0.0))
+	check_approx(grade, 0.0, 0.0001, "flat ground did not read as grade 0")
+
+	TestWorld.teardown(world)
+	await step(1)
