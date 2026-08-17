@@ -22,6 +22,16 @@ var _edge: Vector3 = Vector3.ZERO
 var _exit_direction: Vector3 = Vector3.ZERO
 var _mantling: bool = false
 
+## Whether the CURRENT ledge stint is mantling (the scripted climb onto the
+## top) rather than hanging (frozen, waiting on input). Exposed the same way
+## SlideState.is_crawling() is (see StateMachine.state_for()'s own comment on
+## that precedent): nothing outside this state can otherwise tell the two
+## phases apart, and character_animator.gd needs exactly that distinction --
+## only the hang phase has a genuine clip match in the owner's reported
+## vocabulary (`ladder_stillness`); the mantle phase still does not.
+func is_mantling() -> bool:
+	return _mantling
+
 func enter(_previous: StringName) -> void:
 	# grounded is DECLARED, not read from is_on_floor(): like Vault, this
 	# state drives the body directly and never calls move_and_slide() --

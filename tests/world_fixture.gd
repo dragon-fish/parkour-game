@@ -64,13 +64,23 @@ static func teardown(world: Dictionary) -> void:
 ## Player._find_head_node() would match in a real body.
 ##
 ## `with_animation_player` adds a child literally named "AnimationPlayer"
-## carrying empty "idle", "jump", and "run" animations in the DEFAULT ("")
+## carrying empty animations, named after `clips`, in the DEFAULT ("")
 ## library, matching how the real asset's own AnimationPlayer exposes its
 ## clips (verified against it directly, see the JOB 2 report). Empty
 ## Animation resources are enough: CharacterAnimator only needs these clips
 ## to be SELECTABLE by name, never to contain real keyframes.
+##
+## `clips` defaults to the near-universal three (idle/jump/run) -- every
+## EXISTING caller of this function wants exactly that stub, a body that
+## looks like it came from an asset pipeline this project has always
+## supported. Pass a different array (e.g. the owner's full reported set, or
+## a subset, or an empty array) to build a stub for a body that carries more,
+## fewer, or none of the clips character_animator.gd's fallback chains know
+## about -- see tests/test_character_animator.gd's fallback coverage for why
+## that matters: a body missing a clip must degrade, never error.
 static func build_stub_body(head_name: String = "", head_local_position := Vector3.ZERO, \
-		with_animation_player: bool = false) -> PackedScene:
+		with_animation_player: bool = false, \
+		clips: PackedStringArray = ["idle", "jump", "run"]) -> PackedScene:
 	var root := Node3D.new()
 	root.name = "StubBody"
 
@@ -78,7 +88,7 @@ static func build_stub_body(head_name: String = "", head_local_position := Vecto
 		var anim_player := AnimationPlayer.new()
 		anim_player.name = "AnimationPlayer"
 		var library := AnimationLibrary.new()
-		for clip_name in ["idle", "jump", "run"]:
+		for clip_name in clips:
 			var clip := Animation.new()
 			clip.length = 1.0
 			library.add_animation(clip_name, clip)

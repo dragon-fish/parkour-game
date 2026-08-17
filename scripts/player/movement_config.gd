@@ -365,8 +365,12 @@ extends Resource
 
 @export_group("Animation")
 ## Horizontal ground speed above which CharacterAnimator plays the run clip
-## instead of idle. A feel/readability value like every other threshold here
-## -- it drives no physics, only which animation reads as "moving".
+## instead of idle -- and, on the same idea, the sneak clip instead of
+## sneaking while crouched (see character_animator.gd's CROUCH case). One
+## shared knob rather than a crouch-only duplicate: a low profile does not
+## change what counts as "moving". A feel/readability value like every other
+## threshold here -- it drives no physics, only which animation reads as
+## "moving".
 @export var run_animation_speed_threshold: float = 1.0
 
 @export_group("Camera")

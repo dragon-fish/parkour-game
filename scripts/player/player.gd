@@ -400,16 +400,38 @@ func _attach_body(scene: PackedScene) -> void:
 	_wire_body_animation(body)
 	head_node = _find_head_node(body)
 
+## Every clip name CharacterAnimator's _target_animation() knows how to ask
+## for, across every state (see that function for the per-state fallback
+## chains that pick among these). NOT every clip a body might carry -- only
+## the ones this project's animation logic can ever ATTACH TO A NODE and
+## travel() to. idle/run/jump are the near-universal three; sneak/sneaking/
+## ladder_stillness are specific to the YSM/Blockbench ecosystem the owner's
+## model comes from (see the animation-vocabulary report) and are simply
+## absent, not broken, on any other body.
+const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
+	&"idle", &"run", &"jump", &"sneak", &"sneaking", &"ladder_stillness",
+]
+
 ## Runtime twin of the AnimationTree/CharacterAnimator block that used to be
 ## baked directly into player.tscn by tools/build_player_scene.gd (see JOB 1
-## report for why that had to move here): the idle/run/jump graph itself is
-## completely generic, but root_node/anim_player can only be resolved once a
-## real body -- with a real AnimationPlayer -- exists to point them at,
-## which is exactly the thing the committed scene must never assume it has.
+## report for why that had to move here): the graph itself is completely
+## generic, but root_node/anim_player can only be resolved once a real body
+## -- with a real AnimationPlayer -- exists to point them at, which is
+## exactly the thing the committed scene must never assume it has.
 ## A body with no child literally named "AnimationPlayer" is a supported,
 ## silently animation-less body, not an error: CharacterAnimator already
 ## no-ops cleanly with anim_tree left null (see its own _ready()/
 ## _physics_process()), so simply never creating one here is enough.
+##
+## The graph gets a node ONLY for a clip _body_has_clip() confirms the body
+## actually carries -- never one for every name in _KNOWN_ANIMATION_CLIPS
+## unconditionally. This is what lets a committed AnimationTree serve a body
+## from a completely different asset pipeline (or no body at all, or a body
+## whose AnimationPlayer carries none of these names): CharacterAnimator's
+## own fallback logic (see its _has_clip()) can only ever travel() to a name
+## that is a real node in this graph, so a name simply never getting added
+## here is what keeps that safe rather than an engine error waiting to
+## happen the moment some state asks for a clip that does not exist.
 func _wire_body_animation(body_node: Node3D) -> void:
 	var anim_player := body_node.get_node_or_null("AnimationPlayer") as AnimationPlayer
 	if anim_player == null:
@@ -427,23 +449,20 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# there can be part of a fix required to live in tracked project code
 	# and to survive the model being entirely absent. Enforced here instead,
 	# on whatever body actually attaches, every time, regardless of how (or
-	# whether) it was imported. idle and run are sustained, stand-or-run-
-	# forever clips that must repeat for as long as the state holds; jump is
-	# a discrete one-shot action and is deliberately left alone.
-	for looping_clip in [&"idle", &"run"]:
+	# whether) it was imported. idle/run/sneak/sneaking/ladder_stillness are
+	# all sustained, hold-or-repeat clips that must keep going for as long as
+	# the state holds; jump is a discrete one-shot action and is deliberately
+	# left alone.
+	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness"]:
 		_ensure_clip_loops(anim_player, looping_clip)
 
-	var idle_anim := AnimationNodeAnimation.new()
-	idle_anim.animation = &"idle"
-	var jump_anim := AnimationNodeAnimation.new()
-	jump_anim.animation = &"jump"
-	var run_anim := AnimationNodeAnimation.new()
-	run_anim.animation = &"run"
-
 	var state_machine := AnimationNodeStateMachine.new()
-	state_machine.add_node("idle", idle_anim)
-	state_machine.add_node("jump", jump_anim)
-	state_machine.add_node("run", run_anim)
+	for clip_name in _KNOWN_ANIMATION_CLIPS:
+		if not _body_has_clip(anim_player, clip_name):
+			continue
+		var clip_node := AnimationNodeAnimation.new()
+		clip_node.animation = clip_name
+		state_machine.add_node(String(clip_name), clip_node)
 
 	# advance_mode = ENABLED, not AUTO -- the same decision, and for the same
 	# reason, that used to be documented on this exact block in
@@ -453,15 +472,29 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# physics frame regardless of what CharacterAnimator asks for. ENABLED
 	# transitions never fire on their own; travel() calls from
 	# CharacterAnimator are the only thing that ever moves this graph.
-	var start_to_idle := AnimationNodeStateMachineTransition.new()
-	start_to_idle.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
-	state_machine.add_transition("Start", "idle", start_to_idle)
-	var idle_to_run := AnimationNodeStateMachineTransition.new()
-	idle_to_run.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
-	state_machine.add_transition("idle", "run", idle_to_run)
-	var run_to_end := AnimationNodeStateMachineTransition.new()
-	run_to_end.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
-	state_machine.add_transition("run", "End", run_to_end)
+	#
+	# Only idle/run get a transition edge at all, same as before this
+	# function started conditioning on clip availability -- and, same as
+	# before, none of the OTHER nodes (jump included) ever got one either:
+	# travel() does not require a transition edge to reach a node directly
+	# (verified: jump has never had one, on either side, and has always been
+	# reachable), so the newer clips (sneak/sneaking/ladder_stillness) need
+	# none for the same reason. Both edges are individually guarded on the
+	# node they touch actually existing -- add_transition() to a name that
+	# was never add_node()'d is exactly the kind of engine error this whole
+	# clip-availability scheme exists to avoid.
+	if state_machine.has_node("idle"):
+		var start_to_idle := AnimationNodeStateMachineTransition.new()
+		start_to_idle.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
+		state_machine.add_transition("Start", "idle", start_to_idle)
+		if state_machine.has_node("run"):
+			var idle_to_run := AnimationNodeStateMachineTransition.new()
+			idle_to_run.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
+			state_machine.add_transition("idle", "run", idle_to_run)
+	if state_machine.has_node("run"):
+		var run_to_end := AnimationNodeStateMachineTransition.new()
+		run_to_end.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
+		state_machine.add_transition("run", "End", run_to_end)
 
 	var anim_tree := AnimationTree.new()
 	anim_tree.name = "AnimationTree"
@@ -496,6 +529,16 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	animator.anim_tree = anim_tree
 	animator.player = self
 	_body_root().add_child(animator)
+
+## True when `anim_player` actually carries `clip_name`, in the DEFAULT ("")
+## library -- same lookup, and the same "only the default library, ever"
+## reasoning, as _ensure_clip_loops() below, so a clip that exists but sits
+## in some other, named library reads as absent here too, consistently.
+## This is the single source of truth _wire_body_animation() uses to decide
+## which nodes the AnimationTree's graph gets at all.
+func _body_has_clip(anim_player: AnimationPlayer, clip_name: StringName) -> bool:
+	var library := anim_player.get_animation_library("")
+	return library != null and library.has_animation(clip_name)
 
 ## Makes `clip_name` repeat by replacing this ONE AnimationPlayer's own
 ## DEFAULT ("") library with a deep-duplicated copy that has loop_mode
