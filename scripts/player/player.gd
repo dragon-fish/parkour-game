@@ -605,8 +605,18 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		if landing_impact >= 0.0:
 			camera_rig.punch_landing(landing_impact)
-		var crouched := state_machine.current_name == PlayerState.SLIDE \
-			or state_machine.current_name == PlayerState.CROUCH
+		# Read from the CAPSULE, not the state name: naming SLIDE and CROUCH
+		# here explicitly used to work only as long as those were the only two
+		# states that ever crouched the body, and silently stopped covering the
+		# camera the moment a slide decayed into Crouch while the two states
+		# disagreed about it (a bug in this exact spot -- see the JOB 2 report).
+		# The capsule height is the one thing both states ALREADY have to keep
+		# correct for collision to work at all, so reading it here instead makes
+		# the camera agree with whichever state is actually responsible by
+		# construction, and gets any FUTURE low state's camera cue right for
+		# free the moment it calls set_capsule_height(), with no matching edit
+		# needed here.
+		var crouched := current_capsule_height() < standing_height() - 0.01
 		camera_rig.set_crouch_amount(1.0 if crouched else 0.0)
 		camera_rig.set_wall_side(wall_side)
 		# Fed as a plain local-space Vector3, not a Node3D reference —
