@@ -2237,7 +2237,7 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 ## player holds backward the whole way, which is a correction, not a brake.
 ```
 
-`walking_move.gd` 与 `slide_move.gd` 的起跳分支加上确证的起跳前冲：
+**全部三个起跳点**都要加上确证的起跳前冲——`walking_move.gd`、`slide_move.gd`，以及 `falling_move.gd` 里 coyote time 的那一处（走下边缘后的宽限跳同样是一次真实起跳，漏掉它会让「站着跳有前冲、走下边缘跳没有」成为一个玩家察觉得到却无法解释的差异）：
 
 ```gdscript
 		# Source: 02 §2.4 `JumpAddXY = 100` uu/s. ⚠️ Inferred as an ADDITION
