@@ -97,6 +97,31 @@ func consume_landing() -> float:
 ## merely "usually work" -- see tests/test_body_attachment.gd.
 @export var body_scene: PackedScene
 
+## Per-model correction for the mount point under BodyRoot, ADDED ON TOP of
+## the automatic vertical placement body_mount_transform() derives from the
+## capsule (see its own comment) -- not a replacement for it. Defaults to
+## zero: a model authored with its own origin at its feet needs no
+## correction at all once the automatic placement lands those feet at the
+## capsule's bottom. A model whose own origin sits somewhere else (hips,
+## centre of mass, whatever the source rig used) can be nudged into place
+## here instead.
+##
+## Per-model, exactly like body_scene itself -- lives here, next to it, NOT
+## in MovementConfig. MovementConfig is the tuning panel's domain and is
+## about how the game FEELS; this is about which model is attached and how
+## it sits, a fact about the asset, not a feel value anyone would want to
+## dial while playing.
+@export var body_mount_offset: Vector3 = Vector3.ZERO
+
+## Per-model facing/orientation correction for the mount point, in degrees
+## about each local axis (same convention as Node3D.rotation_degrees).
+## Defaults to zero: most models are authored already facing -Z, matching
+## this project's own forward. A model exported facing the wrong way (or
+## lying on its side) can be corrected here rather than by re-exporting the
+## asset. Same per-model reasoning as body_mount_offset above -- lives on
+## Player, not MovementConfig.
+@export var body_mount_rotation_degrees: Vector3 = Vector3.ZERO
+
 ## The instance of body_scene actually attached under BodyRoot, or null if
 ## none. Exposed as a plain var (not just a BodyRoot child lookup) so tests
 ## and other systems can inspect what got attached without reaching into
@@ -145,6 +170,45 @@ var wall_side: int = 0
 
 func standing_height() -> float:
 	return _standing_height
+
+## Live height of the collision capsule right now — shrunk while Slide or
+## Crouch (or any future state that calls set_capsule_height()) is active,
+## the standing height otherwise. Read fresh via $CollisionShape3D rather
+## than cached, mirroring set_capsule_height()'s own reasoning below: this
+## can run before setup() has necessarily duplicated the capsule into a
+## per-instance copy. The single source of truth both body_mount_transform()
+## (the body's feet-alignment, read once at attach time before any resize
+## has happened) and _physics_process()'s camera crouch cue (read every
+## tick) share, so a future low state needs nothing more than calling
+## set_capsule_height() to get both right for free — see
+## _physics_process()'s own comment on the camera cue.
+func current_capsule_height() -> float:
+	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node == null:
+		return 0.0
+	var capsule := shape_node.shape as CapsuleShape3D
+	if capsule == null:
+		return 0.0
+	return capsule.height
+
+## The local Transform3D the visible body sits at under BodyRoot: vertical
+## placement derived from current_capsule_height() -- never hardcoded -- so
+## a feet-origin model's feet land exactly at the capsule's bottom, and this
+## stays correct if the capsule is ever resized in the editor or the
+## generator. Read (and applied) exactly once, at attach time --
+## _attach_body() runs from _ready(), before any state has had a chance to
+## shrink the capsule for a slide or a crouch -- so this always captures the
+## STANDING height, matching how the body's own crouch already reads
+## (through its animation, not by physically lowering the mount point).
+## body_mount_offset/body_mount_rotation_degrees add whatever per-model
+## correction is still needed on top of that automatic placement. Shared by
+## _attach_body() (the real runtime attach) and BodyRoot's editor-only
+## preview (see body_root.gd), so what the owner eyeballs in the editor is
+## exactly what shows up at runtime.
+func body_mount_transform() -> Transform3D:
+	var origin := Vector3(0.0, -current_capsule_height() * 0.5, 0.0) + body_mount_offset
+	var basis := Basis.from_euler(body_mount_rotation_degrees * (PI / 180.0))
+	return Transform3D(basis, origin)
 
 ## True when the standing-size capsule fits where the body currently is.
 ## Tests that build a Player by hand have no probe node, so absence means yes.
@@ -332,6 +396,7 @@ func _attach_body(scene: PackedScene) -> void:
 		return
 	body = instance as Node3D
 	body_root.add_child(body)
+	body.transform = body_mount_transform()
 	_wire_body_animation(body)
 	head_node = _find_head_node(body)
 

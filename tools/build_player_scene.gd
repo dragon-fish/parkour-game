@@ -70,6 +70,15 @@ func _run() -> void:
 	# generator or its output.
 	var body_root := Node3D.new()
 	body_root.name = "BodyRoot"
+	# body_root.gd is an editor-only @tool script: it previews body_scene (and
+	# body_mount_offset/body_mount_rotation_degrees) live in the editor so an
+	# owner can actually SEE and align a model, without pulling any of
+	# Player's own runtime logic into @tool execution -- see its own file
+	# header. It is a strict no-op everywhere Engine.is_editor_hint() is
+	# false, which covers both a real running game and this generator's own
+	# headless run, so attaching it here changes nothing about player.tscn's
+	# runtime behaviour.
+	body_root.set_script(load("res://scripts/player/body_root.gd"))
 	player.add_child(body_root)
 	body_root.owner = player
 
