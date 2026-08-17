@@ -3591,46 +3591,64 @@ Expected: FAIL —— `SpeedVaultConfig` 没有 `variants` / `pick_variant` / `s
 ## ❓ the original's own precedence rule needs bytecode to recover, so the
 ## high-momentum variants are listed ahead of the low-momentum ones. That
 ## ordering is what makes "running fast unlocks the better move" true.
+##
+## TWO DIFFERENT SPEED CONCEPTS, deliberately separate fields -- 05 §5.7 ②
+## reads them as different things and conflating them makes the table
+## unsatisfiable:
+##   entry_speed_min / entry_speed_max  ENTRY GATE. Which variant this
+##       approach is allowed to trigger. `stepuprightleg88` is gated by
+##       MaxMomentum = 200 (an UPPER bound: walk up to it and you climb),
+##       `vaultOnto`/`vaultOver` by ClampSpeedMin = 400 (a LOWER bound: run
+##       at it and you speed-vault).
+##   clamp_speed_min / clamp_speed_max  OUTPUT CLAMP. What the move does to
+##       your speed once it is running. This is where the high variants'
+##       "clamped to 200-400" punishment lives.
 @export var variants: Array[Dictionary] = [
 	{
 		"name": "vault_over", "min_height": 0.64, "max_height": 1.48,
 		"vault_onto": false, "min_speed_z": 0.0, "max_speed_z": 100.0,
-		"clamp_speed_min": 4.0, "clamp_speed_max": 7.2, "max_momentum": INF,
+		"entry_speed_min": 4.0, "entry_speed_max": INF,
+		"clamp_speed_min": 0.0, "clamp_speed_max": 7.2,
 		"speed_addition": 0.8, "duration": 0.65, "max_distance_time": 0.4,
 		"is_stringable": true, "reset_camera": false, "ledge_offset_z": 0.25,
 	},
 	{
 		"name": "vault_onto", "min_height": 0.64, "max_height": 1.48,
 		"vault_onto": true, "min_speed_z": 0.0, "max_speed_z": 100.0,
-		"clamp_speed_min": 4.0, "clamp_speed_max": 7.2, "max_momentum": INF,
+		"entry_speed_min": 4.0, "entry_speed_max": INF,
+		"clamp_speed_min": 0.0, "clamp_speed_max": 7.2,
 		"speed_addition": 0.8, "duration": 0.65, "max_distance_time": 0.4,
 		"is_stringable": true, "reset_camera": false, "ledge_offset_z": 0.25,
 	},
 	{
 		"name": "vault_over_high", "min_height": 1.45, "max_height": 1.92,
 		"vault_onto": false, "min_speed_z": 0.5, "max_speed_z": 100.0,
-		"clamp_speed_min": 2.0, "clamp_speed_max": 4.0, "max_momentum": INF,
+		"entry_speed_min": 0.0, "entry_speed_max": INF,
+		"clamp_speed_min": 2.0, "clamp_speed_max": 4.0,
 		"speed_addition": 0.0, "duration": 1.03, "max_distance_time": 0.4,
 		"is_stringable": false, "reset_camera": true, "ledge_offset_z": 0.05,
 	},
 	{
 		"name": "vault_onto_high", "min_height": 1.45, "max_height": 1.92,
 		"vault_onto": true, "min_speed_z": 0.5, "max_speed_z": 100.0,
-		"clamp_speed_min": 2.0, "clamp_speed_max": 4.0, "max_momentum": INF,
+		"entry_speed_min": 0.0, "entry_speed_max": INF,
+		"clamp_speed_min": 2.0, "clamp_speed_max": 4.0,
 		"speed_addition": 0.0, "duration": 1.17, "max_distance_time": 0.4,
 		"is_stringable": false, "reset_camera": true, "ledge_offset_z": 0.35,
 	},
 	{
 		"name": "step_up_right_leg_88", "min_height": 0.48, "max_height": 1.48,
 		"vault_onto": true, "min_speed_z": 0.0, "max_speed_z": 7.0,
-		"clamp_speed_min": 2.0, "clamp_speed_max": 7.0, "max_momentum": 2.0,
+		"entry_speed_min": 0.0, "entry_speed_max": 2.0,
+		"clamp_speed_min": 0.0, "clamp_speed_max": 7.0,
 		"speed_addition": 0.0, "duration": 0.65, "max_distance_time": 0.4,
 		"is_stringable": false, "reset_camera": false, "ledge_offset_z": 0.6,
 	},
 	{
 		"name": "auto_step_up_right_leg", "min_height": 0.0, "max_height": 0.48,
 		"vault_onto": true, "min_speed_z": -6.0, "max_speed_z": 0.0,
-		"clamp_speed_min": 1.0, "clamp_speed_max": 3.0, "max_momentum": INF,
+		"entry_speed_min": 1.0, "entry_speed_max": 3.0,
+		"clamp_speed_min": 0.0, "clamp_speed_max": 3.0,
 		"speed_addition": 0.0, "duration": 0.50, "max_distance_time": 0.2,
 		"is_stringable": false, "reset_camera": false, "ledge_offset_z": 0.9,
 	},
@@ -3644,13 +3662,17 @@ func pick_variant(height: float, vault_over: bool, speed_z: float, speed_xy: flo
 	for v in variants:
 		if height < v["min_height"] or height > v["max_height"]:
 			continue
-		if v["vault_onto"] == vault_over:
+		# An OVER variant needs somewhere to land on the far side; an ONTO
+		# variant is always admissible, because a thin obstacle can be
+		# climbed onto just as well as crossed. bVaultOnto describes what the
+		# ANIMATION does, not what the geometry forbids -- reading it as a
+		# two-way exclusive leaves a thin obstacle approached slowly with no
+		# match at all.
+		if not v["vault_onto"] and not vault_over:
 			continue
 		if speed_z < v["min_speed_z"] or speed_z > v["max_speed_z"]:
 			continue
-		if speed_xy < v["clamp_speed_min"]:
-			continue
-		if speed_xy > v["max_momentum"]:
+		if speed_xy < v["entry_speed_min"] or speed_xy > v["entry_speed_max"]:
 			continue
 		return v
 	return {}
@@ -3696,7 +3718,7 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 	# it is the whole reason the original's obstacles read as opportunities
 	# rather than as taxes.
 	var exit_speed: float = clampf(entry_speed + variant["speed_addition"], \
-		0.0, variant["clamp_speed_max"])
+		variant["clamp_speed_min"], variant["clamp_speed_max"])
 ```
 
 - [ ] **Step 5: 更新关卡几何到甜区**
