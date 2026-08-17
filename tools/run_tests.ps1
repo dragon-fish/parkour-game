@@ -63,6 +63,10 @@ $errorPattern = '^(SCRIPT ERROR|USER ERROR|ERROR):'
 # that test passing. Matched on the invariant's own message text (which both
 # the assert and the push_error carry), not on a file or state name, so a real
 # state forgetting the call anywhere else still fails the run.
+# NOTE: both entries below are DORMANT as of the 1:1 movement rebuild -- the
+# two tests that trigger them are archived under tests/legacy/. They are kept
+# because MoveManager preserves both invariants verbatim (same message text),
+# so the rewritten tests will need them again. Do not prune.
 $allowlist = @(
     'Assertion failed: transition to unknown state: Nonexistent',
     'state Silent did not declare grounded-ness'
