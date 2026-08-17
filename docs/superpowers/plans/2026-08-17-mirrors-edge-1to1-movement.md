@@ -163,7 +163,7 @@ func test_the_physics_step_helper_still_advances_frames() -> void:
 
 Run: `pwsh -File tools/run_tests.ps1`
 
-Expected: 退出码 0。输出里出现 `test_harness_alive.gd   2 test(s)`，总计 `checks: 3   failures: 0`，且**没有任何** legacy 测试文件出现在输出中，也没有 `SCRIPT ERROR:` 行。
+Expected: 退出码 0。输出里出现 `test_harness_alive.gd   2 test(s)`，总计 `checks: 2   failures: 0`（两个测试方法各一个 `check()`），且**没有任何** legacy 测试文件出现在输出中，也没有 `SCRIPT ERROR:` 行。
 
 - [ ] **Step 6: 记下 run_tests.ps1 的两条 allowlist 现在处于休眠状态**
 
