@@ -2616,7 +2616,23 @@ static func _compose(pawn: PawnConfig, move_modifier: float, scale: float) -> fl
 
 - [ ] **Step 4: 让走路用上它**
 
-`player.ground_accelerate()` 的刹车分支改为向 `Friction` 要值。签名加一个坡度参数，调用方 `walking_move.gd` / `crouch_move.gd` 传当前地面的下坡分量（`-player.get_floor_normal().y` 的方式与 `SlideMove._slope_direction()` 一致；无地面时传 0）：
+`player.ground_accelerate()` 的刹车分支改为向 `Friction` 要值。签名加一个坡度参数，调用方 `walking_move.gd` / `crouch_move.gd` 传当前**行进方向**的下坡分量。
+
+⚠️ **不要用 `-player.get_floor_normal().y`**——那个式子在平地上恒等于 −1（平地法线是 `(0,1,0)`），会被读成「永远在爬最陡的上坡」，而且完全不含行进方向，上坡下坡得出同一个值。正确做法是把水平行进方向**投影到地面平面**再取归一化后的 −y，与 `SlideMove._slope_direction()` 同一套几何：
+
+```gdscript
+## +1 straight down the fall line, -1 straight up it, 0 on the flat.
+func ground_grade(direction: Vector3) -> float:
+	if not grounded or direction == Vector3.ZERO:
+		return 0.0
+	var normal: Vector3 = get_floor_normal()
+	if normal.length_squared() < 0.0001:
+		return 0.0
+	var projected := direction - normal * direction.dot(normal)
+	if projected.length_squared() < 0.0001:
+		return 0.0
+	return -projected.normalized().y
+```
 
 ```gdscript
 ## Ground movement: converge on the target velocity, and brake when idle.
