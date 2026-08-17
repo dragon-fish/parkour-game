@@ -41,3 +41,7 @@ assets/models/大正女仆酒狐.gltf.import
 assets/models/大正女仆酒狐_0.png
 assets/models/大正女仆酒狐_0.png.import
 scenes/player/whine_fox_player_nohead.tscn
+scenes/player/wine_fox_player_nohead.tscn
+scenes/player/player_wine_fox.tscn
+# The owner's whitebox playground, which instances the model above.
+scenes/debug_levels/
