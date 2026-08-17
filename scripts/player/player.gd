@@ -106,6 +106,11 @@ var fall_tracker: FallTracker
 ## field is now only the curve's own upper bound.
 var speed_energy: SpeedEnergy
 
+## Last tick's wish direction, for charging heading changes. Zero means "no
+## input last tick", which is deliberately NOT a heading -- see
+## _charge_turn().
+var _last_wish_dir: Vector3 = Vector3.ZERO
+
 func landing_tier(fall_height: float) -> int:
 	var pawn := config.pawn
 	if fall_height < pawn.skill_roll_landing_height:
@@ -410,6 +415,7 @@ func reset_state() -> void:
 		fall_tracker.reset()
 	if speed_energy != null:
 		speed_energy.reset()
+	_last_wish_dir = Vector3.ZERO
 	# Same reasoning as the ledge cooldown above: wall cooldowns left over
 	# from the previous life must not withhold a fresh life's first attach.
 	_recent_walls.clear()
@@ -992,13 +998,19 @@ func _energy_mode(input: MoveInput) -> int:
 
 ## Energy accrues only while GROUNDED, actually asking to move, and actually
 ## travelling near the ceiling that energy has already bought. Held (neither
-## banked nor bled) while airborne: 10.1 mechanic 2 is explicit that speed
-## earned before take-off is carried across the jump intact, and bleeding the
-## energy that BOUGHT that speed mid-flight would contradict it.
+## banked, bled, nor charged for turning) while airborne: 10.1 mechanic 2 is
+## explicit that speed earned before take-off is carried across the jump
+## intact, and bleeding the energy that BOUGHT that speed mid-flight would
+## contradict it. Turning while airborne is likewise free -- air_control is
+## 0.025, so there is barely any turning to charge for, and charging for it
+## would double-punish a jump the player is already committed to.
 func _update_speed_energy(delta: float, input: MoveInput) -> void:
-	if not grounded:
-		return
 	var wish := wish_direction(input)
+	if not grounded:
+		# Neither banked, bled, nor charged for turning while airborne.
+		_last_wish_dir = wish
+		return
+	_charge_turn(wish)
 	if wish == Vector3.ZERO:
 		speed_energy.decay(delta)
 		return
@@ -1009,6 +1021,28 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 		# geometry, or still climbing toward a ceiling already paid for.
 		# Neither banks anything; neither is a reason to bleed, either.
 		pass
+
+## Turning is a continuous tax with no free allowance (10.1 mechanic 3): the
+## research searched for a "costs nothing below N degrees" parameter and
+## found none anywhere in the game, which is what forces players to plan a
+## line instead of improvising one.
+##
+## Charged on the WISH direction, not the camera yaw and not the velocity
+## direction. Not the camera, because turning your head to read the route
+## ahead should be free -- it is turning the RUN that costs. Not the velocity
+## either, because accel_rate 61.44 makes the velocity lag the intent, which
+## would smear the charge across the frames after the decision instead of
+## billing the decision itself.
+func _charge_turn(wish: Vector3) -> void:
+	if wish == Vector3.ZERO or _last_wish_dir == Vector3.ZERO:
+		# Nothing to compare against. A momentary key release passes through
+		# zero, and billing that transition would charge for letting go.
+		_last_wish_dir = wish
+		return
+	var radians: float = absf(_last_wish_dir.signed_angle_to(wish, Vector3.UP))
+	if radians > 0.0:
+		speed_energy.spend_turn(radians)
+	_last_wish_dir = wish
 
 ## Ground movement: converge on the target velocity, and brake when idle.
 func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> void:
