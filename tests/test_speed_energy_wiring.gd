@@ -92,3 +92,98 @@ func test_energy_does_not_accumulate_while_shoved_against_a_wall() -> void:
 	wall.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_energy_survives_a_jump_intact() -> void:
+	# The headline claim of the airborne design (10.1 mechanic 2): speed
+	# earned before take-off carries across the flight whole -- this is WHY
+	# _update_speed_energy() returns early when not grounded. Pin it with a
+	# driven-state assertion instead of resting entirely on that early return.
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+
+	# A MID-curve level, not a full budget: a bug that let energy either
+	# accumulate OR decay while airborne would show either direction.
+	input.state.move = Vector2(0.0, 1.0)
+	for i in 60:
+		await step(1)
+	var banked: float = player.speed_energy.energy
+	var cap_before: float = player.speed_cap()
+	check_greater(banked, 0.1, "banked no energy before the jump -- test setup is wrong")
+	var ceiling_energy: float = player.config.pawn.speed_curve[player.config.pawn.speed_curve.size() - 1].x
+	check(banked < ceiling_energy, "banked a full budget -- test setup is wrong, this must be a MID-curve level")
+
+	input.press_jump()
+	await step(1)
+	check(player.move_manager.current_name == Move.FALLING, "the jump did not leave the ground")
+
+	var saw_airborne := false
+	var last_airborne_energy := banked
+	for i in 200:
+		await step(1)
+		if player.move_manager.current_name != Move.FALLING:
+			break
+		saw_airborne = true
+		check_approx(player.speed_energy.energy, banked, 0.0001, "energy moved while airborne")
+		check_approx(player.speed_cap(), cap_before, 0.0001, "speed_cap() moved while airborne")
+		last_airborne_energy = player.speed_energy.energy
+	check(saw_airborne, "never observed an airborne tick -- test setup is wrong")
+	check_approx(last_airborne_energy, banked, 0.0001, "energy was not held intact across the whole flight")
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_energy_survives_a_coyote_jump_intact() -> void:
+	# Same invariant as the test above, exercised through the THIRD take-off
+	# site -- FallingMove's own consume_jump() branch (the coyote-time jump),
+	# which this task's own review found was missing jump_add_xy. Covered
+	# here too, so the newly-wired site does not stay untested the way it
+	# stayed unwired -- and opportunistically checks that the boost actually
+	# lands, since that is exactly the code this test exists to exercise.
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+
+	input.state.move = Vector2(0.0, 1.0)
+	for i in 60:
+		await step(1)
+	var banked: float = player.speed_energy.energy
+	check_greater(banked, 0.1, "banked no energy before the drop -- test setup is wrong")
+
+	# Simulate walking off a ledge (no jump key involved yet): teleport clear
+	# of the floor, the same trick test_falling_move_integration.gd uses.
+	player.global_position.y += 1.0
+	await step(1)
+	check(player.move_manager.current_name == Move.FALLING, \
+		"teleporting up did not send the player airborne -- test setup is wrong")
+	var speed_before_takeoff: float = player.horizontal_speed()
+
+	# Press jump WELL WITHIN the coyote window (config.pawn.coyote_time =
+	# 0.12 s, ~7 ticks at this one tick in) so FallingMove's own
+	# consume_jump() branch fires, not WalkingMove's.
+	input.press_jump()
+	await step(1)
+	var expected_vy: float = player.config.pawn.base_jump_z - player.config.pawn.gravity / 60.0
+	check_approx(player.velocity.y, expected_vy, 0.05, \
+		"velocity.y does not show a fresh coyote-jump impulse -- did the branch actually fire?")
+	check_greater(player.horizontal_speed(), speed_before_takeoff, \
+		"jump_add_xy was not applied at the coyote-jump site")
+
+	var saw_airborne := false
+	var last_airborne_energy := banked
+	for i in 200:
+		await step(1)
+		if player.move_manager.current_name != Move.FALLING:
+			break
+		saw_airborne = true
+		check_approx(player.speed_energy.energy, banked, 0.0001, "energy moved while airborne after a coyote jump")
+		last_airborne_energy = player.speed_energy.energy
+	check(saw_airborne, "never observed an airborne tick -- test setup is wrong")
+	check_approx(last_airborne_energy, banked, 0.0001, "energy was not held intact across a coyote-jump flight")
+	TestWorld.teardown(world)
+	await step(1)
