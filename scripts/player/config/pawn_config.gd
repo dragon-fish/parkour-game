@@ -120,6 +120,33 @@ extends Resource
 @export var floor_snap_speed: float = 2.0
 
 @export_group("Speed energy")
+## Source: 02 §2.1 -- the original's InterpCurveFloat carries an
+## interpolation mode alongside its knots; CIM_Linear is the value actually
+## set on SpeedCurve_LightWeapon. ✅ LINEAR reproduces that exactly. SMOOTH
+## (see speed_curve_smooth_fit) is a project-added opt-in feel variant: since
+## accel_rate is far larger than any segment's slope, the curve's slope IS
+## the felt acceleration, so the piecewise LINEAR form steps it
+## 10.0 -> 2.0 -> 0.52 -> 0.20 m/s^2 at three instants. Whether that reads as
+## a gear change is an empirical question, so it is a switch, not an
+## argument -- 0 = LINEAR, 1 = SMOOTH.
+@export_enum("LINEAR", "SMOOTH") var speed_curve_interp_mode: int = 0
+## (A, a, B, b) of v(E) = A*(1 - e^(-E/a)) + B*(1 - e^(-E/b)), the SMOOTH
+## mode's curve. Project-added, not from the original -- no ✅/⚠️/❓ marker
+## applies to a value that has no source uu. Fitted OFFLINE to the five
+## confirmed knots above with scipy.optimize.curve_fit; measured residual at
+## every knot is under 1e-4, i.e. this passes through all five confirmed
+## points and only differs BETWEEN them -- exactly the region the source data
+## never constrained. Peak divergence from LINEAR is +0.76 m/s at E = 0.17
+## (the opening 0.4 s is noticeably punchier); the sum A + B = 7.556
+## overshoots ground_speed, so SpeedEnergy.cap() clamps.
+##
+## IF THE KNOTS ABOVE ARE EVER EDITED, THESE MUST BE REFITTED:
+##   import numpy as np; from scipy.optimize import curve_fit
+##   t = np.array([0,.4,1,3.5,7.]); v = np.array([0,4.,5.2,6.5,7.2])
+##   f = lambda t,A,a,B,b: A*(1-np.exp(-t/a)) + B*(1-np.exp(-t/b))
+##   print(curve_fit(f, t, v, p0=[4,.3,3,3.], maxfev=200000)[0])
+## tests/test_speed_energy.gd's knot test is the guard against forgetting.
+@export var speed_curve_smooth_fit: Vector4 = Vector4(4.4222, 0.23199, 3.1335, 3.2169)
 ## Source: 02 §2.1 `SpeedCurve_LightWeapon`, an InterpCurveFloat with
 ## interpolation mode CIM_Linear. ✅ X is speed energy in seconds, Y is the
 ## ground speed ceiling. Held as the five confirmed knots rather than a
@@ -154,8 +181,9 @@ extends Resource
 ## RECOVERABLE from the binary. The original value is recorded here in the
 ## comment and deliberately NOT used: this project calibrates the knob to a
 ## stated behaviour instead -- a full 180 degree reversal (pi radians) spends
-## the entire 7.0 energy budget, hence 7.0 / pi = 2.23 energy per radian.
-@export var speed_turn_deceleration_factor: float = 2.23
+## the entire 7.0 energy budget, hence energy ceiling / PI = 7.0 / pi =
+## 2.2282 energy per radian, exact rather than the earlier 2.23 rounding.
+@export var speed_turn_deceleration_factor: float = 2.2282
 ## PROJECT-ADDED GUARD, no counterpart in the original. Energy only accrues
 ## while actually travelling at this fraction of the current cap. Without it,
 ## holding the walk modifier for 7 seconds -- or shoving into a wall for 7
