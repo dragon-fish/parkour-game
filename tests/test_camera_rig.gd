@@ -284,6 +284,116 @@ func test_head_follow_at_zero_strength_matches_no_body_exactly() -> void:
 	rig.queue_free()
 	await step(1)
 
+## The regression this guards: update_effects() used to hard-reset only
+## position.Y fresh each frame (via the eye_height re-apply) while X/Z were
+## never reset, so `position = position.lerp(head, strength)` kept reading
+## its OWN previous output back as input on those two axes. That is an
+## exponential approach -- position_n = head + (position_0 - head) * (1 -
+## strength)^n -- which converges to within millimetres of the head in
+## roughly thirty frames REGARDLESS of how small `strength` is; the owner's
+## bug report measured exactly this (Z landing 0.005m from the head with
+## strength 0.15). A correct fix rebuilds the base position from scratch every
+## frame on every axis, so the blend must land on the SAME fractional offset
+## on frame 1 and hold there through frame 300, never drifting closer to the
+## head. Re-introducing the accumulating form (`position = position.lerp(...)`
+## with no fresh base) makes this fail at the final per-frame check, not at
+## the first, since a single frame's lerp from a fresh start is
+## indistinguishable from a single frame of the accumulating form -- the bug
+## only shows up once there is a "previous frame" to accumulate from.
+func test_head_follow_settles_at_the_configured_fraction_and_does_not_drift_toward_the_head() -> void:
+	var cfg := MovementConfig.new()
+	var strength := 0.15
+	cfg.camera_head_follow_strength = strength
+	var rig := _make_rig()
+	await step(1)
+	rig.setup(cfg)
+
+	# Off in every axis, as in the other head-follow tests, so a bug confined
+	# to one axis (e.g. only X/Z accumulate, Y stays correct because of its
+	# own separate reset) cannot hide behind an axis-aligned head position.
+	var head := Vector3(0.3, 1.1, -0.2)
+	rig.set_head_position(head)
+
+	var baseline := Vector3(0.0, cfg.eye_height, 0.0)
+	var expected: Vector3 = baseline + (head - baseline) * strength
+
+	for i in 300:
+		rig.update_effects(TICK, 0.0, true)
+		check(rig.position.distance_to(expected) < 0.001, \
+			"frame %d: expected the camera to hold at the %f fraction toward the head (%s), got %s -- it drifted toward the head instead of staying at a fixed blend" \
+				% [i, strength, expected, rig.position])
+
+	# Belt and braces against the specific failure mode this test names: an
+	# exponential approach would have the camera essentially AT the head by
+	# now (the owner's own measurement put it 5mm away), so also assert it
+	# is nowhere close.
+	check_greater(rig.position.distance_to(head), 0.3, \
+		"camera ended up close to the head instead of stopping at the configured fraction, got %s vs head %s" % [rig.position, head])
+
+	rig.queue_free()
+	await step(1)
+
+## Same accumulation bug, viewed from the strength=0.0 side: a rig that keeps
+## _has_head true across many frames must track a completely independent
+## "never had a head" rig's `position` bit-for-bit on EVERY frame, not just
+## once at the end. This exercises the fix while bob/dip/crouch are also live
+## (unlike the simpler single-axis zero-strength test above), so a fix that
+## only rebuilds base_position.y correctly (mirroring the pre-existing
+## eye_height reset) but forgets X/Z would still show 0.0 * anything = 0.0
+## here and NOT be caught -- this test instead exists to pin the composition
+## with the other effects now that they all funnel through base_position
+## rather than position directly.
+func test_head_follow_zero_strength_tracks_the_no_head_camera_every_frame() -> void:
+	var cfg := MovementConfig.new()
+	cfg.camera_head_follow_strength = 0.0
+	var with_head := _make_rig()
+	var without_head := _make_rig()
+	await step(1)
+	with_head.setup(cfg)
+	without_head.setup(cfg)
+	with_head.set_head_position(Vector3(5.0, -5.0, 5.0))
+
+	for i in 90:
+		var speed := 6.0 if i < 60 else 0.0
+		var grounded := i < 40 or i >= 55
+		if i == 45:
+			with_head.punch_landing(cfg.land_dip_speed_ref)
+			without_head.punch_landing(cfg.land_dip_speed_ref)
+		with_head.set_crouch_amount(0.5 if i > 70 else 0.0)
+		without_head.set_crouch_amount(0.5 if i > 70 else 0.0)
+		with_head.update_effects(TICK, speed, grounded)
+		without_head.update_effects(TICK, speed, grounded)
+		check(with_head.position == without_head.position, \
+			"frame %d: strength 0.0 with a head attached must match a rig with no head bit-for-bit, got %s vs %s" \
+				% [i, with_head.position, without_head.position])
+
+	with_head.queue_free()
+	without_head.queue_free()
+	await step(1)
+
+## Full strength (1.0) must reach the head exactly, every frame, even while a
+## moving head position composes with bob/dip/crouch -- not just at a single
+## static sample the way the parametrized strength test above checks it.
+func test_head_follow_at_full_strength_tracks_a_moving_head_exactly() -> void:
+	var cfg := MovementConfig.new()
+	cfg.camera_head_follow_strength = 1.0
+	var rig := _make_rig()
+	await step(1)
+	rig.setup(cfg)
+
+	for i in 90:
+		var head := Vector3(sin(float(i) * 0.1) * 0.2, 1.0 + float(i) * 0.001, cos(float(i) * 0.1) * 0.2)
+		rig.set_head_position(head)
+		var speed := 6.0 if i < 60 else 0.0
+		var grounded := i < 40 or i >= 55
+		rig.set_crouch_amount(0.5 if i > 70 else 0.0)
+		rig.update_effects(TICK, speed, grounded)
+		check(rig.position == head, \
+			"frame %d: strength 1.0 must reach the head exactly, got %s vs head %s" % [i, rig.position, head])
+
+	rig.queue_free()
+	await step(1)
+
 ## Never having called set_head_position() at all -- the "no body attached,
 ## or Player never found a head/neck node" case -- must degrade the same way
 ## a zero strength does, not error and not silently apply some stale/default

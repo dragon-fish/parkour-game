@@ -94,10 +94,21 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	if _config == null or camera == null:
 		return
 
-	# Re-applied every frame (not just once in setup()) so dragging the F1
-	# panel's eye_height slider moves the view immediately, the same as every
-	# other camera value here.
-	position.y = _config.eye_height
+	# Where the rig would sit this frame with NO head-follow applied,
+	# recomputed from scratch every call rather than read back from last
+	# frame's `position`. This is what makes camera_head_follow_strength mean
+	# the same thing on every axis: previously only Y got a fresh base (via
+	# the eye_height re-apply below) while X/Z inherited whatever the PREVIOUS
+	# frame's lerp already blended them to, so the head-follow lerp at the
+	# bottom of this function was blending toward the head from an
+	# ever-more-converged starting point on X/Z -- an exponential approach to
+	# the head regardless of how small `strength` was, even though Y (reset
+	# fresh every frame) genuinely held at the configured fraction. Composing
+	# every other contribution below into `base_position` instead of `position`
+	# keeps that guarantee on all three axes: `position` itself is written
+	# exactly once, at the very end of this function.
+	var base_position := Vector3.ZERO
+	base_position.y = _config.eye_height
 
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.fov_speed_ref, 0.001), 0.0, 1.0)
 
@@ -117,36 +128,44 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	_dip = move_toward(_dip, 0.0, _config.land_dip_recover * delta)
 	camera.position.y = bob - _dip
 
-	# Tracked as an offset independent of position.y (mirroring _dip above)
-	# rather than lerping position.y toward a target directly: position.y is
-	# hard-set to the live eye_height a few lines up, every frame, so the F1
-	# panel's slider stays instant. Lerping position.y itself would get reset
-	# to eye_height before move_toward ever got a chance to build on the
-	# previous frame's progress, capping the visible drop at a single frame's
-	# worth of movement no matter how long the slide lasted. A persistent
-	# offset survives that reset and actually eases across crouch_lerp_speed.
+	# Tracked as an offset independent of base_position.y (mirroring _dip
+	# above) rather than lerping base_position.y toward a target directly:
+	# base_position.y is freshly set to the live eye_height a few lines up,
+	# every frame, so the F1 panel's slider stays instant. Lerping
+	# base_position.y itself would get reset to eye_height before move_toward
+	# ever got a chance to build on the previous frame's progress, capping the
+	# visible drop at a single frame's worth of movement no matter how long
+	# the slide lasted. A persistent offset (_crouch_offset, a plain float
+	# member that DOES survive frame to frame, unlike base_position) survives
+	# that reset and actually eases across crouch_lerp_speed.
 	var target_offset := _config.slide_camera_drop * _crouch_amount
 	_crouch_offset = move_toward(_crouch_offset, target_offset, _config.crouch_lerp_speed * delta)
-	position.y -= _crouch_offset
+	base_position.y -= _crouch_offset
 
 	# Blend the eye position toward the attached body's head/neck node, LAST
-	# among the position.* writes above -- lerp(t=0.0) returns `position`
-	# bit-for-bit (Vector3.lerp is exactly a + (b-a)*t, and any finite delta
-	# times 0.0 is exactly 0.0 in IEEE 754), which is what makes
-	# camera_head_follow_strength == 0.0 degrade to EXACTLY today's camera
-	# rather than merely close to it -- and _has_head being false (no body,
-	# or nothing in it matched _find_head_node()) skips this block entirely,
-	# the same guarantee. Deliberately no move_toward/easing layer of its
-	# own: the attached body's own AnimationPlayer already supplies whatever
-	# motion this tracks, and the strength dial is meant to scale that
-	# directly, not add a second lag on top of it. Clamped independently of
-	# whatever range the F1 panel's slider can reach (see
-	# MovementConfig.camera_head_follow_strength's own comment on why its
-	# range and this clamp can disagree) so a value pushed past 1.0 can never
-	# overshoot past the bone's own position.
+	# among the base_position.* writes above -- lerp(t=0.0) returns
+	# `base_position` bit-for-bit (Vector3.lerp is exactly a + (b-a)*t, and
+	# any finite delta times 0.0 is exactly 0.0 in IEEE 754), which is what
+	# makes camera_head_follow_strength == 0.0 degrade to EXACTLY today's
+	# camera rather than merely close to it -- and _has_head being false (no
+	# body, or nothing in it matched _find_head_node()) takes the plain
+	# `position = base_position` branch below, the same guarantee. Blending
+	# FROM base_position (recomputed above, this frame, from nothing) rather
+	# than from the previous frame's `position` is what keeps this a one-shot
+	# fraction instead of an exponential approach: `position` is read here
+	# only as the assignment target, never as an input. Deliberately no
+	# move_toward/easing layer of its own: the attached body's own
+	# AnimationPlayer already supplies whatever motion this tracks, and the
+	# strength dial is meant to scale that directly, not add a second lag on
+	# top of it. Clamped independently of whatever range the F1 panel's
+	# slider can reach (see MovementConfig.camera_head_follow_strength's own
+	# comment on why its range and this clamp can disagree) so a value pushed
+	# past 1.0 can never overshoot past the bone's own position.
 	if _has_head:
 		var strength := clampf(_config.camera_head_follow_strength, 0.0, 1.0)
-		position = position.lerp(_head_local_position, strength)
+		position = base_position.lerp(_head_local_position, strength)
+	else:
+		position = base_position
 
 	# rotation.z, unlike position.y above, is never hard-reset elsewhere in
 	# this function, so a plain move_toward accumulates correctly frame to
