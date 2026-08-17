@@ -8,10 +8,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Coyote time: Player.consume_jump() already gates on the timer, so a jump
 	# buffered just after walking off a ledge still fires here.
 	if player.consume_jump():
-		player.velocity.y = config.jump_velocity
+		player.velocity.y = config.pawn.base_jump_z
 
-	player.velocity.y -= config.gravity * delta
-	player.velocity.y = maxf(player.velocity.y, -config.terminal_velocity)
+	player.velocity.y -= config.pawn.gravity * delta
+	player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
 
 	# PRIORITY DECISION: wall running is checked BEFORE the ledge grab below,
 	# and wins whenever both are in reach at once. This is deliberate, not an
@@ -25,12 +25,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Grabbing a ledge is a RECOVERY from a misjudged jump -- something that
 	# happens to you. Wall running is a ROUTE the player deliberately chose by
 	# building speed and running alongside a wall; wall_min_speed already
-	# gates it on exactly that commitment (see MovementConfig's own note: wall
+	# gates it on exactly that commitment (see WallRunConfig's own note: wall
 	# running CARRIES speed, it does not create it). At speed beside a wall,
 	# the wall is what the player is asking for. See
 	# test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach in
 	# tests/test_wall_run.gd for the contested-geometry case this decides.
-	if player.probes != null and player.horizontal_speed() >= config.wall_min_speed:
+	if player.probes != null and player.horizontal_speed() >= config.wall_run.wall_min_speed:
 		var wall: Dictionary = player.probes.wall_query()
 		if wall["valid"] and player.can_attach_wall(wall["normal"]):
 			return WALL
@@ -65,15 +65,15 @@ func _apply_landing_cost(impact_speed: float, input: MoveInput) -> void:
 	# to share a default, but they are independent knobs. Reading the camera
 	# value here meant tuning how hard the view drops silently retuned how much
 	# momentum a landing costs.
-	var severity := clampf(impact_speed / maxf(config.land_cost_speed_ref, 0.001), 0.0, 1.0)
-	var rolled: bool = input.crouch_held and impact_speed >= config.roll_min_fall_speed
+	var severity := clampf(impact_speed / maxf(config.pawn.land_cost_speed_ref, 0.001), 0.0, 1.0)
+	var rolled: bool = input.crouch_held and impact_speed >= config.pawn.roll_min_fall_speed
 	player.last_landing_rolled = rolled
 
 	# Clamped to 1.0 so the invariant above holds for every reachable config.
 	# The tuning panel generates each slider's range as default * 3, which puts
 	# both keep ratios well past 1.0 — without this clamp, a slider drag could
 	# make landing a source of free speed.
-	var keep_at_full: float = minf(config.roll_speed_keep if rolled else config.land_speed_keep, 1.0)
+	var keep_at_full: float = minf(config.pawn.roll_speed_keep if rolled else config.pawn.land_speed_keep, 1.0)
 	var keep := lerpf(1.0, keep_at_full, severity)
 	player.velocity.x *= keep
 	player.velocity.z *= keep

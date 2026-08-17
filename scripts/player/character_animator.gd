@@ -81,7 +81,7 @@ func _first_available(candidates: Array[StringName]) -> StringName:
 func _target_animation() -> StringName:
 	match player.state_machine.current_name:
 		PlayerState.GROUND:
-			if player.horizontal_speed() > player.config.run_animation_speed_threshold:
+			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
 				return _first_available([&"run", &"idle"])
 			return _first_available([&"idle", &"run"])
 		PlayerState.AIR:
@@ -130,7 +130,7 @@ func _target_animation() -> StringName:
 			# crouch-only knob that could quietly drift out of sync with the
 			# ground one -- since a low profile does not change what counts as
 			# "moving".
-			if player.horizontal_speed() > player.config.run_animation_speed_threshold:
+			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
 				return _first_available([&"sneak", &"run", &"idle"])
 			return _first_available([&"sneaking", &"idle"])
 		_:

@@ -108,7 +108,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 	if _mantling:
 		if advance(delta):
-			player.velocity = _exit_direction * config.mantle_exit_speed
+			player.velocity = _exit_direction * config.grab.mantle_exit_speed
 			# Deliberately NOT declared grounded here -- see the note on
 			# enter() above, and VaultState.physics_update()'s matching note.
 			# The landing point is pinned to the probed ledge edge plus an
@@ -164,7 +164,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# EDGE, outside the platform -- and on the arena's LedgeMid it drops,
 		# slides back down the face and re-grabs: climb / fall / re-climb on
 		# every approach.
-		top += _exit_direction * config.mantle_forward_offset
-		begin(player.global_position, top, config.mantle_duration, config.mantle_arc_height)
+		top += _exit_direction * config.grab.mantle_forward_offset
+		begin(player.global_position, top, config.grab.mantle_duration, config.grab.mantle_arc_height)
 		_mantling = true
 	return KEEP

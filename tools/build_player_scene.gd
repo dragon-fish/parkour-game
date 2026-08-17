@@ -42,7 +42,7 @@ func _run() -> void:
 	# overwrite it with at runtime anyway. eye_height above the capsule centre
 	# puts the view near the top of a 1.8 m body without clipping through the
 	# collision shape; the F1 panel can tune it live from here.
-	rig.position = Vector3(0.0, MovementConfig.new().eye_height, 0.0)
+	rig.position = Vector3(0.0, MovementConfig.new().camera.eye_height, 0.0)
 	player.add_child(rig)
 	rig.owner = player
 

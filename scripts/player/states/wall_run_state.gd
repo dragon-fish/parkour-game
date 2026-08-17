@@ -41,10 +41,10 @@ func _query_wall() -> Dictionary:
 ## overshot the kick-time-only ceiling by nearly a metre). Both call sites
 ## must agree on the exact same number, so this is computed once, not copied.
 func _height_ceiling() -> float:
-	var jump_peak_height: float = (config.jump_velocity * config.jump_velocity) \
-		/ (2.0 * maxf(config.gravity, 0.001))
-	var wall_jump_peak_rise: float = (config.wall_jump_up * config.wall_jump_up) \
-		/ (2.0 * maxf(config.gravity, 0.001))
+	var jump_peak_height: float = (config.pawn.base_jump_z * config.pawn.base_jump_z) \
+		/ (2.0 * maxf(config.pawn.gravity, 0.001))
+	var wall_jump_peak_rise: float = (config.wallrun_jump.wall_jump_up * config.wallrun_jump.wall_jump_up) \
+		/ (2.0 * maxf(config.pawn.gravity, 0.001))
 	return player.ground_reference_y + jump_peak_height + wall_jump_peak_rise
 
 ## Recomputes _along from the CURRENT _normal and the player's CURRENT
@@ -193,9 +193,9 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		# arbitrary hard wall.
 		var height_ceiling: float = _height_ceiling()
 		var remaining_height: float = maxf(height_ceiling - player.global_position.y, 0.0)
-		var max_vy: float = sqrt(2.0 * maxf(config.gravity, 0.001) * remaining_height)
-		player.velocity.y = minf(config.wall_jump_up, max_vy)
-		player.velocity += _normal * config.wall_jump_push
+		var max_vy: float = sqrt(2.0 * maxf(config.pawn.gravity, 0.001) * remaining_height)
+		player.velocity.y = minf(config.wallrun_jump.wall_jump_up, max_vy)
+		player.velocity += _normal * config.wallrun_jump.wall_jump_push
 		player.move_and_slide()
 		# Declared even on this away-transitioning tick, mirroring
 		# GroundState's and SlideState's own jump branches: move_and_slide()
@@ -207,14 +207,14 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	var along_speed := horizontal.dot(_along)
-	if along_speed < config.wall_max_speed:
-		var add := minf(config.wall_accel * delta, config.wall_max_speed - along_speed)
+	if along_speed < config.wall_run.wall_max_speed:
+		var add := minf(config.wall_run.wall_accel * delta, config.wall_run.wall_max_speed - along_speed)
 		player.velocity += _along * add
 
 	# Weakened gravity plus a gentle pull into the wall so the body stays glued
 	# through small surface irregularities.
-	player.velocity.y -= config.gravity * config.wall_gravity_scale * delta
-	player.velocity -= _normal * config.wall_stick_force
+	player.velocity.y -= config.pawn.gravity * config.wall_run.wall_gravity_scale * delta
+	player.velocity -= _normal * config.wall_run.wall_stick_force
 
 	# SECOND enforcement point for the same climb bound the wall-jump branch
 	# above clamps at kick-time -- see _height_ceiling()'s own comment on why
@@ -243,11 +243,11 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 
 	if player.grounded:
 		return GROUND
-	if _elapsed >= config.wall_max_duration:
+	if _elapsed >= config.wall_run.wall_max_duration:
 		return AIR
 	# wall_exit_speed is measured as TOTAL horizontal speed (matching
 	# wall_min_speed's own measurement), not projected onto _along -- see
-	# MovementConfig's own note on this field.
-	if Vector2(player.velocity.x, player.velocity.z).length() < config.wall_exit_speed:
+	# WallRunConfig's own note on this field.
+	if Vector2(player.velocity.x, player.velocity.z).length() < config.wall_run.wall_exit_speed:
 		return AIR
 	return KEEP

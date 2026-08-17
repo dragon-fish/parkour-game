@@ -9,7 +9,7 @@ extends PlayerState
 # already solved for this exact spot.
 
 func enter(_previous: StringName) -> void:
-	player.set_capsule_height(config.crouch_capsule_height)
+	player.set_capsule_height(config.crouch.crouch_capsule_height)
 
 ## See SlideState.exit()'s own comment on why this is a REQUEST, not an
 ## unconditional restore: an exit that walks off a ledge (-> Air) must still
@@ -21,12 +21,12 @@ func exit() -> void:
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	var wish_dir: Vector3 = player.wish_direction(input)
-	var target_speed: float = config.ground_speed * config.crouch_speed_pct
+	var target_speed: float = config.pawn.ground_speed * config.crouch.speed_modifier
 	player.ground_accelerate(wish_dir, target_speed, delta)
 
 	# Same floor-snap bias as Ground/Slide, so a crouched walk does not
 	# flicker off gentle slopes or floor seams.
-	player.velocity.y = -config.floor_snap_speed
+	player.velocity.y = -config.pawn.floor_snap_speed
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
 

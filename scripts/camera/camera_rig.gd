@@ -34,9 +34,9 @@ var _has_head: bool = false
 
 func setup(cfg: MovementConfig) -> void:
 	_config = cfg
-	position.y = cfg.eye_height
+	position.y = cfg.camera.eye_height
 	if camera != null:
-		camera.fov = cfg.fov_base
+		camera.fov = cfg.camera.fov_base
 
 ## 0 = standing, 1 = fully crouched. Driven by Player each tick.
 func set_crouch_amount(amount: float) -> void:
@@ -85,9 +85,9 @@ func reset_state() -> void:
 func apply_look(look_delta: Vector2, body: Node3D) -> void:
 	if _config == null:
 		return
-	body.rotate_y(-look_delta.x * _config.mouse_sensitivity)
-	var limit := deg_to_rad(_config.pitch_limit_deg)
-	_pitch = clampf(_pitch - look_delta.y * _config.mouse_sensitivity, -limit, limit)
+	body.rotate_y(-look_delta.x * _config.camera.mouse_sensitivity)
+	var limit := deg_to_rad(_config.camera.pitch_limit_deg)
+	_pitch = clampf(_pitch - look_delta.y * _config.camera.mouse_sensitivity, -limit, limit)
 	rotation.x = _pitch
 
 func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> void:
@@ -108,24 +108,24 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# keeps that guarantee on all three axes: `position` itself is written
 	# exactly once, at the very end of this function.
 	var base_position := Vector3.ZERO
-	base_position.y = _config.eye_height
+	base_position.y = _config.camera.eye_height
 
-	var speed_ratio := clampf(horizontal_speed / maxf(_config.fov_speed_ref, 0.001), 0.0, 1.0)
+	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 
-	var target_fov := lerpf(_config.fov_base, _config.fov_max, speed_ratio)
-	camera.fov = lerpf(camera.fov, target_fov, clampf(_config.fov_lerp_speed * delta, 0.0, 1.0))
+	var target_fov := lerpf(_config.camera.fov_base, _config.camera.fov_max, speed_ratio)
+	camera.fov = lerpf(camera.fov, target_fov, clampf(_config.camera.fov_lerp_speed * delta, 0.0, 1.0))
 
 	var bob_target := 1.0 if grounded else 0.0
-	_bob_weight = move_toward(_bob_weight, bob_target, _config.bob_fade_speed * delta)
+	_bob_weight = move_toward(_bob_weight, bob_target, _config.camera.bob_fade_speed * delta)
 
 	if grounded:
-		_bob_phase += delta * _config.bob_frequency * horizontal_speed
+		_bob_phase += delta * _config.camera.bob_frequency * horizontal_speed
 	# The phase freezes while airborne, so the offset it produces here holds
 	# steady from the moment of leaving the ground; _bob_weight is what fades
 	# it toward zero instead of letting it vanish in a single frame.
-	var bob := sin(_bob_phase) * _config.bob_amplitude * speed_ratio * _bob_weight
+	var bob := sin(_bob_phase) * _config.camera.bob_amplitude * speed_ratio * _bob_weight
 
-	_dip = move_toward(_dip, 0.0, _config.land_dip_recover * delta)
+	_dip = move_toward(_dip, 0.0, _config.camera.land_dip_recover * delta)
 	camera.position.y = bob - _dip
 
 	# Tracked as an offset independent of base_position.y (mirroring _dip
@@ -138,8 +138,8 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# the slide lasted. A persistent offset (_crouch_offset, a plain float
 	# member that DOES survive frame to frame, unlike base_position) survives
 	# that reset and actually eases across crouch_lerp_speed.
-	var target_offset := _config.slide_camera_drop * _crouch_amount
-	_crouch_offset = move_toward(_crouch_offset, target_offset, _config.crouch_lerp_speed * delta)
+	var target_offset := _config.camera.slide_camera_drop * _crouch_amount
+	_crouch_offset = move_toward(_crouch_offset, target_offset, _config.camera.crouch_lerp_speed * delta)
 	base_position.y -= _crouch_offset
 
 	# Blend the eye position toward the attached body's head/neck node, LAST
@@ -158,11 +158,11 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# AnimationPlayer already supplies whatever motion this tracks, and the
 	# strength dial is meant to scale that directly, not add a second lag on
 	# top of it. Clamped independently of whatever range the F1 panel's
-	# slider can reach (see MovementConfig.camera_head_follow_strength's own
+	# slider can reach (see CameraConfig.camera_head_follow_strength's own
 	# comment on why its range and this clamp can disagree) so a value pushed
 	# past 1.0 can never overshoot past the bone's own position.
 	if _has_head:
-		var strength := clampf(_config.camera_head_follow_strength, 0.0, 1.0)
+		var strength := clampf(_config.camera.camera_head_follow_strength, 0.0, 1.0)
 		position = base_position.lerp(_head_local_position, strength)
 	else:
 		position = base_position
@@ -187,13 +187,13 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# test_the_camera_rolls_toward_the_wall_side pins this against the
 	# camera's own world-space up vector, not just "the two sides are
 	# opposite" (which an inverted-but-still-symmetric roll would also pass).
-	var target_roll := -deg_to_rad(_config.wall_camera_roll_deg) * float(_wall_side)
-	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.wall_camera_roll_speed) * delta)
+	var target_roll := -deg_to_rad(_config.camera.wall_camera_roll_deg) * float(_wall_side)
+	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.camera.wall_camera_roll_speed) * delta)
 	rotation.z = _roll
 
 ## Called on landing. `speed` is the downward speed at the moment of impact.
 func punch_landing(speed: float) -> void:
 	if _config == null:
 		return
-	var strength := clampf(speed / maxf(_config.land_dip_speed_ref, 0.001), 0.0, 1.0)
-	_dip = maxf(_dip, strength * _config.land_dip_max)
+	var strength := clampf(speed / maxf(_config.camera.land_dip_speed_ref, 0.001), 0.0, 1.0)
+	_dip = maxf(_dip, strength * _config.camera.land_dip_max)

@@ -37,14 +37,14 @@ func enter(_previous: StringName) -> void:
 		return
 
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	_exit_speed = horizontal.length() * config.vault_speed_keep
+	_exit_speed = horizontal.length() * config.speed_vault.vault_speed_keep
 	_exit_direction = horizontal.normalized() if horizontal.length_squared() > 0.0001 else -player.global_transform.basis.z
 
 	var top: Vector3 = query["top"]
-	var landing := top + _exit_direction * config.vault_exit_forward
+	var landing := top + _exit_direction * config.speed_vault.vault_exit_forward
 	landing.y = top.y + player.standing_height() * 0.5
 
-	begin(player.global_position, landing, config.vault_duration, config.vault_arc_height)
+	begin(player.global_position, landing, config.speed_vault.vault_duration, config.speed_vault.vault_arc_height)
 	player.velocity = Vector3.ZERO
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:

@@ -704,12 +704,12 @@ func _input(event: InputEvent) -> void:
 
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	if grounded:
-		_coyote_timer = config.coyote_time
+		_coyote_timer = config.pawn.coyote_time
 	else:
 		_coyote_timer = maxf(_coyote_timer - delta, 0.0)
 
 	if input.jump_pressed:
-		_jump_buffer_timer = config.jump_buffer_time
+		_jump_buffer_timer = config.pawn.jump_buffer_time
 	else:
 		_jump_buffer_timer = maxf(_jump_buffer_timer - delta, 0.0)
 
@@ -718,7 +718,7 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 	# version would re-arm every tick and let a slide re-enter the instant the
 	# previous one ended, which is the strobing this gate exists to prevent.
 	if input.crouch_pressed:
-		_crouch_buffer_timer = config.crouch_buffer_time
+		_crouch_buffer_timer = config.pawn.crouch_buffer_time
 	else:
 		_crouch_buffer_timer = maxf(_crouch_buffer_timer - delta, 0.0)
 
@@ -777,7 +777,7 @@ func consume_crouch() -> bool:
 ## Called by LedgeHangState when the player drops off a ledge (crouch), so
 ## can_grab_ledge() refuses to re-grab the very same ledge on the next tick.
 func start_ledge_cooldown() -> void:
-	_ledge_cooldown = config.ledge_regrab_cooldown
+	_ledge_cooldown = config.pawn.ledge_regrab_cooldown
 
 ## True once the post-release cooldown started by start_ledge_cooldown() has
 ## expired. AirState gates its ledge-grab check on this.
@@ -794,7 +794,7 @@ func can_grab_ledge() -> bool:
 func note_wall_detach(normal: Vector3) -> void:
 	if _recent_walls.size() >= MAX_RECENT_WALLS:
 		_recent_walls.pop_front()
-	_recent_walls.append({"normal": normal, "cooldown": config.wall_reattach_cooldown})
+	_recent_walls.append({"normal": normal, "cooldown": config.pawn.wall_reattach_cooldown})
 
 ## False while ANY recently-left wall is both still cooling down AND faces
 ## roughly the same way as the candidate. A genuinely different wall is always
@@ -804,7 +804,7 @@ func note_wall_detach(normal: Vector3) -> void:
 ## clearing the cooldown on the one actually being exploited.
 func can_attach_wall(normal: Vector3) -> bool:
 	for entry in _recent_walls:
-		if normal.dot(entry["normal"]) >= config.wall_same_normal_dot:
+		if normal.dot(entry["normal"]) >= config.pawn.wall_same_normal_dot:
 			return false
 	return true
 
@@ -848,9 +848,9 @@ func travel_speed() -> float:
 func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> void:
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	if wish_dir == Vector3.ZERO:
-		horizontal = horizontal.move_toward(Vector3.ZERO, config.ground_friction * delta)
+		horizontal = horizontal.move_toward(Vector3.ZERO, config.pawn.base_friction * delta)
 	else:
-		horizontal = horizontal.move_toward(wish_dir * target_speed, config.ground_accel * delta)
+		horizontal = horizontal.move_toward(wish_dir * target_speed, config.pawn.accel_rate * delta)
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 
@@ -858,15 +858,15 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> 
 ## ceiling measured along that direction. It never brakes, so momentum
 ## carried in from another state survives — P1's slide depends on this.
 ##
-## The ceiling is NOT a flat air_max_speed: it is
-## min(air_max_speed, max(ground_speed, speed_along_wish)). air_max_speed
-## itself (see its own comment in movement_config.gd -- ME's AirSpeed,
+## The ceiling is NOT a flat air_speed: it is
+## min(air_speed, max(ground_speed, speed_along_wish)). air_speed
+## itself (see its own comment in pawn_config.gd -- ME's AirSpeed,
 ## essentially uncapped) is deliberately too high to ever bind in practice;
 ## it exists so momentum carried in from elsewhere (a wall-run or slide boost
 ## exceeding ground_speed) is never reduced by air control, matching this
 ## function's own "never brakes" rule. ground_speed is the floor UNDER that:
 ## with air_accel now tiny (see its own comment), a long fall or a chain of
-## jumps has plenty of TIME to slowly climb toward air_max_speed even without
+## jumps has plenty of TIME to slowly climb toward air_speed even without
 ## any exploit-like input, which would let mere airtime manufacture speed no
 ## ground state could reach on its own -- exactly the invariant
 ## tests/test_landing.gd's test_a_landing_can_never_add_speed_however_the_
@@ -881,11 +881,11 @@ func air_accelerate(wish_dir: Vector3, delta: float) -> void:
 		return
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	var speed_along_wish := horizontal.dot(wish_dir)
-	var ceiling := minf(config.air_max_speed, maxf(config.ground_speed, speed_along_wish))
+	var ceiling := minf(config.pawn.air_speed, maxf(config.pawn.ground_speed, speed_along_wish))
 	var headroom := ceiling - speed_along_wish
 	if headroom <= 0.0:
 		return
-	var candidate := horizontal + wish_dir * minf(config.air_accel * delta, headroom)
+	var candidate := horizontal + wish_dir * minf(config.pawn.air_accel * delta, headroom)
 	# INVARIANT: air control must never brake — only redirect/add speed.
 	# The Quake-style projection above adds speed along wish_dir, but when
 	# wish_dir opposes the existing velocity that addition can still shrink

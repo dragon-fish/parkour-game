@@ -8,11 +8,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	var wish_dir: Vector3 = player.wish_direction(input)
 	# No sprint key: ground speed is a single top speed, unless the walk
 	# modifier (Ctrl) is held, which slows it down deliberately.
-	var target_speed: float = config.walk_speed if input.walk_held else config.ground_speed
+	var target_speed: float = config.pawn.walk_velocity if input.walk_held else config.pawn.ground_speed
 	player.ground_accelerate(wish_dir, target_speed, delta)
 
 	if player.consume_jump():
-		player.velocity.y = config.jump_velocity
+		player.velocity.y = config.pawn.base_jump_z
 		player.move_and_slide()
 		player.set_grounded(player.is_on_floor())
 		return AIR
@@ -41,24 +41,24 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# landing instead of being discarded in mid-air. The speed test is
 		# evaluated FIRST so its short-circuit leaves a too-slow press
 		# buffered rather than spending it.
-		if player.horizontal_speed() >= config.slide_entry_speed and player.consume_crouch():
+		if player.horizontal_speed() >= config.slide.slide_entry_speed and player.consume_crouch():
 			# Same floor-snap bias as the fall-through path below. Without it, a
 			# slide started on a downslope can leave the floor on this very tick
 			# and bounce straight back out to Air.
-			player.velocity.y = -config.floor_snap_speed
+			player.velocity.y = -config.pawn.floor_snap_speed
 			player.move_and_slide()
 			player.set_grounded(player.is_on_floor())
 			return SLIDE
 
 		# Vaulting has to be earned with speed, or every waist-high box becomes a
 		# free elevator.
-		if player.probes != null and player.horizontal_speed() >= config.vault_min_speed:
+		if player.probes != null and player.horizontal_speed() >= config.speed_vault.vault_min_speed:
 			if player.probes.vault_query()["valid"]:
 				return VAULT
 
 	# A small downward bias keeps the body glued to the floor across seams and
 	# gentle slopes; without it is_on_floor() flickers while running.
-	player.velocity.y = -config.floor_snap_speed
+	player.velocity.y = -config.pawn.floor_snap_speed
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
 

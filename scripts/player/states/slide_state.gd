@@ -39,13 +39,13 @@ func enter(_previous: StringName) -> void:
 	# side of the gate.
 	var entry_speed := horizontal.length()
 	var boosted := entry_speed
-	if entry_speed <= config.slide_boost_entry_threshold:
-		boosted = minf(entry_speed + config.slide_boost, \
-			config.slide_boost_entry_threshold + config.slide_boost)
+	if entry_speed <= config.slide.slide_boost_entry_threshold:
+		boosted = minf(entry_speed + config.slide.slide_boost, \
+			config.slide.slide_boost_entry_threshold + config.slide.slide_boost)
 	player.velocity.x = _direction.x * boosted
 	player.velocity.z = _direction.z * boosted
 
-	player.set_capsule_height(config.slide_capsule_height)
+	player.set_capsule_height(config.slide.slide_capsule_height)
 
 ## Deliberately a REQUEST, not an unconditional restore. The off-edge exit
 ## below returns AIR whether or not there is headroom — a player who walks off
@@ -75,7 +75,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 	if not blocked:
 		_crawling = false
-	elif speed <= config.slide_exit_speed:
+	elif speed <= config.slide.slide_exit_speed:
 		_crawling = true
 
 	if _crawling:
@@ -90,7 +90,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# press jump inside the tunnel and it fires the moment you clear the roof,
 	# rather than being silently eaten.
 	if not blocked and player.consume_jump():
-		player.velocity.y = config.jump_velocity
+		player.velocity.y = config.pawn.base_jump_z
 		player.move_and_slide()
 		player.set_grounded(player.is_on_floor())
 		return AIR
@@ -121,11 +121,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# snapping the player upright the instant speed runs out -- the owner's
 	# direction on GBA_Crouch's downward branch. No separate headroom check is
 	# needed for the Crouch hand-off: crouch_capsule_height defaults to the
-	# same number as slide_capsule_height (see MovementConfig's own comment),
+	# same number as slide_capsule_height (see CrouchConfig's own comment),
 	# so anywhere the slide capsule already fits, the crouch capsule fits too.
 	# Releasing the key still asks for the full standing capsule, exactly as
 	# before.
-	var spent := post_move_speed <= config.slide_exit_speed or _elapsed >= config.slide_max_duration
+	var spent := post_move_speed <= config.slide.slide_exit_speed or _elapsed >= config.slide.slide_max_duration
 	var wants_to_exit := (not input.crouch_held) or spent
 	if wants_to_exit and player.has_headroom():
 		if input.crouch_held:
@@ -138,7 +138,7 @@ func _slide(delta: float, input: MoveInput, speed: float) -> void:
 	# Steering is deliberately slow: a slide commits you to a line.
 	var wish_dir: Vector3 = player.wish_direction(input)
 	if wish_dir != Vector3.ZERO and _direction != Vector3.ZERO:
-		var max_turn := config.slide_steer_rate * delta
+		var max_turn := config.slide.slide_steer_rate * delta
 		var angle := _direction.signed_angle_to(wish_dir, Vector3.UP)
 		_direction = _direction.rotated(Vector3.UP, clampf(angle, -max_turn, max_turn))
 
@@ -154,8 +154,8 @@ func _slide(delta: float, input: MoveInput, speed: float) -> void:
 	# slide_slope_accel to three times its default. The default sits far above
 	# anything the arena produces, so it never binds in normal play. The entry
 	# boost is not separately clamped because this runs on the very next tick.
-	speed = clampf(speed + (config.slide_slope_accel * grade - config.slide_friction) * delta, \
-		0.0, config.slide_max_speed)
+	speed = clampf(speed + (config.slide.slide_slope_accel * grade - config.slide.slide_friction) * delta, \
+		0.0, config.slide.slide_max_speed)
 
 	# Drive along the SLOPE, scaled so the horizontal magnitude is still
 	# `speed`. Steering the body horizontally instead would leave a descent to
@@ -167,11 +167,11 @@ func _slide(delta: float, input: MoveInput, speed: float) -> void:
 		var velocity := slope_dir * (speed / horizontal_len)
 		player.velocity.x = velocity.x
 		player.velocity.z = velocity.z
-		player.velocity.y = velocity.y - config.floor_snap_speed
+		player.velocity.y = velocity.y - config.pawn.floor_snap_speed
 	else:
 		player.velocity.x = 0.0
 		player.velocity.z = 0.0
-		player.velocity.y = -config.floor_snap_speed
+		player.velocity.y = -config.pawn.floor_snap_speed
 
 ## The slide is spent but there is a roof directly overhead, so standing up is
 ## impossible and the exit to Ground is gated shut. Rather than sit at zero
@@ -186,9 +186,9 @@ func _crawl(input: MoveInput) -> void:
 		player.velocity.z = 0.0
 	else:
 		_direction = wish_dir
-		player.velocity.x = wish_dir.x * config.slide_crawl_speed
-		player.velocity.z = wish_dir.z * config.slide_crawl_speed
-	player.velocity.y = -config.floor_snap_speed
+		player.velocity.x = wish_dir.x * config.slide.slide_crawl_speed
+		player.velocity.z = wish_dir.z * config.slide.slide_crawl_speed
+	player.velocity.y = -config.pawn.floor_snap_speed
 
 ## The slide line projected onto the floor plane, as a unit vector. Falls back
 ## to the horizontal line whenever there is no usable floor normal to project

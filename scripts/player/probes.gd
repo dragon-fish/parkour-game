@@ -32,7 +32,7 @@ const MIN_HEIGHT_EPSILON := 0.02
 
 ## Largest vertical component a side-ray hit's normal may have and still count
 ## as a wall to run along (~17 degrees off vertical). Well below
-## MovementConfig.min_walkable_normal_y's ~45 degrees on purpose: this gate
+## PawnConfig.walkable_floor_z's ~45 degrees on purpose: this gate
 ## excludes a floor or a shallow ramp a side ray could graze, not merely "too
 ## steep to walk on".
 const MAX_WALL_NORMAL_Y := 0.3
@@ -120,7 +120,7 @@ func _aim_forward(ray: RayCast3D, reach: float) -> void:
 ## length 3.2 -- so this is a re-derivation of the committed rig, not a retune
 ## of it.
 func _query_surface(reach: float) -> void:
-	var tallest_reachable: float = maxf(_config.ledge_max_height, _config.vault_max_height)
+	var tallest_reachable: float = maxf(_config.grab.ledge_max_height, _config.speed_vault.vault_max_height)
 	var origin_y: float = tallest_reachable - _foot_offset + SURFACE_ORIGIN_MARGIN
 	_surface.position = Vector3(0.0, origin_y, -reach)
 	_surface.target_position = Vector3(0.0, -(origin_y + _foot_offset + SURFACE_UNDERSHOOT), 0.0)
@@ -136,13 +136,13 @@ func vault_query() -> Dictionary:
 	# BOTH forward rays at vault_reach: the chest-clearance test is part of the
 	# vault question and must be asked at the vault's own distance. See
 	# _aim_forward().
-	_aim_forward(_vault_low, _config.vault_reach)
-	_aim_forward(_vault_high, _config.vault_reach)
+	_aim_forward(_vault_low, _config.speed_vault.vault_reach)
+	_aim_forward(_vault_high, _config.speed_vault.vault_reach)
 	if not _vault_low.is_colliding():
 		return _no_hit()
 
 	# A shin-height hit whose surface is walkable (normal.y at or above
-	# min_walkable_normal_y) is ground CharacterBody3D's own locomotion
+	# walkable_floor_z) is ground CharacterBody3D's own locomotion
 	# already climbs -- a ramp, not an obstacle face -- and must never read as
 	# something to vault. Without this, a plain climbable slope satisfies
 	# every other gate below: the shin ray hits its rising surface, the chest
@@ -156,13 +156,13 @@ func vault_query() -> Dictionary:
 	# default (false), so a hit here is always a genuine surface normal, never
 	# the degenerate (0,0,0) that hit_from_inside can report -- no extra guard
 	# is needed against that case.
-	if _vault_low.get_collision_normal().y >= _config.min_walkable_normal_y:
+	if _vault_low.get_collision_normal().y >= _config.pawn.walkable_floor_z:
 		return _no_hit()
 
 	if _vault_high.is_colliding():
 		return _no_hit()
 
-	_query_surface(_config.vault_reach)
+	_query_surface(_config.speed_vault.vault_reach)
 	if not _surface.is_colliding():
 		return _no_hit()
 	var top: Vector3 = _surface.get_collision_point()
@@ -170,18 +170,18 @@ func vault_query() -> Dictionary:
 	# A DEGENERATE (zero-length) normal, not a shallow one, is what
 	# hit_from_inside reports when SurfaceDown's own origin starts inside
 	# solid geometry -- there is no real surface to read a slope from.
-	# Rejecting on normal.y here (0.0 < min_walkable_normal_y) would reject for
+	# Rejecting on normal.y here (0.0 < walkable_floor_z) would reject for
 	# the wrong reason: the height check below already rejects it correctly,
 	# because _query_surface() places this ray's origin SURFACE_ORIGIN_MARGIN
 	# above the tallest reachable top by construction.
 	# Measured: this case reports the ray's own origin as the collision point
 	# with normal (0,0,0), never a shallow-but-nonzero slope normal.
-	if normal != Vector3.ZERO and normal.y < _config.min_walkable_normal_y:
+	if normal != Vector3.ZERO and normal.y < _config.pawn.walkable_floor_z:
 		return _no_hit()
 	var height := top.y - _feet_y()
 	# MIN_HEIGHT_EPSILON, not 0.0: see its declaration for the floor-noise
 	# case this guards against.
-	if height <= MIN_HEIGHT_EPSILON or height > _config.vault_max_height:
+	if height <= MIN_HEIGHT_EPSILON or height > _config.speed_vault.vault_max_height:
 		return _no_hit()
 	return {"valid": true, "top": top, "edge": top, "normal": normal}
 
@@ -190,11 +190,11 @@ func ledge_query() -> Dictionary:
 	if _config == null:
 		return _no_hit()
 	_ensure_rays()
-	_aim_forward(_vault_high, _config.ledge_reach)
+	_aim_forward(_vault_high, _config.grab.ledge_reach)
 	if not _vault_high.is_colliding():
 		return _no_hit()
 
-	_query_surface(_config.ledge_reach)
+	_query_surface(_config.grab.ledge_reach)
 	if not _surface.is_colliding():
 		return _no_hit()
 	var edge: Vector3 = _surface.get_collision_point()
@@ -205,14 +205,14 @@ func ledge_query() -> Dictionary:
 	# _query_surface() places this ray's origin SURFACE_ORIGIN_MARGIN above
 	# ledge_max_height by construction, so any wall tall enough to swallow it is
 	# correctly rejected there instead.
-	if normal != Vector3.ZERO and normal.y < _config.min_walkable_normal_y:
+	if normal != Vector3.ZERO and normal.y < _config.pawn.walkable_floor_z:
 		return _no_hit()
 	var height := edge.y - _feet_y()
 	# height <= MIN_HEIGHT_EPSILON, not just < ledge_min_height: guards the
 	# same floor-noise case as vault_query() (see MIN_HEIGHT_EPSILON's
 	# declaration) before the real ledge_min_height gate below it.
-	if height <= MIN_HEIGHT_EPSILON or height < _config.ledge_min_height \
-			or height > _config.ledge_max_height:
+	if height <= MIN_HEIGHT_EPSILON or height < _config.grab.ledge_min_height \
+			or height > _config.grab.ledge_max_height:
 		return _no_hit()
 	return {"valid": true, "top": edge, "edge": edge, "normal": normal}
 
@@ -234,17 +234,17 @@ func wall_query() -> Dictionary:
 		return {"valid": false, "normal": Vector3.ZERO, "side": 0}
 	_ensure_rays()
 
-	_aim_side(_wall_left, -1.0, _config.wall_reach)
+	_aim_side(_wall_left, -1.0, _config.wall_run.wall_reach)
 	if _wall_left.is_colliding():
 		var normal: Vector3 = _wall_left.get_collision_normal()
 		# Only a near-vertical surface counts as a wall -- MAX_WALL_NORMAL_Y is
-		# a stricter gate than vault/ledge's min_walkable_normal_y (which admits
+		# a stricter gate than vault/ledge's walkable_floor_z (which admits
 		# anything up to ~45 degrees): a wall to run along must be close to
 		# vertical, not merely "too steep to stand on".
 		if absf(normal.y) < MAX_WALL_NORMAL_Y:
 			return {"valid": true, "normal": normal, "side": -1}
 
-	_aim_side(_wall_right, 1.0, _config.wall_reach)
+	_aim_side(_wall_right, 1.0, _config.wall_run.wall_reach)
 	if _wall_right.is_colliding():
 		var normal: Vector3 = _wall_right.get_collision_normal()
 		if absf(normal.y) < MAX_WALL_NORMAL_Y:

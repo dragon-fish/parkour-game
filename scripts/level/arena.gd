@@ -50,7 +50,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## than relying on the player to press R, since falling forever is not a
 ## state a human should have to notice and self-rescue from.
 func _physics_process(_delta: float) -> void:
-	if is_instance_valid(player) and player.global_position.y < -config.fall_recovery_depth:
+	if is_instance_valid(player) and player.global_position.y < -config.pawn.fall_recovery_depth:
 		reset_player()
 
 ## Teleports the player to spawn and clears its velocity.
