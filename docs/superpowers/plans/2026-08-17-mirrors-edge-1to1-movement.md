@@ -20,6 +20,11 @@
 - **注释语言**：英文（沿用本仓库既有约定）。
 - **`*ZHeight` 系列存为高度**，在使用点按 `v = sqrt(2 * gravity * h)` 换算成速度。
 - **不引入任何第三方依赖。**
+- **以下路径一律不要碰**，所有者正在其中做逆向工作，文件变动频繁，任何 agent 的改动都可能与之冲突：
+  - `_local/`（从本地正版提取的关卡测量数据，已 gitignore）
+  - `scenes/debug_levels/`（所有者的白盒试验场，已 gitignore）
+  - `docs/mirrors-edge-deep-research/tools/` 下**未入库**的脚本（`mapdump.py`、`build_blockout.py`、`find_spawn.py`、`survey_actors.py`、`diag_*.py` 等关卡分析脚本）。已入库的 7 个 UE3 解包脚本是调研手册的一部分，同样只读不改。
+  不要读取、不要修改、不要提交、不要在 `git add -A` 时把它们捎上——每个 task 的提交步骤都写了明确的路径，照着写，不要图省事用 `git add -A .`。
 - **运行测试**：`pwsh -File tools/run_tests.ps1`。该脚本会先跑一次 `--import` 刷新 `global_script_class_cache.cfg`，再跑 runner，并**扫描引擎错误输出**——任何 `SCRIPT ERROR:` / `ERROR:` 行都会让整轮失败，即使断言全过。
 - **测试写法约束**（`tests/test_case.gd` 的真实接口）：只有 `check(cond, msg)`、`check_greater(a, b, msg)`、`check_approx(a, b, tol, msg)` 三个断言，**没有 `check_less`**（要用 `check(a < b, msg)`）。每个 `test_` 方法**必须至少调用一次断言**，否则 runner 记为失败。需要物理推进时 `await step(n)`。
 - **提交**：Conventional Commits，纯英文，每个 task 至少一笔。commit message 末尾加
@@ -4059,7 +4064,9 @@ Expected: PASS，退出码 0，无 `SCRIPT ERROR:` 行。记录总 `checks:` 数
 - [ ] **Step 5: 提交**
 
 ```bash
-git add -A scripts tests docs
+# Path-scoped on purpose: `docs` as a whole would sweep in the owner's
+# untracked reverse-engineering scripts under mirrors-edge-deep-research/tools/.
+git add -A scripts tests scenes docs/superpowers/specs
 git commit -F - <<'EOF'
 chore(movement): retire the last carried-over knobs and pin the checklist
 
