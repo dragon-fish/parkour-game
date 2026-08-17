@@ -64,6 +64,31 @@ func test_redo_move_time_blocks_re_entering_the_same_move() -> void:
 	manager.queue_free()
 	await step(1)
 
+func test_start_clears_a_live_cooldown() -> void:
+	# Mirrors Player.reset_state() clearing its own hand-rolled cooldowns
+	# (the ledge regrab timer, the recent-wall list) on a fresh life: a
+	# redo_move_time still counting down at the moment start() restarts the
+	# manager -- e.g. Arena.reset_player() after a death or an R-key reset --
+	# must not carry over and silently refuse the new life's first attempt
+	# at that move.
+	var manager := _manager([Move.WALKING, Move.WALL_RUN])
+	manager.move_for(Move.WALL_RUN).cfg.redo_move_time = 0.5
+	manager.start(Move.WALKING)
+	var walking := manager.move_for(Move.WALKING) as StubMove
+	var wall := manager.move_for(Move.WALL_RUN) as StubMove
+
+	walking.next = Move.WALL_RUN
+	manager.physics_update(0.016, MoveInput.new())
+	wall.next = Move.WALKING
+	manager.physics_update(0.016, MoveInput.new())
+	check(not manager.can_enter(Move.WALL_RUN), "cooldown was not armed for the fixture")
+
+	# A reset restarts the manager mid-cooldown -- start() must clear it.
+	manager.start(Move.WALKING)
+	check(manager.can_enter(Move.WALL_RUN), "start() did not clear a live cooldown")
+	manager.queue_free()
+	await step(1)
+
 func test_a_move_with_no_cooldown_can_be_re_entered_immediately() -> void:
 	var manager := _manager([Move.WALKING, Move.SLIDE])
 	manager.start(Move.WALKING)

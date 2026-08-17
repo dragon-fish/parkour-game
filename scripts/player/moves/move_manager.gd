@@ -12,15 +12,15 @@ var _moves: Dictionary = {}
 ## move is actually cooling down.
 var _redo_cooldowns: Dictionary = {}
 
-func register(name: StringName, move: Move) -> void:
-	_moves[name] = move
+func register(move_name: StringName, move: Move) -> void:
+	_moves[move_name] = move
 
-## The registered instance for a move name, or null. Exposed for tests that
+## The registered instance for a move name, or null. Read every physics tick
+## by CharacterAnimator (to reach GrabMove.is_mantling()), and by tests that
 ## need to observe a move's own internals — SlideMove.is_crawling(), which
 ## nothing outside the move can otherwise distinguish from ordinary sliding.
-## Normal operation never hands a move out.
-func move_for(name: StringName) -> Move:
-	return _moves.get(name)
+func move_for(move_name: StringName) -> Move:
+	return _moves.get(move_name)
 
 ## False while `move_name`'s own redo_move_time is still running. The original
 ## declares this per move (TdMove.RedoMoveTime) rather than scattering it
@@ -88,8 +88,21 @@ func start(move_name: StringName) -> void:
 	# still in Falling). Exit the outgoing move first so moves with exit side
 	# effects (SlideMove restoring the standing collision shape) do not get
 	# skipped and leave the player stuck in a partial move.
+	#
+	# Deliberately NOT paired with _arm_cooldown(), unlike the exit() call in
+	# physics_update() below: a restart is not the move choosing to leave, it
+	# is being interrupted from outside, so it must not be penalised with a
+	# cooldown on top of that. Whatever the interrupted move was, its next
+	# life should be free to re-enter it immediately.
 	if _current != null:
 		_current.exit()
+	# Same reasoning Player.reset_state() already states for its own
+	# hand-rolled cooldowns (the ledge regrab timer, the recent-wall list):
+	# a cooldown left over from the previous life must not withhold the new
+	# life's first attempt at a move. Without this, a WallRun or Grab
+	# cooldown still ticking down at the moment of death or reset would
+	# silently refuse the very first entry into that move on the fresh life.
+	_redo_cooldowns.clear()
 	_current = _moves[move_name]
 	current_name = move_name
 	# Snapshot BEFORE enter(), so a declaration made in enter() counts.

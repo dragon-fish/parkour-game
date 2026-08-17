@@ -55,7 +55,7 @@ func set_crouch_amount(amount: float) -> void:
 	_crouch_amount = clampf(amount, 0.0, 1.0)
 
 ## -1 wall on the left, +1 on the right, 0 none. Driven by Player each tick
-## from Player.wall_side, itself set by WallRunState. update_effects() eases
+## from Player.wall_side, itself set by WallRunMove. update_effects() eases
 ## rotation.z toward the corresponding tilt every frame.
 ## Called when the body was lifted over a low obstacle. Accumulates, so two
 ## steps in quick succession do not cancel each other out.
