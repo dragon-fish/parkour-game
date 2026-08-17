@@ -1929,8 +1929,14 @@ func _apply_landing_cost(fall_height: float, rolled: bool) -> void:
 	if player.is_on_floor():
 		# Read BEFORE set_grounded(), which resets the counter.
 		var fall_height: float = player.fall_tracker.fall_height
-		var rolled: bool = player.consume_roll() \
-			and fall_height >= config.pawn.skill_roll_landing_height
+		# ORDER MATTERS: the threshold gates the consumption, never the other
+		# way round. With consume_roll() on the left, `and` spends the buffered
+		# press on EVERY landing -- including one too short to roll -- which
+		# starves WalkingMove's slide-entry check on the next tick and silently
+		# breaks the one-buffered-press-resolved-by-context design this whole
+		# step exists to deliver.
+		var rolled: bool = fall_height >= config.pawn.skill_roll_landing_height \
+			and player.consume_roll()
 		player.last_landing_rolled = rolled
 		player.set_grounded(true)
 		player.notify_landed(impact_speed)
