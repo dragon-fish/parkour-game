@@ -9,13 +9,16 @@ extends PlayerState
 # forbids it -- chaining a slide straight into a wall run lets the player
 # build speed in a loop that never has to give any back. Reaching a wall from
 # a slide has to go through Ground or Air first, which costs the slide's
-# boost. Pinned by tests/test_slide_state.gd's
-# test_slide_can_only_reach_ground_and_air and
+# boost. Was pinned by tests/legacy/test_slide_state.gd's
+# test_slide_can_only_reach_ground_air_or_crouch and
 # test_slide_returns_only_ground_air_or_keep -- do not add a return into that
-# state here. (Deliberately not spelling the state's own constant name in
-# this comment: the first of those two tests greps slide_state.gd's source
-# for PlayerState's constant names verbatim, precisely so that even NAMING
-# the forbidden target here -- not just returning it -- trips the tripwire.)
+# state here regardless. (Deliberately not spelling the state's own constant
+# name in this comment: the first of those two tests greps slide_state.gd's
+# source for PlayerState's constant names verbatim, precisely so that even
+# NAMING the forbidden target here -- not just returning it -- trips the
+# tripwire.) Both tests are ARCHIVED by Task 1 and NOT in the running suite,
+# so nothing enforces this today; restore the pins when the behavioural
+# suite is rewritten.
 
 var _elapsed: float = 0.0
 var _direction: Vector3 = Vector3.ZERO

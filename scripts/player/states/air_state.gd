@@ -27,9 +27,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# building speed and running alongside a wall; wall_min_speed already
 	# gates it on exactly that commitment (see WallRunConfig's own note: wall
 	# running CARRIES speed, it does not create it). At speed beside a wall,
-	# the wall is what the player is asking for. See
+	# the wall is what the player is asking for. Was decided by
 	# test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach in
-	# tests/test_wall_run.gd for the contested-geometry case this decides.
+	# tests/legacy/test_wall_run.gd for the contested-geometry case -- that
+	# test is ARCHIVED by Task 1 and NOT in the running suite, so nothing
+	# enforces this today; restore the pin when the behavioural suite is
+	# rewritten.
 	if player.probes != null and player.horizontal_speed() >= config.wall_run.wall_min_speed:
 		var wall: Dictionary = player.probes.wall_query()
 		if wall["valid"] and player.can_attach_wall(wall["normal"]):

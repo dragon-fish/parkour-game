@@ -6,12 +6,14 @@ extends RefCounted
 #
 # tools/build_main_scene.gd (a thin SceneTree script, since only a MainLoop
 # subclass can run via --script) calls build() and packs/saves the result to
-# scenes/main.tscn. tests/test_arena.gd's
+# scenes/main.tscn. tests/legacy/test_arena.gd's
 # test_regenerating_the_scene_matches_what_is_committed also calls build()
 # directly, on a tree that is never added to the SceneTree, and compares it
 # structurally against what ResourceLoader loads back from the committed
 # .tscn -- both paths run this exact code, so the two cannot silently drift
-# apart the way a hand-edited main.tscn once did.
+# apart the way a hand-edited main.tscn once did. That test is ARCHIVED by
+# Task 1 and NOT in the running suite, so nothing currently enforces this;
+# restore it when the behavioural suite is rewritten.
 
 var _root: Node3D
 
@@ -106,10 +108,11 @@ func _attach(parent: Node3D, child: Node) -> void:
 
 ## Recursively collects every StaticBody3D with a box-shaped "Collision" child
 ## under node -- the same convention _box() always builds. Duplicated rather
-## than shared with tests/test_arena.gd's own identically-named helper: this
-## runs at BUILD time, on a tree that may never be added to a SceneTree (see
-## build()'s own header comment), so it cannot depend on anything under
-## tests/.
+## than shared with tests/legacy/test_arena.gd's own identically-named helper
+## (ARCHIVED by Task 1, not in the running suite, but the duplication reason
+## still holds): this runs at BUILD time, on a tree that may never be added
+## to a SceneTree (see build()'s own header comment), so it cannot depend on
+## anything under tests/.
 func _collect_box_bodies(node: Node, out: Array) -> void:
 	if node is StaticBody3D:
 		var collision := node.get_node_or_null("Collision")
@@ -145,8 +148,10 @@ func _global_transform_offline(node: Node3D) -> Transform3D:
 ## box (SlideArea's UpRamp/DownRamp) is handled correctly, not just a
 ## translated one -- see _global_transform_offline()'s own comment for why
 ## this cannot simply read body.global_transform the way
-## tests/test_arena.gd's identically-named helper does (that one runs AFTER
-## the arena is loaded into a live tree, where global_transform is valid).
+## tests/legacy/test_arena.gd's identically-named helper does (that one runs
+## AFTER the arena is loaded into a live tree, where global_transform is
+## valid; that test is ARCHIVED by Task 1 and not in the running suite, but
+## the distinction this comment explains still holds).
 func _world_aabb(body: Node3D) -> AABB:
 	var box: BoxShape3D = (body.get_node("Collision") as CollisionShape3D).shape
 	var half := box.size * 0.5
@@ -154,7 +159,9 @@ func _world_aabb(body: Node3D) -> AABB:
 
 ## Builds and returns the full arena tree, unparented and not yet added to
 ## any SceneTree. Caller owns it: pack it (tools/build_main_scene.gd) or
-## inspect it directly and free() it (tests/test_arena.gd).
+## inspect it directly and free() it (tests/legacy/test_arena.gd -- ARCHIVED
+## by Task 1, not in the running suite, but still the shape a rewritten test
+## would use).
 func build() -> Node3D:
 	_root = Node3D.new()
 	_root.name = "Arena"
@@ -586,9 +593,11 @@ func build() -> Node3D:
 	# How far a wall's near face may sit from the running lane's centreline
 	# (local x = 0) and still be within wall_reach (0.75 m default) of a
 	# player running straight down it — proven in practice, not just in
-	# theory: this is the exact offset tests/test_wall_run.gd's own
+	# theory: this is the exact offset tests/legacy/test_wall_run.gd's own
 	# `_wall_world()` fixture uses (wall centred at x=0.95, this thickness),
-	# and every wall-attach test in that file passes against it. Kept well
+	# and every wall-attach test in that file used to pass against it -- that
+	# file is ARCHIVED by Task 1 and NOT in the running suite, so nothing
+	# currently enforces this. Kept well
 	# under wall_reach itself (0.75) rather than pushed right up against it,
 	# so a player drifting a few centimetres off the lane's exact centre
 	# during a real run does not fall outside reach.
@@ -672,8 +681,11 @@ func build() -> Node3D:
 	# whole time would cover before the cooldown expires -- a flat break-even
 	# value would just move the same failure to whichever knob gets tuned
 	# next, so ZIG_STEP_SAFETY_MARGIN keeps real headroom over it. Verified
-	# against actual chained play, not just this arithmetic: see
-	# tests/test_arena.gd's test_the_zig_zag_wall_section_chains_multiple_walls.
+	# against actual chained play, not just this arithmetic: was verified by
+	# tests/legacy/test_arena.gd's
+	# test_the_zig_zag_wall_section_chains_multiple_walls -- ARCHIVED by
+	# Task 1 and NOT in the running suite, so nothing enforces this today;
+	# restore the check when the behavioural suite is rewritten.
 	const ZIG_STEP_SAFETY_MARGIN := 1.5
 	var zig_step: float = wall_config.wall_run.wall_max_speed * wall_config.pawn.wall_reattach_cooldown \
 		* ZIG_STEP_SAFETY_MARGIN
@@ -717,9 +729,11 @@ func build() -> Node3D:
 	# there into an endless fall and the fall-recovery teleport instead of back
 	# onto solid practice ground -- silently destroying the thing the ladder
 	# exists to teach. Nothing caught it because the containment test of the
-	# time only ever checked VaultArea and WallArea by name; see
-	# tests/test_arena.gd's test_every_practice_area_fits_inside_the_arena_floor
-	# for the generalised replacement that closes that gap.
+	# time only ever checked VaultArea and WallArea by name; the generalised
+	# replacement that closes that gap was
+	# tests/legacy/test_arena.gd's test_every_practice_area_fits_inside_the_arena_floor
+	# -- ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
+	# this today; restore the check when the behavioural suite is rewritten.
 	#
 	# Areas are discovered the same "XxxArea" naming convention
 	# test_practice_areas_do_not_overlap_each_other and the containment test
@@ -744,10 +758,12 @@ func build() -> Node3D:
 	# not a tight fit. Sized to comfortably clear the largest known approach
 	# runway in the arena: WallArea's own north approach starts the player 8 m
 	# north of LongWall's near face (see
-	# tests/test_arena.gd's test_the_wall_run_course_can_be_run_end_to_end),
-	# and LongWall's near face is the arena's northernmost solid body, so a
-	# margin under 8 m there would put that test's own start position off the
-	# floor. This is a fixed design buffer, like GAP_PLATFORM_LENGTH or
+	# tests/legacy/test_arena.gd's test_the_wall_run_course_can_be_run_end_to_end
+	# -- ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
+	# this today), and LongWall's near face is the arena's northernmost solid
+	# body, so a margin under 8 m there would put that test's own start
+	# position off the floor were it restored. This is a fixed design
+	# buffer, like GAP_PLATFORM_LENGTH or
 	# LEDGE_DEPTH above -- not something that scales with the jump arc.
 	const FLOOR_MARGIN := 10.0
 	var floor_min_x: float = practice_bounds.position.x - FLOOR_MARGIN

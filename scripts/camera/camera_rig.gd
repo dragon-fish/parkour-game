@@ -183,10 +183,12 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# wall_side=+1 (right) produces a NEGATIVE rotation.z, whose up vector
 	# tilts toward +X -- into the wall on the right -- and wall_side=-1
 	# (left) produces a positive rotation.z, tilting toward -X into the wall
-	# on the left. tests/test_camera_rig.gd's
-	# test_the_camera_rolls_toward_the_wall_side pins this against the
-	# camera's own world-space up vector, not just "the two sides are
-	# opposite" (which an inverted-but-still-symmetric roll would also pass).
+	# on the left. Was pinned by tests/legacy/test_camera_rig.gd's
+	# test_the_camera_rolls_toward_the_wall_side against the camera's own
+	# world-space up vector, not just "the two sides are opposite" (which an
+	# inverted-but-still-symmetric roll would also pass) -- ARCHIVED by
+	# Task 1 and NOT in the running suite, so nothing enforces this today;
+	# restore the pin when the behavioural suite is rewritten.
 	var target_roll := -deg_to_rad(_config.camera.wall_camera_roll_deg) * float(_wall_side)
 	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.camera.wall_camera_roll_speed) * delta)
 	rotation.z = _roll

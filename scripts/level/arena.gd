@@ -23,9 +23,11 @@ func _ready() -> void:
 	# Session-level concern, deliberately not in Player: headless tests
 	# instantiate Player directly and must not touch the display server.
 	#
-	# The headless guard matters: tests/test_arena.gd instantiates this whole
-	# scene under --headless, where there is no real display server to capture
-	# a pointer with.
+	# The headless guard matters: tests/legacy/test_arena.gd instantiates this
+	# whole scene under --headless, where there is no real display server to
+	# capture a pointer with -- ARCHIVED by Task 1 and NOT in the running
+	# suite, so nothing currently exercises this path; the reasoning still
+	# holds for whoever rewrites that test.
 	if DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 

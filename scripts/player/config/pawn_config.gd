@@ -39,9 +39,10 @@ extends Resource
 ## ground_speed over repeated jumps; at 1.5, a full hangtime of continuous
 ## same-direction air control adds at most air_accel * 1.58 =~ 2.4 m/s, and
 ## landing's own speed cost removes far more than that on any landing hard
-## enough to matter -- see
-## tests/test_air_state.gd's test_air_strafing_across_chained_jumps_never_
-## exceeds_the_ground_speed_cap for a direct, driven-state measurement.
+## enough to matter -- was pinned by tests/legacy/test_air_state.gd's
+## test_air_strafing_across_chained_jumps_never_exceeds_the_ground_speed_cap
+## -- ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
+## this today; restore the pin when the behavioural suite is rewritten.
 ## MIGRATION NOTE: this is the stored value carried from before air_control
 ## existed. Task 7 deletes this field and derives air_accel inline instead,
 ## as `config.pawn.accel_rate * config.pawn.air_control`.

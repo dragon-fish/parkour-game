@@ -79,11 +79,12 @@ func enter(_previous: StringName) -> void:
 	# drop (pushing it away) the player never asked for -- holding position
 	# is the correct behaviour on its own merits, not a simplification of a
 	# "real" reposition. (A grab near the top of the reachable range now
-	# hangs at full stretch, well below the edge; see
+	# hangs at full stretch, well below the edge; was confirmed by
 	# test_mantling_completes_from_the_top_of_the_grab_range in
-	# tests/test_ledge.gd for confirmation the mantle still completes fine
-	# from there within mantle_duration -- the climb is a fixed-time lerp,
-	# not a fixed-speed one, so distance never affects how long it takes.)
+	# tests/legacy/test_ledge.gd -- the climb is a fixed-time lerp, not a
+	# fixed-speed one, so distance never affects how long it takes. That test
+	# is ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
+	# this today; restore the pin when the behavioural suite is rewritten.)
 
 ## Started on EVERY exit, not just the deliberate crouch-drop, and here rather
 ## than at each `return` so a future exit path cannot forget it. The mantle

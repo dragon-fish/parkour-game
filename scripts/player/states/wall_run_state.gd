@@ -175,9 +175,12 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		# codebase ALREADY states for the horizontal axis instead of
 		# inventing a new one: wall_min_speed's own comment says wall
 		# running "is a way to CARRY speed, never a way to create it from
-		# nothing" (also pinned by
-		# tests/test_movement_config.gd's test_wall_running_cannot_
-		# create_speed_beyond_what_foot_speed_reaches). Applied to height:
+		# nothing" (also was pinned by
+		# tests/legacy/test_movement_config.gd's
+		# test_wall_running_cannot_create_speed_beyond_what_foot_speed_reaches
+		# -- ARCHIVED by Task 1 and NOT in the running suite, so nothing
+		# enforces this today; restore the pin when the behavioural suite
+		# is rewritten). Applied to height:
 		# a wall-jump chain may CARRY the player up, but the total it can
 		# add above the last real ground contact is capped at what a
 		# single ground jump reaches (jump_peak_height) plus one

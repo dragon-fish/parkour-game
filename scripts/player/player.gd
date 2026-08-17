@@ -94,7 +94,9 @@ func consume_landing() -> float:
 ## output to carry. Instanced once, in _ready(), by _attach_body(). A body
 ## is entirely optional: everything downstream (CharacterAnimator, the
 ## head-follow camera) is built to no-op cleanly with none attached, not
-## merely "usually work" -- see tests/test_body_attachment.gd.
+## merely "usually work" -- was pinned by tests/legacy/test_body_attachment.gd
+## -- ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
+## this today; restore the pin when the behavioural suite is rewritten.
 @export var body_scene: PackedScene
 
 ## Per-model correction for the mount point under BodyRoot, ADDED ON TOP of
@@ -869,9 +871,11 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> 
 ## jumps has plenty of TIME to slowly climb toward air_speed even without
 ## any exploit-like input, which would let mere airtime manufacture speed no
 ## ground state could reach on its own -- exactly the invariant
-## tests/test_landing.gd's test_a_landing_can_never_add_speed_however_the_
-## keep_ratio_is_tuned and tests/test_slide_state.gd's
-## test_chained_slide_then_jump_cannot_stack_the_entry_boost both pin. Taking
+## tests/legacy/test_landing.gd's test_a_landing_can_never_add_speed_however_the_
+## keep_ratio_is_tuned and tests/legacy/test_slide_state.gd's
+## test_chained_slide_then_jump_cannot_stack_the_entry_boost used to pin --
+## both ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
+## this today; restore the pins when the behavioural suite is rewritten. Taking
 ## the max with the CURRENT speed_along_wish (not a flat ground_speed cap) is
 ## what keeps the "never reduces carried-in momentum" half of the contract
 ## intact: a player already faster than ground_speed gets zero headroom here

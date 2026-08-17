@@ -17,8 +17,11 @@ extends MoveConfig
 ## PawnConfig.ground_speed and air_speed on purpose -- wall_min_speed's own doc
 ## comment says the wall is "a way to CARRY speed, never a way to create it
 ## from nothing", so its own accel must never top the player up past what
-## foot speed alone can already reach. See
-## tests/test_movement_config.gd's own relationship test pinning this.
+## foot speed alone can already reach. Was pinned by
+## tests/legacy/test_movement_config.gd's
+## test_wall_running_cannot_create_speed_beyond_what_foot_speed_reaches --
+## ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces this
+## today; restore the pin when the behavioural suite is rewritten.
 ## Held equal to ground_speed, mirroring the pre-retune default (both were
 ## 9.0) -- when the gravity/jump/speed trio dropped ground_speed to 7.2 (see
 ## PawnConfig.gravity's own comment), this followed it down for the same
