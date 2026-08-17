@@ -1,5 +1,5 @@
-class_name GroundState
-extends PlayerState
+class_name WalkingMove
+extends Move
 
 func enter(_previous: StringName) -> void:
 	player.velocity.y = 0.0
@@ -15,26 +15,26 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.velocity.y = config.pawn.base_jump_z
 		player.move_and_slide()
 		player.set_grounded(player.is_on_floor())
-		return AIR
+		return FALLING
 
 	# Slide and Vault entry are both gated on player.grounded being TRUE —
 	# i.e. already verified by a move_and_slide() this tick or a prior one —
 	# not merely assumed. The only time it can be false on entry to
-	# GroundState is the tick right after a ScriptedMove (e.g. Vault) hands
-	# off: that state deliberately leaves grounded false because its own
+	# WalkingMove is the tick right after a ScriptedMove (e.g. SpeedVault) hands
+	# off: that move deliberately leaves grounded false because its own
 	# landing position was driven directly and never checked against real
-	# geometry (see VaultState.physics_update()'s note on this). Without this
+	# geometry (see SpeedVaultMove.physics_update()'s note on this). Without this
 	# gate, that unverified position was itself enough to immediately chain
-	# into a SECOND scripted move — return VAULT below, again without ever
+	# into a SECOND scripted move — return SPEED_VAULT below, again without ever
 	# calling move_and_slide() — if a further obstacle happened to be in
 	# reach. The gate costs nothing on the legitimate path: every real
-	# Air/Slide->Ground transition already has grounded==true by the time
-	# GroundState runs.
+	# Falling/Slide->Walking transition already has grounded==true by the time
+	# WalkingMove runs.
 	if player.grounded:
 		# A slide has to be earned: crouching below the entry speed just
 		# crouches. Gated on a fresh PRESS (never on crouch_held) so holding
 		# crouch while running cannot immediately re-enter Slide the instant a
-		# slide ends — that would strobe Slide<->Ground every couple of frames
+		# slide ends — that would strobe Slide<->Walking every couple of frames
 		# instead of committing. The press is read through the buffer rather
 		# than straight off this tick's input, so a crouch pressed just before
 		# touchdown — which is exactly what a roll is — still opens a slide on
@@ -44,7 +44,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		if player.horizontal_speed() >= config.slide.slide_entry_speed and player.consume_crouch():
 			# Same floor-snap bias as the fall-through path below. Without it, a
 			# slide started on a downslope can leave the floor on this very tick
-			# and bounce straight back out to Air.
+			# and bounce straight back out to Falling.
 			player.velocity.y = -config.pawn.floor_snap_speed
 			player.move_and_slide()
 			player.set_grounded(player.is_on_floor())
@@ -54,7 +54,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# free elevator.
 		if player.probes != null and player.horizontal_speed() >= config.speed_vault.vault_min_speed:
 			if player.probes.vault_query()["valid"]:
-				return VAULT
+				return SPEED_VAULT
 
 	# Ankle-high clutter would otherwise stop a run dead: Godot has no built-in
 	# step-up. Free by design -- no speed cost, no state change -- so the only
@@ -73,7 +73,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# Leaving the floor here means walking off a ledge, not jumping - the
 		# jump path above already returned before this line. Clear the snap
 		# bias so a ledge exit starts from a clean zero instead of carrying
-		# the downward glue velocity into AirState as a jolt.
+		# the downward glue velocity into FallingMove as a jolt.
 		player.velocity.y = 0.0
-		return AIR
+		return FALLING
 	return KEEP

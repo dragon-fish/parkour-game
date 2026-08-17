@@ -1,5 +1,13 @@
-class_name AirState
-extends PlayerState
+class_name FallingMove
+extends Move
+
+## The original splits one airborne stretch into two move classes whose probe
+## switches differ: TdMove_Jump can start a wall climb, TdMove_Falling cannot
+## (05 §5.7 ③). Reproduced here as one move with two configs rather than two
+## registered moves, so landing detection, the wall check and the ledge check
+## stay in one place instead of being duplicated across a pair.
+func current_config() -> MoveConfig:
+	return config.jump if player.velocity.y > 0.0 else config.falling
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	var wish_dir: Vector3 = player.wish_direction(input)
@@ -36,17 +44,17 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if player.probes != null and player.horizontal_speed() >= config.wall_run.wall_min_speed:
 		var wall: Dictionary = player.probes.wall_query()
 		if wall["valid"] and player.can_attach_wall(wall["normal"]):
-			return WALL
+			return WALL_RUN
 
-	# Checked before this tick's own move_and_slide(), same as GroundState's
-	# vault check: if it fires, this state hands off to LedgeHangState (which
+	# Checked before this tick's own move_and_slide(), same as WalkingMove's
+	# vault check: if it fires, this move hands off to GrabMove (which
 	# drives the body directly, see its own note) without this tick's physics
 	# ever having moved the body at all. can_grab_ledge() enforces the
 	# post-release cooldown so dropping off a ledge cannot instantly re-grab
 	# the very same one.
 	if player.probes != null and player.can_grab_ledge():
 		if player.probes.ledge_query()["valid"]:
-			return LEDGE
+			return GRAB
 
 	# Capture the impact speed before move_and_slide() zeroes it on contact.
 	var impact_speed := maxf(-player.velocity.y, 0.0)
@@ -56,7 +64,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.set_grounded(true)
 		player.notify_landed(impact_speed)
 		_apply_landing_cost(impact_speed, input)
-		return GROUND
+		return WALKING
 	player.set_grounded(false)
 	return KEEP
 

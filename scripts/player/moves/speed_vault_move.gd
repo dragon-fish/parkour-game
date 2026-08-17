@@ -1,4 +1,4 @@
-class_name VaultState
+class_name SpeedVaultMove
 extends ScriptedMove
 
 # Vaulting DRIVES the body over an obstacle along a computed path instead of
@@ -9,18 +9,18 @@ extends ScriptedMove
 var _exit_speed: float = 0.0
 var _exit_direction: Vector3 = Vector3.ZERO
 ## Set in enter() when the vault query comes back invalid: there is no probed
-## top to land on, so physics_update() hands straight back to Ground without
+## top to land on, so physics_update() hands straight back to Walking without
 ## ever moving the body. See enter()'s note for what the old fallback did.
 var _aborted: bool = false
 
 func enter(_previous: StringName) -> void:
-	# grounded is DECLARED, not read from is_on_floor(): this state never calls
-	# move_and_slide(), so is_on_floor() would keep reporting whatever GroundState
+	# grounded is DECLARED, not read from is_on_floor(): this move never calls
+	# move_and_slide(), so is_on_floor() would keep reporting whatever WalkingMove
 	# left behind for the whole vault — stale coyote time, head bob, etc.
 	player.set_grounded(false)
 	_aborted = false
 
-	# GroundState already null-checks player.probes AND requires a valid
+	# WalkingMove already null-checks player.probes AND requires a valid
 	# vault_query() before ever transitioning here, so neither branch below is
 	# reachable in normal play. They are kept as a guard for a future caller
 	# that skips that gate -- but as a GENUINELY safe one. The previous version
@@ -29,7 +29,7 @@ func enter(_previous: StringName) -> void:
 	# with `landing.y = top.y + standing_height/2`, so that fallback would have
 	# driven the body 0.9 m up and 0.6 m forward, through whatever was there.
 	# There is no safe destination to invent when the probe found nothing, so
-	# invent none: abort the vault and hand back to Ground with the body
+	# invent none: abort the vault and hand back to Walking with the body
 	# untouched and its velocity intact.
 	var query: Dictionary = player.probes.vault_query() if player.probes != null else Probes.NO_HIT.duplicate()
 	if not query["valid"]:
@@ -49,7 +49,7 @@ func enter(_previous: StringName) -> void:
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:
-		return GROUND
+		return WALKING
 
 	if advance(delta):
 		player.velocity = _exit_direction * _exit_speed
@@ -59,14 +59,14 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		# own footprint into open air over the real floor, which the body has
 		# never actually touched. Asserting grounded=true at that point was
 		# exactly the bug review caught: it silently re-arms coyote time (a
-		# jump buffered mid-vault would fire from mid-air) before GroundState's
+		# jump buffered mid-vault would fire from mid-air) before WalkingMove's
 		# OWN move_and_slide() gets a chance to check anything. Leaving it
-		# false (unchanged from enter()) means GroundState's very next
+		# false (unchanged from enter()) means WalkingMove's very next
 		# floor-snap tick is what first calls set_grounded() for real, exactly
-		# like every other transition into Ground (Air, Slide) already
-		# requires of itself. The cost is at most one tick of GroundState
-		# running before grounded is confirmed -- harmless, since GroundState
+		# like every other transition into Walking (Falling, Slide) already
+		# requires of itself. The cost is at most one tick of WalkingMove
+		# running before grounded is confirmed -- harmless, since WalkingMove
 		# always drives with ground_accelerate() regardless of this flag, so
 		# no air control leaks in during that tick.
-		return GROUND
+		return WALKING
 	return KEEP

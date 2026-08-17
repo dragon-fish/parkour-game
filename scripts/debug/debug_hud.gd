@@ -22,11 +22,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			visible = not visible
 
 func _process(_delta: float) -> void:
-	if not visible or player == null or player.state_machine == null:
+	if not visible or player == null or player.move_manager == null:
 		return
 	var pos := player.global_position
 	_label.text = "\n".join([
-		"state      %s" % player.state_machine.current_name,
+		"state      %s" % player.move_manager.current_name,
 		"speed h    %.2f m/s" % player.horizontal_speed(),
 		"speed v    %.2f m/s" % player.velocity.y,
 		"position   (%.1f, %.1f, %.1f)" % [pos.x, pos.y, pos.z],

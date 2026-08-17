@@ -1,12 +1,12 @@
-class_name LedgeHangState
+class_name GrabMove
 extends ScriptedMove
 
-# Two phases in one state: hanging (position frozen, waiting on input) and
+# Two phases in one move: hanging (position frozen, waiting on input) and
 # mantling (a scripted move onto the top). They share the same ledge data, and
-# splitting them would mean handing that data across a state boundary.
+# splitting them would mean handing that data across a move boundary.
 
 ## Set in enter() when the ledge query comes back invalid: there is nothing to
-## hang from, so physics_update() hands straight back to Air without ever
+## hang from, so physics_update() hands straight back to Falling without ever
 ## touching the body. See enter()'s note for what the old fallback did instead.
 var _aborted: bool = false
 
@@ -24,8 +24,8 @@ var _mantling: bool = false
 
 ## Whether the CURRENT ledge stint is mantling (the scripted climb onto the
 ## top) rather than hanging (frozen, waiting on input). Exposed the same way
-## SlideState.is_crawling() is (see StateMachine.state_for()'s own comment on
-## that precedent): nothing outside this state can otherwise tell the two
+## SlideMove.is_crawling() is (see MoveManager.move_for()'s own comment on
+## that precedent): nothing outside this move can otherwise tell the two
 ## phases apart, and character_animator.gd needs exactly that distinction --
 ## only the hang phase has a genuine clip match in the owner's reported
 ## vocabulary (`ladder_stillness`); the mantle phase still does not.
@@ -33,27 +33,27 @@ func is_mantling() -> bool:
 	return _mantling
 
 func enter(_previous: StringName) -> void:
-	# grounded is DECLARED, not read from is_on_floor(): like Vault, this
-	# state drives the body directly and never calls move_and_slide() --
+	# grounded is DECLARED, not read from is_on_floor(): like SpeedVault, this
+	# move drives the body directly and never calls move_and_slide() --
 	# neither while hanging (frozen in place, see the "hold still" branch
 	# below) nor while mantling (a scripted arc onto the ledge top) -- so
-	# is_on_floor() would keep reporting whatever the previous state left
-	# behind for the whole time this state runs. See VaultState.enter()'s
+	# is_on_floor() would keep reporting whatever the previous move left
+	# behind for the whole time this move runs. See SpeedVaultMove.enter()'s
 	# matching note.
 	#
 	# A single declaration here is enough to cover every exit path too:
 	# nothing below ever sets grounded true, so both a completed mantle
-	# (hands off to Ground) and a crouch-release drop (hands off to Air)
+	# (hands off to Walking) and a crouch-release drop (hands off to Falling)
 	# correctly leave it false -- the mantle case deliberately mirrors
-	# VaultState's own hand-off to Ground (see the note on that return below).
-	# It is also what satisfies StateMachine's declaration invariant for this
-	# state, which never calls set_grounded() again after this line.
+	# SpeedVaultMove's own hand-off to Walking (see the note on that return below).
+	# It is also what satisfies MoveManager's declaration invariant for this
+	# move, which never calls set_grounded() again after this line.
 	player.set_grounded(false)
 
 	_aborted = false
 	_mantling = false
 
-	# AirState already null-checks player.probes AND requires a valid
+	# FallingMove already null-checks player.probes AND requires a valid
 	# ledge_query() before ever transitioning here, so neither branch below is
 	# reachable in normal play. They are kept as a guard for a future caller
 	# that skips that gate -- but as a GENUINELY safe one. The previous version
@@ -89,7 +89,7 @@ func enter(_previous: StringName) -> void:
 ## Started on EVERY exit, not just the deliberate crouch-drop, and here rather
 ## than at each `return` so a future exit path cannot forget it. The mantle
 ## hand-off used to leave the cooldown at zero: a landing that found no floor
-## dropped to Air and AirState's very next ledge_query() could re-grab on the
+## dropped to Falling and FallingMove's very next ledge_query() could re-grab on the
 ## same tick, with no gate of any kind between the two. That is an unbounded
 ## oscillation whenever the landing point is not standing room -- the inverted
 ## mantle_forward_offset sign made every running grab exactly that case, but
@@ -105,36 +105,36 @@ func exit() -> void:
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted:
-		return AIR
+		return FALLING
 
 	if _mantling:
 		if advance(delta):
 			player.velocity = _exit_direction * config.grab.mantle_exit_speed
 			# Deliberately NOT declared grounded here -- see the note on
-			# enter() above, and VaultState.physics_update()'s matching note.
+			# enter() above, and SpeedVaultMove.physics_update()'s matching note.
 			# The landing point is pinned to the probed ledge edge plus an
 			# un-probed forward offset (mantle_forward_offset) that nothing
 			# here has checked against real geometry, so asserting grounded
 			# true at this exact instant would be exactly the bug that note
-			# describes for Vault. Leaving it false means GroundState's own
+			# describes for SpeedVault. Leaving it false means WalkingMove's own
 			# next floor-snap tick is what first verifies it for real -- and,
-			# since Step Zero of this task, GroundState's Slide/Vault entry
+			# since Step Zero of this task, WalkingMove's Slide/SpeedVault entry
 			# checks are themselves gated on grounded being true, so this
 			# hand-off cannot chain straight into a second scripted move
 			# either.
-			return GROUND
+			return WALKING
 		return KEEP
 
 	# Hanging: hold still. enter() zeroed velocity once and nothing in this
 	# branch ever calls move_and_slide(), so nothing needs to run every tick
 	# to keep the body from drifting or falling -- there is simply no code
-	# path here that would move it. Matches VaultState, which likewise zeros
+	# path here that would move it. Matches SpeedVaultMove, which likewise zeros
 	# velocity once at enter() rather than every tick of its own scripted move.
 
 	# The re-grab cooldown this drop needs is started by exit(), which covers
 	# this path and the mantle hand-off alike -- see the note on exit().
 	if input.crouch_held:
-		return AIR
+		return FALLING
 
 	# Pushing forward, or jumping, climbs up. This IS the moment of
 	# commitment: the player has been free to turn at any point while
@@ -151,7 +151,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		var top := _edge + Vector3(0.0, player.standing_height() * 0.5, 0.0)
 		# PLUS, not minus. _exit_direction is FORWARD (-basis.z), and the
 		# landing has to sit mantle_forward_offset PAST the lip, standing on
-		# the platform -- exactly what VaultState does with vault_exit_forward,
+		# the platform -- exactly what SpeedVaultMove does with vault_exit_forward,
 		# and exactly what MovementConfig documents this knob as doing. The
 		# original brief wrote `top -= basis.z * 0.4`, where basis.z is
 		# BACKWARD, so that `-=` was already a forward push; a later refactor

@@ -21,6 +21,14 @@ var _step_offset: float = 0.0
 var _wall_side: int = 0
 var _roll: float = 0.0
 
+## The active move's look clamp, in radians, or "no clamp" when
+## _has_look_constraint is false. Driven by MoveManager every tick; consumed
+## by apply_look() from Task 15 onward.
+var _look_min: Vector3 = Vector3(-PI, -PI, -PI)
+var _look_max: Vector3 = Vector3(PI, PI, PI)
+var _look_absolute_yaw: bool = false
+var _has_look_constraint: bool = false
+
 ## The attached body's head/neck node position, in THIS rig's PARENT's
 ## (Player's) local space -- i.e. Player.to_local(head_node.global_position)
 ## -- as of the most recent set_head_position() call. Meaningless whenever
@@ -73,6 +81,18 @@ func set_head_position(local_position: Vector3) -> void:
 func clear_head_position() -> void:
 	_has_head = false
 
+## Stores the active move's look clamp. Driven by MoveManager every tick from
+## the active move's current_config(). apply_look() does not consume this yet
+## -- see the member comments above.
+func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool) -> void:
+	_look_min = min_c
+	_look_max = max_c
+	_look_absolute_yaw = absolute_yaw
+	_has_look_constraint = true
+
+func clear_look_constraint() -> void:
+	_has_look_constraint = false
+
 ## Levels the view and clears landing/bob state. Called on a manual reset
 ## (Arena's R key) so the camera snaps back to a fresh-spawn look instead of
 ## keeping whatever pitch, landing dip, or bob phase it had the instant
@@ -87,6 +107,7 @@ func reset_state() -> void:
 	_wall_side = 0
 	_roll = 0.0
 	_has_head = false
+	_has_look_constraint = false
 	rotation.x = 0.0
 	rotation.z = 0.0
 	if camera != null:

@@ -68,24 +68,24 @@ func reset_player() -> void:
 	player.reset_state()
 	if player.camera_rig != null:
 		player.camera_rig.reset_state()
-	# Restart the state machine in Ground so a reset behaves like a fresh
-	# spawn (matching _ready()) rather than leaving the machine wherever it
-	# was — e.g. still Air if the reset happened mid-fall.
-	player.state_machine.start(PlayerState.GROUND)
+	# Restart the move manager in Walking so a reset behaves like a fresh
+	# spawn (matching _ready()) rather than leaving the manager wherever it
+	# was — e.g. still Falling if the reset happened mid-fall.
+	player.move_manager.start(Move.WALKING)
 
-	# Skip exactly one physics tick before the state machine runs again. The
+	# Skip exactly one physics tick before the move manager runs again. The
 	# spawn point sits slightly above the floor to leave clearance so the
 	# capsule never spawns interpenetrating the floor collider — NOT to
 	# produce a landing dip (a 0.1 m drop reaches only ~1.4 m/s, versus
 	# land_dip_speed_ref = 18 for a full-strength dip, so the dip from this
 	# gap alone is a few millimetres and not visually meaningful). Because of
-	# that gap, whichever state is active would immediately perturb the
-	# teleport on the very next tick if we let it run: Air applies gravity,
-	# Ground applies its floor-snap glue bias — both are sized for normal
+	# that gap, whichever move is active would immediately perturb the
+	# teleport on the very next tick if we let it run: Falling applies gravity,
+	# Walking applies its floor-snap glue bias — both are sized for normal
 	# per-frame movement, not for a mid-air-to-exact-spawn teleport, so
 	# either one reintroduces a small but real velocity/position drift in
 	# that single frame. This is the same class of single-frame jolt
-	# ground_state.gd already guards against on ledge exits; skip one tick so
+	# walking_move.gd already guards against on ledge exits; skip one tick so
 	# the teleport actually sticks before physics resumes.
 	#
 	# This ordering is also what test_reset_returns_the_player_to_spawn

@@ -1,5 +1,5 @@
 class_name ScriptedMove
-extends PlayerState
+extends Move
 
 # Shared machinery for states that DRIVE the body along a computed path rather
 # than letting physics push it. Vaulting and mantling both need to pass through

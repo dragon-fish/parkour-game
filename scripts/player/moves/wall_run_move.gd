@@ -1,5 +1,5 @@
-class_name WallRunState
-extends PlayerState
+class_name WallRunMove
+extends Move
 
 # Wall running is physics-driven, unlike the scripted vault and mantle: the
 # player keeps real velocity and real collisions, gravity is merely weakened
@@ -13,13 +13,13 @@ var _elapsed: float = 0.0
 var _normal: Vector3 = Vector3.ZERO
 var _along: Vector3 = Vector3.ZERO
 ## Set in enter() when the wall query comes back invalid: there is nothing to
-## run along, so physics_update() hands straight back to Air without ever
+## run along, so physics_update() hands straight back to Falling without ever
 ## touching velocity or the reattach cooldown. See enter()'s note.
 var _aborted: bool = false
 
-## Guarded the same way VaultState/LedgeHangState guard their own probe
+## Guarded the same way SpeedVaultMove/GrabMove guard their own probe
 ## lookups: `player.probes` is null-checked at every call site rather than
-## dereferenced directly, so this state degrades the same way its siblings do
+## dereferenced directly, so this move degrades the same way its siblings do
 ## for a hand-built player with no probe rig, instead of crashing.
 func _query_wall() -> Dictionary:
 	if player.probes == null:
@@ -33,7 +33,7 @@ func _query_wall() -> Dictionary:
 ## ground contact (player.ground_reference_y) -- see the wall-jump branch of
 ## physics_update() below for the full reasoning. Factored out because it is
 ## enforced at TWO points, not one: once at the instant a wall-jump fires
-## (clamping the impulse itself), and once every tick this state is active
+## (clamping the impulse itself), and once every tick this move is active
 ## (clamping the CLIMB, since leftover positive vy from the previous kick can
 ## otherwise still creep past this same ceiling while running along the next
 ## wall under weakened wall_gravity_scale, before the next jump ever fires --
@@ -61,18 +61,18 @@ func enter(_previous: StringName) -> void:
 	_aborted = false
 	# Wall running IS physics-driven, but grounded-ness is still DECLARED, never
 	# inferred -- P2 replaced is_on_floor() as the authority precisely so that
-	# no state can leave a stale value behind. This first declaration covers
-	# THIS tick only (the tick AirState handed off without ever calling
+	# no move can leave a stale value behind. This first declaration covers
+	# THIS tick only (the tick FallingMove handed off without ever calling
 	# move_and_slide()); every subsequent tick's physics_update() below
 	# declares again from that tick's own move_and_slide() result. See the
 	# CRITICAL note there for why a single declaration here would not be
 	# enough.
 	player.set_grounded(false)
 
-	# AirState already null-checks player.probes AND requires a valid
+	# FallingMove already null-checks player.probes AND requires a valid
 	# wall_query() before ever transitioning here, so this branch is not
 	# reachable in normal play. Kept as a genuinely safe guard for a future
-	# caller that skips that gate, mirroring VaultState's/LedgeHangState's own
+	# caller that skips that gate, mirroring SpeedVaultMove's/GrabMove's own
 	# _aborted pattern: a zero normal would give _derive_along() a zero
 	# tangent (no push direction at all) and would poison the reattach
 	# cooldown with a zero-vector "wall" on exit (see note_wall_detach()) --
@@ -90,9 +90,9 @@ func enter(_previous: StringName) -> void:
 	_derive_along()
 
 	# Kill any velocity going INTO the wall, or the body grinds against it.
-	# `player` is deliberately untyped (see PlayerState), so `player.velocity`
+	# `player` is deliberately untyped (see Move), so `player.velocity`
 	# arrives as Variant and `:=` cannot infer a type from it -- annotate
-	# explicitly, matching the pattern SlideState already uses for the same
+	# explicitly, matching the pattern SlideMove already uses for the same
 	# reason.
 	var into: float = player.velocity.dot(_normal)
 	if into < 0.0:
@@ -100,7 +100,7 @@ func enter(_previous: StringName) -> void:
 
 func exit() -> void:
 	player.wall_side = 0
-	# Only a wall this state actually attached to should arm the reattach
+	# Only a wall this move actually attached to should arm the reattach
 	# cooldown -- an aborted entry (see enter()'s note) never assigned a real
 	# _normal, and keying the cooldown to Vector3.ZERO would either poison
 	# every future attach (ZERO.dot(anything) == 0, which is never >=
@@ -113,7 +113,7 @@ func exit() -> void:
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:
-		return AIR
+		return FALLING
 	_elapsed += delta
 
 	# Refresh the wall's geometry EVERY tick from a fresh query, not just
@@ -130,24 +130,24 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# the CURRENT surface.
 	var query: Dictionary = _query_wall()
 	if not query["valid"]:
-		return AIR
+		return FALLING
 	_normal = query["normal"]
 	player.wall_side = query["side"]
 	_derive_along()
 
 	# A wall jump is a fresh press, not a ground-style coyote jump: the
 	# jump/coyote timer only refills while player.grounded is true, and this
-	# state truthfully declares grounded=false every tick, so
+	# move truthfully declares grounded=false every tick, so
 	# player.consume_jump() is permanently dead here. But a plain
 	# `_input.jump_pressed` edge check is ALSO wrong (verified, see
-	# task-1-report.md): AirState hands off to this state's enter() the
-	# moment it detects a wall, before this state's own first
+	# task-1-report.md): FallingMove hands off to this move's enter() the
+	# moment it detects a wall, before this move's own first
 	# physics_update() ever runs, so a press made on the attach tick -- or
 	# any of the up-to jump_buffer_time ticks before it, exactly like every
-	# other buffered jump in this game -- would land on a tick this state
+	# other buffered jump in this game -- would land on a tick this move
 	# never sees jump_pressed==true on, and get silently dropped on the most
 	# timing-sensitive move there is. consume_buffered_jump() reads the same
-	# buffer GroundState/AirState do, just without the coyote requirement
+	# buffer WalkingMove/FallingMove do, just without the coyote requirement
 	# that would otherwise be impossible to satisfy here, and spends it so a
 	# consumed press cannot also fire a second jump later.
 	if player.consume_buffered_jump():
@@ -201,12 +201,12 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		player.velocity += _normal * config.wallrun_jump.wall_jump_push
 		player.move_and_slide()
 		# Declared even on this away-transitioning tick, mirroring
-		# GroundState's and SlideState's own jump branches: move_and_slide()
+		# WalkingMove's and SlideMove's own jump branches: move_and_slide()
 		# just ran, so is_on_floor() is a real answer, not a stale one, and
-		# reporting it truthfully costs nothing since AirState's own first
+		# reporting it truthfully costs nothing since FallingMove's own first
 		# tick will re-declare regardless.
 		player.set_grounded(player.is_on_floor())
-		return AIR
+		return FALLING
 
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	var along_speed := horizontal.dot(_along)
@@ -224,7 +224,7 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# one clamp alone is not enough. A player can reattach to the next wall
 	# still carrying leftover positive vy from the last kick (the free-flight
 	# arc between two close walls does not always have time to peak before
-	# the next one is reached); left alone, THIS state's own weakened gravity
+	# the next one is reached); left alone, THIS move's own weakened gravity
 	# then lets that leftover velocity keep lifting the player, tick after
 	# tick, well past the kick-time ceiling before the next jump ever fires.
 	# Only ever removes upward drift once AT the ceiling -- ordinary gravity
@@ -235,22 +235,22 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 
 	player.move_and_slide()
 
-	# CRITICAL: declared EVERY tick this state stays active, not just once in
-	# enter(). StateMachine's invariant only checks "declared at least once
-	# since entry" -- a state that declared a stale value in enter() and never
+	# CRITICAL: declared EVERY tick this move stays active, not just once in
+	# enter(). MoveManager's invariant only checks "declared at least once
+	# since entry" -- a move that declared a stale value in enter() and never
 	# again would satisfy that check while lying for the rest of its run. Here
 	# it is never stale: move_and_slide() just ran this tick, so is_on_floor()
 	# is a fresh, true reading every time this line executes, for every branch
-	# below (GROUND and AIR alike, and the fall-through KEEP).
+	# below (WALKING and FALLING alike, and the fall-through KEEP).
 	player.set_grounded(player.is_on_floor())
 
 	if player.grounded:
-		return GROUND
+		return WALKING
 	if _elapsed >= config.wall_run.wall_max_duration:
-		return AIR
+		return FALLING
 	# wall_exit_speed is measured as TOTAL horizontal speed (matching
 	# wall_min_speed's own measurement), not projected onto _along -- see
 	# WallRunConfig's own note on this field.
 	if Vector2(player.velocity.x, player.velocity.z).length() < config.wall_run.wall_exit_speed:
-		return AIR
+		return FALLING
 	return KEEP

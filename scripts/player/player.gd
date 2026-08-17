@@ -2,14 +2,14 @@ class_name Player
 extends CharacterBody3D
 
 # Owns the shared movement data and the movement primitives. It deliberately
-# contains no transition logic — that belongs to the states.
+# contains no transition logic — that belongs to the moves.
 #
-# State names live on PlayerState, not here: Player references the state
-# classes, so the states must not reference Player back.
+# Move names live on Move, not here: Player references the move classes, so
+# the moves must not reference Player back.
 
 var config: MovementConfig
 var input_source: InputSource
-var state_machine: StateMachine
+var move_manager: MoveManager
 
 ## Downward speed at the moment of the most recent landing. Read by CameraRig.
 var last_landing_speed: float = 0.0
@@ -27,7 +27,7 @@ var grounded: bool = false
 ## World-space Y the player was last known to be resting on solid ground,
 ## refreshed every tick set_grounded(true) is declared (so it tracks a sloped
 ## or stepped floor, not just the very first tick of a Ground stint). Read by
-## WallRunState to bound how much height a chain of wall-jumps can add above
+## WallRunMove to bound how much height a chain of wall-jumps can add above
 ## real ground -- see its own comment on why that bound has to be measured
 ## from here rather than from a fixed reference.
 var ground_reference_y: float = 0.0
@@ -41,9 +41,9 @@ var ground_reference_y: float = 0.0
 ## (matches the brief's declared interface) rather than widening it.
 var _pending_landing: float = -1.0
 
-## Number of set_grounded() calls made so far, ever. Read ONLY by StateMachine,
-## which snapshots it when a state is entered and checks it has moved by the end
-## of that state's first physics_update — that is how "a state DECLARES its
+## Number of set_grounded() calls made so far, ever. Read ONLY by MoveManager,
+## which snapshots it when a move is entered and checks it has moved by the end
+## of that move's first physics_update — that is how "a move DECLARES its
 ## grounded-ness" is enforced structurally instead of by convention. The
 ## absolute value is meaningless; only differences between snapshots are.
 var grounded_declarations: int = 0
@@ -55,9 +55,9 @@ func set_grounded(value: bool) -> void:
 		ground_reference_y = global_position.y
 
 ## Clears `grounded` WITHOUT counting as a declaration. Called only by
-## StateMachine, as the fail-safe half of the invariant above: a state that
-## never declared must not go on inheriting the previous state's value — a
-## WallRun that forgot the call would inherit Ground's `true` and refill coyote
+## MoveManager, as the fail-safe half of the invariant above: a move that
+## never declared must not go on inheriting the previous move's value — a
+## WallRun that forgot the call would inherit Walking's `true` and refill coyote
 ## time every tick, i.e. infinite jumps. Deliberately not routed through
 ## set_grounded(), or the fail-safe would satisfy the very check it exists to
 ## keep reporting.
@@ -297,7 +297,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 		shape_node.shape = owned
 		_standing_height = owned.height
 
-	_build_state_machine()
+	_build_moves()
 
 	if probes != null:
 		probes.setup(config, _standing_height * 0.5)
@@ -309,13 +309,13 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 ## the player respawns grounded, so a landing dip from the old life cannot
 ## appear after a fresh spawn, and so a ledge cooldown from the old life
 ## cannot withhold a grab the new one should be free to make. Does not touch
-## the state machine itself — callers restart that separately.
+## the move manager itself — callers restart that separately.
 ##
 ## grounded is also cleared here rather than left to whatever the previous
 ## life last declared: Arena.reset_player() teleports to spawn and then skips
-## exactly one physics tick before the state machine resumes (see its own
+## exactly one physics tick before the move manager resumes (see its own
 ## comment), and _tick_timers() runs on the very first re-enabled tick —
-## before GroundState has had a chance to declare anything. Without this, that
+## before WalkingMove has had a chance to declare anything. Without this, that
 ## one tick reads last life's grounded value and can wrongly refill coyote
 ## time (if the old life ended airborne, a resting spawn would start with
 ## none) or wrongly withhold it (the reverse).
@@ -337,7 +337,7 @@ func reset_state() -> void:
 	# flip `grounded` back on, contradicting the line above): global_position
 	# has already been moved to the spawn point by the time Arena.reset_player()
 	# calls this (see its own comment on ordering), so this is the correct
-	# fresh reference immediately, without waiting for GroundState's first
+	# fresh reference immediately, without waiting for WalkingMove's first
 	# declaration a tick or two after the reset.
 	ground_reference_y = global_position.y
 	_pending_landing = -1.0
@@ -348,51 +348,30 @@ func reset_state() -> void:
 	_standing_restore_pending = false
 	request_standing_capsule()
 
-func _build_state_machine() -> void:
-	state_machine = StateMachine.new()
-	add_child(state_machine)
+func _build_moves() -> void:
+	move_manager = MoveManager.new()
+	add_child(move_manager)
 
-	var ground := GroundState.new()
-	var air := AirState.new()
-	for s in [ground, air]:
-		s.player = self
-		s.config = config
-		state_machine.add_child(s)
+	# name -> [move instance, its own config]. One table instead of the
+	# seven near-identical blocks this used to be, so a new move is one row.
+	var table := [
+		[Move.WALKING, WalkingMove.new(), config.walking],
+		[Move.FALLING, FallingMove.new(), config.falling],
+		[Move.SLIDE, SlideMove.new(), config.slide],
+		[Move.CROUCH, CrouchMove.new(), config.crouch],
+		[Move.SPEED_VAULT, SpeedVaultMove.new(), config.speed_vault],
+		[Move.GRAB, GrabMove.new(), config.grab],
+		[Move.WALL_RUN, WallRunMove.new(), config.wall_run],
+	]
+	for row in table:
+		var move: Move = row[1]
+		move.player = self
+		move.config = config
+		move.cfg = row[2]
+		move_manager.add_child(move)
+		move_manager.register(row[0], move)
 
-	state_machine.register(PlayerState.GROUND, ground)
-	state_machine.register(PlayerState.AIR, air)
-
-	var slide := SlideState.new()
-	slide.player = self
-	slide.config = config
-	state_machine.add_child(slide)
-	state_machine.register(PlayerState.SLIDE, slide)
-
-	var crouch := CrouchState.new()
-	crouch.player = self
-	crouch.config = config
-	state_machine.add_child(crouch)
-	state_machine.register(PlayerState.CROUCH, crouch)
-
-	var vault := VaultState.new()
-	vault.player = self
-	vault.config = config
-	state_machine.add_child(vault)
-	state_machine.register(PlayerState.VAULT, vault)
-
-	var ledge := LedgeHangState.new()
-	ledge.player = self
-	ledge.config = config
-	state_machine.add_child(ledge)
-	state_machine.register(PlayerState.LEDGE, ledge)
-
-	var wall := WallRunState.new()
-	wall.player = self
-	wall.config = config
-	state_machine.add_child(wall)
-	state_machine.register(PlayerState.WALL, wall)
-
-	state_machine.start(PlayerState.GROUND)
+	move_manager.start(Move.WALKING)
 
 func _ready() -> void:
 	if body_scene != null:
@@ -637,7 +616,7 @@ func _bfs_find_by_name(root: Node3D, needle: String) -> Node3D:
 	return null
 
 func _physics_process(delta: float) -> void:
-	if state_machine == null:
+	if move_manager == null:
 		return
 	# Sampled at the START of the tick, not carried over from the end of the
 	# previous one, so a teleport made from outside this function (the arena's
@@ -646,7 +625,7 @@ func _physics_process(delta: float) -> void:
 	var input := input_source.poll()
 	last_input = input
 	_tick_timers(delta, input)
-	# Before the states run, so the body moves this tick at whatever size it is
+	# Before the moves run, so the body moves this tick at whatever size it is
 	# now entitled to. A restore owed from an exit under a ceiling comes back
 	# on the first tick there is room for it.
 	_service_pending_capsule_restore()
@@ -654,7 +633,7 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		camera_rig.apply_look(input.look, self)
 
-	state_machine.physics_update(delta, input)
+	move_manager.physics_update(delta, input)
 
 	var travelled := global_position - tick_start_position
 	_travel_speed = Vector2(travelled.x, travelled.z).length() / maxf(delta, 0.0001)
@@ -749,12 +728,12 @@ func consume_jump() -> bool:
 	return false
 
 ## Spends a buffered jump if one is pending, WITHOUT requiring coyote time.
-## For states that are legitimately, truthfully airborne the whole time they
-## run -- a wall run declares grounded=false every tick (see WallRunState),
+## For moves that are legitimately, truthfully airborne the whole time they
+## run -- a wall run declares grounded=false every tick (see WallRunMove),
 ## so the coyote timer consume_jump() requires never refills there, and
 ## consume_jump() would be permanently dead on the wall. But a press is not
-## only relevant on the exact tick a state starts reading it: AirState hands
-## off to WallRunState the moment it detects a wall, before WallRunState's
+## only relevant on the exact tick a move starts reading it: FallingMove hands
+## off to WallRunMove the moment it detects a wall, before WallRunMove's
 ## own first physics_update() ever runs, so a press made on the attach tick
 ## itself -- or up to jump_buffer_time earlier, same as any other buffered
 ## jump -- must not be silently dropped on what is otherwise the most
@@ -825,17 +804,17 @@ func consume_crouch() -> bool:
 		return true
 	return false
 
-## Called by LedgeHangState when the player drops off a ledge (crouch), so
+## Called by GrabMove when the player drops off a ledge (crouch), so
 ## can_grab_ledge() refuses to re-grab the very same ledge on the next tick.
 func start_ledge_cooldown() -> void:
 	_ledge_cooldown = config.pawn.ledge_regrab_cooldown
 
 ## True once the post-release cooldown started by start_ledge_cooldown() has
-## expired. AirState gates its ledge-grab check on this.
+## expired. FallingMove gates its ledge-grab check on this.
 func can_grab_ledge() -> bool:
 	return _ledge_cooldown <= 0.0
 
-## Called by WallRunState when it exits, so a wall facing roughly the same way
+## Called by WallRunMove when it exits, so a wall facing roughly the same way
 ## as the one just left cannot be re-attached until its own cooldown runs out.
 ## Appends rather than overwrites: a single {normal, cooldown} slot was found
 ## to be bypassable in any corner -- leaving wall A, briefly touching
@@ -873,8 +852,8 @@ func horizontal_speed() -> float:
 ## How fast the body ACTUALLY moved horizontally last physics tick, measured
 ## from its displacement rather than from `velocity`.
 ##
-## This exists because `velocity` lies during a scripted move: VaultState and
-## LedgeHangState drive global_position directly and deliberately zero velocity
+## This exists because `velocity` lies during a scripted move: SpeedVaultMove and
+## GrabMove drive global_position directly and deliberately zero velocity
 ## for the duration (see ScriptedMove), so horizontal_speed() reads 0 through
 ## the whole vault or mantle. Feeding that to the camera collapsed the FOV back
 ## toward fov_base at precisely the moment the player is moving fastest — a

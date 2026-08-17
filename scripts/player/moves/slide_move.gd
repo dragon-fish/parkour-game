@@ -1,5 +1,5 @@
-class_name SlideState
-extends PlayerState
+class_name SlideMove
+extends Move
 
 # A slide is a commitment: it buys speed up front, steers poorly, and ends on
 # its own terms. Everything about it is tuned to make the player choose WHERE
@@ -8,17 +8,18 @@ extends PlayerState
 # Deliberately absent: Slide never transitions into a wall run. The spec
 # forbids it -- chaining a slide straight into a wall run lets the player
 # build speed in a loop that never has to give any back. Reaching a wall from
-# a slide has to go through Ground or Air first, which costs the slide's
+# a slide has to go through Walking or Falling first, which costs the slide's
 # boost. Was pinned by tests/legacy/test_slide_state.gd's
 # test_slide_can_only_reach_ground_air_or_crouch and
 # test_slide_returns_only_ground_air_or_keep -- do not add a return into that
-# state here regardless. (Deliberately not spelling the state's own constant
-# name in this comment: the first of those two tests greps slide_state.gd's
-# source for PlayerState's constant names verbatim, precisely so that even
-# NAMING the forbidden target here -- not just returning it -- trips the
-# tripwire.) Both tests are ARCHIVED by Task 1 and NOT in the running suite,
-# so nothing enforces this today; restore the pins when the behavioural
-# suite is rewritten.
+# move here regardless. (Deliberately not spelling the move's own constant
+# name in this comment: the first of those two tests greps this file's
+# former path (res://scripts/player/states/slide_state.gd) for PlayerState's
+# constant names verbatim, precisely so that even NAMING the forbidden target
+# here -- not just returning it -- trips the tripwire.) Both tests are
+# ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces this
+# today; restore the pins -- and their now-stale source path -- when the
+# behavioural suite is rewritten.
 
 var _elapsed: float = 0.0
 var _direction: Vector3 = Vector3.ZERO
@@ -51,7 +52,7 @@ func enter(_previous: StringName) -> void:
 	player.set_capsule_height(config.slide.slide_capsule_height)
 
 ## Deliberately a REQUEST, not an unconditional restore. The off-edge exit
-## below returns AIR whether or not there is headroom — a player who walks off
+## below returns FALLING whether or not there is headroom — a player who walks off
 ## a ledge must fall, ceiling or not, so that path cannot be headroom-gated the
 ## way the jump path is — and _crawl() shuffling off a ledge reaches it too.
 ## Restoring the 1.8 m capsule here regardless would spawn it inside the roof.
@@ -60,7 +61,7 @@ func exit() -> void:
 	player.request_standing_capsule()
 
 ## True while a spent slide is shuffling out from under a ceiling rather than
-## sliding. Both are state Slide, so nothing else can tell them apart — the
+## sliding. Both are move Slide, so nothing else can tell them apart — the
 ## arena's traversability test reads this to prove the tunnel is cleared on
 ## momentum rather than rescued by the safety net.
 func is_crawling() -> bool:
@@ -71,7 +72,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 	# Asked once per tick and reused by the crawl latch and the jump gate, so
 	# the two cannot disagree within a single frame.
-	# `player` is deliberately untyped (see PlayerState), so its return values
+	# `player` is deliberately untyped (see Move), so its return values
 	# arrive as Variant and need an explicit type here.
 	var blocked: bool = not player.has_headroom()
 	var speed := Vector2(player.velocity.x, player.velocity.z).length()
@@ -96,14 +97,14 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.velocity.y = config.pawn.base_jump_z
 		player.move_and_slide()
 		player.set_grounded(player.is_on_floor())
-		return AIR
+		return FALLING
 
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
 
 	if not player.grounded:
 		player.velocity.y = 0.0
-		return AIR
+		return FALLING
 
 	# Read speed back AFTER move_and_slide(): a collision (e.g. sliding into a
 	# wall) can shave it down well below the friction-only decay computed
@@ -133,7 +134,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if wants_to_exit and player.has_headroom():
 		if input.crouch_held:
 			return CROUCH
-		return GROUND
+		return WALKING
 	return KEEP
 
 ## The slide proper: committed steering, friction, and slope.
@@ -164,7 +165,7 @@ func _slide(delta: float, input: MoveInput, speed: float) -> void:
 	# `speed`. Steering the body horizontally instead would leave a descent to
 	# floor_snap_speed alone, which is not enough to hold the body on a steep
 	# ramp at slide speeds — it would part company with the floor and drop the
-	# slide into Air partway down.
+	# slide into Falling partway down.
 	var horizontal_len := Vector2(slope_dir.x, slope_dir.z).length()
 	if horizontal_len > 0.001:
 		var velocity := slope_dir * (speed / horizontal_len)
@@ -177,8 +178,8 @@ func _slide(delta: float, input: MoveInput, speed: float) -> void:
 		player.velocity.y = -config.pawn.floor_snap_speed
 
 ## The slide is spent but there is a roof directly overhead, so standing up is
-## impossible and the exit to Ground is gated shut. Rather than sit at zero
-## speed forever with no transition available and no way in this state to
+## impossible and the exit to Walking is gated shut. Rather than sit at zero
+## speed forever with no transition available and no way in this move to
 ## generate any, let the player shuffle out under their own input. Steering is
 ## immediate here, not the slide's committed line: this is no longer a slide,
 ## it is someone getting out from under something.
