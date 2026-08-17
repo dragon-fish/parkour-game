@@ -299,23 +299,29 @@ func build() -> Node3D:
 	#
 	# The tunnel length is DERIVED, not hand-tuned, from SlideMove's own speed
 	# model applied to this exact geometry via _speed_after(): friction over
-	# the platform's remaining length, friction again (at the DownRamp's own
-	# grade) over the DownRamp, then friction over the flat run-in. That gives
-	# the speed AT THE TUNNEL'S OWN MOUTH, from which the longest tunnel that
-	# still clears with real headroom over slide_crawl_speed follows from
-	# plain kinematics (v^2 = u^2 - 2*a*d, solved for d). This is what keeps
-	# "the tunnel is clearable on slide momentum alone" true across a future
-	# retune of ground_speed, friction_modifier, PawnConfig's own friction
+	# the platform's remaining length, friction net of gravity's own
+	# along-slope pull (at the DownRamp's own grade) over the DownRamp, then
+	# friction over the flat run-in. That gives the speed AT THE TUNNEL'S OWN
+	# MOUTH, from which the longest tunnel that still clears with real
+	# headroom over slide_crawl_speed follows from plain kinematics
+	# (v^2 = u^2 - 2*a*d, solved for d). This is what keeps "the tunnel is
+	# clearable on slide momentum alone" true across a future retune of
+	# ground_speed, friction_modifier, gravity, PawnConfig's own friction
 	# knobs, or the ramp geometry, instead of silently going stale the way the
 	# fixed 7 m tunnel did when ground_speed dropped from 9.0 to 7.2 (see the
 	# numbers-only retune's own report on this exact test failing as a
 	# result) -- or the way this exact derivation itself went stale and silent
-	# when Task 10 deleted the boost and slope-accel fields this used to hand-
-	# mirror. Every deceleration below is sourced from Friction.slide_friction(),
-	# the SAME function SlideMove._slide() calls at runtime, rather than a
-	# second, independently-maintained copy of its arithmetic -- so a future
-	# change to Friction or to SlideConfig.friction_modifier is felt here
-	# automatically, and cannot desynchronise this file without also breaking
+	# TWICE over the course of Task 10: once when the boost/slope-accel
+	# fields it used to hand-mirror were deleted, and again when the first
+	# fix forgot gravity's own along-slope pull entirely (see the task
+	# report's addendum). Every deceleration below is sourced from
+	# Friction.slide_friction(), the SAME function SlideMove._slide() calls
+	# at runtime, and gravity's contribution is the same
+	# `config.pawn.gravity * grade` SlideMove._slide() itself now adds,
+	# rather than a second, independently-maintained copy of either -- so a
+	# future change to Friction, gravity, or SlideConfig.friction_modifier is
+	# felt here automatically, and cannot desynchronise this file without
+	# also breaking
 	# the live, tested module it now calls into.
 	const COURSE_WIDTH := 6.0
 	const DECK_Y := 0.0            # top of the arena Floor slab
@@ -355,17 +361,26 @@ func build() -> Node3D:
 	var down_ramp_grade: float = down_ramp_rise / sqrt(down_ramp_rise * down_ramp_rise \
 		+ down_ramp_length * down_ramp_length)
 
-	# Deceleration per segment, from the SAME grade-driven function
+	# Friction per segment, from the SAME grade-driven function
 	# SlideMove._slide() calls at runtime -- see this section's own header
-	# comment for why calling it beats hand-mirroring its arithmetic.
+	# comment for why calling it beats hand-mirroring its arithmetic. On the
+	# flat this is the WHOLE net deceleration; on the DownRamp it is only
+	# half the story -- see the net-accel comment just below.
 	var flat_decel: float = Friction.slide_friction(config.pawn, config.slide.friction_modifier, 0.0)
 	var down_ramp_decel: float = Friction.slide_friction(config.pawn, config.slide.friction_modifier, \
 		down_ramp_grade)
 
+	# Gravity's own along-slope component, gravity * grade -- ORDINARY
+	# physics, not the deleted slide_slope_accel bonus (see SlideMove._slide()'s
+	# own comment on this exact distinction). Zero on the flat (grade 0), so
+	# folding it in here changes nothing for the platform/run-in segments and
+	# only matters for the DownRamp's own net figure below.
+	var down_ramp_net_accel: float = config.pawn.gravity * down_ramp_grade - down_ramp_decel
+
 	var platform_remaining: float = (PLATFORM_NEAR_Z - PLATFORM_FAR_Z) - PLATFORM_ENTRY_MARGIN
 	var speed_after_platform: float = _speed_after(config.pawn.ground_speed, -flat_decel, \
 		platform_remaining)
-	var speed_after_ramp: float = _speed_after(speed_after_platform, -down_ramp_decel, down_ramp_length)
+	var speed_after_ramp: float = _speed_after(speed_after_platform, down_ramp_net_accel, down_ramp_length)
 	var speed_at_tunnel_mouth: float = _speed_after(speed_after_ramp, -flat_decel, RUN_IN_LENGTH)
 
 	var tunnel_exit_target_speed: float = config.slide.slide_crawl_speed * TUNNEL_EXIT_SPEED_MARGIN

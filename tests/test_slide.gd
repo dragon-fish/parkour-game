@@ -99,11 +99,23 @@ func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
 	# test_sliding_is_far_more_slope_sensitive_than_walking, which only ever
 	# calls Friction.slide_friction() directly with literal grade arguments).
 	# A real player, sliding on a real tilted floor, must lose speed
-	# noticeably faster uphill than downhill.
+	# noticeably faster uphill than downhill -- "lose" for downhill only in
+	# the RELATIVE sense this test checks; at this incline (30 degrees, past
+	# the ~18.2 degree break-even -- see
+	# test_downhill_past_break_even_grade_nets_acceleration_through_slide_move's
+	# own comment) downhill actually GAINS speed, which only makes uphill's
+	# own loss look larger by comparison.
+	#
+	# RUN_TICKS is generous (matching this file's other tests' own margin,
+	# not the tighter 40 an earlier version of this test used) so entry speed
+	# sits well above slide_abort_speed with room to spare: uphill's own
+	# friction+gravity deceleration is severe enough now (grade -0.5 here) to
+	# abort a slide entered too slowly within just a few ticks, which would
+	# make the SLIDE-still-current check below fail for an unrelated reason.
 	const INCLINE := deg_to_rad(30.0)
 	const SETTLE_TICKS := 60
-	const RUN_TICKS := 40
-	const SLIDE_TICKS := 15
+	const RUN_TICKS := 200
+	const SLIDE_TICKS := 10
 
 	var losses := {}
 	for uphill in [true, false]:
@@ -133,3 +145,57 @@ func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
 	check(losses[true] > losses[false] * 1.5, \
 		"an uphill slide did not decay markedly harder than a downhill one (uphill lost %f, downhill lost %f)" \
 			% [losses[true], losses[false]])
+
+## Break-even grade at this project's shipped constants (gravity 8.0,
+## base_friction 40.0, friction_modifier 0.1, braking_friction_strength 0.5,
+## downward_slide_friction_scale 1.8): solving gravity*g == decel(g) for
+## g >= 0 gives g = (base_friction*friction_modifier*braking_friction_strength)
+## / (gravity - base_friction*friction_modifier*braking_friction_strength*(downward_slide_friction_scale-1))
+## = 2.0 / (8.0 - 2.0*0.8) = 2.0 / 6.4 = 0.3125, i.e. asin(0.3125) ~= 18.21
+## degrees. Independently recomputed and confirmed against the running code
+## via a standalone script before this constant was trusted -- see this
+## file's own task report.
+const BREAK_EVEN_GRADE := 0.3125
+
+func test_downhill_past_break_even_grade_nets_acceleration_through_slide_move() -> void:
+	# The property the model was missing entirely before this fix: gravity's
+	# along-slope component (ordinary physics, NOT the deleted
+	# slide_slope_accel bonus -- see _slide()'s own comment) must feed the
+	# slide's scalar speed. Below is not enough to prove the term is wired
+	# sign-correctly -- "decays more slowly downhill" could also be produced
+	# by, say, a friction bug that merely UNDER-charges downhill. Only an
+	# incline steep enough to flip the sign into genuine acceleration proves
+	# it. 30 degrees gives grade 0.5, comfortably past the ~0.3125 break-even
+	# above (net accel ~= +1.2 m/s^2 at this project's shipped constants).
+	const INCLINE := deg_to_rad(30.0)
+	const SETTLE_TICKS := 60
+	const RUN_TICKS := 200
+	const SLIDE_TICKS := 20
+
+	check_greater(sin(INCLINE), BREAK_EVEN_GRADE, \
+		"test setup is wrong -- INCLINE must sit past the break-even grade")
+
+	var world := TestWorld.build_on_slope(tree, MovementConfig.new(), INCLINE)
+	await step(1)
+	await step(SETTLE_TICKS)
+	check(world["player"].grounded, "player did not settle onto the slope -- test setup is wrong")
+
+	# Backward (local +Z) descends this positively-inclined slope -- see
+	# build_on_slope()'s own comment.
+	world["input"].state.move = Vector2(0.0, -1.0)
+	for i in RUN_TICKS:
+		await step(1)
+	var before: float = world["player"].horizontal_speed()
+
+	world["input"].press_crouch()
+	await step(1)
+	for i in SLIDE_TICKS:
+		await step(1)
+	check(world["player"].move_manager.current_name == Move.SLIDE, \
+		"never entered Slide -- test setup is wrong")
+
+	check_greater(world["player"].horizontal_speed(), before, \
+		"a downhill slide past the break-even grade did not net-accelerate (%f -> %f)" \
+			% [before, world["player"].horizontal_speed()])
+	TestWorld.teardown(world)
+	await step(1)

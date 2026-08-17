@@ -139,15 +139,29 @@ func _slide(delta: float, input: MoveInput, speed: float) -> void:
 		var angle := _direction.signed_angle_to(wish_dir, Vector3.UP)
 		_direction = _direction.rotated(Vector3.UP, clampf(angle, -max_turn, max_turn))
 
-	# Slope drives FRICTION, not acceleration (03 §3.3). Uphill multiplies it
-	# by 5.0 -- an uphill slide stops almost immediately -- while downhill
-	# drops it to 1.8x, which is what makes a descent one of the few places a
-	# slide is genuinely worth doing. `grade` is +1 straight down the fall
-	# line, matching Friction's own convention.
+	# Slope drives FRICTION, not a made-up acceleration bonus (03 §3.3).
+	# Uphill multiplies friction by 5.0 -- an uphill slide stops almost
+	# immediately -- while downhill drops it to 1.8x. `grade` is +1 straight
+	# down the fall line, matching Friction's own convention.
 	var slope_dir := _slope_direction()
 	var grade := -slope_dir.y
 	var decel: float = Friction.slide_friction(config.pawn, cfg.friction_modifier, grade)
-	speed = maxf(speed - decel * delta, 0.0)
+
+	# ORDINARY GRAVITY, not a reinstated slide_slope_accel: the deleted field
+	# was an invented bonus layered ON TOP of friction; this is the plain
+	# along-slope component of the SAME gravity every other move already
+	# falls under, g * sin(angle) = gravity * grade. Without it the scalar
+	# speed above can only ever decay, on every grade, at every angle -- a
+	# descent would merely be SLOWER to stop than a climb, never faster,
+	# which is not what 05 §5.1 describes. Past the break-even grade (where
+	# this exceeds decel -- ~18.2 degrees at this project's current
+	# constants; see test_slide.gd's BREAK_EVEN_GRADE for the derivation) a
+	# downhill slide genuinely nets speed; below it, friction still wins and
+	# the slide simply carries further before stopping. Below the break-even
+	# grade this differs from pure-friction decay in RATE, not sign; only
+	# past it does the sign flip.
+	var gravity_along: float = config.pawn.gravity * grade
+	speed = maxf(speed + (gravity_along - decel) * delta, 0.0)
 
 	# Drive along the SLOPE, scaled so the horizontal magnitude is still
 	# `speed`. Steering the body horizontally instead would leave a descent to
