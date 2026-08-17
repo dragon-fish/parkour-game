@@ -1230,6 +1230,8 @@ Run: `pwsh -File tools/run_tests.ps1`
 
 Expected: PASS，`test_move_manager.gd  4 test(s)`（Step 1 的测试文件恰好四个 `test_` 方法），无 `SCRIPT ERROR:`。
 
+> 实施记录：审查发现 `MoveManager.start()` 没有清空 `_redo_cooldowns`（冷却会跨越重生存活），修复时补了第五个测试 `test_start_clears_a_live_cooldown()` 钉住它。所以交付后的实际计数是 **5**，而上面的 4 仍然是 Step 1 那份代码的正确预期。
+
 - [ ] **Step 9: 人工确认行为未变**
 
 Run: `.engine\Godot_v4.7.1-stable_win64_console.exe --path .`
