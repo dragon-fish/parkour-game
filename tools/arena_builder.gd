@@ -581,8 +581,9 @@ func build() -> Node3D:
 	# Course, run from +Z toward -Z like every other area here:
 	#
 	#   z ~65 .. 55         approach  bare arena floor -- accel_rate (60 m/s^2)
-	#                                 reaches wall_min_speed (5 m/s) in well under
-	#                                 a metre, so this is about pacing, not need
+	#                                 reaches wall_running_min_speed (2 m/s) in
+	#                                 well under a metre, so this is about
+	#                                 pacing, not need
 	#   z  55 .. LongWall's far z     one continuous wall, length derived below
 	#   z  LongWall's far z .. 35.5   gap: bare floor, a beat to land and reset
 	#                                 before the zig-zag starts
@@ -590,10 +591,11 @@ func build() -> Node3D:
 	#                                 chained by wall jumps -- see the note
 	#                                 above the loop
 	#
-	# Both derived spans above move with wall_config (wall_max_speed,
-	# wall_max_duration, wall_reattach_cooldown) rather than holding still, so
-	# retuning any of those keeps this comment true without anyone having to
-	# hand-edit a z value here.
+	# Both derived spans above move with wall_config (ground_speed,
+	# wall_running_min_speed, wall_running_horisontal_deceleration,
+	# redo_move_time) rather than holding still, so retuning any of those
+	# keeps this comment true without anyone having to hand-edit a z value
+	# here.
 	#
 	# The floor is sized AFTER this area (see the Floor comment further down)
 	# specifically so nothing here can ever hang over its edge: the floor's
@@ -613,48 +615,46 @@ func build() -> Node3D:
 	var wall_colour := Color(0.32, 0.52, 0.68)
 
 	# How far a wall's near face may sit from the running lane's centreline
-	# (local x = 0) and still be within wall_reach (0.75 m default) of a
-	# player running straight down it — proven in practice, not just in
-	# theory: this is the exact offset tests/legacy/test_wall_run.gd's own
-	# `_wall_world()` fixture uses (wall centred at x=0.95, this thickness),
-	# and every wall-attach test in that file used to pass against it -- that
-	# file is ARCHIVED by Task 1 and NOT in the running suite, so nothing
-	# currently enforces this. Kept well
-	# under wall_reach itself (0.75) rather than pushed right up against it,
-	# so a player drifting a few centimetres off the lane's exact centre
-	# during a real run does not fall outside reach.
-	const WALL_NEAR_FACE := 0.45
+	# (local x = 0) and still be within reach (Probes.wall_query()'s side rays
+	# now read wall_running_forward_check_distance, 0.5 m default -- see
+	# WallRunConfig's own note; this replaced the project's former wall_reach,
+	# 0.75 m) of a player running straight down it. Kept well under that reach
+	# rather than pushed right up against it, so a player drifting a few
+	# centimetres off the lane's exact centre during a real run does not fall
+	# outside reach.
+	const WALL_NEAR_FACE := 0.3
 	const WALL_THICKNESS := 1.0
-	# Tall enough to contain a CHAINED climb, though no longer sized to hide an
-	# unbounded one -- a PREVIOUS pass here found that wall_run_state.gd's
-	# consume_buffered_jump() branch ASSIGNED velocity.y = wall_jump_up on
-	# every wall-jump with no reference to how much height a chain had already
-	# banked, and "fixed" the symptom by making these walls tall enough to
-	# contain the worst case instead of touching the mechanic (see this task's
-	# own report on why that was a band-aid). WallRunState now bounds the
-	# climb itself: a chain of wall-jumps can never lift the player more than
-	# jump_peak_height (one plain jump's own reach) plus one wall_jump's own
-	# textbook peak rise above the ground it started from -- see
-	# wall_run_state.gd's own comment on that fix for the reasoning. This
-	# mirrors that SAME derivation, using PLAIN gravity rather than
-	# wall_gravity_scale-weakened gravity to match it exactly (gravity is
-	# never weakened the instant a wall-jump hands off to AirState;
-	# wall_gravity_scale only applies while actually attached), so a future
-	# retune of gravity/base_jump_z/wall_jump_up keeps this tall enough
-	# automatically without needing its own separate fix -- and no longer
-	# needs multiplying by the zig-zag's own wall count, since the bound no
-	# longer grows with chain length.
+	# Tall enough for a SINGLE wall-run + wall-jump excursion above the ground
+	# it started from -- NO LONGER sized to contain a CHAINED climb.
+	# WallRunMove used to bound one itself (WallRunMove._height_ceiling(),
+	# ~40 lines), but that governor was this project's own invention with no
+	# counterpart in the original, and is deleted this task as a deliberate
+	# 1:1 accepted risk (spec §8): a zig-zag chain between the walls below may
+	# now climb without any governed limit. This height only has to read
+	# comfortably for an ordinary, non-chained run; it makes no claim about
+	# containing a determined chain, and is not a substitute for a governor
+	# this task deliberately does not add.
 	var wall_jump_peak_rise: float = (wall_config.wallrun_jump.wall_jump_up * wall_config.wallrun_jump.wall_jump_up) \
 		/ (2.0 * maxf(wall_config.pawn.gravity, 0.001))
 	const WALL_HEIGHT_MARGIN := 1.3
 	var wall_run_height: float = (jump_peak_height + wall_jump_peak_rise) * WALL_HEIGHT_MARGIN
 
-	# Long enough to exhaust a FULL wall_max_duration run, not merely the
-	# brief's minimum bar (half of wall_max_speed * wall_max_duration, which
-	# only proves the duration cap is reachable in principle) -- using the
-	# whole product means a run that holds along this wall the entire time
-	# actually hits the timer, not just clears the test's threshold.
-	var long_wall_length: float = wall_config.wall_run.wall_max_speed * wall_config.wall_run.wall_max_duration
+	# Long enough to exhaust a run that enters at the fastest speed a player
+	# can realistically carry in -- ground_speed, since wall running CARRIES
+	# speed rather than creating it (see WallRunConfig.wall_running_min_speed's
+	# own note) -- decaying under wall_running_horisontal_deceleration down to
+	# wall_running_min_speed. There is no duration cap to size against any
+	# more (Task 11): a run now ends purely by this decay, so the wall only
+	# needs to outlast the slowest-decaying realistic run, with headroom
+	# (LONG_WALL_MARGIN) for the brief acceleration phase right after entry
+	# and for approach-speed variance.
+	var max_entry_speed: float = wall_config.pawn.ground_speed
+	var min_exit_speed: float = wall_config.wall_run.wall_running_min_speed
+	var horisontal_decel: float = wall_config.wall_run.wall_running_horisontal_deceleration
+	var max_run_time: float = maxf(max_entry_speed - min_exit_speed, 0.0) / maxf(horisontal_decel, 0.001)
+	# Average speed across a linear decay from max_entry_speed to min_exit_speed.
+	const LONG_WALL_MARGIN := 1.5
+	var long_wall_length: float = (max_entry_speed + min_exit_speed) * 0.5 * max_run_time * LONG_WALL_MARGIN
 	const LONG_WALL_NEAR_Z := 55.0
 	var long_wall_far_z: float = LONG_WALL_NEAR_Z - long_wall_length
 	_attach(wall_area, _box("LongWall",
@@ -666,50 +666,45 @@ func build() -> Node3D:
 	# --- Zig-zag section ------------------------------------------------------
 	#
 	# The reason this area exists: adjacent walls face OPPOSITE directions
-	# (one on each side of the running lane), so player.can_attach_wall()'s
-	# same-wall cooldown -- which blocks re-attaching a wall whose normal is
-	# too close to one just left, precisely to stop climbing one face forever
-	# -- never triggers between them (opposite normals dot to -1, nowhere near
-	# wall_same_normal_dot's 0.85 threshold). A wall jump off one throws the
+	# (one on each side of the running lane). A wall jump off one throws the
 	# player toward the other, which is what makes relaying UP between them
 	# possible at all; two walls facing the SAME way here would teach the
 	# opposite lesson, or nothing.
 	#
-	# Half-width kept under wall_reach exactly like LongWall's WALL_NEAR_FACE,
-	# but a little looser (0.7 vs 0.45): LongWall only ever needs to be
-	# reached from one fixed side, but this corridor needs BOTH faces inside
-	# reach from the same centred running line, while still leaving the 0.4 m
-	# player capsule (see tools/build_player_scene.gd) 0.3 m of clearance on
-	# each side to run it without scraping either wall.
-	const ZIG_HALF_WIDTH := 0.7
+	# Unlike before Task 11, the cooldown a chained re-attach has to clear is
+	# no longer keyed to WHICH wall (player.can_attach_wall()'s same-wall
+	# cooldown, deleted): MoveManager's generic redo_move_time (0.15 s) now
+	# refuses re-entering WALL_RUN at all -- any wall, same-facing or not --
+	# for that long after the last one ended. The opposite-facing walls here
+	# are no longer specially exempt; they just have to wait out the same
+	# short window every wall does.
+	#
+	# Half-width kept under the probe's own reach
+	# (wall_running_forward_check_distance, 0.5 m -- see WallRunConfig's own
+	# note, this replaced the project's former wall_reach of 0.75). That 0.25 m
+	# smaller reach leaves far less room than before to ALSO keep the 0.4 m
+	# player capsule (see tools/build_player_scene.gd's capsule.radius) clear
+	# of both walls at once: the old corridor (half-width 0.7) gave a full
+	# 0.3 m of clearance per side; the smaller reach's own ceiling (0.5)
+	# barely exceeds the capsule's own radius (0.4), so 0.05 m per side is the
+	# most this corridor can offer while staying within reach. Genuinely
+	# tighter than before -- a direct, documented consequence of the smaller
+	# confirmed reach value, not an oversight; Step 8's own manual pass
+	# through this section is what will show whether it reads as too tight.
+	const ZIG_HALF_WIDTH := 0.45
 	const ZIG_X := ZIG_HALF_WIDTH + WALL_THICKNESS * 0.5
 	const ZIG_START_Z := 35.5
 
 	# ZIG_STEP -- the distance between CONSECUTIVE zig walls' near faces --
-	# used to be a hardcoded 4.0, the one length in this whole area that was
-	# not derived from config. That let it silently fall out of sync with the
-	# very cooldown it has to clear: ZigLeft1 and ZigLeft2 share a normal (two
-	# walls apart, so 2 * ZIG_STEP in Z), and player.can_attach_wall() refuses
-	# a same-facing wall until wall_reattach_cooldown has elapsed. A player
-	# chaining the walls well does not ride each one to its far end before
-	# jumping off -- they leave via the wall jump long before that, so the
-	# REAL forward distance covered between leaving one same-facing wall and
-	# reaching the next tracks closer to ZIG_STEP alone than to the full
-	# nominal 2 * ZIG_STEP gap between them (this is what let the old 4.0
-	# hardcode look safe on paper -- 2 * 4.0 = 8 m against an 11 m/s wall's
-	# 5.5 m cooldown reach -- while still refusing the third wall for ~0.14 s
-	# in an actual fast run). ZIG_STEP is therefore held, on its own, to
-	# comfortably clear the distance a player moving at wall_max_speed the
-	# whole time would cover before the cooldown expires -- a flat break-even
-	# value would just move the same failure to whichever knob gets tuned
-	# next, so ZIG_STEP_SAFETY_MARGIN keeps real headroom over it. Verified
-	# against actual chained play, not just this arithmetic: was verified by
-	# tests/legacy/test_arena.gd's
-	# test_the_zig_zag_wall_section_chains_multiple_walls -- ARCHIVED by
-	# Task 1 and NOT in the running suite, so nothing enforces this today;
-	# restore the check when the behavioural suite is rewritten.
+	# must comfortably clear the distance a player moving at the fastest
+	# realistic speed (ground_speed, see long_wall_length's own note above)
+	# would cover during redo_move_time (0.15 s) -- the generic cooldown that
+	# now gates every WALL_RUN re-entry, not just a same-facing one (see this
+	# section's own note above). A flat break-even value would just move the same
+	# failure to whichever knob gets tuned next, so ZIG_STEP_SAFETY_MARGIN
+	# keeps real headroom over it.
 	const ZIG_STEP_SAFETY_MARGIN := 1.5
-	var zig_step: float = wall_config.wall_run.wall_max_speed * wall_config.pawn.wall_reattach_cooldown \
+	var zig_step: float = wall_config.pawn.ground_speed * wall_config.wall_run.redo_move_time \
 		* ZIG_STEP_SAFETY_MARGIN
 	# Consecutive walls must still overlap in Z, or a wall jump timed to land
 	# between them finds neither -- wall_query() only sees a wall where its

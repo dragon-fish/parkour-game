@@ -42,19 +42,38 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	#
 	# Grabbing a ledge is a RECOVERY from a misjudged jump -- something that
 	# happens to you. Wall running is a ROUTE the player deliberately chose by
-	# building speed and running alongside a wall; wall_min_speed already
-	# gates it on exactly that commitment (see WallRunConfig's own note: wall
-	# running CARRIES speed, it does not create it). At speed beside a wall,
-	# the wall is what the player is asking for. Was decided by
+	# building speed and running alongside a wall; wall_running_min_speed
+	# already gates it on exactly that commitment (see WallRunConfig's own
+	# note: wall running CARRIES speed, it does not create it). At speed
+	# beside a wall, the wall is what the player is asking for. Was decided by
 	# test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach in
 	# tests/legacy/test_wall_run.gd for the contested-geometry case -- that
 	# test is ARCHIVED by Task 1 and NOT in the running suite, so nothing
 	# enforces this today; restore the pin when the behavioural suite is
 	# rewritten.
-	if player.probes != null and player.horizontal_speed() >= config.wall_run.wall_min_speed:
-		var wall: Dictionary = player.probes.wall_query()
-		if wall["valid"] and player.can_attach_wall(wall["normal"]):
-			return WALL_RUN
+	if player.probes != null and player.horizontal_speed() >= config.wall_run.wall_running_min_speed:
+		var heading: Vector3 = Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()
+		var wall: Dictionary = player.probes.wall_query(heading)
+		# can_enter() replaces the old note_wall_detach()/can_attach_wall()
+		# same-wall cooldown -- see Player's own deletions for that mechanism
+		# and this task's report for the accepted risk that removing it opens
+		# up (an unbounded zig-zag climb between two facing walls). This gate
+		# is now generic to the MOVE, not to which wall: any WALL_RUN re-entry
+		# is refused for redo_move_time (0.15 s) after the last one ended,
+		# regardless of which wall it was.
+		if wall["valid"] and player.move_manager.can_enter(WALL_RUN):
+			var incidence: float = wall["incidence"]
+			# 0-57 degrees takes the forward branch, 60+ takes the strafe
+			# branch (04 §4.1); the 3-degree gap between them is a deliberate
+			# hysteresis band. There is no "current branch" to hold onto
+			# here -- this check only ever runs BEFORE the move exists, on a
+			# player who is not yet wall running -- so landing in the gap
+			# simply means neither branch qualifies THIS tick; the player
+			# stays in Falling and the next tick's fresh query tries again.
+			var qualifies: bool = incidence <= config.wall_run.wall_running_forward_max_start_angle \
+				or incidence >= config.wall_run.wall_running_strafe_start_angle
+			if qualifies:
+				return WALL_RUN
 
 	# Checked before this tick's own move_and_slide(), same as WalkingMove's
 	# vault check: if it fires, this move hands off to GrabMove (which

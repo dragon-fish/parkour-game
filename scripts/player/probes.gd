@@ -218,23 +218,50 @@ func ledge_query() -> Dictionary:
 
 ## Points a side ray at the given reach and fires it. Aimed live from the
 ## config on every call, same as _aim_forward() above and for the same
-## reason: baking wall_reach into the ray once (e.g. in setup()) would freeze
+## reason: baking the reach into the ray once (e.g. in setup()) would freeze
 ## it at whatever the config held on the tick the player spawned, and the F1
-## panel's wall_reach slider would silently stop doing anything the moment
-## setup() had already run.
+## panel's own slider would silently stop doing anything the moment setup()
+## had already run.
 func _aim_side(ray: RayCast3D, side_sign: float, reach: float) -> void:
 	ray.target_position = Vector3(side_sign * reach, 0.0, 0.0)
 	ray.force_raycast_update()
 
+## Angle between the player's heading and the wall PLANE, in radians: 0 means
+## running straight at the wall, PI/2 means running exactly parallel to it.
+## `normal` points AWAY from the wall (back toward the player), so a head-on
+## approach has heading ≈ -normal, i.e. heading.dot(normal) ≈ -1.
+##
+## Verified numerically rather than trusted from the source table's own field
+## names (see this task's report): the original's own draft formula for this,
+## asin(dot), does NOT reach 0 at head-on (asin(-1) is -PI/2). acos(-dot)
+## does -- acos(1) = 0 at dot = -1 (head-on), acos(0) = PI/2 at dot = 0
+## (perpendicular to normal, i.e. parallel to the wall's face).
+##
+## Source: 04 §4.1 -- the original branches hard on this (0-57 degrees takes
+## the forward branch, 60+ takes the strafe branch; the three-degree gap
+## between them is a deliberate hysteresis band that keeps a borderline
+## approach from flickering).
+func _incidence(normal: Vector3, heading: Vector3) -> float:
+	return acos(clampf(-heading.dot(normal), -1.0, 1.0))
+
 ## A wall close enough on either side to run along. `side` is -1 for a wall on
 ## the player's left and +1 for one on the right; the normal points AWAY from
-## the wall surface, i.e. back toward the player.
-func wall_query() -> Dictionary:
+## the wall surface, i.e. back toward the player. `heading` is the player's
+## horizontal velocity direction as a UNIT vector (Vector3.ZERO -- the
+## default -- is a safe, neutral stand-in when there is no heading to measure;
+## see _incidence()'s own note, it reads as "parallel").
+func wall_query(heading: Vector3 = Vector3.ZERO) -> Dictionary:
 	if _config == null:
-		return {"valid": false, "normal": Vector3.ZERO, "side": 0}
+		return {"valid": false, "normal": Vector3.ZERO, "side": 0, "incidence": 0.0}
 	_ensure_rays()
 
-	_aim_side(_wall_left, -1.0, _config.wall_run.wall_reach)
+	# Reads wall_running_forward_check_distance -- this project has only ONE
+	# side-ray reach, not a distinct forward/strafe pair the way the original
+	# does, so it borrows the forward field's value (0.5, replacing this
+	# project's own former wall_reach of 0.75). See WallRunConfig's own note
+	# on that field.
+	var reach: float = _config.wall_run.wall_running_forward_check_distance
+	_aim_side(_wall_left, -1.0, reach)
 	if _wall_left.is_colliding():
 		var normal: Vector3 = _wall_left.get_collision_normal()
 		# Only a near-vertical surface counts as a wall -- MAX_WALL_NORMAL_Y is
@@ -242,12 +269,14 @@ func wall_query() -> Dictionary:
 		# anything up to ~45 degrees): a wall to run along must be close to
 		# vertical, not merely "too steep to stand on".
 		if absf(normal.y) < MAX_WALL_NORMAL_Y:
-			return {"valid": true, "normal": normal, "side": -1}
+			return {"valid": true, "normal": normal, "side": -1, \
+				"incidence": _incidence(normal, heading)}
 
-	_aim_side(_wall_right, 1.0, _config.wall_run.wall_reach)
+	_aim_side(_wall_right, 1.0, reach)
 	if _wall_right.is_colliding():
 		var normal: Vector3 = _wall_right.get_collision_normal()
 		if absf(normal.y) < MAX_WALL_NORMAL_Y:
-			return {"valid": true, "normal": normal, "side": 1}
+			return {"valid": true, "normal": normal, "side": 1, \
+				"incidence": _incidence(normal, heading)}
 
-	return {"valid": false, "normal": Vector3.ZERO, "side": 0}
+	return {"valid": false, "normal": Vector3.ZERO, "side": 0, "incidence": 0.0}

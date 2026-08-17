@@ -32,9 +32,11 @@ extends Resource
 ## Horizontal speed at which FOV reaches fov_max -- i.e. "top speed" in the
 ## fov_base/fov_max comment above. Defaults to ground_speed's OWN value,
 ## independently of it (mirroring land_cost_speed_ref/land_dip_speed_ref's own
-## note on sharing a default without sharing a variable): wall_max_speed is
-## capped at ground_speed too (see its own comment), so foot speed alone
-## already IS the practical top speed a player can sustain. Previously left at
+## note on sharing a default without sharing a variable): wall running's own
+## along-wall acceleration is capped by the energy-curve speed_cap() (see
+## WallRunMove's own maintenance step), which itself never exceeds
+## ground_speed, so foot speed alone already IS the practical top speed a
+## player can sustain. Previously left at
 ## a stale 9.0 (this project's OLD sprint
 ## speed, from before the sprint key was removed) after the gravity/jump/
 ## speed retune dropped ground_speed to 7.2 -- at that stale value the FOV

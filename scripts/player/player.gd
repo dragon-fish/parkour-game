@@ -238,17 +238,6 @@ var _ledge_cooldown: float = 0.0
 ## in the way. See request_standing_capsule().
 var _standing_restore_pending: bool = false
 
-## Recently-left walls still cooling down, each {"normal": Vector3,
-## "cooldown": float}. A SET, not a single slot: a single {normal, cooldown}
-## pair was found to be bypassable in any corner -- leave wall A, touch
-## perpendicular wall B for even one tick, and note_wall_detach(B) would
-## overwrite A's entry wholesale, making A immediately re-attachable and
-## letting the player climb the corner forever. A bounded array lets several
-## walls cool down independently. Capped at MAX_RECENT_WALLS (oldest evicted
-## first) since this is walked on every airborne tick; in practice expired
-## entries are pruned in _tick_timers() well before the cap would ever bind.
-var _recent_walls: Array = []
-const MAX_RECENT_WALLS := 4
 ## Which side the current wall is on: -1 left, +1 right, 0 none. Read by the
 ## camera to decide which way to roll.
 var wall_side: int = 0
@@ -416,9 +405,6 @@ func reset_state() -> void:
 	if speed_energy != null:
 		speed_energy.reset()
 	_last_wish_dir = Vector3.ZERO
-	# Same reasoning as the ledge cooldown above: wall cooldowns left over
-	# from the previous life must not withhold a fresh life's first attach.
-	_recent_walls.clear()
 	wall_side = 0
 	# A respawn teleport is not travel: leave the camera's speed cue at rest
 	# rather than letting the first tick after the reset read the old life's.
@@ -806,19 +792,6 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 
 	_ledge_cooldown = maxf(_ledge_cooldown - delta, 0.0)
 
-	# Walked backwards so remove_at() during the loop cannot skip an entry.
-	# Pruning expired entries here (rather than only checking their cooldown
-	# inside can_attach_wall()) is what keeps _recent_walls small in the
-	# common case: it rarely holds more than the one or two walls actually
-	# touched in the last wall_reattach_cooldown seconds, so MAX_RECENT_WALLS
-	# below only matters as a backstop against an adversarial burst of
-	# touches.
-	for i in range(_recent_walls.size() - 1, -1, -1):
-		var entry: Dictionary = _recent_walls[i]
-		entry["cooldown"] -= delta
-		if entry["cooldown"] <= 0.0:
-			_recent_walls.remove_at(i)
-
 ## Spends a buffered jump if one is pending and the player is still within
 ## coyote time. Returns true at most once per press.
 func consume_jump() -> bool:
@@ -917,30 +890,6 @@ func start_ledge_cooldown() -> void:
 ## expired. FallingMove gates its ledge-grab check on this.
 func can_grab_ledge() -> bool:
 	return _ledge_cooldown <= 0.0
-
-## Called by WallRunMove when it exits, so a wall facing roughly the same way
-## as the one just left cannot be re-attached until its own cooldown runs out.
-## Appends rather than overwrites: a single {normal, cooldown} slot was found
-## to be bypassable in any corner -- leaving wall A, briefly touching
-## perpendicular wall B, and then rekeying to B on exit would erase A's still-
-## running cooldown outright, making A immediately re-attachable one tick
-## later. Each wall gets its own independent entry instead.
-func note_wall_detach(normal: Vector3) -> void:
-	if _recent_walls.size() >= MAX_RECENT_WALLS:
-		_recent_walls.pop_front()
-	_recent_walls.append({"normal": normal, "cooldown": config.pawn.wall_reattach_cooldown})
-
-## False while ANY recently-left wall is both still cooling down AND faces
-## roughly the same way as the candidate. A genuinely different wall is always
-## allowed, which is what makes zig-zag wall chaining work while blocking
-## same-face climbing -- in a corner, checking every remembered wall (not just
-## the most recent) is what stops a brief touch on a perpendicular wall from
-## clearing the cooldown on the one actually being exploited.
-func can_attach_wall(normal: Vector3) -> bool:
-	for entry in _recent_walls:
-		if normal.dot(entry["normal"]) >= config.pawn.wall_same_normal_dot:
-			return false
-	return true
 
 ## World-space horizontal direction the player is asking to move in.
 func wish_direction(input: MoveInput) -> Vector3:

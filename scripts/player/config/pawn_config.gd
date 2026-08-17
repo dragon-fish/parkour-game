@@ -202,9 +202,8 @@ extends Resource
 ## counterpart in the original, carried unchanged so this task can be shown
 ## to change no behaviour. Each is deleted by the task that lands its
 ## replacement -- see the spec's own deletion table (§6).
-## Deleted by Task 11/12 (redo_move_time).
-@export var wall_reattach_cooldown: float = 0.5
-@export var wall_same_normal_dot: float = 0.85
+## wall_reattach_cooldown / wall_same_normal_dot deleted by Task 11:
+## replaced by MoveManager's generic redo_move_time (0.15 s on WallRunConfig).
 ## Deleted by Task 13 (redo_move_time).
 @export var ledge_regrab_cooldown: float = 0.45
 

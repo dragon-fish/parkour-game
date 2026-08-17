@@ -3,43 +3,127 @@ extends MoveConfig
 
 # The Godot counterpart of the original's TdMove_WallRun.
 
-## Minimum horizontal speed required to attach to a wall. Wall running is a
+@export_group("Entry")
+## Minimum horizontal speed required to attach to a wall, AND to stay
+## attached once there (see WallRunMove's exit check) -- wall running is a
 ## way to CARRY speed, never a way to create it from nothing.
-@export var wall_min_speed: float = 5.0
-## How far sideways a wall may be and still be grabbed.
-@export var wall_reach: float = 0.75
-## Gravity multiplier while on a wall. Well below 1 so the run reads as
-## defying gravity, above 0 so it still has a clock.
+## Source: 04 §4.1 `WallRunningMinSpeed = 200` uu/s. ✅
+@export var wall_running_min_speed: float = 2.0
+## Recorded from the original as a value. ✅ ❓ No consumer wired: nothing in
+## the research ties this to behaviour distinct from wall_running_min_speed's
+## own gate above, and the field name ("start limit") reads as a duplicate of
+## it rather than a separate question.
+## Source: 04 §4.1 `WallRunningVelocityStartLimit = 300` uu/s.
+@export var wall_running_velocity_start_limit: float = 3.0
+## Minimum wall height to run along. Recorded; nothing reads this yet --
+## Probes.wall_query() has no wall-height measurement of its own (its side
+## rays only ever report whether SOMETHING is there, not how tall it is).
+## Source: 04 §4.1 `WallRunningMinWallHeight = 192` uu (1.92 m). ✅
+@export var wall_running_min_wall_height: float = 1.92
+## Incidence angle (see Probes.wall_query()'s own "incidence" doc comment)
+## AT OR BELOW which an approach qualifies for the FORWARD entry branch.
+## Source: 04 §4.1 `WallRunningForwardMaxStartAngle = 57`°. ✅
+@export var wall_running_forward_max_start_angle: float = deg_to_rad(57.0)
+## Incidence angle AT OR ABOVE which an approach qualifies for the STRAFE
+## entry branch. The 3-degree gap between this and the forward threshold
+## above is a deliberate hysteresis band (04 §4.1): an approach landing
+## inside it qualifies for NEITHER branch, which is what stops a borderline
+## angle from flickering in and out of a wall run tick to tick.
+## Source: 04 §4.1 `WallRunningStrafeStartAngle = 60`°. ✅
+@export var wall_running_strafe_start_angle: float = deg_to_rad(60.0)
+## How far sideways a wall may be and still be grabbed by
+## Probes.wall_query()'s side rays -- REPLACES this project's own former
+## `wall_reach` (0.75). This project has no separate forward-facing probe to
+## give wall_running_strafe_check_distance below a distinct role, so the one
+## side-ray reach this project has reads from the FORWARD field.
+## Source: 04 §4.1 `WallRunningForwardCheckDistance = 50` uu. ✅
+@export var wall_running_forward_check_distance: float = 0.5
+## Recorded from the original as a value. ✅ ❓ No consumer wired -- see
+## wall_running_forward_check_distance's own note on why this project's
+## single side-ray probe reads that field instead of this one.
+## Source: 04 §4.1 `WallRunningStrafeCheckDistance = 50` uu.
+@export var wall_running_strafe_check_distance: float = 0.5
+
+@export_group("Maintain")
+## Friction while attached -- only 5%, which is most of why speed barely
+## decays on its own. Recorded as a value; this project expresses the actual
+## per-tick decay through wall_running_horisontal_deceleration below rather
+## than through Player.ground_accelerate()'s friction path (WallRunMove
+## drives velocity directly and is never grounded). Mirrored into
+## MoveConfig's own friction_modifier in _init() below for architectural
+## consistency with every other move, even though nothing consumes it here
+## yet -- same status as min_look_constraint until CameraRig.apply_look()
+## catches up.
+## Source: 04 §4.1 `WallRunningHorisontalFriction = 0.05`. ✅
+@export var wall_running_horisontal_friction: float = 0.05
+## Acceleration pushing the player's speed along the wall's tangent UP
+## TOWARD the energy-curve ceiling (Player.speed_cap()) -- see
+## WallRunMove.physics_update()'s own maintenance step. Replaces this
+## project's former wall_accel, which pushed toward a wall-specific
+## wall_max_speed instead.
+## Source: 04 §4.1 `WallRunningHorisontalAcceleration = 820` uu/s². ✅
+@export var wall_running_horisontal_acceleration: float = 8.2
+## Deceleration subtracted from TOTAL horizontal speed every tick this move
+## is active, unconditionally -- THIS is the force that actually ends a wall
+## run now that there is no duration cap: a faster entry simply takes longer
+## to decay past wall_running_min_speed. Replaces this project's former
+## wall_max_speed clamp, which capped speed instead of ever pulling it down.
+## Source: 04 §4.1 `WallRunningHorisontalDeceleration = 500` uu/s². ✅
+@export var wall_running_horisontal_deceleration: float = 5.0
+## ⚠️ INFERRED as a one-off vertical lift applied on attaching, expressed at
+## the point of use (WallRunMove.enter()) as the vertical speed that reaches
+## this height under plain gravity -- matching how this project reads every
+## other `*ZHeight` field (see spec §2.5).
+## Source: 04 §4.1 `WallRunningHorisontalInitialZHeight = 170` uu (1.7 m).
+@export var wall_running_horisontal_initial_z_height: float = 1.7
+## Recorded from the original as a value. ✅ ❓ No consumer wired -- this
+## project has no separate "align velocity to the wall surface" pass distinct
+## from WallRunMove._derive_along()'s own tangent projection.
+## Source: 04 §4.1 `WallRunningHorisontalAlignSpeed = 700`.
+@export var wall_running_horisontal_align_speed: float = 7.0
+## ⚠️ INFERRED as a vertical SINK speed, not a horizontal one: the value is
+## negative and the field name says velocity, and a horizontal speed (as
+## wall_running_min_speed measures it) can never be negative. A wall run
+## exits once vertical velocity falls past this.
+## Source: 04 §4.1 `WallRunningVelocityStopLimit = -500` uu/s.
+@export var wall_running_velocity_stop_limit: float = -5.0
+## Recorded from the original as a value. ✅ ❓ No consumer wired -- this
+## project has no body-rotation tween to drive.
+## Source: 04 §4.1 `WallRunningRotatePawnAlongWallTime = 0.4` s.
+@export var rotate_pawn_along_wall_time: float = 0.4
+## Recorded from the original as a value. ✅ ❓ No consumer wired, same
+## caveat as rotate_pawn_along_wall_time above.
+## Source: 04 §4.1 `TimeToDo90Turn = 0.25` s.
+@export var time_to_do_90_turn: float = 0.25
+
+@export_group("Project-specific")
+## ⚠️ MODEL DIFFERS FROM SOURCE: the original expresses "how much a wall run
+## defies gravity" purely through wall_running_horisontal_friction plus
+## wall_running_horisontal_deceleration; this project keeps a separate
+## gravity multiplier so the ATTACH FEEL (how floaty the run reads) can be
+## tuned independently from the horizontal decay that ends it. No original
+## counterpart.
 @export var wall_gravity_scale: float = 0.35
-## Forward push applied along the wall, in m/s^2.
-@export var wall_accel: float = 18.0
-## Upper bound on speed the wall itself can push you to. Held at or below
-## PawnConfig.ground_speed and air_speed on purpose -- wall_min_speed's own doc
-## comment says the wall is "a way to CARRY speed, never a way to create it
-## from nothing", so its own accel must never top the player up past what
-## foot speed alone can already reach. Was pinned by
-## tests/legacy/test_movement_config.gd's
-## test_wall_running_cannot_create_speed_beyond_what_foot_speed_reaches --
-## ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces this
-## today; restore the pin when the behavioural suite is rewritten.
-## Held equal to ground_speed, mirroring the pre-retune default (both were
-## 9.0) -- when the gravity/jump/speed trio dropped ground_speed to 7.2 (see
-## PawnConfig.gravity's own comment), this followed it down for the same
-## reason: leaving it at the old 9.0 would let the wall push the player
-## faster than running itself now can, which is exactly the "wall creates
-## speed" case the check above exists to catch.
-@export var wall_max_speed: float = 7.2
-## Wall running ends once total horizontal speed decays below this (measured
-## the same way as wall_min_speed, not projected onto the wall's tangent).
-## Kept as its own value rather than a fraction of wall_min_speed: attaching
-## and staying attached are different questions, and a run should not drop the
-## instant it dips just under the speed that started it. (Slide's own entry
-## and exit gate share a single value, slide_abort_speed, but that reflects
-## Slide having no separate minimum to begin with -- see its own comment --
-## not that the two questions are ever really the same one.)
-@export var wall_exit_speed: float = 2.5
-## Hard cap on one wall run.
-@export var wall_max_duration: float = 1.5
-## Gentle pull toward the wall surface, in m/s per tick, so the body stays
-## glued through small surface irregularities instead of drifting off.
+## ⚠️ MODEL DIFFERS FROM SOURCE, same reasoning as wall_gravity_scale above:
+## a gentle pull toward the wall surface, in m/s per tick, so the body stays
+## glued through small surface irregularities instead of drifting off. No
+## original counterpart.
 @export var wall_stick_force: float = 0.5
+
+func _init() -> void:
+	# Source: 04 §4.1 `RedoMoveTime = 0.15`. ✅ Far shorter than the 0.5 s
+	# same-wall cooldown this project invented, because the original does not
+	# need a cooldown to stop an endless climb -- a wall run does not lift you
+	# at all, it only slows your descent, and every wall jump's own rise is
+	# bounded by JumpOffZHeight.
+	redo_move_time = 0.15
+	friction_modifier = 0.05
+	# Source: 04 §4.1 `MinLookConstraint = (-13000, -16384, -32768)` /
+	# `MaxLookConstraint` mirrored, at 65536 = 360 degrees -> pitch +-71.4,
+	# yaw +-90. ✅ With bUseAbsoluteYawConstraint = True. This is where "the
+	# view swings to face along the wall" comes from -- an input constraint,
+	# not an animation.
+	constrain_look = true
+	absolute_yaw_constraint = true
+	min_look_constraint = Vector3(-deg_to_rad(71.4), -deg_to_rad(90.0), -PI)
+	max_look_constraint = Vector3(deg_to_rad(71.4), deg_to_rad(90.0), PI)
