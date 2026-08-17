@@ -458,7 +458,7 @@ func build() -> Node3D:
 	# Ledge spacing: a run-up-and-jump distance, the same closed-form arc
 	# JumpArea's gap ladder uses (max_jump_distance = ground_speed * airtime;
 	# see its own comment). There is no sprint key any more -- ground speed is
-	# a single top speed GroundState always targets (see MovementConfig.
+	# a single top speed GroundState always targets (see PawnConfig.
 	# ground_speed's own comment) -- so ground_speed remains the real ground
 	# speed cap here unconditionally (measured directly: the player is still
 	# at exactly ground_speed when it leaves the ground for LedgeLow).

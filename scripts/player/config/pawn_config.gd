@@ -25,12 +25,42 @@ extends Resource
 ## MIGRATION NOTE: the old flat `air_accel = 1.5` is carried in air_accel
 ## below until Task 6 derives it from this instead.
 @export var air_control: float = 0.025
+## Source: 09 §9.1 / 02 §2.3 -- ME's `AirControl = 0.025` is not an
+## acceleration in its own right; the guide reads it as a MULTIPLIER on
+## ground accel ("AirControl 0.025 × 加速度"). Applied to this project's own
+## accel_rate (60.0, itself already ~= ME's AccelRate 61.44, see accel_rate's
+## own comment) rather than to ME's raw AccelRate, since this is the number
+## Player.air_accelerate() actually gets compared against:
+##   air_accel = accel_rate * 0.025 = 60.0 * 0.025 = 1.5
+## Deliberately not a speed-ceiling fix (see air_speed's own comment for why
+## the old air_max_speed = 9.0 was the wrong lever entirely) -- with the
+## post-retune 1.58 s hangtime (gravity 24.0 -> 8.0, see gravity's own
+## comment), the old air_accel (12.0) could ratchet horizontal speed past
+## ground_speed over repeated jumps; at 1.5, a full hangtime of continuous
+## same-direction air control adds at most air_accel * 1.58 =~ 2.4 m/s, and
+## landing's own speed cost removes far more than that on any landing hard
+## enough to matter -- see
+## tests/test_air_state.gd's test_air_strafing_across_chained_jumps_never_
+## exceeds_the_ground_speed_cap for a direct, driven-state measurement.
+## MIGRATION NOTE: this is the stored value carried from before air_control
+## existed. Task 7 deletes this field and derives air_accel inline instead,
+## as `config.pawn.accel_rate * config.pawn.air_control`.
 @export var air_accel: float = 1.5
 ## Source: 09 §9.1 `DefaultGravityZ = 800` uu/s^2. ✅
+## Part of the gravity/base_jump_z/ground_speed trio: the guide is explicit
+## that retuning any one of the three alone makes the feel worse, not
+## better, so they are calibrated as a group rather than independently.
 @export var gravity: float = 8.0
 @export var terminal_velocity: float = 60.0
-## Source: 02 §2.2 `WalkVelocity = 50` uu/s. ✅ The hard cap while the walk
-## modifier (Ctrl) is held.
+## Source: 02 §2.2 `WalkVelocity = 50` uu/s -> 0.5 m/s. ✅ as a VALUE. The same
+## section flags this discrete tier (and its four siblings) as MORE LIKELY an
+## animation-blend threshold than a true speed clamp ("这五个值更可能是动画混合
+## 的阈值...而非速度钳制值"), since the real ground ceiling is the speed curve
+## (GroundSpeed) -- so the ROLE recorded here (a hard cap on speed while the
+## walk modifier / Ctrl is held) is ⚠️ inferred, not confirmed. Used anyway,
+## per the owner's own direction that Ctrl should move the player "very
+## slowly" -- 0.5 m/s (7% of ground_speed) reads as exactly that, not as an
+## implausible number, so there was no reason to substitute a different one.
 @export var walk_velocity: float = 0.5
 ## Source: 02 §2.3 `CrouchedPct = 0.4`. ✅ Also lives as CrouchConfig's own
 ## speed_modifier; kept here too because the original declares it Pawn-wide.
