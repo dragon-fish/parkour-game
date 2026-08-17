@@ -56,6 +56,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			if player.probes.vault_query()["valid"]:
 				return VAULT
 
+	# Ankle-high clutter would otherwise stop a run dead: Godot has no built-in
+	# step-up. Free by design -- no speed cost, no state change -- so the only
+	# trace it leaves is the camera easing the rise out.
+	var rise: float = player.try_step_up(delta)
+	if rise > 0.0 and player.camera_rig != null:
+		player.camera_rig.add_step_offset(rise)
+
 	# A small downward bias keeps the body glued to the floor across seams and
 	# gentle slopes; without it is_on_floor() flickers while running.
 	player.velocity.y = -config.pawn.floor_snap_speed

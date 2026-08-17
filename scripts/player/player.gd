@@ -767,6 +767,55 @@ func consume_buffered_jump() -> bool:
 		return true
 	return false
 
+## Lifts the body over an obstacle no taller than `max_step_height`, so the
+## ankle-high clutter a rooftop is covered in -- planks, bricks, litter -- does
+## not stop a run dead.
+##
+## Godot 4's CharacterBody3D has NO built-in step-up. `floor_snap_length` only
+## keeps a body attached on the way DOWN, so without this a 5 cm plank blocks
+## the capsule outright. (pawn_config's own note used to claim move_and_slide
+## handled this; it does not, and that assumption is why the value sat unread.)
+##
+## Classic up/forward/down probe, run only once the intended motion is actually
+## blocked, so it costs nothing on open ground. Deliberately free: no speed
+## cost, no state change, no animation -- matching Mirror's Edge, where
+## MaxStepHeight is engine-level and the player never perceives it.
+##
+## Returns how far the body rose so the camera can smooth it out; 0.0 when no
+## step was taken.
+func try_step_up(delta: float) -> float:
+	if config == null:
+		return 0.0
+	var motion := Vector3(velocity.x, 0.0, velocity.z) * delta
+	if motion.length_squared() < 1e-8:
+		return 0.0
+	if not test_move(global_transform, motion):
+		return 0.0                        # nothing in the way
+
+	var max_rise: float = config.pawn.max_step_height
+	var up := Vector3.UP * max_rise
+	if test_move(global_transform, up):
+		return 0.0                        # no headroom to rise into
+
+	var lifted := global_transform.translated(up)
+	if test_move(lifted, motion):
+		return 0.0                        # still blocked up there: a wall, not a step
+
+	var advanced := lifted.translated(motion)
+	var landing := KinematicCollision3D.new()
+	if not test_move(advanced, Vector3.DOWN * (max_rise + 0.05), landing):
+		return 0.0                        # a gap, not a step -- let the player fall into it
+
+	if landing.get_normal().dot(up_direction) < cos(floor_max_angle):
+		return 0.0                        # top face too steep to stand on
+
+	var rise: float = max_rise - landing.get_travel().length()
+	if rise <= 0.01:
+		return 0.0                        # level ground; whatever blocked us was not a step
+	global_position.y += rise
+	return rise
+
+
 ## Spends a buffered crouch press if one is pending. Returns true at most once
 ## per press — this is what keeps the roll-into-slide chain reachable without
 ## reopening the held-key strobe.

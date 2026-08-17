@@ -106,6 +106,11 @@ extends Resource
 @export var slide_camera_drop: float = 0.75
 ## How fast the camera moves between standing and sliding height.
 @export var crouch_lerp_speed: float = 9.0
+## How fast the eye catches up after the body was lifted over a low obstacle
+## (see Player.try_step_up). Exponential, so this is a rate, not a duration:
+## ~12 settles a 0.35 m step in roughly 0.15 s, which reads as a stride. Lower
+## it to make the lag more obvious, raise it toward a hard snap.
+@export var step_smooth_speed: float = 12.0
 ## How much the camera follows the attached body's head/neck node's
 ## POSITION each tick, from 0 (ignore it completely -- today's camera,
 ## eye_height plus bob/dip/crouch only) to 1 (sit exactly at the node's

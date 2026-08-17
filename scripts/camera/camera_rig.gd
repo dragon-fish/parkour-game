@@ -14,6 +14,10 @@ var _bob_weight: float = 0.0
 var _dip: float = 0.0
 var _crouch_amount: float = 0.0
 var _crouch_offset: float = 0.0
+## How far the eye is still lagging behind a step-up. Persistent member for the
+## same reason _crouch_offset is: base_position.y is rebuilt from eye_height
+## every frame, so anything easing over time has to live outside it.
+var _step_offset: float = 0.0
 var _wall_side: int = 0
 var _roll: float = 0.0
 
@@ -45,6 +49,12 @@ func set_crouch_amount(amount: float) -> void:
 ## -1 wall on the left, +1 on the right, 0 none. Driven by Player each tick
 ## from Player.wall_side, itself set by WallRunState. update_effects() eases
 ## rotation.z toward the corresponding tilt every frame.
+## Called when the body was lifted over a low obstacle. Accumulates, so two
+## steps in quick succession do not cancel each other out.
+func add_step_offset(amount: float) -> void:
+	_step_offset += amount
+
+
 func set_wall_side(side: int) -> void:
 	_wall_side = side
 
@@ -73,6 +83,7 @@ func reset_state() -> void:
 	_bob_phase = 0.0
 	_crouch_amount = 0.0
 	_crouch_offset = 0.0
+	_step_offset = 0.0
 	_wall_side = 0
 	_roll = 0.0
 	_has_head = false
@@ -141,6 +152,18 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var target_offset := _config.camera.slide_camera_drop * _crouch_amount
 	_crouch_offset = move_toward(_crouch_offset, target_offset, _config.camera.crouch_lerp_speed * delta)
 	base_position.y -= _crouch_offset
+
+	# A step-up moves the body's Y in a single tick. Hold the eye behind by that
+	# much and ease it up, so clearing a plank reads as a stride rather than a
+	# snap. Exponential (like the FOV lerp above) rather than move_toward: the
+	# offset should fade fastest right after the step and settle softly.
+	#
+	# Deliberately NOT folded into _dip: landing and stepping are independent
+	# knobs, the same separation camera_config keeps between land_dip_speed_ref
+	# and the movement side's land_cost_speed_ref.
+	_step_offset = lerpf(_step_offset, 0.0,
+			clampf(_config.camera.step_smooth_speed * delta, 0.0, 1.0))
+	base_position.y -= _step_offset
 
 	# Blend the eye position toward the attached body's head/neck node, LAST
 	# among the base_position.* writes above -- lerp(t=0.0) returns

@@ -66,8 +66,12 @@ extends Resource
 ## Source: 02 §2.3 `CrouchedPct = 0.4`. ✅ Also lives as CrouchConfig's own
 ## speed_modifier; kept here too because the original declares it Pawn-wide.
 @export var crouched_pct: float = 0.4
-## Source: 02 §2.3 `MaxStepHeight = 35` uu. ✅ Recorded; Godot's
-## move_and_slide() has its own step handling, so nothing reads this yet.
+## Source: 02 §2.3 `MaxStepHeight = 35` uu. ✅ Read by Player.try_step_up().
+##
+## An earlier note here said Godot's move_and_slide() had its own step handling
+## so nothing needed to read this. It does not -- floor_snap_length only keeps a
+## body attached on the way DOWN -- and that assumption is why ankle-high
+## clutter (a 5 cm plank) stopped a run dead.
 @export var max_step_height: float = 0.35
 ## Source: 02 §2.3 `WalkableFloorZ = 0.71` -> acos = 44.7 degrees. ✅
 ## Carried over from the old `min_walkable_normal_y = 0.7`; Task 14 moves it
