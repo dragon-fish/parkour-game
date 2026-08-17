@@ -1228,7 +1228,7 @@ func _build_moves() -> void:
 
 Run: `pwsh -File tools/run_tests.ps1`
 
-Expected: PASS，`test_move_manager.gd  5 test(s)`，无 `SCRIPT ERROR:`。
+Expected: PASS，`test_move_manager.gd  4 test(s)`（Step 1 的测试文件恰好四个 `test_` 方法），无 `SCRIPT ERROR:`。
 
 - [ ] **Step 9: 人工确认行为未变**
 
