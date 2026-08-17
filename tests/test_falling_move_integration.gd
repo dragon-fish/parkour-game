@@ -31,12 +31,13 @@ func test_a_short_landing_leaves_the_roll_buffer_for_the_slide() -> void:
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 
-	# Build up ground speed past slide_entry_speed (4.0) before leaving the
-	# floor, same as a real player running and then stepping off a low ledge.
+	# Build up ground speed past slide_abort_speed (2.5) -- the same gate
+	# walking_move.gd's slide entry now reads -- before leaving the floor,
+	# same as a real player running and then stepping off a low ledge.
 	input.state.move = Vector2(0.0, 1.0)
 	for i in 90:
 		await step(1)
-	check_greater(player.horizontal_speed(), player.config.slide.slide_entry_speed, \
+	check_greater(player.horizontal_speed(), player.config.slide.slide_abort_speed, \
 		"did not reach slide entry speed before the drop")
 
 	# A small hop, well under the 2.0 m roll threshold.

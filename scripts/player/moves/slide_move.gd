@@ -1,15 +1,18 @@
 class_name SlideMove
 extends Move
 
-# A slide is a commitment: it buys speed up front, steers poorly, and ends on
-# its own terms. Everything about it is tuned to make the player choose WHERE
-# to slide rather than sliding constantly.
+# A slide is a commitment: it only PRESERVES the speed you already had (there
+# is no acceleration term anywhere in it), steers poorly, and ends on its own
+# terms. Everything about it is tuned to make the player choose WHERE to slide
+# rather than sliding constantly -- the original's own lesson, not this
+# project's former "slide adds a burst" one.
 #
 # Deliberately absent: Slide never transitions into a wall run. The spec
 # forbids it -- chaining a slide straight into a wall run lets the player
 # build speed in a loop that never has to give any back. Reaching a wall from
 # a slide has to go through Walking or Falling first, which costs the slide's
-# boost. Was pinned by tests/legacy/test_slide_state.gd's
+# spent speed to friction along the way. Was pinned by
+# tests/legacy/test_slide_state.gd's
 # test_slide_can_only_reach_ground_air_or_crouch and
 # test_slide_returns_only_ground_air_or_keep -- do not add a return into that
 # move here regardless. (Deliberately not spelling the move's own constant
@@ -32,22 +35,6 @@ func enter(_previous: StringName) -> void:
 	_crawling = false
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	_direction = horizontal.normalized() if horizontal.length_squared() > 0.0001 else Vector3.ZERO
-
-	# The boost is applied once, on entry — never per tick — and only when
-	# entering at or below slide_boost_entry_threshold. A slide CONVERTS
-	# running speed into a burst; it is not a stackable bonus. Above the
-	# threshold, entering a slide adds nothing, so chaining crouch taps while
-	# already fast cannot chain the boost too — the player has to let speed
-	# decay back down before another slide pays out. Below it, the result is
-	# capped at threshold + boost so the payoff is bounded the same way either
-	# side of the gate.
-	var entry_speed := horizontal.length()
-	var boosted := entry_speed
-	if entry_speed <= config.slide.slide_boost_entry_threshold:
-		boosted = minf(entry_speed + config.slide.slide_boost, \
-			config.slide.slide_boost_entry_threshold + config.slide.slide_boost)
-	player.velocity.x = _direction.x * boosted
-	player.velocity.z = _direction.z * boosted
 
 	player.set_capsule_height(config.slide.slide_capsule_height)
 
@@ -79,7 +66,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 	if not blocked:
 		_crawling = false
-	elif speed <= config.slide.slide_exit_speed:
+	elif speed <= config.slide.slide_abort_speed:
 		_crawling = true
 
 	if _crawling:
@@ -115,7 +102,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Read speed back AFTER move_and_slide(): a collision (e.g. sliding into a
 	# wall) can shave it down well below the friction-only decay computed
 	# above. Using the pre-move value here would let a wall impact leave the
-	# slide "stuck" in place until slide_max_duration expires instead of
+	# slide "stuck" in place until slide_abort_time expires instead of
 	# ending promptly.
 	var post_move_speed := Vector2(player.velocity.x, player.velocity.z).length()
 
@@ -135,7 +122,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# so anywhere the slide capsule already fits, the crouch capsule fits too.
 	# Releasing the key still asks for the full standing capsule, exactly as
 	# before.
-	var spent := post_move_speed <= config.slide.slide_exit_speed or _elapsed >= config.slide.slide_max_duration
+	var spent := post_move_speed <= config.slide.slide_abort_speed or _elapsed >= config.slide.slide_abort_time
 	var wants_to_exit := (not input.crouch_held) or spent
 	if wants_to_exit and player.has_headroom():
 		if input.crouch_held:
@@ -152,20 +139,15 @@ func _slide(delta: float, input: MoveInput, speed: float) -> void:
 		var angle := _direction.signed_angle_to(wish_dir, Vector3.UP)
 		_direction = _direction.rotated(Vector3.UP, clampf(angle, -max_turn, max_turn))
 
-	# Slope awareness (spec section 6: a downhill slide must resist decay, or
-	# net-accelerate). `grade` is +1 pointing straight down the fall line, -1
-	# straight up it, 0 on the flat, so on level ground this reduces exactly to
-	# the plain friction decay it replaced.
+	# Slope drives FRICTION, not acceleration (03 §3.3). Uphill multiplies it
+	# by 5.0 -- an uphill slide stops almost immediately -- while downhill
+	# drops it to 1.8x, which is what makes a descent one of the few places a
+	# slide is genuinely worth doing. `grade` is +1 straight down the fall
+	# line, matching Friction's own convention.
 	var slope_dir := _slope_direction()
 	var grade := -slope_dir.y
-	# slide_max_speed is a safety RAIL, not a tuning knob: the duration cap is
-	# headroom-gated, so a long COVERED downslope has nothing else bounding it
-	# and would accelerate without limit — the panel can drive
-	# slide_slope_accel to three times its default. The default sits far above
-	# anything the arena produces, so it never binds in normal play. The entry
-	# boost is not separately clamped because this runs on the very next tick.
-	speed = clampf(speed + (config.slide.slide_slope_accel * grade - config.slide.slide_friction) * delta, \
-		0.0, config.slide.slide_max_speed)
+	var decel: float = Friction.slide_friction(config.pawn, cfg.friction_modifier, grade)
+	speed = maxf(speed - decel * delta, 0.0)
 
 	# Drive along the SLOPE, scaled so the horizontal magnitude is still
 	# `speed`. Steering the body horizontally instead would leave a descent to

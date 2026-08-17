@@ -58,7 +58,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		#   touchdown, fall <  2.0 m, moving -> Slide      (here)
 		#   grounded, not moving          -> Crouch
 		# There are no chords, no hold-versus-tap, no direction modifiers.
-		if player.horizontal_speed() >= config.slide.slide_entry_speed and player.consume_roll():
+		if player.horizontal_speed() >= config.slide.slide_abort_speed and player.consume_roll():
 			# Same floor-snap bias as the fall-through path below. Without it, a
 			# slide started on a downslope can leave the floor on this very tick
 			# and bounce straight back out to Falling.

@@ -16,7 +16,7 @@ func test_it_reaches_floats_inside_every_sub_resource() -> void:
 	var paths := _paths(TuningPanel.collect_tunables(config))
 	check(paths.has("pawn.gravity"), "pawn floats not reached")
 	check(paths.has("camera.fov_base"), "camera floats not reached")
-	check(paths.has("slide.slide_friction"), "per-move floats not reached")
+	check(paths.has("slide.slide_abort_speed"), "per-move floats not reached")
 	check(paths.has("wall_run.wall_accel"), "wall_run floats not reached")
 
 func test_inherited_move_config_fields_are_reached_too() -> void:

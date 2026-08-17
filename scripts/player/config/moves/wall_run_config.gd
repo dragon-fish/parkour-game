@@ -31,10 +31,12 @@ extends MoveConfig
 @export var wall_max_speed: float = 7.2
 ## Wall running ends once total horizontal speed decays below this (measured
 ## the same way as wall_min_speed, not projected onto the wall's tangent).
-## Kept as its own value rather than a fraction of wall_min_speed, mirroring
-## Slide's separate slide_entry_speed/slide_exit_speed: attaching and staying
-## attached are different questions, and a run should not drop the instant it
-## dips just under the speed that started it.
+## Kept as its own value rather than a fraction of wall_min_speed: attaching
+## and staying attached are different questions, and a run should not drop the
+## instant it dips just under the speed that started it. (Slide's own entry
+## and exit gate share a single value, slide_abort_speed, but that reflects
+## Slide having no separate minimum to begin with -- see its own comment --
+## not that the two questions are ever really the same one.)
 @export var wall_exit_speed: float = 2.5
 ## Hard cap on one wall run.
 @export var wall_max_duration: float = 1.5
