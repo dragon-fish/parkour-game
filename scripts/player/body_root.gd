@@ -70,6 +70,24 @@ func _rebuild_preview() -> void:
 	if player == null:
 		return
 
+	# The capsule that the automatic vertical offset derives from is read
+	# directly, as a sibling node's shape resource -- ordinary node/resource
+	# access, not a call through Player.current_capsule_height() (that is an
+	# INSTANCE method, and player is a placeholder here; see the file
+	# header). Deliberately NOT cached into _has_built/_previewed_* below: a
+	# missing CollisionShape3D or capsule is not a state anyone would ever
+	# deliberately want previewed (unlike, say, a genuinely unset
+	# body_scene) -- it means the scene is still mid-edit -- so this simply
+	# returns and lets _process() retry, cheaply, every tick until the
+	# capsule exists, rather than latching onto "no preview" the moment it
+	# happens to be caught mid-build.
+	var shape_node: CollisionShape3D = player.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node == null:
+		return
+	var capsule: CapsuleShape3D = shape_node.shape as CapsuleShape3D
+	if capsule == null:
+		return
+
 	_has_built = true
 	_previewed_scene = player.body_scene
 	_previewed_offset = player.body_mount_offset
@@ -87,4 +105,12 @@ func _rebuild_preview() -> void:
 	# exactly what keeps this preview out of both the saved scene and any
 	# runtime build.
 	add_child(_preview)
-	_preview.transform = player.body_mount_transform()
+	# Player.compute_mount_transform() is STATIC (see its own comment in
+	# player.gd), so this runs the exact same formula body_mount_transform()
+	# uses at runtime WITHOUT calling any method on `player` itself -- only
+	# a class-level static call and plain exported-property reads, both of
+	# which a placeholder instance permits; only its own instance methods
+	# are off-limits.
+	_preview.transform = Player.compute_mount_transform(
+		capsule.height, player.body_mount_offset, player.body_mount_rotation_degrees
+	)

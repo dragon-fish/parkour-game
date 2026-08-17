@@ -191,6 +191,23 @@ func current_capsule_height() -> float:
 		return 0.0
 	return capsule.height
 
+## Pure placement arithmetic -- the ONE formula both the runtime attach path
+## and BodyRoot's editor-only preview (see body_root.gd) use, and the ONLY
+## place it is written down. Deliberately STATIC, and deliberately taking
+## plain values rather than reading anything off `self`: BodyRoot is a @tool
+## script that runs while the *editor* has Player as a PLACEHOLDER instance
+## (Player is intentionally not @tool -- see its own header comment), and a
+## placeholder instance refuses every INSTANCE method call ("Attempt to call
+## a method on a placeholder instance" -- the exact crash this fixes). A
+## static call needs no instance at all: `Player.compute_mount_transform(...)`
+## runs this same compiled code whether Player is a live object or a
+## placeholder, so BodyRoot can call it directly instead of maintaining a
+## second copy of the formula that could quietly drift from this one.
+static func compute_mount_transform(capsule_height: float, mount_offset: Vector3, mount_rotation_degrees: Vector3) -> Transform3D:
+	var origin := Vector3(0.0, -capsule_height * 0.5, 0.0) + mount_offset
+	var basis := Basis.from_euler(mount_rotation_degrees * (PI / 180.0))
+	return Transform3D(basis, origin)
+
 ## The local Transform3D the visible body sits at under BodyRoot: vertical
 ## placement derived from current_capsule_height() -- never hardcoded -- so
 ## a feet-origin model's feet land exactly at the capsule's bottom, and this
@@ -201,14 +218,12 @@ func current_capsule_height() -> float:
 ## STANDING height, matching how the body's own crouch already reads
 ## (through its animation, not by physically lowering the mount point).
 ## body_mount_offset/body_mount_rotation_degrees add whatever per-model
-## correction is still needed on top of that automatic placement. Shared by
-## _attach_body() (the real runtime attach) and BodyRoot's editor-only
-## preview (see body_root.gd), so what the owner eyeballs in the editor is
-## exactly what shows up at runtime.
+## correction is still needed on top of that automatic placement. Just a
+## thin instance-side wrapper around compute_mount_transform() above, which
+## is the actual shared logic -- see its own comment for why that split
+## exists.
 func body_mount_transform() -> Transform3D:
-	var origin := Vector3(0.0, -current_capsule_height() * 0.5, 0.0) + body_mount_offset
-	var basis := Basis.from_euler(body_mount_rotation_degrees * (PI / 180.0))
-	return Transform3D(basis, origin)
+	return compute_mount_transform(current_capsule_height(), body_mount_offset, body_mount_rotation_degrees)
 
 ## True when the standing-size capsule fits where the body currently is.
 ## Tests that build a Player by hand have no probe node, so absence means yes.
