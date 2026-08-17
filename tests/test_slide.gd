@@ -36,7 +36,16 @@ func test_chaining_slides_cannot_ratchet_speed_upward() -> void:
 	var peak: float = world["player"].horizontal_speed()
 	for cycle in 6:
 		world["input"].press_crouch()
-		for i in 20:
+		# Sample right after entry, before the rest of the press phase and the
+		# release -- a boost applied only on entry (the bug this test exists to
+		# catch) shows up HERE and decays away well before the end-of-cycle
+		# sample below could ever see it. Confirmed by fault injection: without
+		# this early sample, reinstating the old entry boost tripped
+		# test_entering_a_slide_never_adds_speed but left this test green.
+		await step(1)
+		await step(1)
+		peak = maxf(peak, world["player"].horizontal_speed())
+		for i in 18:
 			await step(1)
 		world["input"].release_crouch()
 		for i in 20:
@@ -83,3 +92,44 @@ func test_the_slide_declares_the_confirmed_friction_multiplier() -> void:
 	var config := MovementConfig.new()
 	check_approx(config.slide.friction_modifier, 0.1, 0.0001, \
 		"slide friction_modifier is not the confirmed 0.1")
+
+func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
+	# Grade sensitivity is reachable through the LIVE SlideMove path, not only
+	# through Friction's pure functions (see test_friction.gd's
+	# test_sliding_is_far_more_slope_sensitive_than_walking, which only ever
+	# calls Friction.slide_friction() directly with literal grade arguments).
+	# A real player, sliding on a real tilted floor, must lose speed
+	# noticeably faster uphill than downhill.
+	const INCLINE := deg_to_rad(30.0)
+	const SETTLE_TICKS := 60
+	const RUN_TICKS := 40
+	const SLIDE_TICKS := 15
+
+	var losses := {}
+	for uphill in [true, false]:
+		var world := TestWorld.build_on_slope(tree, MovementConfig.new(), INCLINE)
+		await step(1)
+		await step(SETTLE_TICKS)
+		check(world["player"].grounded, "player did not settle onto the slope -- test setup is wrong")
+
+		# Forward (local -Z) climbs this positively-inclined slope; backward
+		# descends it -- see build_on_slope()'s own comment.
+		world["input"].state.move = Vector2(0.0, 1.0 if uphill else -1.0)
+		for i in RUN_TICKS:
+			await step(1)
+		var before: float = world["player"].horizontal_speed()
+
+		world["input"].press_crouch()
+		await step(1)
+		for i in SLIDE_TICKS:
+			await step(1)
+		check(world["player"].move_manager.current_name == Move.SLIDE, \
+			"never entered Slide -- test setup is wrong (uphill=%s)" % uphill)
+
+		losses[uphill] = before - world["player"].horizontal_speed()
+		TestWorld.teardown(world)
+		await step(1)
+
+	check(losses[true] > losses[false] * 1.5, \
+		"an uphill slide did not decay markedly harder than a downhill one (uphill lost %f, downhill lost %f)" \
+			% [losses[true], losses[false]])

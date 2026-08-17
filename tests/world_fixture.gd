@@ -49,6 +49,52 @@ static func place(world: Dictionary) -> void:
 	world["floor"].global_position = Vector3(0.0, -0.5, 0.0)
 	world["player"].global_position = Vector3(0.0, 0.95, 0.0)
 
+## Same minimal world as build(), except the floor is TILTED about the X axis
+## by `incline_rad` instead of flat. Exists because Friction's grade-driven
+## walk/slide multipliers otherwise have no live-floor-geometry test at all:
+## build()'s flat floor can only ever report grade 0 from Player.ground_grade(),
+## whatever direction is asked of it. Task 9 deferred exactly this gap for
+## ground_grade() itself for lack of a sloped fixture; this pays for both.
+##
+## Rotation convention matches ArenaBuilder._ramp()'s own (verified there
+## empirically, reused here rather than re-derived): a POSITIVE incline_rad
+## raises the floor's -Z end and lowers its +Z end. Since Player.wish_direction()
+## turns ScriptedInputSource's default "move = (0, 1)" into world -Z on an
+## unrotated player (see _run_up() callers across tests/test_slide.gd),
+## running FORWARD climbs a positively-inclined slope here and running
+## backward descends it.
+##
+## No place() counterpart: unlike the flat floor, the tilted slab's top-surface
+## height at the origin depends on incline_rad, so callers settle the player
+## themselves (a handful of physics_frame ticks after spawning it above the
+## slab) rather than being handed an exact resting position.
+static func build_on_slope(tree: SceneTree, cfg: MovementConfig, incline_rad: float) -> Dictionary:
+	var floor_body := StaticBody3D.new()
+	var floor_shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	# Long along Z (the run/slide direction) and wide enough that steering
+	# drift during a slide cannot walk the player off the side within the tick
+	# counts any caller here runs for.
+	box.size = Vector3(20.0, 1.0, 80.0)
+	floor_shape.shape = box
+	floor_body.add_child(floor_shape)
+	floor_body.rotation.x = incline_rad
+	tree.root.add_child(floor_body)
+
+	var player_scene: PackedScene = load("res://scenes/player/player.tscn")
+	var player: Player = player_scene.instantiate()
+	tree.root.add_child(player)
+	# Spawned above the slab near its rotation pivot (the world origin), close
+	# enough that a short settle drops it onto the ramp rather than off an edge.
+	player.global_position = Vector3(0.0, 1.5, 0.0)
+
+	var input := ScriptedInputSource.new()
+	player.setup(cfg, input)
+	if player.camera_rig != null:
+		player.camera_rig.setup(cfg)
+
+	return {"player": player, "input": input, "floor": floor_body}
+
 static func teardown(world: Dictionary) -> void:
 	world["player"].queue_free()
 	world["floor"].queue_free()

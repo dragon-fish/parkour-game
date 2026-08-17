@@ -32,10 +32,13 @@ func _material_for(colour: Color) -> StandardMaterial3D:
 	return _materials[colour]
 
 ## Constant-acceleration kinematics: sqrt(max(v0^2 + 2*accel*distance, 0)).
-## Used to derive how much of SlideState's own speed model (friction, slope
-## accel, the entry boost -- see slide_state.gd) a stretch of course geometry
-## actually costs or grants, so a course length can be SIZED from that instead
-## of hand-tuned by trial and error. Clamped at 0 under the sqrt so a segment
+## Used to derive how much a stretch of course geometry costs a slide's speed
+## (SlideMove._slide(), via Friction.slide_friction() -- see the SlideArea
+## section below), so a course length can be SIZED from that instead of
+## hand-tuned by trial and error. Valid as a CLOSED FORM here specifically
+## because grade, and therefore deceleration, is constant along any one
+## straight or single-slope segment; it would not hold across a segment whose
+## grade varies along its own length. Clamped at 0 under the sqrt so a segment
 ## long enough to fully arrest the given accel does not attempt a negative
 ## square root.
 func _speed_after(v0: float, accel: float, distance: float) -> float:
@@ -294,20 +297,26 @@ func build() -> Node3D:
 	#   z   -9 .. TUNNEL_FAR_Z     Tunnel, length DERIVED below
 	#   z  TUNNEL_FAR_Z .. -30     exit, bare arena floor
 	#
-	# The tunnel length is DERIVED, not hand-tuned, from SlideState's own speed
-	# model (slide_state.gd) applied to this exact geometry via _speed_after():
-	# the entry boost on the platform, friction over the platform's remaining
-	# length, the DownRamp's net acceleration (slide_slope_accel * grade -
-	# slide_friction; ME's downhill slides must resist decay, see
-	# slide_slope_accel's own comment), then friction again over the flat
-	# run-in. That gives the speed AT THE TUNNEL'S OWN MOUTH, from which the
-	# longest tunnel that still clears with real headroom over slide_crawl_speed
-	# follows from plain kinematics (v^2 = u^2 - 2*a*d, solved for d). This is
-	# what keeps "the tunnel is clearable on slide momentum alone" true across
-	# a future retune of ground_speed, slide_friction or the ramp geometry,
-	# instead of silently going stale the way the fixed 7 m tunnel did when
-	# ground_speed dropped from 9.0 to 7.2 (see the numbers-only retune's own
-	# report on this exact test failing as a result).
+	# The tunnel length is DERIVED, not hand-tuned, from SlideMove's own speed
+	# model applied to this exact geometry via _speed_after(): friction over
+	# the platform's remaining length, friction again (at the DownRamp's own
+	# grade) over the DownRamp, then friction over the flat run-in. That gives
+	# the speed AT THE TUNNEL'S OWN MOUTH, from which the longest tunnel that
+	# still clears with real headroom over slide_crawl_speed follows from
+	# plain kinematics (v^2 = u^2 - 2*a*d, solved for d). This is what keeps
+	# "the tunnel is clearable on slide momentum alone" true across a future
+	# retune of ground_speed, friction_modifier, PawnConfig's own friction
+	# knobs, or the ramp geometry, instead of silently going stale the way the
+	# fixed 7 m tunnel did when ground_speed dropped from 9.0 to 7.2 (see the
+	# numbers-only retune's own report on this exact test failing as a
+	# result) -- or the way this exact derivation itself went stale and silent
+	# when Task 10 deleted the boost and slope-accel fields this used to hand-
+	# mirror. Every deceleration below is sourced from Friction.slide_friction(),
+	# the SAME function SlideMove._slide() calls at runtime, rather than a
+	# second, independently-maintained copy of its arithmetic -- so a future
+	# change to Friction or to SlideConfig.friction_modifier is felt here
+	# automatically, and cannot desynchronise this file without also breaking
+	# the live, tested module it now calls into.
 	const COURSE_WIDTH := 6.0
 	const DECK_Y := 0.0            # top of the arena Floor slab
 	const PLATFORM_Y := 3.0
@@ -315,8 +324,8 @@ func build() -> Node3D:
 	const PLATFORM_FAR_Z := 3.0    # where DownRamp begins
 	# "1 m onto the platform" -- matches test_the_slide_course_can_be_run_end_
 	# to_end's own Phase 1 target (platform_aabb.end.z - 1.0), i.e. where the
-	# test actually presses crouch and SlideState.enter() actually samples the
-	# entry speed, not the platform's near edge.
+	# test actually presses crouch and SlideMove.enter() actually captures the
+	# slide direction, not the platform's near edge.
 	const PLATFORM_ENTRY_MARGIN := 1.0
 	const DOWNRAMP_FAR_Z := -7.0    # where DownRamp meets the floor again
 	const RUN_IN_LENGTH := 2.0      # flat floor between DownRamp and the tunnel
@@ -335,35 +344,33 @@ func build() -> Node3D:
 	_attach(slide_area, _ramp("DownRamp", COURSE_WIDTH, 1.0,
 		PLATFORM_FAR_Z, PLATFORM_Y, DOWNRAMP_FAR_Z, DECK_Y, slide_colour))
 
-	# SlideState.enter()'s own boost formula (slide_state.gd), applied to the
-	# ground speed cap: entering at or under slide_boost_entry_threshold grants
-	# slide_boost, capped the same way. Mirrored here rather than imported so
-	# this course sizing keeps tracking slide_state.gd's own math if it is
-	# ever retuned independently.
-	var slide_entry_speed: float = config.pawn.ground_speed
-	if slide_entry_speed <= config.slide.slide_boost_entry_threshold:
-		slide_entry_speed = minf(slide_entry_speed + config.slide.slide_boost, \
-			config.slide.slide_boost_entry_threshold + config.slide.slide_boost)
-
+	# Entry no longer boosts (Task 10): SlideMove.enter() only captures
+	# direction, never touches speed, so the course is entered at whatever
+	# running already produced -- capped at ground_speed, same as everywhere
+	# else running is bounded.
 	var down_ramp_length: float = PLATFORM_FAR_Z - DOWNRAMP_FAR_Z
 	var down_ramp_rise: float = PLATFORM_Y - DECK_Y
-	# sin(descent angle), i.e. -slope_dir.y the way slide_state.gd's own
-	# _slope_direction() computes grade, without a redundant atan2 -> sin
-	# round trip.
+	# sin(descent angle), i.e. -slope_dir.y the way SlideMove._slope_direction()
+	# computes grade, without a redundant atan2 -> sin round trip.
 	var down_ramp_grade: float = down_ramp_rise / sqrt(down_ramp_rise * down_ramp_rise \
 		+ down_ramp_length * down_ramp_length)
 
+	# Deceleration per segment, from the SAME grade-driven function
+	# SlideMove._slide() calls at runtime -- see this section's own header
+	# comment for why calling it beats hand-mirroring its arithmetic.
+	var flat_decel: float = Friction.slide_friction(config.pawn, config.slide.friction_modifier, 0.0)
+	var down_ramp_decel: float = Friction.slide_friction(config.pawn, config.slide.friction_modifier, \
+		down_ramp_grade)
+
 	var platform_remaining: float = (PLATFORM_NEAR_Z - PLATFORM_FAR_Z) - PLATFORM_ENTRY_MARGIN
-	var speed_after_platform: float = _speed_after(slide_entry_speed, -config.slide.slide_friction, \
+	var speed_after_platform: float = _speed_after(config.pawn.ground_speed, -flat_decel, \
 		platform_remaining)
-	var speed_after_ramp: float = _speed_after(speed_after_platform, \
-		config.slide.slide_slope_accel * down_ramp_grade - config.slide.slide_friction, down_ramp_length)
-	var speed_at_tunnel_mouth: float = _speed_after(speed_after_ramp, -config.slide.slide_friction, \
-		RUN_IN_LENGTH)
+	var speed_after_ramp: float = _speed_after(speed_after_platform, -down_ramp_decel, down_ramp_length)
+	var speed_at_tunnel_mouth: float = _speed_after(speed_after_ramp, -flat_decel, RUN_IN_LENGTH)
 
 	var tunnel_exit_target_speed: float = config.slide.slide_crawl_speed * TUNNEL_EXIT_SPEED_MARGIN
 	var tunnel_length: float = maxf((speed_at_tunnel_mouth * speed_at_tunnel_mouth \
-		- tunnel_exit_target_speed * tunnel_exit_target_speed) / (2.0 * config.slide.slide_friction), 1.0)
+		- tunnel_exit_target_speed * tunnel_exit_target_speed) / (2.0 * flat_decel), 1.0)
 	var tunnel_far_z: float = TUNNEL_NEAR_Z - tunnel_length
 
 	# Tunnel: walls stand on the floor, the roof spans between them with its

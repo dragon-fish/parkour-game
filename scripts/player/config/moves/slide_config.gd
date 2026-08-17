@@ -10,8 +10,12 @@ extends MoveConfig
 @export var slide_abort_speed: float = 2.5
 ## Source: 05 §5.1 `SlideAbortTime = 2.0` s. ✅
 @export var slide_abort_time: float = 2.0
-## Source: 05 §5.1 `MaxFloorInclineZ = 0.5`. ✅ Steeper than ~60 degrees and
-## the surface cannot be slid on at all.
+## Source: 05 §5.1 `MaxFloorInclineZ = 0.5`. ✅ as a value. RECORDED BUT NOT
+## ENFORCED -- nothing reads this yet, the same pattern as
+## PawnConfig.speed_max_base_velocity. In the original this would reject a
+## slide on a surface steeper than ~60 degrees; here it is on file for
+## whichever later task wires floor-incline gating into SlideMove, not a live
+## gate today. Do not read behaviour into this field's mere presence.
 @export var max_floor_incline_z: float = 0.5
 ## Project-specific, no counterpart in the original: the capsule size and how
 ## fast the line can be steered.
