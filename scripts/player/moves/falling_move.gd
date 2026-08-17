@@ -61,30 +61,22 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	player.move_and_slide()
 
 	if player.is_on_floor():
+		# Read BEFORE set_grounded(), which resets the counter.
+		var fall_height: float = player.fall_tracker.fall_height
+		var rolled: bool = player.consume_roll() \
+			and fall_height >= config.pawn.skill_roll_landing_height
+		player.last_landing_rolled = rolled
 		player.set_grounded(true)
 		player.notify_landed(impact_speed)
-		_apply_landing_cost(impact_speed, input)
+		_apply_landing_cost(fall_height, rolled)
 		return WALKING
 	player.set_grounded(false)
 	return KEEP
 
-## Landing bleeds horizontal speed in proportion to how hard the impact was.
-## Rolling — crouch held on a fast enough landing — bleeds far less. Neither
-## path ever ADDS speed, so a landing can only ever cost momentum.
-func _apply_landing_cost(impact_speed: float, input: MoveInput) -> void:
-	# land_cost_speed_ref, NOT the camera's land_dip_speed_ref: the two happen
-	# to share a default, but they are independent knobs. Reading the camera
-	# value here meant tuning how hard the view drops silently retuned how much
-	# momentum a landing costs.
-	var severity := clampf(impact_speed / maxf(config.pawn.land_cost_speed_ref, 0.001), 0.0, 1.0)
-	var rolled: bool = input.crouch_held and impact_speed >= config.pawn.roll_min_fall_speed
-	player.last_landing_rolled = rolled
-
-	# Clamped to 1.0 so the invariant above holds for every reachable config.
-	# The tuning panel generates each slider's range as default * 3, which puts
-	# both keep ratios well past 1.0 — without this clamp, a slider drag could
-	# make landing a source of free speed.
-	var keep_at_full: float = minf(config.pawn.roll_speed_keep if rolled else config.pawn.land_speed_keep, 1.0)
-	var keep := lerpf(1.0, keep_at_full, severity)
+## Landing bleeds horizontal speed according to which of the four confirmed
+## tiers the ACCUMULATED FALL HEIGHT falls into -- never according to this
+## frame's vertical speed. See Player.landing_keep_ratio().
+func _apply_landing_cost(fall_height: float, rolled: bool) -> void:
+	var keep: float = player.landing_keep_ratio(fall_height, rolled)
 	player.velocity.x *= keep
 	player.velocity.z *= keep

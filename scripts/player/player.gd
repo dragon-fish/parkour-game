@@ -53,6 +53,11 @@ func set_grounded(value: bool) -> void:
 	grounded_declarations += 1
 	if value:
 		ground_reference_y = global_position.y
+		# ANY ground contact resets the fall-height counter -- this is the whole
+		# mechanism behind the community's drop-roll technique (03 §3.5): touch
+		# down, and the accumulated height is gone before stepping off again.
+		if fall_tracker != null:
+			fall_tracker.reset()
 
 ## Clears `grounded` WITHOUT counting as a declaration. Called only by
 ## MoveManager, as the fail-safe half of the invariant above: a move that
@@ -78,6 +83,61 @@ func consume_landing() -> float:
 	var value := _pending_landing
 	_pending_landing = -1.0
 	return value
+
+## Landing tiers, from 03 §3.1's confirmed TdMove_Landing thresholds. Read as
+## fall HEIGHTS -- the original's own parameters are heights, and converting
+## them to impact speeds (which is what this project used to do) is what
+## erased the free band.
+enum { TIER_FREE, TIER_SOFT, TIER_ROLLABLE, TIER_HARD }
+
+## Accumulated fall height since the last ground contact. Built in setup().
+var fall_tracker: FallTracker
+
+func landing_tier(fall_height: float) -> int:
+	var pawn := config.pawn
+	if fall_height < pawn.skill_roll_landing_height:
+		return TIER_FREE
+	if fall_height < pawn.soft_landing_height:
+		return TIER_SOFT
+	if fall_height < pawn.hard_landing_height:
+		return TIER_ROLLABLE
+	return TIER_HARD
+
+## Fraction of horizontal speed a landing from `fall_height` keeps.
+##
+## Clamped to 1.0 at every exit: the F1 panel sizes each slider to three times
+## its default, so landing_speed_reduction is draggable to a value that would
+## otherwise make landing a source of free speed.
+func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
+	var pawn := config.pawn
+	var hard_keep: float = clampf(1.0 - pawn.landing_speed_reduction, 0.0, 1.0)
+	match landing_tier(fall_height):
+		TIER_FREE:
+			# Genuinely free, not "nearly free". A flat jump peaks four
+			# centimetres under this boundary, which is what lets the player
+			# jump as often as they like without paying for it.
+			return 1.0
+		TIER_SOFT:
+			# A roll cancels this band outright; without one it scales in from
+			# nothing at the boundary to the hard ratio at the next one.
+			if rolled:
+				return 1.0
+			var t: float = inverse_lerp(pawn.skill_roll_landing_height, \
+				pawn.soft_landing_height, fall_height)
+			return clampf(lerpf(1.0, hard_keep, clampf(t, 0.0, 1.0)), 0.0, 1.0)
+		TIER_ROLLABLE:
+			# Above the soft band a roll is a discount, never a cancellation:
+			# the community reports ME1's skill roll bleeding speed of its own
+			# whenever you keep moving forward out of it (03 §3.1). Unrolled,
+			# the cost ramps continuously from nothing at the soft boundary to
+			# the full hard ratio at the hard one; rolling pays 35% of
+			# whatever that ramp asks for.
+			var t2: float = clampf(inverse_lerp(pawn.soft_landing_height, \
+				pawn.hard_landing_height, fall_height), 0.0, 1.0)
+			var unrolled: float = lerpf(1.0, hard_keep, t2)
+			return clampf(unrolled if not rolled else lerpf(1.0, unrolled, 0.35), 0.0, 1.0)
+		_:
+			return hard_keep
 
 ## Assigned in player.tscn. Optional so headless tests can run without one.
 @export var camera_rig: CameraRig
@@ -144,7 +204,14 @@ var _travel_speed: float = 0.0
 
 var _coyote_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
-var _crouch_buffer_timer: float = 0.0
+## Buffers a crouch-key press for roll_trigger_time (05 §5.2's confirmed
+## TdPawn.RollTriggerTime, extremely forgiving next to the genre's usual
+## 0.1-0.2 s). Renamed from _crouch_buffer_timer: GBA_Crouch is one key with
+## five outlets and only three discriminators -- airborne/grounded, speed,
+## accumulated fall height -- so the buffer itself is not "about crouching",
+## it is the single press every one of those outlets reads. See
+## walking_move.gd's own table comment for the full resolution.
+var _roll_buffer_timer: float = 0.0
 ## Counts down after releasing a ledge; while positive, can_grab_ledge()
 ## refuses a re-grab. Without this, dropping off a ledge (e.g. via crouch)
 ## would immediately re-grab the very same ledge on the next tick.
@@ -286,6 +353,7 @@ func _service_pending_capsule_restore() -> void:
 func setup(cfg: MovementConfig, src: InputSource) -> void:
 	config = cfg
 	input_source = src
+	fall_tracker = FallTracker.new(config.pawn)
 
 	# The capsule resource is shared by every instance of player.tscn, so
 	# resizing it in place would let one player's slide shrink every other
@@ -322,8 +390,10 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 func reset_state() -> void:
 	_coyote_timer = 0.0
 	_jump_buffer_timer = 0.0
-	_crouch_buffer_timer = 0.0
+	_roll_buffer_timer = 0.0
 	_ledge_cooldown = 0.0
+	if fall_tracker != null:
+		fall_tracker.reset()
 	# Same reasoning as the ledge cooldown above: wall cooldowns left over
 	# from the previous life must not withhold a fresh life's first attach.
 	_recent_walls.clear()
@@ -633,6 +703,10 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		camera_rig.apply_look(input.look, self)
 
+	# Before the moves run, so a move that lands this tick reads a counter
+	# that already includes this tick's descent.
+	fall_tracker.update(delta, velocity.y, global_position.y)
+
 	move_manager.physics_update(delta, input)
 
 	var travelled := global_position - tick_start_position
@@ -699,9 +773,9 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 	# version would re-arm every tick and let a slide re-enter the instant the
 	# previous one ended, which is the strobing this gate exists to prevent.
 	if input.crouch_pressed:
-		_crouch_buffer_timer = config.pawn.crouch_buffer_time
+		_roll_buffer_timer = config.pawn.roll_trigger_time
 	else:
-		_crouch_buffer_timer = maxf(_crouch_buffer_timer - delta, 0.0)
+		_roll_buffer_timer = maxf(_roll_buffer_timer - delta, 0.0)
 
 	_ledge_cooldown = maxf(_ledge_cooldown - delta, 0.0)
 
@@ -797,10 +871,13 @@ func try_step_up(delta: float) -> float:
 
 ## Spends a buffered crouch press if one is pending. Returns true at most once
 ## per press — this is what keeps the roll-into-slide chain reachable without
-## reopening the held-key strobe.
-func consume_crouch() -> bool:
-	if _crouch_buffer_timer > 0.0:
-		_crouch_buffer_timer = 0.0
+## reopening the held-key strobe. Renamed from consume_crouch(): the single
+## buffered press resolves into Roll, Slide or Crouch by CONTEXT (touchdown
+## and fall height, or grounded speed) -- see walking_move.gd's table comment
+## and falling_move.gd's landing branch, the two places that read it.
+func consume_roll() -> bool:
+	if _roll_buffer_timer > 0.0:
+		_roll_buffer_timer = 0.0
 		return true
 	return false
 

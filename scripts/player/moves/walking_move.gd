@@ -41,7 +41,16 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# landing instead of being discarded in mid-air. The speed test is
 		# evaluated FIRST so its short-circuit leaves a too-slow press
 		# buffered rather than spending it.
-		if player.horizontal_speed() >= config.slide.slide_entry_speed and player.consume_crouch():
+		# GBA_Crouch is one key with five outlets (05 §5.2, confirmed by in-game
+		# measurement), and only three discriminators: airborne or touching down,
+		# horizontal speed, accumulated fall height.
+		#   airborne, speed >= 1.0        -> Coil          (OUT OF SCOPE, no such move)
+		#   airborne, speed <  1.0        -> nothing
+		#   touchdown, fall >= 2.0 m      -> Roll          (FallingMove, above)
+		#   touchdown, fall <  2.0 m, moving -> Slide      (here)
+		#   grounded, not moving          -> Crouch
+		# There are no chords, no hold-versus-tap, no direction modifiers.
+		if player.horizontal_speed() >= config.slide.slide_entry_speed and player.consume_roll():
 			# Same floor-snap bias as the fall-through path below. Without it, a
 			# slide started on a downslope can leave the floor on this very tick
 			# and bounce straight back out to Falling.

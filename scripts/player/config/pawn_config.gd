@@ -81,14 +81,20 @@ extends Resource
 @export_group("Jump")
 ## Source: 02 §2.4 `TdPawn.BaseJumpZ = 560` uu/s. ✅ CONFIRMED BY IN-GAME
 ## MEASUREMENT -- the conflicting `TdMove_Jump.BaseJumpZ = 630` is ruled out
-## there.
-## MIGRATION NOTE: still carrying the old 6.3 (which came from the ruled-out
-## 630). Task 6 corrects it to 5.6, together with the landing thresholds --
-## 09 §9.1 is explicit that these must be calibrated as a group.
-@export var base_jump_z: float = 6.3
+## there. Against gravity 8.0 this peaks at 1.96 m, four centimetres under
+## the 2.0 m skill_roll_landing_height, which is what keeps an ordinary flat
+## jump free of the landing penalty -- see landing_keep_ratio()'s own comment.
+## Calibrated together with the landing thresholds below, not independently --
+## 09 §9.1 is explicit that retuning any one of jump/gravity/landing alone
+## makes the feel worse, not better.
+@export var base_jump_z: float = 5.6
 ## Source: 02 §2.4 `JumpAddXY = 100` uu/s. ⚠️ Inferred as extra horizontal
 ## speed along the facing at the moment of take-off; whether it adds or sets
-## a minimum is unverified. Wired up in Task 6.
+## a minimum is unverified. STILL UNWIRED: an earlier note here claimed this
+## task would wire it, but Task 6's brief scopes the jump/landing calibration
+## to base_jump_z and the four landing tiers only -- this field is unread by
+## any move. Left for whichever future task actually implements take-off
+## horizontal boost.
 @export var jump_add_xy: float = 1.0
 ## No confirmed counterpart in the original (02 §2.4 searched and found
 ## none). Kept as a modern quality-of-life affordance.
@@ -220,13 +226,6 @@ extends Resource
 ## counterpart in the original, carried unchanged so this task can be shown
 ## to change no behaviour. Each is deleted by the task that lands its
 ## replacement -- see the spec's own deletion table (§6).
-## Deleted by Task 9 (fall-height landing tiers).
-@export var land_cost_speed_ref: float = 9.21
-@export var land_speed_keep: float = 0.55
-@export var roll_speed_keep: float = 0.94
-@export var roll_min_fall_speed: float = 5.0
-## Deleted by Task 9 (single roll_trigger_time buffer).
-@export var crouch_buffer_time: float = 0.15
 ## Deleted by Task 11/12 (redo_move_time).
 @export var wall_reattach_cooldown: float = 0.5
 @export var wall_same_normal_dot: float = 0.85
