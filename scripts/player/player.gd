@@ -1044,11 +1044,33 @@ func _charge_turn(wish: Vector3) -> void:
 		speed_energy.spend_turn(radians)
 	_last_wish_dir = wish
 
+## The downhill component of `direction`, projected onto the current floor,
+## in Friction's convention (+1 straight down the fall line, -1 straight up,
+## 0 flat). Same projection SlideMove._slope_direction() uses, generalised to
+## an arbitrary direction since Player has no persisted heading of its own --
+## callers pass the residual horizontal velocity, which is what a braking
+## ground_accelerate() call is actually decelerating. 0 with no floor or no
+## direction, so an airborne or motionless call resolves cleanly.
+func ground_grade(direction: Vector3) -> float:
+	if not grounded or direction == Vector3.ZERO:
+		return 0.0
+	var normal: Vector3 = get_floor_normal()
+	if normal.length_squared() < 0.0001:
+		return 0.0
+	var projected := direction - normal * direction.dot(normal)
+	if projected.length_squared() < 0.0001:
+		return 0.0
+	return -projected.normalized().y
+
 ## Ground movement: converge on the target velocity, and brake when idle.
-func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float) -> void:
+## `grade` is the downhill component of the current heading (+1 straight
+## down the fall line, -1 straight up, 0 flat); see Friction.
+func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float, grade: float = 0.0) -> void:
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	if wish_dir == Vector3.ZERO:
-		horizontal = horizontal.move_toward(Vector3.ZERO, config.pawn.base_friction * delta)
+		var braking: float = Friction.walk_friction(config.pawn, \
+			move_manager.current_move_friction_modifier(), grade)
+		horizontal = horizontal.move_toward(Vector3.ZERO, braking * delta)
 	else:
 		horizontal = horizontal.move_toward(wish_dir * target_speed, config.pawn.accel_rate * delta)
 	velocity.x = horizontal.x

@@ -10,7 +10,8 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# the one thing that overrides it, with its own confirmed hard cap.
 	var target_speed: float = config.pawn.walk_velocity if input.walk_held \
 		else player.speed_cap() * cfg.speed_modifier
-	player.ground_accelerate(wish_dir, target_speed, delta)
+	var grade: float = player.ground_grade(Vector3(player.velocity.x, 0.0, player.velocity.z))
+	player.ground_accelerate(wish_dir, target_speed, delta, grade)
 
 	if player.consume_jump():
 		player.velocity.y = config.pawn.base_jump_z

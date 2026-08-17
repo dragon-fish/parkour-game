@@ -30,6 +30,15 @@ func move_for(move_name: StringName) -> Move:
 func can_enter(move_name: StringName) -> bool:
 	return not _redo_cooldowns.has(move_name)
 
+## The active move's own friction multiplier, or 1.0 when there is no move or
+## no config. Read by Player.ground_accelerate() so braking respects whatever
+## move is in force without Player having to know which one that is.
+func current_move_friction_modifier() -> float:
+	if _current == null:
+		return 1.0
+	var active: MoveConfig = _current.current_config()
+	return active.friction_modifier if active != null else 1.0
+
 func _tick_cooldowns(delta: float) -> void:
 	for key in _redo_cooldowns.keys():
 		var remaining: float = _redo_cooldowns[key] - delta
