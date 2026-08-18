@@ -45,3 +45,21 @@ scenes/player/wine_fox_player_nohead.tscn
 scenes/player/player_wine_fox.tscn
 # The owner's whitebox playground, which instances the model above.
 scenes/debug_levels/
+
+# Measurement data extracted from a locally-owned copy of Mirror's Edge (2008),
+# used as a real-scale reference field for movement tuning. Contains no DICE/EA
+# art -- only box positions and dimensions -- but it still describes their level
+# layout, so nothing generated from it may ship. Reference it, measure it, then
+# build your own geometry. See _local/me-reference/tutorial-blockout/README.md.
+_local/
+
+# Same rule, second source: the glyph templates hud_ocr.py matches against are
+# bitmaps lifted off the game's own HUD rendering, and the CSVs beside them are
+# captures of a running copy of the game. The tool itself is ours and IS tracked
+# -- rebuild the data locally with its calib flow. See
+# docs/mirrors-edge-deep-research/tools/README-hud_ocr.md.
+docs/mirrors-edge-deep-research/tools/hud_ocr_data/
+
+# Python bytecode from the research tools
+__pycache__/
+*.pyc
