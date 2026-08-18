@@ -44,10 +44,13 @@ func test_8_moves_declare_their_own_camera_constraints() -> void:
 	check(config.slide.constrain_look, "sliding declares no look constraint")
 	check(not config.walking.constrain_look, "walking wrongly constrains the look")
 
-func test_10_a_flat_jump_hangs_for_about_one_and_a_half_seconds() -> void:
+func test_10_a_flat_jump_hangs_for_about_four_fifths_of_a_second() -> void:
+	# Repinned from 1.40 s. That figure came from the CONFIGURED gravity (800)
+	# and TdPawn's BaseJumpZ (560); frame-level measurement of 22 jumps puts the
+	# effective pair at (1600, 630), giving 0.7875 s. See 02 §2.4.
 	var pawn := PawnConfig.new()
 	var hang: float = 2.0 * pawn.base_jump_z / pawn.gravity
-	check_approx(hang, 1.40, 0.02, "flat-jump hang time is not the confirmed 1.40 s")
+	check_approx(hang, 0.7875, 0.02, "flat-jump hang time is not the measured 0.79 s")
 	var apex: float = pawn.base_jump_z * pawn.base_jump_z / (2.0 * pawn.gravity)
 	check(apex < pawn.skill_roll_landing_height, \
 		"the jump apex reaches the roll threshold, so every jump costs speed")

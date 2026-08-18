@@ -33,6 +33,7 @@
 | `walk_speed` | 5.0 | `JogVelocity 260` → **2.6** / `RunVelocity 400` → **4.0** | 偏快 |
 | `sprint_speed` | 9.0 | `GroundSpeed 720` → **7.2** | **偏快 25%** |
 | `ground_accel` | 60.0 | `AccelRate 6144` → **61.44** | ✅ **几乎完全一致** |
+| `max_step_height` | 0.35 | `MaxWallStepHeight 35` → **0.35** | ✅ **实测确认**：≤0.35 m 直接抬升，0.4 m 必须起跳 |
 | `ground_friction` | 40.0 | ❓ 无直接对应（ME 用摩擦力倍率体系） | — |
 | `air_accel` | 12.0 | `AirControl 0.025` × 加速度 | ME 空中操控极低 |
 | `air_max_speed` | 9.0 | `AirSpeed 2400` → **24.0** | **ME 基本不限空中速度** |

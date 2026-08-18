@@ -1,0 +1,3 @@
+# Godot must not scan this directory: it holds Python tooling and captured
+# CSV data, and importing the CSVs produces UID collisions that break
+# --import (and therefore the whole test run).

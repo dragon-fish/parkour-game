@@ -53,14 +53,17 @@ func test_the_gradient_is_continuous_not_stepped() -> void:
 
 func test_the_rise_is_a_height_converted_to_a_speed() -> void:
 	# JumpOffZHeight is a HEIGHT in the original, not a velocity -- 1.0 m at
-	# worst, 1.6 m at best, which under gravity 8.0 is 4.0 to 5.06 m/s. The
-	# old constant 6.5 m/s was a 2.64 m rise, well above either.
+	# worst, 1.6 m at best. The speeds those correspond to depend on gravity,
+	# so this reads gravity from the config rather than hard-coding it: pinning
+	# the number instead of the RELATIONSHIP is what made this test fail when
+	# gravity was corrected from 8.0 to the measured 16.0, even though the
+	# behaviour under test never changed.
 	var pawn := PawnConfig.new()
 	var normal := Vector3(1.0, 0.0, 0.0)
 	var worst := WallRunMove.wall_jump_rise_velocity(normal, normal, _cfg(), pawn)
 	var best := WallRunMove.wall_jump_rise_velocity(-normal, normal, _cfg(), pawn)
-	check_approx(worst, sqrt(2.0 * 8.0 * 1.0), 0.001, "worst-case rise is not 1.0 m worth")
-	check_approx(best, sqrt(2.0 * 8.0 * 1.6), 0.001, "best-case rise is not 1.6 m worth")
+	check_approx(worst, sqrt(2.0 * pawn.gravity * 1.0), 0.001, "worst-case rise is not 1.0 m worth")
+	check_approx(best, sqrt(2.0 * pawn.gravity * 1.6), 0.001, "best-case rise is not 1.6 m worth")
 
 ## End-to-end regression guard for the gravity choice in
 ## wall_jump_rise_velocity(): every test above is pure arithmetic, calling
@@ -156,7 +159,16 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 		apex_y = maxf(apex_y, player.global_position.y)
 		if player.velocity.y < 0.0:
 			break
-	check_approx(apex_y - jump_y, expected_height, 0.05, \
+	# Tolerance covers the integrator's own bias, not sloppiness. Semi-implicit
+	# Euler applies a full tick of gravity before the position update, so a
+	# discretely integrated arc overshoots the closed-form apex by roughly
+	# v0 * dt / 2. At the measured gravity that is 6.45 / 120 = 0.054 m, which is
+	# why 0.05 stopped passing the moment gravity was corrected from 8.0: launch
+	# speed grows as sqrt(gravity), and so does this bias. 0.08 keeps ~50% headroom
+	# over the computed bias without hiding a regression.
+	var integrator_bias: float = expected_launch / (2.0 * Engine.physics_ticks_per_second)
+	check_greater(0.08, integrator_bias, "integrator bias outgrew the tolerance")
+	check_approx(apex_y - jump_y, expected_height, 0.08, \
 		"the live wall jump's measured apex does not match the predicted %f m rise" % expected_height)
 
 	wall.queue_free()

@@ -34,7 +34,7 @@ func test_a_row_can_read_and_write_its_own_value() -> void:
 	for row in TuningPanel.collect_tunables(config):
 		if row["path"] != "pawn.gravity":
 			continue
-		check_approx(row["owner"].get(row["property"]), 8.0, 0.0001, "row read the wrong value")
+		check_approx(row["owner"].get(row["property"]), 16.0, 0.0001, "row read the wrong value")
 		row["owner"].set(row["property"], 12.0)
 		check_approx(config.pawn.gravity, 12.0, 0.0001, "writing through a row did not reach the config")
 		return
@@ -56,7 +56,7 @@ func test_every_row_carries_a_default_from_a_fresh_config() -> void:
 	config.pawn.gravity = 1.0
 	for row in TuningPanel.collect_tunables(config):
 		if row["path"] == "pawn.gravity":
-			check_approx(row["default"], 8.0, 0.0001, "default came from the live config, not a fresh one")
+			check_approx(row["default"], 16.0, 0.0001, "default came from the live config, not a fresh one")
 			return
 	check(false, "no row for pawn.gravity")
 

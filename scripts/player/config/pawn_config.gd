@@ -26,11 +26,24 @@ extends Resource
 ## field -- see that function's own comment for why a full hang time can
 ## shed at most ~2.1 m/s even against continuous opposite input.
 @export var air_control: float = 0.025
-## Source: 09 §9.1 `DefaultGravityZ = 800` uu/s^2. ✅
+## Source: 02 §2.4. ✅ MEASURED, and it is NOT the configured value.
+## `DefaultGravityZ` reads 800 uu/s^2 in DefaultGame.ini, but the effective
+## gravity in game is twice that. 22 jumps read frame-by-frame off the debug
+## HUD give apex 1.24 m and 0.775 s of airtime; those two numbers pin gravity
+## and base_jump_z simultaneously, and only (16.0, 6.3) satisfies both. No
+## scaling factor exists in any ini -- the doubling lives in native C++, like
+## the speed-energy formula.
+##
+## Corroborated twice over: DICE's own comment above FallingUncontrolledHeight
+## ("1600 is the downward speed after falling 780 cm") resolves to within 1.3%
+## under 1600 versus 30% off under 800; and SpringBoardJumpZ = 950 predicts a
+## 2.82 m springboard under 1600, which matches the owner's measured "just over
+## 2 m" where 800 would have predicted 5.64 m.
+##
 ## Part of the gravity/base_jump_z/ground_speed trio: the guide is explicit
 ## that retuning any one of the three alone makes the feel worse, not
 ## better, so they are calibrated as a group rather than independently.
-@export var gravity: float = 8.0
+@export var gravity: float = 16.0
 @export var terminal_velocity: float = 60.0
 ## Source: 02 §2.2 `WalkVelocity = 50` uu/s -> 0.5 m/s. ✅ as a VALUE. The same
 ## section flags this discrete tier (and its four siblings) as MORE LIKELY an
@@ -68,7 +81,12 @@ extends Resource
 ## Calibrated together with the landing thresholds below, not independently --
 ## 09 §9.1 is explicit that retuning any one of jump/gravity/landing alone
 ## makes the feel worse, not better.
-@export var base_jump_z: float = 5.6
+## ✅ MEASURED as 630 (TdMove_Jump.BaseJumpZ), not the 560 on TdPawn that this
+## value used to carry. The frame data (apex 1.24 m, airtime 0.775 s) admits no
+## other pairing with gravity 16.0. The earlier 560 came from an inequality
+## that only ever established an UPPER bound and was then read as if it picked
+## between two candidates -- see 02 §2.4's own post-mortem.
+@export var base_jump_z: float = 6.3
 ## Source: 02 §2.4 `JumpAddXY = 100` uu/s. ⚠️ Inferred as an ADDITION along
 ## the facing at take-off (whether it adds or sets a minimum is unverified);
 ## taking off is itself a small forward commitment. Wired in WalkingMove and

@@ -34,7 +34,10 @@ func test_two_configs_do_not_share_their_sub_resources() -> void:
 
 func test_migrated_values_are_unchanged() -> void:
 	var config := MovementConfig.new()
-	check_approx(config.pawn.gravity, 8.0, 0.0001, "gravity moved but changed")
+	# Repinned, not "unchanged": gravity is the one migrated value that turned
+	# out to be wrong. 800 is what DefaultGame.ini says; 1600 is what the game
+	# does (02 §2.4, measured across 22 jumps).
+	check_approx(config.pawn.gravity, 16.0, 0.0001, "gravity is not the measured 16.0")
 	check_approx(config.pawn.ground_speed, 7.2, 0.0001, "ground_speed moved but changed")
 	check_approx(config.pawn.accel_rate, 61.44, 0.0001, "accel_rate is not the confirmed 61.44")
 	check_approx(config.camera.fov_base, 90.0, 0.0001, "fov_base moved but changed")

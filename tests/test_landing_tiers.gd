@@ -10,13 +10,17 @@ func _player_stub() -> Player:
 	return player
 
 func test_a_flat_jump_lands_in_the_free_tier() -> void:
-	# The calibration this whole task exists for: base_jump_z 5.6 against
-	# gravity 8.0 peaks at 1.96 m, four centimetres under the 2.0 m roll
-	# threshold, so an ordinary jump can never cost speed.
+	# The calibration this whole task exists for: an ordinary jump must never
+	# cost speed. Measured (02 §2.4), base_jump_z 6.3 against gravity 16.0
+	# peaks at 1.24 m -- 38% under the 2.0 m roll threshold.
+	#
+	# The margin used to read "four centimetres", which was taken as evidence of
+	# deliberate tuning by DICE. That reading was an artefact of the wrong
+	# gravity: under the measured values the gap is comfortable, not hairline.
 	var player := _player_stub()
 	var pawn := player.config.pawn
 	var apex: float = pawn.base_jump_z * pawn.base_jump_z / (2.0 * pawn.gravity)
-	check_approx(apex, 1.96, 0.005, "the jump arc is not the confirmed one")
+	check_approx(apex, 1.2403, 0.005, "the jump arc is not the measured one")
 	check(apex < pawn.skill_roll_landing_height, "a flat jump reaches the roll threshold")
 	check(player.landing_tier(apex) == Player.TIER_FREE, "a flat jump is not in the free tier")
 	check_approx(player.landing_keep_ratio(apex, false), 1.0, 0.0001, "a flat jump cost speed")
