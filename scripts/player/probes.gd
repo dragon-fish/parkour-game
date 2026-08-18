@@ -28,6 +28,10 @@ func _no_hit() -> Dictionary:
 # obstacle. 0.02 m is comfortably above any noise observed and comfortably
 # below the shortest obstacle this rig can even see (see VaultLow's own
 # height limit, documented in the generator).
+#
+# Used by ledge_query() only. vault_query() now floors at max_step_height
+# instead -- see its own note there for why an epsilon was the wrong bound
+# once a free step-up existed to handle everything below it.
 const MIN_HEIGHT_EPSILON := 0.02
 
 ## Largest vertical component a side-ray hit's normal may have and still count
@@ -123,7 +127,7 @@ func _aim_forward(ray: RayCast3D, reach: float) -> void:
 ## length 3.2 -- so this is a re-derivation of the committed rig, not a retune
 ## of it.
 func _query_surface(reach: float) -> void:
-	var tallest_reachable: float = maxf(_config.grab.ledge_max_height, _config.speed_vault.vault_max_height)
+	var tallest_reachable: float = maxf(_config.grab.ledge_max_height, _config.speed_vault.table_ceiling())
 	var origin_y: float = tallest_reachable - _foot_offset + SURFACE_ORIGIN_MARGIN
 	_surface.position = Vector3(0.0, origin_y, -reach)
 	_surface.target_position = Vector3(0.0, -(origin_y + _foot_offset + SURFACE_UNDERSHOOT), 0.0)
@@ -131,7 +135,8 @@ func _query_surface(reach: float) -> void:
 
 ## An obstacle low enough to vault: blocked at shin height by a genuinely
 ## unwalkable face (not a slope the player would just walk up), clear at
-## chest height, with a walkable top within vault_max_height of the feet.
+## chest height, with a walkable top within the vault table's own reach
+## (SpeedVaultConfig.table_ceiling()) of the feet.
 func vault_query() -> Dictionary:
 	if _config == null:
 		return _no_hit()
@@ -150,7 +155,7 @@ func vault_query() -> Dictionary:
 	# something to vault. Without this, a plain climbable slope satisfies
 	# every other gate below: the shin ray hits its rising surface, the chest
 	# ray clears it (no realistic ramp angle blocks chest height), and its own
-	# walkable top sits within vault_max_height of the feet. Measured directly
+	# walkable top sits within the vault table's own reach of the feet. Measured directly
 	# on the arena's 18.4 degree UpRamp: the shin ray reports normal
 	# (0, 0.949, 0.316) -- comfortably above the threshold -- which is exactly
 	# what used to re-trigger the vault on every step up it.
@@ -182,9 +187,29 @@ func vault_query() -> Dictionary:
 	if normal != Vector3.ZERO and normal.y < _config.pawn.walkable_floor_z:
 		return _no_hit()
 	var height := top.y - _feet_y()
-	# MIN_HEIGHT_EPSILON, not 0.0: see its declaration for the floor-noise
-	# case this guards against.
-	if height <= MIN_HEIGHT_EPSILON or height > _config.speed_vault.vault_max_height:
+	# Lower bound is max_step_height, NOT MIN_HEIGHT_EPSILON: anything the free
+	# step-up can clear (see Player.try_step_up) must never read as a vault, or
+	# the two overlap and the vault -- checked first -- wins every time.
+	#
+	# The epsilon was only ever a floor-noise guard, which was the right bound
+	# while nothing else could handle low obstacles. Now it is not: the tutorial
+	# rooftops are ringed by facade meshes whose top sits ~0.19 m above the roof
+	# they border (S_R_05_03_F is 57.9 m tall for a 0.19 m lip), and every one of
+	# them satisfied every gate above. Running at one vaulted onto a 0.64 m ledge
+	# at the roof's edge; walking into one below vault_min_speed just stopped
+	# dead. Mirror's Edge steps onto obstacles this low rather than vaulting
+	# them, and its own vaultOnto/vaultOver band starts at 0.64 m, well clear.
+	#
+	# Reusing max_step_height rather than adding a vault_min_height keeps the
+	# two bands defined by ONE number, so they can never drift into a gap (an
+	# obstacle too tall to step and too short to vault) or back into an overlap.
+	#
+	# Upper bound is table_ceiling() (Task 14: was the standalone
+	# vault_max_height tunable, now the highest max_height across
+	# SpeedVaultConfig's own six-variant table) -- same reasoning, reused
+	# rather than a second number that could drift from what the table
+	# actually reaches.
+	if height <= _config.pawn.max_step_height or height > _config.speed_vault.table_ceiling():
 		return _no_hit()
 
 	# `height` itself is not a new measurement -- it is the same local this

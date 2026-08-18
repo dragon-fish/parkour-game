@@ -437,9 +437,9 @@ func build() -> Node3D:
 	# literals — Arena itself falls back to `MovementConfig.new()` whenever
 	# scenes/main.tscn does not wire an explicit config (see arena.gd's
 	# _ready()), which this generator never does, so this mirrors the same
-	# default the running game actually uses. Deriving from config, not
-	# copying its current numbers by hand, is what keeps this course meaningful
-	# after a future tuning pass changes vault_max_height or the ledge bounds.
+	# default the running game actually uses. Deriving the wall's height from
+	# config, not copying its current number by hand, is what keeps this
+	# course meaningful after a future tuning pass retunes the variant table.
 	#
 	# This area's own x/z stay within the ORIGINAL ±30 footprint on both
 	# axes (only the +Z side was later extended, for WallArea below), so
@@ -450,35 +450,42 @@ func build() -> Node3D:
 	vault_area.position = Vector3(-18.0, 0.0, 0.0)
 	_attach(_root, vault_area)
 
-	# Three vaultable obstacles, increasing toward vault_max_height, run
-	# from +Z to -Z like every other course in this arena. Depth 2 m and a
-	# 7-8 m stride between them (5-6 m of clear floor after each obstacle's
-	# far face) is comfortably enough room to regain vault_min_speed before
-	# the next one, since vault_speed_keep already keeps most of the
-	# approach speed through the vault itself.
-	var vault_low_height: float = vault_config.speed_vault.vault_max_height * 0.4
-	var vault_mid_height: float = vault_config.speed_vault.vault_max_height * 0.7
-	# Just inside the limit, not exactly on it: MIN_HEIGHT_EPSILON and normal
-	# float noise sit near zero, not near vault_max_height, so this margin is
-	# about keeping VaultHigh readable as "the tallest thing you can still
-	# vault" rather than guarding against any known edge case at the boundary.
-	var vault_high_height: float = vault_config.speed_vault.vault_max_height - 0.05
+	# Four obstacles, one per band SpeedVaultConfig.variants actually
+	# discriminates on (Task 14, 05 §5.7) rather than three heights scaled off
+	# a single flat ceiling: a short one BELOW PawnConfig.max_step_height
+	# (0.35 m -- free-stepped by Player.try_step_up(), never reaches the vault
+	# table at all: see probes.gd's own note on why that overlap is accepted,
+	# not a defect), two inside vaultOnto/vaultOver's 0.64-1.48 m sweet spot
+	# (where a fast approach ADDS speed), and one inside VaultOverHigh/
+	# VaultOntoHigh's 1.45-1.92 m band (which only matches while still rising,
+	# and clamps speed down on landing). Run from +Z to -Z like every other
+	# course in this arena. Depth 2 m and a 7-8 m stride between them (5-6 m
+	# of clear floor after each obstacle's far face) is comfortably enough
+	# room to regain vaultOnto/vaultOver's own entry_speed_min (4.0 m/s)
+	# before the next one, since the sweet spot itself ADDS speed on exit.
+	const VAULT_LOW_HEIGHT := 0.3       # < max_step_height: free-stepped, not vaulted.
+	const VAULT_SWEET_LOW_HEIGHT := 0.9  # inside the 0.64-1.48 m sweet spot.
+	const VAULT_SWEET_HIGH_HEIGHT := 1.3 # inside the same band, near its own ceiling.
+	const VAULT_HIGH_HEIGHT := 1.7       # inside the 1.45-1.92 m high band.
 
-	_attach(vault_area, _box("VaultLow", Vector3(4.0, vault_low_height, 2.0),
-		Vector3(0.0, vault_low_height * 0.5, 20.0), vault_colour))
-	_attach(vault_area, _box("VaultMid", Vector3(4.0, vault_mid_height, 2.0),
-		Vector3(0.0, vault_mid_height * 0.5, 13.0), vault_colour))
-	_attach(vault_area, _box("VaultHigh", Vector3(4.0, vault_high_height, 2.0),
-		Vector3(0.0, vault_high_height * 0.5, 6.0), vault_colour))
+	_attach(vault_area, _box("VaultLow", Vector3(4.0, VAULT_LOW_HEIGHT, 2.0),
+		Vector3(0.0, VAULT_LOW_HEIGHT * 0.5, 27.0), vault_colour))
+	_attach(vault_area, _box("VaultSweetLow", Vector3(4.0, VAULT_SWEET_LOW_HEIGHT, 2.0),
+		Vector3(0.0, VAULT_SWEET_LOW_HEIGHT * 0.5, 20.0), vault_colour))
+	_attach(vault_area, _box("VaultSweetHigh", Vector3(4.0, VAULT_SWEET_HIGH_HEIGHT, 2.0),
+		Vector3(0.0, VAULT_SWEET_HIGH_HEIGHT * 0.5, 13.0), vault_colour))
+	_attach(vault_area, _box("VaultHigh", Vector3(4.0, VAULT_HIGH_HEIGHT, 2.0),
+		Vector3(0.0, VAULT_HIGH_HEIGHT * 0.5, 6.0), vault_colour))
 
-	# A wall clearly over the vault limit, proving "too tall to vault" is
-	# real. It sits ON the running lane (local x = 0, like every Vault/Ledge
-	# box above and below it) so a player running straight down the course
-	# hits it rather than needing to already know to avoid it — but it is
-	# only 6 m wide and offset to x = -2, so it covers local x -5..1 and
-	# leaves x 1.. open floor (nothing else in this area extends past x = 2)
-	# for the player to sidestep around and continue toward the ledges.
-	var vault_wall_height: float = vault_config.speed_vault.vault_max_height + 2.0
+	# A wall clearly over the whole table's own ceiling (table_ceiling(),
+	# 1.92 m by default), proving "too tall to vault" is real. It sits ON the
+	# running lane (local x = 0, like every Vault/Ledge box above and below
+	# it) so a player running straight down the course hits it rather than
+	# needing to already know to avoid it — but it is only 6 m wide and
+	# offset to x = -2, so it covers local x -5..1 and leaves x 1.. open
+	# floor (nothing else in this area extends past x = 2) for the player to
+	# sidestep around and continue toward the ledges.
+	var vault_wall_height: float = vault_config.speed_vault.table_ceiling() + 2.0
 	const WALL_TOO_TALL_Z := -2.0
 	const WALL_TOO_TALL_DEPTH := 2.0
 	_attach(vault_area, _box("WallTooTall", Vector3(6.0, vault_wall_height, WALL_TOO_TALL_DEPTH),

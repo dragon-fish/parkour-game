@@ -36,15 +36,46 @@ func enter(_previous: StringName) -> void:
 		_aborted = true
 		return
 
+	# WalkingMove/FallingMove only ever return SPEED_VAULT immediately after
+	# populating this with a real match from SpeedVaultConfig.pick_variant()
+	# (see their own lookahead check) -- so this should always be populated on
+	# a legitimate entry. Same "invent nothing" reasoning as the invalid-probe
+	# branch above: a caller that reached this move without going through
+	# should_commit() has no variant to fall back to, only an abort.
+	var variant: Dictionary = player.pending_vault_variant
+	player.pending_vault_variant = {}
+	if variant.is_empty():
+		_aborted = true
+		return
+
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	_exit_speed = horizontal.length() * config.speed_vault.vault_speed_keep
+	# The sweet spot PAYS (+0.8 m/s); the high variants are clamped DOWN. This
+	# is the opposite sign from this project's old flat 0.85 keep ratio, and
+	# it is the whole reason the original's obstacles read as opportunities
+	# rather than as taxes. Source: 05 §5.7 (see SpeedVaultConfig.variants'
+	# own per-field sourcing on speed_addition/clamp_speed_min/clamp_speed_max).
+	_exit_speed = clampf(horizontal.length() + variant["speed_addition"], \
+		variant["clamp_speed_min"], variant["clamp_speed_max"])
 	_exit_direction = horizontal.normalized() if horizontal.length_squared() > 0.0001 else -player.global_transform.basis.z
 
 	var top: Vector3 = query["top"]
 	var landing := top + _exit_direction * config.speed_vault.vault_exit_forward
-	landing.y = top.y + player.standing_height() * 0.5
+	# ledge_offset_z (05 §5.7's LedgeOffset.Z) is read here as ADDITIONAL
+	# height ABOVE the plain feet-at-top placement (standing_height() * 0.5),
+	# not a replacement for it -- a replacement would put every variant's
+	# capsule partly BELOW the obstacle's own top for any offset under half
+	# the standing capsule height. ⚠️ Own interpretation, not a
+	# bytecode-confirmed formula: the research's own reading of
+	# autostepuprightleg's 0.9 m (the largest of the six) as "sends you deep
+	# onto the platform rather than leaving you at the edge" reads as
+	# additive headroom past a flush landing. Whatever imprecision this adds
+	# is corrected within one tick regardless -- WalkingMove's very next
+	# move_and_slide() floor-snaps the body for real (see this move's own note
+	# on why `grounded` is left false on exit), so this is only ever the
+	# scripted arc's terminal POSE, never a load-bearing placement.
+	landing.y = top.y + player.standing_height() * 0.5 + variant["ledge_offset_z"]
 
-	begin(player.global_position, landing, config.speed_vault.vault_duration, config.speed_vault.vault_arc_height)
+	begin(player.global_position, landing, variant["duration"], config.speed_vault.vault_arc_height)
 	player.velocity = Vector3.ZERO
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:

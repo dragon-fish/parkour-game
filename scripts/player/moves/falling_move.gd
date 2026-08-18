@@ -75,8 +75,25 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			if qualifies:
 				return WALL_RUN
 
-	# Checked before this tick's own move_and_slide(), same as WalkingMove's
-	# vault check: if it fires, this move hands off to GrabMove (which
+	# Checked BEFORE the ledge grab below, mirroring 05 §5.7's own fallback
+	# order: a jump that overshoots or undershoots tries the vault table
+	# FIRST, and only falls through to "hang and pull up" (GrabMove, the
+	# slowest path in the whole move set) once nothing in VaultTypes matches.
+	# This is also where autostepuprightleg actually lives in practice: its
+	# MinSpeedZ/MaxSpeedZ band (-6.0..0.0) requires already falling, which
+	# WalkingMove's own grounded vault check can never see -- see
+	# SpeedVaultConfig.variants' own per-field note on that row.
+	if player.probes != null and current_config().check_for_vault_over:
+		var hit: Dictionary = player.probes.vault_query()
+		if hit["valid"]:
+			var variant: Dictionary = config.speed_vault.pick_variant(
+				hit["height"], hit["vault_over"], player.velocity.y, player.horizontal_speed())
+			if config.speed_vault.should_commit(hit["distance"], player.horizontal_speed(), variant):
+				player.pending_vault_variant = variant
+				return SPEED_VAULT
+
+	# Checked before this tick's own move_and_slide(), same as the vault check
+	# just above: if it fires, this move hands off to GrabMove (which
 	# drives the body directly, see its own note) without this tick's physics
 	# ever having moved the body at all. can_grab_ledge() enforces the
 	# post-release cooldown so dropping off a ledge cannot instantly re-grab

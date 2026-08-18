@@ -68,10 +68,21 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			return SLIDE
 
 		# Vaulting has to be earned with speed, or every waist-high box becomes a
-		# free elevator.
-		if player.probes != null and player.horizontal_speed() >= config.speed_vault.vault_min_speed:
-			if player.probes.vault_query()["valid"]:
-				return SPEED_VAULT
+		# free elevator -- see SpeedVaultConfig.pick_variant()'s own entry
+		# gates, which is where that requirement actually lives now (05 §5.7:
+		# six variants, gated differently by height/momentum/vertical speed,
+		# not one flat speed switch). Commitment fires up to
+		# max_distance_time SECONDS before contact, not at a fixed distance --
+		# see SpeedVaultConfig.should_commit()'s own comment for why that is a
+		# deliberate reading of the source data, not a typo.
+		if player.probes != null and current_config().check_for_vault_over:
+			var hit: Dictionary = player.probes.vault_query()
+			if hit["valid"]:
+				var variant: Dictionary = config.speed_vault.pick_variant(
+					hit["height"], hit["vault_over"], player.velocity.y, player.horizontal_speed())
+				if config.speed_vault.should_commit(hit["distance"], player.horizontal_speed(), variant):
+					player.pending_vault_variant = variant
+					return SPEED_VAULT
 
 	# Ankle-high clutter would otherwise stop a run dead: Godot has no built-in
 	# step-up. Free by design -- no speed cost, no state change -- so the only

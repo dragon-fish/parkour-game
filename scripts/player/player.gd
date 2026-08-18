@@ -24,6 +24,16 @@ var last_landing_fall_height: float = 0.0
 ## Last polled input, exposed for the debug HUD.
 var last_input: MoveInput = MoveInput.new()
 
+## Set by WalkingMove/FallingMove the instant SpeedVaultConfig.should_commit()
+## fires, immediately before returning SPEED_VAULT -- the committed variant a
+## same-tick pick_variant() already matched, carried across the state
+## transition since MoveManager.physics_update() has no other channel to pass
+## data between two Move instances. Read once, by SpeedVaultMove.enter(),
+## which clears it back to {} after reading. Empty is the normal REST value
+## between vaults, not a pending one -- see SpeedVaultMove.enter()'s own
+## "invent nothing" guard for what an empty dictionary at read time means.
+var pending_vault_variant: Dictionary = {}
+
 ## Whether the player is standing on something. DECLARED by the active state
 ## rather than read from is_on_floor(), because scripted-move states drive the
 ## body's position directly and never call move_and_slide() — is_on_floor()
@@ -266,6 +276,16 @@ func current_capsule_height() -> float:
 	if capsule == null:
 		return 0.0
 	return capsule.height
+
+## Live radius of the collision capsule. Read by try_step_up(), which has to
+## know how far forward its landing probe must reach before the capsule's own
+## centre clears an obstacle's face -- see its own comment.
+func current_capsule_radius() -> float:
+	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node == null:
+		return 0.0
+	var capsule := shape_node.shape as CapsuleShape3D
+	return capsule.radius if capsule != null else 0.0
 
 ## Pure placement arithmetic -- the ONE formula both the runtime attach path
 ## and BodyRoot's editor-only preview (see body_root.gd) use, and the ONLY
@@ -842,31 +862,101 @@ func try_step_up(delta: float) -> float:
 	var motion := Vector3(velocity.x, 0.0, velocity.z) * delta
 	if motion.length_squared() < 1e-8:
 		return 0.0
-	if not test_move(global_transform, motion):
-		return 0.0                        # nothing in the way
+	# The blocker is captured, not just detected: naming what stopped the player
+	# is most of the value of the trace below.
+	var blocker := KinematicCollision3D.new()
+	if not test_move(global_transform, motion, blocker):
+		return 0.0                        # open ground, the overwhelmingly common case
+
+	var what := _collider_name(blocker)
+
+	# A walkable face is a ramp, not an obstacle: move_and_slide() already climbs
+	# it, and stepping it instead fires this probe every single tick of the
+	# ascent, each one pushing another offset into the camera -- a long slope
+	# reads as a shaking screen. Probes.vault_query() rejects ramps on the same
+	# test for the same reason; see its own note on the measured 18.4 degree
+	# ramp normal.
+	if blocker.get_normal().y >= config.pawn.walkable_floor_z:
+		return _step_log(what, "是斜坡，交给 move_and_slide", 0.0)
 
 	var max_rise: float = config.pawn.max_step_height
 	var up := Vector3.UP * max_rise
 	if test_move(global_transform, up):
-		return 0.0                        # no headroom to rise into
+		return _step_log(what, "头顶无空间", 0.0)
 
 	var lifted := global_transform.translated(up)
 	if test_move(lifted, motion):
-		return 0.0                        # still blocked up there: a wall, not a step
+		return _step_log(what, "太高，是墙不是台阶", 0.0)
 
-	var advanced := lifted.translated(motion)
+	# The landing probe reaches at least one capsule radius ahead, NOT just this
+	# tick's motion. Blocked by a face, the capsule's centre sits a full radius
+	# behind it, so a probe that advances only the tick's motion drops with its
+	# centre still outside the obstacle -- the hemisphere catches the top EDGE
+	# and reports a fraction of the real step. Measured against a 0.32 m parapet:
+	# 0.05 m. The body then rose 0.05, floor snap pulled it back, and it did that
+	# every tick, which is the twitching-at-the-corner report.
+	#
+	# Worse, it is self-reinforcing: being blocked drops the speed, which
+	# shortens the probe, which measures even less (at 1 m/s the tick's motion is
+	# 1.7 cm). A floor of one radius makes the measurement independent of how
+	# fast the player happens to be going when they arrive.
+	#
+	# This distance measures the surface only -- the body is still merely raised
+	# in place, and move_and_slide() carries it forward as usual.
+	var reach: float = maxf(motion.length(), current_capsule_radius() + 0.05)
+	var advanced := lifted.translated(motion.normalized() * reach)
 	var landing := KinematicCollision3D.new()
 	if not test_move(advanced, Vector3.DOWN * (max_rise + 0.05), landing):
-		return 0.0                        # a gap, not a step -- let the player fall into it
+		return _step_log(what, "对面探空，是坑不是台阶", 0.0)
 
-	if landing.get_normal().dot(up_direction) < cos(floor_max_angle):
-		return 0.0                        # top face too steep to stand on
-
+	# No walkable-normal test on the landing. A capsule dropping next to a step
+	# contacts the step's EDGE first, not its top face, and an edge reports an
+	# in-between normal (measured 0.36 and 0.57 against a 0.32 m parapet the
+	# player could plainly stand on) -- so the test rejected exactly the cases it
+	# existed to allow. The rise is still capped at max_step_height, and
+	# move_and_slide() applies Godot's own floor_max_angle immediately after, so
+	# a genuinely unstandable surface is caught there instead. All this probe
+	# needs to know is that the space below is not empty.
 	var rise: float = max_rise - landing.get_travel().length()
 	if rise <= 0.01:
-		return 0.0                        # level ground; whatever blocked us was not a step
+		return _step_log(what, "落差过小 %.3f m" % rise, 0.0)
 	global_position.y += rise
-	return rise
+	return _step_log(what, "抬升 %.3f m" % rise, rise)
+
+
+## Traces every step-up decision, naming the geometry involved. Off by default;
+## turn it on in the inspector when a spot in a level catches the player and you
+## want to know what it is and why the probe refused it.
+##
+## Kept rather than deleted after the bug it was written for: the probe fires
+## against real level geometry, so "which mesh, and what did we decide" is the
+## only view into it that exists. Silent on open ground -- nothing prints until
+## something actually obstructs the player -- so leaving it on costs one line
+## per obstacle encountered, not one per frame.
+##
+## Against a blockout imported from another game's level data, the collider name
+## carries that game's own mesh name (e.g. S_R_05_03_F_1234), which makes a
+## report like "caught on the parapets" answerable directly from the log.
+@export var debug_step_up: bool = false
+var _step_log_last: String = ""
+
+
+func _collider_name(collision: KinematicCollision3D) -> String:
+	var collider: Object = collision.get_collider()
+	return (collider as Node).name if collider is Node else "<unknown>"
+
+
+func _step_log(what: String, outcome: String, value: float) -> float:
+	# Deduplicated on (collider, outcome): the probe re-runs every tick while the
+	# player leans on the same obstacle, and 60 identical lines a second buries
+	# the transition that actually matters.
+	var key := what + "|" + outcome
+	if debug_step_up and key != _step_log_last:
+		_step_log_last = key
+		print("[step] %-28s %-24s speed=%.2f pos=(%.2f, %.2f, %.2f)"
+				% [what, outcome, Vector3(velocity.x, 0.0, velocity.z).length(),
+				global_position.x, global_position.y, global_position.z])
+	return value
 
 
 ## Spends a buffered crouch press if one is pending. Returns true at most once
