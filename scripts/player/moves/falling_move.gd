@@ -95,10 +95,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Checked before this tick's own move_and_slide(), same as the vault check
 	# just above: if it fires, this move hands off to GrabMove (which
 	# drives the body directly, see its own note) without this tick's physics
-	# ever having moved the body at all. can_grab_ledge() enforces the
-	# post-release cooldown so dropping off a ledge cannot instantly re-grab
-	# the very same one.
-	if player.probes != null and player.can_grab_ledge():
+	# ever having moved the body at all. can_enter() enforces GrabConfig's own
+	# redo_move_time (0.45 s) -- it replaces Player.can_grab_ledge(), the last
+	# of the three hand-rolled cooldowns Player used to carry -- so dropping
+	# off a ledge cannot instantly re-grab the very same one.
+	if player.probes != null and player.move_manager.can_enter(GRAB):
 		if player.probes.ledge_query()["valid"]:
 			return GRAB
 

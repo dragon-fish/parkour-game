@@ -38,7 +38,18 @@ func test_migrated_values_are_unchanged() -> void:
 	check_approx(config.pawn.ground_speed, 7.2, 0.0001, "ground_speed moved but changed")
 	check_approx(config.pawn.accel_rate, 61.44, 0.0001, "accel_rate is not the confirmed 61.44")
 	check_approx(config.camera.fov_base, 90.0, 0.0001, "fov_base moved but changed")
-	check_approx(config.camera.eye_height, 0.7, 0.0001, "eye_height moved but changed")
+	# NOT a migrated value any more: eye_height moved to the confirmed
+	# BaseEyeHeight = 76 uu (09 §9.1). Repinned rather than dropped, because
+	# tools/player_builder.gd bakes it into player.tscn's CameraRig position --
+	# see tests/test_generated_scenes.gd, which is what catches the two going
+	# out of step.
+	check_approx(config.camera.eye_height, 0.76, 0.0001, "eye_height is not the confirmed 0.76")
+	# The sliding eye must not rise above the crouched capsule's top, so this
+	# one is DERIVED from eye_height rather than independent of it. Pinned as a
+	# RELATIONSHIP: retuning eye_height alone must not be allowed to silently
+	# poke the camera through the low tunnels sliding exists to fit under.
+	check_greater(config.camera.slide_camera_drop, config.camera.eye_height, \
+		"slide_camera_drop no longer covers eye_height -- the sliding eye now sits above the crouched capsule")
 	check_approx(config.slide.slide_capsule_height, 0.9, 0.0001, "slide capsule moved but changed")
 	check_approx(config.crouch.speed_modifier, 0.4, 0.0001, "crouch pct moved but changed")
 

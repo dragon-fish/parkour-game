@@ -85,8 +85,8 @@ func _ensure_rays() -> void:
 ## _aim_forward() and _query_surface() below), because the F1 tuning panel
 ## writes straight into that same config object while the game runs. Anything
 ## baked in here would be a snapshot of the config as it was on the tick the
-## player spawned: dragging vault_reach or ledge_reach would move only whatever
-## still read the config live, and the queries would silently desynchronise
+## player spawned: dragging vault_reach or ledge_find_distance would move only
+## whatever still read the config live, and the queries would desynchronise
 ## from each other -- a slider that half-works, which is worse for the human
 ## tuning the game than one that does nothing.
 func setup(cfg: MovementConfig, foot_offset: float) -> void:
@@ -102,21 +102,25 @@ func _feet_y() -> float:
 ##
 ## Both queries share VaultHigh but need DIFFERENT reaches from it, so it is
 ## aimed per query rather than pinned once. It used to be pinned to
-## max(vault_reach, ledge_reach), which handed the ledge configuration control
-## over the vault's chest-clearance test: raise ledge_reach above vault_reach
-## and VaultHigh starts finding obstacles that are none of vault_query()'s
-## business, every one of which makes it return "this is a wall" and suppresses
-## the vault entirely.
+## max(vault_reach, ledge_find_distance), which handed the ledge configuration
+## control over the vault's chest-clearance test: raise ledge_find_distance
+## above vault_reach and VaultHigh starts finding obstacles that are none of
+## vault_query()'s business, every one of which makes it return "this is a
+## wall" and suppresses the vault entirely. That is no longer a hypothetical
+## since ledge_find_distance moved to the confirmed 3.5 m: it now sits WELL
+## past vault_reach (1.4 m) at the shipped defaults, so this per-query aiming
+## is what keeps the vault working at all.
 func _aim_forward(ray: RayCast3D, reach: float) -> void:
 	ray.target_position = Vector3(0.0, 0.0, -reach)
 	ray.force_raycast_update()
 
 ## Points SurfaceDown at the given forward reach and fires it. Shared by both
 ## queries, which need different reaches from the same ray: a vaultable
-## obstacle sitting between ledge_reach and vault_reach would pass both forward
-## rays (each using its own correct reach) but a downward ray fixed short at
-## ledge_reach would land on bare floor past the obstacle's near edge and miss
-## its top surface entirely.
+## obstacle sitting between the two reaches would pass both forward rays (each
+## using its own correct reach) but a downward ray fixed at the OTHER query's
+## reach would land somewhere the asking query never meant to look -- on bare
+## floor past the obstacle's near edge, or on an obstacle the other query is
+## not asking about at all.
 ##
 ## The ray's VERTICAL geometry is derived from the configured height limits
 ## rather than baked, so the panel cannot drive ledge_max_height past what the
@@ -298,11 +302,11 @@ func ledge_query() -> Dictionary:
 	if _config == null:
 		return _no_hit()
 	_ensure_rays()
-	_aim_forward(_vault_high, _config.grab.ledge_reach)
+	_aim_forward(_vault_high, _config.grab.ledge_find_distance)
 	if not _vault_high.is_colliding():
 		return _no_hit()
 
-	_query_surface(_config.grab.ledge_reach)
+	_query_surface(_config.grab.ledge_find_distance)
 	if not _surface.is_colliding():
 		return _no_hit()
 	var edge: Vector3 = _surface.get_collision_point()
@@ -316,10 +320,10 @@ func ledge_query() -> Dictionary:
 	if normal != Vector3.ZERO and normal.y < _config.pawn.walkable_floor_z:
 		return _no_hit()
 	var height := edge.y - _feet_y()
-	# height <= MIN_HEIGHT_EPSILON, not just < ledge_min_height: guards the
+	# height <= MIN_HEIGHT_EPSILON, not just < min_wall_height: guards the
 	# same floor-noise case as vault_query() (see MIN_HEIGHT_EPSILON's
-	# declaration) before the real ledge_min_height gate below it.
-	if height <= MIN_HEIGHT_EPSILON or height < _config.grab.ledge_min_height \
+	# declaration) before the real min_wall_height gate below it.
+	if height <= MIN_HEIGHT_EPSILON or height < _config.grab.min_wall_height \
 			or height > _config.grab.ledge_max_height:
 		return _no_hit()
 	return {"valid": true, "top": edge, "edge": edge, "normal": normal}

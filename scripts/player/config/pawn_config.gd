@@ -53,9 +53,11 @@ extends Resource
 ## clutter (a 5 cm plank) stopped a run dead.
 @export var max_step_height: float = 0.35
 ## Source: 02 §2.3 `WalkableFloorZ = 0.71` -> acos = 44.7 degrees. ✅
-## Carried over from the old `min_walkable_normal_y = 0.7`; Task 14 moves it
-## to the confirmed 0.71.
-@export var walkable_floor_z: float = 0.7
+## Carried over from the old `min_walkable_normal_y = 0.7`, and now moved to
+## the confirmed 0.71 -- which also lands it within a third of a degree of
+## Godot's own `floor_max_angle` default (45 degrees), so the probe gates and
+## CharacterBody3D's own floor test finally agree about what a floor is.
+@export var walkable_floor_z: float = 0.71
 
 @export_group("Jump")
 ## Source: 02 §2.4 `TdPawn.BaseJumpZ = 560` uu/s. ✅ CONFIRMED BY IN-GAME
@@ -196,16 +198,6 @@ extends Resource
 @export var roll_trigger_time: float = 1.0
 ## Source: 03 §3.1 `TdMove_Falling.MaximumSpeedForRollLanding = -5000`. ✅
 @export var maximum_speed_for_roll_landing: float = -50.0
-
-@export_group("Legacy -- deleted by later tasks")
-## MIGRATION ONLY. Every field below is a project invention with no
-## counterpart in the original, carried unchanged so this task can be shown
-## to change no behaviour. Each is deleted by the task that lands its
-## replacement -- see the spec's own deletion table (§6).
-## wall_reattach_cooldown / wall_same_normal_dot deleted by Task 11:
-## replaced by MoveManager's generic redo_move_time (0.15 s on WallRunConfig).
-## Deleted by Task 13 (redo_move_time).
-@export var ledge_regrab_cooldown: float = 0.45
 
 @export_group("World")
 ## How far below y = 0 the player must fall before Arena teleports them back.

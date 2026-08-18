@@ -9,7 +9,11 @@ extends Resource
 ## as CameraRig's initial local position by tools/build_player_scene.gd, but
 ## CameraRig.setup()/update_effects() re-apply this every frame so the F1
 ## panel can tune it live like every other camera value.
-@export var eye_height: float = 0.7
+## Source: 09 §9.1 `BaseEyeHeight = 76` uu. ✅ Was a round 0.7 carried over
+## from before the research existed; 0.76 above the capsule centre puts the
+## eye at 1.66 m off the floor on this project's 1.8 m body, which is the
+## original's own eye line rather than a guessed one.
+@export var eye_height: float = 0.76
 @export var mouse_sensitivity: float = 0.0022
 @export var pitch_limit_deg: float = 89.0
 ## DIVERGENCE FROM SOURCE, KEPT DELIBERATELY -- do not "correct" this back to
@@ -102,10 +106,14 @@ extends Resource
 ## eye at or below the top of the CROUCHED capsule (which sits at the body
 ## origin, i.e. 0m above it — see Player.set_capsule_height()), or the camera
 ## pokes through the roof of exactly the low tunnels this feature exists to
-## let the player fit under: with eye_height 0.7, a drop below ~0.7 leaves the
-## eye above that capsule top and inside the ceiling geometry from the
-## outside. 0.75 clears it with a small margin.
-@export var slide_camera_drop: float = 0.75
+## let the player fit under: a drop below eye_height leaves the eye above that
+## capsule top and inside the ceiling geometry from the outside.
+##
+## RAISED FROM 0.75 ALONGSIDE eye_height's move to the confirmed 0.76: this is
+## a DERIVED value, not an independent one -- the invariant above is
+## `slide_camera_drop >= eye_height`, and 0.75 satisfied it only while the eye
+## sat at 0.70. 0.81 restores the same ~0.05 m margin the old pair had.
+@export var slide_camera_drop: float = 0.81
 ## How fast the camera moves between standing and sliding height.
 @export var crouch_lerp_speed: float = 9.0
 ## How fast the eye catches up after the body was lifted over a low obstacle

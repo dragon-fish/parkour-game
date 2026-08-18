@@ -26,7 +26,11 @@ func _process(_delta: float) -> void:
 		return
 	var pos := player.global_position
 	_label.text = "\n".join([
-		"state      %s" % player.move_manager.current_name,
+		# "move", not "state": this has shown the active MOVE's name since the
+		# Move/MoveManager rework -- MoveManager.current_name IS a move name
+		# (Walking / Falling / WallRun / Grab / SpeedVault / Slide), and there
+		# is no separate state machine left for it to be reporting.
+		"move       %s" % player.move_manager.current_name,
 		"speed h    %.2f m/s" % player.horizontal_speed(),
 		"speed v    %.2f m/s" % player.velocity.y,
 		"position   (%.1f, %.1f, %.1f)" % [pos.x, pos.y, pos.z],

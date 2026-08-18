@@ -73,7 +73,7 @@ func enter(_previous: StringName) -> void:
 	# The body holds exactly wherever it grabbed -- NO repositioning, up or
 	# down. ledge_query()'s "height" is measured against the player's CURRENT
 	# feet at the moment of the grab, so a valid grab can land anywhere in
-	# [ledge_min_height, ledge_max_height] above them. Snapping to any FIXED
+	# [min_wall_height, ledge_max_height] above them. Snapping to any FIXED
 	# offset from the edge from there would, for most of that range, be
 	# either an upward pop (pulling the body toward the edge) or a downward
 	# drop (pushing it away) the player never asked for -- holding position
@@ -86,22 +86,22 @@ func enter(_previous: StringName) -> void:
 	# is ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
 	# this today; restore the pin when the behavioural suite is rewritten.)
 
-## Started on EVERY exit, not just the deliberate crouch-drop, and here rather
-## than at each `return` so a future exit path cannot forget it. The mantle
-## hand-off used to leave the cooldown at zero: a landing that found no floor
-## dropped to Falling and FallingMove's very next ledge_query() could re-grab on the
-## same tick, with no gate of any kind between the two. That is an unbounded
-## oscillation whenever the landing point is not standing room -- the inverted
-## mantle_forward_offset sign made every running grab exactly that case, but
-## fixing the sign only removes today's trigger, not the hole. The cooldown is
-## the hole's actual lid.
-##
-## Harmless on the paths that were already fine: a completed mantle leaves the
-## player standing on top of the platform, where there is no ledge in front of
-## them to re-grab anyway, so withholding grabs for ledge_regrab_cooldown costs
-## nothing a player can feel.
-func exit() -> void:
-	player.start_ledge_cooldown()
+# NO exit() override any more. The re-grab cooldown this move needs is now
+# GrabConfig's own redo_move_time (0.45 s), armed by MoveManager on every
+# transition OUT of this move and checked by MoveManager.can_enter() before
+# every transition back in -- exactly the mechanism WallRun already uses.
+#
+# That covers strictly more than the hand-rolled Player._ledge_cooldown it
+# replaces, and covers it without this move having to remember anything: the
+# mantle hand-off used to leave the cooldown at zero, so a landing that found
+# no floor dropped to Falling and FallingMove's very next ledge_query() could
+# re-grab on the same tick, with no gate of any kind between the two. That is
+# an unbounded oscillation whenever the landing point is not standing room.
+#
+# Harmless on the paths that were already fine: a completed mantle leaves the
+# player standing on top of the platform, where there is no ledge in front of
+# them to re-grab anyway, so withholding grabs for 0.45 s costs nothing a
+# player can feel.
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted:
@@ -156,9 +156,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# original brief wrote `top -= basis.z * 0.4`, where basis.z is
 		# BACKWARD, so that `-=` was already a forward push; a later refactor
 		# introduced `_exit_direction = -basis.z` but kept the `-=`,
-		# double-negating it. _edge is the SurfaceDown hit exactly ledge_reach
-		# ahead of the body, so subtracting here put the landing
-		# (ledge_reach - offset) ahead of the body: for a running grab (body
+		# double-negating it. _edge is the SurfaceDown hit exactly
+		# ledge_find_distance ahead of the body, so subtracting here put the
+		# landing (ledge_find_distance - offset) ahead of the body: for a
+		# running grab (body
 		# 0.85-1.0 m off the face) that is 0.25-0.4 m IN FRONT of the wall,
 		# feet at platform height over open air. Measured on the test rig with
 		# the sign inverted, the body then settles balanced on the block's top

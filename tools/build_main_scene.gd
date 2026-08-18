@@ -2,9 +2,12 @@ extends SceneTree
 
 # Generates scenes/main.tscn: the graybox arena. The actual node tree is built
 # by ArenaBuilder (tools/arena_builder.gd) -- kept out of this file so
-# tests/test_arena.gd can call the exact same builder directly and compare its
-# in-memory output against what gets committed here, instead of the two ever
-# being able to silently drift apart.
+# tests/test_generated_scenes.gd can call the exact same builder directly and
+# compare its in-memory output against what gets committed here, instead of the
+# two ever being able to silently drift apart. That guard is IN THE RUNNING
+# SUITE: if you change ArenaBuilder and forget to re-run this script, the suite
+# fails. (It replaces test_regenerating_the_scene_matches_what_is_committed in
+# tests/legacy/test_arena.gd, which is archived and unenforced.)
 #
 # Run with:
 #   .engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . \

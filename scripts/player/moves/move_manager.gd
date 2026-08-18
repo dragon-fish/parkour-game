@@ -105,8 +105,7 @@ func start(move_name: StringName) -> void:
 	# life should be free to re-enter it immediately.
 	if _current != null:
 		_current.exit()
-	# Same reasoning Player.reset_state() already states for its own
-	# hand-rolled cooldowns (the ledge regrab timer, the recent-wall list):
+	# Same reasoning Player.reset_state() applies to its own per-life timers:
 	# a cooldown left over from the previous life must not withhold the new
 	# life's first attempt at a move. Without this, a WallRun or Grab
 	# cooldown still ticking down at the moment of death or reset would

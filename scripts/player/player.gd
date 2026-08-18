@@ -240,10 +240,6 @@ var _jump_buffer_timer: float = 0.0
 ## it is the single press every one of those outlets reads. See
 ## walking_move.gd's own table comment for the full resolution.
 var _roll_buffer_timer: float = 0.0
-## Counts down after releasing a ledge; while positive, can_grab_ledge()
-## refuses a re-grab. Without this, dropping off a ledge (e.g. via crouch)
-## would immediately re-grab the very same ledge on the next tick.
-var _ledge_cooldown: float = 0.0
 ## True when a state has asked for the standing capsule back but a ceiling was
 ## in the way. See request_standing_capsule().
 var _standing_restore_pending: bool = false
@@ -399,13 +395,14 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 		probes.setup(config, _standing_height * 0.5)
 
 ## Clears per-life transient state that outlives a single frame: the coyote,
-## jump-buffer, and ledge-regrab-cooldown timers, and the last landing speed
-## CameraRig reads for its dip. Called on a manual reset (Arena's R key) so a
-## leftover buffered jump from just before the reset cannot fire the instant
-## the player respawns grounded, so a landing dip from the old life cannot
-## appear after a fresh spawn, and so a ledge cooldown from the old life
-## cannot withhold a grab the new one should be free to make. Does not touch
-## the move manager itself — callers restart that separately.
+## jump-buffer and roll-buffer timers, and the last landing speed CameraRig
+## reads for its dip. Called on a manual reset (Arena's R key) so a leftover
+## buffered jump from just before the reset cannot fire the instant the player
+## respawns grounded, and so a landing dip from the old life cannot appear
+## after a fresh spawn. Does not touch the move manager itself — callers
+## restart that separately, and MoveManager.start() clears its own
+## redo_move_time cooldowns (including the ledge re-grab one this function
+## used to carry by hand) for exactly the same reason.
 ##
 ## grounded is also cleared here rather than left to whatever the previous
 ## life last declared: Arena.reset_player() teleports to spawn and then skips
@@ -419,7 +416,6 @@ func reset_state() -> void:
 	_coyote_timer = 0.0
 	_jump_buffer_timer = 0.0
 	_roll_buffer_timer = 0.0
-	_ledge_cooldown = 0.0
 	if fall_tracker != null:
 		fall_tracker.reset()
 	if speed_energy != null:
@@ -810,8 +806,6 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 	else:
 		_roll_buffer_timer = maxf(_roll_buffer_timer - delta, 0.0)
 
-	_ledge_cooldown = maxf(_ledge_cooldown - delta, 0.0)
-
 ## Spends a buffered jump if one is pending and the player is still within
 ## coyote time. Returns true at most once per press.
 func consume_jump() -> bool:
@@ -970,16 +964,6 @@ func consume_roll() -> bool:
 		_roll_buffer_timer = 0.0
 		return true
 	return false
-
-## Called by GrabMove when the player drops off a ledge (crouch), so
-## can_grab_ledge() refuses to re-grab the very same ledge on the next tick.
-func start_ledge_cooldown() -> void:
-	_ledge_cooldown = config.pawn.ledge_regrab_cooldown
-
-## True once the post-release cooldown started by start_ledge_cooldown() has
-## expired. FallingMove gates its ledge-grab check on this.
-func can_grab_ledge() -> bool:
-	return _ledge_cooldown <= 0.0
 
 ## World-space horizontal direction the player is asking to move in.
 func wish_direction(input: MoveInput) -> Vector3:

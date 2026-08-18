@@ -6,14 +6,15 @@ extends RefCounted
 #
 # tools/build_main_scene.gd (a thin SceneTree script, since only a MainLoop
 # subclass can run via --script) calls build() and packs/saves the result to
-# scenes/main.tscn. tests/legacy/test_arena.gd's
-# test_regenerating_the_scene_matches_what_is_committed also calls build()
-# directly, on a tree that is never added to the SceneTree, and compares it
-# structurally against what ResourceLoader loads back from the committed
-# .tscn -- both paths run this exact code, so the two cannot silently drift
-# apart the way a hand-edited main.tscn once did. That test is ARCHIVED by
-# Task 1 and NOT in the running suite, so nothing currently enforces this;
-# restore it when the behavioural suite is rewritten.
+# scenes/main.tscn. tests/test_generated_scenes.gd's
+# test_the_committed_arena_matches_what_its_generator_produces also calls
+# build() directly, on a tree that is never added to the SceneTree, and
+# compares it structurally against what ResourceLoader loads back from the
+# committed .tscn -- both paths run this exact code, so the two cannot
+# silently drift apart the way a hand-edited main.tscn once did.
+#
+# EDIT THIS FILE, THEN RE-RUN tools/build_main_scene.gd. The guard above is in
+# the running suite and will fail if you do not.
 
 var _root: Node3D
 
@@ -520,32 +521,39 @@ func build() -> Node3D:
 	# the instant the forward probe is in range, so nothing about the new arc
 	# changes how close to the ceiling it can safely sit.
 	#
-	# LedgeLow is NOT simply "just above ledge_min_height" any more, and this
+	# LedgeLow is NOT simply "just above min_wall_height" any more, and this
 	# needed measuring, not just reasoning about: ledge_query()'s height gate
 	# (probes.gd) only opens while `ledge_top - feet_height` sits inside
-	# [ledge_min_height, ledge_max_height], and a low target's feet_height
+	# [min_wall_height, ledge_max_height], and a low target's feet_height
 	# crosses out of that window within a few HUNDREDTHS of a second of
-	# leaving the ground (verified directly -- a target at ledge_min_height +
+	# leaving the ground (verified directly -- a target at the low bound +
 	# 0.1 was never once grabbed across a range of approach distances). The
 	# test's own realign phase (test_the_vault_and_ledge_course_can_be_run_
 	# end_to_end's Phase 3/4) always parks the run-up ~1.4 m short of the
 	# ledge before jumping, regardless of where this generator places it, so
-	# the height gate has to still be open at the moment ledge_reach first
-	# lets the forward probe see the wall, not merely at some point during
-	# the flight. GRAB_SAFETY_TIME is headroom past that moment for ordinary
-	# tick-to-tick timing jitter, not a hand-picked height:
-	#   time to close to ledge_reach = max(REALIGN_OFFSET - ledge_reach, 0) / ground_speed
+	# the height gate has to still be open at the moment ledge_find_distance
+	# first lets the forward probe see the wall, not merely at some point
+	# during the flight. GRAB_SAFETY_TIME is headroom past that moment for
+	# ordinary tick-to-tick timing jitter, not a hand-picked height:
+	#   time to close = max(REALIGN_OFFSET - ledge_find_distance, 0) / ground_speed
 	#   height risen by then + GRAB_SAFETY_TIME more   (closed-form projectile
 	#     arithmetic again: h(t) = base_jump_z*t - 0.5*gravity*t^2)
-	# added to ledge_min_height, so this still tracks any future retune of
-	# gravity/base_jump_z/ground_speed/ledge_reach instead of needing its
-	# own separate fix the way the flat +0.1 did.
+	# added to min_wall_height, so this still tracks any future retune of
+	# gravity/base_jump_z/ground_speed/ledge_find_distance instead of needing
+	# its own separate fix the way the flat +0.1 did.
+	#
+	# NOTE: ledge_find_distance is now the confirmed 3.5 m, well PAST
+	# REALIGN_OFFSET, so the max() above pins the closing time at zero -- the
+	# forward probe already sees the wall the instant the jump starts, and the
+	# only headroom left in ledge_low_height is GRAB_SAFETY_TIME's own. That is
+	# the arithmetic doing what it was written to do, not a value that needs
+	# replacing.
 	const REALIGN_OFFSET := 1.4  # mirrors test_arena.gd's own realign target, ledge.end.z + 1.4
 	const GRAB_SAFETY_TIME := 0.12
-	var time_to_ledge_reach: float = maxf(REALIGN_OFFSET - vault_config.grab.ledge_reach, 0.0) / config.pawn.ground_speed
-	var grab_time: float = time_to_ledge_reach + GRAB_SAFETY_TIME
+	var time_to_probe_range: float = maxf(REALIGN_OFFSET - vault_config.grab.ledge_find_distance, 0.0) / config.pawn.ground_speed
+	var grab_time: float = time_to_probe_range + GRAB_SAFETY_TIME
 	var height_risen_at_grab: float = config.pawn.base_jump_z * grab_time - 0.5 * config.pawn.gravity * grab_time * grab_time
-	var ledge_low_height: float = vault_config.grab.ledge_min_height + height_risen_at_grab
+	var ledge_low_height: float = vault_config.grab.min_wall_height + height_risen_at_grab
 	var ledge_mid_height: float = vault_config.grab.ledge_max_height - 0.1
 	var ledge_low_z: float = wall_too_tall_far_z - REALIGN_BUFFER - ledge_gap
 	_attach(vault_area, _box("LedgeLow", Vector3(4.0, ledge_low_height, LEDGE_DEPTH),
