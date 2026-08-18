@@ -28,6 +28,11 @@ var _look_min: Vector3 = Vector3(-PI, -PI, -PI)
 var _look_max: Vector3 = Vector3(PI, PI, PI)
 var _look_absolute_yaw: bool = false
 var _has_look_constraint: bool = false
+## The body's yaw at the instant a look constraint first became active,
+## captured once by set_look_constraint() (not refreshed on the repeat calls
+## MoveManager makes every tick) so an absolute-yaw fan stays pinned to the
+## facing the move began with instead of drifting with the player.
+var _yaw_reference: float = 0.0
 
 ## The attached body's head/neck node position, in THIS rig's PARENT's
 ## (Player's) local space -- i.e. Player.to_local(head_node.global_position)
@@ -82,9 +87,17 @@ func clear_head_position() -> void:
 	_has_head = false
 
 ## Stores the active move's look clamp. Driven by MoveManager every tick from
-## the active move's current_config(). apply_look() does not consume this yet
-## -- see the member comments above.
+## the active move's current_config() -- including every tick a move STAYS
+## constrained, not just the tick it becomes constrained. Only the
+## unconstrained-to-constrained transition captures _yaw_reference: repeat
+## calls while already constrained must leave it alone, or an absolute-yaw
+## fan would drift to follow the player instead of staying pinned to the
+## facing the move began with.
 func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool) -> void:
+	if not _has_look_constraint:
+		var body := get_parent()
+		if body is Node3D:
+			_yaw_reference = body.rotation.y
 	_look_min = min_c
 	_look_max = max_c
 	_look_absolute_yaw = absolute_yaw
@@ -114,12 +127,34 @@ func reset_state() -> void:
 		camera.position.y = 0.0
 
 ## Yaw turns the body so movement follows the view; pitch stays on the rig.
+##
+## The ACTIVE MOVE's own clamp wins over the global pitch limit when it
+## declares one. The original makes this per-move data (MinLookConstraint /
+## MaxLookConstraint, 06 §6.2) and it is a genuine input constraint: on a wall
+## the view is locked into a +-90 degree yaw fan and cannot look back, which
+## is where that whole sensation comes from.
 func apply_look(look_delta: Vector2, body: Node3D) -> void:
 	if _config == null:
 		return
-	body.rotate_y(-look_delta.x * _config.camera.mouse_sensitivity)
-	var limit := deg_to_rad(_config.camera.pitch_limit_deg)
-	_pitch = clampf(_pitch - look_delta.y * _config.camera.mouse_sensitivity, -limit, limit)
+	var yaw_delta := -look_delta.x * _config.camera.mouse_sensitivity
+	if _has_look_constraint:
+		# Absolute yaw: measured against the facing captured when the move
+		# began, so the fan stays pinned to the wall rather than drifting with
+		# the player. Source: 04 §4.1 bUseAbsoluteYawConstraint = True.
+		var reference: float = _yaw_reference if _look_absolute_yaw else body.rotation.y
+		var next_yaw: float = body.rotation.y + yaw_delta
+		var relative: float = wrapf(next_yaw - reference, -PI, PI)
+		relative = clampf(relative, _look_min.y, _look_max.y)
+		body.rotation.y = reference + relative
+	else:
+		body.rotate_y(yaw_delta)
+
+	var pitch_min: float = -deg_to_rad(_config.camera.pitch_limit_deg)
+	var pitch_max: float = deg_to_rad(_config.camera.pitch_limit_deg)
+	if _has_look_constraint:
+		pitch_min = maxf(pitch_min, _look_min.x)
+		pitch_max = minf(pitch_max, _look_max.x)
+	_pitch = clampf(_pitch - look_delta.y * _config.camera.mouse_sensitivity, pitch_min, pitch_max)
 	rotation.x = _pitch
 
 func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> void:
@@ -215,25 +250,27 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# this function, so a plain move_toward accumulates correctly frame to
 	# frame instead of needing the offset workaround the crouch drop uses.
 	#
-	# SIGN, verified empirically against this exact Godot build rather than
-	# assumed (see the verification script referenced in the phase-final-
-	# fixes report): a positive rotation.z rotates local up toward -X --
-	# `n.rotation.z = deg_to_rad(10); n.transform.basis.y` prints
-	# (-0.17, 0.98, 0). So a plain `roll_deg * wall_side` (positive for
-	# wall_side=+1, a wall on the right) tilts the head's up vector toward -X,
-	# i.e. LEFT -- away from a wall on the right, not into it. "Roll toward
-	# the wall" (the phase's own stated intent, and the Mirror's Edge /
-	# Titanfall convention it cites) needs the OPPOSITE sign: negated here so
-	# wall_side=+1 (right) produces a NEGATIVE rotation.z, whose up vector
-	# tilts toward +X -- into the wall on the right -- and wall_side=-1
-	# (left) produces a positive rotation.z, tilting toward -X into the wall
-	# on the left. Was pinned by tests/legacy/test_camera_rig.gd's
-	# test_the_camera_rolls_toward_the_wall_side against the camera's own
-	# world-space up vector, not just "the two sides are opposite" (which an
-	# inverted-but-still-symmetric roll would also pass) -- ARCHIVED by
-	# Task 1 and NOT in the running suite, so nothing enforces this today;
-	# restore the pin when the behavioural suite is rewritten.
-	var target_roll := -deg_to_rad(_config.camera.wall_camera_roll_deg) * float(_wall_side)
+	# SIGN: positive rotation.z rotates local up toward -X (verified against
+	# this exact Godot build: rotation.z = 10 degrees gives basis.y =
+	# (-0.17, 0.98, 0)), which from behind the camera reads as
+	# counter-clockwise. A left wall (wall_side = -1) therefore produces a
+	# NEGATIVE rotation.z here, i.e. clockwise -- which is what the owner
+	# reports as correct in play.
+	#
+	# This REVERSES the earlier intent. The previous code negated this
+	# deliberately, and both its comment and its (now archived) test declared
+	# the goal as "roll toward the wall". The research offers no ruling either
+	# way: 09 §9.1 calls the direction correct, but the same section records
+	# that the original has NO VALUE for this field at all, so that was the
+	# researcher's judgement rather than extracted data. The owner is playing
+	# it; the owner wins.
+	#
+	# tests/legacy/test_camera_rig.gd's test_the_camera_rolls_toward_the_wall_
+	# side still asserts the OLD (now-reversed) intent -- it is ARCHIVED by
+	# Task 1 and NOT in the running suite, so it does not fail the build, but
+	# it will need rewriting to match this new intent whenever the
+	# behavioural suite is restored.
+	var target_roll := deg_to_rad(_config.camera.wall_camera_roll_deg) * float(_wall_side)
 	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.camera.wall_camera_roll_speed) * delta)
 	rotation.z = _roll
 
