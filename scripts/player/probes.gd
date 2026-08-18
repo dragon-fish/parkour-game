@@ -55,6 +55,7 @@ const SURFACE_UNDERSHOOT := 0.1
 var _vault_low: RayCast3D
 var _vault_high: RayCast3D
 var _surface: RayCast3D
+var _vault_over: RayCast3D
 var _wall_left: RayCast3D
 var _wall_right: RayCast3D
 
@@ -68,6 +69,8 @@ func _ensure_rays() -> void:
 		_vault_high = get_node("VaultHigh")
 	if _surface == null:
 		_surface = get_node("SurfaceDown")
+	if _vault_over == null:
+		_vault_over = get_node("VaultOverDown")
 	if _wall_left == null:
 		_wall_left = get_node("WallLeft")
 	if _wall_right == null:
@@ -183,7 +186,82 @@ func vault_query() -> Dictionary:
 	# case this guards against.
 	if height <= MIN_HEIGHT_EPSILON or height > _config.speed_vault.vault_max_height:
 		return _no_hit()
-	return {"valid": true, "top": top, "edge": top, "normal": normal}
+
+	# `height` itself is not a new measurement -- it is the same local this
+	# function already computed and gated on above, now simply exposed.
+	# ✅ Its role is confirmed (05 §5.7 axis 1, MinHeight/MaxHeight per variant:
+	# 0/48/64/145 uu), but that axis is a set of per-variant THRESHOLDS this
+	# quantity gets compared against, not a single source value of its own, so
+	# there is no one "raw uu" to cite for the field itself. Every existing
+	# caller of vault_query() was already recomputing this from `top` and its
+	# own copy of the foot offset; returning it here removes that duplication.
+
+	# Horizontal distance from the body origin to the obstacle face. The
+	# lookahead in SpeedVaultMove divides this by horizontal speed, so it has
+	# to be measured to the FACE (VaultLow's own hit), not to the top surface
+	# SurfaceDown found further along the ray.
+	#
+	# Source: 05 §5.7 axis 5, MaxDistanceTime (0.2 / 0.4 s). ⚠️ The original
+	# names that field "Distance" but stores a TIME; the research's own
+	# inferred (not bytecode-confirmed) read is
+	# time_to_ledge = distance / horizontal_speed, checked every frame against
+	# that time budget. This field is that formula's NUMERATOR -- the raw
+	# distance -- leaving the division, and which speed to divide by, to
+	# whichever move reads it next.
+	var face_point: Vector3 = _vault_low.get_collision_point()
+	var to_face := face_point - global_position
+	var distance: float = Vector2(to_face.x, to_face.z).length()
+
+	# bVaultOnto is functionally the obstacle's thickness (05 §5.7 axis 2,
+	# ✅ confirmed as a CONCEPT -- "true = vault up and stand on top, false =
+	# vault through and keep running, functionally equivalent to the
+	# obstacle's thickness/width, decided by TdPhysicsMove.bCheckForVaultOver's
+	# probe"). ❓ The probe's own mechanics are not documented anywhere in the
+	# research (no distance, no comparison rule survives in the decompile), so
+	# everything below this point -- vault_over_probe_distance, where the ray
+	# goes, and how its hit is judged -- is this project's own invention, not
+	# a transcription.
+	var vault_over: bool = _query_vault_over(top, normal)
+
+	return {
+		"valid": true, "top": top, "edge": top, "normal": normal,
+		"height": height, "distance": distance, "vault_over": vault_over,
+	}
+
+## Fires VaultOverDown to tell "there is floor on the far side" (vault OVER)
+## from "this thing is thick" (only its own top exists -- vault ONTO). Written
+## parallel to _query_surface(): geometry is recomputed from the live config
+## on every call, never baked (see setup()'s own note on why).
+##
+## `top` is _query_surface()'s own hit point for the CURRENT query, which
+## sits at a FIXED forward distance (vault_reach) regardless of how deep the
+## real obstacle is -- this rig has no ray dedicated to finding the actual far
+## edge. VaultOverDown is placed vault_over_probe_distance further past that
+## fixed point and fired down. For a thin obstacle, the fixed point already
+## sits near its real far face, so a short additional probe clears it onto
+## real floor. For a thick one, the same fixed point is still well inside the
+## obstacle, so the probe lands on more of its OWN top -- at exactly the same
+## height as `top`, not a lower, genuinely different surface. That is why the
+## height check below requires the hit to be MEANINGFULLY below top.y (by
+## MIN_HEIGHT_EPSILON, reusing its existing floor-noise budget rather than
+## inventing a second tolerance for the same solver noise): an equal-height
+## hit is the obstacle continuing under the probe, not a landing spot beyond
+## it. `normal` (the obstacle top's own surface normal) is accepted to keep
+## this call symmetric with the surface data vault_query() already has in
+## hand, but is not needed by the check itself -- vault_query() already
+## rejected an unwalkable top before this is ever called.
+func _query_vault_over(top: Vector3, normal: Vector3) -> bool:
+	var local_top: Vector3 = to_local(top)
+	var origin_y: float = local_top.y + SURFACE_ORIGIN_MARGIN
+	_vault_over.position = Vector3(local_top.x, origin_y, \
+			local_top.z - _config.speed_vault.vault_over_probe_distance)
+	_vault_over.target_position = Vector3(0.0, -(origin_y + _foot_offset + SURFACE_UNDERSHOOT), 0.0)
+	_vault_over.force_raycast_update()
+	if not _vault_over.is_colliding():
+		return false
+	if _vault_over.get_collision_normal().y < _config.pawn.walkable_floor_z:
+		return false
+	return _vault_over.get_collision_point().y <= top.y - MIN_HEIGHT_EPSILON
 
 ## A ledge high enough to hang from but still within reach.
 func ledge_query() -> Dictionary:

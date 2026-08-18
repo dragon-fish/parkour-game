@@ -169,6 +169,24 @@ func _run() -> void:
 	probes.add_child(surface)
 	surface.owner = player
 
+	# Downward ray for vault_query()'s vault-over/vault-onto probe: fired from
+	# just above the vaultable obstacle's own top, vault_over_probe_distance
+	# further along than SurfaceDown's own forward reach, to tell whether the
+	# far side has ground to land on or is just more of the same obstacle.
+	# Like every other probe ray, its actual geometry is recomputed from the
+	# live config on every query (see probes.gd's _query_vault_over()) -- the
+	# values baked here are only the scene's initial state, derived from the
+	# shipped defaults (vault_max_height 1.3, vault_reach 1.4,
+	# vault_over_probe_distance 0.5, foot offset 0.9) for a sensible-looking
+	# scene file, not because anything depends on them.
+	var vault_over_down := RayCast3D.new()
+	vault_over_down.name = "VaultOverDown"
+	vault_over_down.position = Vector3(0.0, 0.7, -1.9)
+	vault_over_down.target_position = Vector3(0.0, -1.7, 0.0)
+	vault_over_down.enabled = true
+	probes.add_child(vault_over_down)
+	vault_over_down.owner = player
+
 	# Side rays for wall detection, at chest height so a low kerb never counts
 	# as a wall. Local +X is the body's right.
 	var wall_left := RayCast3D.new()

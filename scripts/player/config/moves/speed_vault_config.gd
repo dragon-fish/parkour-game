@@ -29,3 +29,9 @@ extends MoveConfig
 ## straight line from vault start to landing, so the body reads as rising
 ## over the obstacle instead of clipping through it.
 @export var vault_arc_height: float = 0.15
+## How far past the obstacle's far face to look for somewhere to land, which
+## is what decides vault-OVER from vault-ONTO. The original expresses this as
+## the bCheckForVaultOver probe on TdPhysicsMove (06 §6.2) rather than as a
+## distance, so this number is ours: half the body's own depth is enough to
+## tell "there is floor on the other side" from "this thing is thick".
+@export var vault_over_probe_distance: float = 0.5
