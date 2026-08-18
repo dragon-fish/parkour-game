@@ -221,7 +221,7 @@ func vault_query() -> Dictionary:
 	# everything below this point -- vault_over_probe_distance, where the ray
 	# goes, and how its hit is judged -- is this project's own invention, not
 	# a transcription.
-	var vault_over: bool = _query_vault_over(top, normal)
+	var vault_over: bool = _query_vault_over(top)
 
 	return {
 		"valid": true, "top": top, "edge": top, "normal": normal,
@@ -246,11 +246,16 @@ func vault_query() -> Dictionary:
 ## MIN_HEIGHT_EPSILON, reusing its existing floor-noise budget rather than
 ## inventing a second tolerance for the same solver noise): an equal-height
 ## hit is the obstacle continuing under the probe, not a landing spot beyond
-## it. `normal` (the obstacle top's own surface normal) is accepted to keep
-## this call symmetric with the surface data vault_query() already has in
-## hand, but is not needed by the check itself -- vault_query() already
-## rejected an unwalkable top before this is ever called.
-func _query_vault_over(top: Vector3, normal: Vector3) -> bool:
+## it.
+##
+## Takes only `top`, not the obstacle top's own normal: an early draft of
+## this signature carried it along for symmetry with the surface data
+## vault_query() already has in hand, but there is no real check to spend it
+## on -- vault_query() already rejected an unwalkable top before this is ever
+## called, and the walkability that matters HERE is VaultOverDown's own hit
+## normal, checked below. Dropped rather than kept as a decorative unused
+## parameter.
+func _query_vault_over(top: Vector3) -> bool:
 	var local_top: Vector3 = to_local(top)
 	var origin_y: float = local_top.y + SURFACE_ORIGIN_MARGIN
 	_vault_over.position = Vector3(local_top.x, origin_y, \

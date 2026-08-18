@@ -20,11 +20,15 @@ extends TestCase
 #    0.4 m before gravity brings it back down -- confirmed by printing
 #    global_position every frame with no obstacle in the world at all, so it
 #    is not something this test's own geometry causes. It takes about 20
-#    frames to settle back to its resting height (~0.9 m) and stay there;
-#    tests/legacy/test_probes.gd already uses step(30) for exactly this
-#    reason. The brief's step(2) queries mid-launch, at an unpredictable
-#    height, which is what made otherwise-correct box placements read as
-#    misses. step(30) below replaces it, matching the legacy convention.
+#    frames to settle back to its resting height (~0.9 m) and stay there. The
+#    brief's step(2) queries mid-launch, at an unpredictable height, which is
+#    what made otherwise-correct box placements read as misses. step(30)
+#    below replaces it, with margin over the observed ~20-frame settle.
+#    tests/legacy/test_probes.gd happens to also use step(30), but that file
+#    is ARCHIVED and not live precedent: tests/test_runner.gd only discovers
+#    files directly under res://tests, not the legacy/ subdirectory, and
+#    tests/legacy/.gdignore keeps it out of Godot's resource scan besides --
+#    it never runs, so it cannot be a convention this test is following.
 
 func _world_with_box(size: Vector3, at: Vector3) -> Dictionary:
 	var world := TestWorld.build(tree, MovementConfig.new())
