@@ -200,11 +200,13 @@ extends Resource
 @export var skill_roll_landing_height: float = 2.0
 @export var soft_landing_height: float = 3.0
 @export var hard_landing_height: float = 5.3
-## Source: 03 §3.1 `LandingSpeedReduction = 65`. ❓ UNIT UNVERIFIED -- the
-## research calls this its single most important open question. Read as
-## "lose 65%", i.e. keep 0.35, on the strength of the community consensus
-## that a hard landing takes speed almost to zero.
-@export var landing_speed_reduction: float = 0.65
+## REMOVED: `landing_speed_reduction`. ⚠️ All three readings of the original's
+## `LandingSpeedReduction = 65` are excluded by measurement (03 §3.1): a 4.95 m
+## unrolled drop costs nothing (ruling out "subtract 65 uu/s"), and a hard
+## landing costs everything (ruling out both "lose 65%" and "keep 65%"). The
+## real behaviour is binary and needs no ratio, so keeping the knob would mean
+## shipping a slider that changes nothing. Its meaning in the original is still
+## unknown; if it is ever identified, reintroduce it then.
 ## Source: 03 §3.1 `TdMove_Falling.EnterToFallingZSpeed = -200` uu/s. ✅
 ## The downward speed at which the fall-height counter starts accruing, so
 ## the first few centimetres of a step-off are not counted.
@@ -220,6 +222,15 @@ extends Resource
 @export_group("World")
 ## How far below y = 0 the player must fall before Arena teleports them back.
 ## Project-specific; the original has no equivalent.
+## Source: 02/03 `TdPawn.FallingUncontrolledHeight = 1000` uu -> 10.0 m. ✅
+## Measured in the original: crossing this depth takes control away outright
+## (TdMove_FallingUncontrolled's ControllerState is PlayerDying) -- it is NOT a
+## damage calculation performed on impact, and no roll can save it.
+##
+## Implement it as a one-way door checked DURING the descent, not as a lookup
+## at touchdown: the difference is whether the player spends the last second of
+## the fall still believing they can act.
+@export var falling_uncontrolled_height: float = 10.0
 @export var fall_recovery_depth: float = 20.0
 ## Horizontal speed above which CharacterAnimator plays a moving clip. A
 ## readability threshold, not a physics one.

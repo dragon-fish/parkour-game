@@ -34,29 +34,36 @@ func test_the_free_tier_costs_nothing_at_all() -> void:
 	check_approx(player.landing_keep_ratio(0.2, false), 1.0, 0.0001, "a curb cost speed")
 	player.free()
 
-func test_a_roll_fully_negates_a_soft_landing() -> void:
+func test_everything_below_the_hard_threshold_is_free() -> void:
+	# ✅ MEASURED (03 §3.1). Dropping 4.95 m WITHOUT rolling costs nothing at all
+	# -- speed keeps climbing after touchdown. 5.69 m triggers Landing. So the
+	# only speed gate is hard_landing_height (5.3 m); skill_roll_landing_height
+	# and soft_landing_height govern animation and whether a roll may trigger,
+	# never speed.
+	#
+	# This replaces a modelled ramp in which 2.5 m cost a little and 4.0 m cost
+	# more. That ramp was plausible and wrong: the original has no partial band.
 	var player := _player_stub()
-	check(player.landing_tier(2.5) == Player.TIER_SOFT, "2.5 m is not the soft tier")
-	check(player.landing_keep_ratio(2.5, false) < 1.0, "an unrolled soft landing was free")
-	check_approx(player.landing_keep_ratio(2.5, true), 1.0, 0.0001, "a rolled soft landing still cost speed")
+	for height in [0.2, 1.99, 2.5, 4.0, 4.95, 5.29]:
+		check_approx(player.landing_keep_ratio(height, false), 1.0, 0.0001, 			"an unrolled landing at %f m cost speed" % height)
+		check_approx(player.landing_keep_ratio(height, true), 1.0, 0.0001, 			"a rolled landing at %f m cost speed" % height)
 	player.free()
 
-func test_a_roll_only_softens_the_rollable_tier() -> void:
-	# Community consensus (03 §3.1): ME1's skill roll bleeds speed of its own
-	# when you keep moving forward out of it, so a roll above the soft band is
-	# a discount, never a cancellation.
-	var player := _player_stub()
-	check(player.landing_tier(4.0) == Player.TIER_ROLLABLE, "4.0 m is not the rollable tier")
-	var rolled := player.landing_keep_ratio(4.0, true)
-	var unrolled := player.landing_keep_ratio(4.0, false)
-	check_greater(rolled, unrolled, "rolling did not help")
-	check(rolled < 1.0, "a roll fully cancelled a rollable-tier landing")
-	player.free()
-
-func test_a_hard_landing_keeps_only_the_reduction_share() -> void:
+func test_a_hard_landing_without_a_roll_costs_everything() -> void:
+	# ✅ MEASURED: ~7 m unrolled zeroes the speed outright and plays the knee-
+	# clutch animation. Not "keeps 35%" -- the loss is total.
 	var player := _player_stub()
 	check(player.landing_tier(6.0) == Player.TIER_HARD, "6.0 m is not the hard tier")
-	check_approx(player.landing_keep_ratio(6.0, false), 0.35, 0.0001, "hard landing keep ratio is wrong")
+	check_approx(player.landing_keep_ratio(6.0, false), 0.0, 0.0001, 		"a hard landing left speed behind")
+	check_approx(player.landing_keep_ratio(9.0, false), 0.0, 0.0001, 		"a hard landing left speed behind")
+	player.free()
+
+func test_a_roll_cancels_a_hard_landing_completely() -> void:
+	# ✅ MEASURED: rolling out of a ~7 m drop returns to the entry speed within
+	# the roll animation. The roll is not a discount -- above the threshold it is
+	# the difference between keeping everything and keeping nothing.
+	var player := _player_stub()
+	check_approx(player.landing_keep_ratio(6.0, true), 1.0, 0.0001, 		"a rolled hard landing still cost speed")
 	player.free()
 
 func test_no_tier_can_ever_add_speed() -> void:
@@ -64,7 +71,6 @@ func test_no_tier_can_ever_add_speed() -> void:
 	# ratio is draggable past 1.0. A landing may cost speed or cost nothing;
 	# it must never be a source of it.
 	var player := _player_stub()
-	player.config.pawn.landing_speed_reduction = -5.0
 	for height in [0.5, 2.5, 4.0, 9.0]:
 		check(player.landing_keep_ratio(height, false) <= 1.0, \
 			"a landing at %f m added speed" % height)

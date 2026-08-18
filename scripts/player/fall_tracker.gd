@@ -1,8 +1,8 @@
 class_name FallTracker
 extends RefCounted
 
-# Accumulated fall height since the last ground contact -- the quantity the
-# original's landing system actually judges on (03 §3.1, 10.1 mechanic 5).
+# How far below the last ground contact the body currently is, in metres --
+# the quantity the original's landing system judges on (03 §3.1, 10.1 mechanic 5).
 #
 # WHY NOT velocity.y: 03 §3.5 traces an entire layer of community technique
 # (ventkick, kickglitch, drop-roll, fall-break kick) to this being a
@@ -10,34 +10,42 @@ extends RefCounted
 # produces a ground-contact event zeroes it, and that emergent behaviour is
 # unreachable if the landing reads the current frame's vertical speed.
 #
+# ✅ MEASURED ORIGIN: the count starts where the feet LEFT THE GROUND, not at
+# the arc's apex, and not at the moment the descent passes some speed. The
+# original's debug HUD exposes exactly this as SZD (= Z - SZ, where SZ is the
+# last launch height), and it begins moving the instant the player leaves the
+# ground for any reason.
+#
+# The proof that it is the launch point and not the apex comes from the
+# original's own level design: a shipped 9.5 m drop is JUMPED off, and jumping
+# adds 1.24 m of rise. Measured from the apex that route would score 10.74 m,
+# past the 10 m death threshold -- yet it is a safe, routine path. Only a
+# launch-relative measurement lets it survive.
+#
+# This replaced an implementation that armed on `enter_to_falling_z_speed` and
+# then tracked the apex. Under that model an ordinary jump in place registered
+# a ~1.1 m "fall" on landing back at its own start height, and every ledge
+# jumped off was scored a full jump-height deeper than it really is.
+#
 # Deliberately RefCounted and fed plain floats: it owns no node and does no
 # queries, so it can be tested without a physics world.
 
 var fall_height: float = 0.0
 
-var _pawn: PawnConfig
-var _falling: bool = false
-var _apex_y: float = 0.0
+var _launch_y: float = 0.0
 
-func _init(pawn: PawnConfig) -> void:
-	_pawn = pawn
-
-func reset() -> void:
+## Re-baseline to a new ground height. Called from Player.set_grounded() on
+## every ground contact, which is what makes the counter resettable.
+func reset(ground_y: float) -> void:
 	fall_height = 0.0
-	_falling = false
+	_launch_y = ground_y
 
-## `vertical_velocity` and `world_y` are read straight from the body. Arming
-## on the velocity threshold rather than on "y decreased" is what reproduces
-## EnterToFallingZSpeed: the first few centimetres of stepping off a kerb are
-## deliberately not counted.
-func update(_delta: float, vertical_velocity: float, world_y: float) -> void:
-	if not _falling:
-		if vertical_velocity > _pawn.enter_to_falling_z_speed:
-			return
-		_falling = true
-		_apex_y = world_y
-	# Track the APEX, not the arming point: a wall-jump chain keeps rising
-	# after the counter has armed, and the drop that matters is measured from
-	# the highest point actually reached.
-	_apex_y = maxf(_apex_y, world_y)
-	fall_height = maxf(fall_height, _apex_y - world_y)
+## `world_y` is read straight from the body. `vertical_velocity` is accepted
+## but unused: the launch-relative measurement needs no speed gate, and the
+## parameter is kept so callers (and the landing tests) keep reading like the
+## physical description they are.
+func update(_delta: float, _vertical_velocity: float, world_y: float) -> void:
+	# CURRENT depth, not the deepest seen. What a landing charges for is how
+	# far down the body is when it touches, so height regained mid-flight (a
+	# wall jump taken low) is genuinely no longer owed.
+	fall_height = maxf(0.0, _launch_y - world_y)

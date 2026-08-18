@@ -31,11 +31,12 @@ func test_5_a_key_move_spans_at_least_three_times() -> void:
 	check_greater(best / worst, 3.0, "no key move has a 3x execution gradient")
 
 func test_6_landing_is_judged_on_a_resettable_counter() -> void:
-	var tracker := FallTracker.new(PawnConfig.new())
+	var tracker := FallTracker.new()
+	tracker.reset(10.0)
 	tracker.update(1.0 / 60.0, -5.0, 10.0)
 	tracker.update(1.0 / 60.0, -5.0, 6.0)
-	check_greater(tracker.fall_height, 3.0, "the counter did not accumulate")
-	tracker.reset()
+	check_greater(tracker.fall_height, 3.0, "the counter did not measure the drop")
+	tracker.reset(6.0)
 	check_approx(tracker.fall_height, 0.0, 0.0001, "the counter is not resettable")
 
 func test_8_moves_declare_their_own_camera_constraints() -> void:

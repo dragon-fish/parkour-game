@@ -20,6 +20,13 @@ func _ready() -> void:
 	if player.camera_rig != null:
 		player.camera_rig.setup(config)
 
+	# A fall past pawn.falling_uncontrolled_height is unsurvivable in the
+	# original (03 §3.1). Respawning is the arena's job, not the player's, and
+	# it deliberately reuses the same path as falling out of the level: from the
+	# player's side both are 'that life ended'.
+	if not player.died_from_fall.is_connected(reset_player):
+		player.died_from_fall.connect(reset_player)
+
 	# Session-level concern, deliberately not in Player: headless tests
 	# instantiate Player directly and must not touch the display server.
 	#

@@ -73,7 +73,8 @@ func set_grounded(value: bool) -> void:
 		# mechanism behind the community's drop-roll technique (03 §3.5): touch
 		# down, and the accumulated height is gone before stepping off again.
 		if fall_tracker != null:
-			fall_tracker.reset()
+			fall_tracker.reset(global_position.y)
+		uncontrolled_fall = false
 
 ## Clears `grounded` WITHOUT counting as a declaration. Called only by
 ## MoveManager, as the fail-safe half of the invariant above: a move that
@@ -109,6 +110,17 @@ enum { TIER_FREE, TIER_SOFT, TIER_ROLLABLE, TIER_HARD }
 ## Accumulated fall height since the last ground contact. Built in setup().
 var fall_tracker: FallTracker
 
+## True once this descent passed pawn.falling_uncontrolled_height. A ONE-WAY
+## door: regaining height mid-air does not hand control back, because the
+## original treats the outcome as already decided (03 §3.1). Cleared only by
+## ground contact.
+var uncontrolled_fall: bool = false
+
+## Emitted on the touchdown that ends an uncontrolled fall. The fall itself is
+## already lost by then -- this only tells whoever owns respawning that the
+## body has finished arriving.
+signal died_from_fall
+
 ## The ground-speed curve (02 §2.1/02 §2.5): layer 2 of the two-layer speed
 ## model, see SpeedEnergy's own header comment. Built in setup(), driven every
 ## tick by _update_speed_energy(). Every move that wants "top speed" reads
@@ -131,41 +143,37 @@ func landing_tier(fall_height: float) -> int:
 		return TIER_ROLLABLE
 	return TIER_HARD
 
+## Latches `uncontrolled_fall` once this descent is deep enough that the
+## original would have taken control away. Called every tick while airborne.
+##
+## Deliberately latching rather than recomputing: fall_tracker reports CURRENT
+## depth, so a wall kick that regains height would otherwise quietly cancel a
+## death the original considers already settled.
+func update_uncontrolled_fall() -> void:
+	if uncontrolled_fall or fall_tracker == null:
+		return
+	if fall_tracker.fall_height >= config.pawn.falling_uncontrolled_height:
+		uncontrolled_fall = true
+
 ## Fraction of horizontal speed a landing from `fall_height` keeps.
 ##
-## Clamped to 1.0 at every exit: the F1 panel sizes each slider to three times
-## its default, so landing_speed_reduction is draggable to a value that would
-## otherwise make landing a source of free speed.
+## BINARY, not a ramp. ✅ Measured in the original (03 §3.1): a 4.95 m drop
+## taken WITHOUT rolling costs nothing at all -- speed keeps climbing after
+## touchdown -- while ~7 m unrolled zeroes it outright and plays the knee-clutch
+## animation. There is no partial band anywhere in between.
+##
+## This replaced a modelled ramp that charged a little at 2.5 m and more at
+## 4.0 m, with a roll acting as a 35% discount above the soft band. That model
+## was plausible and wrong on both counts: below the threshold nothing is
+## charged, and above it a roll is not a discount but a full cancellation.
+##
+## `skill_roll_landing_height` and `soft_landing_height` therefore take no part
+## in this calculation -- they gate animation and whether a roll may trigger at
+## all. landing_tier() still reports them for those consumers.
 func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
-	var pawn := config.pawn
-	var hard_keep: float = clampf(1.0 - pawn.landing_speed_reduction, 0.0, 1.0)
-	match landing_tier(fall_height):
-		TIER_FREE:
-			# Genuinely free, not "nearly free". A flat jump peaks four
-			# centimetres under this boundary, which is what lets the player
-			# jump as often as they like without paying for it.
-			return 1.0
-		TIER_SOFT:
-			# A roll cancels this band outright; without one it scales in from
-			# nothing at the boundary to the hard ratio at the next one.
-			if rolled:
-				return 1.0
-			var t: float = inverse_lerp(pawn.skill_roll_landing_height, \
-				pawn.soft_landing_height, fall_height)
-			return clampf(lerpf(1.0, hard_keep, clampf(t, 0.0, 1.0)), 0.0, 1.0)
-		TIER_ROLLABLE:
-			# Above the soft band a roll is a discount, never a cancellation:
-			# the community reports ME1's skill roll bleeding speed of its own
-			# whenever you keep moving forward out of it (03 §3.1). Unrolled,
-			# the cost ramps continuously from nothing at the soft boundary to
-			# the full hard ratio at the hard one; rolling pays 35% of
-			# whatever that ramp asks for.
-			var t2: float = clampf(inverse_lerp(pawn.soft_landing_height, \
-				pawn.hard_landing_height, fall_height), 0.0, 1.0)
-			var unrolled: float = lerpf(1.0, hard_keep, t2)
-			return clampf(unrolled if not rolled else lerpf(1.0, unrolled, 0.35), 0.0, 1.0)
-		_:
-			return hard_keep
+	if fall_height < config.pawn.hard_landing_height:
+		return 1.0
+	return 1.0 if rolled else 0.0
 
 ## Assigned in player.tscn. Optional so headless tests can run without one.
 @export var camera_rig: CameraRig
@@ -376,7 +384,7 @@ func _service_pending_capsule_restore() -> void:
 func setup(cfg: MovementConfig, src: InputSource) -> void:
 	config = cfg
 	input_source = src
-	fall_tracker = FallTracker.new(config.pawn)
+	fall_tracker = FallTracker.new()
 	speed_energy = SpeedEnergy.new(config.pawn)
 
 	# The capsule resource is shared by every instance of player.tscn, so
@@ -416,8 +424,12 @@ func reset_state() -> void:
 	_coyote_timer = 0.0
 	_jump_buffer_timer = 0.0
 	_roll_buffer_timer = 0.0
+	uncontrolled_fall = false
 	if fall_tracker != null:
-		fall_tracker.reset()
+		# A respawn is a ground contact for this purpose: baseline the counter
+		# to wherever the body now stands, or the first tick after the teleport
+		# scores the whole teleport distance as a fall.
+		fall_tracker.reset(global_position.y)
 	if speed_energy != null:
 		speed_energy.reset()
 	_last_wish_dir = Vector3.ZERO

@@ -10,7 +10,14 @@ func current_config() -> MoveConfig:
 	return config.jump if player.velocity.y > 0.0 else config.falling
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
-	var wish_dir: Vector3 = player.wish_direction(input)
+	# Latch first: a descent that has already passed
+	# pawn.falling_uncontrolled_height is decided, and the rest of this tick
+	# must run without the player's input (03 §3.1 -- the original hands the
+	# controller to PlayerDying at the threshold rather than scoring damage on
+	# impact, which is why a roll cannot save it).
+	player.update_uncontrolled_fall()
+	var wish_dir: Vector3 = Vector3.ZERO if player.uncontrolled_fall \
+		else player.wish_direction(input)
 	player.air_accelerate(wish_dir, delta)
 
 	# Coyote time: Player.consume_jump() already gates on the timer, so a jump
@@ -131,8 +138,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			and player.consume_roll()
 		player.last_landing_rolled = rolled
 		player.last_landing_fall_height = fall_height
+		# Read before set_grounded() clears it, same ordering reason as
+		# fall_height above.
+		var fatal: bool = player.uncontrolled_fall
 		player.set_grounded(true)
 		player.notify_landed(impact_speed)
+		if fatal:
+			player.died_from_fall.emit()
 		_apply_landing_cost(fall_height, rolled)
 		return WALKING
 	player.set_grounded(false)
