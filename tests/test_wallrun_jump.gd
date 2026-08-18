@@ -1,12 +1,13 @@
 class_name TestWallrunJump
 extends TestCase
 
-# The 4.3x skill gradient, tested as pure arithmetic. 04 §4.4 is explicit
-# that the interpolation input is not named in the data; the reading here --
-# how squarely the view faces the wall at the moment of the jump -- comes
-# from the community's own repeated instruction to "face the wall you are
-# running on before jumping", which is the behaviour the gradient has to
-# reproduce.
+# The 4.3x skill gradient, tested as pure arithmetic.
+#
+# ✅ The interpolation input is MEASURED (04 §4.4): it is how quickly the jump
+# follows the wall contact. Across 24 kick-offs, kicking within 5 frames gave
+# 6x the speed gain of a late one, while the correlation with view rotation --
+# the reading these tests used to encode, taken from the community's "face the
+# wall before jumping" instruction -- was -0.19, i.e. none.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -21,35 +22,47 @@ func test_the_confirmed_endpoints_are_in_place() -> void:
 	check_approx(cfg.wall_running_jump_off_z_height_max_add_turned, 0.6, 0.0001, "rise bonus is wrong")
 
 func test_the_worst_execution_gets_the_noob_push() -> void:
-	# Looking straight AWAY from the wall.
-	var normal := Vector3(1.0, 0.0, 0.0)
-	var push := WallRunMove.wall_jump_push_away(normal, normal, _cfg())
-	check_approx(push, 1.2, 0.001, "looking away from the wall did not give the Noob push")
+	# Rode the wall run out before jumping.
+	var cfg := _cfg()
+	var push := WallRunMove.wall_jump_push_away(cfg.wall_jump_stale_time, cfg)
+	check_approx(push, 1.2, 0.001, "a late kick did not give the Noob push")
 
 func test_the_best_execution_gets_the_full_gradient() -> void:
-	# Looking straight INTO the wall.
-	var normal := Vector3(1.0, 0.0, 0.0)
-	var push := WallRunMove.wall_jump_push_away(-normal, normal, _cfg())
-	check_approx(push, 5.2, 0.001, "facing the wall did not give the full push")
+	# Kicked on contact.
+	var cfg := _cfg()
+	var push := WallRunMove.wall_jump_push_away(0.0, cfg)
+	check_approx(push, 5.2, 0.001, "an instant kick did not give the full push")
 
 func test_the_gradient_spans_more_than_four_times() -> void:
 	# 10.1 mechanic 4 states the criterion as a ratio: a key move must have a
 	# 3x-or-better spread between worst and best execution, or new players and
-	# experts are playing the same game.
-	var normal := Vector3(1.0, 0.0, 0.0)
-	var worst := WallRunMove.wall_jump_push_away(normal, normal, _cfg())
-	var best := WallRunMove.wall_jump_push_away(-normal, normal, _cfg())
+	# experts are playing the same game. The measured spread in the original is
+	# 6x on speed gained, so 4x on the push itself is comfortably inside it.
+	var cfg := _cfg()
+	var worst := WallRunMove.wall_jump_push_away(cfg.wall_jump_stale_time, cfg)
+	var best := WallRunMove.wall_jump_push_away(0.0, cfg)
 	check_greater(best / worst, 4.0, "the gradient is narrower than 4x")
 
 func test_the_gradient_is_continuous_not_stepped() -> void:
-	var normal := Vector3(1.0, 0.0, 0.0)
-	var previous := WallRunMove.wall_jump_push_away(normal, normal, _cfg())
+	# A cliff would make the timing unlearnable: the player needs to feel that
+	# hesitating cost them something, not discover a hidden frame window.
+	var cfg := _cfg()
+	var previous := WallRunMove.wall_jump_push_away(0.0, cfg)
 	for i in range(1, 11):
-		var angle: float = PI * float(i) / 10.0
-		var look := normal.rotated(Vector3.UP, angle)
-		var push := WallRunMove.wall_jump_push_away(look, normal, _cfg())
-		check_greater(push + 0.0001, previous, "the gradient went backwards at step %d" % i)
+		var t: float = cfg.wall_jump_stale_time * float(i) / 10.0
+		var push := WallRunMove.wall_jump_push_away(t, cfg)
+		check_greater(previous + 0.0001, push, "the gradient went backwards at step %d" % i)
 		previous = push
+
+func test_the_prime_window_is_a_window_not_an_instant() -> void:
+	# Measured as 'within 5 frames of contact', not 'on the exact frame'. A
+	# single-frame requirement would be a coin flip at 60 Hz rather than a
+	# skill.
+	var cfg := _cfg()
+	check_approx(WallRunMove.wall_jump_quality(cfg.wall_jump_prime_window, cfg), 1.0, \
+		0.0001, "the prime window does not hold full value to its own edge")
+	check_greater(cfg.wall_jump_prime_window, 1.0 / 120.0, \
+		"the prime window is tighter than a single frame")
 
 func test_the_rise_is_a_height_converted_to_a_speed() -> void:
 	# JumpOffZHeight is a HEIGHT in the original, not a velocity -- 1.0 m at
@@ -59,9 +72,9 @@ func test_the_rise_is_a_height_converted_to_a_speed() -> void:
 	# gravity was corrected from 8.0 to the measured 16.0, even though the
 	# behaviour under test never changed.
 	var pawn := PawnConfig.new()
-	var normal := Vector3(1.0, 0.0, 0.0)
-	var worst := WallRunMove.wall_jump_rise_velocity(normal, normal, _cfg(), pawn)
-	var best := WallRunMove.wall_jump_rise_velocity(-normal, normal, _cfg(), pawn)
+	var cfg := _cfg()
+	var worst := WallRunMove.wall_jump_rise_velocity(cfg.wall_jump_stale_time, cfg, pawn)
+	var best := WallRunMove.wall_jump_rise_velocity(0.0, cfg, pawn)
 	check_approx(worst, sqrt(2.0 * pawn.gravity * 1.0), 0.001, "worst-case rise is not 1.0 m worth")
 	check_approx(best, sqrt(2.0 * pawn.gravity * 1.6), 0.001, "best-case rise is not 1.6 m worth")
 
@@ -134,12 +147,18 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 	check(player.move_manager.current_name == Move.WALL_RUN, \
 		"test setup is wrong: the player never attached to the wall")
 
-	var look: Vector3 = -player.global_transform.basis.z
-	var normal := Vector3(-1.0, 0.0, 0.0)
-	var expected_quality: float = WallRunMove.wall_jump_quality(look, normal)
-	check_approx(expected_quality, 0.5, 0.0001, \
-		"test setup is wrong: the unrotated attach heading is not the expected quality-0.5 point")
-	var expected_launch: float = WallRunMove.wall_jump_rise_velocity(look, normal, cfg.wallrun_jump, cfg.pawn)
+	# The jump fires on the first physics tick after attaching, so the time on
+	# the wall is one delta -- inside wall_jump_prime_window (0.05 s) and
+	# therefore worth the full gradient. Asserting that explicitly means a
+	# future change to the window that accidentally excludes an immediate kick
+	# fails here rather than silently halving every wall jump in the game.
+	var time_on_wall: float = 1.0 / Engine.physics_ticks_per_second
+	check_greater(cfg.wallrun_jump.wall_jump_prime_window, time_on_wall, \
+		"an immediate kick no longer lands inside the prime window")
+	var expected_quality: float = WallRunMove.wall_jump_quality(time_on_wall, cfg.wallrun_jump)
+	check_approx(expected_quality, 1.0, 0.0001, \
+		"test setup is wrong: an immediate kick is not worth the full gradient")
+	var expected_launch: float = WallRunMove.wall_jump_rise_velocity(time_on_wall, cfg.wallrun_jump, cfg.pawn)
 	var expected_height: float = cfg.wallrun_jump.wall_running_jump_off_z_height_forward \
 		+ cfg.wallrun_jump.wall_running_jump_off_z_height_max_add_turned * expected_quality
 	var jump_y: float = player.global_position.y

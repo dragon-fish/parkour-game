@@ -96,14 +96,29 @@ extends MoveConfig
 ## Source: 04 §4.1 `TimeToDo90Turn = 0.25` s.
 @export var time_to_do_90_turn: float = 0.25
 
+## ✅ MEASURED (04 §4.1). Vertical gravity is cut while attached, and the cut
+## is ASYMMETRIC: the rise is braked harder than the fall accelerates, which is
+## what produces the original's "stick to the wall and float" feel -- quick to
+## the top, slow coming down.
+##
+## Fitted to two complete wall-run arcs (rms 0.011-0.022 m):
+##
+##   rising   ~790 uu/s^2  = 49% of world gravity
+##   falling  ~505 uu/s^2  = 32%
+##
+## The falling figure closes a loop with wall_running_velocity_stop_limit:
+## accelerating from rest at ~505 uu/s^2 reaches -500 uu/s in almost exactly
+## 1.0 s, which is the wall run's measured duration. Duration is therefore an
+## emergent consequence of these two numbers, not a separate timer -- do not
+## add one.
+##
+## This replaced a single project-specific scale of 0.35 documented as having
+## "no original counterpart". It has one; it just could not be seen without
+## frame-level capture.
+@export var wall_gravity_scale_rising: float = 0.49
+@export var wall_gravity_scale_falling: float = 0.32
+
 @export_group("Project-specific")
-## ⚠️ MODEL DIFFERS FROM SOURCE: the original expresses "how much a wall run
-## defies gravity" purely through wall_running_horisontal_friction plus
-## wall_running_horisontal_deceleration; this project keeps a separate
-## gravity multiplier so the ATTACH FEEL (how floaty the run reads) can be
-## tuned independently from the horizontal decay that ends it. No original
-## counterpart.
-@export var wall_gravity_scale: float = 0.35
 ## ⚠️ MODEL DIFFERS FROM SOURCE, same reasoning as wall_gravity_scale above:
 ## a gentle pull toward the wall surface, in m/s per tick, so the body stays
 ## glued through small surface irregularities instead of drifting off. No

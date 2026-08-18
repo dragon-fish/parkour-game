@@ -25,3 +25,17 @@ extends MoveConfig
 ## Added on top of the base rise height at best execution, up to 0.6 m more.
 ## Source: 04 §4.4 `WallRunningJumpOffZHeightMaxAddTurned = 60` uu. ✅
 @export var wall_running_jump_off_z_height_max_add_turned: float = 0.6
+
+## How long after touching the wall a jump still counts as "instant", and how
+## long until it counts as fully stale. ✅ MEASURED (04 §4.4).
+##
+## The Noob/ProAdd gradient interpolates on TIMING, not on facing. Across 24
+## kick-offs, kicking within 5 frames of contact gave 6x the speed gain of a
+## late one (median +5.12 vs +0.81 km/h), while the correlation between the
+## gain and how far the view had swung during the run was -0.19 -- i.e. none.
+##
+## So the "skill" DICE named in these parameters is REACTION SPEED: touch the
+## wall and go, and you take the full 520 uu/s; ride the run out and you get
+## the bare 120. Implementing it costs one timestamp.
+@export var wall_jump_prime_window: float = 0.05
+@export var wall_jump_stale_time: float = 0.25

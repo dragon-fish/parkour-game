@@ -15,6 +15,9 @@ var _along: Vector3 = Vector3.ZERO
 ## run along, so physics_update() hands straight back to Falling without ever
 ## touching velocity. See enter()'s note.
 var _aborted: bool = false
+## Seconds since this attach began. The wall jump's entire execution gradient
+## reads this and nothing else (see wall_jump_quality).
+var _time_on_wall: float = 0.0
 
 ## Guarded the same way SpeedVaultMove/GrabMove guard their own probe
 ## lookups: `player.probes` is null-checked at every call site rather than
@@ -39,6 +42,7 @@ func _derive_along() -> void:
 	_along = tangent if tangent.dot(horizontal) >= 0.0 else -tangent
 
 func enter(_previous: StringName) -> void:
+	_time_on_wall = 0.0
 	_aborted = false
 	# Wall running IS physics-driven, but grounded-ness is still DECLARED, never
 	# inferred -- P2 replaced is_on_floor() as the authority precisely so that
@@ -96,7 +100,8 @@ func enter(_previous: StringName) -> void:
 	# wall mid-rise) -- only ever raises it to the floor this represents.
 	var lift: float = config.wall_run.wall_running_horisontal_initial_z_height
 	if lift > 0.0:
-		var wall_gravity: float = config.pawn.gravity * config.wall_run.wall_gravity_scale
+		# The lift is a RISE, so it converts against the rising scale.
+		var wall_gravity: float = config.pawn.gravity * config.wall_run.wall_gravity_scale_rising
 		player.velocity.y = maxf(player.velocity.y, sqrt(2.0 * wall_gravity * lift))
 
 func exit() -> void:
@@ -107,25 +112,29 @@ func exit() -> void:
 	# what replaced it (MoveManager's generic redo_move_time, which arms
 	# itself the moment this move exits, with no help needed here).
 
-## How squarely the view faces the wall at the moment of the jump, 0 (looking
-## straight away) to 1 (looking straight into it).
+## How early the jump came: 1 (kicked the instant the wall was touched) to 0
+## (rode the run out).
 ##
-## ⚠️ The interpolation input is NOT named in the original's data (04 §4.4).
-## This reading comes from the community instruction the gradient has to
-## reproduce -- "face the wall you are running on, without running into it,
-## then jump, and you gain noticeably more speed" -- which no other candidate
-## input explains.
-static func wall_jump_quality(look_forward: Vector3, wall_normal: Vector3) -> float:
-	var look := Vector3(look_forward.x, 0.0, look_forward.z)
-	var normal := Vector3(wall_normal.x, 0.0, wall_normal.z)
-	if look.length_squared() < 0.0001 or normal.length_squared() < 0.0001:
+## ✅ MEASURED (04 §4.4), and it replaced a facing-based reading. The community
+## instruction this gradient was modelled on -- "face the wall you are running
+## on, then jump, and you gain noticeably more speed" -- turned out not to be
+## what the game measures: across 24 kick-offs the correlation between speed
+## gained and view rotation during the run was -0.19, while the correlation
+## with time on the wall was -0.42, and the fast/slow medians differ 6x.
+##
+## Facing is not disproven as a SECONDARY term -- both measured takes held the
+## mouse fairly still -- but it is not the primary one, and timing alone
+## reproduces the observed spread.
+static func wall_jump_quality(time_on_wall: float, cfg: WallrunJumpConfig) -> float:
+	if time_on_wall <= cfg.wall_jump_prime_window:
+		return 1.0
+	if time_on_wall >= cfg.wall_jump_stale_time:
 		return 0.0
-	# The normal points AWAY from the wall, so facing INTO it is -1.
-	return clampf((-look.normalized().dot(normal.normalized()) + 1.0) * 0.5, 0.0, 1.0)
+	return 1.0 - clampf(inverse_lerp(cfg.wall_jump_prime_window, \
+		cfg.wall_jump_stale_time, time_on_wall), 0.0, 1.0)
 
-static func wall_jump_push_away(look_forward: Vector3, wall_normal: Vector3, \
-		cfg: WallrunJumpConfig) -> float:
-	var quality := wall_jump_quality(look_forward, wall_normal)
+static func wall_jump_push_away(time_on_wall: float, cfg: WallrunJumpConfig) -> float:
+	var quality := wall_jump_quality(time_on_wall, cfg)
 	return cfg.wall_running_push_away_speed_noob \
 		+ cfg.wall_running_push_away_speed_pro_add * quality
 
@@ -136,15 +145,20 @@ static func wall_jump_push_away(look_forward: Vector3, wall_normal: Vector3, \
 ## applies, not wall_gravity_scale (that scale only governs ticks this move
 ## itself advances while still attached; see enter()'s own note on the exact
 ## overshoot that conflating the two produces).
-static func wall_jump_rise_velocity(look_forward: Vector3, wall_normal: Vector3, \
+static func wall_jump_rise_velocity(time_on_wall: float, \
 		cfg: WallrunJumpConfig, pawn: PawnConfig) -> float:
-	var quality := wall_jump_quality(look_forward, wall_normal)
+	var quality := wall_jump_quality(time_on_wall, cfg)
 	var height: float = cfg.wall_running_jump_off_z_height_forward \
 		+ cfg.wall_running_jump_off_z_height_max_add_turned * quality
 	# JumpOffZHeight is a height, not a speed -- convert at the point of use.
 	return sqrt(2.0 * maxf(pawn.gravity, 0.001) * maxf(height, 0.0))
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
+	# Advanced before anything else can read it, so a jump taken on this tick
+	# is priced by the time already spent on the wall rather than by the time
+	# spent before this tick began.
+	_time_on_wall += delta
+
 	if _aborted:
 		return FALLING
 
@@ -199,8 +213,8 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		# to read.
 		var look: Vector3 = -player.global_transform.basis.z
 		var jump_cfg: WallrunJumpConfig = config.wallrun_jump
-		player.velocity.y = wall_jump_rise_velocity(look, _normal, jump_cfg, config.pawn)
-		player.velocity += _normal * wall_jump_push_away(look, _normal, jump_cfg)
+		player.velocity.y = wall_jump_rise_velocity(_time_on_wall, jump_cfg, config.pawn)
+		player.velocity += _normal * wall_jump_push_away(_time_on_wall, jump_cfg)
 		player.move_and_slide()
 		# Declared even on this away-transitioning tick, mirroring
 		# WalkingMove's and SlideMove's own jump branches: move_and_slide()
@@ -236,7 +250,12 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 
 	# Weakened gravity plus a gentle pull into the wall so the body stays glued
 	# through small surface irregularities.
-	player.velocity.y -= config.pawn.gravity * config.wall_run.wall_gravity_scale * delta
+	# Asymmetric by measurement (04 §4.1): the climb is braked at ~49% of world
+	# gravity while the descent only accelerates at ~32%. Reading the sign of
+	# the current velocity rather than tracking a phase keeps the apex handling
+	# implicit -- the tick that crosses zero simply starts using the other one.
+	var wall_gravity_scale: float = config.wall_run.wall_gravity_scale_rising 		if player.velocity.y > 0.0 else config.wall_run.wall_gravity_scale_falling
+	player.velocity.y -= config.pawn.gravity * wall_gravity_scale * delta
 	player.velocity -= _normal * config.wall_run.wall_stick_force
 
 	player.move_and_slide()

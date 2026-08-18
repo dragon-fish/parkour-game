@@ -155,3 +155,21 @@ func _measure_wall_ticks(entry_speed: float) -> int:
 	TestWorld.teardown(world)
 	await step(1)
 	return ticks
+
+func test_wall_gravity_is_asymmetric_and_sets_the_duration() -> void:
+	# ✅ MEASURED (04 §4.1). The rise is braked harder than the fall
+	# accelerates -- quick to the top, slow coming down -- which is what makes
+	# an attached wall run read as "floating" rather than as a shallow arc.
+	var cfg := MovementConfig.new()
+	check_greater(cfg.wall_run.wall_gravity_scale_rising, \
+		cfg.wall_run.wall_gravity_scale_falling, \
+		"wall gravity is symmetric; the float is gone")
+
+	# The measured duration is not a timer -- it falls out of the descent rate
+	# meeting the stop limit. Guarding that here means a future retune of
+	# either number cannot silently change how long a wall run lasts without
+	# someone noticing.
+	var descent: float = cfg.pawn.gravity * cfg.wall_run.wall_gravity_scale_falling
+	var to_stop: float = absf(cfg.wall_run.wall_running_velocity_stop_limit) / descent
+	check_approx(to_stop, 1.0, 0.15, \
+		"a wall run no longer ends about a second after its apex (%f s)" % to_stop)
