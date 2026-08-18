@@ -115,3 +115,21 @@ Task 12 会给出两端梯度下的实际横越距离，据此可以重新设计
 - `debug_hud.gd` 的行标签仍写作 `state`，实际显示的是 move 名。
 - `SlideMove._slope_direction()` 与 `Player.ground_grade()` 各算一份同样的投影，没有复用。
 - `tools/arena_builder.gd` 里若干处注释仍引用重命名前的旧类名。
+
+---
+
+## 6. 抓边冷却 0.45 s，原版是 0.15 s（Task 16 发现）
+
+`GrabConfig.redo_move_time = 0.45` 是从项目自创的 `ledge_regrab_cooldown` 直接继承下来的值。附录 A1:534 记有 `TdMove_Grab.RedoMoveTime = **0.15**` ——差三倍。
+
+**为什么没有直接对齐**：原版把「悬挂」和「翻上去」拆成三个 Move（`TdMove_Grab` 0.15 / `TdMove_GrabPullUp` / `TdMove_GrabTransfer` 0.5），本项目的 Grab 一个 Move 全包。0.45 恰好落在 0.15 与 0.5 之间，所以**不存在一个可以照抄的 1:1 答案**——合并后的 Move 该继承哪一端的语义，是手感问题而不是转写问题。
+
+**试玩时留意**：抓一次边掉下来之后，再次贴上同一个边缘要等多久才抓得住。若觉得「明明够得着却抓不上」，就往 0.15 调；若觉得反复黏在边上甩不掉，就维持或调高。
+
+---
+
+## 7. `min_ledge_z_normal` 目前没有消费者（Task 16 发现）
+
+按 spec 落地的确证值 `0.707`（45°）没有任何代码读取——`Probes.ledge_query()` 判断边缘顶面能否站立时用的是 `pawn.walkable_floor_z`（0.71），两者相差不到三分之一度。
+
+实现者拒绝为了「让字段用上」而制造第二个含义相同的阈值，这是对的。真要处理，正确的方向是**二选一**：要么让 `ledge_query()` 改读 `min_ledge_z_normal`（承认抓边与走路的可站立判据在原版里本就是两个字段），要么删掉它并在 spec 里注明其含义已被 `walkable_floor_z` 吸收。不要两个都留着各管一半。
