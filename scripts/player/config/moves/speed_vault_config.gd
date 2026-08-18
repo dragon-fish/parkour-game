@@ -110,12 +110,20 @@ extends MoveConfig
 ##       variants ("强制重置镜头朝向，打断玩家的视线规划"). Nothing in this
 ##       project's CameraRig reads it yet, recorded for the same reason as
 ##       is_stringable above.
-##   ledge_offset_z           LedgeOffset.Z (UE3 is Z-up, so this is the
-##       original's own vertical axis). ✅ 0.9 / 0.6 / 0.25 / 0.25 / 0.05 /
-##       0.35 m, read directly off 05 §5.7's own list. ⚠️ See
-##       SpeedVaultMove.enter()'s own comment for how this project turns it
-##       into a landing height -- an own interpretation, not a
-##       bytecode-confirmed formula.
+##   ledge_offset_z           LedgeOffset.Z. ✅ as a value -- 0.9 / 0.6 / 0.25 /
+##       0.25 / 0.05 / 0.35 m, read directly off 05 §5.7's own list -- ❓ as a
+##       role, same status as PawnConfig.speed_max_base_velocity. The
+##       research reads this as a height offset of the landing point relative
+##       to the edge, but the values are dimensionally impossible as a
+##       landing ELEVATION for a human capsule (0.9 m of extra height on a
+##       variant whose own obstacles top out at 0.48 m would land the player
+##       nearly a metre above a knee-high box, with no real support under
+##       them -- see SpeedVaultMove.enter()'s own note on why this codebase's
+##       floor-snap cannot absorb that). An earlier version of this project
+##       added it to the landing height on that literal reading; review found
+##       the landing floats and does not recover, so it is recorded here but
+##       deliberately left unread rather than shipped on a guess about which
+##       frame it is actually expressed in.
 @export var variants: Array[Dictionary] = [
 	{
 		"name": "vault_over", "min_height": 0.64, "max_height": 1.48,

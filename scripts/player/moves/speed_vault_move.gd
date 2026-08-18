@@ -54,26 +54,40 @@ func enter(_previous: StringName) -> void:
 	# it is the whole reason the original's obstacles read as opportunities
 	# rather than as taxes. Source: 05 §5.7 (see SpeedVaultConfig.variants'
 	# own per-field sourcing on speed_addition/clamp_speed_min/clamp_speed_max).
+	#
+	# clamp_speed_max for the two sweet-spot rows is 7.2 -- exactly
+	# PawnConfig.ground_speed, the player's own hard ceiling (confirmed
+	# faithful to the source: ClampSpeedMax = 720 = GroundSpeed there too, so
+	# this is not a retuning target). That means the bonus is invisible for any
+	# entry at or above ground_speed: there is no "faster than your own top
+	# speed" to grant. What it DOES give back is speed already LOST to a turn,
+	# a rough landing, or friction since the last time the player was at cap --
+	# the vault tops up a player who has bled speed, it does not create speed
+	# that was never there. See tests/test_speed_vault_move.gd for both cases
+	# (a mid-range entry that keeps the full bonus, and an at-cap entry where
+	# the net gain is exactly zero) exercised through this exact formula.
 	_exit_speed = clampf(horizontal.length() + variant["speed_addition"], \
 		variant["clamp_speed_min"], variant["clamp_speed_max"])
 	_exit_direction = horizontal.normalized() if horizontal.length_squared() > 0.0001 else -player.global_transform.basis.z
 
 	var top: Vector3 = query["top"]
 	var landing := top + _exit_direction * config.speed_vault.vault_exit_forward
-	# ledge_offset_z (05 §5.7's LedgeOffset.Z) is read here as ADDITIONAL
-	# height ABOVE the plain feet-at-top placement (standing_height() * 0.5),
-	# not a replacement for it -- a replacement would put every variant's
-	# capsule partly BELOW the obstacle's own top for any offset under half
-	# the standing capsule height. ⚠️ Own interpretation, not a
-	# bytecode-confirmed formula: the research's own reading of
-	# autostepuprightleg's 0.9 m (the largest of the six) as "sends you deep
-	# onto the platform rather than leaving you at the edge" reads as
-	# additive headroom past a flush landing. Whatever imprecision this adds
-	# is corrected within one tick regardless -- WalkingMove's very next
-	# move_and_slide() floor-snaps the body for real (see this move's own note
-	# on why `grounded` is left false on exit), so this is only ever the
-	# scripted arc's terminal POSE, never a load-bearing placement.
-	landing.y = top.y + player.standing_height() * 0.5 + variant["ledge_offset_z"]
+	# Feet flush on the probed top -- NOT offset by variant.ledge_offset_z.
+	# An earlier version of this line added ledge_offset_z here as extra
+	# height above this placement, on the reasoning that WalkingMove's next
+	# move_and_slide() floor-snaps the body regardless. Review found that
+	# reasoning false for this codebase: WalkingMove's floor-snap is a small
+	# downward bias (-floor_snap_speed) meant to keep contact across seams and
+	# gentle slopes, not to recover from being unsupported by any real
+	# distance -- PawnConfig.max_step_height's own comment is explicit that
+	# Godot's floor_snap_length only holds a body down over gaps small enough
+	# that a 5 cm plank once broke it (the reason try_step_up() exists at
+	# all). A body left ledge_offset_z above a real surface -- 0.6-0.9 m for
+	# two of the six variants -- does not snap back down; WalkingMove's own
+	# grounded check fails and hands off to a visible multi-tick FALLING. See
+	# SpeedVaultConfig.variants' own note on ledge_offset_z for why the field
+	# is still recorded but left unread.
+	landing.y = top.y + player.standing_height() * 0.5
 
 	begin(player.global_position, landing, variant["duration"], config.speed_vault.vault_arc_height)
 	player.velocity = Vector3.ZERO
