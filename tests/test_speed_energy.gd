@@ -120,14 +120,19 @@ func test_a_full_reversal_spends_the_entire_budget() -> void:
 	var pawn := _pawn()
 	var energy := SpeedEnergy.new(pawn)
 	energy.energy = 7.0
-	energy.spend_turn(PI)
+	# Stated at the curve's neutral rate (450 deg/s), so this pins the BUDGET
+	# calibration without also pinning the rate gradient: 180 degrees swung at
+	# 450 deg/s takes 0.4 s. See pawn.turn_rate_cost_curve.
+	energy.spend_turn(PI, 0.4)
 	check_approx(energy.energy, 0.0, 0.02, "a 180 degree reversal did not spend the budget")
 
 func test_a_quarter_turn_costs_half_the_budget() -> void:
 	var pawn := _pawn()
 	var energy := SpeedEnergy.new(pawn)
 	energy.energy = 7.0
-	energy.spend_turn(PI * 0.5)
+	# 90 degrees at the neutral 450 deg/s is 0.2 s -- same reasoning as the
+	# reversal test above.
+	energy.spend_turn(PI * 0.5, 0.2)
 	check_approx(energy.energy, 3.5, 0.02, "a 90 degree turn did not cost half the budget")
 
 func test_turning_has_no_free_allowance() -> void:
@@ -137,5 +142,5 @@ func test_turning_has_no_free_allowance() -> void:
 	var pawn := _pawn()
 	var energy := SpeedEnergy.new(pawn)
 	energy.energy = 7.0
-	energy.spend_turn(deg_to_rad(1.0))
+	energy.spend_turn(deg_to_rad(1.0), 1.0 / 60.0)
 	check(energy.energy < 7.0, "a small turn was free")

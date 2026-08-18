@@ -184,6 +184,33 @@ extends Resource
 ## comment and deliberately NOT used: this project calibrates the knob to a
 ## stated behaviour instead -- a full 180 degree reversal (pi radians) spends
 ## the entire 7.0 energy budget, hence energy ceiling / PI = 7.0 / pi =
+## How much MORE a turn costs per degree when it is swung fast.
+##
+## ✅ MEASURED (03 §3.2), and it is the half this system was missing: the
+## original charges per degree turned AND scales that rate with angular
+## velocity. Across 31 clean ground turns the cost per degree rose 5.7x from a
+## slow pan to a hard flick:
+##
+##   40-150 deg/s   0.016 km/h per degree
+##   150-300        0.040
+##   300-600        0.070
+##   600-1500       0.092
+##
+## Stored as a MULTIPLIER normalised to 1.0 at 450 deg/s (the middle band) so
+## that speed_turn_deceleration_factor below keeps its existing calibration for
+## an ordinary turn; this curve only redistributes cost between slow and fast
+## ones. X is degrees per second, linearly interpolated and clamped at both
+## ends.
+##
+## Without this, planning a line buys the player nothing: a lazy sweep and a
+## panicked flick through the same angle cost exactly the same, which is what
+## the original spends this whole mechanism avoiding.
+@export var turn_rate_cost_curve: PackedVector2Array = PackedVector2Array([
+	Vector2(95.0, 0.239),
+	Vector2(225.0, 0.585),
+	Vector2(450.0, 1.0),
+	Vector2(1050.0, 1.327),
+])
 ## 2.2282 energy per radian, exact rather than the earlier 2.23 rounding.
 @export var speed_turn_deceleration_factor: float = 2.2282
 ## PROJECT-ADDED GUARD, no counterpart in the original. Energy only accrues

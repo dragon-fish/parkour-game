@@ -97,11 +97,19 @@ func test_even_a_one_degree_turn_costs_something() -> void:
 	await _run_up(world, 430)
 	var before: float = world["player"].speed_energy.energy
 	check_greater(before, 6.5, "never banked a full budget")
-	# Rotate the wish direction by exactly one degree off straight ahead.
+	# Compared against a straight-ahead tick rather than demanding a net drop.
+	# Now that cost scales with angular rate (03 §3.2), a one-degree nudge is
+	# cheap enough that the same tick's ordinary accumulation can outrun it --
+	# which is the measured behaviour ("a slow turn barely costs anything"),
+	# not a missing charge. What must remain true is that the turning tick
+	# banks LESS than the straight one.
+	await step(1)
+	var straight_gain: float = world["player"].speed_energy.energy - before
+	var pivot: float = world["player"].speed_energy.energy
 	world["input"].state.move = Vector2(0.0, 1.0).rotated(deg_to_rad(1.0))
 	await step(1)
-	var after: float = world["player"].speed_energy.energy
-	check(after < before, "a one degree turn cost nothing (%f -> %f)" % [before, after])
+	var turned_gain: float = world["player"].speed_energy.energy - pivot
+	check(turned_gain < straight_gain, 		"a one degree turn cost nothing (straight %f vs turned %f)" 		% [straight_gain, turned_gain])
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -186,3 +194,45 @@ func test_landing_after_an_airborne_turn_only_bills_the_landing_ticks_own_turn()
 		"landing after an airborne turn billed a near-full-budget turn (dropped %f)" % drop)
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_a_fast_flick_costs_more_per_degree_than_a_slow_pan() -> void:
+	# ✅ MEASURED (03 §3.2). This is the half the system was missing: the
+	# original charges per degree AND scales that rate with angular velocity,
+	# so a lazy sweep and a panicked flick through the same angle are NOT the
+	# same price. Without it, planning a line buys the player nothing.
+	var pawn := PawnConfig.new()
+	var energy := SpeedEnergy.new(pawn)
+	var angle: float = deg_to_rad(30.0)
+
+	energy.energy = 100.0
+	energy.spend_turn(angle, 30.0 / 95.0)          # swung at ~95 deg/s
+	var slow_cost: float = 100.0 - energy.energy
+
+	energy.energy = 100.0
+	energy.spend_turn(angle, 30.0 / 1050.0)        # the same 30 degrees, flicked
+	var fast_cost: float = 100.0 - energy.energy
+
+	check_greater(fast_cost, slow_cost * 3.0, "a flick cost barely more than a pan")
+	# Measured ratio across the band is 5.54x (0.0167 -> 0.0926 per degree).
+	check_approx(fast_cost / slow_cost, 5.55, 0.2, "the rate gradient is not the measured one")
+
+func test_the_multiplier_is_clamped_outside_the_measured_band() -> void:
+	# Beyond the measured band the shape is unknown; extrapolating a power law
+	# there would invent a cost nobody observed. A one-tick 90-degree snap
+	# reports ~5400 deg/s and must simply pay the fastest measured rate.
+	var pawn := PawnConfig.new()
+	var energy := SpeedEnergy.new(pawn)
+	var fastest: float = pawn.turn_rate_cost_curve[pawn.turn_rate_cost_curve.size() - 1].y
+	check_approx(energy.turn_rate_multiplier(5400.0), fastest, 0.0001, \
+		"an impossibly fast turn was extrapolated past the measured band")
+	check_approx(energy.turn_rate_multiplier(1.0), pawn.turn_rate_cost_curve[0].y, 0.0001, \
+		"a crawl was extrapolated below the measured band")
+
+func test_an_ordinary_turn_keeps_its_existing_calibration() -> void:
+	# The curve is normalised to 1.0 at 450 deg/s so that adding it does not
+	# silently retune every turn in the game -- only redistribute cost between
+	# slow and fast ones.
+	var pawn := PawnConfig.new()
+	var energy := SpeedEnergy.new(pawn)
+	check_approx(energy.turn_rate_multiplier(450.0), 1.0, 0.0001, \
+		"the reference rate is no longer neutral")

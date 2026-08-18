@@ -21,7 +21,7 @@ func test_3_turning_has_a_continuous_cost() -> void:
 	var pawn := PawnConfig.new()
 	var energy := SpeedEnergy.new(pawn)
 	energy.energy = 7.0
-	energy.spend_turn(deg_to_rad(5.0))
+	energy.spend_turn(deg_to_rad(5.0), 1.0 / 60.0)
 	check(energy.energy < 7.0, "a small turn was free")
 
 func test_5_a_key_move_spans_at_least_three_times() -> void:

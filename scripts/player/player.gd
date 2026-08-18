@@ -1045,7 +1045,7 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 		# Neither banked, bled, nor charged for turning while airborne.
 		_last_wish_dir = wish
 		return
-	_charge_turn(wish)
+	_charge_turn(wish, delta)
 	if wish == Vector3.ZERO:
 		speed_energy.decay(delta)
 		return
@@ -1068,7 +1068,7 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 ## either, because accel_rate 61.44 makes the velocity lag the intent, which
 ## would smear the charge across the frames after the decision instead of
 ## billing the decision itself.
-func _charge_turn(wish: Vector3) -> void:
+func _charge_turn(wish: Vector3, delta: float) -> void:
 	if wish == Vector3.ZERO or _last_wish_dir == Vector3.ZERO:
 		# Nothing to compare against. A momentary key release passes through
 		# zero, and billing that transition would charge for letting go.
@@ -1076,7 +1076,7 @@ func _charge_turn(wish: Vector3) -> void:
 		return
 	var radians: float = absf(_last_wish_dir.signed_angle_to(wish, Vector3.UP))
 	if radians > 0.0:
-		speed_energy.spend_turn(radians)
+		speed_energy.spend_turn(radians, delta)
 	_last_wish_dir = wish
 
 ## The downhill component of `direction`, projected onto the current floor,

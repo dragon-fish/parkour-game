@@ -95,8 +95,31 @@ func decay(delta: float) -> void:
 
 ## Turning is a continuous tax with no free allowance (10.1 ③): the research
 ## found no "costs nothing below N degrees" parameter anywhere in the game.
-func spend_turn(radians: float) -> void:
-	drain(_pawn.speed_turn_deceleration_factor * absf(radians))
+##
+## The cost is per degree AND per degree-per-second: ✅ measured, the original
+## charges 5.7x more per degree for a hard flick than for a slow pan (03 §3.2).
+## `delta` is therefore required -- the angle alone cannot say how fast it was
+## swung, and charging on angle alone makes planning a line worthless.
+func spend_turn(radians: float, delta: float) -> void:
+	var rate_deg: float = rad_to_deg(absf(radians)) / maxf(delta, 0.0001)
+	drain(_pawn.speed_turn_deceleration_factor * turn_rate_multiplier(rate_deg) 		* absf(radians))
+
+## Linear interpolation over pawn.turn_rate_cost_curve, clamped at both ends.
+## Clamping rather than extrapolating on purpose: beyond the measured band the
+## shape is unknown, and extrapolating a power law there would invent a cost
+## nobody observed. A one-tick 90-degree snap reports ~5400 deg/s, far past the
+## fastest turn ever measured, and is simply charged the fastest measured rate.
+func turn_rate_multiplier(rate_deg: float) -> float:
+	var knots := _pawn.turn_rate_cost_curve
+	if knots.is_empty():
+		return 1.0
+	if rate_deg <= knots[0].x:
+		return knots[0].y
+	for i in range(1, knots.size()):
+		if rate_deg <= knots[i].x:
+			var t: float = inverse_lerp(knots[i - 1].x, knots[i].x, rate_deg)
+			return lerpf(knots[i - 1].y, knots[i].y, t)
+	return knots[knots.size() - 1].y
 
 func drain(amount: float) -> void:
 	energy = maxf(energy - absf(amount), 0.0)
