@@ -649,8 +649,13 @@ func build() -> Node3D:
 	# comfortably for an ordinary, non-chained run; it makes no claim about
 	# containing a determined chain, and is not a substitute for a governor
 	# this task deliberately does not add.
-	var wall_jump_peak_rise: float = (wall_config.wallrun_jump.wall_jump_up * wall_config.wallrun_jump.wall_jump_up) \
-		/ (2.0 * maxf(wall_config.pawn.gravity, 0.001))
+	# Task 12 replaced the flat wall_jump_up constant with a Noob-to-Pro
+	# gradient stored as HEIGHTS (WallrunJumpConfig.wall_running_jump_off_z_
+	# height_forward/_max_add_turned), so the peak rise this wall must clear
+	# is simply their sum -- the best-execution height -- with no velocity
+	# round-trip needed.
+	var wall_jump_peak_rise: float = wall_config.wallrun_jump.wall_running_jump_off_z_height_forward \
+		+ wall_config.wallrun_jump.wall_running_jump_off_z_height_max_add_turned
 	const WALL_HEIGHT_MARGIN := 1.3
 	var wall_run_height: float = (jump_peak_height + wall_jump_peak_rise) * WALL_HEIGHT_MARGIN
 

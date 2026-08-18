@@ -107,6 +107,43 @@ func exit() -> void:
 	# what replaced it (MoveManager's generic redo_move_time, which arms
 	# itself the moment this move exits, with no help needed here).
 
+## How squarely the view faces the wall at the moment of the jump, 0 (looking
+## straight away) to 1 (looking straight into it).
+##
+## ⚠️ The interpolation input is NOT named in the original's data (04 §4.4).
+## This reading comes from the community instruction the gradient has to
+## reproduce -- "face the wall you are running on, without running into it,
+## then jump, and you gain noticeably more speed" -- which no other candidate
+## input explains.
+static func wall_jump_quality(look_forward: Vector3, wall_normal: Vector3) -> float:
+	var look := Vector3(look_forward.x, 0.0, look_forward.z)
+	var normal := Vector3(wall_normal.x, 0.0, wall_normal.z)
+	if look.length_squared() < 0.0001 or normal.length_squared() < 0.0001:
+		return 0.0
+	# The normal points AWAY from the wall, so facing INTO it is -1.
+	return clampf((-look.normalized().dot(normal.normalized()) + 1.0) * 0.5, 0.0, 1.0)
+
+static func wall_jump_push_away(look_forward: Vector3, wall_normal: Vector3, \
+		cfg: WallrunJumpConfig) -> float:
+	var quality := wall_jump_quality(look_forward, wall_normal)
+	return cfg.wall_running_push_away_speed_noob \
+		+ cfg.wall_running_push_away_speed_pro_add * quality
+
+## The rise is stored as a HEIGHT in the original (spec §2.5's `*ZHeight`
+## convention), converted here at the point of use. Unlike the attach-time
+## lift in enter() above, this rise happens AFTER the player leaves the wall
+## -- the jump branch below returns FALLING the same tick -- so plain gravity
+## applies, not wall_gravity_scale (that scale only governs ticks this move
+## itself advances while still attached; see enter()'s own note on the exact
+## overshoot that conflating the two produces).
+static func wall_jump_rise_velocity(look_forward: Vector3, wall_normal: Vector3, \
+		cfg: WallrunJumpConfig, pawn: PawnConfig) -> float:
+	var quality := wall_jump_quality(look_forward, wall_normal)
+	var height: float = cfg.wall_running_jump_off_z_height_forward \
+		+ cfg.wall_running_jump_off_z_height_max_add_turned * quality
+	# JumpOffZHeight is a height, not a speed -- convert at the point of use.
+	return sqrt(2.0 * maxf(pawn.gravity, 0.001) * maxf(height, 0.0))
+
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:
 		return FALLING
@@ -154,8 +191,16 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		# zig-zag chain between two close, oppositely-facing walls may now
 		# climb without bound. Shipped 1:1 on purpose -- see this task's own
 		# report for what automated testing could and could not show about it.
-		player.velocity.y = config.wallrun_jump.wall_jump_up
-		player.velocity += _normal * config.wallrun_jump.wall_jump_push
+		#
+		# Both terms below now carry the Noob-to-Pro skill gradient (04 §4.4,
+		# this task): how squarely `look` faces `_normal` at the moment of the
+		# jump scales the push from 1.2 to 5.2 m/s and the rise from a 1.0 to
+		# a 1.6 m worth of height, rather than the flat constants this used
+		# to read.
+		var look: Vector3 = -player.global_transform.basis.z
+		var jump_cfg: WallrunJumpConfig = config.wallrun_jump
+		player.velocity.y = wall_jump_rise_velocity(look, _normal, jump_cfg, config.pawn)
+		player.velocity += _normal * wall_jump_push_away(look, _normal, jump_cfg)
 		player.move_and_slide()
 		# Declared even on this away-transitioning tick, mirroring
 		# WalkingMove's and SlideMove's own jump branches: move_and_slide()
