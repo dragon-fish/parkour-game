@@ -113,6 +113,11 @@ extends Resource
 ## a DERIVED value, not an independent one -- the invariant above is
 ## `slide_camera_drop >= eye_height`, and 0.75 satisfied it only while the eye
 ## sat at 0.70. 0.81 restores the same ~0.05 m margin the old pair had.
+## tests/test_config_layout.gd pins the STRICTER form, `> eye_height`, since
+## check_greater is the only comparison the test harness offers -- so the pin
+## refuses the equal case this comment would tolerate. That is the safe
+## direction (an eye exactly level with the capsule top is the boundary this
+## margin exists to stay off), not a disagreement to reconcile.
 @export var slide_camera_drop: float = 0.81
 ## How fast the camera moves between standing and sliding height.
 @export var crouch_lerp_speed: float = 9.0

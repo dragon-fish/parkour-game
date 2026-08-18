@@ -23,11 +23,17 @@ extends TestCase
 # problem it exists to report.
 #
 # WHAT IS COMPARED. A canonical signature per node, in tree order: its path,
-# its class, its transform, and the handful of resource properties the two
-# builders actually vary (box/capsule sizes, ray geometry, albedo colour).
-# Structure and names are compared exactly; numbers with a tolerance, since
-# these have been through a float -> text -> float round trip in the .tscn.
-# The drift this exists to catch is metres wide, not 1e-6 wide.
+# its class, its attached script, its transform, and the handful of resource
+# properties the two builders actually vary (box/capsule sizes, ray and cast
+# geometry, their enabled flags, albedo colour). Structure, names and script
+# paths are compared exactly; numbers with a tolerance, since these have been
+# through a float -> text -> float round trip in the .tscn. The drift this
+# exists to catch is metres wide, not 1e-6 wide.
+#
+# The set is SCOPED, not exhaustive -- it covers what these two builders
+# actually set. A builder that starts setting some other property (a light's
+# energy, a camera's fov, a physics layer mask) needs a line here too, or that
+# property drifts unwatched.
 
 const TOLERANCE := 0.0005
 
@@ -77,6 +83,15 @@ func _signature(node: Node, root: Node) -> String:
 	var parts := PackedStringArray()
 	parts.append(String(root.get_path_to(node)))
 	parts.append(node.get_class())
+	# get_class() reports the NATIVE class and never the attached GDScript, so
+	# without this a builder that stopped calling set_script() -- or attached
+	# the wrong one -- would be invisible here. PlayerBuilder sets scripts on
+	# four nodes (CameraRig, BodyRoot, Probes, Player itself) and ArenaBuilder
+	# on three more; every one of them is the difference between a live node
+	# and an inert one. Compared by resource_path rather than by object
+	# identity: the two trees load their own GDScript instances.
+	var script: Variant = node.get_script()
+	parts.append("script=%s" % (script.resource_path if script != null else "none"))
 	if node is Node3D:
 		var t: Transform3D = (node as Node3D).transform
 		parts.append("origin=%s" % _v(t.origin))
@@ -87,8 +102,14 @@ func _signature(node: Node, root: Node) -> String:
 	if node is CollisionShape3D:
 		parts.append(_shape((node as CollisionShape3D).shape))
 	if node is ShapeCast3D:
-		parts.append(_shape((node as ShapeCast3D).shape))
-		parts.append("target=%s" % _v((node as ShapeCast3D).target_position))
+		var cast := node as ShapeCast3D
+		parts.append(_shape(cast.shape))
+		parts.append("target=%s" % _v(cast.target_position))
+		# `enabled` matters here for the same reason it does on RayCast3D below:
+		# StandClearance is the probe Player.has_headroom() reads, and a
+		# disabled one reports no collisions at all -- i.e. "there is always
+		# room to stand up", silently, inside a ceiling.
+		parts.append("enabled=%s" % cast.enabled)
 	if node is RayCast3D:
 		var ray := node as RayCast3D
 		parts.append("target=%s" % _v(ray.target_position))

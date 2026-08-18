@@ -131,8 +131,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# path here that would move it. Matches SpeedVaultMove, which likewise zeros
 	# velocity once at enter() rather than every tick of its own scripted move.
 
-	# The re-grab cooldown this drop needs is started by exit(), which covers
-	# this path and the mantle hand-off alike -- see the note on exit().
+	# The re-grab cooldown this drop needs is armed by MoveManager on the way
+	# out, which covers this path and the mantle hand-off alike without either
+	# of them doing anything -- see the block above physics_update() for why
+	# this move no longer overrides exit() at all.
 	if input.crouch_held:
 		return FALLING
 
@@ -156,16 +158,23 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# original brief wrote `top -= basis.z * 0.4`, where basis.z is
 		# BACKWARD, so that `-=` was already a forward push; a later refactor
 		# introduced `_exit_direction = -basis.z` but kept the `-=`,
-		# double-negating it. _edge is the SurfaceDown hit exactly
-		# ledge_find_distance ahead of the body, so subtracting here put the
-		# landing (ledge_find_distance - offset) ahead of the body: for a
-		# running grab (body
-		# 0.85-1.0 m off the face) that is 0.25-0.4 m IN FRONT of the wall,
-		# feet at platform height over open air. Measured on the test rig with
-		# the sign inverted, the body then settles balanced on the block's top
-		# EDGE, outside the platform -- and on the arena's LedgeMid it drops,
-		# slides back down the face and re-grabs: climb / fall / re-climb on
-		# every approach.
+		# double-negating it.
+		#
+		# _edge is SurfaceDown's hit, which sits LEDGE_ANCHOR_MARGIN (0.1 m)
+		# past the wall face the forward ray found -- i.e. just inside the
+		# ledge top, tracking the real obstacle rather than sitting a fixed
+		# distance ahead of the body (see Probes.ledge_query()). Subtracting
+		# here therefore put the landing 0.4 m BACK from that anchor: 0.3 m
+		# SHORT of the face, feet at platform height over open air -- and on
+		# EVERY approach, not just close ones, since the anchor now tracks the
+		# face. Measured on the test rig with the sign inverted, the body then
+		# settles balanced on the block's top EDGE, outside the platform -- and
+		# on the arena's LedgeMid it drops, slides back down the face and
+		# re-grabs: climb / fall / re-climb every time.
+		#
+		# With the sign correct the landing sits 0.1 + 0.4 = 0.5 m past the
+		# face, comfortably on top of any ledge deep enough to have been
+		# anchored to in the first place.
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration, config.grab.mantle_arc_height)
 		_mantling = true

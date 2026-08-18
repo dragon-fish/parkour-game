@@ -163,9 +163,10 @@ func _world_aabb(body: Node3D) -> AABB:
 
 ## Builds and returns the full arena tree, unparented and not yet added to
 ## any SceneTree. Caller owns it: pack it (tools/build_main_scene.gd) or
-## inspect it directly and free() it (tests/legacy/test_arena.gd -- ARCHIVED
-## by Task 1, not in the running suite, but still the shape a rewritten test
-## would use).
+## inspect it directly and free() it -- which is what
+## tests/test_generated_scenes.gd's
+## test_the_committed_arena_matches_what_its_generator_produces does, IN THE
+## RUNNING SUITE, to catch scenes/main.tscn drifting away from this builder.
 func build() -> Node3D:
 	_root = Node3D.new()
 	_root.name = "Arena"

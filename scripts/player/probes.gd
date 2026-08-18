@@ -51,6 +51,36 @@ const SURFACE_ORIGIN_MARGIN := 0.3
 ## rather than by the ray silently not reaching it).
 const SURFACE_UNDERSHOOT := 0.1
 
+## How far PAST the wall face ledge_query() plants its downward anchor probe.
+##
+## The two numbers in a ledge query mean different things and must not be the
+## same number: ledge_find_distance (3.5 m) is how far ahead the forward ray
+## may LOOK, while this is how far past whatever that ray actually FOUND the
+## anchor sits. A raycast reports its first hit, so the forward ray is correct
+## at any search radius; SurfaceDown is fired straight down from a fixed
+## forward offset, so it is only ever correct if that offset tracks the real
+## obstacle. Feeding it the search radius instead put the hang anchor (and,
+## through GrabMove._edge, the mantle target) a flat 3.5 m ahead of the body
+## regardless of where the wall stood.
+##
+## The value is bounded on both sides and 0.1 m sits between them:
+##   * too SMALL and the ray grazes the face plane it is supposed to clear.
+##     An exact tangency does not reliably register as a hit at all -- this
+##     project has already been bitten by that once, when a test wall's near
+##     face sat exactly at the probe reach (see tests/test_wall_run_entry.gd's
+##     own note). 0.1 m is 5x MIN_HEIGHT_EPSILON's measured solver-noise
+##     budget, so it is clear of noise as well as of tangency.
+##   * too LARGE and it overshoots a thin lip: the anchor needs the ledge top
+##     to be at least this deep, or the ray sails past the far face onto
+##     whatever is behind and the grab is silently lost. 0.1 m asks for a
+##     hand's width of ledge, which is less than any surface a body could
+##     plausibly hang from and pull up onto.
+##
+## Deliberately NOT reused from SURFACE_UNDERSHOOT (also 0.1): that one is a
+## VERTICAL reach allowance below the feet and answers a different question.
+## Sharing the literal would tie two unrelated tolerances together.
+const LEDGE_ANCHOR_MARGIN := 0.1
+
 # Looked up live via _ensure_rays() rather than cached in @onready vars: @onready
 # resolves on Probes' own _ready(), but TestWorld.build() (and player.tscn's
 # real instantiation path) calls Player.setup() -> Probes.setup() on the same
@@ -114,13 +144,23 @@ func _aim_forward(ray: RayCast3D, reach: float) -> void:
 	ray.target_position = Vector3(0.0, 0.0, -reach)
 	ray.force_raycast_update()
 
-## Points SurfaceDown at the given forward reach and fires it. Shared by both
-## queries, which need different reaches from the same ray: a vaultable
-## obstacle sitting between the two reaches would pass both forward rays (each
-## using its own correct reach) but a downward ray fixed at the OTHER query's
-## reach would land somewhere the asking query never meant to look -- on bare
-## floor past the obstacle's near edge, or on an obstacle the other query is
-## not asking about at all.
+## Points SurfaceDown at the given forward offset and fires it. Shared by both
+## queries, which ask for that offset in DIFFERENT ways, and the difference is
+## load-bearing:
+##   * vault_query() passes its own configured vault_reach -- a constant. That
+##     is sound there because the vault's whole geometry (both forward rays,
+##     the vault-over probe) is built around that same fixed distance, and
+##     tests/test_probes_vault.gd's own fixtures are placed to straddle it.
+##   * ledge_query() passes the distance to the face its forward ray actually
+##     HIT, plus LEDGE_ANCHOR_MARGIN. It cannot pass its own configured
+##     ledge_find_distance: unlike a raycast, this ray is planted at whatever
+##     offset it is given and fired straight down, so a constant here would
+##     report a "ledge" a fixed distance ahead of the body rather than the one
+##     that was found. See LEDGE_ANCHOR_MARGIN for the full account.
+##
+## In both cases the point is the same: this ray must be aimed at the obstacle
+## the ASKING query is asking about, never at some other distance that happens
+## to be in the config.
 ##
 ## The ray's VERTICAL geometry is derived from the configured height limits
 ## rather than baked, so the panel cannot drive ledge_max_height past what the
@@ -302,11 +342,27 @@ func ledge_query() -> Dictionary:
 	if _config == null:
 		return _no_hit()
 	_ensure_rays()
+	# SEARCH RADIUS, and only that. The forward ray is a raycast: it reports
+	# its first hit, so looking the confirmed 3.5 m ahead finds a wall at 1 m
+	# just as correctly as one at 3 m.
 	_aim_forward(_vault_high, _config.grab.ledge_find_distance)
 	if not _vault_high.is_colliding():
 		return _no_hit()
 
-	_query_surface(_config.grab.ledge_find_distance)
+	# ANCHOR, which is a different question -- see LEDGE_ANCHOR_MARGIN. The
+	# down-probe is planted just past the face the forward ray ACTUALLY hit,
+	# never at the search radius, because its hit is what the body ends up
+	# hanging from and mantling to.
+	#
+	# Measured the same way vault_query() measures its own face distance (see
+	# its `face_point` / `to_face` block, and the reasoning there about
+	# measuring to the FACE rather than to the top surface SurfaceDown finds
+	# further along) rather than by a second method of its own.
+	var face_point: Vector3 = _vault_high.get_collision_point()
+	var to_face := face_point - global_position
+	var face_distance: float = Vector2(to_face.x, to_face.z).length()
+
+	_query_surface(face_distance + LEDGE_ANCHOR_MARGIN)
 	if not _surface.is_colliding():
 		return _no_hit()
 	var edge: Vector3 = _surface.get_collision_point()
