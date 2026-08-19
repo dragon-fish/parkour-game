@@ -40,3 +40,21 @@ func test_values_are_clamped() -> void:
 	check_approx(fx.blur, 0.0, 0.0001, "blur went below 0")
 	fx.queue_free()
 	await step(1)
+
+func test_tint_set_before_ready_survives_entering_the_tree() -> void:
+	# A caller may set_tint() immediately after ScreenEffects.new(), before the
+	# node has ever been added to a tree -- _material is still null at that
+	# point. The colour must not be silently dropped: _tint_color has to be
+	# the thing that carries it across _ready(), same as tint_amount already
+	# does for the float half of this call.
+	var fx := ScreenEffects.new()
+	fx.set_tint(Color(0.0, 1.0, 0.0, 1.0), 0.5)
+	tree.root.add_child(fx)
+	await step(1)
+	var c: Color = fx.tint_color()
+	check_approx(c.r, 0.0, 0.0001, "tint red channel did not survive entering the tree")
+	check_approx(c.g, 1.0, 0.0001, "tint green channel did not survive entering the tree")
+	check_approx(c.b, 0.0, 0.0001, "tint blue channel did not survive entering the tree")
+	check_approx(fx.tint_amount, 0.5, 0.0001, "tint amount did not survive entering the tree")
+	fx.queue_free()
+	await step(1)

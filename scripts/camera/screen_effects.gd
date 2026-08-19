@@ -14,6 +14,14 @@ var tint_amount: float = 0.0
 var desaturation: float = 0.0
 var blur: float = 0.0
 
+# Cached in GDScript, same as the three floats above, so a set_tint() call
+# made before _ready() (e.g. right after ScreenEffects.new(), before
+# add_child()) is not silently dropped. Without this the colour had no home
+# to live in until the material existed, _push() never resent it (it only
+# ever pushed the three floats), and the shader default (red) would win
+# forever with no error anywhere.
+var _tint_color: Color = Color(1.0, 0.0, 0.0, 1.0)
+
 var _rect: ColorRect
 var _material: ShaderMaterial
 
@@ -28,10 +36,16 @@ func _ready() -> void:
 	add_child(_rect)
 	_push()
 
+## Read-only accessor for _tint_color, mirroring how tint_amount/desaturation/
+## blur are exposed as plain vars -- tests assert against this rather than
+## reading the uniform back (see the other three: this layer's test coverage
+## is scoped to the GDScript members, not the shader/uniform chain).
+func tint_color() -> Color:
+	return _tint_color
+
 func set_tint(color: Color, amount: float) -> void:
+	_tint_color = color
 	tint_amount = clampf(amount, 0.0, 1.0)
-	if _material != null:
-		_material.set_shader_parameter("tint_color", color)
 	_push()
 
 func set_desaturation(amount: float) -> void:
@@ -51,6 +65,7 @@ func clear() -> void:
 func _push() -> void:
 	if _material == null:
 		return
+	_material.set_shader_parameter("tint_color", _tint_color)
 	_material.set_shader_parameter("tint_amount", tint_amount)
 	_material.set_shader_parameter("desaturation", desaturation)
 	_material.set_shader_parameter("blur", blur)
