@@ -116,3 +116,34 @@ func test_entering_the_landing_lockout_does_not_snap_the_pitch() -> void:
 
 	rig.get_parent().queue_free()
 	await step(1)
+
+func test_the_landing_sink_cannot_push_the_view_past_vertical() -> void:
+	# The other half of B2. Widening Landing's pitch clamp to the global limit
+	# left the COMBINED angle -- _pitch minus LandingMove's downward sink --
+	# unbounded, because apply_look() only ever clamped _pitch on its own. A
+	# player already looking almost straight down when they land, which is the
+	# natural thing to be doing at the end of the drop this move exists for,
+	# had the sink carry the view past vertical and roll the horizon over for
+	# the whole two-second lockout.
+	#
+	# Verified to go red without the clamp in update_effects(): rotation.x
+	# reaches about -1.90 rad, roughly 20 degrees beyond straight down.
+	var rig := _rig()
+	await step(1)
+	var landing: LandingConfig = MovementConfig.new().landing
+	var limit := deg_to_rad(89.0)
+
+	rig.clear_look_constraint()
+	for i in 200:
+		rig.apply_look(Vector2(0.0, 100.0), rig.get_parent())
+	rig.set_look_constraint(landing.min_look_constraint, landing.max_look_constraint, \
+		landing.absolute_yaw_constraint)
+
+	# The deepest sink LandingMove ever asks for, at severity 1.0.
+	rig.set_landing_pitch_offset(landing.camera_pitch_offset)
+	rig.update_effects(1.0 / 60.0, 0.0, true)
+	check(absf(rig.rotation.x) <= limit + 0.0001, \
+		"the landing sink pushed the view past vertical (%f rad)" % rig.rotation.x)
+
+	rig.get_parent().queue_free()
+	await step(1)

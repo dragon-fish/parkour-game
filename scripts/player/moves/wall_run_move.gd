@@ -211,12 +211,11 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		# was accidentally bolted shut along with the technique it is the
 		# price of. It is genuinely open again as of the JUMP hand-off below.
 		#
-		# Both terms below now carry the Noob-to-Pro skill gradient (04 §4.4,
-		# this task): how squarely `look` faces `_normal` at the moment of the
-		# jump scales the push from 1.2 to 5.2 m/s and the rise from a 1.0 to
-		# a 1.6 m worth of height, rather than the flat constants this used
-		# to read.
-		var look: Vector3 = -player.global_transform.basis.z
+		# Both terms below carry the Noob-to-Pro skill gradient (04 §4.4), but
+		# TIME ON WALL is what drives it -- not how squarely the player faces
+		# the wall. The facing reading this comment used to describe was ruled
+		# out by measurement (correlation -0.19 against time's -0.42); see
+		# wall_jump_quality() above for the numbers.
 		var jump_cfg: WallrunJumpConfig = config.wallrun_jump
 		player.velocity.y = wall_jump_rise_velocity(_time_on_wall, jump_cfg, config.pawn)
 		player.velocity += _normal * wall_jump_push_away(_time_on_wall, jump_cfg)

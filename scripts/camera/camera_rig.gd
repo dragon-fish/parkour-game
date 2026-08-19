@@ -339,7 +339,13 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# of ticks, when nothing is driving it). Recomputed every frame rather than
 	# accumulated, so the sink tracks LandingMove's own severity curve exactly
 	# instead of drifting from it.
-	rotation.x = _pitch - _landing_pitch
+	#
+	# Clamped, because apply_look() only ever bounded _pitch on its own. Landing
+	# leaves pitch to the global limit (LandingConfig says why), so a player who
+	# was already looking almost straight down on impact would otherwise have
+	# the sink push the combined angle past vertical and roll the horizon over.
+	var pitch_limit: float = deg_to_rad(_config.camera.pitch_limit_deg)
+	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit)
 
 ## Called on landing. `speed` is the downward speed at the moment of impact.
 func punch_landing(speed: float) -> void:

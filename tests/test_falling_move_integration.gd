@@ -82,12 +82,11 @@ func test_the_fall_counter_includes_the_landing_ticks_own_descent() -> void:
 	# actually lands was silently dropped before FallingMove's fix added a
 	# catch-up update() call after move_and_slide().
 	#
-	# Deliberately NOT compared against the raw teleport height: FallTracker
-	# only starts counting once vertical speed crosses enter_to_falling_z_speed
-	# (-2.0 m/s), a real, documented "grace period" (see
-	# test_a_gentle_step_off_does_not_start_counting in test_fall_tracker.gd)
-	# that eats several tenths of a metre of a from-rest drop before arming --
-	# comparing against the raw drop height would fail even on CORRECT code.
+	# Deliberately NOT compared against the raw teleport height. FallTracker
+	# measures from the LAUNCH point rather than from an arming threshold or an
+	# apex (fall_tracker.gd says why -- the original's SZ reads the last launch
+	# height), so a teleport-based fixture like this one has a baseline that
+	# does not correspond to the drop the test staged.
 	#
 	# Instead this reconstructs, from directly observed positions, exactly
 	# how far the player actually descended during the landing tick itself,
