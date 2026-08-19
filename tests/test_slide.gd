@@ -199,3 +199,35 @@ func test_downhill_past_break_even_grade_nets_acceleration_through_slide_move() 
 			% [before, world["player"].horizontal_speed()])
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_a_slide_jump_takes_off_into_jump_not_falling() -> void:
+	# A2 REGRESSION. A slide jump sets velocity.y = base_jump_z -- it is a
+	# take-off, and this project now expresses "is this a launch" as WHICH
+	# STATE owns the tick rather than as a speed guard. Landing in Falling
+	# instead left a slide jump (a) unable to start a wall run, since only
+	# Jump carries check_for_wall_climb, and (b) immediately eligible for the
+	# uncontrolled-fall hand-off Falling alone may make (invariant I2), which
+	# no rising launch should be. WalkingMove's own jump branch was corrected
+	# to JUMP by this task's parent; the slide's was missed.
+	#
+	# Verified to go red with the hand-off put back to FALLING.
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	await _run_up(world, 200)
+	world["input"].press_crouch()
+	await step(1)
+	await step(1)
+	check(world["player"].move_manager.current_name == Move.SLIDE, \
+		"test setup is wrong: never entered Slide")
+
+	world["input"].press_jump()
+	await step(1)
+	check(world["player"].move_manager.current_name == Move.JUMP, \
+		"a slide jump did not take off into Jump (ended in %s)" \
+			% world["player"].move_manager.current_name)
+	check_greater(world["player"].velocity.y, 0.0, \
+		"test setup is wrong: the slide jump did not actually leave the ground")
+	TestWorld.teardown(world)
+	await step(1)

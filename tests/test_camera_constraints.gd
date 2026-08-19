@@ -79,3 +79,40 @@ func test_the_two_wall_sides_roll_opposite_ways() -> void:
 	check(left * right < 0.0, "the two wall sides rolled the same way")
 	rig.get_parent().queue_free()
 	await step(1)
+
+func test_entering_the_landing_lockout_does_not_snap_the_pitch() -> void:
+	# B2 REGRESSION. LandingConfig used to clamp PITCH to +-0.2 as well as yaw,
+	# and unlike yaw the pitch half of a look constraint is genuinely absolute
+	# (apply_look() folds it into the global limit with maxf/minf) while
+	# CameraRig._pitch is never eased into a new range on entry. A player
+	# looking down the drop they are about to land badly from -- exactly the
+	# player this move exists for -- had the view SNAP up to -0.2 rad on the
+	# lockout's first tick, and LandingMove's own downward sink then played out
+	# from that jumped-to position instead of from where they were looking.
+	#
+	# Reads the SHIPPED LandingConfig rather than literals, so it is the real
+	# constraint under test. Verified to go red with min/max_look_constraint.x
+	# put back to -+0.2: the pitch jumps by ~1.35 rad on the first call.
+	var rig := _rig()
+	await step(1)
+	var landing: LandingConfig = MovementConfig.new().landing
+
+	# Look steeply down first, with no constraint in force -- the fall this
+	# lockout follows.
+	rig.clear_look_constraint()
+	for i in 200:
+		rig.apply_look(Vector2(0.0, 100.0), rig.get_parent())
+	var before: float = rig.rotation.x
+	check(before < -deg_to_rad(80.0), \
+		"test setup is wrong: the view is not steeply enough down (%f rad)" % before)
+
+	rig.set_look_constraint(landing.min_look_constraint, landing.max_look_constraint, \
+		landing.absolute_yaw_constraint)
+	# A single tick with NO further look input: any movement at all here is the
+	# constraint itself yanking the view, not the player.
+	rig.apply_look(Vector2.ZERO, rig.get_parent())
+	check_approx(rig.rotation.x, before, 0.0001, \
+		"entering the landing lockout snapped the view pitch")
+
+	rig.get_parent().queue_free()
+	await step(1)

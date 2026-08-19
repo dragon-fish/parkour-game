@@ -171,7 +171,12 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 
 	world["input"].press_jump()
 	await step(1)
-	check(player.move_manager.current_name == Move.FALLING, \
+	# JUMP, not FALLING: a wall kick is a launch, and launches are the states
+	# that carry check_for_wall_climb (see the wall-jump branch's own note in
+	# wall_run_move.gd). This assertion used to read FALLING, which is exactly
+	# the bug -- see test_a_wall_kick_can_reach_a_second_wall below for the
+	# behaviour that broke because of it.
+	check(player.move_manager.current_name == Move.JUMP, \
 		"the buffered jump did not fire the wall-jump branch")
 	check_approx(player.velocity.y, expected_launch, 0.01, \
 		"live launch speed does not match wall_jump_rise_velocity()'s own prediction (%f expected)" % expected_launch)
@@ -197,5 +202,98 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 		"the live wall jump's measured apex does not match the predicted %f m rise" % expected_height)
 
 	wall.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
+## One 20 x 6 x 1 slab, yawed 90 degrees so its near face is a plane in Y/Z
+## and its thickness runs along world X. Same slab every fixture in this file
+## and in tests/test_wall_run_entry.gd builds by hand; factored out here only
+## because the chained-kick test below needs two of them.
+func _wall_at(centre: Vector3) -> StaticBody3D:
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(20.0, 6.0, 1.0)
+	shape.shape = box
+	wall.add_child(shape)
+	tree.root.add_child(wall)
+	wall.global_position = centre
+	wall.rotation = Vector3(0.0, PI * 0.5, 0.0)
+	return wall
+
+## A1 REGRESSION, and the reason fix A exists at all. The wall-jump branch used
+## to hand off to Falling, and FallingConfig deliberately carries no
+## check_for_wall_climb (11 §11.2: not one of the seven states that hold it is
+## a fall) -- so after ANY wall kick, no further wall could be attached until
+## the next ground contact. Chained wall kicks, the technique the whole
+## wall-run/wall-jump pair exists to serve, were silently dead; consume_jump()
+## could not rescue them either, since the coyote timer only refills while
+## grounded and a wall run never is.
+##
+## Verified to go red when the hand-off is put back to FALLING: the player then
+## rides out the whole window in Falling and never reaches WALL_RUN again.
+func test_a_wall_kick_can_reach_a_second_wall() -> void:
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	check(player.move_manager.current_name == Move.WALKING, \
+		"test setup is wrong: player did not settle onto the floor before the drop")
+
+	# Two parallel walls facing each other across a corridor the player runs
+	# down, which is the zig-zag geometry the chain is actually performed on.
+	#
+	# Wall A: near face at x = 0.45, the pose every other fixture here uses --
+	# the midpoint of the only window that both clears the 0.4 m capsule and
+	# stays inside the side rays' own 0.5 m reach.
+	var wall_a := _wall_at(Vector3(0.95, 3.0, 0.0))
+	# Wall B: near face at x = -0.75. Chosen so it is well OUT of reach while
+	# the player is still attached to wall A (0.75-0.80 m away against a 0.5 m
+	# reach, so it cannot contaminate the first attach), while the kick's own
+	# push-away carries the capsule against it within a few ticks, where it
+	# rests with that face 0.4 m from the body -- inside the reach, and clear
+	# of the exact-tangency coin flip test_wall_run_entry.gd's own fixture
+	# note records.
+	var wall_b := _wall_at(Vector3(-1.25, 3.0, 0.0))
+
+	# A real take-off, not an up-teleport: only Jump carries
+	# check_for_wall_climb, so the first attach has to come through one.
+	world["input"].press_jump()
+	await step(1)
+	check(player.move_manager.current_name == Move.JUMP, \
+		"test setup is wrong: the jump did not send the player airborne")
+	player.velocity = Vector3(0.0, player.velocity.y, -7.0)
+	await step(1)
+	check(player.move_manager.current_name == Move.WALL_RUN, \
+		"test setup is wrong: the player never attached to the first wall")
+	check(player.wall_side == 1, \
+		"test setup is wrong: the first attach was not to the right-hand wall")
+
+	world["input"].press_jump()
+	await step(1)
+	check(player.move_manager.current_name == Move.JUMP, \
+		"the wall kick did not leave the player in a state that can climb again")
+
+	# WallRunConfig.redo_move_time (0.15 s, 9 ticks at 60 Hz) refuses any
+	# WALL_RUN re-entry until it expires -- that generic per-move cooldown is
+	# what replaced this project's old same-wall one, and it is the only thing
+	# standing between the kick and the next attach now. 30 ticks is a
+	# comfortable margin over it while staying inside the launch itself
+	# (Jump hands on to Falling only once the ~7.2 m/s rise decays past
+	# enter_to_falling_z_speed, ~34 ticks later).
+	for i in 30:
+		await step(1)
+		if player.move_manager.current_name == Move.WALL_RUN:
+			break
+	check(player.move_manager.current_name == Move.WALL_RUN, \
+		"a wall kick could not reach the opposite wall (ended in %s)" \
+			% player.move_manager.current_name)
+	check(player.wall_side == -1, \
+		"the second attach was to the wall the player kicked off, not the opposite one")
+
+	wall_a.queue_free()
+	wall_b.queue_free()
 	TestWorld.teardown(world)
 	await step(1)

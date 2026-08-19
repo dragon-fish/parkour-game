@@ -141,10 +141,10 @@ static func wall_jump_push_away(time_on_wall: float, cfg: WallrunJumpConfig) -> 
 ## The rise is stored as a HEIGHT in the original (spec §2.5's `*ZHeight`
 ## convention), converted here at the point of use. Unlike the attach-time
 ## lift in enter() above, this rise happens AFTER the player leaves the wall
-## -- the jump branch below returns FALLING the same tick -- so plain gravity
-## applies, not wall_gravity_scale (that scale only governs ticks this move
-## itself advances while still attached; see enter()'s own note on the exact
-## overshoot that conflating the two produces).
+## -- the jump branch below hands off to Jump the same tick -- so plain
+## gravity applies, not wall_gravity_scale (that scale only governs ticks this
+## move itself advances while still attached; see enter()'s own note on the
+## exact overshoot that conflating the two produces).
 static func wall_jump_rise_velocity(time_on_wall: float, \
 		cfg: WallrunJumpConfig, pawn: PawnConfig) -> float:
 	var quality := wall_jump_quality(time_on_wall, cfg)
@@ -205,6 +205,11 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		# zig-zag chain between two close, oppositely-facing walls may now
 		# climb without bound. Shipped 1:1 on purpose -- see this task's own
 		# report for what automated testing could and could not show about it.
+		# STILL ACCURATE, and only NOW actually reachable: for one branch's
+		# worth of history this hand-off returned FALLING, which cannot climb
+		# a wall at all (no check_for_wall_climb), so the risk described above
+		# was accidentally bolted shut along with the technique it is the
+		# price of. It is genuinely open again as of the JUMP hand-off below.
 		#
 		# Both terms below now carry the Noob-to-Pro skill gradient (04 §4.4,
 		# this task): how squarely `look` faces `_normal` at the moment of the
@@ -219,10 +224,21 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		# Declared even on this away-transitioning tick, mirroring
 		# WalkingMove's and SlideMove's own jump branches: move_and_slide()
 		# just ran, so is_on_floor() is a real answer, not a stale one, and
-		# reporting it truthfully costs nothing since FallingMove's own first
+		# reporting it truthfully costs nothing since JumpMove's own first
 		# tick will re-declare regardless.
 		player.set_grounded(player.is_on_floor())
-		return FALLING
+		# JUMP, not FALLING. A wall kick IS a launch -- the player pressed
+		# jump and left the wall rising -- and in the original every one of
+		# the seven states holding bCheckForWallClimb is a launch state
+		# (11 §11.2). Handing off to Falling instead would drop the player
+		# into the one airborne state whose config deliberately does NOT
+		# carry check_for_wall_climb, so no further wall could be attached
+		# until the next ground contact: no chained wall kicks at all, which
+		# is the technique this whole move exists to serve.
+		# Jump hands on to Falling by itself once the rise decays past
+		# enter_to_falling_z_speed (JumpMove's own check), so nothing here
+		# has to guess when the launch stops being one.
+		return JUMP
 
 	# Push along the wall's tangent UP TOWARD the energy-curve ceiling
 	# (Player.speed_cap()) -- NOT a wall-specific max speed (wall_max_speed is

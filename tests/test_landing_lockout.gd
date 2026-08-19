@@ -52,3 +52,58 @@ func test_a_soft_landing_skips_it_entirely() -> void:
 		"a landing below the hard threshold was locked out")
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_the_lockout_actually_pins_the_yaw() -> void:
+	# B1 REGRESSION. LandingConfig declares a +-0.2 rad look fan, but left
+	# absolute_yaw_constraint at its default false, and CameraRig.apply_look()
+	# then measures `relative` against body.rotation.y -- the facing the player
+	# has THIS tick. The clamp collapses into a per-tick RATE limit of ~0.2 rad
+	# (about 688 deg/s), which no ordinary mouse sweep comes near, so the
+	# lockout refused nothing at all and the view could spin freely through a
+	# hard landing the body is supposedly pinned by.
+	#
+	# Verified to go red with absolute_yaw_constraint removed: the body turns
+	# 0.2 rad EVERY tick instead, and the deviation below runs away immediately.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	player.global_position.y += cfg.pawn.hard_landing_height + 1.0
+	player.fall_tracker.reset(player.global_position.y)
+	await step(1)
+	for i in 240:
+		await step(1)
+		if player.move_manager.current_name == Move.LANDING:
+			break
+	check(player.move_manager.current_name == Move.LANDING, \
+		"test setup is wrong: never entered Landing")
+
+	# The reference facing is captured by CameraRig.set_look_constraint() on
+	# the tick the constraint first becomes active, which MoveManager pushed at
+	# the end of the very tick detected above -- so the body's yaw right now IS
+	# that reference.
+	var reference: float = player.rotation.y
+
+	# ~0.22 rad of requested yaw per tick at the shipped mouse sensitivity:
+	# comfortably above the 0.2 rad fan, and sustained, so a rate limit would
+	# wave it through indefinitely while a fan cannot.
+	var input: ScriptedInputSource = world["input"]
+	input.state.look = Vector2(-100.0, 0.0)
+
+	# Tracked as a running MAXIMUM rather than sampled once at the end: a yaw
+	# that escapes the fan keeps accumulating and wraps, so a single late
+	# sample could land back near the reference by coincidence.
+	var worst: float = 0.0
+	for i in 100:
+		await step(1)
+		worst = maxf(worst, absf(wrapf(player.rotation.y - reference, -PI, PI)))
+	check(player.move_manager.current_name == Move.LANDING, \
+		"test setup is wrong: the lockout ended before the measurement did")
+	check(0.2 + 0.01 > worst, \
+		"the landing lockout let the view turn %f rad past its own +-0.2 fan" % worst)
+
+	input.state.look = Vector2.ZERO
+	TestWorld.teardown(world)
+	await step(1)

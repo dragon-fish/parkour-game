@@ -22,9 +22,36 @@ extends MoveConfig
 @export var camera_pitch_offset: float = 0.35
 
 func _init() -> void:
-	# ⚠️ Project-defined, mirroring WallRunConfig's own look lock: input is
-	# refused for the whole lockout, so the view is pinned to a small forward
-	# fan rather than left free to spin while the body cannot act on it.
+	# ⚠️ Project-defined, mirroring WallRunConfig's own look lock. LandingMove
+	# ignores movement input outright for the whole lockout, and this pins the
+	# YAW to a small forward fan to match, rather than leaving the view free
+	# to spin while the body cannot act on it. Pitch is deliberately left to
+	# the camera's own global limit -- see the min/max assignment below.
 	constrain_look = true
-	min_look_constraint = Vector3(-0.2, -0.2, 0.0)
-	max_look_constraint = Vector3(0.2, 0.2, 0.0)
+	# ABSOLUTE yaw, same as WallRunConfig -- and this is what makes the yaw
+	# half of the clamp mean anything at all. CameraRig.apply_look() measures
+	# a relative clamp against `body.rotation.y`, i.e. against the facing the
+	# player already has THIS tick, so `relative` collapses to the tick's own
+	# yaw_delta and +-0.2 rad degenerates into a per-tick RATE limit of about
+	# 688 deg/s -- far above any ordinary mouse sweep, i.e. no lock at all.
+	# Measured against the facing captured on entry, the same +-0.2 is the
+	# fan it reads as: the lockout genuinely refuses to let the view turn.
+	absolute_yaw_constraint = true
+	# PITCH IS DELIBERATELY NOT CLAMPED HERE. MoveConfig's own +-PI is the
+	# "no clamp" value, and CameraRig.apply_look() folds a move's pitch
+	# constraint into the global limit with maxf/minf -- so +-PI leaves
+	# CameraConfig.pitch_limit_deg (89 deg) in sole charge, which is exactly
+	# the intent. Written as the neutral sentinel rather than as a second
+	# copy of 89 degrees so the two cannot drift apart; LandingConfig has no
+	# reach into CameraConfig to read the real number from.
+	#
+	# It used to clamp pitch to +-0.2 as well, and that was a genuine bug on
+	# the very landings this move exists for: unlike yaw, the pitch half IS
+	# absolute, and CameraRig._pitch is not eased into a new range on entry.
+	# A player looking down the drop at, say, -0.7 rad had the view SNAP to
+	# -0.2 on the lockout's first tick, and set_landing_pitch_offset()'s sink
+	# then played out from that jumped-to position. Forcing the head down is
+	# camera_pitch_offset's job and only its job; clamping here as well was
+	# the same intent expressed twice, and the two disagreed.
+	min_look_constraint = Vector3(-PI, -0.2, 0.0)
+	max_look_constraint = Vector3(PI, 0.2, 0.0)

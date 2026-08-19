@@ -90,7 +90,15 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.velocity.z += facing.z * config.pawn.jump_add_xy
 		player.move_and_slide()
 		player.set_grounded(player.is_on_floor())
-		return FALLING
+		# JUMP, not FALLING -- the same hand-off WalkingMove's own jump branch
+		# makes. This IS a take-off (velocity.y was just set to base_jump_z),
+		# and "is this a launch" is expressed by WHICH STATE owns the tick,
+		# never by a speed guard: only Jump carries check_for_wall_climb, and
+		# only Falling may hand off to FallingUncontrolled (invariant I2).
+		# Returning Falling here left a slide jump unable to reach a wall AND
+		# immediately eligible for the uncontrolled-fall height check, neither
+		# of which a rising take-off should ever be.
+		return JUMP
 
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())

@@ -2,10 +2,14 @@ class_name LandingMove
 extends Move
 
 # The Godot counterpart of the original's TdMove_Landing: the 2 s lockout
-# after a hard landing taken without a roll. Input is refused for the whole
-# duration -- that is the entire point, see LandingConfig.constrain_look --
-# and the camera plus the red tint recover across it so the player can see
-# the penalty draining rather than merely waiting it out.
+# after a hard landing taken without a roll. MOVEMENT input is refused for the
+# whole duration -- that is the entire point: this move never reads its
+# MoveInput at all, and LandingConfig.constrain_look pins the yaw to a +-0.2
+# rad fan around the facing the landing began with on top of that. LOOK PITCH
+# is deliberately still the player's (see LandingConfig's own note on why
+# clamping it here as well fought set_landing_pitch_offset below). The camera
+# and the red tint recover across the lockout so the player can see the
+# penalty draining rather than merely waiting it out.
 #
 # ScreenEffects and CameraRig are both plain-number sinks with no time logic
 # of their own (see their own header comments); this move owns the whole
