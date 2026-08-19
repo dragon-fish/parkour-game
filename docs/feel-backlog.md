@@ -158,3 +158,21 @@ Task 12 会给出两端梯度下的实际横越距离，据此可以重新设计
 spec 已把 I3 改写成带例外的表述。更贴近原作的做法是让 `WalkingMove` 自己持有土狼窗口、
 直接返回 `Jump`，这样 `FallingMove` 身上完全没有起跳代码。代价是转移的可观测时刻挪动一两 tick，
 且下坡上的土狼跳会从 `Walking → Falling → Jump` 变成 `Walking → Jump`。
+
+## 10. 下坡滑铲 → 跳 → 蹬墙现在是无损链路
+
+滑铲跳落到 `Jump`（起跳类，持有 `ForWallClimb`），而 `Jump` 一路不掉水平速度。
+`slide_move.gd` 文件头原先的论证——"从滑铲够到墙必须先经过 Walking 或 Falling，
+沿途会被摩擦收走滑铲攒下的速度"——因此不再成立。
+
+这是照抄原作的结果而不是疏漏（原作里七个持有 `bCheckForWallClimb` 的状态全是起跳类），
+但下坡滑铲本身是净加速的，所以理论上存在一个不需要还债的增速循环。
+试玩时留意：下坡滑铲 → 跳 → 蹬墙 → 落地 → 再滑，速度是不是单调涨。
+若确实失衡，最小的刹车是给 `JumpConfig` 加水平阻力，或让滑铲跳保留一部分摩擦结算。
+
+## 11. `JumpConfig.redo_move_time` 是一颗静默地雷
+
+`MoveManager.physics_update()` 有 `if not can_enter(next): return`——转移会被**静默拒绝**。
+墙跳与滑铲跳现在都交棒给 `Jump`，而 `Jump` 的 `redo_move_time` 走默认 0.0，所以当前安全。
+将来谁给 `JumpConfig` 加一个非零的 `redo_move_time`，连续蹬墙会以"按了跳但什么都没发生"
+的形式炸掉，而且不会有任何报错。全仓目前只有 `Grab`(0.45) 与 `WallRun`(0.15) 是非零。

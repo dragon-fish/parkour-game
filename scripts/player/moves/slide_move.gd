@@ -10,8 +10,14 @@ extends Move
 # Deliberately absent: Slide never transitions into a wall run. The spec
 # forbids it -- chaining a slide straight into a wall run lets the player
 # build speed in a loop that never has to give any back. Reaching a wall from
-# a slide has to go through Walking or Falling first, which costs the slide's
-# spent speed to friction along the way. Was pinned by
+# a slide has to go through Walking or Jump first.
+#
+# NOTE that Jump is not a toll the way Walking is: a slide jump keeps its
+# horizontal speed all the way to the wall, so a downhill slide into a wall
+# kick is now a lossless chain. That follows from the original -- Jump is a
+# launch state and every launch state holds bCheckForWallClimb -- and is the
+# price of the fidelity, not an oversight. Recorded in docs/feel-backlog.md
+# in case play-testing says the loop needs a brake after all. Was pinned by
 # tests/legacy/test_slide_state.gd's
 # test_slide_can_only_reach_ground_air_or_crouch and
 # test_slide_returns_only_ground_air_or_keep -- do not add a return into that

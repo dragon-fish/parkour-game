@@ -53,5 +53,7 @@ func _init() -> void:
 	# then played out from that jumped-to position. Forcing the head down is
 	# camera_pitch_offset's job and only its job; clamping here as well was
 	# the same intent expressed twice, and the two disagreed.
-	min_look_constraint = Vector3(-PI, -0.2, 0.0)
-	max_look_constraint = Vector3(PI, 0.2, 0.0)
+	# z is roll, which apply_look() never reads; +-PI is MoveConfig's own
+	# neutral, and writing 0.0 here would read as "roll is pinned".
+	min_look_constraint = Vector3(-PI, -0.2, -PI)
+	max_look_constraint = Vector3(PI, 0.2, PI)
