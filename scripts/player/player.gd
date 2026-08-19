@@ -74,7 +74,6 @@ func set_grounded(value: bool) -> void:
 		# down, and the accumulated height is gone before stepping off again.
 		if fall_tracker != null:
 			fall_tracker.reset(global_position.y)
-		uncontrolled_fall = false
 
 ## Clears `grounded` WITHOUT counting as a declaration. Called only by
 ## MoveManager, as the fail-safe half of the invariant above: a move that
@@ -110,12 +109,6 @@ enum { TIER_FREE, TIER_SOFT, TIER_ROLLABLE, TIER_HARD }
 ## Accumulated fall height since the last ground contact. Built in setup().
 var fall_tracker: FallTracker
 
-## True once this descent passed pawn.falling_uncontrolled_height. A ONE-WAY
-## door: regaining height mid-air does not hand control back, because the
-## original treats the outcome as already decided (03 §3.1). Cleared only by
-## ground contact.
-var uncontrolled_fall: bool = false
-
 ## Emitted on the touchdown that ends an uncontrolled fall. The fall itself is
 ## already lost by then -- this only tells whoever owns respawning that the
 ## body has finished arriving.
@@ -142,18 +135,6 @@ func landing_tier(fall_height: float) -> int:
 	if fall_height < pawn.hard_landing_height:
 		return TIER_ROLLABLE
 	return TIER_HARD
-
-## Latches `uncontrolled_fall` once this descent is deep enough that the
-## original would have taken control away. Called every tick while airborne.
-##
-## Deliberately latching rather than recomputing: fall_tracker reports CURRENT
-## depth, so a wall kick that regains height would otherwise quietly cancel a
-## death the original considers already settled.
-func update_uncontrolled_fall() -> void:
-	if uncontrolled_fall or fall_tracker == null:
-		return
-	if fall_tracker.fall_height >= config.pawn.falling_uncontrolled_height:
-		uncontrolled_fall = true
 
 ## Fraction of horizontal speed a landing from `fall_height` keeps.
 ##
@@ -424,7 +405,6 @@ func reset_state() -> void:
 	_coyote_timer = 0.0
 	_jump_buffer_timer = 0.0
 	_roll_buffer_timer = 0.0
-	uncontrolled_fall = false
 	if fall_tracker != null:
 		# A respawn is a ground contact for this purpose: baseline the counter
 		# to wherever the body now stands, or the first tick after the teleport
@@ -465,6 +445,7 @@ func _build_moves() -> void:
 		[Move.WALKING, WalkingMove.new(), config.walking],
 		[Move.JUMP, JumpMove.new(), config.jump],
 		[Move.FALLING, FallingMove.new(), config.falling],
+		[Move.FALL_UNCONTROLLED, FallUncontrolledMove.new(), config.fall_uncontrolled],
 		[Move.SLIDE, SlideMove.new(), config.slide],
 		[Move.CROUCH, CrouchMove.new(), config.crouch],
 		[Move.SPEED_VAULT, SpeedVaultMove.new(), config.speed_vault],

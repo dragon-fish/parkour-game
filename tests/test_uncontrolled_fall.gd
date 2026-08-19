@@ -1,75 +1,63 @@
 class_name TestUncontrolledFall
 extends TestCase
 
-# ✅ MEASURED (03 §3.1): falling past 10 m in the original does not calculate
-# landing damage -- it takes control away at the moment the line is crossed.
-# TdMove_FallingUncontrolled's ControllerState is literally PlayerDying, and
-# the owner's in-game test confirms a roll cannot save it: the blackout, the
-# flailing animation and the wind noise are the death PLAYING OUT, not a
-# warning that death is near.
-#
-# The distinction matters for feel, not bookkeeping. Scoring damage on impact
-# leaves the player with agency the whole way down; taking control on the way
-# down means the outcome is settled in the air and the player can see it coming
-# and do nothing about it.
+# I1/I2/I4 (spec §3). Uncontrolled falling is a STATE, not a flag: the original
+# gives it ControllerState = PlayerDying and strips every probe except soft
+# landing, so nothing the player does can convert it into a grab, a vault or a
+# wall run. A boolean cannot enforce that -- the probes simply keep running.
 
-func _player() -> Player:
-	var player := Player.new()
-	player.config = MovementConfig.new()
-	player.fall_tracker = FallTracker.new()
-	player.fall_tracker.reset(0.0)
-	return player
+const TestWorld = preload("res://tests/world_fixture.gd")
 
-func test_a_short_fall_leaves_the_player_in_control() -> void:
-	var player := _player()
-	player.fall_tracker.update(1.0 / 60.0, -10.0, -9.9)
-	player.update_uncontrolled_fall()
-	check(not player.uncontrolled_fall, "a 9.9 m fall took control away")
-	player.free()
+func _falling_world() -> Dictionary:
+	return TestWorld.build(tree, MovementConfig.new())
 
-func test_crossing_the_threshold_takes_control_away() -> void:
-	var player := _player()
-	player.fall_tracker.update(1.0 / 60.0, -14.0, -10.1)
-	player.update_uncontrolled_fall()
-	check(player.uncontrolled_fall, "a 10.1 m fall left the player in control")
-	player.free()
-
-func test_the_threshold_is_the_configured_one() -> void:
-	var player := _player()
-	player.config.pawn.falling_uncontrolled_height = 4.0
-	player.fall_tracker.update(1.0 / 60.0, -9.0, -4.1)
-	player.update_uncontrolled_fall()
-	check(player.uncontrolled_fall, "the check ignored the configured height")
-	player.free()
-
-func test_control_is_not_handed_back_by_climbing() -> void:
-	# One-way door. Once the state is entered the outcome is settled, so a
-	# wall kick or any other mid-air rescue that reduces the current depth
-	# must not undo it -- otherwise the player could grab their way out of a
-	# death the original considers already decided.
-	var player := _player()
-	player.fall_tracker.update(1.0 / 60.0, -14.0, -10.5)
-	player.update_uncontrolled_fall()
-	check(player.uncontrolled_fall, "test setup is wrong: never entered the state")
-	player.fall_tracker.update(1.0 / 60.0, 6.0, -2.0)
-	player.update_uncontrolled_fall()
-	check(player.uncontrolled_fall, "climbing back up handed control back")
-	player.free()
-
-func test_landing_clears_it() -> void:
-	# set_grounded() is the universal reset for fall bookkeeping; the death is
-	# consumed by whoever is listening, and the next life starts clean.
-	#
-	# Needs the tree: set_grounded() reads global_position, which errors out on
-	# a node that was never added (the other cases here are pure arithmetic and
-	# deliberately stay out of it).
-	var player := _player()
-	tree.root.add_child(player)
+func test_a_deep_fall_enters_the_uncontrolled_state() -> void:
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
 	await step(1)
-	player.fall_tracker.update(1.0 / 60.0, -14.0, -10.5)
-	player.update_uncontrolled_fall()
-	check(player.uncontrolled_fall, "test setup is wrong: never entered the state")
-	player.set_grounded(true)
-	check(not player.uncontrolled_fall, "ground contact did not clear the state")
-	player.queue_free()
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	player.global_position.y += cfg.pawn.falling_uncontrolled_height + 3.0
+	player.fall_tracker.reset(player.global_position.y)
+	await step(1)
+	for i in 240:
+		await step(1)
+		if player.move_manager.current_name == Move.FALL_UNCONTROLLED:
+			break
+	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
+		"a fall past the threshold did not enter FallUncontrolled")
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_the_uncontrolled_state_runs_no_probes() -> void:
+	# I1. The config is the enforcement point, so assert it directly: a future
+	# edit that switches one of these back on fails here rather than being
+	# discovered as "I grabbed a ledge while dying".
+	var cfg := MovementConfig.new()
+	check(not cfg.fall_uncontrolled.check_for_grab, "uncontrolled falling can grab")
+	check(not cfg.fall_uncontrolled.check_for_vault_over, "uncontrolled falling can vault")
+	check(not cfg.fall_uncontrolled.check_for_wall_climb, "uncontrolled falling can wall run")
+
+func test_it_is_a_one_way_door() -> void:
+	# I4. Regaining height mid-air must not hand control back.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	player.global_position.y += cfg.pawn.falling_uncontrolled_height + 3.0
+	player.fall_tracker.reset(player.global_position.y)
+	await step(1)
+	for i in 240:
+		await step(1)
+		if player.move_manager.current_name == Move.FALL_UNCONTROLLED:
+			break
+	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, "test setup: never entered")
+	player.velocity.y = 8.0
+	await step(5)
+	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
+		"climbing back up escaped the uncontrolled state")
+	TestWorld.teardown(world)
 	await step(1)

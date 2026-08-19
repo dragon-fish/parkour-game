@@ -72,7 +72,8 @@ func test_a_fatal_fall_survives_its_own_respawn() -> void:
 		await step(1)
 	check(player.move_manager.current_name == Move.WALKING, \
 		"walking did not survive the ticks after a respawn")
-	check(not player.uncontrolled_fall, "the death latch survived the respawn")
+	check(player.move_manager.current_name != Move.FALL_UNCONTROLLED, \
+		"the respawn left the player stuck in FallUncontrolled")
 
 	TestWorld.teardown(world)
 	await step(1)

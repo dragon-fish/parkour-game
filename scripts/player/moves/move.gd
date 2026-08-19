@@ -21,6 +21,7 @@ const KEEP: StringName = &""
 
 const WALKING: StringName = &"Walking"
 const FALLING: StringName = &"Falling"
+const FALL_UNCONTROLLED: StringName = &"FallUncontrolled"
 const JUMP: StringName = &"Jump"
 const SLIDE: StringName = &"Slide"
 const CROUCH: StringName = &"Crouch"

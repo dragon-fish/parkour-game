@@ -11,17 +11,14 @@ extends Move
 ## is clamped here rather than per-state so a subclass cannot forget it and
 ## produce a body that accelerates forever.
 ##
-## Latches the uncontrolled-fall check first: a descent that has already
-## passed pawn.falling_uncontrolled_height is decided, and the rest of this
-## tick must run without the player's input (03 §3.1 -- the original hands
-## the controller to PlayerDying at the threshold rather than scoring damage
-## on impact, which is why a roll cannot save it). Every airborne state reads
-## this the same way regardless of whether it is rising or falling, exactly
-## as the original's own merged update did before this split.
+## Takes wish_dir as given -- it no longer decides whether input applies.
+## FallUncontrolledMove is the one state that has no input at all (03 §3.1 --
+## the original hands the controller to PlayerDying at the threshold rather
+## than scoring damage on impact, which is why a roll cannot save it), and it
+## expresses that by always calling this with Vector3.ZERO rather than by this
+## shared function reading a flag on Player.
 func apply_air_physics(delta: float, wish_dir: Vector3) -> void:
-	player.update_uncontrolled_fall()
-	var effective_wish: Vector3 = Vector3.ZERO if player.uncontrolled_fall else wish_dir
-	player.air_accelerate(effective_wish, delta)
+	player.air_accelerate(wish_dir, delta)
 	player.velocity.y -= config.pawn.gravity * delta
 	player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
 
@@ -157,17 +154,15 @@ func settle_landing(delta: float) -> StringName:
 		and player.consume_roll()
 	player.last_landing_rolled = rolled
 	player.last_landing_fall_height = fall_height
-	# Read before set_grounded() clears it, same ordering reason as
-	# fall_height above.
-	var fatal: bool = player.uncontrolled_fall
 	player.set_grounded(true)
 	player.notify_landed(impact_speed)
-	if fatal:
-		player.died_from_fall.emit()
 	_apply_landing_cost(fall_height, rolled)
 	return landing_destination(fall_height, rolled)
 
 ## Where a landing from this state leads. Overridden by subclasses.
+## FallUncontrolledMove overrides this to emit died_from_fall instead of
+## returning WALKING directly -- the death is now a property of WHICH STATE
+## landed, not of a flag read here.
 func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
 	return WALKING
 
