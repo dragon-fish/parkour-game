@@ -422,6 +422,13 @@ func reset_state() -> void:
 	_coyote_timer = 0.0
 	_jump_buffer_timer = 0.0
 	_roll_buffer_timer = 0.0
+	# Mirrors CameraRig.reset_state()'s own end_cinematic() call. A manual
+	# reset (Arena's R key) can land mid-death-cutscene, and it bypasses
+	# DeathSequence entirely -- so the unlock that sequence would eventually
+	# have run never reaches a body that has already respawned. Without this,
+	# the R key hands back a player who can see but cannot move until the
+	# cutscene's timer happens to run out.
+	_input_locked = false
 	if fall_tracker != null:
 		# A respawn is a ground contact for this purpose: baseline the counter
 		# to wherever the body now stands, or the first tick after the teleport

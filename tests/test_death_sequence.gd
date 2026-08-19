@@ -79,3 +79,35 @@ func test_it_locks_player_input_while_it_plays() -> void:
 	seq.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_a_manual_reset_mid_cutscene_does_not_leave_input_locked() -> void:
+	# Arena's R key calls reset_player() directly, bypassing DeathSequence --
+	# so the unlock at the end of the cutscene never reaches a body that has
+	# already respawned. CameraRig.reset_state() has always covered this case
+	# (it calls end_cinematic()); this pins the player's half of it.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+
+	var seq := DeathSequence.new()
+	tree.root.add_child(seq)
+	await step(1)
+	seq.play(player)
+	await step(5)
+
+	# The reset happens here, well before the cutscene's timer runs out.
+	player.reset_state()
+
+	var input: ScriptedInputSource = world["input"]
+	input.state.move = Vector2(0.0, 1.0)
+	var start_position: Vector3 = player.global_position
+	await step(15)
+	check(not is_equal_approx(player.global_position.z, start_position.z), \
+		"a manual reset during the cutscene left the player unable to move")
+
+	seq.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
