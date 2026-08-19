@@ -78,11 +78,21 @@ stateDiagram-v2
 |---|---|---|
 | **I1** | `FallingUncontrolled` 期间不接受任何检查（抓边/翻越/墙跑全部关闭），唯一出口是落地 | CDO 仅有 `bCheckForSoftLanding`，无 Grab/Vault |
 | **I2** | 不存在**起跳类 → FallingUncontrolled** | 6 个持有 `bCheckExitToUncontrolledFalling` 的状态里没有任何起跳类；必须先失去主动权 |
-| **I3** | 不存在 `Falling → Jump` | 单行线：速度掉破阈值不可逆 |
+| **I3** | 不存在 `Falling → Jump`，**除了**离地后 `coyote_time` 内的那一次 | 单行线：速度掉破阈值不可逆。土狼时间是标注过的项目自定 QoL，原作无对应物（见 `pawn_config.gd`），例外见下 |
 | **I4** | 不存在 `FallingUncontrolled → Falling` | 同上，且 ControllerState 已是 PlayerDying |
 | **I5** | 空中进入 `WallRun` 只能来自**主动起跳类**状态 | 7 个持有 `bCheckForWallClimb` 的状态全是起跳类；`Falling` 不在其中（见 [11 §11.2](../../mirrors-edge-deep-research/11-状态机全图.md)） |
 | **I6** | 死亡**不产生新 Move**；`FallingUncontrolled` 落地即离开 Move 层 | `PlayerDying` 全库仅此一处，落地后无 Move 承接 |
 | **I7** | `Landing` 期间不接受任何移动/转向输入 | 硬直的定义；时长 ✅ 实测 **2.00 s** |
+
+### I3 的那个例外
+
+`coyote_time`（0.12 s）让玩家走出边缘后仍能起跳一次，实现上表现为 `FallingMove` 开头的
+`consume_jump()`——这**是**一条 `Falling → Jump` 边。它不违背原作的单行线本意：计时器只在
+`grounded` 时续，而一次真正掉破 `EnterToFallingZSpeed` 的下坠早就把它耗尽了，所以那条不可逆
+的边依然不存在。保留它是手感取舍，不是疏漏。
+
+（更贴近原作的写法是让 `WalkingMove` 自己持有土狼窗口并直接返回 `Jump`，代价是转移的可观测
+时刻挪动一两 tick。押后。）
 
 ### I2 的意义（容易写错的一条）
 

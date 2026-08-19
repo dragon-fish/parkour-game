@@ -133,3 +133,28 @@ Task 12 会给出两端梯度下的实际横越距离，据此可以重新设计
 按 spec 落地的确证值 `0.707`（45°）没有任何代码读取——`Probes.ledge_query()` 判断边缘顶面能否站立时用的是 `pawn.walkable_floor_z`（0.71），两者相差不到三分之一度。
 
 实现者拒绝为了「让字段用上」而制造第二个含义相同的阈值，这是对的。真要处理，正确的方向是**二选一**：要么让 `ledge_query()` 改读 `min_ledge_z_normal`（承认抓边与走路的可站立判据在原版里本就是两个字段），要么删掉它并在 spec 里注明其含义已被 `walkable_floor_z` 吸收。不要两个都留着各管一半。
+
+---
+
+## 8. 空中状态链留下的三处押后（最终评审发现）
+
+**10 m 死亡线有约 0.23 m 的软边。** `settle_landing()` 会多跑一次 `fall_tracker.update()`，
+让**硬着陆**阈值量在真正的触地位置上；失控判定没享受到这份修正，读的是 tick 起始位置。
+于是一次 10.00–10.23 m、且越线与触地发生在同一 tick 的坠落，会被判成硬着陆而不是摔死。
+真要抹平，就在 `settle_landing()` 里 `move_and_slide()` 之后、选目的地之前再测一次高度。
+
+**抓边会保留累计落差。** `GrabMove.enter()` 声明 `grounded == false` 且不重设计数器，
+所以在下坠 9 m 处抓住边缘、再掉 1.2 m，就跨过 10 m 线摔死。这与原作的
+`SZ = 上一次起跳高度` 模型一致，且改动前就是这样；只是现在后果更硬——控制权在半空就被剥夺，
+而不只是落地时结算。想让"抓一把"算作自救，就在 `GrabMove.enter()` 里重设 `fall_tracker`。
+
+**`test_death_to_respawn.gd` 依赖 `Arena._resetting_physics` 私有字段做探针。**
+`Arena` 目前没有任何"重生完成"的公开信号可用，所以这是当下唯一可行的写法。
+加一个 `signal respawned` 就能换掉它。不紧急——GDScript 的成员检查会让重构时报错，不会静默失效。
+
+## 9. 更贴近原作的土狼时间写法（不变量 I3 的例外）
+
+`coyote_time` 的实现是 `FallingMove` 开头的 `consume_jump()`，即一条真实的 `Falling → Jump` 边。
+spec 已把 I3 改写成带例外的表述。更贴近原作的做法是让 `WalkingMove` 自己持有土狼窗口、
+直接返回 `Jump`，这样 `FallingMove` 身上完全没有起跳代码。代价是转移的可观测时刻挪动一两 tick，
+且下坡上的土狼跳会从 `Walking → Falling → Jump` 变成 `Walking → Jump`。
