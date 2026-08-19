@@ -9,10 +9,58 @@ extends AirborneMove
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# No wish direction: the body falls, the player watches.
 	apply_air_physics(delta, Vector3.ZERO)
+	# After the physics, so the effects read THIS tick's own speed rather than
+	# the speed the tick started with.
+	_drive_screen_effects()
 	# No probe_transition() call at all -- the config forbids every probe, and
 	# not calling it makes that structural rather than a matter of trusting
 	# three booleans.
 	return settle_landing(delta)
+
+## The one thing that tells the player they have already lost, while there is
+## still a fall left to watch. Driven by DOWNWARD SPEED, never by elapsed time
+## (spec §6): scraping over the 10 m line and dropping 40 m must not look the
+## same, and speed already carries that difference for free -- ~17.9 m/s at
+## the threshold against ~35.8 m/s from 40 m, at this project's measured
+## gravity.
+##
+## ⚠️ THE WHOLE MAPPING IS PROJECT-DEFINED. Nothing in the original describes a
+## screen effect during a fall (see FallUncontrolledConfig.blur_scale's own
+## note). Normalised against terminal_velocity so it is bounded by
+## construction and has no ceiling of its own to keep in step with; terminal
+## (60 m/s, a ~112 m drop) is far past anything this arena can produce, which
+## is deliberate -- the point is a GRADIENT across the falls that actually
+## happen, not a wall that saturates a few metres past the line.
+##
+## screen_effects may be null (a hand-built player, some headless tests), so
+## it is guarded the same way every other sink on Player is.
+func _drive_screen_effects() -> void:
+	if player.screen_effects == null:
+		return
+	var intensity: float = clampf(-player.velocity.y \
+		/ maxf(config.pawn.terminal_velocity, 0.001), 0.0, 1.0)
+	player.screen_effects.set_desaturation(intensity)
+	player.screen_effects.set_blur(intensity * config.fall_uncontrolled.blur_scale)
+
+## Clears exactly what this move set and nothing else, the same way
+## LandingMove.exit() does with its own tint.
+##
+## ORDER, against the one thing that runs after this in the normal case:
+## settle_landing() -> landing_destination() emits died_from_fall, MoveManager
+## then calls this exit() SYNCHRONOUSLY on the same tick, and only after that
+## does the deferred handler start DeathSequence, which sets desaturation to
+## 1.0. The cutscene's hard cut is therefore written last and wins, which is
+## the intended look (that cut is deliberate -- see DeathSequence). The two do
+## not fight.
+##
+## Clearing here is still what matters for every OTHER way out of this state:
+## a respawn restarting the move manager mid-fall exits this move without any
+## cutscene following it, and without this the screen would stay grey and
+## blurred into the next life.
+func exit() -> void:
+	if player.screen_effects != null:
+		player.screen_effects.set_desaturation(0.0)
+		player.screen_effects.set_blur(0.0)
 
 func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
 	player.died_from_fall.emit()

@@ -61,3 +61,71 @@ func test_it_is_a_one_way_door() -> void:
 		"climbing back up escaped the uncontrolled state")
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_the_screen_shows_the_fall_and_shows_how_bad_it_is() -> void:
+	# spec §6. The uncontrolled fall used to touch screen_effects not at all:
+	# crossing the 10 m line looked exactly like a fall you could still walk
+	# away from, and the screen only went grey on impact, at which point there
+	# was nothing left to tell the player. Half of spec §4's deviation 3 ("the
+	# player cannot see what happened") was still open.
+	#
+	# The reading is by SPEED, not by elapsed time, which is what makes a 40 m
+	# drop look worse than one that barely cleared the line -- so this asserts
+	# the RELATIONSHIP (faster is stronger), not the particular curve.
+	#
+	# Verified to go red both ways: with _drive_screen_effects() removed the
+	# first check below fails, and with the clearing exit() removed the last
+	# two do.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	check(player.screen_effects != null, \
+		"test setup is wrong: this player has no ScreenEffects to drive")
+
+	# Lifted far higher than the threshold needs, so the readings below are all
+	# taken with plenty of fall still left rather than racing the ground.
+	player.global_position.y += cfg.pawn.falling_uncontrolled_height + 60.0
+	player.fall_tracker.reset(player.global_position.y)
+	await step(1)
+	for i in 240:
+		await step(1)
+		if player.move_manager.current_name == Move.FALL_UNCONTROLLED:
+			break
+	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
+		"test setup is wrong: the staged fall never entered FallUncontrolled")
+
+	# Roughly the speed a fall reaches at the 10 m line.
+	player.velocity.y = -18.0
+	await step(1)
+	var near_the_line: float = player.screen_effects.desaturation
+	var near_the_line_blur: float = player.screen_effects.blur
+	check_greater(near_the_line, 0.0, \
+		"losing control showed nothing on screen at all")
+
+	# Roughly the speed a 40 m drop reaches.
+	player.velocity.y = -36.0
+	await step(1)
+	check_greater(player.screen_effects.desaturation, near_the_line, \
+		"a much faster fall did not desaturate any harder")
+	check_greater(player.screen_effects.blur, near_the_line_blur, \
+		"a much faster fall did not blur any harder")
+
+	# Ride it into the ground. Nothing here listens for died_from_fall (that is
+	# Arena's job, and there is no Arena in this world), so whatever the state
+	# leaves behind on its way out is what stays on screen.
+	for i in 600:
+		await step(1)
+		if player.move_manager.current_name != Move.FALL_UNCONTROLLED:
+			break
+	check(player.move_manager.current_name != Move.FALL_UNCONTROLLED, \
+		"test setup is wrong: the fall never reached the ground")
+	check_approx(player.screen_effects.desaturation, 0.0, 0.0001, \
+		"the fall left the screen desaturated after it ended")
+	check_approx(player.screen_effects.blur, 0.0, 0.0001, \
+		"the fall left the screen blurred after it ended")
+
+	TestWorld.teardown(world)
+	await step(1)

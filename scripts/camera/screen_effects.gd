@@ -56,12 +56,6 @@ func set_blur(amount: float) -> void:
 	blur = clampf(amount, 0.0, 1.0)
 	_push()
 
-func clear() -> void:
-	tint_amount = 0.0
-	desaturation = 0.0
-	blur = 0.0
-	_push()
-
 func _push() -> void:
 	if _material == null:
 		return
