@@ -234,9 +234,20 @@ extends Resource
 ## real behaviour is binary and needs no ratio, so keeping the knob would mean
 ## shipping a slider that changes nothing. Its meaning in the original is still
 ## unknown; if it is ever identified, reintroduce it then.
+## The boundary between the two airborne states that own a descent: Jump hands
+## off to Falling on the first tick velocity.y drops to or below this (see
+## JumpMove). That is the whole of it, and it decides more than it looks like
+## -- Jump carries check_for_wall_climb and Falling does not, so this is the
+## speed at which a launch stops being one and a wall stops being reachable;
+## and only Falling may hand off to FallingUncontrolled, so it is also where a
+## descent first becomes able to turn fatal (invariant I2).
+##
+## NOT a fall-counter arming threshold, which is what this used to say.
+## FallTracker measures from where the feet LEFT THE GROUND and arms on
+## nothing at all -- see its own header for the measurement that ruled the
+## armed-then-track-the-apex model out.
+##
 ## Source: 03 §3.1 `TdMove_Falling.EnterToFallingZSpeed = -200` uu/s. ✅
-## The downward speed at which the fall-height counter starts accruing, so
-## the first few centimetres of a step-off are not counted.
 @export var enter_to_falling_z_speed: float = -2.0
 ## Source: 03 §3.1 `TdPawn.RollTriggerTime = 1.0`. ⚠️ Read as the roll input
 ## pre-buffer window. Extremely forgiving next to the 0.1-0.2 s typical of
