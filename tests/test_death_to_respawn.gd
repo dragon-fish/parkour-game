@@ -89,3 +89,51 @@ func test_a_fatal_fall_plays_the_death_sequence_before_respawning() -> void:
 
 	arena.queue_free()
 	await step(1)
+
+func test_a_manual_reset_mid_cutscene_is_not_undone_when_the_cutscene_would_have_ended() -> void:
+	# C REGRESSION, and the Arena half of it -- tests/test_death_sequence.gd
+	# pins DeathSequence.stop() itself; this pins that reset_player() actually
+	# calls it. Without that call the cutscene runs on regardless, fires
+	# `finished` at total_duration(), and Arena's own wiring turns that into a
+	# SECOND respawn seconds after the player pressed R and got moving again.
+	#
+	# Observed through _resetting_physics for the same reason this file's
+	# header gives: it only turns true as a side effect of reset_player()
+	# actually running, so a severed or missing call shows up here rather than
+	# hiding behind a signal that fires whether or not anyone acts on it.
+	#
+	# Verified to go red by removing the stop() call from reset_player().
+	var arena: Node3D = ArenaBuilder.new().build()
+	tree.root.add_child(arena)
+	await step(1)
+	await step(30)
+
+	var player: Player = arena.player
+	check(player.move_manager.current_name == Move.WALKING, \
+		"test setup is wrong: never settled onto the floor after spawning")
+
+	arena._death_sequence.play(player)
+	await step(5)
+	check(arena._death_sequence._playing, \
+		"test setup is wrong: the death sequence is not running")
+
+	# Exactly what the R key does (Arena._unhandled_input calls this directly).
+	arena.reset_player()
+	await step(3)
+	check(not arena._death_sequence._playing, \
+		"a manual reset left the death sequence running")
+	check(not arena._resetting_physics, \
+		"test setup is wrong: the manual reset is still in flight")
+
+	# Run well past the point the cancelled sequence would have completed.
+	var ticks: int = int(arena._death_sequence.total_duration() * Engine.physics_ticks_per_second) + 40
+	var respawned_again := false
+	for i in ticks:
+		await step(1)
+		if arena._resetting_physics:
+			respawned_again = true
+	check(not respawned_again, \
+		"the cancelled cutscene respawned the player anyway, long after the manual reset")
+
+	arena.queue_free()
+	await step(1)

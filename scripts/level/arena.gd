@@ -92,6 +92,17 @@ func _physics_process(_delta: float) -> void:
 ## already at spawn immediately after calling this — await a physics_frame
 ## first if the result needs to be observed.
 func reset_player() -> void:
+	# FIRST, before anything else here. Every route into this function is a
+	# respawn happening NOW -- the R key, falling out of the level, and the
+	# death sequence's own `finished` -- and a sequence still running would go
+	# on to fire `finished` at total_duration() and respawn the player a second
+	# time, seconds later, on a body that has long since got on with its life.
+	# stop() is a no-op on a sequence that is not playing, which is what makes
+	# the finished -> reset_player -> stop() route safe rather than recursive.
+	# Null-guarded because reset_player() is also reachable before _ready()
+	# has added the sequence (a test driving this node by hand).
+	if _death_sequence != null:
+		_death_sequence.stop()
 	player.velocity = Vector3.ZERO
 	player.global_position = spawn_point.global_position
 	player.rotation = Vector3.ZERO

@@ -47,14 +47,39 @@ func _physics_process(delta: float) -> void:
 		var pose := _pose_at(_elapsed)
 		_player.camera_rig.set_cinematic_pose(pose[0], pose[1])
 	if _elapsed >= total_duration():
-		_playing = false
-		if _player != null:
-			if _player.camera_rig != null:
-				_player.camera_rig.end_cinematic()
-			if _player.screen_effects != null:
-				_player.screen_effects.set_desaturation(0.0)
-			_player.unlock_input()
+		_release_player()
 		finished.emit()
+
+## Cancels a sequence in progress. The level calls this whenever it respawns by
+## some other route (the manual reset key), because a sequence left running
+## would fire `finished` -- and therefore a second respawn -- long after the
+## player got on with their life.
+##
+## Deliberately does NOT emit `finished`: this is a cancellation, not a
+## completion, and Arena wires `finished` straight to reset_player(), which is
+## the very thing being cancelled. Safe to call at any time -- on a sequence
+## that never started, or from inside the `finished` handler itself (by then
+## _release_player() has already cleared _playing, so this returns immediately
+## and the finished -> reset_player -> stop chain cannot recurse).
+func stop() -> void:
+	if not _playing:
+		return
+	_release_player()
+
+## Everything a sequence owes the player on its way out, shared by the normal
+## end above and by stop() so the two cannot drift apart: the camera comes back
+## from cinematic, the screen loses the death desaturation, and the input gate
+## opens. Whether `finished` fires is the CALLER's business, and is the only
+## thing that separates finishing from being cancelled.
+func _release_player() -> void:
+	_playing = false
+	if _player == null:
+		return
+	if _player.camera_rig != null:
+		_player.camera_rig.end_cinematic()
+	if _player.screen_effects != null:
+		_player.screen_effects.set_desaturation(0.0)
+	_player.unlock_input()
 
 ## Local camera offset and roll at time t. Returns [Vector3, float].
 func _pose_at(t: float) -> Array:

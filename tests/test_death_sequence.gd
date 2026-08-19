@@ -111,3 +111,58 @@ func test_a_manual_reset_mid_cutscene_does_not_leave_input_locked() -> void:
 	seq.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_stopping_a_sequence_cancels_it_instead_of_finishing_it() -> void:
+	# C REGRESSION. Arena's R key respawns directly and nothing used to tell
+	# the sequence about it, so it kept running and fired `finished` at
+	# total_duration() -- which Arena wires straight to reset_player(). Press R
+	# 0.3 s into the collapse and ~1.1 s later the player was teleported back
+	# to spawn, velocity zeroed, move manager restarted, in the middle of a
+	# life they had already begun. The screen stayed grey for that whole window
+	# too, because set_desaturation(0.0) also only ran at total_duration().
+	#
+	# `finished` must NOT fire on a stop(): it means "the collapse played out",
+	# and the one listener in the game respawns on it.
+	#
+	# Verified to go red by making stop() leave _playing set -- `finished` then
+	# fires on schedule and the last check below catches it.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+
+	var seq := DeathSequence.new()
+	tree.root.add_child(seq)
+	await step(1)
+	var done := {"hit": false}
+	seq.finished.connect(func() -> void: done["hit"] = true)
+	seq.play(player)
+	await step(5)
+	check_approx(player.screen_effects.desaturation, 1.0, 0.0001, \
+		"test setup is wrong: the cutscene did not desaturate the screen")
+
+	seq.stop()
+	check_approx(player.screen_effects.desaturation, 0.0, 0.0001, \
+		"a cancelled cutscene left the screen desaturated")
+
+	# The input gate is checked the way this file already checks it: by driving
+	# the body with held input, since Player exposes no reader for it.
+	var input: ScriptedInputSource = world["input"]
+	input.state.move = Vector2(0.0, 1.0)
+	var start_position: Vector3 = player.global_position
+	await step(15)
+	check(not is_equal_approx(player.global_position.z, start_position.z), \
+		"a cancelled cutscene left the player unable to move")
+
+	# Well past the point the sequence would have completed on its own.
+	var ticks: int = int(seq.total_duration() * Engine.physics_ticks_per_second) + 30
+	for i in ticks:
+		await step(1)
+	check(not done["hit"], \
+		"a cancelled cutscene still reported itself finished, which respawns the player")
+
+	seq.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
