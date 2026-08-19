@@ -58,7 +58,23 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# test is ARCHIVED by Task 1 and NOT in the running suite, so nothing
 	# enforces this today; restore the pin when the behavioural suite is
 	# rewritten.
-	if player.probes != null and player.horizontal_speed() >= config.wall_run.wall_running_min_speed:
+	# ✅ MEASURED (04 §4.1): a wall run can only start from the ORIGINAL's Jump
+	# state, never from its Falling state -- all 15 measured airborne entries
+	# came from Jump. The two are separated by EnterToFallingZSpeed = -200, i.e.
+	# purely by how fast you are already dropping.
+	#
+	# This project folds both of the original's states into one FALLING, so the
+	# distinction has to be re-expressed as the speed test it already is.
+	# Without it, any descent that so much as brushes a building converts into a
+	# wall run -- a 40 m drop becoming Spider-Man rather than a death.
+	#
+	# Measured entry window: -104 .. +510 uu/s of vertical speed, comfortably
+	# inside this threshold (-2.0 m/s) at the bottom end. The TOP end is
+	# deliberately unbounded: rising fast is fine to attach from, and
+	# WallRunningVelocityStartLimit = 300 turned out NOT to be a ceiling on it.
+	var still_in_jump: bool = player.velocity.y > config.pawn.enter_to_falling_z_speed
+	if still_in_jump and player.probes != null \
+			and player.horizontal_speed() >= config.wall_run.wall_running_min_speed:
 		var heading: Vector3 = Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()
 		var wall: Dictionary = player.probes.wall_query(heading)
 		# can_enter() replaces the old note_wall_detach()/can_attach_wall()

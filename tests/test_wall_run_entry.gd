@@ -173,3 +173,46 @@ func test_wall_gravity_is_asymmetric_and_sets_the_duration() -> void:
 	var to_stop: float = absf(cfg.wall_run.wall_running_velocity_stop_limit) / descent
 	check_approx(to_stop, 1.0, 0.15, \
 		"a wall run no longer ends about a second after its apex (%f s)" % to_stop)
+
+func test_a_long_drop_cannot_convert_into_a_wall_run() -> void:
+	# ✅ MEASURED (04 §4.1): every airborne wall-run entry in the original came
+	# from its Jump state, none from Falling, and the two differ only by
+	# EnterToFallingZSpeed. Without that gate any descent that brushes a
+	# building becomes a wall run -- a 40 m fall turning into Spider-Man
+	# instead of a death.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(20.0, 40.0, 1.0)
+	shape.shape = box
+	wall.add_child(shape)
+	tree.root.add_child(wall)
+	wall.global_position = Vector3(0.95, 20.0, 0.0)
+	wall.rotation = Vector3(0.0, PI * 0.5, 0.0)
+
+	# Airborne, moving fast enough along the wall to satisfy every other gate,
+	# but already dropping far faster than the Jump/Falling boundary.
+	player.global_position.y += 3.0
+	await step(1)
+	player.velocity = Vector3(0.0, cfg.pawn.enter_to_falling_z_speed * 5.0, -7.0)
+	await step(1)
+	check(player.move_manager.current_name != Move.WALL_RUN, \
+		"a fast descent attached to the wall")
+
+	# The same approach while still rising DOES attach, so the gate is the
+	# descent speed and not something else about the fixture.
+	player.velocity = Vector3(0.0, 2.0, -7.0)
+	await step(1)
+	check(player.move_manager.current_name == Move.WALL_RUN, \
+		"a rising approach was refused, so the guard is too strict")
+
+	wall.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
