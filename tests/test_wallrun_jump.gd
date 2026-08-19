@@ -135,10 +135,16 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 	wall.global_position = Vector3(0.95, 3.0, 0.0)
 	wall.rotation = Vector3(0.0, PI * 0.5, 0.0)
 
-	player.global_position.y += 0.5
+	# A real jump, not an up-teleport: wall-run entry is now gated on
+	# check_for_wall_climb, which only JumpConfig carries (Task 1:
+	# airborne-state-chain -- FallingConfig deliberately does not). An
+	# up-teleport lands the player in FALLING, which can no longer attach to
+	# a wall no matter what velocity.y says, so this has to be a genuine
+	# take-off, same as tests/test_wall_run_entry.gd's own fixture.
+	world["input"].press_jump()
 	await step(1)
-	check(player.move_manager.current_name == Move.FALLING, \
-		"test setup is wrong: the up-teleport did not send the player airborne")
+	check(player.move_manager.current_name == Move.JUMP, \
+		"test setup is wrong: the jump did not send the player airborne")
 
 	# Heading parallel to the wall's face -- a STRAFE-style approach, same as
 	# _measure_wall_ticks()'s own entry.

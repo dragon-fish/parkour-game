@@ -463,6 +463,7 @@ func _build_moves() -> void:
 	# seven near-identical blocks this used to be, so a new move is one row.
 	var table := [
 		[Move.WALKING, WalkingMove.new(), config.walking],
+		[Move.JUMP, JumpMove.new(), config.jump],
 		[Move.FALLING, FallingMove.new(), config.falling],
 		[Move.SLIDE, SlideMove.new(), config.slide],
 		[Move.CROUCH, CrouchMove.new(), config.crouch],

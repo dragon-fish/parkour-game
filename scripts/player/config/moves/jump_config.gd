@@ -9,11 +9,11 @@ extends MoveConfig
 func _init() -> void:
 	# Source: 05 §5.7 ③'s table -- `TdMove_Jump` (rising) has
 	# `bCheckForGrab` / `bCheckForVaultOver` / `bCheckForWallClimb` all set.
-	# ✅ for Grab/VaultOver (this project's FallingMove reads both while
-	# rising, via current_config() picking this config over FallingConfig's).
-	# check_for_wall_climb is recorded for parity with the source table only
-	# -- this project has no wall-climb move (wall running is a different,
-	# already-implemented mechanic), so nothing reads it.
+	# ✅ for all three: JumpMove is a real state now (AirborneMove's own
+	# subclass), and AirborneMove.probe_transition() reads check_for_wall_climb
+	# directly to gate WALL_RUN entry -- this is the ONLY thing that
+	# distinguishes JumpConfig from FallingConfig (see FallingConfig's own
+	# note on that absence).
 	check_for_grab = true
 	check_for_vault_over = true
 	check_for_wall_climb = true

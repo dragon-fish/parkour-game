@@ -118,13 +118,13 @@ func test_energy_survives_a_jump_intact() -> void:
 
 	input.press_jump()
 	await step(1)
-	check(player.move_manager.current_name == Move.FALLING, "the jump did not leave the ground")
+	check(player.move_manager.current_name == Move.JUMP, "the jump did not leave the ground")
 
 	var saw_airborne := false
 	var last_airborne_energy := banked
 	for i in 200:
 		await step(1)
-		if player.move_manager.current_name != Move.FALLING:
+		if player.move_manager.current_name == Move.WALKING:
 			break
 		saw_airborne = true
 		check_approx(player.speed_energy.energy, banked, 0.0001, "energy moved while airborne")
@@ -142,6 +142,11 @@ func test_energy_survives_a_coyote_jump_intact() -> void:
 	# here too, so the newly-wired site does not stay untested the way it
 	# stayed unwired -- and opportunistically checks that the boost actually
 	# lands, since that is exactly the code this test exists to exercise.
+	#
+	# The coyote branch now hands off to JUMP the same tick it fires (Task 1:
+	# airborne-state-chain), the same way WalkingMove's own jump branch always
+	# has -- neither applies this tick's gravity, since that belongs to
+	# JumpMove's own first physics_update() one tick later.
 	var world := _world()
 	await step(1)
 	TestWorld.place(world)
@@ -168,7 +173,9 @@ func test_energy_survives_a_coyote_jump_intact() -> void:
 	# consume_jump() branch fires, not WalkingMove's.
 	input.press_jump()
 	await step(1)
-	var expected_vy: float = player.config.pawn.base_jump_z - player.config.pawn.gravity / 60.0
+	check(player.move_manager.current_name == Move.JUMP, \
+		"the coyote-time jump did not hand off to Jump")
+	var expected_vy: float = player.config.pawn.base_jump_z
 	check_approx(player.velocity.y, expected_vy, 0.05, \
 		"velocity.y does not show a fresh coyote-jump impulse -- did the branch actually fire?")
 	check_greater(player.horizontal_speed(), speed_before_takeoff, \
@@ -178,7 +185,7 @@ func test_energy_survives_a_coyote_jump_intact() -> void:
 	var last_airborne_energy := banked
 	for i in 200:
 		await step(1)
-		if player.move_manager.current_name != Move.FALLING:
+		if player.move_manager.current_name == Move.WALKING:
 			break
 		saw_airborne = true
 		check_approx(player.speed_energy.energy, banked, 0.0001, "energy moved while airborne after a coyote jump")

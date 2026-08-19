@@ -23,7 +23,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.velocity.z += facing.z * config.pawn.jump_add_xy
 		player.move_and_slide()
 		player.set_grounded(player.is_on_floor())
-		return FALLING
+		return JUMP
 
 	# Slide and Vault entry are both gated on player.grounded being TRUE —
 	# i.e. already verified by a move_and_slide() this tick or a prior one —
@@ -54,7 +54,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# horizontal speed, accumulated fall height.
 		#   airborne, speed >= 1.0        -> Coil          (OUT OF SCOPE, no such move)
 		#   airborne, speed <  1.0        -> nothing
-		#   touchdown, fall >= 2.0 m      -> Roll          (FallingMove, above)
+		#   touchdown, fall >= 2.0 m      -> Roll          (AirborneMove.settle_landing(), shared by Jump/Falling)
 		#   touchdown, fall <  2.0 m, moving -> Slide      (here)
 		#   grounded, not moving          -> Crouch
 		# There are no chords, no hold-versus-tap, no direction modifiers.

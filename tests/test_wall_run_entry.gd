@@ -94,6 +94,7 @@ func test_a_wall_run_ends_when_vertical_speed_sinks_past_the_stop_limit() -> voi
 ## reach the same attached state without duplicating the settle/lift dance.
 func _attach_to_wall(world: Dictionary, entry_speed: float) -> Player:
 	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
 	await step(1)
 	TestWorld.place(world)
 	# Settling takes much longer than the couple of ticks it looks like it
@@ -111,10 +112,16 @@ func _attach_to_wall(world: Dictionary, entry_speed: float) -> Player:
 	check(player.move_manager.current_name == Move.WALKING, \
 		"test setup is wrong: player did not settle onto the floor before the drop")
 
-	player.global_position.y += 0.5
+	# A real jump, not an up-teleport: wall-run entry is now gated on
+	# check_for_wall_climb, which only JumpConfig carries (Task 1:
+	# airborne-state-chain -- FallingConfig deliberately does not, see its own
+	# note on that absence). An up-teleport lands the player in FALLING, which
+	# can no longer attach to a wall no matter what velocity.y says, so the
+	# fixture has to put the player through an actual take-off instead.
+	input.press_jump()
 	await step(1)
-	check(player.move_manager.current_name == Move.FALLING, \
-		"test setup is wrong: the up-teleport did not send the player airborne")
+	check(player.move_manager.current_name == Move.JUMP, \
+		"test setup is wrong: the jump did not send the player airborne")
 
 	# Heading is parallel to the wall's face (the wall's near face is a plane
 	# in Y/Z after the 90-degree yaw the caller applies, running along -Z is a
@@ -180,6 +187,11 @@ func test_a_long_drop_cannot_convert_into_a_wall_run() -> void:
 	# EnterToFallingZSpeed. Without that gate any descent that brushes a
 	# building becomes a wall run -- a 40 m fall turning into Spider-Man
 	# instead of a death.
+	#
+	# Task 1 (airborne-state-chain) turned that gate from a velocity check
+	# into a state one: FallingConfig no longer carries check_for_wall_climb
+	# at all, so the refusal below no longer depends on velocity.y at all --
+	# only on which state the player is in.
 	var cfg := MovementConfig.new()
 	var world := TestWorld.build(tree, cfg)
 	await step(1)
@@ -197,21 +209,32 @@ func test_a_long_drop_cannot_convert_into_a_wall_run() -> void:
 	wall.global_position = Vector3(0.95, 20.0, 0.0)
 	wall.rotation = Vector3(0.0, PI * 0.5, 0.0)
 
-	# Airborne, moving fast enough along the wall to satisfy every other gate,
-	# but already dropping far faster than the Jump/Falling boundary.
+	# Airborne in Falling, moving fast enough along the wall to satisfy every
+	# other gate, but already dropping far faster than the Jump/Falling
+	# boundary.
 	player.global_position.y += 3.0
 	await step(1)
+	check(player.move_manager.current_name == Move.FALLING, \
+		"test setup is wrong: the up-teleport did not send the player airborne")
 	player.velocity = Vector3(0.0, cfg.pawn.enter_to_falling_z_speed * 5.0, -7.0)
 	await step(1)
 	check(player.move_manager.current_name != Move.WALL_RUN, \
 		"a fast descent attached to the wall")
 
-	# The same approach while still rising DOES attach, so the gate is the
-	# descent speed and not something else about the fixture.
+	# The same approach from Jump DOES attach, so the gate is which STATE the
+	# player is in, not which way velocity.y happens to point on this
+	# particular tick -- exactly the point of moving the check off a speed
+	# guard. Forced directly into Jump rather than re-teleported and
+	# re-dropped, the same technique tests/test_fatal_fall_respawn.gd already
+	# uses for a mid-test state change: what this half of the test exercises
+	# is JumpConfig's check_for_wall_climb, not the mechanics of a fresh
+	# take-off (that path is covered by test_a_jump_starts_in_the_jump_state
+	# in tests/test_airborne_chain.gd).
+	player.move_manager.start(Move.JUMP)
 	player.velocity = Vector3(0.0, 2.0, -7.0)
 	await step(1)
 	check(player.move_manager.current_name == Move.WALL_RUN, \
-		"a rising approach was refused, so the guard is too strict")
+		"a rising approach from Jump was refused, so the guard is too strict")
 
 	wall.queue_free()
 	TestWorld.teardown(world)

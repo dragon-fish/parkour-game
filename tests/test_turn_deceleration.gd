@@ -174,17 +174,19 @@ func test_landing_after_an_airborne_turn_only_bills_the_landing_ticks_own_turn()
 	input.press_jump()
 	await step(1)
 	input.release_jump()
-	check(player.move_manager.current_name == Move.FALLING, "the jump did not leave the ground")
+	check(player.move_manager.current_name == Move.JUMP, "the jump did not leave the ground")
 
 	# Turn hard while airborne and hold it -- free per
 	# test_turning_in_the_air_is_free, but this is the state _last_wish_dir
-	# must track through to the landing tick.
+	# must track through to the landing tick. Airborne now spans both Jump
+	# and Falling (Task 1: airborne-state-chain), so "landed" means back to
+	# Walking, not merely "no longer Falling".
 	input.state.move = Vector2(-1.0, 0.0)
 	var energy_before_landing: float = player.speed_energy.energy
 	var landed := false
 	for i in 200:
 		await step(1)
-		if player.move_manager.current_name != Move.FALLING:
+		if player.move_manager.current_name == Move.WALKING:
 			landed = true
 			break
 		energy_before_landing = player.speed_energy.energy
