@@ -221,13 +221,27 @@ func test_a_long_drop_cannot_convert_into_a_wall_run() -> void:
 	check(player.move_manager.current_name != Move.WALL_RUN, \
 		"a fast descent attached to the wall")
 
-	# The same approach from Jump DOES attach, so the gate is which STATE the
-	# player is in, not which way velocity.y happens to point on this
-	# particular tick -- exactly the point of moving the check off a speed
-	# guard. Forced directly into Jump rather than re-teleported and
-	# re-dropped, the same technique tests/test_fatal_fall_respawn.gd already
-	# uses for a mid-test state change: what this half of the test exercises
-	# is JumpConfig's check_for_wall_climb, not the mechanics of a fresh
+	# The scenario that actually distinguishes the old guard from the new one
+	# is NOT "falling fast" -- still_in_jump already refused that on velocity
+	# alone, same as above. It is a player who is STILL IN FALLING but whose
+	# velocity.y has swung positive (bounced off something, cresting a
+	# shallow arc, whatever): the old velocity-only guard would have waved
+	# that through. Same rising velocity as the Jump case below, same STATE
+	# (Falling) as the descent case above -- the only thing that changes
+	# between this block and the one below is the state, which is exactly
+	# what must be shown to matter.
+	player.velocity = Vector3(0.0, 2.0, -7.0)
+	await step(1)
+	check(player.move_manager.current_name != Move.WALL_RUN, \
+		"a rising velocity while still in Falling attached to the wall")
+
+	# The same rising velocity, but from Jump, DOES attach, so the gate is
+	# which STATE the player is in, not which way velocity.y happens to
+	# point -- exactly the point of moving the check off a speed guard.
+	# Forced directly into Jump rather than re-teleported and re-dropped, the
+	# same technique tests/test_fatal_fall_respawn.gd already uses for a
+	# mid-test state change: what this half of the test exercises is
+	# JumpConfig's check_for_wall_climb, not the mechanics of a fresh
 	# take-off (that path is covered by test_a_jump_starts_in_the_jump_state
 	# in tests/test_airborne_chain.gd).
 	player.move_manager.start(Move.JUMP)

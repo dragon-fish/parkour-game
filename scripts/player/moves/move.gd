@@ -39,11 +39,15 @@ var config: MovementConfig
 ## from the matching MovementConfig field.
 var cfg: MoveConfig
 
-## The MoveConfig in force RIGHT NOW. Overridable because the original splits
-## a single airborne stretch across two move classes with different probe
-## switches -- TdMove_Jump while rising, TdMove_Falling while descending (05
-## §5.7 ③) -- and FallingMove reproduces that split without doubling the
-## machine. Everything else returns its own cfg.
+## The MoveConfig in force RIGHT NOW. Overridable so a move whose own config
+## legitimately varies mid-move (without a state transition) has somewhere to
+## express that -- FallingMove used to override this to pick between
+## config.jump and config.falling by velocity.y sign, before Jump became its
+## own real state (Task 1: airborne-state-chain) made that split unnecessary.
+## No move overrides this today; it is a retained hook, not dead code -- see
+## MoveManager._push_look_constraint()'s own note on why it is still read
+## every tick rather than only on transition. Everything else returns its
+## own cfg.
 func current_config() -> MoveConfig:
 	return cfg
 

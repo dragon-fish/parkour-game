@@ -237,7 +237,14 @@ func _check_declared_grounded() -> void:
 ## bConstrainLook, see 06 §6.2 and 04 §4.1), and it is an INPUT constraint,
 ## not an animation effect -- "the view swings to face along the wall" is this
 ## and nothing else. Pushed every tick rather than only on transition because
-## FallingMove's own constraint changes mid-move (see Move.current_config()).
+## it reads through Move.current_config(), an overridable hook for a move
+## whose own config can legitimately change mid-move without a state
+## transition -- FallingMove used to be exactly this (switching between
+## config.jump/config.falling by velocity.y sign) until Jump became its own
+## real state (Task 1: airborne-state-chain). No move overrides it today, but
+## the every-tick read is what makes the hook actually usable rather than
+## merely declared -- a future override would otherwise need to also hunt
+## down and fix a transition-only call site.
 func _push_look_constraint() -> void:
 	if _current == null or _current.player == null:
 		return
