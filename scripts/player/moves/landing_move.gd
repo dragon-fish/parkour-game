@@ -21,6 +21,16 @@ func enter(_previous: StringName) -> void:
 	# this move never calls move_and_slide() on its own first tick -- so the
 	# declaration has to be made here rather than left to physics_update().
 	player.set_grounded(true)
+	# Same reasoning as SlideMove.exit()/CrouchMove.exit(): the capsule may
+	# still be sitting at a shrunk height coming in here. The ordinary path is
+	# a jump or a fall, where the capsule was never touched and this is a
+	# no-op -- but a hard landing straight out of a Slide/Crouch that never
+	# got its standing capsule back (still pinned under a low ceiling right up
+	# to the moment of impact) must not carry that shrink silently into a
+	# 2 s lockout this move never inspects again. request_standing_capsule()
+	# is itself deferred (not forced) when there is still no headroom, so this
+	# is always safe to call unconditionally.
+	player.request_standing_capsule()
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	_elapsed += delta
