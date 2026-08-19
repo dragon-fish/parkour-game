@@ -163,7 +163,16 @@ func settle_landing(delta: float) -> StringName:
 ## FallUncontrolledMove overrides this to emit died_from_fall instead of
 ## returning WALKING directly -- the death is now a property of WHICH STATE
 ## landed, not of a flag read here.
-func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
+##
+## The default case now also judges the hard-unrolled lockout: only a landing
+## AT OR ABOVE hard_landing_height that was NOT rolled out of pays the 2 s
+## Landing penalty. Below the threshold a landing costs nothing at all (03
+## §3.1), so pausing the player there would be a penalty the original does
+## not levy; rolling is the player's own escape from a landing that otherwise
+## would have paid it.
+func landing_destination(fall_height: float, rolled: bool) -> StringName:
+	if fall_height >= config.pawn.hard_landing_height and not rolled:
+		return LANDING
 	return WALKING
 
 ## Landing bleeds horizontal speed according to which of the four confirmed

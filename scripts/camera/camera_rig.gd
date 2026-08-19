@@ -20,6 +20,10 @@ var _crouch_offset: float = 0.0
 var _step_offset: float = 0.0
 var _wall_side: int = 0
 var _roll: float = 0.0
+## An additive downward pitch owned by LandingMove. Separate from _dip because
+## dip is a spring driven by impact speed and recovers on its own schedule;
+## this one is driven explicitly by a state that knows how long it has left.
+var _landing_pitch: float = 0.0
 
 ## The active move's look clamp, in radians, or "no clamp" when
 ## _has_look_constraint is false. Driven by MoveManager every tick; consumed
@@ -71,6 +75,17 @@ func add_step_offset(amount: float) -> void:
 func set_wall_side(side: int) -> void:
 	_wall_side = side
 
+## Sets the additive downward pitch LandingMove drives every tick of its
+## lockout. `radians` is a plain magnitude (>= 0 in normal use); this rig
+## SUBTRACTS it from the ordinary look pitch in update_effects() below, so a
+## positive value tips the view down -- the same "sink and look at the
+## ground" read as the original's knee-clutch animation, expressed here as an
+## input constraint's camera instead of root motion. LandingMove is expected
+## to call this every tick with its own value ramping 0 -> peak -> 0 across
+## the lockout; this rig holds no timer of its own for it.
+func set_landing_pitch_offset(radians: float) -> void:
+	_landing_pitch = radians
+
 ## The attached body's head/neck node position, in Player's local space
 ## (Player.to_local(head_node.global_position)) -- see _head_local_position's
 ## own comment. Called by Player every tick a head is available.
@@ -119,6 +134,7 @@ func reset_state() -> void:
 	_step_offset = 0.0
 	_wall_side = 0
 	_roll = 0.0
+	_landing_pitch = 0.0
 	_has_head = false
 	_has_look_constraint = false
 	rotation.x = 0.0
@@ -273,6 +289,15 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var target_roll := deg_to_rad(_config.camera.wall_camera_roll_deg) * float(_wall_side)
 	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.camera.wall_camera_roll_speed) * delta)
 	rotation.z = _roll
+
+	# Layered on top of the ordinary look pitch, same relationship _dip has to
+	# bob above: apply_look() already wrote rotation.x = _pitch for this tick's
+	# mouse input, and this recombines it with whatever LandingMove has since
+	# asked for via set_landing_pitch_offset() (0.0 the overwhelming majority
+	# of ticks, when nothing is driving it). Recomputed every frame rather than
+	# accumulated, so the sink tracks LandingMove's own severity curve exactly
+	# instead of drifting from it.
+	rotation.x = _pitch - _landing_pitch
 
 ## Called on landing. `speed` is the downward speed at the moment of impact.
 func punch_landing(speed: float) -> void:

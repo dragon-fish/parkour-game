@@ -450,6 +450,7 @@ func _build_moves() -> void:
 		[Move.JUMP, JumpMove.new(), config.jump],
 		[Move.FALLING, FallingMove.new(), config.falling],
 		[Move.FALL_UNCONTROLLED, FallUncontrolledMove.new(), config.fall_uncontrolled],
+		[Move.LANDING, LandingMove.new(), config.landing],
 		[Move.SLIDE, SlideMove.new(), config.slide],
 		[Move.CROUCH, CrouchMove.new(), config.crouch],
 		[Move.SPEED_VAULT, SpeedVaultMove.new(), config.speed_vault],
@@ -756,8 +757,20 @@ func _physics_process(delta: float) -> void:
 		# construction, and gets any FUTURE low state's camera cue right for
 		# free the moment it calls set_capsule_height(), with no matching edit
 		# needed here.
-		var crouched := current_capsule_height() < standing_height() - 0.01
-		camera_rig.set_crouch_amount(1.0 if crouched else 0.0)
+		#
+		# LANDING is excluded from this read: it never resizes the capsule
+		# (there is nothing to crouch INTO -- the body just holds its
+		# standing height through the lockout) and drives the camera's own
+		# sink continuously from lockout severity instead of this binary
+		# in/out read -- see LandingMove.physics_update(), which already
+		# called set_crouch_amount() a few lines up this same tick
+		# (move_manager.physics_update() runs before this block). Without
+		# this exclusion that call would be silently overwritten back to
+		# 0.0 immediately after, every tick, and the camera would never
+		# visibly sink at all.
+		if move_manager.current_name != Move.LANDING:
+			var crouched := current_capsule_height() < standing_height() - 0.01
+			camera_rig.set_crouch_amount(1.0 if crouched else 0.0)
 		camera_rig.set_wall_side(wall_side)
 		# Fed as a plain local-space Vector3, not a Node3D reference —
 		# CameraRig stays decoupled from the scene-tree/body-search concerns
