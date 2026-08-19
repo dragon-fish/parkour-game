@@ -24,6 +24,8 @@ var last_landing_fall_height: float = 0.0
 ## Last polled input, exposed for the debug HUD.
 var last_input: MoveInput = MoveInput.new()
 
+var _input_locked: bool = false
+
 ## Set by WalkingMove/FallingMove the instant SpeedVaultConfig.should_commit()
 ## fires, immediately before returning SPEED_VAULT -- the committed variant a
 ## same-tick pick_variant() already matched, carried across the state
@@ -361,6 +363,17 @@ func request_standing_capsule() -> void:
 		# Set AFTER the branch above, never before: set_capsule_height() clears
 		# this flag, so ordering the two the other way round would drop it.
 		_standing_restore_pending = true
+
+## Silences input without stopping the move layer. The body keeps ticking --
+## grounded declarations and transitions all run as usual -- it just reads a
+## tick with nothing held, so WalkingMove's own friction brings it to rest.
+## Used by the death cutscene, which owns the camera but must not leave the
+## body drivable underneath it.
+func lock_input() -> void:
+	_input_locked = true
+
+func unlock_input() -> void:
+	_input_locked = false
 
 func _service_pending_capsule_restore() -> void:
 	if _standing_restore_pending and has_headroom():
@@ -716,7 +729,11 @@ func _physics_process(delta: float) -> void:
 	# previous one, so a teleport made from outside this function (the arena's
 	# respawn, a test placing the body) is never measured as travel.
 	var tick_start_position := global_position
-	var input := input_source.poll()
+	# Poll unconditionally even when locked: KeyboardInputSource tracks
+	# press-edges across ticks, and skipping the poll would make a key held
+	# through the lock read as freshly pressed on the tick input resumes.
+	var polled := input_source.poll()
+	var input := MoveInput.new() if _input_locked else polled
 	last_input = input
 	_tick_timers(delta, input)
 	# Before the moves run, so the body moves this tick at whatever size it is

@@ -37,6 +37,7 @@ func play(player: Player) -> void:
 			_player.camera_rig.begin_cinematic()
 		if _player.screen_effects != null:
 			_player.screen_effects.set_desaturation(1.0)
+		_player.lock_input()
 
 func _physics_process(delta: float) -> void:
 	if not _playing:
@@ -52,6 +53,7 @@ func _physics_process(delta: float) -> void:
 				_player.camera_rig.end_cinematic()
 			if _player.screen_effects != null:
 				_player.screen_effects.set_desaturation(0.0)
+			_player.unlock_input()
 		finished.emit()
 
 ## Local camera offset and roll at time t. Returns [Vector3, float].
