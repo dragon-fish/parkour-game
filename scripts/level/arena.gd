@@ -24,8 +24,13 @@ func _ready() -> void:
 	# original (03 §3.1). Respawning is the arena's job, not the player's, and
 	# it deliberately reuses the same path as falling out of the level: from the
 	# player's side both are 'that life ended'.
+	# DEFERRED on purpose. died_from_fall is emitted from inside
+	# FallingMove.physics_update(), and reset_player() teleports the body and
+	# restarts the move manager -- neither of which is safe to do while a move
+	# is still mid-execution. This function's own header already warns it spans
+	# a physics frame; a direct connection would have it run inside one.
 	if not player.died_from_fall.is_connected(reset_player):
-		player.died_from_fall.connect(reset_player)
+		player.died_from_fall.connect(reset_player, CONNECT_DEFERRED)
 
 	# Session-level concern, deliberately not in Player: headless tests
 	# instantiate Player directly and must not touch the display server.

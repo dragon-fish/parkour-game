@@ -85,6 +85,19 @@ func _arm_cooldown(move_name: StringName, move: Move) -> void:
 #     from then on. GroundState's Vault branch returns without declaring and is
 #     legitimately covered by VaultState.enter().
 var _entry_declarations: int = -1
+## Set by start(), cleared by the next declaration check, which that check then
+## skips. start() re-arms the declaration baseline, so a caller that restarts
+## the manager from INSIDE a move's own physics_update() -- Arena.reset_player()
+## does exactly this on a respawn -- leaves the finishing tick unable to exceed
+## a baseline captured after its only chance to declare had already passed.
+## The result was a false "state Walking did not declare grounded-ness", fired
+## on a perfectly well-behaved Walking.
+##
+## Skipping one check is the right scope: the invariant exists to catch a move
+## that NEVER declares, and one tick of silence straight after a restart cannot
+## distinguish that from a restart landing mid-tick. The very next tick tests it
+## again.
+var _restarted_this_tick: bool = false
 var _reported_missing_declaration: bool = false
 
 func start(move_name: StringName) -> void:
@@ -115,6 +128,7 @@ func start(move_name: StringName) -> void:
 	current_name = move_name
 	# Snapshot BEFORE enter(), so a declaration made in enter() counts.
 	_arm_declaration_check()
+	_restarted_this_tick = true
 	_current.enter(&"")
 	_clear_stale_grounded_after_start()
 	move_changed.emit(&"", move_name)
@@ -196,6 +210,9 @@ func _arm_declaration_check() -> void:
 
 ## See the invariant note at the top of this file.
 func _check_declared_grounded() -> void:
+	if _restarted_this_tick:
+		_restarted_this_tick = false
+		return
 	if _entry_declarations < 0:
 		return
 	if _declaration_count() > _entry_declarations:
