@@ -162,6 +162,10 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## Assigned in player.tscn. Optional so hand-built test players still work.
 @export var probes: Probes
 
+## The player's own full-screen effect layer. Null in headless tests that build
+## a bare Player, so every caller must guard.
+@export var screen_effects: ScreenEffects
+
 ## The visible character body to attach under BodyRoot at runtime, or null
 ## for none. Deliberately NOT wired by tools/build_player_scene.gd -- see
 ## BodyRoot's own comment there: a committed player.tscn can never reference

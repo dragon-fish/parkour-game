@@ -51,6 +51,18 @@ func build() -> CharacterBody3D:
 	rig.add_child(cam)
 	cam.owner = player
 
+	# Full-screen tint/desaturation/blur layer. Lives under CameraRig -- i.e.
+	# on the PLAYER, not the level -- because these effects describe what
+	# happened to the body (a hard landing, a fatal fall) and must survive a
+	# level change without fighting the level's own WorldEnvironment for the
+	# same knobs. Its ColorRect child is built by ScreenEffects._ready()
+	# itself, not here, so there is nothing more to scaffold for it.
+	var fx := CanvasLayer.new()
+	fx.name = "ScreenEffects"
+	fx.set_script(load("res://scripts/camera/screen_effects.gd"))
+	rig.add_child(fx)
+	fx.owner = player
+
 	# Mount point for the visible character body. Reserved empty for the P5
 	# procedural/attachable first-person body, and it MUST STAY that way in
 	# this generator: a specific character model is a licensing decision
@@ -95,6 +107,7 @@ func build() -> CharacterBody3D:
 	clearance.owner = player
 
 	player.camera_rig = rig
+	player.screen_effects = fx
 
 	# Probe rig. Heights are expressed relative to the body origin, which sits
 	# at the capsule centre — feet are 0.9 m below it.
