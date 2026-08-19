@@ -13,6 +13,13 @@ extends Node3D
 ## Re-entrancy guard for reset_player(); see the comment above that function.
 var _resetting_physics: bool = false
 
+## Plays before every respawn triggered by a fatal fall -- a beat of "the
+## body gives out" (spec, this task) rather than an instant teleport. Not a
+## Move: by the time FallUncontrolledMove reaches the ground the body has no
+## state left to be in (see the file's own header comment), so this lives on
+## the level, alongside reset_player(), instead of in the state machine.
+@onready var _death_sequence: DeathSequence = DeathSequence.new()
+
 func _ready() -> void:
 	if config == null:
 		config = MovementConfig.new()
@@ -20,17 +27,23 @@ func _ready() -> void:
 	if player.camera_rig != null:
 		player.camera_rig.setup(config)
 
+	add_child(_death_sequence)
+	_death_sequence.finished.connect(reset_player)
+
 	# A fall past pawn.falling_uncontrolled_height is unsurvivable in the
 	# original (03 §3.1). Respawning is the arena's job, not the player's, and
 	# it deliberately reuses the same path as falling out of the level: from the
 	# player's side both are 'that life ended'.
 	# DEFERRED on purpose. died_from_fall is emitted from inside
-	# FallingMove.physics_update(), and reset_player() teleports the body and
-	# restarts the move manager -- neither of which is safe to do while a move
-	# is still mid-execution. This function's own header already warns it spans
-	# a physics frame; a direct connection would have it run inside one.
-	if not player.died_from_fall.is_connected(reset_player):
-		player.died_from_fall.connect(reset_player, CONNECT_DEFERRED)
+	# FallingMove.physics_update(), and _on_died_from_fall() below starts the
+	# death sequence, which drives the camera through CameraRig -- neither of
+	# which is safe to do while a move is still mid-execution. reset_player()
+	# itself (which the sequence's `finished` signal chains into once it ends)
+	# also teleports the body and restarts the move manager, and this
+	# function's own header already warns it spans a physics frame; a direct
+	# connection would have all of that run inside one.
+	if not player.died_from_fall.is_connected(_on_died_from_fall):
+		player.died_from_fall.connect(_on_died_from_fall, CONNECT_DEFERRED)
 
 	# Session-level concern, deliberately not in Player: headless tests
 	# instantiate Player directly and must not touch the display server.
@@ -48,6 +61,11 @@ func _ready() -> void:
 		panel.config = config
 
 	reset_player()
+
+## Starts the death sequence; reset_player() itself runs once it reports
+## `finished` (wired in _ready()), not from here directly.
+func _on_died_from_fall() -> void:
+	_death_sequence.play(player)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:

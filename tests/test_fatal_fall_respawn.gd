@@ -57,7 +57,15 @@ func test_a_fatal_fall_survives_its_own_respawn() -> void:
 	# Long enough to fall the whole way and land, then keep walking. The
 	# original failure appeared during the ticks AFTER the respawn, so running
 	# on past the landing is the point of the test rather than incidental.
-	for i in 180:
+	#
+	# 400, not 180: this stand-in respawns immediately on died_from_fall (it
+	# does not play DeathSequence, see the comment above), but the bound is
+	# kept wide enough to also cover the real Arena's now-longer respawn
+	# window -- DeathSequence.total_duration() adds ~1.4s (~84 ticks at 60Hz)
+	# between death and reset_player() there -- so this loop stays generous
+	# relative to what the actual game does, even though nothing here forces
+	# it to wait that long.
+	for i in 400:
 		await step(1)
 		if respawns["count"] > 0 and player.move_manager.current_name == Move.WALKING:
 			break

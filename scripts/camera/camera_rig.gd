@@ -53,6 +53,14 @@ var _head_local_position: Vector3 = Vector3.ZERO
 ## silently misread a real, if centred, head as absent.
 var _has_head: bool = false
 
+## True while a level-owned cutscene (DeathSequence, currently the only
+## caller) has taken the camera over. update_effects() yields entirely in
+## this state -- see its own comment -- so bob/dip/crouch/look cannot fight
+## the cutscene for the same transform.
+var _cinematic: bool = false
+var _cinematic_offset: Vector3 = Vector3.ZERO
+var _cinematic_roll: float = 0.0
+
 func setup(cfg: MovementConfig) -> void:
 	_config = cfg
 	position.y = cfg.camera.eye_height
@@ -121,6 +129,28 @@ func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool) -> 
 func clear_look_constraint() -> void:
 	_has_look_constraint = false
 
+## Hands the camera to a level-owned cutscene. Called once when the cutscene
+## starts; the caller drives the pose every tick via set_cinematic_pose()
+## from then on. See update_effects()'s own comment for why this yields the
+## whole function rather than composing with bob/dip/crouch.
+func begin_cinematic() -> void:
+	_cinematic = true
+
+## Sets this tick's cutscene pose. `offset` is a local offset from the
+## resting eye position; `roll` is rotation.z in radians. Meaningless unless
+## begin_cinematic() has been called and end_cinematic() has not.
+func set_cinematic_pose(offset: Vector3, roll: float) -> void:
+	_cinematic_offset = offset
+	_cinematic_roll = roll
+
+## Hands the camera back. Resets the cutscene offset/roll to neutral so a
+## stale pose cannot linger into the next update_effects() call before that
+## call has a chance to recompute its own transform.
+func end_cinematic() -> void:
+	_cinematic = false
+	_cinematic_offset = Vector3.ZERO
+	_cinematic_roll = 0.0
+
 ## Levels the view and clears landing/bob state. Called on a manual reset
 ## (Arena's R key) so the camera snaps back to a fresh-spawn look instead of
 ## keeping whatever pitch, landing dip, or bob phase it had the instant
@@ -137,6 +167,7 @@ func reset_state() -> void:
 	_landing_pitch = 0.0
 	_has_head = false
 	_has_look_constraint = false
+	end_cinematic()
 	rotation.x = 0.0
 	rotation.z = 0.0
 	if camera != null:
@@ -150,6 +181,8 @@ func reset_state() -> void:
 ## the view is locked into a +-90 degree yaw fan and cannot look back, which
 ## is where that whole sensation comes from.
 func apply_look(look_delta: Vector2, body: Node3D) -> void:
+	if _cinematic:
+		return
 	if _config == null:
 		return
 	var yaw_delta := -look_delta.x * _config.camera.mouse_sensitivity
@@ -175,6 +208,15 @@ func apply_look(look_delta: Vector2, body: Node3D) -> void:
 
 func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> void:
 	if _config == null or camera == null:
+		return
+
+	# While cinematic, this function yields entirely: bob, dip, crouch and the
+	# head-follow blend all step aside, and the pose comes straight from
+	# whatever the cutscene last passed to set_cinematic_pose(). Without this
+	# the death sequence would fight running sway for the same transform.
+	if _cinematic:
+		position = Vector3(0.0, _config.camera.eye_height, 0.0) + _cinematic_offset
+		rotation.z = _cinematic_roll
 		return
 
 	# Where the rig would sit this frame with NO head-follow applied,
