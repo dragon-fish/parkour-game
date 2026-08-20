@@ -28,7 +28,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Same ankle-high clutter allowance Walking and Slide get: a crouched walk
 	# stopped dead by a kerb reads as sticky geometry, not as a rule.
 	var rise: float = player.try_step_up(delta)
-	if rise > 0.0 and player.camera_rig != null:
+	# Thresholded, not just non-zero: the probe now runs on ramps too (it can no
+	# longer tell them from a thin board, and refusing both was worse than
+	# refusing neither), so a slope would otherwise push a tiny offset every
+	# tick and read as a shaking screen.
+	if rise >= config.pawn.step_up_camera_min_rise and player.camera_rig != null:
 		player.camera_rig.add_step_offset(rise)
 
 	# Same floor-snap bias as Walking/Slide, so a crouched walk does not

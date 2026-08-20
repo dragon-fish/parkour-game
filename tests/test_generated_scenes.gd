@@ -39,21 +39,23 @@ const TOLERANCE := 0.0005
 func test_the_committed_arena_matches_what_its_generator_produces() -> void:
 	var fresh: Node = ArenaBuilder.new().build()
 	var committed: Node = load("res://scenes/main.tscn").instantiate()
-	_compare(fresh, committed, "scenes/main.tscn", "tools/build_main_scene.gd")
+	_compare_against_generator(fresh, committed, "scenes/main.tscn", "tools/build_main_scene.gd")
 	fresh.free()
 	committed.free()
 
 func test_the_committed_player_matches_what_its_generator_produces() -> void:
 	var fresh: Node = PlayerBuilder.new().build()
 	var committed: Node = load("res://scenes/player/player.tscn").instantiate()
-	_compare(fresh, committed, "scenes/player/player.tscn", "tools/build_player_scene.gd")
+	_compare_against_generator(fresh, committed, "scenes/player/player.tscn", "tools/build_player_scene.gd")
 	fresh.free()
 	committed.free()
 
 ## Walks both trees in the same order and compares signatures pairwise. Reports
 ## the FIRST divergence with both sides spelled out, plus the command to run --
 ## a bare "the scene is stale" tells whoever hits this nothing about what moved.
-func _compare(fresh: Node, committed: Node, scene_path: String, generator: String) -> void:
+## Renamed off `_compare`: GutTest declares a member by that name, and the
+## collision is a parse error rather than an override.
+func _compare_against_generator(fresh: Node, committed: Node, scene_path: String, generator: String) -> void:
 	var a: PackedStringArray = _signatures(fresh, fresh)
 	var b: PackedStringArray = _signatures(committed, committed)
 	var fix := "%s is stale -- re-run:  .engine\\Godot_v4.7.1-stable_win64_console.exe --headless --path . --script res://%s" \

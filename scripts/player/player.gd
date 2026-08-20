@@ -917,65 +917,86 @@ func try_step_up(delta: float) -> float:
 
 	var what := _collider_name(blocker)
 
-	# A walkable face is handed to move_and_slide(), which climbs it. Stepping
-	# it instead fires this probe every tick of an ascent, each one pushing
-	# another offset into the camera -- a long slope reads as a shaking screen.
+	# NO ramp bail on the contact normal, and the reason is geometric rather
+	# than a matter of picking a better threshold.
 	#
-	# KNOWN IMPRECISE, and left this way deliberately. Measured against the
-	# rooftop litter meshes -- flat boards lying on the floor -- this reads
-	# 0.890, 0.972, 0.992 as the body closes on one and calls them ramps: the
-	# capsule's ROUND BOTTOM reaches the board's TOP FACE before its vertical
-	# edge, so the normal describes what the body is about to stand on rather
-	# than what is blocking it.
+	# The capsule is 0.4 m in radius with a rounded bottom. Against a 0.32 m
+	# parapet it makes contact near its widest point, square on the parapet's
+	# VERTICAL face, and reads a normal of about 0. Against a board a few
+	# centimetres thick there is no vertical face tall enough to meet: the
+	# lower hemisphere scuffs the board's TOP EDGE instead, and Godot reports
+	# the top FACE's normal -- measured 0.802, 0.891, 0.976, 0.982, 0.995 as
+	# the body closed on one. So the shorter the obstacle, the more certain the
+	# ramp verdict, which is exactly backwards.
+	#
+	# In play that read as: parapets slid over without a hitch, thin boards
+	# caught the feet every time, and the step probe logged a wall of "是斜坡"
+	# without ever once logging 抬升.
 	#
 	# Rejecting on the measured RISE instead was tried and reverted: a walkable
 	# slope yields up to motion * tan(45 deg) = 0.12 m per tick at running
-	# speed, which overlaps the thickness of the very boards this would need to
-	# tell apart. The two cases are not separable by size. See
-	# docs/feel-backlog.md for what would actually separate them.
+	# speed, overlapping the very board thicknesses it would need to separate.
+	#
+	# What the bail actually protected was the CAMERA -- a long ramp firing this
+	# probe every tick pushed an offset per tick and read as a shaking screen.
+	# That is handled where it belongs now, by the callers' own step_offset
+	# threshold, so the probe is free to answer the only question it is good at:
+	# is there something here I can stand on top of.
 	var normal_y: float = blocker.get_normal().y
-	if normal_y >= config.pawn.walkable_floor_z:
-		return _step_log(what, "是斜坡 n.y=%.3f，交给 move_and_slide" % normal_y, 0.0)
-
 	var max_rise: float = config.pawn.max_step_height
-	var up := Vector3.UP * max_rise
-	if test_move(global_transform, up):
-		return _step_log(what, "头顶无空间", 0.0)
 
-	var lifted := global_transform.translated(up)
+	# Up to the blocking face, then rise -- no further than a ceiling allows, so
+	# a low roof shortens the step rather than cancelling it.
+	var probe := global_transform.translated(blocker.get_travel())
+	var up_hit := KinematicCollision3D.new()
+	var risen := Vector3.UP * max_rise
+	if test_move(probe, risen, up_hit):
+		risen = up_hit.get_travel()
+	if risen.length() <= 0.01:
+		return _step_log(what, "头顶无空间", 0.0)
+	var lifted := probe.translated(risen)
 	if test_move(lifted, motion):
 		return _step_log(what, "太高，是墙不是台阶 (n.y=%.3f)" % normal_y, 0.0)
 
-	# The landing probe reaches at least one capsule radius ahead, NOT just this
-	# tick's motion. Blocked by a face, the capsule's centre sits a full radius
-	# behind it, so a probe that advances only the tick's motion drops with its
-	# centre still outside the obstacle -- the hemisphere catches the top EDGE
-	# and reports a fraction of the real step. Measured against a 0.32 m parapet:
-	# 0.05 m. The body then rose 0.05, floor snap pulled it back, and it did that
-	# every tick, which is the twitching-at-the-corner report.
+	# RAMP OR STEP, asked as a question about SHAPE rather than about size or
+	# about the contact normal -- both of which were tried and both of which
+	# failed, for reasons worth keeping:
 	#
-	# Worse, it is self-reinforcing: being blocked drops the speed, which
-	# shortens the probe, which measures even less (at 1 m/s the tick's motion is
-	# 1.7 cm). A floor of one radius makes the measurement independent of how
-	# fast the player happens to be going when they arrive.
+	#   The contact normal cannot tell them apart. The capsule is 0.4 m in
+	#   radius with a rounded bottom, so against anything shorter than that it
+	#   scuffs the TOP EDGE rather than meeting a vertical face, and Godot
+	#   reports the top face's normal. Measured against thin boards: 0.802,
+	#   0.891, 0.976, 0.995 -- all "ramp", none of them ramps. The shorter the
+	#   obstacle the more certain the wrong answer, which is why a 0.32 m
+	#   parapet was slid over cleanly while a plank caught the feet every time.
 	#
-	# This distance measures the surface only -- the body is still merely raised
-	# in place, and move_and_slide() carries it forward as usual.
-	var reach: float = maxf(motion.length(), current_capsule_radius() + 0.05)
-	var advanced := lifted.translated(motion.normalized() * reach)
-	var landing := KinematicCollision3D.new()
-	if not test_move(advanced, Vector3.DOWN * (max_rise + 0.05), landing):
+	#   Size cannot tell them apart either. A walkable slope yields up to
+	#   motion * tan(45 deg) = 0.12 m per tick at running speed, which overlaps
+	#   the thickness of the boards this needs to step onto.
+	#
+	# What DOES separate them is what happens further along: a board's top face
+	# is flat, so probing further finds the same height, while a ramp keeps
+	# climbing. So probe twice and compare.
+	var direction := motion.normalized()
+	var near: float = _probe_landing(lifted, direction, current_capsule_radius() + 0.05, risen.length())
+	var far: float = _probe_landing(lifted, direction, current_capsule_radius() + 0.25, risen.length())
+	if near == INF:
 		return _step_log(what, "对面探空，是坑不是台阶", 0.0)
+	if far != INF and far > near + STEP_RAMP_TOLERANCE:
+		# Still climbing 0.2 m further on: a slope, which move_and_slide()
+		# already handles. Stepping it instead would climb at the reach's rate
+		# rather than the body's -- 0.45 m of reach on a 27-degree slope reads
+		# 0.23 m of "step" while the body travels 0.12 m, so the player ascends
+		# at twice their own speed and leaves the surface.
+		return _step_log(what, "是斜坡 n.y=%.3f 续升 %.3f" % [normal_y, far - near], 0.0)
 
-	# No walkable-normal test on the landing. A capsule dropping next to a step
-	# contacts the step's EDGE first, not its top face, and an edge reports an
-	# in-between normal (measured 0.36 and 0.57 against a 0.32 m parapet the
-	# player could plainly stand on) -- so the test rejected exactly the cases it
-	# existed to allow. The rise is still capped at max_step_height, and
+	# NO walkable-normal test on the landing, and this project has paid for that
+	# lesson twice. A capsule settling beside a step contacts its EDGE first,
+	# not its top face, and an edge reports an in-between normal (measured 0.36
+	# and 0.57 against a parapet the player could plainly stand on).
 	# move_and_slide() applies Godot's own floor_max_angle immediately after, so
-	# a genuinely unstandable surface is caught there instead. All this probe
-	# needs to know is that the space below is not empty.
-	var rise: float = max_rise - landing.get_travel().length()
+	# a genuinely unstandable surface is caught there.
+	var rise: float = near
 	if rise <= 0.01:
 		return _step_log(what, "落差过小 %.3f m" % rise, 0.0)
 	global_position.y += rise
@@ -985,6 +1006,25 @@ func try_step_up(delta: float) -> float:
 	_step_grace_timer = config.pawn.step_up_grace_time
 	return _step_log(what, "抬升 %.3f m" % rise, rise)
 
+
+## How much higher than the body the ground is, `distance` ahead of a lifted
+## probe. INF when there is nothing under it at all.
+##
+## Returns a RISE relative to the body's current height, so the two calls in
+## try_step_up() can be compared directly.
+func _probe_landing(lifted: Transform3D, direction: Vector3, distance: float, \
+		drop: float) -> float:
+	var at := lifted.translated(direction * distance)
+	var landing := KinematicCollision3D.new()
+	if not test_move(at, Vector3.DOWN * drop, landing):
+		return INF
+	return (at.origin.y - landing.get_travel().length()) - global_position.y
+
+## ⚠️ PROJECT-DEFINED. How much further a surface may climb over the extra
+## 0.2 m of probe reach and still count as flat. Slack for mesh seams and for
+## the capsule catching an edge, well under what any walkable slope gains over
+## that distance (0.2 m of run on the shallowest slope worth calling one).
+const STEP_RAMP_TOLERANCE := 0.02
 
 ## Sets the body back down when travelling has lifted it clear of the floor by
 ## less than one step, and snaps it there. Called AFTER move_and_slide().
