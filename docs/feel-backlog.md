@@ -313,3 +313,81 @@ HUD 转移日志：`Walking → Slide → Falling → Grab → Falling → Walki
 补的话，正确做法是直接构造一个倾斜的 `CylinderShape3D` 而不是继续摆方块，
 并断言 `step_decisions` 里出现的是"顶面太窄"这一条——只断言 rise 为 0 没有意义，
 好几条分支都返回 0。
+
+## 18. 垂直踢墙 WallClimb 尚未实现（数据齐全）
+
+所有者反馈"我们只有滑墙，没有垂直踢墙"。`TdMove_WallClimb` 的 CDO 相当完整，
+而且**所有者凭手感说的每一条都能对上一个字段**：
+
+```
+WallClimbingVerticalStartAngle          33.0     入射角门槛
+WallClimbingVerticalFriction            6.0
+WallClimbingMaxDistance2D               120.0    (1.2 m) 能蹬多远
+WallClimbingGravity                     800.0    (8 m/s²) 正常重力的一半
+MinWallHeight                           180.0    (1.8 m)
+AddOnSpeed2DHeight / MaxLimit           60 / 650
+AddOnSpeedZHeight / MaxLimit            130 / 320
+MinUpwardsVelocityToDoubleJump          100.0    (1 m/s)
+MaxIntoWallClimbVelocityToDoubleJump    100.0
+PawnPhysics                             PHYS_WallClimbing
+ControllerState                         PlayerWallWalking
+bCheckForGrab                           True     ← 期间可抓边
+bCheckForVaultOver                      True     ← 期间可翻越
+bCheckForEdgeInVelDir                   True
+FrictionModifier                        0.3
+```
+
+- **"像被吸在墙上一样"** → `WallClimbingGravity = 800`，正好是本项目重力（1600）的一半。
+- **"期间可进入 VaultOver 或 Grab"** → `bCheckForGrab` / `bCheckForVaultOver` 都是 True，确证。
+- **入射角**：所有者记作"大于 53°"，spec §2 记的是 57°–123° 走 WallClimb。
+  CDO 的 `WallClimbingVerticalStartAngle = 33` 大概率是"距墙面法线 33°"即距墙面 57°，两者自洽。
+
+## 19. 180Turn 尚未实现（数据齐全）
+
+所有者描述：垂直踢墙期间按 Q 进入，有"很短的补偿时间"，期间不受重力；
+此时按空格可蹬墙跳出去，否则速度归零后落下。
+
+```
+FrictionModifier      0.3
+bConstrainLook        True
+MovementGroup         MG_TwoHandsBusy
+DisableMovementTime   0.3      ← "很短的补偿时间"
+RedoMoveTime          0.5
+MinLookConstraint     (-10000, -16384, 0)   pitch ±55°, yaw ±90°
+MaxLookConstraint     ( 10000,  16384, 0)
+```
+
+**`DisableMovementTime = 0.3` 就是所有者说的补偿窗口**——这个字段在库里普遍存在
+（`TdMove_Slide` 是 -1.0 即不启用），本项目尚未实现该机制。
+另有 `TdMove_180TurnInAir`，是空中版本。
+
+蹬墙跳出去对应 `TdMove_WallKick`：`WallKickVelocity2D = 300` (3 m/s)、
+`WallKickVelocityZ = 580` (5.8 m/s)、`RedoMoveTime = 1.0`，同样带
+`bCheckForGrab` / `bCheckForVaultOver`。
+
+## 20. 交互物的优先级仲裁
+
+所有者提议："在 Jump 期间判定眼前是否有手和脚能交互的东西，它们之间肯定有个优先级。"
+
+这与 CDO 的结构一致：`bCheckForGrab` / `bCheckForVaultOver` / `bCheckForWallClimb` /
+`bCheckForEdgeInVelDir` 是**并列的四个开关**，同一个状态可以同时持有多个
+（WallClimb 就同时有 Grab + VaultOver + EdgeInVelDir），所以原作必然存在一个仲裁顺序。
+
+本项目目前的顺序写死在 `AirborneMove.probe_transition()` 里：WallRun → Vault → Grab，
+理由记在 05 §5.7（"翻越先于抓边，抓边是最慢的兜底"）。这个顺序是从文档读出来的，
+不是从代码里逆向出来的，属于 ⚠️。真要确证需要反编译，而速度公式那次已经证明这类逻辑在 native C++ 里。
+
+**可做的**：把顺序从散落的 if 提到一张显式的优先级表，让它可读、可测、可调——
+即便顺序本身仍是推断，至少不再隐含在控制流里。
+
+## 21. Vault 的三种变体需要按所有者的分类核对
+
+所有者按几何把翻越分成三类（`SpeedVaultConfig.variants` 已有六个变体，需要对照）：
+
+1. **单手翻越** — 障碍不太高也不太长，典型：半人高的小箱子
+2. **蹬一脚墙并翻上** — 略高、顶部面积大、跳跃时机正确，典型：比人稍高的绿化带
+3. **双手翻越（越过而不是站上）** — 略高但很窄，典型：铁丝网
+
+`TdMove_SpeedVault` 的 `VaultTypes` 是个 4588 字节的数组，逐条数据未转储进 A1，
+所以变体表的具体门槛目前是本项目按 05 §5.7 推断的。核对时需要所有者按上述三类各找一个
+实际障碍物试，对照 `pick_variant()` 选中了哪一个。
