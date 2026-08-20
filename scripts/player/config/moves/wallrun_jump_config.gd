@@ -16,8 +16,28 @@ extends MoveConfig
 ## the wall -- for 520 uu/s = 5.2 m/s total.
 ## Source: 04 §4.4 `WallRunningPushAwaySpeedProAdd = 400` uu/s. ✅
 @export var wall_running_push_away_speed_pro_add: float = 4.0
-## Source: 04 §4.4 `WallRunningPushForwardSpeedMin = 0.1`. ✅
+## Source: 04 §4.4 `WallRunningPushForwardSpeedMin = 0.1`. ✅ as a value,
+## ❓ as a role -- the research never established what "push forward" is
+## measured against, and nothing reads it. Recorded so the number is not lost.
+## The look-direction kick below is expressed by wall_jump_min_away instead,
+## which is honestly project-defined rather than pretending to be this field.
 @export var wall_running_push_forward_speed_min: float = 0.1
+
+## ⚠️ PROJECT-DEFINED, no confirmed counterpart. How much of the kick must
+## point away from the wall, as a fraction of the push, regardless of where
+## the player is looking.
+##
+## The kick otherwise follows the VIEW: measured in the original, Faith leaves
+## the wall in the direction the camera faces rather than straight along the
+## surface normal, and the sideways component is small. Sending the push along
+## the normal alone -- which is what this used to do -- makes a wall kick a
+## fixed sideways shove that the player cannot aim, which is the opposite of
+## how the technique reads in play.
+##
+## 0.35 is roughly 20 degrees off the wall. Low enough that the view genuinely
+## steers the kick, high enough that looking straight into the wall still
+## leaves it.
+@export var wall_jump_min_away: float = 0.35
 ## A HEIGHT (1.0 m), converted to a launch speed at the point of use --
 ## matching how this project reads every other `*ZHeight` field (spec §2.5).
 ## Source: 04 §4.4 `WallRunningJumpOffZHeightForward = 100` uu. ✅

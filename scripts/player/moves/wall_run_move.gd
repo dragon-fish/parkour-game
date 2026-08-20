@@ -133,6 +133,24 @@ static func wall_jump_quality(time_on_wall: float, cfg: WallrunJumpConfig) -> fl
 	return 1.0 - clampf(inverse_lerp(cfg.wall_jump_prime_window, \
 		cfg.wall_jump_stale_time, time_on_wall), 0.0, 1.0)
 
+## Where the kick actually points. The VIEW steers it -- measured in the
+## original, Faith leaves in the direction the camera faces -- with a floor on
+## the away-from-wall component so that looking into the wall still leaves it.
+## Falls back to the bare normal when there is no usable facing.
+static func wall_jump_push_direction(player_body: Node3D, normal: Vector3, 		cfg: WallrunJumpConfig) -> Vector3:
+	var facing: Vector3 = -player_body.global_transform.basis.z
+	facing.y = 0.0
+	if facing.length_squared() < 0.0001:
+		return normal
+	var dir: Vector3 = facing.normalized()
+	var away: float = dir.dot(normal)
+	if away >= cfg.wall_jump_min_away:
+		return dir
+	# Rotate the aim toward the normal by exactly enough to clear the floor,
+	# rather than discarding it: the remaining view component is what makes
+	# the kick aimable at all.
+	return (dir + normal * (cfg.wall_jump_min_away - away)).normalized()
+
 static func wall_jump_push_away(time_on_wall: float, cfg: WallrunJumpConfig) -> float:
 	var quality := wall_jump_quality(time_on_wall, cfg)
 	return cfg.wall_running_push_away_speed_noob \
@@ -218,7 +236,7 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		# wall_jump_quality() above for the numbers.
 		var jump_cfg: WallrunJumpConfig = config.wallrun_jump
 		player.velocity.y = wall_jump_rise_velocity(_time_on_wall, jump_cfg, config.pawn)
-		player.velocity += _normal * wall_jump_push_away(_time_on_wall, jump_cfg)
+		player.velocity += wall_jump_push_direction(player, _normal, jump_cfg) 			* wall_jump_push_away(_time_on_wall, jump_cfg)
 		player.move_and_slide()
 		# Declared even on this away-transitioning tick, mirroring
 		# WalkingMove's and SlideMove's own jump branches: move_and_slide()
