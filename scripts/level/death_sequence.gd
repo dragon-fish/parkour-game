@@ -28,6 +28,20 @@ const REST_TIME := 1.0      ## lying still before the level takes over
 ## underside of the level.
 const GROUND_CLEARANCE := 0.15
 
+## ⚠️ PROJECT-DEFINED. The floor under the elastic overshoot. easeOutElastic
+## deliberately goes PAST its target and springs back -- that overshoot is the
+## impact -- but the arc's target is already only GROUND_CLEARANCE above the
+## floor, so unguarded it would drive the near plane through the ground and
+## show the underside of the level for a few frames.
+const MIN_GROUND_CLEARANCE := 0.05
+
+## ⚠️ PROJECT-DEFINED, both tuned by eye. How much of the springy curve to mix
+## in over a plain ease-out: 0 is no spring at all, 1 is the textbook easing
+## function at full strength. Full strength on either of these reads as comedy
+## rather than as weight -- the knees bounce like rubber, the body flops.
+const DROP_ELASTIC := 0.35     ## knees giving way: springs, lightly
+const TOPPLE_BOUNCE := 0.45    ## the body landing: settles in a beat or two
+
 var _player: Player
 var _elapsed: float = 0.0
 var _playing: bool = false
@@ -128,24 +142,30 @@ func _pose_at(t: float) -> Array:
 	var stature: float = _feet_offset + _eye_height
 	var half: float = stature * 0.5
 	if t < DROP_TIME:
-		# Ease-out: the legs give way fast, then settle.
-		var k: float = 1.0 - pow(1.0 - (t / DROP_TIME), 2.0)
-		# Pitch levels out on the same curve, so a player who died looking at
-		# their feet is looking level by the time the body settles onto its
-		# knees.
+		# Elastic: the legs do not lower the body, they FAIL. It drops past
+		# where it comes to rest and springs back -- that overshoot is what
+		# reads as weight rather than as a controlled crouch.
+		var u: float = t / DROP_TIME
+		var k: float = _ease_out_elastic(u, DROP_ELASTIC)
+		# Pitch levels on a PLAIN ease-out, not the elastic one. The elastic
+		# curve overshoots by design, and overshooting a level view means
+		# looking UP -- measured at +0.057 rad partway through the drop, i.e.
+		# the dying body glancing at the sky. Height and roll want that
+		# overshoot; the direction of gaze does not.
+		var k_pitch: float = 1.0 - pow(1.0 - u, 2.0)
 		return [Vector3(0.0, _to_offset(lerpf(stature, half, k)), 0.0), 0.0,
-			lerpf(_entry_pitch, 0.0, k)]
+			lerpf(_entry_pitch, 0.0, k_pitch)]
 	if t < DROP_TIME + HOLD_TIME:
 		return [Vector3(0.0, _to_offset(half), 0.0), 0.0, 0.0]
-	# easeInOutQuint: barely moves at first, collapses through the middle, and
-	# arrives soft. A body with nothing left in it gives way slowly, goes over
-	# all at once, and does not slap the ground. A plain ease-out starts at its
-	# fastest, which reads as being pushed rather than as giving out.
+	# BOUNCE, not elastic. Elastic overshoots its target and springs back around
+	# it, which on a body hitting the floor reads as rubber. Bounce approaches
+	# from one side and settles in a couple of diminishing hops -- the head
+	# meeting the ground and coming to rest, which is what this is.
 	#
 	# Past TOPPLE_TIME the clamp holds this final pose for REST_TIME, which is
 	# what makes the body lie still at the end.
 	var u: float = clampf((t - DROP_TIME - HOLD_TIME) / TOPPLE_TIME, 0.0, 1.0)
-	var k2: float = 16.0 * pow(u, 5.0) if u < 0.5 else 1.0 - pow(-2.0 * u + 2.0, 5.0) / 2.0
+	var k2: float = _ease_out_bounce(u, TOPPLE_BOUNCE)
 	# A QUARTER CIRCLE, not a slide sideways and not a drop straight down: the
 	# head is on the end of a body that pivots at the floor, so it sweeps an arc
 	# of radius `radius` -- losing height and gaining offset together, fastest
@@ -162,9 +182,56 @@ func _pose_at(t: float) -> Array:
 	# the picture rotating around it -- no waist, no volume, just a spin.
 	var angle: float = k2 * PI * 0.5
 	var radius: float = maxf(half - GROUND_CLEARANCE, 0.01)
-	var y: float = _to_offset(GROUND_CLEARANCE + radius * cos(angle))
+	# maxf, because the elastic overshoot drives the angle past a quarter turn
+	# and cos() negative with it. The head is allowed to come lower than the
+	# resting clearance on the impact -- that IS the impact -- but not through
+	# the floor.
+	var above_ground: float = maxf(GROUND_CLEARANCE + radius * cos(angle),
+		MIN_GROUND_CLEARANCE)
+	var y: float = _to_offset(above_ground)
 	var x: float = radius * sin(angle)
 	return [Vector3(x, y, 0.0), -angle, 0.0]
+
+## The plain curve both springy forms are blended back toward, so `strength`
+## can dial either of them down without changing its shape.
+static func _ease_out_quad(x: float) -> float:
+	return 1.0 - pow(1.0 - x, 2.0)
+
+## easeOutElastic at `strength`, blended toward a plain ease-out. Overshoots
+## its target and springs back around it: the knees going past where they come
+## to rest. At full strength it reads as rubber, hence the blend.
+static func _ease_out_elastic(x: float, strength: float) -> float:
+	if x <= 0.0:
+		return 0.0
+	if x >= 1.0:
+		return 1.0
+	const PERIOD := TAU / 3.0
+	var full: float = pow(2.0, -10.0 * x) * sin((x * 10.0 - 0.75) * PERIOD) + 1.0
+	return lerpf(_ease_out_quad(x), full, strength)
+
+## easeOutBounce at `strength`, blended toward a plain ease-out. Unlike elastic
+## this never passes its target -- it arrives, rebounds, and settles in a few
+## diminishing hops, which is what a body meeting the floor does.
+static func _ease_out_bounce(x: float, strength: float) -> float:
+	if x <= 0.0:
+		return 0.0
+	if x >= 1.0:
+		return 1.0
+	const N1 := 7.5625
+	const D1 := 2.75
+	var full: float
+	if x < 1.0 / D1:
+		full = N1 * x * x
+	elif x < 2.0 / D1:
+		var a: float = x - 1.5 / D1
+		full = N1 * a * a + 0.75
+	elif x < 2.5 / D1:
+		var b: float = x - 2.25 / D1
+		full = N1 * b * b + 0.9375
+	else:
+		var c: float = x - 2.625 / D1
+		full = N1 * c * c + 0.984375
+	return lerpf(_ease_out_quad(x), full, strength)
 
 ## Converts a height ABOVE THE GROUND into the rig-local offset that
 ## CameraRig.update_effects() adds to its resting eye position.
