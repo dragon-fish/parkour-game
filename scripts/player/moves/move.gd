@@ -28,6 +28,7 @@ const SKILL_ROLL: StringName = &"SkillRoll"
 const SLIDE: StringName = &"Slide"
 const CROUCH: StringName = &"Crouch"
 const SPEED_VAULT: StringName = &"SpeedVault"
+const INTO_GRAB: StringName = &"IntoGrab"
 const GRAB: StringName = &"Grab"
 const WALL_RUN: StringName = &"WallRun"
 

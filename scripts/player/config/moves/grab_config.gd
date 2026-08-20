@@ -47,6 +47,27 @@ extends MoveConfig
 @export var mantle_arc_height: float = 0.3
 
 func _init() -> void:
+	# ✅ HangFreeMinLookContraint / HangFreeMaxLookContraint, at 65536 units =
+	# 360 degrees:
+	#
+	#     min (8300, -16384, 0)  ->  pitch +45.6, yaw -90
+	#     max (16000, 16384, 0)  ->  pitch +87.9, yaw +90
+	#
+	# BOTH PITCH BOUNDS ARE ABOVE LEVEL. Hanging, the player cannot look down
+	# at all -- the view is pinned somewhere between 45 and 88 degrees up,
+	# which is the pose of someone holding a ledge above their head. The owner
+	# reported exactly this ("cannot look down"), and put the yaw range nearer
+	# 170 degrees than 180; the CDO says +-90 for a free hang, and reaches
+	# +-180 only in the shimmy-around-a-corner variants, which this project
+	# does not have.
+	constrain_look = true
+	min_look_constraint = Vector3(deg_to_rad(45.6), -deg_to_rad(90.0), -PI)
+	max_look_constraint = Vector3(deg_to_rad(87.9), deg_to_rad(90.0), PI)
+	# ⚠️ The CDO also sets bDisableFaceRotation, which this project does not
+	# implement (docs/feel-backlog.md 12). Absolute yaw is the stand-in: with
+	# the facing pinned, a relative clamp behaves as an absolute one.
+	absolute_yaw_constraint = true
+
 	# Was PawnConfig.ledge_regrab_cooldown, a hand-rolled timer Player carried
 	# and GrabMove.exit() armed by hand. Same 0.45 s, now expressed the way the
 	# original expresses every cooldown (TdMove.RedoMoveTime) and enforced by

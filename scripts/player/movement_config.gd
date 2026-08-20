@@ -29,6 +29,7 @@ extends Resource
 @export var slide: SlideConfig = SlideConfig.new()
 @export var crouch: CrouchConfig = CrouchConfig.new()
 @export var speed_vault: SpeedVaultConfig = SpeedVaultConfig.new()
+@export var into_grab: IntoGrabConfig = IntoGrabConfig.new()
 @export var grab: GrabConfig = GrabConfig.new()
 @export var wall_run: WallRunConfig = WallRunConfig.new()
 @export var wallrun_jump: WallrunJumpConfig = WallrunJumpConfig.new()

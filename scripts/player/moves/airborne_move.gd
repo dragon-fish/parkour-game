@@ -114,9 +114,13 @@ func probe_transition() -> StringName:
 	# redo_move_time (0.45 s) -- it replaces Player.can_grab_ledge(), the last
 	# of the three hand-rolled cooldowns Player used to carry -- so dropping
 	# off a ledge cannot instantly re-grab the very same one.
+	# INTO_GRAB, not GRAB. The original reaches for a ledge before hanging from
+	# it (TdMove_IntoGrab), which is what carries the body to the same hanging
+	# pose however it was caught. The cooldown is still checked against GRAB,
+	# since that is the move being re-entered and where redo_move_time lives.
 	if c.check_for_grab and player.probes != null and player.move_manager.can_enter(GRAB):
 		if player.probes.ledge_query()["valid"]:
-			return GRAB
+			return INTO_GRAB
 
 	return KEEP
 

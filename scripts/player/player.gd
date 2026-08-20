@@ -552,6 +552,7 @@ func _build_moves() -> void:
 		[Move.SLIDE, SlideMove.new(), config.slide],
 		[Move.CROUCH, CrouchMove.new(), config.crouch],
 		[Move.SPEED_VAULT, SpeedVaultMove.new(), config.speed_vault],
+		[Move.INTO_GRAB, IntoGrabMove.new(), config.into_grab],
 		[Move.GRAB, GrabMove.new(), config.grab],
 		[Move.WALL_RUN, WallRunMove.new(), config.wall_run],
 	]

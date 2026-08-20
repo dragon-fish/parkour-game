@@ -7,8 +7,21 @@ extends MoveConfig
 # every other move's own layering.
 
 func _init() -> void:
-	# Source: 06 §6.2 `bCheckForVaultOver` on TdMove_Walking. ✅ A grounded run
-	# is where the whole vault table lives (05 §5.7): WalkingMove is the move
-	# that actually earns most of the six variants (the sweet spot and the
-	# slow climb both fire from here), so its own probe switch is on.
-	check_for_vault_over = true
+	# NO PROBES AT ALL, and this is confirmed rather than inferred.
+	# TdMove_Walking's entire CDO is six fields:
+	#
+	#     ControllerState PlayerWalking / bShouldUnzoom / bUseCameraCollision
+	#     bEnableFootPlacement / bEnableAgainstWall / bAllowPickup
+	#
+	# Not one bCheckFor*. Walking does not vault, does not grab and does not
+	# climb: every upward move in the original starts from a launch or a fall,
+	# which is why all twelve states holding bCheckForVaultOver are airborne
+	# (11 §11.2).
+	#
+	# This used to be `true`, citing "06 §6.2 bCheckForVaultOver on
+	# TdMove_Walking" -- a misreading. That section is a table explaining what
+	# the FIELDS mean, not a list of which moves carry them. The result was
+	# vaulting that fired on its own while running past a crate, which the
+	# owner reported as "Minecraft's auto-jump, and just as funny". In the
+	# original, nothing goes upward unless the player asks for it.
+	check_for_vault_over = false
