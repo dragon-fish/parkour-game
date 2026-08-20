@@ -146,3 +146,28 @@ func test_the_landing_sink_cannot_push_the_view_past_vertical() -> void:
 
 	rig.get_parent().queue_free()
 	await step(1)
+
+func test_the_step_offset_never_exceeds_one_step() -> void:
+	# A single stair is climbed over several ticks, and between them the body
+	# is pulled back toward the floor -- so the rises reported to the camera
+	# SUM to more than the height actually gained. Accumulating all of them put
+	# the view lower than it was before the step, which is the opposite of what
+	# the offset is for. Reported from play as the camera sinking on every
+	# stair, worse while crouched.
+	var rig := _rig()
+	await step(1)
+	var cfg := MovementConfig.new()
+
+	# The measured sequence from one 0.3 m stair, which sums to 0.425.
+	for amount in [0.299, 0.077, 0.037, 0.012]:
+		rig.add_step_offset(amount)
+
+	# Read through update_effects(), which is where the offset reaches the
+	# transform, rather than poking at the private field.
+	rig.update_effects(0.0, 0.0, true)
+	var sunk: float = cfg.camera.eye_height - rig.position.y
+	assert_true(sunk <= cfg.pawn.max_step_height + 0.001, \
+		"the view sank %.3f m for a %.2f m step" % [sunk, cfg.pawn.max_step_height])
+
+	rig.get_parent().queue_free()
+	await step(1)

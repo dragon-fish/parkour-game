@@ -76,9 +76,20 @@ func set_crouch_amount(amount: float) -> void:
 ## from Player.wall_side, itself set by WallRunMove. update_effects() eases
 ## rotation.z toward the corresponding tilt every frame.
 ## Called when the body was lifted over a low obstacle. Accumulates, so two
-## steps in quick succession do not cancel each other out.
+## steps in quick succession do not cancel each other out -- but never past one
+## step's worth.
+##
+## THE CAP IS LOAD-BEARING. A single step is usually climbed over several ticks
+## (measured 0.299, then 0.077, 0.037, 0.012 as the body creeps onto a 0.3 m
+## stair), and between those ticks move_and_slide() and the floor snap pull the
+## body back down again -- so the rises SUM to far more than the height
+## actually gained. Accumulating all of them dropped the view to BELOW where it
+## started, which is the opposite of what this offset exists for. Reported from
+## play as the camera sinking on every stair, worse while crouched, where the
+## eye is lower and the climb takes more ticks.
 func add_step_offset(amount: float) -> void:
-	_step_offset += amount
+	var cap: float = _config.pawn.max_step_height if _config != null else amount
+	_step_offset = minf(_step_offset + amount, cap)
 
 
 func set_wall_side(side: int) -> void:
