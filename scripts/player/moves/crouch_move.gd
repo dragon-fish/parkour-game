@@ -35,6 +35,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# flicker off gentle slopes or floor seams.
 	player.velocity.y = -config.pawn.floor_snap_speed
 	player.move_and_slide()
+	# Geometry can throw the body clear of the floor for a tick -- riding up and
+	# off a small sloped obstacle does exactly that -- and without this the tick
+	# reads as a ledge exit and cancels the move. See Player.try_step_down().
+	player.try_step_down()
 	player.set_grounded(player.is_on_floor())
 
 	if not player.grounded:

@@ -234,6 +234,11 @@ var _coyote_timer: float = 0.0
 ## Falling the moment they leave the floor were therefore cancelling
 ## themselves on clutter they had successfully ridden over.
 var _step_grace_timer: float = 0.0
+
+## Last tick's grounded reading, for try_step_down(). A body that was already
+## airborne when the tick began is falling, and must not be set back down on
+## whatever happens to be within a step below it.
+var _was_grounded: bool = false
 var _jump_buffer_timer: float = 0.0
 ## Buffers a crouch-key press for roll_trigger_time (05 §5.2's confirmed
 ## TdPawn.RollTriggerTime, extremely forgiving next to the genre's usual
@@ -429,6 +434,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 func reset_state() -> void:
 	_coyote_timer = 0.0
 	_step_grace_timer = 0.0
+	_was_grounded = false
 	_jump_buffer_timer = 0.0
 	_roll_buffer_timer = 0.0
 	# Mirrors CameraRig.reset_state()'s own end_cinematic() call. A manual
@@ -837,6 +843,7 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 		_coyote_timer = maxf(_coyote_timer - delta, 0.0)
 
 	_step_grace_timer = maxf(_step_grace_timer - delta, 0.0)
+	_was_grounded = grounded
 
 	if input.jump_pressed:
 		_jump_buffer_timer = config.pawn.jump_buffer_time
@@ -910,18 +917,22 @@ func try_step_up(delta: float) -> float:
 
 	var what := _collider_name(blocker)
 
-	# A walkable face is a ramp, not an obstacle: move_and_slide() already climbs
-	# it, and stepping it instead fires this probe every single tick of the
-	# ascent, each one pushing another offset into the camera -- a long slope
-	# reads as a shaking screen. Probes.vault_query() rejects ramps on the same
-	# test for the same reason; see its own note on the measured 18.4 degree
-	# ramp normal.
-	# The normal is reported alongside the verdict because this branch is the
-	# one most likely to be WRONG about a real step: a capsule's round bottom
-	# can contact a step's top edge rather than its vertical face, and an edge
-	# reports an in-between normal. A reading that only just clears
-	# walkable_floor_z (0.71) is a step being mistaken for a ramp; a reading of
-	# 0.95+ really is a ramp.
+	# A walkable face is handed to move_and_slide(), which climbs it. Stepping
+	# it instead fires this probe every tick of an ascent, each one pushing
+	# another offset into the camera -- a long slope reads as a shaking screen.
+	#
+	# KNOWN IMPRECISE, and left this way deliberately. Measured against the
+	# rooftop litter meshes -- flat boards lying on the floor -- this reads
+	# 0.890, 0.972, 0.992 as the body closes on one and calls them ramps: the
+	# capsule's ROUND BOTTOM reaches the board's TOP FACE before its vertical
+	# edge, so the normal describes what the body is about to stand on rather
+	# than what is blocking it.
+	#
+	# Rejecting on the measured RISE instead was tried and reverted: a walkable
+	# slope yields up to motion * tan(45 deg) = 0.12 m per tick at running
+	# speed, which overlaps the thickness of the very boards this would need to
+	# tell apart. The two cases are not separable by size. See
+	# docs/feel-backlog.md for what would actually separate them.
 	var normal_y: float = blocker.get_normal().y
 	if normal_y >= config.pawn.walkable_floor_z:
 		return _step_log(what, "是斜坡 n.y=%.3f，交给 move_and_slide" % normal_y, 0.0)
@@ -975,6 +986,47 @@ func try_step_up(delta: float) -> float:
 	return _step_log(what, "抬升 %.3f m" % rise, rise)
 
 
+## Sets the body back down when travelling has lifted it clear of the floor by
+## less than one step, and snaps it there. Called AFTER move_and_slide().
+##
+## WHAT THIS IS FOR, measured in play. Ankle-high clutter with a SLOPED face --
+## the rooftop litter meshes, reading normals of 0.89 to 0.99 -- is correctly
+## refused by try_step_up() as a ramp and handed to move_and_slide(), which
+## climbs it. But riding up and off a small ramp throws the body clear of the
+## floor for a tick or two, and every move that reads leaving the floor as a
+## ledge exit cancels itself on it:
+##
+##     Walking -> Slide -> Falling -> Grab -> Falling -> Walking
+##
+## The slide was neither blocked nor mis-stepped; it was thrown. The step-up
+## grace window does not cover this, because no step-up ever fired.
+##
+## The same call also removes the little hop from walking DOWN a shallow step.
+##
+## Borrowed from the Godot community's standard stair-stepping shape (see
+## Andicraft/stairs-character, MIT), which pairs a step-up sweep with exactly
+## this descent half. Only the descent half is taken here: this project's own
+## step-up probe is measured and documented, and replacing it is a separate
+## question (docs/feel-backlog.md).
+func try_step_down() -> void:
+	if true: return  # TEMP
+	if config == null or is_on_floor():
+		return
+	# Airborne when the tick STARTED means falling or jumping, not thrown by
+	# geometry -- leave it alone, or a fall gets caught by every ledge it
+	# passes within a step of.
+	if not _was_grounded:
+		return
+	# Rising is a jump, and a jump must not be pulled back to the floor it just
+	# left.
+	if velocity.y > 0.0:
+		return
+	var landing := KinematicCollision3D.new()
+	if not test_move(global_transform, Vector3.DOWN * config.pawn.max_step_height, landing):
+		return                            # nothing within a step below: a real fall
+	global_position += landing.get_travel()
+	apply_floor_snap()
+
 ## Traces every step-up decision, naming the geometry involved. Off by default;
 ## turn it on in the inspector when a spot in a level catches the player and you
 ## want to know what it is and why the probe refused it.
@@ -1000,7 +1052,7 @@ var _step_log_last: String = ""
 ## on one obstacle produces one line rather than sixty a second.
 var step_decisions: PackedStringArray = PackedStringArray()
 
-const STEP_DECISION_LINES := 5
+const STEP_DECISION_LINES := 10
 
 
 func _collider_name(collision: KinematicCollision3D) -> String:
