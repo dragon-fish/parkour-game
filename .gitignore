@@ -63,3 +63,8 @@ docs/mirrors-edge-deep-research/tools/hud_ocr_data/
 # Python bytecode from the research tools
 __pycache__/
 *.pyc
+
+# Hand-built experiments dropped into the arena at runtime (see
+# Arena._load_sandbox). Not generated, not required, and not something a
+# throwaway ramp needs to be committed for.
+scenes/sandbox.tscn

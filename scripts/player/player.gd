@@ -428,6 +428,13 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 		shape_node.shape = owned
 		_standing_height = owned.height
 
+	# Godot's own floor snap, sized to a step rather than left at its 0.1 m
+	# default. Walking DOWN a stair leaves the body briefly unsupported, and a
+	# snap shorter than the step cannot catch it -- which is Walking/Falling
+	# flickering the whole way down a staircase. Anything taller than a step is
+	# a real drop and must be allowed to fall.
+	floor_snap_length = config.pawn.max_step_height
+
 	_build_moves()
 
 	if probes != null:

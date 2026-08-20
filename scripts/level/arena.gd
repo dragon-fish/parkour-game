@@ -29,6 +29,7 @@ func _ready() -> void:
 
 	add_child(_death_sequence)
 	_death_sequence.finished.connect(reset_player)
+	_load_sandbox()
 
 	# A fall past pawn.falling_uncontrolled_height is unsurvivable in the
 	# original (03 §3.1). Respawning is the arena's job, not the player's, and
@@ -66,6 +67,29 @@ func _ready() -> void:
 ## `finished` (wired in _ready()), not from here directly.
 func _on_died_from_fall() -> void:
 	_death_sequence.play(player)
+
+## Loads scenes/sandbox.tscn under the arena, if it exists.
+##
+## scenes/main.tscn is GENERATED (tools/build_main_scene.gd), so anything added
+## to it by hand is destroyed the next time the generator runs -- which happens
+## whenever a builder or a config value it reads changes, and is enforced by
+## tests/test_generated_scenes.gd. That makes it a bad place to park a ramp you
+## want to try out.
+##
+## sandbox.tscn is not generated and not referenced by any builder, so whatever
+## is in it survives. It is optional: absent, this does nothing. It is also
+## git-ignored, so experiments do not have to be committed or explained.
+const SANDBOX_SCENE := "res://scenes/sandbox.tscn"
+
+func _load_sandbox() -> void:
+	if not ResourceLoader.exists(SANDBOX_SCENE):
+		return
+	var packed: PackedScene = load(SANDBOX_SCENE)
+	if packed == null:
+		return
+	var sandbox: Node = packed.instantiate()
+	sandbox.name = "Sandbox"
+	add_child(sandbox)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
