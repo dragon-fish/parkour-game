@@ -88,19 +88,53 @@ func _run_all() -> void:
 		print("  FAIL  ", f)
 	quit(1 if all_failures.size() > 0 else 0)
 
+## Optional substring filters, taken from the command line after `--`:
+##
+##     godot --headless --script res://tests/test_runner.gd -- slide crouch
+##
+## A file runs if its name contains ANY of them. Case-insensitive, and matched
+## against the file name only. With no filters every test runs, which is what
+## CI and a pre-release check want; day to day, narrowing to the files a change
+## actually touches turns a three-minute wait into a few seconds.
+func _filters() -> PackedStringArray:
+	# Read from the environment, not the command line: Godot's own argument
+	# parser swallows extra arguments in --script mode, so neither `--` nor a
+	# sentinel survived the trip. tools/run_tests.ps1 sets this.
+	var out := PackedStringArray()
+	for raw in OS.get_environment("PARKOUR_TEST_FILTER").split(",", false):
+		var trimmed := String(raw).strip_edges().to_lower()
+		if trimmed != "":
+			out.append(trimmed)
+	return out
+
 func _discover() -> Array[String]:
 	var out: Array[String] = []
 	var dir := DirAccess.open(TEST_DIR)
 	if dir == null:
 		push_error("cannot open %s" % TEST_DIR)
 		return out
+	var filters := _filters()
 	dir.list_dir_begin()
 	var name := dir.get_next()
 	while name != "":
 		if not dir.current_is_dir() and name.begins_with("test_") and name.ends_with(".gd"):
 			if name != "test_runner.gd" and name != "test_case.gd":
-				out.append("%s/%s" % [TEST_DIR, name])
+				if _matches(name, filters):
+					out.append("%s/%s" % [TEST_DIR, name])
 		name = dir.get_next()
 	dir.list_dir_end()
 	out.sort()
+	if not filters.is_empty():
+		print("filters: %s  ->  %d file(s)" % [", ".join(filters), out.size()])
+		if out.is_empty():
+			push_error("no test file matched: %s" % ", ".join(filters))
 	return out
+
+func _matches(name: String, filters: PackedStringArray) -> bool:
+	if filters.is_empty():
+		return true
+	var lowered := name.to_lower()
+	for f in filters:
+		if lowered.contains(f):
+			return true
+	return false

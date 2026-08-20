@@ -1,5 +1,13 @@
 # Runs the headless test suite. Uses the _console.exe variant because the
 # plain exe detaches from the console and swallows stdout on Windows.
+# Optional substring filters, e.g.  tools/run_tests.ps1 slide crouch
+# A test file runs if its name contains any of them. No filters = everything,
+# which is what CI and a pre-release check want.
+# Passed through the environment rather than on the command line: Godot's own
+# argument parser swallows extra arguments in --script mode, so neither `--`
+# nor a sentinel reached the runner. $args is used to collect them because a
+# param() block did not receive positional arguments under the comment header.
+
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $godot = Join-Path $root '.engine\Godot_v4.7.1-stable_win64_console.exe'
@@ -28,7 +36,14 @@ if (-not (Test-Path $godot)) {
 # reports every such crash, so it is scanned directly rather than trusting
 # the exit code alone.
 $outputLines = New-Object System.Collections.Generic.List[string]
-& $godot --headless --path $root --script res://tests/test_runner.gd 2>&1 | ForEach-Object {
+$runnerArgs = @('--headless', '--path', $root, '--script', 'res://tests/test_runner.gd')
+if ($args.Count -gt 0) {
+    Write-Output "run_tests.ps1: filtering on $($args -join ', ')"
+    $env:PARKOUR_TEST_FILTER = ($args -join ',')
+} else {
+    Remove-Item Env:\PARKOUR_TEST_FILTER -ErrorAction SilentlyContinue
+}
+& $godot @runnerArgs 2>&1 | ForEach-Object {
     $text = $_.ToString()
     Write-Output $text
     $outputLines.Add($text)
