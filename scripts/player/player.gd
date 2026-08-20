@@ -1039,6 +1039,27 @@ func travel_speed() -> float:
 ## The current ground speed ceiling. Every move that wants "top speed" asks
 ## here rather than reading pawn.ground_speed, which is now only the curve's
 ## own upper bound rather than a target anything reaches directly.
+## The small forward nudge a take-off adds, or zero for a standing jump.
+##
+## Source: 02 §2.4 `JumpAddXY = 100` uu/s. ✅ as a value; the CONDITION is
+## ✅ measured in the original: a jump taken while running picks up about
+## 4 km/h, and a jump from a standstill picks up nothing at all. Adding it
+## unconditionally -- which is what the three take-off sites used to do --
+## gave a standing jump 1 m/s of drift the original never has.
+##
+## Gated on the movement KEYS rather than on current speed: the question the
+## original appears to ask is whether the player is asking to travel, and
+## speed alone cannot distinguish a standing start from a body still sliding
+## to a halt.
+func jump_add_velocity(input: MoveInput) -> Vector3:
+	if input.move == Vector2.ZERO:
+		return Vector3.ZERO
+	var facing: Vector3 = -global_transform.basis.z
+	facing.y = 0.0
+	if facing.length_squared() < 0.0001:
+		return Vector3.ZERO
+	return facing.normalized() * config.pawn.jump_add_xy
+
 func speed_cap() -> float:
 	return speed_energy.cap()
 

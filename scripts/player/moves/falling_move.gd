@@ -12,16 +12,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# buffered just after walking off a ledge still fires here.
 	if player.consume_jump():
 		player.velocity.y = config.pawn.base_jump_z
-		# Source: 02 §2.4 `JumpAddXY = 100` uu/s. ⚠️ Inferred as an ADDITION
-		# along the facing at take-off (whether it adds or sets a minimum is
-		# unverified); taking off is itself a small forward commitment. Same
-		# boost as the two grounded jump sites (WalkingMove, SlideMove) --
-		# this is structurally the same take-off, just consumed a tick or two
-		# late by the coyote window, and a player cannot tell the difference
-		# between the two paths, so neither can the boost.
-		var facing: Vector3 = -player.global_transform.basis.z
-		player.velocity.x += facing.x * config.pawn.jump_add_xy
-		player.velocity.z += facing.z * config.pawn.jump_add_xy
+		# Same nudge as the two grounded take-off sites: a coyote jump is
+		# structurally the same take-off, just consumed a tick or two late,
+		# and a player cannot tell the two paths apart.
+		player.velocity += player.jump_add_velocity(input)
 		player.set_grounded(false)
 		return JUMP
 
