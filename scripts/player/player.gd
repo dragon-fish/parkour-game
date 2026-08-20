@@ -128,6 +128,13 @@ var speed_energy: SpeedEnergy
 ## _charge_turn().
 var _last_wish_dir: Vector3 = Vector3.ZERO
 
+## The heading the body left the ground with, and how long it has been away.
+## Turning is not billed in mid-air -- there is no traction to lose it through
+## -- but a body that takes off facing one way and lands facing another HAS
+## turned, and used to arrive owing nothing. Settled once, on touchdown.
+var _takeoff_dir: Vector3 = Vector3.ZERO
+var _airborne_time: float = 0.0
+
 func landing_tier(fall_height: float) -> int:
 	var pawn := config.pawn
 	if fall_height < pawn.skill_roll_landing_height:
@@ -479,6 +486,8 @@ func reset_state() -> void:
 	if speed_energy != null:
 		speed_energy.reset()
 	_last_wish_dir = Vector3.ZERO
+	_takeoff_dir = Vector3.ZERO
+	_airborne_time = 0.0
 	wall_side = 0
 	# A respawn teleport is not travel: leave the camera's speed cue at rest
 	# rather than letting the first tick after the reset read the old life's.
@@ -1360,10 +1369,35 @@ func _energy_mode(input: MoveInput) -> int:
 ## would double-punish a jump the player is already committed to.
 func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	var wish := wish_direction(input)
+	var facing: Vector3 = -global_transform.basis.z
+	facing.y = 0.0
+	facing = facing.normalized() if facing.length_squared() > 0.0001 else Vector3.ZERO
 	if not grounded:
-		# Neither banked, bled, nor charged for turning while airborne.
+		# Nothing is banked or bled in mid-air, and turning is not billed tick
+		# by tick either -- there is no traction to lose speed through. The
+		# heading at take-off is remembered instead, and the whole rotation is
+		# settled on landing.
+		if _takeoff_dir == Vector3.ZERO:
+			_takeoff_dir = facing
+			_airborne_time = 0.0
+		_airborne_time += delta
 		_last_wish_dir = wish
 		return
+	# Just landed with a heading owed. Billed as ONE turn through the angle
+	# between take-off and touchdown, at the rate it was actually swung
+	# (the airborne time), so a lazy mid-air adjustment costs little and a
+	# hard 180 costs what a hard 180 costs. Without this a player could turn
+	# the corner in the air and arrive owing nothing at all.
+	if _takeoff_dir != Vector3.ZERO:
+		if facing != Vector3.ZERO:
+			var swung: float = absf(_takeoff_dir.signed_angle_to(facing, Vector3.UP))
+			# Guarded against float noise, not against small turns: a body that
+			# took off and landed on the same heading still differs in the last
+			# few bits, and billing that charged a hop for turning.
+			if swung > 0.001:
+				speed_energy.spend_turn(swung, maxf(_airborne_time, delta))
+		_takeoff_dir = Vector3.ZERO
+		_airborne_time = 0.0
 	_charge_turn(wish, delta)
 	if wish == Vector3.ZERO:
 		speed_energy.decay(delta)

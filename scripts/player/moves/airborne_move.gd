@@ -200,3 +200,10 @@ func _apply_landing_cost(fall_height: float, rolled: bool) -> void:
 	var keep: float = player.landing_keep_ratio(fall_height, rolled)
 	player.velocity.x *= keep
 	player.velocity.z *= keep
+	if keep <= 0.0:
+		# The BUDGET goes too, not just the velocity. Zeroing speed while
+		# leaving the energy that buys it full means the ceiling is still up
+		# there: one stride and the player is back at pace, which makes a hard
+		# landing free. Measured in the original by the owner -- after a hard
+		# landing, getting going again is indistinguishable from starting cold.
+		player.speed_energy.reset()

@@ -77,18 +77,18 @@ func test_strafing_and_walking_bank_energy_more_slowly_than_running() -> void:
 	assert_almost_eq(walk.energy, 7.0 / 30.0, 0.001, "walk factor is not 7/30 per second")
 
 func test_a_full_energy_budget_decays_to_nothing_in_three_seconds() -> void:
-	# SpeedEnergyDecelerationTime = 3, with the 0.5 exponent taken literally:
-	# dE/dt = -k * sqrt(E), k solved so a full budget empties in exactly T.
-	# Integrated with explicit Euler at the physics tick rate; the expected
-	# values below were measured against that integration, not against the
-	# closed form (Euler runs slightly ahead of it because |dE/dt| shrinks
-	# within each step).
+	# SpeedEnergyDecelerationTime = 3 with the 0.5 exponent on TIME:
+	# E = E0 * (1 - (t/T)^0.5). See SpeedEnergy.decay() for why this reading of
+	# the same two confirmed numbers, rather than the exponent-on-energy one
+	# this project shipped first.
+	#
+	# At 2.5 s of 3: 7 * (1 - sqrt(0.8333)) = 0.610.
 	var pawn := _pawn()
 	var energy := SpeedEnergy.new(pawn)
 	energy.energy = 7.0
 	for i in 150:
 		energy.decay(1.0 / 60.0)
-	assert_almost_eq(energy.energy, 0.183, 0.02, "decay at 2.5 s is off the measured curve")
+	assert_almost_eq(energy.energy, 0.610, 0.02, "decay at 2.5 s is off the curve")
 	for i in 30:
 		energy.decay(1.0 / 60.0)
 	assert_almost_eq(energy.energy, 0.0, 0.001, "a full budget did not empty in three seconds")

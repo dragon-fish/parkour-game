@@ -52,9 +52,11 @@ func test_releasing_and_repressing_a_direction_is_not_a_turn() -> void:
 	await step(1)
 	world["input"].state.move = Vector2(0.0, 1.0)
 	await step(1)
-	# One tick of no input does bleed a little through ordinary decay, but it
-	# must be nothing like a turn's own cost.
-	assert_gt(world["player"].speed_energy.energy, before - 0.5, \
+	# One tick of no input does bleed through ordinary decay -- and bleeds
+	# faster than it used to, now that the decay curve is steepest the instant
+	# the player stops (see SpeedEnergy.decay()). What matters is that it is
+	# nothing like a turn's own cost: a hard 90-degree flick runs about 4.6.
+	assert_gt(world["player"].speed_energy.energy, before - 0.7, \
 		"passing through zero input was charged as a turn")
 	TestWorld.teardown(world)
 	await step(1)
@@ -283,6 +285,39 @@ func test_standing_still_still_empties_the_budget() -> void:
 		await step(1)
 	assert_almost_eq(player.speed_energy.energy, 0.0, 0.001, \
 		"standing still did not empty the speed budget")
+
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_a_turn_taken_in_the_air_is_billed_on_landing() -> void:
+	# Turning is not billed tick by tick in mid-air -- there is no traction to
+	# lose speed through -- but a body that takes off facing one way and lands
+	# facing another HAS turned, and used to arrive owing nothing at all. That
+	# made a jump a way to take a corner for free.
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	await _run_up(world, 430)
+	var player: Player = world["player"]
+	assert_gt(player.speed_energy.energy, 6.5, "never banked a full budget")
+
+	# Leave the ground, swing the body a half turn, come back down.
+	world["input"].press_jump()
+	await step(2)
+	assert_true(not player.grounded, "test setup is wrong: never left the ground")
+	world["input"].release_jump()
+	player.rotate_y(PI)
+
+	var before: float = player.speed_energy.energy
+	for i in 120:
+		await step(1)
+		if player.grounded:
+			break
+	assert_true(player.grounded, "test setup is wrong: never landed")
+	assert_true(player.speed_energy.energy < before - 0.5, \
+		"a half turn taken in the air cost nothing on landing (%.3f -> %.3f)" \
+			% [before, player.speed_energy.energy])
 
 	TestWorld.teardown(world)
 	await step(1)

@@ -21,6 +21,14 @@ enum { WALK, STRAFE, SPRINT }
 
 var energy: float = 0.0
 
+## Where the current decay started, and how long it has been running. The decay
+## curve is evaluated from these rather than stepped incrementally, because the
+## shape it now uses has an infinite slope at t = 0 -- a per-tick form would
+## take an unbounded first step. Reset by anything that puts energy IN or takes
+## it out for another reason.
+var _decay_from: float = 0.0
+var _decay_time: float = 0.0
+
 var _pawn: PawnConfig
 
 func _init(pawn: PawnConfig) -> void:
@@ -28,6 +36,7 @@ func _init(pawn: PawnConfig) -> void:
 
 func reset() -> void:
 	energy = 0.0
+	_rebase_decay()
 
 ## The ground speed ceiling for the current energy, clamped into
 ## [speed_min_base_velocity, ground_speed]. The upper clamp is load-bearing
@@ -75,6 +84,7 @@ func accumulate(delta: float, mode: int) -> void:
 		STRAFE:
 			factor = _pawn.speed_strafe_velocity_acceleration_factor
 	energy = minf(energy + delta * (factor / sprint), _energy_ceiling())
+	_rebase_decay()
 
 ## dE/dt = -k * E^exponent, with k solved so a FULL budget empties in exactly
 ## speed_energy_deceleration_time. Explicit Euler at the physics tick rate,
@@ -84,14 +94,30 @@ func accumulate(delta: float, mode: int) -> void:
 func decay(delta: float) -> void:
 	if energy <= 0.0:
 		energy = 0.0
+		_decay_time = 0.0
 		return
-	var e_max: float = _energy_ceiling()
+	if _decay_time == 0.0:
+		# Pick up wherever the budget currently stands, so a caller that set
+		# `energy` directly -- tests do, and so does anything restoring state
+		# -- gets a curve from THAT value rather than from a stale basis.
+		_decay_from = energy
+	_decay_time += delta
 	var time: float = maxf(_pawn.speed_energy_deceleration_time, 0.001)
 	var exponent: float = _pawn.speed_energy_deceleration_exponent
-	# Solving (d/dt)E = -k*E^p for E(0) = e_max reaching 0 at t = time gives
-	# k = e_max^(1-p) / ((1-p) * time). At p = 0.5 that is 2*sqrt(e_max)/time.
-	var k: float = pow(e_max, 1.0 - exponent) / (maxf(1.0 - exponent, 0.001) * time)
-	energy = maxf(energy - k * pow(energy, exponent) * delta, 0.0)
+	# E = E0 * (1 - (t/T)^p), with the exponent on TIME.
+	#
+	# The research recorded both readings of these two confirmed numbers and
+	# could not choose between them (02 §2.5: "or the reverse, depending on how
+	# the formula is written"). This project shipped the other one first --
+	# (d/dt)E = -k*E^p, which solves to E0 * (1 - t/T)^2 -- and play-testing
+	# ruled it out: pausing for half a second left 69% of the budget intact, so
+	# tapping W again returned the player straight to 6.7 m/s, while the
+	# original makes them build speed up from nothing after any real pause.
+	#
+	# This reading is steepest the instant the player stops, which is what that
+	# describes. Same T, same exponent, opposite ends of the curve.
+	var spent: float = clampf(pow(_decay_time / time, exponent), 0.0, 1.0)
+	energy = maxf(_decay_from * (1.0 - spent), 0.0)
 
 ## Turning is a continuous tax with no free allowance (10.1 ③): the research
 ## found no "costs nothing below N degrees" parameter anywhere in the game.
@@ -115,6 +141,7 @@ func spend_turn(radians: float, delta: float) -> void:
 	if energy <= floor_energy:
 		return
 	energy = maxf(energy - absf(cost), floor_energy)
+	_rebase_decay()
 
 ## The energy at which the speed curve first reaches `speed` -- the inverse of
 ## curve_at(). Linear search over the same knots, so the two cannot disagree.
@@ -156,6 +183,15 @@ func turn_rate_multiplier(rate_deg: float) -> float:
 
 func drain(amount: float) -> void:
 	energy = maxf(energy - absf(amount), 0.0)
+	_rebase_decay()
+
+## Restarts the decay clock from wherever the budget now stands. Called by
+## everything that changes energy for a reason OTHER than decay, so a decay
+## that resumes afterwards falls from the new value rather than continuing an
+## old curve toward a number that is no longer relevant.
+func _rebase_decay() -> void:
+	_decay_from = energy
+	_decay_time = 0.0
 
 ## The curve's own last knot -- the energy at which the cap stops climbing.
 ## Both the accumulation clamp and the decay rate are derived from it rather
