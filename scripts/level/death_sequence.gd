@@ -10,17 +10,44 @@ extends Node
 
 signal finished
 
-const DROP_TIME := 0.35     ## eye height -> half crouch
-const HOLD_TIME := 0.35     ## a beat on the ground before toppling
-const TOPPLE_TIME := 0.70   ## quarter circle to the left, pivoting on the feet
+## ⚠️ All four are project-defined, and all four come from the owner's own
+## storyboard rather than from the original -- which plays a cutscene here and
+## whose data says nothing about camera timing.
+##
+## The two HOLDS are the point of the shape: the body arrives, stops, and only
+## then gives way, and it lies still afterwards instead of cutting straight to
+## a respawn. Without them the whole thing reads as one continuous slump.
+const DROP_TIME := 0.5      ## eye height -> half height, the legs going
+const HOLD_TIME := 1.0      ## knelt, not yet fallen
+const TOPPLE_TIME := 1.5    ## quarter circle to the left, pivoting on the feet
+const REST_TIME := 1.0      ## lying still before the level takes over
+
+## ⚠️ PROJECT-DEFINED. How far above the floor the arc bottoms out, so the view
+## ends up cheek-to-the-ground rather than inside it -- a camera pivoting on
+## the feet exactly would put its near plane through the floor and show the
+## underside of the level.
+const GROUND_CLEARANCE := 0.15
 
 var _player: Player
 var _elapsed: float = 0.0
 var _playing: bool = false
 var _eye_height: float = 0.0
 
+## Where the FEET are, in the rig's own local space -- i.e. how far below the
+## Player origin the ground is. The rig hangs off the Player node, whose origin
+## sits at the capsule's CENTRE, so local y = 0 is roughly half a body above
+## the floor rather than on it. Without this the topple arc pivoted around the
+## capsule centre and bottomed out a half-body short of the ground: the view
+## rolled over but never came down, which is not what falling over looks like.
+var _feet_offset: float = 0.0
+
+## The pitch the player happened to be looking at when they died, eased out
+## over the drop. Watching the ground rush up is the reflex on a fatal fall, so
+## without this the whole topple plays from a face-down view.
+var _entry_pitch: float = 0.0
+
 func total_duration() -> float:
-	return DROP_TIME + HOLD_TIME + TOPPLE_TIME
+	return DROP_TIME + HOLD_TIME + TOPPLE_TIME + REST_TIME
 
 func play(player: Player) -> void:
 	_player = player
@@ -33,7 +60,15 @@ func play(player: Player) -> void:
 		# assuming a live Player always has one.
 		if _player.config != null:
 			_eye_height = _player.config.camera.eye_height
+		# Half the standing capsule, because the Player origin is its centre.
+		# standing_height() rather than the live height: the body may already
+		# be crouched or sliding when it dies, and the fall should read from
+		# where a standing body's feet are.
+		_feet_offset = _player.standing_height() * 0.5
 		if _player.camera_rig != null:
+			# Read BEFORE begin_cinematic(), while rotation.x is still the
+			# player's own look.
+			_entry_pitch = _player.camera_rig.rotation.x
 			_player.camera_rig.begin_cinematic()
 		if _player.screen_effects != null:
 			_player.screen_effects.set_desaturation(1.0)
@@ -45,7 +80,7 @@ func _physics_process(delta: float) -> void:
 	_elapsed += delta
 	if _player != null and _player.camera_rig != null:
 		var pose := _pose_at(_elapsed)
-		_player.camera_rig.set_cinematic_pose(pose[0], pose[1])
+		_player.camera_rig.set_cinematic_pose(pose[0], pose[1], pose[2])
 	if _elapsed >= total_duration():
 		_release_player()
 		finished.emit()
@@ -81,19 +116,47 @@ func _release_player() -> void:
 		_player.screen_effects.set_desaturation(0.0)
 	_player.unlock_input()
 
-## Local camera offset and roll at time t. Returns [Vector3, float].
+## Local camera offset, roll and pitch at time t. Returns [Vector3, float, float].
+##
+## Everything below is worked in EYE-ABOVE-GROUND terms and converted to a rig
+## offset at the end, because the storyboard is drawn from the ground: the view
+## drops to half the body's height, holds, then sweeps a quarter circle of that
+## same radius pivoting on the feet -- ending flat on the floor.
 func _pose_at(t: float) -> Array:
-	var half: float = _eye_height * 0.5
+	# Ground to eye, which is what "half height" in the storyboard means.
+	var stature: float = _feet_offset + _eye_height
+	var half: float = stature * 0.5
 	if t < DROP_TIME:
 		# Ease-out: the legs give way fast, then settle.
 		var k: float = 1.0 - pow(1.0 - (t / DROP_TIME), 2.0)
-		return [Vector3(0.0, lerpf(_eye_height, half, k) - _eye_height, 0.0), 0.0]
+		# Pitch levels out on the same curve, so a player who died looking at
+		# their feet is looking level by the time the body settles onto its
+		# knees.
+		return [Vector3(0.0, _to_offset(lerpf(stature, half, k)), 0.0), 0.0,
+			lerpf(_entry_pitch, 0.0, k)]
 	if t < DROP_TIME + HOLD_TIME:
-		return [Vector3(0.0, half - _eye_height, 0.0), 0.0]
-	var k2: float = clampf((t - DROP_TIME - HOLD_TIME) / TOPPLE_TIME, 0.0, 1.0)
+		return [Vector3(0.0, _to_offset(half), 0.0), 0.0, 0.0]
+	# easeInOutQuint: barely moves at first, collapses through the middle, and
+	# arrives soft. A body with nothing left in it gives way slowly, goes over
+	# all at once, and does not slap the ground. A plain ease-out starts at its
+	# fastest, which reads as being pushed rather than as giving out.
+	#
+	# Past TOPPLE_TIME the clamp holds this final pose for REST_TIME, which is
+	# what makes the body lie still at the end.
+	var u: float = clampf((t - DROP_TIME - HOLD_TIME) / TOPPLE_TIME, 0.0, 1.0)
+	var k2: float = 16.0 * pow(u, 5.0) if u < 0.5 else 1.0 - pow(-2.0 * u + 2.0, 5.0) / 2.0
 	# Pivot on the feet: the head sweeps a quarter circle of radius `half`
 	# rather than sliding sideways at a fixed height.
+	# Pivots on a point just ABOVE the feet, so the arc bottoms out at
+	# GROUND_CLEARANCE instead of at the floor itself. The radius shrinks to
+	# match, which keeps the arc starting exactly where the drop left off.
 	var angle: float = k2 * PI * 0.5
-	var y: float = half * cos(angle) - _eye_height
-	var x: float = -half * sin(angle)
-	return [Vector3(x, y, 0.0), -angle]
+	var radius: float = maxf(half - GROUND_CLEARANCE, 0.01)
+	var y: float = _to_offset(GROUND_CLEARANCE + radius * cos(angle))
+	var x: float = -radius * sin(angle)
+	return [Vector3(x, y, 0.0), -angle, 0.0]
+
+## Converts a height ABOVE THE GROUND into the rig-local offset that
+## CameraRig.update_effects() adds to its resting eye position.
+func _to_offset(above_ground: float) -> float:
+	return above_ground - _feet_offset - _eye_height

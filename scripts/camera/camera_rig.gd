@@ -60,6 +60,7 @@ var _has_head: bool = false
 var _cinematic: bool = false
 var _cinematic_offset: Vector3 = Vector3.ZERO
 var _cinematic_roll: float = 0.0
+var _cinematic_pitch: float = 0.0
 
 func setup(cfg: MovementConfig) -> void:
 	_config = cfg
@@ -136,12 +137,19 @@ func clear_look_constraint() -> void:
 func begin_cinematic() -> void:
 	_cinematic = true
 
-## Sets this tick's cutscene pose. `offset` is a local offset from the
-## resting eye position; `roll` is rotation.z in radians. Meaningless unless
-## begin_cinematic() has been called and end_cinematic() has not.
-func set_cinematic_pose(offset: Vector3, roll: float) -> void:
+## Sets this tick's cutscene pose. `offset` is a local offset from the resting
+## eye position; `roll` is rotation.z and `pitch` is rotation.x, both radians.
+## Meaningless unless begin_cinematic() has been called and end_cinematic() has
+## not.
+##
+## Pitch is driven here rather than left at whatever the player was looking at,
+## because they were probably looking DOWN: watching the ground come up is the
+## reflex on a fatal fall, and a topple animation played from a face-down view
+## reads as nonsense.
+func set_cinematic_pose(offset: Vector3, roll: float, pitch: float = 0.0) -> void:
 	_cinematic_offset = offset
 	_cinematic_roll = roll
+	_cinematic_pitch = pitch
 
 ## Hands the camera back. Resets the cutscene offset/roll to neutral so a
 ## stale pose cannot linger into the next update_effects() call before that
@@ -150,6 +158,7 @@ func end_cinematic() -> void:
 	_cinematic = false
 	_cinematic_offset = Vector3.ZERO
 	_cinematic_roll = 0.0
+	_cinematic_pitch = 0.0
 
 ## Levels the view and clears landing/bob state. Called on a manual reset
 ## (Arena's R key) so the camera snaps back to a fresh-spawn look instead of
@@ -217,6 +226,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	if _cinematic:
 		position = Vector3(0.0, _config.camera.eye_height, 0.0) + _cinematic_offset
 		rotation.z = _cinematic_roll
+		rotation.x = _cinematic_pitch
 		return
 
 	# Where the rig would sit this frame with NO head-follow applied,

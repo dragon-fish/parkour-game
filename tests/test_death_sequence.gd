@@ -11,8 +11,8 @@ func test_the_sequence_reports_its_own_duration() -> void:
 	var seq := DeathSequence.new()
 	get_tree().root.add_child(seq)
 	await step(1)
-	assert_gt(seq.total_duration(), 1.0, "the death sequence is too short to read")
-	assert_gt(3.0, seq.total_duration(), "the death sequence outstays its welcome")
+	# The storyboard is 0.5 drop + 1.0 knelt + 1.5 topple + 1.0 lying still.
+	assert_almost_eq(seq.total_duration(), 4.0, 0.001, 		"the death sequence no longer matches its storyboard")
 	seq.queue_free()
 	await step(1)
 
@@ -161,6 +161,89 @@ func test_stopping_a_sequence_cancels_it_instead_of_finishing_it() -> void:
 		await step(1)
 	assert_true(not done["hit"], \
 		"a cancelled cutscene still reported itself finished, which respawns the player")
+
+	seq.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_the_topple_ends_with_the_view_on_the_ground() -> void:
+	# The arc pivots on the FEET, and the rig hangs off the Player node whose
+	# origin is the capsule's CENTRE -- so a pose worked in rig-local terms
+	# bottoms out half a body above the floor. Reported from play as "it only
+	# rotated, the height never came down".
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(get_tree(), cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+
+	var seq := DeathSequence.new()
+	get_tree().root.add_child(seq)
+	await step(1)
+	seq.play(player)
+
+	var stature: float = player.standing_height() * 0.5 + cfg.camera.eye_height
+	var start_y: float = player.camera_rig.global_position.y - player.global_position.y \
+		+ player.standing_height() * 0.5
+
+	# Run the whole thing, sampling the lowest the view ever gets.
+	var lowest := start_y
+	var ticks: int = int(seq.total_duration() * Engine.physics_ticks_per_second) + 10
+	for i in ticks:
+		await step(1)
+		var above_ground: float = player.camera_rig.global_position.y \
+			- player.global_position.y + player.standing_height() * 0.5
+		lowest = minf(lowest, above_ground)
+
+	assert_almost_eq(start_y, stature, 0.05, \
+		"test setup is wrong: the view did not start at eye height above ground")
+	assert_true(lowest < stature * 0.15, \
+		"the topple never brought the view near the ground (lowest %.3f m of %.3f m)" \
+			% [lowest, stature])
+
+	seq.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_the_cutscene_levels_a_view_that_died_looking_down() -> void:
+	# Watching the ground come up is the reflex on a fatal fall, so the pitch
+	# at the moment of death is usually steeply down. The cutscene drives pitch
+	# itself rather than inheriting it -- a topple played from a face-down view
+	# reads as nonsense.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(get_tree(), cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+
+	# Look steeply down, the way a falling player would be.
+	for i in 200:
+		player.camera_rig.apply_look(Vector2(0.0, 100.0), player)
+	assert_true(player.camera_rig.rotation.x < -deg_to_rad(60.0), \
+		"test setup is wrong: the view is not steeply down")
+
+	var seq := DeathSequence.new()
+	get_tree().root.add_child(seq)
+	await step(1)
+	seq.play(player)
+
+	# EASED over the drop, not snapped: halfway through the view should be
+	# somewhere in between rather than already level.
+	var half_ticks: int = int(DeathSequence.DROP_TIME * 0.5 * Engine.physics_ticks_per_second)
+	for i in half_ticks:
+		await step(1)
+	var midway: float = player.camera_rig.rotation.x
+	assert_true(midway < -0.02, \
+		"the pitch snapped to level instead of easing (midway %.3f rad)" % midway)
+
+	# By the end of the drop it should be level, whatever it started at.
+	var rest: int = int(DeathSequence.DROP_TIME * Engine.physics_ticks_per_second) - half_ticks + 4
+	for i in rest:
+		await step(1)
+	assert_almost_eq(player.camera_rig.rotation.x, 0.0, 0.05, \
+		"the cutscene inherited the player's death pitch instead of levelling it")
 
 	seq.queue_free()
 	TestWorld.teardown(world)
