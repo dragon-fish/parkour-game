@@ -1054,7 +1054,15 @@ func try_step_up(delta: float) -> float:
 	var far: float = _probe_landing(lifted, direction, current_capsule_radius() + 0.25, risen.length())
 	if near == INF:
 		return _step_log(what, "对面探空，是坑不是台阶", 0.0)
-	if far != INF and far > near + STEP_RAMP_TOLERANCE:
+	# Nothing 0.2 m further on either: the near probe found a RIDGE, not a
+	# surface -- a pipe, a railing, the lip of something thin. Measured against
+	# a steeply angled pipe, which the body climbed a few centimetres at a time
+	# because the far probe sailed past it and the ramp test therefore never
+	# ran. A step has to have somewhere to stand on the far side of its edge;
+	# anything narrower belongs to vault or grab, not to step-up.
+	if far == INF:
+		return _step_log(what, "顶面太窄，站不住", 0.0)
+	if far > near + STEP_RAMP_TOLERANCE:
 		# Still climbing 0.2 m further on: a slope, which move_and_slide()
 		# already handles. Stepping it instead would climb at the reach's rate
 		# rather than the body's -- 0.45 m of reach on a 27-degree slope reads

@@ -24,8 +24,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Only Falling may hand off here: six states hold
 	# bCheckExitToUncontrolledFalling and not one of them is a launch (I2).
 	if player.fall_tracker.fall_height >= config.pawn.falling_uncontrolled_height:
-		player.set_grounded(false)
-		return FALL_UNCONTROLLED
+		return advance_and_hand_off(FALL_UNCONTROLLED)
 
 	var probed := probe_transition()
 	if probed != KEEP:

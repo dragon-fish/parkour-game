@@ -18,7 +18,6 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# tick that both crosses the threshold and touches down lands as Falling
 	# would -- the descent is what the landing is judged on.
 	if player.velocity.y <= config.pawn.enter_to_falling_z_speed:
-		player.set_grounded(false)
-		return FALLING
+		return advance_and_hand_off(FALLING)
 
 	return settle_landing(delta)
