@@ -147,27 +147,56 @@ func test_the_landing_sink_cannot_push_the_view_past_vertical() -> void:
 	rig.get_parent().queue_free()
 	await step(1)
 
-func test_the_step_offset_never_exceeds_one_step() -> void:
-	# A single stair is climbed over several ticks, and between them the body
-	# is pulled back toward the floor -- so the rises reported to the camera
-	# SUM to more than the height actually gained. Accumulating all of them put
-	# the view lower than it was before the step, which is the opposite of what
-	# the offset is for. Reported from play as the camera sinking on every
-	# stair, worse while crouched.
+func test_the_eye_eases_over_a_sudden_step_instead_of_jumping_with_it() -> void:
+	# try_step_up() moves the body in jumps, and between them move_and_slide()
+	# and the floor snap pull it back down -- so a stair is climbed as a rapid
+	# series of ups and downs. An offset pushed once per step-up only knows
+	# about the ups, and the camera shook its way up every staircase.
+	#
+	# The eye follows the body's HEIGHT instead, which is indifferent to how
+	# jagged the body's path is.
 	var rig := _rig()
 	await step(1)
+	var body := rig.get_parent() as Node3D
 	var cfg := MovementConfig.new()
+	var delta := 1.0 / 60.0
 
-	# The measured sequence from one 0.3 m stair, which sums to 0.425.
-	for amount in [0.299, 0.077, 0.037, 0.012]:
-		rig.add_step_offset(amount)
+	# Settle, so the eye is sitting exactly on the body's height.
+	for i in 30:
+		rig.update_effects(delta, 0.0, true)
+	var eye_before: float = body.global_position.y + rig.position.y
 
-	# Read through update_effects(), which is where the offset reaches the
-	# transform, rather than poking at the private field.
-	rig.update_effects(0.0, 0.0, true)
-	var sunk: float = cfg.camera.eye_height - rig.position.y
-	assert_true(sunk <= cfg.pawn.max_step_height + 0.001, \
-		"the view sank %.3f m for a %.2f m step" % [sunk, cfg.pawn.max_step_height])
+	# One stair, applied to the body in a single frame the way a step-up does.
+	body.global_position.y += 0.3
+	rig.update_effects(delta, 0.0, true)
+	var eye_after: float = body.global_position.y + rig.position.y
+	assert_true(eye_after - eye_before < 0.1, 		"the eye jumped %.3f m with the body instead of easing" % (eye_after - eye_before))
+
+	# ...and catches up shortly afterwards rather than lagging forever.
+	for i in 60:
+		rig.update_effects(delta, 0.0, true)
+	var eye_settled: float = body.global_position.y + rig.position.y
+	assert_almost_eq(eye_settled - eye_before, 0.3, 0.02, 		"the eye never caught up with the body after the step")
+
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_a_fall_is_not_smoothed() -> void:
+	# The same follow must NOT soften a real drop: watching the ground come up
+	# is the point of falling, and a camera that lags behind the body would
+	# take the speed out of it.
+	var rig := _rig()
+	await step(1)
+	var body := rig.get_parent() as Node3D
+	var delta := 1.0 / 60.0
+	for i in 30:
+		rig.update_effects(delta, 0.0, true)
+	var eye_before: float = body.global_position.y + rig.position.y
+
+	body.global_position.y -= 2.0
+	rig.update_effects(delta, 0.0, false)   # airborne
+	var eye_after: float = body.global_position.y + rig.position.y
+	assert_almost_eq(eye_before - eye_after, 2.0, 0.01, 		"a 2 m drop was smoothed away by the step follow")
 
 	rig.get_parent().queue_free()
 	await step(1)

@@ -14,10 +14,18 @@ var _bob_weight: float = 0.0
 var _dip: float = 0.0
 var _crouch_amount: float = 0.0
 var _crouch_offset: float = 0.0
-## How far the eye is still lagging behind a step-up. Persistent member for the
-## same reason _crouch_offset is: base_position.y is rebuilt from eye_height
-## every frame, so anything easing over time has to live outside it.
-var _step_offset: float = 0.0
+## The body height the eye is currently sitting at, chasing the body's real one.
+##
+## SMOOTHED FOLLOW, not an event-driven offset. try_step_up() moves the body in
+## jumps, and between those jumps move_and_slide() and the floor snap pull it
+## back down, so a stair is climbed as a rapid series of ups and downs. An
+## offset pushed once per step-up cannot cancel that -- it only knows about the
+## ups -- and the result was a camera that shook its way up every staircase.
+##
+## Following the height instead is indifferent to how jagged the body's path
+## is: whatever the body does, the eye eases toward it at one rate.
+var _eye_ground_y: float = 0.0
+var _has_eye_ground: bool = false
 var _wall_side: int = 0
 var _roll: float = 0.0
 ## An additive downward pitch owned by LandingMove. Separate from _dip because
@@ -75,21 +83,12 @@ func set_crouch_amount(amount: float) -> void:
 ## -1 wall on the left, +1 on the right, 0 none. Driven by Player each tick
 ## from Player.wall_side, itself set by WallRunMove. update_effects() eases
 ## rotation.z toward the corresponding tilt every frame.
-## Called when the body was lifted over a low obstacle. Accumulates, so two
-## steps in quick succession do not cancel each other out -- but never past one
-## step's worth.
-##
-## THE CAP IS LOAD-BEARING. A single step is usually climbed over several ticks
-## (measured 0.299, then 0.077, 0.037, 0.012 as the body creeps onto a 0.3 m
-## stair), and between those ticks move_and_slide() and the floor snap pull the
-## body back down again -- so the rises SUM to far more than the height
-## actually gained. Accumulating all of them dropped the view to BELOW where it
-## started, which is the opposite of what this offset exists for. Reported from
-## play as the camera sinking on every stair, worse while crouched, where the
-## eye is lower and the climb takes more ticks.
-func add_step_offset(amount: float) -> void:
-	var cap: float = _config.pawn.max_step_height if _config != null else amount
-	_step_offset = minf(_step_offset + amount, cap)
+## Retained as a no-op so callers that announce a step-up do not have to change
+## shape. The camera no longer needs telling: it follows the body's height (see
+## _eye_ground_y), which covers step-ups, floor snaps and everything else the
+## body does to its own altitude without any of them having to report in.
+func add_step_offset(_amount: float) -> void:
+	pass
 
 
 func set_wall_side(side: int) -> void:
@@ -181,7 +180,7 @@ func reset_state() -> void:
 	_bob_phase = 0.0
 	_crouch_amount = 0.0
 	_crouch_offset = 0.0
-	_step_offset = 0.0
+	_has_eye_ground = false
 	_wall_side = 0
 	_roll = 0.0
 	_landing_pitch = 0.0
@@ -296,9 +295,21 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# Deliberately NOT folded into _dip: landing and stepping are independent
 	# knobs, the same separation camera_config keeps between land_dip_speed_ref
 	# and the movement side's land_cost_speed_ref.
-	_step_offset = lerpf(_step_offset, 0.0,
-			clampf(_config.camera.step_smooth_speed * delta, 0.0, 1.0))
-	base_position.y -= _step_offset
+	# The eye chases the body's height rather than being told about steps.
+	# Clamped to one step so a real fall is never smoothed -- the body drops
+	# faster than this could follow, and watching the ground rush up is the
+	# whole point of a fall.
+	var body_y: float = (get_parent() as Node3D).global_position.y if get_parent() is Node3D else 0.0
+	if not grounded or not _has_eye_ground:
+		# Airborne: no lag at all. Pinned every tick so that the moment the body
+		# lands, the eye is already where the body is and nothing springs.
+		_eye_ground_y = body_y
+		_has_eye_ground = true
+	else:
+		_eye_ground_y = lerpf(_eye_ground_y, body_y,
+				clampf(_config.camera.step_smooth_speed * delta, 0.0, 1.0))
+	var cap: float = _config.pawn.max_step_height
+	base_position.y += clampf(_eye_ground_y - body_y, -cap, cap)
 
 	# Blend the eye position toward the attached body's head/neck node, LAST
 	# among the base_position.* writes above -- lerp(t=0.0) returns
