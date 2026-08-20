@@ -1114,6 +1114,20 @@ func try_step_up(delta: float) -> float:
 ## try_step_up() can be compared directly.
 func _probe_landing(lifted: Transform3D, direction: Vector3, distance: float, \
 		drop: float) -> float:
+	# The probe has to be able to REACH its sampling point. Blocked on the way
+	# there means the point is inside geometry, and a sample taken from inside
+	# a solid is meaningless: the downward sweep collides immediately, travels
+	# nothing, and hands back the probe's own height.
+	#
+	# That is how a steep panel got climbed. At 57 degrees the surface is 0.69 m
+	# up at the near sample and 1.0 m up at the far one, so BOTH probes sat
+	# buried in it and both returned the same number -- and a symmetric test
+	# comparing two identical readings sees a perfectly flat surface. Measured
+	# in play as a steady 0.293 m step, every tick, up the face of a ramp well
+	# past the walkable angle. Steeper panels were fine, because there the
+	# forward carry above is blocked too and the whole thing is called a wall.
+	if test_move(lifted, direction * distance):
+		return INF
 	var at := lifted.translated(direction * distance)
 	var landing := KinematicCollision3D.new()
 	if not test_move(at, Vector3.DOWN * drop, landing):
