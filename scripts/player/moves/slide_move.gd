@@ -52,6 +52,7 @@ func enter(_previous: StringName) -> void:
 ## Player owes the restore and performs it the moment there is room.
 func exit() -> void:
 	player.request_standing_capsule()
+	player.begin_slide_recovery()
 
 ## True while a spent slide is shuffling out from under a ceiling rather than
 ## sliding. Both are move Slide, so nothing else can tell them apart — the

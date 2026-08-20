@@ -25,6 +25,7 @@ extends Resource
 @export var falling: FallingConfig = FallingConfig.new()
 @export var fall_uncontrolled: FallUncontrolledConfig = FallUncontrolledConfig.new()
 @export var landing: LandingConfig = LandingConfig.new()
+@export var skill_roll: SkillRollConfig = SkillRollConfig.new()
 @export var slide: SlideConfig = SlideConfig.new()
 @export var crouch: CrouchConfig = CrouchConfig.new()
 @export var speed_vault: SpeedVaultConfig = SpeedVaultConfig.new()

@@ -132,6 +132,19 @@ var _last_wish_dir: Vector3 = Vector3.ZERO
 ## Turning is not billed in mid-air -- there is no traction to lose it through
 ## -- but a body that takes off facing one way and lands facing another HAS
 ## turned, and used to arrive owing nothing. Settled once, on touchdown.
+## Time left in the stand-up after a slide.
+##
+## ⚠️ PROJECT-DEFINED, from play: a slide that ends with the player instantly
+## back at full running speed makes sliding free, and the original visibly
+## spends a moment getting back up. Two things happen while it runs -- the
+## speed budget stops growing, so the ceiling is pinned at whatever the slide
+## left it at, and the eye rises from crouch height over the whole window
+## rather than snapping up with the capsule.
+##
+## Re-entering the slide is blocked over the same window, but by
+## SlideConfig.redo_move_time through MoveManager's own gate rather than here.
+var _slide_recovery_timer: float = 0.0
+
 var _takeoff_dir: Vector3 = Vector3.ZERO
 var _airborne_time: float = 0.0
 
@@ -415,6 +428,18 @@ func unlock_input() -> void:
 func is_input_locked() -> bool:
 	return _input_locked
 
+## Opens the stand-up window. Called by SlideMove.exit().
+func begin_slide_recovery() -> void:
+	_slide_recovery_timer = config.slide.recovery_time
+
+## How far through the stand-up the body is, 1 at the instant the slide ended
+## and 0 once it is over. Read by the camera to raise the eye, and by the speed
+## budget to know it must not grow.
+func slide_recovery_fraction() -> float:
+	if config == null or config.slide.recovery_time <= 0.0:
+		return 0.0
+	return clampf(_slide_recovery_timer / config.slide.recovery_time, 0.0, 1.0)
+
 func _service_pending_capsule_restore() -> void:
 	if _standing_restore_pending and has_headroom():
 		set_capsule_height(_standing_height)
@@ -488,6 +513,7 @@ func reset_state() -> void:
 	_last_wish_dir = Vector3.ZERO
 	_takeoff_dir = Vector3.ZERO
 	_airborne_time = 0.0
+	_slide_recovery_timer = 0.0
 	wall_side = 0
 	# A respawn teleport is not travel: leave the camera's speed cue at rest
 	# rather than letting the first tick after the reset read the old life's.
@@ -522,6 +548,7 @@ func _build_moves() -> void:
 		[Move.FALLING, FallingMove.new(), config.falling],
 		[Move.FALL_UNCONTROLLED, FallUncontrolledMove.new(), config.fall_uncontrolled],
 		[Move.LANDING, LandingMove.new(), config.landing],
+		[Move.SKILL_ROLL, SkillRollMove.new(), config.skill_roll],
 		[Move.SLIDE, SlideMove.new(), config.slide],
 		[Move.CROUCH, CrouchMove.new(), config.crouch],
 		[Move.SPEED_VAULT, SpeedVaultMove.new(), config.speed_vault],
@@ -849,7 +876,11 @@ func _physics_process(delta: float) -> void:
 		# visibly sink at all.
 		if move_manager.current_name != Move.LANDING:
 			var crouched := current_capsule_height() < standing_height() - 0.01
-			camera_rig.set_crouch_amount(1.0 if crouched else 0.0)
+			# The capsule stands up the instant the slide ends, but the EYE
+			# rises over the stand-up window -- otherwise the view snaps a
+			# half-metre upward on a frame where nothing else happens.
+			var crouch_amount: float = 1.0 if crouched else slide_recovery_fraction()
+			camera_rig.set_crouch_amount(crouch_amount)
 		camera_rig.set_wall_side(wall_side)
 		# Fed as a plain local-space Vector3, not a Node3D reference —
 		# CameraRig stays decoupled from the scene-tree/body-search concerns
@@ -931,6 +962,7 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 		_coyote_timer = maxf(_coyote_timer - delta, 0.0)
 
 	_step_grace_timer = maxf(_step_grace_timer - delta, 0.0)
+	_slide_recovery_timer = maxf(_slide_recovery_timer - delta, 0.0)
 	_was_grounded = grounded
 
 	if input.jump_pressed:
@@ -1408,8 +1440,13 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	# crouched turn drains energy on a one-way ratchet that only standing up
 	# releases. That bottomed out at speed_min_base_velocity * crouched_pct =
 	# 0.04 m/s, with no way back up.
+	# Nothing banks during the stand-up after a slide: the ceiling stays pinned
+	# at whatever the slide left it at, so a slide preserves the speed it was
+	# entered with but cannot be used to keep climbing.
 	var reachable: float = speed_cap() * move_manager.current_move_speed_modifier()
-	if horizontal_speed() >= reachable * config.pawn.energy_accumulate_speed_ratio:
+	if _slide_recovery_timer > 0.0:
+		pass
+	elif horizontal_speed() >= reachable * config.pawn.energy_accumulate_speed_ratio:
 		speed_energy.accumulate(delta, _energy_mode(input))
 	else:
 		# Asking to move but not actually getting anywhere -- shoved into

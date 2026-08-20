@@ -27,7 +27,20 @@ extends MoveConfig
 ## has other outlets (LayOnGround and friends) that this project does not.
 @export var slide_crawl_speed: float = 2.5
 
+## ⚠️ PROJECT-DEFINED, though the mechanism and the number both have a
+## counterpart. `TdMove_Slide` itself carries no RedoMoveTime, but the field
+## exists across the move library and the original's other slide --
+## `TdMove_RumpSlide` -- sets it to exactly 1.0. Borrowing that rather than
+## inventing a third number.
+##
+## What it buys: a slide cannot be re-entered for a second after the last one
+## ended, so a slide is a decision rather than something to spam.
+@export var recovery_time: float = 1.0
+
 func _init() -> void:
+	# See recovery_time above: the cooldown is enforced through the generic
+	# redo gate MoveManager already applies to every move.
+	redo_move_time = recovery_time
 	# Source: 05 §5.1 `FrictionModifier = 0.1`. ✅ The whole of what a slide
 	# does to speed: it PRESERVES it by cutting friction to a tenth. There is
 	# no acceleration term anywhere in TdMove_Slide, which is why the

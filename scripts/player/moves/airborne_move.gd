@@ -189,7 +189,13 @@ func settle_landing(delta: float) -> StringName:
 ## not levy; rolling is the player's own escape from a landing that otherwise
 ## would have paid it.
 func landing_destination(fall_height: float, rolled: bool) -> StringName:
-	if fall_height >= config.pawn.hard_landing_height and not rolled:
+	# A roll is a MOVE now, not merely a discount applied on the way to
+	# Walking. The original gives it its own TdMove with its own controller
+	# state and look clamp, and the manoeuvre visibly owns the body for a
+	# moment -- which a boolean read once at touchdown cannot express.
+	if rolled:
+		return SKILL_ROLL
+	if fall_height >= config.pawn.hard_landing_height:
 		return LANDING
 	return WALKING
 

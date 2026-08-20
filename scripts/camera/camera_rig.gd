@@ -33,6 +33,13 @@ var _roll: float = 0.0
 ## this one is driven explicitly by a state that knows how long it has left.
 var _landing_pitch: float = 0.0
 
+## A full rotation about the pitch axis, owned by SkillRollMove. Applied
+## OUTSIDE the pitch clamp, unlike _landing_pitch: the clamp exists to stop the
+## landing sink pushing the view past vertical, but a roll is SUPPOSED to go
+## past vertical -- the original's own MaxLookConstraint for TdMove_SkillRoll
+## is +180 degrees, which is the manoeuvre going over.
+var _roll_spin: float = 0.0
+
 ## The active move's look clamp, in radians, or "no clamp" when
 ## _has_look_constraint is false. Driven by MoveManager every tick; consumed
 ## by apply_look() from Task 15 onward.
@@ -104,6 +111,12 @@ func set_wall_side(side: int) -> void:
 ## the lockout; this rig holds no timer of its own for it.
 func set_landing_pitch_offset(radians: float) -> void:
 	_landing_pitch = radians
+
+## Sets the roll's own rotation about the pitch axis, in radians, measured from
+## upright. Driven every tick by SkillRollMove; see _roll_spin for why this is
+## a separate channel from the landing sink rather than more of the same.
+func set_roll_spin(radians: float) -> void:
+	_roll_spin = radians
 
 ## The attached body's head/neck node position, in Player's local space
 ## (Player.to_local(head_node.global_position)) -- see _head_local_position's
@@ -184,6 +197,7 @@ func reset_state() -> void:
 	_wall_side = 0
 	_roll = 0.0
 	_landing_pitch = 0.0
+	_roll_spin = 0.0
 	_has_head = false
 	_has_look_constraint = false
 	end_cinematic()
@@ -377,7 +391,8 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# was already looking almost straight down on impact would otherwise have
 	# the sink push the combined angle past vertical and roll the horizon over.
 	var pitch_limit: float = deg_to_rad(_config.camera.pitch_limit_deg)
-	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit)
+	# The spin is added AFTER the clamp, on purpose -- see _roll_spin.
+	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit) - _roll_spin
 
 ## Called on landing. `speed` is the downward speed at the moment of impact.
 func punch_landing(speed: float) -> void:
