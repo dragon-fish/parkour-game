@@ -239,6 +239,20 @@ var _step_grace_timer: float = 0.0
 ## airborne when the tick began is falling, and must not be set back down on
 ## whatever happens to be within a step below it.
 var _was_grounded: bool = false
+
+## DEBUG CHEAT, toggled with T. Frees the body from collision and gravity and
+## flies it along the view at a fixed speed, so a spot deep in a level can be
+## reached without replaying the route to it. This project has no checkpoints,
+## which is what makes it worth having.
+##
+## The move manager is pinned to Walking throughout and simply not ticked --
+## the body is driven directly here instead -- so nothing downstream has to
+## learn about a state that only exists for testing.
+var noclip: bool = false
+
+## ⚠️ DEBUG. Fast enough to cross the arena without waiting, slow enough to
+## stop where you meant to.
+const NOCLIP_SPEED := 21.0
 var _jump_buffer_timer: float = 0.0
 ## Buffers a crouch-key press for roll_trigger_time (05 §5.2's confirmed
 ## TdPawn.RollTriggerTime, extremely forgiving next to the genre's usual
@@ -387,6 +401,12 @@ func lock_input() -> void:
 
 func unlock_input() -> void:
 	_input_locked = false
+
+## Whether input is currently being swallowed -- during the death cutscene, or
+## an uncontrolled fall. Read by the crosshair, which hides itself when the
+## player is not actually driving.
+func is_input_locked() -> bool:
+	return _input_locked
 
 func _service_pending_capsule_restore() -> void:
 	if _standing_restore_pending and has_headroom():
@@ -766,6 +786,10 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		camera_rig.apply_look(input.look, self)
 
+	if noclip:
+		_fly_noclip(delta, input)
+		return
+
 	# Before the moves run, so a move that lands this tick reads a counter
 	# that already includes this tick's descent.
 	fall_tracker.update(delta, velocity.y, global_position.y)
@@ -830,11 +854,52 @@ func _input(event: InputEvent) -> void:
 		# the human aiming at a slider or a LineEdit, not a look input.
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			(input_source as KeyboardInputSource).accumulate_look(event.relative)
+	elif event is InputEventMouseButton and event.pressed \
+			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		# Click back into the game. Esc releases the cursor for the tuning
+		# panel; without this the only way back in was F11, which nobody
+		# guesses.
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		elif event.physical_keycode == KEY_F11:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		elif event.physical_keycode == KEY_T:
+			toggle_noclip()
+
+## Straight-line flight along the view, position written directly so no
+## collision or gravity applies. Deliberately does NOT run the move manager:
+## the state stays Walking (see `noclip`), the timers keep ticking above, and
+## the fall tracker is re-baselined every frame so that dropping out of noclip
+## in mid-air is a fall from HERE rather than from wherever the flight began.
+func _fly_noclip(delta: float, input: MoveInput) -> void:
+	var wish := Vector3.ZERO
+	if camera_rig != null:
+		var view := camera_rig.global_transform.basis
+		# The camera's own basis, so pitch steers the climb -- look down and
+		# you descend, which is the whole point of flying to a spot.
+		wish = -view.z * input.move.y + view.x * input.move.x
+	if wish.length_squared() > 0.0001:
+		wish = wish.normalized()
+	velocity = wish * NOCLIP_SPEED
+	global_position += velocity * delta
+	set_grounded(true)
+	if fall_tracker != null:
+		fall_tracker.reset(global_position.y)
+
+## Flips the cheat, leaving the body in a state the ordinary rules can take
+## back over from: velocity cleared so the first real tick does not inherit
+## flight speed, the fall counter re-baselined so a mid-air exit is not scored
+## as a fatal drop from the ceiling, and the move manager restarted on Walking.
+func toggle_noclip() -> void:
+	noclip = not noclip
+	velocity = Vector3.ZERO
+	if fall_tracker != null:
+		fall_tracker.reset(global_position.y)
+	if move_manager != null:
+		move_manager.start(Move.WALKING)
 
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	if grounded:

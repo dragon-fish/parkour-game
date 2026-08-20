@@ -71,6 +71,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_R:
 			reset_player()
+		elif event.physical_keycode == KEY_K:
+			# DEBUG. Routed through died_from_fall rather than reset_player()
+			# so it exercises the real chain -- cutscene, then respawn --
+			# which is the thing worth being able to trigger on demand.
+			if player != null:
+				player.died_from_fall.emit()
 
 ## Recovers a player who fell out of the level entirely -- off the far edge of
 ## the (generously sized, see tools/arena_builder.gd's own Floor comment)

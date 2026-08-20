@@ -63,6 +63,15 @@ func build() -> CharacterBody3D:
 	rig.add_child(fx)
 	fx.owner = player
 
+	# The centre dot, on the player for the same reason ScreenEffects is: it
+	# describes this player's view and should follow them across levels. Its
+	# Control child is built by Crosshair._ready(), not here.
+	var crosshair := CanvasLayer.new()
+	crosshair.name = "Crosshair"
+	crosshair.set_script(load("res://scripts/ui/crosshair.gd"))
+	rig.add_child(crosshair)
+	crosshair.owner = player
+
 	# Mount point for the visible character body. Reserved empty for the P5
 	# procedural/attachable first-person body, and it MUST STAY that way in
 	# this generator: a specific character model is a licensing decision
@@ -108,6 +117,7 @@ func build() -> CharacterBody3D:
 
 	player.camera_rig = rig
 	player.screen_effects = fx
+	crosshair.player = player
 
 	# Probe rig. Heights are expressed relative to the body origin, which sits
 	# at the capsule centre — feet are 0.9 m below it.
