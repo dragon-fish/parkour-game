@@ -98,6 +98,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	player.set_grounded(player.is_on_floor())
 
 	if not player.grounded:
+		# ...unless a step-up just fired. It lifts the body in place and lets
+		# move_and_slide() carry it forward onto the step, so that tick always
+		# ends airborne by construction. Falling for one tick here is what
+		# handed a 0.30 m kerb to FallingMove's ledge probe, which grabbed it.
+		if player.in_step_grace():
+			return KEEP
 		# Leaving the floor here means walking off a ledge, not jumping - the
 		# jump path above already returned before this line. Clear the snap
 		# bias so a ledge exit starts from a clean zero instead of carrying

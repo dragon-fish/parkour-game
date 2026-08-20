@@ -65,6 +65,19 @@ extends Resource
 ## body attached on the way DOWN -- and that assumption is why ankle-high
 ## clutter (a 5 cm plank) stopped a run dead.
 @export var max_step_height: float = 0.35
+## ⚠️ PROJECT-ADDED, no counterpart in the original -- it exists because
+## try_step_up() is this project's own answer to Godot having no built-in
+## step-up. The probe raises the body IN PLACE and leaves move_and_slide() to
+## carry it forward onto the step, which takes a tick or two during which the
+## body is genuinely airborne. Without a window, every move that treats
+## "left the floor" as "walked off a ledge" cancels itself on a kerb it rode
+## over successfully -- measured as Slide -> Falling -> Grab -> Falling ->
+## Walking against a 0.30 m one.
+##
+## 0.1 s is about six ticks, comfortably more than the two the manoeuvre
+## takes, and short enough that a genuine ledge exit within the window falls
+## about 8 cm before Falling takes over -- below the threshold of noticing.
+@export var step_up_grace_time: float = 0.1
 ## Source: 02 §2.3 `WalkableFloorZ = 0.71` -> acos = 44.7 degrees. ✅
 ## Carried over from the old `min_walkable_normal_y = 0.7`, and now moved to
 ## the confirmed 0.71 -- which also lands it within a third of a degree of

@@ -226,6 +226,14 @@ var _standing_height: float = 0.0
 var _travel_speed: float = 0.0
 
 var _coyote_timer: float = 0.0
+
+## Time left in the window that follows a step-up, during which leaving the
+## floor is NOT a ledge exit. try_step_up() raises the body IN PLACE and lets
+## move_and_slide() carry it forward onto the step over the next tick or two,
+## so the whole manoeuvre is airborne by construction. Moves that bail to
+## Falling the moment they leave the floor were therefore cancelling
+## themselves on clutter they had successfully ridden over.
+var _step_grace_timer: float = 0.0
 var _jump_buffer_timer: float = 0.0
 ## Buffers a crouch-key press for roll_trigger_time (05 §5.2's confirmed
 ## TdPawn.RollTriggerTime, extremely forgiving next to the genre's usual
@@ -420,6 +428,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 ## none) or wrongly withhold it (the reverse).
 func reset_state() -> void:
 	_coyote_timer = 0.0
+	_step_grace_timer = 0.0
 	_jump_buffer_timer = 0.0
 	_roll_buffer_timer = 0.0
 	# Mirrors CameraRig.reset_state()'s own end_cinematic() call. A manual
@@ -827,6 +836,8 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 	else:
 		_coyote_timer = maxf(_coyote_timer - delta, 0.0)
 
+	_step_grace_timer = maxf(_step_grace_timer - delta, 0.0)
+
 	if input.jump_pressed:
 		_jump_buffer_timer = config.pawn.jump_buffer_time
 	else:
@@ -950,6 +961,10 @@ func try_step_up(delta: float) -> float:
 	if rise <= 0.01:
 		return _step_log(what, "落差过小 %.3f m" % rise, 0.0)
 	global_position.y += rise
+	# Opens the window described on _step_grace_timer. Armed here rather than
+	# by each caller so no move can forget it, and so the two ticks the
+	# manoeuvre actually takes are covered rather than only the first.
+	_step_grace_timer = config.pawn.step_up_grace_time
 	return _step_log(what, "抬升 %.3f m" % rise, rise)
 
 
@@ -1059,6 +1074,12 @@ func jump_add_velocity(input: MoveInput) -> Vector3:
 	if facing.length_squared() < 0.0001:
 		return Vector3.ZERO
 	return facing.normalized() * config.pawn.jump_add_xy
+
+## True while the body is mid-step-up: raised, but not yet set down on the
+## step. Callers use it to tell "climbing a kerb" apart from "walked off a
+## ledge", which are otherwise the same reading.
+func in_step_grace() -> bool:
+	return _step_grace_timer > 0.0
 
 func speed_cap() -> float:
 	return speed_energy.cap()

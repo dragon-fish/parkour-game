@@ -113,6 +113,15 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	player.set_grounded(player.is_on_floor())
 
 	if not player.grounded:
+		# A step-up lifts the body in place and lets move_and_slide() carry it
+		# forward onto the step, so the tick it fires ALWAYS ends airborne --
+		# by construction, not by accident. Reading that tick as "walked off a
+		# ledge" is what turned riding a 0.30 m kerb into
+		# Slide -> Falling -> Grab -> Falling -> Walking: the slide was
+		# cancelled by clutter it had successfully ridden over, and the same
+		# airborne tick handed the kerb to the ledge probe.
+		if player.in_step_grace():
+			return KEEP
 		player.velocity.y = 0.0
 		return FALLING
 
