@@ -1062,13 +1062,26 @@ func try_step_up(delta: float) -> float:
 	# anything narrower belongs to vault or grab, not to step-up.
 	if far == INF:
 		return _step_log(what, "顶面太窄，站不住", 0.0)
-	if far > near + STEP_RAMP_TOLERANCE:
+	# SYMMETRIC. The far probe must agree with the near one in BOTH directions:
+	#
+	#   far HIGHER  -- the surface keeps climbing, so it is a ramp and
+	#                  move_and_slide() owns it.
+	#   far LOWER   -- the near probe found an edge, not a floor: the ground
+	#                  drops away again within 0.2 m, so there is nothing to
+	#                  stand on up there.
+	#
+	# Only checking the first case left a leaning billboard climbable: its far
+	# probe cleared the panel and landed on the ground BEHIND it, which is
+	# neither "still climbing" nor "empty", so the step was allowed. With the
+	# body pinned against the panel and unable to advance, every tick reported
+	# the same 0.156 m step and it walked up the face of it.
+	if absf(far - near) > STEP_RAMP_TOLERANCE:
 		# Still climbing 0.2 m further on: a slope, which move_and_slide()
 		# already handles. Stepping it instead would climb at the reach's rate
 		# rather than the body's -- 0.45 m of reach on a 27-degree slope reads
 		# 0.23 m of "step" while the body travels 0.12 m, so the player ascends
 		# at twice their own speed and leaves the surface.
-		return _step_log(what, "是斜坡 n.y=%.3f 续升 %.3f" % [normal_y, far - near], 0.0)
+		return _step_log(what, "顶面不平 n.y=%.3f 落差 %.3f" % [normal_y, far - near], 0.0)
 
 	# NO walkable-normal test on the landing, and this project has paid for that
 	# lesson twice. A capsule settling beside a step contacts its EDGE first,
@@ -1100,11 +1113,11 @@ func _probe_landing(lifted: Transform3D, direction: Vector3, distance: float, \
 		return INF
 	return (at.origin.y - landing.get_travel().length()) - global_position.y
 
-## ⚠️ PROJECT-DEFINED. How much further a surface may climb over the extra
-## 0.2 m of probe reach and still count as flat. Slack for mesh seams and for
-## the capsule catching an edge, well under what any walkable slope gains over
-## that distance (0.2 m of run on the shallowest slope worth calling one).
-const STEP_RAMP_TOLERANCE := 0.02
+## ⚠️ PROJECT-DEFINED. How far the two landing probes may disagree, in EITHER
+## direction, and still be called one flat surface. Slack for mesh seams and
+## for the capsule catching an edge, well under what a walkable slope gains
+## over the same 0.2 m of run.
+const STEP_RAMP_TOLERANCE := 0.05
 
 ## Sets the body back down when travelling has lifted it clear of the floor by
 ## less than one step, and snaps it there. Called AFTER move_and_slide().
