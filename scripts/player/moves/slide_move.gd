@@ -106,6 +106,14 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# of which a rising take-off should ever be.
 		return JUMP
 
+	# Same ankle-high clutter allowance WalkingMove gets. Without it a slide is
+	# stopped dead by a kerb the same body walks over for free, which reads as
+	# the geometry being sticky rather than as a rule. Applies to the crawl
+	# too: shuffling out from under a roof has the same problem.
+	var rise: float = player.try_step_up(delta)
+	if rise > 0.0 and player.camera_rig != null:
+		player.camera_rig.add_step_offset(rise)
+
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
 

@@ -25,6 +25,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	var grade: float = player.ground_grade(Vector3(player.velocity.x, 0.0, player.velocity.z))
 	player.ground_accelerate(wish_dir, target_speed, delta, grade)
 
+	# Same ankle-high clutter allowance Walking and Slide get: a crouched walk
+	# stopped dead by a kerb reads as sticky geometry, not as a rule.
+	var rise: float = player.try_step_up(delta)
+	if rise > 0.0 and player.camera_rig != null:
+		player.camera_rig.add_step_offset(rise)
+
 	# Same floor-snap bias as Walking/Slide, so a crouched walk does not
 	# flicker off gentle slopes or floor seams.
 	player.velocity.y = -config.pawn.floor_snap_speed
