@@ -106,3 +106,4 @@ func test_a_slide_over_a_kerb_is_not_interrupted() -> void:
 	TestWorld.teardown(r["world"])
 	await step(1)
 
+

@@ -984,6 +984,12 @@ func try_step_up(delta: float) -> float:
 @export var debug_step_up: bool = false
 var _step_log_last: String = ""
 
+## The probe's most recent decision, as "<collider> <outcome>", for the debug
+## HUD. Always recorded, unlike the print below -- a spot that catches the
+## player is exactly the case where turning a flag on first and reproducing it
+## afterwards is the hard part.
+var last_step_decision: String = "(none)"
+
 
 func _collider_name(collision: KinematicCollision3D) -> String:
 	var collider: Object = collision.get_collider()
@@ -995,6 +1001,7 @@ func _step_log(what: String, outcome: String, value: float) -> float:
 	# player leans on the same obstacle, and 60 identical lines a second buries
 	# the transition that actually matters.
 	var key := what + "|" + outcome
+	last_step_decision = "%s %s" % [what, outcome]
 	if debug_step_up and key != _step_log_last:
 		_step_log_last = key
 		print("[step] %-28s %-24s speed=%.2f pos=(%.2f, %.2f, %.2f)"
