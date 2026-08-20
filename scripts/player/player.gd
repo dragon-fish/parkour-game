@@ -916,8 +916,15 @@ func try_step_up(delta: float) -> float:
 	# reads as a shaking screen. Probes.vault_query() rejects ramps on the same
 	# test for the same reason; see its own note on the measured 18.4 degree
 	# ramp normal.
-	if blocker.get_normal().y >= config.pawn.walkable_floor_z:
-		return _step_log(what, "是斜坡，交给 move_and_slide", 0.0)
+	# The normal is reported alongside the verdict because this branch is the
+	# one most likely to be WRONG about a real step: a capsule's round bottom
+	# can contact a step's top edge rather than its vertical face, and an edge
+	# reports an in-between normal. A reading that only just clears
+	# walkable_floor_z (0.71) is a step being mistaken for a ramp; a reading of
+	# 0.95+ really is a ramp.
+	var normal_y: float = blocker.get_normal().y
+	if normal_y >= config.pawn.walkable_floor_z:
+		return _step_log(what, "是斜坡 n.y=%.3f，交给 move_and_slide" % normal_y, 0.0)
 
 	var max_rise: float = config.pawn.max_step_height
 	var up := Vector3.UP * max_rise
@@ -926,7 +933,7 @@ func try_step_up(delta: float) -> float:
 
 	var lifted := global_transform.translated(up)
 	if test_move(lifted, motion):
-		return _step_log(what, "太高，是墙不是台阶", 0.0)
+		return _step_log(what, "太高，是墙不是台阶 (n.y=%.3f)" % normal_y, 0.0)
 
 	# The landing probe reaches at least one capsule radius ahead, NOT just this
 	# tick's motion. Blocked by a face, the capsule's centre sits a full radius
@@ -984,11 +991,16 @@ func try_step_up(delta: float) -> float:
 @export var debug_step_up: bool = false
 var _step_log_last: String = ""
 
-## The probe's most recent decision, as "<collider> <outcome>", for the debug
-## HUD. Always recorded, unlike the print below -- a spot that catches the
-## player is exactly the case where turning a flag on first and reproducing it
-## afterwards is the hard part.
-var last_step_decision: String = "(none)"
+## Recent step-up decisions, oldest first, as "<seconds> <collider> <outcome>".
+##
+## A HISTORY rather than a single value: the interesting decision is the one
+## made at the moment the player caught on something, and by the time they can
+## look at the HUD the probe has usually logged several ordinary "是斜坡"
+## results on top of it. Consecutive identical decisions collapse, so leaning
+## on one obstacle produces one line rather than sixty a second.
+var step_decisions: PackedStringArray = PackedStringArray()
+
+const STEP_DECISION_LINES := 5
 
 
 func _collider_name(collision: KinematicCollision3D) -> String:
@@ -996,12 +1008,22 @@ func _collider_name(collision: KinematicCollision3D) -> String:
 	return (collider as Node).name if collider is Node else "<unknown>"
 
 
+func _record_step_decision(key: String, what: String, outcome: String) -> void:
+	if key == _last_recorded_step_key:
+		return
+	_last_recorded_step_key = key
+	step_decisions.append("%6.2f %s %s" 		% [Time.get_ticks_msec() / 1000.0, what, outcome])
+	while step_decisions.size() > STEP_DECISION_LINES:
+		step_decisions.remove_at(0)
+
+var _last_recorded_step_key: String = ""
+
 func _step_log(what: String, outcome: String, value: float) -> float:
 	# Deduplicated on (collider, outcome): the probe re-runs every tick while the
 	# player leans on the same obstacle, and 60 identical lines a second buries
 	# the transition that actually matters.
 	var key := what + "|" + outcome
-	last_step_decision = "%s %s" % [what, outcome]
+	_record_step_decision(key, what, outcome)
 	if debug_step_up and key != _step_log_last:
 		_step_log_last = key
 		print("[step] %-28s %-24s speed=%.2f pos=(%.2f, %.2f, %.2f)"

@@ -72,12 +72,12 @@ func _process(delta: float) -> void:
 		# the cap means something else is holding the body back.
 		"energy     %.2f  -> cap %.2f m/s" % [player.speed_energy.energy, player.speed_cap()],
 		"wall side  %s" % _wall_side_text(),
-		# What try_step_up() last decided, and whether its grace window is
-		# open. A move that bails to Falling with the window shut was never
-		# offered a step at all -- which is a different bug from one where the
-		# step fired and the move cancelled itself anyway.
-		"step       %s%s" % [player.last_step_decision, 			"  [grace]" if player.in_step_grace() else ""],
+		"step grace %s" % ("open" if player.in_step_grace() else "-"),
 		"fps        %d" % Engine.get_frames_per_second(),
+		"",
+		"step decisions",
+		"
+".join(player.step_decisions) if not player.step_decisions.is_empty() 			else "  (none yet)",
 		"",
 		"transitions",
 		"
