@@ -248,3 +248,37 @@ func test_the_cutscene_levels_a_view_that_died_looking_down() -> void:
 	seq.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_the_head_travels_the_same_way_the_body_rolls() -> void:
+	# A roll of -angle turns the camera's up axis toward its RIGHT, so the head
+	# has to travel right too. Sending it left while rolling right cancels out
+	# and reads as the head dropping straight down with the picture spinning
+	# around it -- reported from play as "it lost the volume of the waist".
+	#
+	# A real player, not a null one: the arc's radius comes from the body's
+	# stature, and a null player collapses it to the clearance floor.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(get_tree(), cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+
+	var seq := DeathSequence.new()
+	get_tree().root.add_child(seq)
+	await step(1)
+	seq.play(world["player"])
+
+	# Sample the very end of the topple, where the displacement is largest.
+	var t: float = DeathSequence.DROP_TIME + DeathSequence.HOLD_TIME \
+		+ DeathSequence.TOPPLE_TIME
+	var pose: Array = seq._pose_at(t)
+	var offset: Vector3 = pose[0]
+	var roll: float = pose[1]
+
+	assert_true(roll < -1.5, "the topple did not roll a quarter turn (%.3f rad)" % roll)
+	assert_true(offset.x > 0.3, \
+		"the head travelled the wrong way for the roll (x %.3f, roll %.3f)" % [offset.x, roll])
+
+	seq.queue_free()
+	TestWorld.teardown(world)
+	await step(1)

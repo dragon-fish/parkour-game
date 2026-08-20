@@ -19,7 +19,7 @@ signal finished
 ## a respawn. Without them the whole thing reads as one continuous slump.
 const DROP_TIME := 0.5      ## eye height -> half height, the legs going
 const HOLD_TIME := 1.0      ## knelt, not yet fallen
-const TOPPLE_TIME := 1.5    ## quarter circle to the left, pivoting on the feet
+const TOPPLE_TIME := 1.5    ## quarter circle to the right, pivoting near the feet
 const REST_TIME := 1.0      ## lying still before the level takes over
 
 ## ⚠️ PROJECT-DEFINED. How far above the floor the arc bottoms out, so the view
@@ -121,7 +121,8 @@ func _release_player() -> void:
 ## Everything below is worked in EYE-ABOVE-GROUND terms and converted to a rig
 ## offset at the end, because the storyboard is drawn from the ground: the view
 ## drops to half the body's height, holds, then sweeps a quarter circle of that
-## same radius pivoting on the feet -- ending flat on the floor.
+## same radius pivoting near the feet -- ending flat on the floor, offset to the
+## side by as much as it lost in height.
 func _pose_at(t: float) -> Array:
 	# Ground to eye, which is what "half height" in the storyboard means.
 	var stature: float = _feet_offset + _eye_height
@@ -145,15 +146,24 @@ func _pose_at(t: float) -> Array:
 	# what makes the body lie still at the end.
 	var u: float = clampf((t - DROP_TIME - HOLD_TIME) / TOPPLE_TIME, 0.0, 1.0)
 	var k2: float = 16.0 * pow(u, 5.0) if u < 0.5 else 1.0 - pow(-2.0 * u + 2.0, 5.0) / 2.0
-	# Pivot on the feet: the head sweeps a quarter circle of radius `half`
-	# rather than sliding sideways at a fixed height.
+	# A QUARTER CIRCLE, not a slide sideways and not a drop straight down: the
+	# head is on the end of a body that pivots at the floor, so it sweeps an arc
+	# of radius `radius` -- losing height and gaining offset together, fastest
+	# through the middle of the turn.
+	#
 	# Pivots on a point just ABOVE the feet, so the arc bottoms out at
 	# GROUND_CLEARANCE instead of at the floor itself. The radius shrinks to
 	# match, which keeps the arc starting exactly where the drop left off.
+	#
+	# X AND ROLL MUST AGREE. A roll of -angle turns the camera's up axis toward
+	# its RIGHT, i.e. the body is going over to the right, so the head has to
+	# travel right as well (+X). It used to travel left while rolling right,
+	# and the two cancelling out read as the head dropping straight down and
+	# the picture rotating around it -- no waist, no volume, just a spin.
 	var angle: float = k2 * PI * 0.5
 	var radius: float = maxf(half - GROUND_CLEARANCE, 0.01)
 	var y: float = _to_offset(GROUND_CLEARANCE + radius * cos(angle))
-	var x: float = -radius * sin(angle)
+	var x: float = radius * sin(angle)
 	return [Vector3(x, y, 0.0), -angle, 0.0]
 
 ## Converts a height ABOVE THE GROUND into the rig-local offset that
