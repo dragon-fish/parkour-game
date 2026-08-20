@@ -82,7 +82,7 @@ func _process(delta: float) -> void:
 ".join(_transitions) if not _transitions.is_empty() else "  (none yet)",
 		"",
 		"Tab HUD  F1 tuning  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
-		"Esc release mouse  click to return",
+		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
 	])
 
 func _wall_side_text() -> String:

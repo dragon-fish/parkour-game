@@ -881,6 +881,13 @@ func _fly_noclip(delta: float, input: MoveInput) -> void:
 		# The camera's own basis, so pitch steers the climb -- look down and
 		# you descend, which is the whole point of flying to a spot.
 		wish = -view.z * input.move.y + view.x * input.move.x
+	# Straight up and down on jump/crouch, independent of where the view is
+	# pointing: getting onto a specific rooftop is much easier when altitude
+	# and heading are separate controls rather than one aimed vector.
+	if input.jump_held:
+		wish += Vector3.UP
+	if input.crouch_held:
+		wish += Vector3.DOWN
 	if wish.length_squared() > 0.0001:
 		wish = wish.normalized()
 	velocity = wish * NOCLIP_SPEED

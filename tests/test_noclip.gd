@@ -107,3 +107,36 @@ func test_noclip_does_not_make_a_real_fall_survivable() -> void:
 
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_jump_and_crouch_fly_straight_up_and_down() -> void:
+	# Altitude as its own control, independent of where the view points --
+	# aiming at a rooftop and holding forward is much fiddlier than just
+	# rising to it.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(get_tree(), cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+
+	player.toggle_noclip()
+	var start_y: float = player.global_position.y
+
+	input.state.jump_held = true
+	await step(30)
+	var risen: float = player.global_position.y - start_y
+	assert_gt(risen, Player.NOCLIP_SPEED * 0.4, \
+		"holding jump under noclip did not climb (%.2f m)" % risen)
+
+	input.state.jump_held = false
+	input.state.crouch_held = true
+	var top_y: float = player.global_position.y
+	await step(15)
+	assert_true(player.global_position.y < top_y - 1.0, \
+		"holding crouch under noclip did not descend")
+
+	input.state.crouch_held = false
+	player.toggle_noclip()
+	TestWorld.teardown(world)
+	await step(1)
