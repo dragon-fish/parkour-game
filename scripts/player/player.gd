@@ -1072,7 +1072,14 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	if wish == Vector3.ZERO:
 		speed_energy.decay(delta)
 		return
-	if horizontal_speed() >= speed_cap() * config.pawn.energy_accumulate_speed_ratio:
+	# Scaled by the active move's own ceiling. Without this the threshold is
+	# measured against the STANDING cap while a crouch is held to 40% of it,
+	# so crouching can never bank -- and since turning still charges, a
+	# crouched turn drains energy on a one-way ratchet that only standing up
+	# releases. That bottomed out at speed_min_base_velocity * crouched_pct =
+	# 0.04 m/s, with no way back up.
+	var reachable: float = speed_cap() * move_manager.current_move_speed_modifier()
+	if horizontal_speed() >= reachable * config.pawn.energy_accumulate_speed_ratio:
 		speed_energy.accumulate(delta, _energy_mode(input))
 	else:
 		# Asking to move but not actually getting anywhere -- shoved into

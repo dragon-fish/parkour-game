@@ -39,6 +39,17 @@ func current_move_friction_modifier() -> float:
 	var active: MoveConfig = _current.current_config()
 	return active.friction_modifier if active != null else 1.0
 
+## The active move's own speed ceiling multiplier. Read by Player when it
+## decides whether the body is travelling fast enough to bank energy: the
+## question is "fast enough for what this move can DO", and a crouch that
+## tops out at 40% of the cap can never satisfy a threshold measured against
+## the standing one.
+func current_move_speed_modifier() -> float:
+	if _current == null:
+		return 1.0
+	var active: MoveConfig = _current.current_config()
+	return active.speed_modifier if active != null else 1.0
+
 func _tick_cooldowns(delta: float) -> void:
 	for key in _redo_cooldowns.keys():
 		var remaining: float = _redo_cooldowns[key] - delta
