@@ -1017,10 +1017,15 @@ func try_step_down() -> void:
 	# passes within a step of.
 	if not _was_grounded:
 		return
-	# Rising is a jump, and a jump must not be pulled back to the floor it just
-	# left.
-	if velocity.y > 0.0:
-		return
+	# NO test on velocity.y, deliberately. Rising looks like a jump, but a jump
+	# cannot reach this function: every jump branch returns JUMP from inside its
+	# own move, before the move_and_slide() this is called after. So an upward
+	# velocity here was given by GEOMETRY -- which is exactly the case this
+	# exists to catch. Riding up and off a low sloped obstacle leaves the body
+	# rising as it parts company with the floor, and an early-out here refused
+	# every one of them (measured: ten consecutive "是斜坡" verdicts against the
+	# litter meshes, with the slide cancelled each time and the grace window
+	# never opening).
 	var landing := KinematicCollision3D.new()
 	if not test_move(global_transform, Vector3.DOWN * config.pawn.max_step_height, landing):
 		return                            # nothing within a step below: a real fall
@@ -1052,7 +1057,7 @@ var _step_log_last: String = ""
 ## on one obstacle produces one line rather than sixty a second.
 var step_decisions: PackedStringArray = PackedStringArray()
 
-const STEP_DECISION_LINES := 10
+const STEP_DECISION_LINES := 5
 
 
 func _collider_name(collision: KinematicCollision3D) -> String:

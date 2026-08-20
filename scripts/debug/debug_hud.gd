@@ -16,7 +16,7 @@ var _transitions: PackedStringArray = PackedStringArray()
 var _watching: MoveManager = null
 var _clock: float = 0.0
 
-const TRANSITION_LINES := 8
+const TRANSITION_LINES := 6
 
 func _ready() -> void:
 	_label = Label.new()
@@ -74,11 +74,9 @@ func _process(delta: float) -> void:
 		"wall side  %s" % _wall_side_text(),
 		"step grace %s" % ("open" if player.in_step_grace() else "-"),
 		"fps        %d" % Engine.get_frames_per_second(),
-		"",
 		"step decisions",
 		"
 ".join(player.step_decisions) if not player.step_decisions.is_empty() 			else "  (none yet)",
-		"",
 		"transitions",
 		"
 ".join(_transitions) if not _transitions.is_empty() else "  (none yet)",
