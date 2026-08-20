@@ -1121,10 +1121,16 @@ func _probe_landing(lifted: Transform3D, direction: Vector3, distance: float, \
 	return (at.origin.y - landing.get_travel().length()) - global_position.y
 
 ## ⚠️ PROJECT-DEFINED. How far the two landing probes may disagree, in EITHER
-## direction, and still be called one flat surface. Slack for mesh seams and
-## for the capsule catching an edge, well under what a walkable slope gains
-## over the same 0.2 m of run.
-const STEP_RAMP_TOLERANCE := 0.05
+## direction, and still be called one flat surface.
+##
+## TIGHT ON PURPOSE. Over the probes' 0.2 m of separation a slope gains
+## 0.2 * tan(angle), so this value decides the shallowest ramp still
+## recognised as one: 0.02 catches everything past about 6 degrees, while 0.05
+## let 14-degree slopes through. A slope that gets past this is STEPPED rather
+## than walked, which pushes a camera offset every tick -- in play that read as
+## the view sinking to the floor while climbing a gentle ramp, and recovering
+## the moment the player stopped moving.
+const STEP_RAMP_TOLERANCE := 0.02
 
 ## Sets the body back down when travelling has lifted it clear of the floor by
 ## less than one step, and snaps it there. Called AFTER move_and_slide().
@@ -1148,15 +1154,14 @@ const STEP_RAMP_TOLERANCE := 0.05
 ## this descent half. Only the descent half is taken here: this project's own
 ## step-up probe is measured and documented, and replacing it is a separate
 ## question (docs/feel-backlog.md).
-func try_step_down() -> void:
-	if true: return  # TEMP
+func try_step_down() -> bool:
 	if config == null or is_on_floor():
-		return
+		return false
 	# Airborne when the tick STARTED means falling or jumping, not thrown by
 	# geometry -- leave it alone, or a fall gets caught by every ledge it
 	# passes within a step of.
 	if not _was_grounded:
-		return
+		return false
 	# NO test on velocity.y, deliberately. Rising looks like a jump, but a jump
 	# cannot reach this function: every jump branch returns JUMP from inside its
 	# own move, before the move_and_slide() this is called after. So an upward
@@ -1166,11 +1171,20 @@ func try_step_down() -> void:
 	# every one of them (measured: ten consecutive "是斜坡" verdicts against the
 	# litter meshes, with the slide cancelled each time and the grace window
 	# never opening).
+	# Hand-rolled rather than apply_floor_snap(): measured in a descending
+	# flight of 0.3 m steps, that call left the body exactly where it was and
+	# is_on_floor() still false, whatever floor_snap_length was set to.
+	#
+	# Returns whether it caught anything, because is_on_floor() is NOT updated
+	# by moving the body directly -- the caller has to declare grounded-ness
+	# from this instead. That is fine here: `grounded` is the authority every
+	# move reads, and it is a DECLARATION rather than a query for exactly this
+	# kind of reason.
 	var landing := KinematicCollision3D.new()
 	if not test_move(global_transform, Vector3.DOWN * config.pawn.max_step_height, landing):
-		return                            # nothing within a step below: a real fall
+		return false                      # nothing within a step below: a real fall
 	global_position += landing.get_travel()
-	apply_floor_snap()
+	return true
 
 ## Traces every step-up decision, naming the geometry involved. Off by default;
 ## turn it on in the inspector when a spot in a level catches the player and you

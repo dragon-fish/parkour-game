@@ -79,3 +79,52 @@ func test_a_real_fall_is_still_a_fall() -> void:
 		"a body lifted well clear of the floor did not fall")
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_walking_down_a_flight_of_steps_never_leaves_the_floor() -> void:
+	# Reported from play against a staircase of 0.3 m steps: Walking/Falling
+	# flickering the whole way down. try_step_down() moved the body by hand and
+	# then snapped, which left it flush against the floor with no gap for the
+	# snap to detect -- so is_on_floor() never refreshed and the caller handed
+	# off to Falling anyway.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(get_tree(), cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+
+	# Four steps down, each 0.3 m, laid out ahead of the player.
+	var steps: Array[StaticBody3D] = []
+	for i in 4:
+		var body := StaticBody3D.new()
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(8.0, 4.0, 1.5)
+		shape.shape = box
+		body.add_child(shape)
+		get_tree().root.add_child(body)
+		# Tops at 1.2, 0.9, 0.6, 0.3 -- a descending flight.
+		var top: float = 1.2 - 0.3 * i
+		body.global_position = Vector3(0.0, top - 2.0, player.global_position.z - 1.5 - 1.5 * i)
+		steps.append(body)
+	# Stand on the top step before setting off.
+	player.global_position.y = 1.2 + 1.0
+	player.global_position.z -= 1.5
+	await step(30)
+	assert_true(player.move_manager.current_name == Move.WALKING, \
+		"test setup is wrong: never settled onto the top step")
+
+	input.state.move = Vector2(0.0, 1.0)
+	var airborne_ticks := 0
+	for i in 150:
+		await step(1)
+		if player.move_manager.current_name == Move.FALLING:
+			airborne_ticks += 1
+	assert_true(airborne_ticks == 0, \
+		"walking down 0.3 m steps went airborne on %d tick(s)" % airborne_ticks)
+
+	for body in steps:
+		body.queue_free()
+	TestWorld.teardown(world)
+	await step(1)

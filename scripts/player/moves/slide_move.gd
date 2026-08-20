@@ -117,8 +117,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Geometry can throw the body clear of the floor for a tick -- riding up and
 	# off a small sloped obstacle does exactly that -- and without this the tick
 	# reads as a ledge exit and cancels the move. See Player.try_step_down().
-	player.try_step_down()
-	player.set_grounded(player.is_on_floor())
+	# `or` the step-down: moving the body directly does not refresh
+	# is_on_floor(), so its own answer is what says the body was caught.
+	var stepped_down: bool = player.try_step_down()
+	player.set_grounded(player.is_on_floor() or stepped_down)
 
 	if not player.grounded:
 		# A step-up lifts the body in place and lets move_and_slide() carry it

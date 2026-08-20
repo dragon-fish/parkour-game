@@ -91,7 +91,7 @@ extends Resource
 ## being walked up yields a fraction of a centimetre per tick and is silently
 ## absorbed; a board or a kerb hands over its whole height at once and gets the
 ## ease-out it deserves.
-@export var step_up_camera_min_rise: float = 0.04
+@export var step_up_camera_min_rise: float = 0.06
 ## Source: 02 §2.3 `WalkableFloorZ = 0.71` -> acos = 44.7 degrees. ✅
 ## Carried over from the old `min_walkable_normal_y = 0.7`, and now moved to
 ## the confirmed 0.71 -- which also lands it within a third of a degree of
