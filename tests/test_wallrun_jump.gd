@@ -1,5 +1,4 @@
-class_name TestWallrunJump
-extends TestCase
+extends ParkourTest
 
 # The 4.3x skill gradient, tested as pure arithmetic.
 #
@@ -16,22 +15,22 @@ func _cfg() -> WallrunJumpConfig:
 
 func test_the_confirmed_endpoints_are_in_place() -> void:
 	var cfg := _cfg()
-	check_approx(cfg.wall_running_push_away_speed_noob, 1.2, 0.0001, "Noob endpoint is wrong")
-	check_approx(cfg.wall_running_push_away_speed_pro_add, 4.0, 0.0001, "ProAdd endpoint is wrong")
-	check_approx(cfg.wall_running_jump_off_z_height_forward, 1.0, 0.0001, "base rise height is wrong")
-	check_approx(cfg.wall_running_jump_off_z_height_max_add_turned, 0.6, 0.0001, "rise bonus is wrong")
+	assert_almost_eq(cfg.wall_running_push_away_speed_noob, 1.2, 0.0001, "Noob endpoint is wrong")
+	assert_almost_eq(cfg.wall_running_push_away_speed_pro_add, 4.0, 0.0001, "ProAdd endpoint is wrong")
+	assert_almost_eq(cfg.wall_running_jump_off_z_height_forward, 1.0, 0.0001, "base rise height is wrong")
+	assert_almost_eq(cfg.wall_running_jump_off_z_height_max_add_turned, 0.6, 0.0001, "rise bonus is wrong")
 
 func test_the_worst_execution_gets_the_noob_push() -> void:
 	# Rode the wall run out before jumping.
 	var cfg := _cfg()
 	var push := WallRunMove.wall_jump_push_away(cfg.wall_jump_stale_time, cfg)
-	check_approx(push, 1.2, 0.001, "a late kick did not give the Noob push")
+	assert_almost_eq(push, 1.2, 0.001, "a late kick did not give the Noob push")
 
 func test_the_best_execution_gets_the_full_gradient() -> void:
 	# Kicked on contact.
 	var cfg := _cfg()
 	var push := WallRunMove.wall_jump_push_away(0.0, cfg)
-	check_approx(push, 5.2, 0.001, "an instant kick did not give the full push")
+	assert_almost_eq(push, 5.2, 0.001, "an instant kick did not give the full push")
 
 func test_the_gradient_spans_more_than_four_times() -> void:
 	# 10.1 mechanic 4 states the criterion as a ratio: a key move must have a
@@ -41,7 +40,7 @@ func test_the_gradient_spans_more_than_four_times() -> void:
 	var cfg := _cfg()
 	var worst := WallRunMove.wall_jump_push_away(cfg.wall_jump_stale_time, cfg)
 	var best := WallRunMove.wall_jump_push_away(0.0, cfg)
-	check_greater(best / worst, 4.0, "the gradient is narrower than 4x")
+	assert_gt(best / worst, 4.0, "the gradient is narrower than 4x")
 
 func test_the_gradient_is_continuous_not_stepped() -> void:
 	# A cliff would make the timing unlearnable: the player needs to feel that
@@ -51,7 +50,7 @@ func test_the_gradient_is_continuous_not_stepped() -> void:
 	for i in range(1, 11):
 		var t: float = cfg.wall_jump_stale_time * float(i) / 10.0
 		var push := WallRunMove.wall_jump_push_away(t, cfg)
-		check_greater(previous + 0.0001, push, "the gradient went backwards at step %d" % i)
+		assert_gt(previous + 0.0001, push, "the gradient went backwards at step %d" % i)
 		previous = push
 
 func test_the_prime_window_is_a_window_not_an_instant() -> void:
@@ -59,9 +58,9 @@ func test_the_prime_window_is_a_window_not_an_instant() -> void:
 	# single-frame requirement would be a coin flip at 60 Hz rather than a
 	# skill.
 	var cfg := _cfg()
-	check_approx(WallRunMove.wall_jump_quality(cfg.wall_jump_prime_window, cfg), 1.0, \
+	assert_almost_eq(WallRunMove.wall_jump_quality(cfg.wall_jump_prime_window, cfg), 1.0, \
 		0.0001, "the prime window does not hold full value to its own edge")
-	check_greater(cfg.wall_jump_prime_window, 1.0 / 120.0, \
+	assert_gt(cfg.wall_jump_prime_window, 1.0 / 120.0, \
 		"the prime window is tighter than a single frame")
 
 func test_the_rise_is_a_height_converted_to_a_speed() -> void:
@@ -75,8 +74,8 @@ func test_the_rise_is_a_height_converted_to_a_speed() -> void:
 	var cfg := _cfg()
 	var worst := WallRunMove.wall_jump_rise_velocity(cfg.wall_jump_stale_time, cfg, pawn)
 	var best := WallRunMove.wall_jump_rise_velocity(0.0, cfg, pawn)
-	check_approx(worst, sqrt(2.0 * pawn.gravity * 1.0), 0.001, "worst-case rise is not 1.0 m worth")
-	check_approx(best, sqrt(2.0 * pawn.gravity * 1.6), 0.001, "best-case rise is not 1.6 m worth")
+	assert_almost_eq(worst, sqrt(2.0 * pawn.gravity * 1.0), 0.001, "worst-case rise is not 1.0 m worth")
+	assert_almost_eq(best, sqrt(2.0 * pawn.gravity * 1.6), 0.001, "best-case rise is not 1.6 m worth")
 
 ## End-to-end regression guard for the gravity choice in
 ## wall_jump_rise_velocity(): every test above is pure arithmetic, calling
@@ -113,12 +112,12 @@ func test_the_rise_is_a_height_converted_to_a_speed() -> void:
 ## numbers.
 func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -> void:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
 	var player: Player = world["player"]
-	check(player.move_manager.current_name == Move.WALKING, \
+	assert_true(player.move_manager.current_name == Move.WALKING, \
 		"test setup is wrong: player did not settle onto the floor before the drop")
 
 	var wall := StaticBody3D.new()
@@ -127,7 +126,7 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 	box.size = Vector3(20.0, 6.0, 1.0)
 	shape.shape = box
 	wall.add_child(shape)
-	tree.root.add_child(wall)
+	get_tree().root.add_child(wall)
 	# Same pose test_wall_run_entry.gd's own fixture uses: near face at
 	# x = 0.45 (thickness 1.0 halved from center 0.95), the midpoint of the
 	# only window that both clears the capsule (radius 0.4) and stays inside
@@ -143,14 +142,14 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 	# take-off, same as tests/test_wall_run_entry.gd's own fixture.
 	world["input"].press_jump()
 	await step(1)
-	check(player.move_manager.current_name == Move.JUMP, \
+	assert_true(player.move_manager.current_name == Move.JUMP, \
 		"test setup is wrong: the jump did not send the player airborne")
 
 	# Heading parallel to the wall's face -- a STRAFE-style approach, same as
 	# _measure_wall_ticks()'s own entry.
 	player.velocity = Vector3(0.0, player.velocity.y, -7.0)
 	await step(1)
-	check(player.move_manager.current_name == Move.WALL_RUN, \
+	assert_true(player.move_manager.current_name == Move.WALL_RUN, \
 		"test setup is wrong: the player never attached to the wall")
 
 	# The jump fires on the first physics tick after attaching, so the time on
@@ -159,10 +158,10 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 	# future change to the window that accidentally excludes an immediate kick
 	# fails here rather than silently halving every wall jump in the game.
 	var time_on_wall: float = 1.0 / Engine.physics_ticks_per_second
-	check_greater(cfg.wallrun_jump.wall_jump_prime_window, time_on_wall, \
+	assert_gt(cfg.wallrun_jump.wall_jump_prime_window, time_on_wall, \
 		"an immediate kick no longer lands inside the prime window")
 	var expected_quality: float = WallRunMove.wall_jump_quality(time_on_wall, cfg.wallrun_jump)
-	check_approx(expected_quality, 1.0, 0.0001, \
+	assert_almost_eq(expected_quality, 1.0, 0.0001, \
 		"test setup is wrong: an immediate kick is not worth the full gradient")
 	var expected_launch: float = WallRunMove.wall_jump_rise_velocity(time_on_wall, cfg.wallrun_jump, cfg.pawn)
 	var expected_height: float = cfg.wallrun_jump.wall_running_jump_off_z_height_forward \
@@ -176,9 +175,9 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 	# wall_run_move.gd). This assertion used to read FALLING, which is exactly
 	# the bug -- see test_a_wall_kick_can_reach_a_second_wall below for the
 	# behaviour that broke because of it.
-	check(player.move_manager.current_name == Move.JUMP, \
+	assert_true(player.move_manager.current_name == Move.JUMP, \
 		"the buffered jump did not fire the wall-jump branch")
-	check_approx(player.velocity.y, expected_launch, 0.01, \
+	assert_almost_eq(player.velocity.y, expected_launch, 0.01, \
 		"live launch speed does not match wall_jump_rise_velocity()'s own prediction (%f expected)" % expected_launch)
 
 	# Track the apex across real, integrated physics ticks -- gravity applied
@@ -197,8 +196,8 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 	# speed grows as sqrt(gravity), and so does this bias. 0.08 keeps ~50% headroom
 	# over the computed bias without hiding a regression.
 	var integrator_bias: float = expected_launch / (2.0 * Engine.physics_ticks_per_second)
-	check_greater(0.08, integrator_bias, "integrator bias outgrew the tolerance")
-	check_approx(apex_y - jump_y, expected_height, 0.08, \
+	assert_gt(0.08, integrator_bias, "integrator bias outgrew the tolerance")
+	assert_almost_eq(apex_y - jump_y, expected_height, 0.08, \
 		"the live wall jump's measured apex does not match the predicted %f m rise" % expected_height)
 
 	wall.queue_free()
@@ -216,7 +215,7 @@ func _wall_at(centre: Vector3) -> StaticBody3D:
 	box.size = Vector3(20.0, 6.0, 1.0)
 	shape.shape = box
 	wall.add_child(shape)
-	tree.root.add_child(wall)
+	get_tree().root.add_child(wall)
 	wall.global_position = centre
 	wall.rotation = Vector3(0.0, PI * 0.5, 0.0)
 	return wall
@@ -234,12 +233,12 @@ func _wall_at(centre: Vector3) -> StaticBody3D:
 ## rides out the whole window in Falling and never reaches WALL_RUN again.
 func test_a_wall_kick_can_reach_a_second_wall() -> void:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
 	var player: Player = world["player"]
-	check(player.move_manager.current_name == Move.WALKING, \
+	assert_true(player.move_manager.current_name == Move.WALKING, \
 		"test setup is wrong: player did not settle onto the floor before the drop")
 
 	# Two parallel walls facing each other across a corridor the player runs
@@ -262,18 +261,18 @@ func test_a_wall_kick_can_reach_a_second_wall() -> void:
 	# check_for_wall_climb, so the first attach has to come through one.
 	world["input"].press_jump()
 	await step(1)
-	check(player.move_manager.current_name == Move.JUMP, \
+	assert_true(player.move_manager.current_name == Move.JUMP, \
 		"test setup is wrong: the jump did not send the player airborne")
 	player.velocity = Vector3(0.0, player.velocity.y, -7.0)
 	await step(1)
-	check(player.move_manager.current_name == Move.WALL_RUN, \
+	assert_true(player.move_manager.current_name == Move.WALL_RUN, \
 		"test setup is wrong: the player never attached to the first wall")
-	check(player.wall_side == 1, \
+	assert_true(player.wall_side == 1, \
 		"test setup is wrong: the first attach was not to the right-hand wall")
 
 	world["input"].press_jump()
 	await step(1)
-	check(player.move_manager.current_name == Move.JUMP, \
+	assert_true(player.move_manager.current_name == Move.JUMP, \
 		"the wall kick did not leave the player in a state that can climb again")
 
 	# WallRunConfig.redo_move_time (0.15 s, 9 ticks at 60 Hz) refuses any
@@ -287,10 +286,10 @@ func test_a_wall_kick_can_reach_a_second_wall() -> void:
 		await step(1)
 		if player.move_manager.current_name == Move.WALL_RUN:
 			break
-	check(player.move_manager.current_name == Move.WALL_RUN, \
+	assert_true(player.move_manager.current_name == Move.WALL_RUN, \
 		"a wall kick could not reach the opposite wall (ended in %s)" \
 			% player.move_manager.current_name)
-	check(player.wall_side == -1, \
+	assert_true(player.wall_side == -1, \
 		"the second attach was to the wall the player kicked off, not the opposite one")
 
 	wall_a.queue_free()

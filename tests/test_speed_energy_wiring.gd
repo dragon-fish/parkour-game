@@ -1,12 +1,11 @@
-class_name TestSpeedEnergyWiring
-extends TestCase
+extends ParkourTest
 
 # Driven-state tests: a real player on a real floor, with input scripted
 # rather than typed. Verifies that the curve actually governs ground speed --
 # the component's own maths is already covered by test_speed_energy.gd.
 
 func _world() -> Dictionary:
-	var world := TestWorld.build(tree, MovementConfig.new())
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	return world
 
 func test_top_speed_is_not_reachable_in_one_second() -> void:
@@ -21,8 +20,8 @@ func test_top_speed_is_not_reachable_in_one_second() -> void:
 	for i in 60:
 		await step(1)
 	var speed: float = world["player"].horizontal_speed()
-	check(speed < 5.4, "one second of running already reached %f m/s" % speed)
-	check_greater(speed, 4.5, "one second of running did not even reach the 1.0 s knot")
+	assert_true(speed < 5.4, "one second of running already reached %f m/s" % speed)
+	assert_gt(speed, 4.5, "one second of running did not even reach the 1.0 s knot")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -34,7 +33,7 @@ func test_seven_seconds_of_running_reaches_the_confirmed_top_speed() -> void:
 	world["input"].state.move = Vector2(0.0, 1.0)
 	for i in 430:
 		await step(1)
-	check_approx(world["player"].horizontal_speed(), 7.2, 0.15, "did not reach 7.2 m/s")
+	assert_almost_eq(world["player"].horizontal_speed(), 7.2, 0.15, "did not reach 7.2 m/s")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -47,11 +46,11 @@ func test_stopping_bleeds_the_energy_back_off() -> void:
 	for i in 430:
 		await step(1)
 	var banked: float = world["player"].speed_energy.energy
-	check_greater(banked, 6.5, "never banked a full budget")
+	assert_gt(banked, 6.5, "never banked a full budget")
 	world["input"].state.move = Vector2.ZERO
 	for i in 120:
 		await step(1)
-	check(world["player"].speed_energy.energy < banked * 0.5, "energy survived two seconds of standing still")
+	assert_true(world["player"].speed_energy.energy < banked * 0.5, "energy survived two seconds of standing still")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -64,7 +63,7 @@ func test_the_walk_modifier_caps_speed_and_banks_almost_nothing() -> void:
 	world["input"].state.walk_held = true
 	for i in 180:
 		await step(1)
-	check(world["player"].horizontal_speed() < 0.8, "the walk modifier did not cap speed")
+	assert_true(world["player"].horizontal_speed() < 0.8, "the walk modifier did not cap speed")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -82,13 +81,13 @@ func test_energy_does_not_accumulate_while_shoved_against_a_wall() -> void:
 	box.size = Vector3(10.0, 4.0, 1.0)
 	shape.shape = box
 	wall.add_child(shape)
-	tree.root.add_child(wall)
+	get_tree().root.add_child(wall)
 	await step(1)
 	wall.global_position = Vector3(0.0, 2.0, -1.5)
 	world["input"].state.move = Vector2(0.0, 1.0)
 	for i in 300:
 		await step(1)
-	check(world["player"].speed_energy.energy < 1.0, "banked energy while going nowhere")
+	assert_true(world["player"].speed_energy.energy < 1.0, "banked energy while going nowhere")
 	wall.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
@@ -112,13 +111,13 @@ func test_energy_survives_a_jump_intact() -> void:
 		await step(1)
 	var banked: float = player.speed_energy.energy
 	var cap_before: float = player.speed_cap()
-	check_greater(banked, 0.1, "banked no energy before the jump -- test setup is wrong")
+	assert_gt(banked, 0.1, "banked no energy before the jump -- test setup is wrong")
 	var ceiling_energy: float = player.config.pawn.speed_curve[player.config.pawn.speed_curve.size() - 1].x
-	check(banked < ceiling_energy, "banked a full budget -- test setup is wrong, this must be a MID-curve level")
+	assert_true(banked < ceiling_energy, "banked a full budget -- test setup is wrong, this must be a MID-curve level")
 
 	input.press_jump()
 	await step(1)
-	check(player.move_manager.current_name == Move.JUMP, "the jump did not leave the ground")
+	assert_true(player.move_manager.current_name == Move.JUMP, "the jump did not leave the ground")
 
 	var saw_airborne := false
 	var last_airborne_energy := banked
@@ -127,11 +126,11 @@ func test_energy_survives_a_jump_intact() -> void:
 		if player.move_manager.current_name == Move.WALKING:
 			break
 		saw_airborne = true
-		check_approx(player.speed_energy.energy, banked, 0.0001, "energy moved while airborne")
-		check_approx(player.speed_cap(), cap_before, 0.0001, "speed_cap() moved while airborne")
+		assert_almost_eq(player.speed_energy.energy, banked, 0.0001, "energy moved while airborne")
+		assert_almost_eq(player.speed_cap(), cap_before, 0.0001, "speed_cap() moved while airborne")
 		last_airborne_energy = player.speed_energy.energy
-	check(saw_airborne, "never observed an airborne tick -- test setup is wrong")
-	check_approx(last_airborne_energy, banked, 0.0001, "energy was not held intact across the whole flight")
+	assert_true(saw_airborne, "never observed an airborne tick -- test setup is wrong")
+	assert_almost_eq(last_airborne_energy, banked, 0.0001, "energy was not held intact across the whole flight")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -158,13 +157,13 @@ func test_energy_survives_a_coyote_jump_intact() -> void:
 	for i in 60:
 		await step(1)
 	var banked: float = player.speed_energy.energy
-	check_greater(banked, 0.1, "banked no energy before the drop -- test setup is wrong")
+	assert_gt(banked, 0.1, "banked no energy before the drop -- test setup is wrong")
 
 	# Simulate walking off a ledge (no jump key involved yet): teleport clear
 	# of the floor, the same trick test_falling_move_integration.gd uses.
 	player.global_position.y += 1.0
 	await step(1)
-	check(player.move_manager.current_name == Move.FALLING, \
+	assert_true(player.move_manager.current_name == Move.FALLING, \
 		"teleporting up did not send the player airborne -- test setup is wrong")
 	var speed_before_takeoff: float = player.horizontal_speed()
 
@@ -173,12 +172,12 @@ func test_energy_survives_a_coyote_jump_intact() -> void:
 	# consume_jump() branch fires, not WalkingMove's.
 	input.press_jump()
 	await step(1)
-	check(player.move_manager.current_name == Move.JUMP, \
+	assert_true(player.move_manager.current_name == Move.JUMP, \
 		"the coyote-time jump did not hand off to Jump")
 	var expected_vy: float = player.config.pawn.base_jump_z
-	check_approx(player.velocity.y, expected_vy, 0.05, \
+	assert_almost_eq(player.velocity.y, expected_vy, 0.05, \
 		"velocity.y does not show a fresh coyote-jump impulse -- did the branch actually fire?")
-	check_greater(player.horizontal_speed(), speed_before_takeoff, \
+	assert_gt(player.horizontal_speed(), speed_before_takeoff, \
 		"jump_add_xy was not applied at the coyote-jump site")
 
 	var saw_airborne := false
@@ -188,9 +187,9 @@ func test_energy_survives_a_coyote_jump_intact() -> void:
 		if player.move_manager.current_name == Move.WALKING:
 			break
 		saw_airborne = true
-		check_approx(player.speed_energy.energy, banked, 0.0001, "energy moved while airborne after a coyote jump")
+		assert_almost_eq(player.speed_energy.energy, banked, 0.0001, "energy moved while airborne after a coyote jump")
 		last_airborne_energy = player.speed_energy.energy
-	check(saw_airborne, "never observed an airborne tick -- test setup is wrong")
-	check_approx(last_airborne_energy, banked, 0.0001, "energy was not held intact across a coyote-jump flight")
+	assert_true(saw_airborne, "never observed an airborne tick -- test setup is wrong")
+	assert_almost_eq(last_airborne_energy, banked, 0.0001, "energy was not held intact across a coyote-jump flight")
 	TestWorld.teardown(world)
 	await step(1)

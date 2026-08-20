@@ -1,5 +1,4 @@
-class_name TestHarnessAlive
-extends TestCase
+extends ParkourTest
 
 # The legacy suite is archived under tests/legacy/ (excluded from Godot's
 # filesystem scan by its own .gdignore). Without at least one live test, a
@@ -9,12 +8,12 @@ extends TestCase
 # rebuild as the suite's floor.
 
 func test_the_runner_discovers_and_runs_a_live_test() -> void:
-	check(true, "the runner reached a live test method")
+	assert_true(true, "the runner reached a live test method")
 
 func test_the_physics_step_helper_still_advances_frames() -> void:
 	var node := Node3D.new()
-	tree.root.add_child(node)
+	get_tree().root.add_child(node)
 	await step(1)
-	check(node.is_inside_tree(), "step() did not let a node enter the tree")
+	assert_true(node.is_inside_tree(), "step() did not let a node enter the tree")
 	node.queue_free()
 	await step(1)

@@ -1,11 +1,11 @@
-extends TestCase
+extends ParkourTest
 
 # The probes are the foundation both P2 states stand on, so they are tested
 # against real geometry rather than mocked.
 
 func _world_with_obstacle(height: float, distance: float, depth: float = 2.0) -> Dictionary:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -24,7 +24,7 @@ func _world_with_obstacle(height: float, distance: float, depth: float = 2.0) ->
 	# very next physics step, purely from the box's transient origin overlap.
 	# Player faces -Z by default; put the obstacle in front of it.
 	obstacle.position = Vector3(0.0, height * 0.5, -distance)
-	tree.root.add_child(obstacle)
+	get_tree().root.add_child(obstacle)
 	await step(3)
 	world["obstacle"] = obstacle
 	return world
@@ -34,8 +34,8 @@ func test_a_waist_high_obstacle_is_vaultable() -> void:
 	var world := await _world_with_obstacle(1.0, 1.2)
 	var player: Player = world["player"]
 	var query: Dictionary = player.probes.vault_query()
-	check(query["valid"], "a 1.0 m obstacle at 1.2 m should be vaultable")
-	check_approx(query["top"].y, 1.0, 0.15, "the reported top surface should match the obstacle")
+	assert_true(query["valid"], "a 1.0 m obstacle at 1.2 m should be vaultable")
+	assert_almost_eq(query["top"].y, 1.0, 0.15, "the reported top surface should match the obstacle")
 	world["obstacle"].queue_free()
 	TestWorld.teardown(world)
 	await step(1)
@@ -44,7 +44,7 @@ func test_a_tall_wall_is_not_vaultable() -> void:
 	await step(1)
 	var world := await _world_with_obstacle(3.0, 1.2)
 	var player: Player = world["player"]
-	check(not player.probes.vault_query()["valid"], \
+	assert_true(not player.probes.vault_query()["valid"], \
 		"a 3 m wall must not report as vaultable")
 	world["obstacle"].queue_free()
 	TestWorld.teardown(world)
@@ -62,7 +62,7 @@ func test_an_obstacle_between_ledge_reach_and_vault_reach_is_vaultable() -> void
 	# textbook waist-high box.
 	var world := await _world_with_obstacle(1.0, 1.3, 0.3)
 	var player: Player = world["player"]
-	check(player.probes.vault_query()["valid"], \
+	assert_true(player.probes.vault_query()["valid"], \
 		"an obstacle beyond ledge_reach but within vault_reach must still be vaultable")
 	world["obstacle"].queue_free()
 	TestWorld.teardown(world)
@@ -71,19 +71,19 @@ func test_an_obstacle_between_ledge_reach_and_vault_reach_is_vaultable() -> void
 func test_nothing_ahead_is_not_vaultable() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
 	var player: Player = world["player"]
-	check(not player.probes.vault_query()["valid"], "empty space must not report as vaultable")
+	assert_true(not player.probes.vault_query()["valid"], "empty space must not report as vaultable")
 	TestWorld.teardown(world)
 	await step(1)
 
 func test_a_reachable_ledge_is_detected() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -99,13 +99,13 @@ func test_a_reachable_ledge_is_detected() -> void:
 	# _world_with_obstacle() for why the add-then-move ordering launches the
 	# player.
 	block.position = Vector3(0.0, 1.3, -1.1)
-	tree.root.add_child(block)
+	get_tree().root.add_child(block)
 	await step(3)
 
 	var player: Player = world["player"]
 	var query: Dictionary = player.probes.ledge_query()
-	check(query["valid"], "a ledge at head height should be detected")
-	check_approx(query["edge"].y, 2.6, 0.15, "the reported edge height should match the block top")
+	assert_true(query["valid"], "a ledge at head height should be detected")
+	assert_almost_eq(query["edge"].y, 2.6, 0.15, "the reported edge height should match the block top")
 
 	block.queue_free()
 	TestWorld.teardown(world)
@@ -114,7 +114,7 @@ func test_a_reachable_ledge_is_detected() -> void:
 func test_a_ledge_far_above_reach_is_not_detected() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -129,11 +129,11 @@ func test_a_ledge_far_above_reach_is_not_detected() -> void:
 	# _world_with_obstacle() for why the add-then-move ordering launches the
 	# player.
 	block.position = Vector3(0.0, 4.0, -1.1)
-	tree.root.add_child(block)
+	get_tree().root.add_child(block)
 	await step(3)
 
 	var player: Player = world["player"]
-	check(not player.probes.ledge_query()["valid"], \
+	assert_true(not player.probes.ledge_query()["valid"], \
 		"an 8 m wall offers no reachable ledge")
 
 	block.queue_free()
@@ -162,11 +162,11 @@ func test_misreporting_the_foot_offset_changes_vault_validity() -> void:
 	# (1.3). Same obstacle, offset 1.6: reads ~1.7 m, over the limit.
 	var world := await _world_with_obstacle(1.0, 1.2)
 	var player: Player = world["player"]
-	check(player.probes.vault_query()["valid"], \
+	assert_true(player.probes.vault_query()["valid"], \
 		"a 1.0 m obstacle must be vaultable with the real foot offset applied")
 
 	player.probes.setup(player.config, 1.6)
-	check(not player.probes.vault_query()["valid"], \
+	assert_true(not player.probes.vault_query()["valid"], \
 		"misreporting the foot offset must change whether this obstacle reads as vaultable -- " + \
 		"pins Probes._feet_y()'s feet-vs-origin conversion")
 
@@ -184,7 +184,7 @@ func test_misreporting_the_foot_offset_changes_vault_validity() -> void:
 func test_raising_the_configured_ledge_maximum_raises_what_the_probe_can_see() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -198,11 +198,11 @@ func test_raising_the_configured_ledge_maximum_raises_what_the_probe_can_see() -
 	shape.shape = box
 	block.add_child(shape)
 	block.position = Vector3(0.0, 2.1, -1.1)
-	tree.root.add_child(block)
+	get_tree().root.add_child(block)
 	await step(3)
 
 	var player: Player = world["player"]
-	check(not player.probes.ledge_query()["valid"], \
+	assert_true(not player.probes.ledge_query()["valid"], \
 		"precondition: a 4.2 m top is out of reach at the default ledge_max_height")
 
 	# The panel writes straight into the shared config object at runtime, with
@@ -210,7 +210,7 @@ func test_raising_the_configured_ledge_maximum_raises_what_the_probe_can_see() -
 	# the rays.
 	cfg.ledge_max_height = 4.5
 	var query: Dictionary = player.probes.ledge_query()
-	check(query["valid"], \
+	assert_true(query["valid"], \
 		"raising ledge_max_height did not bring the 4.2 m top into view -- the probe's reach is not following the live config")
 	# The DECISIVE assertion, and not a redundant one: with the ray's origin
 	# left baked at its old fixed height it sits INSIDE this block, and
@@ -219,7 +219,7 @@ func test_raising_the_configured_ledge_maximum_raises_what_the_probe_can_see() -
 	# at a height the player would grab at and a surface that is not there.
 	# Measured with the derivation reverted: edge.y comes back as 3.10 rather
 	# than 4.20. Checking only validity would miss it entirely.
-	check_approx(query["edge"].y, 4.2, 0.15, \
+	assert_almost_eq(query["edge"].y, 4.2, 0.15, \
 		"the probe reported an edge at the wrong height -- with a fixed ray origin buried inside the block, hit_from_inside reports the ray's own origin as a phantom ledge")
 
 	block.queue_free()
@@ -238,7 +238,7 @@ func test_the_ledge_reach_does_not_govern_the_vaults_chest_test() -> void:
 	# measure vault_query() is entitled to apply.
 	var world := await _world_with_obstacle(1.0, 1.2)
 	var player: Player = world["player"]
-	check(player.probes.vault_query()["valid"], "precondition: this obstacle should be vaultable")
+	assert_true(player.probes.vault_query()["valid"], "precondition: this obstacle should be vaultable")
 
 	# Now put a WALL beyond it, past vault_reach but within a raised
 	# ledge_reach. Nothing about the vault has changed.
@@ -249,14 +249,14 @@ func test_the_ledge_reach_does_not_govern_the_vaults_chest_test() -> void:
 	shape.shape = box
 	wall.add_child(shape)
 	wall.position = Vector3(0.0, 2.0, -2.2)
-	tree.root.add_child(wall)
+	get_tree().root.add_child(wall)
 	await step(3)
 
-	check(player.probes.vault_query()["valid"], \
+	assert_true(player.probes.vault_query()["valid"], \
 		"precondition: a wall beyond vault_reach must not affect the vault verdict")
 
 	player.config.ledge_reach = 2.6
-	check(player.probes.vault_query()["valid"], \
+	assert_true(player.probes.vault_query()["valid"], \
 		"raising ledge_reach suppressed a vault it has nothing to do with -- the chest-clearance ray must be asked at vault_reach, not at whichever reach is larger")
 
 	wall.queue_free()

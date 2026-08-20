@@ -1,4 +1,4 @@
-extends TestCase
+extends ParkourTest
 
 # Covers Player.body_scene: the runtime, licence-safe replacement for what
 # tools/build_player_scene.gd used to bake directly into player.tscn (see
@@ -28,13 +28,13 @@ func _set_owner_recursive(node: Node, owner_node: Node) -> void:
 func test_body_scene_attaches_under_body_root() -> void:
 	var cfg := MovementConfig.new()
 	var stub := TestWorld.build_stub_body()
-	var world := TestWorld.build(tree, cfg, stub)
+	var world := TestWorld.build(get_tree(), cfg, stub)
 	await step(1)
 
 	var player: Player = world["player"]
-	check(player.body != null, "body_scene did not attach")
+	assert_true(player.body != null, "body_scene did not attach")
 	if player.body != null:
-		check(player.body.get_parent() == player.get_node("BodyRoot"), \
+		assert_true(player.body.get_parent() == player.get_node("BodyRoot"), \
 			"the attached body must be a child of BodyRoot, got parent %s" % player.body.get_parent())
 
 	TestWorld.teardown(world)
@@ -47,14 +47,14 @@ func test_body_scene_attaches_under_body_root() -> void:
 func test_body_without_animation_player_degrades_without_animator() -> void:
 	var cfg := MovementConfig.new()
 	var stub := TestWorld.build_stub_body()  # no head, no AnimationPlayer
-	var world := TestWorld.build(tree, cfg, stub)
+	var world := TestWorld.build(get_tree(), cfg, stub)
 	await step(1)
 
 	var player: Player = world["player"]
-	check(player.body != null, "precondition: a body must still attach")
-	check(player.get_node_or_null("BodyRoot/AnimationTree") == null, \
+	assert_true(player.body != null, "precondition: a body must still attach")
+	assert_true(player.get_node_or_null("BodyRoot/AnimationTree") == null, \
 		"a body with no AnimationPlayer must not get an AnimationTree wired")
-	check(player.get_node_or_null("BodyRoot/CharacterAnimator") == null, \
+	assert_true(player.get_node_or_null("BodyRoot/CharacterAnimator") == null, \
 		"a body with no AnimationPlayer must not get a CharacterAnimator wired")
 
 	TestWorld.place(world)
@@ -64,7 +64,7 @@ func test_body_without_animation_player_degrades_without_animator() -> void:
 	input.state.move = Vector2(0.0, 1.0)
 	# No sprint key: forward input alone already reaches ground_speed.
 	await step(30)
-	check_greater(player.global_position.distance_to(start), 0.5, \
+	assert_gt(player.global_position.distance_to(start), 0.5, \
 		"a player with an animation-less body did not move")
 
 	TestWorld.teardown(world)
@@ -73,19 +73,19 @@ func test_body_without_animation_player_degrades_without_animator() -> void:
 func test_body_with_animation_player_wires_character_animator() -> void:
 	var cfg := MovementConfig.new()
 	var stub := TestWorld.build_stub_body("", Vector3.ZERO, true)
-	var world := TestWorld.build(tree, cfg, stub)
+	var world := TestWorld.build(get_tree(), cfg, stub)
 	await step(1)
 
 	var player: Player = world["player"]
 	var anim_tree := player.get_node_or_null("BodyRoot/AnimationTree") as AnimationTree
-	check(anim_tree != null, "AnimationTree was not created for a body with an AnimationPlayer")
+	assert_true(anim_tree != null, "AnimationTree was not created for a body with an AnimationPlayer")
 	var animator := player.get_node_or_null("BodyRoot/CharacterAnimator") as CharacterAnimator
-	check(animator != null, "CharacterAnimator was not created for a body with an AnimationPlayer")
+	assert_true(animator != null, "CharacterAnimator was not created for a body with an AnimationPlayer")
 	if anim_tree != null and animator != null and player.body != null:
-		check(animator.anim_tree == anim_tree, \
+		assert_true(animator.anim_tree == anim_tree, \
 			"CharacterAnimator.anim_tree was not wired to the new AnimationTree")
-		check(animator.player == player, "CharacterAnimator.player was not wired to the Player")
-		check(anim_tree.root_node == anim_tree.get_path_to(player.body), \
+		assert_true(animator.player == player, "CharacterAnimator.player was not wired to the Player")
+		assert_true(anim_get_tree().root_node == anim_tree.get_path_to(player.body), \
 			"AnimationTree.root_node was not wired to the attached body")
 
 	TestWorld.teardown(world)
@@ -101,28 +101,28 @@ func test_body_with_animation_player_wires_character_animator() -> void:
 func test_sustained_clips_are_forced_to_loop_but_jump_is_not() -> void:
 	var cfg := MovementConfig.new()
 	var stub := TestWorld.build_stub_body("", Vector3.ZERO, true)
-	var world := TestWorld.build(tree, cfg, stub)
+	var world := TestWorld.build(get_tree(), cfg, stub)
 	await step(1)
 
 	var player: Player = world["player"]
-	check(player.body != null, "precondition: a body must attach")
+	assert_true(player.body != null, "precondition: a body must attach")
 	if player.body == null:
 		TestWorld.teardown(world)
 		await step(1)
 		return
 
 	var anim_player := player.body.get_node_or_null("AnimationPlayer") as AnimationPlayer
-	check(anim_player != null, "precondition: the stub body has an AnimationPlayer")
+	assert_true(anim_player != null, "precondition: the stub body has an AnimationPlayer")
 	if anim_player == null:
 		TestWorld.teardown(world)
 		await step(1)
 		return
 
-	check(anim_player.get_animation("idle").loop_mode == Animation.LOOP_LINEAR, \
+	assert_true(anim_player.get_animation("idle").loop_mode == Animation.LOOP_LINEAR, \
 		"idle must be forced to loop -- a standing player must not freeze after one pass")
-	check(anim_player.get_animation("run").loop_mode == Animation.LOOP_LINEAR, \
+	assert_true(anim_player.get_animation("run").loop_mode == Animation.LOOP_LINEAR, \
 		"run must be forced to loop -- this is the exact bug reported")
-	check(anim_player.get_animation("jump").loop_mode == Animation.LOOP_NONE, \
+	assert_true(anim_player.get_animation("jump").loop_mode == Animation.LOOP_NONE, \
 		"jump is a one-shot action clip and must be left exactly as imported")
 
 	TestWorld.teardown(world)
@@ -139,14 +139,14 @@ func test_the_loop_fix_does_not_leak_into_other_instances_of_the_same_body() -> 
 	var cfg := MovementConfig.new()
 	var stub := TestWorld.build_stub_body("", Vector3.ZERO, true)
 
-	var world_a := TestWorld.build(tree, cfg, stub)
+	var world_a := TestWorld.build(get_tree(), cfg, stub)
 	await step(1)
-	var world_b := TestWorld.build(tree, cfg, stub)
+	var world_b := TestWorld.build(get_tree(), cfg, stub)
 	await step(1)
 
 	var player_a: Player = world_a["player"]
 	var player_b: Player = world_b["player"]
-	check(player_a.body != null and player_b.body != null, "precondition: both bodies must attach")
+	assert_true(player_a.body != null and player_b.body != null, "precondition: both bodies must attach")
 	if player_a.body == null or player_b.body == null:
 		TestWorld.teardown(world_a)
 		TestWorld.teardown(world_b)
@@ -155,9 +155,9 @@ func test_the_loop_fix_does_not_leak_into_other_instances_of_the_same_body() -> 
 
 	var ap_a := player_a.body.get_node("AnimationPlayer") as AnimationPlayer
 	var ap_b := player_b.body.get_node("AnimationPlayer") as AnimationPlayer
-	check(ap_a.get_animation("run") != ap_b.get_animation("run"), \
+	assert_true(ap_a.get_animation("run") != ap_b.get_animation("run"), \
 		"each attached body must own its OWN duplicated Animation resource, not share one")
-	check(ap_b.get_animation("run").loop_mode == Animation.LOOP_LINEAR, \
+	assert_true(ap_b.get_animation("run").loop_mode == Animation.LOOP_LINEAR, \
 		"player B's run clip was not fixed independently of player A's")
 
 	TestWorld.teardown(world_a)
@@ -169,13 +169,13 @@ func test_the_loop_fix_does_not_leak_into_other_instances_of_the_same_body() -> 
 	# mutated the shared cached resource in place instead of duplicating,
 	# this one would inherit that mutation despite never having been
 	# touched by this test itself.
-	var world_c := TestWorld.build(tree, cfg, stub)
+	var world_c := TestWorld.build(get_tree(), cfg, stub)
 	await step(1)
 	var player_c: Player = world_c["player"]
 	if player_c.body != null:
 		var ap_c := player_c.body.get_node_or_null("AnimationPlayer") as AnimationPlayer
 		if ap_c != null:
-			check(ap_c.get_animation("run").loop_mode == Animation.LOOP_LINEAR, \
+			assert_true(ap_c.get_animation("run").loop_mode == Animation.LOOP_LINEAR, \
 				"player C's own clip should also get the fix applied independently")
 	TestWorld.teardown(world_c)
 	await step(1)
@@ -198,13 +198,13 @@ func test_head_node_discovery_matches_by_substring_not_exact_name() -> void:
 	torso.add_child(head)
 	var stub := _pack(root)
 
-	var world := TestWorld.build(tree, cfg, stub)
+	var world := TestWorld.build(get_tree(), cfg, stub)
 	await step(1)
 
 	var player: Player = world["player"]
-	check(player.head_node != null, "no head node was found for a body with an 'MHead' node")
+	assert_true(player.head_node != null, "no head node was found for a body with an 'MHead' node")
 	if player.head_node != null:
-		check(player.head_node.name == "MHead", \
+		assert_true(player.head_node.name == "MHead", \
 			"the wrong node was selected as the head, got %s" % player.head_node.name)
 
 	TestWorld.teardown(world)
@@ -237,11 +237,11 @@ func test_head_node_discovery_skips_hidden_branches() -> void:
 	visible_form.add_child(torso)
 
 	var stub := _pack(root)
-	var world := TestWorld.build(tree, cfg, stub)
+	var world := TestWorld.build(get_tree(), cfg, stub)
 	await step(1)
 
 	var player: Player = world["player"]
-	check(player.head_node == null, \
+	assert_true(player.head_node == null, \
 		"a head node hidden behind visible = false must not be selected, got %s" \
 			% (player.head_node.name if player.head_node != null else "null"))
 
@@ -263,14 +263,14 @@ func test_head_follow_wires_through_player_to_camera() -> void:
 	root.add_child(head)
 	var stub := _pack(root)
 
-	var world := TestWorld.build(tree, cfg, stub)
+	var world := TestWorld.build(get_tree(), cfg, stub)
 	await step(1)
 	TestWorld.place(world)
 	await step(1)
 
 	var player: Player = world["player"]
-	check(player.head_node != null, "precondition: this stub body has a 'Head' node")
-	check(player.camera_rig != null, "precondition: the real player.tscn always has a camera_rig")
+	assert_true(player.head_node != null, "precondition: this stub body has a 'Head' node")
+	assert_true(player.camera_rig != null, "precondition: the real player.tscn always has a camera_rig")
 	if player.head_node == null or player.camera_rig == null:
 		TestWorld.teardown(world)
 		await step(1)
@@ -280,7 +280,7 @@ func test_head_follow_wires_through_player_to_camera() -> void:
 	# same reasoning as t=0.0's exactness -- see CameraRig.update_effects()),
 	# so this is a tight, not approximate, tolerance.
 	var expected := player.to_local(player.head_node.global_position)
-	check(player.camera_rig.position.distance_to(expected) < 0.001, \
+	assert_true(player.camera_rig.position.distance_to(expected) < 0.001, \
 		"camera did not follow the attached body's head through Player, got %s expected %s" \
 			% [player.camera_rig.position, expected])
 

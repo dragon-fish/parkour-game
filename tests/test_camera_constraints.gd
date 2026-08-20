@@ -1,10 +1,9 @@
-class_name TestCameraConstraints
-extends TestCase
+extends ParkourTest
 
 func _rig() -> CameraRig:
 	var scene: PackedScene = load("res://scenes/player/player.tscn")
 	var player: Player = scene.instantiate()
-	tree.root.add_child(player)
+	get_tree().root.add_child(player)
 	var config := MovementConfig.new()
 	player.setup(config, ScriptedInputSource.new())
 	player.camera_rig.setup(config)
@@ -16,8 +15,8 @@ func test_an_unconstrained_move_uses_the_default_pitch_limit() -> void:
 	rig.clear_look_constraint()
 	for i in 200:
 		rig.apply_look(Vector2(0.0, -100.0), rig.get_parent())
-	check(rig.rotation.x <= deg_to_rad(89.1), "pitch escaped the default limit")
-	check_greater(rig.rotation.x, deg_to_rad(88.0), "pitch did not reach the default limit")
+	assert_true(rig.rotation.x <= deg_to_rad(89.1), "pitch escaped the default limit")
+	assert_gt(rig.rotation.x, deg_to_rad(88.0), "pitch did not reach the default limit")
 	rig.get_parent().queue_free()
 	await step(1)
 
@@ -30,8 +29,8 @@ func test_a_constrained_move_clamps_pitch_harder() -> void:
 		Vector3(deg_to_rad(71.4), PI, PI), false)
 	for i in 200:
 		rig.apply_look(Vector2(0.0, -100.0), rig.get_parent())
-	check(rig.rotation.x <= deg_to_rad(71.5), "pitch escaped the move's own limit")
-	check_greater(rig.rotation.x, deg_to_rad(70.0), "pitch did not reach the move's own limit")
+	assert_true(rig.rotation.x <= deg_to_rad(71.5), "pitch escaped the move's own limit")
+	assert_gt(rig.rotation.x, deg_to_rad(70.0), "pitch did not reach the move's own limit")
 	rig.get_parent().queue_free()
 	await step(1)
 
@@ -45,7 +44,7 @@ func test_leaving_a_constrained_move_restores_the_default_limit() -> void:
 	rig.clear_look_constraint()
 	for i in 200:
 		rig.apply_look(Vector2(0.0, -100.0), rig.get_parent())
-	check_greater(rig.rotation.x, deg_to_rad(80.0), "the clamp stayed applied after clearing")
+	assert_gt(rig.rotation.x, deg_to_rad(80.0), "the clamp stayed applied after clearing")
 	rig.get_parent().queue_free()
 	await step(1)
 
@@ -61,7 +60,7 @@ func test_a_left_wall_rolls_the_camera_clockwise() -> void:
 	rig.set_wall_side(-1)
 	for i in 60:
 		rig.update_effects(1.0 / 60.0, 5.0, false)
-	check(rig.rotation.z < -0.01, "a left wall did not roll the camera clockwise")
+	assert_true(rig.rotation.z < -0.01, "a left wall did not roll the camera clockwise")
 	rig.get_parent().queue_free()
 	await step(1)
 
@@ -76,7 +75,7 @@ func test_the_two_wall_sides_roll_opposite_ways() -> void:
 	for i in 120:
 		rig.update_effects(1.0 / 60.0, 5.0, false)
 	var right := rig.rotation.z
-	check(left * right < 0.0, "the two wall sides rolled the same way")
+	assert_true(left * right < 0.0, "the two wall sides rolled the same way")
 	rig.get_parent().queue_free()
 	await step(1)
 
@@ -103,7 +102,7 @@ func test_entering_the_landing_lockout_does_not_snap_the_pitch() -> void:
 	for i in 200:
 		rig.apply_look(Vector2(0.0, 100.0), rig.get_parent())
 	var before: float = rig.rotation.x
-	check(before < -deg_to_rad(80.0), \
+	assert_true(before < -deg_to_rad(80.0), \
 		"test setup is wrong: the view is not steeply enough down (%f rad)" % before)
 
 	rig.set_look_constraint(landing.min_look_constraint, landing.max_look_constraint, \
@@ -111,7 +110,7 @@ func test_entering_the_landing_lockout_does_not_snap_the_pitch() -> void:
 	# A single tick with NO further look input: any movement at all here is the
 	# constraint itself yanking the view, not the player.
 	rig.apply_look(Vector2.ZERO, rig.get_parent())
-	check_approx(rig.rotation.x, before, 0.0001, \
+	assert_almost_eq(rig.rotation.x, before, 0.0001, \
 		"entering the landing lockout snapped the view pitch")
 
 	rig.get_parent().queue_free()
@@ -142,7 +141,7 @@ func test_the_landing_sink_cannot_push_the_view_past_vertical() -> void:
 	# The deepest sink LandingMove ever asks for, at severity 1.0.
 	rig.set_landing_pitch_offset(landing.camera_pitch_offset)
 	rig.update_effects(1.0 / 60.0, 0.0, true)
-	check(absf(rig.rotation.x) <= limit + 0.0001, \
+	assert_true(absf(rig.rotation.x) <= limit + 0.0001, \
 		"the landing sink pushed the view past vertical (%f rad)" % rig.rotation.x)
 
 	rig.get_parent().queue_free()

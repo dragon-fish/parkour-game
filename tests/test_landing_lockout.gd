@@ -1,5 +1,4 @@
-class_name TestLandingLockout
-extends TestCase
+extends ParkourTest
 
 # ✅ 2.00 s is MEASURED, not designed: six hard landings in the original,
 # timed from the last Falling frame to the first Walking frame, read
@@ -9,12 +8,12 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 
 func test_the_lockout_is_the_measured_two_seconds() -> void:
 	var cfg := MovementConfig.new()
-	check_approx(cfg.landing.lockout_time, 2.0, 0.0001, \
+	assert_almost_eq(cfg.landing.lockout_time, 2.0, 0.0001, \
 		"the hard-landing lockout is not the measured 2.00 s")
 
 func test_a_hard_unrolled_landing_enters_landing() -> void:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -27,7 +26,7 @@ func test_a_hard_unrolled_landing_enters_landing() -> void:
 		await step(1)
 		if player.move_manager.current_name == Move.LANDING:
 			break
-	check(player.move_manager.current_name == Move.LANDING, \
+	assert_true(player.move_manager.current_name == Move.LANDING, \
 		"a hard unrolled landing did not enter Landing")
 	TestWorld.teardown(world)
 	await step(1)
@@ -36,7 +35,7 @@ func test_a_soft_landing_skips_it_entirely() -> void:
 	# Below hard_landing_height there is no penalty at all (03 §3.1), so there
 	# must be no lockout either.
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -48,7 +47,7 @@ func test_a_soft_landing_skips_it_entirely() -> void:
 		await step(1)
 		if player.grounded and player.move_manager.current_name != Move.FALLING:
 			break
-	check(player.move_manager.current_name != Move.LANDING, \
+	assert_true(player.move_manager.current_name != Move.LANDING, \
 		"a landing below the hard threshold was locked out")
 	TestWorld.teardown(world)
 	await step(1)
@@ -65,7 +64,7 @@ func test_the_lockout_actually_pins_the_yaw() -> void:
 	# Verified to go red with absolute_yaw_constraint removed: the body turns
 	# 0.2 rad EVERY tick instead, and the deviation below runs away immediately.
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -77,7 +76,7 @@ func test_the_lockout_actually_pins_the_yaw() -> void:
 		await step(1)
 		if player.move_manager.current_name == Move.LANDING:
 			break
-	check(player.move_manager.current_name == Move.LANDING, \
+	assert_true(player.move_manager.current_name == Move.LANDING, \
 		"test setup is wrong: never entered Landing")
 
 	# The reference facing is captured by CameraRig.set_look_constraint() on
@@ -99,9 +98,9 @@ func test_the_lockout_actually_pins_the_yaw() -> void:
 	for i in 100:
 		await step(1)
 		worst = maxf(worst, absf(wrapf(player.rotation.y - reference, -PI, PI)))
-	check(player.move_manager.current_name == Move.LANDING, \
+	assert_true(player.move_manager.current_name == Move.LANDING, \
 		"test setup is wrong: the lockout ended before the measurement did")
-	check(0.2 + 0.01 > worst, \
+	assert_true(0.2 + 0.01 > worst, \
 		"the landing lockout let the view turn %f rad past its own +-0.2 fan" % worst)
 
 	input.state.look = Vector2.ZERO

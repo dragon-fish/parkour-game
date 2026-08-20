@@ -1,4 +1,4 @@
-extends TestCase
+extends ParkourTest
 
 # CrouchState is reached today only from a Slide that decayed or timed out
 # while the key was still held (see tests/test_slide_state.gd for that
@@ -8,7 +8,7 @@ extends TestCase
 
 func _spawn() -> Dictionary:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -25,7 +25,7 @@ func _add_ceiling_over(player: Player) -> StaticBody3D:
 	shape.shape = box
 	ceiling.add_child(shape)
 	ceiling.position = player.global_position + Vector3(0.0, 0.45, 0.0)
-	tree.root.add_child(ceiling)
+	get_tree().root.add_child(ceiling)
 	return ceiling
 
 func test_crouched_movement_is_slower_than_running() -> void:
@@ -48,9 +48,9 @@ func test_crouched_movement_is_slower_than_running() -> void:
 	var crouch_speed := crouch_player.horizontal_speed()
 	var cfg: MovementConfig = crouch_player.config
 
-	check_greater(run_speed, crouch_speed, \
+	assert_gt(run_speed, crouch_speed, \
 		"crouched movement (%f) was not slower than running (%f)" % [crouch_speed, run_speed])
-	check_approx(crouch_speed, cfg.ground_speed * cfg.crouch_speed_pct, 0.1, \
+	assert_almost_eq(crouch_speed, cfg.ground_speed * cfg.crouch_speed_pct, 0.1, \
 		"crouched top speed did not match ground_speed * crouch_speed_pct (got %f, expected %f)" \
 			% [crouch_speed, cfg.ground_speed * cfg.crouch_speed_pct])
 	TestWorld.teardown(crouch_world)
@@ -70,9 +70,9 @@ func test_the_capsule_is_the_crouched_height_while_crouching() -> void:
 	input.state.crouch_held = true
 	player.state_machine.start(PlayerState.CROUCH)
 	await step(2)
-	check_approx(shape.height, cfg.crouch_capsule_height, 0.001, \
+	assert_almost_eq(shape.height, cfg.crouch_capsule_height, 0.001, \
 		"the capsule must be crouch_capsule_height while crouching")
-	check_greater(standing, shape.height, "the capsule must be shorter than standing while crouching")
+	assert_gt(standing, shape.height, "the capsule must be shorter than standing while crouching")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -84,14 +84,14 @@ func test_releasing_crouch_under_a_low_ceiling_does_not_stand_up() -> void:
 	player.state_machine.start(PlayerState.CROUCH)
 	input.state.crouch_held = true
 	await step(2)
-	check(player.state_machine.current_name == &"Crouch", "precondition: should be crouching")
+	assert_true(player.state_machine.current_name == &"Crouch", "precondition: should be crouching")
 
 	var ceiling := _add_ceiling_over(player)
 	await step(1)
 
 	input.state.crouch_held = false
 	await step(10)
-	check(player.state_machine.current_name == &"Crouch", \
+	assert_true(player.state_machine.current_name == &"Crouch", \
 		"releasing crouch under a ceiling must not stand the player up, got %s" \
 			% player.state_machine.current_name)
 
@@ -113,13 +113,13 @@ func test_standing_up_once_the_ceiling_is_gone() -> void:
 
 	input.state.crouch_held = false
 	await step(10)
-	check(player.state_machine.current_name == &"Crouch", \
+	assert_true(player.state_machine.current_name == &"Crouch", \
 		"precondition: a ceiling should still be blocking standing up, got %s" \
 			% player.state_machine.current_name)
 
 	ceiling.queue_free()
 	await step(20)
-	check(player.state_machine.current_name == &"Ground", \
+	assert_true(player.state_machine.current_name == &"Ground", \
 		"once the ceiling is gone the player should stand up, got %s" % player.state_machine.current_name)
 	TestWorld.teardown(world)
 	await step(1)
@@ -133,7 +133,7 @@ func test_standing_up_once_the_ceiling_is_gone() -> void:
 func test_crouch_can_only_reach_ground_and_air() -> void:
 	await step(1)
 	var source := FileAccess.get_file_as_string("res://scripts/player/states/crouch_state.gd")
-	check(source.length() > 0, "could not read crouch_state.gd")
+	assert_true(source.length() > 0, "could not read crouch_state.gd")
 
 	var state_script: GDScript = load("res://scripts/player/states/player_state.gd")
 	var referenced: Array[String] = []
@@ -147,6 +147,6 @@ func test_crouch_can_only_reach_ground_and_air() -> void:
 			referenced.append(constant_name)
 	referenced.sort()
 	var expected: Array[String] = ["AIR", "GROUND"]
-	check(referenced == expected, \
+	assert_true(referenced == expected, \
 		"Crouch must be able to reach exactly Ground and Air, but crouch_state.gd references %s" \
 		% str(referenced))

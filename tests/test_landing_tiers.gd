@@ -1,5 +1,4 @@
-class_name TestLandingTiers
-extends TestCase
+extends ParkourTest
 
 # The four-tier landing table (03 §3.1), stated as behaviour. Tier boundaries
 # are fall HEIGHTS, not impact speeds -- that difference is the point.
@@ -20,18 +19,18 @@ func test_a_flat_jump_lands_in_the_free_tier() -> void:
 	var player := _player_stub()
 	var pawn := player.config.pawn
 	var apex: float = pawn.base_jump_z * pawn.base_jump_z / (2.0 * pawn.gravity)
-	check_approx(apex, 1.2403, 0.005, "the jump arc is not the measured one")
-	check(apex < pawn.skill_roll_landing_height, "a flat jump reaches the roll threshold")
-	check(player.landing_tier(apex) == Player.TIER_FREE, "a flat jump is not in the free tier")
-	check_approx(player.landing_keep_ratio(apex, false), 1.0, 0.0001, "a flat jump cost speed")
+	assert_almost_eq(apex, 1.2403, 0.005, "the jump arc is not the measured one")
+	assert_true(apex < pawn.skill_roll_landing_height, "a flat jump reaches the roll threshold")
+	assert_true(player.landing_tier(apex) == Player.TIER_FREE, "a flat jump is not in the free tier")
+	assert_almost_eq(player.landing_keep_ratio(apex, false), 1.0, 0.0001, "a flat jump cost speed")
 	player.free()
 
 func test_the_free_tier_costs_nothing_at_all() -> void:
 	# Not "costs a little" -- the original has a genuinely free band, which
 	# the old continuous ramp from zero did not.
 	var player := _player_stub()
-	check_approx(player.landing_keep_ratio(1.99, false), 1.0, 0.0001, "the free band is not free")
-	check_approx(player.landing_keep_ratio(0.2, false), 1.0, 0.0001, "a curb cost speed")
+	assert_almost_eq(player.landing_keep_ratio(1.99, false), 1.0, 0.0001, "the free band is not free")
+	assert_almost_eq(player.landing_keep_ratio(0.2, false), 1.0, 0.0001, "a curb cost speed")
 	player.free()
 
 func test_everything_below_the_hard_threshold_is_free() -> void:
@@ -45,17 +44,17 @@ func test_everything_below_the_hard_threshold_is_free() -> void:
 	# more. That ramp was plausible and wrong: the original has no partial band.
 	var player := _player_stub()
 	for height in [0.2, 1.99, 2.5, 4.0, 4.95, 5.29]:
-		check_approx(player.landing_keep_ratio(height, false), 1.0, 0.0001, 			"an unrolled landing at %f m cost speed" % height)
-		check_approx(player.landing_keep_ratio(height, true), 1.0, 0.0001, 			"a rolled landing at %f m cost speed" % height)
+		assert_almost_eq(player.landing_keep_ratio(height, false), 1.0, 0.0001, 			"an unrolled landing at %f m cost speed" % height)
+		assert_almost_eq(player.landing_keep_ratio(height, true), 1.0, 0.0001, 			"a rolled landing at %f m cost speed" % height)
 	player.free()
 
 func test_a_hard_landing_without_a_roll_costs_everything() -> void:
 	# ✅ MEASURED: ~7 m unrolled zeroes the speed outright and plays the knee-
 	# clutch animation. Not "keeps 35%" -- the loss is total.
 	var player := _player_stub()
-	check(player.landing_tier(6.0) == Player.TIER_HARD, "6.0 m is not the hard tier")
-	check_approx(player.landing_keep_ratio(6.0, false), 0.0, 0.0001, 		"a hard landing left speed behind")
-	check_approx(player.landing_keep_ratio(9.0, false), 0.0, 0.0001, 		"a hard landing left speed behind")
+	assert_true(player.landing_tier(6.0) == Player.TIER_HARD, "6.0 m is not the hard tier")
+	assert_almost_eq(player.landing_keep_ratio(6.0, false), 0.0, 0.0001, 		"a hard landing left speed behind")
+	assert_almost_eq(player.landing_keep_ratio(9.0, false), 0.0, 0.0001, 		"a hard landing left speed behind")
 	player.free()
 
 func test_a_roll_cancels_a_hard_landing_completely() -> void:
@@ -63,7 +62,7 @@ func test_a_roll_cancels_a_hard_landing_completely() -> void:
 	# the roll animation. The roll is not a discount -- above the threshold it is
 	# the difference between keeping everything and keeping nothing.
 	var player := _player_stub()
-	check_approx(player.landing_keep_ratio(6.0, true), 1.0, 0.0001, 		"a rolled hard landing still cost speed")
+	assert_almost_eq(player.landing_keep_ratio(6.0, true), 1.0, 0.0001, 		"a rolled hard landing still cost speed")
 	player.free()
 
 func test_no_tier_can_ever_add_speed() -> void:
@@ -72,8 +71,8 @@ func test_no_tier_can_ever_add_speed() -> void:
 	# it must never be a source of it.
 	var player := _player_stub()
 	for height in [0.5, 2.5, 4.0, 9.0]:
-		check(player.landing_keep_ratio(height, false) <= 1.0, \
+		assert_true(player.landing_keep_ratio(height, false) <= 1.0, \
 			"a landing at %f m added speed" % height)
-		check(player.landing_keep_ratio(height, true) <= 1.0, \
+		assert_true(player.landing_keep_ratio(height, true) <= 1.0, \
 			"a rolled landing at %f m added speed" % height)
 	player.free()

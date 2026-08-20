@@ -1,5 +1,4 @@
-class_name TestSlideStepUp
-extends TestCase
+extends ParkourTest
 
 # try_step_up() was called from WalkingMove and nowhere else. Slide and Crouch
 # got no step allowance at all, so the same ankle-high clutter a standing body
@@ -14,7 +13,7 @@ extends TestCase
 const TestWorld = preload("res://tests/world_fixture.gd")
 
 func _crouch_into_kerb(height: float) -> Dictionary:
-	var world := TestWorld.build(tree, MovementConfig.new())
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -28,7 +27,7 @@ func _crouch_into_kerb(height: float) -> Dictionary:
 	box.size = Vector3(8.0, height, 0.4)
 	shape.shape = box
 	body.add_child(shape)
-	tree.root.add_child(body)
+	get_tree().root.add_child(body)
 	body.global_position = Vector3(0.0, height * 0.5, kerb_z)
 	await step(1)
 
@@ -43,8 +42,8 @@ func _crouch_into_kerb(height: float) -> Dictionary:
 
 func test_a_crouched_walk_rides_over_ankle_high_clutter() -> void:
 	var r: Dictionary = await _crouch_into_kerb(0.30)
-	check(r["crouched"], "test setup is wrong: never entered the crouch")
-	check(r["end_z"] < r["kerb_z"] - 0.3, \
+	assert_true(r["crouched"], "test setup is wrong: never entered the crouch")
+	assert_true(r["end_z"] < r["kerb_z"] - 0.3, \
 		"a crouched walk was stopped by a 0.30 m kerb (kerb at %.2f, reached %.2f)" \
 			% [r["kerb_z"], r["end_z"]])
 	r["kerb"].queue_free()
@@ -54,7 +53,7 @@ func test_a_crouched_walk_rides_over_ankle_high_clutter() -> void:
 ## Runs up to speed, plants a kerb ahead, slides into it, and records every
 ## move the manager passes through on the way.
 func _slide_over_kerb(height: float) -> Dictionary:
-	var world := TestWorld.build(tree, MovementConfig.new())
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -73,7 +72,7 @@ func _slide_over_kerb(height: float) -> Dictionary:
 	box.size = Vector3(8.0, height, 6.0)
 	shape.shape = box
 	body.add_child(shape)
-	tree.root.add_child(body)
+	get_tree().root.add_child(body)
 	body.global_position = Vector3(0.0, height * 0.5, kerb_z - 3.0)
 	await step(1)
 
@@ -98,9 +97,9 @@ func test_a_slide_over_a_kerb_is_not_interrupted() -> void:
 	# Falling -- which then finds the same kerb and grabs it. The slide is not
 	# BLOCKED by the kerb; it is CANCELLED by it.
 	var r: Dictionary = await _slide_over_kerb(0.30)
-	check(r["entered"], "test setup is wrong: never entered the slide")
+	assert_true(r["entered"], "test setup is wrong: never entered the slide")
 	var seen: Array = r["seen"]
-	check(not seen.has(Move.FALLING), \
+	assert_true(not seen.has(Move.FALLING), \
 		"riding a 0.30 m kerb dropped the slide into Falling (saw %s)" % [seen])
 	r["kerb"].queue_free()
 	TestWorld.teardown(r["world"])

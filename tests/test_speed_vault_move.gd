@@ -1,5 +1,4 @@
-class_name TestSpeedVaultMove
-extends TestCase
+extends ParkourTest
 
 # Task 14 fix round: SpeedVaultMove.enter()'s own clamp arithmetic
 # (exit = clampf(entry + speed_addition, clamp_speed_min, clamp_speed_max))
@@ -29,14 +28,14 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 ## pick_variant() resolves to the "vault_over" row -- the one row that pays
 ## the +0.8 bonus.
 func _world_with_sweet_spot_box() -> Dictionary:
-	var world := TestWorld.build(tree, MovementConfig.new())
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	var body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = Vector3(2.0, 0.9, 0.4)
 	shape.shape = box
 	body.add_child(shape)
-	tree.root.add_child(body)
+	get_tree().root.add_child(body)
 	world["box"] = body
 	world["box_at"] = Vector3(0.0, 0.45, -1.4)
 	return world
@@ -60,10 +59,10 @@ func _exit_speed_for(entry_speed: float) -> float:
 	player.velocity = Vector3(0.0, 0.0, -entry_speed)
 
 	var hit: Dictionary = player.probes.vault_query()
-	check(hit["valid"], "the probe missed the sweet-spot box -- fixture is wrong")
+	assert_true(hit["valid"], "the probe missed the sweet-spot box -- fixture is wrong")
 	var variant: Dictionary = player.config.speed_vault.pick_variant( \
 		hit["height"], hit["vault_over"], player.velocity.y, entry_speed)
-	check(variant.get("name", "") == "vault_over", \
+	assert_true(variant.get("name", "") == "vault_over", \
 		"fixture did not resolve to vault_over -- got %s" % variant.get("name", "<none>"))
 
 	player.pending_vault_variant = variant
@@ -77,7 +76,7 @@ func _exit_speed_for(entry_speed: float) -> float:
 			exit_speed = player.velocity.length()
 			completed = true
 			break
-	check(completed, "the vault never returned to Walking")
+	assert_true(completed, "the vault never returned to Walking")
 
 	world["box"].queue_free()
 	TestWorld.teardown(world)
@@ -88,7 +87,7 @@ func test_the_bonus_lands_at_a_mid_range_entry_speed() -> void:
 	# Comfortably below where clamp_speed_max (7.2, == ground_speed) starts
 	# eating the +0.8: 5.0 + 0.8 = 5.8, still well under 7.2.
 	var exit_speed: float = await _exit_speed_for(5.0)
-	check_approx(exit_speed, 5.8, 0.01, \
+	assert_almost_eq(exit_speed, 5.8, 0.01, \
 		"a mid-range entry did not receive the full +0.8 bonus")
 
 func test_the_bonus_evaporates_at_the_speed_cap() -> void:
@@ -98,5 +97,5 @@ func test_the_bonus_evaporates_at_the_speed_cap() -> void:
 	# their own ceiling, and no test before this one drove an entry this high.
 	var ground_speed: float = MovementConfig.new().pawn.ground_speed
 	var exit_speed: float = await _exit_speed_for(ground_speed)
-	check_approx(exit_speed, ground_speed, 0.01, \
+	assert_almost_eq(exit_speed, ground_speed, 0.01, \
 		"an entry at the speed cap kept some of the bonus instead of losing all of it")

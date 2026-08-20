@@ -1,10 +1,10 @@
-extends TestCase
+extends ParkourTest
 
 # Landing is where the "speed is hard to earn, easy to lose" rule bites. These
 # assert the ORDERING of outcomes, never the amounts, so tuning cannot break them.
 
 func _airborne_world(cfg: MovementConfig, drop_height: float) -> Dictionary:
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	world["floor"].global_position = Vector3(0.0, -0.5, 0.0)
 	world["player"].global_position = Vector3(0.0, drop_height, 0.0)
@@ -19,7 +19,7 @@ func _speed_after_drop(height: float, crouch: bool) -> float:
 ## Same, on a caller-supplied config, so a test can vary one parameter and
 ## compare the outcome against the default.
 func _speed_after_drop_with(cfg: MovementConfig, height: float, crouch: bool) -> float:
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -47,7 +47,7 @@ func _speed_after_drop_with(cfg: MovementConfig, height: float, crouch: bool) ->
 func test_a_plain_landing_costs_speed() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -63,7 +63,7 @@ func test_a_plain_landing_costs_speed() -> void:
 		await step(1)
 		if player.state_machine.current_name == &"Ground":
 			break
-	check_greater(running_speed, player.horizontal_speed(), \
+	assert_gt(running_speed, player.horizontal_speed(), \
 		"a plain landing from height must cost horizontal speed")
 	TestWorld.teardown(world)
 	await step(1)
@@ -72,13 +72,13 @@ func test_rolling_keeps_more_speed_than_a_plain_landing() -> void:
 	await step(1)
 	var plain := await _speed_after_drop(12.0, false)
 	var rolled := await _speed_after_drop(12.0, true)
-	check_greater(rolled, plain, "rolling must preserve more speed than landing flat")
+	assert_gt(rolled, plain, "rolling must preserve more speed than landing flat")
 
 func test_a_higher_fall_costs_more_speed() -> void:
 	await step(1)
 	var shallow := await _speed_after_drop(4.0, false)
 	var deep := await _speed_after_drop(16.0, false)
-	check_greater(shallow, deep, "a deeper fall must cost more speed than a shallow one")
+	assert_gt(shallow, deep, "a deeper fall must cost more speed than a shallow one")
 
 func test_the_camera_dip_reference_does_not_retune_the_landing_cost() -> void:
 	await step(1)
@@ -96,7 +96,7 @@ func test_the_camera_dip_reference_does_not_retune_the_landing_cost() -> void:
 	var cfg := MovementConfig.new()
 	cfg.land_dip_speed_ref = 6.0
 	var tuned_speed := await _speed_after_drop_with(cfg, 4.0, false)
-	check_approx(tuned_speed, default_speed, 0.01, \
+	assert_almost_eq(tuned_speed, default_speed, 0.01, \
 		"tuning the camera's landing dip changed how much speed the landing cost")
 
 func test_a_landing_can_never_add_speed_however_the_keep_ratio_is_tuned() -> void:
@@ -108,9 +108,9 @@ func test_a_landing_can_never_add_speed_however_the_keep_ratio_is_tuned() -> voi
 	# reachable slider position, not just the default one.
 	cfg.roll_speed_keep = cfg.roll_speed_keep * 3.0
 	cfg.land_speed_keep = cfg.land_speed_keep * 3.0
-	check_greater(cfg.roll_speed_keep, 1.0, "precondition: the tuned keep ratio should exceed 1.0")
+	assert_gt(cfg.roll_speed_keep, 1.0, "precondition: the tuned keep ratio should exceed 1.0")
 
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -130,7 +130,7 @@ func test_a_landing_can_never_add_speed_however_the_keep_ratio_is_tuned() -> voi
 		if player.state_machine.current_name == &"Ground":
 			landing_speed = player.horizontal_speed()
 			break
-	check(landing_speed <= running_speed + 0.001, \
+	assert_true(landing_speed <= running_speed + 0.001, \
 		"a landing added speed (%f -> %f); no slider position may break that invariant" \
 		% [running_speed, landing_speed])
 	TestWorld.teardown(world)
@@ -149,7 +149,7 @@ func test_the_roll_flag_reports_which_landing_happened() -> void:
 		await step(1)
 		if player.state_machine.current_name == &"Ground":
 			break
-	check(player.last_landing_rolled, "a crouched landing from height should be flagged as a roll")
+	assert_true(player.last_landing_rolled, "a crouched landing from height should be flagged as a roll")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -161,9 +161,9 @@ func test_the_roll_flag_reports_which_landing_happened() -> void:
 		await step(1)
 		if plain_player.state_machine.current_name == &"Ground":
 			break
-	check(plain_player.state_machine.current_name == &"Ground", \
+	assert_true(plain_player.state_machine.current_name == &"Ground", \
 		"precondition: the uncrouched drop never landed")
-	check(not plain_player.last_landing_rolled, \
+	assert_true(not plain_player.last_landing_rolled, \
 		"an uncrouched landing from the same height must NOT be flagged as a roll")
 	TestWorld.teardown(plain_world)
 	await step(1)

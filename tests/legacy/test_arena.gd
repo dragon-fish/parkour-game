@@ -1,25 +1,25 @@
-extends TestCase
+extends ParkourTest
 
 const SCENE := "res://scenes/main.tscn"
 
 func _load_arena() -> Node3D:
 	var packed: PackedScene = ResourceLoader.load(SCENE, "", ResourceLoader.CACHE_MODE_IGNORE)
 	var arena = packed.instantiate()
-	tree.root.add_child(arena)
+	get_tree().root.add_child(arena)
 	await step(3)
 	return arena
 
 func test_arena_scene_is_wired() -> void:
 	await step(1)
-	check(ResourceLoader.exists(SCENE), "main.tscn was not generated")
+	assert_true(ResourceLoader.exists(SCENE), "main.tscn was not generated")
 	var arena = await _load_arena()
 
-	check(arena.player != null, "Arena.player export was not wired")
-	check(arena.spawn_point != null, "Arena.spawn_point export was not wired")
-	check(arena.config != null, "Arena did not create a default MovementConfig")
-	check(arena.get_node_or_null("Floor") != null, "Floor missing")
-	check(arena.get_node_or_null("JumpArea/Gap6") != null, "jump area geometry missing")
-	check(arena.get_node_or_null("JumpArea/DropHigh") != null, "drop towers missing")
+	assert_true(arena.player != null, "Arena.player export was not wired")
+	assert_true(arena.spawn_point != null, "Arena.spawn_point export was not wired")
+	assert_true(arena.config != null, "Arena did not create a default MovementConfig")
+	assert_true(arena.get_node_or_null("Floor") != null, "Floor missing")
+	assert_true(arena.get_node_or_null("JumpArea/Gap6") != null, "jump area geometry missing")
+	assert_true(arena.get_node_or_null("JumpArea/DropHigh") != null, "drop towers missing")
 
 	arena.queue_free()
 	await step(1)
@@ -28,7 +28,7 @@ func test_player_and_panel_share_one_config_instance() -> void:
 	await step(1)
 	var arena = await _load_arena()
 	# If these are different objects, dragging a slider changes nothing.
-	check(arena.player.config == arena.config, "player does not share the arena's config")
+	assert_true(arena.player.config == arena.config, "player does not share the arena's config")
 	arena.queue_free()
 	await step(1)
 
@@ -36,8 +36,8 @@ func test_player_settles_on_the_floor_at_spawn() -> void:
 	await step(1)
 	var arena = await _load_arena()
 	await step(60)
-	check(arena.player.is_on_floor(), "player did not settle onto the arena floor")
-	check(arena.player.state_machine.current_name == &"Ground", "player is not in Ground at rest")
+	assert_true(arena.player.is_on_floor(), "player did not settle onto the arena floor")
+	assert_true(arena.player.state_machine.current_name == &"Ground", "player is not in Ground at rest")
 	arena.queue_free()
 	await step(1)
 
@@ -49,8 +49,8 @@ func test_reset_returns_the_player_to_spawn() -> void:
 	arena.reset_player()
 	await step(1)
 	var offset: float = arena.player.global_position.distance_to(arena.spawn_point.global_position)
-	check(offset < 0.01, "reset did not return the player to spawn (offset %f)" % offset)
-	check(arena.player.velocity.length() < 0.01, "reset did not clear velocity")
+	assert_true(offset < 0.01, "reset did not return the player to spawn (offset %f)" % offset)
+	assert_true(arena.player.velocity.length() < 0.01, "reset did not clear velocity")
 	arena.queue_free()
 	await step(1)
 
@@ -63,7 +63,7 @@ func test_reset_restores_a_level_view_and_does_not_fire_a_buffered_jump() -> voi
 	# Pitch the camera through the same public path real mouse input takes.
 	player.camera_rig.apply_look(Vector2(0.0, -500.0), player)
 	await step(1)
-	check(absf(player.camera_rig.rotation.x) > 0.01, "precondition: camera should be pitched")
+	assert_true(absf(player.camera_rig.rotation.x) > 0.01, "precondition: camera should be pitched")
 
 	# Force the player airborne and let coyote time fully decay, then buffer
 	# a jump press while still in the air. Both conditions consume_jump()
@@ -73,19 +73,19 @@ func test_reset_restores_a_level_view_and_does_not_fire_a_buffered_jump() -> voi
 	player.state_machine.start(PlayerState.AIR)
 	player.global_position = arena.spawn_point.global_position + Vector3(0.0, 5.0, 0.0)
 	await step(20)
-	check(player.state_machine.current_name == &"Air", \
+	assert_true(player.state_machine.current_name == &"Air", \
 		"precondition: player should still be airborne")
 
 	var input := ScriptedInputSource.new()
 	player.input_source = input
 	input.press_jump()
 	await step(1)
-	check(player.velocity.y < 4.0, \
+	assert_true(player.velocity.y < 4.0, \
 		"precondition: the buffered jump must not have fired yet, velocity.y = %f" % player.velocity.y)
 
 	arena.reset_player()
 	await step(1)
-	check_approx(player.camera_rig.rotation.x, 0.0, 0.001, "reset did not restore a level camera view")
+	assert_almost_eq(player.camera_rig.rotation.x, 0.0, 0.001, "reset did not restore a level camera view")
 
 	# reset_player() itself freezes Player physics for exactly one tick, and
 	# the player then takes several more ticks to actually settle onto the
@@ -102,8 +102,8 @@ func test_reset_restores_a_level_view_and_does_not_fire_a_buffered_jump() -> voi
 		await step(1)
 		if player.velocity.y > cfg.jump_velocity * 0.5:
 			jumped = true
-	check(not jumped, "a buffered jump fired after reset instead of staying grounded")
-	check(player.state_machine.current_name == &"Ground", \
+	assert_true(not jumped, "a buffered jump fired after reset instead of staying grounded")
+	assert_true(player.state_machine.current_name == &"Ground", \
 		"player did not settle back into Ground after the reset, state = %s" \
 			% player.state_machine.current_name)
 
@@ -127,7 +127,7 @@ func test_falling_out_of_the_level_respawns_the_player() -> void:
 		await step(1)
 
 	var offset: float = arena.player.global_position.distance_to(arena.spawn_point.global_position)
-	check(offset < 1.0, "falling below the kill plane did not return the player to spawn (offset %f)" % offset)
+	assert_true(offset < 1.0, "falling below the kill plane did not return the player to spawn (offset %f)" % offset)
 
 	arena.queue_free()
 	await step(1)
@@ -136,15 +136,15 @@ func test_debug_hud_is_wired_and_reports_state() -> void:
 	await step(1)
 	var arena = await _load_arena()
 	var hud = arena.get_node_or_null("DebugHud")
-	check(hud != null, "DebugHud node missing from the arena")
-	check(hud.player == arena.player, "DebugHud.player export was not wired")
+	assert_true(hud != null, "DebugHud node missing from the arena")
+	assert_true(hud.player == arena.player, "DebugHud.player export was not wired")
 
 	await step(30)
 	# _process only refreshes while visible, which is the default.
-	check(hud.visible, "HUD should start visible")
+	assert_true(hud.visible, "HUD should start visible")
 	var text: String = hud._label.text
-	check(text.contains("state"), "HUD text missing the state line")
-	check(text.contains("Ground"), "HUD did not report the resting state, text = %s" % text)
+	assert_true(text.contains("state"), "HUD text missing the state line")
+	assert_true(text.contains("Ground"), "HUD did not report the resting state, text = %s" % text)
 
 	arena.queue_free()
 	await step(1)
@@ -153,28 +153,28 @@ func test_tuning_panel_writes_back_into_the_shared_config() -> void:
 	await step(1)
 	var arena = await _load_arena()
 	var panel = arena.get_node_or_null("TuningPanel")
-	check(panel != null, "TuningPanel node missing from the arena")
-	check(panel.config == arena.config, "panel was not given the shared config instance")
+	assert_true(panel != null, "TuningPanel node missing from the arena")
+	assert_true(panel.config == arena.config, "panel was not given the shared config instance")
 
 	# _build_ui is deferred, so give it a frame to construct the sliders.
 	await step(2)
 	var sliders: Array = panel._sliders()
-	check_greater(float(sliders.size()), 10.0, "expected a slider per float parameter")
+	assert_gt(float(sliders.size()), 10.0, "expected a slider per float parameter")
 
 	var target: HSlider = null
 	for s in sliders:
 		if s.get_meta("property_name") == "walk_speed":
 			target = s
 			break
-	check(target != null, "no slider was generated for walk_speed")
+	assert_true(target != null, "no slider was generated for walk_speed")
 
 	var before: float = arena.config.walk_speed
 	target.value = before + 1.0
 	await step(1)
-	check_approx(arena.config.walk_speed, before + 1.0, 0.001, \
+	assert_almost_eq(arena.config.walk_speed, before + 1.0, 0.001, \
 		"moving the slider did not write back into the shared config")
 	# The player must see it too, since it holds the same object.
-	check_approx(arena.player.config.walk_speed, before + 1.0, 0.001, \
+	assert_almost_eq(arena.player.config.walk_speed, before + 1.0, 0.001, \
 		"the player does not observe the tuned value")
 
 	arena.queue_free()
@@ -192,7 +192,7 @@ func test_preset_save_and_load_round_trips() -> void:
 
 	arena.config.walk_speed = 99.0
 	panel._on_load()
-	check_approx(arena.config.walk_speed, 3.25, 0.001, \
+	assert_almost_eq(arena.config.walk_speed, 3.25, 0.001, \
 		"preset load did not restore the saved value")
 
 	DirAccess.remove_absolute("user://presets/test_roundtrip.tres")
@@ -214,8 +214,8 @@ func test_movement_follows_the_view_direction() -> void:
 	await step(30)
 
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	check_greater(horizontal.length(), 1.0, "player did not move")
-	check(horizontal.normalized().x < -0.9, \
+	assert_gt(horizontal.length(), 1.0, "player did not move")
+	assert_true(horizontal.normalized().x < -0.9, \
 		"movement did not follow the view direction, dir = %s" % horizontal.normalized())
 
 	arena.queue_free()
@@ -232,7 +232,7 @@ func test_the_slide_area_exists_and_is_low_enough_to_require_sliding() -> void:
 	await step(1)
 	var arena = await _load_arena()
 	var roof = arena.get_node_or_null("SlideArea/TunnelRoof")
-	check(roof != null, "the slide tunnel roof is missing")
+	assert_true(roof != null, "the slide tunnel roof is missing")
 
 	# The tunnel deck IS the arena floor: measuring against a raised deck box
 	# is what let the previous layout pass this test while sitting 1 m above
@@ -246,10 +246,10 @@ func test_the_slide_area_exists_and_is_low_enough_to_require_sliding() -> void:
 	# one cannot leave the tunnel silently impassable or silently pointless.
 	var standing := ((arena.player.get_node("CollisionShape3D") as CollisionShape3D).shape \
 		as CapsuleShape3D).height
-	check(clearance < standing, \
+	assert_true(clearance < standing, \
 		"the tunnel is tall enough to walk through, so it teaches nothing (clearance %f vs standing %f)" \
 		% [clearance, standing])
-	check_greater(clearance, arena.config.slide_capsule_height, \
+	assert_gt(clearance, arena.config.slide_capsule_height, \
 		"the tunnel is lower than the sliding capsule, so even a slide cannot pass (clearance %f vs slide %f)" \
 		% [clearance, arena.config.slide_capsule_height])
 
@@ -260,7 +260,7 @@ func test_the_slide_area_exists_and_is_low_enough_to_require_sliding() -> void:
 	# climb, and the clearance arithmetic above would never notice.
 	var wall_l = arena.get_node_or_null("SlideArea/TunnelWallL")
 	var wall_r = arena.get_node_or_null("SlideArea/TunnelWallR")
-	check(wall_l != null and wall_r != null, "the slide tunnel walls are missing")
+	assert_true(wall_l != null and wall_r != null, "the slide tunnel walls are missing")
 	var interior_min := Vector3(_world_aabb(wall_l).end.x, deck, roof_aabb.position.z)
 	var interior_max := Vector3(_world_aabb(wall_r).position.x, roof_aabb.position.y, roof_aabb.end.z)
 	# Shrunk so boxes that legitimately END at the tunnel mouth or rest
@@ -271,7 +271,7 @@ func test_the_slide_area_exists_and_is_low_enough_to_require_sliding() -> void:
 	for body in boxes:
 		if body == wall_l or body == wall_r or body == roof:
 			continue
-		check(not _world_aabb(body).intersects(interior), \
+		assert_true(not _world_aabb(body).intersects(interior), \
 			"SlideArea/%s intrudes into the tunnel — the deck must be the bare arena floor, with no lip or step" \
 			% body.name)
 
@@ -348,7 +348,7 @@ func test_the_slide_course_can_be_run_end_to_end() -> void:
 	player.velocity = Vector3.ZERO
 	player.rotation = Vector3.ZERO
 	await step(20)
-	check(player.is_on_floor(), "precondition: the player did not settle onto the approach")
+	assert_true(player.is_on_floor(), "precondition: the player did not settle onto the approach")
 
 	var input := ScriptedInputSource.new()
 	player.input_source = input
@@ -357,9 +357,9 @@ func test_the_slide_course_can_be_run_end_to_end() -> void:
 
 	# Phase 1 — approach and climb, ending a metre onto the raised platform.
 	var climb := await _advance_until_z(player, platform_aabb.end.z - 1.0, 900)
-	check(climb["reached"], \
+	assert_true(climb["reached"], \
 		"the player could not reach the raised platform: %s" % _where(climb))
-	check_approx(player.global_position.y, platform_aabb.end.y + 0.9, 0.35, \
+	assert_almost_eq(player.global_position.y, platform_aabb.end.y + 0.9, 0.35, \
 		"the player reached the platform's z but not its height — it is not standing on the platform: %s" \
 		% _where(climb))
 
@@ -371,9 +371,9 @@ func test_the_slide_course_can_be_run_end_to_end() -> void:
 	# was crossed.
 	input.press_crouch()
 	var run := await _advance_until_z(player, roof_aabb.position.z, 1800)
-	check(run["reached"], \
+	assert_true(run["reached"], \
 		"the player never reached the far mouth of the tunnel: %s" % _where(run))
-	check(run["slid"], \
+	assert_true(run["slid"], \
 		"the player crossed the course without ever entering Slide, so the route did not require sliding")
 
 	# The tunnel must be passable on slide MOMENTUM, with the crawl as a safety
@@ -381,18 +381,18 @@ func test_the_slide_course_can_be_run_end_to_end() -> void:
 	# Two independent readings of that, because they fail differently: the
 	# crawl latching at all, and the speed at the mouth collapsing to what a
 	# crawl would produce even if the latch has not tripped yet.
-	check(not run["crawled"], \
+	assert_true(not run["crawled"], \
 		"the player only got through because the crawl rescued it; the tunnel must be clearable on slide momentum: %s" \
 		% _where(run))
-	check_greater(run["speed"], arena.config.slide_crawl_speed, \
+	assert_gt(run["speed"], arena.config.slide_crawl_speed, \
 		"speed at the far mouth is no better than a crawl would give, so the slide did not carry the player: %s" \
 		% _where(run))
 
 	# Phase 3 — and it actually comes out the other side.
 	var exit_run := await _advance_until_z(player, roof_aabb.position.z - 1.5, 600)
-	check(exit_run["reached"], \
+	assert_true(exit_run["reached"], \
 		"the player reached the far mouth but never came out of it: %s" % _where(exit_run))
-	check_approx(player.global_position.y, deck + 0.9, 0.35, \
+	assert_almost_eq(player.global_position.y, deck + 0.9, 0.35, \
 		"the player left the course vertically instead of running it: %s" % _where(exit_run))
 
 	arena.queue_free()
@@ -522,7 +522,7 @@ func test_the_vault_and_ledge_course_can_be_run_end_to_end() -> void:
 	player.velocity = Vector3.ZERO
 	player.rotation = Vector3.ZERO
 	await step(20)
-	check(player.is_on_floor(), "precondition: the player did not settle onto the course approach")
+	assert_true(player.is_on_floor(), "precondition: the player did not settle onto the course approach")
 
 	var input := ScriptedInputSource.new()
 	player.input_source = input
@@ -533,9 +533,9 @@ func test_the_vault_and_ledge_course_can_be_run_end_to_end() -> void:
 	# Phase 1 — the three vaultable obstacles, in the lane, at ground speed.
 	var vault_run := await _drive_to(player, input, \
 		Vector3(lane_x, 0.0, vault_high.position.z - 1.5), 1.0, 900, seen)
-	check(vault_run["reached"], \
+	assert_true(vault_run["reached"], \
 		"the player could not get past the vault obstacles: %s" % _where(vault_run))
-	check_greater(float(vaults[0]), 2.5, \
+	assert_gt(float(vaults[0]), 2.5, \
 		"the player crossed all three vaultable obstacles having vaulted %d of them — the route did not require vaulting: %s" \
 		% [vaults[0], _where(vault_run)])
 
@@ -543,25 +543,25 @@ func test_the_vault_and_ledge_course_can_be_run_end_to_end() -> void:
 	# partly across the lane, so the way past it is around its open side.
 	var bypass_x: float = wall.end.x + 0.7
 	var bypass := await _drive_to(player, input, Vector3(bypass_x, 0.0, wall.end.z - 0.5), 1.0, 900, seen)
-	check(bypass["reached"], \
+	assert_true(bypass["reached"], \
 		"the player could not reach the open side of WallTooTall: %s" % _where(bypass))
 	var past_wall := await _drive_to(player, input, Vector3(bypass_x, 0.0, wall.position.z - 2.0), 1.0, 900, seen)
-	check(past_wall["reached"], \
+	assert_true(past_wall["reached"], \
 		"the player could not get past WallTooTall: %s" % _where(past_wall))
-	check(not seen.has(PlayerState.VAULT) or vaults[0] == 3, \
+	assert_true(not seen.has(PlayerState.VAULT) or vaults[0] == 3, \
 		"WallTooTall was vaulted; it exists to prove the height limit is real")
 
 	# Phase 3 — back into the lane and up LedgeLow.
 	var realign := await _drive_to(player, input, \
 		Vector3(lane_x, 0.0, ledge_low.end.z + 1.4), 0.6, 900, seen)
-	check(realign["reached"], \
+	assert_true(realign["reached"], \
 		"the player could not line up on LedgeLow: %s" % _where(realign))
 
 	var climb_low := await _grab_and_mantle(player, input, 600)
-	check(climb_low["reached"], "the player never grabbed LedgeLow: %s" % _where(climb_low))
-	check(player.state_machine.current_name == PlayerState.GROUND and player.grounded, \
+	assert_true(climb_low["reached"], "the player never grabbed LedgeLow: %s" % _where(climb_low))
+	assert_true(player.state_machine.current_name == PlayerState.GROUND and player.grounded, \
 		"the player did not end up standing on LedgeLow: %s" % _where(climb_low))
-	check_approx(player.global_position.y, ledge_low.end.y + 0.9, 0.35, \
+	assert_almost_eq(player.global_position.y, ledge_low.end.y + 0.9, 0.35, \
 		"the player is not standing on top of LedgeLow (top y=%f): %s" \
 		% [ledge_low.end.y, _where(climb_low)])
 
@@ -569,28 +569,28 @@ func test_the_vault_and_ledge_course_can_be_run_end_to_end() -> void:
 	# which is the tallest thing in the area that can still be grabbed.
 	var descend := await _drive_to(player, input, \
 		Vector3(lane_x, 0.0, ledge_mid.end.z + 1.4), 0.6, 900, seen)
-	check(descend["reached"], \
+	assert_true(descend["reached"], \
 		"the player could not cross from LedgeLow to LedgeMid: %s" % _where(descend))
 
 	var climb_mid := await _grab_and_mantle(player, input, 600)
-	check(climb_mid["reached"], "the player never grabbed LedgeMid: %s" % _where(climb_mid))
+	assert_true(climb_mid["reached"], "the player never grabbed LedgeMid: %s" % _where(climb_mid))
 
 	# The end condition: past the far end of the reachable course, on solid
 	# ground, at LedgeMid's own height — which is 2.7 m of sheer face, so there
 	# is no way to be standing here that did not involve climbing it.
-	check(player.state_machine.current_name == PlayerState.GROUND, \
+	assert_true(player.state_machine.current_name == PlayerState.GROUND, \
 		"the player did not finish the course in Ground: %s" % _where(climb_mid))
-	check(player.grounded, "the player did not finish the course on solid ground: %s" % _where(climb_mid))
-	check_approx(player.global_position.y, ledge_mid.end.y + 0.9, 0.35, \
+	assert_true(player.grounded, "the player did not finish the course on solid ground: %s" % _where(climb_mid))
+	assert_almost_eq(player.global_position.y, ledge_mid.end.y + 0.9, 0.35, \
 		"the player is not standing on top of LedgeMid (top y=%f): %s" \
 		% [ledge_mid.end.y, _where(climb_mid)])
-	check(player.global_position.z < ledge_mid.end.z, \
+	assert_true(player.global_position.z < ledge_mid.end.z, \
 		"the player finished short of LedgeMid's near face (z=%f): %s" \
 		% [ledge_mid.end.z, _where(climb_mid)])
 
-	check_greater(float(mantles[0]), 1.5, \
+	assert_gt(float(mantles[0]), 1.5, \
 		"the course was completed with %d mantle(s); both ledges must be climbed, not walked around" % mantles[0])
-	check_greater(float(vaults[0]), 2.5, \
+	assert_gt(float(vaults[0]), 2.5, \
 		"the course was completed with %d vault(s); all three vaultable obstacles must be vaulted" % vaults[0])
 
 	arena.queue_free()
@@ -630,7 +630,7 @@ func test_practice_areas_do_not_overlap_each_other() -> void:
 			areas[child.name] = boxes
 
 	var area_names: Array = areas.keys()
-	check_greater(float(area_names.size()), 1.0, \
+	assert_gt(float(area_names.size()), 1.0, \
 		"expected at least two practice areas to compare, found %d" % area_names.size())
 
 	# _collect_box_bodies only recognises a solid whose collision child is
@@ -639,7 +639,7 @@ func test_practice_areas_do_not_overlap_each_other() -> void:
 	# boxes and be silently excluded from every comparison below, so the
 	# whole test would pass by not looking. Fail loudly instead.
 	for area_name in area_names:
-		check_greater(float(areas[area_name].size()), 0.0, \
+		assert_gt(float(areas[area_name].size()), 0.0, \
 			"%s contributed no box solids, so it was silently skipped by the overlap check" % area_name)
 
 	# Boxes touching face-to-face (e.g. the tunnel roof resting on its walls)
@@ -656,7 +656,7 @@ func test_practice_areas_do_not_overlap_each_other() -> void:
 				var aabb_a: AABB = _world_aabb(body_a).grow(-TOLERANCE)
 				for body_b in areas[name_b]:
 					var aabb_b: AABB = _world_aabb(body_b).grow(-TOLERANCE)
-					check(not aabb_a.intersects(aabb_b), \
+					assert_true(not aabb_a.intersects(aabb_b), \
 						"%s/%s overlaps %s/%s — practice areas must not intersect each other" \
 						% [name_a, body_a.name, name_b, body_b.name])
 
@@ -667,18 +667,18 @@ func test_the_vault_area_spans_the_configured_limits() -> void:
 	await step(1)
 	var arena = await _load_arena()
 	for name in ["VaultLow", "VaultMid", "VaultHigh", "WallTooTall", "LedgeLow", "LedgeMid", "LedgeTooHigh"]:
-		check(arena.get_node_or_null("VaultArea/%s" % name) != null, "%s is missing" % name)
+		assert_true(arena.get_node_or_null("VaultArea/%s" % name) != null, "%s is missing" % name)
 
 	# The area is only useful if it brackets the configured limits: something
 	# just inside each bound and something just outside it.
 	var high = arena.get_node("VaultArea/VaultHigh")
 	var high_box := ((high.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
-	check(high_box.size.y <= arena.config.vault_max_height, \
+	assert_true(high_box.size.y <= arena.config.vault_max_height, \
 		"VaultHigh should sit at or under the vault limit")
 
 	var wall = arena.get_node("VaultArea/WallTooTall")
 	var wall_box := ((wall.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
-	check_greater(wall_box.size.y, arena.config.vault_max_height, \
+	assert_gt(wall_box.size.y, arena.config.vault_max_height, \
 		"WallTooTall should exceed the vault limit, or it teaches nothing")
 
 	arena.queue_free()
@@ -694,21 +694,21 @@ func test_the_ledge_platforms_bracket_the_configured_range() -> void:
 
 	var low = arena.get_node("VaultArea/LedgeLow")
 	var low_box := ((low.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
-	check(low_box.size.y >= arena.config.ledge_min_height, \
+	assert_true(low_box.size.y >= arena.config.ledge_min_height, \
 		"LedgeLow should sit at or above the ledge minimum, or it can never be grabbed")
-	check(low_box.size.y <= arena.config.ledge_max_height, \
+	assert_true(low_box.size.y <= arena.config.ledge_max_height, \
 		"LedgeLow should still be within the reachable ledge range")
 
 	var mid = arena.get_node("VaultArea/LedgeMid")
 	var mid_box := ((mid.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
-	check(mid_box.size.y <= arena.config.ledge_max_height, \
+	assert_true(mid_box.size.y <= arena.config.ledge_max_height, \
 		"LedgeMid should sit at or under the ledge maximum")
-	check_greater(mid_box.size.y, arena.config.ledge_min_height, \
+	assert_gt(mid_box.size.y, arena.config.ledge_min_height, \
 		"LedgeMid should still be within the reachable ledge range")
 
 	var too_high = arena.get_node("VaultArea/LedgeTooHigh")
 	var too_high_box := ((too_high.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
-	check_greater(too_high_box.size.y, arena.config.ledge_max_height, \
+	assert_gt(too_high_box.size.y, arena.config.ledge_max_height, \
 		"LedgeTooHigh should exceed the ledge limit, or it teaches nothing")
 
 	arena.queue_free()
@@ -754,19 +754,19 @@ func test_every_practice_area_fits_inside_the_arena_floor() -> void:
 		area_count += 1
 		var boxes: Array = []
 		_collect_box_bodies(area, boxes)
-		check_greater(float(boxes.size()), 0.0, \
+		assert_gt(float(boxes.size()), 0.0, \
 			"%s contributed no box solids, so it was silently skipped by the containment check" % area.name)
 
 		for body in boxes:
 			var body_aabb := _world_aabb(body)
-			check(body_aabb.position.x >= floor_aabb.position.x and body_aabb.end.x <= floor_aabb.end.x, \
+			assert_true(body_aabb.position.x >= floor_aabb.position.x and body_aabb.end.x <= floor_aabb.end.x, \
 				"%s/%s extends past the floor's x extent (body %s, floor %s)" \
 				% [area.name, body.name, body_aabb, floor_aabb])
-			check(body_aabb.position.z >= floor_aabb.position.z and body_aabb.end.z <= floor_aabb.end.z, \
+			assert_true(body_aabb.position.z >= floor_aabb.position.z and body_aabb.end.z <= floor_aabb.end.z, \
 				"%s/%s extends past the floor's z extent (body %s, floor %s)" \
 				% [area.name, body.name, body_aabb, floor_aabb])
 
-	check_greater(float(area_count), 1.0, \
+	assert_gt(float(area_count), 1.0, \
 		"expected at least two practice areas to check, found %d" % area_count)
 
 	arena.queue_free()
@@ -801,7 +801,7 @@ func test_the_wall_run_course_can_be_run_end_to_end() -> void:
 	player.velocity = Vector3.ZERO
 	player.rotation = Vector3.ZERO
 	await step(20)
-	check(player.is_on_floor(), "precondition: the player did not settle onto the wall course approach")
+	assert_true(player.is_on_floor(), "precondition: the player did not settle onto the wall course approach")
 
 	var input := ScriptedInputSource.new()
 	player.input_source = input
@@ -827,7 +827,7 @@ func test_the_wall_run_course_can_be_run_end_to_end() -> void:
 		# very thing this test names.
 		if player.global_position.z <= long_wall_aabb.position.z:
 			break
-	check(attached, \
+	assert_true(attached, \
 		"the player ran the length of LongWall without ever entering Wall, stopped at %s after %d ticks" \
 		% [player.global_position, ticks])
 
@@ -844,16 +844,16 @@ func test_the_wall_area_alternates_facing_so_chaining_is_possible() -> void:
 	var arena = await _load_arena()
 	var left = arena.get_node_or_null("WallArea/ZigLeft1")
 	var right = arena.get_node_or_null("WallArea/ZigRight1")
-	check(left != null and right != null, "the zig-zag walls are missing")
+	assert_true(left != null and right != null, "the zig-zag walls are missing")
 	# They must sit on opposite sides of the run line, or the reattach cooldown
 	# blocks the chain the area exists to teach.
-	check(left.position.x * right.position.x < 0.0, \
+	assert_true(left.position.x * right.position.x < 0.0, \
 		"the zig-zag walls must face each other across the run line")
 
 	var long_wall = arena.get_node_or_null("WallArea/LongWall")
-	check(long_wall != null, "the long wall is missing")
+	assert_true(long_wall != null, "the long wall is missing")
 	var box := ((long_wall.get_node("Collision") as CollisionShape3D).shape as BoxShape3D)
-	check_greater(box.size.z, arena.config.wall_max_speed * arena.config.wall_max_duration * 0.5, \
+	assert_gt(box.size.z, arena.config.wall_max_speed * arena.config.wall_max_duration * 0.5, \
 		"the long wall is too short to exercise a full-duration wall run")
 
 	arena.queue_free()
@@ -925,7 +925,7 @@ func test_the_zig_zag_wall_section_chains_multiple_walls() -> void:
 	player.velocity = Vector3.ZERO
 	player.rotation = Vector3.ZERO
 	await step(20)
-	check(player.is_on_floor(), "precondition: the player did not settle before the zig-zag section")
+	assert_true(player.is_on_floor(), "precondition: the player did not settle before the zig-zag section")
 
 	var input := ScriptedInputSource.new()
 	player.input_source = input
@@ -967,7 +967,7 @@ func test_the_zig_zag_wall_section_chains_multiple_walls() -> void:
 	# matching the reviewer's report exactly. A ">1" bar would have missed
 	# that case outright (2 > 1 is already true), so this checks the whole
 	# chain completes instead.
-	check_greater(float(attach_count), float(far_zs.size()) - 0.5, \
+	assert_gt(float(attach_count), float(far_zs.size()) - 0.5, \
 		"a fast run through the zig-zag attached to %d of %d wall(s) in sequence, expected the whole chain: %s" \
 			% [attach_count, far_zs.size(), player.global_position])
 
@@ -1049,7 +1049,7 @@ func test_regenerating_the_scene_matches_what_is_committed() -> void:
 	for p in committed_paths:
 		if not fresh_snapshot.has(p):
 			only_committed.append(p)
-	check(only_fresh.is_empty() and only_committed.is_empty(), \
+	assert_true(only_fresh.is_empty() and only_committed.is_empty(), \
 		"regenerating produces a different node set than what is committed — only in regenerated: %s, only in committed: %s" \
 		% [only_fresh, only_committed])
 
@@ -1058,19 +1058,19 @@ func test_regenerating_the_scene_matches_what_is_committed() -> void:
 			continue  # already reported above
 		var a: Dictionary = fresh_snapshot[path]
 		var b: Dictionary = committed_snapshot[path]
-		check(a["class"] == b["class"], \
+		assert_true(a["class"] == b["class"], \
 			"%s: class differs between regenerated (%s) and committed (%s)" % [path, a["class"], b["class"]])
-		check(a["script"] == b["script"], \
+		assert_true(a["script"] == b["script"], \
 			"%s: script differs between regenerated (%s) and committed (%s)" % [path, a["script"], b["script"]])
 		if a.has("position"):
-			check((a["position"] as Vector3).is_equal_approx(b["position"]), \
+			assert_true((a["position"] as Vector3).is_equal_approx(b["position"]), \
 				"%s: position differs between regenerated (%s) and committed (%s)" % [path, a["position"], b["position"]])
-			check((a["rotation"] as Vector3).is_equal_approx(b["rotation"]), \
+			assert_true((a["rotation"] as Vector3).is_equal_approx(b["rotation"]), \
 				"%s: rotation differs between regenerated (%s) and committed (%s)" % [path, a["rotation"], b["rotation"]])
-			check((a["scale"] as Vector3).is_equal_approx(b["scale"]), \
+			assert_true((a["scale"] as Vector3).is_equal_approx(b["scale"]), \
 				"%s: scale differs between regenerated (%s) and committed (%s)" % [path, a["scale"], b["scale"]])
 		if a.has("box_size"):
-			check((a["box_size"] as Vector3).is_equal_approx(b["box_size"]), \
+			assert_true((a["box_size"] as Vector3).is_equal_approx(b["box_size"]), \
 				"%s: collision box size differs between regenerated (%s) and committed (%s)" % [path, a["box_size"], b["box_size"]])
 
 	await step(1)

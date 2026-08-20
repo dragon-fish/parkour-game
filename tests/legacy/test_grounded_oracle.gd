@@ -1,11 +1,11 @@
-extends TestCase
+extends ParkourTest
 
 # The grounded flag must be something states DECLARE, not something inferred
 # from a physics call that a scripted-move state never makes.
 
 func _spawn() -> Dictionary:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -14,17 +14,17 @@ func _spawn() -> Dictionary:
 func test_grounded_tracks_the_ground_state() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
-	check(player.grounded, "a resting player should be grounded")
+	assert_true(player.grounded, "a resting player should be grounded")
 
 	world["input"].press_jump()
 	await step(4)
-	check(not player.grounded, "a jumping player should not be grounded")
+	assert_true(not player.grounded, "a jumping player should not be grounded")
 
 	for i in 300:
 		await step(1)
 		if player.state_machine.current_name == &"Ground":
 			break
-	check(player.grounded, "a landed player should be grounded again")
+	assert_true(player.grounded, "a landed player should be grounded again")
 
 	TestWorld.teardown(world)
 	await step(1)
@@ -50,7 +50,7 @@ class SilentState:
 func test_a_state_that_never_declares_grounded_does_not_inherit_it() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
-	check(player.grounded, "precondition: a resting player should be grounded")
+	assert_true(player.grounded, "precondition: a resting player should be grounded")
 
 	var silent := SilentState.new()
 	silent.player = player
@@ -62,16 +62,16 @@ func test_a_state_that_never_declares_grounded_does_not_inherit_it() -> void:
 	# StateMachine._clear_stale_grounded_after_start()), so the stale `true`
 	# does not even survive until the next tick -- it is gone the instant
 	# start() returns, before this state's own first physics_update() has run.
-	check(not player.grounded, \
+	assert_true(not player.grounded, \
 		"start() must not let an undeclared state inherit the previous state's `true`, not even for the one tick before its first physics_update() runs")
 
 	await step(1)
-	check(not player.grounded, \
+	assert_true(not player.grounded, \
 		"a state that never called set_grounded() kept the previous state's `true` -- coyote time refills every tick from it, which is infinite jumps")
 
 	# And it does not spontaneously come back on later ticks either.
 	await step(10)
-	check(not player.grounded, "the undeclared flag came back after further ticks")
+	assert_true(not player.grounded, "the undeclared flag came back after further ticks")
 
 	player.state_machine.start(PlayerState.GROUND)
 	TestWorld.teardown(world)
@@ -87,13 +87,13 @@ func test_a_state_that_never_declares_grounded_does_not_inherit_it() -> void:
 func test_a_restart_does_not_inherit_the_previous_life_s_grounded_value() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
-	check(player.grounded, "precondition: a resting player should be grounded")
+	assert_true(player.grounded, "precondition: a resting player should be grounded")
 
 	# AirState.enter() does not declare grounded -- only its physics_update()
 	# does, from move_and_slide()'s result -- exactly the shape that would
 	# leak a stale `true` for one tick without the fail-safe in start().
 	player.state_machine.start(PlayerState.AIR)
-	check(not player.grounded, \
+	assert_true(not player.grounded, \
 		"a restart must not inherit the previous life's grounded value, not even for the one tick before the new state's first physics_update() runs")
 
 	player.state_machine.start(PlayerState.GROUND)
@@ -106,7 +106,7 @@ func test_a_state_that_declares_grounded_keeps_its_value() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
 	await step(5)
-	check(player.grounded, \
+	assert_true(player.grounded, \
 		"a resting player in GroundState -- which declares grounded every tick -- must stay grounded")
 	TestWorld.teardown(world)
 	await step(1)
@@ -146,7 +146,7 @@ func test_a_landing_is_reported_exactly_once() -> void:
 	await step(4)
 	world["input"].release_jump()
 	await step(300)
-	check(landings[0] == 1, \
+	assert_true(landings[0] == 1, \
 		"the landing should be reported exactly once, saw %d Air->Ground transition(s)" % landings[0])
 
 	# Sitting on the ground afterwards must not keep re-reporting a landing —
@@ -156,10 +156,10 @@ func test_a_landing_is_reported_exactly_once() -> void:
 	# called notify_landed() again without ever leaving Ground would trip
 	# this without tripping the transition count above.
 	await step(60)
-	check(landings[0] == 1, \
+	assert_true(landings[0] == 1, \
 		"resting on the ground must not report further landings, saw %d Air->Ground transition(s)" \
 			% landings[0])
-	check_approx(player.last_landing_speed, landing_speed[0], 0.001, \
+	assert_almost_eq(player.last_landing_speed, landing_speed[0], 0.001, \
 		"resting on the ground changed the recorded landing speed — a landing was reported again")
 
 	TestWorld.teardown(world)

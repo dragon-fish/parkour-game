@@ -1,8 +1,7 @@
-class_name TestTurnDeceleration
-extends TestCase
+extends ParkourTest
 
 func _world() -> Dictionary:
-	return TestWorld.build(tree, MovementConfig.new())
+	return TestWorld.build(get_tree(), MovementConfig.new())
 
 func _run_up(world: Dictionary, ticks: int) -> void:
 	world["input"].state.move = Vector2(0.0, 1.0)
@@ -16,12 +15,12 @@ func test_turning_costs_banked_speed_energy() -> void:
 	await step(2)
 	await _run_up(world, 430)
 	var before: float = world["player"].speed_energy.energy
-	check_greater(before, 6.5, "never banked a full budget")
+	assert_gt(before, 6.5, "never banked a full budget")
 	# A hard left: the wish direction swings 90 degrees in one tick.
 	world["input"].state.move = Vector2(-1.0, 0.0)
 	await step(1)
 	var after: float = world["player"].speed_energy.energy
-	check(after < before - 3.0, "a 90 degree turn cost almost nothing (%f -> %f)" % [before, after])
+	assert_true(after < before - 3.0, "a 90 degree turn cost almost nothing (%f -> %f)" % [before, after])
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -34,7 +33,7 @@ func test_running_straight_costs_nothing() -> void:
 	var before: float = world["player"].speed_energy.energy
 	for i in 60:
 		await step(1)
-	check_greater(world["player"].speed_energy.energy, before - 0.01, \
+	assert_gt(world["player"].speed_energy.energy, before - 0.01, \
 		"running in a straight line bled energy")
 	TestWorld.teardown(world)
 	await step(1)
@@ -55,7 +54,7 @@ func test_releasing_and_repressing_a_direction_is_not_a_turn() -> void:
 	await step(1)
 	# One tick of no input does bleed a little through ordinary decay, but it
 	# must be nothing like a turn's own cost.
-	check_greater(world["player"].speed_energy.energy, before - 0.5, \
+	assert_gt(world["player"].speed_energy.energy, before - 0.5, \
 		"passing through zero input was charged as a turn")
 	TestWorld.teardown(world)
 	await step(1)
@@ -78,7 +77,7 @@ func test_turning_in_the_air_is_free() -> void:
 	world["input"].state.move = Vector2(-1.0, 0.0)
 	for i in 10:
 		await step(1)
-	check_approx(world["player"].speed_energy.energy, before, 0.01, "turning in the air cost energy")
+	assert_almost_eq(world["player"].speed_energy.energy, before, 0.01, "turning in the air cost energy")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -96,7 +95,7 @@ func test_even_a_one_degree_turn_costs_something() -> void:
 	await step(2)
 	await _run_up(world, 430)
 	var before: float = world["player"].speed_energy.energy
-	check_greater(before, 6.5, "never banked a full budget")
+	assert_gt(before, 6.5, "never banked a full budget")
 	# Compared against a straight-ahead tick rather than demanding a net drop.
 	# Now that cost scales with angular rate (03 §3.2), a one-degree nudge is
 	# cheap enough that the same tick's ordinary accumulation can outrun it --
@@ -109,7 +108,7 @@ func test_even_a_one_degree_turn_costs_something() -> void:
 	world["input"].state.move = Vector2(0.0, 1.0).rotated(deg_to_rad(1.0))
 	await step(1)
 	var turned_gain: float = world["player"].speed_energy.energy - pivot
-	check(turned_gain < straight_gain, 		"a one degree turn cost nothing (straight %f vs turned %f)" 		% [straight_gain, turned_gain])
+	assert_true(turned_gain < straight_gain, 		"a one degree turn cost nothing (straight %f vs turned %f)" 		% [straight_gain, turned_gain])
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -137,13 +136,13 @@ func test_turn_cost_wraps_correctly_across_180_degrees() -> void:
 	for i in 180:
 		await step(1)
 	var before: float = world["player"].speed_energy.energy
-	check_greater(before, 0.5, "did not rebank enough energy for the wraparound check to be meaningful")
+	assert_gt(before, 0.5, "did not rebank enough energy for the wraparound check to be meaningful")
 	# Flip to just past -180 degrees -- a real turn of about 2 degrees.
 	world["input"].state.move = Vector2(0.0, 1.0).rotated(deg_to_rad(-179.0))
 	await step(1)
 	var after: float = world["player"].speed_energy.energy
 	var drop: float = before - after
-	check(drop < 0.5, \
+	assert_true(drop < 0.5, \
 		"a near-180-to-near-180 flip (really a ~2 degree turn) drained %f energy -- wraparound bug?" % drop)
 	TestWorld.teardown(world)
 	await step(1)
@@ -169,12 +168,12 @@ func test_landing_after_an_airborne_turn_only_bills_the_landing_ticks_own_turn()
 	await _run_up(world, 430)
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
-	check_greater(player.speed_energy.energy, 6.5, "never banked a full budget")
+	assert_gt(player.speed_energy.energy, 6.5, "never banked a full budget")
 
 	input.press_jump()
 	await step(1)
 	input.release_jump()
-	check(player.move_manager.current_name == Move.JUMP, "the jump did not leave the ground")
+	assert_true(player.move_manager.current_name == Move.JUMP, "the jump did not leave the ground")
 
 	# Turn hard while airborne and hold it -- free per
 	# test_turning_in_the_air_is_free, but this is the state _last_wish_dir
@@ -190,9 +189,9 @@ func test_landing_after_an_airborne_turn_only_bills_the_landing_ticks_own_turn()
 			landed = true
 			break
 		energy_before_landing = player.speed_energy.energy
-	check(landed, "never observed a landing -- test setup is wrong")
+	assert_true(landed, "never observed a landing -- test setup is wrong")
 	var drop: float = energy_before_landing - player.speed_energy.energy
-	check(drop < 1.0, \
+	assert_true(drop < 1.0, \
 		"landing after an airborne turn billed a near-full-budget turn (dropped %f)" % drop)
 	TestWorld.teardown(world)
 	await step(1)
@@ -214,9 +213,9 @@ func test_a_fast_flick_costs_more_per_degree_than_a_slow_pan() -> void:
 	energy.spend_turn(angle, 30.0 / 1050.0)        # the same 30 degrees, flicked
 	var fast_cost: float = 100.0 - energy.energy
 
-	check_greater(fast_cost, slow_cost * 3.0, "a flick cost barely more than a pan")
+	assert_gt(fast_cost, slow_cost * 3.0, "a flick cost barely more than a pan")
 	# Measured ratio across the band is 5.54x (0.0167 -> 0.0926 per degree).
-	check_approx(fast_cost / slow_cost, 5.55, 0.2, "the rate gradient is not the measured one")
+	assert_almost_eq(fast_cost / slow_cost, 5.55, 0.2, "the rate gradient is not the measured one")
 
 func test_the_multiplier_is_clamped_outside_the_measured_band() -> void:
 	# Beyond the measured band the shape is unknown; extrapolating a power law
@@ -225,9 +224,9 @@ func test_the_multiplier_is_clamped_outside_the_measured_band() -> void:
 	var pawn := PawnConfig.new()
 	var energy := SpeedEnergy.new(pawn)
 	var fastest: float = pawn.turn_rate_cost_curve[pawn.turn_rate_cost_curve.size() - 1].y
-	check_approx(energy.turn_rate_multiplier(5400.0), fastest, 0.0001, \
+	assert_almost_eq(energy.turn_rate_multiplier(5400.0), fastest, 0.0001, \
 		"an impossibly fast turn was extrapolated past the measured band")
-	check_approx(energy.turn_rate_multiplier(1.0), pawn.turn_rate_cost_curve[0].y, 0.0001, \
+	assert_almost_eq(energy.turn_rate_multiplier(1.0), pawn.turn_rate_cost_curve[0].y, 0.0001, \
 		"a crawl was extrapolated below the measured band")
 
 func test_an_ordinary_turn_keeps_its_existing_calibration() -> void:
@@ -236,5 +235,5 @@ func test_an_ordinary_turn_keeps_its_existing_calibration() -> void:
 	# slow and fast ones.
 	var pawn := PawnConfig.new()
 	var energy := SpeedEnergy.new(pawn)
-	check_approx(energy.turn_rate_multiplier(450.0), 1.0, 0.0001, \
+	assert_almost_eq(energy.turn_rate_multiplier(450.0), 1.0, 0.0001, \
 		"the reference rate is no longer neutral")

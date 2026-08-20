@@ -1,5 +1,4 @@
-class_name TestFatalFallRespawn
-extends TestCase
+extends ParkourTest
 
 # Regression: a fatal fall crashed the game on landing with
 # "state Walking did not declare grounded-ness".
@@ -20,12 +19,12 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 
 func test_a_fatal_fall_survives_its_own_respawn() -> void:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
 	var player: Player = world["player"]
-	check(player.move_manager.current_name == Move.WALKING, \
+	assert_true(player.move_manager.current_name == Move.WALKING, \
 		"test setup is wrong: never settled onto the floor")
 
 	# Stand in for Arena, and it must do EVERYTHING Arena.reset_player() does --
@@ -51,7 +50,7 @@ func test_a_fatal_fall_survives_its_own_respawn() -> void:
 	player.global_position.y += cfg.pawn.falling_uncontrolled_height + 3.0
 	player.fall_tracker.reset(player.global_position.y)
 	await step(1)
-	check(player.move_manager.current_name == Move.FALLING, \
+	assert_true(player.move_manager.current_name == Move.FALLING, \
 		"test setup is wrong: the teleport did not send the player airborne")
 
 	# Long enough to fall the whole way and land, then keep walking. The
@@ -70,17 +69,17 @@ func test_a_fatal_fall_survives_its_own_respawn() -> void:
 		if respawns["count"] > 0 and player.move_manager.current_name == Move.WALKING:
 			break
 
-	check_greater(respawns["count"], 0, "the fatal fall never reported a death")
-	check(player.move_manager.current_name == Move.WALKING, \
+	assert_gt(respawns["count"], 0, "the fatal fall never reported a death")
+	assert_true(player.move_manager.current_name == Move.WALKING, \
 		"never returned to walking after the respawn")
 
 	# The tail that used to assert. Every tick here runs MoveManager's
 	# declaration invariant, so simply surviving them is the assertion.
 	for i in 60:
 		await step(1)
-	check(player.move_manager.current_name == Move.WALKING, \
+	assert_true(player.move_manager.current_name == Move.WALKING, \
 		"walking did not survive the ticks after a respawn")
-	check(player.move_manager.current_name != Move.FALL_UNCONTROLLED, \
+	assert_true(player.move_manager.current_name != Move.FALL_UNCONTROLLED, \
 		"the respawn left the player stuck in FallUncontrolled")
 
 	TestWorld.teardown(world)

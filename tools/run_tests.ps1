@@ -1,12 +1,18 @@
-# Runs the headless test suite. Uses the _console.exe variant because the
-# plain exe detaches from the console and swallows stdout on Windows.
-# Optional substring filters, e.g.  tools/run_tests.ps1 slide crouch
-# A test file runs if its name contains any of them. No filters = everything,
-# which is what CI and a pre-release check want.
-# Passed through the environment rather than on the command line: Godot's own
-# argument parser swallows extra arguments in --script mode, so neither `--`
-# nor a sentinel reached the runner. $args is used to collect them because a
-# param() block did not receive positional arguments under the comment header.
+# Runs the headless test suite through GUT (addons/gut, MIT).
+#
+# Uses the _console.exe variant because the plain exe detaches from the console
+# and swallows stdout on Windows.
+#
+#   tools\run_tests.ps1                 every test
+#   tools\run_tests.ps1 slide           only files whose name contains "slide"
+#   tools\run_tests.ps1 slide crouch    either of them
+#
+# Filtering matters day to day: the suite spends most of its time awaiting
+# physics frames, so narrowing to the area under change turns minutes into
+# seconds. Unfiltered runs are for CI and for a pre-release check.
+#
+# Arguments are read from $args rather than a param() block, which did not
+# receive positional arguments under this file's comment header.
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -21,95 +27,34 @@ if (-not (Test-Path $godot)) {
 # test dies with 'Identifier "Xxx" not declared in the current scope'.
 & $godot --headless --path $root --import | Out-Null
 
-# Capture stdout+stderr merged, in order, streaming each line to this console
-# as it arrives (so a human watching still sees normal progress) while also
-# keeping a copy to scan afterward.
-#
-# This second pass matters because the test runner's own pass/fail count
-# (tests/test_case.gd's checks/failures, totalled in tests/test_runner.gd)
-# cannot see a test method whose coroutine crashed outright: an unhandled
-# GDScript runtime error -- a bad property access, a call to a nonexistent
-# method, a failed assert -- silently aborts that method and the runner
-# moves on to the next one, recording zero checks and zero failures for it.
-# `all_failures.size() > 0` (test_runner.gd's own exit-code gate) never sees
-# it either. The engine's own error output is the only thing that reliably
-# reports every such crash, so it is scanned directly rather than trusting
-# the exit code alone.
-$outputLines = New-Object System.Collections.Generic.List[string]
-$runnerArgs = @('--headless', '--path', $root, '--script', 'res://tests/test_runner.gd')
-if ($args.Count -gt 0) {
-    Write-Output "run_tests.ps1: filtering on $($args -join ', ')"
-    $env:PARKOUR_TEST_FILTER = ($args -join ',')
-} else {
-    Remove-Item Env:\PARKOUR_TEST_FILTER -ErrorAction SilentlyContinue
-}
-& $godot @runnerArgs 2>&1 | ForEach-Object {
-    $text = $_.ToString()
-    Write-Output $text
-    $outputLines.Add($text)
-}
-$godotExitCode = $LASTEXITCODE
-
-# Godot's console error printer prefixes every uncaught error with one of
-# these depending on its origin: "SCRIPT ERROR:" for GDScript runtime
-# failures (bad property access, nonexistent method calls, failed asserts --
-# exactly the crashes the check counter cannot see), and "ERROR:" for an
-# explicit push_error() call (empirically confirmed against this exact
-# Godot 4.7.1 build: push_error() prints "ERROR:", not "USER ERROR:", but
-# "USER ERROR:" is matched too in case a differently-configured error
-# handler ever produces it). Matched at line start so a check() failure
-# message that happens to contain the word "error" cannot trip this.
-$errorPattern = '^(SCRIPT ERROR|USER ERROR|ERROR):'
-
-# NARROW allowlist. tests/test_state_machine.gd's
-# test_unknown_transition_leaves_the_machine_running deliberately drives
-# StateMachine.physics_update() to an unregistered state name to prove the
-# machine degrades safely instead of freezing (see the assert() in
-# scripts/player/states/state_machine.gd's unknown-transition guard) --
-# that assert failing IS the test passing, not a crash. Matched on the
-# assert's exact message text, not the file name or the bogus state name,
-# so a real new crash anywhere in test_state_machine.gd cannot hide behind
-# this entry.
-# The second entry is the same arrangement for the grounded-declaration
-# invariant: tests/test_grounded_oracle.gd's
-# test_a_state_that_never_declares_grounded_does_not_inherit_it registers a
-# state that deliberately never calls set_grounded(), to prove
-# StateMachine._check_declared_grounded() catches it -- the guard firing IS
-# that test passing. Matched on the invariant's own message text (which both
-# the assert and the push_error carry), not on a file or state name, so a real
-# state forgetting the call anywhere else still fails the run.
-# NOTE: both entries below are DORMANT as of the 1:1 movement rebuild -- the
-# two tests that trigger them are archived under tests/legacy/. They are kept
-# because MoveManager preserves both invariants verbatim (same message text),
-# so the rewritten tests will need them again. Do not prune.
-$allowlist = @(
-    'Assertion failed: transition to unknown state: Nonexistent',
-    'state Silent did not declare grounded-ness'
+# -gdir without -ginclude_subdirs, so tests/legacy/ stays archived rather than
+# running. -gexit returns control (and an exit code) instead of leaving a
+# window open.
+$gutArgs = @(
+    '--headless', '--path', $root,
+    '-s', 'res://addons/gut/gut_cmdln.gd',
+    '-gdir=res://tests',
+    '-gprefix=test_',
+    '-gexit'
 )
 
-$unexpected = @()
-foreach ($text in $outputLines) {
-    if ($text -match $errorPattern) {
-        $isAllowed = $false
-        foreach ($entry in $allowlist) {
-            if ($text -like "*$entry*") {
-                $isAllowed = $true
-                break
-            }
-        }
-        if (-not $isAllowed) {
-            $unexpected += $text
-        }
+if ($args.Count -gt 0) {
+    # -gselect takes a single filename substring, so several filters are
+    # resolved to explicit paths here instead. -gtest accepts a list.
+    $matched = @()
+    foreach ($needle in $args) {
+        $matched += Get-ChildItem -Path (Join-Path $root 'tests') -Filter 'test_*.gd' |
+            Where-Object { $_.Name -like "*$needle*" } |
+            ForEach-Object { "res://tests/$($_.Name)" }
     }
+    $matched = $matched | Sort-Object -Unique
+    if ($matched.Count -eq 0) {
+        Write-Error "no test file matched: $($args -join ', ')"
+    }
+    Write-Output "run_tests.ps1: $($matched.Count) file(s) matching $($args -join ', ')"
+    $gutArgs = $gutArgs | Where-Object { $_ -ne '-gdir=res://tests' }
+    foreach ($path in $matched) { $gutArgs += "-gtest=$path" }
 }
 
-if ($unexpected.Count -gt 0) {
-    Write-Output ""
-    Write-Output "run_tests.ps1: $($unexpected.Count) unexpected engine error line(s) found -- these are invisible to the check counter, so they fail the run on their own:"
-    foreach ($text in $unexpected) {
-        Write-Output "  $text"
-    }
-    exit 1
-}
-
-exit $godotExitCode
+& $godot @gutArgs
+exit $LASTEXITCODE

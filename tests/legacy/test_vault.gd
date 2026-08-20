@@ -1,4 +1,4 @@
-extends TestCase
+extends ParkourTest
 
 ## Builds a world with a box obstacle `depth` metres deep (default 1.0, matching
 ## the original brief geometry) and `height` metres tall, `distance`-ish ahead
@@ -8,7 +8,7 @@ extends TestCase
 func _running_at_obstacle(height: float, cfg: MovementConfig = null, depth: float = 1.0) -> Dictionary:
 	if cfg == null:
 		cfg = MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -19,7 +19,7 @@ func _running_at_obstacle(height: float, cfg: MovementConfig = null, depth: floa
 	box.size = Vector3(8.0, height, depth)
 	shape.shape = box
 	obstacle.add_child(shape)
-	tree.root.add_child(obstacle)
+	get_tree().root.add_child(obstacle)
 	await step(1)
 	obstacle.global_position = Vector3(0.0, height * 0.5, -8.0)
 	await step(1)
@@ -41,7 +41,7 @@ func test_running_into_a_low_obstacle_vaults_it() -> void:
 		if player.state_machine.current_name == &"Vault":
 			vaulted = true
 			break
-	check(vaulted, "running into a waist-high obstacle should start a vault")
+	assert_true(vaulted, "running into a waist-high obstacle should start a vault")
 
 	world["obstacle"].queue_free()
 	TestWorld.teardown(world)
@@ -83,7 +83,7 @@ func test_a_vault_clears_the_obstacles_far_face() -> void:
 	# assertion ever noticing. Computed from `depth` rather than a literal so
 	# it stays correct regardless of how deep the obstacle is.
 	var far_face_z: float = obstacle.global_position.z - depth * 0.5
-	check(player.global_position.z < far_face_z, \
+	assert_true(player.global_position.z < far_face_z, \
 		"the vault should leave the player past the obstacle's far face (z=%f), got z=%f" \
 		% [far_face_z, player.global_position.z])
 
@@ -109,7 +109,7 @@ func test_a_vault_keeps_most_of_the_approach_speed() -> void:
 
 	# Vaulting is a shortcut, not a speed bump — it must not cost more than a
 	# plain landing would.
-	check_greater(player.horizontal_speed(), approach * 0.5, \
+	assert_gt(player.horizontal_speed(), approach * 0.5, \
 		"vaulting bled too much speed (%f from %f)" % [player.horizontal_speed(), approach])
 
 	world["obstacle"].queue_free()
@@ -130,7 +130,7 @@ func test_a_wall_is_not_vaulted() -> void:
 		if player.state_machine.current_name == &"Vault":
 			ever_vaulted = true
 			break
-	check(not ever_vaulted, "a 3 m wall must never be vaulted")
+	assert_true(not ever_vaulted, "a 3 m wall must never be vaulted")
 
 	world["obstacle"].queue_free()
 	TestWorld.teardown(world)
@@ -156,7 +156,7 @@ func test_an_obstacle_over_the_height_limit_is_not_vaulted() -> void:
 		if player.state_machine.current_name == &"Vault":
 			vaulted = true
 			break
-	check(not vaulted, \
+	assert_true(not vaulted, \
 		"an obstacle taller than vault_max_height must not be vaulted, even though it clears the chest-height probe")
 	world["obstacle"].queue_free()
 	TestWorld.teardown(world)
@@ -178,7 +178,7 @@ func test_an_obstacle_over_the_height_limit_is_not_vaulted() -> void:
 		if player.state_machine.current_name == &"Vault":
 			vaulted = true
 			break
-	check(vaulted, \
+	assert_true(vaulted, \
 		"raising vault_max_height past this obstacle's height must make it vaultable")
 	world["obstacle"].queue_free()
 	TestWorld.teardown(world)
@@ -203,7 +203,7 @@ func test_the_fov_does_not_collapse_during_a_vault() -> void:
 	var world := await _running_at_obstacle(1.0, cfg)
 	var player: Player = world["player"]
 	var rig: CameraRig = player.camera_rig
-	check(rig != null, "precondition: the test player needs a camera rig")
+	assert_true(rig != null, "precondition: the test player needs a camera rig")
 
 	var approach := 0.0
 	for i in 400:
@@ -211,8 +211,8 @@ func test_the_fov_does_not_collapse_during_a_vault() -> void:
 		if player.state_machine.current_name == &"Vault":
 			break
 		approach = player.travel_speed()
-	check(player.state_machine.current_name == &"Vault", "precondition: the obstacle should have been vaulted")
-	check_greater(approach, cfg.vault_min_speed, "precondition: the approach should be a real run-up")
+	assert_true(player.state_machine.current_name == &"Vault", "precondition: the obstacle should have been vaulted")
+	assert_gt(approach, cfg.vault_min_speed, "precondition: the approach should be a real run-up")
 
 	var lowest_fov := INF
 	var fastest_travel := 0.0
@@ -228,9 +228,9 @@ func test_the_fov_does_not_collapse_during_a_vault() -> void:
 
 	# The premise: velocity really is zero for the whole scripted move, so
 	# anything reading it would have had nothing but 0 m/s to go on.
-	check(not velocity_ever_nonzero, \
+	assert_true(not velocity_ever_nonzero, \
 		"precondition: a scripted move should report zero velocity throughout — if it does not, this test is no longer exercising the case it was written for")
-	check_greater(fastest_travel, approach * 0.8, \
+	assert_gt(fastest_travel, approach * 0.8, \
 		"the body's measured travel during the vault (%f) fell well below the approach speed (%f)" \
 		% [fastest_travel, approach])
 
@@ -238,7 +238,7 @@ func test_the_fov_does_not_collapse_during_a_vault() -> void:
 	# the vault's ~19 ticks (measured). Fed real travel it stays in the top half
 	# of the range until the ease-out tail.
 	var floor_fov: float = cfg.fov_base + 0.35 * (cfg.fov_max - cfg.fov_base)
-	check_greater(lowest_fov, floor_fov, \
+	assert_gt(lowest_fov, floor_fov, \
 		"the FOV fell to %f during the vault, below %f — the camera is being told the player slowed down at the moment they are moving fastest" \
 		% [lowest_fov, floor_fov])
 
@@ -277,7 +277,7 @@ func test_a_vault_over_a_thin_obstacle_does_not_falsely_declare_grounded() -> vo
 		if player.state_machine.current_name == &"Vault":
 			vaulted = true
 			break
-	check(vaulted, "precondition: a thin waist-high obstacle should still be vaultable")
+	assert_true(vaulted, "precondition: a thin waist-high obstacle should still be vaultable")
 
 	var grounded_on_handoff := true
 	for i in 400:
@@ -288,7 +288,7 @@ func test_a_vault_over_a_thin_obstacle_does_not_falsely_declare_grounded() -> vo
 			# for it yet) -- it must not claim to be grounded regardless.
 			grounded_on_handoff = player.grounded
 			break
-	check(not grounded_on_handoff, \
+	assert_true(not grounded_on_handoff, \
 		"the vault declared the player grounded before GroundState's own move_and_slide() verified it")
 
 	world["obstacle"].queue_free()
@@ -304,7 +304,7 @@ func test_a_vault_over_a_thin_obstacle_does_not_falsely_declare_grounded() -> vo
 func test_running_up_a_ramp_never_vaults() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -323,7 +323,7 @@ func test_running_up_a_ramp_never_vaults() -> void:
 	# for a frame, overlaps the player and launches it.
 	ramp.position = Vector3(0.0, 1.367, -10.0)
 	ramp.rotation = Vector3(deg_to_rad(18.4), 0.0, 0.0)
-	tree.root.add_child(ramp)
+	get_tree().root.add_child(ramp)
 	await step(2)
 
 	var player: Player = world["player"]
@@ -349,9 +349,9 @@ func test_running_up_a_ramp_never_vaults() -> void:
 	# Precondition first, so a mis-oriented ramp fails loudly here rather than
 	# letting the real assertion pass for the wrong reason — the player has to
 	# actually have gone UP something for "did not vault it" to mean anything.
-	check_greater(climbed, 1.0, \
+	assert_gt(climbed, 1.0, \
 		"precondition: the player should have climbed the ramp, but only rose %f m" % climbed)
-	check(not vaulted, \
+	assert_true(not vaulted, \
 		"running up a walkable ramp must never trigger a vault (climbed %f m first)" % climbed)
 
 	ramp.queue_free()

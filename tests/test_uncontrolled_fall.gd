@@ -1,5 +1,4 @@
-class_name TestUncontrolledFall
-extends TestCase
+extends ParkourTest
 
 # I1/I2/I4 (spec §3). Uncontrolled falling is a STATE, not a flag: the original
 # gives it ControllerState = PlayerDying and strips every probe except soft
@@ -9,11 +8,11 @@ extends TestCase
 const TestWorld = preload("res://tests/world_fixture.gd")
 
 func _falling_world() -> Dictionary:
-	return TestWorld.build(tree, MovementConfig.new())
+	return TestWorld.build(get_tree(), MovementConfig.new())
 
 func test_a_deep_fall_enters_the_uncontrolled_state() -> void:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -25,7 +24,7 @@ func test_a_deep_fall_enters_the_uncontrolled_state() -> void:
 		await step(1)
 		if player.move_manager.current_name == Move.FALL_UNCONTROLLED:
 			break
-	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
+	assert_true(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
 		"a fall past the threshold did not enter FallUncontrolled")
 	TestWorld.teardown(world)
 	await step(1)
@@ -35,14 +34,14 @@ func test_the_uncontrolled_state_runs_no_probes() -> void:
 	# edit that switches one of these back on fails here rather than being
 	# discovered as "I grabbed a ledge while dying".
 	var cfg := MovementConfig.new()
-	check(not cfg.fall_uncontrolled.check_for_grab, "uncontrolled falling can grab")
-	check(not cfg.fall_uncontrolled.check_for_vault_over, "uncontrolled falling can vault")
-	check(not cfg.fall_uncontrolled.check_for_wall_climb, "uncontrolled falling can wall run")
+	assert_true(not cfg.fall_uncontrolled.check_for_grab, "uncontrolled falling can grab")
+	assert_true(not cfg.fall_uncontrolled.check_for_vault_over, "uncontrolled falling can vault")
+	assert_true(not cfg.fall_uncontrolled.check_for_wall_climb, "uncontrolled falling can wall run")
 
 func test_it_is_a_one_way_door() -> void:
 	# I4. Regaining height mid-air must not hand control back.
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -54,10 +53,10 @@ func test_it_is_a_one_way_door() -> void:
 		await step(1)
 		if player.move_manager.current_name == Move.FALL_UNCONTROLLED:
 			break
-	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, "test setup: never entered")
+	assert_true(player.move_manager.current_name == Move.FALL_UNCONTROLLED, "test setup: never entered")
 	player.velocity.y = 8.0
 	await step(5)
-	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
+	assert_true(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
 		"climbing back up escaped the uncontrolled state")
 	TestWorld.teardown(world)
 	await step(1)
@@ -77,12 +76,12 @@ func test_the_screen_shows_the_fall_and_shows_how_bad_it_is() -> void:
 	# first check below fails, and with the clearing exit() removed the last
 	# two do.
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
 	var player: Player = world["player"]
-	check(player.screen_effects != null, \
+	assert_true(player.screen_effects != null, \
 		"test setup is wrong: this player has no ScreenEffects to drive")
 
 	# Lifted far higher than the threshold needs, so the readings below are all
@@ -94,7 +93,7 @@ func test_the_screen_shows_the_fall_and_shows_how_bad_it_is() -> void:
 		await step(1)
 		if player.move_manager.current_name == Move.FALL_UNCONTROLLED:
 			break
-	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
+	assert_true(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
 		"test setup is wrong: the staged fall never entered FallUncontrolled")
 
 	# Roughly the speed a fall reaches at the 10 m line.
@@ -102,15 +101,15 @@ func test_the_screen_shows_the_fall_and_shows_how_bad_it_is() -> void:
 	await step(1)
 	var near_the_line: float = player.screen_effects.desaturation
 	var near_the_line_blur: float = player.screen_effects.blur
-	check_greater(near_the_line, 0.0, \
+	assert_gt(near_the_line, 0.0, \
 		"losing control showed nothing on screen at all")
 
 	# Roughly the speed a 40 m drop reaches.
 	player.velocity.y = -36.0
 	await step(1)
-	check_greater(player.screen_effects.desaturation, near_the_line, \
+	assert_gt(player.screen_effects.desaturation, near_the_line, \
 		"a much faster fall did not desaturate any harder")
-	check_greater(player.screen_effects.blur, near_the_line_blur, \
+	assert_gt(player.screen_effects.blur, near_the_line_blur, \
 		"a much faster fall did not blur any harder")
 
 	# Ride it into the ground. Nothing here listens for died_from_fall (that is
@@ -120,11 +119,11 @@ func test_the_screen_shows_the_fall_and_shows_how_bad_it_is() -> void:
 		await step(1)
 		if player.move_manager.current_name != Move.FALL_UNCONTROLLED:
 			break
-	check(player.move_manager.current_name != Move.FALL_UNCONTROLLED, \
+	assert_true(player.move_manager.current_name != Move.FALL_UNCONTROLLED, \
 		"test setup is wrong: the fall never reached the ground")
-	check_approx(player.screen_effects.desaturation, 0.0, 0.0001, \
+	assert_almost_eq(player.screen_effects.desaturation, 0.0, 0.0001, \
 		"the fall left the screen desaturated after it ended")
-	check_approx(player.screen_effects.blur, 0.0, 0.0001, \
+	assert_almost_eq(player.screen_effects.blur, 0.0, 0.0001, \
 		"the fall left the screen blurred after it ended")
 
 	TestWorld.teardown(world)
@@ -137,7 +136,7 @@ func test_the_view_stops_responding_the_moment_control_is_lost() -> void:
 	# input gate is that layer. Ignoring `_input` inside the move is not
 	# enough: the camera is driven from Player._physics_process().
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -153,16 +152,16 @@ func test_the_view_stops_responding_the_moment_control_is_lost() -> void:
 		await step(1)
 		if player.move_manager.current_name == Move.FALL_UNCONTROLLED:
 			break
-	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, "test setup: never entered")
+	assert_true(player.move_manager.current_name == Move.FALL_UNCONTROLLED, "test setup: never entered")
 
 	var yaw_before: float = player.rotation.y
 	# A hard sustained flick, the thing that used to spin freely all the way down.
 	for i in 20:
 		input.state.look = Vector2(400.0, 0.0)
 		await step(1)
-	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
+	assert_true(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
 		"test setup: landed before the flick finished")
-	check_approx(player.rotation.y, yaw_before, 0.0001, \
+	assert_almost_eq(player.rotation.y, yaw_before, 0.0001, \
 		"the view still turned while control was already lost")
 
 	TestWorld.teardown(world)

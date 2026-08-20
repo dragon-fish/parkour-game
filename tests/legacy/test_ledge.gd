@@ -1,4 +1,4 @@
-extends TestCase
+extends ParkourTest
 
 # Trigger a jump on a run-up that has actually reached (most of) ground speed,
 # not merely "faster than a walk" -- with air control now barely able to
@@ -17,7 +17,7 @@ func _jump_at_ledge(block_height: float) -> Dictionary:
 ## `cfg` lets them exercise a non-default MovementConfig without duplicating the
 ## whole setup -- the same shape tests/test_vault.gd's _running_at_obstacle uses.
 func _jump_at_ledge_with(block_height: float, depth: float, cfg: MovementConfig) -> Dictionary:
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -73,7 +73,7 @@ func _jump_at_ledge_with(block_height: float, depth: float, cfg: MovementConfig)
 	box.size = Vector3(8.0, block_height, depth)
 	shape.shape = box
 	block.add_child(shape)
-	tree.root.add_child(block)
+	get_tree().root.add_child(block)
 	await step(1)
 	block.global_position = Vector3(0.0, block_height * 0.5, block_z)
 	await step(1)
@@ -100,7 +100,7 @@ func test_reaching_a_ledge_grabs_it() -> void:
 		if player.state_machine.current_name == &"Ledge":
 			grabbed = true
 			break
-	check(grabbed, "jumping at a head-height ledge should grab it")
+	assert_true(grabbed, "jumping at a head-height ledge should grab it")
 
 	world["block"].queue_free()
 	TestWorld.teardown(world)
@@ -124,12 +124,12 @@ func test_hanging_applies_no_gravity() -> void:
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
-	check(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
+	assert_true(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
 
 	world["input"].state.move = Vector2.ZERO
 	var held := player.global_position
 	await step(20)
-	check(player.global_position.distance_to(held) < 0.05, \
+	assert_true(player.global_position.distance_to(held) < 0.05, \
 		"a hanging player must not fall under gravity or otherwise drift")
 
 	world["block"].queue_free()
@@ -178,7 +178,7 @@ func test_pressing_forward_mantles_onto_the_ledge() -> void:
 		if player.state_machine.current_name == &"Ground":
 			handed_off = true
 			break
-	check(handed_off, "the mantle never handed off to Ground")
+	assert_true(handed_off, "the mantle never handed off to Ground")
 
 	# Drop the input before the settle window. The block is only 4 m deep, so
 	# holding forward for another half second would simply run the player off
@@ -188,17 +188,17 @@ func test_pressing_forward_mantles_onto_the_ledge() -> void:
 	world["input"].state.move = Vector2.ZERO
 	await step(30)
 
-	check(player.state_machine.current_name == &"Ground", \
+	assert_true(player.state_machine.current_name == &"Ground", \
 		"half a second after the mantle the player is in %s, not standing on the ledge -- the landing point found no floor" \
 		% player.state_machine.current_name)
-	check(player.grounded, \
+	assert_true(player.grounded, \
 		"the player is not grounded half a second after the mantle -- the landing point found no floor")
-	check_greater(player.global_position.y, block_height, \
+	assert_gt(player.global_position.y, block_height, \
 		"the player ended up below the block top (%f), so the mantle did not leave them on the platform" \
 		% block_height)
 
 	var near_face_z: float = world["block_near_face_z"]
-	check(player.global_position.z < near_face_z, \
+	assert_true(player.global_position.z < near_face_z, \
 		"the player is at z=%f, still outside the platform's near face (z=%f) -- the mantle left them balanced on the lip rather than standing on the ledge" \
 		% [player.global_position.z, near_face_z])
 
@@ -234,7 +234,7 @@ func test_rotating_mid_climb_still_lands_on_the_grabbed_ledge() -> void:
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
-	check(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
+	assert_true(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
 
 	# The direction the mantle actually commits to -- no rotation has
 	# happened yet, so this equals whatever _exit_direction is about to be
@@ -243,7 +243,7 @@ func test_rotating_mid_climb_still_lands_on_the_grabbed_ledge() -> void:
 
 	world["input"].state.move = Vector2(0.0, 1.0)
 	await step(1)
-	check(player.state_machine.current_name == &"Ledge", "precondition: mantle should have started")
+	assert_true(player.state_machine.current_name == &"Ledge", "precondition: mantle should have started")
 
 	# Whip the view around hard, mid-climb -- AFTER commitment.
 	world["input"].state.look = Vector2(-1000.0, 0.0)
@@ -252,7 +252,7 @@ func test_rotating_mid_climb_still_lands_on_the_grabbed_ledge() -> void:
 	world["input"].state.look = Vector2.ZERO
 
 	var new_forward: Vector3 = -player.global_transform.basis.z
-	check(new_forward.dot(committed_forward) < 0.7, \
+	assert_true(new_forward.dot(committed_forward) < 0.7, \
 		"precondition: the mid-climb turn should actually have rotated the player substantially")
 
 	var exit_velocity := Vector3.ZERO
@@ -261,14 +261,14 @@ func test_rotating_mid_climb_still_lands_on_the_grabbed_ledge() -> void:
 		if player.state_machine.current_name != &"Ledge":
 			exit_velocity = player.velocity
 			break
-	check(player.state_machine.current_name == &"Ground", \
+	assert_true(player.state_machine.current_name == &"Ground", \
 		"mantling should end on the ledge top even after a mid-climb turn")
-	check_greater(player.global_position.y, 2.0, "the player should still be above the ledge")
+	assert_gt(player.global_position.y, 2.0, "the player should still be above the ledge")
 
 	var exit_dir := Vector3(exit_velocity.x, 0.0, exit_velocity.z)
-	check_greater(exit_dir.length(), 0.01, \
+	assert_gt(exit_dir.length(), 0.01, \
 		"precondition: the mantle should hand off with a horizontal exit speed to have a direction to check")
-	check_greater(exit_dir.normalized().dot(committed_forward), 0.9, \
+	assert_gt(exit_dir.normalized().dot(committed_forward), 0.9, \
 		"a mid-climb turn aimed the mantle's exit push off the ledge just climbed, instead of the direction actually committed to")
 
 	world["block"].queue_free()
@@ -295,10 +295,10 @@ func test_turning_while_hanging_changes_where_the_mantle_lands() -> void:
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
-	check(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
+	assert_true(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
 
 	var edge_query: Dictionary = player.probes.ledge_query()
-	check(edge_query["valid"], "precondition: the grabbed edge should still be probeable from the hang position")
+	assert_true(edge_query["valid"], "precondition: the grabbed edge should still be probeable from the hang position")
 	var edge_point: Vector3 = edge_query["edge"]
 	var hang_position: Vector3 = player.global_position
 
@@ -307,11 +307,11 @@ func test_turning_while_hanging_changes_where_the_mantle_lands() -> void:
 	world["input"].state.look = Vector2(-1000.0, 0.0)
 	await step(1)
 	world["input"].state.look = Vector2.ZERO
-	check(player.state_machine.current_name == &"Ledge", \
+	assert_true(player.state_machine.current_name == &"Ledge", \
 		"precondition: turning while hanging must not itself end the hang")
 
 	var post_turn_forward: Vector3 = -player.global_transform.basis.z
-	check(post_turn_forward.dot(Vector3(0.0, 0.0, -1.0)) < 0.7, \
+	assert_true(post_turn_forward.dot(Vector3(0.0, 0.0, -1.0)) < 0.7, \
 		"precondition: the hang-turn should actually have rotated the player substantially")
 
 	# NOW commit to the climb, facing the NEW direction.
@@ -322,13 +322,13 @@ func test_turning_while_hanging_changes_where_the_mantle_lands() -> void:
 		if player.state_machine.current_name != &"Ledge":
 			exit_velocity = player.velocity
 			break
-	check(player.state_machine.current_name == &"Ground", \
+	assert_true(player.state_machine.current_name == &"Ground", \
 		"mantling should still complete after turning while hanging")
 
 	var exit_dir := Vector3(exit_velocity.x, 0.0, exit_velocity.z)
-	check_greater(exit_dir.length(), 0.01, \
+	assert_gt(exit_dir.length(), 0.01, \
 		"precondition: the mantle should hand off with a horizontal exit speed to have a direction to check")
-	check_greater(exit_dir.normalized().dot(post_turn_forward), 0.9, \
+	assert_gt(exit_dir.normalized().dot(post_turn_forward), 0.9, \
 		"a turn made while hanging (before committing to the climb) was ignored -- the mantle exited along stale grab-time facing instead of the direction actually faced at commitment")
 
 	# OUTCOME, not formula. The version of this assertion that shipped with the
@@ -352,7 +352,7 @@ func test_turning_while_hanging_changes_where_the_mantle_lands() -> void:
 	# dominated by it and says nothing about either claim.
 	var past_lip := Vector3(player.global_position.x - edge_point.x, 0.0, \
 		player.global_position.z - edge_point.z)
-	check_greater(past_lip.length(), 0.01, \
+	assert_gt(past_lip.length(), 0.01, \
 		"precondition: the landing should be horizontally displaced from the lip at all")
 	# Which SIDE of the lip the body finished on, expressed as a direction
 	# rather than as a recomputed landing point. The two possible signs of
@@ -362,7 +362,7 @@ func test_turning_while_hanging_changes_where_the_mantle_lands() -> void:
 	# the wall. This also carries the capture-moment claim for the LANDING (as
 	# distinct from the exit push checked above): the side it lands on is the
 	# side the player faced at commitment, not at grab.
-	check_greater(past_lip.normalized().dot(post_turn_forward), 0.9, \
+	assert_gt(past_lip.normalized().dot(post_turn_forward), 0.9, \
 		"the mantle finished on the %s side of the probed lip; expected it PAST the lip along the committed direction %s, which is where the platform is -- landing on the other side puts the body over open air in front of the face" \
 		% [past_lip.normalized(), post_turn_forward])
 
@@ -382,7 +382,7 @@ func test_turning_while_hanging_changes_where_the_mantle_lands() -> void:
 func test_mantling_completes_from_the_top_of_the_grab_range() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -398,7 +398,7 @@ func test_mantling_completes_from_the_top_of_the_grab_range() -> void:
 	box.size = Vector3(8.0, 6.0, 4.0)
 	shape.shape = box
 	block.add_child(shape)
-	tree.root.add_child(block)
+	get_tree().root.add_child(block)
 	await step(1)
 	block.global_position = Vector3(0.0, 3.0, -6.0)
 	await step(1)
@@ -409,23 +409,23 @@ func test_mantling_completes_from_the_top_of_the_grab_range() -> void:
 	await step(1)
 
 	var query: Dictionary = player.probes.ledge_query()
-	check(query["valid"], "precondition: this hand-placed position should read as a valid ledge grab")
+	assert_true(query["valid"], "precondition: this hand-placed position should read as a valid ledge grab")
 	var height_at_grab: float = query["edge"].y - (player.global_position.y - player.standing_height() * 0.5)
-	check(height_at_grab > cfg.ledge_max_height - 0.2, \
+	assert_true(height_at_grab > cfg.ledge_max_height - 0.2, \
 		"precondition: this test needs a grab near the TOP of the reachable range, got height %f" % height_at_grab)
 
 	player.state_machine.start(PlayerState.LEDGE)
 	await step(1)
-	check(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
+	assert_true(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
 
 	world["input"].state.move = Vector2(0.0, 1.0)
 	for i in 90:
 		await step(1)
 		if player.state_machine.current_name == &"Ground":
 			break
-	check(player.state_machine.current_name == &"Ground", \
+	assert_true(player.state_machine.current_name == &"Ground", \
 		"a grab near the top of the reachable range should still mantle to completion within mantle_duration")
-	check_greater(player.global_position.y, query["edge"].y, \
+	assert_gt(player.global_position.y, query["edge"].y, \
 		"the player should have ended up above the ledge even starting from full stretch")
 
 	block.queue_free()
@@ -458,17 +458,17 @@ func test_dropping_off_a_ledge_does_not_instantly_regrab_it() -> void:
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
-	check(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
-	check(grabs[0] == 1, "precondition: exactly one grab so far, saw %d" % grabs[0])
+	assert_true(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
+	assert_true(grabs[0] == 1, "precondition: exactly one grab so far, saw %d" % grabs[0])
 
 	world["input"].state.move = Vector2.ZERO
 	world["input"].state.crouch_held = true
 	await step(60)
 
-	check(grabs[0] == 1, \
+	assert_true(grabs[0] == 1, \
 		"the player re-grabbed the ledge it had just dropped off %d time(s) -- crouch-dropping must arm the re-grab cooldown, or the drop oscillates against the same wall" \
 		% (grabs[0] - 1))
-	check(player.state_machine.current_name != &"Ledge", \
+	assert_true(player.state_machine.current_name != &"Ledge", \
 		"a second after crouching off the ledge the player is hanging from it again")
 
 	world["block"].queue_free()
@@ -509,14 +509,14 @@ func test_a_mantle_that_finds_no_floor_arms_the_regrab_cooldown() -> void:
 			world["input"].press_jump()
 		if player.state_machine.current_name == &"Ledge":
 			break
-	check(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
+	assert_true(player.state_machine.current_name == &"Ledge", "precondition: should be hanging")
 
 	world["input"].state.move = Vector2(0.0, 1.0)
 	for i in 200:
 		await step(1)
 		if player.state_machine.current_name != &"Ledge":
 			break
-	check(player.state_machine.current_name != &"Ledge", "precondition: the mantle should have handed off")
+	assert_true(player.state_machine.current_name != &"Ledge", "precondition: the mantle should have handed off")
 
 	# Precondition, and the whole point of the geometry: this landing really
 	# does find no floor. Without it the assertion below would be checking the
@@ -529,17 +529,17 @@ func test_a_mantle_that_finds_no_floor_arms_the_regrab_cooldown() -> void:
 			went_airborne = true
 			could_grab_while_airborne = player.can_grab_ledge()
 			break
-	check(went_airborne, \
+	assert_true(went_airborne, \
 		"precondition: the mantle onto a platform shallower than mantle_forward_offset should leave the player airborne")
-	check(not could_grab_while_airborne, \
+	assert_true(not could_grab_while_airborne, \
 		"the mantle handed off without arming the re-grab cooldown, so AirState's ledge gate was open on the very tick the landing failed -- that is the unbounded climb/fall/re-climb loop")
 
 	# ...and it stays shut for about as long as the config says.
 	await step(int(cfg.ledge_regrab_cooldown * 60.0) - 6)
-	check(not player.can_grab_ledge(), \
+	assert_true(not player.can_grab_ledge(), \
 		"the cooldown expired well before ledge_regrab_cooldown (%f s) had elapsed" % cfg.ledge_regrab_cooldown)
 
-	check(grabs[0] == 1, \
+	assert_true(grabs[0] == 1, \
 		"the ledge was grabbed %d times during a single approach -- the mantle is oscillating against it" % grabs[0])
 
 	world["block"].queue_free()
@@ -560,7 +560,7 @@ func test_crouching_releases_the_ledge() -> void:
 	world["input"].state.move = Vector2.ZERO
 	world["input"].state.crouch_held = true
 	await step(5)
-	check(player.state_machine.current_name == &"Air", "crouching should drop off the ledge")
+	assert_true(player.state_machine.current_name == &"Air", "crouching should drop off the ledge")
 
 	world["block"].queue_free()
 	TestWorld.teardown(world)

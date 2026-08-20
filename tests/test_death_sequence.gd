@@ -1,5 +1,4 @@
-class_name TestDeathSequence
-extends TestCase
+extends ParkourTest
 
 # Death is NOT a Move (spec §1): PlayerDying appears once in the whole CDO
 # library, on FallingUncontrolled itself, and no Move succeeds it on landing.
@@ -10,16 +9,16 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 
 func test_the_sequence_reports_its_own_duration() -> void:
 	var seq := DeathSequence.new()
-	tree.root.add_child(seq)
+	get_tree().root.add_child(seq)
 	await step(1)
-	check_greater(seq.total_duration(), 1.0, "the death sequence is too short to read")
-	check_greater(3.0, seq.total_duration(), "the death sequence outstays its welcome")
+	assert_gt(seq.total_duration(), 1.0, "the death sequence is too short to read")
+	assert_gt(3.0, seq.total_duration(), "the death sequence outstays its welcome")
 	seq.queue_free()
 	await step(1)
 
 func test_it_finishes_and_says_so() -> void:
 	var seq := DeathSequence.new()
-	tree.root.add_child(seq)
+	get_tree().root.add_child(seq)
 	await step(1)
 	var done := {"hit": false}
 	seq.finished.connect(func() -> void: done["hit"] = true)
@@ -29,7 +28,7 @@ func test_it_finishes_and_says_so() -> void:
 		await step(1)
 		if done["hit"]:
 			break
-	check(done["hit"], "the death sequence never finished")
+	assert_true(done["hit"], "the death sequence never finished")
 	seq.queue_free()
 	await step(1)
 
@@ -40,16 +39,16 @@ func test_it_locks_player_input_while_it_plays() -> void:
 	# WalkingMove would keep reading held input and drive the body around
 	# underneath a "the character already collapsed" shot.
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
 	var player: Player = world["player"]
-	check(player.move_manager.current_name == Move.WALKING, \
+	assert_true(player.move_manager.current_name == Move.WALKING, \
 		"test setup is wrong: never settled onto the floor")
 
 	var seq := DeathSequence.new()
-	tree.root.add_child(seq)
+	get_tree().root.add_child(seq)
 	await step(1)
 	seq.play(player)
 
@@ -64,16 +63,16 @@ func test_it_locks_player_input_while_it_plays() -> void:
 		await step(1)
 		if done["hit"]:
 			break
-	check(done["hit"], "the death sequence never finished")
-	check_approx(player.global_position.x, start_position.x, 0.01, \
+	assert_true(done["hit"], "the death sequence never finished")
+	assert_almost_eq(player.global_position.x, start_position.x, 0.01, \
 		"held input moved the player while the death sequence was playing")
-	check_approx(player.global_position.z, start_position.z, 0.01, \
+	assert_almost_eq(player.global_position.z, start_position.z, 0.01, \
 		"held input moved the player while the death sequence was playing")
 
 	# Same held input, several ticks after the sequence let go: input must be
 	# usable again, or the lock leaked past the cutscene it was meant to cover.
 	await step(15)
-	check(not is_equal_approx(player.global_position.z, start_position.z), \
+	assert_true(not is_equal_approx(player.global_position.z, start_position.z), \
 		"input stayed locked after the death sequence finished")
 
 	seq.queue_free()
@@ -86,14 +85,14 @@ func test_a_manual_reset_mid_cutscene_does_not_leave_input_locked() -> void:
 	# already respawned. CameraRig.reset_state() has always covered this case
 	# (it calls end_cinematic()); this pins the player's half of it.
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
 	var player: Player = world["player"]
 
 	var seq := DeathSequence.new()
-	tree.root.add_child(seq)
+	get_tree().root.add_child(seq)
 	await step(1)
 	seq.play(player)
 	await step(5)
@@ -105,7 +104,7 @@ func test_a_manual_reset_mid_cutscene_does_not_leave_input_locked() -> void:
 	input.state.move = Vector2(0.0, 1.0)
 	var start_position: Vector3 = player.global_position
 	await step(15)
-	check(not is_equal_approx(player.global_position.z, start_position.z), \
+	assert_true(not is_equal_approx(player.global_position.z, start_position.z), \
 		"a manual reset during the cutscene left the player unable to move")
 
 	seq.queue_free()
@@ -127,24 +126,24 @@ func test_stopping_a_sequence_cancels_it_instead_of_finishing_it() -> void:
 	# Verified to go red by making stop() leave _playing set -- `finished` then
 	# fires on schedule and the last check below catches it.
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
 	var player: Player = world["player"]
 
 	var seq := DeathSequence.new()
-	tree.root.add_child(seq)
+	get_tree().root.add_child(seq)
 	await step(1)
 	var done := {"hit": false}
 	seq.finished.connect(func() -> void: done["hit"] = true)
 	seq.play(player)
 	await step(5)
-	check_approx(player.screen_effects.desaturation, 1.0, 0.0001, \
+	assert_almost_eq(player.screen_effects.desaturation, 1.0, 0.0001, \
 		"test setup is wrong: the cutscene did not desaturate the screen")
 
 	seq.stop()
-	check_approx(player.screen_effects.desaturation, 0.0, 0.0001, \
+	assert_almost_eq(player.screen_effects.desaturation, 0.0, 0.0001, \
 		"a cancelled cutscene left the screen desaturated")
 
 	# The input gate is checked the way this file already checks it: by driving
@@ -153,14 +152,14 @@ func test_stopping_a_sequence_cancels_it_instead_of_finishing_it() -> void:
 	input.state.move = Vector2(0.0, 1.0)
 	var start_position: Vector3 = player.global_position
 	await step(15)
-	check(not is_equal_approx(player.global_position.z, start_position.z), \
+	assert_true(not is_equal_approx(player.global_position.z, start_position.z), \
 		"a cancelled cutscene left the player unable to move")
 
 	# Well past the point the sequence would have completed on its own.
 	var ticks: int = int(seq.total_duration() * Engine.physics_ticks_per_second) + 30
 	for i in ticks:
 		await step(1)
-	check(not done["hit"], \
+	assert_true(not done["hit"], \
 		"a cancelled cutscene still reported itself finished, which respawns the player")
 
 	seq.queue_free()

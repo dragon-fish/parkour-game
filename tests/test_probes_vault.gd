@@ -1,5 +1,4 @@
-class_name TestProbesVault
-extends TestCase
+extends ParkourTest
 
 # Task 13: the two things the variant table needs that vault_query() could
 # not answer before -- how far ahead the obstacle is, and whether anything is
@@ -31,14 +30,14 @@ extends TestCase
 #    it never runs, so it cannot be a convention this test is following.
 
 func _world_with_box(size: Vector3, at: Vector3) -> Dictionary:
-	var world := TestWorld.build(tree, MovementConfig.new())
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	var body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = size
 	shape.shape = box
 	body.add_child(shape)
-	tree.root.add_child(body)
+	get_tree().root.add_child(body)
 	world["box"] = body
 	world["box_at"] = at
 	return world
@@ -55,8 +54,8 @@ func test_a_hit_reports_the_obstacle_height_above_the_feet() -> void:
 	_place(world)
 	await step(30)
 	var hit: Dictionary = world["player"].probes.vault_query()
-	check(hit["valid"], "the probe missed a waist-high box")
-	check_approx(hit["height"], 1.0, 0.08, "reported height is not the box top above the feet")
+	assert_true(hit["valid"], "the probe missed a waist-high box")
+	assert_almost_eq(hit["height"], 1.0, 0.08, "reported height is not the box top above the feet")
 	world["box"].queue_free()
 	TestWorld.teardown(world)
 	await step(1)
@@ -69,9 +68,9 @@ func test_a_hit_reports_how_far_ahead_the_obstacle_is() -> void:
 	_place(world)
 	await step(30)
 	var hit: Dictionary = world["player"].probes.vault_query()
-	check(hit["valid"], "the probe missed the box")
-	check_greater(hit["distance"], 0.0, "distance was not reported")
-	check(hit["distance"] < 1.5, "distance is implausibly large: %f" % hit["distance"])
+	assert_true(hit["valid"], "the probe missed the box")
+	assert_gt(hit["distance"], 0.0, "distance was not reported")
+	assert_true(hit["distance"] < 1.5, "distance is implausibly large: %f" % hit["distance"])
 	world["box"].queue_free()
 	TestWorld.teardown(world)
 	await step(1)
@@ -86,8 +85,8 @@ func test_a_thin_obstacle_reads_as_vaultable_over() -> void:
 	_place(world)
 	await step(30)
 	var hit: Dictionary = world["player"].probes.vault_query()
-	check(hit["valid"], "the probe missed a thin box")
-	check(hit["vault_over"], "a thin obstacle with clear floor beyond did not read as vault-over")
+	assert_true(hit["valid"], "the probe missed a thin box")
+	assert_true(hit["vault_over"], "a thin obstacle with clear floor beyond did not read as vault-over")
 	world["box"].queue_free()
 	TestWorld.teardown(world)
 	await step(1)
@@ -102,8 +101,8 @@ func test_a_deep_obstacle_reads_as_onto_only() -> void:
 	_place(world)
 	await step(30)
 	var hit: Dictionary = world["player"].probes.vault_query()
-	check(hit["valid"], "the probe missed a deep box")
-	check(not hit["vault_over"], "a deep obstacle wrongly read as vault-over")
+	assert_true(hit["valid"], "the probe missed a deep box")
+	assert_true(not hit["vault_over"], "a deep obstacle wrongly read as vault-over")
 	world["box"].queue_free()
 	TestWorld.teardown(world)
 	await step(1)

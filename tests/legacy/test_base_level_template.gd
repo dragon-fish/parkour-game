@@ -1,4 +1,4 @@
-extends TestCase
+extends ParkourTest
 
 # Guards templates/base_level.tscn: the hand-authored base scene the project
 # owner inherits from (Godot's "inherit scene" feature) to whitebox new
@@ -12,19 +12,19 @@ const SCENE := "res://templates/base_level.tscn"
 func _load_level() -> Node3D:
 	var packed: PackedScene = ResourceLoader.load(SCENE, "", ResourceLoader.CACHE_MODE_IGNORE)
 	var level = packed.instantiate()
-	tree.root.add_child(level)
+	get_tree().root.add_child(level)
 	await step(3)
 	return level
 
 func test_template_root_carries_the_arena_script_and_its_exports_resolve() -> void:
 	await step(1)
-	check(ResourceLoader.exists(SCENE), "base_level.tscn is missing")
+	assert_true(ResourceLoader.exists(SCENE), "base_level.tscn is missing")
 	var level = await _load_level()
 
-	check(level is Arena, \
+	assert_true(level is Arena, \
 		"the template root does not carry arena.gd — every inherited level would lose its Arena behaviour")
-	check(level.player != null, "Arena.player export did not resolve to a node")
-	check(level.spawn_point != null, "Arena.spawn_point export did not resolve to a node")
+	assert_true(level.player != null, "Arena.player export did not resolve to a node")
+	assert_true(level.spawn_point != null, "Arena.spawn_point export did not resolve to a node")
 
 	level.queue_free()
 	await step(1)
@@ -33,16 +33,16 @@ func test_player_and_tuning_panel_share_one_config_instance() -> void:
 	await step(1)
 	var level = await _load_level()
 
-	check(level.player != null, "precondition: player export must resolve")
+	assert_true(level.player != null, "precondition: player export must resolve")
 	if level.player != null:
-		check(level.player.config != null, "the player did not get a MovementConfig from the arena")
+		assert_true(level.player.config != null, "the player did not get a MovementConfig from the arena")
 
 	var panel = level.get_node_or_null("TuningPanel")
-	check(panel != null, \
+	assert_true(panel != null, \
 		"no node named exactly \"TuningPanel\" — arena.gd finds the panel by that name at runtime, " \
 		+ "so renaming it silently disables live tuning")
 	if panel != null and level.player != null:
-		check(panel.config == level.player.config, \
+		assert_true(panel.config == level.player.config, \
 			"the tuning panel and the player were handed different config objects; " \
 			+ "dragging a slider would tune nothing the player actually uses")
 
@@ -54,9 +54,9 @@ func test_debug_hud_player_reference_resolves() -> void:
 	var level = await _load_level()
 
 	var hud = level.get_node_or_null("DebugHud")
-	check(hud != null, "DebugHud node missing from the template")
+	assert_true(hud != null, "DebugHud node missing from the template")
 	if hud != null:
-		check(hud.player == level.player, "DebugHud.player export was not wired to the arena's player")
+		assert_true(hud.player == level.player, "DebugHud.player export was not wired to the arena's player")
 
 	level.queue_free()
 	await step(1)
@@ -66,8 +66,8 @@ func test_player_settles_on_the_floor_in_ground_state() -> void:
 	var level = await _load_level()
 	await step(60)
 
-	check(level.player.is_on_floor(), "a player dropped into the template never settled onto its floor")
-	check(level.player.state_machine.current_name == &"Ground", \
+	assert_true(level.player.is_on_floor(), "a player dropped into the template never settled onto its floor")
+	assert_true(level.player.state_machine.current_name == &"Ground", \
 		"player is not in Ground at rest, state = %s" % level.player.state_machine.current_name)
 
 	level.queue_free()

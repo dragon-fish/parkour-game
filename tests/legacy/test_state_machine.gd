@@ -1,4 +1,4 @@
-extends TestCase
+extends ParkourTest
 
 # A local stub state so the state machine can be tested without a player.
 # NOTE: the recorder is named `events`, not `log` — `log` is GDScript's
@@ -38,8 +38,8 @@ func test_start_enters_the_initial_state() -> void:
 	var sm: StateMachine = parts[0]
 	var a: StubState = parts[1]
 	sm.start(&"A")
-	check(sm.current_name == &"A", "current_name not set by start()")
-	check(a.events == ["enter:"], "initial enter() not called exactly once")
+	assert_true(sm.current_name == &"A", "current_name not set by start()")
+	assert_true(a.events == ["enter:"], "initial enter() not called exactly once")
 	sm.free()
 
 func test_transition_calls_exit_then_enter_in_order() -> void:
@@ -52,9 +52,9 @@ func test_transition_calls_exit_then_enter_in_order() -> void:
 	a.events.clear()
 	a.next_state = &"B"
 	sm.physics_update(1.0 / 60.0, MoveInput.new())
-	check(a.events == ["update", "exit"], "outgoing state did not update then exit")
-	check(b.events == ["enter:A"], "incoming state did not receive the previous name")
-	check(sm.current_name == &"B", "current_name not updated")
+	assert_true(a.events == ["update", "exit"], "outgoing state did not update then exit")
+	assert_true(b.events == ["enter:A"], "incoming state did not receive the previous name")
+	assert_true(sm.current_name == &"B", "current_name not updated")
 	sm.free()
 
 func test_keep_does_not_retrigger_enter() -> void:
@@ -66,7 +66,7 @@ func test_keep_does_not_retrigger_enter() -> void:
 	a.events.clear()
 	sm.physics_update(1.0 / 60.0, MoveInput.new())
 	sm.physics_update(1.0 / 60.0, MoveInput.new())
-	check(a.events == ["update", "update"], "KEEP must not cause exit/enter")
+	assert_true(a.events == ["update", "update"], "KEEP must not cause exit/enter")
 	sm.free()
 
 func test_state_changed_signal_reports_both_names() -> void:
@@ -80,7 +80,7 @@ func test_state_changed_signal_reports_both_names() -> void:
 	sm.start(&"A")
 	a.next_state = &"B"
 	sm.physics_update(1.0 / 60.0, MoveInput.new())
-	check(seen == ["->A", "A->B"], "state_changed payload wrong: %s" % str(seen))
+	assert_true(seen == ["->A", "A->B"], "state_changed payload wrong: %s" % str(seen))
 	sm.free()
 
 func test_returning_own_name_is_a_noop() -> void:
@@ -92,8 +92,8 @@ func test_returning_own_name_is_a_noop() -> void:
 	a.events.clear()
 	a.next_state = &"A"
 	sm.physics_update(1.0 / 60.0, MoveInput.new())
-	check(a.events == ["update"], "returning the current state name must not trigger exit()/enter()")
-	check(sm.current_name == &"A", "current_name must stay unchanged when a state returns its own name")
+	assert_true(a.events == ["update"], "returning the current state name must not trigger exit()/enter()")
+	assert_true(sm.current_name == &"A", "current_name must stay unchanged when a state returns its own name")
 	sm.free()
 
 # The reviewer flagged that assert() is stripped in release exports, so an
@@ -110,9 +110,9 @@ func test_restarting_a_running_machine_exits_the_outgoing_state() -> void:
 	sm.start(&"A")
 	a.events.clear()
 	sm.start(&"B")
-	check(a.events == ["exit"], "start() on a live machine did not exit the outgoing state")
-	check(b.events == ["enter:"], "start() must still enter the new state with an empty previous name")
-	check(sm.current_name == &"B", "current_name not updated by a restart")
+	assert_true(a.events == ["exit"], "start() on a live machine did not exit the outgoing state")
+	assert_true(b.events == ["enter:"], "start() must still enter the new state with an empty previous name")
+	assert_true(sm.current_name == &"B", "current_name not updated by a restart")
 	sm.free()
 
 func test_unknown_transition_leaves_the_machine_running() -> void:
@@ -124,8 +124,8 @@ func test_unknown_transition_leaves_the_machine_running() -> void:
 	a.events.clear()
 	a.next_state = &"Nonexistent"
 	sm.physics_update(1.0 / 60.0, MoveInput.new())
-	check(sm.current_name == &"A", "an unknown transition target must not change current_name")
+	assert_true(sm.current_name == &"A", "an unknown transition target must not change current_name")
 	a.events.clear()
 	sm.physics_update(1.0 / 60.0, MoveInput.new())
-	check(a.events == ["update"], "state machine must keep responding after an unknown transition")
+	assert_true(a.events == ["update"], "state machine must keep responding after an unknown transition")
 	sm.free()

@@ -1,5 +1,4 @@
-class_name TestCrouchedEnergy
-extends TestCase
+extends ParkourTest
 
 # Regression: energy could only be banked while travelling at
 # energy_accumulate_speed_ratio of the cap, but that threshold was measured
@@ -10,7 +9,7 @@ extends TestCase
 # could undo.
 
 func _world() -> Dictionary:
-	return TestWorld.build(tree, MovementConfig.new())
+	return TestWorld.build(get_tree(), MovementConfig.new())
 
 func test_a_crouched_run_can_still_bank_energy() -> void:
 	var world := _world()
@@ -29,11 +28,11 @@ func test_a_crouched_run_can_still_bank_energy() -> void:
 	for i in 90:
 		await step(1)
 
-	check(player.move_manager.current_name == Move.CROUCH, \
+	assert_true(player.move_manager.current_name == Move.CROUCH, \
 		"test setup is wrong: did not stay crouched")
-	check_greater(player.speed_energy.energy, 0.1, \
+	assert_gt(player.speed_energy.energy, 0.1, \
 		"a crouched run banked no energy at all")
-	check_greater(player.horizontal_speed(), 0.05, \
+	assert_gt(player.horizontal_speed(), 0.05, \
 		"a crouched run stayed pinned at the floor speed")
 
 	TestWorld.teardown(world)
@@ -61,8 +60,8 @@ func test_a_crouched_turn_does_not_ratchet_the_player_to_a_standstill() -> void:
 		for i in 30:
 			await step(1)
 
-	check(player.move_manager.current_name == Move.CROUCH, "left the crouch")
-	check_greater(player.horizontal_speed(), 0.05, \
+	assert_true(player.move_manager.current_name == Move.CROUCH, "left the crouch")
+	assert_gt(player.horizontal_speed(), 0.05, \
 		"crouched turning ratcheted the player down to a standstill (%f m/s)" \
 			% player.horizontal_speed())
 

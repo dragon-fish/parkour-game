@@ -1,5 +1,4 @@
-class_name TestFallTracker
-extends TestCase
+extends ParkourTest
 
 # The counter the whole landing system reads instead of velocity.y. Getting
 # this shape right is what makes the community's ventkick / drop-roll layer
@@ -20,9 +19,9 @@ func _tracker(ground_y: float = 0.0) -> FallTracker:
 func test_it_measures_the_drop_below_the_launch_point() -> void:
 	var tracker := _tracker(10.0)
 	tracker.update(1.0 / 60.0, -3.0, 8.0)
-	check_approx(tracker.fall_height, 2.0, 0.0001, "did not measure the drop")
+	assert_almost_eq(tracker.fall_height, 2.0, 0.0001, "did not measure the drop")
 	tracker.update(1.0 / 60.0, -5.0, 6.0)
-	check_approx(tracker.fall_height, 4.0, 0.0001, "did not follow the descent")
+	assert_almost_eq(tracker.fall_height, 4.0, 0.0001, "did not follow the descent")
 
 func test_a_jump_that_lands_where_it_started_is_not_a_fall() -> void:
 	# The case the previous apex-based implementation got wrong. Jumping in
@@ -36,13 +35,13 @@ func test_a_jump_that_lands_where_it_started_is_not_a_fall() -> void:
 	tracker.update(1.0 / 60.0, 0.0, 11.24)
 	tracker.update(1.0 / 60.0, -6.3, 10.6)
 	tracker.update(1.0 / 60.0, -6.3, 10.0)
-	check_approx(tracker.fall_height, 0.0, 0.0001, "a flat jump registered as a fall")
+	assert_almost_eq(tracker.fall_height, 0.0, 0.0001, "a flat jump registered as a fall")
 
 func test_rising_above_the_launch_point_never_produces_a_fall() -> void:
 	var tracker := _tracker(10.0)
 	for i in 30:
 		tracker.update(1.0 / 60.0, 5.0, 10.0 + i)
-	check_approx(tracker.fall_height, 0.0, 0.0001, "climbing registered as a fall")
+	assert_almost_eq(tracker.fall_height, 0.0, 0.0001, "climbing registered as a fall")
 
 func test_a_wall_jump_chain_is_measured_from_the_original_launch() -> void:
 	# Rising mid-flight does not re-baseline the counter: the original keeps
@@ -53,16 +52,16 @@ func test_a_wall_jump_chain_is_measured_from_the_original_launch() -> void:
 	tracker.update(1.0 / 60.0, -3.0, 9.0)
 	tracker.update(1.0 / 60.0, 5.0, 14.0)
 	tracker.update(1.0 / 60.0, -3.0, 7.0)
-	check_approx(tracker.fall_height, 3.0, 0.0001, "the mid-air rise re-baselined the counter")
+	assert_almost_eq(tracker.fall_height, 3.0, 0.0001, "the mid-air rise re-baselined the counter")
 
 func test_it_tracks_the_current_depth_rather_than_the_deepest_seen() -> void:
 	# What matters is the depth at the moment of touchdown, so a body that is
 	# pushed back up (a wall jump taken low) owes only what it is down by then.
 	var tracker := _tracker(10.0)
 	tracker.update(1.0 / 60.0, -8.0, 4.0)
-	check_approx(tracker.fall_height, 6.0, 0.0001, "did not follow the descent")
+	assert_almost_eq(tracker.fall_height, 6.0, 0.0001, "did not follow the descent")
 	tracker.update(1.0 / 60.0, 6.0, 8.0)
-	check_approx(tracker.fall_height, 2.0, 0.0001, "kept charging for height already regained")
+	assert_almost_eq(tracker.fall_height, 2.0, 0.0001, "kept charging for height already regained")
 
 func test_reset_rebaselines_to_the_new_ground() -> void:
 	# Any ground contact resets it. This is the whole mechanism behind the
@@ -70,8 +69,8 @@ func test_reset_rebaselines_to_the_new_ground() -> void:
 	# before you step off the edge again.
 	var tracker := _tracker(10.0)
 	tracker.update(1.0 / 60.0, -6.0, 4.0)
-	check_greater(tracker.fall_height, 5.0, "nothing accumulated to reset")
+	assert_gt(tracker.fall_height, 5.0, "nothing accumulated to reset")
 	tracker.reset(4.0)
-	check_approx(tracker.fall_height, 0.0, 0.0001, "reset did not clear the counter")
+	assert_almost_eq(tracker.fall_height, 0.0, 0.0001, "reset did not clear the counter")
 	tracker.update(1.0 / 60.0, -3.0, 3.0)
-	check_approx(tracker.fall_height, 1.0, 0.0001, "reset did not rebaseline to the new ground")
+	assert_almost_eq(tracker.fall_height, 1.0, 0.0001, "reset did not rebaseline to the new ground")

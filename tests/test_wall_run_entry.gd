@@ -1,5 +1,4 @@
-class_name TestWallRunEntry
-extends TestCase
+extends ParkourTest
 
 # Task 11: wall running has no duration cap anymore -- a run ends when
 # horizontal speed decays past wall_running_min_speed, when vertical speed
@@ -9,14 +8,14 @@ extends TestCase
 const TestWorld = preload("res://tests/world_fixture.gd")
 
 func _world_with_wall(wall_yaw: float) -> Dictionary:
-	var world := TestWorld.build(tree, MovementConfig.new())
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	var wall := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = Vector3(20.0, 6.0, 1.0)
 	shape.shape = box
 	wall.add_child(shape)
-	tree.root.add_child(wall)
+	get_tree().root.add_child(wall)
 	world["wall"] = wall
 	world["wall_yaw"] = wall_yaw
 	return world
@@ -27,18 +26,18 @@ func test_a_wall_run_has_no_duration_cap() -> void:
 	# limit anywhere. Duration is momentum's business.
 	var config := MovementConfig.new()
 	for property in config.wall_run.get_property_list():
-		check(not String(property.name).contains("duration"), \
+		assert_true(not String(property.name).contains("duration"), \
 			"a duration cap survived on WallRunConfig: %s" % property.name)
 
 func test_the_confirmed_entry_thresholds_are_in_place() -> void:
 	var config := MovementConfig.new()
-	check_approx(config.wall_run.wall_running_min_speed, 2.0, 0.0001, "min speed is not 200 uu/s")
-	check_approx(config.wall_run.wall_running_forward_max_start_angle, deg_to_rad(57.0), 0.001, \
+	assert_almost_eq(config.wall_run.wall_running_min_speed, 2.0, 0.0001, "min speed is not 200 uu/s")
+	assert_almost_eq(config.wall_run.wall_running_forward_max_start_angle, deg_to_rad(57.0), 0.001, \
 		"forward entry angle is not 57 degrees")
-	check_approx(config.wall_run.wall_running_strafe_start_angle, deg_to_rad(60.0), 0.001, \
+	assert_almost_eq(config.wall_run.wall_running_strafe_start_angle, deg_to_rad(60.0), 0.001, \
 		"strafe entry angle is not 60 degrees")
-	check_approx(config.wall_run.redo_move_time, 0.15, 0.0001, "RedoMoveTime is not 0.15")
-	check_approx(config.wall_run.wall_running_horisontal_friction, 0.05, 0.0001, \
+	assert_almost_eq(config.wall_run.redo_move_time, 0.15, 0.0001, "RedoMoveTime is not 0.15")
+	assert_almost_eq(config.wall_run.wall_running_horisontal_friction, 0.05, 0.0001, \
 		"wall friction is not 0.05")
 
 func test_a_faster_entry_stays_on_the_wall_longer() -> void:
@@ -46,7 +45,7 @@ func test_a_faster_entry_stays_on_the_wall_longer() -> void:
 	# wall, and duration is what it buys.
 	var slow := await _measure_wall_ticks(4.0)
 	var fast := await _measure_wall_ticks(7.0)
-	check_greater(fast, slow, "a faster entry did not last longer (%d vs %d ticks)" % [fast, slow])
+	assert_gt(fast, slow, "a faster entry did not last longer (%d vs %d ticks)" % [fast, slow])
 
 func test_a_wall_run_ends_when_vertical_speed_sinks_past_the_stop_limit() -> void:
 	# Distinguishes the vertical stop-limit exit from the horizontal one.
@@ -78,9 +77,9 @@ func test_a_wall_run_ends_when_vertical_speed_sinks_past_the_stop_limit() -> voi
 	player.velocity = Vector3(0.0, stop_limit - 1.0, player.velocity.z)
 	await step(1)
 
-	check(Vector2(player.velocity.x, player.velocity.z).length() >= min_speed, \
+	assert_true(Vector2(player.velocity.x, player.velocity.z).length() >= min_speed, \
 		"test setup is wrong: horizontal speed decayed enough on its own to also explain this exit")
-	check(player.move_manager.current_name == Move.FALLING, \
+	assert_true(player.move_manager.current_name == Move.FALLING, \
 		"a vertical speed past the stop limit did not end the wall run")
 
 	world["wall"].queue_free()
@@ -109,7 +108,7 @@ func _attach_to_wall(world: Dictionary, entry_speed: float) -> Player:
 	# until tick ~20. Pre-existing fixture behaviour, not something this task
 	# introduced or should fix here; 30 ticks gives comfortable margin over it.
 	await step(30)
-	check(player.move_manager.current_name == Move.WALKING, \
+	assert_true(player.move_manager.current_name == Move.WALKING, \
 		"test setup is wrong: player did not settle onto the floor before the drop")
 
 	# A real jump, not an up-teleport: wall-run entry is now gated on
@@ -120,7 +119,7 @@ func _attach_to_wall(world: Dictionary, entry_speed: float) -> Player:
 	# fixture has to put the player through an actual take-off instead.
 	input.press_jump()
 	await step(1)
-	check(player.move_manager.current_name == Move.JUMP, \
+	assert_true(player.move_manager.current_name == Move.JUMP, \
 		"test setup is wrong: the jump did not send the player airborne")
 
 	# Heading is parallel to the wall's face (the wall's near face is a plane
@@ -129,7 +128,7 @@ func _attach_to_wall(world: Dictionary, entry_speed: float) -> Player:
 	# around the incidence angle's 57-60 degree gap).
 	player.velocity = Vector3(0.0, player.velocity.y, -entry_speed)
 	await step(1)
-	check(player.move_manager.current_name == Move.WALL_RUN, \
+	assert_true(player.move_manager.current_name == Move.WALL_RUN, \
 		"test setup is wrong: the player never attached to the wall")
 	return player
 
@@ -168,7 +167,7 @@ func test_wall_gravity_is_asymmetric_and_sets_the_duration() -> void:
 	# accelerates -- quick to the top, slow coming down -- which is what makes
 	# an attached wall run read as "floating" rather than as a shallow arc.
 	var cfg := MovementConfig.new()
-	check_greater(cfg.wall_run.wall_gravity_scale_rising, \
+	assert_gt(cfg.wall_run.wall_gravity_scale_rising, \
 		cfg.wall_run.wall_gravity_scale_falling, \
 		"wall gravity is symmetric; the float is gone")
 
@@ -178,7 +177,7 @@ func test_wall_gravity_is_asymmetric_and_sets_the_duration() -> void:
 	# someone noticing.
 	var descent: float = cfg.pawn.gravity * cfg.wall_run.wall_gravity_scale_falling
 	var to_stop: float = absf(cfg.wall_run.wall_running_velocity_stop_limit) / descent
-	check_approx(to_stop, 1.0, 0.15, \
+	assert_almost_eq(to_stop, 1.0, 0.15, \
 		"a wall run no longer ends about a second after its apex (%f s)" % to_stop)
 
 func test_a_long_drop_cannot_convert_into_a_wall_run() -> void:
@@ -193,7 +192,7 @@ func test_a_long_drop_cannot_convert_into_a_wall_run() -> void:
 	# at all, so the refusal below no longer depends on velocity.y at all --
 	# only on which state the player is in.
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -205,7 +204,7 @@ func test_a_long_drop_cannot_convert_into_a_wall_run() -> void:
 	box.size = Vector3(20.0, 40.0, 1.0)
 	shape.shape = box
 	wall.add_child(shape)
-	tree.root.add_child(wall)
+	get_tree().root.add_child(wall)
 	wall.global_position = Vector3(0.95, 20.0, 0.0)
 	wall.rotation = Vector3(0.0, PI * 0.5, 0.0)
 
@@ -214,11 +213,11 @@ func test_a_long_drop_cannot_convert_into_a_wall_run() -> void:
 	# boundary.
 	player.global_position.y += 3.0
 	await step(1)
-	check(player.move_manager.current_name == Move.FALLING, \
+	assert_true(player.move_manager.current_name == Move.FALLING, \
 		"test setup is wrong: the up-teleport did not send the player airborne")
 	player.velocity = Vector3(0.0, cfg.pawn.enter_to_falling_z_speed * 5.0, -7.0)
 	await step(1)
-	check(player.move_manager.current_name != Move.WALL_RUN, \
+	assert_true(player.move_manager.current_name != Move.WALL_RUN, \
 		"a fast descent attached to the wall")
 
 	# The scenario that actually distinguishes the old guard from the new one
@@ -232,7 +231,7 @@ func test_a_long_drop_cannot_convert_into_a_wall_run() -> void:
 	# what must be shown to matter.
 	player.velocity = Vector3(0.0, 2.0, -7.0)
 	await step(1)
-	check(player.move_manager.current_name != Move.WALL_RUN, \
+	assert_true(player.move_manager.current_name != Move.WALL_RUN, \
 		"a rising velocity while still in Falling attached to the wall")
 
 	# The same rising velocity, but from Jump, DOES attach, so the gate is
@@ -247,7 +246,7 @@ func test_a_long_drop_cannot_convert_into_a_wall_run() -> void:
 	player.move_manager.start(Move.JUMP)
 	player.velocity = Vector3(0.0, 2.0, -7.0)
 	await step(1)
-	check(player.move_manager.current_name == Move.WALL_RUN, \
+	assert_true(player.move_manager.current_name == Move.WALL_RUN, \
 		"a rising approach from Jump was refused, so the guard is too strict")
 
 	wall.queue_free()

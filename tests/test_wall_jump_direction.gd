@@ -1,5 +1,4 @@
-class_name TestWallJumpDirection
-extends TestCase
+extends ParkourTest
 
 # The kick used to be sent along the wall normal alone, which made it a fixed
 # sideways shove the player could not aim. Measured in the original, Faith
@@ -13,7 +12,7 @@ class FakeBody extends Node3D:
 
 func _body_facing(yaw_deg: float) -> Node3D:
 	var body := FakeBody.new()
-	tree.root.add_child(body)
+	get_tree().root.add_child(body)
 	body.rotation.y = deg_to_rad(yaw_deg)
 	return body
 
@@ -26,7 +25,7 @@ func test_the_kick_follows_the_view_when_it_already_clears_the_wall() -> void:
 	await step(1)
 	var dir := WallRunMove.wall_jump_push_direction(body, normal, cfg)
 	var facing: Vector3 = -body.global_transform.basis.z
-	check_approx(dir.dot(facing.normalized()), 1.0, 0.001, \
+	assert_almost_eq(dir.dot(facing.normalized()), 1.0, 0.001, \
 		"a kick that already clears the wall did not simply follow the view")
 	body.queue_free()
 	await step(1)
@@ -38,9 +37,9 @@ func test_looking_into_the_wall_still_leaves_it() -> void:
 	var body := _body_facing(-90.0)
 	await step(1)
 	var dir := WallRunMove.wall_jump_push_direction(body, normal, cfg)
-	check_greater(dir.dot(normal), cfg.wall_jump_min_away - 0.001, \
+	assert_gt(dir.dot(normal), cfg.wall_jump_min_away - 0.001, \
 		"looking into the wall produced a kick that does not leave it")
-	check_approx(dir.length(), 1.0, 0.001, "the kick direction is not a unit vector")
+	assert_almost_eq(dir.length(), 1.0, 0.001, "the kick direction is not a unit vector")
 	body.queue_free()
 	await step(1)
 
@@ -52,7 +51,7 @@ func test_the_kick_is_not_simply_the_normal() -> void:
 	var body := _body_facing(-45.0)
 	await step(1)
 	var dir := WallRunMove.wall_jump_push_direction(body, normal, cfg)
-	check(dir.distance_to(normal) > 0.1, \
+	assert_true(dir.distance_to(normal) > 0.1, \
 		"the kick is still pinned to the wall normal and cannot be aimed")
 	body.queue_free()
 	await step(1)

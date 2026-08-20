@@ -1,5 +1,4 @@
-class_name TestFallingMoveIntegration
-extends TestCase
+extends ParkourTest
 
 # Drives a real Player through _physics_process(), not a hand-fed formula --
 # both tests here exist because a review found bugs that only manifest under
@@ -23,7 +22,7 @@ func test_a_short_landing_leaves_the_roll_buffer_for_the_slide() -> void:
 	# walking_move.gd's slide-entry check nothing to read on the very next
 	# tick. A landing well under skill_roll_landing_height (2.0 m) must NOT
 	# consume the buffer -- the press has to survive to open the slide.
-	var world := TestWorld.build(tree, MovementConfig.new())
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
 	await _settle(world)
@@ -37,13 +36,13 @@ func test_a_short_landing_leaves_the_roll_buffer_for_the_slide() -> void:
 	input.state.move = Vector2(0.0, 1.0)
 	for i in 90:
 		await step(1)
-	check_greater(player.horizontal_speed(), player.config.slide.slide_abort_speed, \
+	assert_gt(player.horizontal_speed(), player.config.slide.slide_abort_speed, \
 		"did not reach slide entry speed before the drop")
 
 	# A small hop, well under the 2.0 m roll threshold.
 	player.global_position.y += 1.0
 	await step(1)
-	check(player.move_manager.current_name == Move.FALLING, \
+	assert_true(player.move_manager.current_name == Move.FALLING, \
 		"teleporting up did not send the player airborne")
 
 	# Buffer the roll press while airborne, matching a player who pressed
@@ -58,8 +57,8 @@ func test_a_short_landing_leaves_the_roll_buffer_for_the_slide() -> void:
 		if player.move_manager.current_name == Move.WALKING and i > 0:
 			landed = true
 			break
-	check(landed, "never returned to Walking after the short hop")
-	check(player.last_landing_fall_height < player.config.pawn.skill_roll_landing_height, \
+	assert_true(landed, "never returned to Walking after the short hop")
+	assert_true(player.last_landing_fall_height < player.config.pawn.skill_roll_landing_height, \
 		"the drop was not actually below the roll threshold -- test setup is wrong")
 
 	# The buffer must still be armed: one more tick of WalkingMove, still
@@ -70,7 +69,7 @@ func test_a_short_landing_leaves_the_roll_buffer_for_the_slide() -> void:
 		if player.move_manager.current_name == Move.SLIDE:
 			opened_slide = true
 			break
-	check(opened_slide, "the roll buffer was eaten by the short landing instead of surviving for the slide")
+	assert_true(opened_slide, "the roll buffer was eaten by the short landing instead of surviving for the slide")
 
 	TestWorld.teardown(world)
 	await step(1)
@@ -94,7 +93,7 @@ func test_the_fall_counter_includes_the_landing_ticks_own_descent() -> void:
 	# armed and purely falling, fall_height == apex_y - world_y, so its
 	# increase across any one tick must equal that tick's own drop in
 	# world_y -- the one relationship the missing catch-up call broke.
-	var world := TestWorld.build(tree, MovementConfig.new())
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
 	await _settle(world)
@@ -122,15 +121,15 @@ func test_the_fall_counter_includes_the_landing_ticks_own_descent() -> void:
 		var fh_now: float = player.fall_tracker.fall_height
 		if fh_now > 0.0:
 			apex_y = fh_now + y_pre
-	check(landed, "never landed after the drop")
-	check_greater(apex_y, 0.0, "the fall tracker never armed during the drop -- test setup is wrong")
+	assert_true(landed, "never landed after the drop")
+	assert_gt(apex_y, 0.0, "the fall tracker never armed during the drop -- test setup is wrong")
 
 	# The counter's final reading must match apex_y minus the FRESH landed
 	# position -- the whole point of the fix. Before it, the landing tick's
 	# own descent (~0.16 m at this fall's ~9.7 m/s impact speed) was missing,
 	# which the 0.001 m tolerance here would have caught easily.
 	var expected: float = apex_y - player.global_position.y
-	check_approx(player.last_landing_fall_height, expected, 0.001, \
+	assert_almost_eq(player.last_landing_fall_height, expected, 0.001, \
 		"the counter does not match the reconstructed ground truth -- got %f, expected %f" \
 			% [player.last_landing_fall_height, expected])
 

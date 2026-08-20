@@ -1,10 +1,10 @@
-extends TestCase
+extends ParkourTest
 
 ## Builds a world with a tall wall along the X axis at the given x offset, and
 ## a player running forward beside it.
 func _wall_world(wall_x: float) -> Dictionary:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -15,7 +15,7 @@ func _wall_world(wall_x: float) -> Dictionary:
 	box.size = Vector3(1.0, 8.0, 60.0)
 	shape.shape = box
 	wall.add_child(shape)
-	tree.root.add_child(wall)
+	get_tree().root.add_child(wall)
 	await step(1)
 	wall.global_position = Vector3(wall_x, 4.0, -20.0)
 	await step(2)
@@ -45,7 +45,7 @@ func test_a_fast_jump_beside_a_wall_starts_a_wall_run() -> void:
 		if player.state_machine.current_name == &"Wall":
 			attached = true
 			break
-	check(attached, "a fast jump beside a wall should attach, got %s" \
+	assert_true(attached, "a fast jump beside a wall should attach, got %s" \
 		% player.state_machine.current_name)
 
 	world["wall"].queue_free()
@@ -75,7 +75,7 @@ func test_a_slow_jump_does_not_start_a_wall_run() -> void:
 		if player.state_machine.current_name == &"Wall":
 			attached_wall = true
 			break
-	check(not attached_wall, \
+	assert_true(not attached_wall, \
 		"a standing jump must not attach to a wall")
 
 	world["wall"].queue_free()
@@ -101,9 +101,9 @@ func test_wall_running_falls_more_slowly_than_free_fall() -> void:
 	await _launch_beside_wall(beside)
 	await step(20)
 	var wall_vy := wall_player.velocity.y
-	check(wall_player.state_machine.current_name == &"Wall", "precondition: should be wall running")
+	assert_true(wall_player.state_machine.current_name == &"Wall", "precondition: should be wall running")
 
-	check_greater(wall_vy, free_fall_vy, \
+	assert_gt(wall_vy, free_fall_vy, \
 		"wall running must resist gravity (wall %f vs free %f)" % [wall_vy, free_fall_vy])
 
 	beside["wall"].queue_free()
@@ -120,14 +120,14 @@ func test_a_wall_jump_pushes_away_from_the_wall_and_upward() -> void:
 		await step(1)
 		if player.state_machine.current_name == &"Wall":
 			break
-	check(player.state_machine.current_name == &"Wall", "precondition: should be wall running")
+	assert_true(player.state_machine.current_name == &"Wall", "precondition: should be wall running")
 
 	world["input"].press_jump()
 	await step(3)
-	check(player.state_machine.current_name == &"Air", "a wall jump should leave the wall")
-	check_greater(player.velocity.y, 0.0, "a wall jump should send the player upward")
+	assert_true(player.state_machine.current_name == &"Air", "a wall jump should leave the wall")
+	assert_gt(player.velocity.y, 0.0, "a wall jump should send the player upward")
 	# The wall sits at +X, so the push must be toward -X.
-	check(player.velocity.x < 0.0, "a wall jump should push away from the wall")
+	assert_true(player.velocity.x < 0.0, "a wall jump should push away from the wall")
 
 	world["wall"].queue_free()
 	TestWorld.teardown(world)
@@ -177,7 +177,7 @@ func test_a_jump_pressed_shortly_before_reaching_the_wall_still_wall_jumps() -> 
 
 	input.press_jump()
 	await step(3)
-	check(player.state_machine.current_name == &"Air", \
+	assert_true(player.state_machine.current_name == &"Air", \
 		"precondition: should still be airborne, away from the wall")
 
 	# Arrive beside the wall. This test isolates the BUFFER timing, not the
@@ -185,14 +185,14 @@ func test_a_jump_pressed_shortly_before_reaching_the_wall_still_wall_jumps() -> 
 	# running the player over.
 	player.global_position.x = 0.0
 	await step(1)
-	check(player.state_machine.current_name == &"Wall", \
+	assert_true(player.state_machine.current_name == &"Wall", \
 		"precondition: should have attached to the wall")
 
 	await step(1)
-	check(player.state_machine.current_name == &"Air", \
+	assert_true(player.state_machine.current_name == &"Air", \
 		"a jump pressed shortly before reaching the wall should still produce a wall jump")
-	check_greater(player.velocity.y, 0.0, "the buffered wall jump should send the player upward")
-	check(player.velocity.x < 0.0, "the buffered wall jump should push away from the wall")
+	assert_gt(player.velocity.y, 0.0, "the buffered wall jump should send the player upward")
+	assert_true(player.velocity.x < 0.0, "the buffered wall jump should push away from the wall")
 
 	world["wall"].queue_free()
 	TestWorld.teardown(world)
@@ -218,7 +218,7 @@ func test_a_jump_pressed_shortly_before_reaching_the_wall_still_wall_jumps() -> 
 func test_wall_run_tracks_the_currently_detected_walls_normal_not_the_entry_one() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -234,7 +234,7 @@ func test_wall_run_tracks_the_currently_detected_walls_normal_not_the_entry_one(
 	shape_a.shape = box_a
 	wall_a.add_child(shape_a)
 	wall_a.position = Vector3(0.95, 4.0, -5.0)
-	tree.root.add_child(wall_a)
+	get_tree().root.add_child(wall_a)
 	await step(3)
 
 	# Wall B: to the LEFT (an opposite-facing normal), spanning a completely
@@ -246,7 +246,7 @@ func test_wall_run_tracks_the_currently_detected_walls_normal_not_the_entry_one(
 	shape_b.shape = box_b
 	wall_b.add_child(shape_b)
 	wall_b.position = Vector3(-0.95, 4.0, -30.0)
-	tree.root.add_child(wall_b)
+	get_tree().root.add_child(wall_b)
 	await step(3)
 
 	player.velocity = Vector3(0.0, 0.0, -6.0)
@@ -263,34 +263,34 @@ func test_wall_run_tracks_the_currently_detected_walls_normal_not_the_entry_one(
 	await step(10)
 
 	var query_a: Dictionary = player.probes.wall_query()
-	check(query_a["valid"] and query_a["side"] == 1, \
+	assert_true(query_a["valid"] and query_a["side"] == 1, \
 		"precondition: should be reading wall A, on the right")
 
 	await step(1)
-	check(player.state_machine.current_name == &"Wall", "precondition: should have attached to wall A")
+	assert_true(player.state_machine.current_name == &"Wall", "precondition: should have attached to wall A")
 
 	# Teleport beside wall B instead -- see the note above for why this still
 	# exercises the same refresh logic a smoother curve would.
 	player.global_position = Vector3(0.0, player.global_position.y, -30.0)
 	await step(1)
-	check(player.state_machine.current_name == &"Wall", \
+	assert_true(player.state_machine.current_name == &"Wall", \
 		"precondition: should still be wall running, now beside wall B")
 
 	var query_b: Dictionary = player.probes.wall_query()
-	check(query_b["valid"] and query_b["side"] == -1, \
+	assert_true(query_b["valid"] and query_b["side"] == -1, \
 		"precondition: should now be reading wall B, on the left")
-	check(query_a["normal"].dot(query_b["normal"]) < cfg.wall_same_normal_dot, \
+	assert_true(query_a["normal"].dot(query_b["normal"]) < cfg.wall_same_normal_dot, \
 		"precondition: wall A and wall B must have genuinely different normals")
 
 	input.press_jump()
 	await step(2)
-	check(player.state_machine.current_name == &"Air", "a wall jump off wall B should leave the wall")
+	assert_true(player.state_machine.current_name == &"Air", "a wall jump off wall B should leave the wall")
 	# Wall B sits at -X, so a jump that correctly tracks the CURRENTLY
 	# detected wall must push toward +X -- the opposite of what the stale
 	# entry-time normal (wall A, at +X) would have produced.
-	check(player.velocity.x > 0.0, \
+	assert_true(player.velocity.x > 0.0, \
 		"a wall jump must push away from the CURRENTLY detected wall, not the one first attached to")
-	check(not player.can_attach_wall(query_b["normal"]), \
+	assert_true(not player.can_attach_wall(query_b["normal"]), \
 		"leaving wall B must arm wall B's OWN cooldown, not a stale copy of wall A's")
 
 	wall_a.queue_free()
@@ -322,7 +322,7 @@ func test_a_wall_run_can_end_by_landing_on_the_floor() -> void:
 	# forced-AIR setup is not a landmine for whoever edits it next.
 	player.set_grounded(false)
 	await step(1)
-	check(player.state_machine.current_name == &"Wall", "precondition: should have attached to the wall")
+	assert_true(player.state_machine.current_name == &"Wall", "precondition: should have attached to the wall")
 
 	var previous: StringName = player.state_machine.current_name
 	var landed_on_ground := false
@@ -336,11 +336,11 @@ func test_a_wall_run_can_end_by_landing_on_the_floor() -> void:
 			landed_on_ground = true
 			break
 		previous = now
-	check(landed_on_ground, \
+	assert_true(landed_on_ground, \
 		"a wall run over the floor must be able to end by landing on Ground")
-	check(not went_via_air, \
+	assert_true(not went_via_air, \
 		"landing on the floor should transition Wall -> Ground directly, not through Air")
-	check(player.grounded, "landing on Ground must leave grounded declared true")
+	assert_true(player.grounded, "landing on Ground must leave grounded declared true")
 
 	world["wall"].queue_free()
 	TestWorld.teardown(world)
@@ -363,7 +363,7 @@ func test_the_same_wall_cannot_be_reattached_immediately() -> void:
 	# forever, which is the classic wall-run exploit.
 	for i in 12:
 		await step(1)
-		check(player.state_machine.current_name != &"Wall", \
+		assert_true(player.state_machine.current_name != &"Wall", \
 			"re-attached to the same wall during the cooldown")
 
 	world["wall"].queue_free()
@@ -392,28 +392,28 @@ func test_leaving_a_wall_and_briefly_touching_a_perpendicular_one_does_not_clear
 		await step(1)
 		if player.state_machine.current_name == &"Wall":
 			break
-	check(player.state_machine.current_name == &"Wall", "precondition: should be wall running")
+	assert_true(player.state_machine.current_name == &"Wall", "precondition: should be wall running")
 
 	# Capture wall A's real normal before leaving it, so the refusal check
 	# below asks about the EXACT wall that was left, not an assumed one.
 	var wall_a_query: Dictionary = player.probes.wall_query()
-	check(wall_a_query["valid"], "precondition: should still be reading a valid wall normal")
+	assert_true(wall_a_query["valid"], "precondition: should still be reading a valid wall normal")
 	var normal_a: Vector3 = wall_a_query["normal"]
 
 	world["input"].press_jump()
 	await step(2)
-	check(player.state_machine.current_name != &"Wall", \
+	assert_true(player.state_machine.current_name != &"Wall", \
 		"precondition: the wall jump should have left the wall")
-	check(not player.can_attach_wall(normal_a), \
+	assert_true(not player.can_attach_wall(normal_a), \
 		"precondition: wall A's own cooldown should be armed immediately after leaving it")
 
 	# Briefly touch a genuinely different (perpendicular) wall B.
 	var normal_b := Vector3(0.0, 0.0, 1.0)
-	check(normal_a.dot(normal_b) < player.config.wall_same_normal_dot, \
+	assert_true(normal_a.dot(normal_b) < player.config.wall_same_normal_dot, \
 		"precondition: wall B must be genuinely different from wall A for this test to mean anything")
 	player.note_wall_detach(normal_b)
 
-	check(not player.can_attach_wall(normal_a), \
+	assert_true(not player.can_attach_wall(normal_a), \
 		"leaving a perpendicular wall B must not clear wall A's own cooldown")
 
 	world["wall"].queue_free()
@@ -430,7 +430,7 @@ func test_a_wall_run_ends_on_its_own() -> void:
 		await step(1)
 		if player.state_machine.current_name == &"Wall":
 			break
-	check(player.state_machine.current_name == &"Wall", "precondition: should be wall running")
+	assert_true(player.state_machine.current_name == &"Wall", "precondition: should be wall running")
 
 	# Move the floor far out of reach before polling for the end of the run.
 	# NOTE: deviates from the brief, which polled with the original floor
@@ -453,7 +453,7 @@ func test_a_wall_run_ends_on_its_own() -> void:
 		if player.state_machine.current_name != &"Wall":
 			ended = true
 			break
-	check(ended, "a wall run must end on its own rather than lasting forever")
+	assert_true(ended, "a wall run must end on its own rather than lasting forever")
 
 	world["wall"].queue_free()
 	TestWorld.teardown(world)
@@ -508,8 +508,8 @@ func test_sliding_cannot_become_a_wall_run() -> void:
 			saw_wall_directly_from_slide = true
 			break
 		previous = now
-	check(saw_sliding, "precondition: should have entered Slide at some point")
-	check(not saw_wall_directly_from_slide, \
+	assert_true(saw_sliding, "precondition: should have entered Slide at some point")
+	assert_true(not saw_wall_directly_from_slide, \
 		"Slide must never transition directly into Wall")
 
 	world["wall"].queue_free()
@@ -524,7 +524,7 @@ func test_sliding_cannot_become_a_wall_run() -> void:
 func test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -541,7 +541,7 @@ func test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach() -> void:
 	wall_shape.shape = wall_box
 	wall.add_child(wall_shape)
 	wall.position = Vector3(0.95, 4.0, -20.0)
-	tree.root.add_child(wall)
+	get_tree().root.add_child(wall)
 	await step(3)
 
 	# A grabbable ledge directly ahead. Its Z span (about -12.5 to -10.5) sits
@@ -556,7 +556,7 @@ func test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach() -> void:
 	ledge_shape.shape = ledge_box
 	ledge.add_child(ledge_shape)
 	ledge.position = Vector3(0.0, 1.3, -11.5)
-	tree.root.add_child(ledge)
+	get_tree().root.add_child(ledge)
 	await step(3)
 
 	player.global_position = Vector3(0.0, 0.95, -10.0)
@@ -564,8 +564,8 @@ func test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach() -> void:
 
 	var wall_query: Dictionary = player.probes.wall_query()
 	var ledge_query: Dictionary = player.probes.ledge_query()
-	check(wall_query["valid"], "precondition: a wall must be in reach at this test position")
-	check(ledge_query["valid"], "precondition: a ledge must ALSO be in reach at this test position")
+	assert_true(wall_query["valid"], "precondition: a wall must be in reach at this test position")
+	assert_true(ledge_query["valid"], "precondition: a ledge must ALSO be in reach at this test position")
 
 	# Fast enough to satisfy wall_min_speed, moving toward the ledge.
 	player.velocity = Vector3(0.0, 0.0, -6.0)
@@ -584,7 +584,7 @@ func test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach() -> void:
 		if player.state_machine.current_name != &"Air":
 			attached_wall = player.state_machine.current_name == &"Wall"
 			break
-	check(attached_wall, \
+	assert_true(attached_wall, \
 		"with both a wall and a ledge in reach, wall running must win, got %s" \
 		% player.state_machine.current_name)
 
@@ -632,7 +632,7 @@ func test_a_wall_run_wins_over_a_ledge_grab_when_both_are_in_reach() -> void:
 func test_a_chain_of_wall_jumps_between_opposing_walls_cannot_climb_without_bound() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -664,7 +664,7 @@ func test_a_chain_of_wall_jumps_between_opposing_walls_cannot_climb_without_boun
 		shape.shape = box
 		wall.add_child(shape)
 		wall.position = Vector3(side * 0.95, WALL_HEIGHT * 0.5, (near_z + far_z) * 0.5)
-		tree.root.add_child(wall)
+		get_tree().root.add_child(wall)
 		walls.append(wall)
 	await step(3)
 
@@ -672,7 +672,7 @@ func test_a_chain_of_wall_jumps_between_opposing_walls_cannot_climb_without_boun
 	player.velocity = Vector3.ZERO
 	player.rotation = Vector3.ZERO
 	await step(20)
-	check(player.is_on_floor(), "precondition: the player did not settle before the chain")
+	assert_true(player.is_on_floor(), "precondition: the player did not settle before the chain")
 
 	input.state.move = Vector2(0.0, 1.0)
 	# No sprint key: forward input alone already reaches ground_speed.
@@ -702,19 +702,19 @@ func test_a_chain_of_wall_jumps_between_opposing_walls_cannot_climb_without_boun
 		if attach_count >= WALL_COUNT:
 			break
 
-	check_greater(float(attach_count), float(WALL_COUNT) - 1.5, \
+	assert_gt(float(attach_count), float(WALL_COUNT) - 1.5, \
 		"the chain only attached %d of %d walls -- this needs a real multi-wall chain to mean anything" \
 			% [attach_count, WALL_COUNT])
 
 	var gains: Array[float] = []
 	for i in range(1, attach_heights.size()):
 		gains.append(attach_heights[i] - attach_heights[i - 1])
-	check_greater(float(gains.size()), 3.0, \
+	assert_gt(float(gains.size()), 3.0, \
 		"only %d hop(s) were measured -- too few to show a trend" % gains.size())
 
 	var first_gain: float = gains[0]
 	var last_gain: float = gains[gains.size() - 1]
-	check_greater(first_gain, 0.1, \
+	assert_gt(first_gain, 0.1, \
 		"precondition: the first wall-jump must gain real height, or this test proves nothing (gained %f)" \
 			% first_gain)
 	# The unbounded pre-fix behaviour grants roughly the SAME fixed rise every
@@ -722,7 +722,7 @@ func test_a_chain_of_wall_jumps_between_opposing_walls_cannot_climb_without_boun
 	# hop's gain fall well short of the FIRST's, well outside per-tick physics
 	# noise. Half is a generous bar -- a converging chain typically shows a
 	# much sharper drop-off than this by the fourth or fifth hop.
-	check(last_gain < first_gain * 0.5, \
+	assert_true(last_gain < first_gain * 0.5, \
 		"the last wall-jump gained %f m, not markedly less than the first hop's %f m -- the climb is not bounded (per-hop gains: %s)" \
 			% [last_gain, first_gain, gains])
 

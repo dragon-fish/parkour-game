@@ -1,8 +1,7 @@
-class_name TestSlide
-extends TestCase
+extends ParkourTest
 
 func _world() -> Dictionary:
-	return TestWorld.build(tree, MovementConfig.new())
+	return TestWorld.build(get_tree(), MovementConfig.new())
 
 func _run_up(world: Dictionary, ticks: int) -> void:
 	world["input"].state.move = Vector2(0.0, 1.0)
@@ -22,7 +21,7 @@ func test_entering_a_slide_never_adds_speed() -> void:
 	world["input"].press_crouch()
 	await step(1)
 	await step(1)
-	check(world["player"].horizontal_speed() <= before + 0.001, \
+	assert_true(world["player"].horizontal_speed() <= before + 0.001, \
 		"the slide added speed (%f -> %f)" % [before, world["player"].horizontal_speed()])
 	TestWorld.teardown(world)
 	await step(1)
@@ -51,7 +50,7 @@ func test_chaining_slides_cannot_ratchet_speed_upward() -> void:
 		for i in 20:
 			await step(1)
 		peak = maxf(peak, world["player"].horizontal_speed())
-	check(peak <= world["player"].config.pawn.ground_speed + 0.01, \
+	assert_true(peak <= world["player"].config.pawn.ground_speed + 0.01, \
 		"chained slides climbed past the ground ceiling (%f)" % peak)
 	TestWorld.teardown(world)
 	await step(1)
@@ -67,7 +66,7 @@ func test_a_slide_ends_once_speed_decays_to_the_abort_speed() -> void:
 	world["input"].state.move = Vector2.ZERO
 	for i in 240:
 		await step(1)
-	check(world["player"].move_manager.current_name != Move.SLIDE, \
+	assert_true(world["player"].move_manager.current_name != Move.SLIDE, \
 		"the slide never ended")
 	TestWorld.teardown(world)
 	await step(1)
@@ -83,14 +82,14 @@ func test_a_slide_cannot_outlast_the_abort_time() -> void:
 	# SlideAbortTime = 2.0 s. Give it a generous margin and it must be gone.
 	for i in 150:
 		await step(1)
-	check(world["player"].move_manager.current_name != Move.SLIDE, \
+	assert_true(world["player"].move_manager.current_name != Move.SLIDE, \
 		"the slide outlasted SlideAbortTime")
 	TestWorld.teardown(world)
 	await step(1)
 
 func test_the_slide_declares_the_confirmed_friction_multiplier() -> void:
 	var config := MovementConfig.new()
-	check_approx(config.slide.friction_modifier, 0.1, 0.0001, \
+	assert_almost_eq(config.slide.friction_modifier, 0.1, 0.0001, \
 		"slide friction_modifier is not the confirmed 0.1")
 
 func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
@@ -119,10 +118,10 @@ func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
 
 	var losses := {}
 	for uphill in [true, false]:
-		var world := TestWorld.build_on_slope(tree, MovementConfig.new(), INCLINE)
+		var world := TestWorld.build_on_slope(get_tree(), MovementConfig.new(), INCLINE)
 		await step(1)
 		await step(SETTLE_TICKS)
-		check(world["player"].grounded, "player did not settle onto the slope -- test setup is wrong")
+		assert_true(world["player"].grounded, "player did not settle onto the slope -- test setup is wrong")
 
 		# Forward (local -Z) climbs this positively-inclined slope; backward
 		# descends it -- see build_on_slope()'s own comment.
@@ -135,14 +134,14 @@ func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
 		await step(1)
 		for i in SLIDE_TICKS:
 			await step(1)
-		check(world["player"].move_manager.current_name == Move.SLIDE, \
+		assert_true(world["player"].move_manager.current_name == Move.SLIDE, \
 			"never entered Slide -- test setup is wrong (uphill=%s)" % uphill)
 
 		losses[uphill] = before - world["player"].horizontal_speed()
 		TestWorld.teardown(world)
 		await step(1)
 
-	check(losses[true] > losses[false] * 1.5, \
+	assert_true(losses[true] > losses[false] * 1.5, \
 		"an uphill slide did not decay markedly harder than a downhill one (uphill lost %f, downhill lost %f)" \
 			% [losses[true], losses[false]])
 
@@ -172,13 +171,13 @@ func test_downhill_past_break_even_grade_nets_acceleration_through_slide_move() 
 	const RUN_TICKS := 200
 	const SLIDE_TICKS := 20
 
-	check_greater(sin(INCLINE), BREAK_EVEN_GRADE, \
+	assert_gt(sin(INCLINE), BREAK_EVEN_GRADE, \
 		"test setup is wrong -- INCLINE must sit past the break-even grade")
 
-	var world := TestWorld.build_on_slope(tree, MovementConfig.new(), INCLINE)
+	var world := TestWorld.build_on_slope(get_tree(), MovementConfig.new(), INCLINE)
 	await step(1)
 	await step(SETTLE_TICKS)
-	check(world["player"].grounded, "player did not settle onto the slope -- test setup is wrong")
+	assert_true(world["player"].grounded, "player did not settle onto the slope -- test setup is wrong")
 
 	# Backward (local +Z) descends this positively-inclined slope -- see
 	# build_on_slope()'s own comment.
@@ -191,10 +190,10 @@ func test_downhill_past_break_even_grade_nets_acceleration_through_slide_move() 
 	await step(1)
 	for i in SLIDE_TICKS:
 		await step(1)
-	check(world["player"].move_manager.current_name == Move.SLIDE, \
+	assert_true(world["player"].move_manager.current_name == Move.SLIDE, \
 		"never entered Slide -- test setup is wrong")
 
-	check_greater(world["player"].horizontal_speed(), before, \
+	assert_gt(world["player"].horizontal_speed(), before, \
 		"a downhill slide past the break-even grade did not net-accelerate (%f -> %f)" \
 			% [before, world["player"].horizontal_speed()])
 	TestWorld.teardown(world)
@@ -219,15 +218,15 @@ func test_a_slide_jump_takes_off_into_jump_not_falling() -> void:
 	world["input"].press_crouch()
 	await step(1)
 	await step(1)
-	check(world["player"].move_manager.current_name == Move.SLIDE, \
+	assert_true(world["player"].move_manager.current_name == Move.SLIDE, \
 		"test setup is wrong: never entered Slide")
 
 	world["input"].press_jump()
 	await step(1)
-	check(world["player"].move_manager.current_name == Move.JUMP, \
+	assert_true(world["player"].move_manager.current_name == Move.JUMP, \
 		"a slide jump did not take off into Jump (ended in %s)" \
 			% world["player"].move_manager.current_name)
-	check_greater(world["player"].velocity.y, 0.0, \
+	assert_gt(world["player"].velocity.y, 0.0, \
 		"test setup is wrong: the slide jump did not actually leave the ground")
 	TestWorld.teardown(world)
 	await step(1)

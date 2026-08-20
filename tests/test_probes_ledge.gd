@@ -1,5 +1,4 @@
-class_name TestProbesLedge
-extends TestCase
+extends ParkourTest
 
 # ledge_query()'s ANCHOR, as distinct from its detection range.
 #
@@ -40,14 +39,14 @@ const BLOCK_SIZE := Vector3(4.0, 2.2, 6.0)
 ## [min_wall_height 1.8, ledge_max_height 2.8] at both distances -- the height
 ## gate is not what either case is testing.
 func _world_with_ledge(near_face_z: float) -> Dictionary:
-	var world := TestWorld.build(tree, MovementConfig.new())
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	var body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = BLOCK_SIZE
 	shape.shape = box
 	body.add_child(shape)
-	tree.root.add_child(body)
+	get_tree().root.add_child(body)
 	world["box"] = body
 	# Forward is -Z, so a near face at -near_face_z puts the centre half a
 	# block deeper still.
@@ -70,7 +69,7 @@ func test_the_grab_anchor_tracks_the_obstacle_it_actually_found() -> void:
 	var near := _world_with_ledge(1.0)
 	await step(1)
 	var near_hit: Dictionary = await _query_at(near)
-	check(near_hit["valid"], "the probe missed a grabbable ledge 1 m ahead")
+	assert_true(near_hit["valid"], "the probe missed a grabbable ledge 1 m ahead")
 	var near_anchor: float = -(near_hit["edge"] as Vector3).z
 	_teardown(near)
 	await step(1)
@@ -78,14 +77,14 @@ func test_the_grab_anchor_tracks_the_obstacle_it_actually_found() -> void:
 	var far := _world_with_ledge(2.5)
 	await step(1)
 	var far_hit: Dictionary = await _query_at(far)
-	check(far_hit["valid"], "the probe missed a grabbable ledge 2.5 m ahead")
+	assert_true(far_hit["valid"], "the probe missed a grabbable ledge 2.5 m ahead")
 	var far_anchor: float = -(far_hit["edge"] as Vector3).z
 	_teardown(far)
 	await step(1)
 
 	# THE POINT: two different obstacles must not produce one anchor. A fixed
 	# forward offset gives the same number for both, whatever that number is.
-	check_greater(far_anchor - near_anchor, 1.0, \
+	assert_gt(far_anchor - near_anchor, 1.0, \
 		"the grab anchor did not move with the obstacle -- near %f vs far %f" % [near_anchor, far_anchor])
 
 	# ...and each anchor must sit just past its OWN face, not somewhere the
@@ -93,5 +92,5 @@ func test_the_grab_anchor_tracks_the_obstacle_it_actually_found() -> void:
 	# past the face should be is a judgement call (see Probes.LEDGE_ANCHOR_
 	# MARGIN), and pinning it exactly here would make this test a restatement
 	# of that constant rather than a check that the anchor found the wall.
-	check_approx(near_anchor, 1.0, 0.35, "the near ledge's anchor is not near its own face")
-	check_approx(far_anchor, 2.5, 0.35, "the far ledge's anchor is not near its own face")
+	assert_almost_eq(near_anchor, 1.0, 0.35, "the near ledge's anchor is not near its own face")
+	assert_almost_eq(far_anchor, 2.5, 0.35, "the far ledge's anchor is not near its own face")

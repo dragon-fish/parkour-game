@@ -1,4 +1,4 @@
-extends TestCase
+extends ParkourTest
 
 # Drives the REAL Player through CharacterAnimator's three cases and checks
 # where the AnimationTree's own state machine actually landed -- through the
@@ -38,7 +38,7 @@ func _spawn_with_clips(clips: PackedStringArray) -> Dictionary:
 	# so these tests still exercise the real node wiring (Player ->
 	# CharacterAnimator -> AnimationTree.travel()) end to end, just without
 	# needing the licensed asset to exist on whatever machine runs this suite.
-	var world := TestWorld.build(tree, cfg, TestWorld.build_stub_body("", Vector3.ZERO, true, clips))
+	var world := TestWorld.build(get_tree(), cfg, TestWorld.build_stub_body("", Vector3.ZERO, true, clips))
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -58,7 +58,7 @@ func _grab_ledge(world: Dictionary) -> Node3D:
 	box.size = Vector3(8.0, 6.0, 4.0)
 	shape.shape = box
 	block.add_child(shape)
-	tree.root.add_child(block)
+	get_tree().root.add_child(block)
 	await step(1)
 	block.global_position = Vector3(0.0, 3.0, -6.0)
 	await step(1)
@@ -69,11 +69,11 @@ func _grab_ledge(world: Dictionary) -> Node3D:
 	await step(1)
 
 	var query: Dictionary = player.probes.ledge_query()
-	check(query["valid"], "precondition: this hand-placed position should read as a valid ledge grab")
+	assert_true(query["valid"], "precondition: this hand-placed position should read as a valid ledge grab")
 
 	player.state_machine.start(PlayerState.LEDGE)
 	await step(1)
-	check(player.state_machine.current_name == PlayerState.LEDGE, \
+	assert_true(player.state_machine.current_name == PlayerState.LEDGE, \
 		"precondition: should be hanging, got %s" % player.state_machine.current_name)
 
 	# Reset to a NEUTRAL baseline before returning. The hover teleport above
@@ -103,14 +103,14 @@ func _current_clip(player: Player) -> StringName:
 func test_standing_still_plays_idle() -> void:
 	var world := await _spawn()
 	var player: Player = world["player"]
-	check(player.state_machine.current_name == PlayerState.GROUND, \
+	assert_true(player.state_machine.current_name == PlayerState.GROUND, \
 		"precondition: player should have settled into Ground, got %s" % player.state_machine.current_name)
-	check(player.horizontal_speed() < player.config.run_animation_speed_threshold, \
+	assert_true(player.horizontal_speed() < player.config.run_animation_speed_threshold, \
 		"precondition: a freshly settled player should be at rest")
 
 	# A few ticks for CharacterAnimator's travel() request to actually apply.
 	await step(5)
-	check(_current_clip(player) == &"idle", \
+	assert_true(_current_clip(player) == &"idle", \
 		"standing still did not select idle, playing %s" % _current_clip(player))
 
 	TestWorld.teardown(world)
@@ -124,13 +124,13 @@ func test_running_above_the_threshold_plays_run() -> void:
 	input.state.move = Vector2(0.0, 1.0)
 	# No sprint key: forward input alone already reaches ground_speed.
 	await step(30)
-	check(player.state_machine.current_name == PlayerState.GROUND, \
+	assert_true(player.state_machine.current_name == PlayerState.GROUND, \
 		"precondition: running on flat ground should stay in Ground, got %s" % player.state_machine.current_name)
-	check_greater(player.horizontal_speed(), player.config.run_animation_speed_threshold, \
+	assert_gt(player.horizontal_speed(), player.config.run_animation_speed_threshold, \
 		"precondition: the player should be moving above the run threshold")
 
 	await step(5)
-	check(_current_clip(player) == &"run", \
+	assert_true(_current_clip(player) == &"run", \
 		"moving above the threshold did not select run, playing %s" % _current_clip(player))
 
 	TestWorld.teardown(world)
@@ -143,11 +143,11 @@ func test_airborne_plays_jump() -> void:
 
 	input.press_jump()
 	await step(2)
-	check(player.state_machine.current_name == PlayerState.AIR, \
+	assert_true(player.state_machine.current_name == PlayerState.AIR, \
 		"precondition: pressing jump should leave the player airborne, got %s" % player.state_machine.current_name)
 
 	await step(5)
-	check(_current_clip(player) == &"jump", \
+	assert_true(_current_clip(player) == &"jump", \
 		"being airborne did not select jump, playing %s" % _current_clip(player))
 
 	TestWorld.teardown(world)
@@ -169,22 +169,22 @@ func test_crouch_still_plays_sneaking_and_crouch_moving_plays_sneak() -> void:
 	input.state.crouch_held = true
 	player.state_machine.start(PlayerState.CROUCH)
 	await step(5)
-	check(player.state_machine.current_name == PlayerState.CROUCH, \
+	assert_true(player.state_machine.current_name == PlayerState.CROUCH, \
 		"precondition: forcing Crouch with crouch_held true should hold, got %s" % player.state_machine.current_name)
-	check(player.horizontal_speed() < player.config.run_animation_speed_threshold, \
+	assert_true(player.horizontal_speed() < player.config.run_animation_speed_threshold, \
 		"precondition: a freshly forced crouch with no move input should be at rest")
-	check(_current_clip(player) == &"sneaking", \
+	assert_true(_current_clip(player) == &"sneaking", \
 		"crouching still did not select sneaking, playing %s" % _current_clip(player))
 
 	input.state.move = Vector2(0.0, 1.0)
 	await step(30)
-	check(player.state_machine.current_name == PlayerState.CROUCH, \
+	assert_true(player.state_machine.current_name == PlayerState.CROUCH, \
 		"precondition: crouch-walking on flat ground should stay in Crouch, got %s" % player.state_machine.current_name)
-	check_greater(player.horizontal_speed(), player.config.run_animation_speed_threshold, \
+	assert_gt(player.horizontal_speed(), player.config.run_animation_speed_threshold, \
 		"precondition: crouch-walking forward should cross the run threshold")
 
 	await step(5)
-	check(_current_clip(player) == &"sneak", \
+	assert_true(_current_clip(player) == &"sneak", \
 		"crouch-walking did not select sneak, playing %s" % _current_clip(player))
 
 	TestWorld.teardown(world)
@@ -204,13 +204,13 @@ func test_crouch_moving_falls_back_to_run_when_sneak_is_unavailable() -> void:
 	input.state.move = Vector2(0.0, 1.0)
 	player.state_machine.start(PlayerState.CROUCH)
 	await step(30)
-	check(player.state_machine.current_name == PlayerState.CROUCH, \
+	assert_true(player.state_machine.current_name == PlayerState.CROUCH, \
 		"precondition: forcing Crouch with crouch_held true should hold, got %s" % player.state_machine.current_name)
-	check_greater(player.horizontal_speed(), player.config.run_animation_speed_threshold, \
+	assert_gt(player.horizontal_speed(), player.config.run_animation_speed_threshold, \
 		"precondition: crouch-walking forward should cross the run threshold")
 
 	await step(5)
-	check(_current_clip(player) == &"run", \
+	assert_true(_current_clip(player) == &"run", \
 		"a body without sneak should fall back to run while crouch-walking, playing %s" % _current_clip(player))
 
 	TestWorld.teardown(world)
@@ -229,17 +229,17 @@ func test_ledge_hang_plays_ladder_stillness_then_mantle_keeps_the_jump_placehold
 	var block := await _grab_ledge(world)
 
 	await step(5)
-	check(_current_clip(player) == &"ladder_stillness", \
+	assert_true(_current_clip(player) == &"ladder_stillness", \
 		"hanging did not select ladder_stillness, playing %s" % _current_clip(player))
 
 	input.state.move = Vector2(0.0, 1.0)
 	await step(2)
 	var ledge_state = player.state_machine.state_for(PlayerState.LEDGE)
-	check(ledge_state != null and ledge_state.is_mantling(), \
+	assert_true(ledge_state != null and ledge_state.is_mantling(), \
 		"precondition: pushing forward while hanging should start the mantle")
 
 	await step(5)
-	check(_current_clip(player) == &"jump", \
+	assert_true(_current_clip(player) == &"jump", \
 		"mantling did not keep the jump placeholder, playing %s" % _current_clip(player))
 
 	block.queue_free()
@@ -255,7 +255,7 @@ func test_ledge_hang_falls_back_to_jump_when_ladder_stillness_is_unavailable() -
 	var block := await _grab_ledge(world)
 
 	await step(5)
-	check(_current_clip(player) == &"jump", \
+	assert_true(_current_clip(player) == &"jump", \
 		"a body without ladder_stillness should fall back to jump while hanging, playing %s" % _current_clip(player))
 
 	block.queue_free()
@@ -272,7 +272,7 @@ func test_ledge_hang_falls_back_to_jump_when_ladder_stillness_is_unavailable() -
 ## _physics_process() must skip travel() entirely -- calling it anyway would
 ## throw real engine ERROR lines every physics tick, which
 ## tools/run_tests.ps1 treats as a hard failure of the whole run regardless
-## of what any single check() here asserts. The player's own movement, which
+## of what any single assert_true() here asserts. The player's own movement, which
 ## depends on none of this, must be completely unaffected.
 func test_a_body_with_no_recognised_clips_still_moves_without_erroring() -> void:
 	var world := await _spawn_with_clips([])
@@ -280,13 +280,13 @@ func test_a_body_with_no_recognised_clips_still_moves_without_erroring() -> void
 	var input: ScriptedInputSource = world["input"]
 
 	var anim_tree := player.get_node_or_null("BodyRoot/AnimationTree") as AnimationTree
-	check(anim_tree != null, "precondition: a body with an AnimationPlayer still gets an AnimationTree")
+	assert_true(anim_tree != null, "precondition: a body with an AnimationPlayer still gets an AnimationTree")
 
 	var start := player.global_position
 	input.state.move = Vector2(0.0, 1.0)
 	# No sprint key: forward input alone already reaches ground_speed.
 	await step(30)
-	check_greater(player.global_position.distance_to(start), 0.5, \
+	assert_gt(player.global_position.distance_to(start), 0.5, \
 		"a player with a clip-less body did not move")
 
 	TestWorld.teardown(world)

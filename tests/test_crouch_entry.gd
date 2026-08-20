@@ -1,5 +1,4 @@
-class_name TestCrouchEntry
-extends TestCase
+extends ParkourTest
 
 # WalkingMove's own table has always listed "grounded, not moving -> Crouch"
 # as one of GBA_Crouch's five outlets, but no code implemented that row: a
@@ -7,7 +6,7 @@ extends TestCase
 # standing still and pressing crouch did nothing whatsoever.
 
 func _world() -> Dictionary:
-	return TestWorld.build(tree, MovementConfig.new())
+	return TestWorld.build(get_tree(), MovementConfig.new())
 
 func test_pressing_crouch_while_standing_crouches() -> void:
 	var world := _world()
@@ -16,18 +15,18 @@ func test_pressing_crouch_while_standing_crouches() -> void:
 	await step(30)
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
-	check(player.move_manager.current_name == Move.WALKING, "test setup: not walking")
-	check(player.horizontal_speed() < player.config.slide.slide_abort_speed, \
+	assert_true(player.move_manager.current_name == Move.WALKING, "test setup: not walking")
+	assert_true(player.horizontal_speed() < player.config.slide.slide_abort_speed, \
 		"test setup: moving too fast for this to be the standing case")
 
 	input.press_crouch()
 	await step(3)
-	check(player.move_manager.current_name == Move.CROUCH, \
+	assert_true(player.move_manager.current_name == Move.CROUCH, \
 		"crouching from a standstill did nothing")
 
 	input.release_crouch()
 	await step(5)
-	check(player.move_manager.current_name == Move.WALKING, \
+	assert_true(player.move_manager.current_name == Move.WALKING, \
 		"releasing crouch did not stand back up")
 
 	TestWorld.teardown(world)
@@ -44,12 +43,12 @@ func test_a_fast_crouch_still_slides_rather_than_crouching() -> void:
 	input.state.move = Vector2(0.0, 1.0)
 	for i in 120:
 		await step(1)
-	check_greater(player.horizontal_speed(), player.config.slide.slide_abort_speed, \
+	assert_gt(player.horizontal_speed(), player.config.slide.slide_abort_speed, \
 		"test setup: never got up to slide speed")
 
 	input.press_crouch()
 	await step(3)
-	check(player.move_manager.current_name == Move.SLIDE, \
+	assert_true(player.move_manager.current_name == Move.SLIDE, \
 		"a crouch at speed no longer opens a slide")
 
 	TestWorld.teardown(world)

@@ -1,5 +1,4 @@
-class_name TestGeneratedScenes
-extends TestCase
+extends ParkourTest
 
 # GENERATOR-DRIFT GUARD.
 #
@@ -61,16 +60,16 @@ func _compare(fresh: Node, committed: Node, scene_path: String, generator: Strin
 		% [scene_path, generator]
 
 	if a.size() != b.size():
-		check(false, "%s  (generator produces %d nodes, the committed scene has %d)" \
+		assert_true(false, "%s  (generator produces %d nodes, the committed scene has %d)" \
 			% [fix, a.size(), b.size()])
 		return
 
 	var limit: int = a.size()
 	for i in limit:
 		if a[i] != b[i]:
-			check(false, "%s\n    generator: %s\n    committed: %s" % [fix, a[i], b[i]])
+			assert_true(false, "%s\n    generator: %s\n    committed: %s" % [fix, a[i], b[i]])
 			return
-	check(true, "%s matches %s" % [scene_path, generator])
+	assert_true(true, "%s matches %s" % [scene_path, generator])
 
 func _signatures(node: Node, root: Node) -> PackedStringArray:
 	var out := PackedStringArray()

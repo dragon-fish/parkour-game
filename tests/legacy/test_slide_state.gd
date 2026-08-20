@@ -1,7 +1,7 @@
-extends TestCase
+extends ParkourTest
 
 func _running_world(cfg: MovementConfig) -> Dictionary:
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -18,7 +18,7 @@ func test_crouching_at_speed_enters_slide() -> void:
 	var player: Player = world["player"]
 	world["input"].press_crouch()
 	await step(2)
-	check(player.state_machine.current_name == &"Slide", \
+	assert_true(player.state_machine.current_name == &"Slide", \
 		"pressing crouch while running should enter Slide, got %s" % player.state_machine.current_name)
 	TestWorld.teardown(world)
 	await step(1)
@@ -32,17 +32,17 @@ func test_slide_gives_a_one_time_speed_boost() -> void:
 	world["input"].press_crouch()
 	await step(2)
 	var just_after_entry := player.horizontal_speed()
-	check_greater(just_after_entry, before, "entering a slide must add speed")
+	assert_gt(just_after_entry, before, "entering a slide must add speed")
 
 	# A per-tick boost would keep adding speed for as long as the slide lasts.
 	# The boost is one-time, so speed from here on can only ever decay under
 	# slide_friction — sampling later in the same slide must show a DROP, not
 	# more growth.
 	await step(20)
-	check(player.state_machine.current_name == &"Slide", \
+	assert_true(player.state_machine.current_name == &"Slide", \
 		"precondition: should still be sliding for the decay check to mean anything")
 	var later := player.horizontal_speed()
-	check(later < just_after_entry, \
+	assert_true(later < just_after_entry, \
 		"speed grew further into the slide (%f -> %f); the boost must be one-time, not per-tick" \
 		% [just_after_entry, later])
 	TestWorld.teardown(world)
@@ -95,13 +95,13 @@ func test_chained_slides_cannot_stack_the_entry_boost() -> void:
 			peak = maxf(peak, player.horizontal_speed())
 			guard += 1
 
-	check_greater(slide_entries, 5, \
+	assert_gt(slide_entries, 5, \
 		"precondition: chained crouch taps should have entered Slide repeatedly, only saw %d entries" \
 		% slide_entries)
-	check_greater(peak, cfg.ground_speed, \
+	assert_gt(peak, cfg.ground_speed, \
 		"precondition: chained taps never reached a boosted speed, so this test proves nothing (peak %f)" \
 		% peak)
-	check(peak <= ceiling + 0.1, \
+	assert_true(peak <= ceiling + 0.1, \
 		"chained slide taps climbed past the boost ceiling (peak %f vs slide_boost_entry_threshold %f + slide_boost %f = %f) -- the entry boost is stacking instead of gating on entry speed" \
 		% [peak, cfg.slide_boost_entry_threshold, cfg.slide_boost, ceiling])
 	TestWorld.teardown(world)
@@ -137,7 +137,7 @@ func test_chained_slide_then_jump_cannot_stack_the_entry_boost() -> void:
 			peak = maxf(peak, player.horizontal_speed())
 			guard += 1
 
-	check(peak <= ceiling + 0.1, \
+	assert_true(peak <= ceiling + 0.1, \
 		"chained slide->jump climbed past the boost ceiling (peak %f vs slide_boost_entry_threshold %f + slide_boost %f = %f)" \
 		% [peak, cfg.slide_boost_entry_threshold, cfg.slide_boost, ceiling])
 	TestWorld.teardown(world)
@@ -146,14 +146,14 @@ func test_chained_slide_then_jump_cannot_stack_the_entry_boost() -> void:
 func test_crouching_from_a_standstill_does_not_slide() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
 	var player: Player = world["player"]
 	world["input"].press_crouch()
 	await step(5)
-	check(player.state_machine.current_name == &"Ground", \
+	assert_true(player.state_machine.current_name == &"Ground", \
 		"a standing crouch must not start a slide")
 	TestWorld.teardown(world)
 	await step(1)
@@ -166,7 +166,7 @@ func test_slide_decays_and_returns_to_ground() -> void:
 	var input: ScriptedInputSource = world["input"]
 	input.press_crouch()
 	await step(2)
-	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+	assert_true(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
 
 	# Hold crouch and let friction do its work. With the key still held, a
 	# decayed slide settles into Crouch rather than standing on its own — see
@@ -177,12 +177,12 @@ func test_slide_decays_and_returns_to_ground() -> void:
 		await step(1)
 		if player.state_machine.current_name == &"Crouch":
 			break
-	check(player.state_machine.current_name == &"Crouch", \
+	assert_true(player.state_machine.current_name == &"Crouch", \
 		"a slide must eventually decay into Crouch while the key is held")
 
 	input.release_crouch()
 	await step(10)
-	check(player.state_machine.current_name == &"Ground", \
+	assert_true(player.state_machine.current_name == &"Ground", \
 		"releasing crouch after the slide has decayed should stand the player up")
 	TestWorld.teardown(world)
 	await step(1)
@@ -199,13 +199,13 @@ func test_slide_decaying_with_crouch_held_settles_into_crouch_not_ground() -> vo
 	var player: Player = world["player"]
 	world["input"].press_crouch()
 	await step(2)
-	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+	assert_true(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
 
 	for i in 600:
 		await step(1)
 		if player.state_machine.current_name != &"Slide":
 			break
-	check(player.state_machine.current_name == &"Crouch", \
+	assert_true(player.state_machine.current_name == &"Crouch", \
 		"a slide that decays while crouch is still held must settle into Crouch, not %s" \
 		% player.state_machine.current_name)
 	TestWorld.teardown(world)
@@ -220,7 +220,7 @@ func test_releasing_crouch_ends_the_slide() -> void:
 	await step(2)
 	world["input"].release_crouch()
 	await step(5)
-	check(player.state_machine.current_name == &"Ground", \
+	assert_true(player.state_machine.current_name == &"Ground", \
 		"releasing crouch should end the slide")
 	TestWorld.teardown(world)
 	await step(1)
@@ -246,7 +246,7 @@ func test_holding_crouch_does_not_strobe_slide() -> void:
 			slide_entries += 1
 		was_sliding = sliding
 
-	check(slide_entries <= 1, \
+	assert_true(slide_entries <= 1, \
 		"holding crouch while running must not strobe in and out of Slide (entered %d times)" \
 		% slide_entries)
 	TestWorld.teardown(world)
@@ -261,11 +261,11 @@ func test_the_capsule_is_shorter_while_sliding() -> void:
 	var standing := shape.height
 	world["input"].press_crouch()
 	await step(2)
-	check_greater(standing, shape.height, "the capsule must shrink while sliding")
+	assert_gt(standing, shape.height, "the capsule must shrink while sliding")
 
 	world["input"].release_crouch()
 	await step(10)
-	check_approx(shape.height, standing, 0.001, "the capsule must return to standing height")
+	assert_almost_eq(shape.height, standing, 0.001, "the capsule must return to standing height")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -280,10 +280,10 @@ func test_the_capsule_bottom_does_not_move_when_shrinking() -> void:
 	var bottom_before := shape_node.position.y - shape.height * 0.5
 	world["input"].press_crouch()
 	await step(2)
-	check(player.state_machine.current_name == &"Slide", \
+	assert_true(player.state_machine.current_name == &"Slide", \
 		"precondition: should be sliding, or this check passes vacuously")
 	var bottom_after := shape_node.position.y - shape.height * 0.5
-	check_approx(bottom_after, bottom_before, 0.001, \
+	assert_almost_eq(bottom_after, bottom_before, 0.001, \
 		"shrinking the capsule must keep its bottom in place, or footing shifts")
 	TestWorld.teardown(world)
 	await step(1)
@@ -295,12 +295,12 @@ func test_sliding_off_an_edge_enters_air() -> void:
 	var player: Player = world["player"]
 	world["input"].press_crouch()
 	await step(2)
-	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+	assert_true(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
 
 	# Remove the floor from under the slide.
 	world["floor"].global_position = Vector3(0.0, -80.0, 0.0)
 	await step(5)
-	check(player.state_machine.current_name == &"Air", \
+	assert_true(player.state_machine.current_name == &"Air", \
 		"leaving the ground mid-slide must enter Air")
 	TestWorld.teardown(world)
 	await step(1)
@@ -320,7 +320,7 @@ func test_a_low_ceiling_keeps_the_player_sliding() -> void:
 	# entry in this file already uses press_crouch(); matching that.
 	world["input"].press_crouch()
 	await step(2)
-	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+	assert_true(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
 
 	# Drop a slab just above the sliding capsule, across the player's path.
 	# NOTE: deviates from the brief, which parented `shape` and added `ceiling`
@@ -341,18 +341,18 @@ func test_a_low_ceiling_keeps_the_player_sliding() -> void:
 	shape.shape = box
 	ceiling.add_child(shape)
 	ceiling.position = player.global_position + Vector3(0.0, 0.45, 0.0)
-	tree.root.add_child(ceiling)
+	get_tree().root.add_child(ceiling)
 	await step(1)
 
 	world["input"].release_crouch()
 	await step(10)
-	check(player.state_machine.current_name == &"Slide", \
+	assert_true(player.state_machine.current_name == &"Slide", \
 		"the player must not stand up into a ceiling, got %s" % player.state_machine.current_name)
 
 	ceiling.queue_free()
 	await step(2)
 	await step(20)
-	check(player.state_machine.current_name == &"Ground", \
+	assert_true(player.state_machine.current_name == &"Ground", \
 		"once the ceiling is gone the player should stand up")
 
 	TestWorld.teardown(world)
@@ -370,7 +370,7 @@ func _add_ceiling_over(player: Player) -> StaticBody3D:
 	shape.shape = box
 	ceiling.add_child(shape)
 	ceiling.position = player.global_position + Vector3(0.0, 0.45, 0.0)
-	tree.root.add_child(ceiling)
+	get_tree().root.add_child(ceiling)
 	return ceiling
 
 func test_a_spent_slide_under_a_ceiling_can_still_crawl_out() -> void:
@@ -381,7 +381,7 @@ func test_a_spent_slide_under_a_ceiling_can_still_crawl_out() -> void:
 	var input: ScriptedInputSource = world["input"]
 	input.press_crouch()
 	await step(2)
-	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+	assert_true(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
 
 	var ceiling := _add_ceiling_over(player)
 	await step(1)
@@ -395,9 +395,9 @@ func test_a_spent_slide_under_a_ceiling_can_still_crawl_out() -> void:
 		await step(1)
 		if player.horizontal_speed() < 0.01:
 			break
-	check(player.state_machine.current_name == &"Slide", \
+	assert_true(player.state_machine.current_name == &"Slide", \
 		"precondition: a blocked slide must not have stood up, got %s" % player.state_machine.current_name)
-	check(player.horizontal_speed() < 0.5, \
+	assert_true(player.horizontal_speed() < 0.5, \
 		"precondition: the slide should have decayed to a stop, speed = %f" % player.horizontal_speed())
 
 	# Now hold forward. The player is still stuck under the roof, but must be
@@ -407,7 +407,7 @@ func test_a_spent_slide_under_a_ceiling_can_still_crawl_out() -> void:
 	await step(60)
 	var travelled: float = Vector2(player.global_position.x - stuck_at.x, \
 		player.global_position.z - stuck_at.z).length()
-	check_greater(travelled, 0.5, \
+	assert_gt(travelled, 0.5, \
 		"a spent slide under a ceiling made no progress under forward input — the player is stranded at %s in state %s" \
 		% [player.global_position, player.state_machine.current_name])
 
@@ -423,7 +423,7 @@ func test_jumping_out_of_a_blocked_slide_is_refused() -> void:
 	var input: ScriptedInputSource = world["input"]
 	input.press_crouch()
 	await step(2)
-	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+	assert_true(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
 
 	var ceiling := _add_ceiling_over(player)
 	await step(1)
@@ -433,9 +433,9 @@ func test_jumping_out_of_a_blocked_slide_is_refused() -> void:
 	# ceiling either, so the press must simply not take.
 	input.press_jump()
 	await step(5)
-	check(player.state_machine.current_name == &"Slide", \
+	assert_true(player.state_machine.current_name == &"Slide", \
 		"a jump under a ceiling must not leave the slide, got %s" % player.state_machine.current_name)
-	check(player.velocity.y <= 0.1, \
+	assert_true(player.velocity.y <= 0.1, \
 		"a jump under a ceiling must not launch the player, velocity.y = %f" % player.velocity.y)
 
 	ceiling.queue_free()
@@ -453,11 +453,11 @@ func test_sliding_off_an_edge_under_a_ceiling_does_not_restore_the_capsule() -> 
 
 	input.press_crouch()
 	await step(2)
-	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+	assert_true(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
 
 	var ceiling := _add_ceiling_over(player)
 	await step(1)
-	check_approx(shape.height, cfg.slide_capsule_height, 0.001, \
+	assert_almost_eq(shape.height, cfg.slide_capsule_height, 0.001, \
 		"precondition: the capsule should be crouched while sliding")
 
 	# Take the ground away. The off-edge exit returns AIR whether or not there
@@ -467,17 +467,17 @@ func test_sliding_off_an_edge_under_a_ceiling_does_not_restore_the_capsule() -> 
 	# body inside the roof that is still directly overhead.
 	world["floor"].global_position = Vector3(0.0, -80.0, 0.0)
 	await step(3)
-	check(player.state_machine.current_name == &"Air", \
+	assert_true(player.state_machine.current_name == &"Air", \
 		"precondition: leaving the ground mid-slide must enter Air, got %s" \
 		% player.state_machine.current_name)
-	check(shape.height < standing, \
+	assert_true(shape.height < standing, \
 		"the capsule stood back up into the ceiling on the way out of the slide (height %f)" % shape.height)
 
 	# ...and it must come back on its own the moment there is room, or the
 	# player is left permanently crouched.
 	ceiling.queue_free()
 	await step(10)
-	check_approx(shape.height, standing, 0.001, \
+	assert_almost_eq(shape.height, standing, 0.001, \
 		"the standing capsule was never restored once the ceiling was gone (height %f)" % shape.height)
 
 	TestWorld.teardown(world)
@@ -490,7 +490,7 @@ func test_a_long_covered_downslope_cannot_outrun_the_slide_speed_cap() -> void:
 	# position a human can actually drag to.
 	cfg.slide_slope_accel = cfg.slide_slope_accel * 3.0
 
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	var player: Player = world["player"]
 	var floor_body: StaticBody3D = world["floor"]
@@ -505,7 +505,7 @@ func test_a_long_covered_downslope_cannot_outrun_the_slide_speed_cap() -> void:
 	await step(60)
 	input.press_crouch()
 	await step(2)
-	check(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
+	assert_true(player.state_machine.current_name == &"Slide", "precondition: should be sliding")
 
 	# Roof the whole slope, parallel to it. slide_max_duration is gated on
 	# headroom, so under cover the slide has no time limit either — which is
@@ -522,22 +522,22 @@ func test_a_long_covered_downslope_cannot_outrun_the_slide_speed_cap() -> void:
 	ceiling.add_child(ceiling_shape)
 	ceiling.rotation.x = slope
 	ceiling.position = floor_body.global_position + normal * 2.3
-	tree.root.add_child(ceiling)
+	get_tree().root.add_child(ceiling)
 	await step(1)
 
 	var peak := 0.0
 	for i in 180:
 		await step(1)
 		peak = maxf(peak, player.horizontal_speed())
-	check(player.state_machine.current_name == &"Slide", \
+	assert_true(player.state_machine.current_name == &"Slide", \
 		"precondition: the covered slide should still be running, got %s" \
 		% player.state_machine.current_name)
-	check(peak <= cfg.slide_max_speed + 0.1, \
+	assert_true(peak <= cfg.slide_max_speed + 0.1, \
 		"a long covered downslope accelerated past the cap (peak %f vs slide_max_speed %f)" \
 		% [peak, cfg.slide_max_speed])
 	# ...and the run has to actually press against the cap, or this passes by
 	# never getting near it and would not notice the cap being removed.
-	check_greater(peak, cfg.slide_max_speed - 0.5, \
+	assert_gt(peak, cfg.slide_max_speed - 0.5, \
 		"the slide never reached the cap, so this test proves nothing about it (peak %f)" % peak)
 
 	ceiling.queue_free()
@@ -551,7 +551,7 @@ func test_a_long_covered_downslope_cannot_outrun_the_slide_speed_cap() -> void:
 ## tilt.
 func _speed_after_sliding(slope_deg: float, ticks: int) -> float:
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	var player: Player = world["player"]
 	var floor_body: StaticBody3D = world["floor"]
@@ -573,7 +573,7 @@ func _speed_after_sliding(slope_deg: float, ticks: int) -> float:
 	for i in ticks:
 		await step(1)
 	var speed := player.horizontal_speed()
-	check(sliding, "precondition: _speed_after_sliding(%f) never entered Slide" % slope_deg)
+	assert_true(sliding, "precondition: _speed_after_sliding(%f) never entered Slide" % slope_deg)
 	TestWorld.teardown(world)
 	await step(1)
 	return speed
@@ -584,14 +584,14 @@ func test_sliding_downhill_keeps_more_speed_than_sliding_on_the_flat() -> void:
 	# compares the DECAY of the two rather than two end states.
 	var flat := await _speed_after_sliding(0.0, 45)
 	var downhill := await _speed_after_sliding(20.0, 45)
-	check_greater(downhill, flat, \
+	assert_gt(downhill, flat, \
 		"a slide down a slope must keep more speed than the same slide on flat ground (downhill %f vs flat %f)" \
 		% [downhill, flat])
 
 func test_a_crouch_pressed_just_before_landing_opens_a_slide_on_touchdown() -> void:
 	await step(1)
 	var cfg := MovementConfig.new()
-	var world := TestWorld.build(tree, cfg)
+	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
 	TestWorld.place(world)
 	await step(30)
@@ -622,11 +622,11 @@ func test_a_crouch_pressed_just_before_landing_opens_a_slide_on_touchdown() -> v
 			landed = true
 		if slid:
 			break
-	check(pressed, "precondition: the test never got close enough to the ground to press crouch")
-	check(landed, "precondition: the player never landed")
-	check(player.last_landing_rolled, \
+	assert_true(pressed, "precondition: the test never got close enough to the ground to press crouch")
+	assert_true(landed, "precondition: the player never landed")
+	assert_true(player.last_landing_rolled, \
 		"precondition: crouch was not held through the impact, so this was not a roll")
-	check(slid, \
+	assert_true(slid, \
 		"a crouch held through a roll must chain into a slide on touchdown, state = %s, speed = %f" \
 		% [player.state_machine.current_name, player.horizontal_speed()])
 	TestWorld.teardown(world)
@@ -649,7 +649,7 @@ func test_a_crouch_pressed_just_before_landing_opens_a_slide_on_touchdown() -> v
 func test_slide_can_only_reach_ground_air_or_crouch() -> void:
 	await step(1)
 	var source := FileAccess.get_file_as_string("res://scripts/player/states/slide_state.gd")
-	check(source.length() > 0, "could not read slide_state.gd")
+	assert_true(source.length() > 0, "could not read slide_state.gd")
 
 	var state_script: GDScript = load("res://scripts/player/states/player_state.gd")
 	var referenced: Array[String] = []
@@ -663,7 +663,7 @@ func test_slide_can_only_reach_ground_air_or_crouch() -> void:
 			referenced.append(constant_name)
 	referenced.sort()
 	var expected: Array[String] = ["AIR", "CROUCH", "GROUND"]
-	check(referenced == expected, \
+	assert_true(referenced == expected, \
 		"Slide must be able to reach exactly Ground, Air and Crouch, but slide_state.gd references %s" \
 		% str(referenced))
 
@@ -683,7 +683,7 @@ func test_slide_can_only_reach_ground_air_or_crouch() -> void:
 func test_slide_returns_only_ground_air_or_keep() -> void:
 	await step(1)
 	var source := FileAccess.get_file_as_string("res://scripts/player/states/slide_state.gd")
-	check(source.length() > 0, "could not read slide_state.gd")
+	assert_true(source.length() > 0, "could not read slide_state.gd")
 
 	var targets: Dictionary = {}
 
@@ -705,7 +705,7 @@ func test_slide_returns_only_ground_air_or_keep() -> void:
 	var returned: Array = targets.keys()
 	returned.sort()
 	var allowed := ["AIR", "CROUCH", "GROUND", "KEEP"]
-	check(returned == allowed, \
+	assert_true(returned == allowed, \
 		"SlideState returns %s; the spec allows it to reach only Ground, Air and Crouch (plus KEEP). A direct Slide -> WallRun transition is forbidden by spec section 5 — if this set is meant to change, change the spec first" \
 		% str(returned))
 
@@ -721,7 +721,7 @@ func test_the_camera_drops_while_sliding() -> void:
 	# press_crouch() is required to actually enter Slide.
 	world["input"].press_crouch()
 	await step(20)
-	check(rig.position.y < standing_y, "the camera must drop while sliding")
+	assert_true(rig.position.y < standing_y, "the camera must drop while sliding")
 
 	# A direction-only check would still pass a regression where the drop is
 	# capped at a single frame's worth of crouch_lerp_speed * delta instead of
@@ -730,11 +730,11 @@ func test_the_camera_drops_while_sliding() -> void:
 	# crouch_lerp_speed needs to cover slide_camera_drop, so the drop should
 	# have fully settled by now — assert its settled SIZE against config, not
 	# a pinned number, so this still passes under tuning.
-	check_approx(standing_y - rig.position.y, cfg.slide_camera_drop, 0.01, \
+	assert_almost_eq(standing_y - rig.position.y, cfg.slide_camera_drop, 0.01, \
 		"the camera must settle at the full configured slide_camera_drop, not just move in that direction")
 
 	world["input"].release_crouch()
 	await step(60)
-	check_approx(rig.position.y, standing_y, 0.01, "the camera must rise back after the slide")
+	assert_almost_eq(rig.position.y, standing_y, 0.01, "the camera must rise back after the slide")
 	TestWorld.teardown(world)
 	await step(1)

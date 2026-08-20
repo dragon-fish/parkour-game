@@ -1,4 +1,4 @@
-extends TestCase
+extends ParkourTest
 
 const TICK := 1.0 / 60.0
 
@@ -7,7 +7,7 @@ func _make_rig() -> CameraRig:
 	var cam := Camera3D.new()
 	cam.name = "Camera3D"
 	rig.add_child(cam)
-	tree.root.add_child(rig)
+	get_tree().root.add_child(rig)
 	return rig
 
 func test_fov_widens_as_speed_rises() -> void:
@@ -24,7 +24,7 @@ func test_fov_widens_as_speed_rises() -> void:
 		rig.update_effects(TICK, cfg.fov_speed_ref, true)
 	var fast_fov := rig.camera.fov
 
-	check_greater(fast_fov, slow_fov, "FOV did not widen with speed")
+	assert_gt(fast_fov, slow_fov, "FOV did not widen with speed")
 	rig.queue_free()
 	await step(1)
 
@@ -37,11 +37,11 @@ func test_landing_dip_lowers_then_recovers() -> void:
 	rig.punch_landing(cfg.land_dip_speed_ref)
 	rig.update_effects(TICK, 0.0, true)
 	var dipped := rig.camera.position.y
-	check(dipped < 0.0, "landing did not lower the camera, y = %f" % dipped)
+	assert_true(dipped < 0.0, "landing did not lower the camera, y = %f" % dipped)
 
 	for i in 300:
 		rig.update_effects(TICK, 0.0, true)
-	check_approx(rig.camera.position.y, 0.0, 0.01, "camera did not recover from the landing dip")
+	assert_almost_eq(rig.camera.position.y, 0.0, 0.01, "camera did not recover from the landing dip")
 
 	rig.queue_free()
 	await step(1)
@@ -53,17 +53,17 @@ func test_pitch_is_clamped() -> void:
 	rig.setup(cfg)
 
 	var body := Node3D.new()
-	tree.root.add_child(body)
+	get_tree().root.add_child(body)
 	await step(1)
 
 	# Push the view far past vertical in both directions.
 	for i in 200:
 		rig.apply_look(Vector2(0.0, -1000.0), body)
-	check(rig.rotation.x <= deg_to_rad(cfg.pitch_limit_deg) + 0.001, "pitch exceeded the upper limit")
+	assert_true(rig.rotation.x <= deg_to_rad(cfg.pitch_limit_deg) + 0.001, "pitch exceeded the upper limit")
 
 	for i in 400:
 		rig.apply_look(Vector2(0.0, 1000.0), body)
-	check(rig.rotation.x >= -deg_to_rad(cfg.pitch_limit_deg) - 0.001, "pitch exceeded the lower limit")
+	assert_true(rig.rotation.x >= -deg_to_rad(cfg.pitch_limit_deg) - 0.001, "pitch exceeded the lower limit")
 
 	rig.queue_free()
 	body.queue_free()
@@ -75,13 +75,13 @@ func test_eye_height_is_applied_and_stays_live_tunable() -> void:
 	await step(1)
 	rig.setup(cfg)
 
-	check_approx(rig.position.y, cfg.eye_height, 0.001, "setup() did not apply eye_height")
+	assert_almost_eq(rig.position.y, cfg.eye_height, 0.001, "setup() did not apply eye_height")
 
 	# The F1 panel writes straight into the shared config at runtime; a live
 	# rig must pick that up on the next tick rather than only at setup().
 	cfg.eye_height = cfg.eye_height + 1.0
 	rig.update_effects(TICK, 0.0, true)
-	check_approx(rig.position.y, cfg.eye_height, 0.001, "eye_height change was not applied live")
+	assert_almost_eq(rig.position.y, cfg.eye_height, 0.001, "eye_height change was not applied live")
 
 	rig.queue_free()
 	await step(1)
@@ -113,16 +113,16 @@ func test_bob_fades_instead_of_snapping_at_liftoff() -> void:
 	for i in frames_to_peak:
 		rig.update_effects(TICK, speed, true)
 	var grounded_offset := rig.camera.position.y
-	check_greater(absf(grounded_offset), cfg.bob_amplitude * 0.5, "bob offset was not clearly non-zero while grounded")
+	assert_gt(absf(grounded_offset), cfg.bob_amplitude * 0.5, "bob offset was not clearly non-zero while grounded")
 
 	# The instant the player leaves the ground, the offset must fade, not snap.
 	rig.update_effects(TICK, speed, false)
 	var just_after_takeoff := rig.camera.position.y
-	check(absf(just_after_takeoff - grounded_offset) < absf(just_after_takeoff), "bob offset collapsed toward zero the instant the player left the ground")
+	assert_true(absf(just_after_takeoff - grounded_offset) < absf(just_after_takeoff), "bob offset collapsed toward zero the instant the player left the ground")
 
 	for i in 300:
 		rig.update_effects(TICK, speed, false)
-	check_approx(rig.camera.position.y, 0.0, 0.01, "bob offset did not fade toward zero while airborne")
+	assert_almost_eq(rig.camera.position.y, 0.0, 0.01, "bob offset did not fade toward zero while airborne")
 
 	rig.queue_free()
 	await step(1)
@@ -154,25 +154,25 @@ func test_the_camera_rolls_toward_the_wall_side() -> void:
 	# tick, the same class of bug update_effects()'s eye_height re-apply has
 	# already produced once in this file) would still pass a direction-only
 	# check. Negative: see the derivation above.
-	check_approx(right_roll, -deg_to_rad(cfg.wall_camera_roll_deg), 0.001, "roll did not settle at the configured angle for a wall on the right")
+	assert_almost_eq(right_roll, -deg_to_rad(cfg.wall_camera_roll_deg), 0.001, "roll did not settle at the configured angle for a wall on the right")
 	var right_up: Vector3 = rig.transform.basis.y
-	check_greater(right_up.x, 0.0, \
+	assert_gt(right_up.x, 0.0, \
 		"a wall on the right must roll the camera's up vector toward +X (into the wall), got up.x = %f" % right_up.x)
 
 	rig.set_wall_side(-1)
 	for i in 120:
 		rig.update_effects(TICK, 8.0, false)
 	var left_roll := rig.rotation.z
-	check_approx(left_roll, deg_to_rad(cfg.wall_camera_roll_deg), 0.001, "roll did not settle at the configured angle for a wall on the left")
-	check(right_roll * left_roll < 0.0, "the two wall sides must roll opposite ways")
+	assert_almost_eq(left_roll, deg_to_rad(cfg.wall_camera_roll_deg), 0.001, "roll did not settle at the configured angle for a wall on the left")
+	assert_true(right_roll * left_roll < 0.0, "the two wall sides must roll opposite ways")
 	var left_up: Vector3 = rig.transform.basis.y
-	check(left_up.x < 0.0, \
+	assert_true(left_up.x < 0.0, \
 		"a wall on the left must roll the camera's up vector toward -X (into the wall), got up.x = %f" % left_up.x)
 
 	rig.set_wall_side(0)
 	for i in 200:
 		rig.update_effects(TICK, 0.0, true)
-	check_approx(rig.rotation.z, 0.0, 0.001, "roll must return to level")
+	assert_almost_eq(rig.rotation.z, 0.0, 0.001, "roll must return to level")
 
 	rig.queue_free()
 	await step(1)
@@ -184,24 +184,24 @@ func test_roll_and_pitch_compose_without_clobbering() -> void:
 	rig.setup(cfg)
 
 	var body := Node3D.new()
-	tree.root.add_child(body)
+	get_tree().root.add_child(body)
 	await step(1)
 
 	rig.apply_look(Vector2(0.0, -200.0), body)
 	var pitch_after_look := rig.rotation.x
-	check_greater(absf(pitch_after_look), 0.001, "look did not pitch the camera")
+	assert_gt(absf(pitch_after_look), 0.001, "look did not pitch the camera")
 
 	rig.set_wall_side(1)
 	for i in 60:
 		rig.update_effects(TICK, 8.0, false)
-	check_approx(rig.rotation.x, pitch_after_look, 0.0001, "roll clobbered the pitch set by apply_look")
-	check_greater(absf(rig.rotation.z), 0.01, "roll did not apply alongside an existing pitch")
+	assert_almost_eq(rig.rotation.x, pitch_after_look, 0.0001, "roll clobbered the pitch set by apply_look")
+	assert_gt(absf(rig.rotation.z), 0.01, "roll did not apply alongside an existing pitch")
 
 	# And the reverse direction: a look input made AFTER the roll has settled
 	# must not clobber it either.
 	var roll_after_wall := rig.rotation.z
 	rig.apply_look(Vector2(0.0, -50.0), body)
-	check_approx(rig.rotation.z, roll_after_wall, 0.0001, "a look input clobbered the settled wall roll")
+	assert_almost_eq(rig.rotation.z, roll_after_wall, 0.0001, "a look input clobbered the settled wall roll")
 
 	rig.queue_free()
 	body.queue_free()
@@ -239,7 +239,7 @@ func test_head_follow_offset_scales_with_configured_strength() -> void:
 		rig.set_head_position(head)
 		rig.update_effects(TICK, 0.0, true)
 		var expected: Vector3 = baseline + (head - baseline) * strength
-		check(rig.position.distance_to(expected) < 0.001, \
+		assert_true(rig.position.distance_to(expected) < 0.001, \
 			"strength %f: expected position ~%s, got %s" % [strength, expected, rig.position])
 		rig.queue_free()
 
@@ -277,7 +277,7 @@ func test_head_follow_at_zero_strength_matches_no_body_exactly() -> void:
 	rig.update_effects(TICK, 0.0, true)
 	var with_head_at_zero_strength := rig.position
 
-	check(with_head_at_zero_strength == without_head, \
+	assert_true(with_head_at_zero_strength == without_head, \
 		"strength 0.0 must reproduce the no-body camera bit-for-bit, got %s vs %s" \
 			% [with_head_at_zero_strength, without_head])
 
@@ -319,7 +319,7 @@ func test_head_follow_settles_at_the_configured_fraction_and_does_not_drift_towa
 
 	for i in 300:
 		rig.update_effects(TICK, 0.0, true)
-		check(rig.position.distance_to(expected) < 0.001, \
+		assert_true(rig.position.distance_to(expected) < 0.001, \
 			"frame %d: expected the camera to hold at the %f fraction toward the head (%s), got %s -- it drifted toward the head instead of staying at a fixed blend" \
 				% [i, strength, expected, rig.position])
 
@@ -327,7 +327,7 @@ func test_head_follow_settles_at_the_configured_fraction_and_does_not_drift_towa
 	# exponential approach would have the camera essentially AT the head by
 	# now (the owner's own measurement put it 5mm away), so also assert it
 	# is nowhere close.
-	check_greater(rig.position.distance_to(head), 0.3, \
+	assert_gt(rig.position.distance_to(head), 0.3, \
 		"camera ended up close to the head instead of stopping at the configured fraction, got %s vs head %s" % [rig.position, head])
 
 	rig.queue_free()
@@ -363,7 +363,7 @@ func test_head_follow_zero_strength_tracks_the_no_head_camera_every_frame() -> v
 		without_head.set_crouch_amount(0.5 if i > 70 else 0.0)
 		with_head.update_effects(TICK, speed, grounded)
 		without_head.update_effects(TICK, speed, grounded)
-		check(with_head.position == without_head.position, \
+		assert_true(with_head.position == without_head.position, \
 			"frame %d: strength 0.0 with a head attached must match a rig with no head bit-for-bit, got %s vs %s" \
 				% [i, with_head.position, without_head.position])
 
@@ -388,7 +388,7 @@ func test_head_follow_at_full_strength_tracks_a_moving_head_exactly() -> void:
 		var grounded := i < 40 or i >= 55
 		rig.set_crouch_amount(0.5 if i > 70 else 0.0)
 		rig.update_effects(TICK, speed, grounded)
-		check(rig.position == head, \
+		assert_true(rig.position == head, \
 			"frame %d: strength 1.0 must reach the head exactly, got %s vs head %s" % [i, rig.position, head])
 
 	rig.queue_free()
@@ -409,7 +409,7 @@ func test_head_follow_degrades_without_error_when_no_head_was_ever_set() -> void
 	# No set_head_position() call anywhere above this line.
 	for i in 30:
 		rig.update_effects(TICK, 3.0, true)
-	check_approx(rig.position.y, cfg.eye_height, 0.01, \
+	assert_almost_eq(rig.position.y, cfg.eye_height, 0.01, \
 		"a rig that was never told about a head must keep behaving like today's stable camera")
 
 	rig.queue_free()
@@ -424,10 +424,10 @@ func test_reset_state_clears_camera_roll() -> void:
 	rig.set_wall_side(1)
 	for i in 60:
 		rig.update_effects(TICK, 0.0, true)
-	check_greater(absf(rig.rotation.z), 0.01, "roll did not build up before reset")
+	assert_gt(absf(rig.rotation.z), 0.01, "roll did not build up before reset")
 
 	rig.reset_state()
-	check_approx(rig.rotation.z, 0.0, 0.0001, "reset_state left the camera rolled")
+	assert_almost_eq(rig.rotation.z, 0.0, 0.0001, "reset_state left the camera rolled")
 
 	# The wall side itself must be cleared too, not just rotation.z: if
 	# _wall_side survived reset_state() untouched, further ticks with no new
@@ -436,7 +436,7 @@ func test_reset_state_clears_camera_roll() -> void:
 	# follows the reset.
 	for i in 60:
 		rig.update_effects(TICK, 0.0, true)
-	check_approx(rig.rotation.z, 0.0, 0.0001, "reset_state did not clear the wall side, the roll rebuilt on its own")
+	assert_almost_eq(rig.rotation.z, 0.0, 0.0001, "reset_state did not clear the wall side, the roll rebuilt on its own")
 
 	rig.queue_free()
 	await step(1)
