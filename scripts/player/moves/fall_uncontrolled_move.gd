@@ -6,6 +6,21 @@ extends AirborneMove
 # Entering is one-way: regaining height does not hand control back, because
 # the original treats the outcome as already settled.
 
+## ControllerState = PlayerDying, expressed where the original expresses it.
+##
+## The CDO for this move is three lines long -- PawnPhysics, ControllerState,
+## bCheckForSoftLanding -- and carries NO bConstrainLook. The original does not
+## clamp the view here; the view stops responding because the CONTROLLER stops
+## reading input, which is a different layer (spec §1, the two orthogonal state
+## machines). Player's own input gate is that layer, so this is the faithful
+## reading rather than inventing a look constraint the source never had.
+##
+## Ignoring `_input` in physics_update() below is not enough on its own: the
+## camera is driven from Player._physics_process(), not from here, so without
+## the gate the player could still spin the view all the way down.
+func enter(_previous: StringName) -> void:
+	player.lock_input()
+
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# No wish direction: the body falls, the player watches.
 	apply_air_physics(delta, Vector3.ZERO)
@@ -58,6 +73,12 @@ func _drive_screen_effects() -> void:
 ## cutscene following it, and without this the screen would stay grey and
 ## blurred into the next life.
 func exit() -> void:
+	# Released here rather than left for whatever comes next, so the gate is
+	# owned by the state that closed it. DeathSequence closes it again for the
+	# cutscene a frame later (died_from_fall is deferred); the one frame of
+	# ordinary Walking in between is not enough to move a body that lands with
+	# its horizontal speed already spent.
+	player.unlock_input()
 	if player.screen_effects != null:
 		player.screen_effects.set_desaturation(0.0)
 		player.screen_effects.set_blur(0.0)

@@ -129,3 +129,41 @@ func test_the_screen_shows_the_fall_and_shows_how_bad_it_is() -> void:
 
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_the_view_stops_responding_the_moment_control_is_lost() -> void:
+	# ControllerState = PlayerDying. The CDO for this move carries no
+	# bConstrainLook at all -- the original's view does not stop because the
+	# MOVE clamps it, but because the CONTROLLER stops reading input. Player's
+	# input gate is that layer. Ignoring `_input` inside the move is not
+	# enough: the camera is driven from Player._physics_process().
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(tree, cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	# High enough that the flick below finishes well before touchdown: the
+	# gate is released on exit, so a test that lands mid-flick would measure
+	# the free view of the tick AFTER the fall, not the locked view during it.
+	player.global_position.y += cfg.pawn.falling_uncontrolled_height + 40.0
+	player.fall_tracker.reset(player.global_position.y)
+	await step(1)
+	for i in 240:
+		await step(1)
+		if player.move_manager.current_name == Move.FALL_UNCONTROLLED:
+			break
+	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, "test setup: never entered")
+
+	var yaw_before: float = player.rotation.y
+	# A hard sustained flick, the thing that used to spin freely all the way down.
+	for i in 20:
+		input.state.look = Vector2(400.0, 0.0)
+		await step(1)
+	check(player.move_manager.current_name == Move.FALL_UNCONTROLLED, \
+		"test setup: landed before the flick finished")
+	check_approx(player.rotation.y, yaw_before, 0.0001, \
+		"the view still turned while control was already lost")
+
+	TestWorld.teardown(world)
+	await step(1)
