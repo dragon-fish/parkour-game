@@ -33,10 +33,24 @@ func _init() -> void:
 ##
 ## ⚠️ So this is derived rather than copied: one capsule radius, plus a little,
 ## which is the closest the body can hang without intersecting the wall it is
-## hanging on. The vertical figure needs no such adjustment and is used as-is:
-## it is what makes every hang settle into the same pose however it was caught.
+## hanging on.
 @export var ledge_back_offset: float = 0.45
-@export var ledge_down_offset: float = 0.928
+
+## Where the EYE settles, measured down from the edge -- not where the body
+## centre settles.
+##
+## The vertical figure needs the same treatment as the horizontal one, for a
+## different reason. 92.8 uu is a body-centre offset, and applying it literally
+## puts this project's eye 0.17 m BELOW the lip: the player hangs there unable
+## to see the surface they are about to pull onto. That is a mismatch in eye
+## height between the two pawns, not a mismatch in the hanging pose -- the
+## original's own eye evidently sits higher above its centre than 0.76 m does
+## here.
+##
+## ⚠️ Expressed as an eye offset so it stays right if eye_height is ever
+## retuned, and set so the lip is just below the horizon: the owner reports
+## being able to see a little of the ground above while hanging.
+@export var eye_below_ledge: float = 0.05
 
 ## ✅ `MinGrabLedgeAdjustDistance = 32` uu. Below this the body is already close
 ## enough; snapping the last three centimetres is invisible and saves a frame

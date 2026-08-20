@@ -55,8 +55,12 @@ func _hanging_pose(edge: Vector3) -> Vector3:
 	approach.y = 0.0
 	if approach.length_squared() < 0.0001:
 		approach = Vector3.FORWARD
+	# Placed by where the EYE ends up, not by where the body centre does -- see
+	# IntoGrabConfig.eye_below_ledge. The centre goes wherever puts the eye
+	# there.
+	var centre_below: float = cfg.eye_below_ledge + config.camera.eye_height
 	return edge - approach.normalized() * cfg.ledge_back_offset \
-		- Vector3.UP * cfg.ledge_down_offset
+		- Vector3.UP * centre_below
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:

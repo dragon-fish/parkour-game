@@ -54,10 +54,23 @@ func _world_with_ledge(near_face_z: float) -> Dictionary:
 	return world
 
 func _query_at(world: Dictionary) -> Dictionary:
+	# Grabbing is switched OFF for the settle. Falling carries bCheckForGrab,
+	# so the block this test needs standing there gets grabbed on the way down
+	# -- and since IntoGrab exists, being grabbed MOVES the body to the hanging
+	# pose, nowhere near where the query is supposed to be taken from. (Before
+	# IntoGrab the body froze in place, so this went unnoticed.)
+	#
+	# Switched off rather than worked around by placing the block later: the
+	# block has to be in the physics space for a frame or two before it can be
+	# queried at all, and this test is about the QUERY, not about what a fall
+	# does on the way past.
+	var player: Player = world["player"]
+	player.config.falling.check_for_grab = false
+	player.config.jump.check_for_grab = false
 	TestWorld.place(world)
 	world["box"].global_position = world["box_at"]
 	await step(30)
-	return world["player"].probes.ledge_query()
+	return player.probes.ledge_query()
 
 func _teardown(world: Dictionary) -> void:
 	world["box"].queue_free()

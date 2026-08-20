@@ -53,9 +53,11 @@ func _init() -> void:
 	#     min (8300, -16384, 0)  ->  pitch +45.6, yaw -90
 	#     max (16000, 16384, 0)  ->  pitch +87.9, yaw +90
 	#
-	# FACING THE WALL the view is pinned above level -- the arms are overhead
-	# and there is nothing below to look at -- which is what those two figures
-	# describe, and what the owner reported ("cannot look down").
+	# FACING THE WALL the view cannot go BELOW LEVEL: the arms are overhead and
+	# there is nothing under the lip to look at. Level, though, not 45 degrees
+	# up -- the CDO's HangFree floor is +45.6, which pins the view at the sky
+	# and is not what the game does. The owner reports being able to look
+	# straight ahead at the wall, and to see a little of the surface above.
 	#
 	# BUT NOT ONCE TURNED AWAY. A player hangs off a ledge specifically to drop
 	# from it, and before letting go they turn and look at what is underneath.
@@ -74,7 +76,7 @@ func _init() -> void:
 	# describe, and its ShimmyAroundCorner pairs reach +-180. Taking the
 	# reported figure, since it is the one measured against the actual game.
 	constrain_look = true
-	min_look_constraint = Vector3(deg_to_rad(45.6), -deg_to_rad(170.0), -PI)
+	min_look_constraint = Vector3(0.0, -deg_to_rad(170.0), -PI)
 	max_look_constraint = Vector3(deg_to_rad(87.9), deg_to_rad(170.0), PI)
 	# ⚠️ PROJECT-DEFINED. Turned fully away, the view can look well below level
 	# -- far enough to see the ground under the drop.
