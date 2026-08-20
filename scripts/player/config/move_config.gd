@@ -39,6 +39,27 @@ extends Resource
 ## Source: 04 §4.1 `bUseAbsoluteYawConstraint = True` on WallRun. ✅
 @export var absolute_yaw_constraint: bool = false
 
+## When set, the PITCH clamp is not a fixed band but relaxes as the view turns
+## away from the facing the constraint was captured at: min_look_constraint at
+## zero yaw, easing toward pitch_min_turned_away at the edge of the yaw range.
+##
+## Hanging is the case this exists for. Facing the wall there is nothing below
+## to look at and the arms are overhead, so the view is pinned above level --
+## but a player who has turned to look BACK from the ledge is checking the drop
+## they are about to let go into, and a clamp that still refuses to look down
+## makes that impossible. A single rectangle cannot express "cannot look down
+## at the wall, can look down away from it".
+##
+## The original clearly does something of this kind: TdMove_Grab carries four
+## separate look-constraint pairs (HangFree, Slope, ShimmyAroundCorner,
+## ShimmyAroundCornerFree) rather than one, and the dump does not say what
+## selects between them. ⚠️ The INTERPOLATION is this project's own reading.
+@export var pitch_relaxes_with_yaw: bool = false
+
+## The pitch floor once the view has turned fully to the edge of its yaw range.
+## Only read when pitch_relaxes_with_yaw is set.
+@export var pitch_min_turned_away: float = -PI
+
 ## Which environment probes this move runs each tick. The original makes
 ## these per-move switches rather than hardcoding them in each state's
 ## update -- which is how "a rising jump can start a wall climb but a fall

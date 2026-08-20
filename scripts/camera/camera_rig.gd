@@ -46,6 +46,12 @@ var _roll_spin: float = 0.0
 var _look_min: Vector3 = Vector3(-PI, -PI, -PI)
 var _look_max: Vector3 = Vector3(PI, PI, PI)
 var _look_absolute_yaw: bool = false
+var _look_pitch_relaxes: bool = false
+var _look_pitch_min_turned: float = -PI
+## How far the view has turned from the facing the constraint was captured at,
+## as a fraction of the yaw range: 0 facing forward, 1 at either edge. Written
+## by apply_look() and read by its own pitch clamp a few lines later.
+var _look_yaw_fraction: float = 0.0
 var _has_look_constraint: bool = false
 ## The body's yaw at the instant a look constraint first became active,
 ## captured once by set_look_constraint() (not refreshed on the repeat calls
@@ -140,7 +146,8 @@ func clear_head_position() -> void:
 ## calls while already constrained must leave it alone, or an absolute-yaw
 ## fan would drift to follow the player instead of staying pinned to the
 ## facing the move began with.
-func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool) -> void:
+func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \
+		pitch_relaxes: bool = false, pitch_min_turned: float = -PI) -> void:
 	if not _has_look_constraint:
 		var body := get_parent()
 		if body is Node3D:
@@ -148,10 +155,14 @@ func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool) -> 
 	_look_min = min_c
 	_look_max = max_c
 	_look_absolute_yaw = absolute_yaw
+	_look_pitch_relaxes = pitch_relaxes
+	_look_pitch_min_turned = pitch_min_turned
 	_has_look_constraint = true
 
 func clear_look_constraint() -> void:
 	_has_look_constraint = false
+	_look_pitch_relaxes = false
+	_look_yaw_fraction = 0.0
 
 ## Hands the camera to a level-owned cutscene. Called once when the cutscene
 ## starts; the caller drives the pose every tick via set_cinematic_pose()
@@ -228,13 +239,23 @@ func apply_look(look_delta: Vector2, body: Node3D) -> void:
 		var relative: float = wrapf(next_yaw - reference, -PI, PI)
 		relative = clampf(relative, _look_min.y, _look_max.y)
 		body.rotation.y = reference + relative
+		# How far round the view has come, for the pitch clamp below.
+		var yaw_span: float = maxf(absf(_look_max.y if relative >= 0.0 else _look_min.y), 0.0001)
+		_look_yaw_fraction = clampf(absf(relative) / yaw_span, 0.0, 1.0)
 	else:
 		body.rotate_y(yaw_delta)
 
 	var pitch_min: float = -deg_to_rad(_config.camera.pitch_limit_deg)
 	var pitch_max: float = deg_to_rad(_config.camera.pitch_limit_deg)
 	if _has_look_constraint:
-		pitch_min = maxf(pitch_min, _look_min.x)
+		var floor_pitch: float = _look_min.x
+		if _look_pitch_relaxes:
+			# Eased open as the view turns away -- see
+			# MoveConfig.pitch_relaxes_with_yaw. Facing the constraint's own
+			# direction the floor is the declared one; at the edge of the yaw
+			# range it has reached pitch_min_turned_away.
+			floor_pitch = lerpf(_look_min.x, _look_pitch_min_turned, _look_yaw_fraction)
+		pitch_min = maxf(pitch_min, floor_pitch)
 		pitch_max = minf(pitch_max, _look_max.x)
 	_pitch = clampf(_pitch - look_delta.y * _config.camera.mouse_sensitivity, pitch_min, pitch_max)
 	rotation.x = _pitch

@@ -53,16 +53,33 @@ func _init() -> void:
 	#     min (8300, -16384, 0)  ->  pitch +45.6, yaw -90
 	#     max (16000, 16384, 0)  ->  pitch +87.9, yaw +90
 	#
-	# BOTH PITCH BOUNDS ARE ABOVE LEVEL. Hanging, the player cannot look down
-	# at all -- the view is pinned somewhere between 45 and 88 degrees up,
-	# which is the pose of someone holding a ledge above their head. The owner
-	# reported exactly this ("cannot look down"), and put the yaw range nearer
-	# 170 degrees than 180; the CDO says +-90 for a free hang, and reaches
-	# +-180 only in the shimmy-around-a-corner variants, which this project
-	# does not have.
+	# FACING THE WALL the view is pinned above level -- the arms are overhead
+	# and there is nothing below to look at -- which is what those two figures
+	# describe, and what the owner reported ("cannot look down").
+	#
+	# BUT NOT ONCE TURNED AWAY. A player hangs off a ledge specifically to drop
+	# from it, and before letting go they turn and look at what is underneath.
+	# A clamp that still refuses to look down makes the whole manoeuvre
+	# impossible, so the pitch floor eases open as the view comes round -- see
+	# MoveConfig.pitch_relaxes_with_yaw.
+	#
+	# The original does something of this kind: TdMove_Grab carries FOUR
+	# separate look-constraint pairs (HangFree, Slope, ShimmyAroundCorner,
+	# ShimmyAroundCornerFree) where every other move has one, and the dump does
+	# not record what selects between them. HangFree is the pair used here.
+	#
+	# ⚠️ The yaw range is the owner's, not the CDO's: they report not being able
+	# to turn a full circle either way, at around 170 degrees. The CDO's
+	# HangFree pair says +-90, which would be a much tighter fan than what they
+	# describe, and its ShimmyAroundCorner pairs reach +-180. Taking the
+	# reported figure, since it is the one measured against the actual game.
 	constrain_look = true
-	min_look_constraint = Vector3(deg_to_rad(45.6), -deg_to_rad(90.0), -PI)
-	max_look_constraint = Vector3(deg_to_rad(87.9), deg_to_rad(90.0), PI)
+	min_look_constraint = Vector3(deg_to_rad(45.6), -deg_to_rad(170.0), -PI)
+	max_look_constraint = Vector3(deg_to_rad(87.9), deg_to_rad(170.0), PI)
+	# ⚠️ PROJECT-DEFINED. Turned fully away, the view can look well below level
+	# -- far enough to see the ground under the drop.
+	pitch_relaxes_with_yaw = true
+	pitch_min_turned_away = -deg_to_rad(70.0)
 	# ⚠️ The CDO also sets bDisableFaceRotation, which this project does not
 	# implement (docs/feel-backlog.md 12). Absolute yaw is the stand-in: with
 	# the facing pinned, a relative clamp behaves as an absolute one.

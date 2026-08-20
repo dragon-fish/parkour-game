@@ -22,12 +22,20 @@ func _init() -> void:
 ## hanging pose at.
 @export var align_speed: float = 3.0
 
-## ✅ `GrabDesiredLedgeOffset = (30.0, 0.0, 92.8)` uu, converted: the body
-## settles 0.30 m back from the edge and 0.928 m below it.
+## From `GrabDesiredLedgeOffset = (30.0, 0.0, 92.8)` uu, but only the vertical
+## figure is taken literally.
 ##
-## The vertical figure is the one that matters most in play -- it is what makes
-## every hang look the same regardless of how the ledge was caught.
-@export var ledge_back_offset: float = 0.30
+## THE HORIZONTAL ONE CANNOT BE A BODY-CENTRE OFFSET. 30 uu is 0.30 m, and this
+## project's capsule has a radius of 0.40 m: settling a centre that close to the
+## edge would bury a tenth of a metre of the body in the wall. Whatever the
+## original measures it from -- the hands, the collision hull's face, some
+## anchor on the animation -- it is not the middle of the pawn.
+##
+## ⚠️ So this is derived rather than copied: one capsule radius, plus a little,
+## which is the closest the body can hang without intersecting the wall it is
+## hanging on. The vertical figure needs no such adjustment and is used as-is:
+## it is what makes every hang settle into the same pose however it was caught.
+@export var ledge_back_offset: float = 0.45
 @export var ledge_down_offset: float = 0.928
 
 ## ✅ `MinGrabLedgeAdjustDistance = 32` uu. Below this the body is already close
