@@ -46,9 +46,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# instead of committing. The press is read through the buffer rather
 		# than straight off this tick's input, so a crouch pressed just before
 		# touchdown — which is exactly what a roll is — still opens a slide on
-		# landing instead of being discarded in mid-air. The speed test is
-		# evaluated FIRST so its short-circuit leaves a too-slow press
-		# buffered rather than spending it.
+		# landing instead of being discarded in mid-air.
 		# GBA_Crouch is one key with five outlets (05 §5.2, confirmed by in-game
 		# measurement), and only three discriminators: airborne or touching down,
 		# horizontal speed, accumulated fall height.
@@ -58,14 +56,21 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		#   touchdown, fall <  2.0 m, moving -> Slide      (here)
 		#   grounded, not moving          -> Crouch
 		# There are no chords, no hold-versus-tap, no direction modifiers.
-		if player.horizontal_speed() >= config.slide.slide_abort_speed and player.consume_roll():
-			# Same floor-snap bias as the fall-through path below. Without it, a
-			# slide started on a downslope can leave the floor on this very tick
-			# and bounce straight back out to Falling.
-			player.velocity.y = -config.pawn.floor_snap_speed
-			player.move_and_slide()
-			player.set_grounded(player.is_on_floor())
-			return SLIDE
+		if player.consume_roll():
+			if player.horizontal_speed() >= config.slide.slide_abort_speed:
+				# Same floor-snap bias as the fall-through path below. Without
+				# it, a slide started on a downslope can leave the floor on
+				# this very tick and bounce straight back out to Falling.
+				player.velocity.y = -config.pawn.floor_snap_speed
+				player.move_and_slide()
+				player.set_grounded(player.is_on_floor())
+				return SLIDE
+			# The table's last row, which used to have no code behind it: too
+			# slow to earn a slide is not "nothing happens", it is a crouch.
+			# The press is spent either way now -- leaving it buffered was only
+			# ever correct while this branch had nowhere to send it, and it
+			# meant a crouch held while standing still did nothing at all.
+			return CROUCH
 
 		# Vaulting has to be earned with speed, or every waist-high box becomes a
 		# free elevator -- see SpeedVaultConfig.pick_variant()'s own entry
