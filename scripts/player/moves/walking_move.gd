@@ -88,11 +88,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# step-up. Free by design -- no speed cost, no state change -- so the only
 	# trace it leaves is the camera easing the rise out.
 	var rise: float = player.try_step_up(delta)
-	# Thresholded, not just non-zero: the probe now runs on ramps too (it can no
-	# longer tell them from a thin board, and refusing both was worse than
-	# refusing neither), so a slope would otherwise push a tiny offset every
-	# tick and read as a shaking screen.
-	if rise >= config.pawn.step_up_camera_min_rise and player.camera_rig != null:
+	# ANY rise, however small. A threshold here was tried and made things worse:
+	# a step often arrives over two or three ticks (0.299, then 0.077, 0.037,
+	# 0.012 as the body creeps onto it), and the ones below the threshold moved
+	# the body without compensating the camera -- which is a hard jump, exactly
+	# the flicker the offset exists to prevent. Ramps are refused inside
+	# try_step_up() now, so anything that still produces a rise is a real step.
+	if rise > 0.0 and player.camera_rig != null:
 		player.camera_rig.add_step_offset(rise)
 
 	# A small downward bias keeps the body glued to the floor across seams and

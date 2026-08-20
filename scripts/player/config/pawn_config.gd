@@ -78,20 +78,6 @@ extends Resource
 ## takes, and short enough that a genuine ledge exit within the window falls
 ## about 8 cm before Falling takes over -- below the threshold of noticing.
 @export var step_up_grace_time: float = 0.1
-## ⚠️ PROJECT-ADDED. The smallest step-up worth easing out in the camera.
-##
-## try_step_up() used to refuse ramps outright, on the contact normal, and the
-## reason it did was the CAMERA: a long ramp fires the probe every tick of the
-## ascent, and pushing an offset per tick reads as a shaking screen. But that
-## bail also refused every thin board (see try_step_up()'s own note on why a
-## rounded capsule cannot read a low obstacle's normal honestly), which is a
-## much worse failure than a shaky camera.
-##
-## So the probe now runs on everything and the camera filters instead. A ramp
-## being walked up yields a fraction of a centimetre per tick and is silently
-## absorbed; a board or a kerb hands over its whole height at once and gets the
-## ease-out it deserves.
-@export var step_up_camera_min_rise: float = 0.06
 ## Source: 02 §2.3 `WalkableFloorZ = 0.71` -> acos = 44.7 degrees. ✅
 ## Carried over from the old `min_walkable_normal_y = 0.7`, and now moved to
 ## the confirmed 0.71 -- which also lands it within a third of a degree of
