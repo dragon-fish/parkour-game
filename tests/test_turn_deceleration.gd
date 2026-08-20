@@ -237,3 +237,52 @@ func test_an_ordinary_turn_keeps_its_existing_calibration() -> void:
 	var energy := SpeedEnergy.new(pawn)
 	assert_almost_eq(energy.turn_rate_multiplier(450.0), 1.0, 0.0001, \
 		"the reference rate is no longer neutral")
+
+func test_turning_never_bills_below_the_base_speed() -> void:
+	# Reported from play, and the reason this exists: a hard flick could tax a
+	# runner all the way to a standstill, which reads as punishment rather than
+	# as a cost. In the original, however hard the view is swung, speed does not
+	# fall below roughly 16 km/h -- and speed_max_base_velocity (4.0 m/s) is the
+	# one number in the speed block that had no consumer.
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	await _run_up(world, 430)
+	var player: Player = world["player"]
+	var pawn := player.config.pawn
+	assert_gt(player.speed_energy.energy, 6.5, "never banked a full budget")
+
+	# Six full-speed flicks, far more than the budget could survive unfloored.
+	for f in 6:
+		for i in 6:
+			world["input"].state.move = world["input"].state.move.rotated(deg_to_rad(30.0))
+			await step(1)
+
+	var floor_energy: float = SpeedEnergy.energy_for_speed(pawn, pawn.speed_max_base_velocity)
+	assert_gt(player.speed_energy.energy, floor_energy - 0.001, \
+		"turning drained past the base-speed floor (%.3f vs %.3f)" \
+			% [player.speed_energy.energy, floor_energy])
+	assert_gt(player.speed_cap(), pawn.speed_max_base_velocity - 0.01, \
+		"the cap fell below base speed (%.2f m/s)" % player.speed_cap())
+
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_standing_still_still_empties_the_budget() -> void:
+	# The floor is for TURNING only. Decay has to keep emptying the budget, or
+	# standing still would leave the player permanently primed to run.
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	await _run_up(world, 430)
+	var player: Player = world["player"]
+	world["input"].state.move = Vector2.ZERO
+	for i in 400:
+		await step(1)
+	assert_almost_eq(player.speed_energy.energy, 0.0, 0.001, \
+		"standing still did not empty the speed budget")
+
+	TestWorld.teardown(world)
+	await step(1)

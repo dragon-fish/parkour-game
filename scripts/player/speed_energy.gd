@@ -102,7 +102,40 @@ func decay(delta: float) -> void:
 ## swung, and charging on angle alone makes planning a line worthless.
 func spend_turn(radians: float, delta: float) -> void:
 	var rate_deg: float = rad_to_deg(absf(radians)) / maxf(delta, 0.0001)
-	drain(_pawn.speed_turn_deceleration_factor * turn_rate_multiplier(rate_deg) 		* absf(radians))
+	var cost: float = _pawn.speed_turn_deceleration_factor 		* turn_rate_multiplier(rate_deg) * absf(radians)
+	# THE FLOOR. Turning bills against banked energy, but never below the
+	# energy that buys speed_max_base_velocity. Above that line speed is
+	# something the player EARNED by running, and turning gives it back; below
+	# it, speed is just walking pace, and taxing it means a flick of the mouse
+	# leaves the player standing still.
+	#
+	# Only turning is floored. decay() still empties the budget completely when
+	# the player stops, or standing still would leave them permanently primed.
+	var floor_energy: float = energy_for_speed(_pawn, _pawn.speed_max_base_velocity)
+	if energy <= floor_energy:
+		return
+	energy = maxf(energy - absf(cost), floor_energy)
+
+## The energy at which the speed curve first reaches `speed` -- the inverse of
+## curve_at(). Linear search over the same knots, so the two cannot disagree.
+##
+## Used for the turning floor above. Returns 0 for a speed at or below the
+## curve's start, and the last knot's energy for anything past its end.
+static func energy_for_speed(pawn: PawnConfig, speed: float) -> float:
+	var knots := pawn.speed_curve
+	if knots.is_empty():
+		return 0.0
+	if speed <= knots[0].y:
+		return knots[0].x
+	for i in range(1, knots.size()):
+		var a := knots[i - 1]
+		var b := knots[i]
+		if speed <= b.y:
+			var span := b.y - a.y
+			if span <= 0.0:
+				return b.x
+			return a.x + (b.x - a.x) * ((speed - a.y) / span)
+	return knots[knots.size() - 1].x
 
 ## Linear interpolation over pawn.turn_rate_cost_curve, clamped at both ends.
 ## Clamping rather than extrapolating on purpose: beyond the measured band the

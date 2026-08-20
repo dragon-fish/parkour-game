@@ -174,9 +174,16 @@ extends Resource
 ## Source: 02 §2.1 `SpeedMinBaseVelocity = 10` uu/s. ✅ Floor under the curve
 ## so a standing start is not literally frozen at the curve's own v(0) = 0.
 @export var speed_min_base_velocity: float = 0.1
-## Source: 02 §2.1 `SpeedMaxBaseVelocity = 400` uu/s. ✅ as a value,
-## ❓ as a role -- the research could not determine what it does in the
-## formula. Recorded so the number is not lost; nothing reads it.
+## Source: 02 §2.1 `SpeedMaxBaseVelocity = 400` uu/s. ✅ as a value.
+##
+## ROLE IS THIS PROJECT'S READING, not the research's: the floor below which
+## turning stops costing speed. The owner played the original and reported that
+## however hard the view is swung, speed never falls below roughly 16 km/h
+## (4.44 m/s) -- and this field, the one number in the whole speed block with
+## no known consumer, sits at 4.0 m/s. Close enough that giving it this job
+## explains both the observation and the field's existence.
+##
+## Read by SpeedEnergy.spend_turn(), via energy_for_speed().
 @export var speed_max_base_velocity: float = 4.0
 ## Source: 02 §2.1. ✅ as values, ⚠️ as direction (unverified by bytecode).
 ## Read as: energy accrues at (active factor / sprint factor) per second, so

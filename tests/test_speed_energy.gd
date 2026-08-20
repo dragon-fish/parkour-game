@@ -112,10 +112,16 @@ func test_energy_never_goes_negative() -> void:
 		energy.decay(1.0 / 60.0)
 	assert_almost_eq(energy.energy, 0.0, 0.0001, "energy went negative")
 
-func test_a_full_reversal_spends_the_entire_budget() -> void:
+func test_a_full_reversal_spends_the_budget_down_to_the_floor() -> void:
 	# The calibration the turn cost is set from: the original's own
 	# SpeedTurnDecelerationFactor = 10 has an unrecoverable unit, so the knob
 	# is pinned to a stated behaviour instead.
+	#
+	# DOWN TO THE FLOOR, not to zero. Turning stops billing at the energy that
+	# buys speed_max_base_velocity -- see spend_turn()'s own note on why, and
+	# test_turn_deceleration.gd for the behaviour that motivated it. The cost
+	# itself is unchanged and still exceeds the whole budget; the floor is what
+	# stops it being collected.
 	var pawn := _pawn()
 	var energy := SpeedEnergy.new(pawn)
 	energy.energy = 7.0
@@ -123,7 +129,8 @@ func test_a_full_reversal_spends_the_entire_budget() -> void:
 	# calibration without also pinning the rate gradient: 180 degrees swung at
 	# 450 deg/s takes 0.4 s. See pawn.turn_rate_cost_curve.
 	energy.spend_turn(PI, 0.4)
-	assert_almost_eq(energy.energy, 0.0, 0.02, "a 180 degree reversal did not spend the budget")
+	var floor_energy: float = SpeedEnergy.energy_for_speed(pawn, pawn.speed_max_base_velocity)
+	assert_almost_eq(energy.energy, floor_energy, 0.02, 		"a 180 degree reversal did not spend the budget down to the floor")
 
 func test_a_quarter_turn_costs_half_the_budget() -> void:
 	var pawn := _pawn()
