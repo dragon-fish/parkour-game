@@ -1438,3 +1438,89 @@ GDScript 直接 `Parse Error: Expected new line after "\"`。
 **修法是停手，整段按行重写，而不是继续在字符层面打补丁。**
 这个仓库里 `\` 续行已经被吞过三次（bash heredoc 一次、双引号反引号一次、这次）。
 **规矩：凡涉及续行或反引号的多行改写，一律整块替换，不做字符级修补。**
+
+## 46. VRM + CC0 动画包：完整管线，以及它的天花板
+
+目标是"给模型接上跑酷动画，并且第一人称不穿帮"。两件都做到了，这一节是**复现配方**。
+
+### 第一人称不穿帮：规范本来就带答案
+
+VRM 规范里有 first-person 网格标注，godot-vrm 实现了它。把导入设置
+`vrm/head_hiding_method` 从默认的 `0`（ThirdPersonOnly）改成 **`3`（Layers）**，
+导入器会**自己生成一个无头版本**并把两套放到不同渲染层。实测：
+
+| 网格 | 渲染层 |
+| --- | --- |
+| `Body (Headless)` | **2** |
+| `Body` / `Face` / `Hair` | **4** |
+
+而相机默认渲染**所有**层，所以两套同时画，脸和头发正好在眼睛的位置。
+**这就是穿帮的全部原因**——不需要一个个去藏网格，模型早就把答案带来了，
+相机只要选一边。`CameraRig._apply_body_layers()` 做这件事，
+第三人称反过来选，`camera_head_follow_strength` 之类一概不用动。
+
+⚠️ 只动两个配置的层，**层 1 永远不碰**——世界几何在那儿，
+用赋值而不是清位去构造遮罩会得到一块黑屏。测试专门钉了这条。
+
+### 动画重定向：名字对上就能跨骨架
+
+VRM **从不携带动画**（规范如此），导入后 `AnimationPlayer` 里只有 19 个表情
+（`blink` / `happy` / `aa` / `lookDown`…）。所以片段必须从别处来，并且要能套到另一副骨架上。
+
+Godot 的**导入期重定向**负责"套"。三步：
+
+1. **生成 BoneMap**：`tools/build_ual_bone_map.gd`。
+   动画包用的是 UE 人体模型命名（`pelvis` / `spine_01` / `clavicle_l` / `thigh_l`），
+   映射到 `SkeletonProfileHumanoid`，**53 根全中**。
+   用脚本生成而不是手写 `.tres`——格式猜错了排查更贵，而且这个文件同时是"什么对什么"的可读记录。
+
+2. **写进导入设置**。`.import` 里加一行：
+
+   ```
+   _subresources={ "nodes": { "PATH:Armature/Skeleton3D": { "rest_pose/external_animation_library": null, "retarget/bone_map": Resource("res://assets/animations/ual2_bone_map.tres") } } }
+   ```
+
+   ⚠️ 三个坑，我全踩了：`.import` **不是** `.tres`，里面不能用 `ExtResource()`，
+   要用 `Resource("res://…")`；改了 `.import` **不会**自动重导，
+   得删掉 `.godot/imported/<name>-*` 才会；以及我一开始加了一堆猜的
+   `retarget/rest_fixer/*` 键，反而让整块失效——**最小形式才生效**。
+
+3. **合并**。`Player.body_animation_library` 指向动画包，
+   `_merge_animation_library()` 在 `_wire_body_animation()` **之前**把片段拷进
+   身体自己的 `AnimationPlayer`（顺序很重要，否则状态机建好时还看不见它们）。
+   **身体自带的同名片段永远优先**——作者做的 `run` 不该被通用版静默顶掉。
+
+重定向之后，轨道地址变成 `%GeneralSkeleton:Hips` 这种
+**唯一名路径 + profile 骨骼名**。而 VRM 的骨架恰好也叫 `GeneralSkeleton`，
+所以**片段不用改一个字节就能播**。
+
+### 端到端实测
+
+```
+clips on body: 62
+Slide      -> Slide            WallClimb -> ClimbUp_1m
+Jump       -> NinjaJump_Start  Landing   -> NinjaJump_Land
+Walking    -> Walk_Carry
+LeftUpperLeg rotated 0.4735 rad over 20 ticks of Slide
+```
+
+最后一行是**唯一算数的证据**：骨头真的在动，不只是片段名对上了。
+
+### 天花板：免费包里没有跑酷
+
+Quaternius UAL2 的 **Standard（免费）层是一个奇幻/战斗集**——
+`Sword_*`、`Shield_*`、`Farm_*`、`Zombie_*`、一堆 `Idle_*` 变体。
+跑酷相关只有 `ClimbUp_1m`、`Slide`/`Slide_Start`/`Slide_Exit`、`NinjaJump_*`，
+**没有 run，没有 walk（只有 `Walk_Carry`），没有 vault，没有 roll，没有 wall run**。
+
+官方说"60-70% 免费"，但那不是每个类别的 60-70%，**是另一个子集**。Source 版 15 美元。
+
+所以现在的状态是：**管线通了，内容不够**。换一个有 locomotion 的包
+是纯粹的替换工作——`body_animation_library` 换个指向、跑一遍
+`build_ual_bone_map.gd`（如果新包骨骼命名不同就改 `MAPPING`）、补几条路由。
+
+### 另外
+
+片段用**包自己的名字**登记进 `_KNOWN_ANIMATION_CLIPS`，没有重命名成本项目的
+`idle`/`run` 六件套。理由：**叫 `Slide` 的片段是某一个包对滑铲的理解，不是本项目的**，
+把这个区别抹平，就是身体某天悄悄演出了另一个作者的意图的开始。
