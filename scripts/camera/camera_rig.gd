@@ -225,10 +225,25 @@ func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \
 func recentre_yaw_reference(yaw: float) -> void:
 	_yaw_reference = yaw
 	var body := get_parent()
-	if body is Node3D:
-		_look_relative_yaw = wrapf((body as Node3D).rotation.y - yaw, -PI, PI)
-	else:
+	if not (body is Node3D):
 		_look_relative_yaw = 0.0
+		return
+	var offset: float = wrapf((body as Node3D).rotation.y - yaw, -PI, PI)
+	# A re-centre can find the view OUTSIDE the fan it has just been measured
+	# against -- attaching to a wall at an angle is exactly that case, since the
+	# approach can be up to 57 degrees off the wall's own line while the fan is
+	# a quarter turn on one side of it.
+	#
+	# Clamped here rather than left to apply_look's own clamp next tick, and the
+	# correction handed to the eye's smoothing, because that clamp CUTS: the
+	# view would arrive at the fan's edge in a single frame. This is a scripted
+	# view change -- the wall moved the fan, not the player's hand -- so it
+	# eases. See docs/camera-authority.md.
+	var settled: float = clampf(offset, _look_min.y, _look_max.y) \
+		if _has_look_constraint else offset
+	if not is_equal_approx(settled, offset):
+		absorb_body_yaw(settled - offset)
+	_look_relative_yaw = settled
 
 ## Diagnostics for the debug HUD: how far the view has turned from the fan's
 ## centre, and the pitch floor currently in force. Both in radians.

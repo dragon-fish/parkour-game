@@ -18,6 +18,9 @@ var _aborted: bool = false
 ## Seconds since this attach began. The wall jump's entire execution gradient
 ## reads this and nothing else (see wall_jump_quality).
 var _time_on_wall: float = 0.0
+## Whether the look fan has been re-centred on the WALL yet. Deferred to the
+## first physics tick rather than done in enter(); see _recentre_on_wall().
+var _fan_centred: bool = false
 
 ## Guarded the same way SpeedVaultMove/GrabMove guard their own probe
 ## lookups: `player.probes` is null-checked at every call site rather than
@@ -51,6 +54,35 @@ func _query_wall() -> Dictionary:
 ## horizontal velocity. Called every time _normal is (re)assigned -- once in
 ## enter(), and again every tick in physics_update() -- so the tangent tracks
 ## the true wall surface instead of the angle it happened to have on attach.
+## Yaw that faces along the wall, in the direction of travel.
+##
+## THE FAN BELONGS TO THE WALL, NOT TO HOW YOU ARRIVED AT IT. Left to
+## set_look_constraint's own capture, the fan is centred on whatever the body
+## happened to be facing when it attached -- and the forward branch admits
+## approaches up to 57 degrees off the wall's line, so "look 90 degrees away"
+## meant something different on every attach. Exactly the mistake the ledge
+## hang made first, for exactly the same reason.
+##
+## Derived from _along, which is derived from the wall's own normal, so what
+## the fan is pinned to is the wall's geometry and nothing about the player.
+func _along_yaw() -> float:
+	# Body forward is -Z: rotating (0, 0, -1) by yaw gives (-sin, 0, -cos), so
+	# facing direction d means yaw = atan2(-d.x, -d.z).
+	return atan2(-_along.x, -_along.z)
+
+## Called once, on the first PHYSICS tick rather than in enter().
+##
+## Order is the reason: MoveManager pushes the look constraint AFTER the move's
+## enter() returns, and that push captures the reference itself whenever no
+## constraint was in force -- which is the case coming from Jump. A re-centre
+## done in enter() is overwritten a few microseconds later by the very call
+## that turns the fan on.
+func _recentre_on_wall() -> void:
+	if _fan_centred or player.camera_rig == null:
+		return
+	_fan_centred = true
+	player.camera_rig.recentre_yaw_reference(_along_yaw())
+
 func _derive_along() -> void:
 	var tangent: Vector3 = _normal.cross(Vector3.UP).normalized()
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
@@ -59,6 +91,7 @@ func _derive_along() -> void:
 func enter(_previous: StringName) -> void:
 	_time_on_wall = 0.0
 	_aborted = false
+	_fan_centred = false
 	# Wall running IS physics-driven, but grounded-ness is still DECLARED, never
 	# inferred -- P2 replaced is_on_floor() as the authority precisely so that
 	# no move can leave a stale value behind. This first declaration covers
@@ -247,6 +280,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Refreshed every tick, so the lockout it arms is measured from when the
 	# wall is LEFT rather than from when it was found. See Player's own note.
 	player.note_wall_contact(_normal, player.wall_side)
+	_recentre_on_wall()
 
 	# A wall jump is a fresh press, not a ground-style coyote jump: the
 	# jump/coyote timer only refills while player.grounded is true, and this

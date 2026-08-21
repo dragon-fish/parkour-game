@@ -163,3 +163,54 @@ func test_the_mouse_takes_the_sweep_back() -> void:
 	await step(20)
 	assert_lt(absf(float(player.camera_rig.look_debug()["relative_yaw"]) - caught), 0.3, \
 		"the sweep carried on after the player took the mouse back")
+
+# --- the fan belongs to the wall ---------------------------------------------
+
+func test_the_fan_is_centred_on_the_wall_not_on_the_approach() -> void:
+	# The same mistake the ledge hang made first: leaving the fan where
+	# set_look_constraint captured it centres it on whatever the body happened
+	# to be facing on attach. The forward branch admits approaches up to 57
+	# degrees off the wall's line, so "look 90 degrees away" would mean
+	# something different on every attach.
+	#
+	# Approached at an angle deliberately: the body is turned 25 degrees toward
+	# the wall before the attach, so a fan centred on the approach and a fan
+	# centred on the wall are 25 degrees apart and the assertion can tell them
+	# apart.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(20.0, 6.0, 1.0)
+	shape.shape = box
+	wall.add_child(shape)
+	get_tree().root.add_child(wall)
+	world["wall"] = wall
+	wall.global_position = Vector3(0.95, 3.0, 0.0)
+	wall.rotation = Vector3(0.0, PI * 0.5, 0.0)
+
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	input.press_jump()
+	await step(1)
+	# Facing skewed toward the wall, travelling along it. The run's own line is
+	# -Z; the body is looking 25 degrees off that.
+	player.rotation.y = -deg_to_rad(25.0)
+	player.velocity = Vector3(0.0, player.velocity.y, -7.0)
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
+		"test setup is wrong: the player never attached to the wall")
+
+	# The wall is on the right, so the legal fan is [0, +90] and a view skewed
+	# 25 degrees INTO it should read as clamped to the wall's own line -- not as
+	# a comfortable 0 in a fan that quietly moved to accommodate it.
+	var fan: Dictionary = player.camera_rig.look_debug()
+	var relative: float = float(fan["relative_yaw"])
+	assert_gt(relative, -0.001, \
+		"the fan followed the approach instead of the wall (%.1f degrees)" \
+		% rad_to_deg(relative))
+	assert_lt(relative, deg_to_rad(91.0), "the view left the fan entirely")
