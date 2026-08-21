@@ -36,12 +36,14 @@ func _init() -> void:
 	# absolute here reproduces the effect without the mechanism.
 	absolute_yaw_constraint = true
 
-## ⚠️ PROJECT-DEFINED. How long the roll owns the body.
+## ✅ MEASURED by the owner with a stopwatch in the original: about a second.
+## Nothing in the CDO says so -- the roll is carried on an animation there.
 ##
-## Long enough to read as a manoeuvre rather than a stumble, short enough that
-## it never feels like a punishment for landing correctly -- the roll is the
-## REWARD, and the 2 s Landing lockout is what it buys the player out of.
-@export var duration: float = 0.6
+## Was 0.6 while it was a guess, on the reasoning that it had to read as a
+## manoeuvre rather than a stumble without feeling like a punishment for landing
+## correctly. Nearly half again as long turns out to be right, which changes
+## what the move IS: at 0.6 it is a flourish, at 1.0 it is a commitment.
+@export var duration: float = 1.0
 
 ## ⚠️ PROJECT-DEFINED. How much of the banked speed budget survives the roll.
 ##
@@ -58,6 +60,22 @@ func _init() -> void:
 ## ControllerState is PlayerGrabbing, the hands are busy, and the original
 ## gives the player no say in where a roll goes.
 @export var speed_scale: float = 1.05
+
+## ✅ MEASURED: a roll carries the body about 3 m forward, and it is FORCED --
+## the owner's word. It happens whatever speed you arrived with, which is why
+## the owner also reports that rolling toward a cliff edge in the original rolls
+## you off it.
+##
+## A FLOOR, not a replacement for the carried speed. That reading is what makes
+## both halves true at once: a fast landing still converts its momentum into
+## forward travel through speed_scale above, and a straight drop -- which
+## arrives with no horizontal speed at all, and which the old code left rolling
+## on the spot -- still travels the measured 3 m.
+##
+## Consumed as a SPEED (distance over duration) rather than as a distance the
+## move integrates toward, so it composes with speed_scale by a plain maxf()
+## instead of needing its own arrival logic.
+@export var forced_distance: float = 3.0
 
 ## How far the view rotates about the pitch axis over the roll. A full turn:
 ## the body goes over, and in first person the view goes with it.

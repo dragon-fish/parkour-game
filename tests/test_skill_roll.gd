@@ -108,3 +108,32 @@ func test_the_roll_is_not_steerable() -> void:
 
 	TestWorld.teardown(world)
 	await step(1)
+
+# --- the measured shape of a roll ---------------------------------------------
+
+func test_the_roll_lasts_the_measured_second() -> void:
+	# ✅ MEASURED with a stopwatch in the original. Nothing in the CDO says so --
+	# the roll is carried on an animation there. It was 0.6 while it was a guess,
+	# and the difference changes what the move IS: at 0.6 a flourish, at 1.0 a
+	# commitment.
+	var config := MovementConfig.new()
+	assert_almost_eq(config.skill_roll.duration, 1.0, 0.0001, \
+		"the roll is not the measured second long")
+
+func test_a_roll_travels_the_measured_distance_even_from_a_dead_drop() -> void:
+	# ✅ MEASURED: a roll carries the body about 3 m forward, and it is FORCED --
+	# the owner's word, and the reason they report that rolling toward a cliff
+	# edge in the original rolls you off it.
+	#
+	# A DEAD DROP is the case that separates the two readings. Priced purely off
+	# the speed carried in, as it was, a straight fall arrives with no
+	# horizontal speed and the roll happens on the spot. The measurement says
+	# otherwise, so the distance is a FLOOR.
+	var config := MovementConfig.new()
+	var floor_speed: float = config.skill_roll.forced_distance / config.skill_roll.duration
+	assert_almost_eq(floor_speed, 3.0, 0.0001, \
+		"the forced travel does not work out at 3 m over the second")
+	# Momentum still wins when there is any: a fast landing converts it forward
+	# rather than being pinned back to walking pace.
+	assert_gt(6.0 * config.skill_roll.speed_scale, floor_speed, \
+		"a running landing would be slowed to the forced pace")

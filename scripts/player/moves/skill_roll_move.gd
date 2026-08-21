@@ -24,8 +24,24 @@ var _speed: float = 0.0
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	_speed = horizontal.length() * cfg.speed_scale
-	_direction = horizontal.normalized() if horizontal.length_squared() > 0.0001 else Vector3.ZERO
+	# maxf, so the measured 3 m is a FLOOR rather than a replacement: a fast
+	# landing still converts its momentum forward through speed_scale, and a
+	# straight drop -- which arrives with no horizontal speed at all -- still
+	# travels the distance the original travels. See SkillRollConfig.
+	var forced: float = cfg.forced_distance / maxf(cfg.duration, 0.001)
+	_speed = maxf(horizontal.length() * cfg.speed_scale, forced)
+	# A straight drop has no heading to roll along, so the body's own facing
+	# stands in. Without it the forced travel above has nowhere to go and the
+	# roll happens on the spot, which is not what the original does -- rolling
+	# toward a cliff edge there rolls you off it.
+	if horizontal.length_squared() > 0.0001:
+		_direction = horizontal.normalized()
+	else:
+		# Annotated, not inferred: `player` is deliberately untyped (see Move),
+		# so anything read through it arrives as Variant.
+		var facing: Vector3 = -player.global_transform.basis.z
+		facing.y = 0.0
+		_direction = facing.normalized() if facing.length_squared() > 0.0001 else Vector3.ZERO
 	# The budget survives, mostly. A landing hard enough to need rolling out of
 	# should still cost something, or there would be no reason ever to take the
 	# soft option -- but it must not cost much, or nobody would roll at all.
