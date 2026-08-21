@@ -47,6 +47,8 @@ extends MoveConfig
 @export var mantle_arc_height: float = 0.3
 
 func _init() -> void:
+	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
+	allows_turn = false  # legs busy: hanging. Which way you face is the wall's business.
 	# ✅ HangFreeMinLookContraint / HangFreeMaxLookContraint, at 65536 units =
 	# 360 degrees:
 	#

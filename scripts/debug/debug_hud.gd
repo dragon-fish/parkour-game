@@ -100,11 +100,10 @@ func _process(delta: float) -> void:
 func _wall_ahead_text() -> String:
 	if player.probes == null:
 		return "-"
-	var heading := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	if heading.length_squared() < 0.0001:
-		heading = -player.global_transform.basis.z
-		heading.y = 0.0
-	var hit: Dictionary = player.probes.wall_ahead_query(heading.normalized())
+	var heading: Vector3 = player.approach_direction()
+	if heading == Vector3.ZERO:
+		return "-"
+	var hit: Dictionary = player.probes.wall_ahead_query(heading)
 	if not hit.get("valid", false):
 		return "-"
 	var cfg: WallClimbConfig = player.config.wall_climb
@@ -115,8 +114,11 @@ func _wall_ahead_text() -> String:
 		verdict = "too oblique"
 	var angle: float = rad_to_deg(float(hit["incidence"]))
 	var allowed: float = rad_to_deg(cfg.vertical_start_angle)
-	var worth: float = WallClimbMove.climb_height(player.horizontal_speed(), player.velocity.y, cfg)
-	return "%-11s %4.1f deg of %.0f   +%.2f m" % [verdict, angle, allowed, worth]
+	# The RATE, not the height: the height is a constant, and what a run-up
+	# actually buys is getting there faster.
+	var rate: float = WallClimbMove.rise_speed(player.horizontal_speed(), cfg, player.config.pawn)
+	return "%-11s %4.1f deg of %.0f   +%.2f m at %.1f m/s" % [verdict, angle, allowed,
+		cfg.climb_height, rate]
 
 ## Yaw relative to the constraint's own centre, and the pitch floor in force --
 ## the two numbers that say whether a clamp is doing what it was asked to.

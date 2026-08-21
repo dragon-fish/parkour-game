@@ -22,6 +22,8 @@ extends MoveConfig
 @export var camera_pitch_offset: float = 0.35
 
 func _init() -> void:
+	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
+	allows_turn = false  # legs busy: absorbing the landing.
 	# ⚠️ Project-defined, mirroring WallRunConfig's own look lock. LandingMove
 	# ignores movement input outright for the whole lockout, and this pins the
 	# YAW to a small forward fan to match, rather than leaving the view free

@@ -112,9 +112,29 @@ func test_the_body_comes_all_the_way_round() -> void:
 func test_letting_the_window_lapse_drops_the_player() -> void:
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
-	await step(25)
-	assert_eq(player.move_manager.current_name, Move.FALLING, \
-		"the window lapsed without handing back to a fall")
+	# Past kick_window (0.75 s, 45 ticks), not merely past the freeze. The two
+	# were one number until the owner reported the grace period as too short to
+	# use -- "Q has to be followed by space immediately or you slide off" -- so
+	# a test that only outlasts the freeze would pass while proving nothing.
+	await step(50)
+	# Left the turn, rather than specifically Falling: the body is dropping by
+	# then, and from 1.5 m it may well have reached the floor and gone straight
+	# on to Walking. Either is the window closing; staying in Turn180 is not.
+	assert_ne(player.move_manager.current_name, Move.TURN_180, \
+		"the window lapsed without ever handing back")
+
+func test_the_kick_survives_well_past_the_freeze() -> void:
+	# The bug this split fixes, pinned directly: at 0.5 s the body is falling
+	# again but the chance to kick is still open.
+	var world := await _world_with_wall_ahead(6.0)
+	var player: Player = await _turning(world)
+	await step(30)
+	assert_eq(player.move_manager.current_name, Move.TURN_180, \
+		"the turn ended between the freeze and the end of the kick window")
+	(world["input"] as ScriptedInputSource).press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.JUMP, \
+		"a late kick, after the freeze but inside the window, was refused")
 
 # --- the kick ----------------------------------------------------------------
 
@@ -139,3 +159,74 @@ func test_the_kick_throws_the_player_away_from_the_wall() -> void:
 	(world["input"] as ScriptedInputSource).press_jump()
 	await step(1)
 	assert_gt(player.velocity.z, 0.0, "the kick sent the player back into the wall")
+
+# --- Q away from a wall ------------------------------------------------------
+#
+# The owner corrected the scope after the first version shipped: "why does Q
+# only work off a wall? Q works almost everywhere -- anywhere the legs are not
+# tied up, like a 180 while walking, or a 90 while wall running."
+
+func test_q_while_walking_turns_the_body_right_round() -> void:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	await step(2)
+	var facing_before := player.rotation.y
+	(world["input"] as ScriptedInputSource).press_turn()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.TURN_180, \
+		"Q while walking did not start a turn")
+	await step(15)
+	var turned: float = absf(wrapf(player.rotation.y - facing_before, -PI, PI))
+	assert_almost_eq(turned, PI, 0.02, "a walking turn did not come round half a turn")
+
+func test_a_walking_turn_keeps_its_momentum() -> void:
+	# Freezing is a WALL thing: the hang exists so there is time to decide
+	# whether to kick off. On the ground there is nothing to kick off and
+	# nothing to decide, and stopping the body dead would make Q a move nobody
+	# would ever press.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	await step(2)
+	player.velocity = Vector3(0.0, 0.0, -5.0)
+	(world["input"] as ScriptedInputSource).press_turn()
+	await step(3)
+	assert_gt(player.horizontal_speed(), 3.0, \
+		"a walking turn stopped the body dead (%.2f m/s left)" % player.horizontal_speed())
+
+func test_a_walking_turn_is_not_billed_as_a_mouse_swing() -> void:
+	# The turn tax is charged on the change in WISH direction, which a scripted
+	# half turn flips through 180 degrees in one tick. Billed, Q would be the
+	# most expensive key on the board.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	var input := world["input"] as ScriptedInputSource
+	input.state.move = Vector2(0.0, 1.0)
+	# Long enough to bank a real budget, so a charge would have something to
+	# take away and the assertion is not passing on an empty tank.
+	await step(150)
+	var banked: float = player.speed_energy.energy
+	assert_gt(banked, 0.5, "never banked enough energy for the charge to show (%.2f)" % banked)
+	input.press_turn()
+	await step(15)
+	assert_gt(player.speed_energy.energy, banked * 0.5, \
+		"the scripted turn was billed as a mouse swing (%.2f -> %.2f)" \
+		% [banked, player.speed_energy.energy])
+
+func test_a_move_with_its_legs_busy_refuses_the_turn() -> void:
+	# The gate is per-move data rather than a list kept somewhere else, so this
+	# checks the data. Slide is the clearest case: on the floor, mid-slide.
+	var config := MovementConfig.new()
+	assert_false(config.slide.allows_turn, "a slide allows a turn")
+	assert_false(config.grab.allows_turn, "a hang allows a turn")
+	assert_false(config.speed_vault.allows_turn, "a vault allows a turn")
+	assert_true(config.walking.allows_turn, "walking refuses a turn")
+	assert_true(config.wall_run.allows_turn, "a wall run refuses a turn")

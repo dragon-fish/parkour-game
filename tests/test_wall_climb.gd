@@ -90,36 +90,37 @@ func test_a_climb_can_still_become_a_grab_or_a_vault() -> void:
 	assert_true(config.wall_climb.check_for_grab, "a climb cannot reach for a ledge")
 	assert_true(config.wall_climb.check_for_vault_over, "a climb cannot turn into a vault")
 
-# --- the height a climb is worth ---------------------------------------------
+# --- how far, and how fast ---------------------------------------------------
+#
+# The first version of these tests pinned the OPPOSITE model: height bought
+# with speed, nothing without it. The owner corrected it from the original --
+# "the climb height seems unrelated to speed, but the rate of ascent is
+# affected" -- so what is pinned now is a fixed distance travelled at a
+# speed-dependent rate.
 
-func test_a_standing_kick_climbs_nothing() -> void:
-	# There is no base term anywhere in the CDO, and that is the design: the
-	# climb is bought with speed and is worth nothing without it.
+func test_a_motionless_kick_still_climbs() -> void:
+	# Standing pressed against a wall, W and space, climbs in the original.
+	# The base rate is derived so that such a kick arrives with nothing to
+	# spare, so this is really asking whether the derivation holds.
 	var cfg := WallClimbConfig.new()
-	assert_almost_eq(WallClimbMove.climb_height(0.0, 0.0, cfg), 0.0, 0.0001, \
-		"a motionless kick was worth height")
+	var pawn := PawnConfig.new()
+	var standing := WallClimbMove.rise_speed(0.0, cfg, pawn)
+	var needed: float = sqrt(2.0 * pawn.gravity * cfg.gravity_scale * cfg.climb_height)
+	assert_almost_eq(standing, needed, 0.0001, 		"a motionless kick cannot reach the height a climb is supposed to travel")
 
-func test_height_saturates_at_the_two_limits_added() -> void:
+func test_a_run_up_buys_rate_and_not_height() -> void:
 	var cfg := WallClimbConfig.new()
-	var most := WallClimbMove.climb_height(99.0, 99.0, cfg)
-	assert_almost_eq(most, cfg.run_speed_height + cfg.rise_speed_height, 0.0001, \
-		"height did not saturate at 0.6 + 1.3 metres")
+	var pawn := PawnConfig.new()
+	assert_gt(WallClimbMove.rise_speed(cfg.run_speed_limit, cfg, pawn), 		WallClimbMove.rise_speed(0.0, cfg, pawn), "a run-up bought no extra rate")
+	# The height is a plain constant with no speed anywhere near it. Asserted
+	# rather than assumed, because the previous model made it a function and
+	# nothing but a test would notice it quietly becoming one again.
+	assert_almost_eq(cfg.climb_height, 1.6, 0.0001, "the climb distance is not fixed at 1.6 m")
 
-func test_only_rising_counts_toward_the_vertical_term() -> void:
-	# Falling onto a wall buys nothing. This is what makes kicking EARLY in a
-	# jump worth so much more than kicking at the apex, which is how the
-	# original rewards the timing.
+func test_the_rate_bonus_saturates() -> void:
 	var cfg := WallClimbConfig.new()
-	var rising := WallClimbMove.climb_height(4.0, 3.2, cfg)
-	var falling := WallClimbMove.climb_height(4.0, -3.2, cfg)
-	var flat := WallClimbMove.climb_height(4.0, 0.0, cfg)
-	assert_gt(rising, flat, "rising into the wall bought no extra height")
-	assert_almost_eq(falling, flat, 0.0001, "falling into the wall was priced as rising")
-
-func test_a_faster_run_up_buys_a_higher_climb() -> void:
-	var cfg := WallClimbConfig.new()
-	assert_gt(WallClimbMove.climb_height(6.5, 0.0, cfg), \
-		WallClimbMove.climb_height(3.0, 0.0, cfg), "a faster run-up climbed no higher")
+	var pawn := PawnConfig.new()
+	assert_almost_eq(WallClimbMove.rise_speed(999.0, cfg, pawn), 		WallClimbMove.rise_speed(cfg.run_speed_limit, cfg, pawn), 0.0001, 		"the rate kept climbing past run_speed_limit")
 
 # --- the probe ---------------------------------------------------------------
 

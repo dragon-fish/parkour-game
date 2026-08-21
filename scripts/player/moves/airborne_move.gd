@@ -78,11 +78,17 @@ func probe_transition() -> StringName:
 	# This is also why the wall run's forward branch below is UNCHANGED at 57
 	# rather than being narrowed to 33-57. Narrowing it would be the same
 	# behaviour expressed twice, and the second copy would rot.
+	# NO SPEED GATE, unlike the wall run's. A first version mirrored
+	# wall_running_min_speed here; the owner corrected it from the original --
+	# standing still, pressed against a wall, W and space climbs. What gates a
+	# climb instead is INTENT, which is what approach_direction() carries: a
+	# body going nowhere and asking for nothing returns ZERO, and a zero
+	# approach is refused below.
 	if c.check_for_wall_climb and player.probes != null \
-			and player.horizontal_speed() >= config.wall_climb.min_speed \
 			and player.move_manager.can_enter(WALL_CLIMB):
-		var heading_at: Vector3 = Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()
-		var ahead: Dictionary = player.probes.wall_ahead_query(heading_at)
+		var heading_at: Vector3 = player.approach_direction()
+		var ahead: Dictionary = Probes.NO_WALL_AHEAD if heading_at == Vector3.ZERO \
+			else player.probes.wall_ahead_query(heading_at)
 		if ahead["valid"] and ahead["tall_enough"] \
 				and float(ahead["incidence"]) <= config.wall_climb.vertical_start_angle:
 			return WALL_CLIMB

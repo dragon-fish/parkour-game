@@ -38,6 +38,8 @@ extends MoveConfig
 @export var recovery_time: float = 1.0
 
 func _init() -> void:
+	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
+	allows_turn = false  # legs busy: on the floor, mid-slide.
 	# See recovery_time above: the cooldown is enforced through the generic
 	# redo gate MoveManager already applies to every move.
 	redo_move_time = recovery_time

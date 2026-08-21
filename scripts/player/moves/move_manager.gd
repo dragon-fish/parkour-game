@@ -149,7 +149,15 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	if _current == null:
 		return
 	_tick_cooldowns(delta)
-	var next: StringName = _current.physics_update(delta, input)
+	# Q is arbitrated HERE, not inside each move, because the owner's rule is
+	# about the whole move set rather than about any one move: "Q works almost
+	# everywhere -- anywhere the legs are not tied up". A move opts OUT through
+	# its own allows_turn, so a move added later gets the turn for free and a
+	# move that must not have it says so beside its other facts. Checked before
+	# the active move runs, so the tick a turn starts is the turn's tick.
+	var next: StringName = _turn_requested(input)
+	if next == Move.KEEP:
+		next = _current.physics_update(delta, input)
 	if next == Move.KEEP or next == current_name:
 		_check_declared_grounded()
 		_push_look_constraint()
@@ -270,3 +278,14 @@ func _push_look_constraint() -> void:
 		active.absolute_yaw_constraint, active.pitch_relaxes_with_yaw, \
 		active.pitch_min_turned_away, active.pitch_relax_yaw_threshold, \
 		active.pitch_recover_speed)
+
+## TURN_180 if Q was pressed and the active move will allow it, KEEP otherwise.
+func _turn_requested(input: MoveInput) -> StringName:
+	if not input.turn_pressed or current_name == Move.TURN_180:
+		return Move.KEEP
+	if not _moves.has(Move.TURN_180) or not can_enter(Move.TURN_180):
+		return Move.KEEP
+	var active: MoveConfig = _current.current_config()
+	if active == null or not active.allows_turn:
+		return Move.KEEP
+	return Move.TURN_180

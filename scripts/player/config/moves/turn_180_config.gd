@@ -11,6 +11,8 @@ extends MoveConfig
 # you fall." Every clause of that has a field.
 
 func _init() -> void:
+	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
+	allows_turn = false  # already turning. Q again mid-turn is nothing.
 	# ✅ RedoMoveTime = 0.5.
 	redo_move_time = 0.5
 	# ✅ FrictionModifier = 0.3.
@@ -34,7 +36,30 @@ func _init() -> void:
 ## For the window's duration the body holds still -- no gravity, no input --
 ## which is what makes the turn feel like a decision point rather than a
 ## flourish performed on the way down.
+##
+## THIS IS THE FREEZE, NOT THE OPPORTUNITY. They were one number to begin with,
+## and the owner reported the result: "the grace period is too short -- Q has to
+## be followed by space immediately or you slide off." Enlarging this would have
+## been the easy fix and the wrong one, since 0.3 is confirmed. What was wrong
+## was reading a field named DisableMovementTime as the whole move's length: it
+## says how long INPUT IS DISABLED, and says nothing about when the chance to
+## kick expires. See kick_window.
 @export var disable_movement_time: float = 0.3
+
+## How long space still kicks off the wall, counted from the start of the turn.
+##
+## ⚠️ PROJECT-DEFINED. Past disable_movement_time the body is falling again, so
+## the tail of this window is a genuine grace period: you are already dropping,
+## and a late press still catches. Long enough that Q and space are two
+## deliberate presses rather than a chord.
+@export var kick_window: float = 0.75
+
+## Gravity during the tail, after the freeze and before the window closes.
+##
+## ⚠️ PROJECT-DEFINED, and deliberately gentle: this is still a body braced
+## against a wall, not one in free fall. Full gravity here would drop the player
+## far enough in the remaining window that the extra time bought nothing.
+@export var falling_gravity_scale: float = 0.35
 
 ## How long the body takes to come round. ⚠️ PROJECT-DEFINED: the original
 ## carries the turn on an animation, and there is no duration in the CDO.

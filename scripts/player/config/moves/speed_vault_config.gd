@@ -1,6 +1,10 @@
 class_name SpeedVaultConfig
 extends MoveConfig
 
+func _init() -> void:
+	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
+	allows_turn = false  # legs busy: hands and feet are both on the obstacle.
+
 # The Godot counterpart of the original's TdMove_SpeedVault.
 
 ## How far ahead of the body the vault probe reaches.

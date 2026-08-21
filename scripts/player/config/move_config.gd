@@ -88,3 +88,18 @@ extends Resource
 @export var check_for_grab: bool = false
 @export var check_for_vault_over: bool = false
 @export var check_for_wall_climb: bool = false
+
+## Whether Q may start a turn out of this move.
+##
+## DEFAULT TRUE, and the exceptions are what carry the meaning. The owner's rule
+## is "Q works almost everywhere -- anywhere the legs are not tied up", which is
+## the original's MovementGroup showing through: a move in MG_TwoHandsBusy or
+## mid-animation has no spare limbs to spin on. Turning it off is therefore a
+## statement about a specific move, and belongs on that move's own config
+## beside its other facts, not in a list somewhere else that has to be kept in
+## step with the move set.
+##
+## ⚠️ The GROUPING is project-defined. The original expresses it as a
+## MovementGroup enum this project has not modelled, and modelling one for a
+## single consumer would be a mechanism rather than a fact.
+@export var allows_turn: bool = true

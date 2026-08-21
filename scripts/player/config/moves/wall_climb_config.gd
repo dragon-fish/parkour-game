@@ -58,10 +58,18 @@ func _init() -> void:
 ## and then climb it, and a longer reach here reads as being sucked in.
 @export var check_distance: float = 0.6
 
-## ⚠️ PROJECT-DEFINED, mirroring `wall_running_min_speed`: you have to be
-## MOVING at the wall for a kick to mean anything. Standing against a wall and
-## jumping is a jump, not a climb.
-@export var min_speed: float = 2.0
+## Whether a MOTIONLESS kick is allowed. It is.
+##
+## This started life as a min_speed gate mirroring wall_running_min_speed, on
+## the reasoning that you have to be moving at a wall for a kick to mean
+## anything. THE OWNER CORRECTED IT FROM THE ORIGINAL: standing still, pressed
+## against a wall, W and space climbs. Kept as a named field rather than deleted
+## so the corrected behaviour is visible rather than merely absent.
+##
+## What replaces the speed gate is INTENT: a climb needs the player either
+## moving at the wall or pressing into it. Without that, jumping straight up
+## while happening to stand near a wall would climb it.
+@export var allow_standing_kick: bool = true
 
 @export_group("Climb")
 
@@ -77,22 +85,41 @@ func _init() -> void:
 ## body stopped against the wall rather than still drifting along it.
 @export var horizontal_friction: float = 6.0
 
-## The climb's height is BOUGHT WITH SPEED, and buys nothing without it. There
-## is no base term anywhere in the CDO, which is the point: a standing kick
-## goes nowhere.
+## HOW FAR A KICK CARRIES YOU UP. A constant -- speed does not buy height.
 ##
-## ✅ `AddOnSpeed2DHeight = 60` uu at `AddOnSpeed2DMaxLimit = 650` uu/s, and
-## ✅ `AddOnSpeedZHeight = 130` uu at `AddOnSpeedZMaxLimit = 320` uu/s. Each
-## contribution ramps linearly with its own speed and saturates at its own
-## limit, so the most a climb can ever be worth is 1.9 m.
+## The first version of this move had it the other way round: height bought
+## with speed, worth nothing standing still, priced off `AddOnSpeed2DHeight`
+## and `AddOnSpeedZHeight`. THE OWNER CORRECTED IT FROM THE ORIGINAL, in one
+## sentence that rules out that whole reading: "the climb height seems
+## unrelated to speed, but the rate of ascent is affected".
 ##
-## The Z term is why a kick taken on the way UP out of a jump climbs so much
-## further than one taken at the top of the arc -- twice the height for the
-## same run-up, which matches how the original rewards jumping early.
-@export var run_speed_height: float = 0.6
+## So the two AddOn fields are ⚠️ NOT height at all in the sense assumed, or
+## they add to a base that lives in PHYS_WallClimbing's own code rather than in
+## the CDO. Either way they are not consumed here any more, and what they do
+## mean is now an open question rather than a settled one.
+##
+## Speed still shows up in the climb twice, which is why it feels like it
+## matters: it raises the rate of ascent (below), and a running jump makes
+## CONTACT higher up its arc than a standing one, so the same fixed climb
+## starts from a higher place. The owner reported exactly that second effect
+## independently -- "when taking off with a run-up, the kick starts higher".
+##
+## ⚠️ 1.6 m is about a body height: enough that a kick puts a lip that was out
+## of reach into grabbing range, which is the whole job.
+@export var climb_height: float = 1.6
+
+## How fast the body goes up, with no run-up at all.
+##
+## ⚠️ DERIVED, not chosen: set so that a motionless kick, decelerating under
+## the half gravity above, arrives at climb_height with nothing to spare. That
+## is what makes a standing climb read as "just about makes it" while costing
+## no separate tuning knob of its own -- see WallClimbMove.rise_speed().
+@export var rise_speed_bonus: float = 1.0
+
+## The run speed at which rise_speed_bonus is fully earned. ⚠️ PROJECT-DEFINED,
+## matching PawnConfig's own ground speed closely enough that ordinary running
+## reaches it.
 @export var run_speed_limit: float = 6.5
-@export var rise_speed_height: float = 1.3
-@export var rise_speed_limit: float = 3.2
 
 ## ✅ `WallClimbingMaxDistance2D = 120` uu as a VALUE. ❓ as a role: the field
 ## name says a horizontal distance and says nothing about from what.

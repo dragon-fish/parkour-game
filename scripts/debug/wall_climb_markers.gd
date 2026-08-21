@@ -15,11 +15,12 @@ extends Node3D
 #       orange  a wall, but shorter than MinWallHeight -- vault or mantle it
 #       (nothing drawn at all means the probe sees no wall)
 #
-#   SPAR rising from the contact point to WHERE THIS RUN-UP WOULD REACH
-#       The climb's height is bought with speed and is worth nothing without
-#       it, so the useful question before committing is not "is there a wall"
-#       but "how high does what I am carrying get me". The spar answers that
-#       live: run faster, or kick earlier in the jump, and watch it grow.
+#   SPAR rising from the contact point to WHERE A KICK WOULD END
+#       A fixed length, because a climb travels a fixed distance -- what a
+#       run-up buys is arriving sooner, not arriving higher. Drawn anyway, and
+#       drawn from the contact point rather than from the feet, because that is
+#       the question worth answering before committing: does the top of this
+#       spar clear the lip I am trying to reach?
 #
 # Queried every frame regardless of state, not only while climbing -- seeing
 # what the probe thinks about a wall BEFORE jumping at it is most of the value.
@@ -85,15 +86,13 @@ func _hide_all() -> void:
 func _process(_delta: float) -> void:
 	if player == null or player.probes == null or _contact == null:
 		return
-	var heading := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	# Standing still there is no heading to measure an angle against, so the
-	# facing stands in. Without this the verdict flickers to "too oblique" the
-	# moment the player stops, which is exactly when they are most likely to be
-	# stood there looking at the marker trying to understand it.
-	if heading.length_squared() < 0.0001:
-		heading = -player.global_transform.basis.z
-		heading.y = 0.0
-	heading = heading.normalized()
+	# The same direction the entry test measures against, so the marker cannot
+	# disagree with the decision it is illustrating. ZERO means standing still
+	# asking for nothing, which is a refusal rather than an angle.
+	var heading: Vector3 = player.approach_direction()
+	if heading == Vector3.ZERO:
+		_hide_all()
+		return
 
 	var hit: Dictionary = player.probes.wall_ahead_query(heading)
 	if not hit.get("valid", false):
@@ -110,18 +109,13 @@ func _process(_delta: float) -> void:
 	# Reconstructed rather than returned by the probe: the query answers
 	# questions about the WALL, and where a ray happened to touch it is this
 	# node's business alone.
-	var contact: Vector3 = player.global_position - heading * 0.0
-	contact += heading * float(hit["distance"])
+	var contact: Vector3 = player.global_position + heading * float(hit["distance"])
 	contact.y = player.global_position.y + Probes.WALL_AHEAD_CHEST_Y
 	_contact.global_position = contact
 	_tint(_contact, verdict)
 	_contact.visible = true
 
-	# Priced from what the player is carrying RIGHT NOW, by the move's own
-	# function rather than a copy of it -- a marker that drifts from the
-	# behaviour it illustrates is worse than no marker.
-	var height: float = WallClimbMove.climb_height( \
-		player.horizontal_speed(), player.velocity.y, cfg)
+	var height: float = cfg.climb_height
 	if height <= 0.01 or not tall_enough or not square_enough:
 		_reach.visible = false
 		return

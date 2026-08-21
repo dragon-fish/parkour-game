@@ -16,26 +16,30 @@ var _normal: Vector3 = Vector3.ZERO
 var _aborted: bool = false
 ## Where the climb started, horizontally. Only max_drift consumes it.
 var _anchor: Vector2 = Vector2.ZERO
+## The height this climb ends at, fixed on entry. A climb travels a SET
+## DISTANCE; what a run-up buys is arriving sooner, not arriving higher.
+var _ceiling: float = 0.0
 
 func _query() -> Dictionary:
 	if player.probes == null:
 		return Probes.NO_WALL_AHEAD.duplicate()
-	var heading: Vector3 = Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()
-	return player.probes.wall_ahead_query(heading)
+	return player.probes.wall_ahead_query(player.approach_direction())
 
-## The height this climb is worth, from the speeds it started with.
+## How fast this climb goes up, given the run-up it started with.
 ##
-## Static and taking its inputs plainly, so the entry test can price a climb
-## without one having to happen -- and so the debug markers can show the player
-## what their current run-up would buy before they commit to it.
-static func climb_height(run_speed: float, rise_speed: float, cfg: WallClimbConfig) -> float:
-	var from_run: float = cfg.run_speed_height \
-		* clampf(run_speed / maxf(cfg.run_speed_limit, 0.001), 0.0, 1.0)
-	# Only RISING counts. Falling onto a wall buys nothing, which is what makes
-	# kicking early in a jump worth so much more than kicking at the apex.
-	var from_rise: float = cfg.rise_speed_height \
-		* clampf(maxf(rise_speed, 0.0) / maxf(cfg.rise_speed_limit, 0.001), 0.0, 1.0)
-	return from_run + from_rise
+## THE BASE IS DERIVED, NOT CHOSEN: it is exactly the speed at which a body
+## decelerating under the climb's own half gravity arrives at climb_height with
+## nothing left. A standing kick therefore always just makes it, whatever
+## climb_height and gravity_scale are later retuned to, and only the BONUS is a
+## knob anyone has to think about.
+##
+## Static and taking its inputs plainly, so the debug markers and the HUD can
+## show what a run-up is currently worth before the player commits to it.
+static func rise_speed(run_speed: float, cfg: WallClimbConfig, pawn: PawnConfig) -> float:
+	var climb_gravity: float = maxf(pawn.gravity * cfg.gravity_scale, 0.001)
+	var base: float = sqrt(2.0 * climb_gravity * maxf(cfg.climb_height, 0.0))
+	var earned: float = clampf(run_speed / maxf(cfg.run_speed_limit, 0.001), 0.0, 1.0)
+	return base + cfg.rise_speed_bonus * earned
 
 func enter(_previous: StringName) -> void:
 	_aborted = false
@@ -47,16 +51,15 @@ func enter(_previous: StringName) -> void:
 		return
 	_normal = wall["normal"]
 
-	# Priced BEFORE the run-up is spent, using the speeds that were carried
-	# into the wall. Doing it after the friction below would price the climb
-	# from a body that has already stopped.
-	var wanted: float = climb_height(player.horizontal_speed(), player.velocity.y, cfg)
-	var climb_gravity: float = config.pawn.gravity * cfg.gravity_scale
-	var rise: float = sqrt(2.0 * maxf(climb_gravity, 0.001) * maxf(wanted, 0.0))
+	# Priced BEFORE the run-up is spent: the friction below is about to take it
+	# away, and pricing afterwards would read every climb as a standing one.
+	#
 	# maxf, not assignment: a player already rising faster than the kick is
 	# worth keeps what they had. Taking the larger of the two is what stops a
 	# well-timed early kick from being PUNISHED by touching the wall.
-	player.velocity.y = maxf(player.velocity.y, rise)
+	player.velocity.y = maxf(player.velocity.y,
+		rise_speed(player.horizontal_speed(), cfg, config.pawn))
+	_ceiling = player.global_position.y + cfg.climb_height
 
 	# The run-up's forward momentum is spent on the wall, not carried through
 	# it. Without this the body keeps pressing into the surface and the slide
@@ -65,16 +68,9 @@ func enter(_previous: StringName) -> void:
 	if into < 0.0:
 		player.velocity -= _normal * into
 
-func physics_update(delta: float, input: MoveInput) -> StringName:
+func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:
 		return FALLING
-
-	# Q, at any point in the climb. Checked before the wall is re-queried
-	# because the turn does not need a wall to still be there -- by the time
-	# the player has decided to spin, the climb is over either way.
-	if input.turn_pressed and player.move_manager.can_enter(TURN_180):
-		player.pending_wall_normal = _normal
-		return TURN_180
 
 	var wall: Dictionary = _query()
 	if not wall["valid"]:
@@ -106,6 +102,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# phase: sliding back down a wall is not a thing the original does, and
 	# half-gravity on the way down would read as floating.
 	if player.velocity.y <= 0.0:
+		return FALLING
+	# ...or the moment it has gone as far as a climb goes. Whatever upward
+	# speed is left is handed on rather than discarded, so a fast kick carries
+	# a little past the top instead of being stopped dead at it.
+	if player.global_position.y >= _ceiling:
 		return FALLING
 	var drift: float = Vector2(player.global_position.x, player.global_position.z).distance_to(_anchor)
 	if drift > cfg.max_drift:

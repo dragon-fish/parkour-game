@@ -50,15 +50,6 @@ var pending_vault_variant: Dictionary = {}
 ## vantage point can only disagree.
 var pending_ledge: Dictionary = {}
 
-## The wall WallClimbMove was on when Q was pressed, handed across to
-## Turn180Move on the same channel as the two above.
-##
-## Handed over rather than re-queried for the reason the turn exists: once the
-## body has come round, the wall is BEHIND it, and the forward probe that found
-## it cannot see it any more. Turn180Move needs it after the turn, to kick off
-## in the right direction. Cleared by that move's exit().
-var pending_wall_normal: Vector3 = Vector3.ZERO
-
 ## Whether the player is standing on something. DECLARED by the active state
 ## rather than read from is_on_floor(), because scripted-move states drive the
 ## body's position directly and never call move_and_slide() — is_on_floor()
@@ -1345,6 +1336,24 @@ func wish_direction(input: MoveInput) -> Vector3:
 		return Vector3.ZERO
 	return dir.normalized()
 
+## Which way the body is going AT something, as a unit vector, or ZERO if it is
+## going nowhere and asking for nothing.
+##
+## Horizontal velocity when there is any, and the player's own wish direction
+## when there is not. That fallback is the whole point: the owner reports that
+## in the original you can stand pressed against a wall, motionless, hold W and
+## jump, and climb it. Measured from velocity alone that approach is a right
+## angle to every wall in the world, so no head-on test can ever pass.
+##
+## Not merely defaulting to the FACING, which would be the obvious third
+## option: a player standing near a wall and jumping straight up while happening
+## to look at it has asked for nothing, and would get a climb anyway.
+func approach_direction() -> Vector3:
+	var travelling := Vector3(velocity.x, 0.0, velocity.z)
+	if travelling.length_squared() > 0.0001:
+		return travelling.normalized()
+	return wish_direction(last_input) if last_input != null else Vector3.ZERO
+
 func horizontal_speed() -> float:
 	return Vector2(velocity.x, velocity.z).length()
 
@@ -1480,6 +1489,23 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 		# geometry, or still climbing toward a ceiling already paid for.
 		# Neither banks anything; neither is a reason to bleed, either.
 		pass
+
+## Resynchronises the turn tax to wherever the body is facing NOW, so the swing
+## that just happened costs nothing.
+##
+## For SCRIPTED turns only. The tax is charged on the change in wish direction
+## (see _charge_turn below), which models a player swinging the view and the
+## body fighting to follow. A move that rotates the body itself is not that: it
+## is an animation the player asked for by name. Without this, pressing Q while
+## holding W flips the wish direction through half a circle in one tick and the
+## tax bills the whole thing -- which would make Q the most expensive key on
+## the board and the turn a move nobody would ever use.
+##
+## Deliberately a RESYNC and not a suppression flag: whatever the player does
+## on the tick after the turn is charged normally, measured from the facing the
+## turn actually left them with.
+func forgive_turn() -> void:
+	_last_wish_dir = wish_direction(last_input) if last_input != null else Vector3.ZERO
 
 ## Turning is a continuous tax with no free allowance (10.1 mechanic 3): the
 ## research searched for a "costs nothing below N degrees" parameter and
