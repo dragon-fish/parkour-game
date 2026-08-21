@@ -1579,7 +1579,7 @@ func air_accelerate(wish_dir: Vector3, delta: float) -> void:
 ## produced it: the body's yaw, the view's own pitch against the floor
 ## currently in force, or the rig's trailing lag. A report can only say "it
 ## jumped"; this says which of the three jumped, and by how much.
-@export var debug_grab_camera: bool = true
+@export var debug_grab_camera: bool = false
 var _grab_cam_last_origin: Vector3 = Vector3.ZERO
 var _grab_cam_last_forward: Vector3 = Vector3.ZERO
 var _grab_cam_has_last: bool = false
