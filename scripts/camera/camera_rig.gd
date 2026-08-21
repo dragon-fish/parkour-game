@@ -89,19 +89,31 @@ var _look_relative_yaw: float = 0.0
 ## their own turns via absorb_body_yaw(); nothing is inferred.
 var _scripted_yaw_lag: float = 0.0
 
-## The attached body's head/neck node position, in THIS rig's PARENT's
-## (Player's) local space -- i.e. Player.to_local(head_node.global_position)
-## -- as of the most recent set_head_position() call. Meaningless whenever
-## _has_head is false. Driven by Player every physics tick, mirroring
-## set_wall_side()/set_crouch_amount(); see update_effects()'s own use of it
-## for the head-follow camera.
-var _head_local_position: Vector3 = Vector3.ZERO
-## True only for ticks Player actually supplied a head position -- i.e. a
-## body is attached AND Player._find_head_node() matched something visible
-## in it. update_effects() must gate on this rather than comparing
-## _head_local_position against a sentinel: Vector3.ZERO is itself a
-## perfectly legitimate head position, so treating it as "no head" would
-## silently misread a real, if centred, head as absent.
+## How far the attached body's head/neck node has moved FROM ITS REST POSE,
+## in this rig's parent's (Player's) local space, as of the most recent
+## set_head_offset() call. Meaningless whenever _has_head is false.
+##
+## A DISPLACEMENT, not a position, and that distinction is the whole point.
+## This used to hold the head's absolute local position and update_effects()
+## lerped the eye toward it, which conflated two unrelated things: where the
+## eye belongs, and how the head moves. The eye's resting place is a decision
+## (eye_height, and in practice a little ahead of the neck, as first-person
+## games place it); the head node's origin is wherever the model's author put
+## it. Blending between them dragged the eye toward the second and, at any
+## strength below 1, still left the head sliding through the view -- while at
+## strength 1 it threw the first away entirely and parked the camera inside
+## the neck.
+##
+## Carrying the displacement instead lets both be true at once: the eye keeps
+## its own resting place AND rides the head exactly, which is what stops the
+## body reaching the camera at all.
+var _head_local_offset: Vector3 = Vector3.ZERO
+## True only for ticks Player actually supplied a head offset -- i.e. a body is
+## attached AND Player._resolve_head_node() matched something in it.
+## update_effects() must gate on this rather than comparing _head_local_offset
+## against a sentinel: Vector3.ZERO is exactly what a head at rest reports, so
+## treating it as "no head" would misread a perfectly attached, momentarily
+## still body as absent.
 var _has_head: bool = false
 
 ## True while a level-owned cutscene (DeathSequence, currently the only
@@ -188,18 +200,18 @@ func absorb_body_yaw(radians: float) -> void:
 	const MAX_LAG := 0.35
 	_scripted_yaw_lag = clampf(_scripted_yaw_lag - radians, -MAX_LAG, MAX_LAG)
 
-## The attached body's head/neck node position, in Player's local space
-## (Player.to_local(head_node.global_position)) -- see _head_local_position's
-## own comment. Called by Player every tick a head is available.
-func set_head_position(local_position: Vector3) -> void:
-	_head_local_position = local_position
+## How far the attached body's head/neck node has moved from its rest pose, in
+## Player's local space -- see _head_local_offset. Called by Player every tick
+## a head is available.
+func set_head_offset(local_offset: Vector3) -> void:
+	_head_local_offset = local_offset
 	_has_head = true
 
 ## Called by Player every tick NO head is available -- no body attached, or
-## the attached body has nothing _find_head_node() could match. Must be
+## the attached body has nothing _resolve_head_node() could match. Must be
 ## called explicitly rather than relying on a timeout: a stale _has_head left
-## true from a body that has since gone away would otherwise keep blending
-## toward a head position nothing is updating any more.
+## true from a body that has since gone away would otherwise keep offsetting
+## the eye by a displacement nothing is updating any more.
 func clear_head_position() -> void:
 	_has_head = false
 
@@ -559,28 +571,30 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var cap: float = _config.pawn.max_step_height
 	base_position.y += clampf(_eye_ground_y - body_y, -cap, cap)
 
-	# Blend the eye position toward the attached body's head/neck node, LAST
-	# among the base_position.* writes above -- lerp(t=0.0) returns
-	# `base_position` bit-for-bit (Vector3.lerp is exactly a + (b-a)*t, and
-	# any finite delta times 0.0 is exactly 0.0 in IEEE 754), which is what
-	# makes camera_head_follow_strength == 0.0 degrade to EXACTLY today's
-	# camera rather than merely close to it -- and _has_head being false (no
-	# body, or nothing in it matched _find_head_node()) takes the plain
-	# `position = base_position` branch below, the same guarantee. Blending
-	# FROM base_position (recomputed above, this frame, from nothing) rather
-	# than from the previous frame's `position` is what keeps this a one-shot
-	# fraction instead of an exponential approach: `position` is read here
-	# only as the assignment target, never as an input. Deliberately no
-	# move_toward/easing layer of its own: the attached body's own
-	# AnimationPlayer already supplies whatever motion this tracks, and the
-	# strength dial is meant to scale that directly, not add a second lag on
-	# top of it. Clamped independently of whatever range the F1 panel's
-	# slider can reach (see CameraConfig.camera_head_follow_strength's own
-	# comment on why its range and this clamp can disagree) so a value pushed
-	# past 1.0 can never overshoot past the bone's own position.
+	# ADD the head's displacement to the eye, LAST among the base_position.*
+	# writes above. Not a blend toward the head's position -- see
+	# _head_local_offset for why that conflated two different things and could
+	# not be made to work at any strength.
+	#
+	# The owner found this from a symptom rather than from the code: with a
+	# body attached, its NECK kept passing through the view during a run, while
+	# standing still looked perfectly fine. Their reading is exactly right --
+	# if the eye rode the head, the head could never reach it, so the clipping
+	# IS the measurement that it did not. Anything the eye fails to follow
+	# becomes relative motion between it and the skull it is supposed to sit
+	# inside, and geometry moving 9 cm past a camera that moved 1 cm is what
+	# that looks like.
+	#
+	# Multiplying rather than lerping also keeps the degrade-to-nothing
+	# guarantee that mattered before: strength 0.0 contributes exactly
+	# Vector3.ZERO (any finite vector times 0.0 is exactly 0.0 in IEEE 754), so
+	# it is bit-for-bit the camera this project has without a body, as is
+	# _has_head being false. Clamped independently of whatever range the F1
+	# panel's slider reaches, so a value pushed past 1.0 cannot overshoot the
+	# head's own motion.
 	if _has_head:
 		var strength := clampf(_config.camera.camera_head_follow_strength, 0.0, 1.0)
-		position = base_position.lerp(_head_local_position, strength)
+		position = base_position + _head_local_offset * strength
 	else:
 		position = base_position
 

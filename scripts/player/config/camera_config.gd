@@ -146,21 +146,37 @@ extends Resource
 ## current position). ORIENTATION is never affected by this value -- see
 ## CameraRig.update_effects()'s own comment -- only translation.
 ##
-## Defaulted LOW, not somewhere in the middle: this project's own body
-## wrapper's run/jump clips were authored to be watched from behind, not worn
-## as a first-person view, and a full-strength follow is expected to read as
-## nauseating rather than merely "a bit much". The intent is for an owner to
-## dial UP from a calm baseline until it starts to bother them, not dial DOWN
-## from something already uncomfortable.
+## THIS IS NOT A "HOW MUCH HEAD BOB" DIAL. It is how firmly the eye rides the
+## skull, and the owner worked that out from a symptom rather than from the
+## code: with a body attached, its NECK kept passing through the view during a
+## run, while standing still and looking down was perfectly fine. Their reading
+## is exactly right -- if the eye rode the head, the head could never reach it,
+## so the clipping IS the measurement that it did not.
 ##
-## NOTE: the F1 panel's sliders size themselves to RANGE_FACTOR (3x) the
-## property's own default with no upper-bound hint of their own (see
-## tuning_panel.gd) -- at this low a default the live slider cannot reach the
-## full 1.0 "follows the node completely" end at all. CameraRig.update_effects()
-## clamps to [0, 1] regardless, so this is a live-tuning reach limitation, not
-## a correctness one; a preset .tres file or a direct script edit can still
-## reach 1.0 if that is ever worth doing.
-@export var camera_head_follow_strength: float = 0.15
+## Whatever fraction is not followed becomes RELATIVE motion between the eye
+## and the skull it is meant to sit inside. Against a body that bobs its head
+## 9 cm per stride (measured -- docs/feel-backlog.md 42), 0.15 gave the eye
+## 1.3 cm of that and left the other 7.6 cm as head sliding through it.
+##
+## 1.0 is therefore the value that MEANS anything, and it now costs nothing to
+## use: what is followed is the head's DISPLACEMENT FROM ITS REST POSE, not its
+## absolute position, so the eye keeps wherever it was placed -- eye_height,
+## and in practice a little ahead of the neck, as first-person games place it
+## -- and only inherits the motion. (Before, following at 1.0 would have parked
+## the camera on the head node's own origin and thrown that placement away.)
+##
+## The honest cost is the bob itself: at 1.0 you inherit the whole of whatever
+## the body's animation was authored with. For the owner's current body that is
+## 9 cm, against the 1-3 cm a first-person view tolerates -- not a setting to
+## fix but a fact about a clip authored to be watched from behind. Their own
+## words: an animation not made for first person is very hard to keep a
+## straight face through. The answer there is a body whose motion was authored
+## for first person, or a third-person view -- not a fraction of this one,
+## which only trades nausea for clipping.
+##
+## 0.0 opts out entirely and restores the purely procedural eye (eye_height
+## plus bob/dip/crouch), bit-for-bit what every body-less setup already gets.
+@export var camera_head_follow_strength: float = 1.0
 ## Camera roll while wall running, in degrees. Lowered from 14.0 alongside
 ## the camera bob amplitude cut (see CameraConfig.bob_amplitude) per the
 ## owner's playtest direction that camera roll should come down together

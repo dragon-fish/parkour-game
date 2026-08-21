@@ -286,8 +286,19 @@ var body: Node3D = null
 ## to track, or null if there is no body or nothing in it matched. Resolved
 ## once, in _attach_body(), by _find_head_node() -- see its own comment for
 ## the search. Read every physics tick by _physics_process() to feed
-## CameraRig.set_head_position()/clear_head_position().
+## CameraRig.set_head_offset()/clear_head_position().
 var head_node: Node3D = null
+
+## Where head_node sat, in this Player's local space, BEFORE any animation had
+## a chance to move it -- captured once in _attach_body(). The head-follow
+## camera reports displacement from here rather than an absolute position, so
+## the eye keeps its own resting place and only inherits the head's MOTION.
+## See CameraRig._head_local_offset.
+##
+## Captured at attach, not on the first physics tick: _wire_body_animation()
+## activates the AnimationTree immediately, so by the first tick the pose has
+## already moved and "rest" would be one arbitrary frame of a run cycle.
+var head_rest_local: Vector3 = Vector3.ZERO
 
 var _standing_height: float = 0.0
 
@@ -679,6 +690,8 @@ func _attach_body(scene: PackedScene) -> void:
 	body.transform = body_mount_transform()
 	_wire_body_animation(body)
 	head_node = _resolve_head_node(body)
+	if head_node != null:
+		head_rest_local = to_local(head_node.global_position)
 
 ## Every clip name CharacterAnimator's _target_animation() knows how to ask
 ## for, across every state (see that function for the per-state fallback
@@ -1014,7 +1027,7 @@ func _physics_process(delta: float) -> void:
 		# that produced it, matching how every other per-tick input here
 		# (speed, grounded, wall_side) is already a value, not an object.
 		if head_node != null:
-			camera_rig.set_head_position(to_local(head_node.global_position))
+			camera_rig.set_head_offset( 				to_local(head_node.global_position) - head_rest_local)
 		else:
 			camera_rig.clear_head_position()
 		# travel_speed(), NOT horizontal_speed() — see travel_speed()'s note on
