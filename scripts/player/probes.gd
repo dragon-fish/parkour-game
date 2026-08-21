@@ -193,6 +193,24 @@ func _aim_forward(ray: RayCast3D, reach: float) -> void:
 ## reproduces exactly the values that used to be hardcoded here -- origin +2.2,
 ## length 3.2 -- so this is a re-derivation of the committed rig, not a retune
 ## of it.
+## _query_surface(), but with the ray STOPPED just above the highest sample that
+## hit rather than run all the way down to the feet.
+##
+## The column scan already knows roughly where the obstacle's top must be: it is
+## above the highest sample that hit and below the first that did not. Ending
+## the ray there stops it sailing past a thin obstacle's top and reporting the
+## floor beyond, which is what made a chain-link fence invisible.
+##
+## `above` is a WORLD y.
+func _query_surface_above(reach: float, above: float) -> void:
+	var tallest_reachable: float = maxf(_config.grab.ledge_max_height, _config.speed_vault.table_ceiling())
+	var origin_y: float = tallest_reachable - _foot_offset + SURFACE_ORIGIN_MARGIN
+	_surface.position = Vector3(0.0, origin_y, -reach)
+	var stop_at: float = above - MIN_HEIGHT_EPSILON
+	var length: float = maxf((global_position.y + origin_y) - stop_at, 0.01)
+	_surface.target_position = Vector3(0.0, -length, 0.0)
+	_surface.force_raycast_update()
+
 func _query_surface(reach: float) -> void:
 	var tallest_reachable: float = maxf(_config.grab.ledge_max_height, _config.speed_vault.table_ceiling())
 	var origin_y: float = tallest_reachable - _foot_offset + SURFACE_ORIGIN_MARGIN
@@ -236,24 +254,28 @@ func vault_query() -> Dictionary:
 	# can get your hands on top of while jumping -- about eye height. So:
 	#
 	#   * the LOWEST sample that hits is where the face begins on the body
-	#   * if the TOP sample -- at the eye -- still hits, the obstacle is not
-	#     something to vault at all. It is a wall, and the grab probe's
-	#     business.
+	#   * if the TOP sample -- at hand reach, 1.89 m above the feet -- still
+	#     hits, the obstacle is not something to vault at all. It is a wall,
+	#     and the grab probe's business.
 	#
 	# Measured from the FEET, and the feet move: the same duct is a vault when
 	# met at the top of a jump and a wall when met from standing. That is not a
 	# special case, it is what the frame predicts, and it is what the owner
 	# observed as "with good jump timing even a taller obstacle vaults".
 	var feet: float = _feet_y()
-	var eye: float = _config.camera.eye_height + _foot_offset
+	# ✅ 1.89 m, measured twice from two different approaches. NOT the eye -- see
+	# SpeedVaultConfig.max_edge_above_feet. A vault is a hands-on-top move, so
+	# its ceiling is hand reach, which is a little above the head.
+	var reach_ceiling: float = _config.speed_vault.max_edge_above_feet
 	var reach: float = _config.speed_vault.vault_reach
 	var lowest_face := Vector3.ZERO
 	var lowest_normal := Vector3.ZERO
+	var highest_hit_y: float = feet
 	var found := false
-	var blocked_at_eye := false
+	var blocked_at_reach := false
 	for i in COLUMN_SAMPLES:
 		var t: float = float(i) / float(COLUMN_SAMPLES - 1)
-		var sample_y: float = lerpf(feet + COLUMN_FLOOR_MARGIN, feet + eye, t)
+		var sample_y: float = lerpf(feet + COLUMN_FLOOR_MARGIN, feet + reach_ceiling, t)
 		_vault_low.position.y = sample_y - global_position.y
 		_aim_forward(_vault_low, reach)
 		if not _vault_low.is_colliding():
@@ -267,12 +289,13 @@ func vault_query() -> Dictionary:
 		if normal.y >= _config.pawn.walkable_floor_z:
 			continue
 		if i == COLUMN_SAMPLES - 1:
-			blocked_at_eye = true
+			blocked_at_reach = true
+		highest_hit_y = maxf(highest_hit_y, sample_y)
 		if not found:
 			found = true
 			lowest_face = _vault_low.get_collision_point()
 			lowest_normal = normal
-	if not found or blocked_at_eye:
+	if not found or blocked_at_reach:
 		return _no_hit()
 
 	var to_face := lowest_face - global_position
@@ -283,11 +306,35 @@ func vault_query() -> Dictionary:
 	# close up -- measured, it stopped reporting an obstacle about a metre out,
 	# because the anchor sailed past it. See Move.touching() for the bug that
 	# hid behind.
-	_query_surface(distance + LEDGE_ANCHOR_MARGIN)
-	if not _surface.is_colliding():
+	# TWO TRIES, WITH A NARROWING FORWARD OFFSET.
+	#
+	# The anchor has to land ON the obstacle's top: too short and it grazes the
+	# face plane it is meant to clear, too long and it sails past the far face
+	# onto whatever is behind. LEDGE_ANCHOR_MARGIN (0.1) is tuned for the first
+	# risk and loses to the second on anything THIN -- a chain-link fence is
+	# 8 cm deep, so a 10 cm margin steps straight over it and finds the floor.
+	#
+	# Retrying at a smaller offset costs one raycast on the thin case and
+	# nothing at all on every other, which is cheaper than a depth estimate
+	# this rig has no way to make.
+	var top: Vector3 = Vector3.ZERO
+	var top_normal: Vector3 = Vector3.ZERO
+	var landed := false
+	for margin in [LEDGE_ANCHOR_MARGIN, LEDGE_ANCHOR_MARGIN * 0.3]:
+		_query_surface_above(distance + margin, highest_hit_y)
+		if not _surface.is_colliding():
+			continue
+		var point: Vector3 = _surface.get_collision_point()
+		# Below the highest sample that HIT means the anchor missed the
+		# obstacle and found something behind or beneath it.
+		if point.y < highest_hit_y - 0.01:
+			continue
+		top = point
+		top_normal = _surface.get_collision_normal()
+		landed = true
+		break
+	if not landed:
 		return _no_hit()
-	var top: Vector3 = _surface.get_collision_point()
-	var top_normal: Vector3 = _surface.get_collision_normal()
 	var height := top.y - feet
 
 	# NO LONGER A REFUSAL. Whether the top is walkable decides where the vault

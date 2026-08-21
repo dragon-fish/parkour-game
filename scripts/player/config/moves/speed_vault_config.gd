@@ -241,3 +241,27 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## predicted never arrives. Generously longer than the largest MaxDistanceTime
 ## in the table, so it only ever fires on a genuine miss.
 @export var approach_timeout: float = 0.6
+
+## HOW HIGH ABOVE THE FEET AN OBSTACLE'S TOP MAY BE AND STILL BE VAULTED.
+##
+## ✅ MEASURED TWICE, from two entirely different approaches, agreeing to two
+## centimetres:
+##
+##   chain-link fence, running jump    feet 0.76, top 2.64  ->  1.88
+##   AC unit, wall climb converting    feet 2.06, top 3.96  ->  1.90
+##
+## Both read at the frame the vault COMMITS, so both are pure subtraction with
+## no model in them. See docs/feel-backlog.md 26 and 29.
+##
+## MEASURED FROM THE FEET, AND THE FEET MOVE. That is the whole reason the same
+## obstacle vaults or does not depending on the jump: the owner's "with good
+## jump timing even a taller building can trigger VaultOver" is not a special
+## case, it is what this frame predicts. It is also why a wall climb can convert
+## into a vault part-way up -- the climb raises the feet until the top comes
+## within reach.
+##
+## Anatomically this sits a little ABOVE the eye (1.66 above the feet here),
+## which is right: a vault peaks BELOW the obstacle's own top and the feet never
+## clear it, because it is a hands-on-top move. What you can vault is what you
+## can get your hands on top of.
+@export var max_edge_above_feet: float = 1.89
