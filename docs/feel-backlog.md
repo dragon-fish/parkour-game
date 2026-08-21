@@ -1364,3 +1364,77 @@ GUT 有现成的 `assert_push_warning(text)`：认领它。一举两得——
 
 写含反引号的中文技术文档，一律走**带引号的 heredoc**（`<<'PY'`），
 不要用双引号包住的 `-c`。这个仓库里已经栽过 `\` 续行被吞的同类跟头。
+
+## 45. VRM 管线实测：我标红的两件事，一件不存在，一件比想的更小
+
+使用者从 VRoid 导了一份素模（`test.vrm`，13 MB，脸和头发面数砍到极低——反正头要藏），
+装上 `godot-vrm` + `Godot-MToon-Shader` 实测。之前我把两件事标为"必须先撞的坑"，结果：
+
+### ❌ 我预测错的：VRM 的头是骨骼，现有机制找不到
+
+**错了，而且是好的方向。** godot-vrm 会自己建 `BoneAttachment3D`：
+
+```
+_resolve_head_node -> GeneralSkeleton/Head
+Head node class = BoneAttachment3D
+```
+
+`BoneAttachment3D` 是会跟着骨骼走的节点，所以**头部跟随开箱即用**，
+既不用改 `_resolve_head_node()`，也不用手动挂附着点。
+
+我当时的推理是"VRM 的骨骼在 `Skeleton3D` 里、不是节点，BFS 找不到"——
+前半句对，后半句错，因为我没料到导入器会替你建附着节点。**又一次纸上推理。**
+
+### ✅ MToon 在 Forward+ 下正常
+
+材质读出来是 `mtoon_cutout` / `mtoon_trans` / `mtoon_trans_cull_off` /
+`mtoon_cutout_cull_off`，四个变体都正确挂上了。
+
+这个风险本来是"渲染器可能不支持"，但使用者中途自己把项目从
+**GL Compatibility 换成了 Forward+**，顺手把它消解了。
+
+### 身高：差 8%，不是差一个次元
+
+之前我建议"把模型捏到 1.8 m 高"，被使用者一句话驳倒：
+
+> 二次元女性 1.8m 高，那叫进击的巨人
+
+他是对的，**我优化错了变量**。要钉死的只有"眼睛在离脚 1.66 m"，
+而模型身高不必等于胶囊高度——差多少用**挂载缩放**补，第一人称里根本没有绝对尺度参照物。
+
+实测数据（`standing_height = 1.8`，`eye_height = 0.76`，即眼离脚 1.66）：
+
+| 骨骼 | 离脚高度 | 若按它对齐所需缩放 |
+| --- | --- | --- |
+| `Neck` | 1.398 | 1.187 |
+| `Head` | 1.473 | **1.127** ← 错的那个 |
+| `LeftEye` / `RightEye` | **1.535** | **1.081** ← 对的那个 |
+
+**必须按眼睛骨骼算，不能按 `Head`。** humanoid 的 `Head` 骨骼原点在**颅底**，
+拿它去对齐眼高会把真正的眼睛顶到相机上方——**6 cm 的误差，就因为问错了骨头。**
+
+于是新增 `Player.body_mount_scale`。缩放进 **basis**、`origin` 不动：
+脚原点模型绕自己原点缩放，而挂载点本来就把它放在那里，
+所以**改缩放永远不会让身体陷地或悬空**（测试钉住了 0.5×/1.0×/1.081×/2.0× 四档）。
+
+### 还缺的：动画
+
+VRM 自带 `AnimationPlayer`，但里面的 19 个片段全是**表情混合形状**——
+`RESET / aa / angry / blink / ee / happy / ih / lookDown / lookLeft ...`
+**一个位移动画都没有**，符合 VRM 规范（它从不携带动画）。
+
+所以 VRM 路线的下一步仍然是 Quaternius UAL2（CC0，含 parkour）+ 重定向。
+好消息是骨架是 146 根的标准 humanoid（`Hips / Spine / Chest / UpperChest` +
+VRoid 自己的 `J_Sec_*` 次级骨），`motion_scale ≈ 0.997`，
+`SkeletonProfileHumanoid` 重定向的前提是具备的。
+
+### 工具上的教训（第三次了）
+
+改 `body_root.gd` 的续行时，Python 替换串里把 `\` 写成了字面量 `\n`，
+GDScript 直接 `Parse Error: Expected new line after "\"`。
+**接着我用 `rindex` 定位去修，反而改坏了上一行**——因为 `"\n"`
+在源码里是"反斜杠+字母 n"，而上一行结尾是"反斜杠+真换行"，两者在搜索时混淆了。
+
+**修法是停手，整段按行重写，而不是继续在字符层面打补丁。**
+这个仓库里 `\` 续行已经被吞过三次（bash heredoc 一次、双引号反引号一次、这次）。
+**规矩：凡涉及续行或反引号的多行改写，一律整块替换，不做字符级修补。**

@@ -39,6 +39,7 @@ var _preview: Node3D = null
 var _previewed_scene: PackedScene = null
 var _previewed_offset: Vector3 = Vector3.ZERO
 var _previewed_rotation: Vector3 = Vector3.ZERO
+var _previewed_scale: float = 1.0
 var _has_built: bool = false
 
 func _ready() -> void:
@@ -57,7 +58,8 @@ func _process(_delta: float) -> void:
 		return
 	if _has_built and player.body_scene == _previewed_scene \
 			and player.body_mount_offset == _previewed_offset \
-			and player.body_mount_rotation_degrees == _previewed_rotation:
+			and player.body_mount_rotation_degrees == _previewed_rotation \
+			and is_equal_approx(player.body_mount_scale, _previewed_scale):
 		return
 	_rebuild_preview()
 
@@ -92,6 +94,7 @@ func _rebuild_preview() -> void:
 	_previewed_scene = player.body_scene
 	_previewed_offset = player.body_mount_offset
 	_previewed_rotation = player.body_mount_rotation_degrees
+	_previewed_scale = player.body_mount_scale
 
 	if player.body_scene == null:
 		return
@@ -112,5 +115,6 @@ func _rebuild_preview() -> void:
 	# which a placeholder instance permits; only its own instance methods
 	# are off-limits.
 	_preview.transform = Player.compute_mount_transform(
-		capsule.height, player.body_mount_offset, player.body_mount_rotation_degrees
+		capsule.height, player.body_mount_offset, player.body_mount_rotation_degrees,
+		player.body_mount_scale
 	)

@@ -241,6 +241,30 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## Player, not MovementConfig.
 @export var body_mount_rotation_degrees: Vector3 = Vector3.ZERO
 
+## Uniform scale applied to the attached body, so a model authored at its own
+## natural height can sit on this project's capsule without being rebuilt.
+##
+## The capsule is 1.8 m with the eye 1.66 m above the feet, both ✅ measured
+## from the original -- and those are the numbers every threshold in the game
+## hangs off (reach 1.87, vault ceiling 1.89, standing apex 1.24). They do not
+## move to suit a model. But the MODEL does not have to be 1.8 m for its eyes
+## to land at 1.66: an anime character built at a normal height and scaled up a
+## few percent reads as itself, whereas one actually modelled at 1.8 m reads,
+## in the owner's words, as Attack on Titan.
+##
+## Their VRoid test export measured 1.535 m to the eye bones, so 1.081 -- eight
+## percent, invisible in first person, where there is no absolute-scale
+## reference in view at all.
+##
+## Scale the EYES onto eye_height, not the head bone: a humanoid Head bone's
+## origin sits at the base of the skull, and matching that instead puts the real
+## eyes above the camera. The same export reads 1.473 at the head bone and 1.535
+## at the eyes -- 6 cm of error for asking the wrong bone.
+##
+## Feet stay pinned to the capsule bottom regardless: a feet-origin model scales
+## about its own origin, which is exactly where the mount already places it.
+@export var body_mount_scale: float = 1.0
+
 ## Which node inside `body_scene` the head-follow camera should track, as a
 ## path RELATIVE TO THE BODY INSTANCE'S ROOT. Empty (the default) falls back
 ## to _find_head_node()'s name search.
@@ -426,9 +450,15 @@ func current_capsule_radius() -> float:
 ## runs this same compiled code whether Player is a live object or a
 ## placeholder, so BodyRoot can call it directly instead of maintaining a
 ## second copy of the formula that could quietly drift from this one.
-static func compute_mount_transform(capsule_height: float, mount_offset: Vector3, mount_rotation_degrees: Vector3) -> Transform3D:
+static func compute_mount_transform(capsule_height: float, mount_offset: Vector3, 		mount_rotation_degrees: Vector3, mount_scale: float = 1.0) -> Transform3D:
 	var origin := Vector3(0.0, -capsule_height * 0.5, 0.0) + mount_offset
-	var basis := Basis.from_euler(mount_rotation_degrees * (PI / 180.0))
+	# Scale goes into the BASIS, with the origin untouched. A model whose own
+	# origin is at its feet therefore scales about its feet, which is precisely
+	# where this mount has already put it -- so changing the scale never lifts
+	# the body off the floor or sinks it into one. Guarded against zero and
+	# negatives: either would collapse or mirror the body, and neither is
+	# something anyone means by "how tall".
+	var basis := Basis.from_euler(mount_rotation_degrees * (PI / 180.0)) 		.scaled(Vector3.ONE * maxf(mount_scale, 0.001))
 	return Transform3D(basis, origin)
 
 ## The local Transform3D the visible body sits at under BodyRoot: vertical
@@ -446,7 +476,7 @@ static func compute_mount_transform(capsule_height: float, mount_offset: Vector3
 ## is the actual shared logic -- see its own comment for why that split
 ## exists.
 func body_mount_transform() -> Transform3D:
-	return compute_mount_transform(current_capsule_height(), body_mount_offset, body_mount_rotation_degrees)
+	return compute_mount_transform(current_capsule_height(), body_mount_offset, 		body_mount_rotation_degrees, body_mount_scale)
 
 ## True when a standing body would FIT with its feet at `feet_point`.
 ##

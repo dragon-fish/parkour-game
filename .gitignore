@@ -75,3 +75,10 @@ scenes/sandbox.tscn
 # is exactly how they got committed once; this entry is why it cannot happen
 # again.
 dist/
+.output/
+
+# The owner's VRoid test export, kept local while the VRM pipeline is
+# being validated. Their own creation, so the licence is theirs to set --
+# untracked for now because "is this the model" is not yet decided, not
+# because it could not be.
+assets/models/test.vrm
