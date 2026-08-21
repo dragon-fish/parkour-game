@@ -229,5 +229,27 @@ func build() -> CharacterBody3D:
 	probes.add_child(wall_right)
 	wall_right.owner = player
 
+	# FORWARD rays, for the wall you are running AT rather than the one you are
+	# running ALONG. The two side rays above cannot answer that question: aimed
+	# straight out to left and right, a head-on approach points them along the
+	# wall's own face, where they hit nothing. See Probes.wall_ahead_query().
+	#
+	# Both are positioned and aimed per query from the live config, like every
+	# other ray here -- the geometry set below is a placeholder that the first
+	# query overwrites, kept only so the committed scene is not full of zeroes.
+	var wall_ahead_low := RayCast3D.new()
+	wall_ahead_low.name = "WallAheadLow"
+	wall_ahead_low.target_position = Vector3(0.0, 0.0, -0.6)
+	wall_ahead_low.enabled = true
+	probes.add_child(wall_ahead_low)
+	wall_ahead_low.owner = player
+
+	var wall_ahead_high := RayCast3D.new()
+	wall_ahead_high.name = "WallAheadHigh"
+	wall_ahead_high.target_position = Vector3(0.0, 0.0, -0.6)
+	wall_ahead_high.enabled = true
+	probes.add_child(wall_ahead_high)
+	wall_ahead_high.owner = player
+
 	player.probes = probes
 	return player

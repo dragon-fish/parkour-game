@@ -314,7 +314,17 @@ HUD 转移日志：`Walking → Slide → Falling → Grab → Falling → Walki
 并断言 `step_decisions` 里出现的是"顶面太窄"这一条——只断言 rise 为 0 没有意义，
 好几条分支都返回 0。
 
-## 18. 垂直踢墙 WallClimb 尚未实现（数据齐全）
+## 18. 垂直踢墙 WallClimb —— 已实现
+
+> **已实现**（`WallClimbMove` / `WallClimbConfig` / `Probes.wall_ahead_query()`）。
+>
+> 动手时才发现根因比"没写状态"更靠下：`wall_query()` **只朝左右两侧发射线**，
+> 正面直冲一堵墙时两条射线平行于墙面，什么也打不到。所以这个状态不是没实现，
+> 是**探针层面不可达**。新增了 `WallAheadLow` / `WallAheadHigh` 两条正面射线。
+>
+> 分支仲裁：原作 `bCheckForWallClimb` 是**一个** flag，三个角度阈值把 0–90° 正好
+> 分完且不重叠（33 / 57 / 60），所以由**入射角**选分支。头对头那一段（0–33°）是
+> 滑墙前向段（0–57°）的子集，因此必须先问踢墙——见 `AirborneMove.probe_transition()`。
 
 所有者反馈"我们只有滑墙，没有垂直踢墙"。`TdMove_WallClimb` 的 CDO 相当完整，
 而且**所有者凭手感说的每一条都能对上一个字段**：
@@ -342,7 +352,13 @@ FrictionModifier                        0.3
 - **入射角**：所有者记作"大于 53°"，spec §2 记的是 57°–123° 走 WallClimb。
   CDO 的 `WallClimbingVerticalStartAngle = 33` 大概率是"距墙面法线 33°"即距墙面 57°，两者自洽。
 
-## 19. 180Turn 尚未实现（数据齐全）
+## 19. 180Turn —— 已实现
+
+> **已实现**（`Turn180Move` / `Turn180Config`）。所有者的描述逐条落到了字段上。
+>
+> `TdMove_WallKick` **折进了本状态的出口**，没有单开状态：从外部看就是一记冲量
+> 然后进 Jump。代价是丢掉了它自己的 `RedoMoveTime = 1.0`，目前没有消费者——
+> 本状态自己的 0.5 已经挡住了"在同一堵墙上反复转"这个显然的滥用。
 
 所有者描述：垂直踢墙期间按 Q 进入，有"很短的补偿时间"，期间不受重力；
 此时按空格可蹬墙跳出去，否则速度归零后落下。

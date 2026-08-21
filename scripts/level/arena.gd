@@ -38,6 +38,13 @@ func _ready() -> void:
 	markers.player = player
 	add_child(markers)
 
+	# The same, for the forward wall probe: whether the wall ahead can be kicked
+	# up, and how high the run-up currently being carried would get.
+	var wall_markers := WallClimbMarkers.new()
+	wall_markers.name = "WallClimbMarkers"
+	wall_markers.player = player
+	add_child(wall_markers)
+
 	# A fall past pawn.falling_uncontrolled_height is unsurvivable in the
 	# original (03 §3.1). Respawning is the arena's job, not the player's, and
 	# it deliberately reuses the same path as falling out of the level: from the

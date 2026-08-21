@@ -15,59 +15,65 @@ height = 1.8
 radius = 0.4
 height = 1.8
 
-[node name="Player" type="CharacterBody3D" unique_id=1046236181 node_paths=PackedStringArray("camera_rig", "probes", "screen_effects")]
+[node name="Player" type="CharacterBody3D" unique_id=1296298088 node_paths=PackedStringArray("camera_rig", "probes", "screen_effects")]
 script = ExtResource("1_75vfm")
 camera_rig = NodePath("CameraRig")
 probes = NodePath("Probes")
 screen_effects = NodePath("CameraRig/ScreenEffects")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1413656277]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1207676109]
 shape = SubResource("CapsuleShape3D_fm80t")
 
-[node name="CameraRig" type="Node3D" parent="." unique_id=1189355937]
+[node name="CameraRig" type="Node3D" parent="." unique_id=1286776614]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.76, 0)
 script = ExtResource("2_0owmy")
 
-[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=819174443]
+[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=694716028]
 
-[node name="ScreenEffects" type="CanvasLayer" parent="CameraRig" unique_id=747495877]
+[node name="ScreenEffects" type="CanvasLayer" parent="CameraRig" unique_id=1887034212]
 script = ExtResource("3_qek5x")
 
-[node name="Crosshair" type="CanvasLayer" parent="CameraRig" unique_id=1981978837 node_paths=PackedStringArray("player")]
+[node name="Crosshair" type="CanvasLayer" parent="CameraRig" unique_id=1686031504 node_paths=PackedStringArray("player")]
 script = ExtResource("4_5gtgg")
 player = NodePath("../..")
 
-[node name="BodyRoot" type="Node3D" parent="." unique_id=1553656702]
+[node name="BodyRoot" type="Node3D" parent="." unique_id=782481739]
 script = ExtResource("5_h17s1")
 
-[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=1073957846]
+[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=910769310]
 shape = SubResource("CapsuleShape3D_gx1jg")
 target_position = Vector3(0, 0, 0)
 
-[node name="Probes" type="Node3D" parent="." unique_id=1682885462]
+[node name="Probes" type="Node3D" parent="." unique_id=662673228]
 script = ExtResource("6_je7p5")
 
-[node name="VaultLow" type="RayCast3D" parent="Probes" unique_id=1251520572]
+[node name="VaultLow" type="RayCast3D" parent="Probes" unique_id=1957006290]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.55, 0)
 target_position = Vector3(0, 0, -1.4)
 
-[node name="VaultHigh" type="RayCast3D" parent="Probes" unique_id=90673109]
+[node name="VaultHigh" type="RayCast3D" parent="Probes" unique_id=8725384]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
 target_position = Vector3(0, 0, -1.4)
 
-[node name="SurfaceDown" type="RayCast3D" parent="Probes" unique_id=69319390]
+[node name="SurfaceDown" type="RayCast3D" parent="Probes" unique_id=343115789]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, -1)
 target_position = Vector3(0, -3.2, 0)
 hit_from_inside = true
 
-[node name="VaultOverDown" type="RayCast3D" parent="Probes" unique_id=1819756310]
+[node name="VaultOverDown" type="RayCast3D" parent="Probes" unique_id=1262520895]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, -1.9)
 target_position = Vector3(0, -1.7, 0)
 
-[node name="WallLeft" type="RayCast3D" parent="Probes" unique_id=1334669110]
+[node name="WallLeft" type="RayCast3D" parent="Probes" unique_id=903545418]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
 target_position = Vector3(-0.75, 0, 0)
 
-[node name="WallRight" type="RayCast3D" parent="Probes" unique_id=1427054521]
+[node name="WallRight" type="RayCast3D" parent="Probes" unique_id=531811230]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
 target_position = Vector3(0.75, 0, 0)
+
+[node name="WallAheadLow" type="RayCast3D" parent="Probes" unique_id=236374689]
+target_position = Vector3(0, 0, -0.6)
+
+[node name="WallAheadHigh" type="RayCast3D" parent="Probes" unique_id=379660001]
+target_position = Vector3(0, 0, -0.6)

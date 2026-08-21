@@ -65,6 +65,28 @@ func probe_transition() -> StringName:
 	# inside this threshold (-2.0 m/s) at the bottom end. The TOP end is
 	# deliberately unbounded: rising fast is fine to attach from, and
 	# WallRunningVelocityStartLimit = 300 turned out NOT to be a ceiling on it.
+	# KICKING STRAIGHT UP IS TESTED BEFORE RUNNING ALONG, and has to be: the
+	# head-on band (0-33 degrees) sits INSIDE the wall run's forward band
+	# (0-57), so whichever is asked first wins every head-on approach outright.
+	#
+	# The original has one bCheckForWallClimb flag covering both moves, which
+	# means the choice is made downstream of the flag, and the angle is the
+	# only thing in the data with numbers attached: 33 / 57 / 60 tile the
+	# quarter-circle exactly once. Asking the narrower band first is what makes
+	# that tiling real rather than decorative -- see WallClimbConfig's own note.
+	#
+	# This is also why the wall run's forward branch below is UNCHANGED at 57
+	# rather than being narrowed to 33-57. Narrowing it would be the same
+	# behaviour expressed twice, and the second copy would rot.
+	if c.check_for_wall_climb and player.probes != null \
+			and player.horizontal_speed() >= config.wall_climb.min_speed \
+			and player.move_manager.can_enter(WALL_CLIMB):
+		var heading_at: Vector3 = Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()
+		var ahead: Dictionary = player.probes.wall_ahead_query(heading_at)
+		if ahead["valid"] and ahead["tall_enough"] \
+				and float(ahead["incidence"]) <= config.wall_climb.vertical_start_angle:
+			return WALL_CLIMB
+
 	if c.check_for_wall_climb and player.probes != null \
 			and player.horizontal_speed() >= config.wall_run.wall_running_min_speed:
 		var heading: Vector3 = Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()

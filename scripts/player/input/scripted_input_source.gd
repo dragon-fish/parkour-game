@@ -23,8 +23,14 @@ func release_crouch() -> void:
 	state.crouch_pressed = false
 	state.crouch_held = false
 
+func press_turn() -> void:
+	state.turn_pressed = true
+
 func poll() -> MoveInput:
 	var snapshot := state.copy()
 	state.jump_pressed = false
 	state.crouch_pressed = false
+	# No held counterpart, unlike jump and crouch: Q is a one-shot. There is
+	# nothing a held Q could mean -- the turn either started or it did not.
+	state.turn_pressed = false
 	return snapshot

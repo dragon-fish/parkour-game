@@ -50,6 +50,15 @@ var pending_vault_variant: Dictionary = {}
 ## vantage point can only disagree.
 var pending_ledge: Dictionary = {}
 
+## The wall WallClimbMove was on when Q was pressed, handed across to
+## Turn180Move on the same channel as the two above.
+##
+## Handed over rather than re-queried for the reason the turn exists: once the
+## body has come round, the wall is BEHIND it, and the forward probe that found
+## it cannot see it any more. Turn180Move needs it after the turn, to kick off
+## in the right direction. Cleared by that move's exit().
+var pending_wall_normal: Vector3 = Vector3.ZERO
+
 ## Whether the player is standing on something. DECLARED by the active state
 ## rather than read from is_on_floor(), because scripted-move states drive the
 ## body's position directly and never call move_and_slide() — is_on_floor()
@@ -569,6 +578,8 @@ func _build_moves() -> void:
 		[Move.INTO_GRAB, IntoGrabMove.new(), config.into_grab],
 		[Move.GRAB, GrabMove.new(), config.grab],
 		[Move.WALL_RUN, WallRunMove.new(), config.wall_run],
+		[Move.WALL_CLIMB, WallClimbMove.new(), config.wall_climb],
+		[Move.TURN_180, Turn180Move.new(), config.turn_180],
 	]
 	for row in table:
 		var move: Move = row[1]

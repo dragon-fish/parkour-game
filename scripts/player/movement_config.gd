@@ -32,4 +32,6 @@ extends Resource
 @export var into_grab: IntoGrabConfig = IntoGrabConfig.new()
 @export var grab: GrabConfig = GrabConfig.new()
 @export var wall_run: WallRunConfig = WallRunConfig.new()
+@export var wall_climb: WallClimbConfig = WallClimbConfig.new()
+@export var turn_180: Turn180Config = Turn180Config.new()
 @export var wallrun_jump: WallrunJumpConfig = WallrunJumpConfig.new()

@@ -7,6 +7,7 @@ extends InputSource
 
 var _jump_was_held := false
 var _crouch_was_held := false
+var _turn_was_held := false
 var _look_accumulator := Vector2.ZERO
 
 ## Called from the player's _input() with the raw mouse relative motion.
@@ -25,6 +26,7 @@ func poll() -> MoveInput:
 		# read as a fresh press the moment the mouse is recaptured.
 		_jump_was_held = Input.is_physical_key_pressed(KEY_SPACE)
 		_crouch_was_held = Input.is_physical_key_pressed(KEY_SHIFT)
+		_turn_was_held = Input.is_physical_key_pressed(KEY_Q)
 		return MoveInput.new()
 
 	var out := MoveInput.new()
@@ -59,4 +61,8 @@ func poll() -> MoveInput:
 	out.crouch_held = crouch_held
 	out.crouch_pressed = crouch_held and not _crouch_was_held
 	_crouch_was_held = crouch_held
+
+	var turn_held := Input.is_physical_key_pressed(KEY_Q)
+	out.turn_pressed = turn_held and not _turn_was_held
+	_turn_was_held = turn_held
 	return out

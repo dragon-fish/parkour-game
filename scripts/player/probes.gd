@@ -81,6 +81,10 @@ const SURFACE_UNDERSHOOT := 0.1
 ## Sharing the literal would tie two unrelated tolerances together.
 const LEDGE_ANCHOR_MARGIN := 0.1
 
+## Height above the body's centre that the forward wall ray fires from, matching
+## WallLeft/WallRight's own offset. ⚠️ PROJECT-DEFINED.
+const WALL_AHEAD_CHEST_Y := 0.2
+
 # Looked up live via _ensure_rays() rather than cached in @onready vars: @onready
 # resolves on Probes' own _ready(), but TestWorld.build() (and player.tscn's
 # real instantiation path) calls Player.setup() -> Probes.setup() on the same
@@ -92,6 +96,8 @@ var _surface: RayCast3D
 var _vault_over: RayCast3D
 var _wall_left: RayCast3D
 var _wall_right: RayCast3D
+var _wall_ahead_low: RayCast3D
+var _wall_ahead_high: RayCast3D
 
 var _config: MovementConfig
 var _foot_offset: float = 0.9
@@ -109,6 +115,10 @@ func _ensure_rays() -> void:
 		_wall_left = get_node("WallLeft")
 	if _wall_right == null:
 		_wall_right = get_node("WallRight")
+	if _wall_ahead_low == null:
+		_wall_ahead_low = get_node("WallAheadLow")
+	if _wall_ahead_high == null:
+		_wall_ahead_high = get_node("WallAheadHigh")
 
 ## NOTE: this deliberately assigns NO ray geometry. Every ray's length and
 ## position is derived from the live config at query time instead (see
@@ -460,3 +470,56 @@ func wall_query(heading: Vector3 = Vector3.ZERO) -> Dictionary:
 				"incidence": _incidence(normal, heading)}
 
 	return {"valid": false, "normal": Vector3.ZERO, "side": 0, "incidence": 0.0}
+
+## Nothing found by wall_ahead_query(). Shaped like a hit so callers can read
+## every key unconditionally.
+const NO_WALL_AHEAD := {"valid": false, "normal": Vector3.ZERO, "distance": INF, \
+	"incidence": 0.0, "tall_enough": false}
+
+## A wall DIRECTLY IN FRONT, tall enough to kick up.
+##
+## wall_query() cannot answer this and never could. Its two rays fire straight
+## out to the player's left and right, so running head-on at a flat wall aims
+## them ALONG the wall's face, where they hit nothing. Every wall this project
+## has ever detected was beside the player, which is why wall running works and
+## kicking straight up a wall was not merely unimplemented but unreachable.
+##
+## `heading` is the horizontal velocity direction as a unit vector, used only
+## for `incidence` -- the rays themselves fire along the body's facing, matching
+## _aim_forward()'s convention and wall_query()'s use of body-local rays.
+##
+## `tall_enough` is a separate key rather than folded into `valid` because the
+## two failures want different answers from a caller: no wall at all means look
+## elsewhere, while a wall too short to climb is one the vault and grab probes
+## should get a look at.
+func wall_ahead_query(heading: Vector3 = Vector3.ZERO) -> Dictionary:
+	if _config == null:
+		return NO_WALL_AHEAD.duplicate()
+	_ensure_rays()
+	var reach: float = _config.wall_climb.check_distance
+	# Fired from chest height, matching WallLeft/WallRight's own 0.2 -- low
+	# enough that a run-up sees the wall before the body touches it, high
+	# enough to clear the ankle-height clutter a floor-level ray would snag on.
+	_wall_ahead_low.position.y = WALL_AHEAD_CHEST_Y
+	_aim_forward(_wall_ahead_low, reach)
+	if not _wall_ahead_low.is_colliding():
+		return NO_WALL_AHEAD.duplicate()
+	var normal: Vector3 = _wall_ahead_low.get_collision_normal()
+	# Same verticality gate wall_query() applies: a surface you can kick up
+	# must be a wall, not a steep ramp you would simply run up.
+	if absf(normal.y) >= MAX_WALL_NORMAL_Y:
+		return NO_WALL_AHEAD.duplicate()
+	var point: Vector3 = _wall_ahead_low.get_collision_point()
+	var distance: float = Vector2(point.x - global_position.x, point.z - global_position.z).length()
+
+	# ✅ MinWallHeight = 180 uu. Tested by firing a SECOND ray at that height:
+	# if the wall is still there up top, it is tall enough to be worth kicking
+	# up. Cheaper and more honest than measuring the wall's real height, which
+	# a raycast cannot do anyway.
+	_wall_ahead_high.position.y = _feet_y() - global_position.y + _config.wall_climb.min_wall_height
+	_aim_forward(_wall_ahead_high, reach)
+	var tall_enough: bool = _wall_ahead_high.is_colliding() \
+		and absf(_wall_ahead_high.get_collision_normal().y) < MAX_WALL_NORMAL_Y
+
+	return {"valid": true, "normal": normal, "distance": distance, \
+		"incidence": _incidence(normal, heading), "tall_enough": tall_enough}

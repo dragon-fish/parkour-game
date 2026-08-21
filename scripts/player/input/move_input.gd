@@ -17,6 +17,9 @@ var walk_held := false
 var crouch_held := false
 ## True only on the tick the crouch key transitioned from up to down.
 var crouch_pressed := false
+## True only on the tick the turn key transitioned from up to down. Q in the
+## keyboard binding. Consumed by Turn180Move's entry, and by nothing else.
+var turn_pressed := false
 
 func copy() -> MoveInput:
 	var out := MoveInput.new()
@@ -27,4 +30,5 @@ func copy() -> MoveInput:
 	out.walk_held = walk_held
 	out.crouch_held = crouch_held
 	out.crouch_pressed = crouch_pressed
+	out.turn_pressed = turn_pressed
 	return out

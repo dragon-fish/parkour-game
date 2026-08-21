@@ -77,6 +77,7 @@ func _process(delta: float) -> void:
 		# the cap means something else is holding the body back.
 		"energy     %.2f  -> cap %.2f m/s" % [player.speed_energy.energy, player.speed_cap()],
 		"wall side  %s" % _wall_side_text(),
+		"wall ahead %s" % _wall_ahead_text(),
 		"look       %s" % _look_text(),
 		"step grace %s" % ("open" if player.in_step_grace() else "-"),
 		"fps        %d" % Engine.get_frames_per_second(),
@@ -90,6 +91,32 @@ func _process(delta: float) -> void:
 		"Tab HUD  F1 tuning  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
 		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
 	])
+
+## What the forward wall probe sees, in the same words the markers use colour
+## for: whether there is a wall, whether it is tall enough to kick up, how
+## square the approach is against the 33 degree threshold, and what the current
+## run-up would buy in height. The markers answer "where"; this answers "by how
+## much", which is the half you cannot read off a coloured ball.
+func _wall_ahead_text() -> String:
+	if player.probes == null:
+		return "-"
+	var heading := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	if heading.length_squared() < 0.0001:
+		heading = -player.global_transform.basis.z
+		heading.y = 0.0
+	var hit: Dictionary = player.probes.wall_ahead_query(heading.normalized())
+	if not hit.get("valid", false):
+		return "-"
+	var cfg: WallClimbConfig = player.config.wall_climb
+	var verdict := "climb"
+	if not bool(hit["tall_enough"]):
+		verdict = "too short"
+	elif float(hit["incidence"]) > cfg.vertical_start_angle:
+		verdict = "too oblique"
+	var angle: float = rad_to_deg(float(hit["incidence"]))
+	var allowed: float = rad_to_deg(cfg.vertical_start_angle)
+	var worth: float = WallClimbMove.climb_height(player.horizontal_speed(), player.velocity.y, cfg)
+	return "%-11s %4.1f deg of %.0f   +%.2f m" % [verdict, angle, allowed, worth]
 
 ## Yaw relative to the constraint's own centre, and the pitch floor in force --
 ## the two numbers that say whether a clamp is doing what it was asked to.
