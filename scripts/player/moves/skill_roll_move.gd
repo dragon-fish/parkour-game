@@ -51,6 +51,12 @@ func enter(_previous: StringName) -> void:
 	# reading of "3 m" as a minimum rather than the whole answer. That invention
 	# is also what the owner measured as an over-long 3.2 m roll: the momentum
 	# term, not the 3 m.
+	#
+	# ⚠️ AT A CONSTANT RATE, which the original is not: at 1/8 speed the owner
+	# saw the 3 m travel slow-fast-slow, on an animation curve. Deliberately not
+	# copied -- that curve exists to keep the travel under a body model's feet,
+	# and this project has no body model for it to serve. An eased translation
+	# with nothing visible driving it just reads as drifting.
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	_speed = cfg.forced_distance / maxf(cfg.duration, 0.001)
 	# ALONG THE VIEW, NOT ALONG THE MOMENTUM.
@@ -117,6 +123,25 @@ func enter(_previous: StringName) -> void:
 	# the pitch landed with, and one of camera_spin reads as level.
 	_spin_from = -pitch_at_start
 	_spin_total = cfg.camera_spin
+
+	# DRIVEN ONCE HERE, not left to the first physics tick.
+	#
+	# THE CAMERA FLICKER. MoveManager calls enter() mid-tick and does NOT call
+	# this move's own physics_update() on that same tick, so the spin was first
+	# written a frame later -- while update_effects() at the end of the entry tick
+	# already saw the pitch pinned to level with no spin to offset it. One frame
+	# of the view snapping level before the roll's rotation took over.
+	#
+	# Proportional to the angle and invisible at small ones, which is how the
+	# owner found it: "at extreme pitch the view flickers for about a frame".
+	#
+	# ✅ The original very likely hit the same race and paid it off differently:
+	# watched at 1/8 speed, its P does not snap to zero but runs down linearly
+	# over about ELEVEN FRAMES. We do not copy that -- one tenth of a second of
+	# ramp is a workaround for a single-frame gap, and closing the gap is the
+	# smaller fix. Recorded in docs/feel-backlog.md 40 so the measurement is not
+	# lost if this ever needs revisiting.
+	_drive_camera()
 
 	player.speed_energy.energy *= cfg.energy_keep
 	player.set_capsule_height(config.crouch.crouch_capsule_height)

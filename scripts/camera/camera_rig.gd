@@ -274,6 +274,11 @@ func look_debug() -> Dictionary:
 		"relative_yaw": _look_relative_yaw,
 		"pitch_floor": _relaxed_pitch_floor() if (_has_look_constraint and _look_pitch_relaxes) 			else (_look_min.x if _has_look_constraint else -PI),
 		"pitch": _pitch,
+		# The presentational half of the pitch. Exposed because the two channels
+		# are only correct TOGETHER -- the view shows pitch minus spin -- and a
+		# test that can only see one of them cannot tell a consistent pair from a
+		# flicker. See docs/camera-authority.md.
+		"roll_spin": _roll_spin,
 	}
 
 func clear_look_constraint() -> void:

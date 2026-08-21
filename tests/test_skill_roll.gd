@@ -254,3 +254,33 @@ func test_the_roll_leaves_the_view_where_it_put_it() -> void:
 
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_the_roll_is_camera_consistent_the_instant_it_begins() -> void:
+	# THE CAMERA FLICKER, reported at extreme pitch only.
+	#
+	# MoveManager calls enter() mid-tick and does not run the move's own
+	# physics_update() on that tick, so the spin was first written a frame later
+	# -- while the pitch was already pinned to level. For that one frame the view
+	# showed pitch minus spin as zero: dead level, then a jump to the landing
+	# pitch. Proportional to the angle, so invisible at small ones.
+	#
+	# Asked of BOTH channels with no tick in between, because a tick hides the
+	# bug: by the end of one, physics_update has run and written the spin. A
+	# first version of this test stepped once and passed with the fix removed.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	var rig: CameraRig = player.camera_rig
+
+	const STEEP := 1.2  # radians, near the limit -- where the flicker shows
+	rig.set_pitch(STEEP)
+	player.move_manager.start(Move.SKILL_ROLL)
+
+	var look: Dictionary = rig.look_debug()
+	var shown: float = float(look["pitch"]) - float(look["roll_spin"])
+	assert_almost_eq(shown, STEEP, 0.001, 		"the roll began showing %.0f degrees instead of the %.0f it was entered at" 		% [rad_to_deg(shown), rad_to_deg(STEEP)])
+
+	TestWorld.teardown(world)
+	await step(1)
