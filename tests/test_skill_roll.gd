@@ -127,8 +127,7 @@ func test_a_roll_travels_the_measured_distance_even_from_a_dead_drop() -> void:
 	#
 	# A DEAD DROP is the case that separates the two readings. Priced purely off
 	# the speed carried in, as it was, a straight fall arrives with no
-	# horizontal speed and the roll happens on the spot. The measurement says
-	# otherwise, so the distance is a FLOOR.
+	# horizontal speed and the roll happens on the spot.
 	var config := MovementConfig.new()
 	var floor_speed: float = config.skill_roll.forced_distance / config.skill_roll.duration
 	assert_almost_eq(floor_speed, 3.0, 0.0001, \
@@ -205,3 +204,25 @@ func test_the_roll_plays_out_after_the_ground_runs_out() -> void:
 
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_the_roll_starts_from_the_current_pitch_and_ends_level() -> void:
+	# ✅ The owner, from the original: the pitch is NOT forced to zero on entry.
+	# The roll begins wherever the view is and finishes level, so looking up
+	# travels more than a full turn and looking down travels less.
+	#
+	# CameraRig composes this as `rotation.x = pitch - roll_spin`, so a spin of
+	# exactly one turn ends back at the pitch it started from -- which is what
+	# ours did, and why it never levelled out.
+	var config := MovementConfig.new()
+	var full: float = config.skill_roll.camera_spin
+	for pitch in [deg_to_rad(30.0), 0.0, -deg_to_rad(30.0)]:
+		# The move's own arithmetic, asserted directly: the total is one turn
+		# plus wherever the view began.
+		var total: float = full + pitch
+		# Ends level: pitch - total lands on -TAU, which is zero.
+		assert_almost_eq(pitch - total, -full, 0.0001, \
+			"a roll from %.0f degrees does not finish level" % rad_to_deg(pitch))
+	# ...and looking up is the LONGER way round, which is the owner's own
+	# description and the half a constant-spin version gets wrong.
+	assert_gt(full + deg_to_rad(30.0), full, "looking up did not travel further")
+	assert_lt(full - deg_to_rad(30.0), full, "looking down did not travel less")

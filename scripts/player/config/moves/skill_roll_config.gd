@@ -86,8 +86,13 @@ func _init() -> void:
 ## two together are simply a constant velocity.
 @export var forced_distance: float = 3.0
 
-## How far the view rotates about the pitch axis over the roll. A full turn:
-## the body goes over, and in first person the view goes with it.
+## THE FULL-TURN PART of the roll's rotation about the pitch axis. The body goes
+## over, and in first person the view goes with it.
+##
+## NOT the whole rotation: SkillRollMove adds the pitch the view started at, so
+## the roll always finishes LEVEL. ✅ The owner, from the original -- the pitch
+## is not forced to zero on entry, so looking up travels more than a full turn
+## and looking down travels less. Both end at zero.
 ##
 ## ⚠️ The AMOUNT is project-defined, but that a roll takes the view past
 ## vertical is not: TdMove_SkillRoll's own MaxLookConstraint is +180 degrees,

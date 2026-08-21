@@ -29,6 +29,10 @@ var _speed: float = 0.0
 ## True once the ground has run out mid-roll. The roll does NOT end there -- see
 ## physics_update().
 var _airborne: bool = false
+## How far the view turns over this roll, captured at touchdown. NOT a constant:
+## it is one full turn ADJUSTED by wherever the view already was, so the roll
+## always finishes level. See enter().
+var _spin_total: float = 0.0
 
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
@@ -71,6 +75,23 @@ func enter(_previous: StringName) -> void:
 		var facing: Vector3 = -player.global_transform.basis.z
 		facing.y = 0.0
 		_direction = facing.normalized() if facing.length_squared() > 0.0001 else Vector3.ZERO
+
+	# THE ROLL STARTS FROM WHEREVER THE VIEW IS, AND ALWAYS ENDS LEVEL.
+	#
+	# ✅ The owner, from the original: the pitch is not forced to zero on entry;
+	# the roll begins at the current pitch and finishes at zero, so looking UP
+	# travels more than a full turn and looking DOWN travels less.
+	#
+	# CameraRig composes this as `rotation.x = pitch - roll_spin`, so a spin of
+	# one full turn ends back at the pitch it started from -- which is what ours
+	# did, and why it never levelled out. Adding the starting pitch to the total
+	# makes the finish land on -TAU, which is level, and makes the DISTANCE
+	# travelled TAU + pitch: more when looking up, less when looking down,
+	# exactly as described.
+	var pitch_at_start: float = 0.0
+	if player.camera_rig != null:
+		pitch_at_start = float(player.camera_rig.look_debug()["pitch"])
+	_spin_total = cfg.camera_spin + pitch_at_start
 
 	player.speed_energy.energy *= cfg.energy_keep
 	player.set_capsule_height(config.crouch.crouch_capsule_height)
@@ -154,7 +175,7 @@ func _drive_camera() -> void:
 		return
 	var t: float = clampf(_elapsed / maxf(cfg.duration, 0.001), 0.0, 1.0)
 	var eased: float = t * t * (3.0 - 2.0 * t)
-	player.camera_rig.set_roll_spin(eased * cfg.camera_spin)
+	player.camera_rig.set_roll_spin(eased * _spin_total)
 	# The eye dips through the middle and comes back: zero at both ends, so it
 	# hands over to ordinary walking without a step.
 	player.camera_rig.set_crouch_amount(sin(PI * t) * cfg.camera_crouch)
