@@ -127,3 +127,31 @@ func test_a_walkable_ramp_is_not_an_obstacle() -> void:
 	var player: Player = world["player"]
 	assert_false(player.probes.vault_query()["valid"], \
 		"a walkable ramp read as something to vault")
+
+func test_a_thin_obstacle_offers_a_far_side_and_a_wide_one_does_not() -> void:
+	# THE AXIS THAT PICKS THE LANDING. The owner settled it from play -- a fence
+	# and the cabinet beside it are the same height and both vault, and the
+	# cabinet's wide top is simply where Faith ends up standing.
+	#
+	# The first attempt read this off `standable`, which asks whether the top is
+	# FLAT. Every box has a flat top, so every vault landed on the obstacle and
+	# stopped at its edge. Pinned here so the two questions cannot be confused
+	# again.
+	var player: Player = await _standing_player()
+	_slab(0.0, 1.2, 0.08, -1.0)
+	await step(1)
+	var thin: Dictionary = player.probes.vault_query()
+	assert_true(thin["valid"], "the thin obstacle was not seen at all")
+	assert_true(bool(thin["vault_over"]), "a 8 cm deep fence offered no far side")
+	assert_ne(thin["far_point"], Vector3.ZERO, "there is no far-side point to land on")
+	after_each()
+
+	player = await _standing_player()
+	# Centre at -2.6 so the near face is 1.1 m out: inside the probe's 1.4 m
+	# reach, and far enough that the body is not standing in the block.
+	_slab(0.0, 1.2, 3.0, -2.6)
+	await step(1)
+	var wide: Dictionary = player.probes.vault_query()
+	assert_true(wide["valid"], "the wide obstacle was not seen at all")
+	assert_false(bool(wide["vault_over"]), \
+		"a 3 m deep block offered a far side to be carried past")

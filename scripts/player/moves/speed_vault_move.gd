@@ -113,13 +113,24 @@ func enter(_previous: StringName) -> void:
 	# the feet never clear it at all (docs/feel-backlog.md 27). It is a
 	# hands-on-top move that carries the body PAST the obstacle, not over it.
 	var arc: float = config.speed_vault.vault_arc_height
-	# STANDABILITY PICKS THE LANDING, which is the owner's own rule from play:
-	# a fence and the cabinet beside it are the same height and both report
-	# VaultOver -- the cabinet's wide top is simply where she ends up standing,
-	# and the fence's is not somewhere anyone could. A far side to land on is
-	# the other half: without one there is nowhere to go but up.
+	# `vault_over` PICKS THE LANDING, not `standable`.
+	#
+	# Those are different questions and the first attempt used the wrong one.
+	# `standable` asks whether the top is FLAT; every box in the calibration
+	# course has a flat top, so it was always true and every vault landed on the
+	# obstacle. The owner: "ours all end at the obstacle's top edge, where the
+	# original's vault-overs carry on until they are nearly on the ground."
+	#
+	# The question that matters is whether the top is WIDE, and `vault_over` is
+	# already it: the probe looks a body's reach past the top and asks whether
+	# the ground there is LOWER. Lower means the obstacle is thin enough to be
+	# carried past; level means it is a surface to land on.
+	#
+	# Fixing this fixes the duration complaint too, without touching the timing.
+	# An arc that ends on the far side spans the descent as well, so it covers
+	# the whole manoeuvre instead of stopping at the top and dropping.
 	var far_point: Vector3 = query.get("far_point", Vector3.ZERO)
-	if not bool(query.get("standable", true)) and far_point != Vector3.ZERO:
+	if bool(query.get("vault_over", false)) and far_point != Vector3.ZERO:
 		landing = far_point + _exit_direction * config.speed_vault.vault_exit_forward
 		landing.y = far_point.y + player.standing_height() * 0.5
 		arc = config.speed_vault.vault_over_arc_height

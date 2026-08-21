@@ -344,6 +344,11 @@ func vault_query() -> Dictionary:
 	# One axis for the family, another for the landing. Refusing the whole
 	# vault on a top you cannot stand on is how a pipe became an invisible
 	# wall.
+	# FLATNESS ONLY. This says the top is not a slope; it says NOTHING about
+	# whether the top is wide enough to stand on, which is a different question
+	# and the one `vault_over` below answers. Confusing the two made every vault
+	# land on the obstacle, because a fence's top is perfectly flat and merely
+	# 8 cm deep.
 	var standable: bool = top_normal == Vector3.ZERO 		or top_normal.y >= _config.pawn.walkable_floor_z
 
 	if height <= _config.pawn.max_step_height or height > _config.speed_vault.table_ceiling():
