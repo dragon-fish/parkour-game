@@ -267,4 +267,6 @@ func _push_look_constraint() -> void:
 		rig.clear_look_constraint()
 		return
 	rig.set_look_constraint(active.min_look_constraint, active.max_look_constraint, \
-		active.absolute_yaw_constraint)
+		active.absolute_yaw_constraint, active.pitch_relaxes_with_yaw, \
+		active.pitch_min_turned_away, active.pitch_relax_yaw_threshold, \
+		active.pitch_recover_speed)

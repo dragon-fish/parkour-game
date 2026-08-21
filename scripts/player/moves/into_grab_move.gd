@@ -50,7 +50,7 @@ func enter(_previous: StringName) -> void:
 		return
 	var gap: Vector3 = query["edge"] - player.global_position
 	gap.y = 0.0
-	_target = _hanging_pose(query["edge"])
+	_target = hanging_pose(player, config, query)
 	# Square to the WALL's face, not toward the edge point.
 	#
 	# Facing the edge was the first attempt and is wrong whenever the ledge was
@@ -74,28 +74,31 @@ func enter(_previous: StringName) -> void:
 	# finishes, the body can no longer see the edge it is hanging from.
 	player.pending_ledge = query
 
-## Where the body ends up, given the edge it caught.
+## Where the body ends up, given the ledge it caught.
 ##
-## "Back from the edge" is measured along the body's own approach, taken from
-## the edge rather than from the facing: the player may have caught the ledge
-## while looking somewhere else entirely, and the pose belongs to the wall, not
-## to the camera.
-func _hanging_pose(edge: Vector3) -> Vector3:
-	# `player` is deliberately untyped (see Move), so its values arrive as
-	# Variant and need an explicit type here.
-	var to_edge: Vector3 = edge - player.global_position
-	to_edge.y = 0.0
-	var approach: Vector3 = to_edge.normalized() if to_edge.length_squared() > 0.0001 \
-		else -player.global_transform.basis.z
-	approach.y = 0.0
-	if approach.length_squared() < 0.0001:
-		approach = Vector3.FORWARD
-	# Placed by where the EYE ends up, not by where the body centre does -- see
+## Static, and taking everything it needs as arguments, so the debug markers
+## can draw the very same pose this aims for rather than a copy of the maths --
+## a marker that drifts from the behaviour it illustrates is worse than none.
+##
+## BACK ALONG THE WALL'S NORMAL, not along the approach. Backing off along the
+## approach leaves the hang skewed by whatever angle the ledge was caught at,
+## which is the same mistake the facing made (see enter()).
+static func hanging_pose(body: Node3D, cfg_all: MovementConfig, hit: Dictionary) -> Vector3:
+	var edge: Vector3 = hit["edge"]
+	var back: Vector3 = hit.get("face_normal", Vector3.ZERO)
+	back.y = 0.0
+	if back.length_squared() < 0.0001:
+		# No wall normal to work from: fall back to the approach.
+		back = edge - body.global_position
+		back.y = 0.0
+		back = -back
+	if back.length_squared() < 0.0001:
+		back = body.global_transform.basis.z
+	# Placed by where the EYE ends up, not the body centre -- see
 	# IntoGrabConfig.eye_below_ledge. The centre goes wherever puts the eye
 	# there.
-	var centre_below: float = cfg.eye_below_ledge + config.camera.eye_height
-	return edge - approach.normalized() * cfg.ledge_back_offset \
-		- Vector3.UP * centre_below
+	var centre_below: float = cfg_all.into_grab.eye_below_ledge + cfg_all.camera.eye_height
+	return edge + back.normalized() * cfg_all.into_grab.ledge_back_offset 		- Vector3.UP * centre_below
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:

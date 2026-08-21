@@ -30,6 +30,13 @@ func _ready() -> void:
 	add_child(_death_sequence)
 	_death_sequence.finished.connect(reset_player)
 	_load_sandbox()
+	# Debug visualisation of what the ledge probe sees. Created here rather
+	# than baked into the generated scene, so main.tscn stays exactly what its
+	# generator produces.
+	var markers := GrabMarkers.new()
+	markers.name = "GrabMarkers"
+	markers.player = player
+	add_child(markers)
 
 	# A fall past pawn.falling_uncontrolled_height is unsurvivable in the
 	# original (03 §3.1). Respawning is the arena's job, not the player's, and
