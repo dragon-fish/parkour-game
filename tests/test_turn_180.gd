@@ -232,3 +232,48 @@ func test_a_move_with_its_legs_busy_refuses_the_turn() -> void:
 	# A wall run refuses too, but for the opposite reason: Q there does
 	# something else entirely. See test_wall_run_look.gd.
 	assert_false(config.wall_run.allows_turn, "a wall run starts a turn move")
+
+# --- the turn goes one way ----------------------------------------------------
+
+func test_a_wall_turn_never_doubles_back_on_itself() -> void:
+	# THE TWITCH. This move's clamp is an absolute-yaw one, so apply_look pins
+	# the body to reference + offset every tick from a reference captured when
+	# the turn began -- while _advance_turn wrote the body directly as well. Two
+	# writers a tick, pulling opposite ways, which the owner saw as "the camera
+	# twitches left and right" during a wall-climb turn.
+	#
+	# Sampled per tick rather than end to end, because both the broken version
+	# and the fixed one arrive at the same place. Only the path differs.
+	var world := await _world_with_wall_ahead(6.0)
+	var player: Player = await _turning(world)
+	var previous: float = player.rotation.y
+	var direction := 0.0
+	for i in 12:
+		await step(1)
+		var step_taken: float = wrapf(player.rotation.y - previous, -PI, PI)
+		previous = player.rotation.y
+		if absf(step_taken) < 0.0005:
+			continue
+		if direction == 0.0:
+			direction = signf(step_taken)
+		assert_eq(signf(step_taken), direction, \
+			"the turn reversed on tick %d (%.3f rad)" % [i, step_taken])
+		assert_lt(absf(step_taken), 0.6, \
+			"the turn jumped %.3f rad in one tick" % absf(step_taken))
+
+func test_a_half_turn_always_picks_the_same_direction() -> void:
+	# A half turn is a coin flip -- both ways arrive, and float noise in the
+	# wall's normal decides which. It has to be the SAME coin every time, or two
+	# attempts at one wall turn opposite ways.
+	var almost_half: float = PI - 0.001
+	assert_almost_eq(Turn180Move._shortest_turn(almost_half), PI, 0.0001, \
+		"a hair under half a turn did not settle on the pinned direction")
+	assert_almost_eq(Turn180Move._shortest_turn(-almost_half), PI, 0.0001, \
+		"the same angle from the other side chose the other way round")
+
+func test_a_quarter_turn_still_goes_the_short_way() -> void:
+	# The pinning is only for the ambiguous case. Everything else takes the
+	# short way round, which is what makes a wall run's Q a quarter turn rather
+	# than three quarters.
+	assert_almost_eq(Turn180Move._shortest_turn(PI * 1.5), -PI * 0.5, 0.0001, \
+		"a three-quarter turn was not shortened to a quarter the other way")

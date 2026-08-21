@@ -32,7 +32,9 @@ var _turn_to: float = 0.0
 ## Decides everything that differs between the two cases: the angle, the hang,
 ## and whether space does anything.
 var _normal: Vector3 = Vector3.ZERO
-var _recentred: bool = false
+## The scripted facing already handed to the camera, so each tick reports only
+## its own slice of the turn rather than the whole of it so far.
+var _placed: float = 0.0
 
 ## Whichever wall the body is on, checked on the entry tick while the body is
 ## still facing the way it was -- a moment later it has come round and neither
@@ -66,17 +68,17 @@ func on_a_wall() -> bool:
 
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
-	_recentred = false
 	_normal = _find_wall()
 	_normal.y = 0.0
 
 	_turn_from = player.rotation.y
+	_placed = _turn_from
 	if on_a_wall():
 		_normal = _normal.normalized()
 		# atan2(x, z) rather than (x, -z): the body's forward is -Z, so facing
 		# ALONG a vector means yaw = atan2(v.x, v.z) is wrong by half a turn
 		# and this is the form that is not.
-		_turn_to = atan2(_normal.x, _normal.z) + PI
+		_turn_to = _turn_from + _shortest_turn(atan2(_normal.x, _normal.z) + PI - _turn_from)
 		# Frozen outright rather than decayed. "Not subject to gravity" is the
 		# owner's own description and DisableMovementTime is the field; a body
 		# still carrying its climb would leave the window before it ended.
@@ -131,6 +133,19 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		return KEEP
 	return WALKING if player.grounded else FALLING
 
+## The short way round, with the coin flip pinned.
+##
+## A HALF TURN IS A COIN FLIP: both directions arrive, and floating-point noise
+## in the wall's normal decides which. That is fine when it is decided once, and
+## it is -- but it has to be the SAME coin every time, or two attempts at the
+## same wall turn opposite ways and the move reads as the camera not knowing
+## where to go.
+static func _shortest_turn(difference: float) -> float:
+	var wrapped: float = wrapf(difference, -PI, PI)
+	if absf(absf(wrapped) - PI) < 0.01:
+		return PI
+	return wrapped
+
 ## Carries the body a slice of the way round, and tells the camera how far it
 ## moved.
 ##
@@ -140,20 +155,30 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 ## being moved BY A SCRIPT, so the eye trails it and eases in.
 func _advance_turn(_delta: float) -> void:
 	var progress: float = clampf(_elapsed / maxf(cfg.turn_time, 0.001), 0.0, 1.0)
-	var before: float = player.rotation.y
-	player.rotation.y = lerpf(_turn_from, _turn_to, progress)
+	var wanted: float = lerpf(_turn_from, _turn_to, progress)
+	var moved: float = wanted - _placed
+	_placed = wanted
 	if player.camera_rig != null:
-		player.camera_rig.absorb_body_yaw(player.rotation.y - before)
+		# THE FAN TRAVELS WITH THE TURN, and the body is left to apply_look to
+		# place. Writing player.rotation.y here as well was the bug behind the
+		# owner's "the camera twitches left and right" during a wall-climb turn:
+		# this move's look clamp is an absolute-yaw one, so apply_look pins the
+		# body to reference + offset EVERY tick, using a reference captured when
+		# the turn began. Two writers, once a tick, pulling opposite ways.
+		#
+		# Moving the reference instead makes them agree: apply_look places the
+		# body at the scripted facing plus whatever the player's own mouse has
+		# added, which is exactly right. assist = 1 because a scripted BODY turn
+		# is one the view goes with -- what softens it is the eye's lag below,
+		# not holding the fan back.
+		player.camera_rig.shift_yaw_reference(wanted, 1.0)
+		player.camera_rig.absorb_body_yaw(moved)
+	else:
+		# No rig to place the body: drive it directly. Tests with a stub player
+		# take this path.
+		player.rotation.y = wanted
 	# The turn is SCRIPTED, so it is not a mouse swing and must not be billed
 	# as one. Without this, spinning while holding W flips the wish direction
 	# through half a circle and the turn tax charges for the whole thing --
 	# which would make Q the most expensive key on the board.
 	player.forgive_turn()
-	if progress >= 1.0 and not _recentred and player.camera_rig != null:
-		# The fan the look clamp is measured against belongs to the direction
-		# the body ENDED facing, not the one it was facing when Q was pressed.
-		# Once only: recentring every tick would re-derive the running total
-		# from the body each frame, which is exactly what the clamp's own
-		# accumulator exists to avoid.
-		_recentred = true
-		player.camera_rig.recentre_yaw_reference(_turn_to)

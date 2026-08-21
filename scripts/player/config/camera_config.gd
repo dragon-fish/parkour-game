@@ -196,7 +196,7 @@ extends Resource
 ## ⚠️ PROJECT-DEFINED. 6 rad/s crosses a 90 degree fan in about a quarter of a
 ## second: fast enough to be a shortcut for the mouse flick it replaces, slow
 ## enough to read as a look rather than a cut.
-@export var look_sweep_speed: float = 6.0
+@export var look_sweep_speed: float = 9.0
 
 ## How fast the yaw fan's edge is eased in to meet a view that is already
 ## outside it, in radians per second.
