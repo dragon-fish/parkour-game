@@ -103,9 +103,9 @@ func test_the_body_comes_all_the_way_round() -> void:
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
 	var facing_before := player.rotation.y
-	# turn_time is 0.2 s, which is 12 ticks; 15 leaves margin without reaching
-	# the 18-tick end of the window.
-	await step(15)
+	# turn_time is the measured 0.5 s, which is 30 ticks. 35 leaves margin, and
+	# is comfortably inside kick_window (0.75 s) so the move is still running.
+	await step(35)
 	var turned: float = absf(wrapf(player.rotation.y - facing_before, -PI, PI))
 	assert_almost_eq(turned, PI, 0.02, "the body did not come round half a turn")
 
@@ -178,7 +178,8 @@ func test_q_while_walking_turns_the_body_right_round() -> void:
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.TURN_180, \
 		"Q while walking did not start a turn")
-	await step(15)
+	# turn_time is the measured 0.5 s, which is 30 ticks.
+	await step(35)
 	var turned: float = absf(wrapf(player.rotation.y - facing_before, -PI, PI))
 	assert_almost_eq(turned, PI, 0.02, "a walking turn did not come round half a turn")
 
@@ -261,19 +262,42 @@ func test_a_wall_turn_never_doubles_back_on_itself() -> void:
 		assert_lt(absf(step_taken), 0.6, \
 			"the turn jumped %.3f rad in one tick" % absf(step_taken))
 
-func test_a_half_turn_always_picks_the_same_direction() -> void:
-	# A half turn is a coin flip -- both ways arrive, and float noise in the
-	# wall's normal decides which. It has to be the SAME coin every time, or two
-	# attempts at one wall turn opposite ways.
-	var almost_half: float = PI - 0.001
-	assert_almost_eq(Turn180Move._shortest_turn(almost_half), PI, 0.0001, \
-		"a hair under half a turn did not settle on the pinned direction")
-	assert_almost_eq(Turn180Move._shortest_turn(-almost_half), PI, 0.0001, \
-		"the same angle from the other side chose the other way round")
+func test_the_turn_goes_clockwise_whatever_the_approach_was() -> void:
+	# ✅ MEASURED in the original: "Faith only ever turns right." Godot's yaw
+	# grows counter-clockwise seen from above, so clockwise is DOWN.
+	#
+	# Checked from two different approach angles, because the rule this replaced
+	# turned whichever way was shorter -- which made the direction a function of
+	# the entry angle, and a coin flip on float noise for the head-on approach
+	# the move is mostly used for.
+	for approach in [-deg_to_rad(20.0), deg_to_rad(20.0)]:
+		var world := await _world_with_wall_ahead(6.0)
+		var player: Player = world["player"]
+		player.global_position = Vector3(0.0, 1.5, -1.55)
+		player.rotation.y = approach
+		player.velocity = Vector3(0.0, 2.0, -6.0)
+		player.move_manager.start(Move.JUMP)
+		await step(2)
+		assert_eq(player.move_manager.current_name, Move.WALL_CLIMB, \
+			"the climb never started at %.0f degrees" % rad_to_deg(approach))
+		(world["input"] as ScriptedInputSource).press_turn()
+		await step(1)
+		var started := player.rotation.y
+		await step(6)
+		assert_lt(wrapf(player.rotation.y - started, -PI, PI), 0.0, \
+			"the turn went anti-clockwise from a %.0f degree approach" \
+			% rad_to_deg(approach))
+		after_each()
 
-func test_a_quarter_turn_still_goes_the_short_way() -> void:
-	# The pinning is only for the ambiguous case. Everything else takes the
-	# short way round, which is what makes a wall run's Q a quarter turn rather
-	# than three quarters.
-	assert_almost_eq(Turn180Move._shortest_turn(PI * 1.5), -PI * 0.5, 0.0001, \
-		"a three-quarter turn was not shortened to a quarter the other way")
+func test_the_turn_takes_the_measured_half_second() -> void:
+	# ✅ MEASURED, and a DURATION rather than a rate: every turn takes the same
+	# time whatever angle it covers, which is what an animation does.
+	var config := MovementConfig.new()
+	assert_almost_eq(config.turn_180.turn_time, 0.5, 0.0001, \
+		"the turn is not the measured half second")
+	# Longer than the freeze, so the body is still coming round when gravity
+	# returns. That ordering is deliberate and easy to undo by accident.
+	assert_gt(config.turn_180.turn_time, config.turn_180.disable_movement_time, \
+		"the turn now finishes before the freeze does")
+	assert_lt(config.turn_180.turn_time, config.turn_180.kick_window, \
+		"the turn outlasts the chance to kick off the wall")

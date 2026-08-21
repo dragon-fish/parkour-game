@@ -407,3 +407,41 @@ func test_a_sweep_does_not_outlive_the_run_that_started_it() -> void:
 	assert_almost_eq(wrapf(player.rotation.y - facing_before, -PI, PI), 0.0, 0.01, \
 		"the player kept turning after the run ended (%.1f degrees)" \
 		% rad_to_deg(wrapf(player.rotation.y - facing_before, -PI, PI)))
+
+func test_q_then_space_carries_the_measured_distance() -> void:
+	# ✅ MEASURED in the original: from a near-perfect high point on a wall run,
+	# Q and then space carries Faith from X 208.2 to X 214.7 -- 6.5 m sideways
+	# off the wall.
+	#
+	# A whole-manoeuvre figure, deliberately: it is the product of the sweep's
+	# speed, the fan's width, how much of the run's speed the kick turns, and
+	# the push on top. Any of those drifting shows up here, and none of them can
+	# be checked against the original on its own.
+	var player: Player = await _running_the_wall()
+	var input: ScriptedInputSource = _world["input"]
+	# Pressed early rather than at the very top of the arc. Waiting for the rise
+	# to top out AND THEN sweeping for 0.3 s spends more of the run than this
+	# fixture's wall has left in it -- a finding in its own right, recorded in
+	# docs/feel-backlog.md rather than papered over here.
+	input.press_turn()
+	# The measured sweep is a little under 0.3 s, which is 18 ticks.
+	await step(18)
+	var launched_from := player.global_position
+	input.press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.JUMP, \
+		"the kick never left the wall")
+	var ticks := 0
+	while ticks < 300 and not player.grounded:
+		await step(1)
+		ticks += 1
+	var travelled: float = Vector2(player.global_position.x - launched_from.x,
+		player.global_position.z - launched_from.z).length()
+	# A wide band on purpose. The original's figure came off a specific spot in
+	# a specific level, and this fixture is a bare wall over flat ground; what
+	# is being pinned is the ORDER of the distance, not the decimal.
+	assert_gt(travelled, 4.0, \
+		"a Q-and-kick carried only %.1f m, against the original's 6.5" % travelled)
+	assert_lt(travelled, 10.0, \
+		"a Q-and-kick carried %.1f m, well past the original's 6.5" % travelled)
+	print("[measure] Q + kick carried %.2f m (original: 6.5 m)" % travelled)

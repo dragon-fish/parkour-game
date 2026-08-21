@@ -73,19 +73,32 @@ func enter(_previous: StringName) -> void:
 
 	_turn_from = player.rotation.y
 	_placed = _turn_from
+	# ALWAYS CLOCKWISE, AND ALWAYS EXACTLY HALF A TURN.
+	#
+	# ✅ MEASURED by the owner in the original: "Faith only ever turns right."
+	# Godot's yaw grows counter-clockwise seen from above, so clockwise is the
+	# negative direction.
+	#
+	# This replaced a short-way-round rule that turned toward whichever side the
+	# approach was already leaning. That was defensible -- less rotation, and it
+	# carried the body's existing lean through -- but it made the direction a
+	# function of the entry angle, which the owner noticed in play and then went
+	# and checked. It also left the direction a coin flip on float noise for the
+	# head-on approach the move is mostly used for.
+	#
+	# Half a turn EXACTLY, rather than turning to square up with the wall: come
+	# in crooked and you leave crooked, which is what the original does and what
+	# the name of the move says. The kick that follows is square regardless --
+	# it reads the wall's own normal, not the facing.
+	_turn_to = _turn_from - PI
 	if on_a_wall():
 		_normal = _normal.normalized()
-		# atan2(x, z) rather than (x, -z): the body's forward is -Z, so facing
-		# ALONG a vector means yaw = atan2(v.x, v.z) is wrong by half a turn
-		# and this is the form that is not.
-		_turn_to = _turn_from + _shortest_turn(atan2(_normal.x, _normal.z) + PI - _turn_from)
 		# Frozen outright rather than decayed. "Not subject to gravity" is the
 		# owner's own description and DisableMovementTime is the field; a body
 		# still carrying its climb would leave the window before it ended.
 		player.velocity = Vector3.ZERO
 		player.set_grounded(false)
 	else:
-		_turn_to = _turn_from + PI
 		# Momentum is kept. Turning on the spot while running is how the turn
 		# is used on the ground, and stopping the body dead would make it a
 		# move nobody would ever press.
@@ -132,19 +145,6 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _elapsed < cfg.turn_time:
 		return KEEP
 	return WALKING if player.grounded else FALLING
-
-## The short way round, with the coin flip pinned.
-##
-## A HALF TURN IS A COIN FLIP: both directions arrive, and floating-point noise
-## in the wall's normal decides which. That is fine when it is decided once, and
-## it is -- but it has to be the SAME coin every time, or two attempts at the
-## same wall turn opposite ways and the move reads as the camera not knowing
-## where to go.
-static func _shortest_turn(difference: float) -> float:
-	var wrapped: float = wrapf(difference, -PI, PI)
-	if absf(absf(wrapped) - PI) < 0.01:
-		return PI
-	return wrapped
 
 ## Carries the body a slice of the way round, and tells the camera how far it
 ## moved.

@@ -193,10 +193,15 @@ extends Resource
 ## moved -- Q during a wall run swings the view a quarter turn without touching
 ## the body, so there is no lag to bleed off, only a view to carry across.
 ##
-## ⚠️ PROJECT-DEFINED. 6 rad/s crosses a 90 degree fan in about a quarter of a
-## second: fast enough to be a shortcut for the mouse flick it replaces, slow
-## enough to read as a look rather than a cut.
-@export var look_sweep_speed: float = 9.0
+## ✅ DERIVED FROM A MEASUREMENT. The owner timed the original: Q during a wall
+## run carries the view through its 90 degree fan in a little under 0.3 s. A
+## quarter turn in 0.3 s is 5.24 rad/s.
+##
+## This replaced two guesses in a row -- 6.0, then 9.0 when the first read as
+## slightly slow. The measurement lands between them and nearer the first, which
+## is the usual shape of this: the guess that felt right was already close, and
+## the correction went the wrong way.
+@export var look_sweep_speed: float = 5.24
 
 ## How fast the yaw fan's edge is eased in to meet a view that is already
 ## outside it, in radians per second.

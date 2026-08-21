@@ -61,13 +61,20 @@ func _init() -> void:
 ## far enough in the remaining window that the extra time bought nothing.
 @export var falling_gravity_scale: float = 0.35
 
-## How long the body takes to come round. ⚠️ PROJECT-DEFINED: the original
-## carries the turn on an animation, and there is no duration in the CDO.
+## How long the body takes to come round.
+##
+## ✅ MEASURED by the owner in the original: a 180 out of a wall climb takes
+## about half a second. Not in the CDO -- the turn is carried on an animation
+## there, so a stopwatch was the only way to get it.
+##
+## A DURATION, not a rate, so every turn takes the same time whatever angle it
+## covers. That is what an animation does, and it is why this is longer than the
+## freeze above rather than shorter: the body is still coming round when gravity
+## returns, which is the half-second the manoeuvre is worth.
 ##
 ## The turn is SCRIPTED, so the camera trails it and eases in rather than being
-## cut through it (docs/camera-authority.md). Set shorter than the window above,
-## so the turn is visibly finished while there is still time to decide.
-@export var turn_time: float = 0.2
+## cut through it (docs/camera-authority.md).
+@export var turn_time: float = 0.5
 
 @export_group("Wall kick")
 
