@@ -204,126 +204,113 @@ func _query_surface(reach: float) -> void:
 ## unwalkable face (not a slope the player would just walk up), clear at
 ## chest height, with a walkable top within the vault table's own reach
 ## (SpeedVaultConfig.table_ceiling()) of the feet.
+## Constants for the feet-to-eye column scan. See vault_query().
+##
+## ⚠️ PROJECT-DEFINED sample count. Six is enough that the coarsest gap between
+## samples is about a hand's width on this body, which is finer than any
+## obstacle edge the classification actually cares about, and cheap enough to
+## fire every tick.
+const COLUMN_SAMPLES := 6
+## The lowest sample sits this far above the soles rather than at them, so the
+## floor the player is standing on is never mistaken for an obstacle face.
+const COLUMN_FLOOR_MARGIN := 0.1
+
 func vault_query() -> Dictionary:
 	if _config == null:
 		return _no_hit()
 	_ensure_rays()
-	# BOTH forward rays at vault_reach: the chest-clearance test is part of the
-	# vault question and must be asked at the vault's own distance. See
-	# _aim_forward().
-	_aim_forward(_vault_low, _config.speed_vault.vault_reach)
-	_aim_forward(_vault_high, _config.speed_vault.vault_reach)
-	if not _vault_low.is_colliding():
-		return _no_hit()
 
-	# A shin-height hit whose surface is walkable (normal.y at or above
-	# walkable_floor_z) is ground CharacterBody3D's own locomotion
-	# already climbs -- a ramp, not an obstacle face -- and must never read as
-	# something to vault. Without this, a plain climbable slope satisfies
-	# every other gate below: the shin ray hits its rising surface, the chest
-	# ray clears it (no realistic ramp angle blocks chest height), and its own
-	# walkable top sits within the vault table's own reach of the feet. Measured directly
-	# on the arena's 18.4 degree UpRamp: the shin ray reports normal
-	# (0, 0.949, 0.316) -- comfortably above the threshold -- which is exactly
-	# what used to re-trigger the vault on every step up it.
+	# A COLUMN OF FORWARD RAYS, FROM THE FEET TO THE EYE.
 	#
-	# Unlike SurfaceDown below, VaultLow has hit_from_inside left at its
-	# default (false), so a hit here is always a genuine surface normal, never
-	# the degenerate (0,0,0) that hit_from_inside can report -- no extra guard
-	# is needed against that case.
-	if _vault_low.get_collision_normal().y >= _config.pawn.walkable_floor_z:
+	# This replaced a single shin-height ray, and the shin was the whole
+	# problem. The owner could not vault a ventilation duct at all -- run at it
+	# and you simply stop dead -- because a duct with open space beneath it has
+	# NOTHING at shin height, so the old first gate refused the vault before
+	# anything else was considered. Same for a chain-link fence.
+	#
+	# The column also expresses the classification rule directly rather than
+	# needing a threshold bolted on beside it. The owner's account, confirmed
+	# against the original with a stopwatch and a third-person camera (see
+	# docs/feel-backlog.md 25-28): what decides the move is WHERE ON THE BODY
+	# the obstacle's edge lands at contact, and what you can vault is what you
+	# can get your hands on top of while jumping -- about eye height. So:
+	#
+	#   * the LOWEST sample that hits is where the face begins on the body
+	#   * if the TOP sample -- at the eye -- still hits, the obstacle is not
+	#     something to vault at all. It is a wall, and the grab probe's
+	#     business.
+	#
+	# Measured from the FEET, and the feet move: the same duct is a vault when
+	# met at the top of a jump and a wall when met from standing. That is not a
+	# special case, it is what the frame predicts, and it is what the owner
+	# observed as "with good jump timing even a taller obstacle vaults".
+	var feet: float = _feet_y()
+	var eye: float = _config.camera.eye_height + _foot_offset
+	var reach: float = _config.speed_vault.vault_reach
+	var lowest_face := Vector3.ZERO
+	var lowest_normal := Vector3.ZERO
+	var found := false
+	var blocked_at_eye := false
+	for i in COLUMN_SAMPLES:
+		var t: float = float(i) / float(COLUMN_SAMPLES - 1)
+		var sample_y: float = lerpf(feet + COLUMN_FLOOR_MARGIN, feet + eye, t)
+		_vault_low.position.y = sample_y - global_position.y
+		_aim_forward(_vault_low, reach)
+		if not _vault_low.is_colliding():
+			continue
+		var normal: Vector3 = _vault_low.get_collision_normal()
+		# A surface CharacterBody3D's own locomotion already climbs is a ramp,
+		# not an obstacle face, and must never read as something to vault.
+		# Measured on the arena's 18.4 degree UpRamp, whose shin-height normal
+		# is (0, 0.949, 0.316): without this the ramp re-triggered a vault on
+		# every step up it.
+		if normal.y >= _config.pawn.walkable_floor_z:
+			continue
+		if i == COLUMN_SAMPLES - 1:
+			blocked_at_eye = true
+		if not found:
+			found = true
+			lowest_face = _vault_low.get_collision_point()
+			lowest_normal = normal
+	if not found or blocked_at_eye:
 		return _no_hit()
 
-	if _vault_high.is_colliding():
-		return _no_hit()
+	var to_face := lowest_face - global_position
+	var distance: float = Vector2(to_face.x, to_face.z).length()
 
-	_query_surface(_config.speed_vault.vault_reach)
+	# PLANTED JUST PAST THE FACE THIS SCAN ACTUALLY FOUND, not at a fixed
+	# vault_reach ahead. The fixed offset is what made this query go blind from
+	# close up -- measured, it stopped reporting an obstacle about a metre out,
+	# because the anchor sailed past it. See Move.touching() for the bug that
+	# hid behind.
+	_query_surface(distance + LEDGE_ANCHOR_MARGIN)
 	if not _surface.is_colliding():
 		return _no_hit()
 	var top: Vector3 = _surface.get_collision_point()
-	var normal: Vector3 = _surface.get_collision_normal()
-	# A DEGENERATE (zero-length) normal, not a shallow one, is what
-	# hit_from_inside reports when SurfaceDown's own origin starts inside
-	# solid geometry -- there is no real surface to read a slope from.
-	# Rejecting on normal.y here (0.0 < walkable_floor_z) would reject for
-	# the wrong reason: the height check below already rejects it correctly,
-	# because _query_surface() places this ray's origin SURFACE_ORIGIN_MARGIN
-	# above the tallest reachable top by construction.
-	# Measured: this case reports the ray's own origin as the collision point
-	# with normal (0,0,0), never a shallow-but-nonzero slope normal.
-	if normal != Vector3.ZERO and normal.y < _config.pawn.walkable_floor_z:
-		return _no_hit()
-	var height := top.y - _feet_y()
-	# Lower bound is max_step_height, NOT MIN_HEIGHT_EPSILON: anything the free
-	# step-up can clear (see Player.try_step_up) must never read as a vault, or
-	# the two overlap and the vault -- checked first -- wins every time.
-	#
-	# The epsilon was only ever a floor-noise guard, which was the right bound
-	# while nothing else could handle low obstacles. Now it is not: the tutorial
-	# rooftops are ringed by facade meshes whose top sits ~0.19 m above the roof
-	# they border (S_R_05_03_F is 57.9 m tall for a 0.19 m lip), and every one of
-	# them satisfied every gate above. Running at one vaulted onto a 0.64 m ledge
-	# at the roof's edge; walking into one below vault_min_speed just stopped
-	# dead. Mirror's Edge steps onto obstacles this low rather than vaulting
-	# them, and its own vaultOnto/vaultOver band starts at 0.64 m, well clear.
-	#
-	# Reusing max_step_height rather than adding a vault_min_height keeps the
-	# two bands defined by ONE number, so they can never drift into a gap (an
-	# obstacle too tall to step and too short to vault) or back into an overlap.
-	#
-	# Upper bound is table_ceiling() (Task 14: was the standalone
-	# vault_max_height tunable, now the highest max_height across
-	# SpeedVaultConfig's own six-variant table) -- same reasoning, reused
-	# rather than a second number that could drift from what the table
-	# actually reaches.
+	var top_normal: Vector3 = _surface.get_collision_normal()
+	var height := top.y - feet
+
+	# NO LONGER A REFUSAL. Whether the top is walkable decides where the vault
+	# LANDS -- over it, or on it -- and the owner settled that from play: a
+	# fence and the cabinet beside it are the same height, and both report
+	# VaultOver; the cabinet's wide top is simply where she ends up standing.
+	# One axis for the family, another for the landing. Refusing the whole
+	# vault on a top you cannot stand on is how a pipe became an invisible
+	# wall.
+	var standable: bool = top_normal == Vector3.ZERO 		or top_normal.y >= _config.pawn.walkable_floor_z
+
 	if height <= _config.pawn.max_step_height or height > _config.speed_vault.table_ceiling():
 		return _no_hit()
-
-	# `height` itself is not a new measurement -- it is the same local this
-	# function already computed and gated on above, now simply exposed.
-	# ✅ Its role is confirmed (05 §5.7 axis 1, MinHeight/MaxHeight per variant:
-	# 0/48/64/145 uu), but that axis is a set of per-variant THRESHOLDS this
-	# quantity gets compared against, not a single source value of its own, so
-	# there is no one "raw uu" to cite for the field itself. Every existing
-	# caller of vault_query() was already recomputing this from `top` and its
-	# own copy of the foot offset; returning it here removes that duplication.
-
-	# Horizontal distance from the body origin to the obstacle face. The
-	# lookahead in SpeedVaultMove divides this by horizontal speed, so it has
-	# to be measured to the FACE (VaultLow's own hit), not to the top surface
-	# SurfaceDown found further along the ray.
-	#
-	# Source: 05 §5.7 axis 5, MaxDistanceTime (0.2 / 0.4 s). ⚠️ The original
-	# names that field "Distance" but stores a TIME; the research's own
-	# inferred (not bytecode-confirmed) read is
-	# time_to_ledge = distance / horizontal_speed, checked every frame against
-	# that time budget. This field is that formula's NUMERATOR -- the raw
-	# distance -- leaving the division, and which speed to divide by, to
-	# whichever move reads it next.
-	var face_point: Vector3 = _vault_low.get_collision_point()
-	var to_face := face_point - global_position
-	var distance: float = Vector2(to_face.x, to_face.z).length()
-
-	# bVaultOnto is functionally the obstacle's thickness (05 §5.7 axis 2,
-	# ✅ confirmed as a CONCEPT -- "true = vault up and stand on top, false =
-	# vault through and keep running, functionally equivalent to the
-	# obstacle's thickness/width, decided by TdPhysicsMove.bCheckForVaultOver's
-	# probe"). ❓ The probe's own mechanics are not documented anywhere in the
-	# research (no distance, no comparison rule survives in the decompile), so
-	# everything below this point -- vault_over_probe_distance, where the ray
-	# goes, and how its hit is judged -- is this project's own invention, not
-	# a transcription.
 	var vault_over: bool = _query_vault_over(top)
-
 	return {
-		"valid": true, "top": top, "edge": top, "normal": normal,
+		"valid": true, "top": top, "edge": top, "normal": top_normal,
 		"height": height, "distance": distance, "vault_over": vault_over,
+		"standable": standable,
+		"face_normal": lowest_normal,
 		# WHERE THE OBSTACLE'S FACE IS, in world space. Returned so a move that
-		# has committed can watch for CONTACT without re-querying: this probe is
-		# built to see a vault COMING and stops reporting one from close up, so
-		# a move that waits for contact by asking it again simply watches the
-		# obstacle vanish. See docs/contact-drives-movement.md.
-		"face_point": face_point,
+		# has committed can watch for CONTACT without re-querying -- see
+		# Move.touching() and docs/contact-drives-movement.md.
+		"face_point": lowest_face,
 	}
 
 ## Fires VaultOverDown to tell "there is floor on the far side" (vault OVER)
