@@ -61,7 +61,18 @@ func _init() -> void:
 ## gives the player no say in where a roll goes.
 @export var speed_scale: float = 1.05
 
-## ✅ MEASURED: a roll carries the body about 3 m forward, and it is FORCED --
+## ⚠️ RETUNED DOWN from the measured 3.0 at the owner's request, after playing
+## it here: "our roll covers 3.2 m in practice, which is a bit aggressive --
+## can it come down to 2.5?"
+##
+## The measurement is not wrong and is kept in the note below; what it does not
+## carry is this project's own capsule, speeds and camera, and 3 m read as
+## further here than it does there. A floor of 2.5 with momentum still able to
+## exceed it is what the owner asked for by feel, which outranks the stopwatch
+## on a question of feel.
+##
+## ✅ ORIGINALLY MEASURED: a roll carries the body about 3 m forward, and it is
+## FORCED --
 ## the owner's word. It happens whatever speed you arrived with, which is why
 ## the owner also reports that rolling toward a cliff edge in the original rolls
 ## you off it.
@@ -75,7 +86,7 @@ func _init() -> void:
 ## Consumed as a SPEED (distance over duration) rather than as a distance the
 ## move integrates toward, so it composes with speed_scale by a plain maxf()
 ## instead of needing its own arrival logic.
-@export var forced_distance: float = 3.0
+@export var forced_distance: float = 2.5
 
 ## How far the view rotates about the pitch axis over the roll. A full turn:
 ## the body goes over, and in first person the view goes with it.

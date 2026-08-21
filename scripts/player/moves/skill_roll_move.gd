@@ -26,9 +26,13 @@ var _elapsed: float = 0.0
 ## enter(). Zero only if the facing is degenerate, which nothing produces.
 var _direction: Vector3 = Vector3.ZERO
 var _speed: float = 0.0
+## True once the ground has run out mid-roll. The roll does NOT end there -- see
+## physics_update().
+var _airborne: bool = false
 
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
+	_airborne = false
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	# maxf, so the measured 3 m is a FLOOR rather than a replacement: a fast
 	# landing still converts its momentum forward through speed_scale, and a
@@ -86,24 +90,48 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	else:
 		player.velocity.x = 0.0
 		player.velocity.z = 0.0
-	player.velocity.y = -config.pawn.floor_snap_speed
-
-	var rise: float = player.try_step_up(delta)
-	if rise > 0.0 and player.camera_rig != null:
-		player.camera_rig.add_step_offset(rise)
-	player.move_and_slide()
-	var stepped_down: bool = player.try_step_down()
-	player.set_grounded(player.is_on_floor() or stepped_down)
+	# ROLLING OFF AN EDGE DOES NOT END THE ROLL.
+	#
+	# ✅ The owner, from the original: "if the ground runs out half way through,
+	# the roll animation still plays out -- the body is obviously falling by
+	# then, but the move finishes." Ours cut to a standing fall the instant the
+	# floor disappeared, and the camera went from mid-tumble to upright in one
+	# frame. Their word for it: a poor experience.
+	#
+	# The distinction is between the body and the ANIMATION. Gravity takes the
+	# body immediately, which is honest; the roll keeps its own clock and its own
+	# camera until it is done. This is the movement-side counterpart of
+	# docs/camera-authority.md -- a manoeuvre interrupted by terrain plays out,
+	# it does not swap the player for a different one mid-frame.
+	if _airborne:
+		player.velocity.y -= config.pawn.gravity * delta
+		player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
+		player.move_and_slide()
+		# Landing again mid-roll simply resumes the grounded path.
+		_airborne = not player.is_on_floor()
+		player.set_grounded(not _airborne)
+	else:
+		player.velocity.y = -config.pawn.floor_snap_speed
+		var rise: float = player.try_step_up(delta)
+		if rise > 0.0 and player.camera_rig != null:
+			player.camera_rig.add_step_offset(rise)
+		player.move_and_slide()
+		var stepped_down: bool = player.try_step_down()
+		player.set_grounded(player.is_on_floor() or stepped_down)
+		if not player.grounded:
+			# First tick off the edge. Hand the vertical channel to gravity from
+			# here on; the floor snap above would otherwise keep driving the body
+			# down at a fixed rate, which is not a fall.
+			_airborne = true
+			player.velocity.y = 0.0
 
 	_drive_camera()
 
-	if not player.grounded:
-		# Rolled off an edge. The roll is over; the fall is what matters now.
-		player.velocity.y = 0.0
-		return FALLING
-	if _elapsed >= cfg.duration:
-		return WALKING
-	return KEEP
+	if _elapsed < cfg.duration:
+		return KEEP
+	# The roll is spent. WHERE it leaves the player is a separate question from
+	# whether it finished, and the answer is simply where the body is.
+	return WALKING if player.grounded else FALLING
 
 ## The roll itself: the view goes ALL THE WAY OVER, and the eye drops through
 ## the middle of it.

@@ -131,8 +131,12 @@ func test_a_roll_travels_the_measured_distance_even_from_a_dead_drop() -> void:
 	# otherwise, so the distance is a FLOOR.
 	var config := MovementConfig.new()
 	var floor_speed: float = config.skill_roll.forced_distance / config.skill_roll.duration
-	assert_almost_eq(floor_speed, 3.0, 0.0001, \
-		"the forced travel does not work out at 3 m over the second")
+	# ⚠️ 2.5, not the measured 3.0. Retuned down by feel after playing it here --
+	# the same distance read as further in this project than in the original, and
+	# the owner asked for 2.5. The measurement is still the reason the field
+	# exists, and is recorded on it.
+	assert_almost_eq(floor_speed, 2.5, 0.0001, \
+		"the forced travel is no longer the 2.5 m over the second that was asked for")
 	# Momentum still wins when there is any: a fast landing converts it forward
 	# rather than being pinned back to walking pace.
 	assert_gt(6.0 * config.skill_roll.speed_scale, floor_speed, \
@@ -163,6 +167,41 @@ func test_the_roll_goes_where_the_view_points_not_where_the_body_was_going() -> 
 	await step(4)
 	assert_gt(player.velocity.z, 0.0, \
 		"the roll followed the old momentum (-Z) instead of the view (+Z)")
+
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_the_roll_plays_out_after_the_ground_runs_out() -> void:
+	# ✅ The owner, from the original: "if the ground runs out half way through,
+	# the roll animation still plays out -- the body is obviously falling by
+	# then, but the move finishes." Ours cut to a standing fall the instant the
+	# floor disappeared, and the camera went from mid-tumble to upright in one
+	# frame.
+	#
+	# The distinction is between the BODY and the ANIMATION. Gravity takes the
+	# body immediately; the roll keeps its own clock and its own camera.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+
+	# Started already off the floor, which is the same case as running out of
+	# it: the roll has nothing under it from its first tick.
+	player.global_position += Vector3(0.0, 3.0, 0.0)
+	player.velocity = Vector3.ZERO
+	player.move_manager.start(Move.SKILL_ROLL)
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.SKILL_ROLL, \
+		"the roll ended on its first tick because there was no ground")
+
+	# Half a second in -- well past where the old version bailed, and well short
+	# of the roll's own second.
+	await step(28)
+	assert_eq(player.move_manager.current_name, Move.SKILL_ROLL, \
+		"the roll gave up part-way instead of playing out")
+	assert_lt(player.velocity.y, -1.0, \
+		"the body is not falling -- gravity should have it while the roll plays")
 
 	TestWorld.teardown(world)
 	await step(1)
