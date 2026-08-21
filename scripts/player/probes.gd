@@ -382,7 +382,11 @@ func ledge_query() -> Dictionary:
 	if height <= MIN_HEIGHT_EPSILON or height < _config.grab.min_wall_height \
 			or height > _config.grab.ledge_max_height:
 		return _no_hit()
-	return {"valid": true, "top": edge, "edge": edge, "normal": normal}
+	# face_distance comes along: `edge` is a point on the ledge's TOP, found by
+	# dropping a probe past the face, so it can sit well behind the wall. How
+	# far the WALL is, is a different number, and it is the one a caller asking
+	# "can the body reach this" needs.
+	return {"valid": true, "top": edge, "edge": edge, "normal": normal, 		"face_distance": face_distance}
 
 ## Points a side ray at the given reach and fires it. Aimed live from the
 ## config on every call, same as _aim_forward() above and for the same

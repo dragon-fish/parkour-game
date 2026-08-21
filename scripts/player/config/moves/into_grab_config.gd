@@ -57,6 +57,29 @@ func _init() -> void:
 ## of drift.
 @export var min_adjust_distance: float = 0.32
 
+## How close the WALL must already be, horizontally, before a reach may start.
+##
+## Measured from the body's centre to the wall's face, so a capsule radius
+## (0.40 m) is already inside it: 0.8 m means the body is within about half a
+## metre of touching.
+##
+## ⚠️ Well under the CDO's own `IntoGrabMaxDistance = 200` uu (2 m). At that
+## range the reach reads as a magnet: the player jumps somewhere in the general
+## direction of a wall and gets hauled onto it across open air. The owner
+## describes the original as touching the wall FIRST and hanging second, so the
+## reach here is only allowed to close a gap the body has already nearly shut.
+@export var max_reach_distance: float = 0.8
+
+## How fast the body turns to face the wall during the reach, in radians per
+## second.
+##
+## ⚠️ PROJECT-DEFINED, but the need for it is not: the hang's whole geometry --
+## the offset back from the edge, the yaw fan the view is clamped to -- is
+## expressed relative to the WALL. Arriving at a 70 degree angle to it and
+## staying there left the fan skewed by 70 degrees, so "turn 90 degrees from
+## straight-on" meant something different on every grab.
+@export var align_turn_speed: float = 8.0
+
 ## ⚠️ PROJECT-DEFINED SAFETY VALVE. The reach cannot run forever: if something
 ## prevents the body ever arriving, it gives up and falls rather than hanging
 ## in the air being aligned.

@@ -119,7 +119,13 @@ func probe_transition() -> StringName:
 	# pose however it was caught. The cooldown is still checked against GRAB,
 	# since that is the move being re-entered and where redo_move_time lives.
 	if c.check_for_grab and player.probes != null and player.move_manager.can_enter(GRAB):
-		if player.probes.ledge_query()["valid"]:
+		var ledge: Dictionary = player.probes.ledge_query()
+		# The REACH's own range is checked here rather than inside it. Checked
+		# there, a ledge that is visible but too far away sends the body into
+		# IntoGrab, which gives up on its first tick and returns to Falling,
+		# which sees the same ledge again -- an endless Falling/IntoGrab
+		# flutter for as long as the ledge stays in view.
+		if ledge["valid"] and _within_reach(ledge):
 			return INTO_GRAB
 
 	return KEEP
@@ -180,6 +186,20 @@ func settle_landing(delta: float) -> StringName:
 	player.notify_landed(impact_speed)
 	_apply_landing_cost(fall_height, rolled)
 	return landing_destination(fall_height, rolled)
+
+## Whether a ledge is close enough to reach for, horizontally.
+##
+## ledge_find_distance (3.5 m, confirmed) is how far the probe may LOOK; it is
+## not how far the body may be hauled. Reaching from that range reads as a
+## magnet -- jump vaguely wallward and get pulled in across open air -- so the
+## reach is held to its own, much shorter range. See
+## IntoGrabConfig.max_reach_distance.
+func _within_reach(ledge: Dictionary) -> bool:
+	# Measured to the WALL, not to the edge point. `edge` is on the ledge's
+	# top, found by dropping a probe past the face, so against anything with
+	# depth it sits well behind the surface the body would touch -- 1.78 m for
+	# a 1 m deep block whose face was only 0.9 m away.
+	return float(ledge.get("face_distance", INF)) <= config.into_grab.max_reach_distance
 
 ## Where a landing from this state leads. Overridden by subclasses.
 ## FallUncontrolledMove overrides this to emit died_from_fall instead of

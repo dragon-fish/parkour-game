@@ -181,6 +181,18 @@ func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \
 	_look_pitch_recover_speed = recover_speed
 	_has_look_constraint = true
 
+## Re-centres the yaw fan on a direction the MOVE knows about, rather than on
+## whatever the body happened to be facing when the constraint took hold.
+##
+## Hanging is the case: the fan belongs to the WALL. A ledge caught at a
+## 70 degree angle left the fan skewed 70 degrees off it, so "turn 90 degrees
+## from straight-on" meant something different on every grab. Called once the
+## body has been aligned, so the running total starts from its real facing.
+func recentre_yaw_reference(yaw: float) -> void:
+	_yaw_reference = yaw
+	var body := get_parent()
+	_look_relative_yaw = wrapf((body as Node3D).rotation.y - yaw, -PI, PI) 		if body is Node3D else 0.0
+
 func clear_look_constraint() -> void:
 	_has_look_constraint = false
 	_look_pitch_relaxes = false
@@ -317,14 +329,14 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 ## stays up, which a single ramp from zero cannot express -- it would let the
 ## player peek downward from a two-handed hang.
 func _relaxed_pitch_floor() -> float:
-	var turned: float = absf(_look_relative_yaw)
-	if turned <= _look_pitch_relax_threshold:
+	# A STEP, not a ramp. This models a change of GRIP -- two hands on the ledge
+	# or one -- and a grip does not half-change. Ramping it across the rest of
+	# the yaw range meant turning to 100 degrees bought 8 degrees of downward
+	# view, which in play is indistinguishable from still being locked at
+	# level; only turning all the way to the fan's edge opened it properly.
+	if absf(_look_relative_yaw) <= _look_pitch_relax_threshold:
 		return _look_min.x
-	var yaw_span: float = maxf(absf(_look_max.y if _look_relative_yaw >= 0.0 else _look_min.y), \
-		_look_pitch_relax_threshold + 0.0001)
-	var past: float = (turned - _look_pitch_relax_threshold) \
-		/ maxf(yaw_span - _look_pitch_relax_threshold, 0.0001)
-	return lerpf(_look_min.x, _look_pitch_min_turned, clampf(past, 0.0, 1.0))
+	return _look_pitch_min_turned
 
 func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> void:
 	if _config == null or camera == null:

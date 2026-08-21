@@ -391,3 +391,17 @@ MaxLookConstraint     ( 10000,  16384, 0)
 `TdMove_SpeedVault` 的 `VaultTypes` 是个 4588 字节的数组，逐条数据未转储进 A1，
 所以变体表的具体门槛目前是本项目按 05 §5.7 推断的。核对时需要所有者按上述三类各找一个
 实际障碍物试，对照 `pick_variant()` 选中了哪一个。
+
+## 22. 抓边的"够取距离"判据缺少自动化验证
+
+所有者反馈原作是**先碰到墙再挂边**，而本项目从 `ledge_find_distance`（3.5 m，确证）探到就开始
+线性对齐，观感像"被磁铁吸过去"。现已加上 `IntoGrabConfig.max_reach_distance`（⚠️ 0.8 m），
+在 `AirborneMove.probe_transition()` 里把关——放在转移**之前**，因为放在 `IntoGrabMove.enter()`
+里会导致"太远 → abort → Falling → 又探到 → IntoGrab"的无限抖动。
+
+**没有测试**。`Probes.ledge_query()` 返回的 `face_distance` 语义与预期不符：合成场景里墙面
+实际在 0.70 m 处，该字段读出 **1.484**。可能是射线起点偏移、也可能命中的是远面，未查明。
+在弄清它到底量的是什么之前，围绕这个数写的测试只会把误解固化下来。
+
+**补的话**：先单独测 `face_distance` 本身——摆一面已知距离的墙，断言读数等于那个距离——
+弄清语义再回来写够取距离的测试。数值本身（0.8）是拍的，需要试玩调。

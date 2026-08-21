@@ -20,6 +20,9 @@ extends Move
 
 var _aborted: bool = false
 var _target: Vector3 = Vector3.ZERO
+## The yaw that faces the wall. The body turns to it during the reach, and the
+## view's fan is re-centred on it once there.
+var _target_yaw: float = 0.0
 var _reach_time: float = 0.0
 
 func enter(_previous: StringName) -> void:
@@ -37,7 +40,23 @@ func enter(_previous: StringName) -> void:
 		# invent none -- physics_update() hands straight back to Falling.
 		_aborted = true
 		return
+	# TOO FAR TO REACH. Letting the body close a large gap here is what made
+	# grabbing read as a magnet -- jump vaguely wallward and get hauled in
+	# across open air. The original touches the wall first.
+	# Measured to the WALL, matching AirborneMove._within_reach() -- `edge` sits
+	# on the ledge's top and can be well behind the face the body would touch.
+	if float(query.get("face_distance", INF)) > cfg.max_reach_distance:
+		_aborted = true
+		return
+	var gap: Vector3 = query["edge"] - player.global_position
+	gap.y = 0.0
 	_target = _hanging_pose(query["edge"])
+	# Face the wall, not wherever the jump happened to be aimed -- see
+	# IntoGrabConfig.align_turn_speed.
+	if gap.length_squared() > 0.0001:
+		_target_yaw = atan2(-gap.x, -gap.z)
+	else:
+		_target_yaw = player.rotation.y
 	# Handed to GrabMove rather than re-queried there: once this reach
 	# finishes, the body can no longer see the edge it is hanging from.
 	player.pending_ledge = query
@@ -72,11 +91,14 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	player.set_grounded(false)
 	player.velocity = Vector3.ZERO
 
+	# Turned toward the wall alongside the move, at its own rate.
+	player.rotation.y = _turn_toward(player.rotation.y, _target_yaw, 		cfg.align_turn_speed * delta)
+
 	var to_target: Vector3 = _target - player.global_position
 	# Arrived, or close enough that the rest would not be visible.
 	if to_target.length() <= cfg.min_adjust_distance:
 		player.global_position = _target
-		return GRAB
+		return _settle()
 	if _reach_time >= cfg.max_duration:
 		# Something is in the way and the reach is never going to land. Falling
 		# is the honest outcome -- better than hanging in the air mid-reach.
@@ -85,6 +107,23 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	var stepped: float = cfg.align_speed * delta
 	if stepped >= to_target.length():
 		player.global_position = _target
-		return GRAB
+		return _settle()
 	player.global_position += to_target.normalized() * stepped
 	return KEEP
+
+## Finishes the reach: square the body up to the wall exactly, and tell the
+## camera its fan is centred there rather than on whatever the jump was aimed
+## at. Without the re-centring the hang's own look clamp inherits the approach
+## angle, and every grab has a differently skewed fan.
+func _settle() -> StringName:
+	player.rotation.y = _target_yaw
+	if player.camera_rig != null:
+		player.camera_rig.recentre_yaw_reference(_target_yaw)
+	return GRAB
+
+## Rotates `from` toward `to` by at most `step`, the short way round.
+static func _turn_toward(from: float, to: float, step: float) -> float:
+	var difference: float = wrapf(to - from, -PI, PI)
+	if absf(difference) <= step:
+		return to
+	return from + signf(difference) * step
