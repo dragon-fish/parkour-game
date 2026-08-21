@@ -144,10 +144,10 @@ func _target_animation() -> StringName:
 	match player.move_manager.current_name:
 		Move.WALKING:
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
-				return _first_available([&"run", &"Walk_Carry", &"idle"])
-			return _first_available([&"idle", &"run", &"Walk_Carry"])
+				return _first_available([&"run", &"Walk_Carry", &"idle", &"Idle_FoldArms"])
+			return _first_available([&"idle", &"Idle_FoldArms", &"run", &"Walk_Carry"])
 		Move.FALLING:
-			return _first_available([&"jump", &"NinjaJump_Idle", &"idle"])
+			return _first_available([&"jump", &"NinjaJump_Idle", &"idle", &"Idle_FoldArms"])
 		Move.SLIDE:
 			# PLACEHOLDER for a future slide clip. None of the owner's reported
 			# clips are a genuine match -- `climb`/`climbing` are prone,
@@ -236,8 +236,8 @@ func _target_animation() -> StringName:
 			# same speed split WALKING uses rather than claiming a clip of its
 			# own.
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
-				return _first_available([&"run", &"Walk_Carry", &"idle"])
-			return _first_available([&"idle", &"run", &"Walk_Carry"])
+				return _first_available([&"run", &"Walk_Carry", &"idle", &"Idle_FoldArms"])
+			return _first_available([&"idle", &"Idle_FoldArms", &"run", &"Walk_Carry"])
 		_:
 			# Any move without an explicit case above. Reaching here is a
 			# signal that a move was added without deciding what it looks

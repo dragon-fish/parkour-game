@@ -788,6 +788,11 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# is no run and no plain idle in it at all.
 	&"Slide", &"Slide_Start", &"Slide_Exit", &"ClimbUp_1m", &"Walk_Carry",
 	&"NinjaJump_Start", &"NinjaJump_Idle", &"NinjaJump_Land",
+	# The pack has eight Idle_* clips and not one plain idle: they are a
+	# lantern, a phone call, a shield, a head-shake. FoldArms is the least
+	# costumed of them and is here purely so a standing body is not looping a
+	# WALK, which is what it did with no idle available at all.
+	&"Idle_FoldArms",
 ]
 
 ## Runtime twin of the AnimationTree/CharacterAnimator block that used to be
@@ -879,7 +884,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# all sustained, hold-or-repeat clips that must keep going for as long as
 	# the state holds; jump is a discrete one-shot action and is deliberately
 	# left alone.
-	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle"]:
+	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms"]:
 		_ensure_clip_loops(anim_player, looping_clip)
 
 	var state_machine := AnimationNodeStateMachine.new()
