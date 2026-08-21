@@ -318,6 +318,12 @@ func vault_query() -> Dictionary:
 	return {
 		"valid": true, "top": top, "edge": top, "normal": normal,
 		"height": height, "distance": distance, "vault_over": vault_over,
+		# WHERE THE OBSTACLE'S FACE IS, in world space. Returned so a move that
+		# has committed can watch for CONTACT without re-querying: this probe is
+		# built to see a vault COMING and stops reporting one from close up, so
+		# a move that waits for contact by asking it again simply watches the
+		# obstacle vanish. See docs/contact-drives-movement.md.
+		"face_point": face_point,
 	}
 
 ## Fires VaultOverDown to tell "there is floor on the far side" (vault OVER)
@@ -417,7 +423,9 @@ func ledge_query() -> Dictionary:
 	# face_normal is what "square up to the wall" means. Facing the edge point
 	# instead leaves the body skewed whenever the ledge was approached at an
 	# angle, because the edge is off to one side of the wall it belongs to.
-	return {"valid": true, "top": edge, "edge": edge, "normal": normal, 		"face_distance": face_distance, 		"face_normal": _vault_high.get_collision_normal()}
+	return {"valid": true, "top": edge, "edge": edge, "normal": normal,
+		"face_distance": face_distance, "face_point": face_point,
+		"face_normal": _vault_high.get_collision_normal()}
 
 ## Points a side ray at the given reach and fires it. Aimed live from the
 ## config on every call, same as _aim_forward() above and for the same

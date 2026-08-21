@@ -12,6 +12,15 @@ var _exit_direction: Vector3 = Vector3.ZERO
 ## top to land on, so physics_update() hands straight back to Walking without
 ## ever moving the body. See enter()'s note for what the old fallback did.
 var _aborted: bool = false
+## Where the arc will land, and how long it takes. Worked out at COMMIT, from
+## the obstacle the probe found; spent at CONTACT, from wherever the body has
+## actually got to by then. See docs/contact-drives-movement.md.
+var _landing: Vector3 = Vector3.ZERO
+var _arc_duration: float = 0.0
+var _touched: bool = false
+## Where the obstacle's face was when the commit was made. See Move.touching().
+var _face_point: Vector3 = Vector3.ZERO
+var _approach_time: float = 0.0
 
 func enter(_previous: StringName) -> void:
 	# grounded is DECLARED, not read from is_on_floor(): this move never calls
@@ -89,12 +98,48 @@ func enter(_previous: StringName) -> void:
 	# is still recorded but left unread.
 	landing.y = top.y + player.standing_height() * 0.5
 
-	begin(player.global_position, landing, variant["duration"], config.speed_vault.vault_arc_height)
-	player.velocity = Vector3.ZERO
+	# WORKED OUT NOW, SPENT AT CONTACT.
+	#
+	# MaxDistanceTime is a confirmed field, so the original does commit before
+	# touching anything -- but a commit is the animation winding up, not the
+	# body being moved. begin()ing here would interpolate from wherever the
+	# commit happened, which at 7 m/s and MaxDistanceTime 0.2 s is 1.4 m short
+	# of the obstacle: a metre and a half of being dragged through open air.
+	#
+	# The owner put the whole principle plainly, and confirmed the timing from
+	# play: the vault visibly starts a little LATER than the press, with the
+	# hands and feet still meeting the geometry and a fraction of a second of
+	# IK-ish blending covering the difference. You can see Faith's own limbs in
+	# the original, so anything else reads as floating. See
+	# docs/contact-drives-movement.md.
+	_landing = landing
+	_face_point = query.get("face_point", Vector3.ZERO)
+	_arc_duration = variant["duration"]
+	_touched = false
+	_approach_time = 0.0
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:
 		return WALKING
+
+	# THE APPROACH. Committed, winding up, and not yet touching anything -- so
+	# nothing moves the body but the body's own momentum.
+	if not _touched:
+		_approach_time += delta
+		if touching(_face_point):
+			_touched = true
+			# From where the body ACTUALLY IS, which is the whole point.
+			begin(player.global_position, _landing, _arc_duration, config.speed_vault.vault_arc_height)
+			player.velocity = Vector3.ZERO
+		elif _approach_time >= config.speed_vault.approach_timeout:
+			# The contact the commit predicted never arrived -- jumped short, or
+			# the obstacle turned out to be somewhere else. Handing back is
+			# honest; waiting in the air is not.
+			player.set_grounded(player.is_on_floor())
+			return WALKING if player.grounded else FALLING
+		else:
+			carry_ballistically(delta)
+			return KEEP
 
 	if advance(delta):
 		player.velocity = _exit_direction * _exit_speed

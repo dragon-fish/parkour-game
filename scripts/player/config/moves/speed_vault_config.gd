@@ -232,3 +232,12 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 	if variant.is_empty() or speed_xy <= 0.01:
 		return false
 	return distance / speed_xy <= variant["max_distance_time"]
+
+## How long the APPROACH phase may wait for contact before giving up.
+##
+## ⚠️ PROJECT-DEFINED, and needed only because commit and contact are separate
+## here (see docs/contact-drives-movement.md). MaxDistanceTime already says how
+## far ahead a commit may be made; this bounds what happens when the contact it
+## predicted never arrives. Generously longer than the largest MaxDistanceTime
+## in the table, so it only ever fires on a genuine miss.
+@export var approach_timeout: float = 0.6

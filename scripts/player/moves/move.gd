@@ -66,3 +66,63 @@ func physics_update(_delta: float, _input: MoveInput) -> StringName:
 
 func exit() -> void:
 	pass
+
+# --- contact drives movement --------------------------------------------------
+#
+# See docs/contact-drives-movement.md. The body keeps its own ballistic motion
+# until a hand or a foot actually reaches the obstacle; only then does a
+# scripted interaction start moving it, and only from where the body has
+# actually got to.
+#
+# Shared here rather than written twice because the two moves that need it --
+# the reach onto a ledge and the vault -- got it wrong in exactly the same way,
+# and a third will be written eventually.
+
+## Whether the obstacle a query found is close enough to be TOUCHED.
+##
+## DERIVED FROM THE CAPSULE, not a tunable. `face_distance` is measured from the
+## body's centre, so contact is one radius away, plus a margin small enough to
+## be a rounding error and large enough that a body pressed against a surface
+## does not flicker in and out of touching it.
+##
+## A reach_distance knob can never be tuned right, because what it is trying to
+## express is "how long are the arms", and that is a function of the body's own
+## size. This project has been through that twice already -- see
+## IntoGrabConfig.arrive_distance and WallClimbMove.rise_speed()'s base.
+const CONTACT_MARGIN := 0.08
+
+## AGAINST A POINT CAPTURED AT COMMIT, not against a live query.
+##
+## The probes are built to see an interaction COMING, and stop reporting one
+## from close up: vault_query() goes invalid at about a metre out, because the
+## downward anchor it plants a fixed distance ahead sails past the obstacle once
+## the body is nearly on it. A move that waits for contact by asking again
+## simply watches the obstacle vanish and times out. Measured directly.
+##
+## So the commit captures where the face IS, and the approach watches the body
+## reach it. Both probes return `face_point` for this.
+##
+## Horizontal only: the body's own arc is still carrying it up or down, and a
+## vault taken at the top of a jump is touching the face just as much as one
+## taken level with it.
+func touching(face_point: Vector3) -> bool:
+	if face_point == Vector3.ZERO:
+		return false
+	# Annotated, not inferred: `player` is deliberately untyped (see above), so
+	# anything read through it arrives as Variant.
+	var here: Vector3 = player.global_position
+	var reach: float = player.current_capsule_radius() + CONTACT_MARGIN
+	return Vector2(face_point.x - here.x, face_point.z - here.z).length() <= reach
+
+## Carries the body through one tick of its own ballistic motion: full gravity,
+## real collisions, no scripted displacement at all.
+##
+## What the APPROACH phase runs. The commit has already been made and the
+## animation is winding up, but nothing has been touched yet, so nothing may
+## move the body except the body's own momentum. Anything else reads as being
+## dragged through open air toward the obstacle -- the owner's "floating".
+func carry_ballistically(delta: float) -> void:
+	player.velocity.y -= config.pawn.gravity * delta
+	player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
+	player.move_and_slide()
+	player.set_grounded(player.is_on_floor())

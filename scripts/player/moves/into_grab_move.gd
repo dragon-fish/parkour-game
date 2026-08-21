@@ -24,6 +24,12 @@ var _target: Vector3 = Vector3.ZERO
 ## view's fan is re-centred on it once there.
 var _target_yaw: float = 0.0
 var _reach_time: float = 0.0
+## False until a hand actually reaches the wall. Until then this move runs the
+## APPROACH phase and does not touch the body at all -- see
+## docs/contact-drives-movement.md.
+var _touched: bool = false
+## Where the wall's face was when the reach was committed. See Move.touching().
+var _face_point: Vector3 = Vector3.ZERO
 
 func enter(_previous: StringName) -> void:
 	# Declared, not read: this move drives the body directly and never calls
@@ -32,7 +38,12 @@ func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
 	_aborted = false
 	_reach_time = 0.0
-	player.velocity = Vector3.ZERO
+	_touched = false
+	# NO velocity = ZERO here, deliberately. The commit has been made and the
+	# reach is winding up, but nothing has been touched yet, so the body keeps
+	# its own arc. Killing it here is what made a grab read as a magnet: from
+	# the instant the probe SAW the ledge, the body was being dragged toward it
+	# through open air. See docs/contact-drives-movement.md.
 
 	var query: Dictionary = player.probes.ledge_query() if player.probes != null else Probes.NO_HIT.duplicate()
 	if not query["valid"]:
@@ -40,9 +51,11 @@ func enter(_previous: StringName) -> void:
 		# invent none -- physics_update() hands straight back to Falling.
 		_aborted = true
 		return
-	# TOO FAR TO REACH. Letting the body close a large gap here is what made
-	# grabbing read as a magnet -- jump vaguely wallward and get hauled in
-	# across open air. The original touches the wall first.
+	# TOO FAR EVEN TO COMMIT. The approach phase below will wait for contact,
+	# but there has to be a bound on how far away that wait may start from, or
+	# a ledge merely visible across a courtyard begins a reach that then spends
+	# max_duration failing to arrive.
+	#
 	# Measured to the WALL, matching AirborneMove._within_reach() -- `edge` sits
 	# on the ledge's top and can be well behind the face the body would touch.
 	if float(query.get("face_distance", INF)) > cfg.max_reach_distance:
@@ -73,6 +86,7 @@ func enter(_previous: StringName) -> void:
 	# Handed to GrabMove rather than re-queried there: once this reach
 	# finishes, the body can no longer see the edge it is hanging from.
 	player.pending_ledge = query
+	_face_point = query.get("face_point", Vector3.ZERO)
 
 ## Where the body ends up, given the ledge it caught.
 ##
@@ -105,6 +119,22 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:
 		return FALLING
 	_reach_time += delta
+
+	# THE APPROACH. Nothing has been touched, so nothing moves the body but the
+	# body. See docs/contact-drives-movement.md.
+	if not _touched:
+		if _reach_time >= cfg.max_duration:
+			# Jumped short, or something got in the way. Falling is the honest
+			# outcome; hanging in the air waiting to touch is not.
+			return FALLING
+		if not touching(_face_point):
+			carry_ballistically(delta)
+			return KEEP
+		# CONTACT. The reach starts HERE, from wherever the body has actually
+		# got to -- not from where it was when the ledge was first seen.
+		_touched = true
+		_reach_time = 0.0
+
 	player.set_grounded(false)
 	player.velocity = Vector3.ZERO
 
