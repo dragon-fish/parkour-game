@@ -1524,3 +1524,71 @@ Quaternius UAL2 的 **Standard（免费）层是一个奇幻/战斗集**——
 片段用**包自己的名字**登记进 `_KNOWN_ANIMATION_CLIPS`，没有重命名成本项目的
 `idle`/`run` 六件套。理由：**叫 `Slide` 的片段是某一个包对滑铲的理解，不是本项目的**，
 把这个区别抹平，就是身体某天悄悄演出了另一个作者的意图的开始。
+
+## 47. 手部 IK：接好了，但求解器不动 —— 阶段性结论
+
+使用者的想法：**"如果可以凹手部 IK，让翻越和爬墙时手精准触摸到障碍就更牛了"**。
+这正是 `docs/contact-drives-movement.md` 那条原则的视觉补完——
+移动层已经做到"手脚碰到才动"，但动画层对此一无所知：
+一段翻越动画对着任何障碍都播得一模一样，手要么穿过边缘要么在上方挥舞。
+
+**这一条不在设定的目标里**，是余量时间的尝试，没做成。以下是结论。
+
+### 好消息：IK 在 Godot 4.6 回到核心了
+
+`SkeletonIK3D` 标了 deprecated，但 `SkeletonModifier3D` 下有一整套新的：
+
+```
+BoneConstraint3D, BoneTwistDisperser3D, IKModifier3D, LimitAngularVelocityModifier3D,
+LookAtModifier3D, ModifierBoneTarget3D, PhysicalBoneSimulator3D, RetargetModifier3D,
+SkeletonIK3D, SpringBoneSimulator3D, XRBodyModifier3D, XRHandModifier3D
+```
+
+`IKModifier3D` 之下又有 **`TwoBoneIK3D`** 和 `ChainIK3D`——
+`TwoBoneIK3D`（上臂→前臂→手 + 一个 pole）正是手臂 IK 要的东西。
+
+### 顺带挖出一个真坑：`modifier_callback_mode_process` 默认是 IDLE
+
+`Skeleton3D.modifier_callback_mode_process` 的默认值是 **`1 = IDLE`**，
+而这个项目全部跑在物理帧上、无头测试循环里更是只有物理帧。
+
+**这和 `_wire_body_animation()` 里已经写过一次的坑一模一样**——
+那条注释说"AnimationTree 留在 IDLE 默认值，在无头物理测试循环里永远看不到帧"。
+同一个默认值，第二次咬人。已在 `HandIK.attach()` 里设成 PHYSICS。
+
+### 坏消息：`TwoBoneIK3D` 就是不动骨头
+
+实测：**手部位移 0.0000 m**，而与此同时
+
+- `active = true`，`influence = 1.0`
+- 三根骨头都解析到了（索引 119/120/121）
+- 目标节点的 `global_position` 确认就在请求的世界坐标上
+- 骨架全局缩放 `(1,1,1)`，`motion_scale` 0.9969
+
+**排除掉的**：修改器回调模式（已改 PHYSICS，无效但本来就该改）；
+AnimationMixer 在修改器之后覆写姿势（把 `AnimationTree` 和 `AnimationPlayer`
+双双 `active = false` 再测，仍然 0.0000）；骨架被缩放；
+目标够不着或给错了身体侧（第一次两样都犯了——给到 0.601 m 外、还在另一侧，
+而手臂总长只有 0.414 m）。
+
+剩下的就是 `TwoBoneIK3D` 自己在 4.6 新增的配置要求。
+官方那篇 *Inverse Kinematics Returns to Godot 4.6* 是设计背景介绍，不是配置指南。
+
+### 为什么停在这里
+
+**看不见结果的情况下继续猜 API，就是前三轮的重演。**
+而且这条本来就在目标之外，目标（跑酷动画 + 第一人称不穿帮）已经达成。
+
+代码保留且**完全惰性**：`influence` 从 0 起，`active` 初始为 false，
+**没有任何一个 Move 调用 `reach()`**，所以对运行时零影响。
+"手到达目标"那条断言改成 `pending` 而不是删掉——
+**一个因为把唯一真断言删掉而变绿的套件，比一个坦白说自己证明不了的更糟。**
+
+### 接手时的建议
+
+1. 找一个 `TwoBoneIK3D` 的**可运行样例**（文章提到有个 `adjusted-ik-3d-demo.zip`），
+   照着比对缺了什么设置，而不是继续读类文档
+2. 怀疑对象排序：`set_end_bone_direction` / `set_end_bone_length` /
+   `is_end_bone_extended` 这几个我一个都没设；以及 pole 节点的位置是否合法
+3. **一定要能看见**。这类东西在编辑器里拖一下目标就知道对不对，
+   而无头断言只能告诉你"没动"，告诉不了你"为什么没动"

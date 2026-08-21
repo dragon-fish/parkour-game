@@ -367,6 +367,12 @@ var head_node: Node3D = null
 ## already moved and "rest" would be one arbitrary frame of a run cycle.
 var head_rest_local: Vector3 = Vector3.ZERO
 
+## Drives the attached body's arms onto whatever the body is actually touching.
+## Built in _attach_body() when the body has a humanoid skeleton, and null
+## otherwise -- every call on it is guarded, so a body without one is simply a
+## body whose hands follow its animation. See HandIK's own header.
+var hand_ik: HandIK = null
+
 var _standing_height: float = 0.0
 
 ## Backing store for travel_speed(); see its doc comment.
@@ -764,6 +770,7 @@ func _attach_body(scene: PackedScene) -> void:
 	_merge_animation_library(body)
 	_wire_body_animation(body)
 	head_node = _resolve_head_node(body)
+	_attach_hand_ik(body)
 	if head_node != null:
 		head_rest_local = to_local(head_node.global_position)
 
@@ -852,6 +859,34 @@ func _merge_animation_library(body_node: Node3D) -> void:
 		# line, and an Animation still owned by it would go with it.
 		library.add_animation(clip_name, source.get_animation(clip_name).duplicate())
 	source_scene.free()
+
+## Builds the arm IK on the body's skeleton, if it has one this can drive.
+##
+## Silently does nothing otherwise, which covers every non-humanoid body --
+## including this project's own Blockbench one, whose bones are named after
+## cubes rather than limbs. That body keeps animating exactly as it did.
+func _attach_hand_ik(body_node: Node3D) -> void:
+	hand_ik = null
+	var skeleton := _find_skeleton(body_node)
+	if skeleton == null:
+		return
+	var ik := HandIK.new()
+	ik.name = "HandIK"
+	add_child(ik)
+	if ik.attach(skeleton):
+		hand_ik = ik
+	else:
+		ik.queue_free()
+
+func _find_skeleton(root: Node) -> Skeleton3D:
+	var queue: Array[Node] = [root]
+	while not queue.is_empty():
+		var node: Node = queue.pop_front()
+		if node is Skeleton3D:
+			return node as Skeleton3D
+		for child in node.get_children():
+			queue.append(child)
+	return null
 
 func _find_animation_player(root: Node) -> AnimationPlayer:
 	var queue: Array[Node] = [root]
@@ -1121,6 +1156,9 @@ func _physics_process(delta: float) -> void:
 	# now entitled to. A restore owed from an exit under a ceiling comes back
 	# on the first tick there is room for it.
 	_service_pending_capsule_restore()
+
+	if hand_ik != null:
+		hand_ik.update(delta)
 
 	if camera_rig != null:
 		camera_rig.apply_look(input.look, self, delta)
