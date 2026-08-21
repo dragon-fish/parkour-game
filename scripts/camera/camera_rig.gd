@@ -157,9 +157,16 @@ func set_roll_spin(radians: float) -> void:
 func absorb_body_yaw(radians: float) -> void:
 	if is_zero_approx(radians):
 		return
-	# Held to half a turn: a lag larger than that would have the eye chasing
-	# the long way round, and nothing legitimate produces one.
-	_scripted_yaw_lag = clampf(_scripted_yaw_lag - radians, -PI, PI)
+	# HELD SHORT. A lag is a softening, not a detour: past a certain size the
+	# eye is no longer trailing the turn, it is pointing somewhere else
+	# entirely -- in first person, at the inside of whatever the body is
+	# pressed against. Reported in play as the view lunging into the wall and
+	# then snapping back to the ledge.
+	#
+	# Anything bigger than this is better taken as a cut: the turn was too
+	# large to hide, and half-hiding it looks worse than not trying.
+	const MAX_LAG := 0.35
+	_scripted_yaw_lag = clampf(_scripted_yaw_lag - radians, -MAX_LAG, MAX_LAG)
 
 ## The attached body's head/neck node position, in Player's local space
 ## (Player.to_local(head_node.global_position)) -- see _head_local_position's

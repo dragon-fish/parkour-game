@@ -111,8 +111,13 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	_turn_body_toward(_target_yaw, cfg.align_turn_speed * delta)
 
 	var to_target: Vector3 = _target - player.global_position
-	# Arrived, or close enough that the rest would not be visible.
-	if to_target.length() <= cfg.min_adjust_distance:
+	# BOTH have to have arrived. Finishing on position alone left the facing
+	# to be corrected in one lump by _settle(), which handed the camera a lag
+	# the size of the whole remaining turn -- and a lag that big does not read
+	# as softening, it reads as the view lunging off into the wall before
+	# snapping back.
+	var facing_error: float = absf(wrapf(_target_yaw - player.rotation.y, -PI, PI))
+	if to_target.length() <= cfg.min_adjust_distance and facing_error < 0.03:
 		player.global_position = _target
 		return _settle()
 	if _reach_time >= cfg.max_duration:
@@ -123,7 +128,11 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	var stepped: float = cfg.align_speed * delta
 	if stepped >= to_target.length():
 		player.global_position = _target
-		return _settle()
+		# Position is there; the turn may not be. Hold until it is, so the
+		# facing is never corrected in one lump.
+		if facing_error < 0.03:
+			return _settle()
+		return KEEP
 	player.global_position += to_target.normalized() * stepped
 	return KEEP
 
@@ -132,7 +141,10 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 ## at. Without the re-centring the hang's own look clamp inherits the approach
 ## angle, and every grab has a differently skewed fan.
 func _settle() -> StringName:
-	_turn_body_toward(_target_yaw, PI)
+	# Set directly, NOT through _turn_body_toward(): by here the facing is
+	# already within a rounding error of the target, and reporting that sliver
+	# to the camera as a lag is noise.
+	player.rotation.y = _target_yaw
 	if player.camera_rig != null:
 		player.camera_rig.recentre_yaw_reference(_target_yaw)
 	return GRAB
