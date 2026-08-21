@@ -65,6 +65,11 @@ func _process(delta: float) -> void:
 		"speed h    %.2f m/s" % player.horizontal_speed(),
 		"speed v    %.2f m/s" % player.velocity.y,
 		"position   (%.1f, %.1f, %.1f)" % [pos.x, pos.y, pos.z],
+		# ABSOLUTE, world-space: the body's own facing and the eye's own pitch,
+		# with no constraint arithmetic in between. The `look` line below is
+		# all relative to whatever centre a clamp declared, so when the two
+		# disagree it is the clamp's own reference that is wrong.
+		"facing     yaw %+.0f  pitch %+.0f" % [rad_to_deg(player.rotation.y), 			rad_to_deg(player.camera_rig.rotation.x) if player.camera_rig != null else 0.0],
 		"grounded   %s" % ("yes" if player.grounded else "no"),
 		"last land  %.2f m/s" % player.last_landing_speed,
 		# The two speed layers, side by side. A cap far below the curve's own

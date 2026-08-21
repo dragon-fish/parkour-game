@@ -51,9 +51,22 @@ func enter(_previous: StringName) -> void:
 	var gap: Vector3 = query["edge"] - player.global_position
 	gap.y = 0.0
 	_target = _hanging_pose(query["edge"])
-	# Face the wall, not wherever the jump happened to be aimed -- see
-	# IntoGrabConfig.align_turn_speed.
-	if gap.length_squared() > 0.0001:
+	# Square to the WALL's face, not toward the edge point.
+	#
+	# Facing the edge was the first attempt and is wrong whenever the ledge was
+	# approached at an angle: the edge is a point on the ledge's TOP, off to
+	# one side of the wall it belongs to, so aiming at it leaves the body
+	# skewed by exactly the angle it arrived at. Measured in play with the HUD
+	# reporting the view as square (yaw -1) while the wall was visibly some
+	# 30 degrees off.
+	var face_normal: Vector3 = query.get("face_normal", Vector3.ZERO)
+	face_normal.y = 0.0
+	if face_normal.length_squared() > 0.0001:
+		# The normal points back at the body, so facing the wall means facing
+		# the way it came from.
+		face_normal = face_normal.normalized()
+		_target_yaw = atan2(face_normal.x, face_normal.z)
+	elif gap.length_squared() > 0.0001:
 		_target_yaw = atan2(-gap.x, -gap.z)
 	else:
 		_target_yaw = player.rotation.y

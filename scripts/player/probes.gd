@@ -382,11 +382,19 @@ func ledge_query() -> Dictionary:
 	if height <= MIN_HEIGHT_EPSILON or height < _config.grab.min_wall_height \
 			or height > _config.grab.ledge_max_height:
 		return _no_hit()
-	# face_distance comes along: `edge` is a point on the ledge's TOP, found by
-	# dropping a probe past the face, so it can sit well behind the wall. How
-	# far the WALL is, is a different number, and it is the one a caller asking
-	# "can the body reach this" needs.
-	return {"valid": true, "top": edge, "edge": edge, "normal": normal, 		"face_distance": face_distance}
+	# THREE separate facts about the same ledge, and callers need different
+	# ones:
+	#   edge          a point on the ledge's TOP, where the body hangs from
+	#   normal        that top surface's normal, i.e. roughly straight up
+	#   face_normal   the WALL's normal, pointing back at the body
+	#   face_distance how far the wall's face is, which `edge` does not say --
+	#                 the top point sits behind the face by however deep the
+	#                 obstacle is
+	#
+	# face_normal is what "square up to the wall" means. Facing the edge point
+	# instead leaves the body skewed whenever the ledge was approached at an
+	# angle, because the edge is off to one side of the wall it belongs to.
+	return {"valid": true, "top": edge, "edge": edge, "normal": normal, 		"face_distance": face_distance, 		"face_normal": _vault_high.get_collision_normal()}
 
 ## Points a side ray at the given reach and fires it. Aimed live from the
 ## config on every call, same as _aim_forward() above and for the same
