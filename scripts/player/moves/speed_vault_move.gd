@@ -140,8 +140,30 @@ func enter(_previous: StringName) -> void:
 	# docs/contact-drives-movement.md.
 	_landing = landing
 	_arc_height = arc
+
+	# A VAULT MUST NOT BE SLOWER THAN JUST RUNNING THERE.
+	#
+	# The variant's own duration is ✅ confirmed (VaultTimeUp + Over + Down), but
+	# it is a fixed TIME, and it is paired in the original with the original's
+	# own fixed geometry. Applied to whatever distance this obstacle happens to
+	# need, it drags: cross 3 m in 0.65 s and a player who arrived at 7 m/s is
+	# visibly held back for the whole vault and then handed their speed back at
+	# the end. The owner felt it as "sometimes a bit slow", and this commit's
+	# own change made it worse -- a vault OVER now lands on the FAR side, so the
+	# distance grew while the time did not.
+	#
+	# Same lesson IntoGrabMove learned: a manoeuvre that covers ground should
+	# take the time the ground takes, and the duration falls out of the geometry
+	# rather than being declared.
+	#
+	# The confirmed figure stays the CEILING, so a slow approach still gets the
+	# original's own timing. Floored at half of it so a fast one is brisk rather
+	# than instantaneous -- there is a manoeuvre happening, and it has to be
+	# visible.
+	var carried: float = maxf(horizontal.length(), 0.5)
+	var by_travel: float = player.global_position.distance_to(landing) / carried
+	_arc_duration = clampf(by_travel, variant["duration"] * 0.5, variant["duration"])
 	_face_point = query.get("face_point", Vector3.ZERO)
-	_arc_duration = variant["duration"]
 	_touched = false
 	_approach_time = 0.0
 

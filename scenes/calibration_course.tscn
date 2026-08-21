@@ -1,15 +1,15 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://pj08j70xptau"]
 
-[ext_resource type="Shader" path="res://shaders/hazard_stripes.gdshader" id="1_t56mr"]
+[ext_resource type="Shader" uid="uid://ddxx8l6op6v2u" path="res://shaders/hazard_stripes.gdshader" id="1_t56mr"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_hji82"]
 render_priority = 0
 shader = ExtResource("1_t56mr")
-shader_parameter/band_height = null
-shader_parameter/stripe_colour = null
-shader_parameter/gap_colour = null
-shader_parameter/stripe_share = null
-shader_parameter/skew = null
+shader_parameter/band_height = 0.25
+shader_parameter/stripe_colour = Color(0.95, 0.45, 0.05, 1)
+shader_parameter/gap_colour = Color(0.1, 0.1, 0.11, 1)
+shader_parameter/stripe_share = 0.5
+shader_parameter/skew = 0.6
 
 [node name="CalibrationCourse" type="Node3D" unique_id=371970204]
 
@@ -267,9 +267,9 @@ size = Vector3(14, 4, 0.6)
 material = SubResource("ShaderMaterial_hji82")
 
 [node name="Step_40" type="CSGBox3D" parent="TakeOffSteps" unique_id=1327830620]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0.2, -11)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0.2, -11.774511)
 use_collision = true
-size = Vector3(2.4, 0.4, 2.4)
+size = Vector3(2.4, 0.4, 3.9490235)
 material = SubResource("ShaderMaterial_hji82")
 
 [node name="Size" type="Label3D" parent="TakeOffSteps/Step_40" unique_id=97379732]
@@ -282,9 +282,9 @@ font_size = 96
 outline_size = 24
 
 [node name="Step_80" type="CSGBox3D" parent="TakeOffSteps" unique_id=56169665]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.4, -11)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.4, -11.762231)
 use_collision = true
-size = Vector3(2.4, 0.8, 2.4)
+size = Vector3(2.4, 0.8, 3.9244628)
 material = SubResource("ShaderMaterial_hji82")
 
 [node name="Size" type="Label3D" parent="TakeOffSteps/Step_80" unique_id=306761094]
@@ -297,9 +297,9 @@ font_size = 96
 outline_size = 24
 
 [node name="Step_120" type="CSGBox3D" parent="TakeOffSteps" unique_id=410619374]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0.6, -11)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0.6, -11.771264)
 use_collision = true
-size = Vector3(2.4, 1.2, 2.4)
+size = Vector3(2.4, 1.2, 3.9425292)
 material = SubResource("ShaderMaterial_hji82")
 
 [node name="Size" type="Label3D" parent="TakeOffSteps/Step_120" unique_id=106303643]

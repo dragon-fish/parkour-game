@@ -99,3 +99,58 @@ func test_the_bonus_evaporates_at_the_speed_cap() -> void:
 	var exit_speed: float = await _exit_speed_for(ground_speed)
 	assert_almost_eq(exit_speed, ground_speed, 0.01, \
 		"an entry at the speed cap kept some of the bonus instead of losing all of it")
+
+# --- the duration comes from the geometry ------------------------------------
+
+func test_a_vault_never_takes_longer_than_running_the_same_distance() -> void:
+	# The owner: "sometimes it feels a bit slow." The variant's duration is ✅
+	# confirmed, but it is a fixed TIME paired in the original with the
+	# original's own fixed geometry. Applied to whatever distance an obstacle
+	# happens to need, it drags -- and landing a vault OVER on the far side made
+	# the distance longer without touching the time.
+	#
+	# Measured as a RATE rather than a duration, because that is the thing that
+	# reads as slow: the body visibly held back and then handed its speed back.
+	var world := _world_with_sweet_spot_box()
+	await step(1)
+	TestWorld.place(world)
+	world["box"].global_position = world["box_at"]
+	await step(30)
+
+	var player: Player = world["player"]
+	const ENTRY := 6.0
+	player.velocity = Vector3(0.0, 0.0, -ENTRY)
+	var hit: Dictionary = player.probes.vault_query()
+	assert_true(hit["valid"], "the probe missed the box -- fixture is wrong")
+	var variant: Dictionary = player.config.speed_vault.pick_variant( \
+		hit["height"], hit["vault_over"], player.velocity.y, ENTRY)
+	player.pending_vault_variant = variant
+	player.move_manager.start(Move.SPEED_VAULT)
+
+	var started := player.global_position
+	var ticks := 0
+	while ticks < 200 and player.move_manager.current_name == Move.SPEED_VAULT:
+		await step(1)
+		ticks += 1
+	assert_lt(ticks, 200, "the vault never finished")
+	var travelled: float = started.distance_to(player.global_position)
+	var took: float = float(ticks) / 60.0
+	# Approach and vault share the tick count, so this is a floor on the rate
+	# rather than an exact figure -- which is the assertion that matters: the
+	# manoeuvre must not be slower than the run that fed it.
+	assert_gt(travelled / maxf(took, 0.001), ENTRY * 0.6, \
+		"the vault averaged %.1f m/s against a %.1f m/s approach" \
+		% [travelled / maxf(took, 0.001), ENTRY])
+
+	world["box"].queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_the_confirmed_duration_is_still_the_ceiling() -> void:
+	# The ✅ figure is not discarded, it is the slow end. A crawl into an
+	# obstacle still gets the original's own timing; only a fast approach
+	# shortens it, and only to half.
+	var config := MovementConfig.new()
+	for variant in config.speed_vault.variants:
+		assert_gt(float(variant["duration"]), 0.0, \
+			"variant %s lost its confirmed duration" % variant.get("name", "?"))
