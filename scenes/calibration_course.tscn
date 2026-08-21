@@ -1,0 +1,312 @@
+[gd_scene format=3]
+
+[ext_resource type="Shader" path="res://shaders/hazard_stripes.gdshader" id="1_t56mr"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_hji82"]
+render_priority = 0
+shader = ExtResource("1_t56mr")
+shader_parameter/band_height = null
+shader_parameter/stripe_colour = null
+shader_parameter/gap_colour = null
+shader_parameter/stripe_share = null
+shader_parameter/skew = null
+
+[node name="CalibrationCourse" type="Node3D" unique_id=371970204]
+
+[node name="HeightLadder" type="Node3D" parent="." unique_id=739768018]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0, 0)
+
+[node name="H_40" type="CSGBox3D" parent="HeightLadder" unique_id=194309069]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+use_collision = true
+size = Vector3(6, 0.4, 0.35)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="HeightLadder/H_40" unique_id=788466743]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0.225)
+pixel_size = 0.0015
+no_depth_test = true
+text = "0.40 h  0.35 w"
+font_size = 96
+outline_size = 24
+
+[node name="H_80" type="CSGBox3D" parent="HeightLadder" unique_id=755577934]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, -9)
+use_collision = true
+size = Vector3(6, 0.8, 0.35)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="HeightLadder/H_80" unique_id=211760083]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0.225)
+pixel_size = 0.0015
+no_depth_test = true
+text = "0.80 h  0.35 w
+~waist"
+font_size = 96
+outline_size = 24
+
+[node name="H_120" type="CSGBox3D" parent="HeightLadder" unique_id=1120339303]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, -18)
+use_collision = true
+size = Vector3(6, 1.2, 0.35)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="HeightLadder/H_120" unique_id=2133301972]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95000005, 0.225)
+pixel_size = 0.0015
+no_depth_test = true
+text = "1.20 h  0.35 w"
+font_size = 96
+outline_size = 24
+
+[node name="H_160" type="CSGBox3D" parent="HeightLadder" unique_id=1427301395]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, -27)
+use_collision = true
+size = Vector3(6, 1.6, 0.35)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="HeightLadder/H_160" unique_id=635287280]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.15, 0.225)
+pixel_size = 0.0015
+no_depth_test = true
+text = "1.60 h  0.35 w
+~eye"
+font_size = 96
+outline_size = 24
+
+[node name="H_190" type="CSGBox3D" parent="HeightLadder" unique_id=369737369]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, -36)
+use_collision = true
+size = Vector3(6, 1.9, 0.35)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="HeightLadder/H_190" unique_id=945055051]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.3, 0.225)
+pixel_size = 0.0015
+no_depth_test = true
+text = "1.90 h  0.35 w
+~reach 1.87"
+font_size = 96
+outline_size = 24
+
+[node name="H_220" type="CSGBox3D" parent="HeightLadder" unique_id=1669170602]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -45)
+use_collision = true
+size = Vector3(6, 2.2, 0.35)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="HeightLadder/H_220" unique_id=1705585633]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.45, 0.225)
+pixel_size = 0.0015
+no_depth_test = true
+text = "2.20 h  0.35 w"
+font_size = 96
+outline_size = 24
+
+[node name="H_260" type="CSGBox3D" parent="HeightLadder" unique_id=43275390]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.3, -54)
+use_collision = true
+size = Vector3(6, 2.6, 0.35)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="HeightLadder/H_260" unique_id=1189858623]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.65, 0.225)
+pixel_size = 0.0015
+no_depth_test = true
+text = "2.60 h  0.35 w"
+font_size = 96
+outline_size = 24
+
+[node name="WidthRow" type="Node3D" parent="." unique_id=798426913]
+
+[node name="W_10" type="CSGBox3D" parent="WidthRow" unique_id=769396024]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
+use_collision = true
+size = Vector3(6, 1.4, 0.1)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="WidthRow/W_10" unique_id=441647793]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0.1)
+pixel_size = 0.0015
+no_depth_test = true
+text = "1.40 h  0.10 w
+over or onto?"
+font_size = 96
+outline_size = 24
+
+[node name="W_30" type="CSGBox3D" parent="WidthRow" unique_id=1676047188]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, -9)
+use_collision = true
+size = Vector3(6, 1.4, 0.3)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="WidthRow/W_30" unique_id=916970413]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0.2)
+pixel_size = 0.0015
+no_depth_test = true
+text = "1.40 h  0.30 w
+over or onto?"
+font_size = 96
+outline_size = 24
+
+[node name="W_60" type="CSGBox3D" parent="WidthRow" unique_id=440846017]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, -18)
+use_collision = true
+size = Vector3(6, 1.4, 0.6)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="WidthRow/W_60" unique_id=915548547]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0.35000002)
+pixel_size = 0.0015
+no_depth_test = true
+text = "1.40 h  0.60 w
+over or onto?"
+font_size = 96
+outline_size = 24
+
+[node name="W_100" type="CSGBox3D" parent="WidthRow" unique_id=1219993716]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, -27)
+use_collision = true
+size = Vector3(6, 1.4, 1)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="WidthRow/W_100" unique_id=118035655]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0.55)
+pixel_size = 0.0015
+no_depth_test = true
+text = "1.40 h  1.00 w
+over or onto?"
+font_size = 96
+outline_size = 24
+
+[node name="W_160" type="CSGBox3D" parent="WidthRow" unique_id=447485161]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, -36)
+use_collision = true
+size = Vector3(6, 1.4, 1.6)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="WidthRow/W_160" unique_id=376032082]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 0.85)
+pixel_size = 0.0015
+no_depth_test = true
+text = "1.40 h  1.60 w
+over or onto?"
+font_size = 96
+outline_size = 24
+
+[node name="W_240" type="CSGBox3D" parent="WidthRow" unique_id=399206006]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, -45)
+use_collision = true
+size = Vector3(6, 1.4, 2.4)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="WidthRow/W_240" unique_id=1129332971]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 1.25)
+pixel_size = 0.0015
+no_depth_test = true
+text = "1.40 h  2.40 w
+over or onto?"
+font_size = 96
+outline_size = 24
+
+[node name="HollowRow" type="Node3D" parent="." unique_id=1479480797]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0, 0)
+
+[node name="Duct_100" type="CSGBox3D" parent="HollowRow" unique_id=934040565]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+use_collision = true
+size = Vector3(6, 0.4, 0.5)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="HollowRow/Duct_100" unique_id=1600054480]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0.3)
+pixel_size = 0.0015
+no_depth_test = true
+text = "duct top 1.00
+clear below"
+font_size = 96
+outline_size = 24
+
+[node name="Duct_140" type="CSGBox3D" parent="HollowRow" unique_id=1651540182]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, -9)
+use_collision = true
+size = Vector3(6, 0.4, 0.5)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="HollowRow/Duct_140" unique_id=1711974306]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0.3)
+pixel_size = 0.0015
+no_depth_test = true
+text = "duct top 1.40
+clear below"
+font_size = 96
+outline_size = 24
+
+[node name="Duct_180" type="CSGBox3D" parent="HollowRow" unique_id=1347100296]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, -18)
+use_collision = true
+size = Vector3(6, 0.4, 0.5)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="HollowRow/Duct_180" unique_id=1746998432]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 0.3)
+pixel_size = 0.0015
+no_depth_test = true
+text = "duct top 1.80
+clear below"
+font_size = 96
+outline_size = 24
+
+[node name="TakeOffSteps" type="Node3D" parent="." unique_id=711150561]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0, 0)
+
+[node name="TallWall" type="CSGBox3D" parent="TakeOffSteps" unique_id=1360200444]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -14)
+use_collision = true
+size = Vector3(14, 4, 0.6)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Step_40" type="CSGBox3D" parent="TakeOffSteps" unique_id=1327830620]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5, 0.2, -11)
+use_collision = true
+size = Vector3(2.4, 0.4, 2.4)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="TakeOffSteps/Step_40" unique_id=97379732]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.55, 1.25)
+pixel_size = 0.0015
+no_depth_test = true
+text = "0.40 h  2.40 w
+take off from here"
+font_size = 96
+outline_size = 24
+
+[node name="Step_80" type="CSGBox3D" parent="TakeOffSteps" unique_id=56169665]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.4, -11)
+use_collision = true
+size = Vector3(2.4, 0.8, 2.4)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="TakeOffSteps/Step_80" unique_id=306761094]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 1.25)
+pixel_size = 0.0015
+no_depth_test = true
+text = "0.80 h  2.40 w
+take off from here"
+font_size = 96
+outline_size = 24
+
+[node name="Step_120" type="CSGBox3D" parent="TakeOffSteps" unique_id=410619374]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0.6, -11)
+use_collision = true
+size = Vector3(2.4, 1.2, 2.4)
+material = SubResource("ShaderMaterial_hji82")
+
+[node name="Size" type="Label3D" parent="TakeOffSteps/Step_120" unique_id=106303643]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95000005, 1.25)
+pixel_size = 0.0015
+no_depth_test = true
+text = "1.20 h  2.40 w
+take off from here"
+font_size = 96
+outline_size = 24

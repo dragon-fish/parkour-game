@@ -30,6 +30,7 @@ func _ready() -> void:
 	add_child(_death_sequence)
 	_death_sequence.finished.connect(reset_player)
 	_load_sandbox()
+	_load_calibration_course()
 	# Debug visualisation of what the ledge probe sees. Created here rather
 	# than baked into the generated scene, so main.tscn stays exactly what its
 	# generator produces.
@@ -94,6 +95,26 @@ func _on_died_from_fall() -> void:
 ## is in it survives. It is optional: absent, this does nothing. It is also
 ## git-ignored, so experiments do not have to be committed or explained.
 const SANDBOX_SCENE := "res://scenes/sandbox.tscn"
+
+## Graded obstacles for judging what the move system does with each, by running
+## at them. Committed, unlike the sandbox above, because the numbers behind it
+## came out of the original with a stopwatch and are worth not losing -- see
+## tools/build_calibration_course.gd. Optional in exactly the same way, so
+## deleting the scene simply removes the course.
+const CALIBRATION_SCENE := "res://scenes/calibration_course.tscn"
+
+func _load_calibration_course() -> void:
+	if not ResourceLoader.exists(CALIBRATION_SCENE):
+		return
+	var packed: PackedScene = load(CALIBRATION_SCENE)
+	if packed == null:
+		return
+	var course: Node = packed.instantiate()
+	course.name = "CalibrationCourse"
+	# Well clear of the generated arena, which occupies the origin outward.
+	if course is Node3D:
+		(course as Node3D).position = Vector3(0.0, 0.0, 60.0)
+	add_child(course)
 
 func _load_sandbox() -> void:
 	if not ResourceLoader.exists(SANDBOX_SCENE):
