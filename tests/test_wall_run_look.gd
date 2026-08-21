@@ -21,6 +21,9 @@ func after_each() -> void:
 		return
 	if _world.has("wall"):
 		(_world["wall"] as Node).queue_free()
+	for piece in _curve_pieces:
+		piece.queue_free()
+	_curve_pieces.clear()
 	TestWorld.teardown(_world)
 	_world = {}
 
@@ -214,3 +217,68 @@ func test_the_fan_is_centred_on_the_wall_not_on_the_approach() -> void:
 		"the fan followed the approach instead of the wall (%.1f degrees)" \
 		% rad_to_deg(relative))
 	assert_lt(relative, deg_to_rad(91.0), "the view left the fan entirely")
+
+# --- curved walls -------------------------------------------------------------
+
+## A wall built from `count` straight segments laid along an arc, each turned a
+## few degrees from the last -- a blockout's version of a continuous curve, and
+## what the owner meant by "a small-angle continuous surface".
+##
+## The arc is CONCAVE toward the player: its centre lies on the player's side,
+## so the surface wraps around the run rather than falling away from it.
+func _curved_wall(count: int, radius: float, segment: float) -> void:
+	var centre := Vector3(0.45 - radius, 3.0, 0.0)
+	for i in count:
+		var theta: float = (float(i) + 0.5) * segment / radius
+		var out := Vector3(cos(theta), 0.0, -sin(theta))
+		var piece := StaticBody3D.new()
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		# Long axis along local Z, one metre thick, tall enough not to be a ledge.
+		box.size = Vector3(1.0, 6.0, segment * 1.15)
+		shape.shape = box
+		piece.add_child(shape)
+		get_tree().root.add_child(piece)
+		piece.global_position = centre + out * (radius + 0.5)
+		piece.rotation = Vector3(0.0, PI + theta, 0.0)
+		_curve_pieces.append(piece)
+
+var _curve_pieces: Array[Node] = []
+
+func test_a_gently_curving_wall_can_be_run_all_the_way_along() -> void:
+	# NOT DESIGNED, but real, and the owner confirmed the original does it: "you
+	# really can run along an inward-curving arc." It falls out of two decisions
+	# that were made for other reasons -- _derive_along() recomputing the
+	# tangent from the CURRENT normal every tick, and wall_tracked_query()
+	# following the wall by that normal rather than by the body's sides.
+	#
+	# Pinned here so neither can be quietly undone. Caching the tangent at
+	# attach would look like a harmless tidy-up and would flatten every curve in
+	# the game back into a straight line.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	_curved_wall(10, 25.0, 2.0)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	input.press_jump()
+	await step(1)
+	player.velocity = Vector3(0.0, player.velocity.y, -7.0)
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
+		"test setup is wrong: the player never attached to the curve")
+
+	# Far enough along that the surface has genuinely turned: 10 segments of 2 m
+	# on a 25 m radius is about 45 degrees end to end.
+	var heading_at_start := Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()
+	var ticks := 0
+	while ticks < 40 and player.move_manager.current_name == Move.WALL_RUN:
+		await step(1)
+		ticks += 1
+	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
+		"the run came off the curve after %d ticks" % ticks)
+	var heading_now := Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()
+	assert_gt(rad_to_deg(heading_at_start.angle_to(heading_now)), 3.0, \
+		"the run did not follow the curve at all -- it went straight")

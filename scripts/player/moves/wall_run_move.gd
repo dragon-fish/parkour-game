@@ -54,6 +54,17 @@ func _query_wall() -> Dictionary:
 ## horizontal velocity. Called every time _normal is (re)assigned -- once in
 ## enter(), and again every tick in physics_update() -- so the tangent tracks
 ## the true wall surface instead of the angle it happened to have on attach.
+##
+## THIS IS WHAT MAKES CURVED WALLS WORK, and that was an accident. Together with
+## wall_tracked_query() following the wall by its normal rather than by the
+## body's sides, it means a run laid along an arc simply keeps turning with the
+## surface. The owner found it in play and confirmed the original does the same:
+## "you really can run along an inward-curving arc."
+##
+## So do not cache the tangent at attach. It would look like a harmless tidy-up
+## -- the normal barely changes on a flat wall, which is every wall in the test
+## arena -- and it would flatten every curve in the game back into a straight
+## line. tests/test_wall_run_look.gd holds a curved fixture for exactly this.
 ## Yaw that faces along the wall, in the direction of travel.
 ##
 ## THE FAN BELONGS TO THE WALL, NOT TO HOW YOU ARRIVED AT IT. Left to
