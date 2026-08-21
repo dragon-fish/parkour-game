@@ -1571,9 +1571,8 @@ func air_accelerate(wish_dir: Vector3, delta: float) -> void:
 	velocity.x = candidate.x
 	velocity.z = candidate.z
 
-## DEBUG. One line a frame through the whole grab chain -- jump, reach, hang --
-## reporting the EYE's real pose in the world and how far it moved since the
-## previous frame.
+## DEBUG. Reports the EYE's real pose in the world, and how far it moved since
+## the previous frame, for every frame of a reach or a hang IN WHICH IT MOVED.
 ##
 ## A camera cut IS a large single-frame delta, so this measures the thing being
 ## complained about directly. The breakdown beside it says which component
@@ -1605,6 +1604,13 @@ func _log_grab_camera() -> void:
 	_grab_cam_last_forward = forward
 	_grab_cam_has_last = true
 	if not debug_grab_camera or not _GRAB_CAM_STATES.has(move_manager.current_name):
+		return
+	# Silent while the eye is holding still. A hang lasts as long as the player
+	# leaves it alone, and sixty identical lines a second buries the handful of
+	# frames the manoeuvre actually moves in -- which are the only ones this
+	# exists to show. Thresholds sit just above the float noise a stationary
+	# eye produces, so an eye that IS moving still reports every frame of it.
+	if moved < 0.001 and turned < 0.05:
 		return
 	var look: Dictionary = camera_rig.look_debug()
 	print("[grabcam] %-9s eye=(%7.3f,%7.3f,%7.3f) moved=%.3f turned=%5.1f body_yaw=%7.1f pitch=%6.1f floor=%6.1f lag=%5.1f"
