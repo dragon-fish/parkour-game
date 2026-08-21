@@ -185,6 +185,19 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# With the sign correct the landing sits 0.1 + 0.4 = 0.5 m past the
 		# face, comfortably on top of any ledge deep enough to have been
 		# anchored to in the first place.
+		# NOWHERE TO GO IS NOT A MANTLE.
+		#
+		# ✅ The owner drew the shape and gave the original's answer: a ledge
+		# with a slab overhanging it can be HUNG from and shimmied along, and
+		# cannot be pulled up onto. Ours pulled up regardless and put the body
+		# inside the geometry -- clipping through walls, reported as happening
+		# a lot.
+		#
+		# Refused rather than aborted: the hang is still perfectly valid, and
+		# staying on it is what the original does. (Shimmying along it is not
+		# implemented yet -- see docs/feel-backlog.md 34.)
+		if not bool(player.pending_ledge.get("can_pull_up", true)):
+			return KEEP
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration, config.grab.mantle_arc_height)
 		_mantling = true

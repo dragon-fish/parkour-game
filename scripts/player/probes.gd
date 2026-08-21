@@ -383,6 +383,13 @@ func vault_query() -> Dictionary:
 
 	if height <= _config.pawn.max_step_height or height > _config.speed_vault.table_ceiling():
 		return _no_hit()
+
+	# NOWHERE TO PASS THROUGH IS NOT A VAULT. Unlike a grab, which can still
+	# hang on a capped ledge, a vault has no half-measure: every one of them
+	# carries the body through the space above the obstacle, whether it lands
+	# there or beyond. A slab over the top means clipping through it.
+	if not has_headroom(top, _foot_offset * 2.0):
+		return _no_hit()
 	var vault_over: bool = _query_vault_over(top)
 	return {
 		"valid": true, "top": top, "edge": top, "normal": top_normal,
@@ -550,6 +557,12 @@ func ledge_query() -> Dictionary:
 	# angle, because the edge is off to one side of the wall it belongs to.
 	return {"valid": true, "top": edge, "edge": edge, "normal": normal,
 		"face_distance": face_distance, "face_point": face_point,
+		# WHETHER A BODY WOULD FIT ON TOP. A ledge with a slab over it is a
+		# perfectly good thing to HANG from -- the original lets you shimmy
+		# along one -- and a terrible thing to pull up onto. See has_headroom().
+		# _foot_offset is half the standing capsule, so twice it is the body's
+		# own height. Probes has no reference to Player and does not want one.
+		"can_pull_up": has_headroom(edge, _foot_offset * 2.0),
 		"face_normal": _vault_high.get_collision_normal()}
 
 ## Points a side ray at the given reach and fires it. Aimed live from the
@@ -714,3 +727,27 @@ func wall_tracked_query(direction: Vector3, reach: float) -> Dictionary:
 	# of the RUN a wall is on is a property of the run, fixed when it attached,
 	# and belongs to the move that attached rather than to a probe fired later.
 	return {"valid": true, "normal": normal, "side": 0, "incidence": PI * 0.5}
+
+## Whether a standing body would FIT at `at`, or is capped by something above.
+##
+## THE HEADROOM CHECK. The owner drew the case: a ledge with a slab overhanging
+## it, so the edge is real and grabbable but there is nowhere to end up. Pulling
+## up there puts the body inside the geometry -- reported as clipping through
+## walls happening "a lot".
+##
+## ✅ The original's answer to that shape, from the owner: you CAN hang on such
+## an edge and shimmy along it, and you cannot pull up. So this is deliberately
+## a separate answer from "is there a ledge", not a reason to refuse the ledge.
+##
+## `at` is where the FEET would be. Fired from a little above them so the
+## surface being stood on is not itself the obstruction.
+func has_headroom(at: Vector3, height: float) -> bool:
+	_ensure_rays()
+	# Reuses VaultOverDown, aimed upward for this one query. Safe by this file's
+	# own convention: every ray here is aimed from scratch at query time and owns
+	# its geometry for one call only (see setup()).
+	var local: Vector3 = to_local(at)
+	_vault_over.position = local + Vector3(0.0, MIN_HEIGHT_EPSILON, 0.0)
+	_vault_over.target_position = Vector3(0.0, maxf(height - MIN_HEIGHT_EPSILON, 0.01), 0.0)
+	_vault_over.force_raycast_update()
+	return not _vault_over.is_colliding()

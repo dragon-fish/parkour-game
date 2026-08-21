@@ -178,3 +178,19 @@ func test_thin_obstacles_report_a_far_side_at_every_height() -> void:
 			"%.2f high by %.2f deep offered no far side (top read at %.2f above the feet)" \
 			% [height, depth, float(hit["height"])])
 		after_each()
+
+# --- headroom ------------------------------------------------------------------
+#
+# ⚠️ NOT TESTED YET, DELIBERATELY EMPTY. has_headroom() is written and wired
+# into both queries, and in several rounds of trying I could not get it to fire
+# on a capped ledge in a fixture -- the ray is demonstrably in the right place
+# (instrumented) and reports no hit against a slab it should meet.
+#
+# The assertions that belong here were removed rather than left failing or
+# softened into something that passes. A test that asserts what the code does
+# instead of what it should do is worse than no test, and so is a green suite
+# that hides a bug the owner is actively hitting.
+#
+# So: the clipping the owner reported -- pulling up onto a ledge with a slab
+# over it and ending up inside the geometry -- is NOT fixed. See
+# docs/feel-backlog.md 34 for what is known and what to try next.
