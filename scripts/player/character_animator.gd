@@ -195,9 +195,52 @@ func _target_animation() -> StringName:
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
 				return _first_available([&"sneak", &"run", &"idle"])
 			return _first_available([&"sneaking", &"idle"])
+		Move.JUMP:
+			# Not a placeholder -- jump is the genuine match, and this case
+			# existing at all is the fix. Without it a jump fell through to the
+			# default below, whose list is idle-first, so a body with an idle
+			# clip STOOD STILL through its own take-off while FALLING, one tick
+			# later, correctly played jump.
+			return _first_available([&"jump", &"run", &"idle"])
+		Move.FALL_UNCONTROLLED:
+			# The same fall FALLING is, minus the control. Nothing in the
+			# reported vocabulary distinguishes a flail from a fall, so it reads
+			# as one until something does.
+			return _first_available([&"jump", &"idle"])
+		Move.LANDING:
+			# PLACEHOLDER. The hard landing nobody rolled out of: a two-second
+			# lockout spent absorbing the impact low to the ground. `sneaking`
+			# -- the crouch-still pose -- is the closest of what exists, since
+			# the body is down and not going anywhere. Not a real match: this
+			# wants a stagger.
+			return _first_available([&"sneaking", &"sneak", &"idle"])
+		Move.SKILL_ROLL:
+			# PLACEHOLDER, and the weakest one here. A ground tumble has no
+			# relative in the reported vocabulary at all. jump is chosen for
+			# being a committed whole-body action rather than for resembling a
+			# roll, which it does not.
+			return _first_available([&"jump", &"run", &"idle"])
+		Move.INTO_GRAB:
+			# PLACEHOLDER. The reach itself, before the hands arrive -- airborne
+			# and committed, so the same jump the GRAB mantle borrows.
+			return _first_available([&"jump", &"idle"])
+		Move.WALL_CLIMB:
+			# PLACEHOLDER. A vertical kick up a wall: short, committed,
+			# ascending. Exactly the reasoning that puts the GRAB mantle on jump
+			# as well.
+			return _first_available([&"jump", &"idle"])
+		Move.TURN_180:
+			# Not really a body move -- the view swings and the facing follows,
+			# while whatever the legs were doing continues. So it borrows the
+			# same speed split WALKING uses rather than claiming a clip of its
+			# own.
+			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
+				return _first_available([&"run", &"idle"])
+			return _first_available([&"idle", &"run"])
 		_:
 			# Any move without an explicit case above. Reaching here is a
 			# signal that a move was added without deciding what it looks
 			# like -- prefer adding a case, even one that returns idle with a
-			# comment, over relying on this.
+			# comment, over relying on this. Every Move that existed when this
+			# was written has one; a new arrival landing here is the point.
 			return _first_available([&"idle", &"run", &"jump"])

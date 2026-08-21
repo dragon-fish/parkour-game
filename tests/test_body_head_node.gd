@@ -92,3 +92,11 @@ func test_a_broken_path_falls_back_rather_than_crashing() -> void:
 	var found: Node3D = player._resolve_head_node(_body)
 	assert_not_null(found, "a bad path took the head node down with it")
 	assert_eq(String(found.name), "AllHead2", "a bad path did not fall back to the search")
+	# CLAIMS the warning, which does two jobs. It asserts the fallback is not
+	# SILENT -- a camera tracking slightly the wrong place reads as a feel
+	# problem rather than as a broken path, so the warning is the whole reason
+	# this is allowed to degrade instead of failing. And it stops the warning
+	# leaking: GUT attributes an unclaimed engine warning to whichever test
+	# happens to be running, which made the full suite fail on an unrelated
+	# test about half the time.
+	assert_push_warning("body_head_path")

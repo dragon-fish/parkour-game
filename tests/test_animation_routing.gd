@@ -1,0 +1,95 @@
+extends ParkourTest
+
+# Every Move decides what it looks like, rather than falling through to the
+# default.
+#
+# The default's list is idle-first, so a move without a case did not merely get
+# an approximate clip -- it got the STANDING one. A jump played the idle pose
+# through its own take-off while Falling, one tick later, correctly played jump.
+# Seven moves were in that state: Jump, FallUncontrolled, Landing, SkillRoll,
+# IntoGrab, WallClimb and Turn180.
+
+const TestWorld = preload("res://tests/world_fixture.gd")
+
+var _world: Dictionary = {}
+
+func after_each() -> void:
+	if _world.is_empty():
+		return
+	TestWorld.teardown(_world)
+	_world = {}
+
+## Synthetic body, so this never depends on the untracked model.
+func _animator_with(clips: Array) -> CharacterAnimator:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	var body := Node3D.new()
+	body.name = "fake_body"
+	var anim_player := AnimationPlayer.new()
+	anim_player.name = "AnimationPlayer"
+	var library := AnimationLibrary.new()
+	for clip in clips:
+		var animation := Animation.new()
+		animation.length = 1.0
+		library.add_animation(clip, animation)
+	anim_player.add_animation_library("", library)
+	body.add_child(anim_player)
+	player.get_node("BodyRoot").add_child(body)
+	player._wire_body_animation(body)
+	return player.get_node("BodyRoot").get_node("CharacterAnimator")
+
+func test_every_move_has_its_own_case() -> void:
+	# The guard that keeps this from rotting: a Move added later and never
+	# routed lands on the default, which is the standing pose.
+	#
+	# Compared against Move's own constants rather than a list repeated here,
+	# so adding a Move is what makes this fail.
+	var animator: CharacterAnimator = await _animator_with([&"idle"])
+	var player: Player = _world["player"]
+	var source: String = FileAccess.get_file_as_string( \
+		"res://scripts/player/character_animator.gd")
+	var missing: Array[String] = []
+	for name in ["WALKING", "FALLING", "FALL_UNCONTROLLED", "JUMP", "LANDING", \
+			"SKILL_ROLL", "SLIDE", "CROUCH", "SPEED_VAULT", "INTO_GRAB", \
+			"GRAB", "WALL_RUN", "WALL_CLIMB", "TURN_180"]:
+		if not source.contains("Move.%s:" % name):
+			missing.append(name)
+	assert_eq(missing, [] as Array[String], \
+		"these moves have no animation case and fall through to the standing pose: %s" \
+		% ", ".join(missing))
+
+func test_a_jump_does_not_play_the_standing_pose() -> void:
+	# THE ONE THAT WAS VISIBLY WRONG. Jump had no case, and the default is
+	# idle-first, so a take-off played idle.
+	var animator: CharacterAnimator = await _animator_with([&"idle", &"run", &"jump"])
+	var player: Player = _world["player"]
+	# Read without stepping: start() sets the current move synchronously, and a
+	# tick later Jump has already handed off to Falling, so a stepped read asks a
+	# different move's question.
+	player.move_manager.start(Move.JUMP)
+	assert_eq(String(animator._target_animation()), "jump", \
+		"a jump asked for '%s'" % String(animator._target_animation()))
+
+func test_a_body_missing_the_ideal_clip_still_gets_something() -> void:
+	# Every case is a PRIORITY LIST, not one name: body_scene is optional and
+	# per-model, and travel()ing to a name the graph lacks is a real engine
+	# error rather than a no-op.
+	var animator: CharacterAnimator = await _animator_with([&"idle"])
+	var player: Player = _world["player"]
+	for move in [Move.JUMP, Move.SKILL_ROLL, Move.WALL_CLIMB, Move.TURN_180, \
+			Move.LANDING, Move.INTO_GRAB, Move.FALL_UNCONTROLLED]:
+		player.move_manager.start(move)
+		assert_eq(String(animator._target_animation()), "idle", \
+			"%s resolved to a clip this body does not have" % move)
+
+func test_a_body_with_no_clips_at_all_asks_for_nothing() -> void:
+	# Move.KEEP -- "stay put, nothing to do" -- rather than a name the graph
+	# cannot reach.
+	var animator: CharacterAnimator = await _animator_with([&"unrelated"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.JUMP)
+	assert_eq(animator._target_animation(), Move.KEEP, \
+		"a body with none of the known clips was still asked for one")
