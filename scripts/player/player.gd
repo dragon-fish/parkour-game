@@ -276,6 +276,26 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## for the same reason body_mount_offset does.
 @export var body_run_reference_speed: float = 7.2
 
+## How long one clip cross-fades into the next, in seconds. Zero restores the
+## hard cut this project had before.
+##
+## Without it every change of state is a CUT, and Godot makes that worse than
+## it sounds: AnimationNodeStateMachinePlayback.travel() "follows the shortest
+## path", and "if the path does not connect from the current state, the
+## animation will play after the state teleports" -- with reset_on_teleport
+## defaulting to true, so the incoming clip also restarts from frame zero. A
+## limb mid-swing jumps to wherever the next clip's first frame puts it.
+##
+## The owner spotted the surviving one directly: entering the run clip made the
+## neck lurch forward. Their read is right that a lean into a run is good
+## animation -- the defect is that it arrived in a single frame instead of over
+## one.
+##
+## Per-model, so it sits here beside body_scene, for the same reason
+## body_mount_offset does: how long a blend should take depends on how the
+## body's clips were authored.
+@export var body_animation_blend_time: float = 0.15
+
 ## The instance of body_scene actually attached under BodyRoot, or null if
 ## none. Exposed as a plain var (not just a BodyRoot child lookup) so tests
 ## and other systems can inspect what got attached without reaching into
@@ -757,37 +777,45 @@ func _wire_body_animation(body_node: Node3D) -> void:
 		clip_node.animation = clip_name
 		state_machine.add_node(String(clip_name), clip_node)
 
+	# EVERY ORDERED PAIR GETS AN EDGE, so travel() always has a path.
+	#
+	# The graph used to carry three transitions -- Start->idle, idle->run,
+	# run->End -- and travel() reached everything else by TELEPORTING, which is
+	# Godot's own word for it: "if the path does not connect from the current
+	# state, the animation will play after the state teleports", with
+	# reset_on_teleport defaulting to true so the incoming clip restarts from
+	# frame zero as well. A limb mid-swing simply appears wherever the next
+	# clip's first frame puts it. Only idle->run was ever a real transition, and
+	# with xfade_time left at its 0.0 default even that was a cut.
+	#
+	# Generated rather than hand-listed because the node set is decided at
+	# runtime from whatever clips the attached body actually has (see above), so
+	# there is no fixed list to write down.
+	#
 	# advance_mode = ENABLED, not AUTO -- the same decision, and for the same
 	# reason, that used to be documented on this exact block in
 	# tools/build_player_scene.gd before it moved here: an unconditioned AUTO
 	# transition fires the instant it is evaluated, not when its animation
-	# finishes, racing the whole idle->run->End chain to End within a single
-	# physics frame regardless of what CharacterAnimator asks for. ENABLED
-	# transitions never fire on their own; travel() calls from
-	# CharacterAnimator are the only thing that ever moves this graph.
+	# finishes, racing the whole chain to End within a single physics frame
+	# regardless of what CharacterAnimator asks for. ENABLED transitions never
+	# fire on their own; travel() calls from CharacterAnimator are the only
+	# thing that ever moves this graph.
 	#
-	# Only idle/run get a transition edge at all, same as before this
-	# function started conditioning on clip availability -- and, same as
-	# before, none of the OTHER nodes (jump included) ever got one either:
-	# travel() does not require a transition edge to reach a node directly
-	# (verified: jump has never had one, on either side, and has always been
-	# reachable), so the newer clips (sneak/sneaking/ladder_stillness) need
-	# none for the same reason. Both edges are individually guarded on the
-	# node they touch actually existing -- add_transition() to a name that
-	# was never add_node()'d is exactly the kind of engine error this whole
-	# clip-availability scheme exists to avoid.
-	if state_machine.has_node("idle"):
-		var start_to_idle := AnimationNodeStateMachineTransition.new()
-		start_to_idle.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
-		state_machine.add_transition("Start", "idle", start_to_idle)
-		if state_machine.has_node("run"):
-			var idle_to_run := AnimationNodeStateMachineTransition.new()
-			idle_to_run.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
-			state_machine.add_transition("idle", "run", idle_to_run)
-	if state_machine.has_node("run"):
-		var run_to_end := AnimationNodeStateMachineTransition.new()
-		run_to_end.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
-		state_machine.add_transition("run", "End", run_to_end)
+	# NO SELF-TRANSITIONS. CharacterAnimator re-issues travel() every tick (see
+	# its own header for why it must), so an edge from a state to itself is an
+	# invitation to restart the current clip sixty times a second.
+	var present: Array[StringName] = []
+	for clip_name in _KNOWN_ANIMATION_CLIPS:
+		if state_machine.has_node(String(clip_name)):
+			present.append(clip_name)
+	for to_name in present:
+		# From Start as well, so the first travel() of a body's life is a real
+		# transition rather than a teleport out of the entry node.
+		state_machine.add_transition("Start", String(to_name), _blend_transition())
+		for from_name in present:
+			if from_name == to_name:
+				continue
+			state_machine.add_transition(String(from_name), String(to_name), _blend_transition())
 
 	# WRAPPED IN A BLEND TREE, rather than used as the root directly.
 	#
@@ -848,6 +876,16 @@ func _wire_body_animation(body_node: Node3D) -> void:
 ## in some other, named library reads as absent here too, consistently.
 ## This is the single source of truth _wire_body_animation() uses to decide
 ## which nodes the AnimationTree's graph gets at all.
+## One cross-fading transition, configured the same way every time. A fresh
+## resource per edge, never a shared one: AnimationNodeStateMachineTransition is
+## a Resource, and handing the same instance to every edge would make them one
+## object wearing many hats.
+func _blend_transition() -> AnimationNodeStateMachineTransition:
+	var transition := AnimationNodeStateMachineTransition.new()
+	transition.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
+	transition.xfade_time = maxf(body_animation_blend_time, 0.0)
+	return transition
+
 func _body_has_clip(anim_player: AnimationPlayer, clip_name: StringName) -> bool:
 	var library := anim_player.get_animation_library("")
 	return library != null and library.has_animation(clip_name)

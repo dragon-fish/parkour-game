@@ -1240,3 +1240,55 @@ position = base_position.lerp(_head_local_position, strength)
   暴露这个问题的模型是 CC BY-NC-SA 的，仓库**故意不追踪**它（见 `.gitignore`）——
   `preload` 它的测试在任何一份全新 clone 上都会直接炸
 - 那些实测数是用一次性诊断脚本跑出来的，跑完即删，没有进仓库
+
+## 43. 状态机的"转换"大多根本不是转换，是瞬移
+
+使用者跑通头部跟随之后注意到：
+
+> 它这个进入 run 动画时脖子会突然往前伸一点，这倒是符合动画原理
+
+然后问了正确的问题：引擎是不是有那种"两种动画之间自动插帧"的机制。
+
+有，叫**交叉淡化**，属性是 `AnimationNodeStateMachineTransition.xfade_time`。
+但查文档时发现问题比"忘了设淡化时间"严重得多。`travel()` 的官方说明：
+
+> Transitions from the current state to another one, **following the shortest path**.
+> **If the path does not connect from the current state, the animation will play
+> after the state teleports.**
+
+而 `reset_on_teleport` 默认 `true`——**瞬移之外还把新片段倒回第 0 帧。**
+
+我们的图一共只有三条边：`Start→idle`、`idle→run`、`run→End`。对照一下：
+
+| 转换 | 实际发生的事 |
+| --- | --- |
+| `idle→run` | 有边，但 `xfade_time` 是默认的 **0.0** → 硬切 |
+| `run→idle` | **没有边** → 瞬移 + 倒回第 0 帧 |
+| 任何 → `jump` | **没有边** → 瞬移 + 倒回第 0 帧 |
+| `jump` → 任何 | **没有边** → 瞬移 + 倒回第 0 帧 |
+
+也就是说**游戏里几乎每一次动画切换都是硬切**，而且大多数还附带一次倒带。
+使用者只注意到 `idle→run` 那一次，是因为它恰好是唯一有边的那条——
+其余的更糟，只是还没被看见。
+
+### 改法
+
+**每一个有序对都连一条边**，共用一个 `xfade_time`（新增 `Player.body_animation_blend_time`，默认 0.15 s，置 0 恢复硬切）。
+边是**生成的**不是手写的：节点集合本身就是运行时按"这具身体到底有哪些片段"决定的，
+没有固定清单可写。
+
+两个必须守住的约束：
+
+- **`advance_mode` 保持 `ENABLED`，不能用 `AUTO`。** 无条件的 AUTO 边在被求值的瞬间就触发，
+  而不是等动画播完——在一张全连通图上，那意味着一帧之内窜遍所有状态。
+- **不连自环。** `CharacterAnimator` 按设计**每帧**重发 `travel()`
+  （见其头部注释解释为什么必须这样），状态到自身的边等于邀请它每秒把当前片段重启 60 次。
+
+### 一句方法上的话
+
+使用者问的是"有没有这种机制"，而查证这个问题**顺带发现了一个没人报告的缺陷**。
+如果只是回答"有，设 `xfade_time` 就行"，那三条边里的两条空缺会原样留在那儿——
+`idle→run` 会变好，其余全部照旧瞬移，而且没人会知道。
+
+**读文档读到那句 "if the path does not connect ... teleports" 才是这次的收获，
+不是 `xfade_time` 这个属性名。**
