@@ -84,7 +84,7 @@ dist/
 assets/models/test.vrm
 assets/models/test.vrm.import
 
-# Animation packs under evaluation. CC0, so these CAN be tracked -- held out
-# only until one is confirmed useful, since LFS storage is not reclaimed by a
-# later delete.
-assets/animations/
+# The VRM test rig: the owner-authored model plus the animation pack, wired
+# together. Follows the same rule as player_wine_fox.tscn -- a scene that
+# instances an untracked asset cannot itself be tracked.
+scenes/player/player_vrm.tscn
