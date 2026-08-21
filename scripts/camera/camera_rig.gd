@@ -116,6 +116,13 @@ var _head_local_offset: Vector3 = Vector3.ZERO
 ## still body as absent.
 var _has_head: bool = false
 
+## True while the eye is pulled back behind the body. Presentational only, in
+## the strictest sense: nothing in the game reads it, no move behaves
+## differently, and the rig's rotation, look clamp, bob, spin and head-follow
+## all keep running exactly as they do in first person. Only the camera CHILD
+## moves. See update_effects().
+var third_person: bool = false
+
 ## True while a level-owned cutscene (DeathSequence, currently the only
 ## caller) has taken the camera over. update_effects() yields entirely in
 ## this state -- see its own comment -- so bob/dip/crouch/look cannot fight
@@ -364,7 +371,8 @@ func reset_state() -> void:
 	rotation.y = 0.0
 	rotation.z = 0.0
 	if camera != null:
-		camera.position.y = 0.0
+		camera.position = Vector3.ZERO
+	third_person = false
 
 ## Yaw turns the body so movement follows the view; pitch stays on the rig.
 ##
@@ -524,7 +532,15 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var bob := sin(_bob_phase) * _config.camera.bob_amplitude * speed_ratio * _bob_weight
 
 	_dip = move_toward(_dip, 0.0, _config.camera.land_dip_recover * delta)
-	camera.position.y = bob - _dip
+	# The third-person pull-back is applied to the camera CHILD, on top of the
+	# bob and dip rather than instead of them -- those two own position.y, and
+	# overwriting it here would silently delete the walk bob whenever the view
+	# was behind the body.
+	var back := Vector3.ZERO
+	if third_person:
+		back = _third_person_position()
+	camera.position = Vector3(back.x, bob - _dip + back.y, back.z)
+	_apply_body_layers()
 
 	# Tracked as an offset independent of base_position.y (mirroring _dip
 	# above) rather than lerping base_position.y toward a target directly:
@@ -739,3 +755,58 @@ func shift_yaw_reference(yaw: float, assist: float) -> void:
 	# Unclamped, same as recentre_yaw_reference(): a fan that has travelled past
 	# the view is eased back over it by apply_look rather than snapping it.
 	_look_relative_yaw -= carried
+
+
+## Puts the eye behind the body, pulled in if anything is in the way.
+##
+## The ray runs from the rig's own origin -- the head -- out to where the eye
+## wants to be, so what it finds is exactly what would be between the two. The
+## PLAYER is excluded: it is always in the way, being what the camera is
+## looking at.
+func _third_person_position() -> Vector3:
+	var wanted: Vector3 = _config.camera.third_person_offset
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return wanted
+	var query := PhysicsRayQueryParameters3D.create( 		global_position, to_global(wanted))
+	var body := get_parent()
+	if body is CollisionObject3D:
+		query.exclude = [(body as CollisionObject3D).get_rid()]
+	var hit := space.intersect_ray(query)
+	if hit.is_empty():
+		return wanted
+	# Back off from the surface by the same fraction rather than sitting exactly
+	# on it: a camera flush against a wall has that wall's near plane clipping
+	# through it.
+	var reached: float = global_position.distance_to(hit["position"])
+	var full: float = wanted.length()
+	var fraction: float = clampf(reached / maxf(full, 0.001), 		_config.camera.third_person_min_fraction, 1.0)
+	return wanted * fraction
+
+## Flips between the first-person eye and the pulled-back one. Called from
+## Player's own debug-key handling, alongside noclip.
+func toggle_third_person() -> void:
+	third_person = not third_person
+	if not third_person and camera != null:
+		camera.position = Vector3.ZERO
+
+
+## Picks which of the body's two mesh variants this camera renders.
+##
+## A VRM imported with head hiding set to Layers carries both a full body and a
+## generated headless one, on separate render layers. A camera renders every
+## layer by default, so without this BOTH draw -- and the face and hair are
+## exactly where the eye is, which is the clipping the owner reported as the
+## neck passing through the view.
+##
+## Only the two configured layers are ever touched. Everything else, layer 1
+## included, is left alone -- so the world still draws, and a body with no layer
+## split at all (every non-VRM model) is completely unaffected.
+func _apply_body_layers() -> void:
+	if camera == null:
+		return
+	var first: int = _config.camera.first_person_body_layers
+	var third: int = _config.camera.third_person_body_layers
+	var hide: int = third if not third_person else first
+	var show: int = first if not third_person else third
+	camera.cull_mask = (camera.cull_mask | show) & ~hide

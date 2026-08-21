@@ -239,3 +239,46 @@ extends Resource
 ## so this is set to be felt rather than noticed. Eased in and out across the
 ## vault's own duration, so it is never a step.
 @export var vault_roll_deg: float = 7.0
+
+## Where the eye sits when the third-person view is on, in the rig's own local
+## space: +Z is behind, +X is to the right, +Y is up. Zero would be the
+## first-person camera exactly.
+##
+## A DEBUG VIEW FIRST. The owner's reason for wanting one is the same one
+## docs/asset-candidates.md gives as the first prerequisite for any character
+## model: a first-person game cannot show you its own body, so nothing about
+## the animation, the mount height, or the parkour poses can be checked from
+## inside it. Watching your own vault from outside is how you find out it looks
+## wrong.
+##
+## Deliberately not a tuned over-the-shoulder framing. It is placed to SEE the
+## body, and the owner's own scoping applies: "先跑起来" -- get it running, then
+## adjust.
+@export var third_person_offset: Vector3 = Vector3(0.6, 0.35, 3.0)
+
+## How close the third-person eye is allowed to come when something is between
+## it and the head, as a fraction of third_person_offset's length. Without a
+## pull-in the view spends indoor sections inside walls, which is not a view.
+@export var third_person_min_fraction: float = 0.15
+
+## The render layer carrying the body's FIRST-PERSON meshes, as a mask.
+##
+## VRM has a mechanism for this in the spec, and godot-vrm implements it: with
+## the importer's head_hiding_method set to Layers, it generates a headless
+## variant of the body and puts the two on separate layers -- measured on the
+## owner's own export as "Body (Headless)" on layer 2 and Body/Face/Hair on
+## layer 4.
+##
+## A camera renders every layer by default, so BOTH variants draw at once, and
+## the face and hair sit exactly where the eye is. That is the clipping, and it
+## is not something to solve by hiding meshes one at a time: the model already
+## ships the answer, the camera just has to pick a side.
+##
+## Defaults match godot-vrm's own import defaults. A body with no layer split
+## at all -- every mesh on layer 1, which is every non-VRM model -- is
+## unaffected, since neither of these masks touches layer 1.
+@export_flags_3d_render var first_person_body_layers: int = 2
+
+## The render layer carrying the body's THIRD-PERSON meshes -- the full head.
+## See first_person_body_layers.
+@export_flags_3d_render var third_person_body_layers: int = 4

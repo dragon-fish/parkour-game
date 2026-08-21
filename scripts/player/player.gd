@@ -1124,6 +1124,13 @@ func _input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif event.physical_keycode == KEY_T:
 			toggle_noclip()
+		elif event.physical_keycode == KEY_V:
+			# V for view. A DEBUG toggle, sat next to noclip on purpose: a
+			# first-person game cannot show you its own body, so the mount
+			# height, the animation and the parkour poses are all unverifiable
+			# from inside it.
+			if camera_rig != null:
+				camera_rig.toggle_third_person()
 
 ## Straight-line flight along the view, position written directly so no
 ## collision or gravity applies. Deliberately does NOT run the move manager:

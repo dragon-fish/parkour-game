@@ -83,3 +83,8 @@ dist/
 # because it could not be.
 assets/models/test.vrm
 assets/models/test.vrm.import
+
+# Animation packs under evaluation. CC0, so these CAN be tracked -- held out
+# only until one is confirmed useful, since LFS storage is not reclaimed by a
+# later delete.
+assets/animations/
