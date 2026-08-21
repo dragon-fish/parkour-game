@@ -233,6 +233,22 @@ const COLUMN_SAMPLES := 6
 ## floor the player is standing on is never mistaken for an obstacle face.
 const COLUMN_FLOOR_MARGIN := 0.1
 
+## The ledge column is sampled FINER than the vault's, and the arithmetic is the
+## reason rather than caution.
+##
+## What a vault looks for is the face of something solid, which spans a good
+## part of the body's height. What a GRAB looks for can be the near edge of a
+## flat platform -- a vertical strip only as tall as the plank is thick. Six
+## samples over ledge_max_height is 0.56 m apart, and a 0.1 m edge falls
+## straight between two of them. Measured: a flat suspended panel was invisible
+## while the SAME panel tilted 20 degrees was found, purely because tilting it
+## gave it a 0.68 m vertical profile to be hit.
+##
+## 14 samples is 0.2 m apart, which catches anything with a plausible plank's
+## thickness. ⚠️ HONEST LIMIT: a plate thinner than that spacing can still slip
+## through, and the fix for that would be a shapecast rather than more rays.
+const LEDGE_COLUMN_SAMPLES := 14
+
 func vault_query() -> Dictionary:
 	if _config == null:
 		return _no_hit()
@@ -452,11 +468,39 @@ func ledge_query() -> Dictionary:
 	if _config == null:
 		return _no_hit()
 	_ensure_rays()
-	# SEARCH RADIUS, and only that. The forward ray is a raycast: it reports
-	# its first hit, so looking the confirmed 3.5 m ahead finds a wall at 1 m
-	# just as correctly as one at 3 m.
-	_aim_forward(_vault_high, _config.grab.ledge_find_distance)
-	if not _vault_high.is_colliding():
+	# A COLUMN, not one ray at chest height.
+	#
+	# Same failure the vault probe had, found the same way: the owner's route
+	# grabs the near edge of a scaffold platform cantilevered off a wall, with
+	# open space beneath it. A single chest-height ray passes straight under
+	# such a thing and reports no face, so the ledge is invisible however
+	# reachable it is. Measured: even a perfectly FLAT suspended panel came back
+	# with no hit at all, which is why the tilt in the owner's first screenshot
+	# turned out to be a red herring.
+	#
+	# Scanned up to ledge_max_height, unlike the vault's own column which stops
+	# at hand reach. The two bound different things: a vault needs something the
+	# hands can be planted ON, which the body's own size limits, while a grab
+	# needs something they can REACH, which the jump limits. The owner put it
+	# plainly on seeing this -- "so the original checks around the HANDS too,
+	# not only the feet."
+	#
+	# SEARCH RADIUS is unchanged and still only that: a raycast reports its first
+	# hit, so looking the confirmed 3.5 m ahead finds a wall at 1 m just as
+	# correctly as one at 3 m.
+	var found_face := false
+	for i in LEDGE_COLUMN_SAMPLES:
+		var t: float = float(i) / float(LEDGE_COLUMN_SAMPLES - 1)
+		var sample_y: float = lerpf(_feet_y() + COLUMN_FLOOR_MARGIN,
+			_feet_y() + _config.grab.ledge_max_height, t)
+		_vault_high.position.y = sample_y - global_position.y
+		_aim_forward(_vault_high, _config.grab.ledge_find_distance)
+		if _vault_high.is_colliding():
+			# The HIGHEST hit wins -- the loop simply does not stop. On a wall
+			# every height reports the same face, so it costs nothing there; on
+			# a suspended platform it is the only band that hits at all.
+			found_face = true
+	if not found_face:
 		return _no_hit()
 
 	# ANCHOR, which is a different question -- see LEDGE_ANCHOR_MARGIN. The
