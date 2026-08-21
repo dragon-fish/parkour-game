@@ -973,6 +973,78 @@ func toggle_noclip() -> void:
 	if move_manager != null:
 		move_manager.start(Move.WALKING)
 
+# --- what the wall you just left will not let you do -------------------------
+#
+# A wall run leaves the body travelling AWAY from the wall, because that is what
+# kicking off a wall means. For roughly a second afterwards, everything that
+# would require moving back TOWARD that wall is impossible -- not as a rule
+# imposed on the player, but as arithmetic. The owner put it plainly: "your legs
+# are pushing off the wall, you cannot send your body to the same side."
+#
+# Two consequences, both reported from play:
+#
+#   * you cannot immediately start another run on the SAME side of a wall
+#     facing the same way -- chaining up a single flat wall, which the owner
+#     drew a cross through. Two walls facing EACH OTHER are a different matter
+#     and stay legal, which is the zig-zag corridor; so is a wall angled away
+#     from the one just left.
+#
+#   * you cannot mantle or vault onto the top of the wall you are running on.
+#     Same reasoning, and it explains a long-standing complaint about a wall
+#     run ending in a grab onto the very wall it just left.
+#
+# Held on Player rather than inside WallRunMove because the moves that have to
+# consult it -- the grab and vault probes in AirborneMove -- run AFTER the run
+# has ended and the move instance has been left behind.
+
+## The outward normal of the wall most recently run on, and which side of the
+## body it was on (-1 left, +1 right). Meaningless once recent_wall_timer
+## reaches zero.
+var recent_wall_normal: Vector3 = Vector3.ZERO
+var recent_wall_side: int = 0
+var _recent_wall_timer: float = 0.0
+
+## Called every tick of a wall run. Refreshing rather than stamping once means
+## the lockout is measured from when the wall was LEFT, which is what the rule
+## is about, without WallRunMove having to notice its own ending.
+func note_wall_contact(normal: Vector3, side: int) -> void:
+	recent_wall_normal = normal
+	recent_wall_side = side
+	_recent_wall_timer = config.wall_run.same_wall_lockout
+
+func has_recent_wall() -> bool:
+	return _recent_wall_timer > 0.0 and recent_wall_normal != Vector3.ZERO
+
+## True if starting a wall run on `normal`/`side` would mean going back to the
+## wall just left.
+##
+## ONLY THE SAME SIDE IS CONSTRAINED. A wall on the other side is one you are
+## travelling toward, which is exactly the facing-walls corridor.
+##
+## And on the same side, only a wall FACING THE SAME WAY is refused. The owner
+## reasoned about this with a sign -- a left-hand run cannot pick up a wall
+## angled one way, a right-hand run cannot pick up the other -- and the
+## magnitude test below is equivalent in practice for a reason worth writing
+## down: the wall angled the OTHER way recedes from a body already travelling
+## away, so no probe of any reach ever finds it. Only the near-parallel case
+## needs refusing, and refusing it by angle rather than by sign means not having
+## to guess a convention.
+func recent_wall_refuses_run(normal: Vector3, side: int) -> bool:
+	if not has_recent_wall() or side != recent_wall_side:
+		return false
+	var facing_alike: float = normal.normalized().dot(recent_wall_normal.normalized())
+	return facing_alike > cos(config.wall_run.same_wall_angle)
+
+## True if `point` sits beyond the wall just left -- i.e. on the far side of its
+## face, which is where its own top is.
+##
+## The normal points back toward the body, so anything on the wall's side of the
+## body has a negative component along it.
+func recent_wall_refuses_climb_onto(point: Vector3) -> bool:
+	if not has_recent_wall():
+		return false
+	return (point - global_position).dot(recent_wall_normal) < 0.0
+
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	if grounded:
 		_coyote_timer = config.pawn.coyote_time
@@ -981,6 +1053,7 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 
 	_step_grace_timer = maxf(_step_grace_timer - delta, 0.0)
 	_slide_recovery_timer = maxf(_slide_recovery_timer - delta, 0.0)
+	_recent_wall_timer = maxf(_recent_wall_timer - delta, 0.0)
 	_was_grounded = grounded
 
 	if input.jump_pressed:

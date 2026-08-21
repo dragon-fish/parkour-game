@@ -62,9 +62,11 @@ func test_turning_the_view_does_not_end_the_run() -> void:
 	var player: Player = await _running_the_wall()
 	var input: ScriptedInputSource = _world["input"]
 	# A hard swing, spread over several ticks the way a real hand would deliver
-	# it. Away from the wall, which is the direction the fan allows.
+	# it. AWAY from the wall, which is the direction the fan allows: this
+	# fixture's wall is on the right, so away is leftward, which is mouse-left,
+	# which is a negative look.x.
 	for i in 8:
-		input.state.look = Vector2(60.0, 0.0)
+		input.state.look = Vector2(-60.0, 0.0)
 		await step(1)
 	input.state.look = Vector2.ZERO
 	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
@@ -76,7 +78,7 @@ func test_the_run_still_hugs_the_wall_after_a_look() -> void:
 	var input: ScriptedInputSource = _world["input"]
 	var distance_before: float = absf(player.global_position.x - 0.45)
 	for i in 8:
-		input.state.look = Vector2(60.0, 0.0)
+		input.state.look = Vector2(-60.0, 0.0)
 		await step(1)
 	input.state.look = Vector2.ZERO
 	var distance_after: float = absf(player.global_position.x - 0.45)
@@ -91,11 +93,16 @@ func test_the_yaw_fan_is_a_quarter_turn_away_from_the_wall() -> void:
 	# player is half of that, on the away side -- which is also what makes sense
 	# of the original shipping a WallRunLeft and a WallRunRight whose only
 	# difference is the mirroring.
+	# THE SIGN IS THE WHOLE TEST. Yaw grows counter-clockwise seen from above,
+	# which is leftward, so the fan a LEFT-hand wall gets -- the one declared --
+	# is the NEGATIVE half, because a left wall is the one the view turns away
+	# from to the RIGHT. Declared the other way round, as it was on its first
+	# outing, the clamp pins the view INTO the wall.
 	var config := MovementConfig.new()
-	assert_almost_eq(config.wall_run.min_look_constraint.y, 0.0, 0.001, \
-		"the fan reaches back past straight-ahead, into the wall")
-	assert_almost_eq(config.wall_run.max_look_constraint.y, deg_to_rad(90.0), 0.001, \
-		"the fan is not a quarter turn wide")
+	assert_almost_eq(config.wall_run.max_look_constraint.y, 0.0, 0.001, \
+		"the fan reaches past straight-ahead, into the wall")
+	assert_almost_eq(config.wall_run.min_look_constraint.y, -deg_to_rad(90.0), 0.001, \
+		"the fan is not a quarter turn wide, on the away side")
 	assert_true(config.wall_run.mirror_yaw_by_wall_side, \
 		"the fan is one-sided but never mirrored, so one of the two walls is wrong")
 
@@ -103,15 +110,16 @@ func test_the_view_cannot_be_turned_into_the_wall() -> void:
 	var player: Player = await _running_the_wall()
 	var input: ScriptedInputSource = _world["input"]
 	assert_eq(player.wall_side, 1, "test setup is wrong: the wall is not on the right")
-	# Toward the wall, hard and repeatedly.
+	# INTO the wall, hard and repeatedly. The wall is on the right, so that is
+	# mouse-right, a positive look.x.
 	for i in 8:
-		input.state.look = Vector2(-60.0, 0.0)
+		input.state.look = Vector2(60.0, 0.0)
 		await step(1)
 	input.state.look = Vector2.ZERO
 	var fan: Dictionary = player.camera_rig.look_debug()
-	# Mirrored for a right-hand wall, the legal range is [-90, 0]: turning INTO
-	# the wall is the positive direction and must be refused at 0.
-	assert_lt(float(fan["relative_yaw"]), 0.001, \
+	# Mirrored for a right-hand wall the legal range is [0, +90], so turning
+	# into the wall is refused at 0.
+	assert_gt(float(fan["relative_yaw"]), -0.001, \
 		"the view turned into the wall (%.1f degrees)" % rad_to_deg(float(fan["relative_yaw"])))
 
 # --- Q ------------------------------------------------------------------------
@@ -136,7 +144,8 @@ func test_q_carries_the_view_to_the_far_edge_of_the_fan() -> void:
 	# look_sweep_speed is 6 rad/s, so a quarter turn takes about 16 ticks.
 	await step(25)
 	var fan: Dictionary = player.camera_rig.look_debug()
-	assert_almost_eq(float(fan["relative_yaw"]), -deg_to_rad(90.0), 0.05, \
+	# The wall is on the right, so away is leftward, which is positive yaw.
+	assert_almost_eq(float(fan["relative_yaw"]), deg_to_rad(90.0), 0.05, \
 		"the sweep did not reach the fan's away edge (%.1f degrees)" \
 		% rad_to_deg(float(fan["relative_yaw"])))
 

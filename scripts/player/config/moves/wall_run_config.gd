@@ -147,13 +147,19 @@ func _init() -> void:
 	# `mirror_yaw_by_wall_side` below.
 	#
 	# So the 90 degrees is the full span, running from straight-ahead to a
-	# quarter turn AWAY. Declared here for a wall on the LEFT (look rightward,
-	# positive yaw); MoveManager mirrors it for a wall on the right.
+	# quarter turn AWAY. Declared here for a wall on the LEFT; MoveManager
+	# mirrors it for a wall on the right.
+	#
+	# MIND THE SIGN. Yaw increases COUNTER-CLOCKWISE seen from above, which is
+	# leftward, so a wall on the left -- which the view must turn away from, to
+	# the right -- gets the NEGATIVE half. Getting this backwards clamps the
+	# view into the wall instead of away from it, which is precisely what it
+	# did on its first outing.
 	constrain_look = true
 	absolute_yaw_constraint = true
 	mirror_yaw_by_wall_side = true
-	min_look_constraint = Vector3(-deg_to_rad(71.4), 0.0, -PI)
-	max_look_constraint = Vector3(deg_to_rad(71.4), deg_to_rad(90.0), PI)
+	min_look_constraint = Vector3(-deg_to_rad(71.4), -deg_to_rad(90.0), -PI)
+	max_look_constraint = Vector3(deg_to_rad(71.4), 0.0, PI)
 	# Q DOES NOT START A TURN HERE. It moves the VIEW, not the body -- see
 	# WallRunMove's own handling. The owner: "Q during a wall run only changes
 	# the view; it does not pin the character in place", and "turning 90 degrees
@@ -161,3 +167,20 @@ func _init() -> void:
 	# which is only true if Q is a shortcut for the mouse movement rather than a
 	# move of its own.
 	allows_turn = false
+
+@export_group("Same-wall lockout")
+
+## How long after leaving a wall its geometry keeps refusing certain moves.
+##
+## ⚠️ PROJECT-DEFINED, from the owner's own estimate of the original ("within a
+## second of leaving the wall"). Replaces nothing: `redo_move_time` above is the
+## confirmed 0.15 s and stays, as the short guard against a run flickering off
+## and back on the same tick. This is the longer, GEOMETRIC rule on top.
+@export var same_wall_lockout: float = 1.0
+
+## How different two walls' facings must be before the second counts as a
+## genuinely new wall rather than more of the one just left.
+##
+## ⚠️ PROJECT-DEFINED. See Player.recent_wall_refuses_run() for the physics this
+## expresses and why only the same SIDE is constrained.
+@export var same_wall_angle: float = deg_to_rad(20.0)

@@ -97,13 +97,18 @@ func probe_transition() -> StringName:
 			and player.horizontal_speed() >= config.wall_run.wall_running_min_speed:
 		var heading: Vector3 = Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()
 		var wall: Dictionary = player.probes.wall_query(heading)
-		# can_enter() replaces the old note_wall_detach()/can_attach_wall()
-		# same-wall cooldown -- see Player's own deletions for that mechanism
-		# and this task's report for the accepted risk that removing it opens
-		# up (an unbounded zig-zag climb between two facing walls). This gate
-		# is now generic to the MOVE, not to which wall: any WALL_RUN re-entry
-		# is refused for redo_move_time (0.15 s) after the last one ended,
-		# regardless of which wall it was.
+		# TWO COOLDOWNS, DELIBERATELY, ANSWERING DIFFERENT QUESTIONS.
+		#
+		# can_enter() is the confirmed redo_move_time (0.15 s) and is blind to
+		# WHICH wall: it is the short guard against a run flickering off and
+		# back on within a few ticks. On its own it was also the whole
+		# same-wall story, which the owner felt as the game refusing them --
+		# "the original does not feel like that" -- while the chain it was
+		# supposed to prevent was still reachable.
+		#
+		# The geometric rule that IS about which wall lives a few lines down,
+		# in recent_wall_refuses_run(). Keeping them apart is what lets the
+		# short one stay short.
 		if wall["valid"] and player.move_manager.can_enter(WALL_RUN):
 			var incidence: float = wall["incidence"]
 			# 0-57 degrees takes the forward branch, 60+ takes the strafe
@@ -115,7 +120,14 @@ func probe_transition() -> StringName:
 			# stays in this state and the next tick's fresh query tries again.
 			var qualifies: bool = incidence <= config.wall_run.wall_running_forward_max_start_angle \
 				or incidence >= config.wall_run.wall_running_strafe_start_angle
-			if qualifies:
+			# THE WALL YOU JUST LEFT WILL NOT TAKE YOU BACK. Kicking off a
+			# wall sends the body away from it, so a second run on the same
+			# side of a wall facing the same way is not a rule being enforced,
+			# it is arithmetic -- see Player.recent_wall_refuses_run(). Two
+			# walls facing EACH OTHER stay legal, which is the zig-zag
+			# corridor, and so does a wall angled away from the one just left.
+			var refused: bool = player.recent_wall_refuses_run(wall["normal"], int(wall["side"]))
+			if qualifies and not refused:
 				return WALL_RUN
 
 	# Checked BEFORE the ledge grab below, mirroring 05 §5.7's own fallback
@@ -128,7 +140,7 @@ func probe_transition() -> StringName:
 	# SpeedVaultConfig.variants' own per-field note on that row.
 	if c.check_for_vault_over and player.probes != null:
 		var hit: Dictionary = player.probes.vault_query()
-		if hit["valid"]:
+		if hit["valid"] and not player.recent_wall_refuses_climb_onto(hit["edge"]):
 			var variant: Dictionary = config.speed_vault.pick_variant(
 				hit["height"], hit["vault_over"], player.velocity.y, player.horizontal_speed())
 			if config.speed_vault.should_commit(hit["distance"], player.horizontal_speed(), variant):
@@ -153,7 +165,14 @@ func probe_transition() -> StringName:
 		# IntoGrab, which gives up on its first tick and returns to Falling,
 		# which sees the same ledge again -- an endless Falling/IntoGrab
 		# flutter for as long as the ledge stays in view.
-		if ledge["valid"] and _within_reach(ledge):
+		# ...and it will not let you climb onto its own top either. Same
+		# arithmetic as the wall-run refusal above: your legs are pushing off
+		# that wall, so the body cannot be sent to the side it is on. This is
+		# the long-standing complaint about a wall run ending in a grab onto
+		# the very wall it just left.
+		var same_side: bool = ledge["valid"] \
+			and player.recent_wall_refuses_climb_onto(ledge["edge"])
+		if ledge["valid"] and _within_reach(ledge) and not same_side:
 			return INTO_GRAB
 
 	return KEEP

@@ -89,6 +89,7 @@ func enter(_previous: StringName) -> void:
 	# a side that follows the view flips the look fan out from under the view
 	# mid-turn and clamps it straight back to centre.
 	player.wall_side = int(query["side"])
+	player.note_wall_contact(_normal, player.wall_side)
 
 	# Run along the wall in whichever of the two tangent directions the player
 	# is already moving. A wall never reverses you.
@@ -200,8 +201,11 @@ static func wall_jump_rise_velocity(time_on_wall: float, \
 ## coordinates. Positive for a wall on the left, negative for one on the right,
 ## matching MoveManager's own mirroring of the declared fan.
 func _away_edge() -> float:
-	var span: float = config.wall_run.max_look_constraint.y
-	return -span if player.wall_side > 0 else span
+	# The declared fan is the LEFT wall's, which is the negative half (yaw grows
+	# leftward, and a left wall is turned away from to the right), so its span
+	# is the magnitude of the minimum. A right-hand wall gets the positive half.
+	var span: float = absf(config.wall_run.min_look_constraint.y)
+	return span if player.wall_side > 0 else -span
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Q HERE MOVES THE VIEW, NOT THE BODY. Everywhere else it starts a turn; on
@@ -240,6 +244,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return FALLING
 	_normal = query["normal"]
 	_derive_along()
+	# Refreshed every tick, so the lockout it arms is measured from when the
+	# wall is LEFT rather than from when it was found. See Player's own note.
+	player.note_wall_contact(_normal, player.wall_side)
 
 	# A wall jump is a fresh press, not a ground-style coyote jump: the
 	# jump/coyote timer only refills while player.grounded is true, and this
