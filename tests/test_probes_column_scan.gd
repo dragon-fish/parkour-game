@@ -46,7 +46,11 @@ func _standing_player() -> Player:
 	_world = world
 	await step(1)
 	TestWorld.place(world)
-	await step(20)
+	# 30, not 20: the fixture's own note says a spawn does not settle until
+	# about tick 20 and gives a false landing before that. A body still drifting
+	# reports its feet in the wrong place, and every height here is measured
+	# from the feet.
+	await step(30)
 	return world["player"]
 
 # --- the obstacles the old probe could not see --------------------------------
@@ -155,3 +159,22 @@ func test_a_thin_obstacle_offers_a_far_side_and_a_wide_one_does_not() -> void:
 	assert_true(wide["valid"], "the wide obstacle was not seen at all")
 	assert_false(bool(wide["vault_over"]), \
 		"a 3 m deep block offered a far side to be carried past")
+
+func test_thin_obstacles_report_a_far_side_at_every_height() -> void:
+	# The owner, from the calibration course: a 1.4 high by 0.1 deep box still
+	# lands the vault on top instead of carrying past it. The 1.2 by 0.08 case
+	# above passes, so something varies with the size -- most likely the
+	# top-surface probe landing somewhere other than the top (feel-backlog.md
+	# 30), which would put the far-side probe inside the obstacle.
+	for spec in [[1.2, 0.08], [1.4, 0.1], [1.4, 0.3], [0.8, 0.1], [1.7, 0.1]]:
+		var height: float = spec[0]
+		var depth: float = spec[1]
+		var player: Player = await _standing_player()
+		_slab(0.0, height, depth, -1.0)
+		await step(1)
+		var hit: Dictionary = player.probes.vault_query()
+		assert_true(hit["valid"], "%.2f x %.2f was not seen at all" % [height, depth])
+		assert_true(bool(hit["vault_over"]), \
+			"%.2f high by %.2f deep offered no far side (top read at %.2f above the feet)" \
+			% [height, depth, float(hit["height"])])
+		after_each()

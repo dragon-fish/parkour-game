@@ -320,14 +320,28 @@ func vault_query() -> Dictionary:
 	var top: Vector3 = Vector3.ZERO
 	var top_normal: Vector3 = Vector3.ZERO
 	var landed := false
-	for margin in [LEDGE_ANCHOR_MARGIN, LEDGE_ANCHOR_MARGIN * 0.3]:
+	# SMALLEST OFFSET FIRST. The anchor has to land ON the obstacle's top: too
+	# short and it grazes the face plane it is meant to clear, too long and it
+	# steps clean over anything thin. Trying the generous offset first meant a
+	# 10 cm deep box was probed at 10 cm past its face -- exactly its own back
+	# face -- and the thin case, which is the one that needs help, never reached
+	# the retry.
+	for margin in [LEDGE_ANCHOR_MARGIN * 0.3, LEDGE_ANCHOR_MARGIN]:
 		_query_surface_above(distance + margin, highest_hit_y)
 		if not _surface.is_colliding():
 			continue
 		var point: Vector3 = _surface.get_collision_point()
-		# Below the highest sample that HIT means the anchor missed the
-		# obstacle and found something behind or beneath it.
-		if point.y < highest_hit_y - 0.01:
+		# THE TOP MUST BE ABOVE THE HIGHEST SAMPLE THAT HIT, by construction:
+		# the sample above it missed, so the surface lies between them.
+		#
+		# The margin is load-bearing rather than defensive. SurfaceDown has
+		# hit_from_inside set, so a ray that ENDS inside the obstacle reports its
+		# own endpoint as a surface -- and this ray is deliberately stopped just
+		# below the highest hit, which is inside. Measured: a 0.8 m box reported
+		# a "top" at 0.50, its own stop point, and the far-side probe then fired
+		# from inside the box and found no lower ground. The owner saw that as a
+		# thin box still being landed on instead of carried past.
+		if point.y < highest_hit_y + MIN_HEIGHT_EPSILON:
 			continue
 		top = point
 		top_normal = _surface.get_collision_normal()
@@ -407,7 +421,21 @@ func _query_vault_over(top: Vector3) -> bool:
 	var origin_y: float = local_top.y + SURFACE_ORIGIN_MARGIN
 	_vault_over.position = Vector3(local_top.x, origin_y, \
 			local_top.z - _config.speed_vault.vault_over_probe_distance)
-	_vault_over.target_position = Vector3(0.0, -(origin_y + _foot_offset + SURFACE_UNDERSHOOT), 0.0)
+	# MEASURED DOWN FROM THE TOP, NOT FROM THE BODY.
+	#
+	# The length used to be built from the body's own foot offset, which quietly
+	# assumed the top sits near the feet. Airborne it does not, and a vault is
+	# committed in the air by definition -- so the ray stopped short of the far
+	# side's floor and reported no lower ground, which refused to carry the
+	# player past a thin obstacle. The owner saw it as a 0.1 m deep box still
+	# being landed on rather than vaulted over.
+	#
+	# The question is "is there ground below this top", and the useful range for
+	# it is a vault's own reach: anything further down is not a landing, it is a
+	# drop. So the depth comes from the vault table, and the answer no longer
+	# depends on where the body happened to be when it asked.
+	var depth: float = _config.speed_vault.table_ceiling() + SURFACE_ORIGIN_MARGIN
+	_vault_over.target_position = Vector3(0.0, -depth, 0.0)
 	_vault_over.force_raycast_update()
 	if not _vault_over.is_colliding():
 		return false
