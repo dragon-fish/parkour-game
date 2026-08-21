@@ -380,3 +380,30 @@ func test_the_view_is_only_assisted_round_the_curve_not_locked_to_it() -> void:
 	var config := MovementConfig.new()
 	assert_gt(config.wall_run.view_assist, 0.0, "the view is not carried at all")
 	assert_lt(config.wall_run.view_assist, 1.0, "the view is locked to the wall")
+
+func test_a_sweep_does_not_outlive_the_run_that_started_it() -> void:
+	# Reported in play: pressing Q just as a wall run ends spins the player on
+	# the spot indefinitely.
+	#
+	# A sweep is expressed in the FAN's coordinates. Once the run ends the fan
+	# goes with it, and apply_look falls back to rotating the body directly
+	# without ever updating the running total the sweep measures against -- so
+	# the distance left to travel never shrinks and the sweep never finishes.
+	var player: Player = await _running_the_wall()
+	var input: ScriptedInputSource = _world["input"]
+	input.press_turn()
+	await step(2)
+	assert_true(player.camera_rig.is_sweeping(), "the sweep never started")
+	# End the run the way play does -- there is no wall left to track.
+	(_world["wall"] as Node3D).global_position = Vector3(500.0, 0.0, 0.0)
+	await step(3)
+	assert_ne(player.move_manager.current_name, Move.WALL_RUN, \
+		"test setup is wrong: the run did not end")
+	assert_false(player.camera_rig.is_sweeping(), \
+		"the sweep survived the run and is still turning the player")
+
+	var facing_before := player.rotation.y
+	await step(20)
+	assert_almost_eq(wrapf(player.rotation.y - facing_before, -PI, PI), 0.0, 0.01, \
+		"the player kept turning after the run ended (%.1f degrees)" \
+		% rad_to_deg(wrapf(player.rotation.y - facing_before, -PI, PI)))

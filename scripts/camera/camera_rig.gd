@@ -257,6 +257,13 @@ func look_debug() -> Dictionary:
 	}
 
 func clear_look_constraint() -> void:
+	# A SWEEP CANNOT OUTLIVE THE FAN IT WAS AIMED AT. Left running, it keeps
+	# asking for the same step forever: a sweep is expressed in the fan's own
+	# coordinates, and with no fan apply_look takes its unconstrained branch,
+	# which rotates the body without ever updating _look_relative_yaw. The
+	# remaining distance therefore never shrinks. Reported in play as pressing Q
+	# just before a wall run ends and spinning on the spot indefinitely.
+	_sweeping = false
 	_has_look_constraint = false
 	_look_pitch_relaxes = false
 	_look_yaw_fraction = 0.0
@@ -313,6 +320,7 @@ func reset_state() -> void:
 	# The one place the scripted-turn lag IS cleared: a reset is a new life,
 	# and a turn half-smoothed from the old one has nothing to catch up to.
 	_scripted_yaw_lag = 0.0
+	_sweeping = false
 	end_cinematic()
 	rotation.x = 0.0
 	rotation.y = 0.0
@@ -638,6 +646,12 @@ func cancel_look_sweep() -> void:
 ## is worse than none.
 func _advance_look_sweep(mouse_yaw_delta: float, delta: float) -> float:
 	if not _sweeping:
+		return 0.0
+	# Belt and braces against the same thing clear_look_constraint() guards: a
+	# sweep is only meaningful while there is a fan to sweep across, and any
+	# other route to losing one must not leave this running either.
+	if not _has_look_constraint:
+		_sweeping = false
 		return 0.0
 	if absf(mouse_yaw_delta) > 0.0001:
 		_sweeping = false
