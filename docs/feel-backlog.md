@@ -840,3 +840,60 @@ HUD 的 `V` / `VT` 都是水平量，所以这件事在数字上根本看不见�
 2. 或者直接复用已有的 `StandClearance`（`ShapeCast3D`，Player 上已经有了，
    本来就是问"这里站得下吗"的），把它挪到候选落脚点上测一次
 3. 第 2 条大概率是对的：**这个问题本项目已经有一个成熟的解法了，我却新写了一条射线**
+
+## 35. 探测层重构：一次扫描、按需认领；并先查引擎有没有现成的
+
+所有者提出的两点，本质是同一件事——**先看已有的，再动手写**。
+
+### 一、每帧射线数已经失控
+
+射线**节点**本来就是共享的（8 条，每次查询前重新瞄准），问题在**发射**这一层没有复用。
+
+一次 `probe_transition()`：
+
+| 查询 | 发射数 |
+| --- | --- |
+| `wall_ahead_query` | 2 |
+| `wall_query` | 2 |
+| `vault_query` | 6（列）+ 2（顶面重试）+ 1（另一侧）+ 1（头顶） = **10** |
+| `ledge_query` | **14**（列）+ 1 + 1 = **16** |
+
+**≈30 条/帧**，且同一帧里 `ledge_query` 至少跑两遍（状态机 + `grab_markers`）、
+`wall_ahead_query` 至少三遍（状态机 + `wall_climb_markers` + `debug_hud`）。
+
+而且**两条列扫描是同一次扫描**：`vault` 扫 0→1.87 取 6 样本，`ledge` 扫 0→2.8 取 14，
+后者完全包含前者。一条 14 样本扫到 2.8 的列两边都够用。
+
+**方案**（所有者的类比：vueuse 的 `useWindowSize()`——一次采样、多方派生、按帧去重）：
+
+```
+Probes.scan()          每物理帧最多跑一次（Engine.get_physics_frames() 去重）
+  ├─ 前向一列          14 条  ← vault 与 grab 共用
+  ├─ 侧向左右          2 条
+  └─ 正前方高低        2 条
+                        ─────
+                        18 条/帧封顶
+```
+
+外部 API 不变，`vault_query()` 照样调，内部读缓存。向下的锚点探测除外——
+它的位置取决于列扫到了什么，天然是第二步。
+
+### 二、先查引擎（和我们自己）有没有现成的
+
+本轮已经踩到两次"重造已有轮子"：
+
+- **§34**：需要"这里站得下吗"，我新写了一条射线——而 `StandClearance`（`ShapeCast3D`）
+  **早就在 Player 上**，蹲起身恢复一直在用
+- `apply_floor_snap()` 曾被误当成能补台阶（实测无效，才有了 `try_step_down()`）
+
+下次动手前**逐个核对**这几个候选：
+
+| 我们手写的 | 引擎里可能已有 |
+| --- | --- |
+| 头顶遮挡、落脚可行性 | `ShapeCast3D`；`PhysicsDirectSpaceState3D.intersect_shape()` |
+| 预测式接触（`touching()` 加一帧行程） | `PhysicsDirectSpaceState3D.cast_motion()`——正是"这个形状能走多远才撞上" |
+| **"这一帧到底碰到了什么"** | `CharacterBody3D.get_slide_collision(i)`——`move_and_slide()` **本来就知道**法线、位置、碰撞体，我们却在发射线去**预测它马上要告诉我们的事** |
+| 台阶落点双探针 | `cast_motion()` + `get_rest_info()` |
+
+最后一条最值得先查：`docs/contact-drives-movement.md` 整篇讲的就是"接触"，
+而引擎每帧已经把接触信息算好放在那儿了。
