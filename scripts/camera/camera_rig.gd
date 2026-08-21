@@ -200,7 +200,12 @@ func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \
 		# The running total starts where the body already is, which is zero by
 		# definition since the reference was just taken from it.
 		_look_relative_yaw = 0.0
-	_scripted_yaw_lag = 0.0
+	# NOT reset here. MoveManager calls this every tick, so clearing the lag
+	# would wipe it on the frame a constraint takes hold -- which is exactly
+	# when the reach has just handed over a turn to smooth, so the eye snapped
+	# back the instant it entered the hang. The lag belongs to the camera's own
+	# smoothing, not to whichever move happens to be constraining the view; it
+	# is cleared on a full reset_state() and bled off every frame otherwise.
 	_look_min = min_c
 	_look_max = max_c
 	_look_absolute_yaw = absolute_yaw
@@ -285,8 +290,13 @@ func reset_state() -> void:
 	_roll_spin = 0.0
 	_has_head = false
 	_has_look_constraint = false
+	_look_relative_yaw = 0.0
+	# The one place the scripted-turn lag IS cleared: a reset is a new life,
+	# and a turn half-smoothed from the old one has nothing to catch up to.
+	_scripted_yaw_lag = 0.0
 	end_cinematic()
 	rotation.x = 0.0
+	rotation.y = 0.0
 	rotation.z = 0.0
 	if camera != null:
 		camera.position.y = 0.0
