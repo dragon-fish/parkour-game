@@ -43,6 +43,9 @@ var _placed: float = 0.0
 ## between where you were and where you were going -- and since the whole point
 ## of the turn is to choose a direction, that is the one outcome nobody wants.
 var _kick_armed: bool = false
+## The horizontal velocity the turn began with. A ground turn bleeds this to
+## nothing across slowdown_time rather than dropping it on the spot.
+var _entry_velocity: Vector3 = Vector3.ZERO
 
 ## Whichever wall the body is on, checked on the entry tick while the body is
 ## still facing the way it was -- a moment later it has come round and neither
@@ -77,6 +80,7 @@ func on_a_wall() -> bool:
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	_kick_armed = false
+	_entry_velocity = Vector3(player.velocity.x, 0.0, player.velocity.z)
 	_normal = _find_wall()
 	_normal.y = 0.0
 
@@ -108,9 +112,12 @@ func enter(_previous: StringName) -> void:
 		player.velocity = Vector3.ZERO
 		player.set_grounded(false)
 	else:
-		# Momentum is kept. Turning on the spot while running is how the turn
-		# is used on the ground, and stopping the body dead would make it a
-		# move nobody would ever press.
+		# ✅ MEASURED: a ground turn does not keep the whole speed budget. It
+		# keeps enough for about 19 km/h, which is what makes the owner's other
+		# observation true -- that you can get back to 18-19 quickly and then
+		# accelerate at ordinary running pace beyond it.
+		var ceiling: float = SpeedEnergy.energy_for_speed(config.pawn, cfg.speed_keep_ceiling)
+		player.speed_energy.energy = minf(player.speed_energy.energy, ceiling)
 		player.set_grounded(player.is_on_floor())
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
@@ -134,8 +141,14 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			player.set_grounded(player.is_on_floor())
 			return JUMP
 		player.set_grounded(false)
-		if _elapsed < cfg.disable_movement_time:
+		if cfg.no_gravity_for_the_whole_turn and not _turn_finished():
 			# Held in place: no gravity, no input, no drift.
+			#
+			# ✅ For the whole ANIMATION -- "during the wall climb turn there is
+			# almost no falling" -- rather than for DisableMovementTime. That
+			# field names how long input is disabled and says nothing about
+			# gravity; reading it as the whole hang was this project's own
+			# conflation. See Turn180Config.
 			return KEEP
 		# The freeze is over but the OPPORTUNITY is not. These were one number
 		# to begin with, and the owner reported the result exactly: "the window
@@ -153,12 +166,20 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			return FALLING
 		return KEEP
 
-	# On the ground, or in the air off no wall at all: carry on as normal while
-	# the body comes round, and hand back once it has.
+	# On the ground, or in the air off no wall at all.
+	#
+	# ✅ THE BODY DOES NOT STOP DEAD. Speed bleeds to nothing across
+	# slowdown_time, so the old direction's momentum is still carrying you while
+	# you come round -- the owner's own description of how the original feels.
+	# The first version here kept the momentum outright, which was half right:
+	# what makes Q pressable is that the stop is GRADUAL, not that there is none.
+	var remaining: float = 1.0 - clampf(_elapsed / maxf(cfg.slowdown_time, 0.001), 0.0, 1.0)
+	player.velocity.x = _entry_velocity.x * remaining
+	player.velocity.z = _entry_velocity.z * remaining
 	player.velocity.y -= config.pawn.gravity * delta
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
-	if _elapsed < cfg.turn_time:
+	if not _turn_finished():
 		return KEEP
 	return WALKING if player.grounded else FALLING
 
@@ -169,12 +190,18 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 ## turn lands on exactly the target and the camera is handed a series of small
 ## even deltas instead of one lump. See docs/camera-authority.md: the body is
 ## being moved BY A SCRIPT, so the eye trails it and eases in.
-## Whether the body has finished coming round. The armed kick waits for this.
+## How long this turn takes. ✅ Two measured figures, not one: a ground turn is
+## 0.3 s and a wall turn 0.5 s.
+func _duration() -> float:
+	return cfg.wall_turn_time if on_a_wall() else cfg.turn_time
+
+## Whether the body has finished coming round. The armed kick waits for this,
+## and so does the wall turn's gravity.
 func _turn_finished() -> bool:
-	return _elapsed >= cfg.turn_time
+	return _elapsed >= _duration()
 
 func _advance_turn(_delta: float) -> void:
-	var progress: float = clampf(_elapsed / maxf(cfg.turn_time, 0.001), 0.0, 1.0)
+	var progress: float = clampf(_elapsed / maxf(_duration(), 0.001), 0.0, 1.0)
 	var wanted: float = lerpf(_turn_from, _turn_to, progress)
 	var moved: float = wanted - _placed
 	_placed = wanted
@@ -193,6 +220,19 @@ func _advance_turn(_delta: float) -> void:
 		# not holding the fan back.
 		player.camera_rig.shift_yaw_reference(wanted, 1.0)
 		player.camera_rig.absorb_body_yaw(moved)
+		if progress >= 1.0:
+			# THE LAST SLICE HAS TO BE PLACED HERE. Every other tick's placement
+			# is done by apply_look on the FOLLOWING tick, which is fine while
+			# the move is still running -- but the tick the turn completes is
+			# also the tick it hands off, and the move it hands to has no look
+			# clamp, so that following placement never happens. The turn ended
+			# one tick's worth short of its target: ten degrees, at a 0.3 s
+			# ground turn.
+			#
+			# Placed at the target PLUS whatever the player's own mouse has
+			# added, which is what apply_look would have put there.
+			var offset: float = float(player.camera_rig.look_debug()["relative_yaw"])
+			player.rotation.y = wanted + offset
 	else:
 		# No rig to place the body: drive it directly. Tests with a stub player
 		# take this path.

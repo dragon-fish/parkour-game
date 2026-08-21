@@ -85,15 +85,16 @@ func test_q_during_a_climb_starts_the_turn() -> void:
 		"Q during a wall climb did not start the turn")
 
 func test_the_body_holds_still_for_the_whole_window() -> void:
-	# "During which you are not subject to gravity" -- the owner's own
-	# description, and DisableMovementTime is the field behind it. A body still
-	# carrying its climb would leave the window before the window ended.
+	# ✅ "During the wall climb turn there is almost no falling." The hang lasts
+	# the ANIMATION -- wall_turn_time, 0.5 s -- rather than DisableMovementTime,
+	# which names how long INPUT is disabled and says nothing about gravity.
+	# Reading it as the whole hang was this project's own conflation.
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
 	var held := player.global_position
 	await step(10)
 	assert_eq(player.move_manager.current_name, Move.TURN_180, \
-		"the turn ended early -- the window is 0.3 s, which is 18 ticks")
+		"the turn ended early -- the wall turn is 0.5 s, which is 30 ticks")
 	assert_almost_eq(player.velocity.length(), 0.0, 0.0001, \
 		"the body was still moving inside the window")
 	assert_almost_eq(player.global_position.distance_to(held), 0.0, 0.0001, \
@@ -103,8 +104,8 @@ func test_the_body_comes_all_the_way_round() -> void:
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
 	var facing_before := player.rotation.y
-	# turn_time is the measured 0.5 s, which is 30 ticks. 35 leaves margin, and
-	# is comfortably inside kick_window (0.75 s) so the move is still running.
+	# wall_turn_time is the measured 0.5 s, which is 30 ticks. 35 leaves margin,
+	# and is inside kick_window (0.75 s) so the move is still running.
 	await step(35)
 	var turned: float = absf(wrapf(player.rotation.y - facing_before, -PI, PI))
 	assert_almost_eq(turned, PI, 0.02, "the body did not come round half a turn")
@@ -207,16 +208,19 @@ func test_q_while_walking_turns_the_body_right_round() -> void:
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.TURN_180, \
 		"Q while walking did not start a turn")
-	# turn_time is the measured 0.5 s, which is 30 ticks.
+	# A ground turn is the measured 0.3 s, which is 18 ticks.
 	await step(35)
 	var turned: float = absf(wrapf(player.rotation.y - facing_before, -PI, PI))
 	assert_almost_eq(turned, PI, 0.02, "a walking turn did not come round half a turn")
 
-func test_a_walking_turn_keeps_its_momentum() -> void:
-	# Freezing is a WALL thing: the hang exists so there is time to decide
-	# whether to kick off. On the ground there is nothing to kick off and
-	# nothing to decide, and stopping the body dead would make Q a move nobody
-	# would ever press.
+func test_a_walking_turn_bleeds_its_speed_away_rather_than_stopping_dead() -> void:
+	# ✅ MEASURED: "speed does not drop to zero instantly, it goes to zero over
+	# about 0.3 s -- it feels as though you carry the old direction's inertia
+	# until you have fully come round."
+	#
+	# The first version kept the momentum outright, on the reasoning that
+	# stopping dead would make Q a move nobody would press. Half right: what
+	# makes it pressable is that the stop is GRADUAL and lands as the turn does.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	_world = world
 	await step(1)
@@ -225,9 +229,41 @@ func test_a_walking_turn_keeps_its_momentum() -> void:
 	await step(2)
 	player.velocity = Vector3(0.0, 0.0, -5.0)
 	(world["input"] as ScriptedInputSource).press_turn()
-	await step(3)
-	assert_gt(player.horizontal_speed(), 3.0, \
-		"a walking turn stopped the body dead (%.2f m/s left)" % player.horizontal_speed())
+	# A third of the way through slowdown_time: most of the speed is still there.
+	await step(6)
+	var mid: float = player.horizontal_speed()
+	assert_gt(mid, 2.0, "a walking turn stopped the body dead (%.2f m/s left)" % mid)
+	assert_lt(mid, 4.6, "a walking turn kept its speed outright (%.2f m/s left)" % mid)
+	# ...and by the end there is nothing left. slowdown_time is 0.3 s, 18 ticks.
+	await step(14)
+	assert_lt(player.horizontal_speed(), 0.5, \
+		"the speed never bled away (%.2f m/s left)" % player.horizontal_speed())
+
+func test_a_walking_turn_keeps_only_the_measured_share_of_the_budget() -> void:
+	# ✅ MEASURED: "the speed energy is not 100% preserved either -- it seems to
+	# keep only up to the ~19 km/h tier. You can get back to 18-19 quickly, and
+	# after that the acceleration is like normal running."
+	#
+	# A capped energy budget produces exactly that shape: below the cap the
+	# ground acceleration alone gets you there, above it you have to re-earn the
+	# speed the ordinary way.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	var input := world["input"] as ScriptedInputSource
+	input.state.move = Vector2(0.0, 1.0)
+	# Long enough to bank a budget well past the cap, so the clamp has something
+	# to take away.
+	await step(150)
+	var banked: float = player.speed_cap()
+	assert_gt(banked, player.config.turn_180.speed_keep_ceiling, \
+		"never banked past the cap, so this test proves nothing (%.2f m/s)" % banked)
+	input.press_turn()
+	await step(2)
+	assert_lt(player.speed_cap(), player.config.turn_180.speed_keep_ceiling + 0.1, \
+		"the turn kept a budget above the measured 19 km/h (%.2f m/s)" % player.speed_cap())
 
 func test_a_walking_turn_is_not_billed_as_a_mouse_swing() -> void:
 	# The turn tax is charged on the change in WISH direction, which a scripted
@@ -318,15 +354,17 @@ func test_the_turn_goes_clockwise_whatever_the_approach_was() -> void:
 			% rad_to_deg(approach))
 		after_each()
 
-func test_the_turn_takes_the_measured_half_second() -> void:
-	# ✅ MEASURED, and a DURATION rather than a rate: every turn takes the same
-	# time whatever angle it covers, which is what an animation does.
+func test_the_two_turns_take_their_two_measured_times() -> void:
+	# ✅ MEASURED separately, and kept as two figures because they measured
+	# differently and there is no honest way to average them. A DURATION rather
+	# than a rate in both cases: a turn takes the same time whatever angle it
+	# covers, which is what an animation does.
 	var config := MovementConfig.new()
-	assert_almost_eq(config.turn_180.turn_time, 0.5, 0.0001, \
-		"the turn is not the measured half second")
-	# Longer than the freeze, so the body is still coming round when gravity
-	# returns. That ordering is deliberate and easy to undo by accident.
-	assert_gt(config.turn_180.turn_time, config.turn_180.disable_movement_time, \
-		"the turn now finishes before the freeze does")
-	assert_lt(config.turn_180.turn_time, config.turn_180.kick_window, \
-		"the turn outlasts the chance to kick off the wall")
+	assert_almost_eq(config.turn_180.turn_time, 0.3, 0.0001, \
+		"a ground turn is not the measured 0.3 s")
+	assert_almost_eq(config.turn_180.wall_turn_time, 0.5, 0.0001, \
+		"a wall turn is not the measured 0.5 s")
+	# The wall turn has to finish inside the chance to kick off, or a
+	# pre-buffered press could never be spent at all.
+	assert_lt(config.turn_180.wall_turn_time, config.turn_180.kick_window, \
+		"the wall turn outlasts the chance to kick off the wall")

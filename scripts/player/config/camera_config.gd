@@ -193,15 +193,16 @@ extends Resource
 ## moved -- Q during a wall run swings the view a quarter turn without touching
 ## the body, so there is no lag to bleed off, only a view to carry across.
 ##
-## ✅ DERIVED FROM A MEASUREMENT. The owner timed the original: Q during a wall
-## run carries the view through its 90 degree fan in a little under 0.3 s. A
-## quarter turn in 0.3 s is 5.24 rad/s.
+## ✅ DERIVED FROM A MEASUREMENT. Q during a wall run carries the view through
+## its 90 degree fan in 0.2 s, which is 7.85 rad/s.
 ##
-## This replaced two guesses in a row -- 6.0, then 9.0 when the first read as
-## slightly slow. The measurement lands between them and nearer the first, which
-## is the usual shape of this: the guess that felt right was already close, and
-## the correction went the wrong way.
-@export var look_sweep_speed: float = 5.24
+## Third value for this field, and the history is worth keeping because the
+## first correction was right and the second was the eye being asked to do a
+## stopwatch's job. 6.0 was a guess. 9.0 came from the owner asking for
+## two-thirds of that duration, by feel. 5.24 came from a first stopwatch
+## reading of "a little under 0.3 s", which turned out to be the eye again --
+## the timed figure is 0.2 s, and lands right beside the by-feel adjustment.
+@export var look_sweep_speed: float = 7.85
 
 ## How fast the yaw fan's edge is eased in to meet a view that is already
 ## outside it, in radians per second.

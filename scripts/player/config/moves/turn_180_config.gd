@@ -46,6 +46,18 @@ func _init() -> void:
 ## kick expires. See kick_window.
 @export var disable_movement_time: float = 0.3
 
+## How long the body hangs without gravity during a WALL turn.
+##
+## ✅ MEASURED, indirectly but firmly: the owner reports "during the wall climb
+## turn there is almost no falling", and the animation is half a second. So the
+## hang lasts the ANIMATION, not DisableMovementTime -- which is what that field
+## always said, since it names how long INPUT is disabled and nothing about
+## gravity. Reading it as the whole hang was this project's own conflation.
+##
+## Expressed as a flag rather than a second duration so it cannot drift away
+## from wall_turn_time below; there is nothing to keep in step.
+@export var no_gravity_for_the_whole_turn: bool = true
+
 ## How long space still kicks off the wall, counted from the start of the turn.
 ##
 ## ⚠️ PROJECT-DEFINED. Past disable_movement_time the body is falling again, so
@@ -63,18 +75,20 @@ func _init() -> void:
 
 ## How long the body takes to come round.
 ##
-## ✅ MEASURED by the owner in the original: a 180 out of a wall climb takes
-## about half a second. Not in the CDO -- the turn is carried on an animation
-## there, so a stopwatch was the only way to get it.
+## ✅ MEASURED: a turn on the GROUND takes about 0.3 s.
 ##
-## A DURATION, not a rate, so every turn takes the same time whatever angle it
-## covers. That is what an animation does, and it is why this is longer than the
-## freeze above rather than shorter: the body is still coming round when gravity
-## returns, which is the half-second the manoeuvre is worth.
+## A DURATION, not a rate, so a turn takes the same time whatever angle it
+## covers. That is what an animation does. The turn is SCRIPTED, so the camera
+## trails it and eases in rather than being cut through it
+## (docs/camera-authority.md).
+@export var turn_time: float = 0.3
+
+## ✅ MEASURED: the same turn out of a WALL CLIMB takes about half a second.
 ##
-## The turn is SCRIPTED, so the camera trails it and eases in rather than being
-## cut through it (docs/camera-authority.md).
-@export var turn_time: float = 0.5
+## Two figures rather than one, because they measured differently and there is
+## no honest way to average them. A wall turn is the slower, weightier one --
+## which fits, since it is the one with a decision hanging off it.
+@export var wall_turn_time: float = 0.5
 
 @export_group("Wall kick")
 
@@ -89,3 +103,25 @@ func _init() -> void:
 ## already prevents the obvious abuse, which is spinning repeatedly on one wall.
 @export var wall_kick_speed_out: float = 3.0
 @export var wall_kick_speed_up: float = 5.8
+
+@export_group("Ground turn")
+
+## ✅ MEASURED: on the ground the turn does NOT stop the body dead -- speed
+## bleeds away over about 0.3 s. The owner: "it feels as though you carry the
+## old direction's inertia until you have fully come round."
+##
+## The first version kept the momentum outright, on the reasoning that stopping
+## dead would make Q a move nobody would press. Half right: what makes it
+## pressable is that the stop is GRADUAL and lands as the turn does, not that
+## there is no stop.
+@export var slowdown_time: float = 0.3
+
+## ✅ MEASURED: a ground turn does not keep the whole speed budget. It keeps
+## enough for about 19 km/h, and the owner reports being able to accelerate back
+## to 18-19 quickly and then at ordinary running acceleration beyond that --
+## which is exactly what a capped energy budget produces.
+##
+## 5.28 m/s is 19 km/h. Above PawnConfig.speed_max_base_velocity (4.0, the floor
+## the turn tax already refuses to drain below), so this is its own line and not
+## a re-use of that one.
+@export var speed_keep_ceiling: float = 5.28
