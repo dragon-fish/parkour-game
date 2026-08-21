@@ -52,10 +52,20 @@ func _init() -> void:
 ## being able to see a little of the ground above while hanging.
 @export var eye_below_ledge: float = 0.05
 
-## ✅ `MinGrabLedgeAdjustDistance = 32` uu. Below this the body is already close
-## enough; snapping the last three centimetres is invisible and saves a frame
-## of drift.
+## ✅ `MinGrabLedgeAdjustDistance = 32` uu as a VALUE. ❓ as a role.
+##
+## Read here as "already close enough that no adjustment is worth starting" --
+## a gate on whether to move at all, checked once on entry.
+##
+## It is NOT a finish line to teleport to, which is how it was used at first:
+## the body jumped the last 0.32 m in a single frame, once on entering the
+## reach and again on leaving it, and those are precisely the two moments the
+## owner reported the camera cutting.
 @export var min_adjust_distance: float = 0.32
+
+## ⚠️ PROJECT-DEFINED. How close counts as arrived, once a reach IS under way.
+## Small enough that closing the remainder in one frame is invisible.
+@export var arrive_distance: float = 0.02
 
 ## How close the WALL must already be, horizontally, before a reach may start.
 ##
@@ -70,15 +80,21 @@ func _init() -> void:
 ## reach here is only allowed to close a gap the body has already nearly shut.
 @export var max_reach_distance: float = 0.8
 
-## How fast the body turns to face the wall during the reach, in radians per
-## second.
+## The SLOWEST the body may turn to face the wall during the reach, in radians
+## per second. Normally it turns faster than this: the rate is derived per tick
+## so the facing arrives exactly when the translation does (see
+## IntoGrabMove.physics_update), and this floor only takes over when there is
+## no distance left to spread the turn across.
 ##
-## ⚠️ PROJECT-DEFINED, but the need for it is not: the hang's whole geometry --
-## the offset back from the edge, the yaw fan the view is clamped to -- is
-## expressed relative to the WALL. Arriving at a 70 degree angle to it and
-## staying there left the fan skewed by 70 degrees, so "turn 90 degrees from
-## straight-on" meant something different on every grab.
-@export var align_turn_speed: float = 8.0
+## ⚠️ PROJECT-DEFINED, but the need to square up is not: the hang's whole
+## geometry -- the offset back from the edge, the yaw fan the view is clamped
+## to -- is expressed relative to the WALL. Arriving at a 70 degree angle to it
+## and staying there left the fan skewed by 70 degrees, so "turn 90 degrees
+## from straight-on" meant something different on every grab.
+##
+## 3 rad/s is about 170 degrees a second -- brisk, but a rate a neck and
+## shoulders could plausibly produce. The 8 rad/s this replaced was 458.
+@export var min_align_turn_speed: float = 3.0
 
 ## ⚠️ PROJECT-DEFINED SAFETY VALVE. The reach cannot run forever: if something
 ## prevents the body ever arriving, it gives up and falls rather than hanging

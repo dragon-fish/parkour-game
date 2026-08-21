@@ -98,7 +98,8 @@ static func hanging_pose(body: Node3D, cfg_all: MovementConfig, hit: Dictionary)
 	# IntoGrabConfig.eye_below_ledge. The centre goes wherever puts the eye
 	# there.
 	var centre_below: float = cfg_all.into_grab.eye_below_ledge + cfg_all.camera.eye_height
-	return edge + back.normalized() * cfg_all.into_grab.ledge_back_offset 		- Vector3.UP * centre_below
+	var stand_off: Vector3 = back.normalized() * cfg_all.into_grab.ledge_back_offset
+	return edge + stand_off - Vector3.UP * centre_below
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:
@@ -107,17 +108,37 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	player.set_grounded(false)
 	player.velocity = Vector3.ZERO
 
-	# Turned toward the wall alongside the move, at its own rate.
-	_turn_body_toward(_target_yaw, cfg.align_turn_speed * delta)
-
 	var to_target: Vector3 = _target - player.global_position
+
+	# The facing finishes WITH the reach, not before it.
+	#
+	# A FIXED turn rate was the first attempt, and at any rate fast enough to
+	# square up on a short reach it squares up on a long one in two or three
+	# ticks -- while the translation is still ten ticks from done. That is not
+	# one alignment, it is a whip followed by a glide, and it saturates the
+	# camera's trailing lag on the way, so the eye then spends the rest of the
+	# reach being handed that saturated lag back. The owner reported it as the
+	# view swinging off one way and then returning.
+	#
+	# Spreading the turn over the translation's own remaining time makes the
+	# whole manoeuvre a single continuous motion, which is what the camera's
+	# smoothing was written to soften and what IntoGrabAlignSpeed governing
+	# "the alignment" implies in the first place.
+	var remaining_time: float = maxf(to_target.length() / cfg.align_speed, delta)
+	var remaining_turn: float = absf(wrapf(_target_yaw - player.rotation.y, -PI, PI))
+	# Floored, so a reach with no distance left to spread the turn over still
+	# turns at a sane rate rather than stalling.
+	var turn_floor: float = cfg.min_align_turn_speed * delta
+	var turn_step: float = maxf(remaining_turn * delta / remaining_time, turn_floor)
+	_turn_body_toward(_target_yaw, turn_step)
+	to_target = _target - player.global_position
 	# BOTH have to have arrived. Finishing on position alone left the facing
 	# to be corrected in one lump by _settle(), which handed the camera a lag
 	# the size of the whole remaining turn -- and a lag that big does not read
 	# as softening, it reads as the view lunging off into the wall before
 	# snapping back.
 	var facing_error: float = absf(wrapf(_target_yaw - player.rotation.y, -PI, PI))
-	if to_target.length() <= cfg.min_adjust_distance and facing_error < 0.03:
+	if to_target.length() <= cfg.arrive_distance and facing_error < 0.03:
 		player.global_position = _target
 		return _settle()
 	if _reach_time >= cfg.max_duration:

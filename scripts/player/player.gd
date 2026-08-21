@@ -908,6 +908,7 @@ func _physics_process(delta: float) -> void:
 		# travel_speed(), NOT horizontal_speed() — see travel_speed()'s note on
 		# why velocity lies through a vault or a mantle.
 		camera_rig.update_effects(delta, travel_speed(), grounded)
+		_log_grab_camera()
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and input_source is KeyboardInputSource:
@@ -1569,3 +1570,44 @@ func air_accelerate(wish_dir: Vector3, delta: float) -> void:
 	var candidate := horizontal + wish_dir * minf(air_accel * delta, headroom)
 	velocity.x = candidate.x
 	velocity.z = candidate.z
+
+## DEBUG. One line a frame through the whole grab chain -- jump, reach, hang --
+## reporting the EYE's real pose in the world and how far it moved since the
+## previous frame.
+##
+## A camera cut IS a large single-frame delta, so this measures the thing being
+## complained about directly. The breakdown beside it says which component
+## produced it: the body's yaw, the view's own pitch against the floor
+## currently in force, or the rig's trailing lag. A report can only say "it
+## jumped"; this says which of the three jumped, and by how much.
+@export var debug_grab_camera: bool = true
+var _grab_cam_last_origin: Vector3 = Vector3.ZERO
+var _grab_cam_last_forward: Vector3 = Vector3.ZERO
+var _grab_cam_has_last: bool = false
+
+## Printed for these only. The eye's pose is REMEMBERED every frame regardless,
+## so the first line of a reach still measures against the frame before it --
+## which is the one the owner reports cutting, and would otherwise be the one
+## frame no comparison exists for.
+const _GRAB_CAM_STATES: Array[StringName] = [&"IntoGrab", &"Grab"]
+
+func _log_grab_camera() -> void:
+	if camera_rig == null or camera_rig.camera == null or move_manager == null:
+		return
+	var eye: Transform3D = camera_rig.camera.global_transform
+	var forward: Vector3 = -eye.basis.z
+	var moved: float = 0.0
+	var turned: float = 0.0
+	if _grab_cam_has_last:
+		moved = eye.origin.distance_to(_grab_cam_last_origin)
+		turned = rad_to_deg(forward.angle_to(_grab_cam_last_forward))
+	_grab_cam_last_origin = eye.origin
+	_grab_cam_last_forward = forward
+	_grab_cam_has_last = true
+	if not debug_grab_camera or not _GRAB_CAM_STATES.has(move_manager.current_name):
+		return
+	var look: Dictionary = camera_rig.look_debug()
+	print("[grabcam] %-9s eye=(%7.3f,%7.3f,%7.3f) moved=%.3f turned=%5.1f body_yaw=%7.1f pitch=%6.1f floor=%6.1f lag=%5.1f"
+			% [move_manager.current_name, eye.origin.x, eye.origin.y, eye.origin.z,
+			moved, turned, rad_to_deg(rotation.y), rad_to_deg(float(look["pitch"])),
+			rad_to_deg(float(look["pitch_floor"])), rad_to_deg(camera_rig.rotation.y)])

@@ -225,7 +225,10 @@ func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \
 func recentre_yaw_reference(yaw: float) -> void:
 	_yaw_reference = yaw
 	var body := get_parent()
-	_look_relative_yaw = wrapf((body as Node3D).rotation.y - yaw, -PI, PI) 		if body is Node3D else 0.0
+	if body is Node3D:
+		_look_relative_yaw = wrapf((body as Node3D).rotation.y - yaw, -PI, PI)
+	else:
+		_look_relative_yaw = 0.0
 
 ## Diagnostics for the debug HUD: how far the view has turned from the fan's
 ## centre, and the pitch floor currently in force. Both in radians.
@@ -464,7 +467,8 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# Bleed off any scripted turn the eye is still behind on. Written to the
 	# rig's own yaw, which is otherwise unused: the body carries the real
 	# facing, this is only how far the view trails it.
-	_scripted_yaw_lag = lerpf(_scripted_yaw_lag, 0.0, 		clampf(_config.camera.scripted_yaw_catchup_speed * delta, 0.0, 1.0))
+	var catchup: float = clampf(_config.camera.scripted_yaw_catchup_speed * delta, 0.0, 1.0)
+	_scripted_yaw_lag = lerpf(_scripted_yaw_lag, 0.0, catchup)
 	rotation.y = _scripted_yaw_lag
 
 	var body_y: float = (get_parent() as Node3D).global_position.y if get_parent() is Node3D else 0.0
