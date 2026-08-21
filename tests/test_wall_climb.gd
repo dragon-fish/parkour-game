@@ -195,3 +195,42 @@ func test_a_climb_rises_and_then_hands_back_to_falling() -> void:
 	assert_ne(player.move_manager.current_name, Move.WALL_CLIMB, \
 		"the climb never ended -- it should stop the moment it stops going up")
 	assert_gt(player.global_position.y, started, "the climb gained no height at all")
+
+# --- topping out ---------------------------------------------------------------
+
+func test_the_commit_gate_needs_horizontal_speed_it_does_not_have() -> void:
+	# THE MECHANISM behind the owner's dead zone on a 3.5 m wall: the climb tops
+	# out with the edge about 1.7 m above the feet, too LOW for a grab
+	# (min_wall_height is 1.8) and refused by the vault, so nothing fires.
+	#
+	# should_commit() asks whether the obstacle will be reached within
+	# MaxDistanceTime AT THE CURRENT SPEED -- a question about an APPROACH, and
+	# one that divides by horizontal speed. A wall climb has none: its own
+	# friction has taken it and the body is going straight up.
+	#
+	# Asserted at this level rather than through a world, deliberately. A first
+	# attempt drove a solid 3.5 m block and passed with the fix REMOVED, because
+	# a solid block tops out inside grab range and never reaches the gate at all.
+	# A test that cannot fail is worse than none, and reproducing the real shape
+	# needs a parapet -- a narrow cap with a LOWER roof behind it -- which is
+	# recorded as still to build.
+	var config := MovementConfig.new()
+	var variant: Dictionary = config.speed_vault.variants[0]
+	assert_false(config.speed_vault.should_commit(0.45, 0.0, variant), 		"the commit gate accepted a body with no horizontal speed at all")
+	assert_false(config.speed_vault.should_commit(0.45, 0.005, variant), 		"the commit gate accepted a body whose speed the climb had already taken")
+
+func test_contact_answers_the_same_question_the_lead_time_asks() -> void:
+	# ...and contact is the other way of satisfying it, completely. A lead time
+	# exists to predict arrival; there is nothing to predict once you are there.
+	# See docs/contact-drives-movement.md.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	var move: Move = player.move_manager.move_for(Move.FALLING)
+	var here: Vector3 = player.global_position
+	var radius: float = player.current_capsule_radius()
+	assert_true(move.touching(here + Vector3(0.0, 0.0, -(radius + 0.02))), 		"a face one radius away did not read as contact")
+	assert_false(move.touching(here + Vector3(0.0, 0.0, -(radius + 1.5))), 		"a face a metre and a half away read as contact")

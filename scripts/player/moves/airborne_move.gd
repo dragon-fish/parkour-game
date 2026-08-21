@@ -143,7 +143,23 @@ func probe_transition() -> StringName:
 		if hit["valid"] and not player.recent_wall_refuses_climb_onto(hit["edge"]):
 			var variant: Dictionary = config.speed_vault.pick_variant(
 				hit["height"], hit["vault_over"], player.velocity.y, player.horizontal_speed())
-			if config.speed_vault.should_commit(hit["distance"], player.horizontal_speed(), variant):
+			# ALREADY TOUCHING NEEDS NO LEAD TIME.
+			#
+			# should_commit() asks whether the obstacle will be reached within
+			# MaxDistanceTime at the current speed -- a question about an
+			# APPROACH, and one that divides by horizontal speed. A wall climb
+			# has none: the climb's own friction has taken it, and the body is
+			# going straight up against a surface it is already in contact with.
+			# So the gate refused every vault out of a climb, and the owner
+			# found the hole it leaves -- a 3.5 m wall where the climb tops out
+			# with the edge 1.7 m above the feet, too LOW for a grab
+			# (min_wall_height is 1.8) and unreachable by a vault that will not
+			# commit. Nothing fires and the player slides back down.
+			#
+			# Contact is the other way of satisfying the same question, and it
+			# satisfies it completely. See docs/contact-drives-movement.md.
+			var closing: bool = config.speed_vault.should_commit( 				hit["distance"], player.horizontal_speed(), variant)
+			if closing or touching(hit.get("face_point", Vector3.ZERO)):
 				player.pending_vault_variant = variant
 				return SPEED_VAULT
 
