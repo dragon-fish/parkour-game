@@ -38,6 +38,9 @@ func enter(_previous: StringName) -> void:
 		_aborted = true
 		return
 	_target = _hanging_pose(query["edge"])
+	# Handed to GrabMove rather than re-queried there: once this reach
+	# finishes, the body can no longer see the edge it is hanging from.
+	player.pending_ledge = query
 
 ## Where the body ends up, given the edge it caught.
 ##

@@ -107,3 +107,48 @@ func test_the_grab_anchor_tracks_the_obstacle_it_actually_found() -> void:
 	# of that constant rather than a check that the anchor found the wall.
 	assert_almost_eq(near_anchor, 1.0, 0.35, "the near ledge's anchor is not near its own face")
 	assert_almost_eq(far_anchor, 2.5, 0.35, "the far ledge's anchor is not near its own face")
+
+func test_a_reach_hands_its_ledge_to_the_hang() -> void:
+	# IntoGrab -> Grab -> Falling, across two frames, reported from play.
+	#
+	# GrabMove used to re-query the ledge on entry. That worked while grabbing
+	# froze the body where it made contact, but IntoGrab moves it: by the time
+	# the reach finishes the body sits 0.45 m back and most of a body-length
+	# below the lip, and from there the probe cannot see the edge it was just
+	# carried to. The grab aborted on its first tick and let go.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+
+	# A wall tall enough to hang from, close enough to reach.
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(6.0, 4.0, 1.0)
+	shape.shape = box
+	body.add_child(shape)
+	get_tree().root.add_child(body)
+	# Centre at 0 with a height of 4 puts the top at 2.0 -- inside
+	# [min_wall_height, ledge_max_height] = [1.8, 2.8]. The lower half is
+	# buried, which is fine.
+	body.global_position = Vector3(0.0, 0.0, player.global_position.z - 1.4)
+	await step(2)
+
+	player.move_manager.start(Move.INTO_GRAB)
+	var seen: Array[StringName] = []
+	for i in 90:
+		await step(1)
+		var now: StringName = player.move_manager.current_name
+		if seen.is_empty() or seen[seen.size() - 1] != now:
+			seen.append(now)
+
+	assert_true(seen.has(Move.GRAB), "the reach never reached the hang (saw %s)" % [seen])
+	assert_true(player.move_manager.current_name == Move.GRAB, \
+		"the hang did not hold -- ended in %s (saw %s)" \
+			% [player.move_manager.current_name, seen])
+
+	body.queue_free()
+	TestWorld.teardown(world)
+	await step(1)

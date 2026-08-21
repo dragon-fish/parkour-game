@@ -63,8 +63,18 @@ func enter(_previous: StringName) -> void:
 	# the body 0.9 m up and 0.4 m forward, through whatever was there. There is
 	# no safe destination to invent when the probe found nothing, so invent
 	# none: abort and let the player fall.
-	var query: Dictionary = player.probes.ledge_query() if player.probes != null else Probes.NO_HIT.duplicate()
-	if not query["valid"]:
+	# The reach hands its own result over (Player.pending_ledge). Re-querying
+	# here cannot work any more: IntoGrabMove has just carried the body to the
+	# hanging pose, 0.45 m back and most of a body-length below the lip, and
+	# from there the probe no longer sees the edge it was carried to. The grab
+	# aborted on its first tick and dropped the player.
+	var query: Dictionary = player.pending_ledge
+	player.pending_ledge = {}
+	if query.is_empty():
+		# Entered without a reach -- nothing does that today, but a future
+		# caller might. Falling back to a fresh query is right for that case.
+		query = player.probes.ledge_query() if player.probes != null else Probes.NO_HIT.duplicate()
+	if not query.get("valid", false):
 		_aborted = true
 		return
 	_edge = query["edge"]

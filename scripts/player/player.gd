@@ -36,6 +36,20 @@ var _input_locked: bool = false
 ## "invent nothing" guard for what an empty dictionary at read time means.
 var pending_vault_variant: Dictionary = {}
 
+## The ledge IntoGrabMove locked onto, handed across to GrabMove, on the same
+## channel and for the same reason as pending_vault_variant above.
+##
+## GrabMove used to re-query on entry, which stopped working the moment
+## IntoGrab started MOVING the body: by the time the reach finishes, the body
+## sits 0.45 m back and most of a body-length below the lip, and the probe can
+## no longer see the edge it was just carried to. The grab aborted on its first
+## tick and dropped the player -- measured in play as IntoGrab -> Grab ->
+## Falling across two frames.
+##
+## The reach already decided which edge this is. Deciding again from a worse
+## vantage point can only disagree.
+var pending_ledge: Dictionary = {}
+
 ## Whether the player is standing on something. DECLARED by the active state
 ## rather than read from is_on_floor(), because scripted-move states drive the
 ## body's position directly and never call move_and_slide() — is_on_floor()
