@@ -260,6 +260,22 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## than in MovementConfig -- a fact about the asset, not a feel value.
 @export var body_head_path: NodePath
 
+## The travel speed, in m/s, at which this body's locomotion clips read as
+## natural -- i.e. where CharacterAnimator leaves the playback rate at 1.0 and
+## scales around. Zero disables the scaling entirely and leaves every clip at
+## its authored pace.
+##
+## Defaults to pawn.ground_speed's own value so an unconfigured body starts
+## neutral: normal running plays the clip at the rate its author intended, and
+## only departures from that pace stretch or compress it. It is a fact about the
+## CLIP's cadence, though, not about this project's speeds -- a body whose run
+## was authored for a slower character wants a lower number here even though
+## nothing about the movement changed.
+##
+## Per-model, so it sits here beside body_scene rather than in MovementConfig,
+## for the same reason body_mount_offset does.
+@export var body_run_reference_speed: float = 7.2
+
 ## The instance of body_scene actually attached under BodyRoot, or null if
 ## none. Exposed as a plain var (not just a BodyRoot child lookup) so tests
 ## and other systems can inspect what got attached without reaching into
@@ -760,9 +776,28 @@ func _wire_body_animation(body_node: Node3D) -> void:
 		run_to_end.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
 		state_machine.add_transition("run", "End", run_to_end)
 
+	# WRAPPED IN A BLEND TREE, rather than used as the root directly.
+	#
+	# A bare AnimationNodeStateMachine at the root has nowhere to put an
+	# AnimationNodeTimeScale, which leaves every clip pinned to its authored
+	# cadence no matter how fast the body is actually travelling -- the thing
+	# that reads as the feet sliding across the ground. The state machine keeps
+	# doing exactly what it did; it just sits one level down, so travel() now
+	# goes through parameters/<GRAPH_STATES>/playback instead of
+	# parameters/playback. CharacterAnimator owns both names.
+	var blend_tree := AnimationNodeBlendTree.new()
+	blend_tree.add_node(CharacterAnimator.GRAPH_STATES, state_machine)
+	blend_tree.add_node(CharacterAnimator.GRAPH_TIME_SCALE, AnimationNodeTimeScale.new())
+	# connect_node(input_node, input_index, output_node) reads backwards: it
+	# feeds output_node's OUTPUT into input_node's input port. So these two say
+	# "states -> speed -> output". An AnimationNodeOutput named `output` exists
+	# in every blend tree by default; it is not added here.
+	blend_tree.connect_node(CharacterAnimator.GRAPH_TIME_SCALE, 0, CharacterAnimator.GRAPH_STATES)
+	blend_tree.connect_node(&"output", 0, CharacterAnimator.GRAPH_TIME_SCALE)
+
 	var anim_tree := AnimationTree.new()
 	anim_tree.name = "AnimationTree"
-	anim_tree.tree_root = state_machine
+	anim_tree.tree_root = blend_tree
 	# PHYSICS, matching every other system in this project (movement, camera,
 	# probes) and the tests/test_case.gd step() loop they run under -- an
 	# AnimationTree left on its IDLE-process default never sees a frame in a

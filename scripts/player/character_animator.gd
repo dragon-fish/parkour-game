@@ -29,6 +29,31 @@ extends Node
 # what keeps the animation following the player instead of freezing at
 # whatever it last was.
 
+## Names of the nodes inside the AnimationTree's blend-tree root, which
+## player.gd's _wire_body_animation() builds. Constants rather than literals on
+## both sides because the parameter paths this class pokes every tick are
+## STRINGS ("parameters/<name>/..."): renaming one side and not the other
+## produces no error whatsoever, just a body that silently stops animating.
+const GRAPH_STATES := &"states"
+const GRAPH_TIME_SCALE := &"speed"
+
+## The clips whose playback rate follows how fast the body is actually
+## travelling. Locomotion only, by definition: these are the clips whose feet
+## are on the ground and are supposed to be carrying it, so a mismatch between
+## their authored cadence and the real speed is what reads as the feet sliding.
+##
+## idle and jump are deliberately absent. Slowing an idle down because the body
+## is standing still is exactly backwards, and a jump's timing belongs to the
+## arc, not to the ground.
+const SPEED_MATCHED_CLIPS: Array[StringName] = [&"run", &"sneak"]
+
+## Bounds on that scaling. Outside them the cadence stops reading as a pace and
+## starts reading as a defect -- slow-motion at the bottom, blurred limbs at the
+## top. A body slower than the lower bound has already crossed
+## run_animation_speed_threshold into idle anyway.
+const SPEED_SCALE_MIN := 0.5
+const SPEED_SCALE_MAX := 2.0
+
 ## Assigned in player.gd's _wire_body_animation().
 @export var anim_tree: AnimationTree
 ## Assigned in player.gd's _wire_body_animation().
@@ -40,9 +65,16 @@ var _playback: AnimationNodeStateMachinePlayback
 var _graph: AnimationNodeStateMachine
 
 func _ready() -> void:
-	if anim_tree != null:
-		_playback = anim_tree.get("parameters/playback")
-		_graph = anim_tree.tree_root as AnimationNodeStateMachine
+	if anim_tree == null:
+		return
+	# One level deeper than it used to be: the state machine now sits inside a
+	# blend tree so the whole graph can be time-scaled. See
+	# player.gd's _wire_body_animation() for why, and _drive_speed() below for
+	# what drives it.
+	_playback = anim_tree.get("parameters/%s/playback" % GRAPH_STATES)
+	var blend_tree := anim_tree.tree_root as AnimationNodeBlendTree
+	if blend_tree != null:
+		_graph = blend_tree.get_node(GRAPH_STATES) as AnimationNodeStateMachine
 
 func _physics_process(_delta: float) -> void:
 	if player == null or player.move_manager == null or _playback == null:
@@ -56,6 +88,36 @@ func _physics_process(_delta: float) -> void:
 	if target == Move.KEEP:
 		return
 	_playback.travel(target)
+	_drive_speed(target)
+
+## Scales the clip's playback to the speed the body is actually travelling, so
+## a cycle authored at one pace does not slide its feet across the ground at
+## every other pace.
+##
+## POSITIVE ONLY, deliberately. AnimationNodeTimeScale documents reversal too --
+## "allows to scale the speed of the animation (or reverse it)" -- but a
+## NEGATIVE scale has a long tail of reported trouble around LOOPING clips, and
+## every clip here is looping (see _ensure_clip_loops in player.gd).
+## godotengine/godot#27215 is exactly the shape that would bite: "plays
+## backwards, then rewinds to the beginning and stops there". It was closed as
+## `archived` during the 3.x-to-4.x issue cleanup rather than fixed, so its
+## absence in 4.7 is not something to assume.
+##
+## Backward locomotion, if it is ever wanted, belongs in a second
+## AnimationNodeAnimation carrying the same clip with
+## play_mode = PLAY_MODE_BACKWARD. That reaches the same result without a
+## negative scale ever existing.
+func _drive_speed(clip: StringName) -> void:
+	if anim_tree == null:
+		return
+	var scale := 1.0
+	var reference: float = player.body_run_reference_speed
+	if reference > 0.0 and SPEED_MATCHED_CLIPS.has(clip):
+		# travel_speed(), NOT horizontal_speed() -- see travel_speed()'s own
+		# note on why velocity lies through a vault or a mantle. The eye already
+		# reads it for the same reason.
+		scale = clampf(player.travel_speed() / reference, SPEED_SCALE_MIN, SPEED_SCALE_MAX)
+	anim_tree.set("parameters/%s/scale" % GRAPH_TIME_SCALE, scale)
 
 ## True when `clip_name` has an actual node in the AnimationTree's graph --
 ## i.e., travel() can reach it without error. player.gd's
