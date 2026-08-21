@@ -22,7 +22,11 @@ func after_each() -> void:
 	if _world.has("wall"):
 		(_world["wall"] as Node).queue_free()
 	for piece in _curve_pieces:
-		piece.queue_free()
+		# free(), not queue_free(): a curve is a dozen static bodies, and two
+		# tests' worth left pending until the end of the frame was enough to
+		# make Jolt complain about its job pool and fail an unrelated suite.
+		piece.get_parent().remove_child(piece)
+		piece.free()
 	_curve_pieces.clear()
 	TestWorld.teardown(_world)
 	_world = {}
@@ -208,15 +212,65 @@ func test_the_fan_is_centred_on_the_wall_not_on_the_approach() -> void:
 	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
 		"test setup is wrong: the player never attached to the wall")
 
-	# The wall is on the right, so the legal fan is [0, +90] and a view skewed
-	# 25 degrees INTO it should read as clamped to the wall's own line -- not as
-	# a comfortable 0 in a fan that quietly moved to accommodate it.
-	var fan: Dictionary = player.camera_rig.look_debug()
-	var relative: float = float(fan["relative_yaw"])
-	assert_gt(relative, -0.001, \
+	# THE SKEW ITSELF IS THE PROOF. The wall is on the right, so the legal fan is
+	# [0, +90] and a view 25 degrees INTO the wall is outside it. Reading -25
+	# means the fan is measured from the wall's own line and the view is where
+	# the player actually left it; reading a comfortable 0 would mean the fan
+	# had quietly moved to accommodate the approach, which is the bug.
+	var early: float = float(player.camera_rig.look_debug()["relative_yaw"])
+	assert_lt(early, -deg_to_rad(15.0), \
 		"the fan followed the approach instead of the wall (%.1f degrees)" \
-		% rad_to_deg(relative))
-	assert_lt(relative, deg_to_rad(91.0), "the view left the fan entirely")
+		% rad_to_deg(early))
+
+	# ...and then the fan's edge eases in to collect it, rather than the view
+	# being cut to the edge on the first tick. Both halves matter: the first
+	# assertion alone would pass a version that never corrected at all.
+	await step(30)
+	var late: float = float(player.camera_rig.look_debug()["relative_yaw"])
+	assert_gt(late, -deg_to_rad(2.0), \
+		"the view never settled into the fan (%.1f degrees)" % rad_to_deg(late))
+	assert_lt(late, deg_to_rad(91.0), "the view left the fan entirely")
+
+func test_the_view_is_carried_into_the_fan_rather_than_cut_to_it() -> void:
+	# The owner asked for this directly: "can the yaw get some smoothing when
+	# entering a wall run? The pitch seems fine as it is."
+	#
+	# Measured as a RATE rather than an endpoint -- an implementation that cuts
+	# and one that eases both end up inside the fan, and only how they got there
+	# tells them apart.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(20.0, 6.0, 1.0)
+	shape.shape = box
+	wall.add_child(shape)
+	get_tree().root.add_child(wall)
+	world["wall"] = wall
+	wall.global_position = Vector3(0.95, 3.0, 0.0)
+	wall.rotation = Vector3(0.0, PI * 0.5, 0.0)
+
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	input.press_jump()
+	await step(1)
+	player.rotation.y = -deg_to_rad(25.0)
+	player.velocity = Vector3(0.0, player.velocity.y, -7.0)
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
+		"test setup is wrong: the player never attached to the wall")
+
+	var before: float = float(player.camera_rig.look_debug()["relative_yaw"])
+	await step(1)
+	var after: float = float(player.camera_rig.look_debug()["relative_yaw"])
+	assert_gt(after, before, "the correction did not move at all")
+	assert_lt(after - before, deg_to_rad(12.0), \
+		"the view was cut into the fan in one tick (%.1f degrees of correction)" \
+		% rad_to_deg(after - before))
 
 # --- curved walls -------------------------------------------------------------
 
@@ -257,7 +311,7 @@ func test_a_gently_curving_wall_can_be_run_all_the_way_along() -> void:
 	# the game back into a straight line.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	_world = world
-	_curved_wall(10, 25.0, 2.0)
+	_curved_wall(6, 25.0, 3.0)
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 	await step(1)
@@ -290,7 +344,7 @@ func test_the_fan_travels_round_the_curve_with_the_wall() -> void:
 	# curve while the fan quietly rotates out from under them.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	_world = world
-	_curved_wall(10, 25.0, 2.0)
+	_curved_wall(6, 25.0, 3.0)
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 	await step(1)

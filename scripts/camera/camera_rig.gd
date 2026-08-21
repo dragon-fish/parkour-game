@@ -234,16 +234,17 @@ func recentre_yaw_reference(yaw: float) -> void:
 	# approach can be up to 57 degrees off the wall's own line while the fan is
 	# a quarter turn on one side of it.
 	#
-	# Clamped here rather than left to apply_look's own clamp next tick, and the
-	# correction handed to the eye's smoothing, because that clamp CUTS: the
-	# view would arrive at the fan's edge in a single frame. This is a scripted
-	# view change -- the wall moved the fan, not the player's hand -- so it
-	# eases. See docs/camera-authority.md.
-	var settled: float = clampf(offset, _look_min.y, _look_max.y) \
-		if _has_look_constraint else offset
-	if not is_equal_approx(settled, offset):
-		absorb_body_yaw(settled - offset)
-	_look_relative_yaw = settled
+	# LEFT OUTSIDE THE FAN if that is where it lands, deliberately. apply_look's
+	# own clamp eases the fan's edge in to meet it (see there), carrying the
+	# view round over several ticks instead of cutting it to the edge in one.
+	# This is a scripted view change -- the wall moved the fan, not the player's
+	# hand -- so it eases. See docs/camera-authority.md.
+	#
+	# This used to clamp here and hand the correction to absorb_body_yaw's lag.
+	# That worked for small corrections and failed for the ones that matter: the
+	# lag is capped at 0.35 rad, and attaching at the forward branch's full 57
+	# degrees is nearly twice that, so most of the turn arrived as a cut anyway.
+	_look_relative_yaw = offset
 
 ## Diagnostics for the debug HUD: how far the view has turned from the fan's
 ## centre, and the pitch floor currently in force. Both in radians.
@@ -347,8 +348,28 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 		if _look_absolute_yaw:
 			# Accumulated, never re-derived -- see _look_relative_yaw for why a
 			# wrapped difference lets a fast flick through the fence.
-			_look_relative_yaw = clampf(_look_relative_yaw + yaw_delta, \
-				_look_min.y, _look_max.y)
+			#
+			# The fan's EDGE is eased in to meet a view already outside it,
+			# rather than that view being cut to the edge. Exactly the treatment
+			# the pitch floor gets a few lines down, and for the same reason:
+			# what is being softened is the FAN MOVING out from under the
+			# player, which is what a wall run does when it re-centres on the
+			# wall it just attached to, and again as it carries the fan round a
+			# curve. A player pushing against an edge that has NOT moved is
+			# clamped hard, as always.
+			#
+			# Told apart by the PREVIOUS value, the same trick the pitch uses:
+			# the clamp runs every tick, so the player can never come to BE
+			# outside the fan. If the running total is outside it, the fan moved.
+			var low: float = _look_min.y
+			var high: float = _look_max.y
+			if delta > 0.0:
+				var settle: float = clampf(_config.camera.look_settle_speed * delta, 0.0, 1.0)
+				if _look_relative_yaw < low:
+					low = lerpf(_look_relative_yaw, low, settle)
+				elif _look_relative_yaw > high:
+					high = lerpf(_look_relative_yaw, high, settle)
+			_look_relative_yaw = clampf(_look_relative_yaw + yaw_delta, low, high)
 			relative = _look_relative_yaw
 		else:
 			# Relative clamps measure against the CURRENT facing, so there is
@@ -661,4 +682,6 @@ func shift_yaw_reference(yaw: float, assist: float) -> void:
 	# wall's turn. Backing it off by the un-assisted share is what leaves only
 	# `assist` of the turn actually reaching the eye.
 	var carried: float = moved * (1.0 - clampf(assist, 0.0, 1.0))
-	_look_relative_yaw = clampf(_look_relative_yaw - carried, _look_min.y, _look_max.y)
+	# Unclamped, same as recentre_yaw_reference(): a fan that has travelled past
+	# the view is eased back over it by apply_look rather than snapping it.
+	_look_relative_yaw -= carried

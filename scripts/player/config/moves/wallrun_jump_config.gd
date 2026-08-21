@@ -59,3 +59,23 @@ extends MoveConfig
 ## the bare 120. Implementing it costs one timestamp.
 @export var wall_jump_prime_window: float = 0.05
 @export var wall_jump_stale_time: float = 0.25
+
+## How much of the speed carried into the kick is TURNED onto the direction the
+## player is looking, 0 to 1.
+##
+## The kick used to be a pure addition: the push was added to a body still
+## carrying its whole along-wall velocity, so at a running 7 m/s a sideways kick
+## of a few m/s barely bent the path at all. The owner reported it exactly --
+## "looking to the side during a wall run, the push is so small you basically
+## cannot jump out."
+##
+## Turning the carried speed instead makes the run's momentum the CAPITAL and
+## the kick the decision about where to spend it, which is what the rest of this
+## project's movement already does everywhere else. The push above is still
+## added on top; this only decides which way the speed already in the body ends
+## up pointing.
+##
+## ⚠️ PROJECT-DEFINED. Short of 1 on purpose: turning is interpolated between
+## the two directions, so a hard turn arrives slightly slower than a soft one,
+## which is the same tax the speed system charges everywhere else.
+@export var look_redirect: float = 0.7

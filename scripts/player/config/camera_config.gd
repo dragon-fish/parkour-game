@@ -197,3 +197,15 @@ extends Resource
 ## second: fast enough to be a shortcut for the mouse flick it replaces, slow
 ## enough to read as a look rather than a cut.
 @export var look_sweep_speed: float = 6.0
+
+## How fast the yaw fan's edge is eased in to meet a view that is already
+## outside it, in radians per second.
+##
+## Only the fan MOVING produces that situation -- a wall run re-centring its fan
+## on the wall it just attached to, or carrying it round a curve. A player
+## pushing against an edge that has not moved is clamped hard, as always.
+##
+## ⚠️ PROJECT-DEFINED, and the same idea as pitch_recover_speed on the other
+## axis. Exponential, so a rate: ~8 carries a 57 degree correction -- the widest
+## a wall-run attach can produce -- in about a third of a second.
+@export var look_settle_speed: float = 8.0

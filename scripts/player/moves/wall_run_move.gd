@@ -70,6 +70,11 @@ func _query_wall() -> Dictionary:
 ## -- the normal barely changes on a flat wall, which is every wall in the test
 ## arena -- and it would flatten every curve in the game back into a straight
 ## line. tests/test_wall_run_look.gd holds a curved fixture for exactly this.
+func _derive_along() -> void:
+	var tangent: Vector3 = _normal.cross(Vector3.UP).normalized()
+	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	_along = tangent if tangent.dot(horizontal) >= 0.0 else -tangent
+
 ## Yaw that faces along the wall, in the direction of travel.
 ##
 ## THE FAN BELONGS TO THE WALL, NOT TO HOW YOU ARRIVED AT IT. Left to
@@ -126,11 +131,6 @@ func _track_fan_to_wall(delta: float) -> void:
 		return
 	_fan_yaw += difference * clampf(config.wall_run.fan_track_speed * delta, 0.0, 1.0)
 	player.camera_rig.shift_yaw_reference(_fan_yaw, config.wall_run.view_assist)
-
-func _derive_along() -> void:
-	var tangent: Vector3 = _normal.cross(Vector3.UP).normalized()
-	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	_along = tangent if tangent.dot(horizontal) >= 0.0 else -tangent
 
 func enter(_previous: StringName) -> void:
 	_time_on_wall = 0.0
@@ -254,6 +254,28 @@ static func wall_jump_push_direction(player_body: Node3D, normal: Vector3, 		cfg
 	# the kick aimable at all.
 	return (dir + normal * (cfg.wall_jump_min_away - away)).normalized()
 
+## The horizontal velocity a kick leaves with: the speed already in the body,
+## TURNED toward where the player is looking, plus the push on top.
+##
+## Turning rather than merely adding is the correction. Added to a body still
+## carrying 7 m/s along the wall, a sideways push of a few m/s barely bent the
+## path -- the owner reported being unable to jump out sideways at all. The run
+## builds the speed; the kick decides where it goes.
+##
+## Interpolated between the two directions rather than rotated, so a hard turn
+## arrives slightly slower than a soft one. That is the same tax this project
+## charges for turning everywhere else, and it falls out for free here.
+static func wall_jump_launch(player_body: Node3D, carried_velocity: Vector3, 		normal: Vector3, time_on_wall: float, cfg: WallrunJumpConfig) -> Vector3:
+	# Taken as an argument rather than read off the body, matching
+	# wall_jump_push_direction() above: the body is here for its FACING, and a
+	# static helper that quietly requires its Node3D to also be a
+	# CharacterBody3D is a helper nothing can test in isolation.
+	var carried := Vector3(carried_velocity.x, 0.0, carried_velocity.z)
+	var direction: Vector3 = wall_jump_push_direction(player_body, normal, cfg)
+	var speed: float = carried.length()
+	var turned: Vector3 = carried.lerp(direction * speed, clampf(cfg.look_redirect, 0.0, 1.0))
+	return turned + direction * wall_jump_push_away(time_on_wall, cfg)
+
 static func wall_jump_push_away(time_on_wall: float, cfg: WallrunJumpConfig) -> float:
 	var quality := wall_jump_quality(time_on_wall, cfg)
 	return cfg.wall_running_push_away_speed_noob \
@@ -367,7 +389,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# wall_jump_quality() above for the numbers.
 		var jump_cfg: WallrunJumpConfig = config.wallrun_jump
 		player.velocity.y = wall_jump_rise_velocity(_time_on_wall, jump_cfg, config.pawn)
-		player.velocity += wall_jump_push_direction(player, _normal, jump_cfg) 			* wall_jump_push_away(_time_on_wall, jump_cfg)
+		var launch: Vector3 = wall_jump_launch(player, player.velocity, _normal,
+			_time_on_wall, jump_cfg)
+		player.velocity.x = launch.x
+		player.velocity.z = launch.z
 		player.move_and_slide()
 		# Declared even on this away-transitioning tick, mirroring
 		# WalkingMove's and SlideMove's own jump branches: move_and_slide()
