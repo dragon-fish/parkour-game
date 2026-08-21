@@ -282,3 +282,47 @@ func test_a_gently_curving_wall_can_be_run_all_the_way_along() -> void:
 	var heading_now := Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()
 	assert_gt(rad_to_deg(heading_at_start.angle_to(heading_now)), 3.0, \
 		"the run did not follow the curve at all -- it went straight")
+
+func test_the_fan_travels_round_the_curve_with_the_wall() -> void:
+	# The clamp is measured against the wall's own line, so on a curve it has to
+	# turn with it. Left where it was captured, it ends up policing a direction
+	# the wall stopped pointing in metres ago -- the player runs happily along a
+	# curve while the fan quietly rotates out from under them.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	_curved_wall(10, 25.0, 2.0)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	input.press_jump()
+	await step(1)
+	player.velocity = Vector3(0.0, player.velocity.y, -7.0)
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
+		"test setup is wrong: the player never attached to the curve")
+
+	# Looking straight along the run and holding still. If the fan follows the
+	# wall, "straight along" stays near the fan's centre the whole way round; if
+	# it does not, the reading drifts by however far the wall turned.
+	var reading_early: float = float(player.camera_rig.look_debug()["relative_yaw"])
+	var ticks := 0
+	while ticks < 40 and player.move_manager.current_name == Move.WALL_RUN:
+		await step(1)
+		ticks += 1
+	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
+		"the run came off the curve after %d ticks" % ticks)
+	var reading_late: float = float(player.camera_rig.look_debug()["relative_yaw"])
+	assert_lt(absf(reading_late - reading_early), deg_to_rad(20.0), \
+		"the fan did not travel with the wall (%.1f -> %.1f degrees)" \
+		% [rad_to_deg(reading_early), rad_to_deg(reading_late)])
+
+func test_the_view_is_only_assisted_round_the_curve_not_locked_to_it() -> void:
+	# An ASSIST, in the owner's own word. The clamp travels the full turn; the
+	# view is carried part of the way, so the run guides the eyes rather than
+	# steering them. Locked at 1.0 this is indistinguishable from the game
+	# taking the mouse away.
+	var config := MovementConfig.new()
+	assert_gt(config.wall_run.view_assist, 0.0, "the view is not carried at all")
+	assert_lt(config.wall_run.view_assist, 1.0, "the view is locked to the wall")

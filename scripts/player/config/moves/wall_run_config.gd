@@ -184,3 +184,24 @@ func _init() -> void:
 ## ⚠️ PROJECT-DEFINED. See Player.recent_wall_refuses_run() for the physics this
 ## expresses and why only the same SIDE is constrained.
 @export var same_wall_angle: float = deg_to_rad(20.0)
+
+@export_group("Curved walls")
+
+## How fast the look fan's centre follows the wall's own line, exponentially.
+##
+## The fan is measured against the wall, so on a curve it has to turn with it or
+## it ends up policing a direction the wall stopped pointing in metres ago.
+##
+## ⚠️ PROJECT-DEFINED, and eased rather than tracked exactly for a reason a flat
+## test wall would never show: a blockout curve is a row of straight segments,
+## so the normal arrives in steps of several degrees at each seam. Followed
+## rigidly, every seam is a visible tick in the view.
+@export var fan_track_speed: float = 6.0
+
+## How much of the wall's turn the VIEW is carried through, 0 to 1. See
+## CameraRig.shift_yaw_reference().
+##
+## ⚠️ PROJECT-DEFINED. The owner asked for an ASSIST rather than a lock -- the
+## run guiding the eyes, not steering them -- so this is deliberately short of
+## 1. The clamp itself always travels the full turn; only the view is partial.
+@export var view_assist: float = 0.6

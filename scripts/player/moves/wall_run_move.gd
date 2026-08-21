@@ -21,6 +21,11 @@ var _time_on_wall: float = 0.0
 ## Whether the look fan has been re-centred on the WALL yet. Deferred to the
 ## first physics tick rather than done in enter(); see _recentre_on_wall().
 var _fan_centred: bool = false
+## The fan's centre, EASED toward the wall's own line rather than snapped to it.
+## A blockout curve is a row of straight segments, so the normal arrives in
+## steps of several degrees at each seam; followed rigidly, every seam is a
+## visible tick in the view.
+var _fan_yaw: float = 0.0
 
 ## Guarded the same way SpeedVaultMove/GrabMove guard their own probe
 ## lookups: `player.probes` is null-checked at every call site rather than
@@ -92,7 +97,35 @@ func _recentre_on_wall() -> void:
 	if _fan_centred or player.camera_rig == null:
 		return
 	_fan_centred = true
-	player.camera_rig.recentre_yaw_reference(_along_yaw())
+	_fan_yaw = _along_yaw()
+	player.camera_rig.recentre_yaw_reference(_fan_yaw)
+
+## Carries the fan -- and, partly, the view -- round with a wall that turns.
+##
+## The fan is measured against the wall's own line, so on a curve it has to turn
+## with it or it ends up policing a direction the wall stopped pointing in
+## metres ago. The owner asked for this the moment the curved run turned out to
+## work: "when the wall's normal changes, give the view an assisted turn, and
+## the clamp has to move with it."
+##
+## The clamp always travels the FULL turn; only the view is partial, by
+## view_assist. See CameraRig.shift_yaw_reference() for how the two are
+## separated without re-deriving the yaw accumulator.
+func _track_fan_to_wall(delta: float) -> void:
+	if not _fan_centred or player.camera_rig == null:
+		return
+	var target: float = _along_yaw()
+	var difference: float = wrapf(target - _fan_yaw, -PI, PI)
+	# A DISCONTINUITY, not a curve. _along picks its sign from the direction of
+	# travel, so a body whose along-wall velocity momentarily reverses reports a
+	# tangent half a turn away. Carrying the view through that would be a
+	# catastrophe rather than an assist; re-seat and carry nothing.
+	if absf(difference) > PI * 0.5:
+		_fan_yaw = target
+		player.camera_rig.shift_yaw_reference(_fan_yaw, 0.0)
+		return
+	_fan_yaw += difference * clampf(config.wall_run.fan_track_speed * delta, 0.0, 1.0)
+	player.camera_rig.shift_yaw_reference(_fan_yaw, config.wall_run.view_assist)
 
 func _derive_along() -> void:
 	var tangent: Vector3 = _normal.cross(Vector3.UP).normalized()
@@ -292,6 +325,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# wall is LEFT rather than from when it was found. See Player's own note.
 	player.note_wall_contact(_normal, player.wall_side)
 	_recentre_on_wall()
+	_track_fan_to_wall(delta)
 
 	# A wall jump is a fresh press, not a ground-style coyote jump: the
 	# jump/coyote timer only refills while player.grounded is true, and this

@@ -627,3 +627,38 @@ func _advance_look_sweep(mouse_yaw_delta: float, delta: float) -> float:
 		_sweeping = false
 		return remaining
 	return signf(remaining) * step
+
+## Moves the fan's CENTRE without re-deriving how far the view has turned from
+## it, and carries the view part of the way with it.
+##
+## For a constraint whose reference is not fixed for the move's whole life --
+## wall running along a curve is the case, and so far the only one. The wall's
+## own line is what the fan is measured against, so when the wall turns, the
+## fan has to turn too or the clamp ends up policing a direction the wall
+## stopped pointing in some metres ago.
+##
+## NOT recentre_yaw_reference(). That one re-derives the running total from the
+## body, which is exactly what the accumulator exists to avoid (see
+## _look_relative_yaw: a re-derived difference is wrapped, and a wrap is a hole
+## in the fence). This one leaves the total alone and moves only the origin it
+## is measured from, so the fence travels intact.
+##
+## `assist` is how much of the wall's turn the VIEW is carried through, 0 to 1:
+##   1  the view follows the wall exactly, keeping the same angle to it
+##   0  the view holds its world direction and the fan slides underneath it,
+##      shoving it only once an edge catches up
+## In between reads as the run guiding the player's eyes rather than steering
+## them.
+func shift_yaw_reference(yaw: float, assist: float) -> void:
+	if not _has_look_constraint:
+		return
+	var moved: float = wrapf(yaw - _yaw_reference, -PI, PI)
+	if is_zero_approx(moved):
+		return
+	_yaw_reference = yaw
+	# The body's facing is rebuilt from reference + relative every tick, so
+	# leaving the total alone would carry the view through the WHOLE of the
+	# wall's turn. Backing it off by the un-assisted share is what leaves only
+	# `assist` of the turn actually reaching the eye.
+	var carried: float = moved * (1.0 - clampf(assist, 0.0, 1.0))
+	_look_relative_yaw = clampf(_look_relative_yaw - carried, _look_min.y, _look_max.y)
