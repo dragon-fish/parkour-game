@@ -200,3 +200,49 @@ func test_a_fall_is_not_smoothed() -> void:
 
 	rig.get_parent().queue_free()
 	await step(1)
+
+func test_a_fast_flick_cannot_walk_through_an_absolute_yaw_fan() -> void:
+	# Reported from play while hanging: swing the mouse hard enough and the
+	# view turns a full circle, straight through a 170 degree fan.
+	#
+	# The relative angle used to be re-derived each frame and wrapped into
+	# [-PI, PI]. Swing 200 degrees in one tick and the wrap reports -160 --
+	# inside the fan -- so the clamp passes it. The faster the mouse, the
+	# easier the fence is to climb. Accumulating the total cannot be fooled
+	# that way.
+	var rig := _rig()
+	await step(1)
+	var body := rig.get_parent() as Node3D
+	var cfg := MovementConfig.new()
+
+	var fan := deg_to_rad(170.0)
+	rig.set_look_constraint(Vector3(-PI, -fan, -PI), Vector3(PI, fan, PI), true)
+	var start_yaw: float = body.rotation.y
+
+	# What breaks is the PATH, not the final position: the clamp keeps the
+	# result inside the fan either way. Under the wrap, a flick past the far
+	# edge reappears at the near one, so repeated flicks the SAME way round
+	# jump back and forth across the fan -- which is what reads as spinning
+	# freely. Pinned at the edge, repeating the input changes nothing.
+	# 175 degrees per flick, just past the 170 degree fan. Sized exactly,
+	# because the failure needs the wrapped total to land back INSIDE the fan:
+	# the first flick clamps to +170, the second reaches 345 and wraps to -15,
+	# and the view has jumped clean across. Anything much larger wraps to a
+	# value outside the fan again and clamps to the same edge by luck.
+	var per_flick: float = deg_to_rad(175.0) / cfg.camera.mouse_sensitivity
+	rig.apply_look(Vector2(-per_flick, 0.0), body)
+	var settled: float = body.rotation.y
+	assert_almost_eq(settled - start_yaw, fan, 0.001, \
+		"test setup is wrong: the first flick did not park at the fan edge")
+	rig.apply_look(Vector2(-per_flick, 0.0), body)
+	assert_almost_eq(body.rotation.y, settled, 0.0001, \
+		"another flick the same way jumped the view across the fan (%.1f -> %.1f degrees)" \
+			% [rad_to_deg(settled - start_yaw), rad_to_deg(body.rotation.y - start_yaw)])
+
+	var turned: float = absf(body.rotation.y - start_yaw)
+	assert_true(turned <= fan + 0.01, \
+		"the view ended %.1f degrees round a %.1f degree fan" \
+			% [rad_to_deg(turned), rad_to_deg(fan)])
+
+	rig.get_parent().queue_free()
+	await step(1)

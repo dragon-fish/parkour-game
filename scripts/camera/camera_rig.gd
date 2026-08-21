@@ -59,6 +59,20 @@ var _has_look_constraint: bool = false
 ## facing the move began with instead of drifting with the player.
 var _yaw_reference: float = 0.0
 
+## How far the view has turned from _yaw_reference, ACCUMULATED rather than
+## re-derived each frame.
+##
+## Deriving it wrapped the difference into [-PI, PI], which a fast flick walks
+## straight through: swing 200 degrees in one tick against a 170 degree fan and
+## the wrap reports -160, which is inside the fan, so the clamp passes it. The
+## faster the mouse, the easier the fence is to climb -- reported in play as
+## being able to turn a full circle while hanging.
+##
+## Accumulating cannot be fooled that way: the clamp is applied to the running
+## total, so a turn that would leave the fan is simply cut off at its edge
+## however fast it arrives.
+var _look_relative_yaw: float = 0.0
+
 ## The attached body's head/neck node position, in THIS rig's PARENT's
 ## (Player's) local space -- i.e. Player.to_local(head_node.global_position)
 ## -- as of the most recent set_head_position() call. Meaningless whenever
@@ -152,6 +166,9 @@ func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \
 		var body := get_parent()
 		if body is Node3D:
 			_yaw_reference = body.rotation.y
+		# The running total starts where the body already is, which is zero by
+		# definition since the reference was just taken from it.
+		_look_relative_yaw = 0.0
 	_look_min = min_c
 	_look_max = max_c
 	_look_absolute_yaw = absolute_yaw
@@ -163,6 +180,7 @@ func clear_look_constraint() -> void:
 	_has_look_constraint = false
 	_look_pitch_relaxes = false
 	_look_yaw_fraction = 0.0
+	_look_relative_yaw = 0.0
 
 ## Hands the camera to a level-owned cutscene. Called once when the cutscene
 ## starts; the caller drives the pose every tick via set_cinematic_pose()
@@ -235,9 +253,19 @@ func apply_look(look_delta: Vector2, body: Node3D) -> void:
 		# began, so the fan stays pinned to the wall rather than drifting with
 		# the player. Source: 04 §4.1 bUseAbsoluteYawConstraint = True.
 		var reference: float = _yaw_reference if _look_absolute_yaw else body.rotation.y
-		var next_yaw: float = body.rotation.y + yaw_delta
-		var relative: float = wrapf(next_yaw - reference, -PI, PI)
-		relative = clampf(relative, _look_min.y, _look_max.y)
+		var relative: float
+		if _look_absolute_yaw:
+			# Accumulated, never re-derived -- see _look_relative_yaw for why a
+			# wrapped difference lets a fast flick through the fence.
+			_look_relative_yaw = clampf(_look_relative_yaw + yaw_delta, \
+				_look_min.y, _look_max.y)
+			relative = _look_relative_yaw
+		else:
+			# Relative clamps measure against the CURRENT facing, so there is
+			# no running total to keep: this is a per-tick rate limit by
+			# construction, which is what the original's non-absolute clamps
+			# are.
+			relative = clampf(yaw_delta, _look_min.y, _look_max.y)
 		body.rotation.y = reference + relative
 		# How far round the view has come, for the pitch clamp below.
 		var yaw_span: float = maxf(absf(_look_max.y if relative >= 0.0 else _look_min.y), 0.0001)
