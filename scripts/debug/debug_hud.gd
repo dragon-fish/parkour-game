@@ -72,6 +72,7 @@ func _process(delta: float) -> void:
 		# the cap means something else is holding the body back.
 		"energy     %.2f  -> cap %.2f m/s" % [player.speed_energy.energy, player.speed_cap()],
 		"wall side  %s" % _wall_side_text(),
+		"look       %s" % _look_text(),
 		"step grace %s" % ("open" if player.in_step_grace() else "-"),
 		"fps        %d" % Engine.get_frames_per_second(),
 		"step decisions",
@@ -84,6 +85,16 @@ func _process(delta: float) -> void:
 		"Tab HUD  F1 tuning  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
 		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
 	])
+
+## Yaw relative to the constraint's own centre, and the pitch floor in force --
+## the two numbers that say whether a clamp is doing what it was asked to.
+func _look_text() -> String:
+	if player.camera_rig == null:
+		return "-"
+	var d: Dictionary = player.camera_rig.look_debug()
+	if not d["constrained"]:
+		return "free  pitch %+.0f" % rad_to_deg(d["pitch"])
+	return "yaw %+.0f  floor %+.0f  pitch %+.0f" % [rad_to_deg(d["relative_yaw"]), 		rad_to_deg(d["pitch_floor"]), rad_to_deg(d["pitch"])]
 
 func _wall_side_text() -> String:
 	match player.wall_side:

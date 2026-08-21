@@ -193,6 +193,16 @@ func recentre_yaw_reference(yaw: float) -> void:
 	var body := get_parent()
 	_look_relative_yaw = wrapf((body as Node3D).rotation.y - yaw, -PI, PI) 		if body is Node3D else 0.0
 
+## Diagnostics for the debug HUD: how far the view has turned from the fan's
+## centre, and the pitch floor currently in force. Both in radians.
+func look_debug() -> Dictionary:
+	return {
+		"constrained": _has_look_constraint,
+		"relative_yaw": _look_relative_yaw,
+		"pitch_floor": _relaxed_pitch_floor() if (_has_look_constraint and _look_pitch_relaxes) 			else (_look_min.x if _has_look_constraint else -PI),
+		"pitch": _pitch,
+	}
+
 func clear_look_constraint() -> void:
 	_has_look_constraint = false
 	_look_pitch_relaxes = false
