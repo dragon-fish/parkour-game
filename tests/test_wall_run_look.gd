@@ -148,7 +148,7 @@ func test_q_carries_the_view_to_the_far_edge_of_the_fan() -> void:
 	var player: Player = await _running_the_wall()
 	var input: ScriptedInputSource = _world["input"]
 	input.press_turn()
-	# look_sweep_speed is the measured 5.24 rad/s, so a quarter turn is 18 ticks.
+	# look_sweep_speed is the measured 7.85 rad/s, so a quarter turn is 12 ticks.
 	await step(25)
 	var fan: Dictionary = player.camera_rig.look_debug()
 	# The wall is on the right, so away is leftward, which is positive yaw.
@@ -537,16 +537,17 @@ func test_a_run_carries_on_after_the_eyes_clear_the_wall_top() -> void:
 		"the run carried on past the point the feet clear the wall (%.2f m)" % highest)
 
 func test_every_attach_rises_by_the_same_confirmed_amount() -> void:
-	# ✅ WallRunningHorisontalInitialZHeight = 170 uu is a HEIGHT, so an attach
-	# is worth 1.7 m of rise -- not "1.7 m or whatever your jump had left,
-	# whichever is more", which is what it was.
+	# ✅ WallRunningHorisontalInitialZHeight = 170 uu is where a run PEAKS ABOVE
+	# THE GROUND IT LEFT, not an increment on wherever it touched the wall. The
+	# owner's HUD in the original: 43.17 standing, 44.82 at the top of the run.
 	#
-	# The owner measured the peak sitting about half a metre above the
-	# original's. Preserving the jump's own upward speed is the whole gap: at a
-	# typical 6 m/s that is 2.37 m under the wall's own gravity.
+	# Read as an increment, as this project did, the peak comes out the contact
+	# height too high -- and contact height rises with approach speed, which is
+	# how the owner saw it: "at speed you can end up with your FEET above the
+	# plank top, where the original has your waist level with it".
 	#
 	# Measured at TWO attach speeds, because the bug's signature is not merely
-	# "too high" but "height depends on when you happened to touch".
+	# "too high" but "the height depends on when you happened to touch".
 	var peaks: Array[float] = []
 	for rise_at_attach in [1.0, 6.0]:
 		var world := TestWorld.build(get_tree(), MovementConfig.new())
@@ -573,20 +574,23 @@ func test_every_attach_rises_by_the_same_confirmed_amount() -> void:
 		await step(1)
 		assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
 			"never attached at %.1f m/s of rise" % rise_at_attach)
-		var attached_at: float = player.global_position.y
-		var highest: float = attached_at
+		# From the GROUND the jump left, not from the contact point -- that frame
+		# is the thing under test. ✅ The owner's HUD in the original reads 43.17
+		# standing and 44.82 at the top of the run.
+		var left_the_ground_at: float = player.ground_reference_y
+		var highest: float = player.global_position.y
 		var ticks := 0
 		while ticks < 120 and player.move_manager.current_name == Move.WALL_RUN:
 			await step(1)
 			highest = maxf(highest, player.global_position.y)
 			ticks += 1
-		peaks.append(highest - attached_at)
+		peaks.append(highest - left_the_ground_at)
 		after_each()
 
 	var lift: float = MovementConfig.new().wall_run.wall_running_horisontal_initial_z_height
 	for i in peaks.size():
 		assert_almost_eq(peaks[i], lift, 0.25, \
-			"attach %d rose %.2f m against the confirmed %.2f" % [i, peaks[i], lift])
+			"attach %d peaked %.2f m above the ground it left, against the confirmed %.2f" % [i, peaks[i], lift])
 	assert_almost_eq(peaks[0], peaks[1], 0.15, \
-		"the rise depends on how fast you were going up when you touched (%.2f vs %.2f)" \
+		"the peak depends on how fast you were going up when you touched (%.2f vs %.2f)" \
 		% [peaks[0], peaks[1]])

@@ -9,24 +9,21 @@ extends MoveConfig
 ## way to CARRY speed, never a way to create it from nothing.
 ## Source: 04 §4.1 `WallRunningMinSpeed = 200` uu/s. ✅
 @export var wall_running_min_speed: float = 2.0
-## ✅ `WallRunningVelocityStartLimit = 300` uu/s, read as A CEILING ON THE
-## VERTICAL SPEED CARRIED INTO THE ATTACH.
+## ✅ `WallRunningVelocityStartLimit = 300` uu/s. ❓ NO CONSUMER, again.
 ##
-## Was recorded with no consumer and dismissed as probably a duplicate of
-## wall_running_min_speed above. The owner then reported the run's peak sitting
-## about half a metre above the original's, and this field explains the whole
-## gap.
+## Briefly had one: it was read as a ceiling on the vertical speed carried into
+## an attach, which fixed a peak that came out too high. The owner then reported
+## it still being too high, with a detail that settled the matter -- in the
+## original the WAIST ends level with the plank's top, while here the FEET could
+## clear it at speed -- and their HUD gave the real rule: the peak is measured
+## from the GROUND, not from the contact point. See
+## wall_running_horisontal_initial_z_height.
 ##
-## The attach used to keep whatever upward speed the jump still had -- maxf()
-## on the lift below, so a fast jump into a wall rose by its OWN arc rather
-## than by the lift's 1.7 m. At a typical 6 m/s that is 2.37 m under the wall's
-## own gravity: two thirds of a metre too much, and dependent on exactly when
-## contact happened.
-##
-## Clamped first, the lift always wins (its own 1.7 m needs 5.16 m/s, well above
-## this 3.0), so every attach rises by exactly the confirmed 1.7 m from wherever
-## it touched. Which is what a field called `InitialZHeight` being a HEIGHT
-## implies in the first place.
+## That target subsumes this clamp entirely: the vertical speed at the attach is
+## now assigned outright, so there is nothing left for a ceiling on it to do.
+## Recorded here rather than deleted, and honestly labelled unused, because a
+## value measured out of the original is worth keeping even when the behaviour
+## it seemed to explain turned out to belong to another field.
 @export var wall_running_velocity_start_limit: float = 3.0
 ## Minimum wall height to run along. Recorded; nothing reads this yet --
 ## Probes.wall_query() has no wall-height measurement of its own (its side
@@ -83,11 +80,24 @@ extends MoveConfig
 ## wall_max_speed clamp, which capped speed instead of ever pulling it down.
 ## Source: 04 §4.1 `WallRunningHorisontalDeceleration = 500` uu/s². ✅
 @export var wall_running_horisontal_deceleration: float = 5.0
-## ⚠️ INFERRED as a one-off vertical lift applied on attaching, expressed at
-## the point of use (WallRunMove.enter()) as the vertical speed that reaches
-## this height under plain gravity -- matching how this project reads every
-## other `*ZHeight` field (see spec §2.5).
-## Source: 04 §4.1 `WallRunningHorisontalInitialZHeight = 170` uu (1.7 m).
+## HOW HIGH A RUN PEAKS ABOVE THE GROUND IT TOOK OFF FROM.
+##
+## ✅ The value, from 04 §4.1 `WallRunningHorisontalInitialZHeight = 170` uu.
+## ✅ The frame of reference, from the owner's own HUD in the original: standing
+## at Z 43.17, and at the top of the run ZT 44.82 with SZD 1.56. A wall run
+## peaks about 1.65 m above the roof it left, and does not care where on the
+## wall contact happened.
+##
+## THAT FRAME IS THE WHOLE CORRECTION. Read as an increment added to the contact
+## point -- which is what "initial Z height" sounds like, and what this project
+## did -- the peak comes out that contact height too high. And contact height
+## rises with approach speed, which is why the owner saw it as "at speed you can
+## end up with your FEET above the plank top, where the original has your waist
+## level with it".
+##
+## Applied at the point of use (WallRunMove.enter()) as the vertical speed that
+## reaches whatever is LEFT of this height, converted against the wall's own
+## rising gravity rather than plain gravity -- see there for why.
 @export var wall_running_horisontal_initial_z_height: float = 1.7
 ## Recorded from the original as a value. ✅ ❓ No consumer wired -- this
 ## project has no separate "align velocity to the wall surface" pass distinct

@@ -207,22 +207,29 @@ func enter(_previous: StringName) -> void:
 	# upward speed, and the run rises by that arc rather than by the lift's
 	# confirmed 1.7 m. The owner measured the difference as about half a metre
 	# too high. See WallRunConfig for the arithmetic.
-	# ✅ WallRunningVelocityStartLimit, read as a ceiling on the vertical speed
-	# carried into the attach. Applied BEFORE the lift, which is the whole point
-	# of it: without this the lift's maxf() below preserves a fast jump's own
-	# upward speed, and the run rises by that arc rather than by the lift's
-	# confirmed 1.7 m. Measured directly with the clamp removed -- an attach at
-	# 6 m/s of rise gains 2.05 m and one at 1 m/s gains 1.66, so the height
-	# depended on exactly when contact happened. The owner saw the fast case as
-	# roughly half a metre too high. See WallRunConfig for the arithmetic.
-	var start_limit: float = config.wall_run.wall_running_velocity_start_limit
-	player.velocity.y = minf(player.velocity.y, start_limit)
-
 	var lift: float = config.wall_run.wall_running_horisontal_initial_z_height
 	if lift > 0.0:
+		# ✅ MEASURED FROM THE GROUND YOU LEFT, not added to wherever you touched.
+		#
+		# The owner's own HUD in the original: standing at Z 43.17, and at the
+		# top of the run ZT 44.82 with SZD 1.56. So a wall run peaks about 1.65 m
+		# above the roof it took off from -- which is InitialZHeight, and which
+		# does not care where on the wall contact happened.
+		#
+		# Added to the contact point, as it was, the peak is that contact height
+		# too high -- and contact height rises with speed, which is why the owner
+		# saw it as "at speed you can end up with your FEET above the plank top,
+		# where the original has your waist level with it".
+		var risen: float = player.global_position.y - player.ground_reference_y
+		var remaining: float = clampf(lift - risen, 0.0, lift)
 		# The lift is a RISE, so it converts against the rising scale.
 		var wall_gravity: float = config.pawn.gravity * config.wall_run.wall_gravity_scale_rising
-		player.velocity.y = maxf(player.velocity.y, sqrt(2.0 * wall_gravity * lift))
+		# ASSIGNED, not maxf(). A body arriving faster than the target has to be
+		# slowed to it, or the height is back to depending on the approach --
+		# which is the whole thing being fixed. The measured entry window reaches
+		# +5.1 m/s of rise and the peak is 1.65 m regardless, so the original
+		# caps this too.
+		player.velocity.y = sqrt(2.0 * wall_gravity * remaining)
 
 func exit() -> void:
 	player.wall_side = 0
