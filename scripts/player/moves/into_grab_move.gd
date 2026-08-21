@@ -108,7 +108,7 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	player.velocity = Vector3.ZERO
 
 	# Turned toward the wall alongside the move, at its own rate.
-	player.rotation.y = _turn_toward(player.rotation.y, _target_yaw, 		cfg.align_turn_speed * delta)
+	_turn_body_toward(_target_yaw, cfg.align_turn_speed * delta)
 
 	var to_target: Vector3 = _target - player.global_position
 	# Arrived, or close enough that the rest would not be visible.
@@ -132,10 +132,18 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 ## at. Without the re-centring the hang's own look clamp inherits the approach
 ## angle, and every grab has a differently skewed fan.
 func _settle() -> StringName:
-	player.rotation.y = _target_yaw
+	_turn_body_toward(_target_yaw, PI)
 	if player.camera_rig != null:
 		player.camera_rig.recentre_yaw_reference(_target_yaw)
 	return GRAB
+
+## Turns the body toward `to`, at most `step` this tick, and tells the camera
+## how far it moved so the eye can trail rather than being cut through it.
+func _turn_body_toward(to: float, step: float) -> void:
+	var before: float = player.rotation.y
+	player.rotation.y = _turn_toward(before, to, step)
+	if player.camera_rig != null:
+		player.camera_rig.absorb_body_yaw(player.rotation.y - before)
 
 ## Rotates `from` toward `to` by at most `step`, the short way round.
 static func _turn_toward(from: float, to: float, step: float) -> float:

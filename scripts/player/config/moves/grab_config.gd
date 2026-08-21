@@ -85,11 +85,11 @@ func _init() -> void:
 	# makes "hang, look at the drop, let go" possible at all. Both hands on the
 	# ledge, the view stays up.
 	#
-	# ⚠️ The threshold is the owner's: they put the switch at around 90 degrees.
+	# ⚠️ The threshold is the owner's, tuned by feel from 90 to 53 degrees.
 	# The CDO's four look-constraint pairs make it clear the original selects
 	# between several holds, but not on what.
 	pitch_relaxes_with_yaw = true
-	pitch_relax_yaw_threshold = deg_to_rad(90.0)
+	pitch_relax_yaw_threshold = deg_to_rad(53.0)
 	pitch_min_turned_away = -deg_to_rad(70.0)
 	# ⚠️ The CDO also sets bDisableFaceRotation, which this project does not
 	# implement (docs/feel-backlog.md 12). Absolute yaw is the stand-in: with

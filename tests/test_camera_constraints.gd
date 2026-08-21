@@ -303,6 +303,7 @@ func test_turning_back_pushes_the_view_up_rather_than_snapping_it() -> void:
 	var parts: Array = await _hanging_rig()
 	var rig: CameraRig = parts[0]
 	var body: Node3D = parts[1]
+	var grab: GrabConfig = parts[2]
 	var delta := 1.0 / 60.0
 
 	for i in 60:
@@ -313,12 +314,13 @@ func test_turning_back_pushes_the_view_up_rather_than_snapping_it() -> void:
 	assert_true(looked_down < -deg_to_rad(30.0), "test setup: never looked down")
 
 	# Turn back toward the wall in ONE tick, so the floor jumps up under the
-	# view. Sized to land INSIDE the threshold rather than overshooting to the
-	# far edge of the fan -- which is still past 90 degrees, so the floor would
-	# not have risen at all and there would be nothing to test.
+	# view. Sized off the SHIPPED threshold so it lands inside it: turning back
+	# only part of the way leaves the view still past the switch, where the
+	# floor has not risen and there is nothing to test.
 	var sens: float = MovementConfig.new().camera.mouse_sensitivity
+	var back: float = deg_to_rad(170.0) - grab.pitch_relax_yaw_threshold + deg_to_rad(20.0)
 	# yaw_delta is -look_delta.x * sensitivity, so a POSITIVE x turns back.
-	rig.apply_look(Vector2(deg_to_rad(100.0) / sens, 0.0), body, delta)
+	rig.apply_look(Vector2(back / sens, 0.0), body, delta)
 	assert_true(rig.rotation.x < looked_down + deg_to_rad(20.0), \
 		"the view snapped back up instead of being pushed (%.1f -> %.1f degrees)" \
 			% [rad_to_deg(looked_down), rad_to_deg(rig.rotation.x)])

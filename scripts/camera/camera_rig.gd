@@ -75,6 +75,14 @@ var _yaw_reference: float = 0.0
 ## however fast it arrives.
 var _look_relative_yaw: float = 0.0
 
+## How far the eye is still lagging behind a turn a MOVE made on the body's
+## behalf, in radians. Bled off every frame.
+##
+## Only scripted turns land here -- the player's own mouse goes straight
+## through, because a view that lags the mouse is intolerable. Moves report
+## their own turns via absorb_body_yaw(); nothing is inferred.
+var _scripted_yaw_lag: float = 0.0
+
 ## The attached body's head/neck node position, in THIS rig's PARENT's
 ## (Player's) local space -- i.e. Player.to_local(head_node.global_position)
 ## -- as of the most recent set_head_position() call. Meaningless whenever
@@ -140,6 +148,19 @@ func set_landing_pitch_offset(radians: float) -> void:
 func set_roll_spin(radians: float) -> void:
 	_roll_spin = radians
 
+## Told by a move that it has just turned the body by `radians`, so the eye can
+## lag behind and catch up rather than being cut through the turn.
+##
+## The move still turns the body immediately -- physics, probes and the look
+## clamp all work from the real facing. Only the EYE is behind, and only for as
+## long as it takes to catch up.
+func absorb_body_yaw(radians: float) -> void:
+	if is_zero_approx(radians):
+		return
+	# Held to half a turn: a lag larger than that would have the eye chasing
+	# the long way round, and nothing legitimate produces one.
+	_scripted_yaw_lag = clampf(_scripted_yaw_lag - radians, -PI, PI)
+
 ## The attached body's head/neck node position, in Player's local space
 ## (Player.to_local(head_node.global_position)) -- see _head_local_position's
 ## own comment. Called by Player every tick a head is available.
@@ -172,6 +193,7 @@ func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \
 		# The running total starts where the body already is, which is zero by
 		# definition since the reference was just taken from it.
 		_look_relative_yaw = 0.0
+	_scripted_yaw_lag = 0.0
 	_look_min = min_c
 	_look_max = max_c
 	_look_absolute_yaw = absolute_yaw
@@ -422,6 +444,12 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# Clamped to one step so a real fall is never smoothed -- the body drops
 	# faster than this could follow, and watching the ground rush up is the
 	# whole point of a fall.
+	# Bleed off any scripted turn the eye is still behind on. Written to the
+	# rig's own yaw, which is otherwise unused: the body carries the real
+	# facing, this is only how far the view trails it.
+	_scripted_yaw_lag = lerpf(_scripted_yaw_lag, 0.0, 		clampf(_config.camera.scripted_yaw_catchup_speed * delta, 0.0, 1.0))
+	rotation.y = _scripted_yaw_lag
+
 	var body_y: float = (get_parent() as Node3D).global_position.y if get_parent() is Node3D else 0.0
 	if not grounded or not _has_eye_ground:
 		# Airborne: no lag at all. Pinned every tick so that the moment the body

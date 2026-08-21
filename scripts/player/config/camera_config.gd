@@ -126,6 +126,20 @@ extends Resource
 ## ~12 settles a 0.35 m step in roughly 0.15 s, which reads as a stride. Lower
 ## it to make the lag more obvious, raise it toward a hard snap.
 @export var step_smooth_speed: float = 12.0
+
+## ⚠️ PROJECT-DEFINED. How fast the eye catches up when a MOVE turns the body,
+## as opposed to when the player does.
+##
+## The two deserve different treatment, which is the same lesson the step
+## follow taught: the eye does not have to track the capsule frame for frame.
+## Under the player's own hand it must -- a laggy mouse is intolerable -- but a
+## scripted turn is something happening TO the player, and snapping the view
+## through it reads as a cut. The reach onto a ledge squares the body up to the
+## wall, sometimes through tens of degrees, and did exactly that.
+##
+## Exponential, so a rate: ~10 absorbs a 45 degree correction in about a fifth
+## of a second.
+@export var scripted_yaw_catchup_speed: float = 10.0
 ## How much the camera follows the attached body's head/neck node's
 ## POSITION each tick, from 0 (ignore it completely -- today's camera,
 ## eye_height plus bob/dip/crouch only) to 1 (sit exactly at the node's
