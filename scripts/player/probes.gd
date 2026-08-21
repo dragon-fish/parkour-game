@@ -85,6 +85,19 @@ const LEDGE_ANCHOR_MARGIN := 0.1
 ## WallLeft/WallRight's own offset. ⚠️ PROJECT-DEFINED.
 const WALL_AHEAD_CHEST_Y := 0.2
 
+## How far above the SOLES a run's own contact ray fires.
+##
+## THE FEET ARE WHAT IS TOUCHING THE WALL. The owner caught this against the
+## original: at the top of a wall run the eyes are well clear of the wall's own
+## top edge and the run carries on regardless, because the contact point is down
+## at the boots. Fired from the chest, as it was, a run ends the moment the
+## wall's top passes 1.1 m above the soles -- a whole body-length of wall the
+## original would still have been using.
+##
+## ⚠️ PROJECT-DEFINED, and small rather than zero: a ray fired exactly at the
+## sole plane grazes the floor when a run ends at ground level.
+const WALL_CONTACT_FOOT_MARGIN := 0.15
+
 # Looked up live via _ensure_rays() rather than cached in @onready vars: @onready
 # resolves on Probes' own _ready(), but TestWorld.build() (and player.tscn's
 # real instantiation path) calls Player.setup() -> Probes.setup() on the same
@@ -545,7 +558,12 @@ func wall_tracked_query(direction: Vector3, reach: float) -> Dictionary:
 	if _config == null or direction.length_squared() < 0.0001:
 		return {"valid": false, "normal": Vector3.ZERO, "side": 0, "incidence": 0.0}
 	_ensure_rays()
-	_wall_left.position.y = WALL_AHEAD_CHEST_Y
+	# AT THE FEET, not the chest. See WALL_CONTACT_FOOT_MARGIN: this query is
+	# what keeps a run ALIVE, and what keeps it alive is the boots being against
+	# the wall. wall_query()'s own chest-height rays are right where they are --
+	# they decide whether there is a wall worth STARTING on, and a kerb at ankle
+	# height is not one.
+	_wall_left.position.y = _feet_y() - global_position.y + WALL_CONTACT_FOOT_MARGIN
 	# Into the ray's own local space: the direction is given in world terms and
 	# target_position is not.
 	var local: Vector3 = _wall_left.global_transform.basis.inverse() * direction.normalized()

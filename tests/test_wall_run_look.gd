@@ -478,3 +478,60 @@ func test_space_without_a_sweep_kicks_immediately() -> void:
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.JUMP, \
 		"a kick with no sweep running was made to wait")
+
+# --- the feet are what is touching the wall -----------------------------------
+
+func test_a_run_carries_on_after_the_eyes_clear_the_wall_top() -> void:
+	# ✅ OBSERVED against the original, side by side in the same geometry: at the
+	# top of a wall run the eyes are well above the wall's own top edge and the
+	# run carries on, because the contact point is down at the boots.
+	#
+	# Fired from the chest, as this project's was, the run ended the moment the
+	# wall's top passed 1.1 m above the soles -- a whole body-length of wall the
+	# original would still have been using.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	# Deliberately SHORT. Tall enough to start a run on (the entry rays sit at
+	# chest height and need a wall there), low enough that the rise takes the
+	# eyes over the top well before the feet get there.
+	const TOP := 2.6
+	box.size = Vector3(20.0, TOP, 1.0)
+	shape.shape = box
+	wall.add_child(shape)
+	get_tree().root.add_child(wall)
+	world["wall"] = wall
+	wall.global_position = Vector3(0.95, TOP * 0.5, 0.0)
+	wall.rotation = Vector3(0.0, PI * 0.5, 0.0)
+
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	input.press_jump()
+	await step(1)
+	player.velocity = Vector3(0.0, player.velocity.y, -7.0)
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
+		"test setup is wrong: the player never attached to the short wall")
+
+	# The height the OLD probe would have given up at: the chest ray sits 1.1 m
+	# above the soles, so it leaves the wall once the body centre passes
+	# TOP - 0.2.
+	var chest_gives_up: float = TOP - Probes.WALL_AHEAD_CHEST_Y
+	var highest: float = player.global_position.y
+	var ticks := 0
+	while ticks < 90 and player.move_manager.current_name == Move.WALL_RUN:
+		await step(1)
+		highest = maxf(highest, player.global_position.y)
+		ticks += 1
+	assert_gt(highest, chest_gives_up + 0.15, \
+		"the run ended around where a chest-height probe would (%.2f m, chest gives up at %.2f)" \
+		% [highest, chest_gives_up])
+	# ...and it does still end. A run that never lets go would be a different
+	# bug, and this fixture cannot tell the two apart without asking.
+	assert_lt(highest, TOP + 0.9, \
+		"the run carried on past the point the feet clear the wall (%.2f m)" % highest)
