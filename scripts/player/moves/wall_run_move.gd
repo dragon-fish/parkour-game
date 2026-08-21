@@ -201,6 +201,23 @@ func enter(_previous: StringName) -> void:
 	# gravity gives 3.0854 m/s and the intended 1.7 m).
 	# Never LOWERS an already-faster upward speed (e.g. a jump that grabbed a
 	# wall mid-rise) -- only ever raises it to the floor this represents.
+	# ✅ WallRunningVelocityStartLimit, read as a ceiling on the vertical speed
+	# carried into the attach. Applied BEFORE the lift, which is the whole point
+	# of it: without this the lift's maxf() below preserves a fast jump's own
+	# upward speed, and the run rises by that arc rather than by the lift's
+	# confirmed 1.7 m. The owner measured the difference as about half a metre
+	# too high. See WallRunConfig for the arithmetic.
+	# ✅ WallRunningVelocityStartLimit, read as a ceiling on the vertical speed
+	# carried into the attach. Applied BEFORE the lift, which is the whole point
+	# of it: without this the lift's maxf() below preserves a fast jump's own
+	# upward speed, and the run rises by that arc rather than by the lift's
+	# confirmed 1.7 m. Measured directly with the clamp removed -- an attach at
+	# 6 m/s of rise gains 2.05 m and one at 1 m/s gains 1.66, so the height
+	# depended on exactly when contact happened. The owner saw the fast case as
+	# roughly half a metre too high. See WallRunConfig for the arithmetic.
+	var start_limit: float = config.wall_run.wall_running_velocity_start_limit
+	player.velocity.y = minf(player.velocity.y, start_limit)
+
 	var lift: float = config.wall_run.wall_running_horisontal_initial_z_height
 	if lift > 0.0:
 		# The lift is a RISE, so it converts against the rising scale.

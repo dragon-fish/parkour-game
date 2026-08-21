@@ -9,11 +9,24 @@ extends MoveConfig
 ## way to CARRY speed, never a way to create it from nothing.
 ## Source: 04 §4.1 `WallRunningMinSpeed = 200` uu/s. ✅
 @export var wall_running_min_speed: float = 2.0
-## Recorded from the original as a value. ✅ ❓ No consumer wired: nothing in
-## the research ties this to behaviour distinct from wall_running_min_speed's
-## own gate above, and the field name ("start limit") reads as a duplicate of
-## it rather than a separate question.
-## Source: 04 §4.1 `WallRunningVelocityStartLimit = 300` uu/s.
+## ✅ `WallRunningVelocityStartLimit = 300` uu/s, read as A CEILING ON THE
+## VERTICAL SPEED CARRIED INTO THE ATTACH.
+##
+## Was recorded with no consumer and dismissed as probably a duplicate of
+## wall_running_min_speed above. The owner then reported the run's peak sitting
+## about half a metre above the original's, and this field explains the whole
+## gap.
+##
+## The attach used to keep whatever upward speed the jump still had -- maxf()
+## on the lift below, so a fast jump into a wall rose by its OWN arc rather
+## than by the lift's 1.7 m. At a typical 6 m/s that is 2.37 m under the wall's
+## own gravity: two thirds of a metre too much, and dependent on exactly when
+## contact happened.
+##
+## Clamped first, the lift always wins (its own 1.7 m needs 5.16 m/s, well above
+## this 3.0), so every attach rises by exactly the confirmed 1.7 m from wherever
+## it touched. Which is what a field called `InitialZHeight` being a HEIGHT
+## implies in the first place.
 @export var wall_running_velocity_start_limit: float = 3.0
 ## Minimum wall height to run along. Recorded; nothing reads this yet --
 ## Probes.wall_query() has no wall-height measurement of its own (its side

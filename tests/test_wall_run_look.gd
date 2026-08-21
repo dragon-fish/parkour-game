@@ -535,3 +535,58 @@ func test_a_run_carries_on_after_the_eyes_clear_the_wall_top() -> void:
 	# bug, and this fixture cannot tell the two apart without asking.
 	assert_lt(highest, TOP + 0.9, \
 		"the run carried on past the point the feet clear the wall (%.2f m)" % highest)
+
+func test_every_attach_rises_by_the_same_confirmed_amount() -> void:
+	# ✅ WallRunningHorisontalInitialZHeight = 170 uu is a HEIGHT, so an attach
+	# is worth 1.7 m of rise -- not "1.7 m or whatever your jump had left,
+	# whichever is more", which is what it was.
+	#
+	# The owner measured the peak sitting about half a metre above the
+	# original's. Preserving the jump's own upward speed is the whole gap: at a
+	# typical 6 m/s that is 2.37 m under the wall's own gravity.
+	#
+	# Measured at TWO attach speeds, because the bug's signature is not merely
+	# "too high" but "height depends on when you happened to touch".
+	var peaks: Array[float] = []
+	for rise_at_attach in [1.0, 6.0]:
+		var world := TestWorld.build(get_tree(), MovementConfig.new())
+		_world = world
+		var wall := StaticBody3D.new()
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(20.0, 12.0, 1.0)
+		shape.shape = box
+		wall.add_child(shape)
+		get_tree().root.add_child(wall)
+		world["wall"] = wall
+		wall.global_position = Vector3(0.95, 6.0, 0.0)
+		wall.rotation = Vector3(0.0, PI * 0.5, 0.0)
+
+		var player: Player = world["player"]
+		var input: ScriptedInputSource = world["input"]
+		await step(1)
+		TestWorld.place(world)
+		await step(30)
+		input.press_jump()
+		await step(1)
+		player.velocity = Vector3(0.0, rise_at_attach, -7.0)
+		await step(1)
+		assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
+			"never attached at %.1f m/s of rise" % rise_at_attach)
+		var attached_at: float = player.global_position.y
+		var highest: float = attached_at
+		var ticks := 0
+		while ticks < 120 and player.move_manager.current_name == Move.WALL_RUN:
+			await step(1)
+			highest = maxf(highest, player.global_position.y)
+			ticks += 1
+		peaks.append(highest - attached_at)
+		after_each()
+
+	var lift: float = MovementConfig.new().wall_run.wall_running_horisontal_initial_z_height
+	for i in peaks.size():
+		assert_almost_eq(peaks[i], lift, 0.25, \
+			"attach %d rose %.2f m against the confirmed %.2f" % [i, peaks[i], lift])
+	assert_almost_eq(peaks[0], peaks[1], 0.15, \
+		"the rise depends on how fast you were going up when you touched (%.2f vs %.2f)" \
+		% [peaks[0], peaks[1]])
