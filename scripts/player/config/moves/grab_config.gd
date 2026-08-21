@@ -80,7 +80,16 @@ func _init() -> void:
 	max_look_constraint = Vector3(deg_to_rad(87.9), deg_to_rad(170.0), PI)
 	# ⚠️ PROJECT-DEFINED. Turned fully away, the view can look well below level
 	# -- far enough to see the ground under the drop.
+	# ONE-HANDED PAST A QUARTER TURN. The original switches hold as the player
+	# turns away, and only the one-handed hold can look down -- which is what
+	# makes "hang, look at the drop, let go" possible at all. Both hands on the
+	# ledge, the view stays up.
+	#
+	# ⚠️ The threshold is the owner's: they put the switch at around 90 degrees.
+	# The CDO's four look-constraint pairs make it clear the original selects
+	# between several holds, but not on what.
 	pitch_relaxes_with_yaw = true
+	pitch_relax_yaw_threshold = deg_to_rad(90.0)
 	pitch_min_turned_away = -deg_to_rad(70.0)
 	# ⚠️ The CDO also sets bDisableFaceRotation, which this project does not
 	# implement (docs/feel-backlog.md 12). Absolute yaw is the stand-in: with

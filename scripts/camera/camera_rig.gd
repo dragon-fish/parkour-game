@@ -48,6 +48,8 @@ var _look_max: Vector3 = Vector3(PI, PI, PI)
 var _look_absolute_yaw: bool = false
 var _look_pitch_relaxes: bool = false
 var _look_pitch_min_turned: float = -PI
+var _look_pitch_relax_threshold: float = 0.0
+var _look_pitch_recover_speed: float = 14.0
 ## How far the view has turned from the facing the constraint was captured at,
 ## as a fraction of the yaw range: 0 facing forward, 1 at either edge. Written
 ## by apply_look() and read by its own pitch clamp a few lines later.
@@ -161,7 +163,8 @@ func clear_head_position() -> void:
 ## fan would drift to follow the player instead of staying pinned to the
 ## facing the move began with.
 func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \
-		pitch_relaxes: bool = false, pitch_min_turned: float = -PI) -> void:
+		pitch_relaxes: bool = false, pitch_min_turned: float = -PI, \
+		relax_threshold: float = 0.0, recover_speed: float = 14.0) -> void:
 	if not _has_look_constraint:
 		var body := get_parent()
 		if body is Node3D:
@@ -174,6 +177,8 @@ func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \
 	_look_absolute_yaw = absolute_yaw
 	_look_pitch_relaxes = pitch_relaxes
 	_look_pitch_min_turned = pitch_min_turned
+	_look_pitch_relax_threshold = relax_threshold
+	_look_pitch_recover_speed = recover_speed
 	_has_look_constraint = true
 
 func clear_look_constraint() -> void:
@@ -242,7 +247,7 @@ func reset_state() -> void:
 ## MaxLookConstraint, 06 §6.2) and it is a genuine input constraint: on a wall
 ## the view is locked into a +-90 degree yaw fan and cannot look back, which
 ## is where that whole sensation comes from.
-func apply_look(look_delta: Vector2, body: Node3D) -> void:
+func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 	if _cinematic:
 		return
 	if _config == null:
@@ -275,18 +280,51 @@ func apply_look(look_delta: Vector2, body: Node3D) -> void:
 
 	var pitch_min: float = -deg_to_rad(_config.camera.pitch_limit_deg)
 	var pitch_max: float = deg_to_rad(_config.camera.pitch_limit_deg)
+	var floor_pitch: float = -PI
 	if _has_look_constraint:
-		var floor_pitch: float = _look_min.x
-		if _look_pitch_relaxes:
-			# Eased open as the view turns away -- see
-			# MoveConfig.pitch_relaxes_with_yaw. Facing the constraint's own
-			# direction the floor is the declared one; at the edge of the yaw
-			# range it has reached pitch_min_turned_away.
-			floor_pitch = lerpf(_look_min.x, _look_pitch_min_turned, _look_yaw_fraction)
+		floor_pitch = _relaxed_pitch_floor() if _look_pitch_relaxes else _look_min.x
 		pitch_min = maxf(pitch_min, floor_pitch)
 		pitch_max = minf(pitch_max, _look_max.x)
-	_pitch = clampf(_pitch - look_delta.y * _config.camera.mouse_sensitivity, pitch_min, pitch_max)
+	var wanted: float = _pitch - look_delta.y * _config.camera.mouse_sensitivity
+	# The floor is EASED UP to meet a view already below it, rather than that
+	# view being yanked up to meet the floor.
+	#
+	# Only that case. A player actively dragging the view down against a floor
+	# that has not moved is clamped hard, as always. What is being softened is
+	# the floor RISING out from under them, which happens when they look down
+	# from a one-handed hang and then turn back toward the wall; clamping there
+	# puts the view at level in a single frame.
+	#
+	# Told apart by the PREVIOUS pitch rather than the requested one: if _pitch
+	# was already below the floor then the floor moved, whereas if only
+	# `wanted` is below it then the player is pulling.
+	var effective_floor: float = pitch_min
+	if _has_look_constraint and _look_pitch_relaxes and _pitch < floor_pitch and delta > 0.0:
+		effective_floor = lerpf(_pitch, floor_pitch, \
+			clampf(_look_pitch_recover_speed * delta, 0.0, 1.0))
+	_pitch = clampf(wanted, effective_floor, pitch_max)
 	rotation.x = _pitch
+
+## The pitch floor for a constraint that relaxes as the view turns away.
+##
+## SEGMENTED, not a straight ramp. Under pitch_relax_yaw_threshold the declared
+## floor applies unchanged; past it the floor opens toward pitch_min_turned_away
+## across whatever yaw range is left.
+##
+## Hanging is what this is shaped for: the original switches to a ONE-HANDED
+## hold once the player has turned far enough round, and only that hold can
+## look down. Below the threshold both hands are on the ledge and the view
+## stays up, which a single ramp from zero cannot express -- it would let the
+## player peek downward from a two-handed hang.
+func _relaxed_pitch_floor() -> float:
+	var turned: float = absf(_look_relative_yaw)
+	if turned <= _look_pitch_relax_threshold:
+		return _look_min.x
+	var yaw_span: float = maxf(absf(_look_max.y if _look_relative_yaw >= 0.0 else _look_min.y), \
+		_look_pitch_relax_threshold + 0.0001)
+	var past: float = (turned - _look_pitch_relax_threshold) \
+		/ maxf(yaw_span - _look_pitch_relax_threshold, 0.0001)
+	return lerpf(_look_min.x, _look_pitch_min_turned, clampf(past, 0.0, 1.0))
 
 func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> void:
 	if _config == null or camera == null:

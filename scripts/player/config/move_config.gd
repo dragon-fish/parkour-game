@@ -60,6 +60,24 @@ extends Resource
 ## Only read when pitch_relaxes_with_yaw is set.
 @export var pitch_min_turned_away: float = -PI
 
+## How far the view must turn before the pitch floor starts opening at all.
+## Below this the declared floor applies unchanged; past it, the floor eases
+## toward pitch_min_turned_away across the rest of the yaw range.
+##
+## Hanging is the case: the original switches to a ONE-HANDED hold once the
+## player has turned far enough, and that is the hold that can look down. Under
+## it, both hands are on the ledge and the view stays up. The owner puts the
+## switch at around a quarter turn.
+@export var pitch_relax_yaw_threshold: float = deg_to_rad(90.0)
+
+## How quickly the view is pushed back up when it is below the floor -- which
+## happens when the player looks down under the relaxed clamp and then turns
+## back toward the wall. Exponential, so a rate rather than a duration.
+##
+## Pushed rather than clamped: clamping snaps, and the view arriving back at
+## level in one frame reads as a glitch rather than as hauling yourself round.
+@export var pitch_recover_speed: float = 14.0
+
 ## Which environment probes this move runs each tick. The original makes
 ## these per-move switches rather than hardcoding them in each state's
 ## update -- which is how "a rising jump can start a wall climb but a fall

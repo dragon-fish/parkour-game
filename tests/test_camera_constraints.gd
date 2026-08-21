@@ -246,3 +246,88 @@ func test_a_fast_flick_cannot_walk_through_an_absolute_yaw_fan() -> void:
 
 	rig.get_parent().queue_free()
 	await step(1)
+
+func _hanging_rig() -> Array:
+	# A rig wearing the hang's own clamp, so these test the shipped values
+	# rather than literals.
+	var rig := _rig()
+	await step(1)
+	var grab: GrabConfig = MovementConfig.new().grab
+	rig.set_look_constraint(grab.min_look_constraint, grab.max_look_constraint, \
+		grab.absolute_yaw_constraint, grab.pitch_relaxes_with_yaw, \
+		grab.pitch_min_turned_away, grab.pitch_relax_yaw_threshold, \
+		grab.pitch_recover_speed)
+	return [rig, rig.get_parent() as Node3D, grab]
+
+func test_a_two_handed_hang_cannot_look_down() -> void:
+	# Facing the wall, both hands are on the ledge and there is nothing below
+	# to look at. The floor holds until the player has turned far enough to be
+	# holding on with one hand.
+	var parts: Array = await _hanging_rig()
+	var rig: CameraRig = parts[0]
+	var body: Node3D = parts[1]
+	var delta := 1.0 / 60.0
+
+	for i in 60:
+		rig.apply_look(Vector2(0.0, 100.0), body, delta)   # drag the view down
+	assert_almost_eq(rig.rotation.x, 0.0, 0.01, \
+		"a two-handed hang looked down (%.1f degrees)" % rad_to_deg(rig.rotation.x))
+
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_turning_past_the_threshold_lets_the_view_look_down() -> void:
+	# Turned far enough round, the hold is one-handed and the drop below is
+	# what the player needs to see before letting go.
+	var parts: Array = await _hanging_rig()
+	var rig: CameraRig = parts[0]
+	var body: Node3D = parts[1]
+	var grab: GrabConfig = parts[2]
+	var delta := 1.0 / 60.0
+
+	# Turn to the far edge of the fan, well past the 90 degree threshold.
+	for i in 60:
+		rig.apply_look(Vector2(-200.0, 0.0), body, delta)
+	for i in 60:
+		rig.apply_look(Vector2(0.0, 100.0), body, delta)
+	assert_true(rig.rotation.x < -deg_to_rad(30.0), \
+		"turned fully away, the view still could not look down (%.1f degrees)" \
+			% rad_to_deg(rig.rotation.x))
+
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_turning_back_pushes_the_view_up_rather_than_snapping_it() -> void:
+	# The floor rises out from under a view that is already below it. Clamping
+	# would put the view at level in a single frame; it should be pushed.
+	var parts: Array = await _hanging_rig()
+	var rig: CameraRig = parts[0]
+	var body: Node3D = parts[1]
+	var delta := 1.0 / 60.0
+
+	for i in 60:
+		rig.apply_look(Vector2(-200.0, 0.0), body, delta)
+	for i in 60:
+		rig.apply_look(Vector2(0.0, 100.0), body, delta)
+	var looked_down: float = rig.rotation.x
+	assert_true(looked_down < -deg_to_rad(30.0), "test setup: never looked down")
+
+	# Turn back toward the wall in ONE tick, so the floor jumps up under the
+	# view. Sized to land INSIDE the threshold rather than overshooting to the
+	# far edge of the fan -- which is still past 90 degrees, so the floor would
+	# not have risen at all and there would be nothing to test.
+	var sens: float = MovementConfig.new().camera.mouse_sensitivity
+	# yaw_delta is -look_delta.x * sensitivity, so a POSITIVE x turns back.
+	rig.apply_look(Vector2(deg_to_rad(100.0) / sens, 0.0), body, delta)
+	assert_true(rig.rotation.x < looked_down + deg_to_rad(20.0), \
+		"the view snapped back up instead of being pushed (%.1f -> %.1f degrees)" \
+			% [rad_to_deg(looked_down), rad_to_deg(rig.rotation.x)])
+
+	# ...and does get there, given a moment.
+	for i in 60:
+		rig.apply_look(Vector2.ZERO, body, delta)
+	assert_almost_eq(rig.rotation.x, 0.0, 0.02, \
+		"the view never came back up to level (%.1f degrees)" % rad_to_deg(rig.rotation.x))
+
+	rig.get_parent().queue_free()
+	await step(1)

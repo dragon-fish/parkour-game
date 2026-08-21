@@ -842,7 +842,7 @@ func _physics_process(delta: float) -> void:
 	_service_pending_capsule_restore()
 
 	if camera_rig != null:
-		camera_rig.apply_look(input.look, self)
+		camera_rig.apply_look(input.look, self, delta)
 
 	if noclip:
 		_fly_noclip(delta, input)
