@@ -215,3 +215,11 @@ extends Resource
 ## axis. Exponential, so a rate: ~8 carries a 57 degree correction -- the widest
 ## a wall-run attach can produce -- in about a third of a second.
 @export var look_settle_speed: float = 8.0
+
+## How far the eye banks through a vault, at the middle of the arc.
+##
+## ⚠️ PROJECT-DEFINED. The owner's account of the original is qualitative --
+## "the camera tilts slightly as it traces a graceful arc over the obstacle" --
+## so this is set to be felt rather than noticed. Eased in and out across the
+## vault's own duration, so it is never a step.
+@export var vault_roll_deg: float = 7.0

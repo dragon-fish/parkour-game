@@ -265,3 +265,16 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## clear it, because it is a hands-on-top move. What you can vault is what you
 ## can get your hands on top of.
 @export var max_edge_above_feet: float = 1.89
+
+## How high a vault OVER bulges above the straight line from where it started to
+## where it lands.
+##
+## Separate from vault_arc_height, which shapes a vault ONTO, because the two
+## manoeuvres have different jobs: one puts the feet on top of something, the
+## other carries the body PAST it without ever getting on top.
+##
+## ✅ From the measured fence vault: committed with the feet at SZD 0.76 and
+## peaked at 1.77, so the arc rises about 1.0 m above where it began. See
+## docs/feel-backlog.md 26 and 27, and note that the peak is 0.87 m BELOW the
+## obstacle's own top -- the feet never clear the fence at all.
+@export var vault_over_arc_height: float = 1.0

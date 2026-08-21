@@ -17,6 +17,9 @@ var _aborted: bool = false
 ## actually got to by then. See docs/contact-drives-movement.md.
 var _landing: Vector3 = Vector3.ZERO
 var _arc_duration: float = 0.0
+## How high the scripted arc bulges. A vault OVER rises far less than one ONTO,
+## because it never gets on top of anything.
+var _arc_height: float = 0.0
 var _touched: bool = false
 ## Where the obstacle's face was when the commit was made. See Move.touching().
 var _face_point: Vector3 = Vector3.ZERO
@@ -98,6 +101,29 @@ func enter(_previous: StringName) -> void:
 	# is still recorded but left unread.
 	landing.y = top.y + player.standing_height() * 0.5
 
+	# A VAULT *OVER* LANDS ON THE FAR SIDE, NOT ON THE OBSTACLE.
+	#
+	# Everything above builds an ONTO: feet flush on the probed top. Applied to
+	# a vault over as well -- which is what this move did -- the body is hauled
+	# up to the obstacle's own top edge, which the owner described exactly:
+	# "ours is the foot catching and then the body being lifted to the top edge,
+	# where the original traces a graceful arc over it".
+	#
+	# ✅ MEASURED: a VaultOver's peak sits 0.87 m BELOW the obstacle's top and
+	# the feet never clear it at all (docs/feel-backlog.md 27). It is a
+	# hands-on-top move that carries the body PAST the obstacle, not over it.
+	var arc: float = config.speed_vault.vault_arc_height
+	# STANDABILITY PICKS THE LANDING, which is the owner's own rule from play:
+	# a fence and the cabinet beside it are the same height and both report
+	# VaultOver -- the cabinet's wide top is simply where she ends up standing,
+	# and the fence's is not somewhere anyone could. A far side to land on is
+	# the other half: without one there is nowhere to go but up.
+	var far_point: Vector3 = query.get("far_point", Vector3.ZERO)
+	if not bool(query.get("standable", true)) and far_point != Vector3.ZERO:
+		landing = far_point + _exit_direction * config.speed_vault.vault_exit_forward
+		landing.y = far_point.y + player.standing_height() * 0.5
+		arc = config.speed_vault.vault_over_arc_height
+
 	# WORKED OUT NOW, SPENT AT CONTACT.
 	#
 	# MaxDistanceTime is a confirmed field, so the original does commit before
@@ -113,6 +139,7 @@ func enter(_previous: StringName) -> void:
 	# the original, so anything else reads as floating. See
 	# docs/contact-drives-movement.md.
 	_landing = landing
+	_arc_height = arc
 	_face_point = query.get("face_point", Vector3.ZERO)
 	_arc_duration = variant["duration"]
 	_touched = false
@@ -129,7 +156,7 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		if touching(_face_point):
 			_touched = true
 			# From where the body ACTUALLY IS, which is the whole point.
-			begin(player.global_position, _landing, _arc_duration, config.speed_vault.vault_arc_height)
+			begin(player.global_position, _landing, _arc_duration, _arc_height)
 			player.velocity = Vector3.ZERO
 		elif _approach_time >= config.speed_vault.approach_timeout:
 			# The contact the commit predicted never arrived -- jumped short, or
@@ -140,6 +167,16 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		else:
 			carry_ballistically(delta)
 			return KEEP
+
+	# A slight bank through the arc, peaking in the middle and gone by the end.
+	# sin() rather than a ramp: a vault that ended still leaning would hand a
+	# tilted horizon to whatever came next.
+	if player.camera_rig != null:
+		# LEANS ONE WAY, ALWAYS. A vault is a one-handed move -- the same hand
+		# every time in the original -- so the bank has a side rather than being
+		# derived from the geometry. Positive is a lean to the right.
+		player.camera_rig.set_vault_roll(
+			sin(PI * progress()) * deg_to_rad(config.camera.vault_roll_deg))
 
 	if advance(delta):
 		player.velocity = _exit_direction * _exit_speed

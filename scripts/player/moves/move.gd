@@ -91,6 +91,14 @@ func exit() -> void:
 ## IntoGrabConfig.arrive_distance and WallClimbMove.rise_speed()'s base.
 const CONTACT_MARGIN := 0.08
 
+## One physics tick, for the predictive part of touching(). Read from the engine
+## rather than assumed, so a project that changes its tick rate does not
+## silently change how early a vault commits.
+var _tick_travel: float = 1.0 / 60.0
+
+func _ready() -> void:
+	_tick_travel = 1.0 / maxf(float(Engine.physics_ticks_per_second), 1.0)
+
 ## AGAINST A POINT CAPTURED AT COMMIT, not against a live query.
 ##
 ## The probes are built to see an interaction COMING, and stop reporting one
@@ -111,7 +119,17 @@ func touching(face_point: Vector3) -> bool:
 	# Annotated, not inferred: `player` is deliberately untyped (see above), so
 	# anything read through it arrives as Variant.
 	var here: Vector3 = player.global_position
-	var reach: float = player.current_capsule_radius() + CONTACT_MARGIN
+	# PREDICTIVE, by one tick's travel. move_and_slide() stops the capsule at
+	# exactly one radius from the face, so a test that only fires AT that radius
+	# is a tick too late: at 7 m/s the body covers 0.117 m in a tick and can go
+	# from clear to already-stopped between two checks. The owner felt that
+	# immediately -- "the foot catches, and then the body gets lifted".
+	#
+	# Adding the distance this tick will cover means the scripted motion always
+	# takes over before the collision resolves, which is what makes the vault
+	# read as one continuous movement rather than a stumble and a recovery.
+	var speed: float = player.horizontal_speed()
+	var reach: float = player.current_capsule_radius() + CONTACT_MARGIN + speed * _tick_travel
 	return Vector2(face_point.x - here.x, face_point.z - here.z).length() <= reach
 
 ## Carries the body through one tick of its own ballistic motion: full gravity,

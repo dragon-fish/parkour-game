@@ -353,6 +353,10 @@ func vault_query() -> Dictionary:
 		"valid": true, "top": top, "edge": top, "normal": top_normal,
 		"height": height, "distance": distance, "vault_over": vault_over,
 		"standable": standable,
+		# WHERE THE FAR SIDE IS. A vault OVER lands here rather than on the
+		# obstacle's own top -- measured, its peak sits 0.87 m BELOW that top
+		# and the feet never clear it. See docs/feel-backlog.md 27.
+		"far_point": _vault_over_point,
 		"face_normal": lowest_normal,
 		# WHERE THE OBSTACLE'S FACE IS, in world space. Returned so a move that
 		# has committed can watch for CONTACT without re-querying -- see
@@ -387,7 +391,13 @@ func vault_query() -> Dictionary:
 ## called, and the walkability that matters HERE is VaultOverDown's own hit
 ## normal, checked below. Dropped rather than kept as a decorative unused
 ## parameter.
+## Where the far-side floor is, or ZERO if there is none low enough to vault
+## onto. Written alongside _query_vault_over() rather than folded into it so the
+## boolean's own call sites stay unchanged.
+var _vault_over_point: Vector3 = Vector3.ZERO
+
 func _query_vault_over(top: Vector3) -> bool:
+	_vault_over_point = Vector3.ZERO
 	var local_top: Vector3 = to_local(top)
 	var origin_y: float = local_top.y + SURFACE_ORIGIN_MARGIN
 	_vault_over.position = Vector3(local_top.x, origin_y, \
@@ -398,7 +408,11 @@ func _query_vault_over(top: Vector3) -> bool:
 		return false
 	if _vault_over.get_collision_normal().y < _config.pawn.walkable_floor_z:
 		return false
-	return _vault_over.get_collision_point().y <= top.y - MIN_HEIGHT_EPSILON
+	var landing: Vector3 = _vault_over.get_collision_point()
+	if landing.y > top.y - MIN_HEIGHT_EPSILON:
+		return false
+	_vault_over_point = landing
+	return true
 
 ## A ledge high enough to hang from but still within reach.
 func ledge_query() -> Dictionary:

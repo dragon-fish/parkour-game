@@ -28,6 +28,12 @@ var _eye_ground_y: float = 0.0
 var _has_eye_ground: bool = false
 var _wall_side: int = 0
 var _roll: float = 0.0
+## A bank owned by SpeedVaultMove, added on top of the wall-run tilt rather than
+## fighting it for rotation.z. The owner's description of the original: "a
+## stylish vault, the camera tilting slightly as it traces a graceful arc over
+## the obstacle." A vault is a scripted motion, so the eye is entitled to be
+## moved by it -- see docs/camera-authority.md.
+var _vault_roll: float = 0.0
 ## An additive downward pitch owned by LandingMove. Separate from _dip because
 ## dip is a spring driven by impact speed and recovers on its own schedule;
 ## this one is driven explicitly by a state that knows how long it has left.
@@ -145,6 +151,11 @@ func set_landing_pitch_offset(radians: float) -> void:
 ## Sets the roll's own rotation about the pitch axis, in radians, measured from
 ## upright. Driven every tick by SkillRollMove; see _roll_spin for why this is
 ## a separate channel from the landing sink rather than more of the same.
+## The bank a vault leans through, in radians. Driven every tick by
+## SpeedVaultMove across its own arc; this rig holds no timer for it.
+func set_vault_roll(radians: float) -> void:
+	_vault_roll = radians
+
 func set_roll_spin(radians: float) -> void:
 	_roll_spin = radians
 
@@ -312,6 +323,7 @@ func reset_state() -> void:
 	_has_eye_ground = false
 	_wall_side = 0
 	_roll = 0.0
+	_vault_roll = 0.0
 	_landing_pitch = 0.0
 	_roll_spin = 0.0
 	_has_head = false
@@ -584,7 +596,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# behavioural suite is restored.
 	var target_roll := deg_to_rad(_config.camera.wall_camera_roll_deg) * float(_wall_side)
 	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.camera.wall_camera_roll_speed) * delta)
-	rotation.z = _roll
+	rotation.z = _roll + _vault_roll
 
 	# Layered on top of the ordinary look pitch, same relationship _dip has to
 	# bob above: apply_look() already wrote rotation.x = _pitch for this tick's
