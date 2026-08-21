@@ -68,3 +68,10 @@ __pycache__/
 # Arena._load_sandbox). Not generated, not required, and not something a
 # throwaway ramp needs to be committed for.
 scenes/sandbox.tscn
+
+# Godot's own export output. Build artifacts, not source -- and the web target
+# in particular drops a ~40 MB .wasm and a ~10 MB .pck here, neither of which
+# has an LFS rule, so a `git add -A` puts them into history as raw blobs. That
+# is exactly how they got committed once; this entry is why it cannot happen
+# again.
+dist/

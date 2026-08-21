@@ -241,6 +241,25 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## Player, not MovementConfig.
 @export var body_mount_rotation_degrees: Vector3 = Vector3.ZERO
 
+## Which node inside `body_scene` the head-follow camera should track, as a
+## path RELATIVE TO THE BODY INSTANCE'S ROOT. Empty (the default) falls back
+## to _find_head_node()'s name search.
+##
+## The search is a BFS substring match, which is right for "point this at
+## whatever model someone dropped in" and wrong the moment a model names an
+## ancestor after the head too. The wine_fox body does exactly that: its real
+## head sits at .../AllHead2/MHead/Head2/Head, and "AllHead2" both contains
+## "head" and is three levels shallower, so the search claimed it -- leaving
+## the camera tracking a group node above the neck rather than the head.
+##
+## Deliberately an override rather than a smarter search: preferring the
+## deepest match instead of the shallowest would be a guess about every OTHER
+## model's node naming, made to fix one model whose path is known exactly.
+##
+## Per-model, so it lives here beside body_scene and body_mount_offset rather
+## than in MovementConfig -- a fact about the asset, not a feel value.
+@export var body_head_path: NodePath
+
 ## The instance of body_scene actually attached under BodyRoot, or null if
 ## none. Exposed as a plain var (not just a BodyRoot child lookup) so tests
 ## and other systems can inspect what got attached without reaching into
@@ -643,7 +662,7 @@ func _attach_body(scene: PackedScene) -> void:
 	body_root.add_child(body)
 	body.transform = body_mount_transform()
 	_wire_body_animation(body)
-	head_node = _find_head_node(body)
+	head_node = _resolve_head_node(body)
 
 ## Every clip name CharacterAnimator's _target_animation() knows how to ask
 ## for, across every state (see that function for the per-state fallback
@@ -845,6 +864,22 @@ func _body_root() -> Node3D:
 ## never track a bone the player cannot currently see. Returns null -- a
 ## fully supported outcome, see CameraRig.update_effects() -- if nothing
 ## visible matches.
+## body_head_path if it points at something, otherwise the name search.
+##
+## A path that resolves to nothing WARNS and falls back rather than failing:
+## this whole subsystem is presentational, and _attach_body() above already
+## takes the same line -- a body that cannot be attached degrades to "no body"
+## instead of taking startup down with it. A silent fallback would be worse
+## than either, since the symptom is a camera that tracks slightly the wrong
+## place, which reads as a feel problem rather than a broken path.
+func _resolve_head_node(body_node: Node3D) -> Node3D:
+	if not body_head_path.is_empty():
+		var explicit := body_node.get_node_or_null(body_head_path)
+		if explicit is Node3D:
+			return explicit as Node3D
+		push_warning("body_head_path '%s' resolved to nothing under %s -- " 			% [body_head_path, body_node.name] 			+ "falling back to the head/neck name search")
+	return _find_head_node(body_node)
+
 func _find_head_node(body_node: Node3D) -> Node3D:
 	for needle in ["neck", "head"]:
 		var found := _bfs_find_by_name(body_node, needle)
