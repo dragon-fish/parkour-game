@@ -206,23 +206,51 @@ func test_the_roll_plays_out_after_the_ground_runs_out() -> void:
 	await step(1)
 
 func test_the_roll_starts_from_the_current_pitch_and_ends_level() -> void:
-	# ✅ The owner, from the original: the pitch is NOT forced to zero on entry.
-	# The roll begins wherever the view is and finishes level, so looking up
-	# travels more than a full turn and looking down travels less.
+	# ✅ The owner, read off the HUD at 1/8 speed rather than felt: the pitch is
+	# NOT forced to zero on entry. The roll begins wherever the view is and
+	# finishes level, so looking up travels more than a full turn and looking
+	# down travels less.
 	#
-	# CameraRig composes this as `rotation.x = pitch - roll_spin`, so a spin of
-	# exactly one turn ends back at the pitch it started from -- which is what
-	# ours did, and why it never levelled out.
-	var config := MovementConfig.new()
-	var full: float = config.skill_roll.camera_spin
-	for pitch in [deg_to_rad(30.0), 0.0, -deg_to_rad(30.0)]:
-		# The move's own arithmetic, asserted directly: the total is one turn
-		# plus wherever the view began.
-		var total: float = full + pitch
-		# Ends level: pitch - total lands on -TAU, which is zero.
-		assert_almost_eq(pitch - total, -full, 0.0001, \
-			"a roll from %.0f degrees does not finish level" % rad_to_deg(pitch))
-	# ...and looking up is the LONGER way round, which is the owner's own
-	# description and the half a constant-spin version gets wrong.
-	assert_gt(full + deg_to_rad(30.0), full, "looking up did not travel further")
-	assert_lt(full - deg_to_rad(30.0), full, "looking down did not travel less")
+	# CameraRig composes this as `rotation.x = pitch - roll_spin`, and the roll
+	# pins the pitch to level and carries the landing pitch in the SPIN. So the
+	# arithmetic to check is the spin's own two ends.
+	var full: float = MovementConfig.new().skill_roll.camera_spin
+	for pitch in [deg_to_rad(50.0), 0.0, -deg_to_rad(50.0)]:
+		var spin_from: float = -pitch
+		# First frame reads as the pitch landed with...
+		assert_almost_eq(0.0 - spin_from, pitch, 0.0001, 			"a roll from %.0f degrees does not start there" % rad_to_deg(pitch))
+		# ...and the last reads as level, -TAU being zero.
+		assert_almost_eq(0.0 - full, -full, 0.0001, 			"a roll from %.0f degrees does not finish level" % rad_to_deg(pitch))
+		# The distance travelled is the asymmetry the owner described.
+		var travelled: float = full - spin_from
+		assert_almost_eq(travelled, full + pitch, 0.0001, 			"a roll from %.0f degrees travelled the wrong distance" % rad_to_deg(pitch))
+	assert_gt(full + deg_to_rad(50.0), full, "looking up did not travel further")
+	assert_lt(full - deg_to_rad(50.0), full, "looking down did not travel less")
+
+func test_the_roll_leaves_the_view_where_it_put_it() -> void:
+	# THE SPRING-BACK. The spin is a temporary offset and is released when the
+	# roll ends; the pitch it was offsetting had never moved, so the view
+	# snapped back to the landing pitch on the very next frame. Measured by the
+	# owner at 1/8 speed: enter at 50, roll to level, and then 50 again.
+	#
+	# Pinning the pitch to level on entry is what fixes it -- there is nothing
+	# left to spring back to.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	var rig: CameraRig = player.camera_rig
+
+	rig.set_pitch(deg_to_rad(50.0))
+	player.move_manager.start(Move.SKILL_ROLL)
+	await step(1)
+	assert_almost_eq(float(rig.look_debug()["pitch"]), 0.0, 0.001, 		"the roll did not take the pitch over -- it is still offsetting it")
+
+	# Out the far side: the roll is spent and the spin released.
+	await step(75)
+	assert_ne(player.move_manager.current_name, Move.SKILL_ROLL, "the roll never ended")
+	assert_almost_eq(rig.rotation.x, 0.0, deg_to_rad(3.0), 		"the view sprang back to %.0f degrees after the roll" % rad_to_deg(rig.rotation.x))
+
+	TestWorld.teardown(world)
+	await step(1)

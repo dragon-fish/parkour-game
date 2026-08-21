@@ -33,6 +33,9 @@ var _airborne: bool = false
 ## it is one full turn ADJUSTED by wherever the view already was, so the roll
 ## always finishes level. See enter().
 var _spin_total: float = 0.0
+## Where the spin begins: the negation of the pitch landed with, so the first
+## frame of the roll reads as exactly that pitch. See enter().
+var _spin_from: float = 0.0
 
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
@@ -76,22 +79,44 @@ func enter(_previous: StringName) -> void:
 		facing.y = 0.0
 		_direction = facing.normalized() if facing.length_squared() > 0.0001 else Vector3.ZERO
 
-	# THE ROLL STARTS FROM WHEREVER THE VIEW IS, AND ALWAYS ENDS LEVEL.
+	# THE ROLL TAKES THE PITCH OVER, rather than offsetting it.
 	#
-	# ✅ The owner, from the original: the pitch is not forced to zero on entry;
-	# the roll begins at the current pitch and finishes at zero, so looking UP
-	# travels more than a full turn and looking DOWN travels less.
+	# ✅ CONFIRMED FROM THE ORIGINAL'S OWN PANEL: at the instant SkillRoll
+	# begins, P reads 0. Everything after that is camera performance.
 	#
-	# CameraRig composes this as `rotation.x = pitch - roll_spin`, so a spin of
-	# one full turn ends back at the pitch it started from -- which is what ours
-	# did, and why it never levelled out. Adding the starting pitch to the total
-	# makes the finish land on -TAU, which is level, and makes the DISTANCE
-	# travelled TAU + pitch: more when looking up, less when looking down,
-	# exactly as described.
+	# Which is the general principle the owner drew out of it -- in the original
+	# the AUTHORITATIVE state and the DISPLAYED one are allowed to disagree. The
+	# gameplay pitch is level from the first frame; the visible rotation still
+	# starts from the pitch that was landed with and travels more than a full
+	# turn when looking up, less when looking down. Both are true because they
+	# are different channels.
+	#
+	# A first attempt drove only the spin and left the pitch alone, which the
+	# owner then found three faults with at once, all from the same cause:
+	#
+	#   * the view SPRANG BACK the frame after the roll ended -- the spin is a
+	#     temporary offset and gets released, while the pitch it was offsetting
+	#     had never moved. The roll had not actually turned the view at all.
+	#   * a roll entered at -50 STARTED at -11, because this move's own look
+	#     clamp has a confirmed floor there and takes effect immediately.
+	#   * and it then ENDED at -320, because the arithmetic used the -50 read
+	#     before that clamp while the view was already at -11.
+	#
+	# All three go away by pinning the pitch to level and carrying the landing
+	# pitch in the SPIN instead -- which the panel reading above says is not a
+	# workaround but what the original does. The clamp then has nothing to fight
+	# (level is inside every constraint), the visible start is still the landing
+	# pitch because the spin begins at its negation, and releasing the spin at
+	# the end leaves the view where the roll put it rather than where it found
+	# it.
 	var pitch_at_start: float = 0.0
 	if player.camera_rig != null:
 		pitch_at_start = float(player.camera_rig.look_debug()["pitch"])
-	_spin_total = cfg.camera_spin + pitch_at_start
+		player.camera_rig.set_pitch(0.0)
+	# rotation.x = pitch - spin, so a spin of -pitch_at_start reads as exactly
+	# the pitch landed with, and one of camera_spin reads as level.
+	_spin_from = -pitch_at_start
+	_spin_total = cfg.camera_spin
 
 	player.speed_energy.energy *= cfg.energy_keep
 	player.set_capsule_height(config.crouch.crouch_capsule_height)
@@ -175,7 +200,7 @@ func _drive_camera() -> void:
 		return
 	var t: float = clampf(_elapsed / maxf(cfg.duration, 0.001), 0.0, 1.0)
 	var eased: float = t * t * (3.0 - 2.0 * t)
-	player.camera_rig.set_roll_spin(eased * _spin_total)
+	player.camera_rig.set_roll_spin(lerpf(_spin_from, _spin_total, eased))
 	# The eye dips through the middle and comes back: zero at both ends, so it
 	# hands over to ordinary walking without a step.
 	player.camera_rig.set_crouch_amount(sin(PI * t) * cfg.camera_crouch)

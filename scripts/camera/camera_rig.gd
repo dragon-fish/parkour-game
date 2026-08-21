@@ -156,6 +156,15 @@ func set_landing_pitch_offset(radians: float) -> void:
 func set_vault_roll(radians: float) -> void:
 	_vault_roll = radians
 
+## Sets the look pitch outright.
+##
+## For a move that TAKES OVER the pitch rather than offsetting it. SkillRoll is
+## the case and so far the only one: it pins the pitch to level and carries the
+## landing pitch in its own spin instead, so that when the spin is released at
+## the end there is nothing left to spring back to. See SkillRollMove.enter().
+func set_pitch(radians: float) -> void:
+	_pitch = radians
+
 func set_roll_spin(radians: float) -> void:
 	_roll_spin = radians
 
