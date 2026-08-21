@@ -33,13 +33,19 @@ var _airborne: bool = false
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	_airborne = false
+	# FIXED. NOT A FLOOR, AND NOT SCALED BY WHAT YOU ARRIVED WITH.
+	#
+	# ✅ The owner tested it directly in the original -- a roll from a standstill
+	# and a roll at 80 km/h both travel the same 3 m. What speed buys is not
+	# distance: it is the share of the energy budget that survives (energy_keep
+	# below), so you get back up to pace faster afterwards.
+	#
+	# This project had it as maxf(carried * speed_scale, forced), which was my
+	# reading of "3 m" as a minimum rather than the whole answer. That invention
+	# is also what the owner measured as an over-long 3.2 m roll: the momentum
+	# term, not the 3 m.
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	# maxf, so the measured 3 m is a FLOOR rather than a replacement: a fast
-	# landing still converts its momentum forward through speed_scale, and a
-	# straight drop -- which arrives with no horizontal speed at all -- still
-	# travels the distance the original travels. See SkillRollConfig.
-	var forced: float = cfg.forced_distance / maxf(cfg.duration, 0.001)
-	_speed = maxf(horizontal.length() * cfg.speed_scale, forced)
+	_speed = cfg.forced_distance / maxf(cfg.duration, 0.001)
 	# ALONG THE VIEW, NOT ALONG THE MOMENTUM.
 	#
 	# ✅ The owner, from the original: the forced travel follows where the CAMERA

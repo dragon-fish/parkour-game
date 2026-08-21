@@ -131,16 +131,16 @@ func test_a_roll_travels_the_measured_distance_even_from_a_dead_drop() -> void:
 	# otherwise, so the distance is a FLOOR.
 	var config := MovementConfig.new()
 	var floor_speed: float = config.skill_roll.forced_distance / config.skill_roll.duration
-	# ⚠️ 2.5, not the measured 3.0. Retuned down by feel after playing it here --
-	# the same distance read as further in this project than in the original, and
-	# the owner asked for 2.5. The measurement is still the reason the field
-	# exists, and is recorded on it.
-	assert_almost_eq(floor_speed, 2.5, 0.0001, \
-		"the forced travel is no longer the 2.5 m over the second that was asked for")
-	# Momentum still wins when there is any: a fast landing converts it forward
-	# rather than being pinned back to walking pace.
-	assert_gt(6.0 * config.skill_roll.speed_scale, floor_speed, \
-		"a running landing would be slowed to the forced pace")
+	assert_almost_eq(floor_speed, 3.0, 0.0001, \
+		"the forced travel does not work out at the measured 3 m over the second")
+	# ✅ AND IT DOES NOT SCALE WITH THE APPROACH. The owner tested a standstill
+	# roll and an 80 km/h roll in the original: both travel 3 m. What a fast
+	# approach buys is the share of the energy budget that survives, not
+	# distance -- a different channel for the same intent, and the original's.
+	assert_lt(config.skill_roll.energy_keep, 1.0, \
+		"the roll keeps the whole budget, so a fast approach buys nothing at all")
+	assert_gt(config.skill_roll.energy_keep, 0.0, \
+		"the roll keeps none of the budget, so a fast approach is thrown away")
 
 func test_the_roll_goes_where_the_view_points_not_where_the_body_was_going() -> void:
 	# ✅ THE OWNER'S FIND, and it is counter-intuitive enough to be worth a test

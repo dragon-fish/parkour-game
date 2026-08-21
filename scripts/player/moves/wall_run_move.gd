@@ -29,6 +29,8 @@ var _fan_yaw: float = 0.0
 ## Space pressed while Q's sweep is still carrying the view round. HELD, not
 ## acted on: see the note where it is armed.
 var _kick_armed: bool = false
+## Q pressed before there was a fan to sweep across. Spent as soon as there is.
+var _turn_armed: bool = false
 
 ## Guarded the same way SpeedVaultMove/GrabMove guard their own probe
 ## lookups: `player.probes` is null-checked at every call site rather than
@@ -140,6 +142,7 @@ func enter(_previous: StringName) -> void:
 	_aborted = false
 	_fan_centred = false
 	_kick_armed = false
+	_turn_armed = false
 	# Wall running IS physics-driven, but grounded-ness is still DECLARED, never
 	# inferred -- P2 replaced is_on_floor() as the authority precisely so that
 	# no move can leave a stale value behind. This first declaration covers
@@ -346,7 +349,24 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Swept to the fan's far edge, which the wall's side already decides: the
 	# fan runs from straight-ahead to a quarter turn AWAY from the wall, so its
 	# far edge IS the direction a kick should leave in.
-	if input.turn_pressed and player.camera_rig != null:
+	# BUFFERED, AND HELD UNTIL THE FAN EXISTS.
+	#
+	# The owner: pressing Q in the first ten frames of a run turns the view only
+	# a few degrees. Two causes, and both are about ORDER. The fan is not centred
+	# on the wall until this move's first physics tick (see _recentre_on_wall()),
+	# and re-centring WRITES _look_relative_yaw -- so a sweep armed before that
+	# has its remaining distance rewritten out from under it and finishes almost
+	# at once. And a press that arrives even earlier, while the run is still
+	# being entered, had nowhere to go at all.
+	#
+	# So the press is stored rather than read, and spent on the first tick there
+	# is a wall-centred fan to sweep across. Same mechanism as the jump buffer,
+	# for the same reason: the player pressed when it FELT right, and the game
+	# was a few frames from being able to honour it.
+	if player.consume_buffered_turn():
+		_turn_armed = true
+	if _turn_armed and _fan_centred and player.camera_rig != null:
+		_turn_armed = false
 		player.camera_rig.sweep_look_to(_away_edge())
 
 	# Advanced before anything else can read it, so a jump taken on this tick

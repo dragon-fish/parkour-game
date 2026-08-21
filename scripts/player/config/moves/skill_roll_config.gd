@@ -51,42 +51,40 @@ func _init() -> void:
 ## of should still cost something. Not little, either, or nobody would use it.
 @export var energy_keep: float = 0.75
 
-## ⚠️ PROJECT-DEFINED. The speed the roll carries the body forward at, as a
-## fraction of the horizontal speed it landed with.
+## ⚠️ NO CONSUMER. Left recorded rather than deleted, and honestly labelled.
 ##
-## Above 1.0 on purpose: a roll converts a fall into forward travel, and coming
-## out of one slightly faster than you went in is what makes it worth aiming
-## for. The direction is fixed at touchdown and cannot be steered -- the CDO's
-## ControllerState is PlayerGrabbing, the hands are busy, and the original
-## gives the player no say in where a roll goes.
+## This was the fraction of the landing speed the roll carried forward, on a
+## reading of the measured 3 m as a minimum. The owner tested the original
+## directly -- a standstill roll and an 80 km/h roll both travel 3 m -- so
+## distance does not scale with arrival speed at all, and nothing reads this.
+##
+## What speed actually buys is energy_keep below: the share of the budget that
+## survives, so a fast approach gets back up to pace sooner. Same intent, a
+## different channel, and the original's channel.
 @export var speed_scale: float = 1.05
 
-## ⚠️ RETUNED DOWN from the measured 3.0 at the owner's request, after playing
-## it here: "our roll covers 3.2 m in practice, which is a bit aggressive --
-## can it come down to 2.5?"
+## ✅ MEASURED, AND FIXED. The owner tested a roll from a standstill and one at
+## 80 km/h in the original: both travel 3 m. Speed does not buy distance -- what
+## it buys is the share of the energy budget that survives, see energy_keep.
 ##
-## The measurement is not wrong and is kept in the note below; what it does not
-## carry is this project's own capsule, speeds and camera, and 3 m read as
-## further here than it does there. A floor of 2.5 with momentum still able to
-## exceed it is what the owner asked for by feel, which outranks the stopwatch
-## on a question of feel.
+## BACK TO 3.0 after a detour worth recording. This was briefly a FLOOR that
+## momentum could exceed, which was my reading rather than a measurement, and it
+## is what the owner then measured here as an over-long 3.2 m roll. They asked
+## for 2.5 to compensate; with the invented momentum term gone the number can go
+## back to the one the original actually uses. If 3 m still reads as far in this
+## project's own camera and speeds, 2.5 is one line -- but it should be a choice
+## made against faithful behaviour, not against a bug.
 ##
-## ✅ ORIGINALLY MEASURED: a roll carries the body about 3 m forward, and it is
+## ✅ A roll carries the body 3 m forward, and it is
 ## FORCED --
 ## the owner's word. It happens whatever speed you arrived with, which is why
 ## the owner also reports that rolling toward a cliff edge in the original rolls
 ## you off it.
 ##
-## A FLOOR, not a replacement for the carried speed. That reading is what makes
-## both halves true at once: a fast landing still converts its momentum into
-## forward travel through speed_scale above, and a straight drop -- which
-## arrives with no horizontal speed at all, and which the old code left rolling
-## on the spot -- still travels the measured 3 m.
-##
 ## Consumed as a SPEED (distance over duration) rather than as a distance the
-## move integrates toward, so it composes with speed_scale by a plain maxf()
-## instead of needing its own arrival logic.
-@export var forced_distance: float = 2.5
+## move integrates toward: the roll has a fixed length in TIME as well, so the
+## two together are simply a constant velocity.
+@export var forced_distance: float = 3.0
 
 ## How far the view rotates about the pitch axis over the roll. A full turn:
 ## the body goes over, and in first person the view goes with it.

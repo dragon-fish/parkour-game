@@ -296,6 +296,15 @@ var _jump_buffer_timer: float = 0.0
 ## it is the single press every one of those outlets reads. See
 ## walking_move.gd's own table comment for the full resolution.
 var _roll_buffer_timer: float = 0.0
+
+## Seconds a Q press stays alive waiting for a move that can use it.
+##
+## ✅ The owner asked for this after finding that pressing Q as a wall run
+## begins does almost nothing -- the press arrives before the run has a fan to
+## sweep across, and is simply dropped. Same shape as the jump buffer above, and
+## the same reason: the player pressed at the moment that FELT right, and the
+## game was a few frames from being able to honour it.
+var _turn_buffer_timer: float = 0.0
 ## True when a state has asked for the standing capsule back but a ceiling was
 ## in the way. See request_standing_capsule().
 var _standing_restore_pending: bool = false
@@ -540,6 +549,7 @@ func reset_state() -> void:
 	_was_grounded = false
 	_jump_buffer_timer = 0.0
 	_roll_buffer_timer = 0.0
+	_turn_buffer_timer = 0.0
 	# Mirrors CameraRig.reset_state()'s own end_cinematic() call. A manual
 	# reset (Arena's R key) can land mid-death-cutscene, and it bypasses
 	# DeathSequence entirely -- so the unlock that sequence would eventually
@@ -1091,6 +1101,11 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 	else:
 		_jump_buffer_timer = maxf(_jump_buffer_timer - delta, 0.0)
 
+	if input.turn_pressed:
+		_turn_buffer_timer = config.pawn.jump_buffer_time
+	else:
+		_turn_buffer_timer = maxf(_turn_buffer_timer - delta, 0.0)
+
 	# Deliberately keyed on crouch_PRESSED, not crouch_held: this buffer stores
 	# presses, so holding the key down refills it exactly once. A held-state
 	# version would re-arm every tick and let a slide re-enter the instant the
@@ -1125,6 +1140,13 @@ func consume_jump() -> bool:
 func consume_buffered_jump() -> bool:
 	if _jump_buffer_timer > 0.0:
 		_jump_buffer_timer = 0.0
+		return true
+	return false
+
+## The same, for Q. See _turn_buffer_timer.
+func consume_buffered_turn() -> bool:
+	if _turn_buffer_timer > 0.0:
+		_turn_buffer_timer = 0.0
 		return true
 	return false
 
