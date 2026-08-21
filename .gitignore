@@ -82,3 +82,4 @@ dist/
 # untracked for now because "is this the model" is not yet decided, not
 # because it could not be.
 assets/models/test.vrm
+assets/models/test.vrm.import
