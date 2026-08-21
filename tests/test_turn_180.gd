@@ -141,7 +141,10 @@ func test_the_kick_survives_well_past_the_freeze() -> void:
 func test_space_inside_the_window_kicks_off_the_wall() -> void:
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
-	await step(14)
+	# Past turn_time (0.5 s, 30 ticks) and inside kick_window (0.75 s), so this
+	# is an ordinary kick rather than a pre-buffered one. The pre-buffered case
+	# has its own test below.
+	await step(32)
 	(world["input"] as ScriptedInputSource).press_jump()
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.JUMP, \
@@ -155,10 +158,36 @@ func test_the_kick_throws_the_player_away_from_the_wall() -> void:
 	# fire them into the wall they just turned away from.
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
-	await step(14)
+	# Past turn_time (0.5 s, 30 ticks) and inside kick_window (0.75 s), so this
+	# is an ordinary kick rather than a pre-buffered one. The pre-buffered case
+	# has its own test below.
+	await step(32)
 	(world["input"] as ScriptedInputSource).press_jump()
 	await step(1)
 	assert_gt(player.velocity.z, 0.0, "the kick sent the player back into the wall")
+
+func test_space_pressed_mid_turn_waits_for_the_turn_to_finish() -> void:
+	# ✅ THE ORIGINAL PRE-BUFFERS THIS: "press Q, and even before the view has
+	# come round, pressing space makes Faith jump out the instant it does."
+	#
+	# Acted on immediately, a kick taken mid-turn leaves along a facing halfway
+	# between where you were and where you were going -- and choosing that
+	# facing is the entire reason to press Q.
+	var world := await _world_with_wall_ahead(6.0)
+	var player: Player = await _turning(world)
+	# Early: the body has barely started coming round.
+	await step(4)
+	(world["input"] as ScriptedInputSource).press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.TURN_180, \
+		"the kick fired mid-turn instead of waiting for the facing")
+	# ...and it is HELD, not dropped. turn_time is 30 ticks, so by 35 the turn
+	# has finished and the press must have been spent.
+	await step(30)
+	assert_eq(player.move_manager.current_name, Move.JUMP, \
+		"the held press was never spent once the turn finished")
+	assert_gt(player.velocity.z, 0.0, \
+		"the pre-buffered kick left along the wrong facing")
 
 # --- Q away from a wall ------------------------------------------------------
 #

@@ -26,6 +26,9 @@ var _fan_centred: bool = false
 ## steps of several degrees at each seam; followed rigidly, every seam is a
 ## visible tick in the view.
 var _fan_yaw: float = 0.0
+## Space pressed while Q's sweep is still carrying the view round. HELD, not
+## acted on: see the note where it is armed.
+var _kick_armed: bool = false
 
 ## Guarded the same way SpeedVaultMove/GrabMove guard their own probe
 ## lookups: `player.probes` is null-checked at every call site rather than
@@ -136,6 +139,7 @@ func enter(_previous: StringName) -> void:
 	_time_on_wall = 0.0
 	_aborted = false
 	_fan_centred = false
+	_kick_armed = false
 	# Wall running IS physics-driven, but grounded-ness is still DECLARED, never
 	# inferred -- P2 replaced is_on_floor() as the authority precisely so that
 	# no move can leave a stale value behind. This first declaration covers
@@ -364,7 +368,20 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# buffer WalkingMove/FallingMove do, just without the coyote requirement
 	# that would otherwise be impossible to satisfy here, and spends it so a
 	# consumed press cannot also fire a second jump later.
+	# ARMED, NOT FIRED, WHILE A SWEEP IS RUNNING.
+	#
+	# ✅ The original pre-buffers this: "press Q, and even before the view has
+	# come round, pressing space makes Faith jump out the instant it does." The
+	# kick steers by the view, so taking it mid-sweep launches along a facing
+	# halfway to where the player asked for -- and the whole reason to press Q
+	# was to choose that facing.
+	#
+	# Only a SWEEP defers it. A player who never pressed Q, or who took the
+	# mouse back and cancelled the sweep, kicks the moment they ask.
 	if player.consume_buffered_jump():
+		_kick_armed = true
+	var sweeping: bool = player.camera_rig != null and player.camera_rig.is_sweeping()
+	if _kick_armed and not sweeping:
 		# UNCONDITIONAL, matching the original 1:1 -- this used to clamp the
 		# rise against a height ceiling computed from player.ground_reference_y
 		# (WallRunMove._height_ceiling(), ~40 lines, deleted this task). That

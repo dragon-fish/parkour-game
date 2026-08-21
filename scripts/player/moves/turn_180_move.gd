@@ -35,6 +35,14 @@ var _normal: Vector3 = Vector3.ZERO
 ## The scripted facing already handed to the camera, so each tick reports only
 ## its own slice of the turn rather than the whole of it so far.
 var _placed: float = 0.0
+## Space pressed while the body is still coming round. HELD, not acted on.
+##
+## ✅ The original PRE-BUFFERS this: "press Q, and even before the view has come
+## round, pressing space makes Faith jump out the instant it does." Acted on
+## immediately, as it was, a kick taken mid-turn leaves along a facing halfway
+## between where you were and where you were going -- and since the whole point
+## of the turn is to choose a direction, that is the one outcome nobody wants.
+var _kick_armed: bool = false
 
 ## Whichever wall the body is on, checked on the entry tick while the body is
 ## still facing the way it was -- a moment later it has come round and neither
@@ -68,6 +76,7 @@ func on_a_wall() -> bool:
 
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
+	_kick_armed = false
 	_normal = _find_wall()
 	_normal.y = 0.0
 
@@ -111,7 +120,14 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if on_a_wall():
 		# ✅ TdMove_WallKick, folded in -- see Turn180Config's own note on why
 		# it is not a state of its own.
+		#
+		# ARMED HERE, FIRED BELOW. The press is remembered rather than acted on,
+		# so a player who presses space while the body is still coming round
+		# leaves at the facing the turn was FOR rather than at some halfway
+		# angle. See _kick_armed.
 		if player.consume_buffered_jump():
+			_kick_armed = true
+		if _kick_armed and _turn_finished():
 			player.velocity = _normal * cfg.wall_kick_speed_out
 			player.velocity.y = cfg.wall_kick_speed_up
 			player.move_and_slide()
@@ -153,6 +169,10 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 ## turn lands on exactly the target and the camera is handed a series of small
 ## even deltas instead of one lump. See docs/camera-authority.md: the body is
 ## being moved BY A SCRIPT, so the eye trails it and eases in.
+## Whether the body has finished coming round. The armed kick waits for this.
+func _turn_finished() -> bool:
+	return _elapsed >= cfg.turn_time
+
 func _advance_turn(_delta: float) -> void:
 	var progress: float = clampf(_elapsed / maxf(cfg.turn_time, 0.001), 0.0, 1.0)
 	var wanted: float = lerpf(_turn_from, _turn_to, progress)

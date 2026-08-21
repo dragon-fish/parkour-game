@@ -148,7 +148,7 @@ func test_q_carries_the_view_to_the_far_edge_of_the_fan() -> void:
 	var player: Player = await _running_the_wall()
 	var input: ScriptedInputSource = _world["input"]
 	input.press_turn()
-	# look_sweep_speed is 6 rad/s, so a quarter turn takes about 16 ticks.
+	# look_sweep_speed is the measured 5.24 rad/s, so a quarter turn is 18 ticks.
 	await step(25)
 	var fan: Dictionary = player.camera_rig.look_debug()
 	# The wall is on the right, so away is leftward, which is positive yaw.
@@ -445,3 +445,36 @@ func test_q_then_space_carries_the_measured_distance() -> void:
 	assert_lt(travelled, 10.0, \
 		"a Q-and-kick carried %.1f m, well past the original's 6.5" % travelled)
 	print("[measure] Q + kick carried %.2f m (original: 6.5 m)" % travelled)
+
+func test_space_during_the_sweep_waits_for_the_view_to_arrive() -> void:
+	# ✅ THE ORIGINAL PRE-BUFFERS THIS, and the owner names both cases: a wall
+	# climb's turn and a wall run's jump. The kick steers by the view, so taking
+	# it mid-sweep launches along a facing halfway to the one the player asked
+	# for -- and asking for that facing is the entire reason to press Q.
+	var player: Player = await _running_the_wall()
+	var input: ScriptedInputSource = _world["input"]
+	input.press_turn()
+	await step(3)
+	assert_true(player.camera_rig.is_sweeping(), "the sweep never started")
+	input.press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
+		"the kick fired mid-sweep instead of waiting for the view")
+	# Held, not dropped: the sweep finishes and the press is spent on the tick
+	# it does.
+	var ticks := 0
+	while ticks < 30 and player.move_manager.current_name == Move.WALL_RUN:
+		await step(1)
+		ticks += 1
+	assert_eq(player.move_manager.current_name, Move.JUMP, \
+		"the held press was never spent once the sweep finished")
+
+func test_space_without_a_sweep_kicks_immediately() -> void:
+	# Only a SWEEP defers the kick. A player who never pressed Q is asking to
+	# leave now, and waiting on nothing would be a delay with no cause.
+	var player: Player = await _running_the_wall()
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.JUMP, \
+		"a kick with no sweep running was made to wait")

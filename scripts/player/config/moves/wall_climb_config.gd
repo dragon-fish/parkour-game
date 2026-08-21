@@ -104,9 +104,19 @@ func _init() -> void:
 ## starts from a higher place. The owner reported exactly that second effect
 ## independently -- "when taking off with a run-up, the kick starts higher".
 ##
-## ⚠️ 1.6 m is about a body height: enough that a kick puts a lip that was out
-## of reach into grabbing range, which is the whole job.
-@export var climb_height: float = 1.6
+## ✅ MEASURED. Standing still pressed against a wall, the owner's Z goes 0.93
+## to 2.23 -- and pressed against it, contact happens on the first airborne
+## tick, so that 1.30 m IS the climb and nothing else.
+##
+## The run-up case corroborates it rather than contradicting it. Near full
+## speed, Z goes 0.93 to 3.64. Contact then happens near the jump's own apex
+## (base_jump_z 6.3 against gravity 16 is 1.24 m), and 1.24 + 1.30 = 2.54
+## against a measured 2.71 -- seven per cent, on a reading taken at "near"
+## full speed. The extra height a run-up buys is the CONTACT POINT, exactly as
+## the owner described it, and not a bigger climb.
+##
+## Was ⚠️ 1.6 while it was a guess.
+@export var climb_height: float = 1.3
 
 ## How fast the body goes up, with no run-up at all.
 ##

@@ -115,7 +115,10 @@ func test_a_run_up_buys_rate_and_not_height() -> void:
 	# The height is a plain constant with no speed anywhere near it. Asserted
 	# rather than assumed, because the previous model made it a function and
 	# nothing but a test would notice it quietly becoming one again.
-	assert_almost_eq(cfg.climb_height, 1.6, 0.0001, "the climb distance is not fixed at 1.6 m")
+	# ✅ MEASURED: standing pressed against a wall, the owner's Z goes 0.93 to
+	# 2.23, and pressed against it the contact happens on the first airborne
+	# tick -- so that 1.30 m IS the climb.
+	assert_almost_eq(cfg.climb_height, 1.3, 0.0001, 		"the climb distance is not the measured 1.3 m")
 
 func test_the_rate_bonus_saturates() -> void:
 	var cfg := WallClimbConfig.new()

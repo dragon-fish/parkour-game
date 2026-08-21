@@ -103,10 +103,22 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# half-gravity on the way down would read as floating.
 	if player.velocity.y <= 0.0:
 		return FALLING
-	# ...or the moment it has gone as far as a climb goes. Whatever upward
-	# speed is left is handed on rather than discarded, so a fast kick carries
-	# a little past the top instead of being stopped dead at it.
+	# ...or the moment it has gone as far as a climb goes, WITH NOTHING LEFT
+	# OVER.
+	#
+	# The residual used to be handed on, so a fast kick carried a little past
+	# the top. That is what "speed buys height" looks like, and the measurement
+	# rules it out: a standing climb rises 1.30 m and so does a running one, off
+	# a higher contact point. Arithmetic agrees -- preserved through the ceiling,
+	# the jump's own 6.3 m/s would still be doing 4.35 m/s there and coast
+	# another 0.59 m, which is half again as much climb as the measurement
+	# allows.
+	#
+	# So the climb ends at its apex, which is what "the height does not depend
+	# on speed" has to mean if speed is also to raise the rate of ascent. Speed
+	# still gets you there sooner; it does not get you further.
 	if player.global_position.y >= _ceiling:
+		player.velocity.y = 0.0
 		return FALLING
 	var drift: float = Vector2(player.global_position.x, player.global_position.z).distance_to(_anchor)
 	if drift > cfg.max_drift:
