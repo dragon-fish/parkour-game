@@ -138,7 +138,26 @@ func _init() -> void:
 	# yaw +-90. ✅ With bUseAbsoluteYawConstraint = True. This is where "the
 	# view swings to face along the wall" comes from -- an input constraint,
 	# not an animation.
+	#
+	# THE YAW FAN IS ONE-SIDED, THOUGH, and the CDO's symmetric +-90 is not what
+	# reaches the player. The owner: "running the left wall, you can only look
+	# to the right-front." Which is the reading that makes sense of the
+	# original having a WallRunLeft and a WallRunRight at all -- two moves whose
+	# only difference is a mirrored fan, collapsed here into one move plus
+	# `mirror_yaw_by_wall_side` below.
+	#
+	# So the 90 degrees is the full span, running from straight-ahead to a
+	# quarter turn AWAY. Declared here for a wall on the LEFT (look rightward,
+	# positive yaw); MoveManager mirrors it for a wall on the right.
 	constrain_look = true
 	absolute_yaw_constraint = true
-	min_look_constraint = Vector3(-deg_to_rad(71.4), -deg_to_rad(90.0), -PI)
+	mirror_yaw_by_wall_side = true
+	min_look_constraint = Vector3(-deg_to_rad(71.4), 0.0, -PI)
 	max_look_constraint = Vector3(deg_to_rad(71.4), deg_to_rad(90.0), PI)
+	# Q DOES NOT START A TURN HERE. It moves the VIEW, not the body -- see
+	# WallRunMove's own handling. The owner: "Q during a wall run only changes
+	# the view; it does not pin the character in place", and "turning 90 degrees
+	# right by hand and pressing space should feel the same as Q and space",
+	# which is only true if Q is a shortcut for the mouse movement rather than a
+	# move of its own.
+	allows_turn = false

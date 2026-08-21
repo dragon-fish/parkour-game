@@ -523,3 +523,43 @@ func wall_ahead_query(heading: Vector3 = Vector3.ZERO) -> Dictionary:
 
 	return {"valid": true, "normal": normal, "distance": distance, \
 		"incidence": _incidence(normal, heading), "tall_enough": tall_enough}
+
+## The wall in a KNOWN world-space direction, whatever the body is facing.
+##
+## wall_query()'s two rays are rigidly local: they fire straight out to the
+## body's left and right. That is fine for FINDING a wall, since a player who
+## has not started a wall run yet is facing roughly the way they are going --
+## but it is wrong for STAYING on one. Turning the view during a run swings
+## both rays off the wall, the query comes back invalid, and the run ends.
+## Measured in play as "you fall off the moment you stop looking forward",
+## which the original does not do: there, the body completes the wall-run curve
+## regardless of where the player is looking.
+##
+## So a run tracks its wall by the normal it already knows, in world space.
+## `direction` is INTO the wall, i.e. the negated normal.
+##
+## Reuses WallLeft, which is safe by this file's own convention: every ray here
+## is aimed from the live config at query time and owns its geometry for the
+## duration of one call only (see setup()'s note on why nothing is baked).
+func wall_tracked_query(direction: Vector3, reach: float) -> Dictionary:
+	if _config == null or direction.length_squared() < 0.0001:
+		return {"valid": false, "normal": Vector3.ZERO, "side": 0, "incidence": 0.0}
+	_ensure_rays()
+	_wall_left.position.y = WALL_AHEAD_CHEST_Y
+	# Into the ray's own local space: the direction is given in world terms and
+	# target_position is not.
+	var local: Vector3 = _wall_left.global_transform.basis.inverse() * direction.normalized()
+	_wall_left.target_position = local * reach
+	_wall_left.force_raycast_update()
+	if not _wall_left.is_colliding():
+		return {"valid": false, "normal": Vector3.ZERO, "side": 0, "incidence": 0.0}
+	var normal: Vector3 = _wall_left.get_collision_normal()
+	if absf(normal.y) >= MAX_WALL_NORMAL_Y:
+		return {"valid": false, "normal": Vector3.ZERO, "side": 0, "incidence": 0.0}
+	# NO SIDE. Deliberately, and this cost a debugging session: a side computed
+	# from the body's current facing FLIPS when the player turns the view, and
+	# `side` is what the look fan is mirrored by -- so the fan flips out from
+	# under the view mid-turn and clamps it straight back to centre. Which side
+	# of the RUN a wall is on is a property of the run, fixed when it attached,
+	# and belongs to the move that attached rather than to a probe fired later.
+	return {"valid": true, "normal": normal, "side": 0, "incidence": PI * 0.5}

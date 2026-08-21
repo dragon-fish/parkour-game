@@ -103,3 +103,15 @@ extends Resource
 ## MovementGroup enum this project has not modelled, and modelling one for a
 ## single consumer would be a mechanism rather than a fact.
 @export var allows_turn: bool = true
+
+## Whether the yaw fan above is stated for a wall on the LEFT and should be
+## mirrored when the wall is on the right.
+##
+## Only wall running sets it, and only because its fan is one-sided: the view
+## may swing away from the wall and not into it, so which sign is legal depends
+## on which side the wall is. The original expresses this by having a
+## WallRunLeft and a WallRunRight whose only difference is the mirrored fan;
+## this project has one move, so the mirroring lives here.
+##
+## ⚠️ The MECHANISM is project-defined. The values it mirrors are not.
+@export var mirror_yaw_by_wall_side: bool = false

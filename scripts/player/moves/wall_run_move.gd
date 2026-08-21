@@ -29,6 +29,21 @@ func _query_wall() -> Dictionary:
 		# -- a const Dictionary is read-only, and returning the shared instance
 		# directly would hand every caller the same read-only object.
 		return _NO_WALL.duplicate()
+	# ONCE A RUN HAS A WALL, IT TRACKS THAT WALL AND NOT THE BODY'S SIDES.
+	#
+	# wall_query()'s rays are rigidly local -- straight out to left and right --
+	# so turning the view during a run swings them off the wall and the run
+	# ends. Measured in play as "you fall off the moment you stop looking
+	# forward". The original does not do that: the body completes the wall-run
+	# curve wherever the player is looking, and looking around is most of what
+	# the run is FOR, since the jump off it steers by the view.
+	#
+	# Entry still goes through wall_query(), where local rays are right: a
+	# player who has not attached yet is facing roughly the way they are going,
+	# and there is no known normal to track.
+	if _normal != Vector3.ZERO:
+		return player.probes.wall_tracked_query(-_normal, \
+			config.wall_run.wall_running_forward_check_distance)
 	var heading: Vector3 = Vector3(player.velocity.x, 0.0, player.velocity.z).normalized()
 	return player.probes.wall_query(heading)
 
@@ -67,7 +82,13 @@ func enter(_previous: StringName) -> void:
 		_aborted = true
 		return
 	_normal = query["normal"]
-	player.wall_side = query["side"]
+	# FIXED FOR THE WHOLE RUN. Not refreshed from the per-tick tracking query
+	# below, which deliberately reports no side at all -- see
+	# Probes.wall_tracked_query()'s own note. Which side the wall is on is a
+	# fact about this run, not about where the player is looking this tick, and
+	# a side that follows the view flips the look fan out from under the view
+	# mid-turn and clamps it straight back to centre.
+	player.wall_side = int(query["side"])
 
 	# Run along the wall in whichever of the two tangent directions the player
 	# is already moving. A wall never reverses you.
@@ -106,6 +127,10 @@ func enter(_previous: StringName) -> void:
 
 func exit() -> void:
 	player.wall_side = 0
+	# Cleared so the NEXT run's entry goes back through wall_query()'s local
+	# rays. Left set, _query_wall() would try to track a wall this run has
+	# already left, from a body that may be nowhere near it.
+	_normal = Vector3.ZERO
 	# Nothing else to do here now: the same-wall reattach cooldown
 	# (note_wall_detach()/can_attach_wall(), keyed to the wall's own normal)
 	# is gone, a deliberate 1:1 deletion -- see falling_move.gd's own note on
@@ -171,7 +196,28 @@ static func wall_jump_rise_velocity(time_on_wall: float, \
 	# JumpOffZHeight is a height, not a speed -- convert at the point of use.
 	return sqrt(2.0 * maxf(pawn.gravity, 0.001) * maxf(height, 0.0))
 
-func physics_update(delta: float, _input: MoveInput) -> StringName:
+## The edge of the yaw fan that points away from the wall, in the fan's own
+## coordinates. Positive for a wall on the left, negative for one on the right,
+## matching MoveManager's own mirroring of the declared fan.
+func _away_edge() -> float:
+	var span: float = config.wall_run.max_look_constraint.y
+	return -span if player.wall_side > 0 else span
+
+func physics_update(delta: float, input: MoveInput) -> StringName:
+	# Q HERE MOVES THE VIEW, NOT THE BODY. Everywhere else it starts a turn; on
+	# a wall the body is already committed to the wall's own curve and nothing
+	# about it should change. What Q saves is the mouse flick, and the owner's
+	# own test for whether it is right is that "turning 90 degrees right by hand
+	# and pressing space should feel the same as Q and space" -- so it drives
+	# exactly the value the mouse drives, and the mouse takes it back the
+	# instant the player touches it.
+	#
+	# Swept to the fan's far edge, which the wall's side already decides: the
+	# fan runs from straight-ahead to a quarter turn AWAY from the wall, so its
+	# far edge IS the direction a kick should leave in.
+	if input.turn_pressed and player.camera_rig != null:
+		player.camera_rig.sweep_look_to(_away_edge())
+
 	# Advanced before anything else can read it, so a jump taken on this tick
 	# is priced by the time already spent on the wall rather than by the time
 	# spent before this tick began.
@@ -193,7 +239,6 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if not query["valid"]:
 		return FALLING
 	_normal = query["normal"]
-	player.wall_side = query["side"]
 	_derive_along()
 
 	# A wall jump is a fresh press, not a ground-style coyote jump: the

@@ -185,3 +185,15 @@ extends Resource
 @export var camera_anim_momentum_influence: float = 0.0001
 @export var camera_forward_max: float = 0.5
 @export var camera_downward_max: float = 0.4
+
+## How fast a SCRIPTED LOOK SWEEP crosses the fan, in radians per second.
+##
+## Different from scripted_yaw_catchup_speed above, which is about the eye
+## catching up to a body that moved under it. This one is the eye itself being
+## moved -- Q during a wall run swings the view a quarter turn without touching
+## the body, so there is no lag to bleed off, only a view to carry across.
+##
+## ⚠️ PROJECT-DEFINED. 6 rad/s crosses a 90 degree fan in about a quarter of a
+## second: fast enough to be a shortcut for the mouse flick it replaces, slow
+## enough to read as a look rather than a cut.
+@export var look_sweep_speed: float = 6.0

@@ -317,6 +317,12 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 	if _config == null:
 		return
 	var yaw_delta := -look_delta.x * _config.camera.mouse_sensitivity
+	# A scripted sweep is added to the same channel the mouse drives, so the
+	# body ends up facing exactly where the same flick by hand would have put
+	# it. The owner's test for this feature is that Q and space should feel like
+	# turning by hand and pressing space, which only holds if the two paths are
+	# literally the same one.
+	yaw_delta += _advance_look_sweep(yaw_delta, delta)
 	if _has_look_constraint:
 		# Absolute yaw: measured against the facing captured when the move
 		# began, so the fan stays pinned to the wall rather than drifting with
@@ -558,3 +564,51 @@ func punch_landing(speed: float) -> void:
 		return
 	var strength := clampf(speed / maxf(_config.camera.land_dip_speed_ref, 0.001), 0.0, 1.0)
 	_dip = maxf(_dip, strength * _config.camera.land_dip_max)
+
+# --- scripted look sweep ------------------------------------------------------
+#
+# The eye being carried across the fan under its own power, with the body left
+# alone. Q during a wall run is the only caller: the owner's account is that it
+# "only changes the view, it does not pin the character in place", and that
+# doing the same thing by hand with the mouse should feel identical -- which is
+# only true if this drives exactly the value the mouse drives.
+
+## Target for _look_relative_yaw while a sweep is running, and whether one is.
+var _sweep_to: float = 0.0
+var _sweeping: bool = false
+
+## Starts carrying the view to `relative_yaw`, measured in the same frame as
+## _look_relative_yaw: radians from the fan's own centre.
+##
+## Silently does nothing with no constraint in force. A sweep is expressed in a
+## fan's coordinates, and without a fan there is no target to name.
+func sweep_look_to(relative_yaw: float) -> void:
+	if not _has_look_constraint:
+		return
+	_sweep_to = clampf(relative_yaw, _look_min.y, _look_max.y)
+	_sweeping = true
+
+func is_sweeping() -> bool:
+	return _sweeping
+
+func cancel_look_sweep() -> void:
+	_sweeping = false
+
+## Advances a running sweep. Returns the yaw delta to apply this tick, or 0.
+##
+## THE PLAYER'S OWN HAND WINS. Any real mouse movement cancels the sweep on the
+## spot rather than fighting it: this is a convenience for a flick the player
+## could have done themselves, and a convenience that resists being overridden
+## is worse than none.
+func _advance_look_sweep(mouse_yaw_delta: float, delta: float) -> float:
+	if not _sweeping:
+		return 0.0
+	if absf(mouse_yaw_delta) > 0.0001:
+		_sweeping = false
+		return 0.0
+	var remaining: float = _sweep_to - _look_relative_yaw
+	var step: float = _config.camera.look_sweep_speed * delta
+	if absf(remaining) <= step or delta <= 0.0:
+		_sweeping = false
+		return remaining
+	return signf(remaining) * step

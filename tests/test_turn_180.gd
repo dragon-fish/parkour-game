@@ -229,4 +229,6 @@ func test_a_move_with_its_legs_busy_refuses_the_turn() -> void:
 	assert_false(config.grab.allows_turn, "a hang allows a turn")
 	assert_false(config.speed_vault.allows_turn, "a vault allows a turn")
 	assert_true(config.walking.allows_turn, "walking refuses a turn")
-	assert_true(config.wall_run.allows_turn, "a wall run refuses a turn")
+	# A wall run refuses too, but for the opposite reason: Q there does
+	# something else entirely. See test_wall_run_look.gd.
+	assert_false(config.wall_run.allows_turn, "a wall run starts a turn move")
