@@ -106,3 +106,39 @@ func test_the_lockout_actually_pins_the_yaw() -> void:
 	input.state.look = Vector2.ZERO
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_the_sink_is_there_on_the_frame_the_landing_begins() -> void:
+	# SAME CLASS AS THE ROLL'S ENTRY FLICKER. MoveManager calls enter() mid-tick
+	# and does not run the move's own physics_update() on that tick, so the sink
+	# and the downward pitch were first written a frame later -- while
+	# Player.update_effects() deliberately skips writing the crouch for LANDING,
+	# leaving the entry frame showing the airborne view.
+	#
+	# Milder than the roll's case: this is the effect arriving one frame late
+	# rather than a flash to a wrong value. It is still the impact frame -- the
+	# one frame of a hard landing anyone actually looks at.
+	var cfg := MovementConfig.new()
+	var world := TestWorld.build(get_tree(), cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	player.global_position.y += cfg.pawn.hard_landing_height + 1.0
+	player.fall_tracker.reset(player.global_position.y)
+	await step(1)
+	for i in 240:
+		await step(1)
+		if player.move_manager.current_name == Move.LANDING:
+			break
+	assert_true(player.move_manager.current_name == Move.LANDING, \
+		"a hard unrolled landing did not enter Landing")
+
+	# update_effects() has already run by the end of this step, so the rig shows
+	# whatever the entry frame settled on. The offset tips the view DOWN, and
+	# the rig subtracts it: see CameraRig.set_landing_pitch_offset().
+	assert_lt(player.camera_rig.rotation.x, -cfg.landing.camera_pitch_offset * 0.9, \
+		"the impact frame showed a pitch of %.1f degrees, with the sink not yet applied" \
+		% rad_to_deg(player.camera_rig.rotation.x))
+
+	TestWorld.teardown(world)
+	await step(1)

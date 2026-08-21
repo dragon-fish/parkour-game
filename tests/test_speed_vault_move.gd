@@ -154,3 +154,43 @@ func test_the_confirmed_duration_is_still_the_ceiling() -> void:
 	for variant in config.speed_vault.variants:
 		assert_gt(float(variant["duration"]), 0.0, \
 			"variant %s lost its confirmed duration" % variant.get("name", "?"))
+
+func test_a_finished_vault_leaves_the_horizon_level() -> void:
+	# THE BANK LEAKS. set_vault_roll() is written from sin(PI * progress())
+	# BEFORE advance() moves the clock, so the last value the move ever writes
+	# is taken one tick short of the end -- around sin(0.95 PI), not sin(PI).
+	# With no exit() to hand the channel back, that residual bank stays on the
+	# rig forever: every vault leaves the horizon tilted by about a degree until
+	# the next one happens to overwrite it. The rig decays nothing on its own.
+	#
+	# Same class as the roll's entry flicker, at the other end of the move: a
+	# presentational channel a move borrowed and did not return.
+	var world := _world_with_sweet_spot_box()
+	await step(1)
+	TestWorld.place(world)
+	world["box"].global_position = world["box_at"]
+	await step(30)
+
+	var player: Player = world["player"]
+	const ENTRY := 6.0
+	player.velocity = Vector3(0.0, 0.0, -ENTRY)
+	var hit: Dictionary = player.probes.vault_query()
+	assert_true(hit["valid"], "the probe missed the box -- fixture is wrong")
+	player.pending_vault_variant = player.config.speed_vault.pick_variant( \
+		hit["height"], hit["vault_over"], player.velocity.y, ENTRY)
+	player.move_manager.start(Move.SPEED_VAULT)
+
+	var ticks := 0
+	while ticks < 200 and player.move_manager.current_name == Move.SPEED_VAULT:
+		await step(1)
+		ticks += 1
+	assert_lt(ticks, 200, "the vault never finished")
+	# No strafe input anywhere in this test, so the ordinary lean is zero and
+	# the whole of rotation.z is the vault's own bank.
+	assert_almost_eq(player.camera_rig.rotation.z, 0.0, 0.001, \
+		"the vault handed on a horizon banked %.2f degrees" \
+		% rad_to_deg(player.camera_rig.rotation.z))
+
+	world["box"].queue_free()
+	TestWorld.teardown(world)
+	await step(1)

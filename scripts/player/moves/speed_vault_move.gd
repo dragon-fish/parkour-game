@@ -178,6 +178,20 @@ func enter(_previous: StringName) -> void:
 	_touched = false
 	_approach_time = 0.0
 
+## HANDS THE BANK BACK. The rig decays nothing on its own, and this move writes
+## its roll from sin(PI * progress()) BEFORE advance() moves the clock -- so the
+## last value it ever writes is taken a tick short of the end, around
+## sin(0.95 PI) rather than sin(PI). Without this the residual stayed on the rig
+## for good: every vault left the horizon banked a fraction of a degree until
+## some later vault happened to overwrite it.
+##
+## Same class as the roll's entry flicker, at the other end of a move: a
+## presentational channel borrowed and not returned. SkillRollMove.exit() does
+## the same for its own two.
+func exit() -> void:
+	if player.camera_rig != null:
+		player.camera_rig.set_vault_roll(0.0)
+
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:
 		return WALKING

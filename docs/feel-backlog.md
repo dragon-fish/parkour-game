@@ -1065,3 +1065,53 @@ Probes.scan()          每物理帧最多跑一次（Engine.get_physics_frames()
 的补偿。也就是说我们和 2008 年的 DICE 撞上了同一个坑，只是他们选择在表现层抹平，
 我们选择在时序上补齐。这是这份文档里第一次出现"原版的做法本身可能是权宜之计"——
 **原版是参照，不是标准答案**，遇到实现路径不同的地方要判断它在解什么问题。
+
+## 41. 同类排查：还有哪些"表现通道在帧内脱节"
+
+§40 修完之后按同一个模式把相机的**全部表现通道**过了一遍。判据是：
+**权威值和它的表现补偿是不是在同一个逻辑帧里写完的。**
+
+`MoveManager` 在一帧中途调 `enter()`，**不会**在同一帧再调这个 Move 的
+`physics_update()`；而 `Player.update_effects()` 在这一帧末尾照常执行。
+所以任何"`enter()` 改了一半、另一半留给 `physics_update()`"的通道，
+都会有一帧显示错的东西。另一端同样成立：**移动结束时借走的通道没还**。
+
+### 查出来的两处
+
+**一、`SpeedVaultMove` 把倾斜留在了地平线上。** 这个 Move **根本没有 `exit()`**。
+而 `set_vault_roll(sin(PI * progress()))` 是在 `advance()` 推进时钟**之前**写的，
+所以它写出的最后一个值取自离终点还差一拍的位置——是 `sin(0.95π)` 而不是 `sin(π)`。
+rig 自己不做任何衰减，于是这个残留**永久留在相机上**，直到下一次翻越碰巧覆盖它。
+
+实测残留 **0.28°**。小，但它是永久的，而且每次翻越都会重置成另一个随机小角度。
+"地平线总觉得有点歪"这种说不清的感觉，多半就是这类东西。
+修复：补 `exit()` 把通道还回去，和 `SkillRollMove.exit()` 同构。
+
+**二、`LandingMove` 的下沉晚一帧。** 硬着陆的下沉和低头是在 `physics_update()` 里驱动的，
+而 `Player.update_effects()` 里有一条**刻意的排除**：`if current_name != Move.LANDING`
+才写 crouch（否则会把 Move 刚写的值覆盖回 0）。两者叠在一起的结果是——
+**撞击帧什么都不显示**，保持着空中的视角，下一帧才整个砸下来。
+
+测试报的是：`the impact frame showed a pitch of 0.0 degrees, with the sink not yet applied`。
+
+比翻滚那次轻：它是**效果晚到**，不是**闪一个错值**。但晚到的这一帧恰好是硬着陆里
+唯一会被人盯着看的那一帧。修复：抽出 `_drive_effects(severity)`，
+`enter()`(1.0) / 每帧(1-t) / `exit()`(0.0) 三处共用一个写入点。
+
+### 查过、确认没问题的
+
+| 通道 | 为什么没事 |
+| --- | --- |
+| `shift_yaw_reference` / `recentre_yaw_reference` | **成对原子写**：`_yaw_reference` 和 `_look_relative_yaw` 在同一次调用里一起调整，和保持不变（只漏掉 assist 那一份）。 |
+| `set_vault_roll` 的**入场**帧 | `sin(PI * 0) == 0`，进入时本来就该是 0，和上一帧一致。缺口只在出场端。 |
+| `set_look_constraint` | `apply_look` 跑在 `move_manager.physics_update` **之前**，但钳制只影响后续输入，不改当帧姿态；且 MoveManager 每帧都重设它。 |
+| `add_step_offset` | 累加式，不是"当前值"，转移帧没人写就是没有台阶，符合预期。 |
+| `set_head_position` / `set_wall_side` | `update_effects()` 每帧无条件重算，没有 `enter()` 这一半。 |
+| `SpeedVaultMove` 的两处 abort | 都在 `enter()` 里，此时 roll 还没被写过，仍是 0。 |
+
+### 顺带一条测试污染的教训
+
+新加的 vault 测试忘了 `TestWorld.teardown(world)`，往根节点泄漏了一个 player，
+**全量跑挂掉一大片和它毫不相干的用例**（速度能量、滑铲）。
+症状具有欺骗性——看起来像修复搞坏了物理。这个 fixture 必须手动收尾，
+写新用例时照抄同文件里已有用例的收尾三行，别只抄主体。

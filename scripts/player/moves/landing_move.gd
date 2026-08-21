@@ -36,17 +36,23 @@ func enter(_previous: StringName) -> void:
 	# is always safe to call unconditionally.
 	player.request_standing_capsule()
 
+	# THE SINK BELONGS TO THE IMPACT FRAME. MoveManager calls enter() mid-tick
+	# and does not run this move's own physics_update() on that tick, so driving
+	# the camera only from there put the sink a frame late -- and
+	# Player.update_effects() deliberately skips writing the crouch while this
+	# move is current, so the entry frame kept showing the airborne view.
+	#
+	# The same one-logic-frame gap as SkillRollMove.enter(); milder here, since
+	# it delays an effect rather than flashing a wrong value. It still lands on
+	# the one frame of a hard landing anyone actually looks at.
+	_drive_effects(1.0)
+
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	_elapsed += delta
 	var t: float = clampf(_elapsed / maxf(config.landing.lockout_time, 0.0001), 0.0, 1.0)
 
 	# Recovering, not holding: 1 at touchdown falling to 0 at release.
-	var severity: float = 1.0 - t
-	if player.camera_rig != null:
-		player.camera_rig.set_crouch_amount(severity)
-		player.camera_rig.set_landing_pitch_offset(config.landing.camera_pitch_offset * severity)
-	if player.screen_effects != null:
-		player.screen_effects.set_tint(config.landing.tint_color, severity)
+	_drive_effects(1.0 - t)
 
 	player.velocity.y = -config.pawn.floor_snap_speed
 	player.move_and_slide()
@@ -57,8 +63,15 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	return KEEP
 
 func exit() -> void:
+	_drive_effects(0.0)
+
+## The whole visible weight of the lockout, at `severity`: 1 at the impact and 0
+## by the time it lets go. One place, because it is driven from three -- entry,
+## every tick, and the hand-off -- and a channel written in only two of them is
+## exactly the gap this move already had.
+func _drive_effects(severity: float) -> void:
 	if player.camera_rig != null:
-		player.camera_rig.set_crouch_amount(0.0)
-		player.camera_rig.set_landing_pitch_offset(0.0)
+		player.camera_rig.set_crouch_amount(severity)
+		player.camera_rig.set_landing_pitch_offset(config.landing.camera_pitch_offset * severity)
 	if player.screen_effects != null:
-		player.screen_effects.set_tint(config.landing.tint_color, 0.0)
+		player.screen_effects.set_tint(config.landing.tint_color, severity)
