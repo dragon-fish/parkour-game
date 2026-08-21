@@ -137,3 +137,32 @@ func test_a_roll_travels_the_measured_distance_even_from_a_dead_drop() -> void:
 	# rather than being pinned back to walking pace.
 	assert_gt(6.0 * config.skill_roll.speed_scale, floor_speed, \
 		"a running landing would be slowed to the forced pace")
+
+func test_the_roll_goes_where_the_view_points_not_where_the_body_was_going() -> void:
+	# ✅ THE OWNER'S FIND, and it is counter-intuitive enough to be worth a test
+	# of its own: the forced travel follows the CAMERA at touchdown, not the
+	# momentum -- even after spinning 180 degrees in mid-air on the way down.
+	#
+	# A deliberate break with physics. A roll is a second of lost control, and
+	# letting the view aim it hands that second back: you steer the landing
+	# rather than being carried by whatever the fall left you with.
+	#
+	# Driven straight at the move rather than through a landing, so the only
+	# variable is the disagreement between facing and velocity.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+
+	# Travelling along -Z, but LOOKING back along +Z: a half turn taken in the
+	# air, which is exactly the case the owner described.
+	player.velocity = Vector3(0.0, 0.0, -6.0)
+	player.rotation.y = PI
+	player.move_manager.start(Move.SKILL_ROLL)
+	await step(4)
+	assert_gt(player.velocity.z, 0.0, \
+		"the roll followed the old momentum (-Z) instead of the view (+Z)")
+
+	TestWorld.teardown(world)
+	await step(1)

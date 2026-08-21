@@ -373,6 +373,36 @@ static func compute_mount_transform(capsule_height: float, mount_offset: Vector3
 func body_mount_transform() -> Transform3D:
 	return compute_mount_transform(current_capsule_height(), body_mount_offset, body_mount_rotation_degrees)
 
+## True when a standing body would FIT with its feet at `feet_point`.
+##
+## THE SAME SHAPECAST, MOVED. has_headroom() below asks the question here, and
+## this asks it somewhere else -- which is all "is there room to pull up onto
+## this ledge" ever needed. A first attempt wrote a fresh upward raycast in
+## Probes for that, and it did not work; this mechanism was sitting on Player
+## the whole time, doing the job for the crouch-to-stand restore.
+##
+## A SHAPE, not a ray, and that is the point: a body has width. A ray fired up
+## from an edge threads between two slabs that a body could never fit through,
+## and it misses a cap it grazes.
+##
+## Restored afterwards rather than left where it was put: the node's resting
+## place is the body's own centre, and has_headroom() reads it there every time
+## a crouch tries to stand up.
+func fits_standing_at(feet_point: Vector3) -> bool:
+	if _stand_clearance == null:
+		return true
+	var resting: Vector3 = _stand_clearance.global_position
+	# Lifted a hair clear of the surface being stood ON. A shapecast resting
+	# exactly on a face reports a collision with it, so testing "would a body
+	# fit with its feet here" against the very ledge those feet are on comes
+	# back as blocked -- which would refuse every mantle in the game.
+	const CLEARANCE_LIFT := 0.03
+	_stand_clearance.global_position = feet_point 		+ Vector3.UP * (standing_height() * 0.5 + CLEARANCE_LIFT)
+	_stand_clearance.force_shapecast_update()
+	var blocked: bool = _stand_clearance.is_colliding()
+	_stand_clearance.global_position = resting
+	return not blocked
+
 ## True when the standing-size capsule fits where the body currently is.
 ## Tests that build a Player by hand have no probe node, so absence means yes.
 func has_headroom() -> bool:

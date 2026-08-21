@@ -159,7 +159,13 @@ func probe_transition() -> StringName:
 			# Contact is the other way of satisfying the same question, and it
 			# satisfies it completely. See docs/contact-drives-movement.md.
 			var closing: bool = config.speed_vault.should_commit( 				hit["distance"], player.horizontal_speed(), variant)
-			if closing or touching(hit.get("face_point", Vector3.ZERO)):
+			# NOWHERE TO PASS THROUGH IS NOT A VAULT. Unlike a grab, which can
+			# still hang on a capped ledge, a vault has no half-measure: every
+			# one of them carries the body through the space above the obstacle,
+			# whether it lands there or beyond. A slab over the top means
+			# clipping through it, which the owner reported as happening a lot.
+			var room: bool = player.fits_standing_at(hit["top"])
+			if room and (closing or touching(hit.get("face_point", Vector3.ZERO))):
 				player.pending_vault_variant = variant
 				return SPEED_VAULT
 

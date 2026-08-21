@@ -9,15 +9,21 @@ extends Move
 # one or the other depending on whether the crouch was pressed in time. Rolling
 # is how the player buys their way out of the two-second lockout.
 #
-# NOT STEERABLE, and that is from the source: ControllerState is
+# NOT STEERABLE ONCE IT STARTS, and that is from the source: ControllerState is
 # PlayerGrabbing, MovementGroup is MG_TwoHandsBusy, and bDisableFaceRotation is
 # set. The hands are busy and the facing is pinned; the direction is decided at
-# touchdown and the player has no say in it afterwards. What they keep is the
-# speed.
+# touchdown and the player has no say in it afterwards.
+#
+# But it is AIMED, and that part is the owner's find from the original: the
+# direction comes from where the CAMERA points at touchdown, not from the
+# momentum -- even if the player spun 180 degrees in the air on the way down.
+# A deliberate break with physics, and their reading of why is convincing: a
+# roll is a second of lost control, and letting the view aim it hands that
+# second back. See enter().
 
 var _elapsed: float = 0.0
-## Fixed at touchdown. Zero only if the body landed with no horizontal speed at
-## all, in which case the roll plays out on the spot.
+## Fixed at touchdown, from the VIEW rather than from the momentum -- see
+## enter(). Zero only if the facing is degenerate, which nothing produces.
 var _direction: Vector3 = Vector3.ZERO
 var _speed: float = 0.0
 
@@ -30,21 +36,32 @@ func enter(_previous: StringName) -> void:
 	# travels the distance the original travels. See SkillRollConfig.
 	var forced: float = cfg.forced_distance / maxf(cfg.duration, 0.001)
 	_speed = maxf(horizontal.length() * cfg.speed_scale, forced)
-	# A straight drop has no heading to roll along, so the body's own facing
-	# stands in. Without it the forced travel above has nowhere to go and the
-	# roll happens on the spot, which is not what the original does -- rolling
-	# toward a cliff edge there rolls you off it.
-	if horizontal.length_squared() > 0.0001:
-		_direction = horizontal.normalized()
+	# ALONG THE VIEW, NOT ALONG THE MOMENTUM.
+	#
+	# ✅ The owner, from the original: the forced travel follows where the CAMERA
+	# is pointing at the instant the roll begins -- even if the player spun 180
+	# degrees in mid-air on the way down. It is a deliberate break with physics,
+	# and their reading of why is convincing: a roll is a second of lost control,
+	# and letting the view aim it hands that second back. You steer the landing
+	# instead of being carried by whatever the fall happened to leave you with.
+	#
+	# So this is NOT a fallback for a heading-less drop, which is what it was.
+	# The heading is never consulted; only the facing is.
+	# ⚠️ Catalyst rolls the other way -- along the momentum, with four directional
+	# variants. See SkillRollConfig.aim_with_view for why this is a choice
+	# between two shipped games rather than a fact about one.
+	var aim: Vector3 = horizontal
+	if cfg.aim_with_view:
+		aim = -player.global_transform.basis.z
+	aim.y = 0.0
+	if aim.length_squared() > 0.0001:
+		_direction = aim.normalized()
 	else:
-		# Annotated, not inferred: `player` is deliberately untyped (see Move),
-		# so anything read through it arrives as Variant.
+		# Nothing to aim by at all: a dead drop with the facing degenerate.
 		var facing: Vector3 = -player.global_transform.basis.z
 		facing.y = 0.0
 		_direction = facing.normalized() if facing.length_squared() > 0.0001 else Vector3.ZERO
-	# The budget survives, mostly. A landing hard enough to need rolling out of
-	# should still cost something, or there would be no reason ever to take the
-	# soft option -- but it must not cost much, or nobody would roll at all.
+
 	player.speed_energy.energy *= cfg.energy_keep
 	player.set_capsule_height(config.crouch.crouch_capsule_height)
 

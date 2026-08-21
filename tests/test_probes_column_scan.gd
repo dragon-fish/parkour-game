@@ -180,17 +180,40 @@ func test_thin_obstacles_report_a_far_side_at_every_height() -> void:
 		after_each()
 
 # --- headroom ------------------------------------------------------------------
-#
-# ⚠️ NOT TESTED YET, DELIBERATELY EMPTY. has_headroom() is written and wired
-# into both queries, and in several rounds of trying I could not get it to fire
-# on a capped ledge in a fixture -- the ray is demonstrably in the right place
-# (instrumented) and reports no hit against a slab it should meet.
-#
-# The assertions that belong here were removed rather than left failing or
-# softened into something that passes. A test that asserts what the code does
-# instead of what it should do is worse than no test, and so is a green suite
-# that hides a bug the owner is actively hitting.
-#
-# So: the clipping the owner reported -- pulling up onto a ledge with a slab
-# over it and ending up inside the geometry -- is NOT fixed. See
-# docs/feel-backlog.md 34 for what is known and what to try next.
+
+func test_a_body_does_not_fit_under_a_cap() -> void:
+	# ✅ THE OWNER DREW THIS SHAPE and gave the original's answer: a ledge with a
+	# slab overhanging it can be hung from and shimmied along, and cannot be
+	# pulled up onto. Ours pulled up regardless and put the body inside the
+	# geometry -- clipping the owner reported as happening a lot.
+	#
+	# Asked of the BODY with the shapecast that already existed for the
+	# crouch-to-stand restore, not of a fresh raycast. A shape, because a body
+	# has width.
+	var player: Player = await _standing_player()
+	var ledge_top := Vector3(0.0, 1.9, -1.1)
+	_slab(0.0, 1.9, 0.6, -1.1)
+	# Low enough over the ledge that nothing could stand there.
+	_slab(2.3, 2.8, 2.4, -1.5)
+	await step(1)
+	assert_false(player.fits_standing_at(ledge_top), 		"a body was said to fit under a slab 0.4 m above the ledge")
+
+func test_a_body_fits_on_an_open_ledge() -> void:
+	# The control. Without it the test above passes on a check that always says
+	# no, which is the failure mode that would quietly kill every mantle.
+	var player: Player = await _standing_player()
+	var ledge_top := Vector3(0.0, 1.9, -1.1)
+	_slab(0.0, 1.9, 0.6, -1.1)
+	await step(1)
+	assert_true(player.fits_standing_at(ledge_top), 		"a body was said not to fit on a ledge with open sky above it")
+
+func test_the_clearance_probe_goes_back_where_it_belongs() -> void:
+	# fits_standing_at() MOVES the shapecast. Left where it was put, the
+	# crouch-to-stand restore would be asking about a ledge somewhere across the
+	# level, and a crouched player would either never stand or stand inside a
+	# ceiling.
+	var player: Player = await _standing_player()
+	var probe: ShapeCast3D = player.get_node("StandClearance")
+	var before: Vector3 = probe.global_position
+	player.fits_standing_at(Vector3(0.0, 12.0, -30.0))
+	assert_almost_eq(probe.global_position.distance_to(before), 0.0, 0.0001, 		"the clearance probe was left where the last question put it")

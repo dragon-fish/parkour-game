@@ -196,7 +196,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# Refused rather than aborted: the hang is still perfectly valid, and
 		# staying on it is what the original does. (Shimmying along it is not
 		# implemented yet -- see docs/feel-backlog.md 34.)
-		if not bool(player.pending_ledge.get("can_pull_up", true)):
+		#
+		# Asked of the BODY, not of the probe. Player.fits_standing_at() moves
+		# the shapecast that already exists for the crouch-to-stand restore --
+		# a SHAPE, because a body has width, where a ray threads between two
+		# slabs it could never fit through.
+		if not player.fits_standing_at(top):
 			return KEEP
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration, config.grab.mantle_arc_height)

@@ -90,3 +90,21 @@ func _init() -> void:
 ## ⚠️ PROJECT-DEFINED. How low the eye drops at the midpoint of the roll, as a
 ## fraction of the crouch offset -- 1.0 is fully crouched.
 @export var camera_crouch: float = 1.0
+
+## Whether the forced travel follows the VIEW (the 2008 original) or the
+## MOMENTUM (Catalyst).
+##
+## ✅ 2008 aims it with the camera, which the owner found by spinning 180 degrees
+## in mid-air and rolling off in the direction they were looking rather than the
+## one they were travelling. A deliberate break with physics, and the reasoning
+## reads clearly: a roll is a second of lost control, and letting the view aim it
+## hands that second back.
+##
+## ⚠️ CATALYST DIFFERS, and the owner flagged it: the sequel has four roll
+## variants -- forward, back, left, right -- and its rolls DO follow momentum.
+## So this is a CHOICE between two shipped games rather than a fact about one.
+##
+## Set to the 2008 behaviour because that is this project's target and every
+## measurement behind the move came from it. Recorded as a switch rather than
+## hard-coded so changing that decision is a line rather than an excavation.
+@export var aim_with_view: bool = true
