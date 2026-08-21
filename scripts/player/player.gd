@@ -307,6 +307,21 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## than in MovementConfig -- a fact about the asset, not a feel value.
 @export var body_head_path: NodePath
 
+## ⚠️ A VRM NEEDS THIS SET. godot-vrm builds a BoneAttachment3D on the head
+## bone -- which is exactly what the follow wants -- but the model also carries
+## an ordinary mesh node called Head, sitting at the model's own origin, down at
+## the FEET. The BFS search reaches the mesh first and the camera then tracks a
+## point that never moves.
+##
+## Measured: with the search left to itself the eye travelled 0.0001 m over a
+## run while the head bone travelled 12.7 cm; pointed at
+## GeneralSkeleton/Head it travelled 0.1439 m.
+##
+## Worth reading twice, because the first diagnosis was wrong: the
+## BoneAttachment3D works perfectly, and measured the same 12.7 cm once it was
+## the node actually being read. The defect was never the attachment's update
+## timing, it was which node got picked.
+
 ## The travel speed, in m/s, at which this body's locomotion clips read as
 ## natural -- i.e. where CharacterAnimator leaves the playback rate at 1.0 and
 ## scales around. Zero disables the scaling entirely and leaves every clip at
@@ -366,6 +381,7 @@ var head_node: Node3D = null
 ## activates the AnimationTree immediately, so by the first tick the pose has
 ## already moved and "rest" would be one arbitrary frame of a run cycle.
 var head_rest_local: Vector3 = Vector3.ZERO
+
 
 ## Drives the attached body's arms onto whatever the body is actually touching.
 ## Built in _attach_body() when the body has a humanoid skeleton, and null
@@ -1221,7 +1237,7 @@ func _physics_process(delta: float) -> void:
 		# that produced it, matching how every other per-tick input here
 		# (speed, grounded, wall_side) is already a value, not an object.
 		if head_node != null:
-			camera_rig.set_head_offset( 				to_local(head_node.global_position) - head_rest_local)
+			camera_rig.set_head_offset(to_local(head_node.global_position) - head_rest_local)
 		else:
 			camera_rig.clear_head_position()
 		# travel_speed(), NOT horizontal_speed() — see travel_speed()'s note on
