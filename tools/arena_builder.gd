@@ -779,6 +779,82 @@ func build() -> Node3D:
 		_attach(wall_area, _box(wall_name, Vector3(WALL_THICKNESS, wall_run_height, zig_length),
 			Vector3(side * ZIG_X, wall_run_height * 0.5, (near_z + far_z) * 0.5), wall_colour))
 
+	# --- Shimmy course --------------------------------------------------------
+	#
+	# ✅ THE OWNER: "给我造几个方便爬的墙吧，顺便把内外九十度转角也做几个，
+	# 这个在 ME 的教程关就出现了." Corners are the next piece of the shimmy
+	# and there was nowhere in this arena to stand in front of one.
+	#
+	# EAST OF EVERYTHING, at x = 36. The occupied columns are SlideArea's
+	# x [14, 22], VaultArea's x [-23, -16] and WallArea's x [-1.7, 1.7]. This
+	# area's own boxes work out to x [25.7, 39] and z [15.7, 30.3] in world
+	# space, so the nearest neighbour is SlideArea's x = 22 edge, 3.7 m west of
+	# InnerCorner_AlongZ. The Floor is sized from the union of every area's
+	# bounds further down, so it grows to cover this without anyone editing an
+	# edge coordinate.
+	#
+	# THREE STRUCTURES, one per question the shimmy has to answer:
+	#
+	#   StraightWall   a free-standing slab. Plain travel, and the open floor
+	#                  on all four sides is what a jump off the ledge needs.
+	#   OuterBlock     a 6 m square. Hang on one face, wrap around a CONVEX
+	#                  corner, keep going along the next -- and it is square
+	#                  rather than a thin L on purpose: wrapping onto a 0.6 m
+	#                  end cap proves nothing, wrapping onto another 6 m face
+	#                  lets the player carry on and see whether the anchor
+	#                  survived the turn.
+	#   InnerCorner    two slabs meeting at 90 degrees, hung from the INSIDE.
+	#                  Travel into the corner until the perpendicular wall
+	#                  blocks the body, then turn into it.
+	#
+	# Both corner cases are deliberately built from the SAME height and the
+	# same thickness as the straight wall, so anything that behaves differently
+	# at a corner is the corner and not a second variable.
+	var shimmy_config := MovementConfig.new()
+	var shimmy_area := Node3D.new()
+	shimmy_area.name = "ShimmyArea"
+	shimmy_area.position = Vector3(36.0, 0.0, 24.0)
+	_attach(_root, shimmy_area)
+
+	# Colour: a warm rose, distinct from ledge violet, slide green, vault
+	# amber, gap cyan and wall steel-blue -- the shimmy structures should not
+	# read as "more of the vault course" from across the arena.
+	var shimmy_colour := Color(0.62, 0.42, 0.50)
+
+	# THE SAME HEIGHT LedgeMid USES, and derived rather than typed: 0.1 under
+	# ledge_max_height is "as tall as this project can still grab", which is
+	# what makes a wall convenient to get onto. Retuning grab.ledge_max_height
+	# moves all four structures here together.
+	var shimmy_height: float = shimmy_config.grab.ledge_max_height - 0.1
+	const SHIMMY_THICKNESS := 0.6
+	const SHIMMY_RUN := 6.0
+
+	_attach(shimmy_area, _box("StraightWall",
+		Vector3(10.0, shimmy_height, SHIMMY_THICKNESS),
+		Vector3(-4.0, shimmy_height * 0.5, 6.0), shimmy_colour))
+
+	# A square block. Its south face (+Z) and its east face (+X) meet at a
+	# convex corner the hands have to travel around the OUTSIDE of.
+	_attach(shimmy_area, _box("OuterBlock",
+		Vector3(SHIMMY_RUN, shimmy_height, SHIMMY_RUN),
+		Vector3(0.0, shimmy_height * 0.5, 0.0), shimmy_colour))
+
+	# Two slabs meeting at a right angle, opening toward +X/+Z -- so a player
+	# hanging on either inner face travels INTO the corner rather than around
+	# it. Laid out so the two faces meet exactly, with no notch at the join
+	# for a probe to fall through: the along-X slab stops where the along-Z
+	# slab starts.
+	const INNER_X := -10.0
+	const INNER_Z := -8.0
+	_attach(shimmy_area, _box("InnerCorner_AlongX",
+		Vector3(SHIMMY_RUN, shimmy_height, SHIMMY_THICKNESS),
+		Vector3(INNER_X + SHIMMY_RUN * 0.5 + SHIMMY_THICKNESS * 0.5,
+			shimmy_height * 0.5, INNER_Z), shimmy_colour))
+	_attach(shimmy_area, _box("InnerCorner_AlongZ",
+		Vector3(SHIMMY_THICKNESS, shimmy_height, SHIMMY_RUN),
+		Vector3(INNER_X, shimmy_height * 0.5,
+			INNER_Z + SHIMMY_RUN * 0.5 + SHIMMY_THICKNESS * 0.5), shimmy_colour))
+
 	# --- Floor ----------------------------------------------------------------
 	#
 	# Sized from the union of every practice area's OWN bounds, not the other
