@@ -30,6 +30,12 @@ extends CanvasLayer
 # travels past the thing its hands are meant to be on. See
 # BodyProfile.clip_offsets.
 
+## Spelled out rather than written inline. An escaped newline inside a string
+## literal has been mangled four times in this repository by the tooling that
+## edits these files -- twice into a line that still parsed and was simply
+## wrong. A named constant cannot be mangled into whitespace.
+const NEWLINE := "\n"
+
 @export var player: Player
 
 ## Metres per second and degrees per second while a key is held.
@@ -93,7 +99,7 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		KEY_ENTER, KEY_KP_ENTER:
 			if _active:
-				_print_entry()
+				_print_table()
 				get_viewport().set_input_as_handled()
 		KEY_BACKSPACE:
 			if _active:
@@ -159,12 +165,62 @@ func _apply() -> void:
 		player.set_clip_offset_immediately(_position, _rotation)
 	_refresh()
 
-func _print_entry() -> void:
-	print('"%s": [Vector3(%.3f, %.3f, %.3f), Vector3(%.1f, %.1f, %.1f)],'
-			% [_clip, _position.x, _position.y, _position.z,
-			_rotation.x, _rotation.y, _rotation.z])
-	_note = "printed to the console"
+## EVERY clip tuned so far, not just the one on screen.
+##
+## ✅ The owner: "I tuned a pile of them and only found out on Enter that it
+## printed the current one." The others were never lost -- _commit() writes each
+## into the live table as you leave it -- but recovering them meant walking back
+## through the clips one at a time to press Enter again, which is not recovery,
+## it is doing the work twice.
+##
+## Printed as the whole property line, so it replaces the one in the .tres
+## rather than being merged into it by hand.
+func _print_table() -> void:
+	var table := _live_table()
+	var names: Array = table.keys()
+	names.sort()
+	var lines := PackedStringArray()
+	lines.append("clip_offsets = {")
+	for i in names.size():
+		var entry: Array = table[names[i]]
+		# No comma after the last one: Godot's own .tres writer omits it, and a
+		# trailing comma is not something the parser is guaranteed to forgive.
+		var tail := "," if i < names.size() - 1 else ""
+		lines.append('"%s": [Vector3(%.3f, %.3f, %.3f), Vector3(%.1f, %.1f, %.1f)]%s'
+				% [names[i], entry[0].x, entry[0].y, entry[0].z,
+				entry[1].x, entry[1].y, entry[1].z, tail])
+	lines.append("}")
+	# One print, not one per line: the point is a block you can select in the
+	# console and paste in one go.
+	print(NEWLINE.join(lines))
+	_note = "printed %d clip%s to the console" % [names.size(), "" if names.size() == 1 else "s"]
 	_refresh()
+
+## The committed table plus whatever is being dragged around right now, keyed by
+## plain String. StringName and String are interchangeable as dictionary keys
+## (checked directly), so it does not matter which of the two Godot writes back
+## into the .tres.
+func _live_table() -> Dictionary:
+	var table := {}
+	if player != null:
+		for key in player.body_clip_offsets:
+			var entry: Array = player.clip_offset_for(key)
+			if not entry.is_empty():
+				table[String(key)] = entry
+	# The clip on screen has not been committed yet -- that happens on unfreeze.
+	if _active and _clip != &"" and _clip != Move.KEEP:
+		if _position.is_zero_approx() and _rotation.is_zero_approx():
+			table.erase(String(_clip))
+		else:
+			table[String(_clip)] = [_position, _rotation]
+	return table
+
+## The clips carrying an offset right now, for the readout. Seeing the list is
+## what tells you the earlier ones are still there.
+func _tuned_names() -> Array:
+	var names: Array = _live_table().keys()
+	names.sort()
+	return names
 
 func _refresh() -> void:
 	if _label == null:
@@ -187,9 +243,12 @@ func _refresh() -> void:
 		"  HOLD  [ ] yaw    ; ' pitch    , . roll",
 		"        Shift x%d faster    Ctrl /%d finer"
 				% [int(coarse_multiplier), int(fine_divisor)],
-		"  Enter  print the line to paste into the profile",
+		"  Enter  print ALL %d tuned clip(s), as a line to paste into the profile"
+				% _live_table().size(),
 		"  Back   reset to zero",
 		"  F9     unfreeze, keeping this offset live for the next play",
+		"",
+		"  tuned so far: %s" % (", ".join(_tuned_names()) if not _tuned_names().is_empty() else "nothing yet"),
 	]
 	if _note != "":
 		lines.append("")
