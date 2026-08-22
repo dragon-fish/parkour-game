@@ -74,6 +74,29 @@ const CROUCHED_CLIPS: Array[StringName] = [
 const SPEED_SCALE_MIN := 0.5
 const SPEED_SCALE_MAX := 2.0
 
+## The WALK clips, which are authored at a stroll and cannot be scaled up to a
+## run -- the same shape as CROUCHED_CLIPS below, and for the same reason.
+const WALK_CLIPS: Array[StringName] = [&"Walk", &"Walk_Carry"]
+
+## What a walk clip's 1.0 means, as a fraction of body_run_reference_speed.
+##
+## DERIVED, not picked. The two scale bounds above already define how far any
+## clip can be stretched, so the walk's reference is set so that its CEILING
+## lands exactly on the run's FLOOR:
+##
+##   walk at SPEED_SCALE_MAX = 7.2 * 0.25 * 2.0 = 3.6 m/s
+##   run  at SPEED_SCALE_MIN = 7.2 * 0.5       = 3.6 m/s
+##
+## which is also where _run_band_speed() hands one clip over to the other. At
+## the seam both clips are at the exact edge of their usable range, so neither
+## is ever asked to do the other's job. 0.25 of 7.2 is 1.8 m/s, a brisk walk
+## and a plausible authored speed for the pack's Walk_Loop.
+##
+## ⚠️ The one knob here. If the walk looks like it is hurrying or dawdling,
+## this is the number -- and moving it moves the handover with it, which is
+## the point.
+const WALK_REFERENCE_PCT := 0.25
+
 ## Assigned in player.gd's _wire_body_animation().
 @export var anim_tree: AnimationTree
 ## Assigned in player.gd's _wire_body_animation().
@@ -83,6 +106,18 @@ var _playback: AnimationNodeStateMachinePlayback
 ## The graph itself, cached alongside _playback so _has_clip() below never
 ## has to re-fetch anim_tree.tree_root every tick for every candidate.
 var _graph: AnimationNodeStateMachine
+
+## The move the previous tick was in, so a CHANGE of move can be noticed. Every
+## routing decision above this line is stateless -- it asks what the body is
+## doing now -- and the one-shots below are the exception that needs to know
+## what it stopped doing.
+var _previous_move: StringName = Move.KEEP
+## The one-shot currently playing, or KEEP. See _arm_oneshot().
+var _oneshot: StringName = Move.KEEP
+## Seconds of it left to play. Real seconds, and that is only true because a
+## one-shot is never in SPEED_MATCHED_CLIPS: the graph time scale is pinned to
+## 1.0 while one plays, so the clock here and the clip agree.
+var _oneshot_left: float = 0.0
 
 func _ready() -> void:
 	if anim_tree == null:
@@ -96,10 +131,19 @@ func _ready() -> void:
 	if blend_tree != null:
 		_graph = blend_tree.get_node(GRAPH_STATES) as AnimationNodeStateMachine
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if player == null or player.move_manager == null or _playback == null:
 		return
-	var target := _target_animation()
+	var move: StringName = player.move_manager.current_name
+	if move != _previous_move:
+		_arm_oneshot(_previous_move, move)
+		_previous_move = move
+	# A one-shot OUTRANKS the move's own clip while it lasts -- that is the
+	# whole point of it. _oneshot_target() returns KEEP the moment there is
+	# none, which is almost every tick.
+	var target := _oneshot_target(delta)
+	if target == Move.KEEP:
+		target = _target_animation()
 	# Move.KEEP (the same empty-StringName sentinel Move itself
 	# uses for "stay put, nothing to do") means every candidate for this tick's
 	# move came back missing from the attached body -- see _first_available().
@@ -109,6 +153,102 @@ func _physics_process(_delta: float) -> void:
 		return
 	_playback.travel(target)
 	_drive_speed(target)
+
+## Where the walk hands over to the run: the speed at which the run clip would
+## be scaled to SPEED_SCALE_MIN, i.e. the slowest it can honestly go.
+##
+## Not a new tuning value -- it falls out of bounds that already existed, and
+## WALK_REFERENCE_PCT is set so the walk's ceiling lands on the same number.
+func _run_band_speed() -> float:
+	return player.body_run_reference_speed * SPEED_SCALE_MIN
+
+## Moves whose end is a LANDING. Leaving one of these for WALKING is the moment
+## the feet arrive, which is what Jump_Land is a clip of.
+##
+## Move.LANDING is deliberately absent: that is the hard landing nobody rolled
+## out of, and it already routes to Jump_Land as its own clip for the whole of
+## its two-second lockout.
+const _AIRBORNE_MOVES: Array[StringName] = [
+	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED,
+]
+
+## Decides whether the move that just started owes a one-shot -- a clip played
+## ONCE at a transition rather than for as long as a state lasts.
+##
+## The packs ship three-part actions (Slide_Start / Slide / Slide_Exit) where
+## this project has one state, and the ends are where a body reads as being
+## driven by physics rather than by a person: a slide that begins at full speed
+## with no push-off, a landing with no absorb. Neither end can be a move,
+## because neither costs the player any time -- they are presentation, in
+## exactly the sense docs/camera-authority.md means it, and they live here
+## rather than in MoveManager for that reason.
+##
+## Clears any previous one-shot when nothing matches, so a second transition
+## during one cuts it off rather than letting it outlive its moment.
+func _arm_oneshot(from: StringName, to: StringName) -> void:
+	_oneshot = Move.KEEP
+	_oneshot_left = 0.0
+	if to == Move.SLIDE:
+		_start_oneshot(&"Slide_Start")
+		return
+	if from == Move.SLIDE:
+		# NOT INTO A CROUCH. ✅ The owner settled this for the blend times
+		# already -- a slide into a crouch is continuous, the body simply stays
+		# down, while a slide into a run is the picking-yourself-up. Slide_Exit
+		# is a stand-up, so it belongs only to the second.
+		if to != Move.CROUCH:
+			_start_oneshot(&"Slide_Exit")
+		return
+	if _AIRBORNE_MOVES.has(from) and to == Move.WALKING:
+		# ONLY WHEN NOTHING IS HELD, on the owner's call: land into the absorb
+		# when the player has stopped asking to go anywhere, and straight into
+		# the run when they have not. Holding a direction through a landing is
+		# the player saying they are still moving, and a stand-up-from-a-crouch
+		# in the middle of that would be the animation contradicting them.
+		if player.wish_direction(player.last_input).length_squared() < 0.0001:
+			_start_oneshot(&"Jump_Land")
+
+## Arms `clip` for its own natural length, if the attached body has it at all.
+func _start_oneshot(clip: StringName) -> void:
+	if not _has_clip(clip):
+		return
+	var length := _clip_length(clip)
+	if length <= 0.0:
+		return
+	_oneshot = clip
+	_oneshot_left = length
+
+## The armed one-shot, or KEEP. Counts the clock down, and cancels early when
+## the moment it belongs to has passed.
+func _oneshot_target(delta: float) -> StringName:
+	if _oneshot == Move.KEEP:
+		return Move.KEEP
+	# A landing absorb is answerable to the player: the instant they ask to move
+	# again it stops, mid-clip, and the ordinary routing takes over. Waiting out
+	# the rest of it would be a fraction of a second of ignored input, which is
+	# the one thing this project will not spend on presentation.
+	if _oneshot == &"Jump_Land" and player.wish_direction(player.last_input).length_squared() > 0.0001:
+		_oneshot = Move.KEEP
+		_oneshot_left = 0.0
+		return Move.KEEP
+	_oneshot_left -= delta
+	if _oneshot_left <= 0.0:
+		_oneshot = Move.KEEP
+		_oneshot_left = 0.0
+		return Move.KEEP
+	return _oneshot
+
+## A clip's authored duration, read off the AnimationPlayer the AnimationTree is
+## already pointed at. Read rather than configured so a one-shot's window can
+## never drift from the clip it is a window for -- swapping in a longer
+## Slide_Exit needs no number changed anywhere.
+func _clip_length(clip: StringName) -> float:
+	if anim_tree == null:
+		return 0.0
+	var anim_player := anim_tree.get_node_or_null(anim_tree.anim_player) as AnimationPlayer
+	if anim_player == null or not anim_player.has_animation(clip):
+		return 0.0
+	return anim_player.get_animation(clip).length
 
 ## Scales the clip's playback to the speed the body is actually travelling, so
 ## a cycle authored at one pace does not slide its feet across the ground at
@@ -138,6 +278,8 @@ func _drive_speed(clip: StringName) -> void:
 		base_clip = StringName(String(clip).trim_suffix(Player.BACKWARD_SUFFIX))
 	if CROUCHED_CLIPS.has(base_clip):
 		reference *= player.config.pawn.crouched_pct
+	elif WALK_CLIPS.has(base_clip):
+		reference *= WALK_REFERENCE_PCT
 	if reference > 0.0 and SPEED_MATCHED_CLIPS.has(base_clip):
 		# travel_speed(), NOT horizontal_speed() -- see travel_speed()'s own
 		# note on why velocity lies through a vault or a mantle. The eye already
@@ -217,8 +359,16 @@ func _target_animation() -> StringName:
 	# back the next time a list was reordered.
 	match player.move_manager.current_name:
 		Move.WALKING:
-			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
+			# THREE BANDS, not two. The free tier has a genuine Walk and the
+			# owner asked for it to be used, which also closes the hole the
+			# Sprint swap opened: below the run's scale floor a sprint was being
+			# played in slow motion, because one clip was covering the whole
+			# range from a crawl to full pace.
+			var speed: float = player.horizontal_speed()
+			if speed > _run_band_speed():
 				return _first_available_directional([&"Sprint", &"Walk", &"Walk_Carry", &"run", &"idle"])
+			if speed > player.config.pawn.run_animation_speed_threshold:
+				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			return _first_available([&"Idle", &"Idle_FoldArms", &"idle", &"Walk"])
 		Move.FALLING:
 			# `Jump` is the pack's AIRBORNE LOOP (Jump_Loop, with the suffix
@@ -226,10 +376,12 @@ func _target_animation() -> StringName:
 			# `jump` before, which is a whole take-off-to-landing clip.
 			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"Idle", &"idle"])
 		Move.SLIDE:
-			# A GENUINE MATCH: UAL2 ships Slide_Start / Slide / Slide_Exit, and
-			# SlideMove drives the trio. Everything after it is the old
-			# PLACEHOLDER reasoning -- a slide is fast, committed ground
-			# momentum, so a run is the closest thing to it.
+			# A GENUINE MATCH: UAL2 ships Slide_Start / Slide / Slide_Exit. This
+			# case is the middle one only -- the two ends are one-shots, armed
+			# by _arm_oneshot() at the transitions into and out of the move,
+			# because neither end is a state the player spends time in.
+			# Everything after Slide is the old PLACEHOLDER reasoning: a slide
+			# is fast, committed ground momentum, so a run is the closest thing.
 			return _first_available([&"Slide", &"Sprint", &"run", &"idle"])
 		Move.SPEED_VAULT:
 			# PLACEHOLDER, and the biggest remaining gap. A vault is a short
@@ -308,8 +460,11 @@ func _target_animation() -> StringName:
 			# while whatever the legs were doing continues. So it borrows the
 			# same speed split WALKING uses rather than claiming a clip of its
 			# own.
-			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
+			var turn_speed: float = player.horizontal_speed()
+			if turn_speed > _run_band_speed():
 				return _first_available([&"Sprint", &"Walk", &"run", &"idle"])
+			if turn_speed > player.config.pawn.run_animation_speed_threshold:
+				return _first_available([&"Walk", &"Sprint", &"run", &"idle"])
 			return _first_available([&"Idle", &"idle", &"Walk", &"run"])
 		_:
 			# Any move without an explicit case above. Reaching here is a
