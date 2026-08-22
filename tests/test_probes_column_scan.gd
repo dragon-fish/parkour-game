@@ -217,3 +217,38 @@ func test_the_clearance_probe_goes_back_where_it_belongs() -> void:
 	var before: Vector3 = probe.global_position
 	player.fits_standing_at(Vector3(0.0, 12.0, -30.0))
 	assert_almost_eq(probe.global_position.distance_to(before), 0.0, 0.0001, 		"the clearance probe was left where the last question put it")
+
+func test_a_thin_obstacle_with_a_drop_beyond_is_still_an_over() -> void:
+	# ✅ THE OWNER: a 2.2 m by 0.35 m wall put the player up ON TOP of it to
+	# take a step, which is absurd -- 0.35 m is not somewhere to stand.
+	#
+	# The cause was the far-side ray reaching only a vault's own height, 1.92 m,
+	# on the reasoning that anything deeper is "a drop, not a landing". True as
+	# far as it goes, but it made a MISSING landing refuse the whole family, and
+	# the variant table then fell through to vault_onto.
+	#
+	# Two failures were being treated as one. A hit ABOVE the top means the top
+	# is WIDE and the body would genuinely stand there; NO hit at all means a
+	# thin face with a hole behind it. One is somewhere to stand, the other is a
+	# fence over a stairwell -- and the second is still an over, just without a
+	# landing to aim at.
+	#
+	# ⚠️ ASKED OF THE FUNCTION, not through vault_query(). A 2.2 m top is out of
+	# reach from the ground, so the whole query answers "invalid" and a test
+	# routed through it asserts nothing -- which the first draft of this did,
+	# and it passed against the old behaviour too.
+	var player: Player = await _standing_player()
+	_slab(0.0, 2.2, 0.35, -1.0)
+	await step(1)
+	assert_true(player.probes._query_vault_over(Vector3(0.0, 2.2, -1.0)),
+		"a 0.35 m thin wall with a drop beyond was offered as somewhere to stand on")
+
+func test_a_wide_top_is_still_not_an_over() -> void:
+	# The pair, and the one that stops the change above from turning every
+	# obstacle into an over: a hit ABOVE the top is a WIDE top, which is a real
+	# place to stand and must stay a vault-onto.
+	var player: Player = await _standing_player()
+	_slab(0.0, 1.2, 3.0, -2.6)
+	await step(1)
+	assert_false(player.probes._query_vault_over(Vector3(0.0, 1.2, -1.4)),
+		"a 3 m deep block offered a far side to be carried past")

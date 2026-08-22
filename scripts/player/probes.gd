@@ -454,7 +454,26 @@ func _query_vault_over(top: Vector3) -> bool:
 	_vault_over.target_position = Vector3(0.0, -depth, 0.0)
 	_vault_over.force_raycast_update()
 	if not _vault_over.is_colliding():
-		return false
+		# NOTHING WITHIN A VAULT'S REACH IS STILL AN OVER, with no landing.
+		#
+		# ✅ The owner: a 2.2 m by 0.35 m wall put the player up on top of it to
+		# take a step, which is absurd -- 0.35 m is not somewhere to stand. The
+		# cause was this returning false and the variant table then falling
+		# through to vault_onto.
+		#
+		# The two failures below are NOT the same thing, and the code already
+		# tells them apart without having said so: a hit ABOVE the top means the
+		# top is WIDE and the body would genuinely end up standing on it, while
+		# NO HIT AT ALL means the probe is out past a thin obstacle's far face
+		# with a drop beyond deeper than a vault reaches. One is somewhere to
+		# stand; the other is a fence with a hole behind it.
+		#
+		# So this is an over with no far point, and the move lands the body past
+		# the far face and lets it fall -- which is what happens to a person who
+		# vaults a fence over a stairwell. It restores the axis this project set
+		# out with: one question picks the FAMILY, another picks the LANDING.
+		# See tests/test_probes_column_scan.gd's own note on that.
+		return true
 	if _vault_over.get_collision_normal().y < _config.pawn.walkable_floor_z:
 		return false
 	var landing: Vector3 = _vault_over.get_collision_point()

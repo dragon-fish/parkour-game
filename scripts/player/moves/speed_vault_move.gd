@@ -199,21 +199,33 @@ func enter(_previous: StringName) -> void:
 	# An arc that ends on the far side spans the descent as well, so it covers
 	# the whole manoeuvre instead of stopping at the top and dropping.
 	var far_point: Vector3 = query.get("far_point", Vector3.ZERO)
-	if bool(query.get("vault_over", false)) and far_point != Vector3.ZERO:
-		landing = far_point + _exit_direction * config.speed_vault.vault_exit_forward
-		landing.y = far_point.y + player.standing_height() * 0.5
-		# THE ARC IS DERIVED FROM THE OBSTACLE, not fixed. See
-		# SpeedVaultConfig.vault_over_eye_above_top for the measurement and for
-		# why a constant rise could not be right at more than one height.
+	if bool(query.get("vault_over", false)):
+		if far_point == Vector3.ZERO:
+			# AN OVER WITH NOWHERE TO LAND: a thin obstacle with a drop beyond
+			# deeper than a vault reaches. See Probes._query_vault_over().
+			#
+			# Carried PAST the far face at the top's own height and released.
+			# There is no landing to aim at, so none is invented -- the move
+			# ends airborne, physics_update() returns FALLING because the body
+			# is not grounded, and gravity does the rest. Which is what happens
+			# to a person who vaults a fence over a stairwell.
+			landing = top + _exit_direction * (config.speed_vault.vault_over_probe_distance
+					+ config.speed_vault.vault_exit_forward)
+			landing.y = top.y + player.standing_height() * 0.5
+		else:
+			landing = far_point + _exit_direction * config.speed_vault.vault_exit_forward
+			landing.y = far_point.y + player.standing_height() * 0.5
+		# THE ARC IS DERIVED FROM THE OBSTACLE, and AIMED AT THE EYE.
+		#
+		# See SpeedVaultConfig.vault_over_eye_above_top: a constant rise could
+		# not be right at more than one height, and aiming at the FEET while
+		# also folding the body subtracted the same drop twice -- which is what
+		# put the camera inside a solid wall.
 		#
 		# ScriptedMove adds the arc on top of the straight line between the
-		# ends, peaking in the middle, so what is wanted here is the gap between
-		# that line's midpoint and where the feet should actually peak.
+		# ends, peaking in the middle, so what is wanted is the gap between that
+		# line's midpoint and where the feet should actually peak.
 		var half: float = player.standing_height() * 0.5
-		# THE ARC IS AIMED AT THE EYE, through whatever the fold is doing to it.
-		# See SpeedVaultConfig.vault_over_eye_above_top: aiming at the FEET and
-		# folding the body were each right on their own and subtracted twice
-		# together, which is what put the camera inside a solid wall.
 		var eye_above_soles: float = config.camera.eye_height + half
 		var fold: float = 0.0
 		if not is_scramble():
