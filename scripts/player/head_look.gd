@@ -43,15 +43,26 @@ const HEAD_CHAIN: Array[StringName] = [&"Neck", &"Head"]
 ## owner's number: enough that the shoulders read as following, not enough to
 ## look like the whole torso turned.
 const SPINE_SHARE_DEG := 15.0
-## And of the pitch, which wants less -- a chest that tips with every glance
-## upward looks like a bow.
-const SPINE_PITCH_SHARE_DEG := 8.0
+## And of the pitch, which is ASYMMETRIC. Looking up wants very little: a chest
+## that tips back with every glance upward reads as a bow. Looking down wants a
+## lot more, and the owner found out why by watching it -- with too little the
+## head rotates down INTO its own chest instead of the body folding out of the
+## way. A neck alone cannot look at your own feet.
+const SPINE_PITCH_UP_DEG := 8.0
+const SPINE_PITCH_DOWN_DEG := 22.0
 
-## Beyond this the head has given up and faces forward again. The owner's rule:
-## past a quarter turn a person turns their body instead, so the model stops
-## following rather than cranking its neck round.
-const RELEASE_START_DEG := 80.0
-const RELEASE_END_DEG := 100.0
+## How far the head will turn at all. Past this it holds, because a neck does
+## not go further.
+const YAW_LIMIT_DEG := 90.0
+
+## And where it gives up entirely and faces forward again.
+##
+## The owner's shape, and the HOLD between the two is the point: the head
+## reaches its limit at 90 and STAYS there while the camera carries on to 110,
+## which is what looking over your shoulder is. Only past that does it decide
+## the angle is not worth keeping and unwind.
+const RELEASE_START_DEG := 110.0
+const RELEASE_END_DEG := 120.0
 
 ## How fast the head follows, in radians per second. Fast enough to feel
 ## attached to the camera, slow enough that a flick does not snap it.
@@ -72,7 +83,11 @@ func request(yaw: float, pitch: float) -> void:
 	var away: float = absf(yaw)
 	var weight: float = 1.0 - smoothstep( \
 		deg_to_rad(RELEASE_START_DEG), deg_to_rad(RELEASE_END_DEG), away)
-	_wanted_yaw = yaw * weight
+	# CLAMPED FIRST, then released. The clamp is what makes the head hold at
+	# its limit while the camera keeps going, rather than following all the
+	# way round and only then letting go.
+	var limit: float = deg_to_rad(YAW_LIMIT_DEG)
+	_wanted_yaw = clampf(yaw, -limit, limit) * weight
 	_wanted_pitch = pitch * weight
 
 ## What is actually applied right now, for tests and the debug HUD.
@@ -93,8 +108,11 @@ func _process_modification_with_delta(delta: float) -> void:
 
 	var spine_yaw: float = clampf(_yaw, \
 		-deg_to_rad(SPINE_SHARE_DEG), deg_to_rad(SPINE_SHARE_DEG))
-	var spine_pitch: float = clampf(_pitch, \
-		-deg_to_rad(SPINE_PITCH_SHARE_DEG), deg_to_rad(SPINE_PITCH_SHARE_DEG))
+	# Looking DOWN is where the body has to get out of the way; looking up it
+	# only has to not lean back. See SPINE_PITCH_DOWN_DEG.
+	var pitch_share: float = deg_to_rad( \
+		SPINE_PITCH_DOWN_DEG if _pitch < 0.0 else SPINE_PITCH_UP_DEG)
+	var spine_pitch: float = clampf(_pitch, -pitch_share, pitch_share)
 	_apply(skeleton, SPINE_CHAIN, spine_yaw, spine_pitch)
 	# The remainder, so the head lands on the full angle rather than on the
 	# angle plus whatever the spine already contributed.
