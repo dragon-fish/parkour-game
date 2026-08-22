@@ -88,3 +88,7 @@ assets/models/test.vrm.import
 # the calibration obstacles. Follows the same rule as player_wine_fox.tscn --
 # a scene that instances an untracked asset cannot itself be tracked.
 scenes/debug_levels/vrm_course.tscn
+# And the standalone Player variant, which the Godot editor regenerates
+# whenever it is opened -- twice now it has reappeared after being deleted and
+# been swept into a commit by a path-wide `git add`.
+scenes/player/player_vrm.tscn
