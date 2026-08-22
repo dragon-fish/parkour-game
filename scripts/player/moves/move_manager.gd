@@ -33,6 +33,13 @@ func can_enter(move_name: StringName) -> bool:
 ## The active move's own friction multiplier, or 1.0 when there is no move or
 ## no config. Read by Player.ground_accelerate() so braking respects whatever
 ## move is in force without Player having to know which one that is.
+## The active move's config, or null when there is no move. The two
+## *_modifier() helpers below read it for one field each; this exists for
+## callers that want a different one -- Player._drive_body_yaw() asks about
+## freeze_visual_yaw -- rather than growing a helper per field.
+func current_config() -> MoveConfig:
+	return _current.current_config() if _current != null else null
+
 func current_move_friction_modifier() -> float:
 	if _current == null:
 		return 1.0

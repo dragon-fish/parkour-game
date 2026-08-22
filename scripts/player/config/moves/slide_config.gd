@@ -51,5 +51,18 @@ func _init() -> void:
 	# Source: 05 §5.1 `MinLookConstraint = (-10000, -10000, 0)`, UE3 integer
 	# angles at 65536 = 360 degrees -> +-54.9 degrees on pitch and yaw. ✅
 	constrain_look = true
+	# ✅ The owner: during a slide the legs must not swing round under the view.
+	# See MoveConfig.freeze_visual_yaw.
+	freeze_visual_yaw = true
+	# ✅ THE YAW WAS NEVER ACTUALLY LIMITED, and the owner found it in play: "I
+	# forgot the slide's yaw clamp -- it can still turn freely." Both halves of
+	# the measured pair were here, and the yaw half did nothing, because a
+	# RELATIVE constraint is a per-tick rate limit by construction (see
+	# CameraRig.apply_look). +-54.9 degrees PER FRAME is no limit at all.
+	#
+	# Absolute makes the measured number mean what it was measured to mean: a
+	# fan of that size around the facing the slide began at. Grab, Landing,
+	# SkillRoll, Turn180 and WallRun all declare it; this one was simply missed.
+	absolute_yaw_constraint = true
 	min_look_constraint = Vector3(-deg_to_rad(54.9), -deg_to_rad(54.9), -PI)
 	max_look_constraint = Vector3(deg_to_rad(54.9), deg_to_rad(54.9), PI)

@@ -85,6 +85,11 @@ func play(player: Player) -> void:
 		_feet_offset = _player.standing_height() * 0.5
 		_player.set_dying(true)
 		if _player.camera_rig != null:
+			# BEFORE the branch below, and in both views. A fatal fall lands
+			# like any other, so the landing flinch has already been written by
+			# the time the death is known -- died_from_fall is deferred a frame.
+			# ✅ The owner: a death should skip the ordinary landing cushion.
+			_player.camera_rig.clear_landing_dip()
 			# ✅ NOT IN THIRD PERSON, on the owner's call: "do not play the
 			# first-person screen rotation when dying in third person -- play
 			# the Death2 animation instead."

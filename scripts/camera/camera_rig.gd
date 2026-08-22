@@ -749,6 +749,18 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var spin: float = 0.0 if third_person else _roll_spin
 	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit) - spin
 
+## Drops the landing dip on the floor, unrecovered.
+##
+## ✅ The owner: "a death should skip the ordinary landing cushion." A fatal
+## fall lands like any other -- punch_landing() has already fired by the time
+## the death is known, because died_from_fall is deferred a frame -- and the
+## eye then eases up out of a flinch nobody is going to walk away from. In
+## first person the cinematic pose overwrites it anyway; in third person, which
+## no longer takes the cinematic, it was the only thing still moving.
+func clear_landing_dip() -> void:
+	_dip = 0.0
+	_landing_pitch = 0.0
+
 ## Called on landing. `speed` is the downward speed at the moment of impact.
 func punch_landing(speed: float) -> void:
 	if _config == null:

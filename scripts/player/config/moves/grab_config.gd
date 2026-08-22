@@ -78,6 +78,10 @@ func _init() -> void:
 	# describe, and its ShimmyAroundCorner pairs reach +-180. Taking the
 	# reported figure, since it is the one measured against the actual game.
 	constrain_look = true
+	# ✅ The owner: hanging, only the head follows the view. ⚠️ They accepted
+	# that this may clip in first person and asked for it anyway for now.
+	# See MoveConfig.freeze_visual_yaw.
+	freeze_visual_yaw = true
 	min_look_constraint = Vector3(0.0, -deg_to_rad(170.0), -PI)
 	max_look_constraint = Vector3(deg_to_rad(87.9), deg_to_rad(170.0), PI)
 	# ⚠️ PROJECT-DEFINED. Turned fully away, the view can look well below level

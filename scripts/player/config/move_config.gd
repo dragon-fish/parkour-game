@@ -37,6 +37,26 @@ extends Resource
 ## Whether the yaw half of the clamp is measured against a fixed world yaw
 ## captured on entering the move, rather than against the current facing.
 ## Source: 04 §4.1 `bUseAbsoluteYawConstraint = True` on WallRun. ✅
+## The VISIBLE body holds still while the view turns, so only the head follows.
+##
+## ✅ The owner, for the slide: "the yaw should only sway a little, and the body
+## should not rotate during it -- only the head, or the whole legs swing about
+## and it looks ridiculous." And for the grab: "the body does not follow the
+## camera either, only the head. That may clip in first person; do it anyway
+## for now."
+##
+## PRESENTATION ONLY, and deliberately so. The collision body still turns with
+## the view, exactly as it always has, and every probe and threshold reads the
+## same numbers -- this counter-rotates BodyRoot so the model's WORLD yaw stays
+## put, which is the trick _drive_body_yaw() already uses for the standing turn.
+## The owner settled that approach on the earlier one: "this can be a pure
+## visual effect on the model, it does not have to lock the character's real
+## facing."
+##
+## The head then turns on its own: HeadLook is fed the angle between the view
+## and the visible body, so freezing the body IS what asks the head to turn.
+@export var freeze_visual_yaw: bool = false
+
 @export var absolute_yaw_constraint: bool = false
 
 ## When set, the PITCH clamp is not a fixed band but relaxes as the view turns

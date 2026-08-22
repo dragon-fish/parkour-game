@@ -1412,11 +1412,20 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	var body_root := get_node_or_null("BodyRoot") as Node3D
 	if body_root == null:
 		return
-	# THIRD PERSON ONLY, on the owner's correction: from inside the head a body
-	# that does not turn with the view is worse than one that does, because the
-	# shoulders swivel under a head that did not move. The effect is about
-	# watching a character; there is no character to watch from in here.
-	if camera_rig == null or not camera_rig.third_person:
+	# A MOVE CAN FREEZE THE MODEL IN EITHER VIEW. Slide and Grab do -- see
+	# MoveConfig.freeze_visual_yaw -- and they are not subject to the
+	# third-person rule below, because the reason for that rule does not apply:
+	# there, holding the body still is a stylistic choice about watching a
+	# character, while here it is a body that physically cannot turn. Legs
+	# swinging round under a slide look ridiculous from inside the head too.
+	var active: MoveConfig = move_manager.current_config() if move_manager != null else null
+	var frozen: bool = active != null and active.freeze_visual_yaw
+	# THIRD PERSON ONLY OTHERWISE, on the owner's correction: from inside the
+	# head a body that does not turn with the view is worse than one that does,
+	# because the shoulders swivel under a head that did not move. That effect
+	# is about watching a character; there is no character to watch from in
+	# here.
+	if not frozen and (camera_rig == null or not camera_rig.third_person):
 		_visual_yaw = rotation.y
 		body_root.rotation.y = 0.0
 		return
@@ -1427,7 +1436,10 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# Any deliberate movement is a decision to face that way. Read from the
 	# INPUT rather than from velocity: a body still sliding to a halt has not
 	# asked to turn, and one just starting to move has.
-	if input.move.length() > config.pawn.body_turn_input_threshold:
+	# A frozen move holds the model where the move began, whatever the input
+	# says: the point is that the body CANNOT turn, so asking it to is not a
+	# reason for it to.
+	if not frozen and input.move.length() > config.pawn.body_turn_input_threshold:
 		var step: float = deg_to_rad(config.pawn.body_turn_speed_deg) * delta
 		var remaining: float = wrapf(rotation.y - _visual_yaw, -PI, PI)
 		_visual_yaw += clampf(remaining, -step, step)
