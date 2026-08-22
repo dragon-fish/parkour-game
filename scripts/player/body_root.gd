@@ -43,6 +43,7 @@ var _previewed_scale: float = 1.0
 var _has_built: bool = false
 var _eye_marker: Node3D = null
 var _feet_marker: Node3D = null
+var _forward_marker: Node3D = null
 
 func _ready() -> void:
 	if not Engine.is_editor_hint():
@@ -174,6 +175,38 @@ func _rebuild_markers(capsule_height: float) -> void:
 	_eye_marker = _replace_ring(_eye_marker, 		MovementConfig.new().camera.eye_height, Color(0.2, 0.9, 1.0, 0.85))
 	# Where the capsule ends, which is where the model's feet belong.
 	_feet_marker = _replace_ring(_feet_marker, 		-capsule_height * 0.5, Color(1.0, 0.75, 0.2, 0.85))
+	_rebuild_forward_marker(-capsule_height * 0.5)
+
+## An arrow along -Z at the feet, because nothing else in the bench says which
+## way FORWARD is.
+##
+## That gap has already cost a round trip: a VRM faces +Z by specification
+## against Godot's -Z, so the body mounts backwards, and the symptom is not "the
+## model is backwards" -- it reads as the third-person camera being on the wrong
+## side, with the character apparently running in reverse. See
+## Player.body_mount_rotation_degrees. With an arrow to compare against, a
+## backwards model is obvious before the game is ever started.
+func _rebuild_forward_marker(feet_height: float) -> void:
+	if _forward_marker != null:
+		_forward_marker.queue_free()
+		_forward_marker = null
+	var arrow := MeshInstance3D.new()
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 0.09
+	cone.height = 0.26
+	arrow.mesh = cone
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.4, 1.0, 0.4, 0.9)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.no_depth_test = true
+	arrow.material_override = material
+	# A cylinder points along +Y; tip it to lie along -Z, which is forward.
+	arrow.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	arrow.position = Vector3(0.0, feet_height, -0.45)
+	add_child(arrow)
+	_forward_marker = arrow
 
 func _replace_ring(existing: Node3D, height: float, colour: Color) -> Node3D:
 	if existing != null:
