@@ -415,7 +415,7 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## large. Twice the base, which is where 0.3 comes from.
 @export var body_slide_to_crouch_blend_time: float = 0.3
 
-## Raises the eye during a crouch or slide, in metres, for THIS body only.
+## Raises the eye during a SLIDE, in metres, for THIS body only.
 ##
 ## NOT A FUDGE FOR A BAD ASSET -- the price of a correct decision, which the
 ## owner spotted themselves: "being blocked by the chest means the camera is at
@@ -426,9 +426,14 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## ends 40 cm off the floor. Everything here is behaving as designed; the design
 ## simply has this consequence, and something has to absorb it.
 ##
+## SLIDE ONLY, on the owner's correction: an ordinary crouch does not put the
+## chest anywhere near the eye, and lifting there would just be wrong. The slide
+## clip is the one that goes properly prone -- the head drops 1.27 m against the
+## crouch's 0.74.
+##
 ## Per-model rather than global because how much it takes depends on the body's
 ## own proportions, and zero for a body whose chest never reaches the eye.
-@export var body_crouch_eye_lift: float = 0.0
+@export var body_slide_eye_lift: float = 0.0
 
 ## The clips whose EXIT gets the longer fade above. Only the slide, because it
 ## is the only move here whose recovery outlasts an ordinary transition.
@@ -1428,7 +1433,9 @@ func _physics_process(delta: float) -> void:
 			# half-metre upward on a frame where nothing else happens.
 			var crouch_amount: float = 1.0 if crouched else slide_recovery_fraction()
 			camera_rig.set_crouch_amount(crouch_amount)
-		camera_rig.set_crouch_eye_lift(body_crouch_eye_lift)
+		# Only while the slide is what is happening. The rig scales it by its
+		# own crouch amount, so this only has to say whether it applies at all.
+		camera_rig.set_eye_lift( 			body_slide_eye_lift if move_manager.current_name == Move.SLIDE else 0.0)
 		camera_rig.set_wall_side(wall_side)
 		# Fed as a plain local-space Vector3, not a Node3D reference —
 		# CameraRig stays decoupled from the scene-tree/body-search concerns

@@ -117,7 +117,7 @@ func test_without_a_body_the_procedural_drop_still_happens() -> void:
 		rig.update_effects(TICK, 0.0, true)
 	assert_lt(rig.position.y, standing - 0.5, 		"a body-less crouch dropped the eye only %.3f m" % (standing - rig.position.y))
 
-func test_the_per_model_lift_raises_the_crouched_eye() -> void:
+func test_the_per_model_lift_raises_the_low_eye() -> void:
 	# NOT A FUDGE FOR A BAD ASSET -- the price of a correct decision, which the
 	# owner spotted themselves: being blocked by the chest means the camera is
 	# at the NECK rather than the eyes, which is where an FPS camera belongs. A
@@ -134,18 +134,51 @@ func test_the_per_model_lift_raises_the_crouched_eye() -> void:
 	const LIFT := 0.3
 
 	for i in 120:
-		rig.set_crouch_eye_lift(0.0)
+		rig.set_eye_lift(0.0)
 		rig.set_crouch_amount(1.0)
 		rig.update_effects(TICK, 0.0, true)
 	var without: float = rig.position.y
 
 	for i in 120:
-		rig.set_crouch_eye_lift(LIFT)
+		rig.set_eye_lift(LIFT)
 		rig.set_crouch_amount(1.0)
 		rig.update_effects(TICK, 0.0, true)
 	assert_almost_eq(rig.position.y - without, LIFT, 0.005, \
 		"the lift raised the crouched eye by %.3f m instead of %.3f" \
 		% [rig.position.y - without, LIFT])
+
+func test_only_a_slide_asks_for_the_lift() -> void:
+	# The owner's correction: an ordinary crouch does not put the chest anywhere
+	# near the eye, and lifting there would just be wrong. The slide clip is the
+	# one that goes properly prone -- the head drops 1.27 m against the crouch's
+	# 0.74 -- so Player only asks for the lift while a slide is what is running.
+	#
+	# Entered through the INPUT, not by starting the move: a slide begun any
+	# other way ends on its own within a tick or two, and an earlier version of
+	# this test measured that instead.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	var player: Player = world["player"]
+	player.body_slide_eye_lift = 0.15
+
+	# Crouching on the spot, which must not ask for anything.
+	world["input"].press_crouch()
+	await step(20)
+	assert_almost_eq(player.camera_rig._eye_lift, 0.0, 0.0001, 		"a standing-start crouch asked for the slide's lift (move was %s)" 		% player.move_manager.current_name)
+	world["input"].release_crouch()
+	await step(30)
+
+	# And now with a run-up, which is what makes it a slide.
+	world["input"].state.move = Vector2(0.0, 1.0)
+	for i in 120:
+		await step(1)
+	world["input"].press_crouch()
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.SLIDE, 		"the run-up did not produce a slide, so this proves nothing")
+	assert_almost_eq(player.camera_rig._eye_lift, 0.15, 0.0001, 		"a slide did not ask for the lift")
 
 func test_the_lift_does_nothing_while_standing() -> void:
 	# It is a correction for a pose, not a change to the eye height. Leaking
@@ -160,12 +193,12 @@ func test_the_lift_does_nothing_while_standing() -> void:
 	const TICK := 1.0 / 60.0
 
 	for i in 120:
-		rig.set_crouch_eye_lift(0.0)
+		rig.set_eye_lift(0.0)
 		rig.set_crouch_amount(0.0)
 		rig.update_effects(TICK, 0.0, true)
 	var without: float = rig.position.y
 	for i in 120:
-		rig.set_crouch_eye_lift(0.3)
+		rig.set_eye_lift(0.3)
 		rig.set_crouch_amount(0.0)
 		rig.update_effects(TICK, 0.0, true)
 	assert_almost_eq(rig.position.y, without, 0.001, \
