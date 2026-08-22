@@ -208,6 +208,30 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if input.crouch_held:
 		return FALLING
 
+	# JUMP WITH YOUR BACK TURNED PUSHES OFF instead of pulling up, and this has
+	# to be asked BEFORE the climb trigger below -- that branch takes
+	# jump_pressed too, so whichever is asked first wins the key.
+	#
+	# ✅ The original splits the same key the same way, and gives both halves the
+	# same angle: TdMove_GrabJump.GrabAllowedJumpAngle = 45 against
+	# TdMove_GrabPullUp.GrabAllowedPullUpAngle = 45. Looking at the wall climbs
+	# it, looking away from it leaves it.
+	#
+	# ✅ THE OWNER: "我们没有做 Grab 的回头跳，Grab 期间扭头超过 90 度就可以跳了."
+	# The threshold is the CDO's 45 rather than that 90, at their own direction
+	# -- "有实测数据就按数据来，我只能用手感跟你描述."
+	if input.jump_pressed:
+		var turned: float = _turned_from_wall()
+		if turned > deg_to_rad(config.grab.jump_angle_deg):
+			_push_off(turned)
+			# The re-grab cooldown is armed by MoveManager on the way out, the
+			# same as every other exit from this move. That already covers what
+			# the original spends bDelayTimeCheckAutoMoves = 0.2 s on, and more
+			# conservatively (redo_move_time is 0.45) -- without which the very
+			# next Falling tick would probe the wall you just shoved off and
+			# grab it again.
+			return FALLING
+
 	# Pushing forward, or jumping, climbs up. This IS the moment of
 	# commitment: the player has been free to turn at any point while
 	# hanging, right up until this tick, and CameraRig.apply_look() keeps
@@ -344,13 +368,19 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 		_shimmy = 0.0
 		return
 
-	# AND IS THERE ROOM FOR THE BODY? A ledge can continue past a pillar, a
-	# column or an inside corner that the hanging body cannot pass through, and
-	# the ray above threads between things a body never could. Same shapecast
-	# the mantle asks with, for the same reason.
-	var half: float = player.standing_height() * 0.5
-	var feet: Vector3 = player.global_position + step - Vector3.UP * half
-	if not player.fits_standing_at(feet):
+	# AND IS THERE ROOM FOR THE BODY? A ledge can continue past a pillar or into
+	# an inside corner that the hanging body cannot pass through, and the ray
+	# above threads between things a body never could.
+	#
+	# ⚠️ NOT fits_standing_at(), WHICH THE MANTLE USES AND WHICH IS WRONG HERE.
+	# A hanging body is always INSIDE the ledge it hangs from -- 0.09 m of
+	# capsule above the lip and 0.05 m of it through the wall face, by
+	# construction, see Probes.side_clear() for the arithmetic. So that question
+	# answers NO at every hang position on every wall, and asking it here
+	# refused every step of every shimmy. That shipped, and the owner found it
+	# on a wall built to be easy: "就你造的这几个墙，我都不能横爬."
+	var reach: float = player.current_capsule_radius() + step.length()
+	if not player.probes.side_clear(player.global_position, sideways * side, reach):
 		_shimmy = 0.0
 		return
 
@@ -365,3 +395,37 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# Overwriting it would make the next step's direction undefined.
 	_edge = beside["edge"]
 	_shimmy = side
+
+## How far the view has been turned off the wall, in radians: 0 looking straight
+## at it, PI with your back to it.
+##
+## Measured against the FACE, not against where the body was left facing at
+## grab time. IntoGrabMove squares the body to the wall on arrival, so the two
+## agree for exactly one tick and then stop agreeing the moment the player
+## looks anywhere.
+func _turned_from_wall() -> float:
+	var facing: Vector3 = -player.global_transform.basis.z
+	facing.y = 0.0
+	var into_wall: Vector3 = -_face_normal
+	into_wall.y = 0.0
+	if facing.length_squared() < 0.0001 or into_wall.length_squared() < 0.0001:
+		return 0.0
+	return facing.normalized().angle_to(into_wall.normalized())
+
+## Leaves the ledge, shoving away from the wall.
+##
+## AWAY FROM THE WALL, not along the view, and the threshold is what forces it:
+## at the 45 degrees that first allows this jump the view is still pointed
+## half-way INTO the wall, so pushing along it would drive the body through the
+## thing it is hanging from. The field is named PushAway and it means it.
+##
+## ⚠️ bDisableFaceRotation is True on TdMove_GrabJump, which fits: the body does
+## not turn to follow the shove. You look back over your shoulder and leave.
+func _push_off(turned: float) -> void:
+	var away: Vector3 = _face_normal
+	away.y = 0.0
+	away = away.normalized()
+	var span: float = maxf(PI - deg_to_rad(config.grab.jump_angle_deg), 0.0001)
+	var t: float = clampf((turned - deg_to_rad(config.grab.jump_angle_deg)) / span, 0.0, 1.0)
+	var push: float = lerpf(config.grab.jump_push_min, config.grab.jump_push_max, t)
+	player.velocity = away * push + Vector3.UP * config.grab.jump_speed_up

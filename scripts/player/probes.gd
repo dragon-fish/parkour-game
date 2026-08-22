@@ -628,6 +628,41 @@ func ledge_beside(edge: Vector3, step: Vector3, lift: float,
 	return {"valid": true, "top": found, "edge": found,
 		"normal": hit.get("normal", Vector3.UP)}
 
+## Whether there is room beside `from` to travel `distance` metres along
+## `direction`.
+##
+## ⚠️ EXISTS BECAUSE fits_standing_at() CANNOT ANSWER THIS FROM A HANG, and the
+## arithmetic says so outright rather than as a matter of taste. IntoGrabMove
+## places the hanging body by where the EYE lands: eye_below_ledge (0.05) plus
+## eye_height (0.76) is 0.81 m below the lip, so a 1.8 m capsule's crown sits
+## 0.09 m ABOVE it. Sideways, ledge_back_offset is 0.45 m from the anchor and
+## the anchor is LEDGE_ANCHOR_MARGIN (0.1 m) inside the top, leaving 0.35 m to
+## the wall face against a radius of 0.4 -- an overlap of 0.05 m.
+##
+## So a hanging body is INSIDE the ledge it hangs from, on both axes, always.
+## That is what hanging looks like: chest to the wall, head over the lip. Asking
+## "would a standing capsule fit here" therefore answers NO at every hang
+## position on every wall, and using it to gate a shimmy refuses every step of
+## every shimmy -- which is exactly what shipped, and what the owner found by
+## trying it on a brand new wall built to be easy.
+##
+## A ray from the body CENTRE sideways asks the question that is actually being
+## asked -- is there something beside me -- and cannot trip over the ledge,
+## because the ledge is above it and in front of it rather than beside it.
+func side_clear(from: Vector3, direction: Vector3, distance: float) -> bool:
+	if direction.length_squared() < 0.0001 or distance <= 0.0:
+		return true
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return true
+	var query := PhysicsRayQueryParameters3D.create(
+			from, from + direction.normalized() * distance)
+	query.collision_mask = _surface.collision_mask if _surface != null else 1
+	var body := get_parent() as CollisionObject3D
+	if body != null:
+		query.exclude = [body.get_rid()]
+	return space.intersect_ray(query).is_empty()
+
 ## Points a side ray at the given reach and fires it. Aimed live from the
 ## config on every call, same as _aim_forward() above and for the same
 ## reason: baking the reach into the ray once (e.g. in setup()) would freeze

@@ -52,14 +52,22 @@ func _hanging_player() -> Player:
 	var player: Player = _world["player"]
 	_add_block(player, Vector3(0.0, LEDGE_TOP * 0.5, LEDGE_FACE_Z - 0.5),
 			Vector3(LEDGE_HALF_X * 2.0, LEDGE_TOP, 1.0))
-	# Hung by hand rather than by driving the whole reach chain: IntoGrab is a
-	# separate move with its own tests, and what matters here is only that the
-	# body starts below the lip and clear of the face.
-	player.global_position = Vector3(0.0, 1.2, -1.05)
 	player.rotation.y = 0.0
 	# Shaped exactly as Probes.ledge_query() shapes it -- see TOP_NORMAL.
-	player.pending_ledge = {"valid": true, "edge": EDGE, "top": EDGE,
+	var query := {"valid": true, "edge": EDGE, "top": EDGE,
 			"normal": TOP_NORMAL, "face_normal": FACE_NORMAL}
+	# ⚠️ PLACED BY IntoGrabMove.hanging_pose(), NOT BY HAND, and this file
+	# learned why the hard way. The first version parked the body at a made-up
+	# y = 1.2 on a 2 m wall, where a standing capsule comfortably fits. The real
+	# pose does not: it puts 0.09 m of capsule above the lip and 0.05 m of it
+	# through the wall face, so the body is always INSIDE the ledge it hangs
+	# from. The shimmy gated on fits_standing_at(), which therefore said no on
+	# every tick of every shimmy -- and these tests passed anyway, because the
+	# hand-placed pose was the one pose in the game where that gate opens.
+	# A fixture that stands the body somewhere the game never stands it tests
+	# a game that does not exist.
+	player.global_position = IntoGrabMove.hanging_pose(player, player.config, query)
+	player.pending_ledge = query
 	player.move_manager.start(Move.GRAB)
 	await step(1)
 	return player
@@ -157,8 +165,13 @@ func test_running_out_of_ledge_moves_neither() -> void:
 	var player: Player = await _hanging_player()
 	var grab := _grab(player)
 	# Park the anchor and the body at the very end of the block.
-	grab._edge = Vector3(LEDGE_HALF_X - 0.02, LEDGE_TOP, EDGE.z)
-	player.global_position = Vector3(LEDGE_HALF_X - 0.02, 1.2, -1.05)
+	var end_edge := Vector3(LEDGE_HALF_X - 0.02, LEDGE_TOP, EDGE.z)
+	grab._edge = end_edge
+	# Through hanging_pose() again, for the reason spelled out in the fixture:
+	# a hand-picked offset is the one place the body fits, and that is not where
+	# the game puts it.
+	player.global_position = IntoGrabMove.hanging_pose(player, player.config,
+			{"edge": end_edge, "face_normal": FACE_NORMAL})
 	var body_before: Vector3 = player.global_position
 	var edge_before: Vector3 = grab._edge
 	grab.physics_update(0.5, _hold(1.0))
