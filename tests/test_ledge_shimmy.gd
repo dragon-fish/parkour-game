@@ -22,8 +22,19 @@ const LEDGE_FACE_Z := -1.5
 const LEDGE_HALF_X := 3.0
 ## Just inside the lip, which is where Probes.ledge_query() anchors.
 const EDGE := Vector3(0.0, LEDGE_TOP, -1.6)
-## Points AWAY from the wall, back toward the player.
+## The WALL FACE's normal, pointing away from the wall and back at the player.
 const FACE_NORMAL := Vector3(0.0, 0.0, 1.0)
+## ⚠️ AND THE LEDGE TOP'S, WHICH IS A DIFFERENT THING AND IS WHY THIS EXISTS.
+## ledge_query() returns both, perpendicular to each other: "normal" comes off
+## SurfaceDown -- the ray fired DOWNWARD onto the top -- so it points straight
+## up, while "face_normal" comes off the forward ray that found the wall.
+##
+## The first version of this file fed FACE_NORMAL under the key "normal" and
+## did not set "face_normal" at all. Every test passed. The feature had never
+## once run: the move read "normal", got straight up, flattened it to a zero
+## vector and refused on every tick, and the owner found it in play. A fixture
+## that hands over a shape the real producer never produces is not a fixture.
+const TOP_NORMAL := Vector3(0.0, 1.0, 0.0)
 
 var _world: Dictionary = {}
 
@@ -46,8 +57,9 @@ func _hanging_player() -> Player:
 	# body starts below the lip and clear of the face.
 	player.global_position = Vector3(0.0, 1.2, -1.05)
 	player.rotation.y = 0.0
+	# Shaped exactly as Probes.ledge_query() shapes it -- see TOP_NORMAL.
 	player.pending_ledge = {"valid": true, "edge": EDGE, "top": EDGE,
-			"normal": FACE_NORMAL}
+			"normal": TOP_NORMAL, "face_normal": FACE_NORMAL}
 	player.move_manager.start(Move.GRAB)
 	await step(1)
 	return player
@@ -197,3 +209,27 @@ func test_the_travel_direction_is_reported_for_the_animator() -> void:
 	grab.physics_update(0.5, _hold(0.0))
 	assert_almost_eq(grab.shimmy_direction(), 0.0, 0.001,
 		"letting go left the travel clip playing")
+
+# --- the two normals ----------------------------------------------------------
+
+func test_the_wall_face_decides_the_direction_not_the_ledge_top() -> void:
+	# ⚠️ THE REGRESSION. ledge_query() returns "normal" (the ledge TOP's, which
+	# points straight up) and "face_normal" (the WALL's). Reading the first one
+	# leaves nothing behind once y is dropped, and the move then refuses to
+	# travel on every tick -- silently, because refusing is an ordinary thing
+	# for it to do. That shipped, and only play caught it.
+	#
+	# Fed here with ONLY the top normal, the way a caller that forgot the face
+	# would: the move must fall back to the body's facing rather than sit there.
+	var player: Player = await _hanging_player()
+	player.move_manager.start(Move.WALKING)
+	player.global_position = Vector3(0.0, 1.2, -1.05)
+	player.rotation.y = 0.0
+	player.pending_ledge = {"valid": true, "edge": EDGE, "top": EDGE,
+			"normal": TOP_NORMAL}
+	player.move_manager.start(Move.GRAB)
+	await step(1)
+	var before: float = player.global_position.x
+	_grab(player).physics_update(0.5, _hold(1.0))
+	assert_gt(player.global_position.x, before + 0.05,
+		"a query carrying only the ledge-top normal froze the shimmy")

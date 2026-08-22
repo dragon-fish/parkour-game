@@ -11,16 +11,25 @@ extends ScriptedMove
 var _aborted: bool = false
 
 var _edge: Vector3 = Vector3.ZERO
-## The ledge face's normal, pointing AWAY from the wall and back toward the
+## The WALL FACE's normal, pointing away from the wall and back toward the
 ## player -- kept because a shimmy runs along the ledge, and the only thing
 ## that knows which way "along" is, is the wall.
+##
+## ⚠️ "face_normal", NOT "normal". ledge_query() returns BOTH, and they are
+## perpendicular: "normal" comes off SurfaceDown, the ray fired DOWNWARD onto
+## the ledge top, so it points straight UP, while "face_normal" comes off the
+## forward ray that found the wall. Reading the wrong one flattens to a zero
+## vector the moment y is dropped, and the shimmy then refuses on every single
+## tick through the horizontal-face branch below -- silently, because refusing
+## to travel is a perfectly ordinary thing for it to do. IntoGrabMove hit the
+## same pair and documents the same distinction on its own yaw.
 ##
 ## ⚠️ READ FROM THE LEDGE, NOT FROM THE BODY, and that is the whole point.
 ## The player can turn freely while hanging (see the commitment note on
 ## _exit_direction below), so taking "sideways" off player.basis.x would make
 ## A and D swap meaning as soon as they looked along the wall instead of at
 ## it. The wall does not turn.
-var _edge_normal: Vector3 = Vector3.BACK
+var _face_normal: Vector3 = Vector3.BACK
 ## -1 shimmying left, +1 right, 0 hanging still. Read by character_animator.gd
 ## the same way is_mantling() is.
 var _shimmy: float = 0.0
@@ -98,7 +107,18 @@ func enter(_previous: StringName) -> void:
 		_aborted = true
 		return
 	_edge = query["edge"]
-	_edge_normal = query.get("normal", Vector3.BACK)
+	# FALLBACK IS THE BODY'S OWN FACING, and only here is that safe: IntoGrabMove
+	# has just squared the body to the wall face (see its _target_yaw), so on
+	# this one tick the two agree. It is read once and kept, never re-read --
+	# the player turns freely from the next tick onward.
+	var face: Vector3 = query.get("face_normal", Vector3.ZERO)
+	face.y = 0.0
+	if face.length_squared() > 0.0001:
+		_face_normal = face.normalized()
+	else:
+		# basis.z is BACKWARD, which is where a face normal points from a body
+		# squared to it: away from the wall, back at the player.
+		_face_normal = player.global_transform.basis.z
 	_shimmy = 0.0
 
 	player.velocity = Vector3.ZERO
@@ -302,7 +322,7 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# quarter turn. facing.cross(UP) is the right hand of whatever faces
 	# `facing`, and facing here points INTO the wall, so this is the player's
 	# right as they hang looking at it.
-	var facing: Vector3 = -_edge_normal
+	var facing: Vector3 = -_face_normal
 	facing.y = 0.0
 	if facing.length_squared() < 0.0001:
 		# The face is horizontal: a soffit or the underside of a slab rather
@@ -339,7 +359,7 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# perfectly level the two drift apart, and the anchor should track the real
 	# surface rather than the straight line the hands were aimed along.
 	#
-	# _edge_normal is deliberately NOT updated from this hit. The probe fires
+	# _face_normal is deliberately NOT updated from this hit. The probe fires
 	# DOWNWARD, so its normal is the ledge TOP's -- straight up -- while this
 	# field holds the FACE's, which is what "along the ledge" is derived from.
 	# Overwriting it would make the next step's direction undefined.
