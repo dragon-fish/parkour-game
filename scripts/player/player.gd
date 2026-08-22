@@ -521,6 +521,11 @@ var hand_ik: HandIK = null
 ## spine, and null otherwise. See TorsoTwist's own header.
 var torso_twist: TorsoTwist = null
 
+## The world yaw the MODEL is currently showing, which is not always the body's
+## own. See _drive_body_yaw().
+var _visual_yaw: float = 0.0
+var _visual_yaw_started: bool = false
+
 var _standing_height: float = 0.0
 
 ## Backing store for travel_speed(); see its doc comment.
@@ -842,6 +847,7 @@ func reset_state() -> void:
 	_airborne_time = 0.0
 	_slide_recovery_timer = 0.0
 	wall_side = 0
+	_visual_yaw_started = false
 	# A respawn teleport is not travel: leave the camera's speed cue at rest
 	# rather than letting the first tick after the reset read the old life's.
 	_travel_speed = 0.0
@@ -1071,6 +1077,17 @@ func _drive_torso_twist() -> void:
 	if not config.pawn.torso_twist_enabled:
 		torso_twist.request(0.0)
 		return
+	# A WALL RUN IS ITS OWN CASE, and it comes first: the travel direction there
+	# is along the wall, which is exactly the facing, so the ordinary rule would
+	# ask for no twist at all. What is wanted is the opposite -- the legs turned
+	# INTO the surface they are supposed to be pushing off.
+	#
+	# Not a real plant; that needs a wall-run clip and no free pack has one.
+	# Sized to match the camera's own roll so the two read as a single lean.
+	if move_manager.current_name == Move.WALL_RUN and wall_side != 0:
+		torso_twist.request(deg_to_rad(config.pawn.wall_run_twist_deg) * float(wall_side))
+		return
+
 	var travel := Vector3(velocity.x, 0.0, velocity.z)
 	if travel.length_squared() < 0.25:
 		torso_twist.request(0.0)
@@ -1080,11 +1097,65 @@ func _drive_torso_twist() -> void:
 	if facing.length_squared() < 0.0001:
 		torso_twist.request(0.0)
 		return
-	# Signed about UP, so a leftward strafe and a rightward one turn opposite
-	# ways rather than both by the same magnitude.
-	var angle: float = facing.normalized().signed_angle_to(travel.normalized(), Vector3.UP)
+	# MIRRORED ABOUT THE SIDEWAYS AXIS, not the plain signed angle between
+	# facing and travel. The plain angle is wrong in all three backward cases,
+	# and the owner reported every one of them:
+	#
+	#   * straight back is ±180 degrees, whose SIGN is numerically unstable --
+	#     the hips flip between hard left and hard right on float noise. That is
+	#     the twitching.
+	#   * a backward diagonal is about ±135, which clamps to the cap with the
+	#     SAME sign as the matching forward diagonal, so the legs turn the wrong
+	#     way.
+	#   * and neither should be at the cap at all: walking straight backwards
+	#     wants no twist, because there is no sideways component to follow.
+	#
+	# Splitting travel into forward and sideways parts fixes all three at once.
+	# The angle is taken against |forward|, so straight back reads as zero
+	# rather than as a half turn, and then negated while reversing, which is the
+	# owner's rule: a backward diagonal turns the hips the opposite way from the
+	# forward one.
+	var direction: Vector3 = travel.normalized()
+	var ahead: Vector3 = facing.normalized()
+	var forward: float = direction.dot(ahead)
+	var sideways: float = direction.dot(ahead.cross(Vector3.UP))
+	var angle: float = atan2(sideways, absf(forward))
+	if forward < 0.0:
+		angle = -angle
 	var cap: float = deg_to_rad(config.pawn.torso_twist_max_deg)
 	torso_twist.request(clampf(angle, -cap, cap))
+
+## Turns the visible body toward where it is going, instead of welding it to
+## the view.
+##
+## The BODY's real facing is untouched -- it follows the mouse instantly, as it
+## always has, and every probe, move and camera clamp still reads that. What
+## moves here is only how the attached model is DRAWN, by counter-rotating
+## BodyRoot so the model keeps its own heading in world space.
+##
+## The owner's complaint: standing still and turning the camera swung the whole
+## character round, which reads as a model welded to the mouse rather than as a
+## person looking about. So the model holds while there is no movement input,
+## and catches up once there is.
+func _drive_body_yaw(delta: float, input: MoveInput) -> void:
+	var body_root := get_node_or_null("BodyRoot") as Node3D
+	if body_root == null:
+		return
+	if not _visual_yaw_started:
+		_visual_yaw = rotation.y
+		_visual_yaw_started = true
+
+	# Any deliberate movement is a decision to face that way. Read from the
+	# INPUT rather than from velocity: a body still sliding to a halt has not
+	# asked to turn, and one just starting to move has.
+	if input.move.length() > config.pawn.body_turn_input_threshold:
+		var step: float = deg_to_rad(config.pawn.body_turn_speed_deg) * delta
+		var remaining: float = wrapf(rotation.y - _visual_yaw, -PI, PI)
+		_visual_yaw += clampf(remaining, -step, step)
+
+	# Counter-rotated, so the model's WORLD yaw is _visual_yaw whatever the body
+	# is doing. Wrapped, so a player who spins on the spot cannot wind this up.
+	body_root.rotation.y = wrapf(_visual_yaw - rotation.y, -PI, PI)
 
 func _find_skeleton(root: Node) -> Skeleton3D:
 	var queue: Array[Node] = [root]
@@ -1394,6 +1465,7 @@ func _physics_process(delta: float) -> void:
 	if hand_ik != null:
 		hand_ik.update(delta)
 	_drive_torso_twist()
+	_drive_body_yaw(delta, input)
 
 	if camera_rig != null:
 		camera_rig.apply_look(input.look, self, delta)
@@ -1472,8 +1544,18 @@ func _input(event: InputEvent) -> void:
 		# Only steer the view while the mouse is actually captured. With the
 		# cursor released (F1 panel open, or right after Esc) this motion is
 		# the human aiming at a slider or a LineEdit, not a look input.
-		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if _framing_drag:
+			# Framing the third-person camera, not aiming. Both would move at
+			# once otherwise, and the view would swing away from whatever the
+			# drag was trying to line up.
+			_framing_travel += event.relative.length()
+			if camera_rig != null:
+				camera_rig.nudge_third_person(event.relative)
+		elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			(input_source as KeyboardInputSource).accumulate_look(event.relative)
+	elif event is InputEventMouseButton \
+			and _handle_third_person_button(event as InputEventMouseButton):
+		pass
 	elif event is InputEventMouseButton and event.pressed \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
 		# Click back into the game. Esc releases the cursor for the tuning
@@ -1501,6 +1583,46 @@ func _input(event: InputEvent) -> void:
 ## the state stays Walking (see `noclip`), the timers keep ticking above, and
 ## the fall tracker is re-baselined every frame so that dropping out of noclip
 ## in mid-air is a fall from HERE rather than from wherever the flight began.
+## True while the middle button is held for framing rather than aiming.
+var _framing_drag: bool = false
+## How far the pointer has travelled since that press, in pixels. A press that
+## barely moves is a CLICK and cycles the shoulder instead.
+var _framing_travel: float = 0.0
+
+## Wheel and middle button, for the third-person view only.
+##
+## Returns true when the event was consumed, so the caller leaves it alone.
+## Everything here is framing: none of it touches the body, the look or any
+## move, and none of it does anything in first person -- where a wheel notch
+## would otherwise silently change a distance nobody can see.
+func _handle_third_person_button(event: InputEventMouseButton) -> bool:
+	if camera_rig == null or not camera_rig.third_person:
+		return false
+	match event.button_index:
+		MOUSE_BUTTON_WHEEL_UP:
+			if event.pressed:
+				camera_rig.zoom_third_person(-1.0)
+			return true
+		MOUSE_BUTTON_WHEEL_DOWN:
+			if event.pressed:
+				camera_rig.zoom_third_person(1.0)
+			return true
+		MOUSE_BUTTON_MIDDLE:
+			if event.pressed:
+				_framing_drag = true
+				_framing_travel = 0.0
+			else:
+				# A press that went nowhere is a click. The slack matters: a
+				# middle button is stiff and almost always moves a pixel or two
+				# on the way down, so an exact-zero test would make the cycle
+				# feel broken rather than precise.
+				if _framing_travel <= config.camera.third_person_click_slack:
+					camera_rig.cycle_third_person_shoulder()
+				_framing_drag = false
+			return true
+	return false
+
+
 func _fly_noclip(delta: float, input: MoveInput) -> void:
 	var wish := Vector3.ZERO
 	if camera_rig != null:

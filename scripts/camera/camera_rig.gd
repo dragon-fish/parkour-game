@@ -123,6 +123,19 @@ var _has_head: bool = false
 ## moves. See update_effects().
 var third_person: bool = false
 
+## Which side the third-person eye sits on, cycled with a middle click.
+enum Shoulder { RIGHT, LEFT, CENTRED }
+var _shoulder: int = Shoulder.RIGHT
+
+## Wheel-adjusted distance, in metres. Negative until the first update seeds it
+## from third_person_back, so a config change is picked up rather than being
+## frozen at whatever the default was when the rig was built.
+var _tp_distance: float = -1.0
+
+## Middle-drag offset, in metres: x to the right, y up. On top of whatever the
+## preset and the tuning panel say, so dragging never fights them.
+var _tp_drag: Vector2 = Vector2.ZERO
+
 ## True while a level-owned cutscene (DeathSequence, currently the only
 ## caller) has taken the camera over. update_effects() yields entirely in
 ## this state -- see its own comment -- so bob/dip/crouch/look cannot fight
@@ -386,7 +399,10 @@ func reset_state() -> void:
 	rotation.z = 0.0
 	if camera != null:
 		camera.position = Vector3.ZERO
-	third_person = false
+	# third_person deliberately NOT reset. It is a VIEWING PREFERENCE, not
+	# movement state: someone who chose to watch their own body did not choose
+	# it for one life. The owner reported dying and being put back in first
+	# person, which is this line's fault and nobody else's.
 
 ## Yaw turns the body so movement follows the view; pitch stays on the rig.
 ##
@@ -813,7 +829,20 @@ func shift_yaw_reference(yaw: float, assist: float) -> void:
 ## PLAYER is excluded: it is always in the way, being what the camera is
 ## looking at.
 func _third_person_position() -> Vector3:
-	var wanted := Vector3( 		_config.camera.third_person_right, 		_config.camera.third_person_up, 		_config.camera.third_person_back)
+	var camera_config: CameraConfig = _config.camera
+	if _tp_distance < 0.0:
+		_tp_distance = camera_config.third_person_back
+	# The preset decides the SIDE; third_person_right decides how far over, so
+	# the panel slider still means something with a preset selected.
+	var across: float = camera_config.third_person_right
+	match _shoulder:
+		Shoulder.LEFT:
+			across = -absf(across)
+		Shoulder.CENTRED:
+			across = 0.0
+		_:
+			across = absf(across)
+	var wanted := Vector3( 		across + _tp_drag.x, 		camera_config.third_person_up + _tp_drag.y, 		_tp_distance)
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return wanted
@@ -859,3 +888,41 @@ func _apply_body_layers() -> void:
 	var hide: int = third if not third_person else first
 	var show: int = first if not third_person else third
 	camera.cull_mask = (camera.cull_mask | show) & ~hide
+
+
+## Wheel: pulls the third-person eye in or pushes it out, within the configured
+## range. `notches` is positive to move away.
+func zoom_third_person(notches: float) -> void:
+	var camera_config: CameraConfig = _config.camera
+	if _tp_distance < 0.0:
+		_tp_distance = camera_config.third_person_back
+	_tp_distance = clampf( 		_tp_distance + notches * camera_config.third_person_zoom_step,
+		camera_config.third_person_min_distance,
+		camera_config.third_person_max_distance)
+
+## Middle-drag: shifts the eye sideways and vertically, by a mouse delta in
+## pixels. Deliberately UNBOUNDED except by the drag itself -- this is the
+## escape hatch for a framing the presets do not cover, and clamping it would
+## make it useless for exactly that.
+func nudge_third_person(relative: Vector2) -> void:
+	var sensitivity: float = _config.camera.third_person_drag_sensitivity
+	_tp_drag.x += relative.x * sensitivity
+	# Screen y grows downward; dragging DOWN should lower the eye.
+	_tp_drag.y -= relative.y * sensitivity
+
+## Middle-click: right shoulder, left shoulder, straight behind, and round
+## again. Clears the drag, so the presets stay reachable however far the eye has
+## been dragged -- otherwise a heavy drag makes every preset land somewhere
+## else and the cycle stops meaning anything.
+func cycle_third_person_shoulder() -> void:
+	_shoulder = (_shoulder + 1) % Shoulder.size()
+	_tp_drag = Vector2.ZERO
+
+## Diagnostics for tests and the debug HUD.
+func third_person_debug() -> Dictionary:
+	return {
+		"on": third_person,
+		"shoulder": _shoulder,
+		"distance": _tp_distance,
+		"drag": _tp_drag,
+	}

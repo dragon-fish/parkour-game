@@ -311,3 +311,29 @@ extends Resource
 ## Zero disables the twist entirely, which is what every body without a humanoid
 ## spine gets anyway -- see Player._drive_torso_twist().
 @export var torso_twist_enabled: bool = true
+
+
+## How far the hips turn toward the wall during a wall run, in degrees.
+##
+## The legs are not really planted on it -- that would need a wall-run clip,
+## which no free pack has -- so this is the cheap suggestion of it: turn the
+## lower half toward the surface and let the torso keep facing the run. The
+## owner picked the size and the reasoning behind it: about the same as the
+## camera's own roll, so the two read as one lean rather than two effects.
+@export var wall_run_twist_deg: float = 8.0
+
+## How fast the visible body turns to face where it is going, in degrees per
+## second. Only the MODEL: the body's real facing follows the view instantly,
+## as it always has, and every probe and move still reads that.
+##
+## The owner's complaint is what this is for: standing still and turning the
+## camera swung the whole character round, which reads as the model being
+## welded to the mouse rather than as a person looking about. Now the model
+## HOLDS its heading while there is no movement input, and catches up over this
+## rate once there is.
+@export var body_turn_speed_deg: float = 540.0
+
+## Below this much movement input the model holds its heading rather than
+## following the view. A dead zone rather than an exact zero, so a stick barely
+## off centre does not count as a decision to turn.
+@export var body_turn_input_threshold: float = 0.2

@@ -180,3 +180,61 @@ func test_the_cap_holds() -> void:
 	var cap: float = deg_to_rad(player.config.pawn.torso_twist_max_deg)
 	assert_almost_eq(absf(player.torso_twist._wanted), cap, 0.001, \
 		"a sideways strafe asked for %.1f degrees" % rad_to_deg(player.torso_twist._wanted))
+
+func test_walking_straight_backwards_does_not_twist() -> void:
+	# THE TWITCH. Straight back is +-180 degrees from the facing, and the SIGN
+	# of that is numerically unstable -- the hips flipped between hard left and
+	# hard right on float noise. There is no sideways component to follow, so
+	# the answer is zero.
+	var player: Player = await _player_with_body()
+	if player == null:
+		return pending("no humanoid body at %s" % BODY_PATH)
+	player.rotation.y = 0.0
+	for sway in [0.0, 0.0001, -0.0001]:
+		player.velocity = Vector3(sway, 0.0, 6.0)
+		player._drive_torso_twist()
+		assert_almost_eq(player.torso_twist._wanted, 0.0, 0.01, \
+			"reversing straight asked for %.3f rad of twist" % player.torso_twist._wanted)
+
+func test_a_backward_diagonal_twists_opposite_to_the_forward_one() -> void:
+	# The owner, from watching it: the twist during a backward diagonal came out
+	# visually reversed. The plain angle between facing and travel is about 135
+	# degrees there, which clamps to the cap with the SAME sign as the matching
+	# forward diagonal.
+	var player: Player = await _player_with_body()
+	if player == null:
+		return pending("no humanoid body at %s" % BODY_PATH)
+	player.rotation.y = 0.0
+
+	player.velocity = Vector3(-4.0, 0.0, -4.0)
+	player._drive_torso_twist()
+	var forward_left: float = player.torso_twist._wanted
+
+	player.velocity = Vector3(-4.0, 0.0, 4.0)
+	player._drive_torso_twist()
+	var backward_left: float = player.torso_twist._wanted
+
+	assert_gt(absf(forward_left), 0.1, "the forward diagonal asked for no twist")
+	assert_lt(forward_left * backward_left, 0.0, \
+		"forward-left and backward-left twisted the same way (%.3f and %.3f)" \
+		% [forward_left, backward_left])
+
+func test_a_wall_run_turns_the_legs_into_the_wall() -> void:
+	# Along a wall the travel direction IS the facing, so the ordinary rule asks
+	# for nothing. What is wanted is the opposite: the legs turned toward the
+	# surface they are supposed to be pushing off.
+	var player: Player = await _player_with_body()
+	if player == null:
+		return pending("no humanoid body at %s" % BODY_PATH)
+	player.velocity = Vector3(0.0, 0.0, -6.0)
+	player.move_manager.start(Move.WALL_RUN)
+
+	player.wall_side = 1
+	player._drive_torso_twist()
+	var right_wall: float = player.torso_twist._wanted
+	player.wall_side = -1
+	player._drive_torso_twist()
+	var left_wall: float = player.torso_twist._wanted
+
+	assert_gt(absf(right_wall), 0.01, "a wall run asked for no twist at all")
+	assert_lt(right_wall * left_wall, 0.0, "both walls turned the legs the same way")

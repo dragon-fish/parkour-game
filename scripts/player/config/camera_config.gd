@@ -287,3 +287,17 @@ extends Resource
 ## The render layer carrying the body's THIRD-PERSON meshes -- the full head.
 ## See first_person_body_layers.
 @export_flags_3d_render var third_person_body_layers: int = 4
+
+## How close and how far the third-person eye may be pulled with the wheel, in
+## metres. third_person_back is where it starts; these bound where it can go.
+@export var third_person_min_distance: float = 1.2
+@export var third_person_max_distance: float = 6.0
+## Metres per wheel notch.
+@export var third_person_zoom_step: float = 0.35
+
+## Metres per pixel while dragging the offset with the middle button held.
+@export var third_person_drag_sensitivity: float = 0.004
+
+## How far a middle-button press may travel and still count as a CLICK rather
+## than a drag, in pixels. Below it, releasing cycles the shoulder preset.
+@export var third_person_click_slack: float = 6.0
