@@ -28,6 +28,17 @@ commercial use, or that requires derivative works to carry the same licence,
 cannot be redistributed under MIT — and a downstream user is not free to
 re-license someone else's work to make it fit.
 
+## Animation libraries
+
+`assets/animations/*_standard.glb` are the free tiers of Quaternius' Universal
+Animation Library, CC0 1.0 — see `assets/animations/LICENSE.txt`. CC0 is a
+public domain dedication, so these are tracked here without reservation.
+
+The **paid** full tiers are deliberately NOT tracked, even though their licence
+is the same CC0 and redistributing them would be legal: Quaternius sells those
+tiers to fund the work. `assets/animations/FULL-LIBRARY.md` says where to buy
+them and where to drop them in, and the game runs without them.
+
 ## Reference material
 
 `docs/mirrors-edge-deep-research/` and the measurements throughout

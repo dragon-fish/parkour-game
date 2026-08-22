@@ -100,3 +100,15 @@ scenes/player/profiles/
 
 # The alignment workbench, which names a profile that names untracked models.
 scenes/player/body_alignment.tscn
+
+# The owner's PAID copy of the Universal Animation Library (both packs, full
+# tiers). The licence on the files is CC0, so redistributing them would be
+# legal -- this is the owner's call not to: Quaternius sells these tiers to
+# fund the work, and mirroring the paid library in a public repo takes that
+# apart even where the licence permits it. They are also ~42 MB of binary,
+# which is its own reason.
+#
+# The FREE tiers beside this directory stay tracked, and every routing list in
+# character_animator.gd is a priority list precisely so a clone without these
+# falls back to them instead of breaking. See docs/asset-candidates.md.
+assets/animations/full/
