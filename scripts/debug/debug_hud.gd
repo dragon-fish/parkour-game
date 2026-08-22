@@ -25,14 +25,19 @@ func _ready() -> void:
 	_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0))
 	_label.add_theme_constant_override("outline_size", 4)
 	add_child(_label)
-	# THE CLIP TUNER RIDES ALONG, rather than being wired into main.tscn
-	# separately. This layer is already the debug surface and already holds a
-	# reference to the player, so building it here costs no scene change and no
-	# second export to keep in step. It stays invisible and inert until F9.
+	# THE CLIP TUNER IS BUILT HERE, rather than being wired into main.tscn
+	# separately: this layer is already the debug surface and already holds a
+	# reference to the player, so it costs no scene change and no second export
+	# to keep in step.
+	#
+	# AS A SIBLING, NOT A CHILD. It is a CanvasLayer of its own, and nesting it
+	# under this one would hand it this layer's visibility -- so Tab, which
+	# hides the readout, would take the tuner's own display with it. Deferred
+	# because a parent is not accepting children while its own _ready() runs.
 	var tuner := ClipOffsetTuner.new()
 	tuner.name = "ClipOffsetTuner"
 	tuner.player = player
-	add_child(tuner)
+	get_parent().add_child.call_deferred(tuner)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:

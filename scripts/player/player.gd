@@ -1153,10 +1153,34 @@ func _apply_clip_offset() -> void:
 ## Sets the offset with no easing at all, for the debug tuner: while the tree is
 ## paused nothing calls _drive_clip_offset(), and a tuner you cannot see the
 ## result of is not a tuner.
+##
+## THE EYE MOVES WITH THE BODY. ✅ The owner, on the first version: "the camera
+## does not follow the model's offset". It does during play -- the head-follow
+## reads the head bone's displacement every tick -- but that tick is paused too,
+## so nudging the body left the view exactly where it was and the whole point of
+## tuning in first person went with it. The rig is stepped by hand here for the
+## same reason the transform is.
 func set_clip_offset_immediately(position_offset: Vector3, rotation_offset: Vector3) -> void:
 	_clip_offset_position = position_offset
 	_clip_offset_rotation = rotation_offset
 	_apply_clip_offset()
+	refresh_head_follow()
+
+## Re-feeds the camera the head's current displacement from rest, out of band
+## with the physics tick. Exists for the paused case above; during play
+## _physics_process() does exactly this line every tick.
+func refresh_head_follow() -> void:
+	if camera_rig == null:
+		return
+	if head_node == null:
+		camera_rig.clear_head_position()
+		return
+	# force_update_transform(), because the skeleton's own pose is applied by a
+	# deferred modifier pass that a paused tree never runs: without it the bone
+	# still reports where it was before the body moved.
+	head_node.force_update_transform()
+	camera_rig.set_head_offset(to_local(head_node.global_position) - head_rest_local)
+	camera_rig.update_effects(0.0, 0.0, grounded)
 
 ## Builds the head look on the body's skeleton, if it has a neck to turn.
 func _attach_head_look(body_node: Node3D) -> void:
