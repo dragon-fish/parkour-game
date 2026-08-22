@@ -100,6 +100,14 @@ func hips_speed() -> float:
 	var hips := _bone_node(&"Hips")
 	return hips.linear_velocity.length() if hips != null else 0.0
 
+## How fast the hips are travelling DOWNWARD, positive while falling. ✅ The
+## owner's suggestion for both the blur and the moment of impact: "bind the
+## motion blur to the ragdoll's speed, and take the blackout from the instant
+## the vertical velocity reverses or comes close to zero."
+func hips_fall_speed() -> float:
+	var hips := _bone_node(&"Hips")
+	return -hips.linear_velocity.y if hips != null else 0.0
+
 ## Generates the bodies. Safe to call more than once; only the first does work.
 ##
 ## Returns false for a body this cannot be built on -- no skeleton, or one whose

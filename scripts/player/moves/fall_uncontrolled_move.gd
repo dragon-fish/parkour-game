@@ -27,8 +27,11 @@ func enter(_previous: StringName) -> void:
 	#
 	# DeathSequence guards against starting it twice; a body it cannot be built
 	# on simply never starts one.
-	_ragdoll_still = 0.0
 	_ragdoll_elapsed = 0.0
+	_ragdoll_dropping = false
+	_declared = false
+	_drift_from = Vector3.ZERO
+	_drift_since = 0.0
 	if player.ragdoll != null and player.body != null 			and player.ragdoll.build(player.find_skeleton()):
 		# Some direction, so a death reads as being thrown rather than folding
 		# straight down. The carried velocity is mixed in because being launched
@@ -40,14 +43,35 @@ func enter(_previous: StringName) -> void:
 		# and must not also be spent by the body -- see physics_update().
 		player.velocity = Vector3.ZERO
 
-## How slowly the hips have to be moving to count as having arrived, and how
-## long to wait before deciding they never will.
-const RAGDOLL_REST_SPEED := 1.2
-const RAGDOLL_REST_TIME := 0.35
+## WHAT COUNTS AS HAVING ARRIVED. ✅ The owner's rule, near enough verbatim:
+## "the moment the vertical speed suddenly zeroes or reverses", or "the hips
+## have not moved 0.5 m in a while", or "it has been falling for more than six
+## seconds".
+##
+## The first is the impact and is what actually fires: a body that was dropping
+## and is suddenly not has hit something. The other two are for the cases that
+## never produce one -- sliding down a slope, wedging in geometry, falling
+## forever into the void.
+const RAGDOLL_FALLING_SPEED := 4.0
+const RAGDOLL_IMPACT_SPEED := 0.5
+const RAGDOLL_DRIFT_WINDOW := 1.0
+const RAGDOLL_DRIFT_DISTANCE := 0.5
 const RAGDOLL_TIMEOUT := 6.0
 
-var _ragdoll_still: float = 0.0
 var _ragdoll_elapsed: float = 0.0
+## True once the hips have been dropping fast enough for a stop to mean
+## something. Without it a ragdoll that starts near rest is "impacted" on its
+## first tick.
+var _ragdoll_dropping: bool = false
+## Where the hips were when the current drift window opened, and when.
+var _drift_from: Vector3 = Vector3.ZERO
+var _drift_since: float = 0.0
+## Emitted exactly once. ⚠️ FallUncontrolled IS A TERMINAL STATE -- ✅ the
+## owner: "isn't the uncontrolled fall terminal? why does it turn back into an
+## ordinary fall?" It was returning WALKING, which with the capsule frozen in
+## mid-air fell straight back into another uncontrolled fall, declared another
+## death, and cycled forever.
+var _declared: bool = false
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# ⚠️ THE RAGDOLL OWNS THE BODY, and the capsule stops entirely.
@@ -99,8 +123,14 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 func _drive_screen_effects() -> void:
 	if player.screen_effects == null:
 		return
-	var intensity: float = clampf(-player.velocity.y \
-		/ maxf(config.pawn.terminal_velocity, 0.001), 0.0, 1.0)
+	# ⚠️ THE RAGDOLL'S SPEED, NOT THE CAPSULE'S, once one is running. ✅ The
+	# owner's suggestion, and it had already broken without anyone saying so:
+	# the capsule is frozen at zero the whole way down (see physics_update), so
+	# this read zero and the screen stayed clear through the entire fall.
+	var falling: float = -player.velocity.y
+	if player.ragdoll != null and player.ragdoll.is_simulating():
+		falling = player.ragdoll.hips_fall_speed()
+	var intensity: float = clampf(falling / maxf(config.pawn.terminal_velocity, 0.001), 0.0, 1.0)
 	player.screen_effects.set_desaturation(intensity)
 	player.screen_effects.set_blur(intensity * config.fall_uncontrolled.blur_scale)
 
@@ -126,6 +156,21 @@ func exit() -> void:
 	# ordinary Walking in between is not enough to move a body that lands with
 	# its horizontal speed already spent.
 	player.unlock_input()
+	# ⚠️ WHOEVER STARTED IT OWNS STOPPING IT, and this state is the only thing
+	# that starts one. ✅ The owner raised the case: "debug noclip is the one
+	# thing that can force the state machine to Walking -- I am not sure whether
+	# the ragdoll breaks that." It would have: noclip exits this state without
+	# any respawn behind it, and the ragdoll would have gone on simulating
+	# underneath a player flying around. Every other way out -- the respawn, a
+	# reset, the death sequence -- already stopped it, and now this one does
+	# too. Idempotent on a ragdoll that is not running.
+	if player.ragdoll != null:
+		player.ragdoll.stop()
+	# And the death with it. This state declares the death and then HOLDS (see
+	# _settle_ragdoll), so on the ordinary path it never exits until the respawn
+	# has already cleared this. Leaving early -- which noclip is -- has to clear
+	# it here, or the body walks around playing its own death clip.
+	player.set_dying(false)
 	if player.screen_effects != null:
 		player.screen_effects.set_desaturation(0.0)
 		player.screen_effects.set_blur(0.0)
@@ -145,13 +190,25 @@ func _settle_ragdoll(delta: float) -> StringName:
 	player.set_grounded(false)
 	_ragdoll_elapsed += delta
 	_drive_screen_effects()
-	if player.ragdoll.hips_speed() <= RAGDOLL_REST_SPEED:
-		_ragdoll_still += delta
-	else:
-		_ragdoll_still = 0.0
-	if _ragdoll_still < RAGDOLL_REST_TIME and _ragdoll_elapsed < RAGDOLL_TIMEOUT:
+	if _declared:
+		# TERMINAL. Nothing follows an uncontrolled fall but a respawn, and the
+		# respawn restarts the move manager itself.
 		return KEEP
-	return landing_destination(0.0, false)
+	var falling: float = player.ragdoll.hips_fall_speed()
+	if falling >= RAGDOLL_FALLING_SPEED:
+		_ragdoll_dropping = true
+	var hips: Vector3 = player.ragdoll.hips_position()
+	if _drift_since <= 0.0 or hips.distance_to(_drift_from) > RAGDOLL_DRIFT_DISTANCE:
+		_drift_from = hips
+		_drift_since = _ragdoll_elapsed
+	var drifted_little: bool = _ragdoll_elapsed - _drift_since >= RAGDOLL_DRIFT_WINDOW
+	var struck: bool = _ragdoll_dropping and falling <= RAGDOLL_IMPACT_SPEED
+	if not (struck or drifted_little or _ragdoll_elapsed >= RAGDOLL_TIMEOUT):
+		return KEEP
+	_declared = true
+	player.set_dying(true)
+	player.died_from_fall.emit()
+	return KEEP
 
 func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
 	# ✅ THE OWNER: "why does a third-person death always play Jump_Land and

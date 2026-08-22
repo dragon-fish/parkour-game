@@ -266,3 +266,57 @@ func test_the_bodies_are_born_inert() -> void:
 			assert_eq((child as PhysicalBone3D).collision_layer, 0,
 				"%s was built able to collide" % child.name)
 	skeleton.queue_free()
+
+# --- the uncontrolled fall is terminal --------------------------------------------
+
+func test_a_declared_death_does_not_hand_back_to_walking() -> void:
+	# ✅ THE OWNER, with a transitions log showing the loop:
+	#
+	#   FallUncontrolled -> Walking / Walking -> Falling / Falling ->
+	#   FallUncontrolled / FallUncontrolled -> Walking / ...
+	#
+	# "Isn't the uncontrolled fall terminal? Why does it turn back into an
+	# ordinary fall?" It is, and it was returning WALKING -- which, with the
+	# capsule frozen in mid-air, fell straight back into another uncontrolled
+	# fall, declared another death, and cycled forever.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	player.ragdoll = Ragdoll.new()
+	player.ragdoll.build(_humanoid())
+	player.ragdoll.start(Vector3.ZERO, RID())
+	var deaths := [0]
+	player.died_from_fall.connect(func(): deaths[0] += 1)
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	# Long enough for the drift rule to fire and then for a loop to show up.
+	await step(180)
+	assert_eq(player.move_manager.current_name, Move.FALL_UNCONTROLLED,
+		"the fall handed off to %s" % player.move_manager.current_name)
+	assert_eq(deaths[0], 1, "the death was declared %d times" % deaths[0])
+	player.ragdoll.stop()
+	TestWorld.teardown(world)
+
+func test_leaving_the_state_stops_the_ragdoll() -> void:
+	# ✅ THE OWNER: "debug noclip is the one thing that can force the state
+	# machine to Walking -- I am not sure whether the ragdoll breaks that."
+	#
+	# It would have. noclip exits this state with no respawn behind it, and the
+	# ragdoll would have gone on simulating underneath a player flying around.
+	# Whoever starts one owns stopping it.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	player.ragdoll = Ragdoll.new()
+	player.ragdoll.build(_humanoid())
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	player.ragdoll.start(Vector3.ZERO, RID())
+	assert_true(player.ragdoll.is_simulating(), "the fixture never started one")
+	# What noclip does.
+	player.move_manager.start(Move.WALKING)
+	assert_false(player.ragdoll.is_simulating(),
+		"the ragdoll went on simulating under a walking player")
+	TestWorld.teardown(world)
