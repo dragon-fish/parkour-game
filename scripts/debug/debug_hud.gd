@@ -82,25 +82,22 @@ func _process(delta: float) -> void:
 		# (Walking / Falling / WallRun / Grab / SpeedVault / Slide), and there
 		# is no separate state machine left for it to be reporting.
 		"move       %s" % player.move_manager.current_name,
-		"speed h    %.2f m/s" % player.horizontal_speed(),
-		"speed v    %.2f m/s" % player.velocity.y,
-		"position   (%.1f, %.1f, %.1f)" % [pos.x, pos.y, pos.z],
+		"speed      h %.2f  v %.2f m/s"
+			% [player.horizontal_speed(), player.velocity.y],
 		# ABSOLUTE, world-space: the body's own facing and the eye's own pitch,
 		# with no constraint arithmetic in between. The `look` line below is
 		# all relative to whatever centre a clamp declared, so when the two
 		# disagree it is the clamp's own reference that is wrong.
-		"facing     yaw %+.0f  pitch %+.0f" % [rad_to_deg(player.rotation.y), 			rad_to_deg(player.camera_rig.rotation.x) if player.camera_rig != null else 0.0],
+		"at         (%.1f, %.1f, %.1f)  yaw %+.0f  pitch %+.0f" % [pos.x, pos.y, pos.z,
+			rad_to_deg(player.rotation.y),
+			rad_to_deg(player.camera_rig.rotation.x) if player.camera_rig != null else 0.0],
 		"grounded   %s" % ("yes" if player.grounded else "no"),
-		# THE NUMBER THAT SETTLES IT. The owner asked whether the vault's fold
-		# was real, and neither the model nor the feet move when it happens --
-		# only the capsule's top does -- so nothing on screen said either way.
-		# Shown against the standing height rather than alone, since "0.90" only
-		# means something next to "1.80".
 		# ✅ The owner, from a screenshot: "how much higher than the capsule is
-		# the eye?" Answered as numbers rather than by measuring pixels. Both
-		# heights are quoted above the SOLES, which stay put whatever the
-		# capsule does -- the fold moves one end of the collision shape, not the
-		# body.
+		# the eye?" Answered as numbers rather than by measuring pixels, and
+		# both quoted above the SOLES -- which stay put whatever the capsule
+		# does, since the fold moves one end of the collision shape, not the
+		# body. A span of 0.90-1.80 is a body with its legs tucked; 0.00-0.90
+		# is one crouching.
 		"eye        %.2f m above soles   (capsule spans %.2f - %.2f)"
 			% [_eye_above_soles(), _capsule_span().x, _capsule_span().y],
 		# ✅ The owner narrowed it to three paths: a vault that drives through to
@@ -124,9 +121,13 @@ func _process(delta: float) -> void:
 		"look       %s" % _look_text(),
 		"step grace %s" % ("open" if player.in_step_grace() else "-"),
 		"fps        %d" % Engine.get_frames_per_second(),
-		"step decisions",
-		"
-".join(player.step_decisions) if not player.step_decisions.is_empty() 			else "  (none yet)",
+		# ⚠️ COMMENTED OUT, not deleted. ✅ The owner: "the step decisions can
+		# go for now, that part is basically stable." It is the readout that
+		# settled how a body climbs a plank, and the day it is wrong again it
+		# is two lines away rather than a rewrite.
+		#"step decisions",
+		#"\n".join(player.step_decisions) if not player.step_decisions.is_empty()
+		#	else "  (none yet)",
 		"transitions",
 		"
 ".join(_transitions) if not _transitions.is_empty() else "  (none yet)",
