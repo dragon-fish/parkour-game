@@ -294,37 +294,6 @@ extends Resource
 ## readability threshold, not a physics one.
 @export var run_animation_speed_threshold: float = 1.0
 
-## How far the hips may turn toward the travel direction while the torso keeps
-## facing the view, in degrees.
-##
-## In this project the body's facing IS the view's, so holding forward-and-left
-## moves the character diagonally with the legs aimed straight ahead. This is
-## the cheap correction: the hips turn and the spine unwinds the same amount, so
-## the shoulders stay put. Nothing steps sideways -- that needs eight-directional
-## locomotion clips -- but nothing points the wrong way either.
-##
-## Capped rather than free: a body twisted much past this stops reading as
-## turning and starts reading as broken, and the legs are not actually striding
-## in the new direction to justify it.
-@export var torso_twist_max_deg: float = 35.0
-
-## Zero disables the twist entirely, which is what every body without a humanoid
-## spine gets anyway -- see Player._drive_torso_twist().
-@export var torso_twist_enabled: bool = true
-
-
-## How far the hips turn toward the wall during a wall run, in degrees.
-##
-## The legs are not really planted on it -- that would need a wall-run clip,
-## which no free pack has -- so this is the cheap suggestion of it: turn the
-## lower half toward the surface and let the torso keep facing the run.
-##
-## ⚠️ Started at 8 degrees, matching the camera's own roll on the reasoning that
-## the two would read as one lean. In play the owner could barely see it, and
-## the reason is that they are not the same kind of quantity: the camera's roll
-## tips the WHOLE image, where this turns one part of a body that is already
-## moving fast and partly out of frame. Raised until it reads.
-@export var wall_run_twist_deg: float = 22.0
 
 ## How fast the visible body turns to face where it is going, in degrees per
 ## second. Only the MODEL: the body's real facing follows the view instantly,

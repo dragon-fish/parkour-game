@@ -17,10 +17,12 @@ extends SkeletonModifier3D
 # the head ends up at. Rotating the head by the full amount on top of a turned
 # chest would overshoot by exactly the chest's contribution.
 #
-# Worked through set_bone_global_pose rather than by composing local rotations,
-# for the reason TorsoTwist gives: a humanoid bone's local axes are whatever its
-# rest pose made them, and getting that wrong bends the body somewhere
-# unrelated -- which this project cannot see, only measure.
+# Worked through set_bone_global_pose rather than by composing local rotations.
+# A humanoid bone's local axes are whatever its rest pose made them, and getting
+# that wrong bends the body somewhere unrelated -- which this project cannot
+# see, only measure. A global-space rotation is the same rotation whatever the
+# rest pose is. (This reasoning used to live in TorsoTwist, which the packs'
+# eight-way locomotion made redundant; it is written out here now.)
 
 ## Takes the share of the yaw named by SPINE_SHARE_DEG, split evenly.
 ##

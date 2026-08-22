@@ -516,10 +516,6 @@ var head_rest_local: Vector3 = Vector3.ZERO
 ## body whose hands follow its animation. See HandIK's own header.
 var hand_ik: HandIK = null
 
-## Turns the attached body's hips toward where it is travelling while the torso
-## keeps facing the view. Built in _attach_body() when the body has a humanoid
-## spine, and null otherwise. See TorsoTwist's own header.
-var torso_twist: TorsoTwist = null
 
 ## Turns the attached body's head toward where the camera is pointing. Built
 ## alongside the twist, and null for a body without a humanoid neck. See
@@ -934,7 +930,6 @@ func _attach_body(scene: PackedScene) -> void:
 	_wire_body_animation(body)
 	head_node = _resolve_head_node(body)
 	_attach_hand_ik(body)
-	_attach_torso_twist(body)
 	_attach_head_look(body)
 	if head_node != null:
 		head_rest_local = to_local(head_node.global_position)
@@ -1079,87 +1074,6 @@ func _attach_hand_ik(body_node: Node3D) -> void:
 		hand_ik = ik
 	else:
 		ik.queue_free()
-
-## Builds the torso twist on the body's skeleton, if it has the bones for one.
-##
-## Silently does nothing otherwise, which covers every non-humanoid body --
-## this project's own Blockbench one included, whose bones are named after cubes.
-func _attach_torso_twist(body_node: Node3D) -> void:
-	torso_twist = null
-	var skeleton := _find_skeleton(body_node)
-	if skeleton == null or skeleton.find_bone(TorsoTwist.HIPS) < 0:
-		return
-	# PHYSICS, not the IDLE this defaults to. Everything here runs on physics
-	# ticks and the headless test loop has nothing else, so a modifier left on
-	# idle solves for a pose nobody looks at. Set here rather than relied on
-	# from _attach_hand_ik(): a body with a spine but no arms would otherwise
-	# get a twist that never runs.
-	skeleton.modifier_callback_mode_process = 		Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_PHYSICS
-	var twist := TorsoTwist.new()
-	twist.name = "TorsoTwist"
-	skeleton.add_child(twist)
-	torso_twist = twist
-
-## Feeds the twist the angle between where the body FACES and where it is
-## GOING, which is nonzero exactly when the player is strafing.
-##
-## Read from velocity rather than from the input so that anything else carrying
-## the body sideways -- a wall kick, a vault's exit -- turns the legs too. Below
-## a walking pace there is no travel direction worth speaking of and the angle
-## is noise, so it releases to zero instead.
-func _drive_torso_twist() -> void:
-	if torso_twist == null:
-		return
-	if not config.pawn.torso_twist_enabled:
-		torso_twist.request(0.0)
-		return
-	# A WALL RUN IS ITS OWN CASE, and it comes first: the travel direction there
-	# is along the wall, which is exactly the facing, so the ordinary rule would
-	# ask for no twist at all. What is wanted is the opposite -- the legs turned
-	# INTO the surface they are supposed to be pushing off.
-	#
-	# Not a real plant; that needs a wall-run clip and no free pack has one.
-	# Sized to match the camera's own roll so the two read as a single lean.
-	if move_manager.current_name == Move.WALL_RUN and wall_side != 0:
-		torso_twist.request(deg_to_rad(config.pawn.wall_run_twist_deg) * float(wall_side))
-		return
-
-	var travel := Vector3(velocity.x, 0.0, velocity.z)
-	if travel.length_squared() < 0.25:
-		torso_twist.request(0.0)
-		return
-	var facing: Vector3 = -global_transform.basis.z
-	facing.y = 0.0
-	if facing.length_squared() < 0.0001:
-		torso_twist.request(0.0)
-		return
-	# MIRRORED ABOUT THE SIDEWAYS AXIS, not the plain signed angle between
-	# facing and travel. The plain angle is wrong in all three backward cases,
-	# and the owner reported every one of them:
-	#
-	#   * straight back is ±180 degrees, whose SIGN is numerically unstable --
-	#     the hips flip between hard left and hard right on float noise. That is
-	#     the twitching.
-	#   * a backward diagonal is about ±135, which clamps to the cap with the
-	#     SAME sign as the matching forward diagonal, so the legs turn the wrong
-	#     way.
-	#   * and neither should be at the cap at all: walking straight backwards
-	#     wants no twist, because there is no sideways component to follow.
-	#
-	# Splitting travel into forward and sideways parts fixes all three at once.
-	# The angle is taken against |forward|, so straight back reads as zero
-	# rather than as a half turn, and then negated while reversing, which is the
-	# owner's rule: a backward diagonal turns the hips the opposite way from the
-	# forward one.
-	var direction: Vector3 = travel.normalized()
-	var ahead: Vector3 = facing.normalized()
-	var forward: float = direction.dot(ahead)
-	var sideways: float = direction.dot(ahead.cross(Vector3.UP))
-	var angle: float = atan2(sideways, absf(forward))
-	if forward < 0.0:
-		angle = -angle
-	var cap: float = deg_to_rad(config.pawn.torso_twist_max_deg)
-	torso_twist.request(clampf(angle, -cap, cap))
 
 ## Builds the head look on the body's skeleton, if it has a neck to turn.
 func _attach_head_look(body_node: Node3D) -> void:
@@ -1540,7 +1454,6 @@ func _physics_process(delta: float) -> void:
 
 	if hand_ik != null:
 		hand_ik.update(delta)
-	_drive_torso_twist()
 	_drive_body_yaw(delta, input)
 	_drive_head_look()
 
