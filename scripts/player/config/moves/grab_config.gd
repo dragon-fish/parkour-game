@@ -97,6 +97,51 @@ extends MoveConfig
 ## purpose.
 @export var shimmy_edge_tolerance: float = 0.15
 
+## How far the view must be turned off the wall before jump pushes off it
+## instead of pulling up, in degrees.
+##
+## ✅ `TdMove_GrabJump.GrabAllowedJumpAngle = 45.0`, and it comes as a PAIR:
+## `TdMove_GrabPullUp.GrabAllowedPullUpAngle` is 45 as well. Looking at the wall
+## climbs it; looking away from it leaves it.
+##
+## ✅ The owner reported this as "past 90 degrees" from play and then said what
+## to do about the discrepancy: "有实测数据就按数据来，我只能用手感跟你描述."
+## So the CDO number stands and the 90 is recorded as the feel it was offered as.
+@export var jump_angle_deg: float = 45.0
+
+## Upward speed of a jump off a hang, in metres/second.
+##
+## ✅ `TdMove_GrabJump.GrabJumpOffZHeight = 160` uu.
+##
+## ⚠️ READ AS A SPEED, and the field name argues the other way -- "Height", not
+## the "Z" that every confirmed velocity in the family uses (`BaseJumpZ`,
+## `SpringBoardJumpZ`). Taken as a speed it is 1.6 m/s; taken as a rise it is
+## 1.6 m, and the two are nothing alike. Speed is the reading kept, because
+## `TdMove_WallClimb180TurnJump.JumpOffZHeight = 250` under the rise reading
+## would launch a turn-jump 2.5 m straight up, which the original plainly does
+## not do.
+##
+## 📌 Either way this is a SHOVE, not a boost. The owner expected it to feel
+## like the wall kick, and horizontally it does -- 2 to 4 m/s against the kick's
+## own 3.0 -- but the kick goes UP at 5.8. Letting go of a ledge drops you.
+@export var jump_speed_up: float = 1.6
+
+## Push away from the wall at the smallest angle that allows a jump.
+##
+## ✅ `TdMove_GrabJump.GrabJumpPushAwayMinSpeed = 200` uu/s.
+@export var jump_push_min: float = 2.0
+
+## Push away from the wall with your back fully turned to it.
+##
+## ✅ `TdMove_GrabJump.GrabJumpPushAwayMaxSpeed = 400` uu/s.
+##
+## ⚠️ WHAT MOVES BETWEEN THE TWO IS INFERRED. The CDO gives a min and a max and
+## no driver, and the turn angle is the only quantity this move has that varies
+## continuously -- so it is lerped from jump_angle_deg to a full 180. It reads
+## the way the move plays: the further you have turned your back on the wall,
+## the harder you shove off it.
+@export var jump_push_max: float = 4.0
+
 func _init() -> void:
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: hanging. Which way you face is the wall's business.
