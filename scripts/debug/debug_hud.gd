@@ -96,6 +96,13 @@ func _process(delta: float) -> void:
 		# only the capsule's top does -- so nothing on screen said either way.
 		# Shown against the standing height rather than alone, since "0.90" only
 		# means something next to "1.80".
+		# ✅ The owner, from a screenshot: "how much higher than the capsule is
+		# the eye?" Answered as numbers rather than by measuring pixels. Both
+		# heights are quoted above the SOLES, which stay put whatever the
+		# capsule does -- the fold moves one end of the collision shape, not the
+		# body.
+		"eye        %.2f m above soles   (capsule spans %.2f - %.2f)"
+			% [_eye_above_soles(), _capsule_span().x, _capsule_span().y],
 		"capsule    %.2f / %.2f m%s" % [player.current_capsule_height(),
 			player.standing_height(),
 			"  FOLDED" if player.current_capsule_height() < player.standing_height() - 0.01 else ""],
@@ -157,6 +164,30 @@ func _look_text() -> String:
 	if not d["constrained"]:
 		return "free  pitch %+.0f" % rad_to_deg(d["pitch"])
 	return "yaw %+.0f  floor %+.0f  pitch %+.0f" % [rad_to_deg(d["relative_yaw"]), 		rad_to_deg(d["pitch_floor"]), rad_to_deg(d["pitch"])]
+
+## The first-person eye, measured from the soles. The rig's own origin IS that
+## eye -- the Camera3D child is what pulls back for third person -- so this
+## reads the same in both views.
+func _eye_above_soles() -> float:
+	var soles: float = player.global_position.y - player.standing_height() * 0.5
+	if player.camera_rig != null:
+		return player.camera_rig.global_position.y - soles
+	return player.config.camera.eye_height + player.standing_height() * 0.5
+
+## Where the collision capsule starts and ends, from the soles. Which END moves
+## is the whole of what the fold's anchor decides: ANCHOR_FEET brings the top
+## down, ANCHOR_HEAD lifts the bottom -- so a span of 0.90 to 1.80 is a body
+## with its legs tucked, and 0.00 to 0.90 is one crouching.
+func _capsule_span() -> Vector2:
+	var shape_node := player.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if shape_node == null:
+		return Vector2.ZERO
+	var capsule := shape_node.shape as CapsuleShape3D
+	if capsule == null:
+		return Vector2.ZERO
+	var soles: float = player.global_position.y - player.standing_height() * 0.5
+	var centre: float = shape_node.global_position.y - soles
+	return Vector2(centre - capsule.height * 0.5, centre + capsule.height * 0.5)
 
 func _wall_side_text() -> String:
 	match player.wall_side:

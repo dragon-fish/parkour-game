@@ -186,7 +186,17 @@ func enter(_previous: StringName) -> void:
 	if bool(query.get("vault_over", false)) and far_point != Vector3.ZERO:
 		landing = far_point + _exit_direction * config.speed_vault.vault_exit_forward
 		landing.y = far_point.y + player.standing_height() * 0.5
-		arc = config.speed_vault.vault_over_arc_height
+		# THE ARC IS DERIVED FROM THE OBSTACLE, not fixed. See
+		# SpeedVaultConfig.vault_over_peak_below_top for the measurement and for
+		# why a constant rise could not be right at more than one height.
+		#
+		# ScriptedMove adds the arc on top of the straight line between the
+		# ends, peaking in the middle, so what is wanted here is the gap between
+		# that line's midpoint and where the feet should actually peak.
+		var half: float = player.standing_height() * 0.5
+		var wanted_peak: float = top.y - config.speed_vault.vault_over_peak_below_top
+		var midpoint_feet: float = (player.global_position.y + landing.y) * 0.5 - half
+		arc = maxf(0.0, wanted_peak - midpoint_feet)
 
 	# WORKED OUT NOW, SPENT AT CONTACT.
 	#

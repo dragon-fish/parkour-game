@@ -269,12 +269,27 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## How high a vault OVER bulges above the straight line from where it started to
 ## where it lands.
 ##
-## Separate from vault_arc_height, which shapes a vault ONTO, because the two
-## manoeuvres have different jobs: one puts the feet on top of something, the
-## other carries the body PAST it without ever getting on top.
+## How far BELOW the obstacle's top the feet peak during a vault OVER.
 ##
-## ✅ From the measured fence vault: committed with the feet at SZD 0.76 and
-## peaked at 1.77, so the arc rises about 1.0 m above where it began. See
-## docs/feel-backlog.md 26 and 27, and note that the peak is 0.87 m BELOW the
-## obstacle's own top -- the feet never clear the fence at all.
-@export var vault_over_arc_height: float = 1.0
+## ✅ MEASURED, and this is the same measurement the old constant came from --
+## read the other way round. docs/feel-backlog.md 26-27: the fence's top is at
+## SZD 2.64, the feet commit at 0.76 and peak at 1.77, so the peak is 0.87 m
+## BELOW the top. Faith's feet never clear the fence at all; she plants a hand
+## and swings the body past it.
+##
+## ⚠️ WHY THIS REPLACED A FIXED ARC HEIGHT, and it is the whole of the owner's
+## "the eye is still far too high" report. The old field held 1.0 -- the RISE
+## in that same measurement -- and applied it to every obstacle. But 1.0 was
+## measured on a 2.64 m fence entered from a jump with the feet already at
+## 0.76; using it on a 1 m box lifts the feet a metre over something they only
+## needed to reach, and the eye rides 1.66 m above the top because the eye is
+## 1.66 m above the feet.
+##
+## The subtraction generalises where the rise does not. Feet peaking 0.87 below
+## the top puts the EYE 0.79 above it, at every obstacle height -- which is what
+## the original's own numbers say it does.
+##
+## Floored at the straight line between the ends, so a low obstacle produces no
+## arc at all rather than a dip: 0.87 below the top of a 0.64 m ledge is
+## underground.
+@export var vault_over_peak_below_top: float = 0.87

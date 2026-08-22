@@ -102,14 +102,20 @@ func _process(_delta: float) -> void:
 	_last_height = capsule.height
 	_mesh.clear_surfaces()
 	var at: Transform3D = shape_node.global_transform
-	var sole: float = -capsule.height * 0.5
+	# ⚠️ NOT the folded capsule's own bottom. Under ANCHOR_HEAD that bottom is
+	# the WAIST -- the legs are tucked, so the collision stops there -- and
+	# drawing the "sole" disc on it put the feet marker half a body too high.
+	# A debug view that lies costs more than no debug view. The soles are where
+	# the model's feet are, which is the STANDING half-height below the body's
+	# own origin, whatever the capsule is doing.
+	var sole: float = player.global_position.y - player.standing_height() * 0.5
 	_draw_capsule(at, capsule.radius, capsule.height)
 	# ONLY IN THIRD PERSON. From inside the head the eye marker is in your face
 	# and the frustum is the thing you are looking through, so neither says
 	# anything. The rig is the authority on which view is running.
 	var rig = player.camera_rig
 	if rig != null and rig.third_person:
-		_draw_fills(at, capsule.radius, sole, rig)
+		_draw_fills(capsule.radius, sole, rig)
 
 # --- the capsule ----------------------------------------------------------------
 
@@ -140,8 +146,8 @@ func _draw_capsule(at: Transform3D, radius: float, total: float) -> void:
 
 # --- what the head cannot see ----------------------------------------------------
 
-func _draw_fills(at: Transform3D, radius: float, sole: float, rig) -> void:
-	var sole_centre: Vector3 = at * Vector3(0.0, sole, 0.0)
+func _draw_fills(radius: float, sole_y: float, rig) -> void:
+	var sole_centre := Vector3(player.global_position.x, sole_y, player.global_position.z)
 	# THE EYE IS THE RIG'S OWN ORIGIN. The Camera3D child is what pulls back for
 	# third person, so the rig itself stays where the first-person view would be
 	# -- head-follow offset and all, since that is written onto the rig too.
