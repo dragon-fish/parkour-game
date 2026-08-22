@@ -510,11 +510,22 @@ func _target_animation() -> StringName:
 			# is fast, committed ground momentum, so a run is the closest thing.
 			return _first_available([&"Slide", &"Sprint", &"run", &"idle"])
 		Move.SPEED_VAULT:
-			# NO LONGER A PLACEHOLDER, and this was the biggest gap in the file.
-			# SafetyVault is a one-handed plant over an obstacle, which is the
-			# move exactly. Everything behind it is the old reasoning: a vault
-			# is a short airborne burst, so the take-off half of a jump is the
-			# closest thing a body without the paid pack has.
+			# TWO DIFFERENT MOVES BEHIND ONE STATE, told apart the way GRAB's
+			# two phases are -- by asking the move.
+			#
+			# ✅ The owner: the compensating vault and the one where the shin
+			# catches the edge should both play StepUp. They are the vaults that
+			# were never set up: no run-up, no plant, the player simply arrived
+			# and scrambled. The original agrees from the other direction -- its
+			# two step-up rows are precisely the two with no hand IK at all
+			# (05 §5.7), because there is no hand in them.
+			var vault_move = player.move_manager.move_for(Move.SPEED_VAULT)
+			if vault_move != null and vault_move.is_scramble():
+				return _first_available([&"StepUp", &"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
+			# SafetyVault is a one-handed plant over an obstacle, which is what
+			# a vault that WAS set up looks like. Behind it, the old reasoning:
+			# a vault is a short airborne burst, so the take-off half of a jump
+			# is the closest thing a body without the paid pack has.
 			return _first_available([&"SafetyVault", &"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
 		Move.GRAB:
 			# Two phases share this one move (see GrabMove's own header

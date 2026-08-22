@@ -128,6 +128,7 @@ const FULL_CLIPS: Array = [
 	&"Roll", &"Slide", &"Crouch_Idle", &"Crouch_Fwd", &"NinjaJump_Start",
 	&"SafetyVault", &"WallRun_L", &"WallRun_R", &"ClimbUp_1m", &"ClimbUp_2m",
 	&"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Turn180_L", &"Turn180_R",
+	&"StepUp",
 ]
 
 func test_the_paid_packs_replace_their_placeholders() -> void:
@@ -162,3 +163,48 @@ func test_a_ledge_hang_hangs_rather_than_jumps() -> void:
 	var player: Player = _world["player"]
 	player.move_manager.start(Move.GRAB)
 	assert_eq(String(animator._target_animation()), "Climb_Idle", 		"a ledge hang asked for '%s'" % String(animator._target_animation()))
+
+func test_a_scrambled_vault_steps_up_instead_of_planting_a_hand() -> void:
+	# ✅ THE OWNER: the compensating vault and the one where the shin catches
+	# the edge should both play StepUp. They are the vaults that were never set
+	# up -- no run-up, no plant, the player simply arrived. The original agrees
+	# from the other direction: its two step-up rows are precisely the two with
+	# no hand IK at all (05 §5.7), because there is no hand in them.
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
+	# The step-up row, resolved through the real table rather than named here,
+	# so a renamed variant fails this instead of silently routing to a plant.
+	player.pending_vault_variant = player.config.speed_vault.pick_variant(
+		0.3, true, -2.0, 2.0)
+	assert_false(player.pending_vault_variant.is_empty(),
+		"the table no longer has a descending step-up row to test with")
+	player.move_manager.start(Move.SPEED_VAULT)
+	assert_eq(String(animator._target_animation()), "StepUp",
+		"a shin-catch vault asked for '%s'" % String(animator._target_animation()))
+
+func test_a_vault_that_was_set_up_still_plants_a_hand() -> void:
+	# The pair. Without it the test above passes on a routing that sends EVERY
+	# vault to a step-up, which would quietly delete the plant.
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
+	player.pending_vault_variant = player.config.speed_vault.pick_variant(
+		1.0, false, 1.0, 6.0)
+	assert_false(player.pending_vault_variant.is_empty(),
+		"the table no longer has a set-up vault row to test with")
+	player.pending_vault_rescue = false
+	player.move_manager.start(Move.SPEED_VAULT)
+	assert_eq(String(animator._target_animation()), "SafetyVault",
+		"a committed vault asked for '%s'" % String(animator._target_animation()))
+
+func test_a_rescued_vault_scrambles_even_on_a_plant_variant() -> void:
+	# The rescue resolves to the MIDDLE tier -- the same row a run-up would --
+	# so the variant name alone cannot tell them apart. The flag can.
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
+	player.pending_vault_variant = player.config.speed_vault.pick_variant(
+		1.0, false, 0.0, 6.0)
+	assert_false(player.pending_vault_variant.is_empty(), "no middle-tier row")
+	player.pending_vault_rescue = true
+	player.move_manager.start(Move.SPEED_VAULT)
+	assert_eq(String(animator._target_animation()), "StepUp",
+		"a rescued vault asked for '%s'" % String(animator._target_animation()))

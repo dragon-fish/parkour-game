@@ -139,6 +139,10 @@ func probe_transition() -> StringName:
 	# WalkingMove's own grounded vault check can never see -- see
 	# SpeedVaultConfig.variants' own per-field note on that row.
 	if c.check_for_vault_over and player.probes != null:
+		# Cleared before the question is asked: _vault_speed_z() only ever sets
+		# it, so a stale true from a tick that did not go on to vault would
+		# otherwise make the next vault look like a scramble.
+		player.pending_vault_rescue = false
 		var hit: Dictionary = player.probes.vault_query()
 		if hit["valid"] and not player.recent_wall_refuses_climb_onto(hit["edge"]):
 			var variant: Dictionary = config.speed_vault.pick_variant(
@@ -358,5 +362,10 @@ func _vault_speed_z() -> float:
 		return speed_z
 	if wish.normalized().dot(facing.normalized()) <= 0.0:
 		return speed_z
+	# Recorded, because it changes what the vault LOOKS like. A rescued vault
+	# was not set up -- there was no run-up and no plant, the player simply
+	# arrived -- so CharacterAnimator plays a step-up rather than the
+	# hand-planted SafetyVault. See SpeedVaultMove.is_scramble().
+	player.pending_vault_rescue = true
 	return 0.0
 

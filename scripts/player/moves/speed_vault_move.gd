@@ -24,6 +24,20 @@ var _touched: bool = false
 ## Where the obstacle's face was when the commit was made. See Move.touching().
 var _face_point: Vector3 = Vector3.ZERO
 var _approach_time: float = 0.0
+## The variant this vault resolved to, kept after enter() consumes the handoff.
+## Read by CharacterAnimator, the same way it reads GrabMove.is_mantling().
+var _variant_name: String = ""
+## True when the entry only happened because the falling-rescue window was
+## open. See AirborneMove._vault_speed_z().
+var _rescued: bool = false
+
+## True when this vault was SCRAMBLED rather than set up: either it resolved to
+## one of the step-up rows, or it only happened because the falling rescue let
+## it. ✅ The owner asked for both to look the same -- and the original agrees
+## from the other direction, since its two step-up rows are the two with no
+## hand IK at all (05 §5.7). Nothing was planted because nothing had time to be.
+func is_scramble() -> bool:
+	return _rescued or _variant_name.begins_with("step_up")  or _variant_name.begins_with("auto_step_up")
 
 func enter(_previous: StringName) -> void:
 	# grounded is DECLARED, not read from is_on_floor(): this move never calls
@@ -31,6 +45,17 @@ func enter(_previous: StringName) -> void:
 	# left behind for the whole vault — stale coyote time, head bob, etc.
 	player.set_grounded(false)
 	_aborted = false
+
+	# THE HANDOFF IS CONSUMED FIRST, before any of the abort paths below.
+	# ⚠️ It used to be read further down, past the probe guard, and that made
+	# _variant_name unset on every abort -- which is also how it read in a test
+	# with no obstacle in the world. Both fields are one-shot channels: leaving
+	# them set would hand this vault's identity to the next one.
+	var variant: Dictionary = player.pending_vault_variant
+	player.pending_vault_variant = {}
+	_variant_name = String(variant.get("name", ""))
+	_rescued = player.pending_vault_rescue
+	player.pending_vault_rescue = false
 
 	# WalkingMove already null-checks player.probes AND requires a valid
 	# vault_query() before ever transitioning here, so neither branch below is
@@ -54,8 +79,6 @@ func enter(_previous: StringName) -> void:
 	# a legitimate entry. Same "invent nothing" reasoning as the invalid-probe
 	# branch above: a caller that reached this move without going through
 	# should_commit() has no variant to fall back to, only an abort.
-	var variant: Dictionary = player.pending_vault_variant
-	player.pending_vault_variant = {}
 	if variant.is_empty():
 		_aborted = true
 		return

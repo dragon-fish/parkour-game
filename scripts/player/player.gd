@@ -35,6 +35,11 @@ var _input_locked: bool = false
 ## between vaults, not a pending one -- see SpeedVaultMove.enter()'s own
 ## "invent nothing" guard for what an empty dictionary at read time means.
 var pending_vault_variant: Dictionary = {}
+## True when the vault about to start was only admissible because
+## AirborneMove._vault_speed_z() opened the falling-rescue window. Travels the
+## same one-shot channel as pending_vault_variant above, and for the same
+## reason: it is a fact about the ENTRY, and the move that reads it clears it.
+var pending_vault_rescue: bool = false
 
 ## The ledge IntoGrabMove locked onto, handed across to GrabMove, on the same
 ## channel and for the same reason as pending_vault_variant above.
@@ -994,6 +999,9 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# makes travel() to it an engine error rather than a miss. Routing a new
 	# name means adding it here in the same breath.
 	&"SafetyVault",
+	# The two vaults with no hand in them -- see CharacterAnimator's
+	# Move.SPEED_VAULT case, and SpeedVaultMove.is_scramble().
+	&"StepUp",
 	&"WallRun_L", &"WallRun_R",
 	&"ClimbUp_2m", &"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Climb_Exit",
 	# Turn180_L is wired and never asked for: the move only ever turns right.
