@@ -2302,3 +2302,55 @@ Neck     = +0.764   ← 相机 +0.760，差 4 mm
 - `run_reference_speed` —— 脚打滑要跑起来看
 - `slide_eye_lift` —— 要滑铲才知道胸挡不挡视野
 - `animation_libraries` —— 重定向后姿态有没有扭曲，静止 T-pose 看不出来
+
+## 62. Godot CLI 没有"改名并修引用"，以及一个补救的检查
+
+使用者的观察：
+
+> 外部改名被引用的场景与资源会让引擎感到困惑，但是在引擎 UI 里改名它会自己处理，
+> 不知道 godot cli 有没有改名的功能
+
+查了，**没有**：
+
+| | 结论 |
+| --- | --- |
+| CLI 改名命令 | **不存在**。只有 `--import`（重新扫描） |
+| `ResourceLoader.rename_dependencies` | **4.x 文档里没有这个方法** |
+| 编辑器怎么做到的 | `EditorFileSystem` 那套**编辑器专有** API，命令行拿不到 |
+
+### UID 能兜底，但只兜一半
+
+`.tscn` / `.tres` 的 uid 写在**文件头**里，改名不会改变它。
+所以**写成 `uid://` 的引用**在 `--import` 重新扫描之后仍然解析得到；
+**只写 `path=` 的会断**。
+
+⚠️ 而 Godot **不会**主动给手写的 ext_resource 补 uid——它只重写自己真正加载并保存过的资源。
+
+### 但今晚那次丢引用不是改名造成的
+
+`wine_fox.tres` 丢掉整个 `scene` 的时候，我手写的 uid `d1yegterkdq51`
+**恰好就是正确的**（就是那个文件自己的 uid）。所以"uid 失效"不是解释，
+真正原因我查不出来了。
+
+**这反而是重点**：一个引用可以**无声无息地消失**——文件照样加载、没有报错、
+只是本该有模型的那个槽位变成了 null。它是我几天后为了别的事改名时**偶然**看见的。
+
+### 于是有了 `tools/check_references.gd`
+
+遍历项目里每个场景和资源，加载一遍，报告两类问题：
+
+- **响的那类**：`get_dependencies()` 里指向不存在的文件
+- **哑的那类**：加载完好、但 `BodyProfile.scene` 是 null ← 今晚这个
+
+```
+godot --headless --script res://tools/check_references.gd
+```
+
+有问题时退出码 1，可以拿来卡提交。删掉 `wine_fox.tres` 的 `scene` 验证过它会报：
+
+```
+1 PROBLEM(S):
+  res://scenes/player/profiles/wine_fox.tres -> BodyProfile has no scene
+```
+
+**规矩：任何在编辑器之外的改名、移动、手写 `.tres` 之后，跑一次这个。**
