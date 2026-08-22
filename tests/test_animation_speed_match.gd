@@ -146,7 +146,7 @@ func test_the_packs_own_clip_names_are_speed_matched_too() -> void:
 	var animator: CharacterAnimator = \
 		player.get_node("BodyRoot").get_node("CharacterAnimator")
 	player._travel_speed = player.body_run_reference_speed * 1.5
-	for clip in [&"run", &"Jog_Fwd", &"Sprint", &"Walk", &"Walk_Carry", &"Crouch_Fwd"]:
+	for clip in [&"run", &"Jog_Fwd", &"Sprint", &"Walk", &"Walk_Carry"]:
 		animator._drive_speed(clip)
 		assert_almost_eq(_scale_of(tree), 1.5, 0.001, \
 			"'%s' is not speed matched -- it plays at its authored pace at any speed" % clip)
@@ -160,3 +160,23 @@ func test_a_reversed_twin_scales_like_the_clip_it_reverses() -> void:
 	animator._drive_speed(StringName("Jog_Fwd" + Player.BACKWARD_SUFFIX))
 	assert_almost_eq(_scale_of(tree), 1.5, 0.001, \
 		"the reversed twin played at its authored pace while the forward clip scaled")
+
+func test_a_crouch_clip_scales_against_the_crouched_ceiling() -> void:
+	# The owner: a crouch tops out at 2.88 m/s, so measuring its cadence against
+	# the standing 7.2 pins the scale to the floor and the crouch-walk plays in
+	# permanent slow motion. 2.88 is pawn.ground_speed times pawn.crouched_pct,
+	# taken from there rather than written down again.
+	var player: Player = await _player()
+	var tree: AnimationTree = _attach_synthetic_body(player)
+	var animator: CharacterAnimator = 		player.get_node("BodyRoot").get_node("CharacterAnimator")
+	var crouched_top: float = player.body_run_reference_speed * player.config.pawn.crouched_pct
+
+	player._travel_speed = crouched_top
+	for clip in [&"sneak", &"Crouch_Fwd"]:
+		animator._drive_speed(clip)
+		assert_almost_eq(_scale_of(tree), 1.0, 0.001, 			"'%s' at its own top speed did not play at its authored pace" % clip)
+
+	# And the standing clips must NOT have moved with it.
+	player._travel_speed = player.body_run_reference_speed
+	animator._drive_speed(&"Jog_Fwd")
+	assert_almost_eq(_scale_of(tree), 1.0, 0.001, 		"a standing clip was scaled against the crouched ceiling too")

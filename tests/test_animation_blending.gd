@@ -156,3 +156,22 @@ func _transition_index(graph: AnimationNodeStateMachine, from: String, to: Strin
 		if String(graph.get_transition_from(i)) == from and String(graph.get_transition_to(i)) == to:
 			return i
 	return -1
+
+func test_a_slide_into_a_crouch_does_not_get_the_long_fade() -> void:
+	# The owner's distinction: a slide into a CROUCH is continuous -- the body
+	# simply stays down -- while a slide into a run is the picking-yourself-up
+	# the half second exists for. The first version gave every exit from a
+	# slide the long fade, including the one that is not a stand-up at all.
+	var player: Player = await _player()
+	var graph: AnimationNodeStateMachine = \
+		_graph_for(player, [&"Slide", &"Crouch_Idle", &"Jog_Fwd"])
+	var to_crouch: int = _transition_index(graph, "Slide", "Crouch_Idle")
+	var to_run: int = _transition_index(graph, "Slide", "Jog_Fwd")
+	assert_gt(to_crouch, -1, "slide to crouch has no edge at all")
+	assert_gt(to_run, -1, "slide to run has no edge at all")
+	assert_almost_eq(graph.get_transition(to_crouch).xfade_time, \
+		player.body_animation_blend_time, 0.0001, \
+		"staying low after a slide waited out the stand-up fade")
+	assert_almost_eq(graph.get_transition(to_run).xfade_time, \
+		player.body_slide_exit_blend_time, 0.0001, \
+		"standing up out of a slide did not get the long fade")

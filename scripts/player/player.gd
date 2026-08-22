@@ -411,6 +411,15 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## is the only move here whose recovery outlasts an ordinary transition.
 const _SLOW_EXIT_CLIPS: Array[StringName] = [&"Slide", &"Slide_Exit", &"sneak"]
 
+## Clips in which the body is already LOW. Leaving a slide for one of these is
+## not a stand-up, so it does not get the long fade: the owner's point is that
+## a slide into a crouch is continuous -- the body simply stays down -- while a
+## slide into a run is the picking-yourself-up the half second exists for.
+const _CROUCHED_CLIPS: Array[StringName] = [
+	&"Slide", &"Slide_Start", &"Slide_Exit", &"sneak", &"sneaking",
+	&"Crouch_Idle", &"Crouch_Fwd",
+]
+
 ## Locomotion clips that also get a REVERSED twin in the graph, for walking
 ## backwards. A body that has the clip gets both; one that does not gets
 ## neither.
@@ -1135,7 +1144,8 @@ func _wire_body_animation(body_node: Node3D) -> void:
 		for from_name in present:
 			if from_name == to_name:
 				continue
-			state_machine.add_transition(String(from_name), String(to_name), 				_blend_transition(_SLOW_EXIT_CLIPS.has(from_name)))
+			var slow: bool = _SLOW_EXIT_CLIPS.has(from_name) 				and not _CROUCHED_CLIPS.has(to_name)
+			state_machine.add_transition(String(from_name), String(to_name), 				_blend_transition(slow))
 
 	# WRAPPED IN A BLEND TREE, rather than used as the root directly.
 	#

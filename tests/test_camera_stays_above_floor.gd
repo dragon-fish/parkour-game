@@ -61,26 +61,26 @@ func test_a_slide_keeps_the_eye_above_the_ground() -> void:
 	assert_gt(lowest, 0.15, \
 		"the eye reached %.3f m above the floor during a slide" % lowest)
 
-func test_the_crouch_fades_the_head_follow_out() -> void:
-	# The mechanism, asked directly: at full crouch the animation contributes
-	# nothing, because the move already owns the eye's height.
+func test_the_model_owns_the_eye_and_the_procedural_drop_yields() -> void:
+	# REVERSES AN EARLIER FIX, on the owner's rule: "the camera serves the
+	# PICTURE, not the correctness of the numbers -- the model's neck during a
+	# slide is well below the collision capsule, and that is fine."
+	#
+	# The bug was never that the model drove the eye. It was that BOTH did: the
+	# procedural slide drop and the animation's own, stacked, put the eye 43 cm
+	# under the floor. The first fix silenced the model, which is the wrong one
+	# of the two to silence -- the animation is what knows where the body
+	# actually is.
+	#
+	# SETTLED FIRST, because that drop eases: two update_effects() calls in a
+	# row advance it, and an earlier version measured 0.150 m of easing and
+	# blamed the head.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	_world = world
 	await step(1)
 	TestWorld.place(world)
 	await step(20)
 	var rig: CameraRig = (world["player"] as Player).camera_rig
-
-	# ISOLATED, and SETTLED FIRST. Two things had to be separated out here:
-	#
-	#   * the crouch lowers the eye by its own slide_camera_drop at the same
-	#     time, so comparing crouched against uncrouched measures the sum. A
-	#     first attempt did exactly that.
-	#   * that drop EASES. Two update_effects() calls in a row advance it, so
-	#     even comparing like with like measured 0.150 m of easing and blamed
-	#     the head. Hence the settle loop -- move_toward reaches its target and
-	#     stops, after which repeated ticks change nothing on their own.
-	var dropped_head := Vector3(0.0, -1.0, 0.0)
 	const TICK := 1.0 / 60.0
 
 	for i in 90:
@@ -90,17 +90,29 @@ func test_the_crouch_fades_the_head_follow_out() -> void:
 	var settled: float = rig.position.y
 
 	rig.set_crouch_amount(1.0)
-	rig.set_head_offset(dropped_head)
+	rig.set_head_offset(Vector3(0.0, -1.0, 0.0))
 	rig.update_effects(TICK, 0.0, true)
-	assert_almost_eq(rig.position.y, settled, 0.001, 		"at full crouch the animation still dragged the eye down %.3f m" 		% (settled - rig.position.y))
+	assert_lt(rig.position.y, settled - 0.9, 		"at full crouch the model's own drop no longer reaches the eye")
 
-	# And the control: with the crouch released, the same offset must reach it.
+func test_without_a_body_the_procedural_drop_still_happens() -> void:
+	# The drop is a stand-in for a body that is not there. Handing the job to
+	# the model must not leave a body-less setup with no crouch at all -- which
+	# is every level in this project that has no character in it.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	var rig: CameraRig = player.camera_rig
+	assert_null(player.body, "the fixture attached a body, so this proves nothing")
+
+	const TICK := 1.0 / 60.0
 	for i in 90:
 		rig.set_crouch_amount(0.0)
-		rig.set_head_offset(Vector3.ZERO)
 		rig.update_effects(TICK, 0.0, true)
 	var standing: float = rig.position.y
-	rig.set_crouch_amount(0.0)
-	rig.set_head_offset(dropped_head)
-	rig.update_effects(TICK, 0.0, true)
-	assert_lt(rig.position.y, standing - 0.9, 		"a metre of head drop did not reach the standing eye")
+	for i in 90:
+		rig.set_crouch_amount(1.0)
+		rig.update_effects(TICK, 0.0, true)
+	assert_lt(rig.position.y, standing - 0.5, 		"a body-less crouch dropped the eye only %.3f m" % (standing - rig.position.y))

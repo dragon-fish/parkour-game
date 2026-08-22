@@ -552,7 +552,25 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# the slide lasted. A persistent offset (_crouch_offset, a plain float
 	# member that DOES survive frame to frame, unlike base_position) survives
 	# that reset and actually eases across crouch_lerp_speed.
-	var target_offset := _config.camera.slide_camera_drop * _crouch_amount
+	# YIELDS TO THE MODEL. This drop is a stand-in for a body that is not there:
+	# with no attached body the eye has to be told it went low, because nothing
+	# else knows. With one, the ANIMATION knows, in more detail and with better
+	# timing than a single eased number can carry.
+	#
+	# The owner's rule, and it reverses an earlier fix of mine: "the camera
+	# serves the PICTURE, not the correctness of the numbers -- the model's neck
+	# during a slide is well below the collision capsule, and that is fine."
+	# Both at once was the bug (the eye reached 43 cm UNDER the floor); the
+	# first fix silenced the model, which is the wrong one of the two to
+	# silence.
+	#
+	# Scaled by how much of the head-follow is actually reaching the eye, so a
+	# strength of 0 -- or no body at all -- restores this drop in full, and a
+	# strength of 1 hands the whole job over.
+	var follow: float = 0.0
+	if _has_head:
+		follow = clampf(_config.camera.camera_head_follow_strength, 0.0, 1.0)
+	var target_offset: float = 		_config.camera.slide_camera_drop * _crouch_amount * (1.0 - follow)
 	_crouch_offset = move_toward(_crouch_offset, target_offset, _config.camera.crouch_lerp_speed * delta)
 	base_position.y -= _crouch_offset
 
@@ -609,23 +627,12 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# panel's slider reaches, so a value pushed past 1.0 cannot overshoot the
 	# head's own motion.
 	if _has_head:
-		# FADED OUT BY THE CROUCH, because otherwise the eye is lowered TWICE.
-		#
-		# Reported as the camera going underground during a slide, and the
-		# owner's guess was that the clip is simply very low. It is -- the head
-		# drops 1.27 m, ending 40 cm off the floor, a properly prone slide. But
-		# the real fault is double-counting: this project already lowers the eye
-		# by slide_camera_drop (0.81, and measured from the original), and the
-		# animation lowering the head by another 1.27 stacked on top of it.
-		# From a 1.62 m standing eye that lands 46 cm under the floor.
-		#
-		# _crouch_amount is exactly "the game is driving the eye down right now",
-		# so it is what this defers to. Head-follow exists to keep the camera
-		# inside the skull; while a move owns the eye's height, the animation
-		# repeating that intent is not extra information, it is the same
-		# information counted again.
 		var strength := clampf(_config.camera.camera_head_follow_strength, 0.0, 1.0)
-		position = base_position + _head_local_offset * strength * (1.0 - _crouch_amount)
+		# THE MODEL OWNS THE EYE'S HEIGHT, in full. The procedural crouch drop
+		# that would otherwise double-count is scaled away where it is written,
+		# further up, rather than here: one of the two has to yield, and the
+		# animation is the one that knows what the body is actually doing.
+		position = base_position + _head_local_offset * strength
 	else:
 		position = base_position
 

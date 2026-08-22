@@ -59,6 +59,18 @@ const SPEED_MATCHED_CLIPS: Array[StringName] = [
 ## starts reading as a defect -- slow-motion at the bottom, blurred limbs at the
 ## top. A body slower than the lower bound has already crossed
 ## run_animation_speed_threshold into idle anyway.
+## The clips played while CROUCHED, which travel against a lower ceiling and so
+## need a lower reference to scale against.
+##
+## The owner: a crouch tops out at 2.88 m/s, so measuring its cadence against
+## the standing 7.2 pins the scale to the floor and the crouch-walk plays in
+## permanent slow motion. 2.88 is not a new constant -- it is
+## pawn.ground_speed times pawn.crouched_pct, which is where _drive_speed()
+## takes it from, so neither number can drift away from the other.
+const CROUCHED_CLIPS: Array[StringName] = [
+	&"sneak", &"sneaking", &"Crouch_Idle", &"Crouch_Fwd",
+]
+
 const SPEED_SCALE_MIN := 0.5
 const SPEED_SCALE_MAX := 2.0
 
@@ -124,6 +136,8 @@ func _drive_speed(clip: StringName) -> void:
 	var base_clip: StringName = clip
 	if String(clip).ends_with(Player.BACKWARD_SUFFIX):
 		base_clip = StringName(String(clip).trim_suffix(Player.BACKWARD_SUFFIX))
+	if CROUCHED_CLIPS.has(base_clip):
+		reference *= player.config.pawn.crouched_pct
 	if reference > 0.0 and SPEED_MATCHED_CLIPS.has(base_clip):
 		# travel_speed(), NOT horizontal_speed() -- see travel_speed()'s own
 		# note on why velocity lies through a vault or a mantle. The eye already
