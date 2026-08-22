@@ -97,6 +97,36 @@ const WALK_CLIPS: Array[StringName] = [&"Walk", &"Walk_Carry"]
 ## the point.
 const WALK_REFERENCE_PCT := 0.25
 
+## What a JOG clip's 1.0 means, as a fraction of body_run_reference_speed.
+##
+## Derived the same way the walk's is. The jog only ever plays SIDEWAYS or
+## BACKWARD here (see Move.WALKING), so its range is the run band: from
+## _run_band_speed() at the bottom to the full ground speed at the top. Setting
+## its reference to the bottom of that band puts it at 1.0 where the band starts
+## and at SPEED_SCALE_MAX where it ends, which is the whole of the range and no
+## more.
+##
+## ⚠️ Not doing this is what the owner saw as "a great striding thing": measured
+## against the 7.2 reference, a jog covering 7.2 m/s plays at 1.0 and the stride
+## has to be enormous to reach.
+const JOG_REFERENCE_PCT := 0.5
+
+## The packs' EIGHT-WAY sets, as suffixes clockwise from straight ahead.
+##
+## ⚠️ THE TWO PACKS DO NOT AGREE ON THE SIDE NAMES. UAL1 spells them Left and
+## Right (Jog_Left, Crouch_Right); UAL2 spells them L and R (Walk_L, Walk_R).
+## Nothing derives one from the other -- each family carries its own table, and
+## a family added later has to be read off the gallery rather than guessed.
+##
+## There is NO eight-way Sprint in either pack, which is why Move.WALKING sends
+## the sideways and backward octants to the jog and keeps the sprint for
+## straight ahead.
+const DIRECTION_SETS := {
+	&"Jog": ["_Fwd", "_Fwd_R", "_Right", "_Bwd_R", "_Bwd", "_Bwd_L", "_Left", "_Fwd_L"],
+	&"Walk": ["_Fwd", "_Fwd_R", "_R", "_Bwd_R", "_Bwd", "_Bwd_L", "_L", "_Fwd_L"],
+	&"Crouch": ["_Fwd", "_Fwd_R", "_Right", "_Bwd_R", "_Bwd", "_Bwd_L", "_Left", "_Fwd_L"],
+}
+
 ## Assigned in player.gd's _wire_body_animation().
 @export var anim_tree: AnimationTree
 ## Assigned in player.gd's _wire_body_animation().
@@ -284,11 +314,17 @@ func _drive_speed(clip: StringName) -> void:
 	var base_clip: StringName = clip
 	if String(clip).ends_with(Player.BACKWARD_SUFFIX):
 		base_clip = StringName(String(clip).trim_suffix(Player.BACKWARD_SUFFIX))
-	if CROUCHED_CLIPS.has(base_clip):
+	# A STRAFE IS THE SAME GAIT AS ITS FORWARD TWIN, so it scales against the
+	# same reference. Walk_L measured against the run would sit on the scale
+	# floor for its entire range.
+	var family := _family_of(base_clip)
+	if CROUCHED_CLIPS.has(base_clip) or family == &"Crouch":
 		reference *= player.config.pawn.crouched_pct
-	elif WALK_CLIPS.has(base_clip):
+	elif WALK_CLIPS.has(base_clip) or family == &"Walk":
 		reference *= WALK_REFERENCE_PCT
-	if reference > 0.0 and SPEED_MATCHED_CLIPS.has(base_clip):
+	elif family == &"Jog":
+		reference *= JOG_REFERENCE_PCT
+	if reference > 0.0 and (SPEED_MATCHED_CLIPS.has(base_clip) or family != &""):
 		# travel_speed(), NOT horizontal_speed() -- see travel_speed()'s own
 		# note on why velocity lies through a vault or a mantle. The eye already
 		# reads it for the same reason.
@@ -298,7 +334,7 @@ func _drive_speed(clip: StringName) -> void:
 		# under a body doing 0.5. SPEED_SCALE_MIN exists to stop ONE clip being
 		# stretched across everything; a walk asked to walk slowly is not that.
 		var scale_min := SPEED_SCALE_MIN
-		if WALK_CLIPS.has(base_clip):
+		if WALK_CLIPS.has(base_clip) or family == &"Walk":
 			scale_min = minf(SPEED_SCALE_MIN, player.config.pawn.walk_velocity / reference)
 		scale = clampf(player.travel_speed() / reference, scale_min, SPEED_SCALE_MAX)
 	anim_tree.set("parameters/%s/scale" % GRAPH_TIME_SCALE, scale)
@@ -328,26 +364,64 @@ func _first_available(candidates: Array[StringName]) -> StringName:
 ##
 ## The dead zone matters: strafing is neither forward nor backward, and a body
 ## sidestepping must not flicker between a clip and its reverse on float noise.
-func _moving_backward() -> bool:
+func _travel_octant() -> int:
 	var travel := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	if travel.length_squared() < 0.04:
-		return false
+		return -1
 	var facing: Vector3 = -player.global_transform.basis.z
 	facing.y = 0.0
 	if facing.length_squared() < 0.0001:
-		return false
-	return travel.normalized().dot(facing.normalized()) < -0.5
+		return -1
+	facing = facing.normalized()
+	# Positive to the RIGHT of the facing, the same axis Player._drive_body_yaw()
+	# builds for the torso twist -- for a facing of -Z this cross product is +X.
+	var right: Vector3 = facing.cross(Vector3.UP)
+	travel = travel.normalized()
+	var angle: float = atan2(travel.dot(right), travel.dot(facing))
+	return posmod(int(round(angle / (PI / 4.0))), 8)
+
+## The eight-way family a clip belongs to, or an empty name. Used by
+## _drive_speed() so that a strafe scales against the same reference its
+## forward twin does -- Walk_L is a walk, and measuring it against the run would
+## put it on the scale floor for its whole range.
+func _family_of(clip: StringName) -> StringName:
+	for family in DIRECTION_SETS:
+		for suffix in DIRECTION_SETS[family]:
+			if clip == StringName(String(family) + String(suffix)):
+				return family
+	return &""
 
 ## _first_available(), but preferring each candidate's REVERSED twin while the
 ## body is backpedalling. Falls through to the forward clip whenever the twin is
 ## missing, so a body with no reversible clips behaves exactly as before.
 func _first_available_directional(candidates: Array[StringName]) -> StringName:
-	if not _moving_backward():
-		return _first_available(candidates)
+	var octant := _travel_octant()
 	for candidate in candidates:
-		var backward := StringName(String(candidate) + Player.BACKWARD_SUFFIX)
-		if _has_clip(backward):
-			return backward
+		# THE PACKS' OWN EIGHT-WAY SET, when the candidate names a family. A
+		# body that has the whole set never reaches anything below this.
+		if DIRECTION_SETS.has(candidate):
+			var suffixes: Array = DIRECTION_SETS[candidate]
+			if octant >= 0:
+				var facing_clip := StringName(String(candidate) + String(suffixes[octant]))
+				if _has_clip(facing_clip):
+					return facing_clip
+			# The family's own forward clip, for a body that has some of the set
+			# but not this direction -- the free tier ships Crouch_Fwd and none
+			# of its seven neighbours. Running forwards is wrong for a strafe,
+			# but it is the same body and the same cadence, which the next
+			# candidate down would not be.
+			var forward_clip := StringName(String(candidate) + String(suffixes[0]))
+			if _has_clip(forward_clip):
+				return forward_clip
+		# THE REVERSED TWIN, which is what this function used to be entirely.
+		# Still the answer for a body with no eight-way set at all -- the fox --
+		# and still the cheap approximation its own comment admits to. Octants
+		# 3 to 5 are the backward half, the same span the dot-product test it
+		# replaced called backward.
+		if octant >= 3 and octant <= 5:
+			var backward := StringName(String(candidate) + Player.BACKWARD_SUFFIX)
+			if _has_clip(backward):
+				return backward
 		if _has_clip(candidate):
 			return candidate
 	return Move.KEEP
@@ -395,7 +469,23 @@ func _target_animation() -> StringName:
 				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			var speed: float = player.horizontal_speed()
 			if speed > _run_band_speed():
-				return _first_available_directional([&"Sprint", &"Walk", &"Walk_Carry", &"run", &"idle"])
+				# SPRINT AHEAD, JOG TO THE SIDES AND BEHIND.
+				#
+				# Neither pack has an eight-way sprint -- Sprint is one clip,
+				# forward only -- and the eight-way sets are the jog's and the
+				# walk's. So the run band is split by DIRECTION rather than run
+				# on one clip: straight ahead is the sprint the owner asked for,
+				# and everything else takes the jog, which is the only thing
+				# that can strafe at all.
+				#
+				# ⚠️ This is my reading of "do not use the jog", not something
+				# the owner said: they were looking at the forward run when they
+				# said it, and sideways there is no alternative that is not a
+				# reversed or rotated sprint. The seam is a change of cadence
+				# when you turn sharply out of a straight run.
+				if _travel_octant() <= 0:
+					return _first_available([&"Sprint", &"Jog_Fwd", &"Walk_Fwd", &"run", &"idle"])
+				return _first_available_directional([&"Jog", &"Walk", &"Sprint", &"run", &"idle"])
 			if speed > player.config.pawn.run_animation_speed_threshold:
 				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			return _first_available([&"Idle", &"Idle_FoldArms", &"idle", &"Walk"])
@@ -463,7 +553,7 @@ func _target_animation() -> StringName:
 			# of sync with the ground one -- since a low profile does not change
 			# what counts as "moving".
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
-				return _first_available_directional([&"Crouch_Fwd", &"sneak", &"Walk", &"idle"])
+				return _first_available_directional([&"Crouch", &"sneak", &"Walk", &"idle"])
 			return _first_available([&"Crouch_Idle", &"sneaking", &"Idle", &"idle"])
 		Move.JUMP:
 			# The TAKE-OFF, as against FALLING's airborne loop. This case
