@@ -609,8 +609,23 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# panel's slider reaches, so a value pushed past 1.0 cannot overshoot the
 	# head's own motion.
 	if _has_head:
+		# FADED OUT BY THE CROUCH, because otherwise the eye is lowered TWICE.
+		#
+		# Reported as the camera going underground during a slide, and the
+		# owner's guess was that the clip is simply very low. It is -- the head
+		# drops 1.27 m, ending 40 cm off the floor, a properly prone slide. But
+		# the real fault is double-counting: this project already lowers the eye
+		# by slide_camera_drop (0.81, and measured from the original), and the
+		# animation lowering the head by another 1.27 stacked on top of it.
+		# From a 1.62 m standing eye that lands 46 cm under the floor.
+		#
+		# _crouch_amount is exactly "the game is driving the eye down right now",
+		# so it is what this defers to. Head-follow exists to keep the camera
+		# inside the skull; while a move owns the eye's height, the animation
+		# repeating that intent is not extra information, it is the same
+		# information counted again.
 		var strength := clampf(_config.camera.camera_head_follow_strength, 0.0, 1.0)
-		position = base_position + _head_local_offset * strength
+		position = base_position + _head_local_offset * strength * (1.0 - _crouch_amount)
 	else:
 		position = base_position
 
