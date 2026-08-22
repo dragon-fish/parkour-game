@@ -1,12 +1,21 @@
 # Third-party components
 
-The MIT licence in `LICENSE` covers this repository's own code, scenes and
-documentation. It does not extend to the components below, which keep their
-own terms.
+The GNU AGPL version 3 only (`AGPL-3.0-only`) in `LICENSE` covers this repository's own code, scenes and
+documentation, and a commercial licence for the same is available from the
+copyright holder (`COMMERCIAL-LICENSING.md`). Neither extends to the components
+below, which keep their own terms — **a commercial licence to this code is not
+a licence to anything on this page.**
 
 ## Vendored addons
 
-Each ships its licence beside its source; those files are authoritative.
+Each ships its licence beside its source; those files are authoritative. All
+three are MIT, which combines into an AGPL work without difficulty — permissive
+terms travel into copyleft ones, not the other way round.
+
+⚠️ That does not make them AGPL. The combined work may be distributed under the
+AGPL; the MIT-originated parts remain under MIT, and **their original copyright
+and licence notices must be preserved** wherever their own terms require it.
+A commercial licence to this project does not permit stripping them.
 
 | Path | Component | Licence |
 | --- | --- | --- |
@@ -23,10 +32,14 @@ kept out of version control until one is found whose licence permits
 redistribution under the terms above.
 
 `docs/asset-candidates.md` records what has been evaluated and why none of it is
-committed. The short version worth repeating here: a licence that forbids
-commercial use, or that requires derivative works to carry the same licence,
-cannot be redistributed under MIT — and a downstream user is not free to
-re-license someone else's work to make it fit.
+committed. The short version worth repeating here: a licence forbidding
+commercial use cannot be redistributed under the AGPL either, because the AGPL
+grants commercial use and a licence cannot hand on a right it never had.
+
+⚠️ The move from MIT to AGPL changes this reasoning but not its conclusion. The
+old objection to CC BY-NC-SA was that ShareAlike conflicted with a permissive
+licence; under a copyleft licence that half no longer bites. **NonCommercial
+still does**, and it is the half that always mattered.
 
 ## Animation libraries
 
