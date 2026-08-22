@@ -1211,6 +1211,14 @@ func set_body_folded(folded: bool) -> void:
 func body_fold_drop() -> float:
 	return _fold_drop
 
+## Whether a move has DECLARED the fold, as against how far the model has
+## actually moved for it. The two can disagree -- the drop is derived from the
+## capsule, so anything that restores the capsule while the fold is still
+## declared silently takes the drop to zero -- and telling them apart is the
+## whole reason both are on the debug readout.
+func body_folded() -> bool:
+	return _body_folded
+
 ## Sets the offset with no easing at all, for the debug tuner: while the tree is
 ## paused nothing calls _drive_clip_offset(), and a tuner you cannot see the
 ## result of is not a tuner.

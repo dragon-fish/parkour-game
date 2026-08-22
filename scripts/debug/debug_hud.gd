@@ -103,6 +103,14 @@ func _process(delta: float) -> void:
 		# body.
 		"eye        %.2f m above soles   (capsule spans %.2f - %.2f)"
 			% [_eye_above_soles(), _capsule_span().x, _capsule_span().y],
+		# ✅ The owner narrowed it to three paths: a vault that drives through to
+		# Walking drops the model, while one that exits into Falling -- and a
+		# grab-up -- do not, with the capsule looking right in all three. The
+		# drop is DERIVED from the capsule, so it can read zero while the fold
+		# is declared, and no amount of looking at the body says which. This
+		# line is the difference between the two.
+		"fold       %s  drop %.2f m" % ["declared" if player.body_folded() else "off",
+			player.body_fold_drop()],
 		"capsule    %.2f / %.2f m%s" % [player.current_capsule_height(),
 			player.standing_height(),
 			"  FOLDED" if player.current_capsule_height() < player.standing_height() - 0.01 else ""],
