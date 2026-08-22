@@ -1179,6 +1179,14 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	var body_root := get_node_or_null("BodyRoot") as Node3D
 	if body_root == null:
 		return
+	# THIRD PERSON ONLY, on the owner's correction: from inside the head a body
+	# that does not turn with the view is worse than one that does, because the
+	# shoulders swivel under a head that did not move. The effect is about
+	# watching a character; there is no character to watch from in here.
+	if camera_rig == null or not camera_rig.third_person:
+		_visual_yaw = rotation.y
+		body_root.rotation.y = 0.0
+		return
 	if not _visual_yaw_started:
 		_visual_yaw = rotation.y
 		_visual_yaw_started = true

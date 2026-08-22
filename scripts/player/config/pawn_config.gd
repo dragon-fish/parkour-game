@@ -317,10 +317,14 @@ extends Resource
 ##
 ## The legs are not really planted on it -- that would need a wall-run clip,
 ## which no free pack has -- so this is the cheap suggestion of it: turn the
-## lower half toward the surface and let the torso keep facing the run. The
-## owner picked the size and the reasoning behind it: about the same as the
-## camera's own roll, so the two read as one lean rather than two effects.
-@export var wall_run_twist_deg: float = 8.0
+## lower half toward the surface and let the torso keep facing the run.
+##
+## ⚠️ Started at 8 degrees, matching the camera's own roll on the reasoning that
+## the two would read as one lean. In play the owner could barely see it, and
+## the reason is that they are not the same kind of quantity: the camera's roll
+## tips the WHOLE image, where this turns one part of a body that is already
+## moving fast and partly out of frame. Raised until it reads.
+@export var wall_run_twist_deg: float = 22.0
 
 ## How fast the visible body turns to face where it is going, in degrees per
 ## second. Only the MODEL: the body's real facing follows the view instantly,

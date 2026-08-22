@@ -150,6 +150,11 @@ func setup(cfg: MovementConfig) -> void:
 	position.y = cfg.camera.eye_height
 	if camera != null:
 		camera.fov = cfg.camera.fov_base
+	# NOT loaded here. setup() runs in tests too, and a preference file left
+	# by an earlier run then decides what a test starts in -- which is exactly
+	# what happened: every first-person assertion failed because a previous
+	# run had saved third person. A preference belongs to a session and a test
+	# is not one. Arena loads it instead; see Arena._ready().
 
 ## 0 = standing, 1 = fully crouched. Driven by Player each tick.
 ## Metres to raise the eye by while the body is low. Player decides WHEN this is
@@ -397,7 +402,12 @@ func reset_state() -> void:
 	rotation.x = 0.0
 	rotation.y = 0.0
 	rotation.z = 0.0
-	if camera != null:
+	# ONLY IN FIRST PERSON. Zeroing it while the eye is behind the body puts the
+	# camera inside the head for exactly one frame -- update_effects() puts it
+	# back on the very next tick, so the preference survives, but the blink
+	# reads as the view having reverted. Same shape as the roll's entry flicker
+	# in docs/feel-backlog.md 40: a single frame of a state nobody asked for.
+	if camera != null and not third_person:
 		camera.position = Vector3.ZERO
 	# third_person deliberately NOT reset. It is a VIEWING PREFERENCE, not
 	# movement state: someone who chose to watch their own body did not choose
@@ -880,6 +890,8 @@ func toggle_third_person() -> void:
 ## Only the two configured layers are ever touched. Everything else, layer 1
 ## included, is left alone -- so the world still draws, and a body with no layer
 ## split at all (every non-VRM model) is completely unaffected.
+	save_preferences()
+
 func _apply_body_layers() -> void:
 	if camera == null:
 		return
@@ -899,6 +911,7 @@ func zoom_third_person(notches: float) -> void:
 	_tp_distance = clampf( 		_tp_distance + notches * camera_config.third_person_zoom_step,
 		camera_config.third_person_min_distance,
 		camera_config.third_person_max_distance)
+	save_preferences()
 
 ## Middle-drag: shifts the eye sideways and vertically, by a mouse delta in
 ## pixels. Deliberately UNBOUNDED except by the drag itself -- this is the
@@ -919,6 +932,8 @@ func cycle_third_person_shoulder() -> void:
 	_tp_drag = Vector2.ZERO
 
 ## Diagnostics for tests and the debug HUD.
+	save_preferences()
+
 func third_person_debug() -> Dictionary:
 	return {
 		"on": third_person,
@@ -926,3 +941,33 @@ func third_person_debug() -> Dictionary:
 		"distance": _tp_distance,
 		"drag": _tp_drag,
 	}
+
+
+## Where the viewing preference is remembered between sessions.
+##
+## user:// rather than the project, because it is one person's preference about
+## one machine's screen, not a fact about the game. Nothing here affects
+## movement, so a missing or corrupt file just means the defaults.
+const PREFS_PATH := "user://camera_prefs.cfg"
+
+## Writes the third-person framing out. Called whenever it changes rather than
+## on quit: a crash or a kill from the editor's stop button should not lose it,
+## and the file is three numbers.
+func save_preferences() -> void:
+	var file := ConfigFile.new()
+	file.set_value("third_person", "on", third_person)
+	file.set_value("third_person", "shoulder", _shoulder)
+	file.set_value("third_person", "distance", _tp_distance)
+	file.set_value("third_person", "drag", _tp_drag)
+	file.save(PREFS_PATH)
+
+## Reads it back. Silently keeps the defaults when there is nothing to read,
+## which is every first run.
+func load_preferences() -> void:
+	var file := ConfigFile.new()
+	if file.load(PREFS_PATH) != OK:
+		return
+	third_person = bool(file.get_value("third_person", "on", third_person))
+	_shoulder = int(file.get_value("third_person", "shoulder", _shoulder))
+	_tp_distance = float(file.get_value("third_person", "distance", _tp_distance))
+	_tp_drag = file.get_value("third_person", "drag", _tp_drag)

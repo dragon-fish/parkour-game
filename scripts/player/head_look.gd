@@ -113,14 +113,28 @@ func _apply(skeleton: Skeleton3D, chain: Array[StringName], yaw: float, pitch: f
 	# Yaw about UP is the same rotation whatever the rest pose is. Pitch is
 	# about the model's own right, taken from the bone being turned rather than
 	# assumed, so a body mounted facing either way tips the correct way.
+	var axis: Vector3 = _pitch_axis(skeleton)
 	for index in present:
 		var pose: Transform3D = skeleton.get_bone_global_pose(index)
-		# forward CROSS up, in that order. The other way round gives the LEFT
-		# vector, which tips the head down when the camera looks up -- measured
-		# as exactly that: a request to look up 40 degrees put the head 40 down.
-		var right: Vector3 = (-pose.basis.z).cross(Vector3.UP)
-		if right.length_squared() < 0.0001:
-			right = pose.basis.x
-		var turn := Basis(Vector3.UP, yaw * share) \
-			* Basis(right.normalized(), pitch * share)
+		var turn := Basis(Vector3.UP, yaw * share) * Basis(axis, pitch * share)
 		skeleton.set_bone_global_pose(index, Transform3D(turn * pose.basis, pose.origin))
+
+## The character's own left-to-right axis, taken from the SHOULDERS.
+##
+## Not from a bone's -Z, which is what a first attempt used and got backwards:
+## a VRM faces +Z by specification, so a head bone's -Z points out of the BACK
+## of the skull, and pitching about a vector derived from it tips the face the
+## wrong way. Worse, the check that was supposed to catch this read the same -Z
+## and therefore agreed with itself -- it took the owner playing it to notice.
+##
+## The shoulders do not care which way the format decided forward is.
+func _pitch_axis(skeleton: Skeleton3D) -> Vector3:
+	var left: int = skeleton.find_bone(&"LeftUpperArm")
+	var right: int = skeleton.find_bone(&"RightUpperArm")
+	if left < 0 or right < 0:
+		return Vector3.RIGHT
+	var across: Vector3 = skeleton.get_bone_global_pose(right).origin 		- skeleton.get_bone_global_pose(left).origin
+	across.y = 0.0
+	if across.length_squared() < 0.0001:
+		return Vector3.RIGHT
+	return across.normalized()

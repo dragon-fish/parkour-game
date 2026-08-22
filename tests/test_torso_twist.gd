@@ -263,10 +263,17 @@ func _sampled_pitch(name: StringName) -> float:
 ## HeadLook.request() directly is pointless: _drive_head_look recomputes it from
 ## that gap every tick.
 func _look_away(player: Player, yaw_deg: float, pitch_deg: float) -> void:
+	# SETTLED AT THE CURRENT HEADING FIRST. _drive_body_yaw seeds _visual_yaw
+	# from rotation.y the first tick it runs in third person, so setting the new
+	# yaw before that tick seeds it to the new value and the gap never opens.
+	# An earlier version did exactly that and measured a head that never turned.
+	for i in 5:
+		await step(1)
 	for i in 60:
 		player.rotation.y = deg_to_rad(yaw_deg)
 		player.camera_rig.set_pitch(deg_to_rad(pitch_deg))
 		await step(1)
+
 
 func test_the_head_reaches_the_camera_and_the_hips_do_not_move() -> void:
 	# The shape the owner asked for: the head takes the whole angle, the upper
@@ -274,6 +281,8 @@ func test_the_head_reaches_the_camera_and_the_hips_do_not_move() -> void:
 	var player: Player = await _player_with_body()
 	if player == null:
 		return pending("no humanoid body at %s" % BODY_PATH)
+	if not player.camera_rig.third_person:
+		player.camera_rig.toggle_third_person()
 	var skeleton: Skeleton3D = player._find_skeleton(player.body)
 	var bones: Array[StringName] = [&"Head", &"UpperChest", &"Hips"]
 	await _look_away(player, 60.0, 0.0)
@@ -286,18 +295,43 @@ func test_the_head_reaches_the_camera_and_the_hips_do_not_move() -> void:
 	assert_lt(chest, 25.0, "the upper body followed %.1f degrees -- the whole torso turned" % chest)
 	assert_almost_eq(_sampled_yaw(&"Hips"), 0.0, 0.02, "the hips turned with the head")
 
-func test_looking_up_raises_the_head_rather_than_lowering_it() -> void:
-	# The axis was backwards once, measured as a request to look up 40 degrees
-	# putting the head 40 degrees down. forward CROSS up, not up cross forward.
+func test_looking_up_raises_the_face_rather_than_lowering_it() -> void:
+	# MEASURED AS EYES MINUS HEAD, which is where the face points, and not from
+	# any bone's own -Z. That is the whole lesson: the axis was backwards once --
+	# a VRM faces +Z by specification, so a head bone's -Z comes out of the BACK
+	# of the skull -- and the check written to catch it read that same -Z and
+	# therefore agreed with the bug. It took the owner playing it to notice.
 	var player: Player = await _player_with_body()
 	if player == null:
 		return pending("no humanoid body at %s" % BODY_PATH)
+	if not player.camera_rig.third_person:
+		player.camera_rig.toggle_third_person()
 	var skeleton: Skeleton3D = player._find_skeleton(player.body)
-	await _look_away(player, 0.0, 40.0)
-	await _sample_bones(player.head_look, skeleton, [&"Head", &"Hips"])
-	assert_gt(_sampled_pitch(&"Head"), deg_to_rad(20.0), \
-		"looking up put the head at %.1f degrees" % rad_to_deg(_sampled_pitch(&"Head")))
-	assert_almost_eq(_sampled_pitch(&"Hips"), 0.0, 0.05, "the hips pitched too")
+	var bones: Array[StringName] = [&"Head", &"LeftEye", &"RightEye"]
+
+	await _look_away(player, 0.0, 0.0)
+	await _sample_bones(player.head_look, skeleton, bones)
+	var _level_unused: float = _face_rise()
+	await _look_away(player, 0.0, 45.0)
+	await _sample_bones(player.head_look, skeleton, bones)
+	var looking_up: float = _face_rise()
+	await _look_away(player, 0.0, -45.0)
+	await _sample_bones(player.head_look, skeleton, bones)
+	var looking_down: float = _face_rise()
+
+	# COMPARED AGAINST EACH OTHER, not against level. In the rest pose the
+	# eye-to-head vector is very nearly vertical, so tipping it either way
+	# shortens its rise -- both ±45 come out BELOW level and a comparison
+	# against it says nothing. Up versus down is the claim anyway.
+	assert_gt(looking_up, looking_down, 		"looking up left the face lower than looking down (%.4f against %.4f)" 		% [looking_up, looking_down])
+	assert_gt(absf(looking_up - looking_down), 0.005, 		"the pitch barely moved the face at all (%.4f vs %.4f)" % [looking_up, looking_down])
+
+## How far the eyes sit above the head bone. Rises when the face tips up.
+func _face_rise() -> float:
+	if not (_sampled.has(&"LeftEye") and _sampled.has(&"Head")):
+		return 0.0
+	var eyes: Vector3 = ((_sampled[&"LeftEye"] as Transform3D).origin 		+ (_sampled[&"RightEye"] as Transform3D).origin) * 0.5
+	return eyes.y - (_sampled[&"Head"] as Transform3D).origin.y
 
 func test_past_a_quarter_turn_the_model_faces_forward_again() -> void:
 	# The owner's rule: past about 90 degrees a person turns their body instead,
@@ -305,6 +339,8 @@ func test_past_a_quarter_turn_the_model_faces_forward_again() -> void:
 	var player: Player = await _player_with_body()
 	if player == null:
 		return pending("no humanoid body at %s" % BODY_PATH)
+	if not player.camera_rig.third_person:
+		player.camera_rig.toggle_third_person()
 	var skeleton: Skeleton3D = player._find_skeleton(player.body)
 	await _look_away(player, 120.0, 0.0)
 	await _sample_bones(player.head_look, skeleton, [&"Head"])

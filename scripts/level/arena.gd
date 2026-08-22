@@ -26,6 +26,10 @@ func _ready() -> void:
 	player.setup(config, KeyboardInputSource.new())
 	if player.camera_rig != null:
 		player.camera_rig.setup(config)
+		# The viewing preference from last session. Here rather than in the
+		# rig's own setup() because that runs in tests, where a file written by
+		# an earlier run has no business deciding what the test starts in.
+		player.camera_rig.load_preferences()
 
 	add_child(_death_sequence)
 	_death_sequence.finished.connect(reset_player)
