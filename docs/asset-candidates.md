@@ -65,3 +65,32 @@
 ## 当前状态
 
 **全部归档，均未集成。** 等 P3 完成、手感经过实际游玩验证之后再决定是否加第三人称视角，届时再回来处理这条线。
+
+
+## 本地文件都是什么（这些文件不入库）
+
+使用者的话：**"这几个狐狸的文件是我自己摸索着瞎弄出来的，
+感觉光看文件名根本就不知道是干什么的了。"**
+
+对。整理如下，顺便删掉了两个已经没人引用的。
+
+| 文件 | 是什么 | 状态 |
+| --- | --- | --- |
+| `scenes/player/wine_fox_body.tscn` | **狐狸模型本体**。继承自 gltf，把 `Head` 和 `AllHead` 设成 `cast_shadow = 3`（shadows-only，第一人称藏头），并隐藏了 `FOX`（第二套异形骨架）和 `Backgrounds`（GUI 网格） | ✅ 保留，`wine_fox.tres` 指着它 |
+| `scenes/player/profiles/wine_fox.tres` | 狐狸的 `BodyProfile` | ✅ 保留 |
+| `scenes/player/profiles/vrm_test.tres` | VRM 的 `BodyProfile` | ✅ 保留 |
+| `scenes/player/body_alignment.tscn` | 对齐工作台 | ✅ 保留 |
+| ~~`scenes/player/player_wine_fox.tscn`~~ | 旧的"配好狐狸的 Player 变体" | ❌ 已删，被 profile 取代，零引用 |
+| ~~`scenes/player/player_vrm.tscn`~~ | 同上，VRM 版 | ❌ 已删（注意：**在编辑器里打开过它的话，Godot 会重新生成**，`.gitignore` 里留了条目） |
+
+原名 `wine_fox_player_nohead.tscn` 改成了 `wine_fox_body.tscn`——
+它早就不是 "player" 了，是模型；而 "nohead" 描述的是实现手段不是用途。
+
+### ⚠️ 手写 `.tres` 会被引擎重写
+
+改名的时候发现 `wine_fox.tres` **把 `scene` 引用整个丢了**。
+Godot 会在导入/加载时重新保存手写的资源文件：补 uid、去掉等于默认值的字段、
+给数组加类型标注——**而如果某个 ext_resource 当时解析失败，它就直接消失，不报错。**
+
+`vrm_test.tres` 侥幸完好。**手写 `.tres` 之后必须 load 一遍验证字段还在**，
+不能写完就当数。
