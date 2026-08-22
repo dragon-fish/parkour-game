@@ -208,7 +208,23 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		return KEEP
 	# The roll is spent. WHERE it leaves the player is a separate question from
 	# whether it finished, and the answer is simply where the body is.
-	return WALKING if player.grounded else FALLING
+	if not player.grounded:
+		return FALLING
+	# ✅ THE OWNER: "落地翻滚如果碰巧滚进头顶空间不够的地方也应该转下蹲
+	# 而不是 walk，否则会以蹲姿跑出 7.2 的超高速度."
+	#
+	# A roll carries real speed and travels while it plays, so where it ENDS is
+	# not somewhere anyone chose -- rolling under a pipe or into a crawlspace is
+	# ordinary. Handing that to Walking asks for a standing capsule that will not
+	# fit, so the request is deferred and the player runs at full speed in a
+	# crouched body: the 7.2 m/s the owner measured.
+	#
+	# Crouch costs nothing to enter from here: enter() already shrank the capsule
+	# to config.crouch.crouch_capsule_height -- the very same height -- so this
+	# hand-off changes no geometry at all, only who owns the body.
+	if not player.has_headroom():
+		return CROUCH
+	return WALKING
 
 ## The roll itself: the view goes ALL THE WAY OVER, and the eye drops through
 ## the middle of it.

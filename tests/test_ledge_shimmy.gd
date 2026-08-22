@@ -36,9 +36,21 @@ const FACE_NORMAL := Vector3(0.0, 0.0, 1.0)
 ## that hands over a shape the real producer never produces is not a fixture.
 const TOP_NORMAL := Vector3(0.0, 1.0, 0.0)
 
+## ⚠️ TRACKED SO after_each() CAN FREE THEM. TestWorld.teardown() frees only
+## the player and the floor, so anything a test adds beside them OUTLIVES the
+## test that added it -- and the world is rebuilt at the same coordinates every
+## time, so a leaked slab is still exactly where it was put. That is how "a
+## spent slide in the open" came to run under the previous test's roof and
+## report no headroom.
+var _extra: Array[Node] = []
+
 var _world: Dictionary = {}
 
 func after_each() -> void:
+	for node in _extra:
+		if is_instance_valid(node):
+			node.queue_free()
+	_extra.clear()
 	if _world.is_empty():
 		return
 	TestWorld.teardown(_world)
@@ -81,6 +93,7 @@ func _add_block(player: Player, centre: Vector3, size: Vector3) -> StaticBody3D:
 	body.add_child(shape)
 	player.get_parent().add_child(body)
 	body.global_position = centre
+	_extra.append(body)
 	return body
 
 func _grab(player: Player) -> GrabMove:

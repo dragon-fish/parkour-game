@@ -25,9 +25,18 @@ const EDGE := Vector3(0.0, LEDGE_TOP, -1.6)
 const FACE_NORMAL := Vector3(0.0, 0.0, 1.0)
 const TOP_NORMAL := Vector3(0.0, 1.0, 0.0)
 
+## Freed by after_each(): TestWorld.teardown() frees only the player and the
+## floor, so a slab added beside them outlives its test -- see the same note in
+## test_low_ceiling_exits.gd for what that cost.
+var _extra: Array[Node] = []
+
 var _world: Dictionary = {}
 
 func after_each() -> void:
+	for node in _extra:
+		if is_instance_valid(node):
+			node.queue_free()
+	_extra.clear()
 	if _world.is_empty():
 		return
 	TestWorld.teardown(_world)
@@ -49,6 +58,7 @@ func _hanging_player(yaw_deg: float) -> Player:
 	body.add_child(shape)
 	player.get_parent().add_child(body)
 	body.global_position = Vector3(0.0, LEDGE_TOP * 0.5, LEDGE_FACE_Z - 0.5)
+	_extra.append(body)
 	# rotation.y = 0 faces -Z, which is straight into this wall.
 	player.rotation.y = deg_to_rad(yaw_deg)
 	var query := {"valid": true, "edge": EDGE, "top": EDGE,

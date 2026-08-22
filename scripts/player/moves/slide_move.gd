@@ -163,8 +163,23 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# before.
 	var spent := post_move_speed <= config.slide.slide_abort_speed or _elapsed >= config.slide.slide_abort_time
 	var wants_to_exit := (not input.crouch_held) or spent
-	if wants_to_exit and player.has_headroom():
-		if input.crouch_held:
+	if wants_to_exit:
+		# ✅ THE OWNER: "滑铲结束如果头顶空间不够应该转下蹲而不是滑铲，
+		# 否则玩家的左右会一直被牽制，可能卡住出不来."
+		#
+		# A blocked slide used to simply CONTINUE -- see the note above, which
+		# called it "crawling, by then". It is not crawling: a slide commits you
+		# to a line (steering is deliberately slow, see _slide()), so a slide
+		# that cannot end is a slide you cannot steer out of. Under a long low
+		# ceiling that is a trap with no input that escapes it.
+		#
+		# Crouch is ALWAYS available here and costs no headroom check of its own:
+		# crouch_capsule_height and slide_capsule_height are the same number by
+		# construction (see CrouchConfig's own comment), so anywhere this slide
+		# already fits, the crouch fits too -- which is exactly why the branch
+		# below could already hand a key-held exit straight to CROUCH without
+		# asking. The only thing that ever needed headroom was standing up.
+		if input.crouch_held or not player.has_headroom():
 			return CROUCH
 		return WALKING
 	return KEEP
