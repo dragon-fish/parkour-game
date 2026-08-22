@@ -109,8 +109,19 @@ func play(player: Player) -> void:
 			# point, which is the line below.
 			_cinematic = _player.body == null
 			if not _cinematic:
-				_player.camera_rig.set_pitch(
-					deg_to_rad(_player.config.camera.death_pitch_deg))
+				var camera_config: CameraConfig = _player.config.camera
+				# ⚠️ THE OTHER WAY ROUND IN THIRD PERSON, and the geometry says
+				# why: the camera hangs BEHIND the rig, so pitching the rig up
+				# swings the arm DOWN -- straight into the floor a dead body is
+				# lying on. ✅ The owner reported exactly that.
+				var third: bool = _player.camera_rig.third_person
+				_player.camera_rig.set_pitch(deg_to_rad(
+					camera_config.death_pitch_third_person_deg if third
+					else camera_config.death_pitch_deg))
+				# First person only: the head-follow puts the eye where the head
+				# bone is, and a body on the floor has its head ON the floor.
+				if not third:
+					_player.camera_rig.set_death_lift(camera_config.death_eye_lift)
 			if _cinematic:
 				# Read BEFORE begin_cinematic(), while rotation.x is still the
 				# player's own look.
@@ -157,6 +168,8 @@ func _release_player() -> void:
 	if _player == null:
 		return
 	_player.set_dying(false)
+	if _player.camera_rig != null:
+		_player.camera_rig.set_death_lift(0.0)
 	# Symmetrically: only ended if it was ever begun. end_cinematic() on a rig
 	# that never entered it would clear a state the player owns.
 	if _cinematic and _player.camera_rig != null:

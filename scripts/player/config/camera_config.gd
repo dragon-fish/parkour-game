@@ -162,6 +162,27 @@ extends Resource
 ## ⚠️ Only with a body. Without one there is nothing for the eye to follow, and
 ## DeathSequence's own scripted fall is still the answer -- see its play().
 @export var death_pitch_deg: float = 25.0
+
+## The same, in third person. ✅ The owner: "it should be -25 there, or the
+## camera ends up underground."
+##
+## The geometry agrees. The camera hangs BEHIND the rig, so pitching the rig up
+## swings the arm DOWN -- straight into the floor a dead body is lying on.
+## Looking down swings it up, which is where a camera watching a body on the
+## ground wants to be.
+@export var death_pitch_third_person_deg: float = -25.0
+
+## How far the first-person eye is lifted while dying, in metres.
+##
+## ✅ The owner: "the first-person death camera needs about 0.3 m of height
+## compensation or it clips." The head-follow puts the eye exactly where the
+## head bone is, and a body lying on the floor has its head ON the floor -- so
+## the eye ends up inside it. The clip is right; the eye just cannot be quite
+## that faithful to it.
+##
+## First person only. In third person the camera is metres away and has no such
+## problem.
+@export var death_eye_lift: float = 0.3
 ## How fast the eye catches up after the body was lifted over a low obstacle
 ## (see Player.try_step_up). Exponential, so this is a rate, not a duration:
 ## ~12 settles a 0.35 m step in roughly 0.15 s, which reads as a stride. Lower

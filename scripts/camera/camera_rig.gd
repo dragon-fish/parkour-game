@@ -34,6 +34,8 @@ var _roll: float = 0.0
 ## the obstacle." A vault is a scripted motion, so the eye is entitled to be
 ## moved by it -- see docs/camera-authority.md.
 var _vault_roll: float = 0.0
+## Additive lift while dying -- see set_death_lift().
+var _death_lift: float = 0.0
 ## An additive downward pitch owned by LandingMove. Separate from _dip because
 ## dip is a spring driven by impact speed and recovers on its own schedule;
 ## this one is driven explicitly by a state that knows how long it has left.
@@ -218,6 +220,11 @@ func set_landing_pitch_offset(radians: float) -> void:
 ## a separate channel from the landing sink rather than more of the same.
 ## The bank a vault leans through, in radians. Driven every tick by
 ## SpeedVaultMove across its own arc; this rig holds no timer for it.
+## Lifts the eye while dying, so a head resting on the floor does not put the
+## camera inside it. See CameraConfig.death_eye_lift.
+func set_death_lift(metres: float) -> void:
+	_death_lift = metres
+
 func set_vault_roll(radians: float) -> void:
 	_vault_roll = radians
 
@@ -404,6 +411,7 @@ func reset_state() -> void:
 	_wall_side = 0
 	_roll = 0.0
 	_vault_roll = 0.0
+	_death_lift = 0.0
 	_landing_pitch = 0.0
 	_roll_spin = 0.0
 	_has_head = false
@@ -652,6 +660,10 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 		lift_rate = maxf(_eye_lift, 0.0001) / maxf(_config.camera.eye_lift_release_time, 0.001)
 	_eye_lift_current = move_toward(_eye_lift_current, lift_target, lift_rate * delta)
 	base_position.y += _eye_lift_current
+	# Straight addition, not eased: the death is a cut into a cutscene anyway,
+	# and half a second of the eye rising out of the floor is worse than being
+	# in the right place from the first frame.
+	base_position.y += _death_lift
 
 	# A step-up moves the body's Y in a single tick. Hold the eye behind by that
 	# much and ease it up, so clearing a plank reads as a stride rather than a

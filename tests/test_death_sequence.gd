@@ -327,6 +327,9 @@ func test_a_body_dies_by_its_own_animation_rather_than_a_scripted_fall() -> void
 	assert_almost_eq(player.camera_rig.look_debug()["pitch"],
 		deg_to_rad(player.config.camera.death_pitch_deg), 0.05,
 		"the eye was left with nowhere to point")
+	assert_almost_eq(player.camera_rig.position.y,
+		player.config.camera.eye_height + player.config.camera.death_eye_lift, 0.05,
+		"the first-person eye was not lifted out of the floor")
 	sequence.stop()
 	sequence.queue_free()
 	TestWorld.teardown(world)
@@ -369,4 +372,30 @@ func test_a_fatal_fall_is_dying_before_it_can_strike_a_landing_pose() -> void:
 	move.landing_destination(20.0, false)
 	assert_true(player.is_dying(),
 		"the body was not dying on the tick its fall turned out to be fatal")
+	TestWorld.teardown(world)
+
+func test_a_third_person_death_looks_DOWN_at_the_body() -> void:
+	# ✅ THE OWNER: "it should be -25 there, or the camera ends up underground."
+	# The geometry agrees: the camera hangs BEHIND the rig, so pitching the rig
+	# up swings the arm DOWN -- straight into the floor a dead body is lying on.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	_attach_body(player)
+	player.camera_rig.third_person = true
+	var sequence := DeathSequence.new()
+	add_child(sequence)
+	sequence.play(player)
+	await step(20)
+	assert_lt(player.camera_rig.look_debug()["pitch"], 0.0,
+		"a third-person death pitched the camera up, into the ground")
+	# And no eye lift out here -- the camera is metres away and has no such
+	# problem.
+	assert_almost_eq(player.camera_rig.position.y,
+		player.config.camera.eye_height, 0.05,
+		"third person took the first-person floor compensation too")
+	sequence.stop()
+	sequence.queue_free()
 	TestWorld.teardown(world)
