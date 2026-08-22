@@ -182,7 +182,18 @@ extends Resource
 ##
 ## First person only. In third person the camera is metres away and has no such
 ## problem.
-@export var death_eye_lift: float = 0.3
+##
+## ⚠️ THIS NUMBER IS COUPLED TO THE CLIP'S OWN OFFSET, and the coupling runs the
+## opposite way to the obvious one. _camera_head_offset() SUBTRACTS the clip
+## offset back out (Player, and test_clip_offsets.gd locks it), so raising the
+## model does not raise the eye -- it leaves the eye where it was while the
+## visible body climbs past it, putting the eye that much DEEPER inside the body.
+## So a clip offset of +N metres wants this to go UP by N, not down.
+##
+## ✅ The owner raised LiftAir_Fall_Impact by 0.1 m and read the follow-up off
+## fall_uncontrolled_eye_lift below (0.15 + 0.1 = 0.25). The intent was "+0.1";
+## the base is this 0.3, not that 0.15.
+@export var death_eye_lift: float = 0.4
 
 ## The same, during an uncontrolled fall, in metres.
 ##
