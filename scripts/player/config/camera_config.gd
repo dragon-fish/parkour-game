@@ -240,25 +240,30 @@ extends Resource
 ## vault's own duration, so it is never a step.
 @export var vault_roll_deg: float = 7.0
 
-## Where the eye sits when the third-person view is on, in the rig's own local
-## space: +Z is behind, +X is to the right, +Y is up. Zero would be the
-## first-person camera exactly.
+## Where the eye sits when the third-person view is on, as THREE FLOATS rather
+## than the Vector3 this obviously wants to be.
+##
+## The reason is the tuning panel: it walks MovementConfig's sub-resources and
+## collects TYPE_FLOAT only (see tuning_panel.gd), so a Vector3 never appears in
+## it and could only be changed by editing this file and restarting. Framing a
+## third-person camera is the exact thing you want to drag a slider for while
+## running around, so it is three floats and lives in the panel.
+##
+## Named for what they do rather than x/y/z: positive `right` is over the right
+## shoulder, positive `up` raises the eye, positive `back` pulls away from the
+## head. All zero is the first-person camera exactly.
 ##
 ## A DEBUG VIEW FIRST. The owner's reason for wanting one is the same one
 ## docs/asset-candidates.md gives as the first prerequisite for any character
 ## model: a first-person game cannot show you its own body, so nothing about
 ## the animation, the mount height, or the parkour poses can be checked from
 ## inside it. Watching your own vault from outside is how you find out it looks
-## wrong.
-##
-## Deliberately not a tuned over-the-shoulder framing. It is placed to SEE the
-## body, and the owner's own scoping applies: "先跑起来" -- get it running, then
-## adjust.
-@export var third_person_offset: Vector3 = Vector3(0.6, 0.35, 3.0)
+## wrong. Not a tuned over-the-shoulder framing -- placed to SEE the body, and
+## the owner's own scoping applies: "先跑起来", get it running, then adjust.
+@export var third_person_right: float = 0.6
+@export var third_person_up: float = 0.35
+@export var third_person_back: float = 3.0
 
-## How close the third-person eye is allowed to come when something is between
-## it and the head, as a fraction of third_person_offset's length. Without a
-## pull-in the view spends indoor sections inside walls, which is not a view.
 @export var third_person_min_fraction: float = 0.15
 
 ## The render layer carrying the body's FIRST-PERSON meshes, as a mask.

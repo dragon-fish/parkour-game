@@ -764,7 +764,7 @@ func shift_yaw_reference(yaw: float, assist: float) -> void:
 ## PLAYER is excluded: it is always in the way, being what the camera is
 ## looking at.
 func _third_person_position() -> Vector3:
-	var wanted: Vector3 = _config.camera.third_person_offset
+	var wanted := Vector3( 		_config.camera.third_person_right, 		_config.camera.third_person_up, 		_config.camera.third_person_back)
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return wanted

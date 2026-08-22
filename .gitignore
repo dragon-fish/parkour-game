@@ -84,7 +84,7 @@ dist/
 assets/models/test.vrm
 assets/models/test.vrm.import
 
-# The VRM test rig: the owner-authored model plus the animation pack, wired
-# together. Follows the same rule as player_wine_fox.tscn -- a scene that
-# instances an untracked asset cannot itself be tracked.
-scenes/player/player_vrm.tscn
+# The VRM test level: the owner-authored model plus the animation packs plus
+# the calibration obstacles. Follows the same rule as player_wine_fox.tscn --
+# a scene that instances an untracked asset cannot itself be tracked.
+scenes/debug_levels/vrm_course.tscn

@@ -76,3 +76,23 @@ func test_toggling_back_and_forth_does_not_accumulate() -> void:
 		await step(2)
 	assert_eq(rig.camera.cull_mask, first_pass, \
 		"eight toggles changed the mask from %d to %d" % [first_pass, rig.camera.cull_mask])
+
+func test_the_third_person_offset_is_reachable_from_the_tuning_panel() -> void:
+	# THE REASON IT IS THREE FLOATS. The panel walks MovementConfig's
+	# sub-resources and collects TYPE_FLOAT only, so the Vector3 this obviously
+	# wants to be would never appear in it -- and framing a third-person camera
+	# is the exact thing you want on a slider while running around.
+	#
+	# Asked of the panel's own collector rather than of the config, so this
+	# fails if either side changes.
+	var config := MovementConfig.new()
+	var rows: Array[Dictionary] = TuningPanel.collect_tunables(config)
+	var found: Array[String] = []
+	for row in rows:
+		var path: String = String(row["path"])
+		if path.contains("third_person"):
+			found.append(path)
+	for wanted in ["camera.third_person_right", "camera.third_person_up", \
+			"camera.third_person_back"]:
+		assert_true(found.has(wanted), \
+			"%s is not tunable from the panel -- found %s" % [wanted, ", ".join(found)])
