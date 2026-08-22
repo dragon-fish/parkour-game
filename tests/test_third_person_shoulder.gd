@@ -21,6 +21,14 @@ func after_each() -> void:
 	TestWorld.teardown(_world)
 	_world = {}
 
+## ⚠️ SET ON THE PLAYER, not on the rig. Player feeds camera_rig.set_wall_side()
+## every physics tick, so a value poked straight into the rig is overwritten by
+## the next step -- which is exactly what happened once the tests started
+## stepping to let the ease arrive.
+func _set_wall(side: int) -> void:
+	_world["player"].wall_side = side
+	_world["player"].camera_rig.set_wall_side(side)
+
 func _rig() -> CameraRig:
 	_world = TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
@@ -30,21 +38,30 @@ func _rig() -> CameraRig:
 	rig.third_person = true
 	return rig
 
-## How far to the side of the body the camera sits. Positive is the right.
+## How far to the side of the body the camera sits, after letting the ease
+## arrive. Positive is the right.
+##
+## ⚠️ STEPPED, not read straight off _third_person_position(). The crossing is
+## eased now -- see CameraConfig.third_person_shoulder_time -- so a value read
+## on the same frame the wall appears is still on the old side, and a test that
+## did that would be asserting against the ease rather than the choice.
 func _across(rig: CameraRig) -> float:
+	await step(40)
 	return rig._third_person_position().x
 
 func test_a_left_hand_wall_puts_the_camera_on_the_right() -> void:
 	var rig: CameraRig = await _rig()
-	rig.set_wall_side(-1)
-	assert_gt(_across(rig), 0.0,
-		"a left-hand wall left the camera at x %.2f" % _across(rig))
+	_set_wall(-1)
+	var across: float = await _across(rig)
+	assert_gt(across, 0.0,
+		"a left-hand wall left the camera at x %.2f" % across)
 
 func test_a_right_hand_wall_puts_the_camera_on_the_left() -> void:
 	var rig: CameraRig = await _rig()
-	rig.set_wall_side(1)
-	assert_lt(_across(rig), 0.0,
-		"a right-hand wall left the camera at x %.2f" % _across(rig))
+	_set_wall(1)
+	var across: float = await _across(rig)
+	assert_lt(across, 0.0,
+		"a right-hand wall left the camera at x %.2f" % across)
 
 func test_the_player_s_own_shoulder_is_not_rewritten() -> void:
 	# THE POINT OF NOT WRITING IT INTO _shoulder. That is the player's own
@@ -57,10 +74,31 @@ func test_the_player_s_own_shoulder_is_not_rewritten() -> void:
 	# draft of it duly failed against correct code.
 	rig._shoulder = CameraRig.Shoulder.LEFT
 	var chosen: int = rig.third_person_debug()["shoulder"]
-	rig.set_wall_side(-1)
+	_set_wall(-1)
 	assert_eq(rig.third_person_debug()["shoulder"], chosen,
 		"a wall run rewrote the player's shoulder preference")
-	var borrowed: float = _across(rig)
-	rig.set_wall_side(0)
-	assert_ne(signf(_across(rig)), signf(borrowed),
+	var borrowed: float = await _across(rig)
+	_set_wall(0)
+	var restored: float = await _across(rig)
+	assert_ne(signf(restored), signf(borrowed),
 		"the camera stayed on the borrowed side after the wall")
+
+func test_the_crossing_is_eased_rather_than_cut() -> void:
+	# ✅ THE OWNER: "give the over-shoulder camera a bit of easing." A shot that
+	# jumps across the body reads as a cut rather than as a camera move, and the
+	# wall run swaps sides on its own -- nobody asked for that cut.
+	var rig: CameraRig = await _rig()
+	rig._shoulder = CameraRig.Shoulder.LEFT
+	await step(10)
+	var before: float = rig._third_person_position().x
+	_set_wall(-1)
+	await step(1)
+	var after_one_tick: float = rig._third_person_position().x
+	var whole_span: float = absf(_world["player"].config.camera.third_person_right) * 2.0
+	assert_lt(absf(after_one_tick - before), whole_span * 0.5,
+		"the camera crossed %.2f m of a %.2f m span in one tick"
+		% [absf(after_one_tick - before), whole_span])
+	# And it does get there.
+	await step(40)
+	assert_gt(rig._third_person_position().x, 0.0,
+		"the camera never finished crossing")

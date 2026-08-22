@@ -126,6 +126,14 @@ var third_person: bool = false
 ## Which side the third-person eye sits on, cycled with a middle click.
 enum Shoulder { RIGHT, LEFT, CENTRED }
 var _shoulder: int = Shoulder.RIGHT
+## How far across the camera actually IS, eased toward what the shoulder asks
+## for. INF until the first frame seeds it, so the camera does not slide in
+## from the centre when third person is first switched on.
+##
+## ✅ The owner: "give the over-shoulder camera a bit of easing." It matters
+## most for the wall run, which swaps sides on its own -- a shot that jumps
+## across the body reads as a cut -- but the manual cycle wanted it too.
+var _shoulder_across: float = INF
 
 ## Wheel-adjusted distance, in metres. Negative until the first update seeds it
 ## from third_person_back, so a config change is picked up rather than being
@@ -585,6 +593,15 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# was behind the body.
 	var back := Vector3.ZERO
 	if third_person:
+		# EASED HERE, where there is a delta -- _third_person_position() is also
+		# reached from tests and from the debug readout, and neither has one.
+		var wanted_across: float = _wanted_shoulder_across()
+		if is_inf(_shoulder_across):
+			_shoulder_across = wanted_across
+		else:
+			var span: float = maxf(absf(_config.camera.third_person_right), 0.0001)
+			var rate: float = (span * 2.0) 					/ maxf(_config.camera.third_person_shoulder_time, 0.001)
+			_shoulder_across = move_toward(_shoulder_across, wanted_across, rate * delta)
 		back = _third_person_position()
 	camera.position = Vector3(back.x, bob - _dip + back.y, back.z)
 	_apply_body_layers()
@@ -866,22 +883,21 @@ func shift_yaw_reference(yaw: float, assist: float) -> void:
 ## wants to be, so what it finds is exactly what would be between the two. The
 ## PLAYER is excluded: it is always in the way, being what the camera is
 ## looking at.
-func _third_person_position() -> Vector3:
-	var camera_config: CameraConfig = _config.camera
-	if _tp_distance < 0.0:
-		_tp_distance = camera_config.third_person_back
-	# The preset decides the SIDE; third_person_right decides how far over, so
-	# the panel slider still means something with a preset selected.
-	var across: float = camera_config.third_person_right
+## Where the shoulder preset -- or a wall run's borrowed one -- wants the
+## camera, before easing. The PRESET decides the side; third_person_right
+## decides how far over, so the panel slider still means something.
+func _wanted_shoulder_across() -> float:
+	var across: float = _config.camera.third_person_right
 	# A WALL RUN BORROWS THE OTHER SHOULDER. ✅ The owner: "on a left-hand wall,
 	# put the camera at the preset right shoulder for the duration, and the
 	# other way round -- otherwise the view sits inside the wall the whole
 	# time."
 	#
-	# The collision probe further down already pulls the camera in when
-	# something is between it and the body, but pulling in is the wrong answer
-	# here: it gives a shot pressed flat against a surface that is going to be
-	# there for the whole manoeuvre. Standing on the other side of the body is.
+	# The collision probe in _third_person_position() already pulls the camera
+	# in when something is between it and the body, but pulling in is the wrong
+	# answer here: it gives a shot pressed flat against a surface that is going
+	# to be there for the whole manoeuvre. Standing on the other side of the
+	# body is.
 	#
 	# ⚠️ NOT written into _shoulder, deliberately. That is the player's own
 	# preference and it is persisted -- borrowing it would leave a wall run
@@ -894,11 +910,20 @@ func _third_person_position() -> Vector3:
 		shoulder = Shoulder.LEFT if _wall_side > 0 else Shoulder.RIGHT
 	match shoulder:
 		Shoulder.LEFT:
-			across = -absf(across)
+			return -absf(across)
 		Shoulder.CENTRED:
-			across = 0.0
-		_:
-			across = absf(across)
+			return 0.0
+	return absf(across)
+
+func _third_person_position() -> Vector3:
+	var camera_config: CameraConfig = _config.camera
+	if _tp_distance < 0.0:
+		_tp_distance = camera_config.third_person_back
+	# EASED, not switched -- see _shoulder_across. Seeded on the first frame so
+	# switching to third person does not slide the camera in from the centre.
+	if is_inf(_shoulder_across):
+		_shoulder_across = _wanted_shoulder_across()
+	var across: float = _shoulder_across
 	var wanted := Vector3( 		across + _tp_drag.x, 		camera_config.third_person_up + _tp_drag.y, 		_tp_distance)
 	var space := get_world_3d().direct_space_state
 	if space == null:

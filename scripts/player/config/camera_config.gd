@@ -136,6 +136,19 @@ extends Resource
 ## Matches Player.body_slide_exit_blend_time, which is the animation half of the
 ## same moment -- the body picking itself up out of a slide.
 @export var eye_lift_release_time: float = 0.5
+
+## How long the third-person camera takes to cross from one shoulder to the
+## other, in seconds.
+##
+## ✅ The owner: "give the over-shoulder camera a bit of easing." It matters
+## most for the wall run, which swaps sides on its own -- a shot that jumps
+## across the body reads as a cut rather than as a camera move -- but the
+## manual cycle wanted it too.
+##
+## A TIME rather than a rate, for the same reason as eye_lift_release_time
+## above: third_person_right is a per-taste distance, so a fixed rate would
+## take a different length of time at every setting.
+@export var third_person_shoulder_time: float = 0.25
 ## How fast the eye catches up after the body was lifted over a low obstacle
 ## (see Player.try_step_up). Exponential, so this is a rate, not a duration:
 ## ~12 settles a 0.35 m step in roughly 0.15 s, which reads as a stride. Lower
