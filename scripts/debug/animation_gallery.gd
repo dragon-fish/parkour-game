@@ -134,7 +134,20 @@ func _merged_library() -> AnimationLibrary:
 		if source != null:
 			for clip_name in source.get_animation_list():
 				if not library.has_animation(clip_name):
-					library.add_animation(clip_name, source.get_animation(clip_name).duplicate())
+					var clip: Animation = source.get_animation(clip_name).duplicate()
+					# EVERYTHING LOOPS HERE, whatever it was authored as. Most
+					# of the library is one-shots -- a vault, a landing, a
+					# turn -- and a one-shot in a gallery plays once while you
+					# are still reading the name above somebody else's head,
+					# then stands there frozen for the rest of the session.
+					#
+					# Safe only because this is a DUPLICATE. The same property
+					# on the imported Animation is what player.gd's
+					# _ensure_clip_loops() sets deliberately, for a short list
+					# of clips and no others; forcing it on the shared resource
+					# would have every one-shot in the game start looping too.
+					clip.loop_mode = Animation.LOOP_LINEAR
+					library.add_animation(clip_name, clip)
 		source_scene.free()
 	if library.get_animation_list().is_empty():
 		return null
