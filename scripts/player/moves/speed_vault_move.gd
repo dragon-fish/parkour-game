@@ -46,40 +46,6 @@ func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
 	_aborted = false
 
-	# THE BODY FOLDS. ✅ The owner's reading, and it explains the offsets they
-	# were dialling in by hand: "shrink the capsule to about 1.0 during vault
-	# and grab-up and the animation problem may solve itself -- I was nudging
-	# everything by about 0.8, and legs bend and then straighten when you climb
-	# or vault." 1.8 minus 1.0 is 0.8, which is the coincidence that is not one.
-	#
-	# ⚠️ We cannot see the original's collision capsule, and the owner puts
-	# their confidence at 80% that every leg-driven move there shrinks it. What
-	# CAN be seen is the consequence of not doing it: a rigid 1.8 m upright
-	# capsule has to be lifted clear of anything it crosses, and lifting the
-	# FEET above an obstacle puts the EYE a further 1.66 m up -- which is
-	# exactly the "eye sits at wall top plus a whole capsule" the owner
-	# reported.
-	#
-	# crouch_capsule_height rather than a knob of its own, and not because 0.9
-	# is 1.0: it is the height this project ALREADY folds to for a slide and a
-	# roll, and reusing it makes the camera's own crouch mapping exactly right
-	# for free -- a full crouch capsule takes a full crouch amount, no second
-	# number to keep in step. See the camera line below.
-	# THE LEGS TUCK, so the body rides at the shortened capsule's TOP.
-	#
-	# ✅ The owner, twice, and the second time is the one I had to hear: "the
-	# capsule should shrink hugging the FEET -- but the model and the eye should
-	# come down with it, instead of the capsule getting shorter while the model
-	# goes on playing anchored at the soles. The model's head should be anchored
-	# to the capsule's top."
-	#
-	# Two things, and the first two attempts each did only one of them. The
-	# COLLISION shortens from the top, feet on the floor, as it always has. The
-	# MODEL AND THE EYE drop by what the capsule lost, so the head sits on the
-	# new crown -- which is what puts the view down where a vaulting body's head
-	# actually is, rather than a standing body's.
-	player.set_capsule_height(config.crouch.crouch_capsule_height)
-	player.set_body_folded(true)
 
 	# THE HANDOFF IS CONSUMED FIRST, before any of the abort paths below.
 	# ⚠️ It used to be read further down, past the probe guard, and that made
@@ -91,6 +57,46 @@ func enter(_previous: StringName) -> void:
 	_variant_name = String(variant.get("name", ""))
 	_rescued = player.pending_vault_rescue
 	player.pending_vault_rescue = false
+
+	# ONLY A REAL VAULT FOLDS. ✅ The owner: the step-up variants drop the model
+	# too, and they must not -- "that one only lifts a leg a little, and
+	# lowering the body just makes it clip."
+	#
+	# The original says the same thing from the other side: autostepuprightleg
+	# and stepuprightleg88 are the two rows of six with NO hand IK (05 §5.7).
+	# There is no hand because there is no plant; the body stays upright and
+	# steps. A body-over-the-hands vault folds, a step does not.
+	#
+	# Gated on is_scramble(), which is the same question CharacterAnimator asks
+	# to pick StepUp over SafetyVault -- so the capsule and the clip agree by
+	# construction rather than by two lists being kept in step.
+	#
+	# ⚠️ The owner suggested splitting StepUp into its own state for this. Not
+	# done, and worth saying why: the original keeps all six in ONE move
+	# (TdMove_SpeedVault, six VaultTypes) and SpeedVaultConfig.variants is a
+	# transcription of that table. The behaviour that differs is per-variant, so
+	# it is expressed per-variant. If a separate state is wanted for reasons
+	# beyond this -- its own camera, its own transitions -- that is a bigger
+	# change and a separate one.
+	if not is_scramble():
+		# THE LEGS TUCK, so the body rides at the shortened capsule's TOP.
+		#
+		# ✅ The owner, twice, and the second time is the one I had to hear:
+		# "the capsule should shrink hugging the FEET -- but the model and the
+		# eye should come down with it, instead of the capsule getting shorter
+		# while the model goes on playing anchored at the soles. The model's
+		# head should be anchored to the capsule's top."
+		#
+		# So: the COLLISION shortens from the top with the feet on the floor,
+		# exactly as it always has, and the MODEL AND EYE drop by what the
+		# capsule lost. The head then sits on the new crown, which is where a
+		# vaulting body's head actually is.
+		#
+		# crouch_capsule_height rather than a knob of its own: it is the height
+		# this project already folds to for a slide and a roll, and one number
+		# is one number to keep honest.
+		player.set_capsule_height(config.crouch.crouch_capsule_height)
+		player.set_body_folded(true)
 
 	# WalkingMove already null-checks player.probes AND requires a valid
 	# vault_query() before ever transitioning here, so neither branch below is

@@ -185,3 +185,45 @@ func _player_with_body() -> Player:
 	root.free()
 	player._attach_body(packed)
 	return player
+
+# --- a step-up is not a vault ------------------------------------------------------
+
+func test_a_step_up_does_not_fold_the_body() -> void:
+	# ✅ THE OWNER: the step-up variants were dropping the model too, and must
+	# not -- "that one only lifts a leg a little, and lowering the body just
+	# makes it clip." The original says the same from the other side: the two
+	# step-up rows are the two of six with NO hand IK (05 §5.7). There is no
+	# hand because there is no plant, and the body stays upright.
+	var player: Player = await _player()
+	var standing: float = player.current_capsule_height()
+	player.pending_vault_variant = player.config.speed_vault.pick_variant(
+		0.3, true, -2.0, 2.0)
+	assert_false(player.pending_vault_variant.is_empty(),
+		"the table no longer has a descending step-up row to test with")
+	player.move_manager.start(Move.SPEED_VAULT)
+	assert_false(player.body_folded(), "a step-up declared the fold")
+	assert_almost_eq(player.current_capsule_height(), standing, 0.001,
+		"a step-up shortened the capsule to %.2f" % player.current_capsule_height())
+
+func test_a_real_vault_still_folds() -> void:
+	# The pair, without which the test above passes on a build that folds
+	# nothing at all.
+	var player: Player = await _player()
+	player.pending_vault_variant = player.config.speed_vault.pick_variant(
+		1.0, false, 1.0, 6.0)
+	assert_false(player.pending_vault_variant.is_empty(), "no middle-tier row")
+	player.pending_vault_rescue = false
+	player.move_manager.start(Move.SPEED_VAULT)
+	assert_true(player.body_folded(), "a hand-planted vault did not fold")
+
+func test_a_rescued_vault_does_not_fold_either() -> void:
+	# A rescue resolves to the MIDDLE tier, so the variant cannot tell them
+	# apart -- but it plays StepUp, and the capsule follows the CLIP. Both
+	# questions are is_scramble(), which is what keeps them from drifting.
+	var player: Player = await _player()
+	player.pending_vault_variant = player.config.speed_vault.pick_variant(
+		1.0, false, 0.0, 6.0)
+	assert_false(player.pending_vault_variant.is_empty(), "no middle-tier row")
+	player.pending_vault_rescue = true
+	player.move_manager.start(Move.SPEED_VAULT)
+	assert_false(player.body_folded(), "a scrambled vault folded like a planted one")
