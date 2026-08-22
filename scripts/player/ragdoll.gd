@@ -79,6 +79,21 @@ var _simulating := false
 func is_simulating() -> bool:
 	return _simulating
 
+## Where the hips have got to, in world space, or ZERO before there is a
+## ragdoll. ✅ The owner: "once the ragdoll is running the capsule is
+## meaningless, surely the ragdoll's position is the authority?" It is -- see
+## FallUncontrolledMove, which stops driving the body and asks this instead.
+func hips_position() -> Vector3:
+	var hips := _bone_node(&"Hips")
+	return hips.global_position if hips != null else Vector3.ZERO
+
+## How fast the hips are still travelling, for deciding the body has finished
+## arriving. A landing cannot be detected the usual way any more: the capsule
+## is not moving, so it never touches anything.
+func hips_speed() -> float:
+	var hips := _bone_node(&"Hips")
+	return hips.linear_velocity.length() if hips != null else 0.0
+
 ## Generates the bodies. Safe to call more than once; only the first does work.
 ##
 ## Returns false for a body this cannot be built on -- no skeleton, or one whose
@@ -105,6 +120,11 @@ func start(impulse: Vector3, exclude: RID) -> void:
 		return
 	_simulating = true
 	_skeleton.physical_bones_add_collision_exception(exclude)
+	# ⚠️ THE SKELETON'S PARENT MUST STOP MOVING, and the caller owes that. These
+	# bodies are children of the skeleton, which hangs off a CharacterBody3D --
+	# so every metre the player travels teleports all twelve of them, and the
+	# solver spends the whole fall being yanked. ✅ The owner saw it as "the body
+	# convulses the moment the ragdoll starts". See FallUncontrolledMove.
 	_skeleton.physical_bones_start_simulation()
 	# Applied to the HIPS alone. Shoving every bone gives an explosion rather
 	# than a fall -- the joints are what should carry it to the limbs.

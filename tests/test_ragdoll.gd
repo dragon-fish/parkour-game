@@ -155,3 +155,58 @@ func test_stopping_leaves_nothing_moving() -> void:
 				"%s was left travelling at %.1f m/s"
 				% [bone.name, bone.linear_velocity.length()])
 	skeleton.queue_free()
+
+# --- the ragdoll owns the body while it runs -----------------------------------
+
+const TestWorld = preload("res://tests/world_fixture.gd")
+
+func test_the_capsule_stops_dead_while_the_ragdoll_runs() -> void:
+	# ✅ THE OWNER: "once the ragdoll is running the capsule is meaningless,
+	# surely the ragdoll's position is the authority? Otherwise the timing does
+	# not line up and the blackout comes early or late."
+	#
+	# It is worse than a timing problem. The twelve bodies are children of the
+	# skeleton, which hangs off the CharacterBody3D -- so every metre the
+	# capsule travels TELEPORTS all of them, and the solver spends the whole
+	# fall being yanked. That is "the body convulses the moment the ragdoll
+	# starts", and two bodies in two different places at the end is the launch
+	# on respawn.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as AirborneMove
+	# A ragdoll this fixture's bodiless player cannot actually build, so stand
+	# one in: what is under test is the gate, not the solver.
+	player.ragdoll = Ragdoll.new()
+	player.ragdoll.build(_humanoid())
+	player.ragdoll.start(Vector3.ZERO, RID())
+	player.velocity = Vector3(0.0, -20.0, 0.0)
+	var before: Vector3 = player.global_position
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	await step(10)
+	assert_almost_eq(player.global_position.distance_to(before), 0.0, 0.001,
+		"the capsule travelled %.2f m under the ragdoll"
+		% player.global_position.distance_to(before))
+	player.ragdoll.stop()
+	TestWorld.teardown(world)
+
+func test_an_ordinary_uncontrolled_fall_still_falls() -> void:
+	# The pair, and the one that stops the gate above from freezing every fall.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	assert_null(player.ragdoll, "the fixture built a ragdoll after all")
+	# Lifted off the floor first: a body standing on the ground cannot fall, and
+	# the first draft of this asserted that it did.
+	player.global_position += Vector3(0.0, 3.0, 0.0)
+	await step(1)
+	var before: Vector3 = player.global_position
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	await step(10)
+	assert_gt(before.y - player.global_position.y, 0.05,
+		"a bodiless uncontrolled fall did not fall")
+	TestWorld.teardown(world)

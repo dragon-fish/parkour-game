@@ -27,6 +27,8 @@ func enter(_previous: StringName) -> void:
 	#
 	# DeathSequence guards against starting it twice; a body it cannot be built
 	# on simply never starts one.
+	_ragdoll_still = 0.0
+	_ragdoll_elapsed = 0.0
 	if player.ragdoll != null and player.body != null 			and player.ragdoll.build(player.find_skeleton()):
 		# Some direction, so a death reads as being thrown rather than folding
 		# straight down. The carried velocity is mixed in because being launched
@@ -34,8 +36,39 @@ func enter(_previous: StringName) -> void:
 		var throw := Vector3(randf_range(-1.0, 1.0), randf_range(0.2, 0.8),
 				randf_range(-1.0, 1.0)).normalized() * randf_range(3.0, 7.0)
 		player.ragdoll.start(throw + player.velocity * 0.5, player.get_rid())
+		# THE CAPSULE STOPS HERE. Its velocity is handed to the ragdoll above
+		# and must not also be spent by the body -- see physics_update().
+		player.velocity = Vector3.ZERO
+
+## How slowly the hips have to be moving to count as having arrived, and how
+## long to wait before deciding they never will.
+const RAGDOLL_REST_SPEED := 1.2
+const RAGDOLL_REST_TIME := 0.35
+const RAGDOLL_TIMEOUT := 6.0
+
+var _ragdoll_still: float = 0.0
+var _ragdoll_elapsed: float = 0.0
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
+	# ⚠️ THE RAGDOLL OWNS THE BODY, and the capsule stops entirely.
+	#
+	# ✅ The owner, and it explains two other things they reported: "once the
+	# ragdoll is running the capsule is meaningless, surely the ragdoll's
+	# position is the authority? Otherwise the timing does not line up and the
+	# blackout comes early or late."
+	#
+	# It is worse than a timing problem. The twelve bodies are children of the
+	# skeleton, which hangs off this CharacterBody3D -- so every metre the
+	# capsule travels TELEPORTS all of them, and the solver spends the whole
+	# fall being yanked. That is "the body convulses the moment the ragdoll
+	# starts". And at the end the capsule and the ragdoll are in two different
+	# places, which is the launch on respawn.
+	#
+	# So the capsule stops: no air physics, no move_and_slide, nothing. The eye
+	# still follows the body, because the head-follow reads the head BONE and
+	# the ragdoll is driving it.
+	if player.ragdoll != null and player.ragdoll.is_simulating():
+		return _settle_ragdoll(delta)
 	# No wish direction: the body falls, the player watches.
 	apply_air_physics(delta, Vector3.ZERO)
 	# After the physics, so the effects read THIS tick's own speed rather than
@@ -96,6 +129,29 @@ func exit() -> void:
 	if player.screen_effects != null:
 		player.screen_effects.set_desaturation(0.0)
 		player.screen_effects.set_blur(0.0)
+
+## Waits for the ragdoll to finish arriving, then declares the death.
+##
+## A landing cannot be detected the usual way any more -- the capsule is not
+## moving, so it never touches anything. The hips coming to rest is the same
+## question asked of the thing that is actually falling.
+##
+## Timed out as well, because a body wedged in geometry can twitch forever and a
+## death that never resolves is a game that never respawns.
+func _settle_ragdoll(delta: float) -> StringName:
+	# DECLARED, like every other path through every other state -- MoveManager
+	# asserts on a tick that does not. False, because the capsule is tracking
+	# nothing: it is frozen in mid-air while the ragdoll does the falling.
+	player.set_grounded(false)
+	_ragdoll_elapsed += delta
+	_drive_screen_effects()
+	if player.ragdoll.hips_speed() <= RAGDOLL_REST_SPEED:
+		_ragdoll_still += delta
+	else:
+		_ragdoll_still = 0.0
+	if _ragdoll_still < RAGDOLL_REST_TIME and _ragdoll_elapsed < RAGDOLL_TIMEOUT:
+		return KEEP
+	return landing_destination(0.0, false)
 
 func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
 	# ✅ THE OWNER: "why does a third-person death always play Jump_Land and
