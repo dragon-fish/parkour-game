@@ -48,18 +48,31 @@ extends MoveConfig
 
 ## How fast the hands travel along a ledge while shimmying, in metres/second.
 ##
-## ⚠️ NO SOURCE. Appendix A1 records that TdMove_Grab HAS a shimmy
-## (`CurrentShimmyMove`, plus two pairs of corner look-constraints and
-## `DisableShimmyTime`) but not how fast it runs -- there is no shimmy speed
-## field in the CDO at all, which suggests the original drives it from the
-## animation rather than from a number.
+## ✅ THE OWNER, off the in-game HUD: "18 km/h" -- 5 m/s, and a fixed value
+## rather than something that scales with anything.
 ##
-## Derived from the clip instead, which is the closest thing to a source we
-## have: UAL1's `Climb_Left` and `Climb_Right` are 0.87 s each and are one
-## reach-and-pull cycle. A hand-over-hand cycle covers roughly half a
-## shoulder-width, so 0.87 s per ~0.5 m is about 0.6 m/s -- slow, which is
-## also what the original looks like. Tune by feel.
-@export var shimmy_speed: float = 0.6
+## ⚠️ RECORDED WITH A CAVEAT, because it is a surprising number and the way
+## it was read admits a specific alternative. 18 km/h is 500 uu/s, which sits
+## between the original's Run (400) and Sprint (630) -- a hand-over-hand shimmy
+## faster than a sprint-adjacent run. And TdMove_Grab carries
+## `PawnPhysics = PHYS_None`: while hanging, the pawn's velocity is not being
+## integrated at all, so the HUD may still be displaying whatever speed was
+## carried INTO the grab. The check is one line of play: hang perfectly still
+## and see whether the HUD still says 18.
+##
+## No CDO field settles it either way. TdMove_Grab has the shimmy's existence
+## (`CurrentShimmyMove`, two pairs of corner look-constraints,
+## `DisableShimmyTime`) but no speed, and TdMove_GrabTransfer -- the obvious
+## suspect -- turns out to be the LEAP between two ledges
+## (`Allowed2DTransferDistance = 260 uu`), not travel along one.
+##
+## ⚠️ THE CLIPS DO NOT KEEP UP AT THIS SPEED, and nothing here makes them.
+## Climb_Left and Climb_Right are 0.87 s for one hand-over-hand cycle; at 5 m/s
+## that cycle has to cover 4.35 m, so the pose reads as scrabbling rather than
+## as climbing. The animator plays them at 1x -- it does NOT speed-match them
+## the way it does the walk and jog sets. If this number survives play, that
+## match is the follow-up.
+@export var shimmy_speed: float = 5.0
 
 ## Dead zone on the sideways stick before a shimmy starts, 0..1.
 ##
