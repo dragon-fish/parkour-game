@@ -46,6 +46,44 @@ extends MoveConfig
 ## shared literal.
 @export var mantle_arc_height: float = 0.3
 
+## How fast the hands travel along a ledge while shimmying, in metres/second.
+##
+## ⚠️ NO SOURCE. Appendix A1 records that TdMove_Grab HAS a shimmy
+## (`CurrentShimmyMove`, plus two pairs of corner look-constraints and
+## `DisableShimmyTime`) but not how fast it runs -- there is no shimmy speed
+## field in the CDO at all, which suggests the original drives it from the
+## animation rather than from a number.
+##
+## Derived from the clip instead, which is the closest thing to a source we
+## have: UAL1's `Climb_Left` and `Climb_Right` are 0.87 s each and are one
+## reach-and-pull cycle. A hand-over-hand cycle covers roughly half a
+## shoulder-width, so 0.87 s per ~0.5 m is about 0.6 m/s -- slow, which is
+## also what the original looks like. Tune by feel.
+@export var shimmy_speed: float = 0.6
+
+## Dead zone on the sideways stick before a shimmy starts, 0..1.
+##
+## Wider than a stick's own noise floor on purpose: while hanging, the same
+## axis is a hair away from doing nothing at all, and a body that creeps along
+## the ledge because a key was brushed reads as a bug rather than as input.
+@export var shimmy_deadzone: float = 0.3
+
+## How far above the ledge top the sideways probe starts, in metres.
+##
+## It has to clear whatever lip, railing or moulding sits on the edge, and it
+## has to stay under any overhang above it. 0.3 m is comfortably both on the
+## geometry this project builds.
+@export var shimmy_probe_lift: float = 0.3
+
+## How much the ledge top may change height over one shimmy step and still
+## count as the same ledge, in metres.
+##
+## This is the knob that stops a shimmy from walking the hands up a staircase
+## of ledges: the hanging body is placed for ONE height, and a step up or down
+## that the body does not follow would leave it hanging from nothing. Tight on
+## purpose.
+@export var shimmy_edge_tolerance: float = 0.15
+
 func _init() -> void:
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: hanging. Which way you face is the wall's business.

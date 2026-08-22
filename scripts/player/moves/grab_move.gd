@@ -11,6 +11,19 @@ extends ScriptedMove
 var _aborted: bool = false
 
 var _edge: Vector3 = Vector3.ZERO
+## The ledge face's normal, pointing AWAY from the wall and back toward the
+## player -- kept because a shimmy runs along the ledge, and the only thing
+## that knows which way "along" is, is the wall.
+##
+## ⚠️ READ FROM THE LEDGE, NOT FROM THE BODY, and that is the whole point.
+## The player can turn freely while hanging (see the commitment note on
+## _exit_direction below), so taking "sideways" off player.basis.x would make
+## A and D swap meaning as soon as they looked along the wall instead of at
+## it. The wall does not turn.
+var _edge_normal: Vector3 = Vector3.BACK
+## -1 shimmying left, +1 right, 0 hanging still. Read by character_animator.gd
+## the same way is_mantling() is.
+var _shimmy: float = 0.0
 ## The direction the mantle pushes and exits along. Captured ONCE, at
 ## COMMITMENT -- the moment forward or jump is pressed and begin() is called,
 ## in physics_update()'s climb-trigger branch below -- NOT at grab time.
@@ -31,6 +44,13 @@ var _mantling: bool = false
 ## vocabulary (`ladder_stillness`); the mantle phase still does not.
 func is_mantling() -> bool:
 	return _mantling
+
+## Which way the hands are travelling along the ledge: -1 left, +1 right, 0
+## still. Exposed for the same reason is_mantling() is -- nothing outside this
+## move can otherwise tell a hang apart from a shimmy, and the animator needs
+## exactly that to choose between Climb_Idle and Climb_Left/Climb_Right.
+func shimmy_direction() -> float:
+	return _shimmy
 
 func enter(_previous: StringName) -> void:
 	# grounded is DECLARED, not read from is_on_floor(): like SpeedVault, this
@@ -78,6 +98,8 @@ func enter(_previous: StringName) -> void:
 		_aborted = true
 		return
 	_edge = query["edge"]
+	_edge_normal = query.get("normal", Vector3.BACK)
+	_shimmy = 0.0
 
 	player.velocity = Vector3.ZERO
 	# The body holds exactly wherever it grabbed -- NO repositioning, up or
@@ -212,8 +234,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# a lot.
 		#
 		# Refused rather than aborted: the hang is still perfectly valid, and
-		# staying on it is what the original does. (Shimmying along it is not
-		# implemented yet -- see docs/feel-backlog.md 34.)
+		# staying on it is what the original does -- AND, since this move grew
+		# a shimmy, staying on it is now something the player can act on rather
+		# than a dead end. An overhung ledge is exactly the case the owner
+		# described: hang, travel along it to somewhere the slab does not
+		# reach, and pull up there.
 		#
 		# Asked of the BODY, not of the probe. Player.fits_standing_at() moves
 		# the shapecast that already exists for the crouch-to-stand restore --
@@ -243,4 +268,80 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# already carries the body up the wall. See
 		# Player.set_clip_lift_cancelled().
 		player.set_clip_lift_cancelled(true)
+	else:
+		# NOT CLIMBING THIS TICK, so the hands are free to travel. Deliberately
+		# in the `else`: holding forward-and-sideways should climb, not shimmy,
+		# and the pull-up is the committed action of the two.
+		_advance_shimmy(delta, input)
 	return KEEP
+
+## One tick of travel along the ledge.
+##
+## ✅ THE OWNER wanted the Climb set used, and it is the one place UAL1
+## carries a complete hang vocabulary: Climb_Idle to hang, Climb_Left and
+## Climb_Right to travel, ClimbLedge to pull up. Both travel clips are 0.87 s
+## with ZERO net displacement, which is the shape this project already relies
+## on everywhere else -- the clip supplies the pose, the code supplies the
+## metres.
+##
+## THE BODY AND THE ANCHOR MOVE TOGETHER OR NEITHER MOVES. Every refusal below
+## returns without touching either, because advancing one without the other is
+## the failure this whole move is built to avoid: _edge is what the pull-up
+## aims at, so an anchor that has crept past the real ledge would mantle the
+## player onto thin air, and a body that has crept past its anchor would hang
+## from a point the ledge no longer occupies.
+func _advance_shimmy(delta: float, input: MoveInput) -> void:
+	if player.probes == null:
+		return
+	var wanted: float = input.move.x
+	if absf(wanted) < config.grab.shimmy_deadzone:
+		_shimmy = 0.0
+		return
+	var side: float = signf(wanted)
+	# ALONG the ledge is ACROSS the wall -- the horizontal face normal turned a
+	# quarter turn. facing.cross(UP) is the right hand of whatever faces
+	# `facing`, and facing here points INTO the wall, so this is the player's
+	# right as they hang looking at it.
+	var facing: Vector3 = -_edge_normal
+	facing.y = 0.0
+	if facing.length_squared() < 0.0001:
+		# The face is horizontal: a soffit or the underside of a slab rather
+		# than a wall. There is no "along" to travel, so there is no shimmy.
+		_shimmy = 0.0
+		return
+	var sideways: Vector3 = facing.normalized().cross(Vector3.UP)
+	var step: Vector3 = sideways * (side * config.grab.shimmy_speed * delta)
+
+	# IS THE LEDGE STILL THERE? Asked of the ledge top from above, because the
+	# forward probe cannot see it from the hanging pose -- see
+	# Probes.ledge_beside() for why that is and what it does instead.
+	var beside: Dictionary = player.probes.ledge_beside(_edge, step,
+			config.grab.shimmy_probe_lift, config.grab.shimmy_edge_tolerance)
+	if not beside.get("valid", false):
+		# The ledge ran out. Hanging on is right: the player is still holding
+		# a perfectly good ledge, they have simply reached the end of it.
+		# Rounding a corner is a separate question and is not answered here.
+		_shimmy = 0.0
+		return
+
+	# AND IS THERE ROOM FOR THE BODY? A ledge can continue past a pillar, a
+	# column or an inside corner that the hanging body cannot pass through, and
+	# the ray above threads between things a body never could. Same shapecast
+	# the mantle asks with, for the same reason.
+	var half: float = player.standing_height() * 0.5
+	var feet: Vector3 = player.global_position + step - Vector3.UP * half
+	if not player.fits_standing_at(feet):
+		_shimmy = 0.0
+		return
+
+	player.global_position += step
+	# The TOP the probe found, not _edge + step: on a ledge that is not
+	# perfectly level the two drift apart, and the anchor should track the real
+	# surface rather than the straight line the hands were aimed along.
+	#
+	# _edge_normal is deliberately NOT updated from this hit. The probe fires
+	# DOWNWARD, so its normal is the ledge TOP's -- straight up -- while this
+	# field holds the FACE's, which is what "along the ledge" is derived from.
+	# Overwriting it would make the next step's direction undefined.
+	_edge = beside["edge"]
+	_shimmy = side

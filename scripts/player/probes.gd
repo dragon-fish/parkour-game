@@ -575,6 +575,59 @@ func ledge_query() -> Dictionary:
 		# already exists for exactly this.
 		"face_normal": _vault_high.get_collision_normal()}
 
+## Whether the ledge the player is hanging from continues `step` metres to one
+## side, and where its top is if it does.
+##
+## A SEPARATE QUERY FROM ledge_query(), and it has to be. ledge_query() probes
+## FORWARD from the body, and GrabMove.enter() already documents why that stops
+## working the moment the grab completes: IntoGrab carries the body to the
+## hanging pose, most of a body-length below the lip and 0.45 m back, and from
+## there the forward ray no longer sees the edge it was carried to. Re-running
+## it every shimmy tick would report "no ledge" while the player is visibly
+## hanging from one.
+##
+## So this asks the question from ABOVE instead -- drop a ray onto where the
+## hands are going and see whether the same top surface is still there. The
+## anchor moves with the hands rather than with the body, which is also what
+## makes it survive the player turning their head while they shimmy.
+##
+## Uses a direct space query rather than one of the persistent rays: those are
+## children of the player and travel with it, while this one has to be fired
+## from an arbitrary point out along the ledge. Same mask as SurfaceDown, read
+## off it rather than restated, so the two cannot drift apart.
+func ledge_beside(edge: Vector3, step: Vector3, lift: float,
+		tolerance: float) -> Dictionary:
+	_ensure_rays()
+	var target: Vector3 = edge + step
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return _no_hit()
+	var query := PhysicsRayQueryParameters3D.create(
+			target + Vector3.UP * lift,
+			target - Vector3.UP * tolerance)
+	query.collision_mask = _surface.collision_mask
+	# The player's own capsule hangs BELOW the lip, so this ray should never
+	# reach it -- but a thin ledge with the body pressed close is exactly the
+	# case where "should never" stops being true, and a self-hit would read as
+	# a perfectly good ledge.
+	var body := get_parent() as CollisionObject3D
+	if body != null:
+		query.exclude = [body.get_rid()]
+	var hit: Dictionary = space.intersect_ray(query)
+	if hit.is_empty():
+		return _no_hit()
+	# HEIGHT IS THE TEST, not merely "something is there". A ledge that steps
+	# up or drops away is a different ledge, and shimmying onto it would leave
+	# the hands at a height the hanging body was never placed for. `tolerance`
+	# is deliberately the same distance the ray is allowed to overshoot below,
+	# so anything it can reach is already within it -- the check below is what
+	# rejects a hit found on the way DOWN from the lift.
+	var found: Vector3 = hit["position"]
+	if absf(found.y - edge.y) > tolerance:
+		return _no_hit()
+	return {"valid": true, "top": found, "edge": found,
+		"normal": hit.get("normal", Vector3.UP)}
+
 ## Points a side ray at the given reach and fires it. Aimed live from the
 ## config on every call, same as _aim_forward() above and for the same
 ## reason: baking the reach into the ray once (e.g. in setup()) would freeze

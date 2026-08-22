@@ -614,6 +614,22 @@ func _target_animation() -> StringName:
 			# tier", which it no longer is. The fox's `ladder_stillness` keeps
 			# second place: it was the genuine match while it was the only one,
 			# and it still is for a body that has it.
+			# TRAVELLING ALONG THE LEDGE gets its own pair, told apart from a
+			# still hang exactly the way the mantle above is told apart from
+			# both -- by asking the move, since nothing else can see the
+			# difference. Climb_Left and Climb_Right are UAL1's hand-over-hand
+			# and belong to the same hang set as Climb_Idle, so the three blend
+			# into each other without a re-plant.
+			#
+			# No `idle` at the end of these two: falling all the way back to a
+			# standing pose mid-shimmy would stand the player up in the air.
+			# Climb_Idle is the right floor to stop at -- a body that has the
+			# hang clip but not the travel clips should keep hanging.
+			var shimmy: float = grab_move.shimmy_direction() if grab_move != null else 0.0
+			if shimmy < 0.0:
+				return _first_available([&"Climb_Left", &"Climb_Idle", &"ladder_stillness"])
+			if shimmy > 0.0:
+				return _first_available([&"Climb_Right", &"Climb_Idle", &"ladder_stillness"])
 			return _first_available([&"Climb_Idle", &"ladder_stillness", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 		Move.WALL_RUN:
 			# THE DAY HAS ARRIVED. WallRun_L/R are the real thing, and Player
