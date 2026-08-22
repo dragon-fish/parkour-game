@@ -139,6 +139,19 @@ func setup(cfg: MovementConfig) -> void:
 		camera.fov = cfg.camera.fov_base
 
 ## 0 = standing, 1 = fully crouched. Driven by Player each tick.
+## Metres to raise the eye by while crouched, for the attached body only. Zero
+## for a body that does not need it, which is the default -- see
+## Player.body_crouch_eye_lift for the one that does and why.
+##
+## Eased the same way the crouch DROP is, and for the same reason: it is applied
+## against an amount that Player sets as a hard 0 or 1, so taking it raw would
+## make the eye jump the moment the capsule shrank.
+var _crouch_eye_lift: float = 0.0
+var _crouch_lift_current: float = 0.0
+
+func set_crouch_eye_lift(metres: float) -> void:
+	_crouch_eye_lift = metres
+
 func set_crouch_amount(amount: float) -> void:
 	_crouch_amount = clampf(amount, 0.0, 1.0)
 
@@ -352,6 +365,7 @@ func reset_state() -> void:
 	_dip = 0.0
 	_bob_phase = 0.0
 	_crouch_amount = 0.0
+	_crouch_lift_current = 0.0
 	_crouch_offset = 0.0
 	_has_eye_ground = false
 	_wall_side = 0
@@ -573,6 +587,12 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var target_offset: float = 		_config.camera.slide_camera_drop * _crouch_amount * (1.0 - follow)
 	_crouch_offset = move_toward(_crouch_offset, target_offset, _config.camera.crouch_lerp_speed * delta)
 	base_position.y -= _crouch_offset
+	# The per-model lift, eased on the same clock. Applied whether or not a
+	# model is driving the eye: a body low enough to need it is exactly the
+	# case where the head-follow has taken over, and this is the correction for
+	# where that lands.
+	_crouch_lift_current = move_toward(_crouch_lift_current, 		_crouch_eye_lift * _crouch_amount, _config.camera.crouch_lerp_speed * delta)
+	base_position.y += _crouch_lift_current
 
 	# A step-up moves the body's Y in a single tick. Hold the eye behind by that
 	# much and ease it up, so clearing a plank reads as a stride rather than a

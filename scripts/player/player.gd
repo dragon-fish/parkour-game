@@ -407,6 +407,29 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## being ahead of the character.
 @export var body_slide_exit_blend_time: float = 0.5
 
+## How long a slide cross-fades into a CROUCH, as opposed to into a stand-up.
+##
+## Between the other two on purpose. A slide into a crouch is continuous -- the
+## body stays down, so it does not need the half second the stand-up does -- but
+## the owner found the ordinary 0.15 s cut too abrupt for a change of pose that
+## large. Twice the base, which is where 0.3 comes from.
+@export var body_slide_to_crouch_blend_time: float = 0.3
+
+## Raises the eye during a crouch or slide, in metres, for THIS body only.
+##
+## NOT A FUDGE FOR A BAD ASSET -- the price of a correct decision, which the
+## owner spotted themselves: "being blocked by the chest means the camera is at
+## the NECK rather than the eyes, so the last adjustment was right."
+##
+## It follows. A neck-height eye is inside the ribcage the moment the body goes
+## prone, and the slide clip is genuinely prone -- the head drops 1.27 m and
+## ends 40 cm off the floor. Everything here is behaving as designed; the design
+## simply has this consequence, and something has to absorb it.
+##
+## Per-model rather than global because how much it takes depends on the body's
+## own proportions, and zero for a body whose chest never reaches the eye.
+@export var body_crouch_eye_lift: float = 0.0
+
 ## The clips whose EXIT gets the longer fade above. Only the slide, because it
 ## is the only move here whose recovery outlasts an ordinary transition.
 const _SLOW_EXIT_CLIPS: Array[StringName] = [&"Slide", &"Slide_Exit", &"sneak"]
@@ -1140,12 +1163,13 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	for to_name in present:
 		# From Start as well, so the first travel() of a body's life is a real
 		# transition rather than a teleport out of the entry node.
-		state_machine.add_transition("Start", String(to_name), _blend_transition(false))
+		state_machine.add_transition("Start", String(to_name),
+				_blend_transition(body_animation_blend_time))
 		for from_name in present:
 			if from_name == to_name:
 				continue
-			var slow: bool = _SLOW_EXIT_CLIPS.has(from_name) 				and not _CROUCHED_CLIPS.has(to_name)
-			state_machine.add_transition(String(from_name), String(to_name), 				_blend_transition(slow))
+			state_machine.add_transition(String(from_name), String(to_name),
+					_blend_transition(_exit_blend_time(from_name, to_name)))
 
 	# WRAPPED IN A BLEND TREE, rather than used as the root directly.
 	#
@@ -1210,10 +1234,20 @@ func _wire_body_animation(body_node: Node3D) -> void:
 ## resource per edge, never a shared one: AnimationNodeStateMachineTransition is
 ## a Resource, and handing the same instance to every edge would make them one
 ## object wearing many hats.
-func _blend_transition(slow_exit: bool = false) -> AnimationNodeStateMachineTransition:
+## How long one particular edge should take. Three tiers, and the middle one is
+## the owner's: leaving a slide for a crouch is continuous and does not need the
+## stand-up's half second, but at the ordinary 0.15 s a change of pose that
+## large reads as a cut.
+func _exit_blend_time(from_name: StringName, to_name: StringName) -> float:
+	if not _SLOW_EXIT_CLIPS.has(from_name):
+		return body_animation_blend_time
+	if _CROUCHED_CLIPS.has(to_name):
+		return body_slide_to_crouch_blend_time
+	return body_slide_exit_blend_time
+
+func _blend_transition(seconds: float) -> AnimationNodeStateMachineTransition:
 	var transition := AnimationNodeStateMachineTransition.new()
 	transition.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
-	var seconds: float = body_slide_exit_blend_time if slow_exit else body_animation_blend_time
 	transition.xfade_time = maxf(seconds, 0.0)
 	return transition
 
@@ -1394,6 +1428,7 @@ func _physics_process(delta: float) -> void:
 			# half-metre upward on a frame where nothing else happens.
 			var crouch_amount: float = 1.0 if crouched else slide_recovery_fraction()
 			camera_rig.set_crouch_amount(crouch_amount)
+		camera_rig.set_crouch_eye_lift(body_crouch_eye_lift)
 		camera_rig.set_wall_side(wall_side)
 		# Fed as a plain local-space Vector3, not a Node3D reference —
 		# CameraRig stays decoupled from the scene-tree/body-search concerns

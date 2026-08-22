@@ -170,8 +170,12 @@ func test_a_slide_into_a_crouch_does_not_get_the_long_fade() -> void:
 	assert_gt(to_crouch, -1, "slide to crouch has no edge at all")
 	assert_gt(to_run, -1, "slide to run has no edge at all")
 	assert_almost_eq(graph.get_transition(to_crouch).xfade_time, \
-		player.body_animation_blend_time, 0.0001, \
-		"staying low after a slide waited out the stand-up fade")
+		player.body_slide_to_crouch_blend_time, 0.0001, \
+		"slide to crouch did not get its own middle-tier fade")
+	assert_lt(player.body_slide_to_crouch_blend_time, player.body_slide_exit_blend_time, \
+		"the crouch fade is no shorter than the stand-up's, so there are only two tiers")
+	assert_gt(player.body_slide_to_crouch_blend_time, player.body_animation_blend_time, \
+		"the crouch fade is no longer than an ordinary cut, which the owner found abrupt")
 	assert_almost_eq(graph.get_transition(to_run).xfade_time, \
 		player.body_slide_exit_blend_time, 0.0001, \
 		"standing up out of a slide did not get the long fade")

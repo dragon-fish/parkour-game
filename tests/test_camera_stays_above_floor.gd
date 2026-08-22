@@ -116,3 +116,57 @@ func test_without_a_body_the_procedural_drop_still_happens() -> void:
 		rig.set_crouch_amount(1.0)
 		rig.update_effects(TICK, 0.0, true)
 	assert_lt(rig.position.y, standing - 0.5, 		"a body-less crouch dropped the eye only %.3f m" % (standing - rig.position.y))
+
+func test_the_per_model_lift_raises_the_crouched_eye() -> void:
+	# NOT A FUDGE FOR A BAD ASSET -- the price of a correct decision, which the
+	# owner spotted themselves: being blocked by the chest means the camera is
+	# at the NECK rather than the eyes, which is where an FPS camera belongs. A
+	# neck-height eye is inside the ribcage the moment the body goes prone, and
+	# the slide clip is genuinely prone.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	var rig: CameraRig = player.camera_rig
+	const TICK := 1.0 / 60.0
+	const LIFT := 0.3
+
+	for i in 120:
+		rig.set_crouch_eye_lift(0.0)
+		rig.set_crouch_amount(1.0)
+		rig.update_effects(TICK, 0.0, true)
+	var without: float = rig.position.y
+
+	for i in 120:
+		rig.set_crouch_eye_lift(LIFT)
+		rig.set_crouch_amount(1.0)
+		rig.update_effects(TICK, 0.0, true)
+	assert_almost_eq(rig.position.y - without, LIFT, 0.005, \
+		"the lift raised the crouched eye by %.3f m instead of %.3f" \
+		% [rig.position.y - without, LIFT])
+
+func test_the_lift_does_nothing_while_standing() -> void:
+	# It is a correction for a pose, not a change to the eye height. Leaking
+	# into the standing camera would quietly break the 1.66 m the whole feel is
+	# calibrated against.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var rig: CameraRig = (world["player"] as Player).camera_rig
+	const TICK := 1.0 / 60.0
+
+	for i in 120:
+		rig.set_crouch_eye_lift(0.0)
+		rig.set_crouch_amount(0.0)
+		rig.update_effects(TICK, 0.0, true)
+	var without: float = rig.position.y
+	for i in 120:
+		rig.set_crouch_eye_lift(0.3)
+		rig.set_crouch_amount(0.0)
+		rig.update_effects(TICK, 0.0, true)
+	assert_almost_eq(rig.position.y, without, 0.001, \
+		"a standing eye moved %.3f m for a crouch-only correction" % (rig.position.y - without))

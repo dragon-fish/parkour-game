@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://003wt2e33l81"]
+
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="1_base"]
+[ext_resource type="PackedScene" uid="uid://dke48xno7b5re" path="res://assets/models/test.vrm" id="2_body"]
+[ext_resource type="PackedScene" uid="uid://c6vleifict4ry" path="res://assets/animations/ual2_standard.glb" id="3_anims"]
+[ext_resource type="PackedScene" uid="uid://djrholt5dkgr1" path="res://assets/animations/ual1_standard.glb" id="4_anims1"]
+
+[node name="Player" unique_id=1209132754 instance=ExtResource("1_base")]
+body_scene = ExtResource("2_body")
+body_mount_rotation_degrees = Vector3(0, 180, 0)
+body_mount_scale = 1.081
+body_animation_libraries = Array[PackedScene]([ExtResource("4_anims1"), ExtResource("3_anims")])
+body_head_path = NodePath("GeneralSkeleton/Head")
+
+[node name="Camera3D" parent="CameraRig" parent_id_path=PackedInt32Array(1286776614) index="0" unique_id=694716028]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.04775977, -0.17361778)
