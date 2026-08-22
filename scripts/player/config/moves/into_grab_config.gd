@@ -19,6 +19,24 @@ func _init() -> void:
 	# ✅ TdMove_IntoGrab: bCheckForVaultOver is set, so a reach can still turn
 	# into a vault if the geometry turns out to suit one better.
 	check_for_vault_over = true
+	# ⚠️ THE HALF OF THE FIX THAT ACTUALLY BREAKS THE LOOP. A reach that gives
+	# up hands back to Falling, and AirborneMove asks its grab question BEFORE
+	# its landing question -- so without a cooldown here, Falling sends the body
+	# straight back into the reach it just abandoned, forever, whenever the
+	# ledge stays in view. It stays in view indefinitely from the floor, because
+	# ledge_query()'s height gate is measured from the FEET.
+	#
+	# This is the same mechanism WallRun and Grab already use (MoveManager arms
+	# it on every transition OUT, can_enter() checks it before every transition
+	# back IN), so it needs no new machinery -- only a number, which this config
+	# had left at zero.
+	#
+	# ⚠️ NO SOURCE for the number. TdMove_IntoGrab carries no RedoMoveTime in
+	# the CDO. 0.3 s is long enough for a landing to resolve into Walking or the
+	# Landing lockout on the very next tick, and short enough that a genuine
+	# second attempt at a ledge on the way past still lands inside the window a
+	# player would try it in.
+	redo_move_time = 0.3
 
 ## ✅ `IntoGrabAlignSpeed = 300` uu/s. The rate the body is carried to the
 ## hanging pose at.

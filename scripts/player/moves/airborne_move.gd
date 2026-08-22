@@ -163,6 +163,29 @@ func probe_transition() -> StringName:
 			#
 			# Contact is the other way of satisfying the same question, and it
 			# satisfies it completely. See docs/contact-drives-movement.md.
+			#
+			# ⚠️ BUT ONLY WHILE THE BODY IS STILL GOING UP, and leaving that out
+			# cost two of the loops the owner found. Read the paragraph above
+			# again: every word of it is about a CLIMB topping out -- "the body
+			# is going straight up against a surface it is already in contact
+			# with". A body that is merely RESTING against a wall satisfies
+			# touching() just as completely and is going nowhere, so the bypass
+			# fired forever:
+			#
+			#   Walking -> Falling -> SpeedVault -> Walking -> Falling -> ...
+			#
+			# at about forty times a second, which is what the owner's two
+			# screenshots show. Both were bodies at h 0.00 v 0.00 pressed
+			# against a face: one beside a block after a grab, one backing
+			# slowly off a roof edge until it dropped. Neither was climbing.
+			#
+			# THE VAULT IS NOT WHAT LOOPS. A vault fired from a standstill has
+			# no speed to carry the body anywhere, so it ends where it began,
+			# hands back to Walking, falls, and meets the same open bypass on
+			# the next tick. Any gate that cannot be satisfied twice from the
+			# same spot would do; requiring the rise is the one that gives the
+			# bypass back exactly the case it was written for.
+			var rising: bool = player.velocity.y > 0.0
 			var closing: bool = config.speed_vault.should_commit( 				hit["distance"], player.horizontal_speed(), variant)
 			# NOWHERE TO PASS THROUGH IS NOT A VAULT. Unlike a grab, which can
 			# still hang on a capped ledge, a vault has no half-measure: every
@@ -170,7 +193,7 @@ func probe_transition() -> StringName:
 			# whether it lands there or beyond. A slab over the top means
 			# clipping through it, which the owner reported as happening a lot.
 			var room: bool = player.fits_standing_at(hit["top"])
-			if room and (closing or touching(hit.get("face_point", Vector3.ZERO))):
+			if room and (closing or (rising and touching(hit.get("face_point", Vector3.ZERO)))):
 				player.pending_vault_variant = variant
 				return SPEED_VAULT
 

@@ -129,6 +129,30 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			return FALLING
 		if not touching(_face_point):
 			carry_ballistically(delta)
+			# ✅ THE OWNER: "速度不够的时候对着墙跳可能触发无限
+			# IntoGrab->Falling 循环."
+			#
+			# ⚠️ THE REACH NEVER ASKED WHETHER THE BODY WAS STILL IN THE AIR.
+			# carry_ballistically() runs move_and_slide() and sets grounded, so
+			# the answer was there the whole time and simply went unread: a jump
+			# too weak to get the hands to the lip drops the body back onto the
+			# floor, where it then spends the rest of max_duration (1.5 s) with
+			# its input frozen, pretending to reach for something above it.
+			#
+			# ledge_query()'s height gate is measured from the FEET, so a ledge
+			# inside [min_wall_height, ledge_max_height] of the floor stays
+			# "valid and within reach" from a standing start forever. That is
+			# what closes the loop -- AirborneMove asks the grab question before
+			# its own landing question, so the tick this hands back to Falling,
+			# Falling sends it straight here again.
+			#
+			# FALLING, not WALKING: whether that landing costs the 2 s Landing
+			# lockout is AirborneMove.landing_destination()'s to judge, and
+			# short-circuiting to Walking here would turn a reach at any passing
+			# ledge into a way to cancel a hard landing. Breaking the loop is
+			# IntoGrabConfig.redo_move_time's job, not this line's.
+			if player.grounded and player.velocity.y <= 0.0:
+				return FALLING
 			return KEEP
 		# CONTACT. The reach starts HERE, from wherever the body has actually
 		# got to -- not from where it was when the ledge was first seen.
