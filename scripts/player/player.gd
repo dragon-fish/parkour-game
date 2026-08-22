@@ -1166,6 +1166,33 @@ func set_clip_offset_immediately(position_offset: Vector3, rotation_offset: Vect
 	_apply_clip_offset()
 	refresh_head_follow()
 
+## The head's displacement from rest, MINUS whatever the per-clip offset moved
+## the whole body by.
+##
+## ✅ The owner: "I lowered one to fix third person and the first-person camera
+## went underground." Exactly what would happen -- in first person the eye is
+## dragged along by the head bone, so a correction meant to plant the MODEL's
+## hands on a ledge moves the VIEW by the same amount, and a few centimetres of
+## down is the floor.
+##
+## So the eye follows the ANIMATION and ignores the correction. A clip offset is
+## a statement about where the model should sit relative to the world; it is not
+## a statement about where the player is looking from. Moving the eye
+## deliberately already has its own knobs -- body_slide_eye_lift is one -- and
+## they are per-model rather than per-clip for the same reason.
+##
+## ⚠️ The POSITION part only. A clip offset's rotation also moves the head a
+## little, and that is left in: the head sits near the axis a yaw turns about,
+## so the amount is small, and unpicking it would mean re-deriving the bone's
+## position from a pose it is not in.
+func _camera_head_offset() -> Vector3:
+	var raw: Vector3 = to_local(head_node.global_position) - head_rest_local
+	var body_root := get_node_or_null("BodyRoot") as Node3D
+	var applied: Vector3 = _clip_offset_position
+	if body_root != null:
+		applied = body_root.transform.basis * _clip_offset_position
+	return raw - applied
+
 ## Re-feeds the camera the head's current displacement from rest, out of band
 ## with the physics tick. Exists for the paused case above; during play
 ## _physics_process() does exactly this line every tick.
@@ -1179,7 +1206,7 @@ func refresh_head_follow() -> void:
 	# deferred modifier pass that a paused tree never runs: without it the bone
 	# still reports where it was before the body moved.
 	head_node.force_update_transform()
-	camera_rig.set_head_offset(to_local(head_node.global_position) - head_rest_local)
+	camera_rig.set_head_offset(_camera_head_offset())
 	camera_rig.update_effects(0.0, 0.0, grounded)
 
 ## Builds the head look on the body's skeleton, if it has a neck to turn.
@@ -1629,7 +1656,7 @@ func _physics_process(delta: float) -> void:
 		# that produced it, matching how every other per-tick input here
 		# (speed, grounded, wall_side) is already a value, not an object.
 		if head_node != null:
-			camera_rig.set_head_offset(to_local(head_node.global_position) - head_rest_local)
+			camera_rig.set_head_offset(_camera_head_offset())
 		else:
 			camera_rig.clear_head_position()
 		# travel_speed(), NOT horizontal_speed() — see travel_speed()'s note on

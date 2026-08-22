@@ -114,3 +114,34 @@ func test_a_malformed_entry_is_ignored_rather_than_fatal() -> void:
 	assert_eq(player.clip_offset_for(&"Idle"), [], "a malformed entry was accepted")
 	assert_almost_eq(player.body.position.distance_to(player._body_mount.origin), 0.0, 0.0001,
 		"a malformed entry moved the body somewhere")
+
+# --- the eye does not follow the correction -------------------------------------
+
+func test_lowering_the_body_does_not_lower_the_camera() -> void:
+	# ✅ THE OWNER'S REPORT: "I lowered one to fix third person and the
+	# first-person camera went straight into the ground." In first person the eye
+	# is dragged along by the head bone, so a correction meant to plant the
+	# MODEL's hands moves the VIEW by the same amount -- and a few centimetres of
+	# down is the floor.
+	#
+	# A clip offset says where the model should sit relative to the world. It is
+	# not a statement about where the player is looking from, and moving the eye
+	# deliberately has its own knobs.
+	var player: Player = await _player_with_body()
+	# A head to follow, placed like a real one: the fixture's body has no
+	# skeleton, so stand in a node at roughly neck height.
+	var head := Node3D.new()
+	head.name = "FakeHead"
+	player.body.add_child(head)
+	head.position = Vector3(0.0, 1.5, 0.0)
+	player.head_node = head
+	player.head_rest_local = player.to_local(head.global_position)
+	var rest: Vector3 = player._camera_head_offset()
+
+	player.set_clip_offset_immediately(Vector3(0.0, -0.30, 0.0), Vector3.ZERO)
+	var after: Vector3 = player._camera_head_offset()
+	assert_almost_eq(after.distance_to(rest), 0.0, 0.001,
+		"a 0.30 m drop moved the eye by %.3f m" % after.distance_to(rest))
+	# And the MODEL did move -- otherwise this passes because nothing happened.
+	assert_almost_eq(player.body.position.y, player._body_mount.origin.y - 0.30, 0.0001,
+		"the body did not move either, so the test proves nothing")
