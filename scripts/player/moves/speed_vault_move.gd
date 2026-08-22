@@ -203,14 +203,23 @@ func enter(_previous: StringName) -> void:
 		landing = far_point + _exit_direction * config.speed_vault.vault_exit_forward
 		landing.y = far_point.y + player.standing_height() * 0.5
 		# THE ARC IS DERIVED FROM THE OBSTACLE, not fixed. See
-		# SpeedVaultConfig.vault_over_peak_below_top for the measurement and for
+		# SpeedVaultConfig.vault_over_eye_above_top for the measurement and for
 		# why a constant rise could not be right at more than one height.
 		#
 		# ScriptedMove adds the arc on top of the straight line between the
 		# ends, peaking in the middle, so what is wanted here is the gap between
 		# that line's midpoint and where the feet should actually peak.
 		var half: float = player.standing_height() * 0.5
-		var wanted_peak: float = top.y - config.speed_vault.vault_over_peak_below_top
+		# THE ARC IS AIMED AT THE EYE, through whatever the fold is doing to it.
+		# See SpeedVaultConfig.vault_over_eye_above_top: aiming at the FEET and
+		# folding the body were each right on their own and subtracted twice
+		# together, which is what put the camera inside a solid wall.
+		var eye_above_soles: float = config.camera.eye_height + half
+		var fold: float = 0.0
+		if not is_scramble():
+			fold = maxf(player.standing_height() - config.crouch.crouch_capsule_height, 0.0)
+		var wanted_eye: float = top.y + config.speed_vault.vault_over_eye_above_top
+		var wanted_peak: float = wanted_eye - (eye_above_soles - fold)
 		var midpoint_feet: float = (player.global_position.y + landing.y) * 0.5 - half
 		arc = maxf(0.0, wanted_peak - midpoint_feet)
 

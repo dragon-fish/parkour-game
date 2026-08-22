@@ -269,27 +269,23 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## How high a vault OVER bulges above the straight line from where it started to
 ## where it lands.
 ##
-## How far BELOW the obstacle's top the feet peak during a vault OVER.
+## How far ABOVE the obstacle's top the EYE passes during a vault OVER.
 ##
-## ✅ MEASURED, and this is the same measurement the old constant came from --
-## read the other way round. docs/feel-backlog.md 26-27: the fence's top is at
-## SZD 2.64, the feet commit at 0.76 and peak at 1.77, so the peak is 0.87 m
-## BELOW the top. Faith's feet never clear the fence at all; she plants a hand
-## and swings the body past it.
+## ✅ MEASURED, from docs/feel-backlog.md 26-27 -- the same measurement two
+## earlier versions of this field held, read one step further. The fence's top
+## is at SZD 2.64 and the feet peak at 1.77, so the feet pass 0.87 BELOW it;
+## the eye sits 1.66 above the feet, so the eye passes 2.64 + 0.79.
 ##
-## ⚠️ WHY THIS REPLACED A FIXED ARC HEIGHT, and it is the whole of the owner's
-## "the eye is still far too high" report. The old field held 1.0 -- the RISE
-## in that same measurement -- and applied it to every obstacle. But 1.0 was
-## measured on a 2.64 m fence entered from a jump with the feet already at
-## 0.76; using it on a 1 m box lifts the feet a metre over something they only
-## needed to reach, and the eye rides 1.66 m above the top because the eye is
-## 1.66 m above the feet.
+## ⚠️ AIMED AT THE EYE, and that correction is the whole history of this field.
+## It first held the measured RISE (1.0 m) and applied it at every obstacle
+## height, which put the eye 1.66 m over a 1 m box. It then held the feet
+## figure (0.87), which generalises properly -- but the body had meanwhile been
+## given a FOLD that lowers the eye 0.9 m relative to the feet, and the two
+## subtractions stacked: the eye came out below the top and the camera passed
+## through a solid 1.9 m wall.
 ##
-## The subtraction generalises where the rise does not. Feet peaking 0.87 below
-## the top puts the EYE 0.79 above it, at every obstacle height -- which is what
-## the original's own numbers say it does.
-##
-## Floored at the straight line between the ends, so a low obstacle produces no
-## arc at all rather than a dip: 0.87 below the top of a 0.64 m ledge is
-## underground.
-@export var vault_over_peak_below_top: float = 0.87
+## The eye is what the player is, so the eye is what the number is about. The
+## feet peak is derived from it, through whatever the fold is doing at the time,
+## so changing the fold moves the arc with it instead of silently double
+## counting.
+@export var vault_over_eye_above_top: float = 0.79
