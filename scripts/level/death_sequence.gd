@@ -64,6 +64,19 @@ var _entry_pitch: float = 0.0
 ## body's own death clip does the work -- see play().
 var _cinematic: bool = false
 
+## How long the screen spends going black at the END of a death, in seconds.
+##
+## ✅ The owner, on the one genuinely awkward part of a ragdoll -- that it is a
+## one-way door and the body is left in whatever pose physics chose: "we can
+## black the screen for a moment on respawn. Games and film are the art of
+## deception; if you cannot do it well, cover it up." Quite right, and it is
+## what every game does with a respawn anyway.
+const BLACKOUT := 0.35
+
+## True once this death handed the body to the physics solver, so the release
+## knows to take it back.
+var _ragdolled: bool = false
+
 func total_duration() -> float:
 	return DROP_TIME + HOLD_TIME + TOPPLE_TIME + REST_TIME
 
@@ -84,6 +97,18 @@ func play(player: Player) -> void:
 		# where a standing body's feet are.
 		_feet_offset = _player.standing_height() * 0.5
 		_player.set_dying(true)
+		# LET GO OF THE BODY. Only ever possible with a humanoid rig, which
+		# Ragdoll.build() decides for itself -- everything else dies by its
+		# animation as before.
+		if _player.ragdoll != null and _player.body != null 				and _player.ragdoll.build(_player.find_skeleton()):
+			# Thrown somewhere, so a death has a direction rather than folding
+			# straight down. Horizontal, with the carried speed left in: being
+			# launched is what killed them.
+			var throw := Vector3(randf_range(-1.0, 1.0), randf_range(0.2, 0.8),
+					randf_range(-1.0, 1.0)).normalized() * randf_range(3.0, 7.0)
+			_player.ragdoll.start(throw + _player.velocity * 0.5,
+					_player.get_rid())
+			_ragdolled = true
 		if _player.camera_rig != null:
 			# BEFORE the branch below, and in both views. A fatal fall lands
 			# like any other, so the landing flinch has already been written by
@@ -138,6 +163,13 @@ func _physics_process(delta: float) -> void:
 	if _cinematic and _player != null and _player.camera_rig != null:
 		var pose := _pose_at(_elapsed)
 		_player.camera_rig.set_cinematic_pose(pose[0], pose[1], pose[2])
+	# THE CURTAIN. Ramped over the last BLACKOUT seconds, so the moment the
+	# solver is taken away -- and the skeleton snaps back to whatever the
+	# animation wanted -- happens behind it.
+	if _player != null and _player.screen_effects != null:
+		var into_blackout: float = _elapsed - (total_duration() - BLACKOUT)
+		_player.screen_effects.set_tint(Color.BLACK,
+				clampf(into_blackout / BLACKOUT, 0.0, 1.0))
 	if _elapsed >= total_duration():
 		_release_player()
 		finished.emit()
@@ -168,6 +200,9 @@ func _release_player() -> void:
 	if _player == null:
 		return
 	_player.set_dying(false)
+	if _ragdolled and _player.ragdoll != null:
+		_player.ragdoll.stop()
+		_ragdolled = false
 	if _player.camera_rig != null:
 		_player.camera_rig.set_death_lift(0.0)
 	# Symmetrically: only ended if it was ever begun. end_cinematic() on a rig

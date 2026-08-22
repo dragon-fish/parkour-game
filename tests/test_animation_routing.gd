@@ -130,7 +130,7 @@ const FULL_CLIPS: Array = [
 	&"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Turn180_L", &"Turn180_R",
 	&"StepUp", &"Death01", &"Death02",
 	&"WallRun_Jump_L", &"WallRun_Jump_R",
-	&"LiftAir_Fall", &"LiftAir_Fall_Air", &"LiftAir_Fall_Impact",
+	&"LiftAir_Fall_Air", &"LiftAir_Fall_Impact",
 ]
 
 func test_the_paid_packs_replace_their_placeholders() -> void:

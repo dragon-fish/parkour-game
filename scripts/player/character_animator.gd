@@ -244,10 +244,6 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 	if to == Move.SLIDE:
 		_start_oneshot(&"Slide_Start")
 		return
-	if to == Move.FALL_UNCONTROLLED:
-		# The moment control is lost, before the descent settles into its loop.
-		_start_oneshot(&"LiftAir_Fall")
-		return
 	if from == Move.SLIDE:
 		# NOT INTO A CROUCH. ✅ The owner settled this for the blend times
 		# already -- a slide into a crouch is continuous, the body simply stays
@@ -673,16 +669,21 @@ func _target_animation() -> StringName:
 			# that used to stand here said nothing in the FREE tier
 			# distinguished a flail from a fall, which was true of the free
 			# tier.
-			# ⚠️ THE _Air ONE IS THE LOOP. The pack names these the way it names
-			# NinjaJump_Start / _Idle / _Land: LiftAir_Fall is the ENTRY, played
-			# once, and LiftAir_Fall_Air is the descent that follows. Routing
-			# the state at the entry clip left it holding its last frame for the
-			# whole drop -- ✅ the owner's "you have the falling animation set to
-			# the impact one", which is what that frozen pose reads as.
+			# ⚠️ THE _Air ONE, AND ONLY THAT ONE. The three LiftAir clips are
+			# not a Start/Idle/Land set, which is what the names suggest and
+			# what an earlier version of this assumed. Measured, as hip height
+			# over the clip:
 			#
-			# The entry is armed as a one-shot instead, the same way Slide_Start
-			# leads into Slide. See _arm_oneshot().
-			return _first_available([&"LiftAir_Fall_Air", &"LiftAir_Fall", &"Jump",
+			#   LiftAir_Fall        0.96 -> 0.04   a KNOCKDOWN, ending on the
+			#                                      floor. Not an entry at all.
+			#   LiftAir_Fall_Air    0.19 -> 0.21   flat, looping: the descent
+			#   LiftAir_Fall_Impact 0.19 -> 0.05   arriving
+			#
+			# LiftAir_Fall was briefly armed as the entry one-shot, and it made
+			# the body collapse to floor height in MID-AIR -- ✅ the owner's
+			# "it plays the impact once and then the loop". It reads as an
+			# impact because it is one.
+			return _first_available([&"LiftAir_Fall_Air", &"Jump",
 				&"NinjaJump_Idle", &"jump", &"idle"])
 		Move.LANDING:
 			# The hard landing nobody rolled out of: a two-second lockout spent

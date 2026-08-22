@@ -130,13 +130,17 @@ func test_a_body_without_the_clip_arms_nothing() -> void:
 	animator._arm_oneshot(Move.WALKING, Move.SLIDE)
 	assert_eq(animator._oneshot_target(0.0), Move.KEEP, "a one-shot was armed for a clip the body does not have")
 
-func test_losing_control_plays_the_entry_before_the_descent() -> void:
-	# LiftAir_Fall is the moment control goes, played once; LiftAir_Fall_Air is
-	# the drop that follows and loops. Same shape as Slide_Start into Slide.
+func test_losing_control_arms_nothing() -> void:
+	# ⚠️ IT USED TO ARM LiftAir_Fall, and that was wrong in a way only
+	# measurement caught. The three LiftAir clips are not a Start/Idle/Land
+	# set: LiftAir_Fall runs the hips from 0.96 down to 0.04, a KNOCKDOWN that
+	# ends on the floor. Armed as an entry it collapsed the body to floor height
+	# in MID-AIR, which is ✅ the owner's "it plays the impact once and then the
+	# loop" -- it reads as an impact because it is one.
 	var animator: CharacterAnimator = await _animator()
 	animator._arm_oneshot(Move.FALLING, Move.FALL_UNCONTROLLED)
-	assert_eq(animator._oneshot_target(0.0), StringName(&"LiftAir_Fall"),
-		"losing control had no moment to it")
+	assert_eq(animator._oneshot_target(0.0), Move.KEEP,
+		"losing control played something on the way into the fall")
 
 func test_a_dying_body_does_not_absorb_its_landing() -> void:
 	# ✅ THE OWNER: "it still plays jump_land once on touchdown -- we already

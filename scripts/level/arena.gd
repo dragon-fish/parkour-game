@@ -172,6 +172,12 @@ func reset_player() -> void:
 	# has added the sequence (a test driving this node by hand).
 	if _death_sequence != null:
 		_death_sequence.stop()
+	# The curtain the death drew, lifted on the far side of the respawn -- see
+	# DeathSequence.BLACKOUT. Cleared HERE rather than by the sequence, because
+	# the whole point is that it outlasts the sequence: the body has to be back
+	# on its feet before the screen comes up.
+	if player.screen_effects != null:
+		player.screen_effects.set_tint(player.screen_effects.tint_color(), 0.0)
 	player.velocity = Vector3.ZERO
 	player.global_position = spawn_point.global_position
 	player.rotation = Vector3.ZERO

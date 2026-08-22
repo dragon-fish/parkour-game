@@ -537,6 +537,10 @@ var _cancel_clip_lift: bool = false
 var _lift_cancel_amount: float = 0.0
 ## The skeleton and Hips index, resolved once at attach -- this is read every
 ## tick and find_bone() is a string search.
+## Built lazily on the first death, and only for a body whose bones are named
+## like a humanoid. Null everywhere else, which is every non-VRM body this
+## project has ever attached.
+var ragdoll: Ragdoll = null
 var _skeleton: Skeleton3D = null
 var _hips_bone: int = -1
 
@@ -989,6 +993,10 @@ func _attach_body(scene: PackedScene) -> void:
 	_wire_body_animation(body)
 	_skeleton = _find_skeleton(body)
 	_hips_bone = _skeleton.find_bone(&"Hips") if _skeleton != null else -1
+	# NOT BUILT HERE. Twelve rigid bodies and eleven joints are not free, and
+	# most lives never end in one -- see Ragdoll for what it is and why it is a
+	# one-way door.
+	ragdoll = Ragdoll.new()
 	head_node = _resolve_head_node(body)
 	_attach_hand_ik(body)
 	_attach_head_look(body)
@@ -1449,6 +1457,11 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# Counter-rotated, so the model's WORLD yaw is _visual_yaw whatever the body
 	# is doing. Wrapped, so a player who spins on the spot cannot wind this up.
 	body_root.rotation.y = wrapf(_visual_yaw - rotation.y, -PI, PI)
+
+## The attached body's skeleton, or null. Resolved once at attach and handed out
+## rather than re-searched: DeathSequence asks for it to build a ragdoll on.
+func find_skeleton() -> Skeleton3D:
+	return _skeleton
 
 func _find_skeleton(root: Node) -> Skeleton3D:
 	var queue: Array[Node] = [root]
