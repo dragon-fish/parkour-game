@@ -69,6 +69,12 @@ const RADIUS_MAX := 0.14
 ## and SCALED physics bodies are unreliable in Godot generally. Recorded rather
 ## than guessed at further -- if tightening the spans does not settle it, the
 ## scale is where to look next.
+## A layer of their own, so a ragdoll interacts with the world and with itself
+## and with nothing else. MASK is the world layer; the player is excluded by RID
+## on top of that, since it shares the world layer.
+const LAYER := 1 << 7
+const MASK := 1
+
 const JOINT_TWIST_DEG := 30.0
 const JOINT_SWING_DEG := 30.0
 
@@ -119,6 +125,11 @@ func start(impulse: Vector3, exclude: RID) -> void:
 	if _skeleton == null or _simulating:
 		return
 	_simulating = true
+	# Given their collisions back -- see stop(), which takes them away.
+	for child in _skeleton.get_children():
+		if child is PhysicalBone3D:
+			(child as PhysicalBone3D).collision_layer = LAYER
+			(child as PhysicalBone3D).collision_mask = MASK
 	_skeleton.physical_bones_add_collision_exception(exclude)
 	# ⚠️ THE SKELETON'S PARENT MUST STOP MOVING, and the caller owes that. These
 	# bodies are children of the skeleton, which hangs off a CharacterBody3D --
@@ -150,6 +161,21 @@ func stop() -> void:
 			physical.linear_velocity = Vector3.ZERO
 			physical.angular_velocity = Vector3.ZERO
 	_skeleton.physical_bones_stop_simulation()
+	# INERT AFTERWARDS. ⚠️ A PhysicalBone3D that is not simulating is still a
+	# RigidBody3D with a collision shape, dragged along by whatever the skeleton
+	# does -- including a respawn that teleports it across the level. Twelve of
+	# those arriving at speed inside the world geometry is a plausible reading
+	# of ✅ the owner's "after respawning I fly off uncontrollably and seem to
+	# ignore obstacles". They cost nothing while switched off.
+	for child in _skeleton.get_children():
+		if child is PhysicalBone3D:
+			(child as PhysicalBone3D).collision_layer = 0
+			(child as PhysicalBone3D).collision_mask = 0
+	# AND THE POSE GOES BACK. The bones are left wherever physics finished with
+	# them, and everything downstream reads them as if they were an animation --
+	# the head-follow in particular, which would hand the camera a head lying
+	# several metres away. The respawn's black screen covers the snap.
+	_skeleton.reset_bone_poses()
 
 # --- building ------------------------------------------------------------------
 
@@ -172,6 +198,13 @@ func _add_segment(bone: StringName, child: StringName, mass: float) -> void:
 	body.bone_name = String(bone)
 	body.transform = rest
 	body.mass = mass
+	# BORN INERT. They are switched on by start() and off again by stop(), so
+	# the only window in which twelve rigid bodies exist inside the player is
+	# the one where they are supposed to. ⚠️ Created live, they would be pushing
+	# the capsule around from the first death onwards -- including after it,
+	# which is ✅ what the owner saw as "the character has been possessed".
+	body.collision_layer = 0
+	body.collision_mask = 0
 	# CONE everywhere except the root, which is what holds a body together
 	# without letting an elbow bend backwards through the arm. The hips have
 	# nothing above them to be jointed TO.

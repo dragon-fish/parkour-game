@@ -210,3 +210,59 @@ func test_an_ordinary_uncontrolled_fall_still_falls() -> void:
 	assert_gt(before.y - player.global_position.y, 0.05,
 		"a bodiless uncontrolled fall did not fall")
 	TestWorld.teardown(world)
+
+func test_the_bodies_go_inert_when_the_ragdoll_stops() -> void:
+	# ✅ THE OWNER: "after respawning the character moves in a very strange way
+	# -- WASD does something, but it is as if it has been possessed, and it
+	# randomly moves at high speed."
+	#
+	# ⚠️ A PhysicalBone3D THAT IS NOT SIMULATING IS STILL A RigidBody3D, with a
+	# collision shape, dragged along by whatever the skeleton does -- including
+	# a respawn that teleports it across the level. Twelve of those arriving
+	# inside the world geometry at teleport speed will shove anything they can
+	# reach, and the capsule is standing right in the middle of them.
+	var skeleton := _humanoid()
+	var ragdoll := Ragdoll.new()
+	ragdoll.build(skeleton)
+	ragdoll.start(Vector3.ZERO, RID())
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			assert_ne((child as PhysicalBone3D).collision_layer, 0,
+				"%s could not collide while simulating" % child.name)
+	ragdoll.stop()
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			var bone := child as PhysicalBone3D
+			assert_eq(bone.collision_layer, 0,
+				"%s is still on a collision layer after the ragdoll stopped" % bone.name)
+			assert_eq(bone.collision_mask, 0,
+				"%s can still be collided with after the ragdoll stopped" % bone.name)
+	skeleton.queue_free()
+
+func test_the_ragdoll_keeps_off_the_player_s_own_layer() -> void:
+	# It shares the world's mask, so the player is excluded by RID on top --
+	# but it must not be ON the world layer, or every wall probe in the game
+	# starts finding a dead body.
+	var skeleton := _humanoid()
+	var ragdoll := Ragdoll.new()
+	ragdoll.build(skeleton)
+	ragdoll.start(Vector3.ZERO, RID())
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			assert_eq((child as PhysicalBone3D).collision_layer & 1, 0,
+				"%s is on the world layer" % child.name)
+	ragdoll.stop()
+	skeleton.queue_free()
+
+func test_the_bodies_are_born_inert() -> void:
+	# ⚠️ The window in which twelve rigid bodies exist inside the player must be
+	# exactly the window in which they are supposed to. Built live, they push
+	# the capsule around from the first death onwards -- and from BEFORE it,
+	# since build() runs a frame ahead of start().
+	var skeleton := _humanoid()
+	Ragdoll.new().build(skeleton)
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			assert_eq((child as PhysicalBone3D).collision_layer, 0,
+				"%s was built able to collide" % child.name)
+	skeleton.queue_free()

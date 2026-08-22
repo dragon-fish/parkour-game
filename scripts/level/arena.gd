@@ -151,7 +151,19 @@ func _unhandled_input(event: InputEvent) -> void:
 ## than relying on the player to press R, since falling forever is not a
 ## state a human should have to notice and self-rescue from.
 func _physics_process(_delta: float) -> void:
-	if is_instance_valid(player) and player.global_position.y < -config.pawn.fall_recovery_depth:
+	if not is_instance_valid(player):
+		return
+	# ⚠️ THE RAGDOLL IS THE ONE THAT FALLS. ✅ The owner: "falling past z = -20
+	# no longer resets -- it makes me watch six seconds of ragdoll."
+	#
+	# Exactly so: once the ragdoll takes over, the capsule STOPS (see
+	# FallUncontrolledMove), so its own Y never crosses this line again and the
+	# only thing left to end the fall was the settle timeout. The body that is
+	# actually falling is the one to ask.
+	var depth: float = player.global_position.y
+	if player.ragdoll != null and player.ragdoll.is_simulating():
+		depth = player.ragdoll.hips_position().y
+	if depth < -config.pawn.fall_recovery_depth:
 		reset_player()
 
 ## Teleports the player to spawn and clears its velocity.
