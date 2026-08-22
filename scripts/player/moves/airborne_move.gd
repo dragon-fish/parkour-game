@@ -142,7 +142,8 @@ func probe_transition() -> StringName:
 		var hit: Dictionary = player.probes.vault_query()
 		if hit["valid"] and not player.recent_wall_refuses_climb_onto(hit["edge"]):
 			var variant: Dictionary = config.speed_vault.pick_variant(
-				hit["height"], hit["vault_over"], player.velocity.y, player.horizontal_speed())
+				hit["height"], hit["vault_over"], _vault_speed_z(),
+				player.horizontal_speed())
 			# ALREADY TOUCHING NEEDS NO LEAD TIME.
 			#
 			# should_commit() asks whether the obstacle will be reached within
@@ -306,3 +307,56 @@ func _apply_landing_cost(fall_height: float, rolled: bool) -> void:
 		# landing free. Measured in the original by the owner -- after a hard
 		# landing, getting going again is indistinguishable from starting cold.
 		player.speed_energy.reset()
+
+## The vertical speed the vault table is asked about, which is the REAL one
+## except inside the shin-catch window below.
+##
+## ⚠️ A DELIBERATE DIVERGENCE FROM THE ORIGINAL, and the owner's call. Five of
+## the six rows in SpeedVaultConfig.variants require MinSpeedZ >= 0 -- they only
+## match while RISING -- and the sixth, auto_step_up_right_leg, is the descending
+## one but tops out at 0.48 m and 3 m/s. So falling onto a metre-high ledge at
+## running pace matches NOTHING, and the only way to vault it is to catch the
+## rising half of a jump. The owner's report: "the tolerance is terrible,
+## and the jump lasts hardly any time at all."
+##
+## What the original is doing there is deliberate -- autostepuprightleg is a
+## RESCUE, not a move, and 05 §5.7 reads it as "you jumped a gap and your shin
+## caught the far edge; the game kicks you up in the last 0.2 s". This widens
+## that rescue rather than reproducing it, and it is worth knowing which is
+## which if the two are ever compared.
+##
+## Three gates, so it stays a rescue rather than becoming a second way to play:
+##
+##   * FALLING, not rising. A rising body is already covered by the real rows.
+##   * SHORT OF A HARD LANDING. hard_landing_height is the same 5.3 m that
+##     decides whether a landing costs two seconds, reused rather than given a
+##     knob of its own: a fall that is about to hurt is not one to rescue.
+##   * ASKING FOR IT. The player has to be pushing INTO the obstacle. Falling
+##     past a ledge with no input is a fall, and turning it into a vault would
+##     be the game playing itself.
+##
+## Reported as a level speed rather than as a flag, which keeps
+## SpeedVaultConfig.variants a pure transcription of the original's table: the
+## high tiers ask for MinSpeedZ 0.5 and still refuse, so a genuinely high vault
+## still costs a jump. Only the middle tier is rescued.
+func _vault_speed_z() -> float:
+	var speed_z: float = player.velocity.y
+	if speed_z >= 0.0:
+		return speed_z
+	if player.fall_tracker == null:
+		return speed_z
+	if player.fall_tracker.fall_height >= config.pawn.hard_landing_height:
+		return speed_z
+	# player.last_input rather than a parameter: probe_transition() takes none,
+	# and this is the same field CharacterAnimator reads for the same reason.
+	if player.last_input == null:
+		return speed_z
+	var wish: Vector3 = player.wish_direction(player.last_input)
+	var facing: Vector3 = -player.global_transform.basis.z
+	facing.y = 0.0
+	if wish.length_squared() < 0.0001 or facing.length_squared() < 0.0001:
+		return speed_z
+	if wish.normalized().dot(facing.normalized()) <= 0.0:
+		return speed_z
+	return 0.0
+
