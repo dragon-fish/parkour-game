@@ -106,3 +106,52 @@ func test_building_twice_does_not_double_the_bodies() -> void:
 	assert_eq(bodies, Ragdoll.SEGMENTS.size(),
 		"a second build left %d bodies" % bodies)
 	skeleton.queue_free()
+
+func test_the_joints_are_tightened_from_the_defaults() -> void:
+	# ⚠️ NOT WITH softness AND bias, which is where this went first. This
+	# project runs JOLT, and Jolt says so at runtime: "Cone twist joint bias is
+	# not supported when using Jolt Physics. Any such value will be ignored."
+	# Same for softness. Setting them bought twenty-two warnings a death and
+	# nothing else. The SPANS are what Jolt honours.
+	var skeleton := _humanoid()
+	Ragdoll.new().build(skeleton)
+	var checked := 0
+	for child in skeleton.get_children():
+		if not (child is PhysicalBone3D):
+			continue
+		var bone := child as PhysicalBone3D
+		if bone.joint_type != PhysicalBone3D.JOINT_TYPE_CONE:
+			continue
+		checked += 1
+		assert_almost_eq(float(bone.get("joint_constraints/twist_span")),
+			Ragdoll.JOINT_TWIST_DEG, 0.01,
+			"%s can twist %.0f degrees" % [bone.name,
+			float(bone.get("joint_constraints/twist_span"))])
+		assert_almost_eq(float(bone.get("joint_constraints/swing_span")),
+			Ragdoll.JOINT_SWING_DEG, 0.01,
+			"%s can swing %.0f degrees" % [bone.name,
+			float(bone.get("joint_constraints/swing_span"))])
+	assert_gt(checked, 0, "no jointed bones to check -- the fixture is wrong")
+	skeleton.queue_free()
+
+func test_stopping_leaves_nothing_moving() -> void:
+	# ✅ THE OWNER: "the order is wrong -- put the ragdoll back before
+	# respawning, or the player gets launched the moment they come back."
+	# Stopping the simulation hands the bones back to the animation; it does NOT
+	# take their velocity away, and the respawn then teleports bodies that are
+	# still moving.
+	var skeleton := _humanoid()
+	var ragdoll := Ragdoll.new()
+	ragdoll.build(skeleton)
+	ragdoll.start(Vector3(0.0, 4.0, 0.0), RID())
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			(child as PhysicalBone3D).linear_velocity = Vector3(9.0, 9.0, 9.0)
+	ragdoll.stop()
+	for child in skeleton.get_children():
+		if child is PhysicalBone3D:
+			var bone := child as PhysicalBone3D
+			assert_almost_eq(bone.linear_velocity.length(), 0.0, 0.001,
+				"%s was left travelling at %.1f m/s"
+				% [bone.name, bone.linear_velocity.length()])
+	skeleton.queue_free()

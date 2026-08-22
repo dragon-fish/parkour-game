@@ -48,6 +48,30 @@ const RADIUS_RATIO := 0.28
 const RADIUS_MIN := 0.04
 const RADIUS_MAX := 0.14
 
+## HOW FAR A JOINT MAY BEND. ✅ The owner: "the limbs can be stretched really
+## long, is there such a thing as tension between the bones? Turn it up, it is
+## frightening."
+##
+## ⚠️ NOT WITH softness AND bias, which is where this went first. This project
+## runs JOLT (project.godot: physics_engine = "Jolt Physics"), and Jolt says so
+## in as many words at runtime: "Cone twist joint bias is not supported when
+## using Jolt Physics. Any such value will be ignored." Same for softness.
+## Setting them bought twenty-two warnings a death and nothing else.
+##
+## What Jolt DOES honour is the spans, so those are what is tightened. The
+## default twist_span is 180 degrees -- a forearm free to rotate a full
+## half-turn about itself -- and 45 of swing at every joint is a shoulder
+## everywhere, elbows and knees included.
+##
+## ⚠️ AND THE SPANS ARE NOT THE STRETCH. Jolt's joints are hard constraints;
+## bodies should not separate at all. The likeliest cause of what the owner is
+## seeing is that this skeleton lives under a body mounted at mount_scale 1.22,
+## and SCALED physics bodies are unreliable in Godot generally. Recorded rather
+## than guessed at further -- if tightening the spans does not settle it, the
+## scale is where to look next.
+const JOINT_TWIST_DEG := 30.0
+const JOINT_SWING_DEG := 30.0
+
 var _skeleton: Skeleton3D = null
 var _built := false
 var _simulating := false
@@ -94,6 +118,17 @@ func stop() -> void:
 	if _skeleton == null or not _simulating:
 		return
 	_simulating = false
+	# ZEROED FIRST. ✅ The owner: "the order is wrong -- put the ragdoll back
+	# before respawning, or the player gets launched the moment they come
+	# back." Stopping the simulation hands the bones back to the animation, but
+	# it does not take their VELOCITY away: the bodies are still carrying
+	# whatever the fall gave them when the respawn teleports them across the
+	# level.
+	for child in _skeleton.get_children():
+		if child is PhysicalBone3D:
+			var physical := child as PhysicalBone3D
+			physical.linear_velocity = Vector3.ZERO
+			physical.angular_velocity = Vector3.ZERO
 	_skeleton.physical_bones_stop_simulation()
 
 # --- building ------------------------------------------------------------------
@@ -122,6 +157,13 @@ func _add_segment(bone: StringName, child: StringName, mass: float) -> void:
 	# nothing above them to be jointed TO.
 	body.joint_type = PhysicalBone3D.JOINT_TYPE_NONE if bone == &"Hips" \
 			else PhysicalBone3D.JOINT_TYPE_CONE
+	if body.joint_type == PhysicalBone3D.JOINT_TYPE_CONE:
+		# Sub-path properties, which is how PhysicalBone3D exposes whichever
+		# joint type is selected -- read off the object rather than guessed.
+		# softness and bias are deliberately NOT set: Jolt ignores both and
+		# warns about each one, every joint, every death.
+		body.set("joint_constraints/twist_span", JOINT_TWIST_DEG)
+		body.set("joint_constraints/swing_span", JOINT_SWING_DEG)
 	# A little damping, or a dead body keeps twitching on the floor forever.
 	body.linear_damp_mode = PhysicalBone3D.DAMP_MODE_REPLACE
 	body.linear_damp = 0.2

@@ -172,6 +172,18 @@ func reset_player() -> void:
 	# has added the sequence (a test driving this node by hand).
 	if _death_sequence != null:
 		_death_sequence.stop()
+	# ⚠️ THE BODY COMES BACK BEFORE THE PLAYER DOES. ✅ The owner: "the order is
+	# wrong -- put the ragdoll back before respawning, or the player gets
+	# launched the moment they come back."
+	#
+	# stop() above already does it on every route that goes through the
+	# sequence, and this is the belt to that brace: a ragdoll started by
+	# FallUncontrolledMove can outlive a sequence that was never playing (the R
+	# key mid-fall), and teleporting a body whose bones are still being solved
+	# is exactly the launch they saw. Idempotent -- stop() on a ragdoll that is
+	# not simulating does nothing.
+	if player.ragdoll != null:
+		player.ragdoll.stop()
 	# The curtain the death drew, lifted on the far side of the respawn -- see
 	# DeathSequence.BLACKOUT. Cleared HERE rather than by the sequence, because
 	# the whole point is that it outlasts the sequence: the body has to be back

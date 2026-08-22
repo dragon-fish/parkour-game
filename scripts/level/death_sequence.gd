@@ -97,18 +97,17 @@ func play(player: Player) -> void:
 		# where a standing body's feet are.
 		_feet_offset = _player.standing_height() * 0.5
 		_player.set_dying(true)
-		# LET GO OF THE BODY. Only ever possible with a humanoid rig, which
-		# Ragdoll.build() decides for itself -- everything else dies by its
-		# animation as before.
-		if _player.ragdoll != null and _player.body != null 				and _player.ragdoll.build(_player.find_skeleton()):
-			# Thrown somewhere, so a death has a direction rather than folding
-			# straight down. Horizontal, with the carried speed left in: being
-			# launched is what killed them.
-			var throw := Vector3(randf_range(-1.0, 1.0), randf_range(0.2, 0.8),
-					randf_range(-1.0, 1.0)).normalized() * randf_range(3.0, 7.0)
-			_player.ragdoll.start(throw + _player.velocity * 0.5,
-					_player.get_rid())
-			_ragdolled = true
+		# ALREADY GOING, usually. ✅ The owner: the ragdoll begins when control
+		# is lost, which is FallUncontrolledMove.enter() -- long before the body
+		# lands and this sequence starts. Recorded here only so the release
+		# knows to take it back.
+		#
+		# Still started here for the deaths that never went through an
+		# uncontrolled fall, if any ever do.
+		if _player.ragdoll != null and _player.body != null:
+			if not _player.ragdoll.is_simulating() 					and _player.ragdoll.build(_player.find_skeleton()):
+				_player.ragdoll.start(_player.velocity * 0.5, _player.get_rid())
+			_ragdolled = _player.ragdoll.is_simulating()
 		if _player.camera_rig != null:
 			# BEFORE the branch below, and in both views. A fatal fall lands
 			# like any other, so the landing flinch has already been written by

@@ -20,6 +20,20 @@ extends AirborneMove
 ## the gate the player could still spin the view all the way down.
 func enter(_previous: StringName) -> void:
 	player.lock_input()
+	# ✅ THE OWNER: "the ragdoll starts the moment control is lost, not after
+	# landing." Right -- this state IS losing control, and it is already fatal
+	# by definition. Waiting for the touchdown meant watching a clip fall for
+	# two seconds and only then going limp, which is the wrong way round.
+	#
+	# DeathSequence guards against starting it twice; a body it cannot be built
+	# on simply never starts one.
+	if player.ragdoll != null and player.body != null 			and player.ragdoll.build(player.find_skeleton()):
+		# Some direction, so a death reads as being thrown rather than folding
+		# straight down. The carried velocity is mixed in because being launched
+		# is what is killing them.
+		var throw := Vector3(randf_range(-1.0, 1.0), randf_range(0.2, 0.8),
+				randf_range(-1.0, 1.0)).normalized() * randf_range(3.0, 7.0)
+		player.ragdoll.start(throw + player.velocity * 0.5, player.get_rid())
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# No wish direction: the body falls, the player watches.
