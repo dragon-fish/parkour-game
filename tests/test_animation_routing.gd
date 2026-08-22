@@ -119,3 +119,46 @@ func test_holding_ctrl_while_standing_still_is_still_standing_still() -> void:
 	input.walk_held = true
 	player.last_input = input
 	assert_eq(String(animator._target_animation()), "Idle", 		"holding Ctrl on the spot asked for '%s'" % String(animator._target_animation()))
+
+## Everything the paid tiers added, plus enough of the free ones that a fallback
+## would resolve to SOMETHING if the intended clip were not picked. A test that
+## passes because the fallback is missing proves nothing.
+const FULL_CLIPS: Array = [
+	&"Idle", &"Walk", &"Sprint", &"Jump", &"Jump_Start", &"Jump_Land",
+	&"Roll", &"Slide", &"Crouch_Idle", &"Crouch_Fwd", &"NinjaJump_Start",
+	&"SafetyVault", &"WallRun_L", &"WallRun_R", &"ClimbUp_1m", &"ClimbUp_2m",
+	&"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Turn180_L", &"Turn180_R",
+]
+
+func test_the_paid_packs_replace_their_placeholders() -> void:
+	# Each of these stood as a PLACEHOLDER borrowing a jump or a run, in some
+	# cases since before there was anything else to borrow. Pinned as routing,
+	# not as taste: a move that silently goes back to reaching for a take-off
+	# is the same class of defect as one with no case at all.
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
+	for row in [[Move.SPEED_VAULT, "SafetyVault"], [Move.WALL_CLIMB, "ClimbUp_2m"],
+			[Move.INTO_GRAB, "Climb_Enter"], [Move.TURN_180, "Turn180_R"]]:
+		player.move_manager.start(row[0])
+		assert_eq(String(animator._target_animation()), row[1], 			"%s asked for '%s'" % [row[0], String(animator._target_animation())])
+
+func test_a_wall_run_picks_the_side_it_is_running_on() -> void:
+	# wall_side > 0 is a RIGHT-hand wall -- WallRunMove's own look-fan code says
+	# so, at the line that reads `span if wall_side > 0`. Set AFTER start(),
+	# because entering the move is what normally writes it.
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.WALL_RUN)
+	player.wall_side = 1
+	assert_eq(String(animator._target_animation()), "WallRun_R", 		"a right-hand wall asked for '%s'" % String(animator._target_animation()))
+	player.wall_side = -1
+	assert_eq(String(animator._target_animation()), "WallRun_L", 		"a left-hand wall asked for '%s'" % String(animator._target_animation()))
+
+func test_a_ledge_hang_hangs_rather_than_jumps() -> void:
+	# GRAB has two phases behind one move. This is the resting one -- the
+	# mantle is told apart by GrabMove.is_mantling(), which a move entered from
+	# nowhere reports false for.
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.GRAB)
+	assert_eq(String(animator._target_animation()), "Climb_Idle", 		"a ledge hang asked for '%s'" % String(animator._target_animation()))

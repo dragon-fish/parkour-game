@@ -969,6 +969,22 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# lives -- the two packs are near-disjoint and this project needs both.
 	&"Idle", &"Walk", &"Sprint", &"Roll",
 	&"Jump", &"Jump_Start", &"Jump_Land", &"Crouch_Idle", &"Crouch_Fwd",
+	# From the PAID tiers of both packs, and every one of them replaces a
+	# placeholder that had stood since before there was anything to put there.
+	# A body without them keeps the placeholder: these names simply never
+	# resolve, and _first_available() walks past them. See
+	# assets/animations/FULL-LIBRARY.md.
+	#
+	# ⚠️ A clip missing from THIS list gets no node in the graph at all, which
+	# makes travel() to it an engine error rather than a miss. Routing a new
+	# name means adding it here in the same breath.
+	&"SafetyVault",
+	&"WallRun_L", &"WallRun_R",
+	&"ClimbUp_2m", &"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Climb_Exit",
+	# Turn180_L is wired and never asked for: the move only ever turns right.
+	# Here anyway, so that the day the turn stops being one-sided the clip is
+	# already in the graph rather than a silent miss.
+	&"Turn180_L", &"Turn180_R",
 ]
 
 ## Runtime twin of the AnimationTree/CharacterAnimator block that used to be

@@ -413,11 +413,12 @@ func _target_animation() -> StringName:
 			# is fast, committed ground momentum, so a run is the closest thing.
 			return _first_available([&"Slide", &"Sprint", &"run", &"idle"])
 		Move.SPEED_VAULT:
-			# PLACEHOLDER, and the biggest remaining gap. A vault is a short
-			# airborne burst clearing an obstacle -- closest of what exists is
-			# the take-off half of a jump. UAL2's paid tier has a SafetyVault;
-			# the free one does not.
-			return _first_available([&"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
+			# NO LONGER A PLACEHOLDER, and this was the biggest gap in the file.
+			# SafetyVault is a one-handed plant over an obstacle, which is the
+			# move exactly. Everything behind it is the old reasoning: a vault
+			# is a short airborne burst, so the take-off half of a jump is the
+			# closest thing a body without the paid pack has.
+			return _first_available([&"SafetyVault", &"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
 		Move.GRAB:
 			# Two phases share this one move (see GrabMove's own header
 			# comment): hanging (frozen, waiting on input) and mantling (a
@@ -426,20 +427,34 @@ func _target_animation() -> StringName:
 			# SlideMove.is_crawling() to see inside a move from the outside.
 			var grab_move = player.move_manager.move_for(Move.GRAB)
 			if grab_move != null and grab_move.is_mantling():
-				# ClimbUp_1m is a genuine match -- climbing up and onto a ledge
-				# is exactly what it is.
-				return _first_available([&"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
-			# THE EXCEPTION named at the top of this function. `ladder_stillness`
-			# is the fox "hanging on a ladder", which suits a ledge hang exactly,
-			# and no pack clip comes close -- UAL1's Climb_Idle would, and it is
-			# behind the paid tier. So the fox name leads here on merit.
-			return _first_available([&"ladder_stillness", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
+				# ClimbLedge over ClimbUp_1m, and the two are not the same
+				# action: ClimbUp_* starts from STANDING at the foot of a wall,
+				# while ClimbLedge belongs to UAL1's hang set -- pulling up
+				# from the Climb_Idle this move's other branch plays. A mantle
+				# arrives already hanging, so it is the second.
+				# ⚠️ Judged from the names and the company they keep, not from
+				# watching them. The gallery shows both.
+				return _first_available([&"ClimbLedge", &"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
+			# Climb_Idle is UAL1's hang, and it is now here -- the comment
+			# that used to stand at this line said it was "behind the paid
+			# tier", which it no longer is. The fox's `ladder_stillness` keeps
+			# second place: it was the genuine match while it was the only one,
+			# and it still is for a body that has it.
+			return _first_available([&"Climb_Idle", &"ladder_stillness", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 		Move.WALL_RUN:
-			# PLACEHOLDER. Nothing in the free tier is lateral locomotion along a
-			# vertical surface; a run is the closest. UAL2's paid tier has
-			# WallRun_L/R, and Player already tracks wall_side to pick between
-			# them the day they exist.
-			return _first_available([&"Sprint", &"run", &"idle"])
+			# THE DAY HAS ARRIVED. WallRun_L/R are the real thing, and Player
+			# has been tracking wall_side for the torso twist all along, so
+			# picking between them costs nothing new.
+			#
+			# wall_side > 0 is a RIGHT-hand wall -- WallRunMove's own look-fan
+			# code says so at the line that reads `span if wall_side > 0`.
+			#
+			# ⚠️ WHICH WAY ROUND THE CLIPS ARE NAMED IS A GUESS: _L could mean
+			# the wall is on the left or that the body travels leftward. Taken
+			# as the wall's side, which is the commoner convention. If a wall
+			# run reads mirrored, this line is the whole of the fix.
+			var wall_clip: StringName = &"WallRun_R" if player.wall_side > 0 else &"WallRun_L"
+			return _first_available([wall_clip, &"WallRun_L", &"WallRun_R", &"Sprint", &"run", &"idle"])
 		Move.CROUCH:
 			# Crouch_Fwd / Crouch_Idle are genuine matches, and so are the fox's
 			# `sneak` / `sneaking` behind them. Told apart with the exact same
@@ -476,19 +491,29 @@ func _target_animation() -> StringName:
 			# whole-body action rather than for resembling a roll.
 			return _first_available([&"Roll", &"Jump_Start", &"jump", &"idle"])
 		Move.INTO_GRAB:
-			# PLACEHOLDER. The reach itself, before the hands arrive -- airborne
-			# and committed, so the same take-off the vault borrows.
-			return _first_available([&"Jump_Start", &"jump", &"idle"])
+			# Climb_Enter is the reach onto a ledge -- the arriving half of
+			# UAL1's hang set, which is what this move is. Behind it, the old
+			# PLACEHOLDER reasoning: airborne and committed, so a take-off.
+			return _first_available([&"Climb_Enter", &"Jump_Start", &"jump", &"idle"])
 		Move.WALL_CLIMB:
-			# A vertical kick up a wall: short, committed, ascending. ClimbUp_1m
-			# is close but SHORT -- this project's wall climb rises 1.69 m, so
-			# the paid tier's ClimbUp_2m is the one that actually fits.
-			return _first_available([&"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
+			# ClimbUp_2m, on the measurement: this project's wall climb rises
+			# 1.69 m, which is most of the way to the 2 m clip and half again
+			# the 1 m one. ClimbUp_1m stays as the fallback it always was.
+			return _first_available([&"ClimbUp_2m", &"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
 		Move.TURN_180:
 			# Not really a body move -- the view swings and the facing follows,
 			# while whatever the legs were doing continues. So it borrows the
 			# same speed split WALKING uses rather than claiming a clip of its
 			# own.
+			# ALWAYS THE RIGHT-HAND CLIP, because the move only ever turns one
+			# way: Turn180Move sets _turn_to = _turn_from - PI unconditionally,
+			# and its comment records the owner measuring exactly that in the
+			# original -- "Faith only ever turns right". Godot's yaw grows
+			# counter-clockwise, so that subtraction is clockwise, which is
+			# rightward. Turn180_L is wired into the graph and never asked for.
+			# ⚠️ Same naming guess as the wall run: _R read as "turns right".
+			if _has_clip(&"Turn180_R"):
+				return &"Turn180_R"
 			var turn_speed: float = player.horizontal_speed()
 			if turn_speed > _run_band_speed():
 				return _first_available([&"Sprint", &"Walk", &"run", &"idle"])
