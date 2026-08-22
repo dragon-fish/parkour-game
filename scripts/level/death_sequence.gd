@@ -104,7 +104,12 @@ func play(player: Player) -> void:
 		#
 		# Still started here for the deaths that never went through an
 		# uncontrolled fall, if any ever do.
-		if _player.ragdoll != null and _player.body != null:
+		# ⚠️ THE SWITCH IS CHECKED HERE TOO. ✅ The owner, with the flag already
+		# off: "how is the landing death still a ragdoll?" Because this is a
+		# SECOND way in -- FallUncontrolledMove starts one on the way down, and
+		# this starts one for a death that never fell. Gating only the first
+		# left the second wide open.
+		if _player.ragdoll_enabled and _player.ragdoll != null and _player.body != null:
 			if not _player.ragdoll.is_simulating() 					and _player.ragdoll.build(_player.find_skeleton()):
 				_player.ragdoll.start(_player.velocity * 0.5, _player.get_rid())
 			_ragdolled = _player.ragdoll.is_simulating()

@@ -183,6 +183,17 @@ extends Resource
 ## First person only. In third person the camera is metres away and has no such
 ## problem.
 @export var death_eye_lift: float = 0.3
+
+## The same, during an uncontrolled fall, in metres.
+##
+## ✅ The owner: "the first-person uncontrolled-fall loop needs the same
+## compensation as the death, about 0.15 m, or it clips."
+##
+## Same cause as death_eye_lift above and a smaller number for the same reason:
+## LiftAir_Fall_Air is a body dropping horizontally with its hips at about
+## 0.19 m, so the head bone the eye is following is close to the floor -- close
+## enough to end up inside whatever the body passes.
+@export var fall_uncontrolled_eye_lift: float = 0.15
 ## How fast the eye catches up after the body was lifted over a low obstacle
 ## (see Player.try_step_up). Exponential, so this is a rate, not a duration:
 ## ~12 settles a 0.35 m step in roughly 0.15 s, which reads as a stride. Lower

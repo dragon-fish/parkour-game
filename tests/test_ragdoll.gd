@@ -444,3 +444,114 @@ func test_the_switch_is_off_and_a_death_plays_out_by_animation() -> void:
 	move.landing_destination(20.0, false)
 	assert_eq(deaths[0], 1, "the animation death stopped declaring itself")
 	TestWorld.teardown(world)
+
+func test_the_switch_closes_the_death_sequence_s_door_too() -> void:
+	# ✅ THE OWNER, with the flag already off: "how is the landing death still a
+	# ragdoll?" Because there are TWO ways in -- FallUncontrolledMove starts one
+	# on the way down, and DeathSequence starts one for a death that never fell.
+	# Gating only the first left the second wide open.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	assert_false(player.ragdoll_enabled, "the ragdoll is on by default")
+	player.ragdoll = Ragdoll.new()
+	var sequence := DeathSequence.new()
+	add_child(sequence)
+	sequence.play(player)
+	await step(5)
+	assert_false(player.ragdoll.is_simulating(),
+		"the death sequence started a ragdoll with the switch off")
+	sequence.stop()
+	sequence.queue_free()
+	TestWorld.teardown(world)
+
+func test_an_uncontrolled_fall_lifts_the_first_person_eye() -> void:
+	# ✅ THE OWNER: "the first-person uncontrolled-fall loop needs the same
+	# compensation as the death, about 0.15 m, or it clips."
+	#
+	# Same cause as the death's own lift: the eye rides the head bone, and
+	# LiftAir_Fall_Air holds the body horizontal with its hips at about 0.19 m,
+	# so the head is close enough to the floor to end up inside what it passes.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	player.camera_rig.third_person = false
+	# ⚠️ LIFTED OFF THE GROUND FIRST. An uncontrolled fall that starts on the
+	# floor lands on its first tick and hands straight back to Walking, taking
+	# the lift with it -- which is what the first draft of this measured.
+	player.global_position += Vector3(0.0, 6.0, 0.0)
+	await step(1)
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	await step(3)
+	assert_almost_eq(player.camera_rig.position.y,
+		player.config.camera.eye_height + player.config.camera.fall_uncontrolled_eye_lift,
+		0.05, "the eye was not lifted for the fall")
+	# And it goes back.
+	player.move_manager.start(Move.WALKING)
+	await step(3)
+	assert_almost_eq(player.camera_rig.position.y,
+		player.config.camera.eye_height, 0.05,
+		"the fall's lift outlived the fall")
+	TestWorld.teardown(world)
+
+func test_third_person_takes_no_fall_lift() -> void:
+	# The camera is metres away out there and has no such problem -- the same
+	# split the death's own lift makes.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	player.camera_rig.third_person = true
+	player.global_position += Vector3(0.0, 6.0, 0.0)
+	await step(1)
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	await step(3)
+	assert_almost_eq(player.camera_rig.position.y,
+		player.config.camera.eye_height, 0.05,
+		"third person took the first-person fall compensation")
+	player.move_manager.start(Move.WALKING)
+	TestWorld.teardown(world)
+
+func test_a_fatal_landing_keeps_its_death_flag_through_the_hand_off() -> void:
+	# ✅ THE OWNER: "the Jump_Land-on-landing bug I thought was fixed is back."
+	#
+	# ⚠️ REGRESSED BY THE NOCLIP FIX. A fatal landing exits this state too --
+	# the fall declares the death and returns WALKING, and MoveManager calls
+	# exit() on the way out. exit() had learned to clear the death flag, for the
+	# noclip case, and cleared it again here before CharacterAnimator could ask.
+	# The landing absorb it gates was armed as usual.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as AirborneMove
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	move.landing_destination(20.0, false)
+	# The hand-off the manager performs on that return value.
+	player.move_manager.start(Move.WALKING)
+	assert_true(player.is_dying(),
+		"the death flag was cleared on the way out of the fall that declared it")
+	TestWorld.teardown(world)
+
+func test_leaving_without_dying_still_clears_the_flag() -> void:
+	# The pair, and the case exit() was given the line for: noclip out of a fall
+	# that never became a death. Without this the body walks around playing its
+	# own death clip.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	player.set_dying(true)
+	player.toggle_noclip()
+	assert_false(player.is_dying(),
+		"a fall left through noclip kept the body dying")
+	player.toggle_noclip()
+	TestWorld.teardown(world)

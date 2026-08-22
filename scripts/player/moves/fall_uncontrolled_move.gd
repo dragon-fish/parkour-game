@@ -20,6 +20,12 @@ extends AirborneMove
 ## the gate the player could still spin the view all the way down.
 func enter(_previous: StringName) -> void:
 	player.lock_input()
+	# FIRST PERSON ONLY, exactly as the death's own lift is: the eye is riding
+	# the head bone, and LiftAir_Fall_Air holds the body horizontal with its
+	# hips near the floor. From outside there is no such problem -- the camera
+	# is metres away. See CameraConfig.fall_uncontrolled_eye_lift.
+	if player.camera_rig != null and not player.camera_rig.third_person:
+		player.camera_rig.set_death_lift(config.camera.fall_uncontrolled_eye_lift)
 	# ✅ THE OWNER: "the ragdoll starts the moment control is lost, not after
 	# landing." Right -- this state IS losing control, and it is already fatal
 	# by definition. Waiting for the touchdown meant watching a clip fall for
@@ -171,11 +177,23 @@ func exit() -> void:
 	# too. Idempotent on a ragdoll that is not running.
 	if player.ragdoll != null:
 		player.ragdoll.stop()
-	# And the death with it. This state declares the death and then HOLDS (see
-	# _settle_ragdoll), so on the ordinary path it never exits until the respawn
-	# has already cleared this. Leaving early -- which noclip is -- has to clear
-	# it here, or the body walks around playing its own death clip.
-	player.set_dying(false)
+	# The lift goes back with everything else this state borrowed. DeathSequence
+	# sets its own, larger one on the tick after this if the fall was fatal.
+	if player.camera_rig != null:
+		player.camera_rig.set_death_lift(0.0)
+	# And the death with it -- ⚠️ BUT ONLY IF THIS FALL DID NOT DECLARE ONE.
+	#
+	# ✅ The owner: "the Jump_Land-on-landing bug I thought was fixed is back."
+	# It was, and by this line. A FATAL landing exits through here too: the fall
+	# declares the death and returns WALKING, MoveManager calls exit() on the
+	# way out, and this cleared the flag again before CharacterAnimator ever got
+	# to ask. The absorb it gates was armed as usual.
+	#
+	# Leaving without having declared anything -- which is what noclip is --
+	# still has to clear it, or the body walks around playing its own death
+	# clip. That is the case this line was added for and the only one it serves.
+	if not _declared:
+		player.set_dying(false)
 	if player.screen_effects != null:
 		player.screen_effects.set_desaturation(0.0)
 		player.screen_effects.set_blur(0.0)
@@ -235,6 +253,7 @@ func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
 	# Declared HERE instead, on the tick the fall is known to be fatal. The
 	# sequence still owns clearing it -- see DeathSequence._release_player() --
 	# so this only moves the start of it earlier, to the moment it is true.
+	_declared = true
 	player.set_dying(true)
 	player.died_from_fall.emit()
 	return WALKING
