@@ -282,3 +282,47 @@ func test_the_head_travels_the_same_way_the_body_rolls() -> void:
 	seq.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_third_person_does_not_roll_the_camera() -> void:
+	# ✅ THE OWNER: "do not play the first-person screen rotation when dying in
+	# third person -- play the Death2 animation instead."
+	#
+	# The cinematic pose IS the first-person death: the eye falls, rolls and
+	# looks at the sky because that is what the body is doing, and from inside
+	# there is no body visible to do it. From outside there is one, and rolling
+	# the camera on top of it reads as the world tipping over.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	player.camera_rig.third_person = true
+	var sequence := DeathSequence.new()
+	add_child(sequence)
+	sequence.play(player)
+	await step(20)
+	assert_false(player.camera_rig.in_cinematic(),
+		"a third-person death took the camera into a cinematic")
+	assert_true(player.is_dying(), "the body was never told it was dying")
+	sequence.stop()
+	sequence.queue_free()
+	TestWorld.teardown(world)
+
+func test_first_person_still_falls_over() -> void:
+	# The pair. Without it the test above passes on a build where the cutscene
+	# never runs at all.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	player.camera_rig.third_person = false
+	var sequence := DeathSequence.new()
+	add_child(sequence)
+	sequence.play(player)
+	await step(20)
+	assert_true(player.camera_rig.in_cinematic(),
+		"a first-person death did not take the camera over")
+	sequence.stop()
+	sequence.queue_free()
+	TestWorld.teardown(world)

@@ -273,7 +273,9 @@ func enter(_previous: StringName) -> void:
 	# visible.
 	var carried: float = maxf(horizontal.length(), 0.5)
 	var by_travel: float = player.global_position.distance_to(landing) / carried
-	_arc_duration = clampf(by_travel, variant["duration"] * 0.5, variant["duration"])
+	_arc_duration = clampf(by_travel,
+			variant["duration"] * config.speed_vault.duration_floor_pct,
+			variant["duration"])
 	_face_point = query.get("face_point", Vector3.ZERO)
 	_touched = false
 	_approach_time = 0.0
@@ -325,7 +327,12 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# A slight bank through the arc, peaking in the middle and gone by the end.
 	# sin() rather than a ramp: a vault that ended still leaning would hand a
 	# tilted horizon to whatever came next.
-	if player.camera_rig != null:
+	# ✅ NOT FOR A STEP-UP, on the owner's call: "the StepUp action does not need
+	# to rotate the screen." The bank is the camera's half of a one-handed
+	# plant, and a step-up has no hand in it -- which is the same reason it
+	# plays StepUp rather than SafetyVault, and the same reason it does not
+	# fold. All three questions are is_scramble().
+	if player.camera_rig != null and not is_scramble():
 		# LEANS ONE WAY, ALWAYS. A vault is a one-handed move -- the same hand
 		# every time in the original -- so the bank has a side rather than being
 		# derived from the geometry. Positive is a lean to the right.

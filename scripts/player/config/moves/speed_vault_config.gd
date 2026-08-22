@@ -289,3 +289,15 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## so changing the fold moves the arc with it instead of silently double
 ## counting.
 @export var vault_over_eye_above_top: float = 0.79
+
+## The shortest a vault may be squeezed to for a fast approach, as a fraction
+## of its variant's own duration.
+##
+## The duration in the variants table is the CEILING -- a slow approach gets the
+## original's own timing -- and a fast one is shortened toward the obstacle it
+## is already nearly touching. This is the floor on that.
+##
+## ⚠️ PROJECT-DEFINED, and it was 0.5 with no reasoning beyond "brisk rather
+## than instantaneous". ✅ The owner, in play: "a 0.3 s fast vault really is too
+## fast, make it 0.45." 0.7 of the middle tier's 0.65 s is 0.455.
+@export var duration_floor_pct: float = 0.7

@@ -60,6 +60,10 @@ var _feet_offset: float = 0.0
 ## without this the whole topple plays from a face-down view.
 var _entry_pitch: float = 0.0
 
+## Whether THIS death is driving the camera. False in third person, where the
+## body's own death clip does the work -- see play().
+var _cinematic: bool = false
+
 func total_duration() -> float:
 	return DROP_TIME + HOLD_TIME + TOPPLE_TIME + REST_TIME
 
@@ -79,11 +83,27 @@ func play(player: Player) -> void:
 		# be crouched or sliding when it dies, and the fall should read from
 		# where a standing body's feet are.
 		_feet_offset = _player.standing_height() * 0.5
+		_player.set_dying(true)
 		if _player.camera_rig != null:
-			# Read BEFORE begin_cinematic(), while rotation.x is still the
-			# player's own look.
-			_entry_pitch = _player.camera_rig.rotation.x
-			_player.camera_rig.begin_cinematic()
+			# ✅ NOT IN THIRD PERSON, on the owner's call: "do not play the
+			# first-person screen rotation when dying in third person -- play
+			# the Death2 animation instead."
+			#
+			# The cinematic pose IS the first-person death: the eye falls,
+			# rolls and looks at the sky because that is what the body is
+			# doing, and there is no body visible to do it. From outside there
+			# is one, and rolling the camera on top of it reads as the world
+			# tipping over rather than as a person falling.
+			#
+			# The clip plays either way -- see CharacterAnimator's dying case.
+			# It is only correct-looking from outside, but from inside the head
+			# is hidden and it costs nothing.
+			_cinematic = not _player.camera_rig.third_person
+			if _cinematic:
+				# Read BEFORE begin_cinematic(), while rotation.x is still the
+				# player's own look.
+				_entry_pitch = _player.camera_rig.rotation.x
+				_player.camera_rig.begin_cinematic()
 		if _player.screen_effects != null:
 			_player.screen_effects.set_desaturation(1.0)
 		_player.lock_input()
@@ -92,7 +112,7 @@ func _physics_process(delta: float) -> void:
 	if not _playing:
 		return
 	_elapsed += delta
-	if _player != null and _player.camera_rig != null:
+	if _cinematic and _player != null and _player.camera_rig != null:
 		var pose := _pose_at(_elapsed)
 		_player.camera_rig.set_cinematic_pose(pose[0], pose[1], pose[2])
 	if _elapsed >= total_duration():
@@ -124,8 +144,12 @@ func _release_player() -> void:
 	_playing = false
 	if _player == null:
 		return
-	if _player.camera_rig != null:
+	_player.set_dying(false)
+	# Symmetrically: only ended if it was ever begun. end_cinematic() on a rig
+	# that never entered it would clear a state the player owns.
+	if _cinematic and _player.camera_rig != null:
 		_player.camera_rig.end_cinematic()
+	_cinematic = false
 	if _player.screen_effects != null:
 		_player.screen_effects.set_desaturation(0.0)
 	_player.unlock_input()

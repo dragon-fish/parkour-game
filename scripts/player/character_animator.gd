@@ -499,6 +499,14 @@ func _target_animation() -> StringName:
 	# It is gone from the routing, from SPEED_MATCHED_CLIPS, and from the clips
 	# Player wires into the graph at all -- left in any of those it would come
 	# back the next time a list was reordered.
+	# DYING OUTRANKS EVERY MOVE, because it is not one. The level's death
+	# sequence locks the input and drives the camera while whatever Move the
+	# player died in carries on ticking underneath -- usually a fall. ✅ The
+	# owner asked for Death2 in third person; it plays in first person too,
+	# where the head is hidden and it costs nothing to have the body fall over
+	# properly.
+	if player.is_dying():
+		return _first_available([&"Death02", &"Death01", &"sneaking", &"Crouch_Idle", &"idle"])
 	match player.move_manager.current_name:
 		Move.WALKING:
 			# THREE BANDS, not two. The free tier has a genuine Walk and the

@@ -128,7 +128,7 @@ const FULL_CLIPS: Array = [
 	&"Roll", &"Slide", &"Crouch_Idle", &"Crouch_Fwd", &"NinjaJump_Start",
 	&"SafetyVault", &"WallRun_L", &"WallRun_R", &"ClimbUp_1m", &"ClimbUp_2m",
 	&"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Turn180_L", &"Turn180_R",
-	&"StepUp",
+	&"StepUp", &"Death01", &"Death02",
 ]
 
 func test_the_paid_packs_replace_their_placeholders() -> void:
@@ -208,3 +208,29 @@ func test_a_rescued_vault_scrambles_even_on_a_plant_variant() -> void:
 	player.move_manager.start(Move.SPEED_VAULT)
 	assert_eq(String(animator._target_animation()), "StepUp",
 		"a rescued vault asked for '%s'" % String(animator._target_animation()))
+
+func test_a_dying_body_falls_over_rather_than_carrying_on() -> void:
+	# ✅ THE OWNER: "do not play the first-person screen rotation when dying in
+	# third person -- play the Death2 animation instead."
+	#
+	# Dying is not a Move. The level's death sequence locks the input and drives
+	# the camera while whatever Move the player died in carries on ticking
+	# underneath -- usually a fall -- so without this the body runs its falling
+	# clip through the whole cutscene.
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.FALLING)
+	assert_eq(String(animator._target_animation()), "Jump",
+		"the fixture is not falling, so the test below proves nothing")
+	player.set_dying(true)
+	assert_eq(String(animator._target_animation()), "Death02",
+		"a dying body asked for '%s'" % String(animator._target_animation()))
+
+func test_a_body_with_no_death_clip_is_not_left_asking_for_one() -> void:
+	# Every case in this file is a priority list for the same reason: a body
+	# without the paid packs must still resolve to something the graph has.
+	var animator: CharacterAnimator = await _animator_with([&"idle", &"jump"])
+	var player: Player = _world["player"]
+	player.set_dying(true)
+	assert_eq(String(animator._target_animation()), "idle",
+		"a body with no death clip asked for '%s'" % String(animator._target_animation()))

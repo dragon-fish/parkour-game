@@ -141,6 +141,13 @@ var _tp_drag: Vector2 = Vector2.ZERO
 ## this state -- see its own comment -- so bob/dip/crouch/look cannot fight
 ## the cutscene for the same transform.
 var _cinematic: bool = false
+
+## Whether a level-owned cutscene currently owns the eye. Exposed so a caller
+## that decided NOT to take it -- a third-person death, which lets the body's
+## own clip do the falling -- can be told apart from one that did.
+func in_cinematic() -> bool:
+	return _cinematic
+
 var _cinematic_offset: Vector3 = Vector3.ZERO
 var _cinematic_roll: float = 0.0
 var _cinematic_pitch: float = 0.0
@@ -617,7 +624,16 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# model is driving the eye: a body low enough to need it is exactly the
 	# case where the head-follow has taken over, and this is the correction for
 	# where that lands.
-	_eye_lift_current = move_toward(_eye_lift_current, 		_eye_lift * _crouch_amount, _config.camera.crouch_lerp_speed * delta)
+	# ASYMMETRIC. Going down into the slide it follows the crouch like
+	# everything else here; LETTING GO it takes eye_lift_release_time, because
+	# the eye snapping back the instant the key comes up is a cut in the middle
+	# of a half-second stand-up. See that field for why it is a time and not a
+	# rate.
+	var lift_target: float = _eye_lift * _crouch_amount
+	var lift_rate: float = _config.camera.crouch_lerp_speed
+	if lift_target < _eye_lift_current:
+		lift_rate = maxf(_eye_lift, 0.0001) / maxf(_config.camera.eye_lift_release_time, 0.001)
+	_eye_lift_current = move_toward(_eye_lift_current, lift_target, lift_rate * delta)
 	base_position.y += _eye_lift_current
 
 	# A step-up moves the body's Y in a single tick. Hold the eye behind by that

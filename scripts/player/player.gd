@@ -1044,6 +1044,8 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# Here anyway, so that the day the turn stops being one-sided the clip is
 	# already in the graph rather than a silent miss.
 	&"Turn180_L", &"Turn180_R",
+	# The level's death sequence, not a Move -- see CharacterAnimator.
+	&"Death01", &"Death02",
 	# THE EIGHT-WAY SETS, and the whole reason the reversed-twin hack below can
 	# stop being the answer for a body that has them. Listed out rather than
 	# generated from CharacterAnimator.DIRECTION_SETS because this list is also
@@ -1272,6 +1274,17 @@ func body_fold_drop() -> float:
 ## whole reason both are on the debug readout.
 func body_folded() -> bool:
 	return _body_folded
+
+## True while the level's death sequence is running. Read by CharacterAnimator,
+## which routes the body to a death clip -- a fact about the LEVEL rather than
+## about any Move, which is why it is a flag here and not a state.
+var _dying: bool = false
+
+func set_dying(dying: bool) -> void:
+	_dying = dying
+
+func is_dying() -> bool:
+	return _dying
 
 ## Where the model's ROOT actually sits under BodyRoot, and where the mount
 ## alone would have put it. The gap between them is every correction this

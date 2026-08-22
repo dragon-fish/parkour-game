@@ -121,6 +121,21 @@ extends Resource
 @export var slide_camera_drop: float = 0.81
 ## How fast the camera moves between standing and sliding height.
 @export var crouch_lerp_speed: float = 9.0
+
+## How long the per-model slide eye lift takes to LET GO, in seconds.
+##
+## ✅ The owner: "the lift is there through the slide and then vanishes the
+## instant Shift is released -- the eye snaps back. It should ride the 0.5 s
+## stand-up." It was easing on crouch_lerp_speed like everything else here, and
+## at 9.0 m/s a 0.15 m lift is gone in a sixtieth of a second, which is a cut.
+##
+## A TIME rather than a rate, unlike its neighbours, and deliberately: the lift
+## itself is per-model (BodyProfile.slide_eye_lift), so a fixed rate would take
+## a different length of time on every body. Half a second is half a second.
+##
+## Matches Player.body_slide_exit_blend_time, which is the animation half of the
+## same moment -- the body picking itself up out of a slide.
+@export var eye_lift_release_time: float = 0.5
 ## How fast the eye catches up after the body was lifted over a low obstacle
 ## (see Player.try_step_up). Exponential, so this is a rate, not a duration:
 ## ~12 settles a 0.35 m step in roughly 0.15 s, which reads as a stride. Lower
