@@ -189,11 +189,22 @@ func _settle_ragdoll(delta: float) -> StringName:
 	# nothing: it is frozen in mid-air while the ragdoll does the falling.
 	player.set_grounded(false)
 	_ragdoll_elapsed += delta
-	_drive_screen_effects()
 	if _declared:
-		# TERMINAL. Nothing follows an uncontrolled fall but a respawn, and the
-		# respawn restarts the move manager itself.
+		# TERMINAL, and the screen is no longer ours. ✅ The owner: "the screen
+		# used to go black and white when you died, and now it does not."
+		#
+		# Made by the previous commit and invisible in it: this state now HOLDS
+		# after declaring the death instead of handing off, so
+		# _drive_screen_effects() went on running every tick -- computing an
+		# intensity from a hips speed that is zero once the body has landed, and
+		# writing it straight over the desaturation DeathSequence had just set
+		# to 1. Two drivers, one channel, and the one that should have stopped
+		# was still going.
+		#
+		# Nothing follows an uncontrolled fall but a respawn, and the respawn
+		# restarts the move manager itself.
 		return KEEP
+	_drive_screen_effects()
 	var falling: float = player.ragdoll.hips_fall_speed()
 	if falling >= RAGDOLL_FALLING_SPEED:
 		_ragdoll_dropping = true

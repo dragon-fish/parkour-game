@@ -378,3 +378,35 @@ func test_every_cone_points_along_its_own_bone() -> void:
 			% [bone.name, cone_axis.dot(along.normalized())])
 	assert_gt(checked, 0, "no cones to check -- the fixture is wrong")
 	skeleton.queue_free()
+
+func test_a_declared_death_stops_writing_the_screen() -> void:
+	# ✅ THE OWNER: "the screen used to go black and white when you died, and
+	# now it does not."
+	#
+	# Made by the commit that turned this state terminal, and invisible in it.
+	# The state HOLDS after declaring the death instead of handing off, so its
+	# own screen driver went on running every tick -- computing an intensity
+	# from a hips speed that is zero once the body has landed, and writing it
+	# straight over the desaturation DeathSequence had just set to 1. Two
+	# drivers, one channel, and the one that should have stopped was still
+	# going.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	player.ragdoll = Ragdoll.new()
+	player.ragdoll.build(_humanoid())
+	player.ragdoll.start(Vector3.ZERO, RID())
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	# Far enough for the drift rule to declare the death.
+	await step(120)
+	assert_true(player.is_dying(), "the fixture never declared a death")
+	# What the sequence writes on the tick it starts.
+	player.screen_effects.set_desaturation(1.0)
+	await step(30)
+	assert_almost_eq(player.screen_effects.desaturation, 1.0, 0.001,
+		"the fall wrote over the death's own desaturation (%.2f left)"
+		% player.screen_effects.desaturation)
+	player.ragdoll.stop()
+	TestWorld.teardown(world)
