@@ -1700,3 +1700,39 @@ Roll rotated LeftUpperLeg 0.5620 rad
 `SpeedVault` 仍然是占位（借 `Jump_Start`）——两个包都没有真正的翻越。
 UAL2 的**付费层**写着有 parkour moves，那才是它该来的地方。
 `Grab` 悬挂也还是占位。
+
+## 50. "相机接反了"其实是模型朝后 —— VRM 的 +Z 与 Godot 的 -Z
+
+使用者第一次跑起来的报告：
+
+> 相机前后接反了，现在角色倒着跑
+
+**症状指向相机，原因在模型。** 这次没有先猜，直接量了两组前后不对称的骨头：
+
+```
+eye.z - head.z = +0.0231      眼睛在头的 +Z 侧
+toe.z - foot.z = +0.1055      脚趾指向 +Z
+player forward = (0, 0, -1)   Godot 的前方
+```
+
+两组都是正的，也就是**模型面朝 +Z**。而 **VRM 规范就是规定模型朝 +Z**，
+Godot 的前方是 -Z，**godot-vrm 不做这个纠正**。
+
+所以相机一直在角色背后（正确），只是那个"背后"是一张脸。
+
+修法是 `body_mount_rotation_degrees = Vector3(0, 180, 0)`——
+这个属性的注释原本就写着它为什么存在：
+*"A model exported facing the wrong way can be corrected here rather than by
+re-exporting the asset."* 改完两个符号都翻负。
+
+### 为什么这条值得单独记
+
+**症状和原因隔着一层。** "角色倒着跑"最自然的解释是相机放错边，
+而不是"身体是反的"——毕竟身体明明在往前移动。
+如果按第一直觉去调 `third_person_offset` 的 Z 符号，相机会跑到角色正前方，
+看起来"脸对着你倒退"变成"背对着你前进"，**问题看似解决，实则朝向仍然是错的**，
+第一人称下会以别的方式暴露出来。
+
+已写进 `body_mount_rotation_degrees` 的注释和一条回归测试
+（`test_a_half_turn_actually_faces_the_body_the_other_way`），
+下一个 VRM 不用再踩。

@@ -60,3 +60,29 @@ func test_a_zero_or_negative_scale_cannot_collapse_the_body() -> void:
 		var up: Vector3 = mount * Vector3(0.0, 1.0, 0.0)
 		assert_gt(up.y + CAPSULE * 0.5, 0.0, \
 			"a scale of %.1f did not leave the body pointing upward" % bad)
+
+func test_a_half_turn_actually_faces_the_body_the_other_way() -> void:
+	# ⚠️ EVERY VRM NEEDS THIS. The VRM specification has models face +Z; Godot's
+	# forward is -Z; godot-vrm does not reconcile them. The body is therefore
+	# mounted looking backwards, and the symptom is not a backwards body -- it
+	# reads as the third-person camera being on the wrong side, with the
+	# character apparently running in reverse.
+	#
+	# Measured on the owner's export before the correction: the eye bones sat
+	# +0.023 behind the head bone and the toes +0.106 behind the foot, both
+	# positive, i.e. facing +Z. With Vector3(0, 180, 0) both signs flip.
+	var mount := Player.compute_mount_transform(CAPSULE, Vector3.ZERO, Vector3(0.0, 180.0, 0.0))
+	# A point out in front of the MODEL should end up behind the player.
+	var nose: Vector3 = mount * Vector3(0.0, 0.0, 1.0)
+	assert_lt(nose.z, -0.9, "a half turn left the body still facing +Z")
+	# And the feet stay put, because the rotation is about the mount origin.
+	var feet: Vector3 = mount * Vector3.ZERO
+	assert_almost_eq(feet.y, -CAPSULE * 0.5, 0.0001, "the half turn moved the feet")
+
+func test_rotation_and_scale_compose_without_moving_the_feet() -> void:
+	var mount := Player.compute_mount_transform(CAPSULE, Vector3.ZERO, Vector3(0.0, 180.0, 0.0), 1.081)
+	var feet: Vector3 = mount * Vector3.ZERO
+	assert_almost_eq(feet.y, -CAPSULE * 0.5, 0.0001, "the feet left the capsule bottom")
+	var head: Vector3 = mount * Vector3(0.0, 1.535, 0.0)
+	assert_almost_eq(head.y + CAPSULE * 0.5, 1.535 * 1.081, 0.001, \
+		"the scale stopped applying once a rotation was present")

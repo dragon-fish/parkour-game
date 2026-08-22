@@ -241,6 +241,18 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## Player, not MovementConfig.
 @export var body_mount_rotation_degrees: Vector3 = Vector3.ZERO
 
+## ⚠️ EVERY VRM NEEDS Vector3(0, 180, 0) HERE. The VRM specification has models
+## face +Z, Godot's forward is -Z, and godot-vrm does not reconcile the two.
+##
+## The symptom is not "the body faces backwards", which is why it costs time:
+## it reads as the THIRD-PERSON CAMERA being on the wrong side, with the
+## character apparently running in reverse. The owner reported exactly that.
+## The camera was correct; the back it was framing was a face.
+##
+## Measured before the correction: the eye bones sat +0.023 behind the head bone
+## and the toes +0.106 behind the foot, both positive, i.e. facing +Z. Both
+## signs flip with the half turn.
+
 ## Uniform scale applied to the attached body, so a model authored at its own
 ## natural height can sit on this project's capsule without being rebuilt.
 ##
