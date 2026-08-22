@@ -519,6 +519,10 @@ var _body_mount: Transform3D = Transform3D.IDENTITY
 ## middle of a smooth blend.
 var _clip_offset_position: Vector3 = Vector3.ZERO
 var _clip_offset_rotation: Vector3 = Vector3.ZERO
+## True while a move has declared the body FOLDED -- see set_body_folded().
+var _body_folded: bool = false
+## How far the model has actually eased down for that fold, in metres.
+var _fold_drop: float = 0.0
 
 ## Where head_node sat, in this Player's local space, BEFORE any animation had
 ## a chance to move it -- captured once in _attach_body(). The head-follow
@@ -732,11 +736,7 @@ func has_headroom() -> bool:
 ## (tests/world_fixture.gd uses the latter): @onready vars are still null
 ## immediately after add_child() returns in either case. An @onready-cached
 ## reference would be null at that point.
-## Which end of the capsule stays where it was when the height changes. See
-## set_capsule_height().
-enum { ANCHOR_FEET, ANCHOR_HEAD }
-
-func set_capsule_height(height: float, anchor: int = ANCHOR_FEET) -> void:
+func set_capsule_height(height: float) -> void:
 	# Any explicit resize supersedes a restore that was still owed — most
 	# importantly a fresh slide entered while one was pending, which must not
 	# later have the player stood up mid-slide by the deferred restore.
@@ -748,26 +748,17 @@ func set_capsule_height(height: float, anchor: int = ANCHOR_FEET) -> void:
 	if _standing_height <= 0.0:
 		_standing_height = capsule.height
 	capsule.height = height
-	# WHICH END STAYS PUT.
+	# THE FEET STAY PUT, ALWAYS.
 	#
-	# ✅ The owner, looking at the drawn capsule: "keeping the FEET fixed is
-	# bizarre -- during a vault or a pull-up the shrink means the LEGS ARE
-	# TUCKED UP, so it is the eye that should stay." They are right, and the two
-	# cases are opposites of each other:
-	#
-	#   A CROUCH lowers the head. You are standing on the same floor, so the
-	#   soles are the fixed end -- ANCHOR_FEET, and every caller before this one
-	#   wanted it.
-	#
-	#   A VAULT tucks the knees. You are hanging off your hands with your head
-	#   where it was, so the crown is the fixed end -- ANCHOR_HEAD.
-	#
-	# Getting this backwards is not cosmetic: it decides whether the collision
-	# that remains is the half of the body that is actually still in the way.
-	if anchor == ANCHOR_HEAD:
-		shape_node.position.y = (_standing_height - height) * 0.5
-	else:
-		shape_node.position.y = -(_standing_height - height) * 0.5
+	# ⚠️ An anchor option lived here for one commit, so a vault could hold the
+	# CROWN instead. It was the wrong reading of the owner's "the legs are
+	# tucked up", and they caught it in play: with the collision anchored at the
+	# head, a body that landed rested its WAIST on the ground, and the restore
+	# then grew the capsule 0.9 m downward -- half the character underground,
+	# whenever the deferred restore fired. The collision belongs on the floor
+	# the body is standing on. It is the MODEL and the EYE that follow the
+	# shortened capsule's top; see body_fold_drop().
+	shape_node.position.y = -(_standing_height - height) * 0.5
 
 ## Asks for the standing capsule back, honouring the roof. Restores it at once
 ## when there is room, otherwise records that a restore is OWED and performs it
@@ -782,8 +773,6 @@ func set_capsule_height(height: float, anchor: int = ANCHOR_FEET) -> void:
 ## spawn a 1.8 m capsule inside geometry.
 func request_standing_capsule() -> void:
 	if has_headroom():
-		# Always ANCHOR_FEET on the way back: whichever end was held while
-		# folded, standing up puts the soles on the floor the body is on.
 		set_capsule_height(_standing_height)
 	else:
 		# Set AFTER the branch above, never before: set_capsule_height() clears
@@ -1155,6 +1144,13 @@ func _drive_clip_offset(delta: float) -> void:
 	var t: float = 1.0 - exp(-delta / maxf(body_animation_blend_time, 0.001))
 	_clip_offset_position = _clip_offset_position.lerp(wanted_position, t)
 	_clip_offset_rotation = _clip_offset_rotation.lerp(wanted_rotation, t)
+	# EASED, not snapped. Dropping the eye 0.9 m in one frame is a jump cut, and
+	# it rides the same blend the clips do so the body and the pose arrive
+	# together.
+	var wanted_drop: float = 0.0
+	if _body_folded:
+		wanted_drop = maxf(standing_height() - current_capsule_height(), 0.0)
+	_fold_drop = lerpf(_fold_drop, wanted_drop, t)
 	_apply_clip_offset()
 
 ## The [position, rotation_degrees] pair for `clip`, or an empty array.
@@ -1184,8 +1180,36 @@ func _apply_clip_offset() -> void:
 	if body == null:
 		return
 	var extra := Basis.from_euler(_clip_offset_rotation * (PI / 180.0))
+	# The fold drop goes in HERE rather than through the clip offset, because
+	# the two want opposite things from the camera: a clip offset is a
+	# correction to the model alone and _camera_head_offset() subtracts it back
+	# out, while a fold genuinely lowers the head and the eye must follow. It
+	# does so for free -- the head bone moves with the model, and the head-follow
+	# reads the bone.
 	body.transform = Transform3D(extra * _body_mount.basis,
-			_body_mount.origin + _clip_offset_position)
+			_body_mount.origin + _clip_offset_position - Vector3(0.0, _fold_drop, 0.0))
+
+## Declares that the body is FOLDED: the legs are tucked and the model should
+## ride at the shortened capsule's top rather than standing at its bottom.
+##
+## ✅ The owner, after two attempts that each did half of it: "the capsule
+## should shrink hugging the FEET -- but the model and the eye should come down
+## with it, instead of the capsule getting shorter while the model goes on
+## playing anchored at the soles. The model's head should be anchored to the
+## capsule's top."
+##
+## The COLLISION is not this function's business and never moves: shortening it
+## from the head with the feet on the floor is what set_capsule_height() has
+## always done, and is what keeps a landing body resting on its soles. This is
+## the presentation half -- the model and, through it, the eye.
+func set_body_folded(folded: bool) -> void:
+	_body_folded = folded
+
+## How far the model is riding below its standing placement, in metres, for the
+## fold above. Exactly what the capsule lost, so the model's crown sits on the
+## capsule's crown.
+func body_fold_drop() -> float:
+	return _fold_drop
 
 ## Sets the offset with no easing at all, for the debug tuner: while the tree is
 ## paused nothing calls _drive_clip_offset(), and a tuner you cannot see the

@@ -128,6 +128,7 @@ func enter(_previous: StringName) -> void:
 ## a standing capsule you already have costs nothing.
 func exit() -> void:
 	player.request_standing_capsule()
+	player.set_body_folded(false)
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted:
@@ -231,9 +232,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# ONLY THE MANTLE, not the hang: hanging is full extension, arms
 		# overhead and body straight, which is the one pose the standing capsule
 		# actually fits.
-		# ANCHOR_HEAD -- see SpeedVaultMove.enter() for the owner's reasoning.
-		# A pull-up is knees-to-chest with the head where the hands put it, so
-		# the crown is the end that stays.
-		player.set_capsule_height(config.crouch.crouch_capsule_height,
-				Player.ANCHOR_HEAD)
+		# See SpeedVaultMove.enter(): the collision shortens from the top with
+		# the feet on the floor, and the MODEL AND EYE drop to sit on the new
+		# crown. A pull-up is knees-to-chest, so the head is where the body
+		# actually is.
+		player.set_capsule_height(config.crouch.crouch_capsule_height)
+		player.set_body_folded(true)
 	return KEEP

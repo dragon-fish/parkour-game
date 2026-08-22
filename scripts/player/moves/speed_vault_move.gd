@@ -65,16 +65,21 @@ func enter(_previous: StringName) -> void:
 	# roll, and reusing it makes the camera's own crouch mapping exactly right
 	# for free -- a full crouch capsule takes a full crouch amount, no second
 	# number to keep in step. See the camera line below.
-	# ANCHOR_HEAD, and that is the whole meaning of the fold here. ✅ The owner,
-	# looking at the drawn capsule: "the shrink represents the LEGS BEING TUCKED
-	# UP, so it is the eye that should stay put." A crouch lowers the head with
-	# the soles on the floor; a vault hangs off the hands with the knees pulled
-	# in. Anchored at the feet, the collision that remained was the half of the
-	# body that was no longer in the way.
+	# THE LEGS TUCK, so the body rides at the shortened capsule's TOP.
 	#
-	# NO CROUCH AMOUNT with it, for the same reason -- the first version dropped
-	# the eye by a full crouch, which is the opposite of what a tuck does to it.
-	player.set_capsule_height(config.crouch.crouch_capsule_height, Player.ANCHOR_HEAD)
+	# ✅ The owner, twice, and the second time is the one I had to hear: "the
+	# capsule should shrink hugging the FEET -- but the model and the eye should
+	# come down with it, instead of the capsule getting shorter while the model
+	# goes on playing anchored at the soles. The model's head should be anchored
+	# to the capsule's top."
+	#
+	# Two things, and the first two attempts each did only one of them. The
+	# COLLISION shortens from the top, feet on the floor, as it always has. The
+	# MODEL AND THE EYE drop by what the capsule lost, so the head sits on the
+	# new crown -- which is what puts the view down where a vaulting body's head
+	# actually is, rather than a standing body's.
+	player.set_capsule_height(config.crouch.crouch_capsule_height)
+	player.set_body_folded(true)
 
 	# THE HANDOFF IS CONSUMED FIRST, before any of the abort paths below.
 	# ⚠️ It used to be read further down, past the probe guard, and that made
@@ -257,6 +262,7 @@ func exit() -> void:
 	# it would put the capsule inside it. Player owes the restore and performs
 	# it on the first tick there is room.
 	player.request_standing_capsule()
+	player.set_body_folded(false)
 	if player.camera_rig != null:
 		player.camera_rig.set_vault_roll(0.0)
 

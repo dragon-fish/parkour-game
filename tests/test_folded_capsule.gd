@@ -108,27 +108,80 @@ func test_a_crouch_holds_the_feet_and_lowers_the_head() -> void:
 		"the soles moved %.3f m" % (folded.x - standing.x))
 	assert_lt(folded.y, standing.y - 0.5, "the head did not come down")
 
-func test_a_vault_holds_the_head_and_tucks_the_feet() -> void:
-	# ✅ THE OWNER, LOOKING AT THE DRAWN CAPSULE: "keeping the FEET fixed is
-	# bizarre -- during a vault or a pull-up the shrink means the LEGS ARE
-	# TUCKED UP, so it is the eye that should stay." Anchored at the feet, the
-	# collision that remained was the half of the body no longer in the way.
-	var player: Player = await _player()
-	var standing: Vector2 = _span(player)
-	player.set_capsule_height(0.9, Player.ANCHOR_HEAD)
-	var tucked: Vector2 = _span(player)
-	assert_almost_eq(tucked.y, standing.y, 0.0001,
-		"the crown moved %.3f m" % (tucked.y - standing.y))
-	assert_gt(tucked.x, standing.x + 0.5, "the feet did not tuck up")
-
 func test_standing_back_up_puts_the_soles_back_on_the_floor() -> void:
-	# Whichever end was held while folded, standing up is measured from the
-	# floor the body is on.
+	# The soles never move in the first place -- the fold shortens the capsule
+	# from the head. This is the guard that keeps it that way.
 	var player: Player = await _player()
 	var standing: Vector2 = _span(player)
-	player.set_capsule_height(0.9, Player.ANCHOR_HEAD)
+	player.set_capsule_height(0.9)
 	player.request_standing_capsule()
 	await step(3)
 	var restored: Vector2 = _span(player)
 	assert_almost_eq(restored.x, standing.x, 0.0001, "the soles came back wrong")
 	assert_almost_eq(restored.y, standing.y, 0.0001, "the crown came back wrong")
+
+# --- the model rides the shortened capsule's top ----------------------------------
+
+func test_a_folded_body_drops_to_sit_on_the_shortened_capsule() -> void:
+	# ✅ THE OWNER, after two attempts that each did half of it: "the capsule
+	# should shrink hugging the FEET -- but the model and the eye should come
+	# down with it, instead of the capsule getting shorter while the model goes
+	# on playing anchored at the soles. The model's head should be anchored to
+	# the capsule's top."
+	#
+	# The COLLISION stays on the floor. It is the MODEL that moves, by exactly
+	# what the capsule lost.
+	var player: Player = await _player_with_body()
+	var standing_y: float = player.body.position.y
+	player.set_capsule_height(player.config.crouch.crouch_capsule_height)
+	player.set_body_folded(true)
+	await step(60)
+	var lost: float = player.standing_height() - player.config.crouch.crouch_capsule_height
+	assert_almost_eq(player.body.position.y, standing_y - lost, 0.01,
+		"the model dropped %.2f m for a fold that lost %.2f"
+		% [standing_y - player.body.position.y, lost])
+
+func test_unfolding_puts_the_model_back() -> void:
+	var player: Player = await _player_with_body()
+	var standing_y: float = player.body.position.y
+	player.set_capsule_height(player.config.crouch.crouch_capsule_height)
+	player.set_body_folded(true)
+	await step(60)
+	player.request_standing_capsule()
+	player.set_body_folded(false)
+	await step(60)
+	assert_almost_eq(player.body.position.y, standing_y, 0.01,
+		"the model was left %.2f m low" % (standing_y - player.body.position.y))
+
+func test_a_crouch_alone_does_not_move_the_model() -> void:
+	# The pair, and the reason set_body_folded() is a separate declaration
+	# rather than being read off the capsule: a CROUCH shortens the capsule too,
+	# and the model must not drop for it -- the crouch is in the animation.
+	var player: Player = await _player_with_body()
+	var standing_y: float = player.body.position.y
+	player.set_capsule_height(player.config.crouch.crouch_capsule_height)
+	await step(60)
+	assert_almost_eq(player.body.position.y, standing_y, 0.001,
+		"an ordinary crouch dropped the model %.2f m"
+		% (standing_y - player.body.position.y))
+
+## A player with a real attached body, built at runtime so this depends on no
+## untracked model.
+func _player_with_body() -> Player:
+	var player: Player = await _player()
+	var root := Node3D.new()
+	root.name = "fake_body"
+	var anim_player := AnimationPlayer.new()
+	anim_player.name = "AnimationPlayer"
+	var library := AnimationLibrary.new()
+	var animation := Animation.new()
+	animation.length = 1.0
+	library.add_animation(&"Idle", animation)
+	anim_player.add_animation_library("", library)
+	root.add_child(anim_player)
+	anim_player.owner = root
+	var packed := PackedScene.new()
+	packed.pack(root)
+	root.free()
+	player._attach_body(packed)
+	return player
