@@ -86,3 +86,49 @@ func test_the_hang_and_drop_path_survives_the_restore() -> void:
 	await step(3)
 	assert_almost_eq(player.current_capsule_height(), standing, 0.001,
 		"a grab that never folded anything changed the capsule anyway")
+
+# --- which end stays put ----------------------------------------------------------
+
+## The capsule's top and bottom in the body's own space, which is what the
+## anchor decides between.
+func _span(player: Player) -> Vector2:
+	var shape_node := player.get_node("CollisionShape3D") as CollisionShape3D
+	var capsule := shape_node.shape as CapsuleShape3D
+	return Vector2(shape_node.position.y - capsule.height * 0.5,
+			shape_node.position.y + capsule.height * 0.5)
+
+func test_a_crouch_holds_the_feet_and_lowers_the_head() -> void:
+	# The original behaviour, and every caller before the vault wanted it: you
+	# are standing on the same floor, so the soles are the fixed end.
+	var player: Player = await _player()
+	var standing: Vector2 = _span(player)
+	player.set_capsule_height(0.9)
+	var folded: Vector2 = _span(player)
+	assert_almost_eq(folded.x, standing.x, 0.0001,
+		"the soles moved %.3f m" % (folded.x - standing.x))
+	assert_lt(folded.y, standing.y - 0.5, "the head did not come down")
+
+func test_a_vault_holds_the_head_and_tucks_the_feet() -> void:
+	# ✅ THE OWNER, LOOKING AT THE DRAWN CAPSULE: "keeping the FEET fixed is
+	# bizarre -- during a vault or a pull-up the shrink means the LEGS ARE
+	# TUCKED UP, so it is the eye that should stay." Anchored at the feet, the
+	# collision that remained was the half of the body no longer in the way.
+	var player: Player = await _player()
+	var standing: Vector2 = _span(player)
+	player.set_capsule_height(0.9, Player.ANCHOR_HEAD)
+	var tucked: Vector2 = _span(player)
+	assert_almost_eq(tucked.y, standing.y, 0.0001,
+		"the crown moved %.3f m" % (tucked.y - standing.y))
+	assert_gt(tucked.x, standing.x + 0.5, "the feet did not tuck up")
+
+func test_standing_back_up_puts_the_soles_back_on_the_floor() -> void:
+	# Whichever end was held while folded, standing up is measured from the
+	# floor the body is on.
+	var player: Player = await _player()
+	var standing: Vector2 = _span(player)
+	player.set_capsule_height(0.9, Player.ANCHOR_HEAD)
+	player.request_standing_capsule()
+	await step(3)
+	var restored: Vector2 = _span(player)
+	assert_almost_eq(restored.x, standing.x, 0.0001, "the soles came back wrong")
+	assert_almost_eq(restored.y, standing.y, 0.0001, "the crown came back wrong")

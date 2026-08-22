@@ -732,7 +732,11 @@ func has_headroom() -> bool:
 ## (tests/world_fixture.gd uses the latter): @onready vars are still null
 ## immediately after add_child() returns in either case. An @onready-cached
 ## reference would be null at that point.
-func set_capsule_height(height: float) -> void:
+## Which end of the capsule stays where it was when the height changes. See
+## set_capsule_height().
+enum { ANCHOR_FEET, ANCHOR_HEAD }
+
+func set_capsule_height(height: float, anchor: int = ANCHOR_FEET) -> void:
 	# Any explicit resize supersedes a restore that was still owed — most
 	# importantly a fresh slide entered while one was pending, which must not
 	# later have the player stood up mid-slide by the deferred restore.
@@ -744,7 +748,26 @@ func set_capsule_height(height: float) -> void:
 	if _standing_height <= 0.0:
 		_standing_height = capsule.height
 	capsule.height = height
-	shape_node.position.y = -(_standing_height - height) * 0.5
+	# WHICH END STAYS PUT.
+	#
+	# ✅ The owner, looking at the drawn capsule: "keeping the FEET fixed is
+	# bizarre -- during a vault or a pull-up the shrink means the LEGS ARE
+	# TUCKED UP, so it is the eye that should stay." They are right, and the two
+	# cases are opposites of each other:
+	#
+	#   A CROUCH lowers the head. You are standing on the same floor, so the
+	#   soles are the fixed end -- ANCHOR_FEET, and every caller before this one
+	#   wanted it.
+	#
+	#   A VAULT tucks the knees. You are hanging off your hands with your head
+	#   where it was, so the crown is the fixed end -- ANCHOR_HEAD.
+	#
+	# Getting this backwards is not cosmetic: it decides whether the collision
+	# that remains is the half of the body that is actually still in the way.
+	if anchor == ANCHOR_HEAD:
+		shape_node.position.y = (_standing_height - height) * 0.5
+	else:
+		shape_node.position.y = -(_standing_height - height) * 0.5
 
 ## Asks for the standing capsule back, honouring the roof. Restores it at once
 ## when there is room, otherwise records that a restore is OWED and performs it
@@ -759,6 +782,8 @@ func set_capsule_height(height: float) -> void:
 ## spawn a 1.8 m capsule inside geometry.
 func request_standing_capsule() -> void:
 	if has_headroom():
+		# Always ANCHOR_FEET on the way back: whichever end was held while
+		# folded, standing up puts the soles on the floor the body is on.
 		set_capsule_height(_standing_height)
 	else:
 		# Set AFTER the branch above, never before: set_capsule_height() clears

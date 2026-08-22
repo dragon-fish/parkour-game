@@ -65,11 +65,16 @@ func enter(_previous: StringName) -> void:
 	# roll, and reusing it makes the camera's own crouch mapping exactly right
 	# for free -- a full crouch capsule takes a full crouch amount, no second
 	# number to keep in step. See the camera line below.
-	player.set_capsule_height(config.crouch.crouch_capsule_height)
-	if player.camera_rig != null:
-		# The rig eases this on crouch_lerp_speed, so the eye dips into the
-		# vault and back out rather than snapping.
-		player.camera_rig.set_crouch_amount(1.0)
+	# ANCHOR_HEAD, and that is the whole meaning of the fold here. ✅ The owner,
+	# looking at the drawn capsule: "the shrink represents the LEGS BEING TUCKED
+	# UP, so it is the eye that should stay put." A crouch lowers the head with
+	# the soles on the floor; a vault hangs off the hands with the knees pulled
+	# in. Anchored at the feet, the collision that remained was the half of the
+	# body that was no longer in the way.
+	#
+	# NO CROUCH AMOUNT with it, for the same reason -- the first version dropped
+	# the eye by a full crouch, which is the opposite of what a tuck does to it.
+	player.set_capsule_height(config.crouch.crouch_capsule_height, Player.ANCHOR_HEAD)
 
 	# THE HANDOFF IS CONSUMED FIRST, before any of the abort paths below.
 	# ⚠️ It used to be read further down, past the probe guard, and that made
@@ -244,7 +249,6 @@ func exit() -> void:
 	player.request_standing_capsule()
 	if player.camera_rig != null:
 		player.camera_rig.set_vault_roll(0.0)
-		player.camera_rig.set_crouch_amount(0.0)
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:

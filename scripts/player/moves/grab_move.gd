@@ -128,8 +128,6 @@ func enter(_previous: StringName) -> void:
 ## a standing capsule you already have costs nothing.
 func exit() -> void:
 	player.request_standing_capsule()
-	if player.camera_rig != null:
-		player.camera_rig.set_crouch_amount(0.0)
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted:
@@ -233,7 +231,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# ONLY THE MANTLE, not the hang: hanging is full extension, arms
 		# overhead and body straight, which is the one pose the standing capsule
 		# actually fits.
-		player.set_capsule_height(config.crouch.crouch_capsule_height)
-		if player.camera_rig != null:
-			player.camera_rig.set_crouch_amount(1.0)
+		# ANCHOR_HEAD -- see SpeedVaultMove.enter() for the owner's reasoning.
+		# A pull-up is knees-to-chest with the head where the hands put it, so
+		# the crown is the end that stays.
+		player.set_capsule_height(config.crouch.crouch_capsule_height,
+				Player.ANCHOR_HEAD)
 	return KEEP
