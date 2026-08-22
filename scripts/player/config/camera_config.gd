@@ -234,11 +234,25 @@ extends Resource
 
 ## How far the eye banks through a vault, at the middle of the arc.
 ##
-## ⚠️ PROJECT-DEFINED. The owner's account of the original is qualitative --
-## "the camera tilts slightly as it traces a graceful arc over the obstacle" --
-## so this is set to be felt rather than noticed. Eased in and out across the
-## vault's own duration, so it is never a step.
-@export var vault_roll_deg: float = 7.0
+## ⚠️ PROJECT-DEFINED as a MAGNITUDE. The owner's account of the original is
+## qualitative -- "the camera tilts slightly as it traces a graceful arc over
+## the obstacle" -- so this is set to be felt rather than noticed. Eased in and
+## out across the vault's own duration, so it is never a step.
+##
+## THE SIGN NOW FOLLOWS THE ANIMATION, and it was flipped to do so.
+##
+## The original plants the LEFT hand -- 05 §5.7's table records bLeftHandIK on
+## both middle-tier rows -- and this value was chosen for that, back when there
+## was no visible body for it to disagree with. The animation pack's
+## SafetyVault plants the RIGHT hand, no left-handed vault exists anywhere in
+## either pack, and mirroring a clip is a Blender job rather than a line of
+## code.
+##
+## ✅ So the owner's call: flip the camera instead. A bank that leans the
+## opposite way from the arm you can see is worse than one that leans the
+## "wrong" way against a game nobody is holding this one next to. Flip it back
+## the day a left-handed clip exists.
+@export var vault_roll_deg: float = -7.0
 
 ## Where the eye sits when the third-person view is on, as THREE FLOATS rather
 ## than the Vector3 this obviously wants to be.

@@ -396,6 +396,10 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## which is where this comes from and where the reasoning lives.
 @export var body_clip_offsets: Dictionary = {}
 
+## Which PART of each clip to play. See BodyProfile.clip_timings, and
+## _apply_clip_timing() for what it does with it.
+@export var body_clip_timings: Dictionary = {}
+
 @export var body_run_reference_speed: float = 7.2
 
 ## How long one clip cross-fades into the next, in seconds. Zero restores the
@@ -1339,6 +1343,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 			continue
 		var clip_node := AnimationNodeAnimation.new()
 		clip_node.animation = clip_name
+		_apply_clip_timing(clip_node, clip_name, anim_player)
 		state_machine.add_node(String(clip_name), clip_node)
 		# The reversed twin, for moving backwards. Same clip resource, played
 		# the other way -- see _REVERSIBLE_CLIPS.
@@ -1346,6 +1351,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 			var backward := AnimationNodeAnimation.new()
 			backward.animation = clip_name
 			backward.play_mode = AnimationNodeAnimation.PLAY_MODE_BACKWARD
+			_apply_clip_timing(backward, clip_name, anim_player)
 			state_machine.add_node(String(clip_name) + BACKWARD_SUFFIX, backward)
 
 	# EVERY ORDERED PAIR GETS AN EDGE, so travel() always has a path.
@@ -1448,6 +1454,54 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	animator.anim_tree = anim_tree
 	animator.player = self
 	_body_root().add_child(animator)
+
+## Trims a clip to the part of it this project actually uses.
+##
+## ✅ THE OWNER FOUND THE PROBLEM: "the vault and grab animations play far too
+## late -- the character has nearly landed on the other side before the frame
+## where the hand plants." The clips are authored as WHOLE ACTIONS, run-up
+## included, and this project starts them at the moment of contact. So the
+## approach half of the clip plays while the body is already going over, and
+## the interesting half arrives after the move is finished.
+##
+## Their other idea was to start the animation EARLY, predictively. This does
+## the same job without touching gameplay at all: skip the run-up instead of
+## trying to guess when it should have begun.
+##
+## Godot's own timeline controls do all of it. `start_offset` says where in the
+## clip to begin; `timeline_length` with `stretch_time_scale` says how long the
+## kept part should take, which is how a 1.5 s clip fits a 0.65 s move without
+## a time scale anyone has to maintain.
+##
+## Read from BodyProfile.clip_timings as {clip: [start, length]} in SECONDS. A
+## length of 0 means "to the end of the clip".
+##
+## ⚠️ BUILD TIME, not per tick. Changing the table needs the body re-attached,
+## which is what the alignment scene is for.
+func _apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		anim_player: AnimationPlayer) -> void:
+	if not body_clip_timings.has(clip_name):
+		return
+	var entry = body_clip_timings[clip_name]
+	if not (entry is Array and entry.size() >= 2):
+		push_warning("clip_timings['%s'] is not [start, length]" % clip_name)
+		return
+	var start: float = float(entry[0])
+	var length: float = float(entry[1])
+	var whole: float = 0.0
+	if anim_player.has_animation(clip_name):
+		whole = anim_player.get_animation(clip_name).length
+	if length <= 0.0:
+		length = maxf(whole - start, 0.0)
+	if length <= 0.0:
+		return
+	node.use_custom_timeline = true
+	node.start_offset = start
+	node.timeline_length = length
+	# The kept part is STRETCHED to fill timeline_length rather than being
+	# played at its own pace and cut off. Without this the trim only skips the
+	# run-up; with it, the part that matters can also be made to last as long as
+	# the move that plays it.
+	node.stretch_time_scale = true
 
 ## True when `anim_player` actually carries `clip_name`, in the DEFAULT ("")
 ## library -- same lookup, and the same "only the default library, ever"

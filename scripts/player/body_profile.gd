@@ -62,6 +62,22 @@ extends Resource
 ## paste back here.
 @export var clip_offsets: Dictionary = {}
 
+## Which PART of a clip to play, as {clip_name: [start_seconds, length_seconds]}.
+## A length of 0 means "to the end of the clip".
+##
+## ✅ The owner: "the vault and grab animations play far too late -- the
+## character has nearly landed before the frame where the hand plants." The
+## packs author whole actions, run-up included, and this project starts them at
+## the moment of contact -- so the approach plays while the body is already
+## going over, and the plant arrives after the move has ended.
+##
+## `start` skips the run-up. `length` is what the kept part is STRETCHED to
+## last, which is how a 1.5 s clip fits a 0.65 s vault without a time scale
+## anyone has to keep in step by hand.
+##
+## ⚠️ Applied when the graph is BUILT, so a change needs the body re-attached.
+@export var clip_timings: Dictionary = {}
+
 @export var run_reference_speed: float = 7.2
 @export var blend_time: float = 0.15
 @export var slide_exit_blend_time: float = 0.5
@@ -81,6 +97,7 @@ func apply(player: Player) -> void:
 	player.body_head_path = head_path
 	player.body_animation_libraries = animation_libraries
 	player.body_clip_offsets = clip_offsets
+	player.body_clip_timings = clip_timings
 	player.body_run_reference_speed = run_reference_speed
 	player.body_animation_blend_time = blend_time
 	player.body_slide_exit_blend_time = slide_exit_blend_time
