@@ -179,6 +179,7 @@ func test_the_capsule_stops_dead_while_the_ragdoll_runs() -> void:
 	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as AirborneMove
 	# A ragdoll this fixture's bodiless player cannot actually build, so stand
 	# one in: what is under test is the gate, not the solver.
+	player.ragdoll_enabled = true
 	player.ragdoll = Ragdoll.new()
 	player.ragdoll.build(_humanoid())
 	player.ragdoll.start(Vector3.ZERO, RID())
@@ -284,6 +285,7 @@ func test_a_declared_death_does_not_hand_back_to_walking() -> void:
 	TestWorld.place(world)
 	await step(20)
 	var player: Player = world["player"]
+	player.ragdoll_enabled = true
 	player.ragdoll = Ragdoll.new()
 	player.ragdoll.build(_humanoid())
 	player.ragdoll.start(Vector3.ZERO, RID())
@@ -310,6 +312,7 @@ func test_leaving_the_state_stops_the_ragdoll() -> void:
 	TestWorld.place(world)
 	await step(20)
 	var player: Player = world["player"]
+	player.ragdoll_enabled = true
 	player.ragdoll = Ragdoll.new()
 	player.ragdoll.build(_humanoid())
 	player.move_manager.start(Move.FALL_UNCONTROLLED)
@@ -395,6 +398,7 @@ func test_a_declared_death_stops_writing_the_screen() -> void:
 	TestWorld.place(world)
 	await step(20)
 	var player: Player = world["player"]
+	player.ragdoll_enabled = true
 	player.ragdoll = Ragdoll.new()
 	player.ragdoll.build(_humanoid())
 	player.ragdoll.start(Vector3.ZERO, RID())
@@ -409,4 +413,34 @@ func test_a_declared_death_stops_writing_the_screen() -> void:
 		"the fall wrote over the death's own desaturation (%.2f left)"
 		% player.screen_effects.desaturation)
 	player.ragdoll.stop()
+	TestWorld.teardown(world)
+
+func test_the_switch_is_off_and_a_death_plays_out_by_animation() -> void:
+	# ✅ THE OWNER: "let's leave the ragdoll here -- polishing it properly is a
+	# job for someone who knows what they are doing. Switch back to the
+	# animation death and put the ragdoll behind a flag."
+	#
+	# With the flag off nothing is built at all, and the death takes the path it
+	# always took: the capsule falls, settle_landing() sees it land, and
+	# landing_destination() declares the death.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	assert_false(player.ragdoll_enabled, "the ragdoll is on by default")
+	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as AirborneMove
+	var deaths := [0]
+	player.died_from_fall.connect(func(): deaths[0] += 1)
+	# The capsule must still be the thing that falls.
+	player.global_position += Vector3(0.0, 4.0, 0.0)
+	await step(1)
+	var before: Vector3 = player.global_position
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	await step(10)
+	assert_gt(before.y - player.global_position.y, 0.05,
+		"the capsule did not fall, so something is still holding it")
+	# And the ordinary landing path still declares the death.
+	move.landing_destination(20.0, false)
+	assert_eq(deaths[0], 1, "the animation death stopped declaring itself")
 	TestWorld.teardown(world)

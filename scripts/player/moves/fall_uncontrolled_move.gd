@@ -32,7 +32,12 @@ func enter(_previous: StringName) -> void:
 	_declared = false
 	_drift_from = Vector3.ZERO
 	_drift_since = 0.0
-	if player.ragdoll != null and player.body != null 			and player.ragdoll.build(player.find_skeleton()):
+	# Player.ragdoll_enabled is off by default -- see its own note. With it off
+	# nothing here runs, no ragdoll is ever built, and the death plays out
+	# through the animation exactly as it did before any of this: the capsule
+	# falls, settle_landing() sees it land, and landing_destination() declares
+	# the death.
+	if player.ragdoll_enabled and player.ragdoll != null and player.body != null 			and player.ragdoll.build(player.find_skeleton()):
 		# Some direction, so a death reads as being thrown rather than folding
 		# straight down. The carried velocity is mixed in because being launched
 		# is what is killing them.

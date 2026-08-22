@@ -537,6 +537,21 @@ var _cancel_clip_lift: bool = false
 var _lift_cancel_amount: float = 0.0
 ## The skeleton and Hips index, resolved once at attach -- this is read every
 ## tick and find_bone() is a string search.
+## OFF BY DEFAULT. ✅ The owner, after playing with it: "let's leave the ragdoll
+## here -- polishing it properly is a job for someone who knows what they are
+## doing, and I have neither the expertise nor the spare time."
+##
+## Fair, and the reason is worth keeping: a ragdoll generated from a rig at
+## runtime gets you as far as "playable and funny" and no further. What is left
+## needs per-joint angle ranges authored by hand (a knee bends one way, an elbow
+## the other), collision exclusions between neighbouring limbs, and a skeleton
+## that is not scaled -- see Ragdoll's own notes. Every shipped ragdoll is
+## hand-built for its model.
+##
+## Kept behind a switch rather than deleted: it works, it is entertaining, and
+## flipping this is the whole cost of having it back.
+@export var ragdoll_enabled: bool = false
+
 ## Built lazily on the first death, and only for a body whose bones are named
 ## like a humanoid. Null everywhere else, which is every non-VRM body this
 ## project has ever attached.
