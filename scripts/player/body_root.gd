@@ -41,6 +41,7 @@ var _previewed_offset: Vector3 = Vector3.ZERO
 var _previewed_rotation: Vector3 = Vector3.ZERO
 var _previewed_scale: float = 1.0
 var _has_built: bool = false
+var _eye_marker: Node3D = null
 
 func _ready() -> void:
 	if not Engine.is_editor_hint():
@@ -56,12 +57,36 @@ func _process(_delta: float) -> void:
 	var player: Player = get_parent() as Player
 	if player == null:
 		return
-	if _has_built and player.body_scene == _previewed_scene \
-			and player.body_mount_offset == _previewed_offset \
-			and player.body_mount_rotation_degrees == _previewed_rotation \
-			and is_equal_approx(player.body_mount_scale, _previewed_scale):
+	var wanted: Dictionary = _wanted_mount(player)
+	if _has_built and wanted["scene"] == _previewed_scene \
+			and wanted["offset"] == _previewed_offset \
+			and wanted["rotation"] == _previewed_rotation \
+			and is_equal_approx(wanted["scale"], _previewed_scale):
 		return
 	_rebuild_preview()
+
+## What the body SHOULD be mounted with, profile first.
+##
+## A Player configured through a BodyProfile leaves its own body_* properties
+## at their defaults until it applies the profile at _ready() -- which never
+## happens in the editor, since Player is not a @tool script. Reading only
+## those properties therefore previewed nothing at all for exactly the setups
+## this aid exists to help with. See Player.body_profile.
+static func _wanted_mount(player: Player) -> Dictionary:
+	var profile: BodyProfile = player.body_profile
+	if profile != null:
+		return {
+			"scene": profile.scene,
+			"offset": profile.mount_offset,
+			"rotation": profile.mount_rotation_degrees,
+			"scale": profile.mount_scale,
+		}
+	return {
+		"scene": player.body_scene,
+		"offset": player.body_mount_offset,
+		"rotation": player.body_mount_rotation_degrees,
+		"scale": player.body_mount_scale,
+	}
 
 func _rebuild_preview() -> void:
 	if _preview != null:
@@ -90,15 +115,18 @@ func _rebuild_preview() -> void:
 	if capsule == null:
 		return
 
+	var wanted: Dictionary = _wanted_mount(player)
 	_has_built = true
-	_previewed_scene = player.body_scene
-	_previewed_offset = player.body_mount_offset
-	_previewed_rotation = player.body_mount_rotation_degrees
-	_previewed_scale = player.body_mount_scale
+	_previewed_scene = wanted["scene"]
+	_previewed_offset = wanted["offset"]
+	_previewed_rotation = wanted["rotation"]
+	_previewed_scale = wanted["scale"]
 
-	if player.body_scene == null:
+	_rebuild_eye_marker()
+
+	if wanted["scene"] == null:
 		return
-	var instance: Node = player.body_scene.instantiate()
+	var instance: Node = (wanted["scene"] as PackedScene).instantiate()
 	if not (instance is Node3D):
 		instance.free()
 		return
@@ -115,6 +143,43 @@ func _rebuild_preview() -> void:
 	# which a placeholder instance permits; only its own instance methods
 	# are off-limits.
 	_preview.transform = Player.compute_mount_transform(
-		capsule.height, player.body_mount_offset, player.body_mount_rotation_degrees,
-		player.body_mount_scale
+		capsule.height, wanted["offset"], wanted["rotation"], wanted["scale"]
 	)
+
+## A ring at the CAMERA's resting height, so a model can be aligned against the
+## thing it actually has to line up with.
+##
+## The owner's complaint, and it was fair: aligning a body meant reading numbers
+## out loud and having someone else nudge them, once per model. Everything
+## needed to do it by eye was already in the editor -- the capsule's own gizmo
+## and this script's model preview -- except the one piece invented at runtime.
+## CameraRig only takes its height in setup(), which the editor never calls, so
+## the camera sits at the Player's origin there and tells you nothing.
+##
+## Read from a default MovementConfig, which does not exist outside a running
+## Arena. That is the value every level starts from, so it is right unless a
+## level overrides eye_height, and none does.
+##
+## Owner deliberately unset, exactly as for the body preview: this can never be
+## saved into a scene or shipped in a build.
+func _rebuild_eye_marker() -> void:
+	if _eye_marker != null:
+		_eye_marker.queue_free()
+		_eye_marker = null
+
+	var marker := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.10
+	torus.outer_radius = 0.13
+	marker.mesh = torus
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.2, 0.9, 1.0, 0.85)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# Drawn THROUGH the body on purpose: what is being judged is where the eye
+	# sits INSIDE the head, and a marker the head hides is no use for that.
+	material.no_depth_test = true
+	marker.material_override = material
+	marker.position = Vector3(0.0, MovementConfig.new().camera.eye_height, 0.0)
+	add_child(marker)
+	_eye_marker = marker

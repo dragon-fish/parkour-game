@@ -214,6 +214,19 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## merely "usually work" -- was pinned by tests/legacy/test_body_attachment.gd
 ## -- ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
 ## this today; restore the pin when the behavioural suite is rewritten.
+## A whole body's worth of settings in one resource, applied over the
+## body_* properties below before anything is attached.
+##
+## Every level used to repeat those properties on its own Player instance, and
+## the owner had already been caught by that -- finding a mount offset right in
+## one level and missing in another, with no memory of where it had been set. A
+## profile is the one place a body is described; a level names it and nothing
+## else.
+##
+## Null is entirely supported: the properties below are then whatever the scene
+## set them to, which is how every body was configured before this existed.
+@export var body_profile: BodyProfile
+
 @export var body_scene: PackedScene
 
 ## Per-model correction for the mount point under BodyRoot, ADDED ON TOP of
@@ -883,6 +896,10 @@ func _build_moves() -> void:
 	move_manager.start(Move.WALKING)
 
 func _ready() -> void:
+	# BEFORE the attach, and before anything reads a body_* property: the whole
+	# point is that they hold the profile's values by the time they matter.
+	if body_profile != null:
+		body_profile.apply(self)
 	if body_scene != null:
 		_attach_body(body_scene)
 

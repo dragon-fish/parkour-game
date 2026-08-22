@@ -92,3 +92,10 @@ scenes/debug_levels/vrm_course.tscn
 # whenever it is opened -- twice now it has reappeared after being deleted and
 # been swept into a commit by a path-wide `git add`.
 scenes/player/player_vrm.tscn
+
+# Body profiles that name untracked models, so they cannot be tracked either.
+# scripts/player/body_profile.gd -- the class itself -- IS tracked.
+scenes/player/profiles/
+
+# The alignment workbench, which names a profile that names untracked models.
+scenes/player/body_alignment.tscn
