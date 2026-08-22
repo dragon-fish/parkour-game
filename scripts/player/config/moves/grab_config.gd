@@ -48,31 +48,26 @@ extends MoveConfig
 
 ## How fast the hands travel along a ledge while shimmying, in metres/second.
 ##
-## ✅ THE OWNER, off the in-game HUD: "18 km/h" -- 5 m/s, and a fixed value
-## rather than something that scales with anything.
+## ✅ THE OWNER, measured in the original: "横爬速度是 2.15 km/h，平均 1s 爬一下，
+## 然后缓差不多 0.3s 换手." 2.15 km/h is 0.597 m/s.
 ##
-## ⚠️ RECORDED WITH A CAVEAT, because it is a surprising number and the way
-## it was read admits a specific alternative. 18 km/h is 500 uu/s, which sits
-## between the original's Run (400) and Sprint (630) -- a hand-over-hand shimmy
-## faster than a sprint-adjacent run. And TdMove_Grab carries
-## `PawnPhysics = PHYS_None`: while hanging, the pawn's velocity is not being
-## integrated at all, so the HUD may still be displaying whatever speed was
-## carried INTO the grab. The check is one line of play: hang perfectly still
-## and see whether the HUD still says 18.
+## 📌 AND IT SETTLES AN EARLIER READING THAT LOOKED WRONG AND WAS. The first
+## number off the HUD was 18 km/h, which would have put a hand-over-hand shimmy
+## between the original's Run (400 uu/s) and Sprint (630). The suspicion at the
+## time was that TdMove_Grab's `PawnPhysics = PHYS_None` leaves the pawn's
+## velocity un-integrated, so the HUD was still showing the speed carried INTO
+## the grab. Hanging still and re-reading confirmed exactly that.
 ##
-## No CDO field settles it either way. TdMove_Grab has the shimmy's existence
-## (`CurrentShimmyMove`, two pairs of corner look-constraints,
-## `DisableShimmyTime`) but no speed, and TdMove_GrabTransfer -- the obvious
-## suspect -- turns out to be the LEAP between two ledges
-## (`Allowed2DTransferDistance = 260 uu`), not travel along one.
+## 📌 It also agrees with the clips, which were the only source before this:
+## UAL1's Climb_Left and Climb_Right are 0.87 s for one reach-and-pull, and
+## 0.87 s per half a shoulder-width is about 0.6 m/s.
 ##
-## ⚠️ THE CLIPS DO NOT KEEP UP AT THIS SPEED, and nothing here makes them.
-## Climb_Left and Climb_Right are 0.87 s for one hand-over-hand cycle; at 5 m/s
-## that cycle has to cover 4.35 m, so the pose reads as scrabbling rather than
-## as climbing. The animator plays them at 1x -- it does NOT speed-match them
-## the way it does the walk and jog sets. If this number survives play, that
-## match is the follow-up.
-@export var shimmy_speed: float = 5.0
+## ⚠️ THE ORIGINAL IS NOT CONTINUOUS AND THIS IS. 2.15 km/h is the AVERAGE over a
+## cycle the owner clocked as roughly 1 s of travel and 0.3 s of changing hands
+## -- so the original moves at nearer 0.78 m/s and then stops dead, twice a
+## stride. This travels at a constant 0.597. Reproducing the stutter is a feel
+## job for later; the distance covered is already right.
+@export var shimmy_speed: float = 0.6
 
 ## Dead zone on the sideways stick before a shimmy starts, 0..1.
 ##
