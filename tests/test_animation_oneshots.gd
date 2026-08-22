@@ -14,7 +14,7 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 ## Every clip the cases below reach for. Length 1.0 each, set by the fixture.
 const CLIPS: Array = [
 	&"Idle", &"Walk", &"Sprint", &"Slide", &"Slide_Start", &"Slide_Exit",
-	&"Jump", &"Jump_Start", &"Jump_Land",
+	&"Jump", &"Jump_Start", &"Jump_Land", &"LiftAir_Fall",
 ]
 
 var _world: Dictionary = {}
@@ -129,3 +129,31 @@ func test_a_body_without_the_clip_arms_nothing() -> void:
 	animator._graph.remove_node("Slide_Start")
 	animator._arm_oneshot(Move.WALKING, Move.SLIDE)
 	assert_eq(animator._oneshot_target(0.0), Move.KEEP, "a one-shot was armed for a clip the body does not have")
+
+func test_losing_control_plays_the_entry_before_the_descent() -> void:
+	# LiftAir_Fall is the moment control goes, played once; LiftAir_Fall_Air is
+	# the drop that follows and loops. Same shape as Slide_Start into Slide.
+	var animator: CharacterAnimator = await _animator()
+	animator._arm_oneshot(Move.FALLING, Move.FALL_UNCONTROLLED)
+	assert_eq(animator._oneshot_target(0.0), StringName(&"LiftAir_Fall"),
+		"losing control had no moment to it")
+
+func test_a_dying_body_does_not_absorb_its_landing() -> void:
+	# ✅ THE OWNER: "it still plays jump_land once on touchdown -- we already
+	# know the character is dead by then, so it should not be landing like
+	# anyone else."
+	#
+	# The absorb is armed when nothing is held, and a dying player's input is
+	# LOCKED -- so it reads as nothing held, which is exactly the case that arms
+	# it. The death is the earlier answer.
+	var animator: CharacterAnimator = await _animator()
+	_hold(animator, 0.0, 0.0)
+	animator.player.set_dying(true)
+	animator._arm_oneshot(Move.FALL_UNCONTROLLED, Move.WALKING)
+	assert_eq(animator._oneshot_target(0.0), Move.KEEP,
+		"a fatal landing still struck a landing pose")
+	# And the living case is untouched.
+	animator.player.set_dying(false)
+	animator._arm_oneshot(Move.FALLING, Move.WALKING)
+	assert_eq(animator._oneshot_target(0.0), StringName(&"Jump_Land"),
+		"an ordinary landing lost its absorb")

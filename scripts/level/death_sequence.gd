@@ -90,20 +90,27 @@ func play(player: Player) -> void:
 			# the time the death is known -- died_from_fall is deferred a frame.
 			# ✅ The owner: a death should skip the ordinary landing cushion.
 			_player.camera_rig.clear_landing_dip()
-			# ✅ NOT IN THIRD PERSON, on the owner's call: "do not play the
-			# first-person screen rotation when dying in third person -- play
-			# the Death2 animation instead."
+			# THE SCRIPTED FALL IS THE FALLBACK NOW, not the default.
 			#
-			# The cinematic pose IS the first-person death: the eye falls,
-			# rolls and looks at the sky because that is what the body is
-			# doing, and there is no body visible to do it. From outside there
-			# is one, and rolling the camera on top of it reads as the world
-			# tipping over rather than as a person falling.
+			# It exists because a bodiless player has nothing to watch: the eye
+			# falls, rolls and ends up looking at the sky because that is what
+			# the body would be doing, and there is no body doing it.
 			#
-			# The clip plays either way -- see CharacterAnimator's dying case.
-			# It is only correct-looking from outside, but from inside the head
-			# is hidden and it costs nothing.
-			_cinematic = not _player.camera_rig.third_person
+			# ✅ With a body there IS, and the owner found the proof by
+			# accident: dying in third person and pressing V mid-clip "lines up
+			# really well with the animation". Of course it does -- a
+			# third-person death already skips the cinematic, so the eye runs
+			# the ordinary path and the head-follow carries it along with the
+			# death clip. Two scripted falls fighting over the same transform is
+			# what the cinematic branch was ever protecting against.
+			#
+			# So: no body, no head to follow, keep the old effect. A body, and
+			# the animation does the work -- all the eye needs is somewhere to
+			# point, which is the line below.
+			_cinematic = _player.body == null
+			if not _cinematic:
+				_player.camera_rig.set_pitch(
+					deg_to_rad(_player.config.camera.death_pitch_deg))
 			if _cinematic:
 				# Read BEFORE begin_cinematic(), while rotation.x is still the
 				# player's own look.

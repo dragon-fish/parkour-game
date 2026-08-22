@@ -244,6 +244,10 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 	if to == Move.SLIDE:
 		_start_oneshot(&"Slide_Start")
 		return
+	if to == Move.FALL_UNCONTROLLED:
+		# The moment control is lost, before the descent settles into its loop.
+		_start_oneshot(&"LiftAir_Fall")
+		return
 	if from == Move.SLIDE:
 		# NOT INTO A CROUCH. ✅ The owner settled this for the blend times
 		# already -- a slide into a crouch is continuous, the body simply stays
@@ -253,6 +257,15 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 			_start_oneshot(&"Slide_Exit")
 		return
 	if _AIRBORNE_MOVES.has(from) and to == Move.WALKING:
+		# ✅ NOT WHILE DYING. The owner: "it still plays jump_land once on
+		# touchdown -- we already know the character is dead by then, so it
+		# should not be landing like anyone else."
+		#
+		# The gate below asks whether a direction is held, and a dying player's
+		# input is LOCKED -- so it reads as nothing held, which is exactly the
+		# case that arms the absorb. The death is the earlier answer.
+		if player.is_dying():
+			return
 		# ONLY WHEN NOTHING IS HELD, on the owner's call: land into the absorb
 		# when the player has stopped asking to go anywhere, and straight into
 		# the run when they have not. Holding a direction through a landing is
@@ -506,7 +519,11 @@ func _target_animation() -> StringName:
 	# where the head is hidden and it costs nothing to have the body fall over
 	# properly.
 	if player.is_dying():
-		return _first_available([&"Death02", &"Death01", &"sneaking", &"Crouch_Idle", &"idle"])
+		# ✅ The owner found a better one: LiftAir_Fall_Impact, the landing half
+		# of the pack's own long fall. Death02 is a death, but a generic one --
+		# this is the body arriving.
+		return _first_available([&"LiftAir_Fall_Impact", &"Death02", &"Death01",
+			&"sneaking", &"Crouch_Idle", &"idle"])
 	match player.move_manager.current_name:
 		Move.WALKING:
 			# THREE BANDS, not two. The free tier has a genuine Walk and the
@@ -650,10 +667,23 @@ func _target_animation() -> StringName:
 			# later, correctly played a jump.
 			return _first_available([&"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
 		Move.FALL_UNCONTROLLED:
-			# The same fall FALLING is, minus the control. Nothing in the free
-			# tier distinguishes a flail from a fall, so it reads as one until
-			# something does.
-			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"idle"])
+			# ✅ NO LONGER THE SAME AS AN ORDINARY FALL. The owner found the
+			# clip: LiftAir_Fall is the pack's own out-of-control descent, where
+			# Jump is a controlled one with the legs under the body. The comment
+			# that used to stand here said nothing in the FREE tier
+			# distinguished a flail from a fall, which was true of the free
+			# tier.
+			# ⚠️ THE _Air ONE IS THE LOOP. The pack names these the way it names
+			# NinjaJump_Start / _Idle / _Land: LiftAir_Fall is the ENTRY, played
+			# once, and LiftAir_Fall_Air is the descent that follows. Routing
+			# the state at the entry clip left it holding its last frame for the
+			# whole drop -- ✅ the owner's "you have the falling animation set to
+			# the impact one", which is what that frozen pose reads as.
+			#
+			# The entry is armed as a one-shot instead, the same way Slide_Start
+			# leads into Slide. See _arm_oneshot().
+			return _first_available([&"LiftAir_Fall_Air", &"LiftAir_Fall", &"Jump",
+				&"NinjaJump_Idle", &"jump", &"idle"])
 		Move.LANDING:
 			# The hard landing nobody rolled out of: a two-second lockout spent
 			# absorbing the impact low to the ground. Jump_Land is the impact

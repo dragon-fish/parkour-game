@@ -283,46 +283,69 @@ func test_the_head_travels_the_same_way_the_body_rolls() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
-func test_third_person_does_not_roll_the_camera() -> void:
-	# ✅ THE OWNER: "do not play the first-person screen rotation when dying in
-	# third person -- play the Death2 animation instead."
+## A body with a skeleton and a head, built at runtime so this depends on no
+## untracked model.
+func _attach_body(player: Player) -> void:
+	var root := Node3D.new()
+	root.name = "fake_body"
+	var anim_player := AnimationPlayer.new()
+	anim_player.name = "AnimationPlayer"
+	var library := AnimationLibrary.new()
+	var animation := Animation.new()
+	animation.length = 1.0
+	library.add_animation(&"idle", animation)
+	anim_player.add_animation_library("", library)
+	root.add_child(anim_player)
+	anim_player.owner = root
+	var packed := PackedScene.new()
+	packed.pack(root)
+	root.free()
+	player._attach_body(packed)
+
+func test_a_body_dies_by_its_own_animation_rather_than_a_scripted_fall() -> void:
+	# ✅ THE OWNER FOUND THIS BY ACCIDENT: dying in third person and pressing V
+	# mid-clip "lines up really well with the animation". Of course it does -- a
+	# third-person death already skipped the cinematic, so the eye ran the
+	# ordinary path and the head-follow carried it along with the death clip.
 	#
-	# The cinematic pose IS the first-person death: the eye falls, rolls and
-	# looks at the sky because that is what the body is doing, and from inside
-	# there is no body visible to do it. From outside there is one, and rolling
-	# the camera on top of it reads as the world tipping over.
+	# So the scripted fall is the FALLBACK now, not the default, and what
+	# decides is whether there is a body -- not which view is running. Two
+	# scripted falls fighting over the same transform is what the cinematic
+	# branch was ever protecting against.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
 	await step(20)
 	var player: Player = world["player"]
-	player.camera_rig.third_person = true
+	_attach_body(player)
 	var sequence := DeathSequence.new()
 	add_child(sequence)
 	sequence.play(player)
 	await step(20)
 	assert_false(player.camera_rig.in_cinematic(),
-		"a third-person death took the camera into a cinematic")
-	assert_true(player.is_dying(), "the body was never told it was dying")
+		"a body-driven death took the camera into a scripted fall as well")
+	assert_almost_eq(player.camera_rig.look_debug()["pitch"],
+		deg_to_rad(player.config.camera.death_pitch_deg), 0.05,
+		"the eye was left with nowhere to point")
 	sequence.stop()
 	sequence.queue_free()
 	TestWorld.teardown(world)
 
-func test_first_person_still_falls_over() -> void:
-	# The pair. Without it the test above passes on a build where the cutscene
-	# never runs at all.
+func test_a_bodiless_death_still_falls_over_on_its_own() -> void:
+	# The pair, and the reason the old effect was kept rather than deleted:
+	# without a body there is no head to follow and nothing to watch.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
 	await step(20)
 	var player: Player = world["player"]
-	player.camera_rig.third_person = false
+	assert_null(player.body, "the fixture attached a body after all")
 	var sequence := DeathSequence.new()
 	add_child(sequence)
 	sequence.play(player)
 	await step(20)
 	assert_true(player.camera_rig.in_cinematic(),
-		"a first-person death did not take the camera over")
+		"a bodiless death had nothing driving the camera at all")
 	sequence.stop()
 	sequence.queue_free()
 	TestWorld.teardown(world)

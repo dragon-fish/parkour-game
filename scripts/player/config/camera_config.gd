@@ -149,6 +149,19 @@ extends Resource
 ## above: third_person_right is a per-taste distance, so a fixed rate would
 ## take a different length of time at every setting.
 @export var third_person_shoulder_time: float = 0.25
+
+## Where the eye is pinned while dying WITH A BODY ATTACHED, in degrees.
+## Positive looks up.
+##
+## ✅ The owner, after trying it: dying in third person and pressing V mid-clip
+## "lines up really well with the animation". Of course it does -- a
+## third-person death does not take the cinematic, so the eye runs the ordinary
+## path and the head-follow carries it along with the death clip. That IS the
+## effect; the only thing missing was somewhere to point.
+##
+## ⚠️ Only with a body. Without one there is nothing for the eye to follow, and
+## DeathSequence's own scripted fall is still the answer -- see its play().
+@export var death_pitch_deg: float = 25.0
 ## How fast the eye catches up after the body was lifted over a low obstacle
 ## (see Player.try_step_up). Exponential, so this is a rate, not a duration:
 ## ~12 settles a 0.35 m step in roughly 0.15 s, which reads as a stride. Lower

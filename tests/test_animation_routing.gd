@@ -130,6 +130,7 @@ const FULL_CLIPS: Array = [
 	&"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Turn180_L", &"Turn180_R",
 	&"StepUp", &"Death01", &"Death02",
 	&"WallRun_Jump_L", &"WallRun_Jump_R",
+	&"LiftAir_Fall", &"LiftAir_Fall_Air", &"LiftAir_Fall_Impact",
 ]
 
 func test_the_paid_packs_replace_their_placeholders() -> void:
@@ -224,7 +225,7 @@ func test_a_dying_body_falls_over_rather_than_carrying_on() -> void:
 	assert_eq(String(animator._target_animation()), "Jump",
 		"the fixture is not falling, so the test below proves nothing")
 	player.set_dying(true)
-	assert_eq(String(animator._target_animation()), "Death02",
+	assert_eq(String(animator._target_animation()), "LiftAir_Fall_Impact",
 		"a dying body asked for '%s'" % String(animator._target_animation()))
 
 func test_a_body_with_no_death_clip_is_not_left_asking_for_one() -> void:
@@ -281,3 +282,22 @@ func test_an_ordinary_jump_is_still_an_ordinary_jump() -> void:
 	_hand_off(player, Move.WALKING, Move.JUMP)
 	assert_eq(String(animator._target_animation()), "Jump_Start",
 		"a jump off the floor asked for '%s'" % String(animator._target_animation()))
+
+func test_an_uncontrolled_fall_is_not_an_ordinary_one() -> void:
+	# ✅ The owner found the clip: LiftAir_Fall is the pack's own out-of-control
+	# descent, where Jump is a controlled one with the legs under the body. The
+	# two states had shared a clip since there was nothing in the FREE tier that
+	# told a flail from a fall.
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.FALLING)
+	assert_eq(String(animator._target_animation()), "Jump",
+		"an ordinary fall changed too")
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	# ⚠️ THE _Air ONE. The pack names these like NinjaJump_Start / _Idle /
+	# _Land: LiftAir_Fall is the ENTRY, played once, and LiftAir_Fall_Air is the
+	# descent. Routing the STATE at the entry clip leaves it holding its last
+	# frame for the whole drop, which is what the owner read as "you have the
+	# falling animation set to the impact one".
+	assert_eq(String(animator._target_animation()), "LiftAir_Fall_Air",
+		"an uncontrolled fall asked for '%s'" % String(animator._target_animation()))

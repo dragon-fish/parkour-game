@@ -1046,6 +1046,8 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	&"Turn180_L", &"Turn180_R",
 	# The level's death sequence, not a Move -- see CharacterAnimator.
 	&"Death01", &"Death02",
+	# The uncontrolled fall and its arrival.
+	&"LiftAir_Fall", &"LiftAir_Fall_Air", &"LiftAir_Fall_Impact",
 	# THE EIGHT-WAY SETS, and the whole reason the reversed-twin hack below can
 	# stop being the answer for a body that has them. Listed out rather than
 	# generated from CharacterAnimator.DIRECTION_SETS because this list is also
@@ -1489,7 +1491,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# all sustained, hold-or-repeat clips that must keep going for as long as
 	# the state holds; jump is a discrete one-shot action and is deliberately
 	# left alone.
-	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle"]:
+	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle"]:
 		_ensure_clip_loops(anim_player, looping_clip)
 
 	var state_machine := AnimationNodeStateMachine.new()
