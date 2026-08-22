@@ -873,7 +873,26 @@ func _third_person_position() -> Vector3:
 	# The preset decides the SIDE; third_person_right decides how far over, so
 	# the panel slider still means something with a preset selected.
 	var across: float = camera_config.third_person_right
-	match _shoulder:
+	# A WALL RUN BORROWS THE OTHER SHOULDER. ✅ The owner: "on a left-hand wall,
+	# put the camera at the preset right shoulder for the duration, and the
+	# other way round -- otherwise the view sits inside the wall the whole
+	# time."
+	#
+	# The collision probe further down already pulls the camera in when
+	# something is between it and the body, but pulling in is the wrong answer
+	# here: it gives a shot pressed flat against a surface that is going to be
+	# there for the whole manoeuvre. Standing on the other side of the body is.
+	#
+	# ⚠️ NOT written into _shoulder, deliberately. That is the player's own
+	# preference and it is persisted -- borrowing it would leave a wall run
+	# quietly rewriting a setting, and cycling it mid-run would fight this.
+	# wall_side is cleared on exit, so the preference comes back on its own.
+	var shoulder: int = _shoulder
+	if _wall_side != 0:
+		# wall_side > 0 is a RIGHT-hand wall (WallRunMove's own look-fan code
+		# says so), so the camera wants the left.
+		shoulder = Shoulder.LEFT if _wall_side > 0 else Shoulder.RIGHT
+	match shoulder:
 		Shoulder.LEFT:
 			across = -absf(across)
 		Shoulder.CENTRED:
