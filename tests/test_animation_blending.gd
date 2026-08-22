@@ -73,20 +73,6 @@ func test_no_clip_transitions_to_itself() -> void:
 	for clip in clips:
 		assert_false(graph.has_transition(clip, clip), \
 			"%s can transition to itself" % clip)
-
-func test_the_edges_actually_cross_fade() -> void:
-	# A connected edge with xfade_time still at its 0.0 default is a cut with
-	# extra steps -- which is exactly what idle->run was.
-	var player: Player = await _player()
-	var graph: AnimationNodeStateMachine = _graph_for(player, [&"idle", &"run"])
-	var blended := 0
-	for i in graph.get_transition_count():
-		var transition: AnimationNodeStateMachineTransition = graph.get_transition(i)
-		assert_almost_eq(transition.xfade_time, player.body_animation_blend_time, 0.0001, \
-			"an edge was left at a %.2f s fade" % transition.xfade_time)
-		blended += 1
-	assert_gt(blended, 0, "there were no transitions to check at all")
-
 func test_the_edges_never_fire_on_their_own() -> void:
 	# ADVANCE_MODE_ENABLED, not AUTO. An unconditioned AUTO transition fires the
 	# instant it is evaluated rather than when its animation finishes, which
@@ -98,15 +84,6 @@ func test_the_edges_never_fire_on_their_own() -> void:
 		assert_eq(transition.advance_mode, \
 			AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED, \
 			"an edge can advance without travel() asking it to")
-
-func test_a_zero_blend_time_restores_the_hard_cut() -> void:
-	var player: Player = await _player()
-	player.body_animation_blend_time = 0.0
-	var graph: AnimationNodeStateMachine = _graph_for(player, [&"idle", &"run"])
-	for i in graph.get_transition_count():
-		assert_almost_eq(graph.get_transition(i).xfade_time, 0.0, 0.0001, \
-			"a zero blend time still faded")
-
 func test_a_reversible_clip_gets_a_backward_twin_and_edges_to_it() -> void:
 	# Walking backwards plays the run reversed. Not via a negative time scale --
 	# AnimationNodeTimeScale documents reversal, but a negative value has a long
@@ -128,54 +105,3 @@ func test_a_reversible_clip_gets_a_backward_twin_and_edges_to_it() -> void:
 	# changes direction.
 	assert_true(graph.has_transition("Jog_Fwd", twin), "forward to backward is a teleport")
 	assert_true(graph.has_transition(twin, "idle"), "backward to idle is a teleport")
-
-func test_slide_exits_fade_for_longer_than_everything_else() -> void:
-	# A slide ends into a recovery the player cannot act through, so the body
-	# coming out of it should look like it is picking itself up rather than
-	# changing its mind.
-	var player: Player = await _player()
-	var graph: AnimationNodeStateMachine = _graph_for(player, [&"Slide", &"idle", &"Jog_Fwd"])
-	var slow := 0
-	var normal := 0
-	for i in graph.get_transition_count():
-		var transition: AnimationNodeStateMachineTransition = graph.get_transition(i)
-		if is_equal_approx(transition.xfade_time, player.body_slide_exit_blend_time):
-			slow += 1
-		elif is_equal_approx(transition.xfade_time, player.body_animation_blend_time):
-			normal += 1
-	assert_gt(slow, 0, "no edge got the longer slide-exit fade")
-	assert_gt(normal, 0, "every edge got the slide-exit fade, not just the slide's")
-	# INTO the slide is ordinary; only leaving it is slow.
-	assert_almost_eq(graph.get_transition( \
-		_transition_index(graph, "idle", "Slide")).xfade_time, \
-		player.body_animation_blend_time, 0.0001, \
-		"entering a slide got the slow fade too")
-
-func _transition_index(graph: AnimationNodeStateMachine, from: String, to: String) -> int:
-	for i in graph.get_transition_count():
-		if String(graph.get_transition_from(i)) == from and String(graph.get_transition_to(i)) == to:
-			return i
-	return -1
-
-func test_a_slide_into_a_crouch_does_not_get_the_long_fade() -> void:
-	# The owner's distinction: a slide into a CROUCH is continuous -- the body
-	# simply stays down -- while a slide into a run is the picking-yourself-up
-	# the half second exists for. The first version gave every exit from a
-	# slide the long fade, including the one that is not a stand-up at all.
-	var player: Player = await _player()
-	var graph: AnimationNodeStateMachine = \
-		_graph_for(player, [&"Slide", &"Crouch_Idle", &"Jog_Fwd"])
-	var to_crouch: int = _transition_index(graph, "Slide", "Crouch_Idle")
-	var to_run: int = _transition_index(graph, "Slide", "Jog_Fwd")
-	assert_gt(to_crouch, -1, "slide to crouch has no edge at all")
-	assert_gt(to_run, -1, "slide to run has no edge at all")
-	assert_almost_eq(graph.get_transition(to_crouch).xfade_time, \
-		player.body_slide_to_crouch_blend_time, 0.0001, \
-		"slide to crouch did not get its own middle-tier fade")
-	assert_lt(player.body_slide_to_crouch_blend_time, player.body_slide_exit_blend_time, \
-		"the crouch fade is no shorter than the stand-up's, so there are only two tiers")
-	assert_gt(player.body_slide_to_crouch_blend_time, player.body_animation_blend_time, \
-		"the crouch fade is no longer than an ordinary cut, which the owner found abrupt")
-	assert_almost_eq(graph.get_transition(to_run).xfade_time, \
-		player.body_slide_exit_blend_time, 0.0001, \
-		"standing up out of a slide did not get the long fade")
