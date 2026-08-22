@@ -49,10 +49,10 @@ const SPEED_MATCHED_CLIPS: Array[StringName] = [
 	&"run", &"sneak",
 	# The merged packs' own names. Omitting them is why the owner reported the
 	# run "not using the current speed as a multiplier" -- the routing had moved
-	# on to Jog_Fwd while this list still only knew about `run`, so the scaling
+	# on from `run` while this list still only knew about `run`, so the scaling
 	# silently stopped applying to the clip actually playing. A list of names
 	# that has to be kept in step with another list of names, and it was not.
-	&"Walk", &"Jog_Fwd", &"Sprint", &"Walk_Carry", &"Crouch_Fwd",
+	&"Walk", &"Sprint", &"Walk_Carry", &"Crouch_Fwd",
 ]
 
 ## Bounds on that scaling. Outside them the cadence stops reading as a pace and
@@ -197,121 +197,124 @@ func _first_available_directional(candidates: Array[StringName]) -> StringName:
 ## Maps the player's current movement state onto a priority list of clips,
 ## then resolves that list against whatever the attached body actually has.
 func _target_animation() -> StringName:
+	# THE PACKS COME FIRST, the fox's own six names come last.
+	#
+	# The order used to be the other way round for a simple historical reason:
+	# `run`/`idle`/`jump`/`sneak`/`sneaking`/`ladder_stillness` were the only
+	# vocabulary this project had, and the packs were bolted on behind them. The
+	# owner has now settled the direction -- the fox is on its way out and the
+	# Universal Animation Library is what bodies will actually carry -- so the
+	# pack name is the intended clip everywhere and the fox name is the fallback
+	# that keeps the existing fox scenes working.
+	#
+	# ⚠️ ONE EXCEPTION, and it is deliberate: the GRAB hang still leads with
+	# `ladder_stillness`, because a genuine match outranks this ordering. The
+	# packs have nothing for hanging off a ledge; the fox has exactly that.
+	#
+	# NO Jog_Fwd ANYWHERE. The owner: Sprint is the run, do not use the jog.
+	# It is gone from the routing, from SPEED_MATCHED_CLIPS, and from the clips
+	# Player wires into the graph at all -- left in any of those it would come
+	# back the next time a list was reordered.
 	match player.move_manager.current_name:
 		Move.WALKING:
-			# SPRINT BEFORE JOG, and the order is the whole of it: a body with
-			# no `run` of its own took the next entry, so every pack-driven body
-			# in this project has been running on Jog_Fwd and Sprint has never
-			# once been reachable.
-			#
-			# ✅ The owner spotted it by eye: "the free pack has a Sprint, that is
-			# the run -- what you wired up is a great striding thing." Which is
-			# also what the SCALING was doing to it. reference is 7.2, the ground
-			# speed cap, so a body at full pace plays its clip at exactly 1.0 --
-			# a jog cadence asked to carry 7.2 m/s, and the stride has to be
-			# enormous to cover the ground. 7.2 is a plausible authored speed for
-			# a Sprint and never was one for a Jog, so the same swap that fixes
-			# the pose is what makes body_run_reference_speed mean something.
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
-				return _first_available_directional([&"run", &"Sprint", &"Jog_Fwd", &"Walk", &"Walk_Carry", &"idle"])
-			return _first_available([&"idle", &"Idle", &"Idle_FoldArms", &"run", &"Walk"])
+				return _first_available_directional([&"Sprint", &"Walk", &"Walk_Carry", &"run", &"idle"])
+			return _first_available([&"Idle", &"Idle_FoldArms", &"idle", &"Walk"])
 		Move.FALLING:
-			return _first_available([&"jump", &"Jump", &"NinjaJump_Idle", &"idle", &"Idle"])
+			# `Jump` is the pack's AIRBORNE LOOP (Jump_Loop, with the suffix
+			# stripped on merge), which is what a fall is. It led with the fox's
+			# `jump` before, which is a whole take-off-to-landing clip.
+			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"Idle", &"idle"])
 		Move.SLIDE:
-			# PLACEHOLDER for a future slide clip. None of the owner's reported
-			# clips are a genuine match -- `climb`/`climbing` are prone,
-			# crawling-on-the-ground poses, not a fast committed slide. A slide
-			# is fast, committed ground momentum -- closest of what exists is
-			# run.
-			return _first_available([&"Slide", &"run", &"Jog_Fwd", &"idle"])
+			# A GENUINE MATCH: UAL2 ships Slide_Start / Slide / Slide_Exit, and
+			# SlideMove drives the trio. Everything after it is the old
+			# PLACEHOLDER reasoning -- a slide is fast, committed ground
+			# momentum, so a run is the closest thing to it.
+			return _first_available([&"Slide", &"Sprint", &"run", &"idle"])
 		Move.SPEED_VAULT:
-			# PLACEHOLDER for a future vault clip. A vault is a short airborne
-			# burst clearing an obstacle -- closest of what exists is jump.
-			return _first_available([&"jump", &"Jump_Start", &"NinjaJump_Start", &"idle"])
+			# PLACEHOLDER, and the biggest remaining gap. A vault is a short
+			# airborne burst clearing an obstacle -- closest of what exists is
+			# the take-off half of a jump. UAL2's paid tier has a SafetyVault;
+			# the free one does not.
+			return _first_available([&"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
 		Move.GRAB:
 			# Two phases share this one move (see GrabMove's own header
 			# comment): hanging (frozen, waiting on input) and mantling (a
-			# scripted climb onto the top). Only hanging has a genuine match in
-			# the owner's reported vocabulary -- `ladder_stillness` is
-			# "hanging on a ladder", which suits a ledge hang exactly -- so the
-			# two phases are told apart here via GrabMove.is_mantling(),
-			# the same way test_arena.gd already reads SlideMove.is_crawling()
-			# to see inside a move from the outside.
+			# scripted climb onto the top). They are told apart here via
+			# GrabMove.is_mantling(), the same way test_arena.gd reads
+			# SlideMove.is_crawling() to see inside a move from the outside.
 			var grab_move = player.move_manager.move_for(Move.GRAB)
 			if grab_move != null and grab_move.is_mantling():
-				# MANTLE still has no real match: `climb`/`climbing` are prone,
-				# ground-crawling poses, nothing like climbing up and onto a
-				# ledge. Left on the same PLACEHOLDER reasoning the whole GRAB
-				# move used to share -- a mantle is a short, committed,
-				# ascending burst, so jump remains the closest of what exists --
-				# unless a pack supplied a real one, which ClimbUp_1m is.
-				return _first_available([&"ClimbUp_1m", &"jump", &"Jump_Start", &"idle"])
-			return _first_available([&"ladder_stillness", &"jump", &"Jump", &"idle"])
+				# ClimbUp_1m is a genuine match -- climbing up and onto a ledge
+				# is exactly what it is.
+				return _first_available([&"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
+			# THE EXCEPTION named at the top of this function. `ladder_stillness`
+			# is the fox "hanging on a ladder", which suits a ledge hang exactly,
+			# and no pack clip comes close -- UAL1's Climb_Idle would, and it is
+			# behind the paid tier. So the fox name leads here on merit.
+			return _first_available([&"ladder_stillness", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 		Move.WALL_RUN:
-			# PLACEHOLDER for a future wall-run clip. None of the owner's
-			# reported clips fit a lateral run along a vertical surface.
-			# Wall running is continuous, fast, directional locomotion along a
-			# surface -- closest of what exists is run.
-			return _first_available([&"run", &"Sprint", &"Jog_Fwd", &"idle"])
+			# PLACEHOLDER. Nothing in the free tier is lateral locomotion along a
+			# vertical surface; a run is the closest. UAL2's paid tier has
+			# WallRun_L/R, and Player already tracks wall_side to pick between
+			# them the day they exist.
+			return _first_available([&"Sprint", &"run", &"idle"])
 		Move.CROUCH:
-			# `sneak`/`sneaking` are genuine matches from the owner's reported
-			# vocabulary: crouch WALKING is `sneak`, crouch STILL is
-			# `sneaking`. Told apart with the exact same speed-threshold idea
-			# WALKING already uses for idle-versus-run -- reusing
-			# run_animation_speed_threshold rather than inventing a second,
-			# crouch-only knob that could quietly drift out of sync with the
-			# ground one -- since a low profile does not change what counts as
-			# "moving".
+			# Crouch_Fwd / Crouch_Idle are genuine matches, and so are the fox's
+			# `sneak` / `sneaking` behind them. Told apart with the exact same
+			# speed threshold WALKING uses for idle-versus-run -- rather than
+			# inventing a second, crouch-only knob that could quietly drift out
+			# of sync with the ground one -- since a low profile does not change
+			# what counts as "moving".
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
-				return _first_available_directional([&"sneak", &"Crouch_Fwd", &"run", &"idle"])
-			return _first_available([&"sneaking", &"Crouch_Idle", &"idle"])
+				return _first_available_directional([&"Crouch_Fwd", &"sneak", &"Walk", &"idle"])
+			return _first_available([&"Crouch_Idle", &"sneaking", &"Idle", &"idle"])
 		Move.JUMP:
-			# Not a placeholder -- jump is the genuine match, and this case
-			# existing at all is the fix. Without it a jump fell through to the
+			# The TAKE-OFF, as against FALLING's airborne loop. This case
+			# existing at all was a fix: without it a jump fell through to the
 			# default below, whose list is idle-first, so a body with an idle
 			# clip STOOD STILL through its own take-off while FALLING, one tick
-			# later, correctly played jump.
-			return _first_available([&"jump", &"Jump_Start", &"NinjaJump_Start", &"run", &"idle"])
+			# later, correctly played a jump.
+			return _first_available([&"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
 		Move.FALL_UNCONTROLLED:
-			# The same fall FALLING is, minus the control. Nothing in the
-			# reported vocabulary distinguishes a flail from a fall, so it reads
-			# as one until something does.
-			return _first_available([&"jump", &"Jump", &"idle"])
+			# The same fall FALLING is, minus the control. Nothing in the free
+			# tier distinguishes a flail from a fall, so it reads as one until
+			# something does.
+			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"idle"])
 		Move.LANDING:
-			# PLACEHOLDER. The hard landing nobody rolled out of: a two-second
-			# lockout spent absorbing the impact low to the ground. `sneaking`
-			# -- the crouch-still pose -- is the closest of what exists, since
-			# the body is down and not going anywhere. Not a real match: this
-			# wants a stagger.
-			return _first_available([&"Jump_Land", &"NinjaJump_Land", &"sneaking", &"Crouch_Idle", &"idle"])
+			# The hard landing nobody rolled out of: a two-second lockout spent
+			# absorbing the impact low to the ground. Jump_Land is the impact
+			# itself and is a genuine match for the first moment of it; the
+			# crouch-still pose stands in for the rest, since the body is down
+			# and not going anywhere. ⚠️ What this really wants is a stagger.
+			return _first_available([&"Jump_Land", &"NinjaJump_Land", &"Crouch_Idle", &"sneaking", &"idle"])
 		Move.SKILL_ROLL:
-			# A GENUINE MATCH at last: the first Universal Animation Library
-			# ships a Roll. This was the weakest placeholder in the file --
-			# a ground tumble had no relative in the vocabulary at all, and
-			# jump stood in for being a committed whole-body action rather
-			# than for resembling a roll, which it does not.
-			return _first_available([&"Roll", &"jump", &"run", &"idle"])
+			# A GENUINE MATCH: UAL1 ships a Roll. This was once the weakest
+			# placeholder in the file -- a ground tumble had no relative in the
+			# fox's vocabulary at all, and `jump` stood in for being a committed
+			# whole-body action rather than for resembling a roll.
+			return _first_available([&"Roll", &"Jump_Start", &"jump", &"idle"])
 		Move.INTO_GRAB:
 			# PLACEHOLDER. The reach itself, before the hands arrive -- airborne
-			# and committed, so the same jump the GRAB mantle borrows.
-			return _first_available([&"jump", &"Jump_Start", &"idle"])
+			# and committed, so the same take-off the vault borrows.
+			return _first_available([&"Jump_Start", &"jump", &"idle"])
 		Move.WALL_CLIMB:
-			# PLACEHOLDER. A vertical kick up a wall: short, committed,
-			# ascending. Exactly the reasoning that puts the GRAB mantle on jump
-			# as well.
-			return _first_available([&"ClimbUp_1m", &"jump", &"Jump_Start", &"idle"])
+			# A vertical kick up a wall: short, committed, ascending. ClimbUp_1m
+			# is close but SHORT -- this project's wall climb rises 1.69 m, so
+			# the paid tier's ClimbUp_2m is the one that actually fits.
+			return _first_available([&"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
 		Move.TURN_180:
 			# Not really a body move -- the view swings and the facing follows,
 			# while whatever the legs were doing continues. So it borrows the
 			# same speed split WALKING uses rather than claiming a clip of its
 			# own.
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
-				return _first_available([&"run", &"Sprint", &"Jog_Fwd", &"Walk", &"idle"])
-			return _first_available([&"idle", &"Idle", &"run", &"Walk"])
+				return _first_available([&"Sprint", &"Walk", &"run", &"idle"])
+			return _first_available([&"Idle", &"idle", &"Walk", &"run"])
 		_:
 			# Any move without an explicit case above. Reaching here is a
 			# signal that a move was added without deciding what it looks
 			# like -- prefer adding a case, even one that returns idle with a
 			# comment, over relying on this. Every Move that existed when this
 			# was written has one; a new arrival landing here is the point.
-			return _first_available([&"idle", &"Idle", &"run", &"jump"])
+			return _first_available([&"Idle", &"idle", &"run", &"jump"])

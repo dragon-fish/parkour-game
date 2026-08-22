@@ -478,7 +478,7 @@ const _CROUCHED_CLIPS: Array[StringName] = [
 ## because the owner asked for it as the cheap approximation, and because
 ## running backwards while the legs run forwards is worse.
 const _REVERSIBLE_CLIPS: Array[StringName] = [
-	&"run", &"Walk", &"Jog_Fwd", &"Sprint", &"Walk_Carry", &"sneak", &"Crouch_Fwd",
+	&"run", &"Walk", &"Sprint", &"Walk_Carry", &"sneak", &"Crouch_Fwd",
 ]
 
 ## Suffix marking the reversed twin of a clip. Read by CharacterAnimator, which
@@ -967,7 +967,7 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	&"Idle_FoldArms",
 	# From the FIRST Universal Animation Library, which is where the locomotion
 	# lives -- the two packs are near-disjoint and this project needs both.
-	&"Idle", &"Walk", &"Jog_Fwd", &"Sprint", &"Roll",
+	&"Idle", &"Walk", &"Sprint", &"Roll",
 	&"Jump", &"Jump_Start", &"Jump_Land", &"Crouch_Idle", &"Crouch_Fwd",
 ]
 
@@ -1244,7 +1244,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# all sustained, hold-or-repeat clips that must keep going for as long as
 	# the state holds; jump is a discrete one-shot action and is deliberately
 	# left alone.
-	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Jog_Fwd", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd"]:
+	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd"]:
 		_ensure_clip_loops(anim_player, looping_clip)
 
 	var state_machine := AnimationNodeStateMachine.new()

@@ -92,16 +92,16 @@ func test_a_reversible_clip_gets_a_backward_twin_and_edges_to_it() -> void:
 	# loops. A second node with play_mode = PLAY_MODE_BACKWARD reaches the same
 	# result without a negative scale existing.
 	var player: Player = await _player()
-	var graph: AnimationNodeStateMachine = _graph_for(player, [&"Jog_Fwd", &"idle"])
-	var twin := "Jog_Fwd" + Player.BACKWARD_SUFFIX
+	var graph: AnimationNodeStateMachine = _graph_for(player, [&"Sprint", &"idle"])
+	var twin := "Sprint" + Player.BACKWARD_SUFFIX
 	assert_true(graph.has_node(twin), "the reversible clip got no reversed twin")
 	assert_false(graph.has_node("idle" + Player.BACKWARD_SUFFIX), \
 		"a clip that is not locomotion got a reversed twin")
 	var node := graph.get_node(twin) as AnimationNodeAnimation
 	assert_eq(node.play_mode, AnimationNodeAnimation.PLAY_MODE_BACKWARD, \
 		"the twin plays forwards, so it is just a duplicate")
-	assert_eq(String(node.animation), "Jog_Fwd", "the twin points at a different clip")
+	assert_eq(String(node.animation), "Sprint", "the twin points at a different clip")
 	# EDGES, or travel() teleports to it -- a visible snap every time the player
 	# changes direction.
-	assert_true(graph.has_transition("Jog_Fwd", twin), "forward to backward is a teleport")
+	assert_true(graph.has_transition("Sprint", twin), "forward to backward is a teleport")
 	assert_true(graph.has_transition(twin, "idle"), "backward to idle is a teleport")
