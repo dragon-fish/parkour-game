@@ -223,6 +223,16 @@ func _add_segment(bone: StringName, child: StringName, mass: float) -> void:
 		# joint type is selected -- read off the object rather than guessed.
 		# softness and bias are deliberately NOT set: Jolt ignores both and
 		# warns about each one, every joint, every death.
+		# ⚠️ THE CONE HAS TO POINT ALONG THE BONE, and this was missing entirely.
+		# A cone-twist limits swing away from ITS OWN axis, which without this
+		# is whatever the bone's rest orientation happened to be -- so the
+		# limits were being applied about an axis unrelated to the limb, and
+		# ✅ the owner's "the joints have no angle limit, they swing 360
+		# degrees" is what a cone pointing sideways looks like.
+		#
+		# Godot's ConeTwistJoint3D twists about its X axis, so the joint is
+		# rotated to put X along the segment.
+		body.joint_rotation = _basis_x_along(along).get_euler()
 		body.set("joint_constraints/twist_span", JOINT_TWIST_DEG)
 		body.set("joint_constraints/swing_span", JOINT_SWING_DEG)
 	# A little damping, or a dead body keeps twitching on the floor forever.
@@ -246,6 +256,18 @@ func _add_segment(bone: StringName, child: StringName, mass: float) -> void:
 
 ## A basis whose Y axis points along `direction`. A capsule is built along Y, so
 ## this is what lays it down the bone instead of standing it up in the middle.
+## A basis whose X axis points along `direction` -- what a cone-twist joint
+## needs, since it twists about X and swings away from it.
+func _basis_x_along(direction: Vector3) -> Basis:
+	var x: Vector3 = direction.normalized()
+	if x.length_squared() < 0.5:
+		return Basis.IDENTITY
+	var y: Vector3 = x.cross(Vector3.FORWARD)
+	if y.length_squared() < 0.001:
+		y = x.cross(Vector3.RIGHT)
+	y = y.normalized()
+	return Basis(x, y, x.cross(y))
+
 func _basis_along(direction: Vector3) -> Basis:
 	var y: Vector3 = direction.normalized()
 	if y.length_squared() < 0.5:

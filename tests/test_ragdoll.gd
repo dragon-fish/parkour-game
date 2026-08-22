@@ -348,3 +348,33 @@ func test_noclip_hands_back_a_body_with_nothing_left_on_it() -> void:
 		"the screen was left blurred")
 	player.toggle_noclip()
 	TestWorld.teardown(world)
+
+func test_every_cone_points_along_its_own_bone() -> void:
+	# ⚠️ MISSING ENTIRELY AT FIRST, and ✅ the owner named the symptom without
+	# knowing the cause: "the joints have no angle limit, they can swing 360
+	# degrees." A cone-twist limits swing away from ITS OWN axis, and with no
+	# joint_rotation that axis is whatever the bone's rest orientation happened
+	# to be -- so a 30 degree cone was being applied about an axis unrelated to
+	# the limb, which constrains nothing anybody can see.
+	var skeleton := _humanoid()
+	Ragdoll.new().build(skeleton)
+	var checked := 0
+	for child in skeleton.get_children():
+		if not (child is PhysicalBone3D):
+			continue
+		var bone := child as PhysicalBone3D
+		if bone.joint_type != PhysicalBone3D.JOINT_TYPE_CONE:
+			continue
+		var index: int = skeleton.find_bone(bone.bone_name)
+		# The segment this body spans, the same way Ragdoll measured it.
+		var shape := bone.get_child(0) as CollisionShape3D
+		var along: Vector3 = shape.position * 2.0
+		if along.length() < 0.01:
+			continue
+		checked += 1
+		var cone_axis: Vector3 = Basis.from_euler(bone.joint_rotation).x
+		assert_gt(cone_axis.dot(along.normalized()), 0.99,
+			"%s's cone points %.2f off its own bone"
+			% [bone.name, cone_axis.dot(along.normalized())])
+	assert_gt(checked, 0, "no cones to check -- the fixture is wrong")
+	skeleton.queue_free()
