@@ -238,3 +238,75 @@ func test_a_wall_run_turns_the_legs_into_the_wall() -> void:
 
 	assert_gt(absf(right_wall), 0.01, "a wall run asked for no twist at all")
 	assert_lt(right_wall * left_wall, 0.0, "both walls turned the legs the same way")
+
+# --- head look ---------------------------------------------------------------
+
+func _sample_bones(modifier: SkeletonModifier3D, skeleton: Skeleton3D, \
+		names: Array[StringName]) -> void:
+	_sampled.clear()
+	var grab := func() -> void:
+		for name in names:
+			var index: int = skeleton.find_bone(name)
+			if index >= 0:
+				_sampled[name] = skeleton.get_bone_global_pose(index)
+	modifier.modification_processed.connect(grab, CONNECT_ONE_SHOT)
+	await step(1)
+
+func _sampled_pitch(name: StringName) -> float:
+	if not _sampled.has(name):
+		return 0.0
+	var forward: Vector3 = -(_sampled[name] as Transform3D).basis.z
+	return asin(clampf(forward.y, -1.0, 1.0))
+
+## Turns the body without movement input, which is what opens the gap the head
+## looks along -- _drive_body_yaw holds the model's heading while idle. Poking
+## HeadLook.request() directly is pointless: _drive_head_look recomputes it from
+## that gap every tick.
+func _look_away(player: Player, yaw_deg: float, pitch_deg: float) -> void:
+	for i in 60:
+		player.rotation.y = deg_to_rad(yaw_deg)
+		player.camera_rig.set_pitch(deg_to_rad(pitch_deg))
+		await step(1)
+
+func test_the_head_reaches_the_camera_and_the_hips_do_not_move() -> void:
+	# The shape the owner asked for: the head takes the whole angle, the upper
+	# body only a share of it, and the hips are not part of it at all.
+	var player: Player = await _player_with_body()
+	if player == null:
+		return pending("no humanoid body at %s" % BODY_PATH)
+	var skeleton: Skeleton3D = player._find_skeleton(player.body)
+	var bones: Array[StringName] = [&"Head", &"UpperChest", &"Hips"]
+	await _look_away(player, 60.0, 0.0)
+	await _sample_bones(player.head_look, skeleton, bones)
+
+	assert_almost_eq(_sampled_yaw(&"Head"), deg_to_rad(60.0), 0.05, \
+		"the head reached %.1f degrees, not the 60 the camera was at" % rad_to_deg(_sampled_yaw(&"Head")))
+	var chest: float = rad_to_deg(_sampled_yaw(&"UpperChest"))
+	assert_gt(chest, 1.0, "the upper body did not follow at all")
+	assert_lt(chest, 25.0, "the upper body followed %.1f degrees -- the whole torso turned" % chest)
+	assert_almost_eq(_sampled_yaw(&"Hips"), 0.0, 0.02, "the hips turned with the head")
+
+func test_looking_up_raises_the_head_rather_than_lowering_it() -> void:
+	# The axis was backwards once, measured as a request to look up 40 degrees
+	# putting the head 40 degrees down. forward CROSS up, not up cross forward.
+	var player: Player = await _player_with_body()
+	if player == null:
+		return pending("no humanoid body at %s" % BODY_PATH)
+	var skeleton: Skeleton3D = player._find_skeleton(player.body)
+	await _look_away(player, 0.0, 40.0)
+	await _sample_bones(player.head_look, skeleton, [&"Head", &"Hips"])
+	assert_gt(_sampled_pitch(&"Head"), deg_to_rad(20.0), \
+		"looking up put the head at %.1f degrees" % rad_to_deg(_sampled_pitch(&"Head")))
+	assert_almost_eq(_sampled_pitch(&"Hips"), 0.0, 0.05, "the hips pitched too")
+
+func test_past_a_quarter_turn_the_model_faces_forward_again() -> void:
+	# The owner's rule: past about 90 degrees a person turns their body instead,
+	# so the model stops following rather than cranking its neck round.
+	var player: Player = await _player_with_body()
+	if player == null:
+		return pending("no humanoid body at %s" % BODY_PATH)
+	var skeleton: Skeleton3D = player._find_skeleton(player.body)
+	await _look_away(player, 120.0, 0.0)
+	await _sample_bones(player.head_look, skeleton, [&"Head"])
+	assert_almost_eq(_sampled_yaw(&"Head"), 0.0, 0.05, \
+		"at 120 degrees the head was still turned %.1f" % rad_to_deg(_sampled_yaw(&"Head")))

@@ -521,6 +521,11 @@ var hand_ik: HandIK = null
 ## spine, and null otherwise. See TorsoTwist's own header.
 var torso_twist: TorsoTwist = null
 
+## Turns the attached body's head toward where the camera is pointing. Built
+## alongside the twist, and null for a body without a humanoid neck. See
+## HeadLook's own header.
+var head_look: HeadLook = null
+
 ## The world yaw the MODEL is currently showing, which is not always the body's
 ## own. See _drive_body_yaw().
 var _visual_yaw: float = 0.0
@@ -930,6 +935,7 @@ func _attach_body(scene: PackedScene) -> void:
 	head_node = _resolve_head_node(body)
 	_attach_hand_ik(body)
 	_attach_torso_twist(body)
+	_attach_head_look(body)
 	if head_node != null:
 		head_rest_local = to_local(head_node.global_position)
 
@@ -1124,6 +1130,38 @@ func _drive_torso_twist() -> void:
 		angle = -angle
 	var cap: float = deg_to_rad(config.pawn.torso_twist_max_deg)
 	torso_twist.request(clampf(angle, -cap, cap))
+
+## Builds the head look on the body's skeleton, if it has a neck to turn.
+func _attach_head_look(body_node: Node3D) -> void:
+	head_look = null
+	var skeleton := _find_skeleton(body_node)
+	if skeleton == null or skeleton.find_bone(&"Head") < 0:
+		return
+	skeleton.modifier_callback_mode_process = 		Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_PHYSICS
+	var look := HeadLook.new()
+	look.name = "HeadLook"
+	skeleton.add_child(look)
+	head_look = look
+
+## Feeds the head look the angle between where the MODEL faces and where the
+## CAMERA points.
+##
+## That divergence already exists: _drive_body_yaw() holds the model's heading
+## while there is no movement input, so turning the camera on the spot opens
+## exactly this gap. Standing still used to swing the whole character round;
+## then it stopped moving at all, which reads as a mannequin. Looking along the
+## gap is the half in between.
+func _drive_head_look() -> void:
+	if head_look == null:
+		return
+	if camera_rig == null:
+		head_look.request(0.0, 0.0)
+		return
+	# The MODEL's heading, not the body's -- the body is always looking exactly
+	# where the camera is, so measuring against it would always be zero.
+	var yaw: float = wrapf(rotation.y - _visual_yaw, -PI, PI)
+	var pitch: float = float(camera_rig.look_debug()["pitch"])
+	head_look.request(yaw, pitch)
 
 ## Turns the visible body toward where it is going, instead of welding it to
 ## the view.
@@ -1466,6 +1504,7 @@ func _physics_process(delta: float) -> void:
 		hand_ik.update(delta)
 	_drive_torso_twist()
 	_drive_body_yaw(delta, input)
+	_drive_head_look()
 
 	if camera_rig != null:
 		camera_rig.apply_look(input.look, self, delta)
