@@ -1155,13 +1155,13 @@ func _drive_head_look() -> void:
 	if head_look == null:
 		return
 	if camera_rig == null:
-		head_look.request(0.0, 0.0)
+		head_look.request(0.0, 0.0, config.camera.pitch_limit_deg)
 		return
 	# The MODEL's heading, not the body's -- the body is always looking exactly
 	# where the camera is, so measuring against it would always be zero.
 	var yaw: float = wrapf(rotation.y - _visual_yaw, -PI, PI)
 	var pitch: float = float(camera_rig.look_debug()["pitch"])
-	head_look.request(yaw, pitch)
+	head_look.request(yaw, pitch, config.camera.pitch_limit_deg)
 
 ## Turns the visible body toward where it is going, instead of welding it to
 ## the view.

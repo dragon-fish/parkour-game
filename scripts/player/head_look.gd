@@ -68,6 +68,11 @@ const RELEASE_END_DEG := 120.0
 ## attached to the camera, slow enough that a flick does not snap it.
 const RATE := 10.0
 
+## The camera's own pitch limit, in degrees, so the spine's share can be
+## scaled against the same range the view travels through. Told by Player,
+## which has the config this modifier does not.
+var _pitch_limit_deg: float = 89.0
+
 var _wanted_yaw: float = 0.0
 var _wanted_pitch: float = 0.0
 var _yaw: float = 0.0
@@ -76,7 +81,8 @@ var _pitch: float = 0.0
 ## Asks the head to look `yaw` from the body's own heading and `pitch` up or
 ## down, both in radians. Driven by Player every physics tick; see
 ## Player._drive_head_look().
-func request(yaw: float, pitch: float) -> void:
+func request(yaw: float, pitch: float, pitch_limit_deg: float = 89.0) -> void:
+	_pitch_limit_deg = pitch_limit_deg
 	# RELEASED PAST A QUARTER TURN, and eased out rather than cut: at exactly
 	# the limit a hard cutoff would drop the head from fully turned to forward
 	# in one frame, every time the player swept past it.
@@ -108,11 +114,18 @@ func _process_modification_with_delta(delta: float) -> void:
 
 	var spine_yaw: float = clampf(_yaw, \
 		-deg_to_rad(SPINE_SHARE_DEG), deg_to_rad(SPINE_SHARE_DEG))
+	# PROPORTIONAL, not clamped. Clamping put the chest at its full bend the
+	# moment the camera passed 22 degrees and left it there for the whole rest
+	# of the range, which the owner spotted at once: the body finishes folding
+	# while the head has barely started, and then nothing more happens.
+	#
+	# Scaled against the camera's own pitch limit instead, so the chest arrives
+	# at its full share exactly when the view reaches the end of its travel.
 	# Looking DOWN is where the body has to get out of the way; looking up it
-	# only has to not lean back. See SPINE_PITCH_DOWN_DEG.
-	var pitch_share: float = deg_to_rad( \
-		SPINE_PITCH_DOWN_DEG if _pitch < 0.0 else SPINE_PITCH_UP_DEG)
-	var spine_pitch: float = clampf(_pitch, -pitch_share, pitch_share)
+	# only has to avoid leaning back.
+	var share_at_limit: float = deg_to_rad( 		SPINE_PITCH_DOWN_DEG if _pitch < 0.0 else SPINE_PITCH_UP_DEG)
+	var pitch_limit: float = deg_to_rad(maxf(_pitch_limit_deg, 1.0))
+	var spine_pitch: float = _pitch / pitch_limit * share_at_limit
 	_apply(skeleton, SPINE_CHAIN, spine_yaw, spine_pitch)
 	# The remainder, so the head lands on the full angle rather than on the
 	# angle plus whatever the spine already contributed.
