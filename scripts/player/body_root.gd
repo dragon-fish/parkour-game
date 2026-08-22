@@ -42,6 +42,7 @@ var _previewed_rotation: Vector3 = Vector3.ZERO
 var _previewed_scale: float = 1.0
 var _has_built: bool = false
 var _eye_marker: Node3D = null
+var _feet_marker: Node3D = null
 
 func _ready() -> void:
 	if not Engine.is_editor_hint():
@@ -122,7 +123,7 @@ func _rebuild_preview() -> void:
 	_previewed_rotation = wanted["rotation"]
 	_previewed_scale = wanted["scale"]
 
-	_rebuild_eye_marker()
+	_rebuild_markers(capsule.height)
 
 	if wanted["scene"] == null:
 		return
@@ -162,24 +163,34 @@ func _rebuild_preview() -> void:
 ##
 ## Owner deliberately unset, exactly as for the body preview: this can never be
 ## saved into a scene or shipped in a build.
-func _rebuild_eye_marker() -> void:
-	if _eye_marker != null:
-		_eye_marker.queue_free()
-		_eye_marker = null
+## One ring at the eye, one at the capsule's BOTTOM.
+##
+## The feet ring is there because its absence caused a real misreading: with
+## only the collision shape's own faint wireframe to go by, the owner took the
+## selected node's gizmo for the origin and concluded the model's feet were not
+## on the capsule at all. They were -- 7 cm up, which is the mount offset doing
+## exactly what it says. Nothing was wrong except that nothing was legible.
+func _rebuild_markers(capsule_height: float) -> void:
+	_eye_marker = _replace_ring(_eye_marker, 		MovementConfig.new().camera.eye_height, Color(0.2, 0.9, 1.0, 0.85))
+	# Where the capsule ends, which is where the model's feet belong.
+	_feet_marker = _replace_ring(_feet_marker, 		-capsule_height * 0.5, Color(1.0, 0.75, 0.2, 0.85))
 
-	var marker := MeshInstance3D.new()
+func _replace_ring(existing: Node3D, height: float, colour: Color) -> Node3D:
+	if existing != null:
+		existing.queue_free()
+	var ring := MeshInstance3D.new()
 	var torus := TorusMesh.new()
 	torus.inner_radius = 0.10
 	torus.outer_radius = 0.13
-	marker.mesh = torus
+	ring.mesh = torus
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.2, 0.9, 1.0, 0.85)
+	material.albedo_color = colour
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	# Drawn THROUGH the body on purpose: what is being judged is where the eye
-	# sits INSIDE the head, and a marker the head hides is no use for that.
+	# Drawn THROUGH the body on purpose: what is being judged is where these
+	# heights sit INSIDE it, and a marker the body hides is no use for that.
 	material.no_depth_test = true
-	marker.material_override = material
-	marker.position = Vector3(0.0, MovementConfig.new().camera.eye_height, 0.0)
-	add_child(marker)
-	_eye_marker = marker
+	ring.material_override = material
+	ring.position = Vector3(0.0, height, 0.0)
+	add_child(ring)
+	return ring
