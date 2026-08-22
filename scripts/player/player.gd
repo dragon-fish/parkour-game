@@ -277,6 +277,27 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## about its own origin, which is exactly where the mount already places it.
 @export var body_mount_scale: float = 1.0
 
+## PLACING THE MODEL AGAINST THE CAMERA, not the other way round. The owner's
+## rule, from how they mounted this project's other body: nudge the model back
+## and up a little so the fixed camera ends up JUST IN FRONT OF ITS NECK --
+## "most FPS games put the camera at the neck, not at the eyes".
+##
+## eye_height stays where it is through all of this. It is 1.66 m measured from
+## the original, and while only the camera and the death sequence read it, it is
+## the number the whole feel was calibrated against. What moves is the model.
+##
+## The two knobs trade against each other and neither wins outright:
+##
+##   * offset.y raises the neck toward the camera, and lifts the model's FEET
+##     off the floor by the same amount.
+##   * scale raises the neck too, by making the whole body bigger -- with no
+##     float, but an anime character actually modelled tall is the thing the
+##     owner called Attack on Titan.
+##
+## Splitting between them is why this body sits at scale 1.13 with a 7 cm lift
+## rather than either extreme: 1.187 with no lift, or 1.081 with 15 cm of it.
+## Measured result -- the neck lands 1 cm under the camera and 9.7 cm behind it.
+
 ## Optional scenes whose AnimationPlayers carry clips to MERGE into the
 ## attached body's own, so a model that ships no locomotion can borrow it from
 ## animation packs.
