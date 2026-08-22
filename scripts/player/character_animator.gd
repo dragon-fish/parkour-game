@@ -627,6 +627,22 @@ func _target_animation() -> StringName:
 				return _first_available_directional([&"Crouch", &"sneak", &"Walk", &"idle"])
 			return _first_available([&"Crouch_Idle", &"sneaking", &"Idle", &"idle"])
 		Move.JUMP:
+			# A WALL KICK IS A JUMP, but not this one. ✅ The owner: the packs
+			# have a WallRunJump and it was never wired up. The mechanism has
+			# been complete for a while -- WallRunMove.wall_jump_launch and the
+			# whole Noob/ProAdd skill gradient -- and it hands off to JUMP, so
+			# the animator had no way to tell it from stepping off a kerb.
+			#
+			# wall_side > 0 is a RIGHT-hand wall, so _R is the clip for pushing
+			# off one on the right. ⚠️ Same naming guess as WallRun_L/R: taken
+			# as the side of the WALL. If a kick reads mirrored, both lines flip
+			# together.
+			var jump_move = player.move_manager.move_for(Move.JUMP)
+			var kick: int = jump_move.kick_side() if jump_move != null else 0
+			if kick != 0:
+				var kick_clip: StringName = &"WallRun_Jump_R" if kick > 0 else &"WallRun_Jump_L"
+				return _first_available([kick_clip, &"WallRun_Jump_L", &"WallRun_Jump_R",
+					&"Jump_Start", &"jump", &"idle"])
 			# The TAKE-OFF, as against FALLING's airborne loop. This case
 			# existing at all was a fix: without it a jump fell through to the
 			# default below, whose list is idle-first, so a body with an idle

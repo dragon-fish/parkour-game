@@ -1038,7 +1038,7 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# The two vaults with no hand in them -- see CharacterAnimator's
 	# Move.SPEED_VAULT case, and SpeedVaultMove.is_scramble().
 	&"StepUp",
-	&"WallRun_L", &"WallRun_R",
+	&"WallRun_L", &"WallRun_R", &"WallRun_Jump_L", &"WallRun_Jump_R",
 	&"ClimbUp_2m", &"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Climb_Exit",
 	# Turn180_L is wired and never asked for: the move only ever turns right.
 	# Here anyway, so that the day the turn stops being one-sided the clip is
