@@ -320,3 +320,31 @@ func test_leaving_the_state_stops_the_ragdoll() -> void:
 	assert_false(player.ragdoll.is_simulating(),
 		"the ragdoll went on simulating under a walking player")
 	TestWorld.teardown(world)
+
+func test_noclip_hands_back_a_body_with_nothing_left_on_it() -> void:
+	# ✅ THE OWNER: "pressing T also has to reset the model and the camera, or
+	# the view ends up misaligned."
+	#
+	# A death borrows presentation channels the ordinary rules do not take back
+	# on their own -- the eye lifted out of a floor, a screen part-way into a
+	# blackout that is no longer coming. Every other way out of a death clears
+	# them; noclip is a way out that skips the respawn entirely.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	player.camera_rig.set_death_lift(0.3)
+	player.screen_effects.set_tint(Color.BLACK, 1.0)
+	player.screen_effects.set_blur(1.0)
+	player.toggle_noclip()
+	await step(2)
+	assert_almost_eq(player.camera_rig.position.y,
+		player.config.camera.eye_height, 0.05,
+		"the eye was left lifted out of a floor it is no longer on")
+	assert_almost_eq(player.screen_effects.tint_amount, 0.0, 0.001,
+		"the screen was left part-way to black")
+	assert_almost_eq(player.screen_effects.blur, 0.0, 0.001,
+		"the screen was left blurred")
+	player.toggle_noclip()
+	TestWorld.teardown(world)

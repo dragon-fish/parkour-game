@@ -2013,6 +2013,20 @@ func toggle_noclip() -> void:
 		fall_tracker.reset(global_position.y)
 	if move_manager != null:
 		move_manager.start(Move.WALKING)
+	# ✅ THE OWNER: "pressing T also has to reset the model and the camera, or
+	# the view ends up misaligned."
+	#
+	# Everything a death leaves behind that the ordinary rules do not take back
+	# on their own. The move manager above already stops the ragdoll and clears
+	# the death flag -- these are the PRESENTATION channels a death borrowed and
+	# would otherwise still be holding: the eye lifted out of a floor it is no
+	# longer lying on, and a screen part-way into a blackout that is not coming.
+	if camera_rig != null:
+		camera_rig.set_death_lift(0.0)
+	if screen_effects != null:
+		screen_effects.set_tint(screen_effects.tint_color(), 0.0)
+		screen_effects.set_desaturation(0.0)
+		screen_effects.set_blur(0.0)
 
 # --- what the wall you just left will not let you do -------------------------
 #
