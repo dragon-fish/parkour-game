@@ -45,7 +45,15 @@ const GRAPH_TIME_SCALE := &"speed"
 ## idle and jump are deliberately absent. Slowing an idle down because the body
 ## is standing still is exactly backwards, and a jump's timing belongs to the
 ## arc, not to the ground.
-const SPEED_MATCHED_CLIPS: Array[StringName] = [&"run", &"sneak"]
+const SPEED_MATCHED_CLIPS: Array[StringName] = [
+	&"run", &"sneak",
+	# The merged packs' own names. Omitting them is why the owner reported the
+	# run "not using the current speed as a multiplier" -- the routing had moved
+	# on to Jog_Fwd while this list still only knew about `run`, so the scaling
+	# silently stopped applying to the clip actually playing. A list of names
+	# that has to be kept in step with another list of names, and it was not.
+	&"Walk", &"Jog_Fwd", &"Sprint", &"Walk_Carry", &"Crouch_Fwd",
+]
 
 ## Bounds on that scaling. Outside them the cadence stops reading as a pace and
 ## starts reading as a defect -- slow-motion at the bottom, blurred limbs at the
@@ -112,7 +120,11 @@ func _drive_speed(clip: StringName) -> void:
 		return
 	var scale := 1.0
 	var reference: float = player.body_run_reference_speed
-	if reference > 0.0 and SPEED_MATCHED_CLIPS.has(clip):
+	# Stripped, so a reversed twin scales exactly like the clip it reverses.
+	var base_clip: StringName = clip
+	if String(clip).ends_with(Player.BACKWARD_SUFFIX):
+		base_clip = StringName(String(clip).trim_suffix(Player.BACKWARD_SUFFIX))
+	if reference > 0.0 and SPEED_MATCHED_CLIPS.has(base_clip):
 		# travel_speed(), NOT horizontal_speed() -- see travel_speed()'s own
 		# note on why velocity lies through a vault or a mantle. The eye already
 		# reads it for the same reason.
@@ -138,13 +150,43 @@ func _first_available(candidates: Array[StringName]) -> StringName:
 			return candidate
 	return Move.KEEP
 
+## True when the body is travelling BEHIND itself -- backpedalling rather than
+## running. Compared against the facing rather than read off the input, so a
+## body carried backwards by a slide or a wall kick reads correctly too.
+##
+## The dead zone matters: strafing is neither forward nor backward, and a body
+## sidestepping must not flicker between a clip and its reverse on float noise.
+func _moving_backward() -> bool:
+	var travel := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	if travel.length_squared() < 0.04:
+		return false
+	var facing: Vector3 = -player.global_transform.basis.z
+	facing.y = 0.0
+	if facing.length_squared() < 0.0001:
+		return false
+	return travel.normalized().dot(facing.normalized()) < -0.5
+
+## _first_available(), but preferring each candidate's REVERSED twin while the
+## body is backpedalling. Falls through to the forward clip whenever the twin is
+## missing, so a body with no reversible clips behaves exactly as before.
+func _first_available_directional(candidates: Array[StringName]) -> StringName:
+	if not _moving_backward():
+		return _first_available(candidates)
+	for candidate in candidates:
+		var backward := StringName(String(candidate) + Player.BACKWARD_SUFFIX)
+		if _has_clip(backward):
+			return backward
+		if _has_clip(candidate):
+			return candidate
+	return Move.KEEP
+
 ## Maps the player's current movement state onto a priority list of clips,
 ## then resolves that list against whatever the attached body actually has.
 func _target_animation() -> StringName:
 	match player.move_manager.current_name:
 		Move.WALKING:
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
-				return _first_available([&"run", &"Jog_Fwd", &"Sprint", &"Walk", &"Walk_Carry", &"idle"])
+				return _first_available_directional([&"run", &"Jog_Fwd", &"Sprint", &"Walk", &"Walk_Carry", &"idle"])
 			return _first_available([&"idle", &"Idle", &"Idle_FoldArms", &"run", &"Walk"])
 		Move.FALLING:
 			return _first_available([&"jump", &"Jump", &"NinjaJump_Idle", &"idle", &"Idle"])
@@ -194,7 +236,7 @@ func _target_animation() -> StringName:
 			# ground one -- since a low profile does not change what counts as
 			# "moving".
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
-				return _first_available([&"sneak", &"Crouch_Fwd", &"run", &"idle"])
+				return _first_available_directional([&"sneak", &"Crouch_Fwd", &"run", &"idle"])
 			return _first_available([&"sneaking", &"Crouch_Idle", &"idle"])
 		Move.JUMP:
 			# Not a placeholder -- jump is the genuine match, and this case

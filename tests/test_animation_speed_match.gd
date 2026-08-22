@@ -134,3 +134,29 @@ func test_a_zero_reference_leaves_every_clip_alone() -> void:
 	player._travel_speed = 30.0
 	animator._drive_speed(&"run")
 	assert_almost_eq(_scale_of(tree), 1.0, 0.001, "a disabled reference still scaled the clip")
+
+func test_the_packs_own_clip_names_are_speed_matched_too() -> void:
+	# THE REGRESSION THE OWNER FOUND. The routing moved on to the merged packs'
+	# clips -- Jog_Fwd, Walk, Sprint -- while this list still only knew `run`,
+	# so the scaling silently stopped applying to the clip actually playing and
+	# the run no longer followed the travel speed. A list of names kept in step
+	# with another list of names, and it was not.
+	var player: Player = await _player()
+	var tree: AnimationTree = _attach_synthetic_body(player)
+	var animator: CharacterAnimator = \
+		player.get_node("BodyRoot").get_node("CharacterAnimator")
+	player._travel_speed = player.body_run_reference_speed * 1.5
+	for clip in [&"run", &"Jog_Fwd", &"Sprint", &"Walk", &"Walk_Carry", &"Crouch_Fwd"]:
+		animator._drive_speed(clip)
+		assert_almost_eq(_scale_of(tree), 1.5, 0.001, \
+			"'%s' is not speed matched -- it plays at its authored pace at any speed" % clip)
+
+func test_a_reversed_twin_scales_like_the_clip_it_reverses() -> void:
+	var player: Player = await _player()
+	var tree: AnimationTree = _attach_synthetic_body(player)
+	var animator: CharacterAnimator = \
+		player.get_node("BodyRoot").get_node("CharacterAnimator")
+	player._travel_speed = player.body_run_reference_speed * 1.5
+	animator._drive_speed(StringName("Jog_Fwd" + Player.BACKWARD_SUFFIX))
+	assert_almost_eq(_scale_of(tree), 1.5, 0.001, \
+		"the reversed twin played at its authored pace while the forward clip scaled")

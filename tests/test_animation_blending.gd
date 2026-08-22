@@ -106,3 +106,53 @@ func test_a_zero_blend_time_restores_the_hard_cut() -> void:
 	for i in graph.get_transition_count():
 		assert_almost_eq(graph.get_transition(i).xfade_time, 0.0, 0.0001, \
 			"a zero blend time still faded")
+
+func test_a_reversible_clip_gets_a_backward_twin_and_edges_to_it() -> void:
+	# Walking backwards plays the run reversed. Not via a negative time scale --
+	# AnimationNodeTimeScale documents reversal, but a negative value has a long
+	# tail of reported trouble with LOOPING clips (godotengine/godot#27215 is
+	# exactly "plays backwards, then rewinds and stops") and every clip here
+	# loops. A second node with play_mode = PLAY_MODE_BACKWARD reaches the same
+	# result without a negative scale existing.
+	var player: Player = await _player()
+	var graph: AnimationNodeStateMachine = _graph_for(player, [&"Jog_Fwd", &"idle"])
+	var twin := "Jog_Fwd" + Player.BACKWARD_SUFFIX
+	assert_true(graph.has_node(twin), "the reversible clip got no reversed twin")
+	assert_false(graph.has_node("idle" + Player.BACKWARD_SUFFIX), \
+		"a clip that is not locomotion got a reversed twin")
+	var node := graph.get_node(twin) as AnimationNodeAnimation
+	assert_eq(node.play_mode, AnimationNodeAnimation.PLAY_MODE_BACKWARD, \
+		"the twin plays forwards, so it is just a duplicate")
+	assert_eq(String(node.animation), "Jog_Fwd", "the twin points at a different clip")
+	# EDGES, or travel() teleports to it -- a visible snap every time the player
+	# changes direction.
+	assert_true(graph.has_transition("Jog_Fwd", twin), "forward to backward is a teleport")
+	assert_true(graph.has_transition(twin, "idle"), "backward to idle is a teleport")
+
+func test_slide_exits_fade_for_longer_than_everything_else() -> void:
+	# A slide ends into a recovery the player cannot act through, so the body
+	# coming out of it should look like it is picking itself up rather than
+	# changing its mind.
+	var player: Player = await _player()
+	var graph: AnimationNodeStateMachine = _graph_for(player, [&"Slide", &"idle", &"Jog_Fwd"])
+	var slow := 0
+	var normal := 0
+	for i in graph.get_transition_count():
+		var transition: AnimationNodeStateMachineTransition = graph.get_transition(i)
+		if is_equal_approx(transition.xfade_time, player.body_slide_exit_blend_time):
+			slow += 1
+		elif is_equal_approx(transition.xfade_time, player.body_animation_blend_time):
+			normal += 1
+	assert_gt(slow, 0, "no edge got the longer slide-exit fade")
+	assert_gt(normal, 0, "every edge got the slide-exit fade, not just the slide's")
+	# INTO the slide is ordinary; only leaving it is slow.
+	assert_almost_eq(graph.get_transition( \
+		_transition_index(graph, "idle", "Slide")).xfade_time, \
+		player.body_animation_blend_time, 0.0001, \
+		"entering a slide got the slow fade too")
+
+func _transition_index(graph: AnimationNodeStateMachine, from: String, to: String) -> int:
+	for i in graph.get_transition_count():
+		if String(graph.get_transition_from(i)) == from and String(graph.get_transition_to(i)) == to:
+			return i
+	return -1

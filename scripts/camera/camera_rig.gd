@@ -671,7 +671,14 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# the sink push the combined angle past vertical and roll the horizon over.
 	var pitch_limit: float = deg_to_rad(_config.camera.pitch_limit_deg)
 	# The spin is added AFTER the clamp, on purpose -- see _roll_spin.
-	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit) - _roll_spin
+	#
+	# AND ONLY IN FIRST PERSON. A roll turns the eye through a full revolution,
+	# which is the manoeuvre when you are inside the head and nauseating when
+	# you are watching from behind -- the owner's word for it was 晕. From
+	# outside, the BODY doing the roll is the whole show; the camera tumbling as
+	# well is the same event performed twice, once by each.
+	var spin: float = 0.0 if third_person else _roll_spin
+	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit) - spin
 
 ## Called on landing. `speed` is the downward speed at the moment of impact.
 func punch_landing(speed: float) -> void:

@@ -396,6 +396,45 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## body's clips were authored.
 @export var body_animation_blend_time: float = 0.15
 
+## How long a clip leaving a SLIDE cross-fades, which is longer than everything
+## else.
+##
+## The owner's reason, and it is about the move rather than the animation: a
+## slide ends into a recovery the player cannot act through (slide.recovery_time
+## is a second), so the body coming out of it should look like it is picking
+## itself up, not like it changed its mind. At the ordinary 0.15 s the stand-up
+## is over well before the lockout is, and the mismatch reads as the animation
+## being ahead of the character.
+@export var body_slide_exit_blend_time: float = 0.5
+
+## The clips whose EXIT gets the longer fade above. Only the slide, because it
+## is the only move here whose recovery outlasts an ordinary transition.
+const _SLOW_EXIT_CLIPS: Array[StringName] = [&"Slide", &"Slide_Exit", &"sneak"]
+
+## Locomotion clips that also get a REVERSED twin in the graph, for walking
+## backwards. A body that has the clip gets both; one that does not gets
+## neither.
+##
+## Why a twin rather than a negative time scale: AnimationNodeTimeScale
+## documents reversal, but a negative value has a long tail of reported trouble
+## with LOOPING clips -- godotengine/godot#27215 is exactly "plays backwards,
+## then rewinds to the beginning and stops" -- and every clip here loops. That
+## issue was closed as `archived` during the 3.x-to-4.x cleanup rather than
+## fixed. An AnimationNodeAnimation with play_mode = PLAY_MODE_BACKWARD reaches
+## the same result without a negative scale ever existing.
+##
+## ⚠️ A reversed forward-run is not a backward-run: the foot contacts and the
+## arm swing are both wrong, and no amount of blending hides that. It is here
+## because the owner asked for it as the cheap approximation, and because
+## running backwards while the legs run forwards is worse.
+const _REVERSIBLE_CLIPS: Array[StringName] = [
+	&"run", &"Walk", &"Jog_Fwd", &"Sprint", &"Walk_Carry", &"sneak", &"Crouch_Fwd",
+]
+
+## Suffix marking the reversed twin of a clip. Read by CharacterAnimator, which
+## strips it to find the clip a name really refers to.
+const BACKWARD_SUFFIX := "_Backward"
+
 ## The instance of body_scene actually attached under BodyRoot, or null if
 ## none. Exposed as a plain var (not just a BodyRoot child lookup) so tests
 ## and other systems can inspect what got attached without reaching into
@@ -990,6 +1029,13 @@ func _wire_body_animation(body_node: Node3D) -> void:
 		var clip_node := AnimationNodeAnimation.new()
 		clip_node.animation = clip_name
 		state_machine.add_node(String(clip_name), clip_node)
+		# The reversed twin, for moving backwards. Same clip resource, played
+		# the other way -- see _REVERSIBLE_CLIPS.
+		if _REVERSIBLE_CLIPS.has(clip_name):
+			var backward := AnimationNodeAnimation.new()
+			backward.animation = clip_name
+			backward.play_mode = AnimationNodeAnimation.PLAY_MODE_BACKWARD
+			state_machine.add_node(String(clip_name) + BACKWARD_SUFFIX, backward)
 
 	# EVERY ORDERED PAIR GETS AN EDGE, so travel() always has a path.
 	#
@@ -1022,14 +1068,20 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	for clip_name in _KNOWN_ANIMATION_CLIPS:
 		if state_machine.has_node(String(clip_name)):
 			present.append(clip_name)
+		# The reversed twins need edges too, or travel() teleports to them --
+		# which for a locomotion clip means a visible snap every time the player
+		# changes from forward to backward and back.
+		var backward := StringName(String(clip_name) + BACKWARD_SUFFIX)
+		if state_machine.has_node(String(backward)):
+			present.append(backward)
 	for to_name in present:
 		# From Start as well, so the first travel() of a body's life is a real
 		# transition rather than a teleport out of the entry node.
-		state_machine.add_transition("Start", String(to_name), _blend_transition())
+		state_machine.add_transition("Start", String(to_name), _blend_transition(false))
 		for from_name in present:
 			if from_name == to_name:
 				continue
-			state_machine.add_transition(String(from_name), String(to_name), _blend_transition())
+			state_machine.add_transition(String(from_name), String(to_name), 				_blend_transition(_SLOW_EXIT_CLIPS.has(from_name)))
 
 	# WRAPPED IN A BLEND TREE, rather than used as the root directly.
 	#
@@ -1094,10 +1146,11 @@ func _wire_body_animation(body_node: Node3D) -> void:
 ## resource per edge, never a shared one: AnimationNodeStateMachineTransition is
 ## a Resource, and handing the same instance to every edge would make them one
 ## object wearing many hats.
-func _blend_transition() -> AnimationNodeStateMachineTransition:
+func _blend_transition(slow_exit: bool = false) -> AnimationNodeStateMachineTransition:
 	var transition := AnimationNodeStateMachineTransition.new()
 	transition.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
-	transition.xfade_time = maxf(body_animation_blend_time, 0.0)
+	var seconds: float = body_slide_exit_blend_time if slow_exit else body_animation_blend_time
+	transition.xfade_time = maxf(seconds, 0.0)
 	return transition
 
 func _body_has_clip(anim_player: AnimationPlayer, clip_name: StringName) -> bool:
