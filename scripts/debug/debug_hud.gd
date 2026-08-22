@@ -108,6 +108,15 @@ func _process(delta: float) -> void:
 		# line is the difference between the two.
 		"fold       %s  drop %.2f m" % ["declared" if player.body_folded() else "off",
 			player.body_fold_drop()],
+		# WHERE THE MODEL'S ROOT IS, against where the mount alone would put it.
+		# The eye line above reports the HEAD BONE, which is this plus the pose
+		# -- and a vault's pose can raise the head half a metre by itself. When
+		# the two disagree it is the pose, and no amount of moving the root
+		# fixes a pose.
+		"model      y %+.2f  (mount %+.2f  fold %.2f  lift %.2f%s)"
+			% [player.body_root_debug()["y"], player.body_root_debug()["mount_y"],
+			player.body_root_debug()["drop"], player.body_root_debug()["lift"],
+			" CANCELLED" if player.body_root_debug()["lift_cancelled"] else ""],
 		"capsule    %.2f / %.2f m%s" % [player.current_capsule_height(),
 			player.standing_height(),
 			"  FOLDED" if player.current_capsule_height() < player.standing_height() - 0.01 else ""],

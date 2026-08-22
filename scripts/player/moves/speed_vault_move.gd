@@ -45,6 +45,11 @@ func enter(_previous: StringName) -> void:
 	# left behind for the whole vault — stale coyote time, head bob, etc.
 	player.set_grounded(false)
 	_aborted = false
+	# THE CODE OWNS THE HEIGHT HERE, so the clip must not add its own. Every
+	# variant, step-ups included -- the arc carries the body in all six cases,
+	# and SafetyVault alone lifts the hips 0.825 m on top of it. See
+	# Player.set_clip_lift_cancelled().
+	player.set_clip_lift_cancelled(true)
 
 
 	# THE HANDOFF IS CONSUMED FIRST, before any of the abort paths below.
@@ -269,6 +274,7 @@ func exit() -> void:
 	# it on the first tick there is room.
 	player.request_standing_capsule()
 	player.set_body_folded(false)
+	player.set_clip_lift_cancelled(false)
 	if player.camera_rig != null:
 		player.camera_rig.set_vault_roll(0.0)
 

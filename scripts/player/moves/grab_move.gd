@@ -129,6 +129,7 @@ func enter(_previous: StringName) -> void:
 func exit() -> void:
 	player.request_standing_capsule()
 	player.set_body_folded(false)
+	player.set_clip_lift_cancelled(false)
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted:
@@ -238,4 +239,8 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# actually is.
 		player.set_capsule_height(config.crouch.crouch_capsule_height)
 		player.set_body_folded(true)
+		# ClimbUp_2m lifts the hips 1.201 m by itself, and the mantle's own arc
+		# already carries the body up the wall. See
+		# Player.set_clip_lift_cancelled().
+		player.set_clip_lift_cancelled(true)
 	return KEEP

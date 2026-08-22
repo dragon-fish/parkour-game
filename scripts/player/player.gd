@@ -523,6 +523,13 @@ var _clip_offset_rotation: Vector3 = Vector3.ZERO
 var _body_folded: bool = false
 ## How far the model has actually eased down for that fold, in metres.
 var _fold_drop: float = 0.0
+## True while a SCRIPTED move owns the body's height, so the clip's own
+## vertical hip motion must not be added on top. See set_clip_lift_cancelled().
+var _cancel_clip_lift: bool = false
+## The skeleton and Hips index, resolved once at attach -- this is read every
+## tick and find_bone() is a string search.
+var _skeleton: Skeleton3D = null
+var _hips_bone: int = -1
 
 ## Where head_node sat, in this Player's local space, BEFORE any animation had
 ## a chance to move it -- captured once in _attach_body(). The head-follow
@@ -971,6 +978,8 @@ func _attach_body(scene: PackedScene) -> void:
 	body.transform = _body_mount
 	_merge_animation_library(body)
 	_wire_body_animation(body)
+	_skeleton = _find_skeleton(body)
+	_hips_bone = _skeleton.find_bone(&"Hips") if _skeleton != null else -1
 	head_node = _resolve_head_node(body)
 	_attach_hand_ik(body)
 	_attach_head_look(body)
@@ -1186,8 +1195,43 @@ func _apply_clip_offset() -> void:
 	# out, while a fold genuinely lowers the head and the eye must follow. It
 	# does so for free -- the head bone moves with the model, and the head-follow
 	# reads the bone.
+	var lift: float = clip_lift() if _cancel_clip_lift else 0.0
 	body.transform = Transform3D(extra * _body_mount.basis,
-			_body_mount.origin + _clip_offset_position - Vector3(0.0, _fold_drop, 0.0))
+			_body_mount.origin + _clip_offset_position
+			- Vector3(0.0, _fold_drop + lift, 0.0))
+
+## Declares that a SCRIPTED move owns the body's height, so the clip's own
+## vertical hip motion is cancelled rather than added to it.
+##
+## ⚠️ THE ACTUAL CAUSE of "the whole model sits above the capsule, barely
+## overlapping it", and it took measuring the clips to find. Non-root-motion
+## guarantees the ROOT NODE does not translate. It says nothing about the HIPS,
+## which are a bone like any other -- and an in-place vault clip lifts them
+## exactly as much as the real one moved. Measured across the library:
+##
+##     Idle          0.009 m     flat, as expected
+##     Sprint        0.151 m     an ordinary run's bob
+##     StepUp        0.477 m
+##     SafetyVault   0.825 m     hips from 0.904 up to 1.729
+##     ClimbUp_2m    1.201 m
+##
+## During a scripted move the code already carries the body over the obstacle,
+## so the clip's lift is the SAME METRE counted twice, and no amount of moving
+## the root fixes it -- the root was never where the body was.
+##
+## ⚠️ NOT ALWAYS ON. A run's 0.151 m IS the bob and cancelling it would flatten
+## the walk into a glide. This is only for the moves whose height is scripted.
+func set_clip_lift_cancelled(cancelled: bool) -> void:
+	_cancel_clip_lift = cancelled
+
+## How far the clip has lifted the hips above their rest height, in metres of
+## world space -- scaled, because bone space is model space.
+func clip_lift() -> float:
+	if _skeleton == null or _hips_bone < 0:
+		return 0.0
+	var posed: float = _skeleton.get_bone_pose_position(_hips_bone).y
+	var rest: float = _skeleton.get_bone_rest(_hips_bone).origin.y
+	return (posed - rest) * body_mount_scale
 
 ## Declares that the body is FOLDED: the legs are tucked and the model should
 ## ride at the shortened capsule's top rather than standing at its bottom.
@@ -1218,6 +1262,25 @@ func body_fold_drop() -> float:
 ## whole reason both are on the debug readout.
 func body_folded() -> bool:
 	return _body_folded
+
+## Where the model's ROOT actually sits under BodyRoot, and where the mount
+## alone would have put it. The gap between them is every correction this
+## project applies to the body: the fold drop and the per-clip offset.
+##
+## ⚠️ The number nobody could see, and the reason three rounds of this were
+## spent arguing from screenshots. The eye readout shows where the HEAD BONE
+## ended up, which is the mount plus the corrections plus THE POSE -- and the
+## pose can move the head half a metre on its own. Only this says which of the
+## three moved.
+func body_root_debug() -> Dictionary:
+	return {
+		"y": body.position.y if body != null else 0.0,
+		"mount_y": _body_mount.origin.y,
+		"drop": _fold_drop,
+		"clip_y": _clip_offset_position.y,
+		"lift": clip_lift(),
+		"lift_cancelled": _cancel_clip_lift,
+	}
 
 ## Sets the offset with no easing at all, for the debug tuner: while the tree is
 ## paused nothing calls _drive_clip_offset(), and a tuner you cannot see the
