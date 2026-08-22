@@ -46,6 +46,31 @@ func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
 	_aborted = false
 
+	# THE BODY FOLDS. ✅ The owner's reading, and it explains the offsets they
+	# were dialling in by hand: "shrink the capsule to about 1.0 during vault
+	# and grab-up and the animation problem may solve itself -- I was nudging
+	# everything by about 0.8, and legs bend and then straighten when you climb
+	# or vault." 1.8 minus 1.0 is 0.8, which is the coincidence that is not one.
+	#
+	# ⚠️ We cannot see the original's collision capsule, and the owner puts
+	# their confidence at 80% that every leg-driven move there shrinks it. What
+	# CAN be seen is the consequence of not doing it: a rigid 1.8 m upright
+	# capsule has to be lifted clear of anything it crosses, and lifting the
+	# FEET above an obstacle puts the EYE a further 1.66 m up -- which is
+	# exactly the "eye sits at wall top plus a whole capsule" the owner
+	# reported.
+	#
+	# crouch_capsule_height rather than a knob of its own, and not because 0.9
+	# is 1.0: it is the height this project ALREADY folds to for a slide and a
+	# roll, and reusing it makes the camera's own crouch mapping exactly right
+	# for free -- a full crouch capsule takes a full crouch amount, no second
+	# number to keep in step. See the camera line below.
+	player.set_capsule_height(config.crouch.crouch_capsule_height)
+	if player.camera_rig != null:
+		# The rig eases this on crouch_lerp_speed, so the eye dips into the
+		# vault and back out rather than snapping.
+		player.camera_rig.set_crouch_amount(1.0)
+
 	# THE HANDOFF IS CONSUMED FIRST, before any of the abort paths below.
 	# ⚠️ It used to be read further down, past the probe guard, and that made
 	# _variant_name unset on every abort -- which is also how it read in a test
@@ -212,8 +237,14 @@ func enter(_previous: StringName) -> void:
 ## presentational channel borrowed and not returned. SkillRollMove.exit() does
 ## the same for its own two.
 func exit() -> void:
+	# The same REQUEST, not an unconditional restore, that Slide, Crouch and
+	# SkillRoll use: a vault can end under something low, and standing up into
+	# it would put the capsule inside it. Player owes the restore and performs
+	# it on the first tick there is room.
+	player.request_standing_capsule()
 	if player.camera_rig != null:
 		player.camera_rig.set_vault_roll(0.0)
+		player.camera_rig.set_crouch_amount(0.0)
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:

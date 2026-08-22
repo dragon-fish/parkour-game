@@ -113,6 +113,24 @@ func enter(_previous: StringName) -> void:
 # them to re-grab anyway, so withholding grabs for 0.45 s costs nothing a
 # player can feel.
 
+## ⚠️ THIS MOVE HAD NO exit() AT ALL, which was survivable only because it
+## changed nothing that needed putting back. The mantle's folded capsule does,
+## and a state that shrinks the body without restoring it leaves the player
+## permanently crouched -- the exact shape of the leak SpeedVaultMove's missing
+## exit() had with its camera roll.
+##
+## A REQUEST rather than a restore, matching Slide, Crouch, SkillRoll and now
+## the vault: a mantle can end under something low, and standing up into it
+## would put the capsule inside it. Player owes the restore and performs it on
+## the first tick there is room.
+##
+## Safe on the hang-and-drop path too, where nothing was ever shrunk: asking for
+## a standing capsule you already have costs nothing.
+func exit() -> void:
+	player.request_standing_capsule()
+	if player.camera_rig != null:
+		player.camera_rig.set_crouch_amount(0.0)
+
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted:
 		return FALLING
@@ -206,4 +224,16 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration, config.grab.mantle_arc_height)
 		_mantling = true
+		# THE BODY FOLDS TO PULL UP, the same way SpeedVaultMove folds to vault
+		# -- see its enter() for the owner's reasoning and the arithmetic that
+		# backs it. A pull-up is knees-to-chest and then a stand; carrying a
+		# rigid 1.8 m upright capsule through it is what puts the eye a whole
+		# body above the ledge.
+		#
+		# ONLY THE MANTLE, not the hang: hanging is full extension, arms
+		# overhead and body straight, which is the one pose the standing capsule
+		# actually fits.
+		player.set_capsule_height(config.crouch.crouch_capsule_height)
+		if player.camera_rig != null:
+			player.camera_rig.set_crouch_amount(1.0)
 	return KEEP
