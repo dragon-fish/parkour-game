@@ -265,9 +265,14 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## about its own origin, which is exactly where the mount already places it.
 @export var body_mount_scale: float = 1.0
 
-## An optional scene whose AnimationPlayer carries clips to MERGE into the
+## Optional scenes whose AnimationPlayers carry clips to MERGE into the
 ## attached body's own, so a model that ships no locomotion can borrow it from
-## an animation pack.
+## animation packs.
+##
+## A LIST, because no single free pack covers a parkour game: one library has
+## the locomotion and the roll, another has the slide and the ledge climb, and
+## neither has the other's. Merged in order, and the FIRST clip of a given name
+## wins -- so put the pack whose version you prefer earlier.
 ##
 ## VRM is the case that forces this: the format carries no animation at all by
 ## design, so an imported VRM's AnimationPlayer holds only blend-shape
@@ -286,7 +291,7 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## what a T-pose is will play the same track to different-looking results. That
 ## is a real limit of doing this by import settings alone, not something this
 ## property hides.
-@export var body_animation_library: PackedScene
+@export var body_animation_libraries: Array[PackedScene] = []
 
 ## Which node inside `body_scene` the head-follow camera should track, as a
 ## path RELATIVE TO THE BODY INSTANCE'S ROOT. Empty (the default) falls back
@@ -801,7 +806,7 @@ func _attach_body(scene: PackedScene) -> void:
 const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	&"idle", &"run", &"jump", &"sneak", &"sneaking", &"ladder_stillness",
 	# From Quaternius' Universal Animation Library, merged in via
-	# body_animation_library. Listed by their own names rather than renamed to
+	# body_animation_libraries. Listed by their own names rather than renamed to
 	# match the six above: a clip called Slide is not this project's `slide`,
 	# it is one particular pack's idea of one, and flattening that distinction
 	# is how a body ends up silently playing the wrong author's intent.
@@ -816,6 +821,10 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# costumed of them and is here purely so a standing body is not looping a
 	# WALK, which is what it did with no idle available at all.
 	&"Idle_FoldArms",
+	# From the FIRST Universal Animation Library, which is where the locomotion
+	# lives -- the two packs are near-disjoint and this project needs both.
+	&"Idle", &"Walk", &"Jog_Fwd", &"Sprint", &"Roll",
+	&"Jump", &"Jump_Start", &"Jump_Land", &"Crouch_Idle", &"Crouch_Fwd",
 ]
 
 ## Runtime twin of the AnimationTree/CharacterAnimator block that used to be
@@ -838,7 +847,7 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 ## that is a real node in this graph, so a name simply never getting added
 ## here is what keeps that safe rather than an engine error waiting to
 ## happen the moment some state asks for a clip that does not exist.
-## Copies every clip from body_animation_library into the attached body's own
+## Copies every clip from body_animation_libraries into the attached body's own
 ## AnimationPlayer, so _wire_body_animation() below sees them as clips the body
 ## has. Called BEFORE it, for exactly that reason.
 ##
@@ -852,29 +861,32 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 ## there to fill gaps, and silently replacing an author's own animation with a
 ## generic one would be the opposite of helpful.
 func _merge_animation_library(body_node: Node3D) -> void:
-	if body_animation_library == null:
+	if body_animation_libraries.is_empty():
 		return
 	var target := body_node.get_node_or_null("AnimationPlayer") as AnimationPlayer
 	if target == null:
-		return
-	var source_scene := body_animation_library.instantiate()
-	if source_scene == null:
-		return
-	var source := _find_animation_player(source_scene)
-	if source == null:
-		source_scene.free()
 		return
 	var library := target.get_animation_library("")
 	if library == null:
 		library = AnimationLibrary.new()
 		target.add_animation_library("", library)
-	for clip_name in source.get_animation_list():
-		if library.has_animation(clip_name):
+	for packed in body_animation_libraries:
+		if packed == null:
 			continue
-		# Duplicated, not referenced: the source scene is freed on the next
-		# line, and an Animation still owned by it would go with it.
-		library.add_animation(clip_name, source.get_animation(clip_name).duplicate())
-	source_scene.free()
+		var source_scene := packed.instantiate()
+		if source_scene == null:
+			continue
+		var source := _find_animation_player(source_scene)
+		if source == null:
+			source_scene.free()
+			continue
+		for clip_name in source.get_animation_list():
+			if library.has_animation(clip_name):
+				continue
+			# Duplicated, not referenced: the source scene is freed below, and
+			# an Animation still owned by it would go with it.
+			library.add_animation(clip_name, source.get_animation(clip_name).duplicate())
+		source_scene.free()
 
 ## Builds the arm IK on the body's skeleton, if it has one this can drive.
 ##
@@ -935,7 +947,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# all sustained, hold-or-repeat clips that must keep going for as long as
 	# the state holds; jump is a discrete one-shot action and is deliberately
 	# left alone.
-	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms"]:
+	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Jog_Fwd", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd"]:
 		_ensure_clip_loops(anim_player, looping_clip)
 
 	var state_machine := AnimationNodeStateMachine.new()

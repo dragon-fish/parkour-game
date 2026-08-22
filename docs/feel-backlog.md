@@ -1651,3 +1651,52 @@ head BONE travelled 0.1271 m ; BoneAttachment travelled 0.1271 m
 
 `body_mount_scale = 1.081` 是按**静止姿态**的眼睛骨骼算的，而验收时正在播动画，
 头本来就比静止时低一点。这个误差随片段变化，不是标定错了，不必追。
+
+## 49. 两个包合起来才够：locomotion 在 UAL **1** 里
+
+§46 的结论是"管线通了，内容不够"——UAL**2** 的免费层是奇幻/战斗集，
+连 run 和 idle 都没有。补完的方法不是买 Source 版，是**再拿一个免费包**。
+
+**Universal Animation Library 1**（初代，同样 CC0，Standard 层免费）
+恰好装着 UAL2 缺的一切：
+
+| | UAL1 | UAL2 |
+| --- | --- | --- |
+| 移动 | `Idle` `Walk` `Jog_Fwd` `Sprint` | — |
+| 跳跃 | `Jump_Start` `Jump` `Jump_Land` | `NinjaJump_*` |
+| **翻滚** | **`Roll`** | — |
+| 蹲伏 | `Crouch_Idle` `Crouch_Fwd` | — |
+| 滑铲 | — | `Slide` `Slide_Start` `Slide_Exit` |
+| 爬上边缘 | — | `ClimbUp_1m` |
+
+**两个包几乎不相交。** 而且骨架命名和节点路径完全一致
+（`Armature/Skeleton3D`，`root`/`pelvis`/`spine_01`…），
+所以 §46 生成的那份 BoneMap **原样复用，一个字没改**。
+
+于是 `body_animation_library` 改成了 `body_animation_libraries: Array[PackedScene]`，
+按顺序合并、**先到的同名片段优先**。合并后身体上有 **104 个片段**，
+每一个 Move 都解析到真实动画：
+
+```
+Walking -> Idle        Walking@7m/s -> Jog_Fwd    Falling -> Jump
+Jump    -> Jump_Start  Landing      -> Jump_Land  SkillRoll -> Roll
+Slide   -> Slide       Crouch       -> Crouch_Idle
+WallClimb -> ClimbUp_1m  WallRun -> Jog_Fwd  SpeedVault -> Jump_Start
+Roll rotated LeftUpperLeg 0.5620 rad
+```
+
+**`SkillRoll -> Roll` 值得单独说一句**：它是这份路由表里最弱的占位
+（"翻滚在词汇表里毫无亲戚，选 `jump` 只因为它是全身投入的动作，不是因为像"），
+现在有真货了。
+
+### 方法上的一条
+
+第一个包不够用时，我的第一反应是"内容不够，得花钱"。
+**实际答案是同一个作者的另一个免费包**——两个包各覆盖一半，加起来就够了。
+把"这个包缺 X"当成"必须买"之前，先看看**缺的那部分是不是在隔壁**。
+
+### 还缺的
+
+`SpeedVault` 仍然是占位（借 `Jump_Start`）——两个包都没有真正的翻越。
+UAL2 的**付费层**写着有 parkour moves，那才是它该来的地方。
+`Grab` 悬挂也还是占位。

@@ -63,7 +63,7 @@ func _clips_on(player: Player) -> PackedStringArray:
 
 func test_the_library_fills_a_body_that_has_nothing() -> void:
 	var player: Player = await _player()
-	player.body_animation_library = _scene_with([&"Slide", &"ClimbUp_1m"])
+	player.body_animation_libraries = [_scene_with([&"Slide", &"ClimbUp_1m"])]
 	player._attach_body(_scene_with([]))
 	await step(1)
 	var clips := _clips_on(player)
@@ -75,7 +75,7 @@ func test_the_body_keeps_its_own_clip_over_the_library_s() -> void:
 	# its author; silently replacing it with a generic one is the opposite of
 	# filling a gap.
 	var player: Player = await _player()
-	player.body_animation_library = _scene_with([&"run"])
+	player.body_animation_libraries = [_scene_with([&"run"])]
 	var own := _scene_with([&"run"])
 	player._attach_body(own)
 	await step(1)
@@ -88,7 +88,7 @@ func test_the_merged_clips_reach_the_state_machine() -> void:
 	# Merging is pointless if _wire_body_animation() has already decided what
 	# the body can do -- hence the merge running BEFORE it.
 	var player: Player = await _player()
-	player.body_animation_library = _scene_with([&"Slide"])
+	player.body_animation_libraries = [_scene_with([&"Slide"])]
 	player._attach_body(_scene_with([&"idle"]))
 	await step(1)
 	var animator: CharacterAnimator = \
@@ -100,7 +100,7 @@ func test_the_merged_clips_reach_the_state_machine() -> void:
 
 func test_no_library_is_a_silent_no_op() -> void:
 	var player: Player = await _player()
-	player.body_animation_library = null
+	player.body_animation_libraries = []
 	player._attach_body(_scene_with([&"idle"]))
 	await step(1)
 	assert_eq(_clips_on(player).size(), 1, "an absent library changed the body's clips")
@@ -114,7 +114,22 @@ func test_a_library_with_no_animation_player_does_not_crash() -> void:
 	var packed := PackedScene.new()
 	packed.pack(empty)
 	empty.free()
-	player.body_animation_library = packed
+	player.body_animation_libraries = [packed]
 	player._attach_body(_scene_with([&"idle"]))
 	await step(1)
 	assert_eq(_clips_on(player).size(), 1, "a library with nothing in it disturbed the body")
+
+func test_several_libraries_merge_and_the_first_wins() -> void:
+	# No single free pack covers a parkour game: one has the locomotion and the
+	# roll, another the slide and the ledge climb. Both get merged, in order.
+	var player: Player = await _player()
+	player.body_animation_libraries = [
+		_scene_with([&"Roll", &"Shared"]),
+		_scene_with([&"Slide", &"Shared"]),
+	]
+	player._attach_body(_scene_with([]))
+	await step(1)
+	var clips := _clips_on(player)
+	assert_true(clips.has("Roll"), "the first library's clip is missing")
+	assert_true(clips.has("Slide"), "the second library's clip is missing")
+	assert_true(clips.has("Shared"), "the name both libraries carry is missing entirely")
