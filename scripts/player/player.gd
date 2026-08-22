@@ -466,6 +466,11 @@ var head_rest_local: Vector3 = Vector3.ZERO
 ## body whose hands follow its animation. See HandIK's own header.
 var hand_ik: HandIK = null
 
+## Turns the attached body's hips toward where it is travelling while the torso
+## keeps facing the view. Built in _attach_body() when the body has a humanoid
+## spine, and null otherwise. See TorsoTwist's own header.
+var torso_twist: TorsoTwist = null
+
 var _standing_height: float = 0.0
 
 ## Backing store for travel_speed(); see its doc comment.
@@ -864,6 +869,7 @@ func _attach_body(scene: PackedScene) -> void:
 	_wire_body_animation(body)
 	head_node = _resolve_head_node(body)
 	_attach_hand_ik(body)
+	_attach_torso_twist(body)
 	if head_node != null:
 		head_rest_local = to_local(head_node.global_position)
 
@@ -977,6 +983,54 @@ func _attach_hand_ik(body_node: Node3D) -> void:
 		hand_ik = ik
 	else:
 		ik.queue_free()
+
+## Builds the torso twist on the body's skeleton, if it has the bones for one.
+##
+## Silently does nothing otherwise, which covers every non-humanoid body --
+## this project's own Blockbench one included, whose bones are named after cubes.
+func _attach_torso_twist(body_node: Node3D) -> void:
+	torso_twist = null
+	var skeleton := _find_skeleton(body_node)
+	if skeleton == null or skeleton.find_bone(TorsoTwist.HIPS) < 0:
+		return
+	# PHYSICS, not the IDLE this defaults to. Everything here runs on physics
+	# ticks and the headless test loop has nothing else, so a modifier left on
+	# idle solves for a pose nobody looks at. Set here rather than relied on
+	# from _attach_hand_ik(): a body with a spine but no arms would otherwise
+	# get a twist that never runs.
+	skeleton.modifier_callback_mode_process = 		Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_PHYSICS
+	var twist := TorsoTwist.new()
+	twist.name = "TorsoTwist"
+	skeleton.add_child(twist)
+	torso_twist = twist
+
+## Feeds the twist the angle between where the body FACES and where it is
+## GOING, which is nonzero exactly when the player is strafing.
+##
+## Read from velocity rather than from the input so that anything else carrying
+## the body sideways -- a wall kick, a vault's exit -- turns the legs too. Below
+## a walking pace there is no travel direction worth speaking of and the angle
+## is noise, so it releases to zero instead.
+func _drive_torso_twist() -> void:
+	if torso_twist == null:
+		return
+	if not config.pawn.torso_twist_enabled:
+		torso_twist.request(0.0)
+		return
+	var travel := Vector3(velocity.x, 0.0, velocity.z)
+	if travel.length_squared() < 0.25:
+		torso_twist.request(0.0)
+		return
+	var facing: Vector3 = -global_transform.basis.z
+	facing.y = 0.0
+	if facing.length_squared() < 0.0001:
+		torso_twist.request(0.0)
+		return
+	# Signed about UP, so a leftward strafe and a rightward one turn opposite
+	# ways rather than both by the same magnitude.
+	var angle: float = facing.normalized().signed_angle_to(travel.normalized(), Vector3.UP)
+	var cap: float = deg_to_rad(config.pawn.torso_twist_max_deg)
+	torso_twist.request(clampf(angle, -cap, cap))
 
 func _find_skeleton(root: Node) -> Skeleton3D:
 	var queue: Array[Node] = [root]
@@ -1273,6 +1327,7 @@ func _physics_process(delta: float) -> void:
 
 	if hand_ik != null:
 		hand_ik.update(delta)
+	_drive_torso_twist()
 
 	if camera_rig != null:
 		camera_rig.apply_look(input.look, self, delta)

@@ -2,21 +2,20 @@ class_name HandIK
 extends Node
 
 # UNFINISHED, AND DELIBERATELY INERT. The chains build, the blend ramps, and
-# the modifier switches itself on and off correctly -- but TwoBoneIK3D does not
-# actually move the bones yet: measured at exactly 0.0000 m of hand travel with
-# active true, influence 1.0, all three bones resolved and the target node
-# verified to be sitting on the requested world point.
+# the modifier switches itself on and off correctly. The solver runs -- and
+# sends the hand about 1.32 m from where it was aimed, roughly three arm
+# lengths.
 #
-# Ruled out along the way: the skeleton's modifier callback mode, which
-# defaults to IDLE and is now set to PHYSICS below (that alone is worth keeping
-# -- it is the same default that once silently disabled AnimationTree here);
-# the AnimationMixer overwriting the pose, tested by disabling both the tree
-# and the player and getting the identical 0.0000; a scaled skeleton; and an
-# out-of-reach or wrong-side target.
+# CORRECTED: this was first recorded as "does not move the bones at all",
+# measured at exactly 0.0000 m. That measurement was wrong.
+# Skeleton3D.get_bone_global_pose() returns the pose from BEFORE the deferred
+# modifier pass; reading the final one needs the modification_processed signal.
+# The same mistake would have made any working modifier look dead.
 #
-# What is left is TwoBoneIK3D's own setup requirements, new in Godot 4.6, and
-# guessing further at them without being able to SEE the result is how the last
-# three rounds went. Nothing calls reach(), so this costs nothing until someone
+# First suspect for the overshoot is POLE_OFFSET: it places the elbow hint
+# relative to the TARGET, which for a target close to the body lands inside the
+# torso, and a two-bone solver given a degenerate pole can flip its whole
+# solution plane. Nothing calls reach(), so this costs nothing until someone
 # picks it up. See docs/feel-backlog.md 47.
 
 # Puts the hands ON the thing the body is climbing over.

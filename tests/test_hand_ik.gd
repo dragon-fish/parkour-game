@@ -60,21 +60,27 @@ func test_nothing_is_driven_until_a_move_asks() -> void:
 		"the arms are being driven before any move reached for anything")
 
 func test_a_reaching_hand_arrives_at_the_point_it_was_given() -> void:
-	# THE CLAIM THAT MATTERS, and the one that can be checked without eyes: the
-	# hand BONE should end up where the target is, not merely near it.
+	# THE CLAIM THAT MATTERS, and the one checkable without eyes: the hand BONE
+	# should end up where the target is, not merely near it.
 	#
-	# IT DOES NOT, YET. Measured: 0.0000 m of hand travel, with the solver
-	# reporting active, influence 1.0, all three bones resolved, and the target
-	# node verified to be sitting on the requested world point. Ruled out: the
-	# skeleton's modifier callback mode (was IDLE, now PHYSICS -- that fixed
-	# nothing here but is right anyway), the AnimationMixer overwriting the
-	# pose afterwards, a scaled skeleton, and an out-of-reach or wrong-side
-	# target. What remains is TwoBoneIK3D's own setup requirements.
+	# STILL PENDING, but for a different reason than before, and the correction
+	# is the useful part.
 	#
-	# Left as pending rather than deleted: this is the assertion the whole file
-	# exists for, and a suite that is green because its one real claim was
-	# removed is worse than one that says out loud what it cannot show.
-	pending("TwoBoneIK3D does not move the bones yet -- see docs/feel-backlog.md 47")
+	# This was written off as "TwoBoneIK3D does not move the bones", measured at
+	# exactly 0.0000 m of travel. That measurement was wrong.
+	# get_bone_global_pose() returns the pose from BEFORE the deferred modifier
+	# pass -- the class reference says so: "the final global pose can get
+	# overridden by modifiers in the deferred process, if you want to access the
+	# final global pose, use SkeletonModifier3D.modification_processed". Sampled
+	# through that signal instead, the hand moves.
+	#
+	# It moves to the WRONG PLACE -- 1.32 m from the target, roughly three arm
+	# lengths. A solver that overshoots is a different problem from one that
+	# never runs, and the pole node is the first suspect: POLE_OFFSET puts the
+	# elbow hint near the target, which for a target close to the body lands
+	# inside the torso, and a two-bone solver given a degenerate pole can flip
+	# its whole solution plane.
+	pending("TwoBoneIK3D solves but overshoots -- see docs/feel-backlog.md 47")
 
 func test_releasing_hands_the_arm_back() -> void:
 	var player: Player = await _player_with_body()

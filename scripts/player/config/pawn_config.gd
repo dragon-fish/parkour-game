@@ -293,3 +293,21 @@ extends Resource
 ## Horizontal speed above which CharacterAnimator plays a moving clip. A
 ## readability threshold, not a physics one.
 @export var run_animation_speed_threshold: float = 1.0
+
+## How far the hips may turn toward the travel direction while the torso keeps
+## facing the view, in degrees.
+##
+## In this project the body's facing IS the view's, so holding forward-and-left
+## moves the character diagonally with the legs aimed straight ahead. This is
+## the cheap correction: the hips turn and the spine unwinds the same amount, so
+## the shoulders stay put. Nothing steps sideways -- that needs eight-directional
+## locomotion clips -- but nothing points the wrong way either.
+##
+## Capped rather than free: a body twisted much past this stops reading as
+## turning and starts reading as broken, and the legs are not actually striding
+## in the new direction to justify it.
+@export var torso_twist_max_deg: float = 35.0
+
+## Zero disables the twist entirely, which is what every body without a humanoid
+## spine gets anyway -- see Player._drive_torso_twist().
+@export var torso_twist_enabled: bool = true
