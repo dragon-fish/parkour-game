@@ -326,3 +326,24 @@ func test_first_person_still_falls_over() -> void:
 	sequence.stop()
 	sequence.queue_free()
 	TestWorld.teardown(world)
+
+func test_a_fatal_fall_is_dying_before_it_can_strike_a_landing_pose() -> void:
+	# ✅ THE OWNER: "why does a third-person death always play Jump_Land and
+	# THEN Death2 -- it strikes a pose before dying."
+	#
+	# died_from_fall is DEFERRED, so the cutscene -- and with it set_dying() --
+	# did not start until the next frame, and the body spent that frame landing
+	# like anyone else. The declaration moved to the tick the fall is known to
+	# be fatal, which is inside landing_destination() itself.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as AirborneMove
+	assert_false(player.is_dying(), "the fixture started out dying")
+	# The same call MoveManager makes when the body touches down.
+	move.landing_destination(20.0, false)
+	assert_true(player.is_dying(),
+		"the body was not dying on the tick its fall turned out to be fatal")
+	TestWorld.teardown(world)

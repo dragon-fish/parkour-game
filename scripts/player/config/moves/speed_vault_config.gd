@@ -130,7 +130,18 @@ func _init() -> void:
 ##       frame it is actually expressed in.
 @export var variants: Array[Dictionary] = [
 	{
-		"name": "vault_over", "min_height": 0.64, "max_height": 1.48,
+		# ⚠️ min_height RAISED FROM THE CDO's 0.64 TO THE WAIST. ✅ The owner:
+		# "a lot of heights that visually just need a step get the hand plant
+		# instead, and the hand is nowhere near the surface."
+		#
+		# 05 §5.7's raw figure is 64 uu = 0.64 m, and the classification rule
+		# 05 §27 converged on is not a height at all -- it is a place on the
+		# BODY: "hands above the waist, thin things get crossed". The waist is
+		# 0.9 m, the same figure crouch_capsule_height uses, so the two rows
+		# that plant a hand start there and the step-up owns everything below.
+		#
+		# Recorded as a divergence from the transcription, not folded into it.
+		"name": "vault_over", "min_height": 0.9, "max_height": 1.48,
 		"vault_onto": false, "min_speed_z": 0.0, "max_speed_z": 100.0,
 		"entry_speed_min": 4.0, "entry_speed_max": INF,
 		"clamp_speed_min": 0.0, "clamp_speed_max": 7.2,
@@ -138,7 +149,8 @@ func _init() -> void:
 		"is_stringable": true, "reset_camera": false, "ledge_offset_z": 0.25,
 	},
 	{
-		"name": "vault_onto", "min_height": 0.64, "max_height": 1.48,
+		# Raised with vault_over above -- see its note.
+		"name": "vault_onto", "min_height": 0.9, "max_height": 1.48,
 		"vault_onto": true, "min_speed_z": 0.0, "max_speed_z": 100.0,
 		"entry_speed_min": 4.0, "entry_speed_max": INF,
 		"clamp_speed_min": 0.0, "clamp_speed_max": 7.2,
@@ -162,9 +174,15 @@ func _init() -> void:
 		"is_stringable": false, "reset_camera": true, "ledge_offset_z": 0.35,
 	},
 	{
+		# ⚠️ entry_speed_max RAISED FROM 2.0, with the same reasoning as
+		# vault_over's min_height above. The CDO's MaxMomentum = 200 makes this
+		# row a SLOW approach only, which combined with the hand-plant rows
+		# starting at 0.64 left a running player no way to step up anything at
+		# all. With the plant now starting at the waist, this row is what owns
+		# the band below it -- and it has to be reachable at speed to do that.
 		"name": "step_up_right_leg_88", "min_height": 0.48, "max_height": 1.48,
 		"vault_onto": true, "min_speed_z": 0.0, "max_speed_z": 7.0,
-		"entry_speed_min": 0.0, "entry_speed_max": 2.0,
+		"entry_speed_min": 0.0, "entry_speed_max": INF,
 		"clamp_speed_min": 0.0, "clamp_speed_max": 7.0,
 		"speed_addition": 0.0, "duration": 0.65, "max_distance_time": 0.4,
 		"is_stringable": false, "reset_camera": false, "ledge_offset_z": 0.6,

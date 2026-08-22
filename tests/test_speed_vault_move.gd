@@ -32,12 +32,18 @@ func _world_with_sweet_spot_box() -> Dictionary:
 	var body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(2.0, 0.9, 0.4)
+	# ⚠️ RAISED FROM 0.9. The hand-planted rows now start at the WAIST rather
+	# than at the CDO's 0.64 (see SpeedVaultConfig.variants), and a 0.9 m box
+	# sits exactly on that line -- the probe reads a hair under and the fixture
+	# resolved to step_up_right_leg_88, which pays no bonus. This test is about
+	# the bonus ARITHMETIC, so the fixture only has to be unambiguously in the
+	# band that pays it.
+	box.size = Vector3(2.0, 1.2, 0.4)
 	shape.shape = box
 	body.add_child(shape)
 	get_tree().root.add_child(body)
 	world["box"] = body
-	world["box_at"] = Vector3(0.0, 0.45, -1.4)
+	world["box_at"] = Vector3(0.0, 0.6, -1.4)
 	return world
 
 ## Sets player.velocity to `entry_speed` along -Z, resolves the real variant

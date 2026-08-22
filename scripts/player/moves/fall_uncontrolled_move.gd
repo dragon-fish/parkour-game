@@ -84,5 +84,14 @@ func exit() -> void:
 		player.screen_effects.set_blur(0.0)
 
 func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
+	# ✅ THE OWNER: "why does a third-person death always play Jump_Land and
+	# THEN Death2 -- it strikes a pose before dying." Because died_from_fall is
+	# DEFERRED: the cutscene, and with it set_dying(), did not start until the
+	# next frame, and the body spent that frame landing like anyone else.
+	#
+	# Declared HERE instead, on the tick the fall is known to be fatal. The
+	# sequence still owns clearing it -- see DeathSequence._release_player() --
+	# so this only moves the start of it earlier, to the moment it is true.
+	player.set_dying(true)
 	player.died_from_fall.emit()
 	return WALKING
