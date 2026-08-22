@@ -25,6 +25,14 @@ func _ready() -> void:
 	_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0))
 	_label.add_theme_constant_override("outline_size", 4)
 	add_child(_label)
+	# THE CLIP TUNER RIDES ALONG, rather than being wired into main.tscn
+	# separately. This layer is already the debug surface and already holds a
+	# reference to the player, so building it here costs no scene change and no
+	# second export to keep in step. It stays invisible and inert until F9.
+	var tuner := ClipOffsetTuner.new()
+	tuner.name = "ClipOffsetTuner"
+	tuner.player = player
+	add_child(tuner)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:

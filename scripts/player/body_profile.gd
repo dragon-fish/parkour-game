@@ -38,6 +38,30 @@ extends Resource
 ## Packs whose clips are merged into the body's own, first name winning.
 @export var animation_libraries: Array[PackedScene] = []
 ## The travel speed at which this body's locomotion clips read as natural.
+## Per-CLIP correction to where the body sits, as
+## {clip_name: [position: Vector3, rotation_degrees: Vector3]}.
+##
+## The mount above places the body against the capsule for a STANDING pose, and
+## that is the only pose it can be right for. A pack's clips are authored around
+## their own idea of where the ground, the wall or the ledge is, and the
+## mismatch shows: the owner's report on SafetyVault was "the hands are
+## completely in mid-air".
+##
+## ⚠️ A constant offset can only align ONE instant of a moving clip. It is the
+## whole answer for a pose that holds still -- a ledge hang, a wall run, a
+## crouch -- and a compromise for a vault, where the body travels past the thing
+## its hands are supposed to be on. The real answer there is IK onto the edge
+## the probe already returns.
+##
+## Applied in BodyRoot's space, so it is NOT multiplied by mount_scale: nudging
+## by 0.1 moves the body 0.1 m whatever size the model is. Rotation pivots on
+## the model's own origin, which the mount has already put at its feet.
+##
+## Tuned in play rather than by hand -- see scripts/debug/clip_offset_tuner.gd,
+## which freezes the game on the frame you are looking at and prints a line to
+## paste back here.
+@export var clip_offsets: Dictionary = {}
+
 @export var run_reference_speed: float = 7.2
 @export var blend_time: float = 0.15
 @export var slide_exit_blend_time: float = 0.5
@@ -56,6 +80,7 @@ func apply(player: Player) -> void:
 	player.body_mount_scale = mount_scale
 	player.body_head_path = head_path
 	player.body_animation_libraries = animation_libraries
+	player.body_clip_offsets = clip_offsets
 	player.body_run_reference_speed = run_reference_speed
 	player.body_animation_blend_time = blend_time
 	player.body_slide_exit_blend_time = slide_exit_blend_time

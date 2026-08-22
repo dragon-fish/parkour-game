@@ -387,6 +387,10 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ##
 ## Per-model, so it sits here beside body_scene rather than in MovementConfig,
 ## for the same reason body_mount_offset does.
+## Per-clip correction to where the body sits. See BodyProfile.clip_offsets,
+## which is where this comes from and where the reasoning lives.
+@export var body_clip_offsets: Dictionary = {}
+
 @export var body_run_reference_speed: float = 7.2
 
 ## How long one clip cross-fades into the next, in seconds. Zero restores the
@@ -497,6 +501,15 @@ var body: Node3D = null
 ## the search. Read every physics tick by _physics_process() to feed
 ## CameraRig.set_head_offset()/clear_head_position().
 var head_node: Node3D = null
+
+## The body's mount transform as captured at attach time -- see _attach_body().
+var _body_mount: Transform3D = Transform3D.IDENTITY
+## Where the per-clip offset has actually eased to, as position and degrees.
+## Eased rather than snapped: the clips themselves cross-fade, and an offset
+## that jumped on the frame the clip changed would be a visible step in the
+## middle of a smooth blend.
+var _clip_offset_position: Vector3 = Vector3.ZERO
+var _clip_offset_rotation: Vector3 = Vector3.ZERO
 
 ## Where head_node sat, in this Player's local space, BEFORE any animation had
 ## a chance to move it -- captured once in _attach_body(). The head-follow
@@ -925,7 +938,14 @@ func _attach_body(scene: PackedScene) -> void:
 		return
 	body = instance as Node3D
 	body_root.add_child(body)
-	body.transform = body_mount_transform()
+	# CAPTURED, not recomputed. body_mount_transform() derives its height from
+	# current_capsule_height(), which shrinks for a crouch or a slide -- and the
+	# body is not supposed to move when that happens, because its own animation
+	# is what shows the crouch. Reading it once here is what that guarantee has
+	# always rested on; _drive_clip_offset() composes onto this cached copy
+	# rather than asking again every tick.
+	_body_mount = body_mount_transform()
+	body.transform = _body_mount
 	_merge_animation_library(body)
 	_wire_body_animation(body)
 	head_node = _resolve_head_node(body)
@@ -1074,6 +1094,69 @@ func _attach_hand_ik(body_node: Node3D) -> void:
 		hand_ik = ik
 	else:
 		ik.queue_free()
+
+## Eases the visible body toward the offset its CURRENT CLIP asks for.
+##
+## The mount places the body for a standing pose, which is the only pose it can
+## be right for; a pack's clips are authored around their own idea of where the
+## ground or the ledge is. See BodyProfile.clip_offsets for what this is for and
+## what it cannot do.
+##
+## Eased on body_animation_blend_time rather than a knob of its own, and that is
+## deliberate: it is the window the clips themselves are cross-fading over, so
+## the body slides into place across exactly the same frames the pose does.
+func _drive_clip_offset(delta: float) -> void:
+	if body == null:
+		return
+	var wanted_position := Vector3.ZERO
+	var wanted_rotation := Vector3.ZERO
+	var offset: Array = clip_offset_for(_current_clip())
+	if not offset.is_empty():
+		wanted_position = offset[0]
+		wanted_rotation = offset[1]
+	# Exponential, so the rate does not depend on the tick length.
+	var t: float = 1.0 - exp(-delta / maxf(body_animation_blend_time, 0.001))
+	_clip_offset_position = _clip_offset_position.lerp(wanted_position, t)
+	_clip_offset_rotation = _clip_offset_rotation.lerp(wanted_rotation, t)
+	_apply_clip_offset()
+
+## The [position, rotation_degrees] pair for `clip`, or an empty array.
+## Tolerant of a malformed table on purpose: this is hand-pasted from a debug
+## tool, and a body standing in the wrong place is a better failure than a crash.
+func clip_offset_for(clip: StringName) -> Array:
+	if clip == Move.KEEP or not body_clip_offsets.has(clip):
+		return []
+	var entry = body_clip_offsets[clip]
+	if entry is Array and entry.size() >= 2 and entry[0] is Vector3 and entry[1] is Vector3:
+		return entry
+	push_warning("clip_offsets['%s'] is not [Vector3, Vector3]" % clip)
+	return []
+
+## The clip the animator last asked for, or KEEP if there is no body animating.
+func _current_clip() -> StringName:
+	var animator := get_node_or_null("BodyRoot/CharacterAnimator") as CharacterAnimator
+	return animator.current_clip if animator != null else Move.KEEP
+
+## Places the body at the cached mount plus wherever the offset has eased to.
+##
+## The rotation goes OUTSIDE the mount basis and the position is added in
+## BodyRoot's space, so neither is scaled by mount_scale -- an offset of 0.1
+## moves the body 0.1 m whatever size the model is, which is the only way the
+## numbers mean anything while being tuned by hand.
+func _apply_clip_offset() -> void:
+	if body == null:
+		return
+	var extra := Basis.from_euler(_clip_offset_rotation * (PI / 180.0))
+	body.transform = Transform3D(extra * _body_mount.basis,
+			_body_mount.origin + _clip_offset_position)
+
+## Sets the offset with no easing at all, for the debug tuner: while the tree is
+## paused nothing calls _drive_clip_offset(), and a tuner you cannot see the
+## result of is not a tuner.
+func set_clip_offset_immediately(position_offset: Vector3, rotation_offset: Vector3) -> void:
+	_clip_offset_position = position_offset
+	_clip_offset_rotation = rotation_offset
+	_apply_clip_offset()
 
 ## Builds the head look on the body's skeleton, if it has a neck to turn.
 func _attach_head_look(body_node: Node3D) -> void:
@@ -1455,6 +1538,7 @@ func _physics_process(delta: float) -> void:
 	if hand_ik != null:
 		hand_ik.update(delta)
 	_drive_body_yaw(delta, input)
+	_drive_clip_offset(delta)
 	_drive_head_look()
 
 	if camera_rig != null:

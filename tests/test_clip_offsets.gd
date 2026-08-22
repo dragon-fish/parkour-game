@@ -1,0 +1,116 @@
+extends ParkourTest
+
+# The visible body can be nudged per CLIP, because the mount can only ever be
+# right for one pose.
+#
+# The mount places a standing body against the capsule. A pack's clips are
+# authored around their own idea of where the ground, the wall or the ledge is,
+# and the mismatch shows -- the owner's report on SafetyVault was that the hands
+# were completely in mid-air.
+#
+# Two invariants here, and both are things that were nearly broken while this
+# was written rather than things that seemed worth asserting afterwards.
+
+const TestWorld = preload("res://tests/world_fixture.gd")
+
+var _world: Dictionary = {}
+
+func after_each() -> void:
+	if _world.is_empty():
+		return
+	TestWorld.teardown(_world)
+	_world = {}
+
+## A player with a real attached body, built at runtime so this depends on no
+## untracked model.
+func _player_with_body(mount_scale: float = 1.0) -> Player:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	var root := Node3D.new()
+	root.name = "fake_body"
+	var anim_player := AnimationPlayer.new()
+	anim_player.name = "AnimationPlayer"
+	var library := AnimationLibrary.new()
+	for clip in [&"Idle", &"Sprint", &"SafetyVault"]:
+		var animation := Animation.new()
+		animation.length = 1.0
+		library.add_animation(clip, animation)
+	anim_player.add_animation_library("", library)
+	root.add_child(anim_player)
+	# PackedScene.pack() only keeps children that declare an owner.
+	anim_player.owner = root
+	var packed := PackedScene.new()
+	packed.pack(root)
+	root.free()
+	player.body_mount_scale = mount_scale
+	player._attach_body(packed)
+	return player
+
+# --- the mount is captured, not recomputed ------------------------------------
+
+func test_crouching_does_not_move_the_body() -> void:
+	# THE ONE THAT WAS NEARLY BROKEN. body_mount_transform() derives its height
+	# from current_capsule_height(), which shrinks for a crouch or a slide, and
+	# the first draft of the per-clip offset recomputed it every tick. The body
+	# must NOT move when the capsule does: the crouch is shown by the animation,
+	# not by lowering the model. _attach_body() captures the transform once, and
+	# this is what says so.
+	var player: Player = await _player_with_body()
+	var before: Vector3 = player.body.position
+	player.set_capsule_height(player.config.crouch.crouch_capsule_height)
+	await step(5)
+	assert_almost_eq(player.body.position.distance_to(before), 0.0, 0.0001,
+		"the body sank %.3f m when the capsule shrank"
+		% player.body.position.distance_to(before))
+
+# --- the offset is in BodyRoot's space, unscaled --------------------------------
+
+func test_the_offset_is_not_multiplied_by_the_model_scale() -> void:
+	# Otherwise nudging by 0.1 on a body scaled 1.22 moves it 0.122, and every
+	# number typed into the profile means something slightly different for every
+	# model. The tuner that produces these values counts in metres.
+	for scale in [1.0, 1.22, 2.0]:
+		var player: Player = await _player_with_body(scale)
+		var before: Vector3 = player.body.position
+		player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.1), Vector3.ZERO)
+		var moved: float = player.body.position.z - before.z
+		assert_almost_eq(moved, -0.1, 0.0001,
+			"at model scale %.2f a 0.1 m nudge moved the body %.4f m" % [scale, moved])
+		after_each()
+
+func test_the_offset_rotates_about_the_model_origin() -> void:
+	# Its feet, which is where the mount has already put it -- so a yaw does not
+	# also translate the body. The vault is why this matters: the pack's clip
+	# plants the RIGHT hand where this project's camera was built for the left,
+	# and turning the body is the cheap half of the answer.
+	var player: Player = await _player_with_body()
+	var before: Vector3 = player.body.position
+	player.set_clip_offset_immediately(Vector3.ZERO, Vector3(0.0, 90.0, 0.0))
+	assert_almost_eq(player.body.position.distance_to(before), 0.0, 0.0001,
+		"a pure rotation also moved the body")
+	assert_almost_eq(absf(player.body.rotation.y), PI * 0.5, 0.001,
+		"the body turned %.1f degrees instead of 90" % rad_to_deg(player.body.rotation.y))
+
+# --- the table drives it --------------------------------------------------------
+
+func test_the_clip_the_animator_is_playing_picks_the_offset() -> void:
+	var player: Player = await _player_with_body()
+	player.body_clip_offsets = {&"Idle": [Vector3(0.0, 0.0, -0.25), Vector3.ZERO]}
+	# Long enough for the ease to arrive; it runs on body_animation_blend_time.
+	await step(60)
+	assert_almost_eq(player.body.position.z, player._body_mount.origin.z - 0.25, 0.005,
+		"the body never eased to the offset its clip asked for")
+
+func test_a_malformed_entry_is_ignored_rather_than_fatal() -> void:
+	# These are hand-pasted out of a debug tool's console output. A body standing
+	# in the wrong place is a better failure than a crash, and the alternative is
+	# a typo taking the whole game down.
+	var player: Player = await _player_with_body()
+	player.body_clip_offsets = {&"Idle": "not a transform at all"}
+	await step(5)
+	assert_eq(player.clip_offset_for(&"Idle"), [], "a malformed entry was accepted")
+	assert_almost_eq(player.body.position.distance_to(player._body_mount.origin), 0.0, 0.0001,
+		"a malformed entry moved the body somewhere")

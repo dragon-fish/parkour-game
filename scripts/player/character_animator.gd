@@ -149,6 +149,12 @@ var _oneshot: StringName = Move.KEEP
 ## 1.0 while one plays, so the clock here and the clip agree.
 var _oneshot_left: float = 0.0
 
+## The clip travel()ed to on the most recent tick, or KEEP if none was. Read by
+## Player._drive_clip_offset() and by the debug tuner: a per-clip offset needs
+## to know which clip, and the answer already exists here rather than being
+## worth recomputing.
+var current_clip: StringName = Move.KEEP
+
 func _ready() -> void:
 	if anim_tree == null:
 		return
@@ -181,6 +187,7 @@ func _physics_process(delta: float) -> void:
 	# than ask the graph for a name it does not have.
 	if target == Move.KEEP:
 		return
+	current_clip = target
 	_playback.travel(target)
 	_drive_speed(target)
 
