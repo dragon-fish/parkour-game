@@ -199,8 +199,21 @@ func _first_available_directional(candidates: Array[StringName]) -> StringName:
 func _target_animation() -> StringName:
 	match player.move_manager.current_name:
 		Move.WALKING:
+			# SPRINT BEFORE JOG, and the order is the whole of it: a body with
+			# no `run` of its own took the next entry, so every pack-driven body
+			# in this project has been running on Jog_Fwd and Sprint has never
+			# once been reachable.
+			#
+			# ✅ The owner spotted it by eye: "the free pack has a Sprint, that is
+			# the run -- what you wired up is a great striding thing." Which is
+			# also what the SCALING was doing to it. reference is 7.2, the ground
+			# speed cap, so a body at full pace plays its clip at exactly 1.0 --
+			# a jog cadence asked to carry 7.2 m/s, and the stride has to be
+			# enormous to cover the ground. 7.2 is a plausible authored speed for
+			# a Sprint and never was one for a Jog, so the same swap that fixes
+			# the pose is what makes body_run_reference_speed mean something.
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
-				return _first_available_directional([&"run", &"Jog_Fwd", &"Sprint", &"Walk", &"Walk_Carry", &"idle"])
+				return _first_available_directional([&"run", &"Sprint", &"Jog_Fwd", &"Walk", &"Walk_Carry", &"idle"])
 			return _first_available([&"idle", &"Idle", &"Idle_FoldArms", &"run", &"Walk"])
 		Move.FALLING:
 			return _first_available([&"jump", &"Jump", &"NinjaJump_Idle", &"idle", &"Idle"])
@@ -239,7 +252,7 @@ func _target_animation() -> StringName:
 			# reported clips fit a lateral run along a vertical surface.
 			# Wall running is continuous, fast, directional locomotion along a
 			# surface -- closest of what exists is run.
-			return _first_available([&"run", &"Jog_Fwd", &"Sprint", &"idle"])
+			return _first_available([&"run", &"Sprint", &"Jog_Fwd", &"idle"])
 		Move.CROUCH:
 			# `sneak`/`sneaking` are genuine matches from the owner's reported
 			# vocabulary: crouch WALKING is `sneak`, crouch STILL is
@@ -293,7 +306,7 @@ func _target_animation() -> StringName:
 			# same speed split WALKING uses rather than claiming a clip of its
 			# own.
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
-				return _first_available([&"run", &"Jog_Fwd", &"Walk", &"idle"])
+				return _first_available([&"run", &"Sprint", &"Jog_Fwd", &"Walk", &"idle"])
 			return _first_available([&"idle", &"Idle", &"run", &"Walk"])
 		_:
 			# Any move without an explicit case above. Reaching here is a
