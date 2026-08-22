@@ -92,6 +92,41 @@ extends MoveConfig
 ## purpose.
 @export var shimmy_edge_tolerance: float = 0.15
 
+## How long a ninety-degree corner takes to travel around, in seconds.
+##
+## ✅ THE OWNER, timing the original: "外 90 转角好像大概 1s 转过去，期间锁镜头，
+## 可能是怕穿帮."
+##
+## 📌 A whole second is a long time to hold a player still, and it is meant to
+## be: this is the one moment of a shimmy where the body is not against the wall
+## it is hanging from, and the original spends the time rather than cheat it.
+@export var corner_duration: float = 1.0
+
+## How long the shimmy is refused after a corner completes, in seconds.
+##
+## ✅ `TdMove_Grab.DisableShimmyTime = 0.6`.
+##
+## 🔶 The field's PURPOSE is inferred from its value and this placement: a
+## corner leaves the hands a hand's width from the corner they just rounded, so
+## without a pause a wobble on the stick walks them straight back around it, and
+## then around again. 0.6 s after a 1.0 s turn makes one corner a 1.6 s
+## uninterruptible passage, which matches how deliberate the original feels.
+@export var corner_lockout: float = 0.6
+
+## How far below the lip the corner probes fire, in metres.
+##
+## A face is BELOW an edge, not level with it: a ray at the anchor's own height
+## grazes the top surface and reports the ledge as its own wall. 0.3 m is under
+## any lip or moulding and well above the hanging body's own crown.
+@export var corner_probe_drop: float = 0.3
+
+## How far past the corner the outside-corner probe looks back from, in metres.
+##
+## It has to start in the OPEN AIR beyond the corner -- a ray beginning inside
+## geometry reports nothing at all -- and still be close enough that the face it
+## finds is the corner's own rather than something across the street.
+@export var corner_probe_reach: float = 0.6
+
 ## How far the view must be turned off the wall before jump pushes off it
 ## instead of pulling up, in degrees.
 ##

@@ -599,21 +599,8 @@ func ledge_beside(edge: Vector3, step: Vector3, lift: float,
 		tolerance: float) -> Dictionary:
 	_ensure_rays()
 	var target: Vector3 = edge + step
-	var space := get_world_3d().direct_space_state
-	if space == null:
-		return _no_hit()
-	var query := PhysicsRayQueryParameters3D.create(
-			target + Vector3.UP * lift,
+	var hit: Dictionary = _cast(target + Vector3.UP * lift,
 			target - Vector3.UP * tolerance)
-	query.collision_mask = _surface.collision_mask
-	# The player's own capsule hangs BELOW the lip, so this ray should never
-	# reach it -- but a thin ledge with the body pressed close is exactly the
-	# case where "should never" stops being true, and a self-hit would read as
-	# a perfectly good ledge.
-	var body := get_parent() as CollisionObject3D
-	if body != null:
-		query.exclude = [body.get_rid()]
-	var hit: Dictionary = space.intersect_ray(query)
 	if hit.is_empty():
 		return _no_hit()
 	# HEIGHT IS THE TEST, not merely "something is there". A ledge that steps
@@ -628,8 +615,78 @@ func ledge_beside(edge: Vector3, step: Vector3, lift: float,
 	return {"valid": true, "top": found, "edge": found,
 		"normal": hit.get("normal", Vector3.UP)}
 
-## Whether there is room beside `from` to travel `distance` metres along
-## `direction`.
+## Whether the WALL FACE the hands hang from continues `step` metres to one
+## side. `outward` is that face's normal, pointing away from the wall.
+##
+## ⚠️ A SEPARATE QUESTION FROM ledge_beside(), and leaving it unasked walks the
+## hands off the outside corner of anything with depth. On a 6 m square block,
+## hanging on the south face and travelling east, the TOP is still solidly under
+## the probe well past the corner -- it is 6 m deep -- while the FACE the body
+## is hanging from ended there. ledge_beside() alone therefore says "carry on"
+## until the hands are over open air, diagonally off the corner.
+##
+## Fired BELOW the lip, because that is where a face is. Level with the anchor
+## it would graze the top surface instead and report the ledge as its own wall.
+func face_beside(edge: Vector3, step: Vector3, outward: Vector3,
+		drop: float, margin: float) -> bool:
+	var flat: Vector3 = outward
+	flat.y = 0.0
+	if flat.length_squared() < 0.0001:
+		return false
+	flat = flat.normalized()
+	var at: Vector3 = edge + step - Vector3.UP * drop
+	# From clear of the face, inward. Starting ON the plane risks starting
+	# INSIDE it, and a ray that begins inside geometry reports nothing at all.
+	return not _cast(at + flat * (margin + drop), at - flat * margin).is_empty()
+
+## The face around an OUTSIDE corner: the one perpendicular to the face just
+## left, found by looking back along the direction of travel from a point past
+## the corner.
+##
+## Returns ledge_query()'s own shape -- `edge` on the new top, `normal` the new
+## face's, pointing away from it -- or a miss when there is nothing to carry on
+## along, which is the ordinary answer at the end of a free-standing wall.
+func corner_beyond(edge: Vector3, along: Vector3, outward: Vector3,
+		reach: float, drop: float, margin: float, tolerance: float) -> Dictionary:
+	var travel: Vector3 = along
+	travel.y = 0.0
+	if travel.length_squared() < 0.0001:
+		return _no_hit()
+	travel = travel.normalized()
+	# Past the corner and BELOW the lip, looking back the way we came. Past the
+	# corner is open air, so the ray starts outside the geometry and the first
+	# thing it can meet is the face being looked for.
+	var from: Vector3 = edge + travel * reach - Vector3.UP * drop
+	var hit: Dictionary = _cast(from, from - travel * (reach * 2.0))
+	if hit.is_empty():
+		return _no_hit()
+	var normal: Vector3 = hit.get("normal", Vector3.ZERO)
+	normal.y = 0.0
+	if normal.length_squared() < 0.0001:
+		return _no_hit()
+	normal = normal.normalized()
+	# A face still pointing the way the old one did is the SAME face, not a
+	# corner -- the ray simply ran back along it, which is what happens on a
+	# gentle bend. 0.5 is a 60 degree turn: clear of a right angle, clear of
+	# surface noise.
+	if normal.dot(outward) > 0.5:
+		return _no_hit()
+	var face_point: Vector3 = hit["position"]
+	# margin INSIDE the top, the same offset ledge_query() anchors with, so the
+	# two agree about where an edge is.
+	var candidate: Vector3 = Vector3(face_point.x, edge.y, face_point.z) - normal * margin
+	var top: Dictionary = _cast(candidate + Vector3.UP * drop,
+			candidate - Vector3.UP * tolerance)
+	if top.is_empty():
+		return _no_hit()
+	var found: Vector3 = top["position"]
+	if absf(found.y - edge.y) > tolerance:
+		return _no_hit()
+	return {"valid": true, "top": found, "edge": found, "normal": normal,
+		"face_point": face_point, "face_normal": normal}
+
+## What, if anything, is beside `from` within `distance` metres along
+## `direction`. Empty when the way is clear.
 ##
 ## ⚠️ EXISTS BECAUSE fits_standing_at() CANNOT ANSWER THIS FROM A HANG, and the
 ## arithmetic says so outright rather than as a matter of taste. IntoGrabMove
@@ -642,26 +699,40 @@ func ledge_beside(edge: Vector3, step: Vector3, lift: float,
 ## So a hanging body is INSIDE the ledge it hangs from, on both axes, always.
 ## That is what hanging looks like: chest to the wall, head over the lip. Asking
 ## "would a standing capsule fit here" therefore answers NO at every hang
-## position on every wall, and using it to gate a shimmy refuses every step of
-## every shimmy -- which is exactly what shipped, and what the owner found by
-## trying it on a brand new wall built to be easy.
+## position on every wall.
 ##
 ## A ray from the body CENTRE sideways asks the question that is actually being
 ## asked -- is there something beside me -- and cannot trip over the ledge,
-## because the ledge is above it and in front of it rather than beside it.
-func side_clear(from: Vector3, direction: Vector3, distance: float) -> bool:
+## which is above it and in front of it rather than beside it.
+##
+## RETURNS THE HIT rather than a yes/no, because an INSIDE CORNER *is* this hit:
+## the thing blocking the way sideways is the wall the shimmy has to turn onto,
+## and its normal is the only thing that says which way to turn.
+func side_hit(from: Vector3, direction: Vector3, distance: float) -> Dictionary:
 	if direction.length_squared() < 0.0001 or distance <= 0.0:
-		return true
+		return {}
+	return _cast(from, from + direction.normalized() * distance)
+
+## One ray, on SurfaceDown's mask, ignoring the player's own body. The shimmy
+## probes differ only in where they point, so the setup lives here once.
+##
+## A direct space query rather than one of the persistent rays: those are
+## children of the player and travel with it, while these are fired from
+## arbitrary points out along a ledge.
+func _cast(from: Vector3, to: Vector3) -> Dictionary:
 	var space := get_world_3d().direct_space_state
 	if space == null:
-		return true
-	var query := PhysicsRayQueryParameters3D.create(
-			from, from + direction.normalized() * distance)
+		return {}
+	var query := PhysicsRayQueryParameters3D.create(from, to)
 	query.collision_mask = _surface.collision_mask if _surface != null else 1
+	# The player's own capsule hangs BELOW the lip, so these rays should never
+	# reach it -- but a thin ledge with the body pressed close is exactly the
+	# case where "should never" stops being true, and a self-hit would read as
+	# perfectly good geometry.
 	var body := get_parent() as CollisionObject3D
 	if body != null:
 		query.exclude = [body.get_rid()]
-	return space.intersect_ray(query).is_empty()
+	return space.intersect_ray(query)
 
 ## Points a side ray at the given reach and fires it. Aimed live from the
 ## config on every call, same as _aim_forward() above and for the same

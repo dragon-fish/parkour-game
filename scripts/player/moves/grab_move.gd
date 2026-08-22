@@ -32,7 +32,34 @@ var _edge: Vector3 = Vector3.ZERO
 var _face_normal: Vector3 = Vector3.BACK
 ## -1 shimmying left, +1 right, 0 hanging still. Read by character_animator.gd
 ## the same way is_mantling() is.
+##
+## HELD THROUGH A CORNER on purpose: the owner's direction was to borrow the
+## travel clips for it -- "climb left right 动画...可以借一下，顺便把转角做了" --
+## and there is no dedicated corner clip in either pack to borrow instead.
 var _shimmy: float = 0.0
+
+## Rounding a ninety-degree corner: a scripted swing of the whole body onto a
+## perpendicular face, over corner_duration.
+##
+## A THIRD PHASE, beside hanging and mantling, and it earns the place for the
+## same reason mantling has one: it owns the body for a stretch of time and
+## shares the ledge data with the phase before it.
+var _cornering: bool = false
+var _corner_time: float = 0.0
+var _corner_from_pos: Vector3 = Vector3.ZERO
+var _corner_to_pos: Vector3 = Vector3.ZERO
+var _corner_from_yaw: float = 0.0
+var _corner_to_yaw: float = 0.0
+## Where the hands and the face end up. Applied at COMPLETION rather than at the
+## start, so a corner interrupted for any reason leaves the move still
+## describing the ledge the body is actually on.
+var _corner_edge: Vector3 = Vector3.ZERO
+var _corner_normal: Vector3 = Vector3.BACK
+## The yaw already handed to the camera, so each tick reports only its own
+## slice. Mirrors Turn180Move._placed, whose handshake this copies.
+var _corner_placed: float = 0.0
+## Counts down corner_lockout after a corner, during which the shimmy refuses.
+var _shimmy_lockout: float = 0.0
 ## The direction the mantle pushes and exits along. Captured ONCE, at
 ## COMMITMENT -- the moment forward or jump is pressed and begin() is called,
 ## in physics_update()'s climb-trigger branch below -- NOT at grab time.
@@ -60,6 +87,12 @@ func is_mantling() -> bool:
 ## exactly that to choose between Climb_Idle and Climb_Left/Climb_Right.
 func shimmy_direction() -> float:
 	return _shimmy
+
+## Whether the body is mid-corner. Exposed for the same reason is_mantling() is:
+## nothing outside this move can otherwise tell a corner from ordinary travel,
+## and a corner refuses every input a hang accepts.
+func is_cornering() -> bool:
+	return _cornering
 
 func enter(_previous: StringName) -> void:
 	# grounded is DECLARED, not read from is_on_floor(): like SpeedVault, this
@@ -120,6 +153,8 @@ func enter(_previous: StringName) -> void:
 		# squared to it: away from the wall, back at the player.
 		_face_normal = player.global_transform.basis.z
 	_shimmy = 0.0
+	_cornering = false
+	_shimmy_lockout = 0.0
 
 	player.velocity = Vector3.ZERO
 	# The body holds exactly wherever it grabbed -- NO repositioning, up or
@@ -176,6 +211,15 @@ func exit() -> void:
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted:
 		return FALLING
+
+	# BEFORE EVERYTHING, mantle included. A corner is a scripted passage that
+	# owns the body; a pull-up or a jump started halfway through one would
+	# launch from a position that is neither the ledge left nor the ledge
+	# arrived at. The original spends 1.0 s here and then another 0.6 s
+	# refusing to shimmy, which is not the shape of a state you can act out of.
+	if _cornering:
+		_advance_corner(delta)
+		return KEEP
 
 	if _mantling:
 		if advance(delta):
@@ -337,6 +381,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	if player.probes == null:
 		return
+	# ✅ DisableShimmyTime. A corner leaves the hands a hand's width from the
+	# corner they just rounded, so without this a wobble on the stick walks them
+	# straight back around it, and around again.
+	if _shimmy_lockout > 0.0:
+		_shimmy_lockout -= delta
+		_shimmy = 0.0
+		return
 	var wanted: float = input.move.x
 	if absf(wanted) < config.grab.shimmy_deadzone:
 		_shimmy = 0.0
@@ -361,11 +412,26 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# Probes.ledge_beside() for why that is and what it does instead.
 	var beside: Dictionary = player.probes.ledge_beside(_edge, step,
 			config.grab.shimmy_probe_lift, config.grab.shimmy_edge_tolerance)
-	if not beside.get("valid", false):
-		# The ledge ran out. Hanging on is right: the player is still holding
-		# a perfectly good ledge, they have simply reached the end of it.
-		# Rounding a corner is a separate question and is not answered here.
-		_shimmy = 0.0
+
+	# ⚠️ TWO QUESTIONS, NOT ONE, and asking only the first walked the hands off
+	# the outside corner of anything with depth. ledge_beside() answers about
+	# the TOP, which on a 6 m block carries on for metres past the corner; the
+	# FACE the body actually hangs from ended there. See Probes.face_beside().
+	var face_on: bool = player.probes.face_beside(_edge, step, _face_normal,
+			config.grab.corner_probe_drop, Probes.LEDGE_ANCHOR_MARGIN)
+	if not beside.get("valid", false) or not face_on:
+		# THE OUTSIDE CORNER. What ran out is this face, so look for the one
+		# perpendicular to it -- and if there is none, the ledge simply ends and
+		# hanging on is the right answer: the player still holds a perfectly
+		# good ledge, they have reached the end of it.
+		var around: Dictionary = player.probes.corner_beyond(_edge,
+				sideways * side, _face_normal, config.grab.corner_probe_reach,
+				config.grab.corner_probe_drop, Probes.LEDGE_ANCHOR_MARGIN,
+				config.grab.shimmy_edge_tolerance)
+		if around.get("valid", false):
+			_begin_corner(around["edge"], around["normal"], side)
+		else:
+			_shimmy = 0.0
 		return
 
 	# AND IS THERE ROOM FOR THE BODY? A ledge can continue past a pillar or into
@@ -380,8 +446,17 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# refused every step of every shimmy. That shipped, and the owner found it
 	# on a wall built to be easy: "就你造的这几个墙，我都不能横爬."
 	var reach: float = player.current_capsule_radius() + step.length()
-	if not player.probes.side_clear(player.global_position, sideways * side, reach):
-		_shimmy = 0.0
+	var blocked: Dictionary = player.probes.side_hit(player.global_position,
+			sideways * side, reach)
+	if not blocked.is_empty():
+		# THE INSIDE CORNER, and it is the SAME probe that used to be only a
+		# refusal. Whatever is beside the body is either something to turn onto
+		# or something to stop at, and its normal is what tells the two apart.
+		var turned: Dictionary = _ledge_on(blocked)
+		if turned.get("valid", false):
+			_begin_corner(turned["edge"], turned["normal"], side)
+		else:
+			_shimmy = 0.0
 		return
 
 	player.global_position += step
@@ -429,3 +504,102 @@ func _push_off(turned: float) -> void:
 	var t: float = clampf((turned - deg_to_rad(config.grab.jump_angle_deg)) / span, 0.0, 1.0)
 	var push: float = lerpf(config.grab.jump_push_min, config.grab.jump_push_max, t)
 	player.velocity = away * push + Vector3.UP * config.grab.jump_speed_up
+
+## The ledge belonging to a wall the body has run into sideways, or a miss when
+## that wall carries no ledge at this height.
+##
+## An inside corner is not merely "something is in the way": a pillar, a doorway
+## reveal or a parapet returning at the wrong height all block the hands without
+## offering anywhere to go. The height check is what separates a corner from an
+## obstacle, and it is the same tolerance ordinary travel uses -- the hanging
+## body is placed for ONE height, and a face whose top sits above or below that
+## is a different ledge however square it is to this one.
+func _ledge_on(blocked: Dictionary) -> Dictionary:
+	var normal: Vector3 = blocked.get("normal", Vector3.ZERO)
+	normal.y = 0.0
+	if normal.length_squared() < 0.0001:
+		return {}
+	normal = normal.normalized()
+	# A wall still facing the way this one does is the SAME wall, met at a
+	# glancing angle -- not a corner. Same 60 degree test Probes.corner_beyond()
+	# applies from the other side.
+	if normal.dot(_face_normal) > 0.5:
+		return {}
+	var at: Vector3 = blocked.get("position", Vector3.ZERO)
+	# The anchor sits LEDGE_ANCHOR_MARGIN inside the top, which is where
+	# ledge_query() puts one, so the two agree about where an edge is.
+	var candidate: Vector3 = Vector3(at.x, _edge.y, at.z) - normal * Probes.LEDGE_ANCHOR_MARGIN
+	# A zero step: this is a probe straight down onto the candidate, and
+	# ledge_beside() already measures the height it finds against the y it was
+	# handed -- which is this ledge's.
+	var top: Dictionary = player.probes.ledge_beside(candidate, Vector3.ZERO,
+			config.grab.shimmy_probe_lift, config.grab.shimmy_edge_tolerance)
+	if not top.get("valid", false):
+		return {}
+	return {"valid": true, "edge": top["edge"], "normal": normal}
+
+## Starts the scripted swing onto `new_normal`'s face.
+func _begin_corner(new_edge: Vector3, new_normal: Vector3, side: float) -> void:
+	_corner_from_pos = player.global_position
+	# Through IntoGrabMove.hanging_pose(), the same function that placed the
+	# body on the ledge it is leaving. A corner that arrived at a hand-computed
+	# offset would hang differently from every other grab in the game.
+	_corner_to_pos = IntoGrabMove.hanging_pose(player, player.config,
+			{"edge": new_edge, "face_normal": new_normal})
+	_corner_from_yaw = player.rotation.y
+	# The same expression IntoGrabMove._target_yaw uses: the normal points back
+	# at the body, so facing the wall means facing the way it came from.
+	_corner_to_yaw = atan2(new_normal.x, new_normal.z)
+	_corner_placed = _corner_from_yaw
+	_corner_edge = new_edge
+	_corner_normal = new_normal
+	_corner_time = 0.0
+	_cornering = true
+	# The travel clip keeps playing: it is what the corner is animated with.
+	_shimmy = side
+
+## One tick of the corner.
+##
+## THE CAMERA HANDSHAKE IS TURN180MOVE'S, copied rather than reinvented, and its
+## reasoning transfers exactly: this move's look clamp is an ABSOLUTE-yaw one
+## (GrabConfig sets absolute_yaw_constraint), so apply_look pins the body to
+## reference-plus-offset every tick from a reference captured when the clamp
+## began. Writing player.rotation.y here as well would make two writers pull
+## against each other once a tick -- which is the "camera twitches left and
+## right" that move documents. Moving the REFERENCE instead makes them agree.
+##
+## ✅ And it is what "期间锁镜头" comes out as here: the view goes round with the
+## body because the fan travels with it, and the player's own mouse can only add
+## to that rather than fight it.
+func _advance_corner(delta: float) -> void:
+	_corner_time += delta
+	var progress: float = clampf(
+			_corner_time / maxf(config.grab.corner_duration, 0.001), 0.0, 1.0)
+	player.global_position = _corner_from_pos.lerp(_corner_to_pos, progress)
+	# Through the SHORT way round. A corner is a quarter turn; lerping the raw
+	# yaws sends a body whose facing straddles PI the long way, three quarters
+	# of a circle through the wall it is hanging on.
+	var sweep: float = wrapf(_corner_to_yaw - _corner_from_yaw, -PI, PI)
+	var wanted: float = _corner_from_yaw + sweep * progress
+	var moved: float = wanted - _corner_placed
+	_corner_placed = wanted
+	if player.camera_rig != null:
+		player.camera_rig.shift_yaw_reference(wanted, 1.0)
+		player.camera_rig.absorb_body_yaw(moved)
+	else:
+		# No rig to place the body: drive it directly. Tests with a stub player
+		# take this path.
+		player.rotation.y = wanted
+	if progress < 1.0:
+		return
+	# THE LAST SLICE HAS TO BE PLACED HERE, for Turn180Move's reason: every
+	# other tick's placement is apply_look's job on the FOLLOWING tick, and the
+	# tick a corner completes is the tick the hang resumes.
+	if player.camera_rig != null:
+		var offset: float = float(player.camera_rig.look_debug()["relative_yaw"])
+		player.rotation.y = wanted + offset
+	_cornering = false
+	_edge = _corner_edge
+	_face_normal = _corner_normal
+	_shimmy = 0.0
+	_shimmy_lockout = config.grab.corner_lockout
