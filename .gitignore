@@ -100,6 +100,11 @@ scenes/player/profiles/
 
 # The alignment workbench, which names a profile that names untracked models.
 scenes/player/body_alignment.tscn
+# Same rule: the animation gallery names the same profile. Its SCRIPT --
+# scripts/debug/animation_gallery.gd -- is tracked, and builds the whole grid
+# at runtime, so anyone with a profile of their own can point a two-node scene
+# at it and get the same viewer.
+scenes/player/animation_gallery.tscn
 
 # The owner's PAID copy of the Universal Animation Library (both packs, full
 # tiers). The licence on the files is CC0, so redistributing them would be
