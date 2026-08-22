@@ -154,6 +154,14 @@ func _physics_process(delta: float) -> void:
 	_playback.travel(target)
 	_drive_speed(target)
 
+## True while the player is holding the walk modifier AND asking to go
+## somewhere. The same question the landing one-shot asks, deliberately -- one
+## definition of "asking to move", used by both.
+func _creeping() -> bool:
+	if player.last_input == null or not player.last_input.walk_held:
+		return false
+	return player.wish_direction(player.last_input).length_squared() > 0.0001
+
 ## Where the walk hands over to the run: the speed at which the run clip would
 ## be scaled to SPEED_SCALE_MIN, i.e. the slowest it can honestly go.
 ##
@@ -284,7 +292,15 @@ func _drive_speed(clip: StringName) -> void:
 		# travel_speed(), NOT horizontal_speed() -- see travel_speed()'s own
 		# note on why velocity lies through a vault or a mantle. The eye already
 		# reads it for the same reason.
-		scale = clampf(player.travel_speed() / reference, SPEED_SCALE_MIN, SPEED_SCALE_MAX)
+		# A LOWER FLOOR FOR THE WALK, and it is derived rather than picked: the
+		# creep is 0.5 m/s against a walk authored near 1.8, so the honest scale
+		# there is 0.28 and the ordinary 0.5 floor would run the feet at 0.9 m/s
+		# under a body doing 0.5. SPEED_SCALE_MIN exists to stop ONE clip being
+		# stretched across everything; a walk asked to walk slowly is not that.
+		var scale_min := SPEED_SCALE_MIN
+		if WALK_CLIPS.has(base_clip):
+			scale_min = minf(SPEED_SCALE_MIN, player.config.pawn.walk_velocity / reference)
+		scale = clampf(player.travel_speed() / reference, scale_min, SPEED_SCALE_MAX)
 	anim_tree.set("parameters/%s/scale" % GRAPH_TIME_SCALE, scale)
 
 ## True when `clip_name` has an actual node in the AnimationTree's graph --
@@ -364,6 +380,19 @@ func _target_animation() -> StringName:
 			# Sprint swap opened: below the run's scale floor a sprint was being
 			# played in slow motion, because one clip was covering the whole
 			# range from a crawl to full pace.
+			# CTRL IS THE WALK, and it is the reason this case is not a plain
+			# speed split. ✅ The owner: "we already have the Ctrl walk -- that
+			# IS the walk." It was playing a STANDING IDLE: the modifier caps
+			# the body at walk_velocity, 0.5 m/s, and the idle-versus-moving
+			# threshold sits at 1.0, so a creep never reached the moving branch
+			# at all. Feet still, body drifting.
+			#
+			# Asked of the INPUT rather than the speed, so there is no second
+			# epsilon to keep in step with the first: Ctrl held with a direction
+			# asked for is a walk, whatever the body has actually reached yet.
+			# Ctrl held while standing still falls through to idle below.
+			if _creeping():
+				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			var speed: float = player.horizontal_speed()
 			if speed > _run_band_speed():
 				return _first_available_directional([&"Sprint", &"Walk", &"Walk_Carry", &"run", &"idle"])

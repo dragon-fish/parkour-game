@@ -93,3 +93,29 @@ func test_a_body_with_no_clips_at_all_asks_for_nothing() -> void:
 	player.move_manager.start(Move.JUMP)
 	assert_eq(animator._target_animation(), Move.KEEP, \
 		"a body with none of the known clips was still asked for one")
+
+func test_the_ctrl_creep_moves_its_feet() -> void:
+	# ✅ THE OWNER: "we already have the Ctrl walk -- that IS the walk." It was
+	# playing a STANDING IDLE. The modifier caps the body at walk_velocity,
+	# 0.5 m/s, and the idle-versus-moving threshold sits at 1.0, so a creep
+	# never reached the moving branch at all: feet still, body drifting.
+	var animator: CharacterAnimator = await _animator_with([&"Idle", &"Walk", &"Sprint"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.WALKING)
+	var input := MoveInput.new()
+	input.walk_held = true
+	input.move = Vector2(0.0, 1.0)
+	player.last_input = input
+	assert_eq(String(animator._target_animation()), "Walk", 		"a Ctrl creep asked for '%s'" % String(animator._target_animation()))
+
+func test_holding_ctrl_while_standing_still_is_still_standing_still() -> void:
+	# The pair to the test above. Asked of the INPUT rather than the speed, so
+	# the modifier alone must not be enough -- otherwise resting a finger on
+	# Ctrl walks on the spot.
+	var animator: CharacterAnimator = await _animator_with([&"Idle", &"Walk", &"Sprint"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.WALKING)
+	var input := MoveInput.new()
+	input.walk_held = true
+	player.last_input = input
+	assert_eq(String(animator._target_animation()), "Idle", 		"holding Ctrl on the spot asked for '%s'" % String(animator._target_animation()))
