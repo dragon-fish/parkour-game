@@ -92,8 +92,12 @@ func test_a_scripted_move_takes_the_lift_back_off_the_root() -> void:
 	var resting: float = player.body.position.y
 	_pose_hips(player, HIPS_REST + 0.825)
 	player.set_clip_lift_cancelled(true)
-	await step(3)
-	assert_almost_eq(player.body.position.y, resting - 0.825, 0.001,
+	# Long enough for the ease to arrive. ⚠️ EASED, not switched: the owner
+	# reported "at the instant the vault ends the camera jumps up a notch",
+	# which is what a binary cancellation does when the clip still has its hips
+	# raised at hand-off.
+	await step(60)
+	assert_almost_eq(player.body.position.y, resting - 0.825, 0.01,
 		"the root moved %.3f m for a lift of 0.825"
 		% (resting - player.body.position.y))
 
@@ -114,3 +118,22 @@ func test_a_body_with_no_hips_reports_nothing() -> void:
 	var player: Player = await _player_with_skeleton()
 	player._hips_bone = -1
 	assert_almost_eq(player.clip_lift(), 0.0, 0.0001, "a body with no hips reported a lift")
+
+func test_the_cancellation_eases_out_rather_than_snapping() -> void:
+	# ✅ THE OWNER: "at the instant the vault ends the camera jumps up a notch."
+	# A clip cut short still has its hips up when the move hands off, so
+	# switching the cancellation off took 0.825 m out of the body in one frame.
+	var player: Player = await _player_with_skeleton()
+	var resting: float = player.body.position.y
+	_pose_hips(player, HIPS_REST + 0.825)
+	player.set_clip_lift_cancelled(true)
+	await step(60)
+	var folded: float = player.body.position.y
+	player.set_clip_lift_cancelled(false)
+	await step(1)
+	var after_one_tick: float = player.body.position.y
+	assert_lt(after_one_tick - folded, 0.4,
+		"the body sprang %.2f m in a single tick" % (after_one_tick - folded))
+	await step(60)
+	assert_almost_eq(player.body.position.y, resting, 0.01,
+		"it never finished coming back")

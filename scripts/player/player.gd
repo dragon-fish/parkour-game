@@ -526,6 +526,15 @@ var _fold_drop: float = 0.0
 ## True while a SCRIPTED move owns the body's height, so the clip's own
 ## vertical hip motion must not be added on top. See set_clip_lift_cancelled().
 var _cancel_clip_lift: bool = false
+## How much of that cancellation is actually being applied, 0 to 1, eased.
+##
+## ⚠️ EASED, and it was not at first. ✅ The owner: "at the instant the vault
+## ends the camera jumps up a notch." Of course it did -- switching the
+## cancellation off took the lift from 0.825 m to zero in one frame, and a clip
+## cut short at 44 percent still has its hips up when the move hands off. The
+## fold drop was eased from the start; this was the other half of the same idea
+## and did not get it.
+var _lift_cancel_amount: float = 0.0
 ## The skeleton and Hips index, resolved once at attach -- this is read every
 ## tick and find_bone() is a string search.
 var _skeleton: Skeleton3D = null
@@ -1160,6 +1169,7 @@ func _drive_clip_offset(delta: float) -> void:
 	if _body_folded:
 		wanted_drop = maxf(standing_height() - current_capsule_height(), 0.0)
 	_fold_drop = lerpf(_fold_drop, wanted_drop, t)
+	_lift_cancel_amount = lerpf(_lift_cancel_amount, 1.0 if _cancel_clip_lift else 0.0, t)
 	_apply_clip_offset()
 
 ## The [position, rotation_degrees] pair for `clip`, or an empty array.
@@ -1195,7 +1205,7 @@ func _apply_clip_offset() -> void:
 	# out, while a fold genuinely lowers the head and the eye must follow. It
 	# does so for free -- the head bone moves with the model, and the head-follow
 	# reads the bone.
-	var lift: float = clip_lift() if _cancel_clip_lift else 0.0
+	var lift: float = clip_lift() * _lift_cancel_amount
 	body.transform = Transform3D(extra * _body_mount.basis,
 			_body_mount.origin + _clip_offset_position
 			- Vector3(0.0, _fold_drop + lift, 0.0))
@@ -1278,7 +1288,7 @@ func body_root_debug() -> Dictionary:
 		"mount_y": _body_mount.origin.y,
 		"drop": _fold_drop,
 		"clip_y": _clip_offset_position.y,
-		"lift": clip_lift(),
+		"lift": clip_lift() * _lift_cancel_amount,
 		"lift_cancelled": _cancel_clip_lift,
 	}
 

@@ -113,10 +113,10 @@ func _process(delta: float) -> void:
 		# -- and a vault's pose can raise the head half a metre by itself. When
 		# the two disagree it is the pose, and no amount of moving the root
 		# fixes a pose.
-		"model      y %+.2f  (mount %+.2f  fold %.2f  lift %.2f%s)"
+		"model      y %+.2f  (mount %+.2f  fold %.2f  lift %.2f  clip %+.2f)"
 			% [player.body_root_debug()["y"], player.body_root_debug()["mount_y"],
 			player.body_root_debug()["drop"], player.body_root_debug()["lift"],
-			" CANCELLED" if player.body_root_debug()["lift_cancelled"] else ""],
+			player.body_root_debug()["clip_y"]],
 		"capsule    %.2f / %.2f m%s" % [player.current_capsule_height(),
 			player.standing_height(),
 			"  FOLDED" if player.current_capsule_height() < player.standing_height() - 0.01 else ""],

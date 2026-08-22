@@ -74,6 +74,14 @@ const CROUCHED_CLIPS: Array[StringName] = [
 const SPEED_SCALE_MIN := 0.5
 const SPEED_SCALE_MAX := 2.0
 
+## Bounds on fitting a clip to a scripted move's clock. Wider than the
+## locomotion bounds above, because this is not a cadence being nudged to match
+## a pace -- it is a fixed action being made to fit a window the move chose, and
+## the windows genuinely differ by more than a factor of two: ClimbUp_2m is
+## 1.3 s and a mantle is not.
+const SCRIPTED_FIT_MIN := 0.25
+const SCRIPTED_FIT_MAX := 4.0
+
 ## The WALK clips, which are authored at a stroll and cannot be scaled up to a
 ## run -- the same shape as CROUCHED_CLIPS below, and for the same reason.
 const WALK_CLIPS: Array[StringName] = [&"Walk", &"Walk_Carry"]
@@ -331,6 +339,14 @@ func _drive_speed(clip: StringName) -> void:
 		reference *= WALK_REFERENCE_PCT
 	elif family == &"Jog":
 		reference *= JOG_REFERENCE_PCT
+	# A SCRIPTED MOVE FITS ITS CLIP TO ITSELF, and takes priority over any
+	# speed matching: the body is being carried along a path on a clock the move
+	# owns, so the only cadence that can look right is the one that finishes
+	# when the move does.
+	var fitted := _scripted_fit(base_clip)
+	if fitted > 0.0:
+		anim_tree.set("parameters/%s/scale" % GRAPH_TIME_SCALE, fitted)
+		return
 	if reference > 0.0 and (SPEED_MATCHED_CLIPS.has(base_clip) or family != &""):
 		# travel_speed(), NOT horizontal_speed() -- see travel_speed()'s own
 		# note on why velocity lies through a vault or a mantle. The eye already
@@ -345,6 +361,35 @@ func _drive_speed(clip: StringName) -> void:
 			scale_min = minf(SPEED_SCALE_MIN, player.config.pawn.walk_velocity / reference)
 		scale = clampf(player.travel_speed() / reference, scale_min, SPEED_SCALE_MAX)
 	anim_tree.set("parameters/%s/scale" % GRAPH_TIME_SCALE, scale)
+
+## The time scale that makes `clip` finish exactly when the scripted move
+## playing it does, or 0 when the current move is not scripted.
+##
+## ✅ THE OWNER: "the fully driven vault is odd, and the speed feels like
+## double." Both halves come from the same gap. SpeedVaultMove shortens its own
+## arc for a fast approach -- floored at HALF the variant's duration, which is
+## the doubling, literally -- and the clip went on playing at its authored
+## length regardless. A fast vault_over runs 0.325 s against a 0.733 s
+## SafetyVault, so under half the clip was ever seen before the move handed off.
+##
+## ⚠️ This makes the ANIMATION agree with the move. It does not make the move
+## right: whether a vault should get faster the faster you approach is a
+## separate question, and the halving is this project's own invention rather
+## than anything measured. Recorded here because fitting the clip to it hides
+## the symptom that would otherwise keep asking.
+func _scripted_fit(clip: StringName) -> float:
+	if player.move_manager == null:
+		return 0.0
+	var move := player.move_manager.move_for(player.move_manager.current_name)
+	if not (move is ScriptedMove):
+		return 0.0
+	var duration: float = (move as ScriptedMove).scripted_duration()
+	if duration <= 0.0:
+		return 0.0
+	var length := _clip_length(clip)
+	if length <= 0.0:
+		return 0.0
+	return clampf(length / duration, SCRIPTED_FIT_MIN, SCRIPTED_FIT_MAX)
 
 ## True when `clip_name` has an actual node in the AnimationTree's graph --
 ## i.e., travel() can reach it without error. player.gd's

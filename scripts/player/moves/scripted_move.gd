@@ -22,6 +22,16 @@ func begin(from: Vector3, to: Vector3, duration: float, arc: float = 0.0) -> voi
 	_elapsed = 0.0
 	_arc = arc
 
+## How long the scripted travel is set to take, or 0 before begin() runs.
+##
+## Read by CharacterAnimator, which fits the CLIP to it. The two were never
+## related before, and they had no reason to agree: SafetyVault is 0.733 s while
+## a fast vault_over is floored at 0.325, so under half the clip ever played
+## before the move handed off. ✅ The owner: "the fully driven vault is odd, and
+## the speed feels like double." Both, from the same gap.
+func scripted_duration() -> float:
+	return _duration if _elapsed < _duration else 0.0
+
 func progress() -> float:
 	return clampf(_elapsed / _duration, 0.0, 1.0)
 
