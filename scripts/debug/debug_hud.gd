@@ -38,6 +38,13 @@ func _ready() -> void:
 	tuner.name = "ClipOffsetTuner"
 	tuner.player = player
 	get_parent().add_child.call_deferred(tuner)
+	# And the capsule outline, on the same terms and for the same reason: a
+	# question about the collision shape cannot be answered by looking at the
+	# model, because the two deliberately do not move together.
+	var capsule := CapsuleDebug.new()
+	capsule.name = "CapsuleDebug"
+	capsule.player = player
+	get_parent().add_child.call_deferred(capsule)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -84,6 +91,14 @@ func _process(delta: float) -> void:
 		# disagree it is the clamp's own reference that is wrong.
 		"facing     yaw %+.0f  pitch %+.0f" % [rad_to_deg(player.rotation.y), 			rad_to_deg(player.camera_rig.rotation.x) if player.camera_rig != null else 0.0],
 		"grounded   %s" % ("yes" if player.grounded else "no"),
+		# THE NUMBER THAT SETTLES IT. The owner asked whether the vault's fold
+		# was real, and neither the model nor the feet move when it happens --
+		# only the capsule's top does -- so nothing on screen said either way.
+		# Shown against the standing height rather than alone, since "0.90" only
+		# means something next to "1.80".
+		"capsule    %.2f / %.2f m%s" % [player.current_capsule_height(),
+			player.standing_height(),
+			"  FOLDED" if player.current_capsule_height() < player.standing_height() - 0.01 else ""],
 		"last land  %.2f m/s" % player.last_landing_speed,
 		# The two speed layers, side by side. A cap far below the curve's own
 		# ceiling means the turn tax has been eating energy; a speed far below
@@ -101,7 +116,7 @@ func _process(delta: float) -> void:
 		"
 ".join(_transitions) if not _transitions.is_empty() else "  (none yet)",
 		"",
-		"Tab HUD  F1 tuning  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
+		"Tab HUD  F9 clip tuner  F10 capsule  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
 		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
 	])
 
