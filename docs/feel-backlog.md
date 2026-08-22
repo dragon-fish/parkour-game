@@ -2619,3 +2619,32 @@ var spine_pitch := _pitch / pitch_limit * share_at_limit
 
 **所以这一栏没有"正确值"，只有"和另外两栏搭配起来对不对"。**
 这也正是对齐工作台存在的理由：三个数要一起看。
+
+## 69. 两条还没实现的动作，机制已经探明
+
+owner 在 ME 里实测补齐的两个动作，参数和触发条件都已经落进
+`docs/mirrors-edge-deep-research/`。记在这里是因为**它们是"可以开工"的状态**，
+不再是"需要先研究"的状态——省得下次又从头查一遍。
+
+### SpringBoard（踩踏跳）→ [05 §5.3](mirrors-edge-deep-research/05-动作库总览.md#53-springboard踩踏跳)
+
+**触发是地形组合，不是触发器。** 两个面高差 0.6 m、水平间距 1 m、朝向偏离 53° 以内，
+按空格即触发。宽度无所谓。
+
+🎯 这把两个一直没释义的 CDO 参数对上了：`IntermediateFootPlantHeight = 64 uu`
+（0.64 m）和 `IntermediateFootPlantDistance = 112 uu`（1.12 m）**就是这个几何**——
+"中途踏脚"指的是第二级台阶，这一跳有两次蹬踏。
+
+**对本项目的意义**：需要的是一条探测规则，不是触发器系统。找出"前方 1 m 内、
+彼此高差 0.6 m 的两个可踩面"，和 `Probes.vault_query()` 的列扫描同一类东西。
+
+### Dodge（闪避）→ [04](mirrors-edge-deep-research/04-墙面动作.md)
+
+A/D + 空格，横向 ~25 km/h + 小跳，**首先是个战斗动作**。对应 CDO 的
+`TdMove_DodgeJump`（`BaseJumpZ=300`、`JumpAddXY=600`、`StrafeThreshold=0.99`）。
+
+⚠️ **实现约束，不是可选项**：横向冲量锁的是**世界方向**，不是身体方向。
+往左 dodge 期间把镜头拉 90° 再按 W，那 25 km/h 就变成前进速度——这是速通社区在用的
+dodge glitch。要 1:1 就得**在进入动作那一帧把冲量解算成世界向量并锁死**，
+而不是每帧跟着朝向重算。照抄这个"错误"才是复刻。
+
