@@ -522,12 +522,46 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# answers NO at every hang position on every wall, and asking it here
 	# refused every step of every shimmy. That shipped, and the owner found it
 	# on a wall built to be easy: "就你造的这几个墙，我都不能横爬."
-	var reach: float = player.current_capsule_radius() + step.length()
+	# ⚠️ TWO PROBES, AND NEITHER IS THE CAPSULE. ✅ The owner: "现在是角色的中心撞到
+	# 障碍才会被阻挡，但其实人的手已经进入墙里了."
+	#
+	# The capsule's 0.4 m radius describes a cylinder around the torso, which is
+	# not the shape of a person hanging by their hands: the arms are up and out,
+	# and the LEADING HAND is both wider than the shoulder and 0.81 m higher than
+	# the body's centre. Probing from the centre at the capsule's own radius
+	# therefore misses a wall until the hand is already well inside it, and
+	# misses one entirely if it starts above chest height.
+	#
+	# So: one along the chest at the body's real width, and one along the LEDGE
+	# at hand height, which is where the grip is actually going.
+	var travel: Vector3 = sideways * side
+	var reach: float = config.grab.shimmy_body_half_width + step.length()
 	var blocked: Dictionary = player.probes.side_hit(player.global_position,
-			sideways * side, reach)
+			travel, reach)
 	_probe_trace.append({"label": "body", "from": player.global_position,
-		"to": player.global_position + sideways * side * reach,
+		"to": player.global_position + travel * reach,
 		"hit": not blocked.is_empty()})
+	if blocked.is_empty():
+		# HAND HEIGHT, AND AT THE LIP RATHER THAN AT THE ANCHOR. The anchor sits
+		# LEDGE_ANCHOR_MARGIN *inside* the top, which is exactly where a railing
+		# standing on the ledge lives -- firing from there put the probe's own
+		# origin inside the fence on the owner's west eave, and with
+		# hit_from_inside it reported "blocked" before travelling a millimetre.
+		#
+		# The hands are on the OUTER edge, so the ray belongs just outside the
+		# face plane, running along it. A wall crossing the hand's path has to
+		# cross that plane to do so; a railing set back behind it does not, and
+		# is ledge_beside()'s question rather than this one.
+		var lip: Vector3 = _face_normal
+		lip.y = 0.0
+		if lip.length_squared() > 0.0001:
+			lip = lip.normalized() * (Probes.LEDGE_ANCHOR_MARGIN + 0.02)
+		else:
+			lip = Vector3.ZERO
+		var grip: Vector3 = _edge + lip + Vector3.UP * config.grab.shimmy_grip_lift
+		blocked = player.probes.side_hit(grip, travel, reach)
+		_probe_trace.append({"label": "body", "from": grip,
+			"to": grip + travel * reach, "hit": not blocked.is_empty()})
 	if not blocked.is_empty():
 		# THE INSIDE CORNER, and it is the SAME probe that used to be only a
 		# refusal. Whatever is beside the body is either something to turn onto

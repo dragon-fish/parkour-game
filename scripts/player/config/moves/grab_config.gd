@@ -92,6 +92,28 @@ extends MoveConfig
 ## purpose.
 @export var shimmy_edge_tolerance: float = 0.15
 
+## How wide the hanging body is, measured from its centre line, in metres.
+##
+## ✅ THE OWNER: "能不能给横爬障碍的探测加一个身体宽度，现在是角色的中心撞到障碍才会
+## 被阻挡，但其实人的手已经进入墙里了."
+##
+## ⚠️ WIDER THAN THE CAPSULE, deliberately. current_capsule_radius() is 0.4, and
+## that is the COLLISION body -- a cylinder around the torso. A hanging person is
+## not that shape: the arms are up and out, and the leading hand reaches past the
+## shoulder it hangs from. Probing at the capsule's own radius therefore lets the
+## hand travel a good fifteen centimetres into a wall before the torso notices.
+##
+## 📌 It is a HALF-width because the probe fires from the centre line in the
+## direction of travel: only the leading side matters.
+@export var shimmy_body_half_width: float = 0.55
+
+## How far above the ledge top the hand-height probe fires, in metres.
+##
+## Just clear of the surface: level with the anchor the ray grazes the top it is
+## standing on and reports the ledge as its own obstacle, and much higher than
+## this it starts clearing things the hands would actually meet.
+@export var shimmy_grip_lift: float = 0.06
+
 ## How long a ninety-degree corner takes to travel around, in seconds.
 ##
 ## ✅ THE OWNER, timing the original: "外 90 转角好像大概 1s 转过去，期间锁镜头，

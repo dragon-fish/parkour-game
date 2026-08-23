@@ -342,3 +342,46 @@ func test_the_exposed_rim_beside_it_still_works() -> void:
 			Vector3(0.0, 0.0, 1.0), 0.1, 0.3, 0.15)
 	assert_true(found.get("valid", false),
 		"the exposed rim beside the tall block stopped being a ledge")
+
+# --- the body is wider than its capsule -----------------------------------------
+
+func test_a_wall_stops_the_hand_not_the_chest() -> void:
+	# ✅ THE OWNER: "能不能给横爬障碍的探测加一个身体宽度，现在是角色的中心撞到障碍才
+	# 会被阻挡，但其实人的手已经进入墙里了."
+	#
+	# ⚠️ THE CAPSULE IS THE WRONG SHAPE FOR THIS. Its 0.4 m radius describes a
+	# cylinder around the torso, and a person hanging by their hands is not that:
+	# the arms are up and out, and the leading hand is both wider than the
+	# shoulder and 0.81 m higher than the body's centre.
+	#
+	# The block below is placed so that a capsule-radius probe would still say
+	# "clear" while a body-width one says "blocked" -- the gap between the two is
+	# the whole finding.
+	var player: Player = await _hanging_player()
+	var grab := _grab(player)
+	var half: float = player.config.grab.shimmy_body_half_width
+	var radius: float = player.current_capsule_radius()
+	assert_gt(half, radius + 0.05,
+		"the configured half-width (%.2f) is not meaningfully wider than the capsule (%.2f)"
+		% [half, radius])
+	# A pillar squarely in the hand's way, inside the body width and outside the
+	# capsule radius.
+	var at: float = player.global_position.x + (half + radius) * 0.5
+	_add_block(player, Vector3(at + 0.3, LEDGE_TOP * 0.5, player.global_position.z),
+			Vector3(0.6, LEDGE_TOP * 2.0, 0.6))
+	await step(2)
+	var before: float = player.global_position.x
+	grab.physics_update(1.0 / 60.0, _hold(1.0))
+	assert_almost_eq(player.global_position.x, before, 0.001,
+		"the hand travelled %.3f m into a pillar %.2f m away"
+		% [player.global_position.x - before, at - before])
+
+func test_an_open_ledge_is_still_travelled() -> void:
+	# The pair. A half-width wide enough to stop a hand is also wide enough to
+	# stop everything if the probe is pointed wrongly, and this file's whole
+	# subject is a shimmy that silently refuses.
+	var player: Player = await _hanging_player()
+	var before: float = player.global_position.x
+	_grab(player).physics_update(0.5, _hold(1.0))
+	assert_gt(player.global_position.x, before + 0.05,
+		"widening the probe stopped travel on an open ledge")
