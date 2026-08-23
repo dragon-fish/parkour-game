@@ -1284,10 +1284,39 @@ func clip_offset_for(clip: StringName) -> Array:
 ## Linear between keys and flat outside them, which is what a hand-keyed curve
 ## wants: the author sees exactly the shape they typed, with no interpolator
 ## inventing overshoot between their keys.
+## How close to either end of a scripted move counts as being AT that end.
+##
+## 2% of a 1.3 s pull-up is 26 ms -- under two physics ticks, which is a snap and
+## not a movement.
+const CURVE_EDGE := 0.02
+
+## The hand-keyed offset for `clip` at `at`, ALWAYS zero at t = 0 and t = 1.
+##
+## THE OWNER, making it a rule: "所有脚本驱动的动画首位帧默认都应该是0偏移，否则前后
+## 衔接上肯定会出现闪现，这个得强制性."
+##
+## WHY IT HAS TO BE FORCED rather than left to whoever is keying. Outside a
+## scripted move the offset is zero, because there is no curve to read. So a
+## first key of, say, +12 cm does not START the move 12 cm off -- it TELEPORTS
+## the body 12 cm on the tick the move begins, and back again on the tick it
+## ends. The old code made this the DEFAULT failure: with no key at t = 0 it held
+## the first key's value all the way back to zero, so any curve that did not
+## happen to begin at zero popped at both joins. The ends are bookends this
+## function supplies itself now.
+##
+## KEYS INSIDE THE EDGE BAND ARE IGNORED, not honoured-then-overridden. Left in,
+## a stored key at t = 0.005 would sit half a millisecond from the zero bookend
+## and the lerp between them would be the same instant jump under another name.
 func clip_curve_at(clip: StringName, at: float) -> Array:
-	var keys: Array = clip_keys_for(clip, active_obstacle)
-	if keys.is_empty():
+	var stored: Array = clip_keys_for(clip, active_obstacle)
+	if stored.is_empty():
 		return []
+	var keys: Array = [{"t": 0.0, "pos": Vector3.ZERO, "rot": Vector3.ZERO}]
+	for key in stored:
+		var edge: float = float(key.get("t", 0.0))
+		if edge > CURVE_EDGE and edge < 1.0 - CURVE_EDGE:
+			keys.append(key)
+	keys.append({"t": 1.0, "pos": Vector3.ZERO, "rot": Vector3.ZERO})
 	var previous: Dictionary = keys[0]
 	if at <= float(previous.get("t", 0.0)):
 		return [previous.get("pos", Vector3.ZERO), previous.get("rot", Vector3.ZERO)]

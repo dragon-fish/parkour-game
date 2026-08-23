@@ -118,6 +118,13 @@ var _playback: AnimationNodeStateMachinePlayback
 var _spectator: SpectatorCamera
 ## Real-time playback of the recording. See _toggle_play().
 var _playing := false
+var _clamp_box: CheckBox
+## Whether scrubbing is fenced to the scripted move.
+##
+## "限制进度条只能在主要动作中拖动的 checkbox 防止手滑." Off by default, because the
+## run-up and the aftermath are worth being able to look at; on, the slider
+## simply cannot leave the move.
+var _clamp_to_move := false
 var _play_clock: int = 0
 
 func _ready() -> void:
@@ -307,10 +314,41 @@ func _finish() -> void:
 ## The first frame of the scripted move, so a take opens on the interesting part
 ## rather than on seven metres of running.
 func _scripted_start() -> int:
+	return _move_span().x
+
+## The first and last frame of the scripted move the cursor is in, or of the
+## longest one in the take when the cursor is outside all of them.
+##
+## THE OWNER: "我需要一个跳转到当前主要动作第一帧和末尾帧的按钮." A take is eight
+## seconds and the interaction is under two of them; hunting by eye for the frame
+## the move starts on, at sixty a second, is the exact thing this scene exists to
+## stop anyone doing.
+##
+## RUNS, NOT A SINGLE MIN AND MAX. A take can hold more than one scripted move --
+## a vault whose landing rolls into another -- and the first and last scripted
+## frame in the whole recording would describe a span straddling the unscripted
+## gap between them.
+func _move_span() -> Vector2i:
+	var runs: Array[Vector2i] = []
+	var open := -1
 	for i in _frames.size():
-		if float(_frames[i].get("progress", -1.0)) >= 0.0:
-			return i
-	return 0
+		var scripted: bool = float(_frames[i].get("progress", -1.0)) >= 0.0
+		if scripted and open < 0:
+			open = i
+		elif not scripted and open >= 0:
+			runs.append(Vector2i(open, i - 1))
+			open = -1
+	if open >= 0:
+		runs.append(Vector2i(open, _frames.size() - 1))
+	if runs.is_empty():
+		return Vector2i(0, maxi(_frames.size() - 1, 0))
+	var best: Vector2i = runs[0]
+	for run in runs:
+		if _cursor >= run.x and _cursor <= run.y:
+			return run
+		if run.y - run.x > best.y - best.x:
+			best = run
+	return best
 
 func _resolve_animation_nodes() -> void:
 	if player.body == null:
@@ -375,7 +413,16 @@ func _clip_time() -> float:
 func _scrub(by: int) -> void:
 	if _frames.is_empty():
 		return
-	_cursor = clampi(_cursor + by, 0, _frames.size() - 1)
+	var low := 0
+	var high: int = _frames.size() - 1
+	if _clamp_to_move:
+		# CLAMPED HERE rather than on the slider alone, so A/D, Q/E, the step
+		# buttons and playback are all fenced by the same line. A guard rail with
+		# a gap in it is not a guard rail.
+		var span := _move_span()
+		low = span.x
+		high = span.y
+	_cursor = clampi(_cursor + by, low, high)
 	var frame: Dictionary = _frames[_cursor]
 	player.global_position = frame["position"]
 	player.rotation = frame["rotation"]
@@ -405,7 +452,8 @@ func _toggle_play() -> void:
 		return
 	_playing = not _playing
 	_play_clock = Time.get_ticks_usec()
-	if _playing and _cursor >= _frames.size() - 1:
+	var last_frame: int = _move_span().y if _clamp_to_move else _frames.size() - 1
+	if _playing and _cursor >= last_frame:
 		# Starting from the end means starting again.
 		_scrub(_scripted_start() - _cursor)
 	_note = "playing" if _playing else "paused at frame %d" % _cursor
@@ -420,8 +468,9 @@ func _advance_playback() -> void:
 		return
 	var steps: int = mini(int(elapsed / per_frame), 8)
 	_play_clock = now
-	if _cursor + steps >= _frames.size() - 1:
-		_scrub(_frames.size() - 1 - _cursor)
+	var last: int = _move_span().y if _clamp_to_move else _frames.size() - 1
+	if _cursor + steps >= last:
+		_scrub(last - _cursor)
 		_playing = false
 		_note = "finished"
 		return
@@ -470,6 +519,14 @@ func _commit() -> void:
 	var at: float = _frame_progress()
 	if clip == Move.KEEP or at < 0.0:
 		_note = "this frame is not part of a scripted move"
+		return
+	# THE ENDS ARE NOT KEYABLE, and the refusal belongs here rather than in a
+	# warning: Player.clip_curve_at() ignores keys in this band, so accepting one
+	# would mean storing something that does nothing. See CURVE_EDGE -- an offset
+	# at either end is a teleport, not a movement.
+	if at <= Player.CURVE_EDGE or at >= 1.0 - Player.CURVE_EDGE:
+		_note = "frame %d is the %s of the move -- pinned to zero so the join does not pop" % [
+			_cursor, "start" if at <= 0.5 else "end"]
 		return
 	var rows: Array = player.body_clip_curves.get(clip, [])
 	var row: Dictionary = {}
@@ -558,18 +615,28 @@ func _load() -> void:
 		if entry is Array and entry.size() >= 2:
 			player.body_clip_timings[StringName(clip)] = [float(entry[0]), float(entry[1])]
 	var loaded := {}
+	var dropped := 0
 	for clip in curves:
 		var rows: Array = []
 		for row in curves[clip]:
 			var keys: Array = []
 			for key in row.get("keys", []):
-				keys.append({"t": float(key.get("t", 0.0)),
+				var at: float = float(key.get("t", 0.0))
+				# DROPPED ON THE WAY IN, because the sampler ignores them and a
+				# key visible in the list that changes nothing on screen is worse
+				# than no key at all. These were written before the rule existed.
+				if at <= Player.CURVE_EDGE or at >= 1.0 - Player.CURVE_EDGE:
+					dropped += 1
+					continue
+				keys.append({"t": at,
 					"pos": _to_vector(key.get("pos", [])),
 					"rot": _to_vector(key.get("rot", []))})
 			rows.append({"h": float(row.get("h", 0.0)),
 				"w": float(row.get("w", 0.0)), "keys": keys})
 		loaded[StringName(clip)] = rows
 	player.body_clip_curves = loaded
+	if dropped > 0:
+		_note = "dropped %d key(s) sitting on a move's ends -- those are pinned to zero now" % dropped
 
 func _to_vector(from) -> Vector3:
 	if from is Array and from.size() >= 3:
@@ -765,6 +832,24 @@ func _build_ui() -> void:
 		if _ui_syncing: return
 		_scrub(int(v) - _cursor))
 	column.add_child(_timeline)
+	var ends := HBoxContainer.new()
+	for entry in [["|<  first frame of the move", true], ["last frame of the move  >|", false]]:
+		var button := Button.new()
+		button.text = entry[0]
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var to_start: bool = entry[1]
+		button.pressed.connect(func():
+			var span := _move_span()
+			_scrub((span.x if to_start else span.y) - _cursor))
+		ends.add_child(button)
+	column.add_child(ends)
+	_clamp_box = CheckBox.new()
+	_clamp_box.text = "stay inside the move"
+	_clamp_box.button_pressed = _clamp_to_move
+	_clamp_box.toggled.connect(func(on):
+		_clamp_to_move = on
+		_scrub(0))
+	column.add_child(_clamp_box)
 	var steps := HBoxContainer.new()
 	for entry in [["|<", -100000], ["-10", -10], ["-1", -1], ["+1", 1], ["+10", 10], [">|", 100000]]:
 		var button := Button.new()
@@ -1076,8 +1161,14 @@ func _refresh_ui() -> void:
 	if _readout == null:
 		return
 	_ui_syncing = true
-	_timeline.max_value = maxf(float(_frames.size() - 1), 0.0)
+	var move_span := _move_span()
+	var reach := move_span if _clamp_to_move \
+		else Vector2i(0, maxi(_frames.size() - 1, 0))
+	_timeline.min_value = float(reach.x)
+	_timeline.max_value = float(maxi(reach.y, reach.x))
 	_timeline.value = float(_cursor)
+	_clamp_box.text = "stay inside the move  (frames %d..%d)" % [
+		move_span.x, move_span.y]
 	_height_box.value = height()
 	_width_box.selected = _width_index
 	_speed_box.value = speed()

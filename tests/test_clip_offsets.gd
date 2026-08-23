@@ -159,29 +159,45 @@ func test_a_keyed_curve_is_read_between_its_keys() -> void:
 	# not constant.
 	var player: Player = await _player_with_body()
 	player.active_obstacle = Vector2(1.2, 0.4)
+	# KEYED AT 0.1 AND 0.9, NOT 0 AND 1, because the ends are not keyable any
+	# more -- see the zero-ends rule at the bottom of this file. Halfway between
+	# them is still halfway, which is what this test is about.
 	player.body_clip_curves = {&"Idle": [{"h": 1.2, "w": 0.4, "keys": [
-		{"t": 0.0, "pos": Vector3.ZERO, "rot": Vector3.ZERO},
-		{"t": 1.0, "pos": Vector3(0.0, 1.0, 0.0), "rot": Vector3.ZERO},
+		{"t": 0.1, "pos": Vector3.ZERO, "rot": Vector3.ZERO},
+		{"t": 0.9, "pos": Vector3(0.0, 1.0, 0.0), "rot": Vector3.ZERO},
 	]}]}
 	var half: Array = player.clip_curve_at(&"Idle", 0.5)
 	assert_false(half.is_empty(), "a keyed curve returned nothing mid-way")
 	assert_almost_eq(float(half[0].y), 0.5, 0.001,
 		"halfway between 0 and 1 came out as %.3f" % half[0].y)
 
-func test_a_keyed_curve_holds_flat_outside_its_keys() -> void:
-	# Flat rather than extrapolated, which is what a hand-keyed curve wants: the
-	# author sees exactly the shape they typed, with nothing inventing overshoot
-	# past the ends.
+func test_a_keyed_curve_runs_back_to_zero_past_its_own_keys() -> void:
+	# THIS TEST USED TO REQUIRE THE OPPOSITE. It held that the curve stayed FLAT
+	# outside its keys -- 2.0 all the way back to t = 0 -- on the grounds that an
+	# author should see exactly the shape they typed with nothing extrapolated.
+	# That reasoning was about the SHAPE and ignored the JOIN: flat-to-the-start
+	# means the body is already 2 m displaced on the tick the move begins, and
+	# there is nothing before the move to have displaced it, so it teleports.
+	#
+	# What the author typed is still exactly what they get between their own
+	# keys. Outside them the curve goes home. See the zero-ends rule below.
 	var player: Player = await _player_with_body()
 	player.active_obstacle = Vector2(1.2, 0.4)
 	player.body_clip_curves = {&"Idle": [{"h": 1.2, "w": 0.4, "keys": [
 		{"t": 0.25, "pos": Vector3(0.0, 2.0, 0.0), "rot": Vector3.ZERO},
 		{"t": 0.75, "pos": Vector3(0.0, 4.0, 0.0), "rot": Vector3.ZERO},
 	]}]}
-	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.0)[0].y), 2.0, 0.001,
-		"before the first key the curve did not hold")
-	assert_almost_eq(float(player.clip_curve_at(&"Idle", 1.0)[0].y), 4.0, 0.001,
-		"after the last key the curve did not hold")
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.0)[0].y), 0.0, 0.001,
+		"the move began with the body already displaced")
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 1.0)[0].y), 0.0, 0.001,
+		"the move ended with the body still displaced")
+	# Between the keys, untouched: halfway from 2 to 4.
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 3.0, 0.001,
+		"the hand-keyed middle was altered by the pinning")
+	# And still nothing invented past them -- the run home is a straight line to
+	# zero, not an overshoot.
+	assert_lt(float(player.clip_curve_at(&"Idle", 0.875)[0].y), 4.0,
+		"the curve overshot its last key on the way back to zero")
 
 func test_a_clip_with_no_curve_is_unaffected() -> void:
 	# The pair, and the thing most at risk: this rides on the same transform the
@@ -199,14 +215,14 @@ func test_the_nearest_obstacle_row_wins() -> void:
 	# lands on a grid point and every lookup is a nearest one.
 	var player: Player = await _player_with_body()
 	player.body_clip_curves = {&"Idle": [
-		{"h": 0.5, "w": 0.4, "keys": [{"t": 0.0, "pos": Vector3(0, 5, 0), "rot": Vector3.ZERO}]},
-		{"h": 1.5, "w": 0.4, "keys": [{"t": 0.0, "pos": Vector3(0, 15, 0), "rot": Vector3.ZERO}]},
+		{"h": 0.5, "w": 0.4, "keys": [{"t": 0.5, "pos": Vector3(0, 5, 0), "rot": Vector3.ZERO}]},
+		{"h": 1.5, "w": 0.4, "keys": [{"t": 0.5, "pos": Vector3(0, 15, 0), "rot": Vector3.ZERO}]},
 	]}
 	player.active_obstacle = Vector2(1.4, 0.4)
-	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.0)[0].y), 15.0, 0.001,
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 15.0, 0.001,
 		"a 1.4 m obstacle did not borrow the 1.5 m row")
 	player.active_obstacle = Vector2(0.7, 0.4)
-	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.0)[0].y), 5.0, 0.001,
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 5.0, 0.001,
 		"a 0.7 m obstacle did not borrow the 0.5 m row")
 
 func test_height_outweighs_width() -> void:
@@ -216,10 +232,50 @@ func test_height_outweighs_width() -> void:
 	# tall thin one's curve, which is a different animation entirely.
 	var player: Player = await _player_with_body()
 	player.body_clip_curves = {&"Idle": [
-		{"h": 1.0, "w": 2.0, "keys": [{"t": 0.0, "pos": Vector3(0, 1, 0), "rot": Vector3.ZERO}]},
-		{"h": 1.6, "w": 0.1, "keys": [{"t": 0.0, "pos": Vector3(0, 2, 0), "rot": Vector3.ZERO}]},
+		{"h": 1.0, "w": 2.0, "keys": [{"t": 0.5, "pos": Vector3(0, 1, 0), "rot": Vector3.ZERO}]},
+		{"h": 1.6, "w": 0.1, "keys": [{"t": 0.5, "pos": Vector3(0, 2, 0), "rot": Vector3.ZERO}]},
 	]}
 	# Half a metre taller than the first row, but 1.6 m narrower than it.
 	player.active_obstacle = Vector2(1.5, 0.4)
-	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.0)[0].y), 2.0, 0.001,
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 2.0, 0.001,
 		"width outvoted height, so a low wide sill lent its curve to a tall one")
+
+# A curve is zero at both ends of the move, and no key can say otherwise.
+#
+# THE OWNER made this a rule: "所有脚本驱动的动画首位帧默认都应该是0偏移，否则前后衔接上
+# 肯定会出现闪现，这个得强制性."
+#
+# The reason it must be forced: outside a scripted move nothing reads the curve,
+# so the offset is zero. A first key of +12 cm therefore does not START the move
+# 12 cm off, it TELEPORTS the body 12 cm on the tick the move begins. The old
+# sampler held the first key's value all the way back to t = 0, which made the
+# pop the DEFAULT for any curve not hand-started at zero.
+
+func test_a_curve_that_starts_off_zero_still_begins_at_zero() -> void:
+	var player: Player = await _player_with_body()
+	player.active_obstacle = Vector2(1.0, 0.5)
+	player.body_clip_curves = {&"ClimbUp_2m": [{"h": 1.0, "w": 0.5, "keys": [
+		{"t": 0.30, "pos": Vector3(0.0, 0.12, 0.0), "rot": Vector3.ZERO},
+		{"t": 0.70, "pos": Vector3(0.0, 0.20, 0.0), "rot": Vector3.ZERO},
+	]}]}
+	var at_start: Array = player.clip_curve_at(&"ClimbUp_2m", 0.0)
+	assert_eq(at_start[0], Vector3.ZERO, "the move began with the body already displaced")
+	var at_end: Array = player.clip_curve_at(&"ClimbUp_2m", 1.0)
+	assert_eq(at_end[0], Vector3.ZERO, "the move ended with the body still displaced")
+	# And the keying in between is untouched -- this pins the ends, it does not
+	# scale the curve.
+	var middle: Array = player.clip_curve_at(&"ClimbUp_2m", 0.30)
+	assert_almost_eq(float(middle[0].y), 0.12, 0.001, "the hand-keyed value was altered")
+
+func test_a_key_sitting_on_an_end_is_ignored_rather_than_honoured() -> void:
+	var player: Player = await _player_with_body()
+	player.active_obstacle = Vector2(1.0, 0.5)
+	# t = 0.005 is half a millisecond from the bookend: honoured, the lerp
+	# between the two would be the same instant jump under another name.
+	player.body_clip_curves = {&"ClimbUp_2m": [{"h": 1.0, "w": 0.5, "keys": [
+		{"t": 0.005, "pos": Vector3(0.0, 0.40, 0.0), "rot": Vector3.ZERO},
+		{"t": 0.500, "pos": Vector3(0.0, 0.10, 0.0), "rot": Vector3.ZERO},
+	]}]}
+	var early: Array = player.clip_curve_at(&"ClimbUp_2m", 0.01)
+	assert_lt(absf(float(early[0].y)), 0.02,
+		"a key inside the edge band still moved the body at the join")
