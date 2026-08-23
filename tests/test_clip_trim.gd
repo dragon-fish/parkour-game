@@ -119,3 +119,68 @@ func test_the_player_asks_for_the_kept_range_without_the_stretch() -> void:
 		"a length of 0 did not become 'the rest of the clip'")
 	assert_false(node.stretch_time_scale,
 		"the stretch is back, and with it the frozen tail")
+
+# A trim set AFTER the body is attached still reaches the graph.
+#
+# THE OWNER: "我明明调了 from 结果动画还是从第一帧开始播." The trim was in the
+# dictionary and nowhere else. The game writes the table before it attaches the
+# body, so _wire_body_animation() picks it up as it builds each node; the
+# animation lab loads its own table from JSON afterwards, and nothing read it.
+#
+# Confirmed by pose rather than by properties before this was written: at a frame
+# reporting a clip time of 0.1465 s with a 0.2667 s offset set, the recorded body
+# matched the source clip at 0.1465 (distance 0.002) and not at 0.4132 (8.66).
+
+const TestWorld = preload("res://tests/world_fixture.gd")
+
+var _late_world: Dictionary = {}
+
+func after_each() -> void:
+	if _late_world.is_empty():
+		return
+	TestWorld.teardown(_late_world)
+	_late_world = {}
+
+func test_a_trim_set_after_the_body_is_attached_still_reaches_the_graph() -> void:
+	_late_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_late_world)
+	await step(20)
+	var player: Player = _late_world["player"]
+	var root := Node3D.new()
+	root.name = "fake_body"
+	var anim_player := AnimationPlayer.new()
+	anim_player.name = "AnimationPlayer"
+	var library := AnimationLibrary.new()
+	for name in [&"Idle", &"Sprint", &"SafetyVault"]:
+		var animation := Animation.new()
+		animation.length = float(FRAMES) / FPS
+		animation.step = 1.0 / FPS
+		library.add_animation(name, animation)
+	anim_player.add_animation_library("", library)
+	root.add_child(anim_player)
+	anim_player.owner = root
+	var packed := PackedScene.new()
+	packed.pack(root)
+	root.free()
+	# ATTACHED FIRST, TRIMMED SECOND -- the order the lab works in.
+	player._attach_body(packed)
+	await step(2)
+	player.body_clip_timings[&"SafetyVault"] = [float(FROM_FRAME) / FPS, 0.0]
+	player.refresh_clip_timings()
+
+	var tree: AnimationTree = null
+	for child in player.get_node("BodyRoot").get_children():
+		if child is AnimationTree:
+			tree = child
+	var states: AnimationNodeStateMachine = (tree.tree_root as AnimationNodeBlendTree) \
+		.get_node(CharacterAnimator.GRAPH_STATES) as AnimationNodeStateMachine
+	var node := states.get_node(&"SafetyVault") as AnimationNodeAnimation
+	assert_true(node.use_custom_timeline, "the trim never left the dictionary")
+	assert_almost_eq(node.start_offset, float(FROM_FRAME) / FPS, 0.001,
+		"the graph is still starting this clip at frame 0")
+	# AND REMOVING ONE TURNS IT BACK OFF, which nothing else would do: there is
+	# no entry left in the table to drive it from.
+	player.body_clip_timings.erase(&"SafetyVault")
+	player.refresh_clip_timings()
+	assert_false(node.use_custom_timeline, "a deleted trim stayed on the node")

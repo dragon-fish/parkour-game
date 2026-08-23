@@ -1876,6 +1876,54 @@ func _wire_body_animation(body_node: Node3D) -> void:
 ##
 ## ⚠️ BUILD TIME, not per tick. Changing the table needs the body re-attached,
 ## which is what the alignment scene is for.
+## Pushes the whole of body_clip_timings into the graph that is already running.
+##
+## ✅ THE OWNER: "我明明调了 from 结果动画还是从第一帧开始播." Confirmed by comparing
+## the RECORDED POSE against the source clip at two times -- at a frame reporting
+## a clip time of 0.1465 s with an offset of 0.2667 s set, the body matched the
+## clip at 0.1465 (distance 0.002) and not at 0.4132 (distance 8.66). The trim
+## was in the dictionary and nowhere else.
+##
+## ⚠️ THE GAME WAS NEVER WRONG, only the lab. adopt_body_profile() writes the
+## timings and THEN re-attaches the body, so _wire_body_animation() sets them as
+## it builds each node. The lab loads its own table from JSON after the body is
+## already attached, which is a case the build-time-only path cannot serve.
+##
+## 📌 NO REBUILD NEEDED. Setting the properties on the live AnimationNodeAnimation
+## resource is enough -- measured the same way, the pose then matched at 0.4132
+## (distance 0.002) instead. An earlier probe suggested a rebuild was required;
+## that probe was reading a stub body and was wrong.
+func refresh_clip_timings() -> void:
+	var root := get_node_or_null("BodyRoot")
+	if root == null or body == null:
+		return
+	var anim_player := body.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if anim_player == null:
+		return
+	var tree: AnimationTree = null
+	for child in root.get_children():
+		if child is AnimationTree:
+			tree = child
+	if tree == null:
+		return
+	var graph := tree.tree_root as AnimationNodeBlendTree
+	if graph == null or not graph.has_node(CharacterAnimator.GRAPH_STATES):
+		return
+	var states := graph.get_node(CharacterAnimator.GRAPH_STATES) as AnimationNodeStateMachine
+	if states == null:
+		return
+	# EVERY NODE, not only the ones with an entry: a trim that has just been
+	# REMOVED has to switch its custom timeline back off, and there is nothing
+	# left in the table to drive that from.
+	for clip in states.get_node_list():
+		var node := states.get_node(clip) as AnimationNodeAnimation
+		if node == null:
+			continue
+		if body_clip_timings.has(clip):
+			_apply_clip_timing(node, clip, anim_player)
+		else:
+			node.use_custom_timeline = false
+
 func _apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		anim_player: AnimationPlayer) -> void:
 	if not body_clip_timings.has(clip_name):
 		return

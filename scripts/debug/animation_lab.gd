@@ -695,6 +695,11 @@ func _load() -> void:
 				"w": float(row.get("w", 0.0)), "keys": keys})
 		loaded[StringName(clip)] = rows
 	player.body_clip_curves = loaded
+	# ⚠️ AND PUSHED, which is the whole bug: filling the dictionary changes
+	# nothing on its own. The body was attached in Player._ready(), before this
+	# node existed, so nothing has read the table since it was empty.
+	_resolve_animation_nodes()
+	player.refresh_clip_timings()
 	if dropped > 0:
 		_note = "dropped %d key(s) sitting on a move's ends -- those are pinned to zero now" % dropped
 
@@ -1165,22 +1170,12 @@ func _clear_timing() -> void:
 
 ## Pushes a trim onto the graph node that is already built, so a change is one
 ## re-record away rather than needing the body re-attached.
-func _apply_timing_live(clip: StringName) -> void:
-	if _anim_tree == null:
-		return
-	var tree_root := _anim_tree.tree_root as AnimationNodeBlendTree
-	if tree_root == null:
-		return
-	var states := tree_root.get_node(CharacterAnimator.GRAPH_STATES) as AnimationNodeStateMachine
-	if states == null or not states.has_node(clip):
-		return
-	var node := states.get_node(clip) as AnimationNodeAnimation
-	if node == null:
-		return
-	if not player.body_clip_timings.has(clip):
-		node.use_custom_timeline = false
-		return
-	player._apply_clip_timing(node, clip, _anim_player)
+## Pushes the trim table into the running graph. The clip is only which one
+## CHANGED -- the whole table goes, because Player.refresh_clip_timings() is the
+## one piece of code that knows how to reach every node, including the ones whose
+## trim was just deleted.
+func _apply_timing_live(_clip: StringName) -> void:
+	player.refresh_clip_timings()
 
 func _zero() -> void:
 	_live_position = Vector3.ZERO
