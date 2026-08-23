@@ -23,7 +23,7 @@ func _init() -> void:
 ## Peak height of the vertical arc ScriptedMove.advance() adds over the
 ## straight line from vault start to landing, so the body reads as rising
 ## over the obstacle instead of clipping through it.
-@export var vault_arc_height: float = 0.15
+@export var vault_arc_height: float = 0.0
 ## How far past the obstacle's far face to look for somewhere to land, which
 ## is what decides vault-OVER from vault-ONTO. The original expresses this as
 ## the bCheckForVaultOver probe on TdPhysicsMove (06 §6.2) rather than as a

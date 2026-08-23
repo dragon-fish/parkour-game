@@ -73,10 +73,15 @@ extends MoveConfig
 ## ✅ ZEROED with the easing, because a straight line is not straight if
 ## something is still adding a sine bump to its height: "不如让胶囊走匀速直线."
 ##
-## 📌 The vault's own arc (SpeedVaultConfig.vault_arc_height) is deliberately
-## LEFT ALONE. That one carries the body over something, and zeroing it is a
-## bigger change than was asked for -- it is one number in the F1 panel if the
-## keying wants it.
+## 📌 ZERO, AND SO IS THE VAULT'S NOW: "所有由脚本进行位移的动作在绑定了动画的时候
+## 胶囊都做匀速直线运动." The exception this comment used to record is gone -- it
+## applied while the vault's arc was still doing presentation work, and once
+## there is an animation on the body that work is the animation's.
+##
+## 📌 THE CURVE IS NOT THROWN AWAY, only defaulted off: "旧的曲线也别扔，没有绑定模型
+## 和动画的时候纯相机还靠它做基础效果呢." A bare capsule with no model has nothing to
+## sell the motion but its own path, and this number plus mantle_path_ease is that
+## whole effect. Both are one entry in the F1 panel.
 @export var mantle_arc_height: float = 0.0
 
 ## How much of the pull-up is UP before any of it is forward, 0..1.

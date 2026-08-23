@@ -208,3 +208,17 @@ func test_the_ease_is_still_there_for_anything_that_asks() -> void:
 	var straight: Vector3 = start.lerp(target, 0.5)
 	assert_gt(at.distance_to(straight), 0.05,
 		"asking for an ease of 2.0 still produced a straight line")
+
+## The rule is about EVERY scripted move, not just this one.
+##
+## THE OWNER: "所有由脚本进行位移的动作在绑定了动画的时候胶囊都做匀速直线运动." There
+## are exactly two callers of ScriptedMove.begin() -- the mantle and the vault --
+## and this fails if a third arrives carrying a curve, or if either default is
+## quietly put back.
+func test_no_scripted_move_ships_with_a_curve_on_by_default() -> void:
+	var grab := GrabConfig.new()
+	var vault := SpeedVaultConfig.new()
+	assert_eq(grab.mantle_path_ease, 1.0, "the mantle travels at a steady pace")
+	assert_eq(grab.mantle_arc_height, 0.0, "and in a straight line")
+	assert_eq(vault.vault_path_ease, 1.0, "so does the vault")
+	assert_eq(vault.vault_arc_height, 0.0, "and it is straight too")
