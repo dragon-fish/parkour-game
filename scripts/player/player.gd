@@ -1734,6 +1734,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# left alone.
 	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle", &"Climb_Left", &"Climb_Right"]:
 		_ensure_clip_loops(anim_player, looping_clip)
+	_pin_scripted_hips(anim_player)
 
 	var state_machine := AnimationNodeStateMachine.new()
 	for clip_name in _KNOWN_ANIMATION_CLIPS:
@@ -2022,6 +2023,84 @@ func _body_has_clip(anim_player: AnimationPlayer, clip_name: StringName) -> bool
 ## missing library or clip is a no-op, not an error -- both are supported,
 ## silent degradations, same as everywhere else a body's exact contents
 ## cannot be assumed.
+## The clips played while a ScriptedMove is driving the capsule, and only those.
+##
+## 📌 DERIVED, NOT LISTED BY TASTE: ScriptedMove has exactly two subclasses,
+## GrabMove and SpeedVaultMove, and these are the clips
+## CharacterAnimator._target_animation() routes to while one of them owns the
+## body. Shimmy and the hang are in because GrabMove drives the capsule through
+## those too.
+##
+## ⚠️ Jump_Start IS DELIBERATELY ABSENT even though it is a fallback on several of
+## those branches, because it is also the JUMP's own clip, where the capsule is
+## ballistic and the hips' own +0.38 m rise is the jump. A clip is only pinnable
+## when nothing else plays it.
+const _PINNED_HIP_CLIPS := [&"StepUp", &"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
+	&"SafetyVault", &"Climb_Left", &"Climb_Right", &"Climb_Idle"]
+
+## Holds the hips still, at the skeleton's rest position, for every clip a
+## scripted move plays.
+##
+## ✅ THE OWNER: "目的就是让动画在默认没K帧的情况下盆骨始终与胶囊的中心在一个位置...
+## 不然我得同时兼顾两个都在做运动的坐标系，我这是在调和双星系统."
+##
+## 🎯 AND THE MEASUREMENT SAYS IT HAS TO BE A PIN, not the subtraction of a
+## travel component. These clips have NO net travel to remove -- first key to
+## last, ClimbUp_2m's hips move (-0.00, +0.09, +0.00) and StepUp's, SafetyVault's
+## and ClimbUp_1m's move nothing at all. What they have is SWING: ClimbUp_2m's
+## hips cover 1.20 m of Y inside the clip and come back. That is the second body
+## in the two-body problem, and it is larger than the capsule's own travel.
+##
+## ⚠️ THE REST POSE, NOT EACH CLIP'S FIRST KEY. Pinning each clip to its own
+## opening height would put the hips somewhere different for every clip, so the
+## baseline would not be one known place and every transition between two pinned
+## clips would step. Rest is the pose body_mount_transform was captured against.
+##
+## POSITION ONLY. The hips keep their rotation track -- lean, twist and the
+## weight shift they carry are performance, and this is only trying to stop two
+## things owning the same axis.
+##
+## The clip's own rise is GONE afterwards, deliberately: the capsule's straight
+## line becomes the whole of the travel, and any easing the animator put into it
+## has to be keyed back in. That is the blank baseline being asked for, and the
+## price of it.
+func _pin_scripted_hips(anim_player: AnimationPlayer) -> void:
+	# ⚠️ _find_skeleton(body), NOT find_skeleton(). The cached _skeleton is
+	# assigned in _attach_body() AFTER this runs, so the accessor returns null
+	# here and the whole pin silently did nothing the first time it was tried.
+	var skeleton := _find_skeleton(body)
+	if skeleton == null:
+		return
+	var hips: int = skeleton.find_bone(&"Hips")
+	if hips < 0:
+		return
+	var bone_name: String = skeleton.get_bone_name(hips)
+	var rest: Vector3 = skeleton.get_bone_rest(hips).origin
+	var original := anim_player.get_animation_library("")
+	if original == null:
+		return
+	# ONE COPY FOR ALL OF THEM. _ensure_clip_loops() duplicates the library per
+	# clip, which is its own business; there is no reason to do it eight more
+	# times here.
+	var library := original.duplicate(true) as AnimationLibrary
+	for clip_name in _PINNED_HIP_CLIPS:
+		if not library.has_animation(clip_name):
+			continue
+		var animation := library.get_animation(clip_name)
+		for track in animation.get_track_count():
+			if animation.track_get_type(track) != Animation.TYPE_POSITION_3D:
+				continue
+			if String(animation.track_get_path(track).get_concatenated_subnames()) != bone_name:
+				continue
+			for key in range(animation.track_get_key_count(track) - 1, -1, -1):
+				animation.track_remove_key(track, key)
+			# ONE KEY, NOT NO TRACK. An emptied track leaves the bone wherever
+			# the previous clip left it, which is the same two-body problem with
+			# an extra step.
+			animation.position_track_insert_key(track, 0.0, rest)
+	anim_player.remove_animation_library("")
+	anim_player.add_animation_library("", library)
+
 func _ensure_clip_loops(anim_player: AnimationPlayer, clip_name: StringName) -> void:
 	var original_library := anim_player.get_animation_library("")
 	if original_library == null or not original_library.has_animation(clip_name):
