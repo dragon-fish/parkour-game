@@ -123,9 +123,11 @@ func test_the_two_ways_are_mutually_exclusive() -> void:
 	#
 	# Measured in the lab on a 1.50 m obstacle, capsule rise above the straight
 	# line between the move's ends: 0.000 m with the flag off, 1.366 m with it on.
+	# THE ARCING PATH IS THE DEFAULT, on the owner's call after seeing both:
+	# "我希望动画走弧线，并且动画的盆骨全程钉死胶囊中心点."
 	var config := MovementConfig.new()
-	assert_false(config.scripted_path_arcs,
-		"the straight path is no longer the default")
+	assert_true(config.scripted_path_arcs,
+		"the arcing path is no longer the default")
 	var player: Player = await _player_with_clips([&"StepUp"])
 	# With the path arcing, the clip's own lift must be given up entirely --
 	# whatever the obstacle would otherwise have asked for.

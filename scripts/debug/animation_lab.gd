@@ -384,6 +384,12 @@ func _physics_process(_delta: float) -> void:
 		"obstacle": Vector2(height(), width()),
 		# The third axis of the curve table. See ScriptedMove.entry_rise().
 		"entry": _scripted_entry(),
+		# ⚠️ THE CAPSULE SHRINKS DURING A VAULT and the scrub had no way to put it
+		# back, so the wireframe showed the LIVE capsule -- full height, because
+		# the simulation ended standing. ✅ The owner: "Vault/GrabPullUp 动作好像没有
+		# 和其他场景一样临时将胶囊缩小到一半高度." It does; the recording just could
+		# not say so.
+		"capsule": player.current_capsule_height(),
 	})
 	# AGAINST _record_hz, NOT THE LIVE RATE, which is eight times higher while
 	# this is running. A recorded frame is worth 1/60 s of simulated time because
@@ -684,6 +690,9 @@ func _scrub(by: int) -> void:
 	player.rotation = frame["rotation"]
 	player.active_obstacle = frame.get("obstacle", Vector2(-1.0, 0.0))
 	player.active_entry = float(frame.get("entry", 0.0))
+	var capsule: float = float(frame.get("capsule", 0.0))
+	if capsule > 0.0:
+		player.set_capsule_height(capsule)
 	# THE POSE IS REPLAYED, not re-simulated: it is a pure function of the clip
 	# and the time in it, both of which were recorded.
 	_apply_pose(frame.get("pose", []))

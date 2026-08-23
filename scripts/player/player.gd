@@ -1264,8 +1264,38 @@ func _drive_clip_offset(delta: float) -> void:
 	var wanted_drop: float = 0.0
 	if _body_folded:
 		wanted_drop = maxf(standing_height() - current_capsule_height(), 0.0)
+	# ⚠️ NOT WHILE A SCRIPTED MOVE OWNS THE BODY. ✅ THE OWNER: "我希望动画走弧线，
+	# 并且动画的盆骨全程钉死胶囊中心点."
+	#
+	# 🎯 THE FOLD IS WHAT WAS BREAKING THAT PIN, and it took decomposing the
+	# model's Y to see it -- the lift cancellation was doing its job. Over one
+	# 1.5 m vault: mount held at -0.942, lift rose to 0.682 and came back, and
+	# the DROP climbed from 0.179 to 0.850 and stayed. The pelvis came off the
+	# arc by most of a metre and none of it was the arc's fault.
+	#
+	# The fold exists so the eye rides a shortened capsule down. During a
+	# scripted move the path already says where the body is, absolutely and every
+	# tick, so there is nothing left for the fold to correct -- applying it is the
+	# same double-count as every other one in this file's history.
+	if scripted_progress() >= 0.0:
+		wanted_drop = 0.0
 	_fold_drop = lerpf(_fold_drop, wanted_drop, t)
-	_lift_cancel_amount = lerpf(_lift_cancel_amount, 1.0 - _kept_clip_lift, t)
+	# ⚠️ SNAPPED, NOT EASED, WHEN NOTHING IS KEPT. ✅ THE OWNER, on the commit that
+	# pinned the hips by rewriting the track: "之前不就有个commit是盆骨全程钉死黄色曲线
+	# 的吗...我希望用那个效果." That version was EXACT because it removed the motion
+	# at the source; cancelling it at the root through an easing ramp is only
+	# approximately the same, and the approximation is visible -- the pelvis
+	# drifts off the path for as long as the ramp lasts.
+	#
+	# 📌 The ramp was protecting against nothing here. These clips start and end
+	# at rest -- measured first key to last, ClimbUp_2m moves (-0.00, +0.09,
+	# +0.00) and StepUp, SafetyVault and ClimbUp_1m move nothing -- so there is no
+	# step to ease over at either boundary.
+	var wanted_cancel: float = 1.0 - _kept_clip_lift
+	if is_zero_approx(_kept_clip_lift):
+		_lift_cancel_amount = wanted_cancel
+	else:
+		_lift_cancel_amount = lerpf(_lift_cancel_amount, wanted_cancel, t)
 	_apply_clip_offset()
 
 ## The [position, rotation_degrees] pair for `clip`, or an empty array.

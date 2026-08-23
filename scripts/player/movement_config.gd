@@ -33,7 +33,7 @@ extends Resource
 ## ⚠️ NEVER BOTH. Whichever one is off has to be off completely: an arc under a
 ## clip that also lifts is the double-count that put the hands 1.32 m out in the
 ## first place, and it is the reason this is one flag rather than two.
-@export var scripted_path_arcs: bool = false
+@export var scripted_path_arcs: bool = true
 
 @export var pawn: PawnConfig = PawnConfig.new()
 @export var camera: CameraConfig = CameraConfig.new()
