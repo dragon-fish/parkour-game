@@ -193,6 +193,34 @@ extends Resource
 ## ✅ The owner raised LiftAir_Fall_Impact by 0.1 m and read the follow-up off
 ## fall_uncontrolled_eye_lift below (0.15 + 0.1 = 0.25). The intent was "+0.1";
 ## the base is this 0.3, not that 0.15.
+## How far the eye may trail a SCRIPTED body turn in first person, in radians.
+##
+## ⚠️ HELD SHORT, and the reason is a first-person one throughout: a lag is a
+## softening, not a detour. Past a certain size the eye is no longer trailing the
+## turn, it is pointing somewhere else entirely -- in first person, at the inside
+## of whatever the body is pressed against. Reported in play as the view lunging
+## into the wall and then snapping back to the ledge. Anything bigger than this
+## is better taken as a cut.
+@export var scripted_yaw_max_lag: float = 0.35
+
+## The same in THIRD person, where it can be far larger.
+##
+## ✅ THE OWNER: "第三人称下转角 90° 如果我们也强制镜头旋转，会很晕，不要强制转镜头但
+## 应用新墙沿的扇形钳制."
+##
+## 🎯 The cap above exists because a first-person eye that trails too far ends up
+## inside the wall. A third-person camera is metres away and looking AT the
+## character, so a body that rotates under a held camera is not a defect -- it is
+## how a third-person game normally shows a turn, and it is the difference
+## between watching a corner and being swung around one.
+##
+## PI, so a whole ninety-degree corner is absorbed and nothing is forced. The eye
+## still arrives at the new facing, at scripted_yaw_catchup_speed, which is a
+## drift rather than a swing. The fan is unaffected either way: it travels with
+## _yaw_reference, so the new wall's look constraint applies from the moment the
+## corner completes whatever the eye is doing.
+@export var scripted_yaw_max_lag_third_person: float = PI
+
 @export var death_eye_lift: float = 0.4
 
 ## The same, during an uncontrolled fall, in metres.

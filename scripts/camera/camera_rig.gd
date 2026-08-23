@@ -249,16 +249,28 @@ func set_roll_spin(radians: float) -> void:
 func absorb_body_yaw(radians: float) -> void:
 	if is_zero_approx(radians):
 		return
-	# HELD SHORT. A lag is a softening, not a detour: past a certain size the
-	# eye is no longer trailing the turn, it is pointing somewhere else
-	# entirely -- in first person, at the inside of whatever the body is
-	# pressed against. Reported in play as the view lunging into the wall and
-	# then snapping back to the ledge.
+	# ⚠️ HELD SHORT IN FIRST PERSON, and the reason is a first-person one: a lag
+	# is a softening, not a detour. Past a certain size the eye is no longer
+	# trailing the turn, it is pointing somewhere else entirely -- at the inside
+	# of whatever the body is pressed against. Reported in play as the view
+	# lunging into the wall and then snapping back to the ledge.
 	#
-	# Anything bigger than this is better taken as a cut: the turn was too
-	# large to hide, and half-hiding it looks worse than not trying.
-	const MAX_LAG := 0.35
-	_scripted_yaw_lag = clampf(_scripted_yaw_lag - radians, -MAX_LAG, MAX_LAG)
+	# ✅ THIRD PERSON HAS NO SUCH PROBLEM, and the owner asked for the
+	# difference: "第三人称下转角 90° 如果我们也强制镜头旋转，会很晕，不要强制转镜头
+	# 但应用新墙沿的扇形钳制." A camera metres away looking AT the character can
+	# hold still while the body rotates under it -- that is how a third-person
+	# game normally shows a turn, and it is the difference between watching a
+	# corner and being swung around one.
+	#
+	# THE CAP IS THE ONLY DIFFERENCE. The lag still bleeds off at
+	# scripted_yaw_catchup_speed, so the eye arrives at the new facing either
+	# way; what changes is whether it is dragged there or drifts. And the FAN is
+	# untouched by all of it -- that travels with _yaw_reference, so the new
+	# wall's constraint applies regardless of where the eye happens to be.
+	var cap: float = _config.camera.scripted_yaw_max_lag
+	if third_person:
+		cap = _config.camera.scripted_yaw_max_lag_third_person
+	_scripted_yaw_lag = clampf(_scripted_yaw_lag - radians, -cap, cap)
 
 ## How far the attached body's head/neck node has moved from its rest pose, in
 ## Player's local space -- see _head_local_offset. Called by Player every tick

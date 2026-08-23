@@ -333,3 +333,32 @@ func test_turning_back_pushes_the_view_up_rather_than_snapping_it() -> void:
 
 	rig.get_parent().queue_free()
 	await step(1)
+
+# --- a scripted turn may be watched rather than ridden ---------------------------
+
+func test_third_person_absorbs_a_whole_corner_into_the_lag() -> void:
+	# ✅ THE OWNER: "第三人称下转角 90° 如果我们也强制镜头旋转，会很晕，不要强制转镜头
+	# 但应用新墙沿的扇形钳制."
+	#
+	# The lag is written to the rig's OWN yaw, so absorbing the turn decouples
+	# the eye from a body that really did rotate. A camera metres away looking
+	# AT the character can hold still while that happens; a first-person eye
+	# cannot, which is what the small cap is for.
+	var rig := _rig()
+	rig.third_person = true
+	rig.absorb_body_yaw(deg_to_rad(90.0))
+	assert_almost_eq(absf(rig._scripted_yaw_lag), deg_to_rad(90.0), 0.01,
+		"third person kept only %.1f degrees of a ninety-degree corner"
+		% rad_to_deg(absf(rig._scripted_yaw_lag)))
+
+func test_first_person_still_takes_a_corner_as_a_cut() -> void:
+	# The pair, and the behaviour the cap was written for: past a certain size a
+	# first-person lag stops being a softening and points the eye at the inside
+	# of the wall the body is pressed against.
+	var rig := _rig()
+	rig.third_person = false
+	rig.absorb_body_yaw(deg_to_rad(90.0))
+	assert_almost_eq(absf(rig._scripted_yaw_lag),
+		rig._config.camera.scripted_yaw_max_lag, 0.01,
+		"first person absorbed %.2f rad, past its own cap"
+		% absf(rig._scripted_yaw_lag))
