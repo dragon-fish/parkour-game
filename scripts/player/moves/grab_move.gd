@@ -732,7 +732,12 @@ func _advance_corner(delta: float) -> void:
 	player.pin_visual_yaw(_corner_model_from + _corner_model_sweep * progress)
 	if player.camera_rig != null:
 		player.camera_rig.shift_yaw_reference(wanted, 1.0)
-		player.camera_rig.absorb_body_yaw(moved)
+		# HELD, not merely trailed: a whole quarter turn, which a third-person
+		# camera can sit out entirely. See CameraRig.absorb_body_yaw() -- and
+		# note that IntoGrab's own alignment nudge deliberately does NOT ask for
+		# this. Raising the ceiling for every scripted turn at once is what made
+		# entering a grab jolt the camera.
+		player.camera_rig.absorb_body_yaw(moved, true)
 	else:
 		# No rig to place the body: drive it directly. Tests with a stub player
 		# take this path.

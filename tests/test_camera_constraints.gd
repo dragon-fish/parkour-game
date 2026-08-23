@@ -336,6 +336,23 @@ func test_turning_back_pushes_the_view_up_rather_than_snapping_it() -> void:
 
 # --- a scripted turn may be watched rather than ridden ---------------------------
 
+func test_an_ordinary_scripted_turn_is_still_clamped_in_third_person() -> void:
+	# ⚠️ THE REGRESSION THIS FILE EXISTS TO CATCH NOW. The first version raised
+	# the ceiling for EVERY scripted turn in third person, and IntoGrabMove uses
+	# the same call to square the body to a wall on arrival -- so a reach that
+	# turned thirty degrees suddenly handed all thirty to the eye instead of
+	# twenty, then bled them off. The owner: "第三人称进入 grab 的瞬间镜头会抖一下."
+	#
+	# A held turn is now something the MOVE asks for, and an alignment nudge
+	# does not ask.
+	var rig := _rig()
+	rig.third_person = true
+	rig.absorb_body_yaw(deg_to_rad(90.0))
+	assert_almost_eq(absf(rig._scripted_yaw_lag),
+		rig._config.camera.scripted_yaw_max_lag, 0.01,
+		"an unheld turn absorbed %.2f rad in third person"
+		% absf(rig._scripted_yaw_lag))
+
 func test_third_person_absorbs_a_whole_corner_into_the_lag() -> void:
 	# ✅ THE OWNER: "第三人称下转角 90° 如果我们也强制镜头旋转，会很晕，不要强制转镜头
 	# 但应用新墙沿的扇形钳制."
@@ -346,7 +363,7 @@ func test_third_person_absorbs_a_whole_corner_into_the_lag() -> void:
 	# cannot, which is what the small cap is for.
 	var rig := _rig()
 	rig.third_person = true
-	rig.absorb_body_yaw(deg_to_rad(90.0))
+	rig.absorb_body_yaw(deg_to_rad(90.0), true)
 	assert_almost_eq(absf(rig._scripted_yaw_lag), deg_to_rad(90.0), 0.01,
 		"third person kept only %.1f degrees of a ninety-degree corner"
 		% rad_to_deg(absf(rig._scripted_yaw_lag)))
@@ -357,8 +374,27 @@ func test_first_person_still_takes_a_corner_as_a_cut() -> void:
 	# of the wall the body is pressed against.
 	var rig := _rig()
 	rig.third_person = false
-	rig.absorb_body_yaw(deg_to_rad(90.0))
+	rig.absorb_body_yaw(deg_to_rad(90.0), true)
 	assert_almost_eq(absf(rig._scripted_yaw_lag),
 		rig._config.camera.scripted_yaw_max_lag, 0.01,
 		"first person absorbed %.2f rad, past its own cap"
 		% absf(rig._scripted_yaw_lag))
+
+func test_a_held_turn_suppresses_that_ticks_catch_up() -> void:
+	# ⚠️ RAISING THE CEILING ALONE DID NOTHING, which is why this exists as its
+	# own pin. The lag bleeds off at scripted_yaw_catchup_speed EVERY tick, so a
+	# turn handing over one slice per frame is drained as fast as it arrives:
+	#
+	#   90 degrees over 1 s at 60 fps is 1.5 deg/tick in
+	#   catchup 10/s takes about a sixth of the total back out per tick
+	#   -> it settles near 7.5 degrees, and the view is dragged through the rest
+	#
+	# Which is exactly what the owner saw after the first attempt: "遇到转角还是会
+	# 被旋转 90°." Catching up is what happens AFTER a turn ends; while the move is
+	# still feeding there is nothing to catch up to.
+	var rig := _rig()
+	rig.third_person = true
+	assert_false(rig._scripted_yaw_held, "a fresh rig was already holding")
+	rig.absorb_body_yaw(deg_to_rad(10.0), true)
+	assert_true(rig._scripted_yaw_held,
+		"a held turn did not suppress the catch-up, so it will be drained")
