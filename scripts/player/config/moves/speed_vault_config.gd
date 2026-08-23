@@ -364,6 +364,14 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## screenshot: "我希望起终点不变、最高点降低一半...我来用眼睛测，我告诉你哪种动画最高点
 ## 要更高还是更低." These two numbers are the dial; nothing else needs touching to
 ## raise or lower an arc.
+## ✅ SIGNED OFF BY EYE at 0.2, across 1.25 m to 1.8 m: "vault动画在我这里看来
+## 1.25-1.8m的视觉效果都已经相当惊艳了，完全没有穿模，也没有飞得太高."
+##
+## ⚠️ THAT IS THE VALIDATED BAND, not the whole range. Below about 1 m the body's
+## entry is already higher than this apex, so the arc clamps to zero and the path
+## is simply the straight line between the ends -- measured, a 0.75 m obstacle
+## peaks +0.345 over its top with this set to 0.2, because the knob is not
+## governing there at all. Whether that is right has not been looked at.
 @export var vault_over_apex_above_top: float = 0.2
 @export var vault_onto_apex_above_top: float = 0.9
 
