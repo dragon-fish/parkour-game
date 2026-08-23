@@ -142,6 +142,16 @@ var _cursor := 0
 var _recording := false
 var _jumped := false
 var _seen_scripted := false
+## True during the free jump that measures the arc. See _calibrate().
+var _calibrating := false
+## The recorded frame the jump was pressed on, or -1. See _arc_from_take().
+var _jump_frame := -1
+## Feet height at each physics tick after the jump, taken from the last take.
+## The shape of the arc, which is all that is needed to invert it.
+var _arc: PackedFloat32Array = PackedFloat32Array()
+## Ticks between pressing jump and touching the wall, in the take the arc came
+## from. See _arc_from_take().
+var _contact_delay := 0
 ## Physics frames since the scripted move ended. See _drive().
 var _after_move := 0
 
@@ -213,6 +223,10 @@ func _focus_the_scene() -> void:
 	_record_hz = float(Engine.physics_ticks_per_second)
 	_build_backstop()
 	_load()
+	# 📌 A FREE JUMP FIRST, before anything else is recorded. It costs about a
+	# second at 8x and every contact height asked for afterwards is answered from
+	# it instead of by re-recording. See _arc_from_take().
+	_calibrating = true
 	call_deferred("_take")
 
 func _exit_tree() -> void:
@@ -290,7 +304,13 @@ func _build_obstacle() -> void:
 	mesh.mesh = cube
 	body.add_child(mesh)
 	add_child(body)
-	body.position = Vector3(0.0, height() * 0.5, 0.0)
+	# ⚠️ OUT OF REACH WHILE CALIBRATING. The arc has to be a FREE jump: with the
+	# wall where it belongs the body contacts it four ticks after take-off and
+	# everything after that is the scripted path, not a ballistic curve. The
+	# first attempt at this measured an apex of 0.202 m against a jump whose real
+	# apex is 1.24.
+	body.position = Vector3(0.0, height() * 0.5,
+		-200.0 if _calibrating else 0.0)
 	_obstacle = body
 
 ## The near face of the obstacle, which is what a time-to-contact is measured to.
@@ -308,6 +328,7 @@ func _take() -> void:
 	_jumped = false
 	_seen_scripted = false
 	_after_move = 0
+	_jump_frame = -1
 	_resolve_animation_nodes()
 	if _anim_tree != null:
 		_anim_tree.active = true
@@ -393,6 +414,14 @@ func _drive() -> void:
 	if not scripted and player.move_manager.current_name == Move.WALKING:
 		player.velocity.x = 0.0
 		player.velocity.z = -speed()
+	if _calibrating:
+		# A FIXED MOMENT, because there is nothing to be early or late for. Far
+		# enough in that the run-up has settled to its steady speed and pose.
+		if not _jumped and _frames.size() >= 40:
+			_source.press_jump()
+			_jumped = true
+			_jump_frame = _frames.size()
+		return
 	if _jumped or jump_lead() < 0.0:
 		return
 	var to_face: float = player.global_position.z - _face_z()
@@ -402,6 +431,92 @@ func _drive() -> void:
 	if to_face / maxf(speed(), 0.001) <= jump_lead():
 		_source.press_jump()
 		_jumped = true
+		_jump_frame = _frames.size()
+
+## Reads the jump's arc out of the take that just finished.
+##
+## 🎯 THE ARC'S SHAPE DOES NOT DEPEND ON WHEN THE JUMP HAPPENED. Horizontal speed
+## is unchanged by taking off, so pressing jump earlier slides the same curve
+## along the run rather than reshaping it. One take therefore describes every
+## take at this speed, and the contact height for any other timing can be read
+## off it instead of recorded.
+##
+## ⚠️ MEASURED, NOT DERIVED, and that is the point. The obvious closed form --
+## h = v*t - g*t^2/2 against base_jump_z 6.3 and gravity 16 -- is wrong here by
+## more than a tenth of a metre, because the lead is timed to the capsule's
+## CENTRE reaching the face while contact is its SURFACE touching, because input
+## is buffered a tick, and because ✅ the owner pointed out gravity is not even
+## constant across moves: "重力只在特殊动作里被临时改了值，比如滑墙（50%重力）和反向蹬墙
+## 补偿期（0.5s无重力）". A recorded arc has all of that in it already and stays
+## right when those numbers are retuned.
+func _arc_from_take() -> void:
+	if _jump_frame < 0 or _frames.is_empty():
+		return
+	var half: float = player.standing_height() * 0.5
+	var arc := PackedFloat32Array()
+	for i in range(_jump_frame, _frames.size()):
+		var feet: float = (_frames[i]["position"] as Vector3).y - half
+		arc.append(feet)
+		# Past the landing the curve is not an arc any more.
+		if arc.size() > 4 and feet <= arc[0] and float(_frames[i].get("progress", -1.0)) < 0.0:
+			break
+	if arc.size() < 4:
+		return
+	if _calibrating:
+		# THE SHAPE comes only from a free jump.
+		_arc = arc
+		return
+	# 📌 THE DELAY comes only from a real one, because it is about the WALL: the
+	# lead is timed to the capsule's centre reaching the face and contact is its
+	# surface touching, so the two differ by a fixed number of ticks at a fixed
+	# speed. Measured rather than derived from a radius nobody has to keep in
+	# sync.
+	for i in range(_jump_frame, _frames.size()):
+		if float(_frames[i].get("progress", -1.0)) >= 0.0:
+			_contact_delay = i - _jump_frame
+			return
+
+## The apex of the recorded arc, in metres above the take-off.
+func arc_apex() -> float:
+	var top := 0.0
+	for h in _arc:
+		top = maxf(top, h)
+	return top
+
+## The jump lead that puts contact at `feet` metres, on the rising half of the
+## arc or the falling one, or -1 when the arc never reaches that high.
+##
+## ⚠️ TWO ANSWERS, ALWAYS, below the apex -- which is ✅ the owner's own reading of
+## it: "固定速度的跳跃曲线是可以算出来的，并且存在上升期、最高点、下降期，所以这个应该是
+## 有解的，没解说明没碰到，直接跳上去了或者撞到了." Above the apex there is no answer
+## and the body would strike the wall lower down instead.
+func lead_for_contact(feet: float, rising: bool) -> float:
+	if _arc.size() < 4:
+		return -1.0
+	var top := 0
+	for i in _arc.size():
+		if _arc[i] > _arc[top]:
+			top = i
+	if feet > _arc[top]:
+		return -1.0
+	var found := -1
+	if rising:
+		for i in range(0, top + 1):
+			if _arc[i] >= feet:
+				found = i
+				break
+	else:
+		for i in range(_arc.size() - 1, top - 1, -1):
+			if _arc[i] >= feet:
+				found = i
+				break
+	if found < 0:
+		return -1.0
+	# 📌 THE DELAY IS WHAT CALIBRATES IT. The lead is timed to the centre
+	# reaching the face and contact is the surface touching, so they differ by a
+	# fixed number of ticks at a fixed speed -- and this take just measured it,
+	# whatever it happens to be.
+	return float(found + _contact_delay) / _record_hz
 
 func _finish() -> void:
 	_recording = false
@@ -429,6 +544,13 @@ func _finish() -> void:
 	# write bones, and a pose put on by _apply_pose() has to survive the frame.
 	if _anim_player != null:
 		_anim_player.stop()
+	_arc_from_take()
+	if _calibrating:
+		# The calibration jump is not a take anyone looks at -- it exists to
+		# leave _arc behind. Straight on to the real one.
+		_calibrating = false
+		call_deferred("_take")
+		return
 	_cursor = _scripted_start()
 	_scrub(0)
 	# THE REAL SECONDS ARE ON SCREEN because the speed-up is the sort of claim
