@@ -241,7 +241,24 @@ func enter(_previous: StringName) -> void:
 			fold = maxf(player.standing_height() - config.crouch.crouch_capsule_height, 0.0)
 		var wanted_eye: float = top.y + config.speed_vault.vault_over_eye_above_top
 		var wanted_peak: float = wanted_eye - (eye_above_soles - fold)
-		var midpoint_feet: float = (player.global_position.y + landing.y) * 0.5 - half
+		# ⚠️ EACH END WITH ITS OWN HALF-HEIGHT. ✅ THE OWNER: "1.5m的Vault动画，弧线
+		# 的最高点好像是用0.9m计算的，胶囊明明是一半高度，为什么动画还是按全高计算最高
+		# 点？"
+		#
+		# 🎯 EXACTLY RIGHT, AND THE ERROR IS COMPUTABLE. This converted BOTH
+		# capsule centres to feet using the STANDING half. The landing end is
+		# standing, so 0.9 is right there -- but the entry end is FOLDED, about
+		# 0.95 m tall, so its centre is 0.475 above its feet and not 0.9. The
+		# midpoint came out (folded_half - standing_half) / 2 too low, which is
+		# about 0.21 m, and every arc derived from it was that much too tall.
+		#
+		# 📌 test_vault_arc's own model never had this: its _peak_feet() takes the
+		# two ends in FEET and averages them, which is what this now does. The
+		# implementation had drifted from the test, rather than the other way
+		# round.
+		var entry_feet: float = player.global_position.y 			- player.current_capsule_height() * 0.5
+		var landing_feet: float = landing.y - half
+		var midpoint_feet: float = (entry_feet + landing_feet) * 0.5
 		arc = maxf(0.0, wanted_peak - midpoint_feet)
 
 	# WORKED OUT NOW, SPENT AT CONTACT.

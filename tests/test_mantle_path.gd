@@ -256,6 +256,7 @@ func test_no_scripted_move_ships_with_a_curve_on_by_default() -> void:
 ## a millimetre off the line, while the eye must.
 func test_an_arc_lifts_the_camera_and_leaves_the_path_alone() -> void:
 	var bits: Array = await _mantling_player()
+	var player: Player = bits[0]
 	var grab: GrabMove = bits[1]
 	var start := Vector3(0.0, 1.0, 0.0)
 	var target := Vector3(0.0, 3.0, -1.0)
