@@ -392,7 +392,15 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			return KEEP
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration,
-				config.grab.mantle_camera_arc, config.grab.mantle_control_bias,
+				# ⚠️ THE SURFACE, NOT THE LANDING. `top` here is already where the
+				# capsule ENDS -- standing on the roof, half a standing height
+				# above it -- so adding the apex to it counted that half twice
+				# and a 2 m ledge peaked 1.80 m over its own top instead of 0.90.
+				# ✅ The owner states the knob in the only terms that mean
+				# anything: "我计算的全部都是，翻越到最高点时，盆骨和障碍应该相距多少."
+				top.y - player.standing_height() * 0.5
+					+ config.grab.mantle_apex_above_top,
+				config.grab.mantle_control_bias,
 				config.grab.mantle_path_ease)
 		_mantling = true
 		# THE BODY FOLDS TO PULL UP, the same way SpeedVaultMove folds to vault
@@ -798,3 +806,10 @@ func _trace(label: String, result: Dictionary) -> void:
 		return
 	_probe_trace.append({"label": label, "from": result["from"],
 		"to": result["to"], "hit": result.get("valid", false)})
+
+## How far the clip about to play lifts its own hips, in metres.
+##
+## The animator's own answer to "how far over the ledge does the body go" -- see
+## SpeedVaultMove's use of the same table, and Player.body_clip_hip_peaks.
+func _clip_hip_peak() -> float:
+	return float(player.body_clip_hip_peaks.get(player._current_clip(), 0.0))

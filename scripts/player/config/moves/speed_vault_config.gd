@@ -20,10 +20,6 @@ func _init() -> void:
 ## (nothing reads a mid-vault speed), just a visible fact about this design
 ## worth knowing before retuning either knob.
 @export var vault_exit_forward: float = 0.6
-## Peak height of the vertical arc ScriptedMove.advance() adds over the
-## straight line from vault start to landing, so the body reads as rising
-## over the obstacle instead of clipping through it.
-@export var vault_camera_arc: float = 0.0
 ## How far past the obstacle's far face to look for somewhere to land, which
 ## is what decides vault-OVER from vault-ONTO. The original expresses this as
 ## the bCheckForVaultOver probe on TdPhysicsMove (06 §6.2) rather than as a
@@ -357,6 +353,23 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## control height of "obstacle top plus the clip's own peak" is one line away --
 ## ✅ the owner's own formulation: "让最高点与障碍之间的高度差总是和动画里盆骨保持相近."
 ## It is not needed yet and is not built.
+## How high the curve's PEAK sits above the obstacle's top, in metres.
+##
+## ✅ THE OWNER, stating the requirement and leaving the method open: "我的需求就是曲
+## 线的峰值高度高于障碍物xx米，算法怎么算你来想办法."
+##
+## 🎯 AND THE KNOB NOW TELLS THE TRUTH, which the last one did not. A quadratic
+## bezier does not pass through its control point -- it reaches about half way to
+## it -- so setting the control to the wanted height gave 1.43 where 1.90 was
+## asked for. The control is SOLVED from this number now
+## (ScriptedMove._control_height), so what is typed here is what the peak is.
+##
+## 📌 The defaults are the numbers the clips themselves were measuring: a vault
+## over used SafetyVault's own hip peak of 0.732 and a vault onto used StepUp's
+## 0.226. Set by hand from here on -- ✅ "我来用眼睛测."
+@export var vault_over_apex_above_top: float = 0.23
+@export var vault_onto_apex_above_top: float = 0.23
+
 @export var vault_over_control_bias: float = 0.7
 @export var vault_onto_control_bias: float = 0.7
 

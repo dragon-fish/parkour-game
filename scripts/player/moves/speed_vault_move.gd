@@ -20,6 +20,12 @@ var _arc_duration: float = 0.0
 ## How far this vault's bezier control point sits back over the start -- the only
 ## dial the shape has. See SpeedVaultConfig.vault_over_control_bias.
 var _planned_bias: float = 0.0
+## How far over that top the peak should go. See
+## SpeedVaultConfig.vault_over_apex_above_top.
+var _planned_apex_over_top: float = 0.0
+## The obstacle's top, kept from the commit. The apex is worked out from it at
+## CONTACT, because that is when the clip is settled -- see physics_update().
+var _planned_top_y: float = 0.0
 ## How high the scripted arc bulges. A vault OVER rises far less than one ONTO,
 ## because it never gets on top of anything.
 ## The camera's fallback rise for this vault. Derived from the obstacle and
@@ -238,6 +244,20 @@ func enter(_previous: StringName) -> void:
 	# pull-up's bezier is the only curve now; all a variant chooses is how far its
 	# control point sits back over the start.
 	_planned_bias = config.speed_vault.vault_onto_control_bias if is_onto 		else config.speed_vault.vault_over_control_bias
+	# ⚠️ WHERE THE PELVIS SHOULD PASS, and it cannot be read off the two ends. ✅
+	# THE OWNER, on a path through a 1.90 m wall whose start and end were both at
+	# 1.90: "我希望它走红色的路径" -- and, having worked out the principle a few
+	# minutes earlier: "游戏里每次需要的高度都不一样，而动画作者只为一种高度做了动画...
+	# 让最高点与障碍之间的高度差总是和动画里盆骨保持相近就好了."
+	#
+	# 🎯 SO THE NUMBER COMES FROM THE CLIP, not from a knob. Player.
+	# body_clip_hip_peaks measures how far each clip lifts its own hips above
+	# rest -- SafetyVault 0.732 m, StepUp 0.226, ClimbUp_1m 0.193 -- which IS the
+	# animator's own answer to "how far over the obstacle does the body go". Held
+	# over the top, it scales to every obstacle height without anyone tuning it,
+	# and it follows the animation pack rather than this project's taste.
+	_planned_top_y = top.y
+	_planned_apex_over_top = config.speed_vault.vault_onto_apex_above_top if is_onto 		else config.speed_vault.vault_over_apex_above_top
 	_landing = landing
 
 	# A VAULT MUST NOT BE SLOWER THAN JUST RUNNING THERE.
@@ -304,8 +324,18 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			# and it is the path's, so a clip that also lifted would be the
 			# double-count this whole thread began with.
 			player.set_clip_lift_kept(0.0)
-			begin(player.global_position, _landing, _arc_duration, 0.0,
-					_planned_bias, config.speed_vault.vault_path_ease)
+			# ⚠️ THE CLIP IS ONLY SETTLED NOW. Asked at the commit, this lands on
+			# whatever was playing a moment before the vault -- Jump_Start, most
+			# of the time -- which is not in the table, so the apex degraded to
+			# the obstacle's top exactly and the pelvis grazed it.
+			#
+			# ✅ THE OWNER: "我希望弧线的最高点总是比墙高." The clip's own hip peak is
+			# what makes it so, and it is measured per clip at attach: SafetyVault
+			# 0.732 m, StepUp 0.226, ClimbUp_1m 0.193.
+			var apex_y: float = _planned_top_y + _planned_apex_over_top
+			begin(player.global_position, _landing, _arc_duration,
+					apex_y, _planned_bias,
+					config.speed_vault.vault_path_ease)
 			player.velocity = Vector3.ZERO
 		elif _approach_time >= config.speed_vault.approach_timeout:
 			# The contact the commit predicted never arrived -- jumped short, or

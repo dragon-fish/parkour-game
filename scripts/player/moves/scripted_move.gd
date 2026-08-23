@@ -18,8 +18,9 @@ var _elapsed: float = 0.0
 ## would stop the body dead at the foot of the obstacle and again on top of it.
 const EDGE_TRAVEL := 0.15
 
-## The CAMERA's fallback rise, in metres. Not the body's -- see camera_lift().
-var _camera_arc: float = 0.0
+## The world height the bezier's control point is held at, or 0 for "whatever the
+## higher end is". See peak_height().
+var _apex_y: float = 0.0
 ## How far the rise runs ahead of the travel. See begin().
 var _control_bias: float = 0.0
 ## The travel's shaping exponent. 1 is linear. See begin().
@@ -46,13 +47,13 @@ var _ease: float = 1.0
 ## PREDICTABLE, and nothing is more predictable than a straight line at a steady
 ## pace: an offset keyed at 40% of the way through describes a body 40% of the
 ## way along, and the person keying it can hold that in their head.
-func begin(from: Vector3, to: Vector3, duration: float, camera_arc: float = 0.0,
+func begin(from: Vector3, to: Vector3, duration: float, apex_y: float = 0.0,
 		control_bias: float = 0.0, ease: float = 1.0) -> void:
 	_from = from
 	_to = to
 	_duration = maxf(duration, 0.0001)
 	_elapsed = 0.0
-	_camera_arc = camera_arc
+	_apex_y = apex_y
 	_control_bias = clampf(control_bias, 0.0, 1.0)
 	_ease = maxf(ease, 0.05)
 
@@ -107,15 +108,46 @@ func sample(t: float) -> Vector3:
 	# pace, which is what the capsule owes; see begin().
 	var eased := 1.0 - pow(1.0 - t, _ease) if _ease != 1.0 else t
 	var control := _to.lerp(_from, _control_bias)
-	control.y = peak_height()
+	control.y = _control_height()
 	var u: float = 1.0 - eased
 	return _from * (u * u) + control * (2.0 * u * eased) + _to * (eased * eased)
 
 ## The height the crossing happens at. Clear of BOTH ends, so this reads as a
 ## rise whichever way the journey slopes: a pull-up finishes above where it
 ## started, a vault-over below.
+## The height the control point is held at.
+##
+## ⚠️ NEVER BELOW EITHER END, because a control under the destination makes the
+## curve dip on its way there. Above that, a caller may ASK for a height -- and
+## has to, whenever both ends are level with the obstacle between them.
+##
+## ✅ THE OWNER, on a path that went straight through a 1.90 m wall with both ends
+## at 1.90: "刚刚偶然触发这种很奇怪的穿墙的曲线，我希望它走红色的路径." With nothing
+## but the ends to go on there is no clearance to be had -- max(1.90, 1.90) is
+## 1.90, and the pelvis grazes the top while the body has volume.
 func peak_height() -> float:
-	return maxf(_from.y, _to.y) + _camera_arc
+	return maxf(maxf(_from.y, _to.y), _apex_y)
+
+## Where the control point has to sit for the CURVE to reach peak_height().
+##
+## ⚠️ A QUADRATIC BEZIER DOES NOT PASS THROUGH ITS CONTROL POINT -- it reaches
+## about half way to it -- and setting the control to the wanted height was
+## therefore wrong by half. ✅ The owner, on a 1.90 m wall: "最高点比墙矮的多，我希望
+## 弧线的最高点总是比墙高." Measured: ends at 1.01 and 0.90 with the control put at
+## 1.90 topped out at 1.43, which the closed form for a quadratic's maximum,
+## (a*b - c^2) / (a + b - 2c), gives as 1.4286.
+##
+## 🎯 SO IT IS SOLVED RATHER THAN GUESSED. Setting that maximum equal to P and
+## solving for c gives c = P + sqrt((P - a) * (P - b)), which puts the CURVE's
+## own peak exactly at P. Checked against the same numbers: c = 2.843 brings the
+## maximum back to 1.900.
+##
+## 📌 It degrades correctly. When the wanted apex is already one of the ends, a
+## factor goes to zero and the control lands on that end -- the monotonic
+## rise-then-level curve the pull-up uses, unchanged.
+func _control_height() -> float:
+	var wanted: float = peak_height()
+	return wanted + sqrt(maxf(wanted - _from.y, 0.0) * maxf(wanted - _to.y, 0.0))
 
 ## Everything a debug view needs to draw this path, or an empty dictionary when
 ## nothing is running. See sample().
@@ -123,7 +155,8 @@ func path_debug() -> Dictionary:
 	if _duration <= 0.0001 or _elapsed >= _duration:
 		return {}
 	return {"from": _from, "to": _to, "progress": progress(),
-		"lead": _control_bias, "arc": _camera_arc, "duration": _duration,
+		"lead": _control_bias, "arc": peak_height() - maxf(_from.y, _to.y),
+		"duration": _duration,
 		"peak": peak_height()}
 
 ## How far the EYE is carried above the straight line, right now.
@@ -143,9 +176,10 @@ func path_debug() -> Dictionary:
 ## the case the owner kept it for: a bare capsule has nothing but the eye to sell
 ## the motion with.
 func camera_lift() -> float:
-	if _camera_arc <= 0.0 or _duration <= 0.0001:
+	var rise: float = peak_height() - maxf(_from.y, _to.y)
+	if rise <= 0.0 or _duration <= 0.0001:
 		return 0.0
-	return sin(progress() * PI) * _camera_arc
+	return sin(progress() * PI) * rise
 
 ## How much higher the path STARTS than it ends, in metres.
 ##

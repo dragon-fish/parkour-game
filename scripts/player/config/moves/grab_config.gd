@@ -64,25 +64,6 @@ extends MoveConfig
 ## ends up standing ON the platform rather than teetering right at its lip.
 ## Mirrors SpeedVaultConfig.vault_exit_forward's role for VaultState.
 @export var mantle_forward_offset: float = 0.4
-## Peak height of the vertical arc ScriptedMove.advance() adds over the
-## straight line from the hang position to the mantle's landing point, so the
-## body reads as climbing up and over the lip instead of clipping through it.
-## Mirrors SpeedVaultConfig.vault_camera_arc's role for VaultState -- see
-## ScriptedMove's own note on why the arc is a per-call value rather than a
-## shared literal.
-## ✅ ZEROED with the easing, because a straight line is not straight if
-## something is still adding a sine bump to its height: "不如让胶囊走匀速直线."
-##
-## 📌 ZERO, AND SO IS THE VAULT'S NOW: "所有由脚本进行位移的动作在绑定了动画的时候
-## 胶囊都做匀速直线运动." The exception this comment used to record is gone -- it
-## applied while the vault's arc was still doing presentation work, and once
-## there is an animation on the body that work is the animation's.
-##
-## 📌 THE CURVE IS NOT THROWN AWAY, only defaulted off: "旧的曲线也别扔，没有绑定模型
-## 和动画的时候纯相机还靠它做基础效果呢." A bare capsule with no model has nothing to
-## sell the motion but its own path, and this number plus mantle_path_ease is that
-## whole effect. Both are one entry in the F1 panel.
-@export var mantle_camera_arc: float = 0.0
 
 ## How much of the pull-up is UP before any of it is forward, 0..1.
 ##
@@ -128,6 +109,13 @@ extends MoveConfig
 ## start: 1 puts it directly over the start and the curve bulges away from the
 ## wall before swinging in; lower pulls the whole line in against the face.
 ## ✅ The owner, drawing the tighter line: "我希望它整体往内部偏一点." Tuned by eye.
+## How high the pull-up's peak sits above the ledge, in metres. See
+## SpeedVaultConfig.vault_over_apex_above_top.
+##
+## 📌 0.9 is where it already was: the pull-up ENDS standing on the ledge, half a
+## standing capsule above it, so the higher end was setting the peak on its own.
+@export var mantle_apex_above_top: float = 0.9
+
 @export var mantle_control_bias: float = 0.7
 
 ## How the pull-up's travel is shaped: 1 is a straight line at a constant speed,

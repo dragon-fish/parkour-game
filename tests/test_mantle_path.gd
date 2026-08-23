@@ -91,7 +91,7 @@ func test_a_lead_keeps_the_body_over_the_lip_before_it_travels() -> void:
 	var start: Vector3 = bits[2]
 	assert_true(grab.is_mantling(), "the fixture never started a pull-up")
 	grab.begin(start, grab._to, player.config.grab.mantle_duration,
-		player.config.grab.mantle_camera_arc, 1.0)
+		0.0, 1.0)
 	var target: Vector3 = grab._to
 	var span: float = absf(target.z - start.z)
 	var slice: float = player.config.grab.mantle_duration / 40.0
@@ -234,14 +234,12 @@ func test_no_scripted_move_ships_with_a_curve_on_by_default() -> void:
 	var grab := GrabConfig.new()
 	var vault := SpeedVaultConfig.new()
 	assert_eq(grab.mantle_path_ease, 1.0, "the mantle travels at a steady pace")
-	assert_eq(grab.mantle_camera_arc, 0.0, "and with no symmetric bump on it")
 	# ⚠️ THE COMPOSITE IS NOT AN ARC. The shape a pull-up needs comes from the
 	# vertical lead, which is a different mechanism entirely -- see
 	# GrabConfig.mantle_vertical_lead. This test is about the BUMP.
 	assert_gt(grab.mantle_vertical_lead, 0.0,
 		"the pull-up lost the only shape it had")
 	assert_eq(vault.vault_path_ease, 1.0, "so does the vault")
-	assert_eq(vault.vault_camera_arc, 0.0, "and it is straight too")
 
 ## An arc no longer bends the path -- it lifts the camera, and only as a
 ## fallback.
