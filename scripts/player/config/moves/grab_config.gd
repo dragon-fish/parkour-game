@@ -128,7 +128,7 @@ extends MoveConfig
 ## start: 1 puts it directly over the start and the curve bulges away from the
 ## wall before swinging in; lower pulls the whole line in against the face.
 ## ✅ The owner, drawing the tighter line: "我希望它整体往内部偏一点." Tuned by eye.
-@export var mantle_vertical_lead: float = 0.7
+@export var mantle_control_bias: float = 0.7
 
 ## How the pull-up's travel is shaped: 1 is a straight line at a constant speed,
 ## 2 is the ease-out this move used to have.

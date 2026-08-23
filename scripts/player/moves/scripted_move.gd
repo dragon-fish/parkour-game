@@ -21,11 +21,12 @@ const EDGE_TRAVEL := 0.15
 ## The CAMERA's fallback rise, in metres. Not the body's -- see camera_lift().
 var _camera_arc: float = 0.0
 ## How far the rise runs ahead of the travel. See begin().
-var _vertical_lead: float = 0.0
+var _control_bias: float = 0.0
 ## The travel's shaping exponent. 1 is linear. See begin().
 var _ease: float = 1.0
 
-## `vertical_lead` in 0..1 decides the SHAPE of the path, not its speed.
+## `control_bias` in 0..1 slides the bezier control point from the END toward
+## the START. It is the only thing about the shape that varies.
 ##
 ## ⚠️ AT 0 THIS IS ONE CURVE FOR ALL THREE AXES, which is a fine description of a
 ## vault -- the body really does travel up and over in one motion -- and a wrong
@@ -46,13 +47,13 @@ var _ease: float = 1.0
 ## pace: an offset keyed at 40% of the way through describes a body 40% of the
 ## way along, and the person keying it can hold that in their head.
 func begin(from: Vector3, to: Vector3, duration: float, camera_arc: float = 0.0,
-		vertical_lead: float = 0.0, ease: float = 1.0) -> void:
+		control_bias: float = 0.0, ease: float = 1.0) -> void:
 	_from = from
 	_to = to
 	_duration = maxf(duration, 0.0001)
 	_elapsed = 0.0
 	_camera_arc = camera_arc
-	_vertical_lead = clampf(vertical_lead, 0.0, 1.0)
+	_control_bias = clampf(control_bias, 0.0, 1.0)
 	_ease = maxf(ease, 0.05)
 
 ## How long the scripted travel is set to take, or 0 before begin() runs.
@@ -82,74 +83,33 @@ func advance(delta: float) -> bool:
 ## arithmetic would be a picture of a SECOND implementation -- one that agrees
 ## with this until the moment a difference is what you are looking for. Same rule
 ## Probes follows by handing back the segments it actually fired.
+## Where the body is at `t`, 0..1.
+##
+## ✅ ONE SHAPE FOR EVERY SCRIPTED MOVE, on the owner's call after the branches
+## had piled up four deep: "先直接套用grab的规则，然后我来开需不需要微调力度." The
+## pull-up's curve was the one they called perfect, so it becomes the only one --
+## and what used to be a choice between a symmetric bump, a three-segment
+## composite and a straight line is now a single quadratic Bezier with one dial.
+##
+## 🎯 THE CONTROL POINT IS THE WHOLE DESIGN. It sits at the height of the higher
+## END and slides along the line between the two, so:
+##
+##   - the curve leaves the start rising and arrives at the end level
+##   - it never goes above the destination, so nothing overshoots a rooftop
+##   - pulled toward the start it bulges away from the wall; pulled toward the
+##     end it hugs the face
+##
+## ⚠️ AND THERE IS NO LONGER A "STRAIGHT" CASE TO DIAGNOSE. Half the debugging
+## today was spent telling a flat curve from a line, and asking which of four
+## rules had produced it. There is one rule.
 func sample(t: float) -> Vector3:
-	# ⚠️ LINEAR BY DEFAULT, and the ease-out that used to be hard-coded here is
-	# now something a move asks for. The old comment argued it made the action
-	# "read as a push-off rather than a constant-speed slide" -- which is a
-	# statement about how it LOOKS, and looks are the animation's job. What the
-	# capsule owes is predictability.
+	# The ease shapes the PACE along the curve, not the curve. 1 is a steady
+	# pace, which is what the capsule owes; see begin().
 	var eased := 1.0 - pow(1.0 - t, _ease) if _ease != 1.0 else t
-	if _vertical_lead <= 0.0:
-		# ONE CURVE FOR ALL THREE AXES. The symmetric bump on top is off unless
-		# MovementConfig.scripted_path_arcs asks for it -- see that flag for the
-		# two ways this can be done and why only one may be on.
-		var flat := _from.lerp(_to, eased)
-		if config != null and config.scripted_path_arcs:
-			flat.y += sin(t * PI) * _camera_arc
-		return flat
-
-	# ⚠️ THREE SEGMENTS, NOT ONE, and the middle one is STRAIGHT.
-	#
-	# ✅ THE OWNER, on a shape a single curve cannot make: "对于宽度站不下一个人的
-	# 障碍，就是抬升 -> 滑过障碍顶部 -> 落地，它是多段贝塞尔曲线+直线组成的复合曲线,
-	# 不应该是我们目前的单段."
-	#
-	# A bump added to a straight line is symmetric about the MIDDLE OF THE
-	# JOURNEY, and the obstacle is not in the middle of the journey -- it is at
-	# the near end of it. So the body was still climbing while it was already
-	# inside the face, and it began descending at the halfway mark, which is
-	# exactly where it should still be sliding along the top.
-	#
-	# 📌 And the source agrees about what this move IS: a VaultOver's peak was
-	# measured 0.87 m BELOW the obstacle's top, with the feet never clearing it
-	# (docs/feel-backlog.md 27). It is hands-on-top, carrying the body PAST the
-	# obstacle -- a slide across, not a leap over. A flat middle is that slide.
-	# ✅ ONE CURVE, NOT THREE SEGMENTS. THE OWNER: "grabpullup 不要画蛇添足，就用一段
-	# 曲线，用贝塞尔曲线去做."
-	#
-	# 🎯 AND IT NEEDS NO APEX AT ALL, which is the part that makes it simpler
-	# rather than merely shorter. The control point goes DIRECTLY ABOVE THE START
-	# at the HEIGHT OF THE END: a quadratic Bezier then leaves the start moving
-	# straight up, arrives at the end moving level, and -- because the control is
-	# no higher than the destination -- never overshoots the rooftop on the way.
-	# Rise, then forward, in one expression, with nothing to tune.
-	#
-	# 📌 peak_height() is max(from, to) plus the arc, so a mantle's control sits
-	# on the roof by default and only rises above it if some obstacle asks.
-	# ⚠️ HOW FAR THE CONTROL SITS BACK OVER THE START is what pushes the curve out
-	# or pulls it in. ✅ THE OWNER, drawing the tighter line they wanted against
-	# the wall: "黄色是当前Grab的贝塞尔曲线，我希望它整体往内部偏一点."
-	#
-	# Directly above the START -- a lead of 1 -- makes the body leave vertically
-	# and hang out at the start's own horizontal position before swinging in,
-	# which is the bulge in that screenshot. Sliding the control back toward the
-	# END pulls the whole curve in against the face.
-	#
-	# 📌 _vertical_lead ALREADY MEANT THIS, on the composite it replaced: how far
-	# the rise runs ahead of the travel. Same knob, same sentence, one curve
-	# instead of three segments.
-	var control := _to.lerp(_from, _vertical_lead)
+	var control := _to.lerp(_from, _control_bias)
 	control.y = peak_height()
 	var u: float = 1.0 - eased
 	return _from * (u * u) + control * (2.0 * u * eased) + _to * (eased * eased)
-
-## Where the rise stops and the flat crossing begins, in 0..1.
-func knee_rise() -> float:
-	return lerpf(0.5, 0.28, _vertical_lead)
-
-## Where the flat crossing ends and the drop begins, in 0..1.
-func knee_fall() -> float:
-	return lerpf(0.5, 0.62, _vertical_lead)
 
 ## The height the crossing happens at. Clear of BOTH ends, so this reads as a
 ## rise whichever way the journey slopes: a pull-up finishes above where it
@@ -163,8 +123,7 @@ func path_debug() -> Dictionary:
 	if _duration <= 0.0001 or _elapsed >= _duration:
 		return {}
 	return {"from": _from, "to": _to, "progress": progress(),
-		"lead": _vertical_lead, "arc": _camera_arc, "duration": _duration,
-		"knee_rise": knee_rise(), "knee_fall": knee_fall(),
+		"lead": _control_bias, "arc": _camera_arc, "duration": _duration,
 		"peak": peak_height()}
 
 ## How far the EYE is carried above the straight line, right now.

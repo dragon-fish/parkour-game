@@ -338,17 +338,15 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## are the ones that clipped, change the most.
 ## ✅ BACK TO ZERO with the mantle's, and for the owner's reason rather than
 ## mine: "反正都是手K关键帧偏移，越简单的运动曲线反而对我来说越容易." See
-## GrabConfig.mantle_vertical_lead.
-@export var vault_vertical_lead: float = 0.0
-
-## The same, for a vault that lands ON the obstacle rather than past it.
+## GrabConfig.mantle_control_bias.
+## How far the bezier's control point sits back over the START, 0..1.
 ##
-## ⚠️ ITS OWN KNOB, because the two branches want different shapes and always
-## did. A vault OVER carries the body past a thin obstacle -- ✅ measured, its
-## peak sits 0.87 m BELOW the top and the feet never clear it -- so a shallow
-## curve is honest there. A vault ONTO has to put the feet on the top, which
-## means rising to it and then moving forward, and no symmetric bump does that.
-@export var vault_onto_vertical_lead: float = 0.45
+## ✅ ONE DIAL PER VARIANT, and the only thing about the shape that varies: "先直接
+## 套用grab的规则，然后我来开需不需要微调力度." 0 puts the control over the END and the
+## curve hugs the far side; 1 puts it over the start and the body leaves
+## vertically before swinging across. Tuned by eye, like the pull-up's 0.7.
+@export var vault_over_control_bias: float = 0.7
+@export var vault_onto_control_bias: float = 0.7
 
 ## How far above the obstacle's top the PELVIS passes, per variant, in metres.
 ##
@@ -360,35 +358,6 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## these are the numbers you can watch against the obstacle rather than infer.
 ## A folded capsule's centre sits about 0.45 above its own feet, which makes the
 ## vault's 0.45 read as "feet grazing the top".
-## ⚠️ TUNED BY EYE, and meant to keep being. ✅ THE OWNER, with a drawing over a
-## screenshot: "我希望起终点不变、最高点降低一半...我来用眼睛测，我告诉你哪种动画最高点
-## 要更高还是更低." These two numbers are the dial; nothing else needs touching to
-## raise or lower an arc.
-## ✅ SIGNED OFF BY EYE at 0.2, across 1.25 m to 1.8 m: "vault动画在我这里看来
-## 1.25-1.8m的视觉效果都已经相当惊艳了，完全没有穿模，也没有飞得太高."
-##
-## ⚠️ THAT IS THE VALIDATED BAND, not the whole range. Below about 1 m the body's
-## entry is already higher than this apex, so the arc clamps to zero and the path
-## is simply the straight line between the ends -- measured, a 0.75 m obstacle
-## peaks +0.345 over its top with this set to 0.2, because the knob is not
-## governing there at all. Whether that is right has not been looked at.
-@export var vault_over_apex_above_top: float = 0.2
-@export var vault_onto_apex_above_top: float = 1.4
-
-## The floor under both of those: how far above the START the pelvis passes, at
-## least, in metres.
-##
-## ⚠️ WITHOUT IT A LOW OBSTACLE GETS NO ARC AT ALL. An apex stated relative to the
-## TOP falls below the body's own line as soon as the obstacle is short enough,
-## the bump clamps to zero, and the path degenerates to the straight line between
-## the ends -- ✅ which is the flat yellow curve the owner drew a proper arc over.
-## The config already carried a note that this band was untested; it is what
-## broke first.
-##
-## 📌 The tall cases are untouched, because their derived arc is already larger
-## than this -- around 0.75 on a 1.5 m obstacle. This only bites where the other
-## rule has nothing to say.
-@export var vault_min_rise_above_start: float = 0.5
 
 ## The same for a vault: 1 is a straight line at a constant speed. See
 ## GrabConfig.mantle_path_ease.

@@ -17,24 +17,6 @@ extends Resource
 # PawnConfig -- the same hazard Player.setup() already guards against for the
 # collision capsule.
 
-## Which of the two ways of getting the body over an obstacle is in use.
-##
-## ✅ A SWITCH RATHER THAN A REVERT, so both can be looked at: the owner, having
-## seen the scaled version, "你能不能先把代码改成，弧形脚本路径（起点、终点、最高点）配合
-## in-place动画？我想再看一次."
-##
-## false -- the capsule travels in a STRAIGHT line and the clip's own hip lift is
-## scaled to the clearance the obstacle needs. One thing moves; the animator's
-## curve supplies the shape.
-##
-## true -- the capsule travels an ARC through a derived apex and the hips are
-## held flat. The body's rise is entirely the path's.
-##
-## ⚠️ NEVER BOTH. Whichever one is off has to be off completely: an arc under a
-## clip that also lifts is the double-count that put the hands 1.32 m out in the
-## first place, and it is the reason this is one flag rather than two.
-@export var scripted_path_arcs: bool = true
-
 @export var pawn: PawnConfig = PawnConfig.new()
 @export var camera: CameraConfig = CameraConfig.new()
 

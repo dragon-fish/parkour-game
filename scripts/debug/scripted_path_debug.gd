@@ -155,14 +155,6 @@ func _draw_plan(move, path: Dictionary) -> void:
 		_line(previous, at)
 		previous = at
 
-	# The knees, which is where the argument about this shape actually lives:
-	# how much of the journey is spent rising before any of it goes forward.
-	_mesh.surface_set_color(knee_colour)
-	for key in ["knee_rise", "knee_fall"]:
-		var t: float = float(path.get(key, -1.0))
-		if t >= 0.0:
-			_cross(move.sample(t), marker_size)
-
 	_mesh.surface_set_color(end_colour)
 	_cross(path["from"], marker_size * 1.4)
 	_cross(path["to"], marker_size * 1.4)
