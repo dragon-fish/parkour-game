@@ -293,3 +293,52 @@ func test_squaring_back_up_lets_travel_resume() -> void:
 	grab.physics_update(0.5, _hold(1.0))
 	assert_gt(player.global_position.x, before + 0.05,
 		"travel did not resume once the view came back to the wall")
+
+# --- a buried ledge is not a ledge ------------------------------------------------
+
+## The arena's own shaft, which is where the owner found this: a 2.7 m step with
+## a 6.3 m block standing ON it, overlapping for 2.2 m of the step's length. The
+## north faces are coplanar at z = 43, so a shimmy travelling along that face
+## crosses from the exposed rim into the buried strip without anything changing
+## in front of it.
+const SHAFT_FACE_Z := 43.0
+const SHAFT_TOP := 2.70
+const SHAFT_TALL_EAST := 34.0
+
+func _shaft(player: Player) -> void:
+	_add_block(player, Vector3(33.30, SHAFT_TOP * 0.5, 40.0),
+			Vector3(3.0, SHAFT_TOP, 6.0))
+	_add_block(player, Vector3(32.50, 3.15, 40.0), Vector3(3.0, 6.30, 6.0))
+
+func test_a_top_with_a_block_standing_on_it_is_refused() -> void:
+	# ✅ THE OWNER, hanging inside a wall: "我们的攀爬好像没考虑这种可攀附点被遮挡的
+	# 情况."
+	#
+	# ⚠️ AND ledge_query() WAS ALREADY RIGHT, which is why the grab looked fine
+	# and the travel did not. SurfaceDown has always set hit_from_inside, so the
+	# entry probe refused the buried strip. These probes did not: a Godot ray
+	# that begins inside a shape and is not told so IGNORES that shape and
+	# reports the next hit along -- straight through the tall block, onto the
+	# step buried underneath it, which it then called a ledge.
+	var player: Player = await _hanging_player()
+	_shaft(player)
+	await step(2)
+	var buried := Vector3(32.90, SHAFT_TOP, SHAFT_FACE_Z - 0.1)
+	var found: Dictionary = player.probes.ledge_beside(buried, Vector3.ZERO,
+			Vector3(0.0, 0.0, 1.0), 0.1, 0.3, 0.15)
+	assert_false(found.get("valid", false),
+		"a step buried under a six-metre block was reported as a ledge")
+
+func test_the_exposed_rim_beside_it_still_works() -> void:
+	# The pair, and it is doing real work: the strip either side of x = 34 is the
+	# SAME step at the SAME height on the SAME coplanar face. Only the block
+	# standing on half of it differs, so a fix that refused both would be
+	# indistinguishable here from one that refuses everything.
+	var player: Player = await _hanging_player()
+	_shaft(player)
+	await step(2)
+	var exposed := Vector3(SHAFT_TALL_EAST + 0.4, SHAFT_TOP, SHAFT_FACE_Z - 0.1)
+	var found: Dictionary = player.probes.ledge_beside(exposed, Vector3.ZERO,
+			Vector3(0.0, 0.0, 1.0), 0.1, 0.3, 0.15)
+	assert_true(found.get("valid", false),
+		"the exposed rim beside the tall block stopped being a ledge")

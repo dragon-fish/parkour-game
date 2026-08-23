@@ -819,6 +819,23 @@ func _cast(from: Vector3, to: Vector3) -> Dictionary:
 		return {}
 	var query := PhysicsRayQueryParameters3D.create(from, to)
 	query.collision_mask = _surface.collision_mask if _surface != null else 1
+	# ⚠️ hit_from_inside, AND WITHOUT IT THESE PROBES INVENT LEDGES. A Godot ray
+	# that begins inside a shape and is NOT told this simply ignores that shape
+	# and reports the next hit along -- so a probe fired down through a tall
+	# block finds the top of whatever is buried underneath it and calls that a
+	# ledge.
+	#
+	# ✅ The owner, hanging inside a wall: "我们的攀爬好像没考虑这种可攀附点被遮挡
+	# 的情况." The arena's own shaft has a 2.7 m step with a 6.3 m block standing
+	# on it, overlapping for 2.2 m of its length. ledge_query() refuses that
+	# buried strip correctly -- SurfaceDown has always set this -- so the grab
+	# was fine and the SHIMMY walked them in from the exposed rim beside it.
+	#
+	# Set here rather than at one call site because every probe in this family
+	# wants the same honesty: a hit reported at the ray's own origin says "you
+	# started inside something", which the height check then rejects, and the
+	# inset ladder moves toward the face and tries again.
+	query.hit_from_inside = true
 	# The player's own capsule hangs BELOW the lip, so these rays should never
 	# reach it -- but a thin ledge with the body pressed close is exactly the
 	# case where "should never" stops being true, and a self-hit would read as
