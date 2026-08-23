@@ -375,6 +375,21 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 @export var vault_over_apex_above_top: float = 0.2
 @export var vault_onto_apex_above_top: float = 1.4
 
+## The floor under both of those: how far above the START the pelvis passes, at
+## least, in metres.
+##
+## ⚠️ WITHOUT IT A LOW OBSTACLE GETS NO ARC AT ALL. An apex stated relative to the
+## TOP falls below the body's own line as soon as the obstacle is short enough,
+## the bump clamps to zero, and the path degenerates to the straight line between
+## the ends -- ✅ which is the flat yellow curve the owner drew a proper arc over.
+## The config already carried a note that this band was untested; it is what
+## broke first.
+##
+## 📌 The tall cases are untouched, because their derived arc is already larger
+## than this -- around 0.75 on a 1.5 m obstacle. This only bites where the other
+## rule has nothing to say.
+@export var vault_min_rise_above_start: float = 0.5
+
 ## The same for a vault: 1 is a straight line at a constant speed. See
 ## GrabConfig.mantle_path_ease.
 @export var vault_path_ease: float = 1.0

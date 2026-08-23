@@ -363,7 +363,11 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			if _planned_lead > 0.0:
 				base = maxf(player.global_position.y, _landing.y)
 			if _planned_apex_y > 0.0:
-				_planned_clearance = maxf(0.0, _planned_apex_y - base)
+				# THE FLOOR, applied here rather than at the commit because it is
+				# measured from where the body ACTUALLY starts.
+				var apex: float = maxf(_planned_apex_y, player.global_position.y
+						+ config.speed_vault.vault_min_rise_above_start)
+				_planned_clearance = maxf(0.0, apex - base)
 			begin(player.global_position, _landing, _arc_duration, _planned_clearance,
 					_planned_lead,
 					config.speed_vault.vault_path_ease)
