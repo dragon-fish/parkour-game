@@ -78,6 +78,43 @@ var take_seconds := 8.0
 ## 400 was too narrow and the overflow had nowhere to go: "表单里面的字超宽了，右边被
 ## 裁切了我看不到."
 const PANEL_WIDTH := 520.0
+
+## How many times faster than real time a take is recorded.
+##
+## ✅ THE OWNER: "录制也得按真实时间录一遍吗，我每次都得等8秒？" No, and it costs
+## nothing to fix: a take is 480 physics ticks and the only reason it took eight
+## seconds is that the engine was handing them out at sixty a second.
+##
+## 🎯 THE FREQUENCY AND THE TIME SCALE MOVE TOGETHER, and that is the whole
+## trick. Godot's physics delta is `1.0 / physics_ticks_per_second * time_scale`,
+## so raising BOTH by the same factor leaves the delta exactly where it was while
+## the engine runs that many more steps per real second. Measured, all three at
+## 0.016667 s per step:
+##
+##     60 Hz  x1.0  ->  480 ticks in 7.89 s
+##    240 Hz  x4.0  ->  480 ticks in 1.99 s
+##    480 Hz  x8.0  ->  480 ticks in 0.99 s
+##
+## ⚠️ RAISING time_scale ALONE WOULD BE A LIE. That leaves 60 steps a second and
+## makes each one eight times longer, which is a different integration -- bigger
+## steps through Jolt, a different number of animation blend samples, and a take
+## that does not show what the game does. The point of this scene is to record
+## what the game does.
+const RECORD_SPEED := 8
+
+## Physics steps per SIMULATED second, which is what a recorded frame is worth no
+## matter how fast the take was played out. Read from the engine before the take
+## touches it, so it follows the project setting rather than assuming 60.
+var _record_hz := 60.0
+## When the take started, on the real clock. See _finish().
+var _take_clock: int = 0
+
+func _record_clock(fast: bool) -> void:
+	Engine.physics_ticks_per_second = int(_record_hz) * (RECORD_SPEED if fast else 1)
+	# The per-RENDERED-frame cap, default 8. At 480 Hz that alone would hold the
+	# simulation to 8 steps a frame and hand back the speed-up.
+	Engine.max_physics_steps_per_frame = 8 * RECORD_SPEED
+	Engine.time_scale = float(RECORD_SPEED) if fast else 1.0
 const RUN_UP := 7.0
 
 const NUDGE := 0.01
@@ -160,11 +197,12 @@ func _focus_the_scene() -> void:
 	for child in level.get_children():
 		if child.has_method("show_overlay"):
 			child.call("show_overlay", true)
+	_record_hz = float(Engine.physics_ticks_per_second)
 	_load()
 	call_deferred("_take")
 
 func _exit_tree() -> void:
-	Engine.time_scale = 1.0
+	_record_clock(false)
 
 func height() -> float:
 	return HEIGHT_MIN + HEIGHT_STEP * float(_height_index)
@@ -244,8 +282,10 @@ func _take() -> void:
 	# STRAIGHT AT IT, holding forward, and nothing else.
 	_source.state.move = Vector2(0.0, 1.0)
 	_recording = true
-	Engine.time_scale = 1.0
-	_note = "recording %.2f x %.2f at %.1f m/s ..." % [height(), width(), speed()]
+	_take_clock = Time.get_ticks_usec()
+	_record_clock(true)
+	_note = "recording %.2f x %.2f at %.1f m/s  (%dx)" % [
+		height(), width(), speed(), RECORD_SPEED]
 
 func _physics_process(_delta: float) -> void:
 	if not _recording or player == null:
@@ -262,7 +302,11 @@ func _physics_process(_delta: float) -> void:
 		"duration": _scripted_duration(),
 		"obstacle": Vector2(height(), width()),
 	})
-	if float(_frames.size()) / float(Engine.physics_ticks_per_second) >= take_seconds:
+	# AGAINST _record_hz, NOT THE LIVE RATE, which is eight times higher while
+	# this is running. A recorded frame is worth 1/60 s of simulated time because
+	# its delta was 1/60 s; how quickly the engine handed it over is not the
+	# take's business.
+	if float(_frames.size()) / _record_hz >= take_seconds:
 		_finish()
 
 ## Holds the approach at a constant speed and presses jump on time.
@@ -299,7 +343,9 @@ func _finish() -> void:
 	_source.state.move = Vector2.ZERO
 	_source.release_jump()
 	# HANDED OVER TO THE RECORDING. The live simulation stops dead so nothing
-	# keeps writing the transform the scrub is about to own.
+	# keeps writing the transform the scrub is about to own -- and the clock goes
+	# back to the project's rate first, so a scrubbed frame is worth 1/60 s again.
+	_record_clock(false)
 	Engine.time_scale = 0.0
 	if _anim_tree != null:
 		_anim_tree.active = false
@@ -309,7 +355,12 @@ func _finish() -> void:
 		_anim_player.stop()
 	_cursor = _scripted_start()
 	_scrub(0)
-	_note = "%d frames -- A/D walks them" % _frames.size()
+	# THE REAL SECONDS ARE ON SCREEN because the speed-up is the sort of claim
+	# that should not have to be taken on trust: 480 frames of simulated time,
+	# and the wall clock it actually cost to produce them.
+	var spent: float = float(Time.get_ticks_usec() - _take_clock) / 1000000.0
+	_note = "%d frames (%.1f s of motion, recorded in %.2f s) -- A/D walks them" % [
+		_frames.size(), float(_frames.size()) / _record_hz, spent]
 
 ## The first frame of the scripted move, so a take opens on the interesting part
 ## rather than on seven metres of running.
@@ -463,7 +514,7 @@ func _advance_playback() -> void:
 		return
 	var now: int = Time.get_ticks_usec()
 	var elapsed: float = float(now - _play_clock) / 1000000.0
-	var per_frame: float = 1.0 / float(Engine.physics_ticks_per_second)
+	var per_frame: float = 1.0 / _record_hz
 	if elapsed < per_frame:
 		return
 	var steps: int = mini(int(elapsed / per_frame), 8)
@@ -1199,7 +1250,7 @@ func _refresh_ui() -> void:
 		String(trim_clip), int(round(whole / per_frame)), whole, 1.0 / per_frame]
 	_fit_label.text = _fit_text(trim_clip, whole, per_frame)
 	var progress: float = _frame_progress()
-	var seconds: float = float(_cursor) / float(Engine.physics_ticks_per_second)
+	var seconds: float = float(_cursor) / _record_hz
 	# THE FOUR THINGS ASKED FOR, and nothing else: "不如显示当前的状态机是什么，播放的
 	# 动画逻辑帧是几帧，当前播到了第几帧，持续时间是多少."
 	var clip: StringName = _frame_clip()
