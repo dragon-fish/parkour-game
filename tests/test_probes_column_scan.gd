@@ -252,3 +252,48 @@ func test_a_wide_top_is_still_not_an_over() -> void:
 	await step(1)
 	assert_false(player.probes._query_vault_over(Vector3(0.0, 1.2, -1.4)),
 		"a 3 m deep block offered a far side to be carried past")
+
+# --- a face that is higher is not automatically the one you can grab ----------
+
+func test_a_ledge_with_a_cap_on_it_is_grabbed_at_the_rim() -> void:
+	# ✅ THE OWNER, on a block with a smaller block built on top of it: "我对着
+	# 这个障碍跳跃，它的 grab 判定点出现在高帽檐上而不是矮边缘，距离不够，什么都
+	# 没抓住."
+	#
+	# ⚠️ THE COLUMN USED TO STOP AT ONE ANSWER. "The highest hit wins" was the
+	# whole rule -- one face, one down-probe, one height gate -- so a cap
+	# presenting a face 1.5 m above the rim won the column, failed the gate on
+	# its own top being out of reach, and took the entire query down with it.
+	# The rim it was standing on was never asked about.
+	#
+	# Not a rare shape either: a parapet, a plant box, a plinth or another
+	# storey all stack two faces in this column, and the lower one is the one
+	# the hands can reach.
+	var player: Player = await _standing_player()
+	var feet: float = player.global_position.y - player.current_capsule_height() * 0.5
+	var rim: float = feet + player.config.grab.min_wall_height + 0.3
+	_slab(feet, rim, 1.0, -1.4)
+	# The cap: standing ON the rim, set back so the rim survives as a ledge.
+	_slab(rim, rim + 1.5, 0.6, -1.8)
+	await step(1)
+	var hit: Dictionary = player.probes.ledge_query()
+	assert_true(hit["valid"],
+		"a capped ledge came back invalid, which is the reported bug")
+	assert_almost_eq(float(hit["edge"].y), rim, 0.1,
+		"the anchor landed at y %.2f rather than on the rim at %.2f"
+		% [hit["edge"].y, rim])
+
+func test_an_uncapped_ledge_is_unaffected() -> void:
+	# The pair. Highest-first is still the preference -- a higher grabbable
+	# ledge is more progress than a lower one -- and this is what says the
+	# rewrite did not quietly turn it into lowest-first.
+	var player: Player = await _standing_player()
+	var feet: float = player.global_position.y - player.current_capsule_height() * 0.5
+	var top: float = feet + player.config.grab.min_wall_height + 0.3
+	_slab(feet, top, 1.0, -1.4)
+	await step(1)
+	var hit: Dictionary = player.probes.ledge_query()
+	assert_true(hit["valid"], "a plain wall stopped being grabbable")
+	assert_almost_eq(float(hit["edge"].y), top, 0.1,
+		"the anchor landed at y %.2f rather than the top at %.2f"
+		% [hit["edge"].y, top])

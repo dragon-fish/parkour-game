@@ -507,20 +507,47 @@ func ledge_query() -> Dictionary:
 	# SEARCH RADIUS is unchanged and still only that: a raycast reports its first
 	# hit, so looking the confirmed 3.5 m ahead finds a wall at 1 m just as
 	# correctly as one at 3 m.
-	var found_face := false
-	for i in LEDGE_COLUMN_SAMPLES:
+	# ⚠️ EVERY BAND GETS A TURN, HIGHEST FIRST, and it used to be "the highest
+	# hit wins" full stop -- one face, one down-probe, one height gate, and a
+	# failure there failed the whole query.
+	#
+	# ✅ The owner, on a block with a smaller block built on top of it: "我对着这个
+	# 障碍跳跃，它的 grab 判定点出现在高帽檐上而不是矮边缘，距离不够，什么都没抓住."
+	# The cap presents a face too, it is higher, so it won -- and its top is out
+	# of reach, so the gate rejected it and nothing else was ever tried. The
+	# perfectly grabbable rim 1.5 m below it was never asked about.
+	#
+	# That is not a rare shape. Anything with a parapet, a plant box, a plinth
+	# or another storey standing on it stacks two faces in this column, and the
+	# lower one is the one the hands can reach.
+	#
+	# Highest first is still the PREFERENCE -- a higher grabbable ledge is more
+	# progress than a lower one -- it is simply no longer the only candidate.
+	# The suspended-platform case that "highest wins" was written for is
+	# untouched: when only one band hits at all, it is both the highest and the
+	# only one tried.
+	#
+	# Costs nothing on a plain wall, which is the common case: every band
+	# reports the same face and the first one tried succeeds.
+	for i in range(LEDGE_COLUMN_SAMPLES - 1, -1, -1):
 		var t: float = float(i) / float(LEDGE_COLUMN_SAMPLES - 1)
 		var sample_y: float = lerpf(_feet_y() + COLUMN_FLOOR_MARGIN,
 			_feet_y() + _config.grab.ledge_max_height, t)
 		_vault_high.position.y = sample_y - global_position.y
 		_aim_forward(_vault_high, _config.grab.ledge_find_distance)
-		if _vault_high.is_colliding():
-			# The HIGHEST hit wins -- the loop simply does not stop. On a wall
-			# every height reports the same face, so it costs nothing there; on
-			# a suspended platform it is the only band that hits at all.
-			found_face = true
-	if not found_face:
-		return _no_hit()
+		if not _vault_high.is_colliding():
+			continue
+		var found: Dictionary = _ledge_from_face()
+		if found.get("valid", false):
+			return found
+	return _no_hit()
+
+## The ledge belonging to whatever `_vault_high` is currently touching, or a
+## miss when that face carries nothing the hands can reach.
+##
+## Split out of ledge_query() so the column scan above can ask it once per band
+## instead of once per query.
+func _ledge_from_face() -> Dictionary:
 
 	# ANCHOR, which is a different question -- see LEDGE_ANCHOR_MARGIN. The
 	# down-probe is planted just past the face the forward ray ACTUALLY hit,
