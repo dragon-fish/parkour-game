@@ -81,6 +81,17 @@ func _ready() -> void:
 	add_child(_instance)
 	_instance.visible = false
 
+## Turns the outline on or off from code.
+##
+## The animation lab opens with it ON: the owner, on what that scene should show,
+## "默认显示胶囊体和曲线，我需要仅看到对我有帮助的信息." In a level it stays off
+## until F10, because there it is one of several things worth a key; in the lab it
+## is half of what the scene is FOR.
+func show_overlay(on: bool) -> void:
+	_shown = on
+	if _instance != null:
+		_instance.visible = on
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.physical_keycode == KEY_F10:

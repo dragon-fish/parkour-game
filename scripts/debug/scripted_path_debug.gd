@@ -62,6 +62,13 @@ func _ready() -> void:
 	add_child(_instance)
 	_instance.visible = false
 
+## Turns the path on or off from code. See CapsuleDebug.show_overlay() -- the
+## animation lab opens with both of them on.
+func show_overlay(on: bool) -> void:
+	_shown = on
+	if _instance != null:
+		_instance.visible = on
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.physical_keycode == KEY_F12:

@@ -72,6 +72,12 @@ const JUMP_LEADS: Array[float] = [-1.0, 0.05, 0.10, 0.15, 0.20, 0.30, 0.45]
 ##
 ## The interaction is over inside two seconds; the rest is run-up and aftermath.
 var take_seconds := 8.0
+
+## How wide the form is.
+##
+## 400 was too narrow and the overflow had nowhere to go: "表单里面的字超宽了，右边被
+## 裁切了我看不到."
+const PANEL_WIDTH := 520.0
 const RUN_UP := 7.0
 
 const NUDGE := 0.01
@@ -123,6 +129,30 @@ func _ready() -> void:
 	for sibling in get_parent().get_children():
 		if sibling is SpectatorCamera:
 			_spectator = sibling
+	call_deferred("_focus_the_scene")
+
+## Hides the level's general-purpose panels and lights the two overlays this
+## scene exists to look at.
+##
+## THE OWNER, on the lab: "这个场景别展示 dev 面板里的无关信息干扰我...默认显示胶囊体
+## 和曲线，我需要仅看到对我有帮助的信息." A level's HUD answers "what is the body
+## doing"; this scene answers "where is the body, and what frame is on screen",
+## and the level's answer sits on top of that one in the same corner.
+##
+## HIDDEN, NOT REMOVED. DebugHud's own _ready() is what CREATES CapsuleDebug,
+## ShimmyDebug and ScriptedPathDebug -- take the node out of the scene and the
+## overlays go with it. So the HUD stays and its text is switched off. That is
+## also why this runs deferred: those children are added deferred themselves and
+## are not in the tree yet on the tick this node is ready.
+func _focus_the_scene() -> void:
+	var level := get_parent()
+	for panel in ["DebugHUD", "TuningPanel"]:
+		var node: Node = level.get_node_or_null(NodePath(panel))
+		if node is CanvasLayer:
+			(node as CanvasLayer).visible = false
+	for child in level.get_children():
+		if child.has_method("show_overlay"):
+			child.call("show_overlay", true)
 	_load()
 	call_deferred("_take")
 
@@ -222,6 +252,7 @@ func _physics_process(_delta: float) -> void:
 		"clip_time": _clip_time(),
 		"move": player.move_manager.current_name,
 		"progress": player.scripted_progress(),
+		"duration": _scripted_duration(),
 		"obstacle": Vector2(height(), width()),
 	})
 	if float(_frames.size()) / float(Engine.physics_ticks_per_second) >= take_seconds:
@@ -395,6 +426,18 @@ func _advance_playback() -> void:
 		_note = "finished"
 		return
 	_scrub(steps)
+
+## How long the scripted move running RIGHT NOW lasts, or 0 if none is.
+##
+## Recorded per frame rather than read live at scrub time: scrubbing poses the
+## body from the take while the simulation sits at whatever it finished on, so
+## asking the live move manager would report the wrong move's duration for every
+## frame except the last.
+func _scripted_duration() -> float:
+	var move = player.move_manager.move_for(player.move_manager.current_name)
+	if move == null or not move.has_method("path_debug"):
+		return 0.0
+	return float(move.path_debug().get("duration", 0.0))
 
 func _frame_progress() -> float:
 	if _frames.is_empty():
@@ -653,8 +696,8 @@ func _build_ui() -> void:
 	add_child(layer)
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	panel.offset_left = -400.0
-	panel.custom_minimum_size = Vector2(400.0, 0.0)
+	panel.offset_left = -PANEL_WIDTH
+	panel.custom_minimum_size = Vector2(PANEL_WIDTH, 0.0)
 	layer.add_child(panel)
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
@@ -669,7 +712,13 @@ func _build_ui() -> void:
 	# child unlimited room, and a column asked how wide it wants to be answers
 	# "as narrow as my widest label".
 	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# THE SAME IDEA SIDEWAYS. Horizontal scrolling was off, which does not mean
+	# "make it fit" -- it means anything wider than the panel is silently cut:
+	# "表单里面的字超宽了，右边被裁切了我看不到." AUTO puts a bar there when something
+	# overflows and stays out of the way when nothing does. The widening and the
+	# clipped option buttons below should mean it never appears; this is the net
+	# under them, so a long clip name can never again hide its own tail.
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_child(scroll)
 	var column := VBoxContainer.new()
@@ -786,6 +835,7 @@ func _build_ui() -> void:
 	preview_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(preview_note)
 	_preview_pick = OptionButton.new()
+	_preview_pick.clip_text = true
 	_preview_pick.item_selected.connect(func(i):
 		if _ui_syncing: return
 		_preview_clip = StringName(_preview_pick.get_item_text(i))
@@ -832,6 +882,7 @@ func _build_ui() -> void:
 	column.add_child(_heading("KEYS FOR THIS COMBINATION"))
 	_key_list = ItemList.new()
 	_key_list.custom_minimum_size = Vector2(0.0, 160.0)
+	_key_list.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_key_list.item_selected.connect(_go_to_key)
 	column.add_child(_key_list)
 
@@ -875,6 +926,10 @@ func _options(into: Node, label_text: String, items: Array, selected: int) -> Op
 	for item in items:
 		box.add_item(str(item))
 	box.selected = selected
+	# A DROPDOWN SIZES ITSELF TO ITS LONGEST ENTRY unless told not to, and one
+	# clip name is enough to push the whole column past the panel. Clipped here,
+	# readable in the list it drops down, and the tooltip carries the full text.
+	box.clip_text = true
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(box)
 	into.add_child(row)
@@ -1054,18 +1109,29 @@ func _refresh_ui() -> void:
 	_fit_label.text = _fit_text(trim_clip, whole, per_frame)
 	var progress: float = _frame_progress()
 	var seconds: float = float(_cursor) / float(Engine.physics_ticks_per_second)
+	# THE FOUR THINGS ASKED FOR, and nothing else: "不如显示当前的状态机是什么，播放的
+	# 动画逻辑帧是几帧，当前播到了第几帧，持续时间是多少."
+	var clip: StringName = _frame_clip()
+	var frames_in_clip := 0
+	if _anim_player != null and clip != Move.KEEP 			and _anim_player.has_animation(String(clip)):
+		frames_in_clip = int(round(
+			_anim_player.get_animation(String(clip)).length / _clip_frame_seconds()))
+	var duration: float = 0.0
+	if not _frames.is_empty():
+		duration = float(_frames[_cursor].get("duration", 0.0))
 	_readout.text = NEWLINE.join([
-		"frame %d / %d      %.2f s" % [_cursor, maxi(_frames.size() - 1, 0), seconds],
-		"move  %s" % (String(_frames[_cursor].get("move", "-")) if not _frames.is_empty() else "-"),
-		"clip  %s" % String(_frame_clip()),
-		"path  %s" % ("t = %.3f" % progress if progress >= 0.0 else "not a scripted frame"),
-		"clip at frame %s" % _clip_frame_text(),
+		"state     %s" % (String(_frames[_cursor].get("move", "-")) if not _frames.is_empty() else "-"),
+		"clip      %s  --  %d frames long" % [String(clip), frames_in_clip],
+		"playing   frame %s" % _clip_frame_text(),
+		"the move  %s" % ("lasts %.2f s, %.0f%% through" % [duration, progress * 100.0] 			if progress >= 0.0 else "not a scripted move"),
+		"the take  frame %d / %d   (%.2f s)" % [
+			_cursor, maxi(_frames.size() - 1, 0), seconds],
 	])
 	var keys: Array = _current_keys()
 	_key_list.clear()
 	for key in keys:
 		var pos: Vector3 = key.get("pos", Vector3.ZERO)
-		_key_list.add_item("t %.3f   (%+.3f, %+.3f, %+.3f)  yaw %+.1f" % [
+		_key_list.add_item("t %.3f  (%+.2f, %+.2f, %+.2f)  yaw %+.0f" % [
 			float(key.get("t", 0.0)), pos.x, pos.y, pos.z,
 			(key.get("rot", Vector3.ZERO) as Vector3).y])
 	if _play_button != null:
