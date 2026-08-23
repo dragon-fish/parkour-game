@@ -350,6 +350,23 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## means rising to it and then moving forward, and no symmetric bump does that.
 @export var vault_onto_vertical_lead: float = 0.45
 
+## How far above the obstacle's top the PELVIS passes, per variant, in metres.
+##
+## ✅ SET BY HAND, NOT DERIVED. THE OWNER, after several derivations missed: "我们
+## 直接来调弧线的最高点，每种动作变体对应一种. StepUp动画，最高点调整为障碍顶端+0.9m.
+## Vault动画，最高点调整为障碍顶端+0.45m."
+##
+## 📌 THE PELVIS, because the hips are pinned to the capsule's centre now -- so
+## these are the numbers you can watch against the obstacle rather than infer.
+## A folded capsule's centre sits about 0.45 above its own feet, which makes the
+## vault's 0.45 read as "feet grazing the top".
+## ⚠️ TUNED BY EYE, and meant to keep being. ✅ THE OWNER, with a drawing over a
+## screenshot: "我希望起终点不变、最高点降低一半...我来用眼睛测，我告诉你哪种动画最高点
+## 要更高还是更低." These two numbers are the dial; nothing else needs touching to
+## raise or lower an arc.
+@export var vault_over_apex_above_top: float = 0.2
+@export var vault_onto_apex_above_top: float = 0.9
+
 ## The same for a vault: 1 is a straight line at a constant speed. See
 ## GrabConfig.mantle_path_ease.
 @export var vault_path_ease: float = 1.0

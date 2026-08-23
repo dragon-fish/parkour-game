@@ -114,33 +114,21 @@ func sample(t: float) -> Vector3:
 	# measured 0.87 m BELOW the obstacle's top, with the feet never clearing it
 	# (docs/feel-backlog.md 27). It is hands-on-top, carrying the body PAST the
 	# obstacle -- a slide across, not a leap over. A flat middle is that slide.
-	var rise_end: float = knee_rise()
-	var fall_start: float = knee_fall()
-	var peak: float = peak_height()
-
-	var height: float
-	var travel: float
-	if t <= rise_end:
-		# UP THE FACE. Ease out into the top, and hold the travel almost still:
-		# every centimetre spent forward here is spent inside the obstacle.
-		var u: float = t / maxf(rise_end, 0.0001)
-		height = lerpf(_from.y, peak, 1.0 - pow(1.0 - u, 2.0))
-		travel = EDGE_TRAVEL * u * u
-	elif t <= fall_start:
-		# ACROSS THE TOP. Straight, in both axes -- this is the segment the old
-		# single curve had nowhere to put.
-		var u: float = (t - rise_end) / maxf(fall_start - rise_end, 0.0001)
-		height = peak
-		travel = lerpf(EDGE_TRAVEL, 1.0 - EDGE_TRAVEL, u)
-	else:
-		# DOWN THE FAR SIDE.
-		var u: float = (t - fall_start) / maxf(1.0 - fall_start, 0.0001)
-		height = lerpf(peak, _to.y, pow(u, 2.0))
-		travel = lerpf(1.0 - EDGE_TRAVEL, 1.0, 1.0 - pow(1.0 - u, 2.0))
-
-	var target := _from.lerp(_to, travel)
-	target.y = height
-	return target
+	# ✅ ONE CURVE, NOT THREE SEGMENTS. THE OWNER: "grabpullup 不要画蛇添足，就用一段
+	# 曲线，用贝塞尔曲线去做."
+	#
+	# 🎯 AND IT NEEDS NO APEX AT ALL, which is the part that makes it simpler
+	# rather than merely shorter. The control point goes DIRECTLY ABOVE THE START
+	# at the HEIGHT OF THE END: a quadratic Bezier then leaves the start moving
+	# straight up, arrives at the end moving level, and -- because the control is
+	# no higher than the destination -- never overshoots the rooftop on the way.
+	# Rise, then forward, in one expression, with nothing to tune.
+	#
+	# 📌 peak_height() is max(from, to) plus the arc, so a mantle's control sits
+	# on the roof by default and only rises above it if some obstacle asks.
+	var control := Vector3(_from.x, peak_height(), _from.z)
+	var u: float = 1.0 - eased
+	return _from * (u * u) + control * (2.0 * u * eased) + _to * (eased * eased)
 
 ## Where the rise stops and the flat crossing begins, in 0..1.
 func knee_rise() -> float:

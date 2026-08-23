@@ -29,6 +29,9 @@ var _planned_clearance: float = 0.0
 ## How far the rise leads the travel for THIS vault -- the shape, not the size.
 ## See SpeedVaultConfig.vault_onto_vertical_lead.
 var _planned_lead: float = 0.0
+## The world height the pelvis should pass through, settled at the commit from
+## the obstacle alone. The bump that reaches it is worked out at contact.
+var _planned_apex_y: float = 0.0
 var _touched: bool = false
 ## Where the obstacle's face was when the commit was made. See Move.touching().
 var _face_point: Vector3 = Vector3.ZERO
@@ -191,6 +194,13 @@ func enter(_previous: StringName) -> void:
 	# the feet never clear it at all (docs/feel-backlog.md 27). It is a
 	# hands-on-top move that carries the body PAST the obstacle, not over it.
 	var arc: float = config.speed_vault.vault_camera_arc
+	# ⚠️ THE APEX IS GEOMETRY; THE ARC IS NOT. Where the pelvis should pass is a
+	# fact about the obstacle and can be settled now. How big a bump reaches it
+	# depends on where the body IS when the move starts -- and this runs at the
+	# COMMIT, while begin() runs at CONTACT, with the body still rising in
+	# between. Deriving the bump here made the apex land 0.056 m high on a knob
+	# set to 0.2, which is enough to make tuning by eye lie.
+	var apex_y: float = 0.0
 	# `vault_over` PICKS THE LANDING, not `standable`.
 	#
 	# Those are different questions and the first attempt used the wrong one.
@@ -224,42 +234,36 @@ func enter(_previous: StringName) -> void:
 		else:
 			landing = far_point + _exit_direction * config.speed_vault.vault_exit_forward
 			landing.y = far_point.y + player.standing_height() * 0.5
-		# THE ARC IS DERIVED FROM THE OBSTACLE, and AIMED AT THE EYE.
+		# ✅ THE APEX IS SET, NOT DERIVED. THE OWNER, after several derivations
+		# missed: "我们直接来调弧线的最高点，每种动作变体对应一种...Vault动画，最高点调
+		# 整为障碍顶端+0.45m."
 		#
-		# See SpeedVaultConfig.vault_over_eye_above_top: a constant rise could
-		# not be right at more than one height, and aiming at the FEET while
-		# also folding the body subtracted the same drop twice -- which is what
-		# put the camera inside a solid wall.
+		# 📌 IT IS THE PELVIS THAT PASSES THERE, and that is what makes 0.45 mean
+		# something. The hips are pinned to the capsule's centre, and a folded
+		# capsule's centre sits about 0.45 above its own feet -- so "centre 0.45
+		# over the top" is "feet grazing the top". docs/feel-backlog.md 27
+		# measured the original's FEET at 0.87 BELOW the top; those two numbers
+		# are not in the same frame of reference, and this is the one that can be
+		# watched on screen.
 		#
-		# ScriptedMove adds the arc on top of the straight line between the
-		# ends, peaking in the middle, so what is wanted is the gap between that
-		# line's midpoint and where the feet should actually peak.
-		var half: float = player.standing_height() * 0.5
-		var eye_above_soles: float = config.camera.eye_height + half
-		var fold: float = 0.0
-		if not is_scramble():
-			fold = maxf(player.standing_height() - config.crouch.crouch_capsule_height, 0.0)
-		var wanted_eye: float = top.y + config.speed_vault.vault_over_eye_above_top
-		var wanted_peak: float = wanted_eye - (eye_above_soles - fold)
-		# ⚠️ EACH END WITH ITS OWN HALF-HEIGHT. ✅ THE OWNER: "1.5m的Vault动画，弧线
-		# 的最高点好像是用0.9m计算的，胶囊明明是一半高度，为什么动画还是按全高计算最高
-		# 点？"
-		#
-		# 🎯 EXACTLY RIGHT, AND THE ERROR IS COMPUTABLE. This converted BOTH
-		# capsule centres to feet using the STANDING half. The landing end is
-		# standing, so 0.9 is right there -- but the entry end is FOLDED, about
-		# 0.95 m tall, so its centre is 0.475 above its feet and not 0.9. The
-		# midpoint came out (folded_half - standing_half) / 2 too low, which is
-		# about 0.21 m, and every arc derived from it was that much too tall.
-		#
-		# 📌 test_vault_arc's own model never had this: its _peak_feet() takes the
-		# two ends in FEET and averages them, which is what this now does. The
-		# implementation had drifted from the test, rather than the other way
-		# round.
-		var entry_feet: float = player.global_position.y 			- player.current_capsule_height() * 0.5
-		var landing_feet: float = landing.y - half
-		var midpoint_feet: float = (entry_feet + landing_feet) * 0.5
-		arc = maxf(0.0, wanted_peak - midpoint_feet)
+		# ⚠️ A SYMMETRIC BUMP PEAKS IN THE MIDDLE of the straight line between the
+		# ends, so the arc wanted is the gap from that middle up to the apex.
+		apex_y = top.y + config.speed_vault.vault_over_apex_above_top
+		# ⚠️ SET WHERE THE ARC IS, not somewhere else that asks the same question
+		# again. It WAS asked again, in commit(), against a `query` that did not
+		# carry the answer -- so an over took the ONTO shape, whose crossing
+		# height is max(from, to) rather than the line's middle, and every apex
+		# came out 0.05 m high. Measured 1.501 where 1.450 was asked for, and
+		# 1.006 + 0.497 says exactly which formula produced it.
+		_planned_lead = config.speed_vault.vault_vertical_lead
+	else:
+		# ⚠️ THE OTHER SHAPE, THE OTHER RULE. ✅ "StepUp动画，最高点调整为障碍顶端
+		# +0.9m." A vault ONTO runs on the composite path, whose crossing height
+		# is max(from, to) rather than the line's middle -- so the arc wanted is
+		# the gap from THAT up to the apex, and it is zero whenever the landing
+		# is already the highest point, which for a step onto a flat top it is.
+		apex_y = top.y + config.speed_vault.vault_onto_apex_above_top
+		_planned_lead = config.speed_vault.vault_onto_vertical_lead
 
 	# WORKED OUT NOW, SPENT AT CONTACT.
 	#
@@ -277,15 +281,7 @@ func enter(_previous: StringName) -> void:
 	# docs/contact-drives-movement.md.
 	_landing = landing
 	_planned_clearance = arc
-	# ⚠️ WHICH SHAPE, decided by the same question that picked the landing. ✅ THE
-	# OWNER: "stepup 和 GrabPullUp 还是直线？" They were, because neither branch had
-	# anything but a symmetric bump available and this one's was zero.
-	#
-	# 🎯 A vault OVER carries the body PAST a thin obstacle -- measured, its peak
-	# sits 0.87 m BELOW the top and the feet never clear it -- so a shallow curve
-	# is honest there. A vault ONTO has to put the feet on the top, which means
-	# rising to it and then going forward, and no symmetric bump does that.
-	_planned_lead = config.speed_vault.vault_vertical_lead 		if bool(query.get("vault_over", false)) 		else config.speed_vault.vault_onto_vertical_lead
+	_planned_apex_y = apex_y
 
 	# A VAULT MUST NOT BE SLOWER THAN JUST RUNNING THERE.
 	#
@@ -360,6 +356,14 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			player.set_clip_lift_kept(0.0 if config.scripted_path_arcs
 					else player.clip_lift_kept_for(
 						player._current_clip(), _planned_clearance))
+			# THE BUMP, WORKED OUT NOW, from where the body actually is.
+			# A symmetric bump peaks at the middle of the straight line; the
+			# composite crosses at the higher end. Same apex, different base.
+			var base: float = (player.global_position.y + _landing.y) * 0.5
+			if _planned_lead > 0.0:
+				base = maxf(player.global_position.y, _landing.y)
+			if _planned_apex_y > 0.0:
+				_planned_clearance = maxf(0.0, _planned_apex_y - base)
 			begin(player.global_position, _landing, _arc_duration, _planned_clearance,
 					_planned_lead,
 					config.speed_vault.vault_path_ease)
