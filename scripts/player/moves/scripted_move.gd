@@ -126,7 +126,20 @@ func sample(t: float) -> Vector3:
 	#
 	# 📌 peak_height() is max(from, to) plus the arc, so a mantle's control sits
 	# on the roof by default and only rises above it if some obstacle asks.
-	var control := Vector3(_from.x, peak_height(), _from.z)
+	# ⚠️ HOW FAR THE CONTROL SITS BACK OVER THE START is what pushes the curve out
+	# or pulls it in. ✅ THE OWNER, drawing the tighter line they wanted against
+	# the wall: "黄色是当前Grab的贝塞尔曲线，我希望它整体往内部偏一点."
+	#
+	# Directly above the START -- a lead of 1 -- makes the body leave vertically
+	# and hang out at the start's own horizontal position before swinging in,
+	# which is the bulge in that screenshot. Sliding the control back toward the
+	# END pulls the whole curve in against the face.
+	#
+	# 📌 _vertical_lead ALREADY MEANT THIS, on the composite it replaced: how far
+	# the rise runs ahead of the travel. Same knob, same sentence, one curve
+	# instead of three segments.
+	var control := _to.lerp(_from, _vertical_lead)
+	control.y = peak_height()
 	var u: float = 1.0 - eased
 	return _from * (u * u) + control * (2.0 * u * eased) + _to * (eased * eased)
 

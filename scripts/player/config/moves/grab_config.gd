@@ -124,7 +124,11 @@ extends MoveConfig
 ## arc, so with no arc a pull-up rises to the height of the top it is climbing
 ## onto and then goes forward onto it. The number that was missing was never a
 ## clearance -- it was the shape.
-@export var mantle_vertical_lead: float = 0.45
+## 📌 NOW IT IS THE BEZIER'''S CONTROL POINT, slid back from the end toward the
+## start: 1 puts it directly over the start and the curve bulges away from the
+## wall before swinging in; lower pulls the whole line in against the face.
+## ✅ The owner, drawing the tighter line: "我希望它整体往内部偏一点." Tuned by eye.
+@export var mantle_vertical_lead: float = 0.7
 
 ## How the pull-up's travel is shaped: 1 is a straight line at a constant speed,
 ## 2 is the ease-out this move used to have.
