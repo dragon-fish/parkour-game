@@ -711,7 +711,23 @@ func _target_animation() -> StringName:
 				# begins matters less than how long it takes and what it looks
 				# like doing it. ClimbLedge is over before the body has left the
 				# lip.
-				return _first_available([&"ClimbUp_2m", &"ClimbLedge", &"ClimbUp_1m",
+				# ⚠️ AND THAT ARGUMENT HAS NOW LOST IN ITS TURN. ✅ THE OWNER, after
+				# the path started carrying the rise: "Grab动画改成1m的版本."
+				#
+				# 🎯 THE GROUND UNDER THE OLD REASONING MOVED. ClimbUp_2m won on
+				# being a slow haul at a time when the CLIP had to supply the
+				# whole climb -- the capsule went in a straight line and the hips
+				# did the work. Neither is true now: the pelvis is pinned to the
+				# capsule and a bezier lifts it, so what the clip owes is the
+				# POSE, and the long one spends most of its length hauling a body
+				# that is already being carried.
+				#
+				# 📌 The duration does not follow the clip any more either.
+				# _scripted_fit() stretches whatever is kept into
+				# mantle_duration, and 0.667 into 1.3 is 0.51x -- well inside the
+				# clamp, so the shorter clip simply plays slower rather than
+				# ending early.
+				return _first_available([&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
 					&"Jump_Start", &"jump", &"idle"])
 			# Climb_Idle is UAL1's hang, and it is now here -- the comment
 			# that used to stand at this line said it was "behind the paid

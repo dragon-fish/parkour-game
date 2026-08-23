@@ -373,7 +373,7 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## peaks +0.345 over its top with this set to 0.2, because the knob is not
 ## governing there at all. Whether that is right has not been looked at.
 @export var vault_over_apex_above_top: float = 0.2
-@export var vault_onto_apex_above_top: float = 0.9
+@export var vault_onto_apex_above_top: float = 1.15
 
 ## The same for a vault: 1 is a straight line at a constant speed. See
 ## GrabConfig.mantle_path_ease.
