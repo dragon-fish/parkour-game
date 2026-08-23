@@ -956,7 +956,14 @@ func _build_ui() -> void:
 		buttons.add_child(button)
 	column.add_child(buttons)
 
-	column.add_child(_heading("SKIP THE START OF THIS CLIP"))
+	# TRIM, which is what Mixamo calls the same control and what this code has
+	# called it internally all along -- _trim_start, _trim_length, _trim_clip.
+	# The heading was written when it only skipped the start; it is a range now,
+	# and the panel may as well use the word the rest of the world uses.
+	#
+	# 📌 Mixamo expresses it as a PERCENTAGE pair over a stated frame count. This
+	# one takes frame numbers, on the owner's call: "所以可能还是得按帧."
+	column.add_child(_heading("TRIM THIS CLIP"))
 	var trim_note := Label.new()
 	trim_note.text = "Which frames of this clip play in this move. How LONG they take is not set here: the kept range is stretched to fill the move, whatever its duration turns out to be."
 	trim_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
