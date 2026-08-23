@@ -96,3 +96,36 @@ func test_the_third_person_offset_is_reachable_from_the_tuning_panel() -> void:
 			"camera.third_person_back"]:
 		assert_true(found.has(wanted), \
 			"%s is not tunable from the panel -- found %s" % [wanted, ", ".join(found)])
+
+# --- a body the scene did not name -----------------------------------------------
+
+func test_a_profile_adopted_after_ready_still_attaches_its_body() -> void:
+	# ✅ THE OWNER: "干脆给 main 也挂上人物模型嘛."
+	#
+	# ⚠️ AND IT CANNOT BE DONE IN THE SCENE. The profile points at a licensed
+	# model that is not in the repository, so a committed main.tscn naming it
+	# would break every checkout without it -- and fail test_generated_scenes.gd,
+	# which compares the builder's output against what is committed. Only a
+	# git-ignored scene can afford to reference a git-ignored resource, which is
+	# why the sandbox was the only level with a body.
+	#
+	# So the level asks at runtime, which means asking AFTER _ready() has run --
+	# and apply() sets body_scene as one of the things it sets, so the attach has
+	# to be re-triggered rather than merely awaited.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	assert_null(player.get_node_or_null("BodyRoot/fake_body"),
+		"the fixture already had a body, so this proves nothing")
+
+	var profile := BodyProfile.new()
+	profile.scene = TestWorld.build_stub_body()
+	player.adopt_body_profile(profile)
+	await step(2)
+	assert_not_null(player.body,
+		"a profile adopted after _ready() attached no body")
+	assert_eq(player.body_profile, profile, "the profile was not kept")
+	TestWorld.teardown(world)
+	await step(1)

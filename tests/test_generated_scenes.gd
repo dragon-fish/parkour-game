@@ -153,3 +153,30 @@ func _f(value: float) -> String:
 
 func _v(value: Vector3) -> String:
 	return "(%s,%s,%s)" % [_f(value.x), _f(value.y), _f(value.z)]
+
+# --- the calibration course is opt-in ------------------------------------------
+
+func test_the_template_does_not_carry_the_calibration_course() -> void:
+	# ✅ THE OWNER: "能不能别让 calibration_course 出现在每一个场景里."
+	#
+	# scripts/level/arena.gd is the script on templates/base_level.tscn as well
+	# as on main.tscn, so a course loaded unconditionally turned up in every
+	# whitebox built from that template -- 60 m of graded obstacles nobody asked
+	# for, in scenes that exist to isolate one piece of geometry.
+	var template := load("res://templates/base_level.tscn") as PackedScene
+	assert_not_null(template, "the level template is missing")
+	var level := template.instantiate()
+	assert_false(bool(level.get("load_calibration_course")),
+		"a level built from the template still loads the calibration course")
+	level.free()
+
+func test_the_generated_arena_does_carry_it() -> void:
+	# The pair: a bench of graded obstacles belongs SOMEWHERE, and the arena is
+	# where. Without this, the test above passes on a build that has quietly
+	# deleted the course from everywhere at once.
+	var main := load("res://scenes/main.tscn") as PackedScene
+	assert_not_null(main, "scenes/main.tscn is missing")
+	var arena := main.instantiate()
+	assert_true(bool(arena.get("load_calibration_course")),
+		"the arena stopped loading the calibration course")
+	arena.free()

@@ -981,6 +981,30 @@ func _ready() -> void:
 	if body_scene != null:
 		_attach_body(body_scene)
 
+## Takes a profile the SCENE did not carry, and attaches whatever body it names.
+##
+## ⚠️ EXISTS BECAUSE THE PROFILE CANNOT BE BAKED INTO A COMMITTED SCENE. The one
+## this project plays with points at a licensed model that is not in the
+## repository, so a generated main.tscn naming it would be a committed reference
+## to a file most checkouts do not have -- and test_generated_scenes.gd, which
+## compares the builder's output against what is committed, would fail on any
+## machine without it.
+##
+## So the level asks at RUNTIME instead, the same way it asks for the sandbox
+## and the calibration course: if the file is there, use it; if not, carry on
+## with no body at all. See Arena._load_body_profile().
+##
+## _ready() has already run by then, which is the whole reason this is a method
+## rather than a property write: apply() sets body_scene as one of the things it
+## sets, so the attach has to be re-triggered afterwards.
+func adopt_body_profile(profile: BodyProfile) -> void:
+	if profile == null:
+		return
+	body_profile = profile
+	profile.apply(self)
+	if body_scene != null:
+		_attach_body(body_scene)
+
 ## Instances `scene` under BodyRoot and wires up everything that depends on
 ## having a real body: the idle/run/jump AnimationTree (see
 ## _wire_body_animation()) and the head-follow camera's target node (see

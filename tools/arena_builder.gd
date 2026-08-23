@@ -171,6 +171,11 @@ func build() -> Node3D:
 	_root = Node3D.new()
 	_root.name = "Arena"
 	_root.set_script(load("res://scripts/level/arena.gd"))
+	# ✅ ON HERE AND OFF EVERYWHERE ELSE. Arena.load_calibration_course defaults
+	# to false so the same script on templates/base_level.tscn stops dropping 60 m
+	# of graded obstacles into every whitebox built from it -- see the owner's
+	# request there. A bench of them belongs in the arena.
+	_root.set("load_calibration_course", true)
 
 	var light := DirectionalLight3D.new()
 	light.name = "Sun"

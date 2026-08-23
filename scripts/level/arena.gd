@@ -31,6 +31,11 @@ func _ready() -> void:
 		# an earlier run has no business deciding what the test starts in.
 		player.camera_rig.load_preferences()
 
+	# AFTER setup(), which is what gives the player its config -- the mount
+	# transform an attach captures is measured against the capsule, and the
+	# capsule's height comes from there.
+	_load_body_profile()
+
 	add_child(_death_sequence)
 	_death_sequence.finished.connect(reset_player)
 	_load_sandbox()
@@ -103,11 +108,48 @@ const SANDBOX_SCENE := "res://scenes/sandbox.tscn"
 ## Graded obstacles for judging what the move system does with each, by running
 ## at them. Committed, unlike the sandbox above, because the numbers behind it
 ## came out of the original with a stopwatch and are worth not losing -- see
-## tools/build_calibration_course.gd. Optional in exactly the same way, so
-## deleting the scene simply removes the course.
+## tools/build_calibration_course.gd.
 const CALIBRATION_SCENE := "res://scenes/calibration_course.tscn"
 
+## Whether to drop the calibration course into this level.
+##
+## ✅ OFF BY DEFAULT, at the owner's request: "能不能别让 calibration_course 出现在
+## 每一个场景里." This script is the one on templates/base_level.tscn as well as on
+## main.tscn, so a course loaded unconditionally turned up in every level built
+## from that template -- including whiteboxes where it is 60 m of scenery nobody
+## asked for.
+##
+## The generated arena turns it on, which is where a bench of graded obstacles
+## belongs.
+@export var load_calibration_course: bool = false
+
+## The body this level plays with, if the file is there.
+##
+## ⚠️ NOT A SCENE REFERENCE, and it cannot be one. The profile points at a
+## licensed model that is not in the repository, so a committed main.tscn naming
+## it would break every checkout without that model -- and fail
+## test_generated_scenes.gd, which compares the builder's output against what is
+## committed. Loading it at runtime keeps the generated scene exactly what its
+## generator produces, and a checkout with no model simply plays with no body.
+const BODY_PROFILE := "res://scenes/player/profiles/vrm_test.tres"
+
+## Gives the player a body when the scene did not name one.
+##
+## ✅ THE OWNER: "干脆给 main 也挂上人物模型嘛." Only the sandbox carried the profile,
+## because only a git-ignored scene can afford to reference a git-ignored
+## resource.
+func _load_body_profile() -> void:
+	if player == null or player.body_profile != null:
+		return
+	if not ResourceLoader.exists(BODY_PROFILE):
+		return
+	var profile := load(BODY_PROFILE) as BodyProfile
+	if profile != null:
+		player.adopt_body_profile(profile)
+
 func _load_calibration_course() -> void:
+	if not load_calibration_course:
+		return
 	if not ResourceLoader.exists(CALIBRATION_SCENE):
 		return
 	var packed: PackedScene = load(CALIBRATION_SCENE)
