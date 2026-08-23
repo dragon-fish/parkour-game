@@ -91,6 +91,10 @@ var _anim_player: AnimationPlayer
 var _anim_tree: AnimationTree
 ## The state machine's own clock. See _clip_time().
 var _playback: AnimationNodeStateMachinePlayback
+var _spectator: SpectatorCamera
+## Real-time playback of the recording. See _toggle_play().
+var _playing := false
+var _play_clock: int = 0
 
 func _ready() -> void:
 	_build_ui()
@@ -98,6 +102,9 @@ func _ready() -> void:
 	# every click belongs to the form: "玩家把我的鼠标劫持了，我要当旁观者相机."
 	if player != null:
 		player.owns_mouse = false
+	for sibling in get_parent().get_children():
+		if sibling is SpectatorCamera:
+			_spectator = sibling
 	_load()
 	call_deferred("_take")
 
@@ -302,6 +309,41 @@ func _scrub(by: int) -> void:
 		_live_rotation = keyed[1]
 	player.set_clip_offset_immediately(_live_position, _live_rotation)
 
+## Runs the recording at its own speed, so a keyed take can be watched rather
+## than only stepped through.
+##
+## ✅ THE OWNER: "还得给我一个播放键让我完整预览一次调好的动画."
+##
+## ⚠️ ON A REAL CLOCK, for the reason SpectatorCamera documents: the world is
+## frozen at Engine.time_scale = 0 so the recording can be scrubbed, and a
+## scaled delta is zero along with it.
+func _toggle_play() -> void:
+	if _frames.is_empty():
+		return
+	_playing = not _playing
+	_play_clock = Time.get_ticks_usec()
+	if _playing and _cursor >= _frames.size() - 1:
+		# Starting from the end means starting again.
+		_scrub(_scripted_start() - _cursor)
+	_note = "playing" if _playing else "paused at frame %d" % _cursor
+
+func _advance_playback() -> void:
+	if not _playing:
+		return
+	var now: int = Time.get_ticks_usec()
+	var elapsed: float = float(now - _play_clock) / 1000000.0
+	var per_frame: float = 1.0 / float(Engine.physics_ticks_per_second)
+	if elapsed < per_frame:
+		return
+	var steps: int = mini(int(elapsed / per_frame), 8)
+	_play_clock = now
+	if _cursor + steps >= _frames.size() - 1:
+		_scrub(_frames.size() - 1 - _cursor)
+		_playing = false
+		_note = "finished"
+		return
+	_scrub(steps)
+
 func _frame_progress() -> float:
 	if _frames.is_empty():
 		return -1.0
@@ -439,12 +481,14 @@ func _handle(key: int) -> bool:
 			_scrub(-10)
 		KEY_E:
 			_scrub(10)
-		KEY_W:
+		KEY_UP:
 			_height_index = mini(_height_index + 1, _height_count() - 1)
 			_take()
-		KEY_S:
+		KEY_DOWN:
 			_height_index = maxi(_height_index - 1, 0)
 			_take()
+		KEY_SPACE:
+			_toggle_play()
 		KEY_EQUAL:
 			_width_index = mini(_width_index + 1, WIDTHS.size() - 1)
 			_take()
@@ -493,6 +537,14 @@ func _height_count() -> int:
 func _input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo or _recording:
 		return
+	# ⚠️ THE CAMERA HAS THE KEYBOARD WHILE IT IS FLYING, and W and S used to be
+	# bound to the obstacle height here as well. ✅ The owner: "在编辑器里我按 WASD
+	# 时会触发重新模拟" -- pressing W without the right button held changed the
+	# wall and threw the take away. Height is on the arrow keys now, and this
+	# stands down entirely while the camera is being driven, so the two can never
+	# both answer one key.
+	if _spectator != null and _spectator.is_flying():
+		return
 	if _handle((event as InputEventKey).physical_keycode):
 		get_viewport().set_input_as_handled()
 
@@ -515,6 +567,7 @@ var _lead_box: OptionButton
 var _offset_boxes: Array[SpinBox] = []
 var _yaw_box: SpinBox
 var _key_list: ItemList
+var _play_button: Button
 var _readout: Label
 var _status: Label
 
@@ -595,6 +648,10 @@ func _build_ui() -> void:
 		button.pressed.connect(func(): _scrub(by))
 		steps.add_child(button)
 	column.add_child(steps)
+	_play_button = Button.new()
+	_play_button.text = "▶  Play  (Space)"
+	_play_button.pressed.connect(_toggle_play)
+	column.add_child(_play_button)
 	var to_move := Button.new()
 	to_move.text = "jump to the scripted move"
 	to_move.pressed.connect(func(): _scrub(_scripted_start() - _cursor))
@@ -633,7 +690,7 @@ func _build_ui() -> void:
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(_status)
 	var hint := Label.new()
-	hint.text = "A/D frame   Q/E ten   IJKL/UO nudge   ;' yaw   Shift coarse   Ctrl fine"
+	hint.text = "Space play   A/D frame   Q/E ten   Up/Down height   IJKL/UO nudge   ;' yaw\nRight-drag to fly the camera; the keys above stand down while you do"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(hint)
 
@@ -747,8 +804,11 @@ func _refresh_ui() -> void:
 		_key_list.add_item("t %.3f   (%+.3f, %+.3f, %+.3f)  yaw %+.1f" % [
 			float(key.get("t", 0.0)), pos.x, pos.y, pos.z,
 			(key.get("rot", Vector3.ZERO) as Vector3).y])
+	if _play_button != null:
+		_play_button.text = "❚❚  Pause  (Space)" if _playing else "▶  Play  (Space)"
 	_status.text = _note + NEWLINE + ProjectSettings.globalize_path(SAVE_PATH)
 	_ui_syncing = false
 
 func _process(_delta: float) -> void:
+	_advance_playback()
 	_refresh_ui()

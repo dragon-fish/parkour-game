@@ -64,7 +64,7 @@ func _mantling_player() -> Array:
 
 # --- the shape ------------------------------------------------------------------
 
-func test_nothing_moves_forward_until_the_body_is_over_the_lip() -> void:
+func test_a_lead_keeps_the_body_over_the_lip_before_it_travels() -> void:
 	# ⚠️ THE INVARIANT, and it took two goes to state. The first version pinned
 	# the travel to under 20% at 40% of the way through, which was true of the
 	# two-phase hook it was written against and false of the composite that
@@ -75,11 +75,23 @@ func test_nothing_moves_forward_until_the_body_is_over_the_lip() -> void:
 	# does: every centimetre of forward travel spent below the lip is spent
 	# inside the wall. So walk the path and check the height at the moment the
 	# travel first becomes real.
+	# ⚠️ THIS PINS THE MACHINERY, NOT THE DEFAULT, and the difference is the
+	# owner's own methodology arriving:
+	#
+	# ✅ "胶囊体的运动不一定要符合物理规律，它越简单越好，是镜头和动画去配合它."
+	#
+	# So the shipped mantle is back to one curve, and the body passing through
+	# the face is not a defect to be designed out -- the animation and the camera
+	# cover it. The composite path stays available and stays tested, because the
+	# day something genuinely needs a hooked path it should not have to be
+	# rediscovered. See docs/capsule-leads-presentation.md.
 	var bits: Array = await _mantling_player()
 	var player: Player = bits[0]
 	var grab: GrabMove = bits[1]
 	var start: Vector3 = bits[2]
 	assert_true(grab.is_mantling(), "the fixture never started a pull-up")
+	grab.begin(start, grab._to, player.config.grab.mantle_duration,
+		player.config.grab.mantle_arc_height, 1.0)
 	var target: Vector3 = grab._to
 	var span: float = absf(target.z - start.z)
 	var slice: float = player.config.grab.mantle_duration / 40.0

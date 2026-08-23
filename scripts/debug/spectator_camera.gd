@@ -28,6 +28,11 @@ func _ready() -> void:
 	current = true
 	_last_tick = Time.get_ticks_usec()
 
+## Whether the right button is down, i.e. whether this camera currently owns
+## WASD. Read by AnimationLab, which binds some of the same keys.
+func is_flying() -> bool:
+	return _flying
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_RIGHT:

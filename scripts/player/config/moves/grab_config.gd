@@ -86,7 +86,20 @@ extends MoveConfig
 ##
 ## 1.0 is the full hook. See ScriptedMove.begin(), where 0 reduces to the single
 ## curve every other scripted move still uses.
-@export var mantle_vertical_lead: float = 1.0
+## ✅ BACK TO ZERO, at the owner's direction after playing the composite: "我觉得
+## 这一版曲线改得挺糟糕的，要不然先改回之前的单段程序化曲线，反正都是手K关键帧偏移，
+## 越简单的运动曲线反而对我来说越容易."
+##
+## 🎯 And that is a better argument than the one it overturns. The three-segment
+## path was reasoning about where the obstacle is; hand-keyed offsets solve the
+## same problem directly, and they are far easier to author against a curve you
+## can predict than against one with two knees in it. A base curve that needs
+## explaining is a base curve the keys have to fight.
+##
+## The machinery stays -- ScriptedMove.begin() still takes a lead, and 0 runs the
+## old code path verbatim rather than an equivalent of it -- so this is one
+## number away from coming back if the keying says it should.
+@export var mantle_vertical_lead: float = 0.0
 
 ## How fast the hands travel along a ledge while shimmying, in metres/second.
 ##

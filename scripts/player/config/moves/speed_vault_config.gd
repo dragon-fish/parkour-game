@@ -336,6 +336,9 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## 📌 Applies to every row. The low ones barely notice -- auto_step_up's whole
 ## rise is 0.48 m and its arc is a few centimetres -- while the high ones, which
 ## are the ones that clipped, change the most.
-@export var vault_vertical_lead: float = 1.0
+## ✅ BACK TO ZERO with the mantle's, and for the owner's reason rather than
+## mine: "反正都是手K关键帧偏移，越简单的运动曲线反而对我来说越容易." See
+## GrabConfig.mantle_vertical_lead.
+@export var vault_vertical_lead: float = 0.0
 
 @export var duration_floor_pct: float = 0.7
