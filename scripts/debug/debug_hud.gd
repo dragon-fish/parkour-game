@@ -52,6 +52,12 @@ func _ready() -> void:
 	shimmy.name = "ShimmyDebug"
 	shimmy.player = player
 	get_parent().add_child.call_deferred(shimmy)
+	# And the path a scripted move is following, against the one the body took.
+	# ✅ The owner: "你能不能把曲线画出来啊，我真的不知道现在的曲线长什么样子."
+	var path := ScriptedPathDebug.new()
+	path.name = "ScriptedPathDebug"
+	path.player = player
+	get_parent().add_child.call_deferred(path)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -152,7 +158,7 @@ func _process(delta: float) -> void:
 		"
 ".join(_transitions) if not _transitions.is_empty() else "  (none yet)",
 		"",
-		"Tab HUD  F9 clip tuner  F10 capsule  F11 shimmy  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
+		"Tab HUD  F9 clip  F10 capsule  F11 shimmy  F12 path  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
 		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
 	])
 

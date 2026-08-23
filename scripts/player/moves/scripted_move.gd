@@ -59,10 +59,17 @@ func progress() -> float:
 func advance(delta: float) -> bool:
 	_elapsed += delta
 	var t := progress()
-	# Ease-out: most of the travel happens early, so the action reads as a
-	# push-off rather than a constant-speed slide. The exponent is a curve-shape
-	# decision, not a feel dial with a meaningful tuning range, so it stays a
-	# literal here rather than moving into MovementConfig alongside _arc.
+	player.global_position = sample(t)
+	return t >= 1.0
+
+## Where the path is at `t` in 0..1.
+##
+## ⚠️ SPLIT OUT SO THE DEBUG VIEW CAN DRAW THE REAL CURVE. ✅ The owner: "你能不能
+## 把曲线画出来啊，我真的不知道现在的曲线长什么样子." A drawer that recomputed the same
+## arithmetic would be a picture of a SECOND implementation -- one that agrees
+## with this until the moment a difference is what you are looking for. Same rule
+## Probes follows by handing back the segments it actually fired.
+func sample(t: float) -> Vector3:
 	var eased := 1.0 - pow(1.0 - t, 2.0)
 	if _vertical_lead <= 0.0:
 		# ONE CURVE FOR ALL THREE AXES, plus a symmetric bump. Left byte for byte
@@ -70,31 +77,27 @@ func advance(delta: float) -> bool:
 		# how it did.
 		var flat := _from.lerp(_to, eased)
 		flat.y += sin(t * PI) * _arc
-		player.global_position = flat
-		return t >= 1.0
+		return flat
 
 	# ⚠️ THREE SEGMENTS, NOT ONE, and the middle one is STRAIGHT.
 	#
 	# ✅ THE OWNER, on a shape a single curve cannot make: "对于宽度站不下一个人的
 	# 障碍，就是抬升 -> 滑过障碍顶部 -> 落地，它是多段贝塞尔曲线+直线组成的复合曲线,
-	# 不应该是我们目前的单段." And with a drawing, for both this and the pull-up:
-	# "其实应该先抬升到障碍的高度再往前送."
+	# 不应该是我们目前的单段."
 	#
 	# A bump added to a straight line is symmetric about the MIDDLE OF THE
 	# JOURNEY, and the obstacle is not in the middle of the journey -- it is at
 	# the near end of it. So the body was still climbing while it was already
-	# inside the face. Worse, it began descending at the halfway mark, which is
+	# inside the face, and it began descending at the halfway mark, which is
 	# exactly where it should still be sliding along the top.
 	#
 	# 📌 And the source agrees about what this move IS: a VaultOver's peak was
 	# measured 0.87 m BELOW the obstacle's top, with the feet never clearing it
 	# (docs/feel-backlog.md 27). It is hands-on-top, carrying the body PAST the
 	# obstacle -- a slide across, not a leap over. A flat middle is that slide.
-	var rise_end: float = lerpf(0.5, 0.28, _vertical_lead)
-	var fall_start: float = lerpf(0.5, 0.62, _vertical_lead)
-	# Clear of BOTH ends, so this reads as a rise whichever way the journey
-	# slopes: a pull-up finishes above where it started, a vault-over below.
-	var peak: float = maxf(_from.y, _to.y) + _arc
+	var rise_end: float = knee_rise()
+	var fall_start: float = knee_fall()
+	var peak: float = peak_height()
 
 	var height: float
 	var travel: float
@@ -118,5 +121,28 @@ func advance(delta: float) -> bool:
 
 	var target := _from.lerp(_to, travel)
 	target.y = height
-	player.global_position = target
-	return t >= 1.0
+	return target
+
+## Where the rise stops and the flat crossing begins, in 0..1.
+func knee_rise() -> float:
+	return lerpf(0.5, 0.28, _vertical_lead)
+
+## Where the flat crossing ends and the drop begins, in 0..1.
+func knee_fall() -> float:
+	return lerpf(0.5, 0.62, _vertical_lead)
+
+## The height the crossing happens at. Clear of BOTH ends, so this reads as a
+## rise whichever way the journey slopes: a pull-up finishes above where it
+## started, a vault-over below.
+func peak_height() -> float:
+	return maxf(_from.y, _to.y) + _arc
+
+## Everything a debug view needs to draw this path, or an empty dictionary when
+## nothing is running. See sample().
+func path_debug() -> Dictionary:
+	if _duration <= 0.0001 or _elapsed >= _duration:
+		return {}
+	return {"from": _from, "to": _to, "progress": progress(),
+		"lead": _vertical_lead, "arc": _arc, "duration": _duration,
+		"knee_rise": knee_rise(), "knee_fall": knee_fall(),
+		"peak": peak_height()}
