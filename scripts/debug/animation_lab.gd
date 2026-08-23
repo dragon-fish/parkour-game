@@ -63,7 +63,15 @@ const SPEEDS: Array[float] = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.2]
 ## recorded.
 const JUMP_LEADS: Array[float] = [-1.0, 0.05, 0.10, 0.15, 0.20, 0.30, 0.45]
 
-const TAKE_SECONDS := 8.0
+## How long a take runs for.
+##
+## ⚠️ A VARIABLE SO A CHECK CAN SHORTEN IT. A take is 480 physics ticks and
+## nothing makes those arrive faster, so every diagnostic that recorded a full
+## one cost eight seconds of wall clock, and enough of them ran to make a pass
+## take ten minutes. ✅ The owner: "你不能每次都跑将近十分钟的单测."
+##
+## The interaction is over inside two seconds; the rest is run-up and aftermath.
+var take_seconds := 8.0
 const RUN_UP := 7.0
 
 const NUDGE := 0.01
@@ -216,7 +224,7 @@ func _physics_process(_delta: float) -> void:
 		"progress": player.scripted_progress(),
 		"obstacle": Vector2(height(), width()),
 	})
-	if float(_frames.size()) / float(Engine.physics_ticks_per_second) >= TAKE_SECONDS:
+	if float(_frames.size()) / float(Engine.physics_ticks_per_second) >= take_seconds:
 		_finish()
 
 ## Holds the approach at a constant speed and presses jump on time.
@@ -624,6 +632,8 @@ var _offset_boxes: Array[SpinBox] = []
 var _yaw_box: SpinBox
 var _trim_start: SpinBox
 var _trim_length: SpinBox
+var _clip_span: Label
+var _fit_label: Label
 ## The clip the trim boxes were last filled from. See _refresh_ui().
 var _trim_clip: StringName = &""
 var _key_list: ItemList
@@ -740,19 +750,24 @@ func _build_ui() -> void:
 		buttons.add_child(button)
 	column.add_child(buttons)
 
-	column.add_child(_heading("CLIP TIMELINE  (this clip, all obstacles)"))
+	column.add_child(_heading("SKIP THE START OF THIS CLIP"))
 	var trim_note := Label.new()
-	trim_note.text = "Skip the clip's own lead-in; the engine's transition covers the join."
+	trim_note.text = "Which frames of this clip play in this move. How LONG they take is not set here: the kept range is stretched to fill the move, whatever its duration turns out to be."
 	trim_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(trim_note)
-	_trim_start = _spin(column, "start (s)", 0.0, 10.0, 0.01, 0.0)
+	_clip_span = Label.new()
+	column.add_child(_clip_span)
+	_fit_label = Label.new()
+	_fit_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_trim_start = _spin(column, "from frame", 0.0, 600.0, 1.0, 0.0)
 	_trim_start.value_changed.connect(func(_v):
 		if _ui_syncing: return
 		_write_timing())
-	_trim_length = _spin(column, "length (s)", 0.0, 10.0, 0.01, 0.0)
+	_trim_length = _spin(column, "to frame", 0.0, 600.0, 1.0, 0.0)
 	_trim_length.value_changed.connect(func(_v):
 		if _ui_syncing: return
 		_write_timing())
+	column.add_child(_fit_label)
 	var clear_trim := Button.new()
 	clear_trim.text = "play the whole clip"
 	clear_trim.pressed.connect(_clear_timing)
@@ -818,6 +833,32 @@ func _read_offset_boxes() -> void:
 	player.set_clip_offset_immediately(_live_position, _live_rotation)
 	_commit()
 
+## One frame of the CURRENT clip, in seconds.
+##
+## 🎯 MEASURED RATHER THAN ASSUMED, and the owner was right to warn me off taking
+## their framing for granted -- "我其实不知道 glb 动画是按时间还是按帧算的，你别听我
+## 说什么就是什么". Both halves turn out to be true:
+##
+##   Godot's Animation and glTF's samplers both store SECONDS. There are no
+##   frames in the file.
+##   But these clips were authored on a regular grid and say so: every one of
+##   them carries step = 0.0333, and the key times land on it -- ClimbUp_2m has
+##   39 keys, 37 of the 38 gaps exactly 0.0333 s.
+##
+## So "frame N" is a real thing here, recoverable as time / step, and the boxes
+## speak in it because that is the grid the animation was made on. The value
+## STORED stays in seconds, because that is what the engine wants.
+##
+## Read off the clip rather than hard-coded at 30, so a clip authored at another
+## rate is not quietly misread.
+func _clip_frame_seconds() -> float:
+	var clip: StringName = _frame_clip()
+	if _anim_player == null or clip == Move.KEEP \
+			or not _anim_player.has_animation(String(clip)):
+		return 1.0 / 30.0
+	var step: float = _anim_player.get_animation(String(clip)).step
+	return step if step > 0.0001 else 1.0 / 30.0
+
 ## Trims the clip that is playing at this frame, and re-records so the take
 ## shows the trim rather than describing it.
 ##
@@ -837,10 +878,23 @@ func _write_timing() -> void:
 	if clip == Move.KEEP:
 		_note = "no clip at this frame to trim"
 		return
-	player.body_clip_timings[clip] = [_trim_start.value, _trim_length.value]
+	# ✅ A RANGE, because that is the whole of what is being decided here: "我想要
+	# 的就是这个动画在这个动作状态机里播放第几帧到第几帧，时间是程序算的，咱管不了."
+	#
+	# Stored as (start, length) in seconds because that is what
+	# AnimationNodeAnimation's custom timeline takes. A `to` at or before `from`
+	# means "run on to the end", which stores as length 0.
+	var per_frame: float = _clip_frame_seconds()
+	var from_frame: float = _trim_start.value
+	var to_frame: float = _trim_length.value
+	var length: float = 0.0
+	if to_frame > from_frame:
+		length = (to_frame - from_frame) * per_frame
+	player.body_clip_timings[clip] = [from_frame * per_frame, length]
 	_apply_timing_live(clip)
 	_save()
-	_note = "%s trimmed to [%.2f, %.2f]" % [clip, _trim_start.value, _trim_length.value]
+	_note = "%s plays frames %d..%s" % [clip, int(from_frame),
+		"end" if length <= 0.0 else str(int(to_frame))]
 	_take()
 
 func _clear_timing() -> void:
@@ -927,11 +981,21 @@ func _refresh_ui() -> void:
 	# value nobody can finish entering. Caught by a test that set 0.30 and got
 	# 0.00 back.
 	var trim_clip: StringName = _frame_clip()
+	var per_frame: float = _clip_frame_seconds()
 	if trim_clip != _trim_clip:
 		_trim_clip = trim_clip
 		var trim: Array = player.body_clip_timings.get(trim_clip, [0.0, 0.0])
-		_trim_start.value = float(trim[0])
-		_trim_length.value = float(trim[1])
+		var from_frame: float = round(float(trim[0]) / per_frame)
+		_trim_start.value = from_frame
+		_trim_length.value = 0.0 if float(trim[1]) <= 0.0 \
+			else from_frame + round(float(trim[1]) / per_frame)
+	var whole: float = 0.0
+	if _anim_player != null and trim_clip != Move.KEEP \
+			and _anim_player.has_animation(String(trim_clip)):
+		whole = _anim_player.get_animation(String(trim_clip)).length
+	_clip_span.text = "%s has %d frames  (%.2f s at %.0f fps).   'to frame' 0 = run to the end." % [
+		String(trim_clip), int(round(whole / per_frame)), whole, 1.0 / per_frame]
+	_fit_label.text = _fit_text(trim_clip, whole, per_frame)
 	var progress: float = _frame_progress()
 	var seconds: float = float(_cursor) / float(Engine.physics_ticks_per_second)
 	_readout.text = NEWLINE.join([
@@ -955,3 +1019,39 @@ func _refresh_ui() -> void:
 func _process(_delta: float) -> void:
 	_advance_playback()
 	_refresh_ui()
+
+## What the stretch is doing to this clip right now.
+##
+## 🎯 THE RATE IS DERIVED, NOT SET. CharacterAnimator._scripted_fit() returns
+## clamp(kept clip length / move duration, 0.25, 4.0), so there is no rate dial
+## and there should not be: ✅ "时间是程序算的，咱管不了." What this line does is
+## show where that division currently lands, so a trim's effect on the pace is
+## visible instead of guessed at.
+##
+## ⚠️ It also says when the result is CLAMPED, which is the case worth catching:
+## past 4x the clip is no longer being fitted to the move at all, it is being run
+## as fast as the clamp allows and then simply ending early -- a held pose for
+## the rest of the move, which is the exact symptom the owner reported as "跳过
+## 开头 6 帧，最后 6 帧定格在那里".
+func _fit_text(clip: StringName, whole: float, per_frame: float) -> String:
+	if clip == Move.KEEP or whole <= 0.0:
+		return ""
+	var kept: float = whole
+	if player.body_clip_timings.has(clip):
+		var trim: Array = player.body_clip_timings[clip]
+		var length: float = float(trim[1])
+		kept = length if length > 0.0 else maxf(whole - float(trim[0]), 0.0)
+	var duration: float = 0.0
+	var move = player.move_manager.move_for(player.move_manager.current_name)
+	if move != null and move.has_method("path_debug"):
+		var path: Dictionary = move.path_debug()
+		duration = float(path.get("duration", 0.0))
+	if duration <= 0.0:
+		return "%d frames kept -- no scripted move at this frame to fit them to" % [
+			int(round(kept / per_frame))]
+	var raw: float = kept / duration
+	var fit: float = clampf(raw, CharacterAnimator.SCRIPTED_FIT_MIN,
+		CharacterAnimator.SCRIPTED_FIT_MAX)
+	var clamped := "" if is_equal_approx(raw, fit) else "   CLAMPED from %.2fx" % raw
+	return "%d frames (%.2f s of source) stretched into a %.2f s move -> %.2fx%s" % [
+		int(round(kept / per_frame)), kept, duration, fit, clamped]

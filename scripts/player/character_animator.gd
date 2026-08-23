@@ -310,7 +310,26 @@ func _clip_length(clip: StringName) -> float:
 	var anim_player := anim_tree.get_node_or_null(anim_tree.anim_player) as AnimationPlayer
 	if anim_player == null or not anim_player.has_animation(clip):
 		return 0.0
-	return anim_player.get_animation(clip).length
+	var whole: float = anim_player.get_animation(clip).length
+	# ⚠️ THE KEPT PART, NOT THE WHOLE CLIP. A trimmed clip is shorter, and every
+	# caller here is asking "how long is the thing that will actually play" --
+	# the speed match, and the scripted fit that stretches it into a move.
+	#
+	# ✅ The owner worked out the consequence before the code was read: "总计 20 帧
+	# 的动画在 1s 内播完，我跳过开头 6 帧，就应该是 1s 内播放 6-20 帧的动画?" It
+	# should, and it did not. Reading the full length made the fit too slow for
+	# what was left, so a trimmed clip finished early and left the move running
+	# on a held pose -- 0.70 s of animation inside a 1.00 s move, on their own
+	# numbers.
+	if player == null or not player.body_clip_timings.has(clip):
+		return whole
+	var entry = player.body_clip_timings[clip]
+	if not (entry is Array and entry.size() >= 2):
+		return whole
+	var length: float = float(entry[1])
+	if length > 0.0:
+		return length
+	return maxf(whole - float(entry[0]), 0.0)
 
 ## Scales the clip's playback to the speed the body is actually travelling, so
 ## a cycle authored at one pace does not slide its feet across the ground at

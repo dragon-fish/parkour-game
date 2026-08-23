@@ -79,3 +79,41 @@ func test_a_malformed_entry_is_ignored_rather_than_fatal() -> void:
 	# Hand-pasted from a debug tool, like the offsets beside them.
 	var node: AnimationNodeAnimation = await _node_for({&"SafetyVault": 0.8})
 	assert_false(node.use_custom_timeline, "a malformed entry was accepted")
+
+# --- a trimmed clip still fills its move ----------------------------------------
+
+func test_the_fit_measures_what_is_left_after_a_trim() -> void:
+	# ✅ THE OWNER, reasoning it out before the code was read: "总计 20 帧的动画在 1s
+	# 内播完，我跳过开头 6 帧，就应该是 1s 内播放 6-20 帧的动画?"
+	#
+	# ⚠️ IT SHOULD, AND IT DID NOT. _clip_length() returned the WHOLE animation's
+	# length whatever the trim said, so the scripted fit was computed for footage
+	# that was no longer being played: a clip trimmed to 70% of itself still got
+	# the untrimmed clip's time scale, finished at 70% of the move, and left the
+	# rest of it running on a held pose.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	var body := TestWorld.build_stub_body("", Vector3.ZERO, true, [&"idle", &"Trimmed"])
+	player._attach_body(body)
+	await step(2)
+	var animator := player.get_node("BodyRoot/CharacterAnimator") as CharacterAnimator
+	var anim_player := player.body.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	anim_player.get_animation(&"Trimmed").length = 1.0
+
+	assert_almost_eq(animator._clip_length(&"Trimmed"), 1.0, 0.001,
+		"an untrimmed clip did not report its own length")
+	# Skip the first three tenths; nothing says how long to play, so it runs on
+	# to the end.
+	player.body_clip_timings = {&"Trimmed": [0.3, 0.0]}
+	assert_almost_eq(animator._clip_length(&"Trimmed"), 0.7, 0.001,
+		"a clip trimmed at the start reported %.3f instead of what is left"
+		% animator._clip_length(&"Trimmed"))
+	# And an explicit length wins outright.
+	player.body_clip_timings = {&"Trimmed": [0.3, 0.4]}
+	assert_almost_eq(animator._clip_length(&"Trimmed"), 0.4, 0.001,
+		"an explicit trim length was ignored")
+	TestWorld.teardown(world)
+	await step(1)
