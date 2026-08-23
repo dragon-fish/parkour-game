@@ -396,25 +396,32 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## which is where this comes from and where the reasoning lives.
 @export var body_clip_offsets: Dictionary = {}
 
-## Per-clip offsets that CHANGE OVER THE CLIP, keyed by hand.
+## Per-clip offsets that change over the clip AND with the obstacle, keyed by
+## hand in the animation lab.
 ##
-## `{ clip_name: [ {"t": 0.0, "pos": Vector3, "rot": Vector3}, ... ] }`, sorted
-## by `t`, which is the clip's own normalised time.
+##     { clip_name: [ { "h": 1.2, "w": 0.4, "keys": [ {"t":, "pos":, "rot":} ] } ] }
 ##
-## ⚠️ A DIFFERENT TOOL FROM body_clip_offsets, not a replacement. That one says
-## "this clip sits 8 cm too far forward" -- one number for the whole clip, which
-## is what a mount mismatch is. This one says "at 40% through, the feet are
-## floating" -- and no single number can fix that, because the error is not
-## constant.
+## ⚠️ ONE CURVE PER CLIP IS NOT ENOUGH, which is what the first version assumed.
+## The same clip plays against a 0.9 m sill and a 1.8 m parapet, against a 0.1 m
+## rail and a 2 m ledge, and the pose is wrong in a different direction each
+## time -- a body that clears a thin rail cleanly clips a wide one, at the same
+## moment of the same animation.
 ##
-## ✅ THE OWNER, on ClimbUp_2m against the mantle's own curve: "这个动画角色的脚中途
-## 是有悬空的，可能得按时间轴把它的 Z 压一下...我一个个动画手 K 来配合你的曲线."
+## ✅ THE OWNER: "我保存的数据会对应每一种组合，实际游戏场景中总是寻找最接近的那一组
+## 偏移量去应用."
 ##
-## 📌 NOT EASED, unlike the static offset beside it. That one eases because it
-## CHANGES when the clip changes, and a step there is a jump cut. This one is
-## already a smooth function of time; easing it would simply make it lag the
-## thing it was authored against.
+## 📌 NEAREST, NOT EXACT, and deliberately: the grid is a sample of a continuous
+## space, so a wall 1.13 m tall has to borrow from the nearest thing that was
+## actually authored. Nothing in a level will ever land on a grid point.
 @export var body_clip_curves: Dictionary = {}
+
+## The obstacle the current move is working against: (height, width) in metres,
+## or a negative height when there is none.
+##
+## Declared by the MOVE rather than measured here, for the reason
+## docs/camera-authority.md gives about the camera: the mover knows what it
+## probed, and anything reconstructing it afterwards is guessing.
+var active_obstacle: Vector2 = Vector2(-1.0, 0.0)
 
 ## Which PART of each clip to play. See BodyProfile.clip_timings, and
 ## _apply_clip_timing() for what it does with it.
@@ -1270,10 +1277,8 @@ func clip_offset_for(clip: StringName) -> Array:
 ## wants: the author sees exactly the shape they typed, with no interpolator
 ## inventing overshoot between their keys.
 func clip_curve_at(clip: StringName, at: float) -> Array:
-	if clip == Move.KEEP or not body_clip_curves.has(clip):
-		return []
-	var keys = body_clip_curves[clip]
-	if not (keys is Array) or keys.is_empty():
+	var keys: Array = clip_keys_for(clip, active_obstacle)
+	if keys.is_empty():
 		return []
 	var previous: Dictionary = keys[0]
 	if at <= float(previous.get("t", 0.0)):
@@ -1293,6 +1298,35 @@ func clip_curve_at(clip: StringName, at: float) -> Array:
 		]
 	var last: Dictionary = keys[keys.size() - 1]
 	return [last.get("pos", Vector3.ZERO), last.get("rot", Vector3.ZERO)]
+
+## The hand-keyed rows for `clip` whose obstacle is nearest `obstacle`, or an
+## empty array when the clip has none.
+##
+## ⚠️ HEIGHT DOMINATES, and it has to. A metre of height is a different move --
+## a step-up against a vault against a pull-up -- while a metre of width is the
+## same move with the body a little further from the far edge. Weighting them
+## equally would let a wide low sill borrow a tall thin one's curve, which is a
+## different animation entirely.
+const OBSTACLE_WIDTH_WEIGHT := 0.35
+
+func clip_keys_for(clip: StringName, obstacle: Vector2) -> Array:
+	if clip == Move.KEEP or not body_clip_curves.has(clip):
+		return []
+	var rows = body_clip_curves[clip]
+	if not (rows is Array) or rows.is_empty():
+		return []
+	var best: Array = []
+	var best_distance := INF
+	for row in rows:
+		if not (row is Dictionary) or not row.has("keys"):
+			continue
+		var dh: float = float(row.get("h", 0.0)) - obstacle.x
+		var dw: float = (float(row.get("w", 0.0)) - obstacle.y) * OBSTACLE_WIDTH_WEIGHT
+		var distance: float = dh * dh + dw * dw
+		if distance < best_distance:
+			best_distance = distance
+			best = row["keys"]
+	return best
 
 ## How far through its path the running scripted move is, or -1 when none is.
 ##

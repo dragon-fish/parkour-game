@@ -158,10 +158,11 @@ func test_a_keyed_curve_is_read_between_its_keys() -> void:
 	# feet are floating", and no single number can fix that, because the error is
 	# not constant.
 	var player: Player = await _player_with_body()
-	player.body_clip_curves = {&"Idle": [
+	player.active_obstacle = Vector2(1.2, 0.4)
+	player.body_clip_curves = {&"Idle": [{"h": 1.2, "w": 0.4, "keys": [
 		{"t": 0.0, "pos": Vector3.ZERO, "rot": Vector3.ZERO},
 		{"t": 1.0, "pos": Vector3(0.0, 1.0, 0.0), "rot": Vector3.ZERO},
-	]}
+	]}]}
 	var half: Array = player.clip_curve_at(&"Idle", 0.5)
 	assert_false(half.is_empty(), "a keyed curve returned nothing mid-way")
 	assert_almost_eq(float(half[0].y), 0.5, 0.001,
@@ -172,10 +173,11 @@ func test_a_keyed_curve_holds_flat_outside_its_keys() -> void:
 	# author sees exactly the shape they typed, with nothing inventing overshoot
 	# past the ends.
 	var player: Player = await _player_with_body()
-	player.body_clip_curves = {&"Idle": [
+	player.active_obstacle = Vector2(1.2, 0.4)
+	player.body_clip_curves = {&"Idle": [{"h": 1.2, "w": 0.4, "keys": [
 		{"t": 0.25, "pos": Vector3(0.0, 2.0, 0.0), "rot": Vector3.ZERO},
 		{"t": 0.75, "pos": Vector3(0.0, 4.0, 0.0), "rot": Vector3.ZERO},
-	]}
+	]}]}
 	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.0)[0].y), 2.0, 0.001,
 		"before the first key the curve did not hold")
 	assert_almost_eq(float(player.clip_curve_at(&"Idle", 1.0)[0].y), 4.0, 0.001,
@@ -186,7 +188,38 @@ func test_a_clip_with_no_curve_is_unaffected() -> void:
 	# static offset uses, so a curve lookup that returned something for every
 	# clip would move every body in the game.
 	var player: Player = await _player_with_body()
-	player.body_clip_curves = {&"Sprint": [
-		{"t": 0.0, "pos": Vector3(0.0, 9.0, 0.0), "rot": Vector3.ZERO}]}
+	player.body_clip_curves = {&"Sprint": [{"h": 1.2, "w": 0.4, "keys": [
+		{"t": 0.0, "pos": Vector3(0.0, 9.0, 0.0), "rot": Vector3.ZERO}]}]}
 	assert_eq(player.clip_curve_at(&"Idle", 0.5), [],
 		"a clip with no curve of its own picked one up")
+
+func test_the_nearest_obstacle_row_wins() -> void:
+	# ✅ THE OWNER: "我保存的数据会对应每一种组合，实际游戏场景中总是寻找最接近的那一组
+	# 偏移量去应用." The grid samples a continuous space, so nothing in a level ever
+	# lands on a grid point and every lookup is a nearest one.
+	var player: Player = await _player_with_body()
+	player.body_clip_curves = {&"Idle": [
+		{"h": 0.5, "w": 0.4, "keys": [{"t": 0.0, "pos": Vector3(0, 5, 0), "rot": Vector3.ZERO}]},
+		{"h": 1.5, "w": 0.4, "keys": [{"t": 0.0, "pos": Vector3(0, 15, 0), "rot": Vector3.ZERO}]},
+	]}
+	player.active_obstacle = Vector2(1.4, 0.4)
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.0)[0].y), 15.0, 0.001,
+		"a 1.4 m obstacle did not borrow the 1.5 m row")
+	player.active_obstacle = Vector2(0.7, 0.4)
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.0)[0].y), 5.0, 0.001,
+		"a 0.7 m obstacle did not borrow the 0.5 m row")
+
+func test_height_outweighs_width() -> void:
+	# ⚠️ A metre of HEIGHT is a different move -- step-up against vault against
+	# pull-up -- while a metre of WIDTH is the same move with the body further
+	# from the far edge. Weighting them equally lets a wide low sill borrow a
+	# tall thin one's curve, which is a different animation entirely.
+	var player: Player = await _player_with_body()
+	player.body_clip_curves = {&"Idle": [
+		{"h": 1.0, "w": 2.0, "keys": [{"t": 0.0, "pos": Vector3(0, 1, 0), "rot": Vector3.ZERO}]},
+		{"h": 1.6, "w": 0.1, "keys": [{"t": 0.0, "pos": Vector3(0, 2, 0), "rot": Vector3.ZERO}]},
+	]}
+	# Half a metre taller than the first row, but 1.6 m narrower than it.
+	player.active_obstacle = Vector2(1.5, 0.4)
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.0)[0].y), 2.0, 0.001,
+		"width outvoted height, so a low wide sill lent its curve to a tall one")
