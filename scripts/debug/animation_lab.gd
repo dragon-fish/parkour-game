@@ -796,6 +796,16 @@ func _input(event: InputEvent) -> void:
 	# both answer one key.
 	if _spectator != null and _spectator.is_flying():
 		return
+	# ⚠️ A TEXT FIELD OUTRANKS EVERY SHORTCUT HERE. _input() runs BEFORE the GUI
+	# sees anything, so with a box focused this was eating the very keys that
+	# edit it -- "." is bound to a nudge, Backspace drops a key, Delete zeroes
+	# one. ✅ The owner: "激活输入框的时候，没办法输入小数点和删除."
+	#
+	# 📌 LineEdit SPECIFICALLY, not "any focused Control". A Button keeps focus
+	# after it is clicked, so standing down for that would kill the keyboard for
+	# the rest of the session the first time anyone pressed Re-record.
+	if get_viewport().gui_get_focus_owner() is LineEdit:
+		return
 	if _handle((event as InputEventKey).physical_keycode):
 		get_viewport().set_input_as_handled()
 
@@ -1095,6 +1105,12 @@ func _spin(into: Node, label_text: String, low: float, high: float,
 	box.step = step
 	box.value = value
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# 📌 ENTER HANDS THE KEYBOARD BACK. Without this the box keeps focus after
+	# the value is committed and every shortcut stays dead until something else
+	# is clicked -- which is a worse trap than the one above, because it looks
+	# like the scene has frozen.
+	box.get_line_edit().text_submitted.connect(func(_text):
+		box.get_line_edit().release_focus())
 	row.add_child(box)
 	into.add_child(row)
 	return box
