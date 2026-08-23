@@ -58,6 +58,12 @@ var _corner_normal: Vector3 = Vector3.BACK
 ## The yaw already handed to the camera, so each tick reports only its own
 ## slice. Mirrors Turn180Move._placed, whose handshake this copies.
 var _corner_placed: float = 0.0
+## The MODEL's own sweep, kept separately from the body's because they do not
+## start in the same place: the body is wherever the player was looking, the
+## model is squared to the face it hangs from. Absolute, never accumulated --
+## see Player.pin_visual_yaw().
+var _corner_model_from: float = 0.0
+var _corner_model_sweep: float = 0.0
 ## Counts down corner_lockout after a corner, during which the shimmy refuses.
 var _shimmy_lockout: float = 0.0
 
@@ -574,6 +580,15 @@ func _begin_corner(new_edge: Vector3, new_normal: Vector3, side: float) -> void:
 	# at the body, so facing the wall means facing the way it came from.
 	_corner_to_yaw = atan2(new_normal.x, new_normal.z)
 	_corner_placed = _corner_from_yaw
+	# FROM WHEREVER THE MODEL ACTUALLY IS, to squarely facing the new wall. Not
+	# from the BODY's yaw: a player who has been looking along the ledge has a
+	# body turned well off the face while the model is still square to it, and
+	# starting the model's sweep at the body's angle would snap it that far in
+	# one tick. Ending at the face's own yaw also makes each corner
+	# self-correcting -- however the model got where it is, it comes out of the
+	# turn squared up.
+	_corner_model_from = player.visual_yaw()
+	_corner_model_sweep = wrapf(_corner_to_yaw - _corner_model_from, -PI, PI)
 	_corner_edge = new_edge
 	_corner_normal = new_normal
 	_corner_time = 0.0
@@ -608,10 +623,12 @@ func _advance_corner(delta: float) -> void:
 	var wanted: float = _corner_from_yaw + sweep * progress
 	var moved: float = wanted - _corner_placed
 	_corner_placed = wanted
-	# THE MODEL COMES TOO. GrabConfig freezes the visual yaw so a hanging body
-	# does not swivel to follow the view, and that freeze would otherwise cancel
-	# this turn degree for degree -- see Player.carry_visual_yaw().
-	player.carry_visual_yaw(moved)
+	# THE MODEL COMES TOO, and it is told WHERE rather than BY HOW MUCH.
+	# GrabConfig freezes the visual yaw so a hanging body does not swivel to
+	# follow the view, and that freeze would otherwise cancel this turn degree
+	# for degree -- see Player.pin_visual_yaw(), which also records why the
+	# by-how-much version of this drifted a model backwards over four corners.
+	player.pin_visual_yaw(_corner_model_from + _corner_model_sweep * progress)
 	if player.camera_rig != null:
 		player.camera_rig.shift_yaw_reference(wanted, 1.0)
 		player.camera_rig.absorb_body_yaw(moved)

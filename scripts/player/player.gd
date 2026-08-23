@@ -1482,26 +1482,35 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# is doing. Wrapped, so a player who spins on the spot cannot wind this up.
 	body_root.rotation.y = wrapf(_visual_yaw - rotation.y, -PI, PI)
 
-## Carries the visible model round with a SCRIPTED body turn, by `radians`.
+## Where the visible model is facing, in world radians.
+func visual_yaw() -> float:
+	return _visual_yaw
+
+## Points the visible model at `radians`, in world space.
 ##
 ## ⚠️ FOR MOVES THAT freeze_visual_yaw, WHICH IS THE WHOLE PROBLEM. Grab freezes
 ## it, and rightly: a hanging body cannot swivel its legs to follow the view, so
-## _drive_body_yaw() counter-rotates BodyRoot to hold the model's WORLD yaw
-## still however far the collision body turns.
+## _drive_body_yaw() counter-rotates BodyRoot to hold the model's WORLD yaw still
+## however far the collision body turns.
 ##
-## ✅ A corner is the one time that is wrong. "转角的时候人物模型忘记转了，因为它
-## 被设计为 grab 时不转动" -- the body genuinely swings ninety degrees onto the
-## next face, and the freeze dutifully cancelled every degree of it, leaving the
-## model facing the wall it had left.
+## ✅ A corner is the one time that is wrong. "转角的时候人物模型忘记转了，因为它被
+## 设计为 grab 时不转动" -- the body genuinely swings ninety degrees onto the next
+## face, and the freeze dutifully cancelled every degree of it.
 ##
-## Advancing _visual_yaw by the same amount keeps the counter-rotation constant,
-## so the model's world yaw travels with the turn instead of being pinned
-## against it. Declared BY THE MOVE rather than inferred here, because only the
-## move knows the difference between a turn its body is making and a turn it is
-## refusing to make.
-func carry_visual_yaw(radians: float) -> void:
+## ⚠️ ABSOLUTE, AND THE FIRST VERSION OF THIS WAS INCREMENTAL, WHICH DRIFTED.
+## "多转角几次身体模型就完全倒过来了." Adding each tick's slice to the model looked
+## equivalent and is not: the collision body's yaw is REBUILT every tick as
+## reference-plus-relative, and apply_look eases `relative` whenever the fan
+## moves out from under the view -- which is exactly what a corner does to it.
+## So the two quantities were being maintained by different arithmetic, and the
+## gap between them survived each corner and stacked with the next. Four corners
+## of it is a model facing backwards.
+##
+## Stating the answer instead of the increment cannot accumulate: the model
+## faces the wall the hands are on, and every tick says so afresh.
+func pin_visual_yaw(radians: float) -> void:
 	_visual_yaw_started = true
-	_visual_yaw = wrapf(_visual_yaw + radians, -PI, PI)
+	_visual_yaw = wrapf(radians, -PI, PI)
 
 ## The attached body's skeleton, or null. Resolved once at attach and handed out
 ## rather than re-searched: DeathSequence asks for it to build a ragdoll on.

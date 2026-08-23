@@ -324,3 +324,34 @@ func test_hanging_still_does_not_turn_the_model() -> void:
 	assert_almost_eq(player._visual_yaw, before, 0.001,
 		"the model turned %.2f degrees while hanging still"
 		% rad_to_deg(player._visual_yaw - before))
+
+func test_the_model_squares_up_to_the_new_face_however_it_arrived() -> void:
+	# ✅ THE OWNER: "多转角几次身体模型就完全倒过来了."
+	#
+	# ⚠️ THE FIRST VERSION ADDED EACH TICK'S SLICE TO THE MODEL, which looks
+	# equivalent to stating the answer and is not: the collision body's yaw is
+	# REBUILT every tick as reference-plus-relative, and apply_look eases
+	# `relative` whenever the fan moves out from under the view -- which is
+	# exactly what a corner does to it. Two quantities maintained by different
+	# arithmetic, and the gap survived each corner and stacked with the next.
+	#
+	# Pinned to the FACE instead, so a corner is self-correcting: start the
+	# model anywhere and it comes out squared up to the wall it is now on.
+	var player: Player = await _fresh()
+	_square(player)
+	await step(2)
+	var grab := _hang(player, Vector3(1.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
+	# Deliberately wrong to begin with, by more than a corner is worth: this is
+	# the accumulated drift the owner saw, injected in one go.
+	player.pin_visual_yaw(deg_to_rad(150.0))
+	assert_true(_travel_until_corner(grab, 1.0), "no corner started")
+	for i in 90:
+		grab.physics_update(1.0 / 60.0, _hold(1.0))
+		if not grab.is_cornering():
+			break
+	assert_false(grab.is_cornering(), "the corner never finished")
+	# The east face's normal is +X, so facing into it is atan2(1, 0) = 90.
+	var facing: float = rad_to_deg(wrapf(player.visual_yaw()
+		- atan2(grab._face_normal.x, grab._face_normal.z), -PI, PI))
+	assert_almost_eq(absf(facing), 0.0, 2.0,
+		"the model came out %.1f degrees off square to the face it is on" % facing)
