@@ -156,21 +156,16 @@ extends MoveConfig
 ## own 3.0 -- but the kick goes UP at 5.8. Letting go of a ledge drops you.
 @export var jump_speed_up: float = 1.6
 
-## Push away from the wall at the smallest angle that allows a jump.
+## 📌 TRANSCRIBED AND NOT USED, kept because deleting a sourced number loses the
+## record of having read it. `TdMove_GrabJump.GrabJumpPushAwayMinSpeed = 200`
+## and `MaxSpeed = 400` uu/s, i.e. 2 to 4 m/s away from the wall.
 ##
-## ✅ `TdMove_GrabJump.GrabJumpPushAwayMinSpeed = 200` uu/s.
-@export var jump_push_min: float = 2.0
-
-## Push away from the wall with your back fully turned to it.
-##
-## ✅ `TdMove_GrabJump.GrabJumpPushAwayMaxSpeed = 400` uu/s.
-##
-## ⚠️ WHAT MOVES BETWEEN THE TWO IS INFERRED. The CDO gives a min and a max and
-## no driver, and the turn angle is the only quantity this move has that varies
-## continuously -- so it is lerped from jump_angle_deg to a full 180. It reads
-## the way the move plays: the further you have turned your back on the wall,
-## the harder you shove off it.
-@export var jump_push_max: float = 4.0
+## They were live for one commit, as a floor on the away-from-wall component of
+## the launch. What retired them is the owner's speedrun glitch: a jump taken
+## just past the 45-degree threshold has to travel INTO the wall to throw the
+## body over its own ledge, and any floor on leaving the wall fights exactly
+## that. Whatever those two fields govern in the original, it is not a component
+## the launch direction can be reduced to.
 
 ## How fast a jump off a hang launches, along the view, in metres/second.
 ##

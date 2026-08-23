@@ -867,6 +867,65 @@ func build() -> Node3D:
 		Vector3(INNER_X, shimmy_height * 0.5,
 			INNER_Z + SHIMMY_RUN * 0.5 + SHIMMY_THICKNESS * 0.5), shimmy_colour))
 
+	# --- Shaft climb ----------------------------------------------------------
+	#
+	# ✅ THE OWNER drew it: "ME 里会有这种关卡设计，得攀边缘回头跳上更高的边缘来达到
+	# 很高的障碍顶部." Two walls facing each other, and you zig-zag up between them
+	# -- grab the low ledge, turn your back on it and jump to the higher ledge
+	# opposite, turn again and jump to the top.
+	#
+	# 📌 IT IS ALSO THE TEST FOR THE HANG JUMP, which is why it is built rather
+	# than described. The CDO-faithful first version of that jump -- a 2 to 4 m/s
+	# shove and a drop -- cannot climb this at all, and that is precisely the
+	# argument the owner made for changing it: geometry like this is unbuildable
+	# under the literal reading. A course you can fail is worth more here than a
+	# number in a config.
+	#
+	# NORTH OF THE SHIMMY COURSE at x = 36, which occupies z [15.7, 30.3]. This
+	# one's own boxes work out to x [30, 42] and z [37, 43].
+	#
+	# THE RISE PER HOP is what wants playing with, so it is one number here
+	# rather than three hand-placed heights. Measured in the sandbox: a hang
+	# jump with the view pitched up about fifty degrees clears roughly 1.8 m of
+	# rise and reaches across a 2.4 m gap, which is where SHAFT_RISE starts.
+	var shaft_area := Node3D.new()
+	shaft_area.name = "ShaftArea"
+	shaft_area.position = Vector3(36.0, 0.0, 40.0)
+	_attach(_root, shaft_area)
+
+	# Colour: a deep teal, unused by ground, gap, slide, vault, ledge, wall or
+	# shimmy -- this is a course you look UP at, and it should read as one thing
+	# from the floor.
+	var shaft_colour := Color(0.34, 0.52, 0.54)
+
+	var shaft_config := MovementConfig.new()
+	const SHAFT_GAP := 2.4
+	const SHAFT_RISE := 1.8
+	const SHAFT_DEPTH := 6.0
+	const SHAFT_STEP := 0.8
+	# The first ledge is grabbable from the FLOOR, so the course can be entered
+	# without already being off the ground. Same expression LedgeMid and the
+	# shimmy structures use.
+	var shaft_low: float = shaft_config.grab.ledge_max_height - 0.1
+	var shaft_mid: float = shaft_low + SHAFT_RISE
+	var shaft_high: float = shaft_mid + SHAFT_RISE
+
+	# WEST, in two pieces: a low step you grab first, and the tall part behind it
+	# whose top is the finish. The step is what makes the first ledge exist at
+	# all -- a single flat wall has only its own top.
+	_attach(shaft_area, _box("Shaft_West_Step",
+		Vector3(3.0, shaft_low, SHAFT_DEPTH),
+		Vector3(-SHAFT_GAP * 0.5 - 1.5, shaft_low * 0.5, 0.0), shaft_colour))
+	_attach(shaft_area, _box("Shaft_West_Top",
+		Vector3(3.0, shaft_high, SHAFT_DEPTH),
+		Vector3(-SHAFT_GAP * 0.5 - SHAFT_STEP - 1.5, shaft_high * 0.5, 0.0),
+		shaft_colour))
+
+	# EAST: one wall, its top the middle ledge of the climb.
+	_attach(shaft_area, _box("Shaft_East",
+		Vector3(3.0, shaft_mid, SHAFT_DEPTH),
+		Vector3(SHAFT_GAP * 0.5 + 1.5, shaft_mid * 0.5, 0.0), shaft_colour))
+
 	# --- Floor ----------------------------------------------------------------
 	#
 	# Sized from the union of every practice area's OWN bounds, not the other

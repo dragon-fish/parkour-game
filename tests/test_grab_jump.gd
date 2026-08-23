@@ -141,26 +141,23 @@ func test_the_launch_follows_the_view() -> void:
 		"the launch went (%.2f, %.2f, %.2f) rather than along the view"
 		% [player.velocity.x, player.velocity.y, player.velocity.z])
 
-func test_the_launch_never_goes_into_the_wall() -> void:
-	# The guard that lets the test above be true safely. At the smallest turn
-	# this jump allows, the view is still half into the wall -- and the body
-	# must still leave it.
-	var player: Player = await _hanging_player(_config().jump_angle_deg + 0.5)
+func test_a_bare_turn_throws_you_at_your_own_ledge() -> void:
+	# THE SPEEDRUN GLITCH, and it is the reason nothing is projected out of the
+	# launch. See GrabMove._launch_direction() for the owner's account: turning
+	# just past the threshold and jumping AT the ledge converts the very slow
+	# GrabPullUp into a VaultOver, and that conversion IS the into-the-wall
+	# component -- the body is thrown at its own lip and the airborne vault
+	# probe catches the top on the way past.
+	#
+	# THIS TEST REPLACES ONE ASSERTING THE OPPOSITE. The previous version
+	# required the launch never to point into the wall, which read as ordinary
+	# prudence and silently deleted a technique the speedrun route is built on.
+	var player: Player = await _hanging_player(_config().jump_angle_deg + 1.0)
 	_grab(player).physics_update(1.0 / 60.0, _jump())
-	# The wall's outward normal is +Z here.
-	assert_gt(player.velocity.z, 0.0,
-		"the launch drove the body into the wall at z %.2f" % player.velocity.z)
-
-func test_a_bare_turn_still_leaves_the_wall_at_the_sourced_speed() -> void:
-	# ✅ GrabJumpPushAwayMinSpeed survives as a FLOOR on the away-from-wall
-	# component rather than as the whole answer: the view says where you go, and
-	# this says how firmly you leave. A view along the ledge satisfies the first
-	# and not the second, and would slide the body down the face it let go of.
-	var player: Player = await _hanging_player(_config().jump_angle_deg + 0.5)
-	_grab(player).physics_update(1.0 / 60.0, _jump())
-	assert_gt(player.velocity.z, _config().jump_push_min - 0.1,
-		"left the wall at only %.2f m/s against a floor of %.2f"
-		% [player.velocity.z, _config().jump_push_min])
+	# The wall's outward normal is +Z here, so INTO it is negative z.
+	assert_lt(player.velocity.z, -1.0,
+		"a jump one degree past the threshold went (%.2f, %.2f, %.2f) rather than at the ledge"
+		% [player.velocity.x, player.velocity.y, player.velocity.z])
 
 func test_it_is_a_jump_rather_than_a_shove() -> void:
 	# ✅ "我们的实现就是软绵绵地落下来." The old numbers gave 2 to 4 m/s and then a

@@ -555,22 +555,32 @@ func _turned_from_wall() -> float:
 		return 0.0
 	return facing.normalized().angle_to(into_wall.normalized())
 
-## Where a jump off a hang launches: along the VIEW, never into the wall.
+## Where a jump off a hang launches: along the VIEW, wall included.
 ##
 ## ✅ THE OWNER: "应该是往镜头方向一个大跳，如果抬头也会有往上的力." The pitch
 ## therefore has to be in it -- this is the full 3D look direction, not its
-## horizontal shadow -- which is what makes looking up send you up rather than
-## merely away.
+## horizontal shadow -- which is what makes looking up send you up.
 ##
-## ⚠️ WITH THE INTO-THE-WALL COMPONENT PROJECTED OUT, because jump_angle_deg
-## permits this jump from 45 degrees off the wall and a view at 45 degrees is
-## still pointed half INTO it. Removing that component rather than refusing the
-## jump keeps the rule simple: you go where you are looking, as far as the wall
-## allows, and at the extreme that is straight along the ledge.
+## ⚠️ AND NOTHING IS PROJECTED OUT OF IT, WHICH WAS THE FIRST VERSION'S MISTAKE.
+## jump_angle_deg allows this jump from 45 degrees off the wall, where the view
+## still points half INTO it, and removing that component looked like ordinary
+## prudence. It is not:
+##
+## ✅ THE OWNER, on the original: "攀边扭头略大于 45° 对着墙沿起跳是一个速通
+## glitch，能把超级慢的 GrabPullUp 转换为更快的 VaultOver."
+##
+## That glitch IS the into-the-wall component. Just past the threshold the body
+## is thrown at its own ledge, the airborne vault probe catches the top on the
+## way past, and the pull-up is skipped entirely. Projecting the component away
+## sends the body sideways along the face instead and the vault never fires --
+## so the tidy version quietly deletes a technique the speedrun route is built
+## on. Copying the mistake is the port, the same as the dodge glitch in 04.
+##
+## 📌 It also settles what the threshold MEANS. Reading GrabAllowedJumpAngle = 45
+## as "within 45 degrees of facing AWAY from the wall" was a live alternative
+## while nothing told the two apart. A glitch that fires at 46 degrees off the
+## WALL does.
 func _launch_direction() -> Vector3:
-	var outward: Vector3 = _face_normal
-	outward.y = 0.0
-	outward = outward.normalized() if outward.length_squared() > 0.0001 else Vector3.BACK
 	var look := Vector3.ZERO
 	if player.camera_rig != null and player.camera_rig.camera != null:
 		look = -player.camera_rig.camera.global_transform.basis.z
@@ -578,39 +588,16 @@ func _launch_direction() -> Vector3:
 		# No rig to read: the body is squared to the wall, which is the best
 		# available answer. Tests with a stub player take this path.
 		look = -player.global_transform.basis.z
-	var into: float = look.dot(outward)
-	if into < 0.0:
-		look -= outward * into
 	if look.length_squared() < 0.0001:
-		look = outward
+		return _face_normal
 	return look.normalized()
 
 ## Leaves the ledge.
 ##
 ## ⚠️ bDisableFaceRotation is True on TdMove_GrabJump, which fits: the body does
 ## not turn to follow the launch. You look back over your shoulder and go.
-func _push_off(turned: float) -> void:
+func _push_off(_turned: float) -> void:
 	var launch: Vector3 = _launch_direction() * config.grab.jump_speed
-	# ✅ AND THE SOURCED FLOOR STILL APPLIES, as a floor rather than as the whole
-	# answer. GrabJumpPushAwayMinSpeed/MaxSpeed say how hard you leave the WALL;
-	# the view says where you go. A view along the ledge satisfies the second
-	# and not the first, and would slide the body down the face it just let go
-	# of.
-	#
-	# ⚠️ What moves between min and max is INFERRED. The CDO gives both numbers
-	# and no driver, and the turn angle is the only quantity this move has that
-	# varies continuously: the further your back is turned, the harder you shove.
-	var outward: Vector3 = _face_normal
-	outward.y = 0.0
-	if outward.length_squared() > 0.0001:
-		outward = outward.normalized()
-		var floor_deg: float = deg_to_rad(config.grab.jump_angle_deg)
-		var span: float = maxf(PI - floor_deg, 0.0001)
-		var t: float = clampf((turned - floor_deg) / span, 0.0, 1.0)
-		var least: float = lerpf(config.grab.jump_push_min, config.grab.jump_push_max, t)
-		var away: float = launch.dot(outward)
-		if away < least:
-			launch += outward * (least - away)
 	launch.y += config.grab.jump_speed_up
 	player.velocity = launch
 
