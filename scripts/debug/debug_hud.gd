@@ -45,6 +45,13 @@ func _ready() -> void:
 	capsule.name = "CapsuleDebug"
 	capsule.player = player
 	get_parent().add_child.call_deferred(capsule)
+	# And the shimmy's probes, on the same terms again: four different refusals
+	# look like one identical nothing happening, and the line this HUD prints
+	# names the branch without showing where it looked.
+	var shimmy := ShimmyDebug.new()
+	shimmy.name = "ShimmyDebug"
+	shimmy.player = player
+	get_parent().add_child.call_deferred(shimmy)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -145,7 +152,7 @@ func _process(delta: float) -> void:
 		"
 ".join(_transitions) if not _transitions.is_empty() else "  (none yet)",
 		"",
-		"Tab HUD  F9 clip tuner  F10 capsule  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
+		"Tab HUD  F9 clip tuner  F10 capsule  F11 shimmy  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
 		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
 	])
 

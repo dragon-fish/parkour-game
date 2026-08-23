@@ -626,10 +626,16 @@ func ledge_beside(edge: Vector3, step: Vector3, lift: float,
 		tolerance: float) -> Dictionary:
 	_ensure_rays()
 	var target: Vector3 = edge + step
-	var hit: Dictionary = _cast(target + Vector3.UP * lift,
-			target - Vector3.UP * tolerance)
+	# THE SEGMENT TRAVELS WITH THE ANSWER, so a debug view can draw the ray that
+	# was actually fired instead of a second copy of the same arithmetic. A
+	# marker that drifts from the behaviour it illustrates is worse than none --
+	# IntoGrabMove.hanging_pose() is static for exactly this reason.
+	var from: Vector3 = target + Vector3.UP * lift
+	var to: Vector3 = target - Vector3.UP * tolerance
+	var hit: Dictionary = _cast(from, to)
 	if hit.is_empty():
-		return _no_hit()
+		return {"valid": false, "top": Vector3.ZERO, "edge": Vector3.ZERO,
+			"normal": Vector3.UP, "from": from, "to": to}
 	# HEIGHT IS THE TEST, not merely "something is there". A ledge that steps
 	# up or drops away is a different ledge, and shimmying onto it would leave
 	# the hands at a height the hanging body was never placed for. `tolerance`
@@ -638,9 +644,10 @@ func ledge_beside(edge: Vector3, step: Vector3, lift: float,
 	# rejects a hit found on the way DOWN from the lift.
 	var found: Vector3 = hit["position"]
 	if absf(found.y - edge.y) > tolerance:
-		return _no_hit()
+		return {"valid": false, "top": Vector3.ZERO, "edge": Vector3.ZERO,
+			"normal": Vector3.UP, "from": from, "to": to}
 	return {"valid": true, "top": found, "edge": found,
-		"normal": hit.get("normal", Vector3.UP)}
+		"normal": hit.get("normal", Vector3.UP), "from": from, "to": to}
 
 ## Whether the WALL FACE the hands hang from continues `step` metres to one
 ## side. `outward` is that face's normal, pointing away from the wall.
@@ -655,16 +662,18 @@ func ledge_beside(edge: Vector3, step: Vector3, lift: float,
 ## Fired BELOW the lip, because that is where a face is. Level with the anchor
 ## it would graze the top surface instead and report the ledge as its own wall.
 func face_beside(edge: Vector3, step: Vector3, outward: Vector3,
-		drop: float, margin: float) -> bool:
+		drop: float, margin: float) -> Dictionary:
 	var flat: Vector3 = outward
 	flat.y = 0.0
 	if flat.length_squared() < 0.0001:
-		return false
+		return {"valid": false, "from": edge, "to": edge}
 	flat = flat.normalized()
 	var at: Vector3 = edge + step - Vector3.UP * drop
 	# From clear of the face, inward. Starting ON the plane risks starting
 	# INSIDE it, and a ray that begins inside geometry reports nothing at all.
-	return not _cast(at + flat * (margin + drop), at - flat * margin).is_empty()
+	var from: Vector3 = at + flat * (margin + drop)
+	var to: Vector3 = at - flat * margin
+	return {"valid": not _cast(from, to).is_empty(), "from": from, "to": to}
 
 ## The face around an OUTSIDE corner: the one perpendicular to the face just
 ## left, found by looking back along the direction of travel from a point past
@@ -684,33 +693,45 @@ func corner_beyond(edge: Vector3, along: Vector3, outward: Vector3,
 	# corner is open air, so the ray starts outside the geometry and the first
 	# thing it can meet is the face being looked for.
 	var from: Vector3 = edge + travel * reach - Vector3.UP * drop
-	var hit: Dictionary = _cast(from, from - travel * (reach * 2.0))
+	var to: Vector3 = from - travel * (reach * 2.0)
+	var trace := {"from": from, "to": to}
+	var hit: Dictionary = _cast(from, to)
 	if hit.is_empty():
-		return _no_hit()
+		return _corner_miss(trace)
 	var normal: Vector3 = hit.get("normal", Vector3.ZERO)
 	normal.y = 0.0
 	if normal.length_squared() < 0.0001:
-		return _no_hit()
+		return _corner_miss(trace)
 	normal = normal.normalized()
 	# A face still pointing the way the old one did is the SAME face, not a
 	# corner -- the ray simply ran back along it, which is what happens on a
 	# gentle bend. 0.5 is a 60 degree turn: clear of a right angle, clear of
 	# surface noise.
 	if normal.dot(outward) > 0.5:
-		return _no_hit()
+		return _corner_miss(trace)
 	var face_point: Vector3 = hit["position"]
 	# margin INSIDE the top, the same offset ledge_query() anchors with, so the
 	# two agree about where an edge is.
 	var candidate: Vector3 = Vector3(face_point.x, edge.y, face_point.z) - normal * margin
-	var top: Dictionary = _cast(candidate + Vector3.UP * drop,
-			candidate - Vector3.UP * tolerance)
+	trace["top_from"] = candidate + Vector3.UP * drop
+	trace["top_to"] = candidate - Vector3.UP * tolerance
+	var top: Dictionary = _cast(trace["top_from"], trace["top_to"])
 	if top.is_empty():
-		return _no_hit()
+		return _corner_miss(trace)
 	var found: Vector3 = top["position"]
 	if absf(found.y - edge.y) > tolerance:
-		return _no_hit()
-	return {"valid": true, "top": found, "edge": found, "normal": normal,
+		return _corner_miss(trace)
+	var result := {"valid": true, "top": found, "edge": found, "normal": normal,
 		"face_point": face_point, "face_normal": normal}
+	result.merge(trace)
+	return result
+
+## A corner miss carrying whatever segments were fired before giving up, so the
+## debug view can show WHICH of them came back empty.
+func _corner_miss(trace: Dictionary) -> Dictionary:
+	var result: Dictionary = _no_hit()
+	result.merge(trace)
+	return result
 
 ## What, if anything, is beside `from` within `distance` metres along
 ## `direction`. Empty when the way is clear.

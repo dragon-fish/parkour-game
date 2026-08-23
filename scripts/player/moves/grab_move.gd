@@ -76,6 +76,16 @@ var _shimmy_lockout: float = 0.0
 ## geometry the arena course reproduces fine, and the arena is not where the
 ## answer is; the readout is.
 var _shimmy_report: String = "idle"
+
+## The segments the shimmy probes actually fired on the last tick they ran, each
+## {from, to, hit, label}. Drawn by ShimmyDebug.
+##
+## ⚠️ RECORDED, NOT RECONSTRUCTED. The obvious cheaper version is to let the
+## debug view re-run the same probes with the same arguments -- and that is a
+## picture of a SECOND implementation, which agrees with this one right up until
+## the moment a difference is what you are looking for. Probes hands its
+## segments back for the same reason IntoGrabMove.hanging_pose() is static.
+var _probe_trace: Array[Dictionary] = []
 ## The direction the mantle pushes and exits along. Captured ONCE, at
 ## COMMITMENT -- the moment forward or jump is pressed and begin() is called,
 ## in physics_update()'s climb-trigger branch below -- NOT at grab time.
@@ -107,6 +117,24 @@ func shimmy_direction() -> float:
 ## One line on what the shimmy last decided and why. Read by the debug HUD.
 func shimmy_report() -> String:
 	return _shimmy_report
+
+## The ledge the hands are on, for the debug view: where the anchor is, which
+## way travel runs along it, and which way the face points.
+##
+## `along` is derived here rather than in the drawer for the same reason the
+## segments are: it is the same expression _advance_shimmy() steers by, and a
+## second copy of it in a debug view would agree until it mattered.
+func anchor_debug() -> Dictionary:
+	var facing: Vector3 = -_face_normal
+	facing.y = 0.0
+	var along := Vector3.ZERO
+	if facing.length_squared() > 0.0001:
+		along = facing.normalized().cross(Vector3.UP)
+	return {"edge": _edge, "along": along, "outward": _face_normal}
+
+## The shimmy probes fired on the last tick they ran. See _probe_trace.
+func probe_trace() -> Array[Dictionary]:
+	return _probe_trace
 
 ## Whether the body is mid-corner. Exposed for the same reason is_mantling() is:
 ## nothing outside this move can otherwise tell a corner from ordinary travel,
@@ -433,16 +461,19 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# IS THE LEDGE STILL THERE? Asked of the ledge top from above, because the
 	# forward probe cannot see it from the hanging pose -- see
 	# Probes.ledge_beside() for why that is and what it does instead.
+	_probe_trace.clear()
 	var beside: Dictionary = player.probes.ledge_beside(_edge, step,
 			config.grab.shimmy_probe_lift, config.grab.shimmy_edge_tolerance)
+	_trace("ledge", beside)
 
 	# ⚠️ TWO QUESTIONS, NOT ONE, and asking only the first walked the hands off
 	# the outside corner of anything with depth. ledge_beside() answers about
 	# the TOP, which on a 6 m block carries on for metres past the corner; the
 	# FACE the body actually hangs from ended there. See Probes.face_beside().
-	var face_on: bool = player.probes.face_beside(_edge, step, _face_normal,
+	var face: Dictionary = player.probes.face_beside(_edge, step, _face_normal,
 			config.grab.corner_probe_drop, Probes.LEDGE_ANCHOR_MARGIN)
-	if not beside.get("valid", false) or not face_on:
+	_trace("face", face)
+	if not beside.get("valid", false) or not face.get("valid", false):
 		# THE OUTSIDE CORNER. What ran out is this face, so look for the one
 		# perpendicular to it -- and if there is none, the ledge simply ends and
 		# hanging on is the right answer: the player still holds a perfectly
@@ -451,6 +482,10 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 				sideways * side, _face_normal, config.grab.corner_probe_reach,
 				config.grab.corner_probe_drop, Probes.LEDGE_ANCHOR_MARGIN,
 				config.grab.shimmy_edge_tolerance)
+		_trace("corner look", around)
+		if around.has("top_from"):
+			_probe_trace.append({"label": "corner top", "from": around["top_from"],
+				"to": around["top_to"], "hit": around.get("valid", false)})
 		if around.get("valid", false):
 			_begin_corner(around["edge"], around["normal"], side)
 			_shimmy_report = "outside corner"
@@ -474,6 +509,9 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	var reach: float = player.current_capsule_radius() + step.length()
 	var blocked: Dictionary = player.probes.side_hit(player.global_position,
 			sideways * side, reach)
+	_probe_trace.append({"label": "body", "from": player.global_position,
+		"to": player.global_position + sideways * side * reach,
+		"hit": not blocked.is_empty()})
 	if not blocked.is_empty():
 		# THE INSIDE CORNER, and it is the SAME probe that used to be only a
 		# refusal. Whatever is beside the body is either something to turn onto
@@ -649,3 +687,10 @@ func _advance_corner(delta: float) -> void:
 	_face_normal = _corner_normal
 	_shimmy = 0.0
 	_shimmy_lockout = config.grab.corner_lockout
+
+## Records one probe's segment and outcome for the debug view.
+func _trace(label: String, result: Dictionary) -> void:
+	if not result.has("from"):
+		return
+	_probe_trace.append({"label": label, "from": result["from"],
+		"to": result["to"], "hit": result.get("valid", false)})
