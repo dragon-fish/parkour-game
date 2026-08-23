@@ -1365,25 +1365,58 @@ func clip_keys_for(clip: StringName, obstacle: Vector2, entry: float = 0.0) -> A
 	var rows = body_clip_curves[clip]
 	if not (rows is Array) or rows.is_empty():
 		return []
-	var best: Array = []
-	var best_distance := INF
+	# ⚠️ THE OBSTACLE IS DECIDED FIRST, ON ITS OWN, and the entry only breaks ties
+	# within what it picks. ✅ The owner: "对应宽高只要有一帧微调，就不要再使用其他接近参
+	# 数的关键帧了，否则可能会互相影响导致某些高度在上下都懂[抖]."
+	#
+	# 🎯 THEY WERE DESCRIBING A REAL DEFECT, one commit old. Adding the entry to
+	# the same sum let a row for a DIFFERENT obstacle outrank an exact match: at
+	# dh 0, dw 0 and an entry 0.68 out, the exact row scores 0.227, while a row
+	# a quarter-metre taller with the entry spot on scores 0.063. The neighbour
+	# won, so keying one height changed another. Two stages cannot do that -- no
+	# entry, however good, can move the obstacle decision.
+	var obstacle_best := INF
 	for row in rows:
-		if not (row is Dictionary) or not row.has("keys"):
+		if not _row_is_usable(row):
 			continue
 		var dh: float = float(row.get("h", 0.0)) - obstacle.x
 		var dw: float = (float(row.get("w", 0.0)) - obstacle.y) * OBSTACLE_WIDTH_WEIGHT
-		# 📌 A ROW WITHOUT AN ENTRY MATCHES ANY, which is what keeps this
-		# additive: a table with one row per obstacle behaves exactly as it did
-		# before the axis existed, and a second row only starts competing once
-		# somebody keys one.
-		var de: float = 0.0
-		if row.has("e"):
-			de = (float(row["e"]) - entry) * ENTRY_WEIGHT
-		var distance: float = dh * dh + dw * dw + de * de
-		if distance < best_distance:
-			best_distance = distance
+		obstacle_best = minf(obstacle_best, dh * dh + dw * dw)
+	if obstacle_best == INF:
+		return []
+	# 📌 SPECIFIC BEATS GENERIC. Among the rows that tie on the obstacle, one
+	# carrying an entry is a refinement of one that does not, so the generic row
+	# is the fallback rather than the default -- otherwise it would win every
+	# time, being at distance zero from everything.
+	var best: Array = []
+	var best_distance := INF
+	var generic: Array = []
+	for row in rows:
+		if not _row_is_usable(row):
+			continue
+		var dh: float = float(row.get("h", 0.0)) - obstacle.x
+		var dw: float = (float(row.get("w", 0.0)) - obstacle.y) * OBSTACLE_WIDTH_WEIGHT
+		if not is_equal_approx(dh * dh + dw * dw, obstacle_best):
+			continue
+		if not row.has("e"):
+			if generic.is_empty():
+				generic = row["keys"]
+			continue
+		var de: float = absf(float(row["e"]) - entry)
+		if de < best_distance:
+			best_distance = de
 			best = row["keys"]
-	return best
+	return best if not best.is_empty() else generic
+
+## Whether a row can be chosen at all.
+##
+## ⚠️ AN EMPTY ROW IS NOT A MATCH. One gets written the moment a combination is
+## visited and then emptied again by dropping its last key, and left eligible it
+## would win its own obstacle outright and shadow every neighbour with nothing
+## at all -- which reads as the curve having been deleted everywhere.
+func _row_is_usable(row) -> bool:
+	return row is Dictionary and row.has("keys") \
+		and (row["keys"] is Array) and not (row["keys"] as Array).is_empty()
 
 ## How far through its path the running scripted move is, or -1 when none is.
 ##

@@ -318,3 +318,53 @@ func test_a_row_with_no_entry_still_matches_every_entry() -> void:
 		player.active_entry = entry
 		assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 5.0, 0.001,
 			"an entry of %.1f found no row at all" % entry)
+
+func test_an_exact_obstacle_is_never_outranked_by_a_better_entry() -> void:
+	# THE OWNER: "对应宽高只要有一帧微调，就不要再使用其他接近参数的关键帧了，否则可能会互相
+	# 影响导致某些高度在上下都懂[抖]."
+	#
+	# A real defect, one commit old: with the entry folded into the same weighted
+	# sum, an exact obstacle match whose entry was 0.68 out scored 0.227 while a
+	# row a quarter-metre taller with the entry spot on scored 0.063. Keying one
+	# height changed another.
+	var player: Player = await _player_with_body()
+	player.body_clip_curves = {&"Idle": [
+		{"h": 1.0, "w": 0.4, "e": 0.10,
+			"keys": [{"t": 0.5, "pos": Vector3(0, 3, 0), "rot": Vector3.ZERO}]},
+		{"h": 1.25, "w": 0.4, "e": 0.78,
+			"keys": [{"t": 0.5, "pos": Vector3(0, 9, 0), "rot": Vector3.ZERO}]},
+	]}
+	player.active_obstacle = Vector2(1.0, 0.4)
+	player.active_entry = 0.78
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 3.0, 0.001,
+		"a taller obstacle's row won because its entry matched better")
+
+func test_a_row_carrying_an_entry_beats_the_generic_one_beside_it() -> void:
+	# Specific beats generic. A generic row sits at distance zero from every
+	# entry, so ranking them together would let it win always and the axis would
+	# never do anything.
+	var player: Player = await _player_with_body()
+	player.body_clip_curves = {&"Idle": [
+		{"h": 1.0, "w": 0.4,
+			"keys": [{"t": 0.5, "pos": Vector3(0, 5, 0), "rot": Vector3.ZERO}]},
+		{"h": 1.0, "w": 0.4, "e": 0.78,
+			"keys": [{"t": 0.5, "pos": Vector3(0, 9, 0), "rot": Vector3.ZERO}]},
+	]}
+	player.active_obstacle = Vector2(1.0, 0.4)
+	player.active_entry = 0.70
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 9.0, 0.001,
+		"the generic row shadowed the one keyed for this entry")
+
+func test_an_emptied_row_does_not_shadow_its_neighbours() -> void:
+	# A row is written the moment a combination is visited and emptied again by
+	# dropping its last key. Left eligible it wins its own obstacle outright with
+	# nothing in it, which reads as the curve having been deleted everywhere.
+	var player: Player = await _player_with_body()
+	player.body_clip_curves = {&"Idle": [
+		{"h": 1.0, "w": 0.4, "keys": []},
+		{"h": 1.25, "w": 0.4,
+			"keys": [{"t": 0.5, "pos": Vector3(0, 6, 0), "rot": Vector3.ZERO}]},
+	]}
+	player.active_obstacle = Vector2(1.0, 0.4)
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 6.0, 0.001,
+		"an empty row was picked over a keyed neighbour")
