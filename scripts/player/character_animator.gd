@@ -196,8 +196,68 @@ func _physics_process(delta: float) -> void:
 	if target == Move.KEEP:
 		return
 	current_clip = target
-	_playback.travel(target)
+	if _should_preempt(target):
+		# 🎯 start(), NOT travel(). travel() is a REQUEST -- the state machine
+		# finishes the transition it is in before honouring it, and there is no
+		# way to ask it to abandon one. start() takes the graph there now.
+		#
+		# ⚠️ reset = true, because these are ACTION clips and this is the moment
+		# the action begins. A trimmed clip starts at its trim, not at frame 0 --
+		# the custom timeline owns that, not this call.
+		_playback.start(target, true)
+	else:
+		_playback.travel(target)
 	_drive_speed(target)
+
+## True when the graph is mid-transition into a clip no scripted move plays,
+## while a scripted move is asking for one of its own.
+##
+## ✅ THE OWNER, working out the shape of it: "比如 Jump -> Climb -> IntoGrab ->
+## Grab -> GrabPullUp 中间几个状态逻辑帧里只存在了几帧，却抢占了 GrabPullUp 的动画时
+## 间." Measured on a 2 m obstacle, take frames from one recording:
+##
+##     78   move=Jump       wants Jump_Start    graph on Sprint
+##     79   move=IntoGrab   wants Climb_Enter   graph on Jump_Start, fading
+##     85   move=Grab       wants Climb_Idle    graph on Jump_Start, fading
+##     86   move=Grab       wants ClimbUp_2m    graph on Jump_Start, fading
+##     89   move=Grab       wants ClimbUp_2m    graph on ClimbUp_2m
+##
+## Jump was the current move for ONE tick and held the graph for eleven -- a
+## whole body_animation_blend_time -- while the body played a jump start through
+## the reach and the grab. Climb_Enter never played at all.
+##
+## 📌 THE DELAYS DO NOT STACK, which the same measurement settled: the graph paid
+## one blend and then went straight to whatever was current, skipping the two
+## clips requested in between. So the cost is one blend per chain, not per state
+## -- and it hurts in proportion to how SHORT the move is. The vault lost 10 of
+## its 27 frames; the pull-up lost 3 of 78.
+##
+## ⚠️ ONE DIRECTION ONLY. A scripted clip may cut in front of an ordinary one; an
+## ordinary one may never cut in front of a scripted one, and two scripted clips
+## queue normally. Anything more symmetric would start throwing away the
+## cross-fades that are doing real work.
+##
+## 📌 The blend being discarded here was fading into a pose the body never
+## actually struck, so losing it costs nothing that was worth having. Where it
+## does cost something is the fade OUT of the clip before it, which start() also
+## drops -- that is the price, and it is why this is not simply always on.
+func _should_preempt(target: StringName) -> bool:
+	return preempts(target, _playback.get_current_node(),
+		_playback.get_fading_from_node())
+
+## The policy on its own, with no graph attached, so it can be stated and tested
+## as the rule it is. See _should_preempt() for what it is for.
+static func preempts(target: StringName, current: StringName,
+		fading_from: StringName) -> bool:
+	# NOTHING TO PRE-EMPT unless a transition is actually in flight. travel() is
+	# honoured immediately when the graph is settled, so start()ing there would
+	# throw away a cross-fade and buy nothing.
+	if fading_from == &"":
+		return false
+	if current == target:
+		return false
+	return Player.SCRIPTED_MOVE_CLIPS.has(target) \
+		and not Player.SCRIPTED_MOVE_CLIPS.has(current)
 
 ## True while the player is holding the walk modifier AND asking to go
 ## somewhere. The same question the landing one-shot asks, deliberately -- one

@@ -2035,7 +2035,12 @@ func _body_has_clip(anim_player: AnimationPlayer, clip_name: StringName) -> bool
 ## those branches, because it is also the JUMP's own clip, where the capsule is
 ## ballistic and the hips' own +0.38 m rise is the jump. A clip is only pinnable
 ## when nothing else plays it.
-const _PINNED_HIP_CLIPS := [&"StepUp", &"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
+## 📌 PUBLIC, and named for the PREDICATE rather than for the hips, because there
+## are two consumers now: _pin_scripted_hips() below, and
+## CharacterAnimator._update(), which lets a clip on this list pre-empt a
+## transition into one that is not. Both are asking the same question -- "is a
+## scripted move playing this?" -- and two lists that answer it would drift.
+const SCRIPTED_MOVE_CLIPS := [&"StepUp", &"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
 	&"SafetyVault", &"Climb_Left", &"Climb_Right", &"Climb_Idle"]
 
 ## Holds the hips still, at the skeleton's rest position, for every clip a
@@ -2083,7 +2088,7 @@ func _pin_scripted_hips(anim_player: AnimationPlayer) -> void:
 	# clip, which is its own business; there is no reason to do it eight more
 	# times here.
 	var library := original.duplicate(true) as AnimationLibrary
-	for clip_name in _PINNED_HIP_CLIPS:
+	for clip_name in SCRIPTED_MOVE_CLIPS:
 		if not library.has_animation(clip_name):
 			continue
 		var animation := library.get_animation(clip_name)
