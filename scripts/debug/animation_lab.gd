@@ -287,6 +287,7 @@ func _take() -> void:
 	# STRAIGHT AT IT, holding forward, and nothing else.
 	_source.state.move = Vector2(0.0, 1.0)
 	_recording = true
+	_live_simulation(true)
 	_take_clock = Time.get_ticks_usec()
 	_record_clock(true)
 	_note = "recording %.2f x %.2f at %.1f m/s  (%dx)" % [
@@ -351,11 +352,22 @@ func _finish() -> void:
 	_recording = false
 	_source.state.move = Vector2.ZERO
 	_source.release_jump()
-	# HANDED OVER TO THE RECORDING. The live simulation stops dead so nothing
-	# keeps writing the transform the scrub is about to own -- and the clock goes
-	# back to the project's rate first, so a scrubbed frame is worth 1/60 s again.
+	# HANDED OVER TO THE RECORDING, and the clock goes back to the project's rate
+	# first so a scrubbed frame is worth 1/60 s again.
 	_record_clock(false)
 	Engine.time_scale = 0.0
+	# ⚠️ time_scale = 0 DOES NOT STOP ANYTHING. It sets delta to zero; every
+	# _physics_process still runs, and Player's still writes body.transform from
+	# the LIVE state every tick. ✅ The owner: "模型总是会先闪到别的地方再闪到正确的
+	# 位置" -- two writers, sixty times a second, against a render running at
+	# 158. The scrub wrote the right transform and the next physics tick put its
+	# own back.
+	#
+	# 📌 The scene already knew to do this for BONES -- the AnimationTree and the
+	# AnimationPlayer are switched off two lines below, with a comment saying
+	# nothing else may be writing them. The body's own TRANSFORM had the same
+	# requirement and nobody had noticed.
+	_live_simulation(false)
 	if _anim_tree != null:
 		_anim_tree.active = false
 	# AND THE PLAYER TOO. With the tree off it is the only thing left that could
@@ -1481,3 +1493,19 @@ func _clip_frame_text() -> String:
 	if wanted != Move.KEEP and wanted != node:
 		text += NEWLINE + "          NOT %s -- the move asked for that and the graph has not arrived" % wanted
 	return text
+
+## Whether the player drives itself, or the recording does.
+##
+## Off, the scrub owns the body outright: position, rotation, pose and clip
+## offset all come from the take. On, the player is a player again.
+##
+## ⚠️ THE ANIMATOR TOO, and it is a separate node so switching the player off
+## does not reach it. Its travel() calls are inert while the tree is inactive,
+## but "inert as far as I can tell" is how the transform writer got missed.
+func _live_simulation(on: bool) -> void:
+	if player == null:
+		return
+	player.set_physics_process(on)
+	var animator := player.get_node_or_null("BodyRoot/CharacterAnimator")
+	if animator != null:
+		animator.set_physics_process(on)
