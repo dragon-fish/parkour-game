@@ -40,6 +40,8 @@ extends Node3D
 
 var _mesh: ImmediateMesh
 var _instance: MeshInstance3D
+## start / end / apex, in that order. See _label_path().
+var _labels: Array[Label3D] = []
 var _lines: StandardMaterial3D
 var _shown := false
 var _trail: PackedVector3Array = PackedVector3Array()
@@ -60,6 +62,21 @@ func _ready() -> void:
 	_lines.no_depth_test = true
 	_lines.render_priority = 4
 	add_child(_instance)
+	for i in 3:
+		var label := Label3D.new()
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		# ⚠️ NO DEPTH TEST. A label at the apex of a vault is usually INSIDE the
+		# obstacle it is describing, and one that hides behind the wall it is
+		# measuring is no use.
+		label.no_depth_test = true
+		label.fixed_size = true
+		label.pixel_size = 0.0006
+		label.outline_size = 12
+		label.modulate = end_colour
+		label.top_level = true
+		label.visible = false
+		add_child(label)
+		_labels.append(label)
 	_instance.visible = false
 
 ## Turns the path on or off from code. See CapsuleDebug.show_overlay() -- the
@@ -95,8 +112,11 @@ func _process(_delta: float) -> void:
 			_trail.push_back(player.global_position)
 
 	if not _shown:
+		_hide_labels()
 		return
 	_mesh.clear_surfaces()
+	if path.is_empty():
+		_hide_labels()
 	if path.is_empty() and _trail.is_empty():
 		return
 	_mesh.surface_begin(Mesh.PRIMITIVE_LINES, _lines)
@@ -133,6 +153,44 @@ func _draw_plan(move, path: Dictionary) -> void:
 
 	_mesh.surface_set_color(head_colour)
 	_cross(move.sample(float(path.get("progress", 0.0))), marker_size)
+	_label_path(move, path)
+
+## Writes the three numbers anybody actually asks about onto the line itself.
+##
+## ✅ THE OWNER: "给黄色路径添加起始点、终点、最高点、动画名字的信息呗." Every question
+## about this line for the last hour has been one of those four, and answering
+## them has meant a probe, a headless run and a round trip each time.
+##
+## 📌 THE APEX IS FOUND, NOT DERIVED. peak_height() is what the shape was ASKED
+## for; this walks the samples and reports where the body actually goes, which is
+## the number worth trusting when the two disagree -- and they have, twice.
+func _label_path(move, path: Dictionary) -> void:
+	var from: Vector3 = path["from"]
+	var to: Vector3 = path["to"]
+	var apex: Vector3 = from
+	for i in samples + 1:
+		var at: Vector3 = move.sample(float(i) / float(samples))
+		if at.y > apex.y:
+			apex = at
+	var clip := ""
+	if player != null:
+		clip = String(player._current_clip())
+	var rows := [
+		[from, "start  y %.2f" % from.y],
+		[to, "end  y %.2f" % to.y],
+		[apex, "%s%sapex  y %.2f   +%.2f over the start" % [clip,
+			"
+" if clip != "" else "", apex.y, apex.y - from.y]],
+	]
+	for i in _labels.size():
+		var label: Label3D = _labels[i]
+		label.global_position = rows[i][0] + Vector3(0.0, marker_size * 2.0, 0.0)
+		label.text = rows[i][1]
+		label.visible = true
+
+func _hide_labels() -> void:
+	for label in _labels:
+		label.visible = false
 
 func _draw_trail() -> void:
 	if _trail.size() < 2:
