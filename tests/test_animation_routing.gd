@@ -130,7 +130,7 @@ const FULL_CLIPS: Array = [
 	&"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Turn180_L", &"Turn180_R",
 	&"StepUp", &"Death01", &"Death02",
 	&"WallRun_Jump_L", &"WallRun_Jump_R",
-	&"LiftAir_Fall_Air", &"LiftAir_Fall_Impact",
+	&"LiftAir_Fall", &"LiftAir_Fall_Air", &"LiftAir_Fall_Impact",
 ]
 
 func test_the_paid_packs_replace_their_placeholders() -> void:
@@ -225,7 +225,11 @@ func test_a_dying_body_falls_over_rather_than_carrying_on() -> void:
 	assert_eq(String(animator._target_animation()), "Jump",
 		"the fixture is not falling, so the test below proves nothing")
 	player.set_dying(true)
-	assert_eq(String(animator._target_animation()), "LiftAir_Fall_Impact",
+	# ⚠️ LiftAir_Fall, NOT LiftAir_Fall_Impact, which this pinned first. Impact
+	# is the ARRIVAL -- a body hitting the ground and convulsing -- and played
+	# as the whole death it thrashes instead of landing. ✅ The owner: "不要用
+	# Impact，那个有点太强烈了，看起来像是搁浅的鲤鱼."
+	assert_eq(String(animator._target_animation()), "LiftAir_Fall",
 		"a dying body asked for '%s'" % String(animator._target_animation()))
 
 func test_a_body_with_no_death_clip_is_not_left_asking_for_one() -> void:

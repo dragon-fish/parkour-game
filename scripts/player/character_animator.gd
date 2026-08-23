@@ -515,10 +515,20 @@ func _target_animation() -> StringName:
 	# where the head is hidden and it costs nothing to have the body fall over
 	# properly.
 	if player.is_dying():
-		# ✅ The owner found a better one: LiftAir_Fall_Impact, the landing half
-		# of the pack's own long fall. Death02 is a death, but a generic one --
-		# this is the body arriving.
-		return _first_available([&"LiftAir_Fall_Impact", &"Death02", &"Death01",
+		# ✅ The owner found the family: UAL2's own long fall, rather than a
+		# generic Death02. Which HALF of it took two goes.
+		#
+		# ⚠️ NOT LiftAir_Fall_Impact, which was the first pick and reads wrong:
+		# "把摔死的动画改成 LiftAir_Fall，不要用 Impact，那个有点太强烈了，看起来像
+		# 是搁浅的鲤鱼." It is the arrival -- a body hitting the ground and
+		# convulsing -- and played as the whole death it thrashes rather than
+		# lands. LiftAir_Fall is the fall itself, which settles.
+		#
+		# 📌 The clip offset and the death eye lift were both tuned against
+		# Impact (0.1 m on the model, 0.4 m on the eye) and neither transfers:
+		# the two clips put the hips in different places. They are the owner's
+		# to re-dial -- F9 for the model, F1 for the eye.
+		return _first_available([&"LiftAir_Fall", &"Death02", &"Death01",
 			&"sneaking", &"Crouch_Idle", &"idle"])
 	match player.move_manager.current_name:
 		Move.WALKING:
