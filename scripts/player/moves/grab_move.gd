@@ -608,6 +608,10 @@ func _advance_corner(delta: float) -> void:
 	var wanted: float = _corner_from_yaw + sweep * progress
 	var moved: float = wanted - _corner_placed
 	_corner_placed = wanted
+	# THE MODEL COMES TOO. GrabConfig freezes the visual yaw so a hanging body
+	# does not swivel to follow the view, and that freeze would otherwise cancel
+	# this turn degree for degree -- see Player.carry_visual_yaw().
+	player.carry_visual_yaw(moved)
 	if player.camera_rig != null:
 		player.camera_rig.shift_yaw_reference(wanted, 1.0)
 		player.camera_rig.absorb_body_yaw(moved)

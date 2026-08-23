@@ -301,3 +301,52 @@ func test_an_uncontrolled_fall_is_not_an_ordinary_one() -> void:
 	# falling animation set to the impact one".
 	assert_eq(String(animator._target_animation()), "LiftAir_Fall_Air",
 		"an uncontrolled fall asked for '%s'" % String(animator._target_animation()))
+
+# --- a clip the graph never heard of is a clip the body does not have ---------
+
+func test_a_shimmy_plays_the_travel_clips() -> void:
+	# ⚠️ THE ROUTING FOR THESE WAS DEAD CODE FROM THE DAY IT WAS WRITTEN, and
+	# nothing said so. _has_clip() asks the GRAPH, and only names listed in
+	# Player._KNOWN_ANIMATION_CLIPS become nodes in it -- so a clip the body
+	# ships and that list omits reads exactly like a clip the body does not
+	# have, and the fallback chain quietly takes the next candidate. The shimmy
+	# played Climb_Idle throughout while working perfectly otherwise, which is
+	# why the owner kept reporting "我还是没观察到左爬和右爬的动画".
+	#
+	# Asked end to end -- stub body, real graph, real routing -- because the
+	# failure lived in the gap between two lists that each looked right alone.
+	var animator: CharacterAnimator = await _animator_with(
+		[&"idle", &"Climb_Idle", &"Climb_Left", &"Climb_Right"])
+	var player: Player = _world["player"]
+	player.pending_ledge = {"valid": true,
+		"edge": player.global_position + Vector3(0.0, 2.0, -1.0),
+		"face_normal": Vector3(0.0, 0.0, 1.0)}
+	player.move_manager.start(Move.GRAB)
+	var grab := player.move_manager.move_for(Move.GRAB) as GrabMove
+	assert_not_null(grab, "no GrabMove to drive")
+
+	grab._shimmy = 0.0
+	assert_eq(animator._target_animation(), &"Climb_Idle",
+		"a still hang did not play the hang clip")
+	grab._shimmy = -1.0
+	assert_eq(animator._target_animation(), &"Climb_Left",
+		"travelling left did not play Climb_Left")
+	grab._shimmy = 1.0
+	assert_eq(animator._target_animation(), &"Climb_Right",
+		"travelling right did not play Climb_Right")
+
+func test_a_body_without_the_travel_clips_keeps_hanging() -> void:
+	# The fallback the chain is written for, and the reason the bug above was
+	# invisible: degrading to the hang clip is CORRECT for a body that lacks
+	# these, and indistinguishable from the failure when the graph is what is
+	# missing them.
+	var animator: CharacterAnimator = await _animator_with([&"idle", &"Climb_Idle"])
+	var player: Player = _world["player"]
+	player.pending_ledge = {"valid": true,
+		"edge": player.global_position + Vector3(0.0, 2.0, -1.0),
+		"face_normal": Vector3(0.0, 0.0, 1.0)}
+	player.move_manager.start(Move.GRAB)
+	var grab := player.move_manager.move_for(Move.GRAB) as GrabMove
+	grab._shimmy = 1.0
+	assert_eq(animator._target_animation(), &"Climb_Idle",
+		"a body with no travel clips did not fall back to the hang")

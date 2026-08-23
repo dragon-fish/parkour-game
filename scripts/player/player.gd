@@ -1063,6 +1063,15 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	&"StepUp",
 	&"WallRun_L", &"WallRun_R", &"WallRun_Jump_L", &"WallRun_Jump_R",
 	&"ClimbUp_2m", &"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Climb_Exit",
+	# ⚠️ WITHOUT THESE TWO LINES THE ROUTING FOR THEM IS DEAD CODE. Only clips
+	# named here become nodes in the state machine, and CharacterAnimator
+	# asks _has_clip() -- which asks the GRAPH, not the body -- so a clip the
+	# body ships and this list omits reads exactly like a clip the body does
+	# not have: the fallback chain silently takes the next candidate. The
+	# shimmy was routed to Climb_Left/Climb_Right from the day it was written
+	# and played Climb_Idle throughout, which is why the owner kept reporting
+	# "我还是没观察到左爬和右爬的动画" on a shimmy that was otherwise working.
+	&"Climb_Left", &"Climb_Right",
 	# Turn180_L is wired and never asked for: the move only ever turns right.
 	# Here anyway, so that the day the turn stops being one-sided the clip is
 	# already in the graph rather than a silent miss.
@@ -1473,6 +1482,27 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# is doing. Wrapped, so a player who spins on the spot cannot wind this up.
 	body_root.rotation.y = wrapf(_visual_yaw - rotation.y, -PI, PI)
 
+## Carries the visible model round with a SCRIPTED body turn, by `radians`.
+##
+## ⚠️ FOR MOVES THAT freeze_visual_yaw, WHICH IS THE WHOLE PROBLEM. Grab freezes
+## it, and rightly: a hanging body cannot swivel its legs to follow the view, so
+## _drive_body_yaw() counter-rotates BodyRoot to hold the model's WORLD yaw
+## still however far the collision body turns.
+##
+## ✅ A corner is the one time that is wrong. "转角的时候人物模型忘记转了，因为它
+## 被设计为 grab 时不转动" -- the body genuinely swings ninety degrees onto the
+## next face, and the freeze dutifully cancelled every degree of it, leaving the
+## model facing the wall it had left.
+##
+## Advancing _visual_yaw by the same amount keeps the counter-rotation constant,
+## so the model's world yaw travels with the turn instead of being pinned
+## against it. Declared BY THE MOVE rather than inferred here, because only the
+## move knows the difference between a turn its body is making and a turn it is
+## refusing to make.
+func carry_visual_yaw(radians: float) -> void:
+	_visual_yaw_started = true
+	_visual_yaw = wrapf(_visual_yaw + radians, -PI, PI)
+
 ## The attached body's skeleton, or null. Resolved once at attach and handed out
 ## rather than re-searched: DeathSequence asks for it to build a ragdoll on.
 func find_skeleton() -> Skeleton3D:
@@ -1519,7 +1549,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# all sustained, hold-or-repeat clips that must keep going for as long as
 	# the state holds; jump is a discrete one-shot action and is deliberately
 	# left alone.
-	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle"]:
+	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle", &"Climb_Left", &"Climb_Right"]:
 		_ensure_clip_loops(anim_player, looping_clip)
 
 	var state_machine := AnimationNodeStateMachine.new()

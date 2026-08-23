@@ -284,3 +284,43 @@ func test_how_narrow_a_rim_a_corner_survives() -> void:
 		gut.p("rim %.2f m -> corner %s" % [rim, "yes" if turned else "NO"])
 		after_each()
 	assert_true(true)
+
+# --- the model comes round with the body ---------------------------------------
+
+func test_the_visible_model_turns_with_the_corner() -> void:
+	# ✅ THE OWNER: "转角的时候人物模型忘记转了，因为它被设计为 grab 时不转动."
+	#
+	# ⚠️ AND THE FREEZE IS RIGHT, WHICH IS WHY THIS NEEDED SAYING RATHER THAN
+	# REMOVING. GrabConfig declares freeze_visual_yaw because a hanging body
+	# cannot swivel its legs to follow the view, so _drive_body_yaw()
+	# counter-rotates BodyRoot to hold the model's world yaw still however far
+	# the collision body turns. A corner is the one time the body genuinely IS
+	# turning, and the freeze cancelled every degree of it.
+	var player: Player = await _fresh()
+	_square(player)
+	await step(2)
+	var grab := _hang(player, Vector3(1.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
+	var before: float = player._visual_yaw
+	assert_true(_travel_until_corner(grab, 1.0), "no corner started")
+	for i in 90:
+		grab.physics_update(1.0 / 60.0, _hold(1.0))
+		if not grab.is_cornering():
+			break
+	assert_false(grab.is_cornering(), "the corner never finished")
+	var swept: float = absf(rad_to_deg(wrapf(player._visual_yaw - before, -PI, PI)))
+	assert_almost_eq(swept, 90.0, 5.0,
+		"the model swept %.1f degrees over a ninety-degree corner" % swept)
+
+func test_hanging_still_does_not_turn_the_model() -> void:
+	# The pair, and the behaviour the owner asked for in the first place:
+	# looking around while hanging turns the head, not the body.
+	var player: Player = await _fresh()
+	_square(player)
+	await step(2)
+	var grab := _hang(player, Vector3(1.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
+	var before: float = player._visual_yaw
+	for i in 30:
+		grab.physics_update(1.0 / 60.0, _hold(0.0))
+	assert_almost_eq(player._visual_yaw, before, 0.001,
+		"the model turned %.2f degrees while hanging still"
+		% rad_to_deg(player._visual_yaw - before))
