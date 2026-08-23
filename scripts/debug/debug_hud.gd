@@ -95,6 +95,7 @@ func _process(delta: float) -> void:
 		# (Walking / Falling / WallRun / Grab / SpeedVault / Slide), and there
 		# is no separate state machine left for it to be reporting.
 		"move       %s" % player.move_manager.current_name,
+		"scripted   %s" % _scripted_line(),
 		"speed      h %.2f  v %.2f m/s"
 			% [player.horizontal_speed(), player.velocity.y],
 		# ABSOLUTE, world-space: the body's own facing and the eye's own pitch,
@@ -240,3 +241,37 @@ func _shimmy_text() -> String:
 	if grab == null or not grab.has_method("shimmy_report"):
 		return "-"
 	return grab.shimmy_report()
+
+## What the running scripted path is, or "-" when none is.
+##
+## ✅ THE OWNER, after a wall in another scene produced a straight one: "我在main场景
+## 2.2x0.35的墙还是能触发一个直线的脚本动画，不知道是哪一个."
+##
+## 🎯 "WHICH MOVE IS DOING THIS" HAD NO ANSWER ON SCREEN. The move name was there,
+## but a move can drive the body several ways -- and the shape is decided by two
+## numbers that were only visible in the source. Reproducing it in the lab
+## measured a curve, so whatever the owner saw is a different path than the one
+## being looked for, and no amount of guessing from here would have found it.
+##
+## The lead is what says whether it can be a straight line at all: 0 is a
+## symmetric bump, above 0 is the bezier. An arc of 0 with a lead of 0 IS the
+## straight line, and now it says so.
+func _scripted_line() -> String:
+	if player == null or player.move_manager == null:
+		return "-"
+	var move = player.move_manager.move_for(player.move_manager.current_name)
+	if move == null or not move.has_method("path_debug"):
+		return "-"
+	var path: Dictionary = move.path_debug()
+	if path.is_empty():
+		return "-"
+	var arc: float = float(path.get("arc", 0.0))
+	var lead: float = float(path.get("lead", 0.0))
+	var shape := "STRAIGHT"
+	if lead > 0.0:
+		shape = "bezier"
+	elif arc > 0.001:
+		shape = "arc"
+	return "%s  %s  arc %.2f  lead %.2f  %.0f%%" % [
+		player.move_manager.current_name, shape, arc, lead,
+		float(path.get("progress", 0.0)) * 100.0]
