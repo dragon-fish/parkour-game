@@ -1550,6 +1550,34 @@ func _camera_head_offset() -> Vector3:
 		applied = body_root.transform.basis * _clip_offset_position
 	return raw - applied
 
+## What the camera does for a scripted move when there is no head to follow.
+##
+## ✅ THE OWNER: "所有脚本动作，胶囊永远只走直线，只有没绑角色模型和骨骼的时候，才用得到
+## 相机去模拟轨迹，所以这个轨迹只留给 fallback 的相机偏移."
+##
+## ⚠️ ONLY WITHOUT A MODEL. With one, the eye follows the head bone and the head
+## bone is wherever the animation puts it -- adding this on top would move the
+## eye twice for the same journey.
+##
+## 📌 It goes through set_head_offset() because the effect wanted is exactly what
+## that does: raise the eye by a displacement Player refreshes every tick. There
+## is no head here, so nothing is stale.
+func _head_follow_fallback() -> void:
+	var lift: float = _scripted_camera_lift()
+	if is_zero_approx(lift):
+		camera_rig.clear_head_position()
+		return
+	camera_rig.set_head_offset(Vector3(0.0, lift, 0.0))
+
+## The active scripted move's fallback camera rise, or 0 when none is running.
+func _scripted_camera_lift() -> float:
+	if move_manager == null:
+		return 0.0
+	var move = move_manager.move_for(move_manager.current_name)
+	if move == null or not move.has_method("camera_lift"):
+		return 0.0
+	return float(move.camera_lift())
+
 ## Re-feeds the camera the head's current displacement from rest, out of band
 ## with the physics tick. Exists for the paused case above; during play
 ## _physics_process() does exactly this line every tick.
@@ -1557,7 +1585,7 @@ func refresh_head_follow() -> void:
 	if camera_rig == null:
 		return
 	if head_node == null:
-		camera_rig.clear_head_position()
+		_head_follow_fallback()
 		return
 	# force_update_transform(), because the skeleton's own pose is applied by a
 	# deferred modifier pass that a paused tree never runs: without it the bone
@@ -2262,7 +2290,7 @@ func _physics_process(delta: float) -> void:
 		if head_node != null:
 			camera_rig.set_head_offset(_camera_head_offset())
 		else:
-			camera_rig.clear_head_position()
+			_head_follow_fallback()
 		# travel_speed(), NOT horizontal_speed() — see travel_speed()'s note on
 		# why velocity lies through a vault or a mantle.
 		camera_rig.update_effects(delta, travel_speed(), grounded)

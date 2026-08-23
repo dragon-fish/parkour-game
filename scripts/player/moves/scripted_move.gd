@@ -18,7 +18,8 @@ var _elapsed: float = 0.0
 ## would stop the body dead at the foot of the obstacle and again on top of it.
 const EDGE_TRAVEL := 0.15
 
-var _arc: float = 0.0
+## The CAMERA's fallback rise, in metres. Not the body's -- see camera_lift().
+var _camera_arc: float = 0.0
 ## How far the rise runs ahead of the travel. See begin().
 var _vertical_lead: float = 0.0
 ## The travel's shaping exponent. 1 is linear. See begin().
@@ -44,13 +45,13 @@ var _ease: float = 1.0
 ## PREDICTABLE, and nothing is more predictable than a straight line at a steady
 ## pace: an offset keyed at 40% of the way through describes a body 40% of the
 ## way along, and the person keying it can hold that in their head.
-func begin(from: Vector3, to: Vector3, duration: float, arc: float = 0.0,
+func begin(from: Vector3, to: Vector3, duration: float, camera_arc: float = 0.0,
 		vertical_lead: float = 0.0, ease: float = 1.0) -> void:
 	_from = from
 	_to = to
 	_duration = maxf(duration, 0.0001)
 	_elapsed = 0.0
-	_arc = arc
+	_camera_arc = camera_arc
 	_vertical_lead = clampf(vertical_lead, 0.0, 1.0)
 	_ease = maxf(ease, 0.05)
 
@@ -89,12 +90,10 @@ func sample(t: float) -> Vector3:
 	# capsule owes is predictability.
 	var eased := 1.0 - pow(1.0 - t, _ease) if _ease != 1.0 else t
 	if _vertical_lead <= 0.0:
-		# ONE CURVE FOR ALL THREE AXES, plus a symmetric bump. Left byte for byte
-		# as it was: everything that does not ask for a lead still moves exactly
-		# how it did.
-		var flat := _from.lerp(_to, eased)
-		flat.y += sin(t * PI) * _arc
-		return flat
+		# ONE CURVE FOR ALL THREE AXES, and nothing added on top of it. The
+		# symmetric bump that used to live here is the camera's now -- see
+		# camera_lift().
+		return _from.lerp(_to, eased)
 
 	# ⚠️ THREE SEGMENTS, NOT ONE, and the middle one is STRAIGHT.
 	#
@@ -152,7 +151,7 @@ func knee_fall() -> float:
 ## rise whichever way the journey slopes: a pull-up finishes above where it
 ## started, a vault-over below.
 func peak_height() -> float:
-	return maxf(_from.y, _to.y) + _arc
+	return maxf(_from.y, _to.y) + _camera_arc
 
 ## Everything a debug view needs to draw this path, or an empty dictionary when
 ## nothing is running. See sample().
@@ -160,6 +159,27 @@ func path_debug() -> Dictionary:
 	if _duration <= 0.0001 or _elapsed >= _duration:
 		return {}
 	return {"from": _from, "to": _to, "progress": progress(),
-		"lead": _vertical_lead, "arc": _arc, "duration": _duration,
+		"lead": _vertical_lead, "arc": _camera_arc, "duration": _duration,
 		"knee_rise": knee_rise(), "knee_fall": knee_fall(),
 		"peak": peak_height()}
+
+## How far the EYE is carried above the straight line, right now.
+##
+## ✅ THE OWNER, settling what the arc is for: "所有脚本动作，胶囊永远只走直线，只有没绑
+## 角色模型和骨骼的时候，才用得到相机去模拟轨迹，所以这个轨迹只留给 fallback 的相机偏移."
+##
+## 🎯 SO THE ARC IS NOT A PATH ANY MORE. sample() no longer adds it: every
+## scripted move travels in a straight line, with no exception left for a tall
+## obstacle. What the arc was really doing was keeping the EYE out of the wall on
+## a vault over something 1.5 m high, and that is a camera job -- the number was
+## always derived by aiming at the eye (see SpeedVaultMove), which is the tell.
+##
+## ⚠️ FALLBACK ONLY. With a model attached the camera follows the head bone, and
+## the head bone is where the animation puts it; adding this on top would move
+## the eye twice. Player only reads it when there is no head to follow, which is
+## the case the owner kept it for: a bare capsule has nothing but the eye to sell
+## the motion with.
+func camera_lift() -> float:
+	if _camera_arc <= 0.0 or _duration <= 0.0001:
+		return 0.0
+	return sin(progress() * PI) * _camera_arc

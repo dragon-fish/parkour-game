@@ -91,7 +91,7 @@ func test_a_lead_keeps_the_body_over_the_lip_before_it_travels() -> void:
 	var start: Vector3 = bits[2]
 	assert_true(grab.is_mantling(), "the fixture never started a pull-up")
 	grab.begin(start, grab._to, player.config.grab.mantle_duration,
-		player.config.grab.mantle_arc_height, 1.0)
+		player.config.grab.mantle_camera_arc, 1.0)
 	var target: Vector3 = grab._to
 	var span: float = absf(target.z - start.z)
 	var slice: float = player.config.grab.mantle_duration / 40.0
@@ -219,6 +219,32 @@ func test_no_scripted_move_ships_with_a_curve_on_by_default() -> void:
 	var grab := GrabConfig.new()
 	var vault := SpeedVaultConfig.new()
 	assert_eq(grab.mantle_path_ease, 1.0, "the mantle travels at a steady pace")
-	assert_eq(grab.mantle_arc_height, 0.0, "and in a straight line")
+	assert_eq(grab.mantle_camera_arc, 0.0, "and in a straight line")
 	assert_eq(vault.vault_path_ease, 1.0, "so does the vault")
-	assert_eq(vault.vault_arc_height, 0.0, "and it is straight too")
+	assert_eq(vault.vault_camera_arc, 0.0, "and it is straight too")
+
+## An arc no longer bends the path -- it lifts the camera, and only as a
+## fallback.
+##
+## THE OWNER, settling what the number is for: "所有脚本动作，胶囊永远只走直线，只有没
+## 绑角色模型和骨骼的时候，才用得到相机去模拟轨迹，所以这个轨迹只留给 fallback 的相机偏移."
+##
+## The vault's arc was the last exception and it was never really a path
+## decision: SpeedVaultMove derives it by aiming at the EYE, so that the eye
+## clears a 1.5 m obstacle rather than passing through it. That is a camera job,
+## and this pins it as one -- ask for a metre of arc and the body must not move
+## a millimetre off the line, while the eye must.
+func test_an_arc_lifts_the_camera_and_leaves_the_path_alone() -> void:
+	var bits: Array = await _mantling_player()
+	var grab: GrabMove = bits[1]
+	var start := Vector3(0.0, 1.0, 0.0)
+	var target := Vector3(0.0, 3.0, -1.0)
+	grab.begin(start, target, 1.0, 1.0)
+	for f in [0.25, 0.5, 0.75]:
+		var at: Vector3 = grab.sample(f)
+		assert_almost_eq(at.y, start.lerp(target, f).y, 0.0001,
+			"a metre of arc moved the body at %.2f through" % f)
+	# And it is not simply ignored: the eye still has to clear the obstacle.
+	grab.advance(0.5)
+	assert_gt(grab.camera_lift(), 0.9,
+		"the arc reached neither the body nor the camera, so it is just gone")

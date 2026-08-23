@@ -67,7 +67,7 @@ extends MoveConfig
 ## Peak height of the vertical arc ScriptedMove.advance() adds over the
 ## straight line from the hang position to the mantle's landing point, so the
 ## body reads as climbing up and over the lip instead of clipping through it.
-## Mirrors SpeedVaultConfig.vault_arc_height's role for VaultState -- see
+## Mirrors SpeedVaultConfig.vault_camera_arc's role for VaultState -- see
 ## ScriptedMove's own note on why the arc is a per-call value rather than a
 ## shared literal.
 ## ✅ ZEROED with the easing, because a straight line is not straight if
@@ -82,7 +82,7 @@ extends MoveConfig
 ## 和动画的时候纯相机还靠它做基础效果呢." A bare capsule with no model has nothing to
 ## sell the motion but its own path, and this number plus mantle_path_ease is that
 ## whole effect. Both are one entry in the F1 panel.
-@export var mantle_arc_height: float = 0.0
+@export var mantle_camera_arc: float = 0.0
 
 ## How much of the pull-up is UP before any of it is forward, 0..1.
 ##

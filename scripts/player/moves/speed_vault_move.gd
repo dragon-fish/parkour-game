@@ -19,7 +19,10 @@ var _landing: Vector3 = Vector3.ZERO
 var _arc_duration: float = 0.0
 ## How high the scripted arc bulges. A vault OVER rises far less than one ONTO,
 ## because it never gets on top of anything.
-var _arc_height: float = 0.0
+## The camera's fallback rise for this vault. Derived from the obstacle and
+## aimed at the eye -- and since it only ever moves the eye now, that derivation
+## is the whole of what it is. See ScriptedMove.camera_lift().
+var _planned_camera_arc: float = 0.0
 var _touched: bool = false
 ## Where the obstacle's face was when the commit was made. See Move.touching().
 var _face_point: Vector3 = Vector3.ZERO
@@ -181,7 +184,7 @@ func enter(_previous: StringName) -> void:
 	# ✅ MEASURED: a VaultOver's peak sits 0.87 m BELOW the obstacle's top and
 	# the feet never clear it at all (docs/feel-backlog.md 27). It is a
 	# hands-on-top move that carries the body PAST the obstacle, not over it.
-	var arc: float = config.speed_vault.vault_arc_height
+	var arc: float = config.speed_vault.vault_camera_arc
 	# `vault_over` PICKS THE LANDING, not `standable`.
 	#
 	# Those are different questions and the first attempt used the wrong one.
@@ -250,7 +253,7 @@ func enter(_previous: StringName) -> void:
 	# the original, so anything else reads as floating. See
 	# docs/contact-drives-movement.md.
 	_landing = landing
-	_arc_height = arc
+	_planned_camera_arc = arc
 
 	# A VAULT MUST NOT BE SLOWER THAN JUST RUNNING THERE.
 	#
@@ -315,7 +318,7 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			# THE RISE LEADS THE TRAVEL -- see SpeedVaultConfig.vault_vertical_lead.
 			# A symmetric bump peaks half way ALONG the journey, and the obstacle is
 			# at the near end of it.
-			begin(player.global_position, _landing, _arc_duration, _arc_height,
+			begin(player.global_position, _landing, _arc_duration, _planned_camera_arc,
 					config.speed_vault.vault_vertical_lead,
 					config.speed_vault.vault_path_ease)
 			player.velocity = Vector3.ZERO
