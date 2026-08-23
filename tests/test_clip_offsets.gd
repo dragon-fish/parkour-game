@@ -145,3 +145,48 @@ func test_lowering_the_body_does_not_lower_the_camera() -> void:
 	# And the MODEL did move -- otherwise this passes because nothing happened.
 	assert_almost_eq(player.body.position.y, player._body_mount.origin.y - 0.30, 0.0001,
 		"the body did not move either, so the test proves nothing")
+
+# --- offsets that change over the clip --------------------------------------
+
+func test_a_keyed_curve_is_read_between_its_keys() -> void:
+	# ✅ THE OWNER, on ClimbUp_2m against the mantle's own path: "这个动画角色的脚
+	# 中途是有悬空的，可能得按时间轴把它的 Z 压一下."
+	#
+	# ⚠️ A DIFFERENT TOOL FROM THE STATIC OFFSET ABOVE, not a replacement. That
+	# one says "this clip sits 8 cm too far forward" -- one number for the whole
+	# clip, which is what a mount mismatch is. This one says "at 40% through the
+	# feet are floating", and no single number can fix that, because the error is
+	# not constant.
+	var player: Player = await _player_with_body()
+	player.body_clip_curves = {&"Idle": [
+		{"t": 0.0, "pos": Vector3.ZERO, "rot": Vector3.ZERO},
+		{"t": 1.0, "pos": Vector3(0.0, 1.0, 0.0), "rot": Vector3.ZERO},
+	]}
+	var half: Array = player.clip_curve_at(&"Idle", 0.5)
+	assert_false(half.is_empty(), "a keyed curve returned nothing mid-way")
+	assert_almost_eq(float(half[0].y), 0.5, 0.001,
+		"halfway between 0 and 1 came out as %.3f" % half[0].y)
+
+func test_a_keyed_curve_holds_flat_outside_its_keys() -> void:
+	# Flat rather than extrapolated, which is what a hand-keyed curve wants: the
+	# author sees exactly the shape they typed, with nothing inventing overshoot
+	# past the ends.
+	var player: Player = await _player_with_body()
+	player.body_clip_curves = {&"Idle": [
+		{"t": 0.25, "pos": Vector3(0.0, 2.0, 0.0), "rot": Vector3.ZERO},
+		{"t": 0.75, "pos": Vector3(0.0, 4.0, 0.0), "rot": Vector3.ZERO},
+	]}
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.0)[0].y), 2.0, 0.001,
+		"before the first key the curve did not hold")
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 1.0)[0].y), 4.0, 0.001,
+		"after the last key the curve did not hold")
+
+func test_a_clip_with_no_curve_is_unaffected() -> void:
+	# The pair, and the thing most at risk: this rides on the same transform the
+	# static offset uses, so a curve lookup that returned something for every
+	# clip would move every body in the game.
+	var player: Player = await _player_with_body()
+	player.body_clip_curves = {&"Sprint": [
+		{"t": 0.0, "pos": Vector3(0.0, 9.0, 0.0), "rot": Vector3.ZERO}]}
+	assert_eq(player.clip_curve_at(&"Idle", 0.5), [],
+		"a clip with no curve of its own picked one up")

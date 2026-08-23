@@ -396,6 +396,26 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## which is where this comes from and where the reasoning lives.
 @export var body_clip_offsets: Dictionary = {}
 
+## Per-clip offsets that CHANGE OVER THE CLIP, keyed by hand.
+##
+## `{ clip_name: [ {"t": 0.0, "pos": Vector3, "rot": Vector3}, ... ] }`, sorted
+## by `t`, which is the clip's own normalised time.
+##
+## ⚠️ A DIFFERENT TOOL FROM body_clip_offsets, not a replacement. That one says
+## "this clip sits 8 cm too far forward" -- one number for the whole clip, which
+## is what a mount mismatch is. This one says "at 40% through, the feet are
+## floating" -- and no single number can fix that, because the error is not
+## constant.
+##
+## ✅ THE OWNER, on ClimbUp_2m against the mantle's own curve: "这个动画角色的脚中途
+## 是有悬空的，可能得按时间轴把它的 Z 压一下...我一个个动画手 K 来配合你的曲线."
+##
+## 📌 NOT EASED, unlike the static offset beside it. That one eases because it
+## CHANGES when the clip changes, and a step there is a jump cut. This one is
+## already a smooth function of time; easing it would simply make it lag the
+## thing it was authored against.
+@export var body_clip_curves: Dictionary = {}
+
 ## Which PART of each clip to play. See BodyProfile.clip_timings, and
 ## _apply_clip_timing() for what it does with it.
 @export var body_clip_timings: Dictionary = {}
@@ -1244,6 +1264,50 @@ func clip_offset_for(clip: StringName) -> Array:
 	push_warning("clip_offsets['%s'] is not [Vector3, Vector3]" % clip)
 	return []
 
+## The hand-keyed offset for `clip` at normalised time `at`, as [pos, rot].
+##
+## Linear between keys and flat outside them, which is what a hand-keyed curve
+## wants: the author sees exactly the shape they typed, with no interpolator
+## inventing overshoot between their keys.
+func clip_curve_at(clip: StringName, at: float) -> Array:
+	if clip == Move.KEEP or not body_clip_curves.has(clip):
+		return []
+	var keys = body_clip_curves[clip]
+	if not (keys is Array) or keys.is_empty():
+		return []
+	var previous: Dictionary = keys[0]
+	if at <= float(previous.get("t", 0.0)):
+		return [previous.get("pos", Vector3.ZERO), previous.get("rot", Vector3.ZERO)]
+	for i in range(1, keys.size()):
+		var key: Dictionary = keys[i]
+		var t1: float = float(key.get("t", 0.0))
+		if at > t1:
+			previous = key
+			continue
+		var t0: float = float(previous.get("t", 0.0))
+		var span: float = maxf(t1 - t0, 0.0001)
+		var f: float = clampf((at - t0) / span, 0.0, 1.0)
+		return [
+			(previous.get("pos", Vector3.ZERO) as Vector3).lerp(key.get("pos", Vector3.ZERO), f),
+			(previous.get("rot", Vector3.ZERO) as Vector3).lerp(key.get("rot", Vector3.ZERO), f),
+		]
+	var last: Dictionary = keys[keys.size() - 1]
+	return [last.get("pos", Vector3.ZERO), last.get("rot", Vector3.ZERO)]
+
+## How far through its path the running scripted move is, or -1 when none is.
+##
+## The keyed curves are authored against the MOVE's clock rather than the
+## AnimationPlayer's, because that is the clock the body's own path runs on --
+## and matching the body is the entire job.
+func scripted_progress() -> float:
+	if move_manager == null:
+		return -1.0
+	var move = move_manager.move_for(move_manager.current_name)
+	if move == null or not move.has_method("path_debug"):
+		return -1.0
+	var path: Dictionary = move.path_debug()
+	return float(path.get("progress", -1.0)) if not path.is_empty() else -1.0
+
 ## The clip the animator last asked for, or KEEP if there is no body animating.
 func _current_clip() -> StringName:
 	var animator := get_node_or_null("BodyRoot/CharacterAnimator") as CharacterAnimator
@@ -1258,7 +1322,16 @@ func _current_clip() -> StringName:
 func _apply_clip_offset() -> void:
 	if body == null:
 		return
-	var extra := Basis.from_euler(_clip_offset_rotation * (PI / 180.0))
+	# THE HAND-KEYED CURVE RIDES ON TOP, unsmoothed -- see body_clip_curves.
+	var curve_position := Vector3.ZERO
+	var curve_rotation := Vector3.ZERO
+	var at: float = scripted_progress()
+	if at >= 0.0:
+		var keyed: Array = clip_curve_at(_current_clip(), at)
+		if not keyed.is_empty():
+			curve_position = keyed[0]
+			curve_rotation = keyed[1]
+	var extra := Basis.from_euler((_clip_offset_rotation + curve_rotation) * (PI / 180.0))
 	# The fold drop goes in HERE rather than through the clip offset, because
 	# the two want opposite things from the camera: a clip offset is a
 	# correction to the model alone and _camera_head_offset() subtracts it back
@@ -1267,7 +1340,7 @@ func _apply_clip_offset() -> void:
 	# reads the bone.
 	var lift: float = clip_lift() * _lift_cancel_amount
 	body.transform = Transform3D(extra * _body_mount.basis,
-			_body_mount.origin + _clip_offset_position
+			_body_mount.origin + _clip_offset_position + curve_position
 			- Vector3(0.0, _fold_drop + lift, 0.0))
 
 ## Declares that a SCRIPTED move owns the body's height, so the clip's own
