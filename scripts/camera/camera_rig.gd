@@ -90,9 +90,6 @@ var _look_relative_yaw: float = 0.0
 ## through, because a view that lags the mouse is intolerable. Moves report
 ## their own turns via absorb_body_yaw(); nothing is inferred.
 var _scripted_yaw_lag: float = 0.0
-## Set for one tick by a HELD absorb_body_yaw(), which suppresses that tick's
-## catch-up. See absorb_body_yaw().
-var _scripted_yaw_held: bool = false
 
 ## How far the attached body's head/neck node has moved FROM ITS REST POSE,
 ## in this rig's parent's (Player's) local space, as of the most recent
@@ -249,15 +246,7 @@ func set_roll_spin(radians: float) -> void:
 ## The move still turns the body immediately -- physics, probes and the look
 ## clamp all work from the real facing. Only the EYE is behind, and only for as
 ## long as it takes to catch up.
-## `hold` marks a turn the eye should SIT OUT rather than merely trail: a whole
-## ninety-degree corner instead of an alignment nudge. Declared by the move,
-## because only the move knows which kind of turn it just made -- see
-## docs/camera-authority.md on why this is told rather than detected.
-##
-## ⚠️ THE VIEW STILL DECIDES WHAT THAT MEANS. In first person a held turn is
-## clamped exactly as any other is, for the reason below; only a third-person
-## camera can actually sit one out.
-func absorb_body_yaw(radians: float, hold: bool = false) -> void:
+func absorb_body_yaw(radians: float) -> void:
 	if is_zero_approx(radians):
 		return
 	# ⚠️ HELD SHORT IN FIRST PERSON, and the reason is a first-person one: a lag
@@ -266,33 +255,20 @@ func absorb_body_yaw(radians: float, hold: bool = false) -> void:
 	# of whatever the body is pressed against. Reported in play as the view
 	# lunging into the wall and then snapping back to the ledge.
 	#
-	# ✅ THIRD PERSON HAS NO SUCH PROBLEM, and the owner asked for the
-	# difference: "第三人称下转角 90° 如果我们也强制镜头旋转，会很晕，不要强制转镜头
-	# 但应用新墙沿的扇形钳制." A camera metres away looking AT the character can
-	# hold still while the body rotates under it -- that is how a third-person
-	# game normally shows a turn, and it is the difference between watching a
-	# corner and being swung around one.
+	# 📌 AND IT IS NOT A FIRST-PERSON RULE, WHICH IS WHAT TWO ATTEMPTS AT AN
+	# EXCEPTION FOR THIRD PERSON ESTABLISHED. Holding a third-person camera
+	# still through a ninety-degree ledge corner works exactly as intended and
+	# is unplayable anyway: the player steers the BODY with the camera, so a
+	# view left a quarter-turn off the wall means their next mouse movement
+	# turns the body away from it -- straight into the one-handed lock, which
+	# then refuses the shimmy they were trying to continue.
 	#
-	# THE CAP IS THE ONLY DIFFERENCE. The lag still bleeds off at
-	# scripted_yaw_catchup_speed, so the eye arrives at the new facing either
-	# way; what changes is whether it is dragged there or drifts. And the FAN is
-	# untouched by all of it -- that travels with _yaw_reference, so the new
-	# wall's constraint applies regardless of where the eye happens to be.
+	# ✅ The owner, after playing it: "还是得让视角跟着转角转，否则几乎总是会触发超过
+	# 45° 锁定横爬，会让玩家困惑."
+	#
+	# The eye's facing during a hang is not a viewing preference. It is an INPUT
+	# to the move.
 	var cap: float = _config.camera.scripted_yaw_max_lag
-	if hold and third_person:
-		cap = _config.camera.scripted_yaw_max_lag_third_person
-		# ⚠️ AND THE DECAY HAS TO STOP WHILE THE TURN IS STILL FEEDING, which
-		# raising the cap alone does not do. The lag bleeds off at
-		# scripted_yaw_catchup_speed EVERY tick, so a turn handing over its
-		# slices one frame at a time is drained as fast as it arrives: at 10/s
-		# against a ninety-degree corner spread over a second, the lag settles
-		# at about seven degrees and the view is dragged through the other
-		# eighty-three. Measured, after raising the cap on its own did nothing
-		# and the owner reported the corner still swinging the camera.
-		#
-		# Catching up is what happens AFTER a turn ends. While the move is
-		# still feeding, there is nothing to catch up to.
-		_scripted_yaw_held = true
 	_scripted_yaw_lag = clampf(_scripted_yaw_lag - radians, -cap, cap)
 
 ## How far the attached body's head/neck node has moved from its rest pose, in
@@ -455,7 +431,6 @@ func reset_state() -> void:
 	# The one place the scripted-turn lag IS cleared: a reset is a new life,
 	# and a turn half-smoothed from the old one has nothing to catch up to.
 	_scripted_yaw_lag = 0.0
-	_scripted_yaw_held = false
 	_sweeping = false
 	end_cinematic()
 	rotation.x = 0.0
@@ -716,13 +691,8 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# Bleed off any scripted turn the eye is still behind on. Written to the
 	# rig's own yaw, which is otherwise unused: the body carries the real
 	# facing, this is only how far the view trails it.
-	if _scripted_yaw_held:
-		# A held turn is still handing over slices; catching up mid-turn is what
-		# drained it to nothing. See absorb_body_yaw().
-		_scripted_yaw_held = false
-	else:
-		var catchup: float = clampf(_config.camera.scripted_yaw_catchup_speed * delta, 0.0, 1.0)
-		_scripted_yaw_lag = lerpf(_scripted_yaw_lag, 0.0, catchup)
+	var catchup: float = clampf(_config.camera.scripted_yaw_catchup_speed * delta, 0.0, 1.0)
+	_scripted_yaw_lag = lerpf(_scripted_yaw_lag, 0.0, catchup)
 	rotation.y = _scripted_yaw_lag
 
 	var body_y: float = (get_parent() as Node3D).global_position.y if get_parent() is Node3D else 0.0

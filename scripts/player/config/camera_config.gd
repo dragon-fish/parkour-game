@@ -203,24 +203,6 @@ extends Resource
 ## is better taken as a cut.
 @export var scripted_yaw_max_lag: float = 0.35
 
-## The same in THIRD person, where it can be far larger.
-##
-## ✅ THE OWNER: "第三人称下转角 90° 如果我们也强制镜头旋转，会很晕，不要强制转镜头但
-## 应用新墙沿的扇形钳制."
-##
-## 🎯 The cap above exists because a first-person eye that trails too far ends up
-## inside the wall. A third-person camera is metres away and looking AT the
-## character, so a body that rotates under a held camera is not a defect -- it is
-## how a third-person game normally shows a turn, and it is the difference
-## between watching a corner and being swung around one.
-##
-## PI, so a whole ninety-degree corner is absorbed and nothing is forced. The eye
-## still arrives at the new facing, at scripted_yaw_catchup_speed, which is a
-## drift rather than a swing. The fan is unaffected either way: it travels with
-## _yaw_reference, so the new wall's look constraint applies from the moment the
-## corner completes whatever the eye is doing.
-@export var scripted_yaw_max_lag_third_person: float = PI
-
 @export var death_eye_lift: float = 0.4
 
 ## The same, during an uncontrolled fall, in metres.
