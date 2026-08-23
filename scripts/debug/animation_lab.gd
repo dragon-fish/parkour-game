@@ -92,6 +92,10 @@ var _anim_tree: AnimationTree
 
 func _ready() -> void:
 	_build_ui()
+	# ✅ THE BODY IS A RECORDING BEING WATCHED, not a character being played, so
+	# every click belongs to the form: "玩家把我的鼠标劫持了，我要当旁观者相机."
+	if player != null:
+		player.owns_mouse = false
 	_load()
 	call_deferred("_take")
 

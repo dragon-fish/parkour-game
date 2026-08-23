@@ -78,7 +78,7 @@ func _ready() -> void:
 	# capture a pointer with -- ARCHIVED by Task 1 and NOT in the running
 	# suite, so nothing currently exercises this path; the reasoning still
 	# holds for whoever rewrites that test.
-	if DisplayServer.get_name() != "headless":
+	if capture_mouse and DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 	var panel := get_node_or_null("TuningPanel")
@@ -121,6 +121,13 @@ const CALIBRATION_SCENE := "res://scenes/calibration_course.tscn"
 ##
 ## The generated arena turns it on, which is where a bench of graded obstacles
 ## belongs.
+## Whether this level grabs the pointer on the way in.
+##
+## ✅ OFF FOR THE ANIMATION LAB, which is a form with a 3D viewport rather than a
+## game: "玩家把我的鼠标劫持了，我要当旁观者相机." A level you play wants the pointer;
+## a level you edit in wants a cursor.
+@export var capture_mouse: bool = true
+
 @export var load_calibration_course: bool = false
 
 ## The body this level plays with, if the file is there.

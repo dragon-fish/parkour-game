@@ -9,6 +9,14 @@ extends CharacterBody3D
 
 var config: MovementConfig
 var input_source: InputSource
+
+## Whether clicking into the viewport hands the pointer back to this body.
+##
+## ✅ FALSE IN THE ANIMATION LAB. There the body is a recording being watched,
+## not a character being played, and every click belongs to the form -- "玩家把我
+## 的鼠标劫持了，我要当旁观者相机". Left true, the first click on the 3D view
+## re-captures the cursor and the panel becomes unreachable.
+var owns_mouse := true
 var move_manager: MoveManager
 
 ## Downward speed at the moment of the most recent landing. Read by CameraRig.
@@ -2109,12 +2117,12 @@ func _input(event: InputEvent) -> void:
 		# Click back into the game. Esc releases the cursor for the tuning
 		# panel; without this the only way back in was F11, which nobody
 		# guesses.
-		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		if owns_mouse and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		elif event.physical_keycode == KEY_F11:
+		elif event.physical_keycode == KEY_F11 and owns_mouse:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif event.physical_keycode == KEY_T:
 			toggle_noclip()
