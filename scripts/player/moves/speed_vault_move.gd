@@ -312,7 +312,11 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		if touching(_face_point):
 			_touched = true
 			# From where the body ACTUALLY IS, which is the whole point.
-			begin(player.global_position, _landing, _arc_duration, _arc_height)
+			# THE RISE LEADS THE TRAVEL -- see SpeedVaultConfig.vault_vertical_lead.
+			# A symmetric bump peaks half way ALONG the journey, and the obstacle is
+			# at the near end of it.
+			begin(player.global_position, _landing, _arc_duration, _arc_height,
+					config.speed_vault.vault_vertical_lead)
 			player.velocity = Vector3.ZERO
 		elif _approach_time >= config.speed_vault.approach_timeout:
 			# The contact the commit predicted never arrived -- jumped short, or

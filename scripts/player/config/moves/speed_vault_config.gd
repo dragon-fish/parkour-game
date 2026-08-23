@@ -318,4 +318,24 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## ⚠️ PROJECT-DEFINED, and it was 0.5 with no reasoning beyond "brisk rather
 ## than instantaneous". ✅ The owner, in play: "a 0.3 s fast vault really is too
 ## fast, make it 0.45." 0.7 of the middle tier's 0.65 s is 0.455.
+## How much of a vault is UP before any of it is forward, 0..1.
+##
+## ✅ THE OWNER, with a drawing of a stick figure clipping a block: "这个弧线同样
+## 也是 VaultOver 的问题，它目前同样在穿墙...对于稍高的墙，都应该是总体有一个向上的
+## 趋势，再往前送."
+##
+## ⚠️ A SYMMETRIC ARC IS WRONG ABOUT WHERE THE OBSTACLE IS. The old path added a
+## sine bump to a straight line, which peaks half way ALONG the journey -- and
+## the thing being vaulted is not half way along, it is at the near end. The body
+## was still climbing while it was already inside the face.
+##
+## Under a lead the vertical instead runs up to a peak clear of both ends, holds
+## while the travel crosses, and drops onto the far side. See
+## ScriptedMove.begin(), where 0 leaves the old single curve untouched.
+##
+## 📌 Applies to every row. The low ones barely notice -- auto_step_up's whole
+## rise is 0.48 m and its arc is a few centimetres -- while the high ones, which
+## are the ones that clipped, change the most.
+@export var vault_vertical_lead: float = 1.0
+
 @export var duration_floor_pct: float = 0.7

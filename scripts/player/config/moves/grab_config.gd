@@ -31,7 +31,22 @@ extends MoveConfig
 ## surface you can stand on" is better than two that can drift apart.
 @export var min_ledge_z_normal: float = 0.707
 ## How long the mantle motion takes.
-@export var mantle_duration: float = 0.42
+## ✅ THE OWNER: "我们的 GrabPullUp 速度太快了，它不应该比 VaultOver 还快."
+##
+## 📌 AND THE ORIGINAL HAS NO NUMBER TO COPY. TdMove_GrabPullUp carries no
+## duration field at all, which says the length comes from the ANIMATION -- so
+## the reference points are the vaults beside it: vault_over and vault_onto are
+## 0.65 s, VaultOverHigh 1.03, VaultOntoHigh 1.17. A pull-up that undercut the
+## cheapest of those was rewarding the slowest way over a ledge.
+##
+## 🎯 It also has to be slow enough for the speedrun glitch to be WORTH doing.
+## ✅ The owner again: "攀边扭头略大于 45° 对着墙沿起跳...能把超级慢的 GrabPullUp
+## 转换为更快的 VaultOver." A technique that saves a twentieth of a second is not
+## a technique anyone would learn.
+##
+## CharacterAnimator fits the clip to this, so ClimbLedge's own 0.63 s follows
+## rather than fighting it.
+@export var mantle_duration: float = 0.8
 ## Horizontal speed granted on top after a mantle.
 @export var mantle_exit_speed: float = 2.0
 ## How far past the ledge edge the mantle's landing point sits, so the body
@@ -45,6 +60,22 @@ extends MoveConfig
 ## ScriptedMove's own note on why the arc is a per-call value rather than a
 ## shared literal.
 @export var mantle_arc_height: float = 0.3
+
+## How much of the pull-up is UP before any of it is forward, 0..1.
+##
+## ✅ THE OWNER, with a drawing of the path: "脚本弧线不对，它的趋势应该是先垂直向上
+## 然后再往前送，而不是一个完美的弧线，否则人会穿墙."
+##
+## ⚠️ A SYMMETRIC ARC CUTS THE CORNER, AND THE CORNER IS THE WALL. One eased
+## curve driving all three axes is a fine description of a VAULT -- the body
+## really does go up and over in one motion, and the thing it is arcing over is
+## below it. A pull-up is the opposite shape: the obstacle is the face you are
+## hanging on, so any forward travel spent before the crown clears the lip is
+## spent inside it.
+##
+## 1.0 is the full hook. See ScriptedMove.begin(), where 0 reduces to the single
+## curve every other scripted move still uses.
+@export var mantle_vertical_lead: float = 1.0
 
 ## How fast the hands travel along a ledge while shimmying, in metres/second.
 ##
