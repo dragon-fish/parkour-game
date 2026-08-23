@@ -142,6 +142,14 @@ var _cursor := 0
 var _recording := false
 var _jumped := false
 var _seen_scripted := false
+## Physics frames since the scripted move ended. See _drive().
+var _after_move := 0
+
+## How long the body keeps running after the scripted move hands back.
+##
+## Enough to watch the blend out and a stride or two past it, and short enough
+## that the body is nowhere near the edge of the floor when it stops.
+var walk_on_seconds := 1.5
 var _source := ScriptedInputSource.new()
 var _label: Label
 var _note := ""
@@ -265,6 +273,7 @@ func _take() -> void:
 	_cursor = 0
 	_jumped = false
 	_seen_scripted = false
+	_after_move = 0
 	_resolve_animation_nodes()
 	if _anim_tree != null:
 		_anim_tree.active = true
@@ -328,13 +337,23 @@ func _drive() -> void:
 	var scripted: bool = player.scripted_progress() >= 0.0
 	if scripted:
 		_seen_scripted = true
+		_after_move = 0
 	elif _seen_scripted:
-		# THE TAKE IS OVER. Left holding forward, the body runs the remaining
-		# seconds straight off the edge of the floor and the tail of every
-		# recording is an uncontrolled fall -- which is not what anyone came here
-		# to key.
-		_source.state.move = Vector2.ZERO
-		return
+		# ✅ IT KEEPS RUNNING FOR A WHILE. "动画实验室不要演完脚本动画就停下，多走几步...
+		# 我要判断动画连贯性." The join back into locomotion is a thing this scene has
+		# to be able to show: the vault cross-fades out over a blend time, and
+		# whether the feet then slide takes a stride or two to see. Cutting the
+		# input on the move's last frame hid exactly the frames the question is
+		# about.
+		#
+		# ⚠️ BOUNDED, though, and that was the original reason for cutting it.
+		# The floor is 60 m square and a take is 8 seconds; left holding forward
+		# for all of it at 5.5 m/s the body runs off the edge and the tail of
+		# every recording is an uncontrolled fall.
+		_after_move += 1
+		if float(_after_move) / _record_hz >= walk_on_seconds:
+			_source.state.move = Vector2.ZERO
+			return
 	if not scripted and player.move_manager.current_name == Move.WALKING:
 		player.velocity.x = 0.0
 		player.velocity.z = -speed()
@@ -909,6 +928,11 @@ func _build_ui() -> void:
 	var leads: Array = []
 	for lead in JUMP_LEADS:
 		leads.append("never" if lead < 0.0 else "%.2f s before contact" % lead)
+	var walk_on := _spin(column, "walk on (s)", 0.0, 4.0, 0.25, walk_on_seconds)
+	walk_on.value_changed.connect(func(v):
+		if _ui_syncing: return
+		walk_on_seconds = v
+		_take())
 	_lead_box = _options(column, "jump", leads, _lead_index)
 	_lead_box.item_selected.connect(func(i):
 		if _ui_syncing: return
