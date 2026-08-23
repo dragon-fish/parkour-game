@@ -172,6 +172,25 @@ extends MoveConfig
 ## the harder you shove off it.
 @export var jump_push_max: float = 4.0
 
+## How fast a jump off a hang launches, along the view, in metres/second.
+##
+## ✅ THE OWNER, on the CDO-faithful first version: "grab 回头跳给的冲量不太对，应该
+## 是往镜头方向一个大跳，如果抬头也会有往上的力，我们的实现就是软绵绵地落下来，这会
+## 让 ME 的一些关卡设计无法实现."
+##
+## ⚠️ A DELIBERATE DIVERGENCE FROM THE TRANSCRIPTION, and the transcription is
+## still recorded above rather than deleted. Read literally, GrabJumpPushAwayMin/
+## MaxSpeed (2 to 4 m/s) plus GrabJumpOffZHeight (1.6) is a shove off the wall
+## that then drops -- which is exactly what they describe as 软绵绵. Their point
+## is a design one and it is decisive: a hang jump that cannot carry you
+## anywhere makes a class of the original's level geometry unbuildable, so
+## whatever those fields mean, they do not mean what the literal reading
+## produces.
+##
+## 6.3 is base_jump_z: a jump is a jump. The wall kick's own magnitude (3.0 out
+## and 5.8 up, so about 6.6) lands in the same place from the other direction.
+@export var jump_speed: float = 6.3
+
 func _init() -> void:
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: hanging. Which way you face is the wall's business.

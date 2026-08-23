@@ -555,23 +555,64 @@ func _turned_from_wall() -> float:
 		return 0.0
 	return facing.normalized().angle_to(into_wall.normalized())
 
-## Leaves the ledge, shoving away from the wall.
+## Where a jump off a hang launches: along the VIEW, never into the wall.
 ##
-## AWAY FROM THE WALL, not along the view, and the threshold is what forces it:
-## at the 45 degrees that first allows this jump the view is still pointed
-## half-way INTO the wall, so pushing along it would drive the body through the
-## thing it is hanging from. The field is named PushAway and it means it.
+## ✅ THE OWNER: "应该是往镜头方向一个大跳，如果抬头也会有往上的力." The pitch
+## therefore has to be in it -- this is the full 3D look direction, not its
+## horizontal shadow -- which is what makes looking up send you up rather than
+## merely away.
+##
+## ⚠️ WITH THE INTO-THE-WALL COMPONENT PROJECTED OUT, because jump_angle_deg
+## permits this jump from 45 degrees off the wall and a view at 45 degrees is
+## still pointed half INTO it. Removing that component rather than refusing the
+## jump keeps the rule simple: you go where you are looking, as far as the wall
+## allows, and at the extreme that is straight along the ledge.
+func _launch_direction() -> Vector3:
+	var outward: Vector3 = _face_normal
+	outward.y = 0.0
+	outward = outward.normalized() if outward.length_squared() > 0.0001 else Vector3.BACK
+	var look := Vector3.ZERO
+	if player.camera_rig != null and player.camera_rig.camera != null:
+		look = -player.camera_rig.camera.global_transform.basis.z
+	if look.length_squared() < 0.0001:
+		# No rig to read: the body is squared to the wall, which is the best
+		# available answer. Tests with a stub player take this path.
+		look = -player.global_transform.basis.z
+	var into: float = look.dot(outward)
+	if into < 0.0:
+		look -= outward * into
+	if look.length_squared() < 0.0001:
+		look = outward
+	return look.normalized()
+
+## Leaves the ledge.
 ##
 ## ⚠️ bDisableFaceRotation is True on TdMove_GrabJump, which fits: the body does
-## not turn to follow the shove. You look back over your shoulder and leave.
+## not turn to follow the launch. You look back over your shoulder and go.
 func _push_off(turned: float) -> void:
-	var away: Vector3 = _face_normal
-	away.y = 0.0
-	away = away.normalized()
-	var span: float = maxf(PI - deg_to_rad(config.grab.jump_angle_deg), 0.0001)
-	var t: float = clampf((turned - deg_to_rad(config.grab.jump_angle_deg)) / span, 0.0, 1.0)
-	var push: float = lerpf(config.grab.jump_push_min, config.grab.jump_push_max, t)
-	player.velocity = away * push + Vector3.UP * config.grab.jump_speed_up
+	var launch: Vector3 = _launch_direction() * config.grab.jump_speed
+	# ✅ AND THE SOURCED FLOOR STILL APPLIES, as a floor rather than as the whole
+	# answer. GrabJumpPushAwayMinSpeed/MaxSpeed say how hard you leave the WALL;
+	# the view says where you go. A view along the ledge satisfies the second
+	# and not the first, and would slide the body down the face it just let go
+	# of.
+	#
+	# ⚠️ What moves between min and max is INFERRED. The CDO gives both numbers
+	# and no driver, and the turn angle is the only quantity this move has that
+	# varies continuously: the further your back is turned, the harder you shove.
+	var outward: Vector3 = _face_normal
+	outward.y = 0.0
+	if outward.length_squared() > 0.0001:
+		outward = outward.normalized()
+		var floor_deg: float = deg_to_rad(config.grab.jump_angle_deg)
+		var span: float = maxf(PI - floor_deg, 0.0001)
+		var t: float = clampf((turned - floor_deg) / span, 0.0, 1.0)
+		var least: float = lerpf(config.grab.jump_push_min, config.grab.jump_push_max, t)
+		var away: float = launch.dot(outward)
+		if away < least:
+			launch += outward * (least - away)
+	launch.y += config.grab.jump_speed_up
+	player.velocity = launch
 
 ## The ledge belonging to a wall the body has run into sideways, or a miss when
 ## that wall carries no ledge at this height.

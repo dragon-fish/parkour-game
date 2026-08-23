@@ -119,50 +119,84 @@ func test_the_angle_is_symmetric() -> void:
 
 # --- where it sends you -------------------------------------------------------
 
-func test_the_shove_is_away_from_the_wall_not_along_the_view() -> void:
-	# ⚠️ THE ONE THAT MATTERS, and the threshold is what forces it: at the 45
-	# degrees that first allows this jump, the view is still pointed half-way
-	# INTO the wall, so pushing along the view would drive the body through the
-	# thing it is hanging from. Turned a full 90 degrees the two answers are
-	# perpendicular, so this cannot pass by coincidence.
+func test_the_launch_follows_the_view() -> void:
+	# ✅ THE OWNER, on the CDO-faithful first version: "grab 回头跳给的冲量不太对，
+	# 应该是往镜头方向一个大跳."
+	#
+	# ⚠️ THIS TEST USED TO ASSERT THE OPPOSITE, and it was not wrong to: the
+	# fields are named PushAway, and at the 45 degrees this jump is first
+	# allowed the view still points half INTO the wall, so launching along it
+	# would drive the body through what it is hanging from. Both remain true.
+	# What settles it is the owner's design argument -- a hang jump that cannot
+	# carry you anywhere makes a class of the original's level geometry
+	# unbuildable -- and the wall is handled by projecting the into-the-wall
+	# component out rather than by refusing to look there.
+	#
+	# Turned a full 90 degrees, so "along the view" and "away from the wall" are
+	# perpendicular and this cannot pass by coincidence.
 	var player: Player = await _hanging_player(90.0)
 	_grab(player).physics_update(1.0 / 60.0, _jump())
-	assert_gt(player.velocity.z, 0.5,
-		"the shove went (%.2f, %.2f, %.2f) rather than away from the wall"
+	# Facing -X at yaw 90.
+	assert_lt(player.velocity.x, -3.0,
+		"the launch went (%.2f, %.2f, %.2f) rather than along the view"
 		% [player.velocity.x, player.velocity.y, player.velocity.z])
-	assert_almost_eq(player.velocity.x, 0.0, 0.01,
-		"the shove followed the view: x came out %.2f" % player.velocity.x)
 
-func test_the_rise_is_a_shove_not_a_boost() -> void:
+func test_the_launch_never_goes_into_the_wall() -> void:
+	# The guard that lets the test above be true safely. At the smallest turn
+	# this jump allows, the view is still half into the wall -- and the body
+	# must still leave it.
+	var player: Player = await _hanging_player(_config().jump_angle_deg + 0.5)
+	_grab(player).physics_update(1.0 / 60.0, _jump())
+	# The wall's outward normal is +Z here.
+	assert_gt(player.velocity.z, 0.0,
+		"the launch drove the body into the wall at z %.2f" % player.velocity.z)
+
+func test_a_bare_turn_still_leaves_the_wall_at_the_sourced_speed() -> void:
+	# ✅ GrabJumpPushAwayMinSpeed survives as a FLOOR on the away-from-wall
+	# component rather than as the whole answer: the view says where you go, and
+	# this says how firmly you leave. A view along the ledge satisfies the first
+	# and not the second, and would slide the body down the face it let go of.
+	var player: Player = await _hanging_player(_config().jump_angle_deg + 0.5)
+	_grab(player).physics_update(1.0 / 60.0, _jump())
+	assert_gt(player.velocity.z, _config().jump_push_min - 0.1,
+		"left the wall at only %.2f m/s against a floor of %.2f"
+		% [player.velocity.z, _config().jump_push_min])
+
+func test_it_is_a_jump_rather_than_a_shove() -> void:
+	# ✅ "我们的实现就是软绵绵地落下来." The old numbers gave 2 to 4 m/s and then a
+	# drop; base_jump_z is 6.3 and the wall kick's own magnitude is about 6.6.
 	var player: Player = await _hanging_player(180.0)
 	_grab(player).physics_update(1.0 / 60.0, _jump())
-	assert_almost_eq(player.velocity.y, _config().jump_speed_up, 0.01,
-		"went up at %.2f m/s instead of %.2f"
-		% [player.velocity.y, _config().jump_speed_up])
-	# And the comparison the owner drew, from the other side: this is nowhere
-	# near the wall kick's 5.8 up, however close the horizontals are.
-	assert_lt(player.velocity.y, 3.0, "a hang jump launched like a wall kick")
+	assert_gt(player.velocity.length(), _config().jump_speed - 0.5,
+		"launched at %.2f m/s, which is not a jump" % player.velocity.length())
 
-func test_a_bare_turn_shoves_least_and_a_full_turn_most() -> void:
-	# ⚠️ The lerp between GrabJumpPushAwayMinSpeed and MaxSpeed is INFERRED --
-	# the CDO gives both numbers and no driver, and the turn angle is the only
-	# thing this move has that varies continuously. What is pinned here is the
-	# two ENDS, which are sourced, plus the direction of travel between them.
-	var cfg := _config()
-	var player: Player = await _hanging_player(cfg.jump_angle_deg + 0.5)
-	_grab(player).physics_update(1.0 / 60.0, _jump())
-	var least: float = player.velocity.z
-	assert_almost_eq(least, cfg.jump_push_min, 0.1,
-		"the smallest allowed turn shoved at %.2f instead of %.2f"
-		% [least, cfg.jump_push_min])
+func test_looking_up_sends_you_up() -> void:
+	# ✅ "如果抬头也会有往上的力." The pitch has to be in the launch direction,
+	# which is why it is the full 3D look vector rather than its horizontal
+	# shadow.
+	#
+	# Which way the pitch sign points is read off the CAMERA rather than assumed,
+	# so this pins the behaviour and not a convention.
+	var level: Player = await _hanging_player(180.0)
+	_grab(level).physics_update(1.0 / 60.0, _jump())
+	var flat_rise: float = level.velocity.y
 	after_each()
 
-	player = await _hanging_player(180.0)
+	var player: Player = await _hanging_player(180.0)
+	var rig = player.camera_rig
+	assert_not_null(rig, "no camera rig to pitch")
+	rig.set_pitch(deg_to_rad(35.0))
+	await step(2)
+	var looked_up: bool = (-rig.camera.global_transform.basis.z).y > 0.0
 	_grab(player).physics_update(1.0 / 60.0, _jump())
-	assert_almost_eq(player.velocity.z, cfg.jump_push_max, 0.1,
-		"a full turn shoved at %.2f instead of %.2f"
-		% [player.velocity.z, cfg.jump_push_max])
-	assert_gt(player.velocity.z, least, "turning further did not shove harder")
+	if looked_up:
+		assert_gt(player.velocity.y, flat_rise + 1.0,
+			"pitching the view up added only %.2f m/s of rise"
+			% (player.velocity.y - flat_rise))
+	else:
+		assert_lt(player.velocity.y, flat_rise - 1.0,
+			"pitching the view down did not take rise away (%.2f vs %.2f)"
+			% [player.velocity.y, flat_rise])
 
 # --- and it lets go properly ---------------------------------------------------
 
