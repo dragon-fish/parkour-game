@@ -1895,11 +1895,23 @@ func _apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		a
 	node.use_custom_timeline = true
 	node.start_offset = start
 	node.timeline_length = length
-	# The kept part is STRETCHED to fill timeline_length rather than being
-	# played at its own pace and cut off. Without this the trim only skips the
-	# run-up; with it, the part that matters can also be made to last as long as
-	# the move that plays it.
-	node.stretch_time_scale = true
+	# ⚠️ STRETCH OFF, and the flag is the whole of the bug the owner reported:
+	# "对于共计39帧的动画设置 from frame=11 / to frame=0，最后11帧会定格."
+	#
+	# stretch_time_scale maps the animation's ORIGINAL length onto
+	# timeline_length. With start_offset also set, the offset removes 11 frames
+	# of CONTENT while the stretch's rate is still computed from all 39 -- so the
+	# 28 kept frames run 39/28 = 1.39x too fast, finish early, and the rest of
+	# the timeline is a held pose. Measured on a bare AnimationTree: 0.7 frames
+	# per tick instead of 0.5, reaching the end and repeating it. The length of
+	# the freeze is start_offset, which is why the owner counted 11.
+	#
+	# 🎯 AND THE JOB IT WAS ADDED FOR IS ALREADY DONE ELSEWHERE.
+	# CharacterAnimator._scripted_fit() divides the KEPT length by the move's
+	# duration and drives GRAPH_TIME_SCALE with it, which stretches the node's
+	# content and its custom timeline together. Two stretches were fighting, and
+	# the one that read the wrong length was this one.
+	node.stretch_time_scale = false
 
 ## True when `anim_player` actually carries `clip_name`, in the DEFAULT ("")
 ## library -- same lookup, and the same "only the default library, ever"
