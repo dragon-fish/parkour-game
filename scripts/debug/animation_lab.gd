@@ -390,6 +390,10 @@ func _physics_process(_delta: float) -> void:
 		# 和其他场景一样临时将胶囊缩小到一半高度." It does; the recording just could
 		# not say so.
 		"capsule": player.current_capsule_height(),
+		# The two eased terms that place the model. See
+		# Player.set_body_shape_state() for why a scrub cannot re-derive them.
+		"shape": [player.body_root_debug()["fold_drop"],
+			player.body_root_debug()["lift_cancel"]],
 	})
 	# AGAINST _record_hz, NOT THE LIVE RATE, which is eight times higher while
 	# this is running. A recorded frame is worth 1/60 s of simulated time because
@@ -693,6 +697,9 @@ func _scrub(by: int) -> void:
 	var capsule: float = float(frame.get("capsule", 0.0))
 	if capsule > 0.0:
 		player.set_capsule_height(capsule)
+	var shape: Array = frame.get("shape", [])
+	if shape.size() >= 2:
+		player.set_body_shape_state(float(shape[0]), float(shape[1]))
 	# THE POSE IS REPLAYED, not re-simulated: it is a pure function of the clip
 	# and the time in it, both of which were recorded.
 	_apply_pose(frame.get("pose", []))

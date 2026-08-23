@@ -1611,8 +1611,27 @@ func body_root_debug() -> Dictionary:
 		"drop": _fold_drop,
 		"clip_y": _clip_offset_position.y,
 		"lift": clip_lift() * _lift_cancel_amount,
+		"fold_drop": _fold_drop,
+		"lift_cancel": _lift_cancel_amount,
 		"lift_kept": _kept_clip_lift,
 	}
+
+## Puts back the two eased terms that place the model, for a recording being
+## scrubbed.
+##
+## ⚠️ THESE ARE STATE, NOT DERIVATIONS, and that is the whole reason this exists.
+## _drive_clip_offset() eases both of them every tick, and a scrub has that tick
+## switched off -- so they sit frozen at whatever the take ENDED on, which is a
+## body standing still with nothing to cancel. The recorded pose meanwhile has
+## the hips high in their own space, and the model flies. ✅ The owner, on the
+## screenshot: "我觉得盆骨完全没有和黄线重合...现在飞上天了."
+##
+## 📌 The third instance of the same class in this scene -- the position, the
+## capsule height, and now these. A scrub owns the body OUTRIGHT; anything the
+## simulation would have been maintaining has to come out of the recording.
+func set_body_shape_state(fold_drop: float, lift_cancel: float) -> void:
+	_fold_drop = fold_drop
+	_lift_cancel_amount = lift_cancel
 
 ## Sets the offset with no easing at all, for the debug tuner: while the tree is
 ## paused nothing calls _drive_clip_offset(), and a tuner you cannot see the
