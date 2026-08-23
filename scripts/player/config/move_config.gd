@@ -57,6 +57,18 @@ extends Resource
 ## and the visible body, so freezing the body IS what asks the head to turn.
 @export var freeze_visual_yaw: bool = false
 
+## Whether the CHEST may take its share of a head turn while this move runs.
+##
+## ⚠️ TRUE ALMOST EVERYWHERE, and false is the interesting case. HeadLook splits a
+## look between spine, neck and head so that turning to look at something reads
+## as a person rather than an owl -- but the split assumes the shoulders are free
+## to move. A hanging body's are not: the arms end at hands that are bolted to a
+## ledge, so a chest that rotates takes them with it.
+##
+## ✅ THE OWNER: "我们有一套上半身跟随头扭动 15° 的设计，在 grab 期间要暂时禁用，
+## 否则左右扭头的时候双臂会跟着转一下穿模进墙里."
+@export var allows_spine_twist: bool = true
+
 @export var absolute_yaw_constraint: bool = false
 
 ## When set, the PITCH clamp is not a fixed band but relaxes as the view turns

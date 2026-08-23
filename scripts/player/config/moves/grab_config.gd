@@ -249,6 +249,10 @@ func _init() -> void:
 	# that this may clip in first person and asked for it anyway for now.
 	# See MoveConfig.freeze_visual_yaw.
 	freeze_visual_yaw = true
+	# ✅ THE HANDS ARE ON THE LEDGE, so the shoulders cannot follow the head --
+	# see MoveConfig.allows_spine_twist. The arms swung into the wall without
+	# this.
+	allows_spine_twist = false
 	min_look_constraint = Vector3(0.0, -deg_to_rad(170.0), -PI)
 	max_look_constraint = Vector3(deg_to_rad(87.9), deg_to_rad(170.0), PI)
 	# ⚠️ PROJECT-DEFINED. Turned fully away, the view can look well below level

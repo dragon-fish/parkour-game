@@ -1428,7 +1428,13 @@ func _drive_head_look() -> void:
 	# where the camera is, so measuring against it would always be zero.
 	var yaw: float = wrapf(rotation.y - _visual_yaw, -PI, PI)
 	var pitch: float = float(camera_rig.look_debug()["pitch"])
-	head_look.request(yaw, pitch, config.camera.pitch_limit_deg)
+	# The active move decides whether the chest may join in -- see
+	# MoveConfig.allows_spine_twist.
+	var active: MoveConfig = move_manager.current_config() if move_manager != null else null
+	var spine: float = HeadLook.SPINE_SHARE_DEG
+	if active != null and not active.allows_spine_twist:
+		spine = 0.0
+	head_look.request(yaw, pitch, config.camera.pitch_limit_deg, spine)
 
 ## Turns the visible body toward where it is going, instead of welding it to
 ## the view.

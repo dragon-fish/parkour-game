@@ -75,6 +75,8 @@ const RATE := 10.0
 ## which has the config this modifier does not.
 var _pitch_limit_deg: float = 89.0
 
+## The chest's allowance for the CURRENT request. See request().
+var _spine_share_deg: float = SPINE_SHARE_DEG
 var _wanted_yaw: float = 0.0
 var _wanted_pitch: float = 0.0
 var _yaw: float = 0.0
@@ -83,7 +85,20 @@ var _pitch: float = 0.0
 ## Asks the head to look `yaw` from the body's own heading and `pitch` up or
 ## down, both in radians. Driven by Player every physics tick; see
 ## Player._drive_head_look().
-func request(yaw: float, pitch: float, pitch_limit_deg: float = 89.0) -> void:
+## `spine_share_deg` is how much of the yaw the CHEST may take. Passing 0 leaves
+## the whole turn to the neck and head.
+##
+## ⚠️ A PARAMETER RATHER THAN A CONSTANT because a hanging body has to be able to
+## refuse it. The chest's share is what makes looking around read as a person
+## rather than an owl -- everywhere except on a ledge, where the arms are bolted
+## to the wall by the hands and the shoulders cannot go anywhere without taking
+## them along.
+##
+## ✅ THE OWNER: "我们有一套上半身跟随头扭动 15° 的设计，在 grab 期间要暂时禁用，
+## 否则左右扭头的时候双臂会跟着转一下穿模进墙里."
+func request(yaw: float, pitch: float, pitch_limit_deg: float = 89.0,
+		spine_share_deg: float = SPINE_SHARE_DEG) -> void:
+	_spine_share_deg = maxf(spine_share_deg, 0.0)
 	_pitch_limit_deg = pitch_limit_deg
 	# RELEASED PAST A QUARTER TURN, and eased out rather than cut: at exactly
 	# the limit a hard cutoff would drop the head from fully turned to forward
@@ -115,7 +130,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		return
 
 	var spine_yaw: float = clampf(_yaw, \
-		-deg_to_rad(SPINE_SHARE_DEG), deg_to_rad(SPINE_SHARE_DEG))
+		-deg_to_rad(_spine_share_deg), deg_to_rad(_spine_share_deg))
 	# PROPORTIONAL, not clamped. Clamping put the chest at its full bend the
 	# moment the camera passed 22 degrees and left it there for the whole rest
 	# of the range, which the owner spotted at once: the body finishes folding

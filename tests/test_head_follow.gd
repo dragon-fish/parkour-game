@@ -113,3 +113,38 @@ func test_zero_strength_lets_no_head_motion_through_at_all() -> void:
 	head.global_position += Vector3(0.3, 0.4, 0.5)
 	await step(1)
 	assert_almost_eq(rig.position.distance_to(before), 0.0, 0.001, 		"a disabled follow moved the eye %.4f m" % rig.position.distance_to(before))
+
+# --- the chest sits a hang out ---------------------------------------------------
+
+func test_the_chest_takes_its_share_by_default() -> void:
+	# The pair for the test below: without it, that one passes on a build where
+	# the spine never moves at all.
+	var look := HeadLook.new()
+	add_child(look)
+	look.request(deg_to_rad(60.0), 0.0, 89.0)
+	assert_almost_eq(look._spine_share_deg, HeadLook.SPINE_SHARE_DEG, 0.001,
+		"the default request gave the chest %.1f degrees" % look._spine_share_deg)
+	look.free()
+
+func test_a_move_can_take_the_chest_out_of_it() -> void:
+	# ✅ THE OWNER: "我们有一套上半身跟随头扭动 15° 的设计，在 grab 期间要暂时禁用，
+	# 否则左右扭头的时候双臂会跟着转一下穿模进墙里."
+	#
+	# The arms end at hands bolted to a ledge, so a chest that rotates takes
+	# them with it -- into the wall.
+	var look := HeadLook.new()
+	add_child(look)
+	look.request(deg_to_rad(60.0), 0.0, 89.0, 0.0)
+	assert_almost_eq(look._spine_share_deg, 0.0, 0.001,
+		"the chest kept %.1f degrees on a hang" % look._spine_share_deg)
+	look.free()
+
+func test_grab_is_the_move_that_asks_for_it() -> void:
+	# Asked of the CONFIG rather than of a running game, because what is being
+	# pinned is a declaration: a future move that needs the same treatment says
+	# so the same way.
+	var config := MovementConfig.new()
+	assert_false(config.grab.allows_spine_twist,
+		"Grab lets the chest follow the head, which puts the arms in the wall")
+	assert_true(config.walking.allows_spine_twist,
+		"Walking stopped letting the chest follow the head")
