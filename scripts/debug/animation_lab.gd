@@ -190,10 +190,15 @@ func _ready() -> void:
 ## are not in the tree yet on the tick this node is ready.
 func _focus_the_scene() -> void:
 	var level := get_parent()
-	for panel in ["DebugHUD", "TuningPanel"]:
-		var node: Node = level.get_node_or_null(NodePath(panel))
-		if node is CanvasLayer:
-			(node as CanvasLayer).visible = false
+	# BY TYPE, NOT BY NAME. The first version of this looked for "DebugHUD" and
+	# the node is called "DebugHud", so nothing was hidden and the owner spent a
+	# debugging session reading the level's LIVE numbers against this panel's
+	# RECORDED ones -- they disagree by design, and the live ones win the eye
+	# because they are on the left. Every CanvasLayer under the LEVEL is a panel
+	# this scene did not ask for; the lab's own UI hangs off this node instead.
+	for child in level.get_children():
+		if child is CanvasLayer:
+			(child as CanvasLayer).visible = false
 	for child in level.get_children():
 		if child.has_method("show_overlay"):
 			child.call("show_overlay", true)
@@ -300,6 +305,10 @@ func _physics_process(_delta: float) -> void:
 		"move": player.move_manager.current_name,
 		"progress": player.scripted_progress(),
 		"duration": _scripted_duration(),
+		# ⚠️ THE NODE THE GRAPH IS ON, which is not always the clip the animator
+		# asked for. See _clip_frame_text().
+		"node": _playback.get_current_node() if _playback != null else Move.KEEP,
+		"fade": _playback.get_fading_from_node() if _playback != null else &"",
 		"obstacle": Vector2(height(), width()),
 	})
 	# AGAINST _record_hz, NOT THE LIVE RATE, which is eight times higher while
@@ -1424,19 +1433,49 @@ func _clip_frame_seconds_for(clip: StringName) -> float:
 ## number is offset by the trim's own start. Both halves are printed rather than
 ## one being silently converted, because a source frame and a played frame are
 ## genuinely different things once a clip has been cut.
+## What is actually on screen at this frame, and whether it is what was asked
+## for.
+##
+## ✅ THE OWNER: "为什么在第4逻辑帧动画帧突然回到了0，我没看懂." Because for the first
+## five frames of that move the graph was not playing the move's clip at all.
+## Measured on the take that produced the question:
+##
+##     take 81  wanted StepUp   playing Jump_Start  fading from Sprint
+##     take 85  wanted StepUp   playing Jump_Start  fading from Sprint
+##     take 86  wanted StepUp   playing StepUp      fading from Jump_Start
+##
+## 🎯 THE READOUT WAS THE BUG, not what it described. It took the clip name from
+## the ANIMATOR's request and the play position from the GRAPH, and printed them
+## as one fact. So the rising numbers 1 2 3 3 were Jump_Start's clock wearing
+## StepUp's name, and the "reset to 0" was simply StepUp finally starting.
+##
+## ⚠️ The move manager went Walking -> Jump -> SpeedVault inside a single tick,
+## and a state machine finishes the transition it is in before honouring the next
+## travel(). So SpeedVault's clip queues behind a Jump_Start the body never
+## really played, and starts one blend late. That is a real cost -- the scripted
+## fit stretches the clip to fill the move assuming it starts at the beginning of
+## it -- and it is left visible here rather than hidden, because it is the next
+## thing to fix and not something this panel should paper over.
 func _clip_frame_text() -> String:
 	if _frames.is_empty():
 		return "-"
-	var clip: StringName = _frame_clip()
-	if clip == Move.KEEP:
+	var frame: Dictionary = _frames[_cursor]
+	var node: StringName = frame.get("node", Move.KEEP)
+	if node == Move.KEEP or node == &"":
 		return "-"
-	var per_frame: float = _clip_frame_seconds()
-	var at: float = float(_frames[_cursor].get("clip_time", 0.0))
+	var per_frame: float = _clip_frame_seconds_for(node)
+	var at: float = float(frame.get("clip_time", 0.0))
 	var played: int = int(round(at / per_frame))
+	var text := "%s  frame %d  (%.3f s in)" % [node, played, at]
 	var offset := 0
-	if player.body_clip_timings.has(clip):
-		offset = int(round(float(player.body_clip_timings[clip][0]) / per_frame))
-	if offset == 0:
-		return "%d  (%.3f s in)" % [played, at]
-	return "%d of the trimmed range = source frame %d  (%.3f s in)" % [
-		played, played + offset, at]
+	if player.body_clip_timings.has(node):
+		offset = int(round(float(player.body_clip_timings[node][0]) / per_frame))
+	if offset != 0:
+		text += "  = source frame %d" % (played + offset)
+	var fading: StringName = frame.get("fade", &"")
+	if fading != &"":
+		text += NEWLINE + "          still blending in, over %s" % fading
+	var wanted: StringName = _frame_clip()
+	if wanted != Move.KEEP and wanted != node:
+		text += NEWLINE + "          NOT %s -- the move asked for that and the graph has not arrived" % wanted
+	return text
