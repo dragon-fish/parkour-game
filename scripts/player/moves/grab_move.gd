@@ -463,6 +463,7 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# Probes.ledge_beside() for why that is and what it does instead.
 	_probe_trace.clear()
 	var beside: Dictionary = player.probes.ledge_beside(_edge, step,
+			_face_normal, Probes.LEDGE_ANCHOR_MARGIN,
 			config.grab.shimmy_probe_lift, config.grab.shimmy_edge_tolerance)
 	_trace("ledge", beside)
 
@@ -600,6 +601,7 @@ func _ledge_on(blocked: Dictionary) -> Dictionary:
 	# ledge_beside() already measures the height it finds against the y it was
 	# handed -- which is this ledge's.
 	var top: Dictionary = player.probes.ledge_beside(candidate, Vector3.ZERO,
+			normal, Probes.LEDGE_ANCHOR_MARGIN,
 			config.grab.shimmy_probe_lift, config.grab.shimmy_edge_tolerance)
 	if not top.get("valid", false):
 		return {}

@@ -81,6 +81,13 @@ const SURFACE_UNDERSHOOT := 0.1
 ## Sharing the literal would tie two unrelated tolerances together.
 const LEDGE_ANCHOR_MARGIN := 0.1
 
+## Fractions of LEDGE_ANCHOR_MARGIN the ledge-top probe walks through when the
+## first comes back empty. 1.0 FIRST, so geometry with nothing standing on it
+## is probed exactly where it always was; the rest march toward the face, which
+## is the barest part of any lip and the part the hands are actually on. See
+## _top_beside() for the railing this exists for.
+const INSET_LADDER := [1.0, 0.5, 0.25, 0.1]
+
 ## Height above the body's centre that the forward wall ray fires from, matching
 ## WallLeft/WallRight's own offset. ⚠️ PROJECT-DEFINED.
 const WALL_AHEAD_CHEST_Y := 0.2
@@ -622,32 +629,69 @@ func _ledge_from_face() -> Dictionary:
 ## children of the player and travel with it, while this one has to be fired
 ## from an arbitrary point out along the ledge. Same mask as SurfaceDown, read
 ## off it rather than restated, so the two cannot drift apart.
-func ledge_beside(edge: Vector3, step: Vector3, lift: float,
-		tolerance: float) -> Dictionary:
+func ledge_beside(edge: Vector3, step: Vector3, outward: Vector3,
+		margin: float, lift: float, tolerance: float) -> Dictionary:
 	_ensure_rays()
-	var target: Vector3 = edge + step
-	# THE SEGMENT TRAVELS WITH THE ANSWER, so a debug view can draw the ray that
-	# was actually fired instead of a second copy of the same arithmetic. A
-	# marker that drifts from the behaviour it illustrates is worse than none --
-	# IntoGrabMove.hanging_pose() is static for exactly this reason.
-	var from: Vector3 = target + Vector3.UP * lift
-	var to: Vector3 = target - Vector3.UP * tolerance
-	var hit: Dictionary = _cast(from, to)
-	if hit.is_empty():
-		return {"valid": false, "top": Vector3.ZERO, "edge": Vector3.ZERO,
-			"normal": Vector3.UP, "from": from, "to": to}
-	# HEIGHT IS THE TEST, not merely "something is there". A ledge that steps
-	# up or drops away is a different ledge, and shimmying onto it would leave
-	# the hands at a height the hanging body was never placed for. `tolerance`
-	# is deliberately the same distance the ray is allowed to overshoot below,
-	# so anything it can reach is already within it -- the check below is what
-	# rejects a hit found on the way DOWN from the lift.
-	var found: Vector3 = hit["position"]
-	if absf(found.y - edge.y) > tolerance:
-		return {"valid": false, "top": Vector3.ZERO, "edge": Vector3.ZERO,
-			"normal": Vector3.UP, "from": from, "to": to}
-	return {"valid": true, "top": found, "edge": found,
-		"normal": hit.get("normal", Vector3.UP), "from": from, "to": to}
+	return _top_beside(edge + step, edge.y, outward, margin, lift, tolerance)
+
+## The exposed top of a ledge near `target`, at `reference_y`, or a miss.
+##
+## ⚠️ TRIES MORE THAN ONE POINT, AND THAT IS THE WHOLE OF IT. A single probe a
+## fixed LEDGE_ANCHOR_MARGIN inside the face assumes the strip it lands on is
+## bare, and a railing standing on the ledge makes that false -- not by covering
+## the ledge, but by occupying the one narrow column being asked about.
+##
+## ✅ THE OWNER'S WHITEBOX, where this was finally caught: two eaves of the same
+## building, a fence on each, and the shimmy rounded their shared corner one way
+## and refused the other. "从西边的屋檐可以去北边的屋檐，但是没办法爬回来."
+## The two fences are set back by different amounts and the anchor lands 0.100 m
+## in:
+##
+##   south eave   face z = 13.935    fence 13.974 .. 14.007    anchor 14.035  clear
+##   west eave    face x = -6.048    fence -6.005 .. -5.943    anchor -5.948  INSIDE
+##
+## Three centimetres of level editing decides it. And the fences run from below
+## the eave's own top right up past head height, so on the west eave that column
+## is solid all the way: the probe begins inside it, and a ray that starts inside
+## geometry reports nothing at all -- identical, from here, to "there is no ledge
+## here".
+##
+## 📌 The margin point is tried FIRST, so anything without a railing on it
+## behaves exactly as before. This is purely a fallback ladder.
+func _top_beside(target: Vector3, reference_y: float, outward: Vector3,
+		margin: float, lift: float, tolerance: float) -> Dictionary:
+	var flat: Vector3 = outward
+	flat.y = 0.0
+	var has_face: bool = flat.length_squared() > 0.0001
+	if has_face:
+		flat = flat.normalized()
+	# The face plane at this position: the anchor sits `margin` behind it.
+	var face_plane: Vector3 = target + flat * margin if has_face else target
+	var from := Vector3.ZERO
+	var to := Vector3.ZERO
+	for fraction in INSET_LADDER:
+		var at: Vector3 = face_plane - flat * (margin * fraction) if has_face else target
+		# THE SEGMENT TRAVELS WITH THE ANSWER, so a debug view draws the ray
+		# actually fired rather than a second copy of the same arithmetic. On a
+		# miss it is the LAST one tried, i.e. the closest to the face, which is
+		# the interesting one to look at.
+		from = at + Vector3.UP * lift
+		to = at - Vector3.UP * tolerance
+		var hit: Dictionary = _cast(from, to)
+		if not hit.is_empty():
+			# HEIGHT IS THE TEST, not merely "something is there". A ledge that
+			# steps up or drops away is a different ledge, and shimmying onto it
+			# would leave the hands at a height the hanging body was never
+			# placed for.
+			var found: Vector3 = hit["position"]
+			if absf(found.y - reference_y) <= tolerance:
+				return {"valid": true, "top": found, "edge": found,
+					"normal": hit.get("normal", Vector3.UP), "from": from, "to": to}
+		if not has_face:
+			# Nothing to walk toward: one point is all there is to try.
+			break
+	return {"valid": false, "top": Vector3.ZERO, "edge": Vector3.ZERO,
+		"normal": Vector3.UP, "from": from, "to": to}
 
 ## Whether the WALL FACE the hands hang from continues `step` metres to one
 ## side. `outward` is that face's normal, pointing away from the wall.
@@ -713,14 +757,16 @@ func corner_beyond(edge: Vector3, along: Vector3, outward: Vector3,
 	# margin INSIDE the top, the same offset ledge_query() anchors with, so the
 	# two agree about where an edge is.
 	var candidate: Vector3 = Vector3(face_point.x, edge.y, face_point.z) - normal * margin
-	trace["top_from"] = candidate + Vector3.UP * drop
-	trace["top_to"] = candidate - Vector3.UP * tolerance
-	var top: Dictionary = _cast(trace["top_from"], trace["top_to"])
-	if top.is_empty():
+	# Through the same ladder, for the same reason: the face round a corner is
+	# as likely to carry a railing as the one just left, and on the owner's
+	# whitebox both eaves had one.
+	var top: Dictionary = _top_beside(candidate, edge.y, normal, margin,
+			drop, tolerance)
+	trace["top_from"] = top["from"]
+	trace["top_to"] = top["to"]
+	if not top.get("valid", false):
 		return _corner_miss(trace)
-	var found: Vector3 = top["position"]
-	if absf(found.y - edge.y) > tolerance:
-		return _corner_miss(trace)
+	var found: Vector3 = top["edge"]
 	var result := {"valid": true, "top": found, "edge": found, "normal": normal,
 		"face_point": face_point, "face_normal": normal}
 	result.merge(trace)

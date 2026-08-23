@@ -355,3 +355,86 @@ func test_the_model_squares_up_to_the_new_face_however_it_arrived() -> void:
 		- atan2(grab._face_normal.x, grab._face_normal.z), -PI, PI))
 	assert_almost_eq(absf(facing), 0.0, 2.0,
 		"the model came out %.1f degrees off square to the face it is on" % facing)
+
+# --- the owner's whitebox, to the centimetre -----------------------------------
+
+## The eave corner from scenes/debug_levels/sandbox.tscn, group 转角挂边爬行,
+## transcribed rather than approximated: the bug lived in three centimetres.
+##
+##   south eave  x[-6.048,-2.702] y[2.302,2.628] z[13.935,14.267]
+##   west eave   x[-6.048,-5.711] y[2.302,2.628] z[14.264,16.847]
+##   south fence z[13.974,14.007]   west fence x[-6.005,-5.943]
+##
+## Both fences stand ON their eave and run from below its top to well above head
+## height, so the column each occupies is solid top to bottom.
+const EAVE_TOP := 2.6282
+
+func _owners_corner(player: Player) -> void:
+	_block(player, Vector3(-4.374817, 2.465127, 14.100849),
+			Vector3(3.3460693, 0.32617188, 0.33190918))
+	_block(player, Vector3(-5.8793945, 2.465127, 15.555216),
+			Vector3(0.33691406, 0.32617188, 2.5832214))
+	_block(player, Vector3(-4.209198, 1.2798243, 15.536758),
+			Vector3(3.0148315, 2.2768555, 2.5986938))
+	_block(player, Vector3(-5.3278437, 3.785005, 13.990347),
+			Vector3(1.3551693, 2.4624023, 0.032852173))
+	_block(player, Vector3(-5.974084, 3.785005, 15.422159),
+			Vector3(0.06268883, 2.4624023, 2.8506813))
+
+func test_the_owners_corner_rounds_from_the_south_eave() -> void:
+	# The direction that already worked: the south fence sits 0.039 m back from
+	# its face, so the anchor's 0.100 m clears it.
+	var player: Player = await _fresh()
+	_owners_corner(player)
+	await step(2)
+	var grab := _hang(player, Vector3(-5.0, EAVE_TOP, 14.035),
+			Vector3(0.0, 0.0, -1.0))
+	assert_true(_travel_until_corner(grab, 1.0, 600),
+		"the direction that already worked stopped working: %s" % grab.shimmy_report())
+
+func test_the_owners_corner_rounds_from_the_west_eave() -> void:
+	# ✅ THE REGRESSION: "从西边的屋檐可以去北边的屋檐，但是没办法爬回来."
+	#
+	# The west fence spans x[-6.005,-5.943] and the anchor lands at -5.948 --
+	# INSIDE it. The down-probe therefore began inside solid geometry, and a ray
+	# that starts inside reports nothing at all: indistinguishable, from the
+	# probe's side, from "there is no ledge here". Three centimetres of level
+	# editing is the whole difference between the two directions.
+	var player: Player = await _fresh()
+	_owners_corner(player)
+	await step(2)
+	var grab := _hang(player, Vector3(-5.948, EAVE_TOP, 15.5),
+			Vector3(-1.0, 0.0, 0.0))
+	var from_z: float = player.global_position.z
+	var turned: bool = _travel_until_corner(grab, -1.0, 600)
+	var travelled: float = from_z - player.global_position.z
+	# ⚠️ THE DISTANCE, NOT MERELY "a corner happened". The first version of this
+	# asserted only that is_cornering() went true, and it passed with the fix
+	# reverted -- because a probe that fails on the FIRST tick drops straight
+	# into the outside-corner branch and fires one on the spot, a metre and a
+	# half short of the actual corner. "没办法爬回来" is travel failing, so
+	# travel is what has to be measured.
+	assert_gt(travelled, 1.0,
+		"travelled only %.2f m along the west eave before stopping: %s"
+		% [travelled, grab.shimmy_report()])
+	assert_true(turned, "reached the corner and did not round it: %s"
+		% grab.shimmy_report())
+
+func test_the_west_anchor_really_is_inside_the_fence() -> void:
+	# Without this the test above could pass on geometry that never reproduced
+	# the problem -- which is what three earlier attempts at reproducing it did.
+	var player: Player = await _fresh()
+	_owners_corner(player)
+	await step(2)
+	var space := player.get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(
+			Vector3(-5.948, EAVE_TOP + 0.3, 15.5),
+			Vector3(-5.948, EAVE_TOP - 0.15, 15.5))
+	# ⚠️ hit_from_inside, AND THE FIRST VERSION OF THIS TEST DID NOT SET IT --
+	# it asserted the ray came back EMPTY and called that "clear". Empty means
+	# either "nothing there" or "started inside something", and the second is
+	# the entire mechanism under test. A control that cannot tell the bug from
+	# its absence is not a control.
+	query.hit_from_inside = true
+	assert_false(space.intersect_ray(query).is_empty(),
+		"the fixture's west anchor column is clear, so it is not the owner's case")

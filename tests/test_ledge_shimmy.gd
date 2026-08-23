@@ -109,7 +109,7 @@ func _hold(sideways: float, forward: float = 0.0) -> MoveInput:
 func test_the_ledge_is_found_where_it_continues() -> void:
 	var player: Player = await _hanging_player()
 	var beside: Dictionary = player.probes.ledge_beside(
-			EDGE, Vector3(1.0, 0.0, 0.0), 0.3, 0.15)
+			EDGE, Vector3(1.0, 0.0, 0.0), FACE_NORMAL, 0.1, 0.3, 0.15)
 	assert_true(beside.get("valid", false), "1 m along a 6 m ledge found nothing")
 	assert_almost_eq(float(beside["edge"].y), LEDGE_TOP, 0.02,
 		"the ledge top came back at %.2f instead of %.2f"
@@ -120,7 +120,7 @@ func test_the_ledge_is_not_found_past_its_end() -> void:
 	# hands off the end of the ledge and leave the body hanging on nothing.
 	var player: Player = await _hanging_player()
 	var beside: Dictionary = player.probes.ledge_beside(
-			EDGE, Vector3(LEDGE_HALF_X + 1.0, 0.0, 0.0), 0.3, 0.15)
+			EDGE, Vector3(LEDGE_HALF_X + 1.0, 0.0, 0.0), FACE_NORMAL, 0.1, 0.3, 0.15)
 	assert_false(beside.get("valid", false),
 		"a point 1.0 m past the end of a %.1f m ledge reported a ledge"
 		% LEDGE_HALF_X)
@@ -133,7 +133,7 @@ func test_a_ledge_at_a_different_height_is_a_different_ledge() -> void:
 			Vector3(2.0, LEDGE_TOP, 1.0))
 	# That block's top is a whole LEDGE_TOP higher, well past the tolerance.
 	var beside: Dictionary = player.probes.ledge_beside(
-			EDGE, Vector3(4.0, 0.0, 0.0), 0.3, 0.15)
+			EDGE, Vector3(4.0, 0.0, 0.0), FACE_NORMAL, 0.1, 0.3, 0.15)
 	assert_false(beside.get("valid", false),
 		"a ledge %.1f m higher was accepted as the same one" % LEDGE_TOP)
 
