@@ -392,7 +392,8 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			return KEEP
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration,
-				config.grab.mantle_arc_height, config.grab.mantle_vertical_lead)
+				config.grab.mantle_arc_height, config.grab.mantle_vertical_lead,
+				config.grab.mantle_path_ease)
 		_mantling = true
 		# THE BODY FOLDS TO PULL UP, the same way SpeedVaultMove folds to vault
 		# -- see its enter() for the owner's reasoning and the arithmetic that

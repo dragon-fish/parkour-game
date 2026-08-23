@@ -21,6 +21,8 @@ const EDGE_TRAVEL := 0.15
 var _arc: float = 0.0
 ## How far the rise runs ahead of the travel. See begin().
 var _vertical_lead: float = 0.0
+## The travel's shaping exponent. 1 is linear. See begin().
+var _ease: float = 1.0
 
 ## `vertical_lead` in 0..1 decides the SHAPE of the path, not its speed.
 ##
@@ -33,14 +35,24 @@ var _vertical_lead: float = 0.0
 ## At 1 the rise happens first and the travel waits for it, giving the hook in
 ## that drawing. In between, both blend, and at exactly 0 the arithmetic reduces
 ## to what it was -- so nothing that does not ask for a lead moves differently.
+## `ease` is the exponent the travel is shaped by: 1 is a straight line at a
+## constant speed, 2 is the ease-out this used to hard-code.
+##
+## ✅ THE OWNER, keying against it: "我发现手k动画，不如让胶囊走匀速直线，否则我还得
+## 对抗那个特别奇怪的曲线." Which is their own methodology arriving at its end
+## point -- see docs/capsule-leads-presentation.md. The capsule's job is to be
+## PREDICTABLE, and nothing is more predictable than a straight line at a steady
+## pace: an offset keyed at 40% of the way through describes a body 40% of the
+## way along, and the person keying it can hold that in their head.
 func begin(from: Vector3, to: Vector3, duration: float, arc: float = 0.0,
-		vertical_lead: float = 0.0) -> void:
+		vertical_lead: float = 0.0, ease: float = 1.0) -> void:
 	_from = from
 	_to = to
 	_duration = maxf(duration, 0.0001)
 	_elapsed = 0.0
 	_arc = arc
 	_vertical_lead = clampf(vertical_lead, 0.0, 1.0)
+	_ease = maxf(ease, 0.05)
 
 ## How long the scripted travel is set to take, or 0 before begin() runs.
 ##
@@ -70,7 +82,12 @@ func advance(delta: float) -> bool:
 ## with this until the moment a difference is what you are looking for. Same rule
 ## Probes follows by handing back the segments it actually fired.
 func sample(t: float) -> Vector3:
-	var eased := 1.0 - pow(1.0 - t, 2.0)
+	# ⚠️ LINEAR BY DEFAULT, and the ease-out that used to be hard-coded here is
+	# now something a move asks for. The old comment argued it made the action
+	# "read as a push-off rather than a constant-speed slide" -- which is a
+	# statement about how it LOOKS, and looks are the animation's job. What the
+	# capsule owes is predictability.
+	var eased := 1.0 - pow(1.0 - t, _ease) if _ease != 1.0 else t
 	if _vertical_lead <= 0.0:
 		# ONE CURVE FOR ALL THREE AXES, plus a symmetric bump. Left byte for byte
 		# as it was: everything that does not ask for a lead still moves exactly

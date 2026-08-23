@@ -70,7 +70,14 @@ extends MoveConfig
 ## Mirrors SpeedVaultConfig.vault_arc_height's role for VaultState -- see
 ## ScriptedMove's own note on why the arc is a per-call value rather than a
 ## shared literal.
-@export var mantle_arc_height: float = 0.3
+## ✅ ZEROED with the easing, because a straight line is not straight if
+## something is still adding a sine bump to its height: "不如让胶囊走匀速直线."
+##
+## 📌 The vault's own arc (SpeedVaultConfig.vault_arc_height) is deliberately
+## LEFT ALONE. That one carries the body over something, and zeroing it is a
+## bigger change than was asked for -- it is one number in the F1 panel if the
+## keying wants it.
+@export var mantle_arc_height: float = 0.0
 
 ## How much of the pull-up is UP before any of it is forward, 0..1.
 ##
@@ -100,6 +107,15 @@ extends MoveConfig
 ## old code path verbatim rather than an equivalent of it -- so this is one
 ## number away from coming back if the keying says it should.
 @export var mantle_vertical_lead: float = 0.0
+
+## How the pull-up's travel is shaped: 1 is a straight line at a constant speed,
+## 2 is the ease-out this move used to have.
+##
+## ✅ THE OWNER, hand-keying against it: "不如让胶囊走匀速直线，否则我还得对抗那个特别
+## 奇怪的曲线." See ScriptedMove.begin(), and
+## docs/capsule-leads-presentation.md for why the simple answer keeps winning
+## here.
+@export var mantle_path_ease: float = 1.0
 
 ## How fast the hands travel along a ledge while shimmying, in metres/second.
 ##

@@ -168,3 +168,43 @@ func forward_input() -> MoveInput:
 	var input := MoveInput.new()
 	input.move = Vector2(0.0, 1.0)
 	return input
+
+# --- the simplest possible path ---------------------------------------------
+
+func test_the_default_path_is_a_straight_line_at_a_steady_pace() -> void:
+	# ✅ THE OWNER, hand-keying against it: "我发现手k动画，不如让胶囊走匀速直线，否则
+	# 我还得对抗那个特别奇怪的曲线."
+	#
+	# 🎯 Which is their own methodology arriving at its end point -- see
+	# docs/capsule-leads-presentation.md. What the capsule owes is
+	# PREDICTABILITY: an offset keyed at 40% of the way through has to describe a
+	# body 40% of the way along, or the person keying it is solving two problems
+	# at once.
+	#
+	# The easing AND the arc both have to go for that to be true. An ease-out
+	# breaks the pace; a sine bump on the height breaks the line.
+	var bits: Array = await _mantling_player()
+	var player: Player = bits[0]
+	var grab: GrabMove = bits[1]
+	var start: Vector3 = bits[2]
+	var target: Vector3 = grab._to
+	for fraction in [0.25, 0.5, 0.75]:
+		var at: Vector3 = grab.sample(fraction)
+		var want: Vector3 = start.lerp(target, fraction)
+		assert_almost_eq(at.distance_to(want), 0.0, 0.001,
+			"at %.0f%% the path was %.3f m off the straight line"
+			% [fraction * 100.0, at.distance_to(want)])
+
+func test_the_ease_is_still_there_for_anything_that_asks() -> void:
+	# The pair. "Linear by default" is a decision about the DEFAULT, and a move
+	# that wants the old push-off shape should not have to reinstate it in code.
+	var bits: Array = await _mantling_player()
+	var player: Player = bits[0]
+	var grab: GrabMove = bits[1]
+	var start: Vector3 = bits[2]
+	var target: Vector3 = grab._to
+	grab.begin(start, target, player.config.grab.mantle_duration, 0.0, 0.0, 2.0)
+	var at: Vector3 = grab.sample(0.5)
+	var straight: Vector3 = start.lerp(target, 0.5)
+	assert_gt(at.distance_to(straight), 0.05,
+		"asking for an ease of 2.0 still produced a straight line")

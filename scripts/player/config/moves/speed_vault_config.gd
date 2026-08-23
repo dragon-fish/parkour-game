@@ -341,4 +341,8 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## GrabConfig.mantle_vertical_lead.
 @export var vault_vertical_lead: float = 0.0
 
+## The same for a vault: 1 is a straight line at a constant speed. See
+## GrabConfig.mantle_path_ease.
+@export var vault_path_ease: float = 1.0
+
 @export var duration_floor_pct: float = 0.7

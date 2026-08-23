@@ -316,7 +316,8 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			# A symmetric bump peaks half way ALONG the journey, and the obstacle is
 			# at the near end of it.
 			begin(player.global_position, _landing, _arc_duration, _arc_height,
-					config.speed_vault.vault_vertical_lead)
+					config.speed_vault.vault_vertical_lead,
+					config.speed_vault.vault_path_ease)
 			player.velocity = Vector3.ZERO
 		elif _approach_time >= config.speed_vault.approach_timeout:
 			# The contact the commit predicted never arrived -- jumped short, or
