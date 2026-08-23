@@ -334,7 +334,15 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# push on mantle completion (above) read it back rather than re-sampling
 	# facing themselves, so a further turn made DURING the 0.42 s scripted
 	# climb cannot retroactively change either one either.
-	if input.move.y > 0.5 or input.jump_pressed:
+	# ✅ AND IT NEEDS BOTH HANDS. See _two_handed(): past the angle the body is
+	# hanging by one arm and cannot haul itself over anything.
+	#
+	# ⚠️ WITHOUT THIS THE HANG JUMP IS UNREACHABLE BY THE INPUT PEOPLE ACTUALLY
+	# USE. Forward-and-jump is one gesture rather than two, so an ungated pull-up
+	# does not merely coexist with the jump -- it wins every time, on the same
+	# tick, with the same keys down. The branch below only ever fired for a
+	# player who thought to release W first.
+	if (input.move.y > 0.5 or input.jump_pressed) and _two_handed():
 		_exit_direction = -player.global_transform.basis.z
 		var top := _edge + Vector3(0.0, player.standing_height() * 0.5, 0.0)
 		# PLUS, not minus. _exit_direction is FORWARD (-basis.z), and the
@@ -432,6 +440,13 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# ✅ DisableShimmyTime. A corner leaves the hands a hand's width from the
 	# corner they just rounded, so without this a wobble on the stick walks them
 	# straight back around it, and around again.
+	# ✅ TRAVELLING NEEDS BOTH HANDS TOO, and this is the half the first version
+	# of the gate missed: it stopped the pull-up and left A and D working, so a
+	# body hanging by one arm could still hand-over-hand along the ledge.
+	if not _two_handed():
+		_shimmy = 0.0
+		_shimmy_report = "one-handed: the view is turned too far to travel"
+		return
 	if _shimmy_lockout > 0.0:
 		_shimmy_lockout -= delta
 		_shimmy = 0.0
@@ -538,6 +553,24 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	_edge = beside["edge"]
 	_shimmy = side
 	_shimmy_report = "travelling"
+
+## Whether the hands are BOTH on the ledge.
+##
+## 🎯 THE OWNER'S MODEL, and it is better than the two angle rules it replaces:
+## "ME 里扭头大于 45° 会变成单手攀附，很多事情就解释的通，此时无法 AD，也无法
+## GrabUp，因为这两种动作都要求 2 hands free."
+##
+## One state change with two consequences, rather than a pull-up rule and a
+## shimmy rule that happen to share a number. The CDO says the same thing from
+## its own side -- TdMove_Grab carries `MovementGroup = MG_TwoHandsBusy` -- and
+## it explains why the threshold is where it is instead of being a tuning value:
+## it is the angle past which a shoulder cannot stay square to the wall.
+##
+## 📌 What it does NOT gate is the jump, which is the whole point of the split:
+## one arm is plenty to shove off with, and past this angle it is the only thing
+## left to do.
+func _two_handed() -> bool:
+	return _turned_from_wall() <= deg_to_rad(config.grab.pull_up_angle_deg)
 
 ## How far the view has been turned off the wall, in radians: 0 looking straight
 ## at it, PI with your back to it.

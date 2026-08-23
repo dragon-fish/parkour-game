@@ -259,3 +259,37 @@ func test_the_wall_face_decides_the_direction_not_the_ledge_top() -> void:
 	_grab(player).physics_update(0.5, _hold(1.0))
 	assert_gt(player.global_position.x, before + 0.05,
 		"a query carrying only the ledge-top normal froze the shimmy")
+
+# --- travelling needs both hands ------------------------------------------------
+
+func test_a_one_handed_hang_cannot_travel() -> void:
+	# 🎯 THE OWNER'S MODEL, which explains two restrictions with one cause: "ME 里
+	# 扭头大于 45° 会变成单手攀附，很多事情就解释的通，此时无法 AD，也无法 GrabUp，
+	# 因为这两种动作都要求 2 hands free."
+	#
+	# The CDO agrees from its own side: TdMove_Grab carries
+	# MovementGroup = MG_TwoHandsBusy.
+	var player: Player = await _hanging_player()
+	var grab := _grab(player)
+	# Turned well past the threshold. rotation.y = 0 faces this wall squarely.
+	player.rotation.y = deg_to_rad(90.0)
+	var before: Vector3 = player.global_position
+	grab.physics_update(0.5, _hold(1.0))
+	assert_almost_eq(player.global_position.distance_to(before), 0.0, 0.001,
+		"a body hanging by one arm travelled %.3f m along the ledge"
+		% player.global_position.distance_to(before))
+	assert_almost_eq(grab.shimmy_direction(), 0.0, 0.001,
+		"the animator was told to play a travel clip on a one-handed hang")
+
+func test_squaring_back_up_lets_travel_resume() -> void:
+	# The pair: the gate is a STATE, not a lockout, so looking back at the wall
+	# gives the hand back immediately.
+	var player: Player = await _hanging_player()
+	var grab := _grab(player)
+	player.rotation.y = deg_to_rad(90.0)
+	grab.physics_update(0.5, _hold(1.0))
+	player.rotation.y = 0.0
+	var before: float = player.global_position.x
+	grab.physics_update(0.5, _hold(1.0))
+	assert_gt(player.global_position.x, before + 0.05,
+		"travel did not resume once the view came back to the wall")

@@ -139,6 +139,33 @@ extends MoveConfig
 ## So the CDO number stands and the 90 is recorded as the feel it was offered as.
 @export var jump_angle_deg: float = 45.0
 
+## How far the view may be turned off the wall and still pull UP, in degrees.
+##
+## ✅ `TdMove_GrabPullUp.GrabAllowedPullUpAngle = 45`, the other half of the pair
+## jump_angle_deg is one of. Looking at the wall climbs it; looking away from it
+## leaves it; and the two numbers being equal is what makes the split clean
+## rather than leaving a band where both fire or neither does.
+##
+## ✅ THE OWNER, on why the pull-up needs the gate and not just the jump: "grab
+## 期间如果镜头扭动超过 45°，按 W 就不要触发 GrabUp，ME 里也是这么处理的，因为玩家
+## 一般都是回头同时按 W+空格."
+##
+## 📌 That last clause is the whole point. Forward-and-jump is one gesture, not
+## two, so an ungated pull-up does not merely coexist with the hang jump -- it
+## WINS, every time, because it is asked on the same tick with the same keys
+## down. Without the angle, the jump is unreachable by the input people use.
+##
+## 🎯 AND IT IS NOT REALLY AN ANGLE, WHICH IS THE BETTER MODEL AND THE OWNER'S:
+## "ME 里扭头大于 45° 会变成单手攀附，很多事情就解释的通，此时无法 AD，也无法
+## GrabUp，因为这两种动作都要求 2 hands free."
+##
+## One state change, two consequences, instead of two rules that happen to share
+## a number -- and the CDO agrees from its own side: TdMove_Grab carries
+## `MovementGroup = MG_TwoHandsBusy`. Past this angle the body is hanging by one
+## arm, so it can neither travel along the ledge nor haul itself over one. See
+## GrabMove._two_handed(), which is where the single predicate lives.
+@export var pull_up_angle_deg: float = 45.0
+
 ## Upward speed of a jump off a hang, in metres/second.
 ##
 ## ✅ `TdMove_GrabJump.GrabJumpOffZHeight = 160` uu.

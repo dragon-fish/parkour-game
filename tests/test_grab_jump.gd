@@ -227,3 +227,40 @@ func test_leaving_this_way_asks_for_the_capsule_back_and_waits_for_room() -> voi
 	await step(3)
 	assert_almost_eq(player.current_capsule_height(), standing, 0.001,
 		"the body never got its height back after clearing the ledge")
+
+# --- forward is gated by the same angle ----------------------------------------
+
+func test_forward_pulls_up_while_facing_the_wall() -> void:
+	var player: Player = await _hanging_player(0.0)
+	var grab := _grab(player)
+	var forward := MoveInput.new()
+	forward.move = Vector2(0.0, 1.0)
+	grab.physics_update(1.0 / 60.0, forward)
+	assert_true(grab.is_mantling(), "forward at the wall did not pull up")
+
+func test_forward_does_nothing_once_the_view_is_turned_away() -> void:
+	# ✅ THE OWNER: "grab 期间如果镜头扭动超过 45°，按 W 就不要触发 GrabUp，ME 里也是
+	# 这么处理的，因为玩家一般都是回头同时按 W+空格."
+	var player: Player = await _hanging_player(_config().pull_up_angle_deg + 5.0)
+	var grab := _grab(player)
+	var forward := MoveInput.new()
+	forward.move = Vector2(0.0, 1.0)
+	var result: StringName = grab.physics_update(1.0 / 60.0, forward)
+	assert_false(grab.is_mantling(),
+		"forward pulled up with the view %.0f degrees off the wall"
+		% (_config().pull_up_angle_deg + 5.0))
+	assert_ne(result, Move.FALLING, "forward alone left the ledge")
+
+func test_forward_and_jump_together_jumps_rather_than_climbs() -> void:
+	# ⚠️ THE GESTURE THAT MADE THE GATE NECESSARY. Turned away and pressing both
+	# -- which is what a player does -- used to hit the pull-up branch on the
+	# same tick and win, so the hang jump was unreachable in practice however
+	# correct it was in isolation.
+	var player: Player = await _hanging_player(180.0)
+	var grab := _grab(player)
+	var both := MoveInput.new()
+	both.move = Vector2(0.0, 1.0)
+	both.jump_pressed = true
+	var result: StringName = grab.physics_update(1.0 / 60.0, both)
+	assert_eq(result, Move.FALLING, "W and jump together climbed instead of jumping")
+	assert_false(grab.is_mantling(), "a pull-up started on the jump tick")
