@@ -816,7 +816,16 @@ var _width_box: OptionButton
 var _speed_box: SpinBox
 var _lead_box: OptionButton
 var _offset_boxes: Array[SpinBox] = []
-var _yaw_box: SpinBox
+## Pitch, yaw and roll, in that order -- the three components of _live_rotation.
+##
+## ✅ THE OWNER: "除了水平旋转，我可能还想要调整俯仰角，上下左右前后以及两个滚轴，标准的
+## 万向节."
+##
+## 📌 THE DATA ALREADY CARRIED ALL THREE. `rot` has been a Vector3 through the
+## curve table, the JSON and Basis.from_euler() since the day it was written;
+## only this panel was showing one of them. Nothing about the saved files
+## changes, and a file written when only yaw was reachable still loads.
+var _rotation_boxes: Array[SpinBox] = []
 var _trim_start: SpinBox
 var _trim_length: SpinBox
 var _clip_span: Label
@@ -955,10 +964,15 @@ func _build_ui() -> void:
 			if _ui_syncing: return
 			_read_offset_boxes())
 		_offset_boxes.append(box)
-	_yaw_box = _spin(column, "yaw (deg)", -180.0, 180.0, 0.5, 0.0)
-	_yaw_box.value_changed.connect(func(_v):
-		if _ui_syncing: return
-		_read_offset_boxes())
+	# ⚠️ THE ORDER IS THE VECTOR'S, NOT THE READING ORDER. Basis.from_euler()
+	# takes (x, y, z) = (pitch, yaw, roll), so the boxes are laid out to match
+	# the components they write rather than to spell a familiar phrase.
+	for axis in ["pitch", "yaw", "roll"]:
+		var box := _spin(column, axis + " (deg)", -180.0, 180.0, 0.5, 0.0)
+		box.value_changed.connect(func(_v):
+			if _ui_syncing: return
+			_read_offset_boxes())
+		_rotation_boxes.append(box)
 	var buttons := HBoxContainer.new()
 	for entry in [["Key (Enter)", _commit], ["Drop (Bksp)", _drop_key], ["Zero (Del)", _zero]]:
 		var button := Button.new()
@@ -1109,7 +1123,8 @@ func _options(into: Node, label_text: String, items: Array, selected: int) -> Op
 func _read_offset_boxes() -> void:
 	_live_position = Vector3(_offset_boxes[0].value, _offset_boxes[1].value,
 		_offset_boxes[2].value)
-	_live_rotation = Vector3(0.0, _yaw_box.value, 0.0)
+	_live_rotation = Vector3(_rotation_boxes[0].value, _rotation_boxes[1].value,
+		_rotation_boxes[2].value)
 	player.set_clip_offset_immediately(_live_position, _live_rotation)
 	_commit()
 
@@ -1250,7 +1265,9 @@ func _refresh_ui() -> void:
 	_offset_boxes[0].value = _live_position.x
 	_offset_boxes[1].value = _live_position.y
 	_offset_boxes[2].value = _live_position.z
-	_yaw_box.value = _live_rotation.y
+	_rotation_boxes[0].value = _live_rotation.x
+	_rotation_boxes[1].value = _live_rotation.y
+	_rotation_boxes[2].value = _live_rotation.z
 	# ⚠️ ONLY WHEN THE CLIP CHANGES. Syncing these every frame stomps whatever is
 	# being typed into them: the trim boxes are the one pair here that a person
 	# EDITS rather than reads, and a value written back sixty times a second is a
@@ -1296,9 +1313,12 @@ func _refresh_ui() -> void:
 	_key_list.clear()
 	for key in keys:
 		var pos: Vector3 = key.get("pos", Vector3.ZERO)
-		_key_list.add_item("t %.3f  (%+.2f, %+.2f, %+.2f)  yaw %+.0f" % [
-			float(key.get("t", 0.0)), pos.x, pos.y, pos.z,
-			(key.get("rot", Vector3.ZERO) as Vector3).y])
+		var rot: Vector3 = key.get("rot", Vector3.ZERO)
+		# The rotation only earns its half of the line when there IS one -- most
+		# keys are a nudge in position and nothing else.
+		var turned := "" if rot.is_zero_approx() 			else "  pyr %+.0f %+.0f %+.0f" % [rot.x, rot.y, rot.z]
+		_key_list.add_item("t %.3f  (%+.2f, %+.2f, %+.2f)%s" % [
+			float(key.get("t", 0.0)), pos.x, pos.y, pos.z, turned])
 	if _play_button != null:
 		_play_button.text = "❚❚  Pause  (Space)" if _playing else "▶  Play  (Space)"
 	if _preview_pick.item_count == 0:
