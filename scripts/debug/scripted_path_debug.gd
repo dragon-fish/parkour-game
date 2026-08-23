@@ -42,6 +42,19 @@ var _mesh: ImmediateMesh
 var _instance: MeshInstance3D
 ## start / end / apex, in that order. See _label_path().
 var _labels: Array[Label3D] = []
+## The last path that ran, and the move that owned it, kept after it finishes.
+##
+## ✅ THE OWNER: "怎么动画播完就不显示了." Because path_debug() returns nothing once
+## the move is over -- the TRAIL survived and the plan and its labels did not, so
+## the one thing left on screen was the half you cannot compare against anything.
+##
+## 📌 The move object is still sampleable after it ends: sample() reads _from,
+## _to and the shape, and only path_debug() gates on elapsed time. So the plan
+## can go on being drawn from the same source rather than from a snapshot of
+## points.
+var _last_move = null
+var _last_path: Dictionary = {}
+var _last_clip: String = ""
 var _lines: StandardMaterial3D
 var _shown := false
 var _trail: PackedVector3Array = PackedVector3Array()
@@ -115,13 +128,20 @@ func _process(_delta: float) -> void:
 		_hide_labels()
 		return
 	_mesh.clear_surfaces()
-	if path.is_empty():
+	# KEPT, NOT CLEARED. A finished path is the thing being looked at.
+	if not path.is_empty():
+		_last_move = move
+		_last_path = path.duplicate()
+		if player != null:
+			_last_clip = String(player._current_clip())
+	var drawn_move = move if not path.is_empty() else _last_move
+	var drawn_path: Dictionary = path if not path.is_empty() else _last_path
+	if drawn_path.is_empty() and _trail.is_empty():
 		_hide_labels()
-	if path.is_empty() and _trail.is_empty():
 		return
 	_mesh.surface_begin(Mesh.PRIMITIVE_LINES, _lines)
-	if not path.is_empty():
-		_draw_plan(move, path)
+	if not drawn_path.is_empty():
+		_draw_plan(drawn_move, drawn_path)
 	_draw_trail()
 	_mesh.surface_end()
 
@@ -151,8 +171,11 @@ func _draw_plan(move, path: Dictionary) -> void:
 	_line(path["from"], Vector3(path["from"].x, path["peak"], path["from"].z))
 	_line(path["to"], Vector3(path["to"].x, path["peak"], path["to"].z))
 
-	_mesh.surface_set_color(head_colour)
-	_cross(move.sample(float(path.get("progress", 0.0))), marker_size)
+	# The head only means something while the move is running; a finished path
+	# would otherwise keep a marker sitting at 100%.
+	if float(path.get("progress", -1.0)) >= 0.0:
+		_mesh.surface_set_color(head_colour)
+		_cross(move.sample(float(path["progress"])), marker_size)
 	_label_path(move, path)
 
 ## Writes the three numbers anybody actually asks about onto the line itself.
@@ -172,9 +195,9 @@ func _label_path(move, path: Dictionary) -> void:
 		var at: Vector3 = move.sample(float(i) / float(samples))
 		if at.y > apex.y:
 			apex = at
-	var clip := ""
-	if player != null:
-		clip = String(player._current_clip())
+	# The clip the path was DRAWN for, which after it finishes is not the one
+	# playing now.
+	var clip: String = _last_clip
 	var rows := [
 		[from, "start  y %.2f" % from.y],
 		[to, "end  y %.2f" % to.y],
