@@ -1308,7 +1308,7 @@ const CURVE_EDGE := 0.02
 ## a stored key at t = 0.005 would sit half a millisecond from the zero bookend
 ## and the lerp between them would be the same instant jump under another name.
 func clip_curve_at(clip: StringName, at: float) -> Array:
-	var stored: Array = clip_keys_for(clip, active_obstacle)
+	var stored: Array = clip_keys_for(clip, active_obstacle, active_entry)
 	if stored.is_empty():
 		return []
 	var keys: Array = [{"t": 0.0, "pos": Vector3.ZERO, "rot": Vector3.ZERO}]
@@ -1346,7 +1346,20 @@ func clip_curve_at(clip: StringName, at: float) -> Array:
 ## different animation entirely.
 const OBSTACLE_WIDTH_WEIGHT := 0.35
 
-func clip_keys_for(clip: StringName, obstacle: Vector2) -> Array:
+## How much the ENTRY counts, between the two.
+##
+## ⚠️ ABOVE WIDTH, BELOW HEIGHT, and the measurement is why. Width moves the far
+## edge; the entry tilts the whole line the body travels along, which is the
+## thing a hand-keyed offset is describing a position on. See
+## ScriptedMove.entry_rise() for the numbers -- 0.69 m of spread on one obstacle,
+## from nothing but when the jump was pressed.
+const ENTRY_WEIGHT := 0.7
+
+## How high the running scripted move started above where it will end. Written
+## each tick a scripted move owns the body; the third axis of clip_keys_for().
+var active_entry: float = 0.0
+
+func clip_keys_for(clip: StringName, obstacle: Vector2, entry: float = 0.0) -> Array:
 	if clip == Move.KEEP or not body_clip_curves.has(clip):
 		return []
 	var rows = body_clip_curves[clip]
@@ -1359,7 +1372,14 @@ func clip_keys_for(clip: StringName, obstacle: Vector2) -> Array:
 			continue
 		var dh: float = float(row.get("h", 0.0)) - obstacle.x
 		var dw: float = (float(row.get("w", 0.0)) - obstacle.y) * OBSTACLE_WIDTH_WEIGHT
-		var distance: float = dh * dh + dw * dw
+		# 📌 A ROW WITHOUT AN ENTRY MATCHES ANY, which is what keeps this
+		# additive: a table with one row per obstacle behaves exactly as it did
+		# before the axis existed, and a second row only starts competing once
+		# somebody keys one.
+		var de: float = 0.0
+		if row.has("e"):
+			de = (float(row["e"]) - entry) * ENTRY_WEIGHT
+		var distance: float = dh * dh + dw * dw + de * de
 		if distance < best_distance:
 			best_distance = distance
 			best = row["keys"]

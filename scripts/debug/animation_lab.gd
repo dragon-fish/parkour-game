@@ -354,6 +354,8 @@ func _physics_process(_delta: float) -> void:
 		"node": _playback.get_current_node() if _playback != null else Move.KEEP,
 		"fade": _playback.get_fading_from_node() if _playback != null else &"",
 		"obstacle": Vector2(height(), width()),
+		# The third axis of the curve table. See ScriptedMove.entry_rise().
+		"entry": _scripted_entry(),
 	})
 	# AGAINST _record_hz, NOT THE LIVE RATE, which is eight times higher while
 	# this is running. A recorded frame is worth 1/60 s of simulated time because
@@ -552,6 +554,7 @@ func _scrub(by: int) -> void:
 	player.global_position = frame["position"]
 	player.rotation = frame["rotation"]
 	player.active_obstacle = frame.get("obstacle", Vector2(-1.0, 0.0))
+	player.active_entry = float(frame.get("entry", 0.0))
 	# THE POSE IS REPLAYED, not re-simulated: it is a pure function of the clip
 	# and the time in it, both of which were recorded.
 	_apply_pose(frame.get("pose", []))
@@ -607,6 +610,13 @@ func _advance_playback() -> void:
 ## body from the take while the simulation sits at whatever it finished on, so
 ## asking the live move manager would report the wrong move's duration for every
 ## frame except the last.
+## How high the running scripted move started above where it ends, or 0.
+func _scripted_entry() -> float:
+	var move = player.move_manager.move_for(player.move_manager.current_name)
+	if move == null or not move.has_method("entry_rise"):
+		return 0.0
+	return float(move.entry_rise())
+
 func _scripted_duration() -> float:
 	var move = player.move_manager.move_for(player.move_manager.current_name)
 	if move == null or not move.has_method("path_debug"):
@@ -656,12 +666,11 @@ func _commit() -> void:
 	var rows: Array = player.body_clip_curves.get(clip, [])
 	var row: Dictionary = {}
 	for candidate in rows:
-		if absf(float(candidate.get("h", -1.0)) - height()) < 0.001 \
-				and absf(float(candidate.get("w", -1.0)) - width()) < 0.001:
+		if _row_matches(candidate):
 			row = candidate
 			break
 	if row.is_empty():
-		row = {"h": height(), "w": width(), "keys": []}
+		row = {"h": height(), "w": width(), "e": _frame_entry(), "keys": []}
 		rows.append(row)
 	var keys: Array = row["keys"]
 	var replaced := false
@@ -709,8 +718,11 @@ func _save() -> void:
 				var rot: Vector3 = key.get("rot", Vector3.ZERO)
 				keys.append({"t": float(key.get("t", 0.0)),
 					"pos": [pos.x, pos.y, pos.z], "rot": [rot.x, rot.y, rot.z]})
-			rows.append({"h": float(row.get("h", 0.0)),
-				"w": float(row.get("w", 0.0)), "keys": keys})
+			var stored_row := {"h": float(row.get("h", 0.0)),
+				"w": float(row.get("w", 0.0)), "keys": keys}
+			if row.has("e"):
+				stored_row["e"] = float(row["e"])
+			rows.append(stored_row)
 		out[String(clip)] = rows
 	var timings := {}
 	for clip in player.body_clip_timings:
@@ -756,8 +768,14 @@ func _load() -> void:
 				keys.append({"t": at,
 					"pos": _to_vector(key.get("pos", [])),
 					"rot": _to_vector(key.get("rot", []))})
-			rows.append({"h": float(row.get("h", 0.0)),
-				"w": float(row.get("w", 0.0)), "keys": keys})
+			var loaded_row := {"h": float(row.get("h", 0.0)),
+				"w": float(row.get("w", 0.0)), "keys": keys}
+			# ⚠️ ONLY IF IT IS THERE. A file written before the entry axis
+			# existed must keep matching EVERY entry rather than being pinned to
+			# a 0 it never meant. See Player.clip_keys_for().
+			if row.has("e"):
+				loaded_row["e"] = float(row["e"])
+			rows.append(loaded_row)
 		loaded[StringName(clip)] = rows
 	player.body_clip_curves = loaded
 	# ⚠️ AND PUSHED, which is the whole bug: filling the dictionary changes
@@ -1350,10 +1368,23 @@ func _current_keys() -> Array:
 	if clip == Move.KEEP or not player.body_clip_curves.has(clip):
 		return []
 	for row in player.body_clip_curves[clip]:
-		if absf(float(row.get("h", -1.0)) - height()) < 0.001 \
-				and absf(float(row.get("w", -1.0)) - width()) < 0.001:
+		if _row_matches(row):
 			return row.get("keys", [])
 	return []
+
+## Whether this row is the one the panel is editing: same obstacle AND same
+## entry, because two takes of one obstacle at different jump timings are two
+## different rows now.
+func _row_matches(row: Dictionary) -> bool:
+	return absf(float(row.get("h", -1.0)) - height()) < 0.001 \
+		and absf(float(row.get("w", -1.0)) - width()) < 0.001 \
+		and absf(float(row.get("e", -99.0)) - _frame_entry()) < 0.02
+
+## The entry rise recorded at the frame being scrubbed.
+func _frame_entry() -> float:
+	if _frames.is_empty():
+		return 0.0
+	return float(_frames[_cursor].get("entry", 0.0))
 
 func _refresh_ui() -> void:
 	if _readout == null:

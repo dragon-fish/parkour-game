@@ -183,3 +183,29 @@ func camera_lift() -> float:
 	if _camera_arc <= 0.0 or _duration <= 0.0001:
 		return 0.0
 	return sin(progress() * PI) * _camera_arc
+
+## How much higher the path STARTS than it ends, in metres.
+##
+## ✅ THE OWNER, on why one row per obstacle is not enough: "相同的高度和宽度，不同的起
+## 跳时间是不是也有单独的存档，因为起跳时间可能会导致一个完美 StepUp 变成补救型" -- and,
+## on the mechanism: "进入脚本控制的瞬间，玩家的起始高度不一样啊，怎么可能轨迹一样."
+##
+## 🎯 MEASURED, one 1.0 x 0.4 obstacle, four jump timings that all vault:
+##
+##     lead 0.10   from y 1.00   rise +0.10   path 1.463 m
+##     lead 0.15   from y 1.09   rise +0.19   path 1.623 m
+##     lead 0.20   from y 1.35   rise +0.44   path 1.626 m
+##     lead 0.30   from y 1.69   rise +0.78   path 1.756 m
+##
+## Same clip, same landing, same 27 frames -- and a start 0.69 m apart, which is
+## a fifth of the path's length. An offset keyed at 30% through describes a
+## different body in each of those.
+##
+## 📌 RELATIVE TO THE LANDING, not an absolute height. This has to be a number
+## the same obstacle produces the same way wherever it stands in a level, and it
+## has to be one ScriptedMove already knows -- no new plumbing, no dependency on
+## whoever set the path up.
+func entry_rise() -> float:
+	if _duration <= 0.0001:
+		return 0.0
+	return _from.y - _to.y

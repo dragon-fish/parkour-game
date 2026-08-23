@@ -279,3 +279,42 @@ func test_a_key_sitting_on_an_end_is_ignored_rather_than_honoured() -> void:
 	var early: Array = player.clip_curve_at(&"ClimbUp_2m", 0.01)
 	assert_lt(absf(float(early[0].y)), 0.02,
 		"a key inside the edge band still moved the body at the join")
+
+# The same obstacle at two entry heights is two rows.
+#
+# THE OWNER: "相同的高度和宽度，不同的起跳时间是不是也有单独的存档，因为起跳时间可能会导致
+# 一个完美 StepUp 变成补救型" -- and the mechanism, in their words: "进入脚本控制的瞬间，
+# 玩家的起始高度不一样啊，怎么可能轨迹一样."
+#
+# Measured on one 1.0 x 0.4 obstacle, four jump timings that all vault: same
+# clip, same landing, same 27 frames, and a start 0.69 m apart -- a fifth of the
+# path's length. See ScriptedMove.entry_rise().
+
+func test_the_nearer_entry_wins_when_the_obstacle_is_the_same() -> void:
+	var player: Player = await _player_with_body()
+	player.body_clip_curves = {&"Idle": [
+		{"h": 1.0, "w": 0.4, "e": 0.10,
+			"keys": [{"t": 0.5, "pos": Vector3(0, 3, 0), "rot": Vector3.ZERO}]},
+		{"h": 1.0, "w": 0.4, "e": 0.78,
+			"keys": [{"t": 0.5, "pos": Vector3(0, 7, 0), "rot": Vector3.ZERO}]},
+	]}
+	player.active_obstacle = Vector2(1.0, 0.4)
+	player.active_entry = 0.70
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 7.0, 0.001,
+		"a late jump borrowed the well-timed row's curve")
+	player.active_entry = 0.15
+	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 3.0, 0.001,
+		"a well-timed jump borrowed the rescue row's curve")
+
+func test_a_row_with_no_entry_still_matches_every_entry() -> void:
+	# THE PAIR, and what keeps the axis additive: a table written before it
+	# existed -- or one the owner only ever keys one row of -- behaves exactly as
+	# it did, instead of being pinned to an entry of 0 it never meant.
+	var player: Player = await _player_with_body()
+	player.body_clip_curves = {&"Idle": [{"h": 1.0, "w": 0.4,
+		"keys": [{"t": 0.5, "pos": Vector3(0, 5, 0), "rot": Vector3.ZERO}]}]}
+	player.active_obstacle = Vector2(1.0, 0.4)
+	for entry in [0.0, 0.4, 1.2]:
+		player.active_entry = entry
+		assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 5.0, 0.001,
+			"an entry of %.1f found no row at all" % entry)
