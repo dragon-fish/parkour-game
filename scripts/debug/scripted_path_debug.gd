@@ -201,9 +201,9 @@ func _label_path(move, path: Dictionary) -> void:
 	var rows := [
 		[from, "start  y %.2f" % from.y],
 		[to, "end  y %.2f" % to.y],
-		[apex, "%s%sapex  y %.2f   +%.2f over the start" % [clip,
+		[apex, "%s%s%s  apex y %.2f   +%.2f over the start" % [clip,
 			"
-" if clip != "" else "", apex.y, apex.y - from.y]],
+" if clip != "" else "", _shape_of(path), apex.y, apex.y - from.y]],
 	]
 	for i in _labels.size():
 		var label: Label3D = _labels[i]
@@ -230,3 +230,20 @@ func _cross(at: Vector3, size: float) -> void:
 	_line(at - Vector3.RIGHT * size, at + Vector3.RIGHT * size)
 	_line(at - Vector3.UP * size, at + Vector3.UP * size)
 	_line(at - Vector3.BACK * size, at + Vector3.BACK * size)
+
+## Which of the three shapes this path is, in a word.
+##
+## ✅ THE OWNER, looking at a line whose apex sat exactly on its end: "我怎么确定它是
+## 直线还是弧线？"
+##
+## 🎯 THEY COULD NOT, AND THE PICTURE WAS GENUINELY AMBIGUOUS. That one was
+## straight -- but only because the straight line between its ends already
+## cleared the obstacle by the 0.2 m asked for, so the bump had nothing to add
+## and computed to zero. A curve that happens to be flat and a line are the same
+## drawing; only the two numbers behind them differ.
+func _shape_of(path: Dictionary) -> String:
+	if float(path.get("lead", 0.0)) > 0.0:
+		return "bezier"
+	if float(path.get("arc", 0.0)) > 0.001:
+		return "arc"
+	return "STRAIGHT"
