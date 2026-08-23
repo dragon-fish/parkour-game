@@ -634,6 +634,13 @@ var _trim_start: SpinBox
 var _trim_length: SpinBox
 var _clip_span: Label
 var _fit_label: Label
+var _preview_pick: OptionButton
+var _preview_slider: HSlider
+var _preview_label: Label
+## Which clip the preview is showing, and where in it. Empty means the preview is
+## off and the recording owns the body.
+var _preview_clip: StringName = &""
+var _preview_frame := 0
 ## The clip the trim boxes were last filled from. See _refresh_ui().
 var _trim_clip: StringName = &""
 var _key_list: ItemList
@@ -772,6 +779,55 @@ func _build_ui() -> void:
 	clear_trim.text = "play the whole clip"
 	clear_trim.pressed.connect(_clear_timing)
 	column.add_child(clear_trim)
+
+	column.add_child(_heading("PREVIEW A CLIP, FRAME BY FRAME"))
+	var preview_note := Label.new()
+	preview_note.text = "Look through the source animation on its own, away from any move, and pick the frames the trim above should keep."
+	preview_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(preview_note)
+	_preview_pick = OptionButton.new()
+	_preview_pick.item_selected.connect(func(i):
+		if _ui_syncing: return
+		_preview_clip = StringName(_preview_pick.get_item_text(i))
+		_preview_frame = 0
+		_show_preview())
+	column.add_child(_preview_pick)
+	_preview_slider = HSlider.new()
+	_preview_slider.min_value = 0.0
+	_preview_slider.step = 1.0
+	_preview_slider.custom_minimum_size = Vector2(0.0, 24.0)
+	_preview_slider.value_changed.connect(func(v):
+		if _ui_syncing: return
+		_preview_frame = int(v)
+		_show_preview())
+	column.add_child(_preview_slider)
+	var preview_steps := HBoxContainer.new()
+	for entry in [["-1", -1], ["+1", 1], ["-5", -5], ["+5", 5]]:
+		var button := Button.new()
+		button.text = entry[0]
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var by: int = entry[1]
+		button.pressed.connect(func():
+			_preview_frame += by
+			_show_preview())
+		preview_steps.add_child(button)
+	column.add_child(preview_steps)
+	_preview_label = Label.new()
+	_preview_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(_preview_label)
+	var take_from := HBoxContainer.new()
+	for entry in [["set 'from' here", true], ["set 'to' here", false]]:
+		var button := Button.new()
+		button.text = entry[0]
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var is_from: bool = entry[1]
+		button.pressed.connect(func(): _adopt_preview_frame(is_from))
+		take_from.add_child(button)
+	column.add_child(take_from)
+	var stop_preview := Button.new()
+	stop_preview.text = "back to the recording"
+	stop_preview.pressed.connect(_stop_preview)
+	column.add_child(stop_preview)
 
 	column.add_child(_heading("KEYS FOR THIS COMBINATION"))
 	_key_list = ItemList.new()
@@ -1003,6 +1059,7 @@ func _refresh_ui() -> void:
 		"move  %s" % (String(_frames[_cursor].get("move", "-")) if not _frames.is_empty() else "-"),
 		"clip  %s" % String(_frame_clip()),
 		"path  %s" % ("t = %.3f" % progress if progress >= 0.0 else "not a scripted frame"),
+		"clip at frame %s" % _clip_frame_text(),
 	])
 	var keys: Array = _current_keys()
 	_key_list.clear()
@@ -1013,6 +1070,20 @@ func _refresh_ui() -> void:
 			(key.get("rot", Vector3.ZERO) as Vector3).y])
 	if _play_button != null:
 		_play_button.text = "❚❚  Pause  (Space)" if _playing else "▶  Play  (Space)"
+	if _preview_pick.item_count == 0:
+		for name in _graph_clips():
+			_preview_pick.add_item(name)
+	if _preview_clip != &"":
+		var preview_anim := _anim_player.get_animation(String(_preview_clip))
+		var preview_step: float = _clip_frame_seconds_for(_preview_clip)
+		var total: int = int(round(preview_anim.length / preview_step))
+		_preview_slider.max_value = float(total)
+		_preview_slider.value = float(_preview_frame)
+		_preview_label.text = "PREVIEWING %s -- frame %d of %d  (%.3f s)" % [
+			String(_preview_clip), _preview_frame, total,
+			float(_preview_frame) * preview_step]
+	else:
+		_preview_label.text = "not previewing"
 	_status.text = _note + NEWLINE + ProjectSettings.globalize_path(SAVE_PATH)
 	_ui_syncing = false
 
@@ -1055,3 +1126,109 @@ func _fit_text(clip: StringName, whole: float, per_frame: float) -> String:
 	var clamped := "" if is_equal_approx(raw, fit) else "   CLAMPED from %.2fx" % raw
 	return "%d frames (%.2f s of source) stretched into a %.2f s move -> %.2fx%s" % [
 		int(round(kept / per_frame)), kept, duration, fit, clamped]
+
+## Every clip the graph actually carries, for the preview picker.
+func _graph_clips() -> Array[String]:
+	var names: Array[String] = []
+	if _anim_tree == null:
+		return names
+	var tree_root := _anim_tree.tree_root as AnimationNodeBlendTree
+	if tree_root == null:
+		return names
+	var states := tree_root.get_node(CharacterAnimator.GRAPH_STATES) as AnimationNodeStateMachine
+	if states == null:
+		return names
+	for node_name in states.get_node_list():
+		names.append(String(node_name))
+	names.sort()
+	return names
+
+## Poses the body at one frame of one clip, with no move involved.
+##
+## ✅ THE OWNER: "可能得给我一个方法预览动画的每一帧长什么样." Deciding where a clip
+## should start means looking at where it starts, and the recording cannot show
+## that: it only ever contains the frames the move happened to reach.
+##
+## ⚠️ THE SOURCE TIMELINE, NOT THE TRIMMED ONE. This is the animation as the
+## animator delivered it, which is the thing the trim's frame numbers count in.
+## Reading a trimmed node here would make the two disagree about what frame 6
+## means.
+func _show_preview() -> void:
+	if _anim_player == null or _preview_clip == &"" \
+			or not _anim_player.has_animation(String(_preview_clip)):
+		return
+	var anim := _anim_player.get_animation(String(_preview_clip))
+	var per_frame: float = anim.step if anim.step > 0.0001 else 1.0 / 30.0
+	var total: int = int(round(anim.length / per_frame))
+	_preview_frame = clampi(_preview_frame, 0, maxi(total, 0))
+	if _anim_player.current_animation != String(_preview_clip):
+		_anim_player.play(String(_preview_clip))
+	_anim_player.seek(float(_preview_frame) * per_frame, true)
+
+func _stop_preview() -> void:
+	_preview_clip = &""
+	if _anim_player != null:
+		_anim_player.stop()
+	_scrub(0)
+	_note = "back on the recording"
+
+## Sends the frame being previewed into the trim boxes above.
+##
+## 🎯 THE POINT OF THE PREVIEW. Finding the frame where the wind-up ends is a
+## LOOKING problem, and typing the number afterwards is where it would get lost.
+func _adopt_preview_frame(is_from: bool) -> void:
+	if _preview_clip == &"":
+		return
+	_ui_syncing = true
+	if is_from:
+		_trim_start.value = float(_preview_frame)
+	else:
+		_trim_length.value = float(_preview_frame)
+	_ui_syncing = false
+	_trim_clip = _preview_clip
+	var per_frame: float = _clip_frame_seconds_for(_preview_clip)
+	var from_frame: float = _trim_start.value
+	var to_frame: float = _trim_length.value
+	var length: float = 0.0
+	if to_frame > from_frame:
+		length = (to_frame - from_frame) * per_frame
+	player.body_clip_timings[_preview_clip] = [from_frame * per_frame, length]
+	_apply_timing_live(_preview_clip)
+	_save()
+	_note = "%s plays frames %d..%s" % [_preview_clip, int(from_frame),
+		"end" if length <= 0.0 else str(int(to_frame))]
+
+## One frame of a NAMED clip, in seconds. See _clip_frame_seconds(), which asks
+## the same question about whatever is playing at the current recorded frame.
+func _clip_frame_seconds_for(clip: StringName) -> float:
+	if _anim_player == null or not _anim_player.has_animation(String(clip)):
+		return 1.0 / 30.0
+	var step: float = _anim_player.get_animation(String(clip)).step
+	return step if step > 0.0001 else 1.0 / 30.0
+
+## Where in its own clip the recorded frame is sitting.
+##
+## ✅ THE OWNER: "我并不知道我暂停的那一帧动画播到了哪一帧." The recorder already
+## stored it -- the state machine's play position -- and it simply was not on
+## screen anywhere.
+##
+## ⚠️ IN THE NODE'S TIMELINE, which is the trimmed one when a trim is set, so the
+## number is offset by the trim's own start. Both halves are printed rather than
+## one being silently converted, because a source frame and a played frame are
+## genuinely different things once a clip has been cut.
+func _clip_frame_text() -> String:
+	if _frames.is_empty():
+		return "-"
+	var clip: StringName = _frame_clip()
+	if clip == Move.KEEP:
+		return "-"
+	var per_frame: float = _clip_frame_seconds()
+	var at: float = float(_frames[_cursor].get("clip_time", 0.0))
+	var played: int = int(round(at / per_frame))
+	var offset := 0
+	if player.body_clip_timings.has(clip):
+		offset = int(round(float(player.body_clip_timings[clip][0]) / per_frame))
+	if offset == 0:
+		return "%d  (%.3f s in)" % [played, at]
+	return "%d of the trimmed range = source frame %d  (%.3f s in)" % [
+		played, played + offset, at]
