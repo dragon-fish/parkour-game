@@ -129,6 +129,10 @@ func _process(delta: float) -> void:
 		"wall ahead %s" % _wall_ahead_text(),
 		"look       %s" % _look_text(),
 		"step grace %s" % ("open" if player.in_step_grace() else "-"),
+		# Only while hanging, where it is the only thing that can explain a
+		# shimmy that will not go: four different refusals, one identical
+		# nothing happening.
+		"shimmy     %s" % _shimmy_text(),
 		"fps        %d" % Engine.get_frames_per_second(),
 		# ⚠️ COMMENTED OUT, not deleted. ✅ The owner: "the step decisions can
 		# go for now, that part is basically stable." It is the readout that
@@ -212,3 +216,14 @@ func _wall_side_text() -> String:
 		-1: return "left"
 		1: return "right"
 		_: return "none"
+
+## What the shimmy last decided, or "-" when nothing is hanging.
+func _shimmy_text() -> String:
+	if player == null or player.move_manager == null:
+		return "-"
+	if player.move_manager.current_name != Move.GRAB:
+		return "-"
+	var grab = player.move_manager.move_for(Move.GRAB)
+	if grab == null or not grab.has_method("shimmy_report"):
+		return "-"
+	return grab.shimmy_report()

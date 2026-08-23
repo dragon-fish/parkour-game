@@ -839,6 +839,18 @@ func build() -> Node3D:
 		Vector3(SHIMMY_RUN, shimmy_height, SHIMMY_RUN),
 		Vector3(0.0, shimmy_height * 0.5, 0.0), shimmy_colour))
 
+	# ✅ THE OWNER, after the bare block worked and me_level0 did not: "你试试在你
+	# 搭建的 OuterBlock 上面再加一个小一圈的障碍，让这个地方只能挂边不能爬上."
+	#
+	# A 5 m cap on a 6 m block leaves a 0.5 m rim -- narrower than the body,
+	# which is 0.8 m across -- so fits_standing_at() refuses the pull-up while
+	# the ledge itself stays perfectly grabbable. That is the shape a shimmy
+	# exists for in the first place: hang under the overhang, travel to where
+	# the slab does not reach, and pull up THERE.
+	_attach(shimmy_area, _box("OuterBlock_Cap",
+		Vector3(SHIMMY_RUN - 1.0, 1.5, SHIMMY_RUN - 1.0),
+		Vector3(0.0, shimmy_height + 0.75, 0.0), shimmy_colour))
+
 	# Two slabs meeting at a right angle, opening toward +X/+Z -- so a player
 	# hanging on either inner face travels INTO the corner rather than around
 	# it. Laid out so the two faces meet exactly, with no notch at the join

@@ -60,6 +60,16 @@ var _corner_normal: Vector3 = Vector3.BACK
 var _corner_placed: float = 0.0
 ## Counts down corner_lockout after a corner, during which the shimmy refuses.
 var _shimmy_lockout: float = 0.0
+
+## WHY the shimmy did what it did on the last tick it was asked, for the HUD.
+##
+## ⚠️ EXISTS BECAUSE EVERY REFUSAL LOOKS THE SAME FROM OUTSIDE. A shimmy that
+## stops has four different reasons to -- the ledge ended, the face ended, the
+## body is blocked, the lockout is running -- and the body does exactly the same
+## nothing for all of them. The owner hit a corner in me_level0 that refuses on
+## geometry the arena course reproduces fine, and the arena is not where the
+## answer is; the readout is.
+var _shimmy_report: String = "idle"
 ## The direction the mantle pushes and exits along. Captured ONCE, at
 ## COMMITMENT -- the moment forward or jump is pressed and begin() is called,
 ## in physics_update()'s climb-trigger branch below -- NOT at grab time.
@@ -87,6 +97,10 @@ func is_mantling() -> bool:
 ## exactly that to choose between Climb_Idle and Climb_Left/Climb_Right.
 func shimmy_direction() -> float:
 	return _shimmy
+
+## One line on what the shimmy last decided and why. Read by the debug HUD.
+func shimmy_report() -> String:
+	return _shimmy_report
 
 ## Whether the body is mid-corner. Exposed for the same reason is_mantling() is:
 ## nothing outside this move can otherwise tell a corner from ordinary travel,
@@ -387,10 +401,12 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	if _shimmy_lockout > 0.0:
 		_shimmy_lockout -= delta
 		_shimmy = 0.0
+		_shimmy_report = "corner lockout %.2fs" % _shimmy_lockout
 		return
 	var wanted: float = input.move.x
 	if absf(wanted) < config.grab.shimmy_deadzone:
 		_shimmy = 0.0
+		_shimmy_report = "idle"
 		return
 	var side: float = signf(wanted)
 	# ALONG the ledge is ACROSS the wall -- the horizontal face normal turned a
@@ -403,6 +419,7 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 		# The face is horizontal: a soffit or the underside of a slab rather
 		# than a wall. There is no "along" to travel, so there is no shimmy.
 		_shimmy = 0.0
+		_shimmy_report = "face normal is not a wall"
 		return
 	var sideways: Vector3 = facing.normalized().cross(Vector3.UP)
 	var step: Vector3 = sideways * (side * config.grab.shimmy_speed * delta)
@@ -430,8 +447,11 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 				config.grab.shimmy_edge_tolerance)
 		if around.get("valid", false):
 			_begin_corner(around["edge"], around["normal"], side)
+			_shimmy_report = "outside corner"
 		else:
 			_shimmy = 0.0
+			_shimmy_report = "%s ran out, nothing perpendicular beyond" % (
+				"ledge" if not beside.get("valid", false) else "face")
 		return
 
 	# AND IS THERE ROOM FOR THE BODY? A ledge can continue past a pillar or into
@@ -455,8 +475,10 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 		var turned: Dictionary = _ledge_on(blocked)
 		if turned.get("valid", false):
 			_begin_corner(turned["edge"], turned["normal"], side)
+			_shimmy_report = "inside corner"
 		else:
 			_shimmy = 0.0
+			_shimmy_report = "blocked, and it carries no ledge at this height"
 		return
 
 	player.global_position += step
@@ -470,6 +492,7 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# Overwriting it would make the next step's direction undefined.
 	_edge = beside["edge"]
 	_shimmy = side
+	_shimmy_report = "travelling"
 
 ## How far the view has been turned off the wall, in radians: 0 looking straight
 ## at it, PI with your back to it.
@@ -573,6 +596,8 @@ func _begin_corner(new_edge: Vector3, new_normal: Vector3, side: float) -> void:
 ## to that rather than fight it.
 func _advance_corner(delta: float) -> void:
 	_corner_time += delta
+	_shimmy_report = "rounding a corner, %.2fs of %.2f" % [
+		_corner_time, config.grab.corner_duration]
 	var progress: float = clampf(
 			_corner_time / maxf(config.grab.corner_duration, 0.001), 0.0, 1.0)
 	player.global_position = _corner_from_pos.lerp(_corner_to_pos, progress)

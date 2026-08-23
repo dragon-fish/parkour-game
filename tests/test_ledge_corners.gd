@@ -221,3 +221,66 @@ func test_the_shimmy_is_refused_for_a_moment_after_a_corner() -> void:
 	assert_almost_eq(player.global_position.distance_to(settled), 0.0, 0.001,
 		"the hands travelled %.3f m during the lockout"
 		% player.global_position.distance_to(settled))
+
+# --- a ledge you can hang from but not climb onto ------------------------------
+
+## The square, with a smaller block sitting on it: a rim too narrow to stand on,
+## so the ledge can be hung from and not pulled up onto.
+func _capped_square(player: Player) -> void:
+	_square(player)
+	# 3 m cap on a 4 m block leaves a 0.5 m rim -- narrower than the body, which
+	# is 0.8 m across.
+	_block(player, Vector3(0.0, TOP + 0.75, -2.0), Vector3(3.0, 1.5, 3.0))
+
+func test_the_rim_really_is_too_narrow_to_pull_up_onto() -> void:
+	# Without this the corner test below passes on geometry that was never
+	# capped in the first place.
+	var player: Player = await _fresh()
+	_capped_square(player)
+	await step(2)
+	assert_false(player.fits_standing_at(Vector3(1.0, TOP, -MARGIN)),
+		"the rim left room to stand, so this is not the case the owner hit")
+
+func test_a_capped_ledge_still_rounds_its_corner() -> void:
+	# ✅ THE OWNER, after the uncapped course worked: "我在 me_level0 里外转角失败了，
+	# 感觉区别在那个地方不满足 climb_up 条件" -- a ledge you can hang from and not
+	# climb onto. Hanging under an overhang and travelling to somewhere the slab
+	# does not reach is the whole point of a shimmy, so a corner that only works
+	# on open ledges works in the wrong half of the cases.
+	var player: Player = await _fresh()
+	_capped_square(player)
+	await step(2)
+	var grab := _hang(player, Vector3(1.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
+	assert_true(_travel_until_corner(grab, 1.0),
+		"a capped ledge stopped at the corner")
+
+func test_travelling_along_a_capped_ledge_works_at_all() -> void:
+	# Asked separately, because if plain travel is what the cap breaks then the
+	# corner never gets a chance and the test above would blame the wrong thing.
+	var player: Player = await _fresh()
+	_capped_square(player)
+	await step(2)
+	var grab := _hang(player, Vector3(0.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
+	var before: float = player.global_position.x
+	for i in 20:
+		grab.physics_update(1.0 / 60.0, _hold(1.0))
+	assert_gt(player.global_position.x, before + 0.05,
+		"a capped ledge could not be travelled along at all")
+
+func test_how_narrow_a_rim_a_corner_survives() -> void:
+	# DIAGNOSTIC, not a requirement. The owner's me_level0 corner fails on
+	# geometry a 0.5 m rim reproduces fine here, so this walks the rim in to
+	# find where it does break -- both probes drop from LEDGE_ANCHOR_MARGIN
+	# (0.1 m) inside the face, and a ray that starts inside a cap reports
+	# nothing at all.
+	for rim in [0.30, 0.15, 0.10, 0.05]:
+		var player: Player = await _fresh()
+		_square(player)
+		var cap: float = 4.0 - rim * 2.0
+		_block(player, Vector3(0.0, TOP + 0.75, -2.0), Vector3(cap, 1.5, cap))
+		await step(2)
+		var grab := _hang(player, Vector3(1.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
+		var turned: bool = _travel_until_corner(grab, 1.0)
+		gut.p("rim %.2f m -> corner %s" % [rim, "yes" if turned else "NO"])
+		after_each()
+	assert_true(true)
