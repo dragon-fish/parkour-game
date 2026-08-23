@@ -211,6 +211,7 @@ func _focus_the_scene() -> void:
 		if child.has_method("show_overlay"):
 			child.call("show_overlay", true)
 	_record_hz = float(Engine.physics_ticks_per_second)
+	_build_backstop()
 	_load()
 	call_deferred("_take")
 
@@ -234,6 +235,39 @@ func jump_lead() -> float:
 	return JUMP_LEADS[_lead_index]
 
 # --- the obstacle -------------------------------------------------------------
+
+## How far past the obstacle the backstop wall stands.
+##
+## ✅ THE OWNER: "这个模拟场地可能得在稍远处弄一堵墙拦住角色，否则它会走出去摔死，我服了."
+##
+## ⚠️ FAR ENOUGH TO BE A NET, NOT A FEATURE. The floor is 60 m square, so its far
+## edge is at -30; four seconds of walk-on at 5.5 m/s covers 22. At -25 the wall
+## is beyond anything the longest take reaches, so it never appears in a
+## recording -- it is only there for the cases nobody planned, which is what was
+## killing the character.
+const BACKSTOP_Z := -25.0
+
+## A wall at the far end of the run, so a take that overruns stops instead of
+## walking off the world.
+func _build_backstop() -> void:
+	var body := StaticBody3D.new()
+	body.name = "Backstop"
+	var size := Vector3(60.0, 6.0, 1.0)
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	shape.shape = box
+	body.add_child(shape)
+	var mesh := MeshInstance3D.new()
+	var cube := BoxMesh.new()
+	cube.size = size
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.35, 0.36, 0.42)
+	cube.material = material
+	mesh.mesh = cube
+	body.add_child(mesh)
+	add_child(body)
+	body.position = Vector3(0.0, size.y * 0.5, BACKSTOP_Z)
 
 func _build_obstacle() -> void:
 	if _obstacle != null:
@@ -894,13 +928,22 @@ func _build_ui() -> void:
 	# child unlimited room, and a column asked how wide it wants to be answers
 	# "as narrow as my widest label".
 	var scroll := ScrollContainer.new()
-	# THE SAME IDEA SIDEWAYS. Horizontal scrolling was off, which does not mean
-	# "make it fit" -- it means anything wider than the panel is silently cut:
-	# "表单里面的字超宽了，右边被裁切了我看不到." AUTO puts a bar there when something
-	# overflows and stays out of the way when nothing does. The widening and the
-	# clipped option buttons below should mean it never appears; this is the net
-	# under them, so a long clip name can never again hide its own tail.
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	# ⚠️ HORIZONTAL SCROLLING OFF, AND IT HAS TO BE. Turning it on defeats
+	# autowrap: a ScrollContainer that MAY scroll sideways hands its child
+	# unlimited width, so a Label never wraps -- it widens the column instead.
+	# The readout's text changes on every frame of a scrub, so the column's width
+	# changed with it, the slider stretched and snapped back, and the panel
+	# strobed. Measured over 200 frames of playback, the timeline's own width
+	# swung 48 px. ✅ The owner: "拖动 timeline 的时候会有段落的文字长度产生变化导致宽度
+	# 一直变，然后 timeline 就被拉长，然后就开始闪，能不能强制面板的宽度，文字自己去适应
+	# 宽度换行."
+	#
+	# 📌 It was turned on to stop text being CUT OFF, which was a real report of
+	# mine to fix -- but the things actually overflowing were a dropdown sizing
+	# itself to its longest entry and an ItemList row, and both are handled where
+	# they are built (clip_text, and an ellipsis overrun). A scrollbar kept as a
+	# safety net is not worth a panel that cannot hold still.
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_child(scroll)
 	var column := VBoxContainer.new()
@@ -1110,10 +1153,36 @@ func _build_ui() -> void:
 	hint.text = "Space play   A/D frame   Q/E ten   Up/Down height   IJKL/UO nudge   ;' yaw\nRight-drag to fly the camera; the keys above stand down while you do"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(hint)
+	_wrap_every_label(column)
+
+## Makes every Label in the panel wrap instead of widen.
+##
+## 🎯 ONE UNWRAPPED LABEL SETS THE WIDTH OF THE WHOLE PANEL, and that is not a
+## figure of speech: a ScrollContainer reports its child's minimum width upward,
+## a PanelContainer is at least as wide as its content, and a Control is always
+## at least its combined minimum size -- so the 520 px this panel is anchored to
+## simply loses. The clip-span line measured 539 px wide and its text changes
+## with the clip, so the panel's width changed with it, the slider stretched and
+## snapped back, and the whole form strobed while scrubbing. ✅ The owner: "拖动
+## timeline 的时候会有段落的文字长度产生变化导致宽度一直变，然后 timeline 就被拉长，然后
+## 就开始闪，能不能强制面板的宽度，文字自己去适应宽度换行."
+##
+## ⚠️ SWEPT RATHER THAN SET ONE BY ONE. Seven of the labels here already had
+## autowrap set at their construction and one did not, which is exactly the
+## failure mode a list of individual calls has. Anything added later is covered
+## without anyone having to remember.
+func _wrap_every_label(node: Node) -> void:
+	for child in node.get_children():
+		if child is Label:
+			(child as Label).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_wrap_every_label(child)
 
 func _heading(text: String) -> Label:
 	var label := Label.new()
 	label.text = NEWLINE + text
+	# Wrapping rather than widening, like everything else in this column. One
+	# unwrapped Label is all it takes to set the width of the whole panel.
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return label
 
 func _spin(into: Node, label_text: String, low: float, high: float,
