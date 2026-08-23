@@ -22,7 +22,10 @@ var _arc_duration: float = 0.0
 ## The camera's fallback rise for this vault. Derived from the obstacle and
 ## aimed at the eye -- and since it only ever moves the eye now, that derivation
 ## is the whole of what it is. See ScriptedMove.camera_lift().
-var _planned_camera_arc: float = 0.0
+## The clearance this vault needs, derived from the obstacle. Feeds TWO things
+## now: how much of the clip's own hip lift to keep (the body's rise), and the
+## camera's fallback lift for a body with no model to follow.
+var _planned_clearance: float = 0.0
 var _touched: bool = false
 ## Where the obstacle's face was when the commit was made. See Move.touching().
 var _face_point: Vector3 = Vector3.ZERO
@@ -253,7 +256,7 @@ func enter(_previous: StringName) -> void:
 	# the original, so anything else reads as floating. See
 	# docs/contact-drives-movement.md.
 	_landing = landing
-	_planned_camera_arc = arc
+	_planned_clearance = arc
 
 	# A VAULT MUST NOT BE SLOWER THAN JUST RUNNING THERE.
 	#
@@ -318,7 +321,14 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			# THE RISE LEADS THE TRAVEL -- see SpeedVaultConfig.vault_vertical_lead.
 			# A symmetric bump peaks half way ALONG the journey, and the obstacle is
 			# at the near end of it.
-			begin(player.global_position, _landing, _arc_duration, _planned_camera_arc,
+			# ⚠️ THE CLIP'S OWN RISE, SCALED TO THIS OBSTACLE, and set here rather
+			# than on entry because the clip is only settled once the animator
+			# has seen the move. Keeping all of it is the animator's wall;
+			# keeping none is the flat pin that left the body too low. See
+			# Player.body_clip_hip_peaks.
+			player.set_clip_lift_kept(player.clip_lift_kept_for(
+					player._current_clip(), _planned_clearance))
+			begin(player.global_position, _landing, _arc_duration, _planned_clearance,
 					config.speed_vault.vault_vertical_lead,
 					config.speed_vault.vault_path_ease)
 			player.velocity = Vector3.ZERO

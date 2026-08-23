@@ -560,7 +560,8 @@ var _body_folded: bool = false
 var _fold_drop: float = 0.0
 ## True while a SCRIPTED move owns the body's height, so the clip's own
 ## vertical hip motion must not be added on top. See set_clip_lift_cancelled().
-var _cancel_clip_lift: bool = false
+## How much of the clip's own hip lift survives. See set_clip_lift_kept().
+var _kept_clip_lift: float = 1.0
 ## How much of that cancellation is actually being applied, 0 to 1, eased.
 ##
 ## ⚠️ EASED, and it was not at first. ✅ The owner: "at the instant the vault
@@ -1264,7 +1265,7 @@ func _drive_clip_offset(delta: float) -> void:
 	if _body_folded:
 		wanted_drop = maxf(standing_height() - current_capsule_height(), 0.0)
 	_fold_drop = lerpf(_fold_drop, wanted_drop, t)
-	_lift_cancel_amount = lerpf(_lift_cancel_amount, 1.0 if _cancel_clip_lift else 0.0, t)
+	_lift_cancel_amount = lerpf(_lift_cancel_amount, 1.0 - _kept_clip_lift, t)
 	_apply_clip_offset()
 
 ## The [position, rotation_degrees] pair for `clip`, or an empty array.
@@ -1489,7 +1490,26 @@ func _apply_clip_offset() -> void:
 ## ⚠️ NOT ALWAYS ON. A run's 0.151 m IS the bob and cancelling it would flatten
 ## the walk into a glide. This is only for the moves whose height is scripted.
 func set_clip_lift_cancelled(cancelled: bool) -> void:
-	_cancel_clip_lift = cancelled
+	set_clip_lift_kept(0.0 if cancelled else 1.0)
+
+## How much of the running clip's OWN hip lift to keep, as a fraction.
+##
+## 1 is the clip untouched; 0 is the flat pin that was here before; anything
+## between scales the animator's curve to the clearance this obstacle actually
+## needs, which is the whole point -- see body_clip_hip_peaks.
+##
+## ⚠️ A FRACTION, NOT A HEIGHT, because the clip's own peak is the unit. Asking
+## for "0.4 m of rise" would mean something different in every clip; asking for
+## "a third of what this clip does" scales the shape it already has.
+func set_clip_lift_kept(kept: float) -> void:
+	_kept_clip_lift = clampf(kept, 0.0, 1.0)
+
+## The fraction of the running clip's hip lift that this obstacle wants to keep.
+func clip_lift_kept_for(clip: StringName, wanted_rise: float) -> float:
+	var peak: float = float(body_clip_hip_peaks.get(clip, 0.0))
+	if peak <= 0.001:
+		return 0.0
+	return clampf(wanted_rise / peak, 0.0, 1.0)
 
 ## How far the clip has lifted the hips above their rest height, in metres of
 ## world space -- scaled, because bone space is model space.
@@ -1557,7 +1577,7 @@ func body_root_debug() -> Dictionary:
 		"drop": _fold_drop,
 		"clip_y": _clip_offset_position.y,
 		"lift": clip_lift() * _lift_cancel_amount,
-		"lift_cancelled": _cancel_clip_lift,
+		"lift_kept": _kept_clip_lift,
 	}
 
 ## Sets the offset with no easing at all, for the debug tuner: while the tree is
@@ -1815,7 +1835,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# left alone.
 	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle", &"Climb_Left", &"Climb_Right"]:
 		_ensure_clip_loops(anim_player, looping_clip)
-	_pin_scripted_hips(anim_player)
+	_measure_scripted_hip_peaks(anim_player)
 
 	var state_machine := AnimationNodeStateMachine.new()
 	for clip_name in _KNOWN_ANIMATION_CLIPS:
@@ -2117,43 +2137,41 @@ func _body_has_clip(anim_player: AnimationPlayer, clip_name: StringName) -> bool
 ## ballistic and the hips' own +0.38 m rise is the jump. A clip is only pinnable
 ## when nothing else plays it.
 ## 📌 PUBLIC, and named for the PREDICATE rather than for the hips, because there
-## are two consumers now: _pin_scripted_hips() below, and
+## are two consumers now: _measure_scripted_hip_peaks() below, and
 ## CharacterAnimator._update(), which lets a clip on this list pre-empt a
 ## transition into one that is not. Both are asking the same question -- "is a
 ## scripted move playing this?" -- and two lists that answer it would drift.
 const SCRIPTED_MOVE_CLIPS := [&"StepUp", &"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
 	&"SafetyVault", &"Climb_Left", &"Climb_Right", &"Climb_Idle"]
 
-## Holds the hips still, at the skeleton's rest position, for every clip a
-## scripted move plays.
+## How far each scripted clip lifts its own hips above rest, in metres.
 ##
-## ✅ THE OWNER: "目的就是让动画在默认没K帧的情况下盆骨始终与胶囊的中心在一个位置...
-## 不然我得同时兼顾两个都在做运动的坐标系，我这是在调和双星系统."
+## ✅ THE OWNER, arriving at the shape of the answer: "所以其实就是我们应该让动画的髋部
+## 最高点缩放到我们所需的高度？然后加少量的手脚IK？"
 ##
-## 🎯 AND THE MEASUREMENT SAYS IT HAS TO BE A PIN, not the subtraction of a
-## travel component. These clips have NO net travel to remove -- first key to
-## last, ClimbUp_2m's hips move (-0.00, +0.09, +0.00) and StepUp's, SafetyVault's
-## and ClimbUp_1m's move nothing at all. What they have is SWING: ClimbUp_2m's
-## hips cover 1.20 m of Y inside the clip and come back. That is the second body
-## in the two-body problem, and it is larger than the capsule's own travel.
+## 🎯 THE TWO THINGS TRIED BEFORE THIS WERE THE SAME MISTAKE WITH DIFFERENT
+## CONSTANTS. Left alone, a clip lifts its hips by whatever the animator's own
+## obstacle needed -- 1.20 m for ClimbUp_2m, 0.83 for SafetyVault, 0.48 for
+## StepUp -- which is right for exactly one wall and, doubled with the capsule's
+## own rise, put the hands 1.32 m off. Pinned flat it lifts them by 0, which is
+## right only when the capsule provides all of the clearance, and ✅ the owner
+## again: "现在in-place动画反倒在很多地方高度不够." One is a fixed magnitude of 1.20
+## and the other a fixed magnitude of 0; both are guesses.
 ##
-## ⚠️ THE REST POSE, NOT EACH CLIP'S FIRST KEY. Pinning each clip to its own
-## opening height would put the hips somewhere different for every clip, so the
-## baseline would not be one known place and every transition between two pinned
-## clips would step. Rest is the pose body_mount_transform was captured against.
+## So the SHAPE stays -- that is the animator's craft and it is worth keeping --
+## and the MAGNITUDE is set per obstacle. This is the denominator of that: a
+## clip's own peak, measured once at attach, so a wanted clearance can be
+## expressed as a fraction of it. See set_clip_lift_kept().
+var body_clip_hip_peaks: Dictionary = {}
+
+## Measures, rather than flattens.
 ##
-## POSITION ONLY. The hips keep their rotation track -- lean, twist and the
-## weight shift they carry are performance, and this is only trying to stop two
-## things owning the same axis.
-##
-## The clip's own rise is GONE afterwards, deliberately: the capsule's straight
-## line becomes the whole of the travel, and any easing the animator put into it
-## has to be keyed back in. That is the blank baseline being asked for, and the
-## price of it.
-func _pin_scripted_hips(anim_player: AnimationPlayer) -> void:
-	# ⚠️ _find_skeleton(body), NOT find_skeleton(). The cached _skeleton is
-	# assigned in _attach_body() AFTER this runs, so the accessor returns null
-	# here and the whole pin silently did nothing the first time it was tried.
+## 📌 THE SAME PASS THIS USED TO PIN THEM IN. Reading the Hips position track is
+## the same walk either way; the difference is whether the keys are replaced or
+## just looked at. Nothing is written to the animation now, so no library is
+## duplicated and the clips stay exactly as imported.
+func _measure_scripted_hip_peaks(anim_player: AnimationPlayer) -> void:
+	body_clip_hip_peaks.clear()
 	var skeleton := _find_skeleton(body)
 	if skeleton == null:
 		return
@@ -2161,31 +2179,22 @@ func _pin_scripted_hips(anim_player: AnimationPlayer) -> void:
 	if hips < 0:
 		return
 	var bone_name: String = skeleton.get_bone_name(hips)
-	var rest: Vector3 = skeleton.get_bone_rest(hips).origin
-	var original := anim_player.get_animation_library("")
-	if original == null:
-		return
-	# ONE COPY FOR ALL OF THEM. _ensure_clip_loops() duplicates the library per
-	# clip, which is its own business; there is no reason to do it eight more
-	# times here.
-	var library := original.duplicate(true) as AnimationLibrary
+	var rest: float = skeleton.get_bone_rest(hips).origin.y
 	for clip_name in SCRIPTED_MOVE_CLIPS:
-		if not library.has_animation(clip_name):
+		if not anim_player.has_animation(clip_name):
 			continue
-		var animation := library.get_animation(clip_name)
+		var animation := anim_player.get_animation(clip_name)
 		for track in animation.get_track_count():
 			if animation.track_get_type(track) != Animation.TYPE_POSITION_3D:
 				continue
 			if String(animation.track_get_path(track).get_concatenated_subnames()) != bone_name:
 				continue
-			for key in range(animation.track_get_key_count(track) - 1, -1, -1):
-				animation.track_remove_key(track, key)
-			# ONE KEY, NOT NO TRACK. An emptied track leaves the bone wherever
-			# the previous clip left it, which is the same two-body problem with
-			# an extra step.
-			animation.position_track_insert_key(track, 0.0, rest)
-	anim_player.remove_animation_library("")
-	anim_player.add_animation_library("", library)
+			var peak := 0.0
+			for key in animation.track_get_key_count(track):
+				var value: Vector3 = animation.track_get_key_value(track, key)
+				peak = maxf(peak, value.y - rest)
+			if peak > 0.001:
+				body_clip_hip_peaks[clip_name] = peak
 
 func _ensure_clip_loops(anim_player: AnimationPlayer, clip_name: StringName) -> void:
 	var original_library := anim_player.get_animation_library("")
