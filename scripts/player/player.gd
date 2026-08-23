@@ -1504,6 +1504,10 @@ func set_clip_lift_cancelled(cancelled: bool) -> void:
 func set_clip_lift_kept(kept: float) -> void:
 	_kept_clip_lift = clampf(kept, 0.0, 1.0)
 
+## What set_clip_lift_kept() last stored, for tests and the debug HUD.
+func debug_clip_lift_kept() -> float:
+	return _kept_clip_lift
+
 ## The fraction of the running clip's hip lift that this obstacle wants to keep.
 func clip_lift_kept_for(clip: StringName, wanted_rise: float) -> float:
 	var peak: float = float(body_clip_hip_peaks.get(clip, 0.0))

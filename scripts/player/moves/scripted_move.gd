@@ -90,10 +90,13 @@ func sample(t: float) -> Vector3:
 	# capsule owes is predictability.
 	var eased := 1.0 - pow(1.0 - t, _ease) if _ease != 1.0 else t
 	if _vertical_lead <= 0.0:
-		# ONE CURVE FOR ALL THREE AXES, and nothing added on top of it. The
-		# symmetric bump that used to live here is the camera's now -- see
-		# camera_lift().
-		return _from.lerp(_to, eased)
+		# ONE CURVE FOR ALL THREE AXES. The symmetric bump on top is off unless
+		# MovementConfig.scripted_path_arcs asks for it -- see that flag for the
+		# two ways this can be done and why only one may be on.
+		var flat := _from.lerp(_to, eased)
+		if config != null and config.scripted_path_arcs:
+			flat.y += sin(t * PI) * _camera_arc
+		return flat
 
 	# ⚠️ THREE SEGMENTS, NOT ONE, and the middle one is STRAIGHT.
 	#

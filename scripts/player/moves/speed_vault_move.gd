@@ -326,8 +326,11 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			# has seen the move. Keeping all of it is the animator's wall;
 			# keeping none is the flat pin that left the body too low. See
 			# Player.body_clip_hip_peaks.
-			player.set_clip_lift_kept(player.clip_lift_kept_for(
-					player._current_clip(), _planned_clearance))
+			# NOTHING KEPT WHEN THE PATH ITSELF ARCS: the rise is the capsule's
+			# in that mode, and adding the clip's on top is the double-count.
+			player.set_clip_lift_kept(0.0 if config.scripted_path_arcs
+					else player.clip_lift_kept_for(
+						player._current_clip(), _planned_clearance))
 			begin(player.global_position, _landing, _arc_duration, _planned_clearance,
 					config.speed_vault.vault_vertical_lead,
 					config.speed_vault.vault_path_ease)

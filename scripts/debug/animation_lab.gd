@@ -174,6 +174,9 @@ var _spectator: SpectatorCamera
 ## Real-time playback of the recording. See _toggle_play().
 var _playing := false
 var _clamp_box: CheckBox
+## The A/B switch between the two ways of clearing an obstacle. See
+## MovementConfig.scripted_path_arcs.
+var _arc_box: CheckBox
 ## Whether scrubbing is fenced to the scripted move.
 ##
 ## "限制进度条只能在主要动作中拖动的 checkbox 防止手滑." Off by default, because the
@@ -220,6 +223,10 @@ func _focus_the_scene() -> void:
 	for child in level.get_children():
 		if child.has_method("show_overlay"):
 			child.call("show_overlay", true)
+	if _arc_box != null and player.config != null:
+		_ui_syncing = true
+		_arc_box.button_pressed = player.config.scripted_path_arcs
+		_ui_syncing = false
 	_record_hz = float(Engine.physics_ticks_per_second)
 	_build_backstop()
 	_load()
@@ -1121,6 +1128,21 @@ func _build_ui() -> void:
 		if _ui_syncing: return
 		_lead_index = i
 		_take())
+	# ✅ A/B WITHOUT EDITING ANYTHING. "你能不能先把代码改成，弧形脚本路径（起点、终点、
+	# 最高点）配合 in-place 动画？我想再看一次" -- so both are here and one click
+	# apart, rather than one of them living in git history.
+	var arc_box := CheckBox.new()
+	arc_box.text = "arc the path, pin the hips  (the other way round)"
+	# ⚠️ NOT READ HERE. Player.config is still null while this runs -- _ready()
+	# builds the panel before the player has finished assembling itself -- so the
+	# box is synced from _focus_the_scene(), which is deferred.
+	arc_box.toggled.connect(func(on):
+		if _ui_syncing or player.config == null:
+			return
+		player.config.scripted_path_arcs = on
+		_take())
+	column.add_child(arc_box)
+	_arc_box = arc_box
 	var retake := Button.new()
 	retake.text = "Re-record take  (R)"
 	retake.pressed.connect(_take)

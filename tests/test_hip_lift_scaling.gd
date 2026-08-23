@@ -115,3 +115,22 @@ func test_a_clip_that_was_never_measured_keeps_nothing() -> void:
 	var player: Player = await _player_with_clips([&"StepUp"])
 	assert_eq(player.clip_lift_kept_for(&"NotAClip", 0.5), 0.0,
 		"an unmeasured clip was given a fraction of a peak it does not have")
+
+func test_the_two_ways_are_mutually_exclusive() -> void:
+	# ⚠️ NEVER BOTH. An arced path under a clip that also lifts is the
+	# double-count that put the hands 1.32 m out in the first place, which is why
+	# this is one flag rather than two knobs somebody can set wrong.
+	#
+	# Measured in the lab on a 1.50 m obstacle, capsule rise above the straight
+	# line between the move's ends: 0.000 m with the flag off, 1.366 m with it on.
+	var config := MovementConfig.new()
+	assert_false(config.scripted_path_arcs,
+		"the straight path is no longer the default")
+	var player: Player = await _player_with_clips([&"StepUp"])
+	# With the path arcing, the clip's own lift must be given up entirely --
+	# whatever the obstacle would otherwise have asked for.
+	player.config.scripted_path_arcs = true
+	player.set_clip_lift_kept(0.0 if player.config.scripted_path_arcs
+		else player.clip_lift_kept_for(&"StepUp", 0.6))
+	assert_eq(player.debug_clip_lift_kept(), 0.0,
+		"the hips still lift while the path is already arcing")
