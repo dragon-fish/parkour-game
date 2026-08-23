@@ -367,6 +367,8 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## 📌 The defaults are the numbers the clips themselves were measuring: a vault
 ## over used SafetyVault's own hip peak of 0.732 and a vault onto used StepUp's
 ## 0.226. Set by hand from here on -- ✅ "我来用眼睛测."
+## ✅ SIGNED OFF AT 0.23 by eye, after the bezier started reaching the height it
+## was asked for: "现在就很好."
 @export var vault_over_apex_above_top: float = 0.23
 @export var vault_onto_apex_above_top: float = 0.23
 
