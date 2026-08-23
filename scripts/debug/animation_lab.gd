@@ -89,6 +89,8 @@ var _live_position := Vector3.ZERO
 var _live_rotation := Vector3.ZERO
 var _anim_player: AnimationPlayer
 var _anim_tree: AnimationTree
+## The state machine's own clock. See _clip_time().
+var _playback: AnimationNodeStateMachinePlayback
 
 func _ready() -> void:
 	_build_ui()
@@ -244,17 +246,28 @@ func _resolve_animation_nodes() -> void:
 	if player.body == null:
 		return
 	_anim_player = player.body.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	_playback = null
 	var root := player.get_node_or_null("BodyRoot")
 	if root == null:
 		return
 	for child in root.get_children():
 		if child is AnimationTree:
 			_anim_tree = child
+	if _anim_tree != null:
+		_playback = _anim_tree.get(
+			"parameters/%s/playback" % CharacterAnimator.GRAPH_STATES)
 
+## Where the clip is, in its own seconds.
+##
+## ⚠️ FROM THE STATE MACHINE, NOT FROM THE AnimationPlayer. The AnimationTree is
+## what drives playback, so the player's own `current_animation_position` is not
+## the truth -- it reads 0.00 for the whole take. Recorded that way, every frame
+## replayed the FIRST frame of its clip: poses that could not be restored, and a
+## looping clip that looked like it played once.
 func _clip_time() -> float:
-	if _anim_player == null or not _anim_player.is_playing():
+	if _playback == null:
 		return 0.0
-	return _anim_player.current_animation_position
+	return _playback.get_current_play_position()
 
 # --- scrubbing --------------------------------------------------------------------
 
@@ -270,7 +283,16 @@ func _scrub(by: int) -> void:
 	# and the time in it, both of which were recorded.
 	var clip: StringName = frame.get("clip", Move.KEEP)
 	if _anim_player != null and clip != Move.KEEP and _anim_player.has_animation(String(clip)):
-		_anim_player.play(String(clip))
+		# ⚠️ play() ONLY WHEN THE CLIP CHANGES. Called every scrub it restarts the
+		# animation, which on a LOOPING clip resets the very position the seek
+		# below is about to set -- the two fight, and the pose flickers back to
+		# the first frame.
+		if _anim_player.current_animation != String(clip):
+			_anim_player.play(String(clip))
+		# ⚠️ TWO ARGUMENTS, NOT THREE. seek()'s third is `update_only`, which
+		# means "move the clock without posing anything" -- exactly the wrong
+		# half of the job. With it set, the position read back as 0.000 and the
+		# body never left its first frame.
 		_anim_player.seek(float(frame.get("clip_time", 0.0)), true)
 	_live_position = Vector3.ZERO
 	_live_rotation = Vector3.ZERO
@@ -508,8 +530,21 @@ func _build_ui() -> void:
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 12)
 	panel.add_child(margin)
+	# ✅ overflow: auto. "表单超出屏幕高度了，能做 overflow: auto 吗，我不知道在游戏
+	# 引擎里叫什么" -- it is a ScrollContainer, and it is the same idea: a viewport
+	# onto a child taller than itself.
+	#
+	# ⚠️ The child needs SIZE_EXPAND_FILL horizontally or it collapses to its
+	# minimum width instead of filling the panel: a ScrollContainer gives its
+	# child unlimited room, and a column asked how wide it wants to be answers
+	# "as narrow as my widest label".
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	margin.add_child(scroll)
 	var column := VBoxContainer.new()
-	margin.add_child(column)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(column)
 
 	column.add_child(_heading("OBSTACLE"))
 	_height_box = _spin(column, "height (m)", HEIGHT_MIN, HEIGHT_MAX, HEIGHT_STEP, height())
