@@ -44,9 +44,20 @@ extends MoveConfig
 ## 转换为更快的 VaultOver." A technique that saves a twentieth of a second is not
 ## a technique anyone would learn.
 ##
-## CharacterAnimator fits the clip to this, so ClimbLedge's own 0.63 s follows
-## rather than fighting it.
-@export var mantle_duration: float = 0.8
+## 🎯 AND THE ANIMATION IS THE ANSWER, not a feel dial. "No duration field" is
+## not an omission -- it says the length is whatever the clip is. So this is
+## ClimbUp_2m's own 1.300 s, played at 1x, and CharacterAnimator fits the clip to
+## it rather than the other way round.
+##
+## ✅ The owner asked for that clip and for "近 2s": "GrabPullUp 还是太快了...ME 里
+## 体感将近 2s 呢，这个动画也得换成 ClimbUp_2m." 1.3 is what this pack has --
+## ClimbLedge is 0.633 and ClimbUp_1m 0.667, both far too brisk to read as
+## hauling a body over a lip.
+##
+## 📌 It also makes the speedrun glitch worth learning, which is its own check on
+## the number: converting a pull-up into a VaultOver now saves 0.65 s rather than
+## a twentieth of a second.
+@export var mantle_duration: float = 1.3
 ## Horizontal speed granted on top after a mantle.
 @export var mantle_exit_speed: float = 2.0
 ## How far past the ledge edge the mantle's landing point sits, so the body

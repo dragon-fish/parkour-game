@@ -354,3 +354,46 @@ func test_a_body_without_the_travel_clips_keeps_hanging() -> void:
 	grab._shimmy = 1.0
 	assert_eq(animator._target_animation(), &"Climb_Idle",
 		"a body with no travel clips did not fall back to the hang")
+
+# --- a pull-up is a slow haul ------------------------------------------------
+
+func test_a_pull_up_prefers_the_long_climb() -> void:
+	# ✅ THE OWNER: "GrabPullUp 还是太快了...ME 里体感将近 2s 呢，这个动画也得换成
+	# ClimbUp_2m."
+	#
+	# 📌 Measured, the three candidates are ClimbUp_2m 1.300 s, ClimbUp_1m 0.667
+	# and ClimbLedge 0.633. TdMove_GrabPullUp carries no duration field at all,
+	# which says the length comes from the clip -- so picking the clip IS picking
+	# the duration, and GrabConfig.mantle_duration is 1.3 to match.
+	#
+	# ⚠️ THIS OVERRULES AN ARGUMENT THE ROUTING ITSELF USED TO MAKE, that
+	# ClimbUp_* starts from STANDING while ClimbLedge belongs to the hang set.
+	# True, and it lost: ClimbLedge is over before the body has left the lip.
+	var animator: CharacterAnimator = await _animator_with(
+		[&"idle", &"Climb_Idle", &"ClimbLedge", &"ClimbUp_1m", &"ClimbUp_2m"])
+	var player: Player = _world["player"]
+	player.pending_ledge = {"valid": true,
+		"edge": player.global_position + Vector3(0.0, 2.0, -1.0),
+		"face_normal": Vector3(0.0, 0.0, 1.0)}
+	player.move_manager.start(Move.GRAB)
+	var grab := player.move_manager.move_for(Move.GRAB) as GrabMove
+	assert_eq(animator._target_animation(), &"Climb_Idle",
+		"a still hang stopped playing the hang clip")
+	grab._mantling = true
+	assert_eq(animator._target_animation(), &"ClimbUp_2m",
+		"a pull-up played '%s'" % String(animator._target_animation()))
+
+func test_a_body_without_it_falls_back_down_the_list() -> void:
+	# The chain still degrades: a body with only the short clips uses them
+	# rather than standing still.
+	var animator: CharacterAnimator = await _animator_with(
+		[&"idle", &"Climb_Idle", &"ClimbLedge"])
+	var player: Player = _world["player"]
+	player.pending_ledge = {"valid": true,
+		"edge": player.global_position + Vector3(0.0, 2.0, -1.0),
+		"face_normal": Vector3(0.0, 0.0, 1.0)}
+	player.move_manager.start(Move.GRAB)
+	var grab := player.move_manager.move_for(Move.GRAB) as GrabMove
+	grab._mantling = true
+	assert_eq(animator._target_animation(), &"ClimbLedge",
+		"a body with no ClimbUp_2m played '%s'" % String(animator._target_animation()))

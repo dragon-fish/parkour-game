@@ -618,7 +618,22 @@ func _target_animation() -> StringName:
 				# arrives already hanging, so it is the second.
 				# ⚠️ Judged from the names and the company they keep, not from
 				# watching them. The gallery shows both.
-				return _first_available([&"ClimbLedge", &"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
+				# ✅ THE OWNER: "这个动画也得换成 ClimbUp_2m." Measured, the three
+				# candidates are ClimbUp_2m 1.300 s, ClimbUp_1m 0.667 and
+				# ClimbLedge 0.633 -- and a pull-up is a slow haul, so the long
+				# one is the only one that reads as one. GrabConfig.
+				# mantle_duration is now 1.3 to match, which is the same thing
+				# said from the other side: TdMove_GrabPullUp carries no duration
+				# field, so the clip IS the duration.
+				#
+				# ⚠️ THIS OVERRULES AN EARLIER ARGUMENT MADE HERE, that ClimbUp_*
+				# starts from STANDING at the foot of a wall while ClimbLedge
+				# belongs to UAL1's hang set. True, and it lost: how the clip
+				# begins matters less than how long it takes and what it looks
+				# like doing it. ClimbLedge is over before the body has left the
+				# lip.
+				return _first_available([&"ClimbUp_2m", &"ClimbLedge", &"ClimbUp_1m",
+					&"Jump_Start", &"jump", &"idle"])
 			# Climb_Idle is UAL1's hang, and it is now here -- the comment
 			# that used to stand at this line said it was "behind the paid
 			# tier", which it no longer is. The fox's `ladder_stillness` keeps
