@@ -345,6 +345,18 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## 套用grab的规则，然后我来开需不需要微调力度." 0 puts the control over the END and the
 ## curve hugs the far side; 1 puts it over the start and the body leaves
 ## vertically before swinging across. Tuned by eye, like the pull-up's 0.7.
+## ✅ SIGNED OFF AT 0.7 BY EYE, with no per-variant tuning needed after all: "单段
+## 贝塞尔曲线，结论：完美，肉眼看已经很自然了."
+##
+## 📌 THE SAME NUMBER FOR ALL THREE, which is the part worth noticing. Four rules
+## and four hand-set apex heights were replaced by one shape and one dial, and
+## the dial turned out not to need moving between variants. If a different
+## animation pack ever does need it, the alternative already has its data:
+## Player.body_clip_hip_peaks measures how far each clip lifts its own hips
+## (StepUp 0.226 m, ClimbUp_1m 0.193, ClimbUp_2m 0.617, SafetyVault 0.732), so a
+## control height of "obstacle top plus the clip's own peak" is one line away --
+## ✅ the owner's own formulation: "让最高点与障碍之间的高度差总是和动画里盆骨保持相近."
+## It is not needed yet and is not built.
 @export var vault_over_control_bias: float = 0.7
 @export var vault_onto_control_bias: float = 0.7
 
