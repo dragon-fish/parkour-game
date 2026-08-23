@@ -341,6 +341,15 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## GrabConfig.mantle_vertical_lead.
 @export var vault_vertical_lead: float = 0.0
 
+## The same, for a vault that lands ON the obstacle rather than past it.
+##
+## ⚠️ ITS OWN KNOB, because the two branches want different shapes and always
+## did. A vault OVER carries the body past a thin obstacle -- ✅ measured, its
+## peak sits 0.87 m BELOW the top and the feet never clear it -- so a shallow
+## curve is honest there. A vault ONTO has to put the feet on the top, which
+## means rising to it and then moving forward, and no symmetric bump does that.
+@export var vault_onto_vertical_lead: float = 0.45
+
 ## The same for a vault: 1 is a straight line at a constant speed. See
 ## GrabConfig.mantle_path_ease.
 @export var vault_path_ease: float = 1.0

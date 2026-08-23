@@ -26,6 +26,9 @@ var _arc_duration: float = 0.0
 ## now: how much of the clip's own hip lift to keep (the body's rise), and the
 ## camera's fallback lift for a body with no model to follow.
 var _planned_clearance: float = 0.0
+## How far the rise leads the travel for THIS vault -- the shape, not the size.
+## See SpeedVaultConfig.vault_onto_vertical_lead.
+var _planned_lead: float = 0.0
 var _touched: bool = false
 ## Where the obstacle's face was when the commit was made. See Move.touching().
 var _face_point: Vector3 = Vector3.ZERO
@@ -257,6 +260,15 @@ func enter(_previous: StringName) -> void:
 	# docs/contact-drives-movement.md.
 	_landing = landing
 	_planned_clearance = arc
+	# ⚠️ WHICH SHAPE, decided by the same question that picked the landing. ✅ THE
+	# OWNER: "stepup 和 GrabPullUp 还是直线？" They were, because neither branch had
+	# anything but a symmetric bump available and this one's was zero.
+	#
+	# 🎯 A vault OVER carries the body PAST a thin obstacle -- measured, its peak
+	# sits 0.87 m BELOW the top and the feet never clear it -- so a shallow curve
+	# is honest there. A vault ONTO has to put the feet on the top, which means
+	# rising to it and then going forward, and no symmetric bump does that.
+	_planned_lead = config.speed_vault.vault_vertical_lead 		if bool(query.get("vault_over", false)) 		else config.speed_vault.vault_onto_vertical_lead
 
 	# A VAULT MUST NOT BE SLOWER THAN JUST RUNNING THERE.
 	#
@@ -332,7 +344,7 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 					else player.clip_lift_kept_for(
 						player._current_clip(), _planned_clearance))
 			begin(player.global_position, _landing, _arc_duration, _planned_clearance,
-					config.speed_vault.vault_vertical_lead,
+					_planned_lead,
 					config.speed_vault.vault_path_ease)
 			player.velocity = Vector3.ZERO
 		elif _approach_time >= config.speed_vault.approach_timeout:

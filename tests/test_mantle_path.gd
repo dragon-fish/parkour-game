@@ -171,7 +171,7 @@ func forward_input() -> MoveInput:
 
 # --- the simplest possible path ---------------------------------------------
 
-func test_the_default_path_is_a_straight_line_at_a_steady_pace() -> void:
+func test_a_pull_up_rises_before_it_goes_forward() -> void:
 	# ✅ THE OWNER, hand-keying against it: "我发现手k动画，不如让胶囊走匀速直线，否则
 	# 我还得对抗那个特别奇怪的曲线."
 	#
@@ -181,19 +181,34 @@ func test_the_default_path_is_a_straight_line_at_a_steady_pace() -> void:
 	# body 40% of the way along, or the person keying it is solving two problems
 	# at once.
 	#
-	# The easing AND the arc both have to go for that to be true. An ease-out
-	# breaks the pace; a sine bump on the height breaks the line.
+	# ⚠️ AND THEN THEY CHANGED THEIR MIND ON THE EVIDENCE, which is why this test
+	# now asserts the opposite of what it used to: "我希望动画走弧线，并且动画的盆骨全
+	# 程钉死胶囊中心点", and on this move in particular, "stepup 和 GrabPullUp 还是
+	# 直线？"
+	#
+	# 🎯 A STRAIGHT LINE WAS PREDICTABLE AND WRONG. The straight line held while
+	# the CLIP was carrying the rise; with the hips pinned to the capsule there is
+	# nothing left to lift the body, and a pull-up that travels in a straight line
+	# from a hang to a rooftop goes through the wall on the way.
+	#
+	# 📌 Not a symmetric arc either, which is the part worth keeping: a bump peaks
+	# in the MIDDLE OF THE JOURNEY and a pull-up's wall is at its NEAR END, so an
+	# arc would swing the body away from the face at half height -- the one
+	# direction it cannot go. Rise, cross, settle.
 	var bits: Array = await _mantling_player()
 	var player: Player = bits[0]
 	var grab: GrabMove = bits[1]
 	var start: Vector3 = bits[2]
 	var target: Vector3 = grab._to
-	for fraction in [0.25, 0.5, 0.75]:
-		var at: Vector3 = grab.sample(fraction)
-		var want: Vector3 = start.lerp(target, fraction)
-		assert_almost_eq(at.distance_to(want), 0.0, 0.001,
-			"at %.0f%% the path was %.3f m off the straight line"
-			% [fraction * 100.0, at.distance_to(want)])
+	assert_gt(player.config.grab.mantle_vertical_lead, 0.0,
+		"the pull-up is back to a single straight segment")
+	var quarter: Vector3 = grab.sample(0.25)
+	assert_gt(quarter.y - start.lerp(target, 0.25).y, 0.3,
+		"a quarter of the way through the body has barely left the hang")
+	# And it is AHEAD of the travel, not merely above it: at the same point the
+	# body should have risen further than it has moved along.
+	var risen: float = (quarter.y - start.y) / maxf(target.y - start.y, 0.001)
+	assert_gt(risen, 0.5, "the rise is not leading the travel at all")
 
 func test_the_ease_is_still_there_for_anything_that_asks() -> void:
 	# The pair. "Linear by default" is a decision about the DEFAULT, and a move
@@ -219,7 +234,12 @@ func test_no_scripted_move_ships_with_a_curve_on_by_default() -> void:
 	var grab := GrabConfig.new()
 	var vault := SpeedVaultConfig.new()
 	assert_eq(grab.mantle_path_ease, 1.0, "the mantle travels at a steady pace")
-	assert_eq(grab.mantle_camera_arc, 0.0, "and in a straight line")
+	assert_eq(grab.mantle_camera_arc, 0.0, "and with no symmetric bump on it")
+	# ⚠️ THE COMPOSITE IS NOT AN ARC. The shape a pull-up needs comes from the
+	# vertical lead, which is a different mechanism entirely -- see
+	# GrabConfig.mantle_vertical_lead. This test is about the BUMP.
+	assert_gt(grab.mantle_vertical_lead, 0.0,
+		"the pull-up lost the only shape it had")
 	assert_eq(vault.vault_path_ease, 1.0, "so does the vault")
 	assert_eq(vault.vault_camera_arc, 0.0, "and it is straight too")
 
@@ -239,12 +259,23 @@ func test_an_arc_lifts_the_camera_and_leaves_the_path_alone() -> void:
 	var grab: GrabMove = bits[1]
 	var start := Vector3(0.0, 1.0, 0.0)
 	var target := Vector3(0.0, 3.0, -1.0)
+	# ⚠️ WHICH IT DOES DEPENDS ON THE MODE, and the default has since flipped:
+	# ✅ "我希望动画走弧线，并且动画的盆骨全程钉死胶囊中心点." With arcs ON the rise is
+	# the PATH's and the hips are pinned; with them off the path is straight and
+	# the clip's own hip lift is scaled to it. Never both -- see
+	# MovementConfig.scripted_path_arcs.
+	player.config.scripted_path_arcs = false
 	grab.begin(start, target, 1.0, 1.0)
 	for f in [0.25, 0.5, 0.75]:
 		var at: Vector3 = grab.sample(f)
 		assert_almost_eq(at.y, start.lerp(target, f).y, 0.0001,
-			"a metre of arc moved the body at %.2f through" % f)
-	# And it is not simply ignored: the eye still has to clear the obstacle.
+			"with arcs off, a metre of arc still moved the body at %.2f" % f)
+	# And it is not simply thrown away: the eye still has to clear the obstacle
+	# when there is no model for it to follow.
 	grab.advance(0.5)
 	assert_gt(grab.camera_lift(), 0.9,
 		"the arc reached neither the body nor the camera, so it is just gone")
+	player.config.scripted_path_arcs = true
+	grab.begin(start, target, 1.0, 1.0)
+	assert_gt(grab.sample(0.5).y - start.lerp(target, 0.5).y, 0.9,
+		"with arcs on, the path did not take the rise")

@@ -111,7 +111,20 @@ extends MoveConfig
 ## The machinery stays -- ScriptedMove.begin() still takes a lead, and 0 runs the
 ## old code path verbatim rather than an equivalent of it -- so this is one
 ## number away from coming back if the keying says it should.
-@export var mantle_vertical_lead: float = 0.0
+## ⚠️ NOT ZERO ANY MORE, and this is the day the composite was kept for. ✅ THE
+## OWNER: "stepup 和 GrabPullUp 还是直线？"
+##
+## 🎯 A SYMMETRIC ARC IS THE WRONG SHAPE HERE, not merely a smaller one. A bump
+## added to a straight line peaks in the MIDDLE OF THE JOURNEY, and a pull-up's
+## obstacle is at its NEAR END -- so the body would swing away from the wall at
+## half height, which is the one direction it cannot go. The composite is rise,
+## flat crossing, settle, and that is what climbing onto something is.
+##
+## 📌 NO NEW DERIVATION NEEDED. peak_height() is already max(from, to) plus the
+## arc, so with no arc a pull-up rises to the height of the top it is climbing
+## onto and then goes forward onto it. The number that was missing was never a
+## clearance -- it was the shape.
+@export var mantle_vertical_lead: float = 0.45
 
 ## How the pull-up's travel is shaped: 1 is a straight line at a constant speed,
 ## 2 is the ease-out this move used to have.
