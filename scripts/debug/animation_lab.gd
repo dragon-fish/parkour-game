@@ -12,10 +12,19 @@ extends Node3D
 # walk the recording. Keying a pose means seeing the same frame twice, and live
 # play cannot give you that.
 #
-# ⚠️ THE RECORDING IS TRANSFORMS PLUS A CLIP TIME, not a pose. A pose is a pure
-# function of (clip, time), so storing those two replays it exactly for a few
-# hundred bytes -- and it makes scrubbing BACKWARDS free, which re-simulating
-# never is.
+# ⚠️ THE RECORDING IS THE POSE ITSELF, one bone transform per bone per frame.
+#
+# The first version stored (clip, clip_time) instead, on the reasoning that a
+# pose is a pure function of those two. It is not, and the owner named what was
+# missing: "你的模拟忽略了那个引擎自带的动画间自动过渡的东西...就是让动画切换时不那么
+# 突兀自动计算关节应该怎么过渡，我们设置过这个的." Every state-machine transition
+# spends body_animation_blend_time BLENDING two clips, so through the whole
+# hand-over the pose belongs to neither of them -- and the hand-over is exactly
+# where a vault or a pull-up begins.
+#
+# Recording the skeleton directly costs a few hundred kilobytes for a take and
+# captures the blend, and anything else that touches bones, without having to
+# know they exist.
 #
 # THE APPROACH IS UNIFORM ON PURPOSE. ✅ "假设这个玩家总是匀速并按住 W，然后就此模拟
 # 运动轨迹." The velocity is written every frame rather than accelerated into, so
@@ -88,6 +97,7 @@ var _note := ""
 var _live_position := Vector3.ZERO
 var _live_rotation := Vector3.ZERO
 var _anim_player: AnimationPlayer
+var _skeleton: Skeleton3D
 var _anim_tree: AnimationTree
 ## The state machine's own clock. See _clip_time().
 var _playback: AnimationNodeStateMachinePlayback
@@ -170,6 +180,15 @@ func _take() -> void:
 	_resolve_animation_nodes()
 	if _anim_tree != null:
 		_anim_tree.active = true
+		# ⚠️ POSED IN THE PHYSICS STEP FOR THE TAKE. By default the tree poses in
+		# the IDLE step, so a recorder sampling on physics frames catches the
+		# same pose twice and misses the next -- measured as a head rotation
+		# moving 0.22 rad, then 0.00, then 0.25, then 0.00. A blend recorded that
+		# way is a staircase, which is precisely the thing being recorded FOR.
+		_anim_tree.callback_mode_process = 			AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_PHYSICS
+	# AND SAMPLED AFTER IT. Same step is not the same moment: a lower priority
+	# ticks later, which is where the finished pose is.
+	process_physics_priority = 100
 	player.input_source = _source
 	_source.state = MoveInput.new()
 	player.velocity = Vector3.ZERO
@@ -190,6 +209,7 @@ func _physics_process(_delta: float) -> void:
 	_frames.append({
 		"position": player.global_position,
 		"rotation": player.rotation,
+		"pose": _capture_pose(),
 		"clip": player._current_clip(),
 		"clip_time": _clip_time(),
 		"move": player.move_manager.current_name,
@@ -237,6 +257,10 @@ func _finish() -> void:
 	Engine.time_scale = 0.0
 	if _anim_tree != null:
 		_anim_tree.active = false
+	# AND THE PLAYER TOO. With the tree off it is the only thing left that could
+	# write bones, and a pose put on by _apply_pose() has to survive the frame.
+	if _anim_player != null:
+		_anim_player.stop()
 	_cursor = _scripted_start()
 	_scrub(0)
 	_note = "%d frames -- A/D walks them" % _frames.size()
@@ -253,6 +277,7 @@ func _resolve_animation_nodes() -> void:
 	if player.body == null:
 		return
 	_anim_player = player.body.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	_skeleton = player.find_skeleton()
 	_playback = null
 	var root := player.get_node_or_null("BodyRoot")
 	if root == null:
@@ -263,6 +288,36 @@ func _resolve_animation_nodes() -> void:
 	if _anim_tree != null:
 		_playback = _anim_tree.get(
 			"parameters/%s/playback" % CharacterAnimator.GRAPH_STATES)
+
+## Every bone's local pose this frame.
+##
+## ⚠️ THE POSE, NOT THE CLIP. See the header: a state-machine transition blends
+## two clips for body_animation_blend_time, so during a hand-over the pose is not
+## any clip at any time. Storing bones sidesteps the question -- and picks up IK
+## and anything else that writes to the skeleton for free.
+func _capture_pose() -> Array:
+	if _skeleton == null:
+		return []
+	var pose: Array = []
+	pose.resize(_skeleton.get_bone_count())
+	for i in _skeleton.get_bone_count():
+		pose[i] = _skeleton.get_bone_pose(i)
+	return pose
+
+## Puts a recorded pose back on the skeleton.
+##
+## ⚠️ NOTHING ELSE MAY BE WRITING BONES when this runs, which is why the take
+## hands over with the AnimationTree switched off. A modifier or a player still
+## ticking would overwrite this on the same frame and the body would look like it
+## was ignoring the scrub.
+func _apply_pose(pose: Array) -> void:
+	if _skeleton == null or pose.is_empty():
+		return
+	for i in mini(pose.size(), _skeleton.get_bone_count()):
+		var local: Transform3D = pose[i]
+		_skeleton.set_bone_pose_position(i, local.origin)
+		_skeleton.set_bone_pose_rotation(i, local.basis.get_rotation_quaternion())
+		_skeleton.set_bone_pose_scale(i, local.basis.get_scale())
 
 ## Where the clip is, in its own seconds.
 ##
@@ -288,19 +343,8 @@ func _scrub(by: int) -> void:
 	player.active_obstacle = frame.get("obstacle", Vector2(-1.0, 0.0))
 	# THE POSE IS REPLAYED, not re-simulated: it is a pure function of the clip
 	# and the time in it, both of which were recorded.
+	_apply_pose(frame.get("pose", []))
 	var clip: StringName = frame.get("clip", Move.KEEP)
-	if _anim_player != null and clip != Move.KEEP and _anim_player.has_animation(String(clip)):
-		# ⚠️ play() ONLY WHEN THE CLIP CHANGES. Called every scrub it restarts the
-		# animation, which on a LOOPING clip resets the very position the seek
-		# below is about to set -- the two fight, and the pose flickers back to
-		# the first frame.
-		if _anim_player.current_animation != String(clip):
-			_anim_player.play(String(clip))
-		# ⚠️ TWO ARGUMENTS, NOT THREE. seek()'s third is `update_only`, which
-		# means "move the clock without posing anything" -- exactly the wrong
-		# half of the job. With it set, the position read back as 0.000 and the
-		# body never left its first frame.
-		_anim_player.seek(float(frame.get("clip_time", 0.0)), true)
 	_live_position = Vector3.ZERO
 	_live_rotation = Vector3.ZERO
 	var keyed: Array = player.clip_curve_at(clip, float(frame.get("progress", -1.0)))
@@ -435,11 +479,15 @@ func _save() -> void:
 			rows.append({"h": float(row.get("h", 0.0)),
 				"w": float(row.get("w", 0.0)), "keys": keys})
 		out[String(clip)] = rows
+	var timings := {}
+	for clip in player.body_clip_timings:
+		var entry = player.body_clip_timings[clip]
+		timings[String(clip)] = [float(entry[0]), float(entry[1])]
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
 		_note = "could not write %s" % SAVE_PATH
 		return
-	file.store_string(JSON.stringify(out, "  "))
+	file.store_string(JSON.stringify({"curves": out, "timings": timings}, "  "))
 	file.close()
 
 func _load() -> void:
@@ -450,10 +498,18 @@ func _load() -> void:
 	file.close()
 	if not (parsed is Dictionary):
 		return
+	# ⚠️ TOLERANT OF THE OLDER SHAPE, which was the curve table on its own. A
+	# file written before trims existed is still a file worth an evening of
+	# keying.
+	var curves: Dictionary = parsed.get("curves", parsed)
+	for clip in parsed.get("timings", {}):
+		var entry = parsed["timings"][clip]
+		if entry is Array and entry.size() >= 2:
+			player.body_clip_timings[StringName(clip)] = [float(entry[0]), float(entry[1])]
 	var loaded := {}
-	for clip in parsed:
+	for clip in curves:
 		var rows: Array = []
-		for row in parsed[clip]:
+		for row in curves[clip]:
 			var keys: Array = []
 			for key in row.get("keys", []):
 				keys.append({"t": float(key.get("t", 0.0)),
@@ -566,6 +622,10 @@ var _speed_box: SpinBox
 var _lead_box: OptionButton
 var _offset_boxes: Array[SpinBox] = []
 var _yaw_box: SpinBox
+var _trim_start: SpinBox
+var _trim_length: SpinBox
+## The clip the trim boxes were last filled from. See _refresh_ui().
+var _trim_clip: StringName = &""
 var _key_list: ItemList
 var _play_button: Button
 var _readout: Label
@@ -680,6 +740,24 @@ func _build_ui() -> void:
 		buttons.add_child(button)
 	column.add_child(buttons)
 
+	column.add_child(_heading("CLIP TIMELINE  (this clip, all obstacles)"))
+	var trim_note := Label.new()
+	trim_note.text = "Skip the clip's own lead-in; the engine's transition covers the join."
+	trim_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(trim_note)
+	_trim_start = _spin(column, "start (s)", 0.0, 10.0, 0.01, 0.0)
+	_trim_start.value_changed.connect(func(_v):
+		if _ui_syncing: return
+		_write_timing())
+	_trim_length = _spin(column, "length (s)", 0.0, 10.0, 0.01, 0.0)
+	_trim_length.value_changed.connect(func(_v):
+		if _ui_syncing: return
+		_write_timing())
+	var clear_trim := Button.new()
+	clear_trim.text = "play the whole clip"
+	clear_trim.pressed.connect(_clear_timing)
+	column.add_child(clear_trim)
+
 	column.add_child(_heading("KEYS FOR THIS COMBINATION"))
 	_key_list = ItemList.new()
 	_key_list.custom_minimum_size = Vector2(0.0, 160.0)
@@ -740,6 +818,60 @@ func _read_offset_boxes() -> void:
 	player.set_clip_offset_immediately(_live_position, _live_rotation)
 	_commit()
 
+## Trims the clip that is playing at this frame, and re-records so the take
+## shows the trim rather than describing it.
+##
+## ✅ THE OWNER: "有些动画我们不需要进入的过渡，而是直接从中间开始，过渡让游戏引擎处理，
+## 比如单手撑跳，原作者做的动画是考虑从头进入 Vault 的完整动画，但游戏里常常已经跳起来
+## 了."
+##
+## 📌 PER CLIP, NOT PER OBSTACLE, unlike the offset curves above it. Where a clip
+## should START is a fact about how the animator authored it -- the run-up they
+## included that this game does not need -- and that is the same run-up whatever
+## wall it is played at. The offsets vary with the obstacle; the trim does not.
+##
+## ⚠️ The kept part is STRETCHED to fill the move rather than played at its own
+## pace and cut short. See Player._apply_clip_timing().
+func _write_timing() -> void:
+	var clip: StringName = _frame_clip()
+	if clip == Move.KEEP:
+		_note = "no clip at this frame to trim"
+		return
+	player.body_clip_timings[clip] = [_trim_start.value, _trim_length.value]
+	_apply_timing_live(clip)
+	_save()
+	_note = "%s trimmed to [%.2f, %.2f]" % [clip, _trim_start.value, _trim_length.value]
+	_take()
+
+func _clear_timing() -> void:
+	var clip: StringName = _frame_clip()
+	if clip == Move.KEEP:
+		return
+	player.body_clip_timings.erase(clip)
+	_apply_timing_live(clip)
+	_save()
+	_note = "%s plays whole" % clip
+	_take()
+
+## Pushes a trim onto the graph node that is already built, so a change is one
+## re-record away rather than needing the body re-attached.
+func _apply_timing_live(clip: StringName) -> void:
+	if _anim_tree == null:
+		return
+	var tree_root := _anim_tree.tree_root as AnimationNodeBlendTree
+	if tree_root == null:
+		return
+	var states := tree_root.get_node(CharacterAnimator.GRAPH_STATES) as AnimationNodeStateMachine
+	if states == null or not states.has_node(clip):
+		return
+	var node := states.get_node(clip) as AnimationNodeAnimation
+	if node == null:
+		return
+	if not player.body_clip_timings.has(clip):
+		node.use_custom_timeline = false
+		return
+	player._apply_clip_timing(node, clip, _anim_player)
+
 func _zero() -> void:
 	_live_position = Vector3.ZERO
 	_live_rotation = Vector3.ZERO
@@ -789,6 +921,17 @@ func _refresh_ui() -> void:
 	_offset_boxes[1].value = _live_position.y
 	_offset_boxes[2].value = _live_position.z
 	_yaw_box.value = _live_rotation.y
+	# ⚠️ ONLY WHEN THE CLIP CHANGES. Syncing these every frame stomps whatever is
+	# being typed into them: the trim boxes are the one pair here that a person
+	# EDITS rather than reads, and a value written back sixty times a second is a
+	# value nobody can finish entering. Caught by a test that set 0.30 and got
+	# 0.00 back.
+	var trim_clip: StringName = _frame_clip()
+	if trim_clip != _trim_clip:
+		_trim_clip = trim_clip
+		var trim: Array = player.body_clip_timings.get(trim_clip, [0.0, 0.0])
+		_trim_start.value = float(trim[0])
+		_trim_length.value = float(trim[1])
 	var progress: float = _frame_progress()
 	var seconds: float = float(_cursor) / float(Engine.physics_ticks_per_second)
 	_readout.text = NEWLINE.join([
