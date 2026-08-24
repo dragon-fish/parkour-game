@@ -94,3 +94,13 @@ Godot 会在导入/加载时重新保存手写的资源文件：补 uid、去掉
 
 `vrm_test.tres` 侥幸完好。**手写 `.tres` 之后必须 load 一遍验证字段还在**，
 不能写完就当数。
+
+## 待评估（只记了链接，还没有任何结论）
+
+### kimodo（NVIDIA 运动扩散模型）
+
+- 2026-08-24 屋主提供：NVIDIA 开源的人类运动生成扩散模型 <https://github.com/nv-tlabs/kimodo>，
+  另有社区 C++ 移植 <https://github.com/localai-org/kimodo.cpp>。
+- 潜在用途：为缺失的动作（滑索吊挂、单杠摇摆等包里没有的片段）生成候选动画。
+- **未做任何评估**：授权、输出骨架格式、能否 retarget 到 Godot humanoid、生成质量全都未知。
+  评估时从这四点开始。
