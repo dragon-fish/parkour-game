@@ -125,6 +125,15 @@ func _collect_box_bodies(node: Node, out: Array) -> void:
 	for child in node.get_children():
 		_collect_box_bodies(child, out)
 
+## Every InterestLine under node. The Floor's bounds have to cover where a
+## cable ENDS, not just where the boxes are: a rider lets go at the far end
+## and needs ground to land on.
+func _collect_interest_lines(node: Node, out: Array) -> void:
+	if node is InterestLine:
+		out.append(node)
+	for child in node.get_children():
+		_collect_interest_lines(child, out)
+
 ## Composes `node`'s transform up through its Node3D ancestors by hand.
 ##
 ## NOT the same as node.global_transform: that getter requires the node to
@@ -935,14 +944,14 @@ func build() -> Node3D:
 	#
 	# A platform to jump from and a sagging cable to catch. 05 §5.5: no speed
 	# cap, so the cable is made long enough to feel the acceleration. EAST of
-	# the shaft, x [48, 80], z [37, 43].
+	# the shaft, x [47, 92], z [37, 43].
 	#
 	# The cable is an InterestLine (scripts/level/interest_line.gd): the curve
 	# alone is authored, the volume grows itself at runtime and so is NOT part
 	# of this scene.
 	var zip_area := Node3D.new()
 	zip_area.name = "ZiplineArea"
-	zip_area.position = Vector3(50.0, 0.0, 40.0)
+	zip_area.position = Vector3(62.0, 0.0, 40.0)
 	_attach(_root, zip_area)
 	var zip_colour := Color(0.62, 0.42, 0.20)
 	const ZIP_PLATFORM_HEIGHT := 4.0
@@ -953,12 +962,15 @@ func build() -> Node3D:
 	_attach(zip_area, _box("Zip_Platform",
 		Vector3(4.0, ZIP_PLATFORM_HEIGHT, 6.0),
 		Vector3(0.0, ZIP_PLATFORM_HEIGHT * 0.5, 0.0), zip_colour))
-	# Stairs up the back of the platform, one max_step_height each.
+	# Stairs up the back of the platform, one max_step_height each. Zip_Stair0
+	# sits AGAINST the platform and is tallest (near the platform's own
+	# height); the step gets shorter with distance so the far end is one
+	# zip_step off the ground -- a climbable ramp, not a cliff at the near end.
 	var zip_config := MovementConfig.new()
 	var zip_step: float = zip_config.pawn.max_step_height - 0.05
 	var zip_steps: int = int(ceil(ZIP_PLATFORM_HEIGHT / zip_step))
 	for i in zip_steps:
-		var h: float = zip_step * (i + 1)
+		var h: float = zip_step * (zip_steps - i)
 		_attach(zip_area, _box("Zip_Stair%d" % i,
 			Vector3(1.0, h, 6.0),
 			Vector3(-2.0 - 0.5 - 1.0 * i, h * 0.5, 0.0), zip_colour))
@@ -1013,6 +1025,20 @@ func build() -> Node3D:
 				has_practice_bounds = true
 			else:
 				practice_bounds = practice_bounds.merge(body_aabb)
+
+	# Boxes alone miss anywhere a cable reaches past its own area's boxes --
+	# a zipline's far end, for instance, is nothing but a Curve3D point with
+	# no box under it. A rider lets go there and needs ground to land on, so
+	# every InterestLine's curve points count toward the floor's bounds too.
+	var lines: Array = []
+	_collect_interest_lines(_root, lines)
+	for line in lines:
+		var xf: Transform3D = _global_transform_offline(line)
+		for i in line.curve.point_count:
+			var at: Vector3 = xf * line.curve.get_point_position(i)
+			var point_box := AABB(at, Vector3.ZERO)
+			practice_bounds = practice_bounds.merge(point_box) if has_practice_bounds else point_box
+			has_practice_bounds = true
 
 	# Generous, uniform headroom beyond the outermost body on every side --
 	# not a tight fit. Sized to comfortably clear the largest known approach
