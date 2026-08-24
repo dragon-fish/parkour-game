@@ -24,7 +24,8 @@ extends ParkourTest
 # WHAT IS COMPARED. A canonical signature per node, in tree order: its path,
 # its class, its attached script, its transform, and the handful of resource
 # properties the two builders actually vary (box/capsule sizes, ray and cast
-# geometry, their enabled flags, albedo colour). Structure, names and script
+# geometry, their enabled flags, albedo colour, curve control points).
+# Structure, names and script
 # paths are compared exactly; numbers with a tolerance, since these have been
 # through a float -> text -> float round trip in the .tscn. The drift this
 # exists to catch is metres wide, not 1e-6 wide.
@@ -111,11 +112,30 @@ func _signature(node: Node, root: Node) -> String:
 		# disabled one reports no collisions at all -- i.e. "there is always
 		# room to stand up", silently, inside a ceiling.
 		parts.append("enabled=%s" % cast.enabled)
+	if node is Path3D:
+		# The node's transform says where the curve HANGS, not what shape it
+		# is: ArenaBuilder authors Zip_Cable's control points -- its length,
+		# its grade and its sag -- entirely inside the Curve3D, so without
+		# this the whole cable is unwatched and a re-graded zipline lands
+		# without its scene. Exactly the drift this file exists to catch.
+		parts.append(_curve((node as Path3D).curve))
 	if node is RayCast3D:
 		var ray := node as RayCast3D
 		parts.append("target=%s" % _v(ray.target_position))
 		parts.append("enabled=%s hit_from_inside=%s" % [ray.enabled, ray.hit_from_inside])
 	return "  ".join(parts)
+
+## Control points only -- in/out handles are left alone because neither builder
+## sets them, on the same scoping rule the rest of this file follows. The count
+## leads, so a point added or dropped reads as that rather than as every
+## position having moved at once.
+func _curve(curve: Curve3D) -> String:
+	if curve == null:
+		return "curve=none"
+	var points := PackedStringArray()
+	for i in curve.point_count:
+		points.append(_v(curve.get_point_position(i)))
+	return "curve(%d)=%s" % [curve.point_count, "".join(points)]
 
 func _mesh(mesh: Mesh) -> String:
 	if mesh is BoxMesh:
