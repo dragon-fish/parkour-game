@@ -90,6 +90,16 @@ extends Resource
 ## Copies this profile onto `player`. Called by Player before it attaches
 ## anything; see Player.body_profile.
 func apply(player: Player) -> void:
+	# ⚠️ TRACKED TUNING WINS OVER THIS RESOURCE'S OWN. ✅ THE OWNER: "总不能我换台
+	# 电脑东西就丢了."
+	#
+	# 📌 This resource cannot be tracked -- it names a model and two animation
+	# packs that are not, and .gitignore says so. But it was carrying two
+	# unrelated things: the BINDING, which is machine-local, and the TUNING,
+	# which is knowledge about a shape of model and true anywhere. Only the
+	# first was ever the problem. See BodyTuning.
+	BodyTuning.apply_to(self,
+		BodyTuning.load_for(scene.resource_path if scene != null else ""))
 	player.body_scene = scene
 	player.body_mount_offset = mount_offset
 	player.body_mount_rotation_degrees = mount_rotation_degrees
