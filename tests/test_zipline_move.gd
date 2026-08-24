@@ -218,15 +218,21 @@ func test_letting_go_starts_the_redo_cooldown() -> void:
 func test_the_release_press_does_not_also_buy_a_roll_at_the_landing() -> void:
 	var player: Player = await _riding_player()
 	await step(12)  # past fade_in_time
-	# A single, flat-floor test world means an ordinary release from this low
-	# cable lands back at the very height FallTracker last zeroed at, and would
-	# never clear the roll threshold regardless of this bug -- so, exactly as
-	# test_skill_roll.gd's _land_from() teleports the player to fake a real
-	# drop, this stands in a synthetic launch point above the release so the
-	# short physical fall back to the floor reads as a genuine one.
-	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
 	var input: ScriptedInputSource = _world["input"]
 	input.press_crouch()  # the one press: lets go of the cable
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING, "test setup: crouch did not let go of the cable")
+	# A single, flat-floor test world means an ordinary release from this low,
+	# level cable lands back at the very height FallTracker was last
+	# re-baselined to (ZiplineMove itself now re-baselines every tick it
+	# rides -- see the fall-start-at-release fix), and would never clear the
+	# roll threshold regardless of this bug -- so, exactly as
+	# test_skill_roll.gd's _land_from() teleports the player to fake a real
+	# drop, this stands in a synthetic launch point above the release so the
+	# short physical fall back to the floor reads as a genuine one. Done
+	# AFTER the release rather than before: while still riding, ZiplineMove's
+	# own per-tick reset would only overwrite it again on the release tick.
+	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
 	var saw_roll := false
 	for i in 120:
 		await step(1)
@@ -242,11 +248,13 @@ func test_a_second_later_press_still_buys_a_roll() -> void:
 	# own action and must still buy one.
 	var player: Player = await _riding_player()
 	await step(12)
-	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
 	var input: ScriptedInputSource = _world["input"]
 	input.press_crouch()  # press #1: releases the cable
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.FALLING, "test setup: crouch did not let go of the cable")
+	# Same synthetic-launch trick as above, applied only after the release --
+	# see that test's comment for why.
+	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
 	input.press_crouch()  # press #2: a new press, while already airborne
 	var saw_roll := false
 	for i in 120:
@@ -306,3 +314,33 @@ func test_landing_off_the_cable_restores_the_ground_speed_budget() -> void:
 	assert_true(player.speed_energy.cap() >= cfg.ground_speed - 0.01, \
 		"landing off the cable did not restore the ground speed budget (cap=%.2f)" \
 			% player.speed_energy.cap())
+
+# --- the fall starts where the hands leave the cable -------------------------
+#
+# ✅ THE OWNER: 摔落高度从离开绳索那一刻开始计算. FallTracker measures depth below
+# the last GROUND contact, and a zipline entered from a high platform never
+# declares one of its own while riding -- so a long descending ride quietly
+# racked up the whole cable's drop as "fall" before the hands ever let go.
+
+func test_the_ride_does_not_accumulate_a_fall_while_still_on_the_cable() -> void:
+	var player: Player = await _standing_player()
+	# Descends well past hard_landing_height along its own run, which is
+	# exactly the case that used to score a fall the instant it was caught.
+	var drop: float = player.config.pawn.hard_landing_height + 2.0
+	_line = _cable(Vector3(0.0, CABLE_Y, -1.0), Vector3(0.0, CABLE_Y - drop, 19.0))
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	for i in 40:
+		await step(1)
+		if player.move_manager.current_name == Move.ZIPLINE:
+			break
+	assert_eq(player.move_manager.current_name, Move.ZIPLINE, "test setup: never caught the cable")
+	var ticks_observed := 0
+	for i in 90:
+		await step(1)
+		if player.move_manager.current_name != Move.ZIPLINE:
+			break
+		ticks_observed += 1
+		assert_lt(player.fall_tracker.fall_height, 1.0, \
+			"the ride's own descent accumulated as a fall while still on the cable")
+	assert_gt(ticks_observed, 30, "test setup: the ride ended before the descent could be observed")

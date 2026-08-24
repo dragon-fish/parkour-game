@@ -70,6 +70,14 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted or not is_instance_valid(_line):
 		return FALLING
 	player.set_grounded(false)
+	# ✅ THE OWNER: 摔落高度从离开绳索那一刻开始计算. The cable supports the body
+	# the way the ground does; FallTracker measures depth below the last spot
+	# that was true, so it must be re-baselined here every tick the hands are
+	# still on the wire -- otherwise a long descending ride racks up its own
+	# drop as "fall" before the hands ever let go, and can even score a fatal
+	# one the instant they do. The landing thresholds themselves (hard_landing
+	# _height, the fatal tier) are untouched -- only where the count starts.
+	player.fall_tracker.reset(player.global_position.y)
 	if input.crouch_pressed:
 		# ✅ THE OWNER: "在ME里按一次按键只对应一次动作" -- this press already
 		# spends itself letting go of the cable, so it must not also survive in
