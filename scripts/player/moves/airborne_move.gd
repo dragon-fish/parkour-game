@@ -343,6 +343,12 @@ func _apply_landing_cost(fall_height: float, rolled: bool) -> void:
 		# landing free. Measured in the original by the owner -- after a hard
 		# landing, getting going again is indistinguishable from starting cold.
 		player.speed_energy.reset()
+	else:
+		# ✅ THE OWNER: "落地速度 >=7.2 m/s 则地速恢复为 7.2" -- a landing that
+		# keeps its speed (this branch) re-derives the ground budget from the
+		# speed the body actually lands with, so a fast zipline exit grounds
+		# into a full sprint rather than decaying back to the pre-ride pace.
+		player.speed_energy.restore_for_landing(player.horizontal_speed())
 
 ## The vertical speed the vault table is asked about, which is the REAL one
 ## except inside the shin-catch window below.

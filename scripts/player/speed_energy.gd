@@ -38,6 +38,18 @@ func reset() -> void:
 	energy = 0.0
 	_rebase_decay()
 
+## ✅ THE OWNER: "落地速度 >=7.2 m/s 则地速恢复为 7.2" -- the original re-derives
+## the ground speed budget from the speed the body actually lands with. A
+## zipline exit at 15 m/s grounds into a full sprint budget (the curve tops
+## out at ground_speed); it does not decay back to whatever pace the player
+## ran before catching the cable.
+##
+## Raise-only, via maxf(): an ordinary slow landing must not undercut a
+## budget the player had already earned by running.
+func restore_for_landing(speed: float) -> void:
+	energy = maxf(energy, energy_for_speed(_pawn, speed))
+	_rebase_decay()
+
 ## The ground speed ceiling for the current energy, clamped into
 ## [speed_min_base_velocity, ground_speed]. The upper clamp is load-bearing
 ## in SMOOTH mode, whose own asymptote (A + B = 7.556) sits above

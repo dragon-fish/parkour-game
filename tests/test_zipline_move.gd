@@ -255,3 +255,54 @@ func test_a_second_later_press_still_buys_a_roll() -> void:
 			saw_roll = true
 			break
 	assert_true(saw_roll, "a second, later press did not buy a roll")
+
+# --- landing re-derives the ground speed budget ------------------------------
+#
+# ✅ THE OWNER: "落地速度 >=7.2 m/s 则地速恢复为 7.2". Left alone, the energy
+# bank still holds whatever it did before catching the cable, so a fast ride
+# decays right back to the pre-ride ground pace instead of grounding into a
+# full sprint budget.
+
+func test_landing_off_the_cable_restores_the_ground_speed_budget() -> void:
+	var player: Player = await _standing_player()
+	# Level, and long enough that MinZipAcceleration alone -- no slope needed
+	# -- carries the ride well past ground_speed. Runs -Z, the player's own
+	# default facing at the jump that catches it: a cable running the other
+	# way would visually spin the body onto the cable's own heading, which
+	# bills an unrelated mid-air turn at touchdown (Player._update_speed_energy())
+	# and would muddy this test's own assertion with a cost this fix has
+	# nothing to do with.
+	_line = _cable(Vector3(0.0, CABLE_Y, -1.0), Vector3(0.0, CABLE_Y, -19.0))
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	for i in 40:
+		await step(1)
+		if player.move_manager.current_name == Move.ZIPLINE:
+			break
+	assert_eq(player.move_manager.current_name, Move.ZIPLINE, "test setup: never caught the cable")
+	# Held from here on: a real player landing off a fast ride is holding
+	# forward, not standing on the brake. Without this the very tick that
+	# lands also runs Player._update_speed_energy()'s no-input branch, which
+	# calls SpeedEnergy.decay() and immediately eats into whatever this fix
+	# just restored -- an artifact of standing still, not of the fix.
+	input.state.move = Vector2(0.0, 1.0)
+	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)
+	var cfg: PawnConfig = player.config.pawn
+	var exceeded := false
+	for i in 200:
+		await step(1)
+		if zip.ride_speed() > cfg.ground_speed:
+			exceeded = true
+			break
+	assert_true(exceeded, "test setup precondition: the ride never exceeded ground_speed")
+	input.press_crouch()
+	var landed := false
+	for i in 200:
+		await step(1)
+		if player.grounded and player.move_manager.current_name == Move.WALKING:
+			landed = true
+			break
+	assert_true(landed, "test setup: the body never landed")
+	assert_true(player.speed_energy.cap() >= cfg.ground_speed - 0.01, \
+		"landing off the cable did not restore the ground speed budget (cap=%.2f)" \
+			% player.speed_energy.cap())

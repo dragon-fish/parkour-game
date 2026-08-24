@@ -150,3 +150,28 @@ func test_turning_has_no_free_allowance() -> void:
 	energy.energy = 7.0
 	energy.spend_turn(deg_to_rad(1.0), 1.0 / 60.0)
 	assert_true(energy.energy < 7.0, "a small turn was free")
+
+# --- landing re-derives the ground speed budget ------------------------------
+#
+# ✅ THE OWNER: "落地速度 >=7.2 m/s 则地速恢复为 7.2". Without this the energy
+# bank still holds whatever it did before the ride, so a zipline exit at 15
+# m/s decays right back to the pre-ride pace instead of a full sprint budget.
+
+func test_restore_for_landing_raises_the_budget_to_match_the_landing_speed() -> void:
+	var pawn := _pawn()
+	var energy := SpeedEnergy.new(pawn)
+	energy.energy = 0.0
+	energy.restore_for_landing(pawn.ground_speed)
+	assert_almost_eq(energy.cap(), pawn.ground_speed, 0.01, \
+		"landing at ground_speed did not restore a full ground speed budget")
+
+func test_restore_for_landing_never_lowers_an_already_fuller_budget() -> void:
+	# Raise-only: an ordinary slow landing must not undercut whatever the
+	# player had already earned by running.
+	var pawn := _pawn()
+	var energy := SpeedEnergy.new(pawn)
+	energy.energy = SpeedEnergy.energy_for_speed(pawn, pawn.ground_speed)
+	var before: float = energy.energy
+	energy.restore_for_landing(pawn.speed_min_base_velocity)
+	assert_almost_eq(energy.energy, before, 0.0001, \
+		"a slow landing lowered an already-fuller energy bank")
