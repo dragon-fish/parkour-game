@@ -1702,6 +1702,16 @@ func set_clip_offset_immediately(position_offset: Vector3, rotation_offset: Vect
 ## position from a pose it is not in.
 func _camera_head_offset() -> Vector3:
 	var raw: Vector3 = to_local(head_node.global_position) - head_rest_local
+	# ⚠️ EXCEPT DURING A SCRIPTED MOVE. ✅ THE OWNER (StepUp, whose -0.20 z
+	# offset left the camera inside the neck): "动画做了偏移，第一人称镜头应该
+	# 自动应用相同的偏移." A scripted move's path owns the eye's whole journey
+	# and its clip offset is part of the presentation, so the eye follows the
+	# model. Outside one the subtraction below stands -- WallRun's +-0.7
+	# lateral corrections must never swing the view, and the accident that
+	# built it ("I lowered one to fix third person and the first-person camera
+	# went underground") stays fixed.
+	if scripted_progress() >= 0.0:
+		return raw
 	var body_root := get_node_or_null("BodyRoot") as Node3D
 	var applied: Vector3 = _clip_offset_position
 	if body_root != null:
