@@ -2468,17 +2468,30 @@ func _input(event: InputEvent) -> void:
 				camera_rig.nudge_third_person(event.relative)
 		elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			(input_source as KeyboardInputSource).accumulate_look(event.relative)
-	elif event is InputEventMouseButton \
+
+## Mouse BUTTONS and the debug keys live HERE, behind the GUI, not in _input().
+## _input() runs before the Controls get to consume anything, so with the F1
+## panel open a click aimed at a slider was ALSO "click back into the game"
+## and a wheel notch over the panel ALSO zoomed the third-person camera --
+## THE OWNER: "在面板点击鼠标会被透传到「重新控制镜头」，第三人称下滚轮滚动面板
+## 会透传到「调整相机距离」，感觉特别像前端里忘记停止冒泡." In _unhandled_input the
+## game receives only what the GUI left over -- which also stops T/V from
+## firing while the preset LineEdit has focus. Mouse MOTION stays in _input():
+## with the cursor captured there is no GUI to compete with, and look input
+## must never queue behind it.
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton \
 			and _handle_third_person_button(event as InputEventMouseButton):
-		pass
-	elif event is InputEventMouseButton and event.pressed \
+		return
+	if event is InputEventMouseButton and event.pressed \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
 		# Click back into the game. Esc releases the cursor for the tuning
 		# panel; without this the only way back in was F11, which nobody
 		# guesses.
 		if owns_mouse and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	elif event is InputEventKey and event.pressed and not event.echo:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		elif event.physical_keycode == KEY_F11 and owns_mouse:
