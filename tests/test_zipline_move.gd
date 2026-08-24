@@ -128,6 +128,47 @@ func test_the_body_faces_along_the_cable() -> void:
 	assert_almost_eq(absf(wrapf(player.rotation.y, -PI, PI)), PI, 0.02, \
 		"the body is not facing along the cable")
 
+## The fixture cable runs +z and Godot's forward is -z, so along it is yaw PI.
+const CABLE_YAW := PI
+
+func test_the_view_can_be_turned_while_riding() -> void:
+	# THE BUG. The ride re-centred the camera's yaw fan on the body EVERY tick,
+	# and re-centring re-derives the player's accumulated turn from the body --
+	# which this move had just written to the cable's own yaw. So every tick
+	# threw away the mouse yaw apply_look() had accumulated microseconds
+	# earlier (Player runs the look before the moves) and the view was welded
+	# to the cable for the whole ride.
+	var player: Player = await _riding_player()
+	await step(12)  # past fade_in_time; the fan is centred by now
+	var input: ScriptedInputSource = _world["input"]
+	for i in 12:
+		input.state.look = Vector2(60.0, 0.0)
+		await step(1)
+	input.state.look = Vector2.ZERO
+	var turned: float = wrapf(player.rotation.y - CABLE_YAW, -PI, PI)
+	assert_gt(absf(turned), 0.05, "the view could not be turned away from the cable")
+	# ...and no further than ZiplineConfig's own fan, which is the other half of
+	# why the re-centring mattered: a fan nothing ever measures against cannot
+	# clamp anything either.
+	var fan: float = player.config.zipline.max_look_constraint.y
+	assert_lt(absf(turned), fan + 0.001, \
+		"the view left the cable's fan (%.1f degrees)" % rad_to_deg(turned))
+
+func test_the_model_faces_along_the_cable_while_the_view_turns() -> void:
+	# ZiplineConfig freezes the visual yaw, so Player counter-rotates BodyRoot
+	# to hold the model's world heading -- and nothing updated that heading, so
+	# the model rode the whole cable still facing wherever the jump came from
+	# while the capsule faced along the cable.
+	var player: Player = await _riding_player()
+	await step(12)
+	var input: ScriptedInputSource = _world["input"]
+	for i in 12:
+		input.state.look = Vector2(60.0, 0.0)
+		await step(1)
+	input.state.look = Vector2.ZERO
+	assert_almost_eq(absf(wrapf(player.visual_yaw() - CABLE_YAW, -PI, PI)), 0.0, 0.02, \
+		"the model is not facing along the cable")
+
 func test_crouch_lets_go_and_keeps_the_speed_along_the_cable() -> void:
 	var player: Player = await _riding_player()
 	await step(12)
