@@ -23,6 +23,10 @@ mono_crash.*.json
 .engine/
 Godot_*.exe
 
+# Finder metadata. The owner develops this project on macOS now, and Finder
+# drops one of these into every directory it has ever displayed.
+.DS_Store
+
 # Editor-local workspace config
 .vscode/
 
