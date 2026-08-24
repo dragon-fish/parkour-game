@@ -1363,12 +1363,16 @@ func _wall_touch_shoulder_offset(side: int) -> Vector3:
 	return _wall_touch_side_dir(side) \
 		* hand_ik.shoulder_half() * body_mount_scale
 
-## World direction of this hand's own side. THE MODEL IS GROUND TRUTH for the
-## sign: its right hand rests at world -x when the body faces -z (measured off
-## the rig), so RIGHT is -basis.x -- and the geometry tests in
-## test_wall_touch.gd are what hold it.
+## World direction of this hand's own side: RIGHT is +basis.x.
+##
+## ⚠️ CALIBRATED WRONG ONCE, and the trap is worth recording: the "ground
+## truth" was measured on the BARE model scene -- which has no BodyRoot and
+## therefore no 180-degree mount rotation -- so the right hand read at world
+## -x and the mapping shipped inverted. In play the arms CROSSED: ✅ THE OWNER,
+## "右肩靠墙伸左手，左肩靠墙伸右手，两手伸出时正好交叉." A rig measurement only
+## binds the frame it was taken in.
 func _wall_touch_side_dir(side: int) -> Vector3:
-	return global_transform.basis.x * (1.0 if side == HandIK.LEFT else -1.0)
+	return global_transform.basis.x * (-1.0 if side == HandIK.LEFT else 1.0)
 
 func _attach_hand_ik(body_node: Node3D) -> void:
 	hand_ik = null

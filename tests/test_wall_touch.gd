@@ -60,9 +60,11 @@ func test_a_wall_on_the_right_gets_the_right_palm() -> void:
 	var player: Player = await _player_with_body()
 	if player == null:
 		return _skip_note()
-	# Facing -Z, the body's RIGHT is world -X -- this geometry is what holds
-	# the sign in Player._drive_wall_touch().
-	_wall_at(-0.7)
+	# Facing -Z, the body's RIGHT is world +X (the mounted, 180-degree-turned
+	# frame -- NOT the bare model's; see _wall_touch_side_dir's own warning).
+	# This geometry is what holds the sign, and the owner's crossed-arms
+	# report is what corrected it.
+	_wall_at(0.7)
 	await step(30)
 	var state: Dictionary = player.hand_ik.debug()
 	assert_gt(float(state["right"]), 0.5, "the right hand never reached for the wall")
@@ -72,7 +74,7 @@ func test_a_wall_on_the_left_gets_the_left_palm() -> void:
 	var player: Player = await _player_with_body()
 	if player == null:
 		return _skip_note()
-	_wall_at(0.7)
+	_wall_at(-0.7)
 	await step(30)
 	var state: Dictionary = player.hand_ik.debug()
 	assert_gt(float(state["left"]), 0.5, "the left hand never reached for the wall")
@@ -82,7 +84,7 @@ func test_a_wall_out_of_reach_is_ignored() -> void:
 	var player: Player = await _player_with_body()
 	if player == null:
 		return _skip_note()
-	_wall_at(-1.2)
+	_wall_at(1.2)
 	await step(30)
 	var state: Dictionary = player.hand_ik.debug()
 	assert_almost_eq(float(state["right"]), 0.0, 0.001,
@@ -94,7 +96,7 @@ func test_leaving_the_ground_lets_go() -> void:
 		return _skip_note()
 	# TALL wall, so the shoulder ray still sees it after the lift below --
 	# what must end the touch is the MOVE changing, not the wall leaving reach.
-	_wall_at(-0.7, 8.0)
+	_wall_at(0.7, 8.0)
 	await step(30)
 	assert_gt(float(player.hand_ik.debug()["right"]), 0.5, "test setup: never touched")
 	# Into the air beside the same wall: standing on the floor, a started
@@ -144,11 +146,11 @@ func test_the_palm_target_stays_off_the_surface() -> void:
 	var player: Player = await _player_with_body()
 	if player == null:
 		return _skip_note()
-	_wall_at(-0.7)
+	_wall_at(0.7)
 	await step(30)
 	var target: Vector3 = player.hand_ik._targets[HandIK.RIGHT].global_position
-	# Face at x = -0.7, normal +x: the target sits clear of the surface.
-	assert_gt(target.x, -0.66, "the wrist target is on (or inside) the wall face")
+	# Face at x = +0.7, normal -x: the target sits clear of the surface.
+	assert_lt(target.x, 0.66, "the wrist target is on (or inside) the wall face")
 
 func test_an_idle_arm_is_solved_onto_its_own_animated_pose() -> void:
 	# The modifier's ONE influence drives both chains, so the arm nobody asked
@@ -158,7 +160,7 @@ func test_an_idle_arm_is_solved_onto_its_own_animated_pose() -> void:
 	var player: Player = await _player_with_body()
 	if player == null:
 		return _skip_note()
-	_wall_at(-0.7)
+	_wall_at(0.7)
 	await step(30)
 	var skels: Array[Node] = player.find_children("*", "Skeleton3D", true, false)
 	var skeleton := skels[0] as Skeleton3D
