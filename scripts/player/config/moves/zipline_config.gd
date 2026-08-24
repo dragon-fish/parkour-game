@@ -14,16 +14,20 @@ func _init() -> void:
 	freeze_visual_yaw = true
 	min_look_constraint = Vector3(-deg_to_rad(80.0), -deg_to_rad(90.0), -PI)
 	max_look_constraint = Vector3(deg_to_rad(80.0), deg_to_rad(90.0), PI)
-	# ✅ SameZipLineRedoMoveTime = 3.0. ⚠️ Per MOVE, not per cable: MoveManager's
-	# cooldown is keyed by move name, so for 3 s after letting go NO cable can
-	# be caught. Accepted until a level puts two cables within 3 s of each other.
-	redo_move_time = 3.0
+	# NO move-name cooldown: the original chains rope to rope (owner-measured:
+	# release one, catch the next at once), so the re-catch guard is per CABLE
+	# -- see same_line_redo_time below and Player.note_zipline_left().
+	redo_move_time = 0.0
 
 ## ✅ MinZipVelocity = 300 uu/s. The ride never goes slower than this.
 @export var min_velocity: float = 3.0
-## ✅ MinZipAcceleration = 400 uu/s². The ride never accelerates less than
-## this, so a level or even a rising cable still speeds up.
-@export var min_acceleration: float = 4.0
+## ✅ OWNER-MEASURED in the original (2026-08-24): "绳索速度全程是匀速增长的，
+## 大概每秒增加10km/h" -- constant and slope-independent. One reference
+## segment: 61 m at ~19 degrees, 14 -> 63 km/h in ~5 s, which is 2.7-2.8
+## m/s². Replaces a derived max(MinZipAcceleration, -g*slope) term; the
+## CDO's MinZipAcceleration = 400 uu/s² evidently names something other than
+## the growth rate the game shows on screen, and the measurement wins.
+@export var acceleration: float = 2.78
 ## ✅ HangOffset = (0, 0, -90): the body centre hangs this far below the cable.
 @export var hang_offset: float = 0.9
 ## ✅ ZipFadeInTime = 0.1 s: how long the body takes to reach the hang point
@@ -32,6 +36,11 @@ func _init() -> void:
 ## ✅ TdMove_IntoZipLine.ZVelocityFallLimit = -600: falling faster than this
 ## (m/s, positive) the hands cannot hold on.
 @export var fall_limit: float = 6.0
+
+## ✅ SameZipLineRedoMoveTime = 3.0 -- and the owner's rope-chaining
+## measurement confirms the SAME-line reading: this guards re-catching the
+## cable just left, never the next one. Enforced per line by Player.
+@export var same_line_redo_time: float = 3.0
 
 ## ⚠️ PROJECT-DEFINED, no CDO source. Widest horizontal angle, in degrees,
 ## between the approach velocity and the ride's travel direction that still

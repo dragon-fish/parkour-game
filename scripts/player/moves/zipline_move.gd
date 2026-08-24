@@ -4,8 +4,8 @@ extends Move
 # The original's TdMove_ZipLine. 05 §5.5.
 #
 # NOT A ScriptedMove. That base walks a fixed path in a fixed time; a zipline
-# has neither. Its speed is integrated -- at least min_velocity, gaining at
-# least min_acceleration every second and more on a slope, with no cap -- so
+# has neither. Its speed is integrated -- at least min_velocity, growing at a
+# constant, owner-measured rate (about 10 km/h per second), with no cap -- so
 # how long the ride takes falls out of the cable's length and grade. Same
 # reasoning IntoGrabMove gives for itself: the duration is a consequence.
 #
@@ -73,13 +73,12 @@ func enter(_previous: StringName) -> void:
 	_s = _line.closest_offset(player.global_position)
 	_dir = travel_sign(_line, _s)
 	var along: Vector3 = _tangent()
-	# Momentum carried onto the cable, floored -- MinZipVelocity.
-	_v = maxf(cfg.min_velocity, player.velocity.dot(along))
-	# Computed here rather than left for the first physics_update(), so a
-	# reader of ride_acceleration() on the very catch tick (before this move's
-	# own physics_update has run once) already sees the real grade-driven
-	# figure instead of a placeholder zero. Same formula physics_update() uses.
-	_a = maxf(cfg.min_acceleration, -config.pawn.gravity * along.y)
+	# ✅ THE OWNER, measured in the original: the entry speed is the GROUND
+	# speed at the last take-off -- "即便中途蹬墙跳了一段，进入绳子的瞬间速度回变
+	# 回18km/h", and a second rope resets to the same figure. Not the current
+	# airspeed, not a projection. Floored by MinZipVelocity as before.
+	_v = maxf(cfg.min_velocity, player.takeoff_ground_speed())
+	_a = cfg.acceleration
 	player.velocity = Vector3.ZERO
 	_fade = 0.0
 	_entry_pos = player.global_position
@@ -111,9 +110,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return _release()
 
 	var along: Vector3 = _tangent()
-	# Downhill is along.y < 0. A level or rising stretch is caught by the
-	# floor -- MinZipAcceleration -- so the far side of a sag never stalls.
-	_a = maxf(cfg.min_acceleration, -config.pawn.gravity * along.y)
+	# CONSTANT, not slope-driven. ✅ THE OWNER, measured in the original:
+	# "绳索速度全程是匀速增长的，大概每秒增加10km/h" -- one 61 m, 19-degree
+	# segment went 14 -> 63 km/h in ~5 s, and the growth reads the same on
+	# every rope. The slope term this replaces was a derivation, not data.
+	_a = cfg.acceleration
 	_v = maxf(_v + _a * delta, cfg.min_velocity)
 	_s += _dir * _v * delta
 	if _s <= 0.0 or _s >= _line.length():
@@ -218,6 +219,14 @@ func _track_fan_to_cable() -> void:
 	if player.camera_rig != null:
 		player.camera_rig.shift_yaw_reference(_fan_yaw, 1.0)
 	player.pin_visual_yaw(_fan_yaw)
+
+func exit() -> void:
+	# The SAME line refuses a re-catch for a while; every other line stays
+	# open. Per-cable on purpose -- ✅ THE OWNER, measured in the original:
+	# release one rope, catch the next at once ("shift跳下挂上另一个绳子") --
+	# so this lives on the line, not on the move name.
+	if is_instance_valid(_line):
+		player.note_zipline_left(_line, cfg.same_line_redo_time)
 
 # --- read by the HUD and by tests ------------------------------------------
 

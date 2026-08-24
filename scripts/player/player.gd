@@ -201,6 +201,16 @@ var _last_wish_dir: Vector3 = Vector3.ZERO
 var _slide_recovery_timer: float = 0.0
 
 var _takeoff_dir: Vector3 = Vector3.ZERO
+## Ground speed at the last take-off. ✅ THE OWNER, measured in the original:
+## catching a rope resets the ride's entry speed to "最后一次离地时的地速" --
+## wall-jumps in between change nothing, and a second rope resets to the same
+## figure. Captured beside _takeoff_dir, read by ZiplineMove.enter().
+var _takeoff_ground_speed: float = 0.0
+## Per-cable zipline cooldowns: InterestLine instance id -> seconds left.
+## Per CABLE, not per move: the owner measured rope-to-rope chaining in the
+## original (release one rope, catch the next at once), which a move-name
+## cooldown forbids. SameZipLineRedoMoveTime only ever guarded the SAME line.
+var _zipline_cooldowns: Dictionary = {}
 var _airborne_time: float = 0.0
 
 func landing_tier(fall_height: float) -> int:
@@ -994,6 +1004,8 @@ func reset_state() -> void:
 		speed_energy.reset()
 	_last_wish_dir = Vector3.ZERO
 	_takeoff_dir = Vector3.ZERO
+	_takeoff_ground_speed = 0.0
+	_zipline_cooldowns.clear()
 	_airborne_time = 0.0
 	_slide_recovery_timer = 0.0
 	wall_side = 0
@@ -2803,7 +2815,28 @@ func recent_wall_refuses_climb_onto(point: Vector3) -> bool:
 		return false
 	return (point - global_position).dot(recent_wall_normal) < 0.0
 
+func takeoff_ground_speed() -> float:
+	return _takeoff_ground_speed
+
+## True when `line` is off its own re-catch cooldown.
+func zipline_ready(line: InterestLine) -> bool:
+	return not _zipline_cooldowns.has(line.get_instance_id())
+
+## Arms `line`'s own re-catch cooldown -- called by ZiplineMove on every exit.
+func note_zipline_left(line: InterestLine, seconds: float) -> void:
+	if seconds > 0.0:
+		_zipline_cooldowns[line.get_instance_id()] = seconds
+
+func _tick_zipline_cooldowns(delta: float) -> void:
+	for key in _zipline_cooldowns.keys():
+		var remaining: float = _zipline_cooldowns[key] - delta
+		if remaining <= 0.0:
+			_zipline_cooldowns.erase(key)
+		else:
+			_zipline_cooldowns[key] = remaining
+
 func _tick_timers(delta: float, input: MoveInput) -> void:
+	_tick_zipline_cooldowns(delta)
 	if grounded:
 		_coyote_timer = config.pawn.coyote_time
 	else:
@@ -3290,6 +3323,7 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 		# settled on landing.
 		if _takeoff_dir == Vector3.ZERO:
 			_takeoff_dir = facing
+			_takeoff_ground_speed = horizontal_speed()
 			_airborne_time = 0.0
 		_airborne_time += delta
 		_last_wish_dir = wish

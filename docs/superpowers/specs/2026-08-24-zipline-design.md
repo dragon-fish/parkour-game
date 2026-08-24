@@ -85,14 +85,15 @@ if c.check_for_zipline
 2. `_line = nearest_interest_line(ZIPLINE)`；若 null → 标记 aborted，下一 tick 回 `FALLING`。
 3. `_s = _line.closest_offset(身体位置)`。
 4. 行进方向：朝**较低的那一端**。两端等高（差 ≤ 0.01 m）时退回远端规则：朝**离入点较远的那一端**，`_dir = +1` 若 `_s < length/2`，否则 `−1`。
-5. 初速：`_v = max(min_velocity, 入场速度在 (_dir·tangent) 上的投影)`。
+5. 初速：`_v = max(min_velocity, 最后一次离地时的地速)`——✅ 作者实测：中途蹬墙跳不影响，二段绳重置回同一数值；不是当前空速、不是投影。
 6. `player.velocity = ZERO`；`_fade = 0`。
 
 **physics_update**
 
 1. 蹲键按下（`input.crouch_pressed`）→ `_release()`。
-2. 切线 `t = _dir · sample(_s).tangent`；坡度加速度 `a = max(min_acceleration, −g · t.y)`
-   （`t.y < 0` 为下坡；上坡段被下限接住，所以下垂缆绳的后半段不会停）。
+2. 切线 `t = _dir · sample(_s).tangent`；加速度为**常数** `a = acceleration`——✅ 作者实测
+   全程匀速增长约 10 km/h/s（参考段：61 m、约 19°，14→63 km/h 用时 ~5 s），与坡度无关；
+   原坡度项是推导，被实测推翻。
 3. `_v += a · dt`；`_v = max(_v, min_velocity)`；`_s += _dir · _v · dt`。
 4. `_s` 越出 `[0, length]` → `_release()`。
 5. 吊点 `hang = sample(_s).position − hang_offset · UP`。
@@ -112,12 +113,12 @@ if c.check_for_zipline
 | 字段 | 值 | 来源 |
 | --- | --- | --- |
 | `min_velocity` | 3.0 | ✅ `MinZipVelocity = 300` |
-| `min_acceleration` | 4.0 | ✅ `MinZipAcceleration = 400` |
+| `acceleration` | 2.78 | ✅ 作者实测 ~10 km/h/s，常数、与坡度无关；CDO `MinZipAcceleration=400` 另有所指 |
 | `hang_offset` | 0.9 | ✅ `HangOffset = (0,0,-90)` |
 | `fade_in_time` | 0.1 | ✅ `ZipFadeInTime` |
 | `fall_limit` | 6.0 | ✅ `TdMove_IntoZipLine.ZVelocityFallLimit = -600` |
 | `catch_max_approach_angle` | 100° | ⚠️ 项目自定义：只拦明显反向的进入，横穿仍可挂 |
-| `redo_move_time` | 3.0 | ✅ `SameZipLineRedoMoveTime`；⚠️ 现有冷却按 Move 名而非按缆绳，暂接受 |
+| `same_line_redo_time` | 3.0 | ✅ `SameZipLineRedoMoveTime`，且作者实测确证按**缆绳**计：换绳即挂，仅刚离开的那根拒绝（Player 按 line 维护，move 级 redo=0） |
 | `allows_turn` | false | 双手占用 |
 | `constrain_look` / yaw ±90° / `freeze_visual_yaw = true` | | 复用 Grab 的 look-constraint 机制 |
 
@@ -159,5 +160,4 @@ if c.check_for_zipline
 ## 10. 已知缺口（本期不做）
 
 - 专用滑索动画与手部 IK：`HandIK` 解算器仍差 1.32 m，接触 IK 单独立项；滑索是它第一个落点。
-- 按缆绳区分的 3 s 冷却。
 - `ZipFadeOutTime 0.5`：原版的松手动画混合时间，本项目由 animator 自管。

@@ -7,11 +7,15 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 
 var _world: Dictionary = {}
 var _line: InterestLine = null
+var _extra_line: InterestLine = null
 
 func after_each() -> void:
 	if _line != null and is_instance_valid(_line):
 		_line.queue_free()
 	_line = null
+	if _extra_line != null and is_instance_valid(_extra_line):
+		_extra_line.queue_free()
+	_extra_line = null
 	if not _world.is_empty():
 		TestWorld.teardown(_world)
 		_world = {}
@@ -127,16 +131,20 @@ func test_speed_never_drops_below_the_floor_and_keeps_rising() -> void:
 	await step(20)
 	assert_gt(zip.ride_speed(), earlier, "a level cable must still accelerate (min_acceleration)")
 
-func test_a_downhill_cable_accelerates_harder_than_a_level_one() -> void:
+func test_the_acceleration_is_constant_and_ignores_the_slope() -> void:
+	# ✅ THE OWNER, measured in the original: "绳索速度全程是匀速增长的，大概每秒
+	# 增加10km/h" -- the growth rate is the same on every rope, flat or steep.
+	# The slope term this replaces was a derivation, and the measurement won.
 	var player: Player = await _riding_player()
 	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)
-	var level_accel: float = zip.ride_acceleration()
+	assert_almost_eq(zip.ride_acceleration(), player.config.zipline.acceleration, 0.001,
+		"a level cable's growth is not the configured constant")
 	_line.queue_free()
 	TestWorld.teardown(_world)
 	_world = {}
 	await step(1)
 	player = await _standing_player()
-	# 30 degrees down over 12 m of run.
+	# 30 degrees down over 12 m of run: the steep case.
 	_line = _cable(Vector3(0.0, CABLE_Y, -1.0), Vector3(0.0, CABLE_Y - 12.0 * tan(deg_to_rad(30.0)), 11.0))
 	var input: ScriptedInputSource = _world["input"]
 	input.press_jump()
@@ -146,7 +154,8 @@ func test_a_downhill_cable_accelerates_harder_than_a_level_one() -> void:
 			break
 	assert_eq(player.move_manager.current_name, Move.ZIPLINE, "test setup: never caught the sloped cable")
 	zip = player.move_manager.move_for(Move.ZIPLINE)
-	assert_gt(zip.ride_acceleration(), level_accel + 0.5, "slope did not add acceleration")
+	assert_almost_eq(zip.ride_acceleration(), player.config.zipline.acceleration, 0.001,
+		"slope leaked into the growth rate")
 
 func test_the_body_faces_along_the_cable() -> void:
 	var player: Player = await _riding_player()
@@ -222,25 +231,22 @@ func test_the_end_of_the_cable_lets_go() -> void:
 	assert_true(reached_end, "the ride never ended")
 	assert_gt(player.global_position.z, 9.0, "the body left the cable well before its end")
 
-func test_letting_go_starts_the_redo_cooldown() -> void:
+func test_the_cooldown_guards_the_same_line_and_only_that_line() -> void:
+	# ✅ THE OWNER, measured in the original: release one rope and the NEXT one
+	# is catchable at once ("shift跳下挂上另一个绳子") -- only the rope just
+	# left refuses a re-catch. Per cable, not per move name.
 	var player: Player = await _riding_player()
 	await step(5)
+	var other := _cable(Vector3(3.0, CABLE_Y, -1.0), Vector3(3.0, CABLE_Y, 11.0))
+	_extra_line = other
 	var input: ScriptedInputSource = _world["input"]
 	input.press_crouch()
 	await step(1)
-	assert_false(player.move_manager.can_enter(Move.ZIPLINE), "no cooldown after letting go")
-	var cooldown: float = player.config.zipline.redo_move_time
+	assert_false(player.zipline_ready(_line), "the line just left has no cooldown")
+	assert_true(player.zipline_ready(other), "a DIFFERENT line was locked out too")
+	var cooldown: float = player.config.zipline.same_line_redo_time
 	await step(int(cooldown * 60.0) + 2)
-	assert_true(player.move_manager.can_enter(Move.ZIPLINE), "the cooldown never expired")
-
-# --- one press, one action ---------------------------------------------------
-#
-# ✅ THE OWNER: "在ME里按一次按键只对应一次动作". Player._tick_timers() arms the
-# roll buffer on EVERY crouch_pressed, unconditionally -- including the very
-# press this move reads to let go of the cable. Left alone, that single press
-# pays for two things: releasing the cable now, and (for up to
-# roll_trigger_time afterwards) a skill roll at whatever the fall turns out to
-# be. The fix spends the buffer at the point of release, same press, same tick.
+	assert_true(player.zipline_ready(_line), "the same-line cooldown never expired")
 
 func test_the_release_press_does_not_also_buy_a_roll_at_the_landing() -> void:
 	var player: Player = await _riding_player()
@@ -433,3 +439,28 @@ func test_jumping_with_the_travel_direction_still_catches() -> void:
 			caught = true
 	assert_true(caught, \
 		"an approach WITH the travel direction must still catch -- the gate may only refuse opposition")
+
+func test_the_entry_speed_is_the_ground_speed_at_takeoff() -> void:
+	# ✅ THE OWNER, measured in the original: "接触绳子的瞬间速度会重置为最后一次
+	# 离地时的地速" -- not the current airspeed, not a projection. A run-up的
+	# ground speed survives onto the rope.
+	var player: Player = await _standing_player()
+	# Descends toward -z, so the travel direction matches a forward run.
+	_line = _cable(Vector3(0.0, 2.7, -11.0), Vector3(0.0, 3.2, 1.0))
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2(0.0, 1.0)
+	for i in 50:
+		await step(1)
+	input.press_jump()
+	var caught := false
+	for i in 40:
+		await step(1)
+		if player.move_manager.current_name == Move.ZIPLINE:
+			caught = true
+			break
+	assert_true(caught, "test setup: the run-up jump never caught the cable")
+	var takeoff: float = player.takeoff_ground_speed()
+	assert_gt(takeoff, 2.0, "test setup: no real run-up speed was banked")
+	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)
+	assert_almost_eq(zip.ride_speed() - zip.ride_acceleration() * 0.2, takeoff, takeoff * 0.2 + 0.3,
+		"the entry speed %.2f is not the takeoff ground speed %.2f" % [zip.ride_speed(), takeoff])
