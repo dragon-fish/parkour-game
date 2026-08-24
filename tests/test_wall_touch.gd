@@ -214,3 +214,39 @@ func test_an_oblique_wall_never_gets_the_far_hand() -> void:
 	await step(30)
 	assert_almost_eq(float(player.hand_ik.debug()["left"]), 0.0, 0.001,
 		"the far hand reached across for an oblique wall on the right")
+
+## A wall ahead, turned `yaw_deg` off square, its centre `ahead_z` in front.
+func _turned_wall_ahead(yaw_deg: float, ahead_z: float = -1.0) -> void:
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(4.0, 3.0, 0.6)
+	shape.shape = box
+	body.add_child(shape)
+	body.position = Vector3(0.0, 1.5, ahead_z - 0.3)
+	body.rotation.y = deg_to_rad(yaw_deg)
+	get_tree().root.add_child(body)
+	_extra.append(body)
+
+func test_slightly_off_square_still_counts_as_facing() -> void:
+	var player: Player = await _player_with_body()
+	if player == null:
+		return _skip_note()
+	_turned_wall_ahead(15.0, -0.6)
+	await step(30)
+	var state: Dictionary = player.hand_ik.debug()
+	assert_gt(float(state["left"]), 0.5, "15 degrees off square lost the left palm")
+	assert_gt(float(state["right"]), 0.5, "15 degrees off square lost the right palm")
+
+func test_past_the_measured_yaw_the_far_hand_comes_down() -> void:
+	# ✅ OWNER-MEASURED in the original: the far hand withdraws at about
+	# +-27 degrees of yaw off the wall. At 40 the frontal branch must yield
+	# and only the near-side hand stay up.
+	var player: Player = await _player_with_body()
+	if player == null:
+		return _skip_note()
+	_turned_wall_ahead(-40.0, -0.6)
+	await step(30)
+	var state: Dictionary = player.hand_ik.debug()
+	var raised: int = int(float(state["left"]) > 0.5) + int(float(state["right"]) > 0.5)
+	assert_eq(raised, 1, "at 40 degrees off square %d hands are up; ME keeps one" % raised)

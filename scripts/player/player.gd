@@ -1307,6 +1307,11 @@ const WALL_TOUCH_SPAN := 0.18
 ## ("与墙夹角62°时伸出另一侧的手") -- the normal test refuses that outright:
 ## at 62 degrees the far side's dot is +0.88, nowhere near -0.35.
 const WALL_TOUCH_SIDE_FACING := -0.35
+## Widest yaw off square-on that still counts as FACING the wall (both palms
+## up). ✅ OWNER-MEASURED in the original: "阈值在yaw+-27左右就会收起另一侧的
+## 手." Past it the frontal branch yields and the near-side hand takes over
+## (whose own facing gate opens at ~21 degrees -- the hand-over is seamless).
+const WALL_TOUCH_FRONTAL_MAX_DEG := 27.0
 ## How much the SIDE ray leans into the direction of travel, as a fraction of
 ## the sideways component. The owner's ME reference captures show the palm
 ## planted AHEAD of the torso -- the hand meets the wall coming, and lets go
@@ -1329,7 +1334,9 @@ func _drive_wall_touch() -> void:
 	var frontal: bool = _wall_touching[HandIK.LEFT] and _wall_touching[HandIK.RIGHT]
 	var ahead: Dictionary = probes.side_wall_query(-_wall_touch_basis().z,
 		reach + (WALL_TOUCH_HYSTERESIS if frontal else 0.0))
-	if ahead["valid"]:
+	if ahead["valid"] and (-_wall_touch_basis().z) \
+			.dot(-(ahead["normal"] as Vector3)) \
+			>= cos(deg_to_rad(WALL_TOUCH_FRONTAL_MAX_DEG)):
 		# EACH PALM LANDS IN FRONT OF ITS OWN SHOULDER: the shoulder projected
 		# onto the wall plane, plus the palm stand-off. Spreading both hands
 		# from the centre ray's single hit point was the first cut, and the
