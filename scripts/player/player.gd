@@ -485,6 +485,17 @@ var active_obstacle: Vector2 = Vector2(-1.0, 0.0)
 ## body's clips were authored.
 @export var body_animation_blend_time: float = 0.15
 
+## How long the animation gate keeps a finished scripted clip on screen while
+## an ordinary one is asking -- the grace window in which a SECOND scripted
+## clip (the sandwich) may still claim the other slot directly instead of
+## popping through "states". ⚠️ PROJECT-DEFINED dial. The transients this
+## protects against live 1-3 ticks (measured; see CharacterAnimator._route()),
+## so it is far shorter than body_animation_blend_time -- and the freeze it
+## costs at the end of every scripted move shrinks with it. ✅ THE OWNER, on
+## the first cut that reused the full blend window: "脚本动作结束后确实会定格
+## 在最后一帧0.2s，这个有办法优化吗."
+@export var body_gate_hold_time: float = 0.05
+
 ## How long a clip leaving a SLIDE cross-fades, which is longer than everything
 ## else.
 ##

@@ -80,6 +80,9 @@ extends Resource
 
 @export var run_reference_speed: float = 7.2
 @export var blend_time: float = 0.15
+
+## See Player.body_gate_hold_time.
+@export var gate_hold_time: float = 0.05
 @export var slide_exit_blend_time: float = 0.5
 @export var slide_to_crouch_blend_time: float = 0.3
 
@@ -110,6 +113,7 @@ func apply(player: Player) -> void:
 	player.body_clip_timings = clip_timings
 	player.body_run_reference_speed = run_reference_speed
 	player.body_animation_blend_time = blend_time
+	player.body_gate_hold_time = gate_hold_time
 	player.body_slide_exit_blend_time = slide_exit_blend_time
 	player.body_slide_to_crouch_blend_time = slide_to_crouch_blend_time
 	player.body_slide_eye_lift = slide_eye_lift

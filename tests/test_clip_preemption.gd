@@ -215,7 +215,10 @@ func test_an_ordinary_clip_between_two_scripted_ones_never_gets_the_gate() -> vo
 	await step(20)
 	animator._route(A_SCRIPTED_CLIP, DELTA)
 	await step(1)
-	for i in 3:
+	# TWO ticks, sized to the transients the hold protects (1-3 ticks measured)
+	# and safely inside body_gate_hold_time's 0.05 s default -- three ticks is
+	# exactly the boundary and would release on the last iteration.
+	for i in 2:
 		animator._route(AN_ORDINARY_CLIP, DELTA)
 		assert_ne(String(animator._gate_input), String(CharacterAnimator.GRAPH_STATES),
 			"the gate was handed back to the state machine on ordinary tick %d" % i)

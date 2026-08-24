@@ -313,8 +313,10 @@ func _physics_process(delta: float) -> void:
 ## scripted target arriving during the hold goes straight to the other slot: two
 ## real inputs, a genuine fade, no promotion.
 ##
-## 📌 THE COST IS A SLOT HOLDING ITS LAST FRAME for up to one blend window past
-## the end of its move, and that is accepted.
+## 📌 THE COST IS A SLOT HOLDING ITS LAST FRAME for up to body_gate_hold_time
+## past the end of its move -- a dial, 0.05 s by default, sized to the 1-3 tick
+## transients rather than to the blend window it first reused (the owner felt
+## the 0.15 s version as "定格在最后一帧").
 ##
 ## ⚠️ THE MACHINE DOES NOT ADVANCE UNDER THE HOLD -- measured, not assumed: an
 ## input the gate is not showing is not processed, so get_current_node() sat on
@@ -328,7 +330,7 @@ func _route(target: StringName, delta: float) -> void:
 		# ARMED FOR THE NEXT ORDINARY CLIP, every tick a scripted one is wanted,
 		# so the hold measures how long the ORDINARY target has persisted rather
 		# than how long ago the slot was claimed.
-		_hold_left = _blend_time()
+		_hold_left = _hold_time()
 		# ALREADY ON SCREEN -- and this is the common case, since the drive runs
 		# every tick for the whole of a move. Re-requesting the input the gate is
 		# showing would re-enter it, and the slots reset on entry.
@@ -380,6 +382,11 @@ func _gate_fading() -> bool:
 ## The gate's own cross-fade length, which player.gd built it with.
 func _blend_time() -> float:
 	return player.body_animation_blend_time if player != null else 0.0
+
+## The hold's own window -- deliberately NOT _blend_time(); see
+## Player.body_gate_hold_time.
+func _hold_time() -> float:
+	return player.body_gate_hold_time if player != null else 0.0
 
 ## The name of the scripted slot most recently claimed, or an empty name before
 ## the first one.
