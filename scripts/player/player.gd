@@ -582,6 +582,9 @@ var _body_mount: Transform3D = Transform3D.IDENTITY
 ## middle of a smooth blend.
 var _clip_offset_position: Vector3 = Vector3.ZERO
 var _clip_offset_rotation: Vector3 = Vector3.ZERO
+## 0..1: how much of the clip offset the EYE currently follows. Driven every
+## tick by _drive_clip_offset(); read by _camera_head_offset().
+var _scripted_eye_follow: float = 0.0
 ## True while a move has declared the body FOLDED -- see set_body_folded().
 var _body_folded: bool = false
 ## How far the model has actually eased down for that fold, in metres.
@@ -1280,6 +1283,14 @@ func _attach_hand_ik(body_node: Node3D) -> void:
 func _drive_clip_offset(delta: float) -> void:
 	if body == null:
 		return
+	# How much of the offset the EYE follows right now. Eased on its own
+	# camera-side time constant rather than flipping with scripted_progress():
+	# the clip often starts BEFORE the move (preemption) and outlives it, so a
+	# binary hand-over snaps the view by whatever the offset has reached --
+	# ✅ THE OWNER: "StepUp应用往后0.2m的偏移没有过渡，进入退出时会闪一下."
+	var follow_target: float = 1.0 if scripted_progress() >= 0.0 else 0.0
+	var follow_t: float = 1.0 - exp(-delta / maxf(config.camera.scripted_eye_offset_blend_time, 0.001))
+	_scripted_eye_follow = lerpf(_scripted_eye_follow, follow_target, follow_t)
 	var wanted_position := Vector3.ZERO
 	var wanted_rotation := Vector3.ZERO
 	var offset: Array = clip_offset_for(_current_clip())
@@ -1710,13 +1721,15 @@ func _camera_head_offset() -> Vector3:
 	# lateral corrections must never swing the view, and the accident that
 	# built it ("I lowered one to fix third person and the first-person camera
 	# went underground") stays fixed.
-	if scripted_progress() >= 0.0:
-		return raw
+	#
+	# BLENDED, not switched: _scripted_eye_follow eases between the two
+	# regimes (see _drive_clip_offset()), because the clip and its offset do
+	# not start and end on the move's own boundaries.
 	var body_root := get_node_or_null("BodyRoot") as Node3D
 	var applied: Vector3 = _clip_offset_position
 	if body_root != null:
 		applied = body_root.transform.basis * _clip_offset_position
-	return raw - applied
+	return raw - applied * (1.0 - _scripted_eye_follow)
 
 ## What the camera does for a scripted move when there is no head to follow.
 ##

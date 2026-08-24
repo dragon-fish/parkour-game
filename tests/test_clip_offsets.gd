@@ -391,14 +391,37 @@ func test_a_scripted_move_carries_the_eye_with_the_offset() -> void:
 	scripted.cfg = MoveConfig.new()
 	player.move_manager.add_child(scripted)
 	player.move_manager.register(&"BareScripted", scripted)
+	var rest: Vector3 = player._camera_head_offset()
 	player.move_manager.start(&"BareScripted")
 	assert_true(player.scripted_progress() >= 0.0, "test setup: no scripted path running")
-	var rest: Vector3 = player._camera_head_offset()
 
+	# The follow FADES IN rather than snapping -- ✅ the owner, on the binary
+	# version: "StepUp应用往后0.2m的偏移没有过渡，进入退出时会闪一下." The offset
+	# is re-pinned every tick because _drive_clip_offset() otherwise eases it
+	# back toward zero for a clip this fixture never plays.
 	player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
-	var moved: float = player._camera_head_offset().distance_to(rest)
-	assert_almost_eq(moved, 0.20, 0.001,
-		"during a scripted move a 0.20 m clip offset moved the eye by %.3f m" % moved)
+	await step(1)
+	player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
+	var just_started: float = player._camera_head_offset().distance_to(rest)
+	assert_lt(just_started, 0.06, "the follow snapped on entry (%.3f m in one tick)" % just_started)
+	for i in 90:
+		await step(1)
+		player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
+	var settled: float = player._camera_head_offset().distance_to(rest)
+	assert_almost_eq(settled, 0.20, 0.005,
+		"during a scripted move a 0.20 m clip offset moved the eye by %.3f m" % settled)
+
+	# And it FADES OUT on the way back to a non-scripted move.
+	player.move_manager.start(Move.WALKING)
+	await step(1)
+	player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
+	var just_left: float = player._camera_head_offset().distance_to(rest)
+	assert_gt(just_left, 0.10, "the follow snapped off on exit (%.3f m one tick after leaving)" % just_left)
+	for i in 90:
+		await step(1)
+		player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
+	var released: float = player._camera_head_offset().distance_to(rest)
+	assert_lt(released, 0.01, "back out of the scripted move the eye still sits %.3f m off" % released)
 
 ## Enters with a begun path and otherwise does nothing -- the smallest thing
 ## that makes scripted_progress() report a live path.

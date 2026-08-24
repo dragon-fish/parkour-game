@@ -137,6 +137,13 @@ extends Resource
 ## same moment -- the body picking itself up out of a slide.
 @export var eye_lift_release_time: float = 0.5
 
+## ⚠️ PROJECT-DEFINED. How quickly the first-person eye hands over between its
+## two clip-offset regimes (ignore the offset outside scripted moves, follow it
+## inside -- see Player._camera_head_offset()). A time constant; near 0 snaps.
+## Exists because the hand-over used to be binary and the owner saw it:
+## "StepUp应用往后0.2m的偏移没有过渡，进入退出时会闪一下."
+@export var scripted_eye_offset_blend_time: float = 0.2
+
 ## How long the third-person camera takes to cross from one shoulder to the
 ## other, in seconds.
 ##
