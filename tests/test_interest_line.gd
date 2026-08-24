@@ -43,6 +43,19 @@ func test_tangent_points_toward_increasing_offset() -> void:
 	assert_gt(t.x, 0.0, "the cable runs -x -> +x, so the tangent must point +x")
 	assert_lt(t.y, 0.0, "near the start the cable sags DOWN")
 
+func test_the_cable_draws_a_visible_rope() -> void:
+	# ✅ THE OWNER mistook the F12 hang-path line for the cable itself
+	# ("目前的实现是胶囊中心点沿着绳索前进？") -- there was no rope model anywhere to
+	# see. A whitebox interactable must be visible: the marker IS the rope.
+	_line = _sagging_line()
+	await step(1)
+	var found := false
+	for child in _line.get_children():
+		if child is MeshInstance3D:
+			found = true
+			break
+	assert_true(found, "the interest line built no visible rope mesh")
+
 func test_sample_respects_the_node_transform() -> void:
 	_line = _sagging_line()
 	_line.position = Vector3(10.0, 0.0, 0.0)

@@ -216,10 +216,15 @@ func line() -> InterestLine:
 # The F12 overlay (ScriptedPathDebug) draws any move that can sample itself.
 # `t` here is the fraction of the CABLE, not of time: the ride has no duration.
 
+## The CABLE point, not the hang point: F12 draws the rope where it physically
+## is. The body hangs hang_offset BELOW this -- the capsule's top rides the
+## wire -- which is also why this must not subtract hang_offset the way
+## _hang_point() does; that would draw the line right on top of the body
+## instead of showing the owner the cable they mistook it for.
 func sample(t: float) -> Vector3:
 	if not is_instance_valid(_line):
 		return player.global_position
-	return _line.sample(t * _line.length())["position"] - Vector3.UP * cfg.hang_offset
+	return _line.sample(t * _line.length())["position"]
 
 func path_debug() -> Dictionary:
 	if _aborted or not is_instance_valid(_line):

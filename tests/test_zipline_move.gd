@@ -344,3 +344,18 @@ func test_the_ride_does_not_accumulate_a_fall_while_still_on_the_cable() -> void
 		assert_lt(player.fall_tracker.fall_height, 1.0, \
 			"the ride's own descent accumulated as a fall while still on the cable")
 	assert_gt(ticks_observed, 30, "test setup: the ride ended before the descent could be observed")
+
+# --- the rope is visible, and F12 draws the rope, not the hang path ----------
+#
+# ✅ THE OWNER mistook the F12 hang-path line for the cable ("目前的实现是胶囊中心
+# 点沿着绳索前进？") -- the capsule TOP rides the cable; sample() used to draw the
+# HANG path (hang_offset below the wire, i.e. right where the body already is),
+# so there was nothing new to see. F12 must draw the rope where it physically is.
+
+func test_the_debug_line_draws_the_cable_hang_offset_above_the_body() -> void:
+	var player: Player = await _riding_player()
+	await step(12)  # past fade_in_time
+	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)
+	var drawn: Vector3 = zip.sample(zip.ride_offset() / _line.length())
+	assert_almost_eq(drawn.y - player.global_position.y, player.config.zipline.hang_offset, 0.02, \
+		"the debug line is not drawn hang_offset above the body")

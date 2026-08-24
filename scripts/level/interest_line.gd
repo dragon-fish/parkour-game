@@ -25,10 +25,15 @@ enum Kind { ZIPLINE, SWING, BALANCE }
 ## Half the span the finite-difference tangent is taken over.
 const TANGENT_STEP := 0.05
 
+## The rope's own thickness, metres. Cosmetic only -- reach_radius, not this,
+## is what a body actually catches against.
+const ROPE_RADIUS := 0.02
+
 var _area: Area3D = null
 
 func _ready() -> void:
 	_build_area()
+	_build_rope()
 
 func length() -> float:
 	return curve.get_baked_length() if curve != null else 0.0
@@ -64,8 +69,7 @@ func _build_area() -> void:
 	for i in range(points.size() - 1):
 		var a: Vector3 = points[i]
 		var b: Vector3 = points[i + 1]
-		var seg: Vector3 = b - a
-		var seg_length: float = seg.length()
+		var seg_length: float = (b - a).length()
 		if seg_length < 0.001:
 			continue
 		var capsule := CapsuleShape3D.new()
@@ -73,17 +77,48 @@ func _build_area() -> void:
 		capsule.height = seg_length + 2.0 * reach_radius
 		var shape := CollisionShape3D.new()
 		shape.shape = capsule
-		# A capsule's axis is its local Y. Build a basis whose Y is the
-		# segment direction; the other two axes only need to be perpendicular.
-		var y: Vector3 = seg / seg_length
-		var helper: Vector3 = Vector3.UP if absf(y.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
-		var x: Vector3 = helper.cross(y).normalized()
-		var z: Vector3 = x.cross(y).normalized()
-		shape.transform = Transform3D(Basis(x, y, z), (a + b) * 0.5)
+		shape.transform = _segment_transform(a, b, seg_length)
 		_area.add_child(shape)
 	_area.body_entered.connect(_on_body_entered)
 	_area.body_exited.connect(_on_body_exited)
 	add_child(_area)
+
+## A whitebox interactable must be visible -- the marker IS the rope. Built
+## the same way the reach volume above is, one CylinderMesh per baked segment,
+## sharing a single material. Runtime children only, exactly like the Area3D:
+## nothing here is packed, so the committed scenes this line might sit in are
+## untouched by it.
+func _build_rope() -> void:
+	if curve == null or curve.point_count < 2:
+		return
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.15, 0.15, 0.17)
+	var points: PackedVector3Array = curve.get_baked_points()
+	for i in range(points.size() - 1):
+		var a: Vector3 = points[i]
+		var b: Vector3 = points[i + 1]
+		var seg_length: float = (b - a).length()
+		if seg_length < 0.001:
+			continue
+		var cylinder := CylinderMesh.new()
+		cylinder.top_radius = ROPE_RADIUS
+		cylinder.bottom_radius = ROPE_RADIUS
+		cylinder.height = seg_length
+		cylinder.material = material
+		var mesh_instance := MeshInstance3D.new()
+		mesh_instance.mesh = cylinder
+		mesh_instance.transform = _segment_transform(a, b, seg_length)
+		add_child(mesh_instance)
+
+## An orthonormal basis whose local Y runs along a..b, centred between them --
+## what both a CapsuleShape3D and a CylinderMesh need, since both take their
+## height along local Y. The other two axes only need to be perpendicular.
+func _segment_transform(a: Vector3, b: Vector3, seg_length: float) -> Transform3D:
+	var y: Vector3 = (b - a) / seg_length
+	var helper: Vector3 = Vector3.UP if absf(y.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
+	var x: Vector3 = helper.cross(y).normalized()
+	var z: Vector3 = x.cross(y).normalized()
+	return Transform3D(Basis(x, y, z), (a + b) * 0.5)
 
 func _on_body_entered(body: Node3D) -> void:
 	if body.has_method("enter_interest_line"):
