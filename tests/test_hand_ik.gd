@@ -61,26 +61,40 @@ func test_nothing_is_driven_until_a_move_asks() -> void:
 
 func test_a_reaching_hand_arrives_at_the_point_it_was_given() -> void:
 	# THE CLAIM THAT MATTERS, and the one checkable without eyes: the hand BONE
-	# should end up where the target is, not merely near it.
+	# ends up where the target is.
 	#
-	# STILL PENDING, but for a different reason than before, and the correction
-	# is the useful part.
-	#
-	# This was written off as "TwoBoneIK3D does not move the bones", measured at
-	# exactly 0.0000 m of travel. That measurement was wrong.
-	# get_bone_global_pose() returns the pose from BEFORE the deferred modifier
-	# pass -- the class reference says so: "the final global pose can get
-	# overridden by modifiers in the deferred process, if you want to access the
-	# final global pose, use SkeletonModifier3D.modification_processed". Sampled
-	# through that signal instead, the hand moves.
-	#
-	# It moves to the WRONG PLACE -- 1.32 m from the target, roughly three arm
-	# lengths. A solver that overshoots is a different problem from one that
-	# never runs, and the pole node is the first suspect: POLE_OFFSET puts the
-	# elbow hint near the target, which for a target close to the body lands
-	# inside the torso, and a two-bone solver given a degenerate pole can flip
-	# its whole solution plane.
-	pending("TwoBoneIK3D solves but overshoots -- see docs/feel-backlog.md 47")
+	# ⚠️ THE SOLVER WAS INNOCENT ALL ALONG, and this test's history is the
+	# repo's measured-wrong pattern three times over. It was written off once
+	# as "does not move the bones, 0.0000 m" -- get_bone_global_pose() read
+	# BEFORE the deferred modifier pass -- and once as "overshoots by 1.32 m",
+	# a figure suspiciously equal to the target's own distance from the world
+	# origin: that probe's lambda captured its sample variable BY VALUE (the
+	# write landed in a private copy, leaving Vector3.ZERO), and its targets
+	# sat on the wrong side of the body besides. Measured correctly --
+	# modification_processed, a Dictionary reference, a reachable same-side
+	# target -- the hand lands on the target to the millimetre.
+	var player: Player = await _player_with_body()
+	if player == null:
+		return _skip_note()
+	var skels: Array[Node] = player.find_children("*", "Skeleton3D", true, false)
+	var skeleton := skels[0] as Skeleton3D
+	var hand: int = skeleton.find_bone("RightHand")
+	var upper: int = skeleton.find_bone("RightUpperArm")
+	var shoulder: Vector3 = skeleton.global_transform \
+		* skeleton.get_bone_global_pose(upper).origin
+	# The body is mounted yaw-180, so the model's RIGHT is world -x here.
+	var target: Vector3 = shoulder + Vector3(-0.25, -0.1, -0.15)
+	# A Dictionary REFERENCE, not a local: a lambda captures locals by value,
+	# and writing into the captured copy is exactly the measurement bug this
+	# test replaces.
+	var sample := {"hand": Vector3.INF}
+	player.hand_ik._modifier.modification_processed.connect(func() -> void:
+		sample["hand"] = skeleton.global_transform \
+			* skeleton.get_bone_global_pose(hand).origin)
+	player.hand_ik.reach(HandIK.RIGHT, target)
+	await step(40)
+	var err: float = (sample["hand"] as Vector3).distance_to(target)
+	assert_lt(err, 0.01, "the hand landed %.4f m from the target" % err)
 
 func test_releasing_hands_the_arm_back() -> void:
 	var player: Player = await _player_with_body()
