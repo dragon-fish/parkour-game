@@ -1299,6 +1299,14 @@ const WALL_TOUCH_HYSTERESIS := 0.1
 const WALL_TOUCH_PALM := 0.09
 ## Half the spread between the two hands when facing the wall head-on.
 const WALL_TOUCH_SPAN := 0.18
+## How squarely a wall must FACE a hand before that hand rests on it: the
+## hit normal's dot with the hand's own side direction must be below this
+## (-1 is a wall dead beside the hand; 0 is head-on, which the frontal
+## branch owns). ✅ THE OWNER: at ~62 degrees to a wall the FAR hand's
+## leading ray could still clip it ahead of the mid-plane and reach across
+## ("与墙夹角62°时伸出另一侧的手") -- the normal test refuses that outright:
+## at 62 degrees the far side's dot is +0.88, nowhere near -0.35.
+const WALL_TOUCH_SIDE_FACING := -0.35
 ## How much the SIDE ray leans into the direction of travel, as a fraction of
 ## the sideways component. The owner's ME reference captures show the palm
 ## planted AHEAD of the torso -- the hand meets the wall coming, and lets go
@@ -1349,9 +1357,13 @@ func _drive_wall_touch() -> void:
 			_wall_touch_shoulder_offset(side))
 		# NEVER ACROSS THE CHEST: whatever the rays say, a hand does not take a
 		# point on the other side of the visible body's mid-plane -- the last
-		# guard against any future frame mix-up reintroducing the cross.
+		# guard against any future frame mix-up reintroducing the cross. And
+		# the wall must FACE the hand (WALL_TOUCH_SIDE_FACING), or an oblique
+		# wall crossing ahead is claimed by the wrong side.
 		if hit["valid"] and ((hit["point"] as Vector3) - global_position) \
-				.dot(_wall_touch_side_dir(side)) > 0.05:
+				.dot(_wall_touch_side_dir(side)) > 0.05 \
+				and (hit["normal"] as Vector3).dot(_wall_touch_side_dir(side)) \
+					< WALL_TOUCH_SIDE_FACING:
 			hand_ik.reach(side, (hit["point"] as Vector3)
 				+ (hit["normal"] as Vector3) * WALL_TOUCH_PALM)
 			_wall_touching[side] = true

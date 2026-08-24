@@ -191,3 +191,26 @@ func test_the_hands_follow_the_visible_body_not_the_capsule() -> void:
 		"the visible-left hand never reached for the visible-left wall")
 	assert_almost_eq(float(state["right"]), 0.0, 0.001,
 		"the capsule's turn dragged the wrong hand across the chest")
+
+func test_an_oblique_wall_never_gets_the_far_hand() -> void:
+	# ✅ THE OWNER: at ~62 degrees to a wall, the far hand's leading ray could
+	# clip the wall where it crosses ahead of the body and reach across. The
+	# normal-facing gate refuses any wall that does not face the hand.
+	var player: Player = await _player_with_body()
+	if player == null:
+		return _skip_note()
+	# A wall ahead-right, turned 28 degrees -- the 62-degree incidence the
+	# owner reported, crossing the forward axis ahead of the body.
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(0.6, 3.0, 4.0)
+	shape.shape = box
+	body.add_child(shape)
+	body.position = Vector3(0.9, 1.5, -0.8)
+	body.rotation.y = deg_to_rad(-28.0)
+	get_tree().root.add_child(body)
+	_extra.append(body)
+	await step(30)
+	assert_almost_eq(float(player.hand_ik.debug()["left"]), 0.0, 0.001,
+		"the far hand reached across for an oblique wall on the right")
