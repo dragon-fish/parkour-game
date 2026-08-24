@@ -47,9 +47,22 @@ func enter(_previous: StringName) -> void:
 		_aborted = true
 		return
 	_s = _line.closest_offset(player.global_position)
-	# Away from the nearer end. A cable is caught from the end you arrive at,
-	# and that holds for a sagging one too.
-	_dir = 1.0 if _s < _line.length() * 0.5 else -1.0
+	# ✅ THE OWNER: "从低点朝高点方向跳起触发绳索，会逆着高度滑上去，甚至还会
+	# 逐渐加速" -- that ride must not exist. A zipline is one-way: the
+	# original's cables all descend, and the min-acceleration floor below
+	# exists to carry the far half of a SAG, not to power a climb. So the
+	# travel direction is toward the LOWER endpoint, not "away from the
+	# nearer end" -- boarding near the low end of a downhill cable must slide
+	# back to the low end, never climb toward the high one.
+	var start_y: float = _line.sample(0.0)["position"].y
+	var end_y: float = _line.sample(_line.length())["position"].y
+	if absf(start_y - end_y) > 0.01:
+		_dir = 1.0 if end_y < start_y else -1.0
+	else:
+		# A level cable has no lower end to slide toward -- fall back to the
+		# old rule: away from the end you arrived at, same as a sagging
+		# cable's far half.
+		_dir = 1.0 if _s < _line.length() * 0.5 else -1.0
 	var along: Vector3 = _tangent()
 	# Momentum carried onto the cable, floored -- MinZipVelocity.
 	_v = maxf(cfg.min_velocity, player.velocity.dot(along))

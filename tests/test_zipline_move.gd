@@ -91,6 +91,33 @@ func test_the_ride_travels_away_from_the_end_it_was_caught_at() -> void:
 	await step(20)
 	assert_gt(player.global_position.z, before + 0.3, "the ride did not move along the cable")
 
+func test_a_downhill_ride_slides_toward_the_low_end() -> void:
+	# ✅ THE OWNER: "从低点朝高点方向跳起触发绳索，会逆着高度滑上去，甚至还会
+	# 逐渐加速". Boarded here near the LOW end of a cable whose far end is
+	# several metres higher -- the old "away from the nearer end" rule sent
+	# this straight up the slope, with the min-acceleration floor (meant only
+	# to carry a sagging cable's far half) happily powering the climb. A
+	# zipline is one-way: that ride must not exist -- boarding near the low
+	# end must slide back to the low end instead.
+	var player: Player = await _standing_player()
+	_line = _cable(Vector3(0.0, CABLE_Y, -1.0), Vector3(0.0, CABLE_Y + 8.0, 11.0))
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	for i in 40:
+		await step(1)
+		if player.move_manager.current_name == Move.ZIPLINE:
+			break
+	assert_eq(player.move_manager.current_name, Move.ZIPLINE, "test setup: never caught the cable")
+	await step(8)  # past fade_in_time -- baseline after the catch settles onto the wire, not mid-lerp
+	var start_y: float = player.global_position.y
+	var max_y: float = start_y
+	for i in 20:
+		await step(1)
+		max_y = maxf(max_y, player.global_position.y)
+	assert_lt(max_y, start_y + 0.05,
+		"the ride climbed toward the high end instead of sliding to the low one (start %.2f, peak %.2f)"
+			% [start_y, max_y])
+
 func test_speed_never_drops_below_the_floor_and_keeps_rising() -> void:
 	var player: Player = await _riding_player()
 	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)

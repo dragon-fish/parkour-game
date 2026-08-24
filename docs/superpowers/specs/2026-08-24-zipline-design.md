@@ -80,7 +80,7 @@ if c.check_for_zipline
 1. `player.set_grounded(false)`。
 2. `_line = nearest_interest_line(ZIPLINE)`；若 null → 标记 aborted，下一 tick 回 `FALLING`。
 3. `_s = _line.closest_offset(身体位置)`。
-4. 行进方向：朝**离入点较远的那一端**。`_dir = +1` 若 `_s < length/2`，否则 `−1`。
+4. 行进方向：朝**较低的那一端**。两端等高（差 ≤ 0.01 m）时退回远端规则：朝**离入点较远的那一端**，`_dir = +1` 若 `_s < length/2`，否则 `−1`。
 5. 初速：`_v = max(min_velocity, 入场速度在 (_dir·tangent) 上的投影)`。
 6. `player.velocity = ZERO`；`_fade = 0`。
 
