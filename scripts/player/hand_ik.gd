@@ -58,6 +58,7 @@ const BLEND_SPEED := 6.0
 const POLE_OFFSET := Vector3(0.35, -0.45, 0.35)
 
 var _modifier: TwoBoneIK3D = null
+var _skeleton: Skeleton3D = null
 var _targets: Array[Node3D] = []
 var _poles: Array[Node3D] = []
 var _wanted: Array[float] = [0.0, 0.0]
@@ -113,11 +114,25 @@ func attach(skeleton: Skeleton3D) -> bool:
 	# thrown away.
 	_modifier.influence = 0.0
 	_modifier.active = false
+	_skeleton = skeleton
+	_arm_length = (skeleton.get_bone_global_rest(
+			skeleton.find_bone(CHAINS[RIGHT]["end"])).origin
+		- skeleton.get_bone_global_rest(
+			skeleton.find_bone(CHAINS[RIGHT]["root"])).origin).length()
 	return true
 
 ## True when there are chains to drive.
 func is_live() -> bool:
 	return _modifier != null
+
+## Upper-arm-to-hand rest length, in SKELETON space (multiply by the mount
+## scale for metres of world). Measured off the rig rather than configured:
+## "how far can the arm reach" is a fact about the body, the same stance
+## Move.CONTACT_MARGIN takes about arm-length knobs.
+var _arm_length: float = 0.0
+
+func arm_length() -> float:
+	return _arm_length
 
 ## Sends a hand to `world_point` and blends the IK in.
 ##
@@ -128,12 +143,17 @@ func reach(side: int, world_point: Vector3) -> void:
 	if _modifier == null or side < 0 or side >= _targets.size():
 		return
 	_targets[side].global_position = world_point
-	# The elbow hint mirrors on the left so both arms bend outward rather than
-	# both toward the same shoulder.
+	# The elbow hint, in SKELETON space so it turns with the body -- a
+	# world-frame offset only pointed outward at one particular yaw. VRM model
+	# space has +x on the character's own LEFT (T-pose, authored facing +z),
+	# so LEFT keeps POLE_OFFSET.x and RIGHT mirrors it; the first cut had the
+	# sign backwards AND unrotated, which folded both elbows across the torso
+	# -- the owner's "右手扭曲".
 	var mirrored := POLE_OFFSET
-	if side == LEFT:
+	if side == RIGHT:
 		mirrored.x = -mirrored.x
-	_poles[side].global_position = world_point + mirrored
+	_poles[side].global_position = world_point \
+		+ _skeleton.global_transform.basis * mirrored
 	_wanted[side] = 1.0
 	_modifier.active = true
 
@@ -161,6 +181,18 @@ func update(delta: float) -> void:
 	for i in _influence.size():
 		_influence[i] = move_toward(_influence[i], _wanted[i], step)
 	var strongest: float = maxf(_influence[LEFT], _influence[RIGHT])
+	# ⚠️ THE SHARED INFLUENCE DRIVES BOTH CHAINS, so an arm nobody asked for is
+	# still solved at full strength toward wherever its target happens to sit
+	# -- unset, that is the modifier's own origin, and the idle arm wrenches
+	# across the torso (the owner: "右手扭曲到了身体左侧"). Pinning the idle
+	# side's target to the hand's OWN pre-modifier (animated) position makes a
+	# full-strength solve a no-op: the solver puts the hand exactly where the
+	# animation already had it.
+	for i in _influence.size():
+		if _wanted[i] <= 0.0 and _influence[i] <= 0.0:
+			var hand: int = _skeleton.find_bone(CHAINS[i]["end"])
+			_targets[i].global_position = _skeleton.global_transform \
+				* _skeleton.get_bone_global_pose(hand).origin
 	_modifier.influence = strongest
 	if is_zero_approx(strongest):
 		_modifier.active = false

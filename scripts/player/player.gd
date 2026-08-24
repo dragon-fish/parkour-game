@@ -655,6 +655,11 @@ var head_rest_local: Vector3 = Vector3.ZERO
 ## body whose hands follow its animation. See HandIK's own header.
 var hand_ik: HandIK = null
 
+## Whether each hand (HandIK.LEFT / RIGHT) is currently resting on a passing
+## wall. Drives the release edge and the exit hysteresis in
+## _drive_wall_touch().
+var _wall_touching: Array[bool] = [false, false]
+
 
 ## Turns the attached body's head toward where the camera is pointing. Built
 ## alongside the twist, and null for a body without a humanoid neck. See
@@ -1268,6 +1273,80 @@ func _merge_animation_library(body_node: Node3D) -> void:
 ## Silently does nothing otherwise, which covers every non-humanoid body --
 ## including this project's own Blockbench one, whose bones are named after
 ## cubes rather than limbs. That body keeps animating exactly as it did.
+## Rests a palm on a wall the body is walking past -- the contact IK's first,
+## simplest case. ✅ THE OWNER: "角色的右手边如果有可以触摸到的墙壁，角色会尝试用
+## 手掌碰墙，走胶囊到墙壁的垂线" -- and both hands work the same way, whichever
+## side the wall is on.
+##
+## V1 is GROUND LOCOMOTION ONLY (Move.WALKING): every other move either owns
+## the arms already (grab, scripted moves) or will want its own rules.
+##
+## The reach is DERIVED, not a dial: capsule radius plus nine tenths of the
+## rig's own measured arm length -- the same stance Move.CONTACT_MARGIN takes
+## on arm-length knobs. A tenth is held back so the arm rests bent rather
+## than locking straight at its limit.
+const WALL_TOUCH_ARM_PCT := 0.9
+## Extra reach a hand ALREADY resting is allowed before it lets go, so a wall
+## edge does not flicker the arm on and off.
+const WALL_TOUCH_HYSTERESIS := 0.1
+## How far off the surface the palm TARGET sits, along the wall's normal. The
+## target drives the WRIST bone, and a wrist on the surface buries the palm in
+## it -- ✅ THE OWNER: "手掌有可能直接插进墙里面，而不是墙面上."
+const WALL_TOUCH_PALM := 0.09
+## Half the spread between the two hands when facing the wall head-on.
+const WALL_TOUCH_SPAN := 0.18
+
+func _drive_wall_touch() -> void:
+	if hand_ik == null or not hand_ik.is_live() or probes == null:
+		return
+	if move_manager == null or move_manager.current_name != Move.WALKING:
+		_release_wall_touch()
+		return
+	var reach: float = current_capsule_radius() \
+		+ hand_ik.arm_length() * body_mount_scale * WALL_TOUCH_ARM_PCT
+	# HEAD-ON FIRST: facing a wall puts BOTH palms on it, spread along the
+	# wall's own tangent -- ✅ THE OWNER: "ME里如果几乎面对墙壁时角色会同时将两只
+	# 手放在墙上." The forward ray doubling as the angle test is deliberate: a
+	# wall oblique enough to dodge it is a wall walked past, not into, and
+	# falls to the one-hand side rays below.
+	var frontal: bool = _wall_touching[HandIK.LEFT] and _wall_touching[HandIK.RIGHT]
+	var ahead: Dictionary = probes.side_wall_query(-global_transform.basis.z,
+		reach + (WALL_TOUCH_HYSTERESIS if frontal else 0.0))
+	if ahead["valid"]:
+		var normal: Vector3 = ahead["normal"]
+		var tangent: Vector3 = normal.cross(Vector3.UP).normalized()
+		for side in [HandIK.LEFT, HandIK.RIGHT]:
+			var out: Vector3 = tangent \
+				if tangent.dot(_wall_touch_side_dir(side)) > 0.0 else -tangent
+			hand_ik.reach(side, (ahead["point"] as Vector3)
+				+ out * WALL_TOUCH_SPAN + normal * WALL_TOUCH_PALM)
+			_wall_touching[side] = true
+		return
+	for side in [HandIK.LEFT, HandIK.RIGHT]:
+		var limit: float = reach \
+			+ (WALL_TOUCH_HYSTERESIS if _wall_touching[side] else 0.0)
+		var hit: Dictionary = probes.side_wall_query(_wall_touch_side_dir(side), limit)
+		if hit["valid"]:
+			hand_ik.reach(side, (hit["point"] as Vector3)
+				+ (hit["normal"] as Vector3) * WALL_TOUCH_PALM)
+			_wall_touching[side] = true
+		elif _wall_touching[side]:
+			hand_ik.release(side)
+			_wall_touching[side] = false
+
+func _release_wall_touch() -> void:
+	if _wall_touching[HandIK.LEFT] or _wall_touching[HandIK.RIGHT]:
+		hand_ik.release()
+		_wall_touching[HandIK.LEFT] = false
+		_wall_touching[HandIK.RIGHT] = false
+
+## World direction of this hand's own side. THE MODEL IS GROUND TRUTH for the
+## sign: its right hand rests at world -x when the body faces -z (measured off
+## the rig), so RIGHT is -basis.x -- and the geometry tests in
+## test_wall_touch.gd are what hold it.
+func _wall_touch_side_dir(side: int) -> Vector3:
+	return global_transform.basis.x * (1.0 if side == HandIK.LEFT else -1.0)
+
 func _attach_hand_ik(body_node: Node3D) -> void:
 	hand_ik = null
 	var skeleton := _find_skeleton(body_node)
@@ -2509,6 +2588,7 @@ func _physics_process(delta: float) -> void:
 	_service_pending_capsule_restore()
 
 	if hand_ik != null:
+		_drive_wall_touch()
 		hand_ik.update(delta)
 	_drive_body_yaw(delta, input)
 	_drive_clip_offset(delta)

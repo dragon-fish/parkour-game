@@ -17,6 +17,37 @@ const NO_HIT := {"valid": false, "top": Vector3.ZERO, "edge": Vector3.ZERO, "nor
 func _no_hit() -> Dictionary:
 	return NO_HIT.duplicate()
 
+## A wall beside the body, straight out along `direction`, within `reach`
+## metres of the capsule's centre line -- {valid, point, normal, distance}.
+##
+## For the hand-on-wall touch: the point is the PERPENDICULAR foot of the
+## capsule on the wall (a straight side ray IS that perpendicular whenever the
+## wall is parallel to travel, and close enough everywhere else). Cast at
+## shoulder height -- the capsule centre plus SIDE_TOUCH_SHOULDER -- because
+## that is where an arm resting on a wall actually meets it.
+const SIDE_TOUCH_SHOULDER := 0.4
+
+func side_wall_query(direction: Vector3, reach: float) -> Dictionary:
+	var origin: Vector3 = global_position + Vector3.UP * SIDE_TOUCH_SHOULDER
+	var flat := Vector3(direction.x, 0.0, direction.z)
+	if flat.length_squared() < 0.0001:
+		return _no_hit()
+	var params := PhysicsRayQueryParameters3D.create(
+		origin, origin + flat.normalized() * reach)
+	var parent := get_parent()
+	if parent is CollisionObject3D:
+		params.exclude = [(parent as CollisionObject3D).get_rid()]
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(params)
+	if hit.is_empty():
+		return _no_hit()
+	var normal: Vector3 = hit["normal"]
+	# Same wall-ness gate the run's side rays use: a floor or shallow ramp a
+	# ray could graze is not a wall a palm rests on.
+	if absf(normal.y) > MAX_WALL_NORMAL_Y:
+		return _no_hit()
+	return {"valid": true, "point": hit["position"], "normal": normal,
+		"distance": origin.distance_to(hit["position"])}
+
 # Floor noise guard: force_raycast_update() on a ray whose origin sits
 # essentially AT a walkable surface (e.g. the floor itself, or -- after
 # hit_from_inside -- a ray reporting its own origin) can report a height a
