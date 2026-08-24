@@ -109,6 +109,15 @@ var _scripted_yaw_lag: float = 0.0
 ## Carrying the displacement instead lets both be true at once: the eye keeps
 ## its own resting place AND rides the head exactly, which is what stops the
 ## body reaching the camera at all.
+## How far ahead of the capsule's axis the first-person eye sits, in metres.
+## Per-model, pushed by Player from the body profile. ✅ THE OWNER's call: the
+## model used to be pushed BACK off the axis to keep the head mesh out of the
+## camera ("模型略微往后偏移以防相机穿模"), which left the body standing well
+## short of every wall it faced. Swapping the frame -- model on the axis, eye
+## forward by the same amount -- keeps the eye-to-head relation identical
+## while the body meets the world where it looks like it does.
+var eye_forward: float = 0.0
+
 var _head_local_offset: Vector3 = Vector3.ZERO
 ## True only for ticks Player actually supplied a head offset -- i.e. a body is
 ## attached AND Player._resolve_head_node() matched something in it.
@@ -165,6 +174,7 @@ var _cinematic_pitch: float = 0.0
 func setup(cfg: MovementConfig) -> void:
 	_config = cfg
 	position.y = cfg.camera.eye_height
+	position.z = -eye_forward
 	if camera != null:
 		camera.fov = cfg.camera.fov_base
 	# NOT loaded here. setup() runs in tests too, and a preference file left
@@ -569,7 +579,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# whatever the cutscene last passed to set_cinematic_pose(). Without this
 	# the death sequence would fight running sway for the same transform.
 	if _cinematic:
-		position = Vector3(0.0, _config.camera.eye_height, 0.0) + _cinematic_offset
+		position = Vector3(0.0, _config.camera.eye_height, -eye_forward) + _cinematic_offset
 		rotation.z = _cinematic_roll
 		rotation.x = _cinematic_pitch
 		return
@@ -589,6 +599,8 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# exactly once, at the very end of this function.
 	var base_position := Vector3.ZERO
 	base_position.y = _config.camera.eye_height
+	if not third_person:
+		base_position.z = -eye_forward
 
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 

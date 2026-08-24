@@ -285,6 +285,8 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## it sits, a fact about the asset, not a feel value anyone would want to
 ## dial while playing.
 @export var body_mount_offset: Vector3 = Vector3.ZERO
+## See CameraRig.eye_forward. Pushed there on body attach.
+@export var body_eye_forward: float = 0.0
 
 ## Per-model facing/orientation correction for the mount point, in degrees
 ## about each local axis (same convention as Node3D.rotation_degrees).
@@ -1125,6 +1127,8 @@ func _attach_body(scene: PackedScene) -> void:
 	ragdoll = Ragdoll.new()
 	head_node = _resolve_head_node(body)
 	_attach_hand_ik(body)
+	if camera_rig != null:
+		camera_rig.eye_forward = body_eye_forward
 	_attach_head_look(body)
 	if head_node != null:
 		head_rest_local = to_local(head_node.global_position)
