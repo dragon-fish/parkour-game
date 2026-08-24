@@ -1,10 +1,9 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://dmr87yx4rub3d"]
 
-[ext_resource type="Script" path="res://scripts/level/arena.gd" id="1_tbgi4"]
+[ext_resource type="Script" uid="uid://c0r485cb3u71f" path="res://scripts/level/arena.gd" id="1_tbgi4"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="2_tefeu"]
-[ext_resource type="Script" path="res://scripts/player/player.gd" id="3_o6xl0"]
-[ext_resource type="Script" path="res://scripts/debug/debug_hud.gd" id="4_tipki"]
-[ext_resource type="Script" path="res://scripts/debug/tuning_panel.gd" id="5_85g3d"]
+[ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="4_tipki"]
+[ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="5_85g3d"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_choun"]
 
@@ -837,11 +836,7 @@ shape = SubResource("BoxShape3D_f5chs")
 [node name="Mesh" type="MeshInstance3D" parent="ShaftArea/Shaft_East" unique_id=1510609942]
 mesh = SubResource("BoxMesh_eh25q")
 
-[node name="Player" type="CharacterBody3D" parent="." unique_id=1296298088 node_paths=PackedStringArray("camera_rig", "probes", "screen_effects") instance=ExtResource("2_tefeu")]
-script = ExtResource("3_o6xl0")
-camera_rig = NodePath("CameraRig")
-probes = NodePath("Probes")
-screen_effects = NodePath("CameraRig/ScreenEffects")
+[node name="Player" parent="." unique_id=1296298088 instance=ExtResource("2_tefeu")]
 
 [node name="DebugHud" type="CanvasLayer" parent="." unique_id=315255858 node_paths=PackedStringArray("player")]
 script = ExtResource("4_tipki")
