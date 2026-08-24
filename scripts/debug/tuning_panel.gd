@@ -8,20 +8,57 @@ extends CanvasLayer
 const PRESET_DIR := "user://presets"
 ## Slider range is this multiple of the property's default value.
 const RANGE_FACTOR := 3.0
+## The Debug tab's checkboxes: one row of overlay label + the node name
+## DebugHud gives that overlay (debug_hud.gd ~36-60), so the panel can find it
+## in the "debug_overlay" group without knowing its class. Order here is
+## display order. Only Capsule and Scripted path keep a key, so only those two
+## labels carry one -- see the F9/F11 removal in the other three scripts.
+const DEBUG_OVERLAYS: Array[Dictionary] = [
+	{"label": "Capsule (F10)", "node_name": "CapsuleDebug"},
+	{"label": "Scripted path (F12)", "node_name": "ScriptedPathDebug"},
+	{"label": "Shimmy probes", "node_name": "ShimmyDebug"},
+	{"label": "Clip offset tuner", "node_name": "ClipOffsetTuner"},
+]
 
 @export var config: MovementConfig
 
 var _panel: PanelContainer
 var _preset_name: LineEdit
 var _status: Label
+## node_name -> CheckBox, filled by _add_debug_tab().
+var _overlay_checkboxes: Dictionary = {}
+## node_name -> bool, the toggle model. Loaded once in _ready() (headless and
+## cheap, per DebugToggles) and kept in memory as the write-through cache for
+## every checkbox change, so a save never has to re-read the file it is about
+## to overwrite.
+var _toggle_states: Dictionary = {}
 
 func _ready() -> void:
 	visible = false
 	DirAccess.make_dir_recursive_absolute(PRESET_DIR)
+	_toggle_states = DebugToggles.load_states()
 	# Godot readies children before parents, so `config` is still null here.
 	# Arena injects it during its own _ready(); deferring the build to the end
 	# of the frame guarantees the injection has already happened.
 	call_deferred("_build_ui")
+
+func _process(_delta: float) -> void:
+	# Two-way sync, and only worth the per-frame walk while the panel is
+	# actually being looked at: a keyboard toggle (F10/F12) must not leave a
+	# checkbox lying about what is on screen.
+	if not visible:
+		return
+	for node_name in _overlay_checkboxes:
+		var overlay := _find_overlay(node_name)
+		if overlay == null or not overlay.has_method("overlay_shown"):
+			continue
+		var checkbox: CheckBox = _overlay_checkboxes[node_name]
+		# _no_signal: this is a read-back, not a user action. A plain
+		# `.button_pressed =` would fire `toggled` straight back into
+		# _on_overlay_toggled(), which would re-drive the very overlay this
+		# frame is only trying to reflect, and re-save the toggle file for a
+		# state that did not actually change.
+		checkbox.set_pressed_no_signal(overlay.overlay_shown())
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -76,29 +113,132 @@ func _build_ui() -> void:
 	_panel.custom_minimum_size = Vector2(420.0, 0.0)
 	add_child(_panel)
 
+	var root := VBoxContainer.new()
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_panel.add_child(root)
+
+	# GLOBAL AREA, above the tabs: a preset save/load is one click no matter
+	# which page happens to be open.
+	_add_preset_row(root)
+
+	var tabs := TabContainer.new()
+	tabs.custom_minimum_size = Vector2(420.0, 620.0)
+	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.add_child(tabs)
+
+	# FIRST TAB, always: the Debug page is not a tunable group, so it does not
+	# come from collect_tunables() -- it is added once, ahead of the loop
+	# below, which is what makes it the first child and so the first tab.
+	_add_debug_tab(tabs)
+
+	# One tab per distinct group, auto-generated in encounter order -- ZERO
+	# CURATION, so a config group added to MovementConfig later shows up here
+	# for free. Same standing principle collect_tunables() itself follows;
+	# rows already arrive grouped by sub-resource because that walk finishes
+	# one sub-resource fully before moving to the next, so a group change in
+	# the row stream is exactly a page change here.
+	var current_group := ""
+	var group_column: VBoxContainer = null
+	for row in collect_tunables(config):
+		if row["group"] != current_group:
+			current_group = row["group"]
+			group_column = _add_group_tab(tabs, current_group)
+		_add_slider(group_column, row)
+
+	# The overlays DebugHud spawns are themselves add_child.call_deferred()'d
+	# (debug_hud.gd ~36-60), so at THIS point -- already one frame deferred
+	# from _ready() -- they may or may not exist yet, depending on whichever
+	# of the two _ready()s the scene tree happens to run first. One more
+	# deferred hop makes the ordering a non-issue instead of a coin flip.
+	call_deferred("_apply_persisted_toggles")
+
+## Builds the Debug page: one CheckBox per overlay in DEBUG_OVERLAYS, wired
+## both ways -- pressing one drives the matching overlay and persists every
+## overlay's state; _process() reads the overlay back into the checkbox so a
+## keyboard toggle never desyncs the UI.
+func _add_debug_tab(tabs: TabContainer) -> void:
+	var column := VBoxContainer.new()
+	column.name = "Debug"
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tabs.add_child(column)
+
+	for entry in DEBUG_OVERLAYS:
+		var node_name: String = entry["node_name"]
+		var checkbox := CheckBox.new()
+		checkbox.text = entry["label"]
+		checkbox.button_pressed = bool(_toggle_states.get(node_name, false))
+		checkbox.toggled.connect(func(on: bool) -> void:
+			_on_overlay_toggled(node_name, on))
+		column.add_child(checkbox)
+		_overlay_checkboxes[node_name] = checkbox
+
+## One tab page per config group: a ScrollContainer (the same 420x620 real
+## estate the single-column panel used to give the whole thing) wrapping a
+## VBox of that group's slider rows. `group_name` becomes the tab's title,
+## which is the row's own dotted-path prefix (e.g. "pawn", "wall_run") --
+## exactly what the old inline "— pawn —" heading said, so nothing is lost by
+## dropping that heading now that the tab itself carries the name.
+func _add_group_tab(tabs: TabContainer, group_name: String) -> VBoxContainer:
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(420.0, 620.0)
-	_panel.add_child(scroll)
+	scroll.name = group_name
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tabs.add_child(scroll)
 
 	var column := VBoxContainer.new()
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(column)
+	return column
 
-	_add_preset_row(column)
+## Applies whatever DebugToggles.load_states() found in _ready() to the actual
+## overlay nodes and their checkboxes. Split out from _ready() itself for the
+## deferred timing above, and guarded on is_inside_tree(): the model tests
+## build a TuningPanel directly without adding it to the SceneTree (see
+## test_tuning_panel_model.gd's own comment on why), so get_tree() below would
+## be null there. Nothing here runs in that case, which is the point -- a
+## headless test that never builds the panel UI must not go looking for
+## overlays that were never spawned for it.
+func _apply_persisted_toggles() -> void:
+	if not is_inside_tree():
+		return
+	for node_name in _overlay_checkboxes:
+		if not _toggle_states.has(node_name):
+			continue
+		var on: bool = _toggle_states[node_name]
+		var overlay := _find_overlay(node_name)
+		if overlay != null:
+			_set_overlay_active(overlay, on)
+		var checkbox: CheckBox = _overlay_checkboxes[node_name]
+		checkbox.set_pressed_no_signal(on)
 
-	# Headings are created lazily, right before the first row that actually
-	# belongs to them, whenever the row's group differs from the previous
-	# row's -- rows already arrive grouped by sub-resource because
-	# collect_tunables() walks one sub-resource fully before moving to the
-	# next.
-	var current_group := ""
-	for row in collect_tunables(config):
-		if row["group"] != current_group:
-			current_group = row["group"]
-			var heading := Label.new()
-			heading.text = "— %s —" % current_group
-			column.add_child(heading)
-		_add_slider(column, row)
+func _on_overlay_toggled(node_name: String, on: bool) -> void:
+	var overlay := _find_overlay(node_name)
+	if overlay != null:
+		_set_overlay_active(overlay, on)
+	_toggle_states[node_name] = on
+	# Written immediately, not batched: the whole point of persisting this is
+	# surviving a crash or a kill from the editor's stop button, same as
+	# CameraRig.save_preferences() next to this file's own precedent.
+	DebugToggles.save_states(_toggle_states)
+
+## The overlay by the node name DebugHud gave it, or null before DebugHud has
+## spawned it (or if this panel is not in the tree at all -- see
+## _apply_persisted_toggles()'s own guard).
+func _find_overlay(node_name: String) -> Node:
+	for node in get_tree().get_nodes_in_group("debug_overlay"):
+		if node.name == node_name:
+			return node
+	return null
+
+## Duck-types the setter: ClipOffsetTuner uses set_active() (its freeze/unfreeze
+## side effects make "toggle" the wrong shape for a plain visibility flag);
+## the other three share show_overlay(). Both remain to widen a match rather
+## than an if-chain, in case a future overlay needs a third shape.
+func _set_overlay_active(overlay: Node, on: bool) -> void:
+	if overlay.has_method("set_active"):
+		overlay.set_active(on)
+	elif overlay.has_method("show_overlay"):
+		overlay.show_overlay(on)
 
 func _add_preset_row(column: VBoxContainer) -> void:
 	var row := HBoxContainer.new()
