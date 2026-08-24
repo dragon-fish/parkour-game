@@ -116,3 +116,13 @@ func test_differs_from_default_ignores_float_noise_but_catches_a_real_change() -
 	assert_false(TuningPanel.differs_from_default(7.19999999, 7.2), \
 		"float noise below the epsilon must not count as a difference")
 	assert_true(TuningPanel.differs_from_default(7.5, 7.2), "an actual change must be caught")
+
+func test_the_tuner_never_persists_across_sessions() -> void:
+	# Activating the tuner PAUSES the tree, so restoring it at boot is a
+	# softlock -- the owner hit it: "T pose，画面冻结无法操作，ESC都无效". With
+	# its F9 binding gone, the panel is the only off-switch, and a panel that
+	# boots into a paused tree it itself caused has no way to be opened.
+	assert_false(TuningPanel.overlay_persists("ClipOffsetTuner"),
+		"persisting the tuner freezes every future boot")
+	assert_true(TuningPanel.overlay_persists("CapsuleDebug"),
+		"a draw-only overlay should still persist")

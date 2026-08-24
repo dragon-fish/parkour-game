@@ -24,8 +24,19 @@ const DEBUG_OVERLAYS: Array[Dictionary] = [
 	{"label": "Capsule (F10)", "node_name": "CapsuleDebug"},
 	{"label": "Scripted path (F12)", "node_name": "ScriptedPathDebug"},
 	{"label": "Shimmy probes", "node_name": "ShimmyDebug"},
-	{"label": "Clip offset tuner", "node_name": "ClipOffsetTuner"},
+	# persist = false: activating the tuner PAUSES the whole tree, so restoring
+	# it at boot is a SOFTLOCK -- the owner hit it: "T pose，画面冻结无法操作，
+	# ESC都无效". With its F9 binding gone, this panel is its only off-switch.
+	{"label": "Clip offset tuner", "node_name": "ClipOffsetTuner", "persist": false},
 ]
+
+## Whether an overlay's state may be persisted across sessions. Anything that
+## does more than draw -- the tuner freezes the game -- must start OFF.
+static func overlay_persists(node_name: String) -> bool:
+	for entry in DEBUG_OVERLAYS:
+		if entry["node_name"] == node_name:
+			return bool(entry.get("persist", true))
+	return true
 
 @export var config: MovementConfig
 
@@ -41,6 +52,10 @@ var _overlay_checkboxes: Dictionary = {}
 var _toggle_states: Dictionary = {}
 
 func _ready() -> void:
+	# ALWAYS, because the clip offset tuner pauses the tree and this panel is
+	# its only off-switch -- a paused panel cannot un-pause anything, which is
+	# the softlock the owner reported. Also what lets F1 open at all mid-pause.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
 	DirAccess.make_dir_recursive_absolute(PRESET_DIR)
 	_toggle_states = DebugToggles.load_states()
@@ -211,6 +226,10 @@ func _apply_persisted_toggles() -> void:
 	for node_name in _overlay_checkboxes:
 		if not _toggle_states.has(node_name):
 			continue
+		# A stale cfg from before an overlay was marked transient must not
+		# re-freeze the game either -- filter on APPLY, not only on save.
+		if not overlay_persists(node_name):
+			continue
 		var on: bool = _toggle_states[node_name]
 		var overlay := _find_overlay(node_name)
 		if overlay != null:
@@ -222,6 +241,8 @@ func _on_overlay_toggled(node_name: String, on: bool) -> void:
 	var overlay := _find_overlay(node_name)
 	if overlay != null:
 		_set_overlay_active(overlay, on)
+	if not overlay_persists(node_name):
+		return
 	_toggle_states[node_name] = on
 	# Written immediately, not batched: the whole point of persisting this is
 	# surviving a crash or a kill from the editor's stop button, same as
