@@ -656,6 +656,11 @@ func _target_animation() -> StringName:
 			# stripped on merge), which is what a fall is. It led with the fox's
 			# `jump` before, which is a whole take-off-to-landing clip.
 			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"Idle", &"idle"])
+		Move.ZIPLINE:
+			# No zipline clip in the packs. The airborne loop is the closest
+			# honest pose until contact IK gives the hands the cable -- the
+			# owner: "动画可以先不管，或者用 Jump + 手部 IK".
+			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"Idle", &"idle"])
 		Move.SLIDE:
 			# A GENUINE MATCH: UAL2 ships Slide_Start / Slide / Slide_Exit. This
 			# case is the middle one only -- the two ends are one-shots, armed

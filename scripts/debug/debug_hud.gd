@@ -96,6 +96,7 @@ func _process(delta: float) -> void:
 		# is no separate state machine left for it to be reporting.
 		"move       %s" % player.move_manager.current_name,
 		"scripted   %s" % _scripted_line(),
+		"zip        %s" % _zip_line(),
 		"speed      h %.2f  v %.2f m/s"
 			% [player.horizontal_speed(), player.velocity.y],
 		# ABSOLUTE, world-space: the body's own facing and the eye's own pitch,
@@ -275,3 +276,16 @@ func _scripted_line() -> String:
 	return "%s  %s  arc %.2f  lead %.2f  %.0f%%" % [
 		player.move_manager.current_name, shape, arc, lead,
 		float(path.get("progress", 0.0)) * 100.0]
+
+## The ride, or "-" when not on a cable: where along it, how fast (the owner
+## reads km/h off the original's HUD), and this tick's acceleration.
+func _zip_line() -> String:
+	if player == null or player.move_manager == null \
+			or player.move_manager.current_name != Move.ZIPLINE:
+		return "-"
+	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)
+	if zip == null or zip.line() == null:
+		return "-"
+	return "%.1f / %.1f m   %.2f m/s (%.0f km/h)   a %.1f" % [
+		zip.ride_offset(), zip.line().length(),
+		zip.ride_speed(), zip.ride_speed() * 3.6, zip.ride_acceleration()]

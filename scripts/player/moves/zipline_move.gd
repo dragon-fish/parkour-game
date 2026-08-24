@@ -117,3 +117,23 @@ func ride_acceleration() -> float:
 
 func line() -> InterestLine:
 	return _line
+
+# --- debug view ------------------------------------------------------------
+#
+# The F12 overlay (ScriptedPathDebug) draws any move that can sample itself.
+# `t` here is the fraction of the CABLE, not of time: the ride has no duration.
+
+func sample(t: float) -> Vector3:
+	if not is_instance_valid(_line):
+		return player.global_position
+	return _line.sample(t * _line.length())["position"] - Vector3.UP * cfg.hang_offset
+
+func path_debug() -> Dictionary:
+	if _aborted or not is_instance_valid(_line):
+		return {}
+	var total: float = _line.length()
+	var from: Vector3 = sample(0.0)
+	var to: Vector3 = sample(1.0)
+	return {"from": from, "to": to, "progress": _s / total,
+		"lead": 0.0, "arc": 0.0, "duration": 0.0,
+		"peak": maxf(from.y, to.y)}

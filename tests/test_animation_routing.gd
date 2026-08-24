@@ -54,7 +54,7 @@ func test_every_move_has_its_own_case() -> void:
 	var missing: Array[String] = []
 	for name in ["WALKING", "FALLING", "FALL_UNCONTROLLED", "JUMP", "LANDING", \
 			"SKILL_ROLL", "SLIDE", "CROUCH", "SPEED_VAULT", "INTO_GRAB", \
-			"GRAB", "WALL_RUN", "WALL_CLIMB", "TURN_180"]:
+			"GRAB", "WALL_RUN", "WALL_CLIMB", "TURN_180", "ZIPLINE"]:
 		if not source.contains("Move.%s:" % name):
 			missing.append(name)
 	assert_eq(missing, [] as Array[String], \
