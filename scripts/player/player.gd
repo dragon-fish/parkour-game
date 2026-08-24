@@ -460,7 +460,7 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 var active_obstacle: Vector2 = Vector2(-1.0, 0.0)
 
 ## Which PART of each clip to play. See BodyProfile.clip_timings, and
-## _apply_clip_timing() for what it does with it.
+## apply_clip_timing() for what it does with it.
 @export var body_clip_timings: Dictionary = {}
 
 @export var body_run_reference_speed: float = 7.2
@@ -1285,7 +1285,8 @@ func _drive_clip_offset(delta: float) -> void:
 		return
 	# How much of the offset the EYE follows right now. Eased on its own
 	# camera-side time constant rather than flipping with scripted_progress():
-	# the clip often starts BEFORE the move (preemption) and outlives it, so a
+	# the clip starts the tick its move's clip is chosen (CharacterAnimator._route()
+	# hands it straight to the gate, which does not wait) and outlives it, so a
 	# binary hand-over snaps the view by whatever the offset has reached --
 	# ✅ THE OWNER: "StepUp应用往后0.2m的偏移没有过渡，进入退出时会闪一下."
 	var follow_target: float = 1.0 if scripted_progress() >= 0.0 else 0.0
@@ -1983,7 +1984,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 			continue
 		var clip_node := AnimationNodeAnimation.new()
 		clip_node.animation = clip_name
-		_apply_clip_timing(clip_node, clip_name, anim_player)
+		apply_clip_timing(clip_node, clip_name, anim_player)
 		state_machine.add_node(String(clip_name), clip_node)
 		# The reversed twin, for moving backwards. Same clip resource, played
 		# the other way -- see _REVERSIBLE_CLIPS.
@@ -1991,7 +1992,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 			var backward := AnimationNodeAnimation.new()
 			backward.animation = clip_name
 			backward.play_mode = AnimationNodeAnimation.PLAY_MODE_BACKWARD
-			_apply_clip_timing(backward, clip_name, anim_player)
+			apply_clip_timing(backward, clip_name, anim_player)
 			state_machine.add_node(String(clip_name) + BACKWARD_SUFFIX, backward)
 
 	# EVERY ORDERED PAIR GETS AN EDGE, so travel() always has a path.
@@ -2051,14 +2052,45 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# doing exactly what it did; it just sits one level down, so travel() now
 	# goes through parameters/<GRAPH_STATES>/playback instead of
 	# parameters/playback. CharacterAnimator owns both names.
+	#
+	# 🎯 AND THE SCRIPTED CLIPS DO NOT GO THROUGH IT AT ALL. They play on two bare
+	# slots wired into an AnimationNodeTransition alongside it:
+	#
+	#     states ------.
+	#     scripted_a ---+--> gate --> speed --> output
+	#     scripted_b ---'
+	#
+	# The state machine cannot start a clip mid-transition without either waiting
+	# out the fade (travel()) or throwing it away (start()), and the owner has
+	# reported both as bugs -- see CharacterAnimator._route() for their words and
+	# for the measurement. AnimationNodeTransition has neither problem: it
+	# switches inputs the moment it is asked, WITH its own xfade, and interrupts
+	# a fade of its own gracefully (verified on a bare tree in 4.7.1 -- a request
+	# issued at 0.117 s of a 0.15 s fade started a fresh full fade on the very
+	# next tick).
+	#
+	# TWO slots rather than one, ping-ponged by the animator, so that CONSECUTIVE
+	# scripted clips -- a mantle chain -- also cross-fade instead of cutting: an
+	# input cannot fade into itself.
 	var blend_tree := AnimationNodeBlendTree.new()
 	blend_tree.add_node(CharacterAnimator.GRAPH_STATES, state_machine)
+	for slot in CharacterAnimator.GRAPH_SCRIPTED_SLOTS:
+		# BARE, with no clip. The animator loads one the moment a scripted move
+		# asks for it, and applies the same trim the state machine's own node for
+		# that clip carries.
+		blend_tree.add_node(slot, AnimationNodeAnimation.new())
+	blend_tree.add_node(CharacterAnimator.GRAPH_GATE,
+		_scripted_gate(body_animation_blend_time))
 	blend_tree.add_node(CharacterAnimator.GRAPH_TIME_SCALE, AnimationNodeTimeScale.new())
 	# connect_node(input_node, input_index, output_node) reads backwards: it
-	# feeds output_node's OUTPUT into input_node's input port. So these two say
-	# "states -> speed -> output". An AnimationNodeOutput named `output` exists
-	# in every blend tree by default; it is not added here.
-	blend_tree.connect_node(CharacterAnimator.GRAPH_TIME_SCALE, 0, CharacterAnimator.GRAPH_STATES)
+	# feeds output_node's OUTPUT into input_node's input port. So these say
+	# "{states, scripted_a, scripted_b} -> gate -> speed -> output". An
+	# AnimationNodeOutput named `output` exists in every blend tree by default;
+	# it is not added here.
+	for index in CharacterAnimator.GRAPH_GATE_INPUTS.size():
+		blend_tree.connect_node(CharacterAnimator.GRAPH_GATE, index,
+			CharacterAnimator.GRAPH_GATE_INPUTS[index])
+	blend_tree.connect_node(CharacterAnimator.GRAPH_TIME_SCALE, 0, CharacterAnimator.GRAPH_GATE)
 	blend_tree.connect_node(&"output", 0, CharacterAnimator.GRAPH_TIME_SCALE)
 
 	var anim_tree := AnimationTree.new()
@@ -2161,13 +2193,32 @@ func refresh_clip_timings() -> void:
 		var node := states.get_node(clip) as AnimationNodeAnimation
 		if node == null:
 			continue
-		if body_clip_timings.has(clip):
-			_apply_clip_timing(node, clip, anim_player)
-		else:
-			node.use_custom_timeline = false
+		apply_clip_timing(node, clip, anim_player)
+	# THE SCRIPTED SLOTS TOO, and they are the ones that matter most: the trim
+	# exists for the vault and the mantle, which are exactly the clips that no
+	# longer play through the state machine at all. Keyed by whatever clip the
+	# slot is currently carrying rather than by its own name.
+	for slot in CharacterAnimator.GRAPH_SCRIPTED_SLOTS:
+		if not graph.has_node(slot):
+			continue
+		var slot_node := graph.get_node(slot) as AnimationNodeAnimation
+		if slot_node == null or slot_node.animation == &"":
+			continue
+		apply_clip_timing(slot_node, slot_node.animation, anim_player)
 
-func _apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		anim_player: AnimationPlayer) -> void:
+## Applies `clip_name`'s entry in body_clip_timings to `node`, or clears any trim
+## already on it when the table has nothing to say.
+##
+## 📌 ONE HELPER, TWO CALLERS. _wire_body_animation() uses it on the state
+## machine's per-clip nodes; CharacterAnimator uses it on a scripted slot the
+## moment it loads a clip into one. A clip has to trim identically whichever of
+## the two is playing it, and two copies of these five lines would not.
+func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		anim_player: AnimationPlayer) -> void:
 	if not body_clip_timings.has(clip_name):
+		# CLEARED, not left alone. A slot carries whatever the last scripted move
+		# put on it, so an untrimmed clip loaded onto a slot that was trimmed
+		# would inherit the previous clip's start_offset.
+		node.use_custom_timeline = false
 		return
 	var entry = body_clip_timings[clip_name]
 	if not (entry is Array and entry.size() >= 2):
@@ -2224,6 +2275,31 @@ func _exit_blend_time(from_name: StringName, to_name: StringName) -> float:
 		return body_slide_to_crouch_blend_time
 	return body_slide_exit_blend_time
 
+## The three-input switch the scripted clips play behind. See
+## _wire_body_animation() for the shape of the graph and why it exists.
+##
+## ⚠️ THE INPUT PROPERTY NAMES ARE PER-INDEX AND UNDOCUMENTED ON THE CLASS:
+## AnimationNodeTransition exposes only `input_count`, `xfade_time`,
+## `xfade_curve` and `allow_transition_to_self` to ClassDB, and grows
+## `input_<i>/name`, `input_<i>/auto_advance`, `input_<i>/break_loop_at_end` and
+## `input_<i>/reset` on the INSTANCE once set_input_count() has run. Verified by
+## printing get_property_list() on a live 4.7.1 node rather than assumed.
+##
+## 📌 RESET IS ON FOR THE SLOTS AND OFF FOR THE STATE MACHINE, and it defaults to
+## ON for all three. A slot is re-used with a different clip loaded into it, so
+## entering it has to rewind -- this is the same "the action begins now" that the
+## old start(target, true) meant. The state machine is the opposite case: coming
+## back to a run that has been playing underneath all along must not restart it.
+func _scripted_gate(seconds: float) -> AnimationNodeTransition:
+	var gate := AnimationNodeTransition.new()
+	gate.set_input_count(CharacterAnimator.GRAPH_GATE_INPUTS.size())
+	gate.xfade_time = maxf(seconds, 0.0)
+	for index in CharacterAnimator.GRAPH_GATE_INPUTS.size():
+		var input: StringName = CharacterAnimator.GRAPH_GATE_INPUTS[index]
+		gate.set("input_%d/name" % index, String(input))
+		gate.set("input_%d/reset" % index, input != CharacterAnimator.GRAPH_STATES)
+	return gate
+
 func _blend_transition(seconds: float) -> AnimationNodeStateMachineTransition:
 	var transition := AnimationNodeStateMachineTransition.new()
 	transition.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_ENABLED
@@ -2278,9 +2354,10 @@ func _body_has_clip(anim_player: AnimationPlayer, clip_name: StringName) -> bool
 ## when nothing else plays it.
 ## 📌 PUBLIC, and named for the PREDICATE rather than for the hips, because there
 ## are two consumers now: _measure_scripted_hip_peaks() below, and
-## CharacterAnimator._update(), which lets a clip on this list pre-empt a
-## transition into one that is not. Both are asking the same question -- "is a
-## scripted move playing this?" -- and two lists that answer it would drift.
+## CharacterAnimator._route(), which plays a clip on this list on one of the
+## gate's own slots instead of through the state machine. Both are asking the
+## same question -- "is a scripted move playing this?" -- and two lists that
+## answer it would drift.
 const SCRIPTED_MOVE_CLIPS := [&"StepUp", &"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
 	&"SafetyVault", &"Climb_Left", &"Climb_Right", &"Climb_Idle"]
 

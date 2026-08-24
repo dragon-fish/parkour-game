@@ -83,7 +83,7 @@ func test_a_trim_plays_the_kept_frames_at_their_own_pace() -> void:
 
 func test_stretching_the_timeline_freezes_the_end_of_the_trim() -> void:
 	# THE PAIR, and the reason stretch_time_scale is off in
-	# Player._apply_clip_timing(). This is not a hypothetical: it is what the
+	# Player.apply_clip_timing(). This is not a hypothetical: it is what the
 	# owner watched happen, reproduced with nothing else in the way.
 	#
 	# stretch_time_scale maps the animation's ORIGINAL length onto
@@ -110,7 +110,7 @@ func test_the_player_asks_for_the_kept_range_without_the_stretch() -> void:
 	var player := Player.new()
 	# A `to frame` of 0 means "run on to the end", stored as a length of 0.
 	player.body_clip_timings[CLIP] = [float(FROM_FRAME) / FPS, 0.0]
-	player._apply_clip_timing(node, CLIP, anim_player)
+	player.apply_clip_timing(node, CLIP, anim_player)
 	player.free()
 	assert_true(node.use_custom_timeline, "the trim was not applied at all")
 	assert_almost_eq(node.start_offset, float(FROM_FRAME) / FPS, 0.001,
