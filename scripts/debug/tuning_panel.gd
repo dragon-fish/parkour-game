@@ -254,6 +254,17 @@ func _set_overlay_active(overlay: Node, on: bool) -> void:
 static func differs_from_default(value: float, default_value: float) -> bool:
 	return absf(value - default_value) > RESET_EPSILON
 
+## The one seam all three sites that can move a slider's value -- construction
+## (seeding), a drag (the value_changed lambda), and a preset Load
+## (_refresh_sliders()) -- go through to keep a row's reset button in sync.
+## Extracted after a review caught _refresh_sliders() skipping this: it seeded
+## the slider and the value label on Load but never recomputed the button, so
+## a row could come back from Load either stuck showing ↺ after landing back
+## on its default, or showing none after landing away from it. A fourth call
+## site cannot forget this again without also duplicating the one line here.
+static func _sync_reset_button(reset_button: Button, value: float, default_value: float) -> void:
+	reset_button.visible = differs_from_default(value, default_value)
+
 func _add_preset_row(column: VBoxContainer) -> void:
 	var row := HBoxContainer.new()
 	column.add_child(row)
@@ -321,7 +332,7 @@ func _add_slider(column: VBoxContainer, row: Dictionary) -> void:
 	reset_button.text = "↺"
 	reset_button.tooltip_text = "Reset to default (%.4f)" % default_value
 	reset_button.custom_minimum_size = Vector2(28.0, 0.0)
-	reset_button.visible = differs_from_default(slider.value, default_value)
+	_sync_reset_button(reset_button, slider.value, default_value)
 	reset_button.pressed.connect(func() -> void:
 		slider.value = default_value)
 	hrow.add_child(reset_button)
@@ -330,10 +341,13 @@ func _add_slider(column: VBoxContainer, row: Dictionary) -> void:
 	slider.value_changed.connect(func(v: float) -> void:
 		owner.set(property, v)
 		value_label.text = "%.4f" % v
-		reset_button.visible = differs_from_default(v, default_value))
+		_sync_reset_button(reset_button, v, default_value))
 
-	# Reloading a preset must move the sliders too, not just the values.
+	# Reloading a preset must move the sliders too, not just the values --
+	# and, past _refresh_sliders(), the reset button too. Both meta keys are
+	# read back together there.
 	slider.set_meta("row", row)
+	slider.set_meta("reset_button", reset_button)
 
 func _sliders() -> Array[HSlider]:
 	var out: Array[HSlider] = []
@@ -358,6 +372,14 @@ func _refresh_sliders() -> void:
 		var value_label := slider.get_parent().get_child(1) as Label
 		if value_label != null:
 			value_label.text = "%.4f" % slider.value
+		# The reset button is the THIRD site that can move a slider's value
+		# (construction and a drag are the other two, both above) -- a Load
+		# that lands a row back on its default, or away from it, must move
+		# the button the same way a drag would, or it goes stale until the
+		# next drag happens to touch that row.
+		var reset_button := slider.get_meta("reset_button") as Button
+		if reset_button != null:
+			_sync_reset_button(reset_button, slider.value, float(row["default"]))
 
 func _on_save() -> void:
 	var path := "%s/%s.tres" % [PRESET_DIR, _preset_name.text]
