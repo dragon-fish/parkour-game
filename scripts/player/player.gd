@@ -1335,13 +1335,13 @@ func _drive_clip_offset(delta: float) -> void:
 	# +0.00) and StepUp, SafetyVault and ClimbUp_1m move nothing -- so there is no
 	# step to ease over at either boundary.
 	#
-	# ⚠️ THAT PREMISE IS ABOUT FRAME 0, AND A TRIM CAN QUIETLY BREAK IT. A
-	# clip_timings entry moves the played start; if it lands where the hips are
-	# OFF rest, the cancellation snaps the root by that much on the switch tick.
-	# Measured on StepUp: the old 0.1667 s trim sat exactly in the pre-push
-	# crouch, hips 0.158 m below rest -- a 0.19 m root jump the owner reported
-	# as "模型会瞬移一下". A trim must be chosen where the hips CROSS rest
-	# (0.2667 s for StepUp; see the key dump in the session that fixed it).
+	# ⚠️ THAT PREMISE IS ABOUT FRAME 0, AND A TRIM CAN QUIETLY BREAK IT.
+	# StepUp's 0.1667 s trim starts exactly in the pre-push crouch, hips
+	# 0.158 m BELOW rest (measured from ual2_full's own keys) -- and with the
+	# dip cancelled too, the root snapped 0.19 m up on the switch tick, which
+	# the owner reported as "模型会瞬移一下". The trim stays (the owner: the
+	# action IS the foot-lift, "不要再往后裁") -- what changed is that
+	# _cancelled_lift() no longer cancels the dip. See its own note.
 	var wanted_cancel: float = 1.0 - _kept_clip_lift
 	if is_zero_approx(_kept_clip_lift):
 		_lift_cancel_amount = wanted_cancel
@@ -1544,7 +1544,7 @@ func _apply_clip_offset() -> void:
 	# out, while a fold genuinely lowers the head and the eye must follow. It
 	# does so for free -- the head bone moves with the model, and the head-follow
 	# reads the bone.
-	var lift: float = clip_lift() * _lift_cancel_amount
+	var lift: float = _cancelled_lift()
 	body.transform = Transform3D(extra * _body_mount.basis,
 			_body_mount.origin + _clip_offset_position + curve_position
 			- Vector3(0.0, _fold_drop + lift, 0.0))
@@ -1595,6 +1595,19 @@ func clip_lift_kept_for(clip: StringName, wanted_rise: float) -> float:
 	if peak <= 0.001:
 		return 0.0
 	return clampf(wanted_rise / peak, 0.0, 1.0)
+
+## The lift the body placement actually subtracts: only the RISE, times the
+## cancel amount.
+##
+## ⚠️ THE DIP IS DELIBERATELY KEPT. A hip position BELOW rest is the clip's own
+## anticipation -- StepUp crouches 0.158 m before the push -- and the scripted
+## path carries no downward leg for it to double-count against, so cancelling
+## it does not pin anything: it LIFTS the whole root by the dip's depth the
+## instant a trimmed clip cuts in (the owner's "模型会瞬移一下"). Clamped here,
+## the switch tick is continuous and the crouch reads as a body gathering
+## itself -- feet planted, hips sinking -- which is what the frames are.
+func _cancelled_lift() -> float:
+	return maxf(clip_lift(), 0.0) * _lift_cancel_amount
 
 ## How far the clip has lifted the hips above their rest height, in metres of
 ## world space -- scaled, because bone space is model space.
@@ -1661,7 +1674,7 @@ func body_root_debug() -> Dictionary:
 		"mount_y": _body_mount.origin.y,
 		"drop": _fold_drop,
 		"clip_y": _clip_offset_position.y,
-		"lift": clip_lift() * _lift_cancel_amount,
+		"lift": _cancelled_lift(),
 		"fold_drop": _fold_drop,
 		"lift_cancel": _lift_cancel_amount,
 		"lift_kept": _kept_clip_lift,
