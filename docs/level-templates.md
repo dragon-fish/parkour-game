@@ -116,3 +116,17 @@ end-to-end check — a player dropped into the template actually settles onto
 the floor and ends up in the `Ground` state, rather than merely having the
 right node names. Run it (along with everything else) via
 `pwsh tools/run_tests.ps1`.
+
+## Placing a zipline (or any interest line)
+
+1. Add Node → `InterestLine` (it is a `Path3D`; the class is registered from
+   `scripts/level/interest_line.gd`).
+2. In the 3D viewport, use the Path3D toolbar to click the control points:
+   two for a straight cable, three with the middle one dragged down for a
+   sagging one. Points are local to the node, so moving the node moves the
+   whole cable.
+3. In the inspector leave `kind = ZIPLINE` and `reach_radius = 0.6` unless
+   you mean otherwise.
+
+The collision volume is built along the curve at runtime; do not add one by
+hand. The cable has no mesh yet — F12 draws it in play.

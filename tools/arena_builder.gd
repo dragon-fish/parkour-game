@@ -931,6 +931,50 @@ func build() -> Node3D:
 		Vector3(3.0, shaft_mid, SHAFT_DEPTH),
 		Vector3(SHAFT_GAP * 0.5 + 1.5, shaft_mid * 0.5, 0.0), shaft_colour))
 
+	# --- Zipline --------------------------------------------------------------
+	#
+	# A platform to jump from and a sagging cable to catch. 05 §5.5: no speed
+	# cap, so the cable is made long enough to feel the acceleration. EAST of
+	# the shaft, x [48, 80], z [37, 43].
+	#
+	# The cable is an InterestLine (scripts/level/interest_line.gd): the curve
+	# alone is authored, the volume grows itself at runtime and so is NOT part
+	# of this scene.
+	var zip_area := Node3D.new()
+	zip_area.name = "ZiplineArea"
+	zip_area.position = Vector3(50.0, 0.0, 40.0)
+	_attach(_root, zip_area)
+	var zip_colour := Color(0.62, 0.42, 0.20)
+	const ZIP_PLATFORM_HEIGHT := 4.0
+	const ZIP_RUN := 28.0
+	const ZIP_DROP := 3.0
+	# Above the platform by less than a standing jump's apex plus reach.
+	const ZIP_CABLE_ABOVE := 2.3
+	_attach(zip_area, _box("Zip_Platform",
+		Vector3(4.0, ZIP_PLATFORM_HEIGHT, 6.0),
+		Vector3(0.0, ZIP_PLATFORM_HEIGHT * 0.5, 0.0), zip_colour))
+	# Stairs up the back of the platform, one max_step_height each.
+	var zip_config := MovementConfig.new()
+	var zip_step: float = zip_config.pawn.max_step_height - 0.05
+	var zip_steps: int = int(ceil(ZIP_PLATFORM_HEIGHT / zip_step))
+	for i in zip_steps:
+		var h: float = zip_step * (i + 1)
+		_attach(zip_area, _box("Zip_Stair%d" % i,
+			Vector3(1.0, h, 6.0),
+			Vector3(-2.0 - 0.5 - 1.0 * i, h * 0.5, 0.0), zip_colour))
+	var cable := InterestLine.new()
+	cable.name = "Zip_Cable"
+	cable.kind = InterestLine.Kind.ZIPLINE
+	var curve := Curve3D.new()
+	var start := Vector3(1.0, ZIP_PLATFORM_HEIGHT + ZIP_CABLE_ABOVE, 0.0)
+	var finish := Vector3(1.0 + ZIP_RUN, ZIP_PLATFORM_HEIGHT + ZIP_CABLE_ABOVE - ZIP_DROP, 0.0)
+	curve.add_point(start)
+	# The sag: the middle hangs a metre under the chord.
+	curve.add_point((start + finish) * 0.5 - Vector3(0.0, 1.0, 0.0))
+	curve.add_point(finish)
+	cable.curve = curve
+	_attach(zip_area, cable)
+
 	# --- Floor ----------------------------------------------------------------
 	#
 	# Sized from the union of every practice area's OWN bounds, not the other
