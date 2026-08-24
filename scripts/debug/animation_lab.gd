@@ -723,8 +723,13 @@ func _graph_fade() -> StringName:
 		return &""
 	return _playback.get_fading_from_node() if _playback != null else &""
 
+## ⚠️ prev_index >= 0 AS WELL AS prev_xfading > 0. On the gate's first switch
+## there is no input to fade from and prev_xfading stays pinned at xfade_time
+## forever -- see CharacterAnimator._gate_fading(), which was bitten by it.
 func _gate_is_fading_in() -> bool:
 	if _anim_tree == null:
+		return false
+	if int(_anim_tree.get("parameters/%s/prev_index" % CharacterAnimator.GRAPH_GATE)) < 0:
 		return false
 	return float(_anim_tree.get(
 		"parameters/%s/prev_xfading" % CharacterAnimator.GRAPH_GATE)) > 0.0

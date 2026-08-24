@@ -176,6 +176,10 @@ var _gate_input: StringName = &""
 ## The scripted slot most recently claimed, as an index into
 ## GRAPH_SCRIPTED_SLOTS, or -1 before the first one. The ping-pong.
 var _slot: int = -1
+## Seconds an ordinary clip must still keep asking before the gate is allowed to
+## leave a scripted slot. See _route()'s hysteresis note -- this is what stops a
+## scripted -> ordinary -> scripted sandwich from popping.
+var _hold_left: float = 0.0
 
 ## The move the previous tick was in, so a CHANGE of move can be noticed. Every
 ## routing decision above this line is stateless -- it asks what the body is
@@ -228,7 +232,7 @@ func _physics_process(delta: float) -> void:
 	if target == Move.KEEP:
 		return
 	current_clip = target
-	_route(target)
+	_route(target, delta)
 	_drive_speed(target)
 
 ## Puts `target` on screen: a scripted move's clip onto one of the gate's own
@@ -254,9 +258,21 @@ func _physics_process(delta: float) -> void:
 ## stack: the graph paid one blend and then went straight to whatever was
 ## current, skipping the clips requested in between, so the cost is one blend per
 ## chain and it hurts in proportion to how SHORT the move is. The vault lost 10
-## of its 27 frames; the pull-up lost 3 of 78. ✅ The owner again, on the vault:
-## "Walk->Jump->StepUp 碰巧 StepUp 的持续时间又很短的话，就几乎全程看不到 StepUp 的
-## 动作."
+## of its 27 frames; the pull-up lost 3 of 78.
+##
+## ✅ THE OWNER AGAIN, on the vault: "Walk->Jump->StepUp 碰巧 StepUp 的持续时间又很短
+## 的话，就几乎全程看不到 StepUp 的动作." The second measurement, on a 1 m obstacle,
+## take frames from one recording. The move asks for StepUp on frame 79 either
+## way:
+##
+##     without   the graph arrives on frame 89   -- 10 of the move's 29 frames
+##     with      the graph arrives on frame 80   -- 1
+##
+## Those ten frames were a Jump_Start blending in, for a Jump state that was the
+## current move for exactly one tick. ⚠️ "29 frames" is what that recording
+## measured; the 2 m table above says the vault lost 10 of 27. Both are
+## reproduced as taken rather than reconciled -- they are different obstacles and
+## the fit stretches the clip differently, so the frame count is not a constant.
 ##
 ## THEN, WITH start(target, true): "和前一个动作完全没有衔接过渡." start() does
 ## arrive at once, by discarding the whole cross-fade -- including the fade OUT
@@ -277,8 +293,42 @@ func _physics_process(delta: float) -> void:
 ## settling from before the scripted move started; that is fine, because the
 ## gate's own fade is what covers the seam and the machine is at zero weight
 ## while it does.
-func _route(target: StringName) -> void:
+##
+## 🎯 AND THE ONE RULE THE OLD preempts() ENCODED SURVIVES, AS HYSTERESIS. Its
+## comment read: "ONE DIRECTION ONLY. A scripted clip may cut in front of an
+## ordinary one; an ordinary one may never cut in front of a scripted one." That
+## is still true, and the gate needs it for a reason of its own.
+##
+## ⚠️ THE SANDWICH POPS. AnimationNodeTransition tracks ONE level of `prev`, so
+## requesting "states" and then a slot inside a single blend window makes it
+## promote the half-faded "states" to full weight and DROP the outgoing slot in
+## one tick. Reproduced on a skeleton: a marker driven by the slot's own clip
+## went 1.5556 -> 0.0000 between two consecutive physics frames. The ping-pong
+## does not help, because it is "states" that gets sandwiched in, not a slot.
+##
+## So an ordinary target does NOT take the gate back immediately. It has to keep
+## asking for a whole body_animation_blend_time first -- unless the gate has
+## already settled, in which case there is no half-faded input to promote and the
+## hand-back is free, which is the ordinary end of every scripted move. A
+## scripted target arriving during the hold goes straight to the other slot: two
+## real inputs, a genuine fade, no promotion.
+##
+## 📌 THE COST IS A SLOT HOLDING ITS LAST FRAME for up to one blend window past
+## the end of its move, and that is accepted.
+##
+## ⚠️ THE MACHINE DOES NOT ADVANCE UNDER THE HOLD -- measured, not assumed: an
+## input the gate is not showing is not processed, so get_current_node() sat on
+## its old node for every tick of the hold and moved on the FIRST tick after the
+## hand-back. So travel() is still issued every held tick (the request is latched
+## and honoured the moment the input goes live again), but what the machine does
+## meanwhile is hold its last pose -- which is the right thing to fade back into
+## anyway.
+func _route(target: StringName, delta: float) -> void:
 	if Player.SCRIPTED_MOVE_CLIPS.has(target):
+		# ARMED FOR THE NEXT ORDINARY CLIP, every tick a scripted one is wanted,
+		# so the hold measures how long the ORDINARY target has persisted rather
+		# than how long ago the slot was claimed.
+		_hold_left = _blend_time()
 		# ALREADY ON SCREEN -- and this is the common case, since the drive runs
 		# every tick for the whole of a move. Re-requesting the input the gate is
 		# showing would re-enter it, and the slots reset on entry.
@@ -289,8 +339,47 @@ func _route(target: StringName) -> void:
 		_request(_slot_name())
 		return
 	if _gate_input != GRAPH_STATES:
+		_hold_left -= delta
+		# BOTH CONDITIONS, not either. The ordinary target has to have persisted a
+		# whole blend window AND the gate has to have stopped fading. Releasing on
+		# whichever came first was tried and measured: an ordinary clip arriving
+		# at a SETTLED slot -- which is how every scripted move ends -- handed the
+		# gate straight back, and the sandwich popped exactly as before
+		# (1.5556 -> 0.0000 in one tick, unchanged). The dwell is the fix; the
+		# settle check only stops it releasing into a fade that is still running.
+		if _hold_left > 0.0 or _gate_fading():
+			# HELD. travel() is still issued, so the request is waiting the moment
+			# the machine goes live again -- see the note above on why it cannot
+			# act on it before then.
+			_playback.travel(target)
+			return
 		_request(GRAPH_STATES)
+	_hold_left = 0.0
 	_playback.travel(target)
+
+## True while the gate is still cross-fading one input into another.
+##
+## ⚠️ TWO 4.7.1 QUIRKS, BOTH MEASURED, AND EITHER ONE ALONE GIVES A WRONG ANSWER.
+##
+##   `> 0.0`, not `!= 0.0`: prev_xfading counts down through 0.0 and then RESTS
+##   at one tick's worth of NEGATIVE (-0.016667 at 60 Hz), so a settled gate
+##   never reports exactly zero.
+##
+##   prev_index >= 0: on the gate's very FIRST switch there is no previous input
+##   to fade from, and prev_xfading is left PINNED at xfade_time forever rather
+##   than counting down. Without this clause the hold below never releases -- a
+##   body would enter its first scripted clip and never route an ordinary one
+##   again. Caught by a test, not by inspection.
+func _gate_fading() -> bool:
+	if anim_tree == null:
+		return false
+	if int(anim_tree.get("parameters/%s/prev_index" % GRAPH_GATE)) < 0:
+		return false
+	return float(anim_tree.get("parameters/%s/prev_xfading" % GRAPH_GATE)) > 0.0
+
+## The gate's own cross-fade length, which player.gd built it with.
+func _blend_time() -> float:
+	return player.body_animation_blend_time if player != null else 0.0
 
 ## The name of the scripted slot most recently claimed, or an empty name before
 ## the first one.
