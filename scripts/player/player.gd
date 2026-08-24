@@ -1334,6 +1334,14 @@ func _drive_clip_offset(delta: float) -> void:
 	# at rest -- measured first key to last, ClimbUp_2m moves (-0.00, +0.09,
 	# +0.00) and StepUp, SafetyVault and ClimbUp_1m move nothing -- so there is no
 	# step to ease over at either boundary.
+	#
+	# ⚠️ THAT PREMISE IS ABOUT FRAME 0, AND A TRIM CAN QUIETLY BREAK IT. A
+	# clip_timings entry moves the played start; if it lands where the hips are
+	# OFF rest, the cancellation snaps the root by that much on the switch tick.
+	# Measured on StepUp: the old 0.1667 s trim sat exactly in the pre-push
+	# crouch, hips 0.158 m below rest -- a 0.19 m root jump the owner reported
+	# as "模型会瞬移一下". A trim must be chosen where the hips CROSS rest
+	# (0.2667 s for StepUp; see the key dump in the session that fixed it).
 	var wanted_cancel: float = 1.0 - _kept_clip_lift
 	if is_zero_approx(_kept_clip_lift):
 		_lift_cancel_amount = wanted_cancel
