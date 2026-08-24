@@ -107,3 +107,12 @@ func test_preset_round_trip_preserves_a_value_equal_to_a_different_declared_defa
 	var preset_path := "%s/%s.tres" % [TuningPanel.PRESET_DIR, preset_name]
 	if FileAccess.file_exists(preset_path):
 		DirAccess.remove_absolute(preset_path)
+
+func test_differs_from_default_ignores_float_noise_but_catches_a_real_change() -> void:
+	# The per-row reset button's visibility is driven by this pure helper.
+	# Exact equality is asserted a few micro-diffs above; a value that has
+	# actually moved must still read as differing.
+	assert_false(TuningPanel.differs_from_default(7.2, 7.2), "identical values must not differ")
+	assert_false(TuningPanel.differs_from_default(7.19999999, 7.2), \
+		"float noise below the epsilon must not count as a difference")
+	assert_true(TuningPanel.differs_from_default(7.5, 7.2), "an actual change must be caught")

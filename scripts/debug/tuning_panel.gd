@@ -8,6 +8,13 @@ extends CanvasLayer
 const PRESET_DIR := "user://presets"
 ## Slider range is this multiple of the property's default value.
 const RANGE_FACTOR := 3.0
+## How far a slider's value must sit from its default before its reset button
+## shows. Floats read back from a signal round-trip essentially never land on
+## an exact bit-for-bit default, so a plain != would leave every reset button
+## glued on; this is the same purpose test_a_row_can_read_and_write_its_own_value()
+## serves with assert_almost_eq.
+const RESET_EPSILON := 0.0001
+
 ## The Debug tab's checkboxes: one row of overlay label + the node name
 ## DebugHud gives that overlay (debug_hud.gd ~36-60), so the panel can find it
 ## in the "debug_overlay" group without knowing its class. Order here is
@@ -240,6 +247,13 @@ func _set_overlay_active(overlay: Node, on: bool) -> void:
 	elif overlay.has_method("show_overlay"):
 		overlay.show_overlay(on)
 
+## Whether a slider's current value has drifted from its seeded default by
+## more than a float can be expected to land on exactly -- see RESET_EPSILON.
+## Pure and static so it is testable without building any UI, same as
+## collect_tunables() above it.
+static func differs_from_default(value: float, default_value: float) -> bool:
+	return absf(value - default_value) > RESET_EPSILON
+
 func _add_preset_row(column: VBoxContainer) -> void:
 	var row := HBoxContainer.new()
 	column.add_child(row)
@@ -298,10 +312,25 @@ func _add_slider(column: VBoxContainer, row: Dictionary) -> void:
 	slider.set_value_no_signal(owner.get(property))
 	hrow.add_child(slider)
 
+	# Per-row reset (owner request): visible only while the value has actually
+	# drifted from its default, so a page of untouched rows shows no clutter.
+	# Goes through the SAME signal path a drag would (a plain `.value =`, not
+	# the no-signal setter above) so the config write and the label update
+	# happen exactly as if the human had dragged it there themselves.
+	var reset_button := Button.new()
+	reset_button.text = "↺"
+	reset_button.tooltip_text = "Reset to default (%.4f)" % default_value
+	reset_button.custom_minimum_size = Vector2(28.0, 0.0)
+	reset_button.visible = differs_from_default(slider.value, default_value)
+	reset_button.pressed.connect(func() -> void:
+		slider.value = default_value)
+	hrow.add_child(reset_button)
+
 	value_label.text = "%.4f" % slider.value
 	slider.value_changed.connect(func(v: float) -> void:
 		owner.set(property, v)
-		value_label.text = "%.4f" % v)
+		value_label.text = "%.4f" % v
+		reset_button.visible = differs_from_default(v, default_value))
 
 	# Reloading a preset must move the sliders too, not just the values.
 	slider.set_meta("row", row)
