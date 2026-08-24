@@ -1029,6 +1029,7 @@ func _build_moves() -> void:
 		[Move.WALL_RUN, WallRunMove.new(), config.wall_run],
 		[Move.WALL_CLIMB, WallClimbMove.new(), config.wall_climb],
 		[Move.TURN_180, Turn180Move.new(), config.turn_180],
+		[Move.ZIPLINE, ZiplineMove.new(), config.zipline],
 	]
 	for row in table:
 		var move: Move = row[1]

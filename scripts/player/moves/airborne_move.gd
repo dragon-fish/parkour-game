@@ -208,6 +208,15 @@ func probe_transition() -> StringName:
 	# it (TdMove_IntoGrab), which is what carries the body to the same hanging
 	# pose however it was caught. The cooldown is still checked against GRAB,
 	# since that is the move being re-entered and where redo_move_time lives.
+	# The cable is caught before any ledge is considered: it is an INTEREST
+	# POINT the level author placed on purpose (05 §5.6.5), and a probe that
+	# happened to see a ledge nearby has no such claim. Falling faster than
+	# fall_limit the hands cannot hold on (ZVelocityFallLimit).
+	if c.check_for_zipline and player.velocity.y > -config.zipline.fall_limit \
+			and player.move_manager.can_enter(ZIPLINE) \
+			and player.nearest_interest_line(InterestLine.Kind.ZIPLINE) != null:
+		return ZIPLINE
+
 	if c.check_for_grab and player.probes != null and player.move_manager.can_enter(GRAB):
 		var ledge: Dictionary = player.probes.ledge_query()
 		# The REACH's own range is checked here rather than inside it. Checked

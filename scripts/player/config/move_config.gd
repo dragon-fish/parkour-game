@@ -121,6 +121,11 @@ extends Resource
 @export var check_for_vault_over: bool = false
 @export var check_for_wall_climb: bool = false
 
+## Whether this move may hand off to Zipline when the body is inside a
+## zipline InterestLine's volume. Set on the airborne moves only: a cable is
+## caught from a jump, never walked into (05 §5.5, TdMove_IntoZipLine).
+@export var check_for_zipline: bool = false
+
 ## Whether Q may start a turn out of this move.
 ##
 ## DEFAULT TRUE, and the exceptions are what carry the meaning. The owner's rule

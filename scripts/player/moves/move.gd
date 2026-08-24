@@ -33,6 +33,7 @@ const GRAB: StringName = &"Grab"
 const WALL_RUN: StringName = &"WallRun"
 const WALL_CLIMB: StringName = &"WallClimb"
 const TURN_180: StringName = &"Turn180"
+const ZIPLINE: StringName = &"Zipline"
 
 ## Set by Player before the manager starts. Untyped for the same reason the
 ## names live here: a typed reference would reintroduce the cycle.

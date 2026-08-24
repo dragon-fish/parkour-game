@@ -1,0 +1,34 @@
+class_name ZiplineConfig
+extends MoveConfig
+
+# The original's TdMove_ZipLine + TdMove_IntoZipLine. 05 §5.5: two LOWER
+# bounds and no upper one -- a long enough cable runs to tens of km/h, which
+# the owner has seen in the original ("我在 ME 里滑出过 80 km/h").
+
+func _init() -> void:
+	allows_turn = false  # both hands on the cable
+	# The view may swing either way across the cable but the body keeps its
+	# heading (bDisableFaceRotation). Same machinery Grab uses.
+	constrain_look = true
+	absolute_yaw_constraint = true
+	freeze_visual_yaw = true
+	min_look_constraint = Vector3(-deg_to_rad(80.0), -deg_to_rad(90.0), -PI)
+	max_look_constraint = Vector3(deg_to_rad(80.0), deg_to_rad(90.0), PI)
+	# ✅ SameZipLineRedoMoveTime = 3.0. ⚠️ Per MOVE, not per cable: MoveManager's
+	# cooldown is keyed by move name, so for 3 s after letting go NO cable can
+	# be caught. Accepted until a level puts two cables within 3 s of each other.
+	redo_move_time = 3.0
+
+## ✅ MinZipVelocity = 300 uu/s. The ride never goes slower than this.
+@export var min_velocity: float = 3.0
+## ✅ MinZipAcceleration = 400 uu/s². The ride never accelerates less than
+## this, so a level or even a rising cable still speeds up.
+@export var min_acceleration: float = 4.0
+## ✅ HangOffset = (0, 0, -90): the body centre hangs this far below the cable.
+@export var hang_offset: float = 0.9
+## ✅ ZipFadeInTime = 0.1 s: how long the body takes to reach the hang point
+## from wherever it caught the cable.
+@export var fade_in_time: float = 0.1
+## ✅ TdMove_IntoZipLine.ZVelocityFallLimit = -600: falling faster than this
+## (m/s, positive) the hands cannot hold on.
+@export var fall_limit: float = 6.0
