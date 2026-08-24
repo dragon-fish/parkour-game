@@ -127,3 +127,40 @@ func test_the_body_faces_along_the_cable() -> void:
 	# The cable runs +z; Godot's forward is -z, so facing +z is yaw PI.
 	assert_almost_eq(absf(wrapf(player.rotation.y, -PI, PI)), PI, 0.02, \
 		"the body is not facing along the cable")
+
+func test_crouch_lets_go_and_keeps_the_speed_along_the_cable() -> void:
+	var player: Player = await _riding_player()
+	await step(12)
+	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)
+	var speed_before: float = zip.ride_speed()
+	var input: ScriptedInputSource = _world["input"]
+	input.press_crouch()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING, "crouch did not let go")
+	var v: Vector3 = player.velocity
+	assert_almost_eq(v.length(), speed_before, 0.2, "speed was not kept on release")
+	# The test cable runs +z and is level: the velocity is along it.
+	assert_gt(v.normalized().z, 0.99, "release velocity is not along the cable")
+	assert_almost_eq(v.y, 0.0, 0.2, "release must not add a jump")
+
+func test_the_end_of_the_cable_lets_go() -> void:
+	var player: Player = await _riding_player()
+	var reached_end := false
+	for i in 300:
+		await step(1)
+		if player.move_manager.current_name != Move.ZIPLINE:
+			reached_end = true
+			break
+	assert_true(reached_end, "the ride never ended")
+	assert_gt(player.global_position.z, 9.0, "the body left the cable well before its end")
+
+func test_letting_go_starts_the_redo_cooldown() -> void:
+	var player: Player = await _riding_player()
+	await step(5)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_crouch()
+	await step(1)
+	assert_false(player.move_manager.can_enter(Move.ZIPLINE), "no cooldown after letting go")
+	var cooldown: float = player.config.zipline.redo_move_time
+	await step(int(cooldown * 60.0) + 2)
+	assert_true(player.move_manager.can_enter(Move.ZIPLINE), "the cooldown never expired")
