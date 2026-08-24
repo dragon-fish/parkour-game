@@ -1315,7 +1315,7 @@ func _drive_wall_touch() -> void:
 	# wall oblique enough to dodge it is a wall walked past, not into, and
 	# falls to the one-hand side rays below.
 	var frontal: bool = _wall_touching[HandIK.LEFT] and _wall_touching[HandIK.RIGHT]
-	var ahead: Dictionary = probes.side_wall_query(-global_transform.basis.z,
+	var ahead: Dictionary = probes.side_wall_query(-_wall_touch_basis().z,
 		reach + (WALL_TOUCH_HYSTERESIS if frontal else 0.0))
 	if ahead["valid"]:
 		# EACH PALM LANDS IN FRONT OF ITS OWN SHOULDER: the shoulder projected
@@ -1340,10 +1340,14 @@ func _drive_wall_touch() -> void:
 		var limit: float = (reach \
 			+ (WALL_TOUCH_HYSTERESIS if _wall_touching[side] else 0.0)) * lead_scale
 		var lead_dir: Vector3 = (_wall_touch_side_dir(side) \
-			- global_transform.basis.z * WALL_TOUCH_LEAD).normalized()
+			- _wall_touch_basis().z * WALL_TOUCH_LEAD).normalized()
 		var hit: Dictionary = probes.side_wall_query(lead_dir, limit,
 			_wall_touch_shoulder_offset(side))
-		if hit["valid"]:
+		# NEVER ACROSS THE CHEST: whatever the rays say, a hand does not take a
+		# point on the other side of the visible body's mid-plane -- the last
+		# guard against any future frame mix-up reintroducing the cross.
+		if hit["valid"] and ((hit["point"] as Vector3) - global_position) \
+				.dot(_wall_touch_side_dir(side)) > 0.05:
 			hand_ik.reach(side, (hit["point"] as Vector3)
 				+ (hit["normal"] as Vector3) * WALL_TOUCH_PALM)
 			_wall_touching[side] = true
@@ -1372,7 +1376,16 @@ func _wall_touch_shoulder_offset(side: int) -> Vector3:
 ## "右肩靠墙伸左手，左肩靠墙伸右手，两手伸出时正好交叉." A rig measurement only
 ## binds the frame it was taken in.
 func _wall_touch_side_dir(side: int) -> Vector3:
-	return global_transform.basis.x * (-1.0 if side == HandIK.LEFT else 1.0)
+	return _wall_touch_basis().x * (-1.0 if side == HandIK.LEFT else 1.0)
+
+## The frame the whole wall touch is judged in: the VISIBLE body's, not the
+## capsule's. Standing still, the model deliberately holds its yaw while the
+## capsule turns with the view (the standing-turn design) -- rays cast in the
+## capsule frame then swing with the camera across a body that has not moved,
+## which is ✅ THE OWNER's report: "左肩靠墙时略微往左转一点镜头就触发右手摸墙，
+## 然后从胸里面穿模."
+func _wall_touch_basis() -> Basis:
+	return Basis(Vector3.UP, _visual_yaw if _visual_yaw_started else rotation.y)
 
 func _attach_hand_ik(body_node: Node3D) -> void:
 	hand_ik = null

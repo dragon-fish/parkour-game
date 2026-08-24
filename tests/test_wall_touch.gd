@@ -171,3 +171,23 @@ func test_an_idle_arm_is_solved_onto_its_own_animated_pose() -> void:
 	assert_lt(target.distance_to(animated), 0.05,
 		"the idle left arm is being solved toward a point %.2f m from its own pose"
 			% target.distance_to(animated))
+
+func test_the_hands_follow_the_visible_body_not_the_capsule() -> void:
+	# ✅ THE OWNER, in third person: standing still the model holds its yaw
+	# while the capsule turns with the view -- and the rays used to turn with
+	# the capsule, so a slight camera turn flipped which hand reached, straight
+	# through the chest. The judgment frame is the VISIBLE body's.
+	var player: Player = await _player_with_body()
+	if player == null:
+		return _skip_note()
+	# The visible body keeps facing -z while the capsule turns 40 degrees.
+	player.pin_visual_yaw(0.0)
+	player.rotation.y = deg_to_rad(40.0)
+	# Wall on the VISIBLE body's left (world -x).
+	_wall_at(-0.7)
+	await step(30)
+	var state: Dictionary = player.hand_ik.debug()
+	assert_gt(float(state["left"]), 0.5,
+		"the visible-left hand never reached for the visible-left wall")
+	assert_almost_eq(float(state["right"]), 0.0, 0.001,
+		"the capsule's turn dragged the wrong hand across the chest")
