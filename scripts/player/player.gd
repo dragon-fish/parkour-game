@@ -1845,7 +1845,16 @@ func pin_visual_yaw(radians: float) -> void:
 func find_skeleton() -> Skeleton3D:
 	return _skeleton
 
+## Both walkers take a null root, because `body` legitimately IS null whenever
+## no body_scene was attached -- _attach_body()'s own header promises that case
+## "degrades to 'no body' rather than crashing startup". Without this guard the
+## first loop pops the null straight into get_children() and takes the whole
+## frame with it, which is exactly what every animation test was hitting: the
+## null check inside _measure_scripted_hip_peaks() sits AFTER this call and so
+## never got the chance to run.
 func _find_skeleton(root: Node) -> Skeleton3D:
+	if root == null:
+		return null
 	var queue: Array[Node] = [root]
 	while not queue.is_empty():
 		var node: Node = queue.pop_front()
@@ -1856,6 +1865,8 @@ func _find_skeleton(root: Node) -> Skeleton3D:
 	return null
 
 func _find_animation_player(root: Node) -> AnimationPlayer:
+	if root == null:
+		return null
 	var queue: Array[Node] = [root]
 	while not queue.is_empty():
 		var node: Node = queue.pop_front()
