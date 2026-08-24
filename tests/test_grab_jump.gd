@@ -293,3 +293,25 @@ func test_the_drop_press_does_not_also_buy_a_roll_at_the_landing() -> void:
 		if player.grounded and player.move_manager.current_name != Move.SKILL_ROLL:
 			break
 	assert_false(saw_roll, "the same press that dropped the body also fired a skill roll")
+
+func test_a_second_crouch_press_after_the_drop_still_buys_a_roll() -> void:
+	# The counter-test: proves the fix above removes the DOUBLE billing only,
+	# not the roll itself. A genuinely new press, thrown while already
+	# falling, is its own action and must still buy one. Mirrors
+	# test_zipline_move.gd's test_a_second_later_press_still_buys_a_roll.
+	var player: Player = await _hanging_player(0.0)
+	# Same synthetic-launch trick as the test above.
+	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_crouch()  # press #1: drops off the ledge
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING, "test setup: crouch did not drop from the hang")
+	input.release_crouch()
+	input.press_crouch()  # press #2: a new press, while already airborne
+	var saw_roll := false
+	for i in 120:
+		await step(1)
+		if player.move_manager.current_name == Move.SKILL_ROLL:
+			saw_roll = true
+			break
+	assert_true(saw_roll, "a second, later press did not buy a roll")
