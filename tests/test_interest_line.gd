@@ -4,6 +4,8 @@ extends ParkourTest
 # sagging cable is the shape that matters: a straight line is its two-point
 # degenerate case.
 
+const TestWorld = preload("res://tests/world_fixture.gd")
+
 var _line: InterestLine = null
 
 func after_each() -> void:
@@ -61,6 +63,26 @@ func test_a_body_entering_the_volume_is_told() -> void:
 	await step(3)
 	assert_eq(probe.exited, [_line], "the body that left was not told it exited")
 	probe.queue_free()
+
+func test_the_player_knows_which_line_it_is_inside() -> void:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(5)
+	var player: Player = world["player"]
+	_line = _sagging_line()
+	# Lower the cable so a standing body's capsule sits inside its volume.
+	_line.position = Vector3(0.0, -2.2, 0.0)
+	await step(3)
+	assert_eq(player.nearest_interest_line(InterestLine.Kind.ZIPLINE), _line, \
+		"the player standing inside the volume does not report the line")
+	assert_null(player.nearest_interest_line(InterestLine.Kind.SWING), \
+		"a zipline must not be reported as a swing")
+	player.reset_state()
+	assert_null(player.nearest_interest_line(InterestLine.Kind.ZIPLINE), \
+		"reset_state() must forget the lines from the previous life")
+	TestWorld.teardown(world)
+	await step(1)
 
 ## A moving body with the two hooks Player has. CharacterBody3D so that Area3D
 ## detects it the same way it detects the real player.

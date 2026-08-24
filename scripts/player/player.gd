@@ -63,6 +63,34 @@ var pending_vault_rescue: bool = false
 ## vantage point can only disagree.
 var pending_ledge: Dictionary = {}
 
+## The InterestLines whose volumes the body is currently inside. Maintained by
+## the lines themselves (InterestLine calls the two hooks below), never by a
+## probe -- 05 §5.6.5: "凡是「沿着一条线交互」的动作，一律有兴趣点".
+var interest_lines: Array[InterestLine] = []
+
+func enter_interest_line(line: InterestLine) -> void:
+	if not interest_lines.has(line):
+		interest_lines.append(line)
+
+func exit_interest_line(line: InterestLine) -> void:
+	interest_lines.erase(line)
+
+## The closest line of `kind` the body is inside, by distance from the body to
+## the line's nearest point, or null. Two overlapping volumes are rare enough
+## that "closest" is all the arbitration this needs.
+func nearest_interest_line(kind: InterestLine.Kind) -> InterestLine:
+	var best: InterestLine = null
+	var best_distance: float = INF
+	for line in interest_lines:
+		if not is_instance_valid(line) or line.kind != kind:
+			continue
+		var at: Vector3 = line.sample(line.closest_offset(global_position))["position"]
+		var distance: float = at.distance_to(global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = line
+	return best
+
 ## Whether the player is standing on something. DECLARED by the active state
 ## rather than read from is_on_floor(), because scripted-move states drive the
 ## body's position directly and never call move_and_slide() — is_on_floor()
@@ -955,6 +983,9 @@ func reset_state() -> void:
 	_airborne_time = 0.0
 	_slide_recovery_timer = 0.0
 	wall_side = 0
+	# A respawn teleports out of any volume without the area ever reporting
+	# the exit, so the list is cleared here rather than trusted.
+	interest_lines.clear()
 	_visual_yaw_started = false
 	# A respawn teleport is not travel: leave the camera's speed cue at rest
 	# rather than letting the first tick after the reset read the old life's.
