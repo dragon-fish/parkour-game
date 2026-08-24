@@ -944,7 +944,7 @@ func build() -> Node3D:
 	#
 	# A platform to jump from and a sagging cable to catch. 05 §5.5: no speed
 	# cap, so the cable is made long enough to feel the acceleration. EAST of
-	# the shaft, x [47, 92], z [37, 43].
+	# the shaft, x [46, 91], z [37, 43].
 	#
 	# The cable is an InterestLine (scripts/level/interest_line.gd): the curve
 	# alone is authored, the volume grows itself at runtime and so is NOT part
@@ -970,7 +970,11 @@ func build() -> Node3D:
 	var zip_step: float = zip_config.pawn.max_step_height - 0.05
 	var zip_steps: int = int(ceil(ZIP_PLATFORM_HEIGHT / zip_step))
 	for i in zip_steps:
-		var h: float = zip_step * (zip_steps - i)
+		# Clamped to the platform: the step count is a ceil(), so the tallest
+		# step overshoots by whatever the division left over -- a 4.2 m step
+		# against a 4.0 m platform, i.e. a lip to trip over at the top of a
+		# ramp that exists to be walked up.
+		var h: float = minf(zip_step * (zip_steps - i), ZIP_PLATFORM_HEIGHT)
 		_attach(zip_area, _box("Zip_Stair%d" % i,
 			Vector3(1.0, h, 6.0),
 			Vector3(-2.0 - 0.5 - 1.0 * i, h * 0.5, 0.0), zip_colour))
