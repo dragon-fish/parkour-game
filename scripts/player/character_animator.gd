@@ -180,6 +180,9 @@ var _slot: int = -1
 ## leave a scripted slot. See _route()'s hysteresis note -- this is what stops a
 ## scripted -> ordinary -> scripted sandwich from popping.
 var _hold_left: float = 0.0
+## The ordinary clip hard-cut into the HIDDEN state machine during a hold,
+## so the hand-back lands on a clip already in motion. See _route().
+var _hidden_start: StringName = &""
 
 ## The move the previous tick was in, so a CHANGE of move can be noticed. Every
 ## routing decision above this line is stateless -- it asks what the body is
@@ -331,6 +334,7 @@ func _route(target: StringName, delta: float) -> void:
 		# so the hold measures how long the ORDINARY target has persisted rather
 		# than how long ago the slot was claimed.
 		_hold_left = _hold_time()
+		_hidden_start = &""
 		# ALREADY ON SCREEN -- and this is the common case, since the drive runs
 		# every tick for the whole of a move. Re-requesting the input the gate is
 		# showing would re-enter it, and the slots reset on entry.
@@ -350,13 +354,27 @@ func _route(target: StringName, delta: float) -> void:
 		# (1.5556 -> 0.0000 in one tick, unchanged). The dwell is the fix; the
 		# settle check only stops it releasing into a fade that is still running.
 		if _hold_left > 0.0 or _gate_fading():
-			# HELD. travel() is still issued, so the request is waiting the moment
-			# the machine goes live again -- see the note above on why it cannot
-			# act on it before then.
-			_playback.travel(target)
+			# HELD -- and the machine is PRE-SWITCHED while nobody can see it.
+			# start() on a zero-weight input is a FREE hard cut: measured, the
+			# switch latches (get_current_node() stays put while hidden) and
+			# materialises AT the target, frame 0, with no fading_from, on the
+			# first live tick. A travel() latched here instead -- the previous
+			# shape -- queued a crossfade FROM the stale pre-move node, so the
+			# gate's fade landed on a blend of two poses neither of which was
+			# moving, and that mush was the tail the owner could still see at a
+			# 0.05 s hold: "0.05s确实好了不少但肉眼还是可感知."
+			if _hidden_start != target:
+				_hidden_start = target
+				_playback.start(target, true)
 			return
 		_request(GRAPH_STATES)
 	_hold_left = 0.0
+	if _hidden_start == target:
+		# The latched hidden start() materialises on this first live tick; a
+		# travel() on top would queue a second transition against it.
+		_hidden_start = &""
+		return
+	_hidden_start = &""
 	_playback.travel(target)
 
 ## True while the gate is still cross-fading one input into another.

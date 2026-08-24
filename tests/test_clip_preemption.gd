@@ -293,3 +293,27 @@ func test_a_slot_carries_the_same_trim_as_the_state_machines_own_node() -> void:
 			"stretch_time_scale"]:
 		assert_eq(slot.get(property), node.get(property),
 			"the slot's %s does not match the state machine's node" % property)
+
+func test_the_hand_back_lands_on_a_clip_already_in_motion() -> void:
+	# ✅ THE OWNER, at a 0.05 s hold: "0.05s确实好了不少但肉眼还是可感知." The
+	# residue was not the hold -- it was the STATE MACHINE, parked on the
+	# pre-move clip for the whole ride (a hidden input processes nothing), so
+	# the gate's fade landed on a crossfade from that stale pose. The machine
+	# is now hard-cut while hidden -- free, nobody can see it -- so the first
+	# live tick is the ordinary clip with nothing stale fading in.
+	var animator: CharacterAnimator = await _animator_with(
+		[&"Idle", AN_ORDINARY_CLIP, A_SCRIPTED_CLIP])
+	animator._route(&"Idle", DELTA)
+	await step(20)
+	for i in 20:
+		animator._route(A_SCRIPTED_CLIP, DELTA)
+		await step(1)
+	# Ride over: hand back, run the hold out, and probe INSIDE the window the
+	# machine's own crossfade would occupy (hold 3 ticks + fade 9).
+	for i in 6:
+		animator._route(AN_ORDINARY_CLIP, DELTA)
+		await step(1)
+	assert_eq(String(animator._playback.get_current_node()), String(AN_ORDINARY_CLIP),
+		"the machine is still parked on '%s'" % animator._playback.get_current_node())
+	assert_eq(String(animator._playback.get_fading_from_node()), "",
+		"the hand-back is blending in the stale pre-move pose")
