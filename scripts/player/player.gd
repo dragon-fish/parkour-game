@@ -1295,6 +1295,11 @@ const WALL_TOUCH_HYSTERESIS := 0.1
 const WALL_TOUCH_PALM := 0.09
 ## Half the spread between the two hands when facing the wall head-on.
 const WALL_TOUCH_SPAN := 0.18
+## How much the SIDE ray leans into the direction of travel, as a fraction of
+## the sideways component. The owner's ME reference captures show the palm
+## planted AHEAD of the torso -- the hand meets the wall coming, and lets go
+## as the wall runs out. 0 is the plain perpendicular.
+const WALL_TOUCH_LEAD := 0.6
 
 func _drive_wall_touch() -> void:
 	if hand_ik == null or not hand_ik.is_live() or probes == null:
@@ -1322,10 +1327,15 @@ func _drive_wall_touch() -> void:
 				+ out * WALL_TOUCH_SPAN + normal * WALL_TOUCH_PALM)
 			_wall_touching[side] = true
 		return
+	# The lead lengthens the ray's PATH to the same wall, so the limit grows by
+	# the same factor -- the perpendicular reach this expresses is unchanged.
+	var lead_scale: float = sqrt(1.0 + WALL_TOUCH_LEAD * WALL_TOUCH_LEAD)
 	for side in [HandIK.LEFT, HandIK.RIGHT]:
-		var limit: float = reach \
-			+ (WALL_TOUCH_HYSTERESIS if _wall_touching[side] else 0.0)
-		var hit: Dictionary = probes.side_wall_query(_wall_touch_side_dir(side), limit)
+		var limit: float = (reach \
+			+ (WALL_TOUCH_HYSTERESIS if _wall_touching[side] else 0.0)) * lead_scale
+		var lead_dir: Vector3 = (_wall_touch_side_dir(side) \
+			- global_transform.basis.z * WALL_TOUCH_LEAD).normalized()
+		var hit: Dictionary = probes.side_wall_query(lead_dir, limit)
 		if hit["valid"]:
 			hand_ik.reach(side, (hit["point"] as Vector3)
 				+ (hit["normal"] as Vector3) * WALL_TOUCH_PALM)

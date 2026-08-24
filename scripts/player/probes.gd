@@ -24,8 +24,10 @@ func _no_hit() -> Dictionary:
 ## capsule on the wall (a straight side ray IS that perpendicular whenever the
 ## wall is parallel to travel, and close enough everywhere else). Cast at
 ## shoulder height -- the capsule centre plus SIDE_TOUCH_SHOULDER -- because
-## that is where an arm resting on a wall actually meets it.
-const SIDE_TOUCH_SHOULDER := 0.4
+## that is where an arm resting on a wall actually meets it -- FACE height,
+## per the owner's ME reference captures (2026-08-24): both plants sit at
+## head level, not at the shoulder the first cut used.
+const SIDE_TOUCH_SHOULDER := 0.6
 
 func side_wall_query(direction: Vector3, reach: float) -> Dictionary:
 	var origin: Vector3 = global_position + Vector3.UP * SIDE_TOUCH_SHOULDER
