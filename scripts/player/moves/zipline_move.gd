@@ -71,6 +71,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return FALLING
 	player.set_grounded(false)
 	if input.crouch_pressed:
+		# ✅ THE OWNER: "在ME里按一次按键只对应一次动作" -- this press already
+		# spends itself letting go of the cable, so it must not also survive in
+		# the roll buffer (armed unconditionally by Player._tick_timers() on
+		# every crouch_pressed) to fire a skill roll at whatever the fall turns
+		# out to be. NOT on the end-of-cable release below: reaching the end of
+		# the cable involves no press at all.
+		player.consume_roll()
 		return _release()
 
 	var along: Vector3 = _tangent()

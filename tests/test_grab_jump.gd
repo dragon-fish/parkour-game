@@ -264,3 +264,32 @@ func test_forward_and_jump_together_jumps_rather_than_climbs() -> void:
 	var result: StringName = grab.physics_update(1.0 / 60.0, both)
 	assert_eq(result, Move.FALLING, "W and jump together climbed instead of jumping")
 	assert_false(grab.is_mantling(), "a pull-up started on the jump tick")
+
+# --- one press, one action ---------------------------------------------------
+#
+# ✅ THE OWNER: "在ME里按一次按键只对应一次动作". Player._tick_timers() arms the
+# roll buffer on EVERY crouch_pressed, unconditionally -- including the very
+# press that drops the body off this ledge. Left alone, that one press pays
+# for both the drop and (for up to roll_trigger_time afterwards) a skill roll
+# at whatever the fall turns out to be.
+
+func test_the_drop_press_does_not_also_buy_a_roll_at_the_landing() -> void:
+	var player: Player = await _hanging_player(0.0)
+	# Same synthetic-launch trick test_skill_roll.gd's _land_from() uses: the
+	# fixture's flat floor otherwise lands the body back at the exact height
+	# FallTracker last zeroed at, which never clears the roll threshold and
+	# would hide the bug regardless of whether it is fixed.
+	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_crouch()  # the one press: drops off the ledge
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING, "test setup: crouch did not drop from the hang")
+	input.release_crouch()
+	var saw_roll := false
+	for i in 120:
+		await step(1)
+		if player.move_manager.current_name == Move.SKILL_ROLL:
+			saw_roll = true
+		if player.grounded and player.move_manager.current_name != Move.SKILL_ROLL:
+			break
+	assert_false(saw_roll, "the same press that dropped the body also fired a skill roll")

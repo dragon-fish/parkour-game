@@ -205,3 +205,53 @@ func test_letting_go_starts_the_redo_cooldown() -> void:
 	var cooldown: float = player.config.zipline.redo_move_time
 	await step(int(cooldown * 60.0) + 2)
 	assert_true(player.move_manager.can_enter(Move.ZIPLINE), "the cooldown never expired")
+
+# --- one press, one action ---------------------------------------------------
+#
+# ✅ THE OWNER: "在ME里按一次按键只对应一次动作". Player._tick_timers() arms the
+# roll buffer on EVERY crouch_pressed, unconditionally -- including the very
+# press this move reads to let go of the cable. Left alone, that single press
+# pays for two things: releasing the cable now, and (for up to
+# roll_trigger_time afterwards) a skill roll at whatever the fall turns out to
+# be. The fix spends the buffer at the point of release, same press, same tick.
+
+func test_the_release_press_does_not_also_buy_a_roll_at_the_landing() -> void:
+	var player: Player = await _riding_player()
+	await step(12)  # past fade_in_time
+	# A single, flat-floor test world means an ordinary release from this low
+	# cable lands back at the very height FallTracker last zeroed at, and would
+	# never clear the roll threshold regardless of this bug -- so, exactly as
+	# test_skill_roll.gd's _land_from() teleports the player to fake a real
+	# drop, this stands in a synthetic launch point above the release so the
+	# short physical fall back to the floor reads as a genuine one.
+	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_crouch()  # the one press: lets go of the cable
+	var saw_roll := false
+	for i in 120:
+		await step(1)
+		if player.move_manager.current_name == Move.SKILL_ROLL:
+			saw_roll = true
+		if player.grounded and player.move_manager.current_name != Move.SKILL_ROLL:
+			break
+	assert_false(saw_roll, "the same press that released the cable also fired a skill roll")
+
+func test_a_second_later_press_still_buys_a_roll() -> void:
+	# The counter-test: proves the fix removes the DOUBLE billing only, not the
+	# roll itself. A genuinely new press, thrown while already falling, is its
+	# own action and must still buy one.
+	var player: Player = await _riding_player()
+	await step(12)
+	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_crouch()  # press #1: releases the cable
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING, "test setup: crouch did not let go of the cable")
+	input.press_crouch()  # press #2: a new press, while already airborne
+	var saw_roll := false
+	for i in 120:
+		await step(1)
+		if player.move_manager.current_name == Move.SKILL_ROLL:
+			saw_roll = true
+			break
+	assert_true(saw_roll, "a second, later press did not buy a roll")

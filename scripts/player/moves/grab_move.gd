@@ -298,6 +298,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# of them doing anything -- see the block above physics_update() for why
 	# this move no longer overrides exit() at all.
 	if input.crouch_held:
+		# ✅ THE OWNER: "在ME里按一次按键只对应一次动作" -- the crouch that drops
+		# off the ledge already spends this press; it must not also survive in
+		# the roll buffer (armed unconditionally by Player._tick_timers() on
+		# every crouch_pressed) to fire a skill roll when the drop lands.
+		player.consume_roll()
 		return FALLING
 
 	# JUMP WITH YOUR BACK TURNED PUSHES OFF instead of pulling up, and this has
