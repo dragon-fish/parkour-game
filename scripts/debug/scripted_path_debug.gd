@@ -91,6 +91,10 @@ func _ready() -> void:
 		add_child(label)
 		_labels.append(label)
 	_instance.visible = false
+	# So the tuning panel's Debug page can find this overlay by name and
+	# duck-type show_overlay()/overlay_shown() on it, without either side
+	# knowing about the other's class.
+	add_to_group("debug_overlay")
 
 ## Turns the path on or off from code. See CapsuleDebug.show_overlay() -- the
 ## animation lab opens with both of them on.
@@ -98,6 +102,11 @@ func show_overlay(on: bool) -> void:
 	_shown = on
 	if _instance != null:
 		_instance.visible = on
+
+## Duck-typed getter the tuning panel's Debug page reads every frame to keep
+## its checkbox in sync with a keyboard toggle (F12).
+func overlay_shown() -> bool:
+	return _shown
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \

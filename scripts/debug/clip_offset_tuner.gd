@@ -84,19 +84,25 @@ func _ready() -> void:
 	_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0))
 	_label.add_theme_constant_override("outline_size", 5)
 	add_child(_label)
+	# So the tuning panel's Debug page can find this overlay by name and
+	# duck-type show_overlay()/overlay_shown() on it, without either side
+	# knowing about the other's class.
+	add_to_group("debug_overlay")
 	_refresh()
 
 ## _input, not _unhandled_input: this runs before the GUI and before anything
-## the game does with the key, so F9 cannot be swallowed on the way past. Only
-## the discrete actions live here -- the nudges are held keys, and those are
-## polled in _process().
+## the game does with the key, so Enter cannot be swallowed on the way past.
+## Only the discrete actions live here -- the nudges are held keys, and those
+## are polled in _process().
+##
+## No arm toggles _active any more (that used to be F9, retired -- see
+## set_active() below): the tuning panel's Debug page checkbox is now the only
+## way in. Enter and Backspace still only make sense while frozen, so they stay
+## gated on _active as before.
 func _input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 	match event.physical_keycode:
-		KEY_F9:
-			_toggle()
-			get_viewport().set_input_as_handled()
 		KEY_ENTER, KEY_KP_ENTER:
 			if _active:
 				_print_table()
@@ -128,9 +134,10 @@ func _process(delta: float) -> void:
 	if moved:
 		_apply()
 
-## F9 freezes on the current frame and starts tuning whatever clip is playing;
-## F9 again writes the value into the live table and lets the game run on, so
-## the next vault is played with what was just dialled in.
+## Freezes on the current frame and starts tuning whatever clip is playing;
+## called again writes the value into the live table and lets the game run
+## on, so the next vault is played with what was just dialled in. No longer
+## bound to F9 directly -- see set_active() and the tuning panel's Debug page.
 func _toggle() -> void:
 	if player == null or player.body == null:
 		_note = "no body attached -- nothing to tune"
@@ -148,6 +155,21 @@ func _toggle() -> void:
 	else:
 		_commit()
 		_refresh()
+
+## Sets the freeze state to exactly `on`, the way the other three overlays'
+## show_overlay() do. Delegates to _toggle() -- which is the only place that
+## knows how to freeze the tree, capture the clip and commit on unfreeze --
+## but only when the state actually differs, since _toggle() always flips
+## rather than sets: calling it while already in the requested state would
+## flip it the wrong way.
+func set_active(on: bool) -> void:
+	if _active != on:
+		_toggle()
+
+## Duck-typed getter the tuning panel's Debug page reads every frame to keep
+## its checkbox in sync, matching the other three overlays' interface.
+func overlay_shown() -> bool:
+	return _active
 
 ## Into the LIVE table, so the change survives the unfreeze and can be judged in
 ## motion. Not into the .tres -- that is what the printed line is for. Writing a
@@ -246,7 +268,8 @@ func _refresh() -> void:
 		"  Enter  print ALL %d tuned clip(s), as a line to paste into the profile"
 				% _live_table().size(),
 		"  Back   reset to zero",
-		"  F9     unfreeze, keeping this offset live for the next play",
+		"  (uncheck 'Clip offset tuner' in the F1 panel to unfreeze, keeping",
+		"   this offset live for the next play)",
 		"",
 		"  tuned so far: %s" % (", ".join(_tuned_names()) if not _tuned_names().is_empty() else "nothing yet"),
 	]

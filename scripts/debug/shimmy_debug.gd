@@ -1,7 +1,10 @@
 class_name ShimmyDebug
 extends Node3D
 
-# Draws the shimmy's probes where they were actually fired. F11.
+# Draws the shimmy's probes where they were actually fired. Toggled from the
+# F1 tuning panel's Debug page -- it used to be its own key (F11), but that
+# collided with player.gd's own use of F11 for mouse recapture, so the key was
+# retired here and the panel's checkbox is now the only way to show this.
 #
 # ✅ THE OWNER, on a corner in me_level0 that refuses and that neither of us can
 # reproduce in a whitebox: "你把可以左右爬的路径画出来."
@@ -67,12 +70,23 @@ func _ready() -> void:
 	_lines.render_priority = 3
 	add_child(_instance)
 	_instance.visible = false
+	# So the tuning panel's Debug page can find this overlay by name and
+	# duck-type show_overlay()/overlay_shown() on it, without either side
+	# knowing about the other's class.
+	add_to_group("debug_overlay")
 
-func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo \
-			and event.physical_keycode == KEY_F11:
-		_shown = not _shown
-		_instance.visible = _shown
+## Turns the probes on or off from code. Mirrors CapsuleDebug.show_overlay()
+## and ScriptedPathDebug.show_overlay() -- see the header comment for why this
+## overlay has no keyboard toggle of its own any more.
+func show_overlay(on: bool) -> void:
+	_shown = on
+	if _instance != null:
+		_instance.visible = on
+
+## Duck-typed getter the tuning panel's Debug page reads every frame to keep
+## its checkbox in sync, matching the other three overlays' interface.
+func overlay_shown() -> bool:
+	return _shown
 
 func _process(_delta: float) -> void:
 	if not _shown or player == null or player.move_manager == null:

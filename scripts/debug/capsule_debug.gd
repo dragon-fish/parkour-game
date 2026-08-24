@@ -80,6 +80,10 @@ func _ready() -> void:
 	_fill.render_priority = 1
 	add_child(_instance)
 	_instance.visible = false
+	# So the tuning panel's Debug page can find this overlay by name and
+	# duck-type show_overlay()/overlay_shown() on it, without either side
+	# knowing about the other's class.
+	add_to_group("debug_overlay")
 
 ## Turns the outline on or off from code.
 ##
@@ -91,6 +95,11 @@ func show_overlay(on: bool) -> void:
 	_shown = on
 	if _instance != null:
 		_instance.visible = on
+
+## Duck-typed getter the tuning panel's Debug page reads every frame to keep
+## its checkbox in sync with a keyboard toggle (F10).
+func overlay_shown() -> bool:
+	return _shown
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \

@@ -160,7 +160,11 @@ func _process(delta: float) -> void:
 		"
 ".join(_transitions) if not _transitions.is_empty() else "  (none yet)",
 		"",
-		"Tab HUD  F9 clip  F10 capsule  F11 shimmy  F12 path  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
+		# F9 (clip offset tuner) and F11 (shimmy probes) dropped as keys once the
+		# F1 panel's Debug page grew checkboxes for every overlay -- F11 in
+		# particular collided with player.gd's own use of it for mouse
+		# recapture, which is the fix, not a coincidence.
+		"Tab HUD  F10 capsule  F12 path  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
 		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
 	])
 
