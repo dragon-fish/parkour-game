@@ -25,6 +25,9 @@ extends Resource
 ## Per-model placement against the capsule -- see Player.body_mount_offset,
 ## body_mount_rotation_degrees and body_mount_scale, which these become.
 @export var mount_offset: Vector3 = Vector3.ZERO
+
+## See CameraRig.eye_forward: the old backward mount z, moved to the eye.
+@export var eye_forward: float = 0.0
 ## ⚠️ Every VRM wants Vector3(0, 180, 0): the format has models face +Z and
 ## Godot's forward is -Z.
 @export var mount_rotation_degrees: Vector3 = Vector3.ZERO
@@ -105,6 +108,7 @@ func apply(player: Player) -> void:
 		BodyTuning.load_for(scene.resource_path if scene != null else ""))
 	player.body_scene = scene
 	player.body_mount_offset = mount_offset
+	player.body_eye_forward = eye_forward
 	player.body_mount_rotation_degrees = mount_rotation_degrees
 	player.body_mount_scale = mount_scale
 	player.body_head_path = head_path

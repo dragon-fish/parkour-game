@@ -88,7 +88,7 @@ static func apply_to(profile: BodyProfile, tuning: Dictionary) -> void:
 		profile.clip_offsets = _offsets(tuning["clip_offsets"])
 	if tuning.has("clip_timings"):
 		profile.clip_timings = _timings(tuning["clip_timings"])
-	for key in ["run_reference_speed", "blend_time", "gate_hold_time",
+	for key in ["run_reference_speed", "blend_time", "gate_hold_time", "eye_forward",
 			"slide_exit_blend_time", "slide_to_crouch_blend_time",
 			"slide_eye_lift"]:
 		if tuning.has(key):
