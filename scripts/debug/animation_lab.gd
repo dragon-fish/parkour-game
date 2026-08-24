@@ -168,7 +168,8 @@ var _live_rotation := Vector3.ZERO
 var _anim_player: AnimationPlayer
 var _skeleton: Skeleton3D
 var _anim_tree: AnimationTree
-## The state machine's own clock. See _clip_time().
+## The state machine's own clock, which is only half the answer now. See
+## _clip_time().
 var _playback: AnimationNodeStateMachinePlayback
 var _spectator: SpectatorCamera
 ## Real-time playback of the recording. See _toggle_play().
@@ -372,8 +373,8 @@ func _physics_process(_delta: float) -> void:
 		"duration": _scripted_duration(),
 		# ⚠️ THE NODE THE GRAPH IS ON, which is not always the clip the animator
 		# asked for. See _clip_frame_text().
-		"node": _playback.get_current_node() if _playback != null else Move.KEEP,
-		"fade": _playback.get_fading_from_node() if _playback != null else &"",
+		"node": _graph_node(),
+		"fade": _graph_fade(),
 		"obstacle": Vector2(height(), width()),
 		# The third axis of the curve table. See ScriptedMove.entry_rise().
 		"entry": _scripted_entry(),
@@ -671,15 +672,76 @@ func _apply_pose(pose: Array) -> void:
 
 ## Where the clip is, in its own seconds.
 ##
-## ⚠️ FROM THE STATE MACHINE, NOT FROM THE AnimationPlayer. The AnimationTree is
+## ⚠️ FROM THE GRAPH, NOT FROM THE AnimationPlayer. The AnimationTree is
 ## what drives playback, so the player's own `current_animation_position` is not
 ## the truth -- it reads 0.00 for the whole take. Recorded that way, every frame
 ## replayed the FIRST frame of its clip: poses that could not be restored, and a
 ## looping clip that looked like it played once.
+##
+## ⚠️ AND NOT FROM THE STATE MACHINE ALONE. A scripted move's clip plays on one
+## of the gate's slots instead (see CharacterAnimator._route()), and the state
+## machine sits at zero weight on whatever it last played -- which is precisely
+## the case this lab exists to look at, since the trims are all on scripted
+## clips.
 func _clip_time() -> float:
+	var slot := _scripted_slot()
+	if slot != &"":
+		return float(_anim_tree.get("parameters/%s/current_position" % slot))
 	if _playback == null:
 		return 0.0
 	return _playback.get_current_play_position()
+
+## The gate's slot that is on screen, or an empty name when the state machine is.
+func _scripted_slot() -> StringName:
+	if _anim_tree == null:
+		return &""
+	var showing := StringName(str(_anim_tree.get(
+		"parameters/%s/current_state" % CharacterAnimator.GRAPH_GATE)))
+	return showing if CharacterAnimator.GRAPH_SCRIPTED_SLOTS.has(showing) else &""
+
+## The clip actually on screen this frame.
+func _graph_node() -> StringName:
+	var slot := _scripted_slot()
+	if slot != &"":
+		return _slot_clip(slot)
+	return _playback.get_current_node() if _playback != null else Move.KEEP
+
+## What it is still fading out of, or an empty name once the fade is over.
+func _graph_fade() -> StringName:
+	# THE GATE'S OWN FADE OUTRANKS THE MACHINE'S, since it is the one carrying a
+	# scripted clip on or off. prev_index addresses the gate's inputs by index.
+	if _gate_is_fading_in():
+		var previous: int = int(_anim_tree.get(
+			"parameters/%s/prev_index" % CharacterAnimator.GRAPH_GATE))
+		if previous < 0:
+			return &""
+		var input: StringName = CharacterAnimator.GRAPH_GATE_INPUTS[previous]
+		if input != CharacterAnimator.GRAPH_STATES:
+			return _slot_clip(input)
+		return _playback.get_current_node() if _playback != null else &""
+	if _scripted_slot() != &"":
+		return &""
+	return _playback.get_fading_from_node() if _playback != null else &""
+
+## ⚠️ prev_index >= 0 AS WELL AS prev_xfading > 0. On the gate's first switch
+## there is no input to fade from and prev_xfading stays pinned at xfade_time
+## forever -- see CharacterAnimator._gate_fading(), which was bitten by it.
+func _gate_is_fading_in() -> bool:
+	if _anim_tree == null:
+		return false
+	if int(_anim_tree.get("parameters/%s/prev_index" % CharacterAnimator.GRAPH_GATE)) < 0:
+		return false
+	return float(_anim_tree.get(
+		"parameters/%s/prev_xfading" % CharacterAnimator.GRAPH_GATE)) > 0.0
+
+func _slot_clip(slot: StringName) -> StringName:
+	if _anim_tree == null:
+		return &""
+	var root := _anim_tree.tree_root as AnimationNodeBlendTree
+	if root == null or not root.has_node(slot):
+		return &""
+	var node := root.get_node(slot) as AnimationNodeAnimation
+	return node.animation if node != null else &""
 
 # --- scrubbing --------------------------------------------------------------------
 
@@ -1446,7 +1508,7 @@ func _clip_frame_seconds() -> float:
 ## wall it is played at. The offsets vary with the obstacle; the trim does not.
 ##
 ## ⚠️ The kept part is STRETCHED to fill the move rather than played at its own
-## pace and cut short. See Player._apply_clip_timing().
+## pace and cut short. See Player.apply_clip_timing().
 func _write_timing() -> void:
 	var clip: StringName = _frame_clip()
 	if clip == Move.KEEP:

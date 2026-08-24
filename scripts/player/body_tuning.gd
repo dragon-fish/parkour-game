@@ -114,7 +114,7 @@ static func _offsets(from) -> Dictionary:
 	return out
 
 ## `{"ClipName": [start_seconds, length_seconds]}`, a length of 0 meaning "to the
-## end of the clip" -- see Player._apply_clip_timing().
+## end of the clip" -- see Player.apply_clip_timing().
 static func _timings(from) -> Dictionary:
 	var out := {}
 	if not (from is Dictionary):

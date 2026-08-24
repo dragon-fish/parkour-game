@@ -2,10 +2,16 @@ class_name CharacterAnimator
 extends Node
 
 # Small REFERENCE driver: reads the player's movement state every physics
-# tick and asks the AnimationTree's state machine to travel() to the
-# matching clip. See the per-move comments in _target_animation() below for
-# what maps to what, and _first_available()'s own comment for why every one
-# of those mappings is really a PRIORITY LIST, not a single name.
+# tick and puts the matching clip on screen. See the per-move comments in
+# _target_animation() below for what maps to what, and _first_available()'s own
+# comment for why every one of those mappings is really a PRIORITY LIST, not a
+# single name.
+#
+# TWO WAYS OF PUTTING A CLIP ON SCREEN, and _route() owns the choice: an
+# ordinary clip travel()s through the AnimationTree's state machine, while a
+# clip a SCRIPTED MOVE plays goes onto one of two bare slots that sit alongside
+# that machine behind an AnimationNodeTransition. _route()'s own comment is the
+# why, and it is the record of two owner reports years apart.
 #
 # WHY a priority list rather than one fixed name per move: the AnimationTree
 # this class drives is built at runtime by player.gd's _wire_body_animation(),
@@ -35,7 +41,20 @@ extends Node
 ## STRINGS ("parameters/<name>/..."): renaming one side and not the other
 ## produces no error whatsoever, just a body that silently stops animating.
 const GRAPH_STATES := &"states"
+const GRAPH_GATE := &"gate"
+const GRAPH_SCRIPTED_A := &"scripted_a"
+const GRAPH_SCRIPTED_B := &"scripted_b"
 const GRAPH_TIME_SCALE := &"speed"
+
+## The two bare AnimationNodeAnimation slots the scripted clips play on, in
+## ping-pong order. See _route().
+const GRAPH_SCRIPTED_SLOTS: Array[StringName] = [GRAPH_SCRIPTED_A, GRAPH_SCRIPTED_B]
+
+## The gate's inputs, IN INDEX ORDER. One list, so the index the blend tree
+## connects a node to and the name transition_request has to be given can never
+## disagree -- AnimationNodeTransition addresses its inputs by index when it is
+## wired and by name when it is switched.
+const GRAPH_GATE_INPUTS: Array[StringName] = [GRAPH_STATES, GRAPH_SCRIPTED_A, GRAPH_SCRIPTED_B]
 
 ## The clips whose playback rate follows how fast the body is actually
 ## travelling. Locomotion only, by definition: these are the clips whose feet
@@ -144,6 +163,23 @@ var _playback: AnimationNodeStateMachinePlayback
 ## The graph itself, cached alongside _playback so _has_clip() below never
 ## has to re-fetch anim_tree.tree_root every tick for every candidate.
 var _graph: AnimationNodeStateMachine
+## The blend tree the state machine and the two scripted slots sit in.
+var _blend_tree: AnimationNodeBlendTree
+
+## Which of the gate's inputs this class last ASKED for, by name.
+##
+## Tracked here rather than read back off parameters/<gate>/current_state,
+## which only catches up once the tree has processed the request -- a tick
+## later. Re-issuing a request the gate has not acted on yet would be a second
+## entry into the same input, and the slots reset on entry.
+var _gate_input: StringName = &""
+## The scripted slot most recently claimed, as an index into
+## GRAPH_SCRIPTED_SLOTS, or -1 before the first one. The ping-pong.
+var _slot: int = -1
+## Seconds an ordinary clip must still keep asking before the gate is allowed to
+## leave a scripted slot. See _route()'s hysteresis note -- this is what stops a
+## scripted -> ordinary -> scripted sandwich from popping.
+var _hold_left: float = 0.0
 
 ## The move the previous tick was in, so a CHANGE of move can be noticed. Every
 ## routing decision above this line is stateless -- it asks what the body is
@@ -171,9 +207,9 @@ func _ready() -> void:
 	# player.gd's _wire_body_animation() for why, and _drive_speed() below for
 	# what drives it.
 	_playback = anim_tree.get("parameters/%s/playback" % GRAPH_STATES)
-	var blend_tree := anim_tree.tree_root as AnimationNodeBlendTree
-	if blend_tree != null:
-		_graph = blend_tree.get_node(GRAPH_STATES) as AnimationNodeStateMachine
+	_blend_tree = anim_tree.tree_root as AnimationNodeBlendTree
+	if _blend_tree != null:
+		_graph = _blend_tree.get_node(GRAPH_STATES) as AnimationNodeStateMachine
 
 func _physics_process(delta: float) -> void:
 	if player == null or player.move_manager == null or _playback == null:
@@ -196,25 +232,19 @@ func _physics_process(delta: float) -> void:
 	if target == Move.KEEP:
 		return
 	current_clip = target
-	if _should_preempt(target):
-		# 🎯 start(), NOT travel(). travel() is a REQUEST -- the state machine
-		# finishes the transition it is in before honouring it, and there is no
-		# way to ask it to abandon one. start() takes the graph there now.
-		#
-		# ⚠️ reset = true, because these are ACTION clips and this is the moment
-		# the action begins. A trimmed clip starts at its trim, not at frame 0 --
-		# the custom timeline owns that, not this call.
-		_playback.start(target, true)
-	else:
-		_playback.travel(target)
+	_route(target, delta)
 	_drive_speed(target)
 
-## True when the graph is mid-transition into a clip no scripted move plays,
-## while a scripted move is asking for one of its own.
+## Puts `target` on screen: a scripted move's clip onto one of the gate's own
+## slots, anything else through the state machine as before.
 ##
-## ✅ THE OWNER, working out the shape of it: "比如 Jump -> Climb -> IntoGrab ->
-## Grab -> GrabPullUp 中间几个状态逻辑帧里只存在了几帧，却抢占了 GrabPullUp 的动画时
-## 间." Measured on a 2 m obstacle, take frames from one recording:
+## ✅ THE OWNER REPORTED THE SAME BUG TWICE, YEARS APART, FROM OPPOSITE SIDES,
+## and both reports are about the same missing capability.
+##
+## FIRST, WITH travel(): "比如 Jump -> Climb -> IntoGrab -> Grab -> GrabPullUp 中间
+## 几个状态逻辑帧里只存在了几帧，却抢占了 GrabPullUp 的动画时间." travel() is a
+## REQUEST: the state machine finishes the transition it is in before honouring
+## it. Measured on a 2 m obstacle, take frames from one recording:
 ##
 ##     78   move=Jump       wants Jump_Start    graph on Sprint
 ##     79   move=IntoGrab   wants Climb_Enter   graph on Jump_Start, fading
@@ -222,42 +252,171 @@ func _physics_process(delta: float) -> void:
 ##     86   move=Grab       wants ClimbUp_2m    graph on Jump_Start, fading
 ##     89   move=Grab       wants ClimbUp_2m    graph on ClimbUp_2m
 ##
-## Jump was the current move for ONE tick and held the graph for eleven -- a
+## Jump was the current move for ONE tick and held the graph for ELEVEN -- a
 ## whole body_animation_blend_time -- while the body played a jump start through
-## the reach and the grab. Climb_Enter never played at all.
+## the reach and the grab. Climb_Enter never played at all. 📌 The delays do not
+## stack: the graph paid one blend and then went straight to whatever was
+## current, skipping the clips requested in between, so the cost is one blend per
+## chain and it hurts in proportion to how SHORT the move is. The vault lost 10
+## of its 27 frames; the pull-up lost 3 of 78.
 ##
-## 📌 THE DELAYS DO NOT STACK, which the same measurement settled: the graph paid
-## one blend and then went straight to whatever was current, skipping the two
-## clips requested in between. So the cost is one blend per chain, not per state
-## -- and it hurts in proportion to how SHORT the move is. The vault lost 10 of
-## its 27 frames; the pull-up lost 3 of 78.
+## ✅ THE OWNER AGAIN, on the vault: "Walk->Jump->StepUp 碰巧 StepUp 的持续时间又很短
+## 的话，就几乎全程看不到 StepUp 的动作." The second measurement, on a 1 m obstacle,
+## take frames from one recording. The move asks for StepUp on frame 79 either
+## way:
 ##
-## ⚠️ ONE DIRECTION ONLY. A scripted clip may cut in front of an ordinary one; an
-## ordinary one may never cut in front of a scripted one, and two scripted clips
-## queue normally. Anything more symmetric would start throwing away the
-## cross-fades that are doing real work.
+##     without   the graph arrives on frame 89   -- 10 of the move's 29 frames
+##     with      the graph arrives on frame 80   -- 1
 ##
-## 📌 The blend being discarded here was fading into a pose the body never
-## actually struck, so losing it costs nothing that was worth having. Where it
-## does cost something is the fade OUT of the clip before it, which start() also
-## drops -- that is the price, and it is why this is not simply always on.
-func _should_preempt(target: StringName) -> bool:
-	return preempts(target, _playback.get_current_node(),
-		_playback.get_fading_from_node())
+## Those ten frames were a Jump_Start blending in, for a Jump state that was the
+## current move for exactly one tick. ⚠️ "29 frames" is what that recording
+## measured; the 2 m table above says the vault lost 10 of 27. Both are
+## reproduced as taken rather than reconciled -- they are different obstacles and
+## the fit stretches the clip differently, so the frame count is not a constant.
+##
+## THEN, WITH start(target, true): "和前一个动作完全没有衔接过渡." start() does
+## arrive at once, by discarding the whole cross-fade -- including the fade OUT
+## of the clip before it, which was doing real work.
+##
+## 🎯 AnimationNodeStateMachinePlayback IN 4.7 HAS NO THIRD OPTION. Verified
+## against the engine's own ClassDB: travel(), start(), stop(), and nothing that
+## interrupts a fade while keeping one. godotengine/godot#66495 is the standing
+## request for it. So the scripted clips are not in the state machine any more.
+## AnimationNodeTransition is: it switches inputs at any moment WITH its xfade,
+## and interrupts a fade of its own gracefully.
+##
+## ⚠️ TWO SLOTS, PING-PONGED. An input cannot fade into itself, so a mantle chain
+## on one slot would be a cut between its clips. Alternating means the second
+## scripted clip fades out of the first exactly as it would out of a run.
+##
+## 📌 THE STATE MACHINE IS LEFT ALONE while a slot is on screen. It may still be
+## settling from before the scripted move started; that is fine, because the
+## gate's own fade is what covers the seam and the machine is at zero weight
+## while it does.
+##
+## 🎯 AND THE ONE RULE THE OLD preempts() ENCODED SURVIVES, AS HYSTERESIS. Its
+## comment read: "ONE DIRECTION ONLY. A scripted clip may cut in front of an
+## ordinary one; an ordinary one may never cut in front of a scripted one." That
+## is still true, and the gate needs it for a reason of its own.
+##
+## ⚠️ THE SANDWICH POPS. AnimationNodeTransition tracks ONE level of `prev`, so
+## requesting "states" and then a slot inside a single blend window makes it
+## promote the half-faded "states" to full weight and DROP the outgoing slot in
+## one tick. Reproduced on a skeleton: a marker driven by the slot's own clip
+## went 1.5556 -> 0.0000 between two consecutive physics frames. The ping-pong
+## does not help, because it is "states" that gets sandwiched in, not a slot.
+##
+## So an ordinary target does NOT take the gate back immediately. It has to keep
+## asking for a whole body_animation_blend_time first -- unless the gate has
+## already settled, in which case there is no half-faded input to promote and the
+## hand-back is free, which is the ordinary end of every scripted move. A
+## scripted target arriving during the hold goes straight to the other slot: two
+## real inputs, a genuine fade, no promotion.
+##
+## 📌 THE COST IS A SLOT HOLDING ITS LAST FRAME for up to one blend window past
+## the end of its move, and that is accepted.
+##
+## ⚠️ THE MACHINE DOES NOT ADVANCE UNDER THE HOLD -- measured, not assumed: an
+## input the gate is not showing is not processed, so get_current_node() sat on
+## its old node for every tick of the hold and moved on the FIRST tick after the
+## hand-back. So travel() is still issued every held tick (the request is latched
+## and honoured the moment the input goes live again), but what the machine does
+## meanwhile is hold its last pose -- which is the right thing to fade back into
+## anyway.
+func _route(target: StringName, delta: float) -> void:
+	if Player.SCRIPTED_MOVE_CLIPS.has(target):
+		# ARMED FOR THE NEXT ORDINARY CLIP, every tick a scripted one is wanted,
+		# so the hold measures how long the ORDINARY target has persisted rather
+		# than how long ago the slot was claimed.
+		_hold_left = _blend_time()
+		# ALREADY ON SCREEN -- and this is the common case, since the drive runs
+		# every tick for the whole of a move. Re-requesting the input the gate is
+		# showing would re-enter it, and the slots reset on entry.
+		if _gate_input == _slot_name() and _slot_clip() == target:
+			return
+		_slot = 0 if _slot < 0 else (_slot + 1) % GRAPH_SCRIPTED_SLOTS.size()
+		_load_slot(target)
+		_request(_slot_name())
+		return
+	if _gate_input != GRAPH_STATES:
+		_hold_left -= delta
+		# BOTH CONDITIONS, not either. The ordinary target has to have persisted a
+		# whole blend window AND the gate has to have stopped fading. Releasing on
+		# whichever came first was tried and measured: an ordinary clip arriving
+		# at a SETTLED slot -- which is how every scripted move ends -- handed the
+		# gate straight back, and the sandwich popped exactly as before
+		# (1.5556 -> 0.0000 in one tick, unchanged). The dwell is the fix; the
+		# settle check only stops it releasing into a fade that is still running.
+		if _hold_left > 0.0 or _gate_fading():
+			# HELD. travel() is still issued, so the request is waiting the moment
+			# the machine goes live again -- see the note above on why it cannot
+			# act on it before then.
+			_playback.travel(target)
+			return
+		_request(GRAPH_STATES)
+	_hold_left = 0.0
+	_playback.travel(target)
 
-## The policy on its own, with no graph attached, so it can be stated and tested
-## as the rule it is. See _should_preempt() for what it is for.
-static func preempts(target: StringName, current: StringName,
-		fading_from: StringName) -> bool:
-	# NOTHING TO PRE-EMPT unless a transition is actually in flight. travel() is
-	# honoured immediately when the graph is settled, so start()ing there would
-	# throw away a cross-fade and buy nothing.
-	if fading_from == &"":
+## True while the gate is still cross-fading one input into another.
+##
+## ⚠️ TWO 4.7.1 QUIRKS, BOTH MEASURED, AND EITHER ONE ALONE GIVES A WRONG ANSWER.
+##
+##   `> 0.0`, not `!= 0.0`: prev_xfading counts down through 0.0 and then RESTS
+##   at one tick's worth of NEGATIVE (-0.016667 at 60 Hz), so a settled gate
+##   never reports exactly zero.
+##
+##   prev_index >= 0: on the gate's very FIRST switch there is no previous input
+##   to fade from, and prev_xfading is left PINNED at xfade_time forever rather
+##   than counting down. Without this clause the hold below never releases -- a
+##   body would enter its first scripted clip and never route an ordinary one
+##   again. Caught by a test, not by inspection.
+func _gate_fading() -> bool:
+	if anim_tree == null:
 		return false
-	if current == target:
+	if int(anim_tree.get("parameters/%s/prev_index" % GRAPH_GATE)) < 0:
 		return false
-	return Player.SCRIPTED_MOVE_CLIPS.has(target) \
-		and not Player.SCRIPTED_MOVE_CLIPS.has(current)
+	return float(anim_tree.get("parameters/%s/prev_xfading" % GRAPH_GATE)) > 0.0
+
+## The gate's own cross-fade length, which player.gd built it with.
+func _blend_time() -> float:
+	return player.body_animation_blend_time if player != null else 0.0
+
+## The name of the scripted slot most recently claimed, or an empty name before
+## the first one.
+func _slot_name() -> StringName:
+	return GRAPH_SCRIPTED_SLOTS[_slot] if _slot >= 0 else &""
+
+## The clip that slot is carrying, or an empty name.
+func _slot_clip() -> StringName:
+	var node := _slot_node()
+	return node.animation if node != null else &""
+
+func _slot_node() -> AnimationNodeAnimation:
+	if _blend_tree == null or _slot < 0:
+		return null
+	return _blend_tree.get_node(_slot_name()) as AnimationNodeAnimation
+
+## Loads `clip` onto the slot the ping-pong just moved to, TRIMMED EXACTLY AS THE
+## STATE MACHINE'S OWN NODE FOR IT IS -- Player.apply_clip_timing() is the one
+## helper both call sites go through, so a clip cannot play one way here and
+## another way there.
+func _load_slot(clip: StringName) -> void:
+	var node := _slot_node()
+	if node == null:
+		return
+	node.animation = clip
+	if player == null or anim_tree == null:
+		return
+	var anim_player := anim_tree.get_node_or_null(anim_tree.anim_player) as AnimationPlayer
+	if anim_player == null:
+		return
+	player.apply_clip_timing(node, clip, anim_player)
+
+## Asks the gate for one of its inputs, by name.
+func _request(input: StringName) -> void:
+	_gate_input = input
+	if anim_tree != null:
+		anim_tree.set("parameters/%s/transition_request" % GRAPH_GATE, String(input))
 
 ## True while the player is holding the walk modifier AND asking to go
 ## somewhere. The same question the landing one-shot asks, deliberately -- one

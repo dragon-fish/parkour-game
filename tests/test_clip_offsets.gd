@@ -368,3 +368,64 @@ func test_an_emptied_row_does_not_shadow_its_neighbours() -> void:
 	player.active_obstacle = Vector2(1.0, 0.4)
 	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 6.0, 0.001,
 		"an empty row was picked over a keyed neighbour")
+
+func test_a_scripted_move_carries_the_eye_with_the_offset() -> void:
+	# ✅ THE OWNER (StepUp): "动画做了偏移，第一人称镜头应该自动应用相同的偏移" --
+	# during a SCRIPTED move the path owns the eye's journey and the clip
+	# offset is part of the presentation, so the eye follows it. Outside one
+	# the subtraction above stands: WallRun's +-0.7 lateral corrections must
+	# never swing the view (see test_lowering_the_body_does_not_lower_the_camera).
+	var player: Player = await _player_with_body()
+	var head := Node3D.new()
+	head.name = "FakeHead"
+	player.body.add_child(head)
+	head.position = Vector3(0.0, 1.5, 0.0)
+	player.head_node = head
+	player.head_rest_local = player.to_local(head.global_position)
+
+	# A real ScriptedMove through the real manager, so scripted_progress()
+	# is genuinely >= 0 rather than stubbed at the read site.
+	var scripted := _BareScripted.new()
+	scripted.player = player
+	scripted.config = player.config
+	scripted.cfg = MoveConfig.new()
+	player.move_manager.add_child(scripted)
+	player.move_manager.register(&"BareScripted", scripted)
+	var rest: Vector3 = player._camera_head_offset()
+	player.move_manager.start(&"BareScripted")
+	assert_true(player.scripted_progress() >= 0.0, "test setup: no scripted path running")
+
+	# The follow FADES IN rather than snapping -- ✅ the owner, on the binary
+	# version: "StepUp应用往后0.2m的偏移没有过渡，进入退出时会闪一下." The offset
+	# is re-pinned every tick because _drive_clip_offset() otherwise eases it
+	# back toward zero for a clip this fixture never plays.
+	player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
+	await step(1)
+	player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
+	var just_started: float = player._camera_head_offset().distance_to(rest)
+	assert_lt(just_started, 0.06, "the follow snapped on entry (%.3f m in one tick)" % just_started)
+	for i in 90:
+		await step(1)
+		player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
+	var settled: float = player._camera_head_offset().distance_to(rest)
+	assert_almost_eq(settled, 0.20, 0.005,
+		"during a scripted move a 0.20 m clip offset moved the eye by %.3f m" % settled)
+
+	# And it FADES OUT on the way back to a non-scripted move.
+	player.move_manager.start(Move.WALKING)
+	await step(1)
+	player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
+	var just_left: float = player._camera_head_offset().distance_to(rest)
+	assert_gt(just_left, 0.10, "the follow snapped off on exit (%.3f m one tick after leaving)" % just_left)
+	for i in 90:
+		await step(1)
+		player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
+	var released: float = player._camera_head_offset().distance_to(rest)
+	assert_lt(released, 0.01, "back out of the scripted move the eye still sits %.3f m off" % released)
+
+## Enters with a begun path and otherwise does nothing -- the smallest thing
+## that makes scripted_progress() report a live path.
+class _BareScripted extends ScriptedMove:
+	func enter(_previous: StringName) -> void:
+		player.set_grounded(false)
+		begin(player.global_position, player.global_position + Vector3.FORWARD, 1.0)
