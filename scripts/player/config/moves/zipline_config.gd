@@ -19,11 +19,13 @@ func _init() -> void:
 	# -- see same_line_redo_time below and Player.note_zipline_left().
 	redo_move_time = 0.0
 
-## ✅ OWNER-MEASURED floor: boarding at ZERO ground speed still rides at
-## 14 km/h, and any take-off slower than that is raised to it ("0速进入绳索也
-## 可以获得14km/h的初速度，地速低于14上绳子就14"). The CDO's MinZipVelocity =
-## 300 uu/s (3.0) is evidently not the on-screen floor; the measurement wins.
-@export var min_velocity: float = 3.89
+## ✅ OWNER-MEASURED floor, repeatedly: 14.36 km/h = 3.99 m/s -- which is
+## 400 uu/s to within 0.3%, the SAME 400 the slope gain fits. Two fitted
+## constants landing on MinZipAcceleration's literal value suggests the CDO
+## pair (300/400) does not mean what the field names say; whatever the truth,
+## the measurement is what ships. Boarding slower than this is raised to it
+## ("试了几次基本都是14.36km/h").
+@export var min_velocity: float = 3.99
 ## ✅ OWNER-MEASURED, two reference segments (2026-08-24):
 ##
 ##     61 m at ~19 deg (sin 0.326): 14 -> 63 km/h in ~5 s    a = 2.72

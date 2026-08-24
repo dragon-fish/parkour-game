@@ -113,7 +113,7 @@ if c.check_for_zipline
 
 | 字段 | 值 | 来源 |
 | --- | --- | --- |
-| `min_velocity` | 3.89 | ✅ 作者实测：0 地速上绳也有 14 km/h，低于 14 抬到 14；CDO `MinZipVelocity=300` 非屏显下限 |
+| `min_velocity` | 3.99 | ✅ 作者反复实测 14.36 km/h ≈ 400 uu/s——与坡度增益同落在 400，CDO 那对字段的命名存疑 |
 | `base_acceleration` / `slope_acceleration` | 1.4 / 4.0 | ✅ 作者两段实测线性拟合；gain ≈ CDO `MinZipAcceleration` |
 | `hang_offset` | 0.9 | ✅ `HangOffset = (0,0,-90)` |
 | `fade_in_time` | 0.1 | ✅ `ZipFadeInTime` |
