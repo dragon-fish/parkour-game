@@ -132,7 +132,11 @@ func test_facing_the_wall_puts_both_palms_on_it() -> void:
 	assert_gt(float(state["right"]), 0.5, "the right palm never went up")
 	var spread: float = absf(player.hand_ik._targets[HandIK.LEFT].global_position.x
 		- player.hand_ik._targets[HandIK.RIGHT].global_position.x)
-	assert_gt(spread, 0.25, "both palms landed on the same spot (spread %.2f)" % spread)
+	# The spread IS the rig's shoulder width -- each palm sits in front of its
+	# own shoulder, not fanned out from the centre ray's single hit.
+	var expected: float = 2.0 * player.hand_ik.shoulder_half() * player.body_mount_scale
+	assert_almost_eq(spread, expected, 0.02,
+		"the palms are %.2f m apart; the shoulders are %.2f m apart" % [spread, expected])
 
 func test_the_palm_target_stays_off_the_surface() -> void:
 	# ✅ THE OWNER: "手掌有可能直接插进墙里面." The target drives the wrist, so it

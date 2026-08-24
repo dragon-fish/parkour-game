@@ -1318,13 +1318,19 @@ func _drive_wall_touch() -> void:
 	var ahead: Dictionary = probes.side_wall_query(-global_transform.basis.z,
 		reach + (WALL_TOUCH_HYSTERESIS if frontal else 0.0))
 	if ahead["valid"]:
+		# EACH PALM LANDS IN FRONT OF ITS OWN SHOULDER: the shoulder projected
+		# onto the wall plane, plus the palm stand-off. Spreading both hands
+		# from the centre ray's single hit point was the first cut, and the
+		# owner caught it: "你把两个手臂从模型中轴伸了出来，放在了墙的同一个点上."
 		var normal: Vector3 = ahead["normal"]
-		var tangent: Vector3 = normal.cross(Vector3.UP).normalized()
+		var point: Vector3 = ahead["point"]
 		for side in [HandIK.LEFT, HandIK.RIGHT]:
-			var out: Vector3 = tangent \
-				if tangent.dot(_wall_touch_side_dir(side)) > 0.0 else -tangent
-			hand_ik.reach(side, (ahead["point"] as Vector3)
-				+ out * WALL_TOUCH_SPAN + normal * WALL_TOUCH_PALM)
+			var shoulder: Vector3 = global_position \
+				+ Vector3.UP * Probes.SIDE_TOUCH_SHOULDER \
+				+ _wall_touch_shoulder_offset(side)
+			var on_wall: Vector3 = shoulder \
+				- normal * (shoulder - point).dot(normal)
+			hand_ik.reach(side, on_wall + normal * WALL_TOUCH_PALM)
 			_wall_touching[side] = true
 		return
 	# The lead lengthens the ray's PATH to the same wall, so the limit grows by
@@ -1335,7 +1341,8 @@ func _drive_wall_touch() -> void:
 			+ (WALL_TOUCH_HYSTERESIS if _wall_touching[side] else 0.0)) * lead_scale
 		var lead_dir: Vector3 = (_wall_touch_side_dir(side) \
 			- global_transform.basis.z * WALL_TOUCH_LEAD).normalized()
-		var hit: Dictionary = probes.side_wall_query(lead_dir, limit)
+		var hit: Dictionary = probes.side_wall_query(lead_dir, limit,
+			_wall_touch_shoulder_offset(side))
 		if hit["valid"]:
 			hand_ik.reach(side, (hit["point"] as Vector3)
 				+ (hit["normal"] as Vector3) * WALL_TOUCH_PALM)
@@ -1349,6 +1356,12 @@ func _release_wall_touch() -> void:
 		hand_ik.release()
 		_wall_touching[HandIK.LEFT] = false
 		_wall_touching[HandIK.RIGHT] = false
+
+## This hand's own shoulder, as a world offset from the capsule's axis --
+## measured off the rig, so the rays start where the arms actually hang.
+func _wall_touch_shoulder_offset(side: int) -> Vector3:
+	return _wall_touch_side_dir(side) \
+		* hand_ik.shoulder_half() * body_mount_scale
 
 ## World direction of this hand's own side. THE MODEL IS GROUND TRUTH for the
 ## sign: its right hand rests at world -x when the body faces -z (measured off

@@ -29,8 +29,10 @@ func _no_hit() -> Dictionary:
 ## head level, not at the shoulder the first cut used.
 const SIDE_TOUCH_SHOULDER := 0.6
 
-func side_wall_query(direction: Vector3, reach: float) -> Dictionary:
-	var origin: Vector3 = global_position + Vector3.UP * SIDE_TOUCH_SHOULDER
+func side_wall_query(direction: Vector3, reach: float,
+		origin_offset: Vector3 = Vector3.ZERO) -> Dictionary:
+	var origin: Vector3 = global_position + Vector3.UP * SIDE_TOUCH_SHOULDER \
+		+ origin_offset
 	var flat := Vector3(direction.x, 0.0, direction.z)
 	if flat.length_squared() < 0.0001:
 		return _no_hit()

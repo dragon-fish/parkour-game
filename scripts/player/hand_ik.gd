@@ -1,22 +1,17 @@
 class_name HandIK
 extends Node
 
-# UNFINISHED, AND DELIBERATELY INERT. The chains build, the blend ramps, and
-# the modifier switches itself on and off correctly. The solver runs -- and
-# sends the hand about 1.32 m from where it was aimed, roughly three arm
-# lengths.
+# LIVE, AND THE SOLVER WAS INNOCENT ALL ALONG. This spent two sessions written
+# off -- first as "does not move the bones, 0.0000 m" (get_bone_global_pose()
+# reads the pose from BEFORE the deferred modifier pass; the final one needs
+# the modification_processed signal), then as "overshoots by 1.32 m" (a probe
+# whose lambda captured its sample variable BY VALUE, reading back a zero that
+# sat |target| from every target, with targets on the wrong side of the body
+# besides). Measured correctly, TwoBoneIK3D lands the hand on the target to
+# the millimetre -- see test_hand_ik.gd's own history note.
 #
-# CORRECTED: this was first recorded as "does not move the bones at all",
-# measured at exactly 0.0000 m. That measurement was wrong.
-# Skeleton3D.get_bone_global_pose() returns the pose from BEFORE the deferred
-# modifier pass; reading the final one needs the modification_processed signal.
-# The same mistake would have made any working modifier look dead.
-#
-# First suspect for the overshoot is POLE_OFFSET: it places the elbow hint
-# relative to the TARGET, which for a target close to the body lands inside the
-# torso, and a two-bone solver given a degenerate pole can flip its whole
-# solution plane. Nothing calls reach(), so this costs nothing until someone
-# picks it up. See docs/feel-backlog.md 47.
+# The first caller is the wall touch: Player._drive_wall_touch() rests a palm
+# on walls walked past. See docs/feel-backlog.md 47/54 for the archaeology.
 
 # Puts the hands ON the thing the body is climbing over.
 #
@@ -119,6 +114,10 @@ func attach(skeleton: Skeleton3D) -> bool:
 			skeleton.find_bone(CHAINS[RIGHT]["end"])).origin
 		- skeleton.get_bone_global_rest(
 			skeleton.find_bone(CHAINS[RIGHT]["root"])).origin).length()
+	_shoulder_half = 0.5 * (skeleton.get_bone_global_rest(
+			skeleton.find_bone(CHAINS[RIGHT]["root"])).origin
+		- skeleton.get_bone_global_rest(
+			skeleton.find_bone(CHAINS[LEFT]["root"])).origin).length()
 	return true
 
 ## True when there are chains to drive.
@@ -133,6 +132,15 @@ var _arm_length: float = 0.0
 
 func arm_length() -> float:
 	return _arm_length
+
+## Half the distance between the two upper-arm roots, in SKELETON space --
+## where each arm actually hangs from. Measured off the rig, same stance as
+## arm_length(): ✅ THE OWNER, on rays cast from the capsule's axis: "你忽略了
+## 肩宽，你把两个手臂从模型中轴伸了出来."
+var _shoulder_half: float = 0.0
+
+func shoulder_half() -> float:
+	return _shoulder_half
 
 ## Sends a hand to `world_point` and blends the IK in.
 ##
