@@ -78,7 +78,7 @@ func enter(_previous: StringName) -> void:
 	# 回18km/h", and a second rope resets to the same figure. Not the current
 	# airspeed, not a projection. Floored by MinZipVelocity as before.
 	_v = maxf(cfg.min_velocity, player.takeoff_ground_speed())
-	_a = cfg.acceleration
+	_a = _acceleration_for(along)
 	player.velocity = Vector3.ZERO
 	_fade = 0.0
 	_entry_pos = player.global_position
@@ -110,11 +110,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return _release()
 
 	var along: Vector3 = _tangent()
-	# CONSTANT, not slope-driven. ✅ THE OWNER, measured in the original:
-	# "绳索速度全程是匀速增长的，大概每秒增加10km/h" -- one 61 m, 19-degree
-	# segment went 14 -> 63 km/h in ~5 s, and the growth reads the same on
-	# every rope. The slope term this replaces was a derivation, not data.
-	_a = cfg.acceleration
+	_a = _acceleration_for(along)
 	_v = maxf(_v + _a * delta, cfg.min_velocity)
 	_s += _dir * _v * delta
 	if _s <= 0.0 or _s >= _line.length():
@@ -227,6 +223,14 @@ func exit() -> void:
 	# so this lives on the line, not on the move name.
 	if is_instance_valid(_line):
 		player.note_zipline_left(_line, cfg.same_line_redo_time)
+
+## The measured growth law: linear in the descent slope. ✅ THE OWNER, off two
+## reference segments in the original (see ZiplineConfig.base_acceleration):
+## a = base + gain * sin(descent). Uphill is unmeasured -- the linear form is
+## extrapolated there and floored at zero; min_velocity keeps the ride moving
+## through any rising stretch of a sag either way.
+func _acceleration_for(along: Vector3) -> float:
+	return maxf(cfg.base_acceleration + cfg.slope_acceleration * (-along.y), 0.0)
 
 # --- read by the HUD and by tests ------------------------------------------
 

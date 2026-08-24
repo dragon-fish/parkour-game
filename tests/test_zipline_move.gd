@@ -131,20 +131,19 @@ func test_speed_never_drops_below_the_floor_and_keeps_rising() -> void:
 	await step(20)
 	assert_gt(zip.ride_speed(), earlier, "a level cable must still accelerate (min_acceleration)")
 
-func test_the_acceleration_is_constant_and_ignores_the_slope() -> void:
-	# ✅ THE OWNER, measured in the original: "绳索速度全程是匀速增长的，大概每秒
-	# 增加10km/h" -- the growth rate is the same on every rope, flat or steep.
-	# The slope term this replaces was a derivation, and the measurement won.
+func test_the_acceleration_follows_the_measured_slope_law() -> void:
+	# ✅ THE OWNER, off two reference segments: a = base + gain * sin(descent).
+	# The relation is what is asserted -- a steep cable outpaces a level one by
+	# gain * sin(theta) -- not the tuned numbers themselves.
 	var player: Player = await _riding_player()
 	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)
-	assert_almost_eq(zip.ride_acceleration(), player.config.zipline.acceleration, 0.001,
-		"a level cable's growth is not the configured constant")
+	var level: float = zip.ride_acceleration()
 	_line.queue_free()
 	TestWorld.teardown(_world)
 	_world = {}
 	await step(1)
 	player = await _standing_player()
-	# 30 degrees down over 12 m of run: the steep case.
+	# 30 degrees down over 12 m of run: sin(theta) = 0.5 exactly by design.
 	_line = _cable(Vector3(0.0, CABLE_Y, -1.0), Vector3(0.0, CABLE_Y - 12.0 * tan(deg_to_rad(30.0)), 11.0))
 	var input: ScriptedInputSource = _world["input"]
 	input.press_jump()
@@ -154,8 +153,10 @@ func test_the_acceleration_is_constant_and_ignores_the_slope() -> void:
 			break
 	assert_eq(player.move_manager.current_name, Move.ZIPLINE, "test setup: never caught the sloped cable")
 	zip = player.move_manager.move_for(Move.ZIPLINE)
-	assert_almost_eq(zip.ride_acceleration(), player.config.zipline.acceleration, 0.001,
-		"slope leaked into the growth rate")
+	var expected_gap: float = player.config.zipline.slope_acceleration * 0.5
+	assert_almost_eq(zip.ride_acceleration() - level, expected_gap, 0.15,
+		"steep minus level growth is %.2f; the slope law says %.2f"
+			% [zip.ride_acceleration() - level, expected_gap])
 
 func test_the_body_faces_along_the_cable() -> void:
 	var player: Player = await _riding_player()

@@ -19,15 +19,23 @@ func _init() -> void:
 	# -- see same_line_redo_time below and Player.note_zipline_left().
 	redo_move_time = 0.0
 
-## ✅ MinZipVelocity = 300 uu/s. The ride never goes slower than this.
-@export var min_velocity: float = 3.0
-## ✅ OWNER-MEASURED in the original (2026-08-24): "绳索速度全程是匀速增长的，
-## 大概每秒增加10km/h" -- constant and slope-independent. One reference
-## segment: 61 m at ~19 degrees, 14 -> 63 km/h in ~5 s, which is 2.7-2.8
-## m/s². Replaces a derived max(MinZipAcceleration, -g*slope) term; the
-## CDO's MinZipAcceleration = 400 uu/s² evidently names something other than
-## the growth rate the game shows on screen, and the measurement wins.
-@export var acceleration: float = 2.78
+## ✅ OWNER-MEASURED floor: boarding at ZERO ground speed still rides at
+## 14 km/h, and any take-off slower than that is raised to it ("0速进入绳索也
+## 可以获得14km/h的初速度，地速低于14上绳子就14"). The CDO's MinZipVelocity =
+## 300 uu/s (3.0) is evidently not the on-screen floor; the measurement wins.
+@export var min_velocity: float = 3.89
+## ✅ OWNER-MEASURED, two reference segments (2026-08-24):
+##
+##     61 m at ~19 deg (sin 0.326): 14 -> 63 km/h in ~5 s    a = 2.72
+##     97 m at ~8 deg  (sin 0.139): 14 -> 67 km/h in ~7.5 s  a = 1.96
+##
+## Linear in the slope: a = base + gain * sin(theta), fitting base 1.39 and
+## gain 4.07 -- and 4.07 is the CDO's MinZipAcceleration (400 uu/s²) to
+## within 2%, which is very likely that field's real role: the slope
+## coefficient, not a floor. The first single-segment reading ("constant
+## ~10 km/h/s") could not separate the two; the second segment did.
+@export var base_acceleration: float = 1.4
+@export var slope_acceleration: float = 4.0
 ## ✅ HangOffset = (0, 0, -90): the body centre hangs this far below the cable.
 @export var hang_offset: float = 0.9
 ## ✅ ZipFadeInTime = 0.1 s: how long the body takes to reach the hang point

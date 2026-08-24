@@ -91,9 +91,10 @@ if c.check_for_zipline
 **physics_update**
 
 1. 蹲键按下（`input.crouch_pressed`）→ `_release()`。
-2. 切线 `t = _dir · sample(_s).tangent`；加速度为**常数** `a = acceleration`——✅ 作者实测
-   全程匀速增长约 10 km/h/s（参考段：61 m、约 19°，14→63 km/h 用时 ~5 s），与坡度无关；
-   原坡度项是推导，被实测推翻。
+2. 切线 `t = _dir · sample(_s).tangent`；加速度**随坡度线性**：`a = max(base + gain·(−t.y), 0)`
+   ——✅ 作者两段实测拟合（61 m/19°→2.72，97 m/8°→1.96）得 base≈1.4、gain≈4.07，
+   gain 与 CDO `MinZipAcceleration=400uu` 吻合到 2%（该字段的真实角色应是坡度系数）。
+   上坡段无实测，线性外推并下夹到 0；`min_velocity` 保证不停。
 3. `_v += a · dt`；`_v = max(_v, min_velocity)`；`_s += _dir · _v · dt`。
 4. `_s` 越出 `[0, length]` → `_release()`。
 5. 吊点 `hang = sample(_s).position − hang_offset · UP`。
@@ -112,8 +113,8 @@ if c.check_for_zipline
 
 | 字段 | 值 | 来源 |
 | --- | --- | --- |
-| `min_velocity` | 3.0 | ✅ `MinZipVelocity = 300` |
-| `acceleration` | 2.78 | ✅ 作者实测 ~10 km/h/s，常数、与坡度无关；CDO `MinZipAcceleration=400` 另有所指 |
+| `min_velocity` | 3.89 | ✅ 作者实测：0 地速上绳也有 14 km/h，低于 14 抬到 14；CDO `MinZipVelocity=300` 非屏显下限 |
+| `base_acceleration` / `slope_acceleration` | 1.4 / 4.0 | ✅ 作者两段实测线性拟合；gain ≈ CDO `MinZipAcceleration` |
 | `hang_offset` | 0.9 | ✅ `HangOffset = (0,0,-90)` |
 | `fade_in_time` | 0.1 | ✅ `ZipFadeInTime` |
 | `fall_limit` | 6.0 | ✅ `TdMove_IntoZipLine.ZVelocityFallLimit = -600` |
