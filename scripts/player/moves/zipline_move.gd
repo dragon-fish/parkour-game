@@ -38,6 +38,30 @@ var _fan_yaw: float = 0.0
 var _fan_centred: bool = false
 var _aborted: bool = false
 
+## The direction a ride boarded at `offset` travels: +1 toward increasing arc
+## length, -1 toward decreasing. THE ONLY COPY OF THE RULE -- enter() derives
+## _dir from it and the entry gate asks it through travel_direction() below;
+## a second copy would let the two disagree about which rides exist.
+##
+## ✅ THE OWNER: "从低点朝高点方向跳起触发绳索，会逆着高度滑上去，甚至还会
+## 逐渐加速" -- that ride must not exist. A zipline is one-way: the original's
+## cables all descend, and the min-acceleration floor exists to carry the far
+## half of a SAG, not to power a climb. So travel is toward the LOWER
+## endpoint; a level cable (no lower end) falls back to "away from the end
+## you arrived at".
+static func travel_sign(line: InterestLine, offset: float) -> float:
+	var start_y: float = line.sample(0.0)["position"].y
+	var end_y: float = line.sample(line.length())["position"].y
+	if absf(start_y - end_y) > 0.01:
+		return 1.0 if end_y < start_y else -1.0
+	return 1.0 if offset < line.length() * 0.5 else -1.0
+
+## The unit world direction a ride caught at `world_pos` would travel in --
+## what AirborneMove's entry gate compares the approach against.
+static func travel_direction(line: InterestLine, world_pos: Vector3) -> Vector3:
+	var s: float = line.closest_offset(world_pos)
+	return line.sample(s)["tangent"] * travel_sign(line, s)
+
 func enter(_previous: StringName) -> void:
 	# Declared, not read: this move never calls move_and_slide().
 	player.set_grounded(false)
@@ -47,22 +71,7 @@ func enter(_previous: StringName) -> void:
 		_aborted = true
 		return
 	_s = _line.closest_offset(player.global_position)
-	# ✅ THE OWNER: "从低点朝高点方向跳起触发绳索，会逆着高度滑上去，甚至还会
-	# 逐渐加速" -- that ride must not exist. A zipline is one-way: the
-	# original's cables all descend, and the min-acceleration floor below
-	# exists to carry the far half of a SAG, not to power a climb. So the
-	# travel direction is toward the LOWER endpoint, not "away from the
-	# nearer end" -- boarding near the low end of a downhill cable must slide
-	# back to the low end, never climb toward the high one.
-	var start_y: float = _line.sample(0.0)["position"].y
-	var end_y: float = _line.sample(_line.length())["position"].y
-	if absf(start_y - end_y) > 0.01:
-		_dir = 1.0 if end_y < start_y else -1.0
-	else:
-		# A level cable has no lower end to slide toward -- fall back to the
-		# old rule: away from the end you arrived at, same as a sagging
-		# cable's far half.
-		_dir = 1.0 if _s < _line.length() * 0.5 else -1.0
+	_dir = travel_sign(_line, _s)
 	var along: Vector3 = _tangent()
 	# Momentum carried onto the cable, floored -- MinZipVelocity.
 	_v = maxf(cfg.min_velocity, player.velocity.dot(along))

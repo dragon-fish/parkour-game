@@ -32,3 +32,10 @@ func _init() -> void:
 ## ✅ TdMove_IntoZipLine.ZVelocityFallLimit = -600: falling faster than this
 ## (m/s, positive) the hands cannot hold on.
 @export var fall_limit: float = 6.0
+
+## ⚠️ PROJECT-DEFINED, no CDO source. Widest horizontal angle, in degrees,
+## between the approach velocity and the ride's travel direction that still
+## catches. ✅ THE OWNER: "对着绳索反着跳别触发." 100 refuses only a clearly
+## opposed approach -- a perpendicular crossing under the cable still catches.
+## Degrees, so the F1 panel reads naturally. The owner dials it.
+@export var catch_max_approach_angle: float = 100.0

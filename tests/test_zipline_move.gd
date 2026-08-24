@@ -386,3 +386,50 @@ func test_the_debug_line_draws_the_cable_hang_offset_above_the_body() -> void:
 	var drawn: Vector3 = zip.sample(zip.ride_offset() / _line.length())
 	assert_almost_eq(drawn.y - player.global_position.y, player.config.zipline.hang_offset, 0.02, \
 		"the debug line is not drawn hang_offset above the body")
+
+## A cable that DESCENDS toward its far (+z) end, so the travel direction at
+## the boarding point is unambiguously +z whatever end the body is nearer.
+##
+## HIGHER than CABLE_Y on purpose: the volume overlap is capsule-vs-capsule
+## (reach_radius 0.6 + body radius 0.4 = 1.0 m axis-to-axis), so a 2.3 m
+## cable already contains a STANDING body and the catch fires on the first
+## airborne tick -- before a test can inject its approach velocity. At 2.7
+## the standing body is out (gap 1.15) and the jump apex is in (gap 0.27).
+func _descending_away_cable() -> InterestLine:
+	return _cable(Vector3(0.0, 2.7, -1.0), Vector3(0.0, 2.2, 11.0))
+
+func test_jumping_against_the_travel_direction_does_not_catch() -> void:
+	var player: Player = await _standing_player()
+	_line = _descending_away_cable()
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	await step(1)
+	# Opposed approach, injected rather than run up, so the test does not
+	# depend on which way the fixture happens to face. 1 m/s is comfortably
+	# above the gate's stillness carve-out, and slow enough that the body
+	# stays inside the volume's z span for the whole flight.
+	player.velocity.x = 0.0
+	player.velocity.z = -1.0
+	var caught := false
+	for i in 30:
+		await step(1)
+		if player.move_manager.current_name == Move.ZIPLINE:
+			caught = true
+	assert_false(caught, \
+		"an approach opposed to the travel direction must not catch the cable")
+
+func test_jumping_with_the_travel_direction_still_catches() -> void:
+	var player: Player = await _standing_player()
+	_line = _descending_away_cable()
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	await step(1)
+	player.velocity.x = 0.0
+	player.velocity.z = 1.0
+	var caught := false
+	for i in 30:
+		await step(1)
+		if player.move_manager.current_name == Move.ZIPLINE:
+			caught = true
+	assert_true(caught, \
+		"an approach WITH the travel direction must still catch -- the gate may only refuse opposition")

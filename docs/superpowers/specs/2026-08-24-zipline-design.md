@@ -70,6 +70,10 @@ if c.check_for_zipline
 `check_for_zipline` 是 `MoveConfig` 的新字段（与 `check_for_grab` 同款），
 `JumpConfig` / `FallingConfig` 置 true，其余默认 false。地面上走进体积不进入。
 
+追加门槛（屋主：「对着绳索反着跳别触发」）：水平速度 > 0.5 m/s 时，其方向与行进方向
+（§5 enter 4，经 `ZiplineMove.travel_direction()` 单一来源）的水平夹角 >
+`catch_max_approach_angle` 则不进入；几乎垂直起跳（水平速度 ≤ 0.5）不受限。
+
 ## 5. `ZiplineMove`（`scripts/player/moves/zipline_move.gd`）
 
 状态：`_line`、`_s`（弧长）、`_v`（沿线速度）、`_dir`（+1 / −1）、`_fade`（挂上插值计时）、
@@ -112,6 +116,7 @@ if c.check_for_zipline
 | `hang_offset` | 0.9 | ✅ `HangOffset = (0,0,-90)` |
 | `fade_in_time` | 0.1 | ✅ `ZipFadeInTime` |
 | `fall_limit` | 6.0 | ✅ `TdMove_IntoZipLine.ZVelocityFallLimit = -600` |
+| `catch_max_approach_angle` | 100° | ⚠️ 项目自定义：只拦明显反向的进入，横穿仍可挂 |
 | `redo_move_time` | 3.0 | ✅ `SameZipLineRedoMoveTime`；⚠️ 现有冷却按 Move 名而非按缆绳，暂接受 |
 | `allows_turn` | false | 双手占用 |
 | `constrain_look` / yaw ±90° / `freeze_visual_yaw = true` | | 复用 Grab 的 look-constraint 机制 |

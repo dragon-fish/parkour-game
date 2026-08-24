@@ -213,9 +213,10 @@ func probe_transition() -> StringName:
 	# happened to see a ledge nearby has no such claim. Falling faster than
 	# fall_limit the hands cannot hold on (ZVelocityFallLimit).
 	if c.check_for_zipline and player.velocity.y > -config.zipline.fall_limit \
-			and player.move_manager.can_enter(ZIPLINE) \
-			and player.nearest_interest_line(InterestLine.Kind.ZIPLINE) != null:
-		return ZIPLINE
+			and player.move_manager.can_enter(ZIPLINE):
+		var cable: InterestLine = player.nearest_interest_line(InterestLine.Kind.ZIPLINE)
+		if cable != null and _zipline_approach_allowed(cable):
+			return ZIPLINE
 
 	if c.check_for_grab and player.probes != null and player.move_manager.can_enter(GRAB):
 		var ledge: Dictionary = player.probes.ledge_query()
@@ -306,6 +307,26 @@ func _within_reach(ledge: Dictionary) -> bool:
 	# depth it sits well behind the surface the body would touch -- 1.78 m for
 	# a 1 m deep block whose face was only 0.9 m away.
 	return float(ledge.get("face_distance", INF)) <= config.into_grab.max_reach_distance
+
+## Whether the body's approach is compatible with the direction this cable
+## would carry it. ✅ THE OWNER: "对着绳索反着跳别触发" -- jumping against the
+## travel direction must not catch.
+##
+## Vertical-jump carve-out first: below a stillness threshold the approach
+## HAS no direction, and boarding from directly underneath stays legal. The
+## angle cap itself is ZiplineConfig.catch_max_approach_angle -- see its own
+## note on why 100 degrees and why it is a dial.
+func _zipline_approach_allowed(cable: InterestLine) -> bool:
+	var h_vel := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	# Below this the jump is vertical and has no meaningful approach direction.
+	if h_vel.length() <= 0.5:
+		return true
+	var travel: Vector3 = ZiplineMove.travel_direction(cable, player.global_position)
+	travel.y = 0.0
+	if travel.length_squared() < 0.0001:
+		# A near-vertical cable has no horizontal travel to oppose.
+		return true
+	return rad_to_deg(h_vel.angle_to(travel)) <= config.zipline.catch_max_approach_angle
 
 ## Where a landing from this state leads. Overridden by subclasses.
 ## FallUncontrolledMove overrides this to emit died_from_fall instead of
