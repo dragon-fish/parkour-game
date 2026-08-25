@@ -83,12 +83,19 @@ func _unhandled_input(event: InputEvent) -> void:
 ## a probe), and both toggle_pause() and this Esc path are required to work
 ## with no scene loaded at all.
 ##
-## Guards by node name rather than `is MainMenu`: that class_name only
-## exists from Task 5 onward. Once it lands, this can switch to a real type
-## check.
+## Prefers the real `is MainMenu` type check, now that Task 5's class_name
+## exists. Falls back to the node-name check this used before that class
+## existed -- tolerant rather than strict, so a stand-in scene built for a
+## test (a MainMenu instance that never went through main_menu.tscn, or any
+## future scene that simply names its root "MainMenu") still reads as the
+## main menu even without the exact class.
 func _is_main_menu_scene() -> bool:
 	var current := get_tree().current_scene
-	return current != null and current.name == "MainMenu"
+	if current == null:
+		return false
+	if current is MainMenu:
+		return true
+	return current.name == "MainMenu"
 
 func toggle_pause() -> void:
 	if get_tree().paused:

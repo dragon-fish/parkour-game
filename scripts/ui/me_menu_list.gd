@@ -37,6 +37,13 @@ var _hover_preview: ColorRect
 var _labels: Array[Label] = []
 var _selected_index: int = 0
 var _bar_tween: Tween
+var _entrance_tween: Tween
+
+## Main menu beat 4: "每项错 30ms，ease-out 0.12s" -- each row slides in from
+## the left and fades up, staggered. Not used by PauseUi, which shows its
+## list instantly; the main menu is the one caller with an entrance to play.
+const ENTRANCE_STAGGER := 0.03
+const ENTRANCE_OFFSET_PX := 40.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -90,6 +97,34 @@ func set_items(items: Array[String]) -> void:
 	_selected_index = 0
 	_refresh_colors()
 	call_deferred("_sync_overlays")
+
+## Plays the beat-4 stagger-in: each item starts invisible and offset left,
+## then eases up to its resting alpha/position, ENTRANCE_STAGGER apart. Call
+## skip_entrance() instead to jump straight to the settled state (the main
+## menu's "an input during the entrance skips choreography" courtesy).
+func play_entrance() -> void:
+	if _entrance_tween != null and _entrance_tween.is_valid():
+		_entrance_tween.kill()
+	_entrance_tween = create_tween()
+	_entrance_tween.set_parallel(true)
+	for i in _labels.size():
+		var label := _labels[i]
+		label.modulate.a = 0.0
+		label.position.x = -ENTRANCE_OFFSET_PX
+		_entrance_tween.tween_property(label, "modulate:a", 1.0, TWEEN_TIME) \
+			.set_delay(i * ENTRANCE_STAGGER).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_entrance_tween.tween_property(label, "position:x", 0.0, TWEEN_TIME) \
+			.set_delay(i * ENTRANCE_STAGGER).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+## Jumps every item straight to its fully-visible, settled position -- used
+## both to skip a running entrance and to leave the list ready before one has
+## ever played.
+func skip_entrance() -> void:
+	if _entrance_tween != null and _entrance_tween.is_valid():
+		_entrance_tween.kill()
+	for label in _labels:
+		label.modulate.a = 1.0
+		label.position.x = 0.0
 
 func _on_item_gui_input(event: InputEvent, index: int) -> void:
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \

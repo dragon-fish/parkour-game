@@ -266,3 +266,82 @@ func test_settings_menu_default_resets_controls_without_saving() -> void:
 	assert_almost_eq(slider.value, SettingsStore.defaults().sensitivity, 0.00001, \
 		"默认 did not reset the sensitivity slider's displayed value")
 	assert_false(FileAccess.file_exists(SettingsStore.PATH), "默认 must not write settings.cfg")
+
+
+# ---------------------------------------------------------------------------
+# MainMenu (Task 5 of the menu feature): the project's front-door scene. Its
+# _ready() builds the whole tree, kicks off the entrance choreography, and --
+# on this machine -- also loads a real silhouette body, since
+# scenes/player/profiles/local.cfg here points at vrm_test.tres. These tests
+# are written to pass either way (model present or the fresh-checkout
+# degrade path with none), per the brief's headless caveat: nothing here
+# asserts on the silhouette itself, only on the UI structure and the two
+# behavior seams.
+#
+# HONEST TEST CHOICE (开始 handler): a real change_scene_to_file() mid-suite
+# would swap out GUT's own runner scene, which is exactly the kind of
+# disruption the brief warns about. MainMenu exposes _change_scene as a
+# swappable Callable seam for this reason (defaults to the real thing) --
+# _on_start_pressed() below is called directly and the test asserts the seam
+# was invoked with scenes/main.tscn, never touching the actual scene tree.
+# ---------------------------------------------------------------------------
+
+func test_main_menu_builds_without_error_and_skip_entrance_settles_the_list() -> void:
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(3)
+
+	menu._skip_entrance()
+
+	assert_true(menu._menu_list.is_visible_in_tree(), \
+		"the menu list is not visible in tree once the entrance is skipped")
+	assert_eq(menu._menu_list._labels.size(), 3, \
+		"the main menu list should have exactly 开始/设置/退出")
+
+func test_start_pressed_requests_the_scene_change_via_the_seam() -> void:
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(1)
+
+	var requested := [""]
+	menu._change_scene = func(path): requested[0] = path
+
+	menu._on_start_pressed()
+
+	assert_eq(requested[0], MainMenu.MAIN_SCENE, \
+		"开始 did not request scenes/main.tscn through the change-scene seam")
+
+## PauseUi's main-menu guard (_is_main_menu_scene()) now prefers `is
+## MainMenu` over the node-name fallback it used before this task's
+## class_name existed -- see pause_ui.gd. Exercised through the real
+## get_tree().current_scene + the real _unhandled_input() path rather than
+## calling the guard function directly, since current_scene is a plain
+## settable property here (confirmed empirically: GUT itself never sets one,
+## per pause_ui.gd's own comment) and swapping it briefly is the honest way
+## to exercise the exact branch production code takes.
+##
+## NOT add_child_autofree(): SceneTree.set_current_scene() asserts its
+## argument is a direct child of the tree's root (verified empirically --
+## the engine errors "p_scene->get_parent() != root" otherwise), and GUT
+## parents add_child_autofree() nodes under the test itself, not under root.
+## Parented directly here instead, and freed by hand at the end.
+func test_esc_is_a_no_op_while_the_main_menu_is_current_scene() -> void:
+	assert_false(get_tree().paused, "test setup: tree was already paused")
+	var menu := MainMenu.new()
+	get_tree().root.add_child(menu)
+	await step(1)
+
+	var previous_current_scene := get_tree().current_scene
+	get_tree().current_scene = menu
+
+	var esc := InputEventKey.new()
+	esc.physical_keycode = KEY_ESCAPE
+	esc.pressed = true
+	esc.echo = false
+	PauseUi._unhandled_input(esc)
+
+	get_tree().current_scene = previous_current_scene
+	menu.queue_free()
+
+	assert_false(get_tree().paused, \
+		"Esc must be a no-op while a MainMenu is the current scene")
