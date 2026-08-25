@@ -23,9 +23,20 @@ const PREVIEW_NAME := "EditorPreview"
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
+		set_notify_local_transform(true)
 		_build_preview()
 		return
 	body_entered.connect(_on_body_entered)
+
+func _notification(what: int) -> void:
+	# EDITOR ONLY: stay level. The respawn reads nothing but yaw, and "Align
+	# Transform with View" copies the editor camera's pitch too -- the owner
+	# should not have to square the view up first. Zeroing the tilt re-fires
+	# this notification once; the second pass finds nothing to do.
+	if what == NOTIFICATION_LOCAL_TRANSFORM_CHANGED and Engine.is_editor_hint():
+		if absf(rotation.x) > 0.0001 or absf(rotation.z) > 0.0001:
+			rotation.x = 0.0
+			rotation.z = 0.0
 
 func _on_body_entered(body: Node3D) -> void:
 	# Duck-typed, same stance as InterestLine's volume: the checkpoint tells
