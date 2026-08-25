@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" uid="uid://bmualh74olenu" path="res://scripts/ui/settings_menu.gd" id="1"]
+
+[node name="SettingsPreview" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")

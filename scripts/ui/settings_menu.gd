@@ -39,6 +39,8 @@ const _ROW_HEIGHT := 40.0
 
 var _working: Dictionary
 var _description_label: Label
+var _rows_parent: VBoxContainer
+var _buttons_parent: Control
 ## key -> Label, the stepper rows' current-value display.
 var _stepper_value_labels: Dictionary = {}
 ## key -> [left Button, right Button] -- window_size's pair gets dimmed/
@@ -65,19 +67,46 @@ func reload() -> void:
 	_refresh_controls()
 
 func _build_ui() -> void:
-	var panel_bg := ColorRect.new()
-	panel_bg.color = Color(0.96, 0.97, 0.99, 0.98)
-	panel_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	panel_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(panel_bg)
+	# Full-screen wash behind the panel (the reference's pale field).
+	var wash := ColorRect.new()
+	wash.color = Color(0.93, 0.95, 0.98, 0.98)
+	wash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(wash)
+
+	# The reference's grey-blue page title, top-left of screen, above the
+	# panel: 「设置」.
+	var title := Label.new()
+	title.text = "设置"
+	title.add_theme_font_size_override("font_size", 34)
+	title.add_theme_color_override("font_color", Color(0.55, 0.62, 0.72))
+	title.position = Vector2(220.0, 90.0)
+	add_child(title)
+
+	# Centred, hairline-bordered panel -- the composition's anchor.
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", MeTheme.panel_style())
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -620.0
+	panel.offset_right = 620.0
+	panel.offset_top = -300.0
+	panel.offset_bottom = 300.0
+	add_child(panel)
+
+	var inner := Control.new()
+	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(inner)
 
 	var rows_box := VBoxContainer.new()
 	rows_box.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	rows_box.position = Vector2(48.0, 48.0)
-	rows_box.custom_minimum_size = Vector2(560.0, 0.0)
-	rows_box.add_theme_constant_override("separation", 20.0)
+	rows_box.position = Vector2(56.0, 56.0)
+	rows_box.custom_minimum_size = Vector2(640.0, 0.0)
+	rows_box.add_theme_constant_override("separation", 26.0)
 	rows_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(rows_box)
+	inner.add_child(rows_box)
 
 	_description_label = Label.new()
 	_description_label.text = _DEFAULT_DESCRIPTION
@@ -85,16 +114,18 @@ func _build_ui() -> void:
 	_description_label.add_theme_font_size_override("font_size", 20)
 	_description_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_description_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_description_label.position = Vector2(-360.0, 48.0)
-	_description_label.custom_minimum_size = Vector2(320.0, 140.0)
-	add_child(_description_label)
+	_description_label.position = Vector2(-400.0, 56.0)
+	_description_label.custom_minimum_size = Vector2(344.0, 140.0)
+	inner.add_child(_description_label)
+	_rows_parent = rows_box
+	_buttons_parent = inner
 
 	for row in _ROWS:
 		var key: String = row["key"]
 		var desc: String = row["desc"]
 		var line := HBoxContainer.new()
-		line.add_theme_constant_override("separation", 16.0)
-		rows_box.add_child(line)
+		line.add_theme_constant_override("separation", 18.0)
+		_rows_parent.add_child(line)
 
 		var label := Label.new()
 		label.text = row["label"]
@@ -113,10 +144,10 @@ func _build_ui() -> void:
 
 	var buttons := HBoxContainer.new()
 	buttons.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	buttons.position = Vector2(-420.0, -80.0)
+	buttons.position = Vector2(-436.0, -100.0)
 	buttons.custom_minimum_size = Vector2(400.0, 48.0)
 	buttons.add_theme_constant_override("separation", 12.0)
-	add_child(buttons)
+	_buttons_parent.add_child(buttons)
 
 	buttons.add_child(_make_bottom_button("默认", _on_default_pressed))
 	buttons.add_child(_make_bottom_button("保存设置", _on_save_pressed))
@@ -136,29 +167,40 @@ func _make_bottom_button(text: String, handler: Callable) -> Button:
 	return button
 
 func _build_stepper(line: HBoxContainer, key: String, desc: String) -> void:
-	var left := Button.new()
-	left.text = "←"
-	left.custom_minimum_size = Vector2(36.0, 0.0)
+	var left := _arrow_button("←")
 	left.pressed.connect(_on_stepper_step.bind(key, -1))
 	left.mouse_entered.connect(_show_description.bind(desc))
 	line.add_child(left)
 
 	var value_label := Label.new()
-	value_label.custom_minimum_size = Vector2(140.0, 0.0)
+	value_label.custom_minimum_size = Vector2(160.0, 0.0)
 	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	value_label.add_theme_font_size_override("font_size", 22)
+	value_label.add_theme_color_override("font_color", Color(0.16, 0.28, 0.45))
 	value_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	value_label.mouse_entered.connect(_show_description.bind(desc))
 	line.add_child(value_label)
 	_stepper_value_labels[key] = value_label
 
-	var right := Button.new()
-	right.text = "→"
-	right.custom_minimum_size = Vector2(36.0, 0.0)
+	var right := _arrow_button("→")
 	right.pressed.connect(_on_stepper_step.bind(key, 1))
 	right.mouse_entered.connect(_show_description.bind(desc))
 	line.add_child(right)
 
 	_stepper_buttons[key] = [left, right]
+
+## The reference's red arrow glyphs: no box, red text, brightening on hover.
+func _arrow_button(glyph: String) -> Button:
+	var button := Button.new()
+	button.text = glyph
+	button.flat = true
+	button.custom_minimum_size = Vector2(40.0, 0.0)
+	button.add_theme_font_size_override("font_size", 26)
+	button.add_theme_color_override("font_color", MeTheme.BRAND_RED)
+	button.add_theme_color_override("font_hover_color", MeTheme.BRAND_RED.lightened(0.25))
+	button.add_theme_color_override("font_pressed_color", MeTheme.BRAND_RED.darkened(0.2))
+	button.add_theme_color_override("font_disabled_color", Color(0.6, 0.65, 0.72))
+	return button
 
 func _build_slider(line: HBoxContainer, key: String, desc: String) -> void:
 	var slider := HSlider.new()
@@ -178,13 +220,7 @@ func _build_slider(line: HBoxContainer, key: String, desc: String) -> void:
 			slider.max_value = 6.0
 			slider.step = 0.5
 
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = MeTheme.BRAND_RED
-	slider.add_theme_stylebox_override("grabber_area", fill)
-	slider.add_theme_stylebox_override("grabber_area_highlight", fill)
-	var track := StyleBoxFlat.new()
-	track.bg_color = Color(0.82, 0.85, 0.9)
-	slider.add_theme_stylebox_override("slider", track)
+	MeTheme.dress_slider(slider)
 
 	slider.mouse_entered.connect(_show_description.bind(desc))
 	slider.value_changed.connect(_on_slider_changed.bind(key))
@@ -196,6 +232,19 @@ func _build_slider(line: HBoxContainer, key: String, desc: String) -> void:
 	value_label.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
 	line.add_child(value_label)
 	_slider_value_labels[key] = value_label
+
+## Esc anywhere on this page = 取消 (✅ the owner could not find a way back
+## from the main menu's settings). Runs on the page itself so BOTH hosts get
+## it; child controls see unhandled input before the PauseUi autoload, so
+## its own Esc fallback never double-fires.
+func _unhandled_input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+	if event is InputEventKey and (event as InputEventKey).pressed \
+			and not (event as InputEventKey).echo \
+			and (event as InputEventKey).physical_keycode == KEY_ESCAPE:
+		_on_cancel_pressed()
+		get_viewport().set_input_as_handled()
 
 func _show_description(desc: String) -> void:
 	_description_label.text = desc

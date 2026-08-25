@@ -86,6 +86,38 @@ const _PAPER_NOISE_SHADER := preload("res://scripts/ui/paper_noise.gdshader")
 ## One "+"-style corner metadata label -- the small typographic detail in
 ## each screen corner (main menu: three "+" plus the version string; pause:
 ## reused as-is, see pause_ui.gd's _build_corner_metadata()).
+## The ME options-panel look: pale blue sheet, hairline cool border, sharp
+## corners (reference: the original's 选项/视频 screen).
+static func panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.88, 0.92, 0.96, 0.97)
+	style.border_color = Color(0.62, 0.70, 0.79)
+	style.set_border_width_all(1)
+	style.set_content_margin_all(0)
+	return style
+
+## Dresses an HSlider in the reference's clothes: a visible cool track, a
+## BRAND_RED filled portion, and a red block grabber.
+static func dress_slider(slider: HSlider) -> void:
+	slider.custom_minimum_size.y = 26.0
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(0.70, 0.76, 0.84)
+	track.content_margin_top = 10.0
+	track.content_margin_bottom = 10.0
+	slider.add_theme_stylebox_override("slider", track)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = BRAND_RED
+	fill.content_margin_top = 10.0
+	fill.content_margin_bottom = 10.0
+	slider.add_theme_stylebox_override("grabber_area", fill)
+	slider.add_theme_stylebox_override("grabber_area_highlight", fill)
+	var grabber_image := Image.create(14, 18, false, Image.FORMAT_RGBA8)
+	grabber_image.fill(Color(0.72, 0.02, 0.0))
+	var grabber := ImageTexture.create_from_image(grabber_image)
+	slider.add_theme_icon_override("grabber", grabber)
+	slider.add_theme_icon_override("grabber_highlight", grabber)
+	slider.add_theme_icon_override("grabber_disabled", grabber)
+
 static func _themed(label: Label) -> Label:
 	label.theme = ui_theme()
 	return label
