@@ -69,9 +69,11 @@ func test_it_locks_player_input_while_it_plays() -> void:
 	assert_almost_eq(player.global_position.z, start_position.z, 0.01, \
 		"held input moved the player while the death sequence was playing")
 
-	# Same held input, several ticks after the sequence let go: input must be
-	# usable again, or the lock leaked past the cutscene it was meant to cover.
-	await step(15)
+	# Same held input, after the sequence let go AND the post-respawn cover
+	# ran out (RESPAWN_COVER + COVER_FADE of deliberate lock -- the owner:
+	# 重置之后再覆盖0.5s并且期间禁操作): input must be usable again, or the
+	# lock leaked past everything it was meant to cover.
+	await step(int((DeathSequence.RESPAWN_COVER + DeathSequence.COVER_FADE) * 60.0) + 15)
 	assert_true(not is_equal_approx(player.global_position.z, start_position.z), \
 		"input stayed locked after the death sequence finished")
 
@@ -399,3 +401,37 @@ func test_a_third_person_death_looks_DOWN_at_the_body() -> void:
 	sequence.stop()
 	sequence.queue_free()
 	TestWorld.teardown(world)
+
+func test_the_respawn_stays_covered_and_locked_for_a_beat() -> void:
+	# ✅ THE OWNER: "死亡的黑屏应该在重置回检查点之后再覆盖个0.5s，并且期间禁操
+	# 作，因为现在这个还是能看到镜头瞬移和身体从死亡站起来." The reset fires
+	# under full black; the cover then holds with the input gate shut.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(10)
+	var player: Player = world["player"]
+	var sequence := DeathSequence.new()
+	get_tree().root.add_child(sequence)
+	var done := [false]
+	sequence.finished.connect(func() -> void:
+		done[0] = true
+		# What Arena's reset_player() does to the two states the cover must
+		# re-assert: the reset unlocks input and clears the tint.
+		player.reset_state()
+		player.screen_effects.set_tint(player.screen_effects.tint_color(), 0.0))
+	sequence.play(player)
+	await step(int(sequence.total_duration() * 60.0) + 3)
+	assert_true(done[0], "test setup: the sequence never finished")
+	# Right after the respawn: still pitch black, still locked.
+	assert_almost_eq(player.screen_effects.tint_amount, 1.0, 0.1,
+		"the respawn was not covered")
+	assert_true(player.is_input_locked(), "input opened the instant of the respawn")
+	# After the hold and the fade: lifted and unlocked.
+	await step(int((DeathSequence.RESPAWN_COVER + DeathSequence.COVER_FADE) * 60.0) + 5)
+	assert_almost_eq(player.screen_effects.tint_amount, 0.0, 0.01,
+		"the cover never lifted")
+	assert_false(player.is_input_locked(), "the cover never gave the input back")
+	sequence.queue_free()
+	TestWorld.teardown(world)
+	await step(1)

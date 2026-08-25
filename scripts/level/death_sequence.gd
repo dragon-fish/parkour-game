@@ -73,9 +73,20 @@ var _cinematic: bool = false
 ## what every game does with a respawn anyway.
 const BLACKOUT := 0.35
 
+## ✅ THE OWNER: "死亡的黑屏应该在重置回检查点之后再覆盖个0.5s，并且期间禁操作，
+## 因为现在这个还是能看到镜头瞬移和身体从死亡站起来，很尴尬." The respawn
+## happens UNDER full black; the cover holds RESPAWN_COVER with the input
+## locked, then lifts over COVER_FADE.
+const RESPAWN_COVER := 0.5
+const COVER_FADE := 0.25
+
 ## True once this death handed the body to the physics solver, so the release
 ## knows to take it back.
 var _ragdolled: bool = false
+## Seconds of post-respawn cover (hold + fade) still to run. Independent of
+## _playing on purpose: reset_player() calls stop(), and the cover must
+## survive the very reset it exists to hide.
+var _cover_left: float = 0.0
 
 func total_duration() -> float:
 	return DROP_TIME + HOLD_TIME + TOPPLE_TIME + REST_TIME
@@ -161,6 +172,14 @@ func play(player: Player) -> void:
 		_player.lock_input()
 
 func _physics_process(delta: float) -> void:
+	if _cover_left > 0.0:
+		_cover_left -= delta
+		if _player != null and _player.screen_effects != null:
+			_player.screen_effects.set_tint(Color.BLACK,
+				clampf(_cover_left / COVER_FADE, 0.0, 1.0))
+		if _cover_left <= 0.0:
+			_end_cover()
+		return
 	if not _playing:
 		return
 	_elapsed += delta
@@ -177,6 +196,15 @@ func _physics_process(delta: float) -> void:
 	if _elapsed >= total_duration():
 		_release_player()
 		finished.emit()
+		# THE COVER. The emit above IS the respawn (Arena wires finished ->
+		# reset_player), so the teleport and the body standing back up have
+		# just happened under full black -- and the reset also re-opened the
+		# input gate and cleared the tint, so both are re-asserted here.
+		_cover_left = RESPAWN_COVER + COVER_FADE
+		if _player != null:
+			_player.lock_input()
+			if _player.screen_effects != null:
+				_player.screen_effects.set_tint(Color.BLACK, 1.0)
 
 ## Cancels a sequence in progress. The level calls this whenever it respawns by
 ## some other route (the manual reset key), because a sequence left running
@@ -190,9 +218,22 @@ func _physics_process(delta: float) -> void:
 ## _release_player() has already cleared _playing, so this returns immediately
 ## and the finished -> reset_player -> stop chain cannot recurse).
 func stop() -> void:
+	# A manual reset during the cover takes the cover with it -- the player
+	# asked for a fresh start, not a black screen over one.
+	if _cover_left > 0.0:
+		_end_cover()
 	if not _playing:
 		return
 	_release_player()
+
+## Lifts the post-respawn cover: the tint goes, the input gate re-opens.
+func _end_cover() -> void:
+	_cover_left = 0.0
+	if _player == null:
+		return
+	if _player.screen_effects != null:
+		_player.screen_effects.set_tint(Color.BLACK, 0.0)
+	_player.unlock_input()
 
 ## Everything a sequence owes the player on its way out, shared by the normal
 ## end above and by stop() so the two cannot drift apart: the camera comes back
