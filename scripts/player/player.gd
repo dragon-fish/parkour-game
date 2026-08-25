@@ -212,6 +212,25 @@ var _takeoff_ground_speed: float = 0.0
 ## cooldown forbids. SameZipLineRedoMoveTime only ever guarded the SAME line.
 var _zipline_cooldowns: Dictionary = {}
 var _airborne_time: float = 0.0
+## Temporary gravity multiplier for FREE FLIGHT -- ✅ the original leans on
+## exactly this ("局部重力修改在ME里反复出现（swing、barge、coil）...是它'飘但可
+## 控'的重要来源"), so it lives on Player once rather than growing a copy per
+## move. Consumed by Move.carry_ballistically() and
+## AirborneMove.apply_air_physics(); the wall moves keep their own scalings.
+var _gravity_multiplier: float = 1.0
+var _gravity_window_left: float = 0.0
+
+func apply_gravity_window(multiplier: float, seconds: float) -> void:
+	_gravity_multiplier = multiplier
+	_gravity_window_left = maxf(seconds, 0.0)
+
+func effective_gravity() -> float:
+	return config.pawn.gravity \
+		* (_gravity_multiplier if _gravity_window_left > 0.0 else 1.0)
+
+func _tick_gravity_window(delta: float) -> void:
+	if _gravity_window_left > 0.0:
+		_gravity_window_left = maxf(_gravity_window_left - delta, 0.0)
 
 func landing_tier(fall_height: float) -> int:
 	var pawn := config.pawn
@@ -1008,6 +1027,7 @@ func reset_state() -> void:
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
 	_zipline_cooldowns.clear()
+	_gravity_window_left = 0.0
 	_airborne_time = 0.0
 	_slide_recovery_timer = 0.0
 	wall_side = 0
@@ -2840,6 +2860,7 @@ func _tick_zipline_cooldowns(delta: float) -> void:
 			_zipline_cooldowns[key] = remaining
 
 func _tick_timers(delta: float, input: MoveInput) -> void:
+	_tick_gravity_window(delta)
 	_tick_zipline_cooldowns(delta)
 	if grounded:
 		_coyote_timer = config.pawn.coyote_time

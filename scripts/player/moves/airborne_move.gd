@@ -19,7 +19,8 @@ extends Move
 ## shared function reading a flag on Player.
 func apply_air_physics(delta: float, wish_dir: Vector3) -> void:
 	player.air_accelerate(wish_dir, delta)
-	player.velocity.y -= config.pawn.gravity * delta
+	# effective_gravity(): free flight honours the player's gravity window.
+	player.velocity.y -= player.effective_gravity() * delta
 	player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
 
 ## Probes this state is allowed to run, in the original's own precedence

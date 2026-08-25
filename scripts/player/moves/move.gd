@@ -141,7 +141,8 @@ func touching(face_point: Vector3) -> bool:
 ## move the body except the body's own momentum. Anything else reads as being
 ## dragged through open air toward the obstacle -- the owner's "floating".
 func carry_ballistically(delta: float) -> void:
-	player.velocity.y -= config.pawn.gravity * delta
+	# effective_gravity(): free flight honours the player's gravity window.
+	player.velocity.y -= player.effective_gravity() * delta
 	player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
