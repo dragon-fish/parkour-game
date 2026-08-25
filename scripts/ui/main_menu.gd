@@ -476,8 +476,13 @@ func _merge_animation_library(body_node: Node3D, libraries: Array[PackedScene]) 
 	var target := _find_animation_player(body_node)
 	if target == null:
 		return
-	var library := target.get_animation_library("")
-	if library == null:
+	# has_ probed first: get_animation_library() on a missing name logs an
+	# engine error, and a fresh AnimationPlayer (an FBX body's wrapper scene,
+	# unlike a VRM's) starts with no "" library at all.
+	var library: AnimationLibrary
+	if target.has_animation_library(""):
+		library = target.get_animation_library("")
+	else:
 		library = AnimationLibrary.new()
 		target.add_animation_library("", library)
 	for packed in libraries:
