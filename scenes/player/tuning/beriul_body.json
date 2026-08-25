@@ -1,7 +1,7 @@
 {
   "_comment": "Beriul (Amanosora) -- a 0.97 m model stretched to the shared eye height. See beriul-integration notes; the model itself is licence-bound and untracked.",
 
-  "mount_scale": 1.94,
+  "mount_scale": 2.1,
   "mount_offset": [0, 0, 0],
   "eye_forward": 0.13
 }
