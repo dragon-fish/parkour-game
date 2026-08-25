@@ -41,10 +41,17 @@ const LOGO_FADE_TIME := 0.3
 const BAR_DELAY := 0.2
 const BAR_TIME := 0.3
 ## Sweep bar edge-wave (see _build_sweep_bar()): amplitude for both halves,
-## and the seed values for their four edges -- the two touching INNER edges
-## share _SWEEP_SEAM_SEED so they erode identically and close without a gap;
-## the two OUTER edges just keep the shader's own defaults (0.0 / 3.7).
+## and the seed values for their four edges. The shader only erodes INWARD,
+## so matched inner seeds alone would leave a symmetric breathing gap up to
+## 2x amplitude at the seam (the re-review's math, correcting an earlier
+## claim here) -- the real closer is the OVERLAP: each half extends
+## _SWEEP_SEAM_OVERLAP past centre, matched _SWEEP_SEAM_SEED erosion stays
+## inside the overlap, and the union is gap-free. Outer edges keep the
+## shader's own defaults (0.0 / 3.7).
 const _SWEEP_AMPLITUDE_PX := 6.0
+## Half-bar seam overlap as an anchor fraction: at 1920 design width this is
+## ~12 px, comfortably past the 6 px erosion ceiling on either inner edge.
+const _SWEEP_SEAM_OVERLAP := 0.006
 const _SWEEP_SEAM_SEED := 1.4
 const _SWEEP_OUTER_SEED_LEFT := 0.0
 const _SWEEP_OUTER_SEED_RIGHT := 3.7
@@ -199,8 +206,10 @@ func _build_viewport() -> void:
 ## instead of leaving a gap. The two OUTER edges, which nothing touches,
 ## keep the shader's own default seeds.
 func _build_sweep_bar() -> void:
-	_bar_left = _make_sweep_half(0.0, 0.5, false, _SWEEP_OUTER_SEED_LEFT, _SWEEP_SEAM_SEED)
-	_bar_right = _make_sweep_half(0.5, 1.0, true, _SWEEP_SEAM_SEED, _SWEEP_OUTER_SEED_RIGHT)
+	_bar_left = _make_sweep_half(0.0, 0.5 + _SWEEP_SEAM_OVERLAP, false, \
+		_SWEEP_OUTER_SEED_LEFT, _SWEEP_SEAM_SEED)
+	_bar_right = _make_sweep_half(0.5 - _SWEEP_SEAM_OVERLAP, 1.0, true, \
+		_SWEEP_SEAM_SEED, _SWEEP_OUTER_SEED_RIGHT)
 
 func _make_sweep_half(anchor_left: float, anchor_right: float, pivot_at_right: bool, \
 		seed_left: float, seed_right: float) -> ColorRect:
