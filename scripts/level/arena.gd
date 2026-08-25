@@ -185,16 +185,14 @@ func _load_sandbox() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and not event.echo and event.physical_keycode == KEY_R:
-		# Judged on RELEASE so one key carries two gestures (✅ the owner's
-		# keyup idea): a tap respawns as always, a long hold FORGETS the
-		# active checkpoint first and goes back to the level's own spawn.
+		# Hold-to-interact, ✅ the owner's second cut (release-judged felt
+		# wrong): the hold FIRES THE MOMENT it reaches the threshold -- see
+		# _physics_process -- forgetting the checkpoint and respawning at the
+		# level's own spawn. Releasing earlier is a tap: the plain respawn.
 		if event.pressed:
 			_r_pressed_at_ms = Time.get_ticks_msec()
 		elif _r_pressed_at_ms >= 0:
-			var held: float = float(Time.get_ticks_msec() - _r_pressed_at_ms) / 1000.0
 			_r_pressed_at_ms = -1
-			if held >= CHECKPOINT_CLEAR_HOLD and player != null:
-				player.active_checkpoint = null
 			reset_player()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -217,6 +215,13 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(_delta: float) -> void:
 	if not is_instance_valid(player):
 		return
+	# The R hold coming due: trigger NOW, not on release, and mark the press
+	# consumed so the eventual keyup does nothing further.
+	if _r_pressed_at_ms >= 0 \
+			and Time.get_ticks_msec() - _r_pressed_at_ms >= int(CHECKPOINT_CLEAR_HOLD * 1000.0):
+		_r_pressed_at_ms = -1
+		player.active_checkpoint = null
+		reset_player()
 	# ⚠️ THE RAGDOLL IS THE ONE THAT FALLS. ✅ The owner: "falling past z = -20
 	# no longer resets -- it makes me watch six seconds of ragdoll."
 	#
