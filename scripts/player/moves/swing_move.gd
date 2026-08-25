@@ -34,6 +34,8 @@ var _target_yaw: float = 0.0
 ## _fan_centred note on why recentre_yaw_reference() cannot run every tick.
 var _fan_centred: bool = false
 var _aborted: bool = false
+## Last tick's applied pump, for the HUD's pump field.
+var _last_pump: float = 0.0
 
 func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
@@ -66,8 +68,11 @@ func enter(_previous: StringName) -> void:
 	# is (clamped -- the magnet does the rest), angular velocity from the
 	# tangential share of the arrival speed.
 	var offset: Vector3 = player.global_position - _pivot
-	_theta = clampf(atan2(offset.dot(_forward), -offset.y), -0.44, 0.44)
-	_omega = approach.dot(_forward) / cfg.pendulum_length
+	# TIGHT residual angle and absorbed momentum -- ✅ the owner, on the first
+	# cut's 25-degree clamp and full carry-over: "原地起跳上杆都能晃老高."
+	var max_theta: float = deg_to_rad(cfg.entry_max_theta_deg)
+	_theta = clampf(atan2(offset.dot(_forward), -offset.y), -max_theta, max_theta)
+	_omega = approach.dot(_forward) / cfg.pendulum_length * cfg.entry_omega_scale
 	player.velocity = Vector3.ZERO
 	_fade = 0.0
 	_entry_pos = player.global_position
@@ -123,8 +128,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			pump = cfg.pump_accel * signf(wish)
 		elif signf(wish) == signf(_omega):
 			pump = cfg.pump_accel * signf(_omega)
+	_last_pump = pump
 	_omega += (-config.pawn.gravity / cfg.pendulum_length) * sin(_theta) * delta \
 		+ pump * delta
+	# Light damping: an un-pumped swing settles instead of ringing forever --
+	# keeping the amplitude is what the W/S pump is FOR.
+	_omega -= _omega * cfg.damping * delta
 	# ✅ MaxSwingVelocity caps the TANGENTIAL speed.
 	var omega_cap: float = cfg.max_swing_velocity / cfg.pendulum_length
 	_omega = clampf(_omega, -omega_cap, omega_cap)
@@ -141,9 +150,16 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.global_position = chain
 		if not _fan_centred:
 			_centre_fan()
+	# The model leans along the chain -- ✅ the owner, on how ME reads
+	# amplitude: "主要是靠镜头里可以看到自己身体来判断." The camera is NOT
+	# pitched (ME does not sync the view to the swing); Player smooths the
+	# lean on and off. Sign eyeballed -- flip model_pitch_follow if the legs
+	# trail instead of leading.
+	player.set_swing_pitch_target(-_theta * cfg.model_pitch_follow)
 	return KEEP
 
 func exit() -> void:
+	player.set_swing_pitch_target(0.0)
 	if is_instance_valid(_line):
 		player.note_line_left(_line, cfg.same_line_redo_time)
 
@@ -191,3 +207,7 @@ func swing_forward() -> Vector3:
 ## the HUD line (Task 5) has one source.
 func jump_window_open() -> bool:
 	return _omega > cfg.jump_min_omega
+
+## -1 (S), 0, or +1 (W): the pump the last tick actually applied.
+func pump_direction() -> int:
+	return int(signf(_last_pump))

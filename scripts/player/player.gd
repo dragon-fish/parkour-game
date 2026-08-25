@@ -695,6 +695,9 @@ var head_look: HeadLook = null
 ## The world yaw the MODEL is currently showing, which is not always the body's
 ## own. See _drive_body_yaw().
 var _visual_yaw: float = 0.0
+## The swing's model lean (radians about the body's X), smoothed onto
+## BodyRoot in _drive_body_yaw(). Set by SwingMove, zeroed on exit.
+var _swing_pitch_target: float = 0.0
 var _visual_yaw_started: bool = false
 
 var _standing_height: float = 0.0
@@ -1035,6 +1038,7 @@ func reset_state() -> void:
 	# the exit, so the list is cleared here rather than trusted.
 	interest_lines.clear()
 	_visual_yaw_started = false
+	_swing_pitch_target = 0.0
 	# A respawn teleport is not travel: leave the camera's speed cue at rest
 	# rather than letting the first tick after the reset read the old life's.
 	_travel_speed = 0.0
@@ -1895,10 +1899,18 @@ func _drive_head_look() -> void:
 ## character round, which reads as a model welded to the mouse rather than as a
 ## person looking about. So the model holds while there is no movement input,
 ## and catches up once there is.
+func set_swing_pitch_target(pitch: float) -> void:
+	_swing_pitch_target = pitch
+
 func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	var body_root := get_node_or_null("BodyRoot") as Node3D
 	if body_root == null:
 		return
+	# The swing's lean, smoothed both ways so leaving the bar stands the body
+	# back up over a beat instead of snapping it. Applied before the early
+	# returns below -- the lean is orthogonal to every yaw decision.
+	body_root.rotation.x = lerpf(body_root.rotation.x, _swing_pitch_target,
+		1.0 - exp(-delta / 0.08))
 	# A MOVE CAN FREEZE THE MODEL IN EITHER VIEW. Slide and Grab do -- see
 	# MoveConfig.freeze_visual_yaw -- and they are not subject to the
 	# third-person rule below, because the reason for that rule does not apply:

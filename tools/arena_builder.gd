@@ -1000,8 +1000,10 @@ func build() -> Node3D:
 	swing_area.position = Vector3(64.0, 0.0, 53.0)
 	_attach(_root, swing_area)
 	var swing_colour := Color(0.30, 0.45, 0.62)
-	# A knee-high take-off step so the bar (2.7 above its top) is caught at a
-	# standing jump's apex -- same reach arithmetic as the zipline's cable.
+	# A knee-high take-off step. Reviewer arithmetic: from the step the catch
+	# lands about a quarter into the jump's rise, and the bar is reachable
+	# from FLAT ground too (apex top-axis 2.64 vs the volume's 2.5 underside)
+	# -- the step is a convenience, not a gate. Raise the bar if it should be.
 	_attach(swing_area, _box("Swing_Step",
 		Vector3(3.0, 0.4, 2.0), Vector3(0.0, 0.2, 1.5), swing_colour))
 	var bar := InterestLine.new()

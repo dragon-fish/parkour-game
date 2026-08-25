@@ -202,3 +202,55 @@ func test_letting_go_starts_the_bar_cooldown_for_that_bar_only() -> void:
 	assert_false(player.line_ready(_line), "the bar just left has no cooldown")
 	assert_true(player.line_ready(second), "a DIFFERENT bar was locked out too")
 	second.queue_free()
+
+func test_pumping_with_the_motion_grows_the_swing() -> void:
+	# Spec §6: W 顺摆泵入后幅度增大 -- the with-motion branch, distinct from the
+	# from-rest kick. Caught with too little energy for the jump window, a held
+	# W must grow the swing until the window opens (against the damping).
+	var player: Player = await _standing_player()
+	_line = _bar(2.7)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	await step(1)
+	player.velocity.x = 0.0
+	player.velocity.z = 0.5
+	for i in 40:
+		await step(1)
+		if player.move_manager.current_name == Move.SWING:
+			break
+	assert_eq(player.move_manager.current_name, Move.SWING, "test setup: never caught the bar")
+	var move: SwingMove = player.move_manager.move_for(Move.SWING)
+	await step(12)
+	assert_false(move.jump_window_open(), "test setup: the window opened without any pumping")
+	input.state.move = Vector2(0.0, 1.0)
+	var opened := false
+	for i in 400:
+		await step(1)
+		if move.jump_window_open():
+			opened = true
+			break
+	assert_true(opened, "held W never grew the swing into the jump window")
+
+func test_the_model_leans_with_the_swing_and_stands_back_up() -> void:
+	# ✅ THE OWNER, on how ME reads amplitude: "主要是靠镜头里可以看到自己身体来
+	# 判断" -- the model tilts along the chain; the camera is deliberately NOT
+	# pitched with it.
+	var player: Player = await _swinging_player()
+	await step(12)
+	var move: SwingMove = player.move_manager.move_for(Move.SWING)
+	var body_root := player.get_node("BodyRoot") as Node3D
+	var sampled := false
+	for i in 200:
+		await step(1)
+		if absf(move.swing_theta()) > 0.1:
+			sampled = true
+			break
+	assert_true(sampled, "test setup: the pendulum never reached 0.1 rad")
+	var expected: float = -move.swing_theta() * player.config.swing.model_pitch_follow
+	assert_almost_eq(body_root.rotation.x, expected, 0.12,
+		"the model lean %.2f does not track the chain %.2f" % [body_root.rotation.x, expected])
+	var input: ScriptedInputSource = _world["input"]
+	input.press_crouch()
+	await step(30)
+	assert_almost_eq(body_root.rotation.x, 0.0, 0.05,
+		"the lean never stood back up after letting go")

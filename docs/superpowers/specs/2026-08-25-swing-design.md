@@ -51,7 +51,7 @@
 5. **跳出**（`jump_pressed`）：仅当 `_omega > jump_min_omega`（宽松，前摆方向为正）
    → `velocity = 45° 前上方 · exit_speed`，启动低重力窗，进 FALLING。
    不满足窗口的跳按键**忽略**。
-6. **松手**（`crouch_pressed`）：`velocity = 当前切向速度`，正常重力，进 FALLING。
+6. **松手**（`crouch_pressed`）：`velocity = 当前切向速度`，同样触发 §3 的低重力窗，进 FALLING。
 7. 摆角越限自然回摆，无出界脱手；`exit()` 时按线记 `same_line_redo_time` 冷却（复用
    `Player.note_zipline_left` 机制改名通用化为 `note_line_left`）。
 
@@ -76,6 +76,8 @@ Swing 跳出与松手均触发：`0.75 × 0.7 s`（✅ `SwingExitGravityModifier
 | `fall_limit` | 6.0 | 沿用滑索（CDO 无 swing 项） |
 | `exit_gravity_multiplier / _time` | 0.75 / 0.7 | ✅ CDO 两处相同的数 |
 | `same_line_redo_time` | 1.0 | ⚠️ 项目自定义（防松手即重挂），作者拨 |
+| `entry_max_theta_deg` / `entry_omega_scale` / `damping` | 8° / 0.5 / 0.4 | ⚠️ 作者实感（"原地起跳上杆都能晃老高"）：磁吸残余角收紧、入场动量打折、轻阻尼让不泵的摆自然停 |
+| `model_pitch_follow` | 1.0 | ✅ 作者 ME 观察：幅度靠"看得见自己的身体"读出——模型沿链倾斜，镜头不强制俯仰 |
 | look 扇区 / `freeze_visual_yaw` / `allows_turn=false` | | 双手占用，同 Grab/滑索 |
 
 注册：`Move.SWING`、`MovementConfig.swing`、Airborne 入口在 zipline 判定之后
@@ -96,7 +98,7 @@ Swing 跳出与松手均触发：`0.75 × 0.7 s`（✅ `SwingExitGravityModifier
 - 切向速度封顶 max_swing_velocity。
 - 前摆 + ω 达标按跳 → velocity 与 `_forward` 水平夹角 45°（按配置断言）、低重力窗生效
   （窗内 effective_gravity = 0.75g，0.7 s 后复原）；后摆按跳被忽略。
-- 蹲 → FALLING、速度=切向、正常重力。
+- 蹲 → FALLING、速度=切向、低重力窗生效。
 - 同线冷却拒绝、异线立即可挂（通用化 note_line_left 后 zipline 测试保持绿）。
 - kind 过滤：SWING 线不触发 zipline 入口，反之亦然。
 

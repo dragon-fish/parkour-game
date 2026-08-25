@@ -45,3 +45,19 @@ func _init() -> void:
 @export var exit_gravity_time: float = 0.7
 ## ⚠️ PROJECT-DEFINED: how long the bar just left refuses a re-catch.
 @export var same_line_redo_time: float = 1.0
+
+## ⚠️ OWNER-FELT (2026-08-25): "原地起跳上杆都能晃老高" -- the catch handed out
+## up to 25 degrees of free amplitude (the magnet clamp) plus the full arrival
+## momentum, and an undamped pendulum keeps whatever it is given forever.
+## Three dials: the residual angle the magnet leaves, how much of the arrival
+## momentum the hands absorb, and a light damping so an un-pumped swing
+## settles -- ME makes you pump to KEEP swinging.
+@export var entry_max_theta_deg: float = 8.0
+@export var entry_omega_scale: float = 0.5
+@export var damping: float = 0.4
+
+## How much of the pendulum angle the MODEL leans by (about the bar). ✅ THE
+## OWNER, on how ME sells amplitude: "主要是靠镜头里可以看到自己身体来判断" --
+## the body tilts along the chain and the camera stays FREE (no forced pitch;
+## ME does not sync the view to the swing).
+@export var model_pitch_follow: float = 1.0

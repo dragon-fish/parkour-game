@@ -304,7 +304,12 @@ func _swing_line() -> String:
 	var move: SwingMove = player.move_manager.move_for(Move.SWING)
 	if move == null:
 		return "-"
-	return "th %+.0f deg  w %+.2f  v %.2f m/s  %s" % [
+	var pump := "-"
+	if move.pump_direction() > 0:
+		pump = "W"
+	elif move.pump_direction() < 0:
+		pump = "S"
+	return "th %+.0f deg  w %+.2f  v %.2f m/s  pump %s  %s" % [
 		rad_to_deg(move.swing_theta()), move.swing_omega(),
-		absf(move.tangential_speed()),
+		absf(move.tangential_speed()), pump,
 		"JUMP OPEN" if move.jump_window_open() else "closed"]

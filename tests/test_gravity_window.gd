@@ -1,4 +1,3 @@
-# tests/test_gravity_window.gd
 extends ParkourTest
 
 # A temporary gravity multiplier for free flight. ✅ The research doc (05 §5.4):
