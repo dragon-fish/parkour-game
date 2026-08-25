@@ -35,14 +35,11 @@ const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
 ## 0a: logo plate over the crouched close-up, fake loading bar.
 const LOGO_HOLD := 1.0
 const RISE_TIME := 1.5
-## ✅ The owner, on the harsh turn: the body starts rising WITH the camera
-## but finishes AFTER it -- the camera is already squared while the body is
-## still standing up -- and the camera does not fly straight: it swings an
-## arc, letting the character drift screen-LEFT before centring
-## (quadratic bezier through a sideways control point). Easing everywhere:
+## ✅ The owner (final): the body reaches FULLY STANDING the exact moment
+## the camera lands -- same start, same end, one breath. Easing everywhere:
 ## cubic-bezier(0.65, 0, 0.35, 1) = TRANS_CUBIC / EASE_IN_OUT.
-const BODY_RISE_DELAY := 0.15
-const BODY_STAND_BLEND := 1.5
+const BODY_RISE_DELAY := 0.0
+const BODY_STAND_BLEND := 1.5  # = RISE_TIME: fully up the frame the camera lands (✅ the owner)
 ## Ground-space dot flow per second while walking (✅ the owner: slower than
 ## the first guess, and the flow must FOLLOW the character's facing -- she
 ## walks screen-right in the opening, toward the lens after the turn).
@@ -130,6 +127,9 @@ var _metadata_labels: Array[Control] = []
 ## TIME-based shader term (a changing angle would teleport the pattern).
 var _floor_phase := 0.0
 var _floor_gain := 0.0
+var _click_prompt: Label
+var _prompt_tween: Tween
+var _prompt_shown := false
 
 var _active_tweens: Array[Tween] = []
 var _entrance_active: bool = true
@@ -204,6 +204,7 @@ func _build_ui() -> void:
 	_build_corner_metadata()
 	_build_footer()
 	_build_logo_mark()
+	_build_click_prompt()
 
 func _build_floor() -> void:
 	_floor = ColorRect.new()
@@ -355,6 +356,24 @@ func _build_footer() -> void:
 ## close-up, plus a fake ~0.8s loading bar that covers the real body
 ## instantiation/animation merge/shader-compile cost that _load_silhouette()
 ## already paid by the time this is visible.
+## "点击任意处开始" -- shown once the entrance settles; the menu waits for
+## this click (✅ the owner). Breathing alpha while it waits.
+func _build_click_prompt() -> void:
+	_click_prompt = Label.new()
+	_click_prompt.text = "点击任意处开始"
+	_click_prompt.add_theme_font_size_override("font_size", 22)
+	_click_prompt.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
+	_click_prompt.theme = MeTheme.ui_theme()
+	_click_prompt.anchor_left = 0.5
+	_click_prompt.anchor_right = 0.5
+	_click_prompt.anchor_top = 0.86
+	_click_prompt.anchor_bottom = 0.86
+	_click_prompt.position = Vector2(-100.0, 0.0)
+	_click_prompt.size = Vector2(200.0, 30.0)
+	_click_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_click_prompt.visible = false
+	add_child(_click_prompt)
+
 ## The white emblem over the crouched silhouette (✅ the owner: codex's topo
 ## mark, centre at left 20% / top 66%). Fades out with the rise.
 func _build_logo_mark() -> void:
@@ -562,17 +581,36 @@ func _track(tween: Tween) -> Tween:
 func _play_entrance() -> void:
 	var pacing := _track(create_tween())
 	pacing.tween_interval(LOGO_HOLD)
-	pacing.tween_callback(_beat_everything)
+	pacing.tween_callback(_beat_rise_begin)
 	pacing.tween_interval(RISE_TIME)
 	pacing.tween_callback(_start_walk_loop)
-	pacing.tween_interval(maxf(
-		MENU_PANEL_TIME + MeMenuList.ENTRANCE_STAGGER * 3.0 + MeMenuList.TWEEN_TIME - RISE_TIME,
-		0.0) + 0.05)
-	pacing.tween_callback(_beat_settle)
+	pacing.tween_interval(0.3)
+	pacing.tween_callback(_show_click_prompt)
 
-func _beat_everything() -> void:
-	_beat_rise_begin()
+## The settled pre-menu state: she walks, the world flows, and the prompt
+## breathes until someone clicks (or presses anything).
+func _show_click_prompt() -> void:
+	_prompt_shown = true
+	_click_prompt.visible = true
+	_click_prompt.modulate.a = 0.0
+	_prompt_tween = _track(create_tween())
+	_prompt_tween.set_loops()
+	_prompt_tween.tween_property(_click_prompt, "modulate:a", 1.0, 1.1) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_prompt_tween.tween_property(_click_prompt, "modulate:a", 0.3, 1.1) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+## The click: prompt out, menu in.
+func _begin_menu() -> void:
+	_prompt_shown = false
+	if _prompt_tween != null and _prompt_tween.is_valid():
+		_prompt_tween.kill()
+	var fade := _track(create_tween())
+	fade.tween_property(_click_prompt, "modulate:a", 0.0, 0.2)
 	_beat_menu_parallax()
+	var pacing := _track(create_tween())
+	pacing.tween_interval(MENU_PANEL_TIME + MeMenuList.ENTRANCE_STAGGER * 3.0 + MeMenuList.TWEEN_TIME)
+	pacing.tween_callback(_beat_settle)
 
 ## Frame 0 is already fully composed at build time (crouched profile, white
 ## mark, faint floor); the first beat is the RISE: the body stands
@@ -679,6 +717,9 @@ func _skip_entrance() -> void:
 
 	_floor.modulate.a = 1.0
 	_logo_mark.modulate.a = 0.0
+	_prompt_shown = false
+	if _click_prompt != null:
+		_click_prompt.visible = false
 	_mirror_window.modulate.a = MIRROR_ALPHA
 	for label in _metadata_labels:
 		label.modulate.a = 1.0
@@ -697,7 +738,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var is_key_press := event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo
 	var is_click := event is InputEventMouseButton and (event as InputEventMouseButton).pressed
-	if is_key_press or is_click:
+	if not (is_key_press or is_click):
+		return
+	if _prompt_shown:
+		# The invited click: the entrance already settled on its own.
+		_begin_menu()
+	else:
 		_skip_entrance()
 
 # ---------------------------------------------------------------------------
