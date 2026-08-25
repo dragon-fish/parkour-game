@@ -84,6 +84,12 @@ scenes/sandbox.tscn
 dist/
 .output/
 
+# Beriul (Amanosora / am23ti, BOOTH), the owner's purchased character model.
+# The licence forbids public redistribution, so the model, its textures, and
+# every authored resource that references them stay local -- same rule as
+# test.vrm below.
+assets/models/beriul/
+
 # The owner's VRoid test export, kept local while the VRM pipeline is
 # being validated. Their own creation, so the licence is theirs to set --
 # untracked for now because "is this the model" is not yet decided, not
