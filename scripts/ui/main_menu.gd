@@ -40,6 +40,14 @@ const LOGO_FADE_TIME := 0.3
 ## Beat 2: red bar sweep-in, read as "<delay>s <description> (<duration>s)".
 const BAR_DELAY := 0.2
 const BAR_TIME := 0.3
+## Sweep bar edge-wave (see _build_sweep_bar()): amplitude for both halves,
+## and the seed values for their four edges -- the two touching INNER edges
+## share _SWEEP_SEAM_SEED so they erode identically and close without a gap;
+## the two OUTER edges just keep the shader's own defaults (0.0 / 3.7).
+const _SWEEP_AMPLITUDE_PX := 6.0
+const _SWEEP_SEAM_SEED := 1.4
+const _SWEEP_OUTER_SEED_LEFT := 0.0
+const _SWEEP_OUTER_SEED_RIGHT := 3.7
 ## Beat 3: title drop, plus the one-shot glitch jitter.
 const TITLE_DELAY := 0.4
 const TITLE_DROP_TIME := 0.22
@@ -50,6 +58,8 @@ const MENU_DELAY := 0.5
 ## Beat 6: idle drift, ±2px @ 0.1Hz -> a 10s full cycle, 5s each leg.
 const DRIFT_PX := 2.0
 const DRIFT_HALF_PERIOD := 5.0
+## Fixed rather than read from the live position -- see _start_idle_drift().
+const _DRIFT_BASE_Y := 0.0
 
 # --- silhouette camera framing (visually untunable headless -- see report) -
 const _CAMERA_CLOSE_POS := Vector3(-0.45, 1.05, 1.15)
@@ -175,15 +185,25 @@ func _build_viewport() -> void:
 
 ## The horizontal red band that sweeps in from both edges (beat 2), separate
 ## from MeMenuList's own vertical red column. Two halves, each grown from its
-## outer-screen pivot toward the middle -- see _sweep_pivot() below.
-## Deliberately plain BRAND_RED, no edge_wave shader: the two halves meet
-## exactly at center once fully swept in, and eroding both inner edges there
-## would open a gap right at the seam.
+## own outer-screen pivot toward the middle (see _sync_sweep_bar_layout()'s
+## pivot_offset math -- the left bar's default top-left pivot already sits
+## on the screen-left edge, but the right bar needs its pivot pushed out to
+## its own top-RIGHT corner, or scale.x would grow it away from center
+## instead of toward it).
+##
+## Carries MeTheme.wave_material after all (spec's edge-wave rule has no
+## carve-out for this bar): the two INNER edges -- the left bar's right edge
+## and the right bar's left edge -- are the ones that meet at screen-center
+## once both halves are fully swept in, and giving them the SAME seed makes
+## wave(UV.y, seed) erode identically at every y along that seam, closing it
+## instead of leaving a gap. The two OUTER edges, which nothing touches,
+## keep the shader's own default seeds.
 func _build_sweep_bar() -> void:
-	_bar_left = _make_sweep_half(0.0, 0.5)
-	_bar_right = _make_sweep_half(0.5, 1.0)
+	_bar_left = _make_sweep_half(0.0, 0.5, false, _SWEEP_OUTER_SEED_LEFT, _SWEEP_SEAM_SEED)
+	_bar_right = _make_sweep_half(0.5, 1.0, true, _SWEEP_SEAM_SEED, _SWEEP_OUTER_SEED_RIGHT)
 
-func _make_sweep_half(anchor_left: float, anchor_right: float) -> ColorRect:
+func _make_sweep_half(anchor_left: float, anchor_right: float, pivot_at_right: bool, \
+		seed_left: float, seed_right: float) -> ColorRect:
 	var bar := ColorRect.new()
 	bar.color = MeTheme.BRAND_RED
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -196,8 +216,27 @@ func _make_sweep_half(anchor_left: float, anchor_right: float) -> ColorRect:
 	bar.offset_top = 0.0
 	bar.offset_bottom = 0.0
 	bar.scale = Vector2(0.0, 1.0)
+
+	var material := MeTheme.wave_material(_SWEEP_AMPLITUDE_PX)
+	material.set_shader_parameter("seed_left", seed_left)
+	material.set_shader_parameter("seed_right", seed_right)
+	bar.material = material
+
 	add_child(bar)
+	# width_px (the shader's own px->UV conversion) and, for the right bar,
+	# pivot_offset both depend on the bar's actual laid-out size, which is
+	# not real until a layout pass has happened -- same ordering issue
+	# me_menu_list.gd's _sync_overlays() documents. Synced once deferred and
+	# again on every resize.
+	bar.resized.connect(_sync_sweep_bar_layout.bind(bar, pivot_at_right))
+	call_deferred("_sync_sweep_bar_layout", bar, pivot_at_right)
 	return bar
+
+func _sync_sweep_bar_layout(bar: ColorRect, pivot_at_right: bool) -> void:
+	if pivot_at_right:
+		bar.pivot_offset = Vector2(bar.size.x, 0.0)
+	if bar.material is ShaderMaterial:
+		(bar.material as ShaderMaterial).set_shader_parameter("width_px", maxf(bar.size.x, 1.0))
 
 func _build_title_block() -> void:
 	_title_block = Control.new()
@@ -334,6 +373,14 @@ func _load_silhouette() -> void:
 	var profile := _resolve_body_profile()
 	if profile == null or profile.scene == null:
 		return
+	# The real pipeline never mounts a profile's raw fields directly --
+	# BodyProfile.apply() always runs them through BodyTuning first
+	# (scenes/player/tuning/*.json, keyed by the model's own filename,
+	# default.json as the fallback -- see body_tuning.gd). Reusing those two
+	# calls here rather than profile.apply() itself: that method also writes
+	# a dozen Player-only fields (body_scene, body_clip_offsets, ...) that
+	# this bare silhouette, with no Player around it, has nowhere to put.
+	BodyTuning.apply_to(profile, BodyTuning.load_for(profile.scene.resource_path))
 	var instance := profile.scene.instantiate()
 	if not (instance is Node3D):
 		return
@@ -502,6 +549,15 @@ func _beat_rise_begin() -> void:
 	peek.tween_property(_bar_left, "scale:x", 0.12, RISE_TIME).set_delay(RISE_TIME - 0.2)
 	peek.tween_property(_bar_right, "scale:x", 0.12, RISE_TIME).set_delay(RISE_TIME - 0.2)
 
+## Beat 5 ("剪影人物同期淡入并持续行走循环", spec): no separate fade-in
+## here, deliberately. The silhouette is already on screen from beat 0a --
+## visible under the logo plate in its crouched pose -- so by the time beat
+## 5 would fire there is no fade moment left to play; it has been visible
+## the whole time. What beat 5 actually asks for, "keeps walking", is
+## exactly what calling this at the end of the beat-0b rise chain (see
+## _beat_rise_begin() above) already guarantees. Accepted reading, recorded
+## here so the next person to read this doesn't go looking for a beat-5
+## fade that was never meant to exist.
 func _start_walk_loop() -> void:
 	if _anim_player != null and _anim_player.has_animation(&"Walk"):
 		_anim_player.play(&"Walk", 0.3)
@@ -543,13 +599,20 @@ func _beat_settle() -> void:
 	_entrance_active = false
 	_start_idle_drift()
 
+## Idempotent on purpose: _skip_entrance() can call this again after a
+## previous drift tween was killed mid-oscillation, with position.y sitting
+## somewhere off-center (not 0). Reading THAT as the new base would let
+## repeated skip-entrance calls random-walk the whole menu's resting
+## position a little further every time. Snapping back to the fixed
+## _DRIFT_BASE_Y before starting a new drift keeps every call settle to the
+## exact same place, however many times it runs.
 func _start_idle_drift() -> void:
-	var base_y: float = position.y
+	position.y = _DRIFT_BASE_Y
 	var drift := _track(create_tween())
 	drift.set_loops()
-	drift.tween_property(self, "position:y", base_y + DRIFT_PX, DRIFT_HALF_PERIOD) \
+	drift.tween_property(self, "position:y", _DRIFT_BASE_Y + DRIFT_PX, DRIFT_HALF_PERIOD) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	drift.tween_property(self, "position:y", base_y - DRIFT_PX, DRIFT_HALF_PERIOD) \
+	drift.tween_property(self, "position:y", _DRIFT_BASE_Y - DRIFT_PX, DRIFT_HALF_PERIOD) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 ## Jumps straight to the fully-settled state: every tween killed, every
