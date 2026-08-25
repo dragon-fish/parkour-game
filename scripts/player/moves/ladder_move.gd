@@ -209,6 +209,12 @@ func climbing_offset() -> float:
 func climb_direction() -> int:
 	return _climb_dir
 
+## The scripted-fit hook (CharacterAnimator._scripted_fit): during the top
+## exit the carry IS a scripted phase, so ClimbUp_1m stretches to end
+## exactly when the 2 s carry does. Zero outside the phase -- no fit.
+func scripted_duration() -> float:
+	return _top_exit.scripted_duration() if _top_exiting else 0.0
+
 func is_top_exiting() -> bool:
 	return _top_exiting
 

@@ -653,9 +653,13 @@ func _scripted_fit(clip: StringName) -> float:
 	if player.move_manager == null:
 		return 0.0
 	var move := player.move_manager.move_for(player.move_manager.current_name)
-	if not (move is ScriptedMove):
+	# Duck-typed rather than `is ScriptedMove`: a move that COMPOSES a
+	# scripted phase (LadderMove's top exit -- GDScript has no multiple
+	# inheritance) exposes the same scripted_duration(), returning 0 outside
+	# the phase. ✅ The owner: "动画长度不够2s得拉长与硬直对齐."
+	if move == null or not move.has_method("scripted_duration"):
 		return 0.0
-	var duration: float = (move as ScriptedMove).scripted_duration()
+	var duration: float = move.scripted_duration()
 	if duration <= 0.0:
 		return 0.0
 	var length := _clip_length(clip)
