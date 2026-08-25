@@ -125,6 +125,11 @@ var extra_eye_forward: float = 0.0
 var extra_eye_lift: float = 0.0
 
 var _head_local_offset: Vector3 = Vector3.ZERO
+## Per-move scaling of the head follow (wall run halves it -- see
+## WallRunConfig.head_follow_scale). Eased on the same clock the scripted
+## eye weight uses, so state changes never snap the eye.
+var _head_follow_scale: float = 1.0
+var _head_follow_scale_target: float = 1.0
 ## True only for ticks Player actually supplied a head offset -- i.e. a body is
 ## attached AND Player._resolve_head_node() matched something in it.
 ## update_effects() must gate on this rather than comparing _head_local_offset
@@ -290,6 +295,11 @@ func absorb_body_yaw(radians: float) -> void:
 ## How far the attached body's head/neck node has moved from its rest pose, in
 ## Player's local space -- see _head_local_offset. Called by Player every tick
 ## a head is available.
+## Sets where the head follow is headed, per move -- 1.0 everywhere except
+## the states that ask for less. Eased in update_effects().
+func set_head_follow_scale(target: float) -> void:
+	_head_follow_scale_target = clampf(target, 0.0, 1.0)
+
 func set_head_offset(local_offset: Vector3) -> void:
 	_head_local_offset = local_offset
 	_has_head = true
@@ -746,8 +756,12 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# _has_head being false. Clamped independently of whatever range the F1
 	# panel's slider reaches, so a value pushed past 1.0 cannot overshoot the
 	# head's own motion.
+	var scale_t: float = 1.0 - exp(-delta / maxf(
+		_config.camera.scripted_eye_offset_blend_time, 0.001))
+	_head_follow_scale = lerpf(_head_follow_scale, _head_follow_scale_target, scale_t)
 	if _has_head:
-		var strength := clampf(_config.camera.camera_head_follow_strength, 0.0, 1.0)
+		var strength := clampf(_config.camera.camera_head_follow_strength, 0.0, 1.0) \
+			* _head_follow_scale
 		# THE MODEL OWNS THE EYE'S HEIGHT, in full. The procedural crouch drop
 		# that would otherwise double-count is scaled away where it is written,
 		# further up, rather than here: one of the two has to yield, and the

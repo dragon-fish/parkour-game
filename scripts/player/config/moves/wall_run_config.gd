@@ -228,3 +228,10 @@ func _init() -> void:
 ## run guiding the eyes, not steering them -- so this is deliberately short of
 ## 1. The clamp itself always travels the full turn; only the view is partial.
 @export var view_assist: float = 0.6
+
+## ⚠️ PROJECT-DEFINED, by eye. How much of the model head's own offset the
+## first-person eye follows DURING a wall run. The run's authored lean puts
+## the head ~0.7 m off the capsule axis, and following it in full reads as
+## the camera flying off the wall -- ✅ the owner: halve it ("偏移0.35m我看看").
+## 1.0 restores the global follow; 0 pins the eye to the procedural position.
+@export_range(0.0, 1.0) var head_follow_scale: float = 0.5
