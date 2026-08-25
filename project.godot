@@ -32,6 +32,10 @@ window/stretch/mode="viewport"
 
 enabled=PackedStringArray("res://addons/gut/plugin.cfg", "res://addons/vrm/plugin.cfg", "res://addons/Godot-MToon-Shader/plugin.cfg", "res://addons/respawn_gizmos/plugin.cfg", "res://addons/game_window_memory/plugin.cfg")
 
+[gui]
+
+theme/custom_font="res://assets/fonts/NotoSansSC.ttf"
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
