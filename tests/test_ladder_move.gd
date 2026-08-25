@@ -251,3 +251,64 @@ func test_wallrun_can_be_caught_by_a_ladder() -> void:
 	wall.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+
+# --- Task 5: the jump-off chain ------------------------------------------------
+#
+# ✅ THE OWNER: "AD+空格如果没有其他梯子是不会触发跳的" -- with no directional
+# snap target (Task 6; this task's _scan_snap_target() always returns null)
+# space only leaves the ladder once the view has turned past
+# LadderConfig.jump_angle_deg off the ladder's own facing. Squared to the
+# ladder, the press does nothing at all.
+
+func test_space_facing_the_ladder_does_nothing() -> void:
+	var player: Player = await _climbing_player()
+	await step(10)  # past the magnet fade, facing squared to the ladder
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.LADDER, \
+		"a jump pressed while facing the ladder let go of it anyway")
+
+func test_a_turned_head_jumps_along_the_look() -> void:
+	var player: Player = await _climbing_player()
+	# Past the magnet fade AND the eye's own scripted-turn catch-up
+	# (CameraRig._scripted_yaw_lag, set by the fade-in's absorb_body_yaw()
+	# calls): the camera visually trails a scripted turn for a few ticks, so
+	# reading it too early would measure that trailing lag as if it were a
+	# player-driven turn.
+	await step(40)
+	var facing_yaw: float = player.rotation.y
+	player.rotation.y = facing_yaw + deg_to_rad(60.0)
+	player.camera_rig.set_pitch(deg_to_rad(30.0))
+	await step(1)  # let the pitch reach the camera transform
+	var look: Vector3 = -player.camera_rig.camera.global_transform.basis.z
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING, \
+		"a 60 degree turned head did not jump off the ladder")
+	assert_gt(player.velocity.dot(look), 0.0, \
+		"the launch did not follow the turned-away look direction")
+	assert_gt(player.velocity.y, 0.0, "looking up did not send the launch up")
+
+func test_the_into_wall_component_survives() -> void:
+	# 🔒 PROTECTED TECHNIQUE -- spec invariant #1, mirroring GrabMove's own
+	# protected test (test_a_bare_turn_throws_you_at_your_own_ledge in
+	# test_grab_jump.gd). Turning just past jump_angle_deg and jumping still
+	# throws the body partly AT the ladder's own geometry -- that into-the-wall
+	# component is the vault-finisher speedrun glitch (grab_move.gd's
+	# _launch_direction() carries the owner's full account). DO NOT "fix" this
+	# by projecting the component out of the launch; that quietly deletes the
+	# technique.
+	var player: Player = await _climbing_player()
+	await step(40)  # past the magnet fade AND the eye's scripted-turn catch-up
+	var facing_yaw: float = player.rotation.y
+	player.rotation.y = facing_yaw + deg_to_rad(47.0)  # just past the 45 degree gate
+	await step(1)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING, \
+		"a 47 degree turned head did not jump off the ladder")
+	assert_gt(player.velocity.dot(-_line.front()), 0.0, \
+		"the launch lost the into-the-wall component the vault finisher depends on")

@@ -65,6 +65,23 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return FALLING
 	# The jump-off chain (Task 5) and the top exit (Task 7) both land here,
 	# ahead of the plain climb below.
+	if input.jump_pressed:
+		var side: int = 0
+		if absf(input.move.x) > 0.1:
+			side = 1 if input.move.x > 0.0 else -1
+		var target: InterestLine = _scan_snap_target(side)
+		if target != null:
+			return _launch_at(target)  # Task 6
+		var turned: float = absf(wrapf(_camera_yaw() - _target_yaw, -PI, PI))
+		if turned > deg_to_rad(cfg.jump_angle_deg):
+			# GrabMove's shape verbatim: the full 3D look, nothing projected
+			# out -- the into-wall component IS the vault tech (grab_move.gd
+			# _launch_direction's own warning applies here unchanged).
+			player.velocity = _look_direction() * cfg.jump_speed
+			player.consume_roll()
+			return FALLING
+		# Facing the ladder, no target: the press is IGNORED (✅ the owner:
+		# "AD+空格如果没有其他梯子是不会触发跳的").
 
 	_offset = clampf(_offset + input.move.y * cfg.climb_speed * delta, 0.0, _line.length())
 	var s: Dictionary = _line.sample(_offset)
@@ -99,3 +116,52 @@ func exit() -> void:
 ## Arc length along the line, metres. Read by the HUD and by tests.
 func climbing_offset() -> float:
 	return _offset
+
+## Which ladder a directional jump-off (AD+space) would snap to instead of
+## just launching off this one, or null when there is nothing to snap to.
+##
+## STUBBED for Task 5: always null, so the priority chain in physics_update()
+## always falls through to the plain jump-off below it. Task 6 fills this in
+## with a real scan over nearby LADDER lines on `side` (-1 left / +1 right;
+## 0 means straight back, i.e. no directional input at all).
+func _scan_snap_target(_side: int) -> InterestLine:
+	return null
+
+## Task 6: flies the body onto `target` (a directional snap-jump). Stubbed
+## here only so the priority chain above type-checks -- _scan_snap_target()
+## never returns non-null in this task, so this body is unreachable for now.
+func _launch_at(_target: InterestLine) -> StringName:
+	return FALLING
+
+## Yaw of the camera's look direction, radians. Mirrors GrabMove's own camera
+## read (grab_move.gd _launch_direction()): the rig's camera when there is
+## one, falling back to the body's own facing when there is not (a stub
+## player in a test, or no rig at all).
+func _camera_yaw() -> float:
+	var look: Vector3 = Vector3.ZERO
+	if player.camera_rig != null and player.camera_rig.camera != null:
+		look = -player.camera_rig.camera.global_transform.basis.z
+	if look.length_squared() < 0.0001:
+		look = -player.global_transform.basis.z
+	if look.length_squared() < 0.0001:
+		return _target_yaw
+	# Facing direction d means yaw = atan2(-d.x, -d.z) -- same convention
+	# _target_yaw above is built with (see InterestLine.front()'s callers).
+	return atan2(-look.x, -look.z)
+
+## Where a jump off the ladder launches: along the VIEW, wall included.
+##
+## ⚠️ COPIES GrabMove._launch_direction() ON PURPOSE, into-wall component and
+## all -- see that function's own long comment for why nothing gets projected
+## out of it. The same speedrun glitch this move's jump_angle_deg threshold
+## opens the door to (turning just past 45 degrees throws the body at the
+## ladder's own geometry) depends on the component surviving here too.
+func _look_direction() -> Vector3:
+	var look: Vector3 = Vector3.ZERO
+	if player.camera_rig != null and player.camera_rig.camera != null:
+		look = -player.camera_rig.camera.global_transform.basis.z
+	if look.length_squared() < 0.0001:
+		look = -player.global_transform.basis.z
+	if look.length_squared() < 0.0001:
+		return -_line.front()
+	return look.normalized()
