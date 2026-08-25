@@ -46,6 +46,7 @@ const ENTRANCE_STAGGER := 0.03
 const ENTRANCE_OFFSET_PX := 40.0
 
 func _ready() -> void:
+	theme = MeTheme.ui_theme()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_backdrop = _make_bar(MeTheme.BRAND_RED, BACKDROP_AMPLITUDE_PX)
 	_selection_bar = _make_bar(Color.WHITE, BACKDROP_AMPLITUDE_PX * 0.5)

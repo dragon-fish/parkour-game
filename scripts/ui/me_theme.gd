@@ -10,6 +10,28 @@ const BRAND_RED := Color("#e90100")
 const TEXT_BLUE := Color("#2d557e")
 const BACKDROP := Color(0.90, 0.93, 0.97, 0.72)
 
+## ✅ THE OWNER's Photoshop spec for UI text shadow (2026-08-26): multiply
+## black at 35%, angle 135°, distance 4 px, spread 0, size 0 -- i.e. a HARD
+## shadow offset (+2.83, +2.83), no blur (the style rule agrees). Multiply
+## blend is approximated by plain alpha black, indistinguishable on our
+## light surfaces.
+const TEXT_SHADOW_COLOR := Color(0.0, 0.0, 0.0, 0.35)
+const TEXT_SHADOW_OFFSET := 3
+
+static var _ui_theme: Theme = null
+
+## The one Theme every menu-family root wears: default font shadow for all
+## Labels (and Buttons' text). Cached -- one instance serves everything.
+static func ui_theme() -> Theme:
+	if _ui_theme == null:
+		_ui_theme = Theme.new()
+		for cls in ["Label", "Button"]:
+			_ui_theme.set_color("font_shadow_color", cls, TEXT_SHADOW_COLOR)
+			_ui_theme.set_constant("shadow_offset_x", cls, TEXT_SHADOW_OFFSET)
+			_ui_theme.set_constant("shadow_offset_y", cls, TEXT_SHADOW_OFFSET)
+			_ui_theme.set_constant("shadow_outline_size", cls, 0)
+	return _ui_theme
+
 const _EDGE_WAVE_SHADER := preload("res://scripts/ui/edge_wave.gdshader")
 const _DOT_GRID_SHADER := preload("res://scripts/ui/dot_grid.gdshader")
 
@@ -64,6 +86,10 @@ const _PAPER_NOISE_SHADER := preload("res://scripts/ui/paper_noise.gdshader")
 ## One "+"-style corner metadata label -- the small typographic detail in
 ## each screen corner (main menu: three "+" plus the version string; pause:
 ## reused as-is, see pause_ui.gd's _build_corner_metadata()).
+static func _themed(label: Label) -> Label:
+	label.theme = ui_theme()
+	return label
+
 static func corner_label(text: String, anchor_x: float, anchor_y: float, offset: Vector2, right_aligned: bool = false) -> Label:
 	var label := Label.new()
 	label.text = text
@@ -77,7 +103,7 @@ static func corner_label(text: String, anchor_x: float, anchor_y: float, offset:
 	label.size = Vector2(160.0, 24.0)
 	label.position = offset - (Vector2(160.0, 0.0) if right_aligned else Vector2.ZERO)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right_aligned else HORIZONTAL_ALIGNMENT_LEFT
-	return label
+	return _themed(label)
 
 ## A near-invisible paper-grain overlay (paper_noise.gdshader), full-rect and
 ## ready to add_child directly onto anything that covers the whole screen.
@@ -107,4 +133,4 @@ static func footer_label(text: String) -> Label:
 	label.anchor_bottom = 1.0
 	label.position = Vector2(-160.0, -40.0)
 	label.size = Vector2(320.0, 24.0)
-	return label
+	return _themed(label)

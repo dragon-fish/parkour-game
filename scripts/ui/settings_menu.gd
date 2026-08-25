@@ -50,6 +50,7 @@ var _sliders: Dictionary = {}
 var _slider_value_labels: Dictionary = {}
 
 func _ready() -> void:
+	theme = MeTheme.ui_theme()
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_working = SettingsStore.load_settings()

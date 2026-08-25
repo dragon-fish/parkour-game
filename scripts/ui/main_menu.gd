@@ -141,6 +141,7 @@ func _real_change_scene(path: String) -> void:
 
 func _build_ui() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	theme = MeTheme.ui_theme()
 
 	_background = ColorRect.new()
 	_background.color = Color(0.96, 0.96, 0.94)
