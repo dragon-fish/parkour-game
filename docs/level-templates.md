@@ -139,11 +139,12 @@ hand. The cable has no mesh yet — F12 draws it in play.
    `scripts/level/checkpoint.gd`).
 2. Give it any `CollisionShape3D` children — the trigger is whatever shape
    you build, and walking into it saves the respawn.
-3. Aim the node: the player wakes up with their FEET at its origin, facing
-   its -Z. The editor draws exactly that -- a green capsule standing on the
-   node with an arrow -- and the node keeps itself level (yaw only), so
-   "Align Transform with View" from any camera angle just works. Leave a
-   small air gap under the origin rather than sinking it into the floor.
+3. Aim the node: the player wakes up with their BODY CENTRE at its origin
+   (the same convention as SpawnPoint), facing its -Z -- so place the node
+   about 1 m above the floor. The gizmo shows exactly where the capsule
+   lands, and the node keeps itself level (yaw only), so "Align Transform
+   with View" from any camera angle just works; drag the arrow-tip handle
+   to turn the facing.
 4. `display_name` makes the save announce itself -- 「检查点 <名字> 已保存」
    -- shown only when the active respawn actually changes. Leave it empty
    for a silent checkpoint.
