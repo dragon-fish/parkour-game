@@ -116,7 +116,7 @@ var _metadata_labels: Array[Control] = []
 ## Integrated dot-grid flow (ground space) and its ramp-in gain -- the
 ## direction follows the silhouette's yaw each frame, so it cannot be a
 ## TIME-based shader term (a changing angle would teleport the pattern).
-var _floor_scroll := Vector2.ZERO
+var _floor_phase := 0.0
 var _floor_gain := 0.0
 
 var _active_tweens: Array[Tween] = []
@@ -147,11 +147,14 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _floor == null or not (_floor.material is ShaderMaterial):
 		return
-	if _floor_gain <= 0.0:
-		return
+	# The angle updates EVERY frame -- the ground visibly turns with the
+	# body even while the flow is still gated off; only the phase waits
+	# for the first steps.
 	var a: float = deg_to_rad(_silhouette_root.rotation_degrees.y - FRONT_YAW_DEG)
-	_floor_scroll += Vector2(-sin(a), -cos(a)) * FLOOR_SCROLL_SPEED * _floor_gain * delta
-	(_floor.material as ShaderMaterial).set_shader_parameter("scroll_offset", _floor_scroll)
+	_floor_phase += FLOOR_SCROLL_SPEED * _floor_gain * delta
+	var mat := _floor.material as ShaderMaterial
+	mat.set_shader_parameter("flow_angle", a)
+	mat.set_shader_parameter("flow_phase", _floor_phase)
 
 func _on_resized() -> void:
 	# Aspect changed: re-solve the framing math and re-aim whatever state
