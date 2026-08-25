@@ -87,6 +87,25 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# zipline settled).
 	player.fall_tracker.reset(player.global_position.y)
 
+	# THE EXIT JUMP -- lenient and fixed-angle, ✅ the owner's ME measurement:
+	# "只要摇晃的角速度超过一定值（很宽松）并且身体是往前摆时，就能跳出去并且
+	# 飞出去的角度每次都一样." An out-of-window press is IGNORED, not spent.
+	if input.jump_pressed and jump_window_open():
+		var launch := (_forward * cos(deg_to_rad(cfg.exit_angle_deg))
+			+ Vector3.UP * sin(deg_to_rad(cfg.exit_angle_deg)))
+		player.velocity = launch * cfg.exit_speed
+		player.apply_gravity_window(cfg.exit_gravity_multiplier, cfg.exit_gravity_time)
+		return FALLING
+	if input.crouch_pressed:
+		# The drop keeps the swing's own velocity, under the same soft-landing
+		# gravity window (both CDO pairs carry it).
+		player.velocity = (_forward * cos(_theta) + Vector3.UP * sin(_theta)) \
+			* tangential_speed()
+		player.apply_gravity_window(cfg.exit_gravity_multiplier, cfg.exit_gravity_time)
+		# One press, one action -- the same rule the zipline settled.
+		player.consume_roll()
+		return FALLING
+
 	# THE PENDULUM. Gravity torque plus the pump: W adds angular acceleration
 	# only when pushed WITH the current motion (pumping against the swing
 	# would be free braking nobody asked for), S the mirror.
