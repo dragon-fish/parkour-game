@@ -111,7 +111,7 @@ if one does, treat the `.tscn` as read-only and edit the generator instead.
 
 ## Regression coverage
 
-`tests/test_base_level_template.gd` loads and instantiates
+`tests/legacy/test_base_level_template.gd` loads and instantiates
 `templates/base_level.tscn` directly and checks the things every inherited
 level silently depends on: the root carries `arena.gd` and its `player` /
 `spawn_point` exports resolve, the player and `TuningPanel` share one
