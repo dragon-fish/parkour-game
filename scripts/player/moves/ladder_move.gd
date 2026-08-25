@@ -255,9 +255,13 @@ func climbing_offset() -> float:
 ## rather than LadderMove pushing an event in.
 ## F12's scripted-path overlay duck-types this (scripted_path_debug.gd) --
 ## the composed carry was invisible to it, same is-a assumption the
-## animation fit made. Shows the leg currently playing.
+## animation fit made. Shows the leg currently playing. The overlay also
+## walks the plan through sample(), so that is delegated below.
 func path_debug() -> Dictionary:
 	return _top_exit.path_debug() if _top_exiting else {}
+
+func sample(t: float) -> Vector3:
+	return _top_exit.sample(t)
 
 func climb_direction() -> int:
 	return _climb_dir
