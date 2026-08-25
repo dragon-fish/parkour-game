@@ -161,14 +161,12 @@ func path_debug() -> Dictionary:
 
 ## How far the EYE is carried above the straight line, right now.
 ##
-## ✅ THE OWNER, settling what the arc is for: "所有脚本动作，胶囊永远只走直线，只有没绑
-## 角色模型和骨骼的时候，才用得到相机去模拟轨迹，所以这个轨迹只留给 fallback 的相机偏移."
-##
-## 🎯 SO THE ARC IS NOT A PATH ANY MORE. sample() no longer adds it: every
-## scripted move travels in a straight line, with no exception left for a tall
-## obstacle. What the arc was really doing was keeping the EYE out of the wall on
-## a vault over something 1.5 m high, and that is a camera job -- the number was
-## always derived by aiming at the eye (see SpeedVaultMove), which is the tell.
+## ⚠️ A superseded ruling used to live here ("胶囊永远只走直线，弧线只留给
+## fallback 相机") and misled a reader once (✅ the owner, restoring the
+## current truth: "现在早就不是脚本胶囊永远走直线了，最新结论是胶囊走贝塞尔
+## 曲线，模型在脚本动作上使用固定盆骨模式"). sample() above IS the bezier;
+## this function is only the eye's share of that arc for a body with no head
+## bone to follow.
 ##
 ## ⚠️ FALLBACK ONLY. With a model attached the camera follows the head bone, and
 ## the head bone is where the animation puts it; adding this on top would move
