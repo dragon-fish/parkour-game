@@ -220,6 +220,13 @@ func probe_transition() -> StringName:
 				and _zipline_approach_allowed(cable):
 			return ZIPLINE
 
+	# The bar, after the cable: same interest-point reasoning, same gates.
+	if c.check_for_swing and player.velocity.y > -config.swing.fall_limit \
+			and player.move_manager.can_enter(SWING):
+		var bar: InterestLine = player.nearest_interest_line(InterestLine.Kind.SWING)
+		if bar != null and player.line_ready(bar):
+			return SWING
+
 	if c.check_for_grab and player.probes != null and player.move_manager.can_enter(GRAB):
 		var ledge: Dictionary = player.probes.ledge_query()
 		# The REACH's own range is checked here rather than inside it. Checked

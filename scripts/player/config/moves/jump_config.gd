@@ -18,3 +18,4 @@ func _init() -> void:
 	check_for_vault_over = true
 	check_for_wall_climb = true
 	check_for_zipline = true
+	check_for_swing = true

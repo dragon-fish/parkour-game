@@ -126,6 +126,10 @@ extends Resource
 ## caught from a jump, never walked into (05 §5.5, TdMove_IntoZipLine).
 @export var check_for_zipline: bool = false
 
+## Whether this move may hand off to Swing inside a SWING InterestLine's
+## volume. Airborne moves only, same reasoning as check_for_zipline.
+@export var check_for_swing: bool = false
+
 ## Whether Q may start a turn out of this move.
 ##
 ## DEFAULT TRUE, and the exceptions are what carry the meaning. The owner's rule
