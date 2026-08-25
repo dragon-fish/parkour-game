@@ -991,6 +991,28 @@ func build() -> Node3D:
 	cable.curve = curve
 	_attach(zip_area, cable)
 
+	# --- Swing ------------------------------------------------------------------
+	#
+	# A jump platform and one horizontal bar to swing on, SOUTH of the zipline
+	# area (which spans x [46, 92] around z 40): x [62, 70], z [50, 56].
+	var swing_area := Node3D.new()
+	swing_area.name = "SwingArea"
+	swing_area.position = Vector3(64.0, 0.0, 53.0)
+	_attach(_root, swing_area)
+	var swing_colour := Color(0.30, 0.45, 0.62)
+	# A knee-high take-off step so the bar (2.7 above its top) is caught at a
+	# standing jump's apex -- same reach arithmetic as the zipline's cable.
+	_attach(swing_area, _box("Swing_Step",
+		Vector3(3.0, 0.4, 2.0), Vector3(0.0, 0.2, 1.5), swing_colour))
+	var bar := InterestLine.new()
+	bar.name = "Swing_Bar"
+	bar.kind = InterestLine.Kind.SWING
+	var bar_curve := Curve3D.new()
+	bar_curve.add_point(Vector3(-1.5, 3.1, 0.0))
+	bar_curve.add_point(Vector3(1.5, 3.1, 0.0))
+	bar.curve = bar_curve
+	_attach(swing_area, bar)
+
 	# --- Floor ----------------------------------------------------------------
 	#
 	# Sized from the union of every practice area's OWN bounds, not the other

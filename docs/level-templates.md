@@ -127,6 +127,8 @@ right node names. Run it (along with everything else) via
    whole cable.
 3. In the inspector leave `kind = ZIPLINE` and `reach_radius = 0.6` unless
    you mean otherwise.
+   Set kind = SWING instead and the same node is a swing bar (hang below,
+   swing perpendicular to the line).
 
 The collision volume is built along the curve at runtime; do not add one by
 hand. The cable has no mesh yet — F12 draws it in play.
