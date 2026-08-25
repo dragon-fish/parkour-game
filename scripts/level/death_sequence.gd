@@ -87,6 +87,11 @@ var _ragdolled: bool = false
 ## _playing on purpose: reset_player() calls stop(), and the cover must
 ## survive the very reset it exists to hide.
 var _cover_left: float = 0.0
+## Seconds of curtain still FALLING before a cover_respawn() fires its
+## callback. The death path arrives at black via the cutscene's own BLACKOUT
+## ramp; this is the ramp for respawns that have no cutscene in front of them.
+var _cover_in_left: float = 0.0
+var _on_black: Callable = Callable()
 
 func total_duration() -> float:
 	return DROP_TIME + HOLD_TIME + TOPPLE_TIME + REST_TIME
@@ -172,6 +177,25 @@ func play(player: Player) -> void:
 		_player.lock_input()
 
 func _physics_process(delta: float) -> void:
+	if _cover_in_left > 0.0:
+		_cover_in_left -= delta
+		if _player != null and _player.screen_effects != null:
+			_player.screen_effects.set_tint(Color.BLACK,
+				clampf(1.0 - _cover_in_left / COVER_FADE, 0.0, 1.0))
+		if _cover_in_left <= 0.0:
+			# FULL BLACK: the respawn happens now, exactly as the death path
+			# does it -- callback first (whose reset clears tint and may call
+			# stop()), then the outbound cover re-asserted over the result.
+			_cover_in_left = 0.0
+			if _on_black.is_valid():
+				_on_black.call()
+			_on_black = Callable()
+			_cover_left = RESPAWN_COVER + COVER_FADE
+			if _player != null:
+				_player.lock_input()
+				if _player.screen_effects != null:
+					_player.screen_effects.set_tint(Color.BLACK, 1.0)
+		return
 	if _cover_left > 0.0:
 		_cover_left -= delta
 		if _player != null and _player.screen_effects != null:
@@ -206,6 +230,17 @@ func _physics_process(delta: float) -> void:
 			if _player.screen_effects != null:
 				_player.screen_effects.set_tint(Color.BLACK, 1.0)
 
+## A respawn that has no death cutscene in front of it (the R-hold checkpoint
+## clear) but still deserves the curtain -- ✅ the owner: an uncovered teleport
+## is 突兀. Fades to black over COVER_FADE, runs `on_black` under full black,
+## then holds and lifts exactly like the death path's own cover.
+func cover_respawn(player: Player, on_black: Callable) -> void:
+	_player = player
+	_on_black = on_black
+	_cover_in_left = COVER_FADE
+	if _player != null:
+		_player.lock_input()
+
 ## Cancels a sequence in progress. The level calls this whenever it respawns by
 ## some other route (the manual reset key), because a sequence left running
 ## would fire `finished` -- and therefore a second respawn -- long after the
@@ -219,8 +254,13 @@ func _physics_process(delta: float) -> void:
 ## and the finished -> reset_player -> stop chain cannot recurse).
 func stop() -> void:
 	# A manual reset during the cover takes the cover with it -- the player
-	# asked for a fresh start, not a black screen over one.
-	if _cover_left > 0.0:
+	# asked for a fresh start, not a black screen over one. A cover still
+	# FALLING is cancelled the same way (its callback never fires).
+	if _cover_in_left > 0.0:
+		_cover_in_left = 0.0
+		_on_black = Callable()
+		_end_cover()
+	elif _cover_left > 0.0:
 		_end_cover()
 	if not _playing:
 		return

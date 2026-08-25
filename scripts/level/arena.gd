@@ -220,8 +220,15 @@ func _physics_process(_delta: float) -> void:
 	if _r_pressed_at_ms >= 0 \
 			and Time.get_ticks_msec() - _r_pressed_at_ms >= int(CHECKPOINT_CLEAR_HOLD * 1000.0):
 		_r_pressed_at_ms = -1
-		player.active_checkpoint = null
-		reset_player()
+		# Under the curtain -- ✅ the owner: the bare teleport was 突兀. The
+		# clear and the reset both happen at full black.
+		if _death_sequence != null:
+			_death_sequence.cover_respawn(player, func() -> void:
+				player.active_checkpoint = null
+				reset_player())
+		else:
+			player.active_checkpoint = null
+			reset_player()
 	# ⚠️ THE RAGDOLL IS THE ONE THAT FALLS. ✅ The owner: "falling past z = -20
 	# no longer resets -- it makes me watch six seconds of ragdoll."
 	#
