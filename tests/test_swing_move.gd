@@ -279,11 +279,18 @@ func test_the_eye_slides_ahead_of_a_forward_lean() -> void:
 	assert_almost_eq(player.camera_rig.extra_eye_lift,
 		lean * player.config.swing.eye_lift_lean, 0.02,
 		"the upward eye offset does not track the lean")
+	var before_exit: float = player.camera_rig.extra_eye_forward
 	var input: ScriptedInputSource = _world["input"]
 	input.press_crouch()
 	await step(2)
-	assert_almost_eq(player.camera_rig.extra_eye_forward, 0.0, 0.001,
-		"letting go left the eye pushed forward")
+	# NOT snapped home: the body stands up on an ease, and the eye rides the
+	# same ease -- an instant zero clipped through the still-leaning chest.
+	if before_exit > 0.02:
+		assert_gt(player.camera_rig.extra_eye_forward, 0.0,
+			"the eye offset was dropped instantly on exit")
+	await step(30)
+	assert_almost_eq(player.camera_rig.extra_eye_forward, 0.0, 0.005,
+		"the eye offset never eased home after letting go")
 
 func test_the_apex_grace_lets_a_zero_speed_jump_out() -> void:
 	# ✅ THE OWNER: "荡到最高点但没角速度，快要往回的时候，给一个容错窗口按空格

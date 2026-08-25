@@ -177,9 +177,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 func exit() -> void:
 	player.set_swing_pitch_target(0.0)
-	if player.camera_rig != null:
-		player.camera_rig.extra_eye_forward = 0.0
-		player.camera_rig.extra_eye_lift = 0.0
+	# The eye offsets are NOT zeroed here: the body stands back up on an
+	# ease after letting go, and an eye snapped home while the chest is
+	# still leaning clips straight through it -- ✅ the owner: "瞬间丢掉会有
+	# 几帧穿模". Player decays them on the lean's own ease instead.
 	if is_instance_valid(_line):
 		player.note_line_left(_line, cfg.same_line_redo_time)
 

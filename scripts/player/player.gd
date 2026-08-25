@@ -1039,6 +1039,9 @@ func reset_state() -> void:
 	interest_lines.clear()
 	_visual_yaw_started = false
 	_swing_pitch_target = 0.0
+	if camera_rig != null:
+		camera_rig.extra_eye_forward = 0.0
+		camera_rig.extra_eye_lift = 0.0
 	# A respawn teleport is not travel: leave the camera's speed cue at rest
 	# rather than letting the first tick after the reset read the old life's.
 	_travel_speed = 0.0
@@ -1914,8 +1917,14 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	if move_manager != null and move_manager.current_name == Move.SWING:
 		body_root.rotation.x = _swing_pitch_target
 	else:
-		body_root.rotation.x = lerpf(body_root.rotation.x, _swing_pitch_target,
-			1.0 - exp(-delta / 0.08))
+		var ease: float = 1.0 - exp(-delta / 0.08)
+		body_root.rotation.x = lerpf(body_root.rotation.x, _swing_pitch_target, ease)
+		# The swing's eye offsets ride the SAME ease home -- zeroed instantly
+		# while the chest was still leaning, the eye clipped through it for a
+		# few frames on every exit (the owner saw it).
+		if camera_rig != null:
+			camera_rig.extra_eye_forward = lerpf(camera_rig.extra_eye_forward, 0.0, ease)
+			camera_rig.extra_eye_lift = lerpf(camera_rig.extra_eye_lift, 0.0, ease)
 	# A MOVE CAN FREEZE THE MODEL IN EITHER VIEW. Slide and Grab do -- see
 	# MoveConfig.freeze_visual_yaw -- and they are not subject to the
 	# third-person rule below, because the reason for that rule does not apply:
