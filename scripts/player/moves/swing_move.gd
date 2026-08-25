@@ -1,5 +1,5 @@
 class_name SwingMove
-extends Move
+extends LineMove
 
 # The original's TdMove_Swing (05 §5.5b): a 1.2 m pendulum the player pumps
 # with W/S and leaves at any phase. NOT a ScriptedMove -- the angle is
@@ -12,7 +12,6 @@ extends Move
 #   exit    "只要摇晃的角速度超过一定值（很宽松）并且身体是往前摆时，就能跳出
 #           去并且飞出去的角度每次都一样" -- Task 4's fixed-angle launch.
 
-var _line: InterestLine = null
 ## The fixed point on the bar the pendulum hangs from (world). Chosen at the
 ## catch and never slid: a swing is planar.
 var _pivot: Vector3 = Vector3.ZERO
@@ -22,18 +21,6 @@ var _forward: Vector3 = Vector3.FORWARD
 var _theta: float = 0.0
 ## Angular velocity, rad/s, positive toward _forward.
 var _omega: float = 0.0
-var _fade: float = 0.0
-var _entry_pos: Vector3 = Vector3.ZERO
-## Body yaw at the catch, and the swing plane's own yaw -- the fade turns
-## between the two instead of snapping, same shape as ZiplineMove's
-## _entry_yaw/_cable_yaw pair.
-var _entry_yaw: float = 0.0
-var _target_yaw: float = 0.0
-## Set the tick the fade ends, when the look fan is centred on the swing
-## plane. Guards a call that must happen once -- see ZiplineMove's own
-## _fan_centred note on why recentre_yaw_reference() cannot run every tick.
-var _fan_centred: bool = false
-var _aborted: bool = false
 ## Last tick's applied pump, for the HUD's pump field.
 var _last_pump: float = 0.0
 ## Seconds of exit-jump grace left after the window was last properly open.
@@ -41,10 +28,7 @@ var _window_grace: float = 0.0
 
 func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
-	_aborted = false
-	_line = player.nearest_interest_line(InterestLine.Kind.SWING)
-	if _line == null:
-		_aborted = true
+	if not acquire_line(InterestLine.Kind.SWING):
 		return
 	var s: float = _line.closest_offset(player.global_position)
 	_pivot = _line.sample(s)["position"]
@@ -181,34 +165,7 @@ func exit() -> void:
 	# ease after letting go, and an eye snapped home while the chest is
 	# still leaning clips straight through it -- ✅ the owner: "瞬间丢掉会有
 	# 几帧穿模". Player decays them on the lean's own ease instead.
-	if is_instance_valid(_line):
-		player.note_line_left(_line, cfg.same_line_redo_time)
-
-## THE FADE-IN ONLY. Turns the body from its entry facing toward the swing
-## plane's forward across the magnet pull, rather than snapping there in one
-## tick -- same shape as ZiplineMove._turn_body_to().
-func _turn_body_to(yaw: float) -> void:
-	var before: float = player.rotation.y
-	player.rotation.y = yaw
-	if player.camera_rig != null:
-		player.camera_rig.absorb_body_yaw(wrapf(yaw - before, -PI, PI))
-	# SwingConfig freezes the visual yaw -- both hands are on the bar -- and
-	# that freeze cancels this turn degree for degree unless the model is
-	# told where to face.
-	player.pin_visual_yaw(yaw)
-
-## Ends the fade: squares the body up to the swing plane's forward and
-## centres the look fan on it, exactly once -- see ZiplineMove's own
-## _centre_fan() note on why recentre_yaw_reference() must not run every
-## tick once the fade is done.
-func _centre_fan() -> void:
-	_fan_centred = true
-	var before: float = player.rotation.y
-	player.rotation.y = _target_yaw
-	if player.camera_rig != null:
-		player.camera_rig.absorb_body_yaw(wrapf(_target_yaw - before, -PI, PI))
-		player.camera_rig.recentre_yaw_reference(_target_yaw)
-	player.pin_visual_yaw(_target_yaw)
+	note_left(cfg.same_line_redo_time)
 
 # --- read by the HUD, Task 4 and the tests ---------------------------------
 

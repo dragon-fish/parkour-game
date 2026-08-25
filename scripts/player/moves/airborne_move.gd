@@ -227,6 +227,16 @@ func probe_transition() -> StringName:
 		if bar != null and player.line_ready(bar):
 			return SWING
 
+	# The ladder, after the bar: same interest-point reasoning and the same
+	# fall_limit gate, PLUS the frontal fan -- ✅ the owner: "梯子只有一面可以
+	# 进入". Asked here, before ever transitioning, so LadderMove.enter()'s own
+	# copy of this same check (see its note) never actually fires in play.
+	if c.check_for_ladder and player.velocity.y > -config.ladder.fall_limit \
+			and player.move_manager.can_enter(LADDER):
+		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
+		if rail != null and LadderMove.catch_gate(player, rail):
+			return LADDER
+
 	if c.check_for_grab and player.probes != null and player.move_manager.can_enter(GRAB):
 		var ledge: Dictionary = player.probes.ledge_query()
 		# The REACH's own range is checked here rather than inside it. Checked

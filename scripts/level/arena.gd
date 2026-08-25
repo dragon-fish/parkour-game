@@ -42,7 +42,6 @@ func _ready() -> void:
 
 	add_child(_death_sequence)
 	_death_sequence.finished.connect(reset_player)
-	_load_sandbox()
 	_load_calibration_course()
 	# Debug visualisation of what the ledge probe sees. Created here rather
 	# than baked into the generated scene, so main.tscn stays exactly what its
@@ -96,24 +95,11 @@ func _ready() -> void:
 func _on_died_from_fall() -> void:
 	_death_sequence.play(player)
 
-## Loads scenes/sandbox.tscn under the arena, if it exists.
-##
-## scenes/main.tscn is GENERATED (tools/build_main_scene.gd), so anything added
-## to it by hand is destroyed the next time the generator runs -- which happens
-## whenever a builder or a config value it reads changes, and is enforced by
-## tests/test_generated_scenes.gd. That makes it a bad place to park a ramp you
-## want to try out.
-##
-## sandbox.tscn is not generated and not referenced by any builder, so whatever
-## is in it survives. It is optional: absent, this does nothing. It is also
-## git-ignored, so experiments do not have to be committed or explained.
-const SANDBOX_SCENE := "res://scenes/sandbox.tscn"
-
 ## Graded obstacles for judging what the move system does with each, by running
-## at them. Committed, unlike the sandbox above, because the numbers behind it
+## at them. Committed, because the numbers behind it
 ## came out of the original with a stopwatch and are worth not losing -- see
 ## tools/build_calibration_course.gd.
-const CALIBRATION_SCENE := "res://scenes/calibration_course.tscn"
+const CALIBRATION_SCENE := "res://scenes/generated/calibration_course.tscn"
 
 ## Whether to drop the calibration course into this level.
 ##
@@ -144,17 +130,33 @@ const CALIBRATION_SCENE := "res://scenes/calibration_course.tscn"
 ## generator produces, and a checkout with no model simply plays with no body.
 const BODY_PROFILE := "res://scenes/player/profiles/vrm_test.tres"
 
+## Which profile the machine's owner is currently playing with -- a git-ignored
+## ConfigFile (the whole profiles/ directory is ignored) so switching bodies is
+## editing one line, not editing any scene. ✅ THE OWNER: "搞一个被 ignore 的文件
+## 来配置当前使用的 body profile." Format:
+##
+##     [body]
+##     profile="res://scenes/player/profiles/vrm_test.tres"
+##
+## Absent, BODY_PROFILE above stays the fallback, which keeps the old behaviour.
+const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
+
 ## Gives the player a body when the scene did not name one.
 ##
-## ✅ THE OWNER: "干脆给 main 也挂上人物模型嘛." Only the sandbox carried the profile,
+## ✅ THE OWNER: "干脆给 main 也挂上人物模型嘛." Only the old sandbox carried the profile,
 ## because only a git-ignored scene can afford to reference a git-ignored
-## resource.
+## resource -- and with this hook a committed scene never has to: leave the
+## Player's Body Profile empty and the local config dresses it on entry.
 func _load_body_profile() -> void:
 	if player == null or player.body_profile != null:
 		return
-	if not ResourceLoader.exists(BODY_PROFILE):
+	var path: String = BODY_PROFILE
+	var local := ConfigFile.new()
+	if local.load(LOCAL_PROFILE_CONFIG) == OK:
+		path = str(local.get_value("body", "profile", BODY_PROFILE))
+	if not ResourceLoader.exists(path):
 		return
-	var profile := load(BODY_PROFILE) as BodyProfile
+	var profile := load(path) as BodyProfile
 	if profile != null:
 		player.adopt_body_profile(profile)
 
@@ -172,16 +174,6 @@ func _load_calibration_course() -> void:
 	if course is Node3D:
 		(course as Node3D).position = Vector3(0.0, 0.0, 60.0)
 	add_child(course)
-
-func _load_sandbox() -> void:
-	if not ResourceLoader.exists(SANDBOX_SCENE):
-		return
-	var packed: PackedScene = load(SANDBOX_SCENE)
-	if packed == null:
-		return
-	var sandbox: Node = packed.instantiate()
-	sandbox.name = "Sandbox"
-	add_child(sandbox)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and not event.echo and event.physical_keycode == KEY_R:

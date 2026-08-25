@@ -653,9 +653,13 @@ func _scripted_fit(clip: StringName) -> float:
 	if player.move_manager == null:
 		return 0.0
 	var move := player.move_manager.move_for(player.move_manager.current_name)
-	if not (move is ScriptedMove):
+	# Duck-typed rather than `is ScriptedMove`: a move that COMPOSES a
+	# scripted phase (LadderMove's top exit -- GDScript has no multiple
+	# inheritance) exposes the same scripted_duration(), returning 0 outside
+	# the phase. ✅ The owner: "动画长度不够2s得拉长与硬直对齐."
+	if move == null or not move.has_method("scripted_duration"):
 		return 0.0
-	var duration: float = (move as ScriptedMove).scripted_duration()
+	var duration: float = move.scripted_duration()
 	if duration <= 0.0:
 		return 0.0
 	var length := _clip_length(clip)
@@ -849,6 +853,30 @@ func _target_animation() -> StringName:
 			# The packs carry no swing cycle; the ledge-hang idle is the
 			# closest honest two-hands-overhead pose. A real swing clip and
 			# hands-on-bar IK are known gaps (spec 2026-08-25 §7).
+			return _first_available([&"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
+		Move.LADDER:
+			# ✅ THE SPEC (2026-08-25-ladder-design.md §攀爬), verbatim: the
+			# top exit "动画先用 ClimbUp_1m 同款" -- the same clip GrabMove's
+			# mantle plays. SELECTION happens right here: is_top_exiting()
+			# picks the clip (mirroring GRAB's is_mantling() above), and
+			# _route() gates any SCRIPTED_MOVE_CLIPS member onto the scripted
+			# slot. Player.set_clip_lift_cancelled(), which
+			# LadderMove._begin_top_exit() also arms, plays NO part in clip
+			# choice -- it only stops the clip's own baked hip lift from
+			# stacking on the scripted vertical carry.
+			var ladder_move = player.move_manager.move_for(Move.LADDER)
+			if ladder_move != null and ladder_move.is_top_exiting():
+				return _first_available([&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
+					&"Jump_Start", &"jump", &"idle"])
+			# Direction-aware: the FULL library carries Climb_Up/Climb_Down
+			# cycles; the free tier falls back to the hanging idle, which is
+			# the closest honest two-hands-in-front pose. Hand IK on the
+			# rungs is a known gap (spec 2026-08-25 §攀爬).
+			var dir: int = ladder_move.climb_direction() if ladder_move != null else 0
+			if dir > 0:
+				return _first_available([&"Climb_Up", &"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
+			if dir < 0:
+				return _first_available([&"Climb_Down", &"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 			return _first_available([&"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 		Move.SLIDE:
 			# A GENUINE MATCH: UAL2 ships Slide_Start / Slide / Slide_Exit. This

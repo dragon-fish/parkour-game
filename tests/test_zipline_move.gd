@@ -8,6 +8,7 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 var _world: Dictionary = {}
 var _line: InterestLine = null
 var _extra_line: InterestLine = null
+var _wall: StaticBody3D = null
 
 func after_each() -> void:
 	if _line != null and is_instance_valid(_line):
@@ -16,6 +17,9 @@ func after_each() -> void:
 	if _extra_line != null and is_instance_valid(_extra_line):
 		_extra_line.queue_free()
 	_extra_line = null
+	if _wall != null and is_instance_valid(_wall):
+		_wall.queue_free()
+	_wall = null
 	if not _world.is_empty():
 		TestWorld.teardown(_world)
 		_world = {}
@@ -369,6 +373,12 @@ func test_the_ride_does_not_accumulate_a_fall_while_still_on_the_cable() -> void
 		if player.move_manager.current_name == Move.ZIPLINE:
 			break
 	assert_eq(player.move_manager.current_name, Move.ZIPLINE, "test setup: never caught the cable")
+	# Now that riding is collision-checked (slide_to), the shared flat floor
+	# this fixture stands the player on would otherwise stop a drop this deep
+	# partway down -- it was never meant to be part of this cable's own path,
+	# only something to jump from. Cleared out of the way only AFTER the
+	# catch, so it does not disturb the jump that caught the cable.
+	_world["floor"].global_position.y = -200.0
 	var ticks_observed := 0
 	for i in 90:
 		await step(1)
@@ -465,3 +475,41 @@ func test_the_entry_speed_is_the_ground_speed_at_takeoff() -> void:
 	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)
 	assert_almost_eq(zip.ride_speed() - zip.ride_acceleration() * 0.2, takeoff, takeoff * 0.2 + 0.3,
 		"the entry speed %.2f is not the takeoff ground speed %.2f" % [zip.ride_speed(), takeoff])
+
+# --- geometry across the cable's path throws the rider off -------------------
+#
+# ✅ THE OWNER, on the original: "滑到底忘记放手撞到墙被弹出去了" -- a cable
+# whose path runs through solid geometry (designers deliberately sink cable
+# ends into walls) must throw the rider off AT the wall, never carry the
+# capsule through it. PHYS_Flying used to write global_position directly every
+# tick with no collision check at all.
+
+func test_riding_into_a_wall_forces_the_release() -> void:
+	var player: Player = await _riding_player()
+	# Planted across the fixture cable's +z path (the cable itself runs from
+	# z=-1 to z=11 -- see _riding_player()). Position set BEFORE add_child --
+	# see tests/test_checkpoints.gd's _checkpoint() for why: a collider added
+	# at the origin and moved afterward can shove anything already overlapping
+	# it there.
+	_wall = StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	# Tall and wide enough to catch the hang point regardless of hang_offset,
+	# thin along the cable's own direction so the far side of it is
+	# unambiguously "through" the wall.
+	box.size = Vector3(6.0, 20.0, 1.0)
+	shape.shape = box
+	_wall.add_child(shape)
+	_wall.position = Vector3(0.0, 5.0, 4.0)
+	get_tree().root.add_child(_wall)
+	var left_zipline := false
+	for i in 300:
+		await step(1)
+		if player.move_manager.current_name != Move.ZIPLINE:
+			left_zipline = true
+			break
+		assert_lt(player.global_position.z, 4.5, \
+			"the ride carried the capsule past the wall plane while still on the cable")
+	assert_true(left_zipline, "riding into the wall never forced a release")
+	assert_lt(player.global_position.z, 4.5, \
+		"the capsule ended up past the wall plane after leaving the cable")

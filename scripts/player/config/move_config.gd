@@ -130,6 +130,15 @@ extends Resource
 ## volume. Airborne moves only, same reasoning as check_for_zipline.
 @export var check_for_swing: bool = false
 
+## Whether this move may hand off to Ladder inside a LADDER InterestLine's
+## FRONT volume. Airborne moves only -- see check_for_zipline for why. The
+## ground and wall-run entries do not read this flag at all: a ladder is
+## catchable while walking or wall-running unconditionally (05's own frontal
+## fan is the only gate there), so those two moves ask
+## LadderMove.front_side_allows() directly rather than through a switch that
+## would always be true for them.
+@export var check_for_ladder: bool = false
+
 ## Whether Q may start a turn out of this move.
 ##
 ## DEFAULT TRUE, and the exceptions are what carry the meaning. The owner's rule

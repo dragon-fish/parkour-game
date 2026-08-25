@@ -1,5 +1,5 @@
 class_name ZiplineMove
-extends Move
+extends LineMove
 
 # The original's TdMove_ZipLine. 05 §5.5.
 #
@@ -9,11 +9,13 @@ extends Move
 # how long the ride takes falls out of the cable's length and grade. Same
 # reasoning IntoGrabMove gives for itself: the duration is a consequence.
 #
-# PHYS_Flying: the body is placed directly from the cable, every tick, and
-# move_and_slide() is never called. Whatever the cable crosses, the body
-# crosses.
+# PHYS_Flying: the body is placed from the cable every tick, never through
+# move_and_slide(). Only the STEADY ride is collision-checked (slide_to()
+# below) -- because designers sink cable ends into walls on purpose, and a
+# rider who never lets go must be thrown off there, not carried through. The
+# 0.1 s magnet fade onto the cable stays a direct write on purpose: brushing
+# geometry during the pull must not abort the catch.
 
-var _line: InterestLine = null
 ## Arc length along the cable, metres.
 var _s: float = 0.0
 ## Speed along the cable, m/s, always >= cfg.min_velocity.
@@ -22,21 +24,11 @@ var _v: float = 0.0
 var _a: float = 0.0
 ## +1 rides toward increasing offset, -1 toward decreasing.
 var _dir: float = 1.0
-var _fade: float = 0.0
-var _entry_pos: Vector3 = Vector3.ZERO
-var _entry_yaw: float = 0.0
 ## The cable's horizontal direction AT THIS TICK'S offset. Recomputed every
 ## tick: 05 §5 step 6 asks the body to face along `t`, and a sagging or curving
 ## cable does not point where it did at the catch. Straight cables make this a
 ## no-op, which is why the arena's own does not exercise it.
 var _cable_yaw: float = 0.0
-## Where the look fan is centred. Follows _cable_yaw, but only ever through
-## shift_yaw_reference() -- see _track_fan_to_cable().
-var _fan_yaw: float = 0.0
-## Set the tick the fade ends, when the fan is centred on the cable. Guards a
-## call that MUST happen once; see _centre_fan().
-var _fan_centred: bool = false
-var _aborted: bool = false
 
 ## The direction a ride boarded at `offset` travels: +1 toward increasing arc
 ## length, -1 toward decreasing. THE ONLY COPY OF THE RULE -- enter() derives
@@ -65,10 +57,7 @@ static func travel_direction(line: InterestLine, world_pos: Vector3) -> Vector3:
 func enter(_previous: StringName) -> void:
 	# Declared, not read: this move never calls move_and_slide().
 	player.set_grounded(false)
-	_aborted = false
-	_line = player.nearest_interest_line(InterestLine.Kind.ZIPLINE)
-	if _line == null:
-		_aborted = true
+	if not acquire_line(InterestLine.Kind.ZIPLINE):
 		return
 	_s = _line.closest_offset(player.global_position)
 	_dir = travel_sign(_line, _s)
@@ -85,7 +74,7 @@ func enter(_previous: StringName) -> void:
 	_entry_yaw = player.rotation.y
 	_fan_centred = false
 	_cable_yaw = _yaw_along(along)
-	_fan_yaw = _cable_yaw
+	_target_yaw = _cable_yaw
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted or not is_instance_valid(_line):
@@ -120,12 +109,28 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	_cable_yaw = _yaw_along(along)
 	_fade += delta
 	if _fade < cfg.fade_in_time:
+		# ✅ THE CONTROLLER'S RULING (fix round 1): the magnet's own pull stays
+		# a direct write, not collision-checked. Routing this through slide_to
+		# meant brushing any geometry during the 0.1 s fade aborted the catch
+		# outright -- "touched the rope but got bounced off" -- exactly the
+		# UX the magnet exists to prevent. Geometry only claims the rider once
+		# they are actually RIDING (see the slide_to below); the owner's
+		# "滑到底忘记放手撞到墙被弹出去了" is about a rider who never lets go
+		# of a cable already being ridden, not a body still fading onto one.
 		var t: float = _fade / cfg.fade_in_time
 		player.global_position = _entry_pos.lerp(hang, t)
 		_turn_body_to(lerp_angle(_entry_yaw, _cable_yaw, t))
 	else:
-		player.global_position = hang
+		# ✅ THE OWNER, on the original: "滑到底忘记放手撞到墙被弹出去了" -- a
+		# cable whose path runs through solid geometry (designers deliberately
+		# sink cable ends into walls) must throw the rider off AT the wall,
+		# never carry the capsule through it, once the ride is underway.
+		var hit := slide_to(hang)
+		if hit != null:
+			player.velocity = (_tangent() * _v).slide(hit.get_normal())
+			return FALLING
 		if not _fan_centred:
+			_target_yaw = _cable_yaw
 			_centre_fan()
 		else:
 			_track_fan_to_cable()
@@ -149,50 +154,6 @@ func _hang_point() -> Vector3:
 func _yaw_along(direction: Vector3) -> float:
 	return atan2(-direction.x, -direction.z)
 
-## Sets the body yaw, hands the camera the change so the eye trails the turn
-## instead of being cut through it, and takes the model along.
-##
-## THE FADE-IN ONLY. Once the body is on the cable its yaw is the PLAYER's --
-## see _centre_fan() for why this move must stop writing it.
-func _turn_body_to(yaw: float) -> void:
-	var before: float = player.rotation.y
-	player.rotation.y = yaw
-	if player.camera_rig != null:
-		player.camera_rig.absorb_body_yaw(wrapf(yaw - before, -PI, PI))
-	# ZiplineConfig freezes the visual yaw -- both hands are on the cable, so
-	# the model must not swivel to follow the view -- and that freeze cancels
-	# this turn degree for degree unless the model is told where to face. Same
-	# arrangement GrabMove makes at a ledge corner; see Player.pin_visual_yaw().
-	player.pin_visual_yaw(yaw)
-
-## Ends the fade: squares the body up to the cable and centres the +-90 degree
-## fan on it, so "look 90 degrees off" means 90 degrees off THE CABLE rather
-## than off whatever heading the jump happened to arrive with.
-##
-## ⚠️ ONCE, AND THAT IS THE ENTIRE POINT. recentre_yaw_reference() re-derives
-## how far the view has turned from the fan's centre out of the BODY's facing.
-## Called every tick with a body this move had just written to the cable's yaw,
-## that difference is zero every tick -- and what it zeroes is the mouse yaw
-## apply_look() accumulated a few microseconds earlier, since Player runs the
-## look before the moves. The ride could not be looked out of at all and the
-## config's +-90 fan never applied to anything. WallRunMove guards the same
-## call with its own _fan_centred flag, for the same reason.
-##
-## From here the body's yaw belongs to apply_look(), which rebuilds it every
-## tick as fan centre plus the player's own accumulated turn, clamped to the
-## fan. This move writes rotation.y no more.
-func _centre_fan() -> void:
-	_fan_centred = true
-	_fan_yaw = _cable_yaw
-	# Not through _turn_body_to(): the fade has already brought the facing to
-	# within a rounding error of the cable, so what is left is a snap to exact.
-	var before: float = player.rotation.y
-	player.rotation.y = _fan_yaw
-	if player.camera_rig != null:
-		player.camera_rig.absorb_body_yaw(wrapf(_fan_yaw - before, -PI, PI))
-		player.camera_rig.recentre_yaw_reference(_fan_yaw)
-	player.pin_visual_yaw(_fan_yaw)
-
 ## Carries the fan -- and the model -- round with a cable that turns.
 ##
 ## The fan is measured against the CABLE's own direction, so on a sagging or
@@ -208,21 +169,16 @@ func _centre_fan() -> void:
 ## round with the wall. No smoothing of the tracking itself is needed -- a
 ## Curve3D tangent is continuous, so the per-tick turn is already a sliver.
 func _track_fan_to_cable() -> void:
-	var difference: float = wrapf(_cable_yaw - _fan_yaw, -PI, PI)
+	var difference: float = wrapf(_cable_yaw - _target_yaw, -PI, PI)
 	if is_zero_approx(difference):
 		return
-	_fan_yaw = _cable_yaw
+	_target_yaw = _cable_yaw
 	if player.camera_rig != null:
-		player.camera_rig.shift_yaw_reference(_fan_yaw, 1.0)
-	player.pin_visual_yaw(_fan_yaw)
+		player.camera_rig.shift_yaw_reference(_target_yaw, 1.0)
+	player.pin_visual_yaw(_target_yaw)
 
 func exit() -> void:
-	# The SAME line refuses a re-catch for a while; every other line stays
-	# open. Per-cable on purpose -- ✅ THE OWNER, measured in the original:
-	# release one rope, catch the next at once ("shift跳下挂上另一个绳子") --
-	# so this lives on the line, not on the move name.
-	if is_instance_valid(_line):
-		player.note_line_left(_line, cfg.same_line_redo_time)
+	note_left(cfg.same_line_redo_time)
 
 ## The measured growth law: linear in the descent slope. ✅ THE OWNER, off two
 ## reference segments in the original (see ZiplineConfig.base_acceleration):

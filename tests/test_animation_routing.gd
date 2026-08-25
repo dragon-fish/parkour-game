@@ -54,7 +54,7 @@ func test_every_move_has_its_own_case() -> void:
 	var missing: Array[String] = []
 	for name in ["WALKING", "FALLING", "FALL_UNCONTROLLED", "JUMP", "LANDING", \
 			"SKILL_ROLL", "SLIDE", "CROUCH", "SPEED_VAULT", "INTO_GRAB", \
-			"GRAB", "WALL_RUN", "WALL_CLIMB", "TURN_180", "ZIPLINE", "SWING"]:
+			"GRAB", "WALL_RUN", "WALL_CLIMB", "TURN_180", "ZIPLINE", "SWING", "LADDER"]:
 		if not source.contains("Move.%s:" % name):
 			missing.append(name)
 	assert_eq(missing, [] as Array[String], \
@@ -397,3 +397,24 @@ func test_a_body_without_it_falls_back_down_the_list() -> void:
 	grab._mantling = true
 	assert_eq(animator._target_animation(), &"ClimbLedge",
 		"a body with no ClimbUp_2m played '%s'" % String(animator._target_animation()))
+
+# --- the ladder's top exit is a mantle in every way that matters here -------
+
+func test_a_top_exit_carry_plays_climb_up_instead_of_the_hang() -> void:
+	# ✅ THE SPEC (2026-08-25-ladder-design.md §攀爬): the top-exit carry
+	# (LadderMove._begin_top_exit) plays "ClimbUp_1m 同款" -- told apart from
+	# the ordinary climb by LadderMove.is_top_exiting(), the exact pattern
+	# test_a_pull_up_prefers_the_long_climb() above exercises for GRAB's
+	# is_mantling(). No real InterestLine needed: entering with nothing to
+	# catch leaves the move aborted, but the animation arm only asks
+	# is_top_exiting(), which the abort does not touch.
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.LADDER)
+	var ladder := player.move_manager.move_for(Move.LADDER) as LadderMove
+	assert_not_null(ladder, "no LadderMove to drive")
+	assert_eq(animator._target_animation(), &"Climb_Idle",
+		"an ordinary climb stopped playing the hang placeholder")
+	ladder._top_exiting = true
+	assert_eq(animator._target_animation(), &"ClimbUp_1m",
+		"a top-exit carry played '%s'" % String(animator._target_animation()))

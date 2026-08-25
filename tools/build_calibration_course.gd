@@ -1,7 +1,7 @@
 @tool
 extends SceneTree
 
-# Builds scenes/calibration_course.tscn: a row of obstacles for judging what the
+# Builds scenes/generated/calibration_course.tscn: a row of obstacles for judging what the
 # move system does with each, by running at them.
 #
 # WHY A COURSE AND NOT MORE MEASUREMENT. The classification rules came out of
@@ -22,7 +22,7 @@ extends SceneTree
 #   .engine\Godot_v4.7.1-stable_win64_console.exe --headless --path . \
 #       --script res://tools/build_calibration_course.gd
 
-const OUT_PATH := "res://scenes/calibration_course.tscn"
+const OUT_PATH := "res://scenes/generated/calibration_course.tscn"
 const STRIPES := "res://shaders/hazard_stripes.gdshader"
 
 ## Body landmarks, from the feet. Used only to place the labels' commentary --
