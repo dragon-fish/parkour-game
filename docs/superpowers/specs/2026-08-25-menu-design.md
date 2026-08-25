@@ -44,6 +44,22 @@
      **设置**、**退出**
    - 标题字：项目名粗体黑字 + 一条红色横向 accent 条（Endfield 黄条的
      红色版），v1 就是两个 Label + ColorRect
+
+   **入场编排**（✅ 作者供的 Endfield 主菜单动画视频，已逐帧拆解）：
+   1. 0.0s 白底 + 点阵地板渐显（0.4s alpha in）
+   2. 0.2s **红色横条从左右两侧扫入**贯穿屏幕中带（0.3s，ease-out）
+   3. 0.4s 标题块落位：先偏移 12px 再弹回，落位瞬间做 **1-2 帧错位抖动**
+      （position 抖 ±3px 一次即可，廉价 glitch）
+   4. 0.5s 起左列菜单项 **stagger 滑入**（每项错 30ms，ease-out 0.12s）
+   5. 剪影人物同期淡入并持续行走循环
+   6. idle：整体轻微漂移（sin 摆动 ±2px @ 0.1Hz），glitch 碎片偶发闪烁
+      留 v2
+   全部用 Tween 实现，无新增技术。
+
+   **现代化改良五件套**（✅ 作者点头）：选中白条项间滑动（0.12s
+   ease-out）；悬停项微右移 + 半透明白条预览；四角机能风元数据小字
+   （版本号/构建号/`+` 定位符）；背景极淡纸感噪点（hash 一行）；底部
+   按键提示 footer（`Esc 返回 · Enter 确认`）。适用于主菜单与暂停菜单。
 2. **`scenes/ui/pause_menu.tscn` + 自动加载 `PauseUi`**（CanvasLayer，
    `process_mode = ALWAYS`）：任何关卡里按 Esc → `get_tree().paused = true`
    + backdrop + 居中红列（参考图 1 构图）：**继续**、**设置**、
