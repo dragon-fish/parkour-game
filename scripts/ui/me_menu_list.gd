@@ -1,68 +1,59 @@
 class_name MeMenuList
-extends VBoxContainer
+extends Control
 
 # ME-styled vertical menu list: red panel items with white text, a full-width
 # white "selected" bar that slides between items, and the spec's edge-wave
 # shader on both the shared red backdrop (full amplitude) and the selection
-# bar (half amplitude -- "白条动得比红列更轻"). Reused by PauseUi (Task 3) and,
-# later, the main menu / settings page.
+# bar (half amplitude -- "白条动得比红列更轻"). Reused by PauseUi and the
+# main menu.
 #
-# STRUCTURAL NOTE: the backdrop/selection-bar/hover-preview ColorRects are all
-# `top_level = true`, verified empirically against Godot 4.7's Container
-# layout: a top_level Control does not consume a row in the vbox's own
-# vertical stacking, and its `position`/`size` live in the SAME space as this
-# control's own `global_position`/`size` rather than relative to it. They are
-# added FIRST so the item Labels, added by set_items() after, draw and
-# hit-test on top of them.
+# STRUCTURE (v2, after the first windowed look): plain LOCAL children in
+# explicit draw order -- backdrop, selection bar, hover preview, then a
+# VBoxContainer holding the labels ON TOP. The first version parented
+# `top_level` ColorRects into the vbox and trusted a headless "empirical
+# verification" that labels drew above them; the first real capture showed
+# the exact opposite -- top_level items draw over the subtree, and the only
+# text ever visible was peeking through the wave shader's eroded edge.
+# Local children need no global_position bookkeeping and follow the parent's
+# entrance slide for free.
 
 signal chosen(index: int)
 
-## Row height for each item.
 const ITEM_HEIGHT := 56.0
-## Wave amplitude for the shared red backdrop; the selection bar runs at
-## half this (see the header comment).
 const BACKDROP_AMPLITUDE_PX := 8.0
-## How far a hovered item's label nudges right, and how long both that nudge
-## and the selection bar's slide between items take.
 const HOVER_NUDGE_PX := 12.0
 const TWEEN_TIME := 0.12
-
-## "深色文字" for the selected item -- the spec pins the bar to white but
-## does not pin an exact dark, so this is a knob, not a spec value.
 const _SELECTED_TEXT_COLOR := Color(0.08, 0.08, 0.1)
+const ENTRANCE_STAGGER := 0.03
+const ENTRANCE_OFFSET_PX := 40.0
 
 var _backdrop: ColorRect
 var _selection_bar: ColorRect
 var _hover_preview: ColorRect
+var _items_box: VBoxContainer
 var _labels: Array[Label] = []
 var _selected_index: int = 0
 var _bar_tween: Tween
 var _entrance_tween: Tween
 
-## Main menu beat 4: "每项错 30ms，ease-out 0.12s" -- each row slides in from
-## the left and fades up, staggered. Not used by PauseUi, which shows its
-## list instantly; the main menu is the one caller with an entrance to play.
-const ENTRANCE_STAGGER := 0.03
-const ENTRANCE_OFFSET_PX := 40.0
-
 func _ready() -> void:
 	theme = MeTheme.ui_theme()
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_backdrop = _make_bar(MeTheme.BRAND_RED, BACKDROP_AMPLITUDE_PX)
+	_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_selection_bar = _make_bar(Color.WHITE, BACKDROP_AMPLITUDE_PX * 0.5)
 	_hover_preview = _make_bar(Color(1.0, 1.0, 1.0, 0.18), 0.0)
 	_hover_preview.visible = false
-	resized.connect(_sync_overlays)
-	var vp := get_viewport()
-	if vp != null:
-		vp.size_changed.connect(_sync_overlays)
-	# One layout pass has to happen before global_position/size are real.
-	call_deferred("_sync_overlays")
+	_items_box = VBoxContainer.new()
+	_items_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_items_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_items_box)
+	resized.connect(_sync_widths)
+	call_deferred("_sync_widths")
 
 func _make_bar(color: Color, amplitude_px: float) -> ColorRect:
 	var bar := ColorRect.new()
 	bar.color = color
-	bar.top_level = true
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if amplitude_px > 0.0:
 		bar.material = MeTheme.wave_material(amplitude_px)
@@ -82,8 +73,6 @@ func set_items(items: Array[String]) -> void:
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		label.add_theme_font_size_override("font_size", 28)
-		# Left/right breathing room without touching position (position is
-		# reserved for the hover nudge below).
 		var padding := StyleBoxEmpty.new()
 		padding.content_margin_left = 28.0
 		padding.content_margin_right = 28.0
@@ -92,17 +81,15 @@ func set_items(items: Array[String]) -> void:
 		label.mouse_entered.connect(_on_item_hover.bind(i, true))
 		label.mouse_exited.connect(_on_item_hover.bind(i, false))
 		label.gui_input.connect(_on_item_gui_input.bind(i))
-		add_child(label)
+		_items_box.add_child(label)
 		_labels.append(label)
 
 	_selected_index = 0
 	_refresh_colors()
-	call_deferred("_sync_overlays")
+	call_deferred("_sync_widths")
 
-## Plays the beat-4 stagger-in: each item starts invisible and offset left,
-## then eases up to its resting alpha/position, ENTRANCE_STAGGER apart. Call
-## skip_entrance() instead to jump straight to the settled state (the main
-## menu's "an input during the entrance skips choreography" courtesy).
+## The stagger-in (✅ ease-in-out per the owner's direction). Labels slide
+## from the left and fade up, ENTRANCE_STAGGER apart.
 func play_entrance() -> void:
 	if _entrance_tween != null and _entrance_tween.is_valid():
 		_entrance_tween.kill()
@@ -113,13 +100,11 @@ func play_entrance() -> void:
 		label.modulate.a = 0.0
 		label.position.x = -ENTRANCE_OFFSET_PX
 		_entrance_tween.tween_property(label, "modulate:a", 1.0, TWEEN_TIME) \
-			.set_delay(i * ENTRANCE_STAGGER).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			.set_delay(i * ENTRANCE_STAGGER).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		_entrance_tween.tween_property(label, "position:x", 0.0, TWEEN_TIME) \
-			.set_delay(i * ENTRANCE_STAGGER).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			.set_delay(i * ENTRANCE_STAGGER).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-## Jumps every item straight to its fully-visible, settled position -- used
-## both to skip a running entrance and to leave the list ready before one has
-## ever played.
+## Jumps every item straight to its settled state.
 func skip_entrance() -> void:
 	if _entrance_tween != null and _entrance_tween.is_valid():
 		_entrance_tween.kill()
@@ -140,26 +125,13 @@ func _on_item_hover(index: int, entered: bool) -> void:
 	var target_x := HOVER_NUDGE_PX if entered else 0.0
 	var tween := label.create_tween()
 	tween.tween_property(label, "position:x", target_x, TWEEN_TIME) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	# Never on the already-selected row -- it already has the solid bar.
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_hover_preview.visible = entered and index != _selected_index
 	if _hover_preview.visible:
-		_position_bar(_hover_preview, index)
+		_place_bar(_hover_preview, index)
 
-## Keyboard nav, guarded on visibility so a hidden/paused-off list (e.g. while
-## the game itself is playing, not the pause menu) does not eat Up/Down/Enter
-## meant for gameplay -- PauseUi only shows this list while it is the thing
-## receiving input.
-##
-## is_visible_in_tree(), not the plain `visible` property: this node's
-## PROCESS_MODE_ALWAYS is inherited from PauseUi (a CanvasLayer), and
-## CanvasLayer is not a CanvasItem -- toggling ITS `visible` never cascades
-## down to set this control's own `visible` flag, so a plain `visible` check
-## here would read true forever regardless of whether PauseUi ever shows this
-## list (caught in review: this control kept consuming every Up/Down/Enter
-## in normal, unpaused play). is_visible_in_tree() walks the actual Control
-## ancestor chain PauseUi._set_shown() toggles, so it can't be fooled by a
-## parent that never touches this node directly.
+## Keyboard nav. is_visible_in_tree(), not `visible`: PauseUi is a
+## CanvasLayer whose own flag never cascades -- see that file's history.
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_visible_in_tree() or _labels.is_empty():
 		return
@@ -182,44 +154,41 @@ func _unhandled_input(event: InputEvent) -> void:
 func _select(index: int) -> void:
 	_selected_index = index
 	_refresh_colors()
-	_move_selection_bar()
+	_slide_selection_bar()
 
 func _refresh_colors() -> void:
 	for i in _labels.size():
 		var selected := i == _selected_index
 		_labels[i].add_theme_color_override("font_color", _SELECTED_TEXT_COLOR if selected else Color.WHITE)
 
-func _move_selection_bar() -> void:
+func _slide_selection_bar() -> void:
 	if _labels.is_empty():
 		return
 	if _bar_tween != null and _bar_tween.is_valid():
 		_bar_tween.kill()
-	_position_bar_size(_selection_bar, _selected_index)
+	_size_bar(_selection_bar, _selected_index)
 	_bar_tween = _selection_bar.create_tween()
-	_bar_tween.tween_property(_selection_bar, "position:y", _bar_target_y(_selected_index), TWEEN_TIME) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_bar_tween.tween_property(_selection_bar, "position:y", _row_y(_selected_index), TWEEN_TIME) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-func _bar_target_y(index: int) -> float:
-	return global_position.y + _labels[index].position.y
+## All LOCAL space now: a row's y inside the items box equals its y in this
+## control (the box is full-rect at zero offset).
+func _row_y(index: int) -> float:
+	return _labels[index].position.y
 
-## Snaps a bar's rect to a given row immediately (no tween) -- used for the
-## hover preview, and for the selection bar's width/height, which never
-## animate, only its y does (see _move_selection_bar()).
-func _position_bar_size(bar: ColorRect, index: int) -> void:
+func _size_bar(bar: ColorRect, index: int) -> void:
 	bar.size = Vector2(size.x, _labels[index].size.y)
 	if bar.material is ShaderMaterial:
 		(bar.material as ShaderMaterial).set_shader_parameter("width_px", maxf(size.x, 1.0))
 
-func _position_bar(bar: ColorRect, index: int) -> void:
-	_position_bar_size(bar, index)
-	bar.position = Vector2(global_position.x, _bar_target_y(index))
+func _place_bar(bar: ColorRect, index: int) -> void:
+	_size_bar(bar, index)
+	bar.position = Vector2(0.0, _row_y(index))
 
-func _sync_overlays() -> void:
+func _sync_widths() -> void:
 	if not is_inside_tree():
 		return
-	_backdrop.position = global_position
-	_backdrop.size = size
 	if _backdrop.material is ShaderMaterial:
 		(_backdrop.material as ShaderMaterial).set_shader_parameter("width_px", maxf(size.x, 1.0))
 	if not _labels.is_empty():
-		_position_bar(_selection_bar, _selected_index)
+		_place_bar(_selection_bar, _selected_index)

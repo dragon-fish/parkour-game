@@ -52,7 +52,7 @@ const _DRIFT_BASE_Y := 0.0
 const FRAME_FOV_DEG := 55.0
 const HEAD_X_FRAC := 0.45
 const HEAD_Y_FRAC := 0.30
-const CLOSE_BODY_FRAC := 0.40
+const CLOSE_BODY_FRAC := 0.48
 const FAR_BODY_FRAC := 0.70
 ## Skull above the Head bone, metres -- the bone sits at the neck end.
 const HEAD_TOP_PAD := 0.16
@@ -70,8 +70,8 @@ const FALLBACK_STAND_HEAD := 1.43
 # --- logo mark (white recolor of the codex topo emblem) --------------------
 const LOGO_TEXTURE := "res://assets/ui/logo_mark_white.svg"
 ## Centre of the mark, as screen fractions (✅ the owner: left 20% top 66%).
-const LOGO_X_FRAC := 0.20
-const LOGO_Y_FRAC := 0.66
+const LOGO_X_FRAC := 0.24
+const LOGO_Y_FRAC := 0.60
 const LOGO_SIZE_PX := 220.0
 
 # --- mirror + glitch -------------------------------------------------------
@@ -504,16 +504,23 @@ func _track(tween: Tween) -> Tween:
 	_active_tweens.append(tween)
 	return tween
 
+## ✅ THE OWNER (v3): "角色起身、转镜头、logo消失、菜单出现，这几个事情是
+## 同时发生的" -- after the LOGO_HOLD, everything launches TOGETHER; the walk
+## takes over when the rise lands, and settle waits for the longest strand.
 func _play_entrance() -> void:
 	var pacing := _track(create_tween())
 	pacing.tween_interval(LOGO_HOLD)
-	pacing.tween_callback(_beat_rise_begin)
+	pacing.tween_callback(_beat_everything)
 	pacing.tween_interval(RISE_TIME)
 	pacing.tween_callback(_start_walk_loop)
-	pacing.tween_interval(WALK_TO_MENU_DELAY)
-	pacing.tween_callback(_beat_menu_parallax)
-	pacing.tween_interval(MENU_PANEL_TIME + MeMenuList.ENTRANCE_STAGGER * 3.0 + MeMenuList.TWEEN_TIME)
+	pacing.tween_interval(maxf(
+		MENU_PANEL_TIME + MeMenuList.ENTRANCE_STAGGER * 3.0 + MeMenuList.TWEEN_TIME - RISE_TIME,
+		0.0) + 0.05)
 	pacing.tween_callback(_beat_settle)
+
+func _beat_everything() -> void:
+	_beat_rise_begin()
+	_beat_menu_parallax()
 
 ## Frame 0 is already fully composed at build time (crouched profile, white
 ## mark, faint floor); the first beat is the RISE: the body stands
@@ -563,7 +570,7 @@ func _beat_menu_parallax() -> void:
 	_menu_list.position.x = panel_from - 480.0
 	var panel := _track(create_tween())
 	panel.tween_property(_menu_list, "position:x", panel_from, MENU_PANEL_TIME) \
-		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	panel.parallel().tween_callback(_menu_list.play_entrance).set_delay(MENU_PANEL_TIME * 0.4)
 
 	var meta := _track(create_tween())
