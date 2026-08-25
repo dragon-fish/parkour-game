@@ -186,6 +186,11 @@ func _real_change_scene(path: String) -> void:
 func _build_ui() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	theme = MeTheme.ui_theme()
+	# The ROOT was the click-eater: a Control defaults to MOUSE_FILTER_STOP,
+	# so the full-rect root consumed every mouse press as GUI input before
+	# _unhandled_input could ever see it -- keyboard worked, clicks died
+	# (✅ the owner found it, annoyed, correctly).
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	_background = ColorRect.new()
 	_background.color = Color(0.96, 0.96, 0.94)
