@@ -1,5 +1,7 @@
 extends ParkourTest
 
+const TestWorld = preload("res://tests/world_fixture.gd")
+
 # Minimal smoke tests for the ME theme factory (Task 1 of the menu feature).
 # Structural only: MeTheme is a static, stateless factory, and the two
 # gdshader resources have no visual output to assert on here -- later menu
@@ -38,6 +40,14 @@ func before_each() -> void:
 
 func after_each() -> void:
 	_delete_settings_file()
+	# Unconditional pause/mouse-mode cleanup, run for EVERY test in this file
+	# (not just the PauseUi ones below) so a failed assertion mid-test never
+	# leaves the tree paused for every suite that runs after this one -- a
+	# stuck get_tree().paused = true stalls ParkourTest.step()'s physics_frame
+	# await across the whole rest of the process.
+	get_tree().paused = false
+	PauseUi.visible = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _delete_settings_file() -> void:
 	if FileAccess.file_exists(SettingsStore.PATH):
@@ -83,3 +93,52 @@ func test_apply_global_sets_master_bus_volume_and_restores_it() -> void:
 	assert_eq(AudioServer.get_bus_volume_db(bus), -12.0, "apply_global did not set the Master bus volume")
 
 	AudioServer.set_bus_volume_db(bus, original_db)
+
+
+# ---------------------------------------------------------------------------
+# PauseUi (Task 3 of the menu feature): the global pause autoload. Esc
+# toggles get_tree().paused, either through the public toggle_pause() or by
+# being fed straight into _unhandled_input; both leave the mouse mode
+# consistent with the resulting pause state. after_each() above unpauses and
+# resets mouse mode even on a failed assertion.
+# ---------------------------------------------------------------------------
+
+func test_toggle_pause_flips_paused_and_mouse_mode() -> void:
+	assert_false(get_tree().paused, "test setup: tree was already paused")
+
+	PauseUi.toggle_pause()
+	assert_true(get_tree().paused, "toggle_pause did not pause the tree")
+	assert_eq(Input.mouse_mode, Input.MOUSE_MODE_VISIBLE, "pausing did not release the mouse")
+
+	PauseUi.toggle_pause()
+	assert_false(get_tree().paused, "second toggle_pause did not resume")
+
+func test_esc_key_through_unhandled_input_flips_paused() -> void:
+	assert_false(get_tree().paused, "test setup: tree was already paused")
+
+	var esc := InputEventKey.new()
+	esc.physical_keycode = KEY_ESCAPE
+	esc.pressed = true
+	esc.echo = false
+
+	PauseUi._unhandled_input(esc)
+	assert_true(get_tree().paused, "Esc through _unhandled_input did not pause")
+
+	PauseUi._unhandled_input(esc)
+	assert_false(get_tree().paused, "second Esc through _unhandled_input did not resume")
+
+## The per-player half of SettingsStore (see settings_store.gd's split-in-two
+## comment): Player.setup() applies the saved camera sensitivity/FOV onto its
+## own MovementConfig once one exists. Not a pause test, but lives here as
+## the third of this task's three required intents.
+func test_player_setup_applies_saved_camera_sensitivity() -> void:
+	var saved := SettingsStore.defaults()
+	saved.sensitivity = 0.0044
+	SettingsStore.save_settings(saved)
+
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+
+	assert_eq(world["player"].config.camera.mouse_sensitivity, 0.0044, \
+		"Player.setup() did not apply the saved sensitivity via SettingsStore")
+
+	TestWorld.teardown(world)

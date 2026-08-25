@@ -990,6 +990,9 @@ func _service_pending_capsule_restore() -> void:
 
 func setup(cfg: MovementConfig, src: InputSource) -> void:
 	config = cfg
+	# Per-player half of SettingsStore (camera sensitivity/FOV) -- the
+	# engine-wide half (window/audio) is applied once at boot by PauseUi.
+	SettingsStore.apply_to_config(SettingsStore.load_settings(), config)
 	input_source = src
 	fall_tracker = FallTracker.new()
 	speed_energy = SpeedEnergy.new(config.pawn)
@@ -2727,9 +2730,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_ESCAPE:
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		elif event.physical_keycode == KEY_F11 and owns_mouse:
+		# Esc now belongs to PauseUi._unhandled_input (autoload, consumes it globally).
+		if event.physical_keycode == KEY_F11 and owns_mouse:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif event.physical_keycode == KEY_T:
 			toggle_noclip()
