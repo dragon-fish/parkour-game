@@ -35,6 +35,24 @@ func test_dot_grid_material_loads_its_shader() -> void:
 # window -- window is guarded off in headless and untestable here).
 # ---------------------------------------------------------------------------
 
+## Injected for the whole file's run rather than per-test: SettingsStore.path
+## is a shared static, and pointing it at a throwaway file here means every
+## load_settings()/save_settings() call anywhere in this suite -- including
+## indirectly, through PauseUi._ready() and Player.setup() -- reads and
+## writes user://settings_test.cfg instead of the author's real
+## user://settings.cfg. Restored in after_all() so nothing outside this file
+## ever sees the redirected path.
+const _TEST_SETTINGS_PATH := "user://settings_test.cfg"
+var _real_settings_path: String
+
+func before_all() -> void:
+	_real_settings_path = SettingsStore.path
+	SettingsStore.path = _TEST_SETTINGS_PATH
+
+func after_all() -> void:
+	_delete_settings_file()
+	SettingsStore.path = _real_settings_path
+
 func before_each() -> void:
 	_delete_settings_file()
 
@@ -53,10 +71,16 @@ func after_each() -> void:
 	get_tree().paused = false
 	PauseUi._set_shown(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	# Same reasoning as the two lines above, for the FIX 5 pending-scene-change
+	# guard (test_go_to_main_menu_unpauses_before_requesting_the_scene_change
+	# below): a stuck true would silently no-op every toggle_pause() in every
+	# test that runs after it.
+	PauseUi._pending_scene_change = false
+	PauseUi._change_scene = Callable(PauseUi, "_real_change_scene")
 
 func _delete_settings_file() -> void:
-	if FileAccess.file_exists(SettingsStore.PATH):
-		DirAccess.remove_absolute(SettingsStore.PATH)
+	if FileAccess.file_exists(SettingsStore.path):
+		DirAccess.remove_absolute(SettingsStore.path)
 
 func test_load_settings_with_no_file_returns_defaults() -> void:
 	var loaded := SettingsStore.load_settings()
@@ -204,6 +228,74 @@ func test_shown_menu_list_responds_to_arrow_and_enter_keys() -> void:
 	list.chosen.disconnect(on_chosen)
 	assert_eq(chosen_index[0], 1, "Enter did not fire chosen with the selected index while shown")
 
+## FIX 6a (final whole-branch review): Esc while the settings page is open
+## under pause is the CANCEL path, not a second toggle_pause() -- confirmed
+## at the _unhandled_input() level (pause_ui.gd's `if _showing_settings:`
+## branch) exactly like the two Esc tests above.
+func test_esc_while_settings_open_under_pause_cancels_back_to_the_list() -> void:
+	PauseUi.toggle_pause()
+	PauseUi._show_settings()
+	assert_true(PauseUi._showing_settings, "test setup: settings page should be open")
+
+	var esc := InputEventKey.new()
+	esc.physical_keycode = KEY_ESCAPE
+	esc.pressed = true
+	esc.echo = false
+	PauseUi._unhandled_input(esc)
+
+	assert_false(PauseUi._showing_settings, "Esc over the settings page did not cancel back to the list")
+	assert_true(get_tree().paused, "Esc-cancel out of settings must not also resume the game")
+	assert_true(PauseUi._menu_list.is_visible_in_tree(), "the menu list should be back on screen after Esc-cancel")
+
+## FIX 6b (final whole-branch review): _go_to_main_menu() unpauses BEFORE
+## requesting the scene change, not after -- change_scene_to_file() is
+## deferred, so the opposite order would leave the tree paused for the rest
+## of the frame while the old scene is still current. Exercised through the
+## real handler with PauseUi's own _change_scene seam stubbed (same shape as
+## MainMenu._change_scene), so this never actually swaps GUT's runner scene.
+func test_go_to_main_menu_unpauses_before_requesting_the_scene_change() -> void:
+	PauseUi.toggle_pause()
+	assert_true(get_tree().paused, "test setup: tree should be paused")
+
+	var requested := [""]
+	PauseUi._change_scene = func(path): requested[0] = path
+
+	PauseUi._go_to_main_menu()
+
+	assert_false(get_tree().paused, "_go_to_main_menu did not unpause the tree before requesting the scene change")
+	assert_eq(requested[0], PauseUi.MAIN_MENU_SCENE, \
+		"_go_to_main_menu did not request scenes/ui/main_menu.tscn through the change-scene seam")
+
+## FIX 6c (final whole-branch review): _resume() honors a current scene's
+## capture_mouse = false (Arena's own contract, arena.gd) rather than always
+## grabbing the cursor. Stood in with a bare Node + a runtime-attached script
+## rather than a real Arena, which needs a whole level built around it.
+func test_resume_honors_capture_mouse_false_on_the_current_scene() -> void:
+	PauseUi.toggle_pause()
+	assert_true(get_tree().paused, "test setup: tree should be paused")
+	assert_eq(Input.mouse_mode, Input.MOUSE_MODE_VISIBLE, "test setup: pausing should have released the mouse")
+
+	var stand_in_script := GDScript.new()
+	stand_in_script.source_code = "extends Node\nvar capture_mouse: bool = false\n"
+	stand_in_script.reload()
+	var stand_in := Node.new()
+	stand_in.set_script(stand_in_script)
+	# Direct child of root, not add_child_autofree() under the test node --
+	# SceneTree.current_scene requires that (verified empirically, same as
+	# test_esc_is_a_no_op_while_the_main_menu_is_current_scene below).
+	get_tree().root.add_child(stand_in)
+	var previous_current_scene := get_tree().current_scene
+	get_tree().current_scene = stand_in
+
+	PauseUi._resume()
+
+	get_tree().current_scene = previous_current_scene
+	stand_in.queue_free()
+
+	assert_false(get_tree().paused, "_resume did not unpause the tree")
+	assert_eq(Input.mouse_mode, Input.MOUSE_MODE_VISIBLE, \
+		"resume must honor capture_mouse=false and leave the mouse visible rather than capturing it")
+
 ## The per-player half of SettingsStore (see settings_store.gd's split-in-two
 ## comment): Player.setup() applies the saved camera sensitivity/FOV onto its
 ## own MovementConfig once one exists. Not a pause test, but lives here as
@@ -250,7 +342,7 @@ func test_settings_menu_cancel_discards_the_change() -> void:
 	menu._on_slider_changed(0.0077, "sensitivity")
 	menu._on_cancel_pressed()
 
-	assert_false(FileAccess.file_exists(SettingsStore.PATH), "取消 must not write settings.cfg")
+	assert_false(FileAccess.file_exists(SettingsStore.path), "取消 must not write settings.cfg")
 	assert_eq(SettingsStore.load_settings().sensitivity, SettingsStore.defaults().sensitivity, \
 		"取消 must not leave the cancelled change behind")
 
@@ -265,7 +357,7 @@ func test_settings_menu_default_resets_controls_without_saving() -> void:
 	var slider: HSlider = menu._sliders["sensitivity"]
 	assert_almost_eq(slider.value, SettingsStore.defaults().sensitivity, 0.00001, \
 		"默认 did not reset the sensitivity slider's displayed value")
-	assert_false(FileAccess.file_exists(SettingsStore.PATH), "默认 must not write settings.cfg")
+	assert_false(FileAccess.file_exists(SettingsStore.path), "默认 must not write settings.cfg")
 
 
 # ---------------------------------------------------------------------------

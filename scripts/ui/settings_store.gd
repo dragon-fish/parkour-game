@@ -14,7 +14,10 @@ extends RefCounted
 #   - apply_to_config(): camera fields, callable once a MovementConfig exists.
 # Callers (PauseUi at boot, Player setup) are later tasks, not this one.
 
-const PATH := "user://settings.cfg"
+## Injectable rather than a const: tests/test_menu.gd points this at
+## user://settings_test.cfg for the whole file's run (before_all/after_all)
+## so the suite never reads, writes, or deletes the author's real settings.
+static var path := "user://settings.cfg"
 
 const _SECTION := "settings"
 
@@ -35,7 +38,7 @@ static func defaults() -> Dictionary:
 static func load_settings() -> Dictionary:
 	var s := defaults()
 	var cfg := ConfigFile.new()
-	if cfg.load(PATH) != OK:
+	if cfg.load(path) != OK:
 		return s
 	for key in s:
 		s[key] = cfg.get_value(_SECTION, key, s[key])
@@ -47,7 +50,7 @@ static func save_settings(s: Dictionary) -> void:
 	var cfg := ConfigFile.new()
 	for key in s:
 		cfg.set_value(_SECTION, key, s[key])
-	cfg.save(PATH)
+	cfg.save(path)
 
 
 ## Applies the engine-wide half of the settings: window mode/size and the
@@ -66,7 +69,24 @@ static func apply_global(s: Dictionary) -> void:
 
 	var mode := DisplayServer.WINDOW_MODE_FULLSCREEN if s.window_mode == "fullscreen" else DisplayServer.WINDOW_MODE_WINDOWED
 	DisplayServer.window_set_mode(mode)
-	if mode == DisplayServer.WINDOW_MODE_WINDOWED:
+
+	# OWNERSHIP RULE (drag memory vs settings page, one cognition for window
+	# size): WindowMemory (scripts/debug/window_memory.gd) and this settings
+	# page's window_size row both claim to know "the" window size, so boot
+	# has to pick one winner or the two fight every launch. Once
+	# user://window.cfg exists, the drag memory wins at boot -- the SIZE half
+	# of this call is skipped entirely, deliberately not just overwritten
+	# with the same value, so a debug resize the player just made is never
+	# clobbered back to whatever settings.cfg happened to have on file. Mode
+	# has no such conflict (WindowMemory never saves or restores mode) and
+	# always applies above, unconditionally.
+	#
+	# The other half of this rule lives in settings_menu.gd's
+	# _on_save_pressed(): a deliberate 保存设置 choice writes its size into
+	# user://window.cfg too (same "size" key WindowMemory owns), so choosing
+	# a size on the settings page updates the drag memory instead of losing
+	# to it on the next boot.
+	if mode == DisplayServer.WINDOW_MODE_WINDOWED and not FileAccess.file_exists(WindowMemory.PATH):
 		DisplayServer.window_set_size(s.window_size)
 
 

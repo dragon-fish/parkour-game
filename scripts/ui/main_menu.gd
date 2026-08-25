@@ -127,13 +127,7 @@ func _build_ui() -> void:
 	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_background)
 
-	_paper_noise = ColorRect.new()
-	_paper_noise.color = Color(1.0, 1.0, 1.0, 1.0)
-	_paper_noise.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_paper_noise.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var noise_material := ShaderMaterial.new()
-	noise_material.shader = preload("res://scripts/ui/paper_noise.gdshader")
-	_paper_noise.material = noise_material
+	_paper_noise = MeTheme.paper_noise_layer()
 	add_child(_paper_noise)
 
 	_build_floor()
@@ -283,10 +277,18 @@ func _build_menu_list() -> void:
 	add_child(_menu_list)
 	_menu_list.set_items(["开始", "设置", "退出"])
 	_menu_list.chosen.connect(_on_chosen)
-	# Settled instantly at build time -- _play_entrance() re-triggers the
-	# stagger for beat 4; a fresh MainMenu that never plays an entrance (e.g.
-	# a test that only wants the list) still starts fully visible.
+	# Settled instantly at build time so its rows have correct final geometry,
+	# but HIDDEN (visible = false) until beat 4 (_beat_menu_stagger) actually
+	# shows it and plays the stagger-in. MeMenuList._unhandled_input already
+	# gates its Up/Down/Enter handling on is_visible_in_tree(), so keeping
+	# this false through the logo plate / rise / bar-sweep / title-drop beats
+	# mutes its input for free -- fixes a real bug (review finding): the list
+	# used to be visible and interactive from frame 0, so a stray Enter
+	# during the logo plate landed on 开始 and launched the game before the
+	# entrance ever played. _beat_menu_stagger() and _skip_entrance() are the
+	# only two places allowed to flip this back to true.
 	_menu_list.skip_entrance()
+	_menu_list.visible = false
 
 func _build_settings_menu() -> void:
 	_settings_menu = MeSettingsMenu.new()
@@ -302,33 +304,10 @@ func _build_corner_metadata() -> void:
 	_add_corner_label(version, 1.0, 1.0, Vector2(-20.0, -32.0), true)
 
 func _add_corner_label(text: String, anchor_x: float, anchor_y: float, offset: Vector2, right_aligned: bool = false) -> void:
-	var label := Label.new()
-	label.text = text
-	label.add_theme_font_size_override("font_size", 14)
-	label.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.anchor_left = anchor_x
-	label.anchor_right = anchor_x
-	label.anchor_top = anchor_y
-	label.anchor_bottom = anchor_y
-	label.size = Vector2(160.0, 24.0)
-	label.position = offset - (Vector2(160.0, 0.0) if right_aligned else Vector2.ZERO)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right_aligned else HORIZONTAL_ALIGNMENT_LEFT
-	add_child(label)
+	add_child(MeTheme.corner_label(text, anchor_x, anchor_y, offset, right_aligned))
 
 func _build_footer() -> void:
-	_footer = Label.new()
-	_footer.text = "↑↓ 选择 · Enter 确认"
-	_footer.add_theme_font_size_override("font_size", 16)
-	_footer.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
-	_footer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_footer.anchor_left = 0.5
-	_footer.anchor_right = 0.5
-	_footer.anchor_top = 1.0
-	_footer.anchor_bottom = 1.0
-	_footer.position = Vector2(-160.0, -40.0)
-	_footer.size = Vector2(320.0, 24.0)
+	_footer = MeTheme.footer_label("↑↓ 选择 · Enter 确认")
 	add_child(_footer)
 
 ## Beat 0a: the simplified logo/title version pressed over the crouched
@@ -597,8 +576,10 @@ func _beat_title_drop() -> void:
 	drop.tween_property(_title_block, "position", _title_final_position + jitter, GLITCH_STEP_TIME)
 	drop.tween_property(_title_block, "position", _title_final_position, GLITCH_STEP_TIME)
 
-## Beat 4: MeMenuList's own stagger-in.
+## Beat 4: shows the list (see the visible = false at build time above) and
+## plays MeMenuList's own stagger-in.
 func _beat_menu_stagger() -> void:
+	_menu_list.visible = true
 	_menu_list.play_entrance()
 
 ## Beat 6: idle drift, forever -- a Tween ping-ponging position.y between
@@ -647,6 +628,13 @@ func _skip_entrance() -> void:
 	_bar_right.scale.x = 1.0
 	_title_block.modulate.a = 1.0
 	_title_block.position = _title_final_position
+	# Idempotent whether beat 4 has already fired or not: `visible = true` is
+	# a no-op if it is already true, and skip_entrance() itself kills any
+	# still-running stagger tween before snapping every label to its settled
+	# state -- so skipping mid-entrance and skipping before beat 4 ever ran
+	# both land in exactly the same place, never a double-show or a partial
+	# stagger left stuck mid-flight.
+	_menu_list.visible = true
 	_menu_list.skip_entrance()
 
 	if _silhouette != null:

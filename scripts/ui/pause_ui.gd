@@ -14,12 +14,51 @@ extends CanvasLayer
 const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 
 var _backdrop: ColorRect
+var _paper_noise: ColorRect
 var _menu_list: MeMenuList
 var _settings_menu: MeSettingsMenu
+## 现代化改良五件套 pieces that carry no other state of their own -- corner
+## metadata labels and the footer key-hint. Built once in _build_ui(), then
+## only ever have their `visible` flipped by _set_shown() alongside every
+## other child on this layer (see that method's own comment for why a plain
+## CanvasLayer needs this at all).
+var _corner_labels: Array[Label] = []
+var _footer: Label
 ## Whether the settings page (rather than the menu list) is the currently
 ## shown sub-page. Reset to false whenever the whole layer hides, so a fresh
 ## pause always opens back on the list -- see _set_shown().
 var _showing_settings: bool = false
+
+## Set by _go_to_main_menu(), cleared by a call_deferred() queued right after
+## the scene-change request itself. Guards a same-frame race:
+## change_scene_to_file() is deferred -- for at least the rest of this frame
+## get_tree().current_scene is still the OLD scene while the new one is only
+## queued. Any toggle_pause() that lands in that gap (e.g. a second input
+## event queued behind the one that fired 回主菜单) would otherwise re-pause a
+## scene that is about to be torn down, or resume into a half-swapped tree --
+## see toggle_pause() below.
+##
+## A DEFERRED CLEAR, NOT AN "IS IT THE MAIN MENU YET" CHECK: an earlier
+## version of this cleared the flag only once toggle_pause() itself observed
+## _is_main_menu_scene() == true. That went stuck forever the moment the
+## player left the main menu again (e.g. pressing 开始) without ever
+## triggering Esc/toggle_pause() WHILE the main menu was current -- the flag
+## then permanently no-op'd every future toggle_pause() call, in every level,
+## for the rest of the run. call_deferred() queues behind
+## change_scene_to_file()'s own deferred work in the same message queue, so
+## by the time this runs the swap has already happened -- and it fires
+## exactly once, on a fixed one-frame schedule, with no dependency on what
+## the player does afterward.
+var _pending_scene_change: bool = false
+
+## Seam for _go_to_main_menu(): swappable so a test can observe "回主菜单 was
+## requested" without a real change_scene_to_file() replacing the scene tree
+## out from under GUT's own runner mid-suite. Same shape as MainMenu's own
+## _change_scene (scripts/ui/main_menu.gd). Defaults to the real thing.
+var _change_scene: Callable = Callable(self, "_real_change_scene")
+
+func _real_change_scene(path: String) -> void:
+	get_tree().change_scene_to_file(path)
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -39,6 +78,9 @@ func _build_ui() -> void:
 	_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_backdrop)
 
+	_paper_noise = MeTheme.paper_noise_layer()
+	add_child(_paper_noise)
+
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -53,6 +95,29 @@ func _build_ui() -> void:
 	_settings_menu = MeSettingsMenu.new()
 	add_child(_settings_menu)
 	_settings_menu.closed.connect(_on_settings_closed)
+
+	_build_corner_metadata()
+	_build_footer()
+
+## 现代化五件套 on the pause menu: the same corner-metadata language as the
+## main menu (scripts/ui/main_menu.gd's own _build_corner_metadata()), built
+## through the shared MeTheme.corner_label() helper so neither screen carries
+## its own copy of the label shape. Pause has no version string of its own
+## for the fourth corner the way the main menu does, so all four stay a
+## plain "+".
+func _build_corner_metadata() -> void:
+	_corner_labels.append(MeTheme.corner_label("+", 0.0, 0.0, Vector2(20.0, 16.0)))
+	_corner_labels.append(MeTheme.corner_label("+", 1.0, 0.0, Vector2(-20.0, 16.0), true))
+	_corner_labels.append(MeTheme.corner_label("+", 0.0, 1.0, Vector2(20.0, -32.0)))
+	_corner_labels.append(MeTheme.corner_label("+", 1.0, 1.0, Vector2(-20.0, -32.0), true))
+	for label in _corner_labels:
+		add_child(label)
+
+## Pause's own truth, not the main menu's footer text: Esc resumes here,
+## there is no 开始 to confirm into.
+func _build_footer() -> void:
+	_footer = MeTheme.footer_label("Esc 继续 · Enter 确认")
+	add_child(_footer)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey):
@@ -98,6 +163,10 @@ func _is_main_menu_scene() -> bool:
 	return current.name == "MainMenu"
 
 func toggle_pause() -> void:
+	if _pending_scene_change:
+		# Mid-transition to the main menu -- a no-op rather than pausing/
+		# resuming a scene that is about to be replaced out from under it.
+		return
 	if get_tree().paused:
 		_resume()
 	else:
@@ -126,12 +195,19 @@ func _resume() -> void:
 ## actually gated anything -- found in review: Up/Down/Enter kept reaching
 ## MeMenuList._unhandled_input, and it kept consuming them, even while the
 ## game was running unpaused with the menu never shown. Flips the layer flag
-## (for rendering) and both children's `visible` (for every script-side
-## visibility check, MeMenuList's guard included), choosing between the list
-## and the settings page via _showing_settings.
+## (for rendering) and every child's `visible` (for every script-side
+## visibility check, MeMenuList's guard included) -- the 现代化五件套 pieces
+## (paper noise, corner labels, footer) included, since the same
+## non-cascading CanvasLayer gotcha applies to them exactly as much as it did
+## to MeMenuList -- choosing between the list and the settings page via
+## _showing_settings.
 func _set_shown(on: bool) -> void:
 	visible = on
 	_backdrop.visible = on
+	_paper_noise.visible = on
+	_footer.visible = on
+	for label in _corner_labels:
+		label.visible = on
 	if not on:
 		_showing_settings = false
 	_menu_list.visible = on and not _showing_settings
@@ -139,8 +215,15 @@ func _set_shown(on: bool) -> void:
 
 ## Duck-typed against Arena.capture_mouse (scripts/level/arena.gd) -- a level
 ## that does not export the property, or no current scene at all, gets the
-## capturing default every existing level already wants.
+## capturing default every existing level already wants. MainMenu is special-
+## cased to false ahead of that duck-typing (it has no capture_mouse property
+## to find anyway, so this is belt-and-suspenders): a "rescue-继续" resume --
+## Esc pressed while the current scene happens to be the main menu, e.g.
+## during the _pending_scene_change window above -- must never grab the
+## cursor away from a screen whose own buttons need it.
 func _current_scene_wants_mouse_capture() -> bool:
+	if _is_main_menu_scene():
+		return false
 	var current := get_tree().current_scene
 	if current == null:
 		return true
@@ -180,6 +263,16 @@ func _on_settings_closed() -> void:
 func _go_to_main_menu() -> void:
 	if not ResourceLoader.exists(MAIN_MENU_SCENE):
 		return
+	# Unpaused BEFORE the change is requested, not after: change_scene_to_file
+	# is deferred, so if this order were reversed a paused tree would sit
+	# paused for the rest of the current frame while the old scene is still
+	# current -- and _pending_scene_change below only starts guarding
+	# toggle_pause() once this line has already run.
 	get_tree().paused = false
 	_set_shown(false)
-	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
+	_pending_scene_change = true
+	_change_scene.call(MAIN_MENU_SCENE)
+	call_deferred("_clear_pending_scene_change")
+
+func _clear_pending_scene_change() -> void:
+	_pending_scene_change = false

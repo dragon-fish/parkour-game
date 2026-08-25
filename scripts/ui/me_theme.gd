@@ -47,3 +47,64 @@ static func dot_grid_material() -> ShaderMaterial:
 	var material := ShaderMaterial.new()
 	material.shader = _DOT_GRID_SHADER
 	return material
+
+
+# ---------------------------------------------------------------------------
+# 现代化改良五件套 shapes shared between the main menu and the pause menu
+# (main_menu.gd, pause_ui.gd) -- factored here once both screens needed the
+# same corner metadata / paper grain / footer key-hint pieces, so neither
+# file carries its own copy. Every builder below only constructs and returns
+# the node; the caller still add_child()s it and owns its lifetime/visibility
+# (pause_ui.gd's _set_shown() in particular has to flip these `visible`
+# flags itself -- see its own comment for why).
+# ---------------------------------------------------------------------------
+
+const _PAPER_NOISE_SHADER := preload("res://scripts/ui/paper_noise.gdshader")
+
+## One "+"-style corner metadata label -- the small typographic detail in
+## each screen corner (main menu: three "+" plus the version string; pause:
+## reused as-is, see pause_ui.gd's _build_corner_metadata()).
+static func corner_label(text: String, anchor_x: float, anchor_y: float, offset: Vector2, right_aligned: bool = false) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 14)
+	label.add_theme_color_override("font_color", TEXT_BLUE)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.anchor_left = anchor_x
+	label.anchor_right = anchor_x
+	label.anchor_top = anchor_y
+	label.anchor_bottom = anchor_y
+	label.size = Vector2(160.0, 24.0)
+	label.position = offset - (Vector2(160.0, 0.0) if right_aligned else Vector2.ZERO)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if right_aligned else HORIZONTAL_ALIGNMENT_LEFT
+	return label
+
+## A near-invisible paper-grain overlay (paper_noise.gdshader), full-rect and
+## ready to add_child directly onto anything that covers the whole screen.
+static func paper_noise_layer() -> ColorRect:
+	var layer := ColorRect.new()
+	layer.color = Color(1.0, 1.0, 1.0, 1.0)
+	layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var material := ShaderMaterial.new()
+	material.shader = _PAPER_NOISE_SHADER
+	layer.material = material
+	return layer
+
+## Bottom-center footer key-hint label. Text is the caller's own truth (the
+## main menu's "↑↓ 选择 · Enter 确认" and the pause menu's "Esc 继续 · Enter
+## 确认" are different sentences, not the same one reused).
+static func footer_label(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 16)
+	label.add_theme_color_override("font_color", TEXT_BLUE)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.anchor_left = 0.5
+	label.anchor_right = 0.5
+	label.anchor_top = 1.0
+	label.anchor_bottom = 1.0
+	label.position = Vector2(-160.0, -40.0)
+	label.size = Vector2(320.0, 24.0)
+	return label

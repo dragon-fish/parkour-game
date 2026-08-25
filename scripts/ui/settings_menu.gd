@@ -226,8 +226,30 @@ func _on_default_pressed() -> void:
 func _on_save_pressed() -> void:
 	SettingsStore.save_settings(_working)
 	SettingsStore.apply_global(_working)
+	_sync_window_memory()
 	_apply_to_live_player()
 	closed.emit()
+
+## The settings-page half of the window-size ownership rule (see
+## settings_store.gd's apply_global() and window_memory.gd's own header
+## comment): a deliberate 保存设置 choice has to update WindowMemory's own
+## file too, or the very next boot would see user://window.cfg still holding
+## the OLD dragged size, defer to it per that rule, and silently discard the
+## choice just made here. Writes only the "size" key WindowMemory owns --
+## "position" is left alone, since this page has no opinion on where the
+## window sits on screen.
+##
+## Guarded the same way WindowMemory._ready() and apply_global() are: skipped
+## in headless (no window to speak of, and this is also what keeps the
+## headless test suite from ever touching the author's real
+## user://window.cfg when these save/cancel/default tests run).
+func _sync_window_memory() -> void:
+	if DisplayServer.get_name() in ["headless", "embedded"]:
+		return
+	var cfg := ConfigFile.new()
+	cfg.load(WindowMemory.PATH)  # preserve "position" if present; ignored on first run
+	cfg.set_value("window", "size", _working.window_size)
+	cfg.save(WindowMemory.PATH)
 
 ## 取消: discards the working copy by reloading from disk (a no-op if nothing
 ## was ever saved) -- the file itself is never touched.

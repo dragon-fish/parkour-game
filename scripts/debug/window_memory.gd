@@ -7,6 +7,17 @@ extends Node
 #
 # A future settings menu supersedes this for players; for now it is the
 # whole of the game's window preferences.
+#
+# OWNERSHIP RULE (drag memory vs the settings page, one cognition for window
+# size): once user://window.cfg exists, IT wins the window-SIZE half of boot
+# -- SettingsStore.apply_global() (scripts/ui/settings_store.gd) skips its own
+# size application when this file is present, so a debug drag-resize is never
+# silently overwritten by whatever settings.cfg has on file. Window MODE is
+# untouched by this rule; this file never saves or restores it, and
+# apply_global() always applies mode regardless. The settings page's 保存设置
+# path (scripts/ui/settings_menu.gd's _on_save_pressed()) writes the chosen
+# size into THIS file's "size" key too, so a deliberate settings choice
+# updates the drag memory instead of losing to it on the next boot.
 
 const PATH := "user://window.cfg"
 const SAVE_DELAY := 0.5
