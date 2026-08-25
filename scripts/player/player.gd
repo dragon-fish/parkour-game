@@ -1106,6 +1106,7 @@ func _build_moves() -> void:
 		[Move.TURN_180, Turn180Move.new(), config.turn_180],
 		[Move.ZIPLINE, ZiplineMove.new(), config.zipline],
 		[Move.SWING, SwingMove.new(), config.swing],
+		[Move.LADDER, LadderMove.new(), config.ladder],
 	]
 	for row in table:
 		var move: Move = row[1]

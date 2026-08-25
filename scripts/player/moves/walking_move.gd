@@ -5,6 +5,19 @@ func enter(_previous: StringName) -> void:
 	player.velocity.y = 0.0
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
+	# THE LADDER, first: an authored interest point beats ordinary ground
+	# movement the instant the body's front is inside its frontal volume --
+	# ✅ the owner: a ladder is caught by walking straight into it from the
+	# ground, exactly the way a jump onto a cable catches from the air. No
+	# check_for_ladder flag here (that switch is airborne-only, see
+	# MoveConfig's own note) -- the ground entry is unconditional, gated only
+	# by the same frontal fan every other entry site asks.
+	if player.grounded and player.move_manager.can_enter(LADDER):
+		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
+		if rail != null and player.line_ready(rail) \
+				and LadderMove.front_side_allows(rail, player.global_position):
+			return LADDER
+
 	var wish_dir: Vector3 = player.wish_direction(input)
 	# No sprint key: the curve IS the sprint (02 §2.1). The walk modifier is
 	# the one thing that overrides it, with its own confirmed hard cap.

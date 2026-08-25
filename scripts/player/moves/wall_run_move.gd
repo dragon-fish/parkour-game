@@ -374,6 +374,19 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# spent before this tick began.
 	_time_on_wall += delta
 
+	# THE LADDER can catch a wall run mid-attach. ✅ THE OWNER: a level built
+	# on wall-running straight into a pipe/ladder has to actually catch --
+	# WallRunMove asks the same frontal gate the ground and the air do, no
+	# check_for_ladder switch involved (that flag is airborne-only). Checked
+	# even on an ABORTED tick: a body that failed to find a wall this tick may
+	# still be sitting inside a ladder's own front volume, and the ladder
+	# should not lose to a wall that was never really there.
+	if player.move_manager.can_enter(LADDER):
+		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
+		if rail != null and player.line_ready(rail) \
+				and LadderMove.front_side_allows(rail, player.global_position):
+			return LADDER
+
 	if _aborted:
 		return FALLING
 

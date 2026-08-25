@@ -37,3 +37,4 @@ extends Resource
 @export var wallrun_jump: WallrunJumpConfig = WallrunJumpConfig.new()
 @export var zipline: ZiplineConfig = ZiplineConfig.new()
 @export var swing: SwingConfig = SwingConfig.new()
+@export var ladder: LadderConfig = LadderConfig.new()
