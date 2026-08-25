@@ -55,11 +55,13 @@ func _init() -> void:
 ## How long the top-exit scripted motion takes, seconds.
 @export var top_exit_time: float = 2.0
 
-## ⚠️ To-be-measured initial guess. How far above the LANDING point the
-## carry's bezier peaks -- the clearance that keeps the capsule from
-## cutting the deck lip's corner. 0 degrades to the monotonic rise-then-
-## level curve (ScriptedMove._control_height()'s own degenerate case).
-@export var top_exit_apex_lift: float = 0.3
+## How far above the LANDING point the carry's bezier peaks. ✅ 0, at the
+## owner's direction ("不用搞凸起，参考一下GrabPullUp"): the monotonic
+## rise-then-level curve, ScriptedMove._control_height()'s own degenerate
+## case and exactly what the pull-up plays. With the landing already the
+## NEAREST standable point there is no lip left to clear over. Raise only
+## if some future geometry needs a hump after all.
+@export var top_exit_apex_lift: float = 0.0
 
 ## ⚠️ To-be-measured initial guess. Where the bezier's control point sits
 ## between the ends: 1 puts it above the START (a steep rise hugging the
