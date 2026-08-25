@@ -24,7 +24,7 @@ func _ready() -> void:
 	# MovementConfig exists to write into.
 	SettingsStore.apply_global(SettingsStore.load_settings())
 	_build_ui()
-	visible = false
+	_set_shown(false)
 
 func _build_ui() -> void:
 	_backdrop = ColorRect.new()
@@ -79,14 +79,30 @@ func toggle_pause() -> void:
 
 func _pause() -> void:
 	get_tree().paused = true
-	visible = true
+	_set_shown(true)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _resume() -> void:
 	get_tree().paused = false
-	visible = false
+	_set_shown(false)
 	if _current_scene_wants_mouse_capture():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+## Single source of truth for "is the pause menu on screen". CanvasLayer is
+## NOT a CanvasItem, so this node's own `visible` (set above) never cascades
+## to child Controls -- each child keeps whatever `visible` it was last set
+## to, forever, regardless of this layer's flag. Without this, MeMenuList's
+## own `visible` stayed true permanently (nothing ever touched it), so its
+## is_visible_in_tree()/visible input guard never actually gated anything --
+## found in review: Up/Down/Enter kept reaching MeMenuList._unhandled_input,
+## and it kept consuming them, even while the game was running unpaused with
+## the menu never shown. Flips both the layer flag (for rendering) and the
+## actual UI subtree's `visible` (for every script-side visibility check,
+## MeMenuList's guard included).
+func _set_shown(on: bool) -> void:
+	visible = on
+	_backdrop.visible = on
+	_menu_list.visible = on
 
 ## Duck-typed against Arena.capture_mouse (scripts/level/arena.gd) -- a level
 ## that does not export the property, or no current scene at all, gets the
@@ -113,5 +129,5 @@ func _go_to_main_menu() -> void:
 	if not ResourceLoader.exists(MAIN_MENU_SCENE):
 		return
 	get_tree().paused = false
-	visible = false
+	_set_shown(false)
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE)

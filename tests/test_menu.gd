@@ -45,8 +45,13 @@ func after_each() -> void:
 	# leaves the tree paused for every suite that runs after this one -- a
 	# stuck get_tree().paused = true stalls ParkourTest.step()'s physics_frame
 	# await across the whole rest of the process.
+	#
+	# _set_shown(false), not a plain `PauseUi.visible = false`: that only
+	# flips the CanvasLayer's own flag, not the actual menu subtree's
+	# `visible` -- see pause_ui.gd's _set_shown() for why that distinction
+	# is exactly the bug this task's review round found.
 	get_tree().paused = false
-	PauseUi.visible = false
+	PauseUi._set_shown(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _delete_settings_file() -> void:
@@ -126,6 +131,78 @@ func test_esc_key_through_unhandled_input_flips_paused() -> void:
 
 	PauseUi._unhandled_input(esc)
 	assert_false(get_tree().paused, "second Esc through _unhandled_input did not resume")
+
+## Regression (review round 1): CanvasLayer is not a CanvasItem, so
+## PauseUi's own `visible` never cascades to MeMenuList's `visible` -- a
+## guard reading that plain property stayed true forever, meaning stray
+## Up/Down/Enter in ordinary, unpaused play were silently being consumed by
+## the (invisible, inactive) pause menu. Confirms the hidden list now goes
+## quiet: no chosen signal, no selection movement, no pause-state change.
+func test_hidden_menu_list_ignores_arrow_and_enter_keys() -> void:
+	assert_false(get_tree().paused, "test setup: tree was already paused")
+	var list: MeMenuList = PauseUi._menu_list
+	assert_false(list.is_visible_in_tree(), "test setup: menu list should start hidden")
+
+	# Array-boxed, not a plain bool: GDScript lambdas capture outer locals BY
+	# VALUE, so `chosen_fired = true` inside the closure would silently only
+	# ever mutate the closure's own copy -- verified with a throwaway probe
+	# after this test first passed for the wrong reason (chosen_fired started
+	# false and a no-op assignment left it looking "correctly" false). A
+	# boxed array is captured by value too, but that value IS the reference
+	# to the array object, so writing into slot 0 is visible outside.
+	var chosen_fired := [false]
+	var on_chosen := func(_i): chosen_fired[0] = true
+	list.chosen.connect(on_chosen)
+	var starting_index: int = list._selected_index
+
+	var down := InputEventKey.new()
+	down.physical_keycode = KEY_DOWN
+	down.pressed = true
+	down.echo = false
+	list._unhandled_input(down)
+
+	var enter := InputEventKey.new()
+	enter.physical_keycode = KEY_ENTER
+	enter.pressed = true
+	enter.echo = false
+	list._unhandled_input(enter)
+
+	list.chosen.disconnect(on_chosen)
+
+	assert_false(chosen_fired[0], "a hidden menu list must not fire chosen")
+	assert_eq(list._selected_index, starting_index, "a hidden menu list must not move its selection")
+	assert_false(get_tree().paused, "a hidden menu list's input must not touch pause state")
+
+## The positive twin of the regression above: once PauseUi actually shows
+## the list (toggle_pause(), the real production path), the same keys DO
+## work -- proves the fix did not also silence the list while it is
+## genuinely on screen.
+func test_shown_menu_list_responds_to_arrow_and_enter_keys() -> void:
+	PauseUi.toggle_pause()
+	var list: MeMenuList = PauseUi._menu_list
+	assert_true(list.is_visible_in_tree(), "test setup: toggle_pause should show the menu list")
+
+	# Array-boxed for the same by-value-capture reason as the hidden-list
+	# test above.
+	var chosen_index := [-1]
+	var on_chosen := func(i): chosen_index[0] = i
+	list.chosen.connect(on_chosen)
+
+	var down := InputEventKey.new()
+	down.physical_keycode = KEY_DOWN
+	down.pressed = true
+	down.echo = false
+	list._unhandled_input(down)
+	assert_eq(list._selected_index, 1, "Down did not move the selection while shown")
+
+	var enter := InputEventKey.new()
+	enter.physical_keycode = KEY_ENTER
+	enter.pressed = true
+	enter.echo = false
+	list._unhandled_input(enter)
+
+	list.chosen.disconnect(on_chosen)
+	assert_eq(chosen_index[0], 1, "Enter did not fire chosen with the selected index while shown")
 
 ## The per-player half of SettingsStore (see settings_store.gd's split-in-two
 ## comment): Player.setup() applies the saved camera sensitivity/FOV onto its

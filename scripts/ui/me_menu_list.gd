@@ -114,8 +114,18 @@ func _on_item_hover(index: int, entered: bool) -> void:
 ## the game itself is playing, not the pause menu) does not eat Up/Down/Enter
 ## meant for gameplay -- PauseUi only shows this list while it is the thing
 ## receiving input.
+##
+## is_visible_in_tree(), not the plain `visible` property: this node's
+## PROCESS_MODE_ALWAYS is inherited from PauseUi (a CanvasLayer), and
+## CanvasLayer is not a CanvasItem -- toggling ITS `visible` never cascades
+## down to set this control's own `visible` flag, so a plain `visible` check
+## here would read true forever regardless of whether PauseUi ever shows this
+## list (caught in review: this control kept consuming every Up/Down/Enter
+## in normal, unpaused play). is_visible_in_tree() walks the actual Control
+## ancestor chain PauseUi._set_shown() toggles, so it can't be fooled by a
+## parent that never touches this node directly.
 func _unhandled_input(event: InputEvent) -> void:
-	if not visible or _labels.is_empty():
+	if not is_visible_in_tree() or _labels.is_empty():
 		return
 	if not (event is InputEventKey):
 		return
