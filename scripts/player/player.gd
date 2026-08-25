@@ -90,6 +90,8 @@ func enter_interest_line(line: InterestLine) -> void:
 
 func exit_interest_line(line: InterestLine) -> void:
 	interest_lines.erase(line)
+	# Leaving the volume is what re-arms the line -- see note_line_left().
+	_lines_awaiting_exit.erase(line.get_instance_id())
 
 ## The closest line of `kind` the body is inside, by distance from the body to
 ## the line's nearest point, or null. Two overlapping volumes are rare enough
@@ -2894,14 +2896,49 @@ func recent_wall_refuses_climb_onto(point: Vector3) -> bool:
 func takeoff_ground_speed() -> float:
 	return _takeoff_ground_speed
 
-## True when `line` is off its own re-catch cooldown (any interest-line move).
-func line_ready(line: InterestLine) -> bool:
-	return not _line_cooldowns.has(line.get_instance_id())
+## Lines released while the body was still INSIDE their volume: they stay
+## unready until the body actually leaves and comes back, however long that
+## takes. ✅ THE OWNER: "离开后如果不退出它的检测范围再重新进入则不要自动爬"
+## -- dismounting at the foot of a ladder used to re-grab you the moment the
+## timer ran out, while you were still standing in the volume minding your
+## own business.
+var _lines_awaiting_exit: Dictionary = {}
 
-## Arms `line`'s own re-catch cooldown -- called by ZiplineMove on every exit.
-func note_line_left(line: InterestLine, seconds: float) -> void:
+## Horizontal speed TOWARD a latched line that counts as meaning it, m/s.
+## ✅ THE OWNER, on the original: "1s后有朝向梯子的水平速度（比如对着它按W）
+## 还是会重新进入的" -- and the speedrun glitch built on it: "shift下梯即将
+## 摔死的时候按w扒住."
+const LINE_RELATCH_SPEED := 0.5
+
+## True when `line` is off its own re-catch cooldown, AND -- for a line
+## released without leaving its volume (the ladder's latch, see
+## note_line_left) -- the body is actively pushing toward it. Standing
+## still inside the volume never re-grabs; holding W at the ladder does.
+func line_ready(line: InterestLine) -> bool:
+	var id: int = line.get_instance_id()
+	if _line_cooldowns.has(id):
+		return false
+	if not _lines_awaiting_exit.has(id):
+		return true
+	var at: Vector3 = line.sample(line.closest_offset(global_position))["position"]
+	var toward := Vector3(at.x - global_position.x, 0.0, at.z - global_position.z)
+	if toward.length_squared() < 0.0001:
+		return true
+	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
+	return horizontal.dot(toward.normalized()) > LINE_RELATCH_SPEED
+
+## Arms `line`'s own re-catch cooldown -- called by every line move's exit.
+## The timer guards the flight OUT of the volume; the awaiting-exit latch
+## (opt-in via `until_exit`) guards standing still inside it. Only the
+## LADDER asks for the latch: it is the one ground-enterable line, so only
+## there can a body released inside the volume just STAND in it. An
+## air-entry line (zipline under a low cable) latched this way could never
+## be re-taken at all -- the body cannot leave the volume by jumping at it.
+func note_line_left(line: InterestLine, seconds: float, until_exit: bool = false) -> void:
 	if seconds > 0.0:
 		_line_cooldowns[line.get_instance_id()] = seconds
+	if until_exit and interest_lines.has(line):
+		_lines_awaiting_exit[line.get_instance_id()] = true
 
 func _tick_line_cooldowns(delta: float) -> void:
 	for key in _line_cooldowns.keys():

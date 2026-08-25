@@ -192,7 +192,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	return KEEP
 
 func exit() -> void:
-	note_left(cfg.same_line_redo_time)
+	# until_exit: a ladder is ground-enterable, so a released body can just
+	# STAND in the volume -- the latch stops the auto re-grab, and pushing
+	# toward the rungs (✅ ME's own rule, and its save-yourself glitch)
+	# lifts it. See Player.line_ready().
+	note_left(cfg.same_line_redo_time, true)
 	# Unconditional, mirroring GrabMove.exit()'s own reset of the same field:
 	# asking for the clip's hip-lift back when it was never cancelled costs
 	# nothing, and a carry cut short by something else grabbing the body

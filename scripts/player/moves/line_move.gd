@@ -76,9 +76,9 @@ func _centre_fan() -> void:
 ## OWNER, measured in the original: release one rope, catch the next at once
 ## ("shift跳下挂上另一个绳子") -- so this lives on the line, not on the move
 ## name. Guarded: the line may have been freed between letting go and exit().
-func note_left(redo_time: float) -> void:
+func note_left(redo_time: float, until_exit: bool = false) -> void:
 	if is_instance_valid(_line):
-		player.note_line_left(_line, redo_time)
+		player.note_line_left(_line, redo_time, until_exit)
 
 ## Moves the body toward `target` THROUGH the physics world instead of
 ## teleporting it there. Returns the collision if the way was blocked --

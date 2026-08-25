@@ -679,3 +679,49 @@ func test_space_beats_the_top_exit() -> void:
 		"a turned-away jump at the very top ran the scripted top exit instead of the jump chain")
 
 	deck.queue_free()
+
+func test_a_release_inside_the_volume_never_regrabs_by_itself() -> void:
+	# ✅ THE OWNER: "离开后如果不退出它的检测范围再重新进入则不要自动爬" --
+	# crouch off at the foot, stand there past the cooldown: the ladder must
+	# NOT take the body back until it leaves the volume and returns.
+	var player: Player = await _climbing_player()
+	await step(10)  # past the magnet fade
+	var line: InterestLine = _line
+	var input: ScriptedInputSource = _world["input"]
+	input.press_crouch()
+	await step(3)
+	assert_ne(player.move_manager.current_name, Move.LADDER,
+		"test setup: crouch did not release")
+	# Well past same_line_redo_time, landed at the foot, still inside the
+	# volume the whole time.
+	await step(int(player.config.ladder.same_line_redo_time * 60.0) + 30)
+	assert_ne(player.move_manager.current_name, Move.LADDER,
+		"the ladder took the body back while it never left the volume")
+	assert_false(player.line_ready(line),
+		"the line reported ready while the body never left its volume")
+
+func test_pushing_at_the_latched_ladder_takes_it_back() -> void:
+	# ✅ THE OWNER, on the original: after the cooldown, "有朝向梯子的水平速度
+	# （比如对着它按W）还是会重新进入的" -- the rule the shift-drop-then-W
+	# save-yourself glitch is built on. Passive standing stays released
+	# (previous test); active pushing re-grabs.
+	var player: Player = await _climbing_player()
+	await step(10)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_crouch()
+	await step(3)
+	assert_ne(player.move_manager.current_name, Move.LADDER,
+		"test setup: crouch did not release")
+	await step(int(player.config.ladder.same_line_redo_time * 60.0) + 10)
+	assert_ne(player.move_manager.current_name, Move.LADDER,
+		"test setup: re-grabbed with no input at all")
+	# The body faces the ladder (freeze kept it squared); W pushes toward it.
+	input.state.move = Vector2(0.0, 1.0)
+	var regrabbed := false
+	for i in 60:
+		await step(1)
+		if player.move_manager.current_name == Move.LADDER:
+			regrabbed = true
+			break
+	input.state.move = Vector2.ZERO
+	assert_true(regrabbed, "W at the latched ladder never took it back")
