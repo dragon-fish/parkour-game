@@ -43,6 +43,11 @@ static func overlay_persists(node_name: String) -> bool:
 var _panel: PanelContainer
 var _preset_name: LineEdit
 var _status: Label
+## Every slider row, as {node, key} -- key is "group/property", lowercase --
+## so the search box can hide the rest. ✅ THE OWNER: "F1菜单里有一万个配置项，
+## 能不能做个简单的搜索框."
+var _search_rows: Array = []
+var _tabs: TabContainer
 ## node_name -> CheckBox, filled by _add_debug_tab().
 var _overlay_checkboxes: Dictionary = {}
 ## node_name -> bool, the toggle model. Loaded once in _ready() (headless and
@@ -143,10 +148,18 @@ func _build_ui() -> void:
 	# which page happens to be open.
 	_add_preset_row(root)
 
+	# THE SEARCH BOX, above the tabs: type to filter every page at once.
+	var search := LineEdit.new()
+	search.placeholder_text = "search settings…"
+	search.clear_button_enabled = true
+	search.text_changed.connect(_apply_search)
+	root.add_child(search)
+
 	var tabs := TabContainer.new()
 	tabs.custom_minimum_size = Vector2(420.0, 620.0)
 	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.add_child(tabs)
+	_tabs = tabs
 
 	# FIRST TAB, always: the Debug page is not a tunable group, so it does not
 	# come from collect_tunables() -- it is added once, ahead of the loop
@@ -166,6 +179,9 @@ func _build_ui() -> void:
 			current_group = row["group"]
 			group_column = _add_group_tab(tabs, current_group)
 		_add_slider(group_column, row)
+		# _add_slider appended its HBox last; record it for the search box.
+		_search_rows.append({"node": group_column.get_child(group_column.get_child_count() - 1),
+			"key": ("%s/%s" % [row["group"], row["label"]]).to_lower()})
 
 	# The overlays DebugHud spawns are themselves add_child.call_deferred()'d
 	# (debug_hud.gd ~36-60), so at THIS point -- already one frame deferred
@@ -173,6 +189,25 @@ func _build_ui() -> void:
 	# of the two _ready()s the scene tree happens to run first. One more
 	# deferred hop makes the ordering a non-issue instead of a coin flip.
 	call_deferred("_apply_persisted_toggles")
+
+## Hides every slider row the query does not match (case-insensitive
+## substring against "group/property"), and flags matching tabs with a dot
+## so the hits are findable across pages. Empty text restores everything.
+func _apply_search(query: String) -> void:
+	var q := query.strip_edges().to_lower()
+	var hit_tabs := {}
+	for entry in _search_rows:
+		var visible: bool = q.is_empty() or entry["key"].contains(q)
+		(entry["node"] as Control).visible = visible
+		if visible and not q.is_empty():
+			var page := (entry["node"] as Control).get_parent()
+			while page != null and page.get_parent() != _tabs:
+				page = page.get_parent()
+			if page != null:
+				hit_tabs[_tabs.get_tab_idx_from_control(page)] = true
+	for i in _tabs.get_tab_count():
+		var title := _tabs.get_tab_title(i).trim_suffix(" •")
+		_tabs.set_tab_title(i, title + " •" if (not q.is_empty() and hit_tabs.has(i)) else title)
 
 ## Builds the Debug page: one CheckBox per overlay in DEBUG_OVERLAYS, wired
 ## both ways -- pressing one drives the matching overlay and persists every
