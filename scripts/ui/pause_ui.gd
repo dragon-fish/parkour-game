@@ -107,17 +107,21 @@ func _resume() -> void:
 	if _current_scene_wants_mouse_capture():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-## Single source of truth for "is the pause menu on screen". CanvasLayer is
-## NOT a CanvasItem, so this node's own `visible` (set above) never cascades
-## to child Controls -- each child keeps whatever `visible` it was last set
-## to, forever, regardless of this layer's flag. Without this, MeMenuList's
-## own `visible` stayed true permanently (nothing ever touched it), so its
-## is_visible_in_tree()/visible input guard never actually gated anything --
-## found in review: Up/Down/Enter kept reaching MeMenuList._unhandled_input,
-## and it kept consuming them, even while the game was running unpaused with
-## the menu never shown. Flips both the layer flag (for rendering) and the
-## actual UI subtree's `visible` (for every script-side visibility check,
-## MeMenuList's guard included).
+## Single source of truth for "is the pause menu on screen" AND "which
+## sub-page is showing" -- _show_settings()/_on_settings_closed() below only
+## flip _showing_settings and re-call this with the layer's current `visible`
+## state; they never write _menu_list.visible/_settings_menu.visible
+## themselves. CanvasLayer is NOT a CanvasItem, so this node's own `visible`
+## (set above) never cascades to child Controls -- each child keeps whatever
+## `visible` it was last set to, forever, regardless of this layer's flag.
+## Without this, MeMenuList's own `visible` stayed true permanently (nothing
+## ever touched it), so its is_visible_in_tree()/visible input guard never
+## actually gated anything -- found in review: Up/Down/Enter kept reaching
+## MeMenuList._unhandled_input, and it kept consuming them, even while the
+## game was running unpaused with the menu never shown. Flips the layer flag
+## (for rendering) and both children's `visible` (for every script-side
+## visibility check, MeMenuList's guard included), choosing between the list
+## and the settings page via _showing_settings.
 func _set_shown(on: bool) -> void:
 	visible = on
 	_backdrop.visible = on
@@ -149,20 +153,22 @@ func _on_chosen(index: int) -> void:
 ## Pushes the settings page in place of the menu list. reload() re-reads
 ## SettingsStore fresh, so this always starts from what is actually on disk
 ## rather than whatever a previous, already-cancelled visit left in memory.
+## Delegates the actual visibility flip to _set_shown() -- see its doc
+## comment -- rather than touching _menu_list.visible/_settings_menu.visible
+## here directly.
 func _show_settings() -> void:
 	_showing_settings = true
 	_settings_menu.reload()
-	_menu_list.visible = false
-	_settings_menu.visible = true
+	_set_shown(visible)
 
 ## Both 保存设置 and 取消 route here via MeSettingsMenu.closed -- pop back to
-## the menu list. Guarded on this layer's own `visible` (not unconditionally
-## true) since it doubles as the Esc-while-in-settings path, and _set_shown()
-## is the only other place `visible` gets written.
+## the menu list. Also the Esc-while-in-settings path's eventual destination
+## (via _unhandled_input -> MeSettingsMenu._on_cancel_pressed -> closed).
+## Re-derives from this layer's current `visible` rather than assuming true,
+## since _set_shown() is the only place allowed to decide sub-page visibility.
 func _on_settings_closed() -> void:
 	_showing_settings = false
-	_settings_menu.visible = false
-	_menu_list.visible = visible
+	_set_shown(visible)
 
 func _go_to_main_menu() -> void:
 	if not ResourceLoader.exists(MAIN_MENU_SCENE):

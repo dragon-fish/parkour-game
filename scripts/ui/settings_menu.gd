@@ -21,14 +21,10 @@ signal closed
 const WINDOW_MODES := ["windowed", "fullscreen"]
 const WINDOW_MODE_LABELS := {"windowed": "窗口化", "fullscreen": "全屏"}
 
-## window_size row's presets, in stepper order. NOTE: SettingsStore.defaults()
-## ships window_size = Vector2i(1440, 810), which is not one of these three --
-## a never-saved page therefore displays "1280×720" (index -1 falls back to 0)
-## even though 1440x810 is what is actually applied. Cosmetic only, and it
-## self-heals the moment the page is ever saved (the working copy becomes one
-## of these three from then on); not this task's call to change Task 2's
-## shipped default.
-const WINDOW_SIZES: Array[Vector2i] = [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080)]
+## window_size row's presets, in stepper order (ascending). Includes
+## SettingsStore.defaults()'s own window_size (1440x810) -- a never-saved page
+## must display the size that is actually applied, not the nearest lookalike.
+const WINDOW_SIZES: Array[Vector2i] = [Vector2i(1280, 720), Vector2i(1440, 810), Vector2i(1600, 900), Vector2i(1920, 1080)]
 
 const _ROWS := [
 	{"key": "window_mode", "label": "窗口模式", "desc": "切换窗口化显示或全屏显示。"},
@@ -244,13 +240,16 @@ func _on_cancel_pressed() -> void:
 ## waiting for a respawn. Duck-typed so a level without that shape (or no
 ## current scene at all, e.g. headless tests) is silently skipped -- Player.
 ## setup() already applies SettingsStore.load_settings() on its own, so a
-## level that reloads/respawns picks this up regardless.
+## level that reloads/respawns picks this up regardless. is_instance_valid()
+## guards the same way arena.gd itself guards this exact reference -- the
+## player may have been freed (e.g. a reset mid-flight) without Arena's
+## `player` export having been cleared to null.
 func _apply_to_live_player() -> void:
 	var current := get_tree().current_scene
 	if current == null or not ("player" in current):
 		return
 	var player = current.player
-	if player == null or not ("config" in player) or player.config == null:
+	if not is_instance_valid(player) or not ("config" in player) or player.config == null:
 		return
 	SettingsStore.apply_to_config(_working, player.config)
 
