@@ -27,10 +27,22 @@ const CLIP_MENU: Array = [
 ]
 
 const ROTATE_SPEED := 0.012
+const PITCH_SPEED := 0.008
 const PAN_SPEED := 0.0022
 const ZOOM_STEP := 0.9
 const MIN_DISTANCE := 0.8
 const MAX_DISTANCE := 8.0
+## Orbit pitch range: negative lifts the camera into a look-down; the small
+## positive tail is "slightly below eye line", not an up-skirt angle.
+const PITCH_MIN := -1.1
+const PITCH_MAX := 0.2
+## The pan cage (✅ the owner: 右键要加限位) -- the camera target may wander
+## around the stage but never leave it.
+const PAN_LIMIT_XZ := 2.0
+const PAN_MIN_Y := 0.3
+const PAN_MAX_Y := 2.4
+const HOME_PIVOT := Vector3(0.55, 1.05, 0.0)
+const HOME_DISTANCE := 4.2
 
 var _body: Node3D
 var _anim_player: AnimationPlayer
@@ -38,7 +50,8 @@ var _menu_list: MeMenuList
 var _clips: Array = []
 var _pivot: Node3D
 var _camera: Camera3D
-var _distance: float = 4.2
+var _distance: float = HOME_DISTANCE
+var _home_body_basis: Basis
 ## Same test seam shape as MainMenu/PauseUi.
 var _change_scene: Callable = Callable(self, "_real_change_scene")
 
@@ -77,7 +90,7 @@ func _build_world() -> void:
 	add_child(floor_mesh)
 	_pivot = Node3D.new()
 	# Off to the side so SHE sits screen-left and the red column owns the right.
-	_pivot.position = Vector3(0.55, 1.05, 0.0)
+	_pivot.position = HOME_PIVOT
 	add_child(_pivot)
 	_camera = Camera3D.new()
 	_camera.fov = 45.0
@@ -106,6 +119,7 @@ func _build_body() -> void:
 		* Basis.from_euler(profile.mount_rotation_degrees * (PI / 180.0))) \
 		.scaled(Vector3.ONE * maxf(profile.mount_scale, 0.001))
 	add_child(_body)
+	_home_body_basis = _body.basis
 	_anim_player = _find_animation_player(_body)
 	if _anim_player == null:
 		return
@@ -169,7 +183,22 @@ func _build_ui() -> void:
 		items.append("（没有可用动画）")
 	_menu_list.set_items(items)
 	_menu_list.chosen.connect(_play_index)
-	layer.add_child(MeTheme.footer_label("左键 旋转 · 右键 平移 · 滚轮 缩放 · Esc 返回"))
+	layer.add_child(MeTheme.footer_label("左键 旋转/俯仰 · 右键 平移 · 滚轮 缩放 · Esc 返回"))
+	var back := MeTheme.confirm_button("返回", MeTheme.BRAND_RED, _back_to_menu)
+	back.position = Vector2(20.0, 16.0)
+	layer.add_child(back)
+	var reset := MeTheme.confirm_button("重置镜头", Color(0.55, 0.62, 0.72), _reset_camera)
+	reset.anchor_top = 1.0
+	reset.anchor_bottom = 1.0
+	reset.position = Vector2(20.0, -66.0)
+	layer.add_child(reset)
+
+func _reset_camera() -> void:
+	_pivot.position = HOME_PIVOT
+	_pivot.rotation = Vector3.ZERO
+	_set_distance(HOME_DISTANCE)
+	if _body != null:
+		_body.basis = _home_body_basis
 
 func _play_index(index: int) -> void:
 	if _anim_player == null or index >= _clips.size():
@@ -198,14 +227,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
-		if motion.button_mask & MOUSE_BUTTON_MASK_LEFT and _body != null:
-			_body.rotate_y(motion.relative.x * ROTATE_SPEED)
+		if motion.button_mask & MOUSE_BUTTON_MASK_LEFT:
+			if _body != null:
+				_body.rotate_y(motion.relative.x * ROTATE_SPEED)
+			# Vertical drag orbits the CAMERA's elevation (✅ the owner:
+			# 左键希望可以调俯仰角) -- drag up looks down from above.
+			_pivot.rotation.x = clampf( \
+				_pivot.rotation.x + motion.relative.y * PITCH_SPEED,
+				PITCH_MIN, PITCH_MAX)
 			get_viewport().set_input_as_handled()
 		elif motion.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 			var right: Vector3 = _camera.global_basis.x
 			var up: Vector3 = _camera.global_basis.y
-			_pivot.position += (-right * motion.relative.x + up * motion.relative.y) \
+			var wanted: Vector3 = _pivot.position \
+				+ (-right * motion.relative.x + up * motion.relative.y) \
 				* PAN_SPEED * _distance
+			_pivot.position = Vector3( \
+				clampf(wanted.x, -PAN_LIMIT_XZ, PAN_LIMIT_XZ),
+				clampf(wanted.y, PAN_MIN_Y, PAN_MAX_Y),
+				clampf(wanted.z, -PAN_LIMIT_XZ, PAN_LIMIT_XZ))
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
 		var button := event as InputEventMouseButton
