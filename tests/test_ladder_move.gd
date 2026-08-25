@@ -628,8 +628,12 @@ func test_no_deck_means_no_exit() -> void:
 	var ladder_move := player.move_manager.move_for(Move.LADDER) as LadderMove
 	assert_almost_eq(ladder_move.climbing_offset(), _line.length(), 0.05, \
 		"the offset did not stay capped at the line's own top")
-	assert_almost_eq(player.global_position.y, _line.length(), 0.1, \
-		"the body drifted past the line's own top with nothing to stand on")
+	# The line's top is the HANDS' highest grip (LadderConfig.hand_height),
+	# so the capsule centre caps a hand's height below it -- ✅ the owner:
+	# "顶端点应该是手可以碰到的最高点，而不是胶囊中心."
+	assert_almost_eq(player.global_position.y,
+		_line.length() - player.config.ladder.hand_height, 0.1, \
+		"the body's centre did not cap a hand-height below the line top")
 
 func test_space_beats_the_top_exit() -> void:
 	# 🔒 PROTECTED TECHNIQUE -- spec invariant #3: at the very top, a jump

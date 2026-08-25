@@ -35,6 +35,13 @@ func _init() -> void:
 ## the capsule's centre rides ON the wall the ladder is mounted to and clips
 ## straight through it.
 @export var stand_off: float = 0.4
+
+## ⚠️ To-be-measured initial guess. Vertical distance from the capsule centre
+## up to where the raised hands grip the line. The LINE is the ladder the
+## hands hold: its top point is the highest grip, not the highest place the
+## body's centre goes -- ✅ the owner: "顶端点应该是手可以碰到的最高点，而不是
+## 胶囊中心，另外手碰到梯子最顶端就该进行爬上检测了."
+@export var hand_height: float = 0.75
 ## Degrees off the ladder's front the view may turn and still take the jump-
 ## off (Task 5) rather than being refused. Mirrors GrabConfig's own pairing
 ## of jump_angle_deg against "looking at it" vs. "looking away".

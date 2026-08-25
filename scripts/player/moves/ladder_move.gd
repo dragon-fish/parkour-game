@@ -63,7 +63,9 @@ func enter(_previous: StringName) -> void:
 	if not LadderMove.front_side_allows(_line, player.global_position):
 		_aborted = true
 		return
-	_offset = _line.closest_offset(player.global_position)
+	# _offset tracks the HANDS' grip on the line, not the capsule centre --
+	# see LadderConfig.hand_height.
+	_offset = _line.closest_offset(player.global_position + Vector3.UP * cfg.hand_height)
 	_climb_dir = 0
 	# The body faces the ladder -- i.e. looks toward -front, the wall side.
 	var f: Vector3 = _line.front()
@@ -162,7 +164,8 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	_climb_dir = int(signf(input.move.y)) if absf(input.move.y) > 0.1 else 0
 	_offset = clampf(_offset + input.move.y * cfg.climb_speed * delta, 0.0, _line.length())
 	var s: Dictionary = _line.sample(_offset)
-	var hang: Vector3 = s["position"] + _line.front() * cfg.stand_off
+	var hang: Vector3 = s["position"] - Vector3.UP * cfg.hand_height \
+		+ _line.front() * cfg.stand_off
 	_fade += delta
 	if _fade < cfg.fade_in_time:
 		# ✅ TASK 3'S RULING: the magnet's own pull stays a direct write, not
@@ -182,7 +185,8 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			# the body actually ended up, so the next tick's climb continues
 			# from the true, blocked position instead of the one that just
 			# got refused.
-			_offset = _line.closest_offset(player.global_position - _line.front() * cfg.stand_off)
+			_offset = _line.closest_offset(player.global_position
+			+ Vector3.UP * cfg.hand_height - _line.front() * cfg.stand_off)
 		if not _fan_centred:
 			_centre_fan()
 	return KEEP
