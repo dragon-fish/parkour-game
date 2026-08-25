@@ -7,16 +7,19 @@ extends EditorNode3DGizmoPlugin
 # provides and what runtime-built preview meshes never could (they have no
 # owner, so the editor's selection ray refuses to see them).
 #
-# The two semantics are drawn honestly, same as before: a Checkpoint respawns
-# FEET at the origin (capsule stands ON the node), a SpawnPoint carries the
-# older centre-at-origin convention (capsule hangs 0.9 m below the marker).
+# Both nodes share one semantic: origin = BODY CENTRE (✅ the owner chose
+# consistency over a feet-at-origin checkpoint variant), so one geometry
+# serves both and only the colour tells them apart.
 
 const RADIUS := 0.3
 const HEIGHT := 1.8
 const SEGMENTS := 24
 
 var _capsule_mesh: CapsuleMesh
+var _shaft_mesh: CylinderMesh
+var _head_mesh: CylinderMesh
 var _fills: Dictionary = {}
+var _arrows: Dictionary = {}
 
 func _init() -> void:
 	create_material("checkpoint", Color(0.2, 0.9, 0.4))
@@ -25,6 +28,14 @@ func _init() -> void:
 	_capsule_mesh = CapsuleMesh.new()
 	_capsule_mesh.radius = RADIUS
 	_capsule_mesh.height = HEIGHT
+	_shaft_mesh = CylinderMesh.new()
+	_shaft_mesh.top_radius = 0.04
+	_shaft_mesh.bottom_radius = 0.04
+	_shaft_mesh.height = 0.5
+	_head_mesh = CylinderMesh.new()
+	_head_mesh.top_radius = 0.0
+	_head_mesh.bottom_radius = 0.12
+	_head_mesh.height = 0.25
 	# The translucent body fill -- the lines carry the clicking, this
 	# carries the "a body stands here" read the mesh preview used to give.
 	for entry in [["checkpoint", Color(0.2, 0.9, 0.4, 0.25)],
@@ -34,6 +45,11 @@ func _init() -> void:
 		fill.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		fill.albedo_color = entry[1]
 		_fills[entry[0]] = fill
+		var solid := StandardMaterial3D.new()
+		solid.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		solid.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		solid.albedo_color = Color(entry[1], 0.55)
+		_arrows[entry[0]] = solid
 
 func _get_gizmo_name() -> String:
 	return "RespawnPoints"
@@ -45,14 +61,22 @@ func _redraw(gizmo: EditorNode3DGizmo) -> void:
 	gizmo.clear()
 	var node: Node3D = gizmo.get_node_3d()
 	var checkpoint: bool = node is Checkpoint
-	var bottom: float = 0.0 if checkpoint else -HEIGHT * 0.5
+	var bottom: float = -HEIGHT * 0.5
 	var lines: PackedVector3Array = _capsule_lines(bottom)
 	lines.append_array(_arrow_lines(bottom))
 	var material: StandardMaterial3D = get_material(
 		"checkpoint" if checkpoint else "spawn", gizmo)
 	gizmo.add_lines(lines, material)
-	gizmo.add_mesh(_capsule_mesh, _fills["checkpoint" if checkpoint else "spawn"],
-		Transform3D(Basis(), Vector3(0.0, bottom + HEIGHT * 0.5, 0.0)))
+	var key: String = "checkpoint" if checkpoint else "spawn"
+	gizmo.add_mesh(_capsule_mesh, _fills[key], Transform3D(Basis(), Vector3.ZERO))
+	# The arrow as SOLID meshes -- ✅ the owner: as bare lines it was nearly
+	# invisible. Cylinders grow along +Y; tipped -90 about X to lie on -Z.
+	var tip := Basis(Vector3.RIGHT, -PI * 0.5)
+	var chest: float = bottom + 1.0
+	gizmo.add_mesh(_shaft_mesh, _arrows[key],
+		Transform3D(tip, Vector3(0.0, chest, -0.55)))
+	gizmo.add_mesh(_head_mesh, _arrows[key],
+		Transform3D(tip, Vector3(0.0, chest, -0.925)))
 	# THE POINT OF THE EXERCISE: these make the drawing clickable.
 	gizmo.add_collision_segments(lines)
 	# The yaw handle, riding the arrow's tip: drag it around the node and
@@ -114,7 +138,7 @@ func _get_handle_value(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool) -> 
 func _set_handle(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool,
 		camera: Camera3D, screen_pos: Vector2) -> void:
 	var node: Node3D = gizmo.get_node_3d()
-	var chest: float = 1.0 if node is Checkpoint else 1.0 - HEIGHT * 0.5
+	var chest: float = 1.0 - HEIGHT * 0.5
 	# The drag lives on the horizontal plane the arrow sits in: wherever the
 	# mouse ray crosses it, that is where the arrow should point.
 	var plane := Plane(Vector3.UP, node.global_position.y + chest)

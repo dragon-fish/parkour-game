@@ -284,13 +284,11 @@ func reset_player() -> void:
 	# down its -Z.
 	var checkpoint: Checkpoint = player.active_checkpoint
 	if checkpoint != null and is_instance_valid(checkpoint):
-		# FEET at the checkpoint's origin -- the body origin is the capsule
-		# CENTRE, 0.9 m above the feet. This is the semantic the editor
-		# preview sells (a capsule standing ON the node), and ✅ the owner hit
-		# the mismatch first try: placed the capsule bottom 0.1 m off the
-		# floor and respawned half-buried. SpawnPoint keeps the older
-		# centre-at-origin convention; see spawn_point.gd's warning.
-		player.global_position = checkpoint.global_position + Vector3.UP * 0.9
+		# Origin = BODY CENTRE, the same convention SpawnPoint has always
+		# used -- ✅ the owner tried feet-at-origin first and chose
+		# consistency instead ("和spawnpoint保持一致更好，不然会让我疑惑").
+		# The editor gizmo hangs the capsule around the node accordingly.
+		player.global_position = checkpoint.global_position
 		player.rotation = Vector3(0.0, checkpoint.global_rotation.y, 0.0)
 	else:
 		player.global_position = spawn_point.global_position
