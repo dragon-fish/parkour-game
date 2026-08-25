@@ -24,6 +24,23 @@ var _resetting_physics: bool = false
 ## the level, alongside reset_player(), instead of in the state machine.
 @onready var _death_sequence: DeathSequence = DeathSequence.new()
 
+## The resting cold-blue tint baked into both scene sources' WorldEnvironment
+## (templates/base_level.tscn, tools/arena_builder.gd -- see the
+## AMBIENT_SOURCE_COLOR comment at each). Kept here too, rather than read back
+## off the resource every frame, since it is one Color literal that has to
+## already match those two anyway.
+const COLD_AMBIENT_TINT := Color(0.62, 0.68, 0.82)
+## The "no tint" end of CameraConfig.ambient_cold_strength: plain white, so a
+## strength of 0 leaves only the environment's own ambient_light_energy
+## setting the shadow brightness, with no colour cast at all.
+const NEUTRAL_AMBIENT_TINT := Color(1.0, 1.0, 1.0)
+
+## Found by name, same as TuningPanel below -- both templates/base_level.tscn
+## and the generated main.tscn name this node "WorldEnvironment" (see
+## tools/arena_builder.gd's build()). Null-checked rather than @export'd: a
+## bare Arena built by a test with no WorldEnvironment sibling must not crash.
+@onready var _world_environment: WorldEnvironment = get_node_or_null("WorldEnvironment")
+
 func _ready() -> void:
 	if config == null:
 		config = MovementConfig.new()
@@ -194,6 +211,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			# which is the thing worth being able to trigger on demand.
 			if player != null:
 				player.died_from_fall.emit()
+
+## Blends the WorldEnvironment's ambient light between neutral and the cold
+## tint every frame, reading CameraConfig.ambient_cold_strength off `config`
+## -- see that field's own comment for why a level-side dial lives on a
+## player-side config. Re-applied continuously, not just once in _ready(),
+## for the same reason CameraRig re-applies its own fields every frame: so
+## dragging the F1 slider changes what is on screen immediately, not only
+## after a reload.
+func _process(_delta: float) -> void:
+	if _world_environment == null or _world_environment.environment == null or config == null:
+		return
+	var strength: float = clampf(config.camera.ambient_cold_strength, 0.0, 1.0)
+	_world_environment.environment.ambient_light_color = \
+			NEUTRAL_AMBIENT_TINT.lerp(COLD_AMBIENT_TINT, strength)
 
 ## Recovers a player who fell out of the level entirely -- off the far edge of
 ## the (generously sized, see tools/arena_builder.gd's own Floor comment)

@@ -199,7 +199,24 @@ func build() -> Node3D:
 	var sky := Sky.new()
 	sky.sky_material = ProceduralSkyMaterial.new()
 	environment.sky = sky
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	# AMBIENT_SOURCE_COLOR, NOT SKY, even though the sky stays as the
+	# background/reflection source above. This is the owner's cold-shadow
+	# experiment (docs/superpowers/specs/2026-08-25-menu-design.md, "顺带的
+	# 氛围实验"): shadowed ground is lit almost entirely by ambient light in
+	# this renderer, so tinting ambient blue reads as "the shadows lean cold"
+	# without a full-screen grading shader. AMBIENT_SOURCE_SKY would make that
+	# tint chase whatever the ProceduralSkyMaterial happens to be (time of
+	# day, weather, a future sky swap) instead of holding the deliberate
+	# colour below -- COLOR is the only source that hands ambient_light_color
+	# full, deterministic control. Precedent already in this codebase:
+	# scripts/debug/animation_gallery.gd's _build_environment() does the same
+	# for its own WorldEnvironment.
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	# Resting cold-blue tint. CameraConfig.ambient_cold_strength (the F1
+	# dial Arena reads every frame) blends this against a neutral white --
+	# see Arena._process() -- so this is the "strength 1.0" end, matching the
+	# dial's own default.
+	environment.ambient_light_color = Color(0.62, 0.68, 0.82)
 	world_env.environment = environment
 	_attach(_root, world_env)
 

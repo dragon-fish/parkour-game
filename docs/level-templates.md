@@ -22,6 +22,10 @@ touching either.
    override them (e.g. moving `SpawnPoint`, resizing `Floor`). Everything
    else — ramps, walls, gaps, platforms — are new siblings you add under the
    inherited root.
+5. Every level built from the template inherits its cold-blue ambient tint
+   (`WorldEnvironment`'s `ambient_light_color`, Mirror's Edge-leaning shadows)
+   for free; tune how strong it reads with the F1 panel's
+   `ambient_cold_strength` dial (Camera tab).
 
 ## Traps
 

@@ -416,3 +416,30 @@ extends Resource
 ## How far a middle-button press may travel and still count as a CLICK rather
 ## than a drag, in pixels. Below it, releasing cycles the shoulder preset.
 @export var third_person_click_slack: float = 6.0
+
+## Cold-blue ambient tint strength for the LEVEL, from 0 (neutral white
+## ambient, no colour cast) to 1 (the full cold tint templates/base_level.tscn
+## and tools/arena_builder.gd bake into the WorldEnvironment's
+## ambient_light_color at build time -- Color(0.62, 0.68, 0.82), see the
+## AMBIENT_SOURCE_COLOR comment at both of those). Defaults to 1.0 to match
+## what is already baked into both scene sources, so leaving this dial alone
+## changes nothing.
+##
+## ✅ THE OWNER: "写个shader让游戏里的阴影颜色都带点这种偏蓝的感觉" (Mirror's
+## Edge). This is the cheap v1 (docs/superpowers/specs/2026-08-25-menu-design.md,
+## "顺带的氛围实验"): shadowed ground is lit almost entirely by ambient light in
+## this renderer, so tinting ambient blue reads as cold shadows without a
+## full-screen grading shader.
+##
+## LIVES HERE, NOT ON Arena, EVEN THOUGH AMBIENT IS A LEVEL CONCERN, NOT A
+## PLAYER ONE. The F1 tuning panel only ever walks MovementConfig's
+## sub-resources for TYPE_FLOAT exports (tuning_panel.gd collect_tunables) --
+## it has no notion of "the level" to collect from, and Arena is not one of
+## MovementConfig's config groups. This is the honest bridge: Arena already
+## holds a `config: MovementConfig` (shared with the player and the panel), so
+## it reads THIS field back out of it every _process() frame and lerps its
+## own WorldEnvironment's ambient_light_color between neutral white and the
+## tint above -- the same "consumer re-applies every frame so a live F1 drag
+## takes effect immediately" pattern every other field in this file already
+## follows (see this file's own header comment on eye_height).
+@export var ambient_cold_strength: float = 1.0

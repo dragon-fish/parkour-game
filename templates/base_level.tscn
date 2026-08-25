@@ -14,7 +14,14 @@ sky_material = SubResource("ProceduralSkyMaterial_choun")
 [sub_resource type="Environment" id="Environment_eb6dy"]
 background_mode = 2
 sky = SubResource("Sky_ya4ey")
-ambient_light_source = 3
+; ambient_light_source = 2 is AMBIENT_SOURCE_COLOR, not SKY: the sky above
+; stays the background/reflection source, but ambient (what actually lights
+; a shadowed surface in this renderer) is pinned to ambient_light_color below
+; instead of chasing the procedural sky's own colour. See the matching
+; comment in tools/arena_builder.gd's build() for the full reasoning -- both
+; sources must agree, and this is the hand-authored half.
+ambient_light_source = 2
+ambient_light_color = Color(0.62, 0.68, 0.82, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_trceg"]
 size = Vector3(60, 1, 60)
