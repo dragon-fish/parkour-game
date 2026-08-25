@@ -45,6 +45,10 @@ const BODY_RISE_DELAY := 0.15
 const BODY_TURN_TIME := 2.2
 const BODY_STAND_BLEND := 1.5
 const CAM_ARC_SIDE := 0.45
+## Ground-space dot flow per second while walking (✅ the owner: slower than
+## the first guess, and the flow must FOLLOW the character's facing -- she
+## walks screen-right in the opening, toward the lens after the turn).
+const FLOOR_SCROLL_SPEED := 0.22
 const LOGO_FADE_TIME := 0.4
 const WALK_TO_MENU_DELAY := 0.15
 const MENU_PANEL_TIME := 0.45
@@ -109,6 +113,11 @@ var _menu_list: MeMenuList
 var _settings_menu: MeSettingsMenu
 var _footer: Label
 var _metadata_labels: Array[Control] = []
+## Integrated dot-grid flow (ground space) and its ramp-in gain -- the
+## direction follows the silhouette's yaw each frame, so it cannot be a
+## TIME-based shader term (a changing angle would teleport the pattern).
+var _floor_scroll := Vector2.ZERO
+var _floor_gain := 0.0
 
 var _active_tweens: Array[Tween] = []
 var _entrance_active: bool = true
@@ -134,6 +143,15 @@ func _ready() -> void:
 	_frame_close()
 	resized.connect(_on_resized)
 	_play_entrance()
+
+func _process(delta: float) -> void:
+	if _floor == null or not (_floor.material is ShaderMaterial):
+		return
+	if _floor_gain <= 0.0:
+		return
+	var a: float = deg_to_rad(_silhouette_root.rotation_degrees.y - FRONT_YAW_DEG)
+	_floor_scroll += Vector2(-sin(a), -cos(a)) * FLOOR_SCROLL_SPEED * _floor_gain * delta
+	(_floor.material as ShaderMaterial).set_shader_parameter("scroll_offset", _floor_scroll)
 
 func _on_resized() -> void:
 	# Aspect changed: re-solve the framing math and re-aim whatever state
@@ -584,6 +602,11 @@ func _arc_camera(t: float) -> void:
 func _start_walk_loop() -> void:
 	if _anim_player != null and _anim_player.has_animation(&"Walk"):
 		_anim_player.play(&"Walk", 0.3)
+	# The ground starts moving WITH the steps, ramping in rather than
+	# jerking from zero.
+	var ramp := _track(create_tween())
+	ramp.tween_property(self, "_floor_gain", 1.0, 0.6) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
 ## The menu arrives from the LEFT in layers (✅ the owner: "从左侧分层进入
 ## （视差效果），非线性动画"): the red column slides in on an expo-out, the
@@ -653,6 +676,7 @@ func _skip_entrance() -> void:
 	_silhouette_camera.rotation = Vector3.ZERO
 	_silhouette_root.rotation_degrees = Vector3(0.0, FRONT_YAW_DEG, 0.0)
 	_start_walk_loop()
+	_floor_gain = 1.0
 
 	_beat_settle()
 

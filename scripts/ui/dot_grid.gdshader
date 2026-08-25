@@ -15,7 +15,7 @@ shader_type canvas_item;
 // lockstep -- that randomness is what reads as "alive" rather than
 // "blinking uniformly".
 
-uniform float scroll_speed = 0.35;
+uniform vec2 scroll_offset = vec2(0.0);
 uniform float spacing : hint_range(1.0, 64.0) = 14.0;
 uniform float dot_size : hint_range(0.01, 0.5) = 0.12;
 uniform float speed : hint_range(0.0, 8.0) = 1.2;
@@ -31,7 +31,7 @@ float hash(vec2 p) {
 void fragment() {
 	float eps = 0.001;
 	vec2 ground_uv = vec2(UV.x - 0.5, 1.0) / max(UV.y, eps);
-	ground_uv.y -= TIME * scroll_speed;
+	ground_uv += scroll_offset;
 	vec2 grid = ground_uv * spacing;
 	vec2 cell = floor(grid);
 	vec2 local = fract(grid) - 0.5;
