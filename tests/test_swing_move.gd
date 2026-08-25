@@ -256,3 +256,26 @@ func test_the_model_leans_with_the_swing_and_stands_back_up() -> void:
 	await step(30)
 	assert_almost_eq(body_root.rotation.x, 0.0, 0.05,
 		"the lean never stood back up after letting go")
+
+func test_the_eye_slides_ahead_of_a_forward_lean() -> void:
+	# ✅ THE OWNER: "镜头要随着晃到前面的时候给一点向前的偏移否则镜头走进胸里."
+	# Forward swings push the eye ahead (sin-scaled); backswings do not; and
+	# letting go clears it.
+	var player: Player = await _swinging_player()
+	await step(12)
+	var move: SwingMove = player.move_manager.move_for(Move.SWING)
+	var seen_forward := false
+	for i in 200:
+		await step(1)
+		if move.swing_theta() > 0.1:
+			seen_forward = true
+			break
+	assert_true(seen_forward, "test setup: never swung forward")
+	var expected: float = sin(move.swing_theta()) * player.config.swing.eye_forward_lean
+	assert_almost_eq(player.camera_rig.extra_eye_forward, expected, 0.02,
+		"the eye offset %.3f does not track the lean" % player.camera_rig.extra_eye_forward)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_crouch()
+	await step(2)
+	assert_almost_eq(player.camera_rig.extra_eye_forward, 0.0, 0.001,
+		"letting go left the eye pushed forward")

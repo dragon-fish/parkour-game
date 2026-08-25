@@ -156,10 +156,17 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# lean on and off. Sign fixed by the owner's eyes ("pitch写反了") -- the
 	# first guess had the legs trailing.
 	player.set_swing_pitch_target(_theta * cfg.model_pitch_follow)
+	if player.camera_rig != null:
+		# Forward swings only: the lean sweeps the chest through the fixed
+		# eye, so the eye slides ahead of it. Backswings tip the chest away.
+		player.camera_rig.extra_eye_forward = \
+			maxf(sin(_theta), 0.0) * cfg.eye_forward_lean
 	return KEEP
 
 func exit() -> void:
 	player.set_swing_pitch_target(0.0)
+	if player.camera_rig != null:
+		player.camera_rig.extra_eye_forward = 0.0
 	if is_instance_valid(_line):
 		player.note_line_left(_line, cfg.same_line_redo_time)
 

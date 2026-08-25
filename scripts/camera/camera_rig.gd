@@ -117,6 +117,10 @@ var _scripted_yaw_lag: float = 0.0
 ## forward by the same amount -- keeps the eye-to-head relation identical
 ## while the body meets the world where it looks like it does.
 var eye_forward: float = 0.0
+## A dynamic addition to eye_forward, driven per tick by moves whose visual
+## lean would otherwise sweep the body through the eye (the swing). Hard-set
+## by the mover, zeroed on its exit.
+var extra_eye_forward: float = 0.0
 
 var _head_local_offset: Vector3 = Vector3.ZERO
 ## True only for ticks Player actually supplied a head offset -- i.e. a body is
@@ -600,7 +604,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var base_position := Vector3.ZERO
 	base_position.y = _config.camera.eye_height
 	if not third_person:
-		base_position.z = -eye_forward
+		base_position.z = -(eye_forward + extra_eye_forward)
 
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 

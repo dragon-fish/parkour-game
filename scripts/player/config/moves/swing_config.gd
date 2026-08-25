@@ -61,3 +61,9 @@ func _init() -> void:
 ## the body tilts along the chain and the camera stays FREE (no forced pitch;
 ## ME does not sync the view to the swing).
 @export var model_pitch_follow: float = 1.0
+
+## ⚠️ OWNER-FELT dial: metres the EYE slides forward at a full-forward lean
+## (scaled by sin(theta), forward swings only) -- the leaning chest otherwise
+## sweeps through the fixed eye: "镜头要随着晃到前面的时候给一点向前的偏移否则
+## 镜头走进胸里."
+@export var eye_forward_lean: float = 0.25
