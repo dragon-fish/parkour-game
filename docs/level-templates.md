@@ -152,13 +152,17 @@ just drawn and aimed differently.
    wallrunning bodies alike), and a body passing the volume from the back
    is not caught. "Align Rotation with View" from where the player would
    stand, facing the ladder, places this correctly.
-5. The line's two ends may be sunk into the surrounding geometry (a rung
-   buried in the floor slab, a top point poking past the deck) without
-   causing a bug — the steady climb is collision-checked (`slide_to()`), so
-   the body stops at the real floor or ceiling rather than clipping through
-   it or overshooting past a line end left a little generous. Only the brief
-   magnet fade-in on first catch is a raw position write; see
-   `ladder_move.gd`'s own header note for why.
+5. The BOTTOM end may be sunk into the surrounding geometry (a rung buried
+   in the floor slab) without causing a bug — the steady climb is
+   collision-checked (`slide_to()`), so the body stops at the real floor
+   rather than clipping through it or overshooting past a line end left a
+   little generous. Only the brief magnet fade-in on first catch is a raw
+   position write; see `ladder_move.gd`'s own header note for why. The TOP
+   end does NOT get the same slack: the top-exit deck probe (Task 7) fires
+   from the line's own top point and only reaches ±0.5 m above/below it
+   (`LadderMove.TOP_DECK_PROBE_LIFT`/`TOP_DECK_PROBE_DEPTH`) — keep the top
+   point within about 0.5 m of the deck surface it should exit onto, or W at
+   the top will find nothing to stand on.
 
 The collision volume is built along the curve at runtime, same as any other
 interest line — do not add one by hand.

@@ -108,12 +108,21 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# The jump-off chain (Task 5) and the top exit (Task 7) both land here,
 	# ahead of the plain climb below.
 	if input.jump_pressed:
-		var side: int = 0
-		if absf(input.move.x) > 0.1:
-			side = 1 if input.move.x > 0.0 else -1
-		var target: InterestLine = _scan_snap_target(side)
-		if target != null:
-			return _launch_at(target)  # Task 6
+		# The scan only runs while a direction is actually HELD (✅ the owner's
+		# spec: "方向键按着"). Plain space facing the ladder, with no A/D/S
+		# down, is 无操作 -- it must fall straight through to the look-jump
+		# check below (and from there, most likely, to the ignore case) rather
+		# than being read as an implicit "scan straight back" with side 0.
+		var wants_scan: bool = absf(input.move.x) > 0.1 or input.move.y < -0.1
+		if wants_scan:
+			var side: int = 0
+			if absf(input.move.x) > 0.1:
+				side = 1 if input.move.x > 0.0 else -1
+			# side stays 0 here only for the S-held, no-A/D case -- the
+			# straight-back scan _scan_snap_target(0) already covers.
+			var target: InterestLine = _scan_snap_target(side)
+			if target != null:
+				return _launch_at(target)  # Task 6
 		var turned: float = absf(wrapf(_camera_yaw() - _target_yaw, -PI, PI))
 		if turned > deg_to_rad(cfg.jump_angle_deg):
 			# GrabMove's shape verbatim: the full 3D look, nothing projected
@@ -138,6 +147,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# No deck within reach: W does nothing at the top (✅ the owner).
 		# Falls through to the ordinary climb below, which simply re-clamps
 		# _offset to the value it already has.
+
+	# Bottom-end release (spec §攀爬: "底端 + 仍按 S：松手，正常下落"). No
+	# consume_roll() here, unlike the crouch-release above -- this is a held
+	# key crossing the bottom, not a discrete press, so there is no buffered
+	# roll press to guard against re-firing.
+	if _offset <= 0.01 and input.move.y < 0.0:
+		return FALLING
 
 	_offset = clampf(_offset + input.move.y * cfg.climb_speed * delta, 0.0, _line.length())
 	var s: Dictionary = _line.sample(_offset)
@@ -192,7 +208,23 @@ func is_top_exiting() -> bool:
 ## back off the ladder. No camera read anywhere in here.
 func _scan_snap_target(side: int) -> InterestLine:
 	var f: Vector3 = _line.front()
-	var dir: Vector3 = f if side == 0 else Vector3.UP.cross(f) * -float(side)
+	# side -1 (A) must scan toward the CLIMBER'S OWN LEFT, +1 (D) toward their
+	# right. The climber FACES -f (see enter()'s own note), and for any
+	# forward direction "left = UP.cross(forward)", so the climber's left is
+	# UP.cross(-f) = -UP.cross(f) and their right is the negation of that,
+	# UP.cross(f). dir(side) = UP.cross(f) * side therefore lands on the
+	# climber's right at side +1 (D) and their left at side -1 (A), exactly
+	# as wanted.
+	#
+	# Worked out concretely for a yaw-0 ladder (f = -Z, so the climber faces
+	# +Z): UP.cross(f) = (0,1,0) x (0,0,-1) = (-1,0,0) = -X -- the climber's
+	# RIGHT, confirmed against "forward.cross(up) = right" applied to their
+	# own +Z facing: (0,0,1) x (0,1,0) = (-1,0,0), the same -X. So side=-1 (A)
+	# gives dir = (-X) * (-1) = +X, the climber's LEFT. The previous
+	# `* -float(side)` sent A to -X instead -- the climber's RIGHT, inverted.
+	# See tests/test_ladder_move.gd's own Task 6 header for the geometry this
+	# fixes.
+	var dir: Vector3 = f if side == 0 else Vector3.UP.cross(f) * float(side)
 	var best: InterestLine = null
 	var best_d: float = cfg.snap_range
 	for node in player.get_tree().get_nodes_in_group("interest_lines"):

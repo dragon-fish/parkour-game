@@ -134,6 +134,39 @@ func test_the_floor_ends_a_descent() -> void:
 		"the floor must hand off to Falling, exactly like a normal landing does next tick")
 	assert_gt(min_y, -0.1, "the capsule sank through the floor instead of stopping on it")
 
+func test_bottom_end_release_falls_with_nothing_below() -> void:
+	# ✅ THE SPEC, §攀爬: "底端 + 仍按 S：松手，正常下落". The DESCENT-INTO-FLOOR
+	# case above is a different mechanism entirely -- there the line's own
+	# bottom is sunk into solid geometry, and slide_to()'s floor hit is what
+	# ends the move. Here the line's bottom sits well ABOVE the shared floor,
+	# with open air underneath: nothing for slide_to() to hit, so without its
+	# own check the move used to just clamp _offset at 0.0 and hang there
+	# forever with S still held.
+	var player: Player = await _standing_player()
+	_line = _vertical_ladder(Vector3(0.0, 3.0, 0.0), 0.0, 3.0)  # bottom at y=3, floor is at y=0
+	var stand_off: float = player.config.ladder.stand_off
+	player.global_position = Vector3(0.0, 3.0, -stand_off)  # right at the bottom rung
+	for i in 10:
+		await step(1)
+		if player.move_manager.current_name == Move.LADDER:
+			break
+	assert_eq(player.move_manager.current_name, Move.LADDER, "test setup: never caught the ladder")
+	await step(10)  # past the magnet fade
+	assert_eq(player.move_manager.current_name, Move.LADDER, \
+		"test setup: fell off the bottom before S was even held")
+
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2(0.0, -1.0)  # S: held past the bottom, into open air
+	var exited := false
+	for i in 30:
+		await step(1)
+		if player.move_manager.current_name != Move.LADDER:
+			exited = true
+			break
+	assert_true(exited, "S held at the bottom with open air below never let go")
+	assert_eq(player.move_manager.current_name, Move.FALLING, \
+		"the bottom-end release must hand off to Falling, not stay pinned on the line")
+
 func test_a_ceiling_stops_the_ascent() -> void:
 	var player: Player = await _standing_player()
 	_line = _vertical_ladder(Vector3.ZERO, 0.0, 6.0)
@@ -313,6 +346,86 @@ func test_the_into_wall_component_survives() -> void:
 	assert_gt(player.velocity.dot(-_line.front()), 0.0, \
 		"the launch lost the into-the-wall component the vault finisher depends on")
 
+func test_a_lip_at_the_top_catches_the_into_wall_jump() -> void:
+	# 🔒 PROTECTED TECHNIQUE -- spec invariant #2: near the top, a camera
+	# turned past jump_angle_deg and space pressed must have the airborne
+	# probes (GrabMove's/SpeedVaultMove's own, wholly unaware this body just
+	# left a ladder) actually CATCH the lip the into-wall component throws
+	# the body at. Invariant #1 above pins the launch DIRECTION; this pins
+	# that the direction is actually good for something -- a real ledge
+	# planted where that component points must not be sailed past into an
+	# ordinary fall.
+	var player: Player = await _climbing_player()
+	var input: ScriptedInputSource = _world["input"]
+	var ladder_move := player.move_manager.move_for(Move.LADDER) as LadderMove
+	# Climb close to the top WITHOUT reaching it -- reaching it (Task 7)
+	# would exercise the top-exit's own space-beats-carry gate (invariant #3,
+	# test_space_beats_the_top_exit above) instead of this one.
+	input.state.move = Vector2(0.0, 1.0)  # W
+	for i in 200:
+		await step(1)
+		if ladder_move.climbing_offset() >= 2.5:
+			break
+	input.state.move = Vector2.ZERO
+	await step(3)  # let the climb settle at this offset
+	assert_eq(player.move_manager.current_name, Move.LADDER, \
+		"test setup: left the ladder before reaching the fixture height")
+	assert_gt(ladder_move.climbing_offset(), 2.0, "test setup: never got near the top")
+
+	var facing_yaw: float = player.rotation.y
+	var turn: float = deg_to_rad(50.0)  # past jump_angle_deg (45)
+	var new_yaw: float = facing_yaw + turn
+	player.rotation.y = new_yaw
+	await step(1)  # let the turn reach the camera transform
+
+	# A WALL, not a thin lip: tall enough that its face still blocks
+	# Probes.vault_query()'s own hand-reach sample (1.89 m above the feet,
+	# SpeedVaultConfig.max_edge_above_feet) -- which is what routes this
+	# catch through the grab probe rather than the vault one, sidestepping
+	# vault_query()'s speed_z gate entirely (a bare horizontal jump reads as
+	# falling, not rising, one tick after launch, once gravity has clipped
+	# it -- see AirborneMove._vault_speed_z()). Its TOP sits within
+	# GrabConfig's own reachable band (min_wall_height 1.8 .. ledge_max_height
+	# 2.8 above the feet) so ledge_query() finds a graspable top there
+	# instead. Its face sits within IntoGrabConfig.max_reach_distance (0.8 m)
+	# of the launch point, well inside the single physics tick this jump
+	# covers before FallingMove's own probe_transition() first runs.
+	var forward_dir: Vector3 = Vector3(-sin(new_yaw), 0.0, -cos(new_yaw))
+	var feet_y: float = player.global_position.y - player.standing_height() * 0.5
+	var near_face_distance: float = 0.7
+	var depth: float = 1.0
+	var wall := StaticBody3D.new()
+	var wall_shape := CollisionShape3D.new()
+	var wall_box := BoxShape3D.new()
+	wall_box.size = Vector3(3.0, 3.0, depth)  # top at feet+2.0, bottom at feet-1.0
+	wall_shape.shape = wall_box
+	wall.add_child(wall_shape)
+	wall.rotation.y = new_yaw  # own -Z aligned with forward_dir, matching the probes' own aim
+	get_tree().root.add_child(wall)  # BEFORE global_position: it needs to be in the tree first
+	var centre_xz: Vector3 = player.global_position \
+		+ forward_dir * (near_face_distance + depth * 0.5)
+	wall.global_position = Vector3(centre_xz.x, feet_y + 0.5, centre_xz.z)
+	await step(1)  # let the new collider register before anything probes it
+
+	input.press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING, \
+		"a 50 degree turned jump near the top did not leave the ladder")
+
+	var caught := false
+	for i in 20:
+		await step(1)
+		var name: StringName = player.move_manager.current_name
+		if name == Move.SPEED_VAULT or name == Move.INTO_GRAB or name == Move.GRAB:
+			caught = true
+			break
+		if name != Move.FALLING:
+			break  # left Falling for something that is not a catch: a real miss
+	assert_true(caught, \
+		"the into-wall jump sailed past the lip into an ordinary fall instead of being caught")
+
+	wall.queue_free()
+
 # --- Task 6: 快捷吸附 (assisted hop) --------------------------------------------
 #
 # ✅ THE OWNER: no aiming needed -- the scan and the launch both live entirely
@@ -320,18 +433,22 @@ func test_the_into_wall_component_survives() -> void:
 #
 # Geometry shared by the two hop tests below: _climbing_player() attaches to a
 # 3 m ladder at the world origin, front = -Z (see its own docstring), standing
-# at roughly x=0, z=-stand_off. A second ladder sits 2.5 m along -X -- the
-# primary's LEFT, since _scan_snap_target's dir formula puts side -1 (A) at
-# -X here -- built the same length, at the same world y, so the two lines'
-# climbable ranges line up and the height component of the scan's cone check
-# stays small. Its yaw (-90 degrees) points ITS OWN front at +X, i.e. back
-# toward the primary ladder: the body flies in from the +X side, so that is
-# exactly the side the arrival catch's frontal gate (front_side_allows) needs
-# it approaching from.
+# at roughly x=0, z=-stand_off, FACING +Z (enter()'s own note: the body faces
+# -front). For any facing direction, left = UP.cross(facing) -- so facing
+# +Z, the climber's LEFT is UP.cross((0,0,1)) = (0,1,0) x (0,0,1) =
+# (1*1-0*0, 0*0-0*1, 0*0-1*0) = (1,0,0) = +X (right is the negation, -X).
+# A second ladder sits 2.5 m along +X -- the primary's LEFT, matching
+# _scan_snap_target's (fixed) dir formula, which puts side -1 (A) at +X here
+# -- built the same length, at the same world y, so the two lines' climbable
+# ranges line up and the height component of the scan's cone check stays
+# small. Its yaw (+90 degrees) points ITS OWN front at -X, i.e. back toward
+# the primary ladder: the body flies in from the -X side, so that is exactly
+# the side the arrival catch's frontal gate (front_side_allows) needs it
+# approaching from.
 
 func test_a_side_hop_snaps_to_the_neighbour_ladder() -> void:
 	var player: Player = await _climbing_player()
-	var neighbour := _vertical_ladder(Vector3(-2.5, 0.0, 0.0), -90.0)
+	var neighbour := _vertical_ladder(Vector3(2.5, 0.0, 0.0), 90.0)
 	await step(10)  # past the magnet fade
 	var input: ScriptedInputSource = _world["input"]
 	input.state.move = Vector2(-1.0, 0.0)  # A: left, toward the neighbour
@@ -366,11 +483,11 @@ func test_no_neighbour_means_no_hop() -> void:
 
 func test_the_scan_respects_direction() -> void:
 	var player: Player = await _climbing_player()
-	_vertical_ladder(Vector3(-2.5, 0.0, 0.0), -90.0)  # neighbour on the LEFT
+	_vertical_ladder(Vector3(2.5, 0.0, 0.0), 90.0)  # neighbour on the LEFT (+X)
 	await step(10)  # past the magnet fade
 	var input: ScriptedInputSource = _world["input"]
 	var before: Vector3 = player.global_position
-	input.state.move = Vector2(1.0, 0.0)  # D: right, away from the neighbour
+	input.state.move = Vector2(1.0, 0.0)  # D: right (-X), away from the neighbour
 	input.press_jump()
 	await step(1)
 	input.state.move = Vector2.ZERO
@@ -379,6 +496,37 @@ func test_the_scan_respects_direction() -> void:
 		"D+space hopped toward a neighbour that was on the LEFT")
 	assert_almost_eq(player.global_position.x, before.x, 0.05, \
 		"the refused hop still moved the body")
+
+func test_plain_space_with_no_direction_held_does_not_scan() -> void:
+	# ✅ THE SPEC: the assisted-hop scan only runs while a direction is
+	# actually "按着" (held) -- plain space facing the ladder, nothing else
+	# down, is 无操作. THE LATENT BUG THIS PINS: side defaulted to 0 for "no
+	# A/D held", and _scan_snap_target(0) reads side 0 as "scan straight
+	# back" -- so a bare space press used to run that scan anyway, with no
+	# direction requested at all.
+	#
+	# The neighbour below sits exactly where that straight-back scan would
+	# have looked (dir = _line.front(), i.e. -Z, "behind" the climber who
+	# faces +Z -- see enter()'s own note), yawed so it WOULD have caught the
+	# hop if the scan had fired: this is not a miss-by-distance-or-cone case,
+	# it is the scan never running at all.
+	var player: Player = await _climbing_player()
+	var stand_off: float = player.config.ladder.stand_off
+	_vertical_ladder(Vector3(0.0, 0.0, -stand_off - 3.0), 180.0)  # 3 m behind the climber's back
+	await step(10)  # past the magnet fade
+	var input: ScriptedInputSource = _world["input"]
+	var before: Vector3 = player.global_position
+	input.state.move = Vector2.ZERO  # no A, no D, no S -- 无操作
+	input.press_jump()
+	await step(1)
+	input.state.move = Vector2.ZERO
+	await step(5)
+	assert_eq(player.move_manager.current_name, Move.LADDER, \
+		"a direction-less space hopped to the ladder behind the climber's back")
+	assert_almost_eq(player.global_position.x, before.x, 0.05, \
+		"a direction-less space moved the body toward the back-scan target")
+	assert_almost_eq(player.global_position.z, before.z, 0.05, \
+		"a direction-less space moved the body toward the back-scan target")
 
 # --- Task 7: the top exit --------------------------------------------------
 #
