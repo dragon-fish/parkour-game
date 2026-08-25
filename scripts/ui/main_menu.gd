@@ -783,71 +783,16 @@ func _on_chosen(index: int) -> void:
 		2:
 			_show_quit_confirm()
 
-## ✅ The owner: "退出游戏按钮太干脆了，挽留一下啊……" A small ME-styled
-## confirm: backdrop click or 再跑一会儿 stays, 退出 quits.
+## ✅ The owner: "退出游戏按钮太干脆了，挽留一下啊……" The shared ME-styled
+## confirm (MeTheme.confirm_dialog): backdrop click or 再跑一会儿 stays,
+## 退出 quits.
 func _show_quit_confirm() -> void:
-	if _quit_confirm != null:
-		_quit_confirm.visible = true
-		return
-	_quit_confirm = Control.new()
-	_quit_confirm.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(_quit_confirm)
-
-	var dim := ColorRect.new()
-	dim.color = MeTheme.BACKDROP
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	dim.gui_input.connect(func(event: InputEvent) -> void:
-		if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
-			_quit_confirm.visible = false)
-	_quit_confirm.add_child(dim)
-
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", MeTheme.panel_style())
-	panel.anchor_left = 0.5
-	panel.anchor_right = 0.5
-	panel.anchor_top = 0.5
-	panel.anchor_bottom = 0.5
-	panel.offset_left = -260.0
-	panel.offset_right = 260.0
-	panel.offset_top = -110.0
-	panel.offset_bottom = 110.0
-	_quit_confirm.add_child(panel)
-
-	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 28.0)
-	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	panel.add_child(column)
-
-	var question := Label.new()
-	question.text = "就这么走了吗？外面还有屋顶没跑完。"
-	question.add_theme_font_size_override("font_size", 24)
-	question.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
-	question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	column.add_child(question)
-
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 20.0)
-	column.add_child(row)
-
-	row.add_child(_confirm_button("再跑一会儿", Color(0.55, 0.62, 0.72),
-		func() -> void: _quit_confirm.visible = false))
-	row.add_child(_confirm_button("退出游戏", MeTheme.BRAND_RED,
-		func() -> void: get_tree().quit()))
-
-func _confirm_button(text: String, bg: Color, handler: Callable) -> Button:
-	var button := Button.new()
-	button.text = text
-	button.custom_minimum_size = Vector2(150.0, 46.0)
-	button.add_theme_stylebox_override("normal", MeTheme.button_style(bg))
-	button.add_theme_stylebox_override("hover", MeTheme.button_style(bg.lightened(0.12)))
-	button.add_theme_stylebox_override("pressed", MeTheme.button_style(bg.darkened(0.12)))
-	button.add_theme_color_override("font_color", Color.WHITE)
-	button.add_theme_color_override("font_hover_color", Color.WHITE)
-	button.add_theme_color_override("font_pressed_color", Color.WHITE)
-	button.pressed.connect(handler)
-	return button
+	if _quit_confirm == null:
+		_quit_confirm = MeTheme.confirm_dialog(
+			"就这么走了吗？外面还有屋顶没跑完。", "再跑一会儿", "退出游戏",
+			func() -> void: get_tree().quit())
+		add_child(_quit_confirm)
+	_quit_confirm.visible = true
 
 const LOAD_MIN_RUN := 1.6
 ## She eases into the sprint -- clip speed ramps to full over this.

@@ -166,3 +166,69 @@ static func footer_label(text: String) -> Label:
 	label.position = Vector2(-160.0, -40.0)
 	label.size = Vector2(320.0, 24.0)
 	return _themed(label)
+
+## The ME-styled confirm overlay (✅ the owner: "退出游戏按钮太干脆了，挽留
+## 一下啊……"), shared by the main menu and the pause menu so the retention
+## line reads the same everywhere. Backdrop click or the stay button hides
+## the overlay; the go button runs `on_go`. Caller add_child()s the result
+## and re-shows it with `visible = true` on later opens.
+static func confirm_dialog(question_text: String, stay_text: String,
+		go_text: String, on_go: Callable) -> Control:
+	var overlay := Control.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+	var dim := ColorRect.new()
+	dim.color = BACKDROP
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	dim.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+			overlay.visible = false)
+	overlay.add_child(dim)
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", panel_style())
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -260.0
+	panel.offset_right = 260.0
+	panel.offset_top = -110.0
+	panel.offset_bottom = 110.0
+	overlay.add_child(panel)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 28.0)
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	panel.add_child(column)
+
+	var question := Label.new()
+	question.text = question_text
+	question.add_theme_font_size_override("font_size", 24)
+	question.add_theme_color_override("font_color", TEXT_BLUE)
+	question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(question)
+
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 20.0)
+	column.add_child(row)
+
+	row.add_child(confirm_button(stay_text, Color(0.55, 0.62, 0.72),
+		func() -> void: overlay.visible = false))
+	row.add_child(confirm_button(go_text, BRAND_RED, on_go))
+	return overlay
+
+static func confirm_button(text: String, bg: Color, handler: Callable) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(150.0, 46.0)
+	button.add_theme_stylebox_override("normal", button_style(bg))
+	button.add_theme_stylebox_override("hover", button_style(bg.lightened(0.12)))
+	button.add_theme_stylebox_override("pressed", button_style(bg.darkened(0.12)))
+	button.add_theme_color_override("font_color", Color.WHITE)
+	button.add_theme_color_override("font_hover_color", Color.WHITE)
+	button.add_theme_color_override("font_pressed_color", Color.WHITE)
+	button.pressed.connect(handler)
+	return button

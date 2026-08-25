@@ -24,6 +24,9 @@ var _settings_menu: MeSettingsMenu
 ## CanvasLayer needs this at all).
 var _corner_labels: Array[Label] = []
 var _footer: Label
+## The shared ME retention dialog (MeTheme.confirm_dialog), built on first
+## 退出游戏 press. Hidden alongside everything else by _set_shown(false).
+var _quit_confirm: Control
 ## Whether the settings page (rather than the menu list) is the currently
 ## shown sub-page. Reset to false whenever the whole layer hides, so a fresh
 ## pause always opens back on the list -- see _set_shown().
@@ -92,15 +95,21 @@ func _build_ui() -> void:
 	_paper_noise = MeTheme.paper_noise_layer()
 	add_child(_paper_noise)
 
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(center)
-
 	_menu_list = MeMenuList.new()
+	# The main menu's full-height red column, same geometry (✅ the owner:
+	# 参考主菜单 -- the red runs top to bottom, with the same breathing gap
+	# off the right edge). See MainMenu._build_menu_list().
 	_menu_list.custom_minimum_size = Vector2(420.0, 0.0)
-	center.add_child(_menu_list)
-	_menu_list.set_items(["继续", "设置", "回主菜单"])
+	_menu_list.anchor_left = 1.0
+	_menu_list.anchor_right = 1.0
+	_menu_list.anchor_top = 0.0
+	_menu_list.anchor_bottom = 1.0
+	_menu_list.offset_left = -480.0
+	_menu_list.offset_right = -60.0
+	_menu_list.offset_top = 0.0
+	_menu_list.offset_bottom = 0.0
+	add_child(_menu_list)
+	_menu_list.set_items(["继续游戏", "上一检查点", "重新开始", "设置", "回主菜单", "退出游戏"])
 	_menu_list.chosen.connect(_on_chosen)
 
 	_settings_menu = MeSettingsMenu.new()
@@ -221,6 +230,8 @@ func _set_shown(on: bool) -> void:
 		label.visible = on
 	if not on:
 		_showing_settings = false
+		if _quit_confirm != null:
+			_quit_confirm.visible = false
 	_menu_list.visible = on and not _showing_settings
 	_settings_menu.visible = on and _showing_settings
 
@@ -247,9 +258,43 @@ func _on_chosen(index: int) -> void:
 		0:
 			_resume()
 		1:
-			_show_settings()
+			_respawn_at_checkpoint()
 		2:
+			_restart_from_spawn()
+		3:
+			_show_settings()
+		4:
 			_go_to_main_menu()
+		5:
+			_show_quit_confirm()
+
+## 上一检查点: the R-tap action, from the menu -- resume first (the pause
+## menu has no business surviving its own choice), then the level's own
+## respawn, which honours the last-touched checkpoint. Duck-typed on Arena
+## so a scene without one (or no scene, in tests) makes this a no-op.
+func _respawn_at_checkpoint() -> void:
+	var arena := get_tree().current_scene as Arena
+	if arena == null:
+		return
+	_resume()
+	arena.reset_player()
+
+## 重新开始: the R-hold action -- forget the checkpoint and restart from the
+## level's own spawn, under Arena's white cover.
+func _restart_from_spawn() -> void:
+	var arena := get_tree().current_scene as Arena
+	if arena == null:
+		return
+	_resume()
+	arena.restart_from_spawn()
+
+func _show_quit_confirm() -> void:
+	if _quit_confirm == null:
+		_quit_confirm = MeTheme.confirm_dialog(
+			"就这么走了吗？外面还有屋顶没跑完。", "再跑一会儿", "退出游戏",
+			func() -> void: get_tree().quit())
+		add_child(_quit_confirm)
+	_quit_confirm.visible = true
 
 ## Pushes the settings page in place of the menu list. reload() re-reads
 ## SettingsStore fresh, so this always starts from what is actually on disk

@@ -243,15 +243,7 @@ func _physics_process(_delta: float) -> void:
 	if _r_pressed_at_ms >= 0 \
 			and Time.get_ticks_msec() - _r_pressed_at_ms >= int(CHECKPOINT_CLEAR_HOLD * 1000.0):
 		_r_pressed_at_ms = -1
-		# Under the curtain -- ✅ the owner: the bare teleport was 突兀. The
-		# clear and the reset both happen at full black.
-		if _death_sequence != null:
-			_death_sequence.cover_respawn(player, func() -> void:
-				player.active_checkpoint = null
-				reset_player())
-		else:
-			player.active_checkpoint = null
-			reset_player()
+		restart_from_spawn()
 	# ⚠️ THE RAGDOLL IS THE ONE THAT FALLS. ✅ The owner: "falling past z = -20
 	# no longer resets -- it makes me watch six seconds of ragdoll."
 	#
@@ -263,6 +255,21 @@ func _physics_process(_delta: float) -> void:
 	if player.ragdoll != null and player.ragdoll.is_simulating():
 		depth = player.ragdoll.hips_position().y
 	if depth < -config.pawn.fall_recovery_depth:
+		reset_player()
+
+## The R-hold action, also reachable from the pause menu's 重新开始: forget
+## the checkpoint and respawn at the level's own spawn. Under the curtain --
+## ✅ the owner: the bare teleport was 突兀. The clear and the reset both
+## happen at full cover.
+func restart_from_spawn() -> void:
+	if not is_instance_valid(player):
+		return
+	if _death_sequence != null:
+		_death_sequence.cover_respawn(player, func() -> void:
+			player.active_checkpoint = null
+			reset_player())
+	else:
+		player.active_checkpoint = null
 		reset_player()
 
 ## Teleports the player to spawn and clears its velocity.
