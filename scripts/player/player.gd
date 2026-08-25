@@ -1381,6 +1381,12 @@ func _drive_clip_offset(delta: float) -> void:
 	var follow_target: float = 1.0 if scripted_progress() >= 0.0 else 0.0
 	var follow_t: float = 1.0 - exp(-delta / maxf(config.camera.scripted_eye_offset_blend_time, 0.001))
 	_scripted_eye_follow = lerpf(_scripted_eye_follow, follow_target, follow_t)
+	# The wall run follows the head at half strength -- the authored lean is
+	# ~0.7 m and the full ride reads as flying off the wall (✅ the owner).
+	if camera_rig != null:
+		camera_rig.set_head_follow_scale(
+			config.wall_run.head_follow_scale
+			if move_manager.current_name == Move.WALL_RUN else 1.0)
 	var wanted_position := Vector3.ZERO
 	var wanted_rotation := Vector3.ZERO
 	var offset: Array = clip_offset_for(_current_clip())
