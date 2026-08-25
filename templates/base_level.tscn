@@ -4,6 +4,7 @@
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="2_tefeu"]
 [ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="4_tipki"]
 [ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="5_85g3d"]
+[ext_resource type="Script" path="res://scripts/level/spawn_point.gd" id="6_spawn"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_choun"]
 
@@ -39,6 +40,7 @@ environment = SubResource("Environment_eb6dy")
 
 [node name="SpawnPoint" type="Marker3D" parent="." unique_id=1155736096]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+script = ExtResource("6_spawn")
 
 [node name="Floor" type="StaticBody3D" parent="." unique_id=690524087]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)

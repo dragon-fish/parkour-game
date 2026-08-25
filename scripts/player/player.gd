@@ -68,6 +68,22 @@ var pending_ledge: Dictionary = {}
 ## probe -- 05 §5.6.5: "凡是「沿着一条线交互」的动作，一律有兴趣点".
 var interest_lines: Array[InterestLine] = []
 
+## The checkpoint the next respawn happens at, or null for the level's own
+## spawn point. LAST TOUCHED WINS -- ✅ the owner noclip-tested the original:
+## flying back and suiciding still respawns at the last one, so a loop's
+## apparent nearest-point behaviour is just re-touching (see Checkpoint).
+## Survives deaths and resets by design.
+var active_checkpoint: Checkpoint = null
+
+func touch_checkpoint(checkpoint: Checkpoint) -> void:
+	# The line only fires when the active respawn actually CHANGES --
+	# pacing back and forth through the same gate stays quiet -- and only
+	# for a checkpoint the level author gave a name.
+	var changed: bool = checkpoint != active_checkpoint
+	active_checkpoint = checkpoint
+	if changed and checkpoint.display_name != "" and notice != null:
+		notice.show_text("检查点 %s 已保存" % checkpoint.display_name)
+
 func enter_interest_line(line: InterestLine) -> void:
 	if not interest_lines.has(line):
 		interest_lines.append(line)
@@ -271,6 +287,10 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## The player's own full-screen effect layer. Null in headless tests that build
 ## a bare Player, so every caller must guard.
 @export var screen_effects: ScreenEffects
+## The one-line text layer (checkpoint saves). Assigned by
+## tools/player_builder.gd; optional so a hand-built test player without one
+## simply stays silent.
+@export var notice: Notice
 
 ## The visible character body to attach under BodyRoot at runtime, or null
 ## for none. Deliberately NOT wired by tools/build_player_scene.gd -- see

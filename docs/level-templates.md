@@ -132,3 +132,25 @@ right node names. Run it (along with everything else) via
 
 The collision volume is built along the curve at runtime; do not add one by
 hand. The cable has no mesh yet — F12 draws it in play.
+
+## Placing a checkpoint
+
+1. Add Node → `Checkpoint` (an `Area3D`; the class comes from
+   `scripts/level/checkpoint.gd`).
+2. Give it any `CollisionShape3D` children — the trigger is whatever shape
+   you build, and walking into it saves the respawn.
+3. Aim the node: the player wakes up with their FEET at its origin, facing
+   its -Z. The editor draws exactly that -- a green capsule standing on the
+   node with an arrow -- and the node keeps itself level (yaw only), so
+   "Align Transform with View" from any camera angle just works. Leave a
+   small air gap under the origin rather than sinking it into the floor.
+4. `display_name` makes the save announce itself -- 「检查点 <名字> 已保存」
+   -- shown only when the active respawn actually changes. Leave it empty
+   for a silent checkpoint.
+
+Deaths and a TAP of R both respawn at the last touched checkpoint; with none
+touched yet, the level's own `SpawnPoint` is used. HOLDING R for a second
+before release forgets the checkpoint and returns to the SpawnPoint (debug).
+The SpawnPoint wears the same preview in purple -- note its capsule hangs
+BELOW the marker: spawn markers were always placed at the body's centre
+height, and existing levels keep that convention.

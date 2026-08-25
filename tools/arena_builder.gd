@@ -205,6 +205,9 @@ func build() -> Node3D:
 
 	var spawn := Marker3D.new()
 	spawn.name = "SpawnPoint"
+	# spawn_point.gd is editor-only (@tool preview, purple twin of the
+	# Checkpoint one); a strict no-op at runtime and in this headless build.
+	spawn.set_script(load("res://scripts/level/spawn_point.gd"))
 	spawn.position = Vector3(0.0, 1.0, 0.0)
 	_attach(_root, spawn)
 

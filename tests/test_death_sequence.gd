@@ -435,3 +435,31 @@ func test_the_respawn_stays_covered_and_locked_for_a_beat() -> void:
 	sequence.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_a_cover_respawn_fires_its_callback_under_full_black() -> void:
+	# The R-hold checkpoint clear rides the same curtain as a death respawn:
+	# fade to black, THEN the reset, then the held cover and the lift.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	await step(10)
+	var player: Player = world["player"]
+	var sequence := DeathSequence.new()
+	get_tree().root.add_child(sequence)
+	var tint_at_reset := [-1.0]
+	sequence.cover_respawn(player, func() -> void:
+		tint_at_reset[0] = player.screen_effects.tint_amount
+		# What Arena's reset_player() does to the states the cover re-asserts.
+		player.reset_state()
+		player.screen_effects.set_tint(player.screen_effects.tint_color(), 0.0))
+	assert_true(player.is_input_locked(), "the falling curtain left input open")
+	await step(int(DeathSequence.COVER_FADE * 60.0) + 3)
+	assert_almost_eq(tint_at_reset[0], 1.0, 0.1,
+		"the callback did not run under full black (tint %.2f)" % tint_at_reset[0])
+	assert_true(player.is_input_locked(), "input opened the instant of the respawn")
+	await step(int((DeathSequence.RESPAWN_COVER + DeathSequence.COVER_FADE) * 60.0) + 5)
+	assert_almost_eq(player.screen_effects.tint_amount, 0.0, 0.01,
+		"the cover never lifted")
+	assert_false(player.is_input_locked(), "the cover never gave the input back")
+	sequence.queue_free()
+	TestWorld.teardown(world)
