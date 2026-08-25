@@ -68,6 +68,16 @@ var pending_ledge: Dictionary = {}
 ## probe -- 05 §5.6.5: "凡是「沿着一条线交互」的动作，一律有兴趣点".
 var interest_lines: Array[InterestLine] = []
 
+## The checkpoint the next respawn happens at, or null for the level's own
+## spawn point. LAST TOUCHED WINS -- ✅ the owner noclip-tested the original:
+## flying back and suiciding still respawns at the last one, so a loop's
+## apparent nearest-point behaviour is just re-touching (see Checkpoint).
+## Survives deaths and resets by design.
+var active_checkpoint: Checkpoint = null
+
+func touch_checkpoint(checkpoint: Checkpoint) -> void:
+	active_checkpoint = checkpoint
+
 func enter_interest_line(line: InterestLine) -> void:
 	if not interest_lines.has(line):
 		interest_lines.append(line)

@@ -132,3 +132,17 @@ right node names. Run it (along with everything else) via
 
 The collision volume is built along the curve at runtime; do not add one by
 hand. The cable has no mesh yet — F12 draws it in play.
+
+## Placing a checkpoint
+
+1. Add Node → `Checkpoint` (an `Area3D`; the class comes from
+   `scripts/level/checkpoint.gd`).
+2. Give it any `CollisionShape3D` children — the trigger is whatever shape
+   you build, and walking into it saves the respawn.
+3. Aim the node: the player wakes up at its origin facing its -Z.
+4. No configuration: the last checkpoint walked through is the respawn.
+   Looping routes need nothing special -- running the loop again walks back
+   into the earlier triggers, which re-activates them.
+
+Deaths and the R key both respawn at the last touched checkpoint; with none
+touched yet, the level's own `SpawnPoint` is used.

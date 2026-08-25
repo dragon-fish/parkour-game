@@ -252,8 +252,16 @@ func reset_player() -> void:
 	if player.screen_effects != null:
 		player.screen_effects.set_tint(player.screen_effects.tint_color(), 0.0)
 	player.velocity = Vector3.ZERO
-	player.global_position = spawn_point.global_position
-	player.rotation = Vector3.ZERO
+	# The last-touched checkpoint outranks the level's spawn point --
+	# position and facing both. Wake up where the trigger stands, looking
+	# down its -Z.
+	var checkpoint: Checkpoint = player.active_checkpoint
+	if checkpoint != null and is_instance_valid(checkpoint):
+		player.global_position = checkpoint.global_position
+		player.rotation = Vector3(0.0, checkpoint.global_rotation.y, 0.0)
+	else:
+		player.global_position = spawn_point.global_position
+		player.rotation = Vector3.ZERO
 	player.reset_state()
 	if player.camera_rig != null:
 		player.camera_rig.reset_state()
