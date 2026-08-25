@@ -153,9 +153,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# The model leans along the chain -- ✅ the owner, on how ME reads
 	# amplitude: "主要是靠镜头里可以看到自己身体来判断." The camera is NOT
 	# pitched (ME does not sync the view to the swing); Player smooths the
-	# lean on and off. Sign eyeballed -- flip model_pitch_follow if the legs
-	# trail instead of leading.
-	player.set_swing_pitch_target(-_theta * cfg.model_pitch_follow)
+	# lean on and off. Sign fixed by the owner's eyes ("pitch写反了") -- the
+	# first guess had the legs trailing.
+	player.set_swing_pitch_target(_theta * cfg.model_pitch_follow)
 	return KEEP
 
 func exit() -> void:
