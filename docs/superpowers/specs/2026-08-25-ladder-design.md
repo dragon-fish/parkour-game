@@ -142,6 +142,29 @@ Zipline / Swing 各自重复的公共件抽到 `LineMove extends Move`：
 沿用家族做法：SWING/ZIPLINE 式的手臂位——MVP 用现有 gate 通道挂一个攀爬位
 （无专用动画就先用 Grab 系的静态位），IK 手贴梯细化排入 feel-backlog。
 
+## 实现落地（as-built）
+
+以下四点是实现阶段相对原计划的偏离，均经控制者确认接受：
+
+- `check_for_ladder` 挂在 `move_config.gd`（`MoveConfig` 基类）上，不是计划
+  设想的某个 `airborne_config.gd`——仓库里根本没有这样一个中间类，
+  `FallingConfig`/`JumpConfig` 都直接 `extends MoveConfig`，旗标只能落在
+  两者共同的基类上（默认 `false`，两个子类各自打开）。
+- `LadderConfig` 比上面「配置」一节列出的旋钮多两个：`stand_off`（0.4，
+  攀爬时胶囊中心离线正面的站位距离——不设的话胶囊中心就贴在梯子所在的
+  墙面上，会穿模）与 `snap_cone_dot`（0.7，快捷吸附一节里内联的 45°
+  瞄准锥门槛，提成了旋钮而不是写死的常数）。二者都是实现必需，不是
+  设计遗漏。
+- 顶端出梯的移交状态是 `WALKING`，不是字面意义上的 "GROUNDED"——`Move`
+  的常量表里从来没有 `GROUNDED` 这个名字。落地点未经胶囊路径的碰撞验证
+  （只是一次探测得到的落点），所以移交后不直接声明 grounded，而是让
+  `WalkingMove` 自己下一 tick 的地面吸附来做真正的验证，与 GrabMove 的
+  mantle 收尾同一套道理。
+- 磁吸淡入（`fade_in_time` 区间内）仍是直接写 `global_position`，只有淡入
+  结束后的常规攀爬才经 `slide_to()` 做碰撞检测——沿用 Task 3 给整个
+  "沿一条线" 家族定的规则：磁吸本身的拉力不该被中途蹭到的几何体打断，
+  碰撞保底只兜住已经吸附上、稳定攀爬的阶段。
+
 ## 待作者 ME 实测
 
 爬梯速度；视线跳出的速度/距离；快捷吸附的最大触发距离；顶端翻越的时长

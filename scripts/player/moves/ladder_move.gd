@@ -168,10 +168,21 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 func exit() -> void:
 	note_left(cfg.same_line_redo_time)
+	# Unconditional, mirroring GrabMove.exit()'s own reset of the same field:
+	# asking for the clip's hip-lift back when it was never cancelled costs
+	# nothing, and a carry cut short by something else grabbing the body
+	# still needs the gate released.
+	player.set_clip_lift_cancelled(false)
 
 ## Arc length along the line, metres. Read by the HUD and by tests.
 func climbing_offset() -> float:
 	return _offset
+
+## Whether the top-exit scripted carry (Task 7) is under way. Exposed for the
+## same reason GrabMove.is_mantling() is: CharacterAnimator asks from outside
+## rather than LadderMove pushing an event in.
+func is_top_exiting() -> bool:
+	return _top_exiting
 
 ## Which ladder a directional jump-off (AD+space) would snap to instead of
 ## just launching off this one, or null when there is nothing to snap to.
@@ -307,6 +318,12 @@ func _begin_top_exit(deck_position: Vector3) -> StringName:
 	_top_exit.player = player
 	_top_exit.begin(player.global_position, landing, cfg.top_exit_time)
 	_top_exiting = true
+	# ✅ THE SPEC: the carry plays ClimbUp_1m (CharacterAnimator._route()'s
+	# Move.LADDER arm). The scripted arc already supplies the whole vertical
+	# travel, so the clip's own baked hip-lift must not stack on top of it --
+	# the SAME gate GrabMove arms right before `_mantling = true`
+	# (grab_move.gd, next to its own ClimbUp_2m note). Released in exit().
+	player.set_clip_lift_cancelled(true)
 	return KEEP
 
 ## The fallback camera rise for a bare capsule with no head bone to follow --

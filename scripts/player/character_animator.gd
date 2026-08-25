@@ -850,6 +850,23 @@ func _target_animation() -> StringName:
 			# closest honest two-hands-overhead pose. A real swing clip and
 			# hands-on-bar IK are known gaps (spec 2026-08-25 §7).
 			return _first_available([&"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
+		Move.LADDER:
+			# ✅ THE SPEC (2026-08-25-ladder-design.md §攀爬), verbatim: the
+			# top exit "动画先用 ClimbUp_1m 同款" -- the same clip GrabMove's
+			# mantle plays, requested through the same gate
+			# (Player.set_clip_lift_cancelled(), armed in
+			# LadderMove._begin_top_exit()). Told apart from the ordinary
+			# climb via LadderMove.is_top_exiting(), the same way GRAB's own
+			# mantle phase is told apart above via is_mantling().
+			var ladder_move = player.move_manager.move_for(Move.LADDER)
+			if ladder_move != null and ladder_move.is_top_exiting():
+				return _first_available([&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
+					&"Jump_Start", &"jump", &"idle"])
+			# The packs carry no ladder-climb cycle; the ledge-hang idle is
+			# the closest honest two-hands-in-front pose. A real climb loop
+			# and hand IK on the rungs are known gaps (spec 2026-08-25
+			# §攀爬).
+			return _first_available([&"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 		Move.SLIDE:
 			# A GENUINE MATCH: UAL2 ships Slide_Start / Slide / Slide_Exit. This
 			# case is the middle one only -- the two ends are one-shots, armed

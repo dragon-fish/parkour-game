@@ -133,6 +133,36 @@ right node names. Run it (along with everything else) via
 The collision volume is built along the curve at runtime; do not add one by
 hand. The cable has no mesh yet — F12 draws it in play.
 
+## Placing a ladder
+
+A ladder (or a vertical pipe — same mechanic, see the design spec's
+"水管和梯子性质相同" ruling) is the same `InterestLine` node as a zipline,
+just drawn and aimed differently.
+
+1. Add Node → `InterestLine`, same as any interest line.
+2. Draw the curve **vertically**: the bottom control point at the foot of the
+   ladder, the top one at the top rung. The curve is the climb's own centre
+   line, not an offset — `LadderConfig.stand_off` (0.4 m) is what keeps the
+   capsule's centre off the wall the ladder is mounted to, so the curve
+   itself should hug the rungs.
+3. Set `kind = LADDER`.
+4. Aim the node's **-Z toward the side the player stands on** to climb it —
+   the same facing convention `Checkpoint` uses. Ladders have an authored
+   front: entry only works from that half-space (grounded, airborne, and
+   wallrunning bodies alike), and a body passing the volume from the back
+   is not caught. "Align Rotation with View" from where the player would
+   stand, facing the ladder, places this correctly.
+5. The line's two ends may be sunk into the surrounding geometry (a rung
+   buried in the floor slab, a top point poking past the deck) without
+   causing a bug — the steady climb is collision-checked (`slide_to()`), so
+   the body stops at the real floor or ceiling rather than clipping through
+   it or overshooting past a line end left a little generous. Only the brief
+   magnet fade-in on first catch is a raw position write; see
+   `ladder_move.gd`'s own header note for why.
+
+The collision volume is built along the curve at runtime, same as any other
+interest line — do not add one by hand.
+
 ## Placing a checkpoint
 
 1. Add Node → `Checkpoint` (an `Area3D`; the class comes from
