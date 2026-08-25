@@ -97,3 +97,21 @@ func test_a_named_checkpoint_announces_and_an_unnamed_one_stays_quiet() -> void:
 	assert_eq(player.active_checkpoint, named, "test setup: the named touch did not register")
 	assert_true(notice.showing(), "a named checkpoint showed nothing")
 	assert_true(notice.text().contains("天台"), "the line does not carry the name: %s" % notice.text())
+
+func test_a_dying_body_saves_nothing() -> void:
+	# ✅ THE OWNER: jumping off a roof onto a checkpoint turned the death
+	# into a teleport. Reached-alive is what a checkpoint records.
+	var player: Player = await _standing_player()
+	player.set_dying(true)
+	var checkpoint := _checkpoint(player.global_position)
+	await step(3)
+	assert_null(player.active_checkpoint, "a dying body saved a checkpoint")
+	player.set_dying(false)
+	# Alive again in the same volume: Area3D only signals on ENTRY, so
+	# re-touching needs a fresh entry -- step out and back in.
+	checkpoint.position += Vector3(0.0, 0.0, 40.0)
+	await step(2)
+	checkpoint.position = player.global_position
+	await step(3)
+	assert_eq(player.active_checkpoint, checkpoint,
+		"the same checkpoint refused an honest, living touch afterwards")

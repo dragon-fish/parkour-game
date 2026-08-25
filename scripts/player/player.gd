@@ -76,6 +76,13 @@ var interest_lines: Array[InterestLine] = []
 var active_checkpoint: Checkpoint = null
 
 func touch_checkpoint(checkpoint: Checkpoint) -> void:
+	# THE DEAD DON'T SAVE. A checkpoint records "reached alive and in
+	# control": a fatal dive that clips the volume on the way to the ragdoll
+	# must not turn a death into a teleport -- ✅ the owner found the exploit
+	# ("从很高的地方直接跳下去跳关"). Landing on one ALIVE still counts,
+	# which is the shortcut a parkour game should reward.
+	if _dying or move_manager.current_name == Move.FALL_UNCONTROLLED:
+		return
 	# The line only fires when the active respawn actually CHANGES --
 	# pacing back and forth through the same gate stays quiet -- and only
 	# for a checkpoint the level author gave a name.
