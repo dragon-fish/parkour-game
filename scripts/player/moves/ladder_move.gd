@@ -16,6 +16,9 @@ extends LineMove
 ## Arc length along the line, metres. Read by the HUD/tests via
 ## climbing_offset().
 var _offset: float = 0.0
+## -1 (descending), 0 (still), +1 (ascending) -- what the last tick's W/S
+## actually asked for; the animator picks Climb_Up/Down/Idle off it.
+var _climb_dir: int = 0
 
 ## Task 7's top exit: a scripted carry off the top of the line onto a
 ## standable deck behind it, driven by a COMPOSED ScriptedMove rather than an
@@ -61,6 +64,7 @@ func enter(_previous: StringName) -> void:
 		_aborted = true
 		return
 	_offset = _line.closest_offset(player.global_position)
+	_climb_dir = 0
 	# The body faces the ladder -- i.e. looks toward -front, the wall side.
 	var f: Vector3 = _line.front()
 	_target_yaw = atan2(f.x, f.z)
@@ -155,6 +159,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _offset <= 0.01 and input.move.y < 0.0:
 		return FALLING
 
+	_climb_dir = int(signf(input.move.y)) if absf(input.move.y) > 0.1 else 0
 	_offset = clampf(_offset + input.move.y * cfg.climb_speed * delta, 0.0, _line.length())
 	var s: Dictionary = _line.sample(_offset)
 	var hang: Vector3 = s["position"] + _line.front() * cfg.stand_off
@@ -197,6 +202,9 @@ func climbing_offset() -> float:
 ## Whether the top-exit scripted carry (Task 7) is under way. Exposed for the
 ## same reason GrabMove.is_mantling() is: CharacterAnimator asks from outside
 ## rather than LadderMove pushing an event in.
+func climb_direction() -> int:
+	return _climb_dir
+
 func is_top_exiting() -> bool:
 	return _top_exiting
 

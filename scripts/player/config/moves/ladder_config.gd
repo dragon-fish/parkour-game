@@ -14,6 +14,10 @@ extends MoveConfig
 # marker. The owner dials all of these once footage exists.
 
 func _init() -> void:
+	# Both hands are on the rungs: the body stays squared to the ladder and
+	# only the head turns -- ✅ the owner: "得锁人物模型，只允许转头，和grab一样."
+	# See MoveConfig.freeze_visual_yaw.
+	freeze_visual_yaw = true
 	# Per-LINE cooldown (Player.note_line_left), same reasoning the rest of
 	# the "along a line" family settled on: release one ladder, catch the
 	# next at once -- see same_line_redo_time below.

@@ -864,10 +864,15 @@ func _target_animation() -> StringName:
 			if ladder_move != null and ladder_move.is_top_exiting():
 				return _first_available([&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
 					&"Jump_Start", &"jump", &"idle"])
-			# The packs carry no ladder-climb cycle; the ledge-hang idle is
-			# the closest honest two-hands-in-front pose. A real climb loop
-			# and hand IK on the rungs are known gaps (spec 2026-08-25
-			# §攀爬).
+			# Direction-aware: the FULL library carries Climb_Up/Climb_Down
+			# cycles; the free tier falls back to the hanging idle, which is
+			# the closest honest two-hands-in-front pose. Hand IK on the
+			# rungs is a known gap (spec 2026-08-25 §攀爬).
+			var dir: int = ladder_move.climb_direction() if ladder_move != null else 0
+			if dir > 0:
+				return _first_available([&"Climb_Up", &"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
+			if dir < 0:
+				return _first_available([&"Climb_Down", &"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 			return _first_available([&"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 		Move.SLIDE:
 			# A GENUINE MATCH: UAL2 ships Slide_Start / Slide / Slide_Exit. This
