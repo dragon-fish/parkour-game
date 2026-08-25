@@ -10,6 +10,10 @@ extends Node3D
 ## Leave empty to create a fresh MovementConfig with default values at runtime.
 @export var config: MovementConfig
 
+## Holding R this long before release clears the active checkpoint (debug).
+const CHECKPOINT_CLEAR_HOLD := 1.0
+var _r_pressed_at_ms: int = -1
+
 ## Re-entrancy guard for reset_player(); see the comment above that function.
 var _resetting_physics: bool = false
 
@@ -180,10 +184,21 @@ func _load_sandbox() -> void:
 	add_child(sandbox)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_R:
+	if event is InputEventKey and not event.echo and event.physical_keycode == KEY_R:
+		# Judged on RELEASE so one key carries two gestures (✅ the owner's
+		# keyup idea): a tap respawns as always, a long hold FORGETS the
+		# active checkpoint first and goes back to the level's own spawn.
+		if event.pressed:
+			_r_pressed_at_ms = Time.get_ticks_msec()
+		elif _r_pressed_at_ms >= 0:
+			var held: float = float(Time.get_ticks_msec() - _r_pressed_at_ms) / 1000.0
+			_r_pressed_at_ms = -1
+			if held >= CHECKPOINT_CLEAR_HOLD and player != null:
+				player.active_checkpoint = null
 			reset_player()
-		elif event.physical_keycode == KEY_K:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_K:
 			# DEBUG. Routed through died_from_fall rather than reset_player()
 			# so it exercises the real chain -- cutscene, then respawn --
 			# which is the thing worth being able to trigger on demand.
@@ -257,7 +272,13 @@ func reset_player() -> void:
 	# down its -Z.
 	var checkpoint: Checkpoint = player.active_checkpoint
 	if checkpoint != null and is_instance_valid(checkpoint):
-		player.global_position = checkpoint.global_position
+		# FEET at the checkpoint's origin -- the body origin is the capsule
+		# CENTRE, 0.9 m above the feet. This is the semantic the editor
+		# preview sells (a capsule standing ON the node), and ✅ the owner hit
+		# the mismatch first try: placed the capsule bottom 0.1 m off the
+		# floor and respawned half-buried. SpawnPoint keeps the older
+		# centre-at-origin convention; see spawn_point.gd's warning.
+		player.global_position = checkpoint.global_position + Vector3.UP * 0.9
 		player.rotation = Vector3(0.0, checkpoint.global_rotation.y, 0.0)
 	else:
 		player.global_position = spawn_point.global_position
