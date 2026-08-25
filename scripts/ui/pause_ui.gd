@@ -2,9 +2,10 @@ extends CanvasLayer
 
 # Global pause menu -- every level gets this for free via the autoload,
 # debug whiteboxes included (the spec's "自动加载意味着 debug_levels 白盒里也
-# 免费获得暂停菜单"). Esc toggles pause; 设置 is a placeholder until Task 4
-# wires the settings page; 回主菜单 targets Task 5's scene, guarded so it
-# simply does nothing until that scene exists.
+# 免费获得暂停菜单"). Esc toggles pause, or backs out of the settings page
+# when that is what is currently shown; 设置 pushes MeSettingsMenu in place of
+# the menu list; 回主菜单 targets Task 5's scene, guarded so it simply does
+# nothing until that scene exists.
 #
 # No class_name: this script's only identity is the autoload singleton name
 # "PauseUi" project.godot binds it to -- a class_name of the same name would
@@ -14,6 +15,11 @@ const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 
 var _backdrop: ColorRect
 var _menu_list: MeMenuList
+var _settings_menu: MeSettingsMenu
+## Whether the settings page (rather than the menu list) is the currently
+## shown sub-page. Reset to false whenever the whole layer hides, so a fresh
+## pause always opens back on the list -- see _set_shown().
+var _showing_settings: bool = false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -44,6 +50,10 @@ func _build_ui() -> void:
 	_menu_list.set_items(["继续", "设置", "回主菜单"])
 	_menu_list.chosen.connect(_on_chosen)
 
+	_settings_menu = MeSettingsMenu.new()
+	add_child(_settings_menu)
+	_settings_menu.closed.connect(_on_settings_closed)
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey):
 		return
@@ -53,6 +63,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key_event.physical_keycode != KEY_ESCAPE:
 		return
 	if _is_main_menu_scene():
+		return
+	# Deliberately checked here rather than left to relying on MeSettingsMenu
+	# consuming the event first via child-before-parent input propagation --
+	# this branch is the single, deterministic source of truth for what Esc
+	# means, testable by calling _unhandled_input() directly exactly like the
+	# toggle_pause() path below already is.
+	if _showing_settings:
+		_settings_menu._on_cancel_pressed()
+		get_viewport().set_input_as_handled()
 		return
 	toggle_pause()
 	get_viewport().set_input_as_handled()
@@ -102,7 +121,10 @@ func _resume() -> void:
 func _set_shown(on: bool) -> void:
 	visible = on
 	_backdrop.visible = on
-	_menu_list.visible = on
+	if not on:
+		_showing_settings = false
+	_menu_list.visible = on and not _showing_settings
+	_settings_menu.visible = on and _showing_settings
 
 ## Duck-typed against Arena.capture_mouse (scripts/level/arena.gd) -- a level
 ## that does not export the property, or no current scene at all, gets the
@@ -120,10 +142,27 @@ func _on_chosen(index: int) -> void:
 		0:
 			_resume()
 		1:
-			# Placeholder: Task 4 wires the settings page as a sub-page push.
-			pass
+			_show_settings()
 		2:
 			_go_to_main_menu()
+
+## Pushes the settings page in place of the menu list. reload() re-reads
+## SettingsStore fresh, so this always starts from what is actually on disk
+## rather than whatever a previous, already-cancelled visit left in memory.
+func _show_settings() -> void:
+	_showing_settings = true
+	_settings_menu.reload()
+	_menu_list.visible = false
+	_settings_menu.visible = true
+
+## Both 保存设置 and 取消 route here via MeSettingsMenu.closed -- pop back to
+## the menu list. Guarded on this layer's own `visible` (not unconditionally
+## true) since it doubles as the Esc-while-in-settings path, and _set_shown()
+## is the only other place `visible` gets written.
+func _on_settings_closed() -> void:
+	_showing_settings = false
+	_settings_menu.visible = false
+	_menu_list.visible = visible
 
 func _go_to_main_menu() -> void:
 	if not ResourceLoader.exists(MAIN_MENU_SCENE):

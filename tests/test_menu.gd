@@ -219,3 +219,50 @@ func test_player_setup_applies_saved_camera_sensitivity() -> void:
 		"Player.setup() did not apply the saved sensitivity via SettingsStore")
 
 	TestWorld.teardown(world)
+
+
+# ---------------------------------------------------------------------------
+# MeSettingsMenu (Task 4 of the menu feature): edits happen on a working copy
+# until 保存设置 writes it to SettingsStore -- 取消 discards it, 默认 resets
+# the in-memory copy (and every control) without ever touching disk. Driven
+# directly through the handler methods rather than synthesized HSlider drags/
+# button clicks, matching this task's brief ("控件操作直接调其 set_value/模拟
+# signal"). Hermetic like the SettingsStore tests above: before_each/
+# after_each already clear user://settings.cfg around every test in this file.
+# ---------------------------------------------------------------------------
+
+func test_settings_menu_save_persists_the_changed_value() -> void:
+	var menu := MeSettingsMenu.new()
+	add_child_autofree(menu)
+	await step(1)
+
+	menu._on_slider_changed(0.0077, "sensitivity")
+	menu._on_save_pressed()
+
+	var loaded := SettingsStore.load_settings()
+	assert_eq(loaded.sensitivity, 0.0077, "保存设置 did not persist the changed sensitivity")
+
+func test_settings_menu_cancel_discards_the_change() -> void:
+	var menu := MeSettingsMenu.new()
+	add_child_autofree(menu)
+	await step(1)
+
+	menu._on_slider_changed(0.0077, "sensitivity")
+	menu._on_cancel_pressed()
+
+	assert_false(FileAccess.file_exists(SettingsStore.PATH), "取消 must not write settings.cfg")
+	assert_eq(SettingsStore.load_settings().sensitivity, SettingsStore.defaults().sensitivity, \
+		"取消 must not leave the cancelled change behind")
+
+func test_settings_menu_default_resets_controls_without_saving() -> void:
+	var menu := MeSettingsMenu.new()
+	add_child_autofree(menu)
+	await step(1)
+
+	menu._on_slider_changed(0.0077, "sensitivity")
+	menu._on_default_pressed()
+
+	var slider: HSlider = menu._sliders["sensitivity"]
+	assert_almost_eq(slider.value, SettingsStore.defaults().sensitivity, 0.00001, \
+		"默认 did not reset the sensitivity slider's displayed value")
+	assert_false(FileAccess.file_exists(SettingsStore.PATH), "默认 must not write settings.cfg")
