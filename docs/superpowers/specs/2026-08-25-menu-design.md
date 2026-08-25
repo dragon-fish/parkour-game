@@ -29,9 +29,21 @@
 三个场景 + 一个自动加载：
 
 1. **`scenes/ui/main_menu.tscn`**（新项目入口场景，project.godot 的
-   main_scene 指向它）：左侧红色纵列（参考图 4 构图，右侧留白给以后的
-   3D 背景，v1 纯白背景即可）。项：**开始**（load main.tscn；以后换成
-   关卡选择）、**设置**、**退出**
+   main_scene 指向它）——**构图参照鹰角《终末地》标题屏（✅ 作者补图）、
+   配色仍是 ME**：
+   - 近白背景
+   - **地板点阵**：下半屏一层透视点阵网格，各点亮度**随机律动**
+     （canvas shader：透视投影的网格采样 + 按格点哈希的相位脉动；
+     uniform：间距、消失点高度、脉动速度、强度）
+   - **中心主角剪影**：SubViewport 渲染玩家模型**背对镜头播放行走循环**
+     （UAL Walk），材质整体 override 成 unshaded 纯色——用**品牌红**，
+     正好是 ME 加载页红剪影的活化版，两家风格在此合流。模型来源沿用
+     Arena 的 BODY_PROFILE/local.cfg 运行时加载模式（仓库无模型时剪影
+     优雅缺席，菜单其余照常）
+   - 左侧仍是 ME 红色纵列：**开始**（load main.tscn；以后换关卡选择）、
+     **设置**、**退出**
+   - 标题字：项目名粗体黑字 + 一条红色横向 accent 条（Endfield 黄条的
+     红色版），v1 就是两个 Label + ColorRect
 2. **`scenes/ui/pause_menu.tscn` + 自动加载 `PauseUi`**（CanvasLayer，
    `process_mode = ALWAYS`）：任何关卡里按 Esc → `get_tree().paused = true`
    + backdrop + 居中红列（参考图 1 构图）：**继续**、**设置**、
