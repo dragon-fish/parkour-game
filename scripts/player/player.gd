@@ -1906,11 +1906,16 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	var body_root := get_node_or_null("BodyRoot") as Node3D
 	if body_root == null:
 		return
-	# The swing's lean, smoothed both ways so leaving the bar stands the body
-	# back up over a beat instead of snapping it. Applied before the early
-	# returns below -- the lean is orthogonal to every yaw decision.
-	body_root.rotation.x = lerpf(body_root.rotation.x, _swing_pitch_target,
-		1.0 - exp(-delta / 0.08))
+	# The swing's lean. HARD-TRACKED while swinging -- the body and the chain
+	# are rigid geometry, and any smoothing here reads as the model trailing
+	# the swing (✅ the owner: "模型的摇晃角度好像会滞后很多" at the first
+	# cut's 0.08 s ease, ~16 degrees behind at the omega cap). The ease is
+	# only for AFTER letting go, standing the body back up over a beat.
+	if move_manager != null and move_manager.current_name == Move.SWING:
+		body_root.rotation.x = _swing_pitch_target
+	else:
+		body_root.rotation.x = lerpf(body_root.rotation.x, _swing_pitch_target,
+			1.0 - exp(-delta / 0.08))
 	# A MOVE CAN FREEZE THE MODEL IN EITHER VIEW. Slide and Grab do -- see
 	# MoveConfig.freeze_visual_yaw -- and they are not subject to the
 	# third-person rule below, because the reason for that rule does not apply:

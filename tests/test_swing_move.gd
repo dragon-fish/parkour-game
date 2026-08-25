@@ -247,7 +247,9 @@ func test_the_model_leans_with_the_swing_and_stands_back_up() -> void:
 			break
 	assert_true(sampled, "test setup: the pendulum never reached 0.1 rad")
 	var expected: float = move.swing_theta() * player.config.swing.model_pitch_follow
-	assert_almost_eq(body_root.rotation.x, expected, 0.12,
+	# TIGHT: while swinging the lean is hard-tracked, not eased -- the only
+	# slack allowed is one tick of integration offset.
+	assert_almost_eq(body_root.rotation.x, expected, 0.03,
 		"the model lean %.2f does not track the chain %.2f" % [body_root.rotation.x, expected])
 	var input: ScriptedInputSource = _world["input"]
 	input.press_crouch()
