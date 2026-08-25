@@ -10,7 +10,7 @@
 
   "clip_offsets": {
     "LiftAir_Fall":        [[0, 0.1,   0], [0, 0, 0]],
-    "LiftAir_Fall_Impact": [[0, 0.099, 0], [0, 0, 0]],
+    "LiftAir_Fall_Impact": [[0, 0.1,   0], [0, 0, 0]],
     "StepUp":              [[0, 0,  -0.2], [0, 0, 0]],
     "WallRun_L":           [[0.7, 0,   0], [0, 0, 0]],
     "WallRun_R":           [[-0.7, 0,  0], [0, 0, 0]]

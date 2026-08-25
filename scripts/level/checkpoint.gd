@@ -45,4 +45,3 @@ func _on_body_entered(body: Node3D) -> void:
 	# whoever can listen, and cares nothing for who else wanders in.
 	if body.has_method("touch_checkpoint"):
 		body.touch_checkpoint(self)
-
