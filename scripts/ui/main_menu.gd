@@ -856,8 +856,10 @@ func _on_start_pressed() -> void:
 	if _loading:
 		return
 	# Headless keeps the old synchronous seam (tests drive it; there is no
-	# show to play without a renderer).
-	if DisplayServer.get_name() in ["headless", "embedded"]:
+	# show to play without a renderer). ONLY headless -- the editor-embedded
+	# window renders fine, and lumping it in here sent the owner straight
+	# back to the frozen switch this feature exists to kill.
+	if DisplayServer.get_name() == "headless":
 		_change_scene.call(MAIN_SCENE)
 		return
 	_loading = true

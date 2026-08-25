@@ -279,8 +279,8 @@ func _go_to_main_menu() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_pending_scene_change = true
 	# ✅ The owner's convention: normal transitions are WHITE. Headless keeps
-	# the bare seam for the tests.
-	if DisplayServer.get_name() in ["headless", "embedded"]:
+	# the bare seam for the tests (embedded renders fine and gets the show).
+	if DisplayServer.get_name() == "headless":
 		_change_scene.call(MAIN_MENU_SCENE)
 		call_deferred("_clear_pending_scene_change")
 		return
