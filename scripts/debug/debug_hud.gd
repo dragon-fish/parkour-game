@@ -97,6 +97,7 @@ func _process(delta: float) -> void:
 		"move       %s" % player.move_manager.current_name,
 		"scripted   %s" % _scripted_line(),
 		"zip        %s" % _zip_line(),
+		"swing      %s" % _swing_line(),
 		"speed      h %.2f  v %.2f m/s"
 			% [player.horizontal_speed(), player.velocity.y],
 		# ABSOLUTE, world-space: the body's own facing and the eye's own pitch,
@@ -293,3 +294,17 @@ func _zip_line() -> String:
 	return "%.1f / %.1f m   %.2f m/s (%.0f km/h)   a %.1f" % [
 		zip.ride_offset(), zip.line().length(),
 		zip.ride_speed(), zip.ride_speed() * 3.6, zip.ride_acceleration()]
+
+## The pendulum, or "-" when not hanging: angle, angular velocity, tangential
+## speed, and whether the exit-jump window is open right now.
+func _swing_line() -> String:
+	if player == null or player.move_manager == null \
+			or player.move_manager.current_name != Move.SWING:
+		return "-"
+	var move: SwingMove = player.move_manager.move_for(Move.SWING)
+	if move == null:
+		return "-"
+	return "th %+.0f deg  w %+.2f  v %.2f m/s  %s" % [
+		rad_to_deg(move.swing_theta()), move.swing_omega(),
+		absf(move.tangential_speed()),
+		"JUMP OPEN" if move.jump_window_open() else "closed"]

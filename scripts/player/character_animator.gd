@@ -845,6 +845,11 @@ func _target_animation() -> StringName:
 			# honest pose until contact IK gives the hands the cable -- the
 			# owner: "动画可以先不管，或者用 Jump + 手部 IK".
 			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"Idle", &"idle"])
+		Move.SWING:
+			# The packs carry no swing cycle; the ledge-hang idle is the
+			# closest honest two-hands-overhead pose. A real swing clip and
+			# hands-on-bar IK are known gaps (spec 2026-08-25 §7).
+			return _first_available([&"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 		Move.SLIDE:
 			# A GENUINE MATCH: UAL2 ships Slide_Start / Slide / Slide_Exit. This
 			# case is the middle one only -- the two ends are one-shots, armed
