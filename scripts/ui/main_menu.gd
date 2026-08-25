@@ -42,9 +42,7 @@ const RISE_TIME := 1.5
 ## (quadratic bezier through a sideways control point). Easing everywhere:
 ## cubic-bezier(0.65, 0, 0.35, 1) = TRANS_CUBIC / EASE_IN_OUT.
 const BODY_RISE_DELAY := 0.15
-const BODY_TURN_TIME := 2.2
 const BODY_STAND_BLEND := 1.5
-const CAM_ARC_SIDE := 0.45
 ## Ground-space dot flow per second while walking (✅ the owner: slower than
 ## the first guess, and the flow must FOLLOW the character's facing -- she
 ## walks screen-right in the opening, toward the lens after the turn).
@@ -64,17 +62,26 @@ const _DRIFT_BASE_Y := 0.0
 ## screen height. All framing is solved at runtime from the live skeleton
 ## (Head/Hips bones), so a different model reframes itself.
 const FRAME_FOV_DEG := 55.0
-const HEAD_X_FRAC := 0.45
+const HEAD_X_FRAC := 0.55
 const HEAD_Y_FRAC := 0.34
 const CLOSE_BODY_FRAC := 0.85
 const FAR_BODY_FRAC := 0.70
+## Where the standing walker sits horizontally in the settled view. The
+## column moved to the RIGHT (✅ the owner: sending her left-to-right would
+## cross the axis -- 越轴), so she keeps the LEFT: the centre of the open
+## field left of the column, ~37%.
+const FAR_X_FRAC := 0.37
 ## Skull above the Head bone, metres -- the bone sits at the neck end.
 const HEAD_TOP_PAD := 0.16
-## Yaw for the profile (facing screen right, camera on +Z looking -Z) and
-## the front view (facing the camera). Model forward is -Z after mounting,
-## the same convention the game body uses.
-const PROFILE_YAW_DEG := -90.0
+## The body NEVER rotates (✅ the owner: "让镜头转而不是角色模型和地板转").
+## It faces +Z world for the whole show (model forward is -Z after mount,
+## so yaw -180); the CAMERA orbits from her right side (azimuth 0 = profile,
+## head to screen right) around to her front (azimuth 90 = facing the lens),
+## and the floor pattern turns off the same azimuth -- one number, one
+## rotation, nothing to desync.
 const FRONT_YAW_DEG := -180.0
+const CLOSE_AZIMUTH_DEG := 180.0
+const FAR_AZIMUTH_DEG := 90.0
 ## Fallbacks when no skeleton is attached (numbers measured off the current
 ## local model; only used to aim an empty viewport, so precision is moot).
 const FALLBACK_CROUCH_HEAD := 0.82
@@ -102,9 +109,14 @@ var _silhouette: Node3D
 var _logo_mark: TextureRect
 var _mirror: TextureRect
 var _mirror_window: Control
-## Solved framing (see _solve_framing()): [0] close cam pos, [1] far cam pos.
-var _cam_close := Vector3(-0.1, 0.9, 1.1)
-var _cam_far := Vector3(0.0, 0.8, 2.3)
+## Solved framing parameters (see _solve_framing()/_apply_cam()).
+var _head_point := Vector3(0.0, 0.8, 0.0)
+var _body_centre := Vector3(0.0, 0.8, 0.0)
+var _d_close := 1.1
+var _d_far := 2.3
+## Live camera azimuth in degrees -- _apply_cam writes it, _process reads
+## it to turn the floor pattern.
+var _cam_azimuth_deg := 0.0
 ## Screen fraction of the character's feet line in the FAR framing -- where
 ## the mirror's fold sits.
 var _feet_screen_frac := 0.82
@@ -134,11 +146,12 @@ func _ready() -> void:
 	_build_ui()
 	_load_silhouette()
 	# The framing is solved off the LIVE skeleton pose, which only exists
-	# after the animation has actually been applied -- a frame or two in
-	# (the same lesson the crouch-measurement probe learned: reading bones
-	# before the frame loop returns the rest pose).
-	await get_tree().process_frame
-	await get_tree().process_frame
+	# once the animation has actually been applied -- the measurement probe
+	# needed FIVE frames before Crouch_Idle showed up in the bones, and two
+	# frames here quietly measured the standing rest pose instead (the exact
+	# trap this comment already warned about; six frames with margin now).
+	for i in 6:
+		await get_tree().process_frame
 	_solve_framing()
 	_frame_close()
 	resized.connect(_on_resized)
@@ -150,7 +163,7 @@ func _process(delta: float) -> void:
 	# The angle updates EVERY frame -- the ground visibly turns with the
 	# body even while the flow is still gated off; only the phase waits
 	# for the first steps.
-	var a: float = deg_to_rad(_silhouette_root.rotation_degrees.y - FRONT_YAW_DEG)
+	var a: float = deg_to_rad(_cam_azimuth_deg - FAR_AZIMUTH_DEG)
 	_floor_phase += FLOOR_SCROLL_SPEED * _floor_gain * delta
 	var mat := _floor.material as ShaderMaterial
 	mat.set_shader_parameter("flow_angle", a)
@@ -161,7 +174,7 @@ func _on_resized() -> void:
 	# the camera is currently meant to hold.
 	_solve_framing()
 	if not _entrance_active:
-		_silhouette_camera.position = _cam_far
+		_apply_cam(1.0)
 
 func _real_change_scene(path: String) -> void:
 	get_tree().change_scene_to_file(path)
@@ -229,12 +242,11 @@ func _build_viewport() -> void:
 	_viewport_container.add_child(_viewport)
 
 	_silhouette_root = Node3D.new()
-	_silhouette_root.rotation_degrees = Vector3(0.0, PROFILE_YAW_DEG, 0.0)
+	_silhouette_root.rotation_degrees = Vector3(0.0, FRONT_YAW_DEG, 0.0)
 	_viewport.add_child(_silhouette_root)
 
 	_silhouette_camera = Camera3D.new()
 	_silhouette_camera.fov = FRAME_FOV_DEG
-	_silhouette_camera.position = _cam_close
 	_viewport.add_child(_silhouette_camera)
 
 ## The hazy floor reflection (✅ the owner: "地板平整无暇，有朦胧的镜像效果"):
@@ -281,15 +293,18 @@ func _sync_mirror_layout() -> void:
 
 func _build_menu_list() -> void:
 	_menu_list = MeMenuList.new()
+	# ME-style full-height column on the RIGHT, with a breathing gap off the
+	# edge (✅ the owner: 菜单不要贴死右边) -- the character keeps the left,
+	# preserving the opening shot's axis.
 	_menu_list.custom_minimum_size = Vector2(420.0, 0.0)
-	_menu_list.anchor_left = 0.0
-	_menu_list.anchor_right = 0.0
-	_menu_list.anchor_top = 0.5
-	_menu_list.anchor_bottom = 0.5
-	_menu_list.offset_left = 90.0
-	_menu_list.offset_right = 90.0 + 420.0
-	_menu_list.offset_top = -90.0
-	_menu_list.offset_bottom = 90.0
+	_menu_list.anchor_left = 1.0
+	_menu_list.anchor_right = 1.0
+	_menu_list.anchor_top = 0.0
+	_menu_list.anchor_bottom = 1.0
+	_menu_list.offset_left = -480.0
+	_menu_list.offset_right = -60.0
+	_menu_list.offset_top = 0.0
+	_menu_list.offset_bottom = 0.0
 	add_child(_menu_list)
 	_menu_list.set_items(["开始", "设置", "退出"])
 	_menu_list.chosen.connect(_on_chosen)
@@ -489,40 +504,46 @@ func _solve_framing() -> void:
 		var head := skeleton.find_bone("Head")
 		var hips := skeleton.find_bone("Hips")
 		if head >= 0 and hips >= 0:
-			# Live pose = the crouch (Crouch_Idle is already playing);
-			# rest pose = standing, no need to play Idle just to measure.
 			crouch_head = (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin.y
 			crouch_hips = (skeleton.global_transform * skeleton.get_bone_global_pose(hips)).origin.y
 			stand_head = (skeleton.global_transform * skeleton.get_bone_global_rest(head)).origin.y
 	var tan_v := tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
-	var aspect: float = maxf(size.x, 1.0) / maxf(size.y, 1.0)
-	var tan_h := tan_v * aspect
-
-	# CLOSE: the crouched upper body (hips..head-top) spans CLOSE_BODY_FRAC
-	# of the screen; the head centre sits at (HEAD_X_FRAC, HEAD_Y_FRAC).
 	var upper: float = maxf(crouch_head + HEAD_TOP_PAD - crouch_hips, 0.2)
-	var d_close: float = upper / (CLOSE_BODY_FRAC * 2.0 * tan_v)
-	var ndc_x: float = (HEAD_X_FRAC - 0.5) * 2.0
-	var ndc_y: float = (0.5 - HEAD_Y_FRAC) * 2.0
-	_cam_close = Vector3(
-		0.0 - ndc_x * d_close * tan_h,
-		crouch_head - ndc_y * d_close * tan_v,
-		d_close)
-
-	# FAR: the standing body (feet..head-top) spans FAR_BODY_FRAC, centred.
+	_d_close = upper / (CLOSE_BODY_FRAC * 2.0 * tan_v)
+	_head_point = Vector3(0.0, crouch_head, 0.0)
 	var stature: float = maxf(stand_head + HEAD_TOP_PAD, 0.5)
-	var d_far: float = stature / (FAR_BODY_FRAC * 2.0 * tan_v)
-	_cam_far = Vector3(0.0, stature * 0.5, d_far)
-	# Where the feet (y = 0) land on screen in the far framing -- the
-	# mirror's fold line.
-	var feet_ndc: float = (0.0 - _cam_far.y) / (d_far * tan_v)
+	_d_far = stature / (FAR_BODY_FRAC * 2.0 * tan_v)
+	_body_centre = Vector3(0.0, stature * 0.5, 0.0)
+	var feet_ndc: float = (0.0 - _body_centre.y) / (_d_far * tan_v)
 	_feet_screen_frac = clampf(0.5 - feet_ndc * 0.5, 0.05, 0.95)
 	_sync_mirror_layout()
 
+## Places the camera for a blend factor t: 0 = the crouched close profile
+## (azimuth 0, head at the owner's screen fractions), 1 = the centred
+## full-body front view (azimuth 90). Everything interpolates through ONE
+## parameter, so the orbit, the pull-out and the framing shift are a single
+## continuous move -- and the floor reads the same azimuth.
+func _apply_cam(t: float) -> void:
+	var azimuth := deg_to_rad(lerpf(CLOSE_AZIMUTH_DEG, FAR_AZIMUTH_DEG, t))
+	_cam_azimuth_deg = rad_to_deg(azimuth)
+	var d := lerpf(_d_close, _d_far, t)
+	var target := _head_point.lerp(_body_centre, t)
+	var ndc := Vector2((HEAD_X_FRAC - 0.5) * 2.0, (0.5 - HEAD_Y_FRAC) * 2.0) \
+		.lerp(Vector2((FAR_X_FRAC - 0.5) * 2.0, 0.0), t)
+	var tan_v := tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
+	var tan_h := tan_v * (maxf(size.x, 1.0) / maxf(size.y, 1.0))
+	var back := Vector3(cos(azimuth), 0.0, sin(azimuth))
+	var cam_yaw := atan2(back.x, back.z)
+	# Screen-right = forward x up, forward = -back. (The first cut negated
+	# this and quietly mirrored every horizontal framing fraction.)
+	var right := (-back).cross(Vector3.UP).normalized()
+	_silhouette_camera.position = target + back * d \
+		- right * (ndc.x * d * tan_h) - Vector3.UP * (ndc.y * d * tan_v)
+	_silhouette_camera.rotation = Vector3(0.0, cam_yaw, 0.0)
+
 func _frame_close() -> void:
-	_silhouette_camera.position = _cam_close
-	_silhouette_camera.rotation = Vector3.ZERO
-	_silhouette_root.rotation_degrees = Vector3(0.0, PROFILE_YAW_DEG, 0.0)
+	_silhouette_root.rotation_degrees = Vector3(0.0, FRONT_YAW_DEG, 0.0)
+	_apply_cam(0.0)
 
 # ---------------------------------------------------------------------------
 # Entrance choreography (spec 入场编排, beats 0a-6). One pacing Tween drives
@@ -571,18 +592,16 @@ func _beat_rise_begin() -> void:
 	floor_fade.tween_property(_floor, "modulate:a", 1.0, RISE_TIME) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-	# Camera leads: an arced flight (see _arc_camera) that lands while the
-	# body is still finishing its stand. Body turn + stand start a beat
-	# later and run longer.
+	# Camera leads: the orbit (see _apply_cam) lands while the body is
+	# still finishing its stand. The body itself only stands -- it never
+	# rotates; the camera does all the turning.
 	var cam := _track(create_tween())
-	cam.tween_method(_arc_camera, 0.0, 1.0, RISE_TIME) \
+	cam.tween_method(_apply_cam, 0.0, 1.0, RISE_TIME) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
 	var body := _track(create_tween())
 	body.tween_interval(BODY_RISE_DELAY)
 	body.tween_callback(_start_stand_up)
-	body.parallel().tween_property(_silhouette_root, "rotation_degrees:y", FRONT_YAW_DEG, BODY_TURN_TIME) \
-		.set_delay(BODY_RISE_DELAY).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
 	var mirror := _track(create_tween())
 	mirror.tween_property(_mirror_window, "modulate:a", MIRROR_ALPHA, RISE_TIME * 0.5) \
@@ -591,16 +610,6 @@ func _beat_rise_begin() -> void:
 func _start_stand_up() -> void:
 	if _anim_player != null and _anim_player.has_animation(&"Idle"):
 		_anim_player.play(&"Idle", BODY_STAND_BLEND)
-
-## Quadratic bezier from the close position to the far one, bulging
-## sideways (+X) at the midpoint so the character drifts screen-left before
-## centring -- ✅ the owner's sketch: the camera rounds a circle, it does
-## not fly the chord.
-func _arc_camera(t: float) -> void:
-	var control := (_cam_close + _cam_far) * 0.5 + Vector3(CAM_ARC_SIDE, 0.08, 0.0)
-	var a := _cam_close.lerp(control, t)
-	var b := control.lerp(_cam_far, t)
-	_silhouette_camera.position = a.lerp(b, t)
 
 func _start_walk_loop() -> void:
 	if _anim_player != null and _anim_player.has_animation(&"Walk"):
@@ -624,7 +633,8 @@ func _beat_menu_parallax() -> void:
 
 	_menu_list.visible = true
 	var panel_from: float = _menu_list.position.x
-	_menu_list.position.x = panel_from - 480.0
+	# From the RIGHT now, matching the column's new home.
+	_menu_list.position.x = panel_from + 480.0
 	var panel := _track(create_tween())
 	panel.tween_property(_menu_list, "position:x", panel_from, MENU_PANEL_TIME) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
@@ -675,9 +685,8 @@ func _skip_entrance() -> void:
 	_menu_list.visible = true
 	_menu_list.skip_entrance()
 
-	_silhouette_camera.position = _cam_far
-	_silhouette_camera.rotation = Vector3.ZERO
 	_silhouette_root.rotation_degrees = Vector3(0.0, FRONT_YAW_DEG, 0.0)
+	_apply_cam(1.0)
 	_start_walk_loop()
 	_floor_gain = 1.0
 

@@ -46,6 +46,8 @@ func _ready() -> void:
 	_hover_preview.visible = false
 	_items_box = VBoxContainer.new()
 	_items_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# A full-height column centres its items vertically (ME's own layout).
+	_items_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_items_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_items_box)
 	resized.connect(_sync_widths)
@@ -81,6 +83,10 @@ func set_items(items: Array[String]) -> void:
 		label.mouse_entered.connect(_on_item_hover.bind(i, true))
 		label.mouse_exited.connect(_on_item_hover.bind(i, false))
 		label.gui_input.connect(_on_item_gui_input.bind(i))
+		# The vbox recentres rows whenever the column's height changes (the
+		# full-height ME layout centres its items), and the selection bar
+		# must chase them -- rect change is the honest signal.
+		label.item_rect_changed.connect(_sync_widths)
 		_items_box.add_child(label)
 		_labels.append(label)
 
