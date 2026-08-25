@@ -257,12 +257,20 @@ func test_go_to_main_menu_unpauses_before_requesting_the_scene_change() -> void:
 	PauseUi.toggle_pause()
 	assert_true(get_tree().paused, "test setup: tree should be paused")
 
+	# The stub snapshots pause state AT CALL TIME -- asserting after the
+	# call cannot pin the order, since both effects are synchronous (the
+	# re-review's catch: the first version of this test overclaimed).
 	var requested := [""]
-	PauseUi._change_scene = func(path): requested[0] = path
+	var paused_at_call := [true]
+	PauseUi._change_scene = func(path):
+		requested[0] = path
+		paused_at_call[0] = get_tree().paused
 
 	PauseUi._go_to_main_menu()
 
-	assert_false(get_tree().paused, "_go_to_main_menu did not unpause the tree before requesting the scene change")
+	assert_false(paused_at_call[0],
+		"the tree was still paused at the moment the scene change was requested")
+	assert_false(get_tree().paused, "_go_to_main_menu did not unpause the tree")
 	assert_eq(requested[0], PauseUi.MAIN_MENU_SCENE, \
 		"_go_to_main_menu did not request scenes/ui/main_menu.tscn through the change-scene seam")
 
@@ -437,3 +445,24 @@ func test_esc_is_a_no_op_while_the_main_menu_is_current_scene() -> void:
 
 	assert_false(get_tree().paused, \
 		"Esc must be a no-op while a MainMenu is the current scene")
+
+func test_a_rescue_resume_on_the_main_menu_never_captures_the_cursor() -> void:
+	# FIX 5's second half (pause_ui.gd _current_scene_wants_mouse_capture's
+	# MainMenu branch): if a pause ever survives onto the main menu, 继续
+	# must leave the cursor free -- a menu needs a pointer, not a捕获.
+	var menu := MainMenu.new()
+	menu.name = "MainMenu"
+	get_tree().root.add_child(menu)
+	var previous := get_tree().current_scene
+	get_tree().current_scene = menu
+	# toggle_pause may legitimately no-op on the main menu (the Esc guard),
+	# so the paused state is forced directly -- the scenario is "a pause
+	# SURVIVED onto the menu", however it got there.
+	get_tree().paused = true
+	PauseUi._resume()
+	assert_eq(Input.mouse_mode, Input.MOUSE_MODE_VISIBLE,
+		"resuming on the main menu captured the mouse")
+	assert_false(get_tree().paused, "the rescue resume did not unpause")
+	get_tree().current_scene = previous
+	menu.queue_free()
+	await step(1)
