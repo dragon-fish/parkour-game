@@ -312,3 +312,70 @@ func test_the_into_wall_component_survives() -> void:
 		"a 47 degree turned head did not jump off the ladder")
 	assert_gt(player.velocity.dot(-_line.front()), 0.0, \
 		"the launch lost the into-the-wall component the vault finisher depends on")
+
+# --- Task 6: 快捷吸附 (assisted hop) --------------------------------------------
+#
+# ✅ THE OWNER: no aiming needed -- the scan and the launch both live entirely
+# in the LADDER's own frame (front x up), with no camera read anywhere.
+#
+# Geometry shared by the two hop tests below: _climbing_player() attaches to a
+# 3 m ladder at the world origin, front = -Z (see its own docstring), standing
+# at roughly x=0, z=-stand_off. A second ladder sits 2.5 m along -X -- the
+# primary's LEFT, since _scan_snap_target's dir formula puts side -1 (A) at
+# -X here -- built the same length, at the same world y, so the two lines'
+# climbable ranges line up and the height component of the scan's cone check
+# stays small. Its yaw (-90 degrees) points ITS OWN front at +X, i.e. back
+# toward the primary ladder: the body flies in from the +X side, so that is
+# exactly the side the arrival catch's frontal gate (front_side_allows) needs
+# it approaching from.
+
+func test_a_side_hop_snaps_to_the_neighbour_ladder() -> void:
+	var player: Player = await _climbing_player()
+	var neighbour := _vertical_ladder(Vector3(-2.5, 0.0, 0.0), -90.0)
+	await step(10)  # past the magnet fade
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2(-1.0, 0.0)  # A: left, toward the neighbour
+	input.press_jump()
+	await step(1)
+	# The flight is ballistic, not driven -- no further steering while airborne.
+	input.state.move = Vector2.ZERO
+	var caught := false
+	for i in 120:  # ~2 s of stepped ticks
+		await step(1)
+		if player.move_manager.current_name == Move.LADDER:
+			caught = true
+			break
+	assert_true(caught, "the side-hop never re-attached to the neighbour ladder")
+	assert_almost_eq(player.global_position.x, neighbour.position.x, 1.0, \
+		"the caught body did not land near the neighbour ladder")
+
+func test_no_neighbour_means_no_hop() -> void:
+	var player: Player = await _climbing_player()
+	await step(10)  # past the magnet fade
+	var input: ScriptedInputSource = _world["input"]
+	var before: Vector3 = player.global_position
+	input.state.move = Vector2(-1.0, 0.0)  # A: left, nothing out there
+	input.press_jump()
+	await step(1)
+	input.state.move = Vector2.ZERO
+	await step(5)
+	assert_eq(player.move_manager.current_name, Move.LADDER, \
+		"a hop with no neighbour in range let go of the ladder anyway")
+	assert_almost_eq(player.global_position.x, before.x, 0.05, \
+		"a hop with no neighbour in range moved the body")
+
+func test_the_scan_respects_direction() -> void:
+	var player: Player = await _climbing_player()
+	_vertical_ladder(Vector3(-2.5, 0.0, 0.0), -90.0)  # neighbour on the LEFT
+	await step(10)  # past the magnet fade
+	var input: ScriptedInputSource = _world["input"]
+	var before: Vector3 = player.global_position
+	input.state.move = Vector2(1.0, 0.0)  # D: right, away from the neighbour
+	input.press_jump()
+	await step(1)
+	input.state.move = Vector2.ZERO
+	await step(5)
+	assert_eq(player.move_manager.current_name, Move.LADDER, \
+		"D+space hopped toward a neighbour that was on the LEFT")
+	assert_almost_eq(player.global_position.x, before.x, 0.05, \
+		"the refused hop still moved the body")

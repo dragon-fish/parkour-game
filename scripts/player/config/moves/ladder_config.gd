@@ -48,6 +48,9 @@ func _init() -> void:
 @export var snap_range: float = 4.0
 ## How long a snap flight from one ladder to another takes, seconds.
 @export var snap_flight_time: float = 0.55
+## Minimum dot product between the pressed direction and the candidate line,
+## i.e. how wide the snap's aiming cone is (0.7 ~= a 45-degree half-angle).
+@export var snap_cone_dot: float = 0.7
 ## How long the ladder just left refuses a re-catch, seconds. Per LINE, not
 ## per move name -- see LineMove.note_left().
 @export var same_line_redo_time: float = 0.6

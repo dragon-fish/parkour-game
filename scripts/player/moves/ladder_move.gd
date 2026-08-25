@@ -120,17 +120,39 @@ func climbing_offset() -> float:
 ## Which ladder a directional jump-off (AD+space) would snap to instead of
 ## just launching off this one, or null when there is nothing to snap to.
 ##
-## STUBBED for Task 5: always null, so the priority chain in physics_update()
-## always falls through to the plain jump-off below it. Task 6 fills this in
-## with a real scan over nearby LADDER lines on `side` (-1 left / +1 right;
-## 0 means straight back, i.e. no directional input at all).
-func _scan_snap_target(_side: int) -> InterestLine:
-	return null
+## Direction lives entirely in the LADDER's own frame (✅ the owner: no
+## aiming needed) -- side -1/+1 run along front x up, side 0 means straight
+## back off the ladder. No camera read anywhere in here.
+func _scan_snap_target(side: int) -> InterestLine:
+	var f: Vector3 = _line.front()
+	var dir: Vector3 = f if side == 0 else Vector3.UP.cross(f) * -float(side)
+	var best: InterestLine = null
+	var best_d: float = cfg.snap_range
+	for node in player.get_tree().get_nodes_in_group("interest_lines"):
+		var line := node as InterestLine
+		if line == null or line == _line or not player.line_ready(line):
+			continue
+		var at: Vector3 = line.sample(line.closest_offset(player.global_position))["position"]
+		var to: Vector3 = at - player.global_position
+		var d: float = to.length()
+		if d > best_d or d < 0.001:
+			continue
+		if to.normalized().dot(dir) < cfg.snap_cone_dot:
+			continue
+		best_d = d
+		best = line
+	return best
 
-## Task 6: flies the body onto `target` (a directional snap-jump). Stubbed
-## here only so the priority chain above type-checks -- _scan_snap_target()
-## never returns non-null in this task, so this body is unreachable for now.
-func _launch_at(_target: InterestLine) -> StringName:
+## Flies the body onto `target` (a directional snap-jump). Ballistic through
+## the target's own catch volume: given a fixed flight time, solve v0 so the
+## arc passes the line's nearest point -- the target's own catch logic
+## (AirborneMove's probes) does the rest, so this places NOTHING by hand.
+func _launch_at(target: InterestLine) -> StringName:
+	var at: Vector3 = target.sample(target.closest_offset(player.global_position))["position"]
+	var t: float = cfg.snap_flight_time
+	var g: float = player.effective_gravity()
+	player.velocity = (at - player.global_position) / t + Vector3.UP * (0.5 * g * t)
+	player.consume_roll()
 	return FALLING
 
 ## Yaw of the camera's look direction, radians. Mirrors GrabMove's own camera
