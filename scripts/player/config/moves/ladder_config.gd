@@ -54,6 +54,13 @@ func _init() -> void:
 @export var top_exit_reach: float = 1.2
 ## How long the top-exit scripted motion takes, seconds.
 @export var top_exit_time: float = 2.0
+
+## ⚠️ To-be-measured initial guess. What fraction of the carry is spent on
+## the RISE. The capsule travels two straight segments (the project's rule:
+## scripted moves never arc) -- straight up to the landing height first,
+## then straight in over the deck -- so the body clears the lip instead of
+## cutting the corner. 0 collapses back to the single diagonal.
+@export_range(0.0, 0.9) var top_exit_rise_pct: float = 0.45
 ## How far a body may be from a DIFFERENT ladder and still magnet-snap onto
 ## it (Task 5's jump-to-adjacent-ladder case), metres.
 @export var snap_range: float = 4.0
