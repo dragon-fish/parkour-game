@@ -2927,6 +2927,16 @@ func line_ready(line: InterestLine) -> bool:
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	return horizontal.dot(toward.normalized()) > LINE_RELATCH_SPEED
 
+## Spends `line`'s one passive chance: the volume will not catch this body
+## again until it leaves and returns -- or pushes toward the line (the same
+## bypass line_ready() already grants the release latch). ✅ THE OWNER: a
+## first failed check (walked in backwards, ladder outside the view's 180°)
+## must not be retried by mere turning: "背着进入梯子的检测范围，然后再转过
+## 身，应该不会自动进入梯子."
+func latch_line(line: InterestLine) -> void:
+	if interest_lines.has(line):
+		_lines_awaiting_exit[line.get_instance_id()] = true
+
 ## Arms `line`'s own re-catch cooldown -- called by every line move's exit.
 ## The timer guards the flight OUT of the volume; the awaiting-exit latch
 ## (opt-in via `until_exit`) guards standing still inside it. Only the

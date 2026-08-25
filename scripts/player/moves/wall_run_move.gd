@@ -383,8 +383,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# should not lose to a wall that was never really there.
 	if player.move_manager.can_enter(LADDER):
 		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
-		if rail != null and player.line_ready(rail) \
-				and LadderMove.front_side_allows(rail, player.global_position):
+		if rail != null and LadderMove.catch_gate(player, rail):
 			return LADDER
 
 	if _aborted:

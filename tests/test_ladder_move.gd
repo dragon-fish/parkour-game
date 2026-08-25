@@ -53,6 +53,8 @@ func _climbing_player() -> Player:
 	_line = _vertical_ladder(Vector3.ZERO, 0.0)
 	var stand_off: float = player.config.ladder.stand_off
 	player.global_position = Vector3(0.0, player.global_position.y, -stand_off)
+	# Facing the ladder: entry now requires it in the player's forward 180.
+	player.rotation.y = PI
 	for i in 10:
 		await step(1)
 		if player.move_manager.current_name == Move.LADDER:
@@ -79,6 +81,11 @@ func _ground_catch_attempt(front: bool) -> StringName:
 	var stand_off: float = player.config.ladder.stand_off
 	var z: float = -stand_off if front else stand_off
 	player.global_position = Vector3(0.0, player.global_position.y, z)
+	# FACING THE LADDER in both cases (front: turn around to +Z; back: the
+	# default -Z already points at it), so what separates the two outcomes
+	# is purely the ladder's own front half-space -- the player-facing gate
+	# has its own tests below.
+	player.rotation.y = PI if front else 0.0
 	var line := _vertical_ladder(Vector3.ZERO, 0.0)
 	await step(10)
 	var result: StringName = player.move_manager.current_name
@@ -112,6 +119,7 @@ func test_the_floor_ends_a_descent() -> void:
 	_line = _vertical_ladder(Vector3(0.0, -3.0, 0.0), 0.0, 4.0)
 	var stand_off: float = player.config.ladder.stand_off
 	player.global_position = Vector3(0.0, player.global_position.y, -stand_off)
+	player.rotation.y = PI  # facing the ladder: the forward-180 gate
 	for i in 10:
 		await step(1)
 		if player.move_manager.current_name == Move.LADDER:
@@ -146,6 +154,7 @@ func test_bottom_end_release_falls_with_nothing_below() -> void:
 	_line = _vertical_ladder(Vector3(0.0, 3.0, 0.0), 0.0, 3.0)  # bottom at y=3, floor is at y=0
 	var stand_off: float = player.config.ladder.stand_off
 	player.global_position = Vector3(0.0, 3.0, -stand_off)  # right at the bottom rung
+	player.rotation.y = PI  # facing the ladder: the forward-180 gate
 	for i in 10:
 		await step(1)
 		if player.move_manager.current_name == Move.LADDER:
@@ -172,6 +181,7 @@ func test_a_ceiling_stops_the_ascent() -> void:
 	_line = _vertical_ladder(Vector3.ZERO, 0.0, 6.0)
 	var stand_off: float = player.config.ladder.stand_off
 	player.global_position = Vector3(0.0, player.global_position.y, -stand_off)
+	player.rotation.y = PI  # facing the ladder: the forward-180 gate
 	for i in 10:
 		await step(1)
 		if player.move_manager.current_name == Move.LADDER:
@@ -267,12 +277,14 @@ func test_wallrun_can_be_caught_by_a_ladder() -> void:
 	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
 		"test setup: the player never attached to the wall")
 
-	# A ladder's front volume, planted a little ahead of the body along its
-	# direction of travel (-Z) so the ongoing run carries it across the
-	# front-side boundary over the next few ticks, exactly like meeting one
-	# mid-run would.
-	_line = _vertical_ladder(Vector3(player.global_position.x, player.global_position.y - 1.0, \
-		player.global_position.z - 0.3), 0.0)
+	# A pipe MOUNTED ON THE WALL, a little ahead along the run: front (-Z
+	# rotated by yaw +90 = -X) faces out of the wall toward the runner's
+	# side of it, and being ahead keeps it inside the runner's forward 180
+	# -- the shape ME's wallrun-into-pipe level actually has. yaw 0 (front
+	# aligned WITH the travel) would put the runner behind the pipe's back
+	# and rightly never catch.
+	_line = _vertical_ladder(Vector3(0.8, player.global_position.y - 1.0, \
+		player.global_position.z - 1.5), 90.0)
 	var caught := false
 	for i in 30:
 		await step(1)
@@ -725,3 +737,32 @@ func test_pushing_at_the_latched_ladder_takes_it_back() -> void:
 			break
 	input.state.move = Vector2.ZERO
 	assert_true(regrabbed, "W at the latched ladder never took it back")
+
+func test_backing_in_spends_the_chance_and_turning_does_not_refund_it() -> void:
+	# ✅ THE OWNER: entry needs the ladder in the view's forward 180 -- and a
+	# first FAILED check is spent: "背着进入梯子的检测范围，然后再转过身，
+	# 应该不会自动进入梯子." Walking back toward it is what re-arms.
+	var player: Player = await _standing_player()
+	# Ladder BEHIND the default -Z facing: the player backs into the volume.
+	# yaw 0 keeps its front (-Z) pointing AT the player -- the front-side
+	# gate passes and what fails is purely the player's own forward-180.
+	var line := _vertical_ladder(Vector3(0.0, 0.0, player.global_position.z + 0.4), 0.0)
+	await step(10)
+	assert_ne(player.move_manager.current_name, Move.LADDER,
+		"a ladder behind the view caught the body anyway")
+	# Turning in place: the chance is already spent, nothing may fire.
+	player.rotation.y = PI
+	await step(30)
+	assert_ne(player.move_manager.current_name, Move.LADDER,
+		"turning around inside the volume auto-entered the ladder")
+	# Meaning it: push toward the rungs.
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2(0.0, 1.0)
+	var caught := false
+	for i in 60:
+		await step(1)
+		if player.move_manager.current_name == Move.LADDER:
+			caught = true
+			break
+	input.state.move = Vector2.ZERO
+	assert_true(caught, "walking toward the latched ladder never re-armed the catch")

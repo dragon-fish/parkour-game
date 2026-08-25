@@ -234,8 +234,7 @@ func probe_transition() -> StringName:
 	if c.check_for_ladder and player.velocity.y > -config.ladder.fall_limit \
 			and player.move_manager.can_enter(LADDER):
 		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
-		if rail != null and player.line_ready(rail) \
-				and LadderMove.front_side_allows(rail, player.global_position):
+		if rail != null and LadderMove.catch_gate(player, rail):
 			return LADDER
 
 	if c.check_for_grab and player.probes != null and player.move_manager.can_enter(GRAB):

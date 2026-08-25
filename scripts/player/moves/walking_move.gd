@@ -14,8 +14,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# by the same frontal fan every other entry site asks.
 	if player.grounded and player.move_manager.can_enter(LADDER):
 		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
-		if rail != null and player.line_ready(rail) \
-				and LadderMove.front_side_allows(rail, player.global_position):
+		if rail != null and LadderMove.catch_gate(player, rail):
 			return LADDER
 
 	var wish_dir: Vector3 = player.wish_direction(input)

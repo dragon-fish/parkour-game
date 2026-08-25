@@ -76,8 +76,43 @@ func enter(_previous: StringName) -> void:
 	_entry_yaw = player.rotation.y
 	_fan_centred = false
 
-## The frontal gate, static so AirborneMove/WalkingMove/WallRunMove ask the
-## SAME question before ever transitioning (no enter-then-abort flutter).
+## THE ONE ENTRY GATE, static so AirborneMove/WalkingMove/WallRunMove ask
+## the SAME question before ever transitioning (no enter-then-abort
+## flutter). Three conditions, in order:
+##   1. cooldown + latch (line_ready -- the latch's own push-toward bypass
+##      lives there);
+##   2. the ladder's front half-space;
+##   3. the PLAYER's front 180 degrees -- ✅ the owner: "如果玩家的视角里
+##      （一般来说就是前方180°）里看不到梯子就不会触发进入", no backing in.
+## A body that passes 1-2 but fails 3 SPENDS the line's passive chance
+## (Player.latch_line): turning around later must not auto-enter; walking
+## back toward the rungs re-arms it through the bypass.
+static func catch_gate(player: Player, line: InterestLine) -> bool:
+	if not player.line_ready(line):
+		return false
+	if not front_side_allows(line, player.global_position):
+		return false
+	if _faces_line(player, line):
+		return true
+	player.latch_line(line)
+	return false
+
+## Whether the line sits in the player's forward 180 degrees, judged on the
+## camera look when there is one and the body facing otherwise.
+static func _faces_line(player: Player, line: InterestLine) -> bool:
+	var look: Vector3 = -player.global_transform.basis.z
+	if player.camera_rig != null and player.camera_rig.camera != null:
+		look = -player.camera_rig.camera.global_transform.basis.z
+	look.y = 0.0
+	if look.length_squared() < 0.0001:
+		return true
+	var at: Vector3 = line.sample(line.closest_offset(player.global_position))["position"]
+	var toward := Vector3(at.x - player.global_position.x, 0.0, at.z - player.global_position.z)
+	if toward.length_squared() < 0.0001:
+		return true
+	return look.normalized().dot(toward.normalized()) > 0.0
+
+## The ladder's own front half-space -- see the spec's 正面180°扇形.
 static func front_side_allows(line: InterestLine, body_pos: Vector3) -> bool:
 	var at: Vector3 = line.sample(line.closest_offset(body_pos))["position"]
 	var to_body: Vector3 = body_pos - at
