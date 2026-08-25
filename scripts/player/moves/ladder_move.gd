@@ -17,8 +17,37 @@ extends LineMove
 ## climbing_offset().
 var _offset: float = 0.0
 
+## Task 7's top exit: a scripted carry off the top of the line onto a
+## standable deck behind it, driven by a COMPOSED ScriptedMove rather than an
+## inherited one. LadderMove already extends LineMove for the family's shared
+## skeleton (acquire_line/slide_to/note_left/...), and GDScript has no
+## multiple inheritance -- ZiplineMove documents the same fork the other way
+## (its own header: "NOT A ScriptedMove"). A bare instance, never added to
+## the scene tree, is enough: begin()/advance()/sample() only ever touch
+## `player`, which is handed across the moment the carry starts.
+var _top_exit: ScriptedMove = ScriptedMove.new()
+## True for the duration of the scripted carry. Checked FIRST in
+## physics_update(), mirroring GrabMove's own _mantling gate: once the carry
+## has begun, nothing below it -- crouch, jump, the ordinary climb -- may run
+## until it completes. Input is committed the instant the carry starts.
+var _top_exiting: bool = false
+
+## PARENTED, not left loose: Move.gd's own _ready() sets _tick_travel (unused
+## here, but calling super keeps this move honest about the base contract),
+## and adding `_top_exit` as a child here is what gives it a lifetime tied to
+## this move's own instead of leaking an un-freed Node every time a Player is
+## torn down (tests build and tear down a fresh one per case).
+func _ready() -> void:
+	super._ready()
+	add_child(_top_exit)
+
 func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
+	# Defensive, mirroring GrabMove's own `_mantling = false` reset in its
+	# enter(): a completed carry already clears this on its way to WALKING,
+	# so nothing today re-enters LADDER with it still true, but a fresh catch
+	# has no business starting mid-carry either way.
+	_top_exiting = false
 	_aborted = not acquire_line(InterestLine.Kind.LADDER)
 	if _aborted:
 		return
@@ -52,6 +81,19 @@ static func front_side_allows(line: InterestLine, body_pos: Vector3) -> bool:
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted or not is_instance_valid(_line):
 		return FALLING
+	if _top_exiting:
+		if _top_exit.advance(delta):
+			_top_exiting = false
+			# A carry, not a launch -- the body was set down, not thrown.
+			# Deliberately NOT declared grounded here, matching GrabMove's own
+			# mantle hand-off: the landing point came from a probe this move
+			# trusts but never collision-checked against the capsule's actual
+			# path, so WalkingMove's own next floor-snap tick is what first
+			# verifies it for real (see WalkingMove.physics_update()'s note on
+			# exactly this hand-off).
+			player.velocity = Vector3.ZERO
+			return WALKING
+		return KEEP
 	player.set_grounded(false)
 	# The rungs support the body the way the ground does -- the fall the
 	# landing charges for starts where the hands let go, same rule the rest
@@ -82,6 +124,20 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			return FALLING
 		# Facing the ladder, no target: the press is IGNORED (✅ the owner:
 		# "AD+空格如果没有其他梯子是不会触发跳的").
+
+	# The top exit (Task 7). MUST sit AFTER the jump chain above and BEFORE
+	# the ordinary climb below -- 🔒 protected technique, invariant #3: space
+	# at the very top (a turned camera or a snap target) still beats the
+	# scripted exit, exactly the way it does at every other height on the
+	# line. Reaching here at all already means jump_pressed either was not
+	# held or refused to fire above.
+	if _offset >= _line.length() - 0.01 and input.move.y > 0.0:
+		var deck: Dictionary = _probe_top_deck()
+		if deck.get("valid", false):
+			return _begin_top_exit(deck["position"])
+		# No deck within reach: W does nothing at the top (✅ the owner).
+		# Falls through to the ordinary climb below, which simply re-clamps
+		# _offset to the value it already has.
 
 	_offset = clampf(_offset + input.move.y * cfg.climb_speed * delta, 0.0, _line.length())
 	var s: Dictionary = _line.sample(_offset)
@@ -187,3 +243,78 @@ func _look_direction() -> Vector3:
 	if look.length_squared() < 0.0001:
 		return -_line.front()
 	return look.normalized()
+
+# --- Task 7: the top exit -------------------------------------------------
+
+## How far above the candidate landing the deck probe starts, metres.
+const TOP_DECK_PROBE_LIFT := 0.5
+## How far below the candidate landing the probe still reaches, metres --
+## clears a deck sitting a little off the line's own top height without
+## reaching so far down it could find the ladder's own lower rungs instead.
+const TOP_DECK_PROBE_DEPTH := 0.5
+## Largest tilt a hit surface may have and still count as a deck to stand on.
+## Same shape as every other "is this walkable" gate in the project (see
+## Probes.walkable_floor_z and friends) -- a knob of its own rather than a
+## shared constant, since this probe is not Probes' own and answers to no
+## config field the panel exposes today.
+const TOP_DECK_NORMAL_MIN := 0.7
+
+## Where a top exit would carry the body, or an empty dictionary when there is
+## nowhere to stand. Fired from `_line`'s own top point, offset
+## `top_exit_reach` back along -front() -- the wall side, opposite the
+## frontal entry fan -- straight down onto whatever is there.
+##
+## ✅ THE SPEC, verbatim: candidate = top + (-front()) * top_exit_reach, ray
+## from half a metre above it, downward. Valid only on a near-flat surface
+## (normal.y > TOP_DECK_NORMAL_MIN) with room for a standing body --
+## player.fits_standing_at(), the same shapecast GrabMove's own mantle gate
+## asks of its landing.
+func _probe_top_deck() -> Dictionary:
+	var top: Vector3 = _line.sample(_line.length())["position"]
+	var candidate: Vector3 = top - _line.front() * cfg.top_exit_reach
+	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
+	if space == null:
+		return {}
+	var from: Vector3 = candidate + Vector3.UP * TOP_DECK_PROBE_LIFT
+	var to: Vector3 = candidate - Vector3.UP * TOP_DECK_PROBE_DEPTH
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	# Same idioms Probes._cast() uses (see probes.gd): a ray that starts
+	# inside a shape reports nothing at all without this, and the player's
+	# own capsule must never be what the ray finds.
+	query.hit_from_inside = true
+	if player is CollisionObject3D:
+		query.exclude = [(player as CollisionObject3D).get_rid()]
+	var hit: Dictionary = space.intersect_ray(query)
+	if hit.is_empty():
+		return {}
+	var normal: Vector3 = hit.get("normal", Vector3.ZERO)
+	if normal.y <= TOP_DECK_NORMAL_MIN:
+		return {}
+	var position: Vector3 = hit["position"]
+	if not player.fits_standing_at(position):
+		return {}
+	return {"valid": true, "position": position}
+
+## Starts the scripted carry onto `deck_position` (a FEET point, the same
+## shape _probe_top_deck() hands fits_standing_at()). The destination for the
+## capsule's own CENTRE is standing_height() * 0.5 above it -- GrabMove's
+## mantle destination, read the same way (grab_move.gd's own `top := _edge +
+## Vector3(0, standing_height() * 0.5, 0)`), minus the extra forward push
+## that move adds afterward: this probe already planted its candidate
+## top_exit_reach past the line's top, so the landing needs no further shove.
+func _begin_top_exit(deck_position: Vector3) -> StringName:
+	var landing: Vector3 = deck_position + Vector3.UP * (player.standing_height() * 0.5)
+	_top_exit.player = player
+	_top_exit.begin(player.global_position, landing, cfg.top_exit_time)
+	_top_exiting = true
+	return KEEP
+
+## The fallback camera rise for a bare capsule with no head bone to follow --
+## see ScriptedMove.camera_lift() for what this is and why it is a fallback
+## only. Player._scripted_camera_lift() reads this by duck-typing
+## (`move.has_method("camera_lift")`) off whatever move_for(current_name)
+## returns, which for LADDER is this move itself, not the composed
+## `_top_exit` -- so this delegates rather than being picked up for free the
+## way GrabMove's own (inherited) camera_lift() is.
+func camera_lift() -> float:
+	return _top_exit.camera_lift() if _top_exiting else 0.0

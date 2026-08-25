@@ -379,3 +379,151 @@ func test_the_scan_respects_direction() -> void:
 		"D+space hopped toward a neighbour that was on the LEFT")
 	assert_almost_eq(player.global_position.x, before.x, 0.05, \
 		"the refused hop still moved the body")
+
+# --- Task 7: the top exit --------------------------------------------------
+#
+# ✅ THE OWNER: the top of the line plays out the same as ClimbUp -- probe for
+# a standable deck behind the top and, if there is one, carry the body onto it
+# on a fixed clock; otherwise W simply does nothing there. Geometry shared by
+# the two deck tests below: _climbing_player()'s 3 m ladder at the world
+# origin, front = -Z, so the deck behind the top (+Z, top_exit_reach along
+# -front()) sits at world (0, 3, top_exit_reach).
+
+## Builds a flat platform whose top surface sits at `top_y`, offset
+## `top_exit_reach` behind the ladder's own top along +Z -- exactly where
+## LadderMove._probe_top_deck()'s candidate lands.
+##
+## SHALLOW IN Z AND PULLED CLEAR OF THE CLIMB, on purpose: the climbing
+## capsule itself rides at z = -stand_off (0.4 m radius, so it sweeps out to
+## z = 0.0), and a deck reaching back to the ladder's own face would clip that
+## sweep well before the body ever reaches the top -- caught by hand: an
+## earlier version spanning the full top_exit_reach depth stalled the climb
+## at world y ~= 1.1 (half_height=0.95 above the capsule origin already
+## grazing the deck's underside at y=2.0). Starting the near face at
+## reach - 0.8 keeps it a clear 0.4 m past the climb's own reach.
+func _top_deck(player: Player, top_y: float) -> StaticBody3D:
+	var reach: float = player.config.ladder.top_exit_reach
+	var deck := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(3.0, 1.0, 1.6)
+	shape.shape = box
+	deck.add_child(shape)
+	deck.position = Vector3(0.0, top_y - 0.5, reach)
+	get_tree().root.add_child(deck)
+	return deck
+
+func test_top_plus_w_carries_the_body_onto_the_deck() -> void:
+	var player: Player = await _climbing_player()
+	await step(10)  # past the magnet fade
+
+	var reach: float = player.config.ladder.top_exit_reach
+	var deck_y: float = _line.length()
+	var deck := _top_deck(player, deck_y)
+	await step(1)  # let the new collider register before anything probes it
+
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2(0.0, 1.0)  # W: climb, then carry over the top
+	var start_z: float = player.global_position.z
+	var landing_y: float = deck_y + player.standing_height() * 0.5
+
+	var saw_carry := false
+	var mid_pos: Vector3 = Vector3.ZERO
+	var exited := false
+	var climb_ticks: int = int(4.0 / player.config.ladder.climb_speed * Engine.physics_ticks_per_second)
+	var carry_ticks: int = int(player.config.ladder.top_exit_time * Engine.physics_ticks_per_second)
+	for i in (climb_ticks + carry_ticks + 30):
+		await step(1)
+		if exited:
+			continue
+		if player.move_manager.current_name == Move.LADDER and not saw_carry \
+				and player.global_position.z > start_z + 0.3 \
+				and player.global_position.z < reach - 0.2:
+			# Mid-phase: strictly between where the climb left off and the
+			# deck the probe found -- never teleported.
+			mid_pos = player.global_position
+			saw_carry = true
+		if player.move_manager.current_name != Move.LADDER:
+			exited = true
+			input.state.move = Vector2.ZERO  # stop steering once carried off
+	await step(5)  # let WalkingMove's own floor-snap tick verify the landing
+
+	assert_true(saw_carry, "never observed the carry running mid-flight")
+	assert_gt(mid_pos.z, start_z, "the mid-phase sample never left the ladder's own line")
+	assert_lt(mid_pos.z, reach, "the mid-phase sample was already at the deck")
+
+	assert_eq(player.move_manager.current_name, Move.WALKING, \
+		"the top exit did not hand off to ordinary ground movement")
+	assert_true(player.grounded, "the carry did not end grounded on the deck")
+	assert_almost_eq(player.global_position.y, landing_y, 0.15, \
+		"the body did not settle at standing height above the deck")
+	assert_almost_eq(player.global_position.z, reach, 0.5, \
+		"the body did not settle on the deck the probe found")
+
+	deck.queue_free()
+
+func test_no_deck_means_no_exit() -> void:
+	var player: Player = await _climbing_player()
+	await step(10)  # past the magnet fade
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2(0.0, 1.0)  # W: climb to the top and keep holding
+	var climb_ticks: int = int(4.0 / player.config.ladder.climb_speed * Engine.physics_ticks_per_second)
+	for i in climb_ticks:
+		await step(1)
+	# Nothing stands behind the top -- give the (absent) exit every chance to
+	# fire before checking it never did.
+	var settle_ticks: int = int(player.config.ladder.top_exit_time * Engine.physics_ticks_per_second) + 30
+	for i in settle_ticks:
+		await step(1)
+	assert_eq(player.move_manager.current_name, Move.LADDER, \
+		"W with nothing standable behind the top still left the ladder")
+	var ladder_move := player.move_manager.move_for(Move.LADDER) as LadderMove
+	assert_almost_eq(ladder_move.climbing_offset(), _line.length(), 0.05, \
+		"the offset did not stay capped at the line's own top")
+	assert_almost_eq(player.global_position.y, _line.length(), 0.1, \
+		"the body drifted past the line's own top with nothing to stand on")
+
+func test_space_beats_the_top_exit() -> void:
+	# 🔒 PROTECTED TECHNIQUE -- spec invariant #3: at the very top, a jump
+	# past jump_angle_deg still fires the ordinary jump-off chain (Task 5)
+	# instead of the scripted top exit, EVEN WHEN a valid deck is in reach and
+	# W is held on the very same tick. The jump chain sits ahead of the
+	# top-exit check in physics_update() on purpose (see that function's own
+	# comment on the ordering) -- DO NOT "fix" this by moving the top-exit
+	# check earlier; that would make the carry preempt space exactly where
+	# the owner said space must still win.
+	var player: Player = await _climbing_player()
+	await step(10)  # past the magnet fade
+	var input: ScriptedInputSource = _world["input"]
+
+	# Reach the very top first, with nothing behind it yet -- so setting the
+	# scene up cannot itself trigger the carry.
+	input.state.move = Vector2(0.0, 1.0)  # W
+	var climb_ticks: int = int(4.0 / player.config.ladder.climb_speed * Engine.physics_ticks_per_second)
+	for i in climb_ticks:
+		await step(1)
+	var ladder_move := player.move_manager.move_for(Move.LADDER) as LadderMove
+	assert_almost_eq(ladder_move.climbing_offset(), _line.length(), 0.05, \
+		"test setup: never reached the top of the line")
+
+	# A deck now appears behind the top. W is released FIRST, so the
+	# collider settling into the physics world cannot fire the carry on its
+	# own before the jump is even pressed.
+	input.state.move = Vector2.ZERO
+	var deck := _top_deck(player, _line.length())
+	await step(5)
+	assert_eq(player.move_manager.current_name, Move.LADDER, \
+		"test setup: the body left the ladder before the jump was even pressed")
+
+	# NOW: at the very top, a valid deck in reach, camera turned past
+	# jump_angle_deg, W and jump pressed together on the same tick.
+	var facing_yaw: float = player.rotation.y
+	player.rotation.y = facing_yaw + deg_to_rad(50.0)
+	await step(1)
+	input.state.move = Vector2(0.0, 1.0)  # W held again
+	input.press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING, \
+		"a turned-away jump at the very top ran the scripted top exit instead of the jump chain")
+
+	deck.queue_free()
