@@ -29,6 +29,11 @@ func _init() -> void:
 ## 过一定值（很宽松）并且身体是往前摆时，就能跳出去". Radians per second of
 ## FORWARD angular velocity.
 @export var jump_min_omega: float = 0.8
+## ⚠️ OWNER-FELT grace: once the window has been open, it STAYS open this many
+## seconds -- covering the forward apex where omega crosses zero: "荡到最高点
+## 但没角速度，快要往回的时候，给一个容错窗口按空格也可以跳出去." The feel-side
+## stand-in for the CDO's unmeasured SwingAngleTimingOffset.
+@export var jump_grace_time: float = 0.35
 ## ⚠️ PROJECT-DEFINED. Angular acceleration W/S pumping adds when pushed WITH
 ## the current swing direction. The owner dials it.
 @export var pump_accel: float = 3.0
@@ -66,4 +71,8 @@ func _init() -> void:
 ## (scaled by sin(theta), forward swings only) -- the leaning chest otherwise
 ## sweeps through the fixed eye: "镜头要随着晃到前面的时候给一点向前的偏移否则
 ## 镜头走进胸里."
-@export var eye_forward_lean: float = 0.25
+@export var eye_forward_lean: float = 0.1
+## ...and metres it rises at a full-forward lean. ✅ THE OWNER, correcting the
+## forward-only first cut: "镜头好像应该是往上不是往前补偿，或者你先试试两个方
+## 向都给点" -- both axes ship as dials; zero either.
+@export var eye_lift_lean: float = 0.25

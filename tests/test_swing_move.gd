@@ -167,11 +167,12 @@ func test_a_backswing_jump_is_ignored() -> void:
 	# Wait for a tick where the swing is going BACKWARD, then jump.
 	var input: ScriptedInputSource = _world["input"]
 	input.state.move = Vector2(0.0, 1.0)
-	for i in 300:
+	for i in 400:
 		await step(1)
-		if move.swing_omega() < -0.2:
+		if move.swing_omega() < -0.2 and not move.jump_window_open():
 			break
 	assert_lt(move.swing_omega(), 0.0, "test setup: never caught a backswing tick")
+	assert_false(move.jump_window_open(), "test setup: the apex grace never expired")
 	input.state.move = Vector2.ZERO
 	input.press_jump()
 	await step(1)
@@ -271,11 +272,38 @@ func test_the_eye_slides_ahead_of_a_forward_lean() -> void:
 			seen_forward = true
 			break
 	assert_true(seen_forward, "test setup: never swung forward")
-	var expected: float = sin(move.swing_theta()) * player.config.swing.eye_forward_lean
-	assert_almost_eq(player.camera_rig.extra_eye_forward, expected, 0.02,
-		"the eye offset %.3f does not track the lean" % player.camera_rig.extra_eye_forward)
+	var lean: float = sin(move.swing_theta())
+	assert_almost_eq(player.camera_rig.extra_eye_forward,
+		lean * player.config.swing.eye_forward_lean, 0.02,
+		"the forward eye offset does not track the lean")
+	assert_almost_eq(player.camera_rig.extra_eye_lift,
+		lean * player.config.swing.eye_lift_lean, 0.02,
+		"the upward eye offset does not track the lean")
 	var input: ScriptedInputSource = _world["input"]
 	input.press_crouch()
 	await step(2)
 	assert_almost_eq(player.camera_rig.extra_eye_forward, 0.0, 0.001,
 		"letting go left the eye pushed forward")
+
+func test_the_apex_grace_lets_a_zero_speed_jump_out() -> void:
+	# ✅ THE OWNER: "荡到最高点但没角速度，快要往回的时候，给一个容错窗口按空格
+	# 也可以跳出去." Once the window has been properly open, omega crossing
+	# zero at the forward apex must not close it for jump_grace_time.
+	var player: Player = await _swinging_player()
+	await step(12)
+	var move: SwingMove = player.move_manager.move_for(Move.SWING)
+	await _pump_until_window(player, move)
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2.ZERO
+	# Ride to the apex: omega near zero, window held open only by the grace.
+	var at_apex := false
+	for i in 200:
+		await step(1)
+		if move.swing_omega() < 0.1 and move.jump_window_open():
+			at_apex = true
+			break
+	assert_true(at_apex, "test setup: never caught the graced apex tick")
+	input.press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING,
+		"the apex-grace jump never fired")

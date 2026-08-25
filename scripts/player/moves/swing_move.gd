@@ -36,6 +36,8 @@ var _fan_centred: bool = false
 var _aborted: bool = false
 ## Last tick's applied pump, for the HUD's pump field.
 var _last_pump: float = 0.0
+## Seconds of exit-jump grace left after the window was last properly open.
+var _window_grace: float = 0.0
 
 func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
@@ -82,6 +84,7 @@ func enter(_previous: StringName) -> void:
 	_entry_yaw = player.rotation.y
 	_target_yaw = atan2(-_forward.x, -_forward.z)
 	_fan_centred = false
+	_window_grace = 0.0
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted or not is_instance_valid(_line):
@@ -134,6 +137,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Light damping: an un-pumped swing settles instead of ringing forever --
 	# keeping the amplitude is what the W/S pump is FOR.
 	_omega -= _omega * cfg.damping * delta
+	# The apex grace: the window stays open a beat after omega falls off it,
+	# so the "top of the swing, about to come back" jump still fires -- the
+	# owner's feel call, and the stand-in for SwingAngleTimingOffset.
+	if _omega > cfg.jump_min_omega:
+		_window_grace = cfg.jump_grace_time
+	else:
+		_window_grace = maxf(_window_grace - delta, 0.0)
 	# ✅ MaxSwingVelocity caps the TANGENTIAL speed.
 	var omega_cap: float = cfg.max_swing_velocity / cfg.pendulum_length
 	_omega = clampf(_omega, -omega_cap, omega_cap)
@@ -158,15 +168,18 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	player.set_swing_pitch_target(_theta * cfg.model_pitch_follow)
 	if player.camera_rig != null:
 		# Forward swings only: the lean sweeps the chest through the fixed
-		# eye, so the eye slides ahead of it. Backswings tip the chest away.
-		player.camera_rig.extra_eye_forward = \
-			maxf(sin(_theta), 0.0) * cfg.eye_forward_lean
+		# eye, so the eye slides up and ahead of it (two dials -- the owner:
+		# "先试试两个方向都给点"). Backswings tip the chest away.
+		var lean: float = maxf(sin(_theta), 0.0)
+		player.camera_rig.extra_eye_forward = lean * cfg.eye_forward_lean
+		player.camera_rig.extra_eye_lift = lean * cfg.eye_lift_lean
 	return KEEP
 
 func exit() -> void:
 	player.set_swing_pitch_target(0.0)
 	if player.camera_rig != null:
 		player.camera_rig.extra_eye_forward = 0.0
+		player.camera_rig.extra_eye_lift = 0.0
 	if is_instance_valid(_line):
 		player.note_line_left(_line, cfg.same_line_redo_time)
 
@@ -213,7 +226,7 @@ func swing_forward() -> Vector3:
 ## Task 4 fills this with the lenient forward-swing window; declared here so
 ## the HUD line (Task 5) has one source.
 func jump_window_open() -> bool:
-	return _omega > cfg.jump_min_omega
+	return _omega > cfg.jump_min_omega or _window_grace > 0.0
 
 ## -1 (S), 0, or +1 (W): the pump the last tick actually applied.
 func pump_direction() -> int:

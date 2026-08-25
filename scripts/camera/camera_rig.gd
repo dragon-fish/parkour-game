@@ -121,6 +121,8 @@ var eye_forward: float = 0.0
 ## lean would otherwise sweep the body through the eye (the swing). Hard-set
 ## by the mover, zeroed on its exit.
 var extra_eye_forward: float = 0.0
+## Its vertical twin -- see the swing's eye_lift_lean.
+var extra_eye_lift: float = 0.0
 
 var _head_local_offset: Vector3 = Vector3.ZERO
 ## True only for ticks Player actually supplied a head offset -- i.e. a body is
@@ -602,7 +604,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# keeps that guarantee on all three axes: `position` itself is written
 	# exactly once, at the very end of this function.
 	var base_position := Vector3.ZERO
-	base_position.y = _config.camera.eye_height
+	base_position.y = _config.camera.eye_height + extra_eye_lift
 	if not third_person:
 		base_position.z = -(eye_forward + extra_eye_forward)
 
