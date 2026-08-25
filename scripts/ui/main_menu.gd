@@ -893,7 +893,7 @@ func _loading_orbit(t: float) -> void:
 func _start_run_clip() -> void:
 	if _anim_player == null:
 		return
-	for clip in [&"Run", &"Jog_Fwd", &"Sprint", &"run", &"Walk"]:
+	for clip in [&"Sprint", &"Run", &"Jog_Fwd", &"run", &"Walk"]:
 		if _anim_player.has_animation(clip):
 			_anim_player.play(clip, 0.3)
 			return

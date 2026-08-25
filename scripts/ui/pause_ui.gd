@@ -295,6 +295,11 @@ func _clear_pending_scene_change() -> void:
 ## hitch hides there), hold a few frames for the new scene's first paint,
 ## then lift. Runs on this autoload so the cover outlives the caller.
 func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
+	# The sheet lives on THIS CanvasLayer, and _set_shown(false) keeps the
+	# whole layer invisible while unpaused -- so the layer itself must wake
+	# for the transition (the pause UI's children keep their own hidden
+	# flags and stay out of sight).
+	visible = true
 	_white.visible = true
 	move_child(_white, get_child_count() - 1)
 	var tween := create_tween()
@@ -311,3 +316,6 @@ func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	await lift.finished
 	_white.visible = false
+	# Back to the resting state: the layer only shows when paused.
+	if not get_tree().paused:
+		visible = false
