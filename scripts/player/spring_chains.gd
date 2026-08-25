@@ -19,6 +19,11 @@ extends SpringBoneSimulator3D
 @export var chain_stiffness: float = 1.0
 @export var chain_drag: float = 0.4
 @export var chain_gravity: float = 0.05
+## When set, every chain simulates RELATIVE to this bone (VRM's "center"):
+## whole-body yaw and teleports stop exciting the springs, and only motion
+## of the chain's anchor relative to the center -- the animation itself --
+## does. The cure for "turn the camera and everything thrashes".
+@export var center_bone_name: String = ""
 
 func _ready() -> void:
 	var skeleton := get_skeleton()
@@ -60,6 +65,9 @@ func _ready() -> void:
 		set_stiffness(idx, chain_stiffness)
 		set_drag(idx, chain_drag)
 		set_gravity(idx, chain_gravity)
+		if center_bone_name != "" and skeleton.find_bone(center_bone_name) >= 0:
+			set_center_from(idx, SpringBoneSimulator3D.CENTER_FROM_BONE)
+			set_center_bone_name(idx, center_bone_name)
 
 func _matches(bone_name: String) -> bool:
 	for prefix in chain_prefixes:
