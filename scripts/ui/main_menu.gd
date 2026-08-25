@@ -322,7 +322,7 @@ func _build_menu_list() -> void:
 	_menu_list.offset_top = 0.0
 	_menu_list.offset_bottom = 0.0
 	add_child(_menu_list)
-	_menu_list.set_items(["开始", "设置", "退出"])
+	_menu_list.set_items(["开始", "角色", "设置", "退出"])
 	_menu_list.chosen.connect(_on_chosen)
 	# Settled instantly at build time so its rows have correct final geometry,
 	# but HIDDEN (visible = false) until beat 4 (_beat_menu_stagger) actually
@@ -784,9 +784,23 @@ func _on_chosen(index: int) -> void:
 		0:
 			_on_start_pressed()
 		1:
-			_show_settings()
+			_open_showcase()
 		2:
+			_show_settings()
+		3:
 			_show_quit_confirm()
+
+const SHOWCASE_SCENE := "res://scenes/ui/character_showcase.tscn"
+
+## 角色: the character viewer (scripts/ui/character_showcase.gd). White
+## transition per the covenant; headless keeps the bare seam for tests.
+func _open_showcase() -> void:
+	if not ResourceLoader.exists(SHOWCASE_SCENE):
+		return
+	if DisplayServer.get_name() == "headless":
+		_change_scene.call(SHOWCASE_SCENE)
+		return
+	PauseUi.run_white_transition(load(SHOWCASE_SCENE), 0.35)
 
 ## ✅ The owner: "退出游戏按钮太干脆了，挽留一下啊……" The shared ME-styled
 ## confirm (MeTheme.confirm_dialog): backdrop click or 再跑一会儿 stays,

@@ -1,0 +1,230 @@
+class_name CharacterShowcase
+extends Node3D
+
+# The character viewer, reached from the main menu's 角色 entry: the body on
+# the left under a free orbit camera, the clip list in the menu's own red
+# column on the right. Left-drag turns HER, right-drag pans the camera,
+# the wheel zooms. A looping clip loops; a one-shot returns to Idle when it
+# ends (✅ the owner: 单次动画播完自动回 idle 避免抽风). The floor speaks the
+# menu's dot-grid language (dot_grid_floor.gdshader) with SSR for the sheen.
+#
+# Whole scene built from code on a one-node .tscn, exactly like MainMenu.
+
+const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
+const BODY_PROFILE := "res://scenes/player/profiles/vrm_test.tres"
+const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
+
+## The clips on offer, in menu order, with whether each loops. Only names the
+## merged body actually carries make the list.
+const CLIP_MENU: Array = [
+	[&"Idle", true], [&"Walk", true], [&"Sprint", true],
+	[&"Crouch_Idle", true], [&"Crouch_Fwd", true],
+	[&"Slide", true], [&"Roll", false],
+	[&"Jump_Start", false], [&"Jump_Land", false],
+	[&"ClimbUp_1m", false], [&"ClimbUp_2m", false],
+	[&"Climb_Up", true], [&"Climb_Down", true],
+	[&"WallRun_L", true], [&"SafetyVault", false], [&"StepUp", false],
+]
+
+const ROTATE_SPEED := 0.012
+const PAN_SPEED := 0.0022
+const ZOOM_STEP := 0.9
+const MIN_DISTANCE := 0.8
+const MAX_DISTANCE := 8.0
+
+var _body: Node3D
+var _anim_player: AnimationPlayer
+var _menu_list: MeMenuList
+var _clips: Array = []
+var _pivot: Node3D
+var _camera: Camera3D
+var _distance: float = 4.2
+## Same test seam shape as MainMenu/PauseUi.
+var _change_scene: Callable = Callable(self, "_real_change_scene")
+
+func _real_change_scene(path: String) -> void:
+	get_tree().change_scene_to_file(path)
+
+func _ready() -> void:
+	_build_world()
+	_build_body()
+	_build_ui()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func _build_world() -> void:
+	var env := WorldEnvironment.new()
+	var e := Environment.new()
+	e.background_mode = Environment.BG_COLOR
+	e.background_color = Color(0.93, 0.94, 0.96)
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	e.ambient_light_color = Color(0.85, 0.86, 0.9)
+	e.ambient_light_energy = 0.7
+	e.ssr_enabled = true
+	e.ssr_max_steps = 32
+	add_child(env)
+	env.environment = e
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-52.0, 28.0, 0.0)
+	sun.shadow_enabled = true
+	add_child(sun)
+	var floor_mesh := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(60.0, 60.0)
+	floor_mesh.mesh = plane
+	var material := ShaderMaterial.new()
+	material.shader = preload("res://scripts/ui/dot_grid_floor.gdshader")
+	floor_mesh.material_override = material
+	add_child(floor_mesh)
+	_pivot = Node3D.new()
+	# Off to the side so SHE sits screen-left and the red column owns the right.
+	_pivot.position = Vector3(0.55, 1.05, 0.0)
+	add_child(_pivot)
+	_camera = Camera3D.new()
+	_camera.fov = 45.0
+	_pivot.add_child(_camera)
+	_camera.position = Vector3(0.0, 0.0, _distance)
+	_camera.current = true
+
+func _build_body() -> void:
+	var path: String = BODY_PROFILE
+	var local := ConfigFile.new()
+	if local.load(LOCAL_PROFILE_CONFIG) == OK:
+		path = str(local.get_value("body", "profile", BODY_PROFILE))
+	if not ResourceLoader.exists(path):
+		return
+	var profile := load(path) as BodyProfile
+	if profile == null or profile.scene == null:
+		return
+	BodyTuning.apply_to(profile,
+		BodyTuning.load_for(profile.scene.resource_path))
+	_body = profile.scene.instantiate() as Node3D
+	if _body == null:
+		return
+	# The mount rotation points her down the capsule's -Z; the viewer camera
+	# sits at +Z, so half a turn more puts her face toward it.
+	_body.basis = (Basis(Vector3.UP, PI) \
+		* Basis.from_euler(profile.mount_rotation_degrees * (PI / 180.0))) \
+		.scaled(Vector3.ONE * maxf(profile.mount_scale, 0.001))
+	add_child(_body)
+	_anim_player = _find_animation_player(_body)
+	if _anim_player == null:
+		return
+	_merge_libraries(profile.animation_libraries)
+	_anim_player.animation_finished.connect(_on_clip_finished)
+	for pair in CLIP_MENU:
+		if _anim_player.has_animation(pair[0]):
+			_clips.append(pair)
+	_play_index(0)
+
+func _find_animation_player(root: Node) -> AnimationPlayer:
+	var queue: Array[Node] = [root]
+	while not queue.is_empty():
+		var node: Node = queue.pop_front()
+		if node is AnimationPlayer:
+			return node as AnimationPlayer
+		for child in node.get_children():
+			queue.append(child)
+	return null
+
+## Same fill-the-gaps merge as MainMenu/Player: existing clips win.
+func _merge_libraries(libraries: Array[PackedScene]) -> void:
+	var library: AnimationLibrary
+	if _anim_player.has_animation_library(""):
+		library = _anim_player.get_animation_library("")
+	else:
+		library = AnimationLibrary.new()
+		_anim_player.add_animation_library("", library)
+	for packed in libraries:
+		if packed == null:
+			continue
+		var source_scene := packed.instantiate()
+		if source_scene == null:
+			continue
+		var source := _find_animation_player(source_scene)
+		if source != null:
+			for clip_name in source.get_animation_list():
+				if not library.has_animation(clip_name):
+					library.add_animation(clip_name,
+						source.get_animation(clip_name).duplicate())
+		source_scene.free()
+
+func _build_ui() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	_menu_list = MeMenuList.new()
+	_menu_list.custom_minimum_size = Vector2(420.0, 0.0)
+	_menu_list.anchor_left = 1.0
+	_menu_list.anchor_right = 1.0
+	_menu_list.anchor_top = 0.0
+	_menu_list.anchor_bottom = 1.0
+	_menu_list.offset_left = -480.0
+	_menu_list.offset_right = -60.0
+	_menu_list.offset_top = 0.0
+	_menu_list.offset_bottom = 0.0
+	layer.add_child(_menu_list)
+	var items: Array[String] = []
+	for pair in _clips:
+		items.append(String(pair[0]))
+	if items.is_empty():
+		items.append("（没有可用动画）")
+	_menu_list.set_items(items)
+	_menu_list.chosen.connect(_play_index)
+	layer.add_child(MeTheme.footer_label("左键 旋转 · 右键 平移 · 滚轮 缩放 · Esc 返回"))
+
+func _play_index(index: int) -> void:
+	if _anim_player == null or index >= _clips.size():
+		return
+	var clip: StringName = _clips[index][0]
+	var loops: bool = _clips[index][1]
+	var animation := _anim_player.get_animation(clip)
+	if animation != null:
+		animation.loop_mode = Animation.LOOP_LINEAR if loops else Animation.LOOP_NONE
+	_anim_player.play(clip, 0.3)
+
+## A one-shot has ended (looping clips never emit this): settle back on Idle
+## rather than freezing on the last frame.
+func _on_clip_finished(_clip: StringName) -> void:
+	if _anim_player != null and _anim_player.has_animation(&"Idle"):
+		var idle := _anim_player.get_animation(&"Idle")
+		if idle != null:
+			idle.loop_mode = Animation.LOOP_LINEAR
+		_anim_player.play(&"Idle", 0.4)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo \
+			and (event as InputEventKey).physical_keycode == KEY_ESCAPE:
+		_back_to_menu()
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseMotion:
+		var motion := event as InputEventMouseMotion
+		if motion.button_mask & MOUSE_BUTTON_MASK_LEFT and _body != null:
+			_body.rotate_y(motion.relative.x * ROTATE_SPEED)
+			get_viewport().set_input_as_handled()
+		elif motion.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+			var right: Vector3 = _camera.global_basis.x
+			var up: Vector3 = _camera.global_basis.y
+			_pivot.position += (-right * motion.relative.x + up * motion.relative.y) \
+				* PAN_SPEED * _distance
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
+		var button := event as InputEventMouseButton
+		if button.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_set_distance(_distance * ZOOM_STEP)
+			get_viewport().set_input_as_handled()
+		elif button.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_set_distance(_distance / ZOOM_STEP)
+			get_viewport().set_input_as_handled()
+
+func _set_distance(value: float) -> void:
+	_distance = clampf(value, MIN_DISTANCE, MAX_DISTANCE)
+	_camera.position = Vector3(0.0, 0.0, _distance)
+
+func _back_to_menu() -> void:
+	if not ResourceLoader.exists(MAIN_MENU_SCENE):
+		return
+	# ✅ 转场约定: normal transitions are WHITE. Headless keeps the seam.
+	if DisplayServer.get_name() == "headless":
+		_change_scene.call(MAIN_MENU_SCENE)
+		return
+	PauseUi.run_white_transition(load(MAIN_MENU_SCENE), 0.35)

@@ -395,8 +395,8 @@ func test_main_menu_builds_without_error_and_skip_entrance_settles_the_list() ->
 
 	assert_true(menu._menu_list.is_visible_in_tree(), \
 		"the menu list is not visible in tree once the entrance is skipped")
-	assert_eq(menu._menu_list._labels.size(), 3, \
-		"the main menu list should have exactly 开始/设置/退出")
+	assert_eq(menu._menu_list._labels.size(), 4, \
+		"the main menu list should have exactly 开始/角色/设置/退出")
 
 func test_start_pressed_requests_the_scene_change_via_the_seam() -> void:
 	var menu := MainMenu.new()
