@@ -579,16 +579,14 @@ func _track(tween: Tween) -> Tween:
 ## 同时发生的" -- after the LOGO_HOLD, everything launches TOGETHER; the walk
 ## takes over when the rise lands, and settle waits for the longest strand.
 func _play_entrance() -> void:
+	# ✅ THE OWNER (final flow): the game HOLDS on the opening shot -- the
+	# crouched close-up with the mark -- and the prompt breathes there. The
+	# click is what plays the whole show: rise, orbit, walk, menu.
 	var pacing := _track(create_tween())
-	pacing.tween_interval(LOGO_HOLD)
-	pacing.tween_callback(_beat_rise_begin)
-	pacing.tween_interval(RISE_TIME)
-	pacing.tween_callback(_start_walk_loop)
-	pacing.tween_interval(0.3)
+	pacing.tween_interval(LOGO_HOLD * 0.5)
 	pacing.tween_callback(_show_click_prompt)
 
-## The settled pre-menu state: she walks, the world flows, and the prompt
-## breathes until someone clicks (or presses anything).
+## The held title shot: crouched figure, white mark, breathing prompt.
 func _show_click_prompt() -> void:
 	_prompt_shown = true
 	_click_prompt.visible = true
@@ -600,15 +598,19 @@ func _show_click_prompt() -> void:
 	_prompt_tween.tween_property(_click_prompt, "modulate:a", 0.3, 1.1) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-## The click: prompt out, menu in.
-func _begin_menu() -> void:
+## The click: prompt out, and the whole show plays through to the menu.
+func _begin_show() -> void:
 	_prompt_shown = false
 	if _prompt_tween != null and _prompt_tween.is_valid():
 		_prompt_tween.kill()
 	var fade := _track(create_tween())
 	fade.tween_property(_click_prompt, "modulate:a", 0.0, 0.2)
-	_beat_menu_parallax()
 	var pacing := _track(create_tween())
+	pacing.tween_callback(_beat_rise_begin)
+	pacing.tween_interval(RISE_TIME)
+	pacing.tween_callback(_start_walk_loop)
+	pacing.tween_interval(0.3)
+	pacing.tween_callback(_beat_menu_parallax)
 	pacing.tween_interval(MENU_PANEL_TIME + MeMenuList.ENTRANCE_STAGGER * 3.0 + MeMenuList.TWEEN_TIME)
 	pacing.tween_callback(_beat_settle)
 
@@ -741,9 +743,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (is_key_press or is_click):
 		return
 	if _prompt_shown:
-		# The invited click: the entrance already settled on its own.
-		_begin_menu()
+		# The invited click on the held title shot: play the whole show.
+		_begin_show()
 	else:
+		# Mid-show impatience: jump straight to the settled menu.
 		_skip_entrance()
 
 # ---------------------------------------------------------------------------
