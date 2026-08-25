@@ -131,6 +131,13 @@ var _click_prompt: Label
 var _prompt_tween: Tween
 var _prompt_shown := false
 var _quit_confirm: Control
+## The fake-load run (✅ the owner's storyboard): threaded load of the level
+## while the menu keeps playing -- she sprints screen-left, camera on her
+## LEFT side (azimuth 0), then a push into her eye under a white cover.
+var _loading := false
+var _load_min_elapsed := 0.0
+var _run_orbit_t := 0.0
+var _stand_head_y := 1.43
 
 var _active_tweens: Array[Tween] = []
 var _entrance_active: bool = true
@@ -159,6 +166,8 @@ func _ready() -> void:
 	_play_entrance()
 
 func _process(delta: float) -> void:
+	if _loading:
+		_poll_loading(delta)
 	if _floor == null or not (_floor.material is ShaderMaterial):
 		return
 	# The angle updates EVERY frame -- the ground visibly turns with the
@@ -532,6 +541,7 @@ func _solve_framing() -> void:
 			crouch_head = (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin.y
 			crouch_hips = (skeleton.global_transform * skeleton.get_bone_global_pose(hips)).origin.y
 			stand_head = (skeleton.global_transform * skeleton.get_bone_global_rest(head)).origin.y
+	_stand_head_y = stand_head
 	var tan_v := tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
 	var upper: float = maxf(crouch_head + HEAD_TOP_PAD - crouch_hips, 0.2)
 	_d_close = upper / (CLOSE_BODY_FRAC * 2.0 * tan_v)
@@ -549,12 +559,17 @@ func _solve_framing() -> void:
 ## parameter, so the orbit, the pull-out and the framing shift are a single
 ## continuous move -- and the floor reads the same azimuth.
 func _apply_cam(t: float) -> void:
-	var azimuth := deg_to_rad(lerpf(CLOSE_AZIMUTH_DEG, FAR_AZIMUTH_DEG, t))
-	_cam_azimuth_deg = rad_to_deg(azimuth)
-	var d := lerpf(_d_close, _d_far, t)
-	var target := _head_point.lerp(_body_centre, t)
-	var ndc := Vector2((HEAD_X_FRAC - 0.5) * 2.0, (0.5 - HEAD_Y_FRAC) * 2.0) \
-		.lerp(Vector2((FAR_X_FRAC - 0.5) * 2.0, 0.0), t)
+	_place_cam(lerpf(CLOSE_AZIMUTH_DEG, FAR_AZIMUTH_DEG, t),
+		lerpf(_d_close, _d_far, t),
+		_head_point.lerp(_body_centre, t),
+		Vector2((HEAD_X_FRAC - 0.5) * 2.0, (0.5 - HEAD_Y_FRAC) * 2.0) \
+			.lerp(Vector2((FAR_X_FRAC - 0.5) * 2.0, 0.0), t))
+
+## The one camera-solving primitive: azimuth around the body, distance,
+## look target, and where that target should land in NDC.
+func _place_cam(azimuth_deg: float, d: float, target: Vector3, ndc: Vector2) -> void:
+	var azimuth := deg_to_rad(azimuth_deg)
+	_cam_azimuth_deg = azimuth_deg
 	var tan_v := tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
 	var tan_h := tan_v * (maxf(size.x, 1.0) / maxf(size.y, 1.0))
 	var back := Vector3(cos(azimuth), 0.0, sin(azimuth))
@@ -834,8 +849,78 @@ func _confirm_button(text: String, bg: Color, handler: Callable) -> Button:
 	button.pressed.connect(handler)
 	return button
 
+const LOAD_MIN_RUN := 1.4
+const LOAD_ORBIT_TIME := 0.9
+
 func _on_start_pressed() -> void:
-	_change_scene.call(MAIN_SCENE)
+	if _loading:
+		return
+	# Headless keeps the old synchronous seam (tests drive it; there is no
+	# show to play without a renderer).
+	if DisplayServer.get_name() in ["headless", "embedded"]:
+		_change_scene.call(MAIN_SCENE)
+		return
+	_loading = true
+	_load_min_elapsed = 0.0
+	ResourceLoader.load_threaded_request(MAIN_SCENE)
+	# UI leaves: column back out to the right, dressing fades.
+	var out := _track(create_tween())
+	out.set_parallel(true)
+	out.tween_property(_menu_list, "position:x", _menu_list.position.x + 520.0, 0.45) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	out.tween_property(_menu_list, "modulate:a", 0.0, 0.45)
+	for label in _metadata_labels:
+		out.tween_property(label, "modulate:a", 0.0, 0.3)
+	out.tween_property(_footer, "modulate:a", 0.0, 0.3)
+	if _click_prompt != null:
+		out.tween_property(_click_prompt, "modulate:a", 0.0, 0.2)
+	# Camera swings to her LEFT (azimuth 90 -> 0) while she breaks into a
+	# run toward screen-left; the floor sprints with her (same azimuth).
+	var orbit := _track(create_tween())
+	orbit.tween_method(_loading_orbit, 0.0, 1.0, LOAD_ORBIT_TIME) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_start_run_clip()
+	var pace := _track(create_tween())
+	pace.tween_property(self, "_floor_gain", 2.4, LOAD_ORBIT_TIME) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+
+func _loading_orbit(t: float) -> void:
+	_run_orbit_t = t
+	_place_cam(lerpf(FAR_AZIMUTH_DEG, 0.0, t), _d_far, _body_centre, Vector2.ZERO)
+
+func _start_run_clip() -> void:
+	if _anim_player == null:
+		return
+	for clip in [&"Run", &"Jog_Fwd", &"Sprint", &"run", &"Walk"]:
+		if _anim_player.has_animation(clip):
+			_anim_player.play(clip, 0.3)
+			return
+
+## Polls the threaded load; when the level is ready (and the run has had
+## its beat), the camera dives into her eye and the white takes over.
+func _poll_loading(delta: float) -> void:
+	_load_min_elapsed += delta
+	var status := ResourceLoader.load_threaded_get_status(MAIN_SCENE)
+	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS or _load_min_elapsed < LOAD_MIN_RUN:
+		return
+	if status == ResourceLoader.THREAD_LOAD_FAILED or status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+		# Fall back to the plain (blocking) switch rather than stranding
+		# the player on the menu.
+		_loading = false
+		_change_scene.call(MAIN_SCENE)
+		return
+	var packed := ResourceLoader.load_threaded_get(MAIN_SCENE) as PackedScene
+	_loading = false
+	var dive := _track(create_tween())
+	dive.tween_method(_fp_dive, 0.0, 1.0, 0.8) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	PauseUi.run_white_transition(packed, 0.7)
+
+## The push into first person: distance collapses toward her eye height.
+func _fp_dive(t: float) -> void:
+	var eye := Vector3(0.0, _stand_head_y * 0.98, 0.0)
+	_place_cam(lerpf(0.0, 20.0, t), lerpf(_d_far, 0.12, t),
+		_body_centre.lerp(eye, t), Vector2.ZERO)
 
 func _show_settings() -> void:
 	_menu_list.visible = false

@@ -50,6 +50,10 @@ var _showing_settings: bool = false
 ## exactly once, on a fixed one-frame schedule, with no dependency on what
 ## the player does afterward.
 var _pending_scene_change: bool = false
+## The loading transition's white sheet -- lives here because this autoload
+## survives the scene switch; MainMenu hands over at full white and the
+## lift happens in the freshly-loaded level.
+var _white: ColorRect
 
 ## Seam for _go_to_main_menu(): swappable so a test can observe "回主菜单 was
 ## requested" without a real change_scene_to_file() replacing the scene tree
@@ -61,6 +65,13 @@ func _real_change_scene(path: String) -> void:
 	get_tree().change_scene_to_file(path)
 
 func _ready() -> void:
+	_white = ColorRect.new()
+	_white.color = Color.WHITE
+	_white.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_white.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_white.modulate.a = 0.0
+	_white.visible = false
+	add_child(_white)
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	layer = 10
 	# The boot-time application point for the window/audio half of
@@ -276,3 +287,25 @@ func _go_to_main_menu() -> void:
 
 func _clear_pending_scene_change() -> void:
 	_pending_scene_change = false
+
+## The loading handoff (✅ the owner's fake-load choreography): fade to pure
+## white over `fade_in`, switch to `packed` UNDER the white (the instantiate
+## hitch hides there), hold a few frames for the new scene's first paint,
+## then lift. Runs on this autoload so the cover outlives the caller.
+func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
+	_white.visible = true
+	move_child(_white, get_child_count() - 1)
+	var tween := create_tween()
+	tween.tween_property(_white, "modulate:a", 1.0, fade_in) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	await tween.finished
+	_pending_scene_change = true
+	get_tree().change_scene_to_packed(packed)
+	for i in 6:
+		await get_tree().process_frame
+	_pending_scene_change = false
+	var lift := create_tween()
+	lift.tween_property(_white, "modulate:a", 0.0, 0.6) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	await lift.finished
+	_white.visible = false
