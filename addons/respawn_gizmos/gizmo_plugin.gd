@@ -1,6 +1,8 @@
 @tool
 extends EditorNode3DGizmoPlugin
 
+# Level-marker gizmos: the respawn preview, and the interest-line family.
+#
 # The respawn preview, as a REAL gizmo: a translucent capsule at the player's
 # own size plus a -Z arrow, with collision segments so clicking any of its
 # lines selects the node in the viewport -- exactly what Marker3D's own gizmo
@@ -21,9 +23,19 @@ var _head_mesh: CylinderMesh
 var _fills: Dictionary = {}
 var _arrows: Dictionary = {}
 
+## Per-kind line colours: cyan cable, orange bar, yellow beam, red ladder.
+const KIND_COLORS := {
+	InterestLine.Kind.ZIPLINE: Color(0.3, 0.8, 1.0),
+	InterestLine.Kind.SWING: Color(1.0, 0.6, 0.2),
+	InterestLine.Kind.BALANCE: Color(0.95, 0.85, 0.2),
+	InterestLine.Kind.LADDER: Color(0.95, 0.35, 0.35),
+}
+
 func _init() -> void:
 	create_material("checkpoint", Color(0.2, 0.9, 0.4))
 	create_material("spawn", Color(0.75, 0.4, 1.0))
+	for kind in KIND_COLORS:
+		create_material("line_%d" % kind, KIND_COLORS[kind])
 	create_handle_material("handles")
 	_capsule_mesh = CapsuleMesh.new()
 	_capsule_mesh.radius = RADIUS
@@ -55,11 +67,14 @@ func _get_gizmo_name() -> String:
 	return "RespawnPoints"
 
 func _has_gizmo(node: Node3D) -> bool:
-	return node is Checkpoint or node is SpawnPoint
+	return node is Checkpoint or node is SpawnPoint or node is InterestLine
 
 func _redraw(gizmo: EditorNode3DGizmo) -> void:
 	gizmo.clear()
 	var node: Node3D = gizmo.get_node_3d()
+	if node is InterestLine:
+		_redraw_interest_line(gizmo, node)
+		return
 	var checkpoint: bool = node is Checkpoint
 	var bottom: float = -HEIGHT * 0.5
 	var lines: PackedVector3Array = _capsule_lines(bottom)
@@ -164,3 +179,59 @@ func _commit_handle(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool,
 	ur.add_do_property(node, "global_rotation", node.global_rotation)
 	ur.add_undo_property(node, "global_rotation", restore)
 	ur.commit_action()
+
+# --- interest lines --------------------------------------------------------
+
+## The runtime builds the reach volume and the rope only in the game, so in
+## the editor a line was a bare Path3D curve nobody could read -- ✅ the
+## owner: "在编辑器里好难看懂." Drawn per kind: the axis polyline, reach-radius
+## rings, and for a LADDER the rungs plus a front arrow (the -Z side is the
+## one thing an author keeps getting backwards).
+func _redraw_interest_line(gizmo: EditorNode3DGizmo, line: InterestLine) -> void:
+	if line.curve == null or line.curve.point_count < 2:
+		return
+	var material: StandardMaterial3D = get_material("line_%d" % line.kind, gizmo)
+	var points: PackedVector3Array = line.curve.get_baked_points()
+	var lines := PackedVector3Array()
+	for i in range(points.size() - 1):
+		lines.append(points[i])
+		lines.append(points[i + 1])
+	# Reach rings roughly every metre, oriented across the local tangent.
+	var length: float = line.curve.get_baked_length()
+	var step: float = maxf(length / maxf(floorf(length), 1.0), 0.5)
+	var s: float = 0.0
+	while s <= length + 0.01:
+		var at: Vector3 = line.curve.sample_baked(minf(s, length))
+		var ahead: Vector3 = line.curve.sample_baked(minf(s + 0.05, length))
+		var behind: Vector3 = line.curve.sample_baked(maxf(s - 0.05, 0.0))
+		var tangent: Vector3 = (ahead - behind).normalized()
+		if tangent.length_squared() < 0.5:
+			tangent = Vector3.UP
+		var helper: Vector3 = Vector3.UP if absf(tangent.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
+		var x: Vector3 = helper.cross(tangent).normalized() * line.reach_radius
+		var z: Vector3 = tangent.cross(x).normalized() * line.reach_radius
+		for i in 12:
+			var a: float = TAU * i / 12.0
+			var b: float = TAU * (i + 1) / 12.0
+			lines.append(at + x * cos(a) + z * sin(a))
+			lines.append(at + x * cos(b) + z * sin(b))
+		s += step
+	if line.kind == InterestLine.Kind.LADDER:
+		# Rungs across the local X, every 0.35 m -- reads as a ladder at a
+		# glance -- and the front arrow: local -Z is the side a body climbs
+		# from (InterestLine.front()).
+		var r: float = 0.0
+		while r <= length + 0.01:
+			var at: Vector3 = line.curve.sample_baked(minf(r, length))
+			lines.append(at + Vector3(-0.25, 0.0, 0.0))
+			lines.append(at + Vector3(0.25, 0.0, 0.0))
+			r += 0.35
+		var mid: Vector3 = line.curve.sample_baked(length * 0.5)
+		lines.append(mid)
+		lines.append(mid + Vector3(0.0, 0.0, -0.7))
+		for wing in [Vector3(0.12, 0.0, -0.5), Vector3(-0.12, 0.0, -0.5),
+				Vector3(0.0, 0.12, -0.5), Vector3(0.0, -0.12, -0.5)]:
+			lines.append(mid + Vector3(0.0, 0.0, -0.7))
+			lines.append(mid + wing)
+	gizmo.add_lines(lines, material)
+	gizmo.add_collision_segments(lines)
