@@ -890,7 +890,12 @@ func _on_start_pressed() -> void:
 
 func _loading_orbit(t: float) -> void:
 	_run_orbit_t = t
-	_place_cam(lerpf(FAR_AZIMUTH_DEG, 0.0, t), _d_far, _body_centre, Vector2.ZERO)
+	# Starts EXACTLY where the settled menu framing left her (offset left at
+	# FAR_X_FRAC -- ✅ the owner caught the snap) and eases to centre as the
+	# camera comes around.
+	var settled_ndc := Vector2((FAR_X_FRAC - 0.5) * 2.0, 0.0)
+	_place_cam(lerpf(FAR_AZIMUTH_DEG, 0.0, t), _d_far, _body_centre,
+		settled_ndc.lerp(Vector2.ZERO, t))
 
 func _start_run_clip() -> void:
 	if _anim_player == null:
