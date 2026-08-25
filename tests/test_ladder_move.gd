@@ -617,8 +617,13 @@ func test_top_plus_w_carries_the_body_onto_the_deck() -> void:
 	assert_true(player.grounded, "the carry did not end grounded on the deck")
 	assert_almost_eq(player.global_position.y, landing_y, 0.15, \
 		"the body did not settle at standing height above the deck")
-	assert_almost_eq(player.global_position.z, reach, 0.5, \
-		"the body did not settle on the deck the probe found")
+	# NEAREST standable point wins (the near-to-far scan): the landing hugs
+	# the lip instead of sitting a full top_exit_reach back -- ✅ the owner's
+	# red curve. The deck's near edge is what bounds it, not `reach`.
+	assert_lt(player.global_position.z, reach, \
+		"the landing sat all the way back at the far candidate")
+	assert_gt(player.global_position.z, 0.2, \
+		"the landing failed to make it past the lip at all")
 
 	deck.queue_free()
 

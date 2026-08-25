@@ -379,12 +379,28 @@ const TOP_DECK_NORMAL_MIN := 0.7
 ## (normal.y > TOP_DECK_NORMAL_MIN) with room for a standing body --
 ## player.fits_standing_at(), the same shapecast GrabMove's own mantle gate
 ## asks of its landing.
+## NEAR TO FAR, first standable point wins. The old single candidate sat at
+## a fixed top_exit_reach (1.2 m) behind the top, which read as the carry
+## "sending the player way back there" (✅ the owner, with a drawing). A cap
+## block or small step on the lip is landed ON when the capsule fits there
+## -- a < step's worth of rise IS the walkway -- and stepped past otherwise.
+const TOP_DECK_SCAN_START := 0.35
+const TOP_DECK_SCAN_STEP := 0.15
+
 func _probe_top_deck() -> Dictionary:
 	var top: Vector3 = _line.sample(_line.length())["position"]
-	var candidate: Vector3 = top - _line.front() * cfg.top_exit_reach
 	var space: PhysicsDirectSpaceState3D = player.get_world_3d().direct_space_state
 	if space == null:
 		return {}
+	var d: float = TOP_DECK_SCAN_START
+	while d <= cfg.top_exit_reach + 0.001:
+		var found: Dictionary = _standable_at(space, top - _line.front() * d)
+		if found.get("valid", false):
+			return found
+		d += TOP_DECK_SCAN_STEP
+	return {}
+
+func _standable_at(space: PhysicsDirectSpaceState3D, candidate: Vector3) -> Dictionary:
 	var from: Vector3 = candidate + Vector3.UP * TOP_DECK_PROBE_LIFT
 	var to: Vector3 = candidate - Vector3.UP * TOP_DECK_PROBE_DEPTH
 	var query := PhysicsRayQueryParameters3D.create(from, to)
@@ -420,7 +436,7 @@ func _begin_top_exit(deck_position: Vector3) -> StringName:
 	# the deck lip instead of cutting its corner (✅ the owner: "会穿模").
 	# The solved control height puts the curve's true peak exactly there.
 	_top_exit.begin(player.global_position, landing, cfg.top_exit_time,
-		landing.y + cfg.top_exit_apex_lift)
+		landing.y + cfg.top_exit_apex_lift, cfg.top_exit_control_bias)
 	_top_exiting = true
 	# ✅ THE SPEC: the carry plays ClimbUp_1m (CharacterAnimator._route()'s
 	# Move.LADDER arm). The scripted arc already supplies the whole vertical

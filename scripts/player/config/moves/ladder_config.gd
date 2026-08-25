@@ -60,6 +60,12 @@ func _init() -> void:
 ## cutting the deck lip's corner. 0 degrades to the monotonic rise-then-
 ## level curve (ScriptedMove._control_height()'s own degenerate case).
 @export var top_exit_apex_lift: float = 0.3
+
+## ⚠️ To-be-measured initial guess. Where the bezier's control point sits
+## between the ends: 1 puts it above the START (a steep rise hugging the
+## ladder, flattening onto the deck -- the shape the owner drew in red),
+## 0 above the landing. See ScriptedMove.begin()'s control_bias.
+@export_range(0.0, 1.0) var top_exit_control_bias: float = 0.7
 ## How far a body may be from a DIFFERENT ladder and still magnet-snap onto
 ## it (Task 5's jump-to-adjacent-ladder case), metres.
 @export var snap_range: float = 4.0
