@@ -24,6 +24,15 @@ var _theta: float = 0.0
 var _omega: float = 0.0
 var _fade: float = 0.0
 var _entry_pos: Vector3 = Vector3.ZERO
+## Body yaw at the catch, and the swing plane's own yaw -- the fade turns
+## between the two instead of snapping, same shape as ZiplineMove's
+## _entry_yaw/_cable_yaw pair.
+var _entry_yaw: float = 0.0
+var _target_yaw: float = 0.0
+## Set the tick the fade ends, when the look fan is centred on the swing
+## plane. Guards a call that must happen once -- see ZiplineMove's own
+## _fan_centred note on why recentre_yaw_reference() cannot run every tick.
+var _fan_centred: bool = false
 var _aborted: bool = false
 
 func enter(_previous: StringName) -> void:
@@ -62,11 +71,12 @@ func enter(_previous: StringName) -> void:
 	player.velocity = Vector3.ZERO
 	_fade = 0.0
 	_entry_pos = player.global_position
-	var yaw := atan2(-_forward.x, -_forward.z)
-	player.rotation.y = yaw
-	if player.camera_rig != null:
-		player.camera_rig.recentre_yaw_reference(yaw)
-	player.pin_visual_yaw(yaw)
+	# Turned ACROSS the fade below, not here -- see _turn_body_to()/
+	# _centre_fan(). Snapping the yaw in this one tick was the review's
+	# second finding.
+	_entry_yaw = player.rotation.y
+	_target_yaw = atan2(-_forward.x, -_forward.z)
+	_fan_centred = false
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted or not is_instance_valid(_line):
@@ -82,8 +92,18 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# would be free braking nobody asked for), S the mirror.
 	var pump: float = 0.0
 	var wish: float = input.move.y
-	if absf(wish) > 0.1 and signf(wish) == signf(_omega) and absf(_omega) > 0.01:
-		pump = cfg.pump_accel * signf(_omega)
+	if absf(wish) > 0.1:
+		if absf(_omega) <= 0.01:
+			# PUMPING FROM REST IS ALLOWED. A straight-up catch with no
+			# drift lands exactly on theta=0, omega=0 -- gravity torque
+			# (sin(0)) is zero there too, so without this branch the guard
+			# below turned the most ordinary approach into a dead fixed
+			# point, escapable only by letting go. The guard's job was only
+			# to stop counter-motion input from braking an EXISTING swing;
+			# from rest there is no motion to counter.
+			pump = cfg.pump_accel * signf(wish)
+		elif signf(wish) == signf(_omega):
+			pump = cfg.pump_accel * signf(_omega)
 	_omega += (-config.pawn.gravity / cfg.pendulum_length) * sin(_theta) * delta \
 		+ pump * delta
 	# ✅ MaxSwingVelocity caps the TANGENTIAL speed.
@@ -95,14 +115,44 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		+ (_forward * sin(_theta) - Vector3.UP * cos(_theta)) * cfg.pendulum_length
 	_fade += delta
 	if _fade < cfg.fade_in_time:
-		player.global_position = _entry_pos.lerp(chain, _fade / cfg.fade_in_time)
+		var t: float = _fade / cfg.fade_in_time
+		player.global_position = _entry_pos.lerp(chain, t)
+		_turn_body_to(lerp_angle(_entry_yaw, _target_yaw, t))
 	else:
 		player.global_position = chain
+		if not _fan_centred:
+			_centre_fan()
 	return KEEP
 
 func exit() -> void:
 	if is_instance_valid(_line):
 		player.note_line_left(_line, cfg.same_line_redo_time)
+
+## THE FADE-IN ONLY. Turns the body from its entry facing toward the swing
+## plane's forward across the magnet pull, rather than snapping there in one
+## tick -- same shape as ZiplineMove._turn_body_to().
+func _turn_body_to(yaw: float) -> void:
+	var before: float = player.rotation.y
+	player.rotation.y = yaw
+	if player.camera_rig != null:
+		player.camera_rig.absorb_body_yaw(wrapf(yaw - before, -PI, PI))
+	# SwingConfig freezes the visual yaw -- both hands are on the bar -- and
+	# that freeze cancels this turn degree for degree unless the model is
+	# told where to face.
+	player.pin_visual_yaw(yaw)
+
+## Ends the fade: squares the body up to the swing plane's forward and
+## centres the look fan on it, exactly once -- see ZiplineMove's own
+## _centre_fan() note on why recentre_yaw_reference() must not run every
+## tick once the fade is done.
+func _centre_fan() -> void:
+	_fan_centred = true
+	var before: float = player.rotation.y
+	player.rotation.y = _target_yaw
+	if player.camera_rig != null:
+		player.camera_rig.absorb_body_yaw(wrapf(_target_yaw - before, -PI, PI))
+		player.camera_rig.recentre_yaw_reference(_target_yaw)
+	player.pin_visual_yaw(_target_yaw)
 
 # --- read by the HUD, Task 4 and the tests ---------------------------------
 
