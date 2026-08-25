@@ -274,15 +274,17 @@ func _on_settings_closed() -> void:
 func _go_to_main_menu() -> void:
 	if not ResourceLoader.exists(MAIN_MENU_SCENE):
 		return
-	# Unpaused BEFORE the change is requested, not after: change_scene_to_file
-	# is deferred, so if this order were reversed a paused tree would sit
-	# paused for the rest of the current frame while the old scene is still
-	# current -- and _pending_scene_change below only starts guarding
-	# toggle_pause() once this line has already run.
-	get_tree().paused = false
 	_set_shown(false)
+	get_tree().paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_pending_scene_change = true
-	_change_scene.call(MAIN_MENU_SCENE)
+	# ✅ The owner's convention: normal transitions are WHITE. Headless keeps
+	# the bare seam for the tests.
+	if DisplayServer.get_name() in ["headless", "embedded"]:
+		_change_scene.call(MAIN_MENU_SCENE)
+		call_deferred("_clear_pending_scene_change")
+		return
+	run_white_transition(load(MAIN_MENU_SCENE), 0.4)
 	call_deferred("_clear_pending_scene_change")
 
 func _clear_pending_scene_change() -> void:

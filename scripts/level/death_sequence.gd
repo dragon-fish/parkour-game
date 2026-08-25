@@ -92,6 +92,11 @@ var _cover_left: float = 0.0
 ## ramp; this is the ramp for respawns that have no cutscene in front of them.
 var _cover_in_left: float = 0.0
 var _on_black: Callable = Callable()
+## ✅ THE OWNER's convention (2026-08-26): normal transitions are WHITE,
+## death transitions are BLACK. The death path always covers in black; the
+## manual R-hold respawn (cover_respawn) is a normal transition and covers
+## in white.
+var _cover_color: Color = Color.BLACK
 
 func total_duration() -> float:
 	return DROP_TIME + HOLD_TIME + TOPPLE_TIME + REST_TIME
@@ -180,7 +185,7 @@ func _physics_process(delta: float) -> void:
 	if _cover_in_left > 0.0:
 		_cover_in_left -= delta
 		if _player != null and _player.screen_effects != null:
-			_player.screen_effects.set_tint(Color.BLACK,
+			_player.screen_effects.set_tint(_cover_color,
 				clampf(1.0 - _cover_in_left / COVER_FADE, 0.0, 1.0))
 		if _cover_in_left <= 0.0:
 			# FULL BLACK: the respawn happens now, exactly as the death path
@@ -194,12 +199,12 @@ func _physics_process(delta: float) -> void:
 			if _player != null:
 				_player.lock_input()
 				if _player.screen_effects != null:
-					_player.screen_effects.set_tint(Color.BLACK, 1.0)
+					_player.screen_effects.set_tint(_cover_color, 1.0)
 		return
 	if _cover_left > 0.0:
 		_cover_left -= delta
 		if _player != null and _player.screen_effects != null:
-			_player.screen_effects.set_tint(Color.BLACK,
+			_player.screen_effects.set_tint(_cover_color,
 				clampf(_cover_left / COVER_FADE, 0.0, 1.0))
 		if _cover_left <= 0.0:
 			_end_cover()
@@ -224,6 +229,7 @@ func _physics_process(delta: float) -> void:
 		# reset_player), so the teleport and the body standing back up have
 		# just happened under full black -- and the reset also re-opened the
 		# input gate and cleared the tint, so both are re-asserted here.
+		_cover_color = Color.BLACK
 		_cover_left = RESPAWN_COVER + COVER_FADE
 		if _player != null:
 			_player.lock_input()
@@ -237,6 +243,7 @@ func _physics_process(delta: float) -> void:
 func cover_respawn(player: Player, on_black: Callable) -> void:
 	_player = player
 	_on_black = on_black
+	_cover_color = Color.WHITE
 	_cover_in_left = COVER_FADE
 	if _player != null:
 		_player.lock_input()
