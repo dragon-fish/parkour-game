@@ -9,9 +9,12 @@ extends LineMove
 # how long the ride takes falls out of the cable's length and grade. Same
 # reasoning IntoGrabMove gives for itself: the duration is a consequence.
 #
-# PHYS_Flying: the body is placed directly from the cable, every tick, and
-# move_and_slide() is never called. Whatever the cable crosses, the body
-# crosses.
+# PHYS_Flying: the body is placed from the cable every tick, never through
+# move_and_slide(). Only the STEADY ride is collision-checked (slide_to()
+# below) -- because designers sink cable ends into walls on purpose, and a
+# rider who never lets go must be thrown off there, not carried through. The
+# 0.1 s magnet fade onto the cable stays a direct write on purpose: brushing
+# geometry during the pull must not abort the catch.
 
 ## Arc length along the cable, metres.
 var _s: float = 0.0
@@ -106,11 +109,26 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	_cable_yaw = _yaw_along(along)
 	_fade += delta
 	if _fade < cfg.fade_in_time:
+		# ✅ THE CONTROLLER'S RULING (fix round 1): the magnet's own pull stays
+		# a direct write, not collision-checked. Routing this through slide_to
+		# meant brushing any geometry during the 0.1 s fade aborted the catch
+		# outright -- "touched the rope but got bounced off" -- exactly the
+		# UX the magnet exists to prevent. Geometry only claims the rider once
+		# they are actually RIDING (see the slide_to below); the owner's
+		# "滑到底忘记放手撞到墙被弹出去了" is about a rider who never lets go
+		# of a cable already being ridden, not a body still fading onto one.
 		var t: float = _fade / cfg.fade_in_time
 		player.global_position = _entry_pos.lerp(hang, t)
 		_turn_body_to(lerp_angle(_entry_yaw, _cable_yaw, t))
 	else:
-		player.global_position = hang
+		# ✅ THE OWNER, on the original: "滑到底忘记放手撞到墙被弹出去了" -- a
+		# cable whose path runs through solid geometry (designers deliberately
+		# sink cable ends into walls) must throw the rider off AT the wall,
+		# never carry the capsule through it, once the ride is underway.
+		var hit := slide_to(hang)
+		if hit != null:
+			player.velocity = (_tangent() * _v).slide(hit.get_normal())
+			return FALLING
 		if not _fan_centred:
 			_target_yaw = _cable_yaw
 			_centre_fan()
