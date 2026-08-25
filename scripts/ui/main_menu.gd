@@ -34,7 +34,17 @@ const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
 # --- entrance timing (spec: 入场编排 beats 0a-6) ----------------------------
 ## 0a: logo plate over the crouched close-up, fake loading bar.
 const LOGO_HOLD := 1.0
-const RISE_TIME := 1.4
+const RISE_TIME := 1.2
+## ✅ The owner, on the harsh turn: the body starts rising WITH the camera
+## but finishes AFTER it -- the camera is already squared while the body is
+## still standing up -- and the camera does not fly straight: it swings an
+## arc, letting the character drift screen-LEFT before centring
+## (quadratic bezier through a sideways control point). Easing everywhere:
+## cubic-bezier(0.65, 0, 0.35, 1) = TRANS_CUBIC / EASE_IN_OUT.
+const BODY_RISE_DELAY := 0.15
+const BODY_TURN_TIME := 1.8
+const BODY_STAND_BLEND := 1.2
+const CAM_ARC_SIDE := 0.45
 const LOGO_FADE_TIME := 0.4
 const WALK_TO_MENU_DELAY := 0.15
 const MENU_PANEL_TIME := 0.45
@@ -52,7 +62,7 @@ const _DRIFT_BASE_Y := 0.0
 const FRAME_FOV_DEG := 55.0
 const HEAD_X_FRAC := 0.45
 const HEAD_Y_FRAC := 0.30
-const CLOSE_BODY_FRAC := 0.48
+const CLOSE_BODY_FRAC := 0.85
 const FAR_BODY_FRAC := 0.70
 ## Skull above the Head bone, metres -- the bone sits at the neck end.
 const HEAD_TOP_PAD := 0.16
@@ -71,7 +81,7 @@ const FALLBACK_STAND_HEAD := 1.43
 const LOGO_TEXTURE := "res://assets/ui/logo_mark_white.svg"
 ## Centre of the mark, as screen fractions (✅ the owner: left 20% top 66%).
 const LOGO_X_FRAC := 0.24
-const LOGO_Y_FRAC := 0.60
+const LOGO_Y_FRAC := 0.55
 const LOGO_SIZE_PX := 220.0
 
 # --- mirror + glitch -------------------------------------------------------
@@ -540,15 +550,36 @@ func _beat_rise_begin() -> void:
 	floor_fade.tween_property(_floor, "modulate:a", 1.0, RISE_TIME) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-	if _anim_player != null and _anim_player.has_animation(&"Idle"):
-		_anim_player.play(&"Idle", 0.35)
-	var rise := _track(create_tween())
-	rise.set_parallel(true)
-	rise.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	rise.tween_property(_silhouette_camera, "position", _cam_far, RISE_TIME)
-	rise.tween_property(_silhouette_root, "rotation_degrees:y", FRONT_YAW_DEG, RISE_TIME)
-	rise.tween_property(_mirror_window, "modulate:a", MIRROR_ALPHA, RISE_TIME * 0.5) \
+	# Camera leads: an arced flight (see _arc_camera) that lands while the
+	# body is still finishing its stand. Body turn + stand start a beat
+	# later and run longer.
+	var cam := _track(create_tween())
+	cam.tween_method(_arc_camera, 0.0, 1.0, RISE_TIME) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+
+	var body := _track(create_tween())
+	body.tween_interval(BODY_RISE_DELAY)
+	body.tween_callback(_start_stand_up)
+	body.parallel().tween_property(_silhouette_root, "rotation_degrees:y", FRONT_YAW_DEG, BODY_TURN_TIME) \
+		.set_delay(BODY_RISE_DELAY).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+
+	var mirror := _track(create_tween())
+	mirror.tween_property(_mirror_window, "modulate:a", MIRROR_ALPHA, RISE_TIME * 0.5) \
 		.set_delay(RISE_TIME * 0.5)
+
+func _start_stand_up() -> void:
+	if _anim_player != null and _anim_player.has_animation(&"Idle"):
+		_anim_player.play(&"Idle", BODY_STAND_BLEND)
+
+## Quadratic bezier from the close position to the far one, bulging
+## sideways (+X) at the midpoint so the character drifts screen-left before
+## centring -- ✅ the owner's sketch: the camera rounds a circle, it does
+## not fly the chord.
+func _arc_camera(t: float) -> void:
+	var control := (_cam_close + _cam_far) * 0.5 + Vector3(CAM_ARC_SIDE, 0.08, 0.0)
+	var a := _cam_close.lerp(control, t)
+	var b := control.lerp(_cam_far, t)
+	_silhouette_camera.position = a.lerp(b, t)
 
 func _start_walk_loop() -> void:
 	if _anim_player != null and _anim_player.has_animation(&"Walk"):
