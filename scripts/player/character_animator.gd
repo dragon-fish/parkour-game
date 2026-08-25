@@ -853,11 +853,13 @@ func _target_animation() -> StringName:
 		Move.LADDER:
 			# ✅ THE SPEC (2026-08-25-ladder-design.md §攀爬), verbatim: the
 			# top exit "动画先用 ClimbUp_1m 同款" -- the same clip GrabMove's
-			# mantle plays, requested through the same gate
-			# (Player.set_clip_lift_cancelled(), armed in
-			# LadderMove._begin_top_exit()). Told apart from the ordinary
-			# climb via LadderMove.is_top_exiting(), the same way GRAB's own
-			# mantle phase is told apart above via is_mantling().
+			# mantle plays. SELECTION happens right here: is_top_exiting()
+			# picks the clip (mirroring GRAB's is_mantling() above), and
+			# _route() gates any SCRIPTED_MOVE_CLIPS member onto the scripted
+			# slot. Player.set_clip_lift_cancelled(), which
+			# LadderMove._begin_top_exit() also arms, plays NO part in clip
+			# choice -- it only stops the clip's own baked hip lift from
+			# stacking on the scripted vertical carry.
 			var ladder_move = player.move_manager.move_for(Move.LADDER)
 			if ladder_move != null and ladder_move.is_top_exiting():
 				return _first_available([&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
