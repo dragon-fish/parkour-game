@@ -849,7 +849,9 @@ func _confirm_button(text: String, bg: Color, handler: Callable) -> Button:
 	button.pressed.connect(handler)
 	return button
 
-const LOAD_MIN_RUN := 1.4
+const LOAD_MIN_RUN := 1.6
+## She eases into the sprint -- clip speed ramps to full over this.
+const RUN_RAMP_TIME := 1.2
 const LOAD_ORBIT_TIME := 0.9
 
 func _on_start_pressed() -> void:
@@ -883,7 +885,7 @@ func _on_start_pressed() -> void:
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_start_run_clip()
 	var pace := _track(create_tween())
-	pace.tween_property(self, "_floor_gain", 2.4, LOAD_ORBIT_TIME) \
+	pace.tween_property(self, "_floor_gain", 2.4, RUN_RAMP_TIME) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
 func _loading_orbit(t: float) -> void:
@@ -895,7 +897,13 @@ func _start_run_clip() -> void:
 		return
 	for clip in [&"Sprint", &"Run", &"Jog_Fwd", &"run", &"Walk"]:
 		if _anim_player.has_animation(clip):
-			_anim_player.play(clip, 0.3)
+			_anim_player.play(clip, 0.4)
+			# ✅ The owner: no instant full sprint -- she winds up, the clip
+			# speed easing to 1x as she commits.
+			_anim_player.speed_scale = 0.35
+			var ramp := _track(create_tween())
+			ramp.tween_property(_anim_player, "speed_scale", 1.0, RUN_RAMP_TIME) \
+				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 			return
 
 ## Polls the threaded load; when the level is ready (and the run has had
