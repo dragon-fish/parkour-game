@@ -16,7 +16,7 @@ extends Path3D
 # to_local()/to_global(), which is exact for translation and rotation; a scale
 # would change arc lengths the curve's own baked table knows nothing about.
 
-enum Kind { ZIPLINE, SWING, BALANCE }
+enum Kind { ZIPLINE, SWING, BALANCE, LADDER }
 
 @export var kind: Kind = Kind.ZIPLINE
 ## How far from the line a body counts as able to reach it, in metres.
@@ -32,11 +32,19 @@ const ROPE_RADIUS := 0.02
 var _area: Area3D = null
 
 func _ready() -> void:
+	add_to_group("interest_lines")
 	_build_area()
 	_build_rope()
 
 func length() -> float:
 	return curve.get_baked_length() if curve != null else 0.0
+
+## The side a body climbs this line from: the node's own -Z, flattened.
+## Meaningful for LADDER (the authored "正面"); other kinds never ask.
+func front() -> Vector3:
+	var f: Vector3 = -global_transform.basis.z
+	f.y = 0.0
+	return f.normalized() if f.length_squared() > 0.0001 else Vector3.FORWARD
 
 ## Arc length of the point on the line nearest `world_pos`.
 func closest_offset(world_pos: Vector3) -> float:
