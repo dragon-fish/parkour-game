@@ -33,47 +33,49 @@ const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
 
 # --- entrance timing (spec: 入场编排 beats 0a-6) ----------------------------
 ## 0a: logo plate over the crouched close-up, fake loading bar.
-const LOGO_TIME := 0.8
-## 0b: plate dissolve, rise, camera pull-back.
-const RISE_TIME := 1.2
-const LOGO_FADE_TIME := 0.3
-## Beat 2: red bar sweep-in, read as "<delay>s <description> (<duration>s)".
-const BAR_DELAY := 0.2
-const BAR_TIME := 0.3
-## Sweep bar edge-wave (see _build_sweep_bar()): amplitude for both halves,
-## and the seed values for their four edges. The shader only erodes INWARD,
-## so matched inner seeds alone would leave a symmetric breathing gap up to
-## 2x amplitude at the seam (the re-review's math, correcting an earlier
-## claim here) -- the real closer is the OVERLAP: each half extends
-## _SWEEP_SEAM_OVERLAP past centre, matched _SWEEP_SEAM_SEED erosion stays
-## inside the overlap, and the union is gap-free. Outer edges keep the
-## shader's own defaults (0.0 / 3.7).
-const _SWEEP_AMPLITUDE_PX := 6.0
-## Half-bar seam overlap as an anchor fraction: at 1920 design width this is
-## ~12 px, comfortably past the 6 px erosion ceiling on either inner edge.
-const _SWEEP_SEAM_OVERLAP := 0.006
-const _SWEEP_SEAM_SEED := 1.4
-const _SWEEP_OUTER_SEED_LEFT := 0.0
-const _SWEEP_OUTER_SEED_RIGHT := 3.7
-## Beat 3: title drop, plus the one-shot glitch jitter.
-const TITLE_DELAY := 0.4
-const TITLE_DROP_TIME := 0.22
-const GLITCH_STEP_TIME := 0.03
-const GLITCH_PX := 3.0
-## Beat 4: menu stagger (kept in sync with MeMenuList's own constants below).
-const MENU_DELAY := 0.5
-## Beat 6: idle drift, ±2px @ 0.1Hz -> a 10s full cycle, 5s each leg.
+const LOGO_HOLD := 1.0
+const RISE_TIME := 1.4
+const LOGO_FADE_TIME := 0.4
+const WALK_TO_MENU_DELAY := 0.15
+const MENU_PANEL_TIME := 0.45
 const DRIFT_PX := 2.0
 const DRIFT_HALF_PERIOD := 5.0
-## Fixed rather than read from the live position -- see _start_idle_drift().
+## The drift's fixed baseline; see _start_idle_drift().
 const _DRIFT_BASE_Y := 0.0
 
-# --- silhouette camera framing (visually untunable headless -- see report) -
-const _CAMERA_CLOSE_POS := Vector3(-0.45, 1.05, 1.15)
-const _CAMERA_CLOSE_ROT_DEG := Vector3(-6.0, 24.0, 0.0)
-const _CAMERA_FAR_POS := Vector3(0.0, 0.95, 2.6)
-const _CAMERA_FAR_ROT_DEG := Vector3(-4.0, 0.0, 0.0)
-const _BODY_CROUCH_OFFSET := Vector3(-0.45, -0.35, 0.0)
+# --- silhouette framing (✅ the owner's numbers, 2026-08-26 art direction) --
+## Beat 0: crouched profile, head centre at screen (45%, 30%), the visible
+## upper body (hips to head-top) spanning 40% of screen height, head facing
+## screen RIGHT. Beat 1 pushes to the FRONT view: full body centred, 70% of
+## screen height. All framing is solved at runtime from the live skeleton
+## (Head/Hips bones), so a different model reframes itself.
+const FRAME_FOV_DEG := 55.0
+const HEAD_X_FRAC := 0.45
+const HEAD_Y_FRAC := 0.30
+const CLOSE_BODY_FRAC := 0.40
+const FAR_BODY_FRAC := 0.70
+## Skull above the Head bone, metres -- the bone sits at the neck end.
+const HEAD_TOP_PAD := 0.16
+## Yaw for the profile (facing screen right, camera on +Z looking -Z) and
+## the front view (facing the camera). Model forward is -Z after mounting,
+## the same convention the game body uses.
+const PROFILE_YAW_DEG := -90.0
+const FRONT_YAW_DEG := -180.0
+## Fallbacks when no skeleton is attached (numbers measured off the current
+## local model; only used to aim an empty viewport, so precision is moot).
+const FALLBACK_CROUCH_HEAD := 0.82
+const FALLBACK_CROUCH_HIPS := 0.51
+const FALLBACK_STAND_HEAD := 1.43
+
+# --- logo mark (white recolor of the codex topo emblem) --------------------
+const LOGO_TEXTURE := "res://assets/ui/logo_mark_white.svg"
+## Centre of the mark, as screen fractions (✅ the owner: left 20% top 66%).
+const LOGO_X_FRAC := 0.20
+const LOGO_Y_FRAC := 0.66
+const LOGO_SIZE_PX := 220.0
+
+# --- mirror + glitch -------------------------------------------------------
+const MIRROR_ALPHA := 0.16
 
 var _background: ColorRect
 var _paper_noise: ColorRect
@@ -83,17 +85,20 @@ var _viewport: SubViewport
 var _silhouette_root: Node3D
 var _silhouette_camera: Camera3D
 var _silhouette: Node3D
+var _logo_mark: TextureRect
+var _mirror: TextureRect
+var _mirror_window: Control
+## Solved framing (see _solve_framing()): [0] close cam pos, [1] far cam pos.
+var _cam_close := Vector3(-0.1, 0.9, 1.1)
+var _cam_far := Vector3(0.0, 0.8, 2.3)
+## Screen fraction of the character's feet line in the FAR framing -- where
+## the mirror's fold sits.
+var _feet_screen_frac := 0.82
 var _anim_player: AnimationPlayer
-var _bar_left: ColorRect
-var _bar_right: ColorRect
-var _title_block: Control
-var _title_final_position: Vector2
 var _menu_list: MeMenuList
 var _settings_menu: MeSettingsMenu
-var _logo_plate: Control
-var _loading_bar_fill: ColorRect
-var _loading_bar_full_width: float = 160.0
 var _footer: Label
+var _metadata_labels: Array[Control] = []
 
 var _active_tweens: Array[Tween] = []
 var _entrance_active: bool = true
@@ -109,7 +114,23 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_build_ui()
 	_load_silhouette()
+	# The framing is solved off the LIVE skeleton pose, which only exists
+	# after the animation has actually been applied -- a frame or two in
+	# (the same lesson the crouch-measurement probe learned: reading bones
+	# before the frame loop returns the rest pose).
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_solve_framing()
+	_frame_close()
+	resized.connect(_on_resized)
 	_play_entrance()
+
+func _on_resized() -> void:
+	# Aspect changed: re-solve the framing math and re-aim whatever state
+	# the camera is currently meant to hold.
+	_solve_framing()
+	if not _entrance_active:
+		_silhouette_camera.position = _cam_far
 
 func _real_change_scene(path: String) -> void:
 	get_tree().change_scene_to_file(path)
@@ -132,13 +153,12 @@ func _build_ui() -> void:
 
 	_build_floor()
 	_build_viewport()
-	_build_sweep_bar()
-	_build_title_block()
+	_build_mirror()
 	_build_menu_list()
 	_build_settings_menu()
 	_build_corner_metadata()
 	_build_footer()
-	_build_logo_plate()
+	_build_logo_mark()
 
 func _build_floor() -> void:
 	_floor = ColorRect.new()
@@ -156,112 +176,76 @@ func _build_floor() -> void:
 	add_child(_floor)
 
 func _build_viewport() -> void:
+	# FULL-RECT, not a centred box: the camera does all the framing now (the
+	# owner's screen-fraction numbers are solved in _solve_framing()), so the
+	# viewport must simply BE the screen.
 	_viewport_container = SubViewportContainer.new()
 	_viewport_container.stretch = true
 	_viewport_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_viewport_container.anchor_left = 0.5
-	_viewport_container.anchor_right = 0.5
-	_viewport_container.anchor_top = 0.5
-	_viewport_container.anchor_bottom = 0.5
-	_viewport_container.offset_left = -450.0
-	_viewport_container.offset_right = 450.0
-	_viewport_container.offset_top = -500.0
-	_viewport_container.offset_bottom = 500.0
+	_viewport_container.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# ✅ the owner: "角色剪影带轻微故障粒子" -- occasional sheared bands with
+	# a faint chromatic split, hashed off TIME (silhouette_glitch.gdshader).
+	var glitch := ShaderMaterial.new()
+	glitch.shader = load("res://scripts/ui/silhouette_glitch.gdshader")
+	_viewport_container.material = glitch
 	add_child(_viewport_container)
 
 	_viewport = SubViewport.new()
-	_viewport.size = Vector2i(900, 1000)
+	_viewport.size = Vector2i(1920, 1080)
 	_viewport.transparent_bg = true
 	_viewport.handle_input_locally = false
 	_viewport_container.add_child(_viewport)
 
 	_silhouette_root = Node3D.new()
-	_silhouette_root.position = _BODY_CROUCH_OFFSET
+	_silhouette_root.rotation_degrees = Vector3(0.0, PROFILE_YAW_DEG, 0.0)
 	_viewport.add_child(_silhouette_root)
 
 	_silhouette_camera = Camera3D.new()
-	_silhouette_camera.position = _CAMERA_CLOSE_POS
-	_silhouette_camera.rotation_degrees = _CAMERA_CLOSE_ROT_DEG
+	_silhouette_camera.fov = FRAME_FOV_DEG
+	_silhouette_camera.position = _cam_close
 	_viewport.add_child(_silhouette_camera)
 
-## The horizontal red band that sweeps in from both edges (beat 2), separate
-## from MeMenuList's own vertical red column. Two halves, each grown from its
-## own outer-screen pivot toward the middle (see _sync_sweep_bar_layout()'s
-## pivot_offset math -- the left bar's default top-left pivot already sits
-## on the screen-left edge, but the right bar needs its pivot pushed out to
-## its own top-RIGHT corner, or scale.x would grow it away from center
-## instead of toward it).
-##
-## Carries MeTheme.wave_material after all (spec's edge-wave rule has no
-## carve-out for this bar): the two INNER edges -- the left bar's right edge
-## and the right bar's left edge -- are the ones that meet at screen-center
-## once both halves are fully swept in, and giving them the SAME seed makes
-## wave(UV.y, seed) erode identically at every y along that seam, closing it
-## instead of leaving a gap. The two OUTER edges, which nothing touches,
-## keep the shader's own default seeds.
-func _build_sweep_bar() -> void:
-	_bar_left = _make_sweep_half(0.0, 0.5 + _SWEEP_SEAM_OVERLAP, false, \
-		_SWEEP_OUTER_SEED_LEFT, _SWEEP_SEAM_SEED)
-	_bar_right = _make_sweep_half(0.5 - _SWEEP_SEAM_OVERLAP, 1.0, true, \
-		_SWEEP_SEAM_SEED, _SWEEP_OUTER_SEED_RIGHT)
+## The hazy floor reflection (✅ the owner: "地板平整无暇，有朦胧的镜像效果"):
+## not a second 3D body -- a TextureRect showing the SAME viewport texture
+## flipped vertically, folded at the character's feet line, squashed a little
+## and faded down its length. Free, perfectly in sync with the animation.
+func _build_mirror() -> void:
+	# A clipping window from the feet line down; inside it, the WHOLE frame
+	# flipped vertically and positioned so the character's feet in the
+	# flipped copy meet the fold exactly -- a true mirror about the feet
+	# line, not a squashed thumbnail. _mirror is the window (whose modulate
+	# the entrance fades); the child does the flipping.
+	_mirror = TextureRect.new()  # repurposed as the clip window's child below
+	var window := Control.new()
+	window.name = "MirrorWindow"
+	window.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	window.clip_contents = true
+	add_child(window)
+	move_child(window, _viewport_container.get_index())
+	_mirror_window = window
 
-func _make_sweep_half(anchor_left: float, anchor_right: float, pivot_at_right: bool, \
-		seed_left: float, seed_right: float) -> ColorRect:
-	var bar := ColorRect.new()
-	bar.color = MeTheme.BRAND_RED
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bar.anchor_left = anchor_left
-	bar.anchor_right = anchor_right
-	bar.anchor_top = 0.42
-	bar.anchor_bottom = 0.58
-	bar.offset_left = 0.0
-	bar.offset_right = 0.0
-	bar.offset_top = 0.0
-	bar.offset_bottom = 0.0
-	bar.scale = Vector2(0.0, 1.0)
+	_mirror.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_mirror.flip_v = true
+	_mirror.stretch_mode = TextureRect.STRETCH_SCALE
+	var fade := ShaderMaterial.new()
+	fade.shader = load("res://scripts/ui/mirror_fade.gdshader")
+	_mirror.material = fade
+	window.add_child(_mirror)
+	window.modulate = Color(1.0, 1.0, 1.0, 0.0)
 
-	var material := MeTheme.wave_material(_SWEEP_AMPLITUDE_PX)
-	material.set_shader_parameter("seed_left", seed_left)
-	material.set_shader_parameter("seed_right", seed_right)
-	bar.material = material
-
-	add_child(bar)
-	# width_px (the shader's own px->UV conversion) and, for the right bar,
-	# pivot_offset both depend on the bar's actual laid-out size, which is
-	# not real until a layout pass has happened -- same ordering issue
-	# me_menu_list.gd's _sync_overlays() documents. Synced once deferred and
-	# again on every resize.
-	bar.resized.connect(_sync_sweep_bar_layout.bind(bar, pivot_at_right))
-	call_deferred("_sync_sweep_bar_layout", bar, pivot_at_right)
-	return bar
-
-func _sync_sweep_bar_layout(bar: ColorRect, pivot_at_right: bool) -> void:
-	if pivot_at_right:
-		bar.pivot_offset = Vector2(bar.size.x, 0.0)
-	if bar.material is ShaderMaterial:
-		(bar.material as ShaderMaterial).set_shader_parameter("width_px", maxf(bar.size.x, 1.0))
-
-func _build_title_block() -> void:
-	_title_block = Control.new()
-	_title_block.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_title_block.position = Vector2(140.0, 90.0)
-	_title_block.size = Vector2(520.0, 100.0)
-	_title_block.modulate.a = 0.0
-	add_child(_title_block)
-	_title_final_position = _title_block.position
-
-	var title_label := Label.new()
-	title_label.text = str(ProjectSettings.get_setting("application/config/name", "Parkour Game"))
-	title_label.add_theme_font_size_override("font_size", 40)
-	title_label.add_theme_color_override("font_color", Color(0.08, 0.08, 0.08))
-	title_label.add_theme_constant_override("outline_size", 0)
-	_title_block.add_child(title_label)
-
-	var accent := ColorRect.new()
-	accent.color = MeTheme.BRAND_RED
-	accent.position = Vector2(4.0, 56.0)
-	accent.size = Vector2(180.0, 6.0)
-	_title_block.add_child(accent)
+func _sync_mirror_layout() -> void:
+	if _mirror == null or _mirror_window == null:
+		return
+	_mirror.texture = _viewport.get_texture()
+	var h: float = maxf(size.y, 1.0)
+	var fold: float = _feet_screen_frac * h
+	_mirror_window.position = Vector2(0.0, fold)
+	_mirror_window.size = Vector2(size.x, h - fold)
+	# Child spans the full frame, flipped; its top sits fold-h above the
+	# window so the flipped feet line (at h - fold from its own top) lands
+	# exactly on the window's top edge.
+	_mirror.position = Vector2(0.0, fold - h)
+	_mirror.size = Vector2(size.x, h)
 
 func _build_menu_list() -> void:
 	_menu_list = MeMenuList.new()
@@ -297,14 +281,24 @@ func _build_settings_menu() -> void:
 	_settings_menu.closed.connect(_on_settings_closed)
 
 func _build_corner_metadata() -> void:
-	var version: String = str(ProjectSettings.get_setting("application/config/version", "v0.1-dev"))
-	_add_corner_label("+", 0.0, 0.0, Vector2(20.0, 16.0))
-	_add_corner_label("+", 1.0, 0.0, Vector2(-20.0, 16.0), true)
-	_add_corner_label("+", 0.0, 1.0, Vector2(20.0, -32.0))
-	_add_corner_label(version, 1.0, 1.0, Vector2(-20.0, -32.0), true)
-
-func _add_corner_label(text: String, anchor_x: float, anchor_y: float, offset: Vector2, right_aligned: bool = false) -> void:
-	add_child(MeTheme.corner_label(text, anchor_x, anchor_y, offset, right_aligned))
+	# The techwear metadata dressing, texts patterned on the owner's PV
+	# reference. Collected into _metadata_labels so the entrance can fade
+	# them in as their own parallax layer.
+	var version: String = str(ProjectSettings.get_setting("application/config/version", "1.0.0"))
+	var name_label: String = str(ProjectSettings.get_setting("application/config/name", "Parkour Game"))
+	for spec in [
+		["%s  ///" % name_label.to_upper(), 0.0, 0.0, Vector2(24.0, 18.0), false],
+		["VER // %s" % version, 0.0, 0.0, Vector2(24.0, 38.0), false],
+		["SYS / DIAG\n// RUNNER ID", 1.0, 0.0, Vector2(-24.0, 18.0), true],
+		["+", 0.62, 0.14, Vector2(0.0, 0.0), false],
+		["+", 0.86, 0.42, Vector2(0.0, 0.0), false],
+		["ENV / CLEAR", 0.0, 1.0, Vector2(24.0, -56.0), false],
+		["PARKOUR OS  BUILD %s" % version, 1.0, 1.0, Vector2(-24.0, -36.0), true],
+	]:
+		var label := MeTheme.corner_label(spec[0], spec[1], spec[2], spec[3], spec[4])
+		label.modulate.a = 0.0
+		add_child(label)
+		_metadata_labels.append(label)
 
 func _build_footer() -> void:
 	_footer = MeTheme.footer_label("↑↓ 选择 · Enter 确认")
@@ -314,42 +308,22 @@ func _build_footer() -> void:
 ## close-up, plus a fake ~0.8s loading bar that covers the real body
 ## instantiation/animation merge/shader-compile cost that _load_silhouette()
 ## already paid by the time this is visible.
-func _build_logo_plate() -> void:
-	_logo_plate = Control.new()
-	_logo_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_logo_plate.anchor_left = 0.5
-	_logo_plate.anchor_right = 0.5
-	_logo_plate.anchor_top = 0.5
-	_logo_plate.anchor_bottom = 0.5
-	_logo_plate.position = Vector2(-220.0, -60.0)
-	_logo_plate.size = Vector2(440.0, 120.0)
-	add_child(_logo_plate)
-
-	var plate_label := Label.new()
-	plate_label.text = str(ProjectSettings.get_setting("application/config/name", "Parkour Game"))
-	plate_label.add_theme_font_size_override("font_size", 32)
-	plate_label.add_theme_color_override("font_color", Color(0.08, 0.08, 0.08))
-	plate_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	plate_label.size = Vector2(440.0, 48.0)
-	_logo_plate.add_child(plate_label)
-
-	var plate_accent := ColorRect.new()
-	plate_accent.color = MeTheme.BRAND_RED
-	plate_accent.position = Vector2(120.0, 52.0)
-	plate_accent.size = Vector2(200.0, 4.0)
-	_logo_plate.add_child(plate_accent)
-
-	var bar_track := ColorRect.new()
-	bar_track.color = Color(0.8, 0.8, 0.8, 0.6)
-	bar_track.position = Vector2(120.0, 84.0)
-	bar_track.size = Vector2(_loading_bar_full_width, 4.0)
-	_logo_plate.add_child(bar_track)
-
-	_loading_bar_fill = ColorRect.new()
-	_loading_bar_fill.color = MeTheme.BRAND_RED
-	_loading_bar_fill.position = Vector2(120.0, 84.0)
-	_loading_bar_fill.size = Vector2(0.0, 4.0)
-	_logo_plate.add_child(_loading_bar_fill)
+## The white emblem over the crouched silhouette (✅ the owner: codex's topo
+## mark, centre at left 20% / top 66%). Fades out with the rise.
+func _build_logo_mark() -> void:
+	_logo_mark = TextureRect.new()
+	_logo_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_logo_mark.texture = load(LOGO_TEXTURE)
+	_logo_mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_logo_mark.anchor_left = LOGO_X_FRAC
+	_logo_mark.anchor_right = LOGO_X_FRAC
+	_logo_mark.anchor_top = LOGO_Y_FRAC
+	_logo_mark.anchor_bottom = LOGO_Y_FRAC
+	_logo_mark.offset_left = -LOGO_SIZE_PX * 0.5
+	_logo_mark.offset_right = LOGO_SIZE_PX * 0.5
+	_logo_mark.offset_top = -LOGO_SIZE_PX * 0.5
+	_logo_mark.offset_bottom = LOGO_SIZE_PX * 0.5
+	add_child(_logo_mark)
 
 # ---------------------------------------------------------------------------
 # Silhouette: profile lookup, body instancing, animation, unshaded red paint
@@ -465,6 +439,59 @@ func _ensure_clip_loops(anim_player: AnimationPlayer, clip_name: StringName) -> 
 	anim_player.remove_animation_library("")
 	anim_player.add_animation_library("", library)
 
+## Solves both camera positions from the live skeleton (✅ the owner's
+## screen fractions). Perspective math: a world point p lands at NDC
+## ((p.x-cam.x)/(d*tanH), (p.y-cam.y)/(d*tanV)) for a camera at distance d
+## looking straight down -Z, where tanV = tan(fov/2) and tanH = tanV*aspect.
+## Solving for the camera instead of the point gives every constraint below.
+func _solve_framing() -> void:
+	var crouch_head := FALLBACK_CROUCH_HEAD
+	var crouch_hips := FALLBACK_CROUCH_HIPS
+	var stand_head := FALLBACK_STAND_HEAD
+	var skeleton: Skeleton3D = null
+	if _silhouette != null:
+		for child in _silhouette.find_children("*", "Skeleton3D", true, false):
+			skeleton = child
+			break
+	if skeleton != null:
+		var head := skeleton.find_bone("Head")
+		var hips := skeleton.find_bone("Hips")
+		if head >= 0 and hips >= 0:
+			# Live pose = the crouch (Crouch_Idle is already playing);
+			# rest pose = standing, no need to play Idle just to measure.
+			crouch_head = (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin.y
+			crouch_hips = (skeleton.global_transform * skeleton.get_bone_global_pose(hips)).origin.y
+			stand_head = (skeleton.global_transform * skeleton.get_bone_global_rest(head)).origin.y
+	var tan_v := tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
+	var aspect: float = maxf(size.x, 1.0) / maxf(size.y, 1.0)
+	var tan_h := tan_v * aspect
+
+	# CLOSE: the crouched upper body (hips..head-top) spans CLOSE_BODY_FRAC
+	# of the screen; the head centre sits at (HEAD_X_FRAC, HEAD_Y_FRAC).
+	var upper: float = maxf(crouch_head + HEAD_TOP_PAD - crouch_hips, 0.2)
+	var d_close: float = upper / (CLOSE_BODY_FRAC * 2.0 * tan_v)
+	var ndc_x: float = (HEAD_X_FRAC - 0.5) * 2.0
+	var ndc_y: float = (0.5 - HEAD_Y_FRAC) * 2.0
+	_cam_close = Vector3(
+		0.0 - ndc_x * d_close * tan_h,
+		crouch_head - ndc_y * d_close * tan_v,
+		d_close)
+
+	# FAR: the standing body (feet..head-top) spans FAR_BODY_FRAC, centred.
+	var stature: float = maxf(stand_head + HEAD_TOP_PAD, 0.5)
+	var d_far: float = stature / (FAR_BODY_FRAC * 2.0 * tan_v)
+	_cam_far = Vector3(0.0, stature * 0.5, d_far)
+	# Where the feet (y = 0) land on screen in the far framing -- the
+	# mirror's fold line.
+	var feet_ndc: float = (0.0 - _cam_far.y) / (d_far * tan_v)
+	_feet_screen_frac = clampf(0.5 - feet_ndc * 0.5, 0.05, 0.95)
+	_sync_mirror_layout()
+
+func _frame_close() -> void:
+	_silhouette_camera.position = _cam_close
+	_silhouette_camera.rotation = Vector3.ZERO
+	_silhouette_root.rotation_degrees = Vector3(0.0, PROFILE_YAW_DEG, 0.0)
+
 # ---------------------------------------------------------------------------
 # Entrance choreography (spec 入场编排, beats 0a-6). One pacing Tween drives
 # the timeline via intervals + callbacks; each beat's actual property
@@ -478,124 +505,79 @@ func _track(tween: Tween) -> Tween:
 
 func _play_entrance() -> void:
 	var pacing := _track(create_tween())
-	pacing.tween_callback(_beat_logo)
-	pacing.tween_interval(LOGO_TIME)
+	pacing.tween_interval(LOGO_HOLD)
 	pacing.tween_callback(_beat_rise_begin)
 	pacing.tween_interval(RISE_TIME)
-	pacing.tween_interval(BAR_DELAY)
-	pacing.tween_callback(_beat_bar_sweep)
-	pacing.tween_interval(BAR_TIME)
-	pacing.tween_interval(TITLE_DELAY)
-	pacing.tween_callback(_beat_title_drop)
-	pacing.tween_interval(TITLE_DROP_TIME + GLITCH_STEP_TIME * 2.0)
-	pacing.tween_interval(MENU_DELAY)
-	pacing.tween_callback(_beat_menu_stagger)
-	pacing.tween_interval(MeMenuList.ENTRANCE_STAGGER * 3.0 + MeMenuList.TWEEN_TIME)
+	pacing.tween_callback(_start_walk_loop)
+	pacing.tween_interval(WALK_TO_MENU_DELAY)
+	pacing.tween_callback(_beat_menu_parallax)
+	pacing.tween_interval(MENU_PANEL_TIME + MeMenuList.ENTRANCE_STAGGER * 3.0 + MeMenuList.TWEEN_TIME)
 	pacing.tween_callback(_beat_settle)
 
-## 0a: fake loading bar + the dot grid starting to fade in "in the corner".
-## The floor's own full fade-in (beat 1) keeps going through 0b below, so it
-## lands exactly full alpha as the camera pull-back finishes.
-func _beat_logo() -> void:
-	var bar := _track(create_tween())
-	bar.tween_property(_loading_bar_fill, "size:x", _loading_bar_full_width, LOGO_TIME) \
-		.set_ease(Tween.EASE_OUT)
-
-	var floor_fade := _track(create_tween())
-	floor_fade.tween_property(_floor, "modulate:a", 1.0, LOGO_TIME + RISE_TIME) \
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-
-## 0b: logo plate dissolves + rises out of frame; the body rises from its
-## crouch (Crouch_Idle -> Idle -> Walk) while the camera pulls back to the
-## full-body behind view; the sweep bar peeks in slightly, "for the next
-## beat's full sweep" (spec).
+## Frame 0 is already fully composed at build time (crouched profile, white
+## mark, faint floor); the first beat is the RISE: the body stands
+## (Crouch_Idle -> Idle blend) and turns to face the camera while the camera
+## eases (✅ ease-in-out) out to the centred full-body front view; the white
+## mark fades away with it; the floor dots and the mirror arrive as it lands.
 func _beat_rise_begin() -> void:
 	if not _beat_rise_fired:
 		_beat_rise_fired = true
 		beat_rise.emit()
 
-	var plate := _track(create_tween())
-	plate.set_parallel(true)
-	plate.tween_property(_logo_plate, "modulate:a", 0.0, LOGO_FADE_TIME) \
-		.set_ease(Tween.EASE_IN)
-	plate.tween_property(_logo_plate, "position:y", _logo_plate.position.y - 10.0, LOGO_FADE_TIME) \
+	var logo_fade := _track(create_tween())
+	logo_fade.tween_property(_logo_mark, "modulate:a", 0.0, LOGO_FADE_TIME) \
 		.set_ease(Tween.EASE_IN)
 
-	if _silhouette != null:
-		if _anim_player != null and _anim_player.has_animation(&"Idle"):
-			_anim_player.play(&"Idle", 0.3)
-		var rise := _track(create_tween())
-		rise.set_parallel(true)
-		rise.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		rise.tween_property(_silhouette_root, "position", Vector3.ZERO, RISE_TIME)
-		rise.tween_property(_silhouette_camera, "position", _CAMERA_FAR_POS, RISE_TIME)
-		rise.tween_property(_silhouette_camera, "rotation_degrees", _CAMERA_FAR_ROT_DEG, RISE_TIME)
-		rise.chain().tween_callback(_start_walk_loop)
+	var floor_fade := _track(create_tween())
+	floor_fade.tween_property(_floor, "modulate:a", 1.0, RISE_TIME) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-	var peek := _track(create_tween())
-	peek.set_parallel(true)
-	peek.tween_property(_bar_left, "scale:x", 0.12, RISE_TIME).set_delay(RISE_TIME - 0.2)
-	peek.tween_property(_bar_right, "scale:x", 0.12, RISE_TIME).set_delay(RISE_TIME - 0.2)
+	if _anim_player != null and _anim_player.has_animation(&"Idle"):
+		_anim_player.play(&"Idle", 0.35)
+	var rise := _track(create_tween())
+	rise.set_parallel(true)
+	rise.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	rise.tween_property(_silhouette_camera, "position", _cam_far, RISE_TIME)
+	rise.tween_property(_silhouette_root, "rotation_degrees:y", FRONT_YAW_DEG, RISE_TIME)
+	rise.tween_property(_mirror_window, "modulate:a", MIRROR_ALPHA, RISE_TIME * 0.5) \
+		.set_delay(RISE_TIME * 0.5)
 
-## Beat 5 ("剪影人物同期淡入并持续行走循环", spec): no separate fade-in
-## here, deliberately. The silhouette is already on screen from beat 0a --
-## visible under the logo plate in its crouched pose -- so by the time beat
-## 5 would fire there is no fade moment left to play; it has been visible
-## the whole time. What beat 5 actually asks for, "keeps walking", is
-## exactly what calling this at the end of the beat-0b rise chain (see
-## _beat_rise_begin() above) already guarantees. Accepted reading, recorded
-## here so the next person to read this doesn't go looking for a beat-5
-## fade that was never meant to exist.
 func _start_walk_loop() -> void:
 	if _anim_player != null and _anim_player.has_animation(&"Walk"):
 		_anim_player.play(&"Walk", 0.3)
 
-## Beat 2: the red band finishes its sweep from wherever the beat-0b "peek"
-## left it, meeting at center.
-func _beat_bar_sweep() -> void:
-	var sweep := _track(create_tween())
-	sweep.set_parallel(true)
-	sweep.tween_property(_bar_left, "scale:x", 1.0, BAR_TIME).set_ease(Tween.EASE_OUT)
-	sweep.tween_property(_bar_right, "scale:x", 1.0, BAR_TIME).set_ease(Tween.EASE_OUT)
-
-## Beat 3: title block drops in (offset above -> settle), then one cheap
-## glitch jitter (±3px, one step out and back) at the moment it lands.
-func _beat_title_drop() -> void:
+## The menu arrives from the LEFT in layers (✅ the owner: "从左侧分层进入
+## （视差效果），非线性动画"): the red column slides in on an expo-out, the
+## items ride MeMenuList's own stagger a beat later (a second, slower layer
+## = the parallax), and the metadata dressing fades in last. beat_title
+## keeps its name for the music hook even though the old title block is
+## gone -- it marks the same moment: the UI landing.
+func _beat_menu_parallax() -> void:
 	if not _beat_title_fired:
 		_beat_title_fired = true
 		beat_title.emit()
 
-	var drop := _track(create_tween())
-	_title_block.position = _title_final_position - Vector2(0.0, 12.0)
-	drop.set_parallel(true)
-	drop.tween_property(_title_block, "modulate:a", 1.0, TITLE_DROP_TIME)
-	drop.tween_property(_title_block, "position", _title_final_position, TITLE_DROP_TIME) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	drop.chain()
-	var jitter := Vector2(randf_range(-GLITCH_PX, GLITCH_PX), randf_range(-GLITCH_PX, GLITCH_PX))
-	drop.tween_property(_title_block, "position", _title_final_position + jitter, GLITCH_STEP_TIME)
-	drop.tween_property(_title_block, "position", _title_final_position, GLITCH_STEP_TIME)
-
-## Beat 4: shows the list (see the visible = false at build time above) and
-## plays MeMenuList's own stagger-in.
-func _beat_menu_stagger() -> void:
 	_menu_list.visible = true
-	_menu_list.play_entrance()
+	var panel_from: float = _menu_list.position.x
+	_menu_list.position.x = panel_from - 480.0
+	var panel := _track(create_tween())
+	panel.tween_property(_menu_list, "position:x", panel_from, MENU_PANEL_TIME) \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	panel.parallel().tween_callback(_menu_list.play_entrance).set_delay(MENU_PANEL_TIME * 0.4)
 
-## Beat 6: idle drift, forever -- a Tween ping-ponging position.y between
-## ±DRIFT_PX with sine easing reads as the spec's "sin摆动" without a second
-## animation system. Glitch flicker is explicitly deferred to v2 (spec).
+	var meta := _track(create_tween())
+	meta.set_parallel(true)
+	for i in _metadata_labels.size():
+		meta.tween_property(_metadata_labels[i], "modulate:a", 1.0, 0.3) \
+			.set_delay(MENU_PANEL_TIME * 0.5 + 0.05 * i)
+
 func _beat_settle() -> void:
 	_entrance_active = false
 	_start_idle_drift()
 
 ## Idempotent on purpose: _skip_entrance() can call this again after a
-## previous drift tween was killed mid-oscillation, with position.y sitting
-## somewhere off-center (not 0). Reading THAT as the new base would let
-## repeated skip-entrance calls random-walk the whole menu's resting
-## position a little further every time. Snapping back to the fixed
-## _DRIFT_BASE_Y before starting a new drift keeps every call settle to the
-## exact same place, however many times it runs.
+## previous drift tween was killed mid-oscillation; snapping back to the
+## fixed _DRIFT_BASE_Y first keeps every call settling identically.
 func _start_idle_drift() -> void:
 	position.y = _DRIFT_BASE_Y
 	var drift := _track(create_tween())
@@ -606,9 +588,7 @@ func _start_idle_drift() -> void:
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 ## Jumps straight to the fully-settled state: every tween killed, every
-## animated property set to its final value. Wired to any input during the
-## entrance window (see _unhandled_input) -- the standard "impatient click
-## skips the intro" courtesy.
+## animated property at its final value.
 func _skip_entrance() -> void:
 	for tween in _active_tweens:
 		if tween != null and tween.is_valid():
@@ -623,25 +603,17 @@ func _skip_entrance() -> void:
 		beat_title.emit()
 
 	_floor.modulate.a = 1.0
-	_logo_plate.visible = false
-	_bar_left.scale.x = 1.0
-	_bar_right.scale.x = 1.0
-	_title_block.modulate.a = 1.0
-	_title_block.position = _title_final_position
-	# Idempotent whether beat 4 has already fired or not: `visible = true` is
-	# a no-op if it is already true, and skip_entrance() itself kills any
-	# still-running stagger tween before snapping every label to its settled
-	# state -- so skipping mid-entrance and skipping before beat 4 ever ran
-	# both land in exactly the same place, never a double-show or a partial
-	# stagger left stuck mid-flight.
+	_logo_mark.modulate.a = 0.0
+	_mirror_window.modulate.a = MIRROR_ALPHA
+	for label in _metadata_labels:
+		label.modulate.a = 1.0
 	_menu_list.visible = true
 	_menu_list.skip_entrance()
 
-	if _silhouette != null:
-		_silhouette_root.position = Vector3.ZERO
-		_silhouette_camera.position = _CAMERA_FAR_POS
-		_silhouette_camera.rotation_degrees = _CAMERA_FAR_ROT_DEG
-		_start_walk_loop()
+	_silhouette_camera.position = _cam_far
+	_silhouette_camera.rotation = Vector3.ZERO
+	_silhouette_root.rotation_degrees = Vector3(0.0, FRONT_YAW_DEG, 0.0)
+	_start_walk_loop()
 
 	_beat_settle()
 

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="triangle">
+      <path d="M256 48 472 432H40Z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#triangle)" fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M-14 448C46 408 92 356 104 294C116 232 158 174 228 154C298 134 354 88 376 22"/>
+    <path d="M16 482C86 438 136 376 146 310C156 244 196 202 254 184C326 162 386 106 410 36"/>
+    <path d="M64 510C126 468 174 412 186 346C198 278 226 240 282 218C354 190 418 136 446 64"/>
+    <path d="M126 524C180 478 218 430 226 370M232 334C244 286 274 262 320 244C390 216 450 168 484 104"/>
+    <path d="M196 528C232 486 260 438 266 390C274 324 308 292 358 270C420 242 474 202 518 144"/>
+    <path d="M270 524C294 480 306 440 308 402C312 348 338 322 382 302M418 282C466 256 506 224 536 188"/>
+    <path d="M344 520C358 478 360 444 356 414C350 370 370 346 410 326C458 302 500 272 538 232"/>
+  </g>
+  <path d="M256 48 472 432H40Z" fill="none" stroke="#ffffff" stroke-width="18" stroke-linejoin="miter"/>
+</svg>
