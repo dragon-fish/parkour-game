@@ -113,7 +113,7 @@ const SANDBOX_SCENE := "res://scenes/sandbox.tscn"
 ## at them. Committed, unlike the sandbox above, because the numbers behind it
 ## came out of the original with a stopwatch and are worth not losing -- see
 ## tools/build_calibration_course.gd.
-const CALIBRATION_SCENE := "res://scenes/calibration_course.tscn"
+const CALIBRATION_SCENE := "res://scenes/tools/calibration_course.tscn"
 
 ## Whether to drop the calibration course into this level.
 ##
