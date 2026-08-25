@@ -34,6 +34,9 @@ var _top_exit: ScriptedMove = ScriptedMove.new()
 ## has begun, nothing below it -- crouch, jump, the ordinary climb -- may run
 ## until it completes. Input is committed the instant the carry starts.
 var _top_exiting: bool = false
+## The second leg of the carry (the horizontal push over the deck), queued
+## while the first (the rise) plays. Empty when the carry is single-leg.
+var _top_exit_leg2: Array = []
 
 ## PARENTED, not left loose: Move.gd's own _ready() sets _tick_travel (unused
 ## here, but calling super keeps this move honest about the base contract),
@@ -124,6 +127,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return FALLING
 	if _top_exiting:
 		if _top_exit.advance(delta):
+			if not _top_exit_leg2.is_empty():
+				# The rise is done: turn the corner onto the deck.
+				_top_exit.begin(_top_exit_leg2[0], _top_exit_leg2[1], _top_exit_leg2[2])
+				_top_exit_leg2 = []
+				return KEEP
 			_top_exiting = false
 			# A carry, not a launch -- the body was set down, not thrown.
 			# Deliberately NOT declared grounded here, matching GrabMove's own
@@ -245,6 +253,12 @@ func climbing_offset() -> float:
 ## Whether the top-exit scripted carry (Task 7) is under way. Exposed for the
 ## same reason GrabMove.is_mantling() is: CharacterAnimator asks from outside
 ## rather than LadderMove pushing an event in.
+## F12's scripted-path overlay duck-types this (scripted_path_debug.gd) --
+## the composed carry was invisible to it, same is-a assumption the
+## animation fit made. Shows the leg currently playing.
+func path_debug() -> Dictionary:
+	return _top_exit.path_debug() if _top_exiting else {}
+
 func climb_direction() -> int:
 	return _climb_dir
 
@@ -252,7 +266,9 @@ func climb_direction() -> int:
 ## exit the carry IS a scripted phase, so ClimbUp_1m stretches to end
 ## exactly when the 2 s carry does. Zero outside the phase -- no fit.
 func scripted_duration() -> float:
-	return _top_exit.scripted_duration() if _top_exiting else 0.0
+	# The WHOLE carry, not the current leg: the clip fit stretches
+	# ClimbUp_1m across both legs as one motion.
+	return cfg.top_exit_time if _top_exiting else 0.0
 
 func is_top_exiting() -> bool:
 	return _top_exiting
@@ -405,7 +421,20 @@ func _probe_top_deck() -> Dictionary:
 func _begin_top_exit(deck_position: Vector3) -> StringName:
 	var landing: Vector3 = deck_position + Vector3.UP * (player.standing_height() * 0.5)
 	_top_exit.player = player
-	_top_exit.begin(player.global_position, landing, cfg.top_exit_time)
+	# TWO STRAIGHT LEGS, not a diagonal -- the diagonal cut the deck lip's
+	# corner (✅ the owner: "会穿模"), and the project's rule keeps scripted
+	# capsules off arcs. Up to the landing height first (plus a whisker so
+	# the capsule bottom clears the lip), then straight in.
+	# top_exit_rise_pct splits the carry's time between the legs.
+	var rise_pct: float = clampf(cfg.top_exit_rise_pct, 0.0, 0.9)
+	if rise_pct > 0.01:
+		var corner := Vector3(player.global_position.x, landing.y + 0.05,
+			player.global_position.z)
+		_top_exit.begin(player.global_position, corner, cfg.top_exit_time * rise_pct)
+		_top_exit_leg2 = [corner, landing, cfg.top_exit_time * (1.0 - rise_pct)]
+	else:
+		_top_exit.begin(player.global_position, landing, cfg.top_exit_time)
+		_top_exit_leg2 = []
 	_top_exiting = true
 	# ✅ THE SPEC: the carry plays ClimbUp_1m (CharacterAnimator._route()'s
 	# Move.LADDER arm). The scripted arc already supplies the whole vertical
