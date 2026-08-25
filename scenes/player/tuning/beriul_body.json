@@ -3,5 +3,6 @@
 
   "mount_scale": 2.1,
   "mount_offset": [0, 0, 0],
-  "eye_forward": 0.13
+  "eye_forward": 0.13,
+  "head_path": "Armature/GeneralSkeleton/HeadMount"
 }
