@@ -14,7 +14,11 @@ const SAVE_DELAY := 0.5
 var _save_timer: Timer
 
 func _ready() -> void:
-	if DisplayServer.get_name() == "headless":
+	# Headless has no window; the editor-embedded game has one it is not
+	# allowed to touch ("Embedded window can't be resized").
+	if DisplayServer.get_name() in ["headless", "embedded"]:
+		return
+	if get_window().get_flag(Window.FLAG_RESIZE_DISABLED):
 		return
 	var cfg := ConfigFile.new()
 	if cfg.load(PATH) == OK:
