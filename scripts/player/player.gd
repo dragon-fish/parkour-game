@@ -206,11 +206,11 @@ var _takeoff_dir: Vector3 = Vector3.ZERO
 ## wall-jumps in between change nothing, and a second rope resets to the same
 ## figure. Captured beside _takeoff_dir, read by ZiplineMove.enter().
 var _takeoff_ground_speed: float = 0.0
-## Per-cable zipline cooldowns: InterestLine instance id -> seconds left.
+## Per-LINE cooldowns (zipline, swing, ...): InterestLine instance id -> seconds left.
 ## Per CABLE, not per move: the owner measured rope-to-rope chaining in the
 ## original (release one rope, catch the next at once), which a move-name
 ## cooldown forbids. SameZipLineRedoMoveTime only ever guarded the SAME line.
-var _zipline_cooldowns: Dictionary = {}
+var _line_cooldowns: Dictionary = {}
 var _airborne_time: float = 0.0
 ## Temporary gravity multiplier for FREE FLIGHT -- ✅ the original leans on
 ## exactly this ("局部重力修改在ME里反复出现（swing、barge、coil）...是它'飘但可
@@ -1026,7 +1026,7 @@ func reset_state() -> void:
 	_last_wish_dir = Vector3.ZERO
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
-	_zipline_cooldowns.clear()
+	_line_cooldowns.clear()
 	_gravity_window_left = 0.0
 	_airborne_time = 0.0
 	_slide_recovery_timer = 0.0
@@ -2842,26 +2842,26 @@ func recent_wall_refuses_climb_onto(point: Vector3) -> bool:
 func takeoff_ground_speed() -> float:
 	return _takeoff_ground_speed
 
-## True when `line` is off its own re-catch cooldown.
-func zipline_ready(line: InterestLine) -> bool:
-	return not _zipline_cooldowns.has(line.get_instance_id())
+## True when `line` is off its own re-catch cooldown (any interest-line move).
+func line_ready(line: InterestLine) -> bool:
+	return not _line_cooldowns.has(line.get_instance_id())
 
 ## Arms `line`'s own re-catch cooldown -- called by ZiplineMove on every exit.
-func note_zipline_left(line: InterestLine, seconds: float) -> void:
+func note_line_left(line: InterestLine, seconds: float) -> void:
 	if seconds > 0.0:
-		_zipline_cooldowns[line.get_instance_id()] = seconds
+		_line_cooldowns[line.get_instance_id()] = seconds
 
-func _tick_zipline_cooldowns(delta: float) -> void:
-	for key in _zipline_cooldowns.keys():
-		var remaining: float = _zipline_cooldowns[key] - delta
+func _tick_line_cooldowns(delta: float) -> void:
+	for key in _line_cooldowns.keys():
+		var remaining: float = _line_cooldowns[key] - delta
 		if remaining <= 0.0:
-			_zipline_cooldowns.erase(key)
+			_line_cooldowns.erase(key)
 		else:
-			_zipline_cooldowns[key] = remaining
+			_line_cooldowns[key] = remaining
 
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	_tick_gravity_window(delta)
-	_tick_zipline_cooldowns(delta)
+	_tick_line_cooldowns(delta)
 	if grounded:
 		_coyote_timer = config.pawn.coyote_time
 	else:

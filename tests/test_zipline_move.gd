@@ -243,11 +243,11 @@ func test_the_cooldown_guards_the_same_line_and_only_that_line() -> void:
 	var input: ScriptedInputSource = _world["input"]
 	input.press_crouch()
 	await step(1)
-	assert_false(player.zipline_ready(_line), "the line just left has no cooldown")
-	assert_true(player.zipline_ready(other), "a DIFFERENT line was locked out too")
+	assert_false(player.line_ready(_line), "the line just left has no cooldown")
+	assert_true(player.line_ready(other), "a DIFFERENT line was locked out too")
 	var cooldown: float = player.config.zipline.same_line_redo_time
 	await step(int(cooldown * 60.0) + 2)
-	assert_true(player.zipline_ready(_line), "the same-line cooldown never expired")
+	assert_true(player.line_ready(_line), "the same-line cooldown never expired")
 
 func test_the_release_press_does_not_also_buy_a_roll_at_the_landing() -> void:
 	var player: Player = await _riding_player()

@@ -222,7 +222,7 @@ func exit() -> void:
 	# release one rope, catch the next at once ("shift跳下挂上另一个绳子") --
 	# so this lives on the line, not on the move name.
 	if is_instance_valid(_line):
-		player.note_zipline_left(_line, cfg.same_line_redo_time)
+		player.note_line_left(_line, cfg.same_line_redo_time)
 
 ## The measured growth law: linear in the descent slope. ✅ THE OWNER, off two
 ## reference segments in the original (see ZiplineConfig.base_acceleration):

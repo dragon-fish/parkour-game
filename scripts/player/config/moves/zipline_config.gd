@@ -16,7 +16,7 @@ func _init() -> void:
 	max_look_constraint = Vector3(deg_to_rad(80.0), deg_to_rad(90.0), PI)
 	# NO move-name cooldown: the original chains rope to rope (owner-measured:
 	# release one, catch the next at once), so the re-catch guard is per CABLE
-	# -- see same_line_redo_time below and Player.note_zipline_left().
+	# -- see same_line_redo_time below and Player.note_line_left().
 	redo_move_time = 0.0
 
 ## ✅ OWNER-MEASURED floor, repeatedly: 14.36 km/h = 3.99 m/s -- which is

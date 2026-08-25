@@ -216,7 +216,7 @@ func probe_transition() -> StringName:
 	if c.check_for_zipline and player.velocity.y > -config.zipline.fall_limit \
 			and player.move_manager.can_enter(ZIPLINE):
 		var cable: InterestLine = player.nearest_interest_line(InterestLine.Kind.ZIPLINE)
-		if cable != null and player.zipline_ready(cable) \
+		if cable != null and player.line_ready(cable) \
 				and _zipline_approach_allowed(cable):
 			return ZIPLINE
 
