@@ -48,7 +48,7 @@ const CAM_ARC_SIDE := 0.45
 ## Ground-space dot flow per second while walking (✅ the owner: slower than
 ## the first guess, and the flow must FOLLOW the character's facing -- she
 ## walks screen-right in the opening, toward the lens after the turn).
-const FLOOR_SCROLL_SPEED := 0.22
+const FLOOR_SCROLL_SPEED := 0.28
 const LOGO_FADE_TIME := 0.4
 const WALK_TO_MENU_DELAY := 0.15
 const MENU_PANEL_TIME := 0.45
