@@ -43,3 +43,13 @@ theme/custom_font="res://assets/fonts/noto_sans_sc.tres"
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+; Volumetric fog resolution. Godot ships 64x64x64 froxels spread over the whole
+; Environment.volumetric_fog_length, which is far coarser than the 4096 shadow
+; map surfaces get -- so a scene shows crisp shadows on its walls and a mushy
+; blob of a light shaft in the air, and an occluder thinner than one froxel
+; (a roof panel) fails to block sunlit fog above it at all.
+; THE OWNER, on the factory hall: "光柱是柔和的圆柱，影子是尖锐的边缘，房顶还能
+; 透光看到太阳，有点搞笑". This is the setting that closes that gap. It is
+; global and it costs GPU time; halve both numbers to take it back.
+environment/volumetric_fog/volume_size=128
+environment/volumetric_fog/volume_depth=128

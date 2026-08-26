@@ -1,4 +1,4 @@
-[gd_resource type="Sky" load_steps=3 format=3]
+[gd_resource type="Sky" format=3 uid="uid://ffvdbj3x0eg1"]
 
 [ext_resource type="Texture2D" uid="uid://c1q1pxm5ae1va" path="res://assets/sky/kloofendal_48d_partly_cloudy_puresky_2k.hdr" id="1_panorama"]
 
