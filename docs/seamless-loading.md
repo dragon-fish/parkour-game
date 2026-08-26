@@ -9,15 +9,38 @@ This is a standing product constraint, not a feature. It outranks how fast any
 particular thing loads: a two-second wait the player spends watching a character
 run is acceptable, and a two-second wait on a white rectangle is not.
 
-## The invariant, in a form that can be checked
+## The invariant has two halves, and only one of them is a number
 
-**No frame may exceed the frame budget while the player cannot act.**
+**1. No frame may exceed the frame budget while the player cannot act.**
 
-That is deliberately about FRAMES, not about total duration. It is measurable,
-it fails loudly, and it does not care why a stall happened. `PauseUi`'s
-transition already times its first twenty frames and prints any over 50 ms; the
-`[load]` prints in `MainMenu`, `Arena._ready()` and `Player._attach_body` cover
-the CPU side of the same path.
+Measurable, fails loudly, does not care why. `PauseUi`'s transition times its
+first twenty frames and prints any over 50 ms; the `[load]` prints in
+`MainMenu`, `Arena._ready()` and `Player._attach_body` cover the CPU side.
+
+**2. No time may be spent on a screen with nothing alive on it.**
+
+⚠️ THE SECOND HALF IS NOT A WEAKER VERSION OF THE FIRST, and leaving it out was
+a real mistake in the first draft of this document. A white sheet fading in over
+0.7 s does not drop a single frame. It passes the first rule perfectly and
+violates the whole point, because what makes a wait unbearable is not its length
+but the player's inability to tell whether the game is still there.
+
+✅ THE OWNER: "过场动画和活着的在奔跑的角色占用4-5s，给人的体感时间其实比白屏卡住
+3s要好接受得多，没有任何可见内容、游戏窗口卡住，天然就会让人焦虑，你得考虑心理学
+因素."
+
+So the two are ordered, not weighed. **Kill dead screen time first, even if it
+costs absolute seconds.** A frozen or empty frame is a different KIND of thing
+from a long one, and no amount of arithmetic converts between them.
+
+### What that ordering rules out
+
+A tempting reading of half one is that the choreography is the expensive part:
+by the clock, 3.5 s of entrance and 1.6 s of run-up dwarf the 335 ms of actual
+loading. That reading is wrong and this document exists partly to say so. The
+choreography is CONTENT -- it is the first thing that tells a player this game
+is alive -- and `LOAD_MIN_RUN` is not a tax on the player, it is the show
+having room to land. What to shorten is the part where nothing is happening.
 
 ## What the reference games actually do
 
