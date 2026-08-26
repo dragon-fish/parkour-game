@@ -24,8 +24,26 @@ extends SpringBoneSimulator3D
 ## of the chain's anchor relative to the center -- the animation itself --
 ## does. The cure for "turn the camera and everything thrashes".
 @export var center_bone_name: String = ""
+## How much this group behaves like dead weight rather than hair. 0 keeps
+## the three dials above exactly; 1 is iron -- gravity pins it down, drag
+## kills every swing, stiffness barely pulls it back to rest. In between
+## blends the three (✅ the owner: 脚镣需要重量感, 得能设置类似「重量」的配置).
+@export_range(0.0, 1.0) var weight: float = 0.0
+
+## Iron's numbers, the weight = 1 end of the blend.
+const HEAVY_STIFFNESS := 0.1
+const HEAVY_DRAG := 0.95
+const HEAVY_GRAVITY := 1.5
 
 func _ready() -> void:
+	if get_skeleton() == null:
+		# A modifier resolves its skeleton after entering the tree; a _ready
+		# that lands first tries again next frame rather than giving up.
+		_build.call_deferred()
+		return
+	_build()
+
+func _build() -> void:
 	var skeleton := get_skeleton()
 	if skeleton == null:
 		return
@@ -62,9 +80,9 @@ func _ready() -> void:
 			set_extend_end_bone(idx, true)
 			set_end_bone_length(idx, joint_radius * 2.0)
 		set_radius(idx, joint_radius)
-		set_stiffness(idx, chain_stiffness)
-		set_drag(idx, chain_drag)
-		set_gravity(idx, chain_gravity)
+		set_stiffness(idx, lerpf(chain_stiffness, HEAVY_STIFFNESS, weight))
+		set_drag(idx, lerpf(chain_drag, HEAVY_DRAG, weight))
+		set_gravity(idx, lerpf(chain_gravity, HEAVY_GRAVITY, weight))
 		if center_bone_name != "" and skeleton.find_bone(center_bone_name) >= 0:
 			set_center_from(idx, SpringBoneSimulator3D.CENTER_FROM_BONE)
 			set_center_bone_name(idx, center_bone_name)
