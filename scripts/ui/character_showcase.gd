@@ -14,16 +14,37 @@ const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 const BODY_PROFILE := "res://scenes/player/profiles/vrm_test.tres"
 const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
 
-## The clips on offer, in menu order, with whether each loops. Only names the
-## merged body actually carries make the list.
+## The clips on offer, in menu order: [label, [clip, ...], loops]. A
+## multi-clip entry plays its parts back to back once (✅ the owner: jump
+## 这种 start-mid-end 的组合直接合并为一个, 点击后三个连着播一次); a looping
+## single loops; everything else settles back on Idle when it ends. Only
+## entries whose every clip the merged body carries make the list.
 const CLIP_MENU: Array = [
-	[&"Idle", true], [&"Walk", true], [&"Sprint", true],
-	[&"Crouch_Idle", true], [&"Crouch_Fwd", true],
-	[&"Slide", true], [&"Roll", false],
-	[&"Jump_Start", false], [&"Jump_Land", false],
-	[&"ClimbUp_1m", false], [&"ClimbUp_2m", false],
-	[&"Climb_Up", true], [&"Climb_Down", true],
-	[&"WallRun_L", true], [&"SafetyVault", false], [&"StepUp", false],
+	["Idle", [&"Idle"], true],
+	["Idle_LookAround", [&"Idle_LookAround"], true],
+	["Idle_Tired", [&"Idle_Tired"], true],
+	["Idle_Talking", [&"Idle_Talking"], true],
+	["Idle_FoldArms", [&"Idle_FoldArms"], true],
+	["Idle_No", [&"Idle_No"], true],
+	["Sitting_Idle", [&"Sitting_Idle"], true],
+	["GroundSit_Idle", [&"GroundSit_Idle"], true],
+	["Walk", [&"Walk"], true],
+	["Sprint", [&"Sprint"], true],
+	["Crouch_Idle", [&"Crouch_Idle"], true],
+	["Crouch_Fwd", [&"Crouch_Fwd"], true],
+	["Jump", [&"Jump_Start", &"Jump", &"Jump_Land"], false],
+	["NinjaJump", [&"NinjaJump_Start", &"NinjaJump_Idle", &"NinjaJump_Land"], false],
+	["Slide", [&"Slide_Start", &"Slide", &"Slide_Exit"], false],
+	["Roll", [&"Roll"], false],
+	["SafetyVault", [&"SafetyVault"], false],
+	["StepUp", [&"StepUp"], false],
+	["ClimbUp_1m", [&"ClimbUp_1m"], false],
+	["ClimbUp_2m", [&"ClimbUp_2m"], false],
+	["ClimbLedge", [&"ClimbLedge"], false],
+	["Climb", [&"Climb_Enter", &"Climb_Idle", &"Climb_Exit"], false],
+	["Climb_Up", [&"Climb_Up"], true],
+	["Climb_Down", [&"Climb_Down"], true],
+	["WallRun_L", [&"WallRun_L"], true],
 ]
 
 const ROTATE_SPEED := 0.012
@@ -48,6 +69,8 @@ var _body: Node3D
 var _anim_player: AnimationPlayer
 var _menu_list: MeMenuList
 var _clips: Array = []
+## The rest of the sequence currently playing, next part first.
+var _queue: Array = []
 var _pivot: Node3D
 var _camera: Camera3D
 var _distance: float = HOME_DISTANCE
@@ -125,9 +148,14 @@ func _build_body() -> void:
 		return
 	_merge_libraries(profile.animation_libraries)
 	_anim_player.animation_finished.connect(_on_clip_finished)
-	for pair in CLIP_MENU:
-		if _anim_player.has_animation(pair[0]):
-			_clips.append(pair)
+	for entry in CLIP_MENU:
+		var complete := true
+		for clip in entry[1]:
+			if not _anim_player.has_animation(clip):
+				complete = false
+				break
+		if complete:
+			_clips.append(entry)
 	_play_index(0)
 
 func _find_animation_player(root: Node) -> AnimationPlayer:
@@ -177,8 +205,8 @@ func _build_ui() -> void:
 	_menu_list.offset_bottom = 0.0
 	layer.add_child(_menu_list)
 	var items: Array[String] = []
-	for pair in _clips:
-		items.append(String(pair[0]))
+	for entry in _clips:
+		items.append(String(entry[0]))
 	if items.is_empty():
 		items.append("（没有可用动画）")
 	_menu_list.set_items(items)
@@ -203,21 +231,31 @@ func _reset_camera() -> void:
 func _play_index(index: int) -> void:
 	if _anim_player == null or index >= _clips.size():
 		return
-	var clip: StringName = _clips[index][0]
-	var loops: bool = _clips[index][1]
+	var parts: Array = _clips[index][1]
+	var loops: bool = _clips[index][2]
+	_queue = parts.duplicate()
+	var first: StringName = _queue.pop_front()
+	_start_part(first, loops and _queue.is_empty(), 0.3)
+
+## A sequence part, or the whole of a single-clip entry: a looping single
+## loops; every part of a sequence plays exactly once.
+func _start_part(clip: StringName, loops: bool, blend: float) -> void:
 	var animation := _anim_player.get_animation(clip)
 	if animation != null:
 		animation.loop_mode = Animation.LOOP_LINEAR if loops else Animation.LOOP_NONE
-	_anim_player.play(clip, 0.3)
+	_anim_player.play(clip, blend)
 
-## A one-shot has ended (looping clips never emit this): settle back on Idle
-## rather than freezing on the last frame.
+## A one-shot has ended (looping clips never emit this): the next part of a
+## sequence if there is one, otherwise settle back on Idle rather than
+## freezing on the last frame.
 func _on_clip_finished(_clip: StringName) -> void:
-	if _anim_player != null and _anim_player.has_animation(&"Idle"):
-		var idle := _anim_player.get_animation(&"Idle")
-		if idle != null:
-			idle.loop_mode = Animation.LOOP_LINEAR
-		_anim_player.play(&"Idle", 0.4)
+	if _anim_player == null:
+		return
+	if not _queue.is_empty():
+		_start_part(_queue.pop_front(), false, 0.15)
+		return
+	if _anim_player.has_animation(&"Idle"):
+		_start_part(&"Idle", true, 0.4)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \

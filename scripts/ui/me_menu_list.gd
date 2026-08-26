@@ -30,6 +30,10 @@ const ENTRANCE_OFFSET_PX := 40.0
 var _backdrop: ColorRect
 var _selection_bar: ColorRect
 var _hover_preview: ColorRect
+## Items live inside a scroller (✅ the owner: 列表做成可滚动) so a list
+## taller than the column -- the showcase's clip list -- wheels through;
+## short lists still centre, because the box is told to fill the viewport.
+var _scroll: ScrollContainer
 var _items_box: VBoxContainer
 var _labels: Array[Label] = []
 var _selected_index: int = 0
@@ -44,12 +48,23 @@ func _ready() -> void:
 	_selection_bar = _make_bar(Color.WHITE, BACKDROP_AMPLITUDE_PX * 0.5)
 	_hover_preview = _make_bar(Color(1.0, 1.0, 1.0, 0.18), 0.0)
 	_hover_preview.visible = false
+	clip_contents = true
+	_scroll = ScrollContainer.new()
+	_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# Scrolls, but shows no bar -- ME's column has no chrome.
+	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	add_child(_scroll)
 	_items_box = VBoxContainer.new()
-	_items_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# A full-height column centres its items vertically (ME's own layout).
+	# A full-height column centres its items vertically (ME's own layout);
+	# EXPAND_FILL keeps that true inside the scroller when the list is short.
 	_items_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	_items_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_items_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_items_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_items_box)
+	_scroll.add_child(_items_box)
+	# The bars sit outside the scroller, so they chase the scroll offset.
+	_scroll.get_v_scroll_bar().value_changed.connect(func(_v: float) -> void: _sync_widths())
 	resized.connect(_sync_widths)
 	call_deferred("_sync_widths")
 
@@ -160,6 +175,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _select(index: int) -> void:
 	_selected_index = index
 	_refresh_colors()
+	if index < _labels.size():
+		_scroll.ensure_control_visible(_labels[index])
 	_slide_selection_bar()
 
 func _refresh_colors() -> void:
@@ -177,10 +194,10 @@ func _slide_selection_bar() -> void:
 	_bar_tween.tween_property(_selection_bar, "position:y", _row_y(_selected_index), TWEEN_TIME) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-## All LOCAL space now: a row's y inside the items box equals its y in this
-## control (the box is full-rect at zero offset).
+## A row's y in THIS control: its y inside the items box, less whatever the
+## scroller has carried off the top.
 func _row_y(index: int) -> float:
-	return _labels[index].position.y
+	return _labels[index].position.y - _scroll.scroll_vertical
 
 func _size_bar(bar: ColorRect, index: int) -> void:
 	bar.size = Vector2(size.x, _labels[index].size.y)
