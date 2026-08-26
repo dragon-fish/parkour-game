@@ -28,46 +28,6 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	_apply_capsule()
 	apply_air_physics(delta, player.wish_direction(input))
 
-	# THE STANDING FEET, NOT THE COILED ONES, AND THIS IS THE WHOLE OF THE
-	# LANDING CARE. The capsule is shrunk about its centre, so its floor sits
-	# half a shrink ABOVE where the body's feet really are; is_on_floor() would
-	# therefore let the body sink that far into the ground before reporting a
-	# landing, and the restore -- which grows the capsule downward again --
-	# would finish the job of burying it. See Player.set_centred_capsule_height()
-	# for the same failure caught in play once already.
-	#
-	# Asked before this tick's own move_and_slide(), matching how the vault and
-	# grab checks in AirborneMove.probe_transition() are ordered.
-	if not player.fits_standing_at(_standing_feet()):
-		# Returned BEFORE settle_landing() runs, so the tick that touches down
-		# does so at full height and lands like any other.
-		# set_, NOT request_, and the difference is the whole bug this branch
-		# was written to avoid. request_standing_capsule() honours the roof by
-		# REFUSING a restore that does not fit and owing it instead -- and by
-		# the time the standing feet have reached a floor, the standing capsule
-		# no longer fits, because its floor is exactly what they reached. The
-		# refusal is then permanent: a body resting on the ground never rises
-		# on its own, so has_headroom() stays false forever and the player is
-		# left walking around inside a coiled capsule. Measured, before this
-		# line said set_: the body settled at y 0.451 -- half a shrunken
-		# capsule -- and stayed there.
-		#
-		# Growing DOWNWARD into the floor is safe in a way growing UPWARD into
-		# a ceiling is not: settle_landing()'s own move_and_slide(), two lines
-		# below, depenetrates it on this very tick. That asymmetry is why the
-		# deferred path is right for exit() and wrong for here.
-		player.set_capsule_height(player.standing_height())
-		# THE TUCK IS OVER EITHER WAY, and returning KEEP here was a real bug
-		# for one revision: the standing feet arrive half a shrink before the
-		# COILED ones do, so settle_landing() can quite correctly report no
-		# landing yet -- and staying in the move meant the next tick shrank the
-		# capsule straight back down, restored it again, and strobed until the
-		# shrunken capsule finally reached the floor. The feet having arrived
-		# is the end of the coil; whether this same tick also produced a
-		# landing is settle_landing()'s business, not this branch's.
-		var landed := settle_landing(delta)
-		return FALLING if landed == KEEP else landed
-
 	# Coil is one of the six states holding bCheckExitToUncontrolledFalling
 	# (11 §11.2), and the only one of them that is not simply a fall: tucking
 	# up does not save a player who has already dropped too far.
@@ -75,8 +35,14 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return advance_and_hand_off(FALL_UNCONTROLLED)
 
 	# ✅ CoilTime. The legs stay tucked for all of it -- the owner's "后摇" --
-	# so there is nothing to unwind here; the clock simply runs out and exit()
-	# gives the capsule back.
+	# so there is nothing to unwind here; the clock simply runs out.
+	#
+	# 📌 LANDING IS settle_landing()'s JOB, UNCHANGED AND UNHELPED. It reads
+	# is_on_floor() off the SHRUNKEN capsule, whose floor sits half a shrink
+	# above where the feet really are -- so a tucked body touches down later
+	# than an upright one. That is not an error to correct: it is what "the
+	# legs are up" MEANS, and it is the same half-shrink that carries the body
+	# over a gap's far lip instead of catching on it.
 	if _elapsed >= cfg.duration:
 		return advance_and_hand_off(FALLING)
 
@@ -87,17 +53,61 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# probe. See CoilConfig's own note, and tests/test_coil.gd.
 	return settle_landing(delta)
 
-func exit() -> void:
-	# request_, not set_: a coil that ended inside a gap it was threading has
-	# no room to stand up in yet, and Player already owns the machinery for
-	# owing a restore until there is.
-	player.request_standing_capsule()
+## Where a landing out of a coil leads: CROUCH, and let the crouch decide when
+## to stand.
+##
+## ⚠️ THE MOVE DOES NOT ASK WHETHER IT CAN STAND UP, AND MUST NOT.
+##
+## An earlier version watched the ground every tick and ended the tuck as soon
+## as a standing capsule would no longer fit. ✅ THE OWNER KILLED IT, and the
+## reason is the whole purpose of the move: "你不要自作主张检测胶囊下方有没有
+## 地面并提前站起来，这样违背动作的设计了，它就是用来通过不蜷缩无法通过的地方，
+## 比如越过会受伤的铁丝网...还有个速通技巧就是使用这个技巧直接精准跳进通风管道，
+## 你随手加的检测会让角色无法跳进去".
+##
+## "A standing capsule does not fit here" is TRUE of every place a coil is for.
+## Razor wire, a duct mouth, any gap only a tucked body clears -- the check
+## fired hardest exactly where putting the legs down is worst.
+##
+## ✅ THE OWNER'S OWN ANSWER, and it needs no detection at all: "不能恢复站立，
+## 和翻滚和滑铲一样，如果当时无法站立就转蹲下；比如缩腿跳进通风管道". Both of
+## those moves already end this way (SkillRollMove and SlideMove each hand to
+## CROUCH when the head is blocked), and CrouchMove already knows how to wait:
+## it stands only once the key is released AND has_headroom() agrees, and stays
+## down indefinitely otherwise.
+##
+## 📌 HANDED OVER UNCONDITIONALLY rather than gated on has_headroom() here,
+## which would be the obvious way to copy the two precedents. It cannot work
+## from this side: the capsule is still centre-anchored at this instant, so its
+## floor is half a shrink above the real feet and a standing overlap test
+## reads the ground it is resting on as a blocked head -- false everywhere,
+## including open sky. Crouch is free to enter (crouch_capsule_height and
+## CoilConfig.capsule_height are the same number), it re-anchors the capsule on
+## the way in, and on open ground it hands straight back to Walking on the very
+## next tick. So the cost of not asking is one frame of Crouch, and the benefit
+## is that the question gets asked by the code that can answer it.
+func landing_destination(fall_height: float, rolled: bool) -> StringName:
+	var destination := super(fall_height, rolled)
+	return CROUCH if destination == WALKING else destination
 
-## Where the feet would be at full height. The body's origin is the capsule's
-## own centre (see player.tscn), so this is one standing half-height below it,
-## whatever the live capsule has been shrunk to.
-func _standing_feet() -> Vector3:
-	return player.global_position - Vector3.UP * player.standing_height() * 0.5
+func exit() -> void:
+	# GIVE THE BODY BACK IN THE SHAPE THE REST OF THE PROJECT EXPECTS, which is
+	# feet-anchored. Everything downstream -- has_headroom(), the deferred
+	# restore, CrouchMove -- assumes the capsule's floor is one standing
+	# half-height below the origin, and a centred shrink breaks that assumption
+	# for as long as it lasts.
+	#
+	# Re-anchoring at the SAME height is the legs coming down: set_capsule_height()
+	# puts the offset back where those callers expect it, which drops the
+	# capsule's floor by half the shrink. On the ground that means the feet end
+	# the tick slightly inside it, and ✅ the owner is right that this needs no
+	# handling of its own -- "我觉得物理引擎会把角色推出来的" -- the next
+	# move_and_slide() depenetrates it.
+	player.set_capsule_height(player.current_capsule_height())
+	# THEN ask for full height, through the deferred path, which now gets a
+	# body it can reason about: granted immediately in the open, owed under a
+	# duct roof. Same call SlideMove and CrouchMove end on.
+	player.request_standing_capsule()
 
 ## Eases the capsule down to CoilConfig.capsule_height across boost_duration,
 ## then holds it there for the rest of `duration`.

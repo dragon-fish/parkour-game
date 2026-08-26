@@ -238,3 +238,119 @@ func test_only_jump_offers_a_coil() -> void:
 	assert_true(cfg.jump.check_for_coil, "Jump is the one state that may coil")
 	assert_false(cfg.falling.check_for_coil, "Falling may not coil")
 	assert_false(cfg.coil.check_for_coil, "a coil may not coil again")
+
+# --- what the tuck is FOR ---------------------------------------------------------
+
+## A slab of geometry whose top surface sits at `top_y`, wide enough that the
+## capsule cannot miss it sideways. Freed with the world.
+func _slab_at(top_y: float) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(4.0, 0.2, 4.0)
+	shape.shape = box
+	body.add_child(shape)
+	get_tree().root.add_child(body)
+	# UNDER THE PLAYER, not at the origin. _jumping() runs forward for 40 ticks
+	# before taking off, so by now the body is metres down +/-Z and a slab at
+	# the world origin proves nothing -- which is exactly how the first version
+	# of this passed against the very regression it was written to catch.
+	var at: Vector3 = (_world["player"] as Player).global_position
+	body.global_position = Vector3(at.x, top_y - 0.1, at.z)
+	return body
+
+func test_a_coil_does_not_end_early_over_geometry_it_is_clearing() -> void:
+	# ⚠️ THE REGRESSION THIS EXISTS FOR IS A DESIGN ERROR, NOT A BUG, which is
+	# why it is pinned rather than left to a comment.
+	#
+	# A version of CoilMove watched every tick for "would a standing capsule
+	# fit here" and ended the tuck when the answer went false. It passed every
+	# other test in this file. ✅ The owner killed it on sight, because that
+	# answer is false in precisely the places the move exists for: "它就是用来
+	# 通过不蜷缩无法通过的地方，比如越过会受伤的铁丝网...还有个速通技巧就是使用
+	# 这个技巧直接精准跳进通风管道，你随手加的检测会让角色无法跳进去". Putting
+	# the legs down over razor wire is the worst available outcome, and that
+	# check chose it every time.
+	#
+	# The fixture is that geometry reduced to its essential: a slab threaded
+	# BETWEEN the two sets of feet. The tucked capsule clears it, a standing one
+	# would not, and nothing here should notice it at all.
+	var player: Player = await _jumping()
+	player.config.coil.duration = 5.0
+	_world["input"].press_crouch()
+	# Past boost_duration, so the shrink has finished and the gap between the
+	# two sets of feet is at its full size. Still rising at this point -- the
+	# jump has ~0.4 s of climb and the shrink takes 0.25 s.
+	await step(17)
+	assert_eq(player.move_manager.current_name, Move.COIL, "test setup: not coiled")
+	assert_gt(player.velocity.y, 0.0,
+		"test setup: the body must still be rising, or it simply lands on the slab")
+
+	var coiled_feet: float = player.global_position.y - player.current_capsule_height() * 0.5
+	var standing_feet: float = player.global_position.y - player.standing_height() * 0.5
+	var slab_top: float = (coiled_feet + standing_feet) * 0.5
+	assert_lt(standing_feet, slab_top,
+		"test setup: the slab does not reach the standing feet, so it proves nothing")
+	assert_gt(coiled_feet, slab_top,
+		"test setup: the slab blocks the tucked feet too, so it proves nothing")
+	var slab := _slab_at(slab_top)
+
+	await step(3)
+	assert_eq(player.move_manager.current_name, Move.COIL,
+		"the coil ended over geometry it was clearing (got %s)"
+		% player.move_manager.current_name)
+	slab.queue_free()
+
+func test_a_coil_lands_into_a_crouch_rather_than_deciding_for_itself() -> void:
+	# ✅ THE OWNER'S RULE, and it is the two moves either side of this one:
+	# "不能恢复站立，和翻滚和滑铲一样，如果当时无法站立就转蹲下；比如缩腿跳进
+	# 通风管道". SkillRollMove and SlideMove both end in CROUCH when the head is
+	# blocked, and CrouchMove already knows how to wait for room.
+	#
+	# 📌 ASKED OF THE MOVE DIRECTLY rather than through a duct-shaped fixture,
+	# because that fixture cannot exist on flat ground: clearing a roof low
+	# enough to block standing needs more headroom to JUMP through than to
+	# stand under. A real duct is a hole in a wall entered horizontally. What is
+	# actually under test is the hand-off, and the hand-off is one function.
+	var player: Player = await _jumping()
+	var coil := player.move_manager.move_for(Move.COIL) as CoilMove
+	assert_not_null(coil, "there is no CoilMove to ask")
+
+	# An ordinary landing goes to the crouch, NOT to Walking -- the coil does
+	# not get to decide, because at this instant it cannot: its capsule is
+	# still centre-anchored, so a standing overlap test reads the ground it is
+	# resting on as a blocked head and answers "no room" even under open sky.
+	assert_eq(coil.landing_destination(0.5, false), Move.CROUCH,
+		"an ordinary landing out of a coil did not hand over to the crouch")
+	# The two landings that already own themselves are untouched.
+	assert_eq(coil.landing_destination(3.0, true), Move.SKILL_ROLL,
+		"a rolled landing was taken away from the roll")
+	assert_eq(coil.landing_destination(
+		player.config.pawn.hard_landing_height + 1.0, false), Move.LANDING,
+		"a hard landing was taken away from the landing lockout")
+
+func test_a_coil_that_lands_in_the_open_gets_back_up() -> void:
+	# The other half of the hand-off above: passing through Crouch must not
+	# LEAVE the player crouched when there is nothing overhead. CrouchMove
+	# stands up on its own once the key is released and has_headroom() agrees,
+	# so the coil needs no code for this -- which is the point of handing over.
+	var player: Player = await _jumping()
+	player.config.coil.duration = 5.0
+	_world["input"].press_crouch()
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.COIL, "test setup: not coiled")
+
+	for i in 300:
+		await step(1)
+		if player.grounded:
+			break
+	assert_true(player.grounded, "the coil never landed")
+	# Released only now: held through the landing, staying crouched is correct.
+	_world["input"].release_crouch()
+	await step(10)
+
+	assert_eq(player.move_manager.current_name, Move.WALKING,
+		"a coil landing under open sky did not get back up (got %s)"
+		% player.move_manager.current_name)
+	assert_almost_eq(player.current_capsule_height(), player.standing_height(), 0.001,
+		"the body is still compressed at %.2f m" % player.current_capsule_height())
