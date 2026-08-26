@@ -63,10 +63,9 @@ extends Node3D
 ## high layers; change it only if something does.
 @export_flags_3d_render var mirror_layer: int = 1 << 19
 
-## Metres beyond the glass before the reflection camera starts drawing. Small,
-## because its only job is keeping the mirror's own plane out of the image --
-## the wall behind it is `reflection_cull_mask`'s problem, NOT this one. An
-## oblique near plane would solve both at once and Godot cannot express one.
+## The floor under the reflection camera's near plane. The real value is
+## computed every frame -- see _clip_to_the_glass() -- and this only keeps it
+## off zero when the eye is right against the pane.
 const REFLECTION_NEAR := 0.05
 
 var _quad: MeshInstance3D
@@ -234,11 +233,41 @@ func _process(_delta: float) -> void:
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_match_projection(eye)
 	_reflection_camera.global_transform = reflect_across(eye.global_transform, plane())
+	_clip_to_the_glass()
 	# Re-applied every frame for the same reason every other tunable in this
 	# project is: dragging a value in the inspector while the game runs has to
 	# change what is on screen now.
 	if surface != null:
 		surface.apply_to(_material)
+
+
+## Pushes the reflection camera's near plane out to the glass, so nothing
+## BEHIND the mirror can get into the picture.
+##
+## ⚠️ THIS IS WHAT MADE A MIRROR STOP WORKING AT RANGE. The reflection camera
+## stands as far behind the glass as the eye stands in front, so walking away
+## from a mirror walks its camera backwards -- and at about seven metres in the
+## lab it reversed straight through the room's own back wall and started
+## rendering the OUTSIDE of it. A flat grey rectangle, arriving in one step.
+## ✅ THE OWNER: "镜子只有在附近才工作，离远了会瞬间失去效果."
+##
+## reflection_cull_mask cannot fix that one, and it is worth being clear why:
+## the back wall BELONGS in the reflection. It is the picture frame problem
+## (something between the camera and the glass) with the trigger reversed --
+## close for the frame, far for the wall -- and only a clip at the glass
+## answers both.
+##
+## THE MEASURE IS AXIAL, NOT PERPENDICULAR. Godot's near plane sits square to
+## the view direction, not to the mirror, so clipping at the perpendicular
+## distance would eat real content whenever the mirror is viewed at an angle.
+## Projecting the camera-to-glass vector onto the view direction gives the
+## plane through the mirror's CENTRE -- exact head-on, and off by the pane's
+## own tilt at the edges, which is the residual an oblique near plane would
+## have removed and Godot cannot express.
+func _clip_to_the_glass() -> void:
+	var to_glass: Vector3 = global_position - _reflection_camera.global_position
+	var axial: float = to_glass.dot(-_reflection_camera.global_transform.basis.z)
+	_reflection_camera.near = maxf(axial, REFLECTION_NEAR)
 
 
 ## Keeps the reflection framed exactly like the real view, which is the whole
