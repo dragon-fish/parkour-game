@@ -44,6 +44,16 @@ The paid full tiers are not redistributed — see
 in. Every animation route is a priority list, so a body without them keeps the
 placeholder rather than breaking.
 
+## Working practices
+
+`.claude/skills/` holds the practices this project learned the hard way,
+written as skills an agent (or a person) can read on demand — hand-authoring
+Godot scene files, the UI layout traps, verifying visuals without hijacking
+the desktop, exposing a dial instead of deriving a rule, naming config
+fields, finding the precedent before inventing, and versioning assets whose
+licence forbids redistribution. Each one exists because ignoring it cost a
+session.
+
 ## Licence
 
 **Dual-licensed: `AGPL-3.0-only`, or separate commercial terms.** Two grants,

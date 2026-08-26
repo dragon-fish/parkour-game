@@ -1,0 +1,75 @@
+---
+name: verifying-visuals-headlessly
+description: Use when a change affects what is on screen — materials, animation, layout, camera framing — and you must confirm it without taking over the user's desktop, or when a measurement script reports something that contradicts what the user sees.
+---
+
+# Verifying visuals without stealing the desktop
+
+## Overview
+
+An agent cannot claim a visual change works because the code looks right.
+It also must not launch a windowed game on a machine somebody is using: on
+this project the level grabs the mouse pointer on `_ready()`, so any
+windowed run yanks the cursor away from the person at the keyboard.
+
+Two tools cover almost everything: a **capture script** that renders a scene
+to a PNG you then read, and a **probe script** that drives the real objects
+and prints numbers.
+
+## Quick reference
+
+| Question | Tool |
+|---|---|
+| Does it look right? | Capture a PNG, then read the image |
+| Does the value change over time? | Probe: drive it and print a trace |
+| Does the structure exist at all? | Test in the suite (survives, runs in CI) |
+| Does it feel right? | The user. Not you |
+
+```bash
+# Rendering needs a real context: NO --headless, small window, hard backstop.
+Godot --path . --resolution 960x540 --quit-after 300 \
+  --script res://tools/capture.gd -- res://scenes/ui/main_menu.tscn out.png 90
+```
+
+Headless is right for logic and structure, and wrong for anything that has
+to be drawn — the renderer is a dummy, so spring simulation, draw order and
+materials all report as if fine.
+
+## Your probe lies too
+
+A probe is code you wrote in one minute to judge code you wrote in ten. It
+has bugs, and its bugs read as *findings*. In one session here, probes
+"proved" a character's spring chains did not exist and that a chain never
+deviated from rest — both false, while the user was looking at the correct
+behaviour on screen and telling me so.
+
+Both had the same shape: **the probe measured before the thing existed, or
+measured against the wrong baseline.**
+
+Before believing a probe that contradicts the user:
+
+1. **Print the inputs, not just the verdict.** Chain count, clip name, bone
+   index, node path. A zero in the inputs is a probe bug, not a finding.
+2. **Await the frames the engine needs.** Deferred builds, animation poses
+   (~5-6 frames before bones move), physics ticks. Reading on frame 0 gets
+   you rest pose and empty arrays.
+3. **Measure a known-good baseline in the same run.** If the reference model
+   also reads zero, the probe is broken.
+4. **The user's eyes outrank your script.** When they say "it moves and your
+   number says it doesn't", the number is wrong until proven otherwise.
+
+## Report what the run showed
+
+Say what was verified and how — "captured at 960×540, the panel is centred"
+— and say plainly when something was not tried in a real session. "Not play-
+tested" is a complete and acceptable sentence; a claim of feel is not.
+
+## Common mistakes
+
+- **Launching the windowed game to "just check".** It steals the pointer.
+  Interactive verification belongs to the user, always.
+- **Reading a PNG's filename instead of the PNG.** Open the image.
+- **Reporting a probe result as fact without the inputs.** Half the numbers
+  in a broken probe look plausible.
+- **Using wall-clock time to judge engine timing.** Frame pacing and wall
+  clock diverge; print the engine's own clock or count frames.
