@@ -36,7 +36,7 @@ each does a job the other cannot:
 | Dial | Drives | Job |
 | --- | --- | --- |
 | `fade_begin_distance` / `fade_end_distance` / `max_opacity` / `tint` / `sky_blend` | `Environment`'s DEPTH fog | Hides an unfinished horizon. Cheap, unlimited range, no interaction with light. |
-| `volumetric_enabled` / `volumetric_density` | `Environment`'s VOLUMETRIC fog | Light shafts. Voxelised, reaches only 64 m from the camera, and is the only one the sun can carve a beam out of or a body can cast a hole in. |
+| `volumetric_enabled` / `volumetric_density` / `volumetric_distance` / `volumetric_ambient_inject` | `Environment`'s VOLUMETRIC fog | Light shafts. Voxelised, reaches only `volumetric_distance` from the camera, and is the only one a light can carve a beam out of or a body can cast a hole in. |
 
 Defaults draw the curtain from 60 m to 160 m — far enough not to crowd a
 whitebox, near enough that a rooftop view does not expose ground nobody has
@@ -77,6 +77,28 @@ true, and a global `volumetric_density` of **0 is a legitimate setting**: it is
 Godot's documented way to get fog *only* inside `FogVolume`s — dust in a light
 shaft, clear air around it. So the switch and the thickness are two fields, and
 zeroing the thickness must never be read as "off".
+
+### Keep the two fogs' ranges apart
+
+The depth fog and the volumetric fog are drawn independently and you see through
+**both**. A white far curtain that begins at 30 m while the volumetric fog still
+reaches 64 m is a white wall viewed through 30 m of dim haze, and it reads grey
+no matter what `tint` says — the tint dial is not broken, the ranges overlap.
+Keep `volumetric_distance` below `fade_begin_distance` when you want "near
+atmosphere, far white". Nothing enforces it; some levels want them mixed.
+
+Shortening `volumetric_distance` also **sharpens light shafts for free**: the
+froxel grid is a fixed cell count (`rendering/environment/volumetric_fog/
+volume_size`, raised to 128 project-wide) spread across that distance, so 30 m
+of fog carries more than twice the detail of 64 m.
+
+`volumetric_ambient_inject` is the other half of "why is my fog grey". Volumetric
+fog is **lit** fog, not coloured fog: its colour is whatever light reaches each
+cell. Godot defaults the ambient contribution to 0, so fog standing in shadow is
+not dim white but black — white where a light reaches it, black where it does
+not, grey on average. Turn it up for even haze, down for the strongest shafts.
+A shaft *is* the contrast between lit and unlit fog, so the two wants are
+opposed and this dial is where you pick.
 
 ### Fog is per level automatically; the sky is shared on purpose
 

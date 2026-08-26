@@ -114,3 +114,37 @@ extends Resource
 ## whose range is RANGE_FACTOR × the default, spans 0..0.15 -- thin haze to
 ## thick enough that a shaft is unmistakable.
 @export var volumetric_density: float = 0.05
+
+## How far the volumetric fog reaches from the camera, in metres -- literally
+## where "near" ends (Godot's Environment.volumetric_fog_length).
+##
+## ⚠️ KEEP THIS BELOW fade_begin_distance IF YOU WANT A CLEAN FAR CURTAIN. The
+## two fogs are drawn independently and you see through BOTH: a white depth-fog
+## curtain that begins at 30 m while the volumetric fog still reaches 64 m is a
+## white wall viewed through 30 m of dim haze, and it reads grey no matter what
+## `tint` says. ✅ THE OWNER: "我只希望远方遁入白雾，同时有近处的体积雾" -- that
+## is exactly this pair of numbers not overlapping. Nothing enforces it, because
+## some levels DO want the two mixed.
+##
+## Shortening it also SHARPENS light shafts, free: the froxel grid is a fixed
+## number of cells (rendering/environment/volumetric_fog/volume_size, 64) spread
+## over this distance, so 30 m of fog is more than twice the detail of 64 m.
+@export var volumetric_distance: float = 64.0
+
+## How much of the level's ambient light reaches the volumetric fog, 0 to 1
+## (Godot's Environment.volumetric_fog_ambient_inject).
+##
+## Volumetric fog is LIT fog, not coloured fog -- its colour is whatever light
+## reaches each cell, times the albedo. Godot defaults this to 0, which means
+## ambient contributes NOTHING and fog standing in shadow is not dim white but
+## literally BLACK. That is where "the fog looks grey" comes from: white where
+## the sun reaches it, black where it does not.
+##
+## Turn it UP for an even, luminous haze. Turn it DOWN for the strongest light
+## shafts -- a shaft IS the contrast between lit and unlit fog, so lifting the
+## unlit half flattens it. The two wants are opposed and this is where you pick.
+##
+## Defaults to 0.25 rather than Godot's 0 for the same two reasons sky_blend
+## does: pitch-black shadowed fog is rarely what anyone means, and the F1
+## slider's range is 3x the default, so a 0 default is a slider nobody can move.
+@export var volumetric_ambient_inject: float = 0.25

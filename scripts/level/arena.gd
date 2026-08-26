@@ -54,6 +54,10 @@ const NEUTRAL_AMBIENT_TINT := Color(1.0, 1.0, 1.0)
 ## begin distance or on 0, both of which Godot reads as something other than
 ## "a very short fade" -- see _apply_fog() for what each would actually do.
 const MIN_FOG_FADE_SPAN := 0.01
+## The shortest volumetric fog range Arena will ask Godot for. Same job as
+## MIN_FOG_FADE_SPAN above: a dial dragged to zero must not hand the renderer a
+## degenerate volume.
+const MIN_VOLUMETRIC_DISTANCE := 1.0
 ## How much the depth fog is allowed to obscure the SKY. Zero, deliberately:
 ## the fog's job here is hiding unfinished GROUND, and a fog that also eats the
 ## sky turns a rooftop view into a flat white void -- worse than the horizon it
@@ -303,6 +307,11 @@ func _apply_fog(environment: Environment) -> void:
 	# unreachable and take every FogVolume down with it, silently.
 	environment.volumetric_fog_enabled = fog.volumetric_enabled
 	environment.volumetric_fog_density = fog.volumetric_density
+	# Never 0: Godot divides the froxel grid across this distance, and a level
+	# whose slider is mid-drag through zero must degrade to "very short" rather
+	# than to a division by nothing.
+	environment.volumetric_fog_length = maxf(fog.volumetric_distance, MIN_VOLUMETRIC_DISTANCE)
+	environment.volumetric_fog_ambient_inject = maxf(fog.volumetric_ambient_inject, 0.0)
 
 ## Recovers a player who fell out of the level entirely -- off the far edge of
 ## the (generously sized, see tools/arena_builder.gd's own Floor comment)
