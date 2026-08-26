@@ -22,6 +22,17 @@ const HOLD_TIME := 1.0      ## knelt, not yet fallen
 const TOPPLE_TIME := 1.5    ## quarter circle to the right, pivoting near the feet
 const REST_TIME := 1.0      ## lying still before the level takes over
 
+## The lowest the view may be raised once the body is down, in degrees.
+##
+## ✅ THE OWNER: "完全落地之后，屏幕变黑白期间，如果是第三人称则允许在一定范围转
+## 镜头，只能Pitch<=-25，因为此时角色躺在地板上，镜头不往下的话会贴着地面，没意义."
+## So it is not a stylistic clamp -- a camera at the corpse's own height and
+## looking level is looking THROUGH the floor. Anything it could frame is below
+## it.
+const LANDED_PITCH_MAX_DEG := -25.0
+## The steepest it may look down. Short of straight down, which gimbals.
+const LANDED_PITCH_MIN_DEG := -89.0
+
 ## ⚠️ PROJECT-DEFINED. How far above the floor the arc bottoms out, so the view
 ## ends up cheek-to-the-ground rather than inside it -- a camera pivoting on
 ## the feet exactly would put its near plane through the floor and show the
@@ -45,6 +56,8 @@ const TOPPLE_BOUNCE := 0.45    ## the body landing: settles in a beat or two
 var _player: Player
 var _elapsed: float = 0.0
 var _playing: bool = false
+## Whether the view has already been handed back for this death.
+var _view_offered: bool = false
 var _eye_height: float = 0.0
 
 ## Where the FEET are, in the rig's own local space -- i.e. how far below the
@@ -216,6 +229,7 @@ func _physics_process(delta: float) -> void:
 	if _cinematic and _player != null and _player.camera_rig != null:
 		var pose := _pose_at(_elapsed)
 		_player.camera_rig.set_cinematic_pose(pose[0], pose[1], pose[2])
+		_offer_the_view()
 	# THE CURTAIN. Ramped over the last BLACKOUT seconds, so the moment the
 	# solver is taken away -- and the skeleton snaps back to whatever the
 	# animation wanted -- happens behind it.
@@ -294,6 +308,10 @@ func _release_player() -> void:
 		return
 	_player.set_dying(false)
 	_close_the_eyes(false)
+	if _view_offered and _player.camera_rig != null:
+		_player.camera_rig.allow_cinematic_look(false)
+		_player.camera_rig.clear_look_constraint()
+	_view_offered = false
 	if _ragdolled and _player.ragdoll != null:
 		_player.ragdoll.stop()
 		_ragdolled = false
@@ -435,3 +453,32 @@ func _close_the_eyes(closed: bool) -> void:
 	for node in _player.find_children("*", "Node", true, false):
 		if node is BlinkController:
 			(node as BlinkController).set_held_closed(closed)
+
+
+## Gives the mouse back once the body has stopped moving, third person only.
+##
+## THE POSE STAYS OURS. set_cinematic_pose keeps arriving every tick -- the
+## offset that put the eye by the cheek on the ground, the roll, the pitch --
+## and only the player's own yaw and pitch come back. So the shot holds and the
+## view turns inside it, rather than the cutscene ending early.
+##
+## FIRST PERSON IS LEFT ALONE, and not as an oversight: the eye is inside a head
+## lying on the floor, so there is nothing to turn toward. The owner asked for
+## this in third person specifically.
+##
+## Latched, because set_look_constraint costs a little and this runs every tick
+## of the last stretch.
+func _offer_the_view() -> void:
+	if _view_offered or _elapsed < DROP_TIME + HOLD_TIME + TOPPLE_TIME:
+		return
+	var rig: CameraRig = _player.camera_rig
+	if not rig.third_person:
+		return
+	_view_offered = true
+	# Pitch only. Yaw is left unbounded -- turning all the way round while
+	# lying on the ground is exactly what a player does here, and there is no
+	# body facing left to protect.
+	rig.set_look_constraint(
+		Vector3(deg_to_rad(LANDED_PITCH_MIN_DEG), -PI, -PI),
+		Vector3(deg_to_rad(LANDED_PITCH_MAX_DEG), PI, PI), false)
+	rig.allow_cinematic_look(true)

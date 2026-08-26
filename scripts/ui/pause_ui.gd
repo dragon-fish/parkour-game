@@ -352,15 +352,44 @@ func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	await tween.finished
 	_pending_scene_change = true
+	var swap_started := Time.get_ticks_msec()
 	get_tree().change_scene_to_packed(packed)
 	for i in 6:
 		await get_tree().process_frame
 	_pending_scene_change = false
+	print("[load] scene swap + every _ready(): %d ms" % (Time.get_ticks_msec() - swap_started))
+
+	# ⚠️ THE LEVEL IS ALREADY LIVE UNDER THE SHEET. change_scene_to_packed has
+	# returned, every _ready() has run and the player is standing in the world
+	# taking input -- while the screen is still solid white. ✅ THE OWNER: "黑白
+	# 色过场动画期间禁止镜头控制和移动，否则玩家可以在加载还没结束时乱晃鼠标并跑
+	# 出去." lock_input() covers BOTH: Player feeds a blank MoveInput to the
+	# moves AND to camera_rig.apply_look, so the mouse is dead too.
+	var player := _player_in_the_new_scene()
+	if player != null:
+		player.lock_input()
 	var lift := create_tween()
 	lift.tween_property(_white, "modulate:a", 0.0, 0.6) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	await lift.finished
+	if is_instance_valid(player):
+		player.unlock_input()
+	print("[load] white lifted, controls live")
 	_white.visible = false
 	# Back to the resting state: the layer only shows when paused.
 	if not get_tree().paused:
 		visible = false
+
+
+## The Player of whichever scene is current, or null before one exists.
+## Searched rather than held: this autoload outlives every scene, so any
+## reference it kept would be to a level that has already been freed.
+func _player_in_the_new_scene() -> Player:
+	var scene: Node = get_tree().current_scene
+	if scene == null:
+		return null
+	if scene is Player:
+		return scene
+	for node in scene.find_children("*", "Player", true, false):
+		return node as Player
+	return null

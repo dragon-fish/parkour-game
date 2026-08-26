@@ -148,6 +148,9 @@ var _beat_title_fired: bool = false
 ## pressed" without a real change_scene_to_file() replacing the scene tree
 ## out from under GUT's own runner mid-suite. Defaults to the real thing.
 var _change_scene: Callable = Callable(self, "_real_change_scene")
+## Diagnostic only -- see the [load] prints. ✅ THE OWNER: "那就加可观测性，打
+## 日志，我来真的点一次看看控制台输出什么东西."
+var _load_started_ms: int = 0
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -839,7 +842,9 @@ func _on_start_pressed() -> void:
 		return
 	_loading = true
 	_load_min_elapsed = 0.0
+	_load_started_ms = Time.get_ticks_msec()
 	ResourceLoader.load_threaded_request(MAIN_SCENE)
+	print("[load] threaded request sent")
 	# UI leaves: column back out to the right, dressing fades.
 	var out := _track(create_tween())
 	out.set_parallel(true)
@@ -899,6 +904,12 @@ func _poll_loading(delta: float) -> void:
 		return
 	var packed := ResourceLoader.load_threaded_get(MAIN_SCENE) as PackedScene
 	_loading = false
+	# ⚠️ THIS NUMBER COVERS ONLY main.tscn AND ITS DEPENDENCY TREE -- nine
+	# entries, all scripts plus player.tscn. The body, the animation packs and
+	# the calibration course are loaded BY PATH inside Arena._ready(), so the
+	# loader was never told about them and this figure cannot include them.
+	print("[load] threaded load done: %d ms (run-up held it to LOAD_MIN_RUN)" \
+		% (Time.get_ticks_msec() - _load_started_ms))
 	var dive := _track(create_tween())
 	dive.tween_method(_fp_dive, 0.0, 1.0, 0.8) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)

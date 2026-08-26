@@ -171,6 +171,10 @@ var _tp_drag: Vector2 = Vector2.ZERO
 ## this state -- see its own comment -- so bob/dip/crouch/look cannot fight
 ## the cutscene for the same transform.
 var _cinematic: bool = false
+## Whether the mouse still reaches the view while a cinematic runs. Off by
+## default and cleared on both ends of every cinematic, so a caller that wants
+## it has to ask for it inside the one it is driving.
+var _cinematic_look: bool = false
 
 ## Whether a level-owned cutscene currently owns the eye. Exposed so a caller
 ## that decided NOT to take it -- a third-person death, which lets the body's
@@ -421,8 +425,15 @@ func clear_look_constraint() -> void:
 ## starts; the caller drives the pose every tick via set_cinematic_pose()
 ## from then on. See update_effects()'s own comment for why this yields the
 ## whole function rather than composing with bob/dip/crouch.
+## Lets the mouse turn the view during the cinematic this rig is already in.
+## The POSE stays the caller's -- offset, roll and pitch keep arriving through
+## set_cinematic_pose(); only the player's own yaw and pitch come back.
+func allow_cinematic_look(allowed: bool) -> void:
+	_cinematic_look = allowed
+
 func begin_cinematic() -> void:
 	_cinematic = true
+	_cinematic_look = false
 
 ## Sets this tick's cutscene pose. `offset` is a local offset from the resting
 ## eye position; `roll` is rotation.z and `pitch` is rotation.x, both radians.
@@ -442,6 +453,7 @@ func set_cinematic_pose(offset: Vector3, roll: float, pitch: float = 0.0) -> voi
 ## stale pose cannot linger into the next update_effects() call before that
 ## call has a chance to recompute its own transform.
 func end_cinematic() -> void:
+	_cinematic_look = false
 	_cinematic = false
 	_cinematic_offset = Vector3.ZERO
 	_cinematic_roll = 0.0
@@ -497,7 +509,10 @@ func reset_state() -> void:
 ## the view is locked into a +-90 degree yaw fan and cannot look back, which
 ## is where that whole sensation comes from.
 func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
-	if _cinematic:
+	# A cinematic normally owns the view outright. The exception is a body that
+	# has finished falling and is lying there -- see DeathSequence, which hands
+	# the mouse back for that stretch while keeping its own pose.
+	if _cinematic and not _cinematic_look:
 		return
 	if _config == null:
 		return

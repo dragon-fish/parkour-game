@@ -72,24 +72,42 @@ const FOG_SKY_AFFECT := 0.0
 @onready var _world_environment: WorldEnvironment = get_node_or_null("WorldEnvironment")
 
 func _ready() -> void:
+	# ⚠️ DIAGNOSTIC, and it is here because nothing outside can see this.
+	# ResourceLoader's progress covers main.tscn's dependency tree -- nine
+	# entries -- and finishes in about 80 ms. Everything below runs on the main
+	# thread AFTER that, under whatever curtain happens to be up, and no loader
+	# API can report it. ✅ THE OWNER: "那就加可观测性，打日志，我来真的点一次看看
+	# 控制台输出什么东西." Take these out once the answer is in.
+	# CUMULATIVE from the top of _ready, not per-step -- GDScript lambdas
+	# capture by VALUE, so a `_t = now` in here would update the closure's own
+	# copy and every line would read as a delta from zero. Subtract adjacent
+	# rows for the cost of a step.
+	var _began := Time.get_ticks_msec()
+	var _mark := func(what: String) -> void:
+		print("[load]   Arena._ready %-24s %6d ms elapsed" % [what, Time.get_ticks_msec() - _began])
+
 	if config == null:
 		config = MovementConfig.new()
 	player.setup(config, KeyboardInputSource.new())
+	_mark.call("player.setup")
 	if player.camera_rig != null:
 		player.camera_rig.setup(config)
 		# The viewing preference from last session. Here rather than in the
 		# rig's own setup() because that runs in tests, where a file written by
 		# an earlier run has no business deciding what the test starts in.
 		player.camera_rig.load_preferences()
+	_mark.call("camera_rig.setup+prefs")
 
 	# AFTER setup(), which is what gives the player its config -- the mount
 	# transform an attach captures is measured against the capsule, and the
 	# capsule's height comes from there.
 	_load_body_profile()
+	_mark.call("_load_body_profile")
 
 	add_child(_death_sequence)
 	_death_sequence.finished.connect(reset_player)
 	_load_calibration_course()
+	_mark.call("_load_calibration_course")
 	# Debug visualisation of what the ledge probe sees. Created here rather
 	# than baked into the generated scene, so main.tscn stays exactly what its
 	# generator produces.
@@ -142,6 +160,7 @@ func _ready() -> void:
 		panel.fog = fog
 
 	reset_player()
+	_mark.call("markers + reset_player")
 
 ## Starts the death sequence; reset_player() itself runs once it reports
 ## `finished` (wired in _ready()), not from here directly.
