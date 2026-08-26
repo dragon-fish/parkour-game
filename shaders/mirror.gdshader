@@ -85,15 +85,33 @@ void vertex() {
 }
 
 void fragment() {
-	vec2 uv = SCREEN_UV;
+	// ⚠️ THE U FLIP IS NOT A HACK, IT IS THE OTHER HALF OF Mirror.reflect_across.
+	//
+	// A true reflection basis is LEFT-handed. A left-handed camera inverts
+	// triangle winding and renders every surface in the mirror inside-out, so
+	// reflect_across rebuilds a right-handed one through Basis.looking_at --
+	// and the way looking_at achieves that is by negating the camera's X axis.
+	// The cost does not vanish, it moves into the image: the reflection comes
+	// out mirrored about the viewport's vertical centre line. Measured, not
+	// argued -- a point the real mirror should put at screen x=274 came back
+	// at x=526 in an 800-wide viewport, and dead centre stayed put.
+	//
+	// ✅ THE OWNER SPOTTED IT: "我面对镜子，往左扭头，镜子里的角色也往左，理论上
+	// 镜子里的角色应该相对镜头往右." Same flip, seen as a rotation.
+	//
+	// Negating the camera's X mirrors a symmetric perspective projection about
+	// that centre line exactly, so 1.0 - u is its exact inverse. Undo it FIRST,
+	// then every offset below is in honest mirror space.
+	vec2 uv = vec2(1.0 - SCREEN_UV.x, SCREEN_UV.y);
 
 	// -- thickness: the second surface is the one that reflects -------------
 	// Off-axis, the path in and back out lands somewhere else on the pane. The
 	// tangent of the view angle is what scales it, which is why this is a
-	// view-space term and not a constant nudge.
+	// view-space term and not a constant nudge. The x sign is a LOOK choice --
+	// flip it if the displacement leans the wrong way for you.
 	vec3 v = normalize(view_dir_local);
 	vec2 second_surface = v.xy / max(abs(v.z), 0.15) * thickness;
-	uv += second_surface * vec2(-1.0, 1.0);
+	uv += second_surface;
 
 	// -- warp: the pane is not flat -----------------------------------------
 	if (warp > 0.0) {

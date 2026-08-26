@@ -104,3 +104,55 @@ func test_the_world_still_reaches_the_reflection() -> void:
 	var mirror: Mirror = await _lab_mirror()
 	var camera := mirror.get_node("Reflection/ReflectionCamera") as Camera3D
 	assert_ne(camera.cull_mask & 1, 0, "the reflection camera cannot see layer 1")
+
+
+## ⚠️ THE PAIRING. Mirror.reflect_across rebuilds a right-handed basis through
+## Basis.looking_at, and looking_at gets there by negating the camera's X --
+## so what the reflection viewport holds is the true mirror image flipped about
+## its vertical centre line. shaders/mirror.gdshader undoes that with
+## `1.0 - SCREEN_UV.x`. Neither half is correct alone.
+##
+## ✅ THE OWNER CAUGHT IT BOTH WAYS: "我面对镜子，往左扭头，镜子里的角色也往左"
+## in first person, and "第三人称就更搞笑了，这个根本就不镜面" once he could see
+## his own body and its reflection side by side. One bug, two symptoms.
+##
+## THESE COMPARE NORMALISED UV, NOT PIXELS. The reflection renders at
+## resolution_scale, so the two viewports have different pixel sizes and the
+## first version of this measurement "found" a bug that was only its own units
+## being wrong -- expected x=941 against actual x=489, which is not a flip, it
+## is a half. Normalised, it was 0.4903 against 0.5097: a flip, exactly.
+##
+## If anyone ever makes the node produce a true reflection, the shader's flip
+## has to go in the same commit and this test with it.
+
+const FLIP_TOLERANCE := 0.005
+
+func _reflection_uv_pair(mirror: Mirror, point: Vector3) -> Array:
+	var viewport := mirror.get_node("Reflection") as SubViewport
+	var reflection_camera := viewport.get_node("ReflectionCamera") as Camera3D
+	var main := get_tree().root.get_camera_3d()
+	var plane := mirror.plane()
+	var mirrored := point - 2.0 * plane.distance_to(point) * plane.normal
+	var expected: Vector2 = main.unproject_position(mirrored) 		/ Vector2(get_tree().root.get_visible_rect().size)
+	var actual: Vector2 = reflection_camera.unproject_position(point) / Vector2(viewport.size)
+	return [expected, actual]
+
+func test_the_reflection_lines_up_vertically_with_a_real_mirror() -> void:
+	# True in ANY correct implementation, flip or no flip -- so this is the half
+	# of the contract that survives a refactor. A mismatch here means the
+	# reflected camera's pitch, height or projection is wrong, which no amount
+	# of shader UV work can rescue.
+	var mirror: Mirror = await _lab_mirror()
+	for point in [Vector3(-4.6, 1.1, -1.4), Vector3(4.2, 1.6, -2.0), Vector3(0.0, 1.2, 4.0)]:
+		var pair: Array = _reflection_uv_pair(mirror, point)
+		assert_almost_eq((pair[1] as Vector2).y, (pair[0] as Vector2).y, FLIP_TOLERANCE,
+			"%v lands at the wrong height in the reflection" % point)
+
+func test_the_reflection_is_flipped_exactly_as_the_shader_expects() -> void:
+	var mirror: Mirror = await _lab_mirror()
+	for point in [Vector3(-4.6, 1.1, -1.4), Vector3(4.2, 1.6, -2.0)]:
+		var pair: Array = _reflection_uv_pair(mirror, point)
+		var expected: Vector2 = pair[0]
+		var actual: Vector2 = pair[1]
+		assert_almost_eq(actual.x, 1.0 - expected.x, FLIP_TOLERANCE,
+			("%v is at u=%.4f in the reflection; a real mirror puts it at %.4f, so the shader's " 			+ "1.0 - SCREEN_UV.x expects %.4f. The two halves have drifted apart.") 				% [point, actual.x, expected.x, 1.0 - expected.x])

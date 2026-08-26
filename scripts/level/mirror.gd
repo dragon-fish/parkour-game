@@ -94,9 +94,18 @@ static func reflect_across(eye: Transform3D, plane: Plane) -> Transform3D:
 	# Rebuilt through looking_at rather than by reflecting all three axes: a
 	# reflected basis is LEFT-handed (determinant -1), which flips triangle
 	# winding and makes every surface in the mirror render inside-out.
-	# looking_at gives a right-handed basis pointing the same way, and the
-	# left-right flip a real mirror shows survives it -- it lives in the
-	# reflected forward, not in the handedness.
+	#
+	# ⚠️ THAT REBUILD IS NOT FREE, AND AN EARLIER VERSION OF THIS COMMENT SAID
+	# IT WAS. looking_at reaches right-handedness by NEGATING THE X AXIS -- this
+	# camera's right is the world -X where the real one's is +X -- so what it
+	# renders is the true reflection mirrored about the viewport's centre line.
+	# The cost moved into the image rather than disappearing.
+	#
+	# shaders/mirror.gdshader undoes it with `1.0 - SCREEN_UV.x`, which is the
+	# exact inverse for a symmetric projection. The two halves only work as a
+	# pair: change either and the mirror shows left as right, which is what the
+	# owner caught here -- "往左扭头，镜子里的角色也往左". tests/test_mirror.gd
+	# pins the pairing.
 	if absf(forward.normalized().dot(up.normalized())) > 0.999:
 		up = _mirror_vector(eye.basis.x, normal)
 	return Transform3D(Basis.looking_at(forward, up), position)
