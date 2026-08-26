@@ -17,7 +17,19 @@ single-file symlink on Windows does need the rights, so a loose private
 file belongs in a private directory (`local/`) instead of being linked on
 its own.
 
-Safe to re-run: it replaces its own links and refuses to touch real files.
+Safe to re-run, and re-running is the point: it also PRUNES links whose
+folder no longer exists in .private (a folder deleted upstream leaves a
+dangling link that Godot reports as a missing resource), and it moves a
+REAL directory found in a link's place aside to `<name>_<timestamp>` rather
+than either clobbering it or silently skipping it -- a real folder there
+means two sources of truth for the same path, and staying quiet about it is
+how the wrong one wins.
+
+Run it from a git hook to keep the links in step with checkouts and pulls:
+
+    git config core.hooksPath tools/githooks
+
+or `python3 tools/link_private.py --install-hooks`, which does that for you.
 """
 
 from __future__ import annotations
@@ -25,11 +37,16 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PRIVATE = ROOT / ".private"
 MANIFEST = PRIVATE / "links.txt"
+
+
+## Directories never worth walking when hunting for stale links.
+SKIP_DIRS = {".git", ".godot", ".private", ".engine", ".import", "node_modules"}
 
 
 def read_manifest() -> list[str]:
@@ -56,14 +73,63 @@ def make_link(link: Path, target: Path) -> str:
     return "junction"
 
 
+def prune(wanted: set[Path]) -> int:
+    """Removes links into .private that the manifest no longer asks for, or
+    whose target is gone. Symlinked directories are listed but never walked
+    into (os.walk does not follow them by default), so this stays cheap."""
+    removed = 0
+    for dirpath, dirnames, filenames in os.walk(ROOT):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        for name in list(dirnames) + filenames:
+            path = Path(dirpath) / name
+            if not path.is_symlink():
+                continue
+            target = os.readlink(path)
+            if ".private" not in target:
+                continue  # somebody else's link, not ours to manage
+            if path in wanted and (PRIVATE / path.relative_to(ROOT)).exists():
+                continue
+            path.unlink()
+            removed += 1
+            print(f"link_private: pruned {path.relative_to(ROOT)} "
+                  f"({'no longer listed' if path not in wanted else 'gone from .private'})")
+    return removed
+
+
+def move_aside(path: Path) -> Path:
+    """A real folder sitting where a link belongs. Keep it, renamed, and say
+    so -- deleting someone's work to make room for a link is never right."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    kept = path.with_name(f"{path.name}_{stamp}")
+    path.rename(kept)
+    return kept
+
+
+def install_hooks() -> int:
+    hooks = ROOT / "tools" / "githooks"
+    if not hooks.is_dir():
+        print(f"link_private: {hooks} is missing")
+        return 1
+    subprocess.run(["git", "config", "core.hooksPath", "tools/githooks"],
+                   cwd=ROOT, check=True)
+    print("link_private: hooks installed (core.hooksPath = tools/githooks)")
+    return 0
+
+
 def main() -> int:
+    if "--install-hooks" in sys.argv:
+        return install_hooks()
     if not MANIFEST.exists():
         print("link_private: no .private/links.txt -- run:")
         print("  git submodule update --init")
         return 0
 
+    manifest = read_manifest()
+    prune({ROOT / p for p in manifest})
+
     done = 0
-    for path in read_manifest():
+    conflicts = []
+    for path in manifest:
         target = PRIVATE / path
         link = ROOT / path
         if not target.exists():
@@ -76,8 +142,8 @@ def main() -> int:
                                  and os.path.islink(str(link))):
             link.unlink()
         elif link.exists():
-            print(f"link_private: a real file is already there, skipped: {path}")
-            continue
+            kept = move_aside(link)
+            conflicts.append((path, kept.name))
         link.parent.mkdir(parents=True, exist_ok=True)
         try:
             how = make_link(link, target)
@@ -87,6 +153,18 @@ def main() -> int:
         done += 1
         print(f"link_private: {how} {path}")
     print(f"link_private: {done} link(s) in place")
+    if conflicts:
+        print()
+        print("link_private: ⚠️  A REAL FOLDER WAS IN THE WAY -- moved aside, "
+              "not deleted:")
+        for path, kept in conflicts:
+            print(f"    {path}  ->  {kept}")
+        print("    The link now points at .private. Merge anything you want "
+              "to keep into it,")
+        print("    then delete the copy. A folder named local/ or local_* "
+              "belongs to .private;")
+        print("    the main repo must never create one -- see "
+              "docs/author-notes.md.")
     return 0
 
 

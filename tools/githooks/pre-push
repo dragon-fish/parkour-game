@@ -1,0 +1,7 @@
+#!/bin/sh
+# Tracked hook -- git itself never syncs .git/hooks, so this directory is
+# the synced copy and `core.hooksPath` points at it. Install with:
+#   python3 tools/link_private.py --install-hooks
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+. "$root/tools/githooks/_lfs.sh"
+run_lfs pre-push "$@"

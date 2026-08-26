@@ -25,9 +25,29 @@ Git LFS。点开头的目录 Godot 不索引，编辑器里也看不见。
 
 ```sh
 git submodule update --init          # 第一次 / 换机器
-python3 tools/link_private.py        # 建链（可重复运行）
+python3 tools/link_private.py --install-hooks   # 一次性：装钩子（顺带建链）
 cd .private && git add -A && git commit && git push   # 改了私有资产
 ```
+
+装过钩子之后，`git pull` / 切分支 / `git submodule update` 会**自动**重建链接：
+新目录建上、上游删掉的链接清掉。手动跑 `python3 tools/link_private.py`
+效果一样，可重复执行。
+
+**钩子本身是入库的**（`tools/githooks/`），因为 git 从不同步 `.git/hooks`；
+`core.hooksPath` 指过去就等价于 husky 那套做法。唯一不能自动化的是那句
+`git config`——git 有意不让 clone 自动执行仓库里的配置（否则 clone 一个仓
+就能在你机器上执行代码）。所以换机器记得跑一次 `--install-hooks`。
+
+⚠️ 这些钩子里**必须**保留 `git lfs` 调用：`core.hooksPath` 会整体顶掉
+`git lfs install` 装在 `.git/hooks` 里的那四个，少了它 LFS 会静默停止
+smudge 和上传。`tools/githooks/_lfs.sh` 就是干这个的。
+
+### 本地有同名真目录时
+
+链接位置上如果已经存在**真的**文件夹（比如你在主仓手滑建了个 `local/`），
+脚本不会覆盖也不会跳过，而是把它改名成 `local_<时间戳>` 挪开、建好链接、
+并打印一段醒目的警告。挪开的副本仍被 `.gitignore` 忽略，你把想留的东西并进
+`.private` 再删掉它即可。
 
 `.private` 是个普通仓库，IDE 的源代码管理面板能直接管它，父仓的
 `git status` 会显示子模块有新提交——不像以前的 overlay 那样完全隐形。
