@@ -24,6 +24,11 @@ render_mode cull_back, specular_schlick_ggx;
 // a hard seam. ✅ THE OWNER: "如果镜子位于屏幕边缘会有奇怪的缝隙."
 uniform sampler2D reflection_tex : filter_linear, repeat_disable, hint_default_black;
 
+// Ordinary soda-lime glass. Fixed rather than exposed: it is what caps the
+// thickness displacement below, and there is no look worth reaching by lying
+// about what the pane is made of -- `thickness` is the dial for that.
+const float GLASS_IOR = 1.5;
+
 // Light the glass loses on the way in and out. A colour rather than a scalar
 // so a mirror can lean cold or warm as well as dim; old silvering goes yellow-
 // green, and this is the dial for it.
@@ -109,12 +114,26 @@ void fragment() {
 	vec2 uv = vec2(1.0 - SCREEN_UV.x, SCREEN_UV.y);
 
 	// -- thickness: the second surface is the one that reflects -------------
-	// Off-axis, the path in and back out lands somewhere else on the pane. The
-	// tangent of the view angle is what scales it, which is why this is a
-	// view-space term and not a constant nudge. The x sign is a LOOK choice --
-	// flip it if the displacement leans the wrong way for you.
+	// The image crosses the pane, bounces off the silvering at the back, and
+	// crosses again -- landing somewhere else on the glass, further off the
+	// more steeply you look.
+	//
+	// ⚠️ IT MUST SATURATE. An earlier version scaled by 1/cos of the view
+	// angle, which diverges: at a grazing view it reached 0.08 uv, eight
+	// percent of the screen, and the reflection visibly swung away from the
+	// thing reflecting. ✅ THE OWNER: "视线越偏，镜子里的内容也越偏，比如这里镜框
+	// 的虚像已经和本体形成几乎15°夹角了."
+	//
+	// Real glass cannot do that, because the ray REFRACTS on the way in and the
+	// refracted angle is capped by total internal reflection -- about 41° for
+	// n = 1.5. So the sideways travel is bounded by 2 * thickness * tan(41°),
+	// roughly 1.7 thicknesses, however steeply you look. That missing refraction
+	// was the whole bug: the old formula had light going straight through glass.
 	vec3 v = normalize(view_dir_local);
-	vec2 offset = v.xy / max(abs(v.z), 0.15) * thickness;
+	float sin_in = length(v.xy);
+	vec2 lateral = sin_in > 0.0001 ? v.xy / sin_in : vec2(0.0);
+	float tan_out = sin_in / sqrt(max(GLASS_IOR * GLASS_IOR - sin_in * sin_in, 0.0001));
+	vec2 offset = lateral * (2.0 * thickness * tan_out);
 
 	// -- warp: the pane is not flat -----------------------------------------
 	if (warp > 0.0) {

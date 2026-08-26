@@ -260,14 +260,31 @@ func _process(_delta: float) -> void:
 ## THE MEASURE IS AXIAL, NOT PERPENDICULAR. Godot's near plane sits square to
 ## the view direction, not to the mirror, so clipping at the perpendicular
 ## distance would eat real content whenever the mirror is viewed at an angle.
-## Projecting the camera-to-glass vector onto the view direction gives the
-## plane through the mirror's CENTRE -- exact head-on, and off by the pane's
-## own tilt at the edges, which is the residual an oblique near plane would
-## have removed and Godot cannot express.
+##
+## ⚠️ AND IT IS THE NEAREST CORNER, NOT THE CENTRE. Clipping at the centre's
+## axial distance cut a wedge out of the reflection at steep angles: content
+## genuinely in FRONT of the pane, but nearer along the view axis than the
+## pane's middle, vanished and left a blank triangle in one corner. ✅ THE
+## OWNER: "右下角还能看到一块空白." The nearest of the four corners is the
+## furthest the plane can be pushed while still holding everything the glass
+## can show, so that is where it goes.
+##
+## The pane is then only PARTLY protected: a sliver of what sits behind a
+## mirror can reach the image at a steep enough angle, since the near plane
+## stays square to the view and the glass does not. That is the residual a true
+## oblique near plane would remove, and Godot 4.7 cannot express one -- it is a
+## far smaller error than either of the two it replaces.
 func _clip_to_the_glass() -> void:
-	var to_glass: Vector3 = global_position - _reflection_camera.global_position
-	var axial: float = to_glass.dot(-_reflection_camera.global_transform.basis.z)
-	_reflection_camera.near = maxf(axial, REFLECTION_NEAR)
+	var forward: Vector3 = -_reflection_camera.global_transform.basis.z
+	var origin: Vector3 = _reflection_camera.global_position
+	var across: Vector3 = global_transform.basis.x * (size.x * 0.5)
+	var up: Vector3 = global_transform.basis.y * (size.y * 0.5)
+	var nearest: float = INF
+	for x_sign in [-1.0, 1.0]:
+		for y_sign in [-1.0, 1.0]:
+			var corner: Vector3 = global_position + across * x_sign + up * y_sign
+			nearest = minf(nearest, (corner - origin).dot(forward))
+	_reflection_camera.near = maxf(nearest, REFLECTION_NEAR)
 
 
 ## Keeps the reflection framed exactly like the real view, which is the whole
