@@ -204,9 +204,23 @@ func setup(cfg: MovementConfig) -> void:
 ## eye the moment the capsule shrank.
 var _eye_lift: float = 0.0
 var _eye_lift_current: float = 0.0
+## The last lift actually ASKED FOR, kept after `_eye_lift` returns to zero.
+##
+## ⚠️ THE RELEASE RATE CANNOT BE COMPUTED FROM `_eye_lift`, and doing so was a
+## bug that survived a long time because it looks perfectly reasonable. Player
+## sets the lift to 0 the same frame the slide stops being the current move, so
+## by the time the release branch below runs, `_eye_lift` is BY DEFINITION zero
+## -- the rate came out at 0.0001 / 0.5 s, the eye came down at 0.2 mm per
+## second, and a 0.15 m lift needed about twelve minutes to clear. ✅ THE OWNER:
+## "只要滑铲过相机将永久抬升0.15."
+var _eye_lift_full: float = 0.0
 
 func set_eye_lift(metres: float) -> void:
 	_eye_lift = metres
+	# Only ever grows from a real request. Zero is the release signal, not a
+	# new scale to release at.
+	if metres > 0.0:
+		_eye_lift_full = metres
 
 func set_crouch_amount(amount: float) -> void:
 	_crouch_amount = clampf(amount, 0.0, 1.0)
@@ -443,6 +457,7 @@ func reset_state() -> void:
 	_bob_phase = 0.0
 	_crouch_amount = 0.0
 	_eye_lift_current = 0.0
+	_eye_lift_full = 0.0
 	_crouch_offset = 0.0
 	_has_eye_ground = false
 	_wall_side = 0
@@ -696,7 +711,11 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var lift_target: float = _eye_lift * _crouch_amount
 	var lift_rate: float = _config.camera.crouch_lerp_speed
 	if lift_target < _eye_lift_current:
-		lift_rate = maxf(_eye_lift, 0.0001) / maxf(_config.camera.eye_lift_release_time, 0.001)
+		# _eye_lift_full, NOT _eye_lift -- see that field. A CONSTANT rate, so a
+		# full lift takes exactly eye_lift_release_time and a slide abandoned
+		# half way down takes proportionally less; a 2 cm remainder crawling
+		# for the same half second would read as a stall, not a release.
+		lift_rate = maxf(_eye_lift_full, 0.0001) / maxf(_config.camera.eye_lift_release_time, 0.001)
 	_eye_lift_current = move_toward(_eye_lift_current, lift_target, lift_rate * delta)
 	base_position.y += _eye_lift_current
 	# Straight addition, not eased: the death is a cut into a cutscene anyway,
