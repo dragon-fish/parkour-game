@@ -13,6 +13,7 @@ resource_local_to_scene = true
 script = ExtResource("2_fog")
 fade_begin_distance = 45.0
 fade_end_distance = 120.0
+volumetric_enabled = true
 volumetric_density = 0.08
 volumetric_distance = 36.0
 volumetric_ambient_inject = 0.1

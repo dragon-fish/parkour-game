@@ -78,6 +78,23 @@ Godot's documented way to get fog *only* inside `FogVolume`s — dust in a light
 shaft, clear air around it. So the switch and the thickness are two fields, and
 zeroing the thickness must never be read as "off".
 
+### Volumetric fog is OFF by default, and should stay that way
+
+"Clear nearby, thickening in the distance" is the **depth** fog, and its
+defaults already are exactly that — 60 m to 160 m. Reach for
+`volumetric_enabled` only when a level wants **light shafts**, because that is
+the only thing volumetric fog can do that the depth fog cannot.
+
+It defaults off because it shipped on and should not have: volumetric fog fills
+the air *everywhere* inside `volumetric_distance`, including the metre in front
+of the player's face, so every level came out of the box wearing a uniform haze
+it had no use for. Without a strong light and something to occlude it, that
+haze is not atmosphere — it is soup. A light shaft is something a level asks
+for, not a tax every level pays.
+
+`scenes/debug_levels/factory_hall.tscn` is the level that does ask, and it says
+so explicitly.
+
 ### Keep the two fogs' ranges apart
 
 The depth fog and the volumetric fog are drawn independently and you see through

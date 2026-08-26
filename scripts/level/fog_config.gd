@@ -98,13 +98,27 @@ extends Resource
 ## Whether this level pays for the volumetric fog at all -- the froxel grid is
 ## per-frame work a level that only wants the far-fade curtain has no use for.
 ##
+## ⚠️ OFF BY DEFAULT, AND THAT IS THE CORRECTION OF A MISTAKE. It shipped ON,
+## with Godot's own 0.05 density, so every level came out of the box wearing a
+## uniform haze that reached the player's own face -- volumetric fog fills the
+## air EVERYWHERE inside volumetric_distance, including the metre in front of
+## your nose. ✅ THE OWNER: "会感觉身边全是雾，我只想在64m开外雾逐渐变浓，现在
+## 感觉在寂静岭."
+##
+## The two fogs' jobs were right in the docs and the defaults contradicted
+## them: "clear nearby, thickening in the distance" is the DEPTH fog, and it
+## already defaults to exactly that (60 m to 160 m). Volumetric fog exists for
+## LIGHT SHAFTS -- without a strong light and something to occlude it, it is
+## just soup. A light shaft is something a level asks for, not a tax every
+## level pays.
+##
 ## SEPARATE FROM volumetric_density, and it has to be. Godot's own docs give
 ## "set volumetric_fog_density to 0.0" as the way to make fog appear ONLY
 ## inside FogVolume nodes -- dust in the light shaft, clear air everywhere
 ## else. Fold the switch into the density and that setup becomes unreachable:
 ## the density reaches 0, the grid switches off, and every FogVolume in the
 ## level silently stops rendering with nothing to explain why.
-@export var volumetric_enabled: bool = true
+@export var volumetric_enabled: bool = false
 
 ## Thickness of the volumetric fog EVERYWHERE, before any FogVolume adds to it.
 ## 0.0 is not "off" (see volumetric_enabled above) -- it is clear air that
