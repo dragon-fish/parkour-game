@@ -118,6 +118,7 @@ func play(player: Player) -> void:
 		# where a standing body's feet are.
 		_feet_offset = _player.standing_height() * 0.5
 		_player.set_dying(true)
+		_close_the_eyes(true)
 		# ALREADY GOING, usually. ✅ The owner: the ragdoll begins when control
 		# is lost, which is FallUncontrolledMove.enter() -- long before the body
 		# lands and this sequence starts. Recorded here only so the release
@@ -292,6 +293,7 @@ func _release_player() -> void:
 	if _player == null:
 		return
 	_player.set_dying(false)
+	_close_the_eyes(false)
 	if _ragdolled and _player.ragdoll != null:
 		_player.ragdoll.stop()
 		_ragdolled = false
@@ -413,3 +415,23 @@ static func _ease_out_bounce(x: float, strength: float) -> float:
 ## CameraRig.update_effects() adds to its resting eye position.
 func _to_offset(above_ground: float) -> float:
 	return above_ground - _feet_offset - _eye_height
+
+
+## Shuts the eyes for the duration, and opens them again on respawn.
+##
+## ✅ THE OWNER: "角色死亡时闭眼."
+##
+## SEARCHED HERE RATHER THAN CACHED, deliberately. The body is attached at
+## runtime, so anything that looks for a part of it during _ready() finds a
+## half-built model -- BoneSplay cached its animation driver that way and
+## latched onto the wrong object for months. By the time a death plays, the
+## body has unquestionably arrived, so the lazy search is also the correct one.
+##
+## Guarded end to end: a bodyless Player (the test fixture's default) simply
+## has no eyes to close, which is not a failure.
+func _close_the_eyes(closed: bool) -> void:
+	if _player == null:
+		return
+	for node in _player.find_children("*", "Node", true, false):
+		if node is BlinkController:
+			(node as BlinkController).set_held_closed(closed)

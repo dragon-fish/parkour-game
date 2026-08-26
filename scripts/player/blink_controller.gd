@@ -21,11 +21,19 @@ extends Node
 
 enum Phase { WAIT, CLOSING, OPENING, GAP }
 
+## Seconds to close the eyes when they are held shut. Slower than a blink:
+## ✅ THE OWNER asked for closed eyes on death, and a body that dies by
+## BLINKING reads as a wink. This is the lids giving up, not a reflex.
+const HELD_CLOSE_TIME := 0.35
+
 var _mesh: MeshInstance3D
 var _shape: int = -1
 var _phase: Phase = Phase.WAIT
 var _left: float = 0.0
 var _double_pending: bool = false
+## Held shut, overriding the blink clock entirely. DeathSequence sets it.
+var _held_closed: bool = false
+var _held_weight: float = 0.0
 
 func _ready() -> void:
 	_mesh = get_node_or_null(mesh_path) as MeshInstance3D
@@ -41,7 +49,22 @@ func _schedule() -> void:
 	_double_pending = _left > dry_eye_after and randf() < double_blink_chance
 	_phase = Phase.WAIT
 
+## Closes the eyes and keeps them closed until told otherwise. The blink clock
+## is left running underneath and simply not applied, so releasing this hands
+## back a controller in a sane state rather than one frozen mid-blink.
+func set_held_closed(closed: bool) -> void:
+	_held_closed = closed
+
 func _process(delta: float) -> void:
+	# The hold outranks the blink. Eased rather than snapped for the same
+	# reason the death camera is: an instant cut reads as a dropped frame.
+	if _held_closed or _held_weight > 0.0:
+		var target: float = 1.0 if _held_closed else 0.0
+		_held_weight = move_toward(_held_weight, target, delta / HELD_CLOSE_TIME)
+		if _held_closed or _held_weight > 0.0:
+			_apply(_held_weight)
+			if _held_closed:
+				return
 	_left -= delta
 	match _phase:
 		Phase.WAIT:
