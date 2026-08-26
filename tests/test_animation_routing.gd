@@ -51,10 +51,12 @@ func test_every_move_has_its_own_case() -> void:
 	var player: Player = _world["player"]
 	var source: String = FileAccess.get_file_as_string( \
 		"res://scripts/player/character_animator.gd")
+	# ⚠️ READ OUT OF Move ITSELF, not repeated here. This list WAS a hand-copy,
+	# sitting under a comment that claimed it was not -- so the protection it
+	# promised did not exist, and Move.COIL was added without this test
+	# noticing. Adding a Move now genuinely is what makes this fail.
 	var missing: Array[String] = []
-	for name in ["WALKING", "FALLING", "FALL_UNCONTROLLED", "JUMP", "LANDING", \
-			"SKILL_ROLL", "SLIDE", "CROUCH", "SPEED_VAULT", "INTO_GRAB", \
-			"GRAB", "WALL_RUN", "WALL_CLIMB", "TURN_180", "ZIPLINE", "SWING", "LADDER"]:
+	for name in _move_constant_names():
 		if not source.contains("Move.%s:" % name):
 			missing.append(name)
 	assert_eq(missing, [] as Array[String], \
@@ -425,3 +427,81 @@ func test_a_top_exit_carry_plays_climb_up_instead_of_the_hang() -> void:
 	ladder._top_exiting = true
 	assert_eq(animator._target_animation(), &"ClimbUp_1m",
 		"a top-exit carry played '%s'" % String(animator._target_animation()))
+
+# --- the two lists that have to agree -------------------------------------------
+
+## Every state-name constant declared on Move, read from its own source.
+##
+## KEEP is skipped: it is the "stay put" sentinel, not a state, and nothing
+## routes it.
+func _move_constant_names() -> Array[String]:
+	var source: String = FileAccess.get_file_as_string("res://scripts/player/moves/move.gd")
+	var names: Array[String] = []
+	var re := RegEx.create_from_string("(?m)^const ([A-Z_0-9]+): StringName")
+	for hit in re.search_all(source):
+		var found: String = hit.get_string(1)
+		if found != "KEEP":
+			names.append(found)
+	return names
+
+func test_the_move_scan_actually_finds_the_moves() -> void:
+	# The scan above degrades to vacuous truth if move.gd's declarations ever
+	# stop matching it: an empty list passes every check made against it.
+	var names := _move_constant_names()
+	assert_gt(names.size(), 15, "the Move constant scan came back nearly empty")
+	assert_true(names.has("COIL"), "the Move constant scan missed a known state")
+	assert_false(names.has("KEEP"), "the sentinel is not a state")
+
+func test_every_routed_clip_has_a_node_in_the_graph() -> void:
+	# ⚠️ THE SECOND TIME THIS EXACT GAP BIT, which is what earns a general test
+	# rather than another per-move case.
+	#
+	# _has_clip() asks the GRAPH, and only names in Player._KNOWN_ANIMATION_CLIPS
+	# become nodes in it. So a clip the BODY ships and that list omits reads
+	# exactly like a clip the body does not have -- the fallback chain silently
+	# takes the next candidate, and everything looks like it works.
+	#
+	#   1st  the shimmy routed to Climb_Left/Climb_Right from the day it was
+	#        written and played Climb_Idle throughout. Caught in play, much
+	#        later, by the owner reporting it repeatedly.
+	#   2nd  GroundSit_Idle, routed for Move.COIL. Caught by the owner reading
+	#        the change -- "席地坐动作可能不在白名单，你得加一下" -- not by any
+	#        test, and not by the two upper-case warnings sitting in
+	#        _KNOWN_ANIMATION_CLIPS saying this exact thing would happen.
+	#
+	# Travelling to a name with no node is an ENGINE ERROR rather than a miss,
+	# so when the body DOES have the clip the failure is worse than silence.
+	#
+	# Source-scanned rather than driven, because the alternative is one
+	# end-to-end case per clip and there are sixty. It reads only the three
+	# call sites that actually hand the graph a name, so a routing written some
+	# other way is a false NEGATIVE -- a degradation, never a false alarm.
+	var source: String = FileAccess.get_file_as_string(
+		"res://scripts/player/character_animator.gd")
+	# The graph's own node names. They are the only StringName literals in that
+	# file which are not clips; a new one appearing here should fail this test
+	# until whoever added it confirms that is what it is.
+	var graph_nodes := ["states", "gate", "scripted_a", "scripted_b", "speed"]
+	var asks := RegEx.create_from_string(
+		"(?s)_first_available\\(\\[(.*?)\\]|_has_clip\\((&\"[A-Za-z0-9_]+\")|_start_oneshot\\((&\"[A-Za-z0-9_]+\")")
+	var names := RegEx.create_from_string("&\"([A-Za-z0-9_]+)\"")
+	var routed: Array[String] = []
+	for hit in asks.search_all(source):
+		for group in range(1, 4):
+			var chunk: String = hit.get_string(group)
+			if chunk.is_empty():
+				continue
+			for name_hit in names.search_all(chunk):
+				var clip: String = name_hit.get_string(1)
+				if clip not in graph_nodes and clip not in routed:
+					routed.append(clip)
+	assert_gt(routed.size(), 30,
+		"the scan found almost nothing, so it has stopped matching the source")
+
+	var orphaned: Array[String] = []
+	for clip in routed:
+		if not Player._KNOWN_ANIMATION_CLIPS.has(StringName(clip)):
+			orphaned.append(clip)
+	assert_eq(orphaned, [] as Array[String],
+		"routed but with no node in the graph, so they can never play -- add them to Player._KNOWN_ANIMATION_CLIPS: %s"
+		% ", ".join(orphaned))
