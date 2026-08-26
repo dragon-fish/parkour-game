@@ -13,7 +13,11 @@ extends SpringBoneSimulator3D
 # A chain that collapses to a single bone gets a virtual extended tail --
 # a one-joint spring is otherwise a no-op.
 
-@export var chain_prefixes: PackedStringArray = []
+## Typed Array rather than PackedStringArray: the editor dropped the packed
+## form entirely when it re-saved a scene holding one, leaving every group
+## with no prefixes and the model with no physics at all (✅ the owner:
+## 改完 weight 之后全身都没有骨骼效果了).
+@export var chain_prefixes: Array[String] = []
 ## Joint collision radius, in the skeleton's own (pre-mount-scale) metres.
 @export var joint_radius: float = 0.015
 @export var chain_stiffness: float = 1.0
@@ -72,6 +76,10 @@ func _build() -> void:
 				break
 			root = parent
 		chains.append(Vector2i(root, i))
+	if chains.is_empty():
+		# Loud, because the failure is silent otherwise: a group with no
+		# prefixes simply never moves, which reads as "the physics broke".
+		push_warning("%s found no chains for prefixes %s" % [name, chain_prefixes])
 	setting_count = chains.size()
 	for idx in chains.size():
 		set_root_bone(idx, chains[idx].x)

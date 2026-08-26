@@ -55,3 +55,8 @@ LFS 匹配模式不在工作树的 .gitattributes（会污染公开仓），而�
 - 骨骼重定向的 BoneMap 只能活在 `beriul.fbx.import` 里，编辑器重导入
   可能洗掉它——症状是 T-pose + 灰模 + 0.97m 原始身高。洗了就从私有仓
   checkout 恢复 .import 再重启编辑器。
+- **在编辑器里保存 wrapper 有风险**：Godot 曾在重新序列化 `beriul_body.tscn`
+  时丢掉全部 `chain_prefixes`，四组弹簧骨归零、全身次级运动消失且不报错。
+  在编辑器里调完数值后，跑一次 `tools/run_tests.sh body_wrapper`：它会
+  检查每组弹簧是否还找得到链条。挂了就 `git checkout` 私有仓那份 wrapper
+  再手动改回数值（数值是纯文本，直接改文件最省事）。
