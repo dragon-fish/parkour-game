@@ -16,7 +16,7 @@ extends ParkourTest
 # it is the same information counted twice.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
-const BODY_PATH := "res://assets/models/test.vrm"
+const BODY_PATH := "res://assets/models/local/test.vrm"
 const ANIMS_PATH := "res://assets/animations/ual2_standard.glb"
 
 var _world: Dictionary = {}

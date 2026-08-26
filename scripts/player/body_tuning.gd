@@ -36,7 +36,7 @@ const DEFAULT_NAME := "default"
 ## Reads the tuning for `model_path`, falling back to the default.
 ##
 ## The name is the model's own filename without its extension, so
-## `res://assets/models/test.vrm` looks for `test.json` -- no registry to keep in
+## `res://assets/models/local/test.vrm` looks for `test.json` -- no registry to keep in
 ## step, and adding an override is copying a file and renaming it.
 ##
 ## Returns an empty dictionary when there is nothing to read, which every caller

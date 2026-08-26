@@ -15,7 +15,7 @@ extends ParkourTest
 # is unverified.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
-const BODY_PATH := "res://assets/models/test.vrm"
+const BODY_PATH := "res://assets/models/local/test.vrm"
 
 var _world: Dictionary = {}
 
