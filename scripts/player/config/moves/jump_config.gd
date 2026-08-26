@@ -20,3 +20,7 @@ func _init() -> void:
 	check_for_zipline = true
 	check_for_swing = true
 	check_for_ladder = true
+	# ✅ The one state that offers a coil -- the owner measured "实测只能 Jump
+	# 进入", and MoveConfig.check_for_coil's own note covers why the narrowness
+	# is load-bearing rather than incidental.
+	check_for_coil = true

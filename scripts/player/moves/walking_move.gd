@@ -56,8 +56,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# landing instead of being discarded in mid-air.
 		# GBA_Crouch is one key with five outlets (05 §5.2, confirmed by in-game
 		# measurement), and only three discriminators: airborne or touching down,
-		# horizontal speed, accumulated fall height.
-		#   airborne, speed >= 1.0        -> Coil          (OUT OF SCOPE, no such move)
+		# horizontal speed, accumulated fall height. ✅ ALL FIVE NOW HAVE CODE:
+		# the coil row was the last one that did not, and the reason it can sit
+		# beside the roll row without either stealing the other press is that
+		# only JumpMove offers a coil -- see MoveConfig.check_for_coil.
+		#   airborne, speed >= 1.0        -> Coil          (JumpMove, and only there)
 		#   airborne, speed <  1.0        -> nothing
 		#   touchdown, fall >= 2.0 m      -> Roll          (AirborneMove.settle_landing(), shared by Jump/Falling)
 		#   touchdown, fall <  2.0 m, moving -> Slide      (here)

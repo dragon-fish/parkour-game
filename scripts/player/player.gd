@@ -936,6 +936,47 @@ func set_capsule_height(height: float) -> void:
 	# shortened capsule's top; see body_fold_drop().
 	shape_node.position.y = -(_standing_height - height) * 0.5
 
+## Resizes the capsule about its own CENTRE: the feet rise by exactly as much
+## as the headroom grows. Coil's, and nothing else's.
+##
+## ✅ MEASURED, not inferred. The owner read it straight off ME Tweaks'
+## collision-box visualiser in the original: "胶囊缩放不是以头为准！是以中心
+## 为准！也就是说同时会增加头顶的空间". A coil and a crouch shrink the SAME
+## capsule to the SAME height (CoilConfig.capsule_height); the anchor is the
+## entire difference between them.
+##
+## ⚠️ WHY THIS IS A SECOND FUNCTION AND NOT A PARAMETER ON THE ONE ABOVE.
+## An anchor parameter lived on set_capsule_height() for one commit and was
+## removed -- see its own note: a crown-anchored vault left a body resting its
+## WAIST on the ground, and the deferred restore then grew the capsule 0.9 m
+## downward, putting half the character underground. The owner caught it in
+## play.
+##
+## That failure is still reachable from here, and CoilMove is what closes it:
+## a centred capsule grown back to standing drops its floor by half the shrink,
+## so the coil ends itself the moment the STANDING feet would reach a surface
+## (fits_standing_at(), which the move asks every tick) rather than when the
+## shrunken ones do. Kept apart from set_capsule_height() so that obligation
+## travels with the one move that has taken it on, instead of being an argument
+## any caller can pass.
+func set_centred_capsule_height(height: float) -> void:
+	# Same supersede-a-pending-restore rule as set_capsule_height(), and for
+	# the same reason.
+	_standing_restore_pending = false
+	var shape_node := $CollisionShape3D as CollisionShape3D
+	var capsule := shape_node.shape as CapsuleShape3D
+	if capsule == null:
+		return
+	if _standing_height <= 0.0:
+		_standing_height = capsule.height
+	capsule.height = height
+	# THE CENTRE STAYS PUT. The shape's origin IS the body's origin (the
+	# capsule sits at position zero in player.tscn), so centring the shrink is
+	# simply leaving the offset alone -- and setting it explicitly rather than
+	# leaving it untouched is what returns the body from a crouch or a slide,
+	# whose own resize left this negative.
+	shape_node.position.y = 0.0
+
 ## Asks for the standing capsule back, honouring the roof. Restores it at once
 ## when there is room, otherwise records that a restore is OWED and performs it
 ## on the first tick headroom permits.
@@ -1104,6 +1145,7 @@ func _build_moves() -> void:
 	var table := [
 		[Move.WALKING, WalkingMove.new(), config.walking],
 		[Move.JUMP, JumpMove.new(), config.jump],
+		[Move.COIL, CoilMove.new(), config.coil],
 		[Move.FALLING, FallingMove.new(), config.falling],
 		[Move.FALL_UNCONTROLLED, FallUncontrolledMove.new(), config.fall_uncontrolled],
 		[Move.LANDING, LandingMove.new(), config.landing],

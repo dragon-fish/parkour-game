@@ -466,7 +466,7 @@ func _run_band_speed() -> float:
 ## out of, and it already routes to Jump_Land as its own clip for the whole of
 ## its two-second lockout.
 const _AIRBORNE_MOVES: Array[StringName] = [
-	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED,
+	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED, Move.COIL,
 ]
 
 ## Decides whether the move that just started owes a one-shot -- a clip played
@@ -1050,6 +1050,21 @@ func _target_animation() -> StringName:
 			# crouch-still pose stands in for the rest, since the body is down
 			# and not going anywhere. ⚠️ What this really wants is a stagger.
 			return _first_available([&"Jump_Land", &"NinjaJump_Land", &"Crouch_Idle", &"sneaking", &"idle"])
+		Move.COIL:
+			# ⚠️ NOTHING IN EITHER PACK IS A COIL. The manoeuvre is legs drawn
+			# up under the chin in mid-air, and the parkour vocabulary UAL1/2
+			# ship has no airborne tuck at all -- see FULL-LIBRARY.md on where
+			# the ceiling of these packs is.
+			#
+			# Crouch_Idle over Roll on purpose, though Roll is the closer
+			# SHAPE: a roll is a clip that turns the whole body over once, and
+			# a coil has to hold a pose for up to half a second. Played as a
+			# loop it would spin the body in the air; played as a one-shot it
+			# would finish early and leave the legs down while the capsule is
+			# still shrunk. A crouch pose is wrong in the air and reads as a
+			# tuck anyway, which is the trade a placeholder is for.
+			return _first_available([&"Crouch_Idle", &"sneaking", &"Jump",
+				&"NinjaJump_Idle", &"jump", &"idle"])
 		Move.SKILL_ROLL:
 			# A GENUINE MATCH: UAL1 ships a Roll. This was once the weakest
 			# placeholder in the file -- a ground tumble had no relative in the
