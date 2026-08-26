@@ -129,3 +129,68 @@ func test_a_profile_adopted_after_ready_still_attaches_its_body() -> void:
 	assert_eq(player.body_profile, profile, "the profile was not kept")
 	TestWorld.teardown(world)
 	await step(1)
+
+
+## The head's SHADOW, which is a third thing on top of the two variants above.
+##
+## A mesh the camera culls does not cast either, so moving the full-head mesh to
+## the third-person layer silently took its shadow with it: in first person the
+## body's shadow ended at the neck, with no head shape at all, and nothing
+## anywhere reported a problem. It stayed that way for a long time because you
+## only see your own shadow in the right light. HeadlessVariant now adds a
+## never-drawn SHADOWS_ONLY copy per split mesh; these assert the three roles
+## stay distinct.
+##
+## Needs the real body: the split runs on actual skin weights, so a machine
+## without the private asset has nothing to check and says so.
+const BODY_WRAPPER := "res://assets/models/local/beriul/beriul_body.tscn"
+
+func _split_meshes() -> Array:
+	var level := (load("res://templates/base_level.tscn") as PackedScene).instantiate()
+	add_child_autofree(level)
+	await step(20)
+	return level.find_children("*", "MeshInstance3D", true, false)
+
+func test_every_split_mesh_keeps_exactly_one_shadow_caster() -> void:
+	if not ResourceLoader.exists(BODY_WRAPPER):
+		pass_test("no local body to split")
+		return
+	var meshes: Array = await _split_meshes()
+	var by_name := {}
+	for node in meshes:
+		by_name[(node as MeshInstance3D).name] = node as MeshInstance3D
+	var stand_ins := 0
+	for name in by_name:
+		if not String(name).ends_with("Shadow"):
+			continue
+		stand_ins += 1
+		var stand_in: MeshInstance3D = by_name[name]
+		assert_eq(stand_in.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY,
+			"%s is drawn, not just cast -- it would double the body" % name)
+		# The visible variants it stands in for must have gone quiet, or the
+		# neck-cut shadow comes back layered under the correct one.
+		var source: String = String(name).trim_suffix("Shadow")
+		for variant in [source, source + "Headless"]:
+			if by_name.has(variant):
+				assert_eq((by_name[variant] as MeshInstance3D).cast_shadow,
+					GeometryInstance3D.SHADOW_CASTING_SETTING_OFF,
+					"%s still casts alongside its stand-in" % variant)
+	assert_gt(stand_ins, 0, "the split produced no shadow stand-in at all")
+
+func test_the_stand_in_is_reachable_from_every_camera() -> void:
+	# SHADOWS_ONLY means no camera draws it, but a camera still has to have it
+	# in its cull mask for it to reach the shadow map -- which is the whole
+	# lesson here. Keeping the layers it arrived on (layer 1, the world layer)
+	# is what guarantees that for both first and third person.
+	if not ResourceLoader.exists(BODY_WRAPPER):
+		pass_test("no local body to split")
+		return
+	var meshes: Array = await _split_meshes()
+	var cfg := CameraConfig.new()
+	var body_only: int = cfg.first_person_body_layers | cfg.third_person_body_layers
+	for node in meshes:
+		var m := node as MeshInstance3D
+		if not m.name.ends_with("Shadow"):
+			continue
+		assert_ne(m.layers & ~body_only, 0,
+			"%s sits only on a body layer, so a camera culling that layer drops its shadow" % m.name)

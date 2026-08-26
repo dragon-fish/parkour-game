@@ -5,9 +5,23 @@ extends Node
 # ships as one mesh: every mesh fully skinned to the head moves to the
 # THIRD-PERSON render layers, and a mesh that mixes head and body triangles
 # gets a generated headless duplicate on the FIRST-PERSON layers while the
-# original joins the full-head group. Cameras cull by those layers (see
-# CameraRig._apply_body_layers); lights cull by nothing, so in first person
-# the full-head meshes still cast their shadow -- ✅ the owner: "应该用
+# original joins the full-head group. Cameras cull by those layers -- see
+# CameraRig._apply_body_layers.
+#
+# ⚠️ A MESH THE CAMERA CULLS DOES NOT CAST A SHADOW EITHER. An earlier version
+# of this header claimed the opposite ("lights cull by nothing, so in first
+# person the full-head meshes still cast their shadow") and it was simply
+# wrong: the owner reported the shadow "从脖子直接断开，连头型都没有" -- the
+# headless twin was the only thing casting. Godot's documented "still casts
+# shadows" case is about a LIGHT's cull mask, which is a different mask.
+#
+# So the head's silhouette needs an instance no camera culls: a third,
+# never-drawn copy on SHADOW_CASTING_SETTING_SHADOWS_ONLY. That is exactly
+# what godot-vrm does for VRM bodies (addons/vrm/vrm_utils.gd, the
+# BothLayersWithShadow path, "(Shadow)" duplicate node) -- and the reason this
+# bug came back on an FBX body after being fixed once for a VRM one is that
+# the fix lives in the importer, not here. This file reproduced the layer
+# split and not the shadow stand-in. ✅ The owner, originally: "应该用
 # shadow only 而不是直接 disabled".
 #
 # Runs only under a Player (that is where the layer convention lives);
@@ -122,16 +136,48 @@ func _split(mi: MeshInstance3D, skeleton: Skeleton3D, head_bones: Dictionary,
 		kept_any = true
 
 	if total_verts > 0 and float(head_verts) / float(total_verts) >= ALL_HEAD_FRACTION:
-		# Entirely head: full-view only, shadow still cast in first person.
+		# Entirely head -- a separate hair, face or horn mesh. Drawn only in
+		# third person; its silhouette carries on in first person through the
+		# stand-in, which is added BEFORE the layers move so it inherits the
+		# ones the mesh arrived on.
+		_add_shadow_stand_in(mi, skeleton)
 		mi.layers = third
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		return
 	if not dropped_any or not kept_any:
 		return  # no head triangles at all -- visible in both views as-is
+	_add_shadow_stand_in(mi, skeleton)
 	var twin := MeshInstance3D.new()
 	twin.name = mi.name + "Headless"
 	twin.mesh = headless
 	twin.skin = mi.skin
 	twin.layers = first
+	# The twin is the one whose shadow was WRONG -- headless, cut at the neck.
+	# The stand-in above already casts the whole body including the head, so
+	# leaving this on would only add a second, truncated caster on top of it.
+	twin.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.add_sibling(twin)
 	twin.skeleton = twin.get_path_to(skeleton)
 	mi.layers = third
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## The never-drawn full-body copy that casts for BOTH views. SHADOWS_ONLY means
+## no camera ever renders it, so the layers it keeps do not matter for what you
+## see -- only for what gets into the shadow map, which is why it inherits the
+## caller's ORIGINAL layers rather than either half of the split.
+##
+## Shares `mi.mesh` rather than copying it: this is a second instance of the
+## same surfaces, not a second mesh.
+func _add_shadow_stand_in(mi: MeshInstance3D, skeleton: Skeleton3D) -> void:
+	var stand_in := MeshInstance3D.new()
+	stand_in.name = mi.name + "Shadow"
+	stand_in.mesh = mi.mesh
+	stand_in.skin = mi.skin
+	stand_in.layers = mi.layers
+	stand_in.transform = mi.transform
+	stand_in.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	mi.add_sibling(stand_in)
+	# After add_sibling, same as the headless twin: the path is only resolvable
+	# once the node is in the tree.
+	stand_in.skeleton = stand_in.get_path_to(skeleton)
