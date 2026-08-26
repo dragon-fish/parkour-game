@@ -92,7 +92,7 @@ func test_save_then_load_round_trips_every_key() -> void:
 	saved.window_size = Vector2i(1920, 1080)
 	saved.sensitivity = 0.0035
 	saved.fov = 100.0
-	saved.volume_db = -6.0
+	saved.volume = 0.5
 
 	SettingsStore.save_settings(saved)
 	var loaded := SettingsStore.load_settings()
@@ -116,10 +116,12 @@ func test_apply_global_sets_master_bus_volume_and_restores_it() -> void:
 	var original_db := AudioServer.get_bus_volume_db(bus)
 
 	var s := SettingsStore.defaults()
-	s.volume_db = -12.0
+	s.volume = 0.25
 	SettingsStore.apply_global(s)
 
-	assert_eq(AudioServer.get_bus_volume_db(bus), -12.0, "apply_global did not set the Master bus volume")
+	# 0.25 amplitude is -12.04 dB: the log curve, not a linear slider.
+	assert_almost_eq(AudioServer.get_bus_volume_db(bus), linear_to_db(0.25), 0.01,
+		"apply_global did not put the amplitude through linear_to_db onto the Master bus")
 
 	AudioServer.set_bus_volume_db(bus, original_db)
 
@@ -466,3 +468,47 @@ func test_a_rescue_resume_on_the_main_menu_never_captures_the_cursor() -> void:
 	get_tree().current_scene = previous
 	menu.queue_free()
 	await step(1)
+
+# --- a display change is on probation until somebody says it is fine ---------
+#
+# ⚠️ THESE NEVER WAIT THE REAL FIFTEEN SECONDS (✅ the owner: 单测不能真的等
+# 15s，得模拟，否则得等死). The countdown lives in _process(delta), so a test
+# hands it one big delta and the timeout has happened -- the same trick the
+# input tests use when they call _unhandled_input() directly.
+
+func _settings_on_probation() -> Array:
+	# A page whose working copy differs from disk in a DISPLAY key, with the
+	# probation already begun -- _on_save_pressed() skips it in headless (no
+	# window to lose), so the dialog is opened here directly.
+	var previous := SettingsStore.defaults()
+	previous.window_size = Vector2i(1280, 720)
+	SettingsStore.save_settings(previous)
+	var menu := MeSettingsMenu.new()
+	add_child_autofree(menu)
+	await step(2)
+	menu._working.window_size = Vector2i(2560, 1440)
+	SettingsStore.save_settings(menu._working)
+	menu._ask_to_keep_display(previous)
+	return [menu, previous]
+
+func test_an_unconfirmed_display_change_reverts_itself() -> void:
+	var bits: Array = await _settings_on_probation()
+	var menu: MeSettingsMenu = bits[0]
+	var previous: Dictionary = bits[1]
+
+	menu._process(MeSettingsMenu.DISPLAY_REVERT_SECONDS + 1.0)
+
+	assert_eq(menu._working.window_size, previous.window_size,
+		"the working copy kept the size nobody confirmed")
+	assert_eq(SettingsStore.load_settings().window_size, previous.window_size,
+		"the unconfirmed size was left on disk, so the next launch would use it")
+
+func test_keeping_a_display_change_leaves_it_in_place() -> void:
+	var bits: Array = await _settings_on_probation()
+	var menu: MeSettingsMenu = bits[0]
+
+	menu._keep_display()
+	menu._process(MeSettingsMenu.DISPLAY_REVERT_SECONDS + 1.0)
+
+	assert_eq(SettingsStore.load_settings().window_size, Vector2i(2560, 1440),
+		"a confirmed size was reverted anyway")

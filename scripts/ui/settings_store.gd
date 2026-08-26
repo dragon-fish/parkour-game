@@ -21,6 +21,10 @@ static var path := "user://settings.cfg"
 
 const _SECTION := "settings"
 
+## What "0%" sets the bus to. -inf is what linear_to_db(0) returns and the
+## bus rejects it; -80 dB is inaudible and reversible.
+const MUTED_DB := -80.0
+
 
 ## The full settings blob with every key at its shipped default.
 static func defaults() -> Dictionary:
@@ -29,7 +33,12 @@ static func defaults() -> Dictionary:
 		window_size = Vector2i(1440, 810),
 		sensitivity = 0.0022,
 		fov = 90.0,
-		volume_db = 0.0,
+		# 0..1, the AMPLITUDE the player asked for -- not decibels (✅ the
+		# owner: 正常人类不会用 0dB 描述音量). The conversion to dB happens on
+		# the way to the bus, in apply_global(), because that curve is the
+		# whole point: a slider that changes dB linearly spends most of its
+		# travel in a range nobody can hear apart.
+		volume = 0.8,
 	}
 
 
@@ -42,6 +51,11 @@ static func load_settings() -> Dictionary:
 		return s
 	for key in s:
 		s[key] = cfg.get_value(_SECTION, key, s[key])
+	# A file written before volume was a percentage carries volume_db. Read
+	# it once, on its own terms, so an upgrade does not silently reset the
+	# volume to the default.
+	if cfg.has_section_key(_SECTION, "volume_db") and not cfg.has_section_key(_SECTION, "volume"):
+		s.volume = clampf(db_to_linear(float(cfg.get_value(_SECTION, "volume_db", 0.0))), 0.0, 1.0)
 	return s
 
 
@@ -56,7 +70,12 @@ static func save_settings(s: Dictionary) -> void:
 ## Applies the engine-wide half of the settings: window mode/size and the
 ## master audio bus. Callable with no Player in the scene, e.g. at boot.
 static func apply_global(s: Dictionary) -> void:
-	AudioServer.set_bus_volume_db(0, s.volume_db)
+	# linear_to_db is the standard mapping, and Godot's own recommendation
+	# for a volume slider: perceived loudness follows the logarithm, so an
+	# amplitude of 0.5 is -6 dB rather than "half". Silence is a special
+	# case -- linear_to_db(0) is -inf, which the bus will not take.
+	var amplitude: float = clampf(float(s.volume), 0.0, 1.0)
+	AudioServer.set_bus_volume_db(0, linear_to_db(amplitude) if amplitude > 0.0 else MUTED_DB)
 
 	# Headless has no window; the editor-embedded game has one it is not
 	# allowed to touch ("Embedded window can't be resized"). Same guard as
@@ -67,8 +86,17 @@ static func apply_global(s: Dictionary) -> void:
 	if root.get_flag(Window.FLAG_RESIZE_DISABLED):
 		return
 
-	var mode := DisplayServer.WINDOW_MODE_FULLSCREEN if s.window_mode == "fullscreen" else DisplayServer.WINDOW_MODE_WINDOWED
+	# Three modes, and Godot's own naming is the confusing part: its
+	# WINDOW_MODE_FULLSCREEN is already a BORDERLESS fullscreen (the
+	# alt-tab-friendly one); EXCLUSIVE_FULLSCREEN is the one that takes the
+	# display over. "borderless" here is the third thing people mean by the
+	# word: a windowed window with its frame off.
+	var mode := DisplayServer.WINDOW_MODE_WINDOWED
+	if s.window_mode == "fullscreen":
+		mode = DisplayServer.WINDOW_MODE_FULLSCREEN
 	DisplayServer.window_set_mode(mode)
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS,
+		s.window_mode == "borderless")
 
 	# OWNERSHIP RULE (drag memory vs settings page, one cognition for window
 	# size): WindowMemory (scripts/debug/window_memory.gd) and this settings

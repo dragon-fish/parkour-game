@@ -17,27 +17,41 @@ extends Control
 
 signal closed
 
-## window_mode row's two option values, in stepper order.
-const WINDOW_MODES := ["windowed", "fullscreen"]
-const WINDOW_MODE_LABELS := {"windowed": "窗口化", "fullscreen": "全屏"}
+## window_mode row's option values, in stepper order. Godot's own
+## WINDOW_MODE_FULLSCREEN is already borderless-fullscreen; "无边框" here is
+## the other thing the word means -- a windowed window with no frame.
+const WINDOW_MODES := ["windowed", "borderless", "fullscreen"]
+const WINDOW_MODE_LABELS := {"windowed": "窗口化", "borderless": "无边框窗口", "fullscreen": "全屏"}
 
-## window_size row's presets, in stepper order (ascending). Includes
-## SettingsStore.defaults()'s own window_size (1440x810) -- a never-saved page
-## must display the size that is actually applied, not the nearest lookalike.
-const WINDOW_SIZES: Array[Vector2i] = [Vector2i(1280, 720), Vector2i(1440, 810), Vector2i(1600, 900), Vector2i(1920, 1080)]
+## window_size row's presets, in stepper order (ascending): 16:9 all the way
+## up, 540p to 2K (✅ the owner). Every one is 1920x1080 scaled, so the
+## viewport's stretch never has to letterbox or resample unevenly -- and
+## 1440x810 is in the list because SettingsStore.defaults() ships it, and a
+## never-saved page must display the size actually applied rather than the
+## nearest lookalike.
+const WINDOW_SIZES: Array[Vector2i] = [
+	Vector2i(960, 540), Vector2i(1280, 720), Vector2i(1440, 810),
+	Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440),
+]
 
 const _ROWS := [
-	{"key": "window_mode", "label": "窗口模式", "desc": "切换窗口化显示或全屏显示。"},
+	{"key": "window_mode", "label": "窗口模式", "desc": "窗口化、无边框窗口，或全屏。"},
 	{"key": "window_size", "label": "窗口大小", "desc": "选择窗口化模式下的分辨率，全屏时不可用。"},
 	{"key": "sensitivity", "label": "鼠标灵敏度", "desc": "调整视角转动的鼠标灵敏度。"},
 	{"key": "fov", "label": "视野 FOV", "desc": "调整摄像机基准视野角度。"},
-	{"key": "volume_db", "label": "总音量", "desc": "调整主音量大小（分贝）。"},
+	{"key": "volume", "label": "总音量", "desc": "调整主音量大小。"},
 ]
 
 const _DEFAULT_DESCRIPTION := "将鼠标移到左侧设置项上查看说明。"
 const _ROW_HEIGHT := 40.0
 
 var _working: Dictionary
+## The display-change probation (see _on_save_pressed): the dialog, its
+## countdown, and the settings to fall back to.
+var _revert_dialog: Control
+var _revert_countdown_label: Label
+var _revert_left: float = 0.0
+var _reverting_to: Dictionary = {}
 var _description_label: Label
 var _rows_parent: VBoxContainer
 var _buttons_parent: Control
@@ -215,10 +229,14 @@ func _build_slider(line: HBoxContainer, key: String, desc: String) -> void:
 			slider.min_value = 60.0
 			slider.max_value = 110.0
 			slider.step = 1.0
-		"volume_db":
-			slider.min_value = -40.0
-			slider.max_value = 6.0
-			slider.step = 0.5
+		"volume":
+			# The slider carries AMPLITUDE, and the log curve to decibels
+			# happens in SettingsStore.apply_global(). A slider that moved
+			# decibels evenly would spend its top half between "loud" and
+			# "slightly less loud".
+			slider.min_value = 0.0
+			slider.max_value = 1.0
+			slider.step = 0.01
 
 	MeTheme.dress_slider(slider)
 
@@ -272,13 +290,110 @@ func _on_default_pressed() -> void:
 	_working = SettingsStore.defaults()
 	_refresh_controls()
 
-## 保存设置: writes the working copy to disk and applies it live.
+## Seconds the display change is on probation before it reverts itself.
+const DISPLAY_REVERT_SECONDS := 15.0
+## The keys whose change can leave a player unable to see the screen they
+## would have to click to undo it.
+const DISPLAY_KEYS := ["window_mode", "window_size"]
+
+## 保存设置: writes the working copy to disk and applies it live -- except
+## that a DISPLAY change goes on probation first (✅ the owner: 改分辨率或
+## 窗口化/全屏时进入 15 秒倒计时，没点确定就回退). A mode the monitor cannot
+## show, or a window larger than the screen, otherwise leaves nothing on
+## screen to click, and the settings on disk keep it that way at the next
+## launch too.
 func _on_save_pressed() -> void:
+	var previous := SettingsStore.load_settings()
+	var display_changed := false
+	for key in DISPLAY_KEYS:
+		if previous.get(key) != _working.get(key):
+			display_changed = true
 	SettingsStore.save_settings(_working)
 	SettingsStore.apply_global(_working)
 	_sync_window_memory()
 	_apply_to_live_player()
+	if display_changed and DisplayServer.get_name() not in ["headless", "embedded"]:
+		_ask_to_keep_display(previous)
+		return
 	closed.emit()
+
+## The probation dialog: keep the new display settings, or have them undone
+## for you. Closing the page is deferred until the answer, so the player is
+## never left looking at a menu they cannot read.
+func _ask_to_keep_display(previous: Dictionary) -> void:
+	if _revert_dialog != null and is_instance_valid(_revert_dialog):
+		_revert_dialog.queue_free()
+	_revert_left = DISPLAY_REVERT_SECONDS
+	_reverting_to = previous
+	var dialog := MeTheme.confirm_dialog(
+		"", "保持此设置", "还原",
+		func() -> void: _finish_display_probation(previous))
+	# The stay button (MeTheme's own) hides the overlay; here it must also
+	# end the probation, so the countdown does not fire into a closed page.
+	_revert_dialog = dialog
+	_revert_countdown_label = _find_first_label(dialog)
+	_update_revert_label()
+	add_child(dialog)
+	for button in _find_buttons(dialog):
+		if button.text == "保持此设置":
+			button.pressed.connect(func() -> void: _keep_display())
+	set_process(true)
+
+func _process(delta: float) -> void:
+	if _revert_dialog == null or not is_instance_valid(_revert_dialog) \
+			or not _revert_dialog.visible:
+		set_process(false)
+		return
+	_revert_left -= delta
+	_update_revert_label()
+	if _revert_left <= 0.0:
+		_finish_display_probation(_reverting_to)
+
+func _update_revert_label() -> void:
+	if _revert_countdown_label != null and is_instance_valid(_revert_countdown_label):
+		_revert_countdown_label.text = "保持这些显示设置吗？\n%d 秒后自动还原" \
+			% maxi(ceili(_revert_left), 0)
+
+## Accepted: the probation ends and the page closes as a normal save would.
+func _keep_display() -> void:
+	set_process(false)
+	if _revert_dialog != null and is_instance_valid(_revert_dialog):
+		_revert_dialog.queue_free()
+		_revert_dialog = null
+	closed.emit()
+
+## Refused, or timed out: put back what was on disk before the save, apply
+## it, and leave the page open on the restored values.
+func _finish_display_probation(previous: Dictionary) -> void:
+	set_process(false)
+	if _revert_dialog != null and is_instance_valid(_revert_dialog):
+		_revert_dialog.queue_free()
+		_revert_dialog = null
+	if previous.is_empty():
+		closed.emit()
+		return
+	SettingsStore.save_settings(previous)
+	SettingsStore.apply_global(previous)
+	_working = previous.duplicate(true)
+	_sync_window_memory()
+	_refresh_controls()
+
+func _find_first_label(node: Node) -> Label:
+	for child in node.get_children():
+		if child is Label:
+			return child as Label
+		var found := _find_first_label(child)
+		if found != null:
+			return found
+	return null
+
+func _find_buttons(node: Node) -> Array[Button]:
+	var out: Array[Button] = []
+	for child in node.get_children():
+		if child is Button:
+			out.append(child as Button)
+		out.append_array(_find_buttons(child))
+	return out
 
 ## The settings-page half of the window-size ownership rule (see
 ## settings_store.gd's apply_global() and window_memory.gd's own header
@@ -333,7 +448,7 @@ func _refresh_controls() -> void:
 	_stepper_value_labels["window_mode"].text = WINDOW_MODE_LABELS.get(_working.window_mode, _working.window_mode)
 	_stepper_value_labels["window_size"].text = "%d×%d" % [_working.window_size.x, _working.window_size.y]
 
-	for key in ["sensitivity", "fov", "volume_db"]:
+	for key in ["sensitivity", "fov", "volume"]:
 		(_sliders[key] as HSlider).set_value_no_signal(_working[key])
 		_refresh_slider_label(key)
 
@@ -346,8 +461,8 @@ func _refresh_slider_label(key: String) -> void:
 			label.text = "%.4f" % _working.sensitivity
 		"fov":
 			label.text = "%.0f°" % _working.fov
-		"volume_db":
-			label.text = "%.1f dB" % _working.volume_db
+		"volume":
+			label.text = "%d%%" % roundi(float(_working.volume) * 100.0)
 
 func _update_window_size_enabled() -> void:
 	var enabled: bool = _working.window_mode != "fullscreen"
