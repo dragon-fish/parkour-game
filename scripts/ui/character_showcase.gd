@@ -19,11 +19,14 @@ const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
 ## mid-air / hang cycles run 2.5 s and read as floating (✅ the owner: 悬空时
 ## 间太久了点, 观感不太连续). A multi-clip entry plays its parts back to back
 ## once; a looping single loops; everything else settles back on Idle when
-## it ends. A fourth element is a HOP HEIGHT in metres: the viewer has no
-## physics, so a jump clip plays on the spot and reads as a mime (✅ the
-## owner: 跳跃播放期间角色高度没有变化, 还挺怪的). The body rises over the
-## first part and drops back at the start of the last one -- presentation
-## only, nothing to do with how the game moves a capsule.
+## it ends. A fourth element is a HOP, written [height_m, apex_s]: the
+## viewer has no physics, so a jump clip plays on the spot and reads as a
+## mime (✅ the owner: 跳跃播放期间角色高度没有变化, 还挺怪的). The body
+## follows a sine arc -- apex at `apex_s`, back on the floor at twice that
+## -- and THE ARC DRIVES THE CUT: the take-off part gives way to the
+## landing one exactly at touchdown, however long either clip runs (✅ the
+## owner: 设置 0.6 则 0.6s 到最高 1.2s 落地, 动画总长度可能有 2s 但没关系).
+## Presentation only, nothing to do with how the game moves a capsule.
 ## Only entries whose every clip the merged body carries make the list.
 const CLIP_MENU: Array = [
 	["Idle", [&"Idle"], true],
@@ -43,7 +46,8 @@ const CLIP_MENU: Array = [
 	# the pose worth showing.
 	# Plays whole: with the scripted hop under it, Jump_Start's ease into
 	# the hang reads as the apex rather than as floating.
-	["Jump", [&"Jump_Start", &"Jump_Land"], false, 0.55],
+	# [高度 m, 到最高点的秒数] -- 落地 = 顶点时间 ×2，与片段长度无关。
+	["Jump", [&"Jump_Start", &"Jump_Land"], false, [0.65, 0.65]],
 	["Slide", [&"Slide_Start", [&"Slide", 1.0], &"Slide_Exit"], false],
 	["Roll", [&"Roll"], false],
 	["SafetyVault", [&"SafetyVault"], false],
@@ -74,9 +78,6 @@ const PAN_MIN_Y := 0.3
 const PAN_MAX_Y := 2.4
 const HOME_PIVOT := Vector3(0.55, 1.05, 0.0)
 const HOME_DISTANCE := 4.2
-## How long the scripted hop takes to fall back, in seconds. Short: the
-## landing clip's own cushion carries on after touchdown.
-const HOP_FALL_TIME := 0.22
 
 var _body: Node3D
 var _anim_player: AnimationPlayer
@@ -87,8 +88,8 @@ var _queue: Array = []
 ## Bumped every time a part starts, so a time cap scheduled for an earlier
 ## part cannot cut a later one.
 var _part_serial: int = 0
-## The scripted hop for the sequence currently playing: its height, and the
-## tween carrying the body through it.
+## The scripted hop for the sequence currently playing: its height and the
+## tween carrying the body along the arc.
 var _hop_height: float = 0.0
 var _hop_tween: Tween
 var _pivot: Node3D
@@ -254,18 +255,41 @@ func _play_index(index: int) -> void:
 	var entry: Array = _clips[index]
 	var parts: Array = entry[1]
 	var loops: bool = entry[2]
+	var hop = entry[3] if entry.size() > 3 else null
+	_land_body()
+	_hop_height = _hop_at(hop, 0, 0.0)
 	_queue = parts.duplicate()
 	var first = _queue.pop_front()
-	_start_part(_part_clip(first), loops and _queue.is_empty(), 0.3, _part_cap(first))
-	_hop_height = float(entry[3]) if entry.size() > 3 else 0.0
-	_land_body()
-	if _hop_height > 0.0 and _body != null:
+	# A bare height means "apex halfway through the take-off part".
+	var apex := _hop_at(hop, 1, _part_duration(first) * 0.5)
+	# The arc, not the clip, decides when the take-off gives way to the
+	# landing: touchdown is twice the apex time. An explicit per-part cap
+	# still wins, and a sequence with no hop keeps the clip's own length.
+	var cap := _part_cap(first)
+	if cap <= 0.0 and _hop_height > 0.0 and apex > 0.0 and not _queue.is_empty():
+		cap = apex * 2.0
+	_start_part(_part_clip(first), loops and _queue.is_empty(), 0.3, cap)
+	if _hop_height > 0.0 and apex > 0.0 and _body != null:
 		_hop_tween = create_tween()
-		_hop_tween.tween_property(_body, "position:y", _hop_height,
-			_part_duration(first)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_hop_tween.tween_method(_set_hop_phase, 0.0, 1.0, apex * 2.0)
+
+## Where the body sits along the arc: a half sine, so it leaves and meets
+## the floor at speed and eases through the apex.
+func _set_hop_phase(phase: float) -> void:
+	if _body != null:
+		_body.position.y = _hop_height * sin(PI * clampf(phase, 0.0, 1.0))
 
 static func _part_clip(part) -> StringName:
 	return part[0] if part is Array else part
+
+## One number out of a hop spec: [height, apex], or a bare height. Anything
+## the spec does not say falls back to `fallback`.
+static func _hop_at(hop, index: int, fallback: float) -> float:
+	if hop is Array:
+		return float(hop[index]) if index < (hop as Array).size() else fallback
+	if index == 0 and (hop is float or hop is int):
+		return float(hop)
+	return fallback
 
 static func _part_cap(part) -> float:
 	return float(part[1]) if part is Array else 0.0
@@ -311,13 +335,6 @@ func _on_clip_finished(_clip: StringName) -> void:
 	if not _queue.is_empty():
 		var next = _queue.pop_front()
 		_start_part(_part_clip(next), false, 0.15, _part_cap(next))
-		# The last part is the landing: come down as it begins.
-		if _hop_height > 0.0 and _queue.is_empty() and _body != null:
-			if _hop_tween != null and _hop_tween.is_valid():
-				_hop_tween.kill()
-			_hop_tween = create_tween()
-			_hop_tween.tween_property(_body, "position:y", 0.0, HOP_FALL_TIME) \
-				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		return
 	_land_body()
 	if _anim_player.has_animation(&"Idle"):
