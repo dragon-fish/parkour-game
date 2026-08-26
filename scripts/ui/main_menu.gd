@@ -248,6 +248,13 @@ func _build_viewport() -> void:
 	# a faint chromatic split, hashed off TIME (silhouette_glitch.gdshader).
 	var glitch := ShaderMaterial.new()
 	glitch.shader = load("res://scripts/ui/silhouette_glitch.gdshader")
+	# ✅ The owner: the tear should be a bit more present than the shader's
+	# own defaults -- more frequent bursts, taller bands, a wider shear and
+	# a heavier chromatic split.
+	glitch.set_shader_parameter("burst_chance", 0.22)
+	glitch.set_shader_parameter("band_height", 0.022)
+	glitch.set_shader_parameter("shear_px", 12.0)
+	glitch.set_shader_parameter("split_px", 2.6)
 	_viewport_container.material = glitch
 	add_child(_viewport_container)
 
@@ -377,16 +384,10 @@ func _build_click_prompt() -> void:
 	_click_prompt = Label.new()
 	_click_prompt.text = "点击任意处开始"
 	_click_prompt.add_theme_font_size_override("font_size", 22)
-	# ⚠️ AN OUTLINE, NOT A SHADOW, because this one label has no background it
-	# can count on: it breathes at 86% height, where the red silhouette may or
-	# may not be behind it depending on the pose. A shadow only reads against
-	# one of the two, an outline reads against both (✅ the owner: 用白字加黑色
-	# 描边).
+	# The over-anything spec, shared with the subtitles this game will have:
+	# see MeTheme.dress_over_anything for why an outline and not a shadow.
 	_click_prompt.theme = MeTheme.ui_theme()
-	_click_prompt.add_theme_color_override("font_color", Color.WHITE)
-	_click_prompt.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
-	_click_prompt.add_theme_constant_override("outline_size", 5)
-	_click_prompt.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0))
+	MeTheme.dress_over_anything(_click_prompt)
 	_click_prompt.anchor_left = 0.5
 	_click_prompt.anchor_right = 0.5
 	_click_prompt.anchor_top = 0.86
@@ -629,7 +630,7 @@ func _show_click_prompt() -> void:
 	_prompt_tween.set_loops()
 	_prompt_tween.tween_property(_click_prompt, "modulate:a", 1.0, 1.1) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	_prompt_tween.tween_property(_click_prompt, "modulate:a", 0.3, 1.1) \
+	_prompt_tween.tween_property(_click_prompt, "modulate:a", 0.55, 1.1) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 ## The click: prompt out, and the whole show plays through to the menu.

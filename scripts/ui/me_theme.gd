@@ -39,6 +39,20 @@ static func ui_theme() -> Theme:
 			_ui_theme.set_constant("shadow_outline_size", cls, 0)
 	return _ui_theme
 
+## THE OVER-ANYTHING SPEC: white text in a black outline, no shadow.
+##
+## For text that has no background it can count on -- the title screen's
+## prompt floats where the red silhouette may or may not be behind it, and
+## SUBTITLES in play will sit over whatever the level happens to show (✅ the
+## owner: 之后游戏里的台词字幕也用这个规格). A shadow can only ever read
+## against one of the two; an outline reads against both. The theme's default
+## shadow is cleared explicitly, or it doubles the outline into a smear.
+static func dress_over_anything(control: Control, outline: int = 5) -> void:
+	control.add_theme_color_override("font_color", Color.WHITE)
+	control.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.85))
+	control.add_theme_constant_override("outline_size", outline)
+	control.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.0))
+
 ## Gives `control` the shadow its own font colour needs: dark under light
 ## text, light under dark text. Call it AFTER the colour is set, and again
 ## whenever the colour changes (MeMenuList does, on every selection).
