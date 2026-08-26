@@ -14,51 +14,66 @@ const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 const BODY_PROFILE := "res://scenes/player/profiles/vrm_test.tres"
 const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
 
-## The clips on offer, in menu order: [label, [part, ...], loops]. A part is
-## a clip name, or [clip name, max_seconds] to cut it short -- the packs'
-## mid-air / hang cycles run 2.5 s and read as floating (✅ the owner: 悬空时
-## 间太久了点, 观感不太连续). A multi-clip entry plays its parts back to back
-## once; a looping single loops; everything else settles back on Idle when
-## it ends. A fourth element is a HOP, written [height_m, apex_s]: the
-## viewer has no physics, so a jump clip plays on the spot and reads as a
-## mime (✅ the owner: 跳跃播放期间角色高度没有变化, 还挺怪的). The body
-## follows a sine arc -- apex at `apex_s`, back on the floor at twice that
-## -- and THE ARC DRIVES THE CUT: the take-off part gives way to the
-## landing one exactly at touchdown, however long either clip runs (✅ the
-## owner: 设置 0.6 则 0.6s 到最高 1.2s 落地, 动画总长度可能有 2s 但没关系).
-## Presentation only, nothing to do with how the game moves a capsule.
-## Only entries whose every clip the merged body carries make the list.
+## 展厅目录。每项一个字典，除 label 外都可省略：
+##
+##   label   菜单里显示的名字
+##   clip    单片段项直接写这个
+##   parts   多片段项：依次播放的段落，每段一个字典：
+##             clip      片段名
+##             from/to   只取片段的这一段，单位秒（默认整段）
+##             duration  这段在屏幕上占多少秒（默认 to - from）
+##             stretch   true  = 改播放速度把片段铺满 duration
+##                       省略  = 原速播，到 duration 就切下一段
+##   loop    单片段项是否循环；多片段项永远只走一遍
+##   hop     脚本化跳跃弧线 {height = 米, apex = 到最高点的秒数}：身体走半个
+##           正弦，落地时间 = apex × 2，而且**由弧线决定何时切到最后一段**，
+##           与片段长度无关（✅ 作者：设置 0.6 则 0.6s 到最高 1.2s 落地）。
+##           展厅没有物理，没有它跳跃就是原地比划。
+##
+## 单次动作播完自动回 Idle。只有身体真的带着全部片段的项才会进菜单。
 const CLIP_MENU: Array = [
-	["Idle", [&"Idle"], true],
-	["Idle_LookAround", [&"Idle_LookAround"], true],
-	["Idle_Tired", [&"Idle_Tired"], true],
-	["Idle_Talking", [&"Idle_Talking"], true],
-	["Idle_FoldArms", [&"Idle_FoldArms"], true],
-	["Idle_No", [&"Idle_No"], true],
-	["Sitting_Idle", [&"Sitting_Idle"], true],
-	["GroundSit_Idle", [&"GroundSit_Idle"], true],
-	["Walk", [&"Walk"], true],
-	["Sprint", [&"Sprint"], true],
-	["Crouch_Idle", [&"Crouch_Idle"], true],
-	["Crouch_Fwd", [&"Crouch_Fwd"], true],
-	# No mid-air part at all: a jump has to read as one motion (✅ the owner:
-	# 跳跃需要一气呵成的感觉, 否则像悬空). Climb keeps its hang because that IS
-	# the pose worth showing.
-	# Plays whole: with the scripted hop under it, Jump_Start's ease into
-	# the hang reads as the apex rather than as floating.
-	# [高度 m, 到最高点的秒数] -- 落地 = 顶点时间 ×2，与片段长度无关。
-	["Jump", [&"Jump_Start", &"Jump_Land"], false, [0.65, 0.65]],
-	["Slide", [&"Slide_Start", [&"Slide", 1.0], &"Slide_Exit"], false],
-	["Roll", [&"Roll"], false],
-	["SafetyVault", [&"SafetyVault"], false],
-	["StepUp", [&"StepUp"], false],
-	["ClimbUp_1m", [&"ClimbUp_1m"], false],
-	["ClimbUp_2m", [&"ClimbUp_2m"], false],
-	["ClimbLedge", [&"ClimbLedge"], false],
-	["Climb", [&"Climb_Enter", [&"Climb_Idle", 1.0], &"Climb_Exit"], false],
-	["Climb_Up", [&"Climb_Up"], true],
-	["Climb_Down", [&"Climb_Down"], true],
-	["WallRun_L", [&"WallRun_L"], true],
+	{label = "Idle", clip = &"Idle", loop = true},
+	{label = "Idle_LookAround", clip = &"Idle_LookAround", loop = true},
+	{label = "Idle_Tired", clip = &"Idle_Tired", loop = true},
+	{label = "Idle_Talking", clip = &"Idle_Talking", loop = true},
+	{label = "Idle_FoldArms", clip = &"Idle_FoldArms", loop = true},
+	{label = "Idle_No", clip = &"Idle_No", loop = true},
+	{label = "Sitting_Idle", clip = &"Sitting_Idle", loop = true},
+	{label = "GroundSit_Idle", clip = &"GroundSit_Idle", loop = true},
+	{label = "Walk", clip = &"Walk", loop = true},
+	{label = "Sprint", clip = &"Sprint", loop = true},
+	{label = "Crouch_Idle", clip = &"Crouch_Idle", loop = true},
+	{label = "Crouch_Fwd", clip = &"Crouch_Fwd", loop = true},
+	{
+		label = "Jump",
+		parts = [{clip = &"Jump_Start"}, {clip = &"Jump_Land"}],
+		hop = {height = 0.65, apex = 0.65},
+	},
+	{
+		label = "Slide",
+		parts = [
+			{clip = &"Slide_Start"},
+			{clip = &"Slide", duration = 1.0},
+			{clip = &"Slide_Exit"},
+		],
+	},
+	{label = "Roll", clip = &"Roll"},
+	{label = "SafetyVault", clip = &"SafetyVault"},
+	{label = "StepUp", clip = &"StepUp"},
+	{label = "ClimbUp_1m", clip = &"ClimbUp_1m"},
+	{label = "ClimbUp_2m", clip = &"ClimbUp_2m"},
+	{label = "ClimbLedge", clip = &"ClimbLedge"},
+	{
+		label = "Climb",
+		parts = [
+			{clip = &"Climb_Enter"},
+			{clip = &"Climb_Idle", duration = 1.0},
+			{clip = &"Climb_Exit"},
+		],
+	},
+	{label = "Climb_Up", clip = &"Climb_Up", loop = true},
+	{label = "Climb_Down", clip = &"Climb_Down", loop = true},
+	{label = "WallRun_L", clip = &"WallRun_L", loop = true},
 ]
 
 const ROTATE_SPEED := 0.012
@@ -85,9 +100,12 @@ var _menu_list: MeMenuList
 var _clips: Array = []
 ## The rest of the sequence currently playing, next part first.
 var _queue: Array = []
-## Bumped every time a part starts, so a time cap scheduled for an earlier
+## Bumped every time a part starts, so a timer scheduled for an earlier
 ## part cannot cut a later one.
 var _part_serial: int = 0
+## Whether the current part has already handed over -- the timer and the
+## clip's own end both call _advance(), and only the first may count.
+var _part_done: bool = false
 ## The scripted hop for the sequence currently playing: its height and the
 ## tween carrying the body along the arc.
 var _hop_height: float = 0.0
@@ -168,11 +186,11 @@ func _build_body() -> void:
 	if _anim_player == null:
 		return
 	_merge_libraries(profile.animation_libraries)
-	_anim_player.animation_finished.connect(_on_clip_finished)
+	_anim_player.animation_finished.connect(func(_clip: StringName) -> void: _advance())
 	for entry in CLIP_MENU:
 		var complete := true
-		for part in entry[1]:
-			if not _anim_player.has_animation(_part_clip(part)):
+		for part in _entry_parts(entry):
+			if not _anim_player.has_animation(part.clip):
 				complete = false
 				break
 		if complete:
@@ -227,7 +245,7 @@ func _build_ui() -> void:
 	layer.add_child(_menu_list)
 	var items: Array[String] = []
 	for entry in _clips:
-		items.append(String(entry[0]))
+		items.append(String(entry.label))
 	if items.is_empty():
 		items.append("（没有可用动画）")
 	_menu_list.set_items(items)
@@ -252,23 +270,20 @@ func _reset_camera() -> void:
 func _play_index(index: int) -> void:
 	if _anim_player == null or index >= _clips.size():
 		return
-	var entry: Array = _clips[index]
-	var parts: Array = entry[1]
-	var loops: bool = entry[2]
-	var hop = entry[3] if entry.size() > 3 else null
+	var entry: Dictionary = _clips[index]
 	_land_body()
-	_hop_height = _hop_at(hop, 0, 0.0)
-	_queue = parts.duplicate()
-	var first = _queue.pop_front()
-	# A bare height means "apex halfway through the take-off part".
-	var apex := _hop_at(hop, 1, _part_duration(first) * 0.5)
-	# The arc, not the clip, decides when the take-off gives way to the
-	# landing: touchdown is twice the apex time. An explicit per-part cap
-	# still wins, and a sequence with no hop keeps the clip's own length.
-	var cap := _part_cap(first)
-	if cap <= 0.0 and _hop_height > 0.0 and apex > 0.0 and not _queue.is_empty():
-		cap = apex * 2.0
-	_start_part(_part_clip(first), loops and _queue.is_empty(), 0.3, cap)
+	_queue = _entry_parts(entry)
+	var first: Dictionary = _queue.pop_front()
+	var hop: Dictionary = entry.get("hop", {})
+	_hop_height = float(hop.get("height", 0.0))
+	# A hop with no apex named takes half the take-off part.
+	var apex := float(hop.get("apex", _part_span(first) * 0.5))
+	# THE ARC DRIVES THE CUT: the take-off gives way to the landing part
+	# exactly at touchdown, whatever the clips' own lengths are.
+	var cut := 0.0
+	if _hop_height > 0.0 and apex > 0.0 and not _queue.is_empty():
+		cut = apex * 2.0
+	_start_part(first, bool(entry.get("loop", false)) and _queue.is_empty(), 0.3, cut)
 	if _hop_height > 0.0 and apex > 0.0 and _body != null:
 		_hop_tween = create_tween()
 		_hop_tween.tween_method(_set_hop_phase, 0.0, 1.0, apex * 2.0)
@@ -279,29 +294,25 @@ func _set_hop_phase(phase: float) -> void:
 	if _body != null:
 		_body.position.y = _hop_height * sin(PI * clampf(phase, 0.0, 1.0))
 
-static func _part_clip(part) -> StringName:
-	return part[0] if part is Array else part
+## An entry's parts, as dictionaries: a single top-level `clip`, or the
+## `parts` list. A bare clip name in that list still works, but the menu
+## itself spells every part out -- a config that only grows is only
+## readable while every field is named (✅ the owner: 鬼知道每个 index 配的
+## 是什么东西).
+func _entry_parts(entry: Dictionary) -> Array:
+	var out: Array = []
+	if entry.has("clip"):
+		out.append({clip = entry.clip})
+	for part in entry.get("parts", []):
+		out.append(part if part is Dictionary else {clip = part})
+	return out
 
-## One number out of a hop spec: [height, apex], or a bare height. Anything
-## the spec does not say falls back to `fallback`.
-static func _hop_at(hop, index: int, fallback: float) -> float:
-	if hop is Array:
-		return float(hop[index]) if index < (hop as Array).size() else fallback
-	if index == 0 and (hop is float or hop is int):
-		return float(hop)
-	return fallback
-
-static func _part_cap(part) -> float:
-	return float(part[1]) if part is Array else 0.0
-
-## How long a part will actually be on screen: its cap, or the clip's own
-## length when it has none.
-func _part_duration(part) -> float:
-	var cap := _part_cap(part)
-	if cap > 0.0:
-		return cap
-	var animation := _anim_player.get_animation(_part_clip(part))
-	return animation.length if animation != null else 0.0
+## How much of the clip a part covers, in seconds of the CLIP's own time
+## (before any stretch): `to - from`, defaulting to the whole thing.
+func _part_span(part: Dictionary) -> float:
+	var animation := _anim_player.get_animation(part.clip)
+	var length: float = animation.length if animation != null else 0.0
+	return maxf(float(part.get("to", length)) - float(part.get("from", 0.0)), 0.0)
 
 ## Puts the body back on the floor and cancels any hop still in flight, so
 ## picking a new clip mid-jump never leaves her hanging in the air.
@@ -311,34 +322,49 @@ func _land_body() -> void:
 	if _body != null:
 		_body.position.y = 0.0
 
-## A sequence part, or the whole of a single-clip entry: a looping single
-## loops; every part of a sequence plays exactly once, or for `max_seconds`
-## if that is shorter.
-func _start_part(clip: StringName, loops: bool, blend: float, max_seconds: float = 0.0) -> void:
+## Plays one part. `cut_override` is the hop's touchdown time, which
+## outranks the part's own duration; see _play_index.
+func _start_part(part: Dictionary, loops: bool, blend: float,
+		cut_override: float = 0.0) -> void:
+	var clip: StringName = part.clip
 	var animation := _anim_player.get_animation(clip)
 	if animation != null:
 		animation.loop_mode = Animation.LOOP_LINEAR if loops else Animation.LOOP_NONE
-	_anim_player.play(clip, blend)
+	var span := _part_span(part)
+	var on_screen := float(part.get("duration", span))
+	if cut_override > 0.0:
+		on_screen = cut_override
+	# stretch fits the clip to the time; without it the clip runs at its own
+	# speed and simply gets cut when the time is up.
+	var stretch := bool(part.get("stretch", false))
+	_anim_player.speed_scale = span / on_screen if stretch and on_screen > 0.0 and span > 0.0 else 1.0
 	_part_serial += 1
-	if max_seconds > 0.0:
-		var serial := _part_serial
-		get_tree().create_timer(max_seconds).timeout.connect(func() -> void:
-			if serial == _part_serial:
-				_on_clip_finished(clip))
-
-## A part has ended -- naturally (looping clips never emit this) or by its
-## time cap: the next part of a sequence if there is one, otherwise settle
-## back on Idle rather than freezing on the last frame.
-func _on_clip_finished(_clip: StringName) -> void:
-	if _anim_player == null:
+	_part_done = false
+	_anim_player.play(clip, blend)
+	var from := float(part.get("from", 0.0))
+	if from > 0.0:
+		_anim_player.seek(from, true)
+	if loops or on_screen <= 0.0:
 		return
+	# A timer, not the clip's own end, whenever the part stops early -- a
+	# cut, a stretch, or a `to` short of the clip's length.
+	var serial := _part_serial
+	get_tree().create_timer(on_screen).timeout.connect(func() -> void:
+		if serial == _part_serial:
+			_advance())
+
+## The part is over -- by its timer or by the clip running out. Whichever
+## arrives first wins; the other is ignored, so a part never advances twice.
+func _advance() -> void:
+	if _anim_player == null or _part_done:
+		return
+	_part_done = true
 	if not _queue.is_empty():
-		var next = _queue.pop_front()
-		_start_part(_part_clip(next), false, 0.15, _part_cap(next))
+		_start_part(_queue.pop_front(), false, 0.15)
 		return
 	_land_body()
 	if _anim_player.has_animation(&"Idle"):
-		_start_part(&"Idle", true, 0.4)
+		_start_part({clip = &"Idle"}, true, 0.4)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \
