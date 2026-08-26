@@ -151,15 +151,17 @@ func _arrow_lines(bottom: float) -> PackedVector3Array:
 
 func _get_handle_name(gizmo: EditorNode3DGizmo, id: int, _secondary: bool) -> String:
 	if gizmo.get_node_3d() is Mirror:
-		return "width" if id == MIRROR_WIDTH_HANDLE else "height"
+		return ["right edge", "left edge", "top edge", "bottom edge"][id]
 	return "yaw"
 
 func _get_handle_value(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool) -> Variant:
 	var node: Node3D = gizmo.get_node_3d()
-	# The WHOLE size, not the one axis being dragged: cancelling a drag has to
-	# put back what was there, and a Vector2 restores in one assignment.
+	# BOTH the size and the origin. Dragging ONE edge moves the other three
+	# nowhere, which for a rectangle centred on its origin means the origin
+	# itself has to shift -- so a cancelled drag has two things to put back,
+	# and a named pair is what keeps the two commits below honest.
 	if node is Mirror:
-		return (node as Mirror).size
+		return {"size": (node as Mirror).size, "position": node.global_position}
 	return node.global_rotation
 
 func _set_handle(gizmo: EditorNode3DGizmo, id: int, _secondary: bool,
@@ -187,13 +189,17 @@ func _commit_handle(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool,
 		restore: Variant, cancel: bool) -> void:
 	var node: Node3D = gizmo.get_node_3d()
 	if node is Mirror:
+		var was: Dictionary = restore
 		if cancel:
-			(node as Mirror).size = restore
+			(node as Mirror).size = was["size"]
+			node.global_position = was["position"]
 			return
 		var mirror_ur: EditorUndoRedoManager = EditorInterface.get_editor_undo_redo()
 		mirror_ur.create_action("Resize mirror")
 		mirror_ur.add_do_property(node, "size", (node as Mirror).size)
-		mirror_ur.add_undo_property(node, "size", restore)
+		mirror_ur.add_do_property(node, "global_position", node.global_position)
+		mirror_ur.add_undo_property(node, "size", was["size"])
+		mirror_ur.add_undo_property(node, "global_position", was["position"])
 		mirror_ur.commit_action()
 		return
 	if cancel:
@@ -264,9 +270,18 @@ func _redraw_interest_line(gizmo: EditorNode3DGizmo, line: InterestLine) -> void
 
 # --- mirrors ---------------------------------------------------------------
 
-## Handle ids. Two, one per axis of Mirror.size.
-const MIRROR_WIDTH_HANDLE := 0
-const MIRROR_HEIGHT_HANDLE := 1
+## Handle ids: one per EDGE, not one per axis.
+##
+## ✅ THE OWNER: "有时候想对齐一个平面还是单独拉四个边比较方便." Godot's own
+## centred primitives (BoxMesh, BoxShape3D, CSGBox3D) all resize symmetrically
+## about their origin, and the first version of this followed them -- but a
+## mirror is usually being fitted INTO something, a frame or a wall recess, and
+## then the edge you are not dragging has to stay exactly where you put it.
+## Symmetric sizing is still one field away in the inspector.
+const MIRROR_RIGHT_HANDLE := 0
+const MIRROR_LEFT_HANDLE := 1
+const MIRROR_TOP_HANDLE := 2
+const MIRROR_BOTTOM_HANDLE := 3
 ## The smallest a drag may make a pane. Not a design limit -- it just stops a
 ## handle dragged through the centre from collapsing the gizmo it lives on.
 const MIN_MIRROR_SIZE := 0.1
@@ -312,14 +327,25 @@ func _redraw_mirror(gizmo: EditorNode3DGizmo, mirror: Mirror) -> void:
 	gizmo.add_lines(lines, material)
 	gizmo.add_collision_segments(lines)
 
+	# ⚠️ THE FILL FACES THE REFLECTIVE SIDE, WHICH IS -Z. PlaneMesh.FACE_Z faces
+	# +Z and the fill material culls backfaces, so left alone this drew the pane
+	# on the mirror's BACK: nothing visible from the side that reflects, and a
+	# translucent sheet visible from the side that does not. ✅ THE OWNER: "你的
+	# 半透明写反了吧，应该是反射面填充半透明比较符合直觉?"
+	#
+	# Deliberately NOT made double-sided. One-sided, the fill is a second signal
+	# agreeing with the arrow: if you can see the glass, you are in front of it.
 	var fill := PlaneMesh.new()
 	fill.size = Vector2(half_x * 2.0, half_y * 2.0)
 	fill.orientation = PlaneMesh.FACE_Z
-	gizmo.add_mesh(fill, _fills["mirror"], Transform3D())
+	gizmo.add_mesh(fill, _fills["mirror"], Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO))
 
+	# Order matters: the index in this array IS the handle id.
 	gizmo.add_handles(PackedVector3Array([
-		Vector3(half_x, 0.0, 0.0),   # MIRROR_WIDTH_HANDLE
-		Vector3(0.0, half_y, 0.0),   # MIRROR_HEIGHT_HANDLE
+		Vector3(half_x, 0.0, 0.0),    # MIRROR_RIGHT_HANDLE
+		Vector3(-half_x, 0.0, 0.0),   # MIRROR_LEFT_HANDLE
+		Vector3(0.0, half_y, 0.0),    # MIRROR_TOP_HANDLE
+		Vector3(0.0, -half_y, 0.0),   # MIRROR_BOTTOM_HANDLE
 	]), get_material("handles", gizmo), PackedInt32Array())
 
 ## Drags one edge of the pane. The drag lives in the mirror's OWN plane -- the
@@ -332,10 +358,28 @@ func _set_mirror_size_handle(mirror: Mirror, id: int, camera: Camera3D, screen_p
 	if hit == null:
 		return
 	var local: Vector3 = mirror.global_transform.affine_inverse() * (hit as Vector3)
-	# Doubled because the handle sits on an EDGE and the size spans both sides
-	# of the origin; absolute so dragging past the centre grows the far edge
-	# rather than inverting the pane.
-	if id == MIRROR_WIDTH_HANDLE:
-		mirror.size = Vector2(maxf(absf(local.x) * 2.0, MIN_MIRROR_SIZE), mirror.size.y)
-	else:
-		mirror.size = Vector2(mirror.size.x, maxf(absf(local.y) * 2.0, MIN_MIRROR_SIZE))
+	var half: Vector2 = mirror.size * 0.5
+	var size: Vector2 = mirror.size
+	# Where the origin has to move so the three edges NOT being dragged stay
+	# exactly where they are. Local, and converted through the basis below so a
+	# rotated or scaled mirror behaves the same as an axis-aligned one.
+	var shift := Vector3.ZERO
+	match id:
+		MIRROR_RIGHT_HANDLE:
+			var edge: float = maxf(local.x, -half.x + MIN_MIRROR_SIZE)
+			size.x = edge + half.x
+			shift.x = (edge - half.x) * 0.5
+		MIRROR_LEFT_HANDLE:
+			var edge: float = minf(local.x, half.x - MIN_MIRROR_SIZE)
+			size.x = half.x - edge
+			shift.x = (edge + half.x) * 0.5
+		MIRROR_TOP_HANDLE:
+			var edge: float = maxf(local.y, -half.y + MIN_MIRROR_SIZE)
+			size.y = edge + half.y
+			shift.y = (edge - half.y) * 0.5
+		MIRROR_BOTTOM_HANDLE:
+			var edge: float = minf(local.y, half.y - MIN_MIRROR_SIZE)
+			size.y = half.y - edge
+			shift.y = (edge + half.y) * 0.5
+	mirror.size = size
+	mirror.global_position += mirror.global_transform.basis * shift
