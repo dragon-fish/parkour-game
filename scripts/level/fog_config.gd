@@ -68,15 +68,44 @@ extends Resource
 ## clamps it to 0..1.
 @export var max_opacity: float = 1.0
 
-## Colour of the depth fog, and so the colour the horizon turns. Reads best
-## near the sky's own horizon colour, which is what makes distant ground
-## dissolve INTO the sky instead of ending at a visible grey wall; Arena also
-## blends it toward the real sky colour (see Arena.FOG_AERIAL_PERSPECTIVE).
+## Colour of the depth fog, and so the colour the horizon turns.
+##
+## AUTHORITATIVE, up to whatever sky_blend below gives away. Set this white
+## and the fog is white.
 @export var tint: Color = Color(0.63, 0.72, 0.82)
 
-## Thickness of the volumetric fog -- the one that produces light shafts.
-## 0.0 switches it off entirely, which is the setting for a level that wants
-## the far-fade curtain without paying for the froxel grid every frame.
+## How much of `tint` is surrendered to the real sky colour behind the fog,
+## 0 none and 1 all of it (Godot's Environment.fog_aerial_perspective). Turning
+## it up makes distant ground dissolve INTO the sky instead of ending at a
+## same-coloured-everywhere wall; turning it down makes `tint` mean exactly
+## what it says.
+##
+## ⚠️ THIS DIAL CAN MAKE THE ONE ABOVE LOOK BROKEN, which is why it is a dial
+## and not the constant it started as. Arena used to hardcode 0.6 here. The
+## default ProceduralSkyMaterial's horizon is (0.646, 0.656, 0.671) -- grey --
+## so at 0.6 a tint set to pure white rendered as (0.79, 0.79, 0.80) and the
+## owner quite reasonably reported "我调成纯白色也很灰". A look value that
+## overrules another look value has to be reachable from the same panel.
+##
+## Defaults to 0.25 rather than 0 for two reasons: white still reads white at
+## that blend, and the F1 slider's range is 3× the default, so a dial that
+## defaults to 0 gets a 0..0.01 slider nobody can move.
+@export var sky_blend: float = 0.25
+
+## Whether this level pays for the volumetric fog at all -- the froxel grid is
+## per-frame work a level that only wants the far-fade curtain has no use for.
+##
+## SEPARATE FROM volumetric_density, and it has to be. Godot's own docs give
+## "set volumetric_fog_density to 0.0" as the way to make fog appear ONLY
+## inside FogVolume nodes -- dust in the light shaft, clear air everywhere
+## else. Fold the switch into the density and that setup becomes unreachable:
+## the density reaches 0, the grid switches off, and every FogVolume in the
+## level silently stops rendering with nothing to explain why.
+@export var volumetric_enabled: bool = true
+
+## Thickness of the volumetric fog EVERYWHERE, before any FogVolume adds to it.
+## 0.0 is not "off" (see volumetric_enabled above) -- it is clear air that
+## FogVolumes can still put dust into.
 ##
 ## Godot's own default (0.05) is kept as the default here so the F1 slider,
 ## whose range is RANGE_FACTOR × the default, spans 0..0.15 -- thin haze to

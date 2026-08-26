@@ -35,8 +35,8 @@ each does a job the other cannot:
 
 | Dial | Drives | Job |
 | --- | --- | --- |
-| `fade_begin_distance` / `fade_end_distance` / `max_opacity` / `tint` | `Environment`'s DEPTH fog | Hides an unfinished horizon. Cheap, unlimited range, no interaction with light. |
-| `volumetric_density` | `Environment`'s VOLUMETRIC fog | Light shafts. Voxelised, reaches only 64 m from the camera, and is the only one the sun can carve a beam out of or a body can cast a hole in. |
+| `fade_begin_distance` / `fade_end_distance` / `max_opacity` / `tint` / `sky_blend` | `Environment`'s DEPTH fog | Hides an unfinished horizon. Cheap, unlimited range, no interaction with light. |
+| `volumetric_enabled` / `volumetric_density` | `Environment`'s VOLUMETRIC fog | Light shafts. Voxelised, reaches only 64 m from the camera, and is the only one the sun can carve a beam out of or a body can cast a hole in. |
 
 Defaults draw the curtain from 60 m to 160 m — far enough not to crowd a
 whitebox, near enough that a rooftop view does not expose ground nobody has
@@ -61,6 +61,22 @@ takes effect now" pattern `ambient_cold_strength` uses. They are the one page
 the panel builds from the LEVEL rather than from `MovementConfig`, which is
 also why **Save/Load preset does not touch them**: a feel preset saved on a
 fogged rooftop must not re-fog the next level it is loaded into.
+
+### Two dials that look broken until you know about the other one
+
+**`tint` looks grey no matter what you set it to** → check `sky_blend`. It is
+Godot's `fog_aerial_perspective`: the fraction of the fog colour handed over to
+the real sky behind it. The default `ProceduralSkyMaterial`'s horizon is
+(0.646, 0.656, 0.671) — grey — so a high blend turns any tint, white included,
+into that grey. It defaults to 0.25, where white still reads white. This was a
+hardcoded 0.6 once and the tint dial visibly did not work.
+
+**A `FogVolume` renders nothing** → check `volumetric_enabled`, not the
+density. `FogVolume`s only appear when `Environment.volumetric_fog_enabled` is
+true, and a global `volumetric_density` of **0 is a legitimate setting**: it is
+Godot's documented way to get fog *only* inside `FogVolume`s — dust in a light
+shaft, clear air around it. So the switch and the thickness are two fields, and
+zeroing the thickness must never be read as "off".
 
 ### The editor viewport shows no fog, on purpose
 

@@ -88,6 +88,22 @@ func test_clearing_enabled_turns_both_fogs_off() -> void:
 	assert_false(environment.fog_enabled, "depth fog survived enabled = false")
 	assert_false(environment.volumetric_fog_enabled, "volumetric fog survived enabled = false")
 
+func test_zero_global_density_does_not_switch_the_froxel_grid_off() -> void:
+	# Godot's own docs name "volumetric_fog_density = 0" as the way to get fog
+	# ONLY inside FogVolume nodes -- dust in a light shaft, clear air around
+	# it. An earlier version of _apply_fog() derived volumetric_fog_enabled
+	# from the density, which made that setup unreachable and took every
+	# FogVolume in the level down with it. Nothing on screen would say why:
+	# the dust would simply not be there.
+	var pair := await _live_template()
+	var arena: Arena = pair[0]
+	var environment: Environment = pair[1]
+	arena.fog.volumetric_enabled = true
+	arena.fog.volumetric_density = 0.0
+	await _idle_frames(1)
+	assert_true(environment.volumetric_fog_enabled,
+		"zero density switched the volumetric grid off; FogVolumes would stop rendering")
+
 func test_an_arena_with_no_fog_config_leaves_the_environment_alone() -> void:
 	# null is not the same as enabled = false: it means "this level does not
 	# manage fog", which is what lets a hand-authored Environment (and a

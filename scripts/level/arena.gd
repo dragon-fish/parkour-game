@@ -60,11 +60,6 @@ const MIN_FOG_FADE_SPAN := 0.01
 ## was hired to hide. Not a dial because no level has wanted the other answer;
 ## make it one the first time one does.
 const FOG_SKY_AFFECT := 0.0
-## How far the depth fog's colour is pulled toward the real sky colour behind
-## it. Well short of 1 so FogConfig.tint still reads as an authored choice,
-## but high enough that distant geometry dissolves into the sky it sits against
-## instead of ending at a same-coloured-everywhere wall.
-const FOG_AERIAL_PERSPECTIVE := 0.6
 
 ## Found by name, same as TuningPanel below -- both templates/base_level.tscn
 ## and the generated main.tscn name this node "WorldEnvironment" (see
@@ -295,12 +290,18 @@ func _apply_fog(environment: Environment) -> void:
 	# dragging end below begin honestly deserves, with no special case.
 	environment.fog_depth_end = maxf(fog.fade_end_distance, fog.fade_begin_distance + MIN_FOG_FADE_SPAN)
 	environment.fog_sky_affect = FOG_SKY_AFFECT
-	environment.fog_aerial_perspective = FOG_AERIAL_PERSPECTIVE
+	# A DIAL, not the constant this used to be -- see FogConfig.sky_blend for
+	# the bug that made it one: at the old hardcoded 0.6 a fog tint set to pure
+	# white came out grey, because what it was blending toward is the default
+	# sky's grey horizon.
+	environment.fog_aerial_perspective = clampf(fog.sky_blend, 0.0, 1.0)
 
-	# Driven off the density alone rather than a second checkbox: 0 thickness
-	# and "off" are the same picture, and one dial that can reach both is one
-	# less thing to have disagree.
-	environment.volumetric_fog_enabled = fog.volumetric_density > 0.0
+	# NOT `density > 0.0`. A level is allowed to run the froxel grid at zero
+	# global density so that its FogVolumes -- dust hanging in a light shaft,
+	# and nowhere else -- are the only thing in it; Godot's own documentation
+	# names that setup. Tying the switch to the density would make it
+	# unreachable and take every FogVolume down with it, silently.
+	environment.volumetric_fog_enabled = fog.volumetric_enabled
 	environment.volumetric_fog_density = fog.volumetric_density
 
 ## Recovers a player who fell out of the level entirely -- off the far edge of
