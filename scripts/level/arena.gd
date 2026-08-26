@@ -77,7 +77,9 @@ func _ready() -> void:
 	# entries -- and finishes in about 80 ms. Everything below runs on the main
 	# thread AFTER that, under whatever curtain happens to be up, and no loader
 	# API can report it. ✅ THE OWNER: "那就加可观测性，打日志，我来真的点一次看看
-	# 控制台输出什么东西." Take these out once the answer is in.
+	# 控制台输出什么东西." ✅ AND THEY STAY: "打日志的地方就别删了，之后要勤加日志,
+	# 好处挺多的." These found a 2.25 s cost that no profiler outside the process
+	# could see; the next one will be invisible in the same way.
 	# CUMULATIVE from the top of _ready, not per-step -- GDScript lambdas
 	# capture by VALUE, so a `_t = now` in here would update the closure's own
 	# copy and every line would read as a delta from zero. Subtract adjacent

@@ -1169,6 +1169,13 @@ func adopt_body_profile(profile: BodyProfile) -> void:
 ## missing or `scene` fails to instance as a Node3D, so a malformed
 ## body_scene degrades to "no body" rather than crashing startup.
 func _attach_body(scene: PackedScene) -> void:
+	# ⚠️ DIAGNOSTIC. Arena._ready's own marks put 2383 of its 2393 ms inside
+	# _load_body_profile, which is this. Cumulative, not per-step -- GDScript
+	# lambdas capture by value. Kept, not temporary -- ✅ the owner: "打日志的地方
+	# 就别删了，之后要勤加日志."
+	var _began := Time.get_ticks_msec()
+	var _mark := func(what: String) -> void:
+		print("[load]     _attach_body %-24s %6d ms elapsed" % [what, Time.get_ticks_msec() - _began])
 	var body_root := get_node_or_null("BodyRoot") as Node3D
 	if body_root == null:
 		return
@@ -1177,6 +1184,7 @@ func _attach_body(scene: PackedScene) -> void:
 		return
 	body = instance as Node3D
 	body_root.add_child(body)
+	_mark.call("instantiate + add_child")
 	# CAPTURED, not recomputed. body_mount_transform() derives its height from
 	# current_capsule_height(), which shrinks for a crouch or a slide -- and the
 	# body is not supposed to move when that happens, because its own animation
@@ -1186,7 +1194,9 @@ func _attach_body(scene: PackedScene) -> void:
 	_body_mount = body_mount_transform()
 	body.transform = _body_mount
 	_merge_animation_library(body)
+	_mark.call("_merge_animation_library")
 	_wire_body_animation(body)
+	_mark.call("_wire_body_animation")
 	_skeleton = _find_skeleton(body)
 	_hips_bone = _skeleton.find_bone(&"Hips") if _skeleton != null else -1
 	# NOT BUILT HERE. Twelve rigid bodies and eleven joints are not free, and
@@ -1195,9 +1205,11 @@ func _attach_body(scene: PackedScene) -> void:
 	ragdoll = Ragdoll.new()
 	head_node = _resolve_head_node(body)
 	_attach_hand_ik(body)
+	_mark.call("skeleton + ragdoll + hand IK")
 	if camera_rig != null:
 		camera_rig.eye_forward = body_eye_forward
 	_attach_head_look(body)
+	_mark.call("head look")
 	if head_node != null:
 		head_rest_local = to_local(head_node.global_position)
 
@@ -2076,6 +2088,9 @@ func _find_animation_player(root: Node) -> AnimationPlayer:
 	return null
 
 func _wire_body_animation(body_node: Node3D) -> void:
+	var _wt := Time.get_ticks_msec()
+	var _wm := func(what: String) -> void:
+		print("[load]       _wire_body %-22s %6d ms elapsed" % [what, Time.get_ticks_msec() - _wt])
 	var anim_player := body_node.get_node_or_null("AnimationPlayer") as AnimationPlayer
 	if anim_player == null:
 		return
@@ -2096,9 +2111,10 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# all sustained, hold-or-repeat clips that must keep going for as long as
 	# the state holds; jump is a discrete one-shot action and is deliberately
 	# left alone.
-	for looping_clip in [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle", &"Climb_Left", &"Climb_Right", &"Climb_Up", &"Climb_Down"]:
-		_ensure_clip_loops(anim_player, looping_clip)
+	_ensure_clips_loop(anim_player, [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle", &"Climb_Left", &"Climb_Right", &"Climb_Up", &"Climb_Down"])
+	_wm.call("loop-mode fixups")
 	_measure_scripted_hip_peaks(anim_player)
+	_wm.call("_measure_scripted_hip_peaks")
 
 	var state_machine := AnimationNodeStateMachine.new()
 	for clip_name in _KNOWN_ANIMATION_CLIPS:
@@ -2117,6 +2133,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 			apply_clip_timing(backward, clip_name, anim_player)
 			state_machine.add_node(String(clip_name) + BACKWARD_SUFFIX, backward)
 
+	_wm.call("state nodes")
 	# EVERY ORDERED PAIR GETS AN EDGE, so travel() always has a path.
 	#
 	# The graph used to carry three transitions -- Start->idle, idle->run,
@@ -2215,6 +2232,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	blend_tree.connect_node(CharacterAnimator.GRAPH_TIME_SCALE, 0, CharacterAnimator.GRAPH_GATE)
 	blend_tree.connect_node(&"output", 0, CharacterAnimator.GRAPH_TIME_SCALE)
 
+	_wm.call("every ordered-pair transition")
 	var anim_tree := AnimationTree.new()
 	anim_tree.name = "AnimationTree"
 	anim_tree.tree_root = blend_tree
@@ -2535,12 +2553,33 @@ func _measure_scripted_hip_peaks(anim_player: AnimationPlayer) -> void:
 			if peak > 0.001:
 				body_clip_hip_peaks[clip_name] = peak
 
-func _ensure_clip_loops(anim_player: AnimationPlayer, clip_name: StringName) -> void:
+## ⚠️ ONE DEEP COPY FOR THE WHOLE LIST. This took a clip name and did the
+## duplicate-swap per call, and the caller handed it forty-five names -- so a
+## level spent 2.25 SECONDS deep-copying the entire merged animation library,
+## hundreds of UAL clips, forty-five times over, to set forty-five booleans.
+##
+## It was 95% of the cost of loading a level and it hid perfectly: the loading
+## progress bar covers main.tscn's dependency tree and finishes in 80 ms, while
+## this runs inside Arena._ready() where no loader can see it, behind a white
+## curtain that made it look like loading. ✅ THE OWNER asked for the logs that
+## found it -- "那就加可观测性，打日志，我来真的点一次看看控制台输出什么东西."
+##
+## The copy itself has to stay: the imported library is shared, and writing
+## loop_mode straight into it would reach every other instance and the cached
+## resource behind them. Copying once is the whole fix.
+func _ensure_clips_loop(anim_player: AnimationPlayer, clip_names: Array) -> void:
 	var original_library := anim_player.get_animation_library("")
-	if original_library == null or not original_library.has_animation(clip_name):
+	if original_library == null:
+		return
+	var wanted: Array[StringName] = []
+	for clip_name in clip_names:
+		if original_library.has_animation(clip_name):
+			wanted.append(clip_name)
+	if wanted.is_empty():
 		return
 	var library := original_library.duplicate(true) as AnimationLibrary
-	library.get_animation(clip_name).loop_mode = Animation.LOOP_LINEAR
+	for clip_name in wanted:
+		library.get_animation(clip_name).loop_mode = Animation.LOOP_LINEAR
 	anim_player.remove_animation_library("")
 	anim_player.add_animation_library("", library)
 
