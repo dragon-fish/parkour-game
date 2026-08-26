@@ -145,6 +145,7 @@ script = ExtResource("6_spawn")
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 1.4, -4)
 script = ExtResource("2_mirror")
 size = Vector2(1.6, 2.4)
+reflection_cull_mask = 786431
 surface = SubResource("Resource_surface")
 
 [node name="Props" type="Node3D" parent="."]
@@ -231,7 +232,7 @@ shape = SubResource("Shape_3_0p5_0p8")
 mesh = SubResource("Mesh_Blue_3_0p5_0p8")
 
 [node name="FrameTop" type="StaticBody3D" parent="Props"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.72, -4.06)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.72, -3.93)
 
 [node name="Collision" type="CollisionShape3D" parent="Props/FrameTop"]
 shape = SubResource("Shape_1p9_0p16_0p12")
@@ -240,7 +241,7 @@ shape = SubResource("Shape_1p9_0p16_0p12")
 mesh = SubResource("Mesh_Frame_1p9_0p16_0p12")
 
 [node name="FrameBottom" type="StaticBody3D" parent="Props"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.08, -4.06)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.08, -3.93)
 
 [node name="Collision" type="CollisionShape3D" parent="Props/FrameBottom"]
 shape = SubResource("Shape_1p9_0p16_0p12")
@@ -249,7 +250,7 @@ shape = SubResource("Shape_1p9_0p16_0p12")
 mesh = SubResource("Mesh_Frame_1p9_0p16_0p12")
 
 [node name="FrameLeft" type="StaticBody3D" parent="Props"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.87, 1.4, -4.06)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.87, 1.4, -3.93)
 
 [node name="Collision" type="CollisionShape3D" parent="Props/FrameLeft"]
 shape = SubResource("Shape_0p16_2p8_0p12")
@@ -258,7 +259,7 @@ shape = SubResource("Shape_0p16_2p8_0p12")
 mesh = SubResource("Mesh_Frame_0p16_2p8_0p12")
 
 [node name="FrameRight" type="StaticBody3D" parent="Props"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.87, 1.4, -4.06)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.87, 1.4, -3.93)
 
 [node name="Collision" type="CollisionShape3D" parent="Props/FrameRight"]
 shape = SubResource("Shape_0p16_2p8_0p12")
@@ -273,6 +274,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, -4.35)
 shape = SubResource("Shape_1p9_0p12_0p7")
 
 [node name="Mesh" type="MeshInstance3D" parent="Props/FrameFoot"]
+layers = 262144
 mesh = SubResource("Mesh_Frame_1p9_0p12_0p7")
 
 [node name="Player" parent="." instance=ExtResource("5_player")]

@@ -18,7 +18,11 @@ render_mode cull_back, specular_schlick_ggx;
 // 厚度导致的折射+反射带来的光线损失+随机轻微扭曲，并且可以给镜面添加雾化，甚至
 // 老化或碎裂效果."
 
-uniform sampler2D reflection_tex : filter_linear, hint_default_black;
+// ⚠️ repeat_disable IS LOAD-BEARING. Godot's samplers default to repeat_enable,
+// and every offset below can push a fragment near the frame's edge past 0 or 1
+// -- where wrapping fetches from the OPPOSITE side of the reflection and draws
+// a hard seam. ✅ THE OWNER: "如果镜子位于屏幕边缘会有奇怪的缝隙."
+uniform sampler2D reflection_tex : filter_linear, repeat_disable, hint_default_black;
 
 // Light the glass loses on the way in and out. A colour rather than a scalar
 // so a mirror can lean cold or warm as well as dim; old silvering goes yellow-
@@ -110,8 +114,7 @@ void fragment() {
 	// view-space term and not a constant nudge. The x sign is a LOOK choice --
 	// flip it if the displacement leans the wrong way for you.
 	vec3 v = normalize(view_dir_local);
-	vec2 second_surface = v.xy / max(abs(v.z), 0.15) * thickness;
-	uv += second_surface;
+	vec2 offset = v.xy / max(abs(v.z), 0.15) * thickness;
 
 	// -- warp: the pane is not flat -----------------------------------------
 	if (warp > 0.0) {
@@ -119,8 +122,22 @@ void fragment() {
 			fbm2(UV * warp_scale),
 			fbm2(UV * warp_scale + 37.7)
 		) - 0.5;
-		uv += w * warp * 0.02;
+		offset += w * warp * 0.02;
 	}
+
+	// THE REFLECTION HAS NO OUTSIDE. Every offset above asks for a pixel next
+	// to this one, and near the frame's edge that pixel was never rendered --
+	// the reflection viewport holds exactly the main view's framing and not one
+	// texel more. At a grazing angle the thickness term alone reaches 0.08 uv,
+	// eight percent of the screen, which is a wide band of nothing to fetch.
+	//
+	// Faded over exactly the room each axis has left, so an offset is full
+	// strength wherever it fits and gone by the edge. Clamping alone would stop
+	// the wrap but smear the last texel into a streak instead; this way there
+	// is nothing to smear.
+	vec2 room = min(uv, vec2(1.0) - uv);
+	uv += offset * smoothstep(vec2(0.0), abs(offset) + 0.0001, room);
+	uv = clamp(uv, vec2(0.0), vec2(1.0));
 
 	// -- the reflection, hazed ----------------------------------------------
 	vec3 reflected = texture(reflection_tex, uv).rgb;
@@ -129,11 +146,13 @@ void fragment() {
 		// Godot, so there is no cheap LOD to blur with -- but the reflection is
 		// already rendered at a fraction of screen size, so these taps are
 		// cheap and land further apart than their offsets suggest.
+		// Clamped for the same reason as the offsets above: a tap that lands
+		// outside the frame has nothing to average in.
 		float r = haze * 0.006;
-		vec3 blur = texture(reflection_tex, uv + vec2( r,  r * 0.5)).rgb
-			+ texture(reflection_tex, uv + vec2(-r, -r * 0.5)).rgb
-			+ texture(reflection_tex, uv + vec2( r * 0.5, -r)).rgb
-			+ texture(reflection_tex, uv + vec2(-r * 0.5,  r)).rgb;
+		vec3 blur = texture(reflection_tex, clamp(uv + vec2( r,  r * 0.5), vec2(0.0), vec2(1.0))).rgb
+			+ texture(reflection_tex, clamp(uv + vec2(-r, -r * 0.5), vec2(0.0), vec2(1.0))).rgb
+			+ texture(reflection_tex, clamp(uv + vec2( r * 0.5, -r), vec2(0.0), vec2(1.0))).rgb
+			+ texture(reflection_tex, clamp(uv + vec2(-r * 0.5,  r), vec2(0.0), vec2(1.0))).rgb;
 		reflected = mix(reflected, blur * 0.25, haze);
 		// The half that actually sells it: contrast, not sharpness.
 		reflected = mix(reflected, haze_color.rgb, haze * 0.35);
