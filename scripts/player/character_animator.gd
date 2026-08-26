@@ -1051,20 +1051,38 @@ func _target_animation() -> StringName:
 			# and not going anywhere. ⚠️ What this really wants is a stagger.
 			return _first_available([&"Jump_Land", &"NinjaJump_Land", &"Crouch_Idle", &"sneaking", &"idle"])
 		Move.COIL:
-			# ⚠️ NOTHING IN EITHER PACK IS A COIL. The manoeuvre is legs drawn
-			# up under the chin in mid-air, and the parkour vocabulary UAL1/2
-			# ship has no airborne tuck at all -- see FULL-LIBRARY.md on where
-			# the ceiling of these packs is.
+			# ✅ GroundSit_Idle, AND THE NAME IS A RED HERRING -- the owner
+			# found it: "虽然听上去很怪但动作好像是抱膝". A coil is the legs
+			# drawn up under the chin, and a hugging-the-knees sit is that
+			# pose. Nothing in the packs is labelled as an airborne tuck.
 			#
-			# Crouch_Idle over Roll on purpose, though Roll is the closer
-			# SHAPE: a roll is a clip that turns the whole body over once, and
-			# a coil has to hold a pose for up to half a second. Played as a
-			# loop it would spin the body in the air; played as a one-shot it
-			# would finish early and leave the legs down while the capsule is
-			# still shrunk. A crouch pose is wrong in the air and reads as a
-			# tuck anyway, which is the trade a placeholder is for.
-			return _first_available([&"Crouch_Idle", &"sneaking", &"Jump",
-				&"NinjaJump_Idle", &"jump", &"idle"])
+			# It loops (1.33 s), which is what a pose held for up to half a
+			# second needs. ⚠️ NOT Roll, though a roll is the closer NAME:
+			# measured, its hips sweep 0.055 -> 1.245 m across 1.47 s and it
+			# does not loop, so as a loop it spins the body in mid-air and as a
+			# one-shot it finishes early and puts the legs down while the
+			# capsule is still shrunk.
+			#
+			# ⚠️ IT NEEDS A CLIP OFFSET AND WILL LOOK BROKEN WITHOUT ONE.
+			# Measured over the clip, hips against the same skeleton:
+			#
+			#   GroundSit_Idle   0.068          <- sitting ON the floor
+			#   Crouch_Idle      0.512          the previous placeholder
+			#   Idle / Jump      0.948          standing reference
+			#
+			# So played untouched the body drops about 0.88 m, which is the
+			# same failure LiftAir_Fall produced in mid-air (see
+			# Move.FALL_UNCONTROLLED below). The correction belongs in
+			# BodyProfile.clip_offsets, keyed by clip and tuned per body with
+			# scripts/debug/clip_offset_tuner.gd -- not hardcoded here, because
+			# the number is a function of the skeleton and every model has its
+			# own.
+			#
+			# Crouch_Idle stays in the chain behind it: GroundSit_Idle is in
+			# UAL1's FULL tier only, and the tracked free packs must still
+			# produce something (see FULL-LIBRARY.md).
+			return _first_available([&"GroundSit_Idle", &"Crouch_Idle",
+				&"sneaking", &"Jump", &"NinjaJump_Idle", &"jump", &"idle"])
 		Move.SKILL_ROLL:
 			# A GENUINE MATCH: UAL1 ships a Roll. This was once the weakest
 			# placeholder in the file -- a ground tumble had no relative in the
