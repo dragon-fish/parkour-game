@@ -359,6 +359,27 @@ func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
 	_pending_scene_change = false
 	print("[load] scene swap + every _ready(): %d ms" % (Time.get_ticks_msec() - swap_started))
 
+	# ⚠️ THE ONE PART NO HEADLESS MEASUREMENT CAN SEE. Godot compiles a material
+	# pipeline the first time it is actually DRAWN, so the first few frames of a
+	# new level can each stall on shaders that no loader and no _ready() timing
+	# knows about. ✅ THE OWNER asked exactly the right question -- "还是说我们之
+	# 前在白屏期间卡住的时间是把东西渲染到画面所必须消耗的时间?" It was not: that
+	# was 2.25 s of deep-copying an animation library. This is what is left, and
+	# a frame over ~50 ms here is a pipeline being built, not a slow scene.
+	var frame_started := Time.get_ticks_msec()
+	var worst := 0
+	var stalls := 0
+	for i in 20:
+		await get_tree().process_frame
+		var now := Time.get_ticks_msec()
+		var frame := now - frame_started
+		frame_started = now
+		if frame > 50:
+			stalls += 1
+			print("[load]   first-draw frame %2d stalled %d ms" % [i, frame])
+		worst = maxi(worst, frame)
+	print("[load] first 20 frames drawn: worst %d ms, %d over 50 ms" % [worst, stalls])
+
 	# ⚠️ THE LEVEL IS ALREADY LIVE UNDER THE SHEET. change_scene_to_packed has
 	# returned, every _ready() has run and the player is standing in the world
 	# taking input -- while the screen is still solid white. ✅ THE OWNER: "黑白
