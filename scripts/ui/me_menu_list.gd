@@ -183,6 +183,9 @@ func _refresh_colors() -> void:
 	for i in _labels.size():
 		var selected := i == _selected_index
 		_labels[i].add_theme_color_override("font_color", _SELECTED_TEXT_COLOR if selected else Color.WHITE)
+		# The selected row goes dark on a white bar, so its shadow has to
+		# turn light with it -- see MeTheme.fit_shadow.
+		MeTheme.fit_shadow(_labels[i])
 
 func _slide_selection_bar() -> void:
 	if _labels.is_empty():

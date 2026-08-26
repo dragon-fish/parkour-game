@@ -94,6 +94,7 @@ func _build_ui() -> void:
 	title.text = "设置"
 	title.add_theme_font_size_override("font_size", 34)
 	title.add_theme_color_override("font_color", Color(0.55, 0.62, 0.72))
+	MeTheme.fit_shadow(title)
 	title.position = Vector2(220.0, 90.0)
 	add_child(title)
 
@@ -125,6 +126,7 @@ func _build_ui() -> void:
 	_description_label = Label.new()
 	_description_label.text = _DEFAULT_DESCRIPTION
 	_description_label.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
+	MeTheme.fit_shadow(_description_label)
 	_description_label.add_theme_font_size_override("font_size", 20)
 	_description_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_description_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -146,6 +148,7 @@ func _build_ui() -> void:
 		label.custom_minimum_size = Vector2(140.0, _ROW_HEIGHT)
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		label.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
+		MeTheme.fit_shadow(label)
 		label.add_theme_font_size_override("font_size", 20)
 		label.mouse_filter = Control.MOUSE_FILTER_STOP
 		label.mouse_entered.connect(_show_description.bind(desc))
@@ -191,6 +194,7 @@ func _build_stepper(line: HBoxContainer, key: String, desc: String) -> void:
 	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	value_label.add_theme_font_size_override("font_size", 22)
 	value_label.add_theme_color_override("font_color", Color(0.16, 0.28, 0.45))
+	MeTheme.fit_shadow(value_label)
 	value_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	value_label.mouse_entered.connect(_show_description.bind(desc))
 	line.add_child(value_label)
@@ -248,6 +252,7 @@ func _build_slider(line: HBoxContainer, key: String, desc: String) -> void:
 	var value_label := Label.new()
 	value_label.custom_minimum_size = Vector2(80.0, 0.0)
 	value_label.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
+	MeTheme.fit_shadow(value_label)
 	line.add_child(value_label)
 	_slider_value_labels[key] = value_label
 

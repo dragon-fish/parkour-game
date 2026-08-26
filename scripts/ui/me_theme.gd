@@ -16,6 +16,13 @@ const BACKDROP := Color(0.90, 0.93, 0.97, 0.72)
 ## blend is approximated by plain alpha black, indistinguishable on our
 ## light surfaces.
 const TEXT_SHADOW_COLOR := Color(0.0, 0.0, 0.0, 0.35)
+## ⚠️ THE SHADOW HAS TO CONTRAST WITH THE TEXT, not just exist. A dark shadow
+## under dark text is not a shadow, it is a smear -- the settings page's blue
+## labels read as doubled (✅ the owner: 白字用暗色 shadow，黑字用白色 shadow，
+## 否则糊得看不清). Light text keeps the Photoshop spec above; dark text gets
+## this instead. fit_shadow() below picks by luminance so nothing has to
+## remember which is which.
+const TEXT_SHADOW_LIGHT_COLOR := Color(1.0, 1.0, 1.0, 0.55)
 const TEXT_SHADOW_OFFSET := 3
 
 static var _ui_theme: Theme = null
@@ -31,6 +38,17 @@ static func ui_theme() -> Theme:
 			_ui_theme.set_constant("shadow_offset_y", cls, TEXT_SHADOW_OFFSET)
 			_ui_theme.set_constant("shadow_outline_size", cls, 0)
 	return _ui_theme
+
+## Gives `control` the shadow its own font colour needs: dark under light
+## text, light under dark text. Call it AFTER the colour is set, and again
+## whenever the colour changes (MeMenuList does, on every selection).
+static func fit_shadow(control: Control) -> void:
+	var color: Color = control.get_theme_color("font_color")
+	var on_light_text: bool = color.get_luminance() > 0.5
+	control.add_theme_color_override("font_shadow_color",
+		TEXT_SHADOW_COLOR if on_light_text else TEXT_SHADOW_LIGHT_COLOR)
+	control.add_theme_constant_override("shadow_offset_x", TEXT_SHADOW_OFFSET)
+	control.add_theme_constant_override("shadow_offset_y", TEXT_SHADOW_OFFSET)
 
 const _EDGE_WAVE_SHADER := preload("res://scripts/ui/edge_wave.gdshader")
 const _DOT_GRID_SHADER := preload("res://scripts/ui/dot_grid.gdshader")
@@ -120,6 +138,9 @@ static func dress_slider(slider: HSlider) -> void:
 
 static func _themed(label: Label) -> Label:
 	label.theme = ui_theme()
+	# The corner metadata and the footer are dark text on the pale backdrop,
+	# so they take the light shadow -- see fit_shadow's own note.
+	fit_shadow(label)
 	return label
 
 static func corner_label(text: String, anchor_x: float, anchor_y: float, offset: Vector2, right_aligned: bool = false) -> Label:
