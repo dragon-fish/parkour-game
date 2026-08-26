@@ -215,6 +215,7 @@ func _arrow_button(glyph: String) -> Button:
 	button.custom_minimum_size = Vector2(40.0, 0.0)
 	button.add_theme_font_size_override("font_size", 26)
 	button.add_theme_color_override("font_color", MeTheme.BRAND_RED)
+	MeTheme.fit_shadow(button)
 	button.add_theme_color_override("font_hover_color", MeTheme.BRAND_RED.lightened(0.25))
 	button.add_theme_color_override("font_pressed_color", MeTheme.BRAND_RED.darkened(0.2))
 	button.add_theme_color_override("font_disabled_color", Color(0.6, 0.65, 0.72))

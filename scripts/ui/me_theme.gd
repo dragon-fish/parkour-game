@@ -228,6 +228,7 @@ static func confirm_dialog(question_text: String, stay_text: String,
 	question.text = question_text
 	question.add_theme_font_size_override("font_size", 24)
 	question.add_theme_color_override("font_color", TEXT_BLUE)
+	fit_shadow(question)
 	question.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(question)
 

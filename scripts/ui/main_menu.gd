@@ -379,6 +379,7 @@ func _build_click_prompt() -> void:
 	_click_prompt.add_theme_font_size_override("font_size", 22)
 	_click_prompt.add_theme_color_override("font_color", MeTheme.TEXT_BLUE)
 	_click_prompt.theme = MeTheme.ui_theme()
+	MeTheme.fit_shadow(_click_prompt)
 	_click_prompt.anchor_left = 0.5
 	_click_prompt.anchor_right = 0.5
 	_click_prompt.anchor_top = 0.86
