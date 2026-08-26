@@ -39,8 +39,16 @@ extends SkeletonModifier3D
 var _applied: float = 0.0
 ## The thing that knows which clip is playing: an AnimationTree if the body
 ## has one (the game), else an AnimationPlayer (the menu and the viewer).
+##
+## ⚠️ AN AnimationPlayer ANSWER IS PROVISIONAL, AND CACHING IT WAS THE BUG.
+## CharacterAnimator builds the AnimationTree at RUNTIME, so the first search
+## from a modifier that ticks before it exists finds only the imported model's
+## own AnimationPlayer -- and that player is the tree's clip LIBRARY, not its
+## driver: in game its current_animation is the empty string, so no clip ever
+## matched and the arms never opened. It worked in the character showcase for
+## the one reason that there IS no tree there, which made the wrong answer the
+## right one. ✅ THE OWNER: "感觉只在角色展台生效了，普通关卡里手臂还是贴死腰."
 var _driver: Node = null
-var _searched: bool = false
 
 func _process_modification_with_delta(delta: float) -> void:
 	var skeleton := get_skeleton()
@@ -75,8 +83,11 @@ func _process_modification_with_delta(delta: float) -> void:
 func _clip_is_listed() -> bool:
 	if clips.is_empty():
 		return true
-	if not _searched:
-		_searched = true
+	# Re-searched while the answer is still provisional -- see _driver. A tree
+	# once found is final and never looked for again; an AnimationPlayer keeps
+	# being re-checked in case a tree turns up later, which is a walk of a few
+	# ancestors and only happens where no tree will ever exist.
+	if not (_driver is AnimationTree) or not is_instance_valid(_driver):
 		_driver = _find_driver()
 	if _driver is AnimationTree:
 		# The state machine's own name is the project's, not Godot's default
