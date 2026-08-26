@@ -36,6 +36,7 @@ func _init() -> void:
 	create_material("spawn", Color(0.75, 0.4, 1.0))
 	for kind in KIND_COLORS:
 		create_material("line_%d" % kind, KIND_COLORS[kind])
+	create_material("mirror", Color(0.45, 0.78, 1.0))
 	create_handle_material("handles")
 	_capsule_mesh = CapsuleMesh.new()
 	_capsule_mesh.radius = RADIUS
@@ -51,7 +52,8 @@ func _init() -> void:
 	# The translucent body fill -- the lines carry the clicking, this
 	# carries the "a body stands here" read the mesh preview used to give.
 	for entry in [["checkpoint", Color(0.2, 0.9, 0.4, 0.25)],
-			["spawn", Color(0.75, 0.4, 1.0, 0.25)]]:
+			["spawn", Color(0.75, 0.4, 1.0, 0.25)],
+			["mirror", Color(0.45, 0.78, 1.0, 0.18)]]:
 		var fill := StandardMaterial3D.new()
 		fill.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		fill.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -67,13 +69,16 @@ func _get_gizmo_name() -> String:
 	return "RespawnPoints"
 
 func _has_gizmo(node: Node3D) -> bool:
-	return node is Checkpoint or node is SpawnPoint or node is InterestLine
+	return node is Checkpoint or node is SpawnPoint or node is InterestLine or node is Mirror
 
 func _redraw(gizmo: EditorNode3DGizmo) -> void:
 	gizmo.clear()
 	var node: Node3D = gizmo.get_node_3d()
 	if node is InterestLine:
 		_redraw_interest_line(gizmo, node)
+		return
+	if node is Mirror:
+		_redraw_mirror(gizmo, node)
 		return
 	var checkpoint: bool = node is Checkpoint
 	var bottom: float = -HEIGHT * 0.5
@@ -144,15 +149,25 @@ func _arrow_lines(bottom: float) -> PackedVector3Array:
 
 # --- the yaw handle --------------------------------------------------------
 
-func _get_handle_name(_gizmo: EditorNode3DGizmo, _id: int, _secondary: bool) -> String:
+func _get_handle_name(gizmo: EditorNode3DGizmo, id: int, _secondary: bool) -> String:
+	if gizmo.get_node_3d() is Mirror:
+		return "width" if id == MIRROR_WIDTH_HANDLE else "height"
 	return "yaw"
 
 func _get_handle_value(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool) -> Variant:
-	return gizmo.get_node_3d().global_rotation
+	var node: Node3D = gizmo.get_node_3d()
+	# The WHOLE size, not the one axis being dragged: cancelling a drag has to
+	# put back what was there, and a Vector2 restores in one assignment.
+	if node is Mirror:
+		return (node as Mirror).size
+	return node.global_rotation
 
-func _set_handle(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool,
+func _set_handle(gizmo: EditorNode3DGizmo, id: int, _secondary: bool,
 		camera: Camera3D, screen_pos: Vector2) -> void:
 	var node: Node3D = gizmo.get_node_3d()
+	if node is Mirror:
+		_set_mirror_size_handle(node as Mirror, id, camera, screen_pos)
+		return
 	var chest: float = 1.0 - HEIGHT * 0.5
 	# The drag lives on the horizontal plane the arrow sits in: wherever the
 	# mouse ray crosses it, that is where the arrow should point.
@@ -171,6 +186,16 @@ func _set_handle(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool,
 func _commit_handle(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool,
 		restore: Variant, cancel: bool) -> void:
 	var node: Node3D = gizmo.get_node_3d()
+	if node is Mirror:
+		if cancel:
+			(node as Mirror).size = restore
+			return
+		var mirror_ur: EditorUndoRedoManager = EditorInterface.get_editor_undo_redo()
+		mirror_ur.create_action("Resize mirror")
+		mirror_ur.add_do_property(node, "size", (node as Mirror).size)
+		mirror_ur.add_undo_property(node, "size", restore)
+		mirror_ur.commit_action()
+		return
 	if cancel:
 		node.global_rotation = restore
 		return
@@ -235,3 +260,82 @@ func _redraw_interest_line(gizmo: EditorNode3DGizmo, line: InterestLine) -> void
 			lines.append(mid + wing)
 	gizmo.add_lines(lines, material)
 	gizmo.add_collision_segments(lines)
+
+
+# --- mirrors ---------------------------------------------------------------
+
+## Handle ids. Two, one per axis of Mirror.size.
+const MIRROR_WIDTH_HANDLE := 0
+const MIRROR_HEIGHT_HANDLE := 1
+## The smallest a drag may make a pane. Not a design limit -- it just stops a
+## handle dragged through the centre from collapsing the gizmo it lives on.
+const MIN_MIRROR_SIZE := 0.1
+
+## Mirror builds its glass in _ready(), which never runs in the editor, so the
+## node is invisible and un-clickable there. ✅ THE OWNER: "镜子实体在编辑器里
+## 完全看不见摸不着，可能会让我很难摆，希望可以显示一个面片，可以通过手柄调整宽高."
+##
+## A gizmo rather than a @tool preview mesh, for the reason this file's header
+## already gives about the respawn capsule: a runtime-built mesh has no owner,
+## so the editor's selection ray refuses to see it. Gizmo lines DO take
+## collision segments, so the rectangle is clickable.
+##
+## THE ARROW IS NOT DECORATION. A mirror faces its own -Z (the Checkpoint
+## convention) and a pane placed backwards reflects the wall behind it, which
+## looks like a broken mirror rather than a turned one.
+func _redraw_mirror(gizmo: EditorNode3DGizmo, mirror: Mirror) -> void:
+	var half_x: float = maxf(mirror.size.x, MIN_MIRROR_SIZE) * 0.5
+	var half_y: float = maxf(mirror.size.y, MIN_MIRROR_SIZE) * 0.5
+	var corners := [
+		Vector3(-half_x, -half_y, 0.0), Vector3(half_x, -half_y, 0.0),
+		Vector3(half_x, half_y, 0.0), Vector3(-half_x, half_y, 0.0),
+	]
+	var lines := PackedVector3Array()
+	for i in 4:
+		lines.append(corners[i])
+		lines.append(corners[(i + 1) % 4])
+	# One diagonal pair, so a pane seen edge-on still reads as a surface rather
+	# than as a single line.
+	lines.append(corners[0])
+	lines.append(corners[2])
+	lines.append(corners[1])
+	lines.append(corners[3])
+	# The facing stub, along -Z.
+	var reach: float = minf(half_x, half_y) * 0.6
+	lines.append(Vector3.ZERO)
+	lines.append(Vector3(0.0, 0.0, -reach))
+	for tip in [Vector3(reach * 0.25, 0.0, -reach * 0.7), Vector3(-reach * 0.25, 0.0, -reach * 0.7)]:
+		lines.append(Vector3(0.0, 0.0, -reach))
+		lines.append(tip)
+
+	var material: StandardMaterial3D = get_material("mirror", gizmo)
+	gizmo.add_lines(lines, material)
+	gizmo.add_collision_segments(lines)
+
+	var fill := PlaneMesh.new()
+	fill.size = Vector2(half_x * 2.0, half_y * 2.0)
+	fill.orientation = PlaneMesh.FACE_Z
+	gizmo.add_mesh(fill, _fills["mirror"], Transform3D())
+
+	gizmo.add_handles(PackedVector3Array([
+		Vector3(half_x, 0.0, 0.0),   # MIRROR_WIDTH_HANDLE
+		Vector3(0.0, half_y, 0.0),   # MIRROR_HEIGHT_HANDLE
+	]), get_material("handles", gizmo), PackedInt32Array())
+
+## Drags one edge of the pane. The drag lives in the mirror's OWN plane -- the
+## mouse ray is crossed with it and the hit read back in local space, so the
+## handle tracks the cursor at any viewing angle instead of only head-on.
+func _set_mirror_size_handle(mirror: Mirror, id: int, camera: Camera3D, screen_pos: Vector2) -> void:
+	var plane := Plane(mirror.global_transform.basis.z.normalized(), mirror.global_position)
+	var hit: Variant = plane.intersects_ray(
+		camera.project_ray_origin(screen_pos), camera.project_ray_normal(screen_pos))
+	if hit == null:
+		return
+	var local: Vector3 = mirror.global_transform.affine_inverse() * (hit as Vector3)
+	# Doubled because the handle sits on an EDGE and the size spans both sides
+	# of the origin; absolute so dragging past the centre grows the far edge
+	# rather than inverting the pane.
+	if id == MIRROR_WIDTH_HANDLE:
+		mirror.size = Vector2(maxf(absf(local.x) * 2.0, MIN_MIRROR_SIZE), mirror.size.y)
+	else:
+		mirror.size = Vector2(mirror.size.x, maxf(absf(local.y) * 2.0, MIN_MIRROR_SIZE))
