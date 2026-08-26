@@ -37,7 +37,8 @@ const CLIP_MENU: Array = [
 	# No mid-air part at all: a jump has to read as one motion (✅ the owner:
 	# 跳跃需要一气呵成的感觉, 否则像悬空). Climb keeps its hang because that IS
 	# the pose worth showing.
-	["Jump", [&"Jump_Start", &"Jump_Land"], false],
+	# Jump_Start's back half eases into the hang; cut at the apex.
+	["Jump", [[&"Jump_Start", 0.65], &"Jump_Land"], false],
 	["Slide", [&"Slide_Start", [&"Slide", 1.0], &"Slide_Exit"], false],
 	["Roll", [&"Roll"], false],
 	["SafetyVault", [&"SafetyVault"], false],
