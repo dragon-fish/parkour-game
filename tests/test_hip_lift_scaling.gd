@@ -1,5 +1,11 @@
 extends ParkourTest
 
+# ⚠️ ONE TEST WAS REMOVED FROM THIS FILE: it asserted that the clip's own hip
+# curve and MovementConfig.scripted_path_arcs were mutually exclusive, and
+# that flag went with the multi-rule path in 0a30f90. There is only one way
+# now -- the bezier carries the body and the clip supplies the pose -- so
+# there is nothing left for the two ways to be exclusive about.
+
 # A clip's own hip lift is SCALED to what the obstacle needs, not fixed.
 #
 # THE OWNER, arriving at it: "所以其实就是我们应该让动画的髋部最高点缩放到我们所需的高度？
@@ -115,24 +121,3 @@ func test_a_clip_that_was_never_measured_keeps_nothing() -> void:
 	var player: Player = await _player_with_clips([&"StepUp"])
 	assert_eq(player.clip_lift_kept_for(&"NotAClip", 0.5), 0.0,
 		"an unmeasured clip was given a fraction of a peak it does not have")
-
-func test_the_two_ways_are_mutually_exclusive() -> void:
-	# ⚠️ NEVER BOTH. An arced path under a clip that also lifts is the
-	# double-count that put the hands 1.32 m out in the first place, which is why
-	# this is one flag rather than two knobs somebody can set wrong.
-	#
-	# Measured in the lab on a 1.50 m obstacle, capsule rise above the straight
-	# line between the move's ends: 0.000 m with the flag off, 1.366 m with it on.
-	# THE ARCING PATH IS THE DEFAULT, on the owner's call after seeing both:
-	# "我希望动画走弧线，并且动画的盆骨全程钉死胶囊中心点."
-	var config := MovementConfig.new()
-	assert_true(config.scripted_path_arcs,
-		"the arcing path is no longer the default")
-	var player: Player = await _player_with_clips([&"StepUp"])
-	# With the path arcing, the clip's own lift must be given up entirely --
-	# whatever the obstacle would otherwise have asked for.
-	player.config.scripted_path_arcs = true
-	player.set_clip_lift_kept(0.0 if player.config.scripted_path_arcs
-		else player.clip_lift_kept_for(&"StepUp", 0.6))
-	assert_eq(player.debug_clip_lift_kept(), 0.0,
-		"the hips still lift while the path is already arcing")

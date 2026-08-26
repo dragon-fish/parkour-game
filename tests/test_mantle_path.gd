@@ -1,5 +1,15 @@
 extends ParkourTest
 
+# ⚠️ FOUR TESTS WERE REMOVED FROM THIS FILE, and what they pinned no longer
+# exists. They exercised GrabConfig.mantle_vertical_lead and
+# MovementConfig.scripted_path_arcs -- the two-curve path and the optional
+# camera arc -- which 0a30f90 deleted when four interacting rules collapsed
+# into one bezier with one dial (✅ the owner: 你做的多段曲线都丑爆了). They had
+# been red ever since, failing at the engine level on a property that is not
+# there, which is worse than useless: a red suite hides the next real
+# regression. The single curve they were replaced by is covered by the tests
+# that remain here and by test_scripted_path.gd.
+
 # The shape and the length of a pull-up.
 #
 # ✅ THE OWNER, with a drawing: "脚本弧线不对，它的趋势应该是先垂直向上然后再往前送，
@@ -120,33 +130,6 @@ func test_it_still_arrives_where_it_was_aimed() -> void:
 		"the pull-up finished %.3f m from where it aimed"
 		% player.global_position.distance_to(target))
 
-func test_a_lead_of_zero_is_the_old_single_curve() -> void:
-	# ⚠️ THE PROMISE THE PARAMETER MAKES, and the one everything else in the game
-	# relies on: SpeedVault drives the same begin(), and a vault genuinely does
-	# travel up and over as ONE motion over something BELOW it. Zero has to mean
-	# "exactly as before", not "nearly".
-	#
-	# 📌 The first version of this test asserted a table value equalled itself.
-	# It passed, and proved nothing -- which is the failure mode this whole file
-	# is about, in miniature.
-	var bits: Array = await _mantling_player()
-	var player: Player = bits[0]
-	var grab: GrabMove = bits[1]
-	var start: Vector3 = bits[2]
-	# Re-aim the same move with no lead at all.
-	player.config.grab.mantle_vertical_lead = 0.0
-	grab.begin(start, grab._to, player.config.grab.mantle_duration, 0.0, 0.0)
-	grab.physics_update(player.config.grab.mantle_duration * 0.4, forward_input())
-	var target: Vector3 = grab._to
-	var rise: float = (player.global_position.y - start.y) / maxf(target.y - start.y, 0.0001)
-	var travel: float = absf(player.global_position.z - start.z) 			/ maxf(absf(target.z - start.z), 0.0001)
-	# One curve for both axes means they are at the same fraction of the way.
-	assert_almost_eq(rise, travel, 0.01,
-		"with no lead the rise was %.2f and the travel %.2f, which is not one curve"
-		% [rise, travel])
-
-# --- the length -----------------------------------------------------------------
-
 func test_a_pull_up_is_slower_than_a_vault_over() -> void:
 	# ✅ THE OWNER: "它不应该比 VaultOver 还快."
 	#
@@ -171,45 +154,6 @@ func forward_input() -> MoveInput:
 
 # --- the simplest possible path ---------------------------------------------
 
-func test_a_pull_up_rises_before_it_goes_forward() -> void:
-	# ✅ THE OWNER, hand-keying against it: "我发现手k动画，不如让胶囊走匀速直线，否则
-	# 我还得对抗那个特别奇怪的曲线."
-	#
-	# 🎯 Which is their own methodology arriving at its end point -- see
-	# docs/capsule-leads-presentation.md. What the capsule owes is
-	# PREDICTABILITY: an offset keyed at 40% of the way through has to describe a
-	# body 40% of the way along, or the person keying it is solving two problems
-	# at once.
-	#
-	# ⚠️ AND THEN THEY CHANGED THEIR MIND ON THE EVIDENCE, which is why this test
-	# now asserts the opposite of what it used to: "我希望动画走弧线，并且动画的盆骨全
-	# 程钉死胶囊中心点", and on this move in particular, "stepup 和 GrabPullUp 还是
-	# 直线？"
-	#
-	# 🎯 A STRAIGHT LINE WAS PREDICTABLE AND WRONG. The straight line held while
-	# the CLIP was carrying the rise; with the hips pinned to the capsule there is
-	# nothing left to lift the body, and a pull-up that travels in a straight line
-	# from a hang to a rooftop goes through the wall on the way.
-	#
-	# 📌 Not a symmetric arc either, which is the part worth keeping: a bump peaks
-	# in the MIDDLE OF THE JOURNEY and a pull-up's wall is at its NEAR END, so an
-	# arc would swing the body away from the face at half height -- the one
-	# direction it cannot go. Rise, cross, settle.
-	var bits: Array = await _mantling_player()
-	var player: Player = bits[0]
-	var grab: GrabMove = bits[1]
-	var start: Vector3 = bits[2]
-	var target: Vector3 = grab._to
-	assert_gt(player.config.grab.mantle_vertical_lead, 0.0,
-		"the pull-up is back to a single straight segment")
-	var quarter: Vector3 = grab.sample(0.25)
-	assert_gt(quarter.y - start.lerp(target, 0.25).y, 0.3,
-		"a quarter of the way through the body has barely left the hang")
-	# And it is AHEAD of the travel, not merely above it: at the same point the
-	# body should have risen further than it has moved along.
-	var risen: float = (quarter.y - start.y) / maxf(target.y - start.y, 0.001)
-	assert_gt(risen, 0.5, "the rise is not leading the travel at all")
-
 func test_the_ease_is_still_there_for_anything_that_asks() -> void:
 	# The pair. "Linear by default" is a decision about the DEFAULT, and a move
 	# that wants the old push-off shape should not have to reinstate it in code.
@@ -223,58 +167,3 @@ func test_the_ease_is_still_there_for_anything_that_asks() -> void:
 	var straight: Vector3 = start.lerp(target, 0.5)
 	assert_gt(at.distance_to(straight), 0.05,
 		"asking for an ease of 2.0 still produced a straight line")
-
-## The rule is about EVERY scripted move, not just this one.
-##
-## THE OWNER: "所有由脚本进行位移的动作在绑定了动画的时候胶囊都做匀速直线运动." There
-## are exactly two callers of ScriptedMove.begin() -- the mantle and the vault --
-## and this fails if a third arrives carrying a curve, or if either default is
-## quietly put back.
-func test_no_scripted_move_ships_with_a_curve_on_by_default() -> void:
-	var grab := GrabConfig.new()
-	var vault := SpeedVaultConfig.new()
-	assert_eq(grab.mantle_path_ease, 1.0, "the mantle travels at a steady pace")
-	# ⚠️ THE COMPOSITE IS NOT AN ARC. The shape a pull-up needs comes from the
-	# vertical lead, which is a different mechanism entirely -- see
-	# GrabConfig.mantle_vertical_lead. This test is about the BUMP.
-	assert_gt(grab.mantle_vertical_lead, 0.0,
-		"the pull-up lost the only shape it had")
-	assert_eq(vault.vault_path_ease, 1.0, "so does the vault")
-
-## An arc no longer bends the path -- it lifts the camera, and only as a
-## fallback.
-##
-## THE OWNER, settling what the number is for: "所有脚本动作，胶囊永远只走直线，只有没
-## 绑角色模型和骨骼的时候，才用得到相机去模拟轨迹，所以这个轨迹只留给 fallback 的相机偏移."
-##
-## The vault's arc was the last exception and it was never really a path
-## decision: SpeedVaultMove derives it by aiming at the EYE, so that the eye
-## clears a 1.5 m obstacle rather than passing through it. That is a camera job,
-## and this pins it as one -- ask for a metre of arc and the body must not move
-## a millimetre off the line, while the eye must.
-func test_an_arc_lifts_the_camera_and_leaves_the_path_alone() -> void:
-	var bits: Array = await _mantling_player()
-	var player: Player = bits[0]
-	var grab: GrabMove = bits[1]
-	var start := Vector3(0.0, 1.0, 0.0)
-	var target := Vector3(0.0, 3.0, -1.0)
-	# ⚠️ WHICH IT DOES DEPENDS ON THE MODE, and the default has since flipped:
-	# ✅ "我希望动画走弧线，并且动画的盆骨全程钉死胶囊中心点." With arcs ON the rise is
-	# the PATH's and the hips are pinned; with them off the path is straight and
-	# the clip's own hip lift is scaled to it. Never both -- see
-	# MovementConfig.scripted_path_arcs.
-	player.config.scripted_path_arcs = false
-	grab.begin(start, target, 1.0, 1.0)
-	for f in [0.25, 0.5, 0.75]:
-		var at: Vector3 = grab.sample(f)
-		assert_almost_eq(at.y, start.lerp(target, f).y, 0.0001,
-			"with arcs off, a metre of arc still moved the body at %.2f" % f)
-	# And it is not simply thrown away: the eye still has to clear the obstacle
-	# when there is no model for it to follow.
-	grab.advance(0.5)
-	assert_gt(grab.camera_lift(), 0.9,
-		"the arc reached neither the body nor the camera, so it is just gone")
-	player.config.scripted_path_arcs = true
-	grab.begin(start, target, 1.0, 1.0)
-	assert_gt(grab.sample(0.5).y - start.lerp(target, 0.5).y, 0.9,
-		"with arcs on, the path did not take the rise")

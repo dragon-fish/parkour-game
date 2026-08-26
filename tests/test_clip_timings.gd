@@ -64,16 +64,29 @@ func test_a_start_offset_skips_the_run_up() -> void:
 	assert_almost_eq(node.timeline_length, 1.2, 0.0001,
 		"a length of 0 did not run to the end of the clip")
 
-func test_a_length_stretches_the_kept_part_to_fit() -> void:
-	# The point of the length: a 1.5 s clip has to fit a 0.65 s vault, and
-	# stretching is what makes the plant land inside the move rather than after
-	# it. Without stretch_time_scale the trim only skips the run-up.
+func test_a_length_resizes_the_kept_part_without_stretching_it_here() -> void:
+	# The length sets the window; the FIT is applied elsewhere, and the flag
+	# stays off on purpose.
+	#
+	# ⚠️ THIS TEST USED TO ASSERT THE OPPOSITE -- that stretch_time_scale was
+	# on, so a 1.5 s clip would be squeezed into a 0.65 s vault here. That is
+	# the bug the owner reported: "对于共计39帧的动画设置 from frame=11 / to
+	# frame=0，最后11帧会定格." stretch_time_scale maps the clip's ORIGINAL
+	# length onto timeline_length, while start_offset has already removed
+	# frames of content -- so the kept part runs 39/28 = 1.39x too fast,
+	# finishes early, and holds its last pose for the rest of the window.
+	#
+	# 🎯 And the job it was added for is done properly one layer up:
+	# CharacterAnimator._scripted_fit() divides the KEPT length by the move's
+	# duration and drives the graph's time scale with it, which stretches the
+	# node's content and its custom timeline together. Two stretches were
+	# fighting; the one that measured the wrong length is the one that went.
 	var node: AnimationNodeAnimation = await _node_for({
 		&"SafetyVault": [0.8, 0.65],
 	})
 	assert_almost_eq(node.timeline_length, 0.65, 0.0001, "the kept part was not resized")
-	assert_true(node.stretch_time_scale,
-		"the kept part is cut off at 0.65 s rather than stretched into it")
+	assert_false(node.stretch_time_scale,
+		"stretch_time_scale is back on, and it freezes the tail of a trimmed clip")
 
 func test_a_malformed_entry_is_ignored_rather_than_fatal() -> void:
 	# Hand-pasted from a debug tool, like the offsets beside them.

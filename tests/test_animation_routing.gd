@@ -357,18 +357,25 @@ func test_a_body_without_the_travel_clips_keeps_hanging() -> void:
 
 # --- a pull-up is a slow haul ------------------------------------------------
 
-func test_a_pull_up_prefers_the_long_climb() -> void:
-	# ✅ THE OWNER: "GrabPullUp 还是太快了...ME 里体感将近 2s 呢，这个动画也得换成
-	# ClimbUp_2m."
-	#
-	# 📌 Measured, the three candidates are ClimbUp_2m 1.300 s, ClimbUp_1m 0.667
-	# and ClimbLedge 0.633. TdMove_GrabPullUp carries no duration field at all,
-	# which says the length comes from the clip -- so picking the clip IS picking
-	# the duration, and GrabConfig.mantle_duration is 1.3 to match.
-	#
-	# ⚠️ THIS OVERRULES AN ARGUMENT THE ROUTING ITSELF USED TO MAKE, that
-	# ClimbUp_* starts from STANDING while ClimbLedge belongs to the hang set.
-	# True, and it lost: ClimbLedge is over before the body has left the lip.
+## THE PULL-UP TAKES THE SHORT CLIP, and this assertion has now been written
+## twice in opposite directions -- which is why the reasoning is here rather
+## than the verdict alone.
+##
+## ✅ FIRST: "GrabPullUp 还是太快了...ME 里体感将近 2s 呢，这个动画也得换成
+## ClimbUp_2m." ClimbUp_2m is 1.300 s, ClimbUp_1m 0.667, ClimbLedge 0.633, and
+## at that time the CLIP had to supply the whole climb: the capsule travelled
+## in a straight line and the hips did the lifting, so a short clip meant a
+## short climb.
+##
+## ✅ THEN, once the scripted path carried the rise itself: "Grab动画改成1m的
+## 版本." The ground under the first argument had moved. The pelvis is pinned
+## to the capsule and a bezier lifts it, so what the clip owes is the POSE --
+## and the long one spends most of its length hauling a body that is already
+## being carried. The duration does not follow the clip either:
+## CharacterAnimator._scripted_fit() stretches whatever is kept into
+## GrabConfig.mantle_duration, and 0.667 into 1.3 is 0.51x, well inside the
+## clamp, so the short clip simply plays slower.
+func test_a_pull_up_takes_the_short_climb() -> void:
 	var animator: CharacterAnimator = await _animator_with(
 		[&"idle", &"Climb_Idle", &"ClimbLedge", &"ClimbUp_1m", &"ClimbUp_2m"])
 	var player: Player = _world["player"]
@@ -380,7 +387,7 @@ func test_a_pull_up_prefers_the_long_climb() -> void:
 	assert_eq(animator._target_animation(), &"Climb_Idle",
 		"a still hang stopped playing the hang clip")
 	grab._mantling = true
-	assert_eq(animator._target_animation(), &"ClimbUp_2m",
+	assert_eq(animator._target_animation(), &"ClimbUp_1m",
 		"a pull-up played '%s'" % String(animator._target_animation()))
 
 func test_a_body_without_it_falls_back_down_the_list() -> void:
