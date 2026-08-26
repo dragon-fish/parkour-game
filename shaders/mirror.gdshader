@@ -61,6 +61,12 @@ uniform float fresnel_strength : hint_range(0.0, 1.0) = 0.25;
 uniform float roughness_amount : hint_range(0.0, 1.0) = 0.06;
 
 varying vec3 view_dir_local;
+// The pane's own axes, in VIEW space. What turns a displacement measured in
+// metres ON THE GLASS into the screen offset that displacement actually
+// subtends -- see the projection step in fragment().
+varying vec3 pane_x_view;
+varying vec3 pane_y_view;
+varying vec3 vertex_view;
 
 // -- value noise, two octaves ------------------------------------------------
 // Deliberately not a texture: the warp and the grime want to be TUNED, and a
@@ -91,6 +97,30 @@ void vertex() {
 	// The eye, in the quad's own space. Used for the thickness offset, which
 	// has to grow with the viewing angle rather than with screen position.
 	view_dir_local = (inverse(MODELVIEW_MATRIX) * vec4(0.0, 0.0, 0.0, 1.0)).xyz - VERTEX;
+	pane_x_view = (MODELVIEW_MATRIX * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
+	pane_y_view = (MODELVIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+	vertex_view = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+
+// ⚠️ EVERY OFFSET IN THIS SHADER IS A MARK ON THE GLASS, SO IT HAS TO SHRINK
+// WITH DISTANCE LIKE ONE.
+//
+// The reflection is sampled in SCREEN space, so it is tempting to write the
+// displacement straight into uv -- and that was the bug: a fixed 0.02 uv is a
+// fixed fraction of the SCREEN, which at ten metres stands for a far bigger
+// distance on the pane than it does at one. The virtual image slid further out
+// the further back you stood. ✅ THE OWNER: "大角度看镜子离近了还好，距离越远
+// 里面的内容越偏." A scratch on a window does not get longer when you step back.
+//
+// So the offset is measured in METRES on the pane and projected here. For a
+// displacement at a fixed depth the perspective divide is just that depth, and
+// PROJECTION_MATRIX carries the rest -- no uniforms, and it follows any FOV or
+// aspect change for free. The y flip is Godot's SCREEN_UV running downward
+// where clip space runs up.
+vec2 metres_on_glass_to_uv(vec2 on_pane, mat4 projection) {
+	vec3 in_view = pane_x_view * on_pane.x + pane_y_view * on_pane.y;
+	float depth = max(-vertex_view.z, 0.001);
+	return 0.5 * vec2(projection[0][0] * in_view.x, -projection[1][1] * in_view.y) / depth;
 }
 
 void fragment() {
@@ -133,16 +163,24 @@ void fragment() {
 	float sin_in = length(v.xy);
 	vec2 lateral = sin_in > 0.0001 ? v.xy / sin_in : vec2(0.0);
 	float tan_out = sin_in / sqrt(max(GLASS_IOR * GLASS_IOR - sin_in * sin_in, 0.0001));
-	vec2 offset = lateral * (2.0 * thickness * tan_out);
+	vec2 offset_on_pane = lateral * (2.0 * thickness * tan_out);
 
 	// -- warp: the pane is not flat -----------------------------------------
+	// Also in metres on the glass, for the same reason -- an uneven pane is
+	// uneven by millimetres whatever distance you read it from.
 	if (warp > 0.0) {
 		vec2 w = vec2(
 			fbm2(UV * warp_scale),
 			fbm2(UV * warp_scale + 37.7)
 		) - 0.5;
-		offset += w * warp * 0.02;
+		offset_on_pane += w * warp * 0.03;
 	}
+
+	// The one conversion, applied once to everything measured on the surface.
+	// The x is negated because uv above is already flipped (see the u flip):
+	// a displacement toward world-right is toward SMALLER u in that space.
+	vec2 offset = metres_on_glass_to_uv(offset_on_pane, PROJECTION_MATRIX);
+	offset.x = -offset.x;
 
 	// THE REFLECTION HAS NO OUTSIDE. Every offset above asks for a pixel next
 	// to this one, and near the frame's edge that pixel was never rendered --
