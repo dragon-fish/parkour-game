@@ -8,9 +8,15 @@ run_lfs post-checkout "$@"
 
 # Keep the .private links in step with whatever just landed: a pull, a
 # branch switch, a submodule update. Silent when there is no .private.
-for py in python3 python py; do
-	if command -v "$py" >/dev/null 2>&1; then
-		"$py" "$root/tools/link_private.py" || true
-		break
-	fi
+#
+# PROBE the interpreter, do not just look it up, and try `python` first: on
+# Windows `python3` is a Microsoft Store redirector stub that sits on PATH,
+# is not Python, and would turn this hook into a silent no-op on that half
+# of the setup. The version test also rejects a `python` that is still 2.x.
+for py in python python3 py; do
+	command -v "$py" >/dev/null 2>&1 || continue
+	"$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' \
+		>/dev/null 2>&1 || continue
+	"$py" "$root/tools/link_private.py" || true
+	break
 done

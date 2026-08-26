@@ -40,6 +40,13 @@ import sys
 import time
 from pathlib import Path
 
+# A Windows console still defaults to a regional codepage (GBK on the owner's
+# machine), and this script prints an emoji as well as asset paths in Chinese.
+# Encoding either to cp936 raises UnicodeEncodeError, which kills the run
+# AFTER the links have already been changed -- the worst possible moment.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent.parent
 PRIVATE = ROOT / ".private"
 MANIFEST = PRIVATE / "links.txt"
@@ -52,6 +59,43 @@ SKIP_DIRS = {".git", ".godot", ".private", ".engine", ".import", "node_modules"}
 def read_manifest() -> list[str]:
     lines = MANIFEST.read_text(encoding="utf-8").splitlines()
     return [l.strip() for l in lines if l.strip() and not l.startswith("#")]
+
+
+def is_link(path: Path) -> bool:
+    """True for anything that stands in for a directory living elsewhere.
+
+    A WINDOWS JUNCTION IS NOT A SYMLINK. `Path.is_symlink()` and
+    `os.path.islink()` both answer False for one -- which is how the second
+    run of this script mistook every junction it made on the first run for a
+    real folder, moved it aside as a conflict, and left a
+    `local_<timestamp>` twin that Godot then imported a second copy of.
+    """
+    if path.is_symlink():
+        return True
+    if os.name != "nt":
+        return False
+    isjunction = getattr(os.path, "isjunction", None)  # Python 3.12+
+    if isjunction is not None:
+        return bool(isjunction(path))
+    try:
+        os.readlink(path)  # answers for a junction since Python 3.8
+        return True
+    except OSError:
+        return False
+
+
+def remove_link(path: Path) -> None:
+    """Delete the link, never what it points at.
+
+    `Path.unlink()` refuses a junction -- to the filesystem it is a
+    directory -- while `os.rmdir()` drops the reparse point and leaves the
+    target alone. On POSIX a symlink is a file, so unlink is the right one
+    there. Never `rmtree`: it would walk through and take the real assets.
+    """
+    try:
+        path.unlink()
+    except OSError:
+        os.rmdir(path)
 
 
 def make_link(link: Path, target: Path) -> str:
@@ -79,17 +123,22 @@ def prune(wanted: set[Path]) -> int:
     into (os.walk does not follow them by default), so this stays cheap."""
     removed = 0
     for dirpath, dirnames, filenames in os.walk(ROOT):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-        for name in list(dirnames) + filenames:
+        # Inspect the links, then refuse to descend through them: os.walk
+        # skips symlinks by itself but happily walks into a junction, which
+        # would send it straight back into .private.
+        entries = list(dirnames) + filenames
+        dirnames[:] = [d for d in dirnames
+                       if d not in SKIP_DIRS and not is_link(Path(dirpath) / d)]
+        for name in entries:
             path = Path(dirpath) / name
-            if not path.is_symlink():
+            if not is_link(path):
                 continue
             target = os.readlink(path)
             if ".private" not in target:
                 continue  # somebody else's link, not ours to manage
             if path in wanted and (PRIVATE / path.relative_to(ROOT)).exists():
                 continue
-            path.unlink()
+            remove_link(path)
             removed += 1
             print(f"link_private: pruned {path.relative_to(ROOT)} "
                   f"({'no longer listed' if path not in wanted else 'gone from .private'})")
@@ -138,9 +187,8 @@ def main() -> int:
         if not target.is_dir():
             print(f"link_private: not a directory, skipped: {path}")
             continue
-        if link.is_symlink() or (os.name == "nt" and link.is_dir()
-                                 and os.path.islink(str(link))):
-            link.unlink()
+        if is_link(link):
+            remove_link(link)
         elif link.exists():
             kept = move_aside(link)
             conflicts.append((path, kept.name))
