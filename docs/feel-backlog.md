@@ -2699,3 +2699,34 @@ move / progress          脚本动作走到哪
 `scripts/debug/animation_lab.gd` 的 `_capture_pose()` / `_apply_pose()` 是现成的，
 且已经踩平了两个坑：**动画树默认在 idle 帧摆姿势**（录制要切到物理帧，否则采到重复帧，
 混合会变成台阶），以及**回放时不能有别的东西在写骨头**（树和 AnimationPlayer 都要停）。
+
+
+---
+
+## 71. 头发在大动作时穿进脑袋 —— 弹簧骨缺碰撞体
+
+**现象**（所有者试玩）：小天使的头发骨骼多、飘逸得好看，但**动作幅度大的时候容易穿模到脑袋里**。
+
+**机制**：`SpringBoneSimulator3D` 默认只做惯性与回弹，**不知道世界上还有别的东西**。发梢被甩出去再荡回来时，走的是最短路径 —— 那条路径穿过头骨。链条越长、阻尼越低（也就是越"飘逸"），越容易发生：飘逸和穿模是同一个参数的两端。
+
+**这不需要自己造轮子。** Godot 4 有现成的三个碰撞体，挂在骨架下、由模拟器引用：
+
+- `SpringBoneCollisionSphere3D` —— 头部用这个，一颗球罩住颅骨
+- `SpringBoneCollisionCapsule3D` —— 脖子/肩膀/胸口这类长条形
+- `SpringBoneCollisionPlane3D` —— 半空间，挡住"绝对不许穿过去"的方向
+
+**落地起点**：`assets/models/local/beriul/beriul_body.tscn` 里已经有四组弹簧，`spring_chains.gd` 按前缀绑定：
+
+```
+HairSprings       ["Ahoge.", "FrontHair.", "BackHair."]   ← 这组是问题所在
+WingSprings       ["Wing.", "AngelHaloRoot."]
+AccessorySprings  ["Strap.", "Hem."]
+MetalSprings      ["Chain.", "Shackles."]
+```
+
+修法：在 `GeneralSkeleton` 下加一个球形碰撞体、骨骼绑到 `Head`、半径调到刚好包住颅骨（**用眼睛调，不要从骨骼长度推**），然后加进 `HairSprings` 的碰撞列表。`WingSprings` 大概率也需要一个 —— 翅膀根部离背部很近。
+
+**注意两件事**：
+
+1. **半径是表现值，不写单测**（见 §57）。会不会穿模一眼可见，而写死一个半径只会在每次调整时报错。
+2. `spring_chains.gd` 的 `chain_prefixes` 曾经因为用 `PackedStringArray` 被编辑器重存时清空过（见 `.claude/skills/authoring-godot-scene-files`）。碰撞体列表如果也是数组导出，同一个坑要提防 —— 加完之后在编辑器里存一次再重新加载，确认它还在。
