@@ -53,7 +53,7 @@ var _slider_value_labels: Dictionary = {}
 
 func _ready() -> void:
 	theme = MeTheme.ui_theme()
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_working = SettingsStore.load_settings()
 	_build_ui()
@@ -70,7 +70,7 @@ func _build_ui() -> void:
 	# Full-screen wash behind the panel (the reference's pale field).
 	var wash := ColorRect.new()
 	wash.color = Color(0.93, 0.95, 0.98, 0.98)
-	wash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	wash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(wash)
 
