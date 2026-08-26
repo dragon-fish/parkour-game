@@ -53,8 +53,14 @@ func test_two_levels_from_one_source_do_not_share_a_fog_config() -> void:
 	var one := source.instantiate()
 	var two := source.instantiate()
 	assert_ne(one.fog, two.fog, "both levels were handed the same FogConfig object")
+	# MEASURED BEFORE, not compared against FogConfig's declared default. The
+	# first version of this assumed the template still carried the script's own
+	# 60 m, and broke the moment the owner tuned the template to 128 -- an
+	# isolation test that had quietly pinned a look value. What isolation means
+	# is "B did not move", whatever B happened to be.
+	var untouched: float = two.fog.fade_begin_distance
 	one.fog.fade_begin_distance += 111.0
-	assert_almost_eq(two.fog.fade_begin_distance, FogConfig.new().fade_begin_distance, 0.001,
+	assert_almost_eq(two.fog.fade_begin_distance, untouched, 0.001,
 		"retuning one level's fog moved another level's")
 	assert_eq(one.fog.resource_path, "",
 		"the level's fog still points into the file it came from; editing it would write back")
