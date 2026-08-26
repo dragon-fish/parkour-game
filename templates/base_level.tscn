@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="4_tipki"]
 [ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="5_85g3d"]
 [ext_resource type="Script" uid="uid://bhucofvtd1e8a" path="res://scripts/level/spawn_point.gd" id="6_spawn"]
+[ext_resource type="Script" uid="uid://dhku0eeeioa0i" path="res://scripts/level/fog_config.gd" id="7_fog"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_choun"]
 
@@ -19,6 +20,9 @@ ambient_light_source = 2
 ambient_light_color = Color(0.22352941, 0.46666667, 0.7411765, 1)
 ssr_enabled = true
 ssr_max_steps = 32
+
+[sub_resource type="Resource" id="Resource_fogbl"]
+script = ExtResource("7_fog")
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_trceg"]
 size = Vector3(60, 1, 60)
@@ -43,6 +47,7 @@ size = Vector3(60, 1, 60)
 script = ExtResource("1_tbgi4")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
+fog = SubResource("Resource_fogbl")
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=620715121]
 transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 0, 0)

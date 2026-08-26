@@ -39,6 +39,14 @@ static func overlay_persists(node_name: String) -> bool:
 	return true
 
 @export var config: MovementConfig
+## The CURRENT LEVEL's fog dials, injected by Arena next to `config`. Null in a
+## test-built panel and in any level that declares no FogConfig, in which case
+## the panel simply grows no Fog page. See collect_fog_tunables() for why this
+## is a second field and not another group inside `config`.
+@export var fog: FogConfig
+## Tab title and row-key prefix for the fog sliders, playing the part a
+## MovementConfig sub-resource's property name plays for every other page.
+const FOG_GROUP := "fog"
 
 var _panel: PanelContainer
 var _preset_name: LineEdit
@@ -117,6 +125,25 @@ static func collect_tunables(config: MovementConfig) -> Array[Dictionary]:
 		_collect_from(owner, defaults_owner, String(property.name), rows)
 	return rows
 
+## The same rows for the LEVEL's fog, in the same shape, reusing the same walk.
+##
+## SEPARATE FROM collect_tunables() ON PURPOSE, and the reason is _on_save():
+## a preset is built by walking collect_tunables() and writing every value it
+## yields. Fog belongs to the level, not to a feel preset -- folding it into
+## that walk would mean a preset saved on a fogged rooftop silently re-fogs
+## whatever level it is next loaded into, which is exactly the coupling
+## FogConfig exists to prevent. Keeping it out of that function is what makes
+## that impossible rather than merely unlikely.
+##
+## Returns nothing for a level with no FogConfig, so the page disappears
+## rather than showing dead sliders.
+static func collect_fog_tunables(fog_config: FogConfig) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if fog_config == null:
+		return rows
+	_collect_from(fog_config, FogConfig.new(), FOG_GROUP, rows)
+	return rows
+
 static func _collect_from(owner: Resource, defaults_owner: Resource, prefix: String, \
 		rows: Array[Dictionary]) -> void:
 	for property in owner.get_property_list():
@@ -174,7 +201,9 @@ func _build_ui() -> void:
 	# the row stream is exactly a page change here.
 	var current_group := ""
 	var group_column: VBoxContainer = null
-	for row in collect_tunables(config):
+	# The level's fog dials are appended AFTER every player-side group, so the
+	# Fog page lands last and the pages before it keep the order they had.
+	for row in collect_tunables(config) + collect_fog_tunables(fog):
 		if row["group"] != current_group:
 			current_group = row["group"]
 			group_column = _add_group_tab(tabs, current_group)

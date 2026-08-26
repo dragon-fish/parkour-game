@@ -27,6 +27,58 @@ touching either.
    for free; tune how strong it reads with the F1 panel's
    `ambient_cold_strength` dial (Camera tab).
 
+## Fog: how far this level lets you see
+
+The template's `Arena` root carries a `FogConfig` in its `fog` export
+(`scripts/level/fog_config.gd`). It drives two unrelated Godot systems, and
+each does a job the other cannot:
+
+| Dial | Drives | Job |
+| --- | --- | --- |
+| `fade_begin_distance` / `fade_end_distance` / `max_opacity` / `tint` | `Environment`'s DEPTH fog | Hides an unfinished horizon. Cheap, unlimited range, no interaction with light. |
+| `volumetric_density` | `Environment`'s VOLUMETRIC fog | Light shafts. Voxelised, reaches only 64 m from the camera, and is the only one the sun can carve a beam out of or a body can cast a hole in. |
+
+Defaults draw the curtain from 60 m to 160 m — far enough not to crowd a
+whitebox, near enough that a rooftop view does not expose ground nobody has
+built yet.
+
+**Per level, not per player.** `fog` is a node property, so an inherited scene
+overrides it with one click in the Inspector, the same as moving `SpawnPoint`.
+Deliberately NOT a `MovementConfig` group: that object follows the player from
+level to level, and a fogged rooftop and a clear blue courtyard have to be able
+to disagree.
+
+**Turning it off.** Uncheck `enabled` for 晴空万里 — `Arena` switches both fogs
+off at the `Environment`, and the values you tuned stay where they are. That is
+not the same as clearing the `fog` export entirely: an empty `fog` means "this
+level does not manage fog at all", and `Arena` then leaves whatever the scene's
+own `Environment` says completely alone. Use the checkbox for a clear day, the
+empty export for a hand-authored sky.
+
+**Tuning it.** All four floats are live on the F1 panel's **fog** tab, applied
+every frame by `Arena._process()` — the same "consumer re-applies so a drag
+takes effect now" pattern `ambient_cold_strength` uses. They are the one page
+the panel builds from the LEVEL rather than from `MovementConfig`, which is
+also why **Save/Load preset does not touch them**: a feel preset saved on a
+fogged rooftop must not re-fog the next level it is loaded into.
+
+### The editor viewport shows no fog, on purpose
+
+Fog is **not** baked into either scene's `Environment` resource — not
+`templates/base_level.tscn`'s and not the one `tools/arena_builder.gd` builds.
+`Arena` writes it at runtime and only at runtime. Two reasons, and don't
+"fix" this:
+
+- The Godot 3D viewport renders the edited scene's `WorldEnvironment`. Bake
+  the fog in and you spend every level-building session unable to see your own
+  geometry past 60 m.
+- A copy in the `.tscn` would be a second source of truth for numbers the
+  `FogConfig` already holds, and the two would drift — the exact problem
+  `Arena.COLD_AMBIENT_TINT`'s comment describes for the ambient colour, which
+  really does live in four places and really does have to be kept in step.
+
+Press play to see the fog. F1 to tune it.
+
 ## Traps
 
 ### `TuningPanel` is found by name, not by type or export

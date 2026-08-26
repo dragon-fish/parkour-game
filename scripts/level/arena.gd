@@ -9,6 +9,14 @@ extends Node3D
 @export var spawn_point: Marker3D
 ## Leave empty to create a fresh MovementConfig with default values at runtime.
 @export var config: MovementConfig
+## This level's atmosphere. Leave EMPTY and Arena never touches the
+## WorldEnvironment's fog settings at all -- whatever the scene's own
+## Environment resource says stands, which is what a hand-authored sky wants
+## and what keeps a bare test-built Arena from needing one. Assign a FogConfig
+## (templates/base_level.tscn does) and this node drives both fogs from it
+## every frame instead. See fog_config.gd for why fog is a level's property
+## and not one of MovementConfig's groups.
+@export var fog: FogConfig
 
 ## Holding R this long before release clears the active checkpoint (debug).
 const CHECKPOINT_CLEAR_HOLD := 1.0
@@ -40,6 +48,23 @@ const COLD_AMBIENT_TINT := Color(0.223529, 0.466667, 0.741176)
 ## strength of 0 leaves only the environment's own ambient_light_energy
 ## setting the shadow brightness, with no colour cast at all.
 const NEUTRAL_AMBIENT_TINT := Color(1.0, 1.0, 1.0)
+
+## The smallest gap Arena will leave between FogConfig's two fade distances.
+## Not a tunable: it exists only so the end distance can never land ON the
+## begin distance or on 0, both of which Godot reads as something other than
+## "a very short fade" -- see _apply_fog() for what each would actually do.
+const MIN_FOG_FADE_SPAN := 0.01
+## How much the depth fog is allowed to obscure the SKY. Zero, deliberately:
+## the fog's job here is hiding unfinished GROUND, and a fog that also eats the
+## sky turns a rooftop view into a flat white void -- worse than the horizon it
+## was hired to hide. Not a dial because no level has wanted the other answer;
+## make it one the first time one does.
+const FOG_SKY_AFFECT := 0.0
+## How far the depth fog's colour is pulled toward the real sky colour behind
+## it. Well short of 1 so FogConfig.tint still reads as an authored choice,
+## but high enough that distant geometry dissolves into the sky it sits against
+## instead of ending at a same-coloured-everywhere wall.
+const FOG_AERIAL_PERSPECTIVE := 0.6
 
 ## Found by name, same as TuningPanel below -- both templates/base_level.tscn
 ## and the generated main.tscn name this node "WorldEnvironment" (see
@@ -110,6 +135,12 @@ func _ready() -> void:
 	var panel := get_node_or_null("TuningPanel")
 	if panel != null:
 		panel.config = config
+		# The level's own dials, handed over the same way and for the same
+		# reason: the panel builds its UI one deferred frame later, so an
+		# assignment here is in time. Fog rides a SEPARATE field rather than
+		# being folded into `config` -- see TuningPanel.collect_fog_tunables()
+		# for why a feel preset must not be able to carry a level's weather.
+		panel.fog = fog
 
 	reset_player()
 
@@ -231,6 +262,46 @@ func _process(_delta: float) -> void:
 	var strength: float = clampf(config.camera.ambient_cold_strength, 0.0, 1.0)
 	_world_environment.environment.ambient_light_color = \
 			NEUTRAL_AMBIENT_TINT.lerp(COLD_AMBIENT_TINT, strength)
+	_apply_fog(_world_environment.environment)
+
+## Drives both of the Environment's fogs from this level's own FogConfig, every
+## frame, for the same reason the ambient tint above is re-applied every frame:
+## so dragging the F1 slider changes what is on screen NOW, not after a reload.
+##
+## A null `fog` returns without touching anything -- see the export's comment.
+## That is not the same as `enabled = false`, which actively turns both fogs
+## OFF; the difference is "this level does not manage fog" versus "this level
+## manages fog and wants none".
+func _apply_fog(environment: Environment) -> void:
+	if fog == null:
+		return
+	if not fog.enabled:
+		environment.fog_enabled = false
+		environment.volumetric_fog_enabled = false
+		return
+
+	environment.fog_enabled = true
+	# DEPTH, not the EXPONENTIAL default: only this mode has begin/end
+	# distances, and "start fading at 60 m" is the whole request.
+	environment.fog_mode = Environment.FOG_MODE_DEPTH
+	environment.fog_light_color = fog.tint
+	environment.fog_density = clampf(fog.max_opacity, 0.0, 1.0)
+	environment.fog_depth_begin = fog.fade_begin_distance
+	# NEVER exactly the begin distance, and never 0. Godot reads fog_depth_end
+	# == 0 as "use the camera's far plane", so a dial dragged to zero would
+	# silently jump the curtain out to 4000 m instead of pulling it in; and an
+	# end at or below the begin is a division by a non-positive span inside the
+	# fog shader. Clamping to a hair beyond the begin gives the hard wall that
+	# dragging end below begin honestly deserves, with no special case.
+	environment.fog_depth_end = maxf(fog.fade_end_distance, fog.fade_begin_distance + MIN_FOG_FADE_SPAN)
+	environment.fog_sky_affect = FOG_SKY_AFFECT
+	environment.fog_aerial_perspective = FOG_AERIAL_PERSPECTIVE
+
+	# Driven off the density alone rather than a second checkbox: 0 thickness
+	# and "off" are the same picture, and one dial that can reach both is one
+	# less thing to have disagree.
+	environment.volumetric_fog_enabled = fog.volumetric_density > 0.0
+	environment.volumetric_fog_density = fog.volumetric_density
 
 ## Recovers a player who fell out of the level entirely -- off the far edge of
 ## the (generously sized, see tools/arena_builder.gd's own Floor comment)

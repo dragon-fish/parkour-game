@@ -185,6 +185,14 @@ func build() -> Node3D:
 	# of graded obstacles into every whitebox built from it -- see the owner's
 	# request there. A bench of them belongs in the arena.
 	_root.set("load_calibration_course", true)
+	# The same atmosphere templates/base_level.tscn hands its own Arena, built
+	# here rather than shared with it because a generated scene cannot
+	# reference the template's sub-resource. THE DEFAULTS ARE THE AGREEMENT:
+	# every field below is left at what fog_config.gd declares, so the two
+	# scenes match by both saying nothing rather than by two copies of the
+	# numbers being kept in step by hand. Override one here only to make THIS
+	# arena look deliberately unlike a fresh whitebox.
+	_root.set("fog", FogConfig.new())
 
 	var light := DirectionalLight3D.new()
 	light.name = "Sun"
