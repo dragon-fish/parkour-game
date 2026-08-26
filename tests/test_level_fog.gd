@@ -39,6 +39,28 @@ func _live_template() -> Array:
 	await _idle_frames(2)
 	return [arena, _environment_of(arena)]
 
+func test_two_levels_from_one_source_do_not_share_a_fog_config() -> void:
+	# A resource embedded in a scene file is ONE object, shared by every
+	# instantiation, and its resource_path points back INTO that file -- so
+	# without resource_local_to_scene, editing a level's weather in the
+	# inspector edits the TEMPLATE, an F1 drag in one level moves every other,
+	# and the tests below would leak their mutations into each other. The flag
+	# is invisible; only this notices when someone drops it.
+	# NOT added to the tree: the copy happens at instantiate(), and entering
+	# the tree would run Arena._ready(), whose DebugHud spawns a handful of
+	# deferred overlay nodes this test would then leak as orphans.
+	var source := load(TEMPLATE) as PackedScene
+	var one := source.instantiate()
+	var two := source.instantiate()
+	assert_ne(one.fog, two.fog, "both levels were handed the same FogConfig object")
+	one.fog.fade_begin_distance += 111.0
+	assert_almost_eq(two.fog.fade_begin_distance, FogConfig.new().fade_begin_distance, 0.001,
+		"retuning one level's fog moved another level's")
+	assert_eq(one.fog.resource_path, "",
+		"the level's fog still points into the file it came from; editing it would write back")
+	one.free()
+	two.free()
+
 func test_a_feel_preset_cannot_carry_a_levels_fog() -> void:
 	# The exact walk _on_save() uses to build a preset. Fog living outside it
 	# is the whole guarantee; a `for` over MovementConfig's groups that ever

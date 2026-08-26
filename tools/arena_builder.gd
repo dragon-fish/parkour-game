@@ -192,7 +192,17 @@ func build() -> Node3D:
 	# scenes match by both saying nothing rather than by two copies of the
 	# numbers being kept in step by hand. Override one here only to make THIS
 	# arena look deliberately unlike a fresh whitebox.
-	_root.set("fog", FogConfig.new())
+	var fog := FogConfig.new()
+	# LOCAL TO SCENE, exactly as templates/base_level.tscn's own copy is. A
+	# resource embedded in a scene file is ONE object shared by every
+	# instantiation of it -- two levels built from the same source would hand
+	# the same FogConfig to both Arenas, an F1 drag in one would move the
+	# other, and an edit in the inspector of an inherited scene would write
+	# back into the scene it inherited FROM. This flag is what makes each
+	# instantiation take its own copy instead, so nobody has to remember to
+	# right-click > Make Unique before touching a level's weather.
+	fog.resource_local_to_scene = true
+	_root.set("fog", fog)
 
 	var light := DirectionalLight3D.new()
 	light.name = "Sun"
@@ -204,8 +214,12 @@ func build() -> Node3D:
 	world_env.name = "WorldEnvironment"
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_SKY
-	var sky := Sky.new()
-	sky.sky_material = ProceduralSkyMaterial.new()
+	# THE SHARED SKY, not a fresh ProceduralSkyMaterial. Every scene that draws
+	# a sky in this project loads this one file (templates/base_level.tscn and
+	# scenes/debug_levels/animation_lab.tscn reference it too), so swapping the
+	# game's weather is one field in one resource instead of the four
+	# independent copies this used to be one of. See assets/sky/README.md.
+	var sky: Sky = load("res://assets/sky/day_sky.tres")
 	environment.sky = sky
 	# AMBIENT_SOURCE_COLOR, NOT SKY, even though the sky stays as the
 	# background/reflection source above. This is the owner's cold-shadow
@@ -213,7 +227,7 @@ func build() -> Node3D:
 	# 氛围实验"): shadowed ground is lit almost entirely by ambient light in
 	# this renderer, so tinting ambient blue reads as "the shadows lean cold"
 	# without a full-screen grading shader. AMBIENT_SOURCE_SKY would make that
-	# tint chase whatever the ProceduralSkyMaterial happens to be (time of
+	# tint chase whatever assets/sky/day_sky.tres happens to hold (time of
 	# day, weather, a future sky swap) instead of holding the deliberate
 	# colour below -- COLOR is the only source that hands ambient_light_color
 	# full, deterministic control. Precedent already in this codebase:

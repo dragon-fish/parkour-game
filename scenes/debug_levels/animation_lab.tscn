@@ -6,15 +6,11 @@
 [ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="5_85g3d"]
 [ext_resource type="Script" path="res://scripts/debug/animation_lab.gd" id="9_lab"]
 [ext_resource type="Script" path="res://scripts/debug/spectator_camera.gd" id="10_cam"]
-
-[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_choun"]
-
-[sub_resource type="Sky" id="Sky_ya4ey"]
-sky_material = SubResource("ProceduralSkyMaterial_choun")
+[ext_resource type="Sky" path="res://assets/sky/day_sky.tres" id="8_sky"]
 
 [sub_resource type="Environment" id="Environment_eb6dy"]
 background_mode = 2
-sky = SubResource("Sky_ya4ey")
+sky = ExtResource("8_sky")
 ambient_light_source = 3
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_trceg"]

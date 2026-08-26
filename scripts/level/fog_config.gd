@@ -81,11 +81,14 @@ extends Resource
 ## what it says.
 ##
 ## ⚠️ THIS DIAL CAN MAKE THE ONE ABOVE LOOK BROKEN, which is why it is a dial
-## and not the constant it started as. Arena used to hardcode 0.6 here. The
-## default ProceduralSkyMaterial's horizon is (0.646, 0.656, 0.671) -- grey --
-## so at 0.6 a tint set to pure white rendered as (0.79, 0.79, 0.80) and the
-## owner quite reasonably reported "我调成纯白色也很灰". A look value that
-## overrules another look value has to be reachable from the same panel.
+## and not the constant it started as. Arena used to hardcode 0.6 here, back
+## when every scene built its own ProceduralSkyMaterial whose horizon is
+## (0.646, 0.656, 0.671) -- grey. At 0.6 a tint set to pure white rendered as
+## (0.79, 0.79, 0.80) and the owner quite reasonably reported "我调成纯白色也
+## 很灰". A look value that overrules another look value has to be reachable
+## from the same panel. (The sky is an HDRI now -- assets/sky/day_sky.tres --
+## so what this blends toward is whatever that panorama shows in that
+## direction, which is the reason to turn it UP rather than off.)
 ##
 ## Defaults to 0.25 rather than 0 for two reasons: white still reads white at
 ## that blend, and the F1 slider's range is 3× the default, so a dial that

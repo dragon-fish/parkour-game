@@ -78,6 +78,24 @@ Godot's documented way to get fog *only* inside `FogVolume`s — dust in a light
 shaft, clear air around it. So the switch and the thickness are two fields, and
 zeroing the thickness must never be read as "off".
 
+### Fog is per level automatically; the sky is shared on purpose
+
+A resource embedded in a scene file is **one object**, shared by every
+instantiation, with a `resource_path` pointing back into that file — so editing
+an inherited level's fog in the inspector would edit `base_level.tscn` itself
+and move every other level with it. The template's `FogConfig` therefore sets
+`resource_local_to_scene = true`: each level takes its own copy at
+instantiation, nobody has to remember to right-click > **Make Unique**, and an
+F1 drag in one level cannot reach another. `tools/arena_builder.gd` sets the
+same flag on the copy it builds. `tests/test_level_fog.gd` guards it, because
+dropping the flag breaks nothing visible until two levels are open.
+
+The **sky** goes the other way deliberately: it is one shared
+`assets/sky/day_sky.tres` that every scene loads by path, so changing the
+game's weather is one field in one file. A level that wants its own assigns a
+different `Sky` resource rather than uniquifying the shared one — see
+[assets/sky/README.md](../assets/sky/README.md).
+
 ### The editor viewport shows no fog, on purpose
 
 Fog is **not** baked into either scene's `Environment` resource — not
