@@ -14,11 +14,13 @@ const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 const BODY_PROFILE := "res://scenes/player/profiles/vrm_test.tres"
 const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
 
-## The clips on offer, in menu order: [label, [clip, ...], loops]. A
-## multi-clip entry plays its parts back to back once (✅ the owner: jump
-## 这种 start-mid-end 的组合直接合并为一个, 点击后三个连着播一次); a looping
-## single loops; everything else settles back on Idle when it ends. Only
-## entries whose every clip the merged body carries make the list.
+## The clips on offer, in menu order: [label, [part, ...], loops]. A part is
+## a clip name, or [clip name, max_seconds] to cut it short -- the packs'
+## mid-air / hang cycles run 2.5 s and read as floating (✅ the owner: 悬空时
+## 间太久了点, 观感不太连续). A multi-clip entry plays its parts back to back
+## once; a looping single loops; everything else settles back on Idle when
+## it ends. Only entries whose every clip the merged body carries make the
+## list.
 const CLIP_MENU: Array = [
 	["Idle", [&"Idle"], true],
 	["Idle_LookAround", [&"Idle_LookAround"], true],
@@ -32,16 +34,16 @@ const CLIP_MENU: Array = [
 	["Sprint", [&"Sprint"], true],
 	["Crouch_Idle", [&"Crouch_Idle"], true],
 	["Crouch_Fwd", [&"Crouch_Fwd"], true],
-	["Jump", [&"Jump_Start", &"Jump", &"Jump_Land"], false],
-	["NinjaJump", [&"NinjaJump_Start", &"NinjaJump_Idle", &"NinjaJump_Land"], false],
-	["Slide", [&"Slide_Start", &"Slide", &"Slide_Exit"], false],
+	["Jump", [&"Jump_Start", [&"Jump", 0.8], &"Jump_Land"], false],
+	["NinjaJump", [&"NinjaJump_Start", [&"NinjaJump_Idle", 0.8], &"NinjaJump_Land"], false],
+	["Slide", [&"Slide_Start", [&"Slide", 1.0], &"Slide_Exit"], false],
 	["Roll", [&"Roll"], false],
 	["SafetyVault", [&"SafetyVault"], false],
 	["StepUp", [&"StepUp"], false],
 	["ClimbUp_1m", [&"ClimbUp_1m"], false],
 	["ClimbUp_2m", [&"ClimbUp_2m"], false],
 	["ClimbLedge", [&"ClimbLedge"], false],
-	["Climb", [&"Climb_Enter", &"Climb_Idle", &"Climb_Exit"], false],
+	["Climb", [&"Climb_Enter", [&"Climb_Idle", 1.0], &"Climb_Exit"], false],
 	["Climb_Up", [&"Climb_Up"], true],
 	["Climb_Down", [&"Climb_Down"], true],
 	["WallRun_L", [&"WallRun_L"], true],
@@ -71,6 +73,9 @@ var _menu_list: MeMenuList
 var _clips: Array = []
 ## The rest of the sequence currently playing, next part first.
 var _queue: Array = []
+## Bumped every time a part starts, so a time cap scheduled for an earlier
+## part cannot cut a later one.
+var _part_serial: int = 0
 var _pivot: Node3D
 var _camera: Camera3D
 var _distance: float = HOME_DISTANCE
@@ -150,8 +155,8 @@ func _build_body() -> void:
 	_anim_player.animation_finished.connect(_on_clip_finished)
 	for entry in CLIP_MENU:
 		var complete := true
-		for clip in entry[1]:
-			if not _anim_player.has_animation(clip):
+		for part in entry[1]:
+			if not _anim_player.has_animation(_part_clip(part)):
 				complete = false
 				break
 		if complete:
@@ -234,25 +239,39 @@ func _play_index(index: int) -> void:
 	var parts: Array = _clips[index][1]
 	var loops: bool = _clips[index][2]
 	_queue = parts.duplicate()
-	var first: StringName = _queue.pop_front()
-	_start_part(first, loops and _queue.is_empty(), 0.3)
+	var first = _queue.pop_front()
+	_start_part(_part_clip(first), loops and _queue.is_empty(), 0.3, _part_cap(first))
+
+static func _part_clip(part) -> StringName:
+	return part[0] if part is Array else part
+
+static func _part_cap(part) -> float:
+	return float(part[1]) if part is Array else 0.0
 
 ## A sequence part, or the whole of a single-clip entry: a looping single
-## loops; every part of a sequence plays exactly once.
-func _start_part(clip: StringName, loops: bool, blend: float) -> void:
+## loops; every part of a sequence plays exactly once, or for `max_seconds`
+## if that is shorter.
+func _start_part(clip: StringName, loops: bool, blend: float, max_seconds: float = 0.0) -> void:
 	var animation := _anim_player.get_animation(clip)
 	if animation != null:
 		animation.loop_mode = Animation.LOOP_LINEAR if loops else Animation.LOOP_NONE
 	_anim_player.play(clip, blend)
+	_part_serial += 1
+	if max_seconds > 0.0:
+		var serial := _part_serial
+		get_tree().create_timer(max_seconds).timeout.connect(func() -> void:
+			if serial == _part_serial:
+				_on_clip_finished(clip))
 
-## A one-shot has ended (looping clips never emit this): the next part of a
-## sequence if there is one, otherwise settle back on Idle rather than
-## freezing on the last frame.
+## A part has ended -- naturally (looping clips never emit this) or by its
+## time cap: the next part of a sequence if there is one, otherwise settle
+## back on Idle rather than freezing on the last frame.
 func _on_clip_finished(_clip: StringName) -> void:
 	if _anim_player == null:
 		return
 	if not _queue.is_empty():
-		_start_part(_queue.pop_front(), false, 0.15)
+		var next = _queue.pop_front()
+		_start_part(_part_clip(next), false, 0.15, _part_cap(next))
 		return
 	if _anim_player.has_animation(&"Idle"):
 		_start_part(&"Idle", true, 0.4)
