@@ -19,8 +19,12 @@ const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
 ## mid-air / hang cycles run 2.5 s and read as floating (✅ the owner: 悬空时
 ## 间太久了点, 观感不太连续). A multi-clip entry plays its parts back to back
 ## once; a looping single loops; everything else settles back on Idle when
-## it ends. Only entries whose every clip the merged body carries make the
-## list.
+## it ends. A fourth element is a HOP HEIGHT in metres: the viewer has no
+## physics, so a jump clip plays on the spot and reads as a mime (✅ the
+## owner: 跳跃播放期间角色高度没有变化, 还挺怪的). The body rises over the
+## first part and drops back at the start of the last one -- presentation
+## only, nothing to do with how the game moves a capsule.
+## Only entries whose every clip the merged body carries make the list.
 const CLIP_MENU: Array = [
 	["Idle", [&"Idle"], true],
 	["Idle_LookAround", [&"Idle_LookAround"], true],
@@ -38,7 +42,7 @@ const CLIP_MENU: Array = [
 	# 跳跃需要一气呵成的感觉, 否则像悬空). Climb keeps its hang because that IS
 	# the pose worth showing.
 	# Jump_Start's back half eases into the hang; cut at the apex.
-	["Jump", [[&"Jump_Start", 0.65], &"Jump_Land"], false],
+	["Jump", [[&"Jump_Start", 0.65], &"Jump_Land"], false, 0.55],
 	["Slide", [&"Slide_Start", [&"Slide", 1.0], &"Slide_Exit"], false],
 	["Roll", [&"Roll"], false],
 	["SafetyVault", [&"SafetyVault"], false],
@@ -69,6 +73,9 @@ const PAN_MIN_Y := 0.3
 const PAN_MAX_Y := 2.4
 const HOME_PIVOT := Vector3(0.55, 1.05, 0.0)
 const HOME_DISTANCE := 4.2
+## How long the scripted hop takes to fall back, in seconds. Short: the
+## landing clip's own cushion carries on after touchdown.
+const HOP_FALL_TIME := 0.22
 
 var _body: Node3D
 var _anim_player: AnimationPlayer
@@ -79,6 +86,10 @@ var _queue: Array = []
 ## Bumped every time a part starts, so a time cap scheduled for an earlier
 ## part cannot cut a later one.
 var _part_serial: int = 0
+## The scripted hop for the sequence currently playing: its height, and the
+## tween carrying the body through it.
+var _hop_height: float = 0.0
+var _hop_tween: Tween
 var _pivot: Node3D
 var _camera: Camera3D
 var _distance: float = HOME_DISTANCE
@@ -239,17 +250,41 @@ func _reset_camera() -> void:
 func _play_index(index: int) -> void:
 	if _anim_player == null or index >= _clips.size():
 		return
-	var parts: Array = _clips[index][1]
-	var loops: bool = _clips[index][2]
+	var entry: Array = _clips[index]
+	var parts: Array = entry[1]
+	var loops: bool = entry[2]
 	_queue = parts.duplicate()
 	var first = _queue.pop_front()
 	_start_part(_part_clip(first), loops and _queue.is_empty(), 0.3, _part_cap(first))
+	_hop_height = float(entry[3]) if entry.size() > 3 else 0.0
+	_land_body()
+	if _hop_height > 0.0 and _body != null:
+		_hop_tween = create_tween()
+		_hop_tween.tween_property(_body, "position:y", _hop_height,
+			_part_duration(first)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 static func _part_clip(part) -> StringName:
 	return part[0] if part is Array else part
 
 static func _part_cap(part) -> float:
 	return float(part[1]) if part is Array else 0.0
+
+## How long a part will actually be on screen: its cap, or the clip's own
+## length when it has none.
+func _part_duration(part) -> float:
+	var cap := _part_cap(part)
+	if cap > 0.0:
+		return cap
+	var animation := _anim_player.get_animation(_part_clip(part))
+	return animation.length if animation != null else 0.0
+
+## Puts the body back on the floor and cancels any hop still in flight, so
+## picking a new clip mid-jump never leaves her hanging in the air.
+func _land_body() -> void:
+	if _hop_tween != null and _hop_tween.is_valid():
+		_hop_tween.kill()
+	if _body != null:
+		_body.position.y = 0.0
 
 ## A sequence part, or the whole of a single-clip entry: a looping single
 ## loops; every part of a sequence plays exactly once, or for `max_seconds`
@@ -275,7 +310,15 @@ func _on_clip_finished(_clip: StringName) -> void:
 	if not _queue.is_empty():
 		var next = _queue.pop_front()
 		_start_part(_part_clip(next), false, 0.15, _part_cap(next))
+		# The last part is the landing: come down as it begins.
+		if _hop_height > 0.0 and _queue.is_empty() and _body != null:
+			if _hop_tween != null and _hop_tween.is_valid():
+				_hop_tween.kill()
+			_hop_tween = create_tween()
+			_hop_tween.tween_property(_body, "position:y", 0.0, HOP_FALL_TIME) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		return
+	_land_body()
 	if _anim_player.has_animation(&"Idle"):
 		_start_part(&"Idle", true, 0.4)
 
