@@ -1,0 +1,285 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" uid="uid://c0r485cb3u71f" path="res://scripts/level/arena.gd" id="1_arena"]
+[ext_resource type="Script" path="res://scripts/level/mirror.gd" id="2_mirror"]
+[ext_resource type="Script" path="res://scripts/level/mirror_surface.gd" id="3_surface"]
+[ext_resource type="Sky" path="res://assets/sky/day_sky.tres" id="4_sky"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="5_player"]
+[ext_resource type="Script" uid="uid://bhucofvtd1e8a" path="res://scripts/level/spawn_point.gd" id="6_spawn"]
+[ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="7_hud"]
+[ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="8_panel"]
+
+[sub_resource type="Environment" id="Environment_lab"]
+background_mode = 2
+sky = ExtResource("4_sky")
+ambient_light_source = 2
+ambient_light_color = Color(0.223529, 0.466667, 0.741176, 1)
+ambient_light_energy = 0.6
+ssr_enabled = true
+ssr_max_steps = 32
+
+[sub_resource type="Resource" id="Resource_surface"]
+resource_local_to_scene = true
+script = ExtResource("3_surface")
+
+[sub_resource type="StandardMaterial3D" id="Mat_Floor"]
+albedo_color = Color(0.3, 0.31, 0.33, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="Mat_Wall"]
+albedo_color = Color(0.44, 0.44, 0.46, 1)
+roughness = 0.85
+
+[sub_resource type="StandardMaterial3D" id="Mat_Red"]
+albedo_color = Color(0.72, 0.24, 0.22, 1)
+roughness = 0.7
+
+[sub_resource type="StandardMaterial3D" id="Mat_Blue"]
+albedo_color = Color(0.2, 0.38, 0.7, 1)
+roughness = 0.7
+
+[sub_resource type="StandardMaterial3D" id="Mat_Yellow"]
+albedo_color = Color(0.78, 0.64, 0.18, 1)
+roughness = 0.6
+
+[sub_resource type="StandardMaterial3D" id="Mat_Frame"]
+albedo_color = Color(0.24, 0.22, 0.2, 1)
+roughness = 0.5
+metallic = 0.3
+
+[sub_resource type="BoxShape3D" id="Shape_24_1_24"]
+size = Vector3(24, 1, 24)
+
+[sub_resource type="BoxMesh" id="Mesh_Floor_24_1_24"]
+material = SubResource("Mat_Floor")
+size = Vector3(24, 1, 24)
+
+[sub_resource type="BoxShape3D" id="Shape_24_8_0p5"]
+size = Vector3(24, 8, 0.5)
+
+[sub_resource type="BoxMesh" id="Mesh_Wall_24_8_0p5"]
+material = SubResource("Mat_Wall")
+size = Vector3(24, 8, 0.5)
+
+[sub_resource type="BoxShape3D" id="Shape_0p5_8_24"]
+size = Vector3(0.5, 8, 24)
+
+[sub_resource type="BoxMesh" id="Mesh_Wall_0p5_8_24"]
+material = SubResource("Mat_Wall")
+size = Vector3(0.5, 8, 24)
+
+[sub_resource type="BoxShape3D" id="Shape_1p2_1p2_1p2"]
+size = Vector3(1.2, 1.2, 1.2)
+
+[sub_resource type="BoxMesh" id="Mesh_Red_1p2_1p2_1p2"]
+material = SubResource("Mat_Red")
+size = Vector3(1.2, 1.2, 1.2)
+
+[sub_resource type="BoxShape3D" id="Shape_2_0p7_1p4"]
+size = Vector3(2, 0.7, 1.4)
+
+[sub_resource type="BoxMesh" id="Mesh_Blue_2_0p7_1p4"]
+material = SubResource("Mat_Blue")
+size = Vector3(2, 0.7, 1.4)
+
+[sub_resource type="BoxShape3D" id="Shape_0p5_3p2_0p5"]
+size = Vector3(0.5, 3.2, 0.5)
+
+[sub_resource type="BoxMesh" id="Mesh_Yellow_0p5_3p2_0p5"]
+material = SubResource("Mat_Yellow")
+size = Vector3(0.5, 3.2, 0.5)
+
+[sub_resource type="BoxShape3D" id="Shape_0p4_2p2_0p4"]
+size = Vector3(0.4, 2.2, 0.4)
+
+[sub_resource type="BoxMesh" id="Mesh_Red_0p4_2p2_0p4"]
+material = SubResource("Mat_Red")
+size = Vector3(0.4, 2.2, 0.4)
+
+[sub_resource type="BoxShape3D" id="Shape_3_0p5_0p8"]
+size = Vector3(3, 0.5, 0.8)
+
+[sub_resource type="BoxMesh" id="Mesh_Blue_3_0p5_0p8"]
+material = SubResource("Mat_Blue")
+size = Vector3(3, 0.5, 0.8)
+
+[sub_resource type="BoxShape3D" id="Shape_1p9_0p16_0p12"]
+size = Vector3(1.9, 0.16, 0.12)
+
+[sub_resource type="BoxMesh" id="Mesh_Frame_1p9_0p16_0p12"]
+material = SubResource("Mat_Frame")
+size = Vector3(1.9, 0.16, 0.12)
+
+[sub_resource type="BoxShape3D" id="Shape_0p16_2p8_0p12"]
+size = Vector3(0.16, 2.8, 0.12)
+
+[sub_resource type="BoxMesh" id="Mesh_Frame_0p16_2p8_0p12"]
+material = SubResource("Mat_Frame")
+size = Vector3(0.16, 2.8, 0.12)
+
+[sub_resource type="BoxShape3D" id="Shape_1p9_0p12_0p7"]
+size = Vector3(1.9, 0.12, 0.7)
+
+[sub_resource type="BoxMesh" id="Mesh_Frame_1p9_0p12_0p7"]
+material = SubResource("Mat_Frame")
+size = Vector3(1.9, 0.12, 0.7)
+
+[node name="MirrorLab" type="Node3D" node_paths=PackedStringArray("player", "spawn_point")]
+script = ExtResource("1_arena")
+player = NodePath("Player")
+spawn_point = NodePath("SpawnPoint")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, 0.25, -0.433013, 0, 0.866025, 0.5, 0.5, -0.433013, 0.75, 0, 12, 0)
+light_energy = 1.1
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_lab")
+
+[node name="SpawnPoint" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 4)
+script = ExtResource("6_spawn")
+
+[node name="Mirror" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 1.4, -4)
+script = ExtResource("2_mirror")
+size = Vector2(1.6, 2.4)
+surface = SubResource("Resource_surface")
+
+[node name="Props" type="Node3D" parent="."]
+
+[node name="Floor" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/Floor"]
+shape = SubResource("Shape_24_1_24")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/Floor"]
+mesh = SubResource("Mesh_Floor_24_1_24")
+
+[node name="WallBack" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, -11)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/WallBack"]
+shape = SubResource("Shape_24_8_0p5")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/WallBack"]
+mesh = SubResource("Mesh_Wall_24_8_0p5")
+
+[node name="WallLeft" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11, 4, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/WallLeft"]
+shape = SubResource("Shape_0p5_8_24")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/WallLeft"]
+mesh = SubResource("Mesh_Wall_0p5_8_24")
+
+[node name="WallRight" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11, 4, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/WallRight"]
+shape = SubResource("Shape_0p5_8_24")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/WallRight"]
+mesh = SubResource("Mesh_Wall_0p5_8_24")
+
+[node name="RedCrate" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.6, 0.6, 1)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/RedCrate"]
+shape = SubResource("Shape_1p2_1p2_1p2")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/RedCrate"]
+mesh = SubResource("Mesh_Red_1p2_1p2_1p2")
+
+[node name="BlueSlab" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8, 0.35, 0.4)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/BlueSlab"]
+shape = SubResource("Shape_2_0p7_1p4")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/BlueSlab"]
+mesh = SubResource("Mesh_Blue_2_0p7_1p4")
+
+[node name="YellowPost" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.2, 1.6, -2)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/YellowPost"]
+shape = SubResource("Shape_0p5_3p2_0p5")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/YellowPost"]
+mesh = SubResource("Mesh_Yellow_0p5_3p2_0p5")
+
+[node name="RedPost" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.6, 1.1, -1.4)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/RedPost"]
+shape = SubResource("Shape_0p4_2p2_0p4")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/RedPost"]
+mesh = SubResource("Mesh_Red_0p4_2p2_0p4")
+
+[node name="BlueStep" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, -1.6)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/BlueStep"]
+shape = SubResource("Shape_3_0p5_0p8")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/BlueStep"]
+mesh = SubResource("Mesh_Blue_3_0p5_0p8")
+
+[node name="FrameTop" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.72, -4.06)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/FrameTop"]
+shape = SubResource("Shape_1p9_0p16_0p12")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/FrameTop"]
+mesh = SubResource("Mesh_Frame_1p9_0p16_0p12")
+
+[node name="FrameBottom" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.08, -4.06)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/FrameBottom"]
+shape = SubResource("Shape_1p9_0p16_0p12")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/FrameBottom"]
+mesh = SubResource("Mesh_Frame_1p9_0p16_0p12")
+
+[node name="FrameLeft" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.87, 1.4, -4.06)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/FrameLeft"]
+shape = SubResource("Shape_0p16_2p8_0p12")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/FrameLeft"]
+mesh = SubResource("Mesh_Frame_0p16_2p8_0p12")
+
+[node name="FrameRight" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.87, 1.4, -4.06)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/FrameRight"]
+shape = SubResource("Shape_0p16_2p8_0p12")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/FrameRight"]
+mesh = SubResource("Mesh_Frame_0p16_2p8_0p12")
+
+[node name="FrameFoot" type="StaticBody3D" parent="Props"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, -4.35)
+
+[node name="Collision" type="CollisionShape3D" parent="Props/FrameFoot"]
+shape = SubResource("Shape_1p9_0p12_0p7")
+
+[node name="Mesh" type="MeshInstance3D" parent="Props/FrameFoot"]
+mesh = SubResource("Mesh_Frame_1p9_0p12_0p7")
+
+[node name="Player" parent="." instance=ExtResource("5_player")]
+
+[node name="DebugHud" type="CanvasLayer" parent="." node_paths=PackedStringArray("player")]
+script = ExtResource("7_hud")
+player = NodePath("../Player")
+
+[node name="TuningPanel" type="CanvasLayer" parent="."]
+script = ExtResource("8_panel")

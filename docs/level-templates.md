@@ -88,9 +88,21 @@ Keep `volumetric_distance` below `fade_begin_distance` when you want "near
 atmosphere, far white". Nothing enforces it; some levels want them mixed.
 
 Shortening `volumetric_distance` also **sharpens light shafts for free**: the
-froxel grid is a fixed cell count (`rendering/environment/volumetric_fog/
-volume_size`, raised to 128 project-wide) spread across that distance, so 30 m
-of fog carries more than twice the detail of 64 m.
+froxel grid is a fixed cell count spread across that distance, so 30 m of fog
+carries more than twice the detail of 64 m.
+
+That cell count is `rendering/environment/volumetric_fog/volume_size` and
+`…/volume_depth` in `project.godot`, **raised from Godot's 64 to 128**. Godot's
+default spreads 64³ froxels over the whole fog range, which is far coarser than
+the 4096 shadow map surfaces get — so a scene shows crisp shadows on its walls
+and a mushy blob of a light shaft in the air, and an occluder thinner than one
+froxel (a roof panel) fails to block sunlit fog above it at all. It is global
+and it costs GPU time; halve both numbers to take it back.
+
+> The reason that explanation lives here and not beside the setting: the Godot
+> editor strips `;` comments out of `project.godot` whenever it re-saves, and
+> it did exactly that to the first copy of this note. Same trap
+> `Arena.COLD_AMBIENT_TINT` describes for `.tscn` files.
 
 `volumetric_ambient_inject` is the other half of "why is my fog grey". Volumetric
 fog is **lit** fog, not coloured fog: its colour is whatever light reaches each
