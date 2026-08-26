@@ -113,6 +113,6 @@ bun tools/link_private.ts
   --import` → 再开编辑器 → `git -C .private status` 确认 `.import` 没被改。
 - **在编辑器里保存 wrapper 有风险**：Godot 曾在重新序列化 `beriul_body.tscn`
   时丢掉全部 `chain_prefixes`，四组弹簧骨归零、全身次级运动消失且不报错。
-  在编辑器里调完数值后，跑一次 `tools/run_tests.sh body_wrapper`：它会
+  在编辑器里调完数值后，跑一次 `bun tools/run_tests.ts body_wrapper`：它会
   检查每组弹簧是否还找得到链条。挂了就 `git checkout` 私有仓那份 wrapper
   再手动改回数值（数值是纯文本，直接改文件最省事）。

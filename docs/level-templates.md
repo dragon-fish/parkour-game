@@ -119,7 +119,7 @@ level silently depends on: the root carries `arena.gd` and its `player` /
 end-to-end check — a player dropped into the template actually settles onto
 the floor and ends up in the `Ground` state, rather than merely having the
 right node names. Run it (along with everything else) via
-`pwsh tools/run_tests.ps1`.
+`bun tools/run_tests.ts`.
 
 ## Placing a zipline (or any interest line)
 

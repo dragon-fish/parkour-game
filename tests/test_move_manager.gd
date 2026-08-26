@@ -108,7 +108,7 @@ func test_current_config_defaults_to_the_moves_own_cfg() -> void:
 	assert_true(move.current_config() == cfg, "current_config() did not fall through to cfg")
 	# Never added to the tree, so queue_free() has nothing to defer to -- a
 	# bare Node (unlike RefCounted) does not free itself when it goes out of
-	# scope, and leaving this out trips run_tests.ps1's own "resources still
+	# scope, and leaving this out trips the runner's own "resources still
 	# in use at exit" scan even though every assert_true() above already passed.
 	move.free()
 

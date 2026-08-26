@@ -91,8 +91,12 @@ func _arm_cooldown(move_name: StringName, move: Move) -> void:
 # deferring every landing-into-slide by a tick and quietly changing feel. An
 # invariant check changes no behaviour at all: correct states are untouched,
 # and an incorrect one is reported the first time it runs, in any test or in
-# play. tools/run_tests.ps1 fails the run on any engine error line, so a state
-# that forgets cannot reach a green suite.
+# play. ⚠️ THIS USED TO SAY the runner fails a run on any engine error line,
+# so a forgetful state could not reach a green suite. IT NO LONGER DOES: the
+# scan (and its allowlist, which tests/legacy/ comments still cite by line
+# number) was dropped from the Windows runner before the two were merged into
+# tools/run_tests.ts. The push_error below still fires and is still visible in
+# the log; nothing fails the run on it.
 #
 # The rule checked is "the ACTIVE state has declared at least once since it was
 # entered", evaluated only on ticks where the state stays active:
