@@ -450,8 +450,7 @@ func _load_silhouette() -> void:
 	_anim_player = _find_animation_player(_silhouette)
 	if _anim_player == null:
 		return
-	_ensure_clip_loops(_anim_player, &"Idle")
-	_ensure_clip_loops(_anim_player, &"Walk")
+	_ensure_clips_loop(_anim_player, [&"Idle", &"Walk"])
 	if _anim_player.has_animation(&"Crouch_Idle"):
 		_anim_player.play(&"Crouch_Idle")
 	elif _anim_player.has_animation(&"Idle"):
@@ -525,15 +524,35 @@ func _find_animation_player(root: Node) -> AnimationPlayer:
 			queue.append(child)
 	return null
 
-## Same fix as Player._ensure_clip_loops: glTF/VRM imports carry no "this
-## clip loops" flag, so a merged Walk/Idle clip comes in as LOOP_NONE and
-## would freeze on its last frame instead of cycling.
-func _ensure_clip_loops(anim_player: AnimationPlayer, clip_name: StringName) -> void:
+## Same fix as Player._ensure_clips_loop: glTF/VRM imports carry no "this clip
+## loops" flag, so a merged Walk/Idle clip comes in as LOOP_NONE and would
+## freeze on its last frame instead of cycling.
+##
+## ⚠️ AND THE SAME PERFORMANCE BUG, WHICH THIS COPY INHERITED. The per-name
+## version deep-copied the whole merged library once per call; Player's caller
+## passed forty-five names and paid 2.25 seconds for it. This one passes two,
+## so it only ever wasted one extra copy of a 253-animation library -- but it
+## is the same shape and it is fixed the same way.
+##
+## 📌 THAT THIS EXISTS AT ALL IS THE POINT. main_menu.gd re-implements three
+## Player functions (this, _merge_animation_library, the profile load) purely
+## because the silhouette is a bare body with no Player around it -- so the
+## same body, and its 253-clip library, is built once here and again in the
+## level. Giving the menu a real Player would delete all three and load the
+## body once. See docs/seamless-loading.md.
+func _ensure_clips_loop(anim_player: AnimationPlayer, clip_names: Array) -> void:
 	var original_library := anim_player.get_animation_library("")
-	if original_library == null or not original_library.has_animation(clip_name):
+	if original_library == null:
+		return
+	var wanted: Array[StringName] = []
+	for clip_name in clip_names:
+		if original_library.has_animation(clip_name):
+			wanted.append(clip_name)
+	if wanted.is_empty():
 		return
 	var library := original_library.duplicate(true) as AnimationLibrary
-	library.get_animation(clip_name).loop_mode = Animation.LOOP_LINEAR
+	for clip_name in wanted:
+		library.get_animation(clip_name).loop_mode = Animation.LOOP_LINEAR
 	anim_player.remove_animation_library("")
 	anim_player.add_animation_library("", library)
 
