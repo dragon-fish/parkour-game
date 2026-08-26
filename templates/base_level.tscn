@@ -2,9 +2,10 @@
 
 [ext_resource type="Script" uid="uid://c0r485cb3u71f" path="res://scripts/level/arena.gd" id="1_tbgi4"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="2_tefeu"]
+[ext_resource type="Shader" uid="uid://w0t31whsjtxu" path="res://shaders/acrylic.gdshader" id="3_lq2vf"]
 [ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="4_tipki"]
 [ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="5_85g3d"]
-[ext_resource type="Script" path="res://scripts/level/spawn_point.gd" id="6_spawn"]
+[ext_resource type="Script" uid="uid://bhucofvtd1e8a" path="res://scripts/level/spawn_point.gd" id="6_spawn"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_choun"]
 
@@ -14,25 +15,28 @@ sky_material = SubResource("ProceduralSkyMaterial_choun")
 [sub_resource type="Environment" id="Environment_eb6dy"]
 background_mode = 2
 sky = SubResource("Sky_ya4ey")
-; ambient_light_source = 2 is AMBIENT_SOURCE_COLOR, not SKY: the sky above
-; stays the background/reflection source, but ambient (what actually lights
-; a shadowed surface in this renderer) is pinned to ambient_light_color below
-; instead of chasing the procedural sky's own colour. See the matching
-; comment in tools/arena_builder.gd's build() for the full reasoning -- both
-; sources must agree, and this is the hand-authored half.
 ambient_light_source = 2
-ambient_light_color = Color(0.62, 0.68, 0.82, 1)
+ambient_light_color = Color(0.22352941, 0.46666667, 0.7411765, 1)
 ssr_enabled = true
 ssr_max_steps = 32
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_trceg"]
 size = Vector3(60, 1, 60)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_a8y0u"]
-albedo_color = Color(0.42, 0.44, 0.47, 1)
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_avty2"]
+render_priority = 0
+shader = ExtResource("3_lq2vf")
+shader_parameter/base_color = Color(0.94, 0.95, 0.97, 1)
+shader_parameter/dot_color = Color(0.62, 0.7, 0.8, 1)
+shader_parameter/dot_opacity = 0.10000000475
+shader_parameter/spacing = 0.35
+shader_parameter/dot_radius = 0.05
+shader_parameter/metallic_amount = 0.4
+shader_parameter/roughness_amount = 0.12
+shader_parameter/projection_sharpness = 6.0
 
 [sub_resource type="BoxMesh" id="BoxMesh_jkv2x"]
-material = SubResource("StandardMaterial3D_a8y0u")
+material = SubResource("ShaderMaterial_avty2")
 size = Vector3(60, 1, 60)
 
 [node name="Arena" type="Node3D" unique_id=411242539 node_paths=PackedStringArray("player", "spawn_point")]

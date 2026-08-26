@@ -17,7 +17,7 @@ sky_material = SubResource("ProceduralSkyMaterial_a8y0u")
 background_mode = 2
 sky = SubResource("Sky_jkv2x")
 ambient_light_source = 2
-ambient_light_color = Color(0.62, 0.68, 0.82, 1)
+ambient_light_color = Color(0.223529, 0.466667, 0.741176, 1)
 ssr_enabled = true
 ssr_max_steps = 32
 

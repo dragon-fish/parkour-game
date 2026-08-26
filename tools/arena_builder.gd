@@ -222,7 +222,7 @@ func build() -> Node3D:
 	# dial Arena reads every frame) blends this against a neutral white --
 	# see Arena._process() -- so this is the "strength 1.0" end, matching the
 	# dial's own default.
-	environment.ambient_light_color = Color(0.62, 0.68, 0.82)
+	environment.ambient_light_color = Color(0.223529, 0.466667, 0.741176)
 	world_env.environment = environment
 	_attach(_root, world_env)
 

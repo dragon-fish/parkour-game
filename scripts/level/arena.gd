@@ -24,12 +24,18 @@ var _resetting_physics: bool = false
 ## the level, alongside reset_player(), instead of in the state machine.
 @onready var _death_sequence: DeathSequence = DeathSequence.new()
 
-## The resting cold-blue tint baked into both scene sources' WorldEnvironment
-## (templates/base_level.tscn, tools/arena_builder.gd -- see the
-## AMBIENT_SOURCE_COLOR comment at each). Kept here too, rather than read back
-## off the resource every frame, since it is one Color literal that has to
-## already match those two anyway.
-const COLD_AMBIENT_TINT := Color(0.62, 0.68, 0.82)
+## The resting cold-blue tint. ⚠️ FOUR PLACES CARRY THIS COLOUR AND ALL FOUR
+## MUST AGREE: here, templates/base_level.tscn, tools/arena_builder.gd, and
+## scenes/main.tscn. This one WINS AT RUNTIME -- Arena._process() re-applies
+## it every frame (so an F1 drag of ambient_cold_strength takes effect live),
+## which means a colour tuned in the editor and saved into a .tscn alone is
+## overwritten the moment the level runs. The scene copies are what the
+## EDITOR viewport shows; this constant is what the game shows.
+##
+## 📌 The .tscn files cannot hold that warning themselves: Godot strips the
+## `;` comments out of a scene file whenever the editor re-saves it, which
+## is how the previous copy of this note disappeared.
+const COLD_AMBIENT_TINT := Color(0.223529, 0.466667, 0.741176)
 ## The "no tint" end of CameraConfig.ambient_cold_strength: plain white, so a
 ## strength of 0 leaves only the environment's own ambient_light_energy
 ## setting the shadow brightness, with no colour cast at all.

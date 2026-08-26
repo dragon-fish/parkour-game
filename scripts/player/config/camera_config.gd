@@ -420,7 +420,7 @@ extends Resource
 ## Cold-blue ambient tint strength for the LEVEL, from 0 (neutral white
 ## ambient, no colour cast) to 1 (the full cold tint templates/base_level.tscn
 ## and tools/arena_builder.gd bake into the WorldEnvironment's
-## ambient_light_color at build time -- Color(0.62, 0.68, 0.82), see the
+## ambient_light_color at build time -- Color(0.224, 0.467, 0.741), see the
 ## AMBIENT_SOURCE_COLOR comment at both of those). Defaults to 1.0 to match
 ## what is already baked into both scene sources, so leaving this dial alone
 ## changes nothing.
