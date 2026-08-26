@@ -34,7 +34,7 @@ enabled=PackedStringArray("res://addons/gut/plugin.cfg", "res://addons/vrm/plugi
 
 [gui]
 
-theme/custom_font="res://assets/fonts/NotoSansSC.ttf"
+theme/custom_font="res://assets/fonts/noto_sans_sc.tres"
 
 [physics]
 

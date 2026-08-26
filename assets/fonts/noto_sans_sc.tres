@@ -1,0 +1,10 @@
+[gd_resource type="FontVariation" format=3 uid="uid://bsrp5243mooy1"]
+
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC.ttf" id="1_uetc4"]
+
+[resource]
+resource_name = "NotoSansSC Medium"
+base_font = ExtResource("1_uetc4")
+variation_opentype = {
+2003265652: 500
+}
