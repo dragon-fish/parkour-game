@@ -16,12 +16,30 @@ extends EditorNode3DGizmoPlugin
 const RADIUS := 0.3
 const HEIGHT := 1.8
 const SEGMENTS := 24
+## The bead on each end of an interest line.
+##
+## ✅ THE OWNER: "给兴趣线的视觉提示的端点加上一个小实心球，这样更有空间感，摆的
+## 时候不容易放进墙里." A wireframe end reads as flat at every angle -- there is
+## no shading to tell you whether it is in front of a wall or inside it. A solid
+## sphere occludes and gets occluded, which is the entire cue.
+##
+## A CONSTANT, not a fraction of reach_radius: this marks WHERE the line stops,
+## and the reach rings already draw how thick it is. A bead that grew with the
+## radius would say the same thing twice and hide the endpoint on a fat zipline.
+const END_CAP_RADIUS := 0.07
 
 var _capsule_mesh: CapsuleMesh
 var _shaft_mesh: CylinderMesh
 var _head_mesh: CylinderMesh
+## The bead on each end of an interest line, and one solid material per kind.
+var _cap_mesh: SphereMesh
+var _line_caps: Dictionary = {}
 var _fills: Dictionary = {}
 var _arrows: Dictionary = {}
+## The mirror being resized right now, and the size/origin it had when the drag
+## STARTED. See _set_mirror_size_handle for why a drag cannot read the live
+## values. Empty except between the first _set_handle of a drag and its commit.
+var _mirror_drag: Dictionary = {}
 
 ## Per-kind line colours: cyan cable, orange bar, yellow beam, red ladder.
 const KIND_COLORS := {
@@ -36,6 +54,13 @@ func _init() -> void:
 	create_material("spawn", Color(0.75, 0.4, 1.0))
 	for kind in KIND_COLORS:
 		create_material("line_%d" % kind, KIND_COLORS[kind])
+		# SOLID, unlike every other gizmo material here. A wireframe end cap
+		# would be one more set of lines to lose among the reach rings, and the
+		# whole point of the bead is being an object rather than a drawing.
+		var cap := StandardMaterial3D.new()
+		cap.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		cap.albedo_color = KIND_COLORS[kind]
+		_line_caps[kind] = cap
 	create_material("mirror", Color(0.45, 0.78, 1.0))
 	create_handle_material("handles")
 	_capsule_mesh = CapsuleMesh.new()
@@ -45,6 +70,11 @@ func _init() -> void:
 	_shaft_mesh.top_radius = 0.04
 	_shaft_mesh.bottom_radius = 0.04
 	_shaft_mesh.height = 0.5
+	_cap_mesh = SphereMesh.new()
+	_cap_mesh.radius = END_CAP_RADIUS
+	_cap_mesh.height = END_CAP_RADIUS * 2.0
+	_cap_mesh.radial_segments = 10
+	_cap_mesh.rings = 5
 	_head_mesh = CylinderMesh.new()
 	_head_mesh.top_radius = 0.0
 	_head_mesh.bottom_radius = 0.12
@@ -156,10 +186,10 @@ func _get_handle_name(gizmo: EditorNode3DGizmo, id: int, _secondary: bool) -> St
 
 func _get_handle_value(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool) -> Variant:
 	var node: Node3D = gizmo.get_node_3d()
-	# BOTH the size and the origin. Dragging ONE edge moves the other three
-	# nowhere, which for a rectangle centred on its origin means the origin
-	# itself has to shift -- so a cancelled drag has two things to put back,
-	# and a named pair is what keeps the two commits below honest.
+	# The LIVE values, so the viewport's readout tracks the drag. What undo
+	# restores does NOT come from here -- see _commit_handle, which uses the
+	# drag's own cached start instead, because the editor asks for this value
+	# again while the drag is running and the answer keeps changing.
 	if node is Mirror:
 		return {"size": (node as Mirror).size, "position": node.global_position}
 	return node.global_rotation
@@ -189,7 +219,12 @@ func _commit_handle(gizmo: EditorNode3DGizmo, _id: int, _secondary: bool,
 		restore: Variant, cancel: bool) -> void:
 	var node: Node3D = gizmo.get_node_3d()
 	if node is Mirror:
-		var was: Dictionary = restore
+		# The drag's own record, not `restore`: the editor calls
+		# _get_handle_value again while dragging to update its readout, so
+		# anything captured from there is a MID-drag state. ✅ THE OWNER:
+		# "撤销只会撤销中心点，宽度没撤销."
+		var was: Dictionary = _mirror_drag.get("start", restore)
+		_mirror_drag.clear()
 		if cancel:
 			(node as Mirror).size = was["size"]
 			node.global_position = was["position"]
@@ -266,6 +301,12 @@ func _redraw_interest_line(gizmo: EditorNode3DGizmo, line: InterestLine) -> void
 			lines.append(mid + wing)
 	gizmo.add_lines(lines, material)
 	gizmo.add_collision_segments(lines)
+	# The ends, last: a curve's own endpoints rather than the baked samples'
+	# first and last, so a line whose bake resolution changes keeps its beads
+	# exactly where its control points are.
+	for at in [line.curve.get_point_position(0),
+			line.curve.get_point_position(line.curve.point_count - 1)]:
+		gizmo.add_mesh(_cap_mesh, _line_caps[line.kind], Transform3D(Basis(), at))
 
 
 # --- mirrors ---------------------------------------------------------------
@@ -357,9 +398,23 @@ func _set_mirror_size_handle(mirror: Mirror, id: int, camera: Camera3D, screen_p
 		camera.project_ray_origin(screen_pos), camera.project_ray_normal(screen_pos))
 	if hit == null:
 		return
-	var local: Vector3 = mirror.global_transform.affine_inverse() * (hit as Vector3)
-	var half: Vector2 = mirror.size * 0.5
-	var size: Vector2 = mirror.size
+	# ⚠️ EVERY FRAME OF A DRAG RECOMPUTES FROM THE DRAG'S START, NEVER FROM THE
+	# LIVE NODE. _set_handle is called again on every mouse move, and holding an
+	# edge still means moving the origin -- so reading the live origin here fed
+	# each frame's shift into the next frame's coordinate system and the pane
+	# crawled away under the cursor. ✅ THE OWNER: "拖动期间这个镜子面片自己跟着
+	# 跑了…松手之后会发现是正常的，但拖动期间很怪."
+	if not _mirror_drag.has("start"):
+		_mirror_drag["start"] = {"size": mirror.size, "position": mirror.global_position}
+	var start: Dictionary = _mirror_drag["start"]
+	var start_size: Vector2 = start["size"]
+	var start_position: Vector3 = start["position"]
+	# The basis does not change while resizing, so the drag's frame is the live
+	# rotation around the START origin.
+	var start_transform := Transform3D(mirror.global_transform.basis, start_position)
+	var local: Vector3 = start_transform.affine_inverse() * (hit as Vector3)
+	var half: Vector2 = start_size * 0.5
+	var size: Vector2 = start_size
 	# Where the origin has to move so the three edges NOT being dragged stay
 	# exactly where they are. Local, and converted through the basis below so a
 	# rotated or scaled mirror behaves the same as an axis-aligned one.
@@ -382,4 +437,5 @@ func _set_mirror_size_handle(mirror: Mirror, id: int, camera: Camera3D, screen_p
 			size.y = half.y - edge
 			shift.y = (edge + half.y) * 0.5
 	mirror.size = size
-	mirror.global_position += mirror.global_transform.basis * shift
+	# ASSIGNED, not accumulated -- the whole point of measuring from the start.
+	mirror.global_position = start_position + mirror.global_transform.basis * shift
