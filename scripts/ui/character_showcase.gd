@@ -231,9 +231,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			if _body != null:
 				_body.rotate_y(motion.relative.x * ROTATE_SPEED)
 			# Vertical drag orbits the CAMERA's elevation (✅ the owner:
-			# 左键希望可以调俯仰角) -- drag up looks down from above.
+			# 左键希望可以调俯仰角) -- drag DOWN looks down from above, as if
+			# tipping her toward you (✅ the owner: 上下反向一下).
 			_pivot.rotation.x = clampf( \
-				_pivot.rotation.x + motion.relative.y * PITCH_SPEED,
+				_pivot.rotation.x - motion.relative.y * PITCH_SPEED,
 				PITCH_MIN, PITCH_MAX)
 			get_viewport().set_input_as_handled()
 		elif motion.button_mask & MOUSE_BUTTON_MASK_RIGHT:
