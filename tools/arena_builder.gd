@@ -211,6 +211,12 @@ func build() -> Node3D:
 	# full, deterministic control. Precedent already in this codebase:
 	# scripts/debug/animation_gallery.gd's _build_environment() does the same
 	# for its own WorldEnvironment.
+	# Screen-space reflections, so a glossy surface (shaders/acrylic.gdshader)
+	# actually mirrors the world instead of just looking smooth -- ✅ the
+	# owner asked for the showcase floor's acrylic sheen in the levels. Only
+	# smooth materials pay for it; a matte blockout looks the same as before.
+	environment.ssr_enabled = true
+	environment.ssr_max_steps = 32
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	# Resting cold-blue tint. CameraConfig.ambient_cold_strength (the F1
 	# dial Arena reads every frame) blends this against a neutral white --

@@ -146,9 +146,8 @@ func _build_world() -> void:
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(60.0, 60.0)
 	floor_mesh.mesh = plane
-	var material := ShaderMaterial.new()
-	material.shader = preload("res://scripts/ui/dot_grid_floor.gdshader")
-	floor_mesh.material_override = material
+	# The shared acrylic material, the same one levels can put on any mesh.
+	floor_mesh.material_override = preload("res://materials/acrylic.tres")
 	add_child(floor_mesh)
 	_pivot = Node3D.new()
 	# Off to the side so SHE sits screen-left and the red column owns the right.
