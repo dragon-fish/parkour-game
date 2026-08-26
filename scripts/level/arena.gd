@@ -145,7 +145,7 @@ const CALIBRATION_SCENE := "res://scenes/generated/calibration_course.tscn"
 ## test_generated_scenes.gd, which compares the builder's output against what is
 ## committed. Loading it at runtime keeps the generated scene exactly what its
 ## generator produces, and a checkout with no model simply plays with no body.
-const BODY_PROFILE := "res://scenes/player/profiles/vrm_test.tres"
+const BODY_PROFILE := "res://scenes/player/local/profiles/vrm_test.tres"
 
 ## Which profile the machine's owner is currently playing with -- a git-ignored
 ## ConfigFile (the whole profiles/ directory is ignored) so switching bodies is
@@ -153,10 +153,10 @@ const BODY_PROFILE := "res://scenes/player/profiles/vrm_test.tres"
 ## 来配置当前使用的 body profile." Format:
 ##
 ##     [body]
-##     profile="res://scenes/player/profiles/vrm_test.tres"
+##     profile="res://scenes/player/local/profiles/vrm_test.tres"
 ##
 ## Absent, BODY_PROFILE above stays the fallback, which keeps the old behaviour.
-const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
+const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
 
 ## Gives the player a body when the scene did not name one.
 ##

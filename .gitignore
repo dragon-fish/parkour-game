@@ -33,32 +33,24 @@ Godot_*.exe
 # Screenshot artifacts from tools/capture*.gd (verification output, not source)
 .captures/
 
-# The owner's local CC BY-NC-SA character model experiment and its generated
-# wrapper scene. NonCommercial + ShareAlike are both incompatible with this
-# project, so these must never be committed -- see docs/asset-candidates.md
-# and scripts/player/player.gd's body_scene export for the supported
-# runtime-attachment path instead. Listed by exact path, not as a directory
-# pattern: assets/models/ itself stays trackable for a future, properly
-# licensed model.
-assets/models/大正女仆酒狐.gltf
-assets/models/大正女仆酒狐.gltf.import
-assets/models/大正女仆酒狐_0.png
-assets/models/大正女仆酒狐_0.png.import
-scenes/player/whine_fox_player_nohead.tscn
-scenes/player/wine_fox_player_nohead.tscn
-scenes/player/wine_fox_body.tscn
-scenes/player/player_wine_fox.tscn
-
-# Owner's local debug levels
-scenes/_local_debug_levels/
+# ── local / local_* : never this repo's ──────────────────────────────────
+# THE CONVENTION: a folder called `local` or `local_*` belongs to the
+# private submodule or to this machine, never to the main repo. Everything
+# licence-bound or personal lives in .private/ (a separate private
+# repository) under such a folder, and tools/link_private.py links each one
+# into place -- see docs/author-notes.md. Ignoring the names here is what
+# keeps the links, and any scratch folder using the same convention, out of
+# this repo. No trailing slash: a link is a symlink, not a directory.
+local
+local_*
+_local
+_local_*
 
 # Measurement data extracted from a locally-owned copy of Mirror's Edge (2008),
 # used as a real-scale reference field for movement tuning. Contains no DICE/EA
 # art -- only box positions and dimensions -- but it still describes their level
 # layout, so nothing generated from it may ship. Reference it, measure it, then
 # build your own geometry. See _local/me-reference/tutorial-blockout/README.md.
-_local/
-_local_*/
 
 # Same rule, second source: the glyph templates hud_ocr.py matches against are
 # bitmaps lifted off the game's own HUD rendering, and the CSVs beside them are
@@ -71,11 +63,6 @@ docs/mirrors-edge-deep-research/tools/hud_ocr_data/
 __pycache__/
 *.pyc
 
-# Hand-built experiments dropped into the arena at runtime (see
-# Arena._load_sandbox). Not generated, not required, and not something a
-# throwaway ramp needs to be committed for.
-scenes/sandbox.tscn
-
 # Godot's own export output. Build artifacts, not source -- and the web target
 # in particular drops a ~40 MB .wasm and a ~10 MB .pck here, neither of which
 # has an LFS rule, so a `git add -A` puts them into history as raw blobs. That
@@ -84,48 +71,9 @@ scenes/sandbox.tscn
 dist/
 .output/
 
-# Beriul (Amanosora / am23ti, BOOTH), the owner's purchased character model.
-# The licence forbids public redistribution, so the model, its textures, and
-# every authored resource that references them stay local -- same rule as
-# test.vrm below.
-assets/models/beriul/
-
-# The owner's VRoid test export, kept local while the VRM pipeline is
-# being validated. Their own creation, so the licence is theirs to set --
-# untracked for now because "is this the model" is not yet decided, not
-# because it could not be.
-assets/models/test.vrm
-assets/models/test.vrm.import
-
-# The VRM test level: the owner-authored model plus the animation packs plus
-# the calibration obstacles. Follows the same rule as player_wine_fox.tscn --
-# a scene that instances an untracked asset cannot itself be tracked.
+# Two scenes the Godot editor regenerates by itself, at fixed paths outside
+# any local/ folder, and which name assets living in the private submodule.
+# Both have reappeared after deletion and been swept into a commit by a
+# path-wide `git add`; they stay named here for that reason.
 scenes/debug_levels/vrm_course.tscn
-# And the standalone Player variant, which the Godot editor regenerates
-# whenever it is opened -- twice now it has reappeared after being deleted and
-# been swept into a commit by a path-wide `git add`.
 scenes/player/player_vrm.tscn
-
-# Body profiles that name untracked models, so they cannot be tracked either.
-# scripts/player/body_profile.gd -- the class itself -- IS tracked.
-scenes/player/profiles/
-
-# The alignment workbench, which names a profile that names untracked models.
-scenes/player/body_alignment.tscn
-# Same rule: the animation gallery names the same profile. Its SCRIPT --
-# scripts/debug/animation_gallery.gd -- is tracked, and builds the whole grid
-# at runtime, so anyone with a profile of their own can point a two-node scene
-# at it and get the same viewer.
-scenes/player/animation_gallery.tscn
-
-# The owner's PAID copy of the Universal Animation Library (both packs, full
-# tiers). The licence on the files is CC0, so redistributing them would be
-# legal -- this is the owner's call not to: Quaternius sells these tiers to
-# fund the work, and mirroring the paid library in a public repo takes that
-# apart even where the licence permits it. They are also ~42 MB of binary,
-# which is its own reason.
-#
-# The FREE tiers beside this directory stay tracked, and every routing list in
-# character_animator.gd is a priority list precisely so a clone without these
-# falls back to them instead of breaking. See docs/asset-candidates.md.
-assets/animations/full/

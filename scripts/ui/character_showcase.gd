@@ -11,8 +11,8 @@ extends Node3D
 # Whole scene built from code on a one-node .tscn, exactly like MainMenu.
 
 const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
-const BODY_PROFILE := "res://scenes/player/profiles/vrm_test.tres"
-const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
+const BODY_PROFILE := "res://scenes/player/local/profiles/vrm_test.tres"
+const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
 
 ## 展厅目录。每项一个字典，除 label 外都可省略：
 ##

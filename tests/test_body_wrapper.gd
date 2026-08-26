@@ -11,7 +11,7 @@ extends ParkourTest
 # 都没有骨骼效果了). Structure, not tuning -- the spring values themselves
 # stay free to change.
 
-const WRAPPER := "res://assets/models/beriul/beriul_body.tscn"
+const WRAPPER := "res://assets/models/local/beriul/beriul_body.tscn"
 
 func test_every_spring_group_finds_chains() -> void:
 	if not ResourceLoader.exists(WRAPPER):

@@ -28,8 +28,8 @@ const MAIN_SCENE := "res://scenes/main.tscn"
 ## Same fallback chain as scripts/level/arena.gd's BODY_PROFILE/
 ## LOCAL_PROFILE_CONFIG -- copied rather than shared, since Arena is level
 ## code and this is UI code with no business depending on it.
-const BODY_PROFILE := "res://scenes/player/profiles/vrm_test.tres"
-const LOCAL_PROFILE_CONFIG := "res://scenes/player/profiles/local.cfg"
+const BODY_PROFILE := "res://scenes/player/local/profiles/vrm_test.tres"
+const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
 
 # --- entrance timing (spec: 入场编排 beats 0a-6) ----------------------------
 ## 0a: logo plate over the crouched close-up, fake loading bar.
