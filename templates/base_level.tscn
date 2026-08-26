@@ -7,7 +7,12 @@
 [ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="5_85g3d"]
 [ext_resource type="Script" uid="uid://bhucofvtd1e8a" path="res://scripts/level/spawn_point.gd" id="6_spawn"]
 [ext_resource type="Script" uid="uid://dhku0eeeioa0i" path="res://scripts/level/fog_config.gd" id="7_fog"]
-[ext_resource type="Sky" path="res://assets/sky/day_sky.tres" id="8_sky"]
+[ext_resource type="Sky" uid="uid://ffvdbj3x0eg1" path="res://assets/sky/day_sky.tres" id="8_sky"]
+
+[sub_resource type="Resource" id="Resource_fogbl"]
+resource_local_to_scene = true
+script = ExtResource("7_fog")
+fade_begin_distance = 128.0
 
 [sub_resource type="Environment" id="Environment_eb6dy"]
 background_mode = 2
@@ -16,10 +21,6 @@ ambient_light_source = 2
 ambient_light_color = Color(0.22352941, 0.46666667, 0.7411765, 1)
 ssr_enabled = true
 ssr_max_steps = 32
-
-[sub_resource type="Resource" id="Resource_fogbl"]
-script = ExtResource("7_fog")
-resource_local_to_scene = true
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_trceg"]
 size = Vector3(60, 1, 60)

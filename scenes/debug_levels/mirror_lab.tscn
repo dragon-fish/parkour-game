@@ -1,9 +1,9 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://7f3yo5u38270"]
 
 [ext_resource type="Script" uid="uid://c0r485cb3u71f" path="res://scripts/level/arena.gd" id="1_arena"]
-[ext_resource type="Script" path="res://scripts/level/mirror.gd" id="2_mirror"]
-[ext_resource type="Script" path="res://scripts/level/mirror_surface.gd" id="3_surface"]
-[ext_resource type="Sky" path="res://assets/sky/day_sky.tres" id="4_sky"]
+[ext_resource type="Script" uid="uid://c2lq2tpnp55kw" path="res://scripts/level/mirror.gd" id="2_mirror"]
+[ext_resource type="Script" uid="uid://hc0cnffn7xfd" path="res://scripts/level/mirror_surface.gd" id="3_surface"]
+[ext_resource type="Sky" uid="uid://ffvdbj3x0eg1" path="res://assets/sky/day_sky.tres" id="4_sky"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="5_player"]
 [ext_resource type="Script" uid="uid://bhucofvtd1e8a" path="res://scripts/level/spawn_point.gd" id="6_spawn"]
 [ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="7_hud"]
@@ -22,33 +22,12 @@ ssr_max_steps = 32
 resource_local_to_scene = true
 script = ExtResource("3_surface")
 
+[sub_resource type="BoxShape3D" id="Shape_24_1_24"]
+size = Vector3(24, 1, 24)
+
 [sub_resource type="StandardMaterial3D" id="Mat_Floor"]
 albedo_color = Color(0.3, 0.31, 0.33, 1)
 roughness = 0.9
-
-[sub_resource type="StandardMaterial3D" id="Mat_Wall"]
-albedo_color = Color(0.44, 0.44, 0.46, 1)
-roughness = 0.85
-
-[sub_resource type="StandardMaterial3D" id="Mat_Red"]
-albedo_color = Color(0.72, 0.24, 0.22, 1)
-roughness = 0.7
-
-[sub_resource type="StandardMaterial3D" id="Mat_Blue"]
-albedo_color = Color(0.2, 0.38, 0.7, 1)
-roughness = 0.7
-
-[sub_resource type="StandardMaterial3D" id="Mat_Yellow"]
-albedo_color = Color(0.78, 0.64, 0.18, 1)
-roughness = 0.6
-
-[sub_resource type="StandardMaterial3D" id="Mat_Frame"]
-albedo_color = Color(0.24, 0.22, 0.2, 1)
-roughness = 0.5
-metallic = 0.3
-
-[sub_resource type="BoxShape3D" id="Shape_24_1_24"]
-size = Vector3(24, 1, 24)
 
 [sub_resource type="BoxMesh" id="Mesh_Floor_24_1_24"]
 material = SubResource("Mat_Floor")
@@ -56,6 +35,10 @@ size = Vector3(24, 1, 24)
 
 [sub_resource type="BoxShape3D" id="Shape_24_8_0p5"]
 size = Vector3(24, 8, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="Mat_Wall"]
+albedo_color = Color(0.44, 0.44, 0.46, 1)
+roughness = 0.85
 
 [sub_resource type="BoxMesh" id="Mesh_Wall_24_8_0p5"]
 material = SubResource("Mat_Wall")
@@ -71,6 +54,10 @@ size = Vector3(0.5, 8, 24)
 [sub_resource type="BoxShape3D" id="Shape_1p2_1p2_1p2"]
 size = Vector3(1.2, 1.2, 1.2)
 
+[sub_resource type="StandardMaterial3D" id="Mat_Red"]
+albedo_color = Color(0.72, 0.24, 0.22, 1)
+roughness = 0.7
+
 [sub_resource type="BoxMesh" id="Mesh_Red_1p2_1p2_1p2"]
 material = SubResource("Mat_Red")
 size = Vector3(1.2, 1.2, 1.2)
@@ -78,12 +65,20 @@ size = Vector3(1.2, 1.2, 1.2)
 [sub_resource type="BoxShape3D" id="Shape_2_0p7_1p4"]
 size = Vector3(2, 0.7, 1.4)
 
+[sub_resource type="StandardMaterial3D" id="Mat_Blue"]
+albedo_color = Color(0.2, 0.38, 0.7, 1)
+roughness = 0.7
+
 [sub_resource type="BoxMesh" id="Mesh_Blue_2_0p7_1p4"]
 material = SubResource("Mat_Blue")
 size = Vector3(2, 0.7, 1.4)
 
 [sub_resource type="BoxShape3D" id="Shape_0p5_3p2_0p5"]
 size = Vector3(0.5, 3.2, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="Mat_Yellow"]
+albedo_color = Color(0.78, 0.64, 0.18, 1)
+roughness = 0.6
 
 [sub_resource type="BoxMesh" id="Mesh_Yellow_0p5_3p2_0p5"]
 material = SubResource("Mat_Yellow")
@@ -106,6 +101,11 @@ size = Vector3(3, 0.5, 0.8)
 [sub_resource type="BoxShape3D" id="Shape_1p9_0p16_0p12"]
 size = Vector3(1.9, 0.16, 0.12)
 
+[sub_resource type="StandardMaterial3D" id="Mat_Frame"]
+albedo_color = Color(0.24, 0.22, 0.2, 1)
+metallic = 0.3
+roughness = 0.5
+
 [sub_resource type="BoxMesh" id="Mesh_Frame_1p9_0p16_0p12"]
 material = SubResource("Mat_Frame")
 size = Vector3(1.9, 0.16, 0.12)
@@ -124,164 +124,164 @@ size = Vector3(1.9, 0.12, 0.7)
 material = SubResource("Mat_Frame")
 size = Vector3(1.9, 0.12, 0.7)
 
-[node name="MirrorLab" type="Node3D" node_paths=PackedStringArray("player", "spawn_point")]
+[node name="MirrorLab" type="Node3D" unique_id=850653922 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_arena")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
 
-[node name="Sun" type="DirectionalLight3D" parent="."]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1998224574]
 transform = Transform3D(0.866025, 0.25, -0.433013, 0, 0.866025, 0.5, 0.5, -0.433013, 0.75, 0, 12, 0)
 light_energy = 1.1
 shadow_enabled = true
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=192198806]
 environment = SubResource("Environment_lab")
 
-[node name="SpawnPoint" type="Marker3D" parent="."]
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1573256258]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 4)
 script = ExtResource("6_spawn")
 
-[node name="Mirror" type="Node3D" parent="."]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 1.4, -4)
+[node name="Mirror" type="Node3D" parent="." unique_id=562581132]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0.008731842, 1.4, -4)
 script = ExtResource("2_mirror")
-size = Vector2(1.6, 2.4)
-reflection_cull_mask = 786431
+size = Vector2(1.6174624, 2.4)
 surface = SubResource("Resource_surface")
+reflection_cull_mask = 786431
 
-[node name="Props" type="Node3D" parent="."]
+[node name="Props" type="Node3D" parent="." unique_id=2040813621]
 
-[node name="Floor" type="StaticBody3D" parent="Props"]
+[node name="Floor" type="StaticBody3D" parent="Props" unique_id=360543152]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/Floor"]
+[node name="Collision" type="CollisionShape3D" parent="Props/Floor" unique_id=1543840448]
 shape = SubResource("Shape_24_1_24")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/Floor"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/Floor" unique_id=926068931]
 mesh = SubResource("Mesh_Floor_24_1_24")
 
-[node name="WallBack" type="StaticBody3D" parent="Props"]
+[node name="WallBack" type="StaticBody3D" parent="Props" unique_id=1355217758]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, -11)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/WallBack"]
+[node name="Collision" type="CollisionShape3D" parent="Props/WallBack" unique_id=462763801]
 shape = SubResource("Shape_24_8_0p5")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/WallBack"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/WallBack" unique_id=1740570813]
 mesh = SubResource("Mesh_Wall_24_8_0p5")
 
-[node name="WallLeft" type="StaticBody3D" parent="Props"]
+[node name="WallLeft" type="StaticBody3D" parent="Props" unique_id=392732402]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11, 4, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/WallLeft"]
+[node name="Collision" type="CollisionShape3D" parent="Props/WallLeft" unique_id=1179574153]
 shape = SubResource("Shape_0p5_8_24")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/WallLeft"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/WallLeft" unique_id=1909908978]
 mesh = SubResource("Mesh_Wall_0p5_8_24")
 
-[node name="WallRight" type="StaticBody3D" parent="Props"]
+[node name="WallRight" type="StaticBody3D" parent="Props" unique_id=1905215952]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11, 4, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/WallRight"]
+[node name="Collision" type="CollisionShape3D" parent="Props/WallRight" unique_id=195366561]
 shape = SubResource("Shape_0p5_8_24")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/WallRight"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/WallRight" unique_id=1589879048]
 mesh = SubResource("Mesh_Wall_0p5_8_24")
 
-[node name="RedCrate" type="StaticBody3D" parent="Props"]
+[node name="RedCrate" type="StaticBody3D" parent="Props" unique_id=598703165]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.6, 0.6, 1)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/RedCrate"]
+[node name="Collision" type="CollisionShape3D" parent="Props/RedCrate" unique_id=403791649]
 shape = SubResource("Shape_1p2_1p2_1p2")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/RedCrate"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/RedCrate" unique_id=1860420467]
 mesh = SubResource("Mesh_Red_1p2_1p2_1p2")
 
-[node name="BlueSlab" type="StaticBody3D" parent="Props"]
+[node name="BlueSlab" type="StaticBody3D" parent="Props" unique_id=1358077463]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8, 0.35, 0.4)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/BlueSlab"]
+[node name="Collision" type="CollisionShape3D" parent="Props/BlueSlab" unique_id=1598438341]
 shape = SubResource("Shape_2_0p7_1p4")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/BlueSlab"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/BlueSlab" unique_id=1344483453]
 mesh = SubResource("Mesh_Blue_2_0p7_1p4")
 
-[node name="YellowPost" type="StaticBody3D" parent="Props"]
+[node name="YellowPost" type="StaticBody3D" parent="Props" unique_id=2065657179]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.2, 1.6, -2)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/YellowPost"]
+[node name="Collision" type="CollisionShape3D" parent="Props/YellowPost" unique_id=722152634]
 shape = SubResource("Shape_0p5_3p2_0p5")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/YellowPost"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/YellowPost" unique_id=591427458]
 mesh = SubResource("Mesh_Yellow_0p5_3p2_0p5")
 
-[node name="RedPost" type="StaticBody3D" parent="Props"]
+[node name="RedPost" type="StaticBody3D" parent="Props" unique_id=1327350044]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.6, 1.1, -1.4)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/RedPost"]
+[node name="Collision" type="CollisionShape3D" parent="Props/RedPost" unique_id=557905787]
 shape = SubResource("Shape_0p4_2p2_0p4")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/RedPost"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/RedPost" unique_id=1889465257]
 mesh = SubResource("Mesh_Red_0p4_2p2_0p4")
 
-[node name="BlueStep" type="StaticBody3D" parent="Props"]
+[node name="BlueStep" type="StaticBody3D" parent="Props" unique_id=29379418]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, -1.6)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/BlueStep"]
+[node name="Collision" type="CollisionShape3D" parent="Props/BlueStep" unique_id=1462960674]
 shape = SubResource("Shape_3_0p5_0p8")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/BlueStep"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/BlueStep" unique_id=575744247]
 mesh = SubResource("Mesh_Blue_3_0p5_0p8")
 
-[node name="FrameTop" type="StaticBody3D" parent="Props"]
+[node name="FrameTop" type="StaticBody3D" parent="Props" unique_id=816098633]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.72, -3.93)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/FrameTop"]
+[node name="Collision" type="CollisionShape3D" parent="Props/FrameTop" unique_id=1642578399]
 shape = SubResource("Shape_1p9_0p16_0p12")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/FrameTop"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/FrameTop" unique_id=303399916]
 mesh = SubResource("Mesh_Frame_1p9_0p16_0p12")
 
-[node name="FrameBottom" type="StaticBody3D" parent="Props"]
+[node name="FrameBottom" type="StaticBody3D" parent="Props" unique_id=1101571794]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.08, -3.93)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/FrameBottom"]
+[node name="Collision" type="CollisionShape3D" parent="Props/FrameBottom" unique_id=72004823]
 shape = SubResource("Shape_1p9_0p16_0p12")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/FrameBottom"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/FrameBottom" unique_id=434502196]
 mesh = SubResource("Mesh_Frame_1p9_0p16_0p12")
 
-[node name="FrameLeft" type="StaticBody3D" parent="Props"]
+[node name="FrameLeft" type="StaticBody3D" parent="Props" unique_id=1518578983]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.87, 1.4, -3.93)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/FrameLeft"]
+[node name="Collision" type="CollisionShape3D" parent="Props/FrameLeft" unique_id=2020444080]
 shape = SubResource("Shape_0p16_2p8_0p12")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/FrameLeft"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/FrameLeft" unique_id=1543670683]
 mesh = SubResource("Mesh_Frame_0p16_2p8_0p12")
 
-[node name="FrameRight" type="StaticBody3D" parent="Props"]
+[node name="FrameRight" type="StaticBody3D" parent="Props" unique_id=341557554]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.87, 1.4, -3.93)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/FrameRight"]
+[node name="Collision" type="CollisionShape3D" parent="Props/FrameRight" unique_id=1724122696]
 shape = SubResource("Shape_0p16_2p8_0p12")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/FrameRight"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/FrameRight" unique_id=1060747923]
 mesh = SubResource("Mesh_Frame_0p16_2p8_0p12")
 
-[node name="FrameFoot" type="StaticBody3D" parent="Props"]
+[node name="FrameFoot" type="StaticBody3D" parent="Props" unique_id=719578180]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, -4.35)
 
-[node name="Collision" type="CollisionShape3D" parent="Props/FrameFoot"]
+[node name="Collision" type="CollisionShape3D" parent="Props/FrameFoot" unique_id=1357490390]
 shape = SubResource("Shape_1p9_0p12_0p7")
 
-[node name="Mesh" type="MeshInstance3D" parent="Props/FrameFoot"]
+[node name="Mesh" type="MeshInstance3D" parent="Props/FrameFoot" unique_id=232358724]
 layers = 262144
 mesh = SubResource("Mesh_Frame_1p9_0p12_0p7")
 
-[node name="Player" parent="." instance=ExtResource("5_player")]
+[node name="Player" parent="." unique_id=1148081114 instance=ExtResource("5_player")]
 
-[node name="DebugHud" type="CanvasLayer" parent="." node_paths=PackedStringArray("player")]
+[node name="DebugHud" type="CanvasLayer" parent="." unique_id=1943421159 node_paths=PackedStringArray("player")]
 script = ExtResource("7_hud")
 player = NodePath("../Player")
 
-[node name="TuningPanel" type="CanvasLayer" parent="."]
+[node name="TuningPanel" type="CanvasLayer" parent="." unique_id=1351121339]
 script = ExtResource("8_panel")

@@ -9,15 +9,15 @@
   "head_path": "GeneralSkeleton/Head",
 
   "clip_offsets": {
-    "LiftAir_Fall":        [[0, 0.1,   0], [0, 0, 0]],
-    "LiftAir_Fall_Impact": [[0, 0.1,   0], [0, 0, 0]],
-    "StepUp":              [[0, 0,  -0.2], [0, 0, 0]],
-    "WallRun_L":           [[0.7, 0,   0], [0, 0, 0]],
-    "WallRun_R":           [[-0.7, 0,  0], [0, 0, 0]]
+	"LiftAir_Fall":        [[0, 0.1,   0], [0, 0, 0]],
+	"LiftAir_Fall_Impact": [[0, 0.1,   0], [0, 0, 0]],
+	"StepUp":              [[0, 0,  -0.2], [0, 0, 0]],
+	"WallRun_L":           [[0.7, 0,   0], [0, 0, 0]],
+	"WallRun_R":           [[-0.7, 0,  0], [0, 0, 0]]
   },
 
   "clip_timings": {
-    "StepUp": [0.16666667, 0.0]
+	"StepUp": [0.16666667, 0.0]
   },
 
   "slide_eye_lift": 0.15
