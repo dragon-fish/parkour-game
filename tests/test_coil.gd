@@ -31,7 +31,22 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 
 var _world: Dictionary = {}
 
+## Geometry these cases build by hand -- slabs and ceilings. Tracked so that
+## after_each() can take it down.
+##
+## ⚠️ THE CASES USED TO FREE THEIR OWN, ON THE LAST LINE, and it cost a run:
+## a case that FAILS never reaches its last line, so a failed assertion left a
+## floor standing at chest height in the middle of the shared scene tree and
+## the next file to run inherited it. That is what "1 failing test, but only in
+## a full run" was. free(), not queue_free(), for the same reason -- a deferred
+## release survives into the next test.
+var _props: Array[Node] = []
+
 func after_each() -> void:
+	for prop in _props:
+		if is_instance_valid(prop):
+			prop.free()
+	_props.clear()
 	if _world.is_empty():
 		return
 	TestWorld.teardown(_world)
@@ -247,7 +262,7 @@ func _slab_at(top_y: float) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(4.0, 0.2, 4.0)
+	box.size = Vector3(12.0, 0.2, 12.0)
 	shape.shape = box
 	body.add_child(shape)
 	get_tree().root.add_child(body)
@@ -257,6 +272,7 @@ func _slab_at(top_y: float) -> StaticBody3D:
 	# of this passed against the very regression it was written to catch.
 	var at: Vector3 = (_world["player"] as Player).global_position
 	body.global_position = Vector3(at.x, top_y - 0.1, at.z)
+	_props.append(body)
 	return body
 
 func test_a_coil_does_not_end_early_over_geometry_it_is_clearing() -> void:
@@ -293,13 +309,12 @@ func test_a_coil_does_not_end_early_over_geometry_it_is_clearing() -> void:
 		"test setup: the slab does not reach the standing feet, so it proves nothing")
 	assert_gt(coiled_feet, slab_top,
 		"test setup: the slab blocks the tucked feet too, so it proves nothing")
-	var slab := _slab_at(slab_top)
+	_slab_at(slab_top)
 
 	await step(3)
 	assert_eq(player.move_manager.current_name, Move.COIL,
 		"the coil ended over geometry it was clearing (got %s)"
 		% player.move_manager.current_name)
-	slab.queue_free()
 
 func test_a_coil_lands_into_a_crouch_rather_than_deciding_for_itself() -> void:
 	# ✅ THE OWNER'S RULE, and it is the two moves either side of this one:
@@ -328,6 +343,72 @@ func test_a_coil_lands_into_a_crouch_rather_than_deciding_for_itself() -> void:
 	assert_eq(coil.landing_destination(
 		player.config.pawn.hard_landing_height + 1.0, false), Move.LANDING,
 		"a hard landing was taken away from the landing lockout")
+
+## A ceiling whose UNDERSIDE sits at `bottom_y`, over the body's own position.
+func _roof_at(bottom_y: float) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(12.0, 0.2, 12.0)
+	shape.shape = box
+	body.add_child(shape)
+	get_tree().root.add_child(body)
+	var at: Vector3 = (_world["player"] as Player).global_position
+	body.global_position = Vector3(at.x, bottom_y + 0.1, at.z)
+	_props.append(body)
+	return body
+
+func test_a_coil_into_a_duct_stays_crouched() -> void:
+	# ✅ THE OWNER, on how a duct is actually entered: "需要滑墙跳后蜷缩进去".
+	# A wall-run kick hands off to Jump, and Jump is what offers a coil -- so a
+	# tuck can happen high up and travelling horizontally, which is what puts a
+	# body through an opening in a WALL. I had claimed this case could not be
+	# built on flat ground; that was only true of jumping straight up into it.
+	#
+	# The wall run itself is not what is under test and is not built here. What
+	# the duct actually IS, geometrically, is a stretch where the ceiling is one
+	# crouch above the floor -- so the fixture is that, closed around a body
+	# that is already tucked and already moving.
+	var player: Player = await _jumping()
+	player.config.coil.duration = 5.0
+	_world["input"].press_crouch()
+	await step(17)
+	assert_eq(player.move_manager.current_name, Move.COIL, "test setup: not coiled")
+
+	# Wait for the descent, so closing a ceiling over the body does not simply
+	# stop a climb it was still making.
+	for i in 120:
+		await step(1)
+		if player.velocity.y < 0.0:
+			break
+	assert_lt(player.velocity.y, 0.0, "test setup: never started descending")
+	assert_eq(player.move_manager.current_name, Move.COIL, "test setup: left the coil")
+
+	var tucked_feet: float = player.global_position.y - player.current_capsule_height() * 0.5
+	var duct_floor: float = tucked_feet - 0.05
+	# One crouch of clearance plus a finger's width: a tucked body fits, a
+	# crouched one fits, a standing one has no chance.
+	var duct_roof: float = duct_floor + player.config.crouch.crouch_capsule_height + 0.1
+	assert_lt(duct_roof, duct_floor + player.standing_height(),
+		"test setup: the duct is tall enough to stand in, so it proves nothing")
+	_slab_at(duct_floor)
+	_roof_at(duct_roof)
+
+	for i in 120:
+		await step(1)
+		if player.grounded:
+			break
+	assert_true(player.grounded, "never landed on the duct floor")
+	# Released, so nothing but the roof is keeping the body down.
+	_world["input"].release_crouch()
+	await step(15)
+
+	assert_eq(player.move_manager.current_name, Move.CROUCH,
+		"a coil that landed inside a duct did not settle into a crouch (got %s)"
+		% player.move_manager.current_name)
+	assert_lt(player.current_capsule_height(), player.standing_height() - 0.01,
+		"the body stood up into the duct roof (capsule is %.2f m)"
+		% player.current_capsule_height())
 
 func test_a_coil_that_lands_in_the_open_gets_back_up() -> void:
 	# The other half of the hand-off above: passing through Crouch must not

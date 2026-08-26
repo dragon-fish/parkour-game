@@ -86,6 +86,14 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 ## the way in, and on open ground it hands straight back to Walking on the very
 ## next tick. So the cost of not asking is one frame of Crouch, and the benefit
 ## is that the question gets asked by the code that can answer it.
+##
+## 📌 WHAT THE HAND-OFF BUYS IS NOT THE CAPSULE. Measured by removing this line
+## and landing in a duct: the body stays compressed anyway, because
+## request_standing_capsule() correctly refuses to grow into the roof. What it
+## became instead was WALKING at a standing speed cap inside a crouched
+## capsule -- a body shuffling through a duct at running pace. The capsule was
+## never the part that needed handing over; the speed modifier and the stand-up
+## rule were.
 func landing_destination(fall_height: float, rolled: bool) -> StringName:
 	var destination := super(fall_height, rolled)
 	return CROUCH if destination == WALKING else destination
