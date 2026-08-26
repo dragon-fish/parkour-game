@@ -37,7 +37,7 @@ Godot_*.exe
 # THE CONVENTION: a folder called `local` or `local_*` belongs to the
 # private submodule or to this machine, never to the main repo. Everything
 # licence-bound or personal lives in .private/ (a separate private
-# repository) under such a folder, and tools/link_private.py links each one
+# repository) under such a folder, and tools/link_private.ts links each one
 # into place -- see docs/author-notes.md. Ignoring the names here is what
 # keeps the links, and any scratch folder using the same convention, out of
 # this repo. No trailing slash: a link is a symlink, not a directory.

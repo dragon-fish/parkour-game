@@ -1,7 +1,7 @@
 #!/bin/sh
 # Tracked hook -- git itself never syncs .git/hooks, so this directory is
 # the synced copy and `core.hooksPath` points at it. Install with:
-#   python3 tools/link_private.py --install-hooks
+#   bun tools/link_private.ts --install-hooks
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 . "$root/tools/githooks/_lfs.sh"
 run_lfs post-merge "$@"
@@ -9,14 +9,14 @@ run_lfs post-merge "$@"
 # Keep the .private links in step with whatever just landed: a pull, a
 # branch switch, a submodule update. Silent when there is no .private.
 #
-# PROBE the interpreter, do not just look it up, and try `python` first: on
-# Windows `python3` is a Microsoft Store redirector stub that sits on PATH,
-# is not Python, and would turn this hook into a silent no-op on that half
-# of the setup. The version test also rejects a `python` that is still 2.x.
-for py in python python3 py; do
-	command -v "$py" >/dev/null 2>&1 || continue
-	"$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' \
-		>/dev/null 2>&1 || continue
-	"$py" "$root/tools/link_private.py" || true
-	break
-done
+# Bun, not python: a Windows JUNCTION -- the only link a normal user may
+# create there -- is a first-class citizen of node:fs, and `python3` on that
+# platform is a Microsoft Store stub that sits on PATH and is not Python.
+# A machine without bun keeps whatever links it already had; it says so
+# rather than failing the hook, since a checkout must not be held hostage
+# to a tool being absent.
+if command -v bun >/dev/null 2>&1; then
+	bun "$root/tools/link_private.ts" || true
+else
+	echo "link_private: bun not found -- links not refreshed (see docs/author-notes.md)" >&2
+fi

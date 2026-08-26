@@ -14,7 +14,7 @@ Git LFS。点开头的目录 Godot 不索引，编辑器里也看不见。
 > **主仓永远不创建名为 `local` 或 `local_*` 的文件夹。**
 
 这些名字属于私仓（或纯本地的临时文件）。私有资产一律放进这样的目录，
-`tools/link_private.py` 把每个目录**软链**到它该在的位置——于是编辑器里
+`tools/link_private.ts` 把每个目录**软链**到它该在的位置——于是编辑器里
 模型仍然在 `assets/models/local/`，所有 `res://` 路径照写不误。
 
 链接**从不入库**：Git 在 Windows 上会把提交过的软链检出成一个写着目标路径
@@ -25,12 +25,12 @@ Git LFS。点开头的目录 Godot 不索引，编辑器里也看不见。
 
 ```sh
 git submodule update --init          # 第一次 / 换机器
-python3 tools/link_private.py --install-hooks   # 一次性：装钩子（顺带建链）
+bun tools/link_private.ts --install-hooks   # 一次性：装钩子（顺带建链）
 cd .private && git add -A && git commit && git push   # 改了私有资产
 ```
 
 装过钩子之后，`git pull` / 切分支 / `git submodule update` 会**自动**重建链接：
-新目录建上、上游删掉的链接清掉。手动跑 `python3 tools/link_private.py`
+新目录建上、上游删掉的链接清掉。手动跑 `bun tools/link_private.ts`
 效果一样，可重复执行。
 
 ⚠️ **Windows 上敲 `python`，不是 `python3`**。后者在 PATH 上解析到微软商店的
@@ -42,6 +42,12 @@ cd .private && git add -A && git commit && git push   # 改了私有资产
 `core.hooksPath` 指过去就等价于 husky 那套做法。唯一不能自动化的是那句
 `git config`——git 有意不让 clone 自动执行仓库里的配置（否则 clone 一个仓
 就能在你机器上执行代码）。所以换机器记得跑一次 `--install-hooks`。
+
+工具用 **TypeScript + Bun** 而不是 sh/python，理由是具体的：Windows 上普通用户
+只能建 **junction**，而它在 `node:fs` 里是一等公民（`symlink(target, path,
+"junction")`，POSIX 上该参数自动忽略；`lstat` 也认它是软链），Python 那边则要
+外挂 `mklink /J` 再靠 `os.path.isjunction` 单独识别；且 Bun 的输出恒为 UTF-8，
+不会因为控制台是 GBK 就在「链接已经改完」的时刻抛异常。
 
 ⚠️ 这些钩子里**必须**保留 `git lfs` 调用：`core.hooksPath` 会整体顶掉
 `git lfs install` 装在 `.git/hooks` 里的那四个，少了它 LFS 会静默停止
@@ -67,7 +73,7 @@ junction 全部误判成真文件夹挪走，每跑一次留下一批 `local_<�
 ### 新增私有内容
 
 放进任意 `local/` 目录即可。若是新开的一个 `local` 目录，跑一次
-`python3 tools/link_private.py` 之前先更新 `.private/links.txt`（一行一个
+`bun tools/link_private.ts` 之前先更新 `.private/links.txt`（一行一个
 路径，两边同名）。
 
 ### 换新电脑
@@ -76,7 +82,7 @@ junction 全部误判成真文件夹挪走，每跑一次留下一批 `local_<�
 git clone git@github.com:dragon-fish/parkour-game.git
 cd parkour-game
 git submodule update --init          # 需要私仓权限，别人 clone 主仓不受影响
-python3 tools/link_private.py
+bun tools/link_private.ts
 ```
 
 ⚠️ **切换/同步子模块时关掉 Godot 编辑器**，并且之后先跑一次
