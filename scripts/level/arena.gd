@@ -221,6 +221,9 @@ const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
 ## because only a git-ignored scene can afford to reference a git-ignored
 ## resource -- and with this hook a committed scene never has to: leave the
 ## Player's Body Profile empty and the local config dresses it on entry.
+## Profiles loaded so far this process, by path. See _load_body_profile().
+static var _held_profiles: Dictionary = {}
+
 func _load_body_profile() -> void:
 	if player == null or player.body_profile != null:
 		return
@@ -230,7 +233,26 @@ func _load_body_profile() -> void:
 		path = str(local.get_value("body", "profile", BODY_PROFILE))
 	if not ResourceLoader.exists(path):
 		return
-	var profile := load(path) as BodyProfile
+	var profile: BodyProfile = _held_profiles.get(path)
+	if profile == null:
+		profile = load(path) as BodyProfile
+		if profile != null:
+			# HELD FOR THE PROCESS, and that is the whole of the fix. load()
+			# already caches by path, but only for as long as SOMETHING holds
+			# the resource: between two scenes -- or two test cases -- the
+			# player is freed, the last reference to the profile goes with it,
+			# and the next load re-parses it. The profile pulls in both
+			# animation packs, ~40 MB of glb, so re-parsing costs about a
+			# second EVERY time.
+			#
+			# ⚠️ MEASURED, AND ALREADY DIAGNOSED ONCE: _attach_body()'s own
+			# comment records "2383 of its 2393 ms inside _load_body_profile".
+			# Across a full test run that was 15 loads at ~960 ms each.
+			#
+			# Shared between Arenas on purpose. BodyProfile.apply() only READS
+			# the profile -- it copies values onto the player -- so two levels
+			# holding the same instance cannot disturb each other.
+			_held_profiles[path] = profile
 	if profile != null:
 		player.adopt_body_profile(profile)
 
