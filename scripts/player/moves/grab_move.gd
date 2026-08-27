@@ -488,45 +488,64 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 		_shimmy_report = "face normal is not a wall"
 		return
 	var sideways: Vector3 = facing.normalized().cross(Vector3.UP)
-	var step: Vector3 = sideways * (side * config.grab.shimmy_speed * delta)
+	var travel: Vector3 = sideways * side
+	var step: Vector3 = travel * (config.grab.shimmy_speed * delta)
+	# THE BODY HAS WIDTH, AND EVERY QUESTION BELOW IS ASKED OF ITS LEADING SIDE.
+	# Probing from the centre line answers "may my middle go here", which is half
+	# a body too late: the ledge runs out, or the corner arrives, while half the
+	# capsule is already over open air or inside a wall. The same leading-side
+	# offset the obstacle probes further down already fire at -- see
+	# GrabConfig.shimmy_body_half_width, which is deliberately wider than the
+	# capsule because the reaching hand is.
+	var lead: Vector3 = travel * config.grab.shimmy_body_half_width
 
 	# IS THE LEDGE STILL THERE? Asked of the ledge top from above, because the
 	# forward probe cannot see it from the hanging pose -- see
 	# Probes.ledge_beside() for why that is and what it does instead.
 	_probe_trace.clear()
-	var beside: Dictionary = player.probes.ledge_beside(_edge, step,
+	var ahead: Dictionary = player.probes.ledge_beside(_edge, lead + step,
 			_face_normal, Probes.LEDGE_ANCHOR_MARGIN,
 			config.grab.shimmy_probe_lift, config.grab.shimmy_edge_tolerance)
-	_trace("ledge", beside)
+	_trace("ledge", ahead)
 
 	# DO NOT ask only ledge_beside(): it answers about the TOP, which on a 6 m
 	# block carries on for metres past the corner, while the FACE the body
 	# actually hangs from ends there -- asking only the first question walks
 	# the hands off the outside corner of anything with depth. See
 	# Probes.face_beside().
-	var face: Dictionary = player.probes.face_beside(_edge, step, _face_normal,
-			config.grab.corner_probe_drop, Probes.LEDGE_ANCHOR_MARGIN)
-	_trace("face", face)
-	if not beside.get("valid", false) or not face.get("valid", false):
+	var face_ahead: Dictionary = player.probes.face_beside(_edge, lead + step,
+			_face_normal, config.grab.corner_probe_drop, Probes.LEDGE_ANCHOR_MARGIN)
+	_trace("face", face_ahead)
+	if not ahead.get("valid", false) or not face_ahead.get("valid", false):
 		# THE OUTSIDE CORNER. What ran out is this face, so look for the one
 		# perpendicular to it -- and if there is none, the ledge simply ends and
 		# hanging on is the right answer: the player still holds a perfectly
 		# good ledge, they have reached the end of it.
-		var around: Dictionary = player.probes.corner_beyond(_edge,
-				sideways * side, _face_normal, config.grab.corner_probe_reach,
+		#
+		# FROM THE LEAD POINT, not from the anchor. The corner now arrives while
+		# the anchor is still a body's half-width short of it, and
+		# corner_probe_reach is defined as how far PAST the corner the probe
+		# starts looking back from -- measuring it from the anchor instead would
+		# quietly spend that whole reach on the half-width and start the ray
+		# short of the corner, where it finds the face it just left.
+		var around: Dictionary = player.probes.corner_beyond(_edge + lead,
+				travel, _face_normal, config.grab.corner_probe_reach,
 				config.grab.corner_probe_drop, Probes.LEDGE_ANCHOR_MARGIN,
 				config.grab.shimmy_edge_tolerance)
 		_trace("corner look", around)
 		if around.has("top_from"):
 			_probe_trace.append({"label": "corner top", "from": around["top_from"],
 				"to": around["top_to"], "hit": around.get("valid", false)})
-		if around.get("valid", false):
-			_begin_corner(around["edge"], around["normal"], side)
-			_shimmy_report = "outside corner"
-		else:
+		if not around.get("valid", false):
 			_shimmy = 0.0
 			_shimmy_report = "%s ran out, nothing perpendicular beyond" % (
-				"ledge" if not beside.get("valid", false) else "face")
+				"ledge" if not ahead.get("valid", false) else "face")
+		elif not _corner_has_room(around["edge"], around["normal"], side):
+			_shimmy = 0.0
+			_shimmy_report = "outside corner, too narrow to hang along"
+		else:
+			_begin_corner(around["edge"], around["normal"], side)
+			_shimmy_report = "outside corner"
 		return
 
 	# AND IS THERE ROOM FOR THE BODY? A ledge can continue past a pillar or into
@@ -550,7 +569,6 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	#
 	# So: one along the chest at the body's real width, and one along the LEDGE
 	# at hand height, which is where the grip is actually going.
-	var travel: Vector3 = sideways * side
 	var reach: float = config.grab.shimmy_body_half_width + step.length()
 	var blocked: Dictionary = player.probes.side_hit(player.global_position,
 			travel, reach)
@@ -583,12 +601,30 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 		# refusal. Whatever is beside the body is either something to turn onto
 		# or something to stop at, and its normal is what tells the two apart.
 		var turned: Dictionary = _ledge_on(blocked)
-		if turned.get("valid", false):
-			_begin_corner(turned["edge"], turned["normal"], side)
-			_shimmy_report = "inside corner"
-		else:
+		if not turned.get("valid", false):
 			_shimmy = 0.0
 			_shimmy_report = "blocked, and it carries no ledge at this height"
+		elif not _corner_has_room(turned["edge"], turned["normal"], side):
+			_shimmy = 0.0
+			_shimmy_report = "inside corner, too narrow to hang along"
+		else:
+			_begin_corner(turned["edge"], turned["normal"], side)
+			_shimmy_report = "inside corner"
+		return
+
+	# WHERE THE ANCHOR ITSELF LANDS, which the gate above cannot say: that one
+	# was asked a body's half-width ahead, and on a ledge that is not perfectly
+	# level the height there is not the height under the hands.
+	var anchor: Dictionary = player.probes.ledge_beside(_edge, step,
+			_face_normal, Probes.LEDGE_ANCHOR_MARGIN,
+			config.grab.shimmy_probe_lift, config.grab.shimmy_edge_tolerance)
+	_trace("anchor", anchor)
+	if not anchor.get("valid", false):
+		# A hole under the hands with the leading side still over solid ledge.
+		# There is nothing to turn onto -- the gate above already looked past
+		# it -- so the answer is to hold on where the body already is.
+		_shimmy = 0.0
+		_shimmy_report = "no ledge under the anchor's own next step"
 		return
 
 	player.global_position += step
@@ -600,7 +636,7 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# DOWNWARD, so its normal is the ledge TOP's -- straight up -- while this
 	# field holds the FACE's, which is what "along the ledge" is derived from.
 	# Overwriting it would make the next step's direction undefined.
-	_edge = beside["edge"]
+	_edge = anchor["edge"]
 	_shimmy = side
 	_shimmy_report = "travelling"
 
@@ -716,6 +752,45 @@ func _ledge_on(blocked: Dictionary) -> Dictionary:
 	if not top.get("valid", false):
 		return {}
 	return {"valid": true, "edge": top["edge"], "normal": normal}
+
+## Whether a body would FIT along `new_normal`'s face once it had turned onto
+## it.
+##
+## THE ONE QUESTION A CORNER USED TO SKIP. Finding a perpendicular face with a
+## ledge on it at this height says the hands could reach round; it says nothing
+## about whether there is a body's width of that face to hang along. A plank's
+## end face passes every one of those checks and is a sliver -- turn onto it and
+## the body hangs with half of it in open air, which is what this refuses.
+##
+## ONE DIRECTION, AND IT IS THE SAME EXPRESSION FOR BOTH KINDS OF CORNER. The
+## held input goes on meaning the same thing through the turn, so afterwards the
+## body travels along `(-new_normal).cross(UP) * side` -- and that is also the
+## way the new face extends AWAY from the corner in both cases: an outside
+## corner wraps back behind the face just left, an inside one comes out in front
+## of it, and the two land on the same vector. DO NOT split this into an
+## outside case and an inside case; they are not different.
+##
+## Asks the same pair ordinary travel asks, once at a body's half-width along
+## the new face rather than once per tick along the old one.
+func _corner_has_room(new_edge: Vector3, new_normal: Vector3, side: float) -> bool:
+	if player.probes == null:
+		return false
+	var facing: Vector3 = -new_normal
+	facing.y = 0.0
+	if facing.length_squared() < 0.0001:
+		return false
+	var onward: Vector3 = facing.normalized().cross(Vector3.UP) * side
+	var lead: Vector3 = onward * config.grab.shimmy_body_half_width
+	var top: Dictionary = player.probes.ledge_beside(new_edge, lead, new_normal,
+			Probes.LEDGE_ANCHOR_MARGIN, config.grab.shimmy_probe_lift,
+			config.grab.shimmy_edge_tolerance)
+	_trace("corner room", top)
+	if not top.get("valid", false):
+		return false
+	var face: Dictionary = player.probes.face_beside(new_edge, lead, new_normal,
+			config.grab.corner_probe_drop, Probes.LEDGE_ANCHOR_MARGIN)
+	_trace("corner room", face)
+	return face.get("valid", false)
 
 ## Starts the scripted swing onto `new_normal`'s face.
 func _begin_corner(new_edge: Vector3, new_normal: Vector3, side: float) -> void:

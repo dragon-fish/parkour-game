@@ -50,6 +50,8 @@ const COLOURS := {
 	"face": "face_colour",
 	"corner look": "corner_colour",
 	"corner top": "corner_colour",
+	"corner room": "corner_colour",
+	"anchor": "ledge_colour",
 	"body": "body_colour",
 }
 

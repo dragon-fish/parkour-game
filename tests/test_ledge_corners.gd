@@ -153,9 +153,12 @@ func test_running_into_a_perpendicular_wall_turns_onto_it() -> void:
 	var player: Player = await _fresh()
 	# Along X, its south face at z = 0.
 	_block(player, Vector3(-2.0, TOP * 0.5, -0.2), Vector3(4.0, TOP, 0.4))
-	# Standing across the way, presenting a west face at x = 0.2 and reaching
-	# out past the hanging body so the shoulder meets it.
-	_block(player, Vector3(0.4, TOP * 0.5, 1.3), Vector3(0.4, TOP, 3.4))
+	# Standing across the way, presenting a west face at x = 0 and reaching out
+	# past the hanging body so the shoulder meets it. TOUCHING the wall above,
+	# not 0.2 m clear of it: a gap in the ledge is a gap the leading side has to
+	# cross, and the body's own width is what decides how far it may travel (see
+	# test_ledge_shimmy.gd's own leading-side test).
+	_block(player, Vector3(0.2, TOP * 0.5, 1.3), Vector3(0.4, TOP, 3.4))
 	await step(2)
 	var grab := _hang(player, Vector3(-1.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
 	assert_true(_travel_until_corner(grab, 1.0),
@@ -184,6 +187,39 @@ func test_a_pillar_with_no_ledge_is_just_an_obstacle() -> void:
 		"the body turned onto a wall whose top is a storey above the ledge")
 
 # --- what a corner refuses -------------------------------------------------------
+
+## A CORNER IS ONLY A CORNER IF THE BODY FITS ROUND IT. The owner, with a
+## screenshot of a hanging body half sunk into a board: "如果发现即将转角
+## 的方向的宽度不够一个胶囊则不转弯，否则将可以爬到诸如木板的薄边". Both
+## corners ask it, through the same helper, so a fix wired into only one of
+## them is what these two tests exist to catch.
+
+## A 4 m plank standing on edge: south face at z = 0, top at y = 2, and only
+## 0.2 m thick -- so its east END face is a sliver no body could hang on.
+func _plank(player: Player) -> void:
+	_block(player, Vector3(0.0, TOP * 0.5, -0.1), Vector3(4.0, TOP, 0.2))
+
+func test_an_outside_corner_onto_a_sliver_is_refused() -> void:
+	var player: Player = await _fresh()
+	_plank(player)
+	await step(2)
+	var grab := _hang(player, Vector3(1.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
+	assert_false(_travel_until_corner(grab, 1.0),
+		"the body swung round onto the 0.2 m end of a plank")
+
+func test_an_inside_corner_onto_a_sliver_is_refused() -> void:
+	# The same L as test_running_into_a_perpendicular_wall_turns_onto_it, with
+	# the perpendicular wall cut down to a fin the body cannot stand along.
+	var player: Player = await _fresh()
+	_block(player, Vector3(-2.0, TOP * 0.5, -0.2), Vector3(4.0, TOP, 0.4))
+	# Reaches out far enough to meet the shoulder and no further: 0.6 m of face,
+	# against a body half-width of 0.55.
+	_block(player, Vector3(0.2, TOP * 0.5, 0.2), Vector3(0.4, TOP, 0.6))
+	await step(2)
+	var grab := _hang(player, Vector3(-1.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
+	assert_false(_travel_until_corner(grab, 1.0),
+		"the body turned onto a fin 0.6 m long")
+
 
 func test_a_corner_cannot_be_pulled_up_out_of_halfway_round() -> void:
 	# A pull-up begun mid-corner would launch from a position that is neither

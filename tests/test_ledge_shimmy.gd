@@ -193,6 +193,28 @@ func test_running_out_of_ledge_moves_neither() -> void:
 	assert_almost_eq(grab._edge.distance_to(edge_before), 0.0, 0.001,
 		"the anchor travelled off the end of the ledge")
 
+## THE BODY HAS WIDTH, AND THE LEDGE'S END IS WHERE THE BODY'S END MEETS IT.
+## The owner, with a screenshot of a body hanging half over open air: the
+## reach and the corner tests have to be made of the capsule's leading side,
+## not of its centre line, "否则角色会出现半个身体悬空或穿进墙里的情况".
+func test_the_leading_side_never_passes_the_end_of_the_ledge() -> void:
+	var player: Player = await _hanging_player()
+	var grab := _grab(player)
+	var half: float = player.config.grab.shimmy_body_half_width
+	# Travel right until the ledge runs out. The block's east end is a real
+	# perpendicular face, so this ends in a corner rather than in a refusal --
+	# either way, where the body got to before it stopped travelling is the
+	# thing under test.
+	var furthest: float = player.global_position.x
+	for i in 600:
+		grab.physics_update(1.0 / 60.0, _hold(1.0))
+		if grab.is_cornering():
+			break
+		furthest = maxf(furthest, player.global_position.x)
+	assert_lt(furthest + half, LEDGE_HALF_X + 0.01,
+		"the body's leading side reached x %.2f on a ledge that ends at %.2f"
+		% [furthest + half, LEDGE_HALF_X])
+
 # --- what does not start a shimmy -------------------------------------------
 
 func test_a_brushed_key_does_not_start_a_shimmy() -> void:
