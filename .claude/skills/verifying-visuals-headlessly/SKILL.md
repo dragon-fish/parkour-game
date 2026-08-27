@@ -35,6 +35,18 @@ Headless is right for logic and structure, and wrong for anything that has
 to be drawn — the renderer is a dummy, so spring simulation, draw order and
 materials all report as if fine.
 
+## The capture path cannot see everything
+
+Antialiasing is the known blind spot. MSAA never reaches a `--script`
+capture — not at runtime, not from `project.godot`, and not on either the
+D3D12 or the Vulkan backend. Four settings produced one identical edge
+histogram. Judge it in the running game, or say it was not judged.
+
+The general rule: **when every value of a setting renders the same image,
+suspect the harness before concluding the setting does nothing.** A real
+difference of zero and a path that never applies the setting look alike from
+here, and only one of them is a finding.
+
 ## Your probe lies too
 
 A probe is code you wrote in one minute to judge code you wrote in ten. It
