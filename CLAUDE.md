@@ -2,15 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-A first-person parkour prototype in **Godot 4.7**, rebuilt against *measurements
-of Mirror's Edge (2008)* rather than against remembered feel. The movement code
-is ordinary; the **provenance of every number** is the point.
+A parkour prototype in **Godot 4.7**, rebuilt against *measurements of Mirror's
+Edge (2008)* rather than against remembered feel. The movement code is ordinary;
+the **provenance of every number** is the point.
+
+**First person is the default view, not the only one.** A full third-person
+camera exists (`V`, and `CameraRig` treats it as a saved viewing preference, with
+wheel zoom, shoulder cycling and a collision probe). Both views share **one**
+movement stack and **one** animation set — there is no third-person branch in the
+moves. What differs is the camera: several offsets in `CameraConfig` were tuned
+against the first-person eye, so a change that improves third-person framing may
+be paying for it in first person. Check both before calling a camera change done.
 
 ## Commands
 
 The engine binary is untracked and lives in `.engine/` (on macOS, inside the
-`.app` bundle: `.engine/Godot_*.app/Contents/MacOS/Godot`). Use it rather than
-whatever `godot` is on PATH — the project pins 4.7.
+`.app` bundle: `.engine/Godot_*.app/Contents/MacOS/Godot`).
+
+**Use that binary, never whatever `godot` is on PATH.** `.engine/` exists to pin
+the engine version: Godot's 4.x line ships breaking changes at a rate that makes
+"whichever 4.x is installed" a real source of silent drift. This project stays on
+**4.7**; upgrading is a deliberate decision to take separately, not something to
+do in passing because a newer build happened to be handy.
 
 ```sh
 # Tests — ALWAYS use this, not a raw gut_cmdln invocation. It refreshes the
@@ -76,7 +89,7 @@ branches in the state.
 | Path | Role |
 |---|---|
 | `scripts/player/probes.gd` | All environment queries. Converts feet-relative config heights to world Y so states never think about the capsule origin. |
-| `scripts/camera/camera_rig.gd` | Everything the camera does beyond sitting on the head. Fed *values* (speed, grounded, wall side, head offset), never scene references. Owns no movement logic. |
+| `scripts/camera/camera_rig.gd` | Everything the camera does beyond sitting on the head, first and third person both. Fed *values* (speed, grounded, wall side, head offset), never scene references. Owns no movement logic. `_apply_body_layers()` is what swaps the body's first/third-person render layers — see `headless_variant.gd` for how that split is built. |
 | `scripts/player/character_animator.gd` | Reads movement state, puts a clip on screen. Every mapping is a **priority list**, because `body_scene` is optional and no clip may be assumed to exist. |
 | `scripts/player/body_profile.gd` + `body_tuning.gd` | A body is described by one `BodyProfile` resource. The *binding* (which .vrm/.glb) is machine-local and untracked; the *tuning* (mount offsets, clip offsets/timings) is tracked as JSON in `scenes/player/tuning/`, keyed by model filename with `default.json` as fallback. |
 | `scripts/player/input/` | `InputSource` seam: `KeyboardInputSource` reads physical keycodes (no InputMap actions exist); `ScriptedInputSource` is what tests drive. |

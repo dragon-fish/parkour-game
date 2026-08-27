@@ -1,10 +1,13 @@
 # Parkour Game
 
-A first-person parkour movement prototype in **Godot 4.7**, rebuilt against
-measurements of *Mirror's Edge* (2008) rather than against a feel someone
-remembers. Running, jumping, sliding, vaulting, wall running, ledge grabs and
-the skill roll, with the numbers behind each one written down beside the code
-that uses them.
+A parkour movement prototype in **Godot 4.7**, rebuilt against measurements of
+*Mirror's Edge* (2008) rather than against a feel someone remembers. Running,
+jumping, sliding, vaulting, wall running, ledge grabs and the skill roll, with
+the numbers behind each one written down beside the code that uses them.
+
+Played in first person by default, with a third-person camera on `V`. The two
+share one movement stack and one animation set — only the camera differs, and
+a few of its offsets are tuned against the first-person eye.
 
 The interesting part of this repository is not the movement code — it is
 **why every value is what it is**. `docs/feel-backlog.md` records what was
@@ -21,6 +24,11 @@ the graybox arena:
 ```
 godot --path . res://scenes/main.tscn
 ```
+
+**The version matters.** Godot's 4.x line ships breaking changes often enough
+that "whichever 4.x you have" is a real source of drift, so keep an untracked
+4.7 build in `.engine/` and run that one. The test runner below finds it there
+by itself.
 
 The test suite runs through [Bun](https://bun.sh):
 
