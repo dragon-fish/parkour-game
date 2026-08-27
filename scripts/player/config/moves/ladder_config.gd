@@ -52,8 +52,11 @@ func _init() -> void:
 @export var jump_speed: float = 6.3
 ## How close to the top (Task 7) counts as having reached it, metres.
 @export var top_exit_reach: float = 1.2
-## How long the top-exit scripted motion takes, seconds.
-@export var top_exit_time: float = 2.0
+## [ME:CONFIRMED] the carry off the top of a ladder onto the deck behind it
+## runs 1 s, not the 2 s first guessed here. Seconds. CharacterAnimator
+## stretches ClimbUp_1m to match (see LadderMove.scripted_duration()), so this
+## is the clip's playback length too.
+@export var top_exit_time: float = 1.0
 
 ## How far above the LANDING point the carry's bezier peaks. ✅ 0, at the
 ## owner's direction ("不用搞凸起，参考一下GrabPullUp"): the monotonic
