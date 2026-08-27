@@ -113,6 +113,12 @@ pipeline (see `docs/level-templates.md`).
   measurement of the original, ⚠️ = inferred. Changing a value means changing the
   reasoning above it. A change that improves feel but contradicts a measurement
   must say so out loud rather than quietly overwrite it.
+- **A comment says what the code cannot** — see CONTRIBUTING.md's comment rule.
+  It is not a changelog: when behaviour changes, write the new behaviour and
+  stop. History belongs in the commit message (cite a hash if it is worth
+  chasing), lessons learned in `.claude/skills/`, derivations in `docs/`.
+  Measurement provenance is the standing exception, because that is a fact the
+  code cannot state.
 - **`docs/feel-backlog.md`** is the standing record of known-wrong feel with root
   causes already derived. Read it before "fixing" a movement value.
 - **`.claude/skills/`** holds practices this project learned the hard way — each

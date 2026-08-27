@@ -71,10 +71,13 @@ survive in a particular file forever.
 
 ## Practical notes
 
-- **Comments in English.** The code is commented heavily and deliberately: the
-  interesting part of this project is *why* a number is what it is, and most of
-  those reasons came from measuring the original game. If you change a value,
+- **Comments in English**, and about the *why* a number is what it is — most of
+  those reasons came from measuring the original game, so if you change a value,
   change the reasoning above it.
+- **A comment earns its place by saying what the code cannot**: a non-obvious
+  algorithm choice, the pothole a line steers around, an external constraint.
+  It is not a changelog — when behaviour changes, describe the new behaviour and
+  leave the history to the commit message (cite a hash if it is worth chasing).
 - **Run the tests.** `bun tools/run_tests.ts`, or `bun tools/run_tests.ts <needle>`
   to narrow the run to the files you touched. Prefer it over invoking GUT by
   hand: it rebuilds the script class cache first and paces the run with
