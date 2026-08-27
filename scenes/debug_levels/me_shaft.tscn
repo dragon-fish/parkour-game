@@ -1,0 +1,168 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/level/arena.gd" id="1_arena"]
+[ext_resource type="Script" path="res://scripts/level/fog_config.gd" id="2_fog"]
+[ext_resource type="Sky" path="res://assets/sky/day_sky.tres" id="3_sky"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="4_player"]
+[ext_resource type="Script" path="res://scripts/level/spawn_point.gd" id="5_spawn"]
+[ext_resource type="Script" path="res://scripts/debug/debug_hud.gd" id="6_hud"]
+[ext_resource type="Script" path="res://scripts/debug/tuning_panel.gd" id="7_panel"]
+
+[sub_resource type="Resource" id="Resource_fog"]
+resource_local_to_scene = true
+script = ExtResource("2_fog")
+fade_begin_distance = 30.0
+fade_end_distance = 90.0
+volumetric_enabled = false
+
+[sub_resource type="Environment" id="Environment_shaft"]
+background_mode = 2
+sky = ExtResource("3_sky")
+ambient_light_source = 2
+ambient_light_color = Color(0.78, 0.82, 0.88, 1)
+ambient_light_energy = 0.55
+sdfgi_enabled = true
+
+[sub_resource type="StandardMaterial3D" id="Mat_White"]
+albedo_color = Color(0.9, 0.905, 0.91, 1)
+roughness = 0.85
+
+[sub_resource type="StandardMaterial3D" id="Mat_Runner"]
+albedo_color = Color(0.86, 0.16, 0.1, 1)
+roughness = 0.6
+
+[node name="MirrorsEdgeShaft" type="Node3D" node_paths=PackedStringArray("player", "spawn_point")]
+script = ExtResource("1_arena")
+player = NodePath("Player")
+spawn_point = NodePath("SpawnPoint")
+fog = SubResource("Resource_fog")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_shaft")
+
+[node name="ShaftLight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.7, 0, -0.71, 0.42, 0.81, 0.41, 0.58, -0.58, 0.57, 0, 12, 0)
+light_energy = 1.1
+shadow_enabled = true
+
+[node name="SpawnPoint" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1.1)
+script = ExtResource("5_spawn")
+
+; ── The shaft itself ──────────────────────────────────────────────────────────
+;
+; ONE CSGCombiner, so the whole whitebox is draggable in the editor: every
+; measurement below is a `size` field, not a baked mesh. use_collision on the
+; combiner means the boolean result IS the collision -- no CollisionShape3D to
+; keep in step with the visual, which is the failure mode the hand-built
+; whiteboxes (factory_hall.tscn) carry three nodes per box to avoid.
+;
+; ⚠️ ORDER IS THE BOOLEAN. Children apply in sequence: Outer fills, Cavity
+; hollows it, the ledges add back, the vent cuts through last. Moving a ledge
+; below Cavity in this list would delete it instead of adding it.
+[node name="Shaft" type="CSGCombiner3D" parent="."]
+use_collision = true
+material_override = SubResource("Mat_White")
+
+[node name="Outer" type="CSGBox3D" parent="Shaft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+size = Vector3(4.4, 10, 4.4)
+
+; The shaft interior: 3.2 m square, floor at y = 0, ceiling at y = 9.
+[node name="Cavity" type="CSGBox3D" parent="Shaft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+operation = 2
+size = Vector3(3.2, 9, 3.2)
+
+; ── The climb ─────────────────────────────────────────────────────────────────
+;
+; Ducts alternating off the east and west walls, tops 2.0 m apart.
+;
+; 📐 2.0 m IS THE WHOLE DESIGN, and it comes off GrabConfig rather than off
+; taste. A ledge is grabbable only while it sits min_wall_height (1.8 m) to
+; ledge_max_height (2.8 m) ABOVE the feet -- higher than standing height, which
+; is what makes a grab a grab. Space them 1.0 m and every one is a plain jump
+; (peak 1.24 m) with the grab never firing; space them 2.0 m and each one lands
+; inside that window, so the route is grab -> mantle -> stand -> turn -> jump,
+; which is ✅ the owner's "需要利用多次Grab反身跳来逐渐到达最高点".
+;
+; 📐 The 1.2 m gap across is the other half: a hang jump leaves at 6.3 m/s with
+; only jump_speed_up 1.6 m/s of lift, so it travels ~1.26 m before it is back
+; to the height it started at. Anything wider and the far duct cannot be
+; reached from a hang at all.
+[node name="DuctEast1" type="CSGBox3D" parent="Shaft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1, 0.9, 0)
+size = Vector3(1, 0.6, 2.2)
+
+[node name="DuctWest1" type="CSGBox3D" parent="Shaft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1, 2.9, 0)
+size = Vector3(1, 0.6, 2.2)
+
+[node name="DuctEast2" type="CSGBox3D" parent="Shaft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1, 4.9, 0)
+size = Vector3(1, 0.6, 2.2)
+
+[node name="DuctWest2" type="CSGBox3D" parent="Shaft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1, 6.9, 0)
+size = Vector3(1, 0.6, 2.2)
+
+; The step onto the first duct. Ground to DuctEast1's top is 1.2 m, which a
+; standing jump (1.24 m peak) clears by four centimetres -- a margin nobody
+; should have to hit, so the crate makes the opening move free and the rest of
+; the shaft the actual test.
+[node name="Crate" type="CSGBox3D" parent="Shaft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 1.1)
+size = Vector3(1.2, 0.6, 1.2)
+
+; ── The vent ──────────────────────────────────────────────────────────────────
+;
+; The exit, and the reason this level is worth having: a 1.0 m opening. A
+; standing body is 1.8 m and cannot enter at all; a coil (or a crouch) is 0.9 m
+; and can. Its lip is 1.0 m above DuctWest2, inside the 1.24 m jump peak but
+; not by much -- ✅ the owner, on the original's own version of this: "时机很难
+; 把握，而且很难对准".
+[node name="VentHousing" type="CSGBox3D" parent="Shaft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.7, -2.9)
+size = Vector3(1.6, 1.4, 1.6)
+
+[node name="VentBore" type="CSGBox3D" parent="Shaft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.7, -2.9)
+operation = 2
+size = Vector3(1.2, 1, 2.8)
+
+; ── Runner vision ─────────────────────────────────────────────────────────────
+;
+; Separate combiner, and deliberately NOT part of the collision one: these are
+; the red the original paints on the route, and a player must never stand on a
+; hint. Sits 1 cm proud of each duct's top so it does not z-fight.
+[node name="Vision" type="CSGCombiner3D" parent="."]
+material_override = SubResource("Mat_Runner")
+
+[node name="HintEast1" type="CSGBox3D" parent="Vision"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.59, 1.19, 0)
+size = Vector3(0.03, 0.06, 2.2)
+
+[node name="HintWest1" type="CSGBox3D" parent="Vision"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.59, 3.19, 0)
+size = Vector3(0.03, 0.06, 2.2)
+
+[node name="HintEast2" type="CSGBox3D" parent="Vision"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.59, 5.19, 0)
+size = Vector3(0.03, 0.06, 2.2)
+
+[node name="HintWest2" type="CSGBox3D" parent="Vision"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.59, 7.19, 0)
+size = Vector3(0.03, 0.06, 2.2)
+
+[node name="HintVent" type="CSGBox3D" parent="Vision"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.7, -1.62)
+size = Vector3(1.3, 1.1, 0.03)
+
+[node name="Player" parent="." instance=ExtResource("4_player")]
+
+[node name="DebugHud" type="CanvasLayer" parent="." node_paths=PackedStringArray("player")]
+script = ExtResource("6_hud")
+player = NodePath("../Player")
+
+[node name="TuningPanel" type="CanvasLayer" parent="."]
+script = ExtResource("7_panel")
