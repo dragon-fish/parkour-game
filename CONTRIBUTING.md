@@ -74,26 +74,17 @@ survive in a particular file forever.
 - **Comments in English**, and about the *why* a number is what it is — most of
   those reasons came from measuring the original game, so if you change a value,
   change the reasoning above it.
-- **A comment earns its place by saying what the code cannot**: a non-obvious
-  algorithm choice, the pothole a line steers around, an external constraint.
-- **Write it as a constraint, not as a log.** Not "tried Promise.all, hit 429s,
-  went serial, then capped at 3" but "upstream hard-caps at 3 concurrent; over
-  that it returns 429 and bans the IP for five minutes — do not go back to
-  Promise.all". The second form is *more* informative, and it tells the next
-  reader what to do rather than what somebody once said. Rejected alternatives
-  become guardrails ("do not introduce X, because …"), never narrative.
-- **When behaviour changes, rewrite the comment; never append to it.** A
-  comment that carries "used to be X, now Y" leaves a claim that is no longer
-  true sitting next to one that is, and the wrong one gets believed sooner or
-  later. History lives in the commit message.
-- **Prefer a constraint that can be falsified** — a number, an error code, a
-  version, a measurement — and pin it with an assertion where one fits. A
-  comment has no `superseded-by` mechanism to fall back on; prose that only
-  prose maintains goes stale silently.
-- **Run the tests.** `bun tools/run_tests.ts`, or `bun tools/run_tests.ts <needle>`
-  to narrow the run to the files you touched. Prefer it over invoking GUT by
-  hand: it rebuilds the script class cache first and paces the run with
-  `--fixed-fps 60`. (`tests/legacy/` is archived and is not part of the suite.)
+- **A comment exists so a mistake is not repeated, not so the project's history
+  can be read.** Write the external constraint the code cannot state, the
+  pothole somebody already fell into *and what it cost*, and the outright
+  prohibition. Phrase it as "this is how it is, do not change it to X" — never
+  as "it used to be X, then we changed it".
+- **Do not write** quoted conversations, dates, requirement-change records, or
+  before/after comparisons.
+- **When you change the logic, rewrite the comment rather than appending to
+  it.** A new constraint replaces the old one; delete the old one. A stale
+  comment is worse than no comment, because it is believed. When you are done,
+  the comment should read as though it were written in one sitting.
 - **Conventional Commits** for commit messages, in English.
 - Movement values are calibrated against measurements of Mirror's Edge (2008),
   recorded in `docs/feel-backlog.md`. A change that makes something *feel*

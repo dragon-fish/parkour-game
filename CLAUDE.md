@@ -113,15 +113,14 @@ pipeline (see `docs/level-templates.md`).
   measurement of the original, ⚠️ = inferred. Changing a value means changing the
   reasoning above it. A change that improves feel but contradicts a measurement
   must say so out loud rather than quietly overwrite it.
-- **A comment says what the code cannot, as a constraint rather than a log** —
-  see CONTRIBUTING.md's comment rules. Rewrite a comment when behaviour changes;
-  never append to it, because a stale claim sitting beside a live one is what
-  gets believed. The ✅/⚠️ measurement provenance is the *model* of this, not an
-  exception to it: "gravity is 16.0 — 22 measured jumps pin it, the ini's 800 is
-  wrong, do not put it back" is a guardrail, and it is falsifiable.
-  Lessons learned go to `.claude/skills/`, derivations to `docs/`, history to
-  the commit message. Do not lean on a cited commit hash to carry a constraint —
-  nothing re-reads git unprompted.
+- **A comment exists so a mistake is not repeated, not so the history can be
+  read** — see CONTRIBUTING.md for the full rule. Constraints, potholes and what
+  they cost, prohibitions; no quoted conversations, no dates, no before/after.
+  Rewrite a comment when the logic changes instead of appending to it: it should
+  read as though written in one sitting. The ✅/⚠️ measurement provenance is a
+  *constraint*, not a quotation — "gravity is 16.0, 22 measured jumps pin it,
+  the ini's 800 is wrong, do not put it back" — and stays. Lessons learned go to
+  `.claude/skills/`, derivations to `docs/`, history to git.
 - **`docs/feel-backlog.md`** is the standing record of known-wrong feel with root
   causes already derived. Read it before "fixing" a movement value.
 - **`.claude/skills/`** holds practices this project learned the hard way — each
