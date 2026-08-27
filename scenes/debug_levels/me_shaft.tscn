@@ -20,12 +20,32 @@ background_mode = 2
 sky = ExtResource("3_sky")
 ambient_light_source = 2
 ambient_light_color = Color(0.78, 0.82, 0.88, 1)
-ambient_light_energy = 0.55
-sdfgi_enabled = true
+ambient_light_energy = 0.35
+; ⚠️ 0, AND WITHOUT IT THE AMBIENT COLOUR ABOVE DOES NOTHING. The default is
+; 1.0, meaning "take all ambient from the sky" -- and this shaft is a sealed
+; box, so SDFGI resolves the sky's contribution to zero inside it and the
+; whole level renders black. Measured: the first capture of this scene was
+; unreadable. Setting the source to COLOR is not enough on its own; the
+; contribution is what decides whether the colour is consulted at all.
+ambient_light_sky_contribution = 0.0
+; ⚠️ SDFGI OFF, DELIBERATELY. It was on, and it is what made the FIRST capture
+; black: it resolves real occlusion, so a sealed box receives no sky light at
+; all. With the lamps and a colour ambient doing the work it adds nothing here
+; and costs plenty -- measured 112 fps without it against 30 with, in a room of
+; a dozen boxes.
+; ACES, so the white walls roll off instead of clipping. Without it the first
+; lit capture came back as a white page -- the opposite failure to the black one.
+tonemap_mode = 3
 
 [sub_resource type="StandardMaterial3D" id="Mat_White"]
-albedo_color = Color(0.9, 0.905, 0.91, 1)
+albedo_color = Color(0.82, 0.825, 0.83, 1)
 roughness = 0.85
+
+[sub_resource type="StandardMaterial3D" id="Mat_Tube"]
+albedo_color = Color(1, 0.98, 0.92, 1)
+emission_enabled = true
+emission = Color(1, 0.97, 0.88, 1)
+emission_energy_multiplier = 1.6
 
 [sub_resource type="StandardMaterial3D" id="Mat_Runner"]
 albedo_color = Color(0.86, 0.16, 0.1, 1)
@@ -40,10 +60,56 @@ fog = SubResource("Resource_fog")
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_shaft")
 
-[node name="ShaftLight" type="DirectionalLight3D" parent="."]
-transform = Transform3D(0.7, 0, -0.71, 0.42, 0.81, 0.41, 0.58, -0.58, 0.57, 0, 12, 0)
+; ── Light ─────────────────────────────────────────────────────────────────────
+;
+; ⚠️ A DirectionalLight3D STOOD HERE AND LIT NOTHING. The shaft is a closed box
+; with a ceiling, so the sun never reaches the inside of it -- the first capture
+; of this level came out completely black. A sealed room needs fixtures IN it,
+; which is also what the original has: strip lights down the shaft wall.
+;
+; Four of them, one per climb stage, so each duct is lit from above and the
+; wall opposite reads as a surface rather than a void. Shadows off: they cost a
+; shadow map each, and a whitebox wants readable geometry, not mood.
+[node name="Lamp1" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 1.35)
 light_energy = 1.1
-shadow_enabled = true
+omni_range = 7
+
+[node name="Lamp2" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6, 1.35)
+light_energy = 1.1
+omni_range = 7
+
+[node name="Lamp3" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7, 1.35)
+light_energy = 1.1
+omni_range = 7
+
+[node name="Lamp4" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.8, -1.35)
+light_energy = 1.0
+omni_range = 6
+
+; The fixtures themselves. Their own combiner, and no collision -- a light is
+; scenery, and the runner-vision block below keeps its own for the same reason.
+[node name="Tubes" type="CSGCombiner3D" parent="."]
+material_override = SubResource("Mat_Tube")
+
+[node name="Tube1" type="CSGBox3D" parent="Tubes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 1.52)
+size = Vector3(1.4, 0.1, 0.08)
+
+[node name="Tube2" type="CSGBox3D" parent="Tubes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6, 1.52)
+size = Vector3(1.4, 0.1, 0.08)
+
+[node name="Tube3" type="CSGBox3D" parent="Tubes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7, 1.52)
+size = Vector3(1.4, 0.1, 0.08)
+
+[node name="Tube4" type="CSGBox3D" parent="Tubes"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.8, -1.52)
+size = Vector3(1.4, 0.1, 0.08)
 
 [node name="SpawnPoint" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1.1)
