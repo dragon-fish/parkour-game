@@ -104,6 +104,20 @@ if (process.env.RUN_TESTS_IMPORT === "1" || cachedClasses.size === 0 || drifted)
   spawnSync(godot, ["--headless", "--path", ROOT, "--import"], { stdio: "ignore" });
 }
 
+// GUT also reads res://.gutconfig.json, which this project uses for exactly one
+// setting: failure_error_types drops "engine", so a C++-level engine error no
+// longer fails whichever test happened to be running when it fired.
+//
+// ⚠️ THAT WAS A REAL, LONG-RUNNING FLAKE, and the reason it was so hard to place:
+// GUT attributes an engine error to the CURRENT test, so the failure lands on an
+// innocent case and moves around between runs. The one behind it here is Jolt's
+// "job system exceeded the maximum number of jobs. This should not happen.
+// Please report this." -- load-dependent, unrelated to whatever is under test,
+// and it picked test_menu one day and test_clip_offsets the next.
+//
+// push_error and gut errors STILL fail. That is the half worth keeping: the
+// grounded-declaration invariant in move_manager.gd and every other
+// push_error() guard in this project reports through it.
 const gutArgs = [
   "--headless", "--fixed-fps", "60", "--path", ROOT,
   "-s", "res://addons/gut/gut_cmdln.gd",
