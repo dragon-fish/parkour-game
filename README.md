@@ -15,17 +15,26 @@ inferred.
 
 ## Running it
 
-Open the project in Godot 4.7 and press F5, or:
+Open the project in Godot 4.7 and press F5 for the main menu, or go straight to
+the graybox arena:
 
 ```
 godot --path . res://scenes/main.tscn
 ```
 
-The test suite:
+The test suite runs through [Bun](https://bun.sh):
 
 ```
-godot --headless -s addons/gut/gut_cmdln.gd -gdir=res://tests -gexit
+bun tools/run_tests.ts                 # every test
+bun tools/run_tests.ts slide crouch    # only files whose name matches
 ```
+
+Use the runner rather than calling GUT directly. It refreshes Godot's global
+script class cache first — without that, any `class_name` added since the last
+editor scan fails to resolve and every test dies on `Identifier "Xxx" not
+declared in the current scope` — and it runs the suite with `--fixed-fps 60`,
+which is the difference between minutes and seconds. It finds the engine binary
+in `.engine/` by itself, on any platform.
 
 (`tests/legacy/` is the archived pre-rebuild suite and is not part of the run.)
 

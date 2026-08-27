@@ -75,8 +75,10 @@ survive in a particular file forever.
   interesting part of this project is *why* a number is what it is, and most of
   those reasons came from measuring the original game. If you change a value,
   change the reasoning above it.
-- **Run the tests.** `godot --headless -s addons/gut/gut_cmdln.gd -gdir=res://tests -gexit`
-  (`tests/legacy/` is archived and is not part of the suite).
+- **Run the tests.** `bun tools/run_tests.ts`, or `bun tools/run_tests.ts <needle>`
+  to narrow the run to the files you touched. Prefer it over invoking GUT by
+  hand: it rebuilds the script class cache first and paces the run with
+  `--fixed-fps 60`. (`tests/legacy/` is archived and is not part of the suite.)
 - **Conventional Commits** for commit messages, in English.
 - Movement values are calibrated against measurements of Mirror's Edge (2008),
   recorded in `docs/feel-backlog.md`. A change that makes something *feel*
