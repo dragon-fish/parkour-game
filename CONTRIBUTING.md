@@ -76,8 +76,20 @@ survive in a particular file forever.
   change the reasoning above it.
 - **A comment earns its place by saying what the code cannot**: a non-obvious
   algorithm choice, the pothole a line steers around, an external constraint.
-  It is not a changelog — when behaviour changes, describe the new behaviour and
-  leave the history to the commit message (cite a hash if it is worth chasing).
+- **Write it as a constraint, not as a log.** Not "tried Promise.all, hit 429s,
+  went serial, then capped at 3" but "upstream hard-caps at 3 concurrent; over
+  that it returns 429 and bans the IP for five minutes — do not go back to
+  Promise.all". The second form is *more* informative, and it tells the next
+  reader what to do rather than what somebody once said. Rejected alternatives
+  become guardrails ("do not introduce X, because …"), never narrative.
+- **When behaviour changes, rewrite the comment; never append to it.** A
+  comment that carries "used to be X, now Y" leaves a claim that is no longer
+  true sitting next to one that is, and the wrong one gets believed sooner or
+  later. History lives in the commit message.
+- **Prefer a constraint that can be falsified** — a number, an error code, a
+  version, a measurement — and pin it with an assertion where one fits. A
+  comment has no `superseded-by` mechanism to fall back on; prose that only
+  prose maintains goes stale silently.
 - **Run the tests.** `bun tools/run_tests.ts`, or `bun tools/run_tests.ts <needle>`
   to narrow the run to the files you touched. Prefer it over invoking GUT by
   hand: it rebuilds the script class cache first and paces the run with

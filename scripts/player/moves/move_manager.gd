@@ -72,53 +72,45 @@ func _arm_cooldown(move_name: StringName, move: Move) -> void:
 
 # --- grounded-declaration invariant ------------------------------------------
 #
-# Player.grounded is DECLARED by the active state, never inferred (scripted-move
-# states drive the body directly and never call move_and_slide(), so
-# is_on_floor() would report whatever the previous state left behind). P0's
-# refactor made that a rule; nothing enforced it. A state that simply never
-# calls set_grounded() silently inherits the OUTGOING state's value — and the
-# dangerous direction is inheriting `true` from Ground, because Player's
-# _tick_timers() then refills coyote time every tick, which is infinite jumps.
-# P3's WallRun is exactly the shape of state that would forget.
+# EVERY MOVE MUST CALL player.set_grounded(), in enter() or in its
+# physics_update(). Scripted moves drive the body directly and never call
+# move_and_slide(), so is_on_floor() reports whatever the previous move left
+# behind -- which is why the flag is declared and never inferred. A move that
+# forgets inherits the OUTGOING move's value, and inheriting `true` refills
+# coyote time every tick in Player._tick_timers(): infinite jumps.
 #
-# Enforced here rather than left to a review checklist, and enforced this way
-# rather than by defaulting `grounded` to false before delegating, because
-# GroundState legitimately READS its own previously-declared value: its Slide
-# and Vault entry gates are `if player.grounded`, meaning "a move_and_slide()
-# has verified this, on this tick or an earlier one". Defaulting the flag every
-# tick would pin that gate shut forever; defaulting it only on entry would
-# still discard AirState's landing declaration on the very tick it was made,
-# deferring every landing-into-slide by a tick and quietly changing feel. An
-# invariant check changes no behaviour at all: correct states are untouched,
-# and an incorrect one is reported the first time it runs, in any test or in
-# play. ⚠️ THIS USED TO SAY the runner fails a run on any engine error line,
-# so a forgetful state could not reach a green suite. IT NO LONGER DOES: the
-# scan (and its allowlist, which tests/legacy/ comments still cite by line
-# number) was dropped from the Windows runner before the two were merged into
-# tools/run_tests.ts. The push_error below still fires and is still visible in
-# the log; nothing fails the run on it.
+# DO NOT "simplify" this by defaulting `grounded` to false before delegating.
+# WalkingMove reads its own previously-declared value -- its slide and vault
+# gates are `if player.grounded`, meaning "a move_and_slide() verified this, on
+# this tick or an earlier one". Defaulting every tick pins those gates shut
+# forever; defaulting on entry discards AirborneMove's landing declaration on
+# the very tick it is made, which defers every landing-into-slide by a tick and
+# changes the feel.
 #
-# The rule checked is "the ACTIVE state has declared at least once since it was
-# entered", evaluated only on ticks where the state stays active:
-#   * enter() counts — VaultState and LedgeHangState declare there and never
+# ⚠️ REPORT ONLY. push_error() fires and shows in the log; nothing fails a run
+# on it, so a forgetful move CAN reach a green suite. Read the log.
+#
+# The rule checked is "the ACTIVE move has declared at least once since it was
+# entered", evaluated only on ticks where the move stays active:
+#   * enter() counts -- SpeedVaultMove and GrabMove declare there and never
 #     again, which is correct for them (their value cannot change mid-move);
-#   * a state that transitions AWAY on a given tick is exempt for that tick,
-#     because the incoming state's enter()/first update is what owns the flag
-#     from then on. GroundState's Vault branch returns without declaring and is
-#     legitimately covered by VaultState.enter().
+#   * a move that transitions AWAY on a given tick is exempt for that tick,
+#     because the incoming move's enter()/first update owns the flag from then
+#     on. WalkingMove's vault branch returns without declaring and is
+#     legitimately covered by SpeedVaultMove.enter().
 var _entry_declarations: int = -1
 ## Set by start(), cleared by the next declaration check, which that check then
-## skips. start() re-arms the declaration baseline, so a caller that restarts
-## the manager from INSIDE a move's own physics_update() -- Arena.reset_player()
-## does exactly this on a respawn -- leaves the finishing tick unable to exceed
-## a baseline captured after its only chance to declare had already passed.
-## The result was a false "state Walking did not declare grounded-ness", fired
-## on a perfectly well-behaved Walking.
+## skips.
 ##
-## Skipping one check is the right scope: the invariant exists to catch a move
-## that NEVER declares, and one tick of silence straight after a restart cannot
-## distinguish that from a restart landing mid-tick. The very next tick tests it
-## again.
+## start() re-arms the declaration baseline, so a caller that restarts the
+## manager from INSIDE a move's own physics_update() -- Arena.reset_player()
+## does this on every respawn -- leaves the finishing tick unable to exceed a
+## baseline captured after its only chance to declare had passed, and a
+## perfectly well-behaved move gets reported.
+##
+## EXACTLY ONE TICK, and do not widen it: the invariant exists to catch a move
+## that NEVER declares, and only the first tick after a restart is
+## indistinguishable from that. The next tick tests it again.
 var _restarted_this_tick: bool = false
 var _reported_missing_declaration: bool = false
 
