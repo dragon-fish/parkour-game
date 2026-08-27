@@ -53,11 +53,11 @@ func test_two_levels_from_one_source_do_not_share_a_fog_config() -> void:
 	var one := source.instantiate()
 	var two := source.instantiate()
 	assert_ne(one.fog, two.fog, "both levels were handed the same FogConfig object")
-	# MEASURED BEFORE, not compared against FogConfig's declared default. The
-	# first version of this assumed the template still carried the script's own
-	# 60 m, and broke the moment the owner tuned the template to 128 -- an
-	# isolation test that had quietly pinned a look value. What isolation means
-	# is "B did not move", whatever B happened to be.
+	# MEASURE the untouched level's own value at runtime; do not compare
+	# against FogConfig's declared default. The template's fog distance is a
+	# tuned look value, not a constant, so hardcoding it here would fail this
+	# isolation test on every deliberate retune instead of only on a leak.
+	# Isolation means "B did not move", whatever B happened to be.
 	var untouched: float = two.fog.fade_begin_distance
 	one.fog.fade_begin_distance += 111.0
 	assert_almost_eq(two.fog.fade_begin_distance, untouched, 0.001,
@@ -105,9 +105,9 @@ func test_the_fade_end_never_lands_on_zero_or_below_the_begin() -> void:
 			"end dial %s produced depth_end 0 -- Godot reads that as the camera far plane" % end_value)
 
 func test_clearing_enabled_turns_both_fogs_off() -> void:
-	# "这一关就是想要晴空万里." Both, not one: the depth fog hides the horizon
-	# and the volumetric fog hazes the air, and a level left with only the
-	# second one is not a clear day.
+	# A "clear day" level needs both fogs off, not one: the depth fog hides
+	# the horizon and the volumetric fog hazes the air, so leaving either
+	# one on still reads as an overcast day.
 	var pair := await _live_template()
 	var arena: Arena = pair[0]
 	var environment: Environment = pair[1]
@@ -117,12 +117,11 @@ func test_clearing_enabled_turns_both_fogs_off() -> void:
 	assert_false(environment.volumetric_fog_enabled, "volumetric fog survived enabled = false")
 
 func test_zero_global_density_does_not_switch_the_froxel_grid_off() -> void:
-	# Godot's own docs name "volumetric_fog_density = 0" as the way to get fog
-	# ONLY inside FogVolume nodes -- dust in a light shaft, clear air around
-	# it. An earlier version of _apply_fog() derived volumetric_fog_enabled
-	# from the density, which made that setup unreachable and took every
-	# FogVolume in the level down with it. Nothing on screen would say why:
-	# the dust would simply not be there.
+	# DO NOT derive volumetric_fog_enabled from volumetric_density. Godot's
+	# own docs name density 0 as the way to get fog ONLY inside FogVolume
+	# nodes -- dust in a light shaft, clear air around it -- and deriving
+	# "enabled" from "density > 0" would silently disable every FogVolume
+	# in the level with nothing on screen to say why.
 	var pair := await _live_template()
 	var arena: Arena = pair[0]
 	var environment: Environment = pair[1]

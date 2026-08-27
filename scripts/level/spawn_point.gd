@@ -7,4 +7,4 @@ extends Marker3D
 # preview (clickable in the viewport, like any Marker3D).
 #
 # Origin = BODY CENTRE, the same convention Checkpoint uses -- one rule for
-# both respawn nodes, ✅ at the owner's direction.
+# both respawn nodes.

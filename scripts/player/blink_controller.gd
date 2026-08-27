@@ -2,10 +2,10 @@ class_name BlinkController
 extends Node
 
 # Drives one blend shape as a blink, on a randomised clock. Close, open,
-# wait 2-6 s, repeat -- and after a LONG wait the eyes have gone dry, so
-# there is a chance the blink comes twice (✅ the owner: 超过 4.8 秒才眨眼则
-# 有概率连续眨两下). Model-agnostic: the mesh and shape name are exports,
-# so a VRM's Fcl_EYE_Close works as well as this FBX's `blink`.
+# wait 2-6 s, repeat -- and after a wait longer than `dry_eye_after` the eyes
+# have gone dry, so there is a chance the blink comes twice. Model-agnostic:
+# the mesh and shape name are exports, so a VRM's Fcl_EYE_Close works as well
+# as this FBX's `blink`.
 
 @export var mesh_path: NodePath
 @export var shape_name: String = "blink"
@@ -21,9 +21,9 @@ extends Node
 
 enum Phase { WAIT, CLOSING, OPENING, GAP }
 
-## Seconds to close the eyes when they are held shut. Slower than a blink:
-## ✅ THE OWNER asked for closed eyes on death, and a body that dies by
-## BLINKING reads as a wink. This is the lids giving up, not a reflex.
+## Seconds to close the eyes when they are held shut, on death. Slower than
+## a blink: a body that dies by BLINKING reads as a wink. This is the lids
+## giving up, not a reflex.
 const HELD_CLOSE_TIME := 0.35
 
 var _mesh: MeshInstance3D

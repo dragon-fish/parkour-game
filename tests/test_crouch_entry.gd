@@ -1,9 +1,9 @@
 extends ParkourTest
 
-# WalkingMove's own table has always listed "grounded, not moving -> Crouch"
-# as one of GBA_Crouch's five outlets, but no code implemented that row: a
-# press below the slide entry speed short-circuited and was left buffered, so
-# standing still and pressing crouch did nothing whatsoever.
+# WalkingMove's own table lists "grounded, not moving -> Crouch" as one of
+# GBA_Crouch's five outlets. DO NOT let a press below the slide entry speed
+# short-circuit and sit buffered instead: standing still and pressing crouch
+# must open Crouch, not do nothing.
 
 func _world() -> Dictionary:
 	return TestWorld.build(get_tree(), MovementConfig.new())

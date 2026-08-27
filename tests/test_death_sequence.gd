@@ -33,11 +33,10 @@ func test_it_finishes_and_says_so() -> void:
 	await step(1)
 
 func test_it_locks_player_input_while_it_plays() -> void:
-	# Regression: FallUncontrolledMove flips the Move layer back to WALKING
-	# the instant it lands (see fix A1/A2's own header), and the cutscene
-	# only ever touches the camera. Without a gate on the player itself,
-	# WalkingMove would keep reading held input and drive the body around
-	# underneath a "the character already collapsed" shot.
+	# FallUncontrolledMove flips the Move layer back to WALKING the instant it
+	# lands, and the cutscene only ever touches the camera. Without a gate on
+	# the player itself, WalkingMove would keep reading held input and drive
+	# the body around underneath a "the character already collapsed" shot.
 	var cfg := MovementConfig.new()
 	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
@@ -70,9 +69,8 @@ func test_it_locks_player_input_while_it_plays() -> void:
 		"held input moved the player while the death sequence was playing")
 
 	# Same held input, after the sequence let go AND the post-respawn cover
-	# ran out (RESPAWN_COVER + COVER_FADE of deliberate lock -- the owner:
-	# 重置之后再覆盖0.5s并且期间禁操作): input must be usable again, or the
-	# lock leaked past everything it was meant to cover.
+	# ran out (RESPAWN_COVER + COVER_FADE of deliberate lock): input must be
+	# usable again, or the lock leaked past everything it was meant to cover.
 	await step(int((DeathSequence.RESPAWN_COVER + DeathSequence.COVER_FADE) * 60.0) + 15)
 	assert_true(not is_equal_approx(player.global_position.z, start_position.z), \
 		"input stayed locked after the death sequence finished")
@@ -114,19 +112,20 @@ func test_a_manual_reset_mid_cutscene_does_not_leave_input_locked() -> void:
 	await step(1)
 
 func test_stopping_a_sequence_cancels_it_instead_of_finishing_it() -> void:
-	# C REGRESSION. Arena's R key respawns directly and nothing used to tell
-	# the sequence about it, so it kept running and fired `finished` at
-	# total_duration() -- which Arena wires straight to reset_player(). Press R
-	# 0.3 s into the collapse and ~1.1 s later the player was teleported back
-	# to spawn, velocity zeroed, move manager restarted, in the middle of a
-	# life they had already begun. The screen stayed grey for that whole window
-	# too, because set_desaturation(0.0) also only ran at total_duration().
+	# Arena's R key respawns directly, without going through DeathSequence, so
+	# if the sequence keeps running after a stop() it fires `finished` at
+	# total_duration() regardless -- which Arena wires straight to
+	# reset_player(). Press R 0.3 s into the collapse and ~1.1 s later the
+	# player would be teleported back to spawn, velocity zeroed, move manager
+	# restarted, in the middle of a life already begun, with the screen still
+	# grey for that whole window since set_desaturation(0.0) also only runs at
+	# total_duration().
 	#
 	# `finished` must NOT fire on a stop(): it means "the collapse played out",
 	# and the one listener in the game respawns on it.
 	#
-	# Verified to go red by making stop() leave _playing set -- `finished` then
-	# fires on schedule and the last check below catches it.
+	# Making stop() leave _playing set is exactly what would make `finished`
+	# fire on schedule again, which is what the last check below catches.
 	var cfg := MovementConfig.new()
 	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
@@ -171,8 +170,8 @@ func test_stopping_a_sequence_cancels_it_instead_of_finishing_it() -> void:
 func test_the_topple_ends_with_the_view_on_the_ground() -> void:
 	# The arc pivots on the FEET, and the rig hangs off the Player node whose
 	# origin is the capsule's CENTRE -- so a pose worked in rig-local terms
-	# bottoms out half a body above the floor. Reported from play as "it only
-	# rotated, the height never came down".
+	# bottoms out half a body above the floor instead of reaching the ground,
+	# which reads as pure rotation with no height change at all.
 	var cfg := MovementConfig.new()
 	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
@@ -255,7 +254,7 @@ func test_the_head_travels_the_same_way_the_body_rolls() -> void:
 	# A roll of -angle turns the camera's up axis toward its RIGHT, so the head
 	# has to travel right too. Sending it left while rolling right cancels out
 	# and reads as the head dropping straight down with the picture spinning
-	# around it -- reported from play as "it lost the volume of the waist".
+	# around it, as though the body had no waist to pivot from.
 	#
 	# A real player, not a null one: the arc's radius comes from the body's
 	# stature, and a null player collapses it to the clearance floor.
@@ -305,15 +304,14 @@ func _attach_body(player: Player) -> void:
 	player._attach_body(packed)
 
 func test_a_body_dies_by_its_own_animation_rather_than_a_scripted_fall() -> void:
-	# ✅ THE OWNER FOUND THIS BY ACCIDENT: dying in third person and pressing V
-	# mid-clip "lines up really well with the animation". Of course it does -- a
-	# third-person death already skipped the cinematic, so the eye ran the
-	# ordinary path and the head-follow carried it along with the death clip.
+	# A third-person death already skips the cinematic, so the eye runs the
+	# ordinary path and the head-follow carries it along with the death clip --
+	# which is why pressing V mid-clip still lines up with the animation.
 	#
-	# So the scripted fall is the FALLBACK now, not the default, and what
-	# decides is whether there is a body -- not which view is running. Two
-	# scripted falls fighting over the same transform is what the cinematic
-	# branch was ever protecting against.
+	# The scripted fall is the FALLBACK, not the default: what decides is
+	# whether there is a body, not which view is running. Two scripted falls
+	# fighting over the same transform is exactly what the cinematic branch
+	# guards against.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
@@ -337,8 +335,8 @@ func test_a_body_dies_by_its_own_animation_rather_than_a_scripted_fall() -> void
 	TestWorld.teardown(world)
 
 func test_a_bodiless_death_still_falls_over_on_its_own() -> void:
-	# The pair, and the reason the old effect was kept rather than deleted:
-	# without a body there is no head to follow and nothing to watch.
+	# The pair: without a body there is no head to follow and nothing to
+	# watch, so the scripted cinematic fall must still run on its own.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
@@ -356,13 +354,11 @@ func test_a_bodiless_death_still_falls_over_on_its_own() -> void:
 	TestWorld.teardown(world)
 
 func test_a_fatal_fall_is_dying_before_it_can_strike_a_landing_pose() -> void:
-	# ✅ THE OWNER: "why does a third-person death always play Jump_Land and
-	# THEN Death2 -- it strikes a pose before dying."
-	#
-	# died_from_fall is DEFERRED, so the cutscene -- and with it set_dying() --
-	# did not start until the next frame, and the body spent that frame landing
-	# like anyone else. The declaration moved to the tick the fall is known to
-	# be fatal, which is inside landing_destination() itself.
+	# died_from_fall must be declared on the tick the fall is known to be
+	# fatal, inside landing_destination() itself, rather than deferred to the
+	# next frame. A deferred declaration lets the body spend one frame
+	# landing like anyone else first, so a third-person death would visibly
+	# strike a landing pose (Jump_Land) before playing Death2.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
@@ -377,9 +373,9 @@ func test_a_fatal_fall_is_dying_before_it_can_strike_a_landing_pose() -> void:
 	TestWorld.teardown(world)
 
 func test_a_third_person_death_looks_DOWN_at_the_body() -> void:
-	# ✅ THE OWNER: "it should be -25 there, or the camera ends up underground."
-	# The geometry agrees: the camera hangs BEHIND the rig, so pitching the rig
-	# up swings the arm DOWN -- straight into the floor a dead body is lying on.
+	# The camera hangs BEHIND the rig, so pitching the rig up swings the arm
+	# DOWN -- straight into the floor a dead body is lying on. The pitch must
+	# go negative here, or the camera ends up underground.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
@@ -403,9 +399,10 @@ func test_a_third_person_death_looks_DOWN_at_the_body() -> void:
 	TestWorld.teardown(world)
 
 func test_the_respawn_stays_covered_and_locked_for_a_beat() -> void:
-	# ✅ THE OWNER: "死亡的黑屏应该在重置回检查点之后再覆盖个0.5s，并且期间禁操
-	# 作，因为现在这个还是能看到镜头瞬移和身体从死亡站起来." The reset fires
-	# under full black; the cover then holds with the input gate shut.
+	# The black screen must keep covering the reset for an extra 0.5 s with
+	# input locked, or the camera teleport and the body standing back up from
+	# death are both visible. The reset fires under full black; the cover
+	# then holds with the input gate shut.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)

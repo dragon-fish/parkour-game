@@ -13,10 +13,11 @@ extends SpringBoneSimulator3D
 # A chain that collapses to a single bone gets a virtual extended tail --
 # a one-joint spring is otherwise a no-op.
 
-## Typed Array rather than PackedStringArray: the editor dropped the packed
-## form entirely when it re-saved a scene holding one, leaving every group
-## with no prefixes and the model with no physics at all (✅ the owner:
-## 改完 weight 之后全身都没有骨骼效果了).
+## DO NOT change this to PackedStringArray. The editor drops the packed form
+## entirely when it re-saves a scene holding one, leaving every group with no
+## prefixes and the model with no physics at all -- confirmed after editing
+## `weight` in the editor and letting it re-save: the whole body lost its
+## skeleton effects.
 @export var chain_prefixes: Array[String] = []
 ## Joint collision radius, in the skeleton's own (pre-mount-scale) metres.
 @export var joint_radius: float = 0.015
@@ -31,7 +32,8 @@ extends SpringBoneSimulator3D
 ## How much this group behaves like dead weight rather than hair. 0 keeps
 ## the three dials above exactly; 1 is iron -- gravity pins it down, drag
 ## kills every swing, stiffness barely pulls it back to rest. In between
-## blends the three (✅ the owner: 脚镣需要重量感, 得能设置类似「重量」的配置).
+## blends the three -- added so a chain like a leg-iron can read as having
+## real weight, not as loose hair.
 @export_range(0.0, 1.0) var weight: float = 0.0
 
 ## Iron's numbers, the weight = 1 end of the blend.

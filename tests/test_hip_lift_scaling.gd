@@ -1,26 +1,19 @@
 extends ParkourTest
 
-# ⚠️ ONE TEST WAS REMOVED FROM THIS FILE: it asserted that the clip's own hip
-# curve and MovementConfig.scripted_path_arcs were mutually exclusive, and
-# that flag went with the multi-rule path in 0a30f90. There is only one way
-# now -- the bezier carries the body and the clip supplies the pose -- so
-# there is nothing left for the two ways to be exclusive about.
-
 # A clip's own hip lift is SCALED to what the obstacle needs, not fixed.
 #
-# THE OWNER, arriving at it: "所以其实就是我们应该让动画的髋部最高点缩放到我们所需的高度？
-# 然后加少量的手脚IK？"
+# DO NOT use the clip's own unscaled hip curve as the lift: measured across
+# the real pack, ClimbUp_2m rises 0.617 m above rest, SafetyVault 0.732,
+# StepUp 0.226 -- each right only for the one wall its animator sized it
+# against, and each one added to the capsule's own rise puts the hands
+# 1.32 m out on a shorter obstacle.
 #
-# The two things tried before this were the same mistake with different
-# constants. Left alone a clip lifts its hips by whatever the animator's own
-# obstacle needed -- measured across the real pack, ClimbUp_2m 0.617 m above
-# rest, SafetyVault 0.732, StepUp 0.226 -- which is right for one wall and, added
-# to the capsule's own rise, put the hands 1.32 m out. Pinned flat it lifts them
-# by 0, right only when the capsule provides all the clearance, and the owner
-# again: "现在in-place动画反倒在很多地方高度不够." One constant is 1.20 and the other
-# is 0; both are guesses.
+# DO NOT pin the lift flat at 0 either: that is only right when the capsule
+# alone provides all the clearance, and leaves several in-place clips too
+# low for their obstacle.
 #
-# So the SHAPE stays and the MAGNITUDE is set per obstacle.
+# So the SHAPE of the clip's hip curve stays and the MAGNITUDE is rescaled
+# per obstacle.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 const REST := Vector3(0.0, 0.99, 0.0)
@@ -76,9 +69,9 @@ func _player_with_clips(clips: Array) -> Player:
 	return player
 
 func test_the_clip_keeps_its_own_hip_curve() -> void:
-	# ⚠️ NOT FLATTENED. An earlier version of this pass rewrote the Hips track to
-	# a single key at rest, which is what destroyed the shape there is now
-	# nothing left to scale.
+	# NOT FLATTENED. DO NOT rewrite the Hips track to a single key at rest:
+	# that destroys the curve's shape, leaving nothing for
+	# clip_lift_kept_for() to scale.
 	var player: Player = await _player_with_clips([&"StepUp"])
 	var anim_player: AnimationPlayer = player.body.find_child(
 		"AnimationPlayer", true, false) as AnimationPlayer
@@ -107,9 +100,9 @@ func test_the_wanted_clearance_becomes_a_fraction_of_the_clip() -> void:
 	var player: Player = await _player_with_clips([&"StepUp"])
 	assert_almost_eq(player.clip_lift_kept_for(&"StepUp", 0.6), 0.5, 0.001,
 		"half of the clip's own lift was not half")
-	# ⚠️ CLAMPED AT BOTH ENDS. Asking for more than the clip has cannot invent
-	# it, and a derivation that comes back negative is a low obstacle wanting no
-	# rise at all, not an inverted one.
+	# CLAMPED AT BOTH ENDS. Asking for more than the clip has cannot invent
+	# it, and a derivation that comes back negative means a low obstacle
+	# wanting no rise at all, not an inverted one.
 	assert_eq(player.clip_lift_kept_for(&"StepUp", 5.0), 1.0,
 		"asking for more than the clip has stretched it")
 	assert_eq(player.clip_lift_kept_for(&"StepUp", -1.0), 0.0,

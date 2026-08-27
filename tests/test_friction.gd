@@ -2,10 +2,10 @@ extends ParkourTest
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
-# 03 §3.3's confirmed multiplier chain. All eight scales are confirmed
-# values; base_friction is the one number with no counterpart in the original
-# and is expected to move during playtest, so every assertion here is stated
-# as a RELATION between outputs rather than as an absolute.
+# [ME:CONFIRMED 03 §3.3] The multiplier chain below. All eight scales are
+# confirmed values; base_friction is the one number with no counterpart in
+# the original and is expected to move during playtest, so every assertion
+# here is stated as a RELATION between outputs rather than as an absolute.
 
 func test_flat_ground_applies_only_the_braking_strength() -> void:
 	var pawn := PawnConfig.new()
@@ -55,14 +55,14 @@ func test_friction_is_never_negative() -> void:
 func test_flat_ground_grade_is_zero() -> void:
 	# End-to-end regression test for Player.ground_grade(), the wiring that
 	# turns real floor geometry into the `grade` the tests above only ever
-	# receive as a literal argument. The brief's own rejected formula --
+	# receive as a literal argument. DO NOT compute grade as
 	# `-get_floor_normal().y` alone, with no projection of a direction onto
-	# the floor -- is direction-independent and evaluates to -1 on a
+	# the floor: that is direction-independent and evaluates to -1 on a
 	# perfectly flat floor (normal (0,1,0)), which after Friction's own
 	# clampf(grade, -1, 1) reads as "straight uphill", permanently, even
-	# standing still on level ground. None of the tests above could ever have
-	# caught that: they never touch real floor geometry, only Friction's pure
-	# functions. See Player.ground_grade()'s own comment for the fix.
+	# standing still on level ground. None of the tests above can catch that:
+	# they never touch real floor geometry, only Friction's pure functions.
+	# See Player.ground_grade()'s own comment for the fix.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)

@@ -33,9 +33,11 @@ func test_a_transition_enters_the_target_move() -> void:
 	await step(1)
 
 func test_redo_move_time_blocks_re_entering_the_same_move() -> void:
-	# The original gives each move its own cooldown (TdMove.RedoMoveTime,
-	# e.g. WallRun 0.15, WallKick 1.0). Centralising it here is what lets the
-	# three ad-hoc cooldowns Player used to carry go away.
+	# [ME:CONFIRMED] The original gives each move its own cooldown
+	# (TdMove.RedoMoveTime, e.g. WallRun 0.15, WallKick 1.0). Centralising it
+	# here is what lets Player stop carrying three separate hand-rolled
+	# cooldowns of its own (the ledge regrab timer, the recent-wall list, and
+	# the wall reattach window).
 	var manager := _manager([Move.WALKING, Move.WALL_RUN])
 	manager.move_for(Move.WALL_RUN).cfg.redo_move_time = 0.5
 	manager.start(Move.WALKING)
@@ -64,12 +66,11 @@ func test_redo_move_time_blocks_re_entering_the_same_move() -> void:
 	await step(1)
 
 func test_start_clears_a_live_cooldown() -> void:
-	# Mirrors Player.reset_state() clearing its own hand-rolled cooldowns
-	# (the ledge regrab timer, the recent-wall list) on a fresh life: a
-	# redo_move_time still counting down at the moment start() restarts the
-	# manager -- e.g. Arena.reset_player() after a death or an R-key reset --
-	# must not carry over and silently refuse the new life's first attempt
-	# at that move.
+	# Mirrors Player.reset_state() clearing its own per-life timers (coyote,
+	# jump buffer, roll buffer) on a fresh life: a redo_move_time still
+	# counting down at the moment start() restarts the manager -- e.g.
+	# Arena.reset_player() after a death or an R-key reset -- must not carry
+	# over and silently refuse the new life's first attempt at that move.
 	var manager := _manager([Move.WALKING, Move.WALL_RUN])
 	manager.move_for(Move.WALL_RUN).cfg.redo_move_time = 0.5
 	manager.start(Move.WALKING)
@@ -108,8 +109,8 @@ func test_current_config_defaults_to_the_moves_own_cfg() -> void:
 	assert_true(move.current_config() == cfg, "current_config() did not fall through to cfg")
 	# Never added to the tree, so queue_free() has nothing to defer to -- a
 	# bare Node (unlike RefCounted) does not free itself when it goes out of
-	# scope, and leaving this out trips the runner's own "resources still
-	# in use at exit" scan even though every assert_true() above already passed.
+	# scope, and leaving this out trips Godot's own "objects still in use at
+	# exit" leak report even though every assert_true() above already passed.
 	move.free()
 
 func test_current_move_friction_modifier_reads_the_active_moves_cfg() -> void:

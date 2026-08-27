@@ -52,10 +52,10 @@ func test_releasing_and_repressing_a_direction_is_not_a_turn() -> void:
 	await step(1)
 	world["input"].state.move = Vector2(0.0, 1.0)
 	await step(1)
-	# One tick of no input does bleed through ordinary decay -- and bleeds
-	# faster than it used to, now that the decay curve is steepest the instant
-	# the player stops (see SpeedEnergy.decay()). What matters is that it is
-	# nothing like a turn's own cost: a hard 90-degree flick runs about 4.6.
+	# One tick of no input does bleed through ordinary decay, and the decay
+	# curve is steepest the instant the player stops (see SpeedEnergy.decay()).
+	# What matters is that it is nothing like a turn's own cost: a hard
+	# 90-degree flick runs about 4.6.
 	assert_gt(world["player"].speed_energy.energy, before - 0.7, \
 		"passing through zero input was charged as a turn")
 	TestWorld.teardown(world)
@@ -99,11 +99,11 @@ func test_even_a_one_degree_turn_costs_something() -> void:
 	var before: float = world["player"].speed_energy.energy
 	assert_gt(before, 6.5, "never banked a full budget")
 	# Compared against a straight-ahead tick rather than demanding a net drop.
-	# Now that cost scales with angular rate (03 §3.2), a one-degree nudge is
-	# cheap enough that the same tick's ordinary accumulation can outrun it --
-	# which is the measured behaviour ("a slow turn barely costs anything"),
-	# not a missing charge. What must remain true is that the turning tick
-	# banks LESS than the straight one.
+	# [ME:CONFIRMED 03 §3.2] Cost scales with angular rate, so a one-degree
+	# nudge is cheap enough that the same tick's ordinary accumulation can
+	# outrun it -- a slow turn barely costs anything, which is the measured
+	# behaviour, not a missing charge. What must remain true is that the
+	# turning tick banks LESS than the straight one.
 	await step(1)
 	var straight_gain: float = world["player"].speed_energy.energy - before
 	var pivot: float = world["player"].speed_energy.energy
@@ -119,8 +119,8 @@ func test_turn_cost_wraps_correctly_across_180_degrees() -> void:
 	# just past +180 degrees to just past -180 degrees is a ~2 degree turn,
 	# not a ~358 degree one. Purely a regression guard -- confirmed correct
 	# by inspection, since Godot's own signed_angle_to already handles the
-	# wraparound -- but cheap next to someone later re-deriving why a
-	# barely-perceptible turn once emptied the whole energy budget.
+	# wraparound -- but cheap next to a wraparound bug silently emptying the
+	# whole energy budget on a barely-perceptible turn.
 	var world := _world()
 	await step(1)
 	TestWorld.place(world)
@@ -150,19 +150,24 @@ func test_turn_cost_wraps_correctly_across_180_degrees() -> void:
 	await step(1)
 
 func test_landing_after_an_airborne_turn_only_bills_the_landing_ticks_own_turn() -> void:
+	# THIS PINS BEHAVIOUR THE PROJECT HAS ALREADY ACKNOWLEDGED IS WRONG --
+	# see docs/feel-backlog.md item 1. Turning hard mid-air and holding it
+	# through landing currently costs nothing at all, because
 	# _update_speed_energy() reads wish_direction() BEFORE the grounded
 	# check, so _last_wish_dir tracks the wish continuously through the
-	# whole flight, not just at take-off. That means the landing tick only
-	# ever compares against the immediately preceding (airborne) wish, not
-	# the pre-jump heading -- so turning hard mid-air and holding it costs
-	# nothing extra on touchdown.
+	# whole flight (updated every tick, even while airborne) rather than
+	# freezing at take-off. The landing tick then only ever compares against
+	# the immediately preceding (airborne) wish, not the pre-jump heading, so
+	# there is nothing left to bill. DO NOT strengthen this assertion to
+	# demand a real cost -- fix the underlying mechanic first, then overturn
+	# this test as part of that fix.
 	#
-	# This guards the exact regression the brief's own code shape calls out:
-	# moving `wish := wish_direction(input)` back inside the grounded branch
-	# would leave _last_wish_dir stale at the pre-jump heading for the whole
-	# flight, and landing after an airborne turn would then bill the FULL
-	# swing since take-off in one lump -- while every other test in this file
-	# still passes, since none of them land after turning in the air.
+	# What this test DOES guard, and should keep guarding even after the bug
+	# above is fixed: `wish := wish_direction(input)` must stay outside the
+	# grounded branch. Moving it back inside would leave _last_wish_dir stale
+	# at the pre-jump heading for the whole flight, so landing after an
+	# airborne turn would bill the FULL swing since take-off in one lump --
+	# a different and strictly worse bug than the one this currently pins.
 	var world := _world()
 	await step(1)
 	TestWorld.place(world)
@@ -179,9 +184,9 @@ func test_landing_after_an_airborne_turn_only_bills_the_landing_ticks_own_turn()
 
 	# Turn hard while airborne and hold it -- free per
 	# test_turning_in_the_air_is_free, but this is the state _last_wish_dir
-	# must track through to the landing tick. Airborne now spans both Jump
-	# and Falling (Task 1: airborne-state-chain), so "landed" means back to
-	# Walking, not merely "no longer Falling".
+	# must track through to the landing tick. Airborne spans both Jump and
+	# Falling, so "landed" means back to Walking, not merely "no longer
+	# Falling".
 	input.state.move = Vector2(-1.0, 0.0)
 	var energy_before_landing: float = player.speed_energy.energy
 	var landed := false
@@ -199,10 +204,10 @@ func test_landing_after_an_airborne_turn_only_bills_the_landing_ticks_own_turn()
 	await step(1)
 
 func test_a_fast_flick_costs_more_per_degree_than_a_slow_pan() -> void:
-	# ✅ MEASURED (03 §3.2). This is the half the system was missing: the
-	# original charges per degree AND scales that rate with angular velocity,
-	# so a lazy sweep and a panicked flick through the same angle are NOT the
-	# same price. Without it, planning a line buys the player nothing.
+	# [ME:CONFIRMED 03 §3.2] The original charges per degree AND scales that
+	# rate with angular velocity, so a lazy sweep and a panicked flick
+	# through the same angle are NOT the same price. Without this, planning
+	# a line buys the player nothing.
 	var pawn := PawnConfig.new()
 	var energy := SpeedEnergy.new(pawn)
 	var angle: float = deg_to_rad(30.0)
@@ -216,7 +221,8 @@ func test_a_fast_flick_costs_more_per_degree_than_a_slow_pan() -> void:
 	var fast_cost: float = 100.0 - energy.energy
 
 	assert_gt(fast_cost, slow_cost * 3.0, "a flick cost barely more than a pan")
-	# Measured ratio across the band is 5.54x (0.0167 -> 0.0926 per degree).
+	# [ME:CONFIRMED 03 §3.2] Measured ratio across the band is 5.54x (0.0167
+	# -> 0.0926 per degree).
 	assert_almost_eq(fast_cost / slow_cost, 5.55, 0.2, "the rate gradient is not the measured one")
 
 func test_the_multiplier_is_clamped_outside_the_measured_band() -> void:
@@ -241,11 +247,14 @@ func test_an_ordinary_turn_keeps_its_existing_calibration() -> void:
 		"the reference rate is no longer neutral")
 
 func test_turning_never_bills_below_the_base_speed() -> void:
-	# Reported from play, and the reason this exists: a hard flick could tax a
-	# runner all the way to a standstill, which reads as punishment rather than
-	# as a cost. In the original, however hard the view is swung, speed does not
-	# fall below roughly 16 km/h -- and speed_max_base_velocity (4.0 m/s) is the
-	# one number in the speed block that had no consumer.
+	# A hard flick must not be able to tax a runner all the way to a
+	# standstill -- that reads as punishment rather than as a cost.
+	#
+	# [ME:INFERRED] However hard the view is swung, speed in the original
+	# does not fall below roughly 16 km/h, and speed_max_base_velocity
+	# (4.0 m/s, 14.4 km/h) is the one number in the speed block that
+	# otherwise has no consumer -- close enough to the observed floor that
+	# this is read as its intended purpose, not confirmed as such.
 	var world := _world()
 	await step(1)
 	TestWorld.place(world)
@@ -291,9 +300,9 @@ func test_standing_still_still_empties_the_budget() -> void:
 
 func test_a_turn_taken_in_the_air_is_billed_on_landing() -> void:
 	# Turning is not billed tick by tick in mid-air -- there is no traction to
-	# lose speed through -- but a body that takes off facing one way and lands
-	# facing another HAS turned, and used to arrive owing nothing at all. That
-	# made a jump a way to take a corner for free.
+	# lose speed through -- but a body that takes off facing one way and
+	# lands facing another HAS turned, and must be billed for it on landing,
+	# or a jump becomes a way to take a corner for free.
 	var world := _world()
 	await step(1)
 	TestWorld.place(world)

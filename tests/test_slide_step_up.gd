@@ -90,7 +90,7 @@ func _slide_over_kerb(height: float) -> Dictionary:
 	return {"world": world, "kerb": body, "entered": entered, "seen": seen}
 
 func test_a_slide_over_a_kerb_is_not_interrupted() -> void:
-	# Reported from play and confirmed by the HUD transition log:
+	# THE TRANSITION SEQUENCE, from the HUD log:
 	#   Walking -> Slide -> Falling -> Grab -> Falling -> Walking
 	# Riding over a low kerb lifts the body clear of the floor for a tick, and
 	# SlideMove reads that single tick as "walked off a ledge" and bails to

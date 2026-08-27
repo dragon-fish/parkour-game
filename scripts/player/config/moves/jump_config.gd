@@ -7,13 +7,13 @@ extends MoveConfig
 # MovementConfig that matches every other move's own layering.
 
 func _init() -> void:
-	# Source: 05 §5.7 ③'s table -- `TdMove_Jump` (rising) has
-	# `bCheckForGrab` / `bCheckForVaultOver` / `bCheckForWallClimb` all set.
-	# ✅ for all three: JumpMove is a real state now (AirborneMove's own
-	# subclass), and AirborneMove.probe_transition() reads check_for_wall_climb
-	# directly to gate WALL_RUN entry -- this is the ONLY thing that
-	# distinguishes JumpConfig from FallingConfig (see FallingConfig's own
-	# note on that absence).
+	# [ME:CONFIRMED 05 §5.7 ③] TdMove_Jump (rising) has bCheckForGrab /
+	# bCheckForVaultOver / bCheckForWallClimb all set. JumpMove is a real
+	# state now (AirborneMove's own subclass), and
+	# AirborneMove.probe_transition() reads check_for_wall_climb directly to
+	# gate WALL_RUN entry -- this is the ONLY thing that distinguishes
+	# JumpConfig from FallingConfig (see FallingConfig's own note on that
+	# absence).
 	check_for_grab = true
 	check_for_vault_over = true
 	check_for_wall_climb = true

@@ -12,10 +12,10 @@ var input_source: InputSource
 
 ## Whether clicking into the viewport hands the pointer back to this body.
 ##
-## ✅ FALSE IN THE ANIMATION LAB. There the body is a recording being watched,
-## not a character being played, and every click belongs to the form -- "玩家把我
-## 的鼠标劫持了，我要当旁观者相机". Left true, the first click on the 3D view
-## re-captures the cursor and the panel becomes unreachable.
+## MUST BE FALSE IN THE ANIMATION LAB. There the body is a recording being
+## watched, not a character being played, and every click belongs to the
+## observer camera rather than to the body. Left true, the first click on
+## the 3D view re-captures the cursor and the panel becomes unreachable.
 var owns_mouse := true
 var move_manager: MoveManager
 
@@ -65,22 +65,25 @@ var pending_ledge: Dictionary = {}
 
 ## The InterestLines whose volumes the body is currently inside. Maintained by
 ## the lines themselves (InterestLine calls the two hooks below), never by a
-## probe -- 05 §5.6.5: "凡是「沿着一条线交互」的动作，一律有兴趣点".
+## probe -- [ME:CONFIRMED 05 §5.6.5] any move that interacts along a line has
+## an interest point in the original; anything geometrically self-evident does
+## not.
 var interest_lines: Array[InterestLine] = []
 
 ## The checkpoint the next respawn happens at, or null for the level's own
-## spawn point. LAST TOUCHED WINS -- ✅ the owner noclip-tested the original:
-## flying back and suiciding still respawns at the last one, so a loop's
-## apparent nearest-point behaviour is just re-touching (see Checkpoint).
-## Survives deaths and resets by design.
+## spawn point. LAST TOUCHED WINS -- [ME:CONFIRMED] noclipping the original
+## and flying back to suicide still respawns at the last checkpoint touched,
+## so a loop's apparent nearest-point behaviour is just re-touching (see
+## Checkpoint). Survives deaths and resets by design.
 var active_checkpoint: Checkpoint = null
 
 func touch_checkpoint(checkpoint: Checkpoint) -> void:
 	# THE DEAD DON'T SAVE. A checkpoint records "reached alive and in
 	# control": a fatal dive that clips the volume on the way to the ragdoll
-	# must not turn a death into a teleport -- ✅ the owner found the exploit
-	# ("从很高的地方直接跳下去跳关"). Landing on one ALIVE still counts,
-	# which is the shortcut a parkour game should reward.
+	# must not turn a death into a teleport -- DO NOT let it, or a player can
+	# skip past a level by diving off a height straight through a checkpoint's
+	# volume. Landing on one ALIVE still counts, which is the shortcut a
+	# parkour game should reward.
 	if _dying or move_manager.current_name == Move.FALL_UNCONTROLLED:
 		return
 	# The line only fires when the active respawn actually CHANGES --
@@ -208,13 +211,9 @@ var speed_energy: SpeedEnergy
 ## _charge_turn().
 var _last_wish_dir: Vector3 = Vector3.ZERO
 
-## The heading the body left the ground with, and how long it has been away.
-## Turning is not billed in mid-air -- there is no traction to lose it through
-## -- but a body that takes off facing one way and lands facing another HAS
-## turned, and used to arrive owing nothing. Settled once, on touchdown.
 ## Time left in the stand-up after a slide.
 ##
-## ⚠️ PROJECT-DEFINED, from play: a slide that ends with the player instantly
+## PROJECT-DEFINED FROM PLAY: a slide that ends with the player instantly
 ## back at full running speed makes sliding free, and the original visibly
 ## spends a moment getting back up. Two things happen while it runs -- the
 ## speed budget stops growing, so the ceiling is pinned at whatever the slide
@@ -225,11 +224,17 @@ var _last_wish_dir: Vector3 = Vector3.ZERO
 ## SlideConfig.redo_move_time through MoveManager's own gate rather than here.
 var _slide_recovery_timer: float = 0.0
 
+## The heading the body left the ground with, and how long it has been away.
+## Turning is not billed in mid-air -- there is no traction to lose it
+## through -- but a body that takes off facing one way and lands facing
+## another HAS turned, and used to arrive owing nothing. Settled once, on
+## touchdown.
 var _takeoff_dir: Vector3 = Vector3.ZERO
-## Ground speed at the last take-off. ✅ THE OWNER, measured in the original:
-## catching a rope resets the ride's entry speed to "最后一次离地时的地速" --
-## wall-jumps in between change nothing, and a second rope resets to the same
-## figure. Captured beside _takeoff_dir, read by ZiplineMove.enter().
+## Ground speed at the last take-off. [ME:CONFIRMED] measured in the
+## original: catching a rope resets the ride's entry speed to the ground
+## speed at the moment of the last take-off -- wall-jumps in between change
+## nothing, and a second rope resets to the same figure. Captured beside
+## _takeoff_dir, read by ZiplineMove.enter().
 var _takeoff_ground_speed: float = 0.0
 ## Per-LINE cooldowns (zipline, swing, ...): InterestLine instance id -> seconds left.
 ## Per CABLE, not per move: the owner measured rope-to-rope chaining in the
@@ -237,9 +242,10 @@ var _takeoff_ground_speed: float = 0.0
 ## cooldown forbids. SameZipLineRedoMoveTime only ever guarded the SAME line.
 var _line_cooldowns: Dictionary = {}
 var _airborne_time: float = 0.0
-## Temporary gravity multiplier for FREE FLIGHT -- ✅ the original leans on
-## exactly this ("局部重力修改在ME里反复出现（swing、barge、coil）...是它'飘但可
-## 控'的重要来源"), so it lives on Player once rather than growing a copy per
+## Temporary gravity multiplier for FREE FLIGHT -- [ME:INFERRED 05 §5.4] the
+## original leans on exactly this: local gravity modification recurs across
+## swing, barge and coil, and is a major source of its "floaty but
+## controllable" feel. Lives on Player once rather than growing a copy per
 ## move. Consumed by Move.carry_ballistically() and
 ## AirborneMove.apply_air_physics(); the wall moves keep their own scalings.
 var _gravity_multiplier: float = 1.0
@@ -269,15 +275,15 @@ func landing_tier(fall_height: float) -> int:
 
 ## Fraction of horizontal speed a landing from `fall_height` keeps.
 ##
-## BINARY, not a ramp. ✅ Measured in the original (03 §3.1): a 4.95 m drop
-## taken WITHOUT rolling costs nothing at all -- speed keeps climbing after
-## touchdown -- while ~7 m unrolled zeroes it outright and plays the knee-clutch
-## animation. There is no partial band anywhere in between.
+## BINARY, not a ramp. [ME:CONFIRMED 03 §3.1] a 4.95 m drop taken WITHOUT
+## rolling costs nothing at all -- speed keeps climbing after touchdown --
+## while ~7 m unrolled zeroes it outright and plays the knee-clutch animation.
+## There is no partial band anywhere in between.
 ##
-## This replaced a modelled ramp that charged a little at 2.5 m and more at
-## 4.0 m, with a roll acting as a 35% discount above the soft band. That model
-## was plausible and wrong on both counts: below the threshold nothing is
-## charged, and above it a roll is not a discount but a full cancellation.
+## DO NOT model this as a ramp with a roll acting as a partial discount (e.g.
+## charging a little at 2.5 m, more at 4.0 m, a 35% roll discount above the
+## soft band): below the threshold nothing is charged, and at or above it a
+## roll is not a discount but a full cancellation.
 ##
 ## `skill_roll_landing_height` and `soft_landing_height` therefore take no part
 ## in this calculation -- they gate animation and whether a roll may trigger at
@@ -355,28 +361,28 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## Player, not MovementConfig.
 @export var body_mount_rotation_degrees: Vector3 = Vector3.ZERO
 
-## ⚠️ EVERY VRM NEEDS Vector3(0, 180, 0) HERE. The VRM specification has models
+## EVERY VRM NEEDS Vector3(0, 180, 0) HERE. The VRM specification has models
 ## face +Z, Godot's forward is -Z, and godot-vrm does not reconcile the two.
 ##
 ## The symptom is not "the body faces backwards", which is why it costs time:
 ## it reads as the THIRD-PERSON CAMERA being on the wrong side, with the
-## character apparently running in reverse. The owner reported exactly that.
-## The camera was correct; the back it was framing was a face.
+## character apparently running in reverse. The camera is correct; the back
+## it is framing is a face.
 ##
-## Measured before the correction: the eye bones sat +0.023 behind the head bone
-## and the toes +0.106 behind the foot, both positive, i.e. facing +Z. Both
-## signs flip with the half turn.
+## Measured before the correction: the eye bones sat +0.023 behind the head
+## bone and the toes +0.106 behind the foot, both positive, i.e. facing +Z.
+## Both signs flip with the half turn.
 
 ## Uniform scale applied to the attached body, so a model authored at its own
 ## natural height can sit on this project's capsule without being rebuilt.
 ##
-## The capsule is 1.8 m with the eye 1.66 m above the feet, both ✅ measured
-## from the original -- and those are the numbers every threshold in the game
-## hangs off (reach 1.87, vault ceiling 1.89, standing apex 1.24). They do not
-## move to suit a model. But the MODEL does not have to be 1.8 m for its eyes
-## to land at 1.66: an anime character built at a normal height and scaled up a
-## few percent reads as itself, whereas one actually modelled at 1.8 m reads,
-## in the owner's words, as Attack on Titan.
+## The capsule is 1.8 m with the eye 1.66 m above the feet, both
+## [ME:CONFIRMED] measured from the original -- and those are the numbers
+## every threshold in the game hangs off (reach 1.87, vault ceiling 1.89,
+## standing apex 1.24). They do not move to suit a model. But the MODEL does
+## not have to be 1.8 m for its eyes to land at 1.66: an anime character
+## built at a normal height and scaled up a few percent reads as itself,
+## whereas one actually modelled at 1.8 m reads as Attack on Titan.
 ##
 ## Their VRoid test export measured 1.535 m to the eye bones, so 1.081 -- eight
 ## percent, invisible in first person, where there is no absolute-scale
@@ -434,10 +440,10 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## the clips are portable without touching them. See
 ## tools/build_ual_bone_map.gd.
 ##
-## ⚠️ Retargeting matches NAMES, not rest poses. Two rigs that disagree about
-## what a T-pose is will play the same track to different-looking results. That
-## is a real limit of doing this by import settings alone, not something this
-## property hides.
+## DO NOT ASSUME RETARGETING MATCHES REST POSES -- it only matches NAMES.
+## Two rigs that disagree about what a T-pose is will play the same track to
+## different-looking results. That is a real limit of doing this by import
+## settings alone, not something this property hides.
 @export var body_animation_libraries: Array[PackedScene] = []
 
 ## Which node inside `body_scene` the head-follow camera should track, as a
@@ -459,20 +465,19 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## than in MovementConfig -- a fact about the asset, not a feel value.
 @export var body_head_path: NodePath
 
-## ⚠️ A VRM NEEDS THIS SET. godot-vrm builds a BoneAttachment3D on the head
-## bone -- which is exactly what the follow wants -- but the model also carries
-## an ordinary mesh node called Head, sitting at the model's own origin, down at
-## the FEET. The BFS search reaches the mesh first and the camera then tracks a
-## point that never moves.
+## A VRM NEEDS THIS SET. godot-vrm builds a BoneAttachment3D on the head
+## bone -- which is exactly what the follow wants -- but the model also
+## carries an ordinary mesh node called Head, sitting at the model's own
+## origin, down at the FEET. The BFS search reaches the mesh first and the
+## camera then tracks a point that never moves.
 ##
 ## Measured: with the search left to itself the eye travelled 0.0001 m over a
 ## run while the head bone travelled 12.7 cm; pointed at
 ## GeneralSkeleton/Head it travelled 0.1439 m.
 ##
-## Worth reading twice, because the first diagnosis was wrong: the
-## BoneAttachment3D works perfectly, and measured the same 12.7 cm once it was
-## the node actually being read. The defect was never the attachment's update
-## timing, it was which node got picked.
+## DO NOT blame BoneAttachment3D's update timing for a stuck eye -- it works
+## correctly and measures the same 12.7 cm once the right node is read. The
+## defect is entirely which node gets picked.
 
 ## The travel speed, in m/s, at which this body's locomotion clips read as
 ## natural -- i.e. where CharacterAnimator leaves the playback rate at 1.0 and
@@ -497,16 +502,14 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ##
 ##     { clip_name: [ { "h": 1.2, "w": 0.4, "keys": [ {"t":, "pos":, "rot":} ] } ] }
 ##
-## ⚠️ ONE CURVE PER CLIP IS NOT ENOUGH, which is what the first version assumed.
-## The same clip plays against a 0.9 m sill and a 1.8 m parapet, against a 0.1 m
-## rail and a 2 m ledge, and the pose is wrong in a different direction each
-## time -- a body that clears a thin rail cleanly clips a wide one, at the same
-## moment of the same animation.
+## ONE CURVE PER CLIP IS NOT ENOUGH: the same clip plays against a 0.9 m sill
+## and a 1.8 m parapet, against a 0.1 m rail and a 2 m ledge, and the pose is
+## wrong in a different direction each time -- a body that clears a thin rail
+## cleanly clips a wide one, at the same moment of the same animation. The
+## saved data therefore keys one curve per (height, width) combination, and
+## the running game always looks up the nearest one to apply.
 ##
-## ✅ THE OWNER: "我保存的数据会对应每一种组合，实际游戏场景中总是寻找最接近的那一组
-## 偏移量去应用."
-##
-## 📌 NEAREST, NOT EXACT, and deliberately: the grid is a sample of a continuous
+## NEAREST, NOT EXACT, and deliberately: the grid is a sample of a continuous
 ## space, so a wall 1.13 m tall has to borrow from the nearest thing that was
 ## actually authored. Nothing in a level will ever land on a grid point.
 @export var body_clip_curves: Dictionary = {}
@@ -548,12 +551,12 @@ var active_obstacle: Vector2 = Vector2(-1.0, 0.0)
 ## How long the animation gate keeps a finished scripted clip on screen while
 ## an ordinary one is asking -- the grace window in which a SECOND scripted
 ## clip (the sandwich) may still claim the other slot directly instead of
-## popping through "states". ⚠️ PROJECT-DEFINED dial. The transients this
+## popping through "states". PROJECT-DEFINED DIAL. The transients this
 ## protects against live 1-3 ticks (measured; see CharacterAnimator._route()),
 ## so it is far shorter than body_animation_blend_time -- and the freeze it
-## costs at the end of every scripted move shrinks with it. ✅ THE OWNER, on
-## the first cut that reused the full blend window: "脚本动作结束后确实会定格
-## 在最后一帧0.2s，这个有办法优化吗."
+## costs at the end of every scripted move shrinks with it. DO NOT reuse the
+## full body_animation_blend_time window here, or a scripted move's end holds
+## its last frame for the whole window, which reads as a visible freeze.
 @export var body_gate_hold_time: float = 0.05
 
 ## How long a clip leaving a SLIDE cross-fades, which is longer than everything
@@ -620,10 +623,10 @@ const _CROUCHED_CLIPS: Array[StringName] = [
 ## fixed. An AnimationNodeAnimation with play_mode = PLAY_MODE_BACKWARD reaches
 ## the same result without a negative scale ever existing.
 ##
-## ⚠️ A reversed forward-run is not a backward-run: the foot contacts and the
-## arm swing are both wrong, and no amount of blending hides that. It is here
-## because the owner asked for it as the cheap approximation, and because
-## running backwards while the legs run forwards is worse.
+## A reversed forward-run is not a backward-run: the foot contacts and the
+## arm swing are both wrong, and no amount of blending hides that. Accepted
+## as the cheap approximation anyway, because running backwards while the
+## legs run forwards reads even worse.
 const _REVERSIBLE_CLIPS: Array[StringName] = [
 	&"run", &"Walk", &"Sprint", &"Walk_Carry", &"sneak", &"Crouch_Fwd",
 ]
@@ -666,25 +669,18 @@ var _fold_drop: float = 0.0
 var _kept_clip_lift: float = 1.0
 ## How much of that cancellation is actually being applied, 0 to 1, eased.
 ##
-## ⚠️ EASED, and it was not at first. ✅ The owner: "at the instant the vault
-## ends the camera jumps up a notch." Of course it did -- switching the
-## cancellation off took the lift from 0.825 m to zero in one frame, and a clip
-## cut short at 44 percent still has its hips up when the move hands off. The
-## fold drop was eased from the start; this was the other half of the same idea
-## and did not get it.
+## DO NOT SNAP THIS. Switching the cancellation off instantly takes the lift
+## from 0.825 m to zero in one frame -- a clip cut short at 44 percent still
+## has its hips up when the move hands off -- and the camera visibly jumps up
+## a notch the instant the vault ends. Ease it the same way body_fold_drop is
+## eased.
 var _lift_cancel_amount: float = 0.0
-## The skeleton and Hips index, resolved once at attach -- this is read every
-## tick and find_bone() is a string search.
-## OFF BY DEFAULT. ✅ The owner, after playing with it: "let's leave the ragdoll
-## here -- polishing it properly is a job for someone who knows what they are
-## doing, and I have neither the expertise nor the spare time."
-##
-## Fair, and the reason is worth keeping: a ragdoll generated from a rig at
-## runtime gets you as far as "playable and funny" and no further. What is left
-## needs per-joint angle ranges authored by hand (a knee bends one way, an elbow
-## the other), collision exclusions between neighbouring limbs, and a skeleton
-## that is not scaled -- see Ragdoll's own notes. Every shipped ragdoll is
-## hand-built for its model.
+## OFF BY DEFAULT: the ragdoll generated from a rig at runtime gets you as far
+## as "playable and funny" and no further. What is left needs per-joint angle
+## ranges authored by hand (a knee bends one way, an elbow the other),
+## collision exclusions between neighbouring limbs, and a skeleton that is not
+## scaled -- see Ragdoll's own notes. Every shipped ragdoll is hand-built for
+## its model; this project has not done that work.
 ##
 ## Kept behind a switch rather than deleted: it works, it is entertaining, and
 ## flipping this is the whole cost of having it back.
@@ -694,6 +690,8 @@ var _lift_cancel_amount: float = 0.0
 ## like a humanoid. Null everywhere else, which is every non-VRM body this
 ## project has ever attached.
 var ragdoll: Ragdoll = null
+## The skeleton and Hips index, resolved once at attach -- this is read
+## every tick and find_bone() is a string search.
 var _skeleton: Skeleton3D = null
 var _hips_bone: int = -1
 
@@ -759,7 +757,7 @@ var _was_grounded: bool = false
 ## learn about a state that only exists for testing.
 var noclip: bool = false
 
-## ⚠️ DEBUG. Fast enough to cross the arena without waiting, slow enough to
+## DEBUG. Fast enough to cross the arena without waiting, slow enough to
 ## stop where you meant to.
 const NOCLIP_SPEED := 21.0
 var _jump_buffer_timer: float = 0.0
@@ -774,10 +772,10 @@ var _roll_buffer_timer: float = 0.0
 
 ## Seconds a Q press stays alive waiting for a move that can use it.
 ##
-## ✅ The owner asked for this after finding that pressing Q as a wall run
-## begins does almost nothing -- the press arrives before the run has a fan to
-## sweep across, and is simply dropped. Same shape as the jump buffer above, and
-## the same reason: the player pressed at the moment that FELT right, and the
+## EXISTS BECAUSE A Q PRESS AT THE START OF A WALL RUN WAS BEING DROPPED: the
+## press arrives before the run has a fan to sweep across, and without a
+## buffer it is simply lost. Same shape as the jump buffer above, and the
+## same reason: the player pressed at the moment that FELT right, and the
 ## game was a few frames from being able to honour it.
 var _turn_buffer_timer: float = 0.0
 ## True when a state has asked for the standing capsule back but a ceiling was
@@ -926,13 +924,12 @@ func set_capsule_height(height: float) -> void:
 	capsule.height = height
 	# THE FEET STAY PUT, ALWAYS.
 	#
-	# ⚠️ An anchor option lived here for one commit, so a vault could hold the
-	# CROWN instead. It was the wrong reading of the owner's "the legs are
-	# tucked up", and they caught it in play: with the collision anchored at the
-	# head, a body that landed rested its WAIST on the ground, and the restore
-	# then grew the capsule 0.9 m downward -- half the character underground,
-	# whenever the deferred restore fired. The collision belongs on the floor
-	# the body is standing on. It is the MODEL and the EYE that follow the
+	# DO NOT ANCHOR THE CAPSULE AT THE CROWN so a vault can hold the head level
+	# instead of the feet: with the collision anchored at the head, a landing
+	# body rests its WAIST on the ground, and the standing-capsule restore then
+	# grows the capsule 0.9 m downward -- half the character underground the
+	# moment a deferred restore fires. The collision belongs on the floor the
+	# body is standing on. It is the MODEL and the EYE that follow the
 	# shortened capsule's top; see body_fold_drop().
 	shape_node.position.y = -(_standing_height - height) * 0.5
 
@@ -1140,7 +1137,7 @@ func _ready() -> void:
 
 ## Takes a profile the SCENE did not carry, and attaches whatever body it names.
 ##
-## ⚠️ EXISTS BECAUSE THE PROFILE CANNOT BE BAKED INTO A COMMITTED SCENE. The one
+## EXISTS BECAUSE THE PROFILE CANNOT BE BAKED INTO A COMMITTED SCENE. The one
 ## this project plays with points at a licensed model that is not in the
 ## repository, so a generated main.tscn naming it would be a committed reference
 ## to a file most checkouts do not have -- and test_generated_scenes.gd, which
@@ -1169,10 +1166,10 @@ func adopt_body_profile(profile: BodyProfile) -> void:
 ## missing or `scene` fails to instance as a Node3D, so a malformed
 ## body_scene degrades to "no body" rather than crashing startup.
 func _attach_body(scene: PackedScene) -> void:
-	# ⚠️ DIAGNOSTIC. Arena._ready's own marks put 2383 of its 2393 ms inside
+	# DIAGNOSTIC. Arena._ready's own marks put 2383 of its 2393 ms inside
 	# _load_body_profile, which is this. Cumulative, not per-step -- GDScript
-	# lambdas capture by value. Kept, not temporary -- ✅ the owner: "打日志的地方
-	# 就别删了，之后要勤加日志."
+	# lambdas capture by value. DO NOT DELETE THESE LOG MARKS -- log generously
+	# here, and keep adding more as this path changes.
 	var _began := Time.get_ticks_msec()
 	var _mark := func(what: String) -> void:
 		print("[load]     _attach_body %-24s %6d ms elapsed" % [what, Time.get_ticks_msec() - _began])
@@ -1249,7 +1246,7 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# resolve, and _first_available() walks past them. See
 	# assets/animations/FULL-LIBRARY.md.
 	#
-	# ⚠️ A clip missing from THIS list gets no node in the graph at all, which
+	# A CLIP MISSING FROM THIS LIST gets no node in the graph at all, which
 	# makes travel() to it an engine error rather than a miss. Routing a new
 	# name means adding it here in the same breath.
 	&"SafetyVault",
@@ -1260,16 +1257,17 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	&"ClimbUp_2m", &"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Climb_Exit",
 	# The ladder's climb cycles (full tier only; free-tier bodies fall back
 	# to Climb_Idle). Absent from this list they had library clips but no
-	# state-machine node -- ✅ the owner: "上下爬的动画没生效."
+	# DO NOT DROP THESE FROM THE LIST: without an entry here a clip gets no
+	# state-machine node, even when the body's AnimationPlayer carries it, and
+	# the climb plays nothing at all.
 	&"Climb_Up", &"Climb_Down",
-	# ⚠️ WITHOUT THESE TWO LINES THE ROUTING FOR THEM IS DEAD CODE. Only clips
-	# named here become nodes in the state machine, and CharacterAnimator
-	# asks _has_clip() -- which asks the GRAPH, not the body -- so a clip the
-	# body ships and this list omits reads exactly like a clip the body does
-	# not have: the fallback chain silently takes the next candidate. The
-	# shimmy was routed to Climb_Left/Climb_Right from the day it was written
-	# and played Climb_Idle throughout, which is why the owner kept reporting
-	# "我还是没观察到左爬和右爬的动画" on a shimmy that was otherwise working.
+	# WITHOUT THESE TWO LINES THE ROUTING FOR THEM IS DEAD CODE. Only clips
+	# named here become nodes in the state machine, and CharacterAnimator asks
+	# _has_clip() -- which asks the GRAPH, not the body -- so a clip the body
+	# ships and this list omits reads exactly like a clip the body does not
+	# have: the fallback chain silently takes the next candidate. Drop these
+	# two and the shimmy plays Climb_Idle throughout with no left/right climb
+	# animation ever visible, even though the body has the clips.
 	&"Climb_Left", &"Climb_Right",
 	# Turn180_L is wired and never asked for: the move only ever turns right.
 	# Here anyway, so that the day the turn stops being one-sided the clip is
@@ -1285,7 +1283,7 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# what the all-pairs transition wiring walks, and a name appearing here that
 	# the body lacks is skipped rather than costing anything.
 	#
-	# ⚠️ The two packs disagree on the side names -- UAL1 says Left/Right, UAL2
+	# The two packs disagree on the side names -- UAL1 says Left/Right, UAL2
 	# says L/R -- so these are transcribed from the library, not patterned.
 	&"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right",
 	&"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R",
@@ -1396,13 +1394,14 @@ func _drive_clip_offset(delta: float) -> void:
 	# camera-side time constant rather than flipping with scripted_progress():
 	# the clip starts the tick its move's clip is chosen (CharacterAnimator._route()
 	# hands it straight to the gate, which does not wait) and outlives it, so a
-	# binary hand-over snaps the view by whatever the offset has reached --
-	# ✅ THE OWNER: "StepUp应用往后0.2m的偏移没有过渡，进入退出时会闪一下."
+	# binary hand-over snaps the view by whatever the offset has reached -- DO
+	# NOT SNAP: StepUp's 0.2 m offset flashed visibly on both entry and exit
+	# before this was eased.
 	var follow_target: float = 1.0 if scripted_progress() >= 0.0 else 0.0
 	var follow_t: float = 1.0 - exp(-delta / maxf(config.camera.scripted_eye_offset_blend_time, 0.001))
 	_scripted_eye_follow = lerpf(_scripted_eye_follow, follow_target, follow_t)
 	# The wall run follows the head at half strength -- the authored lean is
-	# ~0.7 m and the full ride reads as flying off the wall (✅ the owner).
+	# ~0.7 m and the full ride reads as flying off the wall.
 	if camera_rig != null:
 		camera_rig.set_head_follow_scale(
 			config.wall_run.head_follow_scale
@@ -1423,10 +1422,10 @@ func _drive_clip_offset(delta: float) -> void:
 	var wanted_drop: float = 0.0
 	if _body_folded:
 		wanted_drop = maxf(standing_height() - current_capsule_height(), 0.0)
-	# ⚠️ NOT WHILE A SCRIPTED MOVE OWNS THE BODY. ✅ THE OWNER: "我希望动画走弧线，
-	# 并且动画的盆骨全程钉死胶囊中心点."
+	# NOT WHILE A SCRIPTED MOVE OWNS THE BODY: the pelvis must stay pinned to
+	# the capsule's centre for the whole arc.
 	#
-	# 🎯 THE FOLD IS WHAT WAS BREAKING THAT PIN, and it took decomposing the
+	# THE FOLD IS WHAT WAS BREAKING THAT PIN, and it took decomposing the
 	# model's Y to see it -- the lift cancellation was doing its job. Over one
 	# 1.5 m vault: mount held at -0.942, lift rose to 0.682 and came back, and
 	# the DROP climbed from 0.179 to 0.850 and stayed. The pelvis came off the
@@ -1434,30 +1433,28 @@ func _drive_clip_offset(delta: float) -> void:
 	#
 	# The fold exists so the eye rides a shortened capsule down. During a
 	# scripted move the path already says where the body is, absolutely and every
-	# tick, so there is nothing left for the fold to correct -- applying it is the
-	# same double-count as every other one in this file's history.
+	# tick, so there is nothing left for the fold to correct -- applying it here
+	# would double-count the same correction this file guards against elsewhere.
 	if scripted_progress() >= 0.0:
 		wanted_drop = 0.0
 	_fold_drop = lerpf(_fold_drop, wanted_drop, t)
-	# ⚠️ SNAPPED, NOT EASED, WHEN NOTHING IS KEPT. ✅ THE OWNER, on the commit that
-	# pinned the hips by rewriting the track: "之前不就有个commit是盆骨全程钉死黄色曲线
-	# 的吗...我希望用那个效果." That version was EXACT because it removed the motion
-	# at the source; cancelling it at the root through an easing ramp is only
-	# approximately the same, and the approximation is visible -- the pelvis
+	# SNAPPED, NOT EASED, WHEN NOTHING IS KEPT: cancelling the hip lift at the
+	# root through an easing ramp is only APPROXIMATELY equal to removing the
+	# motion at its source, and the approximation is visible -- the pelvis
 	# drifts off the path for as long as the ramp lasts.
 	#
-	# 📌 The ramp was protecting against nothing here. These clips start and end
+	# The ramp was protecting against nothing here. These clips start and end
 	# at rest -- measured first key to last, ClimbUp_2m moves (-0.00, +0.09,
 	# +0.00) and StepUp, SafetyVault and ClimbUp_1m move nothing -- so there is no
 	# step to ease over at either boundary.
 	#
-	# ⚠️ THAT PREMISE IS ABOUT FRAME 0, AND A TRIM CAN QUIETLY BREAK IT.
-	# StepUp's 0.1667 s trim starts exactly in the pre-push crouch, hips
-	# 0.158 m BELOW rest (measured from ual2_full's own keys) -- and with the
-	# dip cancelled too, the root snapped 0.19 m up on the switch tick, which
-	# the owner reported as "模型会瞬移一下". The trim stays (the owner: the
-	# action IS the foot-lift, "不要再往后裁") -- what changed is that
-	# _cancelled_lift() no longer cancels the dip. See its own note.
+	# THAT PREMISE IS ABOUT FRAME 0, AND A TRIM CAN QUIETLY BREAK IT. StepUp's
+	# 0.1667 s trim starts exactly in the pre-push crouch, hips 0.158 m BELOW
+	# rest (measured from ual2_full's own keys) -- and with the dip cancelled
+	# too, the root snapped 0.19 m up on the switch tick. DO NOT TRIM STEPUP'S
+	# CLIP FURTHER BACK to fix that snap -- the trimmed action IS the foot-lift.
+	# What changed instead is that _cancelled_lift() no longer cancels the dip.
+	# See its own note.
 	var wanted_cancel: float = 1.0 - _kept_clip_lift
 	if is_zero_approx(_kept_clip_lift):
 		_lift_cancel_amount = wanted_cancel
@@ -1537,7 +1534,7 @@ func clip_curve_at(clip: StringName, at: float) -> Array:
 ## The hand-keyed rows for `clip` whose obstacle is nearest `obstacle`, or an
 ## empty array when the clip has none.
 ##
-## ⚠️ HEIGHT DOMINATES, and it has to. A metre of height is a different move --
+## HEIGHT DOMINATES, and it has to. A metre of height is a different move --
 ## a step-up against a vault against a pull-up -- while a metre of width is the
 ## same move with the body a little further from the far edge. Weighting them
 ## equally would let a wide low sill borrow a tall thin one's curve, which is a
@@ -1546,7 +1543,7 @@ const OBSTACLE_WIDTH_WEIGHT := 0.35
 
 ## How much the ENTRY counts, between the two.
 ##
-## ⚠️ ABOVE WIDTH, BELOW HEIGHT, and the measurement is why. Width moves the far
+## ABOVE WIDTH, BELOW HEIGHT, and the measurement is why. Width moves the far
 ## edge; the entry tilts the whole line the body travels along, which is the
 ## thing a hand-keyed offset is describing a position on. See
 ## ScriptedMove.entry_rise() for the numbers -- 0.69 m of spread on one obstacle,
@@ -1563,12 +1560,12 @@ func clip_keys_for(clip: StringName, obstacle: Vector2, entry: float = 0.0) -> A
 	var rows = body_clip_curves[clip]
 	if not (rows is Array) or rows.is_empty():
 		return []
-	# ⚠️ THE OBSTACLE IS DECIDED FIRST, ON ITS OWN, and the entry only breaks ties
-	# within what it picks. ✅ The owner: "对应宽高只要有一帧微调，就不要再使用其他接近参
-	# 数的关键帧了，否则可能会互相影响导致某些高度在上下都懂[抖]."
+	# THE OBSTACLE IS DECIDED FIRST, ON ITS OWN, and the entry only breaks ties
+	# within what it picks. DO NOT fold the entry into the same sum: once a
+	# hand-tuned frame exists for one height and width, a neighbouring row must
+	# not be able to influence it, or keying one height makes another shake.
 	#
-	# 🎯 THEY WERE DESCRIBING A REAL DEFECT, one commit old. Adding the entry to
-	# the same sum let a row for a DIFFERENT obstacle outrank an exact match: at
+	# One sum let a row for a DIFFERENT obstacle outrank an exact match: at
 	# dh 0, dw 0 and an entry 0.68 out, the exact row scores 0.227, while a row
 	# a quarter-metre taller with the entry spot on scores 0.063. The neighbour
 	# won, so keying one height changed another. Two stages cannot do that -- no
@@ -1582,7 +1579,7 @@ func clip_keys_for(clip: StringName, obstacle: Vector2, entry: float = 0.0) -> A
 		obstacle_best = minf(obstacle_best, dh * dh + dw * dw)
 	if obstacle_best == INF:
 		return []
-	# 📌 SPECIFIC BEATS GENERIC. Among the rows that tie on the obstacle, one
+	# SPECIFIC BEATS GENERIC. Among the rows that tie on the obstacle, one
 	# carrying an entry is a refinement of one that does not, so the generic row
 	# is the fallback rather than the default -- otherwise it would win every
 	# time, being at distance zero from everything.
@@ -1608,7 +1605,7 @@ func clip_keys_for(clip: StringName, obstacle: Vector2, entry: float = 0.0) -> A
 
 ## Whether a row can be chosen at all.
 ##
-## ⚠️ AN EMPTY ROW IS NOT A MATCH. One gets written the moment a combination is
+## AN EMPTY ROW IS NOT A MATCH. One gets written the moment a combination is
 ## visited and then emptied again by dropping its last key, and left eligible it
 ## would win its own obstacle outright and shadow every neighbour with nothing
 ## at all -- which reads as the curve having been deleted everywhere.
@@ -1668,8 +1665,8 @@ func _apply_clip_offset() -> void:
 ## Declares that a SCRIPTED move owns the body's height, so the clip's own
 ## vertical hip motion is cancelled rather than added to it.
 ##
-## ⚠️ THE ACTUAL CAUSE of "the whole model sits above the capsule, barely
-## overlapping it", and it took measuring the clips to find. Non-root-motion
+## THE ACTUAL CAUSE of a model that sits above the capsule barely overlapping
+## it, and it took measuring the clips to find. Non-root-motion
 ## guarantees the ROOT NODE does not translate. It says nothing about the HIPS,
 ## which are a bone like any other -- and an in-place vault clip lifts them
 ## exactly as much as the real one moved. Measured across the library:
@@ -1684,7 +1681,7 @@ func _apply_clip_offset() -> void:
 ## so the clip's lift is the SAME METRE counted twice, and no amount of moving
 ## the root fixes it -- the root was never where the body was.
 ##
-## ⚠️ NOT ALWAYS ON. A run's 0.151 m IS the bob and cancelling it would flatten
+## NOT ALWAYS ON. A run's 0.151 m IS the bob and cancelling it would flatten
 ## the walk into a glide. This is only for the moves whose height is scripted.
 func set_clip_lift_cancelled(cancelled: bool) -> void:
 	set_clip_lift_kept(0.0 if cancelled else 1.0)
@@ -1695,7 +1692,7 @@ func set_clip_lift_cancelled(cancelled: bool) -> void:
 ## between scales the animator's curve to the clearance this obstacle actually
 ## needs, which is the whole point -- see body_clip_hip_peaks.
 ##
-## ⚠️ A FRACTION, NOT A HEIGHT, because the clip's own peak is the unit. Asking
+## A FRACTION, NOT A HEIGHT, because the clip's own peak is the unit. Asking
 ## for "0.4 m of rise" would mean something different in every clip; asking for
 ## "a third of what this clip does" scales the shape it already has.
 func set_clip_lift_kept(kept: float) -> void:
@@ -1715,11 +1712,11 @@ func clip_lift_kept_for(clip: StringName, wanted_rise: float) -> float:
 ## The lift the body placement actually subtracts: only the RISE, times the
 ## cancel amount.
 ##
-## ⚠️ THE DIP IS DELIBERATELY KEPT. A hip position BELOW rest is the clip's own
+## THE DIP IS DELIBERATELY KEPT. A hip position BELOW rest is the clip's own
 ## anticipation -- StepUp crouches 0.158 m before the push -- and the scripted
 ## path carries no downward leg for it to double-count against, so cancelling
 ## it does not pin anything: it LIFTS the whole root by the dip's depth the
-## instant a trimmed clip cuts in (the owner's "模型会瞬移一下"). Clamped here,
+## instant a trimmed clip cuts in, and the model visibly teleports. Clamped here,
 ## the switch tick is continuous and the crouch reads as a body gathering
 ## itself -- feet planted, hips sinking -- which is what the frames are.
 func _cancelled_lift() -> float:
@@ -1737,11 +1734,9 @@ func clip_lift() -> float:
 ## Declares that the body is FOLDED: the legs are tucked and the model should
 ## ride at the shortened capsule's top rather than standing at its bottom.
 ##
-## ✅ The owner, after two attempts that each did half of it: "the capsule
-## should shrink hugging the FEET -- but the model and the eye should come down
-## with it, instead of the capsule getting shorter while the model goes on
-## playing anchored at the soles. The model's head should be anchored to the
-## capsule's top."
+## The capsule shrinks hugging the FEET, and the model and the eye must come
+## down with it. DO NOT shorten the capsule while leaving the model playing
+## anchored at the soles -- the model's head is what rides the capsule's top.
 ##
 ## The COLLISION is not this function's business and never moves: shortening it
 ## from the head with the feet on the floor is what set_capsule_height() has
@@ -1779,8 +1774,8 @@ func is_dying() -> bool:
 ## alone would have put it. The gap between them is every correction this
 ## project applies to the body: the fold drop and the per-clip offset.
 ##
-## ⚠️ The number nobody could see, and the reason three rounds of this were
-## spent arguing from screenshots. The eye readout shows where the HEAD BONE
+## The number nobody could see without this, and the reason arguing from
+## screenshots does not converge. The eye readout shows where the HEAD BONE
 ## ended up, which is the mount plus the corrections plus THE POSE -- and the
 ## pose can move the head half a metre on its own. Only this says which of the
 ## three moved.
@@ -1799,14 +1794,14 @@ func body_root_debug() -> Dictionary:
 ## Puts back the two eased terms that place the model, for a recording being
 ## scrubbed.
 ##
-## ⚠️ THESE ARE STATE, NOT DERIVATIONS, and that is the whole reason this exists.
+## THESE ARE STATE, NOT DERIVATIONS, and that is the whole reason this exists.
 ## _drive_clip_offset() eases both of them every tick, and a scrub has that tick
 ## switched off -- so they sit frozen at whatever the take ENDED on, which is a
 ## body standing still with nothing to cancel. The recorded pose meanwhile has
-## the hips high in their own space, and the model flies. ✅ The owner, on the
-## screenshot: "我觉得盆骨完全没有和黄线重合...现在飞上天了."
+## the hips high in their own space, the pelvis leaves the reference line, and
+## the model flies.
 ##
-## 📌 The third instance of the same class in this scene -- the position, the
+## The third instance of the same class in this scene -- the position, the
 ## capsule height, and now these. A scrub owns the body OUTRIGHT; anything the
 ## simulation would have been maintaining has to come out of the recording.
 func set_body_shape_state(fold_drop: float, lift_cancel: float) -> void:
@@ -1817,8 +1812,8 @@ func set_body_shape_state(fold_drop: float, lift_cancel: float) -> void:
 ## paused nothing calls _drive_clip_offset(), and a tuner you cannot see the
 ## result of is not a tuner.
 ##
-## THE EYE MOVES WITH THE BODY. ✅ The owner, on the first version: "the camera
-## does not follow the model's offset". It does during play -- the head-follow
+## THE EYE MOVES WITH THE BODY, and DO NOT leave it out: the camera must follow
+## the model's offset here. It does during play -- the head-follow
 ## reads the head bone's displacement every tick -- but that tick is paused too,
 ## so nudging the body left the view exactly where it was and the whole point of
 ## tuning in first person went with it. The rig is stepped by hand here for the
@@ -1832,8 +1827,8 @@ func set_clip_offset_immediately(position_offset: Vector3, rotation_offset: Vect
 ## The head's displacement from rest, MINUS whatever the per-clip offset moved
 ## the whole body by.
 ##
-## ✅ The owner: "I lowered one to fix third person and the first-person camera
-## went underground." Exactly what would happen -- in first person the eye is
+## DO NOT let a clip offset move the eye: lowering one to fix third-person
+## framing puts the first-person camera underground. In first person the eye is
 ## dragged along by the head bone, so a correction meant to plant the MODEL's
 ## hands on a ledge moves the VIEW by the same amount, and a few centimetres of
 ## down is the floor.
@@ -1844,20 +1839,19 @@ func set_clip_offset_immediately(position_offset: Vector3, rotation_offset: Vect
 ## deliberately already has its own knobs -- body_slide_eye_lift is one -- and
 ## they are per-model rather than per-clip for the same reason.
 ##
-## ⚠️ The POSITION part only. A clip offset's rotation also moves the head a
+## The POSITION part only. A clip offset's rotation also moves the head a
 ## little, and that is left in: the head sits near the axis a yaw turns about,
 ## so the amount is small, and unpicking it would mean re-deriving the bone's
 ## position from a pose it is not in.
 func _camera_head_offset() -> Vector3:
 	var raw: Vector3 = to_local(head_node.global_position) - head_rest_local
-	# ⚠️ EXCEPT DURING A SCRIPTED MOVE. ✅ THE OWNER (StepUp, whose -0.20 z
-	# offset left the camera inside the neck): "动画做了偏移，第一人称镜头应该
-	# 自动应用相同的偏移." A scripted move's path owns the eye's whole journey
-	# and its clip offset is part of the presentation, so the eye follows the
-	# model. Outside one the subtraction below stands -- WallRun's +-0.7
-	# lateral corrections must never swing the view, and the accident that
-	# built it ("I lowered one to fix third person and the first-person camera
-	# went underground") stays fixed.
+	# EXCEPT DURING A SCRIPTED MOVE, where the first-person camera must take the
+	# clip's own offset -- StepUp's -0.20 z otherwise leaves the camera inside
+	# the neck. A scripted move's path owns the eye's whole journey and its clip
+	# offset is part of the presentation, so the eye follows the model. Outside
+	# one the subtraction below stands: WallRun's +-0.7 lateral corrections must
+	# never swing the view, and an offset lowered for third-person framing must
+	# never put the first-person camera underground.
 	#
 	# BLENDED, not switched: _scripted_eye_follow eases between the two
 	# regimes (see _drive_clip_offset()), because the clip and its offset do
@@ -1870,14 +1864,15 @@ func _camera_head_offset() -> Vector3:
 
 ## What the camera does for a scripted move when there is no head to follow.
 ##
-## ✅ THE OWNER: "所有脚本动作，胶囊永远只走直线，只有没绑角色模型和骨骼的时候，才用得到
-## 相机去模拟轨迹，所以这个轨迹只留给 fallback 的相机偏移."
+## In every scripted move the capsule travels a straight line, so a camera that
+## simulates the arc is only ever needed when no model and skeleton are bound.
+## That trajectory is reserved for this fallback offset and nothing else.
 ##
-## ⚠️ ONLY WITHOUT A MODEL. With one, the eye follows the head bone and the head
+## ONLY WITHOUT A MODEL. With one, the eye follows the head bone and the head
 ## bone is wherever the animation puts it -- adding this on top would move the
 ## eye twice for the same journey.
 ##
-## 📌 It goes through set_head_offset() because the effect wanted is exactly what
+## It goes through set_head_offset() because the effect wanted is exactly what
 ## that does: raise the eye by a displacement Player refreshes every tick. There
 ## is no head here, so nothing is stale.
 func _head_follow_fallback() -> void:
@@ -1971,8 +1966,8 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 		return
 	# The swing's lean. HARD-TRACKED while swinging -- the body and the chain
 	# are rigid geometry, and any smoothing here reads as the model trailing
-	# the swing (✅ the owner: "模型的摇晃角度好像会滞后很多" at the first
-	# cut's 0.08 s ease, ~16 degrees behind at the omega cap). The ease is
+	# the swing: a 0.08 s ease here puts the model about 16 degrees behind at
+	# the omega cap, and it reads as visible lag. The ease is
 	# only for AFTER letting go, standing the body back up over a beat.
 	if move_manager != null and move_manager.current_name == Move.SWING:
 		body_root.rotation.x = _swing_pitch_target
@@ -2027,23 +2022,22 @@ func visual_yaw() -> float:
 
 ## Points the visible model at `radians`, in world space.
 ##
-## ⚠️ FOR MOVES THAT freeze_visual_yaw, WHICH IS THE WHOLE PROBLEM. Grab freezes
+## FOR MOVES THAT freeze_visual_yaw, WHICH IS THE WHOLE PROBLEM. Grab freezes
 ## it, and rightly: a hanging body cannot swivel its legs to follow the view, so
 ## _drive_body_yaw() counter-rotates BodyRoot to hold the model's WORLD yaw still
 ## however far the collision body turns.
 ##
-## ✅ A corner is the one time that is wrong. "转角的时候人物模型忘记转了，因为它被
-## 设计为 grab 时不转动" -- the body genuinely swings ninety degrees onto the next
-## face, and the freeze dutifully cancelled every degree of it.
+## A corner is the one time that freeze is wrong: the body genuinely swings
+## ninety degrees onto the next face, and an unconditional freeze cancels every
+## degree of it, leaving the model facing the old wall.
 ##
-## ⚠️ ABSOLUTE, AND THE FIRST VERSION OF THIS WAS INCREMENTAL, WHICH DRIFTED.
-## "多转角几次身体模型就完全倒过来了." Adding each tick's slice to the model looked
-## equivalent and is not: the collision body's yaw is REBUILT every tick as
+## ABSOLUTE, NOT INCREMENTAL -- DO NOT add each tick's slice to the model. It
+## looks equivalent and is not: the collision body's yaw is REBUILT every tick as
 ## reference-plus-relative, and apply_look eases `relative` whenever the fan
 ## moves out from under the view -- which is exactly what a corner does to it.
 ## So the two quantities were being maintained by different arithmetic, and the
-## gap between them survived each corner and stacked with the next. Four corners
-## of it is a model facing backwards.
+## gap between them survives each corner and stacks with the next. A few
+## corners of that and the model is facing backwards.
 ##
 ## Stating the answer instead of the increment cannot accumulate: the model
 ## faces the wall the hands are on, and every tick says so afresh.
@@ -2192,7 +2186,7 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# goes through parameters/<GRAPH_STATES>/playback instead of
 	# parameters/playback. CharacterAnimator owns both names.
 	#
-	# 🎯 AND THE SCRIPTED CLIPS DO NOT GO THROUGH IT AT ALL. They play on two bare
+	# AND THE SCRIPTED CLIPS DO NOT GO THROUGH IT AT ALL. They play on two bare
 	# slots wired into an AnimationNodeTransition alongside it:
 	#
 	#     states ------.
@@ -2200,9 +2194,9 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	#     scripted_b ---'
 	#
 	# The state machine cannot start a clip mid-transition without either waiting
-	# out the fade (travel()) or throwing it away (start()), and the owner has
-	# reported both as bugs -- see CharacterAnimator._route() for their words and
-	# for the measurement. AnimationNodeTransition has neither problem: it
+	# out the fade (travel()) or throwing it away (start()), and both are visible
+	# defects -- see CharacterAnimator._route() for the measurement.
+	# AnimationNodeTransition has neither problem: it
 	# switches inputs the moment it is asked, WITH its own xfade, and interrupts
 	# a fade of its own gracefully (verified on a bare tree in 4.7.1 -- a request
 	# issued at 0.117 s of a 0.15 s fade started a fresh full fade on the very
@@ -2269,16 +2263,15 @@ func _wire_body_animation(body_node: Node3D) -> void:
 
 ## Trims a clip to the part of it this project actually uses.
 ##
-## ✅ THE OWNER FOUND THE PROBLEM: "the vault and grab animations play far too
-## late -- the character has nearly landed on the other side before the frame
-## where the hand plants." The clips are authored as WHOLE ACTIONS, run-up
-## included, and this project starts them at the moment of contact. So the
-## approach half of the clip plays while the body is already going over, and
-## the interesting half arrives after the move is finished.
+## Untrimmed, the vault and grab animations play far too late: the character has
+## nearly landed on the other side before the frame where the hand plants. The
+## clips are authored as WHOLE ACTIONS, run-up included, and this project starts
+## them at the moment of contact, so the approach half plays while the body is
+## already going over and the interesting half arrives after the move is done.
 ##
-## Their other idea was to start the animation EARLY, predictively. This does
-## the same job without touching gameplay at all: skip the run-up instead of
-## trying to guess when it should have begun.
+## DO NOT fix that by starting the animation early and predictively. Skipping the
+## run-up does the same job without touching gameplay or guessing when the clip
+## should have begun.
 ##
 ## Godot's own timeline controls do all of it. `start_offset` says where in the
 ## clip to begin; `timeline_length` with `stretch_time_scale` says how long the
@@ -2288,25 +2281,26 @@ func _wire_body_animation(body_node: Node3D) -> void:
 ## Read from BodyProfile.clip_timings as {clip: [start, length]} in SECONDS. A
 ## length of 0 means "to the end of the clip".
 ##
-## ⚠️ BUILD TIME, not per tick. Changing the table needs the body re-attached,
+## BUILD TIME, not per tick. Changing the table needs the body re-attached,
 ## which is what the alignment scene is for.
 ## Pushes the whole of body_clip_timings into the graph that is already running.
 ##
-## ✅ THE OWNER: "我明明调了 from 结果动画还是从第一帧开始播." Confirmed by comparing
+## Without this, a configured `from` is ignored and the clip plays from its first
+## frame. Confirmed by comparing
 ## the RECORDED POSE against the source clip at two times -- at a frame reporting
 ## a clip time of 0.1465 s with an offset of 0.2667 s set, the body matched the
 ## clip at 0.1465 (distance 0.002) and not at 0.4132 (distance 8.66). The trim
 ## was in the dictionary and nowhere else.
 ##
-## ⚠️ THE GAME WAS NEVER WRONG, only the lab. adopt_body_profile() writes the
+## THE GAME IS NOT AFFECTED, only the lab. adopt_body_profile() writes the
 ## timings and THEN re-attaches the body, so _wire_body_animation() sets them as
 ## it builds each node. The lab loads its own table from JSON after the body is
 ## already attached, which is a case the build-time-only path cannot serve.
 ##
-## 📌 NO REBUILD NEEDED. Setting the properties on the live AnimationNodeAnimation
+## NO REBUILD NEEDED. Setting the properties on the live AnimationNodeAnimation
 ## resource is enough -- measured the same way, the pose then matched at 0.4132
-## (distance 0.002) instead. An earlier probe suggested a rebuild was required;
-## that probe was reading a stub body and was wrong.
+## (distance 0.002) instead. DO NOT trust a probe that says otherwise without
+## checking it is reading a real body rather than a stub.
 func refresh_clip_timings() -> void:
 	var root := get_node_or_null("BodyRoot")
 	if root == null or body == null:
@@ -2349,7 +2343,7 @@ func refresh_clip_timings() -> void:
 ## Applies `clip_name`'s entry in body_clip_timings to `node`, or clears any trim
 ## already on it when the table has nothing to say.
 ##
-## 📌 ONE HELPER, TWO CALLERS. _wire_body_animation() uses it on the state
+## ONE HELPER, TWO CALLERS. _wire_body_animation() uses it on the state
 ## machine's per-clip nodes; CharacterAnimator uses it on a scripted slot the
 ## moment it loads a clip into one. A clip has to trim identically whichever of
 ## the two is playing it, and two copies of these five lines would not.
@@ -2376,8 +2370,9 @@ func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		an
 	node.use_custom_timeline = true
 	node.start_offset = start
 	node.timeline_length = length
-	# ⚠️ STRETCH OFF, and the flag is the whole of the bug the owner reported:
-	# "对于共计39帧的动画设置 from frame=11 / to frame=0，最后11帧会定格."
+	# STRETCH OFF. DO NOT turn stretch_time_scale on here: with a trim set, the
+	# tail of the clip freezes -- a 39-frame animation trimmed to start at frame
+	# 11 holds its last 11 frames.
 	#
 	# stretch_time_scale maps the animation's ORIGINAL length onto
 	# timeline_length. With start_offset also set, the offset removes 11 frames
@@ -2385,13 +2380,13 @@ func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		an
 	# 28 kept frames run 39/28 = 1.39x too fast, finish early, and the rest of
 	# the timeline is a held pose. Measured on a bare AnimationTree: 0.7 frames
 	# per tick instead of 0.5, reaching the end and repeating it. The length of
-	# the freeze is start_offset, which is why the owner counted 11.
+	# the freeze is exactly start_offset.
 	#
-	# 🎯 AND THE JOB IT WAS ADDED FOR IS ALREADY DONE ELSEWHERE.
+	# AND THE JOB IT WAS ADDED FOR IS ALREADY DONE ELSEWHERE.
 	# CharacterAnimator._scripted_fit() divides the KEPT length by the move's
 	# duration and drives GRAPH_TIME_SCALE with it, which stretches the node's
-	# content and its custom timeline together. Two stretches were fighting, and
-	# the one that read the wrong length was this one.
+	# content and its custom timeline together. Two stretches fight, and this is
+	# the one that reads the wrong length.
 	node.stretch_time_scale = false
 
 ## True when `anim_player` actually carries `clip_name`, in the DEFAULT ("")
@@ -2418,17 +2413,17 @@ func _exit_blend_time(from_name: StringName, to_name: StringName) -> float:
 ## The three-input switch the scripted clips play behind. See
 ## _wire_body_animation() for the shape of the graph and why it exists.
 ##
-## ⚠️ THE INPUT PROPERTY NAMES ARE PER-INDEX AND UNDOCUMENTED ON THE CLASS:
+## THE INPUT PROPERTY NAMES ARE PER-INDEX AND UNDOCUMENTED ON THE CLASS:
 ## AnimationNodeTransition exposes only `input_count`, `xfade_time`,
 ## `xfade_curve` and `allow_transition_to_self` to ClassDB, and grows
 ## `input_<i>/name`, `input_<i>/auto_advance`, `input_<i>/break_loop_at_end` and
 ## `input_<i>/reset` on the INSTANCE once set_input_count() has run. Verified by
 ## printing get_property_list() on a live 4.7.1 node rather than assumed.
 ##
-## 📌 RESET IS ON FOR THE SLOTS AND OFF FOR THE STATE MACHINE, and it defaults to
+## RESET IS ON FOR THE SLOTS AND OFF FOR THE STATE MACHINE, and it defaults to
 ## ON for all three. A slot is re-used with a different clip loaded into it, so
-## entering it has to rewind -- this is the same "the action begins now" that the
-## old start(target, true) meant. The state machine is the opposite case: coming
+## entering it has to rewind, so that the action begins now. The state machine
+## is the opposite case: coming
 ## back to a run that has been playing underneath all along must not restart it.
 func _scripted_gate(seconds: float) -> AnimationNodeTransition:
 	var gate := AnimationNodeTransition.new()
@@ -2482,17 +2477,17 @@ func _body_has_clip(anim_player: AnimationPlayer, clip_name: StringName) -> bool
 ## cannot be assumed.
 ## The clips played while a ScriptedMove is driving the capsule, and only those.
 ##
-## 📌 DERIVED, NOT LISTED BY TASTE: ScriptedMove has exactly two subclasses,
+## DERIVED, NOT LISTED BY TASTE: ScriptedMove has exactly two subclasses,
 ## GrabMove and SpeedVaultMove, and these are the clips
 ## CharacterAnimator._target_animation() routes to while one of them owns the
 ## body. Shimmy and the hang are in because GrabMove drives the capsule through
 ## those too.
 ##
-## ⚠️ Jump_Start IS DELIBERATELY ABSENT even though it is a fallback on several of
+## Jump_Start IS DELIBERATELY ABSENT even though it is a fallback on several of
 ## those branches, because it is also the JUMP's own clip, where the capsule is
 ## ballistic and the hips' own +0.38 m rise is the jump. A clip is only pinnable
 ## when nothing else plays it.
-## 📌 PUBLIC, and named for the PREDICATE rather than for the hips, because there
+## PUBLIC, and named for the PREDICATE rather than for the hips, because there
 ## are two consumers now: _measure_scripted_hip_peaks() below, and
 ## CharacterAnimator._route(), which plays a clip on this list on one of the
 ## gate's own slots instead of through the state machine. Both are asking the
@@ -2503,17 +2498,18 @@ const SCRIPTED_MOVE_CLIPS := [&"StepUp", &"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLe
 
 ## How far each scripted clip lifts its own hips above rest, in metres.
 ##
-## ✅ THE OWNER, arriving at the shape of the answer: "所以其实就是我们应该让动画的髋部
-## 最高点缩放到我们所需的高度？然后加少量的手脚IK？"
+## The clip's own hip peak is SCALED to the height this obstacle needs, with a
+## little hand and foot IK on top.
 ##
-## 🎯 THE TWO THINGS TRIED BEFORE THIS WERE THE SAME MISTAKE WITH DIFFERENT
-## CONSTANTS. Left alone, a clip lifts its hips by whatever the animator's own
+## DO NOT reach for a fixed magnitude at either end -- both ends are the same
+## mistake with different constants. Left alone, a clip lifts its hips by
+## whatever the animator's own
 ## obstacle needed -- 1.20 m for ClimbUp_2m, 0.83 for SafetyVault, 0.48 for
 ## StepUp -- which is right for exactly one wall and, doubled with the capsule's
 ## own rise, put the hands 1.32 m off. Pinned flat it lifts them by 0, which is
-## right only when the capsule provides all of the clearance, and ✅ the owner
-## again: "现在in-place动画反倒在很多地方高度不够." One is a fixed magnitude of 1.20
-## and the other a fixed magnitude of 0; both are guesses.
+## right only when the capsule provides all of the clearance and leaves the
+## in-place animation visibly too low in most places. One is a fixed magnitude
+## of 1.20 and the other a fixed magnitude of 0; both are guesses.
 ##
 ## So the SHAPE stays -- that is the animator's craft and it is worth keeping --
 ## and the MAGNITUDE is set per obstacle. This is the denominator of that: a
@@ -2523,10 +2519,9 @@ var body_clip_hip_peaks: Dictionary = {}
 
 ## Measures, rather than flattens.
 ##
-## 📌 THE SAME PASS THIS USED TO PIN THEM IN. Reading the Hips position track is
-## the same walk either way; the difference is whether the keys are replaced or
-## just looked at. Nothing is written to the animation now, so no library is
-## duplicated and the clips stay exactly as imported.
+## MEASURED IN ONE PASS. Reading the Hips position track is
+## a read-only walk: DO NOT write the peaks back into the animation. Nothing is
+## written, so no library is duplicated and the clips stay exactly as imported.
 func _measure_scripted_hip_peaks(anim_player: AnimationPlayer) -> void:
 	body_clip_hip_peaks.clear()
 	var skeleton := _find_skeleton(body)
@@ -2553,16 +2548,17 @@ func _measure_scripted_hip_peaks(anim_player: AnimationPlayer) -> void:
 			if peak > 0.001:
 				body_clip_hip_peaks[clip_name] = peak
 
-## ⚠️ ONE DEEP COPY FOR THE WHOLE LIST. This took a clip name and did the
-## duplicate-swap per call, and the caller handed it forty-five names -- so a
-## level spent 2.25 SECONDS deep-copying the entire merged animation library,
-## hundreds of UAL clips, forty-five times over, to set forty-five booleans.
+## ONE DEEP COPY FOR THE WHOLE LIST. DO NOT take a single clip name and do the
+## duplicate-swap per call: the caller hands this forty-five names, and copying
+## per name spends 2.25 SECONDS deep-copying the entire merged animation
+## library, hundreds of clips, forty-five times over, to set forty-five
+## booleans.
 ##
-## It was 95% of the cost of loading a level and it hid perfectly: the loading
-## progress bar covers main.tscn's dependency tree and finishes in 80 ms, while
-## this runs inside Arena._ready() where no loader can see it, behind a white
-## curtain that made it look like loading. ✅ THE OWNER asked for the logs that
-## found it -- "那就加可观测性，打日志，我来真的点一次看看控制台输出什么东西."
+## That was 95% of the cost of loading a level and it hides perfectly: the
+## loading progress bar covers main.tscn's dependency tree and finishes in
+## 80 ms, while this runs inside Arena._ready() where no loader can see it,
+## behind a white curtain that makes it look like loading. Only in-process
+## logging finds it.
 ##
 ## The copy itself has to stay: the imported library is shared, and writing
 ## loop_mode straight into it would reach every other instance and the cached
@@ -2865,8 +2861,8 @@ func toggle_noclip() -> void:
 		fall_tracker.reset(global_position.y)
 	if move_manager != null:
 		move_manager.start(Move.WALKING)
-	# ✅ THE OWNER: "pressing T also has to reset the model and the camera, or
-	# the view ends up misaligned."
+	# Noclip must reset the model and the camera too, or the view ends up
+	# misaligned.
 	#
 	# Everything a death leaves behind that the ordinary rules do not take back
 	# on their own. The move manager above already stops the ragdoll and clears
@@ -2957,16 +2953,16 @@ func takeoff_ground_speed() -> float:
 
 ## Lines released while the body was still INSIDE their volume: they stay
 ## unready until the body actually leaves and comes back, however long that
-## takes. ✅ THE OWNER: "离开后如果不退出它的检测范围再重新进入则不要自动爬"
-## -- dismounting at the foot of a ladder used to re-grab you the moment the
-## timer ran out, while you were still standing in the volume minding your
-## own business.
+## takes. DO NOT re-catch on a timer alone: dismounting at the foot of a ladder
+## then re-grabs the player the moment it runs out, while they are still
+## standing in the volume doing nothing.
 var _lines_awaiting_exit: Dictionary = {}
 
 ## Horizontal speed TOWARD a latched line that counts as meaning it, m/s.
-## ✅ THE OWNER, on the original: "1s后有朝向梯子的水平速度（比如对着它按W）
-## 还是会重新进入的" -- and the speedrun glitch built on it: "shift下梯即将
-## 摔死的时候按w扒住."
+## [ME:CONFIRMED] in the original a ladder re-catches about a second later if
+## the body carries horizontal speed toward it -- holding W at it is enough --
+## and the speedrun trick of sliding down a ladder and grabbing it again just
+## before a fatal landing is built on exactly that.
 const LINE_RELATCH_SPEED := 0.5
 
 ## True when `line` is off its own re-catch cooldown, AND -- for a line
@@ -2988,10 +2984,10 @@ func line_ready(line: InterestLine) -> bool:
 
 ## Spends `line`'s one passive chance: the volume will not catch this body
 ## again until it leaves and returns -- or pushes toward the line (the same
-## bypass line_ready() already grants the release latch). ✅ THE OWNER: a
-## first failed check (walked in backwards, ladder outside the view's 180°)
-## must not be retried by mere turning: "背着进入梯子的检测范围，然后再转过
-## 身，应该不会自动进入梯子."
+## bypass line_ready() already grants the release latch). A first failed check
+## -- walked in backwards, ladder outside the view's 180 degrees -- must NOT be
+## retried by turning on the spot: entering the volume facing away and then
+## turning round does not mount the ladder.
 func latch_line(line: InterestLine) -> void:
 	if interest_lines.has(line):
 		_lines_awaiting_exit[line.get_instance_id()] = true
@@ -3252,7 +3248,7 @@ func _probe_landing(lifted: Transform3D, direction: Vector3, distance: float, \
 		return INF
 	return (at.origin.y - landing.get_travel().length()) - global_position.y
 
-## ⚠️ PROJECT-DEFINED. How far the two landing probes may disagree, in EITHER
+## PROJECT-DEFINED. How far the two landing probes may disagree, in EITHER
 ## direction, and still be called one flat surface.
 ##
 ## TIGHT ON PURPOSE. Over the probes' 0.2 m of separation a slope gains
@@ -3446,11 +3442,11 @@ func travel_speed() -> float:
 ## own upper bound rather than a target anything reaches directly.
 ## The small forward nudge a take-off adds, or zero for a standing jump.
 ##
-## Source: 02 §2.4 `JumpAddXY = 100` uu/s. ✅ as a value; the CONDITION is
-## ✅ measured in the original: a jump taken while running picks up about
-## 4 km/h, and a jump from a standstill picks up nothing at all. Adding it
-## unconditionally -- which is what the three take-off sites used to do --
-## gave a standing jump 1 m/s of drift the original never has.
+## [ME:CONFIRMED 02 §2.4] JumpAddXY = 100 uu/s as a value, and the CONDITION is
+## measured in the original too: a jump taken while running picks up about
+## 4 km/h, and a jump from a standstill picks up nothing at all. DO NOT add it
+## unconditionally -- that gives a standing jump 1 m/s of drift the original
+## never has.
 ##
 ## Gated on the movement KEYS rather than on current speed: the question the
 ## original appears to ask is whether the player is asking to travel, and

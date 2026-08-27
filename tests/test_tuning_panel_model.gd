@@ -1,8 +1,7 @@
 extends ParkourTest
 
-# The panel's own property walk, tested without building any UI. Extracted
-# from _build_ui() precisely so it can be: the old version was pure UI code
-# and had no test at all.
+# The panel's own property walk, tested without building any UI -- kept in
+# a pure function precisely so it can be tested at all.
 
 func _paths(rows: Array) -> PackedStringArray:
 	var out := PackedStringArray()
@@ -60,17 +59,17 @@ func test_every_row_carries_a_default_from_a_fresh_config() -> void:
 	assert_true(false, "no row for pawn.gravity")
 
 func test_preset_round_trip_preserves_a_value_equal_to_a_different_declared_default() -> void:
-	# ResourceSaver.save(config, path) -- the old preset format -- omits any
-	# property whose CURRENT value equals its DECLARED default. speed_modifier
-	# is declared on the MoveConfig base with default 1.0, but CrouchConfig's
-	# _init() sets it to 0.4. Tuning crouch's speed_modifier back to exactly
-	# 1.0 (the base's default, not crouch's own) would make ResourceSaver
-	# treat the property as "unchanged" and omit it from the .tres; reloading
-	# would then re-run _init() and silently restore 0.4, losing the tuned
-	# value with no error. This is the whole reason the preset format changed
-	# to an explicit path->value mapping (TuningPreset) instead of a
-	# serialized MovementConfig -- under the old approach this assertion
-	# fails.
+	# ResourceSaver.save(config, path) omits any property whose CURRENT value
+	# equals its DECLARED default. speed_modifier is declared on the
+	# MoveConfig base with default 1.0, but CrouchConfig's _init() sets it to
+	# 0.4. Tuning crouch's speed_modifier back to exactly 1.0 (the base's
+	# default, not crouch's own) makes ResourceSaver treat the property as
+	# "unchanged" and omit it from a serialized MovementConfig .tres;
+	# reloading then re-runs _init() and silently restores 0.4, losing the
+	# tuned value with no error. TuningPreset stores an explicit
+	# path->value mapping instead of a serialized MovementConfig for exactly
+	# this reason -- this assertion is what would catch a regression back to
+	# the serialized-resource approach.
 	#
 	# Panel is built directly, never added to the SceneTree: _build_ui() only
 	# needs `config` to be set (normally done by Arena's injection, mimicked
@@ -119,7 +118,7 @@ func test_differs_from_default_ignores_float_noise_but_catches_a_real_change() -
 
 func test_the_tuner_never_persists_across_sessions() -> void:
 	# Activating the tuner PAUSES the tree, so restoring it at boot is a
-	# softlock -- the owner hit it: "T pose，画面冻结无法操作，ESC都无效". With
+	# softlock: T-pose, frozen screen, nothing responds, not even ESC. With
 	# its F9 binding gone, the panel is the only off-switch, and a panel that
 	# boots into a paused tree it itself caused has no way to be opened.
 	assert_false(TuningPanel.overlay_persists("ClipOffsetTuner"),

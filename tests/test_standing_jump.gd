@@ -1,9 +1,9 @@
 extends ParkourTest
 
-# Measured in the original: a jump taken while running picks up about 4 km/h
-# of horizontal speed, and a jump from a standstill picks up NOTHING. All
-# three take-off sites used to add JumpAddXY unconditionally, so standing
-# still and pressing jump drifted forward at 1 m/s.
+# [ME:CONFIRMED] A jump taken while running picks up about 4 km/h of
+# horizontal speed; a jump from a standstill picks up NOTHING. DO NOT add
+# JumpAddXY unconditionally at any of the three take-off sites -- that drifts
+# a standstill jump forward at 1 m/s.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 

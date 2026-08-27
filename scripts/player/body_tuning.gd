@@ -4,10 +4,10 @@ extends RefCounted
 # How a body is mounted and corrected, kept in git rather than in the model's
 # own resource.
 #
-# THE OWNER, after six hours of tuning that lived only on one machine: "总不能我换
-# 台电脑东西就丢了." And the shape of the answer, theirs: "能不能采用约定式配置文件，就
-# 是我们默认所有开发者都会使用与我们相同眼高的模型、相同的UAL动画库，然后将我们配好的东西
-# 保存为default...如果其他人想覆写这份，就复制一份然后命名为与模型名字一样的json文件."
+# Tuning that lives only in the model's own resource is lost every time the
+# owner switches machines -- it has already cost six hours of retuning once.
+# It must be tracked in git instead, as a convention-based config file (see
+# THE CONVENTION below) rather than baked into the untracked model resource.
 #
 # WHY THE PROFILE COULD NOT JUST BE TRACKED. BodyProfile names the model and the
 # animation packs by path, and those are untracked -- see .gitignore, which says
@@ -69,7 +69,7 @@ static func _read(path: String) -> Dictionary:
 
 ## Puts `tuning` onto `profile`, leaving anything it does not mention alone.
 ##
-## ⚠️ EVERY KEY IS OPTIONAL, and that is what makes an override worth writing. A
+## EVERY KEY IS OPTIONAL, and that is what makes an override worth writing. A
 ## model that only needs a different mount scale writes one line; it does not
 ## have to restate the clip offsets to keep them.
 static func apply_to(profile: BodyProfile, tuning: Dictionary) -> void:

@@ -1,18 +1,20 @@
 class_name IntoGrabMove
 extends Move
 
-# The original's TdMove_IntoGrab: the reach between catching a ledge and
-# hanging from it.
+# [ME:CONFIRMED] The original's TdMove_IntoGrab: the reach between catching a
+# ledge and hanging from it.
 #
-# The body is carried to a FIXED pose relative to the edge -- 0.30 m back,
-# 0.928 m down (GrabDesiredLedgeOffset) -- at a FIXED rate (IntoGrabAlignSpeed,
-# 3 m/s). Everything the owner reported about the manoeuvre falls out of those
-# two numbers: every hang ends up looking identical however it was caught, and
-# a reach that has further to travel takes proportionally longer. The duration
-# is a consequence of the geometry, not a setting.
+# The body is carried to a FIXED pose relative to the edge at a FIXED rate,
+# [ME:CONFIRMED] IntoGrabAlignSpeed = 3 m/s. The pose itself is NOT the
+# original's raw GrabDesiredLedgeOffset taken literally -- see
+# IntoGrabConfig.ledge_back_offset and .eye_below_ledge for why both numbers
+# had to be re-derived for this project's own capsule and eye height. Every
+# hang ends up looking identical however it was caught, and a reach that has
+# further to travel takes proportionally longer: the duration is a
+# consequence of the geometry, not a setting.
 #
-# Before this existed the body simply froze wherever it made contact, which is
-# what left the player hanging in mid-air a long way out from the wall.
+# DO NOT let the body simply freeze wherever it made contact -- that leaves
+# the player hanging in mid-air a long way out from the wall.
 #
 # Deliberately NOT a ScriptedMove: that base interpolates over a fixed
 # DURATION, and the whole character of this manoeuvre is a fixed SPEED with the
@@ -66,12 +68,12 @@ func enter(_previous: StringName) -> void:
 	_target = hanging_pose(player, config, query)
 	# Square to the WALL's face, not toward the edge point.
 	#
-	# Facing the edge was the first attempt and is wrong whenever the ledge was
+	# DO NOT face the edge point -- it is wrong whenever the ledge was
 	# approached at an angle: the edge is a point on the ledge's TOP, off to
 	# one side of the wall it belongs to, so aiming at it leaves the body
-	# skewed by exactly the angle it arrived at. Measured in play with the HUD
-	# reporting the view as square (yaw -1) while the wall was visibly some
-	# 30 degrees off.
+	# skewed by exactly the angle it arrived at. This shows up in the HUD as
+	# the view reporting square (yaw -1) while the wall is visibly tens of
+	# degrees off.
 	var face_normal: Vector3 = query.get("face_normal", Vector3.ZERO)
 	face_normal.y = 0.0
 	if face_normal.length_squared() > 0.0001:
@@ -129,12 +131,12 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			return FALLING
 		if not touching(_face_point):
 			carry_ballistically(delta)
-			# ✅ THE OWNER: "速度不够的时候对着墙跳可能触发无限
-			# IntoGrab->Falling 循环."
+			# A jump too weak to reach the wall can trigger an infinite IntoGrab
+			# -> Falling loop if the check below is dropped.
 			#
-			# ⚠️ THE REACH NEVER ASKED WHETHER THE BODY WAS STILL IN THE AIR.
-			# carry_ballistically() runs move_and_slide() and sets grounded, so
-			# the answer was there the whole time and simply went unread: a jump
+			# THE REACH NEVER ASKS WHETHER THE BODY IS STILL IN THE AIR.
+			# carry_ballistically() runs move_and_slide() and sets grounded every
+			# tick, so DO NOT drop the check below: without it, a jump
 			# too weak to get the hands to the lip drops the body back onto the
 			# floor, where it then spends the rest of max_duration (1.5 s) with
 			# its input frozen, pretending to reach for something above it.
@@ -166,18 +168,17 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 
 	# The facing finishes WITH the reach, not before it.
 	#
-	# A FIXED turn rate was the first attempt, and at any rate fast enough to
-	# square up on a short reach it squares up on a long one in two or three
-	# ticks -- while the translation is still ten ticks from done. That is not
-	# one alignment, it is a whip followed by a glide, and it saturates the
-	# camera's trailing lag on the way, so the eye then spends the rest of the
-	# reach being handed that saturated lag back. The owner reported it as the
-	# view swinging off one way and then returning.
+	# DO NOT use a fixed turn rate here. At any rate fast enough to square up
+	# on a short reach, it squares up on a long one in two or three ticks
+	# while the translation is still ten ticks from done -- a whip followed by
+	# a glide, not one alignment -- and it saturates the camera's trailing lag
+	# on the way, so the eye spends the rest of the reach being handed that
+	# saturated lag back: the view swings off one way and then returns.
 	#
 	# Spreading the turn over the translation's own remaining time makes the
 	# whole manoeuvre a single continuous motion, which is what the camera's
 	# smoothing was written to soften and what IntoGrabAlignSpeed governing
-	# "the alignment" implies in the first place.
+	# the alignment implies in the first place.
 	var remaining_time: float = maxf(to_target.length() / cfg.align_speed, delta)
 	var remaining_turn: float = absf(wrapf(_target_yaw - player.rotation.y, -PI, PI))
 	# Floored, so a reach with no distance left to spread the turn over still
@@ -186,10 +187,10 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	var turn_step: float = maxf(remaining_turn * delta / remaining_time, turn_floor)
 	_turn_body_toward(_target_yaw, turn_step)
 	to_target = _target - player.global_position
-	# BOTH have to have arrived. Finishing on position alone left the facing
-	# to be corrected in one lump by _settle(), which handed the camera a lag
-	# the size of the whole remaining turn -- and a lag that big does not read
-	# as softening, it reads as the view lunging off into the wall before
+	# BOTH have to have arrived. DO NOT finish on position alone: correcting
+	# the facing afterward in one lump via _settle() hands the camera a lag
+	# the size of the whole remaining turn, and a lag that big does not read
+	# as softening -- it reads as the view lunging off into the wall before
 	# snapping back.
 	var facing_error: float = absf(wrapf(_target_yaw - player.rotation.y, -PI, PI))
 	if to_target.length() <= cfg.arrive_distance and facing_error < 0.03:

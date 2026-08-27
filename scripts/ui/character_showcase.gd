@@ -1,12 +1,12 @@
 class_name CharacterShowcase
 extends Node3D
 
-# The character viewer, reached from the main menu's 角色 entry: the body on
-# the left under a free orbit camera, the clip list in the menu's own red
-# column on the right. Left-drag turns HER, right-drag pans the camera,
-# the wheel zooms. A looping clip loops; a one-shot returns to Idle when it
-# ends (✅ the owner: 单次动画播完自动回 idle 避免抽风). The floor speaks the
-# menu's dot-grid language (dot_grid_floor.gdshader) with SSR for the sheen.
+# The character viewer, reached from the main menu's Character entry: the
+# body on the left under a free orbit camera, the clip list in the menu's
+# own red column on the right. Left-drag turns HER, right-drag pans the
+# camera, the wheel zooms. A looping clip loops; a one-shot returns to Idle
+# when it ends. The floor speaks the menu's dot-grid language
+# (dot_grid_floor.gdshader) with SSR for the sheen.
 #
 # Whole scene built from code on a one-node .tscn, exactly like MainMenu.
 
@@ -14,23 +14,34 @@ const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 const BODY_PROFILE := "res://scenes/player/local/profiles/vrm_test.tres"
 const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
 
-## 展厅目录。每项一个字典，除 label 外都可省略：
+## The showcase catalogue. One dictionary per entry; everything but `label`
+## is optional:
 ##
-##   label   菜单里显示的名字
-##   clip    单片段项直接写这个
-##   parts   多片段项：依次播放的段落，每段一个字典：
-##             clip      片段名
-##             from/to   只取片段的这一段，单位秒（默认整段）
-##             duration  这段在屏幕上占多少秒（默认 to - from）
-##             stretch   true  = 改播放速度把片段铺满 duration
-##                       省略  = 原速播，到 duration 就切下一段
-##   loop    单片段项是否循环；多片段项永远只走一遍
-##   hop     脚本化跳跃弧线 {height = 米, apex = 到最高点的秒数}：身体走半个
-##           正弦，落地时间 = apex × 2，而且**由弧线决定何时切到最后一段**，
-##           与片段长度无关（✅ 作者：设置 0.6 则 0.6s 到最高 1.2s 落地）。
-##           展厅没有物理，没有它跳跃就是原地比划。
+##   label     The name shown in the menu.
+##   clip      A single-part entry writes this directly.
+##   parts     A multi-part entry: parts played in sequence, one dictionary
+##             each:
+##               clip      The clip's name.
+##               from/to   Play only this span of the clip, in seconds
+##                         (defaults to the whole clip).
+##               duration  How many seconds this part gets on screen
+##                         (defaults to to - from).
+##               stretch   true    = change the playback speed to fill
+##                                   `duration` exactly.
+##                         omitted = play at normal speed and cut to the
+##                                   next part when `duration` is up.
+##   loop      Whether a single-part entry loops; a multi-part entry always
+##             plays through exactly once.
+##   hop       A scripted jump arc {height = metres, apex = seconds to the
+##             top}: the body follows half a sine, lands at apex × 2, and
+##             **the arc itself decides when to cut to the final part**,
+##             independent of clip length (set to 0.6 and it peaks at
+##             0.6 s, lands at 1.2 s). The showcase has no physics --
+##             without this a jump is just miming in place.
 ##
-## 单次动作播完自动回 Idle。只有身体真的带着全部片段的项才会进菜单。
+## A single-part entry returns to Idle automatically when it finishes. Only
+## entries whose body actually carries every part they name make it into
+## the menu.
 const CLIP_MENU: Array = [
 	{label = "Idle", clip = &"Idle", loop = true},
 	{label = "Idle_LookAround", clip = &"Idle_LookAround", loop = true},
@@ -86,7 +97,7 @@ const MAX_DISTANCE := 8.0
 ## positive tail is "slightly below eye line", not an up-skirt angle.
 const PITCH_MIN := -1.1
 const PITCH_MAX := 0.2
-## The pan cage (✅ the owner: 右键要加限位) -- the camera target may wander
+## The pan cage -- the camera target may wander
 ## around the stage but never leave it.
 const PAN_LIMIT_XZ := 2.0
 const PAN_MIN_Y := 0.3
@@ -295,9 +306,8 @@ func _set_hop_phase(phase: float) -> void:
 
 ## An entry's parts, as dictionaries: a single top-level `clip`, or the
 ## `parts` list. A bare clip name in that list still works, but the menu
-## itself spells every part out -- a config that only grows is only
-## readable while every field is named (✅ the owner: 鬼知道每个 index 配的
-## 是什么东西).
+## itself spells every part out -- a config that only grows stays readable
+## only while every field is named.
 func _entry_parts(entry: Dictionary) -> Array:
 	var out: Array = []
 	if entry.has("clip"):
@@ -376,9 +386,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if motion.button_mask & MOUSE_BUTTON_MASK_LEFT:
 			if _body != null:
 				_body.rotate_y(motion.relative.x * ROTATE_SPEED)
-			# Vertical drag orbits the CAMERA's elevation (✅ the owner:
-			# 左键希望可以调俯仰角) -- drag DOWN looks down from above, as if
-			# tipping her toward you (✅ the owner: 上下反向一下).
+			# Vertical drag orbits the CAMERA's elevation: drag DOWN looks down
+			# from above, as if tipping her toward you -- the sign below is
+			# intentionally inverted from a literal reading of the motion.
 			_pivot.rotation.x = clampf( \
 				_pivot.rotation.x - motion.relative.y * PITCH_SPEED,
 				PITCH_MIN, PITCH_MAX)
@@ -410,7 +420,7 @@ func _set_distance(value: float) -> void:
 func _back_to_menu() -> void:
 	if not ResourceLoader.exists(MAIN_MENU_SCENE):
 		return
-	# ✅ 转场约定: normal transitions are WHITE. Headless keeps the seam.
+	# Normal transitions are WHITE (the transition-colour convention). Headless
 	if DisplayServer.get_name() == "headless":
 		_change_scene.call(MAIN_MENU_SCENE)
 		return

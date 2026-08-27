@@ -15,8 +15,9 @@ extends RefCounted
 # Deliberately RefCounted, not a Node: nothing here touches the scene tree,
 # which is what lets the whole layer be tested without a physics world.
 
-## Which accumulation factor is in force this tick. The original declares
-## three (02 §2.1, all ✅ as values, ⚠️ as direction).
+## Which accumulation factor is in force this tick. [ME:CONFIRMED 02 §2.1]
+## The original declares three raw values (7/10/30). [ME:INFERRED 02 §2.1]
+## Which one maps to walk, strafe, or sprint is unverified.
 enum { WALK, STRAFE, SPRINT }
 
 var energy: float = 0.0
@@ -38,11 +39,11 @@ func reset() -> void:
 	energy = 0.0
 	_rebase_decay()
 
-## ✅ THE OWNER: "落地速度 >=7.2 m/s 则地速恢复为 7.2" -- the original re-derives
-## the ground speed budget from the speed the body actually lands with. A
-## zipline exit at 15 m/s grounds into a full sprint budget (the curve tops
-## out at ground_speed); it does not decay back to whatever pace the player
-## ran before catching the cable.
+## [ME:CONFIRMED] Landing at >= 7.2 m/s restores ground speed to 7.2: the
+## original re-derives the ground speed budget from the speed the body
+## actually lands with. A zipline exit at 15 m/s grounds into a full sprint
+## budget (the curve tops out at ground_speed); it does not decay back to
+## whatever pace the player ran before catching the cable.
 ##
 ## Raise-only, via maxf(): an ordinary slow landing must not undercut a
 ## budget the player had already earned by running.
@@ -131,13 +132,15 @@ func decay(delta: float) -> void:
 	var spent: float = clampf(pow(_decay_time / time, exponent), 0.0, 1.0)
 	energy = maxf(_decay_from * (1.0 - spent), 0.0)
 
-## Turning is a continuous tax with no free allowance (10.1 ③): the research
-## found no "costs nothing below N degrees" parameter anywhere in the game.
+## [ME:CONFIRMED 10.1 §3] Turning is a continuous tax with no free allowance:
+## the research found no "costs nothing below N degrees" parameter anywhere
+## in the game.
 ##
-## The cost is per degree AND per degree-per-second: ✅ measured, the original
-## charges 5.7x more per degree for a hard flick than for a slow pan (03 §3.2).
-## `delta` is therefore required -- the angle alone cannot say how fast it was
-## swung, and charging on angle alone makes planning a line worthless.
+## [ME:CONFIRMED 03 §3.2] The cost is per degree AND per degree-per-second,
+## measured: the original charges 5.7x more per degree for a hard flick than
+## for a slow pan. `delta` is therefore required -- the angle alone cannot
+## say how fast it was swung, and charging on angle alone makes planning a
+## line worthless.
 func spend_turn(radians: float, delta: float) -> void:
 	var rate_deg: float = rad_to_deg(absf(radians)) / maxf(delta, 0.0001)
 	var cost: float = _pawn.speed_turn_deceleration_factor 		* turn_rate_multiplier(rate_deg) * absf(radians)

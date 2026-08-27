@@ -10,18 +10,17 @@ const BRAND_RED := Color("#e90100")
 const TEXT_BLUE := Color("#2d557e")
 const BACKDROP := Color(0.90, 0.93, 0.97, 0.72)
 
-## ✅ THE OWNER's Photoshop spec for UI text shadow (2026-08-26): multiply
-## black at 35%, angle 135°, distance 4 px, spread 0, size 0 -- i.e. a HARD
+## THE PHOTOSHOP SPEC for UI text shadow: multiply black at 35%, angle
+## 135°, distance 4 px, spread 0, size 0 -- i.e. a HARD
 ## shadow offset (+2.83, +2.83), no blur (the style rule agrees). Multiply
 ## blend is approximated by plain alpha black, indistinguishable on our
 ## light surfaces.
 const TEXT_SHADOW_COLOR := Color(0.0, 0.0, 0.0, 0.35)
-## ⚠️ THE SHADOW HAS TO CONTRAST WITH THE TEXT, not just exist. A dark shadow
+## THE SHADOW HAS TO CONTRAST WITH THE TEXT, not just exist. A dark shadow
 ## under dark text is not a shadow, it is a smear -- the settings page's blue
-## labels read as doubled (✅ the owner: 白字用暗色 shadow，黑字用白色 shadow，
-## 否则糊得看不清). Light text keeps the Photoshop spec above; dark text gets
-## this instead. fit_shadow() below picks by luminance so nothing has to
-## remember which is which.
+## labels read as doubled without this. Light text keeps the Photoshop spec
+## above; dark text gets this instead. fit_shadow() below picks by luminance
+## so nothing has to remember which is which.
 const TEXT_SHADOW_LIGHT_COLOR := Color(1.0, 1.0, 1.0, 0.55)
 const TEXT_SHADOW_OFFSET := 3
 
@@ -43,9 +42,10 @@ static func ui_theme() -> Theme:
 ##
 ## For text that has no background it can count on -- the title screen's
 ## prompt floats where the red silhouette may or may not be behind it, and
-## SUBTITLES in play will sit over whatever the level happens to show (✅ the
-## owner: 之后游戏里的台词字幕也用这个规格). A shadow can only ever read
-## against one of the two; an outline reads against both. The theme's default
+## SUBTITLES in play will sit over whatever the level happens to show --
+## future in-game dialogue subtitles are meant to use this same spec too. A
+## shadow can only ever read against one of the two; an outline reads against
+## both. The theme's default
 ## shadow is cleared explicitly, or it doubles the outline into a smear.
 static func dress_over_anything(control: Control, outline: int = 5) -> void:
 	control.add_theme_color_override("font_color", Color.WHITE)
@@ -104,7 +104,7 @@ static func dot_grid_material() -> ShaderMaterial:
 
 
 # ---------------------------------------------------------------------------
-# 现代化改良五件套 shapes shared between the main menu and the pause menu
+# Shapes shared between the main menu and the pause menu
 # (main_menu.gd, pause_ui.gd) -- factored here once both screens needed the
 # same corner metadata / paper grain / footer key-hint pieces, so neither
 # file carries its own copy. Every builder below only constructs and returns
@@ -119,7 +119,7 @@ const _PAPER_NOISE_SHADER := preload("res://scripts/ui/paper_noise.gdshader")
 ## each screen corner (main menu: three "+" plus the version string; pause:
 ## reused as-is, see pause_ui.gd's _build_corner_metadata()).
 ## The ME options-panel look: pale blue sheet, hairline cool border, sharp
-## corners (reference: the original's 选项/视频 screen).
+## corners (reference: the original's Options/Video screen).
 static func panel_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.88, 0.92, 0.96, 0.97)
@@ -202,10 +202,11 @@ static func footer_label(text: String) -> Label:
 	label.size = Vector2(320.0, 24.0)
 	return _themed(label)
 
-## The ME-styled confirm overlay (✅ the owner: "退出游戏按钮太干脆了，挽留
-## 一下啊……"), shared by the main menu and the pause menu so the retention
-## line reads the same everywhere. Backdrop click or the stay button hides
-## the overlay; the go button runs `on_go`. Caller add_child()s the result
+## The ME-styled confirm overlay, shared by the main menu and the pause menu
+## so the retention line reads the same everywhere -- a bare quit/restart
+## button feels too abrupt without one final "are you sure" step. Backdrop
+## click or the stay button hides the overlay; the go button runs `on_go`.
+## Caller add_child()s the result
 ## and re-shows it with `visible = true` on later opens.
 static func confirm_dialog(question_text: String, stay_text: String,
 		go_text: String, on_go: Callable) -> Control:

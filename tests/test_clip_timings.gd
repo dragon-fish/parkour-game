@@ -2,16 +2,15 @@ extends ParkourTest
 
 # A clip can be trimmed to the part of it this project actually uses.
 #
-# ✅ THE OWNER FOUND IT: "the vault and grab animations play far too late -- the
-# character has nearly landed on the other side before the frame where the hand
-# plants." The packs author WHOLE ACTIONS, run-up included, and this project
-# starts them at the moment of contact. So the approach half plays while the
-# body is already going over, and the half that matters arrives after the move
-# has ended.
+# The packs author WHOLE ACTIONS, run-up included, while this project starts
+# them at the moment of contact -- so the vault and grab animations would
+# otherwise play far too late: the approach half plays while the body is
+# already going over, and the half that matters (the hand planting) arrives
+# after the move has ended.
 #
-# Their other idea was to start the animation early, predictively. This does the
-# same job without touching gameplay: skip the run-up rather than guess when it
-# should have begun.
+# An alternative would be to start the animation early, predictively.
+# Trimming does the same job without touching gameplay: skip the run-up
+# rather than guess when it should have begun.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -68,19 +67,19 @@ func test_a_length_resizes_the_kept_part_without_stretching_it_here() -> void:
 	# The length sets the window; the FIT is applied elsewhere, and the flag
 	# stays off on purpose.
 	#
-	# ⚠️ THIS TEST USED TO ASSERT THE OPPOSITE -- that stretch_time_scale was
-	# on, so a 1.5 s clip would be squeezed into a 0.65 s vault here. That is
-	# the bug the owner reported: "对于共计39帧的动画设置 from frame=11 / to
-	# frame=0，最后11帧会定格." stretch_time_scale maps the clip's ORIGINAL
-	# length onto timeline_length, while start_offset has already removed
-	# frames of content -- so the kept part runs 39/28 = 1.39x too fast,
-	# finishes early, and holds its last pose for the rest of the window.
+	# DO NOT let stretch_time_scale come back on here: it maps the clip's
+	# ORIGINAL length onto timeline_length, while start_offset has already
+	# removed frames of content -- so the kept part would run 39/28 = 1.39x
+	# too fast, finish early, and hold its last pose for the rest of the
+	# window (a 39-frame clip trimmed to start at frame 11 freezes on its
+	# final 11 frames).
 	#
-	# 🎯 And the job it was added for is done properly one layer up:
+	# The job it would be doing is handled properly one layer up:
 	# CharacterAnimator._scripted_fit() divides the KEPT length by the move's
 	# duration and drives the graph's time scale with it, which stretches the
-	# node's content and its custom timeline together. Two stretches were
-	# fighting; the one that measured the wrong length is the one that went.
+	# node's content and its custom timeline together. Two stretches fighting
+	# here is exactly the bug: the one that measures the wrong length must
+	# stay off.
 	var node: AnimationNodeAnimation = await _node_for({
 		&"SafetyVault": [0.8, 0.65],
 	})
@@ -96,13 +95,14 @@ func test_a_malformed_entry_is_ignored_rather_than_fatal() -> void:
 # --- a trimmed clip still fills its move ----------------------------------------
 
 func test_the_fit_measures_what_is_left_after_a_trim() -> void:
-	# ✅ THE OWNER, reasoning it out before the code was read: "总计 20 帧的动画在 1s
-	# 内播完，我跳过开头 6 帧，就应该是 1s 内播放 6-20 帧的动画?"
+	# The intuition: a clip authored as 20 frames over 1 s, with the first 6
+	# skipped, should still play its remaining 14 frames within that same 1 s
+	# window.
 	#
-	# ⚠️ IT SHOULD, AND IT DID NOT. _clip_length() returned the WHOLE animation's
-	# length whatever the trim said, so the scripted fit was computed for footage
-	# that was no longer being played: a clip trimmed to 70% of itself still got
-	# the untrimmed clip's time scale, finished at 70% of the move, and left the
+	# _clip_length() MUST account for the trim, not just report the whole
+	# animation's length -- otherwise the scripted fit is computed for footage
+	# that is no longer being played: a clip trimmed to 70% of itself would get
+	# the untrimmed clip's time scale, finish at 70% of the move, and leave the
 	# rest of it running on a held pose.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)

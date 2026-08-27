@@ -4,8 +4,8 @@ extends Control
 # ME-styled vertical menu list: red panel items with white text, a full-width
 # white "selected" bar that slides between items, and the spec's edge-wave
 # shader on both the shared red backdrop (full amplitude) and the selection
-# bar (half amplitude -- "白条动得比红列更轻"). Reused by PauseUi and the
-# main menu.
+# bar (half amplitude -- the white bar reads lighter than the red column).
+# Reused by PauseUi and the main menu.
 #
 # STRUCTURE (v2, after the first windowed look): plain LOCAL children in
 # explicit draw order -- backdrop, selection bar, hover preview, then a
@@ -30,8 +30,8 @@ const ENTRANCE_OFFSET_PX := 40.0
 var _backdrop: ColorRect
 var _selection_bar: ColorRect
 var _hover_preview: ColorRect
-## Items live inside a scroller (✅ the owner: 列表做成可滚动) so a list
-## taller than the column -- the showcase's clip list -- wheels through;
+## Items live inside a scroller so a list taller than the column -- the
+## showcase's clip list -- wheels through;
 ## short lists still centre, because the box is told to fill the viewport.
 var _scroll: ScrollContainer
 var _items_box: VBoxContainer
@@ -109,8 +109,8 @@ func set_items(items: Array[String]) -> void:
 	_refresh_colors()
 	call_deferred("_sync_widths")
 
-## The stagger-in (✅ ease-in-out per the owner's direction). Labels slide
-## from the left and fade up, ENTRANCE_STAGGER apart.
+## The stagger-in (ease-in-out). Labels slide from the left and fade up,
+## ENTRANCE_STAGGER apart.
 func play_entrance() -> void:
 	if _entrance_tween != null and _entrance_tween.is_valid():
 		_entrance_tween.kill()

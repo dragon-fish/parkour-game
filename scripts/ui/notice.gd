@@ -8,7 +8,7 @@ extends CanvasLayer
 # reason those do: it talks about what happened to this player, and must
 # survive a level change.
 
-## ⚠️ PROJECT-DEFINED feel values: quick in, readable hold, soft out.
+## PROJECT-DEFINED feel values: quick in, readable hold, soft out.
 const FADE_IN := 0.15
 const HOLD := 2.0
 const FADE_OUT := 0.5

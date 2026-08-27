@@ -32,7 +32,7 @@ var _resetting_physics: bool = false
 ## the level, alongside reset_player(), instead of in the state machine.
 @onready var _death_sequence: DeathSequence = DeathSequence.new()
 
-## The resting cold-blue tint. ⚠️ FOUR PLACES CARRY THIS COLOUR AND ALL FOUR
+## The resting cold-blue tint. FOUR PLACES CARRY THIS COLOUR AND ALL FOUR
 ## MUST AGREE: here, templates/base_level.tscn, tools/arena_builder.gd, and
 ## scenes/main.tscn. This one WINS AT RUNTIME -- Arena._process() re-applies
 ## it every frame (so an F1 drag of ambient_cold_strength takes effect live),
@@ -40,7 +40,7 @@ var _resetting_physics: bool = false
 ## overwritten the moment the level runs. The scene copies are what the
 ## EDITOR viewport shows; this constant is what the game shows.
 ##
-## 📌 The .tscn files cannot hold that warning themselves: Godot strips the
+## The .tscn files cannot hold that warning themselves: Godot strips the
 ## `;` comments out of a scene file whenever the editor re-saves it, which
 ## is how the previous copy of this note disappeared.
 const COLD_AMBIENT_TINT := Color(0.223529, 0.466667, 0.741176)
@@ -72,14 +72,14 @@ const FOG_SKY_AFFECT := 0.0
 @onready var _world_environment: WorldEnvironment = get_node_or_null("WorldEnvironment")
 
 func _ready() -> void:
-	# ⚠️ DIAGNOSTIC, and it is here because nothing outside can see this.
+	# DIAGNOSTIC, and it is here because nothing outside can see this.
 	# ResourceLoader's progress covers main.tscn's dependency tree -- nine
 	# entries -- and finishes in about 80 ms. Everything below runs on the main
 	# thread AFTER that, under whatever curtain happens to be up, and no loader
-	# API can report it. ✅ THE OWNER: "那就加可观测性，打日志，我来真的点一次看看
-	# 控制台输出什么东西." ✅ AND THEY STAY: "打日志的地方就别删了，之后要勤加日志,
-	# 好处挺多的." These found a 2.25 s cost that no profiler outside the process
-	# could see; the next one will be invisible in the same way.
+	# API can report it. DO NOT remove these print lines, and keep adding more
+	# like them: this logging is what found a 2.25 s cost that no profiler
+	# outside the process could see; the next one will be invisible in the same
+	# way unless it is logged.
 	# CUMULATIVE from the top of _ready, not per-step -- GDScript lambdas
 	# capture by VALUE, so a `_t = now` in here would update the closure's own
 	# copy and every line would read as a delta from zero. Subtract adjacent
@@ -177,26 +177,25 @@ const CALIBRATION_SCENE := "res://scenes/generated/calibration_course.tscn"
 
 ## Whether to drop the calibration course into this level.
 ##
-## ✅ OFF BY DEFAULT, at the owner's request: "能不能别让 calibration_course 出现在
-## 每一个场景里." This script is the one on templates/base_level.tscn as well as on
-## main.tscn, so a course loaded unconditionally turned up in every level built
-## from that template -- including whiteboxes where it is 60 m of scenery nobody
-## asked for.
+## OFF BY DEFAULT. This script is the one on templates/base_level.tscn as
+## well as on main.tscn, so a course loaded unconditionally turns up in every
+## level built from that template -- including whiteboxes where it is 60 m of
+## scenery nobody asked for.
 ##
 ## The generated arena turns it on, which is where a bench of graded obstacles
 ## belongs.
 ## Whether this level grabs the pointer on the way in.
 ##
-## ✅ OFF FOR THE ANIMATION LAB, which is a form with a 3D viewport rather than a
-## game: "玩家把我的鼠标劫持了，我要当旁观者相机." A level you play wants the pointer;
-## a level you edit in wants a cursor.
+## OFF FOR THE ANIMATION LAB, which is a form with a 3D viewport rather than a
+## game -- the pointer stays free for spectator-camera use, not captured. A
+## level you play wants the pointer; a level you edit in wants a cursor.
 @export var capture_mouse: bool = true
 
 @export var load_calibration_course: bool = false
 
 ## The body this level plays with, if the file is there.
 ##
-## ⚠️ NOT A SCENE REFERENCE, and it cannot be one. The profile points at a
+## NOT A SCENE REFERENCE, and it cannot be one. The profile points at a
 ## licensed model that is not in the repository, so a committed main.tscn naming
 ## it would break every checkout without that model -- and fail
 ## test_generated_scenes.gd, which compares the builder's output against what is
@@ -206,8 +205,7 @@ const BODY_PROFILE := "res://scenes/player/local/profiles/vrm_test.tres"
 
 ## Which profile the machine's owner is currently playing with -- a git-ignored
 ## ConfigFile (the whole profiles/ directory is ignored) so switching bodies is
-## editing one line, not editing any scene. ✅ THE OWNER: "搞一个被 ignore 的文件
-## 来配置当前使用的 body profile." Format:
+## editing one line, not editing any scene. Format:
 ##
 ##     [body]
 ##     profile="res://scenes/player/local/profiles/vrm_test.tres"
@@ -217,10 +215,10 @@ const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
 
 ## Gives the player a body when the scene did not name one.
 ##
-## ✅ THE OWNER: "干脆给 main 也挂上人物模型嘛." Only the old sandbox carried the profile,
-## because only a git-ignored scene can afford to reference a git-ignored
-## resource -- and with this hook a committed scene never has to: leave the
-## Player's Body Profile empty and the local config dresses it on entry.
+## main.tscn gets a body too, not just the old sandbox scene, because only
+## a git-ignored scene can afford to reference a git-ignored resource --
+## and with this hook a committed scene never has to: leave the Player's
+## Body Profile empty and the local config dresses it on entry.
 func _load_body_profile() -> void:
 	if player == null or player.body_profile != null:
 		return
@@ -251,10 +249,10 @@ func _load_calibration_course() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and not event.echo and event.physical_keycode == KEY_R:
-		# Hold-to-interact, ✅ the owner's second cut (release-judged felt
-		# wrong): the hold FIRES THE MOMENT it reaches the threshold -- see
-		# _physics_process -- forgetting the checkpoint and respawning at the
-		# level's own spawn. Releasing earlier is a tap: the plain respawn.
+		# Hold-to-interact: the hold FIRES THE MOMENT it reaches the threshold --
+		# see _physics_process -- forgetting the checkpoint and respawning at the
+		# level's own spawn, rather than firing on release, which reads as
+		# unresponsive. Releasing earlier is a tap: the plain respawn.
 		if event.pressed:
 			_r_pressed_at_ms = Time.get_ticks_msec()
 		elif _r_pressed_at_ms >= 0:
@@ -338,8 +336,7 @@ func _apply_fog(environment: Environment) -> void:
 ## the (generously sized, see tools/arena_builder.gd's own Floor comment)
 ## arena floor, or through a genuine hole in the geometry. The practice gaps
 ## themselves land safely ON the floor now (a missed jump there is a
-## teachable "you came up short", not an endless fall -- see this task's own
-## report on why that used to be the opposite), so this exists for the
+## teachable "you came up short", not an endless fall), so this exists for the
 ## edge-of-the-world case, not as their landing net. Checked every tick rather
 ## than relying on the player to press R, since falling forever is not a
 ## state a human should have to notice and self-rescue from.
@@ -352,23 +349,22 @@ func _physics_process(_delta: float) -> void:
 			and Time.get_ticks_msec() - _r_pressed_at_ms >= int(CHECKPOINT_CLEAR_HOLD * 1000.0):
 		_r_pressed_at_ms = -1
 		restart_from_spawn()
-	# ⚠️ THE RAGDOLL IS THE ONE THAT FALLS. ✅ The owner: "falling past z = -20
-	# no longer resets -- it makes me watch six seconds of ragdoll."
-	#
-	# Exactly so: once the ragdoll takes over, the capsule STOPS (see
-	# FallUncontrolledMove), so its own Y never crosses this line again and the
-	# only thing left to end the fall was the settle timeout. The body that is
-	# actually falling is the one to ask.
+	# THE RAGDOLL IS THE ONE THAT FALLS: once it takes over, the capsule STOPS
+	# (see FallUncontrolledMove), so its own Y never crosses fall_recovery_depth
+	# again -- querying player.global_position.y alone would leave this fall-
+	# out-of-level recovery permanently unreachable once a ragdoll is active,
+	# forcing a six-second wait for the settle timeout instead. The body that
+	# is actually falling is the one to ask.
 	var depth: float = player.global_position.y
 	if player.ragdoll != null and player.ragdoll.is_simulating():
 		depth = player.ragdoll.hips_position().y
 	if depth < -config.pawn.fall_recovery_depth:
 		reset_player()
 
-## The R-hold action, also reachable from the pause menu's 重新开始: forget
-## the checkpoint and respawn at the level's own spawn. Under the curtain --
-## ✅ the owner: the bare teleport was 突兀. The clear and the reset both
-## happen at full cover.
+## The R-hold action, also reachable from the pause menu's Restart option:
+## forget the checkpoint and respawn at the level's own spawn. Under the
+## curtain -- an uncovered teleport reads as jarring. The clear and the reset
+## both happen at full cover.
 func restart_from_spawn() -> void:
 	if not is_instance_valid(player):
 		return
@@ -398,9 +394,10 @@ func reset_player() -> void:
 	# has added the sequence (a test driving this node by hand).
 	if _death_sequence != null:
 		_death_sequence.stop()
-	# ⚠️ THE BODY COMES BACK BEFORE THE PLAYER DOES. ✅ The owner: "the order is
-	# wrong -- put the ragdoll back before respawning, or the player gets
-	# launched the moment they come back."
+	# THE BODY COMES BACK BEFORE THE PLAYER DOES: ragdoll.stop() must run
+	# before the teleport below, or the player gets launched the moment they
+	# respawn -- a ragdoll whose bones are still being solved, teleported
+	# mid-solve, throws the body.
 	#
 	# stop() above already does it on every route that goes through the
 	# sequence, and this is the belt to that brace: a ragdoll started by
@@ -422,9 +419,9 @@ func reset_player() -> void:
 	# down its -Z.
 	var checkpoint: Checkpoint = player.active_checkpoint
 	if checkpoint != null and is_instance_valid(checkpoint):
-		# Origin = BODY CENTRE, the same convention SpawnPoint has always
-		# used -- ✅ the owner tried feet-at-origin first and chose
-		# consistency instead ("和spawnpoint保持一致更好，不然会让我疑惑").
+		# Origin = BODY CENTRE, the same convention SpawnPoint uses -- keep
+		# both respawn origins consistent so switching between the two is not
+		# confusing.
 		# The editor gizmo hangs the capsule around the node accordingly.
 		player.global_position = checkpoint.global_position
 		player.rotation = Vector3(0.0, checkpoint.global_rotation.y, 0.0)

@@ -1,8 +1,8 @@
 extends ParkourTest
 
-# ✅ 2.00 s is MEASURED, not designed: six hard landings in the original,
-# timed from the last Falling frame to the first Walking frame, read
-# 2.03 / 2.00 / 2.00 / 2.00 / 2.00 / 2.02 (spec §时间轴).
+# [ME:CONFIRMED spec §时间轴] 2.00 s is measured, not designed: six hard
+# landings in the original, timed from the last Falling frame to the first
+# Walking frame, read 2.03 / 2.00 / 2.00 / 2.00 / 2.00 / 2.02.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 

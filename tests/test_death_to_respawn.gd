@@ -90,8 +90,8 @@ func test_a_fatal_fall_plays_the_death_sequence_before_respawning() -> void:
 	await step(1)
 
 func test_a_manual_reset_mid_cutscene_is_not_undone_when_the_cutscene_would_have_ended() -> void:
-	# C REGRESSION, and the Arena half of it -- tests/test_death_sequence.gd
-	# pins DeathSequence.stop() itself; this pins that reset_player() actually
+	# The Arena half of the same guard: tests/test_death_sequence.gd pins
+	# DeathSequence.stop() itself; this pins that reset_player() actually
 	# calls it. Without that call the cutscene runs on regardless, fires
 	# `finished` at total_duration(), and Arena's own wiring turns that into a
 	# SECOND respawn seconds after the player pressed R and got moving again.
@@ -101,7 +101,8 @@ func test_a_manual_reset_mid_cutscene_is_not_undone_when_the_cutscene_would_have
 	# actually running, so a severed or missing call shows up here rather than
 	# hiding behind a signal that fires whether or not anyone acts on it.
 	#
-	# Verified to go red by removing the stop() call from reset_player().
+	# Removing the stop() call from reset_player() is exactly what turns this
+	# red.
 	var arena: Node3D = ArenaBuilder.new().build()
 	get_tree().root.add_child(arena)
 	await step(1)

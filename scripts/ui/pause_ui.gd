@@ -1,10 +1,11 @@
 extends CanvasLayer
 
 # Global pause menu -- every level gets this for free via the autoload,
-# debug whiteboxes included (the spec's "自动加载意味着 debug_levels 白盒里也
-# 免费获得暂停菜单"). Esc toggles pause, or backs out of the settings page
-# when that is what is currently shown; 设置 pushes MeSettingsMenu in place of
-# the menu list; 回主菜单 targets Task 5's scene, guarded so it simply does
+# debug whiteboxes included: autoloading means even a debug_levels
+# whitebox gets a pause menu for free. Esc toggles pause, or backs out of
+# the settings page when that is what is currently shown; the Settings
+# choice pushes MeSettingsMenu in place of the menu list; the Back to Main
+# Menu choice targets the main menu scene, guarded so it simply does
 # nothing until that scene exists.
 #
 # No class_name: this script's only identity is the autoload singleton name
@@ -17,15 +18,15 @@ var _backdrop: ColorRect
 var _paper_noise: ColorRect
 var _menu_list: MeMenuList
 var _settings_menu: MeSettingsMenu
-## 现代化改良五件套 pieces that carry no other state of their own -- corner
-## metadata labels and the footer key-hint. Built once in _build_ui(), then
+## Shared corner/footer pieces that carry no other state of their own --
+## corner metadata labels and the footer key-hint. Built once in _build_ui(), then
 ## only ever have their `visible` flipped by _set_shown() alongside every
 ## other child on this layer (see that method's own comment for why a plain
 ## CanvasLayer needs this at all).
 var _corner_labels: Array[Label] = []
 var _footer: Label
 ## The shared ME retention dialog (MeTheme.confirm_dialog), built on first
-## 退出游戏 press. Hidden alongside everything else by _set_shown(false).
+## Quit press. Hidden alongside everything else by _set_shown(false).
 var _quit_confirm: Control
 ## Whether the settings page (rather than the menu list) is the currently
 ## shown sub-page. Reset to false whenever the whole layer hides, so a fresh
@@ -37,31 +38,30 @@ var _showing_settings: bool = false
 ## change_scene_to_file() is deferred -- for at least the rest of this frame
 ## get_tree().current_scene is still the OLD scene while the new one is only
 ## queued. Any toggle_pause() that lands in that gap (e.g. a second input
-## event queued behind the one that fired 回主菜单) would otherwise re-pause a
+## event queued behind the one that fired Back to Main Menu) would otherwise re-pause a
 ## scene that is about to be torn down, or resume into a half-swapped tree --
 ## see toggle_pause() below.
 ##
-## A DEFERRED CLEAR, NOT AN "IS IT THE MAIN MENU YET" CHECK: an earlier
-## version of this cleared the flag only once toggle_pause() itself observed
-## _is_main_menu_scene() == true. That went stuck forever the moment the
-## player left the main menu again (e.g. pressing 开始) without ever
-## triggering Esc/toggle_pause() WHILE the main menu was current -- the flag
-## then permanently no-op'd every future toggle_pause() call, in every level,
-## for the rest of the run. call_deferred() queues behind
-## change_scene_to_file()'s own deferred work in the same message queue, so
-## by the time this runs the swap has already happened -- and it fires
-## exactly once, on a fixed one-frame schedule, with no dependency on what
-## the player does afterward.
+## A DEFERRED CLEAR, NOT AN "IS IT THE MAIN MENU YET" CHECK. DO NOT clear
+## this flag by having toggle_pause() observe _is_main_menu_scene() ==
+## true: if the player leaves the main menu again (e.g. pressing Start)
+## without ever triggering Esc/toggle_pause() WHILE the main menu was
+## current, that check never fires, and the flag permanently no-ops every
+## future toggle_pause() call, in every level, for the rest of the run.
+## call_deferred() queues behind change_scene_to_file()'s own deferred work
+## in the same message queue, so by the time this runs the swap has already
+## happened -- and it fires exactly once, on a fixed one-frame schedule,
+## with no dependency on what the player does afterward.
 var _pending_scene_change: bool = false
 ## The loading transition's white sheet -- lives here because this autoload
 ## survives the scene switch; MainMenu hands over at full white and the
 ## lift happens in the freshly-loaded level.
 var _white: ColorRect
 
-## Seam for _go_to_main_menu(): swappable so a test can observe "回主菜单 was
-## requested" without a real change_scene_to_file() replacing the scene tree
-## out from under GUT's own runner mid-suite. Same shape as MainMenu's own
-## _change_scene (scripts/ui/main_menu.gd). Defaults to the real thing.
+## Seam for _go_to_main_menu(): swappable so a test can observe "Back to
+## Main Menu was requested" without a real change_scene_to_file() replacing
+## the scene tree out from under GUT's own runner mid-suite. Same shape as
+## MainMenu's own
 var _change_scene: Callable = Callable(self, "_real_change_scene")
 
 func _real_change_scene(path: String) -> void:
@@ -96,9 +96,9 @@ func _build_ui() -> void:
 	add_child(_paper_noise)
 
 	_menu_list = MeMenuList.new()
-	# The main menu's full-height red column, same geometry (✅ the owner:
-	# 参考主菜单 -- the red runs top to bottom, with the same breathing gap
-	# off the right edge). See MainMenu._build_menu_list().
+	# The main menu's full-height red column, same geometry -- the red runs
+	# top to bottom, with the same breathing gap off the right edge. See
+	# MainMenu._build_menu_list().
 	_menu_list.custom_minimum_size = Vector2(420.0, 0.0)
 	_menu_list.anchor_left = 1.0
 	_menu_list.anchor_right = 1.0
@@ -119,12 +119,12 @@ func _build_ui() -> void:
 	_build_corner_metadata()
 	_build_footer()
 
-## 现代化五件套 on the pause menu: the same corner-metadata language as the
-## main menu (scripts/ui/main_menu.gd's own _build_corner_metadata()), built
-## through the shared MeTheme.corner_label() helper so neither screen carries
-## its own copy of the label shape. Pause has no version string of its own
-## for the fourth corner the way the main menu does, so all four stay a
-## plain "+".
+## Corner metadata on the pause menu: the same language as the main menu
+## (scripts/ui/main_menu.gd's own _build_corner_metadata()), built through
+## the shared MeTheme.corner_label() helper so neither screen carries its
+## own copy of the label shape. Pause has no version string of its own for
+## the fourth corner the way the main menu does, so all four stay a plain
+## "+".
 func _build_corner_metadata() -> void:
 	_corner_labels.append(MeTheme.corner_label("+", 0.0, 0.0, Vector2(20.0, 16.0)))
 	_corner_labels.append(MeTheme.corner_label("+", 1.0, 0.0, Vector2(-20.0, 16.0), true))
@@ -134,7 +134,7 @@ func _build_corner_metadata() -> void:
 		add_child(label)
 
 ## Pause's own truth, not the main menu's footer text: Esc resumes here,
-## there is no 开始 to confirm into.
+## there is no Start to confirm into.
 func _build_footer() -> void:
 	_footer = MeTheme.footer_label("Esc 继续 · Enter 确认")
 	add_child(_footer)
@@ -161,9 +161,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	toggle_pause()
 	get_viewport().set_input_as_handled()
 
-## Whether the current scene IS the main menu, where Esc must do nothing (the
-## spec's "主菜单场景里 Esc 不响应"). `current_scene == null` reads as "not the
-## main menu" here rather than as a reason to block toggling -- it is the
+## Whether the current scene IS the main menu, where Esc must do nothing --
+## the main menu scene does not respond to Esc. `current_scene == null`
+## reads as "not the
 ## state of every headless test (GUT never sets a main scene, confirmed via
 ## a probe), and both toggle_pause() and this Esc path are required to work
 ## with no scene loaded at all.
@@ -216,7 +216,7 @@ func _resume() -> void:
 ## MeMenuList._unhandled_input, and it kept consuming them, even while the
 ## game was running unpaused with the menu never shown. Flips the layer flag
 ## (for rendering) and every child's `visible` (for every script-side
-## visibility check, MeMenuList's guard included) -- the 现代化五件套 pieces
+## visibility check, MeMenuList's guard included) -- the shared corner/
 ## (paper noise, corner labels, footer) included, since the same
 ## non-cascading CanvasLayer gotcha applies to them exactly as much as it did
 ## to MeMenuList -- choosing between the list and the settings page via
@@ -239,7 +239,7 @@ func _set_shown(on: bool) -> void:
 ## that does not export the property, or no current scene at all, gets the
 ## capturing default every existing level already wants. MainMenu is special-
 ## cased to false ahead of that duck-typing (it has no capture_mouse property
-## to find anyway, so this is belt-and-suspenders): a "rescue-继续" resume --
+## to find anyway, so this is belt-and-suspenders): a "rescue-resume" --
 ## Esc pressed while the current scene happens to be the main menu, e.g.
 ## during the _pending_scene_change window above -- must never grab the
 ## cursor away from a screen whose own buttons need it.
@@ -268,10 +268,11 @@ func _on_chosen(index: int) -> void:
 		5:
 			_show_quit_confirm()
 
-## 上一检查点: the R-tap action, from the menu -- resume first (the pause
-## menu has no business surviving its own choice), then the level's own
-## respawn, which honours the last-touched checkpoint. Duck-typed on Arena
-## so a scene without one (or no scene, in tests) makes this a no-op.
+## The "last checkpoint" menu choice: the R-tap action, from the menu --
+## resume first (the pause menu has no business surviving its own choice),
+## then the level's own respawn, which honours the last-touched checkpoint.
+## Duck-typed on Arena so a scene without one (or no scene, in tests) makes
+## this a no-op.
 func _respawn_at_checkpoint() -> void:
 	var arena := get_tree().current_scene as Arena
 	if arena == null:
@@ -279,8 +280,8 @@ func _respawn_at_checkpoint() -> void:
 	_resume()
 	arena.reset_player()
 
-## 重新开始: the R-hold action -- forget the checkpoint and restart from the
-## level's own spawn, under Arena's white cover.
+## The "restart" menu choice: the R-hold action -- forget the checkpoint
+## and restart from the level's own spawn, under Arena's white cover.
 func _restart_from_spawn() -> void:
 	var arena := get_tree().current_scene as Arena
 	if arena == null:
@@ -307,8 +308,9 @@ func _show_settings() -> void:
 	_settings_menu.reload()
 	_set_shown(visible)
 
-## Both 保存设置 and 取消 route here via MeSettingsMenu.closed -- pop back to
-## the menu list. Also the Esc-while-in-settings path's eventual destination
+## Both the Save Settings and Cancel buttons route here via
+## MeSettingsMenu.closed -- pop back to the menu list. Also the
+## Esc-while-in-settings path's eventual destination
 ## (via _unhandled_input -> MeSettingsMenu._on_cancel_pressed -> closed).
 ## Re-derives from this layer's current `visible` rather than assuming true,
 ## since _set_shown() is the only place allowed to decide sub-page visibility.
@@ -323,8 +325,9 @@ func _go_to_main_menu() -> void:
 	get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_pending_scene_change = true
-	# ✅ The owner's convention: normal transitions are WHITE. Headless keeps
-	# the bare seam for the tests (embedded renders fine and gets the show).
+	# Normal transitions are WHITE (the transition-colour convention).
+	# Headless keeps the bare seam for the tests (embedded renders fine and
+	# gets the show).
 	if DisplayServer.get_name() == "headless":
 		_change_scene.call(MAIN_MENU_SCENE)
 		call_deferred("_clear_pending_scene_change")
@@ -335,10 +338,10 @@ func _go_to_main_menu() -> void:
 func _clear_pending_scene_change() -> void:
 	_pending_scene_change = false
 
-## The loading handoff (✅ the owner's fake-load choreography): fade to pure
-## white over `fade_in`, switch to `packed` UNDER the white (the instantiate
-## hitch hides there), hold a few frames for the new scene's first paint,
-## then lift. Runs on this autoload so the cover outlives the caller.
+## The loading handoff: fade to pure white over `fade_in`, switch to
+## `packed` UNDER the white (the instantiate hitch hides there), hold a few
+## frames for the new scene's first paint, then lift. Runs on this autoload
+## so the cover outlives the caller.
 func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
 	# The sheet lives on THIS CanvasLayer, and _set_shown(false) keeps the
 	# whole layer invisible while unpaused -- so the layer itself must wake
@@ -359,13 +362,12 @@ func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
 	_pending_scene_change = false
 	print("[load] scene swap + every _ready(): %d ms" % (Time.get_ticks_msec() - swap_started))
 
-	# ⚠️ THE ONE PART NO HEADLESS MEASUREMENT CAN SEE. Godot compiles a material
-	# pipeline the first time it is actually DRAWN, so the first few frames of a
-	# new level can each stall on shaders that no loader and no _ready() timing
-	# knows about. ✅ THE OWNER asked exactly the right question -- "还是说我们之
-	# 前在白屏期间卡住的时间是把东西渲染到画面所必须消耗的时间?" It was not: that
-	# was 2.25 s of deep-copying an animation library. This is what is left, and
-	# a frame over ~50 ms here is a pipeline being built, not a slow scene.
+	# THE ONE PART NO HEADLESS MEASUREMENT CAN SEE. Godot compiles a material
+	# pipeline the first time it is actually DRAWN, so the first few frames of
+	# a new level can each stall on shaders that no loader and no _ready()
+	# timing knows about -- a DIFFERENT cost from the 2.25 s deep-copy Arena's
+	# own load logging found (see arena.gd's _ready()). A frame over ~50 ms
+	# here is a pipeline being built, not a slow scene.
 	var frame_started := Time.get_ticks_msec()
 	var worst := 0
 	var stalls := 0
@@ -380,12 +382,13 @@ func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
 		worst = maxi(worst, frame)
 	print("[load] first 20 frames drawn: worst %d ms, %d over 50 ms" % [worst, stalls])
 
-	# ⚠️ THE LEVEL IS ALREADY LIVE UNDER THE SHEET. change_scene_to_packed has
+	# THE LEVEL IS ALREADY LIVE UNDER THE SHEET. change_scene_to_packed has
 	# returned, every _ready() has run and the player is standing in the world
-	# taking input -- while the screen is still solid white. ✅ THE OWNER: "黑白
-	# 色过场动画期间禁止镜头控制和移动，否则玩家可以在加载还没结束时乱晃鼠标并跑
-	# 出去." lock_input() covers BOTH: Player feeds a blank MoveInput to the
-	# moves AND to camera_rig.apply_look, so the mouse is dead too.
+	# taking input -- while the screen is still solid white. DO NOT allow
+	# camera control or movement during the transition: the player could wave
+	# the mouse around and run off before loading has actually finished.
+	# lock_input() covers BOTH: Player feeds a blank MoveInput to the moves
+	# AND to camera_rig.apply_look, so the mouse is dead too.
 	var player := _player_in_the_new_scene()
 	if player != null:
 		player.lock_input()

@@ -5,7 +5,7 @@ extends SkeletonModifier3D
 # the animation is doing. The corrective additive pose that a retarget cannot
 # supply: humanoid retargeting copies bone ROTATIONS, so a hand that grazed a
 # slim body's hip follows the same rotation into a wider one and clips
-# through it (✅ the owner, on beriul in Idle and Walk: 手太贴身体).
+# through it -- observed on beriul, in Idle and Walk.
 #
 # Measured on this pair of models: the animations were authored on a body
 # whose shoulders are 15% WIDER than its hips; hers are 7% narrower, so every
@@ -18,9 +18,9 @@ extends SkeletonModifier3D
 #
 # Scoped to named clips, because the need is not uniform: at a run the arms
 # swing clear on their own, and only the small-amplitude cycles keep the
-# hands against the body (✅ the owner: 先只应用于 idle 和 walk). The angle
-# fades in and out over `blend_time`, so leaving a listed clip does not snap
-# the arms back.
+# hands against the body. Keep the list to Idle and Walk. The angle fades in
+# and out over `blend_time`, so leaving a listed clip does not snap the arms
+# back.
 
 ## The bones to swing. Each one's side is read from its own rest position, so
 ## a left/right pair takes one angle and moves apart, not together.
@@ -40,14 +40,14 @@ var _applied: float = 0.0
 ## The thing that knows which clip is playing: an AnimationTree if the body
 ## has one (the game), else an AnimationPlayer (the menu and the viewer).
 ##
-## ⚠️ AN AnimationPlayer ANSWER IS PROVISIONAL, AND CACHING IT WAS THE BUG.
-## CharacterAnimator builds the AnimationTree at RUNTIME, so the first search
-## from a modifier that ticks before it exists finds only the imported model's
-## own AnimationPlayer -- and that player is the tree's clip LIBRARY, not its
-## driver: in game its current_animation is the empty string, so no clip ever
-## matched and the arms never opened. It worked in the character showcase for
-## the one reason that there IS no tree there, which made the wrong answer the
-## right one. ✅ THE OWNER: "感觉只在角色展台生效了，普通关卡里手臂还是贴死腰."
+## DO NOT cache an AnimationPlayer answer as final. CharacterAnimator builds
+## the AnimationTree at RUNTIME, so the first search from a modifier that
+## ticks before it exists finds only the imported model's own AnimationPlayer
+## -- and that player is the tree's clip LIBRARY, not its driver: in game its
+## current_animation is the empty string, so no clip ever matches and the arms
+## never open. This bug is invisible in the character showcase, where no
+## AnimationTree exists at all, so the wrong answer happens to be the right
+## one there.
 var _driver: Node = null
 
 func _process_modification_with_delta(delta: float) -> void:

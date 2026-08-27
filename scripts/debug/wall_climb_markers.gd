@@ -28,7 +28,7 @@ extends Node3D
 ## Assigned by Arena. Optional so nothing breaks without one.
 @export var player: Player
 
-## ⚠️ Debug-only sizes.
+## DEBUG-ONLY SIZES.
 const MARKER_RADIUS := 0.08
 const SPAR_THICKNESS := 0.05
 

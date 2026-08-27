@@ -177,10 +177,10 @@ func _v(value: Vector3) -> String:
 # --- the calibration course is opt-in ------------------------------------------
 
 func test_the_template_does_not_carry_the_calibration_course() -> void:
-	# ✅ THE OWNER: "能不能别让 calibration_course 出现在每一个场景里."
+	# The calibration course must not appear in every scene.
 	#
 	# scripts/level/arena.gd is the script on templates/base_level.tscn as well
-	# as on main.tscn, so a course loaded unconditionally turned up in every
+	# as on main.tscn, so a course loaded unconditionally would turn up in every
 	# whitebox built from that template -- 60 m of graded obstacles nobody asked
 	# for, in scenes that exist to isolate one piece of geometry.
 	var template := load("res://templates/base_level.tscn") as PackedScene

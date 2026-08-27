@@ -1,9 +1,8 @@
 extends Node
 
-# Remembers the debug window's size and position across runs -- ✅ the owner:
-# "能不能让引擎记住我运行debug时修改的窗口大小." Saves DEBOUNCED after every
-# resize/move rather than at exit, because a debug run usually dies to the
-# editor's stop button and never sees a close notification.
+# Remembers the debug window's size and position across runs. Saves DEBOUNCED
+# after every resize/move rather than at exit, because a debug run usually
+# dies to the editor's stop button and never sees a close notification.
 #
 # A future settings menu supersedes this for players; for now it is the
 # whole of the game's window preferences.

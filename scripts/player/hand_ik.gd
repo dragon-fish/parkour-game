@@ -6,11 +6,10 @@ extends Node
 # sends the hand about 1.32 m from where it was aimed, roughly three arm
 # lengths.
 #
-# CORRECTED: this was first recorded as "does not move the bones at all",
-# measured at exactly 0.0000 m. That measurement was wrong.
-# Skeleton3D.get_bone_global_pose() returns the pose from BEFORE the deferred
-# modifier pass; reading the final one needs the modification_processed signal.
-# The same mistake would have made any working modifier look dead.
+# DO NOT measure a modifier's effect with Skeleton3D.get_bone_global_pose():
+# it returns the pose from BEFORE the deferred modifier pass, so a working
+# modifier reads as moving the bones exactly 0.0000 m and looks dead. Reading
+# the final pose needs the modification_processed signal.
 #
 # First suspect for the overshoot is POLE_OFFSET: it places the elbow hint
 # relative to the TARGET, which for a target close to the body lands inside the

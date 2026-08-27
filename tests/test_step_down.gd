@@ -1,14 +1,13 @@
 extends ParkourTest
 
-# Measured in play: rooftop litter with a SLOPED face (normals 0.89-0.99) is
-# correctly refused by try_step_up() as a ramp and handed to move_and_slide(),
-# which climbs it -- and riding up and off it throws the body clear of the
-# floor for a tick. Every move that reads leaving the floor as a ledge exit
-# then cancels itself:
+# Rooftop litter with a SLOPED face (normals 0.89-0.99) is correctly refused
+# by try_step_up() as a ramp and handed to move_and_slide(), which climbs it
+# -- and riding up and off it throws the body clear of the floor for a tick.
+# Every move that reads leaving the floor as a ledge exit then cancels itself:
 #
 #     Walking -> Slide -> Falling -> Grab -> Falling -> Walking
 #
-# The slide was neither blocked nor mis-stepped; it was thrown.
+# The slide is neither blocked nor mis-stepped; it is thrown.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -81,11 +80,11 @@ func test_a_real_fall_is_still_a_fall() -> void:
 	await step(1)
 
 func test_walking_down_a_flight_of_steps_never_leaves_the_floor() -> void:
-	# Reported from play against a staircase of 0.3 m steps: Walking/Falling
-	# flickering the whole way down. try_step_down() moved the body by hand and
-	# then snapped, which left it flush against the floor with no gap for the
-	# snap to detect -- so is_on_floor() never refreshed and the caller handed
-	# off to Falling anyway.
+	# DO NOT let try_step_down() move the body by hand and then snap without a
+	# gap for the snap to detect: that leaves the body flush against the floor
+	# with is_on_floor() never refreshed, so the caller hands off to Falling
+	# anyway even on an ordinary staircase of 0.3 m steps -- Walking/Falling
+	# flickering the whole way down.
 	var cfg := MovementConfig.new()
 	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)

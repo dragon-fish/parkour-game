@@ -3,10 +3,11 @@ extends Camera3D
 
 # A free camera for looking at something the player is not driving.
 #
-# ✅ THE OWNER, on the animation lab: "让一个 NPC 去跑，玩家把我的鼠标劫持了，我要当
-# 旁观者相机."
+# In the animation lab the recorded body is what moves, not the player, so the
+# ordinary mouse-look would just be hijacking the view of a scene nobody is
+# steering. This camera exists to watch it from outside instead.
 #
-# 🎯 THE EDITOR IDIOM, not the game one: HOLD THE RIGHT BUTTON to look and fly,
+# THE EDITOR IDIOM, not the game one: HOLD THE RIGHT BUTTON to look and fly,
 # release it and the pointer is a pointer again. That is what lets WASD mean
 # "fly" while the button is down and leaves A and D free to walk the recording
 # when it is not -- the lab's own keys and the camera's never both apply.
@@ -51,7 +52,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _process(_delta: float) -> void:
-	# ⚠️ A REAL CLOCK, NOT THE FRAME'S. The lab freezes the world to scrub it
+	# A REAL CLOCK, NOT THE FRAME'S. The lab freezes the world to scrub it
 	# (Engine.time_scale goes to zero), and a scaled delta is zero with it -- so
 	# a camera driven by _process(delta) stops dead at exactly the moment it is
 	# needed. Scaling the frozen delta back up does not help either: zero times

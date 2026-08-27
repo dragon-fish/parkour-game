@@ -1,15 +1,14 @@
 extends ParkourTest
 
-# Task 14 fix round: SpeedVaultMove.enter()'s own clamp arithmetic
+# SpeedVaultMove.enter()'s own clamp arithmetic
 # (exit = clampf(entry + speed_addition, clamp_speed_min, clamp_speed_max))
-# had nothing calling through it -- test_vault_variants.gd only ever asserted
-# SpeedVaultConfig.pick_variant()'s speed_addition FIELD is positive, never
-# that the clamp actually lets it through. Review found the sweet spot's own
-# clamp_speed_max (7.2) is set exactly to PawnConfig.ground_speed, so an
-# entry AT the speed cap gets the bonus added and then clamped straight back
-# off -- a faithful transcription of the source (ClampSpeedMax = 720 =
-# GroundSpeed there too), not a bug, but the opposite of what the only
-# existing test (entry 6.0, just under the threshold) could ever have shown.
+# has no test driving it through an entry AT the speed cap -- only ever
+# through SpeedVaultConfig.pick_variant()'s speed_addition FIELD being
+# positive. The sweet spot's own clamp_speed_max (7.2) is set exactly to
+# PawnConfig.ground_speed, so an entry AT the speed cap gets the bonus added
+# and then clamped straight back off. [ME:CONFIRMED] This is a faithful
+# transcription of the source (ClampSpeedMax = 720 = GroundSpeed there too),
+# not a bug -- but a case an entry-under-threshold test alone cannot show.
 #
 # Both tests below drive player.velocity and player.pending_vault_variant
 # directly, then call MoveManager.start(SPEED_VAULT) -- the same hand-off
@@ -32,12 +31,12 @@ func _world_with_sweet_spot_box() -> Dictionary:
 	var body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	# ⚠️ RAISED FROM 0.9. The hand-planted rows now start at the WAIST rather
-	# than at the CDO's 0.64 (see SpeedVaultConfig.variants), and a 0.9 m box
-	# sits exactly on that line -- the probe reads a hair under and the fixture
-	# resolved to step_up_right_leg_88, which pays no bonus. This test is about
-	# the bonus ARITHMETIC, so the fixture only has to be unambiguously in the
-	# band that pays it.
+	# DO NOT drop this box height back near 0.9 m: the hand-planted rows
+	# start at the WAIST (see SpeedVaultConfig.variants; the CDO's own row
+	# starts at 0.64), and 0.9 m sits exactly on that boundary -- the probe
+	# reads a hair under it and the fixture resolves to step_up_right_leg_88,
+	# which pays no bonus. This test is about the bonus ARITHMETIC, so the
+	# fixture only has to be unambiguously in the band that pays it.
 	box.size = Vector3(2.0, 1.2, 0.4)
 	shape.shape = box
 	body.add_child(shape)
@@ -98,9 +97,8 @@ func test_the_bonus_lands_at_a_mid_range_entry_speed() -> void:
 
 func test_the_bonus_evaporates_at_the_speed_cap() -> void:
 	# At entry == ground_speed, entry + 0.8 clamps straight back down to
-	# ground_speed -- net gain exactly zero. This is what the review flagged:
-	# the bonus recovers speed a player has LOST, it cannot grant speed past
-	# their own ceiling, and no test before this one drove an entry this high.
+	# ground_speed -- net gain exactly zero. THE BONUS RECOVERS SPEED A PLAYER
+	# HAS LOST; it cannot grant speed past their own ceiling.
 	var ground_speed: float = MovementConfig.new().pawn.ground_speed
 	var exit_speed: float = await _exit_speed_for(ground_speed)
 	assert_almost_eq(exit_speed, ground_speed, 0.01, \
@@ -109,14 +107,13 @@ func test_the_bonus_evaporates_at_the_speed_cap() -> void:
 # --- the duration comes from the geometry ------------------------------------
 
 func test_a_vault_never_takes_longer_than_running_the_same_distance() -> void:
-	# The owner: "sometimes it feels a bit slow." The variant's duration is ✅
-	# confirmed, but it is a fixed TIME paired in the original with the
-	# original's own fixed geometry. Applied to whatever distance an obstacle
-	# happens to need, it drags -- and landing a vault OVER on the far side made
-	# the distance longer without touching the time.
+	# [ME:CONFIRMED] The variant's duration is a fixed TIME, paired in the
+	# original with the original's own fixed geometry. Applied to whatever
+	# distance an obstacle happens to need, it drags -- landing a vault OVER on
+	# the far side makes the distance longer without touching the time.
 	#
-	# Measured as a RATE rather than a duration, because that is the thing that
-	# reads as slow: the body visibly held back and then handed its speed back.
+	# MEASURED AS A RATE RATHER THAN A DURATION, because rate is what reads as
+	# slow: the body visibly held back and then handed its speed back.
 	var world := _world_with_sweet_spot_box()
 	await step(1)
 	TestWorld.place(world)
@@ -153,9 +150,9 @@ func test_a_vault_never_takes_longer_than_running_the_same_distance() -> void:
 	await step(1)
 
 func test_the_confirmed_duration_is_still_the_ceiling() -> void:
-	# The ✅ figure is not discarded, it is the slow end. A crawl into an
-	# obstacle still gets the original's own timing; only a fast approach
-	# shortens it, and only to half.
+	# [ME:CONFIRMED] The confirmed duration is not discarded, it is the slow
+	# end: a crawl into an obstacle still gets the original's own timing, and
+	# only a fast approach shortens it, only to half.
 	var config := MovementConfig.new()
 	for variant in config.speed_vault.variants:
 		assert_gt(float(variant["duration"]), 0.0, \

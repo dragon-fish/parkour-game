@@ -1,10 +1,9 @@
 extends ParkourTest
 
-# Kicking straight up a wall (TdMove_WallClimb), the move the owner reported as
-# missing. It was worse than missing: Probes had no ray that could see a wall
-# in front of the player, so the state was unreachable by construction. These
-# tests cover the probe, the entry angle that tells a climb from a wall run,
-# and the speed-bought height that is the move's whole economy.
+# Kicking straight up a wall (TdMove_WallClimb). These tests cover the probe
+# that finds a wall dead ahead (WallLeft/WallRight alone cannot), the entry
+# angle that tells a climb from a wall run, and the speed-bought height that
+# is the move's whole economy.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -92,10 +91,8 @@ func test_a_climb_can_still_become_a_grab_or_a_vault() -> void:
 
 # --- how far, and how fast ---------------------------------------------------
 #
-# The first version of these tests pinned the OPPOSITE model: height bought
-# with speed, nothing without it. The owner corrected it from the original --
-# "the climb height seems unrelated to speed, but the rate of ascent is
-# affected" -- so what is pinned now is a fixed distance travelled at a
+# [ME:INFERRED] Climb height is unrelated to speed, but the rate of ascent
+# is affected -- so what is pinned here is a fixed distance travelled at a
 # speed-dependent rate.
 
 func test_a_motionless_kick_still_climbs() -> void:
@@ -115,9 +112,9 @@ func test_a_run_up_buys_rate_and_not_height() -> void:
 	# The height is a plain constant with no speed anywhere near it. Asserted
 	# rather than assumed, because the previous model made it a function and
 	# nothing but a test would notice it quietly becoming one again.
-	# ✅ MEASURED: standing pressed against a wall, the owner's Z goes 0.93 to
-	# 2.23, and pressed against it the contact happens on the first airborne
-	# tick -- so that 1.30 m IS the climb.
+	# [ME:CONFIRMED] measured in the original: standing pressed against a wall,
+	# Z goes 0.93 to 2.23, and the contact happens on the first airborne tick,
+	# so that 1.30 m IS the climb.
 	assert_almost_eq(cfg.climb_height, 1.3, 0.0001, 		"the climb distance is not the measured 1.3 m")
 
 func test_the_rate_bonus_saturates() -> void:

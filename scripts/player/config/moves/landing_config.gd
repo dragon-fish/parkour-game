@@ -7,15 +7,16 @@ extends MoveConfig
 # off PawnConfig's Landing group -- this class only owns what happens once
 # the hard-unrolled case has already been decided.
 
-# ✅ MEASURED: 2.00 s, six hard landings, timed from the last Falling frame
-# to the first Walking frame (2.03 / 2.00 / 2.00 / 2.00 / 2.00 / 2.02).
-# Do NOT measure the Landing state's own span -- the original's HUD misreads
-# the state name often enough to slice one lockout into several fragments.
+# [ME:CONFIRMED] measured 2.00 s, six hard landings, timed from the last
+# Falling frame to the first Walking frame (2.03 / 2.00 / 2.00 / 2.00 / 2.00 /
+# 2.02). DO NOT measure the Landing state's own span -- the original's HUD
+# misreads the state name often enough to slice one lockout into several
+# fragments.
 @export var lockout_time: float = 2.0
-## ⚠️ Project-defined. The original's knee-clutch is animation root motion;
+## PROJECT-DEFINED. The original's knee-clutch is animation root motion;
 ## nothing in its data describes a screen tint.
 @export var tint_color: Color = Color(0.6, 0.0, 0.0)
-## ⚠️ Project-defined, same reasoning as tint_color above -- there is no
+## PROJECT-DEFINED, same reasoning as tint_color above -- there is no
 ## data-side counterpart to the knee-clutch's camera dip, only the animation
 ## itself. Radians; see CameraRig.set_landing_pitch_offset() for how this is
 ## combined with the ordinary look pitch.
@@ -24,7 +25,7 @@ extends MoveConfig
 func _init() -> void:
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: absorbing the landing.
-	# ⚠️ Project-defined, mirroring WallRunConfig's own look lock. LandingMove
+	# PROJECT-DEFINED, mirroring WallRunConfig's own look lock. LandingMove
 	# ignores movement input outright for the whole lockout, and this pins the
 	# YAW to a small forward fan to match, rather than leaving the view free
 	# to spin while the body cannot act on it. Pitch is deliberately left to
@@ -47,14 +48,13 @@ func _init() -> void:
 	# copy of 89 degrees so the two cannot drift apart; LandingConfig has no
 	# reach into CameraConfig to read the real number from.
 	#
-	# It used to clamp pitch to +-0.2 as well, and that was a genuine bug on
-	# the very landings this move exists for: unlike yaw, the pitch half IS
-	# absolute, and CameraRig._pitch is not eased into a new range on entry.
-	# A player looking down the drop at, say, -0.7 rad had the view SNAP to
-	# -0.2 on the lockout's first tick, and set_landing_pitch_offset()'s sink
-	# then played out from that jumped-to position. Forcing the head down is
-	# camera_pitch_offset's job and only its job; clamping here as well was
-	# the same intent expressed twice, and the two disagreed.
+	# DO NOT clamp pitch here as well: unlike yaw, the pitch half of
+	# MoveConfig's clamp IS absolute, and CameraRig._pitch is not eased into
+	# a new range on entry. Clamping pitch to +-0.2 here would SNAP a player
+	# looking down a drop at, say, -0.7 rad to -0.2 the instant the lockout
+	# starts, and set_landing_pitch_offset()'s sink would then play out from
+	# that jumped-to position. Forcing the head down is camera_pitch_offset's
+	# job and only its job.
 	# z is roll, which apply_look() never reads; +-PI is MoveConfig's own
 	# neutral, and writing 0.0 here would read as "roll is pinned".
 	min_look_constraint = Vector3(-PI, -0.2, -PI)

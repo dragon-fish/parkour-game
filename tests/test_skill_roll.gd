@@ -4,9 +4,9 @@ extends ParkourTest
 # second Landing lockout with -- LandingMove and this are mutually exclusive by
 # construction, decided in AirborneMove.landing_destination().
 #
-# It is NOT steerable, and that is from the source: ControllerState is
-# PlayerGrabbing, MovementGroup is MG_TwoHandsBusy, bDisableFaceRotation is set.
-# The direction is fixed at touchdown.
+# [ME:CONFIRMED] Not steerable: ControllerState is PlayerGrabbing, MovementGroup
+# is MG_TwoHandsBusy, bDisableFaceRotation is set. The direction is fixed at
+# touchdown.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -112,18 +112,18 @@ func test_the_roll_is_not_steerable() -> void:
 # --- the measured shape of a roll ---------------------------------------------
 
 func test_the_roll_lasts_the_measured_second() -> void:
-	# ✅ MEASURED with a stopwatch in the original. Nothing in the CDO says so --
-	# the roll is carried on an animation there. It was 0.6 while it was a guess,
-	# and the difference changes what the move IS: at 0.6 a flourish, at 1.0 a
-	# commitment.
+	# [ME:CONFIRMED] Measured with a stopwatch against the original -- the CDO
+	# carries no duration; the roll is driven by an animation there. The value
+	# matters beyond precision: at 0.6 s the roll reads as a flourish, at the
+	# confirmed 1.0 s it reads as a commitment.
 	var config := MovementConfig.new()
 	assert_almost_eq(config.skill_roll.duration, 1.0, 0.0001, \
 		"the roll is not the measured second long")
 
 func test_a_roll_travels_the_measured_distance_even_from_a_dead_drop() -> void:
-	# ✅ MEASURED: a roll carries the body about 3 m forward, and it is FORCED --
-	# the owner's word, and the reason they report that rolling toward a cliff
-	# edge in the original rolls you off it.
+	# [ME:CONFIRMED] The roll carries the body about 3 m forward, FORCED
+	# regardless of approach speed -- which is why rolling toward a cliff edge
+	# in the original carries you off it.
 	#
 	# A DEAD DROP is the case that separates the two readings. Priced purely off
 	# the speed carried in, as it was, a straight fall arrives with no
@@ -132,19 +132,19 @@ func test_a_roll_travels_the_measured_distance_even_from_a_dead_drop() -> void:
 	var floor_speed: float = config.skill_roll.forced_distance / config.skill_roll.duration
 	assert_almost_eq(floor_speed, 3.0, 0.0001, \
 		"the forced travel does not work out at the measured 3 m over the second")
-	# ✅ AND IT DOES NOT SCALE WITH THE APPROACH. The owner tested a standstill
-	# roll and an 80 km/h roll in the original: both travel 3 m. What a fast
-	# approach buys is the share of the energy budget that survives, not
-	# distance -- a different channel for the same intent, and the original's.
+	# [ME:CONFIRMED] Does not scale with approach speed: a standstill roll and
+	# an 80 km/h roll in the original both travel 3 m. What a fast approach
+	# buys is the share of the energy budget that survives, not distance -- a
+	# different channel for the same intent.
 	assert_lt(config.skill_roll.energy_keep, 1.0, \
 		"the roll keeps the whole budget, so a fast approach buys nothing at all")
 	assert_gt(config.skill_roll.energy_keep, 0.0, \
 		"the roll keeps none of the budget, so a fast approach is thrown away")
 
 func test_the_roll_goes_where_the_view_points_not_where_the_body_was_going() -> void:
-	# ✅ THE OWNER'S FIND, and it is counter-intuitive enough to be worth a test
-	# of its own: the forced travel follows the CAMERA at touchdown, not the
-	# momentum -- even after spinning 180 degrees in mid-air on the way down.
+	# COUNTER-INTUITIVE ENOUGH TO NEED A TEST OF ITS OWN: the forced travel
+	# follows the CAMERA at touchdown, not the momentum -- even after spinning
+	# 180 degrees in mid-air on the way down.
 	#
 	# A deliberate break with physics. A roll is a second of lost control, and
 	# letting the view aim it hands that second back: you steer the landing
@@ -171,14 +171,14 @@ func test_the_roll_goes_where_the_view_points_not_where_the_body_was_going() -> 
 	await step(1)
 
 func test_the_roll_plays_out_after_the_ground_runs_out() -> void:
-	# ✅ The owner, from the original: "if the ground runs out half way through,
-	# the roll animation still plays out -- the body is obviously falling by
-	# then, but the move finishes." Ours cut to a standing fall the instant the
-	# floor disappeared, and the camera went from mid-tumble to upright in one
-	# frame.
+	# [ME:CONFIRMED] In the original, if the ground runs out mid-roll, the roll
+	# animation plays out to completion -- the body is visibly falling by then,
+	# but the move still finishes.
 	#
-	# The distinction is between the BODY and the ANIMATION. Gravity takes the
-	# body immediately; the roll keeps its own clock and its own camera.
+	# DO NOT cut to a standing fall the instant the floor disappears: that
+	# snaps the camera from mid-tumble to upright in a single frame. The
+	# distinction is between the BODY and the ANIMATION -- gravity takes the
+	# body immediately, but the roll keeps its own clock and its own camera.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
@@ -206,10 +206,9 @@ func test_the_roll_plays_out_after_the_ground_runs_out() -> void:
 	await step(1)
 
 func test_the_roll_starts_from_the_current_pitch_and_ends_level() -> void:
-	# ✅ The owner, read off the HUD at 1/8 speed rather than felt: the pitch is
-	# NOT forced to zero on entry. The roll begins wherever the view is and
-	# finishes level, so looking up travels more than a full turn and looking
-	# down travels less.
+	# THE PITCH IS NOT FORCED TO ZERO ON ENTRY. The roll begins wherever the
+	# view is and finishes level, so looking up travels more than a full turn
+	# and looking down travels less.
 	#
 	# CameraRig composes this as `rotation.x = pitch - roll_spin`, and the roll
 	# pins the pitch to level and carries the landing pitch in the SPIN. So the
@@ -221,20 +220,20 @@ func test_the_roll_starts_from_the_current_pitch_and_ends_level() -> void:
 		assert_almost_eq(0.0 - spin_from, pitch, 0.0001, 			"a roll from %.0f degrees does not start there" % rad_to_deg(pitch))
 		# ...and the last reads as level, -TAU being zero.
 		assert_almost_eq(0.0 - full, -full, 0.0001, 			"a roll from %.0f degrees does not finish level" % rad_to_deg(pitch))
-		# The distance travelled is the asymmetry the owner described.
+		# The distance travelled is this asymmetry between entry pitch and level.
 		var travelled: float = full - spin_from
 		assert_almost_eq(travelled, full + pitch, 0.0001, 			"a roll from %.0f degrees travelled the wrong distance" % rad_to_deg(pitch))
 	assert_gt(full + deg_to_rad(50.0), full, "looking up did not travel further")
 	assert_lt(full - deg_to_rad(50.0), full, "looking down did not travel less")
 
 func test_the_roll_leaves_the_view_where_it_put_it() -> void:
-	# THE SPRING-BACK. The spin is a temporary offset and is released when the
-	# roll ends; the pitch it was offsetting had never moved, so the view
-	# snapped back to the landing pitch on the very next frame. Measured by the
-	# owner at 1/8 speed: enter at 50, roll to level, and then 50 again.
+	# THE SPRING-BACK. Spin is a temporary offset released when the roll ends;
+	# if the pitch it was offsetting had not already been pinned to level, the
+	# view would snap back to the landing pitch on the very next frame instead
+	# of holding the roll's own end pitch.
 	#
-	# Pinning the pitch to level on entry is what fixes it -- there is nothing
-	# left to spring back to.
+	# Pinning the pitch to level on entry is what prevents it -- there is
+	# nothing left to spring back to.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
@@ -259,14 +258,14 @@ func test_the_roll_is_camera_consistent_the_instant_it_begins() -> void:
 	# THE CAMERA FLICKER, reported at extreme pitch only.
 	#
 	# MoveManager calls enter() mid-tick and does not run the move's own
-	# physics_update() on that tick, so the spin was first written a frame later
-	# -- while the pitch was already pinned to level. For that one frame the view
-	# showed pitch minus spin as zero: dead level, then a jump to the landing
-	# pitch. Proportional to the angle, so invisible at small ones.
+	# physics_update() on that tick, so the spin is first written a frame later
+	# -- while the pitch is already pinned to level. For that one frame the view
+	# would show pitch minus spin as zero: dead level, then a jump to the
+	# landing pitch. Proportional to the angle, so invisible at small ones.
 	#
-	# Asked of BOTH channels with no tick in between, because a tick hides the
-	# bug: by the end of one, physics_update has run and written the spin. A
-	# first version of this test stepped once and passed with the fix removed.
+	# DO NOT step between reading the two channels below: a tick hides the bug,
+	# because by the end of one physics_update has already run and written the
+	# spin.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)

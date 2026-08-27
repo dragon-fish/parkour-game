@@ -3,21 +3,20 @@ extends ParkourTest
 # A probe that fires must be able to make progress, or it fires again next tick
 # from the same spot, forever.
 #
-# ✅ The owner found two of these in one session, with the transition log on
-# screen both times:
+# TWO WAYS THIS HAPPENS, both at full tick rate (dozens of transitions a
+# second) with a body reading h 0.00 v 0.00:
 #
 #   Walking -> Falling -> SpeedVault -> Walking -> Falling -> SpeedVault ...
 #
-# at about forty a second, from a body reading h 0.00 v 0.00. Once beside a
-# block after a grab, once "从建筑边缘缓慢后退直到掉落" -- backing slowly off a
-# roof until it dropped.
+# once beside a block after a grab, and once backing slowly off a roof edge
+# until it drops.
 #
-# ⚠️ NEITHER LOOP IS A BUG IN THE MOVE IT LOOPS THROUGH. SpeedVault behaves
+# NEITHER LOOP IS A BUG IN THE MOVE IT LOOPS THROUGH. SpeedVault behaves
 # correctly: fired from a standstill it has no speed to carry the body anywhere,
 # so it ends where it began. IntoGrab behaves correctly too: it reaches, fails,
-# and gives up honestly. What was wrong in both cases is that the ENTRY
-# CONDITION could be satisfied twice from the same place -- so the state machine
-# is doing exactly what it was told, at 170 fps.
+# and gives up honestly. What is wrong in both cases is that the ENTRY
+# CONDITION can be satisfied twice from the same place -- so the state machine
+# does exactly what it was told, as fast as the frame loop lets it.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -62,7 +61,7 @@ func _face_at(player: Player, height: float) -> StaticBody3D:
 # --- the vault ----------------------------------------------------------------
 
 func test_a_body_at_a_standstill_against_a_face_does_not_vault() -> void:
-	# ⚠️ THE REGRESSION, and the escape hatch it came through was written for
+	# THE REGRESSION, and the escape hatch it came through was written for
 	# something else entirely. AirborneMove's vault gate is
 	#
 	#     closing or touching(face_point)
@@ -100,7 +99,8 @@ func test_a_rising_body_against_a_face_still_vaults() -> void:
 # --- the reach ------------------------------------------------------------------
 
 func test_a_reach_gives_up_once_the_body_is_back_on_the_floor() -> void:
-	# ✅ THE OWNER: "速度不够的时候对着墙跳可能触发无限 IntoGrab->Falling 循环."
+	# A jump too weak to reach a ledge triggers an infinite IntoGrab<->Falling
+	# loop if landing back on the floor is not read as a reason to give up.
 	#
 	# carry_ballistically() runs move_and_slide() and sets grounded, so the
 	# answer was available the whole time and simply went unread: a jump too
@@ -124,7 +124,7 @@ func test_a_reach_gives_up_once_the_body_is_back_on_the_floor() -> void:
 		"a reach from a body standing on the floor returned %s" % result)
 
 func test_a_reach_has_a_cooldown_at_all() -> void:
-	# ⚠️ THE HALF THAT ACTUALLY BREAKS THE LOOP, and it is a number rather than
+	# THE HALF THAT ACTUALLY BREAKS THE LOOP, and it is a number rather than
 	# a mechanism. Handing back to Falling is not enough on its own:
 	# AirborneMove asks its grab question BEFORE its landing question, and
 	# ledge_query()'s height gate is measured from the FEET -- so a ledge inside
@@ -132,8 +132,9 @@ func test_a_reach_has_a_cooldown_at_all() -> void:
 	# reach" from a standing start indefinitely, and Falling sends the body
 	# straight back into the reach it just abandoned.
 	#
-	# IntoGrabConfig had left this at zero, alone among the moves that can be
-	# re-entered from the state they hand back to.
+	# IntoGrabConfig.redo_move_time must stay above zero: it is the one move
+	# that can be re-entered from the very state it hands back to, so a zero
+	# cooldown here reopens exactly the loop this file is about.
 	#
 	# THE MECHANISM IS NOT RE-TESTED HERE. MoveManager arms redo_move_time on
 	# every real transition out and can_enter() checks it before every

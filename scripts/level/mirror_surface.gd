@@ -4,17 +4,17 @@ extends Resource
 # How dirty ONE mirror is. Owned by a Mirror node (`@export var surface`), and
 # a plain Resource so a grimy-warehouse look can be saved once as a .tres and
 # hung on every mirror in that level -- the same reason MovementConfig is one.
+# The mirror must read as imperfect: thickness-driven refraction loss, slight
+# random distortion, haze, and aging/grime are all deliberate, not bugs to
+# clean up.
 #
-# ✅ THE OWNER: "我希望那个镜子不要是超级干净的完美反射，需要能调出因为镜面有厚度
-# 导致的折射+反射带来的光线损失+随机轻微扭曲，并且可以给镜面添加雾化，甚至老化或
-# 碎裂效果."
-#
-# ⚠️ THE DIRT IS NOT DECORATION, IT IS THE PERFORMANCE BUDGET. A mirror renders
+# THE DIRT IS NOT DECORATION, IT IS THE PERFORMANCE BUDGET. A mirror renders
 # the scene a second time; the only way that stays affordable is rendering it
 # small. What makes a half-resolution reflection unnoticeable is exactly this
-# list -- displacement, wobble, haze, patchy silvering. Turn all of it to zero
-# and the mirror both looks like a hole in the wall AND needs full resolution
-# to hold up. See Mirror.resolution_scale, which is the other half of the deal.
+# list -- displacement, wobble, haze, patchy silvering. DO NOT turn all of it
+# to zero: the mirror then both looks like a hole in the wall AND needs full
+# resolution to hold up. See Mirror.resolution_scale, which is the other half
+# of the deal.
 #
 # Cracking is NOT here yet. It needs an authored crack mask rather than the
 # procedural noise everything below uses, and a mirror that shatters on impact
@@ -22,7 +22,7 @@ extends Resource
 
 ## Light the glass keeps. A colour rather than a scalar so a mirror can lean
 ## cold or warm as well as dim: silvering ages toward yellow-green, and a
-## cheap modern mirror is faintly blue. This is "反射带来的光线损失".
+## cheap modern mirror is faintly blue.
 @export var reflectance: Color = Color(0.86, 0.88, 0.92)
 
 ## Glass thickness, in metres. A real mirror is silvered on the BACK face, so

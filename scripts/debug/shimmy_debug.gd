@@ -2,21 +2,21 @@ class_name ShimmyDebug
 extends Node3D
 
 # Draws the shimmy's probes where they were actually fired. Toggled from the
-# F1 tuning panel's Debug page -- it used to be its own key (F11), but that
-# collided with player.gd's own use of F11 for mouse recapture, so the key was
-# retired here and the panel's checkbox is now the only way to show this.
+# F1 tuning panel's Debug page; not bound to a key of its own -- F11 is
+# player.gd's mouse recapture, so the panel checkbox is the only way to show
+# this.
 #
-# ✅ THE OWNER, on a corner in me_level0 that refuses and that neither of us can
-# reproduce in a whitebox: "你把可以左右爬的路径画出来."
+# THIS EXISTS BECAUSE OF A CORNER IN me_level0 THAT REFUSES TO SHIMMY, and
+# that no one has managed to reproduce in a whitebox -- so drawing the actual
+# left/right probe path is what tells the two cases apart.
 #
-# ⚠️ AND THE OTHER HALF OF THAT REQUEST IS DELIBERATELY NOT DONE. The proposal
-# was to cache a climbable path from the topology at grab time and stop
-# raycasting the attached model -- but the owner had already built the same
-# topology out of two boxes in a whitebox and rounded the corner easily, which
-# is evidence that the topology is not the difference. Rewriting the mechanism
-# to be topology-driven would be rebuilding around a cause that has been ruled
-# out, and a path extractor for arbitrary collision shapes is a large thing to
-# build on a hunch. It stays on the table; it is not what this is.
+# DO NOT REBUILD THIS AS A CACHED, TOPOLOGY-DERIVED PATH computed once at grab
+# time instead of raycasting the attached model every frame. The same
+# topology, rebuilt out of two boxes in a whitebox, rounds the corner easily
+# -- evidence that the topology is not the difference, so a topology-driven
+# rewrite would be chasing a cause that has already been ruled out, and a path
+# extractor for arbitrary collision shapes is a large thing to build on a
+# hunch.
 #
 # What IS the difference is unknown, and that is the actual problem: four
 # refusals look identical from outside, and the HUD line added with them names

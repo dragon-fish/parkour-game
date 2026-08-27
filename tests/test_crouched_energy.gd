@@ -1,12 +1,10 @@
 extends ParkourTest
 
-# Regression: energy could only be banked while travelling at
-# energy_accumulate_speed_ratio of the cap, but that threshold was measured
-# against the STANDING cap while CrouchMove holds the body to 40% of it. The
-# two could never both be true, so a crouch banked nothing while turning kept
-# charging -- a one-way ratchet that bottomed out at
-# speed_min_base_velocity * crouched_pct = 0.04 m/s and only standing up
-# could undo.
+# DO NOT measure energy_accumulate_speed_ratio against the STANDING cap:
+# CrouchMove holds the body to 40% of it, so a crouched run could never cross
+# that threshold while turning keeps draining energy -- a one-way ratchet
+# bottoming out at speed_min_base_velocity * crouched_pct = 0.04 m/s, with no
+# route back except standing up.
 
 func _world() -> Dictionary:
 	return TestWorld.build(get_tree(), MovementConfig.new())
@@ -51,8 +49,8 @@ func test_a_crouched_turn_does_not_ratchet_the_player_to_a_standstill() -> void:
 
 	player.move_manager.start(Move.CROUCH)
 	input.state.crouch_held = true
-	# Six hard flicks, the operation that used to drain the budget to nothing
-	# with no route back.
+	# Six hard flicks: exactly the pattern that ratchets the budget to nothing
+	# with no route back if energy accounting compares against the wrong cap.
 	for f in 6:
 		for i in 6:
 			player.rotate_y(deg_to_rad(15.0))

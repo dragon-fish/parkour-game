@@ -8,21 +8,20 @@ extends Node
 # original joins the full-head group. Cameras cull by those layers -- see
 # CameraRig._apply_body_layers.
 #
-# ⚠️ A MESH THE CAMERA CULLS DOES NOT CAST A SHADOW EITHER. An earlier version
-# of this header claimed the opposite ("lights cull by nothing, so in first
-# person the full-head meshes still cast their shadow") and it was simply
-# wrong: the owner reported the shadow "从脖子直接断开，连头型都没有" -- the
-# headless twin was the only thing casting. Godot's documented "still casts
-# shadows" case is about a LIGHT's cull mask, which is a different mask.
+# A MESH THE CAMERA CULLS DOES NOT CAST A SHADOW EITHER. DO NOT assume the
+# full-head meshes keep casting in first person because lights cull by nothing:
+# Godot's documented "still casts shadows" case is about a LIGHT's cull mask,
+# which is a different mask. Leave it at that and the headless twin is the only
+# thing casting -- the shadow breaks off at the neck with no head shape on it
+# at all.
 #
 # So the head's silhouette needs an instance no camera culls: a third,
-# never-drawn copy on SHADOW_CASTING_SETTING_SHADOWS_ONLY. That is exactly
-# what godot-vrm does for VRM bodies (addons/vrm/vrm_utils.gd, the
-# BothLayersWithShadow path, "(Shadow)" duplicate node) -- and the reason this
-# bug came back on an FBX body after being fixed once for a VRM one is that
-# the fix lives in the importer, not here. This file reproduced the layer
-# split and not the shadow stand-in. ✅ The owner, originally: "应该用
-# shadow only 而不是直接 disabled".
+# never-drawn copy on SHADOW_CASTING_SETTING_SHADOWS_ONLY. Use shadows-only,
+# NOT disabled. That is exactly what godot-vrm does for VRM bodies
+# (addons/vrm/vrm_utils.gd, the BothLayersWithShadow path, "(Shadow)"
+# duplicate node), and that fix lives in the importer, so an FBX body that
+# never goes through it needs the shadow stand-in reproduced HERE alongside
+# the layer split.
 #
 # Runs only under a Player (that is where the layer convention lives);
 # anywhere else -- the menu silhouette, a gallery -- the body stays whole.

@@ -1,11 +1,11 @@
 extends ParkourTest
 
 # The legacy suite is archived under tests/legacy/ (excluded from Godot's
-# filesystem scan by its own .gdignore). Without at least one live test, a
-# green run would be indistinguishable from a broken runner, since
-# tests/test_runner.gd reports "checks: 0  failures: 0" and exits 0 either
-# way. This file is deliberately trivial and is expected to outlive the
-# rebuild as the suite's floor.
+# filesystem scan by tests/legacy/.gdignore). Without at least one live test
+# under tests/, a passing run is indistinguishable from a broken runner --
+# GUT reports zero failures and exits 0 whether it ran real tests or found
+# none. This file is deliberately trivial and must keep at least these two
+# tests as the suite's floor.
 
 func test_the_runner_discovers_and_runs_a_live_test() -> void:
 	assert_true(true, "the runner reached a live test method")

@@ -1,22 +1,20 @@
 extends ParkourTest
 
-# ⚠️ FOUR TESTS WERE REMOVED FROM THIS FILE, and what they pinned no longer
-# exists. They exercised GrabConfig.mantle_vertical_lead and
-# MovementConfig.scripted_path_arcs -- the two-curve path and the optional
-# camera arc -- which 0a30f90 deleted when four interacting rules collapsed
-# into one bezier with one dial (✅ the owner: 你做的多段曲线都丑爆了). They had
-# been red ever since, failing at the engine level on a property that is not
-# there, which is worse than useless: a red suite hides the next real
-# regression. The single curve they were replaced by is covered by the tests
-# that remain here and by test_scripted_path.gd.
+# DO NOT let a test that pins a removed field sit and go red indefinitely --
+# a suite everyone is used to seeing red stops being able to report the next
+# real regression. GrabConfig.mantle_vertical_lead and
+# MovementConfig.scripted_path_arcs (a two-curve pull-up path with an
+# optional camera arc) no longer exist; the single composite bezier that
+# replaced them is what the tests below cover.
 
 # The shape and the length of a pull-up.
 #
-# ✅ THE OWNER, with a drawing: "脚本弧线不对，它的趋势应该是先垂直向上然后再往前送，
-# 而不是一个完美的弧线，否则人会穿墙." And separately: "我们的 GrabPullUp 速度太快了，
-# 它不应该比 VaultOver 还快."
+# A pull-up's travel path must stay near-vertical past the lip before it goes
+# forward -- a smooth single arc lets the capsule cut straight through the
+# wall it is climbing. And GrabPullUp must not run faster than a vault-over
+# (see below for why that number has nowhere else to come from).
 #
-# ⚠️ ONE EASED CURVE FOR ALL THREE AXES IS A FINE DESCRIPTION OF A VAULT and a
+# ONE EASED CURVE FOR ALL THREE AXES IS A FINE DESCRIPTION OF A VAULT and a
 # wrong one for a pull-up. A vault really does go up and over in a single motion,
 # and the thing it arcs over is BELOW it. A pull-up is the opposite shape: the
 # obstacle is the face you are hanging on, so every centimetre of forward travel
@@ -75,21 +73,15 @@ func _mantling_player() -> Array:
 # --- the shape ------------------------------------------------------------------
 
 func test_a_lead_keeps_the_body_over_the_lip_before_it_travels() -> void:
-	# ⚠️ THE INVARIANT, and it took two goes to state. The first version pinned
-	# the travel to under 20% at 40% of the way through, which was true of the
-	# two-phase hook it was written against and false of the composite that
-	# replaced it -- there the crossing starts at 0.28 and is deliberately linear
-	# after that. The number moved; what matters did not.
+	# THE INVARIANT: what matters is not WHEN the body moves forward, it is
+	# WHERE IT IS when it does. Every centimetre of forward travel spent below
+	# the lip is spent inside the wall -- so walk the path and check the height
+	# at the moment the travel first becomes real, rather than pinning a
+	# travel-percentage number that is only true of one particular curve shape.
 	#
-	# What matters is not WHEN the body moves forward, it is WHERE IT IS when it
-	# does: every centimetre of forward travel spent below the lip is spent
-	# inside the wall. So walk the path and check the height at the moment the
-	# travel first becomes real.
-	# ⚠️ THIS PINS THE MACHINERY, NOT THE DEFAULT, and the difference is the
-	# owner's own methodology arriving:
-	#
-	# ✅ "胶囊体的运动不一定要符合物理规律，它越简单越好，是镜头和动画去配合它."
-	#
+	# THIS PINS THE MACHINERY, NOT THE DEFAULT. The capsule's own path does not
+	# need to look physically plausible -- the simpler it is, the better, since
+	# the camera and the animation are what sell the motion, not the capsule.
 	# So the shipped mantle is back to one curve, and the body passing through
 	# the face is not a defect to be designed out -- the animation and the camera
 	# cover it. The composite path stays available and stays tested, because the
@@ -131,12 +123,13 @@ func test_it_still_arrives_where_it_was_aimed() -> void:
 		% player.global_position.distance_to(target))
 
 func test_a_pull_up_is_slower_than_a_vault_over() -> void:
-	# ✅ THE OWNER: "它不应该比 VaultOver 还快."
+	# GrabPullUp must not be faster than a vault-over.
 	#
-	# 📌 AND THE ORIGINAL HAS NO NUMBER TO COPY -- TdMove_GrabPullUp carries no
-	# duration field at all, which says the length comes from the animation. So
-	# the reference is the vault table beside it, read from the table rather than
-	# repeated here, so retuning a vault cannot silently make this true again.
+	# [ME:CONFIRMED] The original has no number to copy here -- TdMove_GrabPullUp
+	# carries no duration field at all, which says the length comes from the
+	# animation instead. So the reference is the vault table beside it, read
+	# from the table rather than repeated here, so retuning a vault cannot
+	# silently make this true again.
 	var config := MovementConfig.new()
 	var quickest := INF
 	for variant in config.speed_vault.variants:

@@ -5,13 +5,13 @@ extends Resource
 #
 # The values here are per-MODEL, not per-level: how tall it is against this
 # project's capsule, which way it faces, where its head bone lives, which
-# animation packs it borrows from. Kept on the Player as individual exports,
-# they had to be repeated on every level's Player instance -- and the owner had
-# already been caught by that once, unable to remember where a mount offset had
-# been set after finding it right in one level and wrong in another.
+# animation packs it borrows from.
 #
-# A level now points at one of these instead. Changing how a body sits is one
-# edit, in the place that describes the body.
+# DO NOT move these back onto the Player as individual exports. That form has
+# to be repeated on every level's Player instance, and the cost is a mount
+# offset that is right in one level and wrong in another with no way to tell
+# where it was set. A level points at one of these instead, so changing how a
+# body sits is one edit, in the place that describes the body.
 #
 # Player still carries the same properties and still reads them; apply() just
 # fills them in first. Nothing downstream knows this exists, which is what
@@ -28,12 +28,12 @@ extends Resource
 
 ## See CameraRig.eye_forward: the old backward mount z, moved to the eye.
 @export var eye_forward: float = 0.0
-## ⚠️ Every VRM wants Vector3(0, 180, 0): the format has models face +Z and
+## Every VRM wants Vector3(0, 180, 0): the format has models face +Z and
 ## Godot's forward is -Z.
 @export var mount_rotation_degrees: Vector3 = Vector3.ZERO
 @export var mount_scale: float = 1.0
 ## Path to the node the head-follow camera tracks, relative to the model's root.
-## ⚠️ A VRM needs this set explicitly -- the name search finds a mesh called
+## A VRM needs this set explicitly -- the name search finds a mesh called
 ## Head sitting at the model's origin, down at the feet.
 @export var head_path: NodePath
 
@@ -47,10 +47,9 @@ extends Resource
 ## The mount above places the body against the capsule for a STANDING pose, and
 ## that is the only pose it can be right for. A pack's clips are authored around
 ## their own idea of where the ground, the wall or the ledge is, and the
-## mismatch shows: the owner's report on SafetyVault was "the hands are
-## completely in mid-air".
+## mismatch shows -- on SafetyVault the hands land completely in mid-air.
 ##
-## ⚠️ A constant offset can only align ONE instant of a moving clip. It is the
+## A constant offset can only align ONE instant of a moving clip. It is the
 ## whole answer for a pose that holds still -- a ledge hang, a wall run, a
 ## crouch -- and a compromise for a vault, where the body travels past the thing
 ## its hands are supposed to be on. The real answer there is IK onto the edge
@@ -68,17 +67,16 @@ extends Resource
 ## Which PART of a clip to play, as {clip_name: [start_seconds, length_seconds]}.
 ## A length of 0 means "to the end of the clip".
 ##
-## ✅ The owner: "the vault and grab animations play far too late -- the
-## character has nearly landed before the frame where the hand plants." The
-## packs author whole actions, run-up included, and this project starts them at
-## the moment of contact -- so the approach plays while the body is already
-## going over, and the plant arrives after the move has ended.
+## The packs author whole actions, run-up included, and this project starts
+## them at the moment of contact -- so left un-skipped, the approach plays
+## while the body is already going over, and the plant arrives after the move
+## has ended.
 ##
 ## `start` skips the run-up. `length` is what the kept part is STRETCHED to
 ## last, which is how a 1.5 s clip fits a 0.65 s vault without a time scale
 ## anyone has to keep in step by hand.
 ##
-## ⚠️ Applied when the graph is BUILT, so a change needs the body re-attached.
+## Applied when the graph is BUILT, so a change needs the body re-attached.
 @export var clip_timings: Dictionary = {}
 
 @export var run_reference_speed: float = 7.2
@@ -96,10 +94,10 @@ extends Resource
 ## Copies this profile onto `player`. Called by Player before it attaches
 ## anything; see Player.body_profile.
 func apply(player: Player) -> void:
-	# ⚠️ TRACKED TUNING WINS OVER THIS RESOURCE'S OWN. ✅ THE OWNER: "总不能我换台
-	# 电脑东西就丢了."
+	# TRACKED TUNING WINS OVER THIS RESOURCE'S OWN, because this resource is
+	# machine-local and switching machines must not lose the tuning.
 	#
-	# 📌 This resource cannot be tracked -- it names a model and two animation
+	# This resource cannot be tracked -- it names a model and two animation
 	# packs that are not, and .gitignore says so. But it was carrying two
 	# unrelated things: the BINDING, which is machine-local, and the TUNING,
 	# which is knowledge about a shape of model and true anywhere. Only the

@@ -1,9 +1,10 @@
 extends ParkourTest
 
-# I1/I2/I4 (spec §3). Uncontrolled falling is a STATE, not a flag: the original
-# gives it ControllerState = PlayerDying and strips every probe except soft
-# landing, so nothing the player does can convert it into a grab, a vault or a
-# wall run. A boolean cannot enforce that -- the probes simply keep running.
+# I1/I2/I4 (spec §3). Uncontrolled falling is a STATE, not a flag.
+# [ME:CONFIRMED] The original gives it ControllerState = PlayerDying and
+# strips every probe except soft landing, so nothing the player does can
+# convert it into a grab, a vault or a wall run. A boolean cannot enforce
+# that -- the probes simply keep running.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -62,11 +63,11 @@ func test_it_is_a_one_way_door() -> void:
 	await step(1)
 
 func test_the_screen_shows_the_fall_and_shows_how_bad_it_is() -> void:
-	# spec §6. The uncontrolled fall used to touch screen_effects not at all:
-	# crossing the 10 m line looked exactly like a fall you could still walk
-	# away from, and the screen only went grey on impact, at which point there
-	# was nothing left to tell the player. Half of spec §4's deviation 3 ("the
-	# player cannot see what happened") was still open.
+	# spec §6. Crossing the 10 m line must be visibly distinct from an
+	# ordinary fall you could still walk away from -- the screen must start
+	# reading before impact, not only go grey on impact, when there would be
+	# nothing left to tell the player. This is what spec §4's deviation 3
+	# ("the player cannot see what happened") requires.
 	#
 	# The reading is by SPEED, not by elapsed time, which is what makes a 40 m
 	# drop look worse than one that barely cleared the line -- so this asserts
@@ -130,11 +131,12 @@ func test_the_screen_shows_the_fall_and_shows_how_bad_it_is() -> void:
 	await step(1)
 
 func test_the_view_stops_responding_the_moment_control_is_lost() -> void:
-	# ControllerState = PlayerDying. The CDO for this move carries no
-	# bConstrainLook at all -- the original's view does not stop because the
-	# MOVE clamps it, but because the CONTROLLER stops reading input. Player's
-	# input gate is that layer. Ignoring `_input` inside the move is not
-	# enough: the camera is driven from Player._physics_process().
+	# [ME:CONFIRMED] ControllerState = PlayerDying, and the CDO for this move
+	# carries no bConstrainLook at all -- the original's view does not stop
+	# because the MOVE clamps it, but because the CONTROLLER stops reading
+	# input. Player's input gate is that layer: ignoring `_input` inside the
+	# move is not enough, because the camera is driven from
+	# Player._physics_process().
 	var cfg := MovementConfig.new()
 	var world := TestWorld.build(get_tree(), cfg)
 	await step(1)
@@ -155,7 +157,8 @@ func test_the_view_stops_responding_the_moment_control_is_lost() -> void:
 	assert_true(player.move_manager.current_name == Move.FALL_UNCONTROLLED, "test setup: never entered")
 
 	var yaw_before: float = player.rotation.y
-	# A hard sustained flick, the thing that used to spin freely all the way down.
+	# A hard sustained flick must not spin the view at all while control is
+	# lost.
 	for i in 20:
 		input.state.look = Vector2(400.0, 0.0)
 		await step(1)

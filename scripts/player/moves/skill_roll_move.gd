@@ -9,17 +9,16 @@ extends Move
 # one or the other depending on whether the crouch was pressed in time. Rolling
 # is how the player buys their way out of the two-second lockout.
 #
-# NOT STEERABLE ONCE IT STARTS, and that is from the source: ControllerState is
+# [ME:CONFIRMED] NOT STEERABLE ONCE IT STARTS: ControllerState is
 # PlayerGrabbing, MovementGroup is MG_TwoHandsBusy, and bDisableFaceRotation is
 # set. The hands are busy and the facing is pinned; the direction is decided at
 # touchdown and the player has no say in it afterwards.
 #
-# But it is AIMED, and that part is the owner's find from the original: the
-# direction comes from where the CAMERA points at touchdown, not from the
-# momentum -- even if the player spun 180 degrees in the air on the way down.
-# A deliberate break with physics, and their reading of why is convincing: a
-# roll is a second of lost control, and letting the view aim it hands that
-# second back. See enter().
+# [ME:CONFIRMED] But it is AIMED: the direction comes from where the CAMERA
+# points at touchdown, not from the momentum -- even if the player spun 180
+# degrees in the air on the way down. A deliberate break with physics: a roll
+# is a second of lost control, and letting the view aim it hands that second
+# back. See enter().
 
 var _elapsed: float = 0.0
 ## Fixed at touchdown, from the VIEW rather than from the momentum -- see
@@ -42,35 +41,34 @@ func enter(_previous: StringName) -> void:
 	_airborne = false
 	# FIXED. NOT A FLOOR, AND NOT SCALED BY WHAT YOU ARRIVED WITH.
 	#
-	# ✅ The owner tested it directly in the original -- a roll from a standstill
-	# and a roll at 80 km/h both travel the same 3 m. What speed buys is not
-	# distance: it is the share of the energy budget that survives (energy_keep
-	# below), so you get back up to pace faster afterwards.
+	# [ME:CONFIRMED] A roll from a standstill and a roll at 80 km/h travel the
+	# same 3 m in the original. What speed buys is not distance: it is the share
+	# of the energy budget that survives (energy_keep below), so you get back up
+	# to pace faster afterwards.
 	#
-	# This project had it as maxf(carried * speed_scale, forced), which was my
-	# reading of "3 m" as a minimum rather than the whole answer. That invention
-	# is also what the owner measured as an over-long 3.2 m roll: the momentum
-	# term, not the 3 m.
+	# DO NOT scale the forced distance by carried speed (e.g.
+	# maxf(carried * speed_scale, forced)) -- the momentum term alone stretches
+	# the roll to a measured 3.2 m instead of the confirmed 3 m.
 	#
-	# ⚠️ AT A CONSTANT RATE, which the original is not: at 1/8 speed the owner
-	# saw the 3 m travel slow-fast-slow, on an animation curve. Deliberately not
-	# copied -- that curve exists to keep the travel under a body model's feet,
-	# and this project has no body model for it to serve. An eased translation
-	# with nothing visible driving it just reads as drifting.
+	# [ME:INFERRED] The original's travel is not at a constant rate: watched at
+	# 1/8 speed it runs slow-fast-slow, on an animation curve. Deliberately not
+	# copied here -- that curve exists to keep the travel under a body model's
+	# feet, and this project has no body model for it to serve. An eased
+	# translation with nothing visible driving it just reads as drifting.
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	_speed = cfg.forced_distance / maxf(cfg.duration, 0.001)
 	# ALONG THE VIEW, NOT ALONG THE MOMENTUM.
 	#
-	# ✅ The owner, from the original: the forced travel follows where the CAMERA
-	# is pointing at the instant the roll begins -- even if the player spun 180
-	# degrees in mid-air on the way down. It is a deliberate break with physics,
-	# and their reading of why is convincing: a roll is a second of lost control,
-	# and letting the view aim it hands that second back. You steer the landing
-	# instead of being carried by whatever the fall happened to leave you with.
+	# [ME:CONFIRMED] The forced travel follows where the CAMERA is pointing at
+	# the instant the roll begins -- even if the player spun 180 degrees in
+	# mid-air on the way down. It is a deliberate break with physics: a roll is
+	# a second of lost control, and letting the view aim it hands that second
+	# back. You steer the landing instead of being carried by whatever the fall
+	# happened to leave you with.
 	#
-	# So this is NOT a fallback for a heading-less drop, which is what it was.
-	# The heading is never consulted; only the facing is.
-	# ⚠️ Catalyst rolls the other way -- along the momentum, with four directional
+	# This is NOT a fallback for a heading-less drop. The heading is never
+	# consulted; only the facing is.
+	# Catalyst rolls the other way -- along the momentum, with four directional
 	# variants. See SkillRollConfig.aim_with_view for why this is a choice
 	# between two shipped games rather than a fact about one.
 	var aim: Vector3 = horizontal
@@ -87,34 +85,32 @@ func enter(_previous: StringName) -> void:
 
 	# THE ROLL TAKES THE PITCH OVER, rather than offsetting it.
 	#
-	# ✅ CONFIRMED FROM THE ORIGINAL'S OWN PANEL: at the instant SkillRoll
-	# begins, P reads 0. Everything after that is camera performance.
+	# [ME:CONFIRMED] FROM THE ORIGINAL'S OWN PANEL: at the instant SkillRoll
+	# begins, P reads 0. Everything after that is camera performance. The general
+	# principle behind it -- in the original the AUTHORITATIVE state and the
+	# DISPLAYED one are allowed to disagree. The gameplay pitch is level from the
+	# first frame; the visible rotation still starts from the pitch that was
+	# landed with and travels more than a full turn when looking up, less when
+	# looking down. Both are true because they are different channels.
 	#
-	# Which is the general principle the owner drew out of it -- in the original
-	# the AUTHORITATIVE state and the DISPLAYED one are allowed to disagree. The
-	# gameplay pitch is level from the first frame; the visible rotation still
-	# starts from the pitch that was landed with and travels more than a full
-	# turn when looking up, less when looking down. Both are true because they
-	# are different channels.
+	# DO NOT drive only the spin and leave the pitch alone -- it breaks three
+	# ways at once:
 	#
-	# A first attempt drove only the spin and left the pitch alone, which the
-	# owner then found three faults with at once, all from the same cause:
-	#
-	#   * the view SPRANG BACK the frame after the roll ended -- the spin is a
-	#     temporary offset and gets released, while the pitch it was offsetting
-	#     had never moved. The roll had not actually turned the view at all.
-	#   * a roll entered at -50 STARTED at -11, because this move's own look
+	#   * the view SPRINGS BACK the frame after the roll ends -- the spin is a
+	#     temporary offset over a pitch that never moved, so the roll never
+	#     actually turned the view at all.
+	#   * a roll entered at -50 STARTS at -11, because this move's own look
 	#     clamp has a confirmed floor there and takes effect immediately.
-	#   * and it then ENDED at -320, because the arithmetic used the -50 read
+	#   * and it then ENDS at -320, because the arithmetic used the -50 read
 	#     before that clamp while the view was already at -11.
 	#
-	# All three go away by pinning the pitch to level and carrying the landing
-	# pitch in the SPIN instead -- which the panel reading above says is not a
-	# workaround but what the original does. The clamp then has nothing to fight
-	# (level is inside every constraint), the visible start is still the landing
-	# pitch because the spin begins at its negation, and releasing the spin at
-	# the end leaves the view where the roll put it rather than where it found
-	# it.
+	# Pinning the pitch to level and carrying the landing pitch in the SPIN
+	# instead avoids all three -- and the panel reading above says this is not a
+	# workaround but what the original itself does. The clamp then has nothing
+	# to fight (level is inside every constraint), the visible start is still
+	# the landing pitch because the spin begins at its negation, and releasing
+	# the spin at the end leaves the view where the roll put it rather than
+	# where it found it.
 	var pitch_at_start: float = 0.0
 	if player.camera_rig != null:
 		pitch_at_start = float(player.camera_rig.look_debug()["pitch"])
@@ -132,15 +128,15 @@ func enter(_previous: StringName) -> void:
 	# already saw the pitch pinned to level with no spin to offset it. One frame
 	# of the view snapping level before the roll's rotation took over.
 	#
-	# Proportional to the angle and invisible at small ones, which is how the
-	# owner found it: "at extreme pitch the view flickers for about a frame".
+	# Proportional to the angle and invisible at small ones, so it only shows up
+	# on an extreme-pitch roll.
 	#
-	# ✅ The original very likely hit the same race and paid it off differently:
-	# watched at 1/8 speed, its P does not snap to zero but runs down linearly
-	# over about ELEVEN FRAMES. We do not copy that -- one tenth of a second of
-	# ramp is a workaround for a single-frame gap, and closing the gap is the
-	# smaller fix. Recorded in docs/feel-backlog.md 40 so the measurement is not
-	# lost if this ever needs revisiting.
+	# [ME:CONFIRMED] The original very likely hit the same race and paid it off
+	# differently: watched at 1/8 speed, its P does not snap to zero but runs
+	# down linearly over about ELEVEN FRAMES. We do not copy that -- one tenth
+	# of a second of ramp is a workaround for a single-frame gap, and closing
+	# the gap is the smaller fix. Recorded in docs/feel-backlog.md 40 so the
+	# measurement is not lost if this ever needs revisiting.
 	_drive_camera()
 
 	player.speed_energy.energy *= cfg.energy_keep
@@ -169,11 +165,11 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		player.velocity.z = 0.0
 	# ROLLING OFF AN EDGE DOES NOT END THE ROLL.
 	#
-	# ✅ The owner, from the original: "if the ground runs out half way through,
-	# the roll animation still plays out -- the body is obviously falling by
-	# then, but the move finishes." Ours cut to a standing fall the instant the
-	# floor disappeared, and the camera went from mid-tumble to upright in one
-	# frame. Their word for it: a poor experience.
+	# [ME:CONFIRMED] In the original, if the ground runs out mid-roll the roll
+	# animation still plays out -- the body is obviously falling by then, but
+	# the move finishes anyway. DO NOT cut to a standing fall the instant the
+	# floor disappears: the camera snaps from mid-tumble to upright in one
+	# frame, which reads as broken.
 	#
 	# The distinction is between the body and the ANIMATION. Gravity takes the
 	# body immediately, which is honest; the roll keeps its own clock and its own
@@ -210,14 +206,12 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# whether it finished, and the answer is simply where the body is.
 	if not player.grounded:
 		return FALLING
-	# ✅ THE OWNER: "落地翻滚如果碰巧滚进头顶空间不够的地方也应该转下蹲
-	# 而不是 walk，否则会以蹲姿跑出 7.2 的超高速度."
-	#
-	# A roll carries real speed and travels while it plays, so where it ENDS is
-	# not somewhere anyone chose -- rolling under a pipe or into a crawlspace is
-	# ordinary. Handing that to Walking asks for a standing capsule that will not
-	# fit, so the request is deferred and the player runs at full speed in a
-	# crouched body: the 7.2 m/s the owner measured.
+	# DO NOT hand a roll that ends without headroom to Walking -- a roll carries
+	# real speed and travels while it plays, so where it ENDS is not somewhere
+	# anyone chose, and rolling under a pipe or into a crawlspace is ordinary.
+	# Walking would ask for a standing capsule that will not fit, so the request
+	# is deferred and the player runs at full speed in a crouched body: a
+	# measured 7.2 m/s, an unintended speed boost.
 	#
 	# Crouch costs nothing to enter from here: enter() already shrank the capsule
 	# to config.crouch.crouch_capsule_height -- the very same height -- so this
@@ -229,10 +223,10 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 ## The roll itself: the view goes ALL THE WAY OVER, and the eye drops through
 ## the middle of it.
 ##
-## A sink-and-return was tried first and was indistinguishable from the hard
-## landing this move exists to avoid -- which is the whole problem, since the
-## two are the opposite outcome of the same moment. The original's own look
-## clamp for this move reaches +180 degrees; going over is the manoeuvre.
+## DO NOT sink-and-return: it reads as indistinguishable from the hard landing
+## this move exists to avoid, even though the two are the opposite outcome of
+## the same moment. [ME:CONFIRMED] The original's own look clamp for this move
+## reaches +180 degrees; going over is the manoeuvre.
 ##
 ## Eased at both ends (smoothstep) rather than linear, so the view is not
 ## yanked into the spin and does not stop dead at the end of it.

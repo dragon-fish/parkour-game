@@ -2,8 +2,8 @@ extends ParkourTest
 
 # Q part-way up a wall kick (TdMove_180Turn): spin to face back the way you
 # came, hang there for DisableMovementTime, and either kick off the wall or
-# drop. The hang is the feature -- DisableMovementTime is a real field across
-# the original's move library that this project had never implemented.
+# drop. [ME:CONFIRMED] DisableMovementTime is a real field across the
+# original's move library; the hang is the feature.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -85,10 +85,10 @@ func test_q_during_a_climb_starts_the_turn() -> void:
 		"Q during a wall climb did not start the turn")
 
 func test_the_body_holds_still_for_the_whole_window() -> void:
-	# ✅ "During the wall climb turn there is almost no falling." The hang lasts
-	# the ANIMATION -- wall_turn_time, 0.5 s -- rather than DisableMovementTime,
-	# which names how long INPUT is disabled and says nothing about gravity.
-	# Reading it as the whole hang was this project's own conflation.
+	# [ME:INFERRED] There is almost no falling through the whole wall-climb
+	# turn. The hang lasts the ANIMATION -- wall_turn_time, 0.5 s -- not
+	# DisableMovementTime, which only names how long INPUT is disabled and
+	# says nothing about gravity.
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
 	var held := player.global_position
@@ -113,10 +113,9 @@ func test_the_body_comes_all_the_way_round() -> void:
 func test_letting_the_window_lapse_drops_the_player() -> void:
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
-	# Past kick_window (0.75 s, 45 ticks), not merely past the freeze. The two
-	# were one number until the owner reported the grace period as too short to
-	# use -- "Q has to be followed by space immediately or you slide off" -- so
-	# a test that only outlasts the freeze would pass while proving nothing.
+	# Past kick_window (0.75 s, 45 ticks), not merely past the freeze. The
+	# grace period to kick off must stay separate from, and longer than, the
+	# movement freeze, or the window to react is too short to use.
 	await step(50)
 	# Left the turn, rather than specifically Falling: the body is dropping by
 	# then, and from 1.5 m it may well have reached the floor and gone straight
@@ -125,8 +124,8 @@ func test_letting_the_window_lapse_drops_the_player() -> void:
 		"the window lapsed without ever handing back")
 
 func test_the_kick_survives_well_past_the_freeze() -> void:
-	# The bug this split fixes, pinned directly: at 0.5 s the body is falling
-	# again but the chance to kick is still open.
+	# At 0.5 s (wall_turn_time) the body has resumed falling, but the chance
+	# to kick off must still be open -- kick_window is 0.75 s.
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
 	await step(30)
@@ -168,12 +167,13 @@ func test_the_kick_throws_the_player_away_from_the_wall() -> void:
 	assert_gt(player.velocity.z, 0.0, "the kick sent the player back into the wall")
 
 func test_space_pressed_mid_turn_waits_for_the_turn_to_finish() -> void:
-	# ✅ THE ORIGINAL PRE-BUFFERS THIS: "press Q, and even before the view has
-	# come round, pressing space makes Faith jump out the instant it does."
+	# [ME:INFERRED] The original pre-buffers this press: Q, then space before
+	# the view has come round, still fires the jump the instant the turn
+	# finishes.
 	#
-	# Acted on immediately, a kick taken mid-turn leaves along a facing halfway
-	# between where you were and where you were going -- and choosing that
-	# facing is the entire reason to press Q.
+	# Acted on immediately instead, a kick taken mid-turn would leave along a
+	# facing halfway between where you were and where you were going -- and
+	# choosing that facing is the entire reason to press Q.
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
 	# Early: the body has barely started coming round.
@@ -192,9 +192,8 @@ func test_space_pressed_mid_turn_waits_for_the_turn_to_finish() -> void:
 
 # --- Q away from a wall ------------------------------------------------------
 #
-# The owner corrected the scope after the first version shipped: "why does Q
-# only work off a wall? Q works almost everywhere -- anywhere the legs are not
-# tied up, like a 180 while walking, or a 90 while wall running."
+# Q must work almost everywhere the legs are not tied up -- not only off a
+# wall: a 180 while walking, a 90 while wall running.
 
 func test_q_while_walking_turns_the_body_right_round() -> void:
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
@@ -214,13 +213,13 @@ func test_q_while_walking_turns_the_body_right_round() -> void:
 	assert_almost_eq(turned, PI, 0.02, "a walking turn did not come round half a turn")
 
 func test_a_walking_turn_bleeds_its_speed_away_rather_than_stopping_dead() -> void:
-	# ✅ MEASURED: "speed does not drop to zero instantly, it goes to zero over
-	# about 0.3 s -- it feels as though you carry the old direction's inertia
-	# until you have fully come round."
+	# [ME:CONFIRMED] Speed does not drop to zero instantly; it decays to zero
+	# over about 0.3 s, as though the old direction's inertia carries through
+	# until the turn is complete.
 	#
-	# The first version kept the momentum outright, on the reasoning that
-	# stopping dead would make Q a move nobody would press. Half right: what
-	# makes it pressable is that the stop is GRADUAL and lands as the turn does.
+	# The decay must be GRADUAL and land exactly as the turn finishes: an
+	# instant stop makes Q too punishing to press, and keeping the momentum
+	# outright removes the point of turning at all.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	_world = world
 	await step(1)
@@ -240,13 +239,13 @@ func test_a_walking_turn_bleeds_its_speed_away_rather_than_stopping_dead() -> vo
 		"the speed never bled away (%.2f m/s left)" % player.horizontal_speed())
 
 func test_a_walking_turn_keeps_only_the_measured_share_of_the_budget() -> void:
-	# ✅ MEASURED: "the speed energy is not 100% preserved either -- it seems to
-	# keep only up to the ~19 km/h tier. You can get back to 18-19 quickly, and
-	# after that the acceleration is like normal running."
+	# [ME:INFERRED] The speed energy is not 100% preserved either: it keeps
+	# only up to about the 19 km/h tier. Speed climbs back to 18-19 quickly,
+	# and past that the acceleration is ordinary running.
 	#
 	# A capped energy budget produces exactly that shape: below the cap the
-	# ground acceleration alone gets you there, above it you have to re-earn the
-	# speed the ordinary way.
+	# ground acceleration alone gets you there, above it you have to re-earn
+	# the speed the ordinary way.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	_world = world
 	await step(1)
@@ -304,12 +303,13 @@ func test_a_move_with_its_legs_busy_refuses_the_turn() -> void:
 func test_a_wall_turn_never_doubles_back_on_itself() -> void:
 	# THE TWITCH. This move's clamp is an absolute-yaw one, so apply_look pins
 	# the body to reference + offset every tick from a reference captured when
-	# the turn began -- while _advance_turn wrote the body directly as well. Two
-	# writers a tick, pulling opposite ways, which the owner saw as "the camera
-	# twitches left and right" during a wall-climb turn.
+	# the turn began -- while _advance_turn writes the body directly too. Two
+	# writers a tick, pulling opposite ways, reads as the camera twitching
+	# left and right during a wall-climb turn.
 	#
-	# Sampled per tick rather than end to end, because both the broken version
-	# and the fixed one arrive at the same place. Only the path differs.
+	# DO NOT sample end to end instead of per tick: a twitching path and a
+	# smooth one can still land at the same final angle, so only a per-tick
+	# check catches the difference.
 	var world := await _world_with_wall_ahead(6.0)
 	var player: Player = await _turning(world)
 	var previous: float = player.rotation.y
@@ -328,13 +328,13 @@ func test_a_wall_turn_never_doubles_back_on_itself() -> void:
 			"the turn jumped %.3f rad in one tick" % absf(step_taken))
 
 func test_the_turn_goes_clockwise_whatever_the_approach_was() -> void:
-	# ✅ MEASURED in the original: "Faith only ever turns right." Godot's yaw
-	# grows counter-clockwise seen from above, so clockwise is DOWN.
+	# [ME:CONFIRMED] Faith only ever turns right. Godot's yaw grows
+	# counter-clockwise seen from above, so clockwise is DOWN.
 	#
-	# Checked from two different approach angles, because the rule this replaced
-	# turned whichever way was shorter -- which made the direction a function of
-	# the entry angle, and a coin flip on float noise for the head-on approach
-	# the move is mostly used for.
+	# Checked from two different approach angles: turning whichever way is
+	# shorter makes the direction a function of the entry angle, and is a
+	# coin flip on float noise for the head-on approach the move is mostly
+	# used for.
 	for approach in [-deg_to_rad(20.0), deg_to_rad(20.0)]:
 		var world := await _world_with_wall_ahead(6.0)
 		var player: Player = world["player"]
@@ -355,10 +355,11 @@ func test_the_turn_goes_clockwise_whatever_the_approach_was() -> void:
 		after_each()
 
 func test_the_two_turns_take_their_two_measured_times() -> void:
-	# ✅ MEASURED separately, and kept as two figures because they measured
-	# differently and there is no honest way to average them. A DURATION rather
-	# than a rate in both cases: a turn takes the same time whatever angle it
-	# covers, which is what an animation does.
+	# [ME:CONFIRMED] Measured separately, and kept as two figures: the ground
+	# and wall turns take different amounts of time, and there is no honest
+	# way to average them. Both are a DURATION rather than a rate -- a turn
+	# takes the same time whatever angle it covers, which is what an
+	# animation does.
 	var config := MovementConfig.new()
 	assert_almost_eq(config.turn_180.turn_time, 0.3, 0.0001, \
 		"a ground turn is not the measured 0.3 s")

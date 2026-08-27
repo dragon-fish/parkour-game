@@ -1,8 +1,8 @@
 extends ParkourTest
 
-# The level marker every "interact along a line" move reads (05 §5.6.5). A
-# sagging cable is the shape that matters: a straight line is its two-point
-# degenerate case.
+# [ME:DERIVED 05 §5.6.5] The level marker every "interact along a line"
+# move reads. A sagging cable is the shape that matters: a straight line is
+# its two-point degenerate case.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -44,9 +44,9 @@ func test_tangent_points_toward_increasing_offset() -> void:
 	assert_lt(t.y, 0.0, "near the start the cable sags DOWN")
 
 func test_the_cable_draws_a_visible_rope() -> void:
-	# ✅ THE OWNER mistook the F12 hang-path line for the cable itself
-	# ("目前的实现是胶囊中心点沿着绳索前进？") -- there was no rope model anywhere to
-	# see. A whitebox interactable must be visible: the marker IS the rope.
+	# A whitebox interactable must be visible on its own, not just implied by
+	# the F12 debug hang-path line: without a real mesh there is nothing to
+	# look at. The marker IS the rope.
 	_line = _sagging_line()
 	await step(1)
 	var found := false

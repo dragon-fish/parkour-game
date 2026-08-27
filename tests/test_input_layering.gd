@@ -1,11 +1,11 @@
 extends ParkourTest
 
-# Mouse BUTTONS belong behind the GUI. ✅ THE OWNER, testing the F1 panel:
-# "在面板点击鼠标会被透传到「重新控制镜头」，第三人称下滚轮滚动面板会透传到
-# 「调整相机距离」，感觉特别像前端里忘记停止冒泡." Player handled buttons in
-# _input(), which runs BEFORE the GUI gets to consume anything -- so a click
-# aimed at a slider was also a click back into the game. The game's share of
-# the mouse is whatever the Controls leave over: _unhandled_input.
+# Mouse BUTTONS belong behind the GUI. Player handled buttons in _input(),
+# which runs BEFORE the GUI gets to consume anything -- so a click aimed at
+# an F1-panel slider, or a scroll meant to zoom the panel, also reached the
+# game underneath it (camera recapture, third-person distance zoom). The
+# game's share of the mouse is whatever the Controls leave over:
+# _unhandled_input.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 

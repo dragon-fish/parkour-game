@@ -6,20 +6,21 @@ func enter(_previous: StringName) -> void:
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	# THE LADDER, first: an authored interest point beats ordinary ground
-	# movement the instant the body's front is inside its frontal volume --
-	# ✅ the owner: a ladder is caught by walking straight into it from the
-	# ground, exactly the way a jump onto a cable catches from the air. No
-	# check_for_ladder flag here (that switch is airborne-only, see
-	# MoveConfig's own note) -- the ground entry is unconditional, gated only
-	# by the same frontal fan every other entry site asks.
+	# movement the instant the body's front is inside its frontal volume. A
+	# ladder is caught by walking straight into it from the ground, exactly
+	# the way a jump onto a cable catches from the air. No check_for_ladder
+	# flag here (that switch is airborne-only, see MoveConfig's own note) --
+	# the ground entry is unconditional, gated only by the same frontal fan
+	# every other entry site asks.
 	if player.grounded and player.move_manager.can_enter(LADDER):
 		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
 		if rail != null and LadderMove.catch_gate(player, rail):
 			return LADDER
 
 	var wish_dir: Vector3 = player.wish_direction(input)
-	# No sprint key: the curve IS the sprint (02 §2.1). The walk modifier is
-	# the one thing that overrides it, with its own confirmed hard cap.
+	# [ME:CONFIRMED 02 §2.1] No sprint key: the curve IS the sprint. The walk
+	# modifier is the one thing that overrides it, with its own confirmed hard
+	# cap.
 	var target_speed: float = config.pawn.walk_velocity if input.walk_held \
 		else player.speed_cap() * cfg.speed_modifier
 	var grade: float = player.ground_grade(Vector3(player.velocity.x, 0.0, player.velocity.z))
@@ -54,9 +55,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# than straight off this tick's input, so a crouch pressed just before
 		# touchdown — which is exactly what a roll is — still opens a slide on
 		# landing instead of being discarded in mid-air.
-		# GBA_Crouch is one key with five outlets (05 §5.2, confirmed by in-game
-		# measurement), and only three discriminators: airborne or touching down,
-		# horizontal speed, accumulated fall height.
+		# [ME:CONFIRMED 05 §5.2] GBA_Crouch is one key with five outlets, and
+		# only three discriminators: airborne or touching down, horizontal
+		# speed, accumulated fall height.
 		#   airborne, speed >= 1.0        -> Coil          (OUT OF SCOPE, no such move)
 		#   airborne, speed <  1.0        -> nothing
 		#   touchdown, fall >= 2.0 m      -> Roll          (AirborneMove.settle_landing(), shared by Jump/Falling)
@@ -72,21 +73,21 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 				player.move_and_slide()
 				player.set_grounded(player.is_on_floor())
 				return SLIDE
-			# The table's last row, which used to have no code behind it: too
-			# slow to earn a slide is not "nothing happens", it is a crouch.
-			# The press is spent either way now -- leaving it buffered was only
-			# ever correct while this branch had nowhere to send it, and it
-			# meant a crouch held while standing still did nothing at all.
+			# The table's last row: too slow to earn a slide is not "nothing
+			# happens" -- it is a crouch. The press must be spent here too,
+			# never left buffered, or a crouch held while standing still does
+			# nothing at all.
 			return CROUCH
 
 		# Vaulting has to be earned with speed, or every waist-high box becomes a
 		# free elevator -- see SpeedVaultConfig.pick_variant()'s own entry
-		# gates, which is where that requirement actually lives now (05 §5.7:
-		# six variants, gated differently by height/momentum/vertical speed,
-		# not one flat speed switch). Commitment fires up to
-		# max_distance_time SECONDS before contact, not at a fixed distance --
-		# see SpeedVaultConfig.should_commit()'s own comment for why that is a
-		# deliberate reading of the source data, not a typo.
+		# gates, which is where that requirement actually lives. [ME:CONFIRMED
+		# 05 §5.7] TdMove_SpeedVault defines six variants, gated by
+		# height/momentum/vertical speed, not one flat speed switch.
+		# Commitment fires up to max_distance_time SECONDS before contact, not
+		# at a fixed distance -- see SpeedVaultConfig.should_commit()'s own
+		# comment for why that is a deliberate reading of the source data, not
+		# a typo.
 		if player.probes != null and current_config().check_for_vault_over:
 			var hit: Dictionary = player.probes.vault_query()
 			if hit["valid"]:

@@ -79,8 +79,7 @@ func test_strafing_and_walking_bank_energy_more_slowly_than_running() -> void:
 func test_a_full_energy_budget_decays_to_nothing_in_three_seconds() -> void:
 	# SpeedEnergyDecelerationTime = 3 with the 0.5 exponent on TIME:
 	# E = E0 * (1 - (t/T)^0.5). See SpeedEnergy.decay() for why this reading of
-	# the same two confirmed numbers, rather than the exponent-on-energy one
-	# this project shipped first.
+	# the same two confirmed numbers is the correct one.
 	#
 	# At 2.5 s of 3: 7 * (1 - sqrt(0.8333)) = 0.610.
 	var pawn := _pawn()
@@ -113,9 +112,9 @@ func test_energy_never_goes_negative() -> void:
 	assert_almost_eq(energy.energy, 0.0, 0.0001, "energy went negative")
 
 func test_a_full_reversal_spends_the_budget_down_to_the_floor() -> void:
-	# The calibration the turn cost is set from: the original's own
-	# SpeedTurnDecelerationFactor = 10 has an unrecoverable unit, so the knob
-	# is pinned to a stated behaviour instead.
+	# [ME:CONFIRMED] The original's SpeedTurnDecelerationFactor = 10, but its
+	# unit does not translate, so the turn-cost knob here is calibrated
+	# against a stated behaviour instead of copied directly.
 	#
 	# DOWN TO THE FLOOR, not to zero. Turning stops billing at the energy that
 	# buys speed_max_base_velocity -- see spend_turn()'s own note on why, and
@@ -142,9 +141,9 @@ func test_a_quarter_turn_costs_half_the_budget() -> void:
 	assert_almost_eq(energy.energy, 3.5, 0.02, "a 90 degree turn did not cost half the budget")
 
 func test_turning_has_no_free_allowance() -> void:
-	# 10.1 ③: the research found no "costs nothing below N degrees" threshold
-	# parameter anywhere, which is what makes turning a continuous tax rather
-	# than a gate. A tiny turn must still cost something.
+	# [ME:CONFIRMED 10.1 ③] No "costs nothing below N degrees" threshold
+	# parameter exists anywhere in the source, which is what makes turning a
+	# continuous tax rather than a gate. A tiny turn must still cost something.
 	var pawn := _pawn()
 	var energy := SpeedEnergy.new(pawn)
 	energy.energy = 7.0
@@ -153,9 +152,10 @@ func test_turning_has_no_free_allowance() -> void:
 
 # --- landing re-derives the ground speed budget ------------------------------
 #
-# ✅ THE OWNER: "落地速度 >=7.2 m/s 则地速恢复为 7.2". Without this the energy
-# bank still holds whatever it did before the ride, so a zipline exit at 15
-# m/s decays right back to the pre-ride pace instead of a full sprint budget.
+# A LANDING AT OR ABOVE ground_speed (7.2 m/s) MUST RESTORE A FULL GROUND
+# SPEED BUDGET. Without this the energy bank still holds whatever it did
+# before the ride, so a zipline exit at 15 m/s decays right back to the
+# pre-ride pace instead of a full sprint budget.
 
 func test_restore_for_landing_raises_the_budget_to_match_the_landing_speed() -> void:
 	var pawn := _pawn()

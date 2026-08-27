@@ -3,24 +3,19 @@ extends RefCounted
 
 # Turns the visible body over to the physics engine, once, on the way out.
 #
-# ✅ The owner: "make a ragdoll mode, let's have some fun -- making games is
-# supposed to be fun, who cares if it makes you sick." And on the awkward part,
-# which is that a ragdoll is a one-way door: "we can black the screen for a
-# moment on respawn. Games and film are the art of deception; if you cannot do
-# it well, cover it up."
-#
-# So this does not try to blend back. It hands the skeleton to the solver, lets
-# it fall over, and the respawn hides the return behind a cut.
+# A ragdoll is a ONE-WAY DOOR. DO NOT try to blend back out of it into the
+# animated skeleton. This hands the skeleton to the solver, lets it fall over,
+# and the respawn hides the return behind a cut to black.
 #
 # WHY IT IS BUILT AT RUNTIME rather than authored into the model: no character
 # model is tracked in this repository (see NOTICE.md), so there is nothing to
 # author it into. The rig is read for what it has and the bodies are generated
 # from the rest pose, which also means a different model needs no work.
 #
-# ⚠️ A CURATED TWELVE, not every bone. Godot's own "create physical skeleton"
-# gives one body per bone, and a VRM has 65 -- including every finger joint and
-# every strand of hair. Twelve is a person: torso, head, and two segments per
-# limb.
+# A CURATED TWELVE, not every bone. DO NOT fall back on Godot's own "create
+# physical skeleton": it gives one body per bone, and a VRM has 65 -- including
+# every finger joint and every strand of hair. Twelve is a person: torso, head,
+# and two segments per limb.
 
 ## The bones that get a body, and the bone each one measures itself against.
 ## A capsule needs a length, and a bone's length is the distance to its child.
@@ -48,27 +43,25 @@ const RADIUS_RATIO := 0.28
 const RADIUS_MIN := 0.04
 const RADIUS_MAX := 0.14
 
-## HOW FAR A JOINT MAY BEND. ✅ The owner: "the limbs can be stretched really
-## long, is there such a thing as tension between the bones? Turn it up, it is
-## frightening."
+## HOW FAR A JOINT MAY BEND. Limbs that stretch out long and swing freely read
+## as frightening rather than as a body, so the joints are held tight.
 ##
-## ⚠️ NOT WITH softness AND bias, which is where this went first. This project
-## runs JOLT (project.godot: physics_engine = "Jolt Physics"), and Jolt says so
-## in as many words at runtime: "Cone twist joint bias is not supported when
-## using Jolt Physics. Any such value will be ignored." Same for softness.
-## Setting them bought twenty-two warnings a death and nothing else.
+## DO NOT tighten them with softness and bias. This project runs JOLT
+## (project.godot: 3d/physics_engine = "Jolt Physics"), and Jolt says so in as
+## many words at runtime: "Cone twist joint bias is not supported when using
+## Jolt Physics. Any such value will be ignored." Same for softness. Setting
+## them costs twenty-two warnings a death and buys nothing.
 ##
 ## What Jolt DOES honour is the spans, so those are what is tightened. The
 ## default twist_span is 180 degrees -- a forearm free to rotate a full
 ## half-turn about itself -- and 45 of swing at every joint is a shoulder
 ## everywhere, elbows and knees included.
 ##
-## ⚠️ AND THE SPANS ARE NOT THE STRETCH. Jolt's joints are hard constraints;
-## bodies should not separate at all. The likeliest cause of what the owner is
-## seeing is that this skeleton lives under a body mounted at mount_scale 1.22,
-## and SCALED physics bodies are unreliable in Godot generally. Recorded rather
-## than guessed at further -- if tightening the spans does not settle it, the
-## scale is where to look next.
+## THE SPANS ARE NOT THE STRETCH. Jolt's joints are hard constraints; bodies
+## should not separate at all. If limbs still stretch after the spans are
+## tight, look at the mount scale next: this skeleton lives under a body
+## mounted at a mount_scale above 1, and SCALED physics bodies are unreliable
+## in Godot generally.
 ## A layer of their own, so a ragdoll interacts with the world and with itself
 ## and with nothing else. MASK is the world layer; the player is excluded by RID
 ## on top of that, since it shares the world layer.
@@ -86,9 +79,9 @@ func is_simulating() -> bool:
 	return _simulating
 
 ## Where the hips have got to, in world space, or ZERO before there is a
-## ragdoll. ✅ The owner: "once the ragdoll is running the capsule is
-## meaningless, surely the ragdoll's position is the authority?" It is -- see
-## FallUncontrolledMove, which stops driving the body and asks this instead.
+## ragdoll. Once the ragdoll is running the capsule is meaningless and the
+## ragdoll's position is the authority -- see FallUncontrolledMove, which stops
+## driving the body and asks this instead.
 func hips_position() -> Vector3:
 	var hips := _bone_node(&"Hips")
 	return hips.global_position if hips != null else Vector3.ZERO
@@ -100,10 +93,9 @@ func hips_speed() -> float:
 	var hips := _bone_node(&"Hips")
 	return hips.linear_velocity.length() if hips != null else 0.0
 
-## How fast the hips are travelling DOWNWARD, positive while falling. ✅ The
-## owner's suggestion for both the blur and the moment of impact: "bind the
-## motion blur to the ragdoll's speed, and take the blackout from the instant
-## the vertical velocity reverses or comes close to zero."
+## How fast the hips are travelling DOWNWARD, positive while falling. The motion
+## blur is bound to this speed, and the blackout is taken from the instant the
+## vertical velocity reverses or comes close to zero.
 func hips_fall_speed() -> float:
 	var hips := _bone_node(&"Hips")
 	return -hips.linear_velocity.y if hips != null else 0.0
@@ -139,11 +131,11 @@ func start(impulse: Vector3, exclude: RID) -> void:
 			(child as PhysicalBone3D).collision_layer = LAYER
 			(child as PhysicalBone3D).collision_mask = MASK
 	_skeleton.physical_bones_add_collision_exception(exclude)
-	# ⚠️ THE SKELETON'S PARENT MUST STOP MOVING, and the caller owes that. These
+	# THE SKELETON'S PARENT MUST STOP MOVING, and the caller owes that. These
 	# bodies are children of the skeleton, which hangs off a CharacterBody3D --
 	# so every metre the player travels teleports all twelve of them, and the
-	# solver spends the whole fall being yanked. ✅ The owner saw it as "the body
-	# convulses the moment the ragdoll starts". See FallUncontrolledMove.
+	# solver spends the whole fall being yanked. The symptom is a body that
+	# convulses the moment the ragdoll starts. See FallUncontrolledMove.
 	_skeleton.physical_bones_start_simulation()
 	# Applied to the HIPS alone. Shoving every bone gives an explosion rather
 	# than a fall -- the joints are what should carry it to the limbs.
@@ -157,24 +149,24 @@ func stop() -> void:
 	if _skeleton == null or not _simulating:
 		return
 	_simulating = false
-	# ZEROED FIRST. ✅ The owner: "the order is wrong -- put the ragdoll back
-	# before respawning, or the player gets launched the moment they come
-	# back." Stopping the simulation hands the bones back to the animation, but
-	# it does not take their VELOCITY away: the bodies are still carrying
-	# whatever the fall gave them when the respawn teleports them across the
-	# level.
+	# ZEROED FIRST. Stopping the simulation hands the bones back to the
+	# animation, but it does not take their VELOCITY away: the bodies are still
+	# carrying whatever the fall gave them when the respawn teleports them
+	# across the level. DO NOT respawn before putting the ragdoll back and
+	# clearing these velocities, or the player is launched the moment they come
+	# back.
 	for child in _skeleton.get_children():
 		if child is PhysicalBone3D:
 			var physical := child as PhysicalBone3D
 			physical.linear_velocity = Vector3.ZERO
 			physical.angular_velocity = Vector3.ZERO
 	_skeleton.physical_bones_stop_simulation()
-	# INERT AFTERWARDS. ⚠️ A PhysicalBone3D that is not simulating is still a
+	# INERT AFTERWARDS. A PhysicalBone3D that is not simulating is still a
 	# RigidBody3D with a collision shape, dragged along by whatever the skeleton
 	# does -- including a respawn that teleports it across the level. Twelve of
-	# those arriving at speed inside the world geometry is a plausible reading
-	# of ✅ the owner's "after respawning I fly off uncontrollably and seem to
-	# ignore obstacles". They cost nothing while switched off.
+	# those arriving at speed inside the world geometry is what a respawn that
+	# flies off uncontrollably and ignores obstacles looks like. They cost
+	# nothing while switched off.
 	for child in _skeleton.get_children():
 		if child is PhysicalBone3D:
 			(child as PhysicalBone3D).collision_layer = 0
@@ -208,9 +200,9 @@ func _add_segment(bone: StringName, child: StringName, mass: float) -> void:
 	body.mass = mass
 	# BORN INERT. They are switched on by start() and off again by stop(), so
 	# the only window in which twelve rigid bodies exist inside the player is
-	# the one where they are supposed to. ⚠️ Created live, they would be pushing
-	# the capsule around from the first death onwards -- including after it,
-	# which is ✅ what the owner saw as "the character has been possessed".
+	# the one where they are supposed to. DO NOT create them live: they then
+	# push the capsule around from the first death onwards, including after it,
+	# and the character reads as possessed.
 	body.collision_layer = 0
 	body.collision_mask = 0
 	# CONE everywhere except the root, which is what holds a body together
@@ -223,12 +215,12 @@ func _add_segment(bone: StringName, child: StringName, mass: float) -> void:
 		# joint type is selected -- read off the object rather than guessed.
 		# softness and bias are deliberately NOT set: Jolt ignores both and
 		# warns about each one, every joint, every death.
-		# ⚠️ THE CONE HAS TO POINT ALONG THE BONE, and this was missing entirely.
-		# A cone-twist limits swing away from ITS OWN axis, which without this
-		# is whatever the bone's rest orientation happened to be -- so the
-		# limits were being applied about an axis unrelated to the limb, and
-		# ✅ the owner's "the joints have no angle limit, they swing 360
-		# degrees" is what a cone pointing sideways looks like.
+		# THE CONE HAS TO POINT ALONG THE BONE. A cone-twist limits swing away
+		# from ITS OWN axis, which without this is whatever the bone's rest
+		# orientation happened to be, so the limits land about an axis
+		# unrelated to the limb. Joints that appear to have no angle limit at
+		# all, swinging a full 360 degrees, are what a cone pointing sideways
+		# looks like.
 		#
 		# Godot's ConeTwistJoint3D twists about its X axis, so the joint is
 		# rotated to put X along the segment.

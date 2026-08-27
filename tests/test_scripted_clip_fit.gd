@@ -2,16 +2,13 @@ extends ParkourTest
 
 # A scripted move fits its CLIP to its own clock.
 #
-# ✅ THE OWNER: "the fully driven vault is odd, and the speed feels like
-# double." Both halves come from one gap, and the numbers say it plainly:
-#
-#   SafetyVault is 0.733 s. A vault_over runs for its variant's 0.650 s at
-#   walking pace, and SpeedVaultMove floors a fast approach at HALF that --
-#   0.325 s, which is the doubling, literally. The clip went on playing at its
-#   authored length regardless, so under half of it was ever seen before the
-#   move handed off.
-#
-# The mantle is worse in the other direction: ClimbUp_2m is 1.300 s.
+# THE CLIP MUST BE TIME-FITTED TO THE MOVE'S OWN DURATION, not played at its
+# authored length -- otherwise the apparent playback speed doubles or halves
+# depending on which side of the mismatch the move falls on. SafetyVault is
+# 0.733 s; a vault_over runs for its variant's 0.650 s at walking pace, and
+# SpeedVaultMove floors a fast approach at HALF that -- 0.325 s -- so under
+# half the clip was ever seen before the move handed off when unfitted. The
+# mantle is worse in the other direction: ClimbUp_2m is 1.300 s.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -90,10 +87,10 @@ func test_a_scripted_move_that_has_not_begun_is_not_fitted() -> void:
 # --- and it actually reaches the graph -----------------------------------------------
 
 func test_the_fit_is_written_onto_the_animation_tree() -> void:
-	# ⚠️ THE TESTS ABOVE ONLY COVER THE ARITHMETIC. Cutting the branch that
-	# APPLIES it left every one of them green, which is the same gap this file
-	# exists to close -- a number computed correctly and never used is exactly
-	# the bug being fixed. This one reads the graph.
+	# THE TESTS ABOVE ONLY COVER THE ARITHMETIC. Cutting the branch that
+	# APPLIES it leaves every one of them green -- a number computed correctly
+	# and never used is exactly the bug this file exists to close. This one
+	# reads the graph.
 	var animator: CharacterAnimator = await _animator_with(&"SafetyVault", 0.733)
 	var player: Player = _world["player"]
 	var move := player.move_manager.move_for(Move.SPEED_VAULT) as ScriptedMove

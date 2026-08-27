@@ -1,9 +1,9 @@
 class_name FallingMove
 extends AirborneMove
 
-# The original's TdMove_Falling: airborne, but no longer a launch. It cannot
-# start a wall run (no bCheckForWallClimb), and it is one of only six states
-# that can hand off to uncontrolled falling (11 §11.2).
+# [ME:CONFIRMED 11 §11.2] TdMove_Falling is airborne but not a launch: it has
+# no bCheckForWallClimb, so it cannot start a wall run, and it is one of only
+# six states that can hand off to uncontrolled falling.
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Coyote time lives HERE and not in JumpMove: it exists for a player who
@@ -21,7 +21,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 	apply_air_physics(delta, player.wish_direction(input))
 
-	# Only Falling may hand off here: six states hold
+	# [ME:CONFIRMED 11 §11.2] Only Falling may hand off here: six states hold
 	# bCheckExitToUncontrolledFalling and not one of them is a launch (I2).
 	if player.fall_tracker.fall_height >= config.pawn.falling_uncontrolled_height:
 		return advance_and_hand_off(FALL_UNCONTROLLED)

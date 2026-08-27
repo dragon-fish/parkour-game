@@ -3,16 +3,16 @@ extends ParkourTest
 # What the wall you just left will not let you do.
 #
 # Kicking off a wall sends the body away from it, so for about a second
-# afterwards anything requiring a move back toward that wall is impossible. The
-# owner drew three cases and marked them:
+# afterwards anything requiring a move back toward that wall is impossible.
+# Three cases:
 #
 #   one flat wall, chained          X   the same wall cannot take you back
 #   a wall then one angled away     v   that is a different wall
 #   two walls facing each other     v   the zig-zag corridor, opposite sides
 #
-# ...plus the same reasoning applied to hands rather than feet: "you cannot
+# ...plus the same reasoning applied to hands rather than feet: you cannot
 # climb onto the top of the wall you are running on -- your legs are pushing
-# off it, you cannot send your body to the same side."
+# off it, you cannot send your body to the same side.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -54,7 +54,7 @@ func test_a_wall_facing_the_other_way_is_a_different_wall() -> void:
 		"a facing wall on the other side was refused, so the corridor is dead")
 
 func test_a_wall_angled_away_is_a_different_wall() -> void:
-	# Same side, but genuinely turned: the middle of the owner's three drawings.
+	# Same side, but genuinely turned: the middle of the three cases above.
 	var player: Player = await _player()
 	player.note_wall_contact(LEFT_WALL_NORMAL, LEFT)
 	var turned: Vector3 = LEFT_WALL_NORMAL.rotated(Vector3.UP, deg_to_rad(45.0))

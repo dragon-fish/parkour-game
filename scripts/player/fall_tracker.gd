@@ -10,7 +10,7 @@ extends RefCounted
 # produces a ground-contact event zeroes it, and that emergent behaviour is
 # unreachable if the landing reads the current frame's vertical speed.
 #
-# ✅ MEASURED ORIGIN: the count starts where the feet LEFT THE GROUND, not at
+# [ME:CONFIRMED] The count starts where the feet LEFT THE GROUND, not at
 # the arc's apex, and not at the moment the descent passes some speed. The
 # original's debug HUD exposes exactly this as SZD (= Z - SZ, where SZ is the
 # last launch height), and it begins moving the instant the player leaves the
@@ -22,10 +22,10 @@ extends RefCounted
 # past the 10 m death threshold -- yet it is a safe, routine path. Only a
 # launch-relative measurement lets it survive.
 #
-# This replaced an implementation that armed on `enter_to_falling_z_speed` and
-# then tracked the apex. Under that model an ordinary jump in place registered
-# a ~1.1 m "fall" on landing back at its own start height, and every ledge
-# jumped off was scored a full jump-height deeper than it really is.
+# DO NOT arm on a velocity threshold and track the apex instead of the launch
+# point: that gives an ordinary jump in place a fake ~1.1 m "fall" on landing
+# back at its own start height, and scores every ledge jumped off a full
+# jump-height deeper than it really is.
 #
 # Deliberately RefCounted and fed plain floats: it owns no node and does no
 # queries, so it can be tested without a physics world.

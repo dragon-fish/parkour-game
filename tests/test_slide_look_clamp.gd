@@ -2,15 +2,13 @@ extends ParkourTest
 
 # A slide's yaw fan is a TOTAL, not a per-tick rate.
 #
-# ✅ THE OWNER, in play: "I forgot the slide's yaw clamp -- it can still turn
-# freely." Both halves of the measured pair were in the config and the yaw half
-# did nothing: a RELATIVE look constraint is a per-tick rate limit by
-# construction (CameraRig.apply_look says so in as many words), and +-54.9
-# degrees PER FRAME is no limit at all.
+# DO NOT treat a RELATIVE look constraint as a per-tick rate limit: that is
+# what CameraRig.apply_look's per-frame delta naturally looks like, but
+# +-54.9 degrees PER FRAME is no limit at all. The fan must accumulate across
+# the whole slide and clamp the total.
 #
-# The number itself is confirmed -- 05 §5.1's MinLookConstraint
-# (-10000, -10000, 0), UE3 integer angles at 65536 = 360, so +-54.9 on pitch
-# AND yaw. Only its meaning was lost.
+# [ME:CONFIRMED 05 §5.1] MinLookConstraint (-10000, -10000, 0); UE3 integer
+# angles at 65536 = 360, so +-54.9 degrees on pitch AND yaw.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -22,10 +20,10 @@ func after_each() -> void:
 	TestWorld.teardown(_world)
 	_world = {}
 
-## Runs up and slides for real, the way test_slide.gd does. ⚠️ The first draft
-## called move_manager.start(SLIDE) directly and the move bounced straight back
-## to Walking, so the whole test measured an ordinary walk and reported it as a
-## slide turning 756 degrees.
+## Runs up and slides for real, the way test_slide.gd does. DO NOT enter the
+## move via move_manager.start(SLIDE) directly -- SlideMove's entry guard
+## bounces it straight back to Walking outside a real slide-eligible context,
+## and the resulting test silently measures an ordinary walk instead of a slide.
 func _sliding_player() -> Player:
 	_world = TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
@@ -41,10 +39,10 @@ func _sliding_player() -> Player:
 		"the fixture never entered a slide -- it is in %s" % player.move_manager.current_name)
 	return player
 
-## ⚠️ ACCUMULATED PER TICK, not measured end to end. A free look passes 180
-## degrees within a few ticks of this drag, and wrapf() on the total then folds
-## a full turn back to nearly nothing -- the first draft of this reported an
-## unclamped WALK as having turned 36 degrees.
+## DO NOT measure this end to end -- accumulate it per tick instead. A free
+## look passes 180 degrees within a few ticks of this drag, and wrapf() on the
+## total then folds a full turn back to nearly nothing, underreporting an
+## unclamped walk by an order of magnitude.
 func _drag(player: Player, pixels: float, ticks: int) -> float:
 	var total: float = 0.0
 	for i in ticks:
@@ -54,8 +52,9 @@ func _drag(player: Player, pixels: float, ticks: int) -> float:
 	return total
 
 func test_a_slide_cannot_be_turned_all_the_way_round() -> void:
-	# THE REPORTED BUG. Thirty ticks of a hard drag is far more than a fan of
-	# 54.9 degrees, and used to be exactly thirty times the per-tick limit.
+	# Thirty ticks of a hard drag is far more rotation than a 54.9-degree TOTAL
+	# fan allows -- deliberately large enough that a clamp misapplied as a
+	# per-tick limit would let exactly thirty times that through.
 	var player: Player = await _sliding_player()
 	var turned: float = _drag(player, 200.0, 30)
 	assert_lt(turned, deg_to_rad(60.0),

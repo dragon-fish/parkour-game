@@ -1,22 +1,22 @@
 class_name AirborneMove
 extends Move
 
-# Shared machinery for every airborne state. The original splits one airborne
-# stretch into several TdMove classes that differ ONLY in which probes they
-# run (11 §11.2); the physics is identical. Keeping the physics here and
-# letting subclasses declare their probe set is what makes those differences
-# enforceable instead of advisory.
+# Shared machinery for every airborne state. [ME:CONFIRMED 11 §11.2] The
+# original splits one airborne stretch into several TdMove classes that
+# differ ONLY in which probes they run; the physics is identical. Keeping the
+# physics here and letting subclasses declare their probe set is what makes
+# those differences enforceable instead of advisory.
 
 ## Gravity and air control, shared by every airborne state. Terminal velocity
 ## is clamped here rather than per-state so a subclass cannot forget it and
 ## produce a body that accelerates forever.
 ##
 ## Takes wish_dir as given -- it no longer decides whether input applies.
-## FallUncontrolledMove is the one state that has no input at all (03 §3.1 --
-## the original hands the controller to PlayerDying at the threshold rather
-## than scoring damage on impact, which is why a roll cannot save it), and it
-## expresses that by always calling this with Vector3.ZERO rather than by this
-## shared function reading a flag on Player.
+## FallUncontrolledMove is the one state that has no input at all
+## ([ME:CONFIRMED 03 §3.1] the original hands the controller to PlayerDying at
+## the threshold rather than scoring damage on impact, which is why a roll
+## cannot save it), and it expresses that by always calling this with
+## Vector3.ZERO rather than by this shared function reading a flag on Player.
 func apply_air_physics(delta: float, wish_dir: Vector3) -> void:
 	player.air_accelerate(wish_dir, delta)
 	# effective_gravity(): free flight honours the player's gravity window.
@@ -48,19 +48,17 @@ func probe_transition() -> StringName:
 	# tests/legacy/test_wall_run.gd for the contested-geometry case -- that
 	# test is ARCHIVED and NOT in the running suite, so nothing enforces this
 	# today; restore the pin when the behavioural suite is rewritten.
-	# ✅ MEASURED (04 §4.1): a wall run can only start from the ORIGINAL's Jump
+	# [ME:CONFIRMED 04 §4.1] A wall run can only start from the ORIGINAL's Jump
 	# state, never from its Falling state -- all 15 measured airborne entries
 	# came from Jump. The two are separated by EnterToFallingZSpeed = -200, i.e.
 	# purely by how fast you are already dropping.
 	#
-	# This project used to fold both of the original's states into one
-	# FallingMove and re-express that split as a speed test on velocity.y.
-	# Now that Jump and Falling are separate states (both AirborneMove
-	# subclasses), the split is expressed directly instead: JumpConfig sets
-	# check_for_wall_climb, FallingConfig does not (see FallingConfig's own
-	# note on that absence). Without it, any descent that so much as brushes
-	# a building would convert into a wall run -- a 40 m drop becoming
-	# Spider-Man rather than a death.
+	# Jump and Falling are separate states (both AirborneMove subclasses), and
+	# the split is expressed directly: JumpConfig sets check_for_wall_climb,
+	# FallingConfig does not (see FallingConfig's own note on that absence).
+	# DO NOT let Falling set it too -- any descent that so much as brushes a
+	# building would convert into a wall run, a 40 m drop becoming Spider-Man
+	# rather than a death.
 	#
 	# Measured entry window: -104 .. +510 uu/s of vertical speed, comfortably
 	# inside this threshold (-2.0 m/s) at the bottom end. The TOP end is
@@ -79,12 +77,11 @@ func probe_transition() -> StringName:
 	# This is also why the wall run's forward branch below is UNCHANGED at 57
 	# rather than being narrowed to 33-57. Narrowing it would be the same
 	# behaviour expressed twice, and the second copy would rot.
-	# NO SPEED GATE, unlike the wall run's. A first version mirrored
-	# wall_running_min_speed here; the owner corrected it from the original --
-	# standing still, pressed against a wall, W and space climbs. What gates a
-	# climb instead is INTENT, which is what approach_direction() carries: a
-	# body going nowhere and asking for nothing returns ZERO, and a zero
-	# approach is refused below.
+	# NO SPEED GATE, unlike the wall run's -- DO NOT add one. [ME:CONFIRMED]
+	# Standing still, pressed against a wall, W and space climbs in the
+	# original. What gates a climb instead is INTENT, which is what
+	# approach_direction() carries: a body going nowhere and asking for
+	# nothing returns ZERO, and a zero approach is refused below.
 	if c.check_for_wall_climb and player.probes != null \
 			and player.move_manager.can_enter(WALL_CLIMB):
 		var heading_at: Vector3 = player.approach_direction()
@@ -100,12 +97,13 @@ func probe_transition() -> StringName:
 		var wall: Dictionary = player.probes.wall_query(heading)
 		# TWO COOLDOWNS, DELIBERATELY, ANSWERING DIFFERENT QUESTIONS.
 		#
-		# can_enter() is the confirmed redo_move_time (0.15 s) and is blind to
-		# WHICH wall: it is the short guard against a run flickering off and
-		# back on within a few ticks. On its own it was also the whole
-		# same-wall story, which the owner felt as the game refusing them --
-		# "the original does not feel like that" -- while the chain it was
-		# supposed to prevent was still reachable.
+		# can_enter() is [ME:CONFIRMED 04 §4.1] redo_move_time (0.15 s) and
+		# is blind to WHICH wall: it is the short guard against a run
+		# flickering off and back on within a few ticks. DO NOT let this
+		# cooldown alone stand in for the same-wall refusal below -- on its
+		# own it also blocks re-entry onto a wall the player never left, which
+		# reads as the game refusing a run it should allow, while the
+		# same-wall chain it is not built to catch stays reachable through it.
 		#
 		# The geometric rule that IS about which wall lives a few lines down,
 		# in recent_wall_refuses_run(). Keeping them apart is what lets the
@@ -156,29 +154,29 @@ func probe_transition() -> StringName:
 			# APPROACH, and one that divides by horizontal speed. A wall climb
 			# has none: the climb's own friction has taken it, and the body is
 			# going straight up against a surface it is already in contact with.
-			# So the gate refused every vault out of a climb, and the owner
-			# found the hole it leaves -- a 3.5 m wall where the climb tops out
-			# with the edge 1.7 m above the feet, too LOW for a grab
-			# (min_wall_height is 1.8) and unreachable by a vault that will not
-			# commit. Nothing fires and the player slides back down.
+			# So the gate refuses every vault out of a climb, which leaves a
+			# hole: a 3.5 m wall where the climb tops out with the edge 1.7 m
+			# above the feet is too LOW for a grab (min_wall_height is 1.8)
+			# and unreachable by a vault that will not commit -- nothing
+			# fires and the player slides back down.
 			#
 			# Contact is the other way of satisfying the same question, and it
 			# satisfies it completely. See docs/contact-drives-movement.md.
 			#
-			# ⚠️ BUT ONLY WHILE THE BODY IS STILL GOING UP, and leaving that out
-			# cost two of the loops the owner found. Read the paragraph above
-			# again: every word of it is about a CLIMB topping out -- "the body
-			# is going straight up against a surface it is already in contact
-			# with". A body that is merely RESTING against a wall satisfies
-			# touching() just as completely and is going nowhere, so the bypass
-			# fired forever:
+			# BUT ONLY WHILE THE BODY IS STILL GOING UP. Read the paragraph
+			# above again: every word of it is about a CLIMB topping out --
+			# the body is going straight up against a surface it is already
+			# in contact with. A body that is merely RESTING against a wall
+			# satisfies touching() just as completely and is going nowhere,
+			# so DO NOT drop the rising check below: without it the bypass
+			# fires forever:
 			#
 			#   Walking -> Falling -> SpeedVault -> Walking -> Falling -> ...
 			#
-			# at about forty times a second, which is what the owner's two
-			# screenshots show. Both were bodies at h 0.00 v 0.00 pressed
-			# against a face: one beside a block after a grab, one backing
-			# slowly off a roof edge until it dropped. Neither was climbing.
+			# at about forty times a second, for any body at rest pressed
+			# against a face at h 0.00 v 0.00 -- for example beside a block
+			# after a grab, or backing slowly off a roof edge until it drops.
+			# Neither case is climbing.
 			#
 			# THE VAULT IS NOT WHAT LOOPS. A vault fired from a standstill has
 			# no speed to carry the body anywhere, so it ends where it began,
@@ -191,8 +189,8 @@ func probe_transition() -> StringName:
 			# NOWHERE TO PASS THROUGH IS NOT A VAULT. Unlike a grab, which can
 			# still hang on a capped ledge, a vault has no half-measure: every
 			# one of them carries the body through the space above the obstacle,
-			# whether it lands there or beyond. A slab over the top means
-			# clipping through it, which the owner reported as happening a lot.
+			# whether it lands there or beyond. DO NOT vault into a slab over
+			# the top -- the body clips straight through it.
 			var room: bool = player.fits_standing_at(hit["top"])
 			if room and (closing or (rising and touching(hit.get("face_point", Vector3.ZERO)))):
 				player.pending_vault_variant = variant
@@ -205,14 +203,16 @@ func probe_transition() -> StringName:
 	# redo_move_time (0.45 s) -- it replaces Player.can_grab_ledge(), the last
 	# of the three hand-rolled cooldowns Player used to carry -- so dropping
 	# off a ledge cannot instantly re-grab the very same one.
-	# INTO_GRAB, not GRAB. The original reaches for a ledge before hanging from
-	# it (TdMove_IntoGrab), which is what carries the body to the same hanging
-	# pose however it was caught. The cooldown is still checked against GRAB,
-	# since that is the move being re-entered and where redo_move_time lives.
-	# The cable is caught before any ledge is considered: it is an INTEREST
-	# POINT the level author placed on purpose (05 §5.6.5), and a probe that
-	# happened to see a ledge nearby has no such claim. Falling faster than
-	# fall_limit the hands cannot hold on (ZVelocityFallLimit).
+	# [ME:CONFIRMED] INTO_GRAB, not GRAB. The original reaches for a ledge
+	# before hanging from it (TdMove_IntoGrab), which is what carries the body
+	# to the same hanging pose however it was caught. The cooldown is still
+	# checked against GRAB, since that is the move being re-entered and where
+	# redo_move_time lives.
+	# [ME:CONFIRMED 05 §5.6.5] The cable is caught before any ledge is
+	# considered: it is an INTEREST POINT the level author placed on purpose,
+	# and a probe that happened to see a ledge nearby has no such claim.
+	# [ME:CONFIRMED] Falling faster than fall_limit the hands cannot hold on
+	# (ZVelocityFallLimit).
 	if c.check_for_zipline and player.velocity.y > -config.zipline.fall_limit \
 			and player.move_manager.can_enter(ZIPLINE):
 		var cable: InterestLine = player.nearest_interest_line(InterestLine.Kind.ZIPLINE)
@@ -228,9 +228,10 @@ func probe_transition() -> StringName:
 			return SWING
 
 	# The ladder, after the bar: same interest-point reasoning and the same
-	# fall_limit gate, PLUS the frontal fan -- ✅ the owner: "梯子只有一面可以
-	# 进入". Asked here, before ever transitioning, so LadderMove.enter()'s own
-	# copy of this same check (see its note) never actually fires in play.
+	# fall_limit gate, PLUS the frontal fan -- DO NOT let a ladder catch from
+	# any side but the front; catch_gate() enforces it. Asked here, before
+	# ever transitioning, so LadderMove.enter()'s own copy of this same check
+	# (see its note) never actually fires in play.
 	if c.check_for_ladder and player.velocity.y > -config.ladder.fall_limit \
 			and player.move_manager.can_enter(LADDER):
 		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
@@ -247,8 +248,8 @@ func probe_transition() -> StringName:
 		# ...and it will not let you climb onto its own top either. Same
 		# arithmetic as the wall-run refusal above: your legs are pushing off
 		# that wall, so the body cannot be sent to the side it is on. This is
-		# the long-standing complaint about a wall run ending in a grab onto
-		# the very wall it just left.
+		# what stops a wall run from ending in a grab onto the very wall it
+		# just left.
 		var same_side: bool = ledge["valid"] \
 			and player.recent_wall_refuses_climb_onto(ledge["edge"])
 		if ledge["valid"] and _within_reach(ledge) and not same_side:
@@ -256,7 +257,6 @@ func probe_transition() -> StringName:
 
 	return KEEP
 
-## Runs this tick's move_and_slide() and, if the body touched down, settles the
 ## Carries the body through THIS tick and hands off, for the transitions that
 ## leave one airborne state for another. Without it the hand-off tick covers
 ## zero distance -- the move returns before settle_landing()'s own
@@ -267,15 +267,16 @@ func probe_transition() -> StringName:
 ##
 ## Landing is deliberately NOT settled here: a tick that both crosses a
 ## threshold and touches down is judged by the state it is handing off TO, one
-## tick later. That is the existing rule (see JumpMove's own note on the
-## descent being what the landing is judged on), and it survives because the
-## fall tracker has already counted this tick's descent.
+## tick later. See JumpMove's own note on the descent being what the landing
+## is judged on -- this survives because the fall tracker has already counted
+## this tick's descent.
 func advance_and_hand_off(destination: StringName) -> StringName:
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
 	return destination
 
-## landing. Returns the state to hand off to, or KEEP while still airborne.
+## Settles the landing. Returns the state to hand off to, or KEEP while
+## still airborne.
 func settle_landing(delta: float) -> StringName:
 	# Capture the impact speed before move_and_slide() zeroes it on contact.
 	var impact_speed := maxf(-player.velocity.y, 0.0)
@@ -315,11 +316,11 @@ func settle_landing(delta: float) -> StringName:
 
 ## Whether a ledge is close enough to reach for, horizontally.
 ##
-## ledge_find_distance (3.5 m, confirmed) is how far the probe may LOOK; it is
+## [ME:CONFIRMED] ledge_find_distance is 3.5 m -- how far the probe may LOOK,
 ## not how far the body may be hauled. Reaching from that range reads as a
-## magnet -- jump vaguely wallward and get pulled in across open air -- so the
-## reach is held to its own, much shorter range. See
-## IntoGrabConfig.max_reach_distance.
+## magnet -- jump vaguely wallward and get pulled in across open air -- so
+## DO NOT widen the reach to match it; the reach is held to its own, much
+## shorter range. See IntoGrabConfig.max_reach_distance.
 func _within_reach(ledge: Dictionary) -> bool:
 	# Measured to the WALL, not to the edge point. `edge` is on the ledge's
 	# top, found by dropping a probe past the face, so against anything with
@@ -328,8 +329,8 @@ func _within_reach(ledge: Dictionary) -> bool:
 	return float(ledge.get("face_distance", INF)) <= config.into_grab.max_reach_distance
 
 ## Whether the body's approach is compatible with the direction this cable
-## would carry it. ✅ THE OWNER: "对着绳索反着跳别触发" -- jumping against the
-## travel direction must not catch.
+## would carry it. DO NOT let a jump against the cable's travel direction
+## catch it.
 ##
 ## Vertical-jump carve-out first: below a stillness threshold the approach
 ## HAS no direction, and boarding from directly underneath stays legal. The
@@ -349,15 +350,15 @@ func _zipline_approach_allowed(cable: InterestLine) -> bool:
 
 ## Where a landing from this state leads. Overridden by subclasses.
 ## FallUncontrolledMove overrides this to emit died_from_fall instead of
-## returning WALKING directly -- the death is now a property of WHICH STATE
+## returning WALKING directly -- the death is a property of WHICH STATE
 ## landed, not of a flag read here.
 ##
-## The default case now also judges the hard-unrolled lockout: only a landing
-## AT OR ABOVE hard_landing_height that was NOT rolled out of pays the 2 s
-## Landing penalty. Below the threshold a landing costs nothing at all (03
-## §3.1), so pausing the player there would be a penalty the original does
-## not levy; rolling is the player's own escape from a landing that otherwise
-## would have paid it.
+## The default case also judges the hard-unrolled lockout: only a landing AT
+## OR ABOVE hard_landing_height that was NOT rolled out of pays the 2 s
+## Landing penalty. [ME:CONFIRMED 03 §3.1] Below the threshold a landing
+## costs nothing at all, so pausing the player there would be a penalty the
+## original does not levy; rolling is the player's own escape from a landing
+## that otherwise would have paid it.
 func landing_destination(fall_height: float, rolled: bool) -> StringName:
 	# A roll is a MOVE now, not merely a discount applied on the way to
 	# Walking. The original gives it its own TdMove with its own controller
@@ -369,7 +370,7 @@ func landing_destination(fall_height: float, rolled: bool) -> StringName:
 		return LANDING
 	return WALKING
 
-## Landing bleeds horizontal speed according to which of the four confirmed
+## [ME:CONFIRMED] Landing bleeds horizontal speed according to which of four
 ## tiers the ACCUMULATED FALL HEIGHT falls into -- never according to this
 ## frame's vertical speed. See Player.landing_keep_ratio().
 func _apply_landing_cost(fall_height: float, rolled: bool) -> void:
@@ -377,33 +378,34 @@ func _apply_landing_cost(fall_height: float, rolled: bool) -> void:
 	player.velocity.x *= keep
 	player.velocity.z *= keep
 	if keep <= 0.0:
-		# The BUDGET goes too, not just the velocity. Zeroing speed while
-		# leaving the energy that buys it full means the ceiling is still up
-		# there: one stride and the player is back at pace, which makes a hard
-		# landing free. Measured in the original by the owner -- after a hard
-		# landing, getting going again is indistinguishable from starting cold.
+		# DO NOT zero only the velocity here -- the BUDGET must drop too.
+		# [ME:CONFIRMED] After a hard landing in the original, getting going
+		# again is indistinguishable from starting cold; leaving the energy
+		# that buys speed full while zeroing speed itself means the ceiling is
+		# still up there, so one stride puts the player back at pace and a
+		# hard landing costs nothing.
 		player.speed_energy.reset()
 	else:
-		# ✅ THE OWNER: "落地速度 >=7.2 m/s 则地速恢复为 7.2" -- a landing that
-		# keeps its speed (this branch) re-derives the ground budget from the
-		# speed the body actually lands with, so a fast zipline exit grounds
-		# into a full sprint rather than decaying back to the pre-ride pace.
+		# [ME:CONFIRMED] A landing that keeps its speed (this branch)
+		# re-derives the ground budget from the speed the body actually lands
+		# with, so a fast zipline exit grounds into a full sprint rather than
+		# decaying back to the pre-ride pace.
 		player.speed_energy.restore_for_landing(player.horizontal_speed())
 
 ## The vertical speed the vault table is asked about, which is the REAL one
 ## except inside the shin-catch window below.
 ##
-## ⚠️ A DELIBERATE DIVERGENCE FROM THE ORIGINAL, and the owner's call. Five of
-## the six rows in SpeedVaultConfig.variants require MinSpeedZ >= 0 -- they only
-## match while RISING -- and the sixth, auto_step_up_right_leg, is the descending
-## one but tops out at 0.48 m and 3 m/s. So falling onto a metre-high ledge at
-## running pace matches NOTHING, and the only way to vault it is to catch the
-## rising half of a jump. The owner's report: "the tolerance is terrible,
-## and the jump lasts hardly any time at all."
+## A DELIBERATE DIVERGENCE FROM THE ORIGINAL. [ME:CONFIRMED] Five of the six
+## rows in SpeedVaultConfig.variants require MinSpeedZ >= 0 -- they only
+## match while RISING -- and the sixth, auto_step_up_right_leg, is the
+## descending one but tops out at 0.48 m and 3 m/s. So falling onto a
+## metre-high ledge at running pace matches NOTHING in the original, and the
+## only way to vault it is to catch the rising half of a jump, which leaves
+## too narrow a window to use in practice.
 ##
-## What the original is doing there is deliberate -- autostepuprightleg is a
-## RESCUE, not a move, and 05 §5.7 reads it as "you jumped a gap and your shin
-## caught the far edge; the game kicks you up in the last 0.2 s". This widens
+## [ME:INFERRED 05 §5.7] autostepuprightleg is a RESCUE in the original, not
+## a move: the player jumps a gap and falls short, their shin catches the far
+## edge, and the game kicks them up in the last 0.2 s. This function widens
 ## that rescue rather than reproducing it, and it is worth knowing which is
 ## which if the two are ever compared.
 ##

@@ -1,9 +1,8 @@
 extends ParkourTest
 
-# The per-model slide eye lift has to come back down.
-#
-# ✅ THE OWNER: "滑铲结束后没有恢复相机位置，应该在「滑铲起身」动作期间逐渐还原
-# 相机位置，现在只要滑铲过相机将永久抬升0.15."
+# The per-model slide eye lift has to come back down. Once a slide has
+# raised it, the lift must ease back to neutral during the slide's stand-up
+# -- it must not remain permanently raised after the slide ends.
 #
 # CROUCH IS HELD AT 1.0 THROUGHOUT, which is not what Player does but is what
 # isolates the thing under test. The slide's own camera drop is several times

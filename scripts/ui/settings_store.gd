@@ -33,8 +33,8 @@ static func defaults() -> Dictionary:
 		window_size = Vector2i(1440, 810),
 		sensitivity = 0.0022,
 		fov = 90.0,
-		# 0..1, the AMPLITUDE the player asked for -- not decibels (✅ the
-		# owner: 正常人类不会用 0dB 描述音量). The conversion to dB happens on
+		# 0..1, the AMPLITUDE the player asked for -- not decibels: nobody
+		# thinks in dB. The conversion to dB happens on
 		# the way to the bus, in apply_global(), because that curve is the
 		# whole point: a slider that changes dB linearly spends most of its
 		# travel in a range nobody can hear apart.
@@ -110,7 +110,7 @@ static func apply_global(s: Dictionary) -> void:
 	# always applies above, unconditionally.
 	#
 	# The other half of this rule lives in settings_menu.gd's
-	# _on_save_pressed(): a deliberate 保存设置 choice writes its size into
+	# _on_save_pressed(): a deliberate Save Settings click writes its size into
 	# user://window.cfg too (same "size" key WindowMemory owns), so choosing
 	# a size on the settings page updates the drag memory instead of losing
 	# to it on the next boot.

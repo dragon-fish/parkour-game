@@ -10,13 +10,12 @@ extends Node3D
 # or a fall -- and opening them one at a time in the editor is how an afternoon
 # disappears.
 #
-# ⚠️ ONE CATEGORY, and that is not a preference. The first version built all 253
-# at once and the owner's report was immediate: "way too laggy, one character is
-# 40k tris." 253 x 40k is ten million triangles, which is not a viewer, it is a
-# benchmark. So a category is built the first time it is asked for and not
-# before, every category sits at the SAME origin rather than in a long row, and
-# only one is ever in the tree's way. The largest is 79 bodies; most are under
-# 40.
+# ONE CATEGORY, and that is not a preference. DO NOT build every category at
+# once: one character is already 40k tris, and 253 of them at once is ten
+# million triangles -- not a viewer, a benchmark. A category is built the
+# first time it is asked for and not before, every category sits at the SAME
+# origin rather than in a long row, and only one is ever in the tree's way.
+# The largest is 79 bodies; most are under 40.
 #
 # Built at RUNTIME from a BodyProfile rather than saved as a scene full of
 # instances, for the same reason player.tscn carries no body: the model and the

@@ -1,7 +1,7 @@
 class_name DeathSequence
 extends Node
 
-# ⚠️ Every number here is project-defined. The original plays a cutscene at
+# Every number here is project-defined. The original plays a cutscene at
 # this point and its data says nothing about camera timing.
 #
 # Owned by the level rather than by a Move, because by the time this runs the
@@ -10,7 +10,7 @@ extends Node
 
 signal finished
 
-## ⚠️ All four are project-defined, and all four come from the owner's own
+## All four are project-defined, and all four come from the owner's own
 ## storyboard rather than from the original -- which plays a cutscene here and
 ## whose data says nothing about camera timing.
 ##
@@ -24,29 +24,26 @@ const REST_TIME := 1.0      ## lying still before the level takes over
 
 ## The lowest the view may be raised once the body is down, in degrees.
 ##
-## ✅ THE OWNER: "完全落地之后，屏幕变黑白期间，如果是第三人称则允许在一定范围转
-## 镜头，只能Pitch<=-25，因为此时角色躺在地板上，镜头不往下的话会贴着地面，没意义."
-## So it is not a stylistic clamp -- a camera at the corpse's own height and
-## looking level is looking THROUGH the floor. Anything it could frame is below
-## it.
+## Not a stylistic clamp -- a camera at the corpse's own height and looking
+## level is looking THROUGH the floor. Anything it could frame is below it.
 const LANDED_PITCH_MAX_DEG := -25.0
 ## The steepest it may look down. Short of straight down, which gimbals.
 const LANDED_PITCH_MIN_DEG := -89.0
 
-## ⚠️ PROJECT-DEFINED. How far above the floor the arc bottoms out, so the view
+## PROJECT-DEFINED. How far above the floor the arc bottoms out, so the view
 ## ends up cheek-to-the-ground rather than inside it -- a camera pivoting on
 ## the feet exactly would put its near plane through the floor and show the
 ## underside of the level.
 const GROUND_CLEARANCE := 0.15
 
-## ⚠️ PROJECT-DEFINED. The floor under the elastic overshoot. easeOutElastic
+## PROJECT-DEFINED. The floor under the elastic overshoot. easeOutElastic
 ## deliberately goes PAST its target and springs back -- that overshoot is the
 ## impact -- but the arc's target is already only GROUND_CLEARANCE above the
 ## floor, so unguarded it would drive the near plane through the ground and
 ## show the underside of the level for a few frames.
 const MIN_GROUND_CLEARANCE := 0.05
 
-## ⚠️ PROJECT-DEFINED, both tuned by eye. How much of the springy curve to mix
+## PROJECT-DEFINED, both tuned by eye. How much of the springy curve to mix
 ## in over a plain ease-out: 0 is no spring at all, 1 is the textbook easing
 ## function at full strength. Full strength on either of these reads as comedy
 ## rather than as weight -- the knees bounce like rubber, the body flops.
@@ -79,15 +76,14 @@ var _cinematic: bool = false
 
 ## How long the screen spends going black at the END of a death, in seconds.
 ##
-## ✅ The owner, on the one genuinely awkward part of a ragdoll -- that it is a
-## one-way door and the body is left in whatever pose physics chose: "we can
-## black the screen for a moment on respawn. Games and film are the art of
-## deception; if you cannot do it well, cover it up." Quite right, and it is
-## what every game does with a respawn anyway.
+## The one genuinely awkward part of a ragdoll is that it is a one-way door
+## -- the body is left in whatever pose physics chose. Blacking the screen
+## for a moment on respawn covers that, the same way every game covers a
+## respawn.
 const BLACKOUT := 0.35
 
-## ✅ THE OWNER: "死亡的黑屏应该在重置回检查点之后再覆盖个0.5s，并且期间禁操作，
-## 因为现在这个还是能看到镜头瞬移和身体从死亡站起来，很尴尬." The respawn
+## DO NOT let the black-out lift before the teleport is done, or the camera
+## snap and the body standing back up from death are visible. The respawn
 ## happens UNDER full black; the cover holds RESPAWN_COVER with the input
 ## locked, then lifts over COVER_FADE.
 const RESPAWN_COVER := 0.5
@@ -105,10 +101,9 @@ var _cover_left: float = 0.0
 ## ramp; this is the ramp for respawns that have no cutscene in front of them.
 var _cover_in_left: float = 0.0
 var _on_black: Callable = Callable()
-## ✅ THE OWNER's convention (2026-08-26): normal transitions are WHITE,
-## death transitions are BLACK. The death path always covers in black; the
-## manual R-hold respawn (cover_respawn) is a normal transition and covers
-## in white.
+## Normal transitions are WHITE, death transitions are BLACK. The death
+## path always covers in black; the manual R-hold respawn (cover_respawn)
+## is a normal transition and covers in white.
 var _cover_color: Color = Color.BLACK
 
 func total_duration() -> float:
@@ -132,18 +127,18 @@ func play(player: Player) -> void:
 		_feet_offset = _player.standing_height() * 0.5
 		_player.set_dying(true)
 		_close_the_eyes(true)
-		# ALREADY GOING, usually. ✅ The owner: the ragdoll begins when control
-		# is lost, which is FallUncontrolledMove.enter() -- long before the body
+		# ALREADY GOING, usually: the ragdoll begins when control is lost, which
+		# is FallUncontrolledMove.enter() -- long before the body
 		# lands and this sequence starts. Recorded here only so the release
 		# knows to take it back.
 		#
 		# Still started here for the deaths that never went through an
 		# uncontrolled fall, if any ever do.
-		# ⚠️ THE SWITCH IS CHECKED HERE TOO. ✅ The owner, with the flag already
-		# off: "how is the landing death still a ragdoll?" Because this is a
-		# SECOND way in -- FallUncontrolledMove starts one on the way down, and
+		# THE SWITCH IS CHECKED HERE TOO, not only in FallUncontrolledMove: this
+		# is a SECOND way in -- that move starts a ragdoll on the way down, and
 		# this starts one for a death that never fell. Gating only the first
-		# left the second wide open.
+		# leaves the second wide open, letting a ragdoll start even with
+		# ragdoll_enabled off.
 		if _player.ragdoll_enabled and _player.ragdoll != null and _player.body != null:
 			if not _player.ragdoll.is_simulating() 					and _player.ragdoll.build(_player.find_skeleton()):
 				_player.ragdoll.start(_player.velocity * 0.5, _player.get_rid())
@@ -152,7 +147,7 @@ func play(player: Player) -> void:
 			# BEFORE the branch below, and in both views. A fatal fall lands
 			# like any other, so the landing flinch has already been written by
 			# the time the death is known -- died_from_fall is deferred a frame.
-			# ✅ The owner: a death should skip the ordinary landing cushion.
+			# A death should skip the ordinary landing cushion.
 			_player.camera_rig.clear_landing_dip()
 			# THE SCRIPTED FALL IS THE FALLBACK NOW, not the default.
 			#
@@ -160,12 +155,10 @@ func play(player: Player) -> void:
 			# falls, rolls and ends up looking at the sky because that is what
 			# the body would be doing, and there is no body doing it.
 			#
-			# ✅ With a body there IS, and the owner found the proof by
-			# accident: dying in third person and pressing V mid-clip "lines up
-			# really well with the animation". Of course it does -- a
-			# third-person death already skips the cinematic, so the eye runs
-			# the ordinary path and the head-follow carries it along with the
-			# death clip. Two scripted falls fighting over the same transform is
+			# With a body there IS: a third-person death already skips the
+			# cinematic, so the eye runs the ordinary path and the head-follow
+			# carries it along with the death clip -- the two line up correctly on
+			# their own. Two scripted falls fighting over the same transform is
 			# what the cinematic branch was ever protecting against.
 			#
 			# So: no body, no head to follow, keep the old effect. A body, and
@@ -174,10 +167,10 @@ func play(player: Player) -> void:
 			_cinematic = _player.body == null
 			if not _cinematic:
 				var camera_config: CameraConfig = _player.config.camera
-				# ⚠️ THE OTHER WAY ROUND IN THIRD PERSON, and the geometry says
+				# THE OTHER WAY ROUND IN THIRD PERSON, and the geometry says
 				# why: the camera hangs BEHIND the rig, so pitching the rig up
 				# swings the arm DOWN -- straight into the floor a dead body is
-				# lying on. ✅ The owner reported exactly that.
+				# lying on.
 				var third: bool = _player.camera_rig.third_person
 				_player.camera_rig.set_pitch(deg_to_rad(
 					camera_config.death_pitch_third_person_deg if third
@@ -252,8 +245,8 @@ func _physics_process(delta: float) -> void:
 				_player.screen_effects.set_tint(Color.BLACK, 1.0)
 
 ## A respawn that has no death cutscene in front of it (the R-hold checkpoint
-## clear) but still deserves the curtain -- ✅ the owner: an uncovered teleport
-## is 突兀. Fades to black over COVER_FADE, runs `on_black` under full black,
+## clear) but still deserves the curtain -- an uncovered teleport is jarring.
+## Fades to black over COVER_FADE, runs `on_black` under full black,
 ## then holds and lifts exactly like the death path's own cover.
 func cover_respawn(player: Player, on_black: Callable) -> void:
 	_player = player
@@ -436,8 +429,6 @@ func _to_offset(above_ground: float) -> float:
 
 
 ## Shuts the eyes for the duration, and opens them again on respawn.
-##
-## ✅ THE OWNER: "角色死亡时闭眼."
 ##
 ## SEARCHED HERE RATHER THAN CACHED, deliberately. The body is attached at
 ## runtime, so anything that looks for a part of it during _ready() finds a

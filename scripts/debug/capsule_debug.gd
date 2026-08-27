@@ -5,10 +5,10 @@ extends Node3D
 # the three things that cannot be seen from inside the head: where the feet are,
 # where the first-person eye would be, and what it would be looking at.
 #
-# ✅ The owner, after the vault was made to fold its capsule: "has it actually
-# folded? during a vault the character still looks a whole person above the top
-# of the obstacle." Both halves of that are true at once, and nothing on screen
-# could tell them apart.
+# The capsule folding and the body's ride height over an obstacle are two
+# separate, unrelated facts, and both can be true at once even though a folded
+# capsule mid-vault still looks like a whole person clearing the top -- nothing
+# on screen could tell the two apart before this existed.
 #
 # What set_capsule_height() does is move the collision shape DOWN by half the
 # difference and shorten it, so the FEET stay exactly where they were and only
@@ -87,10 +87,10 @@ func _ready() -> void:
 
 ## Turns the outline on or off from code.
 ##
-## The animation lab opens with it ON: the owner, on what that scene should show,
-## "默认显示胶囊体和曲线，我需要仅看到对我有帮助的信息." In a level it stays off
-## until F10, because there it is one of several things worth a key; in the lab it
-## is half of what the scene is FOR.
+## The animation lab opens with it ON: that scene should show only what helps
+## reading a take, and the capsule and curve are exactly that. In a level it
+## stays off until F10, because there it is one of several things worth a key;
+## in the lab it is half of what the scene is FOR.
 func show_overlay(on: bool) -> void:
 	_shown = on
 	if _instance != null:
@@ -122,12 +122,13 @@ func _process(_delta: float) -> void:
 	_last_height = capsule.height
 	_mesh.clear_surfaces()
 	var at: Transform3D = shape_node.global_transform
-	# ⚠️ NOT the folded capsule's own bottom. Under ANCHOR_HEAD that bottom is
-	# the WAIST -- the legs are tucked, so the collision stops there -- and
-	# drawing the "sole" disc on it put the feet marker half a body too high.
-	# A debug view that lies costs more than no debug view. The soles are where
-	# the model's feet are, which is the STANDING half-height below the body's
-	# own origin, whatever the capsule is doing.
+	# DO NOT read the sole position off the folded capsule's own bottom
+	# transform, even though the two coincide today: set_capsule_height()
+	# (player.gd) keeps the capsule's bottom pinned to the standing sole by
+	# construction, but an earlier build anchored the capsule at the top
+	# instead, which put this marker a half-body too high with no error to
+	# catch it. Deriving the sole independently from standing_height() keeps
+	# this debug view honest even if that guarantee ever changes again.
 	var sole: float = player.global_position.y - player.standing_height() * 0.5
 	_draw_capsule(at, capsule.radius, capsule.height)
 	# ONLY IN THIRD PERSON. From inside the head the eye marker is in your face

@@ -10,8 +10,8 @@ extends MoveConfig
 @export var crouch_capsule_height: float = 0.9
 
 func _init() -> void:
-	# Source: 02 §2.3 / 03 §3.4 `CrouchedPct = 0.4`. ✅ Chosen over
-	# 05 §5.8's `TdMove_Crouch.SpeedModifier = 0.2`: CrouchedPct is
-	# independently confirmed and explained in two separate sections, while
-	# 0.2 appears once in a bare parameter dump with no narrative.
+	# [ME:CONFIRMED 02 §2.3, 03 §3.4] CrouchedPct = 0.4, chosen over 05 §5.8's
+	# TdMove_Crouch.SpeedModifier = 0.2: CrouchedPct is independently
+	# confirmed and explained in two separate sections, while 0.2 appears
+	# once in a bare parameter dump with no narrative.
 	speed_modifier = 0.4

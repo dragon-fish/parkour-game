@@ -2,9 +2,8 @@ extends ParkourTest
 
 # A scripted move owns the body's height, so the CLIP must not add its own.
 #
-# ⚠️ THIS WAS THE CAUSE of "the whole model sits above the capsule, barely
-# overlapping it" -- through three rounds of moving the wrong thing. Non-root-
-# motion guarantees the ROOT NODE does not translate. It says nothing about the
+# DO NOT try to compensate by moving the ROOT NODE. Non-root-motion only
+# guarantees the ROOT NODE does not translate; it says nothing about the
 # HIPS, which are a bone like any other, and an in-place vault clip lifts them
 # exactly as much as the real one moved. Measured across the library:
 #
@@ -92,9 +91,8 @@ func test_a_scripted_move_takes_the_lift_back_off_the_root() -> void:
 	var resting: float = player.body.position.y
 	_pose_hips(player, HIPS_REST + 0.825)
 	player.set_clip_lift_cancelled(true)
-	# Long enough for the ease to arrive. ⚠️ EASED, not switched: the owner
-	# reported "at the instant the vault ends the camera jumps up a notch",
-	# which is what a binary cancellation does when the clip still has its hips
+	# Long enough for the ease to arrive. EASED, not switched: a binary
+	# cancellation snaps the body in one frame when the clip still has its hips
 	# raised at hand-off.
 	await step(60)
 	assert_almost_eq(player.body.position.y, resting - 0.825, 0.01,
@@ -120,9 +118,9 @@ func test_a_body_with_no_hips_reports_nothing() -> void:
 	assert_almost_eq(player.clip_lift(), 0.0, 0.0001, "a body with no hips reported a lift")
 
 func test_the_cancellation_eases_out_rather_than_snapping() -> void:
-	# ✅ THE OWNER: "at the instant the vault ends the camera jumps up a notch."
-	# A clip cut short still has its hips up when the move hands off, so
-	# switching the cancellation off took 0.825 m out of the body in one frame.
+	# A clip cut short still has its hips up when the move hands off, so a
+	# binary switch of the cancellation snaps 0.825 m out of the body in one
+	# frame -- the ease must ramp this out over several ticks instead.
 	var player: Player = await _player_with_skeleton()
 	var resting: float = player.body.position.y
 	_pose_hips(player, HIPS_REST + 0.825)

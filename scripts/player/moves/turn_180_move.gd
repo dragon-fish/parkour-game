@@ -3,11 +3,10 @@ extends Move
 
 # Q: spin to face the other way. The original's TdMove_180Turn.
 #
-# Started life as a wall-climb exit and nothing else. THE OWNER CORRECTED THE
-# SCOPE: "Q works almost everywhere -- anywhere the legs are not tied up, like
-# a 180 while walking, or a 90 while wall running." So the entry lives in
-# MoveManager now, gated by MoveConfig.allows_turn, and this move has to make
-# sense from the ground as well as off a wall.
+# Q WORKS ALMOST EVERYWHERE -- anywhere the legs are not tied up, like a 180
+# while walking, or a 90 while wall running. The entry lives in MoveManager,
+# gated by MoveConfig.allows_turn, so this move has to make sense from the
+# ground as well as off a wall.
 #
 # ONE RULE COVERS BOTH WALL CASES, and the two different angles the owner named
 # fall out of it rather than being written down: on a wall, turn to face along
@@ -37,11 +36,12 @@ var _normal: Vector3 = Vector3.ZERO
 var _placed: float = 0.0
 ## Space pressed while the body is still coming round. HELD, not acted on.
 ##
-## ✅ The original PRE-BUFFERS this: "press Q, and even before the view has come
-## round, pressing space makes Faith jump out the instant it does." Acted on
-## immediately, as it was, a kick taken mid-turn leaves along a facing halfway
-## between where you were and where you were going -- and since the whole point
-## of the turn is to choose a direction, that is the one outcome nobody wants.
+## [ME:CONFIRMED] The original PRE-BUFFERS this: pressing space before the
+## view has finished turning still fires the jump the instant the turn
+## completes. Acted on immediately instead, a kick taken mid-turn would leave
+## along a facing halfway between where you were and where you were going --
+## and since the whole point of the turn is to choose a direction, that is
+## the one outcome nobody wants.
 var _kick_armed: bool = false
 ## The horizontal velocity the turn began with. A ground turn bleeds this to
 ## nothing across slowdown_time rather than dropping it on the spot.
@@ -88,16 +88,14 @@ func enter(_previous: StringName) -> void:
 	_placed = _turn_from
 	# ALWAYS CLOCKWISE, AND ALWAYS EXACTLY HALF A TURN.
 	#
-	# ✅ MEASURED by the owner in the original: "Faith only ever turns right."
+	# [ME:CONFIRMED] Faith only ever turns right in the original.
 	# Godot's yaw grows counter-clockwise seen from above, so clockwise is the
 	# negative direction.
 	#
-	# This replaced a short-way-round rule that turned toward whichever side the
-	# approach was already leaning. That was defensible -- less rotation, and it
-	# carried the body's existing lean through -- but it made the direction a
-	# function of the entry angle, which the owner noticed in play and then went
-	# and checked. It also left the direction a coin flip on float noise for the
-	# head-on approach the move is mostly used for.
+	# DO NOT turn toward whichever side the entry lean favours instead of
+	# always clockwise -- that makes the direction a function of the entry
+	# angle, and leaves it a coin flip on float noise for the head-on
+	# approach the move is mostly used for.
 	#
 	# Half a turn EXACTLY, rather than turning to square up with the wall: come
 	# in crooked and you leave crooked, which is what the original does and what
@@ -106,16 +104,16 @@ func enter(_previous: StringName) -> void:
 	_turn_to = _turn_from - PI
 	if on_a_wall():
 		_normal = _normal.normalized()
-		# Frozen outright rather than decayed. "Not subject to gravity" is the
-		# owner's own description and DisableMovementTime is the field; a body
-		# still carrying its climb would leave the window before it ended.
+		# Frozen outright rather than decayed. DisableMovementTime makes the
+		# body not subject to gravity; a body still carrying its climb would
+		# leave the window before it ended.
 		player.velocity = Vector3.ZERO
 		player.set_grounded(false)
 	else:
-		# ✅ MEASURED: a ground turn does not keep the whole speed budget. It
-		# keeps enough for about 19 km/h, which is what makes the owner's other
-		# observation true -- that you can get back to 18-19 quickly and then
-		# accelerate at ordinary running pace beyond it.
+		# [ME:CONFIRMED] A ground turn does not keep the whole speed budget. It
+		# keeps enough for about 19 km/h -- consistent with being able to get
+		# back to 18-19 quickly and then accelerate at ordinary running pace
+		# beyond it.
 		var ceiling: float = SpeedEnergy.energy_for_speed(config.pawn, cfg.speed_keep_ceiling)
 		player.speed_energy.energy = minf(player.speed_energy.energy, ceiling)
 		player.set_grounded(player.is_on_floor())
@@ -125,8 +123,8 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	_advance_turn(delta)
 
 	if on_a_wall():
-		# ✅ TdMove_WallKick, folded in -- see Turn180Config's own note on why
-		# it is not a state of its own.
+		# [ME:CONFIRMED 04] TdMove_WallKick, folded in here rather than kept as
+		# its own state -- see Turn180Config's own note on why.
 		#
 		# ARMED HERE, FIRED BELOW. The press is remembered rather than acted on,
 		# so a player who presses space while the body is still coming round
@@ -144,19 +142,19 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		if cfg.no_gravity_for_the_whole_turn and not _turn_finished():
 			# Held in place: no gravity, no input, no drift.
 			#
-			# ✅ For the whole ANIMATION -- "during the wall climb turn there is
-			# almost no falling" -- rather than for DisableMovementTime. That
-			# field names how long input is disabled and says nothing about
-			# gravity; reading it as the whole hang was this project's own
-			# conflation. See Turn180Config.
+			# [ME:CONFIRMED] The hang lasts for the whole ANIMATION -- there is
+			# almost no falling during the wall-climb turn -- not for
+			# DisableMovementTime. DO NOT read DisableMovementTime as covering
+			# the whole hang: that field names how long input is disabled and
+			# says nothing about gravity. See Turn180Config.
 			return KEEP
 		# The freeze is over but the OPPORTUNITY is not. These were one number
-		# to begin with, and the owner reported the result exactly: "the window
-		# is too short, Q has to be followed by space immediately or you slide
-		# off." Gravity comes back here; the kick stays available until
-		# kick_window. See Turn180Config for why splitting them is the honest
-		# fix rather than simply enlarging DisableMovementTime, which is a
-		# confirmed value.
+		# to begin with. DO NOT collapse them back into one by enlarging
+		# DisableMovementTime (a confirmed original value) -- the kick window
+		# must stay open long enough to reliably chain a kick after Q, which
+		# the freeze alone is too short for. Gravity comes back here; the kick
+		# stays available until kick_window. See Turn180Config for why
+		# splitting them is the fix.
 		player.velocity.y -= config.pawn.gravity * cfg.falling_gravity_scale * delta
 		player.move_and_slide()
 		player.set_grounded(player.is_on_floor())
@@ -168,11 +166,11 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 
 	# On the ground, or in the air off no wall at all.
 	#
-	# ✅ THE BODY DOES NOT STOP DEAD. Speed bleeds to nothing across
+	# [ME:INFERRED] THE BODY DOES NOT STOP DEAD. Speed bleeds to nothing across
 	# slowdown_time, so the old direction's momentum is still carrying you while
-	# you come round -- the owner's own description of how the original feels.
-	# The first version here kept the momentum outright, which was half right:
-	# what makes Q pressable is that the stop is GRADUAL, not that there is none.
+	# you come round, matching how the original feels. DO NOT keep the
+	# momentum outright instead of bleeding it -- what makes Q pressable is
+	# that the stop is GRADUAL, not that there is none.
 	var remaining: float = 1.0 - clampf(_elapsed / maxf(cfg.slowdown_time, 0.001), 0.0, 1.0)
 	player.velocity.x = _entry_velocity.x * remaining
 	player.velocity.z = _entry_velocity.z * remaining
@@ -190,8 +188,8 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 ## turn lands on exactly the target and the camera is handed a series of small
 ## even deltas instead of one lump. See docs/camera-authority.md: the body is
 ## being moved BY A SCRIPT, so the eye trails it and eases in.
-## How long this turn takes. ✅ Two measured figures, not one: a ground turn is
-## 0.3 s and a wall turn 0.5 s.
+## How long this turn takes. [ME:CONFIRMED] Two measured figures, not one: a
+## ground turn is 0.3 s and a wall turn 0.5 s.
 func _duration() -> float:
 	return cfg.wall_turn_time if on_a_wall() else cfg.turn_time
 
@@ -207,11 +205,12 @@ func _advance_turn(_delta: float) -> void:
 	_placed = wanted
 	if player.camera_rig != null:
 		# THE FAN TRAVELS WITH THE TURN, and the body is left to apply_look to
-		# place. Writing player.rotation.y here as well was the bug behind the
-		# owner's "the camera twitches left and right" during a wall-climb turn:
-		# this move's look clamp is an absolute-yaw one, so apply_look pins the
-		# body to reference + offset EVERY tick, using a reference captured when
-		# the turn began. Two writers, once a tick, pulling opposite ways.
+		# place. DO NOT also write player.rotation.y here -- this move's look
+		# clamp is an absolute-yaw one, so apply_look pins the body to
+		# reference + offset EVERY tick, using a reference captured when the
+		# turn began. Two writers, once a tick, pulling opposite ways, is what
+		# makes the camera visibly twitch left and right during a wall-climb
+		# turn.
 		#
 		# Moving the reference instead makes them agree: apply_look places the
 		# body at the scripted facing plus whatever the player's own mouse has

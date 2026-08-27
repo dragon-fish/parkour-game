@@ -52,12 +52,12 @@ func _player_with_body(mount_scale: float = 1.0) -> Player:
 # --- the mount is captured, not recomputed ------------------------------------
 
 func test_crouching_does_not_move_the_body() -> void:
-	# THE ONE THAT WAS NEARLY BROKEN. body_mount_transform() derives its height
-	# from current_capsule_height(), which shrinks for a crouch or a slide, and
-	# the first draft of the per-clip offset recomputed it every tick. The body
-	# must NOT move when the capsule does: the crouch is shown by the animation,
-	# not by lowering the model. _attach_body() captures the transform once, and
-	# this is what says so.
+	# body_mount_transform() derives its height from current_capsule_height(),
+	# which shrinks for a crouch or a slide. DO NOT re-derive the mount
+	# transform from the live capsule height every tick -- the body must NOT
+	# move when the capsule does: the crouch is shown by the animation, not by
+	# lowering the model. _attach_body() captures the transform once, and this
+	# is what says so.
 	var player: Player = await _player_with_body()
 	var before: Vector3 = player.body.position
 	player.set_capsule_height(player.config.crouch.crouch_capsule_height)
@@ -118,11 +118,10 @@ func test_a_malformed_entry_is_ignored_rather_than_fatal() -> void:
 # --- the eye does not follow the correction -------------------------------------
 
 func test_lowering_the_body_does_not_lower_the_camera() -> void:
-	# ✅ THE OWNER'S REPORT: "I lowered one to fix third person and the
-	# first-person camera went straight into the ground." In first person the eye
-	# is dragged along by the head bone, so a correction meant to plant the
-	# MODEL's hands moves the VIEW by the same amount -- and a few centimetres of
-	# down is the floor.
+	# In first person the eye is dragged along by the head bone, so a
+	# correction meant to plant the MODEL's hands would move the VIEW by the
+	# same amount if the two were not separated -- a few centimetres of down is
+	# the floor.
 	#
 	# A clip offset says where the model should sit relative to the world. It is
 	# not a statement about where the player is looking from, and moving the eye
@@ -149,10 +148,11 @@ func test_lowering_the_body_does_not_lower_the_camera() -> void:
 # --- offsets that change over the clip --------------------------------------
 
 func test_a_keyed_curve_is_read_between_its_keys() -> void:
-	# ✅ THE OWNER, on ClimbUp_2m against the mantle's own path: "这个动画角色的脚
-	# 中途是有悬空的，可能得按时间轴把它的 Z 压一下."
+	# ClimbUp_2m's feet float clear of the mantle path partway through the
+	# clip, which is why this needs to be keyed across time rather than held
+	# at one static value.
 	#
-	# ⚠️ A DIFFERENT TOOL FROM THE STATIC OFFSET ABOVE, not a replacement. That
+	# A DIFFERENT TOOL FROM THE STATIC OFFSET ABOVE, not a replacement. That
 	# one says "this clip sits 8 cm too far forward" -- one number for the whole
 	# clip, which is what a mount mismatch is. This one says "at 40% through the
 	# feet are floating", and no single number can fix that, because the error is
@@ -172,12 +172,12 @@ func test_a_keyed_curve_is_read_between_its_keys() -> void:
 		"halfway between 0 and 1 came out as %.3f" % half[0].y)
 
 func test_a_keyed_curve_runs_back_to_zero_past_its_own_keys() -> void:
-	# THIS TEST USED TO REQUIRE THE OPPOSITE. It held that the curve stayed FLAT
-	# outside its keys -- 2.0 all the way back to t = 0 -- on the grounds that an
-	# author should see exactly the shape they typed with nothing extrapolated.
-	# That reasoning was about the SHAPE and ignored the JOIN: flat-to-the-start
-	# means the body is already 2 m displaced on the tick the move begins, and
-	# there is nothing before the move to have displaced it, so it teleports.
+	# DO NOT make the curve hold FLAT outside its keys (e.g. 2.0 all the way
+	# back to t = 0) on the reasoning that an author should see exactly the
+	# shape they typed with nothing extrapolated. That reasoning is about the
+	# SHAPE and ignores the JOIN: flat-to-the-start means the body is already
+	# 2 m displaced on the tick the move begins, and there is nothing before
+	# the move to have displaced it, so it teleports.
 	#
 	# What the author typed is still exactly what they get between their own
 	# keys. Outside them the curve goes home. See the zero-ends rule below.
@@ -210,9 +210,10 @@ func test_a_clip_with_no_curve_is_unaffected() -> void:
 		"a clip with no curve of its own picked one up")
 
 func test_the_nearest_obstacle_row_wins() -> void:
-	# ✅ THE OWNER: "我保存的数据会对应每一种组合，实际游戏场景中总是寻找最接近的那一组
-	# 偏移量去应用." The grid samples a continuous space, so nothing in a level ever
-	# lands on a grid point and every lookup is a nearest one.
+	# Saved rows correspond to specific obstacle combinations, and a lookup
+	# always resolves to the nearest one rather than requiring an exact match.
+	# The grid samples a continuous space, so nothing in a level ever lands on
+	# a grid point and every lookup is a nearest one.
 	var player: Player = await _player_with_body()
 	player.body_clip_curves = {&"Idle": [
 		{"h": 0.5, "w": 0.4, "keys": [{"t": 0.5, "pos": Vector3(0, 5, 0), "rot": Vector3.ZERO}]},
@@ -226,7 +227,7 @@ func test_the_nearest_obstacle_row_wins() -> void:
 		"a 0.7 m obstacle did not borrow the 0.5 m row")
 
 func test_height_outweighs_width() -> void:
-	# ⚠️ A metre of HEIGHT is a different move -- step-up against vault against
+	# A metre of HEIGHT is a different move -- step-up against vault against
 	# pull-up -- while a metre of WIDTH is the same move with the body further
 	# from the far edge. Weighting them equally lets a wide low sill borrow a
 	# tall thin one's curve, which is a different animation entirely.
@@ -240,16 +241,15 @@ func test_height_outweighs_width() -> void:
 	assert_almost_eq(float(player.clip_curve_at(&"Idle", 0.5)[0].y), 2.0, 0.001,
 		"width outvoted height, so a low wide sill lent its curve to a tall one")
 
-# A curve is zero at both ends of the move, and no key can say otherwise.
+# A curve is zero at both ends of the move, and no key can say otherwise --
+# this is FORCED, not merely the default shape an author happens to type.
 #
-# THE OWNER made this a rule: "所有脚本驱动的动画首位帧默认都应该是0偏移，否则前后衔接上
-# 肯定会出现闪现，这个得强制性."
-#
-# The reason it must be forced: outside a scripted move nothing reads the curve,
-# so the offset is zero. A first key of +12 cm therefore does not START the move
-# 12 cm off, it TELEPORTS the body 12 cm on the tick the move begins. The old
-# sampler held the first key's value all the way back to t = 0, which made the
-# pop the DEFAULT for any curve not hand-started at zero.
+# Outside a scripted move nothing reads the curve, so the offset is zero. A
+# first key of +12 cm therefore does not START the move 12 cm off, it
+# TELEPORTS the body 12 cm on the tick the move begins. DO NOT let the sampler
+# hold a curve's first key value all the way back to t = 0 instead of forcing
+# zero -- that makes a teleporting pop the DEFAULT for any curve not
+# hand-started at zero.
 
 func test_a_curve_that_starts_off_zero_still_begins_at_zero() -> void:
 	var player: Player = await _player_with_body()
@@ -280,11 +280,10 @@ func test_a_key_sitting_on_an_end_is_ignored_rather_than_honoured() -> void:
 	assert_lt(absf(float(early[0].y)), 0.02,
 		"a key inside the edge band still moved the body at the join")
 
-# The same obstacle at two entry heights is two rows.
-#
-# THE OWNER: "相同的高度和宽度，不同的起跳时间是不是也有单独的存档，因为起跳时间可能会导致
-# 一个完美 StepUp 变成补救型" -- and the mechanism, in their words: "进入脚本控制的瞬间，
-# 玩家的起始高度不一样啊，怎么可能轨迹一样."
+# The same obstacle at two entry heights is two rows: a different jump
+# timing means a different height at the instant scripted control begins, so
+# the trajectory cannot be identical when the starting point is not -- and it
+# can be the difference between a clean StepUp and a rescue-style landing.
 #
 # Measured on one 1.0 x 0.4 obstacle, four jump timings that all vault: same
 # clip, same landing, same 27 frames, and a start 0.69 m apart -- a fifth of the
@@ -320,13 +319,12 @@ func test_a_row_with_no_entry_still_matches_every_entry() -> void:
 			"an entry of %.1f found no row at all" % entry)
 
 func test_an_exact_obstacle_is_never_outranked_by_a_better_entry() -> void:
-	# THE OWNER: "对应宽高只要有一帧微调，就不要再使用其他接近参数的关键帧了，否则可能会互相
-	# 影响导致某些高度在上下都懂[抖]."
-	#
-	# A real defect, one commit old: with the entry folded into the same weighted
-	# sum, an exact obstacle match whose entry was 0.68 out scored 0.227 while a
-	# row a quarter-metre taller with the entry spot on scored 0.063. Keying one
-	# height changed another.
+	# An exact height/width match must never be outranked by a merely-close
+	# entry, or keying one combination's entry can bleed into a neighbouring
+	# obstacle size. Measured: with the entry folded into the same weighted
+	# sum, an exact obstacle match whose entry was 0.68 off scored 0.227 while
+	# a row a quarter-metre taller with the entry spot-on scored 0.063 --
+	# keying one height changed the ranking of another.
 	var player: Player = await _player_with_body()
 	player.body_clip_curves = {&"Idle": [
 		{"h": 1.0, "w": 0.4, "e": 0.10,
@@ -370,11 +368,10 @@ func test_an_emptied_row_does_not_shadow_its_neighbours() -> void:
 		"an empty row was picked over a keyed neighbour")
 
 func test_a_scripted_move_carries_the_eye_with_the_offset() -> void:
-	# ✅ THE OWNER (StepUp): "动画做了偏移，第一人称镜头应该自动应用相同的偏移" --
-	# during a SCRIPTED move the path owns the eye's journey and the clip
-	# offset is part of the presentation, so the eye follows it. Outside one
-	# the subtraction above stands: WallRun's +-0.7 lateral corrections must
-	# never swing the view (see test_lowering_the_body_does_not_lower_the_camera).
+	# During a SCRIPTED move the path owns the eye's journey, so a clip offset
+	# is part of the presentation and the eye must follow it. Outside one the
+	# opposite holds: WallRun's +-0.7 lateral corrections must never swing the
+	# view (see test_lowering_the_body_does_not_lower_the_camera).
 	var player: Player = await _player_with_body()
 	var head := Node3D.new()
 	head.name = "FakeHead"
@@ -395,10 +392,10 @@ func test_a_scripted_move_carries_the_eye_with_the_offset() -> void:
 	player.move_manager.start(&"BareScripted")
 	assert_true(player.scripted_progress() >= 0.0, "test setup: no scripted path running")
 
-	# The follow FADES IN rather than snapping -- ✅ the owner, on the binary
-	# version: "StepUp应用往后0.2m的偏移没有过渡，进入退出时会闪一下." The offset
-	# is re-pinned every tick because _drive_clip_offset() otherwise eases it
-	# back toward zero for a clip this fixture never plays.
+	# The follow FADES IN rather than snapping: a binary switch of a StepUp-
+	# style 0.2 m offset with no transition visibly pops on entry and exit.
+	# The offset is re-pinned every tick because _drive_clip_offset() otherwise
+	# eases it back toward zero for a clip this fixture never plays.
 	player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)
 	await step(1)
 	player.set_clip_offset_immediately(Vector3(0.0, 0.0, -0.20), Vector3.ZERO)

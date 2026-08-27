@@ -1,8 +1,8 @@
 extends ParkourTest
 
-# The variant table, tested as a lookup. 05 §5.7 is the source; the five
-# discriminating axes are height, whether there is a far side, vertical speed
-# direction, horizontal momentum, and the time-to-obstacle window.
+# The variant table, tested as a lookup. [ME:CONFIRMED 05 §5.7] The five
+# discriminating axes are height, whether there is a far side, vertical
+# speed direction, horizontal momentum, and the time-to-obstacle window.
 
 func _cfg() -> SpeedVaultConfig:
 	return MovementConfig.new().speed_vault
@@ -24,17 +24,18 @@ func test_running_fast_at_a_sweet_spot_obstacle_earns_speed() -> void:
 	assert_gt(variant["speed_addition"], 0.0, "the sweet spot did not pay a bonus")
 
 func test_walking_at_the_same_obstacle_picks_the_slow_climb() -> void:
-	# Same height, same geometry -- only the momentum differs, and the
-	# original resolves that into a different animation with no bonus.
+	# Same height, same geometry -- only the momentum differs.
+	# [ME:CONFIRMED] The original resolves that into a different animation
+	# with no bonus.
 	var variant := _cfg().pick_variant(1.0, true, 1.0, 1.5)
 	assert_true(variant.has("name"), "no variant matched a slow approach")
 	assert_true(variant["name"] == "step_up_right_leg_88", "a slow approach did not pick the climb")
 	assert_almost_eq(variant["speed_addition"], 0.0, 0.0001, "the slow climb paid a bonus")
 
 func test_a_high_obstacle_requires_already_being_on_the_way_up() -> void:
-	# MinSpeedZ = 50: the high variants only trigger while still RISING, which
-	# is what makes "you have to jump at tall things" a rule the player can
-	# internalise instead of an autograb.
+	# [ME:CONFIRMED] MinSpeedZ = 50: the high variants only trigger while
+	# still RISING, which is what makes "you have to jump at tall things" a
+	# rule the player can internalise instead of an autograb.
 	var cfg := _cfg()
 	assert_true(not cfg.pick_variant(1.7, false, -1.0, 6.0).has("name"), \
 		"a high obstacle matched while descending")
@@ -47,8 +48,8 @@ func test_a_high_obstacle_clamps_speed_down() -> void:
 	assert_gt(variant["duration"], 1.0, "the high variant is not markedly slower")
 
 func test_nothing_matches_above_the_tables_own_ceiling() -> void:
-	# Past 1.92 m the original leaves VaultTypes entirely and goes down the
-	# wall-climb / grab / pull-up chain instead.
+	# [ME:CONFIRMED] Past 1.92 m the original leaves VaultTypes entirely and
+	# goes down the wall-climb / grab / pull-up chain instead.
 	assert_true(not _cfg().pick_variant(2.5, false, 2.0, 7.0).has("name"), \
 		"an out-of-range obstacle matched a vault variant")
 

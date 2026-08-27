@@ -1,19 +1,21 @@
 extends ParkourTest
 
-# Leaving a ledge by shoving off it.
+# Leaving a ledge by shoving off it. Grab has no turn-around jump of its own;
+# turning far enough away from the wall while hanging lets you jump instead,
+# with force similar to a wall kick.
 #
-# ✅ THE OWNER: "我们没有做 Grab 的回头跳，Grab 期间扭头超过 90 度就可以跳了,
-# 力度跟踢墙跳比较类似." The original splits one key two ways on the same angle --
-# TdMove_GrabJump.GrabAllowedJumpAngle = 45 against
-# TdMove_GrabPullUp.GrabAllowedPullUpAngle = 45 -- so looking at the wall climbs
-# it and looking away from it leaves it. The threshold here is the CDO's 45
-# rather than the reported 90, at the owner's own direction: "有实测数据就按数据
-# 来，我只能用手感跟你描述."
+# [ME:CONFIRMED 05 §5.8] The original splits one key two ways on the same
+# angle -- TdMove_GrabJump.GrabAllowedJumpAngle = 45 against
+# TdMove_GrabPullUp.GrabAllowedPullUpAngle = 45 -- so looking at the wall
+# climbs it and looking away from it leaves it. The threshold used here is
+# this confirmed 45, not a felt estimate: measured data overrides feel
+# whenever the two conflict.
 #
-# 📌 And the comparison they drew holds for exactly half of it. Horizontally the
-# shove is 2 to 4 m/s against the wall kick's own 3.0, so "similar" is right.
-# Vertically the kick goes up at 5.8 and this goes up at 1.6. Letting go of a
-# ledge drops you; it is not a boost.
+# The wall-kick comparison holds for exactly half of it. [ME:CONFIRMED 05
+# §5.8] Horizontally the shove is 2 to 4 m/s (GrabJump's own PushAwayMax/Min)
+# against [ME:CONFIRMED 04 §4.3] the wall kick's own 3.0, so "similar" is
+# right. Vertically [ME:CONFIRMED 04 §4.3] the kick goes up at 5.8 and this
+# goes up at only 1.6. Letting go of a ledge drops you; it is not a boost.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -86,9 +88,9 @@ func _config() -> GrabConfig:
 # --- which half of the key you get -------------------------------------------
 
 func test_jumping_while_facing_the_wall_still_climbs() -> void:
-	# The behaviour that already existed, and the thing most at risk: the new
-	# branch takes jump_pressed and is asked FIRST, so getting its condition
-	# wrong silently replaces the pull-up rather than adding to it.
+	# jump_pressed is checked FIRST, ahead of the pull-up branch, so getting
+	# its condition wrong silently replaces the pull-up rather than adding to
+	# it.
 	var player: Player = await _hanging_player(0.0)
 	var grab := _grab(player)
 	var result: StringName = grab.physics_update(1.0 / 60.0, _jump())
@@ -120,20 +122,19 @@ func test_the_angle_is_symmetric() -> void:
 # --- where it sends you -------------------------------------------------------
 
 func test_the_launch_follows_the_view() -> void:
-	# ✅ THE OWNER, on the CDO-faithful first version: "grab 回头跳给的冲量不太对，
-	# 应该是往镜头方向一个大跳."
+	# The launch must go toward the VIEW direction, not along PushAway (the
+	# original CDO field name): a hang jump that cannot carry you anywhere
+	# makes a class of the original's level geometry unbuildable.
 	#
-	# ⚠️ THIS TEST USED TO ASSERT THE OPPOSITE, and it was not wrong to: the
-	# fields are named PushAway, and at the 45 degrees this jump is first
-	# allowed the view still points half INTO the wall, so launching along it
-	# would drive the body through what it is hanging from. Both remain true.
-	# What settles it is the owner's design argument -- a hang jump that cannot
-	# carry you anywhere makes a class of the original's level geometry
-	# unbuildable -- and the wall is handled by projecting the into-the-wall
-	# component out rather than by refusing to look there.
+	# BOTH READINGS ARE DEFENSIBLE ON THEIR OWN. The fields are named
+	# PushAway, and at the 45 degrees this jump is first allowed the view
+	# still points half INTO the wall, so launching straight along it would
+	# drive the body through what it is hanging from. What settles it is the
+	# design argument above; the wall is handled by projecting the
+	# into-the-wall component out, not by refusing to look there.
 	#
-	# Turned a full 90 degrees, so "along the view" and "away from the wall" are
-	# perpendicular and this cannot pass by coincidence.
+	# Turned a full 90 degrees, so "along the view" and "away from the wall"
+	# are perpendicular and this cannot pass by coincidence.
 	var player: Player = await _hanging_player(90.0)
 	_grab(player).physics_update(1.0 / 60.0, _jump())
 	# Facing -X at yaw 90.
@@ -142,16 +143,15 @@ func test_the_launch_follows_the_view() -> void:
 		% [player.velocity.x, player.velocity.y, player.velocity.z])
 
 func test_a_bare_turn_throws_you_at_your_own_ledge() -> void:
-	# THE SPEEDRUN GLITCH, and it is the reason nothing is projected out of the
-	# launch. See GrabMove._launch_direction() for the owner's account: turning
-	# just past the threshold and jumping AT the ledge converts the very slow
-	# GrabPullUp into a VaultOver, and that conversion IS the into-the-wall
-	# component -- the body is thrown at its own lip and the airborne vault
-	# probe catches the top on the way past.
+	# THE SPEEDRUN TECHNIQUE, and it is the reason nothing is projected out of
+	# the launch. See GrabMove._launch_direction(): turning just past the
+	# threshold and jumping AT the ledge converts the very slow GrabPullUp
+	# into a VaultOver, and that conversion IS the into-the-wall component --
+	# the body is thrown at its own lip and the airborne vault probe catches
+	# the top on the way past.
 	#
-	# THIS TEST REPLACES ONE ASSERTING THE OPPOSITE. The previous version
-	# required the launch never to point into the wall, which read as ordinary
-	# prudence and silently deleted a technique the speedrun route is built on.
+	# DO NOT clamp the launch to never point into the wall. That reads as
+	# ordinary prudence but deletes this technique outright.
 	var player: Player = await _hanging_player(_config().jump_angle_deg + 1.0)
 	_grab(player).physics_update(1.0 / 60.0, _jump())
 	# The wall's outward normal is +Z here, so INTO it is negative z.
@@ -160,17 +160,18 @@ func test_a_bare_turn_throws_you_at_your_own_ledge() -> void:
 		% [player.velocity.x, player.velocity.y, player.velocity.z])
 
 func test_it_is_a_jump_rather_than_a_shove() -> void:
-	# ✅ "我们的实现就是软绵绵地落下来." The old numbers gave 2 to 4 m/s and then a
-	# drop; base_jump_z is 6.3 and the wall kick's own magnitude is about 6.6.
+	# The launch must read as a JUMP, not a limp drop. [ME:CONFIRMED 02 §2.4]
+	# base_jump_z is 6.3, matching [ME:DERIVED 04 §4.3] the wall kick's own
+	# combined magnitude of about 6.6 (sqrt(3.0^2 + 5.8^2)).
 	var player: Player = await _hanging_player(180.0)
 	_grab(player).physics_update(1.0 / 60.0, _jump())
 	assert_gt(player.velocity.length(), _config().jump_speed - 0.5,
 		"launched at %.2f m/s, which is not a jump" % player.velocity.length())
 
 func test_looking_up_sends_you_up() -> void:
-	# ✅ "如果抬头也会有往上的力." The pitch has to be in the launch direction,
-	# which is why it is the full 3D look vector rather than its horizontal
-	# shadow.
+	# Looking up must add upward force too. The pitch has to be in the launch
+	# direction, which is why it is the full 3D look vector rather than its
+	# horizontal shadow.
 	#
 	# Which way the pitch sign points is read off the CAMERA rather than assumed,
 	# so this pins the behaviour and not a convention.
@@ -198,19 +199,17 @@ func test_looking_up_sends_you_up() -> void:
 # --- and it lets go properly ---------------------------------------------------
 
 func test_leaving_this_way_asks_for_the_capsule_back_and_waits_for_room() -> void:
-	# exit() runs on every way out, and this is a new one. But what it does is
-	# REQUEST a standing capsule, not restore one -- Player owes the restore and
-	# performs it on the first tick there is room.
+	# exit() must REQUEST a standing capsule, not restore one on the spot --
+	# Player owes the restore and performs it on the first tick there is room.
 	#
-	# ⚠️ AND AT A HANG THERE IS NO ROOM, which is the whole finding of this
-	# pass: the hanging body is 0.05 m through the wall face and 0.09 m above the
-	# lip, so a standing capsule does not fit where the hang leaves it. The
-	# restore is therefore correctly DEFERRED at the instant of the jump, and
-	# lands once the shove has carried the body clear.
+	# AT A HANG THERE IS NO ROOM: the hanging body is 0.05 m through the wall
+	# face and 0.09 m above the lip, so a standing capsule does not fit where
+	# the hang leaves it. The restore is therefore correctly DEFERRED at the
+	# instant of the jump, landing once the shove has carried the body clear.
 	#
-	# An earlier version of this test placed the body by hand somewhere it did
-	# fit, saw an immediate restore, and would have gone on passing over a real
-	# regression here.
+	# DO NOT place the body by hand somewhere a standing capsule already fits
+	# -- that hides an immediate, incorrect restore and passes over this exact
+	# regression.
 	var player: Player = await _hanging_player(180.0)
 	var standing: float = player.current_capsule_height()
 	var folded: float = MovementConfig.new().crouch.crouch_capsule_height
@@ -239,8 +238,10 @@ func test_forward_pulls_up_while_facing_the_wall() -> void:
 	assert_true(grab.is_mantling(), "forward at the wall did not pull up")
 
 func test_forward_does_nothing_once_the_view_is_turned_away() -> void:
-	# ✅ THE OWNER: "grab 期间如果镜头扭动超过 45°，按 W 就不要触发 GrabUp，ME 里也是
-	# 这么处理的，因为玩家一般都是回头同时按 W+空格."
+	# Past the pull-up angle, W must not trigger GrabUp. [ME:INFERRED] The
+	# original gates it the same way, because a player turning to jump away
+	# usually presses W and space together, and W must not steal that as a
+	# climb.
 	var player: Player = await _hanging_player(_config().pull_up_angle_deg + 5.0)
 	var grab := _grab(player)
 	var forward := MoveInput.new()
@@ -252,10 +253,10 @@ func test_forward_does_nothing_once_the_view_is_turned_away() -> void:
 	assert_ne(result, Move.FALLING, "forward alone left the ledge")
 
 func test_forward_and_jump_together_jumps_rather_than_climbs() -> void:
-	# ⚠️ THE GESTURE THAT MADE THE GATE NECESSARY. Turned away and pressing both
-	# -- which is what a player does -- used to hit the pull-up branch on the
-	# same tick and win, so the hang jump was unreachable in practice however
-	# correct it was in isolation.
+	# THE GESTURE THAT MAKES THE GATE NECESSARY: a player turning to jump away
+	# naturally presses W and jump together. Jump must win that race, or the
+	# hang jump stays unreachable in practice however correct it is in
+	# isolation.
 	var player: Player = await _hanging_player(180.0)
 	var grab := _grab(player)
 	var both := MoveInput.new()
@@ -267,11 +268,12 @@ func test_forward_and_jump_together_jumps_rather_than_climbs() -> void:
 
 # --- one press, one action ---------------------------------------------------
 #
-# ✅ THE OWNER: "在ME里按一次按键只对应一次动作". Player._tick_timers() arms the
-# roll buffer on EVERY crouch_pressed, unconditionally -- including the very
-# press that drops the body off this ledge. Left alone, that one press pays
-# for both the drop and (for up to roll_trigger_time afterwards) a skill roll
-# at whatever the fall turns out to be.
+# [ME:INFERRED] In the original, one keypress corresponds to exactly one
+# action. Player._tick_timers() arms the roll buffer on EVERY crouch_pressed,
+# unconditionally -- including the very press that drops the body off this
+# ledge. Left alone, that one press pays for both the drop and (for up to
+# roll_trigger_time afterwards) a skill roll at whatever the fall turns out
+# to be.
 
 func test_the_drop_press_does_not_also_buy_a_roll_at_the_landing() -> void:
 	var player: Player = await _hanging_player(0.0)

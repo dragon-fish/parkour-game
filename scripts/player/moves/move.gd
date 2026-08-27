@@ -12,8 +12,8 @@ extends Node
 # resolve. Keeping the names on this layer makes the dependency
 # one-directional: Player -> moves -> Move.
 #
-# Names follow the original's own move classes (minus the Td prefix):
-# TdMove_Walking, TdMove_Falling, TdMove_Slide, TdMove_Crouch,
+# [ME:CONFIRMED 06] Names follow the original's own move classes (minus the Td
+# prefix): TdMove_Walking, TdMove_Falling, TdMove_Slide, TdMove_Crouch,
 # TdMove_SpeedVault, TdMove_Grab, TdMove_WallRun.
 
 ## Returned from physics_update to stay in the current move.
@@ -50,13 +50,10 @@ var cfg: MoveConfig
 
 ## The MoveConfig in force RIGHT NOW. Overridable so a move whose own config
 ## legitimately varies mid-move (without a state transition) has somewhere to
-## express that -- FallingMove used to override this to pick between
-## config.jump and config.falling by velocity.y sign, before Jump became its
-## own real state (Task 1: airborne-state-chain) made that split unnecessary.
-## No move overrides this today; it is a retained hook, not dead code -- see
-## MoveManager._push_look_constraint()'s own note on why it is still read
-## every tick rather than only on transition. Everything else returns its
-## own cfg.
+## express that. No move overrides this today; it is a retained hook, not dead
+## code -- see MoveManager._push_look_constraint()'s own note on why it is
+## still read every tick rather than only on transition. Everything else
+## returns its own cfg.
 func current_config() -> MoveConfig:
 	return cfg
 
@@ -125,8 +122,8 @@ func touching(face_point: Vector3) -> bool:
 	# PREDICTIVE, by one tick's travel. move_and_slide() stops the capsule at
 	# exactly one radius from the face, so a test that only fires AT that radius
 	# is a tick too late: at 7 m/s the body covers 0.117 m in a tick and can go
-	# from clear to already-stopped between two checks. The owner felt that
-	# immediately -- "the foot catches, and then the body gets lifted".
+	# from clear to already-stopped between two checks, so the foot visibly
+	# catches before the body is lifted -- two motions instead of one.
 	#
 	# Adding the distance this tick will cover means the scripted motion always
 	# takes over before the collision resolves, which is what makes the vault
@@ -140,8 +137,9 @@ func touching(face_point: Vector3) -> bool:
 ##
 ## What the APPROACH phase runs. The commit has already been made and the
 ## animation is winding up, but nothing has been touched yet, so nothing may
-## move the body except the body's own momentum. Anything else reads as being
-## dragged through open air toward the obstacle -- the owner's "floating".
+## move the body except the body's own momentum. Anything else reads as the
+## body being dragged through open air toward the obstacle instead of falling
+## under it.
 func carry_ballistically(delta: float) -> void:
 	# effective_gravity(): free flight honours the player's gravity window.
 	player.velocity.y -= player.effective_gravity() * delta

@@ -12,7 +12,7 @@ extends CanvasLayer
 # same reason that one does: it describes the player's own view, and must
 # survive a level change.
 
-## ⚠️ PROJECT-DEFINED. Small enough to read as a point rather than a target.
+## PROJECT-DEFINED. Small enough to read as a point rather than a target.
 const RADIUS := 2.0
 
 ## Assigned by tools/player_builder.gd. Optional so a hand-built player in a

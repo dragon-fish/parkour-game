@@ -110,12 +110,14 @@ var _scripted_yaw_lag: float = 0.0
 ## its own resting place AND rides the head exactly, which is what stops the
 ## body reaching the camera at all.
 ## How far ahead of the capsule's axis the first-person eye sits, in metres.
-## Per-model, pushed by Player from the body profile. ✅ THE OWNER's call: the
-## model used to be pushed BACK off the axis to keep the head mesh out of the
-## camera ("模型略微往后偏移以防相机穿模"), which left the body standing well
-## short of every wall it faced. Swapping the frame -- model on the axis, eye
-## forward by the same amount -- keeps the eye-to-head relation identical
-## while the body meets the world where it looks like it does.
+## Per-model, pushed by Player from the body profile.
+##
+## DO NOT PUSH THE MODEL BACK OFF THE AXIS to keep the head mesh out of the
+## camera instead: that leaves the body standing well short of every wall it
+## faces, since the capsule -- not the model -- is what the world collides
+## with. Keeping the model ON the axis and pushing the EYE forward by the same
+## amount keeps the eye-to-head relation identical while the body meets the
+## world where it looks like it does.
 var eye_forward: float = 0.0
 ## A dynamic addition to eye_forward, driven per tick by moves whose visual
 ## lean would otherwise sweep the body through the eye (the swing). Hard-set
@@ -152,9 +154,9 @@ var _shoulder: int = Shoulder.RIGHT
 ## for. INF until the first frame seeds it, so the camera does not slide in
 ## from the centre when third person is first switched on.
 ##
-## ✅ The owner: "give the over-shoulder camera a bit of easing." It matters
-## most for the wall run, which swaps sides on its own -- a shot that jumps
-## across the body reads as a cut -- but the manual cycle wanted it too.
+## EASED, not snapped. It matters most for the wall run, which swaps sides on
+## its own -- a shot that jumps across the body reads as a cut -- but the
+## manual shoulder cycle benefits from it too.
 var _shoulder_across: float = INF
 
 ## Wheel-adjusted distance, in metres. Negative until the first update seeds it
@@ -210,13 +212,12 @@ var _eye_lift: float = 0.0
 var _eye_lift_current: float = 0.0
 ## The last lift actually ASKED FOR, kept after `_eye_lift` returns to zero.
 ##
-## ⚠️ THE RELEASE RATE CANNOT BE COMPUTED FROM `_eye_lift`, and doing so was a
-## bug that survived a long time because it looks perfectly reasonable. Player
-## sets the lift to 0 the same frame the slide stops being the current move, so
-## by the time the release branch below runs, `_eye_lift` is BY DEFINITION zero
-## -- the rate came out at 0.0001 / 0.5 s, the eye came down at 0.2 mm per
-## second, and a 0.15 m lift needed about twelve minutes to clear. ✅ THE OWNER:
-## "只要滑铲过相机将永久抬升0.15."
+## THE RELEASE RATE CANNOT BE COMPUTED FROM `_eye_lift`. That looks perfectly
+## reasonable and is wrong: Player sets the lift to 0 the same frame the slide
+## stops being the current move, so by the time the release branch below runs,
+## `_eye_lift` is BY DEFINITION zero -- the rate came out at 0.0001 / 0.5 s, the
+## eye came down at 0.2 mm per second, and a 0.15 m lift never visibly cleared
+## again: sliding even once left the eye permanently raised.
 var _eye_lift_full: float = 0.0
 
 func set_eye_lift(metres: float) -> void:
@@ -288,22 +289,21 @@ func set_roll_spin(radians: float) -> void:
 func absorb_body_yaw(radians: float) -> void:
 	if is_zero_approx(radians):
 		return
-	# ⚠️ HELD SHORT IN FIRST PERSON, and the reason is a first-person one: a lag
+	# HELD SHORT IN FIRST PERSON, and the reason is a first-person one: a lag
 	# is a softening, not a detour. Past a certain size the eye is no longer
 	# trailing the turn, it is pointing somewhere else entirely -- at the inside
 	# of whatever the body is pressed against. Reported in play as the view
 	# lunging into the wall and then snapping back to the ledge.
 	#
-	# 📌 AND IT IS NOT A FIRST-PERSON RULE, WHICH IS WHAT TWO ATTEMPTS AT AN
+	# AND IT IS NOT A FIRST-PERSON RULE, WHICH IS WHAT TWO ATTEMPTS AT AN
 	# EXCEPTION FOR THIRD PERSON ESTABLISHED. Holding a third-person camera
 	# still through a ninety-degree ledge corner works exactly as intended and
 	# is unplayable anyway: the player steers the BODY with the camera, so a
 	# view left a quarter-turn off the wall means their next mouse movement
 	# turns the body away from it -- straight into the one-handed lock, which
-	# then refuses the shimmy they were trying to continue.
-	#
-	# ✅ The owner, after playing it: "还是得让视角跟着转角转，否则几乎总是会触发超过
-	# 45° 锁定横爬，会让玩家困惑."
+	# then refuses the shimmy they were trying to continue. Without the eye
+	# following the turn, that lock triggers on almost every corner past 45
+	# degrees, which reads as the game refusing input for no reason.
 	#
 	# The eye's facing during a hang is not a viewing preference. It is an INPUT
 	# to the move.
@@ -387,10 +387,10 @@ func recentre_yaw_reference(yaw: float) -> void:
 	# This is a scripted view change -- the wall moved the fan, not the player's
 	# hand -- so it eases. See docs/camera-authority.md.
 	#
-	# This used to clamp here and hand the correction to absorb_body_yaw's lag.
-	# That worked for small corrections and failed for the ones that matter: the
-	# lag is capped at 0.35 rad, and attaching at the forward branch's full 57
-	# degrees is nearly twice that, so most of the turn arrived as a cut anyway.
+	# DO NOT CLAMP HERE and hand the correction to absorb_body_yaw's lag instead:
+	# that only works for small corrections, because the lag is capped at
+	# 0.35 rad, and attaching at the forward branch's full 57 degrees is nearly
+	# twice that, so most of the turn would arrive as a cut anyway.
 	_look_relative_yaw = offset
 
 ## Diagnostics for the debug HUD: how far the view has turned from the fan's
@@ -505,9 +505,10 @@ func reset_state() -> void:
 ##
 ## The ACTIVE MOVE's own clamp wins over the global pitch limit when it
 ## declares one. The original makes this per-move data (MinLookConstraint /
-## MaxLookConstraint, 06 §6.2) and it is a genuine input constraint: on a wall
-## the view is locked into a +-90 degree yaw fan and cannot look back, which
-## is where that whole sensation comes from.
+## MaxLookConstraint) [ME:CONFIRMED 06 §6.2], and it is a genuine input
+## constraint: on a wall the view is locked into a +-90 degree yaw fan
+## [ME:CONFIRMED 04 §4.1] and cannot look back, which is where that whole
+## sensation comes from.
 func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 	# A cinematic normally owns the view outright. The exception is a body that
 	# has finished falling and is lying there -- see DeathSequence, which hands
@@ -526,7 +527,7 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 	if _has_look_constraint:
 		# Absolute yaw: measured against the facing captured when the move
 		# began, so the fan stays pinned to the wall rather than drifting with
-		# the player. Source: 04 §4.1 bUseAbsoluteYawConstraint = True.
+		# the player. [ME:CONFIRMED 04 §4.1] bUseAbsoluteYawConstraint = True.
 		var reference: float = _yaw_reference if _look_absolute_yaw else body.rotation.y
 		var relative: float
 		if _look_absolute_yaw:
@@ -633,16 +634,16 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# Where the rig would sit this frame with NO head-follow applied,
 	# recomputed from scratch every call rather than read back from last
 	# frame's `position`. This is what makes camera_head_follow_strength mean
-	# the same thing on every axis: previously only Y got a fresh base (via
-	# the eye_height re-apply below) while X/Z inherited whatever the PREVIOUS
-	# frame's lerp already blended them to, so the head-follow lerp at the
-	# bottom of this function was blending toward the head from an
-	# ever-more-converged starting point on X/Z -- an exponential approach to
-	# the head regardless of how small `strength` was, even though Y (reset
-	# fresh every frame) genuinely held at the configured fraction. Composing
-	# every other contribution below into `base_position` instead of `position`
-	# keeps that guarantee on all three axes: `position` itself is written
-	# exactly once, at the very end of this function.
+	# the same thing on every axis: DO NOT let X/Z inherit whatever the
+	# PREVIOUS frame's lerp already blended them to while giving Y a fresh base
+	# every frame (via the eye_height re-apply below) -- that asymmetry lets
+	# the head-follow lerp at the bottom of this function blend toward the head
+	# from an ever-more-converged starting point on X/Z, which is an
+	# exponential approach to the head regardless of how small `strength` is,
+	# while Y (reset fresh every frame) genuinely holds at the configured
+	# fraction. Composing every other contribution below into `base_position`
+	# instead of `position` keeps that guarantee on all three axes: `position`
+	# itself is written exactly once, at the very end of this function.
 	var base_position := Vector3.ZERO
 	base_position.y = _config.camera.eye_height + extra_eye_lift
 	if not third_person:
@@ -698,12 +699,11 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# else knows. With one, the ANIMATION knows, in more detail and with better
 	# timing than a single eased number can carry.
 	#
-	# The owner's rule, and it reverses an earlier fix of mine: "the camera
-	# serves the PICTURE, not the correctness of the numbers -- the model's neck
-	# during a slide is well below the collision capsule, and that is fine."
-	# Both at once was the bug (the eye reached 43 cm UNDER the floor); the
-	# first fix silenced the model, which is the wrong one of the two to
-	# silence.
+	# THE PICTURE WINS OVER THE NUMBERS: the model's neck sitting well below the
+	# collision capsule during a slide is fine on its own. What is NOT fine is
+	# the eye ALSO tracking that same low number -- that was the actual bug (the
+	# eye reached 43 cm UNDER the floor). DO NOT fix a recurrence of this by
+	# hiding the model; the eye is the one of the two that has to give.
 	#
 	# Scaled by how much of the head-follow is actually reaching the eye, so a
 	# strength of 0 -- or no body at all -- restores this drop in full, and a
@@ -815,19 +815,16 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# NEGATIVE rotation.z here, i.e. clockwise -- which is what the owner
 	# reports as correct in play.
 	#
-	# This REVERSES the earlier intent. The previous code negated this
-	# deliberately, and both its comment and its (now archived) test declared
-	# the goal as "roll toward the wall". The research offers no ruling either
-	# way: 09 §9.1 calls the direction correct, but the same section records
-	# that the original has NO VALUE for this field at all, so that was the
-	# researcher's judgement rather than extracted data. The owner is playing
-	# it; the owner wins.
+	# The direction is [ME:INFERRED 09 §9.1]: that section judges "roll toward
+	# the wall" correct, but also records that the original defines NO VALUE for
+	# this field at all, so the direction is the researcher's inference rather
+	# than extracted data. Played both ways, this direction (clockwise on a left
+	# wall) is the one that reads correctly, and it stands over the inference.
 	#
 	# tests/legacy/test_camera_rig.gd's test_the_camera_rolls_toward_the_wall_
-	# side still asserts the OLD (now-reversed) intent -- it is ARCHIVED by
-	# Task 1 and NOT in the running suite, so it does not fail the build, but
-	# it will need rewriting to match this new intent whenever the
-	# behavioural suite is restored.
+	# side asserts the OPPOSITE direction -- it is ARCHIVED and NOT in the
+	# running suite, so it does not fail the build, but rewrite it to match this
+	# direction if the legacy suite is ever restored.
 	var target_roll := deg_to_rad(_config.camera.wall_camera_roll_deg) * float(_wall_side)
 	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.camera.wall_camera_roll_speed) * delta)
 	rotation.z = _roll + _vault_roll
@@ -849,20 +846,20 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	#
 	# AND ONLY IN FIRST PERSON. A roll turns the eye through a full revolution,
 	# which is the manoeuvre when you are inside the head and nauseating when
-	# you are watching from behind -- the owner's word for it was 晕. From
-	# outside, the BODY doing the roll is the whole show; the camera tumbling as
-	# well is the same event performed twice, once by each.
+	# you are watching from behind. From outside, the BODY doing the roll is the
+	# whole show; the camera tumbling as well is the same event performed
+	# twice, once by each.
 	var spin: float = 0.0 if third_person else _roll_spin
 	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit) - spin
 
 ## Drops the landing dip on the floor, unrecovered.
 ##
-## ✅ The owner: "a death should skip the ordinary landing cushion." A fatal
-## fall lands like any other -- punch_landing() has already fired by the time
-## the death is known, because died_from_fall is deferred a frame -- and the
-## eye then eases up out of a flinch nobody is going to walk away from. In
-## first person the cinematic pose overwrites it anyway; in third person, which
-## no longer takes the cinematic, it was the only thing still moving.
+## A DEATH SKIPS THE ORDINARY LANDING CUSHION. A fatal fall lands like any
+## other -- punch_landing() has already fired by the time the death is known,
+## because died_from_fall is deferred a frame -- and the eye would otherwise
+## ease up out of a flinch nobody is going to walk away from. In first person
+## the cinematic pose overwrites it anyway; in third person, which does not
+## take the cinematic, this is what stops it being the only thing still moving.
 func clear_landing_dip() -> void:
 	_dip = 0.0
 	_landing_pitch = 0.0
@@ -977,10 +974,9 @@ func shift_yaw_reference(yaw: float, assist: float) -> void:
 ## decides how far over, so the panel slider still means something.
 func _wanted_shoulder_across() -> float:
 	var across: float = _config.camera.third_person_right
-	# A WALL RUN BORROWS THE OTHER SHOULDER. ✅ The owner: "on a left-hand wall,
-	# put the camera at the preset right shoulder for the duration, and the
-	# other way round -- otherwise the view sits inside the wall the whole
-	# time."
+	# A WALL RUN BORROWS THE OTHER SHOULDER: on a left-hand wall, the camera
+	# takes the preset RIGHT shoulder for the duration, and the other way round
+	# -- otherwise the view sits inside the wall the whole time.
 	#
 	# The collision probe in _third_person_position() already pulls the camera
 	# in when something is between it and the body, but pulling in is the wrong
@@ -988,10 +984,10 @@ func _wanted_shoulder_across() -> float:
 	# to be there for the whole manoeuvre. Standing on the other side of the
 	# body is.
 	#
-	# ⚠️ NOT written into _shoulder, deliberately. That is the player's own
-	# preference and it is persisted -- borrowing it would leave a wall run
-	# quietly rewriting a setting, and cycling it mid-run would fight this.
-	# wall_side is cleared on exit, so the preference comes back on its own.
+	# DO NOT WRITE THIS INTO _shoulder. That is the player's own preference and
+	# it is persisted -- borrowing it here would leave a wall run quietly
+	# rewriting a setting, and cycling it mid-run would fight this. wall_side is
+	# cleared on exit, so the preference comes back on its own.
 	var shoulder: int = _shoulder
 	if _wall_side != 0:
 		# wall_side > 0 is a RIGHT-hand wall (WallRunMove's own look-fan code

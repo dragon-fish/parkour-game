@@ -1,8 +1,8 @@
 extends ParkourTest
 
-# 05 §5.5b: a 1.2 m pendulum you pump with W/S and leave at any phase. Entry
-# is MAGNETIC (the owner's ME measurement: "快要碰到横杆的时候，会帮你吸附上
-# 去"); the exit jump is a lenient fixed-angle launch (Task 4).
+# [ME:CONFIRMED 05 §5.5b] A 1.2 m pendulum, pumped with W/S, left at any
+# phase. Entry is MAGNETIC -- the body snaps onto the bar just before contact.
+# The exit jump is a lenient fixed-angle launch.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -47,9 +47,9 @@ func _swinging_player() -> Player:
 	# ZiplineMove's own suite uses (test_jumping_with_the_travel_direction_
 	# still_catches): a run-up drifts the body sideways out of the bar's
 	# 0.6 m reach_radius before the jump ever gets it into the volume. This
-	# also keeps entry off the theta=0/omega=0 dead point the pump-from-rest
-	# fix addresses -- a straight-up jump with no drift used to be a
-	# mathematical fixed point.
+	# also keeps entry off the theta=0/omega=0 dead point: sin(0) torque is
+	# zero, so a straight-up jump with no drift is a genuine fixed point of
+	# the pendulum and needs the pump-from-rest guard below to ever move.
 	player.velocity.x = 0.0
 	player.velocity.z = 1.5
 	for i in 39:
@@ -104,9 +104,10 @@ func test_a_zipline_gate_does_not_take_a_swing_bar() -> void:
 		"a SWING line was caught by the zipline gate")
 
 func test_pumping_starts_a_swing_from_dead_rest() -> void:
-	# The zero state is reachable (straight-up jump, no input) and used to be
-	# a mathematical fixed point: sin(0) torque is zero and the pump guard
-	# refused to perturb exact stillness. Pumping from rest must work.
+	# The zero state (straight-up jump, no input) is a genuine fixed point of
+	# the frictionless pendulum -- sin(0) torque is zero. DO NOT let the pump
+	# guard refuse to perturb exact stillness: pumping from rest must work, or
+	# the pendulum is stuck there forever.
 	var player: Player = await _standing_player()
 	_line = _bar(2.7)
 	var input: ScriptedInputSource = _world["input"]
@@ -135,9 +136,8 @@ func _pump_until_window(player: Player, move: SwingMove) -> void:
 	assert_true(false, "300 ticks of pumping never opened the jump window")
 
 func test_the_exit_jump_launches_at_the_fixed_angle() -> void:
-	# ✅ THE OWNER's ME measurement: the launch angle is the SAME every time --
-	# MVP rules it at 45 degrees forward-up, at exit_speed, under the exit
-	# gravity window.
+	# [ME:CONFIRMED] The launch angle is the SAME every time -- MVP rules it
+	# at 45 degrees forward-up, at exit_speed, under the exit gravity window.
 	var player: Player = await _swinging_player()
 	await step(12)
 	var move: SwingMove = player.move_manager.move_for(Move.SWING)
@@ -205,9 +205,10 @@ func test_letting_go_starts_the_bar_cooldown_for_that_bar_only() -> void:
 	second.queue_free()
 
 func test_pumping_with_the_motion_grows_the_swing() -> void:
-	# Spec §6: W 顺摆泵入后幅度增大 -- the with-motion branch, distinct from the
-	# from-rest kick. Caught with too little energy for the jump window, a held
-	# W must grow the swing until the window opens (against the damping).
+	# Spec §6: pumping W with the swing's motion grows amplitude -- the
+	# with-motion branch, distinct from the from-rest kick. Caught with too
+	# little energy for the jump window, a held W must grow the swing until
+	# the window opens (against the damping).
 	var player: Player = await _standing_player()
 	_line = _bar(2.7)
 	var input: ScriptedInputSource = _world["input"]
@@ -233,9 +234,9 @@ func test_pumping_with_the_motion_grows_the_swing() -> void:
 	assert_true(opened, "held W never grew the swing into the jump window")
 
 func test_the_model_leans_with_the_swing_and_stands_back_up() -> void:
-	# ✅ THE OWNER, on how ME reads amplitude: "主要是靠镜头里可以看到自己身体来
-	# 判断" -- the model tilts along the chain; the camera is deliberately NOT
-	# pitched with it.
+	# THE MODEL TILTS ALONG THE CHAIN; THE CAMERA IS DELIBERATELY NOT PITCHED
+	# WITH IT -- swing amplitude must read through the body in view, not
+	# through camera roll.
 	var player: Player = await _swinging_player()
 	await step(12)
 	var move: SwingMove = player.move_manager.move_for(Move.SWING)
@@ -259,9 +260,10 @@ func test_the_model_leans_with_the_swing_and_stands_back_up() -> void:
 		"the lean never stood back up after letting go")
 
 func test_the_eye_slides_ahead_of_a_forward_lean() -> void:
-	# ✅ THE OWNER: "镜头要随着晃到前面的时候给一点向前的偏移否则镜头走进胸里."
-	# Forward swings push the eye ahead (sin-scaled); backswings do not; and
-	# letting go clears it.
+	# DO NOT let the camera go without a forward eye offset during a forward
+	# swing -- without it, the camera clips into the chest. Forward swings
+	# push the eye ahead (sin-scaled); backswings do not; and letting go
+	# clears it.
 	var player: Player = await _swinging_player()
 	await step(12)
 	var move: SwingMove = player.move_manager.move_for(Move.SWING)
@@ -293,9 +295,10 @@ func test_the_eye_slides_ahead_of_a_forward_lean() -> void:
 		"the eye offset never eased home after letting go")
 
 func test_the_apex_grace_lets_a_zero_speed_jump_out() -> void:
-	# ✅ THE OWNER: "荡到最高点但没角速度，快要往回的时候，给一个容错窗口按空格
-	# 也可以跳出去." Once the window has been properly open, omega crossing
-	# zero at the forward apex must not close it for jump_grace_time.
+	# AT THE FORWARD APEX (omega near zero, about to swing back), A GRACE
+	# WINDOW MUST STILL LET A JUMP OUT. Once the window has been properly
+	# open, omega crossing zero at the apex must not close it for
+	# jump_grace_time.
 	var player: Player = await _swinging_player()
 	await step(12)
 	var move: SwingMove = player.move_manager.move_for(Move.SWING)

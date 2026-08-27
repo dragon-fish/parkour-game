@@ -25,8 +25,9 @@ const DEBUG_OVERLAYS: Array[Dictionary] = [
 	{"label": "Scripted path (F12)", "node_name": "ScriptedPathDebug"},
 	{"label": "Shimmy probes", "node_name": "ShimmyDebug"},
 	# persist = false: activating the tuner PAUSES the whole tree, so restoring
-	# it at boot is a SOFTLOCK -- the owner hit it: "T pose，画面冻结无法操作，
-	# ESC都无效". With its F9 binding gone, this panel is its only off-switch.
+	# it at boot is a SOFTLOCK -- a T-pose with the screen frozen and unresponsive,
+	# not even Esc getting out of it. With no key bound to it, this panel is its
+	# only off-switch.
 	{"label": "Clip offset tuner", "node_name": "ClipOffsetTuner", "persist": false},
 ]
 
@@ -52,8 +53,8 @@ var _panel: PanelContainer
 var _preset_name: LineEdit
 var _status: Label
 ## Every slider row, as {node, key} -- key is "group/property", lowercase --
-## so the search box can hide the rest. ✅ THE OWNER: "F1菜单里有一万个配置项，
-## 能不能做个简单的搜索框."
+## so the search box can hide the rest. Every group expanded at once is far
+## too many sliders to scan by eye, which is what the search box is for.
 var _search_rows: Array = []
 var _tabs: TabContainer
 ## node_name -> CheckBox, filled by _add_debug_tab().
@@ -390,12 +391,12 @@ func _add_slider(column: VBoxContainer, row: Dictionary) -> void:
 	slider.min_value = 0.0
 	var default_value: float = row["default"]
 	slider.max_value = maxf(absf(default_value) * RANGE_FACTOR, 0.01)
-	# Continuous, not stepped. A nonzero step here used to snap the seeded
-	# value to the nearest increment (e.g. ground_speed's default 7.2 -> 7.21)
-	# and, worse, do it via a plain `slider.value = ...` assignment below,
-	# whose value_changed signal wrote the snapped value straight back into
-	# the shared config the instant the panel built its UI — perturbing every
-	# feel parameter before a human ever touched a slider. For feel tuning,
+	# Continuous, not stepped. DO NOT give this a nonzero step: it would snap
+	# the seeded value to the nearest increment (e.g. ground_speed's default
+	# 7.2 -> 7.21), and the plain `slider.value = ...` assignment below would
+	# fire value_changed on that snapped value, writing it straight back into
+	# the shared config the instant the panel builds its UI — perturbing every
+	# feel parameter before a human ever touches a slider. For feel tuning,
 	# continuous is what you want anyway: the label already formats to four
 	# decimals, and nobody is hunting for round numbers.
 	slider.step = 0.0
@@ -408,7 +409,7 @@ func _add_slider(column: VBoxContainer, row: Dictionary) -> void:
 	slider.set_value_no_signal(owner.get(property))
 	hrow.add_child(slider)
 
-	# Per-row reset (owner request): visible only while the value has actually
+	# Per-row reset: visible only while the value has actually
 	# drifted from its default, so a page of untouched rows shows no clutter.
 	# Goes through the SAME signal path a drag would (a plain `.value =`, not
 	# the no-signal setter above) so the config write and the label update

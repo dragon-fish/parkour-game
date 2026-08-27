@@ -63,23 +63,20 @@ func test_a_reaching_hand_arrives_at_the_point_it_was_given() -> void:
 	# THE CLAIM THAT MATTERS, and the one checkable without eyes: the hand BONE
 	# should end up where the target is, not merely near it.
 	#
-	# STILL PENDING, but for a different reason than before, and the correction
-	# is the useful part.
-	#
-	# This was written off as "TwoBoneIK3D does not move the bones", measured at
-	# exactly 0.0000 m of travel. That measurement was wrong.
-	# get_bone_global_pose() returns the pose from BEFORE the deferred modifier
-	# pass -- the class reference says so: "the final global pose can get
-	# overridden by modifiers in the deferred process, if you want to access the
-	# final global pose, use SkeletonModifier3D.modification_processed". Sampled
-	# through that signal instead, the hand moves.
-	#
-	# It moves to the WRONG PLACE -- 1.32 m from the target, roughly three arm
-	# lengths. A solver that overshoots is a different problem from one that
-	# never runs, and the pole node is the first suspect: POLE_OFFSET puts the
-	# elbow hint near the target, which for a target close to the body lands
-	# inside the torso, and a two-bone solver given a degenerate pole can flip
-	# its whole solution plane.
+	# STILL PENDING (the pending() call below cites feel-backlog item 47;
+	# item 54 is the one that actually corrects the 0.0000 m reading below).
+	# DO NOT read get_bone_global_pose() to check this: it
+	# returns the pose from BEFORE the deferred modifier pass runs (the class
+	# reference: "the final global pose can get overridden by modifiers in the
+	# deferred process, if you want to access the final global pose, use
+	# SkeletonModifier3D.modification_processed"), and reads exactly 0.0000 m
+	# of travel even when the solver did move the bone. Sampled through that
+	# signal instead, the hand moves -- to the WRONG PLACE, 1.32 m from the
+	# target, roughly three arm lengths. A solver that overshoots is a
+	# different problem from one that never runs, and the pole node is the
+	# first suspect: POLE_OFFSET puts the elbow hint near the target, which
+	# for a target close to the body lands inside the torso, and a two-bone
+	# solver given a degenerate pole can flip its whole solution plane.
 	pending("TwoBoneIK3D solves but overshoots -- see docs/feel-backlog.md 47")
 
 func test_releasing_hands_the_arm_back() -> void:

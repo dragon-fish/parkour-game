@@ -2,17 +2,17 @@ extends ParkourTest
 
 # A vault and a pull-up FOLD the body, and then give it back.
 #
-# ✅ The owner's reading, and the arithmetic behind it is the convincing part:
-# they had been dialling in per-clip offsets of roughly 0.8 m by hand, and
-# 1.8 minus 1.0 is 0.8. A rigid upright capsule has to be lifted clear of
-# anything it crosses, and lifting the FEET above an obstacle puts the EYE a
-# further 1.66 m up -- which is exactly the "the eye sits at wall top plus a
-# whole capsule" they reported.
+# The arithmetic is the convincing part: per-clip offsets were independently
+# hand-tuned to roughly 0.8 m, and 1.8 minus 1.0 is 0.8. A rigid upright
+# capsule has to be lifted clear of anything it crosses, and lifting the FEET
+# above an obstacle puts the EYE a further 1.66 m up -- exactly wall-top plus
+# a whole capsule.
 #
 # What is tested here is not the height. It is that the fold is GIVEN BACK. A
 # state that shrinks the body and does not restore it leaves the player
-# permanently crouched, and GrabMove had no exit() at all before this -- the
-# same shape of leak SpeedVaultMove once had with its camera roll.
+# permanently crouched -- exactly the shape of leak GrabMove would have
+# without an exit(), and the same shape of leak SpeedVaultMove once had with
+# its camera roll.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -59,8 +59,9 @@ func test_a_vault_folds_the_body_and_stands_it_back_up() -> void:
 # --- the pull-up ------------------------------------------------------------------
 
 func test_a_grab_gives_the_capsule_back_on_the_way_out() -> void:
-	# GrabMove HAD NO exit(). That was survivable only while it changed nothing
-	# needing to be put back; the mantle's folded capsule does.
+	# GrabMove's exit() must restore the fold. A grab that folds the capsule
+	# (the mantle) and then exits without restoring it leaves the player
+	# permanently crouched.
 	var player: Player = await _player()
 	var standing: float = player.current_capsule_height()
 	var grab := player.move_manager.move_for(Move.GRAB)
@@ -98,8 +99,8 @@ func _span(player: Player) -> Vector2:
 			shape_node.position.y + capsule.height * 0.5)
 
 func test_a_crouch_holds_the_feet_and_lowers_the_head() -> void:
-	# The original behaviour, and every caller before the vault wanted it: you
-	# are standing on the same floor, so the soles are the fixed end.
+	# The soles are the fixed end -- you are standing on the same floor, so
+	# every caller wants them anchored, not the head.
 	var player: Player = await _player()
 	var standing: Vector2 = _span(player)
 	player.set_capsule_height(0.9)
@@ -123,11 +124,10 @@ func test_standing_back_up_puts_the_soles_back_on_the_floor() -> void:
 # --- the model rides the shortened capsule's top ----------------------------------
 
 func test_a_folded_body_drops_to_sit_on_the_shortened_capsule() -> void:
-	# ✅ THE OWNER, after two attempts that each did half of it: "the capsule
-	# should shrink hugging the FEET -- but the model and the eye should come
-	# down with it, instead of the capsule getting shorter while the model goes
-	# on playing anchored at the soles. The model's head should be anchored to
-	# the capsule's top."
+	# The capsule shrinks hugging the FEET, but the model and the eye must
+	# come down with it -- the model does not go on playing anchored at the
+	# soles while the capsule gets shorter. The model's head is anchored to
+	# the capsule's top.
 	#
 	# The COLLISION stays on the floor. It is the MODEL that moves, by exactly
 	# what the capsule lost.
@@ -189,11 +189,10 @@ func _player_with_body() -> Player:
 # --- a step-up is not a vault ------------------------------------------------------
 
 func test_a_step_up_does_not_fold_the_body() -> void:
-	# ✅ THE OWNER: the step-up variants were dropping the model too, and must
-	# not -- "that one only lifts a leg a little, and lowering the body just
-	# makes it clip." The original says the same from the other side: the two
-	# step-up rows are the two of six with NO hand IK (05 §5.7). There is no
-	# hand because there is no plant, and the body stays upright.
+	# A step-up must not fold or drop the model -- lifting a leg a little and
+	# lowering the body just makes it clip through the step. [ME:CONFIRMED 05
+	# §5.7] The two step-up rows are the two of six with NO hand IK: there is
+	# no hand because there is no plant, and the body stays upright.
 	var player: Player = await _player()
 	var standing: float = player.current_capsule_height()
 	player.pending_vault_variant = player.config.speed_vault.pick_variant(

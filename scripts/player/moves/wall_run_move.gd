@@ -44,12 +44,13 @@ func _query_wall() -> Dictionary:
 		return _NO_WALL.duplicate()
 	# ONCE A RUN HAS A WALL, IT TRACKS THAT WALL AND NOT THE BODY'S SIDES.
 	#
-	# wall_query()'s rays are rigidly local -- straight out to left and right --
-	# so turning the view during a run swings them off the wall and the run
-	# ends. Measured in play as "you fall off the moment you stop looking
-	# forward". The original does not do that: the body completes the wall-run
-	# curve wherever the player is looking, and looking around is most of what
-	# the run is FOR, since the jump off it steers by the view.
+	# DO NOT let wall_query()'s rigidly local rays -- straight out to left and
+	# right -- drive tracking after attach: turning the view during a run would
+	# swing them off the wall and end the run the moment the player stops
+	# looking forward. [ME:CONFIRMED] The original does not do that: the body
+	# completes the wall-run curve wherever the player is looking, and looking
+	# around is most of what the run is FOR, since the jump off it steers by
+	# the view.
 	#
 	# Entry still goes through wall_query(), where local rays are right: a
 	# player who has not attached yet is facing roughly the way they are going,
@@ -65,14 +66,14 @@ func _query_wall() -> Dictionary:
 ## enter(), and again every tick in physics_update() -- so the tangent tracks
 ## the true wall surface instead of the angle it happened to have on attach.
 ##
-## THIS IS WHAT MAKES CURVED WALLS WORK, and that was an accident. Together with
-## wall_tracked_query() following the wall by its normal rather than by the
-## body's sides, it means a run laid along an arc simply keeps turning with the
-## surface. The owner found it in play and confirmed the original does the same:
-## "you really can run along an inward-curving arc."
+## THIS IS WHAT MAKES CURVED WALLS WORK. Together with wall_tracked_query()
+## following the wall by its normal rather than by the body's sides, it means a
+## run laid along an arc simply keeps turning with the surface. [ME:CONFIRMED]
+## The original does the same: a run laid along an inward-curving arc keeps
+## turning with the surface instead of running off it straight.
 ##
-## So do not cache the tangent at attach. It would look like a harmless tidy-up
-## -- the normal barely changes on a flat wall, which is every wall in the test
+## DO NOT cache the tangent at attach. It would look like a harmless tidy-up --
+## the normal barely changes on a flat wall, which is every wall in the test
 ## arena -- and it would flatten every curve in the game back into a straight
 ## line. tests/test_wall_run_look.gd holds a curved fixture for exactly this.
 func _derive_along() -> void:
@@ -84,10 +85,10 @@ func _derive_along() -> void:
 ##
 ## THE FAN BELONGS TO THE WALL, NOT TO HOW YOU ARRIVED AT IT. Left to
 ## set_look_constraint's own capture, the fan is centred on whatever the body
-## happened to be facing when it attached -- and the forward branch admits
-## approaches up to 57 degrees off the wall's line, so "look 90 degrees away"
-## meant something different on every attach. Exactly the mistake the ledge
-## hang made first, for exactly the same reason.
+## happened to be facing when it attached -- and [ME:CONFIRMED 04 §4.1] the
+## forward branch admits approaches up to 57 degrees off the wall's line, so
+## "look 90 degrees away" meant something different on every attach. Exactly
+## the mistake the ledge hang made first, for exactly the same reason.
 ##
 ## Derived from _along, which is derived from the wall's own normal, so what
 ## the fan is pinned to is the wall's geometry and nothing about the player.
@@ -112,11 +113,10 @@ func _recentre_on_wall() -> void:
 
 ## Carries the fan -- and, partly, the view -- round with a wall that turns.
 ##
-## The fan is measured against the wall's own line, so on a curve it has to turn
-## with it or it ends up policing a direction the wall stopped pointing in
-## metres ago. The owner asked for this the moment the curved run turned out to
-## work: "when the wall's normal changes, give the view an assisted turn, and
-## the clamp has to move with it."
+## The fan is measured against the wall's own line, so on a curve it has to
+## turn with it, or it ends up policing a direction the wall stopped pointing
+## in metres ago: when the wall's normal changes, the view gets an assisted
+## turn, and the clamp has to move with it.
 ##
 ## The clamp always travels the FULL turn; only the view is partial, by
 ## view_assist. See CameraRig.shift_yaw_reference() for how the two are
@@ -188,50 +188,41 @@ func enter(_previous: StringName) -> void:
 	if into < 0.0:
 		player.velocity -= _normal * into
 
-	# One-off lift on attaching. ⚠️ Read as a one-off vertical boost rather
-	# than a sustained force: WallRunningHorisontalInitialZHeight is stored as
-	# a HEIGHT (170 uu / 1.7 m), converted here at the point of use into the
+	# One-off lift on attaching, read as a one-off vertical boost rather than a
+	# sustained force: WallRunningHorisontalInitialZHeight is stored as a
+	# HEIGHT (170 uu / 1.7 m), converted here at the point of use into the
 	# vertical speed that reaches that height, matching how this project reads
-	# every other `*ZHeight` field (spec §2.5) -- EXCEPT that this one
-	# deliberately does NOT use plain gravity the way those others do. The
-	# rise happens WHILE ATTACHED, where gravity is already weakened by
-	# wall_gravity_scale (applied a few lines below, every tick this move is
-	# active); converting against plain config.pawn.gravity instead would ask
-	# "how fast to reach 1.7 m under gravity this move never actually uses",
-	# overshooting the real rise by 1 / wall_gravity_scale (a factor of
-	# ~2.86x at the default 0.35 -- confirmed directly: plain gravity gives
-	# 5.2154 m/s and an actual ~4.86 m rise; the wall run's own effective
-	# gravity gives 3.0854 m/s and the intended 1.7 m).
-	# Never LOWERS an already-faster upward speed (e.g. a jump that grabbed a
-	# wall mid-rise) -- only ever raises it to the floor this represents.
-	# ✅ WallRunningVelocityStartLimit, read as a ceiling on the vertical speed
-	# carried into the attach. Applied BEFORE the lift, which is the whole point
-	# of it: without this the lift's maxf() below preserves a fast jump's own
-	# upward speed, and the run rises by that arc rather than by the lift's
-	# confirmed 1.7 m. The owner measured the difference as about half a metre
-	# too high. See WallRunConfig for the arithmetic.
+	# every other `*ZHeight` field (spec §2.5). DO NOT convert it against plain
+	# gravity the way those others do: the rise happens WHILE ATTACHED, where
+	# gravity is already weakened by wall_gravity_scale (applied a few lines
+	# below, every tick this move is active), and plain config.pawn.gravity
+	# asks "how fast to reach 1.7 m under gravity this move never actually
+	# uses" -- overshooting the real rise by 1 / wall_gravity_scale (a factor
+	# of ~2.86x at the default 0.35: plain gravity gives 5.2154 m/s and an
+	# actual ~4.86 m rise, where the wall run's own effective gravity gives
+	# 3.0854 m/s and the intended 1.7 m).
+	#
+	# [ME:CONFIRMED 04 §4.1] The rise is measured FROM THE GROUND YOU LEFT, not
+	# added to wherever contact happened: standing at Z 43.17 and peaking at ZT
+	# 44.82 (SZD 1.56), a wall run tops out about 1.65 m above the roof it took
+	# off from, regardless of where on the wall contact happened -- that height
+	# is InitialZHeight.
+	#
+	# DO NOT add the lift to the contact point instead of the ground: contact
+	# height rises with speed, so a contact-relative lift makes a fast run's
+	# peak rise with it too, putting the FEET above the plank top at speed
+	# where the confirmed peak keeps the WAIST level with it.
 	var lift: float = config.wall_run.wall_running_horisontal_initial_z_height
 	if lift > 0.0:
-		# ✅ MEASURED FROM THE GROUND YOU LEFT, not added to wherever you touched.
-		#
-		# The owner's own HUD in the original: standing at Z 43.17, and at the
-		# top of the run ZT 44.82 with SZD 1.56. So a wall run peaks about 1.65 m
-		# above the roof it took off from -- which is InitialZHeight, and which
-		# does not care where on the wall contact happened.
-		#
-		# Added to the contact point, as it was, the peak is that contact height
-		# too high -- and contact height rises with speed, which is why the owner
-		# saw it as "at speed you can end up with your FEET above the plank top,
-		# where the original has your waist level with it".
 		var risen: float = player.global_position.y - player.ground_reference_y
 		var remaining: float = clampf(lift - risen, 0.0, lift)
 		# The lift is a RISE, so it converts against the rising scale.
 		var wall_gravity: float = config.pawn.gravity * config.wall_run.wall_gravity_scale_rising
-		# ASSIGNED, not maxf(). A body arriving faster than the target has to be
-		# slowed to it, or the height is back to depending on the approach --
-		# which is the whole thing being fixed. The measured entry window reaches
-		# +5.1 m/s of rise and the peak is 1.65 m regardless, so the original
-		# caps this too.
+		# [ME:CONFIRMED 04 §4.1] ASSIGNED, not maxf(): a body arriving faster
+		# than the target must be SLOWED to it, not merely floored at it, or the
+		# peak goes back to depending on entry speed -- the measured entry
+		# window reaches +5.1 m/s of rise and the peak still holds at 1.65 m
+		# regardless.
 		player.velocity.y = sqrt(2.0 * wall_gravity * remaining)
 
 func exit() -> void:
@@ -240,21 +231,21 @@ func exit() -> void:
 	# rays. Left set, _query_wall() would try to track a wall this run has
 	# already left, from a body that may be nowhere near it.
 	_normal = Vector3.ZERO
-	# Nothing else to do here now: the same-wall reattach cooldown
-	# (note_wall_detach()/can_attach_wall(), keyed to the wall's own normal)
-	# is gone, a deliberate 1:1 deletion -- see falling_move.gd's own note on
-	# what replaced it (MoveManager's generic redo_move_time, which arms
-	# itself the moment this move exits, with no help needed here).
+	# No same-wall reattach cooldown to clear here: MoveManager's generic
+	# redo_move_time covers it, arming itself the moment this move exits --
+	# see MoveManager.can_enter()'s own note on replacing the hand-rolled wall
+	# reattach window.
 
 ## How early the jump came: 1 (kicked the instant the wall was touched) to 0
 ## (rode the run out).
 ##
-## ✅ MEASURED (04 §4.4), and it replaced a facing-based reading. The community
-## instruction this gradient was modelled on -- "face the wall you are running
-## on, then jump, and you gain noticeably more speed" -- turned out not to be
-## what the game measures: across 24 kick-offs the correlation between speed
-## gained and view rotation during the run was -0.19, while the correlation
-## with time on the wall was -0.42, and the fast/slow medians differ 6x.
+## [ME:CONFIRMED 04 §4.4] Replaces a facing-based reading. [ME:COMMUNITY] The
+## instruction this gradient was originally modelled on -- face the wall you
+## are running on, then jump, for noticeably more speed -- turned out not to
+## be what the game measures: across 24 kick-offs the correlation between
+## speed gained and view rotation during the run was -0.19, while the
+## correlation with time on the wall was -0.42, and the fast/slow medians
+## differ 6x.
 ##
 ## Facing is not disproven as a SECONDARY term -- both measured takes held the
 ## mouse fairly still -- but it is not the primary one, and timing alone
@@ -267,9 +258,9 @@ static func wall_jump_quality(time_on_wall: float, cfg: WallrunJumpConfig) -> fl
 	return 1.0 - clampf(inverse_lerp(cfg.wall_jump_prime_window, \
 		cfg.wall_jump_stale_time, time_on_wall), 0.0, 1.0)
 
-## Where the kick actually points. The VIEW steers it -- measured in the
-## original, Faith leaves in the direction the camera faces -- with a floor on
-## the away-from-wall component so that looking into the wall still leaves it.
+## Where the kick actually points. [ME:INFERRED] The VIEW steers it -- Faith
+## leaves in the direction the camera faces -- with a floor on the
+## away-from-wall component so that looking into the wall still leaves it.
 ## Falls back to the bare normal when there is no usable facing.
 static func wall_jump_push_direction(player_body: Node3D, normal: Vector3, 		cfg: WallrunJumpConfig) -> Vector3:
 	var facing: Vector3 = -player_body.global_transform.basis.z
@@ -288,10 +279,11 @@ static func wall_jump_push_direction(player_body: Node3D, normal: Vector3, 		cfg
 ## The horizontal velocity a kick leaves with: the speed already in the body,
 ## TURNED toward where the player is looking, plus the push on top.
 ##
-## Turning rather than merely adding is the correction. Added to a body still
-## carrying 7 m/s along the wall, a sideways push of a few m/s barely bent the
-## path -- the owner reported being unable to jump out sideways at all. The run
-## builds the speed; the kick decides where it goes.
+## Turning rather than merely adding is the correction: DO NOT just add the
+## push to the carried velocity. Added to a body still carrying 7 m/s along
+## the wall, a sideways push of a few m/s barely bends the path, leaving a
+## player unable to jump out sideways at all. The run builds the speed; the
+## kick decides where it goes.
 ##
 ## Interpolated between the two directions rather than rotated, so a hard turn
 ## arrives slightly slower than a soft one. That is the same tax this project
@@ -340,29 +332,28 @@ func _away_edge() -> float:
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Q HERE MOVES THE VIEW, NOT THE BODY. Everywhere else it starts a turn; on
 	# a wall the body is already committed to the wall's own curve and nothing
-	# about it should change. What Q saves is the mouse flick, and the owner's
-	# own test for whether it is right is that "turning 90 degrees right by hand
-	# and pressing space should feel the same as Q and space" -- so it drives
+	# about it should change. What Q saves is the mouse flick: it must drive
 	# exactly the value the mouse drives, and the mouse takes it back the
-	# instant the player touches it.
+	# instant the player touches it -- turning 90 degrees right by hand and
+	# pressing space has to feel the same as pressing Q and space.
 	#
 	# Swept to the fan's far edge, which the wall's side already decides: the
 	# fan runs from straight-ahead to a quarter turn AWAY from the wall, so its
 	# far edge IS the direction a kick should leave in.
 	# BUFFERED, AND HELD UNTIL THE FAN EXISTS.
 	#
-	# The owner: pressing Q in the first ten frames of a run turns the view only
-	# a few degrees. Two causes, and both are about ORDER. The fan is not centred
-	# on the wall until this move's first physics tick (see _recentre_on_wall()),
-	# and re-centring WRITES _look_relative_yaw -- so a sweep armed before that
-	# has its remaining distance rewritten out from under it and finishes almost
-	# at once. And a press that arrives even earlier, while the run is still
-	# being entered, had nowhere to go at all.
+	# DO NOT read the press directly: pressing Q in the first ten frames of a
+	# run would turn the view only a few degrees. Two causes, both about ORDER.
+	# The fan is not centred on the wall until this move's first physics tick
+	# (see _recentre_on_wall()), and re-centring WRITES _look_relative_yaw --
+	# so a sweep armed before that has its remaining distance rewritten out
+	# from under it and finishes almost at once. And a press that arrives even
+	# earlier, while the run is still being entered, had nowhere to go at all.
 	#
-	# So the press is stored rather than read, and spent on the first tick there
-	# is a wall-centred fan to sweep across. Same mechanism as the jump buffer,
-	# for the same reason: the player pressed when it FELT right, and the game
-	# was a few frames from being able to honour it.
+	# So the press is stored rather than read, and spent on the first tick
+	# there is a wall-centred fan to sweep across. Same mechanism as the jump
+	# buffer, for the same reason: the player pressed when it FELT right, and
+	# the game was a few frames from being able to honour it.
 	if player.consume_buffered_turn():
 		_turn_armed = true
 	if _turn_armed and _fan_centred and player.camera_rig != null:
@@ -374,10 +365,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# spent before this tick began.
 	_time_on_wall += delta
 
-	# THE LADDER can catch a wall run mid-attach. ✅ THE OWNER: a level built
-	# on wall-running straight into a pipe/ladder has to actually catch --
-	# WallRunMove asks the same frontal gate the ground and the air do, no
-	# check_for_ladder switch involved (that flag is airborne-only). Checked
+	# THE LADDER can catch a wall run mid-attach: a level built on running
+	# straight into a pipe or ladder has to actually catch. WallRunMove asks
+	# the same frontal gate the ground and the air do, no check_for_ladder
+	# switch involved (that flag is airborne-only). Checked
 	# even on an ABORTED tick: a body that failed to find a wall this tick may
 	# still be sitting inside a ladder's own front volume, and the ladder
 	# should not lose to a wall that was never really there.
@@ -426,11 +417,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# consumed press cannot also fire a second jump later.
 	# ARMED, NOT FIRED, WHILE A SWEEP IS RUNNING.
 	#
-	# ✅ The original pre-buffers this: "press Q, and even before the view has
-	# come round, pressing space makes Faith jump out the instant it does." The
-	# kick steers by the view, so taking it mid-sweep launches along a facing
-	# halfway to where the player asked for -- and the whole reason to press Q
-	# was to choose that facing.
+	# [ME:CONFIRMED] The original pre-buffers this: pressing Q, then space
+	# before the view has come round, still makes Faith jump out the instant
+	# it does. The kick steers by the view, so taking it mid-sweep launches
+	# along a facing halfway to where the player asked for -- and the whole
+	# reason to press Q was to choose that facing.
 	#
 	# Only a SWEEP defers it. A player who never pressed Q, or who took the
 	# mouse back and cancelled the sweep, kicks the moment they ask.
@@ -438,28 +429,19 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		_kick_armed = true
 	var sweeping: bool = player.camera_rig != null and player.camera_rig.is_sweeping()
 	if _kick_armed and not sweeping:
-		# UNCONDITIONAL, matching the original 1:1 -- this used to clamp the
-		# rise against a height ceiling computed from player.ground_reference_y
-		# (WallRunMove._height_ceiling(), ~40 lines, deleted this task). That
-		# governor was this project's own invention: the original bounds a
-		# wall-jump chain through each jump's own JumpOffZHeight (a bounded
-		# PER-USE skill gradient, Task 12's job) and a RedoMoveTime of only
-		# 0.15 s, not a total-climb height cap. ACCEPTED RISK (spec §8,
-		# recorded there deliberately rather than papered over here): a
-		# zig-zag chain between two close, oppositely-facing walls may now
-		# climb without bound. Shipped 1:1 on purpose -- see this task's own
-		# report for what automated testing could and could not show about it.
-		# STILL ACCURATE, and only NOW actually reachable: for one branch's
-		# worth of history this hand-off returned FALLING, which cannot climb
-		# a wall at all (no check_for_wall_climb), so the risk described above
-		# was accidentally bolted shut along with the technique it is the
-		# price of. It is genuinely open again as of the JUMP hand-off below.
+		# [ME:CONFIRMED 04 §4.1, §4.4] UNCONDITIONAL, matching the original 1:1:
+		# no height ceiling is applied to a wall-jump chain here. The original
+		# bounds a chain through each jump's own JumpOffZHeight (a bounded
+		# PER-USE skill gradient) and a RedoMoveTime of only 0.15 s, not a
+		# total-climb height cap.
 		#
-		# Both terms below carry the Noob-to-Pro skill gradient (04 §4.4), but
-		# TIME ON WALL is what drives it -- not how squarely the player faces
-		# the wall. The facing reading this comment used to describe was ruled
-		# out by measurement (correlation -0.19 against time's -0.42); see
-		# wall_jump_quality() above for the numbers.
+		# ACCEPTED RISK, recorded in spec §8 rather than papered over here: a
+		# zig-zag chain between two close, oppositely-facing walls can climb
+		# without bound. Shipped 1:1 on purpose.
+		#
+		# Both terms below carry the Noob-to-Pro skill gradient (04 §4.4),
+		# driven by TIME ON WALL, not facing -- see wall_jump_quality() above
+		# for the measurement.
 		var jump_cfg: WallrunJumpConfig = config.wallrun_jump
 		player.velocity.y = wall_jump_rise_velocity(_time_on_wall, jump_cfg, config.pawn)
 		var launch: Vector3 = wall_jump_launch(player, player.velocity, _normal,
@@ -474,9 +456,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# tick will re-declare regardless.
 		player.set_grounded(player.is_on_floor())
 		# JUMP, not FALLING. A wall kick IS a launch -- the player pressed
-		# jump and left the wall rising -- and in the original every one of
-		# the seven states holding bCheckForWallClimb is a launch state
-		# (11 §11.2). Handing off to Falling instead would drop the player
+		# jump and left the wall rising -- and [ME:CONFIRMED 11 §11.2] in the
+		# original every one of the seven states holding bCheckForWallClimb is
+		# a launch state. Handing off to Falling instead would drop the player
 		# into the one airborne state whose config deliberately does NOT
 		# carry check_for_wall_climb, so no further wall could be attached
 		# until the next ground contact: no chained wall kicks at all, which
@@ -487,11 +469,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return JUMP
 
 	# Push along the wall's tangent UP TOWARD the energy-curve ceiling
-	# (Player.speed_cap()) -- NOT a wall-specific max speed (wall_max_speed is
-	# deleted; "the speed ceiling is handed to the energy curve" per spec
-	# §5.5). A player who enters already at their own foot-speed ceiling gets
-	# little or nothing from this branch, matching wall_running_min_speed's
-	# own invariant that a wall run CARRIES speed rather than creating it.
+	# (Player.speed_cap()) -- NOT a wall-specific max speed: the speed ceiling
+	# is handed to the energy curve everywhere (spec §5.5), so there is no
+	# separate wall_max_speed here. A player who enters already at their own
+	# foot-speed ceiling gets little or nothing from this branch, matching
+	# wall_running_min_speed's own invariant that a wall run CARRIES speed
+	# rather than creating it.
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	var along_speed := horizontal.dot(_along)
 	var ceiling: float = player.speed_cap()
@@ -541,7 +524,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# _along.
 	if Vector2(player.velocity.x, player.velocity.z).length() < config.wall_run.wall_running_min_speed:
 		return FALLING
-	# ⚠️ Read as a vertical SINK speed -- see WallRunConfig's own note on
+	# Read as a vertical SINK speed -- see WallRunConfig's own note on
 	# wall_running_velocity_stop_limit.
 	if player.velocity.y < config.wall_run.wall_running_velocity_stop_limit:
 		return FALLING

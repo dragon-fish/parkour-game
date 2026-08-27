@@ -1,30 +1,25 @@
 class_name JumpMove
 extends AirborneMove
 
-# The original's TdMove_Jump: the airborne stretch you still own. It is the
-# only phase that may start a wall run -- seven states hold bCheckForWallClimb
-# and every one of them is a deliberate launch (11 §11.2). A long descent that
-# merely brushes a building is NOT one of them.
+# [ME:CONFIRMED 11 §11.2] TdMove_Jump: the airborne stretch you still own. It
+# is the only phase that may start a wall run -- seven states hold
+# bCheckForWallClimb and every one of them is a deliberate launch. A long
+# descent that merely brushes a building is NOT one of them.
 
 ## Which wall this jump was kicked off, or 0 for an ordinary jump.
 ##
-## ✅ The owner: "the packs have a WallRunJump and it is not wired up -- a wall
-## kick still plays the ordinary jump." The MECHANISM has been complete for a
-## while (WallRunMove.wall_jump_launch and the whole Noob/ProAdd skill gradient
-## behind it); what it hands off to is JUMP, and the animator had no way to
-## tell that jump from any other.
-##
-## Read by CharacterAnimator, the same way it reads GrabMove.is_mantling() and
-## SpeedVaultMove.is_scramble().
+## Lets CharacterAnimator tell a wall-kick jump from an ordinary one and pick
+## the WallRun_Jump_L/R clip instead of the plain jump animation, the same way
+## it reads GrabMove.is_mantling() and SpeedVaultMove.is_scramble().
 var _kick_side: int = 0
 
 func kick_side() -> int:
 	return _kick_side
 
-## ⚠️ recent_wall_side, not wall_side. MoveManager exits the old move before
-## entering the new one, and WallRunMove.exit() clears wall_side -- so by the
-## time this runs the live one is already zero. recent_wall_side is the one
-## kept for exactly this kind of question.
+## DO NOT read wall_side here -- use recent_wall_side. MoveManager exits the
+## old move before entering the new one, and WallRunMove.exit() clears
+## wall_side, so by the time this runs the live one is already zero;
+## recent_wall_side is the one kept for exactly this kind of question.
 func enter(previous: StringName) -> void:
 	_kick_side = player.recent_wall_side if previous == WALL_RUN else 0
 

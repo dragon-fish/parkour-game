@@ -25,7 +25,7 @@ extends CanvasLayer
 #     owner counted in the dozens. Held keys are POLLED in _process now, at a
 #     rate per second rather than a step per press.
 #
-# ⚠️ A constant offset can only line up ONE instant of a moving clip. Perfect
+# A CONSTANT OFFSET CAN ONLY LINE UP ONE INSTANT of a moving clip. Perfect
 # for a hang, a wall run or a crouch; a compromise for a vault, where the body
 # travels past the thing its hands are meant to be on. See
 # BodyProfile.clip_offsets.
@@ -95,10 +95,9 @@ func _ready() -> void:
 ## Only the discrete actions live here -- the nudges are held keys, and those
 ## are polled in _process().
 ##
-## No arm toggles _active any more (that used to be F9, retired -- see
-## set_active() below): the tuning panel's Debug page checkbox is now the only
-## way in. Enter and Backspace still only make sense while frozen, so they stay
-## gated on _active as before.
+## No key arms _active any more -- the tuning panel's Debug page checkbox (see
+## set_active() below) is the only way in. Enter and Backspace still only make
+## sense while frozen, so they stay gated on _active.
 func _input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
@@ -136,8 +135,9 @@ func _process(delta: float) -> void:
 
 ## Freezes on the current frame and starts tuning whatever clip is playing;
 ## called again writes the value into the live table and lets the game run
-## on, so the next vault is played with what was just dialled in. No longer
-## bound to F9 directly -- see set_active() and the tuning panel's Debug page.
+## on, so the next vault is played with what was just dialled in. Reached only
+## through set_active() and the tuning panel's Debug page, not bound to a key
+## directly.
 func _toggle() -> void:
 	if player == null or player.body == null:
 		_note = "no body attached -- nothing to tune"
@@ -189,11 +189,11 @@ func _apply() -> void:
 
 ## EVERY clip tuned so far, not just the one on screen.
 ##
-## ✅ The owner: "I tuned a pile of them and only found out on Enter that it
-## printed the current one." The others were never lost -- _commit() writes each
-## into the live table as you leave it -- but recovering them meant walking back
-## through the clips one at a time to press Enter again, which is not recovery,
-## it is doing the work twice.
+## Printing only the clip on screen reads as data loss even though nothing is
+## actually lost -- _commit() writes each clip into the live table the moment
+## you leave it -- because recovering the others meant walking back through
+## every clip to press Enter again, which is not recovery, it is doing the
+## work twice.
 ##
 ## Printed as the whole property line, so it replaces the one in the .tres
 ## rather than being merged into it by hand.

@@ -44,9 +44,9 @@ var _rescued: bool = false
 
 ## True when this vault was SCRAMBLED rather than set up: either it resolved to
 ## one of the step-up rows, or it only happened because the falling rescue let
-## it. ✅ The owner asked for both to look the same -- and the original agrees
-## from the other direction, since its two step-up rows are the two with no
-## hand IK at all (05 §5.7). Nothing was planted because nothing had time to be.
+## it. Both are meant to look the same. [ME:CONFIRMED 05 §5.7] The original
+## agrees from the other direction: its two step-up rows are the two with no
+## hand IK at all. Nothing was planted because nothing had time to be.
 func is_scramble() -> bool:
 	return _rescued or _variant_name.begins_with("step_up")  or _variant_name.begins_with("auto_step_up")
 
@@ -64,49 +64,45 @@ func enter(_previous: StringName) -> void:
 
 
 	# THE HANDOFF IS CONSUMED FIRST, before any of the abort paths below.
-	# ⚠️ It used to be read further down, past the probe guard, and that made
-	# _variant_name unset on every abort -- which is also how it read in a test
-	# with no obstacle in the world. Both fields are one-shot channels: leaving
-	# them set would hand this vault's identity to the next one.
+	# DO NOT read it further down, past the probe guard -- that leaves
+	# _variant_name unset on every abort, including a test with no obstacle in
+	# the world. Both fields are one-shot channels: leaving them set would hand
+	# this vault's identity to the next one.
 	var variant: Dictionary = player.pending_vault_variant
 	player.pending_vault_variant = {}
 	_variant_name = String(variant.get("name", ""))
 	_rescued = player.pending_vault_rescue
 	player.pending_vault_rescue = false
 
-	# ONLY A REAL VAULT FOLDS. ✅ The owner: the step-up variants drop the model
-	# too, and they must not -- "that one only lifts a leg a little, and
-	# lowering the body just makes it clip."
+	# ONLY A REAL VAULT FOLDS. DO NOT let the step-up variants fold/drop the
+	# model -- a step-up only lifts a leg a little, so lowering the body just
+	# makes it clip.
 	#
-	# The original says the same thing from the other side: autostepuprightleg
-	# and stepuprightleg88 are the two rows of six with NO hand IK (05 §5.7).
-	# There is no hand because there is no plant; the body stays upright and
-	# steps. A body-over-the-hands vault folds, a step does not.
+	# [ME:CONFIRMED 05 §5.7] The original says the same thing from the other
+	# side: autostepuprightleg and stepuprightleg88 are the two rows of six
+	# with NO hand IK. There is no hand because there is no plant; the body
+	# stays upright and steps. A body-over-the-hands vault folds, a step does
+	# not.
 	#
 	# Gated on is_scramble(), which is the same question CharacterAnimator asks
 	# to pick StepUp over SafetyVault -- so the capsule and the clip agree by
 	# construction rather than by two lists being kept in step.
 	#
-	# ⚠️ The owner suggested splitting StepUp into its own state for this. Not
-	# done, and worth saying why: the original keeps all six in ONE move
-	# (TdMove_SpeedVault, six VaultTypes) and SpeedVaultConfig.variants is a
-	# transcription of that table. The behaviour that differs is per-variant, so
-	# it is expressed per-variant. If a separate state is wanted for reasons
-	# beyond this -- its own camera, its own transitions -- that is a bigger
-	# change and a separate one.
+	# DO NOT split StepUp into its own move state: [ME:CONFIRMED] the original
+	# keeps all six variants in ONE move (TdMove_SpeedVault, six VaultTypes),
+	# and SpeedVaultConfig.variants is a transcription of that table. The
+	# behaviour that differs is per-variant, so it is expressed per-variant. A
+	# separate state would only be justified by something beyond this -- its
+	# own camera, its own transitions -- which is a bigger, separate change.
 	if not is_scramble():
 		# THE LEGS TUCK, so the body rides at the shortened capsule's TOP.
 		#
-		# ✅ The owner, twice, and the second time is the one I had to hear:
-		# "the capsule should shrink hugging the FEET -- but the model and the
-		# eye should come down with it, instead of the capsule getting shorter
-		# while the model goes on playing anchored at the soles. The model's
-		# head should be anchored to the capsule's top."
-		#
-		# So: the COLLISION shortens from the top with the feet on the floor,
-		# exactly as it always has, and the MODEL AND EYE drop by what the
-		# capsule lost. The head then sits on the new crown, which is where a
-		# vaulting body's head actually is.
+		# DO NOT shrink the capsule while leaving the model anchored at the
+		# soles -- that reads as the capsule getting shorter while the body
+		# keeps standing inside it. The COLLISION shortens from the top with
+		# the feet on the floor, exactly as it always has, and the MODEL AND
+		# EYE drop by what the capsule lost. The head then sits on the new
+		# crown, which is where a vaulting body's head actually is.
 		#
 		# crouch_capsule_height rather than a knob of its own: it is the height
 		# this project already folds to for a slide and a roll, and one number
@@ -117,14 +113,14 @@ func enter(_previous: StringName) -> void:
 	# WalkingMove already null-checks player.probes AND requires a valid
 	# vault_query() before ever transitioning here, so neither branch below is
 	# reachable in normal play. They are kept as a guard for a future caller
-	# that skips that gate -- but as a GENUINELY safe one. The previous version
-	# fell back to `top = player.global_position`, which is not "nowhere to
-	# land": the landing is then built as `top + forward * vault_exit_forward`
-	# with `landing.y = top.y + standing_height/2`, so that fallback would have
-	# driven the body 0.9 m up and 0.6 m forward, through whatever was there.
-	# There is no safe destination to invent when the probe found nothing, so
-	# invent none: abort the vault and hand back to Walking with the body
-	# untouched and its velocity intact.
+	# that skips that gate -- but as a GENUINELY safe one. DO NOT fall back to
+	# `top = player.global_position` as a synthetic "nowhere to land" value:
+	# the landing is built as `top + forward * vault_exit_forward` with
+	# `landing.y = top.y + standing_height/2`, so that fallback drives the body
+	# 0.9 m up and 0.6 m forward, through whatever is there. There is no safe
+	# destination to invent when the probe found nothing, so invent none: abort
+	# the vault and hand back to Walking with the body untouched and its
+	# velocity intact.
 	var query: Dictionary = player.probes.vault_query() if player.probes != null else Probes.NO_HIT.duplicate()
 	if not query["valid"]:
 		_aborted = true
@@ -141,16 +137,15 @@ func enter(_previous: StringName) -> void:
 		return
 
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	# The sweet spot PAYS (+0.8 m/s); the high variants are clamped DOWN. This
-	# is the opposite sign from this project's old flat 0.85 keep ratio, and
-	# it is the whole reason the original's obstacles read as opportunities
-	# rather than as taxes. Source: 05 §5.7 (see SpeedVaultConfig.variants'
-	# own per-field sourcing on speed_addition/clamp_speed_min/clamp_speed_max).
+	# [ME:CONFIRMED 05 §5.7] The sweet spot PAYS (+0.8 m/s); the high variants
+	# are clamped DOWN -- which is why the original's obstacles read as
+	# opportunities rather than as taxes. See SpeedVaultConfig.variants' own
+	# per-field sourcing on speed_addition/clamp_speed_min/clamp_speed_max.
 	#
-	# clamp_speed_max for the two sweet-spot rows is 7.2 -- exactly
-	# PawnConfig.ground_speed, the player's own hard ceiling (confirmed
-	# faithful to the source: ClampSpeedMax = 720 = GroundSpeed there too, so
-	# this is not a retuning target). That means the bonus is invisible for any
+	# [ME:CONFIRMED] clamp_speed_max for the two sweet-spot rows is 7.2 --
+	# exactly PawnConfig.ground_speed, the player's own hard ceiling
+	# (ClampSpeedMax = 720 = GroundSpeed in the source too, so this is not a
+	# retuning target). That means the bonus is invisible for any
 	# entry at or above ground_speed: there is no "faster than your own top
 	# speed" to grant. What it DOES give back is speed already LOST to a turn,
 	# a rough landing, or friction since the last time the player was at cap --
@@ -164,50 +159,43 @@ func enter(_previous: StringName) -> void:
 
 	var top: Vector3 = query["top"]
 	var landing := top + _exit_direction * config.speed_vault.vault_exit_forward
-	# Feet flush on the probed top -- NOT offset by variant.ledge_offset_z.
-	# An earlier version of this line added ledge_offset_z here as extra
-	# height above this placement, on the reasoning that WalkingMove's next
-	# move_and_slide() floor-snaps the body regardless. Review found that
-	# reasoning false for this codebase: WalkingMove's floor-snap is a small
-	# downward bias (-floor_snap_speed) meant to keep contact across seams and
-	# gentle slopes, not to recover from being unsupported by any real
-	# distance -- PawnConfig.max_step_height's own comment is explicit that
-	# Godot's floor_snap_length only holds a body down over gaps small enough
-	# that a 5 cm plank once broke it (the reason try_step_up() exists at
-	# all). A body left ledge_offset_z above a real surface -- 0.6-0.9 m for
-	# two of the six variants -- does not snap back down; WalkingMove's own
-	# grounded check fails and hands off to a visible multi-tick FALLING. See
+	# Feet flush on the probed top -- NOT offset by variant.ledge_offset_z. DO
+	# NOT add ledge_offset_z here as extra height above this placement on the
+	# assumption that WalkingMove's next move_and_slide() floor-snaps the body
+	# regardless: WalkingMove's floor-snap is a small downward bias
+	# (-floor_snap_speed) meant to keep contact across seams and gentle slopes,
+	# not to recover from being unsupported by any real distance --
+	# PawnConfig.max_step_height's own comment is explicit that Godot's
+	# floor_snap_length only holds a body down over gaps small enough that a
+	# 5 cm plank once broke it (the reason try_step_up() exists at all). A
+	# body left ledge_offset_z above a real surface -- 0.6-0.9 m for two of the
+	# six variants -- does not snap back down; WalkingMove's own grounded
+	# check fails and hands off to a visible multi-tick FALLING. See
 	# SpeedVaultConfig.variants' own note on ledge_offset_z for why the field
 	# is still recorded but left unread.
 	landing.y = top.y + player.standing_height() * 0.5
 
 	# A VAULT *OVER* LANDS ON THE FAR SIDE, NOT ON THE OBSTACLE.
 	#
-	# Everything above builds an ONTO: feet flush on the probed top. Applied to
-	# a vault over as well -- which is what this move did -- the body is hauled
-	# up to the obstacle's own top edge, which the owner described exactly:
-	# "ours is the foot catching and then the body being lifted to the top edge,
-	# where the original traces a graceful arc over it".
+	# DO NOT build a vault over the same way as an onto (feet flush on the
+	# probed top): that hauls the body up to the obstacle's own top edge
+	# instead of carrying it past. [ME:CONFIRMED docs/feel-backlog.md 27]
+	# MEASURED: a VaultOver's peak sits 0.87 m BELOW the obstacle's top and the
+	# feet never clear it at all -- it is a hands-on-top move that carries the
+	# body PAST the obstacle, not over it.
 	#
-	# ✅ MEASURED: a VaultOver's peak sits 0.87 m BELOW the obstacle's top and
-	# the feet never clear it at all (docs/feel-backlog.md 27). It is a
-	# hands-on-top move that carries the body PAST the obstacle, not over it.
-	# `vault_over` PICKS THE LANDING, not `standable`.
+	# `vault_over` PICKS THE LANDING, not `standable`. Those are different
+	# questions: `standable` asks whether the top is FLAT, which is true for
+	# every box in the calibration course, so gating on it lands every vault
+	# on the obstacle regardless. The question that matters is whether the top
+	# is WIDE, and `vault_over` is already it -- the probe looks a body's reach
+	# past the top and asks whether the ground there is LOWER. Lower means the
+	# obstacle is thin enough to be carried past; level means it is a surface
+	# to land on.
 	#
-	# Those are different questions and the first attempt used the wrong one.
-	# `standable` asks whether the top is FLAT; every box in the calibration
-	# course has a flat top, so it was always true and every vault landed on the
-	# obstacle. The owner: "ours all end at the obstacle's top edge, where the
-	# original's vault-overs carry on until they are nearly on the ground."
-	#
-	# The question that matters is whether the top is WIDE, and `vault_over` is
-	# already it: the probe looks a body's reach past the top and asks whether
-	# the ground there is LOWER. Lower means the obstacle is thin enough to be
-	# carried past; level means it is a surface to land on.
-	#
-	# Fixing this fixes the duration complaint too, without touching the timing.
-	# An arc that ends on the far side spans the descent as well, so it covers
-	# the whole manoeuvre instead of stopping at the top and dropping.
+	# This also fixes the duration complaint without touching the timing: an
+	# arc that ends on the far side spans the descent as well, so it covers the
+	# whole manoeuvre instead of stopping at the top and dropping.
 	var far_point: Vector3 = query.get("far_point", Vector3.ZERO)
 	var is_onto: bool = not bool(query.get("vault_over", false))
 	if not is_onto:
@@ -228,29 +216,29 @@ func enter(_previous: StringName) -> void:
 			landing.y = far_point.y + player.standing_height() * 0.5
 	# WORKED OUT NOW, SPENT AT CONTACT.
 	#
-	# MaxDistanceTime is a confirmed field, so the original does commit before
-	# touching anything -- but a commit is the animation winding up, not the
-	# body being moved. begin()ing here would interpolate from wherever the
-	# commit happened, which at 7 m/s and MaxDistanceTime 0.2 s is 1.4 m short
-	# of the obstacle: a metre and a half of being dragged through open air.
+	# [ME:CONFIRMED] MaxDistanceTime is a confirmed field, so the original does
+	# commit before touching anything -- but a commit is the animation winding
+	# up, not the body being moved. begin()ing here would interpolate from
+	# wherever the commit happened, which at 7 m/s and MaxDistanceTime 0.2 s is
+	# 1.4 m short of the obstacle: a metre and a half of being dragged through
+	# open air.
 	#
-	# The owner put the whole principle plainly, and confirmed the timing from
-	# play: the vault visibly starts a little LATER than the press, with the
-	# hands and feet still meeting the geometry and a fraction of a second of
-	# IK-ish blending covering the difference. You can see Faith's own limbs in
-	# the original, so anything else reads as floating. See
+	# [ME:CONFIRMED] The vault visibly starts a little LATER than the press,
+	# with the hands and feet still meeting the geometry and a fraction of a
+	# second of IK-ish blending covering the difference -- you can see Faith's
+	# own limbs in the original, so anything else reads as floating. See
 	# docs/contact-drives-movement.md.
-	# ✅ ONE SHAPE, ONE DIAL. "先直接套用grab的规则，然后我来开需不需要微调力度." The
-	# pull-up's bezier is the only curve now; all a variant chooses is how far its
-	# control point sits back over the start.
-	_planned_bias = config.speed_vault.vault_onto_control_bias if is_onto 		else config.speed_vault.vault_over_control_bias
-	# ⚠️ WHERE THE PELVIS SHOULD PASS, and it cannot be read off the two ends. ✅
-	# THE OWNER, on a path through a 1.90 m wall whose start and end were both at
-	# 1.90: "我希望它走红色的路径" -- and, having worked out the principle a few
-	# minutes earlier: "游戏里每次需要的高度都不一样，而动画作者只为一种高度做了动画...
-	# 让最高点与障碍之间的高度差总是和动画里盆骨保持相近就好了."
 	#
-	# 🎯 SO THE NUMBER COMES FROM THE CLIP, not from a knob. Player.
+	# ONE SHAPE, ONE DIAL: the pull-up's bezier is the only curve now, reused
+	# directly from GrabMove's own rule rather than a separate one; all a
+	# variant chooses is how far its control point sits back over the start.
+	_planned_bias = config.speed_vault.vault_onto_control_bias if is_onto 		else config.speed_vault.vault_over_control_bias
+	# WHERE THE PELVIS SHOULD PASS cannot be read off the two ends alone: the
+	# game needs a different height every time, but the animator made one
+	# animation for one height, so the height difference between the arc's
+	# peak and the obstacle must track whatever that clip's own pelvis lift is.
+	#
+	# SO THE NUMBER COMES FROM THE CLIP, not from a knob. Player.
 	# body_clip_hip_peaks measures how far each clip lifts its own hips above
 	# rest -- SafetyVault 0.732 m, StepUp 0.226, ClimbUp_1m 0.193 -- which IS the
 	# animator's own answer to "how far over the obstacle does the body go". Held
@@ -262,14 +250,13 @@ func enter(_previous: StringName) -> void:
 
 	# A VAULT MUST NOT BE SLOWER THAN JUST RUNNING THERE.
 	#
-	# The variant's own duration is ✅ confirmed (VaultTimeUp + Over + Down), but
-	# it is a fixed TIME, and it is paired in the original with the original's
-	# own fixed geometry. Applied to whatever distance this obstacle happens to
-	# need, it drags: cross 3 m in 0.65 s and a player who arrived at 7 m/s is
-	# visibly held back for the whole vault and then handed their speed back at
-	# the end. The owner felt it as "sometimes a bit slow", and this commit's
-	# own change made it worse -- a vault OVER now lands on the FAR side, so the
-	# distance grew while the time did not.
+	# [ME:CONFIRMED] The variant's own duration is confirmed (VaultTimeUp +
+	# Over + Down), but it is a fixed TIME, and it is paired in the original
+	# with the original's own fixed geometry. Applied to whatever distance
+	# this obstacle happens to need, it drags: cross 3 m in 0.65 s and a
+	# player who arrived at 7 m/s is visibly held back for the whole vault and
+	# then handed their speed back at the end -- worse once a vault OVER lands
+	# on the far side, since the distance grows while the fixed time does not.
 	#
 	# Same lesson IntoGrabMove learned: a manoeuvre that covers ground should
 	# take the time the ground takes, and the duration falls out of the geometry
@@ -320,18 +307,18 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		if touching(_face_point):
 			_touched = true
 			# From where the body ACTUALLY IS, which is the whole point.
-			# ⚠️ THE HIPS GIVE UP THEIR OWN LIFT, ALWAYS. There is one shape now
-			# and it is the path's, so a clip that also lifted would be the
-			# double-count this whole thread began with.
+			# THE HIPS GIVE UP THEIR OWN LIFT, ALWAYS: there is one shape now
+			# and it is the path's, so a clip that also lifted would double-
+			# count the height.
 			player.set_clip_lift_kept(0.0)
-			# ⚠️ THE CLIP IS ONLY SETTLED NOW. Asked at the commit, this lands on
-			# whatever was playing a moment before the vault -- Jump_Start, most
-			# of the time -- which is not in the table, so the apex degraded to
-			# the obstacle's top exactly and the pelvis grazed it.
+			# DO NOT ask for the clip at the commit -- it lands on whatever was
+			# playing a moment before the vault (Jump_Start, most of the time),
+			# which is not in the table, so the apex degrades to the obstacle's
+			# top exactly and the pelvis grazes it.
 			#
-			# ✅ THE OWNER: "我希望弧线的最高点总是比墙高." The clip's own hip peak is
-			# what makes it so, and it is measured per clip at attach: SafetyVault
-			# 0.732 m, StepUp 0.226, ClimbUp_1m 0.193.
+			# THE ARC'S PEAK MUST ALWAYS CLEAR THE OBSTACLE. The clip's own hip
+			# peak is what makes it so, and it is measured per clip at attach:
+			# SafetyVault 0.732 m, StepUp 0.226, ClimbUp_1m 0.193.
 			var apex_y: float = _planned_top_y + _planned_apex_over_top
 			begin(player.global_position, _landing, _arc_duration,
 					apex_y, _planned_bias,
@@ -350,11 +337,10 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# A slight bank through the arc, peaking in the middle and gone by the end.
 	# sin() rather than a ramp: a vault that ended still leaning would hand a
 	# tilted horizon to whatever came next.
-	# ✅ NOT FOR A STEP-UP, on the owner's call: "the StepUp action does not need
-	# to rotate the screen." The bank is the camera's half of a one-handed
-	# plant, and a step-up has no hand in it -- which is the same reason it
-	# plays StepUp rather than SafetyVault, and the same reason it does not
-	# fold. All three questions are is_scramble().
+	# NOT FOR A STEP-UP: the bank is the camera's half of a one-handed plant,
+	# and a step-up has no hand in it -- the same reason it plays StepUp
+	# rather than SafetyVault, and the same reason it does not fold. All three
+	# questions are is_scramble().
 	if player.camera_rig != null and not is_scramble():
 		# LEANS ONE WAY, ALWAYS. A vault is a one-handed move -- the same hand
 		# every time in the original -- so the bank has a side rather than being
@@ -368,12 +354,12 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		# probed obstacle TOP plus vault_exit_forward's un-probed horizontal
 		# push -- past a thin obstacle that push can overshoot the obstacle's
 		# own footprint into open air over the real floor, which the body has
-		# never actually touched. Asserting grounded=true at that point was
-		# exactly the bug review caught: it silently re-arms coyote time (a
-		# jump buffered mid-vault would fire from mid-air) before WalkingMove's
-		# OWN move_and_slide() gets a chance to check anything. Leaving it
-		# false (unchanged from enter()) means WalkingMove's very next
-		# floor-snap tick is what first calls set_grounded() for real, exactly
+		# never actually touched. DO NOT assert grounded=true at that point:
+		# it silently re-arms coyote time (a jump buffered mid-vault would
+		# fire from mid-air) before WalkingMove's OWN move_and_slide() gets a
+		# chance to check anything. Leaving it false (unchanged from enter())
+		# means WalkingMove's very next floor-snap tick is what first calls
+		# set_grounded() for real, exactly
 		# like every other transition into Walking (Falling, Slide) already
 		# requires of itself. The cost is at most one tick of WalkingMove
 		# running before grounded is confirmed -- harmless, since WalkingMove

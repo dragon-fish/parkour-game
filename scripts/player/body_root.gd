@@ -151,12 +151,12 @@ func _rebuild_preview() -> void:
 ## A ring at the CAMERA's resting height, so a model can be aligned against the
 ## thing it actually has to line up with.
 ##
-## The owner's complaint, and it was fair: aligning a body meant reading numbers
-## out loud and having someone else nudge them, once per model. Everything
-## needed to do it by eye was already in the editor -- the capsule's own gizmo
-## and this script's model preview -- except the one piece invented at runtime.
-## CameraRig only takes its height in setup(), which the editor never calls, so
-## the camera sits at the Player's origin there and tells you nothing.
+## Without it, aligning a body means reading numbers out loud and having
+## someone else nudge them, once per model. Everything needed to do it by eye
+## is already in the editor -- the capsule's own gizmo and this script's model
+## preview -- except the one piece invented at runtime: CameraRig only takes
+## its height in setup(), which the editor never calls, so the camera sits at
+## the Player's origin there and tells you nothing.
 ##
 ## Read from a default MovementConfig, which does not exist outside a running
 ## Arena. That is the value every level starts from, so it is right unless a
@@ -166,11 +166,11 @@ func _rebuild_preview() -> void:
 ## saved into a scene or shipped in a build.
 ## One ring at the eye, one at the capsule's BOTTOM.
 ##
-## The feet ring is there because its absence caused a real misreading: with
-## only the collision shape's own faint wireframe to go by, the owner took the
-## selected node's gizmo for the origin and concluded the model's feet were not
-## on the capsule at all. They were -- 7 cm up, which is the mount offset doing
-## exactly what it says. Nothing was wrong except that nothing was legible.
+## DO NOT drop the feet ring. Without it there is only the collision shape's
+## own faint wireframe to go by, the selected node's gizmo gets taken for the
+## origin, and a model whose feet sit 7 cm up -- the mount offset doing exactly
+## what it says -- reads as a body not on the capsule at all. That cost a round
+## of chasing a bug that was never there.
 func _rebuild_markers(capsule_height: float) -> void:
 	_eye_marker = _replace_ring(_eye_marker, 		MovementConfig.new().camera.eye_height, Color(0.2, 0.9, 1.0, 0.85))
 	# Where the capsule ends, which is where the model's feet belong.

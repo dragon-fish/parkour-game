@@ -4,11 +4,11 @@ extends AirborneMove
 # Running straight at a wall and kicking vertically up it.
 #
 # Extends AirborneMove rather than Move, unlike its sibling WallRunMove, and
-# that is not stylistic: TdMove_WallClimb sets bCheckForGrab AND
-# bCheckForVaultOver, so a climb has to keep probing for a lip to catch or an
-# obstacle to clear. probe_transition() already is that probing, and inheriting
-# it is how "kick up, catch the lip" stays one continuous motion instead of two
-# moves the player has to aim separately.
+# that is not stylistic: [ME:CONFIRMED 11 §11.2] TdMove_WallClimb sets
+# bCheckForGrab AND bCheckForVaultOver, so a climb has to keep probing for a
+# lip to catch or an obstacle to clear. probe_transition() already is that
+# probing, and inheriting it is how "kick up, catch the lip" stays one
+# continuous motion instead of two moves the player has to aim separately.
 
 ## The wall's outward normal, refreshed every tick from the probe -- a climb
 ## that loses its wall ends, so this is never stale.
@@ -78,14 +78,15 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	_normal = wall["normal"]
 
 	# A lip to catch or an obstacle to clear beats carrying on up a blank wall.
-	# ✅ bCheckForGrab / bCheckForVaultOver, see WallClimbConfig's _init().
+	# [ME:CONFIRMED] bCheckForGrab / bCheckForVaultOver, see WallClimbConfig's
+	# _init().
 	var probed := probe_transition()
 	if probed != KEEP:
 		return advance_and_hand_off(probed)
 
-	# ✅ WallClimbingVerticalFriction. Applied to the horizontal plane only:
-	# the whole move is about converting that horizontal run into height, and
-	# the vertical component is gravity's business two lines down.
+	# [ME:CONFIRMED] WallClimbingVerticalFriction. Applied to the horizontal
+	# plane only: the whole move is about converting that horizontal run into
+	# height, and the vertical component is gravity's business two lines down.
 	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	horizontal = horizontal.move_toward(Vector3.ZERO, cfg.horizontal_friction * delta)
 	player.velocity.x = horizontal.x
@@ -106,13 +107,13 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# ...or the moment it has gone as far as a climb goes, WITH NOTHING LEFT
 	# OVER.
 	#
-	# The residual used to be handed on, so a fast kick carried a little past
-	# the top. That is what "speed buys height" looks like, and the measurement
-	# rules it out: a standing climb rises 1.30 m and so does a running one, off
-	# a higher contact point. Arithmetic agrees -- preserved through the ceiling,
-	# the jump's own 6.3 m/s would still be doing 4.35 m/s there and coast
-	# another 0.59 m, which is half again as much climb as the measurement
-	# allows.
+	# DO NOT hand the residual on past the top: a standing climb rises 1.30 m
+	# and so does a running one, off a higher contact point -- carrying a fast
+	# kick's leftover speed past that would read as "speed buys height", and
+	# the measurement rules that out. Arithmetic agrees -- preserved through
+	# the ceiling, the jump's own 6.3 m/s would still be doing 4.35 m/s there
+	# and coast another 0.59 m, which is half again as much climb as the
+	# measurement allows.
 	#
 	# So the climb ends at its apex, which is what "the height does not depend
 	# on speed" has to mean if speed is also to raise the rate of ascent. Speed

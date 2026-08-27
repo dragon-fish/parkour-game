@@ -1,18 +1,15 @@
 extends ParkourTest
 
-# Player._ensure_clips_loop, which was 95% of the cost of loading a level.
-#
-# It used to take ONE clip name and, for each call, deep-copy the entire
-# animation library, set one loop_mode on the copy, and swap the copy in. The
-# caller handed it forty-five names and the merged UAL library holds 253
-# animations -- so every level load deep-copied 253 animations forty-five times
-# to set forty-five booleans. 2252 ms of a 2489 ms _ready(), behind a white
-# curtain that made it look like loading.
+# Player._ensure_clips_loop() deep-copies the shared animation library
+# exactly ONCE per player, then sets loop_mode on every named clip against
+# that single copy. The caller passes dozens of clip names against a merged
+# library holding hundreds of animations, so copying per-name instead of
+# once is the single largest cost a level load can pay.
 #
 # THE COPY ITSELF HAS TO STAY. The imported library is shared; writing
 # loop_mode straight into it would reach every other instance and the cached
-# resource behind them. Copying ONCE is the fix, and these pin the behaviour
-# that has to survive it -- not the timing, which is a machine's business.
+# resource behind them. These tests pin the BEHAVIOUR that has to survive any
+# change to this function -- not its timing, which is a machine's business.
 #
 # Synthetic library on purpose: this needs no private body, so it runs on any
 # clone.

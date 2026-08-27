@@ -1,17 +1,17 @@
 class_name LadderMove
 extends LineMove
 
-# The original's TdMove_Ladder. ✅ The owner: pipes and ladders are one
-# mechanic with an authored FRONT ("梯子只有一面可以进入"); entry is a
-# frontal 180-degree fan (front half-space), open to airborne, grounded AND
-# wallrunning bodies.
+# The original's TdMove_Ladder. [ME:INFERRED] Pipes and ladders are one
+# mechanic with an authored FRONT (a ladder can only be entered from one
+# side); entry is a frontal 180-degree fan (front half-space), open to
+# airborne, grounded AND wallrunning bodies.
 #
 # PHYS_Flying, like the rest of the "along a line" family: the fade-in is a
-# raw position write (Task 3's ruling -- brushing geometry during the pull
-# must not abort a catch the magnet exists to guarantee), and only the
-# steady climb afterward is collision-checked via slide_to(), because
-# designers deliberately sink a ladder's ends into the floor and ceiling it
-# passes through.
+# raw position write -- brushing geometry during the pull must not abort a
+# catch the magnet exists to guarantee -- and only the steady climb
+# afterward is collision-checked via slide_to(), because designers
+# deliberately sink a ladder's ends into the floor and ceiling it passes
+# through.
 
 ## Arc length along the line, metres. Read by the HUD/tests via
 ## climbing_offset().
@@ -20,7 +20,7 @@ var _offset: float = 0.0
 ## actually asked for; the animator picks Climb_Up/Down/Idle off it.
 var _climb_dir: int = 0
 
-## Task 7's top exit: a scripted carry off the top of the line onto a
+## The top exit: a scripted carry off the top of the line onto a
 ## standable deck behind it, driven by a COMPOSED ScriptedMove rather than an
 ## inherited one. LadderMove already extends LineMove for the family's shared
 ## skeleton (acquire_line/slide_to/note_left/...), and GDScript has no
@@ -82,8 +82,9 @@ func enter(_previous: StringName) -> void:
 ##   1. cooldown + latch (line_ready -- the latch's own push-toward bypass
 ##      lives there);
 ##   2. the ladder's front half-space;
-##   3. the PLAYER's front 180 degrees -- ✅ the owner: "如果玩家的视角里
-##      （一般来说就是前方180°）里看不到梯子就不会触发进入", no backing in.
+##   3. the PLAYER's front 180 degrees -- [ME:INFERRED] a ladder outside the
+##      player's view (roughly the forward 180 degrees) does not trigger
+##      entry, no backing in.
 ## A body that passes 1-2 but fails 3 SPENDS the line's passive chance
 ## (Player.latch_line): turning around later must not auto-enter; walking
 ## back toward the rungs re-arms it through the bypass.
@@ -112,7 +113,7 @@ static func _faces_line(player: Player, line: InterestLine) -> bool:
 		return true
 	return look.normalized().dot(toward.normalized()) > 0.0
 
-## The ladder's own front half-space -- see the spec's 正面180°扇形.
+## The ladder's own front half-space -- see the spec's front 180-degree fan.
 static func front_side_allows(line: InterestLine, body_pos: Vector3) -> bool:
 	var at: Vector3 = line.sample(line.closest_offset(body_pos))["position"]
 	var to_body: Vector3 = body_pos - at
@@ -141,17 +142,17 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# of the family settled on.
 	player.fall_tracker.reset(player.global_position.y)
 	if input.crouch_pressed:
-		# ✅ THE OWNER: "在ME里按一次按键只对应一次动作" -- the same press
-		# that lets go must not also survive in the roll buffer to fire a
-		# skill roll at whatever the fall turns out to be.
+		# [ME:INFERRED] one press of a key corresponds to exactly one action
+		# -- the same press that lets go must not also survive in the roll
+		# buffer to fire a skill roll at whatever the fall turns out to be.
 		player.consume_roll()
 		return FALLING
-	# The jump-off chain (Task 5) and the top exit (Task 7) both land here,
-	# ahead of the plain climb below.
+	# The jump-off chain and the top exit both land here, ahead of the plain
+	# climb below.
 	if input.jump_pressed:
-		# The scan only runs while a direction is actually HELD (✅ the owner's
-		# spec: "方向键按着"). Plain space facing the ladder, with no A/D/S
-		# down, is 无操作 -- it must fall straight through to the look-jump
+		# The scan only runs while a direction is actually HELD ([ME:INFERRED]
+		# the spec's own rule). Plain space facing the ladder, with no A/D/S
+		# down, is a no-op -- it must fall straight through to the look-jump
 		# check below (and from there, most likely, to the ignore case) rather
 		# than being read as an implicit "scan straight back" with side 0.
 		var wants_scan: bool = absf(input.move.x) > 0.1 or input.move.y < -0.1
@@ -163,7 +164,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			# straight-back scan _scan_snap_target(0) already covers.
 			var target: InterestLine = _scan_snap_target(side)
 			if target != null:
-				return _launch_at(target)  # Task 6
+				return _launch_at(target)
 		var turned: float = absf(wrapf(_camera_yaw() - _target_yaw, -PI, PI))
 		if turned > deg_to_rad(cfg.jump_angle_deg):
 			# GrabMove's shape verbatim: the full 3D look, nothing projected
@@ -172,11 +173,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			player.velocity = _look_direction() * cfg.jump_speed
 			player.consume_roll()
 			return FALLING
-		# Facing the ladder, no target: the press is IGNORED (✅ the owner:
-		# "AD+空格如果没有其他梯子是不会触发跳的").
+		# Facing the ladder, no target: the press is IGNORED ([ME:INFERRED]
+		# A/D + space does not trigger a jump when there is no other ladder
+		# to snap to).
 
-	# The top exit (Task 7). MUST sit AFTER the jump chain above and BEFORE
-	# the ordinary climb below -- 🔒 protected technique, invariant #3: space
+	# The top exit MUST sit AFTER the jump chain above and BEFORE
+	# the ordinary climb below -- PROTECTED INVARIANT #3: space
 	# at the very top (a turned camera or a snap target) still beats the
 	# scripted exit, exactly the way it does at every other height on the
 	# line. Reaching here at all already means jump_pressed either was not
@@ -185,11 +187,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		var deck: Dictionary = _probe_top_deck()
 		if deck.get("valid", false):
 			return _begin_top_exit(deck["position"])
-		# No deck within reach: W does nothing at the top (✅ the owner).
-		# Falls through to the ordinary climb below, which simply re-clamps
-		# _offset to the value it already has.
+		# No deck within reach: W does nothing at the top. Falls through
+		# to the ordinary climb below, which simply re-clamps _offset to
+		# the value it already has.
 
-	# Bottom-end release (spec §攀爬: "底端 + 仍按 S：松手，正常下落"). No
+	# Bottom-end release (spec section on climbing: at the bottom end, still
+	# holding S releases the grip and the body falls normally). No
 	# consume_roll() here, unlike the crouch-release above -- this is a held
 	# key crossing the bottom, not a discrete press, so there is no buffered
 	# roll press to guard against re-firing.
@@ -203,16 +206,16 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		+ _line.front() * cfg.stand_off
 	_fade += delta
 	if _fade < cfg.fade_in_time:
-		# ✅ TASK 3'S RULING: the magnet's own pull stays a direct write, not
-		# collision-checked -- see this file's header note.
+		# The magnet's own pull stays a direct write, not collision-checked
+		# -- see this file's header note.
 		var t: float = _fade / cfg.fade_in_time
 		player.global_position = _entry_pos.lerp(hang, t)
 		_turn_body_to(lerp_angle(_entry_yaw, _target_yaw, t))
 	else:
 		var hit: KinematicCollision3D = slide_to(hang)
 		if hit != null:
-			# ✅ THE OWNER: descending into the floor IS the bottom -- the
-			# next tick lands and grounds normally.
+			# Descending into the floor IS the bottom -- the next tick lands
+			# and grounds normally.
 			if input.move.y < 0.0 and hit.get_normal().y > 0.5:
 				return FALLING
 			# A ceiling (or anything else in the way): stay on the ladder
@@ -229,8 +232,8 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 func exit() -> void:
 	# until_exit: a ladder is ground-enterable, so a released body can just
 	# STAND in the volume -- the latch stops the auto re-grab, and pushing
-	# toward the rungs (✅ ME's own rule, and its save-yourself glitch)
-	# lifts it. See Player.line_ready().
+	# toward the rungs ([ME:INFERRED] the original's own rule, including a
+	# save-yourself glitch) lifts it. See Player.line_ready().
 	note_left(cfg.same_line_redo_time, true)
 	# Unconditional, mirroring GrabMove.exit()'s own reset of the same field:
 	# asking for the clip's hip-lift back when it was never cancelled costs
@@ -242,13 +245,13 @@ func exit() -> void:
 func climbing_offset() -> float:
 	return _offset
 
-## Whether the top-exit scripted carry (Task 7) is under way. Exposed for the
+## Whether the top-exit scripted carry is under way. Exposed for the
 ## same reason GrabMove.is_mantling() is: CharacterAnimator asks from outside
 ## rather than LadderMove pushing an event in.
-## F12's scripted-path overlay duck-types this (scripted_path_debug.gd) --
-## the composed carry was invisible to it, same is-a assumption the
-## animation fit made. Shows the leg currently playing. The overlay also
-## walks the plan through sample(), so that is delegated below.
+## F12's scripted-path overlay duck-types this (scripted_path_debug.gd). The
+## carry is composed, not inherited, so path_debug() and sample() MUST
+## delegate to `_top_exit` below or the overlay's is-a assumption leaves the
+## carry invisible to it. Shows the leg currently playing.
 func path_debug() -> Dictionary:
 	return _top_exit.path_debug() if _top_exiting else {}
 
@@ -270,9 +273,9 @@ func is_top_exiting() -> bool:
 ## Which ladder a directional jump-off (AD+space) would snap to instead of
 ## just launching off this one, or null when there is nothing to snap to.
 ##
-## Direction lives entirely in the LADDER's own frame (✅ the owner: no
-## aiming needed) -- side -1/+1 run along front x up, side 0 means straight
-## back off the ladder. No camera read anywhere in here.
+## Direction lives entirely in the LADDER's own frame -- no aiming needed --
+## side -1/+1 run along front x up, side 0 means straight back off the
+## ladder. No camera read anywhere in here.
 func _scan_snap_target(side: int) -> InterestLine:
 	var f: Vector3 = _line.front()
 	# side -1 (A) must scan toward the CLIMBER'S OWN LEFT, +1 (D) toward their
@@ -287,10 +290,10 @@ func _scan_snap_target(side: int) -> InterestLine:
 	# +Z): UP.cross(f) = (0,1,0) x (0,0,-1) = (-1,0,0) = -X -- the climber's
 	# RIGHT, confirmed against "forward.cross(up) = right" applied to their
 	# own +Z facing: (0,0,1) x (0,1,0) = (-1,0,0), the same -X. So side=-1 (A)
-	# gives dir = (-X) * (-1) = +X, the climber's LEFT. The previous
-	# `* -float(side)` sent A to -X instead -- the climber's RIGHT, inverted.
-	# See tests/test_ladder_move.gd's own Task 6 header for the geometry this
-	# fixes.
+	# gives dir = (-X) * (-1) = +X, the climber's LEFT. DO NOT flip the sign
+	# to `* -float(side)` -- that sends A (side -1) to -X instead, the
+	# climber's RIGHT, inverting the mapping. See tests/test_ladder_move.gd
+	# for the geometry behind this.
 	var dir: Vector3 = f if side == 0 else Vector3.UP.cross(f) * float(side)
 	var best: InterestLine = null
 	var best_d: float = cfg.snap_range
@@ -339,7 +342,7 @@ func _camera_yaw() -> float:
 
 ## Where a jump off the ladder launches: along the VIEW, wall included.
 ##
-## ⚠️ COPIES GrabMove._launch_direction() ON PURPOSE, into-wall component and
+## COPIES GrabMove._launch_direction() ON PURPOSE, into-wall component and
 ## all -- see that function's own long comment for why nothing gets projected
 ## out of it. The same speedrun glitch this move's jump_angle_deg threshold
 ## opens the door to (turning just past 45 degrees throws the body at the
@@ -354,7 +357,7 @@ func _look_direction() -> Vector3:
 		return -_line.front()
 	return look.normalized()
 
-# --- Task 7: the top exit -------------------------------------------------
+# --- The top exit ----------------------------------------------------------
 
 ## How far above the candidate landing the deck probe starts, metres.
 const TOP_DECK_PROBE_LIFT := 0.5
@@ -374,14 +377,14 @@ const TOP_DECK_NORMAL_MIN := 0.7
 ## `top_exit_reach` back along -front() -- the wall side, opposite the
 ## frontal entry fan -- straight down onto whatever is there.
 ##
-## ✅ THE SPEC, verbatim: candidate = top + (-front()) * top_exit_reach, ray
-## from half a metre above it, downward. Valid only on a near-flat surface
+## Candidate = top + (-front()) * top_exit_reach, ray from half a metre
+## above it, downward. Valid only on a near-flat surface
 ## (normal.y > TOP_DECK_NORMAL_MIN) with room for a standing body --
 ## player.fits_standing_at(), the same shapecast GrabMove's own mantle gate
 ## asks of its landing.
-## NEAR TO FAR, first standable point wins. The old single candidate sat at
-## a fixed top_exit_reach (1.2 m) behind the top, which read as the carry
-## "sending the player way back there" (✅ the owner, with a drawing). A cap
+## NEAR TO FAR, first standable point wins. DO NOT collapse this scan back
+## to a single fixed-distance candidate -- a single top_exit_reach behind
+## the top visibly sends the player too far back from the deck. A cap
 ## block or small step on the lip is landed ON when the capsule fits there
 ## -- a < step's worth of rise IS the walkway -- and stepped past otherwise.
 const TOP_DECK_SCAN_START := 0.35
@@ -433,12 +436,12 @@ func _begin_top_exit(deck_position: Vector3) -> StringName:
 	_top_exit.player = player
 	# A BEZIER, like every scripted carry (sample()'s one rule): the apex is
 	# lifted top_exit_apex_lift above the landing so the capsule arcs OVER
-	# the deck lip instead of cutting its corner (✅ the owner: "会穿模").
+	# the deck lip instead of cutting its corner and clipping through it.
 	# The solved control height puts the curve's true peak exactly there.
 	_top_exit.begin(player.global_position, landing, cfg.top_exit_time,
 		landing.y + cfg.top_exit_apex_lift, cfg.top_exit_control_bias)
 	_top_exiting = true
-	# ✅ THE SPEC: the carry plays ClimbUp_1m (CharacterAnimator._route()'s
+	# The carry plays ClimbUp_1m (CharacterAnimator._route()'s
 	# Move.LADDER arm). The scripted arc already supplies the whole vertical
 	# travel, so the clip's own baked hip-lift must not stack on top of it --
 	# the SAME gate GrabMove arms right before `_mantling = true`

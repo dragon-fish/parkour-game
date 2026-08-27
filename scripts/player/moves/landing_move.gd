@@ -1,8 +1,9 @@
 class_name LandingMove
 extends Move
 
-# The Godot counterpart of the original's TdMove_Landing: the 2 s lockout
-# after a hard landing taken without a roll. MOVEMENT input is refused for the
+# [ME:CONFIRMED] TdMove_Landing's Godot counterpart: a 2 s lockout after a
+# hard landing taken without a roll (see LandingConfig.lockout_time for the
+# measurement). MOVEMENT input is refused for the
 # whole duration -- that is the entire point: this move never reads its
 # MoveInput at all, and LandingConfig.constrain_look pins the yaw to a +-0.2
 # rad fan around the facing the landing began with on top of that. LOOK PITCH

@@ -3,14 +3,15 @@ extends ParkourTest
 # A scripted move's clip starts the tick the move does, and still cross-fades
 # out of whatever was playing.
 #
-# ✅ THE OWNER REPORTED THE SAME BUG FROM BOTH SIDES, and the two reports are
-# why this is a gate rather than a policy:
+# Two failure modes are why this is a gate rather than a policy:
 #
-#   waiting  "比如 Jump -> Climb -> IntoGrab -> Grab -> GrabPullUp 中间几个状态逻
-#            辑帧里只存在了几帧，却抢占了 GrabPullUp 的动画时间." A travel() is a
-#            REQUEST: the state machine finishes the transition it is in first.
-#   cutting  "和前一个动作完全没有衔接过渡." start(target, true) does arrive at
-#            once -- by throwing the whole cross-fade away.
+#   waiting  A short-lived intermediate state (Jump -> Climb -> IntoGrab ->
+#            Grab -> GrabPullUp holds several of these for only a few logic
+#            frames each) can steal GrabPullUp's animation time if a request
+#            is honoured immediately. A travel() is a REQUEST: the state
+#            machine finishes the transition it is in first.
+#   cutting  start(target, true) does arrive at once -- by throwing the whole
+#            cross-fade away, with no blend into the previous clip at all.
 #
 # AnimationNodeStateMachinePlayback in 4.7 offers no third option (verified
 # against the engine's own ClassDB; godotengine/godot#66495 is the standing
@@ -117,9 +118,10 @@ func test_a_scripted_clip_claims_a_slot_on_the_tick_it_is_asked_for() -> void:
 	await step(2)
 	animator._route(ANOTHER_ORDINARY_CLIP, DELTA)
 	await step(2)
-	# The state machine is now genuinely mid-transition, which is the condition
-	# that used to cost the scripted clip its opening frames. Asserted, not
-	# assumed: without it the rest of this test proves nothing.
+	# The state machine is now genuinely mid-transition -- the condition under
+	# which a scripted clip loses its opening frames if the routing does not
+	# gate on it. Asserted, not assumed: without it the rest of this test
+	# proves nothing.
 	assert_ne(String(animator._playback.get_fading_from_node()), "",
 		"the state machine settled before the scripted clip was asked for")
 
@@ -137,7 +139,7 @@ func test_two_scripted_clips_in_a_row_use_different_slots() -> void:
 	# cut from the first to the second; two ping-pong, so the second fades out of
 	# the first exactly as it fades out of a run.
 	#
-	# ⚠️ WITH TICKS BETWEEN THE TWO CLAIMS, deliberately. Issuing both before
+	# WITH TICKS BETWEEN THE TWO CLAIMS, deliberately. Issuing both before
 	# either has been processed proves only that the bookkeeping alternates; the
 	# case that matters is the second claim arriving while the gate is genuinely
 	# mid-fade into the first, which is what a mantle chain does.
@@ -181,7 +183,7 @@ func test_holding_a_scripted_clip_does_not_restart_it() -> void:
 		"the clip already on screen was asked for again")
 
 func test_an_ordinary_clip_hands_the_gate_back_to_the_state_machine() -> void:
-	# ⚠️ NOT ON THE FIRST TICK IT ASKS. See _route()'s hysteresis note: the
+	# NOT ON THE FIRST TICK IT ASKS. See _route()'s hysteresis note: the
 	# ordinary target has to keep asking for a whole blend window first. What is
 	# under test here is that it does eventually get the gate, and that the
 	# machine underneath has been travelled to meet it.
@@ -203,7 +205,7 @@ func test_an_ordinary_clip_hands_the_gate_back_to_the_state_machine() -> void:
 		"the state machine was never asked to travel anywhere")
 
 func test_an_ordinary_clip_between_two_scripted_ones_never_gets_the_gate() -> void:
-	# 🎯 THE SANDWICH. AnimationNodeTransition tracks ONE level of `prev`, so
+	# THE SANDWICH. AnimationNodeTransition tracks ONE level of `prev`, so
 	# letting "states" in between two slots inside a single blend window makes it
 	# promote the half-faded "states" to full weight and drop the outgoing slot in
 	# one tick. The hysteresis is what stops "states" being requested at all here
@@ -228,10 +230,10 @@ func test_an_ordinary_clip_between_two_scripted_ones_never_gets_the_gate() -> vo
 		"the second scripted clip did not go straight to the other slot")
 
 func test_a_sandwiched_ordinary_clip_does_not_pop_the_body() -> void:
-	# THE SAME CASE, READ OFF THE SKELETON rather than off the routing. Before the
-	# hysteresis this was measured at 1.5556 -> 0.0000 between two consecutive
-	# physics frames: the gate dropping a slot that was still contributing most of
-	# the pose.
+	# THE SAME CASE, READ OFF THE SKELETON rather than off the routing. The
+	# failure this hysteresis prevents is a full pop, 1.5556 -> 0.0000 between
+	# two consecutive physics frames: the gate dropping a slot that was still
+	# contributing most of the pose.
 	#
 	# The threshold is the FADE'S OWN RATE. A marker crossing the full 10 over two
 	# seconds moves 0.083 per tick while one clip plays, and a cross-fade between
@@ -295,12 +297,12 @@ func test_a_slot_carries_the_same_trim_as_the_state_machines_own_node() -> void:
 			"the slot's %s does not match the state machine's node" % property)
 
 func test_the_hand_back_lands_on_a_clip_already_in_motion() -> void:
-	# ✅ THE OWNER, at a 0.05 s hold: "0.05s确实好了不少但肉眼还是可感知." The
-	# residue was not the hold -- it was the STATE MACHINE, parked on the
-	# pre-move clip for the whole ride (a hidden input processes nothing), so
-	# the gate's fade landed on a crossfade from that stale pose. The machine
-	# is now hard-cut while hidden -- free, nobody can see it -- so the first
-	# live tick is the ordinary clip with nothing stale fading in.
+	# A 0.05 s hold alone is not enough to hide the residue: the STATE MACHINE
+	# stays parked on the pre-move clip for the whole ride (a hidden input
+	# processes nothing), so the gate's fade could land on a crossfade from
+	# that stale pose. The machine must be hard-cut while hidden -- free,
+	# since nobody can see it -- so the first live tick after a hand-back is
+	# the ordinary clip with nothing stale fading in.
 	var animator: CharacterAnimator = await _animator_with(
 		[&"Idle", AN_ORDINARY_CLIP, A_SCRIPTED_CLIP])
 	animator._route(&"Idle", DELTA)

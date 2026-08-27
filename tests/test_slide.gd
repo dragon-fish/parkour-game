@@ -9,9 +9,8 @@ func _run_up(world: Dictionary, ticks: int) -> void:
 		await step(1)
 
 func test_entering_a_slide_never_adds_speed() -> void:
-	# The single behavioural difference from this project's old slide, and the
-	# one that changes what the whole level teaches: the original has no
-	# acceleration term anywhere in TdMove_Slide.
+	# [ME:CONFIRMED] TdMove_Slide has no acceleration term anywhere in its
+	# source -- entering or continuing a slide must never add speed.
 	var world := _world()
 	await step(1)
 	TestWorld.place(world)
@@ -36,11 +35,10 @@ func test_chaining_slides_cannot_ratchet_speed_upward() -> void:
 	for cycle in 6:
 		world["input"].press_crouch()
 		# Sample right after entry, before the rest of the press phase and the
-		# release -- a boost applied only on entry (the bug this test exists to
-		# catch) shows up HERE and decays away well before the end-of-cycle
-		# sample below could ever see it. Confirmed by fault injection: without
-		# this early sample, reinstating the old entry boost tripped
-		# test_entering_a_slide_never_adds_speed but left this test green.
+		# release: an entry-only speed boost shows up HERE and decays away well
+		# before the end-of-cycle sample below could ever see it. DO NOT skip
+		# this early sample -- without it, an entry-boost regression trips
+		# test_entering_a_slide_never_adds_speed but leaves this test green.
 		await step(1)
 		await step(1)
 		peak = maxf(peak, world["player"].horizontal_speed())
@@ -105,12 +103,12 @@ func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
 	# own comment) downhill actually GAINS speed, which only makes uphill's
 	# own loss look larger by comparison.
 	#
-	# RUN_TICKS is generous (matching this file's other tests' own margin,
-	# not the tighter 40 an earlier version of this test used) so entry speed
-	# sits well above slide_abort_speed with room to spare: uphill's own
-	# friction+gravity deceleration is severe enough now (grade -0.5 here) to
-	# abort a slide entered too slowly within just a few ticks, which would
-	# make the SLIDE-still-current check below fail for an unrelated reason.
+	# RUN_TICKS is generous, matching this file's other tests' own margin, so
+	# entry speed sits well above slide_abort_speed with room to spare:
+	# uphill's own friction+gravity deceleration is severe enough (grade -0.5
+	# here) to abort a slide entered too slowly within just a few ticks, which
+	# would make the SLIDE-still-current check below fail for an unrelated
+	# reason.
 	const INCLINE := deg_to_rad(30.0)
 	const SETTLE_TICKS := 60
 	const RUN_TICKS := 200
@@ -152,20 +150,19 @@ func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
 ## / (gravity - base_friction*friction_modifier*braking_friction_strength*(downward_slide_friction_scale-1))
 ## = 2.0 / (8.0 - 2.0*0.8) = 2.0 / 6.4 = 0.3125, i.e. asin(0.3125) ~= 18.21
 ## degrees. Independently recomputed and confirmed against the running code
-## via a standalone script before this constant was trusted -- see this
-## file's own task report.
+## via a standalone script before being trusted as a test threshold.
 const BREAK_EVEN_GRADE := 0.3125
 
 func test_downhill_past_break_even_grade_nets_acceleration_through_slide_move() -> void:
-	# The property the model was missing entirely before this fix: gravity's
-	# along-slope component (ordinary physics, NOT the deleted
-	# slide_slope_accel bonus -- see _slide()'s own comment) must feed the
-	# slide's scalar speed. Below is not enough to prove the term is wired
-	# sign-correctly -- "decays more slowly downhill" could also be produced
-	# by, say, a friction bug that merely UNDER-charges downhill. Only an
-	# incline steep enough to flip the sign into genuine acceleration proves
-	# it. 30 degrees gives grade 0.5, comfortably past the ~0.3125 break-even
-	# above (net accel ~= +1.2 m/s^2 at this project's shipped constants).
+	# GRAVITY'S ALONG-SLOPE COMPONENT MUST FEED THE SLIDE'S SCALAR SPEED --
+	# ordinary physics, NOT a reinstated slide_slope_accel (see _slide()'s own
+	# comment on the deleted field). Below is not enough to prove the term is
+	# wired sign-correctly -- "decays more slowly downhill" could also be
+	# produced by, say, a friction bug that merely UNDER-charges downhill.
+	# Only an incline steep enough to flip the sign into genuine acceleration
+	# proves it. 30 degrees gives grade 0.5, comfortably past the ~0.3125
+	# break-even above (net accel ~= +1.2 m/s^2 at this project's shipped
+	# constants).
 	const INCLINE := deg_to_rad(30.0)
 	const SETTLE_TICKS := 60
 	const RUN_TICKS := 200
@@ -201,15 +198,16 @@ func test_downhill_past_break_even_grade_nets_acceleration_through_slide_move() 
 
 func test_a_slide_jump_takes_off_into_jump_not_falling() -> void:
 	# A2 REGRESSION. A slide jump sets velocity.y = base_jump_z -- it is a
-	# take-off, and this project now expresses "is this a launch" as WHICH
-	# STATE owns the tick rather than as a speed guard. Landing in Falling
-	# instead left a slide jump (a) unable to start a wall run, since only
-	# Jump carries check_for_wall_climb, and (b) immediately eligible for the
+	# take-off, and this project expresses "is this a launch" as WHICH STATE
+	# owns the tick rather than as a speed guard. Landing in Falling instead
+	# leaves a slide jump (a) unable to start a wall run, since only Jump
+	# carries check_for_wall_climb, and (b) immediately eligible for the
 	# uncontrolled-fall hand-off Falling alone may make (invariant I2), which
-	# no rising launch should be. WalkingMove's own jump branch was corrected
-	# to JUMP by this task's parent; the slide's was missed.
+	# no rising launch should be. DO NOT hand a slide jump off to FALLING --
+	# WalkingMove's own jump branch goes to JUMP, and the slide's must match.
 	#
-	# Verified to go red with the hand-off put back to FALLING.
+	# This assertion goes red if the hand-off reverts to FALLING, confirming
+	# the test actually catches the regression.
 	var world := _world()
 	await step(1)
 	TestWorld.place(world)

@@ -136,16 +136,15 @@ func test_energy_survives_a_jump_intact() -> void:
 
 func test_energy_survives_a_coyote_jump_intact() -> void:
 	# Same invariant as the test above, exercised through the THIRD take-off
-	# site -- FallingMove's own consume_jump() branch (the coyote-time jump),
-	# which this task's own review found was missing jump_add_xy. Covered
-	# here too, so the newly-wired site does not stay untested the way it
-	# stayed unwired -- and opportunistically checks that the boost actually
-	# lands, since that is exactly the code this test exists to exercise.
+	# site -- FallingMove's own consume_jump() branch, the coyote-time jump.
+	# DO NOT let this site go untested just because it is easy to miss: it
+	# opportunistically checks that the boost actually lands too, since that
+	# is exactly the code this test exists to exercise.
 	#
-	# The coyote branch now hands off to JUMP the same tick it fires (Task 1:
-	# airborne-state-chain), the same way WalkingMove's own jump branch always
-	# has -- neither applies this tick's gravity, since that belongs to
-	# JumpMove's own first physics_update() one tick later.
+	# The coyote branch hands off to JUMP the same tick it fires, the same way
+	# WalkingMove's own jump branch always has -- neither applies this tick's
+	# gravity, since that belongs to JumpMove's own first physics_update() one
+	# tick later.
 	var world := _world()
 	await step(1)
 	TestWorld.place(world)

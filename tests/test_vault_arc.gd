@@ -1,14 +1,13 @@
 extends ParkourTest
 
 # How high a vault OVER carries the body is derived from the obstacle, not
-# fixed.
+# fixed: a single fixed rise cannot generalise across obstacle heights --
+# applying it everywhere lifts the feet however far above whatever they only
+# had to reach, so the eye rides further and further above the top the
+# shorter the obstacle gets.
 #
-# ✅ THE OWNER: "the eye is still far too high during a vault." The old field
-# held 1.0 -- the measured RISE from docs/feel-backlog.md 26-27 -- and applied
-# it at every obstacle height. But that 1.0 was measured on a 2.64 m fence
-# entered from a jump with the feet already at 0.76. Using it on a 1 m box
-# lifts the feet a whole metre over something they only had to reach, and the
-# eye rides 1.66 m above the top, because the eye is 1.66 m above the feet.
+# [ME:CONFIRMED docs/feel-backlog.md 26-27] The measured RISE is 1.0 m, taken
+# on a 2.64 m fence entered from a jump with the feet already at 0.76 m.
 #
 # The same measurement read the other way round DOES generalise: the peak is
 # 0.87 m BELOW the obstacle's top. Faith's feet never clear the fence at all --

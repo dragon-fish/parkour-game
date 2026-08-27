@@ -4,30 +4,28 @@ extends ParkourTest
 # not answer before -- how far ahead the obstacle is, and whether anything is
 # landable beyond its far side.
 #
-# Box placements and settle time below are NOT the brief's original
-# estimates: two separate things needed debugging with print(), neither of
-# them the assertions themselves.
+# Box placements and settle time below are pinned by debugging with print(),
+# not guessed:
 #
 # 1. Box position: SurfaceDown's downward ray lands at a FIXED forward reach
 #    (vault_reach, 1.4 m by default) regardless of the obstacle's own depth --
-#    see _query_surface() in probes.gd. The brief's estimated -1.0/-1.1 m
-#    boxes sat entirely short of that point, so the top-find ray sailed past
-#    them onto open floor and every query came back invalid. Every box below
-#    is repositioned to straddle world z = -1.4 instead.
+#    see _query_surface() in probes.gd. A box placed short of that point lets
+#    the top-find ray sail past it onto open floor, so every query below
+#    comes back invalid. Every box straddles world z = -1.4 instead, to
+#    guarantee the ray actually lands on it.
 # 2. Settle time: TestWorld.place() teleports the player directly onto the
 #    floor, and the very next physics frame launches it upward by roughly
 #    0.4 m before gravity brings it back down -- confirmed by printing
 #    global_position every frame with no obstacle in the world at all, so it
 #    is not something this test's own geometry causes. It takes about 20
-#    frames to settle back to its resting height (~0.9 m) and stay there. The
-#    brief's step(2) queries mid-launch, at an unpredictable height, which is
-#    what made otherwise-correct box placements read as misses. step(30)
-#    below replaces it, with margin over the observed ~20-frame settle.
-#    tests/legacy/test_probes.gd happens to also use step(30), but that file
-#    is ARCHIVED and not live precedent: tests/test_runner.gd only discovers
-#    files directly under res://tests, not the legacy/ subdirectory, and
-#    tests/legacy/.gdignore keeps it out of Godot's resource scan besides --
-#    it never runs, so it cannot be a convention this test is following.
+#    frames to settle back to its resting height (~0.9 m) and stay there, so
+#    every query below waits step(30), with margin over that settle. A
+#    shorter wait queries mid-launch, at an unpredictable height, and makes
+#    an otherwise-correct box placement read as a miss.
+#    tests/legacy/test_probes.gd also uses step(30), but that is not live
+#    precedent to follow: tools/run_tests.ts runs GUT with `-gdir=res://tests`
+#    and no `-ginclude_subdirs`, and tests/legacy/.gdignore keeps the
+#    directory out of Godot's resource scan besides -- it never runs.
 
 func _world_with_box(size: Vector3, at: Vector3) -> Dictionary:
 	var world := TestWorld.build(get_tree(), MovementConfig.new())

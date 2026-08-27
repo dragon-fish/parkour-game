@@ -106,21 +106,23 @@ func test_the_world_still_reaches_the_reflection() -> void:
 	assert_ne(camera.cull_mask & 1, 0, "the reflection camera cannot see layer 1")
 
 
-## ⚠️ THE PAIRING. Mirror.reflect_across rebuilds a right-handed basis through
+## THE PAIRING. Mirror.reflect_across rebuilds a right-handed basis through
 ## Basis.looking_at, and looking_at gets there by negating the camera's X --
 ## so what the reflection viewport holds is the true mirror image flipped about
 ## its vertical centre line. shaders/mirror.gdshader undoes that with
 ## `1.0 - SCREEN_UV.x`. Neither half is correct alone.
 ##
-## ✅ THE OWNER CAUGHT IT BOTH WAYS: "我面对镜子，往左扭头，镜子里的角色也往左"
-## in first person, and "第三人称就更搞笑了，这个根本就不镜面" once he could see
-## his own body and its reflection side by side. One bug, two symptoms.
+## A MIRROR THAT DOES NOT INVERT LEFT AND RIGHT IS WRONG, confirmed by two
+## independent symptoms: a first-person reflection that turns its head the
+## same way you turn yours, and a third-person view where the body and its
+## reflection visibly do not mirror each other at all. This test pins the
+## inversion so the camera-side flip and the shader-side flip cannot drift
+## apart again.
 ##
-## THESE COMPARE NORMALISED UV, NOT PIXELS. The reflection renders at
-## resolution_scale, so the two viewports have different pixel sizes and the
-## first version of this measurement "found" a bug that was only its own units
-## being wrong -- expected x=941 against actual x=489, which is not a flip, it
-## is a half. Normalised, it was 0.4903 against 0.5097: a flip, exactly.
+## COMPARE NORMALISED UV, NOT PIXELS. The reflection renders at
+## resolution_scale, so the two viewports have different pixel sizes;
+## comparing raw unproject_position() output across them produces a false
+## mismatch that is only a unit difference, not a flip.
 ##
 ## If anyone ever makes the node produce a true reflection, the shader's flip
 ## has to go in the same commit and this test with it.

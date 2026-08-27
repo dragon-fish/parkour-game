@@ -7,8 +7,8 @@ extends Path3D
 # volume, and never infers one from geometry -- a cable and a power line look
 # the same to a probe.
 #
-# The line is a Curve3D so it can sag: the owner's own note is that a zipline
-# "有可能是下垂的曲线，不一定是直线". A straight line is its two-point case.
+# The line is a Curve3D so it can sag: a zipline may be a drooping curve,
+# not necessarily straight. A straight line is its two-point case.
 #
 # The Area3D is BUILT HERE, not placed by hand: the level author draws the
 # curve and nothing else. Capsules are laid between consecutive baked points.
@@ -34,10 +34,10 @@ var _area: Area3D = null
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
-		# EDITOR CONVENIENCE ONLY: a fresh line starts as a 3 m vertical --
-		# ✅ the owner: "怎么快速拉一个垂直向上的线啊" -- drag the top point
-		# from there instead of drawing from nothing. Everything else about
-		# this node (volume, rope) is runtime-built and stays that way.
+		# EDITOR CONVENIENCE ONLY: a fresh line starts as a 3 m vertical, so
+		# there is always a quick starting point to drag from instead of
+		# drawing from nothing. Everything else about this node (volume,
+		# rope) is runtime-built and stays that way.
 		if curve == null or curve.point_count == 0:
 			curve = Curve3D.new()
 			curve.add_point(Vector3.ZERO)
@@ -51,7 +51,7 @@ func length() -> float:
 	return curve.get_baked_length() if curve != null else 0.0
 
 ## The side a body climbs this line from: the node's own -Z, flattened.
-## Meaningful for LADDER (the authored "正面"); other kinds never ask.
+## Meaningful for LADDER (the authored front face); other kinds never ask.
 func front() -> Vector3:
 	var f: Vector3 = -global_transform.basis.z
 	f.y = 0.0

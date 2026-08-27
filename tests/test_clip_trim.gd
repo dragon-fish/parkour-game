@@ -1,9 +1,8 @@
 extends ParkourTest
 
-# Trimming a clip to "play frames 11..39" must play frames 11..39.
-#
-# THE OWNER, on a 39-frame clip trimmed from frame 11: "最后11帧会定格，不应该是这样
-# 的，期望是程序动画期间等比播放 11-39 帧."
+# Trimming a clip to "play frames 11..39" must play frames 11..39,
+# proportionally across the trimmed window -- not freeze on the last kept
+# frame.
 #
 # These run against a bare AnimationTree rather than the player, deliberately.
 # The question they answer is what GODOT does with a given combination of
@@ -73,7 +72,7 @@ func test_a_trim_plays_the_kept_frames_at_their_own_pace() -> void:
 		"the trim did not start on the frame it was asked to")
 	assert_almost_eq(float(seen[seen.size() - 1]), float(FRAMES), 0.6,
 		"the kept range did not reach the end of the clip in its own length")
-	# ⚠️ AND NOTHING HELD ON THE WAY. A freeze is the failure being guarded
+	# AND NOTHING HELD ON THE WAY. A freeze is the failure being guarded
 	# against here, so it is not enough to check the two ends.
 	var held := 0
 	for i in range(1, seen.size()):
@@ -83,8 +82,8 @@ func test_a_trim_plays_the_kept_frames_at_their_own_pace() -> void:
 
 func test_stretching_the_timeline_freezes_the_end_of_the_trim() -> void:
 	# THE PAIR, and the reason stretch_time_scale is off in
-	# Player.apply_clip_timing(). This is not a hypothetical: it is what the
-	# owner watched happen, reproduced with nothing else in the way.
+	# Player.apply_clip_timing(). This is not a hypothetical: it reproduces an
+	# observed failure, with nothing else in the way.
 	#
 	# stretch_time_scale maps the animation's ORIGINAL length onto
 	# timeline_length, so the rate is computed from all 39 frames while
@@ -120,16 +119,15 @@ func test_the_player_asks_for_the_kept_range_without_the_stretch() -> void:
 	assert_false(node.stretch_time_scale,
 		"the stretch is back, and with it the frozen tail")
 
-# A trim set AFTER the body is attached still reaches the graph.
+# A trim set AFTER the body is attached still reaches the graph. Setting
+# body_clip_timings alone is not enough if nothing then reads it: the game
+# writes the table before it attaches the body, so _wire_body_animation()
+# picks it up as it builds each node, while the animation lab loads its own
+# table from JSON afterwards and never reads this one.
 #
-# THE OWNER: "我明明调了 from 结果动画还是从第一帧开始播." The trim was in the
-# dictionary and nowhere else. The game writes the table before it attaches the
-# body, so _wire_body_animation() picks it up as it builds each node; the
-# animation lab loads its own table from JSON afterwards, and nothing read it.
-#
-# Confirmed by pose rather than by properties before this was written: at a frame
-# reporting a clip time of 0.1465 s with a 0.2667 s offset set, the recorded body
-# matched the source clip at 0.1465 (distance 0.002) and not at 0.4132 (8.66).
+# Confirmed by pose rather than by properties: at a frame reporting a clip
+# time of 0.1465 s with a 0.2667 s offset set, the recorded body matched the
+# source clip at 0.1465 (distance 0.002) and not at 0.4132 (8.66).
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 

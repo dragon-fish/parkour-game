@@ -10,8 +10,8 @@ extends Node
 # TWO WAYS OF PUTTING A CLIP ON SCREEN, and _route() owns the choice: an
 # ordinary clip travel()s through the AnimationTree's state machine, while a
 # clip a SCRIPTED MOVE plays goes onto one of two bare slots that sit alongside
-# that machine behind an AnimationNodeTransition. _route()'s own comment is the
-# why, and it is the record of two owner reports years apart.
+# that machine behind an AnimationNodeTransition. _route()'s own comment
+# explains why.
 #
 # WHY a priority list rather than one fixed name per move: the AnimationTree
 # this class drives is built at runtime by player.gd's _wire_body_animation(),
@@ -119,7 +119,7 @@ const WALK_CLIPS: Array[StringName] = [&"Walk", &"Walk_Carry"]
 ## is ever asked to do the other's job. 0.25 of 7.2 is 1.8 m/s, a brisk walk
 ## and a plausible authored speed for the pack's Walk_Loop.
 ##
-## ⚠️ The one knob here. If the walk looks like it is hurrying or dawdling,
+## THE ONE KNOB HERE. If the walk looks like it is hurrying or dawdling,
 ## this is the number -- and moving it moves the handover with it, which is
 ## the point.
 const WALK_REFERENCE_PCT := 0.25
@@ -133,14 +133,14 @@ const WALK_REFERENCE_PCT := 0.25
 ## and at SPEED_SCALE_MAX where it ends, which is the whole of the range and no
 ## more.
 ##
-## ⚠️ Not doing this is what the owner saw as "a great striding thing": measured
-## against the 7.2 reference, a jog covering 7.2 m/s plays at 1.0 and the stride
-## has to be enormous to reach.
+## DO NOT measure the jog against the same 7.2 reference the run uses: a jog
+## covering 7.2 m/s would then play at 1.0, and the stride has to be enormous
+## to cover that much ground at a jogging cadence.
 const JOG_REFERENCE_PCT := 0.5
 
 ## The packs' EIGHT-WAY sets, as suffixes clockwise from straight ahead.
 ##
-## ⚠️ THE TWO PACKS DO NOT AGREE ON THE SIDE NAMES. UAL1 spells them Left and
+## THE TWO PACKS DO NOT AGREE ON THE SIDE NAMES. UAL1 spells them Left and
 ## Right (Jog_Left, Crouch_Right); UAL2 spells them L and R (Walk_L, Walk_R).
 ## Nothing derives one from the other -- each family carries its own table, and
 ## a family added later has to be read off the gallery rather than guessed.
@@ -205,10 +205,9 @@ var current_clip: StringName = Move.KEEP
 func _ready() -> void:
 	if anim_tree == null:
 		return
-	# One level deeper than it used to be: the state machine now sits inside a
-	# blend tree so the whole graph can be time-scaled. See
-	# player.gd's _wire_body_animation() for why, and _drive_speed() below for
-	# what drives it.
+	# The state machine sits one level inside a blend tree so the whole graph
+	# can be time-scaled. See player.gd's _wire_body_animation() for why, and
+	# _drive_speed() below for what drives it.
 	_playback = anim_tree.get("parameters/%s/playback" % GRAPH_STATES)
 	_blend_tree = anim_tree.tree_root as AnimationNodeBlendTree
 	if _blend_tree != null:
@@ -241,13 +240,11 @@ func _physics_process(delta: float) -> void:
 ## Puts `target` on screen: a scripted move's clip onto one of the gate's own
 ## slots, anything else through the state machine as before.
 ##
-## ✅ THE OWNER REPORTED THE SAME BUG TWICE, YEARS APART, FROM OPPOSITE SIDES,
-## and both reports are about the same missing capability.
-##
-## FIRST, WITH travel(): "比如 Jump -> Climb -> IntoGrab -> Grab -> GrabPullUp 中间
-## 几个状态逻辑帧里只存在了几帧，却抢占了 GrabPullUp 的动画时间." travel() is a
-## REQUEST: the state machine finishes the transition it is in before honouring
-## it. Measured on a 2 m obstacle, take frames from one recording:
+## FIRST, WITH travel(): a scripted phase chained right after a very short
+## move can lose almost all of its frames to a state machine that is still
+## finishing the PREVIOUS transition. travel() is a REQUEST: the state
+## machine finishes the transition it is in before honouring it. Measured on
+## a 2 m obstacle, frames from one recording:
 ##
 ##     78   move=Jump       wants Jump_Start    graph on Sprint
 ##     79   move=IntoGrab   wants Climb_Enter   graph on Jump_Start, fading
@@ -257,52 +254,46 @@ func _physics_process(delta: float) -> void:
 ##
 ## Jump was the current move for ONE tick and held the graph for ELEVEN -- a
 ## whole body_animation_blend_time -- while the body played a jump start through
-## the reach and the grab. Climb_Enter never played at all. 📌 The delays do not
-## stack: the graph paid one blend and then went straight to whatever was
+## the reach and the grab. Climb_Enter never played at all. THE DELAYS DO NOT
+## STACK: the graph paid one blend and then went straight to whatever was
 ## current, skipping the clips requested in between, so the cost is one blend per
 ## chain and it hurts in proportion to how SHORT the move is. The vault lost 10
 ## of its 27 frames; the pull-up lost 3 of 78.
 ##
-## ✅ THE OWNER AGAIN, on the vault: "Walk->Jump->StepUp 碰巧 StepUp 的持续时间又很短
-## 的话，就几乎全程看不到 StepUp 的动作." The second measurement, on a 1 m obstacle,
-## take frames from one recording. The move asks for StepUp on frame 79 either
-## way:
+## The same mechanism shows up on a 1 m StepUp vault: the move asks for StepUp
+## on frame 79, but travel() does not put it on screen until frame 89 -- 10 of
+## the move's 29 frames lost to a Jump_Start still blending in, for a Jump
+## state that had been the current move for exactly one tick. (The two
+## obstacles lose a different frame count, 10 of 27 vs 10 of 29, because they
+## are different obstacles and the fit stretches the clip differently -- the
+## frame count is not a constant, only the mechanism is.)
 ##
-##     without   the graph arrives on frame 89   -- 10 of the move's 29 frames
-##     with      the graph arrives on frame 80   -- 1
+## THEN, WITH start(target, true): arriving at once, by discarding the whole
+## cross-fade -- including the fade OUT of the clip before it, which was doing
+## real work, so the cut between the two clips reads as unconnected.
 ##
-## Those ten frames were a Jump_Start blending in, for a Jump state that was the
-## current move for exactly one tick. ⚠️ "29 frames" is what that recording
-## measured; the 2 m table above says the vault lost 10 of 27. Both are
-## reproduced as taken rather than reconciled -- they are different obstacles and
-## the fit stretches the clip differently, so the frame count is not a constant.
-##
-## THEN, WITH start(target, true): "和前一个动作完全没有衔接过渡." start() does
-## arrive at once, by discarding the whole cross-fade -- including the fade OUT
-## of the clip before it, which was doing real work.
-##
-## 🎯 AnimationNodeStateMachinePlayback IN 4.7 HAS NO THIRD OPTION. Verified
+## AnimationNodeStateMachinePlayback IN 4.7 HAS NO THIRD OPTION. Verified
 ## against the engine's own ClassDB: travel(), start(), stop(), and nothing that
 ## interrupts a fade while keeping one. godotengine/godot#66495 is the standing
 ## request for it. So the scripted clips are not in the state machine any more.
 ## AnimationNodeTransition is: it switches inputs at any moment WITH its xfade,
 ## and interrupts a fade of its own gracefully.
 ##
-## ⚠️ TWO SLOTS, PING-PONGED. An input cannot fade into itself, so a mantle chain
+## TWO SLOTS, PING-PONGED. An input cannot fade into itself, so a mantle chain
 ## on one slot would be a cut between its clips. Alternating means the second
 ## scripted clip fades out of the first exactly as it would out of a run.
 ##
-## 📌 THE STATE MACHINE IS LEFT ALONE while a slot is on screen. It may still be
+## THE STATE MACHINE IS LEFT ALONE while a slot is on screen. It may still be
 ## settling from before the scripted move started; that is fine, because the
 ## gate's own fade is what covers the seam and the machine is at zero weight
 ## while it does.
 ##
-## 🎯 AND THE ONE RULE THE OLD preempts() ENCODED SURVIVES, AS HYSTERESIS. Its
-## comment read: "ONE DIRECTION ONLY. A scripted clip may cut in front of an
-## ordinary one; an ordinary one may never cut in front of a scripted one." That
-## is still true, and the gate needs it for a reason of its own.
+## AND THE ONE RULE THE OLD preempts() ENCODED SURVIVES, AS HYSTERESIS: a
+## scripted clip may cut in front of an ordinary one; an ordinary one may
+## never cut in front of a scripted one. The gate needs this for a reason of
+## its own, below.
 ##
-## ⚠️ THE SANDWICH POPS. AnimationNodeTransition tracks ONE level of `prev`, so
+## THE SANDWICH POPS. AnimationNodeTransition tracks ONE level of `prev`, so
 ## requesting "states" and then a slot inside a single blend window makes it
 ## promote the half-faded "states" to full weight and DROP the outgoing slot in
 ## one tick. Reproduced on a skeleton: a marker driven by the slot's own clip
@@ -316,12 +307,12 @@ func _physics_process(delta: float) -> void:
 ## scripted target arriving during the hold goes straight to the other slot: two
 ## real inputs, a genuine fade, no promotion.
 ##
-## 📌 THE COST IS A SLOT HOLDING ITS LAST FRAME for up to body_gate_hold_time
-## past the end of its move -- a dial, 0.05 s by default, sized to the 1-3 tick
-## transients rather than to the blend window it first reused (the owner felt
-## the 0.15 s version as "定格在最后一帧").
+## THE COST IS A SLOT HOLDING ITS LAST FRAME for up to body_gate_hold_time past
+## the end of its move -- a dial, 0.05 s by default, sized to the 1-3 tick
+## transients: much longer and the held pose reads as a freeze on its last
+## frame, not a hold.
 ##
-## ⚠️ THE MACHINE DOES NOT ADVANCE UNDER THE HOLD -- measured, not assumed: an
+## THE MACHINE DOES NOT ADVANCE UNDER THE HOLD -- measured, not assumed: an
 ## input the gate is not showing is not processed, so get_current_node() sat on
 ## its old node for every tick of the hold and moved on the FIRST tick after the
 ## hand-back. So travel() is still issued every held tick (the request is latched
@@ -361,8 +352,8 @@ func _route(target: StringName, delta: float) -> void:
 			# first live tick. A travel() latched here instead -- the previous
 			# shape -- queued a crossfade FROM the stale pre-move node, so the
 			# gate's fade landed on a blend of two poses neither of which was
-			# moving, and that mush was the tail the owner could still see at a
-			# 0.05 s hold: "0.05s确实好了不少但肉眼还是可感知."
+			# moving -- a visible tail even at a short, 0.05 s hold, which is
+			# why start() latches here instead of travel().
 			if _hidden_start != target:
 				_hidden_start = target
 				_playback.start(target, true)
@@ -379,7 +370,7 @@ func _route(target: StringName, delta: float) -> void:
 
 ## True while the gate is still cross-fading one input into another.
 ##
-## ⚠️ TWO 4.7.1 QUIRKS, BOTH MEASURED, AND EITHER ONE ALONE GIVES A WRONG ANSWER.
+## TWO 4.7.1 QUIRKS, BOTH MEASURED, AND EITHER ONE ALONE GIVES A WRONG ANSWER.
 ##
 ##   `> 0.0`, not `!= 0.0`: prev_xfading counts down through 0.0 and then RESTS
 ##   at one tick's worth of NEGATIVE (-0.016667 at 60 Hz), so a settled gate
@@ -489,17 +480,17 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 		_start_oneshot(&"Slide_Start")
 		return
 	if from == Move.SLIDE:
-		# NOT INTO A CROUCH. ✅ The owner settled this for the blend times
-		# already -- a slide into a crouch is continuous, the body simply stays
-		# down, while a slide into a run is the picking-yourself-up. Slide_Exit
-		# is a stand-up, so it belongs only to the second.
+		# NOT INTO A CROUCH: a slide into a crouch is continuous, the body
+		# simply stays down, while a slide into a run is the player picking
+		# themself back up. Slide_Exit is a stand-up, so it belongs only to
+		# the second.
 		if to != Move.CROUCH:
 			_start_oneshot(&"Slide_Exit")
 		return
 	if _AIRBORNE_MOVES.has(from) and to == Move.WALKING:
-		# ✅ NOT WHILE DYING. The owner: "it still plays jump_land once on
-		# touchdown -- we already know the character is dead by then, so it
-		# should not be landing like anyone else."
+		# NOT WHILE DYING: playing Jump_Land on touchdown after death is wrong
+		# -- the character is already dead by then, so it must not land like
+		# anyone else.
 		#
 		# The gate below asks whether a direction is held, and a dying player's
 		# input is LOCKED -- so it reads as nothing held, which is exactly the
@@ -555,16 +546,16 @@ func _clip_length(clip: StringName) -> float:
 	if anim_player == null or not anim_player.has_animation(clip):
 		return 0.0
 	var whole: float = anim_player.get_animation(clip).length
-	# ⚠️ THE KEPT PART, NOT THE WHOLE CLIP. A trimmed clip is shorter, and every
+	# THE KEPT PART, NOT THE WHOLE CLIP. A trimmed clip is shorter, and every
 	# caller here is asking "how long is the thing that will actually play" --
 	# the speed match, and the scripted fit that stretches it into a move.
 	#
-	# ✅ The owner worked out the consequence before the code was read: "总计 20 帧
-	# 的动画在 1s 内播完，我跳过开头 6 帧，就应该是 1s 内播放 6-20 帧的动画?" It
-	# should, and it did not. Reading the full length made the fit too slow for
-	# what was left, so a trimmed clip finished early and left the move running
-	# on a held pose -- 0.70 s of animation inside a 1.00 s move, on their own
-	# numbers.
+	# DO NOT return the untrimmed length for a clip that has an entry in
+	# body_clip_timings: if a 20-frame clip has its first 6 frames skipped and
+	# is meant to play its remaining 14 within 1 s, fitting against the full
+	# 20-frame length makes the fit too slow for what is actually left, so the
+	# trimmed clip finishes early and the move runs on for the rest of its
+	# duration on a held pose -- 0.70 s of animation inside a 1.00 s move.
 	if player == null or not player.body_clip_timings.has(clip):
 		return whole
 	var entry = player.body_clip_timings[clip]
@@ -637,18 +628,19 @@ func _drive_speed(clip: StringName) -> void:
 ## The time scale that makes `clip` finish exactly when the scripted move
 ## playing it does, or 0 when the current move is not scripted.
 ##
-## ✅ THE OWNER: "the fully driven vault is odd, and the speed feels like
-## double." Both halves come from the same gap. SpeedVaultMove shortens its own
-## arc for a fast approach -- floored at HALF the variant's duration, which is
-## the doubling, literally -- and the clip went on playing at its authored
-## length regardless. A fast vault_over runs 0.325 s against a 0.733 s
-## SafetyVault, so under half the clip was ever seen before the move handed off.
+## DO NOT let a scripted clip play at its authored length regardless of the
+## move's own duration: SpeedVaultMove shortens its own arc for a fast
+## approach, floored by SpeedVaultConfig.duration_floor_pct, and without this
+## fit the clip would keep going at full length and read as running at the
+## wrong speed for the move driving it. Fitted into a 0.325 s window, a
+## 0.733 s SafetyVault has to run at 2.26x to finish with the move (see
+## test_scripted_clip_fit.gd).
 ##
-## ⚠️ This makes the ANIMATION agree with the move. It does not make the move
+## This makes the ANIMATION agree with the move. It does not make the move
 ## right: whether a vault should get faster the faster you approach is a
-## separate question, and the halving is this project's own invention rather
-## than anything measured. Recorded here because fitting the clip to it hides
-## the symptom that would otherwise keep asking.
+## separate question, and the floor SpeedVaultMove applies is this project's
+## own invention rather than anything measured. Recorded here because fitting
+## the clip to it hides the symptom that would otherwise keep asking.
 func _scripted_fit(clip: StringName) -> float:
 	if player.move_manager == null:
 		return 0.0
@@ -656,7 +648,8 @@ func _scripted_fit(clip: StringName) -> float:
 	# Duck-typed rather than `is ScriptedMove`: a move that COMPOSES a
 	# scripted phase (LadderMove's top exit -- GDScript has no multiple
 	# inheritance) exposes the same scripted_duration(), returning 0 outside
-	# the phase. ✅ The owner: "动画长度不够2s得拉长与硬直对齐."
+	# the phase. The clip is stretched to fill the move's hitstun window when
+	# the authored animation is shorter than it.
 	if move == null or not move.has_method("scripted_duration"):
 		return 0.0
 	var duration: float = move.scripted_duration()
@@ -741,11 +734,10 @@ func _first_available_directional(candidates: Array[StringName]) -> StringName:
 			var forward_clip := StringName(String(candidate) + String(suffixes[0]))
 			if _has_clip(forward_clip):
 				return forward_clip
-		# THE REVERSED TWIN, which is what this function used to be entirely.
-		# Still the answer for a body with no eight-way set at all -- the fox --
-		# and still the cheap approximation its own comment admits to. Octants
-		# 3 to 5 are the backward half, the same span the dot-product test it
-		# replaced called backward.
+		# THE REVERSED TWIN is the fallback for a body with no eight-way set at
+		# all -- the fox -- and it is a coarse approximation: octants 3 to 5 are
+		# treated as the whole backward half, not just the exact opposite
+		# direction.
 		if octant >= 3 and octant <= 5:
 			var backward := StringName(String(candidate) + Player.BACKWARD_SUFFIX)
 			if _has_clip(backward):
@@ -757,41 +749,36 @@ func _first_available_directional(candidates: Array[StringName]) -> StringName:
 ## Maps the player's current movement state onto a priority list of clips,
 ## then resolves that list against whatever the attached body actually has.
 func _target_animation() -> StringName:
-	# THE PACKS COME FIRST, the fox's own six names come last.
+	# THE PACKS COME FIRST, the fox's own six names come last: the pack name is
+	# the intended clip everywhere a body carries the Universal Animation
+	# Library, and the fox name (`run`/`idle`/`jump`/`sneak`/`sneaking`/
+	# `ladder_stillness`) is only the fallback that keeps existing fox scenes
+	# working.
 	#
-	# The order used to be the other way round for a simple historical reason:
-	# `run`/`idle`/`jump`/`sneak`/`sneaking`/`ladder_stillness` were the only
-	# vocabulary this project had, and the packs were bolted on behind them. The
-	# owner has now settled the direction -- the fox is on its way out and the
-	# Universal Animation Library is what bodies will actually carry -- so the
-	# pack name is the intended clip everywhere and the fox name is the fallback
-	# that keeps the existing fox scenes working.
-	#
-	# ⚠️ ONE EXCEPTION, and it is deliberate: the GRAB hang still leads with
+	# ONE EXCEPTION, and it is deliberate: the GRAB hang still leads with
 	# `ladder_stillness`, because a genuine match outranks this ordering. The
 	# packs have nothing for hanging off a ledge; the fox has exactly that.
 	#
-	# NO Jog_Fwd ANYWHERE. The owner: Sprint is the run, do not use the jog.
-	# It is gone from the routing, from SPEED_MATCHED_CLIPS, and from the clips
-	# Player wires into the graph at all -- left in any of those it would come
-	# back the next time a list was reordered.
+	# NO Jog_Fwd ANYWHERE: Sprint is the run, DO NOT reintroduce the jog for
+	# straight-ahead running. It is gone from the routing, from
+	# SPEED_MATCHED_CLIPS, and from the clips Player wires into the graph at
+	# all -- left in any of those it would come back the next time a list was
+	# reordered.
 	# DYING OUTRANKS EVERY MOVE, because it is not one. The level's death
 	# sequence locks the input and drives the camera while whatever Move the
-	# player died in carries on ticking underneath -- usually a fall. ✅ The
-	# owner asked for Death2 in third person; it plays in first person too,
-	# where the head is hidden and it costs nothing to have the body fall over
-	# properly.
+	# player died in carries on ticking underneath -- usually a fall. It plays
+	# in first person too, not just third: the head is hidden there and it
+	# costs nothing to have the body fall over properly.
 	if player.is_dying():
-		# ✅ The owner found the family: UAL2's own long fall, rather than a
-		# generic Death02. Which HALF of it took two goes.
+		# UAL2's own long fall family is used rather than a generic Death02.
 		#
-		# ⚠️ NOT LiftAir_Fall_Impact, which was the first pick and reads wrong:
-		# "把摔死的动画改成 LiftAir_Fall，不要用 Impact，那个有点太强烈了，看起来像
-		# 是搁浅的鲤鱼." It is the arrival -- a body hitting the ground and
-		# convulsing -- and played as the whole death it thrashes rather than
-		# lands. LiftAir_Fall is the fall itself, which settles.
+		# DO NOT use LiftAir_Fall_Impact for the death clip: it reads as a
+		# violent full-body convulsion, not a body settling into a fall. It is
+		# the arrival -- a body hitting the ground and convulsing -- and
+		# played as the whole death it thrashes rather than lands.
+		# LiftAir_Fall is the fall itself, which settles.
 		#
-		# 📌 The clip offset and the death eye lift were both tuned against
+		# The clip offset and the death eye lift were both tuned against
 		# Impact (0.1 m on the model, 0.4 m on the eye) and neither transfers:
 		# the two clips put the hips in different places. They are the owner's
 		# to re-dial -- F9 for the model, F1 for the eye.
@@ -805,11 +792,13 @@ func _target_animation() -> StringName:
 			# played in slow motion, because one clip was covering the whole
 			# range from a crawl to full pace.
 			# CTRL IS THE WALK, and it is the reason this case is not a plain
-			# speed split. ✅ The owner: "we already have the Ctrl walk -- that
-			# IS the walk." It was playing a STANDING IDLE: the modifier caps
-			# the body at walk_velocity, 0.5 m/s, and the idle-versus-moving
-			# threshold sits at 1.0, so a creep never reached the moving branch
-			# at all. Feet still, body drifting.
+			# speed split: the Ctrl walk modifier already IS the walk, so
+			# holding it should route straight to a walk clip rather than
+			# through the speed thresholds below. Without this case it played
+			# a STANDING IDLE: the modifier caps the body at walk_velocity,
+			# 0.5 m/s, and the idle-versus-moving threshold sits at 1.0, so a
+			# creep never reached the moving branch at all. Feet still, body
+			# drifting.
 			#
 			# Asked of the INPUT rather than the speed, so there is no second
 			# epsilon to keep in step with the first: Ctrl held with a direction
@@ -828,11 +817,11 @@ func _target_animation() -> StringName:
 				# and everything else takes the jog, which is the only thing
 				# that can strafe at all.
 				#
-				# ⚠️ This is my reading of "do not use the jog", not something
-				# the owner said: they were looking at the forward run when they
-				# said it, and sideways there is no alternative that is not a
-				# reversed or rotated sprint. The seam is a change of cadence
-				# when you turn sharply out of a straight run.
+				# This extends "do not use the jog" (which was about the
+				# forward run) to the sideways case, where a reversed or
+				# rotated sprint is the only alternative and there is no
+				# eight-way sprint to use instead. The seam is a change of
+				# cadence when turning sharply out of a straight run.
 				if _travel_octant() <= 0:
 					return _first_available([&"Sprint", &"Jog_Fwd", &"Walk_Fwd", &"run", &"idle"])
 				return _first_available_directional([&"Jog", &"Walk", &"Sprint", &"run", &"idle"])
@@ -846,8 +835,9 @@ func _target_animation() -> StringName:
 			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"Idle", &"idle"])
 		Move.ZIPLINE:
 			# No zipline clip in the packs. The airborne loop is the closest
-			# honest pose until contact IK gives the hands the cable -- the
-			# owner: "动画可以先不管，或者用 Jump + 手部 IK".
+			# honest pose until contact IK gives the hands the cable -- animation
+			# for this move is a known gap, to be closed later with hand IK on
+			# the Jump clip rather than a dedicated zipline pose.
 			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"Idle", &"idle"])
 		Move.SWING:
 			# The packs carry no swing cycle; the ledge-hang idle is the
@@ -855,9 +845,9 @@ func _target_animation() -> StringName:
 			# hands-on-bar IK are known gaps (spec 2026-08-25 §7).
 			return _first_available([&"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 		Move.LADDER:
-			# ✅ THE SPEC (2026-08-25-ladder-design.md §攀爬), verbatim: the
-			# top exit "动画先用 ClimbUp_1m 同款" -- the same clip GrabMove's
-			# mantle plays. SELECTION happens right here: is_top_exiting()
+			# Per the spec (docs/superpowers/specs/2026-08-25-ladder-design.md
+			# §攀爬): the top exit uses the same clip GrabMove's mantle
+			# plays, ClimbUp_1m. SELECTION happens right here: is_top_exiting()
 			# picks the clip (mirroring GRAB's is_mantling() above), and
 			# _route() gates any SCRIPTED_MOVE_CLIPS member onto the scripted
 			# slot. Player.set_clip_lift_cancelled(), which
@@ -890,12 +880,13 @@ func _target_animation() -> StringName:
 			# TWO DIFFERENT MOVES BEHIND ONE STATE, told apart the way GRAB's
 			# two phases are -- by asking the move.
 			#
-			# ✅ The owner: the compensating vault and the one where the shin
-			# catches the edge should both play StepUp. They are the vaults that
-			# were never set up: no run-up, no plant, the player simply arrived
-			# and scrambled. The original agrees from the other direction -- its
-			# two step-up rows are precisely the two with no hand IK at all
-			# (05 §5.7), because there is no hand in them.
+			# The compensating vault and the one where the shin catches the
+			# edge both play StepUp: they are the vaults that were never set
+			# up -- no run-up, no plant, the player simply arrived and
+			# scrambled. [ME:CONFIRMED 05 §5.7] The original agrees from the
+			# other direction: of its six vault types, its two step-up rows
+			# (autostepuprightleg, stepuprightleg88) are precisely the two
+			# with no hand IK at all, because there is no hand in them.
 			var vault_move = player.move_manager.move_for(Move.SPEED_VAULT)
 			if vault_move != null and vault_move.is_scramble():
 				return _first_available([&"StepUp", &"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
@@ -912,50 +903,33 @@ func _target_animation() -> StringName:
 			# SlideMove.is_crawling() to see inside a move from the outside.
 			var grab_move = player.move_manager.move_for(Move.GRAB)
 			if grab_move != null and grab_move.is_mantling():
-				# ClimbLedge over ClimbUp_1m, and the two are not the same
-				# action: ClimbUp_* starts from STANDING at the foot of a wall,
-				# while ClimbLedge belongs to UAL1's hang set -- pulling up
-				# from the Climb_Idle this move's other branch plays. A mantle
-				# arrives already hanging, so it is the second.
-				# ⚠️ Judged from the names and the company they keep, not from
-				# watching them. The gallery shows both.
-				# ✅ THE OWNER: "这个动画也得换成 ClimbUp_2m." Measured, the three
-				# candidates are ClimbUp_2m 1.300 s, ClimbUp_1m 0.667 and
-				# ClimbLedge 0.633 -- and a pull-up is a slow haul, so the long
-				# one is the only one that reads as one. GrabConfig.
-				# mantle_duration is now 1.3 to match, which is the same thing
-				# said from the other side: TdMove_GrabPullUp carries no duration
-				# field, so the clip IS the duration.
+				# ClimbUp_1m leads: the pelvis is pinned to the capsule and a
+				# bezier lifts it through the mantle, so what the clip needs
+				# to supply is the POSE, not the whole climb. ClimbUp_2m
+				# stays as the fallback -- at 1.300 s against ClimbUp_1m's
+				# 0.667 it is a slower haul that also reads as a pull-up, and
+				# it is what this line played before the capsule started
+				# carrying the rise itself. ClimbLedge (0.633 s), the other
+				# candidate from UAL1's hang set, is not preferred over
+				# either: it is over before the body has left the lip, which
+				# reads wrong for a pull-up regardless of how its duration is
+				# stretched. (Judged from the names and the company they
+				# keep, not from watching them -- the gallery shows all
+				# three.)
 				#
-				# ⚠️ THIS OVERRULES AN EARLIER ARGUMENT MADE HERE, that ClimbUp_*
-				# starts from STANDING at the foot of a wall while ClimbLedge
-				# belongs to UAL1's hang set. True, and it lost: how the clip
-				# begins matters less than how long it takes and what it looks
-				# like doing it. ClimbLedge is over before the body has left the
-				# lip.
-				# ⚠️ AND THAT ARGUMENT HAS NOW LOST IN ITS TURN. ✅ THE OWNER, after
-				# the path started carrying the rise: "Grab动画改成1m的版本."
-				#
-				# 🎯 THE GROUND UNDER THE OLD REASONING MOVED. ClimbUp_2m won on
-				# being a slow haul at a time when the CLIP had to supply the
-				# whole climb -- the capsule went in a straight line and the hips
-				# did the work. Neither is true now: the pelvis is pinned to the
-				# capsule and a bezier lifts it, so what the clip owes is the
-				# POSE, and the long one spends most of its length hauling a body
-				# that is already being carried.
-				#
-				# 📌 The duration does not follow the clip any more either.
-				# _scripted_fit() stretches whatever is kept into
-				# mantle_duration, and 0.667 into 1.3 is 0.51x -- well inside the
-				# clamp, so the shorter clip simply plays slower rather than
-				# ending early.
+				# The duration does not follow whichever clip is picked:
+				# _scripted_fit() stretches it into GrabConfig.mantle_duration
+				# (1.3 s, ClimbUp_2m's own measured length -- [ME:CONFIRMED]
+				# the original's TdMove_GrabPullUp carries no duration field
+				# of its own, so there the clip IS the duration). 0.667
+				# stretched into 1.3 is 0.51x, well inside the clamp, so
+				# ClimbUp_1m simply plays slower rather than ending early.
 				return _first_available([&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
 					&"Jump_Start", &"jump", &"idle"])
-			# Climb_Idle is UAL1's hang, and it is now here -- the comment
-			# that used to stand at this line said it was "behind the paid
-			# tier", which it no longer is. The fox's `ladder_stillness` keeps
-			# second place: it was the genuine match while it was the only one,
-			# and it still is for a body that has it.
+			# Climb_Idle is UAL1's hang, and leads here since it is no longer
+			# behind a paid tier. The fox's `ladder_stillness` keeps second
+			# place: it was the genuine match while it was the only one, and
+			# it still is for a body that has it.
 			# TRAVELLING ALONG THE LEDGE gets its own pair, told apart from a
 			# still hang exactly the way the mantle above is told apart from
 			# both -- by asking the move, since nothing else can see the
@@ -981,7 +955,7 @@ func _target_animation() -> StringName:
 			# wall_side > 0 is a RIGHT-hand wall -- WallRunMove's own look-fan
 			# code says so at the line that reads `span if wall_side > 0`.
 			#
-			# ⚠️ WHICH WAY ROUND THE CLIPS ARE NAMED IS A GUESS: _L could mean
+			# WHICH WAY ROUND THE CLIPS ARE NAMED IS A GUESS: _L could mean
 			# the wall is on the left or that the body travels leftward. Taken
 			# as the wall's side, which is the commoner convention. If a wall
 			# run reads mirrored, this line is the whole of the fix.
@@ -998,14 +972,15 @@ func _target_animation() -> StringName:
 				return _first_available_directional([&"Crouch", &"sneak", &"Walk", &"idle"])
 			return _first_available([&"Crouch_Idle", &"sneaking", &"Idle", &"idle"])
 		Move.JUMP:
-			# A WALL KICK IS A JUMP, but not this one. ✅ The owner: the packs
-			# have a WallRunJump and it was never wired up. The mechanism has
-			# been complete for a while -- WallRunMove.wall_jump_launch and the
-			# whole Noob/ProAdd skill gradient -- and it hands off to JUMP, so
-			# the animator had no way to tell it from stepping off a kerb.
+			# A WALL KICK IS A JUMP, but not this one. The packs have a
+			# WallRunJump clip and it was never wired up before this case
+			# existed. The mechanism has been complete for a while --
+			# WallRunMove.wall_jump_launch and the whole Noob/ProAdd skill
+			# gradient -- and it hands off to JUMP, so the animator had no way
+			# to tell it from stepping off a kerb.
 			#
 			# wall_side > 0 is a RIGHT-hand wall, so _R is the clip for pushing
-			# off one on the right. ⚠️ Same naming guess as WallRun_L/R: taken
+			# off one on the right. Same naming guess as WallRun_L/R: taken
 			# as the side of the WALL. If a kick reads mirrored, both lines flip
 			# together.
 			var jump_move = player.move_manager.move_for(Move.JUMP)
@@ -1021,26 +996,22 @@ func _target_animation() -> StringName:
 			# later, correctly played a jump.
 			return _first_available([&"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
 		Move.FALL_UNCONTROLLED:
-			# ✅ NO LONGER THE SAME AS AN ORDINARY FALL. The owner found the
-			# clip: LiftAir_Fall is the pack's own out-of-control descent, where
-			# Jump is a controlled one with the legs under the body. The comment
-			# that used to stand here said nothing in the FREE tier
-			# distinguished a flail from a fall, which was true of the free
-			# tier.
-			# ⚠️ THE _Air ONE, AND ONLY THAT ONE. The three LiftAir clips are
-			# not a Start/Idle/Land set, which is what the names suggest and
-			# what an earlier version of this assumed. Measured, as hip height
-			# over the clip:
+			# NO LONGER THE SAME AS AN ORDINARY FALL: LiftAir_Fall_Air is the
+			# pack's own out-of-control descent, where Jump is a controlled
+			# one with the legs under the body.
+			#
+			# THE _Air ONE, AND ONLY THAT ONE. The three LiftAir clips are not
+			# a Start/Idle/Land set, despite what the names suggest. Measured,
+			# as hip height over the clip:
 			#
 			#   LiftAir_Fall        0.96 -> 0.04   a KNOCKDOWN, ending on the
 			#                                      floor. Not an entry at all.
 			#   LiftAir_Fall_Air    0.19 -> 0.21   flat, looping: the descent
 			#   LiftAir_Fall_Impact 0.19 -> 0.05   arriving
 			#
-			# LiftAir_Fall was briefly armed as the entry one-shot, and it made
-			# the body collapse to floor height in MID-AIR -- ✅ the owner's
-			# "it plays the impact once and then the loop". It reads as an
-			# impact because it is one.
+			# DO NOT use LiftAir_Fall here: it collapses the body to floor
+			# height in MID-AIR, reading as an impact playing once followed
+			# by a loop of nothing -- it is a knockdown clip, not an entry.
 			return _first_available([&"LiftAir_Fall_Air", &"Jump",
 				&"NinjaJump_Idle", &"jump", &"idle"])
 		Move.LANDING:
@@ -1048,13 +1019,10 @@ func _target_animation() -> StringName:
 			# absorbing the impact low to the ground. Jump_Land is the impact
 			# itself and is a genuine match for the first moment of it; the
 			# crouch-still pose stands in for the rest, since the body is down
-			# and not going anywhere. ⚠️ What this really wants is a stagger.
+			# and not going anywhere. What this really wants is a stagger.
 			return _first_available([&"Jump_Land", &"NinjaJump_Land", &"Crouch_Idle", &"sneaking", &"idle"])
 		Move.SKILL_ROLL:
-			# A GENUINE MATCH: UAL1 ships a Roll. This was once the weakest
-			# placeholder in the file -- a ground tumble had no relative in the
-			# fox's vocabulary at all, and `jump` stood in for being a committed
-			# whole-body action rather than for resembling a roll.
+			# A GENUINE MATCH: UAL1 ships a Roll.
 			return _first_available([&"Roll", &"Jump_Start", &"jump", &"idle"])
 		Move.INTO_GRAB:
 			# Climb_Enter is the reach onto a ledge -- the arriving half of
@@ -1072,12 +1040,12 @@ func _target_animation() -> StringName:
 			# same speed split WALKING uses rather than claiming a clip of its
 			# own.
 			# ALWAYS THE RIGHT-HAND CLIP, because the move only ever turns one
-			# way: Turn180Move sets _turn_to = _turn_from - PI unconditionally,
-			# and its comment records the owner measuring exactly that in the
-			# original -- "Faith only ever turns right". Godot's yaw grows
-			# counter-clockwise, so that subtraction is clockwise, which is
-			# rightward. Turn180_L is wired into the graph and never asked for.
-			# ⚠️ Same naming guess as the wall run: _R read as "turns right".
+			# way: Turn180Move sets _turn_to = _turn_from - PI unconditionally.
+			# [ME:CONFIRMED] Faith only ever turns right in the original,
+			# measured directly. Godot's yaw grows counter-clockwise, so that
+			# subtraction is clockwise, which is rightward. Turn180_L is wired
+			# into the graph and never asked for.
+			# Same naming guess as the wall run: _R read as "turns right".
 			if _has_clip(&"Turn180_R"):
 				return &"Turn180_R"
 			var turn_speed: float = player.horizontal_speed()

@@ -21,14 +21,13 @@ extends SkeletonModifier3D
 # A humanoid bone's local axes are whatever its rest pose made them, and getting
 # that wrong bends the body somewhere unrelated -- which this project cannot
 # see, only measure. A global-space rotation is the same rotation whatever the
-# rest pose is. (This reasoning used to live in TorsoTwist, which the packs'
-# eight-way locomotion made redundant; it is written out here now.)
+# rest pose is.
 
 ## Takes the share of the yaw named by SPINE_SHARE_DEG, split evenly.
 ##
-## STARTS AT Spine, not Chest, and the owner is the reason: "the head's pitch
-## should pivot at the joint with the NECK, and the upper body around the
-## PELVIS -- not around their own centres."
+## STARTS AT Spine, not Chest. The head's pitch pivots at the joint with the
+## NECK and the upper body around the PELVIS -- neither turns about its own
+## centre.
 ##
 ## Each bone here is rotated about its OWN origin, which for a bone is its
 ## joint, so the lowest one in the chain decides where the lean originates.
@@ -41,15 +40,15 @@ const SPINE_CHAIN: Array[StringName] = [&"Spine", &"Chest", &"UpperChest"]
 ## tilt at the base of the skull rather than somewhere inside it.
 const HEAD_CHAIN: Array[StringName] = [&"Neck", &"Head"]
 
-## How much of the yaw the upper body is allowed to contribute, in degrees. The
-## owner's number: enough that the shoulders read as following, not enough to
-## look like the whole torso turned.
+## How much of the yaw the upper body is allowed to contribute, in degrees.
+## Enough that the shoulders read as following, not enough to look like the
+## whole torso turned.
 const SPINE_SHARE_DEG := 15.0
 ## And of the pitch, which is ASYMMETRIC. Looking up wants very little: a chest
 ## that tips back with every glance upward reads as a bow. Looking down wants a
-## lot more, and the owner found out why by watching it -- with too little the
-## head rotates down INTO its own chest instead of the body folding out of the
-## way. A neck alone cannot look at your own feet.
+## lot more: with too little the head rotates down INTO its own chest instead
+## of the body folding out of the way. A neck alone cannot look at your own
+## feet.
 const SPINE_PITCH_UP_DEG := 8.0
 const SPINE_PITCH_DOWN_DEG := 22.0
 
@@ -59,10 +58,10 @@ const YAW_LIMIT_DEG := 90.0
 
 ## And where it gives up entirely and faces forward again.
 ##
-## The owner's shape, and the HOLD between the two is the point: the head
-## reaches its limit at 90 and STAYS there while the camera carries on to 110,
-## which is what looking over your shoulder is. Only past that does it decide
-## the angle is not worth keeping and unwind.
+## The HOLD between the two is the point: the head reaches its limit at 90 and
+## STAYS there while the camera carries on to 110, which is what looking over
+## your shoulder is. Only past that does it decide the angle is not worth
+## keeping and unwind.
 const RELEASE_START_DEG := 110.0
 const RELEASE_END_DEG := 120.0
 
@@ -88,14 +87,14 @@ var _pitch: float = 0.0
 ## `spine_share_deg` is how much of the yaw the CHEST may take. Passing 0 leaves
 ## the whole turn to the neck and head.
 ##
-## ⚠️ A PARAMETER RATHER THAN A CONSTANT because a hanging body has to be able to
+## A PARAMETER RATHER THAN A CONSTANT because a hanging body has to be able to
 ## refuse it. The chest's share is what makes looking around read as a person
 ## rather than an owl -- everywhere except on a ledge, where the arms are bolted
 ## to the wall by the hands and the shoulders cannot go anywhere without taking
 ## them along.
 ##
-## ✅ THE OWNER: "我们有一套上半身跟随头扭动 15° 的设计，在 grab 期间要暂时禁用，
-## 否则左右扭头的时候双臂会跟着转一下穿模进墙里."
+## DO NOT let the upper body take its share during a grab: turning the head
+## left or right then swings both arms with it and they clip into the wall.
 func request(yaw: float, pitch: float, pitch_limit_deg: float = 89.0,
 		spine_share_deg: float = SPINE_SHARE_DEG) -> void:
 	_spine_share_deg = maxf(spine_share_deg, 0.0)
@@ -131,10 +130,10 @@ func _process_modification_with_delta(delta: float) -> void:
 
 	var spine_yaw: float = clampf(_yaw, \
 		-deg_to_rad(_spine_share_deg), deg_to_rad(_spine_share_deg))
-	# PROPORTIONAL, not clamped. Clamping put the chest at its full bend the
-	# moment the camera passed 22 degrees and left it there for the whole rest
-	# of the range, which the owner spotted at once: the body finishes folding
-	# while the head has barely started, and then nothing more happens.
+	# PROPORTIONAL, not clamped. DO NOT clamp the chest's pitch share: it then
+	# reaches its full bend the moment the camera passes 22 degrees and stays
+	# there for the whole rest of the range, so the body finishes folding while
+	# the head has barely started and then nothing more happens.
 	#
 	# Scaled against the camera's own pitch limit instead, so the chest arrives
 	# at its full share exactly when the view reaches the end of its travel.
@@ -169,11 +168,11 @@ func _apply(skeleton: Skeleton3D, chain: Array[StringName], yaw: float, pitch: f
 
 ## The character's own left-to-right axis, taken from the SHOULDERS.
 ##
-## Not from a bone's -Z, which is what a first attempt used and got backwards:
-## a VRM faces +Z by specification, so a head bone's -Z points out of the BACK
-## of the skull, and pitching about a vector derived from it tips the face the
-## wrong way. Worse, the check that was supposed to catch this read the same -Z
-## and therefore agreed with itself -- it took the owner playing it to notice.
+## DO NOT take it from a bone's -Z. A VRM faces +Z by specification, so a head
+## bone's -Z points out of the BACK of the skull, and pitching about a vector
+## derived from it tips the face the wrong way. A check written against that
+## same -Z agrees with itself, so this failure survives every headless
+## verification and only shows up in play.
 ##
 ## The shoulders do not care which way the format decided forward is.
 func _pitch_axis(skeleton: Skeleton3D) -> Vector3:

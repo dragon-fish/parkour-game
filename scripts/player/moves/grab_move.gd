@@ -7,7 +7,8 @@ extends ScriptedMove
 
 ## Set in enter() when the ledge query comes back invalid: there is nothing to
 ## hang from, so physics_update() hands straight back to Falling without ever
-## touching the body. See enter()'s note for what the old fallback did instead.
+## touching the body. See enter() for why there is no fallback position to
+## invent instead.
 var _aborted: bool = false
 
 var _edge: Vector3 = Vector3.ZERO
@@ -15,16 +16,17 @@ var _edge: Vector3 = Vector3.ZERO
 ## player -- kept because a shimmy runs along the ledge, and the only thing
 ## that knows which way "along" is, is the wall.
 ##
-## ⚠️ "face_normal", NOT "normal". ledge_query() returns BOTH, and they are
-## perpendicular: "normal" comes off SurfaceDown, the ray fired DOWNWARD onto
-## the ledge top, so it points straight UP, while "face_normal" comes off the
-## forward ray that found the wall. Reading the wrong one flattens to a zero
-## vector the moment y is dropped, and the shimmy then refuses on every single
-## tick through the horizontal-face branch below -- silently, because refusing
-## to travel is a perfectly ordinary thing for it to do. IntoGrabMove hit the
-## same pair and documents the same distinction on its own yaw.
+## DO NOT confuse this with the ledge-top normal. ledge_query() returns BOTH,
+## and they are perpendicular: "normal" comes off SurfaceDown, the ray fired
+## DOWNWARD onto the ledge top, so it points straight UP, while "face_normal"
+## comes off the forward ray that found the wall. Reading the wrong one
+## flattens to a zero vector the moment y is dropped, and the shimmy then
+## refuses on every single tick through the horizontal-face branch below --
+## silently, because refusing to travel is a perfectly ordinary thing for it
+## to do. IntoGrabMove hits the same pair and documents the same distinction
+## on its own yaw.
 ##
-## ⚠️ READ FROM THE LEDGE, NOT FROM THE BODY, and that is the whole point.
+## READ FROM THE LEDGE, NOT FROM THE BODY, and that is the whole point.
 ## The player can turn freely while hanging (see the commitment note on
 ## _exit_direction below), so taking "sideways" off player.basis.x would make
 ## A and D swap meaning as soon as they looked along the wall instead of at
@@ -33,9 +35,9 @@ var _face_normal: Vector3 = Vector3.BACK
 ## -1 shimmying left, +1 right, 0 hanging still. Read by character_animator.gd
 ## the same way is_mantling() is.
 ##
-## HELD THROUGH A CORNER on purpose: the owner's direction was to borrow the
-## travel clips for it -- "climb left right 动画...可以借一下，顺便把转角做了" --
-## and there is no dedicated corner clip in either pack to borrow instead.
+## HELD THROUGH A CORNER on purpose: the shimmy borrows the travel clips for
+## it rather than getting a dedicated corner clip -- no such clip exists in
+## either animation pack.
 var _shimmy: float = 0.0
 
 ## Rounding a ninety-degree corner: a scripted swing of the whole body onto a
@@ -69,21 +71,21 @@ var _shimmy_lockout: float = 0.0
 
 ## WHY the shimmy did what it did on the last tick it was asked, for the HUD.
 ##
-## ⚠️ EXISTS BECAUSE EVERY REFUSAL LOOKS THE SAME FROM OUTSIDE. A shimmy that
+## EXISTS BECAUSE EVERY REFUSAL LOOKS THE SAME FROM OUTSIDE. A shimmy that
 ## stops has four different reasons to -- the ledge ended, the face ended, the
 ## body is blocked, the lockout is running -- and the body does exactly the same
-## nothing for all of them. The owner hit a corner in me_level0 that refuses on
-## geometry the arena course reproduces fine, and the arena is not where the
-## answer is; the readout is.
+## nothing for all of them. DO NOT expect every refusal to reproduce on the
+## arena test course when debugging one -- some only show up on real level
+## geometry; read this instead.
 var _shimmy_report: String = "idle"
 
 ## The segments the shimmy probes actually fired on the last tick they ran, each
 ## {from, to, hit, label}. Drawn by ShimmyDebug.
 ##
-## ⚠️ RECORDED, NOT RECONSTRUCTED. The obvious cheaper version is to let the
-## debug view re-run the same probes with the same arguments -- and that is a
-## picture of a SECOND implementation, which agrees with this one right up until
-## the moment a difference is what you are looking for. Probes hands its
+## RECORDED, NOT RECONSTRUCTED. DO NOT let the debug view re-run the same
+## probes with the same arguments instead of reading this back -- that is a
+## picture of a SECOND implementation, which agrees with this one right up
+## until the moment a difference is what you are looking for. Probes hands its
 ## segments back for the same reason IntoGrabMove.hanging_pose() is static.
 var _probe_trace: Array[Dictionary] = []
 ## The direction the mantle pushes and exits along. Captured ONCE, at
@@ -92,8 +94,7 @@ var _probe_trace: Array[Dictionary] = []
 ## Grabbing a ledge does not commit to a direction: the player can hang and
 ## turn freely first, and only the facing at the moment they actually choose
 ## to climb should decide where that climb goes. See the note on the
-## climb-trigger branch for the full reasoning (and why an earlier version of
-## this file, which captured in enter(), got this wrong).
+## climb-trigger branch for the full reasoning.
 var _exit_direction: Vector3 = Vector3.ZERO
 var _mantling: bool = false
 
@@ -166,18 +167,18 @@ func enter(_previous: StringName) -> void:
 	# FallingMove already null-checks player.probes AND requires a valid
 	# ledge_query() before ever transitioning here, so neither branch below is
 	# reachable in normal play. They are kept as a guard for a future caller
-	# that skips that gate -- but as a GENUINELY safe one. The previous version
-	# fell back to `_edge = player.global_position`, which is not "nowhere to
-	# hang": the mantle target is built as `_edge + up * standing_height/2 +
-	# forward * mantle_forward_offset`, so that fallback would have teleported
-	# the body 0.9 m up and 0.4 m forward, through whatever was there. There is
-	# no safe destination to invent when the probe found nothing, so invent
-	# none: abort and let the player fall.
-	# The reach hands its own result over (Player.pending_ledge). Re-querying
-	# here cannot work any more: IntoGrabMove has just carried the body to the
-	# hanging pose, 0.45 m back and most of a body-length below the lip, and
-	# from there the probe no longer sees the edge it was carried to. The grab
-	# aborted on its first tick and dropped the player.
+	# that skips that gate -- but as a GENUINELY safe one. There is no safe
+	# destination to invent when the probe found nothing: DO NOT fall back to
+	# `_edge = player.global_position` as a stand-in for "nowhere to hang" --
+	# the mantle target is built as `_edge + up * standing_height/2 + forward *
+	# mantle_forward_offset`, so that fallback would teleport the body 0.9 m up
+	# and 0.4 m forward, through whatever is there. Abort and let the player
+	# fall instead.
+	# The reach hands its own result over (Player.pending_ledge). DO NOT
+	# re-query here as a substitute: IntoGrabMove has just carried the body to
+	# the hanging pose, 0.45 m back and most of a body-length below the lip,
+	# and from there the probe can no longer see the edge it was carried to --
+	# a fresh query aborts on its first tick and drops the player.
 	var query: Dictionary = player.pending_ledge
 	player.pending_ledge = {}
 	if query.is_empty():
@@ -213,36 +214,35 @@ func enter(_previous: StringName) -> void:
 	# either an upward pop (pulling the body toward the edge) or a downward
 	# drop (pushing it away) the player never asked for -- holding position
 	# is the correct behaviour on its own merits, not a simplification of a
-	# "real" reposition. (A grab near the top of the reachable range now
-	# hangs at full stretch, well below the edge; was confirmed by
+	# "real" reposition. (A grab near the top of the reachable range hangs at
+	# full stretch, well below the edge -- the climb is a fixed-time lerp, not
+	# a fixed-speed one, so distance never affects how long it takes. See
 	# test_mantling_completes_from_the_top_of_the_grab_range in
-	# tests/legacy/test_ledge.gd -- the climb is a fixed-time lerp, not a
-	# fixed-speed one, so distance never affects how long it takes. That test
-	# is ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
-	# this today; restore the pin when the behavioural suite is rewritten.)
+	# tests/legacy/test_ledge.gd, archived out of the running suite; nothing
+	# enforces this today, so restore the pin when the behavioural suite is
+	# rewritten.)
 
-# NO exit() override any more. The re-grab cooldown this move needs is now
-# GrabConfig's own redo_move_time (0.45 s), armed by MoveManager on every
-# transition OUT of this move and checked by MoveManager.can_enter() before
-# every transition back in -- exactly the mechanism WallRun already uses.
+# The re-grab cooldown lives in GrabConfig's own redo_move_time (0.45 s),
+# armed by MoveManager on every transition OUT of this move and checked by
+# MoveManager.can_enter() before every transition back in -- the same
+# mechanism WallRun already uses. This move does not need to override exit()
+# to arm it.
 #
-# That covers strictly more than the hand-rolled Player._ledge_cooldown it
-# replaces, and covers it without this move having to remember anything: the
-# mantle hand-off used to leave the cooldown at zero, so a landing that found
-# no floor dropped to Falling and FallingMove's very next ledge_query() could
-# re-grab on the same tick, with no gate of any kind between the two. That is
-# an unbounded oscillation whenever the landing point is not standing room.
+# DO NOT let a hand-off out of this move skip arming the cooldown: without it,
+# a mantle that lands where there is no floor drops to Falling, and
+# FallingMove's very next ledge_query() can re-grab on the same tick, with no
+# gate of any kind between the two -- an unbounded oscillation whenever the
+# landing point is not standing room.
 #
-# Harmless on the paths that were already fine: a completed mantle leaves the
+# Harmless on the paths that are already fine: a completed mantle leaves the
 # player standing on top of the platform, where there is no ledge in front of
 # them to re-grab anyway, so withholding grabs for 0.45 s costs nothing a
 # player can feel.
 
-## ⚠️ THIS MOVE HAD NO exit() AT ALL, which was survivable only because it
-## changed nothing that needed putting back. The mantle's folded capsule does,
-## and a state that shrinks the body without restoring it leaves the player
-## permanently crouched -- the exact shape of the leak SpeedVaultMove's missing
-## exit() had with its camera roll.
+## The mantle's folded capsule MUST be restored on exit -- a move that shrinks
+## the body without restoring it leaves the player permanently crouched, the
+## same class of leak SpeedVaultMove's own exit() guards against for its
+## camera roll.
 ##
 ## A REQUEST rather than a restore, matching Slide, Crouch, SkillRoll and now
 ## the vault: a mantle can end under something low, and standing up into it
@@ -263,8 +263,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# BEFORE EVERYTHING, mantle included. A corner is a scripted passage that
 	# owns the body; a pull-up or a jump started halfway through one would
 	# launch from a position that is neither the ledge left nor the ledge
-	# arrived at. The original spends 1.0 s here and then another 0.6 s
-	# refusing to shimmy, which is not the shape of a state you can act out of.
+	# arrived at. [ME:CONFIRMED] The original refuses to shimmy for 0.6 s
+	# after a corner (TdMove_Grab.DisableShimmyTime), on top of roughly a
+	# second spent turning the corner itself -- not the shape of a state you
+	# can act out of.
 	if _cornering:
 		_advance_corner(delta)
 		return KEEP
@@ -296,12 +298,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# The re-grab cooldown this drop needs is armed by MoveManager on the way
 	# out, which covers this path and the mantle hand-off alike without either
 	# of them doing anything -- see the block above physics_update() for why
-	# this move no longer overrides exit() at all.
+	# this move does not override exit() to arm it.
 	if input.crouch_held:
-		# ✅ THE OWNER: "在ME里按一次按键只对应一次动作" -- the crouch that drops
-		# off the ledge already spends this press; it must not also survive in
-		# the roll buffer (armed unconditionally by Player._tick_timers() on
-		# every crouch_pressed) to fire a skill roll when the drop lands.
+		# [ME:INFERRED] In the original, one keypress resolves to exactly one
+		# action. DO NOT let the crouch press that drops off a ledge also
+		# survive in the roll buffer (armed unconditionally by
+		# Player._tick_timers() on every crouch_pressed) to fire a skill roll
+		# when the drop lands.
 		player.consume_roll()
 		return FALLING
 
@@ -309,14 +312,14 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# to be asked BEFORE the climb trigger below -- that branch takes
 	# jump_pressed too, so whichever is asked first wins the key.
 	#
-	# ✅ The original splits the same key the same way, and gives both halves the
-	# same angle: TdMove_GrabJump.GrabAllowedJumpAngle = 45 against
-	# TdMove_GrabPullUp.GrabAllowedPullUpAngle = 45. Looking at the wall climbs
-	# it, looking away from it leaves it.
+	# [ME:CONFIRMED] The original splits the same key the same way, and gives
+	# both halves the same angle: TdMove_GrabJump.GrabAllowedJumpAngle = 45
+	# against TdMove_GrabPullUp.GrabAllowedPullUpAngle = 45. Looking at the
+	# wall climbs it, looking away from it leaves it.
 	#
-	# ✅ THE OWNER: "我们没有做 Grab 的回头跳，Grab 期间扭头超过 90 度就可以跳了."
-	# The threshold is the CDO's 45 rather than that 90, at their own direction
-	# -- "有实测数据就按数据来，我只能用手感跟你描述."
+	# DO NOT use the felt threshold of roughly 90 degrees here -- the code
+	# uses the CDO-confirmed 45 (jump_angle_deg), on direction to prefer
+	# measured data over feel when both exist.
 	if input.jump_pressed:
 		var turned: float = _turned_from_wall()
 		if turned > deg_to_rad(config.grab.jump_angle_deg):
@@ -339,36 +342,32 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# push on mantle completion (above) read it back rather than re-sampling
 	# facing themselves, so a further turn made DURING the 0.42 s scripted
 	# climb cannot retroactively change either one either.
-	# ✅ AND IT NEEDS BOTH HANDS. See _two_handed(): past the angle the body is
+	# AND IT NEEDS BOTH HANDS. See _two_handed(): past the angle the body is
 	# hanging by one arm and cannot haul itself over anything.
 	#
-	# ⚠️ WITHOUT THIS THE HANG JUMP IS UNREACHABLE BY THE INPUT PEOPLE ACTUALLY
-	# USE. Forward-and-jump is one gesture rather than two, so an ungated pull-up
-	# does not merely coexist with the jump -- it wins every time, on the same
-	# tick, with the same keys down. The branch below only ever fired for a
-	# player who thought to release W first.
+	# DO NOT remove this jump-first check: forward-and-jump is one gesture
+	# rather than two, so an ungated pull-up does not merely coexist with the
+	# jump -- it wins every time, on the same tick, with the same keys down.
+	# Only a player who released W first could ever reach the hang jump
+	# through the branch below.
 	if (input.move.y > 0.5 or input.jump_pressed) and _two_handed():
 		_exit_direction = -player.global_transform.basis.z
 		var top := _edge + Vector3(0.0, player.standing_height() * 0.5, 0.0)
 		# PLUS, not minus. _exit_direction is FORWARD (-basis.z), and the
 		# landing has to sit mantle_forward_offset PAST the lip, standing on
 		# the platform -- exactly what SpeedVaultMove does with vault_exit_forward,
-		# and exactly what MovementConfig documents this knob as doing. The
-		# original brief wrote `top -= basis.z * 0.4`, where basis.z is
-		# BACKWARD, so that `-=` was already a forward push; a later refactor
-		# introduced `_exit_direction = -basis.z` but kept the `-=`,
-		# double-negating it.
+		# and exactly what MovementConfig documents this knob as doing.
 		#
-		# _edge is SurfaceDown's hit, which sits LEDGE_ANCHOR_MARGIN (0.1 m)
-		# past the wall face the forward ray found -- i.e. just inside the
-		# ledge top, tracking the real obstacle rather than sitting a fixed
-		# distance ahead of the body (see Probes.ledge_query()). Subtracting
-		# here therefore put the landing 0.4 m BACK from that anchor: 0.3 m
-		# SHORT of the face, feet at platform height over open air -- and on
-		# EVERY approach, not just close ones, since the anchor now tracks the
-		# face. Measured on the test rig with the sign inverted, the body then
-		# settles balanced on the block's top EDGE, outside the platform -- and
-		# on the arena's LedgeMid it drops, slides back down the face and
+		# DO NOT flip this back to `-=`. _edge is SurfaceDown's hit, which
+		# sits LEDGE_ANCHOR_MARGIN (0.1 m) past the wall face the forward ray
+		# found -- i.e. just inside the ledge top, tracking the real obstacle
+		# rather than sitting a fixed distance ahead of the body (see
+		# Probes.ledge_query()). Subtracting here puts the landing 0.4 m BACK
+		# from that anchor: 0.3 m SHORT of the face, feet at platform height
+		# over open air, on EVERY approach, not just close ones, since the
+		# anchor tracks the face. With the sign inverted the body settles
+		# balanced on the ledge's own outside edge, outside the platform, or
+		# on a ledge like LedgeMid it drops, slides back down the face and
 		# re-grabs: climb / fall / re-climb every time.
 		#
 		# With the sign correct the landing sits 0.1 + 0.4 = 0.5 m past the
@@ -376,18 +375,19 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# anchored to in the first place.
 		# NOWHERE TO GO IS NOT A MANTLE.
 		#
-		# ✅ The owner drew the shape and gave the original's answer: a ledge
-		# with a slab overhanging it can be HUNG from and shimmied along, and
-		# cannot be pulled up onto. Ours pulled up regardless and put the body
-		# inside the geometry -- clipping through walls, reported as happening
-		# a lot.
+		# [ME:INFERRED] An overhung ledge (a slab above it) can be hung from
+		# and shimmied along but stays out of reach for a pull-up -- the
+		# original leaves the player on the hang rather than pulling through
+		# the slab. DO NOT let the pull-up ignore headroom above the ledge:
+		# without the check the body pulls up into the geometry, clipping
+		# through the wall above it.
 		#
 		# Refused rather than aborted: the hang is still perfectly valid, and
 		# staying on it is what the original does -- AND, since this move grew
 		# a shimmy, staying on it is now something the player can act on rather
-		# than a dead end. An overhung ledge is exactly the case the owner
-		# described: hang, travel along it to somewhere the slab does not
-		# reach, and pull up there.
+		# than a dead end. An overhung ledge is exactly this case: hang,
+		# travel along it to somewhere the slab does not reach, and pull up
+		# there.
 		#
 		# Asked of the BODY, not of the probe. Player.fits_standing_at() moves
 		# the shapecast that already exists for the crouch-to-stand restore --
@@ -397,12 +397,14 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			return KEEP
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration,
-				# ⚠️ THE SURFACE, NOT THE LANDING. `top` here is already where the
-				# capsule ENDS -- standing on the roof, half a standing height
-				# above it -- so adding the apex to it counted that half twice
-				# and a 2 m ledge peaked 1.80 m over its own top instead of 0.90.
-				# ✅ The owner states the knob in the only terms that mean
-				# anything: "我计算的全部都是，翻越到最高点时，盆骨和障碍应该相距多少."
+				# DO NOT add mantle_apex_above_top to `top` directly. `top`
+				# here is already where the capsule ENDS -- standing on the
+				# roof, half a standing height above it -- so adding the apex
+				# on top of that counts the half twice, and a 2 m ledge peaks
+				# 1.80 m over its own top instead of 0.90.
+				# mantle_apex_above_top is defined as pelvis-to-obstacle
+				# clearance at the peak of the climb -- the only frame the
+				# number was tuned in.
 				top.y - player.standing_height() * 0.5
 					+ config.grab.mantle_apex_above_top,
 				config.grab.mantle_control_bias,
@@ -436,12 +438,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 ## One tick of travel along the ledge.
 ##
-## ✅ THE OWNER wanted the Climb set used, and it is the one place UAL1
-## carries a complete hang vocabulary: Climb_Idle to hang, Climb_Left and
-## Climb_Right to travel, ClimbLedge to pull up. Both travel clips are 0.87 s
-## with ZERO net displacement, which is the shape this project already relies
-## on everywhere else -- the clip supplies the pose, the code supplies the
-## metres.
+## THE CLIMB SET is the one place UAL1 carries a complete hang vocabulary:
+## Climb_Idle to hang, Climb_Left and Climb_Right to travel, ClimbLedge to
+## pull up. Both travel clips run 0.87 s with ZERO net displacement, which is
+## the shape this project already relies on everywhere else -- the clip
+## supplies the pose, the code supplies the metres.
 ##
 ## THE BODY AND THE ANCHOR MOVE TOGETHER OR NEITHER MOVES. Every refusal below
 ## returns without touching either, because advancing one without the other is
@@ -452,12 +453,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	if player.probes == null:
 		return
-	# ✅ DisableShimmyTime. A corner leaves the hands a hand's width from the
-	# corner they just rounded, so without this a wobble on the stick walks them
-	# straight back around it, and around again.
-	# ✅ TRAVELLING NEEDS BOTH HANDS TOO, and this is the half the first version
-	# of the gate missed: it stopped the pull-up and left A and D working, so a
-	# body hanging by one arm could still hand-over-hand along the ledge.
+	# [ME:DERIVED] The lockout exists because a corner leaves the hands a
+	# hand's width from the corner they just rounded -- without it a wobble on
+	# the stick would walk them straight back around it, and around again
+	# (see GrabConfig.corner_lockout, sourced from TdMove_Grab.DisableShimmyTime).
+	# DO NOT gate only the pull-up on _two_handed(): travelling needs both
+	# hands too, or a body hanging by one arm could hand-over-hand along the
+	# ledge.
 	if not _two_handed():
 		_shimmy = 0.0
 		_shimmy_report = "one-handed: the view is turned too far to travel"
@@ -497,10 +499,11 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 			config.grab.shimmy_probe_lift, config.grab.shimmy_edge_tolerance)
 	_trace("ledge", beside)
 
-	# ⚠️ TWO QUESTIONS, NOT ONE, and asking only the first walked the hands off
-	# the outside corner of anything with depth. ledge_beside() answers about
-	# the TOP, which on a 6 m block carries on for metres past the corner; the
-	# FACE the body actually hangs from ended there. See Probes.face_beside().
+	# DO NOT ask only ledge_beside(): it answers about the TOP, which on a 6 m
+	# block carries on for metres past the corner, while the FACE the body
+	# actually hangs from ends there -- asking only the first question walks
+	# the hands off the outside corner of anything with depth. See
+	# Probes.face_beside().
 	var face: Dictionary = player.probes.face_beside(_edge, step, _face_normal,
 			config.grab.corner_probe_drop, Probes.LEDGE_ANCHOR_MARGIN)
 	_trace("face", face)
@@ -530,22 +533,20 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# an inside corner that the hanging body cannot pass through, and the ray
 	# above threads between things a body never could.
 	#
-	# ⚠️ NOT fits_standing_at(), WHICH THE MANTLE USES AND WHICH IS WRONG HERE.
-	# A hanging body is always INSIDE the ledge it hangs from -- 0.09 m of
-	# capsule above the lip and 0.05 m of it through the wall face, by
-	# construction, see Probes.side_clear() for the arithmetic. So that question
-	# answers NO at every hang position on every wall, and asking it here
-	# refused every step of every shimmy. That shipped, and the owner found it
-	# on a wall built to be easy: "就你造的这几个墙，我都不能横爬."
-	# ⚠️ TWO PROBES, AND NEITHER IS THE CAPSULE. ✅ The owner: "现在是角色的中心撞到
-	# 障碍才会被阻挡，但其实人的手已经进入墙里了."
+	# DO NOT use fits_standing_at() here, which the mantle uses. A hanging
+	# body is always INSIDE the ledge it hangs from -- 0.09 m of capsule above
+	# the lip and 0.05 m of it through the wall face, by construction, see
+	# Probes.side_hit() for the arithmetic. So that question answers NO at
+	# every hang position on every wall, and asking it here would refuse
+	# every step of every shimmy, even on ordinary geometry.
 	#
-	# The capsule's 0.4 m radius describes a cylinder around the torso, which is
-	# not the shape of a person hanging by their hands: the arms are up and out,
-	# and the LEADING HAND is both wider than the shoulder and 0.81 m higher than
-	# the body's centre. Probing from the centre at the capsule's own radius
-	# therefore misses a wall until the hand is already well inside it, and
-	# misses one entirely if it starts above chest height.
+	# TWO PROBES, AND NEITHER IS THE CAPSULE. The capsule's 0.4 m radius
+	# describes a cylinder around the torso, which is not the shape of a
+	# person hanging by their hands: the arms are up and out, and the LEADING
+	# HAND is both wider than the shoulder and 0.81 m higher than the body's
+	# centre. Probing from the centre at the capsule's own radius therefore
+	# misses a wall until the hand is already well inside it, and misses one
+	# entirely if it starts above chest height.
 	#
 	# So: one along the chest at the body's real width, and one along the LEDGE
 	# at hand height, which is where the grip is actually going.
@@ -559,9 +560,9 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	if blocked.is_empty():
 		# HAND HEIGHT, AND AT THE LIP RATHER THAN AT THE ANCHOR. The anchor sits
 		# LEDGE_ANCHOR_MARGIN *inside* the top, which is exactly where a railing
-		# standing on the ledge lives -- firing from there put the probe's own
-		# origin inside the fence on the owner's west eave, and with
-		# hit_from_inside it reported "blocked" before travelling a millimetre.
+		# standing on the ledge lives -- DO NOT fire this probe from the anchor:
+		# an origin there starts inside such a railing, and hit_from_inside
+		# reports "blocked" before travelling a millimetre.
 		#
 		# The hands are on the OUTER edge, so the ray belongs just outside the
 		# face plane, running along it. A wall crossing the hand's path has to
@@ -605,19 +606,17 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 
 ## Whether the hands are BOTH on the ledge.
 ##
-## 🎯 THE OWNER'S MODEL, and it is better than the two angle rules it replaces:
-## "ME 里扭头大于 45° 会变成单手攀附，很多事情就解释的通，此时无法 AD，也无法
-## GrabUp，因为这两种动作都要求 2 hands free."
+## [ME:CONFIRMED] One state, two consequences, rather than a pull-up rule and
+## a shimmy rule that happen to share a number: TdMove_Grab carries
+## `MovementGroup = MG_TwoHandsBusy`, so both restrictions come from a single
+## flag in the original rather than being coincidentally equal thresholds. It
+## also explains why the angle is where it is instead of being a tuning
+## value: it is the angle past which a shoulder cannot stay square to the
+## wall.
 ##
-## One state change with two consequences, rather than a pull-up rule and a
-## shimmy rule that happen to share a number. The CDO says the same thing from
-## its own side -- TdMove_Grab carries `MovementGroup = MG_TwoHandsBusy` -- and
-## it explains why the threshold is where it is instead of being a tuning value:
-## it is the angle past which a shoulder cannot stay square to the wall.
-##
-## 📌 What it does NOT gate is the jump, which is the whole point of the split:
-## one arm is plenty to shove off with, and past this angle it is the only thing
-## left to do.
+## WHAT IT DOES NOT GATE IS THE JUMP, which is the whole point of the split:
+## one arm is plenty to shove off with, and past this angle it is the only
+## thing left to do.
 func _two_handed() -> bool:
 	return _turned_from_wall() <= deg_to_rad(config.grab.pull_up_angle_deg)
 
@@ -639,17 +638,17 @@ func _turned_from_wall() -> float:
 
 ## Where a jump off a hang launches: along the VIEW, wall included.
 ##
-## ✅ THE OWNER: "应该是往镜头方向一个大跳，如果抬头也会有往上的力." The pitch
-## therefore has to be in it -- this is the full 3D look direction, not its
-## horizontal shadow -- which is what makes looking up send you up.
+## The launch direction is the full 3D look direction, pitch included, not
+## its horizontal shadow -- looking up must send the jump up too.
 ##
-## ⚠️ AND NOTHING IS PROJECTED OUT OF IT, WHICH WAS THE FIRST VERSION'S MISTAKE.
-## jump_angle_deg allows this jump from 45 degrees off the wall, where the view
-## still points half INTO it, and removing that component looked like ordinary
-## prudence. It is not:
+## DO NOT project the into-wall component out of the launch direction.
+## jump_angle_deg allows this jump from 45 degrees off the wall, where the
+## view still points half INTO it, and removing that component looks like
+## ordinary prudence. It is not:
 ##
-## ✅ THE OWNER, on the original: "攀边扭头略大于 45° 对着墙沿起跳是一个速通
-## glitch，能把超级慢的 GrabPullUp 转换为更快的 VaultOver."
+## [ME:COMMUNITY] Turning slightly past 45 degrees off the wall and jumping
+## toward the ledge is a speedrun glitch in the original: it converts the
+## slow GrabPullUp into a much faster VaultOver.
 ##
 ## That glitch IS the into-the-wall component. Just past the threshold the body
 ## is thrown at its own ledge, the airborne vault probe catches the top on the
@@ -658,7 +657,7 @@ func _turned_from_wall() -> float:
 ## so the tidy version quietly deletes a technique the speedrun route is built
 ## on. Copying the mistake is the port, the same as the dodge glitch in 04.
 ##
-## 📌 It also settles what the threshold MEANS. Reading GrabAllowedJumpAngle = 45
+## IT ALSO SETTLES WHAT THE THRESHOLD MEANS. Reading GrabAllowedJumpAngle = 45
 ## as "within 45 degrees of facing AWAY from the wall" was a live alternative
 ## while nothing told the two apart. A glitch that fires at 46 degrees off the
 ## WALL does.
@@ -676,8 +675,9 @@ func _launch_direction() -> Vector3:
 
 ## Leaves the ledge.
 ##
-## ⚠️ bDisableFaceRotation is True on TdMove_GrabJump, which fits: the body does
-## not turn to follow the launch. You look back over your shoulder and go.
+## [ME:CONFIRMED] bDisableFaceRotation is True on TdMove_GrabJump: the body
+## does not turn to follow the launch. You look back over your shoulder and
+## go.
 func _push_off(_turned: float) -> void:
 	var launch: Vector3 = _launch_direction() * config.grab.jump_speed
 	launch.y += config.grab.jump_speed_up
@@ -756,9 +756,9 @@ func _begin_corner(new_edge: Vector3, new_normal: Vector3, side: float) -> void:
 ## against each other once a tick -- which is the "camera twitches left and
 ## right" that move documents. Moving the REFERENCE instead makes them agree.
 ##
-## ✅ And it is what "期间锁镜头" comes out as here: the view goes round with the
-## body because the fan travels with it, and the player's own mouse can only add
-## to that rather than fight it.
+## [ME:INFERRED] This is what a locked camera during the turn looks like: the
+## view goes round with the body because the fan travels with it, and the
+## player's own mouse can only add to that rather than fight it.
 func _advance_corner(delta: float) -> void:
 	_corner_time += delta
 	_shimmy_report = "rounding a corner, %.2fs of %.2f" % [
@@ -781,8 +781,8 @@ func _advance_corner(delta: float) -> void:
 	player.pin_visual_yaw(_corner_model_from + _corner_model_sweep * progress)
 	if player.camera_rig != null:
 		player.camera_rig.shift_yaw_reference(wanted, 1.0)
-		# ⚠️ ORDINARY, and two attempts at making it special were both wrong.
-		# The view MUST come round the corner with the body -- see
+		# ORDINARY, and two attempts at making it special were both wrong. The
+		# view MUST come round the corner with the body -- see
 		# CameraRig.absorb_body_yaw() for the owner's reason, which is not about
 		# comfort: a view left a quarter-turn off the new wall puts the player's
 		# next mouse movement straight into the one-handed lock.

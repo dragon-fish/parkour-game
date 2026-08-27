@@ -1,20 +1,12 @@
 extends ParkourTest
 
-# The eye rides the attached body's head, and keeps its own resting place while
-# doing it.
-#
-# Those are two requirements, and the first implementation could only ever
-# satisfy one at a time: it lerped the eye's POSITION toward the head node's
-# position, so a strength below 1 left the head sliding through the view and a
-# strength of 1 parked the camera on the head node's own origin -- throwing away
-# eye_height and the small forward placement a first-person camera wants.
-#
-# The owner found it from the symptom: a body's neck kept passing through the
-# view during a run, while standing still looked fine. If the eye rode the head,
-# the head could never reach it.
-#
-# Following the head's DISPLACEMENT FROM REST satisfies both at once, which is
-# what these pin.
+# The eye rides the attached body's head, and keeps its own resting place
+# while doing it. DO NOT satisfy this by lerping the eye's POSITION toward
+# the head node's position: a strength below 1 leaves the head sliding
+# through the view, and a strength of 1 parks the camera on the head node's
+# own origin, discarding eye_height and the small forward placement a
+# first-person camera wants. Following the head's DISPLACEMENT FROM REST
+# satisfies both requirements at once, which is what these tests pin.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -49,10 +41,11 @@ func _attach_head(player: Player, at: Vector3) -> Node3D:
 	return head
 
 func test_a_head_at_rest_leaves_the_eye_exactly_where_it_was() -> void:
-	# THE PLACEMENT REQUIREMENT. The eye is put where a first-person camera
-	# belongs -- eye_height, a little ahead of the neck -- and attaching a body
-	# must not move it. The old blend did, by a quarter of a metre at the
-	# default strength, because the head node was nowhere near the eye.
+	# THE PLACEMENT REQUIREMENT. The eye sits where a first-person camera
+	# belongs -- eye_height, a little ahead of the neck -- and attaching a
+	# body must not move it. A naive lerp toward the head node's raw position
+	# moves it a quarter of a metre at the default strength, because a real
+	# model's head node sits wherever its author put it, nowhere near the eye.
 	var player: Player = await _player()
 	var rig: CameraRig = player.camera_rig
 	await step(5)
@@ -65,9 +58,9 @@ func test_a_head_at_rest_leaves_the_eye_exactly_where_it_was() -> void:
 		% rig.position.distance_to(before))
 
 func test_the_eye_rides_the_head_one_for_one() -> void:
-	# THE RIDING REQUIREMENT, and the one the neck clipping was really about:
-	# at full strength there is NO relative motion left between the eye and the
-	# head, so body geometry can never reach the camera.
+	# THE RIDING REQUIREMENT: at full strength there is NO relative motion
+	# left between the eye and the head, so body geometry can never clip into
+	# the camera.
 	var player: Player = await _player()
 	var rig: CameraRig = player.camera_rig
 	var head: Node3D = _attach_head(player, Vector3(0.0, -0.16, 0.05))
@@ -127,11 +120,9 @@ func test_the_chest_takes_its_share_by_default() -> void:
 	look.free()
 
 func test_a_move_can_take_the_chest_out_of_it() -> void:
-	# ✅ THE OWNER: "我们有一套上半身跟随头扭动 15° 的设计，在 grab 期间要暂时禁用，
-	# 否则左右扭头的时候双臂会跟着转一下穿模进墙里."
-	#
-	# The arms end at hands bolted to a ledge, so a chest that rotates takes
-	# them with it -- into the wall.
+	# Grab must disable the 15-degree chest-follows-head twist. The arms end
+	# at hands bolted to a ledge, so a chest that rotates takes them with it
+	# -- into the wall.
 	var look := HeadLook.new()
 	add_child(look)
 	look.request(deg_to_rad(60.0), 0.0, 89.0, 0.0)

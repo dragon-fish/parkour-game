@@ -52,8 +52,9 @@ func _ready() -> void:
 	shimmy.name = "ShimmyDebug"
 	shimmy.player = player
 	get_parent().add_child.call_deferred(shimmy)
-	# And the path a scripted move is following, against the one the body took.
-	# ✅ The owner: "你能不能把曲线画出来啊，我真的不知道现在的曲线长什么样子."
+	# And the path a scripted move is following, against the one the body took
+	# -- see ScriptedPathDebug's own header for why a curve has to be drawn
+	# rather than described.
 	var path := ScriptedPathDebug.new()
 	path.name = "ScriptedPathDebug"
 	path.player = player
@@ -108,20 +109,20 @@ func _process(delta: float) -> void:
 			rad_to_deg(player.rotation.y),
 			rad_to_deg(player.camera_rig.rotation.x) if player.camera_rig != null else 0.0],
 		"grounded   %s" % ("yes" if player.grounded else "no"),
-		# ✅ The owner, from a screenshot: "how much higher than the capsule is
-		# the eye?" Answered as numbers rather than by measuring pixels, and
-		# both quoted above the SOLES -- which stay put whatever the capsule
-		# does, since the fold moves one end of the collision shape, not the
-		# body. A span of 0.90-1.80 is a body with its legs tucked; 0.00-0.90
-		# is one crouching.
+		# HOW MUCH HIGHER THAN THE CAPSULE THE EYE SITS is answered here as
+		# numbers rather than by measuring a screenshot, and both are quoted
+		# above the SOLES -- which stay put whatever the capsule does, since a
+		# fold only moves the collision shape's top, never its bottom. A span
+		# of 0.00-0.90 is a body folded to half height, whether that is a
+		# crouch or a mid-vault tuck; 0.00-1.80 is standing.
 		"eye        %.2f m above soles   (capsule spans %.2f - %.2f)"
 			% [_eye_above_soles(), _capsule_span().x, _capsule_span().y],
-		# ✅ The owner narrowed it to three paths: a vault that drives through to
-		# Walking drops the model, while one that exits into Falling -- and a
-		# grab-up -- do not, with the capsule looking right in all three. The
-		# drop is DERIVED from the capsule, so it can read zero while the fold
-		# is declared, and no amount of looking at the body says which. This
-		# line is the difference between the two.
+		# THREE PATHS OUT OF A FOLD, and only one drops the model: a vault that
+		# drives through to Walking drops the model, while one that exits into
+		# Falling -- and a grab-up -- do not, with the capsule looking right in
+		# all three. The drop is DERIVED from the capsule, so it can read zero
+		# while the fold is declared, and no amount of looking at the body says
+		# which. This line is the difference between the two.
 		"fold       %s  drop %.2f m" % ["declared" if player.body_folded() else "off",
 			player.body_fold_drop()],
 		# WHERE THE MODEL'S ROOT IS, against where the mount alone would put it.
@@ -150,8 +151,8 @@ func _process(delta: float) -> void:
 		# nothing happening.
 		"shimmy     %s" % _shimmy_text(),
 		"fps        %d" % Engine.get_frames_per_second(),
-		# ⚠️ COMMENTED OUT, not deleted. ✅ The owner: "the step decisions can
-		# go for now, that part is basically stable." It is the readout that
+		# COMMENTED OUT, not deleted, because step decisions are stable enough
+		# right now that the readout is not needed. It is the readout that
 		# settled how a body climbs a plank, and the day it is wrong again it
 		# is two lines away rather than a rewrite.
 		#"step decisions",
@@ -216,10 +217,11 @@ func _eye_above_soles() -> float:
 		return player.camera_rig.global_position.y - soles
 	return player.config.camera.eye_height + player.standing_height() * 0.5
 
-## Where the collision capsule starts and ends, from the soles. Which END moves
-## is the whole of what the fold's anchor decides: ANCHOR_FEET brings the top
-## down, ANCHOR_HEAD lifts the bottom -- so a span of 0.90 to 1.80 is a body
-## with its legs tucked, and 0.00 to 0.90 is one crouching.
+## Where the collision capsule starts and ends, from the soles. The BOTTOM is
+## always pinned to the soles -- set_capsule_height() (player.gd) resizes from
+## the top only, never the bottom -- so a span whose low end is not ~0.00 is a
+## bug in itself. 0.00 to 0.90 is a body folded to half height, whether that is
+## a crouch or a mid-vault tuck; 0.00 to 1.80 is standing.
 func _capsule_span() -> Vector2:
 	var shape_node := player.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node == null:
@@ -250,14 +252,12 @@ func _shimmy_text() -> String:
 
 ## What the running scripted path is, or "-" when none is.
 ##
-## ✅ THE OWNER, after a wall in another scene produced a straight one: "我在main场景
-## 2.2x0.35的墙还是能触发一个直线的脚本动画，不知道是哪一个."
-##
-## 🎯 "WHICH MOVE IS DOING THIS" HAD NO ANSWER ON SCREEN. The move name was there,
-## but a move can drive the body several ways -- and the shape is decided by two
-## numbers that were only visible in the source. Reproducing it in the lab
-## measured a curve, so whatever the owner saw is a different path than the one
-## being looked for, and no amount of guessing from here would have found it.
+## A WALL PRODUCING A STRAIGHT SCRIPTED PATH HAD NO ANSWER FOR WHICH MOVE WAS
+## DOING IT. The move name was there, but a move can drive the body several
+## ways -- and the shape is decided by two numbers that were only visible in
+## the source. Reproducing a suspect wall in the lab measures a curve for
+## THAT wall, which is a different path than the one seen in the level, so no
+## amount of guessing from the lab alone would have found it.
 ##
 ## The lead is what says whether it can be a straight line at all: 0 is a
 ## symmetric bump, above 0 is the bezier. An arc of 0 with a lead of 0 IS the

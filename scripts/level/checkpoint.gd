@@ -3,22 +3,20 @@ class_name Checkpoint
 extends Area3D
 
 # A respawn trigger of any shape: give it whatever CollisionShape3D children
-# the spot needs, and walking in makes it the active respawn. ✅ THE OWNER:
-# "大致来说就是个任意形状的触发器，走进去就保存最后一个点."
+# the spot needs, and walking in makes it the active respawn.
 #
-# LAST TOUCHED WINS, nothing else -- the owner measured it in the original
-# twice. The looping tutorial LOOKS like it picks the nearest point, but
-# noclip-flying back and suiciding still respawned at the LAST one: the
-# "nearest" behaviour is just the second lap walking back INTO the first
-# lap's triggers, which makes them last-touched again. The loop case is
-# free; no distance query, no ordering data to author.
+# [ME:CONFIRMED] LAST TOUCHED WINS, nothing else -- verified directly against
+# the original by noclip-flying back through the looping tutorial and
+# suiciding: it still respawned at the LAST point touched, not the nearest.
+# What looks like "nearest" behaviour is just the second lap walking back
+# INTO the first lap's triggers, re-marking them as last-touched. The loop
+# case is free; no distance query, no ordering data to author.
 #
 # The respawn puts the BODY CENTRE at this node's origin, facing its own -Z
-# -- the same convention as SpawnPoint (✅ the owner chose consistency over a
-# feet-at-origin variant), so place the node about a body's half-height off
-# the floor; the gizmo shows exactly where the capsule lands. The editor preview (capsule
-# plus arrow, clickable in the viewport) is drawn by the respawn_gizmos
-# editor plugin, not here.
+# -- the same convention as SpawnPoint, so place the node about a body's
+# half-height off the floor; the gizmo shows exactly where the capsule
+# lands. The editor preview (capsule plus arrow, clickable in the viewport)
+# is drawn by the respawn_gizmos editor plugin, not here.
 
 ## Announced as 「检查点 <display_name> 已保存」 when this becomes the active
 ## respawn. Leave empty for a silent checkpoint -- no line is shown at all.

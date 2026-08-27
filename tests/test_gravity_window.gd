@@ -1,9 +1,11 @@
 extends ParkourTest
 
-# A temporary gravity multiplier for free flight. ✅ The research doc (05 §5.4):
-# 局部重力修改在ME里反复出现（swing、barge、coil），是它"飘但可控"的重要来源，
-# Godot 复刻务必保留这个手法. Built player-level once, consumed by the airborne
-# gravity sites, so swing/barge/coil never each grow their own copy.
+# A temporary gravity multiplier for free flight.
+# [ME:INFERRED 05 §5.4] Local gravity modification recurs across the
+# original's swing/barge/coil moves and is a major source of its "floaty but
+# controllable" feel; this port must keep the technique. Built player-level
+# once here and consumed by the airborne gravity sites, so swing/barge/coil
+# never each grow their own copy.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 

@@ -4,11 +4,10 @@ extends Node3D
 # A real mirror: the scene rendered a second time from the eye's reflection,
 # then dirtied on the way to the glass.
 #
-# ✅ THE OWNER: "我们能不能做真正的镜子?" -- really, not a ReflectionProbe and
-# not screen-space reflections. Both were considered and neither can show you
-# YOURSELF: SSR only has the pixels already on screen, and your front is not
-# one of them; a probe is a cubemap of roughly-what's-around, not a
-# geometrically correct image.
+# A REAL mirror, not a ReflectionProbe and not screen-space reflections:
+# both were considered and neither can show you YOURSELF -- SSR only has
+# the pixels already on screen, and your front is not one of them; a probe
+# is a cubemap of roughly-what's-around, not a geometrically correct image.
 #
 # EVERYTHING IS BUILT IN _ready(). Place the node, set `size`, done -- the
 # SubViewport, its camera and the quad are plumbing nobody should have to wire
@@ -18,7 +17,7 @@ extends Node3D
 # ladders. "Align Rotation with View" from where the player would stand,
 # facing the mirror, places it correctly.
 #
-# ⚠️ WHAT IS BEHIND A MIRROR OCCLUDES IT. The reflection camera stands behind
+# WHAT IS BEHIND A MIRROR OCCLUDES IT. The reflection camera stands behind
 # the mirror plane, so a wall the mirror hangs on sits between that camera and
 # everything it is supposed to see. The textbook fix is an oblique near plane
 # clipped to the mirror surface, and GODOT 4.7 CANNOT DO IT: Camera3D offers
@@ -42,7 +41,7 @@ extends Node3D
 
 ## The reflection's render size, as a fraction of the real viewport.
 ##
-## ⚠️ THE SINGLE BIGGEST COST CONTROL HERE, and the reason the dirt exists.
+## THE SINGLE BIGGEST COST CONTROL HERE, and the reason the dirt exists.
 ## A mirror renders the whole scene again; at 0.5 it renders a quarter of the
 ## pixels. Warp, haze and grime hide that completely -- turn them all off and
 ## this has to come back up to 1.0 to stop looking soft.
@@ -94,17 +93,17 @@ static func reflect_across(eye: Transform3D, plane: Plane) -> Transform3D:
 	# reflected basis is LEFT-handed (determinant -1), which flips triangle
 	# winding and makes every surface in the mirror render inside-out.
 	#
-	# ⚠️ THAT REBUILD IS NOT FREE, AND AN EARLIER VERSION OF THIS COMMENT SAID
-	# IT WAS. looking_at reaches right-handedness by NEGATING THE X AXIS -- this
-	# camera's right is the world -X where the real one's is +X -- so what it
-	# renders is the true reflection mirrored about the viewport's centre line.
-	# The cost moved into the image rather than disappearing.
+	# THAT REBUILD IS NOT FREE. looking_at reaches right-handedness by
+	# NEGATING THE X AXIS -- this camera's right is the world -X where the
+	# real one's is +X -- so what it renders is the true reflection mirrored
+	# about the viewport's centre line. The cost moved into the image rather
+	# than disappearing.
 	#
 	# shaders/mirror.gdshader undoes it with `1.0 - SCREEN_UV.x`, which is the
 	# exact inverse for a symmetric projection. The two halves only work as a
-	# pair: change either and the mirror shows left as right, which is what the
-	# owner caught here -- "往左扭头，镜子里的角色也往左". tests/test_mirror.gd
-	# pins the pairing.
+	# pair: change either and the mirror shows left as right (turning your
+	# head left, your reflection's head turns left too, instead of mirroring).
+	# tests/test_mirror.gd pins the pairing.
 	if absf(forward.normalized().dot(up.normalized())) > 0.999:
 		up = _mirror_vector(eye.basis.x, normal)
 	return Transform3D(Basis.looking_at(forward, up), position)
@@ -244,12 +243,11 @@ func _process(_delta: float) -> void:
 ## Pushes the reflection camera's near plane out to the glass, so nothing
 ## BEHIND the mirror can get into the picture.
 ##
-## ⚠️ THIS IS WHAT MADE A MIRROR STOP WORKING AT RANGE. The reflection camera
+## THIS IS WHAT MADE A MIRROR STOP WORKING AT RANGE. The reflection camera
 ## stands as far behind the glass as the eye stands in front, so walking away
 ## from a mirror walks its camera backwards -- and at about seven metres in the
 ## lab it reversed straight through the room's own back wall and started
 ## rendering the OUTSIDE of it. A flat grey rectangle, arriving in one step.
-## ✅ THE OWNER: "镜子只有在附近才工作，离远了会瞬间失去效果."
 ##
 ## reflection_cull_mask cannot fix that one, and it is worth being clear why:
 ## the back wall BELONGS in the reflection. It is the picture frame problem
@@ -261,12 +259,12 @@ func _process(_delta: float) -> void:
 ## the view direction, not to the mirror, so clipping at the perpendicular
 ## distance would eat real content whenever the mirror is viewed at an angle.
 ##
-## ⚠️ AND IT IS THE NEAREST CORNER, NOT THE CENTRE. Clipping at the centre's
-## axial distance cut a wedge out of the reflection at steep angles: content
-## genuinely in FRONT of the pane, but nearer along the view axis than the
-## pane's middle, vanished and left a blank triangle in one corner. ✅ THE
-## OWNER: "右下角还能看到一块空白." The nearest of the four corners is the
-## furthest the plane can be pushed while still holding everything the glass
+## AND IT IS THE NEAREST CORNER, NOT THE CENTRE. Clipping at the centre's
+## axial distance cuts a wedge out of the reflection at steep angles:
+## content genuinely in FRONT of the pane, but nearer along the view axis
+## than the pane's middle, vanishes and leaves a blank triangle in one
+## corner. The nearest of the four corners is the furthest the plane can be
+## pushed while still holding everything the glass
 ## can show, so that is where it goes.
 ##
 ## The pane is then only PARTLY protected: a sliver of what sits behind a

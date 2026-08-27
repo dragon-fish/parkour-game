@@ -85,7 +85,7 @@ func test_a_narrow_fence_is_seen() -> void:
 # --- hand reach is the ceiling ------------------------------------------------
 
 func test_an_obstacle_past_hand_reach_is_not_a_vault() -> void:
-	# ✅ MEASURED TWICE, 2 cm apart, from two different approaches: a vault
+	# MEASURED TWICE, 2 cm apart, from two different approaches: a vault
 	# commits when the top is about 1.89 m above the FEET. Past that it is a
 	# wall, and the grab probe's business rather than this one's. See
 	# SpeedVaultConfig.max_edge_above_feet.
@@ -108,7 +108,7 @@ func test_the_same_obstacle_inside_hand_reach_is_a_vault() -> void:
 # --- standability decides the landing, not whether a vault happens ------------
 
 func test_an_unstandable_top_is_still_a_vault() -> void:
-	# ✅ Settled from play: a fence and the cabinet beside it are the same
+	# Settled from play: a fence and the cabinet beside it are the same
 	# height and BOTH report VaultOver -- the cabinet's wide top is simply
 	# where Faith ends up standing. One axis decides the family, another the
 	# landing. Refusing the whole vault on a top you cannot stand on is how a
@@ -182,10 +182,10 @@ func test_thin_obstacles_report_a_far_side_at_every_height() -> void:
 # --- headroom ------------------------------------------------------------------
 
 func test_a_body_does_not_fit_under_a_cap() -> void:
-	# ✅ THE OWNER DREW THIS SHAPE and gave the original's answer: a ledge with a
-	# slab overhanging it can be hung from and shimmied along, and cannot be
-	# pulled up onto. Ours pulled up regardless and put the body inside the
-	# geometry -- clipping the owner reported as happening a lot.
+	# [ME:INFERRED] A ledge with a slab overhanging it can be hung from and
+	# shimmied along, but cannot be pulled up onto. Ours pulled up regardless
+	# and put the body inside the geometry, which showed up often as visible
+	# clipping.
 	#
 	# Asked of the BODY with the shapecast that already existed for the
 	# crouch-to-stand restore, not of a fresh raycast. A shape, because a body
@@ -219,8 +219,8 @@ func test_the_clearance_probe_goes_back_where_it_belongs() -> void:
 	assert_almost_eq(probe.global_position.distance_to(before), 0.0, 0.0001, 		"the clearance probe was left where the last question put it")
 
 func test_a_thin_obstacle_with_a_drop_beyond_is_still_an_over() -> void:
-	# ✅ THE OWNER: a 2.2 m by 0.35 m wall put the player up ON TOP of it to
-	# take a step, which is absurd -- 0.35 m is not somewhere to stand.
+	# A 2.2 m by 0.35 m wall put the player up ON TOP of it to take a step,
+	# which is absurd -- 0.35 m is not somewhere to stand.
 	#
 	# The cause was the far-side ray reaching only a vault's own height, 1.92 m,
 	# on the reasoning that anything deeper is "a drop, not a landing". True as
@@ -233,7 +233,7 @@ func test_a_thin_obstacle_with_a_drop_beyond_is_still_an_over() -> void:
 	# fence over a stairwell -- and the second is still an over, just without a
 	# landing to aim at.
 	#
-	# ⚠️ ASKED OF THE FUNCTION, not through vault_query(). A 2.2 m top is out of
+	# ASKED OF THE FUNCTION, not through vault_query(). A 2.2 m top is out of
 	# reach from the ground, so the whole query answers "invalid" and a test
 	# routed through it asserts nothing -- which the first draft of this did,
 	# and it passed against the old behaviour too.
@@ -256,15 +256,15 @@ func test_a_wide_top_is_still_not_an_over() -> void:
 # --- a face that is higher is not automatically the one you can grab ----------
 
 func test_a_ledge_with_a_cap_on_it_is_grabbed_at_the_rim() -> void:
-	# ✅ THE OWNER, on a block with a smaller block built on top of it: "我对着
-	# 这个障碍跳跃，它的 grab 判定点出现在高帽檐上而不是矮边缘，距离不够，什么都
-	# 没抓住."
+	# JUMPING AT A CAPPED OBSTACLE MUST FIND THE LOWER RIM, not the taller cap
+	# above it -- anchoring on the cap puts the grab target out of reach and
+	# grabs nothing at all.
 	#
-	# ⚠️ THE COLUMN USED TO STOP AT ONE ANSWER. "The highest hit wins" was the
-	# whole rule -- one face, one down-probe, one height gate -- so a cap
-	# presenting a face 1.5 m above the rim won the column, failed the gate on
-	# its own top being out of reach, and took the entire query down with it.
-	# The rim it was standing on was never asked about.
+	# THE COLUMN MUST NOT STOP AT ONE ANSWER. "The highest hit wins" is not
+	# the whole rule -- one face, one down-probe, one height gate would let a
+	# cap presenting a face 1.5 m above the rim win the column, fail the gate
+	# on its own top being out of reach, and take the entire query down with
+	# it. The rim it stands on must still get asked about.
 	#
 	# Not a rare shape either: a parapet, a plant box, a plinth or another
 	# storey all stack two faces in this column, and the lower one is the one

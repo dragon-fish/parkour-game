@@ -4,12 +4,13 @@ extends Resource
 # What ONE level asks of its WorldEnvironment, atmosphere-wise. Owned by Arena
 # (`@export var fog`), deliberately NOT a group on MovementConfig.
 #
-# ✅ THE OWNER: "关卡可以通过参数调整这一关到底开不开fog以及开多少，因为万一有
-# 关卡就是想要晴空万里呢?" MovementConfig is ONE object the player carries from
-# level to level -- putting fog there would mean a foggy rooftop and a clear
-# blue courtyard could never disagree. CameraConfig.ambient_cold_strength is
-# the level concern that DID end up on the player side, and its own comment
-# apologises for it at length; this is that mistake not repeated.
+# Fog is a per-level dial, not a MovementConfig field, because a level may
+# legitimately want a completely clear sky. MovementConfig is ONE object the
+# player carries from level to level -- putting fog there would mean a foggy
+# rooftop and a clear blue courtyard could never disagree.
+# CameraConfig.ambient_cold_strength is the level concern that DID end up on
+# the player side, and its own comment apologises for it at length; this is
+# that mistake not repeated.
 #
 # TWO UNRELATED EFFECTS LIVE HERE because Godot draws them with two unrelated
 # systems, and each can do a job the other cannot:
@@ -30,8 +31,7 @@ extends Resource
 # leaves rendering_method unset, which IS forward_plus; the "GL Compatibility"
 # string in config/features is stale metadata that decides nothing), the same
 # way the WorldEnvironment's existing ssr_enabled already depends on it.
-
-## Whether this level has any fog at all. Uncheck for 晴空万里 -- Arena turns
+## Whether this level has any fog at all. Uncheck for a clear sky -- Arena turns
 ## BOTH fogs off at the Environment, so the level looks the same as one that
 ## never declared a FogConfig, without losing the values tuned below.
 @export var enabled: bool = true
@@ -39,10 +39,10 @@ extends Resource
 ## How far from the camera the world starts fading out, in metres. Nearer than
 ## this, nothing is touched.
 ##
-## ✅ THE OWNER: "如果场景距离角色超过60米左右就开始淡出，避免从楼顶看到并没有
-## 精心打磨的地面或远景." So this is a CONTENT dial before it is an atmosphere
-## one -- it draws the curtain at whatever radius the level is actually built
-## out to. A hand-built skyline pushes it away; a whitebox rooftop pulls it in.
+## THIS IS A CONTENT DIAL BEFORE IT IS AN ATMOSPHERE ONE -- it draws the
+## curtain at whatever radius the level is actually built out to, so an
+## unfinished ground or horizon (seen e.g. from a rooftop) stays hidden. A
+## hand-built skyline pushes it away; a whitebox rooftop pulls it in.
 @export var fade_begin_distance: float = 60.0
 
 ## How far from the camera the world has faded out completely, in metres.
@@ -80,15 +80,13 @@ extends Resource
 ## same-coloured-everywhere wall; turning it down makes `tint` mean exactly
 ## what it says.
 ##
-## ⚠️ THIS DIAL CAN MAKE THE ONE ABOVE LOOK BROKEN, which is why it is a dial
-## and not the constant it started as. Arena used to hardcode 0.6 here, back
-## when every scene built its own ProceduralSkyMaterial whose horizon is
-## (0.646, 0.656, 0.671) -- grey. At 0.6 a tint set to pure white rendered as
-## (0.79, 0.79, 0.80) and the owner quite reasonably reported "我调成纯白色也
-## 很灰". A look value that overrules another look value has to be reachable
-## from the same panel. (The sky is an HDRI now -- assets/sky/day_sky.tres --
-## so what this blends toward is whatever that panorama shows in that
-## direction, which is the reason to turn it UP rather than off.)
+## THIS DIAL CAN MAKE THE ONE ABOVE (tint) LOOK BROKEN, which is why it stays
+## reachable from the same panel rather than being a hardcoded constant: a
+## look value that overrules another look value has to be adjustable
+## alongside it. The sky is an HDRI now (assets/sky/day_sky.tres), so what
+## this blends toward is whatever that panorama shows in that direction --
+## turn it UP, not off, to let the real sky colour through instead of a flat
+## tint wall.
 ##
 ## Defaults to 0.25 rather than 0 for two reasons: white still reads white at
 ## that blend, and the F1 slider's range is 3× the default, so a dial that
@@ -98,12 +96,11 @@ extends Resource
 ## Whether this level pays for the volumetric fog at all -- the froxel grid is
 ## per-frame work a level that only wants the far-fade curtain has no use for.
 ##
-## ⚠️ OFF BY DEFAULT, AND THAT IS THE CORRECTION OF A MISTAKE. It shipped ON,
-## with Godot's own 0.05 density, so every level came out of the box wearing a
-## uniform haze that reached the player's own face -- volumetric fog fills the
-## air EVERYWHERE inside volumetric_distance, including the metre in front of
-## your nose. ✅ THE OWNER: "会感觉身边全是雾，我只想在64m开外雾逐渐变浓，现在
-## 感觉在寂静岭."
+## OFF BY DEFAULT: DO NOT flip this true without deliberate intent.
+## Volumetric fog fills the air EVERYWHERE inside volumetric_distance,
+## including the metre in front of the camera -- turned on with Godot's own
+## default density it reads as a uniform haze on the player's own face, not
+## distant atmosphere.
 ##
 ## The two fogs' jobs were right in the docs and the defaults contradicted
 ## them: "clear nearby, thickening in the distance" is the DEPTH fog, and it
@@ -132,13 +129,13 @@ extends Resource
 ## How far the volumetric fog reaches from the camera, in metres -- literally
 ## where "near" ends (Godot's Environment.volumetric_fog_length).
 ##
-## ⚠️ KEEP THIS BELOW fade_begin_distance IF YOU WANT A CLEAN FAR CURTAIN. The
+## KEEP THIS BELOW fade_begin_distance IF YOU WANT A CLEAN FAR CURTAIN. The
 ## two fogs are drawn independently and you see through BOTH: a white depth-fog
 ## curtain that begins at 30 m while the volumetric fog still reaches 64 m is a
 ## white wall viewed through 30 m of dim haze, and it reads grey no matter what
-## `tint` says. ✅ THE OWNER: "我只希望远方遁入白雾，同时有近处的体积雾" -- that
-## is exactly this pair of numbers not overlapping. Nothing enforces it, because
-## some levels DO want the two mixed.
+## `tint` says -- keeping the two ranges from overlapping is what keeps "distant
+## white fog" and "near volumetric fog" as two separate effects instead of one
+## grey smear. Nothing enforces it, because some levels DO want the two mixed.
 ##
 ## Shortening it also SHARPENS light shafts, free: the froxel grid is a fixed
 ## number of cells (rendering/environment/volumetric_fog/volume_size, 64) spread

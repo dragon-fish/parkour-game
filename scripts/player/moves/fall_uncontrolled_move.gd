@@ -1,23 +1,24 @@
 class_name FallUncontrolledMove
 extends AirborneMove
 
-# ControllerState = PlayerDying. Input is gone the moment this state is
-# entered -- in the air, not on impact -- which is why a roll cannot save it.
-# Entering is one-way: regaining height does not hand control back, because
-# the original treats the outcome as already settled.
+# [ME:CONFIRMED 03 §3.1] ControllerState = PlayerDying. Input is gone the
+# moment this state is entered -- in the air, not on impact -- which is why a
+# roll cannot save it. Entering is one-way: regaining height does not hand
+# control back, because the original treats the outcome as already settled.
 
-## ControllerState = PlayerDying, expressed where the original expresses it.
-##
-## The CDO for this move is three lines long -- PawnPhysics, ControllerState,
-## bCheckForSoftLanding -- and carries NO bConstrainLook. The original does not
-## clamp the view here; the view stops responding because the CONTROLLER stops
-## reading input, which is a different layer (spec §1, the two orthogonal state
-## machines). Player's own input gate is that layer, so this is the faithful
-## reading rather than inventing a look constraint the source never had.
+## [ME:CONFIRMED 03 §3.1] ControllerState = PlayerDying, expressed where the
+## original expresses it: the CDO for this move is three lines long --
+## PawnPhysics, ControllerState, bCheckForSoftLanding -- and carries NO
+## bConstrainLook. The original does not clamp the view here; the view stops
+## responding because the CONTROLLER stops reading input, which is a different
+## layer (spec §1, the two orthogonal state machines). Player's own input gate
+## is that layer, so this is the faithful reading rather than inventing a look
+## constraint the source never had.
 ##
 ## Ignoring `_input` in physics_update() below is not enough on its own: the
-## camera is driven from Player._physics_process(), not from here, so without
-## the gate the player could still spin the view all the way down.
+## camera is driven from Player._physics_process(), not from here, so DO NOT
+## remove the lock_input() call below -- without the gate the player could
+## still spin the view all the way down.
 func enter(_previous: StringName) -> void:
 	player.lock_input()
 	# FIRST PERSON ONLY, exactly as the death's own lift is: the eye is riding
@@ -26,10 +27,10 @@ func enter(_previous: StringName) -> void:
 	# is metres away. See CameraConfig.fall_uncontrolled_eye_lift.
 	if player.camera_rig != null and not player.camera_rig.third_person:
 		player.camera_rig.set_death_lift(config.camera.fall_uncontrolled_eye_lift)
-	# ✅ THE OWNER: "the ragdoll starts the moment control is lost, not after
-	# landing." Right -- this state IS losing control, and it is already fatal
-	# by definition. Waiting for the touchdown meant watching a clip fall for
-	# two seconds and only then going limp, which is the wrong way round.
+	# THE RAGDOLL STARTS THE MOMENT CONTROL IS LOST, not after landing: this
+	# state IS losing control, and it is already fatal by definition. DO NOT
+	# wait for the touchdown to start it -- that means watching a clip fall
+	# for two seconds and only then going limp, which is the wrong way round.
 	#
 	# DeathSequence guards against starting it twice; a body it cannot be built
 	# on simply never starts one.
@@ -54,10 +55,9 @@ func enter(_previous: StringName) -> void:
 		# and must not also be spent by the body -- see physics_update().
 		player.velocity = Vector3.ZERO
 
-## WHAT COUNTS AS HAVING ARRIVED. ✅ The owner's rule, near enough verbatim:
-## "the moment the vertical speed suddenly zeroes or reverses", or "the hips
-## have not moved 0.5 m in a while", or "it has been falling for more than six
-## seconds".
+## WHAT COUNTS AS HAVING ARRIVED, per the owner's rule: the vertical speed
+## suddenly zeroes or reverses, or the hips have not moved 0.5 m in a while,
+## or it has been falling for more than six seconds.
 ##
 ## The first is the impact and is what actually fires: a body that was dropping
 ## and is suddenly not has hit something. The other two are for the cases that
@@ -77,27 +77,23 @@ var _ragdoll_dropping: bool = false
 ## Where the hips were when the current drift window opened, and when.
 var _drift_from: Vector3 = Vector3.ZERO
 var _drift_since: float = 0.0
-## Emitted exactly once. ⚠️ FallUncontrolled IS A TERMINAL STATE -- ✅ the
-## owner: "isn't the uncontrolled fall terminal? why does it turn back into an
-## ordinary fall?" It was returning WALKING, which with the capsule frozen in
-## mid-air fell straight back into another uncontrolled fall, declared another
-## death, and cycled forever.
+## Emitted exactly once. FALLUNCONTROLLED IS A TERMINAL STATE: DO NOT return
+## WALKING from here on its own -- with the capsule frozen mid-air that falls
+## straight back into another uncontrolled fall, declares another death, and
+## cycles forever.
 var _declared: bool = false
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
-	# ⚠️ THE RAGDOLL OWNS THE BODY, and the capsule stops entirely.
+	# THE RAGDOLL OWNS THE BODY, and the capsule stops entirely: DO NOT run air
+	# physics or move_and_slide() once the ragdoll is simulating -- the
+	# ragdoll's position is the authority once it is running.
 	#
-	# ✅ The owner, and it explains two other things they reported: "once the
-	# ragdoll is running the capsule is meaningless, surely the ragdoll's
-	# position is the authority? Otherwise the timing does not line up and the
-	# blackout comes early or late."
-	#
-	# It is worse than a timing problem. The twelve bodies are children of the
-	# skeleton, which hangs off this CharacterBody3D -- so every metre the
-	# capsule travels TELEPORTS all of them, and the solver spends the whole
-	# fall being yanked. That is "the body convulses the moment the ragdoll
-	# starts". And at the end the capsule and the ragdoll are in two different
-	# places, which is the launch on respawn.
+	# The ragdoll's twelve bodies are children of the skeleton, which hangs off
+	# this CharacterBody3D -- so every metre the capsule travels TELEPORTS all
+	# of them, and the solver spends the whole fall being yanked, which reads
+	# as the body convulsing the moment the ragdoll starts. Left running, the
+	# capsule and the ragdoll also end up in two different places, which
+	# launches the body on respawn.
 	#
 	# So the capsule stops: no air physics, no move_and_slide, nothing. The eye
 	# still follows the body, because the head-follow reads the head BONE and
@@ -121,7 +117,7 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 ## the threshold against ~35.8 m/s from 40 m, at this project's measured
 ## gravity.
 ##
-## ⚠️ THE WHOLE MAPPING IS PROJECT-DEFINED. Nothing in the original describes a
+## THE WHOLE MAPPING IS PROJECT-DEFINED. Nothing in the original describes a
 ## screen effect during a fall (see FallUncontrolledConfig.blur_scale's own
 ## note). Normalised against terminal_velocity so it is bounded by
 ## construction and has no ceiling of its own to keep in step with; terminal
@@ -134,10 +130,10 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 func _drive_screen_effects() -> void:
 	if player.screen_effects == null:
 		return
-	# ⚠️ THE RAGDOLL'S SPEED, NOT THE CAPSULE'S, once one is running. ✅ The
-	# owner's suggestion, and it had already broken without anyone saying so:
-	# the capsule is frozen at zero the whole way down (see physics_update), so
-	# this read zero and the screen stayed clear through the entire fall.
+	# THE RAGDOLL'S SPEED, NOT THE CAPSULE'S, once one is running: the capsule
+	# is frozen at zero the whole way down (see physics_update), so DO NOT read
+	# the capsule's velocity here -- that leaves the screen clear through the
+	# entire fall.
 	var falling: float = -player.velocity.y
 	if player.ragdoll != null and player.ragdoll.is_simulating():
 		falling = player.ragdoll.hips_fall_speed()
@@ -167,31 +163,29 @@ func exit() -> void:
 	# ordinary Walking in between is not enough to move a body that lands with
 	# its horizontal speed already spent.
 	player.unlock_input()
-	# ⚠️ WHOEVER STARTED IT OWNS STOPPING IT, and this state is the only thing
-	# that starts one. ✅ The owner raised the case: "debug noclip is the one
-	# thing that can force the state machine to Walking -- I am not sure whether
-	# the ragdoll breaks that." It would have: noclip exits this state without
-	# any respawn behind it, and the ragdoll would have gone on simulating
-	# underneath a player flying around. Every other way out -- the respawn, a
-	# reset, the death sequence -- already stopped it, and now this one does
-	# too. Idempotent on a ragdoll that is not running.
+	# WHOEVER STARTED IT OWNS STOPPING IT, and this state is the only thing
+	# that starts one: DO NOT leave the ragdoll running on exit. Debug noclip
+	# can force the state machine straight to Walking with no respawn behind
+	# it, and without this the ragdoll would go on simulating underneath a
+	# player flying around. Every other way out -- the respawn, a reset, the
+	# death sequence -- already stops it; idempotent on a ragdoll that is not
+	# running.
 	if player.ragdoll != null:
 		player.ragdoll.stop()
 	# The lift goes back with everything else this state borrowed. DeathSequence
 	# sets its own, larger one on the tick after this if the fall was fatal.
 	if player.camera_rig != null:
 		player.camera_rig.set_death_lift(0.0)
-	# And the death with it -- ⚠️ BUT ONLY IF THIS FALL DID NOT DECLARE ONE.
-	#
-	# ✅ The owner: "the Jump_Land-on-landing bug I thought was fixed is back."
-	# It was, and by this line. A FATAL landing exits through here too: the fall
-	# declares the death and returns WALKING, MoveManager calls exit() on the
-	# way out, and this cleared the flag again before CharacterAnimator ever got
-	# to ask. The absorb it gates was armed as usual.
+	# And the death with it -- BUT ONLY IF THIS FALL DID NOT DECLARE ONE. DO NOT
+	# clear it unconditionally: a FATAL landing exits through here too, where the
+	# fall declares the death and returns WALKING, MoveManager calls exit() on
+	# the way out, and clearing the flag here before CharacterAnimator ever asks
+	# would silently drop the Jump_Land-on-landing pose the absorb it gates is
+	# armed for.
 	#
 	# Leaving without having declared anything -- which is what noclip is --
 	# still has to clear it, or the body walks around playing its own death
-	# clip. That is the case this line was added for and the only one it serves.
+	# clip. That is the only case this line serves.
 	if not _declared:
 		player.set_dying(false)
 	if player.screen_effects != null:
@@ -213,16 +207,12 @@ func _settle_ragdoll(delta: float) -> StringName:
 	player.set_grounded(false)
 	_ragdoll_elapsed += delta
 	if _declared:
-		# TERMINAL, and the screen is no longer ours. ✅ The owner: "the screen
-		# used to go black and white when you died, and now it does not."
-		#
-		# Made by the previous commit and invisible in it: this state now HOLDS
-		# after declaring the death instead of handing off, so
-		# _drive_screen_effects() went on running every tick -- computing an
-		# intensity from a hips speed that is zero once the body has landed, and
-		# writing it straight over the desaturation DeathSequence had just set
-		# to 1. Two drivers, one channel, and the one that should have stopped
-		# was still going.
+		# TERMINAL, and the screen is no longer ours: DO NOT keep calling
+		# _drive_screen_effects() once _declared is true. This state HOLDS after
+		# declaring the death instead of handing off, so left running it computes
+		# an intensity from a hips speed that is zero once the body has landed and
+		# overwrites the desaturation DeathSequence just set to 1 -- two drivers,
+		# one channel.
 		#
 		# Nothing follows an uncontrolled fall but a respawn, and the respawn
 		# restarts the move manager itself.
@@ -245,10 +235,10 @@ func _settle_ragdoll(delta: float) -> StringName:
 	return KEEP
 
 func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
-	# ✅ THE OWNER: "why does a third-person death always play Jump_Land and
-	# THEN Death2 -- it strikes a pose before dying." Because died_from_fall is
-	# DEFERRED: the cutscene, and with it set_dying(), did not start until the
-	# next frame, and the body spent that frame landing like anyone else.
+	# A third-person death must not play Jump_Land and then Death2 as if it
+	# struck a pose before dying: died_from_fall is DEFERRED, so set_dying()
+	# left to fire from there alone would not start until the next frame, and
+	# the body would spend that frame landing like anyone else.
 	#
 	# Declared HERE instead, on the tick the fall is known to be fatal. The
 	# sequence still owns clearing it -- see DeathSequence._release_player() --

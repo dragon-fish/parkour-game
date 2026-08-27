@@ -16,26 +16,32 @@ func _init() -> void:
 	# decision the zipline's own measurement forced.
 	redo_move_time = 0.0
 
-## ✅ SwingPendulumLength = 120 uu.
+## [ME:CONFIRMED 05 §5.4, §5.5b.1] SwingPendulumLength = 120 uu.
+## [ME:DERIVED] quarter-period = (2*PI*sqrt(pendulum_length / gravity)) / 4 =
+## 0.43 s at gravity 16.0 -- why a first forward swing already reaches full
+## amplitude, without needing to build it up over several passes.
 @export var pendulum_length: float = 1.2
-## ✅ MaxSwingVelocity = 4.25 -- the swing HAS a cap (the zipline does not).
+## [ME:CONFIRMED 05 §5.5b.3] MaxSwingVelocity = 4.25 -- the swing HAS a cap
+## (the zipline does not).
 @export var max_swing_velocity: float = 4.25
-## ✅ ExitVelocityModifier = 600 uu: the launch speed of the exit jump.
+## [ME:CONFIRMED 05 §5.5b.3] ExitVelocityModifier = 600 uu: the launch speed
+## of the exit jump.
 @export var exit_speed: float = 6.0
-## ⚠️ OWNER MVP RULING: the exit angle is FIXED -- "飞出去的角度每次都一样，
-## MVP我们可以先预设为每次都往前方斜45°飞". Degrees above the horizontal.
+## MVP RULING: the exit angle is FIXED, always forward at this incline above
+## the horizontal, rather than derived from the swing's own state.
 @export var exit_angle_deg: float = 45.0
-## ⚠️ PROJECT-DEFINED, deliberately lenient -- the owner: "只要摇晃的角速度超
-## 过一定值（很宽松）并且身体是往前摆时，就能跳出去". Radians per second of
-## FORWARD angular velocity.
+## PROJECT-DEFINED, deliberately lenient: the jump is allowed once the
+## FORWARD angular velocity (radians per second) exceeds this. DELIBERATELY
+## LOW so the window is wide.
 @export var jump_min_omega: float = 0.8
-## ⚠️ OWNER-FELT grace: once the window has been open, it STAYS open this many
-## seconds -- covering the forward apex where omega crosses zero: "荡到最高点
-## 但没角速度，快要往回的时候，给一个容错窗口按空格也可以跳出去." The feel-side
-## stand-in for the CDO's unmeasured SwingAngleTimingOffset.
+## OWNER-FELT grace: once the window has been open, it STAYS open this many
+## seconds -- covering the forward apex where omega crosses zero, so the jump
+## still fires there even though angular velocity is near zero and about to
+## reverse. The feel-side stand-in for the CDO's unmeasured
+## SwingAngleTimingOffset.
 @export var jump_grace_time: float = 0.35
-## ⚠️ PROJECT-DEFINED. Angular acceleration W/S pumping adds when pushed WITH
-## the current swing direction. The owner dials it.
+## PROJECT-DEFINED. Angular acceleration W/S pumping adds when pushed WITH
+## the current swing direction. Tuned by feel.
 @export var pump_accel: float = 3.0
 ## The magnet: how long the catch takes to pull the body onto the chain. Same
 ## number and same feel as the zipline's own fade.
@@ -43,36 +49,37 @@ func _init() -> void:
 ## Falling faster than this the hands cannot hold on (no CDO field for swing;
 ## borrowed from the zipline's confirmed one).
 @export var fall_limit: float = 6.0
-## ✅ SwingExitGravityModifier = 0.75 for SwingExitGravityModifierTime = 0.70 s
-## (TdMove_SwingJump repeats nearly the same pair). Fed to
-## Player.apply_gravity_window() on BOTH exits.
+## [ME:CONFIRMED 05 §5.5b.2] SwingExitGravityModifier = 0.75 for
+## SwingExitGravityModifierTime = 0.70 s (TdMove_SwingJump repeats nearly the
+## same pair). Fed to Player.apply_gravity_window() on BOTH exits.
 @export var exit_gravity_multiplier: float = 0.75
 @export var exit_gravity_time: float = 0.7
-## ⚠️ PROJECT-DEFINED: how long the bar just left refuses a re-catch.
+## PROJECT-DEFINED: how long the bar just left refuses a re-catch.
 @export var same_line_redo_time: float = 1.0
 
-## ⚠️ OWNER-FELT (2026-08-25): "原地起跳上杆都能晃老高" -- the catch handed out
-## up to 25 degrees of free amplitude (the magnet clamp) plus the full arrival
-## momentum, and an undamped pendulum keeps whatever it is given forever.
-## Three dials: the residual angle the magnet leaves, how much of the arrival
-## momentum the hands absorb, and a light damping so an un-pumped swing
-## settles -- ME makes you pump to KEEP swinging.
+## OWNER-FELT: catching the bar from a standstill jump must not swing wildly.
+## The catch hands out up to 25 degrees of free amplitude (the magnet clamp)
+## plus the full arrival momentum, and an undamped pendulum keeps whatever it
+## is given forever. Three dials address this: the residual angle the magnet
+## leaves, how much of the arrival momentum the hands absorb, and a light
+## damping so an un-pumped swing settles -- the player must pump to KEEP
+## swinging.
 @export var entry_max_theta_deg: float = 8.0
 @export var entry_omega_scale: float = 0.5
 @export var damping: float = 0.4
 
-## How much of the pendulum angle the MODEL leans by (about the bar). ✅ THE
-## OWNER, on how ME sells amplitude: "主要是靠镜头里可以看到自己身体来判断" --
-## the body tilts along the chain and the camera stays FREE (no forced pitch;
-## ME does not sync the view to the swing).
+## How much of the pendulum angle the MODEL leans by (about the bar).
+## [ME:INFERRED] how ME sells swing amplitude: mainly by letting the player
+## see their own body lean in the camera -- the body tilts along the chain
+## and the camera stays FREE (no forced pitch; ME does not sync the view to
+## the swing).
 @export var model_pitch_follow: float = 1.0
 
-## ⚠️ OWNER-FELT dial: metres the EYE slides forward at a full-forward lean
-## (scaled by sin(theta), forward swings only) -- the leaning chest otherwise
-## sweeps through the fixed eye: "镜头要随着晃到前面的时候给一点向前的偏移否则
-## 镜头走进胸里."
+## OWNER-FELT dial: metres the EYE slides forward at a full-forward lean
+## (scaled by sin(theta), forward swings only). DO NOT leave this at 0: the
+## leaning chest sweeps through the fixed eye without it.
 @export var eye_forward_lean: float = 0.1
-## ...and metres it rises at a full-forward lean. ✅ THE OWNER, correcting the
-## forward-only first cut: "镜头好像应该是往上不是往前补偿，或者你先试试两个方
-## 向都给点" -- both axes ship as dials; zero either.
+## ...and metres it rises at a full-forward lean. Both axes ship as dials,
+## since the right compensation direction (forward vs. up) was not obvious in
+## advance; zero either to isolate.
 @export var eye_lift_lean: float = 0.25

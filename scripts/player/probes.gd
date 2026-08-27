@@ -89,19 +89,19 @@ const LEDGE_ANCHOR_MARGIN := 0.1
 const INSET_LADDER := [1.0, 0.5, 0.25, 0.1]
 
 ## Height above the body's centre that the forward wall ray fires from, matching
-## WallLeft/WallRight's own offset. ⚠️ PROJECT-DEFINED.
+## WallLeft/WallRight's own offset. PROJECT-DEFINED.
 const WALL_AHEAD_CHEST_Y := 0.2
 
 ## How far above the SOLES a run's own contact ray fires.
 ##
-## THE FEET ARE WHAT IS TOUCHING THE WALL. The owner caught this against the
-## original: at the top of a wall run the eyes are well clear of the wall's own
-## top edge and the run carries on regardless, because the contact point is down
-## at the boots. Fired from the chest, as it was, a run ends the moment the
+## THE FEET ARE WHAT IS TOUCHING THE WALL. [ME:CONFIRMED] at the top of a wall
+## run in the original the eyes are well clear of the wall's own top edge and
+## the run carries on regardless, because the contact point is down at the
+## boots. DO NOT fire this from the chest: a run then ends the moment the
 ## wall's top passes 1.1 m above the soles -- a whole body-length of wall the
 ## original would still have been using.
 ##
-## ⚠️ PROJECT-DEFINED, and small rather than zero: a ray fired exactly at the
+## PROJECT-DEFINED, and small rather than zero: a ray fired exactly at the
 ## sole plane grazes the floor when a run ends at ground level.
 const WALL_CONTACT_FOOT_MARGIN := 0.15
 
@@ -161,15 +161,14 @@ func _feet_y() -> float:
 ## which is the body's forward.
 ##
 ## Both queries share VaultHigh but need DIFFERENT reaches from it, so it is
-## aimed per query rather than pinned once. It used to be pinned to
-## max(vault_reach, ledge_find_distance), which handed the ledge configuration
-## control over the vault's chest-clearance test: raise ledge_find_distance
-## above vault_reach and VaultHigh starts finding obstacles that are none of
+## aimed per query rather than pinned once. DO NOT pin it to
+## max(vault_reach, ledge_find_distance): that hands the ledge configuration
+## control over the vault's chest-clearance test. Raising ledge_find_distance
+## above vault_reach makes VaultHigh find obstacles that are none of
 ## vault_query()'s business, every one of which makes it return "this is a
-## wall" and suppresses the vault entirely. That is no longer a hypothetical
-## since ledge_find_distance moved to the confirmed 3.5 m: it now sits WELL
-## past vault_reach (1.4 m) at the shipped defaults, so this per-query aiming
-## is what keeps the vault working at all.
+## wall" and suppresses the vault entirely -- and at the shipped defaults
+## ledge_find_distance (3.5 m) already sits WELL past vault_reach (1.4 m), so
+## this per-query aiming is what keeps the vault working at all.
 func _aim_forward(ray: RayCast3D, reach: float) -> void:
 	ray.target_position = Vector3(0.0, 0.0, -reach)
 	ray.force_raycast_update()
@@ -197,9 +196,7 @@ func _aim_forward(ray: RayCast3D, reach: float) -> void:
 ## ray can see and leave the knob silently dead: it starts SURFACE_ORIGIN_MARGIN
 ## above the tallest reachable top and ends SURFACE_UNDERSHOOT below the feet.
 ## At the shipped defaults (ledge_max_height 2.8, foot offset 0.9) this
-## reproduces exactly the values that used to be hardcoded here -- origin +2.2,
-## length 3.2 -- so this is a re-derivation of the committed rig, not a retune
-## of it.
+## yields origin +2.2, length 3.2.
 ## _query_surface(), but with the ray STOPPED just above the highest sample that
 ## hit rather than run all the way down to the feet.
 ##
@@ -231,7 +228,7 @@ func _query_surface(reach: float) -> void:
 ## (SpeedVaultConfig.table_ceiling()) of the feet.
 ## Constants for the feet-to-eye column scan. See vault_query().
 ##
-## ⚠️ PROJECT-DEFINED sample count. Six is enough that the coarsest gap between
+## PROJECT-DEFINED sample count. Six is enough that the coarsest gap between
 ## samples is about a hand's width on this body, which is finer than any
 ## obstacle edge the classification actually cares about, and cheap enough to
 ## fire every tick.
@@ -252,7 +249,7 @@ const COLUMN_FLOOR_MARGIN := 0.1
 ## gave it a 0.68 m vertical profile to be hit.
 ##
 ## 14 samples is 0.2 m apart, which catches anything with a plausible plank's
-## thickness. ⚠️ HONEST LIMIT: a plate thinner than that spacing can still slip
+## thickness. HONEST LIMIT: a plate thinner than that spacing can still slip
 ## through, and the fix for that would be a shapecast rather than more rays.
 const LEDGE_COLUMN_SAMPLES := 14
 
@@ -263,15 +260,14 @@ func vault_query() -> Dictionary:
 
 	# A COLUMN OF FORWARD RAYS, FROM THE FEET TO THE EYE.
 	#
-	# This replaced a single shin-height ray, and the shin was the whole
-	# problem. The owner could not vault a ventilation duct at all -- run at it
-	# and you simply stop dead -- because a duct with open space beneath it has
-	# NOTHING at shin height, so the old first gate refused the vault before
-	# anything else was considered. Same for a chain-link fence.
+	# DO NOT reduce this to a single shin-height ray. A ventilation duct with
+	# open space beneath it has NOTHING at shin height, so a shin gate refuses
+	# the vault before anything else is considered: run at the duct and you
+	# stop dead, and a chain-link fence behaves the same way.
 	#
 	# The column also expresses the classification rule directly rather than
-	# needing a threshold bolted on beside it. The owner's account, confirmed
-	# against the original with a stopwatch and a third-person camera (see
+	# needing a threshold bolted on beside it. Confirmed against the original
+	# with a stopwatch and a third-person camera (see
 	# docs/feel-backlog.md 25-28): what decides the move is WHERE ON THE BODY
 	# the obstacle's edge lands at contact, and what you can vault is what you
 	# can get your hands on top of while jumping -- about eye height. So:
@@ -283,10 +279,10 @@ func vault_query() -> Dictionary:
 	#
 	# Measured from the FEET, and the feet move: the same duct is a vault when
 	# met at the top of a jump and a wall when met from standing. That is not a
-	# special case, it is what the frame predicts, and it is what the owner
-	# observed as "with good jump timing even a taller obstacle vaults".
+	# special case, it is what the frame predicts, and it is what play confirms
+	# -- with good jump timing even a taller obstacle vaults.
 	var feet: float = _feet_y()
-	# ✅ 1.89 m, measured twice from two different approaches. NOT the eye -- see
+	# 1.89 m, measured twice from two different approaches. NOT the eye -- see
 	# SpeedVaultConfig.max_edge_above_feet. A vault is a hands-on-top move, so
 	# its ceiling is hand reach, which is a little above the head.
 	var reach_ceiling: float = _config.speed_vault.max_edge_above_feet
@@ -362,8 +358,8 @@ func vault_query() -> Dictionary:
 		# own endpoint as a surface -- and this ray is deliberately stopped just
 		# below the highest hit, which is inside. Measured: a 0.8 m box reported
 		# a "top" at 0.50, its own stop point, and the far-side probe then fired
-		# from inside the box and found no lower ground. The owner saw that as a
-		# thin box still being landed on instead of carried past.
+		# from inside the box and found no lower ground -- which shows up in
+		# play as a thin box being landed on instead of carried past.
 		if point.y < highest_hit_y + MIN_HEIGHT_EPSILON:
 			continue
 		top = point
@@ -374,13 +370,12 @@ func vault_query() -> Dictionary:
 		return _no_hit()
 	var height := top.y - feet
 
-	# NO LONGER A REFUSAL. Whether the top is walkable decides where the vault
-	# LANDS -- over it, or on it -- and the owner settled that from play: a
-	# fence and the cabinet beside it are the same height, and both report
-	# VaultOver; the cabinet's wide top is simply where she ends up standing.
-	# One axis for the family, another for the landing. Refusing the whole
-	# vault on a top you cannot stand on is how a pipe became an invisible
-	# wall.
+	# NOT A REFUSAL. Whether the top is walkable decides where the vault LANDS
+	# -- over it, or on it. A fence and the cabinet beside it are the same
+	# height, both report VaultOver, and the cabinet's wide top is simply where
+	# she ends up standing: one axis for the family, another for the landing.
+	# DO NOT refuse the whole vault on a top you cannot stand on -- that is how
+	# a pipe became an invisible wall.
 	# FLATNESS ONLY. This says the top is not a slope; it says NOTHING about
 	# whether the top is wide enough to stand on, which is a different question
 	# and the one `vault_over` below answers. Confusing the two made every vault
@@ -446,27 +441,27 @@ func _query_vault_over(top: Vector3) -> bool:
 			local_top.z - _config.speed_vault.vault_over_probe_distance)
 	# MEASURED DOWN FROM THE TOP, NOT FROM THE BODY.
 	#
-	# The length used to be built from the body's own foot offset, which quietly
-	# assumed the top sits near the feet. Airborne it does not, and a vault is
-	# committed in the air by definition -- so the ray stopped short of the far
-	# side's floor and reported no lower ground, which refused to carry the
-	# player past a thin obstacle. The owner saw it as a 0.1 m deep box still
-	# being landed on rather than vaulted over.
+	# DO NOT build the length from the body's own foot offset: that quietly
+	# assumes the top sits near the feet. Airborne it does not, and a vault is
+	# committed in the air by definition -- so the ray would stop short of the
+	# far side's floor and report no lower ground, refusing to carry the
+	# player past a thin obstacle. A 0.1 m deep box would then read as landed
+	# on rather than vaulted over.
 	#
 	# The question is "is there ground below this top", and the useful range for
 	# it is a vault's own reach: anything further down is not a landing, it is a
-	# drop. So the depth comes from the vault table, and the answer no longer
-	# depends on where the body happened to be when it asked.
+	# drop. So the depth comes from the vault table, and the answer does not
+	# depend on where the body happened to be when it asked.
 	var depth: float = _config.speed_vault.table_ceiling() + SURFACE_ORIGIN_MARGIN
 	_vault_over.target_position = Vector3(0.0, -depth, 0.0)
 	_vault_over.force_raycast_update()
 	if not _vault_over.is_colliding():
 		# NOTHING WITHIN A VAULT'S REACH IS STILL AN OVER, with no landing.
 		#
-		# ✅ The owner: a 2.2 m by 0.35 m wall put the player up on top of it to
-		# take a step, which is absurd -- 0.35 m is not somewhere to stand. The
-		# cause was this returning false and the variant table then falling
-		# through to vault_onto.
+		# DO NOT return false here for an obstacle with no far-side landing: a
+		# 2.2 m by 0.35 m wall would fall through to vault_onto and put the
+		# player standing on top of it as a step, and 0.35 m is not somewhere
+		# to stand.
 		#
 		# The two failures below are NOT the same thing, and the code already
 		# tells them apart without having said so: a hit ABOVE the top means the
@@ -496,43 +491,39 @@ func ledge_query() -> Dictionary:
 	_ensure_rays()
 	# A COLUMN, not one ray at chest height.
 	#
-	# Same failure the vault probe had, found the same way: the owner's route
-	# grabs the near edge of a scaffold platform cantilevered off a wall, with
-	# open space beneath it. A single chest-height ray passes straight under
-	# such a thing and reports no face, so the ledge is invisible however
-	# reachable it is. Measured: even a perfectly FLAT suspended panel came back
-	# with no hit at all, which is why the tilt in the owner's first screenshot
-	# turned out to be a red herring.
+	# DO NOT reduce this to one ray at chest height -- the same failure the
+	# vault probe had. A scaffold platform cantilevered off a wall, with open
+	# space beneath it, passes straight under a single chest-height ray, so the
+	# ledge is invisible however reachable it is. Measured: even a perfectly
+	# FLAT suspended panel came back with no hit at all, so a tilted panel's
+	# tilt is never the cause worth chasing here.
 	#
 	# Scanned up to ledge_max_height, unlike the vault's own column which stops
 	# at hand reach. The two bound different things: a vault needs something the
 	# hands can be planted ON, which the body's own size limits, while a grab
-	# needs something they can REACH, which the jump limits. The owner put it
-	# plainly on seeing this -- "so the original checks around the HANDS too,
-	# not only the feet."
+	# needs something they can REACH, which the jump limits. [ME:INFERRED] the
+	# original is read as checking around the HANDS too, not only the feet.
 	#
 	# SEARCH RADIUS is unchanged and still only that: a raycast reports its first
 	# hit, so looking the confirmed 3.5 m ahead finds a wall at 1 m just as
 	# correctly as one at 3 m.
-	# ⚠️ EVERY BAND GETS A TURN, HIGHEST FIRST, and it used to be "the highest
-	# hit wins" full stop -- one face, one down-probe, one height gate, and a
-	# failure there failed the whole query.
-	#
-	# ✅ The owner, on a block with a smaller block built on top of it: "我对着这个
-	# 障碍跳跃，它的 grab 判定点出现在高帽檐上而不是矮边缘，距离不够，什么都没抓住."
-	# The cap presents a face too, it is higher, so it won -- and its top is out
-	# of reach, so the gate rejected it and nothing else was ever tried. The
-	# perfectly grabbable rim 1.5 m below it was never asked about.
+	# EVERY BAND GETS A TURN, HIGHEST FIRST. DO NOT stop at the first face
+	# found: on a block with a smaller block built on top of it, the cap
+	# presents a face too, and it is higher, so a scan that stops at the
+	# first hit finds it first -- but its top is out of reach, so the height
+	# gate rejects it and the perfectly grabbable rim 1.5 m below is never
+	# asked about. Jumping at such an obstacle would land the grab detection
+	# point on the tall cap rather than the low edge, out of reach, grabbing
+	# nothing.
 	#
 	# That is not a rare shape. Anything with a parapet, a plant box, a plinth
 	# or another storey standing on it stacks two faces in this column, and the
 	# lower one is the one the hands can reach.
 	#
 	# Highest first is still the PREFERENCE -- a higher grabbable ledge is more
-	# progress than a lower one -- it is simply no longer the only candidate.
-	# The suspended-platform case that "highest wins" was written for is
-	# untouched: when only one band hits at all, it is both the highest and the
-	# only one tried.
+	# progress than a lower one -- but it is not the only candidate tried. The
+	# suspended-platform case where only one band hits at all still gets both
+	# the highest and the only one tried.
 	#
 	# Costs nothing on a plain wall, which is the common case: every band
 	# reports the same face and the first one tried succeeds.
@@ -636,16 +627,15 @@ func ledge_beside(edge: Vector3, step: Vector3, outward: Vector3,
 
 ## The exposed top of a ledge near `target`, at `reference_y`, or a miss.
 ##
-## ⚠️ TRIES MORE THAN ONE POINT, AND THAT IS THE WHOLE OF IT. A single probe a
+## TRIES MORE THAN ONE POINT, AND THAT IS THE WHOLE OF IT. A single probe a
 ## fixed LEDGE_ANCHOR_MARGIN inside the face assumes the strip it lands on is
 ## bare, and a railing standing on the ledge makes that false -- not by covering
 ## the ledge, but by occupying the one narrow column being asked about.
 ##
-## ✅ THE OWNER'S WHITEBOX, where this was finally caught: two eaves of the same
-## building, a fence on each, and the shimmy rounded their shared corner one way
-## and refused the other. "从西边的屋檐可以去北边的屋檐，但是没办法爬回来."
-## The two fences are set back by different amounts and the anchor lands 0.100 m
-## in:
+## A single point is not enough: on two eaves of the same building, each with a
+## fence, the shimmy could round their shared corner one way but not the other
+## -- shimmying from the west eave to the north eave but not back. The two
+## fences are set back by different amounts and the anchor lands 0.100 m in:
 ##
 ##   south eave   face z = 13.935    fence 13.974 .. 14.007    anchor 14.035  clear
 ##   west eave    face x = -6.048    fence -6.005 .. -5.943    anchor -5.948  INSIDE
@@ -656,8 +646,8 @@ func ledge_beside(edge: Vector3, step: Vector3, outward: Vector3,
 ## geometry reports nothing at all -- identical, from here, to "there is no ledge
 ## here".
 ##
-## 📌 The margin point is tried FIRST, so anything without a railing on it
-## behaves exactly as before. This is purely a fallback ladder.
+## The margin point is tried FIRST, so anything without a railing on it is
+## unaffected. This is purely a fallback ladder.
 func _top_beside(target: Vector3, reference_y: float, outward: Vector3,
 		margin: float, lift: float, tolerance: float) -> Dictionary:
 	var flat: Vector3 = outward
@@ -696,7 +686,7 @@ func _top_beside(target: Vector3, reference_y: float, outward: Vector3,
 ## Whether the WALL FACE the hands hang from continues `step` metres to one
 ## side. `outward` is that face's normal, pointing away from the wall.
 ##
-## ⚠️ A SEPARATE QUESTION FROM ledge_beside(), and leaving it unasked walks the
+## A SEPARATE QUESTION FROM ledge_beside(), and leaving it unasked walks the
 ## hands off the outside corner of anything with depth. On a 6 m square block,
 ## hanging on the south face and travelling east, the TOP is still solidly under
 ## the probe well past the corner -- it is 6 m deep -- while the FACE the body
@@ -758,8 +748,8 @@ func corner_beyond(edge: Vector3, along: Vector3, outward: Vector3,
 	# two agree about where an edge is.
 	var candidate: Vector3 = Vector3(face_point.x, edge.y, face_point.z) - normal * margin
 	# Through the same ladder, for the same reason: the face round a corner is
-	# as likely to carry a railing as the one just left, and on the owner's
-	# whitebox both eaves had one.
+	# as likely to carry a railing as the one just left -- on the test whitebox
+	# both eaves have one.
 	var top: Dictionary = _top_beside(candidate, edge.y, normal, margin,
 			drop, tolerance)
 	trace["top_from"] = top["from"]
@@ -782,7 +772,7 @@ func _corner_miss(trace: Dictionary) -> Dictionary:
 ## What, if anything, is beside `from` within `distance` metres along
 ## `direction`. Empty when the way is clear.
 ##
-## ⚠️ EXISTS BECAUSE fits_standing_at() CANNOT ANSWER THIS FROM A HANG, and the
+## EXISTS BECAUSE fits_standing_at() CANNOT ANSWER THIS FROM A HANG, and the
 ## arithmetic says so outright rather than as a matter of taste. IntoGrabMove
 ## places the hanging body by where the EYE lands: eye_below_ledge (0.05) plus
 ## eye_height (0.76) is 0.81 m below the lip, so a 1.8 m capsule's crown sits
@@ -819,17 +809,16 @@ func _cast(from: Vector3, to: Vector3) -> Dictionary:
 		return {}
 	var query := PhysicsRayQueryParameters3D.create(from, to)
 	query.collision_mask = _surface.collision_mask if _surface != null else 1
-	# ⚠️ hit_from_inside, AND WITHOUT IT THESE PROBES INVENT LEDGES. A Godot ray
-	# that begins inside a shape and is NOT told this simply ignores that shape
-	# and reports the next hit along -- so a probe fired down through a tall
-	# block finds the top of whatever is buried underneath it and calls that a
-	# ledge.
+	# hit_from_inside. DO NOT omit it: a Godot ray that begins inside a shape
+	# and is NOT told this simply ignores that shape and reports the next hit
+	# along -- so a probe fired down through a tall block finds the top of
+	# whatever is buried underneath it and calls that a ledge.
 	#
-	# ✅ The owner, hanging inside a wall: "我们的攀爬好像没考虑这种可攀附点被遮挡
-	# 的情况." The arena's own shaft has a 2.7 m step with a 6.3 m block standing
-	# on it, overlapping for 2.2 m of its length. ledge_query() refuses that
-	# buried strip correctly -- SurfaceDown has always set this -- so the grab
-	# was fine and the SHIMMY walked them in from the exposed rim beside it.
+	# A graspable point can be occluded exactly this way: the arena's own
+	# shaft has a 2.7 m step with a 6.3 m block standing on it, overlapping
+	# for 2.2 m of its length. With hit_from_inside set, ledge_query()
+	# correctly refuses that buried strip and the SHIMMY walks the player in
+	# from the exposed rim beside it instead.
 	#
 	# Set here rather than at one call site because every probe in this family
 	# wants the same honesty: a hit reported at the ray's own origin says "you
@@ -951,7 +940,8 @@ func wall_ahead_query(heading: Vector3 = Vector3.ZERO) -> Dictionary:
 	var point: Vector3 = _wall_ahead_low.get_collision_point()
 	var distance: float = Vector2(point.x - global_position.x, point.z - global_position.z).length()
 
-	# ✅ MinWallHeight = 180 uu. Tested by firing a SECOND ray at that height:
+	# [ME:CONFIRMED] MinWallHeight = 180 uu (see WallClimbConfig.min_wall_height).
+	# Tested by firing a SECOND ray at that height:
 	# if the wall is still there up top, it is tall enough to be worth kicking
 	# up. Cheaper and more honest than measuring the wall's real height, which
 	# a raycast cannot do anyway.

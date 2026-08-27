@@ -4,12 +4,12 @@ extends Node3D
 # Draws the path a scripted move is following, and the path the body actually
 # took. F12.
 #
-# ✅ THE OWNER: "你能不能把曲线画出来啊，我真的不知道现在的曲线长什么样子." Four
-# rounds of describing a curve in prose had produced four different pictures in
-# our two heads -- the capsule wireframe settled the vault-height argument the
-# same way, and for the same reason.
+# DESCRIBING A CURVE IN PROSE DOES NOT WORK. Four rounds of it produced four
+# different pictures of the same curve -- the capsule wireframe settled the
+# vault-height argument the same way, and for the same reason: drawing it beats
+# describing it.
 #
-# ⚠️ IT ASKS THE MOVE TO SAMPLE ITSELF rather than recomputing the arithmetic.
+# IT ASKS THE MOVE TO SAMPLE ITSELF rather than recomputing the arithmetic.
 # A drawer with its own copy is a picture of a SECOND implementation, agreeing
 # with the first right up until a difference is what you are looking for. Same
 # rule Probes follows by handing its segments back with its answers.
@@ -44,11 +44,12 @@ var _instance: MeshInstance3D
 var _labels: Array[Label3D] = []
 ## The last path that ran, and the move that owned it, kept after it finishes.
 ##
-## ✅ THE OWNER: "怎么动画播完就不显示了." Because path_debug() returns nothing once
-## the move is over -- the TRAIL survived and the plan and its labels did not, so
-## the one thing left on screen was the half you cannot compare against anything.
+## THE PLAN VANISHING THE INSTANT THE MOVE ENDS WAS THE BUG. path_debug()
+## returns nothing once the move is over -- the TRAIL survived and the plan
+## and its labels did not, so the one thing left on screen was the half you
+## cannot compare against anything.
 ##
-## 📌 The move object is still sampleable after it ends: sample() reads _from,
+## The move object is still sampleable after it ends: sample() reads _from,
 ## _to and the shape, and only path_debug() gates on elapsed time. So the plan
 ## can go on being drawn from the same source rather than from a snapshot of
 ## points.
@@ -78,7 +79,7 @@ func _ready() -> void:
 	for i in 3:
 		var label := Label3D.new()
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		# ⚠️ NO DEPTH TEST. A label at the apex of a vault is usually INSIDE the
+		# NO DEPTH TEST. A label at the apex of a vault is usually INSIDE the
 		# obstacle it is describing, and one that hides behind the wall it is
 		# measuring is no use.
 		label.no_depth_test = true
@@ -181,11 +182,11 @@ func _draw_plan(move, path: Dictionary) -> void:
 
 ## Writes the three numbers anybody actually asks about onto the line itself.
 ##
-## ✅ THE OWNER: "给黄色路径添加起始点、终点、最高点、动画名字的信息呗." Every question
-## about this line for the last hour has been one of those four, and answering
-## them has meant a probe, a headless run and a round trip each time.
+## START, END, PEAK AND CLIP NAME ARE THE FOUR QUESTIONS ANYBODY ASKS about
+## this line, and answering any of them used to mean a probe, a headless run
+## and a round trip.
 ##
-## 📌 THE APEX IS FOUND, NOT DERIVED. peak_height() is what the shape was ASKED
+## THE APEX IS FOUND, NOT DERIVED. peak_height() is what the shape was ASKED
 ## for; this walks the samples and reports where the body actually goes, which is
 ## the number worth trusting when the two disagree -- and they have, twice.
 func _label_path(move, path: Dictionary) -> void:
@@ -234,11 +235,9 @@ func _cross(at: Vector3, size: float) -> void:
 
 ## Which of the three shapes this path is, in a word.
 ##
-## ✅ THE OWNER, looking at a line whose apex sat exactly on its end: "我怎么确定它是
-## 直线还是弧线？"
-##
-## 🎯 THEY COULD NOT, AND THE PICTURE WAS GENUINELY AMBIGUOUS. That one was
-## straight -- but only because the straight line between its ends already
+## A LINE WHOSE APEX SITS EXACTLY ON ITS END IS GENUINELY AMBIGUOUS TO READ:
+## nothing on screen says whether it is a straight line or a flat arc. That one
+## was straight -- but only because the straight line between its ends already
 ## cleared the obstacle by the 0.2 m asked for, so the bump had nothing to add
 ## and computed to zero. A curve that happens to be flat and a line are the same
 ## drawing; only the two numbers behind them differ.

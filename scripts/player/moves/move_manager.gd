@@ -87,8 +87,9 @@ func _arm_cooldown(move_name: StringName, move: Move) -> void:
 # the very tick it is made, which defers every landing-into-slide by a tick and
 # changes the feel.
 #
-# ⚠️ REPORT ONLY. push_error() fires and shows in the log; nothing fails a run
-# on it, so a forgetful move CAN reach a green suite. Read the log.
+# REPORT ONLY: push_error() fires and shows in the log, but nothing fails a
+# run on it. DO NOT trust a green test suite to catch a move that forgot to
+# declare grounded-ness -- read the log.
 #
 # The rule checked is "the ACTIVE move has declared at least once since it was
 # entered", evaluated only on ticks where the move stays active:
@@ -261,12 +262,10 @@ func _check_declared_grounded() -> void:
 ## and nothing else. Pushed every tick rather than only on transition because
 ## it reads through Move.current_config(), an overridable hook for a move
 ## whose own config can legitimately change mid-move without a state
-## transition -- FallingMove used to be exactly this (switching between
-## config.jump/config.falling by velocity.y sign) until Jump became its own
-## real state (Task 1: airborne-state-chain). No move overrides it today, but
-## the every-tick read is what makes the hook actually usable rather than
-## merely declared -- a future override would otherwise need to also hunt
-## down and fix a transition-only call site.
+## transition. No move overrides it today, but the every-tick read is what
+## makes the hook actually usable rather than merely declared -- a future
+## override would otherwise need to also hunt down and fix a transition-only
+## call site.
 func _push_look_constraint() -> void:
 	if _current == null or _current.player == null:
 		return

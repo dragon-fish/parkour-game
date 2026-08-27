@@ -18,10 +18,9 @@ func _init() -> void:
 	# which is why all twelve states holding bCheckForVaultOver are airborne
 	# (11 §11.2).
 	#
-	# This used to be `true`, citing "06 §6.2 bCheckForVaultOver on
-	# TdMove_Walking" -- a misreading. That section is a table explaining what
-	# the FIELDS mean, not a list of which moves carry them. The result was
-	# vaulting that fired on its own while running past a crate, which the
-	# owner reported as "Minecraft's auto-jump, and just as funny". In the
-	# original, nothing goes upward unless the player asks for it.
+	# DO NOT set check_for_vault_over here: "06 §6.2 bCheckForVaultOver on
+	# TdMove_Walking" is a misreading -- that section is a table explaining
+	# what the FIELDS mean, not a list of which moves carry them. Enabling it
+	# vaults the player automatically while simply running past a crate. In
+	# the original, nothing goes upward unless the player asks for it.
 	check_for_vault_over = false

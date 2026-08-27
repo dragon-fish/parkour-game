@@ -4,13 +4,13 @@ extends ParkourTest
 #
 # VRM has a mechanism for this in the spec, and godot-vrm implements it: with
 # head hiding set to Layers, the importer generates a HEADLESS variant of the
-# body and puts the two on separate render layers. Measured on the owner's own
-# export: "Body (Headless)" on layer 2, and Body/Face/Hair on layer 4.
+# body and puts the two on separate render layers -- "Body (Headless)" on
+# layer 2, "Body"/"Face"/"Hair" on layer 4 in this project's own export.
 #
-# A camera renders every layer by default, so both variants drew at once -- and
-# the face and hair sit exactly where the eye is. That is what the owner
-# reported as the neck passing through the view. The model already ships the
-# answer; the camera just has to pick a side.
+# A camera renders every layer by default, so DO NOT leave the mask alone:
+# both variants would draw at once, and the face and hair sit exactly where
+# the eye is, so the neck passes through the first-person view. The model
+# already ships the answer; the camera just has to pick a side.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -100,14 +100,14 @@ func test_the_third_person_offset_is_reachable_from_the_tuning_panel() -> void:
 # --- a body the scene did not name -----------------------------------------------
 
 func test_a_profile_adopted_after_ready_still_attaches_its_body() -> void:
-	# ✅ THE OWNER: "干脆给 main 也挂上人物模型嘛."
-	#
-	# ⚠️ AND IT CANNOT BE DONE IN THE SCENE. The profile points at a licensed
-	# model that is not in the repository, so a committed main.tscn naming it
-	# would break every checkout without it -- and fail test_generated_scenes.gd,
-	# which compares the builder's output against what is committed. Only a
-	# git-ignored scene can afford to reference a git-ignored resource, which is
-	# why the sandbox was the only level with a body.
+	# Any level must be able to attach a body profile, not only the ones with
+	# one baked into their committed scene. AND IT CANNOT BE DONE IN THE
+	# SCENE. The profile points at a licensed model that is not in the
+	# repository, so a committed main.tscn naming it would break every
+	# checkout without it -- and fail test_generated_scenes.gd, which compares
+	# the builder's output against what is committed. Only a git-ignored scene
+	# can afford to reference a git-ignored resource, which is why the sandbox
+	# is the only level with a body.
 	#
 	# So the level asks at runtime, which means asking AFTER _ready() has run --
 	# and apply() sets body_scene as one of the things it sets, so the attach has
@@ -133,13 +133,14 @@ func test_a_profile_adopted_after_ready_still_attaches_its_body() -> void:
 
 ## The head's SHADOW, which is a third thing on top of the two variants above.
 ##
-## A mesh the camera culls does not cast either, so moving the full-head mesh to
-## the third-person layer silently took its shadow with it: in first person the
-## body's shadow ended at the neck, with no head shape at all, and nothing
-## anywhere reported a problem. It stayed that way for a long time because you
-## only see your own shadow in the right light. HeadlessVariant now adds a
-## never-drawn SHADOWS_ONLY copy per split mesh; these assert the three roles
-## stay distinct.
+## A mesh the camera culls does not cast either, so moving the full-head mesh
+## to the third-person layer would silently take its shadow with it: the
+## body's shadow would end at the neck in first person, with no head shape at
+## all, and nothing would report a problem -- you rarely see your own shadow
+## in the right light to notice. HeadlessVariant adds a never-drawn
+## SHADOWS_ONLY copy per split mesh so the shadow keeps casting regardless of
+## which body variant the camera culls; these assert the three roles stay
+## distinct.
 ##
 ## Needs the real body: the split runs on actual skin weights, so a machine
 ## without the private asset has nothing to check and says so.
