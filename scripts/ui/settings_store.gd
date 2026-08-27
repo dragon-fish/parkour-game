@@ -21,6 +21,13 @@ static var path := "user://settings.cfg"
 
 const _SECTION := "settings"
 
+## antialiasing option -> Viewport.msaa_3d. "fxaa" is absent on purpose: it is
+## a post-process pass, applied through screen_space_aa instead.
+const MSAA_MODES := {
+	"msaa_2x": Viewport.MSAA_2X,
+	"msaa_4x": Viewport.MSAA_4X,
+}
+
 ## What "0%" sets the bus to. -inf is what linear_to_db(0) returns and the
 ## bus rejects it; -80 dB is inaudible and reversible.
 const MUTED_DB := -80.0
@@ -39,6 +46,10 @@ static func defaults() -> Dictionary:
 		# whole point: a slider that changes dB linearly spends most of its
 		# travel in a range nobody can hear apart.
 		volume = 0.8,
+		# NOT off by default. The character's outline is a one-millimetre
+		# inverted hull (shaders/matcap_outline.gdshader), which is a sub-pixel
+		# edge at any normal viewing distance and crawls without multisampling.
+		antialiasing = "msaa_2x",
 	}
 
 
@@ -76,6 +87,15 @@ static func apply_global(s: Dictionary) -> void:
 	# case -- linear_to_db(0) is -inf, which the bus will not take.
 	var amplitude: float = clampf(float(s.volume), 0.0, 1.0)
 	AudioServer.set_bus_volume_db(0, linear_to_db(amplitude) if amplitude > 0.0 else MUTED_DB)
+
+	# MSAA is the setting that matters for the character: its outline is real
+	# geometry, which multisampling resolves and a post-process pass can only
+	# blur. FXAA stays on the list for machines that cannot spare the samples.
+	# Applied before the display guards below because it touches no
+	# DisplayServer and is harmless under headless.
+	var viewport: Viewport = (Engine.get_main_loop() as SceneTree).root
+	viewport.msaa_3d = MSAA_MODES.get(s.antialiasing, Viewport.MSAA_DISABLED)
+	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA 			if s.antialiasing == "fxaa" else Viewport.SCREEN_SPACE_AA_DISABLED
 
 	# Headless has no window; the editor-embedded game has one it is not
 	# allowed to touch ("Embedded window can't be resized"). Same guard as

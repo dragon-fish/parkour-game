@@ -34,9 +34,16 @@ const WINDOW_SIZES: Array[Vector2i] = [
 	Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440),
 ]
 
+## antialiasing row's option values, in stepper order (cheapest first).
+const ANTIALIASING := ["off", "fxaa", "msaa_2x", "msaa_4x"]
+const ANTIALIASING_LABELS := {
+	"off": "关闭", "fxaa": "FXAA", "msaa_2x": "MSAA 2×", "msaa_4x": "MSAA 4×",
+}
+
 const _ROWS := [
 	{"key": "window_mode", "label": "窗口模式", "desc": "窗口化、无边框窗口，或全屏。"},
 	{"key": "window_size", "label": "窗口大小", "desc": "选择窗口化模式下的分辨率，全屏时不可用。"},
+	{"key": "antialiasing", "label": "抗锯齿", "desc": "消除画面边缘的锯齿。FXAA 性能开销小，但效果一般；MSAA 效果更好，倍数越高越清晰，也越吃性能。"},
 	{"key": "sensitivity", "label": "鼠标灵敏度", "desc": "调整视角转动的鼠标灵敏度。"},
 	{"key": "fov", "label": "视野 FOV", "desc": "调整摄像机基准视野角度。"},
 	{"key": "volume", "label": "总音量", "desc": "调整主音量大小。"},
@@ -154,7 +161,7 @@ func _build_ui() -> void:
 		label.mouse_entered.connect(_show_description.bind(desc))
 		line.add_child(label)
 
-		if key == "window_mode" or key == "window_size":
+		if key in ["window_mode", "window_size", "antialiasing"]:
 			_build_stepper(line, key, desc)
 		else:
 			_build_slider(line, key, desc)
@@ -284,6 +291,11 @@ func _on_stepper_step(key: String, delta: int) -> void:
 			return
 		var index := _window_size_index(_working.window_size)
 		_working.window_size = WINDOW_SIZES[wrapi(index + delta, 0, WINDOW_SIZES.size())]
+	elif key == "antialiasing":
+		var index := ANTIALIASING.find(_working.antialiasing)
+		if index < 0:
+			index = 0
+		_working.antialiasing = ANTIALIASING[wrapi(index + delta, 0, ANTIALIASING.size())]
 	_refresh_controls()
 
 func _on_slider_changed(value: float, key: String) -> void:
@@ -453,6 +465,7 @@ func _window_size_index(size: Vector2i) -> int:
 func _refresh_controls() -> void:
 	_stepper_value_labels["window_mode"].text = WINDOW_MODE_LABELS.get(_working.window_mode, _working.window_mode)
 	_stepper_value_labels["window_size"].text = "%d×%d" % [_working.window_size.x, _working.window_size.y]
+	_stepper_value_labels["antialiasing"].text = 			ANTIALIASING_LABELS.get(_working.antialiasing, _working.antialiasing)
 
 	for key in ["sensitivity", "fov", "volume"]:
 		(_sliders[key] as HSlider).set_value_no_signal(_working[key])
