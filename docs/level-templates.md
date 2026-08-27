@@ -330,3 +330,87 @@ before release forgets the checkpoint and returns to the SpawnPoint (debug).
 The SpawnPoint wears the same preview in purple -- note its capsule hangs
 BELOW the marker: spawn markers were always placed at the body's centre
 height, and existing levels keep that convention.
+
+## ⚠️ Do not put comments in a `.tscn`
+
+Godot's editor rewrites any scene it saves, and it does not preserve `;`
+comments. `me_shaft.tscn` was authored with about seventy lines of them
+explaining where every dimension came from; one capture run later the file had
+gone from 234 lines to 163 and every one of them was gone, along with any
+property the editor judged equal to its default.
+
+So a scene file holds geometry, and **the reasoning behind the geometry lives
+here**. The same round-trip is what assigns `uid://` values, which is why a
+hand-authored scene should omit them and let the editor fill them in — see
+`.claude/skills/authoring-godot-scene-files`.
+
+## The Mirror's Edge shaft whitebox
+
+`scenes/debug_levels/me_shaft.tscn`, a CSG reconstruction of the original's
+chapter-1 shaft climb — ✅ the owner: "几乎融入了所有的基础技巧，需要利用多次
+Grab反身跳来逐渐到达最高点".
+
+### Why the ducts are 2.0 m apart
+
+This is the whole design, and it is derived from `GrabConfig`, not chosen by
+eye. A ledge can only be grabbed while it sits between `min_wall_height`
+(1.8 m) and `ledge_max_height` (2.8 m) **above the feet** — higher than a
+standing body, which is what makes a grab a grab rather than a step.
+
+| Spacing | What the player does |
+| --- | --- |
+| 1.0 m | plain jump every time (peak is 1.24 m); the grab never fires |
+| **2.0 m** | every ledge lands inside the window: grab → mantle → stand → turn → jump |
+
+### Why the shaft is 3.2 m across
+
+The ducts stand 1.0 m proud of each wall, leaving a 1.2 m gap. A hang jump
+leaves at `jump_speed` 6.3 m/s with only `jump_speed_up` 1.6 m/s of lift, so it
+travels about **1.26 m** before it is back to the height it started at. A wider
+shaft cannot be crossed from a hang at all.
+
+⚠️ That 1.26 m is the FLAT case. `GrabMove._launch_direction()` uses the
+camera's full 3D forward, so looking up trades reach for height — 45° gives
+1.14 m of rise but only 4.45 m/s across, and straight up gives 1.95 m of rise
+and almost no travel. ✅ The owner: "Grab时回头往斜上方看，可以跳的比较高，但
+肯定没平视时远".
+
+### Why the vent is 1.0 m tall
+
+A standing body is 1.8 m and cannot enter; a coil or a crouch is 0.9 m and can.
+Its lip sits 1.0 m above the last duct, inside the 1.24 m jump peak but not by
+much — ✅ the owner on the original's own version: "时机很难把握，而且很难对准".
+
+### Structure
+
+One `CSGCombiner3D` with `use_collision`, so the boolean result IS the
+collision — `factory_hall.tscn` needs three nodes per box to keep a mesh and a
+shape in step. ⚠️ **Child order is the boolean**: `Outer` fills, `Cavity`
+hollows, the ducts add back, the vent cuts through last. Moving a duct above
+`Cavity` deletes it instead of adding it.
+
+Runner-vision red is a SEPARATE combiner with no collision, so a hint can never
+be stood on.
+
+### Lighting, and two ways to get it wrong
+
+The first version rendered **completely black**, the fix rendered
+**completely white**, and both were caught with `tools/capture.gd` rather than
+by reading the file. Brightness is not something to reason about.
+
+* A `DirectionalLight3D` cannot light a sealed box. A closed room needs
+  fixtures inside it — four `OmniLight3D` down the shaft, which is what the
+  original has.
+* `ambient_light_source = COLOR` is **not enough on its own**.
+  `ambient_light_sky_contribution` defaults to 1.0 ("take all ambient from the
+  sky"), so the colour is never consulted. Set it to 0.
+* SDFGI resolves real occlusion, so it contributes nothing inside a sealed box
+  and was the original blackness. Off here: 112 fps against 30, in a room of a
+  dozen boxes.
+* With light finally arriving, white walls clip instantly. ACES tonemapping
+  plus backing every value off (ambient 1.1 → 0.35, lamps 2.4 → 1.1, albedo
+  0.90 → 0.82) is what made the geometry readable.
+
+📌 The dimensions have **no test pinning them**. They are exactly the kind of
+number `docs/feel-backlog.md` 57 says not to assert on: tuned by eye, wrong at
+a glance.

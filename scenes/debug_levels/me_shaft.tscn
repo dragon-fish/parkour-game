@@ -1,45 +1,27 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://m46pqwh4hvlb"]
 
-[ext_resource type="Script" path="res://scripts/level/arena.gd" id="1_arena"]
-[ext_resource type="Script" path="res://scripts/level/fog_config.gd" id="2_fog"]
-[ext_resource type="Sky" path="res://assets/sky/day_sky.tres" id="3_sky"]
+[ext_resource type="Script" uid="uid://c0r485cb3u71f" path="res://scripts/level/arena.gd" id="1_arena"]
+[ext_resource type="Script" uid="uid://dhku0eeeioa0i" path="res://scripts/level/fog_config.gd" id="2_fog"]
+[ext_resource type="Sky" uid="uid://ffvdbj3x0eg1" path="res://assets/sky/day_sky.tres" id="3_sky"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="4_player"]
-[ext_resource type="Script" path="res://scripts/level/spawn_point.gd" id="5_spawn"]
-[ext_resource type="Script" path="res://scripts/debug/debug_hud.gd" id="6_hud"]
-[ext_resource type="Script" path="res://scripts/debug/tuning_panel.gd" id="7_panel"]
+[ext_resource type="Script" uid="uid://bhucofvtd1e8a" path="res://scripts/level/spawn_point.gd" id="5_spawn"]
+[ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="6_hud"]
+[ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="7_panel"]
 
 [sub_resource type="Resource" id="Resource_fog"]
 resource_local_to_scene = true
 script = ExtResource("2_fog")
 fade_begin_distance = 30.0
 fade_end_distance = 90.0
-volumetric_enabled = false
 
 [sub_resource type="Environment" id="Environment_shaft"]
 background_mode = 2
 sky = ExtResource("3_sky")
 ambient_light_source = 2
 ambient_light_color = Color(0.78, 0.82, 0.88, 1)
-ambient_light_energy = 0.35
-; ⚠️ 0, AND WITHOUT IT THE AMBIENT COLOUR ABOVE DOES NOTHING. The default is
-; 1.0, meaning "take all ambient from the sky" -- and this shaft is a sealed
-; box, so SDFGI resolves the sky's contribution to zero inside it and the
-; whole level renders black. Measured: the first capture of this scene was
-; unreadable. Setting the source to COLOR is not enough on its own; the
-; contribution is what decides whether the colour is consulted at all.
 ambient_light_sky_contribution = 0.0
-; ⚠️ SDFGI OFF, DELIBERATELY. It was on, and it is what made the FIRST capture
-; black: it resolves real occlusion, so a sealed box receives no sky light at
-; all. With the lamps and a colour ambient doing the work it adds nothing here
-; and costs plenty -- measured 112 fps without it against 30 with, in a room of
-; a dozen boxes.
-; ACES, so the white walls roll off instead of clipping. Without it the first
-; lit capture came back as a white page -- the opposite failure to the black one.
+ambient_light_energy = 0.35
 tonemap_mode = 3
-
-[sub_resource type="StandardMaterial3D" id="Mat_White"]
-albedo_color = Color(0.82, 0.825, 0.83, 1)
-roughness = 0.85
 
 [sub_resource type="StandardMaterial3D" id="Mat_Tube"]
 albedo_color = Color(1, 0.98, 0.92, 1)
@@ -47,188 +29,135 @@ emission_enabled = true
 emission = Color(1, 0.97, 0.88, 1)
 emission_energy_multiplier = 1.6
 
+[sub_resource type="StandardMaterial3D" id="Mat_White"]
+albedo_color = Color(0.82, 0.825, 0.83, 1)
+roughness = 0.85
+
 [sub_resource type="StandardMaterial3D" id="Mat_Runner"]
 albedo_color = Color(0.86, 0.16, 0.1, 1)
 roughness = 0.6
 
-[node name="MirrorsEdgeShaft" type="Node3D" node_paths=PackedStringArray("player", "spawn_point")]
+[node name="MirrorsEdgeShaft" type="Node3D" unique_id=2044950499 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_arena")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
 fog = SubResource("Resource_fog")
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=413358054]
 environment = SubResource("Environment_shaft")
 
-; ── Light ─────────────────────────────────────────────────────────────────────
-;
-; ⚠️ A DirectionalLight3D STOOD HERE AND LIT NOTHING. The shaft is a closed box
-; with a ceiling, so the sun never reaches the inside of it -- the first capture
-; of this level came out completely black. A sealed room needs fixtures IN it,
-; which is also what the original has: strip lights down the shaft wall.
-;
-; Four of them, one per climb stage, so each duct is lit from above and the
-; wall opposite reads as a surface rather than a void. Shadows off: they cost a
-; shadow map each, and a whitebox wants readable geometry, not mood.
-[node name="Lamp1" type="OmniLight3D" parent="."]
+[node name="Lamp1" type="OmniLight3D" parent="." unique_id=1982619167]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 1.35)
 light_energy = 1.1
-omni_range = 7
+omni_range = 7.0
 
-[node name="Lamp2" type="OmniLight3D" parent="."]
+[node name="Lamp2" type="OmniLight3D" parent="." unique_id=40569016]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6, 1.35)
 light_energy = 1.1
-omni_range = 7
+omni_range = 7.0
 
-[node name="Lamp3" type="OmniLight3D" parent="."]
+[node name="Lamp3" type="OmniLight3D" parent="." unique_id=791426655]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7, 1.35)
 light_energy = 1.1
-omni_range = 7
+omni_range = 7.0
 
-[node name="Lamp4" type="OmniLight3D" parent="."]
+[node name="Lamp4" type="OmniLight3D" parent="." unique_id=2025462872]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.8, -1.35)
-light_energy = 1.0
-omni_range = 6
+omni_range = 6.0
 
-; The fixtures themselves. Their own combiner, and no collision -- a light is
-; scenery, and the runner-vision block below keeps its own for the same reason.
-[node name="Tubes" type="CSGCombiner3D" parent="."]
+[node name="Tubes" type="CSGCombiner3D" parent="." unique_id=1257230365]
 material_override = SubResource("Mat_Tube")
 
-[node name="Tube1" type="CSGBox3D" parent="Tubes"]
+[node name="Tube1" type="CSGBox3D" parent="Tubes" unique_id=905850850]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 1.52)
 size = Vector3(1.4, 0.1, 0.08)
 
-[node name="Tube2" type="CSGBox3D" parent="Tubes"]
+[node name="Tube2" type="CSGBox3D" parent="Tubes" unique_id=25066733]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6, 1.52)
 size = Vector3(1.4, 0.1, 0.08)
 
-[node name="Tube3" type="CSGBox3D" parent="Tubes"]
+[node name="Tube3" type="CSGBox3D" parent="Tubes" unique_id=1327415795]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7, 1.52)
 size = Vector3(1.4, 0.1, 0.08)
 
-[node name="Tube4" type="CSGBox3D" parent="Tubes"]
+[node name="Tube4" type="CSGBox3D" parent="Tubes" unique_id=1539001546]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.8, -1.52)
 size = Vector3(1.4, 0.1, 0.08)
 
-[node name="SpawnPoint" type="Marker3D" parent="."]
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1429853746]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1.1)
 script = ExtResource("5_spawn")
 
-; ── The shaft itself ──────────────────────────────────────────────────────────
-;
-; ONE CSGCombiner, so the whole whitebox is draggable in the editor: every
-; measurement below is a `size` field, not a baked mesh. use_collision on the
-; combiner means the boolean result IS the collision -- no CollisionShape3D to
-; keep in step with the visual, which is the failure mode the hand-built
-; whiteboxes (factory_hall.tscn) carry three nodes per box to avoid.
-;
-; ⚠️ ORDER IS THE BOOLEAN. Children apply in sequence: Outer fills, Cavity
-; hollows it, the ledges add back, the vent cuts through last. Moving a ledge
-; below Cavity in this list would delete it instead of adding it.
-[node name="Shaft" type="CSGCombiner3D" parent="."]
-use_collision = true
+[node name="Shaft" type="CSGCombiner3D" parent="." unique_id=1373248730]
 material_override = SubResource("Mat_White")
+use_collision = true
 
-[node name="Outer" type="CSGBox3D" parent="Shaft"]
+[node name="Outer" type="CSGBox3D" parent="Shaft" unique_id=1571582417]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
 size = Vector3(4.4, 10, 4.4)
 
-; The shaft interior: 3.2 m square, floor at y = 0, ceiling at y = 9.
-[node name="Cavity" type="CSGBox3D" parent="Shaft"]
+[node name="Cavity" type="CSGBox3D" parent="Shaft" unique_id=4007904]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
 operation = 2
 size = Vector3(3.2, 9, 3.2)
 
-; ── The climb ─────────────────────────────────────────────────────────────────
-;
-; Ducts alternating off the east and west walls, tops 2.0 m apart.
-;
-; 📐 2.0 m IS THE WHOLE DESIGN, and it comes off GrabConfig rather than off
-; taste. A ledge is grabbable only while it sits min_wall_height (1.8 m) to
-; ledge_max_height (2.8 m) ABOVE the feet -- higher than standing height, which
-; is what makes a grab a grab. Space them 1.0 m and every one is a plain jump
-; (peak 1.24 m) with the grab never firing; space them 2.0 m and each one lands
-; inside that window, so the route is grab -> mantle -> stand -> turn -> jump,
-; which is ✅ the owner's "需要利用多次Grab反身跳来逐渐到达最高点".
-;
-; 📐 The 1.2 m gap across is the other half: a hang jump leaves at 6.3 m/s with
-; only jump_speed_up 1.6 m/s of lift, so it travels ~1.26 m before it is back
-; to the height it started at. Anything wider and the far duct cannot be
-; reached from a hang at all.
-[node name="DuctEast1" type="CSGBox3D" parent="Shaft"]
+[node name="DuctEast1" type="CSGBox3D" parent="Shaft" unique_id=667405377]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1, 0.9, 0)
 size = Vector3(1, 0.6, 2.2)
 
-[node name="DuctWest1" type="CSGBox3D" parent="Shaft"]
+[node name="DuctWest1" type="CSGBox3D" parent="Shaft" unique_id=1283576485]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1, 2.9, 0)
 size = Vector3(1, 0.6, 2.2)
 
-[node name="DuctEast2" type="CSGBox3D" parent="Shaft"]
+[node name="DuctEast2" type="CSGBox3D" parent="Shaft" unique_id=507066580]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1, 4.9, 0)
 size = Vector3(1, 0.6, 2.2)
 
-[node name="DuctWest2" type="CSGBox3D" parent="Shaft"]
+[node name="DuctWest2" type="CSGBox3D" parent="Shaft" unique_id=315151334]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1, 6.9, 0)
 size = Vector3(1, 0.6, 2.2)
 
-; The step onto the first duct. Ground to DuctEast1's top is 1.2 m, which a
-; standing jump (1.24 m peak) clears by four centimetres -- a margin nobody
-; should have to hit, so the crate makes the opening move free and the rest of
-; the shaft the actual test.
-[node name="Crate" type="CSGBox3D" parent="Shaft"]
+[node name="Crate" type="CSGBox3D" parent="Shaft" unique_id=1508330993]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 1.1)
 size = Vector3(1.2, 0.6, 1.2)
 
-; ── The vent ──────────────────────────────────────────────────────────────────
-;
-; The exit, and the reason this level is worth having: a 1.0 m opening. A
-; standing body is 1.8 m and cannot enter at all; a coil (or a crouch) is 0.9 m
-; and can. Its lip is 1.0 m above DuctWest2, inside the 1.24 m jump peak but
-; not by much -- ✅ the owner, on the original's own version of this: "时机很难
-; 把握，而且很难对准".
-[node name="VentHousing" type="CSGBox3D" parent="Shaft"]
+[node name="VentHousing" type="CSGBox3D" parent="Shaft" unique_id=710279135]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.7, -2.9)
 size = Vector3(1.6, 1.4, 1.6)
 
-[node name="VentBore" type="CSGBox3D" parent="Shaft"]
+[node name="VentBore" type="CSGBox3D" parent="Shaft" unique_id=1929095545]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.7, -2.9)
 operation = 2
 size = Vector3(1.2, 1, 2.8)
 
-; ── Runner vision ─────────────────────────────────────────────────────────────
-;
-; Separate combiner, and deliberately NOT part of the collision one: these are
-; the red the original paints on the route, and a player must never stand on a
-; hint. Sits 1 cm proud of each duct's top so it does not z-fight.
-[node name="Vision" type="CSGCombiner3D" parent="."]
+[node name="Vision" type="CSGCombiner3D" parent="." unique_id=289927378]
 material_override = SubResource("Mat_Runner")
 
-[node name="HintEast1" type="CSGBox3D" parent="Vision"]
+[node name="HintEast1" type="CSGBox3D" parent="Vision" unique_id=92669009]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.59, 1.19, 0)
 size = Vector3(0.03, 0.06, 2.2)
 
-[node name="HintWest1" type="CSGBox3D" parent="Vision"]
+[node name="HintWest1" type="CSGBox3D" parent="Vision" unique_id=62169022]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.59, 3.19, 0)
 size = Vector3(0.03, 0.06, 2.2)
 
-[node name="HintEast2" type="CSGBox3D" parent="Vision"]
+[node name="HintEast2" type="CSGBox3D" parent="Vision" unique_id=926135988]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.59, 5.19, 0)
 size = Vector3(0.03, 0.06, 2.2)
 
-[node name="HintWest2" type="CSGBox3D" parent="Vision"]
+[node name="HintWest2" type="CSGBox3D" parent="Vision" unique_id=1687150347]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.59, 7.19, 0)
 size = Vector3(0.03, 0.06, 2.2)
 
-[node name="HintVent" type="CSGBox3D" parent="Vision"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.7, -1.62)
-size = Vector3(1.3, 1.1, 0.03)
+[node name="HintVent" type="CSGBox3D" parent="Vision" unique_id=814052186]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.1744995, -1.5955796)
+size = Vector3(1.3, 0.07941896, 0.03)
 
-[node name="Player" parent="." instance=ExtResource("4_player")]
+[node name="Player" parent="." unique_id=1621588944 instance=ExtResource("4_player")]
 
-[node name="DebugHud" type="CanvasLayer" parent="." node_paths=PackedStringArray("player")]
+[node name="DebugHud" type="CanvasLayer" parent="." unique_id=1471150412 node_paths=PackedStringArray("player")]
 script = ExtResource("6_hud")
 player = NodePath("../Player")
 
-[node name="TuningPanel" type="CanvasLayer" parent="."]
+[node name="TuningPanel" type="CanvasLayer" parent="." unique_id=656375935]
 script = ExtResource("7_panel")
