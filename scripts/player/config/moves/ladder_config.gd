@@ -8,10 +8,11 @@ extends MoveConfig
 # AND wall-running bodies alike), and left by crouching, jumping (Task 5), or
 # reaching the top (Task 7).
 #
-# ⚠️ EVERY DIAL BELOW IS A TO-BE-MEASURED INITIAL GUESS. This project has no
-# ME reference footage for ladders/pipes yet (see task-4-brief.md) -- unlike
-# the zipline and swing configs beside it, nothing here carries a ✅ measured
-# marker. The owner dials all of these once footage exists.
+# MOST DIALS BELOW ARE UNMEASURED INITIAL GUESSES. This project has little ME
+# reference footage for ladders/pipes (see task-4-brief.md), so unlike the
+# zipline and swing configs beside it almost nothing here was read off the
+# original; the fields that WERE carry an [ME:...] tag of their own. The owner
+# dials the rest once footage exists.
 
 func _init() -> void:
 	# Both hands are on the rungs: the body stays squared to the ladder and
@@ -82,7 +83,3 @@ func _init() -> void:
 ## How long the ladder just left refuses a re-catch, seconds. Per LINE, not
 ## per move name -- see LineMove.note_left().
 @export var same_line_redo_time: float = 0.6
-## Falling faster than this (m/s, positive) the hands cannot catch the
-## ladder. No CDO field for ladders; borrowed from the rest of the family's
-## own confirmed number, same as SwingConfig does.
-@export var fall_limit: float = 6.0

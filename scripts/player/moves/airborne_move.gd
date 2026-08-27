@@ -227,13 +227,23 @@ func probe_transition() -> StringName:
 		if bar != null and player.line_ready(bar):
 			return SWING
 
-	# The ladder, after the bar: same interest-point reasoning and the same
-	# fall_limit gate, PLUS the frontal fan -- DO NOT let a ladder catch from
-	# any side but the front; catch_gate() enforces it. Asked here, before
-	# ever transitioning, so LadderMove.enter()'s own copy of this same check
-	# (see its note) never actually fires in play.
-	if c.check_for_ladder and player.velocity.y > -config.ladder.fall_limit \
-			and player.move_manager.can_enter(LADDER):
+	# The ladder, after the bar: same interest-point reasoning, PLUS the
+	# frontal fan -- DO NOT let a ladder catch from any side but the front;
+	# catch_gate() enforces it. Asked here, before ever transitioning, so
+	# LadderMove.enter()'s own copy of this same check (see its note) never
+	# actually fires in play.
+	#
+	# NO fall_limit HERE, unlike the cable and the bar above. Those two carry
+	# the original's own ZVelocityFallLimit; the ladder never had one, and the
+	# 6 m/s it used to borrow from them is 1.125 m of free fall at gravity 16
+	# -- it refused every drop worth catching. [ME:CONFIRMED] a ladder CAN be
+	# caught mid-fall, and a catch past hard_landing_height costs the same
+	# lockout a hard landing does, red screen and all, rather than being
+	# refused (LadderMove.enter() arms it). DO NOT restore a speed gate
+	# here: the window's real ceiling is falling_uncontrolled_height, already
+	# enforced by FallUncontrolledConfig leaving check_for_ladder clear, so a
+	# fall that has gone uncontrolled still catches nothing.
+	if c.check_for_ladder and player.move_manager.can_enter(LADDER):
 		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
 		if rail != null and LadderMove.catch_gate(player, rail):
 			return LADDER

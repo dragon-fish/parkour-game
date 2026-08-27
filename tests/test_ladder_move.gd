@@ -297,6 +297,74 @@ func test_wallrun_can_be_caught_by_a_ladder() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
+# --- Catching a ladder out of a fall -------------------------------------------
+#
+# ✅ THE OWNER measured both halves in the original: a ladder CAN be caught
+# while already falling, and a catch that stops a fall past
+# hard_landing_height costs the same red-screen lockout a hard landing does
+# instead of being refused.
+
+## Jumps a settled player (so nothing grounded can clobber the velocity below
+## — WalkingMove pins velocity.y to -floor_snap_speed every tick), then drops
+## them onto the front side of a fresh 6 m ladder at a speed far past the
+## 6 m/s the ladder config used to refuse a catch at. `fake_fall_height`, when
+## positive, buys a fall the test never actually took.
+func _fall_onto_ladder(fake_fall_height: float) -> Player:
+	var player: Player = await _standing_player()
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	await step(1)
+	assert_ne(player.move_manager.current_name, Move.WALKING, 		"test setup: the jump never left the ground")
+	# Spans y 1..7, so the whole approach happens well clear of the floor.
+	_line = _vertical_ladder(Vector3(0.0, 1.0, 0.0), 0.0, 6.0)
+	var stand_off: float = player.config.ladder.stand_off
+	player.global_position = Vector3(0.0, 5.0, -stand_off)
+	player.rotation.y = PI  # facing the ladder
+	# A real 5.3 m fall arrives at about 13 m/s (gravity 16), so this is the
+	# speed the catch has to survive — twice the old limit over.
+	player.velocity = Vector3(0.0, -12.0, 0.0)
+	if fake_fall_height > 0.0:
+		# The tracker is launch-relative, so raising its baseline is how a test
+		# buys height it never fell — the same idiom
+		# test_crouch_lets_go_and_spends_the_roll() uses.
+		player.fall_tracker.reset(player.global_position.y + fake_fall_height)
+	for i in 10:
+		await step(1)
+		if player.move_manager.current_name == Move.LADDER:
+			break
+	return player
+
+func test_a_fast_fall_still_catches_the_ladder() -> void:
+	var player: Player = await _fall_onto_ladder(0.0)
+	assert_eq(player.move_manager.current_name, Move.LADDER, 		"a body falling well past the old fall_limit failed to catch the ladder")
+
+func test_a_hard_catch_locks_the_body_and_then_lets_go() -> void:
+	# Comfortably past hard_landing_height (5.3) and short of
+	# falling_uncontrolled_height (10), where nothing catches anything.
+	var player: Player = await _fall_onto_ladder(6.0)
+	assert_eq(player.move_manager.current_name, Move.LADDER, 		"test setup: the hard fall never caught the ladder")
+	var input: ScriptedInputSource = _world["input"]
+	var ladder := player.move_manager.move_for(Move.LADDER) as LadderMove
+	var offset_at_catch: float = ladder.climbing_offset()
+
+	# Half a second in, well inside the lockout: W must buy nothing.
+	input.state.move = Vector2(0.0, 1.0)
+	await step(30)
+	assert_eq(player.move_manager.current_name, Move.LADDER, 		"the lockout let go of the ladder on its own")
+	assert_almost_eq(ladder.climbing_offset(), offset_at_catch, 0.001, 		"W climbed the ladder during the hard-catch lockout")
+	# ...and neither must crouch. NOT MEASURED — see LadderMove._arm_hard_catch().
+	input.press_crouch()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.LADDER, 		"crouch released the grip during the hard-catch lockout")
+
+	# Past the lockout, the ladder is an ordinary ladder again.
+	await step(120)
+	assert_eq(player.move_manager.current_name, Move.LADDER, 		"test setup: something else took the body before the lockout ran out")
+	assert_gt(ladder.climbing_offset(), offset_at_catch, 		"W never started climbing once the lockout let go")
+	input.press_crouch()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING, 		"crouch did not let go once the lockout had run out")
+
 # --- Task 5: the jump-off chain ------------------------------------------------
 #
 # ✅ THE OWNER: "AD+空格如果没有其他梯子是不会触发跳的" -- with no directional
