@@ -71,9 +71,17 @@ survive in a particular file forever.
 
 ## Practical notes
 
-- **Comments in English**, and about the *why* a number is what it is — most of
-  those reasons came from measuring the original game, so if you change a value,
-  change the reasoning above it.
+- **Comments in English, and free of emoji.** A glyph brings no definition with
+  it. The evidence scale in this project was once written in emoji; it drifted
+  into thirteen symbols with no agreed meanings, and the marks were repeatedly
+  deleted as decoration.
+- **Only claims about the original game are tagged**, with the five levels from
+  `docs/mirrors-edge-deep-research/01-方法论与可信度分级.md`, spelled
+  `[ME:CONFIRMED]`, `[ME:DERIVED]`, `[ME:INFERRED]`, `[ME:COMMUNITY]`,
+  `[ME:UNKNOWN]`, optionally carrying their source: `[ME:CONFIRMED 02 §2.4]`.
+  Most of the reasoning here came from measuring the original, so if you change
+  a value, change the reasoning and the tag above it. Nothing else is tagged: a
+  hazard is a sentence starting "DO NOT", and emphasis is the sentence itself.
 - **A comment exists so a mistake is not repeated, not so the project's history
   can be read.** Write the external constraint the code cannot state, the
   pothole somebody already fell into *and what it cost*, and the outright

@@ -13,8 +13,10 @@ The interesting part of this repository is not the movement code — it is
 **why every value is what it is**. `docs/feel-backlog.md` records what was
 measured in the original, what was reproduced, what was deliberately *not*
 reproduced, and what is still a guess. The code comments carry the same
-distinction: ✅ marks something confirmed by measurement, ⚠️ marks something
-inferred.
+distinction as ASCII tags — `[ME:CONFIRMED]` for a value read out of the
+original or measured frame-by-frame, `[ME:DERIVED]`, `[ME:INFERRED]`,
+`[ME:COMMUNITY]`, `[ME:UNKNOWN]` — the five levels defined in
+`docs/mirrors-edge-deep-research/01-方法论与可信度分级.md`.
 
 ## Running it
 

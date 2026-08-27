@@ -109,18 +109,36 @@ pipeline (see `docs/level-templates.md`).
 
 ## Conventions that bite
 
-- **Code comments in English**, and they carry provenance: ✅ = confirmed by
-  measurement of the original, ⚠️ = inferred. Changing a value means changing the
-  reasoning above it. A change that improves feel but contradicts a measurement
-  must say so out loud rather than quietly overwrite it.
+- **Code comments in English, and no emoji in them.** A glyph carries no
+  definition with it: this project defined a five-level evidence scale in
+  emoji, and the code grew to thirteen different symbols, two of the five
+  levels went unused, and four fifths of the ✅ ended up tagging design
+  decisions the scale never covered. Anything that looks decorative gets
+  deleted as noise by the next reader, human or model.
+- **The only marked claims are claims about the original game**, and they use
+  ASCII tags — the same five levels as
+  `docs/mirrors-edge-deep-research/01-方法论与可信度分级.md`, so a value's
+  grade survives being carried from the corpus into the code:
+
+  | tag | meaning |
+  | --- | --- |
+  | `[ME:CONFIRMED]` | read from the original's `.ini`/CDO, or measured frame-by-frame |
+  | `[ME:DERIVED]` | computed from confirmed values by a formula that is shown |
+  | `[ME:INFERRED]` | read off naming and context, not verified |
+  | `[ME:COMMUNITY]` | speedrun-community measurement or consensus, not first-hand |
+  | `[ME:UNKNOWN]` | not found, or the sources disagree |
+
+  An optional source goes inside: `[ME:CONFIRMED 02 §2.4]`. Nothing else gets a
+  tag. A hazard is a sentence beginning "DO NOT"; emphasis is the sentence
+  itself.
 - **A comment exists so a mistake is not repeated, not so the history can be
   read** — see CONTRIBUTING.md for the full rule. Constraints, potholes and what
   they cost, prohibitions; no quoted conversations, no dates, no before/after.
   Rewrite a comment when the logic changes instead of appending to it: it should
-  read as though written in one sitting. The ✅/⚠️ measurement provenance is a
-  *constraint*, not a quotation — "gravity is 16.0, 22 measured jumps pin it,
-  the ini's 800 is wrong, do not put it back" — and stays. Lessons learned go to
-  `.claude/skills/`, derivations to `docs/`, history to git.
+  read as though written in one sitting. An evidence tag is a *constraint*, not a
+  quotation — "[ME:CONFIRMED 02 §2.4] gravity is 16.0; the ini's 800 is wrong,
+  do not put it back" — and stays. Lessons learned go to `.claude/skills/`,
+  derivations to `docs/`, history to git.
 - **`docs/feel-backlog.md`** is the standing record of known-wrong feel with root
   causes already derived. Read it before "fixing" a movement value.
 - **`.claude/skills/`** holds practices this project learned the hard way — each
