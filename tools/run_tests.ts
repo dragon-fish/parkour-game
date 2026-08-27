@@ -15,7 +15,7 @@
  * was the engine's filename, which is now looked up.
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -53,19 +53,57 @@ if (godot === null || !existsSync(godot)) {
   process.exit(1);
 }
 
-// Refresh .godot/global_script_class_cache.cfg first. Without this, any
-// class_name declared since the last editor scan fails to resolve and every
-// test dies with 'Identifier "Xxx" not declared in the current scope'.
-spawnSync(godot, ["--headless", "--path", ROOT, "--import"], { stdio: "ignore" });
+/**
+ * Every class_name declared under `dir`, recursively.
+ *
+ * assets/ and .private/ are not walked: the first is tens of MB of binary the
+ * engine checks for itself, the second is a symlink into another repo.
+ */
+function declaredClasses(dir: string, found: Set<string>): Set<string> {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      declaredClasses(full, found);
+    } else if (entry.name.endsWith(".gd")) {
+      const match = readFileSync(full, "utf8").match(/^class_name\s+(\w+)/m);
+      if (match) found.add(match[1]);
+    }
+  }
+  return found;
+}
 
-// --fixed-fps is the difference between a suite that takes minutes and one
-// that takes seconds: "This setting disables real-time synchronization"
-// (Godot's own command line docs), so the main loop runs as fast as the CPU
-// allows instead of pacing itself against a wall clock. The delta each frame
-// sees is unchanged, so every physics measurement reads exactly the same --
-// verified against test_turn_deceleration.gd, which went from 56 s to 0.96 s
-// with identical results. 60 to match physics_ticks_per_second, so one
-// main-loop frame is one physics tick.
+// Refresh .godot/global_script_class_cache.cfg. Without this, any class_name
+// declared since the last editor scan fails to resolve and every test dies
+// with 'Identifier "Xxx" not declared in the current scope'.
+//
+// ⚠️ SKIPPED WHEN THE SET OF class_name DECLARATIONS IS UNCHANGED, because it
+// costs ~22 s and a full run of the suite costs ~35 s. What the cache holds is
+// exactly that set, so editing a function body cannot invalidate it -- and
+// editing function bodies is what a development loop does. Keying on file
+// mtimes instead was tried first and is nearly worthless here: every iteration
+// touches some .gd, so every iteration paid the 22 s.
+//
+// The comparison is one-directional and errs toward re-importing: a name in
+// either set and not the other triggers it. RUN_TESTS_IMPORT=1 forces it,
+// which is also the answer for a NEW BINARY ASSET (a .glb dropped into
+// assets/) -- that needs an import and declares no class to notice it by.
+const CLASS_CACHE = join(ROOT, ".godot", "global_script_class_cache.cfg");
+let cachedClasses = new Set<string>();
+if (existsSync(CLASS_CACHE)) {
+  const text = readFileSync(CLASS_CACHE, "utf8");
+  for (const hit of text.matchAll(/"class":\s*&"(\w+)"/g)) cachedClasses.add(hit[1]);
+}
+const liveClasses = new Set<string>();
+for (const dir of ["scripts", "tests", "tools", "addons"]) {
+  if (existsSync(join(ROOT, dir))) declaredClasses(join(ROOT, dir), liveClasses);
+}
+const drifted = cachedClasses.size !== liveClasses.size
+  || [...liveClasses].some((name) => !cachedClasses.has(name));
+if (process.env.RUN_TESTS_IMPORT === "1" || cachedClasses.size === 0 || drifted) {
+  spawnSync(godot, ["--headless", "--path", ROOT, "--import"], { stdio: "ignore" });
+}
+
 const gutArgs = [
   "--headless", "--fixed-fps", "60", "--path", ROOT,
   "-s", "res://addons/gut/gut_cmdln.gd",
