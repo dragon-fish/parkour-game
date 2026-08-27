@@ -85,18 +85,21 @@ func _init() -> void:
 ## body stopped against the wall rather than still drifting along it.
 @export var horizontal_friction: float = 6.0
 
-## HOW FAR A KICK CARRIES YOU UP. A constant -- speed does not buy height.
+## HOW FAR A KICK CARRIES YOU UP WITH NO RUN-UP. See climb_height_running for
+## the other end, and read both notes together -- this one records how the
+## reading got here.
 ##
-## The first version of this move had it the other way round: height bought
-## with speed, worth nothing standing still, priced off `AddOnSpeed2DHeight`
-## and `AddOnSpeedZHeight`. THE OWNER CORRECTED IT FROM THE ORIGINAL, in one
-## sentence that rules out that whole reading: "the climb height seems
-## unrelated to speed, but the rate of ascent is affected".
+## The first version of this move priced height off `AddOnSpeed2DHeight` and
+## `AddOnSpeedZHeight`, worth nothing standing still. The owner corrected it --
+## "the climb height seems unrelated to speed, but the rate of ascent is
+## affected" -- and it became a constant. The measurements above put it back in
+## the middle: speed buys a little height (1.30 -> 1.47) and a lot of contact
+## point (up to 1.24), which is why it FEELS unrelated while not being.
 ##
-## So the two AddOn fields are ⚠️ NOT height at all in the sense assumed, or
-## they add to a base that lives in PHYS_WallClimbing's own code rather than in
-## the CDO. Either way they are not consumed here any more, and what they do
-## mean is now an open question rather than a settled one.
+## 🎯 So the two AddOn fields may mean exactly what their names say after all.
+## ❓ Still not consumed here -- these numbers came from a stopwatch and a HUD,
+## not from the CDO, and wiring the CDO fields in would be swapping a measured
+## curve for an unmeasured one.
 ##
 ## Speed still shows up in the climb twice, which is why it feels like it
 ## matters: it raises the rate of ascent (below), and a running jump makes
@@ -108,15 +111,44 @@ func _init() -> void:
 ## to 2.23 -- and pressed against it, contact happens on the first airborne
 ## tick, so that 1.30 m IS the climb and nothing else.
 ##
-## The run-up case corroborates it rather than contradicting it. Near full
-## speed, Z goes 0.93 to 3.64. Contact then happens near the jump's own apex
-## (base_jump_z 6.3 against gravity 16 is 1.24 m), and 1.24 + 1.30 = 2.54
-## against a measured 2.71 -- seven per cent, on a reading taken at "near"
-## full speed. The extra height a run-up buys is the CONTACT POINT, exactly as
-## the owner described it, and not a bigger climb.
+## ⚠️ THE RUN-UP CASE WAS FILED UNDER THIS NUMBER TOO, AND SHOULD NOT HAVE BEEN.
+## Near full speed the owner measured Z going 0.93 to 3.64, i.e. SZD 2.71.
+## Contact there happens near the jump's own apex (base_jump_z 6.3 against
+## gravity 16 is 1.24 m), so 1.24 + 1.30 = 2.54 -- and the seven per cent left
+## over was written off as measurement slop on a reading taken at "near" full
+## speed.
+##
+## ✅ IT WAS NOT SLOP. The owner re-measured deliberately: "贴墙0速Climb
+## SZD=1.30，高速最佳化Climb SZD~=2.71". Optimised, not approximate, and it
+## lands on the same 2.71. A residual that survives being measured on purpose
+## is a term, not noise -- see climb_height_running.
+##
+## WHAT SURVIVES OF THE OLD READING IS THE BIGGER HALF, and it is still the
+## interesting one: most of what a run-up buys is the CONTACT POINT, not the
+## climb. 1.24 of the 1.41 m difference between the two measurements is the
+## jump arc, exactly as the owner originally described -- "when taking off with
+## a run-up, the kick starts higher". What changed is that the climb itself
+## grows a little too, instead of not at all.
 ##
 ## Was ⚠️ 1.6 while it was a guess.
 @export var climb_height: float = 1.3
+
+## HOW FAR A KICK CARRIES YOU UP AT run_speed_limit, the other end of the same
+## dial.
+##
+## 📐 DERIVED FROM THE TWO MEASUREMENTS, and it is subtraction rather than a
+## model: SZD 2.71 minus the 1.24 m the jump arc puts under the contact point
+## leaves 1.47 m of climb. climb_height (1.30) is the same subtraction with
+## nothing under it, because a body pressed against the wall makes contact on
+## its first airborne tick.
+##
+## ⚠️ THE INTERPOLATION BETWEEN THEM IS INVENTED. Two points fix a line only if
+## something says the relationship is linear, and nothing does -- these are the
+## endpoints, and linear is the cheapest curve through them. ✅ The owner, on
+## proceeding anyway: "具体数值我之后测，但你可以按这个感觉调". So this is a
+## dial with the ends measured and the middle assumed, which is worth knowing
+## before anyone reads a mid-speed climb as evidence of anything.
+@export var climb_height_running: float = 1.47
 
 ## How fast the body goes up, with no run-up at all.
 ##

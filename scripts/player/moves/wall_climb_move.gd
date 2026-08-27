@@ -37,9 +37,20 @@ func _query() -> Dictionary:
 ## show what a run-up is currently worth before the player commits to it.
 static func rise_speed(run_speed: float, cfg: WallClimbConfig, pawn: PawnConfig) -> float:
 	var climb_gravity: float = maxf(pawn.gravity * cfg.gravity_scale, 0.001)
-	var base: float = sqrt(2.0 * climb_gravity * maxf(cfg.climb_height, 0.0))
+	var base: float = sqrt(2.0 * climb_gravity * maxf(climb_height_for(run_speed, cfg), 0.0))
 	var earned: float = clampf(run_speed / maxf(cfg.run_speed_limit, 0.001), 0.0, 1.0)
 	return base + cfg.rise_speed_bonus * earned
+
+## How high THIS climb goes, given the run-up it started with.
+##
+## ✅ Both ends measured in the original (see WallClimbConfig.climb_height and
+## climb_height_running); ⚠️ the line between them is assumed. Static and taking
+## its inputs plainly, for the same reason rise_speed() is: the debug markers
+## and the HUD show what a run-up is worth before the player commits to it, and
+## they must show the number the move will actually use.
+static func climb_height_for(run_speed: float, cfg: WallClimbConfig) -> float:
+	var earned: float = clampf(run_speed / maxf(cfg.run_speed_limit, 0.001), 0.0, 1.0)
+	return lerpf(cfg.climb_height, cfg.climb_height_running, earned)
 
 func enter(_previous: StringName) -> void:
 	_aborted = false
@@ -57,9 +68,13 @@ func enter(_previous: StringName) -> void:
 	# maxf, not assignment: a player already rising faster than the kick is
 	# worth keeps what they had. Taking the larger of the two is what stops a
 	# well-timed early kick from being PUNISHED by touching the wall.
+	var run_up: float = player.horizontal_speed()
 	player.velocity.y = maxf(player.velocity.y,
-		rise_speed(player.horizontal_speed(), cfg, config.pawn))
-	_ceiling = player.global_position.y + cfg.climb_height
+		rise_speed(run_up, cfg, config.pawn))
+	# Priced off the SAME run-up rise_speed() was priced off, two lines up --
+	# read before the friction below spends it, or a climb would be given the
+	# ascent rate of a running kick and the ceiling of a standing one.
+	_ceiling = player.global_position.y + climb_height_for(run_up, cfg)
 
 	# The run-up's forward momentum is spent on the wall, not carried through
 	# it. Without this the body keeps pressing into the surface and the slide
