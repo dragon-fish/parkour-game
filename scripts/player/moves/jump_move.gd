@@ -26,6 +26,21 @@ func enter(previous: StringName) -> void:
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	apply_air_physics(delta, player.wish_direction(input))
 
+	# BEFORE the probes, and deliberately so. A coil is the player asking NOT
+	# to interact with what is coming -- ✅ the owner's own use for it, "跳过
+	# 更宽的沟而不触发 StepUp 减速" -- so a vault or a grab that fired first
+	# would take away the exact thing the key was pressed for.
+	#
+	# ⚠️ consume_roll() LAST in the chain, because it has a side effect: `and`
+	# short-circuits left to right, so any order that spends the buffered press
+	# before the speed gate has decided would eat a crouch meant for the
+	# landing roll on every jump too slow to coil. Same trap, and the same
+	# fix, as AirborneMove.settle_landing()'s own note.
+	var c := current_config()
+	if c.check_for_coil and player.horizontal_speed() >= config.coil.min_trigger_speed \
+			and player.move_manager.can_enter(COIL) and player.consume_roll():
+		return advance_and_hand_off(COIL)
+
 	var probed := probe_transition()
 	if probed != KEEP:
 		player.set_grounded(false)

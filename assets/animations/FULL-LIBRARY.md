@@ -29,12 +29,20 @@ argument.)
    baked into every clip, and this project drives every metre of travel from
    code. Using them makes the body move twice.
 
-3. Put them here, with these names — `assets/animations/full/` is git-ignored:
+3. Put them here, with these names:
 
    ```
-   assets/animations/full/ual1_full.glb
-   assets/animations/full/ual2_full.glb
+   assets/animations/local/ual1_full.glb
+   assets/animations/local/ual2_full.glb
    ```
+
+   ⚠️ **`local/`, not `full/`.** This used to say `full/` and called it
+   git-ignored, which it is not — `.gitignore` ignores folders named `local`
+   or `local_*` as a repo-wide convention (see its own note), and nothing
+   named `full`. Following the old instruction would have committed 42 MB of
+   paid assets to a public repository. The profiles under
+   `.private/scenes/player/local/profiles/` have always pointed at `local/`;
+   only this file was wrong.
 
 4. Let Godot import them once, then add the retargeting block to **both**
    `.import` files, replacing the empty `_subresources={}` line:

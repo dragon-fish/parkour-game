@@ -139,6 +139,21 @@ extends Resource
 ## would always be true for them.
 @export var check_for_ladder: bool = false
 
+## Whether a crouch pressed in mid-air out of this move tucks the legs up.
+##
+## ⚠️ TRUE ON EXACTLY ONE MOVE, and that narrowness is the point. ✅ The owner,
+## measured in the original: "实测只能 Jump 进入" -- 11.3's chart draws
+## `Jump --> Coil` and no other edge into it, and this is that edge.
+##
+## 🎯 IT IS ALSO WHAT KEEPS A COIL FROM EATING THE LANDING ROLL. Both read the
+## same buffered press through Player.consume_roll(), so a flag set on Falling
+## as well would spend, in mid-air, the crouch a player pressed on the way down
+## meaning to roll. Falling is where a body preparing to land actually is --
+## enter_to_falling_z_speed is only -2 m/s -- so leaving this false there is
+## not a restriction the roll has to work around, it is what hands the press to
+## settle_landing()'s own consume_roll() untouched.
+@export var check_for_coil: bool = false
+
 ## Whether Q may start a turn out of this move.
 ##
 ## DEFAULT TRUE, and the exceptions are what carry the meaning. The rule is

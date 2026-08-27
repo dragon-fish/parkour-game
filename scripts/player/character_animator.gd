@@ -457,7 +457,7 @@ func _run_band_speed() -> float:
 ## out of, and it already routes to Jump_Land as its own clip for the whole of
 ## its two-second lockout.
 const _AIRBORNE_MOVES: Array[StringName] = [
-	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED,
+	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED, Move.COIL,
 ]
 
 ## Decides whether the move that just started owes a one-shot -- a clip played
@@ -1021,6 +1021,39 @@ func _target_animation() -> StringName:
 			# crouch-still pose stands in for the rest, since the body is down
 			# and not going anywhere. What this really wants is a stagger.
 			return _first_available([&"Jump_Land", &"NinjaJump_Land", &"Crouch_Idle", &"sneaking", &"idle"])
+		Move.COIL:
+			# ✅ GroundSit_Idle, AND THE NAME IS A RED HERRING -- the owner
+			# found it: "虽然听上去很怪但动作好像是抱膝". A coil is the legs
+			# drawn up under the chin, and a hugging-the-knees sit is that
+			# pose. Nothing in the packs is labelled as an airborne tuck.
+			#
+			# It loops (1.33 s), which is what a pose held for up to half a
+			# second needs. ⚠️ NOT Roll, though a roll is the closer NAME:
+			# measured, its hips sweep 0.055 -> 1.245 m across 1.47 s and it
+			# does not loop, so as a loop it spins the body in mid-air and as a
+			# one-shot it finishes early and puts the legs down while the
+			# capsule is still shrunk.
+			#
+			# ⚠️ IT NEEDS A CLIP OFFSET AND WILL LOOK BROKEN WITHOUT ONE.
+			# Measured over the clip, hips against the same skeleton:
+			#
+			#   GroundSit_Idle   0.068          <- sitting ON the floor
+			#   Crouch_Idle      0.512          the previous placeholder
+			#   Idle / Jump      0.948          standing reference
+			#
+			# So played untouched the body drops about 0.88 m, which is the
+			# same failure LiftAir_Fall produced in mid-air (see
+			# Move.FALL_UNCONTROLLED below). The correction belongs in
+			# BodyProfile.clip_offsets, keyed by clip and tuned per body with
+			# scripts/debug/clip_offset_tuner.gd -- not hardcoded here, because
+			# the number is a function of the skeleton and every model has its
+			# own.
+			#
+			# Crouch_Idle stays in the chain behind it: GroundSit_Idle is in
+			# UAL1's FULL tier only, and the tracked free packs must still
+			# produce something (see FULL-LIBRARY.md).
+			return _first_available([&"GroundSit_Idle", &"Crouch_Idle",
+				&"sneaking", &"Jump", &"NinjaJump_Idle", &"jump", &"idle"])
 		Move.SKILL_ROLL:
 			# A GENUINE MATCH: UAL1 ships a Roll.
 			return _first_available([&"Roll", &"Jump_Start", &"jump", &"idle"])

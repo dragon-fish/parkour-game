@@ -42,12 +42,27 @@ func test_dot_grid_material_loads_its_shader() -> void:
 ## writes user://settings_test.cfg instead of the author's real
 ## user://settings.cfg. Restored in after_all() so nothing outside this file
 ## ever sees the redirected path.
-const _TEST_SETTINGS_PATH := "user://settings_test.cfg"
+## ⚠️ ONE FILE PER PROCESS, not one file. user:// is per PROJECT, not per run,
+## so a fixed name here is shared by every Godot instance on the machine -- and
+## two runs of this suite at once then trample each other's settings mid-test.
+##
+## MEASURED, and it is what a long-standing intermittent failure turned out to
+## be. Two full runs started together fail exactly two cases,
+## test_player_setup_applies_saved_camera_sensitivity (0.0022 where 0.0044 was
+## saved) and test_keeping_a_display_change_leaves_it_in_place (the size
+## reverted), while a run on its own is green. The symptom looked like timing --
+## a slow run was a failing run -- but slowness was the other process competing
+## for CPU, not the cause: it was the co-runner's writes.
+##
+## Built at run time rather than as a const, because that is the only way to
+## reach the process id.
+var _test_settings_path: String
 var _real_settings_path: String
 
 func before_all() -> void:
+	_test_settings_path = "user://settings_test_%d.cfg" % OS.get_process_id()
 	_real_settings_path = SettingsStore.path
-	SettingsStore.path = _TEST_SETTINGS_PATH
+	SettingsStore.path = _test_settings_path
 
 func after_all() -> void:
 	_delete_settings_file()

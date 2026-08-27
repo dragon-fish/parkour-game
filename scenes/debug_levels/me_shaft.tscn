@@ -1,0 +1,163 @@
+[gd_scene format=3 uid="uid://m46pqwh4hvlb"]
+
+[ext_resource type="Script" uid="uid://c0r485cb3u71f" path="res://scripts/level/arena.gd" id="1_arena"]
+[ext_resource type="Script" uid="uid://dhku0eeeioa0i" path="res://scripts/level/fog_config.gd" id="2_fog"]
+[ext_resource type="Sky" uid="uid://ffvdbj3x0eg1" path="res://assets/sky/day_sky.tres" id="3_sky"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="4_player"]
+[ext_resource type="Script" uid="uid://bhucofvtd1e8a" path="res://scripts/level/spawn_point.gd" id="5_spawn"]
+[ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="6_hud"]
+[ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="7_panel"]
+
+[sub_resource type="Resource" id="Resource_fog"]
+resource_local_to_scene = true
+script = ExtResource("2_fog")
+fade_begin_distance = 30.0
+fade_end_distance = 90.0
+
+[sub_resource type="Environment" id="Environment_shaft"]
+background_mode = 2
+sky = ExtResource("3_sky")
+ambient_light_source = 2
+ambient_light_color = Color(0.78, 0.82, 0.88, 1)
+ambient_light_sky_contribution = 0.0
+ambient_light_energy = 0.35
+tonemap_mode = 3
+
+[sub_resource type="StandardMaterial3D" id="Mat_Tube"]
+albedo_color = Color(1, 0.98, 0.92, 1)
+emission_enabled = true
+emission = Color(1, 0.97, 0.88, 1)
+emission_energy_multiplier = 1.6
+
+[sub_resource type="StandardMaterial3D" id="Mat_White"]
+albedo_color = Color(0.82, 0.825, 0.83, 1)
+roughness = 0.85
+
+[sub_resource type="StandardMaterial3D" id="Mat_Runner"]
+albedo_color = Color(0.86, 0.16, 0.1, 1)
+roughness = 0.6
+
+[node name="MirrorsEdgeShaft" type="Node3D" unique_id=2044950499 node_paths=PackedStringArray("player", "spawn_point")]
+script = ExtResource("1_arena")
+player = NodePath("Player")
+spawn_point = NodePath("SpawnPoint")
+fog = SubResource("Resource_fog")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=413358054]
+environment = SubResource("Environment_shaft")
+
+[node name="Lamp1" type="OmniLight3D" parent="." unique_id=1982619167]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 1.35)
+light_energy = 1.1
+omni_range = 7.0
+
+[node name="Lamp2" type="OmniLight3D" parent="." unique_id=40569016]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6, 1.35)
+light_energy = 1.1
+omni_range = 7.0
+
+[node name="Lamp3" type="OmniLight3D" parent="." unique_id=791426655]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7, 1.35)
+light_energy = 1.1
+omni_range = 7.0
+
+[node name="Lamp4" type="OmniLight3D" parent="." unique_id=2025462872]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.8, -1.35)
+omni_range = 6.0
+
+[node name="Tubes" type="CSGCombiner3D" parent="." unique_id=1257230365]
+material_override = SubResource("Mat_Tube")
+
+[node name="Tube1" type="CSGBox3D" parent="Tubes" unique_id=905850850]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 1.52)
+size = Vector3(1.4, 0.1, 0.08)
+
+[node name="Tube2" type="CSGBox3D" parent="Tubes" unique_id=25066733]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6, 1.52)
+size = Vector3(1.4, 0.1, 0.08)
+
+[node name="Tube3" type="CSGBox3D" parent="Tubes" unique_id=1327415795]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7, 1.52)
+size = Vector3(1.4, 0.1, 0.08)
+
+[node name="Tube4" type="CSGBox3D" parent="Tubes" unique_id=1539001546]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.8, -1.52)
+size = Vector3(1.4, 0.1, 0.08)
+
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1429853746]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1.1)
+script = ExtResource("5_spawn")
+
+[node name="Shaft" type="CSGCombiner3D" parent="." unique_id=1373248730]
+material_override = SubResource("Mat_White")
+use_collision = true
+
+[node name="Outer" type="CSGBox3D" parent="Shaft" unique_id=1571582417]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+size = Vector3(4.4, 10, 4.4)
+
+[node name="Cavity" type="CSGBox3D" parent="Shaft" unique_id=4007904]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+operation = 2
+size = Vector3(3.2, 9, 3.2)
+
+[node name="DuctEast1" type="CSGBox3D" parent="Shaft" unique_id=667405377]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1, 0.9, 0)
+size = Vector3(1, 0.6, 2.2)
+
+[node name="DuctWest1" type="CSGBox3D" parent="Shaft" unique_id=1283576485]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1, 2.9, 0)
+size = Vector3(1, 0.6, 2.2)
+
+[node name="DuctEast2" type="CSGBox3D" parent="Shaft" unique_id=507066580]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.1, 4.9, 0)
+size = Vector3(1, 0.6, 2.2)
+
+[node name="DuctWest2" type="CSGBox3D" parent="Shaft" unique_id=315151334]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1, 6.9, 0)
+size = Vector3(1, 0.6, 2.2)
+
+[node name="Crate" type="CSGBox3D" parent="Shaft" unique_id=1508330993]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 1.1)
+size = Vector3(1.2, 0.6, 1.2)
+
+[node name="VentHousing" type="CSGBox3D" parent="Shaft" unique_id=710279135]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.7, -2.9)
+size = Vector3(1.6, 1.4, 1.6)
+
+[node name="VentBore" type="CSGBox3D" parent="Shaft" unique_id=1929095545]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.7, -2.9)
+operation = 2
+size = Vector3(1.2, 1, 2.8)
+
+[node name="Vision" type="CSGCombiner3D" parent="." unique_id=289927378]
+material_override = SubResource("Mat_Runner")
+
+[node name="HintEast1" type="CSGBox3D" parent="Vision" unique_id=92669009]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.59, 1.19, 0)
+size = Vector3(0.03, 0.06, 2.2)
+
+[node name="HintWest1" type="CSGBox3D" parent="Vision" unique_id=62169022]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.59, 3.19, 0)
+size = Vector3(0.03, 0.06, 2.2)
+
+[node name="HintEast2" type="CSGBox3D" parent="Vision" unique_id=926135988]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.59, 5.19, 0)
+size = Vector3(0.03, 0.06, 2.2)
+
+[node name="HintWest2" type="CSGBox3D" parent="Vision" unique_id=1687150347]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.59, 7.19, 0)
+size = Vector3(0.03, 0.06, 2.2)
+
+[node name="HintVent" type="CSGBox3D" parent="Vision" unique_id=814052186]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8.1744995, -1.5955796)
+size = Vector3(1.3, 0.07941896, 0.03)
+
+[node name="Player" parent="." unique_id=1621588944 instance=ExtResource("4_player")]
+
+[node name="DebugHud" type="CanvasLayer" parent="." unique_id=1471150412 node_paths=PackedStringArray("player")]
+script = ExtResource("6_hud")
+player = NodePath("../Player")
+
+[node name="TuningPanel" type="CanvasLayer" parent="." unique_id=656375935]
+script = ExtResource("7_panel")

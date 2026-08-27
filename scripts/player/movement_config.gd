@@ -23,6 +23,7 @@ extends Resource
 
 @export var walking: WalkingConfig = WalkingConfig.new()
 @export var jump: JumpConfig = JumpConfig.new()
+@export var coil: CoilConfig = CoilConfig.new()
 @export var falling: FallingConfig = FallingConfig.new()
 @export var fall_uncontrolled: FallUncontrolledConfig = FallUncontrolledConfig.new()
 @export var landing: LandingConfig = LandingConfig.new()
