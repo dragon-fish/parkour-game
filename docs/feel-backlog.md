@@ -2731,6 +2731,59 @@ MetalSprings      ["Chain.", "Shackles."]
 1. **半径是表现值，不写单测**（见 §57）。会不会穿模一眼可见，而写死一个半径只会在每次调整时报错。
 2. `spring_chains.gd` 的 `chain_prefixes` 曾经因为用 `PackedStringArray` 被编辑器重存时清空过（见 `.claude/skills/authoring-godot-scene-files`）。碰撞体列表如果也是数组导出，同一个坑要提防 —— 加完之后在编辑器里存一次再重新加载，确认它还在。
 
+### 补充：原作者的碰撞体参数可以直接抄，不必用眼睛调
+
+`_local/beriul_v1.5.1.zip` 里的 `beriul.prefab` 带着完整的 VRCPhysBone 配置，其中 8 个是碰撞体（把 `.prefab` 当 YAML 读，方法见 `.claude/skills/porting-unity-materials`）：
+
+| 挂载骨骼（VRM 名） | 形状 | 半径 | 高度 | 偏移 |
+| --- | --- | --- | --- | --- |
+| `Head` | 球 | 0.105 | — | (0, 0.095, -0.0055) |
+| `LeftUpperArm` / `RightUpperArm` | 胶囊 | 0.03 | 0.2 | (0, 0.1, 0) |
+| `LeftUpperLeg` / `RightUpperLeg` | 胶囊 | 0.035 | 0.2 | (0, 0.1, 0.01) |
+| `RightLowerLeg` | 胶囊 | 0.04 | 0.2 | (0, 0.15, 0.01) |
+| `RightFoot` | 胶囊 | 0.04 | 0.17 | (0, 0.03, 0.01) |
+| 地面 | 平面 | — | — | 不绑骨骼；骨架原点就是脚底 |
+
+原作的引用关系也一并留档，和上面按前缀猜的分组基本对得上：
+
+- `FrontHairRoot` / `AhogeHairRoot` → Head + 两条上臂（**`BackHairRoot` 原作没给碰撞**）
+- `ShacklesRoot` → 地面 + `RightLowerLeg` + `RightFoot`（脚镣穿地也是这条管的）
+- `StrapRoot` / `HemRoot.L/R` → 地面 + 两条大腿
+- `Wing.*` → 地面
+
+地面平面**不要绑骨骼**：绑上任何骨骼它都会跟着胯骨翻转，就不再是地面了。不绑时它待在骨架自己的空间里，原点即脚底，会随跳跃一起升高 —— 这正是"脚镣不许低于脚底"的意思。
+
+### 这些碰撞体在 Godot 4.7.1 里不生效
+
+上表已按原作参数加进 `beriul_body.tscn`（`HairSprings` 下三个、`MetalSprings` 下三个）。**它们目前不起任何作用。**
+
+判据是场景级对照：把碰撞体节点从 `.tscn` 里整个删掉跑一遍，再放回去跑一遍，摇头 240 帧后 80 个头发关节的最终坐标**逐位相同**。
+
+已排除的假设：
+
+1. 骨骼没绑上 —— `sphere.bone` 解析为 4（`Head`），`bone_name` 正确
+2. `all_child_collisions` 模式的问题 —— 改成白名单、显式 `set_collision_path()` 同样无效
+3. 模拟跑在 `center_bone_name = "Hips"` 的相对空间、碰撞体却在骨架空间 —— 清掉 center 也无效
+4. 赋值 `setting_count` 重建 settings 后碰撞缓存没刷新（引擎按 setting 缓存碰撞列表）—— 在 `_build()` 里逐 setting 补一次 `set_enable_all_child_collisions(idx, true)`，无效
+
+⚠️ **判据设计错了三轮才拿到可信结论**，值得记一笔：先是把链条锚点（发根贴着头皮，且碰撞本就不推锚点）算进了穿模统计；再是拿 `radius = 0.3` 的巨球当放大镜，可发辫总长不到 10 cm，碰撞就算生效也推不出那么远；最后用 210 帧 × 80 关节的坐标累加和做对照，量级 13721 的 float32 精度直接吃掉了局部差异。**运行时改 simulator 的属性也不反映到结果里**，所以"关掉碰撞"必须从场景文件层面做。见 `.claude/skills/verifying-visuals-headlessly`。
+
+继续排查后又排除了三条，并找到了上游 issue：
+
+5. **不是 `SpringChains` 的问题**。用**原生** `SpringBoneSimulator3D` 在真实骨架上手工配一条发辫（`FrontHair.1.L.001..004`）、关掉其余全部 modifier、挂一个 r=0.16 的球 —— 链条确实在动（发梢行程 0.18 m）、`sphere.bone` 解析为 `Head`、`all_child=true`，碰撞照样零效果。
+6. **不是缩放**。骨架节点及其所有父节点 scale 均为 1，336 根骨骼**没有一根** rest 带非单位缩放（社区常见的排查方向，这里不成立）。
+7. **不是回调模式**。把 `modifier_callback_mode_process` 切到 PHYSICS 并改用 `physics_frame` 驱动，结果逐位相同。
+
+**上游 issue：[godotengine/godot#110274](https://github.com/godotengine/godot/issues/110274) "Spring Bone Collisions not colliding with newly created chains"**（报告于 4.4.1 / 4.5 beta 6，本项目的 4.7.1 上仍复现）。症状完全吻合：碰撞体对**动态创建**的链条不生效，而"项目加载时就定义好的链条"不受影响。上游给的变通全是编辑器操作 —— 把碰撞体剪切再粘贴回模拟器，或存盘重开场景；**运行时 `remove_child` + `add_child` 试过，无效**。
+
+`SpringChains` 恰好整个建立在"运行时按骨骼名前缀发现链条"之上（`_build()` 里赋值 `setting_count`），正踩在这个触发条件上。
+
+**下一步方向**（都未验证）：
+
+- **把链条静态化**：给 `SpringChains` 加 `@tool`，在编辑器里把发现结果生成为 `.tscn` 里的静态 setting，让链条在加载时就存在。代价是换模型或改骨骼命名后要重新生成一次，好处是不必等上游。
+- **绕开引擎碰撞**：在 `SpringChains` 之后挂一个自己的 `SkeletonModifier3D`，把关节推出球外。可控，但骨长约束要自己处理。
+- 等上游修。
+
 ## 72. Coil 已实现，以及从中挖出的一条通用教训
 
 Coil（空中收腿）已经做完了，四条实测确证都记在
@@ -2835,3 +2888,42 @@ owner 用 ME Tweaks 的触发器可视化逐个看过：滑索、水管（梯子
 
 所以 `InterestLine` 维持现状（一条线 + 一个范围，判定本质是圆柱）。**若将来有人觉得
 catch 范围不够宽**，这条是线索：box 的角落比等宽圆柱够得更远，而原作的体积比看上去大。
+
+## 74. 两条从小天使模型移植里带出来的结论
+
+都不是当前批次的待办，但都已推导到位，动手时不必重来。
+
+### ① 布娃娃的碰撞胶囊是**推出来的**，而原作有量好的一套
+
+`ragdoll.gd` 目前这样定尺寸：
+
+```gdscript
+capsule.radius = clampf(length * RADIUS_RATIO, RADIUS_MIN, RADIUS_MAX)
+```
+
+也就是「半径正比于骨段长度」。**这条规则对一个 chibi 体型不成立** —— 头大、四肢短粗，比例本来就不服从它，推出来的胶囊和真实体型对不上。owner 反馈的「布娃娃特别诡异、怎么调都不满意」，很可能有一部分来自这里。这与 [§57](#57) / `.claude/skills/tuning-dials-not-rules` 是同一个形状：**该给一个能拨的数的地方，设计了一条推导规则。**
+
+原作 `beriul.prefab` 里带着按这个模型量好的碰撞体尺寸（提取方法见 `.claude/skills/reading-vrchat-avatar-config`），正好覆盖布娃娃需要的那几根骨头：
+
+| 骨骼（VRM 名） | 形状 | 半径 | 高度 |
+| --- | --- | --- | --- |
+| `Head` | 球 | 0.105 | — |
+| `LeftUpperArm` / `RightUpperArm` | 胶囊 | 0.03 | 0.2 |
+| `LeftUpperLeg` / `RightUpperLeg` | 胶囊 | 0.035 | 0.2 |
+| `RightLowerLeg` | 胶囊 | 0.04 | 0.2 |
+| `RightFoot` | 胶囊 | 0.04 | 0.17 |
+
+⚠️ **但关节角度限制原作没有，也不可能有。** 28 个 VRCPhysBone 全挂在头发、翅膀、裙摆、耳朵、脸颊上，身体主骨骼一根都没有 —— VRChat 没有布娃娃系统，作者没有理由配。锥角/摆幅那部分仍然只能自己调。
+
+（布娃娃代码已在 `master`，`scripts/player/ragdoll.gd`，由一个默认关闭的开关控制。）
+
+### ② 地板远处的点阵走样，抗锯齿救不了
+
+现象：主菜单/关卡地板的点在远处糊成一坨，有几行还糊在一起（owner 在 MSAA 4× 下观察到）。
+
+**MSAA 不是原因，也不是解药。** 点阵是 `scripts/ui/dot_grid.gdshader` 在片元着色器里程序化生成的高频图案；MSAA 只对**几何边缘**做多重采样，不改变片元着色器的输出。远处一个像素跨越好几个点的周期，采样只能命中其中一个，结果就是随机的深浅 —— 这是采样定理层面的走样，不是边缘锯齿。
+
+**修法方向**：在 shader 里按屏幕空间导数（`fwidth`）做解析抗锯齿，让点随距离平滑淡成均匀灰，而不是随机闪烁；或者改用带 mipmap 的纹理，把滤波交给硬件。
+
+⚠️ 「开 MSAA 之后才变糊」这一点**未经验证**：MSAA 进不了无头截图那条路径（见 `.claude/skills/verifying-visuals-headlessly` 的「截图路径的盲区」），所以无法从这边分辨是 MSAA 真的改变了什么，还是本来就有的走样被注意到了。要确认只需在游戏里把抗锯齿切到「关闭」看同一处地板。
+
