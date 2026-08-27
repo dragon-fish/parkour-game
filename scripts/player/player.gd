@@ -2780,10 +2780,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.physical_keycode == KEY_T:
 			toggle_noclip()
 		elif event.physical_keycode == KEY_V:
-			# V for view. A DEBUG toggle, sat next to noclip on purpose: a
-			# first-person game cannot show you its own body, so the mount
-			# height, the animation and the parkour poses are all unverifiable
-			# from inside it.
+			# V for view. Not a debug peek -- CameraRig saves the choice and
+			# keeps it across deaths (see its third_person note). One movement
+			# stack and one animation set behind both views, so this switches
+			# the camera and nothing else.
 			if camera_rig != null:
 				camera_rig.toggle_third_person()
 

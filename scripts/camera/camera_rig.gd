@@ -1033,11 +1033,12 @@ func _third_person_position() -> Vector3:
 	return wanted * fraction
 
 ## Flips between the first-person eye and the pulled-back one. Called from
-## Player's own debug-key handling, alongside noclip.
+## Player's V key. Saved, because the choice outlives the life it was made in.
 func toggle_third_person() -> void:
 	third_person = not third_person
 	if not third_person and camera != null:
 		camera.position = Vector3.ZERO
+	save_preferences()
 
 
 ## Picks which of the body's two mesh variants this camera renders.
@@ -1051,8 +1052,6 @@ func toggle_third_person() -> void:
 ## Only the two configured layers are ever touched. Everything else, layer 1
 ## included, is left alone -- so the world still draws, and a body with no layer
 ## split at all (every non-VRM model) is completely unaffected.
-	save_preferences()
-
 func _apply_body_layers() -> void:
 	if camera == null:
 		return
