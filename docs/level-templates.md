@@ -270,6 +270,14 @@ right node names. Run it (along with everything else) via
    you mean otherwise.
    Set kind = SWING instead and the same node is a swing bar (hang below,
    swing perpendicular to the line).
+4. `tag` is optional and only matters if a `ModifierVolume` is going to
+   forbid this particular line — `BLOCK_INTEREST_LINE` addresses a line **by
+   name**. An untagged line has no name to address and so can never be
+   singled out; it is still caught by a blanket ban on its whole kind
+   (`BLOCK_ZIPLINE`, `BLOCK_SWING`, `BLOCK_LADDER`). Blocking one rope does
+   not block rope: `tag = &"pipe_a"` under a `BLOCK_INTEREST_LINE` volume
+   takes that one cable out of play and leaves every other zipline in the
+   level catchable.
 
 The collision volume is built along the curve at runtime; do not add one by
 hand. The cable has no mesh yet — F12 draws it in play.
@@ -330,6 +338,116 @@ before release forgets the checkpoint and returns to the SpawnPoint (debug).
 The SpawnPoint wears the same preview in purple -- note its capsule hangs
 BELOW the marker: spawn markers were always placed at the body's centre
 height, and existing levels keep that convention.
+
+## Placing a modifier volume
+
+A `ModifierVolume` is how a level says "not here": a region that puts
+temporary, time-limited modifications on whoever walks in — a ground speed
+ceiling, a forbidden move, a forbidden named interest line, a forced camera
+view, a stumble. It is the only author-facing surface of the status layer.
+
+1. Add Node → `ModifierVolume` (an `Area3D`; the class comes from
+   `scripts/level/modifier_volume.gd`).
+2. Give it any `CollisionShape3D` children — like `Checkpoint`, the trigger
+   is whatever shape you build, of however many parts. A corridor can be
+   three boxes under one node.
+3. Fill in `apply` with one `StatusSpec` row per modification. Each row is
+   an `effect`, a `seconds`, and whichever payload field that effect reads.
+4. Optionally fill in `remove` to lift something on the way in. Only
+   `effect` and `subject` are read there; `amount`, `view` and `seconds` are
+   ignored. An empty `subject` lifts every subject of that effect.
+
+### The effect vocabulary
+
+| effect | reads | means |
+|---|---|---|
+| `SPEED_CAP` | `amount` | multiplies the ground speed ceiling (0..1) |
+| `FORCE_VIEW` | `view` | renders in `FIRST` or `THIRD` whatever the player's saved preference is, and leaves that preference untouched |
+| `BLOCK_INTEREST_LINE` | `subject` | forbids the one line whose `tag` matches |
+| `BLOCK_JUMP`, `BLOCK_SLIDE`, `BLOCK_SKILL_ROLL`, `BLOCK_COIL`, `BLOCK_WALL_RUN`, `BLOCK_WALL_CLIMB`, `BLOCK_GRAB`, `BLOCK_SPEED_VAULT`, `BLOCK_LADDER`, `BLOCK_ZIPLINE`, `BLOCK_SWING`, `BLOCK_TURN_180` | nothing | forbids that move |
+| `STAGGER` | nothing | stumbles the player into the hard-landing lockout |
+
+Every field not named in that table is ignored by that effect. There is no
+`BLOCK_WALKING`, `BLOCK_FALLING`, `BLOCK_LANDING`, `BLOCK_FALL_UNCONTROLLED`
+or `BLOCK_CROUCH`, and there never will be: each of those either strands the
+state machine or hangs the body in mid-air with nothing to run. Crouch in
+particular is a slide's only exit under a low ceiling. The way to stop a
+player crouching is geometry, not a status.
+
+`STAGGER` only lands on a player who is on the ground. A volume tall enough
+to cover a fence is entered in mid-air on purpose, and a stagger there would
+freeze the body in the sky for the whole lockout, so it is refused rather
+than queued for the landing.
+
+### Attaching a modification to a region rather than to a moment
+
+Nothing tracks who is inside a volume — there is no exit handler and no
+membership list. A region-wide modification is a short-lived status the
+volume keeps renewing:
+
+- Set `refresh_interval` to how often it re-applies, e.g. `0.5`.
+- Set each row's `seconds` to **at least twice** that, e.g. `1.0`.
+
+The status is then continuously renewed while the player is inside and lapses
+on its own shortly after they leave. Do not give `seconds` the same value as
+`refresh_interval`: both clocks then start from the same number and subtract
+the same delta, so the status expires on the very tick it is renewed and
+survives only because the volume is ordered ahead of the player. That is zero
+margin — anything that lets the two drift puts the expiry a frame ahead of the
+renewal, and one frame is enough for a buffered jump to fire inside a no-jump
+region. Twice the interval leaves a whole interval of slack.
+
+Leave `refresh_interval` at `0` for a one-shot: a status with a fixed
+`seconds` that starts counting the moment the player crosses the boundary and
+runs out wherever they happen to be.
+
+### `layer_priority`
+
+Which layer this volume speaks on, when two volumes claim the same status at
+once. Higher wins; equal layers keep whichever arrived first and push one
+warning naming both. **Leave it at 0 unless volumes actually overlap** — it
+exists for the case where a small exception box sits inside a large regional
+one, and the small one has to win.
+
+It is deliberately not called `priority`: `Area3D` already exports one, and
+that one governs which overlapping area's gravity and damping overrides win.
+Raising a status layer must not silently reorder physics.
+
+### `max_trigger_count`
+
+How many **entries** this volume acts on; `0` is unlimited. Refreshes never
+count — a polling volume renews many times per visit, and charging those
+would spend the whole budget on the first tick. `1` is "only on the first
+lap"; `0` is "every lap".
+
+The count is about one life: dying resets it, so a level that cripples the
+player at its start cripples them again after a death there.
+
+An accepted trade comes with that: a respawn inside a volume re-applies its
+statuses without charging the count (a respawn is not a player-initiated
+entry, and the reset zeroed the count moments earlier anyway). So a life that
+*begins* inside a `max_trigger_count = 1` volume ends the respawn with the
+count still at zero, and walking out and back in during that life can act
+once more.
+
+### What the configuration warnings mean
+
+The node reports these in the scene tree, before the level is ever run. Every
+one of them is silent at run time — the volume simply never fires, or fires
+with a payload nothing reads.
+
+- **No CollisionShape3D with a shape** — the volume can never be entered.
+- **Neither apply nor remove is set** — it does nothing.
+- **An empty row in `apply`** — a `StatusSpec` slot left null.
+- **SPEED_CAP with amount ≤ 0** — pins the player in place, which reads as
+  the level having hung.
+- **BLOCK_INTEREST_LINE with no subject** — blocks nothing; the effect
+  addresses a line by its `tag`.
+- **refresh_interval is set but a status lasts forever** — renewing is how a
+  status is meant to expire on the way out, and `INF` is what stops it ever
+  doing so, so it survives leaving the volume.
+- **A status no longer than the refresh interval** — it expires on the very
+  tick it is renewed, with no margin at all. See above.
 
 ## ⚠️ Do not put comments in a `.tscn`
 
