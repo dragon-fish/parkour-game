@@ -112,6 +112,15 @@ func nearest_interest_line(kind: InterestLine.Kind) -> InterestLine:
 	for line in interest_lines:
 		if not is_instance_valid(line) or line.kind != kind:
 			continue
+		# A level may forbid one named line while its siblings stay usable.
+		# Filtered HERE because this is the only place anything asks which
+		# line is reachable; the six callers all come through it.
+		#
+		# ONLY THE CATCH IS REFUSED, never a ride already under way: LineMove
+		# stores its line on entry and stops asking, so a rope forbidden under
+		# a player already hanging from it does not drop them.
+		if statuses.is_line_blocked(line.tag):
+			continue
 		var at: Vector3 = line.sample(line.closest_offset(global_position))["position"]
 		var distance: float = at.distance_to(global_position)
 		if distance < best_distance:
