@@ -216,6 +216,16 @@ func test_a_status_no_longer_than_the_refresh_interval_is_flagged() -> void:
 	v.refresh_interval = 0.1
 	assert_eq(_warned(v), 1, "a status that expires on its own refresh tick was not flagged")
 
+func test_a_refresh_interval_below_one_physics_tick_is_flagged() -> void:
+	# Behaviourally harmless -- the accumulator goes negative and it refreshes
+	# every tick, which is already the maximum cadence -- and that is exactly
+	# why it needs flagging: it looks like it works, while the number the
+	# author typed means nothing at all.
+	var v := _shaped_volume()
+	v.apply = [_cap(0.5, 1.0)]
+	v.refresh_interval = 0.5 / maxf(float(Engine.physics_ticks_per_second), 1.0)
+	assert_eq(_warned(v), 1, "a sub-tick refresh interval was not flagged")
+
 func test_a_status_lasting_twice_the_interval_is_not_flagged() -> void:
 	# The documented pairing, and the negative that keeps the check honest.
 	var v := _shaped_volume()

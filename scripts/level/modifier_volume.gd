@@ -199,6 +199,16 @@ func _get_configuration_warnings() -> PackedStringArray:
 		elif spec.effect == Status.Effect.BLOCK_INTEREST_LINE and spec.subject == &"":
 			warnings.append("BLOCK_INTEREST_LINE with no subject blocks nothing.")
 	if refresh_interval > 0.0:
+		# Nothing can refresh more often than the physics tick it runs on: the
+		# accumulator simply goes negative and fires every tick, which reads as
+		# working while the number the author typed means nothing. Tick rate
+		# from the engine, not 60 -- see Move._ready(), which reads it the same
+		# way for the same reason.
+		var one_tick: float = 1.0 / maxf(float(Engine.physics_ticks_per_second), 1.0)
+		if refresh_interval < one_tick:
+			warnings.append(("refresh_interval %.4fs is shorter than one physics "
+				+ "tick (%.4fs): it cannot refresh more often than once a tick.") \
+				% [refresh_interval, one_tick])
 		for spec in apply:
 			if spec == null:
 				continue
