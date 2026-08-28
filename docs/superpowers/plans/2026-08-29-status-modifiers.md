@@ -1593,6 +1593,205 @@ git push origin feat/status-modifiers
 
 ---
 
+### Task 10: Inspector 里看得懂、填得快
+
+**Files:**
+- Modify: `scripts/player/status/status_spec.gd`
+- Modify: `scripts/level/modifier_volume.gd`
+- Test: `tests/test_status_spec_inspector.gd`
+
+**Interfaces:**
+- Consumes: Task 1 的 `StatusSpec`、Task 8 的 `ModifierVolume`
+- Produces: `StatusSpec.summary() -> String`
+
+**为什么需要**：`Array[StatusSpec]` 默认在检查器里显示成一排一模一样的 `StatusSpec`，
+点开每一条才知道是什么；而且每种效果都会摊开全部四个载荷字段，其中三个对它无意义。
+关卡作者摆十个体积就会开始出错。
+
+- [ ] **Step 1: 写失败的测试**
+
+创建 `tests/test_status_spec_inspector.gd`：
+
+```gdscript
+extends ParkourTest
+
+# The editor-facing half of StatusSpec. Not a tuning value and not a visual --
+# a wrong summary or a stray field is a level authored wrong, which is a
+# structural problem.
+
+func _spec(effect: int) -> StatusSpec:
+	var s := StatusSpec.new()
+	s.effect = effect
+	return s
+
+func test_the_summary_names_the_effect_and_its_payload() -> void:
+	var cap := _spec(Status.Effect.SPEED_CAP)
+	cap.amount = 0.5
+	cap.seconds = 2.0
+	var text := cap.summary()
+	assert_string_contains(text, "SPEED_CAP", "the effect is not named")
+	assert_string_contains(text, "0.5", "the payload is missing")
+	assert_string_contains(text, "2", "the duration is missing")
+
+func test_an_endless_status_says_so_rather_than_printing_inf() -> void:
+	var block := _spec(Status.Effect.BLOCK_JUMP)
+	block.seconds = INF
+	assert_string_contains(block.summary(), "until removed", 		"an endless status printed a number")
+
+func test_a_line_block_shows_which_line() -> void:
+	var b := _spec(Status.Effect.BLOCK_INTEREST_LINE)
+	b.subject = &"pipe1"
+	assert_string_contains(b.summary(), "pipe1", "the subject is missing")
+
+func test_only_the_fields_an_effect_reads_stay_visible() -> void:
+	# _validate_property() hides the rest. Checked through the same reflection
+	# the inspector uses, so this fails if the schema and the UI drift apart.
+	var block := _spec(Status.Effect.BLOCK_JUMP)
+	var hidden := []
+	for prop in block.get_property_list():
+		if prop["name"] in ["amount", "subject", "view"] 				and (prop["usage"] & PROPERTY_USAGE_EDITOR) == 0:
+			hidden.append(prop["name"])
+	assert_eq(hidden.size(), 3, "BLOCK_JUMP still shows payload it never reads")
+
+	var cap := _spec(Status.Effect.SPEED_CAP)
+	for prop in cap.get_property_list():
+		if prop["name"] == "amount":
+			assert_true((prop["usage"] & PROPERTY_USAGE_EDITOR) != 0, 				"SPEED_CAP hid the one field it does read")
+```
+
+- [ ] **Step 2: 跑测试确认它失败**
+
+Run: `bun tools/run_tests.ts status_spec_inspector`
+Expected: FAIL，报 `Nonexistent function 'summary'`。
+
+- [ ] **Step 3: 写实现**
+
+把 `scripts/player/status/status_spec.gd` 改为（保留 Task 1 的字段与注释，加上以下三段）：
+
+```gdscript
+@tool
+class_name StatusSpec
+extends Resource
+```
+
+在字段声明中给每个 setter 挂上刷新（Godot 只在 setter 里通知才会重画检查器）：
+
+```gdscript
+@export var effect: Status.Effect = Status.Effect.SPEED_CAP:
+	set(value):
+		effect = value
+		# Both are needed: the first re-runs _validate_property() so the
+		# irrelevant payload fields disappear, the second redraws the array
+		# row's own label.
+		notify_property_list_changed()
+		_refresh_name()
+@export var amount: float = 0.0:
+	set(value):
+		amount = value
+		_refresh_name()
+@export var subject: StringName = &"":
+	set(value):
+		subject = value
+		_refresh_name()
+@export var view: Status.View = Status.View.FIRST:
+	set(value):
+		view = value
+		_refresh_name()
+@export var seconds: float = INF:
+	set(value):
+		seconds = value
+		_refresh_name()
+```
+
+追加：
+
+```gdscript
+## One line describing this entry, for a human reading a list of them.
+##
+## Shown as the array row's own label in the inspector: without it every row
+## reads "StatusSpec" and a volume with four entries has to be opened four
+## times to find out what it does.
+func summary() -> String:
+	var name := Status.Effect.keys()[effect]
+	var payload := ""
+	match effect:
+		Status.Effect.SPEED_CAP:
+			payload = " %.2f" % amount
+		Status.Effect.FORCE_VIEW:
+			payload = " %s" % Status.View.keys()[view]
+		Status.Effect.BLOCK_INTEREST_LINE:
+			payload = " %s" % subject
+	var span := " (until removed)" if is_inf(seconds) else " (%.3g s)" % seconds
+	return "%s%s%s" % [name, payload, span]
+
+func _refresh_name() -> void:
+	resource_name = summary()
+
+## Hides the payload fields an effect does not read. The schema above
+## Status.Effect is the authority; this keeps the inspector honest about it,
+## so an author cannot fill in a number that will be ignored.
+func _validate_property(property: Dictionary) -> void:
+	var used := ""
+	match effect:
+		Status.Effect.SPEED_CAP:
+			used = "amount"
+		Status.Effect.FORCE_VIEW:
+			used = "view"
+		Status.Effect.BLOCK_INTEREST_LINE:
+			used = "subject"
+	if property.name in ["amount", "subject", "view"] and property.name != used:
+		property.usage &= ~PROPERTY_USAGE_EDITOR
+```
+
+在 `scripts/level/modifier_volume.gd` 加编辑器侧的检查，让摆错的体积在场景树里就红：
+
+```gdscript
+func _get_configuration_warnings() -> PackedStringArray:
+	var warnings := PackedStringArray()
+	var has_shape := false
+	for child in get_children():
+		if child is CollisionShape3D and child.shape != null:
+			has_shape = true
+	if not has_shape:
+		warnings.append("No CollisionShape3D with a shape: this volume can never be entered.")
+	if apply.is_empty() and remove.is_empty():
+		warnings.append("Neither apply nor remove is set: this volume does nothing.")
+	for spec in apply:
+		if spec == null:
+			warnings.append("An empty row in `apply`.")
+		elif spec.effect == Status.Effect.SPEED_CAP and spec.amount <= 0.0:
+			warnings.append("SPEED_CAP with amount %.2f pins the player in place." % spec.amount)
+		elif spec.effect == Status.Effect.BLOCK_INTEREST_LINE and spec.subject == &"":
+			warnings.append("BLOCK_INTEREST_LINE with no subject blocks nothing.")
+	if refresh_interval > 0.0:
+		for spec in apply:
+			if spec != null and is_inf(spec.seconds):
+				warnings.append("refresh_interval is set but a status lasts forever: " 					+ "it will not lapse when the player leaves.")
+	return warnings
+```
+
+并在 `apply` / `remove` / `refresh_interval` 的 setter 里调 `update_configuration_warnings()`，
+否则改完属性警告不刷新。
+
+- [ ] **Step 4: 跑测试确认通过**
+
+Run: `bun tools/run_tests.ts status_spec_inspector`
+Expected: PASS，4 个测试全绿。
+
+- [ ] **Step 5: 跑全套**
+
+Run: `bun tools/run_tests.ts`
+Expected: 全绿。`@tool` 让 `StatusSpec` 在编辑器里也会跑，`_refresh_name()` 不得触碰场景树。
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add scripts/player/status/status_spec.gd scripts/level/modifier_volume.gd tests/test_status_spec_inspector.gd
+git commit -m "feat(status): a volume's entries read as themselves in the inspector"
+```
+
+---
+
 ## 收尾核对
 
 全部任务完成后：
