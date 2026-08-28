@@ -103,6 +103,14 @@ func exit_interest_line(line: InterestLine) -> void:
 	# Leaving the volume is what re-arms the line -- see note_line_left().
 	_lines_awaiting_exit.erase(line.get_instance_id())
 
+## Entry points for ModifierVolume, duck-typed the same way touch_checkpoint()
+## and enter_interest_line() are: the volume does not know what a Player is.
+func apply_status(spec: StatusSpec, source: Object, priority: int) -> void:
+	statuses.apply(spec, source, priority)
+
+func remove_status(effect: int, subject: StringName) -> void:
+	statuses.remove(effect, subject)
+
 ## The closest line of `kind` the body is inside, by distance from the body to
 ## the line's nearest point, or null. Two overlapping volumes are rare enough
 ## that "closest" is all the arbitration this needs.
