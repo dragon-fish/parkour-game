@@ -66,11 +66,18 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		#   touchdown, fall <  2.0 m, moving -> Slide      (here)
 		#   grounded, not moving          -> Crouch
 		# There are no chords, no hold-versus-tap, no direction modifiers.
-		# Gated BEFORE consume_roll(), so a blocked slide does not spend the
-		# press -- the same reason the jump block sits on the buffer rather
-		# than on the transition.
-		if not player.statuses.is_move_blocked(SLIDE) and player.consume_roll():
-			if player.horizontal_speed() >= config.slide.slide_abort_speed:
+		# GBA_Crouch has five outlets and this branch owns two of them, on a
+		# single press. They must be refused INDEPENDENTLY: a level that
+		# forbids sliding has not forbidden crouching. DO NOT collapse the two
+		# into one check -- that either eats the press for a move the level
+		# still allows, or spends it on a move the level forbade.
+		var slide_blocked: bool = player.statuses.is_move_blocked(SLIDE)
+		var crouch_blocked: bool = player.statuses.is_move_blocked(CROUCH)
+		var wants_slide: bool = not slide_blocked \
+			and player.horizontal_speed() >= config.slide.slide_abort_speed
+		# The press is spent only when it can still produce a move.
+		if (wants_slide or not crouch_blocked) and player.consume_roll():
+			if wants_slide:
 				# Same floor-snap bias as the fall-through path below. Without
 				# it, a slide started on a downslope can leave the floor on
 				# this very tick and bounce straight back out to Falling.
