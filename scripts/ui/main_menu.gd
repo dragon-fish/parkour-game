@@ -793,7 +793,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		# The invited click on the held title shot: play the whole show.
 		_begin_show()
 	else:
-		# Mid-show impatience: jump straight to the settled menu.
+		# Mid-show impatience: jump straight to the settled menu. An entrance
+		# already watched a dozen times is not worth forcing on someone in a
+		# hurry, so this stays reachable for the whole show -- only the part
+		# under the white sheet is out of reach, and that is PauseUi._input's
+		# doing, not a guard here.
 		_skip_entrance()
 
 # ---------------------------------------------------------------------------

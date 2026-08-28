@@ -139,6 +139,24 @@ func _build_footer() -> void:
 	_footer = MeTheme.footer_label("Esc 继续 · Enter 确认")
 	add_child(_footer)
 
+## The cover swallows input for every scene under it. Keyed on the sheet's
+## own `visible` rather than a flag of its own: the two can then never fall
+## out of sync, and there is no reset to forget -- a stuck flag here would
+## kill input for the rest of the run.
+##
+## Runs in _input, not _unhandled_input, because that is what gets ahead of
+## the scene's own handlers: the current scene enters the tree after this
+## autoload, so it is offered _input first, but nothing reaches
+## _unhandled_input once the event is marked handled.
+##
+## DOES NOT cover Player. KeyboardInputSource polls Input.is_key_pressed()
+## rather than reading events, and no amount of set_input_as_handled()
+## reaches a poll -- player.lock_input() in run_white_transition() is still
+## what holds the player still under the white.
+func _input(_event: InputEvent) -> void:
+	if _white != null and _white.visible:
+		get_viewport().set_input_as_handled()
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey):
 		return
