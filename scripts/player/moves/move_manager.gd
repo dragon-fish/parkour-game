@@ -185,10 +185,20 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	# inside a move, for the same reason: they are facts about the whole move
 	# set. FALL_UNCONTROLLED is exempt -- a body already dying has nothing
 	# left to stumble.
+	#
+	# GROUNDED IS PART OF THE CONDITION, not a nicety. LandingMove.enter()
+	# zeroes velocity and its physics_update() then descends at
+	# floor_snap_speed with no gravity, so a stagger caught in mid-air hangs
+	# the body in the sky for the whole lockout -- the outcome Status.Effect's
+	# own note says must stay inexpressible. REFUSED, NOT QUEUED: a volume
+	# tall enough to cover a fence is entered in mid-air on purpose, and a
+	# stagger held until touchdown would fire at a moment the player has
+	# already left the volume behind and cannot connect to anything.
 	var next: StringName = Move.KEEP
-	if player != null and player.statuses.has(Status.Effect.STAGGER) \
+	var staggering := false
+	if player != null and player.grounded and player.statuses.has(Status.Effect.STAGGER) \
 			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LANDING:
-		player.statuses.remove(Status.Effect.STAGGER)
+		staggering = true
 		next = Move.LANDING
 	if next == Move.KEEP:
 		next = _turn_requested(input)
@@ -221,6 +231,12 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	current_name = next
 	_arm_declaration_check()
 	_current.enter(from)
+	# SPENT ONLY ONCE THE TRANSITION HAS COMMITTED. Removing it where the
+	# stagger was chosen would let a redo cooldown on LANDING refuse the
+	# transition after the status had already been consumed, so the stagger
+	# would vanish without ever having staggered anyone.
+	if staggering:
+		player.statuses.remove(Status.Effect.STAGGER)
 	move_changed.emit(from, next)
 	_push_look_constraint()
 
