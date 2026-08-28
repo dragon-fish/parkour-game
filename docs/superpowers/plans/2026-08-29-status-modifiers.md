@@ -21,6 +21,7 @@
 - **Commit message 用英文，遵循 Conventional Commits。**
 - 分支已存在：`feat/status-modifiers`。**不要合并到 master。**
 - 新文件放在 `scripts/player/status/`（新目录）与 `scripts/level/`。**绝不创建名为 `local` 或 `local_*` 的目录。**
+- **测试里造 Player 一律用 `tests/world_fixture.gd` 的 `TestWorld.build(get_tree(), MovementConfig.new())`，用完 `TestWorld.teardown(world)`。** 直接 `instantiate()` 得到的 Player 没有 config，也没有 `fall_tracker` / `speed_energy` / `statuses`——**`Player.setup()` 才是构造点，`_ready()` 不是。**
 
 ---
 
@@ -582,10 +583,22 @@ extends ParkourTest
 # asserted is that the reading changes at all, and that it changes in the one
 # place every caller already goes through.
 
+const TestWorld = preload("res://tests/world_fixture.gd")
+
+var _worlds: Array = []
+
+# A Player does NOT configure itself: setup(config, input) has to be called
+# after it enters the tree, or config, fall_tracker, speed_energy and statuses
+# are all null. TestWorld.build() does that, and gives a floor to stand on.
 func _player() -> Player:
-	var p: Player = preload("res://scenes/player/player.tscn").instantiate()
-	add_child_autofree(p)
-	return p
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_worlds.append(world)
+	return world["player"]
+
+func after_each() -> void:
+	for world in _worlds:
+		TestWorld.teardown(world)
+	_worlds.clear()
 
 func _cap_spec(scale: float) -> StatusSpec:
 	var s := StatusSpec.new()
@@ -640,7 +653,7 @@ Expected: FAIL，报 `Invalid access to property or key 'statuses'`。
 var statuses: StatusList
 ```
 
-在 `_ready` 的构造区（`fall_tracker = FallTracker.new()` 那两行之后，约 1036 行）加：
+在 **`setup()`**（1029 行起，*不是* `_ready()`）中，`fall_tracker = FallTracker.new()` / `speed_energy = SpeedEnergy.new(...)` 那两行之后加：
 
 ```gdscript
 	statuses = StatusList.new()
@@ -833,10 +846,22 @@ git commit -m "feat(status): block a move where it commits, not where it announc
 ```gdscript
 extends ParkourTest
 
+const TestWorld = preload("res://tests/world_fixture.gd")
+
+var _worlds: Array = []
+
+# A Player does NOT configure itself: setup(config, input) has to be called
+# after it enters the tree, or config, fall_tracker, speed_energy and statuses
+# are all null. TestWorld.build() does that, and gives a floor to stand on.
 func _player() -> Player:
-	var p: Player = preload("res://scenes/player/player.tscn").instantiate()
-	add_child_autofree(p)
-	return p
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_worlds.append(world)
+	return world["player"]
+
+func after_each() -> void:
+	for world in _worlds:
+		TestWorld.teardown(world)
+	_worlds.clear()
 
 func _spec(effect: int) -> StatusSpec:
 	var s := StatusSpec.new()
@@ -965,10 +990,22 @@ git commit -m "feat(status): the manager refuses a forbidden move and honours a 
 ```gdscript
 extends ParkourTest
 
+const TestWorld = preload("res://tests/world_fixture.gd")
+
+var _worlds: Array = []
+
+# A Player does NOT configure itself: setup(config, input) has to be called
+# after it enters the tree, or config, fall_tracker, speed_energy and statuses
+# are all null. TestWorld.build() does that, and gives a floor to stand on.
 func _player() -> Player:
-	var p: Player = preload("res://scenes/player/player.tscn").instantiate()
-	add_child_autofree(p)
-	return p
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_worlds.append(world)
+	return world["player"]
+
+func after_each() -> void:
+	for world in _worlds:
+		TestWorld.teardown(world)
+	_worlds.clear()
 
 func _line(tag: StringName, at: Vector3) -> InterestLine:
 	var l := InterestLine.new()
@@ -1080,10 +1117,22 @@ git commit -m "feat(status): forbid one rope by name without forbidding rope"
 ```gdscript
 extends ParkourTest
 
+const TestWorld = preload("res://tests/world_fixture.gd")
+
+var _worlds: Array = []
+
+# A Player does NOT configure itself: setup(config, input) has to be called
+# after it enters the tree, or config, fall_tracker, speed_energy and statuses
+# are all null. TestWorld.build() does that, and gives a floor to stand on.
 func _player() -> Player:
-	var p: Player = preload("res://scenes/player/player.tscn").instantiate()
-	add_child_autofree(p)
-	return p
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_worlds.append(world)
+	return world["player"]
+
+func after_each() -> void:
+	for world in _worlds:
+		TestWorld.teardown(world)
+	_worlds.clear()
 
 func _force(view: int) -> StatusSpec:
 	var s := StatusSpec.new()
@@ -1218,10 +1267,22 @@ git commit -m "feat(status): a room may force the view without rewriting what th
 ```gdscript
 extends ParkourTest
 
+const TestWorld = preload("res://tests/world_fixture.gd")
+
+var _worlds: Array = []
+
+# A Player does NOT configure itself: setup(config, input) has to be called
+# after it enters the tree, or config, fall_tracker, speed_energy and statuses
+# are all null. TestWorld.build() does that, and gives a floor to stand on.
 func _player() -> Player:
-	var p: Player = preload("res://scenes/player/player.tscn").instantiate()
-	add_child_autofree(p)
-	return p
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_worlds.append(world)
+	return world["player"]
+
+func after_each() -> void:
+	for world in _worlds:
+		TestWorld.teardown(world)
+	_worlds.clear()
 
 func _cap(scale: float, seconds: float) -> StatusSpec:
 	var s := StatusSpec.new()
