@@ -5,10 +5,14 @@ class_name Status
 # author-facing, and a value that does not exist cannot be authored by mistake.
 #
 # DO NOT add BLOCK_WALKING / BLOCK_FALLING / BLOCK_LANDING /
-# BLOCK_FALL_UNCONTROLLED. Blocking any of those strands the state machine or
-# leaves the body hanging in mid-air with nothing to run. Their absence from
-# this enum IS the guard -- there is no validation to write, no warning to
-# raise, and no error to report, because the mistake cannot be expressed.
+# BLOCK_FALL_UNCONTROLLED / BLOCK_CROUCH. Blocking any of those strands the
+# state machine or leaves the body hanging in mid-air with nothing to run.
+# CROUCH belongs in that set for the same reason as the other four, and the
+# case is a slide under a long low ceiling: SlideMove's only exit there is
+# CROUCH, so a block on it makes a slide that cannot end and cannot be
+# steered out of. Their absence from this enum IS the guard -- there is no
+# validation to write, no warning to raise, and no error to report, because
+# the mistake cannot be expressed.
 
 ## The three-valued answer StatusList.forced_view() gives, and the values
 ## StatusSpec.view may take. NONE is only ever RETURNED -- an author cannot
@@ -34,7 +38,6 @@ enum Effect {
 	BLOCK_SLIDE,
 	BLOCK_SKILL_ROLL,
 	BLOCK_COIL,
-	BLOCK_CROUCH,
 	BLOCK_WALL_RUN,
 	BLOCK_WALL_CLIMB,
 	BLOCK_GRAB,

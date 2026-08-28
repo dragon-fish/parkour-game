@@ -137,14 +137,13 @@ func _warn_conflict(key: String, incumbent: Object, newcomer: Object) -> void:
 ## Which move name maps to which blocking effect.
 ##
 ## A move absent from this table can never be blocked, whatever a caller asks.
-## WALKING, FALLING, LANDING and FALL_UNCONTROLLED are absent on purpose -- see
-## the note above Status.Effect.
+## WALKING, FALLING, LANDING, FALL_UNCONTROLLED and CROUCH are absent on
+## purpose -- see the note above Status.Effect.
 const MOVE_EFFECTS: Dictionary = {
 	Move.JUMP: Status.Effect.BLOCK_JUMP,
 	Move.SLIDE: Status.Effect.BLOCK_SLIDE,
 	Move.SKILL_ROLL: Status.Effect.BLOCK_SKILL_ROLL,
 	Move.COIL: Status.Effect.BLOCK_COIL,
-	Move.CROUCH: Status.Effect.BLOCK_CROUCH,
 	Move.WALL_RUN: Status.Effect.BLOCK_WALL_RUN,
 	Move.WALL_CLIMB: Status.Effect.BLOCK_WALL_CLIMB,
 	Move.GRAB: Status.Effect.BLOCK_GRAB,

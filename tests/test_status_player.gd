@@ -139,32 +139,35 @@ func test_a_blocked_slide_still_falls_through_to_crouch() -> void:
 	assert_true(p.move_manager.current_name == Move.CROUCH, \
 		"a slide-blocked player running fast did not fall through to Crouch")
 
-func test_a_blocked_crouch_leaves_a_slow_press_unspent() -> void:
-	# CROUCH blocked, SLIDE free, but too slow to earn a slide: neither
-	# outlet can fire, and -- the point of this test -- the press must
-	# survive. consume_roll() read directly afterward is the same check
-	# production code uses; a second, still-true read proves nothing spent it.
+func test_a_running_slide_still_reaches_its_crouch_outlet_while_blocked() -> void:
+	# THE OUTLET MUST BE PROVEN OPEN. SlideMove hands a key-held exit to
+	# CROUCH, and under a low ceiling that is its ONLY exit -- a slide that
+	# cannot reach it is a slide with no input that escapes it. BLOCK_SLIDE
+	# arrives mid-slide here, which is the status a level would really have
+	# in force around a slide it does not want, and the exit still has to
+	# open. Nothing can block CROUCH itself; that is what makes this safe.
 	var world := _world()
 	var p: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
 	await step(1)
 	TestWorld.place(world)
-	# Same settle margin as test_crouch_entry.gd's standing case -- WalkingMove
-	# has to actually be the active move, and grounded, before the press below
-	# means anything.
-	await step(30)
-	assert_true(p.move_manager.current_name == Move.WALKING, "test setup: not walking")
-	assert_true(p.horizontal_speed() < p.config.slide.slide_abort_speed, \
-		"test setup: moving too fast for this to be the standing case")
-	# Deliberately not run up to speed: stays below slide_abort_speed.
-	p.statuses.apply(_block_spec(Status.Effect.BLOCK_CROUCH), p, 0)
+	await step(2)
+	await _run_up_to_slide_speed(world)
+	# press_crouch() leaves crouch_held set; poll() only clears the edge, so
+	# the key stays down for the rest of the test without further help.
 	input.press_crouch()
-	await step(3)
-	assert_true(p.move_manager.current_name != Move.CROUCH \
-		and p.move_manager.current_name != Move.SLIDE, \
-		"a blocked, too-slow crouch still produced a move")
-	assert_true(p.consume_roll(), \
-		"the block spent a press that could never have produced a move")
+	await step(2)
+	assert_true(p.move_manager.current_name == Move.SLIDE, "test setup: never entered Slide")
+	p.statuses.apply(_block_spec(Status.Effect.BLOCK_SLIDE), p, 0)
+	# Stop asking for forward motion so the slide decays into its own
+	# spent-and-key-held exit rather than being cut short by a release.
+	input.state.move = Vector2.ZERO
+	for i in 200:
+		await step(1)
+		if p.move_manager.current_name != Move.SLIDE:
+			break
+	assert_eq(p.move_manager.current_name, Move.CROUCH, \
+		"a spent slide with the key still held did not reach CROUCH")
 
 func test_a_blocked_roll_lands_without_rolling() -> void:
 	var world := _world()

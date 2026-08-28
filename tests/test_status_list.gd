@@ -147,13 +147,24 @@ func test_a_blocked_move_is_reported_by_its_own_name() -> void:
 	assert_false(list.is_move_blocked(Move.SLIDE), "SLIDE was blocked too")
 
 func test_a_move_with_no_effect_of_its_own_can_never_be_blocked() -> void:
-	# WALKING / FALLING / LANDING / FALL_UNCONTROLLED have no enum value, so
-	# the table has no row for them and the answer is always false. This is the
-	# other half of the guard: the mistake cannot be authored, and it cannot be
-	# reached by accident either.
+	# WALKING / FALLING / LANDING / FALL_UNCONTROLLED / CROUCH have no enum
+	# value, so the table has no row for them and the answer is always false.
+	# This is the other half of the guard: the mistake cannot be authored, and
+	# it cannot be reached by accident either. CROUCH is in the set because it
+	# is SlideMove's only outlet under a low ceiling.
 	var list := StatusList.new()
-	for name in [Move.WALKING, Move.FALLING, Move.LANDING, Move.FALL_UNCONTROLLED]:
+	for name in [Move.WALKING, Move.FALLING, Move.LANDING, Move.FALL_UNCONTROLLED, Move.CROUCH]:
 		assert_false(list.is_move_blocked(name), "%s was blockable" % name)
+
+func test_no_effect_in_the_enum_reaches_crouch() -> void:
+	# Stronger than the table lookup above: every value the enum can take is
+	# applied in turn, and CROUCH stays open through all of them. A row added
+	# back for CROUCH under any effect name fails here.
+	var list := StatusList.new()
+	for effect in Status.Effect.values():
+		list.apply(_spec(effect), _source("a"), 0)
+		assert_false(list.is_move_blocked(Move.CROUCH), \
+			"effect %d closed the CROUCH outlet" % effect)
 
 func test_only_the_named_line_is_blocked() -> void:
 	var list := StatusList.new()
