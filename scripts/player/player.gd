@@ -2725,6 +2725,16 @@ func _physics_process(delta: float) -> void:
 	# Aged alongside the other timers and BEFORE the moves run, so a status
 	# that expires this tick is already gone by the time anything reads it.
 	statuses.tick(delta)
+	# AHEAD OF EVERY READER OF in_third_person(), and immediately after the
+	# ageing above so it answers for this tick rather than the last one. Both
+	# _drive_body_yaw() below and the moves consult the rig for which view is
+	# being rendered; pushed after them, the tick a FORCE_VIEW arrives or
+	# lapses is answered with the previous tick's view.
+	# FallUncontrolledMove.enter() is why that matters: it latches its eye lift
+	# once, for the whole death, so a stale read there is wrong until the body
+	# stops falling. _drive_body_yaw() would merely be wrong for a frame.
+	if camera_rig != null:
+		camera_rig.forced_view = statuses.forced_view()
 	# Before the moves run, so the body moves this tick at whatever size it is
 	# now entitled to. A restore owed from an exit under a ceiling comes back
 	# on the first tick there is room for it.
@@ -2760,7 +2770,6 @@ func _physics_process(delta: float) -> void:
 	# on once regardless of whether anything is listening this tick.
 	var landing_impact := consume_landing()
 	if camera_rig != null:
-		camera_rig.forced_view = statuses.forced_view()
 		if landing_impact >= 0.0:
 			camera_rig.punch_landing(landing_impact)
 		# Read from the CAPSULE, not the state name: naming SLIDE and CROUCH
