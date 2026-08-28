@@ -1141,6 +1141,7 @@ func reset_state() -> void:
 
 func _build_moves() -> void:
 	move_manager = MoveManager.new()
+	move_manager.player = self
 	add_child(move_manager)
 
 	# name -> [move instance, its own config]. One table instead of the
