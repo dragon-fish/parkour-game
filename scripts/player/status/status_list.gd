@@ -127,3 +127,53 @@ func _warn_conflict(key: String, incumbent: Object, newcomer: Object) -> void:
 	_warning_total += 1
 	push_warning("StatusList: %s and %s both claim %s at the same priority; " % \
 		[incumbent, newcomer, key] + "the first one keeps it. Give one a higher priority.")
+
+# --- queries -----------------------------------------------------------------
+#
+# Read straight off the entry table rather than folded into a per-tick
+# resolution object: at most one entry answers each question, so there is
+# nothing to fold and nothing to allocate.
+
+## Which move name maps to which blocking effect.
+##
+## A move absent from this table can never be blocked, whatever a caller asks.
+## WALKING, FALLING, LANDING and FALL_UNCONTROLLED are absent on purpose -- see
+## the note above Status.Effect.
+const MOVE_EFFECTS: Dictionary = {
+	Move.JUMP: Status.Effect.BLOCK_JUMP,
+	Move.SLIDE: Status.Effect.BLOCK_SLIDE,
+	Move.SKILL_ROLL: Status.Effect.BLOCK_SKILL_ROLL,
+	Move.COIL: Status.Effect.BLOCK_COIL,
+	Move.CROUCH: Status.Effect.BLOCK_CROUCH,
+	Move.WALL_RUN: Status.Effect.BLOCK_WALL_RUN,
+	Move.WALL_CLIMB: Status.Effect.BLOCK_WALL_CLIMB,
+	Move.GRAB: Status.Effect.BLOCK_GRAB,
+	Move.INTO_GRAB: Status.Effect.BLOCK_GRAB,
+	Move.SPEED_VAULT: Status.Effect.BLOCK_SPEED_VAULT,
+	Move.LADDER: Status.Effect.BLOCK_LADDER,
+	Move.ZIPLINE: Status.Effect.BLOCK_ZIPLINE,
+	Move.SWING: Status.Effect.BLOCK_SWING,
+	Move.TURN_180: Status.Effect.BLOCK_TURN_180,
+}
+
+## The ground speed ceiling factor in force, or 1.0.
+func speed_scale() -> float:
+	var key := _key(Status.Effect.SPEED_CAP, &"")
+	var e: Dictionary = _entries.get(key, {})
+	return e.get("amount", 1.0) if not e.is_empty() else 1.0
+
+func is_move_blocked(move_name: StringName) -> bool:
+	if not MOVE_EFFECTS.has(move_name):
+		return false
+	return has(MOVE_EFFECTS[move_name])
+
+## An untagged line is never blocked: BLOCK_INTEREST_LINE addresses by name,
+## and a line the author did not name has no name to address.
+func is_line_blocked(line_tag: StringName) -> bool:
+	if line_tag == &"":
+		return false
+	return has(Status.Effect.BLOCK_INTEREST_LINE, line_tag)
+
+func forced_view() -> int:
+	var e: Dictionary = _entries.get(_key(Status.Effect.FORCE_VIEW, &""), {})
+	return e.get("view", Status.View.NONE) if not e.is_empty() else Status.View.NONE

@@ -130,3 +130,59 @@ func test_signals_report_what_arrived_and_what_left() -> void:
 	assert_signal_emitted(list, "status_applied", "no status_applied")
 	list.tick(1.1)
 	assert_signal_emitted(list, "status_removed", "no status_removed")
+
+func test_speed_scale_is_one_without_a_cap() -> void:
+	var list := StatusList.new()
+	assert_almost_eq(list.speed_scale(), 1.0, 0.0001, "an empty list scaled the cap")
+
+func test_speed_scale_reports_the_cap_in_force() -> void:
+	var list := StatusList.new()
+	list.apply(_spec(Status.Effect.SPEED_CAP, INF, 0.5), _source("a"), 0)
+	assert_almost_eq(list.speed_scale(), 0.5, 0.0001, "the cap was not reported")
+
+func test_a_blocked_move_is_reported_by_its_own_name() -> void:
+	var list := StatusList.new()
+	list.apply(_spec(Status.Effect.BLOCK_JUMP), _source("a"), 0)
+	assert_true(list.is_move_blocked(Move.JUMP), "JUMP was not blocked")
+	assert_false(list.is_move_blocked(Move.SLIDE), "SLIDE was blocked too")
+
+func test_a_move_with_no_effect_of_its_own_can_never_be_blocked() -> void:
+	# WALKING / FALLING / LANDING / FALL_UNCONTROLLED have no enum value, so
+	# the table has no row for them and the answer is always false. This is the
+	# other half of the guard: the mistake cannot be authored, and it cannot be
+	# reached by accident either.
+	var list := StatusList.new()
+	for name in [Move.WALKING, Move.FALLING, Move.LANDING, Move.FALL_UNCONTROLLED]:
+		assert_false(list.is_move_blocked(name), "%s was blockable" % name)
+
+func test_only_the_named_line_is_blocked() -> void:
+	var list := StatusList.new()
+	list.apply(_spec(Status.Effect.BLOCK_INTEREST_LINE, INF, 0.0, &"pipe1"), _source("a"), 0)
+	assert_true(list.is_line_blocked(&"pipe1"), "pipe1 was not blocked")
+	assert_false(list.is_line_blocked(&"pipe2"), "pipe2 was blocked too")
+	assert_false(list.is_line_blocked(&""), "an untagged line was blocked")
+
+func test_forced_view_is_none_until_something_forces_it() -> void:
+	var list := StatusList.new()
+	assert_eq(list.forced_view(), Status.View.NONE, "an empty list forced a view")
+
+func test_forced_view_reports_which_view_is_forced() -> void:
+	var list := StatusList.new()
+	var spec := _spec(Status.Effect.FORCE_VIEW)
+	spec.view = Status.View.FIRST
+	list.apply(spec, _source("a"), 0)
+	assert_eq(list.forced_view(), Status.View.FIRST, "the forced view was not reported")
+
+func test_the_two_views_are_one_key_so_the_layer_decides() -> void:
+	# First and third person are two VALUES of one effect, not two effects. As
+	# two effects they would be two keys, could coexist, and the priority rule
+	# -- which only compares within a key -- would never see them.
+	var list := StatusList.new()
+	var first := _spec(Status.Effect.FORCE_VIEW)
+	first.view = Status.View.FIRST
+	var third := _spec(Status.Effect.FORCE_VIEW)
+	third.view = Status.View.THIRD
+	list.apply(first, _source("low"), 0)
+	list.apply(third, _source("high"), 1)
+	assert_eq(list.entry_count(), 1, "the two views became two entries")
+	assert_eq(list.forced_view(), Status.View.THIRD, "the higher layer did not win")
