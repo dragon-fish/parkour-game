@@ -4,7 +4,7 @@
 
 **Goal:** 给 Player 加一层可被关卡体积附加/解除的临时状态（限速、禁用动作、强制视角、禁用具体兴趣点、受伤硬直），各个 Move 对其无感知。
 
-**Architecture:** 一个有限的 `Effect` 枚举 + 一个 `RefCounted` 的 `StatusList` 挂在 `Player.statuses` 上，键为 `(effect, subject)`，冲突由体积的 `priority` 图层裁定。每条状态只有一个 `seconds` 生命周期（`INF` 或有限）；区域性附着靠 `ModifierVolume` 每 `refresh_interval` 重施来实现，因此不需要追踪谁在体积内。各落点读 `StatusList` 的查询方法，全部是既有的单一读取点。
+**Architecture:** 一个有限的 `Effect` 枚举 + 一个 `RefCounted` 的 `StatusList` 挂在 `Player.statuses` 上，键为 `(effect, subject)`，冲突由体积的 `layer_priority` 图层裁定。每条状态只有一个 `seconds` 生命周期（`INF` 或有限）；区域性附着靠 `ModifierVolume` 每 `refresh_interval` 重施来实现，因此不需要追踪谁在体积内。各落点读 `StatusList` 的查询方法，全部是既有的单一读取点。
 
 **Tech Stack:** Godot 4.7 / GDScript，GUT 测试框架（经 `bun tools/run_tests.ts`）。
 
@@ -1256,7 +1256,7 @@ git commit -m "feat(status): a room may force the view without rewriting what th
 **Interfaces:**
 - Consumes: `StatusSpec`、`Player.statuses`
 - Produces:
-  - `ModifierVolume` 导出：`apply: Array[StatusSpec]`、`remove: Array[StatusSpec]`、`refresh_interval: float`、`priority: int`、`max_trigger_count: int`
+  - `ModifierVolume` 导出：`apply: Array[StatusSpec]`、`remove: Array[StatusSpec]`、`refresh_interval: float`、`layer_priority: int`、`max_trigger_count: int`
   - `ModifierVolume.reset_trigger_count() -> void`
   - 组名 `"modifier_volumes"`
 
@@ -1418,7 +1418,9 @@ extends Area3D
 ## Which layer this volume speaks on. When two volumes claim the same status,
 ## the higher layer wins; equal layers keep the incumbent and report once.
 ## Leave at 0 unless volumes actually overlap.
-@export var priority: int = 0
+## DO NOT name this `priority`: Area3D already exports one, governing which
+## overlapping area's physics overrides win. Two meanings, one slot.
+@export var layer_priority: int = 0
 
 ## How many ENTRIES this volume acts on, 0 for unlimited. Refreshes do not
 ## count -- a polling volume renews many times per visit, and charging those
@@ -1470,7 +1472,7 @@ func _on_body_entered(body: Node3D) -> void:
 func _push_apply(body: Node3D) -> void:
 	for spec in apply:
 		if spec != null:
-			body.apply_status(spec, self, priority)
+			body.apply_status(spec, self, layer_priority)
 
 ## Called on respawn. The count is about one life: a level that cripples the
 ## player at its start has to cripple them again after they die there.

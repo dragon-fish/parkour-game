@@ -268,7 +268,10 @@ func forced_view() -> int                       # Status.View.NONE / FIRST / THI
 ## > 0 时每这么久重施一次 `apply`，用于区域性附着。0 = 只在入场时施加一次。
 @export var refresh_interval: float = 0.0
 ## 图层。与其它体积冲突时高者胜；相同则忽略后来者并警告一次。
-@export var priority: int = 0
+##
+## 不叫 `priority`：`Area3D` 已有同名原生属性，管的是重叠 Area 之间物理覆盖
+## （重力、阻尼）的处理顺序。复用它会让作者调图层时静默改变物理覆盖优先级。
+@export var layer_priority: int = 0
 ## 最多触发几次，0 = 无限。计的是**入场次数**，不计 refresh_interval 的重施。
 @export var max_trigger_count: int = 0
 ```
