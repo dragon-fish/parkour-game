@@ -101,3 +101,9 @@ func _push_apply(body: Node3D) -> void:
 ## player at its start has to cripple them again after they die there.
 func reset_trigger_count() -> void:
 	_entries_used = 0
+
+## Treats a respawn inside this volume as a fresh entry. See
+## Arena._reapply_overlapping_modifiers() for why this cannot be left to the
+## area's own signal.
+func enter_body_after_respawn(body: Node3D) -> void:
+	_on_body_entered(body)

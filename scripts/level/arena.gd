@@ -451,6 +451,13 @@ func reset_player() -> void:
 		player.global_position = spawn_point.global_position
 		player.rotation = Vector3.ZERO
 	player.reset_state()
+	# EVERY temporary modification is a property of one life. Cleared here
+	# rather than in reset_state() because the volumes that put them there are
+	# a level concern, and the re-arming below needs the level anyway.
+	player.statuses.clear_all()
+	for volume in get_tree().get_nodes_in_group("modifier_volumes"):
+		volume.reset_trigger_count()
+	_reapply_overlapping_modifiers()
 	if player.camera_rig != null:
 		player.camera_rig.reset_state()
 	# Restart the move manager in Walking so a reset behaves like a fresh
@@ -498,3 +505,23 @@ func reset_player() -> void:
 	# guard the resumed access rather than touching a freed instance.
 	if is_instance_valid(player):
 		player.set_physics_process(true)
+
+## Re-applies every ModifierVolume the body is currently standing in.
+##
+## REQUIRED, NOT DEFENSIVE. A respawn teleports the body without the areas
+## ever reporting an exit -- the same reason Player.reset_state() clears
+## interest_lines by hand -- so a body that respawns INSIDE a volume has not
+## left it and body_entered will never fire again. The opening level puts its
+## permanent statuses on a volume covering the spawn point, so without this
+## the player wakes up cured: able to run and jump after a death that should
+## have changed nothing.
+##
+## Volumes with a refresh_interval would recover on their own at the next
+## poll; INF ones never would. Both are covered here rather than relying on
+## which kind a level happened to use.
+func _reapply_overlapping_modifiers() -> void:
+	if not is_instance_valid(player):
+		return
+	for volume in get_tree().get_nodes_in_group("modifier_volumes"):
+		if volume.overlaps_body(player):
+			volume.enter_body_after_respawn(player)
