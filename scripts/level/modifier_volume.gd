@@ -13,7 +13,10 @@ extends Area3D
 # not an oversight.
 
 ## Put these on whoever enters.
-@export var apply: Array[StatusSpec] = []
+@export var apply: Array[StatusSpec] = []:
+	set(value):
+		apply = value
+		update_configuration_warnings()
 ## Take these off whoever enters. Only `effect` and `subject` are read;
 ## `amount`, `view` and `seconds` are ignored. An empty `subject` takes every
 ## subject of that effect.
@@ -21,7 +24,10 @@ extends Area3D
 ## StatusSpec rather than Array[Status.Effect] because the latter has nowhere
 ## to put a subject, and "unblock pipe A while pipe B stays blocked" would
 ## become inexpressible.
-@export var remove: Array[StatusSpec] = []
+@export var remove: Array[StatusSpec] = []:
+	set(value):
+		remove = value
+		update_configuration_warnings()
 
 ## Above zero, re-apply `apply` this often while a body is inside. This is how
 ## a region-wide modification is expressed: pair it with a StatusSpec.seconds
@@ -30,7 +36,19 @@ extends Area3D
 ##
 ## THE POINT IS THAT NOTHING TRACKS MEMBERSHIP. No body_exited handler, no
 ## list of who is inside, and therefore no overlap bookkeeping.
-@export var refresh_interval: float = 0.0
+@export var refresh_interval: float = 0.0:
+	set(value):
+		refresh_interval = value
+		update_configuration_warnings()
+		# A volume with no interval must not be running a per-frame callback at
+		# all. Gated here rather than in _ready() because an export set
+		# imperatively after the node enters the tree (as every test does) would
+		# otherwise be read at its still-default value and leave polling off for
+		# good. DO NOT drop the is_inside_tree() guard: a setter runs before
+		# _ready() during scene instantiation, and _ready() applies the settled
+		# value for that case.
+		if is_inside_tree():
+			set_physics_process(refresh_interval > 0.0)
 
 ## Which layer this volume speaks on. When two volumes claim the same status,
 ## the higher layer wins; equal layers keep the incumbent and report once.
@@ -59,13 +77,12 @@ func _ready() -> void:
 		return
 	add_to_group("modifier_volumes")
 	body_entered.connect(_on_body_entered)
-	# Always on, not gated by `refresh_interval > 0.0` here: exports set
-	# imperatively after the node enters the tree (as every test in this
-	# file does) would otherwise be read at their still-default value and
-	# leave polling off for good. _physics_process() re-checks every frame.
-	set_physics_process(true)
+	# The setter could not apply this before the node was in the tree.
+	set_physics_process(refresh_interval > 0.0)
 
 func _physics_process(delta: float) -> void:
+	# Belt to the setter's brace. Load-bearing in the editor, where _ready()
+	# returns before the gate and physics processing is on from tree entry.
 	if Engine.is_editor_hint() or refresh_interval <= 0.0:
 		return
 	_refresh_owed -= delta
@@ -123,3 +140,30 @@ func enter_body_after_respawn(body: Node3D) -> void:
 	if not body.has_method("apply_status"):
 		return
 	_apply_entry_effects(body)
+
+## Flags a volume that cannot do what it was placed to do, in the scene tree,
+## before the level is ever run. Every case here is silent at runtime: the
+## volume simply never fires, or fires with a payload nothing reads.
+func _get_configuration_warnings() -> PackedStringArray:
+	var warnings := PackedStringArray()
+	var has_shape := false
+	for child in get_children():
+		if child is CollisionShape3D and child.shape != null:
+			has_shape = true
+	if not has_shape:
+		warnings.append("No CollisionShape3D with a shape: this volume can never be entered.")
+	if apply.is_empty() and remove.is_empty():
+		warnings.append("Neither apply nor remove is set: this volume does nothing.")
+	for spec in apply:
+		if spec == null:
+			warnings.append("An empty row in `apply`.")
+		elif spec.effect == Status.Effect.SPEED_CAP and spec.amount <= 0.0:
+			warnings.append("SPEED_CAP with amount %.2f pins the player in place." % spec.amount)
+		elif spec.effect == Status.Effect.BLOCK_INTEREST_LINE and spec.subject == &"":
+			warnings.append("BLOCK_INTEREST_LINE with no subject blocks nothing.")
+	if refresh_interval > 0.0:
+		for spec in apply:
+			if spec != null and is_inf(spec.seconds):
+				warnings.append("refresh_interval is set but a status lasts forever: "
+					+ "it will not lapse when the player leaves.")
+	return warnings

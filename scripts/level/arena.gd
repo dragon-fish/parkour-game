@@ -400,10 +400,12 @@ func restart_from_spawn() -> void:
 
 ## Teleports the player to spawn and clears its velocity.
 ##
-## NOT synchronous: this spans a physics frame (see below), so it completes
-## one tick after the call returns. Callers must not assume the player is
-## already at spawn immediately after calling this — await a physics_frame
-## first if the result needs to be observed.
+## NOT synchronous: this spans two physics frames (see below), so it completes
+## two ticks after the call returns — the teleport settles on the first, the
+## overlapping volumes are re-applied on the second. Callers must not assume
+## the player is already at spawn immediately after calling this, and a caller
+## that reads status state must await both ticks: after only one, the statuses
+## of the new life have not been put on yet.
 func reset_player() -> void:
 	# FIRST, before anything else here. Every route into this function is a
 	# respawn happening NOW -- the R key, falling out of the level, and the
@@ -501,9 +503,12 @@ func reset_player() -> void:
 	_resetting_physics = false
 	# player (or the whole arena) may have been freed while this coroutine
 	# was suspended — e.g. queue_free() called shortly after a reset — so
-	# guard the resumed access rather than touching a freed instance.
+	# guard the resumed access rather than touching a freed instance. An arena
+	# that left the tree also has no get_tree() to await on below.
 	if is_instance_valid(player):
 		player.set_physics_process(true)
+	if not is_inside_tree():
+		return
 
 	# THE OVERLAP LIST DESCRIBES WHERE THE BODY WAS. Area3D rebuilds it once
 	# per physics frame and before that frame's step, so overlaps_body() is
@@ -521,7 +526,7 @@ func reset_player() -> void:
 	# settle and its length is load-bearing (see its comment). This wait
 	# delays only the re-application.
 	await get_tree().physics_frame
-	if is_instance_valid(player):
+	if is_instance_valid(player) and is_inside_tree():
 		_reapply_overlapping_modifiers()
 
 ## Re-applies every ModifierVolume the body is currently standing in.
