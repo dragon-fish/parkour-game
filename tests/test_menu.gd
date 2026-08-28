@@ -527,3 +527,37 @@ func test_keeping_a_display_change_leaves_it_in_place() -> void:
 
 	assert_eq(SettingsStore.load_settings().window_size, Vector2i(2560, 1440),
 		"a confirmed size was reverted anyway")
+
+
+# ---------------------------------------------------------------------------
+# The pre-entrance input window. MainMenu._ready() awaits six process frames
+# (the framing solve needs a live skeleton pose) before _play_entrance()
+# schedules anything, while _entrance_active starts true and
+# _unhandled_input is live the moment the node enters the tree. A key press
+# landing in that window -- exactly the window a white transition covers --
+# must not leave the menu in a state _ready() then walks back over.
+# ---------------------------------------------------------------------------
+
+func test_a_key_before_the_entrance_is_scheduled_does_not_replay_the_prompt() -> void:
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(2)
+
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_SPACE
+	key.pressed = true
+	key.echo = false
+	menu._unhandled_input(key)
+
+	# Past _ready()'s six frames and past LOGO_HOLD * 0.5, which is where
+	# _show_click_prompt() fires if the entrance was scheduled after the skip.
+	await step(60)
+
+	# Asserted as coherence rather than as one outcome: whether that key is
+	# swallowed or honoured is a decision, but the two states must never
+	# overlap, and the menu must never end up unable to take input at all.
+	var settled: bool = menu._menu_list.is_visible_in_tree()
+	assert_false(settled and menu._click_prompt.visible,
+		"the click prompt is breathing over a menu that has already settled")
+	assert_true(settled or menu._entrance_active,
+		"the menu neither settled nor still takes input -- nothing can reach it")

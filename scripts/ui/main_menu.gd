@@ -140,7 +140,15 @@ var _run_orbit_t := 0.0
 var _stand_head_y := 1.43
 
 var _active_tweens: Array[Tween] = []
-var _entrance_active: bool = true
+## False until _play_entrance() actually schedules the show. _ready()
+## awaits six frames for the framing solve before that happens, and
+## _unhandled_input is live for every one of them -- a white transition
+## covers exactly this window. DO NOT start this true: skipping an
+## entrance that has not been scheduled settles the menu, and _ready()
+## then resumes into _frame_close() + _play_entrance(), reframing the
+## settled menu back to the opening close-up and replaying the click
+## prompt over it, with nothing left able to take input.
+var _entrance_active: bool = false
 var _beat_rise_fired: bool = false
 var _beat_title_fired: bool = false
 
@@ -617,6 +625,7 @@ func _track(tween: Tween) -> Tween:
 ## 同时发生的" -- after the LOGO_HOLD, everything launches TOGETHER; the walk
 ## takes over when the rise lands, and settle waits for the longest strand.
 func _play_entrance() -> void:
+	_entrance_active = true
 	# ✅ THE OWNER (final flow): the game HOLDS on the opening shot -- the
 	# crouched close-up with the mark -- and the prompt breathes there. The
 	# click is what plays the whole show: rise, orbit, walk, menu.
