@@ -19,7 +19,9 @@
   无关，有关的那一条显式声明。
 - 通知走 **signal**（`status_applied` / `status_removed`），只报告不投票。
 - 三种生命周期：**跟随来源**（在体积内）、**挂到被解除**（LATCH）、**倒计时**。
-- 死亡复活清空全部 Status、重置 `once`，**并重新施加玩家当前重叠的体积**。
+- 死亡复活清空全部 Status、重置触发计数，**并重新施加玩家当前重叠的体积**。
+- 禁用有两个维度：禁**动作类别**（`BlockMoves`）与禁**具体可交互物**（`BlockInterestLines`）。
+  两者都来自原作，见 [12 §12.3](../../mirrors-edge-deep-research/12-关卡标注与Kismet.md)。
 
 [ME:CONFIRMED] 这个形状是原作自己的做法：`TdPawn` 的 CDO 上就挂着一批 Pawn 级运行时
 开关（`bTakeFallDamage`、`GravityModifier`、`OverrideWalkingState` /
@@ -30,8 +32,8 @@
 
 ## 1. 范围
 
-**包含**：`Status` 基类与六个子类、`StatusList`、`StatusResolution`、
-`ModifierVolume`、各落点接线、复活清理、观察 signal、测试。
+**包含**：`Status` 基类与七个子类、`StatusList`、`StatusResolution`、
+`ModifierVolume`、`InterestLine.tag`、各落点接线、复活清理、观察 signal、测试。
 
 **不包含**：
 
@@ -81,6 +83,8 @@ func is_sustained() -> bool:
 var speed_scale: float = 1.0
 ## 当集合用：StringName -> true。Dictionary 而非 Array，因为读取端问的是"在不在里面"。
 var blocked_moves: Dictionary = {}
+## 同上，键是 InterestLine.tag。
+var blocked_lines: Dictionary = {}
 var forced_view: int = ForcedView.NONE   # NONE | FIRST | THIRD
 ```
 
@@ -110,7 +114,7 @@ var forced_view: int = ForcedView.NONE   # NONE | FIRST | THIRD
 是 no-op；`apply_timed` 是唯一的例外，它刷新 `seconds_left`（重复触碰铁丝网应当续上硬直，
 而不是排队）。没有层数概念——`SpeedCap(0.5)` 挂两次仍是 0.5。
 
-不去重的话，一个 `once = false` 的 LATCH 体积被反复进出会把同一条 Status 无限追加进
+不去重的话，一个 `max_trigger_count = 0` 的 LATCH 体积被反复进出会把同一条 Status 无限追加进
 列表；`min` / 并集折叠看不出差别，但列表会无界增长，而 `remove_by_tag` 只拿掉一条。
 
 `resolve()` 按**施加顺序**遍历，返回新的 `StatusResolution`。
@@ -124,6 +128,7 @@ var forced_view: int = ForcedView.NONE   # NONE | FIRST | THIRD
 | `UnlockStatus` | fire-only | `target_tag: StringName`，空 = 清空全部 |
 | `SpeedCapStatus` | 持续 | `scale: float = 1.0` |
 | `BlockMovesStatus` | 持续 | `moves: Array[StringName]` |
+| `BlockInterestLinesStatus` | 持续 | `line_tags: Array[StringName]` |
 | `ForceViewStatus` | 持续 | `view: int`（FIRST / THIRD） |
 
 合并规则（写在 `StatusResolution` 的类注释里，作为读者查阅的唯一出处）：
@@ -131,7 +136,7 @@ var forced_view: int = ForcedView.NONE   # NONE | FIRST | THIRD
 | 通道 | 规则 | 为什么 |
 |---|---|---|
 | `speed_scale` | `min` | 从 0.3 的窄道踏进重叠的 0.5 大厅体积不该变快 |
-| `blocked_moves` | 并集 | 禁用是单向的，任何一条说禁就是禁 |
+| `blocked_moves` / `blocked_lines` | 并集 | 禁用是单向的，任何一条说禁就是禁 |
 | `forced_view` | 最后加入者 | 一人称与三人称之间没有"更严格"一说。顺序是显式的施加顺序，与场景结构无关 |
 
 ## 4. 落点表
@@ -142,7 +147,8 @@ var forced_view: int = ForcedView.NONE   # NONE | FIRST | THIRD
 |---|---|
 | `speed_scale` | `Player.speed_cap()`（`player.gd:3519`）末尾乘系数。所有问"极速是多少"的地方都走这里；`MoveConfig.speed_modifier`（下蹲 0.4）是同一形状的既有先例 |
 | `forced_view` | `CameraRig` 新增 `forced_view` 覆盖字段。**`third_person` 存盘偏好一字节不动**——`camera_rig.gd:1033` 的 `toggle_third_person()` 每次都 `save_preferences()`，共用字段会让玩家进一次室内偏好被永久改写。覆盖生效期间 V 键无效 |
-| `blocked_moves` | 见下方分路由 |
+| `blocked_moves` | 见 §4.1 分路由 |
+| `blocked_lines` | `Player.nearest_interest_line()`（`player.gd:109`），见 §4.2 |
 
 `speed_cap()` 被缩小时，速度能量**不清空**：能量的累积闸门本身就按
 `speed_cap() * move_speed_modifier` 度量（`player.gd:3587`，注释里已写明下蹲的同款理由），
@@ -175,7 +181,34 @@ var forced_view: int = ForcedView.NONE   # NONE | FIRST | THIRD
 或让人凭空悬空。`ModifierVolume` 在 `_get_configuration_warnings()` 里报（编辑器可见），
 `StatusList` 在运行时 `push_error`。
 
-### 4.2 `StaggerStatus`
+### 4.2 `blocked_lines`：禁用具体的可交互物
+
+[12 §12.3](../../mirrors-edge-deep-research/12-关卡标注与Kismet.md) 记录了原作成对出现
+的 21 组 `LOI xxx` / `NO LOI xxx` 远程事件——它**逐个**启用/停用兴趣点。这与
+`BlockMoves` 是两个维度：一个禁**能力**（"不许爬梯子"），一个禁**具体物件**
+（"这一根管子现在还不能爬，那一根可以"）。教程关"到这一步之前那根管子抓不住"用的是
+后者。
+
+`InterestLine` 新增一个导出字段：
+
+```gdscript
+## 让 BlockInterestLinesStatus 能指名道姓。留空 = 不可被单独禁用。
+@export var tag: StringName = &""
+```
+
+这是本批工作唯一动到既有类的改动。
+
+落点只有一处：`Player.nearest_interest_line()`（`player.gd:109`）在评选"最近的那根"时
+跳过 tag 被禁的线。六个调用点（`airborne_move` ×3、`walking_move`、`wall_run_move`、
+`line_move`）全部经由它，`player.interest_lines` 在 `player.gd` 之外没有直接读者，所以
+一个过滤器覆盖全部。
+
+**只拦"抓上去"，不把正在用的人甩下来。** `LineMove.enter()` 在 `player.gd:109` 取到线
+之后就把它存进自己的 `_line`，此后不再询问；因此禁用一根玩家已经挂在上面的线，不会
+让他中途掉下去。这是刻意的——参见 `.claude/skills/` 里那条"保护的触发条件若等于功能的
+使用场景，那是阉割不是保护"：把人从半空的滑索上摘下来不是禁用，是害人。
+
+### 4.3 `StaggerStatus`
 
 在 `MoveManager.physics_update()` 里 `_turn_requested()` 的**同一个位置**检查
 `player.pending_stagger` 并转 `LANDING`——`_turn_requested()`（Q 键 → `TURN_180`）已经是
@@ -195,13 +228,20 @@ var forced_view: int = ForcedView.NONE   # NONE | FIRST | THIRD
 @export var statuses: Array[Status] = []
 @export var mode: Mode = Mode.WHILE_INSIDE   # WHILE_INSIDE | LATCH | TIMED
 @export var duration: float = 0.0            # 仅 TIMED
-@export var once: bool = false
+## 最多触发几次，0 = 无限。计数由复活重置。
+@export var max_trigger_count: int = 0
 ```
 
 - `mode` 只管持续型 Status，映射到 `StatusList` 的三个施加入口
   （`WHILE_INSIDE` → `apply_held(status, self)`）。
 - fire-only 的 Status（台词、硬直、解锁）无视 `mode`，进入即触发一次。
-- `once`：触发过就不再触发，直到复活重置。
+
+**`max_trigger_count` 是整数而不是 `once: bool`。** [ME:CONFIRMED
+12 §12.3](../../mirrors-edge-deep-research/12-关卡标注与Kismet.md) 原作 `SeqEvent` 上
+的对应字段就是 `MaxTriggerCount`（0 = 无限），教程关那两个 `SeqEvent_TdTouch` 都取 0。
+
+理由不只是同构：**教程关是一条回环**（12 §12.4），体积会被反复进入，而"只在第一圈放
+这段台词"和"每圈都放"是两种需求——布尔盖不住中间地带，整数免费覆盖，实现成本一样。
 
 体积上的 `tag` **不单独存在**——tag 是 Status 自己的字段。逐个技巧解锁需要各自的 tag，
 把它放在体积上会强迫作者为每个 tag 拆一个体积。
@@ -212,7 +252,7 @@ var forced_view: int = ForcedView.NONE   # NONE | FIRST | THIRD
 `finished`），在其中：
 
 1. `player.statuses.clear_all()`
-2. 遍历 `modifier_volumes` 组，清 `once` 已触发标记
+2. 遍历 `modifier_volumes` 组，把各自的触发计数清零
 3. **重新施加玩家当前重叠的体积**
 
 第 3 步是必需的，不是保险。开场关卡的病房把 LATCH 状态盖在出生点上：玩家出生在体积
@@ -238,11 +278,12 @@ HUD、音效、教程提示、调试面板挂这上面。
 
 - 折叠：两条 `SpeedCap` 重叠取 min；`blocked_moves` 取并集；`forced_view` 取最后加入者
 - 生命周期：`WHILE_INSIDE` 出体积必还原；`LATCH` 出体积不还原；`apply_timed` 到点自动消失
-- `once`：触发后不再触发
-- 复活：`clear_all()` 后列表为空、`once` 已重置、**且当前重叠的体积被重新施加**
+- `max_trigger_count`：取 1 时触发一次后不再触发；取 0 时反复进出反复触发；取 3 时第四次不触发
+- 复活：`clear_all()` 后列表为空、触发计数已清零、**且当前重叠的体积被重新施加**
 - `ForceView` 生效并解除后，`camera_rig.third_person` 与进入前逐字节相同
 - `BlockMovesStatus([JUMP])` 时按跳跃键，`velocity.y` **不变**（专盯 4.1 的半完成状态）
 - `BlockMovesStatus([SKILL_ROLL])` 落地后速度按**未翻滚**结算
+- `BlockInterestLinesStatus`：被禁 tag 的线不再被 `nearest_interest_line()` 选中；**同类未被禁的另一根仍能选中**（证明粒度是物件不是类别）；已挂在被禁线上的 `LineMove` 不被中断
 - 不可锁清单里的名字进数组会 `push_error`
 
 前四组不需要物理世界（`StatusList` 是 `RefCounted`）。
