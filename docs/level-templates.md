@@ -365,7 +365,7 @@ view, a stumble. It is the only author-facing surface of the status layer.
 | `FORCE_VIEW` | `view` | renders in `FIRST` or `THIRD` whatever the player's saved preference is, and leaves that preference untouched |
 | `BLOCK_INTEREST_LINE` | `subject` | forbids the one line whose `tag` matches |
 | `BLOCK_JUMP`, `BLOCK_SLIDE`, `BLOCK_SKILL_ROLL`, `BLOCK_COIL`, `BLOCK_WALL_RUN`, `BLOCK_WALL_CLIMB`, `BLOCK_GRAB`, `BLOCK_SPEED_VAULT`, `BLOCK_LADDER`, `BLOCK_ZIPLINE`, `BLOCK_SWING`, `BLOCK_TURN_180` | nothing | forbids that move |
-| `STAGGER` | nothing | stumbles the player into the hard-landing lockout |
+| `STAGGER` | `seconds`, read differently — see below | stumbles the player into the hard-landing lockout |
 
 Every field not named in that table is ignored by that effect. There is no
 `BLOCK_WALKING`, `BLOCK_FALLING`, `BLOCK_LANDING`, `BLOCK_FALL_UNCONTROLLED`
@@ -374,10 +374,28 @@ state machine or hangs the body in mid-air with nothing to run. Crouch in
 particular is a slide's only exit under a low ceiling. The way to stop a
 player crouching is geometry, not a status.
 
-`STAGGER` only lands on a player who is on the ground. A volume tall enough
-to cover a fence is entered in mid-air on purpose, and a stagger there would
-freeze the body in the sky for the whole lockout, so it is refused rather
-than queued for the landing.
+### `STAGGER` waits for the ground
+
+`STAGGER` never stumbles a body that is in the air — the lockout drops the
+body at a fixed rate with no gravity, so a stumble started up there would
+freeze it in the sky until the lockout ran out. It is not thrown away up
+there either: it sits on the player and fires on the first tick the body is
+back on the ground. A volume tall enough to cover a fence is entered in
+mid-air on purpose, and vaulting through barbed wire strung at fence height
+should still put the player down on the far side.
+
+**For `STAGGER`, `seconds` is a queue window, not a duration.** For every
+other effect `seconds` says how long the modification lasts. Here it says how
+long the stumble stays pending, and therefore how far outside the volume it
+can land:
+
+- A short window — `0.3` — means the stumble only lands if the player touches
+  down promptly. Clear the volume with a long jump and nothing happens.
+- A long window — `3.0` — follows them well past the fence and takes them
+  down wherever they eventually land.
+
+If the window runs out while the player is still airborne, the stagger is
+gone and the touchdown is an ordinary landing.
 
 ### Attaching a modification to a region rather than to a moment
 
@@ -448,6 +466,10 @@ with a payload nothing reads.
   doing so, so it survives leaving the volume.
 - **A status no longer than the refresh interval** — it expires on the very
   tick it is renewed, with no margin at all. See above.
+- **refresh_interval shorter than one physics tick** — the one entry here that
+  is not a broken volume. It refreshes every tick, which is already as often
+  as anything can, so a value like `0.008` behaves exactly like one whole
+  tick and the number typed means nothing.
 
 ## ⚠️ Do not put comments in a `.tscn`
 

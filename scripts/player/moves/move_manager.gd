@@ -190,10 +190,17 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	# zeroes velocity and its physics_update() then descends at
 	# floor_snap_speed with no gravity, so a stagger caught in mid-air hangs
 	# the body in the sky for the whole lockout -- the outcome Status.Effect's
-	# own note says must stay inexpressible. REFUSED, NOT QUEUED: a volume
-	# tall enough to cover a fence is entered in mid-air on purpose, and a
-	# stagger held until touchdown would fire at a moment the player has
-	# already left the volume behind and cannot connect to anything.
+	# own note says must stay inexpressible.
+	#
+	# QUEUED, NOT REFUSED. The condition decides whether the stagger ACTS this
+	# tick; the entry stays in the list either way, so a stagger taken in the
+	# air fires on the first grounded tick still inside the status's own
+	# `seconds`. That is the point of it: a volume tall enough to cover a fence
+	# is entered in mid-air on purpose, and the stumble belongs to the
+	# touchdown on the far side. Refusing it outright would make clearing the
+	# obstacle in one jump free, which is the one way through such a volume a
+	# level author is trying to charge for. `seconds` is therefore the window
+	# the stumble may still land in, not how long it lasts.
 	var next: StringName = Move.KEEP
 	var staggering := false
 	if player != null and player.grounded and player.statuses.has(Status.Effect.STAGGER) \
