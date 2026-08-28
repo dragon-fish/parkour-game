@@ -98,6 +98,50 @@ func test_a_capped_volume_stops_after_its_last_entry() -> void:
 	assert_false(p.statuses.has(Status.Effect.SPEED_CAP), \
 		"a volume capped at one entry fired on the second")
 
+func _block_jump(seconds: float) -> StatusSpec:
+	var s := StatusSpec.new()
+	s.effect = Status.Effect.BLOCK_JUMP
+	s.seconds = seconds
+	return s
+
+func test_a_no_jump_region_never_lifts_between_refreshes() -> void:
+	# THE TIGHTEST PAIRING THERE IS: seconds exactly equal to refresh_interval,
+	# so the status expires on the very tick it is renewed. Two things have to
+	# hold for the block never to lift, and this is the only test that needs
+	# both. The volume's cycle must not be longer than the life it renews -- a
+	# refresh clock that discards its overshoot rounds every cycle up to a
+	# whole frame and lapses one frame early, forever -- and the volume must
+	# run before the Player ages the list.
+	#
+	# BLOCK_JUMP rather than SPEED_CAP because a one-frame hole in a cap is
+	# invisible while a one-frame hole in a jump block is a jump.
+	#
+	# The signal is counted as well as has() read: a lift and a re-apply inside
+	# one frame is invisible to a test that only looks between frames, and it
+	# is still a frame the moves ran with no block in force.
+	var p := await _player()
+	var v := _volume(p.global_position)
+	v.apply = [_block_jump(0.1)]
+	v.refresh_interval = 0.1
+	# Pinned directly, because no fixture can pin it by behaviour: which of the
+	# two runs first without it is scene-tree order, and a test's own nodes
+	# happen to sit ahead of the world fixture's either way.
+	assert_lt(v.process_physics_priority, p.process_physics_priority, \
+		"the volume no longer refreshes before the player ages the list")
+	var lifts := [0]
+	p.statuses.status_removed.connect(func(effect: int, _subject: StringName) -> void:
+		if effect == Status.Effect.BLOCK_JUMP:
+			lifts[0] += 1)
+	await step(2)
+	assert_true(p.statuses.has(Status.Effect.BLOCK_JUMP), "the volume never applied")
+	# Well past several refresh cycles at 60 fixed fps: 0.1 s is six ticks.
+	for i in 60:
+		await step(1)
+		assert_true(p.statuses.has(Status.Effect.BLOCK_JUMP), \
+			"the block was gone at the end of tick %d" % i)
+	assert_eq(lifts[0], 0, \
+		"the block was lifted and re-applied inside a frame -- a jump fits through that")
+
 func test_refreshing_does_not_spend_the_entry_count() -> void:
 	# The count is about ENTRIES. A polling volume refreshes many times per
 	# visit, and counting those would use the whole budget on the first tick.
@@ -164,3 +208,17 @@ func test_a_refreshing_volume_holding_an_endless_status_is_flagged() -> void:
 	v.apply = [_cap(0.5, INF)]
 	v.refresh_interval = 0.1
 	assert_eq(_warned(v), 1, "a status that can never lapse was not flagged")
+
+func test_a_status_no_longer_than_the_refresh_interval_is_flagged() -> void:
+	# The pairing above, caught in the editor instead of at run time.
+	var v := _shaped_volume()
+	v.apply = [_cap(0.5, 0.1)]
+	v.refresh_interval = 0.1
+	assert_eq(_warned(v), 1, "a status that expires on its own refresh tick was not flagged")
+
+func test_a_status_lasting_twice_the_interval_is_not_flagged() -> void:
+	# The documented pairing, and the negative that keeps the check honest.
+	var v := _shaped_volume()
+	v.apply = [_cap(0.5, 0.2)]
+	v.refresh_interval = 0.1
+	assert_eq(_warned(v), 0, "the recommended pairing was flagged")

@@ -30,9 +30,20 @@ extends Area3D
 		update_configuration_warnings()
 
 ## Above zero, re-apply `apply` this often while a body is inside. This is how
-## a region-wide modification is expressed: pair it with a StatusSpec.seconds
-## of the same length and the status is continually renewed while the player
-## is in, and lapses on its own shortly after they leave.
+## a region-wide modification is expressed: give the StatusSpec a `seconds` of
+## AT LEAST TWICE this interval and the status is continually renewed while
+## the player is in, and lapses on its own shortly after they leave.
+##
+## DO NOT pair it with a `seconds` equal to the interval. Both clocks then
+## start from the same nominal value and subtract the same delta, so they reach
+## zero on the very same physics tick forever, and the status survives only
+## because this node is ordered ahead of the Player (see REFRESH_BEFORE_PLAYER)
+## and renews it on that tick. There is no margin at all: anything that lets
+## the two clocks drift -- a frame this node does not run, a body that enters
+## part-way through a tick, a second volume renewing the same key -- puts the
+## expiry a frame ahead of its renewal, and a one-frame hole is enough for a
+## buffered jump to fire inside a region that forbids jumping. Twice the
+## interval leaves a whole interval of slack instead.
 ##
 ## THE POINT IS THAT NOTHING TRACKS MEMBERSHIP. No body_exited handler, no
 ## list of who is inside, and therefore no overlap bookkeeping.
@@ -72,10 +83,23 @@ extends Area3D
 var _entries_used: int = 0
 var _refresh_owed: float = 0.0
 
+## Runs the refresh BEFORE the Player ages its status list. Godot orders
+## _physics_process by this number ascending, and Player leaves it at the
+## default 0.
+##
+## DO NOT drop this. Without it the order is scene-tree order -- which node
+## happens to have been added first. A status whose countdown reaches zero on
+## the same frame as its own renewal is then erased at the top of
+## Player._physics_process and only re-applied later in that frame, after the
+## moves have run. For SPEED_CAP that is invisible; for BLOCK_JUMP the
+## buffered press fires through the gap, inside a region that forbids jumping.
+const REFRESH_BEFORE_PLAYER := -1
+
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
 	add_to_group("modifier_volumes")
+	process_physics_priority = REFRESH_BEFORE_PLAYER
 	body_entered.connect(_on_body_entered)
 	# The setter could not apply this before the node was in the tree.
 	set_physics_process(refresh_interval > 0.0)
@@ -88,7 +112,15 @@ func _physics_process(delta: float) -> void:
 	_refresh_owed -= delta
 	if _refresh_owed > 0.0:
 		return
-	_refresh_owed = refresh_interval
+	# CARRY THE OVERSHOOT, DO NOT clamp back to the whole interval. By here
+	# `_refresh_owed` sits somewhere in (-delta, 0], and discarding that
+	# remainder rounds every cycle up to a whole frame: a 0.1 s interval then
+	# fires every seventh 60 Hz frame rather than every sixth. The status
+	# being renewed rounds the other way -- it dies on the subtraction that
+	# takes it past zero -- so a clamped cycle is one frame LONGER than the
+	# life it exists to renew, and the status lapses one frame before every
+	# single refresh.
+	_refresh_owed += refresh_interval
 	for body in get_overlapping_bodies():
 		if body.has_method("apply_status"):
 			_push_apply(body)
@@ -163,7 +195,14 @@ func _get_configuration_warnings() -> PackedStringArray:
 			warnings.append("BLOCK_INTEREST_LINE with no subject blocks nothing.")
 	if refresh_interval > 0.0:
 		for spec in apply:
-			if spec != null and is_inf(spec.seconds):
+			if spec == null:
+				continue
+			if is_inf(spec.seconds):
 				warnings.append("refresh_interval is set but a status lasts forever: "
 					+ "it will not lapse when the player leaves.")
+			elif spec.seconds <= refresh_interval:
+				warnings.append(("A status lasting %.2fs is refreshed every %.2fs: "
+					+ "it expires on the very tick it is renewed, with no margin "
+					+ "at all. Give it at least twice the interval.") \
+					% [spec.seconds, refresh_interval])
 	return warnings
