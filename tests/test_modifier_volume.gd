@@ -32,7 +32,7 @@ func _cap(scale: float, seconds: float) -> StatusSpec:
 	s.seconds = seconds
 	return s
 
-func _volume(at: Vector3) -> ModifierVolume:
+func _shaped_volume() -> ModifierVolume:
 	var v := ModifierVolume.new()
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -40,6 +40,10 @@ func _volume(at: Vector3) -> ModifierVolume:
 	shape.shape = box
 	v.add_child(shape)
 	add_child_autofree(v)
+	return v
+
+func _volume(at: Vector3) -> ModifierVolume:
+	var v := _shaped_volume()
 	v.global_position = at
 	return v
 
@@ -105,3 +109,58 @@ func test_refreshing_does_not_spend_the_entry_count() -> void:
 	await step(40)
 	assert_true(p.statuses.has(Status.Effect.SPEED_CAP), \
 		"the refreshes ate the entry budget")
+
+# _get_configuration_warnings() is all that stands between a level author and a
+# volume that looks placed and never fires. Structural, not cosmetic: every
+# case below is silent at run time.
+#
+# Counted, never matched: the strings are prose and will be reworded. Each test
+# leaves the volume otherwise valid so the count names one condition.
+
+func _warned(volume: ModifierVolume) -> int:
+	return volume._get_configuration_warnings().size()
+
+func test_a_correctly_configured_volume_warns_about_nothing() -> void:
+	# The negative case, and the one that keeps the rest honest -- without it
+	# they would all pass on a function that warns about everything.
+	var v := _shaped_volume()
+	v.apply = [_cap(0.5, INF)]
+	assert_eq(_warned(v), 0, "a volume with nothing wrong with it was flagged")
+
+func test_a_volume_with_no_shape_is_flagged() -> void:
+	var v := ModifierVolume.new()
+	add_child_autofree(v)
+	v.apply = [_cap(0.5, INF)]
+	assert_eq(_warned(v), 1, "a volume that can never be entered was not flagged")
+
+func test_a_volume_that_neither_applies_nor_removes_is_flagged() -> void:
+	var v := _shaped_volume()
+	assert_eq(_warned(v), 1, "a volume that does nothing was not flagged")
+
+func test_an_empty_row_in_apply_is_flagged() -> void:
+	var v := _shaped_volume()
+	var rows: Array[StatusSpec] = [null]
+	v.apply = rows
+	assert_eq(_warned(v), 1, "a null entry was not flagged")
+
+func test_a_speed_cap_of_zero_is_flagged() -> void:
+	# It pins the player in place, which reads as the level having hung.
+	var v := _shaped_volume()
+	v.apply = [_cap(0.0, INF)]
+	assert_eq(_warned(v), 1, "a cap that stops the player dead was not flagged")
+
+func test_a_line_block_with_no_subject_is_flagged() -> void:
+	var v := _shaped_volume()
+	var spec := StatusSpec.new()
+	spec.effect = Status.Effect.BLOCK_INTEREST_LINE
+	spec.seconds = INF
+	v.apply = [spec]
+	assert_eq(_warned(v), 1, "a line block naming no line was not flagged")
+
+func test_a_refreshing_volume_holding_an_endless_status_is_flagged() -> void:
+	# The pairing that never lapses: refreshing is how a status is meant to
+	# expire on the way out, and INF is what stops it ever doing so.
+	var v := _shaped_volume()
+	v.apply = [_cap(0.5, INF)]
+	v.refresh_interval = 0.1
+	assert_eq(_warned(v), 1, "a status that can never lapse was not flagged")
