@@ -186,6 +186,64 @@ func test_a_pillar_with_no_ledge_is_just_an_obstacle() -> void:
 	assert_false(_travel_until_corner(grab, 1.0),
 		"the body turned onto a wall whose top is a storey above the ledge")
 
+## Runs the corner out to its end. Returns whether it finished.
+func _finish_corner(grab: GrabMove, side: float) -> bool:
+	for i in 120:
+		grab.physics_update(1.0 / 60.0, _hold(side))
+		if not grab.is_cornering():
+			return true
+	return false
+
+## WHERE A CORNER PUTS THE BODY DOWN. Measured on the committed build before
+## this pair was written: the new anchor came out at z = -0.10 on a face whose
+## own corner is at z = -0.10 -- the very corner of the ledge top, with 0.45 m
+## of half-width hanging past the end of the face just turned onto. The same
+## straddle the shimmy's own leading-side rule refuses one step earlier.
+func test_the_corner_lands_a_body_width_onto_the_new_face() -> void:
+	var player: Player = await _fresh()
+	_square(player)
+	await step(2)
+	var grab := _hang(player, Vector3(1.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
+	assert_true(_travel_until_corner(grab, 1.0), "no corner started")
+	assert_true(_finish_corner(grab, 1.0), "the corner never finished")
+	var half: float = player.config.grab.shimmy_body_half_width
+	# The south face is z = 0, and an anchor sits MARGIN inside its own top, so
+	# the ledge top's corner is at z = -MARGIN. Anything short of a half-width
+	# past that is a straddle.
+	assert_lt(grab._edge.z, -MARGIN - half + 0.05,
+		"the anchor landed at z %.2f, only %.2f m along the new face"
+		% [grab._edge.z, -MARGIN - grab._edge.z])
+
+## AND HOW IT GETS THERE. A straight lerp between two hang poses on
+## perpendicular faces cuts the convex corner they share -- the body passes
+## through the wall rather than round it. Written against the chord rather than
+## against a measured clearance, so it pins the SHAPE and leaves
+## GrabConfig.corner_sweep free to be dialled.
+func test_the_outside_corner_path_bows_clear_of_the_corner() -> void:
+	var player: Player = await _fresh()
+	_square(player)
+	await step(2)
+	var grab := _hang(player, Vector3(1.0, TOP, -MARGIN), Vector3(0.0, 0.0, 1.0))
+	assert_true(_travel_until_corner(grab, 1.0), "no corner started")
+	# The block's south-east corner, in XZ.
+	var corner := Vector2(2.0, 0.0)
+	var a := Vector2(grab._corner_from_pos.x, grab._corner_from_pos.z)
+	var b := Vector2(grab._corner_to_pos.x, grab._corner_to_pos.z)
+	var ab: Vector2 = b - a
+	var t: float = clampf((corner - a).dot(ab) / ab.length_squared(), 0.0, 1.0)
+	var chord: float = (a + ab * t).distance_to(corner)
+	var closest := 99.0
+	for i in 120:
+		grab.physics_update(1.0 / 60.0, _hold(1.0))
+		closest = minf(closest, Vector2(player.global_position.x,
+				player.global_position.z).distance_to(corner))
+		if not grab.is_cornering():
+			break
+	assert_false(grab.is_cornering(), "the corner never finished")
+	assert_gt(closest, chord + 0.05,
+		"the path came within %.3f m of the corner; the straight lerp between the same two poses keeps %.3f"
+		% [closest, chord])
+
 # --- what a corner refuses -------------------------------------------------------
 
 ## A CORNER IS ONLY A CORNER IF THE BODY FITS ROUND IT. The owner, with a

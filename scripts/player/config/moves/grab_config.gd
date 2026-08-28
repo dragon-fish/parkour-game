@@ -223,6 +223,29 @@ extends MoveConfig
 ## any lip or moulding and well above the hanging body's own crown.
 @export var corner_probe_drop: float = 0.3
 
+## How full the corner's swing is, as a multiple of the distance to L -- the
+## point where the two hang lines cross, i.e. the sharp corner the path would
+## have if it turned on a dime. 1.0 puts both of the cubic's control points
+## exactly on L.
+##
+## PROJECT-DEFINED, and 1.0 is DERIVED rather than dialled: L is the one point
+## that keeps the ordinary hanging stand-off (ledge_back_offset minus the
+## anchor's own inset) from BOTH faces at once, so a path aimed at it is a path
+## that hangs off the corner the way it hangs off a flat wall. On the 4 m test
+## block that measures 0.320 m of clearance from the corner point against a
+## flat-face 0.35.
+##
+## The straight lerp this replaced measured 0.067 m on the same corner: the
+## body went through the wall, head first. DO NOT go back to lerping the two
+## hang poses -- they sit on perpendicular faces and the chord between them
+## cuts the convex corner they share.
+##
+## Turning this UP widens the swing monotonically (1.1 -> 0.346 m, 1.2 ->
+## 0.361 m). An earlier attempt anchored the bow at the chord's own midpoint
+## instead, where the same knob was NOT monotonic -- 0.3 measured tighter than
+## 0.0 -- which is why the control points hang off L rather than off the chord.
+@export var corner_sweep: float = 1.0
+
 ## How far past the corner the outside-corner probe looks back from, in metres.
 ##
 ## It has to start in the OPEN AIR beyond the corner -- a ray beginning inside

@@ -50,6 +50,10 @@ var _cornering: bool = false
 var _corner_time: float = 0.0
 var _corner_from_pos: Vector3 = Vector3.ZERO
 var _corner_to_pos: Vector3 = Vector3.ZERO
+## The cubic's two control points -- see _begin_corner() for where they come
+## from and why the path is not a straight lerp between the poses above.
+var _corner_c1: Vector3 = Vector3.ZERO
+var _corner_c2: Vector3 = Vector3.ZERO
 var _corner_from_yaw: float = 0.0
 var _corner_to_yaw: float = 0.0
 ## Where the hands and the face end up. Applied at COMPLETION rather than at the
@@ -540,12 +544,15 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 			_shimmy = 0.0
 			_shimmy_report = "%s ran out, nothing perpendicular beyond" % (
 				"ledge" if not ahead.get("valid", false) else "face")
-		elif not _corner_has_room(around["edge"], around["normal"], side):
-			_shimmy = 0.0
-			_shimmy_report = "outside corner, too narrow to hang along"
 		else:
-			_begin_corner(around["edge"], around["normal"], side)
-			_shimmy_report = "outside corner"
+			var landing: Dictionary = _corner_landing(around["edge"],
+					around["normal"], side)
+			if landing.is_empty():
+				_shimmy = 0.0
+				_shimmy_report = "outside corner, too narrow to hang along"
+			else:
+				_begin_corner(landing["edge"], around["normal"], side)
+				_shimmy_report = "outside corner"
 		return
 
 	# AND IS THERE ROOM FOR THE BODY? A ledge can continue past a pillar or into
@@ -604,12 +611,15 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 		if not turned.get("valid", false):
 			_shimmy = 0.0
 			_shimmy_report = "blocked, and it carries no ledge at this height"
-		elif not _corner_has_room(turned["edge"], turned["normal"], side):
-			_shimmy = 0.0
-			_shimmy_report = "inside corner, too narrow to hang along"
 		else:
-			_begin_corner(turned["edge"], turned["normal"], side)
-			_shimmy_report = "inside corner"
+			var landing: Dictionary = _corner_landing(turned["edge"],
+					turned["normal"], side)
+			if landing.is_empty():
+				_shimmy = 0.0
+				_shimmy_report = "inside corner, too narrow to hang along"
+			else:
+				_begin_corner(landing["edge"], turned["normal"], side)
+				_shimmy_report = "inside corner"
 		return
 
 	# WHERE THE ANCHOR ITSELF LANDS, which the gate above cannot say: that one
@@ -753,8 +763,8 @@ func _ledge_on(blocked: Dictionary) -> Dictionary:
 		return {}
 	return {"valid": true, "edge": top["edge"], "normal": normal}
 
-## Whether a body would FIT along `new_normal`'s face once it had turned onto
-## it.
+## Where a turn onto `new_normal`'s face would put the body down, or an empty
+## dictionary when it would not fit there at all.
 ##
 ## THE ONE QUESTION A CORNER USED TO SKIP. Finding a perpendicular face with a
 ## ledge on it at this height says the hands could reach round; it says nothing
@@ -772,25 +782,54 @@ func _ledge_on(blocked: Dictionary) -> Dictionary:
 ##
 ## Asks the same pair ordinary travel asks, once at a body's half-width along
 ## the new face rather than once per tick along the old one.
-func _corner_has_room(new_edge: Vector3, new_normal: Vector3, side: float) -> bool:
+##
+## AND THE PROBE'S OWN HIT IS THE LANDING, not merely a yes. The anchor
+## corner_beyond() and _ledge_on() hand over is derived from the OLD face's
+## ray, so it inherits that face's own inset as its position along the NEW one
+## -- which puts it on the ledge top's very corner. Landing there leaves the
+## body straddling the corner with a half-width hanging past the end of the
+## face it just turned onto: exactly the straddle the shimmy refuses one step
+## earlier, on the face it came from. Measured on the 4 m test block, the
+## handed-over anchor came out at z -0.10 on a corner whose own z is -0.10.
+##
+## Asking "is there a body's width to land on" and then landing somewhere else
+## would be two answers to one question, so this returns the point it checked.
+func _corner_landing(new_edge: Vector3, new_normal: Vector3, side: float) -> Dictionary:
 	if player.probes == null:
-		return false
-	var facing: Vector3 = -new_normal
-	facing.y = 0.0
-	if facing.length_squared() < 0.0001:
-		return false
-	var onward: Vector3 = facing.normalized().cross(Vector3.UP) * side
+		return {}
+	var onward: Vector3 = _onward_on(new_normal, side)
+	if onward == Vector3.ZERO:
+		return {}
 	var lead: Vector3 = onward * config.grab.shimmy_body_half_width
 	var top: Dictionary = player.probes.ledge_beside(new_edge, lead, new_normal,
 			Probes.LEDGE_ANCHOR_MARGIN, config.grab.shimmy_probe_lift,
 			config.grab.shimmy_edge_tolerance)
 	_trace("corner room", top)
 	if not top.get("valid", false):
-		return false
+		return {}
 	var face: Dictionary = player.probes.face_beside(new_edge, lead, new_normal,
 			config.grab.corner_probe_drop, Probes.LEDGE_ANCHOR_MARGIN)
 	_trace("corner room", face)
-	return face.get("valid", false)
+	if not face.get("valid", false):
+		return {}
+	return {"valid": true, "edge": top["edge"]}
+
+## Which way along `face_normal`'s face a shimmy held at `side` travels: the
+## player's own left or right as they hang facing it. Zero for a face with no
+## horizontal normal to take a direction from.
+##
+## SHARED ON PURPOSE by the landing probe above, which asks about the face
+## being turned ONTO, and by _begin_corner()'s hang lines, which need both that
+## one and the face being left. Written once because the two must agree: the
+## same expression is what makes an outside corner (the new face wrapping back
+## behind the old) and an inside one (the new face coming out in front of it)
+## a single case rather than two.
+func _onward_on(face_normal: Vector3, side: float) -> Vector3:
+	var facing: Vector3 = -face_normal
+	facing.y = 0.0
+	if facing.length_squared() < 0.0001:
+		return Vector3.ZERO
+	return facing.normalized().cross(Vector3.UP) * side
 
 ## Starts the scripted swing onto `new_normal`'s face.
 func _begin_corner(new_edge: Vector3, new_normal: Vector3, side: float) -> void:
@@ -800,6 +839,7 @@ func _begin_corner(new_edge: Vector3, new_normal: Vector3, side: float) -> void:
 	# offset would hang differently from every other grab in the game.
 	_corner_to_pos = IntoGrabMove.hanging_pose(player, player.config,
 			{"edge": new_edge, "face_normal": new_normal})
+	_shape_corner_path(side, new_normal)
 	_corner_from_yaw = player.rotation.y
 	# The same expression IntoGrabMove._target_yaw uses: the normal points back
 	# at the body, so facing the wall means facing the way it came from.
@@ -821,6 +861,62 @@ func _begin_corner(new_edge: Vector3, new_normal: Vector3, side: float) -> void:
 	# The travel clip keeps playing: it is what the corner is animated with.
 	_shimmy = side
 
+## Lays out the arc the body swings through, as a cubic with both control
+## points on L: the point where the two hang LINES cross -- each one parallel
+## to its own face at the ordinary hanging stand-off, so their crossing is the
+## sharp corner the path would have if it turned on a dime.
+##
+## A STRAIGHT LERP GOES THROUGH THE WALL. The two poses sit on perpendicular
+## faces, so the chord between them cuts the convex corner they share: measured
+## at 0.067 m from the corner point on the 4 m test block, against the 0.35 m
+## a body keeps from a flat wall. Aiming at L instead is what buys the
+## clearance back, and it buys the TANGENTS too -- the path leaves along the
+## old face and arrives along the new one, which is how a body actually rounds
+## a corner. A quadratic with one control point cannot do that: it leaves the
+## first pose heading diagonally out from the wall.
+##
+## DO NOT anchor the sweep on the chord's own midpoint. That was tried, and on
+## this same corner it measured 0.124 m at sweep 0.3 against 0.175 m at 0.0 --
+## the knob made things worse before it made them better, because the midpoint
+## sits almost on top of the corner and pushing it along the bisector moves it
+## toward the corner first.
+##
+## Both kinds of corner take this path. Outside, L sits out past the convex
+## corner; inside, it sits in the open quadrant at the stand-off from both
+## walls, which pulls the swing IN to hug the corner rather than floating wide
+## of it the way the lerp did.
+func _shape_corner_path(side: float, new_normal: Vector3) -> void:
+	var travel: Vector3 = _onward_on(_face_normal, side)
+	var onward: Vector3 = _onward_on(new_normal, side)
+	var l: Vector3 = _hang_lines_cross(travel, onward)
+	var sweep: float = config.grab.corner_sweep
+	_corner_c1 = _corner_from_pos + (l - _corner_from_pos) * sweep
+	_corner_c2 = _corner_to_pos + (l - _corner_to_pos) * sweep
+
+## Where the line through the old pose along `travel` meets the line through
+## the new pose along `onward`, flat in XZ with the height split between the
+## two ends. Falls back to the straight chord's own thirds -- a cubic laid on
+## those IS the straight line -- when the two are parallel and there is no
+## crossing to find, which is the degenerate a face turned a full half-circle
+## from the one left would produce.
+func _hang_lines_cross(travel: Vector3, onward: Vector3) -> Vector3:
+	var flat_y: float = (_corner_from_pos.y + _corner_to_pos.y) * 0.5
+	var det: float = onward.x * travel.z - travel.x * onward.z
+	if absf(det) < 0.0001:
+		return _corner_from_pos.lerp(_corner_to_pos, 0.5)
+	var d: Vector3 = _corner_to_pos - _corner_from_pos
+	var along: float = (onward.x * d.z - d.x * onward.z) / det
+	var at: Vector3 = _corner_from_pos + travel * along
+	return Vector3(at.x, flat_y, at.z)
+
+## One point on the swing. Ordinary cubic Bezier, written out rather than
+## borrowed from ScriptedMove: that one owns a whole timed motion with its own
+## begin/advance, and this move already runs the clock itself so it can drive
+## the yaw and the camera on the same tick.
+static func _cubic(a: Vector3, c1: Vector3, c2: Vector3, b: Vector3, t: float) -> Vector3:
+	var u: float = 1.0 - t
+	return a * (u * u * u) + c1 * (3.0 * u * u * t) 		+ c2 * (3.0 * u * t * t) + b * (t * t * t)
+
 ## One tick of the corner.
 ##
 ## THE CAMERA HANDSHAKE IS TURN180MOVE'S, copied rather than reinvented, and its
@@ -840,7 +936,8 @@ func _advance_corner(delta: float) -> void:
 		_corner_time, config.grab.corner_duration]
 	var progress: float = clampf(
 			_corner_time / maxf(config.grab.corner_duration, 0.001), 0.0, 1.0)
-	player.global_position = _corner_from_pos.lerp(_corner_to_pos, progress)
+	player.global_position = _cubic(_corner_from_pos, _corner_c1, _corner_c2,
+			_corner_to_pos, progress)
 	# Through the SHORT way round. A corner is a quarter turn; lerping the raw
 	# yaws sends a body whose facing straddles PI the long way, three quarters
 	# of a circle through the wall it is hanging on.
