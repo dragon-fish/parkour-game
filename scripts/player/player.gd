@@ -2066,7 +2066,7 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# because the shoulders swivel under a head that did not move. That effect
 	# is about watching a character; there is no character to watch from in
 	# here.
-	if not frozen and (camera_rig == null or not camera_rig.third_person):
+	if not frozen and (camera_rig == null or not camera_rig.in_third_person()):
 		_visual_yaw = rotation.y
 		body_root.rotation.y = 0.0
 		return
@@ -2878,7 +2878,7 @@ var _framing_travel: float = 0.0
 ## move, and none of it does anything in first person -- where a wheel notch
 ## would otherwise silently change a distance nobody can see.
 func _handle_third_person_button(event: InputEventMouseButton) -> bool:
-	if camera_rig == null or not camera_rig.third_person:
+	if camera_rig == null or not camera_rig.in_third_person():
 		return false
 	match event.button_index:
 		MOUSE_BUTTON_WHEEL_UP:

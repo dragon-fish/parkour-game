@@ -135,7 +135,7 @@ func _process(_delta: float) -> void:
 	# and the frustum is the thing you are looking through, so neither says
 	# anything. The rig is the authority on which view is running.
 	var rig = player.camera_rig
-	if rig != null and rig.third_person:
+	if rig != null and rig.in_third_person():
 		_draw_fills(capsule.radius, sole, rig)
 
 # --- the capsule ----------------------------------------------------------------

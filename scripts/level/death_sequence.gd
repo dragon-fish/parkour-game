@@ -171,7 +171,7 @@ func play(player: Player) -> void:
 				# why: the camera hangs BEHIND the rig, so pitching the rig up
 				# swings the arm DOWN -- straight into the floor a dead body is
 				# lying on.
-				var third: bool = _player.camera_rig.third_person
+				var third: bool = _player.camera_rig.in_third_person()
 				_player.camera_rig.set_pitch(deg_to_rad(
 					camera_config.death_pitch_third_person_deg if third
 					else camera_config.death_pitch_deg))
@@ -463,7 +463,7 @@ func _offer_the_view() -> void:
 	if _view_offered or _elapsed < DROP_TIME + HOLD_TIME + TOPPLE_TIME:
 		return
 	var rig: CameraRig = _player.camera_rig
-	if not rig.third_person:
+	if not rig.in_third_person():
 		return
 	_view_offered = true
 	# Pitch only. Yaw is left unbounded -- turning all the way round while
