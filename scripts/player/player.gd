@@ -194,6 +194,11 @@ enum { TIER_FREE, TIER_SOFT, TIER_ROLLABLE, TIER_HARD }
 ## Accumulated fall height since the last ground contact. Built in setup().
 var fall_tracker: FallTracker
 
+## Temporary modifications a level has put on this player -- speed caps,
+## forbidden moves, a forced view. Read through the query methods; nothing
+## outside StatusList interprets an entry.
+var statuses: StatusList
+
 ## Emitted on the touchdown that ends an uncontrolled fall. The fall itself is
 ## already lost by then -- this only tells whoever owns respawning that the
 ## body has finished arriving.
@@ -1034,6 +1039,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	input_source = src
 	fall_tracker = FallTracker.new()
 	speed_energy = SpeedEnergy.new(config.pawn)
+	statuses = StatusList.new()
 
 	# The capsule resource is shared by every instance of player.tscn, so
 	# resizing it in place would let one player's slide shrink every other
@@ -2698,6 +2704,9 @@ func _physics_process(delta: float) -> void:
 	var input := MoveInput.new() if _input_locked else polled
 	last_input = input
 	_tick_timers(delta, input)
+	# Aged alongside the other timers and BEFORE the moves run, so a status
+	# that expires this tick is already gone by the time anything reads it.
+	statuses.tick(delta)
 	# Before the moves run, so the body moves this tick at whatever size it is
 	# now entitled to. A restore owed from an exit under a ceiling comes back
 	# on the first tick there is room for it.
@@ -3517,7 +3526,11 @@ func in_step_grace() -> bool:
 	return _step_grace_timer > 0.0
 
 func speed_cap() -> float:
-	return speed_energy.cap()
+	# Scaled HERE rather than at each caller: this is the one function every
+	# move asks "how fast may I go", so a status applied to it reaches all of
+	# them and none of them needs to know statuses exist. Same shape as
+	# MoveConfig.speed_modifier, which the crouch already rides.
+	return speed_energy.cap() * statuses.speed_scale()
 
 ## Which accumulation factor this tick's input asks for. The original
 ## declares three (02 §2.1) and this is the reading that makes all three
