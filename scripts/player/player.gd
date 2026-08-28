@@ -3106,6 +3106,15 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 ## Spends a buffered jump if one is pending and the player is still within
 ## coyote time. Returns true at most once per press.
 func consume_jump() -> bool:
+	# REFUSED HERE, not in MoveManager.can_enter(). WalkingMove writes the
+	# launch velocity and calls move_and_slide() BEFORE it returns JUMP, so a
+	# refusal at the transition would leave the body in the air and the state
+	# on the ground. Refusing the spend keeps the whole branch unentered.
+	#
+	# Returns false WITHOUT clearing the buffer: the player pressed, and the
+	# press must still be there the moment the block lifts.
+	if statuses.is_move_blocked(Move.JUMP):
+		return false
 	if _jump_buffer_timer > 0.0 and _coyote_timer > 0.0:
 		_jump_buffer_timer = 0.0
 		_coyote_timer = 0.0
@@ -3126,10 +3135,18 @@ func consume_jump() -> bool:
 ## as consume_jump(), so a consumed press cannot also fire a second jump
 ## later.
 func consume_buffered_jump() -> bool:
+	if statuses.is_move_blocked(Move.JUMP):
+		return false
 	if _jump_buffer_timer > 0.0:
 		_jump_buffer_timer = 0.0
 		return true
 	return false
+
+## Arms the jump buffer directly. FOR TESTS: the keyboard path fills this from
+## a press edge, which a headless test has no way to produce.
+func arm_jump_buffer_for_test() -> void:
+	_jump_buffer_timer = config.pawn.jump_buffer_time
+	_coyote_timer = config.pawn.coyote_time
 
 ## The same, for Q. See _turn_buffer_timer.
 func consume_buffered_turn() -> bool:

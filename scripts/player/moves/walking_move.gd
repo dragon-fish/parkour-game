@@ -66,7 +66,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		#   touchdown, fall <  2.0 m, moving -> Slide      (here)
 		#   grounded, not moving          -> Crouch
 		# There are no chords, no hold-versus-tap, no direction modifiers.
-		if player.consume_roll():
+		# Gated BEFORE consume_roll(), so a blocked slide does not spend the
+		# press -- the same reason the jump block sits on the buffer rather
+		# than on the transition.
+		if not player.statuses.is_move_blocked(SLIDE) and player.consume_roll():
 			if player.horizontal_speed() >= config.slide.slide_abort_speed:
 				# Same floor-snap bias as the fall-through path below. Without
 				# it, a slide started on a downslope can leave the floor on
