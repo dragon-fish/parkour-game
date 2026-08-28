@@ -32,11 +32,14 @@ extends Area3D
 ## list of who is inside, and therefore no overlap bookkeeping.
 @export var refresh_interval: float = 0.0
 
-# `priority` is not re-declared here: Area3D already exports one, and
-# GDScript refuses to redefine a member the base class owns. Its meaning
-# suits this volume's own -- which layer it speaks on, so that when two
-# volumes claim the same status the higher layer wins, and equal layers keep
-# the incumbent and report once. Leave at 0 unless volumes actually overlap.
+## Which layer this volume speaks on. When two volumes claim the same status,
+## the higher layer wins; equal layers keep the incumbent and report once.
+## Leave at 0 unless volumes actually overlap.
+##
+## DO NOT name this `priority`: Area3D already exports one, and it governs
+## which overlapping area's physics overrides win. Reusing it would make
+## raising a status layer silently reorder gravity and damping too.
+@export var layer_priority: int = 0
 
 ## How many ENTRIES this volume acts on, 0 for unlimited. Refreshes do not
 ## count -- a polling volume renews many times per visit, and charging those
@@ -92,7 +95,7 @@ func _on_body_entered(body: Node3D) -> void:
 func _push_apply(body: Node3D) -> void:
 	for spec in apply:
 		if spec != null:
-			body.apply_status(spec, self, priority)
+			body.apply_status(spec, self, layer_priority)
 
 ## Called on respawn. The count is about one life: a level that cripples the
 ## player at its start has to cripple them again after they die there.
