@@ -457,7 +457,6 @@ func reset_player() -> void:
 	player.statuses.clear_all()
 	for volume in get_tree().get_nodes_in_group("modifier_volumes"):
 		volume.reset_trigger_count()
-	_reapply_overlapping_modifiers()
 	if player.camera_rig != null:
 		player.camera_rig.reset_state()
 	# Restart the move manager in Walking so a reset behaves like a fresh
@@ -506,6 +505,25 @@ func reset_player() -> void:
 	if is_instance_valid(player):
 		player.set_physics_process(true)
 
+	# THE OVERLAP LIST DESCRIBES WHERE THE BODY WAS. Area3D rebuilds it once
+	# per physics frame and before that frame's step, so overlaps_body() is
+	# worthless until physics has actually stepped on the teleported body.
+	# DO NOT re-apply any earlier than this: measured on a body that respawns
+	# OUT of the volume it died in, the list still names that volume both
+	# immediately after the teleport and after the single tick skipped above,
+	# and only tells the truth on the frame after that. Re-applying off stale
+	# data hands the dead life's statuses to the new one, and because nothing
+	# here tracks membership (see ModifierVolume.refresh_interval) an INF
+	# status landed that way has no exit left to ever take it off.
+	#
+	# Waited here, at the very end and with physics already re-enabled,
+	# rather than by widening the skip above: that skip is the teleport's own
+	# settle and its length is load-bearing (see its comment). This wait
+	# delays only the re-application.
+	await get_tree().physics_frame
+	if is_instance_valid(player):
+		_reapply_overlapping_modifiers()
+
 ## Re-applies every ModifierVolume the body is currently standing in.
 ##
 ## REQUIRED, NOT DEFENSIVE. A respawn teleports the body without the areas
@@ -519,6 +537,11 @@ func reset_player() -> void:
 ## Volumes with a refresh_interval would recover on their own at the next
 ## poll; INF ones never would. Both are covered here rather than relying on
 ## which kind a level happened to use.
+##
+## Re-entrancy: a call that returns early at `if _resetting_physics: return`
+## (mashing the reset key mid-cycle) skips this -- deliberately, since the
+## cycle already in flight will reach it once, on the position that call's
+## own teleport just set.
 func _reapply_overlapping_modifiers() -> void:
 	if not is_instance_valid(player):
 		return

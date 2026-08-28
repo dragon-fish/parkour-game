@@ -84,6 +84,13 @@ func _on_body_entered(body: Node3D) -> void:
 	if max_trigger_count > 0 and _entries_used >= max_trigger_count:
 		return
 	_entries_used += 1
+	_apply_entry_effects(body)
+
+## Shared by _on_body_entered() and enter_body_after_respawn() -- the only
+## difference between a real entry and a post-respawn re-application is
+## whether it charges max_trigger_count, decided by each caller before this
+## runs.
+func _apply_entry_effects(body: Node3D) -> void:
 	for spec in remove:
 		if spec != null:
 			body.remove_status(spec.effect, spec.subject)
@@ -102,8 +109,17 @@ func _push_apply(body: Node3D) -> void:
 func reset_trigger_count() -> void:
 	_entries_used = 0
 
-## Treats a respawn inside this volume as a fresh entry. See
-## Arena._reapply_overlapping_modifiers() for why this cannot be left to the
-## area's own signal.
+## Treats a respawn inside this volume as a fresh entry, EXCEPT it does not
+## charge max_trigger_count. See Arena._reapply_overlapping_modifiers() for
+## why this cannot be left to the area's own signal.
+##
+## NOT charged: a respawn is not a player-initiated entry, and
+## reset_trigger_count() already zeroed the count moments earlier as part of
+## the same reset -- so nothing is being smuggled past the cap. Routing
+## through _on_body_entered() would also double-charge the case where the
+## body respawns from outside this volume into it: Godot's own body_entered
+## fires for that transition too, and both would land on the same respawn.
 func enter_body_after_respawn(body: Node3D) -> void:
-	_on_body_entered(body)
+	if not body.has_method("apply_status"):
+		return
+	_apply_entry_effects(body)
