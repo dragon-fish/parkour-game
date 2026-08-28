@@ -99,7 +99,12 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
 	add_to_group("modifier_volumes")
-	process_physics_priority = REFRESH_BEFORE_PLAYER
+	# A FLOOR, NOT AN OVERRIDE. process_physics_priority is an inherited Node
+	# export and shows in the inspector, so assigning it flat would silently
+	# discard whatever an author typed there. Only the invariant matters --
+	# earlier than the Player -- and an author who wants to run earlier still
+	# (ahead of another volume, say) keeps their own number.
+	process_physics_priority = mini(process_physics_priority, REFRESH_BEFORE_PLAYER)
 	body_entered.connect(_on_body_entered)
 	# The setter could not apply this before the node was in the tree.
 	set_physics_process(refresh_interval > 0.0)
