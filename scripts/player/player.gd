@@ -2752,6 +2752,7 @@ func _physics_process(delta: float) -> void:
 	# on once regardless of whether anything is listening this tick.
 	var landing_impact := consume_landing()
 	if camera_rig != null:
+		camera_rig.forced_view = statuses.forced_view()
 		if landing_impact >= 0.0:
 			camera_rig.punch_landing(landing_impact)
 		# Read from the CAPSULE, not the state name: naming SLIDE and CROUCH

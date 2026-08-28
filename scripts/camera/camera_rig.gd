@@ -147,6 +147,26 @@ var _has_head: bool = false
 ## moves. See update_effects().
 var third_person: bool = false
 
+## A level's override of the viewing preference, or View.NONE.
+##
+## SEPARATE FROM third_person ON PURPOSE. toggle_third_person() writes the
+## preference to disk every time it changes, so an override that shared the
+## field would permanently rewrite what the player chose the first time they
+## walked into a room that forces first person. Fed by Player each tick from
+## the status list; nothing here reads the status list itself.
+var forced_view: int = Status.View.NONE
+
+## Which view is actually being rendered: the override if there is one, the
+## saved preference otherwise. EVERY internal read of the view goes through
+## this -- `third_person` alone means "what the player chose", which is not
+## the same question.
+func in_third_person() -> bool:
+	if forced_view == Status.View.FIRST:
+		return false
+	if forced_view == Status.View.THIRD:
+		return true
+	return third_person
+
 ## Which side the third-person eye sits on, cycled with a middle click.
 enum Shoulder { RIGHT, LEFT, CENTRED }
 var _shoulder: int = Shoulder.RIGHT
@@ -494,7 +514,7 @@ func reset_state() -> void:
 	# back on the very next tick, so the preference survives, but the blink
 	# reads as the view having reverted. Same shape as the roll's entry flicker
 	# in docs/feel-backlog.md 40: a single frame of a state nobody asked for.
-	if camera != null and not third_person:
+	if camera != null and not in_third_person():
 		camera.position = Vector3.ZERO
 	# third_person deliberately NOT reset. It is a VIEWING PREFERENCE, not
 	# movement state: someone who chose to watch their own body did not choose
@@ -646,7 +666,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# itself is written exactly once, at the very end of this function.
 	var base_position := Vector3.ZERO
 	base_position.y = _config.camera.eye_height + extra_eye_lift
-	if not third_person:
+	if not in_third_person():
 		base_position.z = -(eye_forward + extra_eye_forward)
 
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
@@ -670,7 +690,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# overwriting it here would silently delete the walk bob whenever the view
 	# was behind the body.
 	var back := Vector3.ZERO
-	if third_person:
+	if in_third_person():
 		# EASED HERE, where there is a delta -- _third_person_position() is also
 		# reached from tests and from the debug readout, and neither has one.
 		var wanted_across: float = _wanted_shoulder_across()
@@ -849,7 +869,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# you are watching from behind. From outside, the BODY doing the roll is the
 	# whole show; the camera tumbling as well is the same event performed
 	# twice, once by each.
-	var spin: float = 0.0 if third_person else _roll_spin
+	var spin: float = 0.0 if in_third_person() else _roll_spin
 	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit) - spin
 
 ## Drops the landing dip on the floor, unrecovered.
@@ -1031,6 +1051,11 @@ func _third_person_position() -> Vector3:
 ## Flips between the first-person eye and the pulled-back one. Called from
 ## Player's V key. Saved, because the choice outlives the life it was made in.
 func toggle_third_person() -> void:
+	# Refused rather than queued: a level that forces a view is mid-scripted
+	# moment, and a preference silently changed under the player would surface
+	# only after they leave, which reads as the key having been eaten.
+	if forced_view != Status.View.NONE:
+		return
 	third_person = not third_person
 	if not third_person and camera != null:
 		camera.position = Vector3.ZERO
@@ -1053,8 +1078,8 @@ func _apply_body_layers() -> void:
 		return
 	var first: int = _config.camera.first_person_body_layers
 	var third: int = _config.camera.third_person_body_layers
-	var hide: int = third if not third_person else first
-	var show: int = first if not third_person else third
+	var hide: int = third if not in_third_person() else first
+	var show: int = first if not in_third_person() else third
 	camera.cull_mask = (camera.cull_mask | show) & ~hide
 
 
@@ -1093,6 +1118,7 @@ func cycle_third_person_shoulder() -> void:
 func third_person_debug() -> Dictionary:
 	return {
 		"on": third_person,
+		"forced_view": forced_view,
 		"shoulder": _shoulder,
 		"distance": _tp_distance,
 		"drag": _tp_drag,
