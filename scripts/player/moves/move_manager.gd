@@ -37,9 +37,17 @@ func can_enter(move_name: StringName) -> bool:
 		return false
 	# A level may forbid a move outright. Asked HERE for the same reason the
 	# cooldown is: no move can forget, and a refusal never drops the tick's
-	# transition intent into some third state. The three moves that commit
-	# before they announce themselves (JUMP, SLIDE, SKILL_ROLL) are refused
-	# earlier instead -- see Player.consume_jump().
+	# transition intent into some third state. The moves that commit before
+	# they announce themselves are refused earlier instead, each at its own
+	# commit point:
+	#
+	#   JUMP        Player.consume_jump() / consume_buffered_jump()
+	#   SLIDE       WalkingMove.physics_update(), before consume_roll()
+	#   SKILL_ROLL  AirborneMove.settle_landing(), before consume_roll()
+	#   GRAB        IntoGrabMove._settle(), before the body is squared up
+	#
+	# A refusal here would still leave the body launched, snapped or the press
+	# spent.
 	if player != null and player.statuses.is_move_blocked(move_name):
 		return false
 	return true
