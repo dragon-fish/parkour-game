@@ -204,7 +204,7 @@ func forced_view() -> int                       # Status.View.NONE / FIRST / THI
 
 | 效果 | 拦截点 |
 |---|---|
-| `BLOCK_JUMP` | `Player.consume_jump()` / `consume_jump_no_coyote()` 返回 false，整个分支不进 |
+| `BLOCK_JUMP` | `Player.consume_jump()` / `consume_buffered_jump()` 返回 false，整个分支不进 |
 | `BLOCK_SLIDE` | `walking_move.gd` 的 `if player.consume_roll():` 之前加闸，预输入不花 |
 | `BLOCK_SKILL_ROLL` | `airborne_move.gd` 的 `rolled` 判定，**短路在 `consume_roll()` 之前**，预输入不吞，落地后仍可接滑铲 |
 | 其余 | `MoveManager.can_enter()` |
