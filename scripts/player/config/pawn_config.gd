@@ -30,6 +30,26 @@ extends Resource
 ## has no such limit in the original: the owner reached 18 km/h backwards with
 ## S and space and did not find a ceiling. So this must never move into
 ## Player.speed_cap(), which every airborne state reads too.
+## A STATED VALUE STANDING IN FOR A DERIVED ONE, and worth knowing before
+## anyone treats it as a measurement. The owner watched the original leave
+## full speed for a hard left: it dips, RECOVERS to about 23 km/h, and only
+## then settles at 14.4 over roughly three seconds. A recovery above 14.4
+## means the ceiling was not 14.4 at that moment, so the original is not
+## clamping the way this line does -- something is dragging the ceiling down,
+## and taking three seconds about it, which is what
+## speed_energy_deceleration_time already says.
+##
+## The likely gap is in Player._charge_turn(), which bills the CHANGE of
+## heading and nothing else: hold a sideways run and the angle stops
+## changing, the billing stops with it, and energy climbs back under the
+## strafe factor. Bill the standing OFFSET between travel and facing instead
+## and the strafe factor is paying into a leak -- the two settle somewhere,
+## and that settling point would BE this number rather than needing it.
+##
+## Not built that way because a leak needs a rate, and the rate has to come
+## from the curve's three unmeasured points: the depth of the dip, the height
+## of the recovery, and how long the recovery takes to bleed out. Guessing it
+## trades a right endpoint for two wrong ones.
 @export var lateral_speed: float = 4.0
 
 ## Half-angle of the arc, in degrees, inside which the full ground speed is
