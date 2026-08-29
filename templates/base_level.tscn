@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://bhucofvtd1e8a" path="res://scripts/level/spawn_point.gd" id="6_spawn"]
 [ext_resource type="Script" uid="uid://dhku0eeeioa0i" path="res://scripts/level/fog_config.gd" id="7_fog"]
 [ext_resource type="Sky" uid="uid://ffvdbj3x0eg1" path="res://assets/sky/day_sky.tres" id="8_sky"]
+[ext_resource type="Resource" path="res://presets/default.tres" id="9_preset"]
 
 [sub_resource type="Resource" id="Resource_fogbl"]
 resource_local_to_scene = true
@@ -45,6 +46,7 @@ size = Vector3(60, 1, 60)
 script = ExtResource("1_tbgi4")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
+config = ExtResource("9_preset")
 fog = SubResource("Resource_fogbl")
 
 [node name="Sun" type="DirectionalLight3D" parent="." unique_id=620715121]
