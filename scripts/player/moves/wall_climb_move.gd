@@ -74,6 +74,26 @@ func enter(_previous: StringName) -> void:
 	# Priced off the SAME run-up rise_speed() was priced off, two lines up --
 	# read before the friction below spends it, or a climb would be given the
 	# ascent rate of a running kick and the ceiling of a standing one.
+	#
+	# FROM WHERE CONTACT HAPPENS, NOT FROM THE GROUND, and DO NOT "fix" this.
+	# It means the budget is a fixed increment above wherever the wall was
+	# touched, so touching it later reaches higher: pressed against a wall,
+	# W and space together lifts about 1.3 m, while jumping first and pressing
+	# W near the apex lands the same increment on top of the jump arc and
+	# reaches about 2.5 m. Keystroke order changes the result, which reads
+	# exactly like a bug.
+	#
+	# [ME:CONFIRMED] The original does this too -- both halves measured by the
+	# owner: a standing climb finishes about 1 m below a running one, and
+	# jump-then-W goes higher there as well. The split this project derived
+	# (SZD's 2.71 minus the 1.24 m of jump arc under the contact point, leaving
+	# 1.47 m of climb -- see WallClimbConfig) turns out to describe the
+	# original's actual mechanism, glitch included, rather than merely fitting
+	# its numbers.
+	#
+	# So a ceiling measured from the takeoff instead would be more consistent
+	# AND less faithful. That trade is already decided: this project rebuilds
+	# what was measured, not what would be tidier.
 	_ceiling = player.global_position.y + climb_height_for(run_up, cfg)
 
 	# The run-up's forward momentum is spent on the wall, not carried through
