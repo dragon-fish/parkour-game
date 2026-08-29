@@ -323,6 +323,13 @@ func _build_chladni() -> void:
 	_chladni = get_node_or_null("ChladniField") as ChladniField
 	if _chladni == null:
 		return
+	# LIFTED ABOVE THE BACKGROUND, which is the one thing moving it into the
+	# scene broke. A scene child is child zero, and the background -- an
+	# opaque near-white rect -- is added by code afterwards, so it drew
+	# straight over the field and the whole thing vanished. Everything after
+	# this point is added later still and keeps drawing over it, which is the
+	# order that was wanted all along.
+	move_child(_chladni, get_child_count() - 1)
 	# DERIVED, not dragged: the figure is symmetric about its own centre, so
 	# that centre belongs where the character stands. Pushed from here rather
 	# than typed into the scene so the two cannot drift apart.
