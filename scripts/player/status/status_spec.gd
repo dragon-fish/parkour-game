@@ -51,6 +51,11 @@ func summary() -> String:
 	match effect:
 		Status.Effect.SPEED_CAP:
 			payload = " %.2f" % amount
+		Status.Effect.STAGGER:
+			# Spelled out rather than left as a bare number: a stagger with no
+			# damage is a legitimate authoring choice -- a trip hazard -- and a
+			# row reading "STAGGER 0.00" looks like one that was never filled in.
+			payload = " %.0f hp" % amount if amount > 0.0 else " no damage"
 		Status.Effect.FORCE_VIEW:
 			payload = " %s" % Status.View.keys()[view]
 		Status.Effect.BLOCK_INTEREST_LINE:
@@ -69,7 +74,7 @@ func _refresh_name() -> void:
 func _validate_property(property: Dictionary) -> void:
 	var used := ""
 	match effect:
-		Status.Effect.SPEED_CAP:
+		Status.Effect.SPEED_CAP, Status.Effect.STAGGER:
 			used = "amount"
 		Status.Effect.FORCE_VIEW:
 			used = "view"

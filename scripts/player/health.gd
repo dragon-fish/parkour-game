@@ -60,6 +60,12 @@ func tick(delta: float) -> void:
 	var healing: float = minf(delta, _since_hurt - _pawn.health_regen_delay)
 	hp = minf(hp + _pawn.health_regen_rate * healing, _pawn.max_health)
 
+## How much of the wait is left before health starts coming back, 0 once it
+## already is. Exists for the debug readout: without it the delay is
+## indistinguishable from the system being broken.
+func seconds_until_regen() -> float:
+	return maxf(_pawn.health_regen_delay - _since_hurt, 0.0)
+
 ## Takes `amount` off and restarts the delay. Returns true when this blow is
 ## the one that killed.
 ##

@@ -114,9 +114,10 @@ effect = 6
 seconds = 0.15
 
 [sub_resource type="Resource" id="Spec_stagger"]
-resource_name = "STAGGER (1.0 s)"
+resource_name = "STAGGER 35 hp (1.0 s)"
 script = ExtResource("10_spec")
 effect = 15
+amount = 35.0
 seconds = 1.0
 
 [sub_resource type="BoxShape3D" id="Shape_wire"]
@@ -184,9 +185,10 @@ material = SubResource("Material_red")
 size = Vector3(9.4, 0.02, 8)
 
 [sub_resource type="Resource" id="Resource_3qddd"]
-resource_name = "STAGGER (0.5 s)"
+resource_name = "STAGGER 35 hp (0.5 s)"
 script = ExtResource("10_spec")
 effect = 15
+amount = 35.0
 seconds = 0.5
 metadata/_custom_type_script = "uid://dklpkdy6gfsxl"
 

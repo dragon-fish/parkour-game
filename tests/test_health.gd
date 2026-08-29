@@ -144,3 +144,21 @@ func test_the_death_is_announced_once_and_not_again() -> void:
 	await step(20)
 	assert_eq(deaths[0], 1, "a body already dying announced its death again")
 	player.set_dying(false)
+
+func test_a_stagger_spec_can_be_given_a_damage_in_the_inspector() -> void:
+	# The dial is useless if the field is hidden, and StatusSpec hides every
+	# payload field its effect does not read. This is the pairing that keeps
+	# the two lists in step.
+	var spec := StatusSpec.new()
+	spec.effect = Status.Effect.STAGGER
+	spec.amount = 35.0
+	var shown := {"name": "amount", "usage": PROPERTY_USAGE_EDITOR}
+	spec._validate_property(shown)
+	assert_true(bool(shown["usage"] & PROPERTY_USAGE_EDITOR), \
+		"a hazard's damage cannot be typed into the inspector")
+	assert_string_contains(spec.summary(), "35")
+
+func test_a_stagger_that_takes_nothing_says_so_rather_than_reading_as_unset() -> void:
+	var spec := StatusSpec.new()
+	spec.effect = Status.Effect.STAGGER
+	assert_string_contains(spec.summary(), "no damage")

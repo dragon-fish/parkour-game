@@ -138,6 +138,7 @@ func _process(delta: float) -> void:
 			player.standing_height(),
 			"  FOLDED" if player.current_capsule_height() < player.standing_height() - 0.01 else ""],
 		"last land  %.2f m/s" % player.last_landing_speed,
+		"health     %s" % _health_line(),
 		# The two speed layers, side by side. A cap far below the curve's own
 		# ceiling means the turn tax has been eating energy; a speed far below
 		# the cap means something else is holding the body back.
@@ -262,6 +263,30 @@ func _shimmy_text() -> String:
 ## The lead is what says whether it can be a straight line at all: 0 is a
 ## symmetric bump, above 0 is the bezier. An arc of 0 with a lead of 0 IS the
 ## straight line, and now it says so.
+## Everything the health layer does that is otherwise invisible: the bar, the
+## wait standing in front of regeneration, and what took the last bite.
+##
+## THE WAIT IS THE PART WORTH SHOWING. Five seconds of nothing happening looks
+## exactly like a system that is not running, and the climb after it is only
+## two seconds wide -- so without a countdown here the only way to tell the
+## difference is to die.
+func _health_line() -> String:
+	var h: Health = player.health
+	if h == null:
+		return "-"
+	var pawn: PawnConfig = player.config.pawn
+	var phase: String
+	if h.is_dead():
+		phase = "DEAD"
+	elif h.hp >= pawn.max_health:
+		phase = "full"
+	elif h.seconds_until_regen() > 0.0:
+		phase = "regen in %.1fs" % h.seconds_until_regen()
+	else:
+		phase = "regen +%.0f/s" % pawn.health_regen_rate
+	return "%.1f / %.0f  %s  last %s" % [h.hp, pawn.max_health, phase,
+		Health.Cause.keys()[h.last_cause]]
+
 func _scripted_line() -> String:
 	if player == null or player.move_manager == null:
 		return "-"
