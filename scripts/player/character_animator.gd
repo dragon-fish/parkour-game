@@ -716,6 +716,8 @@ const WALL_DEATH_CLIPS: Array[StringName] = [&"Death01", &"Death02",
 const DEATH_WALL_CLEARANCE := 1.5
 
 ## Which clips this death picked, chosen once and held for its duration.
+## Empty between deaths -- see the reset below for why that is an assignment
+## rather than a clear().
 ##
 ## LATCHED, because the choice asks about the WORLD. Re-asked every frame, the
 ## collapse itself carries the body away from the wall it was facing and the
@@ -834,7 +836,11 @@ func _target_animation() -> StringName:
 		if _death_clips.is_empty():
 			_death_clips = _death_clip_list()
 		return _first_available(_death_clips)
-	_death_clips.clear()
+	# A FRESH ARRAY, NOT .clear(). The lists above are `const`, which in Godot 4
+	# means read-only -- clear() on one fails silently apart from an error in
+	# the log, so _death_clips never empties and the FIRST death of the session
+	# picks the clip for every death after it.
+	_death_clips = []
 	match player.move_manager.current_name:
 		Move.WALKING:
 			# THREE BANDS, not two. The free tier has a genuine Walk and the

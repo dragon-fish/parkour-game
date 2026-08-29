@@ -505,3 +505,23 @@ func test_every_routed_clip_has_a_node_in_the_graph() -> void:
 	assert_eq(orphaned, [] as Array[String],
 		"routed but with no node in the graph, so they can never play -- add them to Player._KNOWN_ANIMATION_CLIPS: %s"
 		% ", ".join(orphaned))
+
+func test_each_death_picks_its_own_clip_rather_than_the_first_one_ever() -> void:
+	# The latch holds a death's choice for its DURATION, not for the session.
+	# It got this wrong once in a way nothing on screen explained: the lists
+	# it latches onto are `const`, i.e. read-only, so clear() failed silently
+	# and every death after the first replayed the first one's decision.
+	var animator := await _animator_with([&"Death01", &"Death02", &"LiftAir_Fall", &"idle"])
+	var player: Player = _world["player"]
+
+	player.health.last_cause = Health.Cause.FALL
+	player.set_dying(true)
+	assert_eq(animator._target_animation(), &"LiftAir_Fall", "test setup: the fall clip is missing")
+	player.set_dying(false)
+	assert_ne(animator._target_animation(), &"LiftAir_Fall", "the body kept dying after it stopped")
+
+	player.health.last_cause = Health.Cause.HAZARD
+	player.set_dying(true)
+	assert_eq(animator._target_animation(), &"Death02", \
+		"the second death replayed the first one's choice")
+	player.set_dying(false)
