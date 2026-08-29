@@ -24,17 +24,38 @@ shader_type canvas_item;
 // which is what the real thing looks like, because the settling is a
 // tendency and not a rule.
 
+// The figure being left, the figure being arrived at, and how far between.
+//
+// THE LINES SLIDE, they do not cut. The two fields are mixed, so the set
+// where the mix is zero -- the figure -- deforms continuously from one into
+// the other, and the grains that light up travel with it. A cut between two
+// modes reads as a glitch; salt on a real plate takes a moment to find its
+// new places.
+//
+// AND IT STAYS SYMMETRIC THE WHOLE WAY, which is not obvious and is the
+// reason the grain lattice below is in SCREEN space rather than in the
+// plate's. Both windows are anchored at the same point on screen, so each
+// field, read as a function of the offset from that point, is an EVEN
+// function -- and a mix of two even functions is even. Anchor them at
+// different points, or let the grains live in plate space, and the halfway
+// figure is symmetric about neither.
 uniform float mode_n : hint_range(1.0, 12.0) = 3.0;
 uniform float mode_m : hint_range(1.0, 12.0) = 5.0;
+uniform float mode_n2 : hint_range(1.0, 12.0) = 3.0;
+uniform float mode_m2 : hint_range(1.0, 12.0) = 5.0;
+uniform vec2 centre2 = vec2(0.0);
+uniform float morph : hint_range(0.0, 1.0) = 1.0;
 // How wide a band around the nodal line still holds grains. Widening it is
 // what a plate driven harder actually does -- the powder cannot settle as
 // tightly -- so this is where loudness goes.
 uniform float settle : hint_range(0.01, 1.0) = 0.18;
 // How far a grain is thrown from its cell, which is the plate shaking.
 uniform float agitation : hint_range(0.0, 1.0) = 0.0;
-// Grains per plate unit. In PLATE space, not screen space, so it has to
-// rise as `zoom` falls or a blown-up detail is drawn with blown-up specks.
-uniform float grain_density : hint_range(4.0, 800.0) = 260.0;
+// Grains per unit of the rect's HEIGHT. Screen space, so the specks keep
+// their size whatever the window does -- and, more importantly, so they stay
+// put while the figure slides underneath them. Grains pinned to the plate
+// would teleport the moment the window moved.
+uniform float grain_density : hint_range(4.0, 800.0) = 150.0;
 uniform float grain_size : hint_range(0.01, 0.5) = 0.16;
 uniform float brightness : hint_range(0.0, 1.0) = 0.5;
 // The rect is wide and the plate is square: without this the figure is
@@ -79,16 +100,13 @@ float plate(vec2 p, float n, float m) {
 }
 
 void fragment() {
-	// Plate coordinates: a window of size `zoom` around `centre`, hung off
-	// centre_x rather than off the middle of the rect, with the wide axis
-	// corrected so the figure is not stretched out of its own symmetry.
-	//
-	// The sampling is symmetric about (centre_x, 0.5) by construction, which
-	// is what makes the figure symmetric on screen -- see `centre`.
-	vec2 plate_uv = centre
-		+ (UV - vec2(centre_x, 0.5)) * vec2(aspect, 1.0) * zoom;
+	// Offset from the anchor point, corrected for the wide axis so the figure
+	// is not stretched out of its own symmetry. Everything below is a
+	// function of this, which is what makes the picture symmetric about it.
+	vec2 delta = (UV - vec2(centre_x, 0.5)) * vec2(aspect, 1.0);
 
-	vec2 grid = plate_uv * grain_density;
+	// The grain lattice is in SCREEN space -- see the note on the modes.
+	vec2 grid = delta * grain_density;
 	vec2 cell = floor(grid);
 	vec2 local = fract(grid) - 0.5;
 
@@ -102,16 +120,21 @@ void fragment() {
 	float dist = length(local - offset);
 	float grain = 1.0 - smoothstep(grain_size, grain_size + 0.10, dist);
 
-	// How well this grain's own place holds it: right on the line, entirely;
-	// well past the band, hardly at all.
+	// Where this grain actually is, as an offset, and what each of the two
+	// plates says about that place.
+	vec2 at = (cell + 0.5 + offset) / grain_density;
+	float f = mix(plate(centre + at * zoom, mode_n, mode_m),
+		plate(centre2 + at * zoom, mode_n2, mode_m2), morph);
+
+	// How well this place holds it: right on the line, entirely; well past
+	// the band, hardly at all.
 	//
 	// A LONG TAIL RATHER THAN AN EDGE. smoothstep to zero draws the figure as
 	// a solid shape with a boundary, which at this size reads as a stain --
 	// and a dense one is unfriendly to look at. Powder is dense on the line
 	// and keeps going, thinning, for some way either side, so the falloff
 	// runs past `settle` and decays instead of ending.
-	vec2 at = (cell + 0.5 + offset) / grain_density;
-	float away = abs(plate(at, mode_n, mode_m)) / max(settle, 0.001);
+	float away = abs(f) / max(settle, 0.001);
 	float settled = 1.0 / (1.0 + away * away / max(spread, 0.001));
 
 	// A few grains never settle. Without them the empty regions are empty in

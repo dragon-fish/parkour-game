@@ -40,6 +40,15 @@ const MODE_MAX := 9
 ## So the hold is what keeps it from flickering, rather than the easing.
 const MODE_HOLD := 2.6
 
+## How long the powder takes to find its new places.
+##
+## THE FIGURE SLIDES, the modes still snap. The two fields are mixed in the
+## shader, so the set where the mix is zero deforms continuously from the old
+## figure into the new one and the grains that light up travel with it -- and
+## because both windows are anchored at the same point on screen, every stage
+## of that is still symmetric. See the shader.
+const MORPH_TIME := 1.1
+
 ## How fast loudness reaches the shader. Quicker than the modes, so the grain
 ## visibly answers the beat while the figure it belongs to holds.
 const LEVEL_EASE := 8.0
@@ -69,6 +78,11 @@ var _installed_analyzer: bool = false
 var _n: int = MODE_MIN
 var _m: int = MODE_MAX
 var _centre := Vector2.ZERO
+## What is being left behind, held until the morph finishes.
+var _from_n: int = MODE_MIN
+var _from_m: int = MODE_MAX
+var _from_centre := Vector2.ZERO
+var _morph: float = 1.0
 var _held: float = 0.0
 var _drive: float = 0.0
 
@@ -118,8 +132,12 @@ func _process(delta: float) -> void:
 	# cancel the closed form to zero, which is a plate with nothing on it.
 	var wanted := mode_pair(bottom, top)
 	_held += delta
-	if _held >= MODE_HOLD and (wanted.x != _n or wanted.y != _m):
+	if _held >= MODE_HOLD and _morph >= 1.0 and (wanted.x != _n or wanted.y != _m):
 		_held = 0.0
+		_morph = 0.0
+		_from_n = _n
+		_from_m = _m
+		_from_centre = _centre
 		_n = wanted.x
 		_m = wanted.y
 		# The window moves to a DIFFERENT crossing of the figure at the
@@ -127,12 +145,23 @@ func _process(delta: float) -> void:
 		# modes does not keep drawing the same handful of shapes. Whole
 		# numbers, and it jumps with them -- see the shader on `centre`.
 		_centre = lattice_point(_n, _m)
+	_morph = minf(_morph + delta / MORPH_TIME, 1.0)
 	_drive = lerpf(_drive, clampf(loudness / FULL_DRIVE, 0.0, 1.0),
 		clampf(delta * LEVEL_EASE, 0.0, 1.0))
-	_material.set_shader_parameter("centre", _centre)
-	_material.set_shader_parameter("mode_n", float(_n))
-	_material.set_shader_parameter("mode_m", float(_m))
-	_material.set_shader_parameter("agitation", _drive)
+	# Smootherstep on the way across: the ends are where a slide is noticed
+	# starting and stopping, and a linear one starts and stops abruptly at both.
+	var k: float = _morph * _morph * (3.0 - 2.0 * _morph)
+	_material.set_shader_parameter("centre", _from_centre)
+	_material.set_shader_parameter("mode_n", float(_from_n))
+	_material.set_shader_parameter("mode_m", float(_from_m))
+	_material.set_shader_parameter("centre2", _centre)
+	_material.set_shader_parameter("mode_n2", float(_n))
+	_material.set_shader_parameter("mode_m2", float(_m))
+	_material.set_shader_parameter("morph", k)
+	# The plate is being re-driven while the powder travels, so it is shaken
+	# harder for exactly as long as that lasts.
+	_material.set_shader_parameter("agitation",
+		clampf(_drive + (1.0 - _morph) * 0.35, 0.0, 1.0))
 	# A plate driven harder holds its powder less tightly, so the figure
 	# thickens rather than only shaking.
 	# Wider than it was, and with a long tail past it -- see the shader. A
