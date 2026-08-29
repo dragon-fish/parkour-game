@@ -90,7 +90,13 @@ const CROUCHED_CLIPS: Array[StringName] = [
 	&"sneak", &"sneaking", &"Crouch_Idle", &"Crouch_Fwd",
 ]
 
-const SPEED_SCALE_MIN := 0.5
+## The rails, and only rails. A clip plays at speed / reference; these exist
+## so a body drifting to a halt does not freeze its own feet and a body carried
+## by something else does not run at twenty times life. They are NOT part of
+## the mapping, and a value that bites inside the ordinary speed range would
+## be -- the floor used to sit at 0.5, which quietly overrode the proportion
+## for every family whose reference is well above walking pace.
+const SPEED_SCALE_MIN := 0.1
 const SPEED_SCALE_MAX := 2.0
 
 ## Bounds on fitting a clip to a scripted move's clock. Wider than the
@@ -459,13 +465,22 @@ func _creeping() -> bool:
 		return false
 	return player.wish_direction(player.last_input).length_squared() > 0.0001
 
-## Where the walk hands over to the run: the speed at which the run clip would
-## be scaled to SPEED_SCALE_MIN, i.e. the slowest it can honestly go.
+## Where the walk hands over to the run.
 ##
-## Not a new tuning value -- it falls out of bounds that already existed, and
-## WALK_REFERENCE_PCT is set so the walk's ceiling lands on the same number.
+## ITS OWN NUMBER NOW. It used to be derived from SPEED_SCALE_MIN, on the
+## reasoning that the handover belongs at the slowest speed the run clip can
+## honestly play. That tied a ROUTING threshold to a playback RAIL, and the
+## two have nothing to do with each other: lowering the rail so it would stop
+## overriding the proportional scale moved the handover from 3.6 m/s to 0.72
+## and sent a walking-pace strafe to the jog.
+##
+## Left at the value the old derivation produced, so nothing moves on screen.
+## This is the knob for WHICH clip runs at which speed; the references are the
+## knobs for how fast each one plays.
+const RUN_BAND_PCT := 0.5
+
 func _run_band_speed() -> float:
-	return player.body_run_reference_speed * SPEED_SCALE_MIN
+	return player.body_run_reference_speed * RUN_BAND_PCT
 
 ## Moves whose end is a LANDING. Leaving one of these for WALKING is the moment
 ## the feet arrive, which is what Jump_Land is a clip of.
@@ -631,15 +646,13 @@ func _drive_speed(clip: StringName) -> void:
 		# travel_speed(), NOT horizontal_speed() -- see travel_speed()'s own
 		# note on why velocity lies through a vault or a mantle. The eye already
 		# reads it for the same reason.
-		# A LOWER FLOOR FOR THE WALK, and it is derived rather than picked: the
-		# creep is 0.5 m/s against a walk authored near 1.8, so the honest scale
-		# there is 0.28 and the ordinary 0.5 floor would run the feet at 0.9 m/s
-		# under a body doing 0.5. SPEED_SCALE_MIN exists to stop ONE clip being
-		# stretched across everything; a walk asked to walk slowly is not that.
-		var scale_min := SPEED_SCALE_MIN
-		if WALK_CLIPS.has(base_clip) or family == &"Walk":
-			scale_min = minf(SPEED_SCALE_MIN, player.config.pawn.walk_velocity / reference)
-		scale = clampf(player.travel_speed() / reference, scale_min, SPEED_SCALE_MAX)
+		# STRICTLY PROPORTIONAL: at its family's reference speed a clip plays at
+		# 1.0, at half of it at 0.5, and that is the whole rule. The rails below
+		# are there to catch degenerate values, not to shape the curve -- a walk
+		# used to get a floor of its own, derived from the creep speed, and a
+		# per-family exception to proportionality is exactly the kind of decision
+		# that belongs to whoever is tuning the references rather than to this.
+		scale = clampf(player.travel_speed() / reference, SPEED_SCALE_MIN, SPEED_SCALE_MAX)
 	anim_tree.set("parameters/%s/scale" % GRAPH_TIME_SCALE, scale)
 
 ## The time scale that makes `clip` finish exactly when the scripted move
