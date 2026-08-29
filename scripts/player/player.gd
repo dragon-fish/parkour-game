@@ -103,6 +103,14 @@ func exit_interest_line(line: InterestLine) -> void:
 	# Leaving the volume is what re-arms the line -- see note_line_left().
 	_lines_awaiting_exit.erase(line.get_instance_id())
 
+## Entry points for ModifierVolume, duck-typed the same way touch_checkpoint()
+## and enter_interest_line() are: the volume does not know what a Player is.
+func apply_status(spec: StatusSpec, source: Object, priority: int) -> void:
+	statuses.apply(spec, source, priority)
+
+func remove_status(effect: int, subject: StringName) -> void:
+	statuses.remove(effect, subject)
+
 ## The closest line of `kind` the body is inside, by distance from the body to
 ## the line's nearest point, or null. Two overlapping volumes are rare enough
 ## that "closest" is all the arbitration this needs.
@@ -111,6 +119,15 @@ func nearest_interest_line(kind: InterestLine.Kind) -> InterestLine:
 	var best_distance: float = INF
 	for line in interest_lines:
 		if not is_instance_valid(line) or line.kind != kind:
+			continue
+		# A level may forbid one named line while its siblings stay usable.
+		# Filtered HERE because this is the only place anything asks which
+		# line is reachable; the six callers all come through it.
+		#
+		# ONLY THE CATCH IS REFUSED, never a ride already under way: LineMove
+		# stores its line on entry and stops asking, so a rope forbidden under
+		# a player already hanging from it does not drop them.
+		if statuses.is_line_blocked(line.tag):
 			continue
 		var at: Vector3 = line.sample(line.closest_offset(global_position))["position"]
 		var distance: float = at.distance_to(global_position)
@@ -193,6 +210,26 @@ enum { TIER_FREE, TIER_SOFT, TIER_ROLLABLE, TIER_HARD }
 
 ## Accumulated fall height since the last ground contact. Built in setup().
 var fall_tracker: FallTracker
+
+## Temporary modifications a level has put on this player -- speed caps,
+## forbidden moves, a forced view. Read through the query methods; nothing
+## outside StatusList interprets an entry.
+var statuses: StatusList
+
+## Where speed_cap()'s scale has actually got to, as opposed to where the
+## status list says it should be. Eased over pawn.speed_cap_blend_time so a
+## level's speed change reads as a slow-down rather than a cut -- see
+## _blend_speed_scale().
+var _speed_scale: float = 1.0
+
+## Seconds of stagger immunity still owed. Armed when a landing lockout lets
+## go, so a level that keeps re-applying STAGGER cannot chain them.
+var _stagger_immunity: float = 0.0
+
+## Set by MoveManager on the tick it commits a stagger, so LandingMove can
+## tell a wire cut from a hard landing and charge the momentum differently.
+## One-shot: the reader clears it, same as pending_vault_variant.
+var pending_stagger: bool = false
 
 ## Emitted on the touchdown that ends an uncontrolled fall. The fall itself is
 ## already lost by then -- this only tells whoever owns respawning that the
@@ -1034,6 +1071,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	input_source = src
 	fall_tracker = FallTracker.new()
 	speed_energy = SpeedEnergy.new(config.pawn)
+	statuses = StatusList.new()
 
 	# The capsule resource is shared by every instance of player.tscn, so
 	# resizing it in place would let one player's slide shrink every other
@@ -1096,6 +1134,10 @@ func reset_state() -> void:
 		fall_tracker.reset(global_position.y)
 	if speed_energy != null:
 		speed_energy.reset()
+	# A respawn is not a transition to watch: the ceiling starts where the new
+	# life's statuses put it, with no slide inherited from the old one.
+	_speed_scale = statuses.speed_scale() if statuses != null else 1.0
+	_stagger_immunity = 0.0
 	_last_wish_dir = Vector3.ZERO
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
@@ -1135,6 +1177,7 @@ func reset_state() -> void:
 
 func _build_moves() -> void:
 	move_manager = MoveManager.new()
+	move_manager.player = self
 	add_child(move_manager)
 
 	# name -> [move instance, its own config]. One table instead of the
@@ -2042,7 +2085,7 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# because the shoulders swivel under a head that did not move. That effect
 	# is about watching a character; there is no character to watch from in
 	# here.
-	if not frozen and (camera_rig == null or not camera_rig.third_person):
+	if not frozen and (camera_rig == null or not camera_rig.in_third_person()):
 		_visual_yaw = rotation.y
 		body_root.rotation.y = 0.0
 		return
@@ -2698,6 +2741,26 @@ func _physics_process(delta: float) -> void:
 	var input := MoveInput.new() if _input_locked else polled
 	last_input = input
 	_tick_timers(delta, input)
+	# Aged alongside the other timers and BEFORE the moves run, so a status
+	# that expires this tick is already gone by the time anything reads it.
+	statuses.tick(delta)
+	_blend_speed_scale(delta)
+	# AHEAD OF EVERY READER OF in_third_person(), and immediately after the
+	# ageing above so it answers for this tick rather than the last one. Both
+	# _drive_body_yaw() below and the moves consult the rig for which view is
+	# being rendered; pushed after them, the tick a FORCE_VIEW arrives or
+	# lapses is answered with the previous tick's view.
+	# FallUncontrolledMove.enter() is why that matters: it latches its eye lift
+	# once, for the whole death, so a stale read there is wrong until the body
+	# stops falling. _drive_body_yaw() would merely be wrong for a frame.
+	if camera_rig != null:
+		camera_rig.forced_view = statuses.forced_view()
+		# Pushed HERE, before the moves run, so anything that owns the blur
+		# for its own reasons -- FallUncontrolledMove does, every tick of a
+		# death -- writes after this and wins. At rest the curve is zero, so
+		# this costs the channel nothing when no view is changing.
+		if screen_effects != null:
+			screen_effects.set_blur(camera_rig.view_blur())
 	# Before the moves run, so the body moves this tick at whatever size it is
 	# now entitled to. A restore owed from an exit under a ceiling comes back
 	# on the first tick there is room for it.
@@ -2850,7 +2913,7 @@ var _framing_travel: float = 0.0
 ## move, and none of it does anything in first person -- where a wheel notch
 ## would otherwise silently change a distance nobody can see.
 func _handle_third_person_button(event: InputEventMouseButton) -> bool:
-	if camera_rig == null or not camera_rig.third_person:
+	if camera_rig == null or not camera_rig.in_third_person():
 		return false
 	match event.button_index:
 		MOUSE_BUTTON_WHEEL_UP:
@@ -3064,6 +3127,7 @@ func _tick_line_cooldowns(delta: float) -> void:
 
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	_tick_gravity_window(delta)
+	_stagger_immunity = maxf(_stagger_immunity - delta, 0.0)
 	_tick_line_cooldowns(delta)
 	if grounded:
 		_coyote_timer = config.pawn.coyote_time
@@ -3097,6 +3161,15 @@ func _tick_timers(delta: float, input: MoveInput) -> void:
 ## Spends a buffered jump if one is pending and the player is still within
 ## coyote time. Returns true at most once per press.
 func consume_jump() -> bool:
+	# REFUSED HERE, not in MoveManager.can_enter(). WalkingMove writes the
+	# launch velocity and calls move_and_slide() BEFORE it returns JUMP, so a
+	# refusal at the transition would leave the body in the air and the state
+	# on the ground. Refusing the spend keeps the whole branch unentered.
+	#
+	# Returns false WITHOUT clearing the buffer: the player pressed, and the
+	# press must still be there the moment the block lifts.
+	if statuses.is_move_blocked(Move.JUMP):
+		return false
 	if _jump_buffer_timer > 0.0 and _coyote_timer > 0.0:
 		_jump_buffer_timer = 0.0
 		_coyote_timer = 0.0
@@ -3117,10 +3190,18 @@ func consume_jump() -> bool:
 ## as consume_jump(), so a consumed press cannot also fire a second jump
 ## later.
 func consume_buffered_jump() -> bool:
+	if statuses.is_move_blocked(Move.JUMP):
+		return false
 	if _jump_buffer_timer > 0.0:
 		_jump_buffer_timer = 0.0
 		return true
 	return false
+
+## Arms the jump buffer directly. FOR TESTS: the keyboard path fills this from
+## a press edge, which a headless test has no way to produce.
+func arm_jump_buffer_for_test() -> void:
+	_jump_buffer_timer = config.pawn.jump_buffer_time
+	_coyote_timer = config.pawn.coyote_time
 
 ## The same, for Q. See _turn_buffer_timer.
 func consume_buffered_turn() -> bool:
@@ -3516,8 +3597,40 @@ func jump_add_velocity(input: MoveInput) -> Vector3:
 func in_step_grace() -> bool:
 	return _step_grace_timer > 0.0
 
+## True while a stagger cannot land. Read by MoveManager, armed by
+## LandingMove.exit() -- the lockout is the thing that knows when it is over.
+func is_stagger_immune() -> bool:
+	return _stagger_immunity > 0.0
+
+## Starts the window. Called from LandingMove.exit(), so ANY landing lockout
+## grants it, not only one a stagger caused: a body that has just picked
+## itself up off the floor is exactly as unable to absorb another stumble.
+func arm_stagger_immunity() -> void:
+	_stagger_immunity = config.pawn.stagger_immunity_time
+
 func speed_cap() -> float:
-	return speed_energy.cap()
+	# Scaled HERE rather than at each caller: this is the one function every
+	# move asks "how fast may I go", so a status applied to it reaches all of
+	# them and none of them needs to know statuses exist. Same shape as
+	# MoveConfig.speed_modifier, which the crouch already rides.
+	#
+	# The scale is the EASED one, not statuses.speed_scale(). See
+	# _blend_speed_scale(): the ceiling slides, the body chases it.
+	return speed_energy.cap() * _speed_scale
+
+## Slides the ceiling's scale toward whatever the status list currently says.
+##
+## DO NOT ease this by lowering accel_rate instead: that is the body's own
+## responsiveness and it belongs to every move, not to the one region that
+## happens to be capping the player.
+##
+## move_toward on a 0..1 scale, so the dial is a time for the full range and a
+## half-range change takes half of it -- which is what "a cap change should
+## feel proportional to how big it is" wants.
+func _blend_speed_scale(delta: float) -> void:
+	var wanted: float = statuses.speed_scale()
+	var seconds: float = maxf(config.pawn.speed_cap_blend_time, 0.001)
+	_speed_scale = move_toward(_speed_scale, wanted, delta / seconds)
 
 ## Which accumulation factor this tick's input asks for. The original
 ## declares three (02 §2.1) and this is the reading that makes all three

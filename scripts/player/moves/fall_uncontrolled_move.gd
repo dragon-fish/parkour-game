@@ -25,7 +25,7 @@ func enter(_previous: StringName) -> void:
 	# the head bone, and LiftAir_Fall_Air holds the body horizontal with its
 	# hips near the floor. From outside there is no such problem -- the camera
 	# is metres away. See CameraConfig.fall_uncontrolled_eye_lift.
-	if player.camera_rig != null and not player.camera_rig.third_person:
+	if player.camera_rig != null and not player.camera_rig.in_third_person():
 		player.camera_rig.set_death_lift(config.camera.fall_uncontrolled_eye_lift)
 	# THE RAGDOLL STARTS THE MOMENT CONTROL IS LOST, not after landing: this
 	# state IS losing control, and it is already fatal by definition. DO NOT

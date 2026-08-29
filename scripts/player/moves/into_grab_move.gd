@@ -217,6 +217,14 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 ## at. Without the re-centring the hang's own look clamp inherits the approach
 ## angle, and every grab has a differently skewed fan.
 func _settle() -> StringName:
+	# REFUSED HERE, not in MoveManager.can_enter(). The two lines below snap
+	# the body square to the wall and re-centre the camera's fan before GRAB
+	# is ever announced, so a refusal at the transition would leave a body
+	# planted against a wall it is not holding, waiting out cfg.max_duration
+	# before it finally falls. Same class as JUMP, SLIDE and SKILL_ROLL.
+	# Falling is the honest outcome, exactly as it is when the reach runs out.
+	if player.statuses.is_move_blocked(GRAB):
+		return FALLING
 	# Set directly, NOT through _turn_body_toward(): by here the facing is
 	# already within a rounding error of the target, and reporting that sliver
 	# to the camera as a lag is noise.

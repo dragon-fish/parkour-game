@@ -270,6 +270,14 @@ right node names. Run it (along with everything else) via
    you mean otherwise.
    Set kind = SWING instead and the same node is a swing bar (hang below,
    swing perpendicular to the line).
+4. `tag` is optional and only matters if a `ModifierVolume` is going to
+   forbid this particular line — `BLOCK_INTEREST_LINE` addresses a line **by
+   name**. An untagged line has no name to address and so can never be
+   singled out; it is still caught by a blanket ban on its whole kind
+   (`BLOCK_ZIPLINE`, `BLOCK_SWING`, `BLOCK_LADDER`). Blocking one rope does
+   not block rope: `tag = &"pipe_a"` under a `BLOCK_INTEREST_LINE` volume
+   takes that one cable out of play and leaves every other zipline in the
+   level catchable.
 
 The collision volume is built along the curve at runtime; do not add one by
 hand. The cable has no mesh yet — F12 draws it in play.
@@ -330,6 +338,204 @@ before release forgets the checkpoint and returns to the SpawnPoint (debug).
 The SpawnPoint wears the same preview in purple -- note its capsule hangs
 BELOW the marker: spawn markers were always placed at the body's centre
 height, and existing levels keep that convention.
+
+## Placing a modifier volume
+
+A `ModifierVolume` is how a level says "not here": a region that puts
+temporary, time-limited modifications on whoever walks in — a ground speed
+ceiling, a forbidden move, a forbidden named interest line, a forced camera
+view, a stumble. It is the only author-facing surface of the status layer.
+
+1. Add Node → `ModifierVolume` (an `Area3D`; the class comes from
+   `scripts/level/modifier_volume.gd`).
+2. Give it any `CollisionShape3D` children — like `Checkpoint`, the trigger
+   is whatever shape you build, of however many parts. A corridor can be
+   three boxes under one node.
+3. Fill in `apply` with one `StatusSpec` row per modification. Each row is
+   an `effect`, a `seconds`, and whichever payload field that effect reads.
+4. Optionally fill in `remove` to lift something on the way in. Only
+   `effect` and `subject` are read there; `amount`, `view` and `seconds` are
+   ignored. An empty `subject` lifts every subject of that effect.
+
+### The effect vocabulary
+
+| effect | reads | means |
+|---|---|---|
+| `SPEED_CAP` | `amount` | multiplies the ground speed ceiling (0..1) |
+| `FORCE_VIEW` | `view` | renders in `FIRST` or `THIRD` whatever the player's saved preference is, and leaves that preference untouched |
+| `BLOCK_INTEREST_LINE` | `subject` | forbids the one line whose `tag` matches |
+| `BLOCK_JUMP`, `BLOCK_SLIDE`, `BLOCK_SKILL_ROLL`, `BLOCK_COIL`, `BLOCK_WALL_RUN`, `BLOCK_WALL_CLIMB`, `BLOCK_GRAB`, `BLOCK_SPEED_VAULT`, `BLOCK_LADDER`, `BLOCK_ZIPLINE`, `BLOCK_SWING`, `BLOCK_TURN_180` | nothing | forbids that move |
+| `STAGGER` | nothing | stumbles the player into the hard-landing lockout, on contact — see below |
+
+Every field not named in that table is ignored by that effect. There is no
+`BLOCK_WALKING`, `BLOCK_FALLING`, `BLOCK_LANDING`, `BLOCK_FALL_UNCONTROLLED`
+or `BLOCK_CROUCH`, and there never will be: each of those either strands the
+state machine or hangs the body in mid-air with nothing to run. Crouch in
+particular is a slide's only exit under a low ceiling. The way to stop a
+player crouching is geometry, not a status.
+
+### `STAGGER` fires on contact, and then leaves you alone for a moment
+
+Barbed wire cuts you when you touch it. `STAGGER` stumbles the player the tick
+it lands, **including in mid-air** — so a volume tall enough to cover a fence
+charges the vault at the moment it is taken, not on the far side. The lockout
+starts there too, which is why the time spent unable to move on the ground is
+noticeably shorter than `lockout_time`: most of it was spent falling.
+
+**It is a knock-down, not a wall.** The cut takes the upward half of the arc
+and most of the speed — `landing.stagger_keep_ratio` of the horizontal is what
+survives — so the body carries on forward and down instead of stopping dead
+above the fence. Wire is there to punish forgetting to tuck, not to make an
+obstacle impassable.
+
+`seconds` is therefore an ordinary duration here, and a short one is fine: the
+status is spent the instant it fires, so anything above a tick or two only
+matters if the player is immune when it arrives.
+
+**Staying in the wire keeps hurting, but cannot trap you.** When a landing
+lockout releases it arms `pawn.stagger_immunity_time` — a window in which a
+new `STAGGER` is eaten rather than queued. Without it a volume renewing its
+stagger would re-fire on the tick the lockout ended, and since the lockout
+refuses movement input there would be no tick in which to walk out. The window
+has to outlast the time it takes to cross the wire, not the time it takes to
+react; a metre or two of wire needs well under a second.
+
+The immunity is armed by *any* landing lockout, not only one a stagger caused
+— a body that has just picked itself up off the floor is exactly as unable to
+absorb another stumble.
+
+**A wire the player can stand in needs a `refresh_interval`.** Without one the
+volume charges on entry and never again, so a run of wire along a wall can be
+walked end to end having paid once. Give it a short interval — `0.25` — and the
+cadence looks after itself: the stagger fires, the lockout refuses input for
+`landing.lockout_time`, the immunity window opens for
+`pawn.stagger_immunity_time`, and the next renewal past that bites again. The
+window is the only tick the player can move in, so it is also the only chance
+they get to step off.
+
+DO NOT write that cadence as an interval of its own. Three seconds between hits
+is `lockout_time + stagger_immunity_time`, and a third number would have to be
+kept in step with both by hand.
+
+### Attaching a modification to a region rather than to a moment
+
+Nothing tracks who is inside a volume — there is no exit handler and no
+membership list. A region-wide modification is a short-lived status the
+volume keeps renewing:
+
+- Set `refresh_interval` to how often it re-applies, e.g. `0.05`.
+- Set each row's `seconds` to **at least twice** that, e.g. `0.15`.
+
+The status is then continuously renewed while the player is inside and lapses
+on its own shortly after they leave.
+
+**Both numbers want to be small, and the reason is the exit.** `seconds` is
+not only the renewal margin — it is also how long the modification outlives
+the player leaving the volume. What lapses is the last renewal, so the lag on
+the way out is `seconds` minus however long ago the last one fired: somewhere
+between `seconds - refresh_interval` and `seconds`. A 0.5 / 1.5 pairing is a
+full second to a second and a half of still being slowed after the red floor
+is behind you, and that is felt. 0.05 / 0.15 costs twenty polls a second per
+volume and brings it down to about a tenth of a second.
+
+Do not give `seconds` the same value as `refresh_interval`: both clocks then
+start from the same number and subtract the same delta, so the status expires
+on the very tick it is renewed and survives only because the volume is ordered
+ahead of the player. That is zero margin — anything that lets the two drift
+puts the expiry a frame ahead of the renewal, and one frame is enough for a
+buffered jump to fire inside a no-jump region. Twice the interval leaves a
+whole interval of slack.
+
+Leave `refresh_interval` at `0` for a one-shot: a status with a fixed
+`seconds` that starts counting the moment the player crosses the boundary and
+runs out wherever they happen to be.
+
+### Running barbed wire along a path
+
+`BarbedWire` (`scripts/level/barbed_wire.gd`) is a `Path3D` that winds a coil
+of concertina wire about its own curve. **The curve is the AXIS, not the
+strand**: drag it along the top of a wall and the coil wraps it.
+
+1. **Add Node → `BarbedWire`**, and drag its curve where the wire should run.
+2. Set `coils_per_metre` for how tight the concertina reads, `coil_radius` for
+   how far the loops stand off the path, and `wire_radius` for the strand's own
+   thickness. `barbs_per_metre`, `barb_length` and `barb_seed` place the barbs.
+3. That is all it does.
+
+**It produces geometry and nothing else** — no hazard, no collision. That is
+deliberate, and it is why the three can be combined freely:
+
+- To make the wire *hurt*, put a `ModifierVolume` beside it carrying `STAGGER`.
+  The stagger knocks the player into the landing lockout, which also takes
+  their hands off any ledge they were holding.
+- To make a wall *unclimbable*, give its top a collider the ledge probe will
+  not accept. `Probes.ledge_query()` refuses any surface whose `normal.y` is
+  below `PawnConfig.walkable_floor_z` (0.71), so a ridge along the top works if
+  it is **taller than half its width** — that is `atan(h / halfwidth) > 44.8°`.
+  This is how the original does it, and it costs nothing at runtime: there is
+  no rule to evaluate, because there is no ledge to find.
+
+Wire that is merely decorative wants neither of those, and gets neither.
+
+`samples_per_coil` is the biggest lever on the triangle count, but do not
+trade the coil's shape against it: it is what makes a loop round rather than
+hexagonal, and the triangles it costs are not worth having. A single character
+model here carries about forty thousand; 140 m of coil down both walls of the
+test corridor measured 6.81 ms a frame against 7.23 ms with the wire deleted,
+which is noise. The configuration warning is set where a run stops being wire
+and starts being a mistake, not where a GPU starts to care.
+
+### `layer_priority`
+
+Which layer this volume speaks on, when two volumes claim the same status at
+once. Higher wins; equal layers keep whichever arrived first and push one
+warning naming both. **Leave it at 0 unless volumes actually overlap** — it
+exists for the case where a small exception box sits inside a large regional
+one, and the small one has to win.
+
+It is deliberately not called `priority`: `Area3D` already exports one, and
+that one governs which overlapping area's gravity and damping overrides win.
+Raising a status layer must not silently reorder physics.
+
+### `max_trigger_count`
+
+How many **entries** this volume acts on; `0` is unlimited. Refreshes never
+count — a polling volume renews many times per visit, and charging those
+would spend the whole budget on the first tick. `1` is "only on the first
+lap"; `0` is "every lap".
+
+The count is about one life: dying resets it, so a level that cripples the
+player at its start cripples them again after a death there.
+
+An accepted trade comes with that: a respawn inside a volume re-applies its
+statuses without charging the count (a respawn is not a player-initiated
+entry, and the reset zeroed the count moments earlier anyway). So a life that
+*begins* inside a `max_trigger_count = 1` volume ends the respawn with the
+count still at zero, and walking out and back in during that life can act
+once more.
+
+### What the configuration warnings mean
+
+The node reports these in the scene tree, before the level is ever run. Every
+one of them is silent at run time — the volume simply never fires, or fires
+with a payload nothing reads.
+
+- **No CollisionShape3D with a shape** — the volume can never be entered.
+- **Neither apply nor remove is set** — it does nothing.
+- **An empty row in `apply`** — a `StatusSpec` slot left null.
+- **SPEED_CAP with amount ≤ 0** — pins the player in place, which reads as
+  the level having hung.
+- **BLOCK_INTEREST_LINE with no subject** — blocks nothing; the effect
+  addresses a line by its `tag`.
+- **refresh_interval is set but a status lasts forever** — renewing is how a
+  status is meant to expire on the way out, and `INF` is what stops it ever
+  doing so, so it survives leaving the volume.
+- **A status no longer than the refresh interval** — it expires on the very
+  tick it is renewed, with no margin at all. See above.
+- **refresh_interval shorter than one physics tick** — the one entry here that
+  is not a broken volume. It refreshes every tick, which is already as often
+  as anything can, so a value like `0.008` behaves exactly like one whole
+  tick and the number typed means nothing.
 
 ## ⚠️ Do not put comments in a `.tscn`
 

@@ -397,3 +397,32 @@ extends Resource
 ## takes effect immediately" pattern every other field in this file already
 ## follows (see this file's own header comment on eye_height).
 @export var ambient_cold_strength: float = 1.0
+
+## How long the view takes to travel between the first-person eye and the
+## pulled-back one, whether the player pressed V or a level forced it.
+## PROJECT-DEFINED; the original never changes view at all.
+##
+## Both ENDS are untouched by this: at 0 and at 1 the camera sits exactly
+## where it sat before there was a blend, so every offset in this file that
+## was tuned against the first-person eye still means what it meant. Only the
+## journey is new.
+@export var view_blend_time: float = 0.12
+
+## How much screen blur the view change carries at its midpoint. Zero at both
+## ends by construction, so the channel is free whenever no view is changing.
+##
+## It is here to COVER A SEAM, not for its own sake: the body swaps between
+## its first-person and third-person meshes at one instant, and that pop has
+## to happen somewhere. Blurring hardest exactly where the swap lands is the
+## same trick a driving game plays when it cuts between chase and bonnet.
+@export_range(0.0, 1.0, 0.05) var view_blend_blur: float = 0.4
+
+## Where in that journey the body swaps between its first-person and
+## third-person render layers. A VRM carries a full body and a headless one on
+## separate layers, so the swap is a pop wherever it happens; putting it a
+## third of the way out means the camera has already left the head before the
+## face appears, and has not yet re-entered it when the face goes away.
+##
+## DO NOT set this to 0 or 1: at either end the swap coincides with the camera
+## being inside the head, which is the clipping the split exists to prevent.
+@export_range(0.05, 0.95, 0.05) var view_blend_body_swap: float = 0.35

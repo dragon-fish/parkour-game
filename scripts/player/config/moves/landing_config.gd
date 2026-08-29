@@ -13,6 +13,18 @@ extends MoveConfig
 # misreads the state name often enough to slice one lockout into several
 # fragments.
 @export var lockout_time: float = 2.0
+
+## How much horizontal speed a STAGGER leaves behind, as a fraction.
+##
+## [ME:COMMUNITY] the original's barbed wire is a knock-down, not a wall: it
+## punishes forgetting to tuck, and the arc it cuts short still carries the
+## body forward and down rather than dropping it on the spot. Stopping dead
+## would make a wired fence impassable, which is not what it is for.
+##
+## The value is PROJECT-DEFINED. Only a stagger reads it -- an ordinary hard
+## landing has already been charged by Player.landing_keep_ratio() before this
+## move is ever entered, and DO NOT route that through here as well.
+@export var stagger_keep_ratio: float = 0.25
 ## PROJECT-DEFINED. The original's knee-clutch is animation root motion;
 ## nothing in its data describes a screen tint.
 @export var tint_color: Color = Color(0.6, 0.0, 0.0)

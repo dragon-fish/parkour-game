@@ -400,10 +400,12 @@ func restart_from_spawn() -> void:
 
 ## Teleports the player to spawn and clears its velocity.
 ##
-## NOT synchronous: this spans a physics frame (see below), so it completes
-## one tick after the call returns. Callers must not assume the player is
-## already at spawn immediately after calling this — await a physics_frame
-## first if the result needs to be observed.
+## NOT synchronous: this spans two physics frames (see below), so it completes
+## two ticks after the call returns — the teleport settles on the first, the
+## overlapping volumes are re-applied on the second. Callers must not assume
+## the player is already at spawn immediately after calling this, and a caller
+## that reads status state must await both ticks: after only one, the statuses
+## of the new life have not been put on yet.
 func reset_player() -> void:
 	# FIRST, before anything else here. Every route into this function is a
 	# respawn happening NOW -- the R key, falling out of the level, and the
@@ -451,6 +453,12 @@ func reset_player() -> void:
 		player.global_position = spawn_point.global_position
 		player.rotation = Vector3.ZERO
 	player.reset_state()
+	# EVERY temporary modification is a property of one life. Cleared here
+	# rather than in reset_state() because the volumes that put them there are
+	# a level concern, and the re-arming below needs the level anyway.
+	player.statuses.clear_all()
+	for volume in get_tree().get_nodes_in_group("modifier_volumes"):
+		volume.reset_trigger_count()
 	if player.camera_rig != null:
 		player.camera_rig.reset_state()
 	# Restart the move manager in Walking so a reset behaves like a fresh
@@ -495,6 +503,53 @@ func reset_player() -> void:
 	_resetting_physics = false
 	# player (or the whole arena) may have been freed while this coroutine
 	# was suspended — e.g. queue_free() called shortly after a reset — so
-	# guard the resumed access rather than touching a freed instance.
+	# guard the resumed access rather than touching a freed instance. An arena
+	# that left the tree also has no get_tree() to await on below.
 	if is_instance_valid(player):
 		player.set_physics_process(true)
+	if not is_inside_tree():
+		return
+
+	# THE OVERLAP LIST DESCRIBES WHERE THE BODY WAS. Area3D rebuilds it once
+	# per physics frame and before that frame's step, so overlaps_body() is
+	# worthless until physics has actually stepped on the teleported body.
+	# DO NOT re-apply any earlier than this: measured on a body that respawns
+	# OUT of the volume it died in, the list still names that volume both
+	# immediately after the teleport and after the single tick skipped above,
+	# and only tells the truth on the frame after that. Re-applying off stale
+	# data hands the dead life's statuses to the new one, and because nothing
+	# here tracks membership (see ModifierVolume.refresh_interval) an INF
+	# status landed that way has no exit left to ever take it off.
+	#
+	# Waited here, at the very end and with physics already re-enabled,
+	# rather than by widening the skip above: that skip is the teleport's own
+	# settle and its length is load-bearing (see its comment). This wait
+	# delays only the re-application.
+	await get_tree().physics_frame
+	if is_instance_valid(player) and is_inside_tree():
+		_reapply_overlapping_modifiers()
+
+## Re-applies every ModifierVolume the body is currently standing in.
+##
+## REQUIRED, NOT DEFENSIVE. A respawn teleports the body without the areas
+## ever reporting an exit -- the same reason Player.reset_state() clears
+## interest_lines by hand -- so a body that respawns INSIDE a volume has not
+## left it and body_entered will never fire again. The opening level puts its
+## permanent statuses on a volume covering the spawn point, so without this
+## the player wakes up cured: able to run and jump after a death that should
+## have changed nothing.
+##
+## Volumes with a refresh_interval would recover on their own at the next
+## poll; INF ones never would. Both are covered here rather than relying on
+## which kind a level happened to use.
+##
+## Re-entrancy: a call that returns early at `if _resetting_physics: return`
+## (mashing the reset key mid-cycle) skips this -- deliberately, since the
+## cycle already in flight will reach it once, on the position that call's
+## own teleport just set.
+func _reapply_overlapping_modifiers() -> void:
+	if not is_instance_valid(player):
+		return
+	for volume in get_tree().get_nodes_in_group("modifier_volumes"):
+		if volume.overlaps_body(player):
+			volume.enter_body_after_respawn(player)

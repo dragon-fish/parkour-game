@@ -1,0 +1,82 @@
+extends ParkourTest
+
+const TestWorld = preload("res://tests/world_fixture.gd")
+
+var _worlds: Array = []
+
+# A Player does NOT configure itself: setup(config, input) has to be called
+# after it enters the tree, or config, fall_tracker, speed_energy and statuses
+# are all null. TestWorld.build() does that, and gives a floor to stand on.
+func _player() -> Player:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_worlds.append(world)
+	return world["player"]
+
+func after_each() -> void:
+	for world in _worlds:
+		TestWorld.teardown(world)
+	_worlds.clear()
+
+func _force(view: int) -> StatusSpec:
+	var s := StatusSpec.new()
+	s.effect = Status.Effect.FORCE_VIEW
+	s.view = view
+	s.seconds = INF
+	return s
+
+func test_a_forced_view_overrides_the_preference() -> void:
+	var p := _player()
+	await step(1)
+	p.camera_rig.third_person = true
+	p.statuses.apply(_force(Status.View.FIRST), p, 0)
+	await step(1)
+	assert_false(p.camera_rig.in_third_person(), "the force did not take")
+
+func test_the_saved_preference_is_not_touched() -> void:
+	# The whole reason forced_view is its own field: toggle_third_person()
+	# saves to disk on every change, so sharing the field would rewrite the
+	# player's preference the first time they walk indoors.
+	var p := _player()
+	await step(1)
+	p.camera_rig.third_person = true
+	p.statuses.apply(_force(Status.View.FIRST), p, 0)
+	await step(1)
+	assert_true(p.camera_rig.third_person, "the force overwrote the preference")
+	p.statuses.remove(Status.Effect.FORCE_VIEW)
+	await step(1)
+	assert_true(p.camera_rig.in_third_person(), "the preference did not come back")
+
+func test_the_view_key_does_nothing_while_forced() -> void:
+	var p := _player()
+	await step(1)
+	p.camera_rig.third_person = false
+	p.statuses.apply(_force(Status.View.FIRST), p, 0)
+	await step(1)
+	p.camera_rig.toggle_third_person()
+	assert_false(p.camera_rig.third_person, "the key changed the preference under a force")
+
+func test_the_view_eases_in_whichever_way_it_is_going() -> void:
+	# THE BUG THIS PINS. Easing an absolute 0..1 blend is ease-in one way and
+	# ease-out the other: pow(t, 5) climbing from 0 starts slow, but the same
+	# expression on a t falling from 1 drops fastest immediately. Measured as a
+	# fraction of the distance covered in the first quarter of the blend, which
+	# a slow start keeps well under a quarter in BOTH directions.
+	var p := _player()
+	await step(1)
+	var quarter: int = maxi(int(p.config.camera.view_blend_time * 60.0 / 4.0), 1)
+	
+	# first -> third
+	p.camera_rig.third_person = true
+	await step(quarter)
+	var out_early: float = p.camera_rig._eased_view_blend()
+	await step(120)
+	assert_almost_eq(p.camera_rig._eased_view_blend(), 1.0, 0.001, "test setup: never arrived")
+	
+	# third -> first, measured as distance travelled from where it started
+	p.camera_rig.third_person = false
+	await step(quarter)
+	var back_early: float = 1.0 - p.camera_rig._eased_view_blend()
+	
+	assert_lt(out_early, 0.25, "leaving the eye did not start slowly")
+	assert_lt(back_early, 0.25, \
+		"returning to the eye started fast: the curve is riding position, not progress")

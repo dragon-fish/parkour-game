@@ -22,6 +22,10 @@ enum Kind { ZIPLINE, SWING, BALANCE, LADDER }
 @export var kind: Kind = Kind.ZIPLINE
 ## How far from the line a body counts as able to reach it, in metres.
 @export var reach_radius: float = 0.6
+## Lets a level forbid THIS line by name -- see Status.Effect.BLOCK_INTEREST_LINE.
+## Empty means the line cannot be singled out; it still obeys a blanket ban on
+## its whole kind.
+@export var tag: StringName = &""
 
 ## Half the span the finite-difference tangent is taken over.
 const TANGENT_STEP := 0.05

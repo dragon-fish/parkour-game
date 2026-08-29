@@ -44,7 +44,11 @@ func test_third_person_swaps_them() -> void:
 	var rig: CameraRig = await _rig()
 	var cfg: CameraConfig = (_world["player"] as Player).config.camera
 	rig.toggle_third_person()
-	await step(2)
+	# The swap rides the view blend, not the toggle: it lands once the camera
+	# has travelled view_blend_body_swap of the way out, so the face appears
+	# with the eye already clear of the head it belongs to. Waiting a whole
+	# blend here rather than two frames is that, not slack.
+	await step(int(ceil(cfg.view_blend_time * 60.0)) + 2)
 	assert_eq(rig.camera.cull_mask & cfg.first_person_body_layers, 0, \
 		"the headless body is still drawn from outside, so the body has two torsos")
 	assert_eq(rig.camera.cull_mask & cfg.third_person_body_layers, \

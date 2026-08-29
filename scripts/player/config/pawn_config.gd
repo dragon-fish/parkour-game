@@ -293,3 +293,27 @@ extends Resource
 ## following the view. A dead zone rather than an exact zero, so a stick barely
 ## off centre does not count as a decision to turn.
 @export var body_turn_input_threshold: float = 0.2
+
+## How long Player.speed_cap() takes to slide to a new ceiling when a level
+## puts a SPEED_CAP status on, or lifts one. PROJECT-DEFINED: the original has
+## no counterpart, because it has no such status.
+##
+## The acceleration curve alone does NOT hide the change. accel_rate is 61.44,
+## so the body covers the 3.6 m/s from full sprint to a half cap in 0.06 s --
+## about three frames, which the eye reads as a cut rather than a slow-down.
+## What is eased here is the CEILING; the body then chases it with the same
+## ground_accelerate() it always uses, so nothing about ordinary acceleration
+## changes and both endpoints are exactly what they were.
+@export var speed_cap_blend_time: float = 0.3
+
+## How long after a landing lockout releases the player cannot be staggered
+## again. PROJECT-DEFINED as a value; [ME:COMMUNITY] as a mechanic -- the
+## original's barbed wire hurts on contact and keeps hurting while you are in
+## it, but does not chain-lock you, which is what a window like this buys.
+##
+## THE POINT IS THE ESCAPE. A wire volume that renews its STAGGER would
+## otherwise re-stagger the player on the tick the lockout ends, forever: the
+## lockout refuses movement input, so without a window in which the hits are
+## eaten there is no tick in which they can walk out. It has to outlast the
+## time it takes to cross the wire, not the time it takes to react.
+@export var stagger_immunity_time: float = 1.0

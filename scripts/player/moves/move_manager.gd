@@ -5,6 +5,11 @@ signal move_changed(from: StringName, to: StringName)
 
 var current_name: StringName = &""
 
+## Set by Player at registration, for the two questions the manager itself
+## asks about statuses. Untyped for the same reason Move.player is -- see the
+## note above Move's own name constants.
+var player
+
 var _current: Move = null
 var _moves: Dictionary = {}
 
@@ -28,7 +33,24 @@ func move_for(move_name: StringName) -> Move:
 ## hand-rolled cooldowns of its own (the ledge regrab timer, the recent-wall
 ## list, and the wall reattach window).
 func can_enter(move_name: StringName) -> bool:
-	return not _redo_cooldowns.has(move_name)
+	if _redo_cooldowns.has(move_name):
+		return false
+	# A level may forbid a move outright. Asked HERE for the same reason the
+	# cooldown is: no move can forget, and a refusal never drops the tick's
+	# transition intent into some third state. The moves that commit before
+	# they announce themselves are refused earlier instead, each at its own
+	# commit point:
+	#
+	#   JUMP        Player.consume_jump() / consume_buffered_jump()
+	#   SLIDE       WalkingMove.physics_update(), before consume_roll()
+	#   SKILL_ROLL  AirborneMove.settle_landing(), before consume_roll()
+	#   GRAB        IntoGrabMove._settle(), before the body is squared up
+	#
+	# A refusal here would still leave the body launched, snapped or the press
+	# spent.
+	if player != null and player.statuses.is_move_blocked(move_name):
+		return false
+	return true
 
 ## The active move's own friction multiplier, or 1.0 when there is no move or
 ## no config. Read by Player.ground_accelerate() so braking respects whatever
@@ -159,7 +181,37 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	# its own allows_turn, so a move added later gets the turn for free and a
 	# move that must not have it says so beside its other facts. Checked before
 	# the active move runs, so the tick a turn starts is the turn's tick.
-	var next: StringName = _turn_requested(input)
+	# A stagger outranks the turn, and both are arbitrated here rather than
+	# inside a move, for the same reason: they are facts about the whole move
+	# set. FALL_UNCONTROLLED is exempt -- a body already dying has nothing
+	# left to stumble.
+	#
+	# ON CONTACT, INCLUDING IN MID-AIR. Barbed wire cuts you when you touch
+	# it, not when you next happen to be standing on something, so a volume
+	# tall enough to cover a fence charges the vault at the moment it is
+	# taken. LandingMove applies gravity while it is off the floor for
+	# exactly this: the body crumples where it was hit and drops.
+	#
+	# What stops that becoming a trap is Player.is_stagger_immune(), armed
+	# when the lockout releases. A wire volume that renews its STAGGER would
+	# otherwise re-stagger on the tick the lockout ends, and the lockout
+	# refuses movement input, so there would be no tick in which to walk out.
+	var next: StringName = Move.KEEP
+	var staggering := false
+	if player != null and player.statuses.has(Status.Effect.STAGGER) \
+			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LANDING:
+		# EATEN, NOT QUEUED, while immune. Spending it here is what the
+		# window means: the hit landed and the body shrugged it off. Leaving
+		# it in the list would fire it the instant the window closed, which
+		# is the chain the window exists to break.
+		if player.is_stagger_immune():
+			player.statuses.remove(Status.Effect.STAGGER)
+		else:
+			staggering = true
+			player.pending_stagger = true
+			next = Move.LANDING
+	if next == Move.KEEP:
+		next = _turn_requested(input)
 	if next == Move.KEEP:
 		next = _current.physics_update(delta, input)
 	if next == Move.KEEP or next == current_name:
@@ -189,6 +241,12 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	current_name = next
 	_arm_declaration_check()
 	_current.enter(from)
+	# SPENT ONLY ONCE THE TRANSITION HAS COMMITTED. Removing it where the
+	# stagger was chosen would let a redo cooldown on LANDING refuse the
+	# transition after the status had already been consumed, so the stagger
+	# would vanish without ever having staggered anyone.
+	if staggering:
+		player.statuses.remove(Status.Effect.STAGGER)
 	move_changed.emit(from, next)
 	_push_look_constraint()
 

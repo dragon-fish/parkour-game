@@ -309,13 +309,18 @@ func settle_landing(delta: float) -> StringName:
 	player.fall_tracker.update(delta, -impact_speed, player.global_position.y)
 	# Read BEFORE set_grounded(), which resets the counter.
 	var fall_height: float = player.fall_tracker.fall_height
-	# fall_height must gate consume_roll(), not the other way round: `and`
-	# short-circuits left-to-right, so with consume_roll() on the left it
-	# would ALWAYS spend the buffered press -- even on a landing nowhere
-	# near the roll threshold -- eating a crouch meant for the slide-entry
-	# check in walking_move.gd on the very next tick. Keeping the height
-	# check first means an ordinary landing leaves the buffer untouched.
-	var rolled: bool = fall_height >= config.pawn.skill_roll_landing_height \
+	# `and` short-circuits left-to-right, and the order of the three conjuncts
+	# below is load-bearing. The block comes first: refusing the SKILL_ROLL
+	# transition later would still let _apply_landing_cost() below charge
+	# this landing as UNROLLED, keeping the roll's speed discount for a roll
+	# that never happened. fall_height comes before consume_roll(), not
+	# after: with consume_roll() on the left it would ALWAYS spend the
+	# buffered press -- even on a landing nowhere near the roll threshold --
+	# eating a crouch meant for the slide-entry check in walking_move.gd on
+	# the very next tick. Keeping both ahead of consume_roll() means an
+	# ordinary landing, and a blocked one, both leave the buffer untouched.
+	var rolled: bool = not player.statuses.is_move_blocked(SKILL_ROLL) \
+		and fall_height >= config.pawn.skill_roll_landing_height \
 		and player.consume_roll()
 	player.last_landing_rolled = rolled
 	player.last_landing_fall_height = fall_height

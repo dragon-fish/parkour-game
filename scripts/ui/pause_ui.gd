@@ -76,7 +76,13 @@ func _ready() -> void:
 	_white.visible = false
 	add_child(_white)
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	layer = 10
+	# ABOVE ScreenEffects, which sits at 100 so a death blackout can cover the
+	# crosshair and the HUD. The pause menu is the one thing that must be
+	# readable through anything the body is currently suffering: at 10 it was
+	# underneath, and pausing part-way into a blur or a fade left a menu
+	# nobody could read. DO NOT lower this below ScreenEffects to fix a
+	# layering problem elsewhere -- raise the other thing.
+	layer = 200
 	# The boot-time application point for the window/audio half of
 	# SettingsStore (see settings_store.gd's own split-in-two comment); the
 	# per-player camera half is applied in Player.setup() instead, once a

@@ -147,6 +147,88 @@ var _has_head: bool = false
 ## moves. See update_effects().
 var third_person: bool = false
 
+## A level's override of the viewing preference, or View.NONE.
+##
+## SEPARATE FROM third_person ON PURPOSE. toggle_third_person() writes the
+## preference to disk every time it changes, so an override that shared the
+## field would permanently rewrite what the player chose the first time they
+## walked into a room that forces first person. Fed by Player each tick from
+## the status list; nothing here reads the status list itself.
+var forced_view: int = Status.View.NONE
+
+## Which view is actually being rendered: the override if there is one, the
+## saved preference otherwise. EVERY internal read of the view goes through
+## this -- `third_person` alone means "what the player chose", which is not
+## the same question.
+## Moves the blend one frame toward the view currently in force.
+##
+## DO NOT snap this on a change of view: the whole point is that a level
+## forcing first person, or the V key, reads as the camera travelling rather
+## than cutting. It DOES snap once, on the first frame of a life, so a spawn
+## does not play a blend nobody asked for.
+func _advance_view_blend(delta: float) -> void:
+	var wanted: float = 1.0 if in_third_person() else 0.0
+	if _view_blend < 0.0:
+		_view_blend = wanted
+		_view_from = wanted
+		_view_to = wanted
+		_view_progress = 1.0
+		return
+	if not is_equal_approx(wanted, _view_to):
+		# RESTARTED FROM WHERE THE EYE ACTUALLY IS, not from the end it was
+		# heading for. A view flipped back half way has to ease out of the
+		# position it had reached, or it jumps to the far end first.
+		_view_from = _view_blend
+		_view_to = wanted
+		_view_progress = 0.0
+	var seconds: float = maxf(_config.camera.view_blend_time, 0.001)
+	_view_progress = move_toward(_view_progress, 1.0, delta / seconds)
+	_view_blend = lerpf(_view_from, _view_to, _curve(_view_progress))
+
+## The shape of a view change. Quintic ease-in: the eye clings to where it
+## was and then leaves in a rush.
+##
+## Takes PROGRESS, never position -- see _view_progress. One line to change,
+## and worth changing as a pair with view_blend_time, since a curve that
+## spends longer near its start wants a shorter duration to read the same.
+func _curve(progress: float) -> float:
+	return pow(progress, 5.0)
+
+## Where the view sits between the eye and the seat, curve already applied.
+## _view_blend IS that position now -- the curve is spent in
+## _advance_view_blend(), on the journey rather than on the destination.
+func _eased_view_blend() -> float:
+	return _view_blend
+
+## How much screen blur the view change wants right now. Fed to ScreenEffects
+## by Player -- this rig is handed values and never reaches for a node.
+##
+## PEAKED WHERE THE SEAM IS, not in the middle of the journey. The blur is
+## here to cover the body swapping its mesh, and that lands at
+## view_blend_body_swap -- which sits near the first-person end, because
+## that is where the camera is close enough to the head for the swap to be
+## visible at all. A blur peaking at the midpoint is heaviest out in open
+## air where there was nothing to hide.
+##
+## Two quarter-sines meeting at that point, so it is still zero at both
+## rest states and still needs no state of its own to know whether a
+## transition is running. Driven off the EASED blend, the same value the
+## swap itself is judged on, so the two cannot drift apart.
+func view_blur() -> float:
+	if _view_blend < 0.0:
+		return 0.0
+	var eased: float = _eased_view_blend()
+	var seam: float = clampf(_config.camera.view_blend_body_swap, 0.01, 0.99)
+	var rise: float = eased / seam if eased <= seam else (1.0 - eased) / (1.0 - seam)
+	return sin(PI * 0.5 * rise) * _config.camera.view_blend_blur
+
+func in_third_person() -> bool:
+	if forced_view == Status.View.FIRST:
+		return false
+	if forced_view == Status.View.THIRD:
+		return true
+	return third_person
+
 ## Which side the third-person eye sits on, cycled with a middle click.
 enum Shoulder { RIGHT, LEFT, CENTRED }
 var _shoulder: int = Shoulder.RIGHT
@@ -158,6 +240,24 @@ var _shoulder: int = Shoulder.RIGHT
 ## its own -- a shot that jumps across the body reads as a cut -- but the
 ## manual shoulder cycle benefits from it too.
 var _shoulder_across: float = INF
+
+## Where the view actually is between the eye (0) and the pulled-back seat
+## (1), as opposed to which one is currently chosen. Negative means "not
+## seeded yet" -- the first frame of a life snaps to whichever view is in
+## force, because a blend played on spawn is a blend nobody asked for.
+var _view_blend: float = -1.0
+
+## The journey currently under way: where it started, where it is going, and
+## how far through it is.
+##
+## THE CURVE HAS TO RIDE THIS, NOT THE POSITION. Easing an absolute 0..1
+## blend looks right in one direction and backwards in the other: pow(t, 5)
+## climbing from 0 starts slow, but the same expression on a t falling from
+## 1 drops fastest immediately. Progress always runs 0 -> 1 whichever way
+## the view is going, so a slow start is a slow start both ways.
+var _view_from: float = 0.0
+var _view_to: float = 0.0
+var _view_progress: float = 1.0
 
 ## Wheel-adjusted distance, in metres. Negative until the first update seeds it
 ## from third_person_back, so a config change is picked up rather than being
@@ -494,8 +594,11 @@ func reset_state() -> void:
 	# back on the very next tick, so the preference survives, but the blink
 	# reads as the view having reverted. Same shape as the roll's entry flicker
 	# in docs/feel-backlog.md 40: a single frame of a state nobody asked for.
-	if camera != null and not third_person:
+	if camera != null and not in_third_person():
 		camera.position = Vector3.ZERO
+	# Re-seeded, not eased: a respawn must not play the journey between views.
+	_view_blend = -1.0
+	_view_progress = 1.0
 	# third_person deliberately NOT reset. It is a VIEWING PREFERENCE, not
 	# movement state: someone who chose to watch their own body did not choose
 	# it for one life. The owner reported dying and being put back in first
@@ -644,10 +747,17 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# fraction. Composing every other contribution below into `base_position`
 	# instead of `position` keeps that guarantee on all three axes: `position`
 	# itself is written exactly once, at the very end of this function.
+	# Advanced BEFORE anything reads it, so every offset composed this frame
+	# describes one consistent point on the journey rather than two.
+	_advance_view_blend(delta)
+
 	var base_position := Vector3.ZERO
 	base_position.y = _config.camera.eye_height + extra_eye_lift
-	if not third_person:
-		base_position.z = -(eye_forward + extra_eye_forward)
+	# Faded rather than switched. At blend 0 this is exactly the old
+	# first-person expression and at blend 1 it is exactly the old
+	# third-person zero, so neither end moved; the eye simply retreats to the
+	# head as the seat pulls back, instead of teleporting there.
+	base_position.z = -(eye_forward + extra_eye_forward) * (1.0 - _eased_view_blend())
 
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 
@@ -670,7 +780,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# overwriting it here would silently delete the walk bob whenever the view
 	# was behind the body.
 	var back := Vector3.ZERO
-	if third_person:
+	if _view_blend > 0.0:
 		# EASED HERE, where there is a delta -- _third_person_position() is also
 		# reached from tests and from the debug readout, and neither has one.
 		var wanted_across: float = _wanted_shoulder_across()
@@ -680,7 +790,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 			var span: float = maxf(absf(_config.camera.third_person_right), 0.0001)
 			var rate: float = (span * 2.0) 					/ maxf(_config.camera.third_person_shoulder_time, 0.001)
 			_shoulder_across = move_toward(_shoulder_across, wanted_across, rate * delta)
-		back = _third_person_position()
+		back = _third_person_position() * _eased_view_blend()
 	camera.position = Vector3(back.x, bob - _dip + back.y, back.z)
 	_apply_body_layers()
 
@@ -849,7 +959,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# you are watching from behind. From outside, the BODY doing the roll is the
 	# whole show; the camera tumbling as well is the same event performed
 	# twice, once by each.
-	var spin: float = 0.0 if third_person else _roll_spin
+	var spin: float = 0.0 if in_third_person() else _roll_spin
 	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit) - spin
 
 ## Drops the landing dip on the floor, unrecovered.
@@ -1031,9 +1141,17 @@ func _third_person_position() -> Vector3:
 ## Flips between the first-person eye and the pulled-back one. Called from
 ## Player's V key. Saved, because the choice outlives the life it was made in.
 func toggle_third_person() -> void:
+	# Refused rather than queued: a level that forces a view is mid-scripted
+	# moment, and a preference silently changed under the player would surface
+	# only after they leave, which reads as the key having been eaten.
+	if forced_view != Status.View.NONE:
+		return
 	third_person = not third_person
-	if not third_person and camera != null:
-		camera.position = Vector3.ZERO
+	# DO NOT zero camera.position here. update_effects() owns it, and it
+	# places it from the view blend every frame. Writing it directly puts
+	# the eye inside the head for the one frame before the blend is next
+	# evaluated, which reads as the view snapping in and flashing back out
+	# before the transition plays.
 	save_preferences()
 
 
@@ -1053,8 +1171,12 @@ func _apply_body_layers() -> void:
 		return
 	var first: int = _config.camera.first_person_body_layers
 	var third: int = _config.camera.third_person_body_layers
-	var hide: int = third if not third_person else first
-	var show: int = first if not third_person else third
+	# Judged on the BLEND, not on which view is chosen: the swap is a pop
+	# wherever it lands, so it belongs at the point in the journey where the
+	# camera is furthest from the head it is revealing or hiding.
+	var behind: bool = _eased_view_blend() >= _config.camera.view_blend_body_swap
+	var hide: int = third if not behind else first
+	var show: int = first if not behind else third
 	camera.cull_mask = (camera.cull_mask | show) & ~hide
 
 
@@ -1093,6 +1215,7 @@ func cycle_third_person_shoulder() -> void:
 func third_person_debug() -> Dictionary:
 	return {
 		"on": third_person,
+		"forced_view": forced_view,
 		"shoulder": _shoulder,
 		"distance": _tp_distance,
 		"drag": _tp_drag,
