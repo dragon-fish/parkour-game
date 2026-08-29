@@ -5,9 +5,24 @@ extends Node3D
 # config lives here rather than on the player so the tuning panel and the
 # player read from the same object.
 
+## The feel every level starts from, unless its own scene hands over another.
+##
+## A TRACKED FILE RATHER THAN MovementConfig.new(). The defaults live in the
+## config scripts either way, so this changes no value on screen -- what it
+## changes is whether there is anything to OPEN. The F1 panel writes presets to
+## user://presets, which never reaches a build, and an empty `config` export
+## gives the editor's inspector nothing to show; between the two there was
+## nowhere to turn a camera dial and have the change ship.
+##
+## DUPLICATED, DEEP, PER ARENA. preload() hands back one shared instance, and
+## mirror_lab has two Arenas in a scene: sharing it would let an F1 drag in one
+## move the other, which is the same trap fog_config.gd exists to avoid.
+const DEFAULT_PRESET := preload("res://presets/default.tres")
+
 @export var player: Player
 @export var spawn_point: Marker3D
-## Leave empty to create a fresh MovementConfig with default values at runtime.
+## Leave empty and DEFAULT_PRESET is used -- see it for why that is a tracked
+## file rather than MovementConfig.new().
 @export var config: MovementConfig
 ## This level's atmosphere. Leave EMPTY and Arena never touches the
 ## WorldEnvironment's fog settings at all -- whatever the scene's own
@@ -89,7 +104,7 @@ func _ready() -> void:
 		print("[load]   Arena._ready %-24s %6d ms elapsed" % [what, Time.get_ticks_msec() - _began])
 
 	if config == null:
-		config = MovementConfig.new()
+		config = DEFAULT_PRESET.duplicate(true)
 	player.setup(config, KeyboardInputSource.new())
 	_mark.call("player.setup")
 	if player.camera_rig != null:

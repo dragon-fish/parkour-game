@@ -1,0 +1,199 @@
+[gd_resource type="Resource" script_class="MovementConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/player/config/camera_config.gd" id="1_j7ihq"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/coil_config.gd" id="2_rgnp1"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/crouch_config.gd" id="3_ayy2t"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/fall_uncontrolled_config.gd" id="4_4fn2b"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/falling_config.gd" id="5_igrgn"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/grab_config.gd" id="6_dsx81"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/into_grab_config.gd" id="7_4fpyq"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/jump_config.gd" id="8_owtfl"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/ladder_config.gd" id="9_bxvyj"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/landing_config.gd" id="10_46hy1"]
+[ext_resource type="Script" path="res://scripts/player/config/pawn_config.gd" id="11_obve7"]
+[ext_resource type="Script" path="res://scripts/player/movement_config.gd" id="12_jo6uy"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/skill_roll_config.gd" id="13_14cuf"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/slide_config.gd" id="14_yk2ic"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/soft_landing_config.gd" id="15_i4vxq"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/speed_vault_config.gd" id="16_7bcad"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/swing_config.gd" id="17_px82i"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/turn_180_config.gd" id="18_rsras"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/walking_config.gd" id="19_eldsq"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/wall_climb_config.gd" id="20_bnhga"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/wall_run_config.gd" id="21_t30b4"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/wallrun_jump_config.gd" id="22_ebalx"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/zipline_config.gd" id="23_kaqig"]
+
+[sub_resource type="Resource" id="Resource_s8tvx"]
+script = ExtResource("1_j7ihq")
+
+[sub_resource type="Resource" id="Resource_6ui47"]
+script = ExtResource("2_rgnp1")
+min_look_constraint = Vector3(-0.47996554, -3.1415927, -3.1415927)
+constrain_look = true
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_oomka"]
+script = ExtResource("3_ayy2t")
+speed_modifier = 0.4
+
+[sub_resource type="Resource" id="Resource_2u5l8"]
+script = ExtResource("4_4fn2b")
+
+[sub_resource type="Resource" id="Resource_ixdq6"]
+script = ExtResource("5_igrgn")
+check_for_grab = true
+check_for_vault_over = true
+check_for_zipline = true
+check_for_swing = true
+check_for_ladder = true
+
+[sub_resource type="Resource" id="Resource_hac3t"]
+script = ExtResource("6_dsx81")
+redo_move_time = 0.45
+min_look_constraint = Vector3(0, -2.9670596, -3.1415927)
+max_look_constraint = Vector3(1.5341444, 2.9670596, 3.1415927)
+constrain_look = true
+freeze_visual_yaw = true
+allows_spine_twist = false
+absolute_yaw_constraint = true
+pitch_relaxes_with_yaw = true
+pitch_min_turned_away = -1.2217304763960306
+pitch_relax_yaw_threshold = 0.9250245035569946
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_4mpbc"]
+script = ExtResource("7_4fpyq")
+redo_move_time = 0.3
+check_for_vault_over = true
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_klb5t"]
+script = ExtResource("8_owtfl")
+check_for_grab = true
+check_for_vault_over = true
+check_for_wall_climb = true
+check_for_zipline = true
+check_for_swing = true
+check_for_ladder = true
+check_for_coil = true
+
+[sub_resource type="Resource" id="Resource_c2853"]
+script = ExtResource("9_bxvyj")
+freeze_visual_yaw = true
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_y0evl"]
+script = ExtResource("10_46hy1")
+min_look_constraint = Vector3(-3.1415927, -0.2, -3.1415927)
+max_look_constraint = Vector3(3.1415927, 0.2, 3.1415927)
+constrain_look = true
+absolute_yaw_constraint = true
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_oya74"]
+script = ExtResource("11_obve7")
+speed_curve = PackedVector2Array(0, 0, 0.4, 4, 1, 5.2, 3.5, 6.5, 7, 7.2)
+turn_rate_cost_curve = PackedVector2Array(95, 0.239, 225, 0.585, 450, 1, 1050, 1.327)
+
+[sub_resource type="Resource" id="Resource_431c4"]
+script = ExtResource("13_14cuf")
+min_look_constraint = Vector3(-0.19198622, -0.47996554, -3.1415927)
+max_look_constraint = Vector3(3.1415927, 0.47996554, 3.1415927)
+constrain_look = true
+absolute_yaw_constraint = true
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_tj7hg"]
+script = ExtResource("14_yk2ic")
+friction_modifier = 0.1
+redo_move_time = 1.0
+min_look_constraint = Vector3(-0.95818573, -0.95818573, -3.1415927)
+max_look_constraint = Vector3(0.95818573, 0.95818573, 3.1415927)
+constrain_look = true
+freeze_visual_yaw = true
+absolute_yaw_constraint = true
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_p2sio"]
+script = ExtResource("15_i4vxq")
+
+[sub_resource type="Resource" id="Resource_mm3rp"]
+script = ExtResource("16_7bcad")
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_6r03e"]
+script = ExtResource("17_px82i")
+min_look_constraint = Vector3(-1.3962634, -1.5707964, -3.1415927)
+max_look_constraint = Vector3(1.3962634, 1.5707964, 3.1415927)
+constrain_look = true
+freeze_visual_yaw = true
+absolute_yaw_constraint = true
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_uqmby"]
+script = ExtResource("18_rsras")
+friction_modifier = 0.3
+redo_move_time = 0.5
+min_look_constraint = Vector3(-0.9599311, -1.5707964, -3.1415927)
+max_look_constraint = Vector3(0.9599311, 1.5707964, 3.1415927)
+constrain_look = true
+absolute_yaw_constraint = true
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_rybd7"]
+script = ExtResource("19_eldsq")
+
+[sub_resource type="Resource" id="Resource_e2xtk"]
+script = ExtResource("20_bnhga")
+friction_modifier = 0.3
+check_for_grab = true
+check_for_vault_over = true
+
+[sub_resource type="Resource" id="Resource_ieasd"]
+script = ExtResource("21_t30b4")
+friction_modifier = 0.05
+redo_move_time = 0.15
+min_look_constraint = Vector3(-1.246165, -1.5707964, -3.1415927)
+max_look_constraint = Vector3(1.246165, 0, 3.1415927)
+constrain_look = true
+absolute_yaw_constraint = true
+allows_turn = false
+mirror_yaw_by_wall_side = true
+
+[sub_resource type="Resource" id="Resource_ix5t5"]
+script = ExtResource("22_ebalx")
+
+[sub_resource type="Resource" id="Resource_8h1kf"]
+script = ExtResource("23_kaqig")
+min_look_constraint = Vector3(-1.3962634, -1.5707964, -3.1415927)
+max_look_constraint = Vector3(1.3962634, 1.5707964, 3.1415927)
+constrain_look = true
+freeze_visual_yaw = true
+absolute_yaw_constraint = true
+allows_turn = false
+
+[resource]
+script = ExtResource("12_jo6uy")
+pawn = SubResource("Resource_oya74")
+camera = SubResource("Resource_s8tvx")
+walking = SubResource("Resource_rybd7")
+jump = SubResource("Resource_klb5t")
+coil = SubResource("Resource_6ui47")
+falling = SubResource("Resource_ixdq6")
+fall_uncontrolled = SubResource("Resource_2u5l8")
+soft_landing = SubResource("Resource_p2sio")
+landing = SubResource("Resource_y0evl")
+skill_roll = SubResource("Resource_431c4")
+slide = SubResource("Resource_tj7hg")
+crouch = SubResource("Resource_oomka")
+speed_vault = SubResource("Resource_mm3rp")
+into_grab = SubResource("Resource_4mpbc")
+grab = SubResource("Resource_hac3t")
+wall_run = SubResource("Resource_ieasd")
+wall_climb = SubResource("Resource_e2xtk")
+turn_180 = SubResource("Resource_uqmby")
+wallrun_jump = SubResource("Resource_ix5t5")
+zipline = SubResource("Resource_8h1kf")
+swing = SubResource("Resource_6r03e")
+ladder = SubResource("Resource_c2853")
