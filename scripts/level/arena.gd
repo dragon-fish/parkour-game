@@ -236,13 +236,18 @@ const CALIBRATION_SCENE := "res://scenes/generated/calibration_course.tscn"
 
 ## The body this level plays with, if the file is there.
 ##
-## NOT A SCENE REFERENCE, and it cannot be one. The profile points at a
-## licensed model that is not in the repository, so a committed main.tscn naming
-## it would break every checkout without that model -- and fail
+## THE BODY THIS GAME SHIPS WITH, not a fallback. It is a PATH, which is all a
+## public repository may hold: the model is licensed for use in this game and
+## not for redistribution, so it lives in the private submodule and only the
+## name of it lives here.
+##
+## NOT A SCENE REFERENCE, and it cannot be one. A committed main.tscn naming it
+## would break every checkout without that model -- and fail
 ## test_generated_scenes.gd, which compares the builder's output against what is
 ## committed. Loading it at runtime keeps the generated scene exactly what its
-## generator produces, and a checkout with no model simply plays with no body.
-const BODY_PROFILE := "res://scenes/player/local/profiles/vrm_test.tres"
+## generator produces, and a checkout with no model simply plays with no body,
+## which is the invariant the whole suite is written against.
+const BODY_PROFILE := "res://scenes/player/local/profiles/beriul.tres"
 
 ## Which profile the machine's owner is currently playing with -- a git-ignored
 ## ConfigFile (the whole profiles/ directory is ignored) so switching bodies is
@@ -251,7 +256,12 @@ const BODY_PROFILE := "res://scenes/player/local/profiles/vrm_test.tres"
 ##     [body]
 ##     profile="res://scenes/player/local/profiles/vrm_test.tres"
 ##
-## Absent, BODY_PROFILE above stays the fallback, which keeps the old behaviour.
+## DEVELOPMENT ONLY, and deliberately so: it is not a resource, so the
+## exporter leaves it out of the pck unless an include_filter names it, and it
+## should stay left out. It records which body THIS MACHINE is playing with,
+## and a release that shipped whatever a machine happened to be testing would
+## be different for every person who built it, with nothing on screen saying
+## why. Absent -- which is every exported build -- BODY_PROFILE is what runs.
 const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
 
 ## Profiles loaded so far this process, by path. See _load_body_profile().

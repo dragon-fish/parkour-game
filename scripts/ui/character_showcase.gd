@@ -11,7 +11,7 @@ extends Node3D
 # Whole scene built from code on a one-node .tscn, exactly like MainMenu.
 
 const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
-const BODY_PROFILE := "res://scenes/player/local/profiles/vrm_test.tres"
+const BODY_PROFILE := "res://scenes/player/local/profiles/beriul.tres"
 const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
 
 ## The showcase catalogue. One dictionary per entry; everything but `label`
