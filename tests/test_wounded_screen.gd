@@ -50,15 +50,35 @@ func test_colour_drains_before_the_edge_reddens() -> void:
 
 func test_the_edge_reddens_once_the_body_is_nearly_out() -> void:
 	var player := await _player()
-	var camera: CameraConfig = player.config.camera
-	await _wound_to(player, camera.wounded_alarm_at * 0.3)
-	# Breathing, so a single tick can land on the quiet half of the pulse.
+	await _wound_to(player, player.config.camera.wounded_alarm_at * 0.3)
+	assert_gt(await _peak_alarm(player), 0.0, "a body about to die showed no alarm at all")
+	assert_eq(player.screen_effects.vignette_color(), Color.RED, "the alarm was not red")
+
+func test_two_hits_of_wire_is_inside_the_alarm_band_and_visibly_so() -> void:
+	# The case the band was described by, and the one a strict comparison
+	# puts outside it: two hits is exactly the threshold. It also has to be
+	# SEEN there -- a ramp starting from nothing puts the first real warning
+	# somewhere below the line it was meant to mark.
+	var player := await _player()
+	var pawn: PawnConfig = player.config.pawn
+	player.health.hp = pawn.max_health
+	player.take_damage(35.0, Health.Cause.HAZARD)
+	player.take_damage(35.0, Health.Cause.HAZARD)
+	await step(1)
+	assert_almost_eq(player.health.fraction(), player.config.camera.wounded_alarm_at, 0.001,
+		"test setup: two wire hits no longer land on the threshold")
+	var peak: float = await _peak_alarm(player)
+	assert_gt(peak, 0.0, "standing exactly on the threshold showed nothing")
+	assert_gt(peak, player.config.camera.wounded_alarm_strength * 0.2,
+		"the alarm was technically on but too faint to be a warning")
+
+## The alarm breathes, so a single tick can land on the quiet half of it.
+func _peak_alarm(player: Player) -> float:
 	var peak: float = 0.0
 	for i in 90:
 		await step(1)
 		peak = maxf(peak, player.screen_effects.vignette_amount)
-	assert_gt(peak, 0.0, "a body about to die showed no alarm at all")
-	assert_eq(player.screen_effects.vignette_color(), Color.RED, "the alarm was not red")
+	return peak
 
 func test_the_picture_comes_back_as_health_does() -> void:
 	var player := await _player()

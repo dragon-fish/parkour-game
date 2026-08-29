@@ -105,6 +105,12 @@ func take_damage(amount: float, cause: int) -> bool:
 		return false
 	return health.damage(amount, cause)
 
+## How strong the alarm already is on the tick the band is entered, as a
+## fraction of its strength at zero health. Not a config dial: the dial is
+## wounded_alarm_strength, and this is what keeps that dial's own meaning --
+## turn it down and the whole thing gets quieter, threshold included.
+const ALARM_VISIBLE_AT_THRESHOLD := 0.5
+
 ## Runs the alarm's pulse. Kept on Player rather than read off a global clock
 ## so a paused game does not come back with the edge mid-flash.
 var _alarm_clock: float = 0.0
@@ -127,20 +133,38 @@ func _push_wounded_screen(delta: float) -> void:
 	var camera: CameraConfig = config.camera
 	var left: float = health.fraction()
 	screen_effects.set_desaturation(_wounded_ramp(left, camera.wounded_desaturation_at))
-	var alarm: float = _wounded_ramp(left, camera.wounded_alarm_at)
-	if alarm <= 0.0:
+	# IN THE BAND is asked separately from HOW DEEP INTO IT. The ramp is zero
+	# at its own threshold, so testing the ramp would drop the one case the
+	# band was described by: two hits of wire, which land exactly on it.
+	if not _in_band(left, camera.wounded_alarm_at):
 		if screen_effects.vignette_amount > 0.0:
 			screen_effects.set_vignette(Color.RED, 0.0)
 		return
+	# STARTS VISIBLE. "Below this the edge starts flashing" means the player
+	# can see it the moment they cross, not that a number stops being exactly
+	# zero -- a ramp from nothing puts the first real warning somewhere below
+	# the line it was meant to mark. The grey band is the other way round on
+	# purpose: colour DRAINS, so it has to start from none.
+	var alarm: float = lerpf(ALARM_VISIBLE_AT_THRESHOLD, 1.0,
+		_wounded_ramp(left, camera.wounded_alarm_at))
 	# Breathing rather than blinking: a hard on/off at this size reads as a
 	# rendering fault, and the player is meant to keep running through it.
 	var pulse: float = 0.5 + 0.5 * sin(TAU * camera.wounded_alarm_hz * _alarm_clock)
 	screen_effects.set_vignette(Color.RED,
 		alarm * camera.wounded_alarm_strength * pulse)
 
-## 0 at or above `threshold`, rising to 1 as health reaches zero.
+## Whether the body is inside a band at all.
+##
+## THE THRESHOLD IS INSIDE ITS OWN BAND. Two hits of wire is exactly 30 of
+## 100, and two hits of wire is the case the alarm band was described by, so
+## a strict comparison puts the one number that has to be in it out. The
+## tolerance is for the division that produced `left`, not for taste.
+static func _in_band(left: float, threshold: float) -> bool:
+	return threshold > 0.0 and left <= threshold + 0.0001
+
+## How deep into a band the body is: 0 at the threshold, 1 at zero health.
 static func _wounded_ramp(left: float, threshold: float) -> float:
-	if threshold <= 0.0 or left >= threshold:
+	if not _in_band(left, threshold):
 		return 0.0
 	return clampf((threshold - left) / threshold, 0.0, 1.0)
 
