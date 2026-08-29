@@ -14,16 +14,27 @@ shader_type spatial;
 // stretch this one and the cells stay square. Which is the whole reason this
 // is a shader and not an image.
 //
-// NO THRESHOLD MARKS, and this is a decision rather than an omission. Drawing
-// "1.8 m is the lowest wall the hands can catch" as a line needs two things
-// that are not true. It needs the floor to be at y = 0, when a rooftop level
-// stands 60 m up and every line lands in the basement. And it needs the
-// threshold to be a world height at all, when GrabConfig measures
-// ledge_max_height FROM THE FEET -- at the apex of a jump the feet are 1.24 m
-// up and the reach is 4.04 m, so the number has no fixed place to be drawn. A
-// line that certifies a wall the body cannot climb is worse than no line. If
-// this is wanted it belongs on a gizmo that follows the player and reads the
-// live state, not baked into a surface.
+// ONE THRESHOLD LINE, and only the one that can honestly be drawn.
+//
+// An earlier version ruled six heights on every wall -- step, vault, climb,
+// the two grab bounds -- and every one of them was a lie in the general case.
+// GrabConfig measures ledge_max_height FROM THE FEET, so where the hands can
+// reach depends on where the feet are at the time: standing, 2.8 m; at the
+// apex of a jump, 1.24 + 2.8. A line drawn at 2.8 forbids walls the body
+// clears easily, which is the worst thing a guide can do.
+//
+// The CEILING survives that argument where the others do not. 4.04 m is the
+// reach at the apex of the best jump available, so above it there is nothing
+// to be done with a wall -- no timing, no run-up, no angle. Nothing below it
+// is being promised: a wall under the line may or may not go, and that is
+// what a blockout is for finding out. The line only says where trying stops.
+//
+// It also draws itself only where it matters. A 2 m wall never reaches 4 m, so
+// the line appears on tall geometry and nowhere else -- its presence IS the
+// warning, rather than a stripe every surface has to carry.
+//
+// DASHED, so it cannot be mistaken for the metre ruling, and faint, because it
+// is a boundary rather than a feature.
 //
 // LINES ARE WIDENED TO STAY VISIBLE AT DISTANCE. A line thinner than a pixel
 // does not fade, it ALIASES -- the far half of a large floor turns into
@@ -54,6 +65,31 @@ uniform float fine_width = 0.008;
 // still tellable from a subdivision at a glance.
 uniform float fine_fade : hint_range(0.0, 1.0) = 0.45;
 
+// -- The reach ceiling -----------------------------------------------------
+
+// Height of the line ABOVE mark_base_y, in metres. Set to 0 to switch it off.
+//
+// 4.04 = base_jump_z^2 / (2 * gravity) + GrabConfig.ledge_max_height
+//      = 1.24 (feet at the apex of a jump) + 2.8 (reach from the feet)
+// [ME:DERIVED] from two [ME:CONFIRMED] values plus one project value. The
+// airborne half is a clean ballistic result; whether a grab actually latches
+// at the very top of the arc is a question for a playtest, so treat this as
+// the optimistic bound. Nothing above it is reachable by any means.
+uniform float reach_ceiling = 4.04;
+// WHERE THE FLOOR IS, in world Y. The whole point of failure for the version
+// of this that had six lines: heights are measured from the ground the player
+// stands on, and a rooftop level stands 60 m up, which put every line in the
+// basement. There is no way for a shader to know which floor is under a given
+// wall, so it is declared -- one material per storey, and a level built on one
+// slab needs only the default.
+uniform float mark_base_y = 0.0;
+uniform vec4 reach_color : source_color = vec4(0.78, 0.16, 0.13, 1.0);
+uniform float reach_opacity : hint_range(0.0, 1.0) = 0.22;
+uniform float reach_width = 0.03;
+// Dash length plus gap, in metres, and how much of it is drawn.
+uniform float dash_period = 0.6;
+uniform float dash_duty : hint_range(0.05, 0.95) = 0.5;
+
 varying vec3 world_position;
 varying vec3 world_normal;
 
@@ -78,6 +114,23 @@ float ruling(vec2 p) {
 		grid_line(p, fine_spacing, fine_width) * fine_fade);
 }
 
+// One line at one height, antialiased the same way the grid is.
+float line_at(float value, float target, float width) {
+	float pixel = fwidth(value);
+	float half_width = max(width * 0.5, pixel);
+	return 1.0 - smoothstep(half_width - pixel, half_width + pixel,
+		abs(value - target));
+}
+
+// The on/off of a dash, along whichever axis runs across the face.
+float dash_mask(float along) {
+	float pixel = fwidth(along);
+	float phase = fract(along / max(dash_period, 0.001));
+	// Softened by a pixel so the dash ends do not crawl at grazing angles.
+	float edge = max(pixel / max(dash_period, 0.001), 0.001);
+	return 1.0 - smoothstep(dash_duty - edge, dash_duty + edge, phase);
+}
+
 void vertex() {
 	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
@@ -91,8 +144,24 @@ void fragment() {
 		+ ruling(world_position.xz) * weights.y
 		+ ruling(world_position.xy) * weights.z;
 
-	ALBEDO = mix(base_color.rgb, line_color.rgb,
+	vec3 albedo = mix(base_color.rgb, line_color.rgb,
 		clamp(lines, 0.0, 1.0) * line_opacity);
+
+	// Upright faces only: a ceiling on reach says nothing about a floor, and
+	// drawn on one it would be a stripe across open ground at a height the
+	// ground does not have.
+	if (reach_ceiling > 0.0) {
+		float at_height = line_at(world_position.y - mark_base_y,
+			reach_ceiling, reach_width);
+		// The axis that runs ACROSS the face, so the dashes march along the
+		// line rather than chopping it where two projections meet.
+		float dashes = dash_mask(world_position.z) * weights.x
+			+ dash_mask(world_position.x) * weights.z;
+		albedo = mix(albedo, reach_color.rgb,
+			clamp(at_height * dashes, 0.0, 1.0) * reach_opacity);
+	}
+
+	ALBEDO = albedo;
 	METALLIC = metallic_amount;
 	ROUGHNESS = roughness_amount;
 }
