@@ -38,7 +38,7 @@ const MODE_MAX := 9
 ## symmetries, which is none.
 ##
 ## So the hold is what keeps it from flickering, rather than the easing.
-const MODE_HOLD := 2.6
+@export var mode_hold: float = 2.6
 
 ## How long the powder takes to find its new places.
 ##
@@ -47,7 +47,7 @@ const MODE_HOLD := 2.6
 ## figure into the new one and the grains that light up travel with it -- and
 ## because both windows are anchored at the same point on screen, every stage
 ## of that is still symmetric. See the shader.
-const MORPH_TIME := 1.1
+@export var morph_time: float = 1.1
 
 ## How fast loudness reaches the shader. Quicker than the modes, so the grain
 ## visibly answers the beat while the figure it belongs to holds.
@@ -55,7 +55,7 @@ const LEVEL_EASE := 8.0
 
 ## Loudness that counts as the plate being driven flat out. Menu music is
 ## deliberately quiet, so this is well below unity.
-const FULL_DRIVE := 0.12
+@export var full_drive: float = 0.12
 
 @export var tint: Color = Color(0.34, 0.41, 0.52, 1.0)
 ## How strongly the field shows at all. It sits behind a title card and a
@@ -68,6 +68,21 @@ const FULL_DRIVE := 0.12
 ## stands left of centre, and a figure centred on the screen reads as two
 ## pictures that disagree about where the middle is.
 @export var centre_x: float = 0.5
+
+## The shader's own dials, mirrored here so they can be dragged in the
+## inspector rather than found by reading GLSL. Pushed every frame, so a drag
+## lands while the menu is running -- the same bargain the F1 panel makes for
+## the movement config.
+@export_group("Figure")
+## How much of the plate the rect shows. Below one is a DETAIL blown up.
+@export var zoom: float = 0.6
+## How far past the settling band grains keep appearing, thinning out.
+@export var spread: float = 0.5
+@export var grain_density: float = 150.0
+@export var grain_size: float = 0.16
+## Fades the field out toward the horizon, so it does not end on a line.
+@export var horizon_fade: float = 0.35
+@export_group("")
 
 var _material: ShaderMaterial
 var _analyzer: AudioEffectSpectrumAnalyzerInstance
@@ -132,7 +147,7 @@ func _process(delta: float) -> void:
 	# cancel the closed form to zero, which is a plate with nothing on it.
 	var wanted := mode_pair(bottom, top)
 	_held += delta
-	if _held >= MODE_HOLD and _morph >= 1.0 and (wanted.x != _n or wanted.y != _m):
+	if _held >= mode_hold and _morph >= 1.0 and (wanted.x != _n or wanted.y != _m):
 		_held = 0.0
 		_morph = 0.0
 		_from_n = _n
@@ -145,8 +160,8 @@ func _process(delta: float) -> void:
 		# modes does not keep drawing the same handful of shapes. Whole
 		# numbers, and it jumps with them -- see the shader on `centre`.
 		_centre = lattice_point(_n, _m)
-	_morph = minf(_morph + delta / MORPH_TIME, 1.0)
-	_drive = lerpf(_drive, clampf(loudness / FULL_DRIVE, 0.0, 1.0),
+	_morph = minf(_morph + delta / maxf(morph_time, 0.001), 1.0)
+	_drive = lerpf(_drive, clampf(loudness / maxf(full_drive, 0.001), 0.0, 1.0),
 		clampf(delta * LEVEL_EASE, 0.0, 1.0))
 	# Smootherstep on the way across: the ends are where a slide is noticed
 	# starting and stopping, and a linear one starts and stops abruptly at both.
@@ -170,6 +185,13 @@ func _process(delta: float) -> void:
 	_material.set_shader_parameter("settle", lerpf(0.20, 0.42, _drive))
 	_material.set_shader_parameter("brightness", strength * lerpf(0.55, 1.0, _drive))
 	_material.set_shader_parameter("aspect", maxf(size.x, 1.0) / maxf(size.y, 1.0))
+	_material.set_shader_parameter("centre_x", centre_x)
+	_material.set_shader_parameter("tint", tint)
+	_material.set_shader_parameter("zoom", zoom)
+	_material.set_shader_parameter("spread", spread)
+	_material.set_shader_parameter("grain_density", grain_density)
+	_material.set_shader_parameter("grain_size", grain_size)
+	_material.set_shader_parameter("horizon_fade", horizon_fade)
 
 ## Which mode the two ends of the spectrum ask for. Pure and static so the
 ## mapping can be checked without an audio device -- a headless run has a

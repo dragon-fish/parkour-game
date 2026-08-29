@@ -33,13 +33,18 @@ const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
 
 # --- entrance timing (spec: 入场编排 beats 0a-6) ----------------------------
 ## 0a: logo plate over the crouched close-up, fake loading bar.
-const LOGO_HOLD := 1.0
+@export var LOGO_HOLD: float = 1.0
+## STAYS A CONSTANT while its neighbours became exports: MenuMusic times the
+## drop against MainMenu.RISE_TIME, and a cross-class reference can only
+## reach a const -- an exported var is an instance member. The coupling is
+## the point (the chorus lands on the body coming up), so it is the export
+## that gives way, not the coupling.
 const RISE_TIME := 1.5
 ## ✅ The owner (final): the body reaches FULLY STANDING the exact moment
 ## the camera lands -- same start, same end, one breath. Easing everywhere:
 ## cubic-bezier(0.65, 0, 0.35, 1) = TRANS_CUBIC / EASE_IN_OUT.
 const BODY_RISE_DELAY := 0.0
-const BODY_STAND_BLEND := 1.5  # = RISE_TIME: fully up the frame the camera lands (✅ the owner)
+@export var BODY_STAND_BLEND: float = 1.5  # = RISE_TIME: fully up the frame the camera lands (✅ the owner)
 ## METRES PER SECOND the ground slides past while she walks -- a real unit
 ## now that the floor is a real plane. The old number lived in the fake
 ## projection's own space and meant nothing outside it, so it could not be
@@ -47,12 +52,12 @@ const BODY_STAND_BLEND := 1.5  # = RISE_TIME: fully up the frame the camera land
 ##
 ## The direction is read off the body each frame rather than written down:
 ## which axis is forward is a convention argument nobody wins twice.
-const FLOOR_SCROLL_SPEED := 0.55
-const LOGO_FADE_TIME := 0.4
-const WALK_TO_MENU_DELAY := 0.15
-const MENU_PANEL_TIME := 0.45
-const DRIFT_PX := 2.0
-const DRIFT_HALF_PERIOD := 5.0
+@export var FLOOR_SCROLL_SPEED: float = 0.55
+@export var LOGO_FADE_TIME: float = 0.4
+@export var WALK_TO_MENU_DELAY: float = 0.15
+@export var MENU_PANEL_TIME: float = 0.45
+@export var DRIFT_PX: float = 2.0
+@export var DRIFT_HALF_PERIOD: float = 5.0
 ## The drift's fixed baseline; see _start_idle_drift().
 const _DRIFT_BASE_Y := 0.0
 
@@ -62,18 +67,18 @@ const _DRIFT_BASE_Y := 0.0
 ## screen RIGHT. Beat 1 pushes to the FRONT view: full body centred, 70% of
 ## screen height. All framing is solved at runtime from the live skeleton
 ## (Head/Hips bones), so a different model reframes itself.
-const FRAME_FOV_DEG := 55.0
-const HEAD_X_FRAC := 0.55
-const HEAD_Y_FRAC := 0.34
-const CLOSE_BODY_FRAC := 0.85
-const FAR_BODY_FRAC := 0.70
+@export var FRAME_FOV_DEG: float = 55.0
+@export var HEAD_X_FRAC: float = 0.55
+@export var HEAD_Y_FRAC: float = 0.34
+@export var CLOSE_BODY_FRAC: float = 0.85
+@export var FAR_BODY_FRAC: float = 0.70
 ## Where the standing walker sits horizontally in the settled view. The
 ## column moved to the RIGHT (✅ the owner: sending her left-to-right would
 ## cross the axis -- 越轴), so she keeps the LEFT: the centre of the open
 ## field left of the column, ~37%.
-const FAR_X_FRAC := 0.37
+@export var FAR_X_FRAC: float = 0.37
 ## Skull above the Head bone, metres -- the bone sits at the neck end.
-const HEAD_TOP_PAD := 0.16
+@export var HEAD_TOP_PAD: float = 0.16
 ## The body NEVER rotates (✅ the owner: "让镜头转而不是角色模型和地板转").
 ## It faces +Z world for the whole show (model forward is -Z after mount,
 ## so yaw -180); the CAMERA orbits from her right side (azimuth 0 = profile,
@@ -81,6 +86,10 @@ const HEAD_TOP_PAD := 0.16
 ## and the floor pattern turns off the same azimuth -- one number, one
 ## rotation, nothing to desync -- and since the floor became a real plane it
 ## does not need telling at all: it turns because the camera moved.
+## THESE THREE STAY CONSTANTS. They do not encode taste, they encode the
+## rule above -- the body never turns, the camera orbits. Made draggable
+## they would be an invitation to break it from the inspector, with nothing
+## on screen explaining why the floor and the figure had come apart.
 const FRONT_YAW_DEG := -180.0
 const CLOSE_AZIMUTH_DEG := 180.0
 const FAR_AZIMUTH_DEG := 90.0
@@ -93,12 +102,33 @@ const FALLBACK_STAND_HEAD := 1.43
 # --- logo mark (white recolor of the codex topo emblem) --------------------
 const LOGO_TEXTURE := "res://assets/ui/logo_mark_white.svg"
 ## Centre of the mark, as screen fractions (✅ the owner: left 20% top 66%).
-const LOGO_X_FRAC := 0.19
-const LOGO_Y_FRAC := 0.55
-const LOGO_SIZE_PX := 220.0
+@export var LOGO_X_FRAC: float = 0.19
+@export var LOGO_Y_FRAC: float = 0.55
+@export var LOGO_SIZE_PX: float = 220.0
 
 # --- mirror + glitch -------------------------------------------------------
-const MIRROR_ALPHA := 0.16
+@export var MIRROR_ALPHA: float = 0.16
+
+## The ground's own dials, mirrored off the shader so they can be dragged
+## rather than found by reading GLSL. Pushed every frame, so a drag lands
+## while the menu is running.
+@export_group("Floor")
+## Dots per WORLD METRE. See the shader on why the old number could not be
+## carried over when the floor became a real plane.
+@export var floor_spacing: float = 6.8
+## Dot radius as a fraction of a cell.
+@export var floor_dot_size: float = 0.12
+## How fast each dot breathes, and how far. The per-cell random phase is what
+## makes that read as alive rather than as blinking.
+@export var floor_pulse_speed: float = 1.2
+@export var floor_pulse: float = 0.35
+@export var floor_base: float = 0.35
+## Metres out at which the ground starts and finishes fading away. Without it
+## the cells near the horizon are finer than a pixel and boil.
+@export var floor_fade_from: float = 6.0
+@export var floor_fade_to: float = 26.0
+@export var floor_tint: Color = Color(0.75, 0.82, 0.92, 1.0)
+@export_group("")
 
 var _background: ColorRect
 var _paper_noise: ColorRect
@@ -203,6 +233,14 @@ func _process(delta: float) -> void:
 	# of two conventions and neither is worth arguing about twice.
 	var forward: Vector3 = -_silhouette_root.global_transform.basis.z
 	mat.set_shader_parameter("flow_dir", Vector2(forward.x, forward.z).normalized())
+	mat.set_shader_parameter("spacing", floor_spacing)
+	mat.set_shader_parameter("dot_size", floor_dot_size)
+	mat.set_shader_parameter("speed", floor_pulse_speed)
+	mat.set_shader_parameter("pulse", floor_pulse)
+	mat.set_shader_parameter("base", floor_base)
+	mat.set_shader_parameter("fade_from", floor_fade_from)
+	mat.set_shader_parameter("fade_to", floor_fade_to)
+	mat.set_shader_parameter("tint", floor_tint)
 
 func _on_resized() -> void:
 	# Aspect changed: re-solve the framing math and re-aim whatever state
