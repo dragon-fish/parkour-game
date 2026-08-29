@@ -3,102 +3,160 @@ extends Node
 
 # The menu's music, in two pieces cut from one track.
 #
-# THE POINT IS THE HANDOFF. The held title shot loops eight restrained bars;
-# the click drops straight into the chorus. Because both pieces come from the
-# same recording at the same tempo and both start on a downbeat, the chorus is
-# entered AT THE PHASE THE LOOP HAD REACHED -- so the beat never breaks and the
-# crossfade can be short enough to feel like the click caused it. Waiting for
-# the next bar line instead would be up to 1.8 s of nothing happening, which
-# on a button reads as the button not working.
+# THE POINT IS THE HANDOFF. The held title shot plays eight restrained bars;
+# the click drops into the chorus. Because both pieces come from the same
+# recording at the same tempo and both start on a downbeat, the chorus is
+# entered AT THE PHASE THE LOOP HAD REACHED -- so the beat never breaks, and
+# the crossfade can be short enough to feel like the click caused it. Waiting
+# for the next bar line would be up to 1.8 s of nothing happening, which on a
+# button reads as the button not working.
 #
-# The two files are pre-cut rather than seeked within one stream, so the engine
-# loops them itself: a loop driven from _process() re-seeks a frame late and
-# clicks, and MP3 cannot loop gaplessly at all because of encoder padding.
-# Each file's own head is crossfaded with the material that followed its tail
-# in the original, so the join carries real continuation rather than a cut.
+# THREE MOMENTS, TWO FILES. The title fragment loops continuously and
+# gaplessly -- background for a decision nobody is being hurried into. The
+# other file is the whole record, and it covers the remaining two by itself:
+# entered at bar 32 it is "from the chorus onward", and entered at zero, after
+# a rest, it is the track from the top, on repeat. Cutting a separate chorus
+# file would have stored the same three minutes twice.
+#
+# NOTHING HERE JUMPS IN LEVEL. The loop sits well back, the chorus arrives at
+# that same level and then swells to its own, and leaving is a long fade. A
+# menu is the first thing a player hears, often through headphones they set
+# for something else.
 
 const LOOP_STREAM := "res://assets/audio/menu_loop.ogg"
-const CHORUS_STREAM := "res://assets/audio/menu_chorus.ogg"
+const FULL_STREAM := "res://assets/audio/menu_full.ogg"
 
 ## Measured off the track, not guessed: 132.5076 BPM in 4/4. Two independent
 ## methods agreed (a beat comb over the onset envelope, and a least-squares fit
 ## through 203 kick onsets), and the structure confirms it -- the drums enter
 ## at exactly bar 16 and the chorus at exactly bar 32, with the first downbeat
 ## at 0.000 s. A cross-correlation estimate of 132.63 was the outlier.
-##
-## DO NOT round this to 132. The loop is eight bars long, so an error here is
-## eight times as large by the time it reaches the seam.
 const BAR := 1.811217
 
-## Long enough to swallow the level change between the two mixes, short enough
-## that the click still feels like the cause. The beat carries across it
-## unbroken, which is what lets it be this short.
-const CROSSFADE := 0.45
+## Where the chorus lands in the record: bar 32. The click enters here, and
+## the phase the title fragment had reached is added on top.
+const CHORUS_START := 32.0 * BAR
 
-## Leaving for the level. Slower than the handoff -- this one is a goodbye,
-## not a hit.
-const FADE_OUT := 0.9
+
+## Held back on purpose. This plays under a title card while the player is
+## still deciding to press anything, and it is the first sound the game makes.
+const HELD_LEVEL := 0.20
+
+## Where the chorus settles. Fuller, not loud -- the drop is carried by the
+## drums arriving on the grid, not by the fader.
+const CHORUS_LEVEL := 0.62
+
+## The crossfade itself, at HELD_LEVEL throughout: this is a change of
+## material, not of volume.
+const HANDOFF := 0.6
+
+## And then the lift to CHORUS_LEVEL, slowly. Long enough that no single
+## moment of it is a jump, which is the whole requirement -- a menu that
+## suddenly gets louder is a menu that made the player flinch.
+const SWELL := 5.0
+
+## The pause before the record starts over. Long enough to read as deliberate
+## rather than as a dropout; the piece it follows is two and a half minutes
+## long, so nobody is waiting on it.
+const REST := 3.0
+
+## Leaving for the level. Longer than everything else here: this one has the
+## whole loading run to happen over, and there is nothing to be gained by
+## finishing early.
+const FADE_OUT := 2.2
 
 var _loop: AudioStreamPlayer
-var _chorus: AudioStreamPlayer
+var _record: AudioStreamPlayer
 var _in_chorus: bool = false
+## True once the menu is on its way out, which cancels the rest-and-restart
+## cycle. Without it a piece that ends mid-fade schedules itself to start
+## again at full level, over the top of the fade that was seeing it off.
+var _leaving: bool = false
 
 func _ready() -> void:
-	_loop = _player(LOOP_STREAM)
-	_chorus = _player(CHORUS_STREAM)
-	_chorus.volume_db = _gain_db(0.0)
+	_loop = _player(LOOP_STREAM, true)
+	_record = _player(FULL_STREAM, false)
+	_loop.volume_db = _gain_db(HELD_LEVEL)
+	_record.volume_db = _gain_db(0.0)
+	_record.finished.connect(_rest_then_play_from_the_top)
 	_loop.play()
 
-## Both streams loop. The chorus loops too: a player who sits on the settled
-## menu should not be left in silence, and the sixteen bars it holds are the
-## whole chorus before the track breaks down.
+## `looping` decides who owns the repeat. The title fragment is looped by the
+## engine, which is sample-accurate and gapless; the record is left un-looped
+## so its ending can be heard and rested after.
 ##
 ## The flag is set on the resource rather than in the .import file on purpose
 ## -- see .claude/skills/authoring-godot-scene-files: an import file is
 ## regenerated, often untracked, and a first headless import can wipe it. A
-## duplicate() so two players of the same path cannot fight over one flag.
-func _player(path: String) -> AudioStreamPlayer:
+## duplicate() so nothing else loading the same path inherits the flag.
+func _player(path: String, looping: bool) -> AudioStreamPlayer:
 	var node := AudioStreamPlayer.new()
 	if ResourceLoader.exists(path):
-		var stream: AudioStream = load(path).duplicate()
-		if stream is AudioStreamOggVorbis:
-			(stream as AudioStreamOggVorbis).loop = true
+		var stream: AudioStream = load(path)
+		if looping:
+			stream = stream.duplicate()
+			if stream is AudioStreamOggVorbis:
+				(stream as AudioStreamOggVorbis).loop = true
 		node.stream = stream
 	add_child(node)
 	return node
 
-## The click. Enters the chorus at the phase the loop had reached, so the
-## grid continues through the crossfade instead of restarting inside it.
+## The record has played out. Rest, then take it FROM THE TOP -- not from the
+## chorus, and not back to the quiet figure. The first pass entered late
+## because a click had just happened; a second pass has no click to answer,
+## so it is simply the track.
+##
+## Silent while leaving: a piece that ends mid-goodbye would otherwise
+## schedule itself to start again at full level, over the top of the fade
+## that was seeing it off.
+func _rest_then_play_from_the_top() -> void:
+	if _leaving or _record.stream == null:
+		return
+	var again := create_tween()
+	again.tween_interval(REST)
+	again.tween_callback(_record.play.bind(0.0))
+
+## The click. Enters the chorus at the phase the loop had reached, so the grid
+## continues through the crossfade instead of restarting inside it.
 func to_chorus() -> void:
-	if _in_chorus or _chorus.stream == null:
+	if _in_chorus or _record.stream == null:
 		return
 	_in_chorus = true
-	_chorus.play(chorus_entry(_loop.get_playback_position()))
-	var blend := create_tween()
-	blend.tween_method(_set_blend, 0.0, 1.0, CROSSFADE)
-	blend.tween_callback(_loop.stop)
+	_record.play(chorus_entry(_loop.get_playback_position()))
+	var hand := create_tween()
+	hand.tween_method(_set_handoff, 0.0, 1.0, HANDOFF)
+	hand.tween_callback(_loop.stop)
+	hand.tween_method(_set_record_level, HELD_LEVEL, CHORUS_LEVEL, SWELL) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-## Where in the chorus to start, given where the loop had got to.
+## Where in the RECORD to start, given where the title fragment had got to.
+## The chorus's own downbeat, plus however far into a bar the loop was, so the
+## grid continues through the crossfade instead of restarting inside it.
 ##
-## Pure and static so the arithmetic can be checked without an audio device:
-## a headless run has a dummy driver and reports a playback position of zero
+## Pure and static so the arithmetic can be checked without an audio device: a
+## headless run has a dummy driver and reports a playback position of zero
 ## forever, which would make a test of this pass for the wrong reason.
 static func chorus_entry(loop_position: float) -> float:
-	return fmod(maxf(loop_position, 0.0), BAR)
+	return CHORUS_START + fmod(maxf(loop_position, 0.0), BAR)
 
 ## Leaving the menu. Silence would be as wrong as a hard cut.
 func fade_out(seconds: float = FADE_OUT) -> void:
+	_leaving = true
 	var out := create_tween().set_parallel()
-	for player in [_loop, _chorus]:
+	for player in [_loop, _record]:
 		if player.playing:
 			out.tween_property(player, "volume_db", _gain_db(0.0), seconds)
 
-## Equal power, not equal amplitude: two halves of a linear crossfade sum to a
-## dip in the middle, which on a continuous beat is heard as the music
-## flinching at the exact moment the click was supposed to land.
-func _set_blend(k: float) -> void:
-	_loop.volume_db = _gain_db(cos(k * PI * 0.5))
-	_chorus.volume_db = _gain_db(sin(k * PI * 0.5))
+## Equal power at a CONSTANT total, not a fade up to a new level: two halves
+## of a linear crossfade sum to a dip in the middle, which on a continuous
+## beat is heard as the music flinching at the moment the click was supposed
+## to land. The lift to CHORUS_LEVEL is a separate, much slower move.
+func _set_handoff(k: float) -> void:
+	_loop.volume_db = _gain_db(cos(k * PI * 0.5) * HELD_LEVEL)
+	_record.volume_db = _gain_db(sin(k * PI * 0.5) * HELD_LEVEL)
+
+func _set_record_level(level: float) -> void:
+	_record.volume_db = _gain_db(level)
 
 ## Silence is -80 dB, not -inf: linear_to_db(0) returns -inf and the mixer
 ## refuses it. Same floor SettingsStore uses for a volume slider at zero.
