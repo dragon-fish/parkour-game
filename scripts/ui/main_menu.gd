@@ -979,6 +979,17 @@ func _on_start_pressed() -> void:
 	_load_started_ms = Time.get_ticks_msec()
 	ResourceLoader.load_threaded_request(MAIN_SCENE)
 	print("[load] threaded request sent")
+	play_run_look()
+
+## Everything the loading run LOOKS like, with nothing of the loading in it:
+## the menu leaves, the camera swings to her left, she breaks into a run and
+## the ground sprints with her.
+##
+## Split out so it can be watched. It lasts about a second and a half and then
+## the level takes over, which is not enough to aim a camera against -- see
+## scripts/debug/menu_lab.gd, which holds this state open indefinitely and can
+## slow it down.
+func play_run_look() -> void:
 	# UI leaves: column back out to the right, dressing fades.
 	var out := _track(create_tween())
 	out.set_parallel(true)
