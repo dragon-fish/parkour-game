@@ -104,3 +104,52 @@ func test_the_reprieve_is_rechecked_rather_than_latched() -> void:
 	await _fall_until_settled(player)
 	assert_eq(player.move_manager.current_name, Move.FALL_UNCONTROLLED, \
 		"the reprieve was decided once and never revisited")
+
+# The group is silent when it lands on the wrong node: the pad simply is not
+# soft, and the player finds out by dying on it. These cover the reasons a
+# level author actually hits, because each one looks correct in the editor.
+
+func _arena() -> Arena:
+	var a: Arena = preload("res://scenes/main.tscn").instantiate()
+	add_child_autofree(a)
+	return a
+
+func test_a_brush_inside_a_csg_tree_is_reported_as_unreachable() -> void:
+	# The one an author reaches for first: a level built out of CSG, one box
+	# drawn soft. Only the ROOT of a CSG tree owns collision, so the group on
+	# the brush is read by nothing.
+	var arena := _arena()
+	var root := CSGCombiner3D.new()
+	root.use_collision = true
+	var brush := CSGBox3D.new()
+	brush.name = "Pad"
+	brush.add_to_group(Probes.SOFT_LANDING_GROUP)
+	root.add_child(brush)
+	arena.add_child(root)
+	assert_string_contains(arena._why_a_pad_cannot_be_felt(brush), "brush inside a CSG tree")
+
+func test_a_lone_csg_box_with_collision_is_a_perfectly_good_pad() -> void:
+	var arena := _arena()
+	var box := CSGBox3D.new()
+	box.use_collision = true
+	arena.add_child(box)
+	assert_eq(arena._why_a_pad_cannot_be_felt(box), "", "a lone CSG box was refused")
+
+func test_a_csg_box_with_collision_off_is_reported() -> void:
+	var arena := _arena()
+	var box := CSGBox3D.new()
+	box.use_collision = false
+	arena.add_child(box)
+	assert_string_contains(arena._why_a_pad_cannot_be_felt(box), "use_collision")
+
+func test_a_mesh_instance_is_reported_as_owning_no_collision() -> void:
+	var arena := _arena()
+	var visual := MeshInstance3D.new()
+	arena.add_child(visual)
+	assert_string_contains(arena._why_a_pad_cannot_be_felt(visual), "owns no collision")
+
+func test_a_static_body_passes() -> void:
+	var arena := _arena()
+	var body := StaticBody3D.new()
+	arena.add_child(body)
+	assert_eq(arena._why_a_pad_cannot_be_felt(body), "", "a StaticBody3D was refused")

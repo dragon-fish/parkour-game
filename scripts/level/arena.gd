@@ -168,6 +168,42 @@ func _ready() -> void:
 
 	reset_player()
 	_mark.call("markers + reset_player")
+	_warn_about_unreachable_pads()
+
+## A body in the soft_landing group that nothing will ever read is silent:
+## the pad simply is not soft, and the player finds out by dying on it. This
+## turns each one into a console line at load, which is the whole reason it
+## exists -- see the spring-bone lesson in
+## .claude/skills/authoring-godot-scene-files.
+##
+## The trap is CSG. Only the ROOT of a CSG tree owns collision, so a group on
+## a child brush is read by nothing -- and a brush is exactly what an author
+## draws when they want one soft ledge in a level built out of CSG.
+func _warn_about_unreachable_pads() -> void:
+	for node in get_tree().get_nodes_in_group(Probes.SOFT_LANDING_GROUP):
+		var why := _why_a_pad_cannot_be_felt(node as Node)
+		if why != "":
+			push_warning("Soft landing pad '%s' will never be felt: %s"
+				% [(node as Node).name if node is Node else node, why])
+
+## Empty when the node is something a ray can report, a reason otherwise.
+func _why_a_pad_cannot_be_felt(node: Node) -> String:
+	if node == null:
+		return "not a node"
+	if node is CSGShape3D:
+		# A CSG shape reports itself only when it is the root of its own tree.
+		if node.get_parent() is CSGShape3D:
+			return ("it is a brush inside a CSG tree, so the collision belongs to "
+				+ "its root. Move it out of the tree and give it its own "
+				+ "use_collision, or put the group on the root -- which makes the "
+				+ "whole tree soft.")
+		if not (node as CSGShape3D).use_collision:
+			return "use_collision is off, so it has no collision to be hit."
+		return ""
+	if node is CollisionObject3D or node is GridMap:
+		return ""
+	return ("a %s owns no collision, so no ray can report it. The group belongs "
+		+ "on the body, not on the visual.") % node.get_class()
 
 ## Starts the death sequence; reset_player() itself runs once it reports
 ## `finished` (wired in _ready()), not from here directly.

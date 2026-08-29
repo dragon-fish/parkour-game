@@ -577,6 +577,12 @@ brush is read by nothing and fails silently.
 tile, so putting it in the group makes *every cell in that map* soft. For one
 soft ledge among hard ones, use a separate body.
 
+**The level says so at load.** `Arena` walks the group on startup and prints a
+warning for every member no ray can report — a brush inside a CSG tree, a CSG
+root with `use_collision` off, a bare `MeshInstance3D`. Each of those looks
+entirely correct in the editor and does nothing at runtime, so the failure is
+otherwise found by dying on the pad.
+
 [ME:INFERRED 12 §12.5] A group rather than a node class because the original's
 pads are ordinary collision boxes carrying a property: there is one in a level
 with no trigger anywhere near it, and a pad reached from an ordinary height
