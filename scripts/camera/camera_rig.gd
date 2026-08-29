@@ -222,6 +222,22 @@ func view_blur() -> float:
 	var rise: float = eased / seam if eased <= seam else (1.0 - eased) / (1.0 - seam)
 	return sin(PI * 0.5 * rise) * _config.camera.view_blend_blur
 
+## Where the view sits between the two seats right now: 0 is the eye, 1 is the
+## third-person chair, and everything between is the journey.
+##
+## For anything that must COMPOSE with a view change rather than merely know
+## which end it is heading for. DeathSequence is the case: asking
+## in_third_person() the instant a death forces the view gets `true` while the
+## eye is still in the socket, so a death framing chosen from it snapped into
+## place a tenth of a second before the camera it was framing for arrived.
+##
+## Reads the same eased value the swap itself is judged on, so nothing driven
+## off this can drift out of step with the camera.
+func view_blend() -> float:
+	if _view_blend < 0.0:
+		return 1.0 if in_third_person() else 0.0
+	return _eased_view_blend()
+
 func in_third_person() -> bool:
 	if forced_view == Status.View.FIRST:
 		return false

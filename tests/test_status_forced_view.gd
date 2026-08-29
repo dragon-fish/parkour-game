@@ -80,3 +80,35 @@ func test_the_view_eases_in_whichever_way_it_is_going() -> void:
 	assert_lt(out_early, 0.25, "leaving the eye did not start slowly")
 	assert_lt(back_early, 0.25, \
 		"returning to the eye started fast: the curve is riding position, not progress")
+
+func test_a_forced_view_is_a_journey_the_public_reading_can_follow() -> void:
+	# THE BUG THIS PINS. A death forces third person by writing forced_view, and
+	# in_third_person() answers `true` from that instant -- a whole blend before
+	# the camera arrives. DeathSequence used to choose its framing from that
+	# boolean, so the rig pitched into its third-person death pose while the eye
+	# was still in the socket and the position caught up in a rush afterwards:
+	# two halves of one change on two different clocks, which reads as a cut no
+	# matter how well either half is eased.
+	#
+	# view_blend() is what it follows instead, so what is asserted here is that
+	# the public reading is genuinely mid-journey while in_third_person() has
+	# already committed -- not merely that it ends up in the right place.
+	var p := _player()
+	# Seeded, not merely built: _view_blend starts at -1 meaning "no view yet",
+	# and view_blend() answers that with the destination. Reading the private
+	# value is how the test tells a seeded eye from an unseeded one -- the public
+	# reading cannot, which is the whole point of it.
+	await step(6)
+	assert_eq(p.camera_rig._eased_view_blend(), 0.0, "test setup: not seeded at the eye")
+	
+	# Through a status, the way a room forces one -- Player rewrites
+	# camera_rig.forced_view from statuses every tick, so a field set by hand
+	# lasts until the next one and proves nothing.
+	p.statuses.apply(_force(Status.View.THIRD), p, 0)
+	await step(1)
+	assert_true(p.camera_rig.in_third_person(), 		"test setup: the force did not take immediately")
+	var mid: float = p.camera_rig.view_blend()
+	assert_lt(mid, 1.0, 		"the view arrived the moment it was forced: nothing can ride the journey")
+	
+	await step(int(ceil(p.config.camera.view_blend_time * 60.0)) + 2)
+	assert_almost_eq(p.camera_rig.view_blend(), 1.0, 0.001, "the journey never ended")

@@ -55,6 +55,10 @@ var _elapsed: float = 0.0
 var _playing: bool = false
 ## Whether the view has already been handed back for this death.
 var _view_offered: bool = false
+
+## Whether this death is framing the camera itself -- true for every death with
+## a body, which is the branch that does NOT take the scripted fall.
+var _framing: bool = false
 var _eye_height: float = 0.0
 
 ## Where the FEET are, in the rig's own local space -- i.e. how far below the
@@ -166,19 +170,8 @@ func play(player: Player) -> void:
 			# point, which is the line below.
 			_cinematic = _player.body == null
 			if not _cinematic:
-				var camera_config: CameraConfig = _player.config.camera
-				# THE OTHER WAY ROUND IN THIRD PERSON, and the geometry says
-				# why: the camera hangs BEHIND the rig, so pitching the rig up
-				# swings the arm DOWN -- straight into the floor a dead body is
-				# lying on.
-				var third: bool = _player.camera_rig.in_third_person()
-				_player.camera_rig.set_pitch(deg_to_rad(
-					camera_config.death_pitch_third_person_deg if third
-					else camera_config.death_pitch_deg))
-				# First person only: the head-follow puts the eye where the head
-				# bone is, and a body on the floor has its head ON the floor.
-				if not third:
-					_player.camera_rig.set_death_lift(camera_config.death_eye_lift)
+				_framing = true
+				_drive_death_framing()
 			if _cinematic:
 				# Read BEFORE begin_cinematic(), while rotation.x is still the
 				# player's own look.
@@ -220,6 +213,7 @@ func _physics_process(delta: float) -> void:
 	if not _playing:
 		return
 	_elapsed += delta
+	_drive_death_framing()
 	if _cinematic and _player != null and _player.camera_rig != null:
 		var pose := _pose_at(_elapsed)
 		_player.camera_rig.set_cinematic_pose(pose[0], pose[1], pose[2])
@@ -319,6 +313,7 @@ func _release_player() -> void:
 		_player.camera_rig.allow_cinematic_look(false)
 		_player.camera_rig.clear_look_constraint()
 	_view_offered = false
+	_framing = false
 	if _ragdolled and _player.ragdoll != null:
 		_player.ragdoll.stop()
 		_ragdolled = false
@@ -493,6 +488,34 @@ func _close_the_eyes(closed: bool) -> void:
 
 ## Gives the mouse back once the body has stopped moving, third person only.
 ##
+## The death's framing, re-derived every tick from where the view actually IS.
+##
+## RIDES THE VIEW CHANGE, does not predict it. A death that forces third person
+## sets forced_view immediately, so in_third_person() flips a whole blend ahead
+## of the camera: choosing the framing from that boolean pitched the rig into
+## its third-person pose while the eye was still in the socket, and the
+## position then caught up in a rush. Two halves of one change on two different
+## clocks reads as a cut, however carefully either half is eased.
+##
+## Driven off view_blend() instead, both halves are the same journey the V key
+## makes, and a death that begins and ends in one view is unaffected -- the
+## blend simply sits at an end.
+func _drive_death_framing() -> void:
+	if not _framing or _player == null or _player.camera_rig == null:
+		return
+	var camera_config: CameraConfig = _player.config.camera
+	var blend: float = _player.camera_rig.view_blend()
+	# THE OTHER WAY ROUND IN THIRD PERSON, and the geometry says why: the camera
+	# hangs BEHIND the rig, so pitching the rig up swings the arm DOWN -- straight
+	# into the floor a dead body is lying on.
+	_player.camera_rig.set_pitch(deg_to_rad(lerpf(
+		camera_config.death_pitch_deg,
+		camera_config.death_pitch_third_person_deg, blend)))
+	# First person only, faded out across the journey: the head-follow puts the
+	# eye where the head bone is, and a body on the floor has its head ON the
+	# floor. Once the view has left the socket there is no head to be inside.
+	_player.camera_rig.set_death_lift(camera_config.death_eye_lift * (1.0 - blend))
+
 ## THE POSE STAYS OURS. set_cinematic_pose keeps arriving every tick -- the
 ## offset that put the eye by the cheek on the ground, the roll, the pitch --
 ## and only the player's own yaw and pitch come back. So the shot holds and the
