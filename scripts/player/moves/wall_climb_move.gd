@@ -85,7 +85,10 @@ func enter(_previous: StringName) -> void:
 	#
 	# [ME:CONFIRMED] The original does this too -- both halves measured by the
 	# owner: a standing climb finishes about 1 m below a running one, and
-	# jump-then-W goes higher there as well. The split this project derived
+	# jump-then-W goes higher there as well. Shot side by side against one wall
+	# in the original, the two finishes are a full air-conditioning unit apart,
+	# which is the cheapest way to re-check this: same wall, same unit, press
+	# the two orders. The split this project derived
 	# (SZD's 2.71 minus the 1.24 m of jump arc under the contact point, leaving
 	# 1.47 m of climb -- see WallClimbConfig) turns out to describe the
 	# original's actual mechanism, glitch included, rather than merely fitting
