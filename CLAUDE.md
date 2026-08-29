@@ -167,4 +167,5 @@ whether the camera lags), `docs/contact-drives-movement.md` (a direction change
 means a hand or foot touched something), `docs/capsule-leads-presentation.md`
 (the capsule's path is simple; camera and animation follow it),
 `docs/seamless-loading.md` (no frame may exceed budget while the player cannot
-act). Specs and plans live under `docs/superpowers/`.
+act), `docs/music-transitions.md` (enter on the approach the composer wrote,
+not on the section itself). Specs and plans live under `docs/superpowers/`.
