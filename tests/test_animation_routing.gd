@@ -525,3 +525,47 @@ func test_each_death_picks_its_own_clip_rather_than_the_first_one_ever() -> void
 	assert_eq(animator._target_animation(), &"Death02", \
 		"the second death replayed the first one's choice")
 	player.set_dying(false)
+
+func test_crossing_into_the_run_band_arms_the_sprint_entry() -> void:
+	# The pack ships Sprint_Enter and Sprint_Exit and nothing was asking for
+	# them, so the engine was cross-fading a walk loop into a run loop -- a
+	# blend standing in for a performance. It also crossed two bands in quick
+	# succession from a standing start, which left the state machine starting
+	# a second transition while the first was still going and the feet visibly
+	# hung. A one-shot outranks the routing for its whole length.
+	var animator := await _animator_with([&"Idle", &"Walk", &"Sprint",
+		&"Sprint_Enter", &"Sprint_Exit", &"Jog_Fwd"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.WALKING)
+
+	# Standing: no band, nothing armed.
+	player.velocity = Vector3.ZERO
+	animator._arm_run_band_oneshot()
+	assert_false(animator._in_run_band, "test setup: standing still counts as running")
+
+	# Straight ahead and fast: the entry.
+	player.velocity = -player.global_transform.basis.z * 6.0
+	animator._arm_run_band_oneshot()
+	assert_true(animator._in_run_band, "test setup: 6 m/s ahead is not in the run band")
+	assert_eq(animator._oneshot, &"Sprint_Enter", "the sprint's own entry was left on the shelf")
+
+	# And leaving it the other way.
+	player.velocity = Vector3.ZERO
+	animator._arm_run_band_oneshot()
+	assert_eq(animator._oneshot, &"Sprint_Exit", "the sprint's own exit was left on the shelf")
+
+func test_leaving_walking_adopts_the_band_instead_of_arming() -> void:
+	# A jump does not deserve a sprint-stop, and landing back at pace does not
+	# deserve a sprint-start.
+	var animator := await _animator_with([&"Idle", &"Walk", &"Sprint",
+		&"Sprint_Enter", &"Sprint_Exit", &"Jump"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.WALKING)
+	player.velocity = -player.global_transform.basis.z * 6.0
+	animator._arm_run_band_oneshot()
+	animator._oneshot = Move.KEEP
+
+	player.move_manager.start(Move.JUMP)
+	player.velocity = Vector3.ZERO
+	animator._arm_run_band_oneshot()
+	assert_eq(animator._oneshot, Move.KEEP, "leaving the ground played a sprint-stop")

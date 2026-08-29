@@ -213,6 +213,10 @@ var _hidden_start: StringName = &""
 ## what it stopped doing.
 var _previous_move: StringName = Move.KEEP
 ## The one-shot currently playing, or KEEP. See _arm_oneshot().
+## Whether the body was in the forward run band last tick, so the crossing can
+## be noticed rather than the band merely observed. See _arm_run_band_oneshot().
+var _in_run_band: bool = false
+
 var _oneshot: StringName = Move.KEEP
 ## Seconds of it left to play. Real seconds, and that is only true because a
 ## one-shot is never in SPEED_MATCHED_CLIPS: the graph time scale is pinned to
@@ -243,6 +247,9 @@ func _physics_process(delta: float) -> void:
 	if move != _previous_move:
 		_arm_oneshot(_previous_move, move)
 		_previous_move = move
+	# BEFORE the one-shot is consulted, so a crossing arms on the tick it
+	# happens rather than the tick after it.
+	_arm_run_band_oneshot()
 	# A one-shot OUTRANKS the move's own clip while it lasts -- that is the
 	# whole point of it. _oneshot_target() returns KEEP the moment there is
 	# none, which is almost every tick.
@@ -536,6 +543,37 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 		# in the middle of that would be the animation contradicting them.
 		if player.wish_direction(player.last_input).length_squared() < 0.0001:
 			_start_oneshot(&"Jump_Land")
+
+## The sprint's own entry and exit, which the pack ships and nothing was asking
+## for. Arming them at the band crossing does two things at once.
+##
+## IT USES WHAT THE AUTHOR WROTE. Sprint_Enter IS the acceleration into a run
+## and Sprint_Exit IS the deceleration out of one; leaving them on the shelf
+## meant the engine cross-fading between a walk loop and a run loop instead,
+## which is a blend standing in for a performance.
+##
+## AND IT UNBLOCKS THE STALL. Standing to sprinting crosses two bands in quick
+## succession -- idle, walk, run -- so the state machine was starting a second
+## transition while the first was still running, and the feet visibly hung. A
+## one-shot outranks the routing for its whole length, so that stretch now has
+## a single clip that owns it.
+##
+## FORWARD ONLY, because that is the only direction the pack sprints in. Other
+## octants take the jog and never enter the band at all.
+##
+## Leaving WALKING adopts the band rather than arming: a jump does not deserve
+## a sprint-stop, and landing back at pace does not deserve a sprint-start.
+func _arm_run_band_oneshot() -> void:
+	if player.move_manager == null:
+		return
+	var forward_run: bool = player.horizontal_speed() > _run_band_speed() 		and _travel_octant() <= 0
+	if player.move_manager.current_name != Move.WALKING:
+		_in_run_band = forward_run
+		return
+	if forward_run == _in_run_band:
+		return
+	_in_run_band = forward_run
+	_start_oneshot(&"Sprint_Enter" if forward_run else &"Sprint_Exit")
 
 ## Arms `clip` for its own natural length, if the attached body has it at all.
 func _start_oneshot(clip: StringName) -> void:
