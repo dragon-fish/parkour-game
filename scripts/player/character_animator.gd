@@ -113,39 +113,31 @@ const WALK_CLIPS: Array[StringName] = [&"Walk", &"Walk_Carry"]
 
 ## What a walk clip's 1.0 means, as a fraction of body_run_reference_speed.
 ##
-## DERIVED, not picked. The two scale bounds above already define how far any
-## clip can be stretched, so the walk's reference is set so that its CEILING
-## lands exactly on the run's FLOOR:
-##
-##   walk at SPEED_SCALE_MAX = 7.2 * 0.25 * 2.0 = 3.6 m/s
-##   run  at SPEED_SCALE_MIN = 7.2 * 0.5       = 3.6 m/s
-##
 ## 0.25 of 7.2 is 1.8 m/s, a brisk walk and a plausible authored speed for the
 ## pack's Walk_Loop -- plausible, not measured: every locomotion clip in the
 ## pack is authored IN PLACE, so there is no travelled distance to read a speed
 ## off. The cadence is all the asset says.
 ##
-## There is no longer a walk-to-run handover for this to line up with: Ctrl is
-## the walk, and without it the walk band is skipped entirely.
+## Nothing hands over to it any more: Ctrl is the walk, and without Ctrl the
+## walk band is skipped entirely, so this number answers to the walk alone.
 ##
-## THE ONE KNOB HERE. If the walk looks like it is hurrying or dawdling,
-## this is the number -- and moving it moves the handover with it, which is
-## the point.
+## THE ONE KNOB HERE. If the walk looks like it is hurrying or dawdling, this
+## is the number.
 const WALK_REFERENCE_PCT := 0.25
 
 ## What a JOG clip's 1.0 means, as a fraction of body_run_reference_speed.
 ##
-## Derived the same way the walk's is. The jog only ever plays SIDEWAYS or
-## BACKWARD here (see Move.WALKING), so its range is the run band: from
-## _run_band_speed() at the bottom to the full ground speed at the top. Setting
-## its reference to the bottom of that band puts it at 1.0 where the band starts
-## and at SPEED_SCALE_MAX where it ends, which is the whole of the range and no
-## more.
+## ONE, because the jog IS the run here. It carries every direction at every
+## speed above the idle threshold, so full ground speed has to be the place it
+## plays at its authored cadence -- 7.2 m/s reads 1.0 and nothing above it is
+## reachable on the ground.
 ##
-## DO NOT measure the jog against the same 7.2 reference the run uses: a jog
-## covering 7.2 m/s would then play at 1.0, and the stride has to be enormous
-## to cover that much ground at a jogging cadence.
-const JOG_REFERENCE_PCT := 0.5
+## Half of that was right only while a sprint sat above the jog and left it the
+## bottom of the band. With the sprint gone the jog inherited the top of the
+## range and kept the band-bottom reference, so a body at full speed played its
+## stride at DOUBLE rate: it did not read as a long stride, it read as the
+## footage running fast.
+const JOG_REFERENCE_PCT := 1.0
 
 ## And the crouch's, which until now had none: it borrowed
 ## PawnConfig.crouched_pct, a GAMEPLAY cap saying a crouched body moves at 40%
@@ -158,7 +150,7 @@ const JOG_REFERENCE_PCT := 0.5
 ## screen. What it moves is where to reach: if the crouch looks like it is
 ## dawdling, this is the number now.
 ##
-## 🔶 The pack's cycle lengths, for whoever turns it: sprint 0.667 s, jog
+## The pack's cycle lengths, for whoever turns it: sprint 0.667 s, jog
 ## 0.933 s, walk 1.333 s, crouch 2.000 s -- a ratio of 1 : 1.4 : 2 : 3. Every
 ## clip is authored IN PLACE (the root translates nowhere), so there is no
 ## authored speed to read off them; the cadence is all the asset says.
