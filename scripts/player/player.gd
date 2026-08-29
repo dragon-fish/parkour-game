@@ -222,6 +222,10 @@ var statuses: StatusList
 ## _blend_speed_scale().
 var _speed_scale: float = 1.0
 
+## Seconds of stagger immunity still owed. Armed when a landing lockout lets
+## go, so a level that keeps re-applying STAGGER cannot chain them.
+var _stagger_immunity: float = 0.0
+
 ## Emitted on the touchdown that ends an uncontrolled fall. The fall itself is
 ## already lost by then -- this only tells whoever owns respawning that the
 ## body has finished arriving.
@@ -1128,6 +1132,7 @@ func reset_state() -> void:
 	# A respawn is not a transition to watch: the ceiling starts where the new
 	# life's statuses put it, with no slide inherited from the old one.
 	_speed_scale = statuses.speed_scale() if statuses != null else 1.0
+	_stagger_immunity = 0.0
 	_last_wish_dir = Vector3.ZERO
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
@@ -3111,6 +3116,7 @@ func _tick_line_cooldowns(delta: float) -> void:
 
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	_tick_gravity_window(delta)
+	_stagger_immunity = maxf(_stagger_immunity - delta, 0.0)
 	_tick_line_cooldowns(delta)
 	if grounded:
 		_coyote_timer = config.pawn.coyote_time
@@ -3579,6 +3585,17 @@ func jump_add_velocity(input: MoveInput) -> Vector3:
 ## ledge", which are otherwise the same reading.
 func in_step_grace() -> bool:
 	return _step_grace_timer > 0.0
+
+## True while a stagger cannot land. Read by MoveManager, armed by
+## LandingMove.exit() -- the lockout is the thing that knows when it is over.
+func is_stagger_immune() -> bool:
+	return _stagger_immunity > 0.0
+
+## Starts the window. Called from LandingMove.exit(), so ANY landing lockout
+## grants it, not only one a stagger caused: a body that has just picked
+## itself up off the floor is exactly as unable to absorb another stumble.
+func arm_stagger_immunity() -> void:
+	_stagger_immunity = config.pawn.stagger_immunity_time
 
 func speed_cap() -> float:
 	# Scaled HERE rather than at each caller: this is the one function every

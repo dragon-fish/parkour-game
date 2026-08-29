@@ -365,7 +365,7 @@ view, a stumble. It is the only author-facing surface of the status layer.
 | `FORCE_VIEW` | `view` | renders in `FIRST` or `THIRD` whatever the player's saved preference is, and leaves that preference untouched |
 | `BLOCK_INTEREST_LINE` | `subject` | forbids the one line whose `tag` matches |
 | `BLOCK_JUMP`, `BLOCK_SLIDE`, `BLOCK_SKILL_ROLL`, `BLOCK_COIL`, `BLOCK_WALL_RUN`, `BLOCK_WALL_CLIMB`, `BLOCK_GRAB`, `BLOCK_SPEED_VAULT`, `BLOCK_LADDER`, `BLOCK_ZIPLINE`, `BLOCK_SWING`, `BLOCK_TURN_180` | nothing | forbids that move |
-| `STAGGER` | `seconds`, read differently — see below | stumbles the player into the hard-landing lockout |
+| `STAGGER` | nothing | stumbles the player into the hard-landing lockout, on contact — see below |
 
 Every field not named in that table is ignored by that effect. There is no
 `BLOCK_WALKING`, `BLOCK_FALLING`, `BLOCK_LANDING`, `BLOCK_FALL_UNCONTROLLED`
@@ -374,28 +374,29 @@ state machine or hangs the body in mid-air with nothing to run. Crouch in
 particular is a slide's only exit under a low ceiling. The way to stop a
 player crouching is geometry, not a status.
 
-### `STAGGER` waits for the ground
+### `STAGGER` fires on contact, and then leaves you alone for a moment
 
-`STAGGER` never stumbles a body that is in the air — the lockout drops the
-body at a fixed rate with no gravity, so a stumble started up there would
-freeze it in the sky until the lockout ran out. It is not thrown away up
-there either: it sits on the player and fires on the first tick the body is
-back on the ground. A volume tall enough to cover a fence is entered in
-mid-air on purpose, and vaulting through barbed wire strung at fence height
-should still put the player down on the far side.
+Barbed wire cuts you when you touch it. `STAGGER` stumbles the player the tick
+it lands, **including in mid-air** — so a volume tall enough to cover a fence
+charges the vault at the moment it is taken, not on the far side. The body
+crumples where it was hit and drops under gravity; the lockout plays out on
+the way down and carries on once it lands.
 
-**For `STAGGER`, `seconds` is a queue window, not a duration.** For every
-other effect `seconds` says how long the modification lasts. Here it says how
-long the stumble stays pending, and therefore how far outside the volume it
-can land:
+`seconds` is therefore an ordinary duration here, and a short one is fine: the
+status is spent the instant it fires, so anything above a tick or two only
+matters if the player is immune when it arrives.
 
-- A short window — `0.3` — means the stumble only lands if the player touches
-  down promptly. Clear the volume with a long jump and nothing happens.
-- A long window — `3.0` — follows them well past the fence and takes them
-  down wherever they eventually land.
+**Staying in the wire keeps hurting, but cannot trap you.** When a landing
+lockout releases it arms `pawn.stagger_immunity_time` — a window in which a
+new `STAGGER` is eaten rather than queued. Without it a volume renewing its
+stagger would re-fire on the tick the lockout ended, and since the lockout
+refuses movement input there would be no tick in which to walk out. The window
+has to outlast the time it takes to cross the wire, not the time it takes to
+react; a metre or two of wire needs well under a second.
 
-If the window runs out while the player is still airborne, the stagger is
-gone and the touchdown is an ordinary landing.
+The immunity is armed by *any* landing lockout, not only one a stagger caused
+— a body that has just picked itself up off the floor is exactly as unable to
+absorb another stumble.
 
 ### Attaching a modification to a region rather than to a moment
 

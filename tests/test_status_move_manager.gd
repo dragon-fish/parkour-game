@@ -98,55 +98,57 @@ func _falling_player() -> Player:
 	await step(2)
 	return p
 
-func test_a_stagger_taken_in_the_air_fires_on_touchdown() -> void:
-	# The other half of the airborne rule below: declining to act up there is
-	# not the same as throwing the stagger away. The status waits and the
-	# stumble belongs to the touchdown -- vaulting through wire strung at fence
-	# height and going down on the far side is one volume, not two, and a
-	# stagger that were truly refused would make clearing the fence free.
+func test_a_stagger_fires_in_mid_air_rather_than_waiting_for_the_ground() -> void:
+	# Barbed wire cuts you when you touch it. A volume tall enough to cover a
+	# fence charges the vault at the moment it is taken, not on the far side.
 	var p := await _falling_player()
 	assert_false(p.grounded, "test setup: the body is not actually airborne")
 	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
 	await step(2)
-	assert_ne(p.move_manager.current_name, Move.LANDING, \
-		"the stagger fired while the body was still in the air")
-	await step(40)
-	assert_true(p.grounded, "test setup: the body never reached the floor")
 	assert_eq(p.move_manager.current_name, Move.LANDING, \
-		"a stagger taken in the air was discarded instead of waiting for the ground")
+		"a stagger taken in the air did not fire")
+	assert_false(p.grounded, "test setup: the body reached the floor too soon")
 
-func test_a_stagger_whose_window_runs_out_in_the_air_never_fires() -> void:
-	# What makes `seconds` a QUEUE WINDOW and not merely a duration: outlive it
-	# in mid-air and the touchdown is an ordinary landing. Without this, "the
-	# stagger waits" would be indistinguishable from "the stagger waits
-	# forever", and an author would have no dial for how far outside a volume
-	# the stumble may land. 0.05 s is three ticks; the fall is about twenty.
+func test_a_body_staggered_in_the_air_keeps_falling() -> void:
+	# THE REASON THE AIRBORNE CASE WAS ONCE REFUSED. LandingMove pins
+	# velocity.y to the floor-snap speed while grounded; off the floor the
+	# same line lowers the body at a constant crawl with no gravity, hanging
+	# it in the sky for the whole lockout.
+	#
+	# ASSERTED AS ACCELERATION, not as distance. Over a short window the snap
+	# crawl and real gravity from a standing start cover about the same ground,
+	# so a distance threshold cannot tell them apart -- but a constant speed
+	# covers equal distances in equal windows and gravity does not.
 	var p := await _falling_player()
-	assert_false(p.grounded, "test setup: the body is not actually airborne")
-	p.statuses.apply(_spec_lasting(Status.Effect.STAGGER, 0.05), p, 0)
-	await step(40)
-	assert_true(p.grounded, "test setup: the body never reached the floor")
-	assert_false(p.statuses.has(Status.Effect.STAGGER), \
-		"test setup: the window had not run out by the touchdown")
-	assert_ne(p.move_manager.current_name, Move.LANDING, \
-		"a stagger fired after its window had run out")
-
-func test_a_stagger_does_not_land_on_an_airborne_body() -> void:
-	# A volume tall enough to cover a fence is entered in mid-air on purpose.
-	# LandingMove.enter() zeroes velocity and its physics_update() then
-	# descends at floor_snap_speed with no gravity, so a stagger caught up
-	# there hangs the body in the sky for the whole lockout. Last in the file
-	# on purpose: it leaves a body 30 m up, and a world torn down at the end
-	# of a test is still in the tree for the next one's first frame.
-	var world := TestWorld.build(get_tree(), MovementConfig.new())
-	_worlds.append(world)
-	var p: Player = world["player"]
-	await step(1)
-	p.global_position = Vector3(0.0, 30.0, 0.0)
-	p.move_manager.start(Move.FALLING)
-	await step(2)
-	assert_false(p.grounded, "test setup: the body is not actually airborne")
 	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
-	await step(4)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.LANDING, "test setup: no stagger")
+	var top: float = p.global_position.y
+	await step(5)
+	var first: float = top - p.global_position.y
+	var mid: float = p.global_position.y
+	await step(5)
+	var second: float = mid - p.global_position.y
+	assert_false(p.grounded, "test setup: the body reached the floor mid-measurement")
+	assert_gt(second, first * 1.5, \
+		"the staggered body descended at a constant crawl instead of falling")
+
+func test_a_second_stagger_is_eaten_by_the_immunity_window() -> void:
+	# The escape. The lockout refuses movement input, so a volume renewing its
+	# STAGGER would re-fire on the tick the lockout ends and there would be no
+	# tick in which to walk out of the wire.
+	var p := await _standing_player()
+	p.move_manager.start(Move.WALKING)
+	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.LANDING, "test setup: no first stagger")
+	# Past the lockout, into the window it arms on the way out.
+	await step(int(ceil(p.config.landing.lockout_time * 60.0)) + 4)
+	assert_ne(p.move_manager.current_name, Move.LANDING, "test setup: still locked out")
+	assert_true(p.is_stagger_immune(), "the lockout did not arm the window")
+	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	await step(2)
 	assert_ne(p.move_manager.current_name, Move.LANDING, \
-		"a stagger froze the body in mid-air")
+		"a stagger landed inside the immunity window")
+	assert_false(p.statuses.has(Status.Effect.STAGGER), \
+		"the eaten stagger was left in the list to fire when the window closed")

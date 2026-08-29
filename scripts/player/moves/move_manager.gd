@@ -186,27 +186,29 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	# set. FALL_UNCONTROLLED is exempt -- a body already dying has nothing
 	# left to stumble.
 	#
-	# GROUNDED IS PART OF THE CONDITION, not a nicety. LandingMove.enter()
-	# zeroes velocity and its physics_update() then descends at
-	# floor_snap_speed with no gravity, so a stagger caught in mid-air hangs
-	# the body in the sky for the whole lockout -- the outcome Status.Effect's
-	# own note says must stay inexpressible.
+	# ON CONTACT, INCLUDING IN MID-AIR. Barbed wire cuts you when you touch
+	# it, not when you next happen to be standing on something, so a volume
+	# tall enough to cover a fence charges the vault at the moment it is
+	# taken. LandingMove applies gravity while it is off the floor for
+	# exactly this: the body crumples where it was hit and drops.
 	#
-	# QUEUED, NOT REFUSED. The condition decides whether the stagger ACTS this
-	# tick; the entry stays in the list either way, so a stagger taken in the
-	# air fires on the first grounded tick still inside the status's own
-	# `seconds`. That is the point of it: a volume tall enough to cover a fence
-	# is entered in mid-air on purpose, and the stumble belongs to the
-	# touchdown on the far side. Refusing it outright would make clearing the
-	# obstacle in one jump free, which is the one way through such a volume a
-	# level author is trying to charge for. `seconds` is therefore the window
-	# the stumble may still land in, not how long it lasts.
+	# What stops that becoming a trap is Player.is_stagger_immune(), armed
+	# when the lockout releases. A wire volume that renews its STAGGER would
+	# otherwise re-stagger on the tick the lockout ends, and the lockout
+	# refuses movement input, so there would be no tick in which to walk out.
 	var next: StringName = Move.KEEP
 	var staggering := false
-	if player != null and player.grounded and player.statuses.has(Status.Effect.STAGGER) \
+	if player != null and player.statuses.has(Status.Effect.STAGGER) \
 			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LANDING:
-		staggering = true
-		next = Move.LANDING
+		# EATEN, NOT QUEUED, while immune. Spending it here is what the
+		# window means: the hit landed and the body shrugged it off. Leaving
+		# it in the list would fire it the instant the window closed, which
+		# is the chain the window exists to break.
+		if player.is_stagger_immune():
+			player.statuses.remove(Status.Effect.STAGGER)
+		else:
+			staggering = true
+			next = Move.LANDING
 	if next == Move.KEEP:
 		next = _turn_requested(input)
 	if next == Move.KEEP:

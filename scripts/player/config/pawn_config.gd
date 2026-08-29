@@ -305,3 +305,15 @@ extends Resource
 ## ground_accelerate() it always uses, so nothing about ordinary acceleration
 ## changes and both endpoints are exactly what they were.
 @export var speed_cap_blend_time: float = 0.3
+
+## How long after a landing lockout releases the player cannot be staggered
+## again. PROJECT-DEFINED as a value; [ME:COMMUNITY] as a mechanic -- the
+## original's barbed wire hurts on contact and keeps hurting while you are in
+## it, but does not chain-lock you, which is what a window like this buys.
+##
+## THE POINT IS THE ESCAPE. A wire volume that renews its STAGGER would
+## otherwise re-stagger the player on the tick the lockout ends, forever: the
+## lockout refuses movement input, so without a window in which the hits are
+## eaten there is no tick in which they can walk out. It has to outlast the
+## time it takes to cross the wire, not the time it takes to react.
+@export var stagger_immunity_time: float = 1.0

@@ -21,11 +21,13 @@ var _elapsed: float = 0.0
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	player.velocity = Vector3.ZERO
-	# Landing already found a floor before handing off here (settle_landing()
-	# only ever calls landing_destination() after set_grounded(true)), and
-	# this move never calls move_and_slide() on its own first tick -- so the
-	# declaration has to be made here rather than left to physics_update().
-	player.set_grounded(true)
+	# DECLARED FROM THE ENGINE, not assumed. This move never calls
+	# move_and_slide() on its own first tick, so the declaration has to be
+	# made here -- but it is not always true. A hard landing arrives with
+	# settle_landing() having just found the floor; a stagger taken off
+	# barbed wire arrives in mid-air, and claiming the ground there refills
+	# coyote time every tick of the lockout.
+	player.set_grounded(player.is_on_floor())
 	# Same reasoning as SlideMove.exit()/CrouchMove.exit(): the capsule may
 	# still be sitting at a shrunk height coming in here. The ordinary path is
 	# a jump or a fall, where the capsule was never touched and this is a
@@ -55,7 +57,16 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# Recovering, not holding: 1 at touchdown falling to 0 at release.
 	_drive_effects(1.0 - t)
 
-	player.velocity.y = -config.pawn.floor_snap_speed
+	# GLUE ON THE FLOOR, GRAVITY OFF IT. Pinning velocity.y to the snap
+	# speed is what keeps a landed body from bouncing off its own slope --
+	# but a stagger can start this move in mid-air, and the same line there
+	# lowers the body at a constant crawl with no gravity at all, hanging it
+	# in the sky for the whole lockout.
+	if player.grounded:
+		player.velocity.y = -config.pawn.floor_snap_speed
+	else:
+		player.velocity.y -= player.effective_gravity() * delta
+		player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
 
@@ -65,6 +76,12 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 
 func exit() -> void:
 	_drive_effects(0.0)
+	# The lockout is the thing that knows when it is over, so the stagger
+	# immunity starts here rather than where the stagger was chosen -- a
+	# window measured from the hit would have to be longer than this move
+	# just to reach past it, coupling two dials that have no reason to know
+	# about each other.
+	player.arm_stagger_immunity()
 
 ## The whole visible weight of the lockout, at `severity`: 1 at the impact and 0
 ## by the time it lets go. One place, because it is driven from three -- entry,

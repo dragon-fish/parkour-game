@@ -363,7 +363,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.75, 0.7)
 pixel_size = 0.006
 billboard = 1
 text = "6  STAGGER (barbed wire)
-vault it: the stumble waits for the ground"
+vault it: the cut lands in mid-air"
 font_size = 64
 outline_size = 10
 
