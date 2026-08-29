@@ -811,16 +811,29 @@ func _travel_octant() -> int:
 ## Derived from the clip's own name rather than recorded as a flag: there is
 ## no second copy to fall out of step with what is actually playing.
 ##
-## THE FORWARD TWIN DELIBERATELY COUNTS AS "NO". That is the case where the
-## body lacks the octant and the forward clip is standing in for it -- the
-## clip is NOT expressing the direction, so the procedural turn is still the
-## best thing available and should keep running.
+## ASKED OF THE BODY, NOT OF THIS FRAME'S CLIP, and that distinction is the
+## whole of it. The first cut asked whether the clip playing right now was a
+## non-forward octant, so the forward twin answered "no" -- and _travel_octant()
+## rounds to the nearest eighth, so a body running a hair left of straight
+## crosses between Jog_Fwd and Jog_Fwd_L on velocity noise alone. One answer
+## squares the model up to the collision body and the other eases it toward the
+## look, so the model snapped back and forth every few frames. In first person
+## the eye rides the head bone: that read as the CAMERA shaking, which is a
+## long way from where the bug was.
+##
+## Whether the set EXISTS cannot flicker. A body that has the octants expresses
+## every direction it travels with a clip, forward included, so the procedural
+## turn has nothing to add for any of them; a body that lacks them gets the
+## turn for all of them. There is no third case, and no per-frame edge to sit on.
 func clip_carries_direction() -> bool:
 	var family: StringName = _family_of(current_clip)
 	if family == &"":
 		return false
 	var suffixes: Array = DIRECTION_SETS[family]
-	return current_clip != StringName(String(family) + String(suffixes[0]))
+	for i in range(1, suffixes.size()):
+		if _has_clip(StringName(String(family) + String(suffixes[i]))):
+			return true
+	return false
 
 ## The eight-way family a clip belongs to, or an empty name. Used by
 ## _drive_speed() so that a strafe scales against the same reference its
