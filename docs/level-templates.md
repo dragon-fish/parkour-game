@@ -31,9 +31,13 @@ touching either.
    spanning the level would catch the falls that are supposed to reach the
    death volume, hiding holes in the level's own edges.
 
+   Its material is a plain `StandardMaterial3D`, not the acrylic shader: the
+   net is scaffolding, and scaffolding does not need screen-space reflections.
+
    For real ground, instance `templates/acrylic_floor.tscn`: the 60×60 slab
-   the whiteboxes use, sharing `acrylic_floor_material.tres` with the net.
-   Both are ordinary instances, so a level can hold as many as it needs.
+   the whiteboxes use, wearing `materials/acrylic.tres` — the same material,
+   at the same settings, that the character showcase stands on. Both are
+   ordinary instances, so a level can hold as many as it needs.
 
    To be rid of the net once there is real ground: `visible = false` on
    `Floor/Mesh`, `disabled = true` on `Floor/Collision`. **An inherited node
