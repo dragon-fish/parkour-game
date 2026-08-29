@@ -764,38 +764,6 @@ func _travel_octant() -> int:
 	var angle: float = atan2(travel.dot(right), travel.dot(facing))
 	return posmod(int(round(angle / (PI / 4.0))), 8)
 
-## Whether the mounted body REGISTERS an eight-way set for the clip on screen,
-## and so expresses travel direction in the animation itself.
-##
-## Player._drive_body_yaw() asks, and stops turning the model when the answer
-## is yes. The two were double-counting: the octant is chosen against the
-## COLLISION body's facing, while the model is then rotated on top by
-## _visual_yaw - rotation.y, so an authored sideways walk was being turned
-## sideways again for as long as those two disagreed -- which, at a finite
-## turn speed, is every change of direction.
-##
-## ASKED OF THE BODY, NOT OF THIS FRAME'S CLIP. Asking whether the clip playing
-## right now is a non-forward octant makes the forward twin answer "no", and
-## _travel_octant() rounds to the nearest eighth: a body running a hair left of
-## straight then crosses between Jog_Fwd and Jog_Fwd_L on velocity noise alone.
-## One answer squares the model up to the collision body and the other eases it
-## toward the look, so the model snaps back and forth every few frames -- and in
-## first person the eye rides the head bone, so it surfaces as a shaking CAMERA,
-## a long way from where the fault is.
-##
-## Whether the set exists cannot flicker. A body that has the octants expresses
-## every direction it travels, forward included, so the procedural turn has
-## nothing to add for any of them; a body without them gets the turn throughout.
-func clip_carries_direction() -> bool:
-	var family: StringName = _family_of(current_clip)
-	if family == &"":
-		return false
-	var suffixes: Array = DIRECTION_SETS[family]
-	for i in range(1, suffixes.size()):
-		if _has_clip(StringName(String(family) + String(suffixes[i]))):
-			return true
-	return false
-
 ## The eight-way family a clip belongs to, or an empty name. Used by
 ## _drive_speed() so that a strafe scales against the same reference its
 ## forward twin does -- Walk_L is a walk, and measuring it against the run would
