@@ -53,6 +53,18 @@ const BODY_RISE_DELAY := 0.0
 ## The direction is read off the body each frame rather than written down:
 ## which axis is forward is a convention argument nobody wins twice.
 @export var FLOOR_SCROLL_SPEED: float = 0.55
+
+## And the pace once she is sprinting for the loading run. A REAL SPEED, not a
+## multiplier: the ground became a plane and the unit became metres per
+## second, so "2.4 times the walk" was 1.3 m/s under a sprint -- a walking
+## pace played against a running clip, and no amount of tuning the multiplier
+## would have made that read as anything else.
+@export var FLOOR_RUN_SPEED: float = 3.6
+
+## How long the ground takes to appear once she stands. Linear on purpose: an
+## ease-in-out puts most of the change in the middle, which is exactly the
+## moment a fade is noticed happening.
+@export var FLOOR_FADE_TIME: float = 2.4
 @export var LOGO_FADE_TIME: float = 0.4
 @export var WALK_TO_MENU_DELAY: float = 0.15
 @export var MENU_PANEL_TIME: float = 0.45
@@ -154,11 +166,13 @@ var _menu_list: MeMenuList
 var _settings_menu: MeSettingsMenu
 var _footer: Label
 var _metadata_labels: Array[Control] = []
-## Integrated dot-grid flow (ground space) and its ramp-in gain -- the
-## direction follows the silhouette's yaw each frame, so it cannot be a
-## TIME-based shader term (a changing angle would teleport the pattern).
+## Integrated ground flow, in metres, and the pace it is integrated at. Kept
+## as an integral rather than a TIME-based shader term because the pace
+## changes: a term read off TIME would teleport the pattern the moment it did.
 var _floor_phase := 0.0
-var _floor_gain := 0.0
+## Metres per second, so it can be set to a PACE rather than to a factor of
+## one. See FLOOR_RUN_SPEED for what the factor cost.
+var _floor_pace := 0.0
 var _click_prompt: Label
 var _music: MenuMusic
 var _chladni: ChladniField
@@ -218,7 +232,7 @@ func _process(delta: float) -> void:
 	# THE CAMERA, HANDED OVER WHOLE. The ground is unprojected per pixel from
 	# these, so there is no separate pattern rotation to keep in step any
 	# more: the plane turns because the camera does, the way a floor's would.
-	_floor_phase += FLOOR_SCROLL_SPEED * _floor_gain * delta
+	_floor_phase += _floor_pace * delta
 	var mat := _floor.material as ShaderMaterial
 	var eye := _silhouette_camera.global_position
 	var tan_v: float = tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
@@ -779,8 +793,7 @@ func _beat_rise_begin() -> void:
 		.set_ease(Tween.EASE_IN)
 
 	var floor_fade := _track(create_tween())
-	floor_fade.tween_property(_floor, "modulate:a", 1.0, RISE_TIME) \
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	floor_fade.tween_property(_floor, "modulate:a", 1.0, FLOOR_FADE_TIME)
 
 	# Camera leads: the orbit (see _apply_cam) lands while the body is
 	# still finishing its stand. The body itself only stands -- it never
@@ -807,7 +820,7 @@ func _start_walk_loop() -> void:
 	# The ground starts moving WITH the steps, ramping in rather than
 	# jerking from zero.
 	var ramp := _track(create_tween())
-	ramp.tween_property(self, "_floor_gain", 1.0, 0.6) \
+	ramp.tween_property(self, "_floor_pace", FLOOR_SCROLL_SPEED, 0.6) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
 ## The menu arrives from the LEFT in layers (✅ the owner: "从左侧分层进入
@@ -881,7 +894,7 @@ func _skip_entrance() -> void:
 	_silhouette_root.rotation_degrees = Vector3(0.0, FRONT_YAW_DEG, 0.0)
 	_apply_cam(1.0)
 	_start_walk_loop()
-	_floor_gain = 1.0
+	_floor_pace = FLOOR_SCROLL_SPEED
 
 	_beat_settle()
 
@@ -984,7 +997,7 @@ func _on_start_pressed() -> void:
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_start_run_clip()
 	var pace := _track(create_tween())
-	pace.tween_property(self, "_floor_gain", 2.4, RUN_RAMP_TIME) \
+	pace.tween_property(self, "_floor_pace", FLOOR_RUN_SPEED, RUN_RAMP_TIME) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
 func _loading_orbit(t: float) -> void:
