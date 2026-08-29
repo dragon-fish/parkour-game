@@ -230,10 +230,21 @@ func _settle_ragdoll(delta: float) -> StringName:
 	if not (struck or drifted_little or _ragdoll_elapsed >= RAGDOLL_TIMEOUT):
 		return KEEP
 	_declared = true
-	player.death_cause = player.DeathCause.FALL
+	# [13.1] A fatal fall costs exactly a full bar, so a death at full health
+	# and one already wounded are the same arithmetic with no special case.
+	# Taken here rather than on impact because this is where the death is
+	# DECLARED, and the ragdoll branch never reaches a landing at all.
+	player.take_damage(config.pawn.fatal_fall_damage, Health.Cause.FALL)
 	player.set_dying(true)
 	player.died_from_fall.emit()
 	return KEEP
+
+## Nothing HERE. This fall charges its full bar where the death is declared,
+## which is earlier and covers the ragdoll branch that never lands at all --
+## see landing_destination() below. Charging the ordinary fifteen on top would
+## be billing the same fall twice.
+func landing_damage(_fall_height: float, _rolled: bool) -> float:
+	return 0.0
 
 func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
 	# A third-person death must not play Jump_Land and then Death2 as if it
@@ -245,7 +256,11 @@ func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
 	# sequence still owns clearing it -- see DeathSequence._release_player() --
 	# so this only moves the start of it earlier, to the moment it is true.
 	_declared = true
-	player.death_cause = player.DeathCause.FALL
+	# [13.1] A fatal fall costs exactly a full bar, so a death at full health
+	# and one already wounded are the same arithmetic with no special case.
+	# Taken here rather than on impact because this is where the death is
+	# DECLARED, and the ragdoll branch never reaches a landing at all.
+	player.take_damage(config.pawn.fatal_fall_damage, Health.Cause.FALL)
 	player.set_dying(true)
 	player.died_from_fall.emit()
 	return WALKING

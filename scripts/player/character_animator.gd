@@ -784,9 +784,9 @@ func _target_animation() -> StringName:
 		# this project's own addition, so it is the branch that needs the
 		# special clip; everything else gets the one death the library has.
 		#
-		# READ FROM death_cause, NOT from the move name: a fatal landing hands
-		# the machine back to WALKING before this ever runs. See Player.
-		if player.death_cause == Player.DeathCause.FALL:
+		# READ FROM THE BLOW, NOT from the move name: a fatal landing hands the
+		# machine back to WALKING before this ever runs. See Health.Cause.
+		if player.health.last_cause == Health.Cause.FALL:
 			# UAL2's own long fall family, not a generic Death02: this branch is
 			# a body still falling, not a body giving way.
 			#

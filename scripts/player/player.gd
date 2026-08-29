@@ -79,14 +79,43 @@ var active_checkpoint: Checkpoint = null
 
 ## Entry point for DeathVolume, duck-typed the same way touch_checkpoint() is.
 ##
+## [13.2] A LETHAL VOLUME IS A THOUSAND POINTS OF DAMAGE, not a separate way
+## to die. There is one death test -- health at or below zero -- and every
+## source differs only in what it takes off. A thousand is not "a very large
+## hit", it is the sentence that no state of the body survives this.
+##
 ## THE DEAD DO NOT DIE TWICE, for the same reason a corpse does not save: a
 ## body already on its way out through the fall cutscene must not have a second
 ## ending queued behind the first.
 func die_in_volume() -> void:
 	if _dying or move_manager.current_name == Move.FALL_UNCONTROLLED:
 		return
-	death_cause = DeathCause.VOLUME
-	died_in_volume.emit()
+	take_damage(config.pawn.lethal_volume_damage, Health.Cause.VOLUME)
+
+## Every blow goes through here. Returns true when this was the killing blow.
+##
+## IT DOES NOT ANNOUNCE THE DEATH. The announcement happens once a tick in
+## _observe_death() instead, for two reasons: a blow landed from inside a
+## Move's physics_update() must not start a death sequence in the middle of
+## the tick that Move is still running, and a fall declares its own death
+## when control is lost -- long before this damage lands -- so a second
+## announcement from here would queue a second ending behind the first.
+func take_damage(amount: float, cause: int) -> bool:
+	if health == null:
+		return false
+	return health.damage(amount, cause)
+
+## [13.2] THE ONLY DEATH TEST THERE IS. Every source -- a fall, a hard
+## landing, wire, a volume the level marked lethal -- differs only in how much
+## it takes off, and this is where the consequence is read.
+##
+## Silent while _dying, which is what keeps the fall's own performance from
+## being followed by a second one: that path declares itself on the way down
+## and only then charges the hundred that empties the bar.
+func _observe_death() -> void:
+	if _dying or health == null or not health.is_dead():
+		return
+	died.emit()
 
 func touch_checkpoint(checkpoint: Checkpoint) -> void:
 	# THE DEAD DON'T SAVE. A checkpoint records "reached alive and in
@@ -265,10 +294,17 @@ var pending_stagger: bool = false
 ## body has finished arriving.
 signal died_from_fall
 
-## A volume the level marked lethal. Separate from died_from_fall because the
-## two want different endings: that one earns the topple cutscene, this one is
-## a curtain and a respawn, which is the entire reason a level uses it.
-signal died_in_volume
+## Health reached zero. Separate from died_from_fall because the two want
+## different endings and, more importantly, different TIMING: the fall's
+## performance starts when control is lost, long before the damage lands, so
+## that one announces itself on the way down and this one on the blow.
+signal died
+
+## [13] What the screen's desaturation is reading. Built in setup(), aged every
+## tick, and the single authority on whether the body is dead: HP at or below
+## zero is the only death test there is, and every source differs only in how
+## much it takes off.
+var health: Health
 
 ## The ground-speed curve (02 §2.1/02 §2.5): layer 2 of the two-layer speed
 ## model, see SpeedEnergy's own header comment. Built in setup(), driven every
@@ -1106,6 +1142,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	fall_tracker = FallTracker.new()
 	speed_energy = SpeedEnergy.new(config.pawn)
 	statuses = StatusList.new()
+	health = Health.new(config.pawn)
 
 	# The capsule resource is shared by every instance of player.tscn, so
 	# resizing it in place would let one player's slide shrink every other
@@ -1891,30 +1928,12 @@ func body_folded() -> bool:
 ## about any Move, which is why it is a flag here and not a state.
 var _dying: bool = false
 
-## [ME:CONFIRMED] The original has exactly ONE death animation, and it is the
-## non-fall one -- cut up, or shot. A fatal fall there is a bone-crack and an
-## immediate cut to black, no performance at all. The topple sequence in this
-## project is ours, added on top, which is why FALL is the exception below and
-## everything else shares a clip.
-enum DeathCause { FALL, VOLUME }
-
-## Which death is being performed. Set where the death is DECLARED, and every
-## declaring site must set it.
-##
-## DO NOT try to infer this from the move name instead. A fatal landing
-## declares its death in FallUncontrolledMove.landing_destination(), which
-## then returns WALKING -- so by the time DeathSequence runs, the state
-## machine is in an ordinary walk and has nothing left to tell apart. Only the
-## ragdoll branch stays put, so the move name answers correctly for one of the
-## two fall deaths and wrongly for the other.
-var death_cause: int = DeathCause.FALL
-
 func set_dying(dying: bool) -> void:
 	_dying = dying
 	# WHICH VIEW changes here, and DeathSequence.play() reads it back inside
 	# the same call -- to pick between the two death pitches -- so it cannot
-	# wait for the next tick's push. death_cause is set before this at every
-	# declaring site, which is what makes the answer available already.
+	# wait for the next tick's push. The blow that killed has already been
+	# taken by then, so Health.last_cause is the answer and needs no help.
 	_push_forced_view()
 
 ## THE BODY IS WATCHED FROM OUTSIDE WHILE IT DIES, unless the death is a fall.
@@ -1937,7 +1956,7 @@ func _push_forced_view() -> void:
 	# bare Player.new() that skipped it -- the same case DeathSequence guards.
 	if camera_rig == null or statuses == null:
 		return
-	if _dying and death_cause != DeathCause.FALL and body != null:
+	if _dying and health.last_cause != Health.Cause.FALL and body != null:
 		camera_rig.forced_view = Status.View.THIRD
 		return
 	camera_rig.forced_view = statuses.forced_view()
@@ -2865,6 +2884,8 @@ func _physics_process(delta: float) -> void:
 	# Before the moves run, so a move that lands this tick reads a counter
 	# that already includes this tick's descent.
 	fall_tracker.update(delta, velocity.y, global_position.y)
+	health.tick(delta)
+	_observe_death()
 
 	move_manager.physics_update(delta, input)
 

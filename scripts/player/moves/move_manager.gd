@@ -207,6 +207,15 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	# refuses movement input, so there would be no tick in which to walk out.
 	var next: StringName = Move.KEEP
 	var staggering := false
+	# [13.3] What the hazard costs, read off the spec that put the status
+	# there. A dial rather than a constant: [ME:CONFIRMED] wire is 35 in the
+	# original and does not vary with difficulty, but a laser is the same
+	# volume with a different number, and a trip hazard is the same volume with
+	# no number at all.
+	#
+	# READ HERE, not after the transition: the status is removed once the
+	# transition commits, and by then there is nothing left to ask.
+	var stagger_damage: float = 0.0
 	if player != null and player.statuses.has(Status.Effect.STAGGER) \
 			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LANDING:
 		# EATEN, NOT QUEUED, while immune. Spending it here is what the
@@ -217,6 +226,7 @@ func physics_update(delta: float, input: MoveInput) -> void:
 			player.statuses.remove(Status.Effect.STAGGER)
 		else:
 			staggering = true
+			stagger_damage = player.statuses.amount_of(Status.Effect.STAGGER)
 			player.pending_stagger = true
 			next = Move.LANDING
 	if next == Move.KEEP:
@@ -256,6 +266,10 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	# would vanish without ever having staggered anyone.
 	if staggering:
 		player.statuses.remove(Status.Effect.STAGGER)
+		# Charged with the same commitment as the status is spent: a stagger
+		# that was refused a transition never happened, and must not bill for it.
+		if stagger_damage > 0.0:
+			player.take_damage(stagger_damage, Health.Cause.HAZARD)
 	move_changed.emit(from, next)
 	_push_look_constraint()
 

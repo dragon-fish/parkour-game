@@ -501,6 +501,21 @@ test corridor measured 6.81 ms a frame against 7.23 ms with the wire deleted,
 which is noise. The configuration warning is set where a run stops being wire
 and starts being a mistake, not where a GPU starts to care.
 
+### `STAGGER` costs health, and how much is a dial
+
+`STAGGER`'s `amount` is the health it takes. Leave it at 0 and the volume only
+staggers — a trip hazard that costs a moment and nothing else.
+
+[ME:CONFIRMED 13.1/13.3] Barbed wire in the original is **35**, and it does not
+vary with difficulty; a hard landing is **15**; a full bar is **100**. So two
+touches of wire put the player deep into the wounded range and a third kills.
+A laser is the same volume with a different number.
+
+⚠️ Environment damage in the original is always a **constant** — it does not
+scale with height, speed, or difficulty. Resist making a hazard "smarter": a
+hazard the player has to do arithmetic about is one they cannot read at a
+glance, and this is a game about running.
+
 ### `layer_priority`
 
 Which layer this volume speaks on, when two volumes claim the same status at

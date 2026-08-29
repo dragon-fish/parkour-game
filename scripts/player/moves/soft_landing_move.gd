@@ -42,3 +42,11 @@ func exit() -> void:
 	# FallUncontrolledMove keeps: LandingMove closes it again for its own
 	# lockout on the very next tick.
 	player.unlock_input()
+
+## Nothing. The pad is what the fall cost.
+##
+## The lockout still runs -- being caught is not being let off -- but the bar
+## is untouched, which is the whole difference between landing on a pad and
+## landing on the floor beside it.
+func landing_damage(_fall_height: float, _rolled: bool) -> float:
+	return 0.0

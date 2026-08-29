@@ -28,6 +28,7 @@ enum View { NONE, FIRST, THIRD }
 ##   SPEED_CAP              amount   = ceiling factor (0..1)
 ##   FORCE_VIEW             view     = View.FIRST / THIRD
 ##   BLOCK_INTEREST_LINE    subject  = InterestLine.tag
+##   STAGGER                amount   = health taken, 0 for none
 ##   everything else        nothing
 ##
 ## DO NOT put a second meaning into any payload field. A new meaning is a new

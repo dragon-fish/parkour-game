@@ -317,3 +317,30 @@ extends Resource
 ## eaten there is no tick in which they can walk out. It has to outlast the
 ## time it takes to cross the wire, not the time it takes to react.
 @export var stagger_immunity_time: float = 1.0
+
+## [ME:CONFIRMED 13.1] Measured off the HUD. A hard landing costs 15 of these
+## whatever the height, a fatal fall costs exactly all of them -- so a full
+## health death and a wounded one are the same code path with no special case
+## -- and a lethal volume costs ten times that, which is not a damage figure
+## but the sentence "nothing survives this".
+@export var max_health: float = 100.0
+
+## [ME:CONFIRMED 13.1] Seconds after the last damage before health starts
+## coming back.
+##
+## THE DELAY IS WHAT MAKES THE WOUNDED PICTURE VISIBLE. The climb back is only
+## two seconds wide; shortening this does not make recovery snappier, it
+## deletes the feedback that the player was hurt at all.
+@export var health_regen_delay: float = 5.0
+
+## [ME:CONFIRMED 13.1] Health per second once the delay is up. Flat, not a
+## curve.
+@export var health_regen_rate: float = 35.0
+
+## [ME:CONFIRMED 13.1] What a fatal fall costs, which is exactly a full bar.
+@export var fatal_fall_damage: float = 100.0
+
+## [ME:CONFIRMED 13.1] What a volume the level marked lethal costs. Ten times
+## a full bar on purpose: it does not mean "a very big hit", it means there is
+## no state in which the player walks away.
+@export var lethal_volume_damage: float = 1000.0

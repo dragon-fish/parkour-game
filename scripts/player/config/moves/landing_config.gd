@@ -71,3 +71,8 @@ func _init() -> void:
 	# neutral, and writing 0.0 here would read as "roll is pinned".
 	min_look_constraint = Vector3(-PI, -0.2, -PI)
 	max_look_constraint = Vector3(PI, 0.2, PI)
+
+## [ME:CONFIRMED 03 §3.1, 13.1] HardLandingDamage = 15, and it does NOT scale
+## with height: 7 m and 9 m both cost exactly this. The player never has to
+## estimate how bad a landing was -- missing the roll costs what it costs.
+@export var hard_landing_damage: float = 15.0
