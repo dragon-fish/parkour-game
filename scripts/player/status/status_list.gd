@@ -153,6 +153,7 @@ const MOVE_EFFECTS: Dictionary = {
 	Move.ZIPLINE: Status.Effect.BLOCK_ZIPLINE,
 	Move.SWING: Status.Effect.BLOCK_SWING,
 	Move.TURN_180: Status.Effect.BLOCK_TURN_180,
+	Move.CROUCH: Status.Effect.BLOCK_CROUCH,
 }
 
 ## The ground speed ceiling factor in force, or 1.0.

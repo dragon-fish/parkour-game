@@ -426,6 +426,13 @@ membership), so it says which, and the body decides what that means. Escaping
 is untouched: leaving is not entering, and only a player who chooses to step
 back on pays again.
 
+**`BLOCK_CROUCH` forbids the choice, not the posture.** A body that cannot
+stand up is not using a technique, so a headroom-forced crouch goes through
+regardless — otherwise a slide under a low ceiling would have no exit, and
+because slide steering is deliberately slow it could not be driven out either.
+Blocking the crouch stops the player *ducking into* a crawl space; it does not
+strand them in one.
+
 ### Attaching a modification to a region rather than to a moment
 
 Nothing tracks who is inside a volume — there is no exit handler and no

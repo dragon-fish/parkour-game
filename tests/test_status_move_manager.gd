@@ -231,3 +231,38 @@ func test_stepping_back_into_the_wire_costs_immediately() -> void:
 	await step(2)
 	assert_eq(p.move_manager.current_name, Move.LANDING, \
 		"the wire could be hopped off and back onto for free")
+
+func test_a_crouch_block_forbids_the_choice_but_not_the_ceiling() -> void:
+	# What a level forbids is the player CHOOSING to duck. A body that cannot
+	# stand up is the geometry talking, and refusing that would leave a slide
+	# under a low ceiling with no exit -- unable to end and, because steering
+	# is deliberately slow, unable to be driven out either.
+	var p := await _standing_player()
+	p.move_manager.start(Move.WALKING)
+	assert_true(p.has_headroom(), "test setup: the fixture has a ceiling on it")
+	assert_true(p.move_manager.can_enter(Move.CROUCH), "test setup: crouch starts open")
+
+	p.statuses.apply(_spec(Status.Effect.BLOCK_CROUCH), p, 0)
+	assert_false(p.move_manager.can_enter(Move.CROUCH), \
+		"the block never reached the voluntary crouch")
+
+	# A lid the crouched body fits under and the standing one does not. Placed
+	# off the FEET: the Player origin is the capsule CENTRE, and crouching
+	# moves it while the feet stay put.
+	var feet: float = p.global_position.y - p.standing_height() * 0.5
+	p.move_manager.start(Move.CROUCH)
+	await step(4)
+	var lid := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(6.0, 0.4, 6.0)
+	shape.shape = box
+	lid.add_child(shape)
+	add_child_autofree(lid)
+	lid.global_position = Vector3(p.global_position.x, \
+		feet + p.config.crouch.crouch_capsule_height + 0.05 + box.size.y * 0.5, \
+		p.global_position.z)
+	await step(4)
+	assert_false(p.has_headroom(), "test setup: the lid left room to stand")
+	assert_true(p.move_manager.can_enter(Move.CROUCH), \
+		"a crouch the body cannot avoid was refused, so a slide here could not end")

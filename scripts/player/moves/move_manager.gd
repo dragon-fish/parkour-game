@@ -49,6 +49,15 @@ func can_enter(move_name: StringName) -> bool:
 	# A refusal here would still leave the body launched, snapped or the press
 	# spent.
 	if player != null and player.statuses.is_move_blocked(move_name):
+		# A CROUCH THE BODY CANNOT AVOID IS NOT A TECHNIQUE. What a level
+		# forbids is the player CHOOSING to duck; being unable to stand is the
+		# geometry talking, and refusing it would leave SlideMove with no exit
+		# under a low ceiling -- a slide that cannot end and cannot be steered
+		# out of. Asked here rather than passed down from the caller because
+		# the answer is an objective fact about where the body is standing, so
+		# no move has to remember to declare which kind of crouch it meant.
+		if move_name == Move.CROUCH and not player.has_headroom():
+			return true
 		return false
 	return true
 

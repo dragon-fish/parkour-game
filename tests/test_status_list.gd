@@ -147,24 +147,25 @@ func test_a_blocked_move_is_reported_by_its_own_name() -> void:
 	assert_false(list.is_move_blocked(Move.SLIDE), "SLIDE was blocked too")
 
 func test_a_move_with_no_effect_of_its_own_can_never_be_blocked() -> void:
-	# WALKING / FALLING / LANDING / FALL_UNCONTROLLED / CROUCH have no enum
-	# value, so the table has no row for them and the answer is always false.
-	# This is the other half of the guard: the mistake cannot be authored, and
-	# it cannot be reached by accident either. CROUCH is in the set because it
-	# is SlideMove's only outlet under a low ceiling.
+	# WALKING / FALLING / LANDING / FALL_UNCONTROLLED have no enum value, so
+	# the table has no row for them and the answer is always false. This is the
+	# other half of the guard: the mistake cannot be authored, and it cannot be
+	# reached by accident either.
 	var list := StatusList.new()
-	for name in [Move.WALKING, Move.FALLING, Move.LANDING, Move.FALL_UNCONTROLLED, Move.CROUCH]:
+	for name in [Move.WALKING, Move.FALLING, Move.LANDING, Move.FALL_UNCONTROLLED]:
 		assert_false(list.is_move_blocked(name), "%s was blockable" % name)
 
-func test_no_effect_in_the_enum_reaches_crouch() -> void:
-	# Stronger than the table lookup above: every value the enum can take is
-	# applied in turn, and CROUCH stays open through all of them. A row added
-	# back for CROUCH under any effect name fails here.
-	var list := StatusList.new()
+func test_only_block_crouch_closes_the_crouch() -> void:
+	# Every value the enum can take is applied in turn, and exactly one of them
+	# may reach CROUCH. Crouching is the outlet a slide takes under a low
+	# ceiling, so a second effect quietly acquiring that reach is a slide that
+	# cannot end in a region that never meant to forbid crouching.
 	for effect in Status.Effect.values():
+		var list := StatusList.new()
 		list.apply(_spec(effect), _source("a"), 0)
-		assert_false(list.is_move_blocked(Move.CROUCH), \
-			"effect %d closed the CROUCH outlet" % effect)
+		assert_eq(list.is_move_blocked(Move.CROUCH), \
+			effect == Status.Effect.BLOCK_CROUCH, \
+			"effect %d answered wrongly for CROUCH" % effect)
 
 func test_only_the_named_line_is_blocked() -> void:
 	var list := StatusList.new()
