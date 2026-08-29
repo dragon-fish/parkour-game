@@ -45,26 +45,8 @@ const RISE_TIME := 1.5
 ## cubic-bezier(0.65, 0, 0.35, 1) = TRANS_CUBIC / EASE_IN_OUT.
 const BODY_RISE_DELAY := 0.0
 @export var BODY_STAND_BLEND: float = 1.5  # = RISE_TIME: fully up the frame the camera lands (✅ the owner)
-## METRES PER SECOND the ground slides past while she walks -- a real unit
-## now that the floor is a real plane. The old number lived in the fake
-## projection's own space and meant nothing outside it, so it could not be
-## carried across.
-##
-## The direction is read off the body each frame rather than written down:
-## which axis is forward is a convention argument nobody wins twice.
-@export var FLOOR_SCROLL_SPEED: float = 0.55
 
-## And the pace once she is sprinting for the loading run. A REAL SPEED, not a
-## multiplier: the ground became a plane and the unit became metres per
-## second, so "2.4 times the walk" was 1.3 m/s under a sprint -- a walking
-## pace played against a running clip, and no amount of tuning the multiplier
-## would have made that read as anything else.
-@export var FLOOR_RUN_SPEED: float = 3.6
 
-## How long the ground takes to appear once she stands. Linear on purpose: an
-## ease-in-out puts most of the change in the middle, which is exactly the
-## moment a fade is noticed happening.
-@export var FLOOR_FADE_TIME: float = 2.4
 @export var LOGO_FADE_TIME: float = 0.4
 @export var WALK_TO_MENU_DELAY: float = 0.15
 @export var MENU_PANEL_TIME: float = 0.45
@@ -125,6 +107,27 @@ const LOGO_TEXTURE := "res://assets/ui/logo_mark_white.svg"
 ## rather than found by reading GLSL. Pushed every frame, so a drag lands
 ## while the menu is running.
 @export_group("Floor")
+## METRES PER SECOND the ground slides past while she walks -- a real unit
+## now that the floor is a real plane. The old number lived in the fake
+## projection's own space and meant nothing outside it, so it could not be
+## carried across.
+##
+## The direction is read off the body each frame rather than written down:
+## which axis is forward is a convention argument nobody wins twice.
+@export var FLOOR_SCROLL_SPEED: float = 0.55
+
+## And the pace once she is sprinting for the loading run. A REAL SPEED, not a
+## multiplier: the ground became a plane and the unit became metres per
+## second, so "2.4 times the walk" was 1.3 m/s under a sprint -- a walking
+## pace played against a running clip, and no amount of tuning the multiplier
+## would have made that read as anything else.
+@export var FLOOR_RUN_SPEED: float = 3.6
+
+## How long the ground takes to appear once she stands. Linear on purpose: an
+## ease-in-out puts most of the change in the middle, which is exactly the
+## moment a fade is noticed happening.
+@export var FLOOR_FADE_TIME: float = 2.4
+
 ## Dots per WORLD METRE. See the shader on why the old number could not be
 ## carried over when the floor became a real plane.
 @export var floor_spacing: float = 6.8
