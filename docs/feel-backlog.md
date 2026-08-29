@@ -2927,3 +2927,36 @@ capsule.radius = clampf(length * RADIUS_RATIO, RADIUS_MIN, RADIUS_MAX)
 
 ⚠️ 「开 MSAA 之后才变糊」这一点**未经验证**：MSAA 进不了无头截图那条路径（见 `.claude/skills/verifying-visuals-headlessly` 的「截图路径的盲区」），所以无法从这边分辨是 MSAA 真的改变了什么，还是本来就有的走样被注意到了。要确认只需在游戏里把抗锯齿切到「关闭」看同一处地板。
 
+### ③ 贴墙起跳只上升 1.3 m，先跳后按 W 却能上 2.5 m
+
+现象（owner 实测）：紧贴墙面**同时**按 W + 空格，蹬墙只抬升约 1.5 m；但先按空格、快到跳跃最高点时再按 W，就能吃到跳跃本身的高度，总共上到 2.5 m 左右。同一套动作，只因按键顺序不同，结果差了将近一倍。
+
+**根因在 `WallClimbMove.enter()`，而且代码已经意识到了一半。** 那里对上升速度做了 `maxf`：
+
+```gdscript
+# maxf, not assignment: a player already rising faster than the kick is
+# worth keeps what they had. Taking the larger of the two is what stops a
+# well-timed early kick from being PUNISHED by touching the wall.
+player.velocity.y = maxf(player.velocity.y, rise_speed(run_up, cfg, config.pawn))
+_ceiling = player.global_position.y + climb_height_for(run_up, cfg)
+```
+
+速度保住了，**天花板没有**。`_ceiling` 是从「进入这一帧的位置」硬算的绝对高度：
+
+| 操作 | 进入时 y | 进入时 velocity.y | `_ceiling` |
+| --- | --- | --- | --- |
+| 贴墙 W + 空格 | ≈ 0（第一个空中帧就接触墙） | 6.3（刚起跳） | 0 + 1.3 = **1.3** |
+| 先跳，到顶再按 W | ≈ 1.24 | ≈ 0 | 1.24 + 1.3 = **2.54** |
+
+第一行里那 6.3 m/s 的上升速度被保留了，却撞在 1.3 m 的天花板上——**速度不罚，高度照罚**，注释声明的意图只兑现了一半。
+
+**修法方向**：天花板也取两者较大，即弹道能到的顶点与蹬墙天花板取 max：
+
+```gdscript
+var climb_gravity: float = config.pawn.gravity * cfg.gravity_scale
+var ballistic_peak: float = player.global_position.y     + player.velocity.y * player.velocity.y / (2.0 * climb_gravity)
+_ceiling = maxf(player.global_position.y + climb_height_for(run_up, cfg), ballistic_peak)
+```
+
+⚠️ **改之前需要一个原作数字**：在 ME 2008 里贴墙站定按 W + 空格，总共上升多少？若原作也是 1.3 m，那么我们「先跳后按 W 到 2.54」才是漏洞，该往下收而不是往上放。若原作贴墙跳能上 2.5 m 左右，那 1.3 就是本项目的 bug。`climb_height = 1.3` 的出处是 `climb_height_running` 减去跳跃弧线的 1.24，本身没有独立测过站定的情况。
+
