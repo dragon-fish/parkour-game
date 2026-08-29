@@ -27,10 +27,18 @@ const SHADER := preload("res://scripts/ui/chladni.gdshader")
 const MODE_MIN := 2
 const MODE_MAX := 9
 
-## How fast the figure reorganises. A real plate snaps between modes; this
-## crosses through the shapes in between instead, because at this size and
-## opacity a snap reads as a glitch rather than as physics.
-const MODE_EASE := 0.7
+## The shortest a figure is allowed to stand before another can take over.
+##
+## IT SNAPS, it does not morph. A real plate does: the frequency changes,
+## a different mode takes over, the powder rearranges. The first cut eased
+## between modes to avoid looking like a glitch, and that was wrong twice
+## over -- it is not what a plate does, and it cannot be symmetric, because
+## the field is only mirror-symmetric about a whole-number point when n and
+## m are themselves whole. Halfway between two modes is halfway between two
+## symmetries, which is none.
+##
+## So the hold is what keeps it from flickering, rather than the easing.
+const MODE_HOLD := 2.6
 
 ## How fast loudness reaches the shader. Quicker than the modes, so the grain
 ## visibly answers the beat while the figure it belongs to holds.
@@ -43,7 +51,7 @@ const FULL_DRIVE := 0.12
 @export var tint: Color = Color(0.34, 0.41, 0.52, 1.0)
 ## How strongly the field shows at all. It sits behind a title card and a
 ## figure; it is scenery, not a visualiser.
-@export var strength: float = 0.42
+@export var strength: float = 0.58
 
 ## Where the figure is centred across the rect, 0 to 1. The plate is
 ## symmetric about this point, so it belongs where the composition's
@@ -58,8 +66,10 @@ var _analyzer: AudioEffectSpectrumAnalyzerInstance
 ## remove somebody else's on the way out.
 var _installed_analyzer: bool = false
 
-var _n: float = float(MODE_MIN)
-var _m: float = float(MODE_MAX)
+var _n: int = MODE_MIN
+var _m: int = MODE_MAX
+var _centre := Vector2.ZERO
+var _held: float = 0.0
 var _drive: float = 0.0
 
 func _ready() -> void:
@@ -107,13 +117,21 @@ func _process(delta: float) -> void:
 	# The pair is chosen from the two ends and then kept apart: equal modes
 	# cancel the closed form to zero, which is a plate with nothing on it.
 	var wanted := mode_pair(bottom, top)
-	_n = lerpf(_n, float(wanted.x), clampf(delta * MODE_EASE, 0.0, 1.0))
-	_m = lerpf(_m, float(wanted.y), clampf(delta * MODE_EASE, 0.0, 1.0))
+	_held += delta
+	if _held >= MODE_HOLD and (wanted.x != _n or wanted.y != _m):
+		_held = 0.0
+		_n = wanted.x
+		_m = wanted.y
+		# The window moves to a DIFFERENT crossing of the figure at the
+		# same moment, so a beat that keeps asking for the same handful of
+		# modes does not keep drawing the same handful of shapes. Whole
+		# numbers, and it jumps with them -- see the shader on `centre`.
+		_centre = lattice_point(_n, _m)
 	_drive = lerpf(_drive, clampf(loudness / FULL_DRIVE, 0.0, 1.0),
 		clampf(delta * LEVEL_EASE, 0.0, 1.0))
-
-	_material.set_shader_parameter("mode_n", _n)
-	_material.set_shader_parameter("mode_m", _m)
+	_material.set_shader_parameter("centre", _centre)
+	_material.set_shader_parameter("mode_n", float(_n))
+	_material.set_shader_parameter("mode_m", float(_m))
 	_material.set_shader_parameter("agitation", _drive)
 	# A plate driven harder holds its powder less tightly, so the figure
 	# thickens rather than only shaking.
@@ -144,6 +162,30 @@ static func mode_pair(bottom: float, top: float) -> Vector2i:
 	if n == m:
 		m = n + 1 if n < MODE_MAX else n - 1
 	return Vector2i(n, m)
+
+## Which crossing of the figure the window sits on, for a given mode.
+##
+## WHOLE NUMBERS, because those are the only points the field is mirror-
+## symmetric about -- see the shader.
+##
+## AND A CROSSING, not merely a whole number, which is the part that is easy
+## to miss. On the integer lattice the field is
+##
+##     f(k, j) = (-1)^(nk + mj) - (-1)^(mk + nj)
+##
+## which is zero exactly when (n - m)(k - j) is even, and +/-2 otherwise --
+## and +/-2 is the ANTINODE, the place the powder is thrown hardest away
+## from. Half the lattice therefore centres the window on the emptiest point
+## of the figure, and zoomed in that is a blank screen. Keeping k and j the
+## same parity makes the difference even, so the centre is always a crossing
+## whatever the modes are.
+##
+## Derived from the modes rather than rolled, so a given figure always
+## appears in the same place and the background cannot be different between
+## two runs of the same music.
+static func lattice_point(n: int, m: int) -> Vector2:
+	var k: int = (n * 3 + m) % 4
+	return Vector2(float(k), float(k + 2 * ((m * 5 + n) % 3)))
 
 func _band(from_hz: float, to_hz: float) -> float:
 	if _analyzer == null:

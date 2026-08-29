@@ -35,6 +35,42 @@ func test_a_louder_end_asks_for_a_finer_figure() -> void:
 	assert_gt(ChladniField.mode_pair(0.0, 0.03).y, ChladniField.mode_pair(0.0, 0.0).y,
 		"a loud top did not ask for more lines than a silent one")
 
+func test_the_window_only_ever_sits_on_a_whole_number() -> void:
+	# The field is mirror-symmetric about a point only when BOTH cosines are
+	# even there, which for whole modes is every integer and nowhere else. A
+	# fractional centre is a figure that is not symmetric at all, and it would
+	# look merely "off" rather than broken.
+	for n in range(ChladniField.MODE_MIN, ChladniField.MODE_MAX + 1):
+		for m in range(ChladniField.MODE_MIN, ChladniField.MODE_MAX + 1):
+			var at: Vector2 = ChladniField.lattice_point(n, m)
+			assert_almost_eq(at.x, roundf(at.x), 0.0001,
+				"mode %d/%d put the window at x %.3f" % [n, m, at.x])
+			assert_almost_eq(at.y, roundf(at.y), 0.0001,
+				"mode %d/%d put the window at y %.3f" % [n, m, at.y])
+
+func test_the_window_always_sits_on_a_crossing_and_never_on_a_peak() -> void:
+	# The half of the lattice that is symmetric but useless. On integer points
+	# the field is either 0 or +/-2, and +/-2 is the ANTINODE -- the place the
+	# powder is thrown hardest away from. Centre the window there and, zoomed
+	# in, the screen is blank.
+	for n in range(ChladniField.MODE_MIN, ChladniField.MODE_MAX + 1):
+		for m in range(ChladniField.MODE_MIN, ChladniField.MODE_MAX + 1):
+			var at: Vector2 = ChladniField.lattice_point(n, m)
+			var f: float = cos(n * PI * at.x) * cos(m * PI * at.y) 				- cos(m * PI * at.x) * cos(n * PI * at.y)
+			assert_almost_eq(f, 0.0, 0.0001,
+				"mode %d/%d centred the window on a peak, not a crossing" % [n, m])
+
+func test_different_modes_look_at_different_crossings() -> void:
+	# The whole reason the window moves: a looping beat asks for the same
+	# handful of modes over and over, and a fixed window would answer with the
+	# same handful of shapes all evening.
+	var seen := {}
+	for n in range(ChladniField.MODE_MIN, ChladniField.MODE_MAX + 1):
+		for m in range(ChladniField.MODE_MIN, ChladniField.MODE_MAX + 1):
+			seen[ChladniField.lattice_point(n, m)] = true
+	assert_gt(seen.size(), 3,
+		"every mode looks at the same %d place(s)" % seen.size())
+
 func test_the_analyser_is_installed_and_given_back() -> void:
 	# Bus effects are engine-wide, so one left on Master by every visit to the
 	# menu accumulates for the session. The only part of this that is not

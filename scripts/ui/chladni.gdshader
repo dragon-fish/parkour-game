@@ -32,7 +32,9 @@ uniform float mode_m : hint_range(1.0, 12.0) = 5.0;
 uniform float settle : hint_range(0.01, 1.0) = 0.18;
 // How far a grain is thrown from its cell, which is the plate shaking.
 uniform float agitation : hint_range(0.0, 1.0) = 0.0;
-uniform float grain_density : hint_range(4.0, 400.0) = 150.0;
+// Grains per plate unit. In PLATE space, not screen space, so it has to
+// rise as `zoom` falls or a blown-up detail is drawn with blown-up specks.
+uniform float grain_density : hint_range(4.0, 800.0) = 260.0;
 uniform float grain_size : hint_range(0.01, 0.5) = 0.16;
 uniform float brightness : hint_range(0.0, 1.0) = 0.5;
 // The rect is wide and the plate is square: without this the figure is
@@ -43,10 +45,24 @@ uniform float aspect : hint_range(0.1, 8.0) = 1.777;
 // somewhere the composition does not have anything -- the character stands
 // left of centre, and the picture reads as two things that disagree.
 uniform float centre_x : hint_range(0.0, 1.0) = 0.5;
+// How much of the plate the rect shows, in plate units across its height.
+// Below one this is a DETAIL of the figure blown up, which is what reads as
+// one large form rather than as wallpaper: at one the rect holds several
+// periods side by side and the eye stops seeing a figure and starts seeing a
+// repeat.
+uniform float zoom : hint_range(0.05, 4.0) = 0.6;
+// Which point of the plate sits at the middle of the rect.
+//
+// WHOLE NUMBERS ONLY, and it must JUMP rather than slide. cos is even, so the
+// field is mirror-symmetric about any point where both cos(n*PI*x) and
+// cos(m*PI*x) are even -- which for whole n and m is every integer, and while
+// sliding between two of them is nothing at all. The figure is symmetric at
+// every instant or it is not symmetric.
+uniform vec2 centre = vec2(0.0);
 // How far past the settling band grains keep appearing, thinning out. A hard
 // edge makes the figure a solid shape with a boundary, which at this size
 // reads as a stain rather than as powder.
-uniform float spread : hint_range(0.0, 2.0) = 0.9;
+uniform float spread : hint_range(0.0, 2.0) = 0.5;
 // Fades the field out toward the horizon, so it sits in the picture rather
 // than ending on a line.
 uniform float horizon_fade : hint_range(0.0, 1.0) = 0.35;
@@ -63,9 +79,14 @@ float plate(vec2 p, float n, float m) {
 }
 
 void fragment() {
-	// Square plate coordinates, with the wide axis corrected and the whole
-	// figure hung off centre_x rather than off the middle of the rect.
-	vec2 plate_uv = vec2((UV.x - centre_x) * aspect + 0.5, UV.y);
+	// Plate coordinates: a window of size `zoom` around `centre`, hung off
+	// centre_x rather than off the middle of the rect, with the wide axis
+	// corrected so the figure is not stretched out of its own symmetry.
+	//
+	// The sampling is symmetric about (centre_x, 0.5) by construction, which
+	// is what makes the figure symmetric on screen -- see `centre`.
+	vec2 plate_uv = centre
+		+ (UV - vec2(centre_x, 0.5)) * vec2(aspect, 1.0) * zoom;
 
 	vec2 grid = plate_uv * grain_density;
 	vec2 cell = floor(grid);
@@ -95,7 +116,7 @@ void fragment() {
 
 	// A few grains never settle. Without them the empty regions are empty in
 	// a way that reads as a mask rather than as powder.
-	float strays = 0.10 * step(0.94, hash(cell + 5.1));
+	float strays = 0.07 * step(0.955, hash(cell + 5.1));
 
 	float alpha = grain * clamp(settled + strays, 0.0, 1.0) * brightness;
 	alpha *= smoothstep(0.0, horizon_fade, 1.0 - UV.y);
