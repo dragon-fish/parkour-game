@@ -2,18 +2,18 @@
 
 [ext_resource type="Material" path="res://templates/acrylic_floor_material.tres" id="1_mat"]
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
-size = Vector3(60, 1, 60)
+[sub_resource type="BoxShape3D" id="BoxShape3D_net"]
+size = Vector3(8, 1, 8)
 
-[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+[sub_resource type="BoxMesh" id="BoxMesh_net"]
 material = ExtResource("1_mat")
-size = Vector3(60, 1, 60)
+size = Vector3(8, 1, 8)
 
 [node name="Floor" type="StaticBody3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.55, 0)
 
 [node name="Collision" type="CollisionShape3D" parent="."]
-shape = SubResource("BoxShape3D_floor")
+shape = SubResource("BoxShape3D_net")
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
-mesh = SubResource("BoxMesh_floor")
+mesh = SubResource("BoxMesh_net")

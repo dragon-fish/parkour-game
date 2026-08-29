@@ -8,7 +8,7 @@
 [ext_resource type="Script" uid="uid://dhku0eeeioa0i" path="res://scripts/level/fog_config.gd" id="7_fog"]
 [ext_resource type="Sky" uid="uid://ffvdbj3x0eg1" path="res://assets/sky/day_sky.tres" id="8_sky"]
 [ext_resource type="Resource" path="res://presets/default.tres" id="9_preset"]
-[ext_resource type="PackedScene" path="res://templates/acrylic_floor.tscn" id="10_floor"]
+[ext_resource type="PackedScene" path="res://templates/safety_net.tscn" id="10_floor"]
 
 [sub_resource type="Resource" id="Resource_fogbl"]
 resource_local_to_scene = true

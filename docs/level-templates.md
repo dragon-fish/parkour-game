@@ -22,15 +22,23 @@ touching either.
    override them (e.g. moving `SpawnPoint`, or switching `Sun` off for an
    interior). Everything else — ramps, walls, gaps, platforms — are new
    siblings you add under the inherited root.
-5. `Floor` is a **safety net**, not the level's ground. It is a 60×60 slab
-   instanced from `templates/acrylic_floor.tscn`, and it is in the base for
-   one reason: a level part-way through being built has nowhere to stand, and
-   without it every playtest of an unfinished level begins by falling forever.
-   Once the level has its own ground, switch the net off in the child —
-   `visible = false` on `Floor/Mesh` and `disabled = true` on
-   `Floor/Collision`. **An inherited node cannot be deleted, only overridden**,
-   so this is as far as removing it goes. Instance the same scene again if you
-   want another slab somewhere; the ME acrylic material comes with it.
+5. `Floor` is a **safety net**, not the level's ground — an 8×8 pad at the
+   origin, from `templates/safety_net.tscn`. It exists so a level part-way
+   through being built has somewhere to stand instead of falling forever, and
+   it is deliberately small and **sunk 5 cm**: its top face is at y = −0.05,
+   so a level that lays its own ground at y = 0 buries it with no z-fighting
+   and no need to remember to switch it off. Being small also matters — a slab
+   spanning the level would catch the falls that are supposed to reach the
+   death volume, hiding holes in the level's own edges.
+
+   For real ground, instance `templates/acrylic_floor.tscn`: the 60×60 slab
+   the whiteboxes use, sharing `acrylic_floor_material.tres` with the net.
+   Both are ordinary instances, so a level can hold as many as it needs.
+
+   To be rid of the net once there is real ground: `visible = false` on
+   `Floor/Mesh`, `disabled = true` on `Floor/Collision`. **An inherited node
+   cannot be deleted, only overridden**, so that is as far as removal goes —
+   which is why the net is built to be harmless when left alone.
 6. Every level built from the template inherits its cold-blue ambient tint
    (`WorldEnvironment`'s `ambient_light_color`, Mirror's Edge-leaning shadows)
    for free; tune how strong it reads with the F1 panel's
