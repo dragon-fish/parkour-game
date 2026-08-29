@@ -60,7 +60,7 @@ func test_a_volume_death_is_not_a_fall_death() -> void:
 	await step(2)
 	_lethal_at(arena, arena.player.global_position)
 	await step(4)
-	assert_eq(arena.player.death_cause, Player.DeathCause.VOLUME, \
+	assert_eq(arena.player.health.last_cause, Health.Cause.VOLUME, \
 		"a volume death would play the falling clip")
 
 func test_a_lethal_volume_around_the_spawn_does_not_loop() -> void:
@@ -130,7 +130,7 @@ func test_a_fall_death_keeps_the_view_it_had() -> void:
 	var arena := _arena()
 	await step(2)
 	_in_first_person_with_a_body(arena)
-	arena.player.death_cause = Player.DeathCause.FALL
+	arena.player.health.last_cause = Health.Cause.FALL
 	arena.player.set_dying(true)
 	assert_false(arena.player.camera_rig.in_third_person(), \
 		"a fall death pulled the camera out on its own")

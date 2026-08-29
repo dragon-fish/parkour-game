@@ -79,14 +79,106 @@ var active_checkpoint: Checkpoint = null
 
 ## Entry point for DeathVolume, duck-typed the same way touch_checkpoint() is.
 ##
+## [13.2] A LETHAL VOLUME IS A THOUSAND POINTS OF DAMAGE, not a separate way
+## to die. There is one death test -- health at or below zero -- and every
+## source differs only in what it takes off. A thousand is not "a very large
+## hit", it is the sentence that no state of the body survives this.
+##
 ## THE DEAD DO NOT DIE TWICE, for the same reason a corpse does not save: a
 ## body already on its way out through the fall cutscene must not have a second
 ## ending queued behind the first.
 func die_in_volume() -> void:
 	if _dying or move_manager.current_name == Move.FALL_UNCONTROLLED:
 		return
-	death_cause = DeathCause.VOLUME
-	died_in_volume.emit()
+	take_damage(config.pawn.lethal_volume_damage, Health.Cause.VOLUME)
+
+## Every blow goes through here. Returns true when this was the killing blow.
+##
+## IT DOES NOT ANNOUNCE THE DEATH. The announcement happens once a tick in
+## _observe_death() instead, for two reasons: a blow landed from inside a
+## Move's physics_update() must not start a death sequence in the middle of
+## the tick that Move is still running, and a fall declares its own death
+## when control is lost -- long before this damage lands -- so a second
+## announcement from here would queue a second ending behind the first.
+func take_damage(amount: float, cause: int) -> bool:
+	if health == null:
+		return false
+	return health.damage(amount, cause)
+
+## How strong the alarm already is on the tick the band is entered, as a
+## fraction of its strength at zero health. Not a config dial: the dial is
+## wounded_alarm_strength, and this is what keeps that dial's own meaning --
+## turn it down and the whole thing gets quieter, threshold included.
+const ALARM_VISIBLE_AT_THRESHOLD := 0.5
+
+## Runs the alarm's pulse. Kept on Player rather than read off a global clock
+## so a paused game does not come back with the edge mid-flash.
+var _alarm_clock: float = 0.0
+
+## [13.4] THE PICTURE IS THE HEALTH BAR. There is no number on screen in the
+## original and there is none here: colour drains as the body is hurt, and the
+## edge starts pulsing red when it is nearly out.
+##
+## PUSHED BEFORE THE MOVES RUN, so anything that owns these channels for its
+## own reasons writes after this and wins -- FallUncontrolledMove drives both
+## desaturation and blur every tick of a fatal fall.
+##
+## SILENT WHILE DYING: from there DeathSequence owns the whole picture, and
+## two writers ramping the same channels against each other would fight for
+## every frame of it.
+func _push_wounded_screen(delta: float) -> void:
+	_alarm_clock += delta
+	if screen_effects == null or health == null or _dying:
+		return
+	var camera: CameraConfig = config.camera
+	var left: float = health.fraction()
+	screen_effects.set_desaturation(_wounded_ramp(left, camera.wounded_desaturation_at))
+	# IN THE BAND is asked separately from HOW DEEP INTO IT. The ramp is zero
+	# at its own threshold, so testing the ramp would drop the one case the
+	# band was described by: two hits of wire, which land exactly on it.
+	if not _in_band(left, camera.wounded_alarm_at):
+		if screen_effects.vignette_amount > 0.0:
+			screen_effects.set_vignette(Color.RED, 0.0)
+		return
+	# STARTS VISIBLE. "Below this the edge starts flashing" means the player
+	# can see it the moment they cross, not that a number stops being exactly
+	# zero -- a ramp from nothing puts the first real warning somewhere below
+	# the line it was meant to mark. The grey band is the other way round on
+	# purpose: colour DRAINS, so it has to start from none.
+	var alarm: float = lerpf(ALARM_VISIBLE_AT_THRESHOLD, 1.0,
+		_wounded_ramp(left, camera.wounded_alarm_at))
+	# Breathing rather than blinking: a hard on/off at this size reads as a
+	# rendering fault, and the player is meant to keep running through it.
+	var pulse: float = 0.5 + 0.5 * sin(TAU * camera.wounded_alarm_hz * _alarm_clock)
+	screen_effects.set_vignette(Color.RED,
+		alarm * camera.wounded_alarm_strength * pulse)
+
+## Whether the body is inside a band at all.
+##
+## THE THRESHOLD IS INSIDE ITS OWN BAND. Two hits of wire is exactly 30 of
+## 100, and two hits of wire is the case the alarm band was described by, so
+## a strict comparison puts the one number that has to be in it out. The
+## tolerance is for the division that produced `left`, not for taste.
+static func _in_band(left: float, threshold: float) -> bool:
+	return threshold > 0.0 and left <= threshold + 0.0001
+
+## How deep into a band the body is: 0 at the threshold, 1 at zero health.
+static func _wounded_ramp(left: float, threshold: float) -> float:
+	if not _in_band(left, threshold):
+		return 0.0
+	return clampf((threshold - left) / threshold, 0.0, 1.0)
+
+## [13.2] THE ONLY DEATH TEST THERE IS. Every source -- a fall, a hard
+## landing, wire, a volume the level marked lethal -- differs only in how much
+## it takes off, and this is where the consequence is read.
+##
+## Silent while _dying, which is what keeps the fall's own performance from
+## being followed by a second one: that path declares itself on the way down
+## and only then charges the hundred that empties the bar.
+func _observe_death() -> void:
+	if _dying or health == null or not health.is_dead():
+		return
+	died.emit()
 
 func touch_checkpoint(checkpoint: Checkpoint) -> void:
 	# THE DEAD DON'T SAVE. A checkpoint records "reached alive and in
@@ -265,10 +357,17 @@ var pending_stagger: bool = false
 ## body has finished arriving.
 signal died_from_fall
 
-## A volume the level marked lethal. Separate from died_from_fall because the
-## two want different endings: that one earns the topple cutscene, this one is
-## a curtain and a respawn, which is the entire reason a level uses it.
-signal died_in_volume
+## Health reached zero. Separate from died_from_fall because the two want
+## different endings and, more importantly, different TIMING: the fall's
+## performance starts when control is lost, long before the damage lands, so
+## that one announces itself on the way down and this one on the blow.
+signal died
+
+## [13] What the screen's desaturation is reading. Built in setup(), aged every
+## tick, and the single authority on whether the body is dead: HP at or below
+## zero is the only death test there is, and every source differs only in how
+## much it takes off.
+var health: Health
 
 ## The ground-speed curve (02 §2.1/02 §2.5): layer 2 of the two-layer speed
 ## model, see SpeedEnergy's own header comment. Built in setup(), driven every
@@ -1106,6 +1205,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	fall_tracker = FallTracker.new()
 	speed_energy = SpeedEnergy.new(config.pawn)
 	statuses = StatusList.new()
+	health = Health.new(config.pawn)
 
 	# The capsule resource is shared by every instance of player.tscn, so
 	# resizing it in place would let one player's slide shrink every other
@@ -1891,30 +1991,12 @@ func body_folded() -> bool:
 ## about any Move, which is why it is a flag here and not a state.
 var _dying: bool = false
 
-## [ME:CONFIRMED] The original has exactly ONE death animation, and it is the
-## non-fall one -- cut up, or shot. A fatal fall there is a bone-crack and an
-## immediate cut to black, no performance at all. The topple sequence in this
-## project is ours, added on top, which is why FALL is the exception below and
-## everything else shares a clip.
-enum DeathCause { FALL, VOLUME }
-
-## Which death is being performed. Set where the death is DECLARED, and every
-## declaring site must set it.
-##
-## DO NOT try to infer this from the move name instead. A fatal landing
-## declares its death in FallUncontrolledMove.landing_destination(), which
-## then returns WALKING -- so by the time DeathSequence runs, the state
-## machine is in an ordinary walk and has nothing left to tell apart. Only the
-## ragdoll branch stays put, so the move name answers correctly for one of the
-## two fall deaths and wrongly for the other.
-var death_cause: int = DeathCause.FALL
-
 func set_dying(dying: bool) -> void:
 	_dying = dying
 	# WHICH VIEW changes here, and DeathSequence.play() reads it back inside
 	# the same call -- to pick between the two death pitches -- so it cannot
-	# wait for the next tick's push. death_cause is set before this at every
-	# declaring site, which is what makes the answer available already.
+	# wait for the next tick's push. The blow that killed has already been
+	# taken by then, so Health.last_cause is the answer and needs no help.
 	_push_forced_view()
 
 ## THE BODY IS WATCHED FROM OUTSIDE WHILE IT DIES, unless the death is a fall.
@@ -1937,7 +2019,7 @@ func _push_forced_view() -> void:
 	# bare Player.new() that skipped it -- the same case DeathSequence guards.
 	if camera_rig == null or statuses == null:
 		return
-	if _dying and death_cause != DeathCause.FALL and body != null:
+	if _dying and health.last_cause != Health.Cause.FALL and body != null:
 		camera_rig.forced_view = Status.View.THIRD
 		return
 	camera_rig.forced_view = statuses.forced_view()
@@ -2844,6 +2926,7 @@ func _physics_process(delta: float) -> void:
 		# this costs the channel nothing when no view is changing.
 		if screen_effects != null:
 			screen_effects.set_blur(camera_rig.view_blur())
+	_push_wounded_screen(delta)
 	# Before the moves run, so the body moves this tick at whatever size it is
 	# now entitled to. A restore owed from an exit under a ceiling comes back
 	# on the first tick there is room for it.
@@ -2865,6 +2948,8 @@ func _physics_process(delta: float) -> void:
 	# Before the moves run, so a move that lands this tick reads a counter
 	# that already includes this tick's descent.
 	fall_tracker.update(delta, velocity.y, global_position.y)
+	health.tick(delta)
+	_observe_death()
 
 	move_manager.physics_update(delta, input)
 

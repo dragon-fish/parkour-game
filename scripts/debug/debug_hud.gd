@@ -18,7 +18,33 @@ var _clock: float = 0.0
 
 const TRANSITION_LINES := 6
 
+## How much of the readout Tab is currently showing. THREE STATES, not two:
+## twenty lines is more than can be read while playing, and the handful that
+## are wanted all the time -- where the body is, how fast, what state, how
+## much health -- were being scrolled past to reach the ones that answer a
+## specific question.
+enum Tier { OFF, COMPACT, FULL }
+
+var _tier: int = Tier.OFF
+
+## Whether the readout is up before anything is pressed.
+##
+## ON WHILE DEVELOPING, off in a shipped build. `-debug` on the command line
+## brings it back there, which is the only way to get at it once the editor is
+## no longer in the picture. Both argument lists are searched: Godot keeps its
+## own flags in one and everything after `--` in the other, and an author
+## typing `-debug` should not have to know which.
+static func _starts_shown() -> bool:
+	if OS.is_debug_build():
+		return true
+	for arg in OS.get_cmdline_args() + OS.get_cmdline_user_args():
+		if arg == "-debug" or arg == "--debug":
+			return true
+	return false
+
 func _ready() -> void:
+	_tier = Tier.COMPACT if _starts_shown() else Tier.OFF
+	visible = _tier != Tier.OFF
 	_label = Label.new()
 	_label.position = Vector2(16.0, 16.0)
 	_label.add_theme_color_override("font_color", Color(0.9, 1.0, 0.9))
@@ -63,7 +89,26 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_TAB:
-			visible = not visible
+			_tier = (_tier + 1) % Tier.size()
+			visible = _tier != Tier.OFF
+
+## The rows the compact tier keeps: what the body is doing, where it is, and
+## what is about to kill it. Everything else answers a SPECIFIC question --
+## why will this shimmy not go, where is the model root -- and is worth
+## scrolling to rather than worth reading past.
+##
+## Matched on the row's own label rather than by index, so reordering the list
+## above cannot silently change which rows survive. The two key-legend lines
+## are kept in both tiers: a readout that hides how to use the keys is not a
+## smaller readout, it is a worse one.
+const COMPACT_ROWS := ["move ", "at ", "speed ", "grounded ", "health ",
+	"energy ", "fps ", "Tab HUD", "Esc release"]
+
+func _worth_reading_while_playing(row: String) -> bool:
+	for prefix in COMPACT_ROWS:
+		if row.begins_with(prefix):
+			return true
+	return false
 
 ## Subscribed lazily rather than in _ready(): move_manager does not exist
 ## until Player.setup() runs, and the arena builds the HUD alongside the
@@ -90,7 +135,7 @@ func _process(delta: float) -> void:
 		return
 	_watch(player.move_manager)
 	var pos := player.global_position
-	_label.text = "\n".join([
+	var rows: Array = [
 		# "move", not "state": this has shown the active MOVE's name since the
 		# Move/MoveManager rework -- MoveManager.current_name IS a move name
 		# (Walking / Falling / WallRun / Grab / SpeedVault / Slide), and there
@@ -138,6 +183,7 @@ func _process(delta: float) -> void:
 			player.standing_height(),
 			"  FOLDED" if player.current_capsule_height() < player.standing_height() - 0.01 else ""],
 		"last land  %.2f m/s" % player.last_landing_speed,
+		"health     %s" % _health_line(),
 		# The two speed layers, side by side. A cap far below the curve's own
 		# ceiling means the turn tax has been eating energy; a speed far below
 		# the cap means something else is holding the body back.
@@ -168,7 +214,11 @@ func _process(delta: float) -> void:
 		# recapture, which is the fix, not a coincidence.
 		"Tab HUD  F10 capsule  F12 path  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
 		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
-	])
+	]
+	if _tier == Tier.COMPACT:
+		rows = rows.filter(_worth_reading_while_playing)
+	_label.text = "
+".join(rows)
 
 ## What the forward wall probe sees, in the same words the markers use colour
 ## for: whether there is a wall, whether it is tall enough to kick up, how
@@ -262,6 +312,30 @@ func _shimmy_text() -> String:
 ## The lead is what says whether it can be a straight line at all: 0 is a
 ## symmetric bump, above 0 is the bezier. An arc of 0 with a lead of 0 IS the
 ## straight line, and now it says so.
+## Everything the health layer does that is otherwise invisible: the bar, the
+## wait standing in front of regeneration, and what took the last bite.
+##
+## THE WAIT IS THE PART WORTH SHOWING. Five seconds of nothing happening looks
+## exactly like a system that is not running, and the climb after it is only
+## two seconds wide -- so without a countdown here the only way to tell the
+## difference is to die.
+func _health_line() -> String:
+	var h: Health = player.health
+	if h == null:
+		return "-"
+	var pawn: PawnConfig = player.config.pawn
+	var phase: String
+	if h.is_dead():
+		phase = "DEAD"
+	elif h.hp >= pawn.max_health:
+		phase = "full"
+	elif h.seconds_until_regen() > 0.0:
+		phase = "regen in %.1fs" % h.seconds_until_regen()
+	else:
+		phase = "regen +%.0f/s" % pawn.health_regen_rate
+	return "%.1f / %.0f  %s  last %s" % [h.hp, pawn.max_health, phase,
+		Health.Cause.keys()[h.last_cause]]
+
 func _scripted_line() -> String:
 	if player == null or player.move_manager == null:
 		return "-"

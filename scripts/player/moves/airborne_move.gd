@@ -327,7 +327,22 @@ func settle_landing(delta: float) -> StringName:
 	player.set_grounded(true)
 	player.notify_landed(impact_speed)
 	_apply_landing_cost(fall_height, rolled)
+	var hurt: float = landing_damage(fall_height, rolled)
+	if hurt > 0.0:
+		player.take_damage(hurt, Health.Cause.HARD_LANDING)
 	return landing_destination(fall_height, rolled)
+
+## What arriving costs the body, in health.
+##
+## [ME:CONFIRMED 03 §3.1, 13.1] HardLandingDamage = 15 and does NOT scale with
+## height -- 7 m and 9 m both cost exactly that. The player never has to
+## estimate how bad a landing was: missing the roll costs what it costs.
+##
+## A ROLL PAYS NOTHING, which is the whole trade the move exists for.
+func landing_damage(fall_height: float, rolled: bool) -> float:
+	if rolled or fall_height < config.pawn.hard_landing_height:
+		return 0.0
+	return config.landing.hard_landing_damage
 
 ## Whether a ledge is close enough to reach for, horizontally.
 ##

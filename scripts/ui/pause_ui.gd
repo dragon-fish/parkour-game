@@ -297,12 +297,17 @@ func _on_chosen(index: int) -> void:
 ## then the level's own respawn, which honours the last-touched checkpoint.
 ## Duck-typed on Arena so a scene without one (or no scene, in tests) makes
 ## this a no-op.
+##
+## THE SAME CALL THE R KEY MAKES. It used to reach past it to reset_player(),
+## which teleported the body with no transition at all -- so the identical
+## action looked like a glitch from the menu and like a deliberate reset from
+## the key.
 func _respawn_at_checkpoint() -> void:
 	var arena := get_tree().current_scene as Arena
 	if arena == null:
 		return
 	_resume()
-	arena.reset_player()
+	arena.respawn_at_checkpoint()
 
 ## The "restart" menu choice: the R-hold action -- forget the checkpoint
 ## and restart from the level's own spawn, under Arena's white cover.

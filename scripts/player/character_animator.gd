@@ -679,6 +679,63 @@ func _has_clip(clip_name: StringName) -> bool:
 const AIRBORNE_LOOP: Array[StringName] = [&"Jump", &"NinjaJump_Idle", &"jump",
 	&"Idle", &"idle"]
 
+## TWO DEATHS, and the fall is the odd one out.
+##
+## [ME:CONFIRMED] The original has a single death clip and it is the non-fall
+## one -- cut up, or shot. Dying to a fall there is a bone-crack and an
+## immediate cut to black; the falling performance is this project's own
+## addition, so it is the branch that needs the special clip while everything
+## else gets the one death the library has.
+##
+## UAL2's long fall family, not a generic Death02: this is a body still
+## falling, not a body giving way. DO NOT use LiftAir_Fall_Impact -- it reads
+## as a violent full-body convulsion, the arrival rather than the fall, and
+## played as a whole death it thrashes instead of settling. The clip offset
+## and the death eye lift were both tuned against Impact (0.1 m on the model,
+## 0.4 m on the eye) and neither transfers; they are the owner's to re-dial,
+## F9 for the model and F1 for the eye.
+const FALL_DEATH_CLIPS: Array[StringName] = [&"LiftAir_Fall", &"Death02",
+	&"Death01", &"sneaking", &"Crouch_Idle", &"idle"]
+
+## Death02 is UAL1's full library, i.e. PRIVATE. Death01 ships with the repo,
+## so a clone without the private submodule still dies properly. Each clip
+## puts the hips somewhere different, so they want their own offsets in
+## scenes/player/tuning/.
+const DEATH_CLIPS: Array[StringName] = [&"Death02", &"Death01",
+	&"LiftAir_Fall", &"sneaking", &"Crouch_Idle", &"idle"]
+
+## Death02 collapses FACE DOWN AND FORWARD, which puts the model straight
+## through any wall the body was facing. Death01 does not, so it is the one
+## that fits where there is no room in front to fall into.
+const WALL_DEATH_CLIPS: Array[StringName] = [&"Death01", &"Death02",
+	&"LiftAir_Fall", &"sneaking", &"Crouch_Idle", &"idle"]
+
+## Roughly a body length. The clip needs somewhere to put the MODEL, not
+## somewhere to put the capsule, so no config dial is offered: the reach is a
+## property of the animation, not of the level.
+const DEATH_WALL_CLEARANCE := 1.5
+
+## Which clips this death picked, chosen once and held for its duration.
+## Empty between deaths -- see the reset below for why that is an assignment
+## rather than a clear().
+##
+## LATCHED, because the choice asks about the WORLD. Re-asked every frame, the
+## collapse itself carries the body away from the wall it was facing and the
+## clip swaps halfway through going down.
+var _death_clips: Array[StringName] = []
+
+func _death_clip_list() -> Array[StringName]:
+	if player.health != null and player.health.last_cause == Health.Cause.FALL:
+		return FALL_DEATH_CLIPS
+	return WALL_DEATH_CLIPS if _facing_a_wall() else DEATH_CLIPS
+
+func _facing_a_wall() -> bool:
+	if player.probes == null:
+		return false
+	var ahead: Vector3 = -player.global_transform.basis.z
+	return not player.probes.side_hit(player.global_position, ahead,
+		DEATH_WALL_CLEARANCE).is_empty()
+
 func _first_available(candidates: Array[StringName]) -> StringName:
 	for candidate in candidates:
 		if _has_clip(candidate):
@@ -776,38 +833,14 @@ func _target_animation() -> StringName:
 	# in first person too, not just third: the head is hidden there and it
 	# costs nothing to have the body fall over properly.
 	if player.is_dying():
-		# TWO DEATHS, and the fall is the odd one out.
-		#
-		# [ME:CONFIRMED] The original has a single death animation and it is
-		# this second branch -- cut up, or shot. Dying to a fall there is a
-		# bone-crack and an immediate cut to black. The falling performance is
-		# this project's own addition, so it is the branch that needs the
-		# special clip; everything else gets the one death the library has.
-		#
-		# READ FROM death_cause, NOT from the move name: a fatal landing hands
-		# the machine back to WALKING before this ever runs. See Player.
-		if player.death_cause == Player.DeathCause.FALL:
-			# UAL2's own long fall family, not a generic Death02: this branch is
-			# a body still falling, not a body giving way.
-			#
-			# DO NOT use LiftAir_Fall_Impact for the death clip: it reads as a
-			# violent full-body convulsion, not a body settling into a fall. It
-			# is the arrival -- a body hitting the ground and convulsing -- and
-			# played as the whole death it thrashes rather than lands.
-			# LiftAir_Fall is the fall itself, which settles.
-			#
-			# The clip offset and the death eye lift were both tuned against
-			# Impact (0.1 m on the model, 0.4 m on the eye) and neither
-			# transfers: the two clips put the hips in different places. They
-			# are the owner's to re-dial -- F9 for the model, F1 for the eye.
-			return _first_available([&"LiftAir_Fall", &"Death02", &"Death01",
-				&"sneaking", &"Crouch_Idle", &"idle"])
-		# Death02 is UAL1's full library, i.e. PRIVATE. Death01 ships with the
-		# repo, so a clone without the private submodule still dies properly.
-		# Each clip puts the hips somewhere different, so this branch will want
-		# its own offsets in scenes/player/tuning/ once it can be seen.
-		return _first_available([&"Death02", &"Death01", &"LiftAir_Fall",
-			&"sneaking", &"Crouch_Idle", &"idle"])
+		if _death_clips.is_empty():
+			_death_clips = _death_clip_list()
+		return _first_available(_death_clips)
+	# A FRESH ARRAY, NOT .clear(). The lists above are `const`, which in Godot 4
+	# means read-only -- clear() on one fails silently apart from an error in
+	# the log, so _death_clips never empties and the FIRST death of the session
+	# picks the clip for every death after it.
+	_death_clips = []
 	match player.move_manager.current_name:
 		Move.WALKING:
 			# THREE BANDS, not two. The free tier has a genuine Walk and the

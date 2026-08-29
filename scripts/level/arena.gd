@@ -137,11 +137,11 @@ func _ready() -> void:
 	# also teleports the body and restarts the move manager, and this
 	# function's own header already warns it spans a physics frame; a direct
 	# connection would have all of that run inside one.
-	if not player.died_in_volume.is_connected(kill_player):
-		# DEFERRED for the same reason the line below is: the signal is
-		# emitted from inside an Area3D callback mid-physics, and the
-		# respawn it starts teleports the very body being reported.
-		player.died_in_volume.connect(kill_player, CONNECT_DEFERRED)
+	if not player.died.is_connected(kill_player):
+		# DEFERRED for the same reason the line below is: the respawn this
+		# starts teleports the very body being reported, and the blow that
+		# emptied the bar may have landed inside an Area3D callback.
+		player.died.connect(kill_player, CONNECT_DEFERRED)
 	if not player.died_from_fall.is_connected(_on_died_from_fall):
 		player.died_from_fall.connect(_on_died_from_fall, CONNECT_DEFERRED)
 
@@ -310,6 +310,10 @@ func _load_calibration_course() -> void:
 		(course as Node3D).position = Vector3(0.0, 0.0, 60.0)
 	add_child(course)
 
+## What the K key takes off. One barbed-wire hit, so three presses kill and
+## the thresholds in between can be walked through one press at a time.
+const DEBUG_BITE := 35.0
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and not event.echo and event.physical_keycode == KEY_R:
 		# Hold-to-interact: the hold FIRES THE MOMENT it reaches the threshold --
@@ -320,17 +324,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			_r_pressed_at_ms = Time.get_ticks_msec()
 		elif _r_pressed_at_ms >= 0:
 			_r_pressed_at_ms = -1
-			# WHITE, because the player chose this. Black is reserved for a death;
-			# an uncovered teleport reads as a glitch either way.
-			respawn_under_cover(Color.WHITE)
+			respawn_at_checkpoint()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_K:
-			# DEBUG. Routed through died_from_fall rather than reset_player()
-			# so it exercises the real chain -- cutscene, then respawn --
-			# which is the thing worth being able to trigger on demand.
+			# DEBUG. A BLOW, not a death: health is the only death test there is,
+			# so taking a bite out of the bar exercises the whole chain -- the
+			# wounded screen, the regeneration delay, and eventually the death
+			# and respawn -- through the same path a hazard uses. Emitting a
+			# death here instead would test a route nothing else takes.
 			if player != null:
-				player.died_from_fall.emit()
+				player.take_damage(DEBUG_BITE, Health.Cause.HAZARD)
 
 ## Blends the WorldEnvironment's ambient light between neutral and the cold
 ## tint every frame, reading CameraConfig.ambient_cold_strength off `config`
@@ -437,6 +441,16 @@ func _physics_process(_delta: float) -> void:
 ## REFUSED WHILE A CURTAIN IS ALREADY UP. A kill volume fires on touch, so
 ## a respawn that lands the body back inside one would start a second
 ## curtain every frame and never let go.
+## THE ACTION, of which the R tap is only a shortcut. The pause menu's "last
+## checkpoint" is the same thing chosen a slower way, and both go through here
+## so neither can drift into respawning without a transition -- which is what
+## the menu did.
+##
+## WHITE, because the player chose this. Black is reserved for a death; an
+## uncovered teleport reads as a glitch either way.
+func respawn_at_checkpoint() -> void:
+	respawn_under_cover(Color.WHITE)
+
 func respawn_under_cover(colour: Color = Color.WHITE) -> void:
 	if not is_instance_valid(player):
 		return
@@ -447,20 +461,21 @@ func respawn_under_cover(colour: Color = Color.WHITE) -> void:
 		return
 	_death_sequence.cover_respawn(player, reset_player, colour)
 
-## A volume the level marked lethal, which is a DEATH and gets the whole
+## Health reached zero: wire, a hard landing on an already-wounded body, or a
+## volume the level marked lethal. Every one of them gets the whole
 ## performance -- not a cut to black.
 ##
-## What such a volume saves is the FALL, not the dying: a lift shaft is
+## What a lethal volume saves is the FALL, not the dying: a lift shaft is
 ## marked lethal at the top so the player does not spend fifteen seconds on
 ## the way down, and four seconds of death afterwards is what every other
 ## death costs too. Cutting the performance as well was a misreading, and it
 ## breaks the volume's other use -- a boundary at a junction, dressed with
 ## guards, where the fiction is being shot. That has to look like dying.
 ##
-## REFUSED DURING A CURTAIN. Player.die_in_volume() already refuses while
-## _dying, but the post-respawn cover runs after the sequence has released
-## the body, so a respawn that lands back inside a volume would arrive here
-## with nothing else to stop it.
+## REFUSED DURING A CURTAIN. Player._observe_death() already stays quiet
+## while _dying, but the post-respawn cover runs after the sequence has
+## released the body, so a respawn that lands back inside a volume would
+## arrive here with nothing else to stop it.
 func kill_player() -> void:
 	if not is_instance_valid(player):
 		return
@@ -545,6 +560,10 @@ func reset_player() -> void:
 	# rather than in reset_state() because the volumes that put them there are
 	# a level concern, and the re-arming below needs the level anyway.
 	player.statuses.clear_all()
+	# A respawn is a fresh body. Without this the bar stays where the death
+	# left it -- at or below zero -- and the next tick's death test fires
+	# again on the life that just started.
+	player.health.reset()
 	for volume in get_tree().get_nodes_in_group("modifier_volumes"):
 		volume.reset_trigger_count()
 	if player.camera_rig != null:
