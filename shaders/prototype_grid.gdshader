@@ -69,13 +69,27 @@ uniform float fine_fade : hint_range(0.0, 1.0) = 0.45;
 
 // Height of the line ABOVE base_y, in metres. Set to 0 to switch it off.
 //
-// Four metres, near enough: the apex of a jump puts the feet 1.24 m up and
-// GrabConfig.ledge_max_height reaches 2.8 m from them. Rounded, because the
-// third decimal of an optimistic bound is a false precision -- whether a grab
-// latches at the very top of an arc is a playtest question, not an arithmetic
-// one. Above this there is nothing to be done with a wall by any timing or
-// run-up.
-uniform float reach_ceiling = 4.0;
+// 5.5 m, and getting there takes the whole chain rather than a jump:
+//
+//   1.24  the jump arc, at the point contact is made with the wall
+// + 1.47  WallClimbConfig.climb_height_running, the kick up the wall
+//   ----
+//   2.71  where the feet are at the top of the climb (measured, SZD)
+// + 2.80  GrabConfig.ledge_max_height, reach from the feet
+//   ----
+//   5.51  rounded down to 5.5
+//
+// AT FULL SPEED ONLY. climb_height_running is the run_speed_limit end of a
+// dial whose other end is climb_height (1.30) for a standing kick, so a wall
+// approached from a standstill tops out around 4.1 m. The line is the
+// optimistic bound: what a good run-up can still reach, not what any approach
+// will.
+//
+// AN EARLIER VERSION SAID 4.0, which was the jump plus the grab with the climb
+// left out entirely -- it drew a ceiling under walls the body climbs routinely.
+// If this ever needs re-deriving, the chain is Jump -> Airborne -> WallClimb ->
+// Falling -> IntoGrab, and every link contributes height.
+uniform float reach_ceiling = 5.5;
 
 // WHERE THE FLOOR UNDER THIS OBJECT IS, in world Y.
 //
