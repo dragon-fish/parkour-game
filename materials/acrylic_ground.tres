@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://shaders/acrylic.gdshader" id="1_shader"]
+
+[resource]
+resource_name = "AcrylicGround"
+shader = ExtResource("1_shader")
+shader_parameter/dot_opacity = 0.7
+shader_parameter/spacing = 2.0
+shader_parameter/dot_radius = 0.08

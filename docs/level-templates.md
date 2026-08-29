@@ -35,9 +35,15 @@ touching either.
    net is scaffolding, and scaffolding does not need screen-space reflections.
 
    For real ground, instance `templates/acrylic_floor.tscn`: the 60×60 slab
-   the whiteboxes use, wearing `materials/acrylic.tres` — the same material,
-   at the same settings, that the character showcase stands on. Both are
-   ordinary instances, so a level can hold as many as it needs.
+   the whiteboxes use. It wears `materials/acrylic_ground.tres`, which is the
+   showcase's acrylic at a **much wider dot spacing** — 2 m rather than 0.35 m,
+   30 dots across the slab rather than 171. The showcase settings are for a
+   floor seen close, around one figure; the same grid seen from standing
+   height, running to the horizon, is a texture rather than a set of
+   landmarks. Widen or tighten `spacing` there — the dots exist to make motion
+   readable, so the test is whether you can tell you are moving, not whether
+   the floor looks detailed. Both slabs are ordinary instances, so a level can
+   hold as many as it needs.
 
    To be rid of the net once there is real ground: `visible = false` on
    `Floor/Mesh`, `disabled = true` on `Floor/Collision`. **An inherited node
