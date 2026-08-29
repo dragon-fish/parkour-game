@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://cgixp4bvedoij"]
 
 [ext_resource type="Material" path="res://materials/acrylic_ground.tres" id="1_mat"]
 
@@ -9,11 +9,11 @@ size = Vector3(60, 1, 60)
 material = ExtResource("1_mat")
 size = Vector3(60, 1, 60)
 
-[node name="Floor" type="StaticBody3D"]
+[node name="Floor" type="StaticBody3D" unique_id=1105482838]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="."]
+[node name="Collision" type="CollisionShape3D" parent="." unique_id=1818338258]
 shape = SubResource("BoxShape3D_floor")
 
-[node name="Mesh" type="MeshInstance3D" parent="."]
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=1741694962]
 mesh = SubResource("BoxMesh_floor")
