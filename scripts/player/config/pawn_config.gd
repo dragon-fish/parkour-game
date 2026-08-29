@@ -41,14 +41,21 @@ extends Resource
 
 ## How hard speed bleeds off on leaving the arc, in m/s^2.
 ##
-## SEPARATE FROM accel_rate, WHICH IS FAR TOO FAST FOR THIS. At 61.44 the drop
-## from 7.2 to 4.0 takes 0.05 s, which is a snap rather than a slowdown. The
-## owner described the original as "很快的减速但不是零点几秒，类似于受到了阻力
-## 一样", so this is priced as a drag: at 8.0 the same drop takes 0.4 s.
+## MAGNITUDE ONLY -- the heading still swings at accel_rate. See
+## Player.ground_accelerate() for why the two cannot share a rate.
 ##
-## A DIAL, not a derivation -- turn it until turning to run sideways feels like
-## the original rather than like hitting a wall.
-@export var lateral_drag: float = 8.0
+## [ME:CONFIRMED] Owner timed the original from full speed into a straight
+## left: 25.92 km/h drops to about 20 almost at once, then takes roughly 3 s
+## to settle at 14.4. That second leg is 5.56 -> 4.0 m/s in 3 s, near enough
+## 0.5 m/s^2.
+##
+## ONE LEG, NOT TWO. Only the slow leg is modelled; 1.0 spends the whole
+## 7.2 -> 4.0 in about 3.2 s, matching how long the original takes overall
+## rather than its shape. What produces the original's fast first drop is not
+## known -- it may be nothing more than the heading swinging through 90
+## degrees, which costs magnitude on its own. Worth re-measuring before
+## anyone builds a second leg to chase it.
+@export var lateral_drag: float = 1.0
 ## [ME:CONFIRMED 02 §2.3] AirControl = 0.025. Engine default is 0.05; DICE
 ## halved it. Used as a multiplier on accel_rate (09 §9.1):
 ## air_accel = accel_rate * air_control = 61.44 * 0.025 = 1.536 m/s^2,

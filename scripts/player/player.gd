@@ -3967,13 +3967,22 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float, gra
 		# crouch at 40% -- is not sped up by turning sideways.
 		if not in_forward_arc(wish_dir):
 			target_speed = minf(target_speed, config.pawn.lateral_speed)
-		# Leaving the arc at speed bleeds off under DRAG, not under the
-		# acceleration rate: at 61.44 the drop from 7.2 to 4.0 takes 0.05 s,
-		# which is a snap rather than a slowdown. See PawnConfig.lateral_drag.
-		var rate: float = config.pawn.accel_rate
-		if horizontal.length() > target_speed:
-			rate = config.pawn.lateral_drag
-		horizontal = horizontal.move_toward(wish_dir * target_speed, rate * delta)
+		var speed: float = horizontal.length()
+		if speed > target_speed:
+			# TURNING AND SLOWING ARE SEPARATE HERE, and combining them is
+			# the trap. One move_toward() at the drag rate would take the
+			# seconds the slowdown is meant to take to merely FACE the new
+			# direction, so a body asked to run left would keep running
+			# forwards while it bled. The heading swings at the ordinary
+			# acceleration rate; only the magnitude is held back.
+			var heading: Vector3 = horizontal / speed
+			heading = heading.move_toward(wish_dir,
+				(config.pawn.accel_rate / speed) * delta).normalized()
+			speed = maxf(target_speed, speed - config.pawn.lateral_drag * delta)
+			horizontal = heading * speed
+		else:
+			horizontal = horizontal.move_toward(wish_dir * target_speed,
+				config.pawn.accel_rate * delta)
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 
