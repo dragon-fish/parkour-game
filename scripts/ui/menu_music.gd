@@ -47,22 +47,51 @@ const CHORUS_START := 32.0 * BAR
 ## through means its downbeat -- the heaviest moment in the piece -- has
 ## already gone by. The full arrangement simply appears, with no arrival.
 ##
-## Bars 30 and 31 are the lift: the same sparse texture the title fragment
-## has, with a riser climbing through it. Entering there, the crossfade is
-## between two quiet things and is barely audible, and because the grid runs
-## unbroken the chorus's own downbeat then lands on time and at full weight
-## three and a half seconds later -- which is also about when the menu
-## finishes arriving.
+## Bar 31 is the lift: the sparse texture the title fragment already has, with
+## a riser climbing through it, and the drop one bar later. The crossfade is
+## then between two quiet things and is barely audible, and because the grid
+## runs unbroken the chorus's own downbeat lands on time and at full weight.
 ##
 ## This is the cheap version of what a middleware transition does with a
 ## composed bridge or a stinger: use the composer's own approach as the
 ## transition rather than butting two sections together.
-const APPROACH_START := 30.0 * BAR
+##
+## ONE BAR, NOT TWO, and both halves of that were measured off a recording of
+## a shipped menu doing this. Its music DIPS for the three quarters of a
+## second after the click -- seven decibels down, quieter than what was
+## playing before -- and only then swells, reaching its peak about 1.75 s
+## after the press, on the beat of the character standing up. Bar 31 has both
+## for free: it opens softer than what precedes it, which is the composer's
+## own pre-drop gap, and it puts the drop 1.81 s out. That is RISE_TIME, so
+## the chorus lands on the body coming up rather than on the menu settling.
+## The run-up a click gets, when the click can have it.
+const RUN_UP := BAR
+
+## Declared after RUN_UP because it is derived from it: GDScript resolves
+## constants in the order they are written.
+const APPROACH_START := CHORUS_START - RUN_UP
+
+## THE LEAST A RUN-UP MAY BE. Entry keeps the phase the fragment had reached,
+## so a click late in a bar leaves almost none of the run-up: at a phase of
+## 1.79 s there are nineteen milliseconds until the drop, and the chorus
+## arrives with the band still shut and the level still down. Under this, the
+## entry drops back a whole bar and takes the longer approach instead.
+##
+## Half a bar rather than some smaller number because the sweep is what needs
+## the time, and it has two ends and four octaves to cover.
+const MIN_RUN_UP := BAR * 0.5
 
 
-## Held back on purpose. This plays under a title card while the player is
-## still deciding to press anything, and it is the first sound the game makes.
-const HELD_LEVEL := 0.20
+## Held back, but not hiding. This plays under a title card while the player
+## is still deciding to press anything -- present enough to be the reason
+## they wait, quiet enough that the drop is still an arrival.
+const HELD_LEVEL := 0.34
+
+## THE FIRST SOUND THE GAME MAKES, brought up from nothing rather than
+## starting at level. A window takes a moment to appear and the first frames
+## take longer still, so music that begins at full is heard before there is
+## anything to look at -- the game announces itself to a blank screen.
+const FADE_IN := 2.0
 
 ## Where the chorus settles. Fuller, not loud -- the drop is carried by the
 ## drums arriving on the grid, not by the fader.
@@ -131,11 +160,16 @@ func _ready() -> void:
 	_build_bus()
 	_loop = _player(LOOP_STREAM, true)
 	_record = _player(FULL_STREAM, false)
-	_loop.volume_db = _gain_db(HELD_LEVEL)
+	_loop.volume_db = _gain_db(0.0)
 	_record.volume_db = _gain_db(0.0)
 	_record.bus = BUS
 	_record.finished.connect(_rest_then_play_from_the_top)
 	_loop.play()
+	# Up from silence, not straight in at level -- see FADE_IN. A tween, so it
+	# stretches over however long the first frames actually take.
+	var arrive := create_tween()
+	arrive.tween_method(_set_loop_level, 0.0, HELD_LEVEL, FADE_IN) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 ## Reused rather than added again if one is already there: a menu rebuilt (a
 ## return from the level, a scene reload) would otherwise stack a new bus per
@@ -236,12 +270,18 @@ func to_chorus() -> void:
 ## headless run has a dummy driver and reports a playback position of zero
 ## forever, which would make a test of this pass for the wrong reason.
 static func chorus_entry(loop_position: float) -> float:
-	return APPROACH_START + fmod(maxf(loop_position, 0.0), BAR)
+	var lead: float = RUN_UP - fmod(maxf(loop_position, 0.0), BAR)
+	if lead < MIN_RUN_UP:
+		lead += BAR
+	return CHORUS_START - lead
 
-## How long the entry has before the chorus lands on it. The swell is given
-## exactly this, so the two arrive together.
+## How long the entry has before the chorus lands on it. The sweep and the
+## swell are both given exactly this, so all three arrive together.
+##
+## No clamp: chorus_entry() guarantees at least MIN_RUN_UP, and a floor here
+## would hide a broken entry by letting the swell finish PAST the drop.
 static func time_to_the_drop(entry: float) -> float:
-	return maxf(CHORUS_START - entry, 0.1)
+	return CHORUS_START - entry
 
 ## Leaving the menu. Silence would be as wrong as a hard cut.
 func fade_out(seconds: float = FADE_OUT) -> void:
@@ -261,6 +301,9 @@ func _set_handoff(k: float) -> void:
 
 func _set_record_level(level: float) -> void:
 	_record.volume_db = _gain_db(level)
+
+func _set_loop_level(level: float) -> void:
+	_loop.volume_db = _gain_db(level)
 
 ## 0 is the band alone, 1 is the whole spectrum. Both ends move together, so
 ## the bottom and the top arrive on the same beat.

@@ -16,21 +16,24 @@ func test_a_click_on_a_bar_line_enters_the_approach_on_its_downbeat() -> void:
 			"a click %d bars in did not land on a downbeat" % int(bars))
 
 func test_a_click_mid_bar_carries_that_much_of_the_bar_across() -> void:
-	# The point of the whole thing: half a bar into the fragment is half a bar
-	# into the chorus, so the next kick lands exactly where it was going to.
-	var half: float = MenuMusic.BAR * 0.5
-	assert_almost_eq(MenuMusic.chorus_entry(3.0 * MenuMusic.BAR + half),
-		MenuMusic.APPROACH_START + half, 0.0001,
+	# The point of the whole thing: the entry keeps the phase, so the next
+	# kick lands exactly where it was going to. WHICH bar it enters is not
+	# part of that -- a click with too little run-up left drops back one --
+	# so what is asserted is the phase, not the address.
+	var phase: float = MenuMusic.BAR * 0.4
+	var entry: float = MenuMusic.chorus_entry(3.0 * MenuMusic.BAR + phase)
+	assert_almost_eq(fmod(entry, MenuMusic.BAR), fmod(phase, MenuMusic.BAR), 0.0001,
 		"the phase was dropped, so the beat restarts inside the crossfade")
+	assert_lt(entry, MenuMusic.CHORUS_START, "the entry landed on or past the drop")
 
 func test_the_entry_never_lands_more_than_a_bar_past_the_chorus() -> void:
 	# Whatever the fragment reports -- and a looping stream may or may not wrap
 	# its own clock -- the answer has to stay inside the chorus's first bar.
 	for position in [0.0, 14.0, 14.4897, 30.0, 999.0]:
 		var entry: float = MenuMusic.chorus_entry(position)
-		assert_between(entry, MenuMusic.APPROACH_START,
-			MenuMusic.APPROACH_START + MenuMusic.BAR,
-			"a position of %.4f s asked for %.4f s into the record" % [position, entry])
+		var lead: float = MenuMusic.time_to_the_drop(entry)
+		assert_between(lead, MenuMusic.MIN_RUN_UP, MenuMusic.RUN_UP + MenuMusic.BAR,
+			"a position of %.4f s left %.4f s of run-up" % [position, lead])
 
 func test_the_click_lands_before_the_drop_and_not_on_it() -> void:
 	# The mistake this replaced: entering the chorus itself means entering it
@@ -41,10 +44,20 @@ func test_the_click_lands_before_the_drop_and_not_on_it() -> void:
 		"the chorus stopped being bar 32")
 	assert_lt(MenuMusic.APPROACH_START, MenuMusic.CHORUS_START,
 		"the click enters on the drop again, which is what sounded abrupt")
-	var lead: float = MenuMusic.CHORUS_START - MenuMusic.APPROACH_START
-	assert_between(lead / MenuMusic.BAR, 1.5, 4.5,
-		"the run-up is %.1f bars: too short to read as a lift, or long enough to be a wait"
+	var lead: float = MenuMusic.RUN_UP
+	assert_almost_eq(lead / MenuMusic.BAR, 1.0, 0.001,
+		"the run-up is %.2f bars, not the one the entrance is timed against"
 			% (lead / MenuMusic.BAR))
+
+func test_the_drop_lands_on_the_body_coming_up() -> void:
+	# Measured off a shipped menu: its music peaks about 1.75 s after the
+	# press, on the beat of the character standing. MainMenu takes RISE_TIME
+	# to do the same thing, so the two want to be the same number -- the drop
+	# belongs on the body coming up, not on the menu settling a second later.
+	var lead: float = MenuMusic.RUN_UP
+	assert_almost_eq(lead, MainMenu.RISE_TIME, 0.4,
+		"the chorus lands %.2f s after the click and the body is up at %.2f s"
+			% [lead, MainMenu.RISE_TIME])
 
 func test_the_swell_finishes_exactly_when_the_drop_lands() -> void:
 	# Arriving early leaves it sitting at full through the last of the quiet
@@ -158,3 +171,22 @@ func test_a_second_menu_does_not_stack_a_second_bus() -> void:
 	second.free()
 	await step(1)
 	assert_eq(buses, 1, "a rebuilt menu added a second bus of the same name")
+
+func test_a_click_late_in_a_bar_takes_the_longer_approach() -> void:
+	# Entry keeps the phase the fragment had reached, so a click near the end
+	# of a bar leaves almost no run-up -- at a phase of 1.79 s there are
+	# nineteen milliseconds until the drop, and the chorus would arrive with
+	# the band still shut and the level still down. It drops back a bar.
+	var late: float = MenuMusic.chorus_entry(MenuMusic.BAR * 0.99)
+	var lead: float = MenuMusic.time_to_the_drop(late)
+	assert_gt(lead, MenuMusic.MIN_RUN_UP,
+		"a click at the end of a bar got %.3f s to open in" % lead)
+
+func test_every_entry_still_lands_on_the_grid() -> void:
+	# Whichever bar it falls back to, the entry has to keep the phase -- that
+	# is the whole reason the beat carries through the crossfade.
+	for phase in [0.0, 0.3, 0.9, 1.5, 1.79]:
+		var entry: float = MenuMusic.chorus_entry(phase)
+		var kept: float = fmod(entry - phase, MenuMusic.BAR)
+		assert_true(kept < 0.001 or absf(kept - MenuMusic.BAR) < 0.001,
+			"a click at phase %.2f s entered off the grid by %.4f s" % [phase, kept])
