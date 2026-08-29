@@ -11,9 +11,12 @@ extends Area3D
 # same goes for the void under a level: Arena's own fall-out-of-the-world net
 # uses this exact path.
 #
-# NO CUTSCENE. Arena.kill_player() draws the black curtain and respawns under
-# it, about a second end to end. The topple sequence a real fall earns is a
-# performance of dying on a floor, and there is no floor here.
+# IT SAVES THE FALL, NOT THE DYING. Arena.kill_player() runs the full death
+# sequence, exactly as a fatal fall does. What the volume buys is the fifteen
+# seconds on the way down, not the four seconds of dying -- and its other use
+# needs those four: a boundary at a junction, dressed with guards, where the
+# fiction is that the player was shot. Cut straight to black and that reads as
+# a bug rather than as a death.
 #
 # NOT A STATUS. Every dial ModifierVolume carries -- seconds, refresh_interval,
 # layer_priority, max_trigger_count -- is meaningless on something permanent

@@ -230,6 +230,7 @@ func _settle_ragdoll(delta: float) -> StringName:
 	if not (struck or drifted_little or _ragdoll_elapsed >= RAGDOLL_TIMEOUT):
 		return KEEP
 	_declared = true
+	player.death_cause = player.DeathCause.FALL
 	player.set_dying(true)
 	player.died_from_fall.emit()
 	return KEEP
@@ -244,6 +245,7 @@ func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
 	# sequence still owns clearing it -- see DeathSequence._release_player() --
 	# so this only moves the start of it earlier, to the moment it is true.
 	_declared = true
+	player.death_cause = player.DeathCause.FALL
 	player.set_dying(true)
 	player.died_from_fall.emit()
 	return WALKING

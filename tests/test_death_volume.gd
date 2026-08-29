@@ -1,9 +1,19 @@
 extends ParkourTest
 
+# A lethal volume is a DEATH, not a teleport. What it saves the player is the
+# fall -- a lift shaft kills at the top instead of fifteen seconds later -- and
+# the four seconds of dying afterwards are the same four every other death
+# costs. The volume's other use needs them: a boundary at a junction, dressed
+# with guards, where the fiction is being shot.
+#
 # Which curtain a respawn draws is the one thing the player reads it by: black
-# is a death, white is a reset they asked for. The colours themselves are
-# tuning; that the two paths draw DIFFERENT ones, and that neither can loop, is
-# not.
+# is a death, white is a reset they asked for. The colours are tuning; that the
+# two paths draw DIFFERENT ones, and that neither can loop, is not.
+
+## The death sequence (4.0 s) plus its post-respawn cover (0.75 s), with room
+## to spare. Deliberately generous: this is a "by now, surely" bound, not a
+## measurement of the timings, which are the owner's to re-dial.
+const RIGHT_THROUGH := 320
 
 func _arena() -> Arena:
 	var a: Arena = preload("res://scenes/main.tscn").instantiate()
@@ -27,22 +37,31 @@ func test_walking_into_a_lethal_volume_respawns_the_player() -> void:
 	var spawn: Vector3 = arena.spawn_point.global_position
 	_lethal_at(arena, spawn + Vector3(40.0, 0.0, 0.0))
 	arena.player.global_position = spawn + Vector3(40.0, 0.0, 0.0)
-	await step(60)
+	await step(RIGHT_THROUGH)
 	assert_lt(arena.player.global_position.distance_to(spawn), 3.0, \
 		"the body was left in the volume that was supposed to kill it")
 
-func test_a_lethal_volume_does_not_play_the_topple_cutscene() -> void:
-	# The whole reason a level marks a shaft lethal is to skip the fall. A four
-	# second performance of dying hands back the seconds the volume just saved,
-	# and there is no floor down there to topple onto anyway.
+func test_a_lethal_volume_performs_a_death_rather_than_cutting_to_black() -> void:
+	# The misreading this exists to prevent: taking "the shaft saves fifteen
+	# seconds" to mean the dying should be skipped too.
 	var arena := _arena()
 	await step(2)
-	var spawn: Vector3 = arena.spawn_point.global_position
-	_lethal_at(arena, spawn + Vector3(40.0, 0.0, 0.0))
-	arena.player.global_position = spawn + Vector3(40.0, 0.0, 0.0)
-	await step(90)
-	assert_ne(arena.player.move_manager.current_name, Move.FALL_UNCONTROLLED, \
-		"a lethal volume started the death that a real fall earns")
+	_lethal_at(arena, arena.player.global_position)
+	await step(4)
+	assert_true(arena.player.is_dying(), \
+		"touching a lethal volume respawned the body without dying first")
+
+func test_a_volume_death_is_not_a_fall_death() -> void:
+	# [ME:CONFIRMED] The original has ONE death animation and it is the
+	# non-fall one. The falling performance is this project's addition, so the
+	# animator has to be able to tell them apart -- and it cannot ask the move
+	# name, because a fatal landing hands the machine back to WALKING first.
+	var arena := _arena()
+	await step(2)
+	_lethal_at(arena, arena.player.global_position)
+	await step(4)
+	assert_eq(arena.player.death_cause, Player.DeathCause.VOLUME, \
+		"a volume death would play the falling clip")
 
 func test_a_lethal_volume_around_the_spawn_does_not_loop() -> void:
 	# An author who drops a shaft over a checkpoint should get a stuck player,
@@ -52,16 +71,18 @@ func test_a_lethal_volume_around_the_spawn_does_not_loop() -> void:
 	var arena := _arena()
 	await step(2)
 	_lethal_at(arena, arena.spawn_point.global_position)
-	await step(10)
-	assert_true(arena._death_sequence.is_covering(), "test setup: the volume never fired")
-	await step(180)
+	await step(4)
+	assert_true(arena.player.is_dying(), "test setup: the volume never fired")
+	await step(RIGHT_THROUGH)
 	assert_true(is_instance_valid(arena.player), "the loop took the player with it")
-	assert_false(arena._death_sequence.is_covering(), \
-		"the curtain never lifted: something is drawing a fresh one every frame")
+	assert_false(arena.player.is_dying(), \
+		"the death never ended: something is starting a fresh one every frame")
 
 func test_falling_out_of_the_world_is_a_death_and_a_reset_is_not() -> void:
-	# Both draw a curtain now; what separates them is the colour, and the
-	# player learns the difference without being told.
+	# The net under the level is the one death with nothing to perform: the
+	# body is in the void, there is no floor to give way onto, and it only
+	# fires at all when the level failed to mark its own boundary. So it keeps
+	# the plain curtain -- black, because it is still a death.
 	var arena := _arena()
 	await step(2)
 	arena.player.global_position = Vector3(0.0, -arena.config.pawn.fall_recovery_depth - 5.0, 0.0)

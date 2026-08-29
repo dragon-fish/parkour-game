@@ -411,11 +411,29 @@ func respawn_under_cover(colour: Color = Color.WHITE) -> void:
 		return
 	_death_sequence.cover_respawn(player, reset_player, colour)
 
-## A volume the level marked lethal. Same curtain as falling out of the
-## world, and for the same reason: an elevator shaft exists so the player
-## dies at the top of it instead of spending fifteen seconds finding out.
+## A volume the level marked lethal, which is a DEATH and gets the whole
+## performance -- not a cut to black.
+##
+## What such a volume saves is the FALL, not the dying: a lift shaft is
+## marked lethal at the top so the player does not spend fifteen seconds on
+## the way down, and four seconds of death afterwards is what every other
+## death costs too. Cutting the performance as well was a misreading, and it
+## breaks the volume's other use -- a boundary at a junction, dressed with
+## guards, where the fiction is being shot. That has to look like dying.
+##
+## REFUSED DURING A CURTAIN. Player.die_in_volume() already refuses while
+## _dying, but the post-respawn cover runs after the sequence has released
+## the body, so a respawn that lands back inside a volume would arrive here
+## with nothing else to stop it.
 func kill_player() -> void:
-	respawn_under_cover(Color.BLACK)
+	if not is_instance_valid(player):
+		return
+	if _death_sequence == null:
+		reset_player()
+		return
+	if _death_sequence.is_covering():
+		return
+	_death_sequence.play(player)
 
 ## The R-hold action, also reachable from the pause menu's Restart option:
 ## forget the checkpoint and respawn at the level's own spawn. Under the

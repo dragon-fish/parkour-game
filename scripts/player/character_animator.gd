@@ -770,19 +770,37 @@ func _target_animation() -> StringName:
 	# in first person too, not just third: the head is hidden there and it
 	# costs nothing to have the body fall over properly.
 	if player.is_dying():
-		# UAL2's own long fall family is used rather than a generic Death02.
+		# TWO DEATHS, and the fall is the odd one out.
 		#
-		# DO NOT use LiftAir_Fall_Impact for the death clip: it reads as a
-		# violent full-body convulsion, not a body settling into a fall. It is
-		# the arrival -- a body hitting the ground and convulsing -- and
-		# played as the whole death it thrashes rather than lands.
-		# LiftAir_Fall is the fall itself, which settles.
+		# [ME:CONFIRMED] The original has a single death animation and it is
+		# this second branch -- cut up, or shot. Dying to a fall there is a
+		# bone-crack and an immediate cut to black. The falling performance is
+		# this project's own addition, so it is the branch that needs the
+		# special clip; everything else gets the one death the library has.
 		#
-		# The clip offset and the death eye lift were both tuned against
-		# Impact (0.1 m on the model, 0.4 m on the eye) and neither transfers:
-		# the two clips put the hips in different places. They are the owner's
-		# to re-dial -- F9 for the model, F1 for the eye.
-		return _first_available([&"LiftAir_Fall", &"Death02", &"Death01",
+		# READ FROM death_cause, NOT from the move name: a fatal landing hands
+		# the machine back to WALKING before this ever runs. See Player.
+		if player.death_cause == Player.DeathCause.FALL:
+			# UAL2's own long fall family, not a generic Death02: this branch is
+			# a body still falling, not a body giving way.
+			#
+			# DO NOT use LiftAir_Fall_Impact for the death clip: it reads as a
+			# violent full-body convulsion, not a body settling into a fall. It
+			# is the arrival -- a body hitting the ground and convulsing -- and
+			# played as the whole death it thrashes rather than lands.
+			# LiftAir_Fall is the fall itself, which settles.
+			#
+			# The clip offset and the death eye lift were both tuned against
+			# Impact (0.1 m on the model, 0.4 m on the eye) and neither
+			# transfers: the two clips put the hips in different places. They
+			# are the owner's to re-dial -- F9 for the model, F1 for the eye.
+			return _first_available([&"LiftAir_Fall", &"Death02", &"Death01",
+				&"sneaking", &"Crouch_Idle", &"idle"])
+		# Death02 is UAL1's full library, i.e. PRIVATE. Death01 ships with the
+		# repo, so a clone without the private submodule still dies properly.
+		# Each clip puts the hips somewhere different, so this branch will want
+		# its own offsets in scenes/player/tuning/ once it can be seen.
+		return _first_available([&"Death02", &"Death01", &"LiftAir_Fall",
 			&"sneaking", &"Crouch_Idle", &"idle"])
 	match player.move_manager.current_name:
 		Move.WALKING:

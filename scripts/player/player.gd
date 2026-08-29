@@ -85,6 +85,7 @@ var active_checkpoint: Checkpoint = null
 func die_in_volume() -> void:
 	if _dying or move_manager.current_name == Move.FALL_UNCONTROLLED:
 		return
+	death_cause = DeathCause.VOLUME
 	died_in_volume.emit()
 
 func touch_checkpoint(checkpoint: Checkpoint) -> void:
@@ -1870,6 +1871,24 @@ func body_folded() -> bool:
 ## which routes the body to a death clip -- a fact about the LEVEL rather than
 ## about any Move, which is why it is a flag here and not a state.
 var _dying: bool = false
+
+## [ME:CONFIRMED] The original has exactly ONE death animation, and it is the
+## non-fall one -- cut up, or shot. A fatal fall there is a bone-crack and an
+## immediate cut to black, no performance at all. The topple sequence in this
+## project is ours, added on top, which is why FALL is the exception below and
+## everything else shares a clip.
+enum DeathCause { FALL, VOLUME }
+
+## Which death is being performed. Set where the death is DECLARED, and every
+## declaring site must set it.
+##
+## DO NOT try to infer this from the move name instead. A fatal landing
+## declares its death in FallUncontrolledMove.landing_destination(), which
+## then returns WALKING -- so by the time DeathSequence runs, the state
+## machine is in an ordinary walk and has nothing left to tell apart. Only the
+## ragdoll branch stays put, so the move name answers correctly for one of the
+## two fall deaths and wrongly for the other.
+var death_cause: int = DeathCause.FALL
 
 func set_dying(dying: bool) -> void:
 	_dying = dying
