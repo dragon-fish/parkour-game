@@ -216,11 +216,6 @@ var _hidden_start: StringName = &""
 ## what it stopped doing.
 var _previous_move: StringName = Move.KEEP
 ## The one-shot currently playing, or KEEP. See _arm_oneshot().
-## Whether the body was moving under its own power last tick, so the START of
-## a run can be noticed rather than the running merely observed. See
-## _arm_launch_oneshot().
-var _moving_under_power: bool = false
-
 var _oneshot: StringName = Move.KEEP
 ## Seconds of it left to play. Real seconds, and that is only true because a
 ## one-shot is never in SPEED_MATCHED_CLIPS: the graph time scale is pinned to
@@ -251,9 +246,6 @@ func _physics_process(delta: float) -> void:
 	if move != _previous_move:
 		_arm_oneshot(_previous_move, move)
 		_previous_move = move
-	# BEFORE the one-shot is consulted, so a crossing arms on the tick it
-	# happens rather than the tick after it.
-	_arm_launch_oneshot()
 	# A one-shot OUTRANKS the move's own clip while it lasts -- that is the
 	# whole point of it. _oneshot_target() returns KEEP the moment there is
 	# none, which is almost every tick.
@@ -547,37 +539,6 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 		# in the middle of that would be the animation contradicting them.
 		if player.wish_direction(player.last_input).length_squared() < 0.0001:
 			_start_oneshot(&"Jump_Land")
-
-## The sprint's own entry and exit, which the pack ships and nothing was asking
-## for. Armed at the moment the body STARTS MOVING, and at the moment it stops.
-##
-## ⚠️ NOT AT THE WALK-TO-RUN BAND, which is where these were wired first and
-## where they look absurd. Sprint_Enter is a standstill LAUNCH: measured off
-## the asset, its pelvis drops from 0.086 to -0.163 and springs back, a quarter
-## of a metre of crouch. Fired as the body crosses 3.6 m/s it reads as a
-## sprinter stopping to squat -- the owner saw it at about 4.2. Its first pose
-## is also exactly where Sprint_Exit's last pose is, which says plainly what
-## the pair are: standing to running and back, not one running speed to
-## another.
-##
-## AND IT STILL COVERS THE STALL it was added for. Standing to sprinting
-## crosses idle, walk and run in quick succession, so the state machine was
-## starting a second transition while the first was running and the feet
-## visibly hung. Sprint_Enter lasts 0.867 s, which is that whole stretch, and a
-## one-shot outranks the routing for its whole length.
-##
-## NOT WHILE CREEPING: Ctrl asks for a walk, and a walk does not launch.
-func _arm_launch_oneshot() -> void:
-	if player.move_manager == null:
-		return
-	var moving: bool = player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold
-	if player.move_manager.current_name != Move.WALKING or _creeping():
-		_moving_under_power = moving
-		return
-	if moving == _moving_under_power:
-		return
-	_moving_under_power = moving
-	_start_oneshot(&"Sprint_Enter" if moving else &"Sprint_Exit")
 
 ## Arms `clip` for its own natural length, if the attached body has it at all.
 func _start_oneshot(clip: StringName) -> void:
@@ -966,37 +927,20 @@ func _target_animation() -> StringName:
 				# above -- and without it a body crosses everything below a run
 				# in a handful of frames. Threading a walk loop through those
 				# frames buys a cadence nobody can see and costs a state-machine
-				# transition that collides with the next one: ✅ the owner,
-				# "从0到2.88几乎只有几帧, 何必为了那几帧插入一个walk".
+				# transition that collides with the next one: the owner's own
+				# words, 从0到2.88几乎只有几帧, 何必为了那几帧插入一个walk.
 				#
-				# SPRINT AHEAD, JOG TO THE SIDES AND BEHIND. Neither pack has an
-				# eight-way sprint -- Sprint is one clip, forward only -- and
-				# the eight-way sets belong to the jog and the walk. So the run
-				# is split by DIRECTION: straight ahead takes the sprint, and
-				# everything else takes the jog, which is the only thing that
-				# can strafe at all. The seam is a change of cadence when
-				# turning sharply out of a straight run.
-				if _travel_octant() <= 0:
-					# TWO BANDS AHEAD, and the jog is the TOP one.
-					#
-					# Which reads backwards until you look at the clips rather
-					# than at their names: the pack's Jog is a long loping
-					# stride and its Sprint a shorter, faster cadence, so the
-					# jog is what a body already at full pace looks like -- ✅
-					# the owner, "jog 是大胯步, 用在最后一档速度". The names
-					# come from Quaternius, not from the original, and matching
-					# them to the original's vocabulary is how they would end up
-					# swapped.
-					#
-					# [ME:CONFIRMED 02 §2.2] The threshold is SprintVelocity,
-					# the top of the original's five discrete velocities --
-					# values 02 already reads as animation blend thresholds
-					# rather than speed caps, which is the use they are put to
-					# here.
-					if speed >= player.config.pawn.sprint_velocity:
-						return _first_available([&"Jog_Fwd", &"Sprint", &"Walk_Fwd", &"run", &"idle"])
-					return _first_available([&"Sprint", &"Jog_Fwd", &"Walk_Fwd", &"run", &"idle"])
-				return _first_available_directional([&"Jog", &"Walk", &"Sprint", &"run", &"idle"])
+				# DO NOT PUT THE SPRINT BACK. It was here, split off as a band
+				# below the jog, and its stride is far larger than this project
+				# wants -- the owner's call after seeing it run. Its Enter and
+				# Exit went with it: a launch clip has nothing to launch into
+				# once the thing it launches into is not being used.
+				#
+				# So the whole of moving under your own power is the jog's
+				# eight-way set. It is also the only set that reaches running
+				# pace in every direction, which is why the sprint was never
+				# more than the forward octant's exception in the first place.
+				return _first_available_directional([&"Jog", &"Walk", &"run", &"idle"])
 			return _first_available([&"Idle", &"Idle_FoldArms", &"idle", &"Walk"])
 		Move.FALLING:
 			return _first_available(AIRBORNE_LOOP)

@@ -70,11 +70,13 @@ func _asked_for(clips: Array, move: StringName, velocity: Vector3) -> String:
 
 # --- the run band splits by direction -----------------------------------------
 
-func test_running_straight_ahead_sprints() -> void:
-	# Neither pack has an eight-way sprint, so straight ahead is the one
-	# direction the sprint can serve -- and the owner asked for it there.
+func test_running_straight_ahead_takes_the_jog() -> void:
+	# The sprint was here, as the forward octant's exception to the jog's
+	# eight-way set. Its stride is far larger than this project wants, so the
+	# exception is gone and every direction is the jog's -- which is also the
+	# only set that reaches running pace in all eight.
 	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(0.0, 0.0, -6.0)),
-		"Sprint", "a straight run did not sprint")
+		"Jog_Fwd", "a straight run did not take the jog")
 
 func test_strafing_at_speed_takes_the_jog() -> void:
 	# The jog is the only eight-way set that reaches running pace. Sideways

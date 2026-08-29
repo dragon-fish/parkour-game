@@ -1458,7 +1458,7 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	&"Idle_FoldArms",
 	# From the FIRST Universal Animation Library, which is where the locomotion
 	# lives -- the two packs are near-disjoint and this project needs both.
-	&"Idle", &"Walk", &"Sprint", &"Sprint_Enter", &"Sprint_Exit", &"Roll",
+	&"Idle", &"Walk", &"Sprint", &"Roll",
 	&"Jump", &"Jump_Start", &"Jump_Land", &"Crouch_Idle", &"Crouch_Fwd",
 	# From the PAID tiers of both packs, and every one of them replaces a
 	# placeholder that had stood since before there was anything to put there.
