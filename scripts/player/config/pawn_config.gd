@@ -30,26 +30,26 @@ extends Resource
 ## has no such limit in the original: the owner reached 18 km/h backwards with
 ## S and space and did not find a ceiling. So this must never move into
 ## Player.speed_cap(), which every airborne state reads too.
-## A STATED VALUE STANDING IN FOR A DERIVED ONE, and worth knowing before
-## anyone treats it as a measurement. The owner watched the original leave
-## full speed for a hard left: it dips, RECOVERS to about 23 km/h, and only
-## then settles at 14.4 over roughly three seconds. A recovery above 14.4
-## means the ceiling was not 14.4 at that moment, so the original is not
-## clamping the way this line does -- something is dragging the ceiling down,
-## and taking three seconds about it, which is what
-## speed_energy_deceleration_time already says.
+## [ME:CONFIRMED] Owner measured 14.4 km/h in the original running fully
+## sideways or backwards, against 25.92 km/h forwards.
 ##
-## The likely gap is in Player._charge_turn(), which bills the CHANGE of
-## heading and nothing else: hold a sideways run and the angle stops
-## changing, the billing stops with it, and energy climbs back under the
-## strafe factor. Bill the standing OFFSET between travel and facing instead
-## and the strafe factor is paying into a leak -- the two settle somewhere,
-## and that settling point would BE this number rather than needing it.
+## A CURVE THAT LOOKED LIKE A COUNTER-EXAMPLE, AND WAS NOT. Leaving full
+## speed for a hard left first appeared to dip, RECOVER to about 23 km/h,
+## then settle -- which would have meant the ceiling was not 14.4 at that
+## moment, and that the original drags its ceiling down instead of clamping.
+## The recovery turned out to be the hand: W and A were both down for a few
+## frames, and a diagonal sits INSIDE the arc, where 25.92 is correct. Owner,
+## on releasing W cleanly first: speed drops to near zero and then climbs
+## back to 14.4, which is this clamp plus the turn billing already here.
 ##
-## Not built that way because a leak needs a rate, and the rate has to come
-## from the curve's three unmeasured points: the depth of the dip, the height
-## of the recovery, and how long the recovery takes to bleed out. Guessing it
-## trades a right endpoint for two wrong ones.
+## Worth keeping because the false reading is easy to reproduce -- no hand
+## releases one key exactly as it presses another -- and because it is
+## evidence FOR the arc: the diagonal held full speed exactly as it should.
+##
+## STILL OPEN: how fast the climb back to 14.4 goes. Here it is accel_rate,
+## which covers 0 to 4.0 in 0.065 s; the owner describes the original as
+## climbing "慢慢". A clean measurement is a standing start with only A held,
+## which has no turn and no second key to be early or late.
 @export var lateral_speed: float = 4.0
 
 ## Half-angle of the arc, in degrees, inside which the full ground speed is
