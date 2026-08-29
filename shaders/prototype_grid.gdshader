@@ -33,16 +33,27 @@ shader_type spatial;
 
 // -- Surface ---------------------------------------------------------------
 
-// Near-white, low contrast, faint sheen: the game's own surfaces, so a
-// blockout does not read as a different game from the one being built.
-uniform vec4 base_color : source_color = vec4(0.93, 0.94, 0.96, 1.0);
-uniform vec4 line_color : source_color = vec4(0.78, 0.80, 0.84, 1.0);
-uniform vec4 major_color : source_color = vec4(0.63, 0.66, 0.71, 1.0);
+// White, but NOT near-white, and the difference is the whole readability of
+// this surface. Levels light themselves with a strongly blue ambient
+// (Arena.COLD_AMBIENT_TINT, and the templates' own Environment), which lands
+// on top of albedo: at 0.93 every face of every box saturates to the same pale
+// blue, a wall becomes indistinguishable from the floor it stands on, and the
+// marks wash out to pink. Held down here, the ambient has somewhere to go and
+// lit and unlit faces separate again.
+//
+// DO NOT raise this to match the game's own surfaces. This is a ruler, and it
+// is read under whatever light the level happens to have.
+uniform vec4 base_color : source_color = vec4(0.80, 0.82, 0.85, 1.0);
+uniform vec4 line_color : source_color = vec4(0.55, 0.58, 0.63, 1.0);
+uniform vec4 major_color : source_color = vec4(0.38, 0.41, 0.46, 1.0);
 // The one saturated colour in the picture, and it is spent on the thresholds.
-uniform vec4 mark_color : source_color = vec4(0.84, 0.19, 0.15, 1.0);
+uniform vec4 mark_color : source_color = vec4(0.76, 0.13, 0.10, 1.0);
 
-uniform float metallic_amount : hint_range(0.0, 1.0) = 0.15;
-uniform float roughness_amount : hint_range(0.0, 1.0) = 0.38;
+// FLAT AND MATTE ON PURPOSE. Any metallic at all makes the surface mirror the
+// sky through SSR, which in a blue-lit level tints the whole grid blue on top
+// of the ambient already doing it. A ruler reflects nothing.
+uniform float metallic_amount : hint_range(0.0, 1.0) = 0.0;
+uniform float roughness_amount : hint_range(0.0, 1.0) = 0.9;
 uniform float projection_sharpness : hint_range(1.0, 16.0) = 6.0;
 
 // -- Grid ------------------------------------------------------------------
@@ -59,7 +70,7 @@ uniform float line_width : hint_range(0.001, 0.2) = 0.012;
 uniform float mark_width : hint_range(0.001, 0.2) = 0.012;
 // How far a mark is allowed to take over the surface. Short of 1 the colour
 // stays a tint on the grid rather than a stripe painted over it.
-uniform float mark_strength : hint_range(0.0, 1.0) = 0.62;
+uniform float mark_strength : hint_range(0.0, 1.0) = 0.85;
 
 // -- Heights the body actually cares about ---------------------------------
 // Drawn on VERTICAL faces, where a height is hard to judge by eye. Every one
