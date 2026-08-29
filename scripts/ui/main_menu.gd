@@ -307,23 +307,23 @@ func _build_ui() -> void:
 ## STOPS AT THE HORIZON, where the floor's own dot grid begins. Two fields of
 ## specks overlapping would read as one noisy one, and the shader fades its
 ## own bottom edge out so the boundary is not a line.
+## ADOPTED FROM THE SCENE, not built here. It is the one part of this screen
+## that is pure art direction -- a dozen numbers chosen by eye and nothing
+## solved at runtime -- so it belongs where those numbers can be dragged. A
+## node created in code has no inspector at edit time, which made its dials
+## reachable only by editing the script's defaults.
+##
+## Its position in the scene is also its layer: it is the first child, so the
+## floor, the silhouette and the whole menu are added after it and draw over
+## it.
 func _build_chladni() -> void:
-	_chladni = ChladniField.new()
-	_chladni.name = "ChladniField"
-	# Hung off where the character stands, not off the middle of the screen.
-	# The figure is symmetric about its own centre, so putting that centre
-	# where the composition has nothing leaves two pictures disagreeing
-	# about where the middle is.
+	_chladni = get_node_or_null("ChladniField") as ChladniField
+	if _chladni == null:
+		return
+	# DERIVED, not dragged: the figure is symmetric about its own centre, so
+	# that centre belongs where the character stands. Pushed from here rather
+	# than typed into the scene so the two cannot drift apart.
 	_chladni.centre_x = FAR_X_FRAC
-	_chladni.anchor_left = 0.0
-	_chladni.anchor_right = 1.0
-	_chladni.anchor_top = 0.0
-	_chladni.anchor_bottom = 0.5
-	_chladni.offset_left = 0.0
-	_chladni.offset_right = 0.0
-	_chladni.offset_top = 0.0
-	_chladni.offset_bottom = 0.0
-	add_child(_chladni)
 
 func _build_floor() -> void:
 	_floor = ColorRect.new()
