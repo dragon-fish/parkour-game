@@ -160,6 +160,27 @@ var forced_view: int = Status.View.NONE
 ## saved preference otherwise. EVERY internal read of the view goes through
 ## this -- `third_person` alone means "what the player chose", which is not
 ## the same question.
+## Moves the blend one frame toward the view currently in force.
+##
+## DO NOT snap this on a change of view: the whole point is that a level
+## forcing first person, or the V key, reads as the camera travelling rather
+## than cutting. It DOES snap once, on the first frame of a life, so a spawn
+## does not play a blend nobody asked for.
+func _advance_view_blend(delta: float) -> void:
+	var wanted: float = 1.0 if in_third_person() else 0.0
+	if _view_blend < 0.0:
+		_view_blend = wanted
+		return
+	var seconds: float = maxf(_config.camera.view_blend_time, 0.001)
+	_view_blend = move_toward(_view_blend, wanted, delta / seconds)
+
+## Where the view actually sits, as opposed to how far through the journey
+## it is. The stored blend advances linearly because move_toward is what
+## makes the duration exact; the Hermite is applied on the way OUT, so the
+## camera leaves and arrives slowly and only crosses the open air quickly.
+func _eased_view_blend() -> float:
+	return smoothstep(0.0, 1.0, _view_blend)
+
 func in_third_person() -> bool:
 	if forced_view == Status.View.FIRST:
 		return false
@@ -178,6 +199,12 @@ var _shoulder: int = Shoulder.RIGHT
 ## its own -- a shot that jumps across the body reads as a cut -- but the
 ## manual shoulder cycle benefits from it too.
 var _shoulder_across: float = INF
+
+## Where the view actually is between the eye (0) and the pulled-back seat
+## (1), as opposed to which one is currently chosen. Negative means "not
+## seeded yet" -- the first frame of a life snaps to whichever view is in
+## force, because a blend played on spawn is a blend nobody asked for.
+var _view_blend: float = -1.0
 
 ## Wheel-adjusted distance, in metres. Negative until the first update seeds it
 ## from third_person_back, so a config change is picked up rather than being
@@ -516,6 +543,8 @@ func reset_state() -> void:
 	# in docs/feel-backlog.md 40: a single frame of a state nobody asked for.
 	if camera != null and not in_third_person():
 		camera.position = Vector3.ZERO
+	# Re-seeded, not eased: a respawn must not play the journey between views.
+	_view_blend = -1.0
 	# third_person deliberately NOT reset. It is a VIEWING PREFERENCE, not
 	# movement state: someone who chose to watch their own body did not choose
 	# it for one life. The owner reported dying and being put back in first
@@ -664,10 +693,17 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# fraction. Composing every other contribution below into `base_position`
 	# instead of `position` keeps that guarantee on all three axes: `position`
 	# itself is written exactly once, at the very end of this function.
+	# Advanced BEFORE anything reads it, so every offset composed this frame
+	# describes one consistent point on the journey rather than two.
+	_advance_view_blend(delta)
+
 	var base_position := Vector3.ZERO
 	base_position.y = _config.camera.eye_height + extra_eye_lift
-	if not in_third_person():
-		base_position.z = -(eye_forward + extra_eye_forward)
+	# Faded rather than switched. At blend 0 this is exactly the old
+	# first-person expression and at blend 1 it is exactly the old
+	# third-person zero, so neither end moved; the eye simply retreats to the
+	# head as the seat pulls back, instead of teleporting there.
+	base_position.z = -(eye_forward + extra_eye_forward) * (1.0 - _eased_view_blend())
 
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 
@@ -690,7 +726,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# overwriting it here would silently delete the walk bob whenever the view
 	# was behind the body.
 	var back := Vector3.ZERO
-	if in_third_person():
+	if _view_blend > 0.0:
 		# EASED HERE, where there is a delta -- _third_person_position() is also
 		# reached from tests and from the debug readout, and neither has one.
 		var wanted_across: float = _wanted_shoulder_across()
@@ -700,7 +736,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 			var span: float = maxf(absf(_config.camera.third_person_right), 0.0001)
 			var rate: float = (span * 2.0) 					/ maxf(_config.camera.third_person_shoulder_time, 0.001)
 			_shoulder_across = move_toward(_shoulder_across, wanted_across, rate * delta)
-		back = _third_person_position()
+		back = _third_person_position() * _eased_view_blend()
 	camera.position = Vector3(back.x, bob - _dip + back.y, back.z)
 	_apply_body_layers()
 
@@ -1057,8 +1093,11 @@ func toggle_third_person() -> void:
 	if forced_view != Status.View.NONE:
 		return
 	third_person = not third_person
-	if not third_person and camera != null:
-		camera.position = Vector3.ZERO
+	# DO NOT zero camera.position here. update_effects() owns it, and it
+	# places it from the view blend every frame. Writing it directly puts
+	# the eye inside the head for the one frame before the blend is next
+	# evaluated, which reads as the view snapping in and flashing back out
+	# before the transition plays.
 	save_preferences()
 
 
@@ -1078,8 +1117,12 @@ func _apply_body_layers() -> void:
 		return
 	var first: int = _config.camera.first_person_body_layers
 	var third: int = _config.camera.third_person_body_layers
-	var hide: int = third if not in_third_person() else first
-	var show: int = first if not in_third_person() else third
+	# Judged on the BLEND, not on which view is chosen: the swap is a pop
+	# wherever it lands, so it belongs at the point in the journey where the
+	# camera is furthest from the head it is revealing or hiding.
+	var behind: bool = _eased_view_blend() >= _config.camera.view_blend_body_swap
+	var hide: int = third if not behind else first
+	var show: int = first if not behind else third
 	camera.cull_mask = (camera.cull_mask | show) & ~hide
 
 
