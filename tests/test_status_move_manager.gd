@@ -201,3 +201,33 @@ func test_standing_in_the_wire_costs_again_once_the_window_closes() -> void:
 			break
 	assert_eq(p.move_manager.current_name, Move.LANDING, \
 		"staying in the wire stopped costing anything after the first hit")
+
+func test_stepping_back_into_the_wire_costs_immediately() -> void:
+	# The immunity window exists so the player can walk OUT. It must not also
+	# be a window in which they can hop off the wire and back on for free --
+	# wire you can bounce along is a platform, not a hazard.
+	#
+	# Only the volume can tell walking in from a renewal (nothing tracks
+	# membership, so a body that left and returned looks identical from the
+	# inside), which is why the distinction arrives as an argument.
+	var p := await _standing_player()
+	p.move_manager.start(Move.WALKING)
+	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.LANDING, "test setup: the first hit missed")
+
+	for i in int(p.config.landing.lockout_time * 60.0) + 4:
+		await step(1)
+	assert_true(p.is_stagger_immune(), "test setup: the escape window never opened")
+
+	# A renewal inside the window is eaten -- this is the escape, and it stays.
+	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	await step(2)
+	assert_ne(p.move_manager.current_name, Move.LANDING, \
+		"the renewal was not eaten, so there is no tick in which to walk out")
+
+	# Walking back in is not a renewal.
+	p.apply_status(_spec(Status.Effect.STAGGER), p, 0, true)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.LANDING, \
+		"the wire could be hopped off and back onto for free")

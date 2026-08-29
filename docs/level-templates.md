@@ -417,6 +417,15 @@ DO NOT write that cadence as an interval of its own. Three seconds between hits
 is `lockout_time + stagger_immunity_time`, and a third number would have to be
 kept in step with both by hand.
 
+**That cadence is for standing still, not for coming back.** Walking into the
+volume charges immediately, even inside the escape window — otherwise the
+window is also a window in which the player can hop off the wire and back on
+unharmed, and a run of wire becomes a platform to bounce along. The volume is
+the only thing that can tell entering from renewing (nothing tracks
+membership), so it says which, and the body decides what that means. Escaping
+is untouched: leaving is not entering, and only a player who chooses to step
+back on pays again.
+
 ### Attaching a modification to a region rather than to a moment
 
 Nothing tracks who is inside a volume — there is no exit handler and no

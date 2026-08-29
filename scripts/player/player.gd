@@ -116,7 +116,25 @@ func exit_interest_line(line: InterestLine) -> void:
 
 ## Entry points for ModifierVolume, duck-typed the same way touch_checkpoint()
 ## and enter_interest_line() are: the volume does not know what a Player is.
-func apply_status(spec: StatusSpec, source: Object, priority: int) -> void:
+##
+## `fresh_contact` separates WALKING IN from a volume renewing what it already
+## put there -- the only distinction the volume itself can make, and it makes
+## it already (_apply_entry_effects versus the refresh tick). What it means is
+## the Player's business, and for one effect it means a great deal.
+func apply_status(spec: StatusSpec, source: Object, priority: int,
+		fresh_contact: bool = false) -> void:
+	# TOUCHING THE WIRE AGAIN IS A NEW CUT. The stagger immunity exists so a
+	# volume renewing four times a second cannot re-stagger the player on the
+	# tick the lockout ends, leaving no tick in which to walk out. It was never
+	# meant to make wire free to stand on: without this, the escape window is
+	# also a window in which the player can hop off and back on unharmed, and
+	# the wire becomes a platform to bounce along.
+	#
+	# The escape is untouched, because leaving is not entering. A player who
+	# walks out during the window stays out; only one who chooses to come back
+	# pays again, which is the whole point.
+	if fresh_contact and spec != null and spec.effect == Status.Effect.STAGGER:
+		_stagger_immunity = 0.0
 	statuses.apply(spec, source, priority)
 
 func remove_status(effect: int, subject: StringName) -> void:

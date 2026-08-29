@@ -128,7 +128,7 @@ func _physics_process(delta: float) -> void:
 	_refresh_owed += refresh_interval
 	for body in get_overlapping_bodies():
 		if body.has_method("apply_status"):
-			_push_apply(body)
+			_push_apply(body, false)
 
 func _on_body_entered(body: Node3D) -> void:
 	# Duck-typed, the same stance as Checkpoint's volume: the volume tells
@@ -148,15 +148,20 @@ func _apply_entry_effects(body: Node3D) -> void:
 	for spec in remove:
 		if spec != null:
 			body.remove_status(spec.effect, spec.subject)
-	_push_apply(body)
+	_push_apply(body, true)
 	# Renew immediately rather than waiting out a partial interval, so a body
 	# that walks in just after a tick is not briefly unmodified.
 	_refresh_owed = refresh_interval
 
-func _push_apply(body: Node3D) -> void:
+## `fresh_contact` says whether this is somebody WALKING IN or the interval
+## renewing what is already on them. The volume is the only thing that can
+## tell the two apart -- nothing tracks membership, so a body that left and
+## came back looks identical from the inside -- and some effects care a great
+## deal which one they are. What the difference means is the receiver's.
+func _push_apply(body: Node3D, fresh_contact: bool) -> void:
 	for spec in apply:
 		if spec != null:
-			body.apply_status(spec, self, layer_priority)
+			body.apply_status(spec, self, layer_priority, fresh_contact)
 
 ## Called on respawn. The count is about one life: a level that cripples the
 ## player at its start has to cripple them again after they die there.

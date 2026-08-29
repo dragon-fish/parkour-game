@@ -232,3 +232,35 @@ func test_a_status_lasting_twice_the_interval_is_not_flagged() -> void:
 	v.apply = [_cap(0.5, 0.2)]
 	v.refresh_interval = 0.1
 	assert_eq(_warned(v), 0, "the recommended pairing was flagged")
+
+## Records how it was told, rather than what it was told. Duck-typed the same
+## way a Player is, and deliberately not one: what `fresh_contact` MEANS is
+## the receiver's business, and this test is only about the volume saying it.
+class ContactLog extends CharacterBody3D:
+	var fresh: Array[bool] = []
+	func apply_status(_spec: StatusSpec, _source: Object, _priority: int,
+			fresh_contact: bool = false) -> void:
+		fresh.append(fresh_contact)
+	func remove_status(_effect: int, _subject: StringName) -> void:
+		pass
+
+func test_a_volume_says_whether_it_was_entered_or_is_renewing() -> void:
+	# The receiver cannot work this out for itself: nothing tracks membership,
+	# so a body that left and came back is indistinguishable from one that
+	# never moved. The volume is the only thing that knows, and for a hazard
+	# the difference is whether stepping back on costs anything.
+	var volume := _volume(Vector3.ZERO)
+	volume.apply = [_cap(0.5, 10.0)]
+	volume.refresh_interval = 0.05
+	var log := ContactLog.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(0.5, 0.5, 0.5)
+	shape.shape = box
+	log.add_child(shape)
+	add_child_autofree(log)
+	log.global_position = Vector3.ZERO
+	await step(12)
+	assert_gt(log.fresh.size(), 1, "test setup: the volume never applied anything")
+	assert_true(log.fresh[0], "walking in was reported as a renewal")
+	assert_false(log.fresh[log.fresh.size() - 1], "a refresh was reported as walking in")
