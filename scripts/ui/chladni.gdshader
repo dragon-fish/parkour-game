@@ -1,0 +1,86 @@
+shader_type canvas_item;
+
+// Powder on a driven plate: the main menu's background field, above the
+// horizon and behind everything else.
+//
+// A CHLADNI FIGURE is what sand does on a plate being made to resonate. It
+// gets bounced off wherever the plate is moving and can only settle where the
+// plate is still, so it collects on the NODAL LINES -- the places where the
+// standing wave crosses zero. Change the driving frequency and a different
+// mode takes over, and the powder reorganises into another pattern.
+//
+// For a square plate the modes have a closed form, which is the whole reason
+// this is affordable as a fragment shader:
+//
+//     f(x, y) = cos(n*PI*x) * cos(m*PI*y) - cos(m*PI*x) * cos(n*PI*y)
+//
+// The figure is where f = 0. Two integers pick the mode; everything else here
+// is presentation.
+//
+// PARTICLES, NOT LINES. Drawing |f| < eps directly gives clean curves, which
+// is a diagram rather than powder. Instead a hash-seeded grain per cell is
+// shown according to how close its own cell sits to a nodal line, so the
+// figure is made of countable specks that thin out as they leave the line --
+// which is what the real thing looks like, because the settling is a
+// tendency and not a rule.
+
+uniform float mode_n : hint_range(1.0, 12.0) = 3.0;
+uniform float mode_m : hint_range(1.0, 12.0) = 5.0;
+// How wide a band around the nodal line still holds grains. Widening it is
+// what a plate driven harder actually does -- the powder cannot settle as
+// tightly -- so this is where loudness goes.
+uniform float settle : hint_range(0.01, 1.0) = 0.18;
+// How far a grain is thrown from its cell, which is the plate shaking.
+uniform float agitation : hint_range(0.0, 1.0) = 0.0;
+uniform float grain_density : hint_range(4.0, 400.0) = 150.0;
+uniform float grain_size : hint_range(0.01, 0.5) = 0.16;
+uniform float brightness : hint_range(0.0, 1.0) = 0.5;
+// The rect is wide and the plate is square: without this the figure is
+// stretched and stops being symmetric, which is the one thing it is for.
+uniform float aspect : hint_range(0.1, 8.0) = 1.777;
+// Fades the field out toward the horizon, so it sits in the picture rather
+// than ending on a line.
+uniform float horizon_fade : hint_range(0.0, 1.0) = 0.35;
+uniform vec4 tint : source_color = vec4(0.34, 0.41, 0.52, 1.0);
+
+float hash(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+// The plate's displacement at a point, normalised to roughly -1..1.
+float plate(vec2 p, float n, float m) {
+	return (cos(n * PI * p.x) * cos(m * PI * p.y)
+		- cos(m * PI * p.x) * cos(n * PI * p.y)) * 0.5;
+}
+
+void fragment() {
+	// Square plate coordinates, centred, with the wide axis corrected.
+	vec2 plate_uv = vec2((UV.x - 0.5) * aspect + 0.5, UV.y);
+
+	vec2 grid = plate_uv * grain_density;
+	vec2 cell = floor(grid);
+	vec2 local = fract(grid) - 0.5;
+
+	// Each grain sits somewhere of its own inside its cell, and is thrown
+	// about from there. Two hashes so the throw is not diagonal.
+	vec2 seed = vec2(hash(cell), hash(cell + 17.3));
+	vec2 offset = (seed - 0.5) * 0.7;
+	float wobble = hash(cell + 91.7) * TAU;
+	offset += agitation * 0.45 * vec2(sin(TIME * 9.0 + wobble), cos(TIME * 7.3 + wobble));
+
+	float dist = length(local - offset);
+	float grain = 1.0 - smoothstep(grain_size, grain_size + 0.10, dist);
+
+	// How well this grain's own place holds it: right on the line, entirely;
+	// a band away, not at all.
+	vec2 at = (cell + 0.5 + offset) / grain_density;
+	float settled = 1.0 - smoothstep(0.0, settle, abs(plate(at, mode_n, mode_m)));
+
+	// A few grains never settle. Without them the empty regions are empty in
+	// a way that reads as a mask rather than as powder.
+	float strays = 0.06 * step(0.965, hash(cell + 5.1));
+
+	float alpha = grain * clamp(settled + strays, 0.0, 1.0) * brightness;
+	alpha *= smoothstep(0.0, horizon_fade, 1.0 - UV.y);
+	COLOR = vec4(tint.rgb, tint.a * alpha);
+}

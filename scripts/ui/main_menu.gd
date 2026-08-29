@@ -129,6 +129,7 @@ var _floor_phase := 0.0
 var _floor_gain := 0.0
 var _click_prompt: Label
 var _music: MenuMusic
+var _chladni: ChladniField
 var _prompt_tween: Tween
 var _prompt_shown := false
 var _quit_confirm: Control
@@ -223,6 +224,7 @@ func _build_ui() -> void:
 	_paper_noise = MeTheme.paper_noise_layer()
 	add_child(_paper_noise)
 
+	_build_chladni()
 	_build_floor()
 	_build_viewport()
 	_build_mirror()
@@ -233,6 +235,26 @@ func _build_ui() -> void:
 	_build_logo_mark()
 	_build_click_prompt()
 	_build_music()
+
+## Powder on a driven plate, above the horizon and behind everything else.
+## Built here rather than later so it sits at the very back: the floor, the
+## silhouette and the whole menu are added after it and draw over it.
+##
+## STOPS AT THE HORIZON, where the floor's own dot grid begins. Two fields of
+## specks overlapping would read as one noisy one, and the shader fades its
+## own bottom edge out so the boundary is not a line.
+func _build_chladni() -> void:
+	_chladni = ChladniField.new()
+	_chladni.name = "ChladniField"
+	_chladni.anchor_left = 0.0
+	_chladni.anchor_right = 1.0
+	_chladni.anchor_top = 0.0
+	_chladni.anchor_bottom = 0.5
+	_chladni.offset_left = 0.0
+	_chladni.offset_right = 0.0
+	_chladni.offset_top = 0.0
+	_chladni.offset_bottom = 0.0
+	add_child(_chladni)
 
 func _build_floor() -> void:
 	_floor = ColorRect.new()
