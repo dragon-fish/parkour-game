@@ -1,4 +1,4 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://qxoxo7g0qvgb"]
 
 [ext_resource type="Script" uid="uid://c0r485cb3u71f" path="res://scripts/level/arena.gd" id="1_arena"]
 [ext_resource type="Script" uid="uid://dhku0eeeioa0i" path="res://scripts/level/fog_config.gd" id="2_fog"]
@@ -25,7 +25,11 @@ ambient_light_color = Color(0.223529, 0.466667, 0.741176, 1)
 ssr_enabled = true
 ssr_max_steps = 32
 
+[sub_resource type="BoxShape3D" id="Shape_floor"]
+size = Vector3(10, 1, 140)
+
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_acrylic"]
+render_priority = 0
 shader = ExtResource("8_acrylic")
 shader_parameter/base_color = Color(0.94, 0.95, 0.97, 1)
 shader_parameter/dot_color = Color(0.62, 0.7, 0.8, 1)
@@ -35,21 +39,6 @@ shader_parameter/dot_radius = 0.05
 shader_parameter/metallic_amount = 0.4
 shader_parameter/roughness_amount = 0.12
 shader_parameter/projection_sharpness = 6.0
-
-[sub_resource type="StandardMaterial3D" id="Material_red"]
-albedo_color = Color(0.78, 0.12, 0.12, 1)
-roughness = 0.6
-
-[sub_resource type="StandardMaterial3D" id="Material_green"]
-albedo_color = Color(0.13, 0.62, 0.28, 1)
-roughness = 0.6
-
-[sub_resource type="StandardMaterial3D" id="Material_obstacle"]
-albedo_color = Color(0.45, 0.1, 0.1, 1)
-roughness = 0.5
-
-[sub_resource type="BoxShape3D" id="Shape_floor"]
-size = Vector3(10, 1, 140)
 
 [sub_resource type="BoxMesh" id="Mesh_floor"]
 material = SubResource("ShaderMaterial_acrylic")
@@ -62,40 +51,16 @@ size = Vector3(0.5, 4, 140)
 material = SubResource("ShaderMaterial_acrylic")
 size = Vector3(0.5, 4, 140)
 
-[sub_resource type="BoxShape3D" id="Shape_vol12"]
-size = Vector3(10, 4, 12)
+[sub_resource type="BoxShape3D" id="Shape_block"]
+size = Vector3(4, 1, 3)
 
-[sub_resource type="BoxMesh" id="Mesh_patch12"]
-material = SubResource("Material_red")
-size = Vector3(9.4, 0.02, 12)
+[sub_resource type="StandardMaterial3D" id="Material_obstacle"]
+albedo_color = Color(0.45, 0.1, 0.1, 1)
+roughness = 0.5
 
-[sub_resource type="BoxShape3D" id="Shape_vol6"]
-size = Vector3(10, 4, 6)
-
-[sub_resource type="BoxMesh" id="Mesh_patch6"]
-material = SubResource("Material_red")
-size = Vector3(9.4, 0.02, 6)
-
-[sub_resource type="BoxShape3D" id="Shape_vol4"]
-size = Vector3(10, 4, 4)
-
-[sub_resource type="BoxMesh" id="Mesh_patch4green"]
-material = SubResource("Material_green")
-size = Vector3(9.4, 0.02, 4)
-
-[sub_resource type="BoxShape3D" id="Shape_vol8"]
-size = Vector3(10, 4, 8)
-
-[sub_resource type="BoxMesh" id="Mesh_patch8"]
-material = SubResource("Material_red")
-size = Vector3(9.4, 0.02, 8)
-
-[sub_resource type="BoxShape3D" id="Shape_wire"]
-size = Vector3(10, 2.5, 1.4)
-
-[sub_resource type="BoxMesh" id="Mesh_patch_wire"]
-material = SubResource("Material_red")
-size = Vector3(9.4, 0.02, 1.4)
+[sub_resource type="BoxMesh" id="Mesh_block"]
+material = SubResource("Material_obstacle")
+size = Vector3(4, 1, 3)
 
 [sub_resource type="BoxShape3D" id="Shape_fence"]
 size = Vector3(10, 1.2, 0.3)
@@ -104,18 +69,22 @@ size = Vector3(10, 1.2, 0.3)
 material = SubResource("Material_obstacle")
 size = Vector3(10, 1.2, 0.3)
 
-[sub_resource type="BoxShape3D" id="Shape_block"]
-size = Vector3(4, 1, 3)
-
-[sub_resource type="BoxMesh" id="Mesh_block"]
-material = SubResource("Material_obstacle")
-size = Vector3(4, 1, 3)
-
 [sub_resource type="Resource" id="Spec_cap05"]
 resource_name = "SPEED_CAP 0.50 (0.15 s)"
 script = ExtResource("10_spec")
 amount = 0.5
 seconds = 0.15
+
+[sub_resource type="BoxShape3D" id="Shape_vol12"]
+size = Vector3(10, 4, 12)
+
+[sub_resource type="StandardMaterial3D" id="Material_red"]
+albedo_color = Color(0.78, 0.12, 0.12, 1)
+roughness = 0.6
+
+[sub_resource type="BoxMesh" id="Mesh_patch12"]
+material = SubResource("Material_red")
+size = Vector3(9.4, 0.02, 12)
 
 [sub_resource type="Resource" id="Spec_nojump"]
 resource_name = "BLOCK_JUMP (0.15 s)"
@@ -127,7 +96,6 @@ seconds = 0.15
 resource_name = "FORCE_VIEW FIRST (0.15 s)"
 script = ExtResource("10_spec")
 effect = 1
-view = 1
 seconds = 0.15
 
 [sub_resource type="Resource" id="Spec_third"]
@@ -149,6 +117,13 @@ script = ExtResource("10_spec")
 effect = 15
 seconds = 1.0
 
+[sub_resource type="BoxShape3D" id="Shape_wire"]
+size = Vector3(10, 1.34906, 0.6360596)
+
+[sub_resource type="BoxMesh" id="Mesh_patch_wire"]
+material = SubResource("Material_red")
+size = Vector3(9.4, 0.02, 1.4)
+
 [sub_resource type="Resource" id="Spec_ward_cap"]
 resource_name = "SPEED_CAP 0.40 (until removed)"
 script = ExtResource("10_spec")
@@ -159,6 +134,13 @@ resource_name = "BLOCK_JUMP (until removed)"
 script = ExtResource("10_spec")
 effect = 2
 
+[sub_resource type="BoxShape3D" id="Shape_vol6"]
+size = Vector3(10, 4, 6)
+
+[sub_resource type="BoxMesh" id="Mesh_patch6"]
+material = SubResource("Material_red")
+size = Vector3(9.4, 0.02, 6)
+
 [sub_resource type="Resource" id="Spec_lift_cap"]
 resource_name = "SPEED_CAP 0.00 (until removed)"
 script = ExtResource("10_spec")
@@ -168,89 +150,107 @@ resource_name = "BLOCK_JUMP (until removed)"
 script = ExtResource("10_spec")
 effect = 2
 
+[sub_resource type="BoxShape3D" id="Shape_vol4"]
+size = Vector3(10, 4, 4)
+
+[sub_resource type="StandardMaterial3D" id="Material_green"]
+albedo_color = Color(0.13, 0.62, 0.28, 1)
+roughness = 0.6
+
+[sub_resource type="BoxMesh" id="Mesh_patch4green"]
+material = SubResource("Material_green")
+size = Vector3(9.4, 0.02, 4)
+
 [sub_resource type="Resource" id="Spec_once_cap"]
-resource_name = "SPEED_CAP 0.30 (4 s)"
+resource_name = "SPEED_CAP 0.30 (4.0 s)"
 script = ExtResource("10_spec")
 amount = 0.3
 seconds = 4.0
 
-[node name="ModifierCourse" type="Node3D" node_paths=PackedStringArray("player", "spawn_point")]
+[sub_resource type="BoxShape3D" id="Shape_vol8"]
+size = Vector3(10, 4, 8)
+
+[sub_resource type="BoxMesh" id="Mesh_patch8"]
+material = SubResource("Material_red")
+size = Vector3(9.4, 0.02, 8)
+
+[node name="ModifierCourse" type="Node3D" unique_id=1493923550 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_arena")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
 fog = SubResource("Resource_fog")
 
-[node name="Sun" type="DirectionalLight3D" parent="."]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=403645470]
 transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 0, 0)
 shadow_enabled = true
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=899203741]
 environment = SubResource("Environment_course")
 
-[node name="SpawnPoint" type="Marker3D" parent="."]
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1006442011]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 4)
 script = ExtResource("5_spawn")
 
-[node name="Floor" type="StaticBody3D" parent="."]
+[node name="Floor" type="StaticBody3D" parent="." unique_id=909601671]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, -62)
 
-[node name="Collision" type="CollisionShape3D" parent="Floor"]
+[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=1626236963]
 shape = SubResource("Shape_floor")
 
-[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=745538111]
 mesh = SubResource("Mesh_floor")
 
-[node name="WallLeft" type="StaticBody3D" parent="."]
+[node name="WallLeft" type="StaticBody3D" parent="." unique_id=243099506]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.25, 2, -62)
 
-[node name="Collision" type="CollisionShape3D" parent="WallLeft"]
+[node name="Collision" type="CollisionShape3D" parent="WallLeft" unique_id=37605204]
 shape = SubResource("Shape_wall")
 
-[node name="Mesh" type="MeshInstance3D" parent="WallLeft"]
+[node name="Mesh" type="MeshInstance3D" parent="WallLeft" unique_id=991456079]
 mesh = SubResource("Mesh_wall")
 
-[node name="WallRight" type="StaticBody3D" parent="."]
+[node name="WallRight" type="StaticBody3D" parent="." unique_id=1854138955]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.25, 2, -62)
 
-[node name="Collision" type="CollisionShape3D" parent="WallRight"]
+[node name="Collision" type="CollisionShape3D" parent="WallRight" unique_id=186628787]
 shape = SubResource("Shape_wall")
 
-[node name="Mesh" type="MeshInstance3D" parent="WallRight"]
+[node name="Mesh" type="MeshInstance3D" parent="WallRight" unique_id=1107881880]
 mesh = SubResource("Mesh_wall")
 
-[node name="JumpBlock" type="StaticBody3D" parent="."]
+[node name="JumpBlock" type="StaticBody3D" parent="." unique_id=49719047]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -32)
 
-[node name="Collision" type="CollisionShape3D" parent="JumpBlock"]
+[node name="Collision" type="CollisionShape3D" parent="JumpBlock" unique_id=1804632381]
 shape = SubResource("Shape_block")
 
-[node name="Mesh" type="MeshInstance3D" parent="JumpBlock"]
+[node name="Mesh" type="MeshInstance3D" parent="JumpBlock" unique_id=1958601430]
 mesh = SubResource("Mesh_block")
 
-[node name="Fence" type="StaticBody3D" parent="."]
+[node name="Fence" type="StaticBody3D" parent="." unique_id=1710649408]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, -90)
 
-[node name="Collision" type="CollisionShape3D" parent="Fence"]
+[node name="Collision" type="CollisionShape3D" parent="Fence" unique_id=724928509]
 shape = SubResource("Shape_fence")
 
-[node name="Mesh" type="MeshInstance3D" parent="Fence"]
+[node name="Mesh" type="MeshInstance3D" parent="Fence" unique_id=1626730565]
 mesh = SubResource("Mesh_fence")
 
-[node name="T1SpeedCap" type="Area3D" parent="."]
+[node name="T1SpeedCap" type="Area3D" parent="." unique_id=1037649822]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -16)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_cap05")])
 refresh_interval = 0.05
 
-[node name="Shape" type="CollisionShape3D" parent="T1SpeedCap"]
+[node name="Shape" type="CollisionShape3D" parent="T1SpeedCap" unique_id=1495377744]
 shape = SubResource("Shape_vol12")
 
-[node name="Patch" type="MeshInstance3D" parent="T1SpeedCap"]
+[node name="Patch" type="MeshInstance3D" parent="T1SpeedCap" unique_id=625169695]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.99, 0)
 mesh = SubResource("Mesh_patch12")
 
-[node name="Label" type="Label3D" parent="T1SpeedCap"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 6.0)
+[node name="Label" type="Label3D" parent="T1SpeedCap" unique_id=493055989]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 6)
 pixel_size = 0.006
 billboard = 1
 text = "1  SPEED_CAP 0.5
@@ -258,21 +258,21 @@ region-attached"
 font_size = 64
 outline_size = 10
 
-[node name="T2NoJump" type="Area3D" parent="."]
+[node name="T2NoJump" type="Area3D" parent="." unique_id=1797914151]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -32)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_nojump")])
 refresh_interval = 0.05
 
-[node name="Shape" type="CollisionShape3D" parent="T2NoJump"]
+[node name="Shape" type="CollisionShape3D" parent="T2NoJump" unique_id=1181459059]
 shape = SubResource("Shape_vol12")
 
-[node name="Patch" type="MeshInstance3D" parent="T2NoJump"]
+[node name="Patch" type="MeshInstance3D" parent="T2NoJump" unique_id=566231416]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.99, 0)
 mesh = SubResource("Mesh_patch12")
 
-[node name="Label" type="Label3D" parent="T2NoJump"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 6.0)
+[node name="Label" type="Label3D" parent="T2NoJump" unique_id=1870872023]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 6)
 pixel_size = 0.006
 billboard = 1
 text = "2  BLOCK_JUMP
@@ -280,21 +280,21 @@ the block is unjumpable"
 font_size = 64
 outline_size = 10
 
-[node name="T3ForceFirst" type="Area3D" parent="."]
+[node name="T3ForceFirst" type="Area3D" parent="." unique_id=505189042]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -48)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_first")])
 refresh_interval = 0.05
 
-[node name="Shape" type="CollisionShape3D" parent="T3ForceFirst"]
+[node name="Shape" type="CollisionShape3D" parent="T3ForceFirst" unique_id=677534792]
 shape = SubResource("Shape_vol12")
 
-[node name="Patch" type="MeshInstance3D" parent="T3ForceFirst"]
+[node name="Patch" type="MeshInstance3D" parent="T3ForceFirst" unique_id=2063718738]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.99, 0)
 mesh = SubResource("Mesh_patch12")
 
-[node name="Label" type="Label3D" parent="T3ForceFirst"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 6.0)
+[node name="Label" type="Label3D" parent="T3ForceFirst" unique_id=1875600238]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 6)
 pixel_size = 0.006
 billboard = 1
 text = "3  FORCE_VIEW FIRST
@@ -302,21 +302,21 @@ press V first, then walk in"
 font_size = 64
 outline_size = 10
 
-[node name="T4ForceThird" type="Area3D" parent="."]
+[node name="T4ForceThird" type="Area3D" parent="." unique_id=1811506285]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -64)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_third")])
 refresh_interval = 0.05
 
-[node name="Shape" type="CollisionShape3D" parent="T4ForceThird"]
+[node name="Shape" type="CollisionShape3D" parent="T4ForceThird" unique_id=1622555510]
 shape = SubResource("Shape_vol12")
 
-[node name="Patch" type="MeshInstance3D" parent="T4ForceThird"]
+[node name="Patch" type="MeshInstance3D" parent="T4ForceThird" unique_id=364133448]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.99, 0)
 mesh = SubResource("Mesh_patch12")
 
-[node name="Label" type="Label3D" parent="T4ForceThird"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 6.0)
+[node name="Label" type="Label3D" parent="T4ForceThird" unique_id=1519247882]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 6)
 pixel_size = 0.006
 billboard = 1
 text = "4  FORCE_VIEW THIRD
@@ -324,21 +324,21 @@ V is refused while forced"
 font_size = 64
 outline_size = 10
 
-[node name="T5NoWallRun" type="Area3D" parent="."]
+[node name="T5NoWallRun" type="Area3D" parent="." unique_id=515455001]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -80)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_nowallrun")])
 refresh_interval = 0.05
 
-[node name="Shape" type="CollisionShape3D" parent="T5NoWallRun"]
+[node name="Shape" type="CollisionShape3D" parent="T5NoWallRun" unique_id=1409257077]
 shape = SubResource("Shape_vol12")
 
-[node name="Patch" type="MeshInstance3D" parent="T5NoWallRun"]
+[node name="Patch" type="MeshInstance3D" parent="T5NoWallRun" unique_id=176585923]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.99, 0)
 mesh = SubResource("Mesh_patch12")
 
-[node name="Label" type="Label3D" parent="T5NoWallRun"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 6.0)
+[node name="Label" type="Label3D" parent="T5NoWallRun" unique_id=1207077564]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 6)
 pixel_size = 0.006
 billboard = 1
 text = "5  BLOCK_WALL_RUN
@@ -346,19 +346,20 @@ run at a side wall and jump"
 font_size = 64
 outline_size = 10
 
-[node name="T6BarbedWire" type="Area3D" parent="."]
+[node name="T6BarbedWire" type="Area3D" parent="." unique_id=928845456]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, -90)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_stagger")])
 
-[node name="Shape" type="CollisionShape3D" parent="T6BarbedWire"]
+[node name="Shape" type="CollisionShape3D" parent="T6BarbedWire" unique_id=1074278712]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.57547, -0.010238647)
 shape = SubResource("Shape_wire")
 
-[node name="Patch" type="MeshInstance3D" parent="T6BarbedWire"]
+[node name="Patch" type="MeshInstance3D" parent="T6BarbedWire" unique_id=1474547242]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.24, 0)
 mesh = SubResource("Mesh_patch_wire")
 
-[node name="Label" type="Label3D" parent="T6BarbedWire"]
+[node name="Label" type="Label3D" parent="T6BarbedWire" unique_id=1568322714]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.75, 0.7)
 pixel_size = 0.006
 billboard = 1
@@ -367,20 +368,20 @@ vault it: the cut lands in mid-air"
 font_size = 64
 outline_size = 10
 
-[node name="T7Ward" type="Area3D" parent="."]
+[node name="T7Ward" type="Area3D" parent="." unique_id=1862216436]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -97)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_ward_cap"), SubResource("Spec_ward_nojump")])
 
-[node name="Shape" type="CollisionShape3D" parent="T7Ward"]
+[node name="Shape" type="CollisionShape3D" parent="T7Ward" unique_id=569006067]
 shape = SubResource("Shape_vol6")
 
-[node name="Patch" type="MeshInstance3D" parent="T7Ward"]
+[node name="Patch" type="MeshInstance3D" parent="T7Ward" unique_id=1320516231]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.99, 0)
 mesh = SubResource("Mesh_patch6")
 
-[node name="Label" type="Label3D" parent="T7Ward"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 3.0)
+[node name="Label" type="Label3D" parent="T7Ward" unique_id=1488887754]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 3)
 pixel_size = 0.006
 billboard = 1
 text = "7  the ward: SPEED_CAP 0.4 + BLOCK_JUMP
@@ -388,20 +389,20 @@ seconds = INF, it follows you out"
 font_size = 64
 outline_size = 10
 
-[node name="T8Unlock" type="Area3D" parent="."]
+[node name="T8Unlock" type="Area3D" parent="." unique_id=1279363383]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -110)
 script = ExtResource("9_volume")
 remove = Array[ExtResource("10_spec")]([SubResource("Spec_lift_cap"), SubResource("Spec_lift_jump")])
 
-[node name="Shape" type="CollisionShape3D" parent="T8Unlock"]
+[node name="Shape" type="CollisionShape3D" parent="T8Unlock" unique_id=846467780]
 shape = SubResource("Shape_vol4")
 
-[node name="Patch" type="MeshInstance3D" parent="T8Unlock"]
+[node name="Patch" type="MeshInstance3D" parent="T8Unlock" unique_id=1979852979]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.99, 0)
 mesh = SubResource("Mesh_patch4green")
 
-[node name="Label" type="Label3D" parent="T8Unlock"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 2.0)
+[node name="Label" type="Label3D" parent="T8Unlock" unique_id=1873680799]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 2)
 pixel_size = 0.006
 billboard = 1
 text = "8  the unlock (green)
@@ -409,21 +410,21 @@ lifts both of the ward's statuses"
 font_size = 64
 outline_size = 10
 
-[node name="T9OnceOnly" type="Area3D" parent="."]
+[node name="T9OnceOnly" type="Area3D" parent="." unique_id=27665100]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -120)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_once_cap")])
 max_trigger_count = 1
 
-[node name="Shape" type="CollisionShape3D" parent="T9OnceOnly"]
+[node name="Shape" type="CollisionShape3D" parent="T9OnceOnly" unique_id=514075848]
 shape = SubResource("Shape_vol8")
 
-[node name="Patch" type="MeshInstance3D" parent="T9OnceOnly"]
+[node name="Patch" type="MeshInstance3D" parent="T9OnceOnly" unique_id=794222668]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.99, 0)
 mesh = SubResource("Mesh_patch8")
 
-[node name="Label" type="Label3D" parent="T9OnceOnly"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 4.0)
+[node name="Label" type="Label3D" parent="T9OnceOnly" unique_id=1392854165]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 4)
 pixel_size = 0.006
 billboard = 1
 text = "9  max_trigger_count = 1
@@ -431,11 +432,11 @@ walk out and back in: nothing the second time"
 font_size = 64
 outline_size = 10
 
-[node name="Player" parent="." instance=ExtResource("4_player")]
+[node name="Player" parent="." unique_id=1413053633 instance=ExtResource("4_player")]
 
-[node name="DebugHud" type="CanvasLayer" parent="." node_paths=PackedStringArray("player")]
+[node name="DebugHud" type="CanvasLayer" parent="." unique_id=1885649086 node_paths=PackedStringArray("player")]
 script = ExtResource("6_hud")
 player = NodePath("../Player")
 
-[node name="TuningPanel" type="CanvasLayer" parent="."]
+[node name="TuningPanel" type="CanvasLayer" parent="." unique_id=569745173]
 script = ExtResource("7_panel")
