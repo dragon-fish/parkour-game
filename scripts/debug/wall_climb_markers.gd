@@ -42,6 +42,9 @@ var _reach: MeshInstance3D
 func _ready() -> void:
 	_contact = _make_ball()
 	_reach = _make_spar()
+	# The group is the whole registration: the tuning panel finds every overlay
+	# through it and duck-types show_overlay()/overlay_shown().
+	add_to_group("debug_overlay")
 
 func _make_ball() -> MeshInstance3D:
 	var node := MeshInstance3D.new()
@@ -83,8 +86,43 @@ func _hide_all() -> void:
 	_contact.visible = false
 	_reach.visible = false
 
+## The name the overlay protocol uses, kept separate from _hide_all() only so
+## a null _contact before _ready() cannot crash a toggle.
+func _hide_markers() -> void:
+	if _contact == null:
+		return
+	_hide_all()
+
+## OFF UNTIL ASKED FOR. These are diagnostic lines drawn every frame in front
+## of whatever is being played, and drawn unconditionally they are noise sitting
+## on top of the level -- the probe's opinion about a ledge is worth seeing
+## while a grab is being debugged and worth nothing the rest of the time.
+##
+## Shares F12 with the scripted path and the other probe overlays: they answer
+## the same kind of question, and one key for "show me what the probes think"
+## beats three to remember.
+var _shown: bool = false
+
+## Turns the markers on or off from code. Mirrors CapsuleDebug.show_overlay()
+## and the rest of the debug_overlay group -- the tuning panel's Debug page
+## duck-types this without knowing the class.
+func show_overlay(on: bool) -> void:
+	_shown = on
+	if not on:
+		_hide_markers()
+
+## Duck-typed getter the Debug page reads every frame to keep its checkbox in
+## step with the keyboard toggle.
+func overlay_shown() -> bool:
+	return _shown
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo 			and event.physical_keycode == KEY_F12:
+		show_overlay(not _shown)
+
+
 func _process(_delta: float) -> void:
-	if player == null or player.probes == null or _contact == null:
+	if not _shown or player == null or player.probes == null or _contact == null:
 		return
 	# The same direction the entry test measures against, so the marker cannot
 	# disagree with the decision it is illustrating. ZERO means standing still

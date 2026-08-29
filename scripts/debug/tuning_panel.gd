@@ -24,6 +24,8 @@ const DEBUG_OVERLAYS: Array[Dictionary] = [
 	{"label": "Capsule (F10)", "node_name": "CapsuleDebug"},
 	{"label": "Scripted path (F12)", "node_name": "ScriptedPathDebug"},
 	{"label": "Shimmy probes", "node_name": "ShimmyDebug"},
+	{"label": "Ledge probe (F12)", "node_name": "GrabMarkers"},
+	{"label": "Wall probe (F12)", "node_name": "WallClimbMarkers"},
 	# persist = false: activating the tuner PAUSES the whole tree, so restoring
 	# it at boot is a SOFTLOCK -- a T-pose with the screen frozen and unresponsive,
 	# not even Esc getting out of it. With no key bound to it, this panel is its
