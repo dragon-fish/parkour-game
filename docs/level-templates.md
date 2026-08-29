@@ -378,9 +378,15 @@ player crouching is geometry, not a status.
 
 Barbed wire cuts you when you touch it. `STAGGER` stumbles the player the tick
 it lands, **including in mid-air** — so a volume tall enough to cover a fence
-charges the vault at the moment it is taken, not on the far side. The body
-crumples where it was hit and drops under gravity; the lockout plays out on
-the way down and carries on once it lands.
+charges the vault at the moment it is taken, not on the far side. The lockout
+starts there too, which is why the time spent unable to move on the ground is
+noticeably shorter than `lockout_time`: most of it was spent falling.
+
+**It is a knock-down, not a wall.** The cut takes the upward half of the arc
+and most of the speed — `landing.stagger_keep_ratio` of the horizontal is what
+survives — so the body carries on forward and down instead of stopping dead
+above the fence. Wire is there to punish forgetting to tuck, not to make an
+obstacle impassable.
 
 `seconds` is therefore an ordinary duration here, and a short one is fine: the
 status is spent the instant it fires, so anything above a tick or two only

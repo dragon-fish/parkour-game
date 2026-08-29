@@ -20,7 +20,19 @@ var _elapsed: float = 0.0
 
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
-	player.velocity = Vector3.ZERO
+	# A WIRE CUT IS A KNOCK-DOWN, NOT A WALL. A hard landing arrives here
+	# already charged by Player.landing_keep_ratio(), so zeroing what is
+	# left costs nothing -- but a stagger is charged HERE, and taking
+	# everything would make a wired fence impassable instead of merely
+	# expensive. Upward travel is what the wire actually stops: the arc is
+	# cut at the moment of contact and the body carries on forward and down.
+	if player.pending_stagger:
+		player.pending_stagger = false
+		player.velocity.x *= config.landing.stagger_keep_ratio
+		player.velocity.z *= config.landing.stagger_keep_ratio
+		player.velocity.y = minf(player.velocity.y, 0.0)
+	else:
+		player.velocity = Vector3.ZERO
 	# DECLARED FROM THE ENGINE, not assumed. This move never calls
 	# move_and_slide() on its own first tick, so the declaration has to be
 	# made here -- but it is not always true. A hard landing arrives with

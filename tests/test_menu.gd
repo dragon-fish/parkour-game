@@ -561,3 +561,14 @@ func test_a_key_before_the_entrance_is_scheduled_does_not_replay_the_prompt() ->
 		"the click prompt is breathing over a menu that has already settled")
 	assert_true(settled or menu._entrance_active,
 		"the menu neither settled nor still takes input -- nothing can reach it")
+
+func test_the_pause_menu_sits_above_the_screen_effects() -> void:
+	# A menu you cannot read is a menu that is not there. ScreenEffects sits
+	# high on purpose -- a death blackout has to cover the crosshair and the
+	# HUD -- so the pause layer has to clear it, and the two numbers live in
+	# different files with nothing but this test tying them together.
+	var fx := ScreenEffects.new()
+	add_child_autofree(fx)
+	await step(1)
+	assert_gt(PauseUi.layer, fx.layer, \
+		"the pause menu is underneath the screen effects, so a blur or a fade hides it")

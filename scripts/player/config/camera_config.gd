@@ -408,6 +408,15 @@ extends Resource
 ## journey is new.
 @export var view_blend_time: float = 0.12
 
+## How much screen blur the view change carries at its midpoint. Zero at both
+## ends by construction, so the channel is free whenever no view is changing.
+##
+## It is here to COVER A SEAM, not for its own sake: the body swaps between
+## its first-person and third-person meshes at one instant, and that pop has
+## to happen somewhere. Blurring hardest exactly where the swap lands is the
+## same trick a driving game plays when it cuts between chase and bonnet.
+@export_range(0.0, 1.0, 0.05) var view_blend_blur: float = 0.4
+
 ## Where in that journey the body swaps between its first-person and
 ## third-person render layers. A VRM carries a full body and a headless one on
 ## separate layers, so the swap is a pop wherever it happens; putting it a

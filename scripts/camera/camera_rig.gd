@@ -181,6 +181,17 @@ func _advance_view_blend(delta: float) -> void:
 func _eased_view_blend() -> float:
 	return smoothstep(0.0, 1.0, _view_blend)
 
+## How much screen blur the view change wants right now. Fed to ScreenEffects
+## by Player -- this rig is handed values and never reaches for a node.
+##
+## A half sine over the LINEAR progress, so it is zero at both rest states
+## without needing any state of its own to remember whether a transition is
+## running, and peaks in the middle where the body's mesh swap lands.
+func view_blur() -> float:
+	if _view_blend < 0.0:
+		return 0.0
+	return sin(PI * _view_blend) * _config.camera.view_blend_blur
+
 func in_third_person() -> bool:
 	if forced_view == Status.View.FIRST:
 		return false

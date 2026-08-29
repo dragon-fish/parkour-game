@@ -226,6 +226,11 @@ var _speed_scale: float = 1.0
 ## go, so a level that keeps re-applying STAGGER cannot chain them.
 var _stagger_immunity: float = 0.0
 
+## Set by MoveManager on the tick it commits a stagger, so LandingMove can
+## tell a wire cut from a hard landing and charge the momentum differently.
+## One-shot: the reader clears it, same as pending_vault_variant.
+var pending_stagger: bool = false
+
 ## Emitted on the touchdown that ends an uncontrolled fall. The fall itself is
 ## already lost by then -- this only tells whoever owns respawning that the
 ## body has finished arriving.
@@ -2750,6 +2755,12 @@ func _physics_process(delta: float) -> void:
 	# stops falling. _drive_body_yaw() would merely be wrong for a frame.
 	if camera_rig != null:
 		camera_rig.forced_view = statuses.forced_view()
+		# Pushed HERE, before the moves run, so anything that owns the blur
+		# for its own reasons -- FallUncontrolledMove does, every tick of a
+		# death -- writes after this and wins. At rest the curve is zero, so
+		# this costs the channel nothing when no view is changing.
+		if screen_effects != null:
+			screen_effects.set_blur(camera_rig.view_blur())
 	# Before the moves run, so the body moves this tick at whatever size it is
 	# now entitled to. A restore owed from an exit under a ceiling comes back
 	# on the first tick there is room for it.

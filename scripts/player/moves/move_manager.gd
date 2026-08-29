@@ -208,6 +208,7 @@ func physics_update(delta: float, input: MoveInput) -> void:
 			player.statuses.remove(Status.Effect.STAGGER)
 		else:
 			staggering = true
+			player.pending_stagger = true
 			next = Move.LANDING
 	if next == Move.KEEP:
 		next = _turn_requested(input)
