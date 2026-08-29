@@ -72,8 +72,15 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# than eating the press. Crouch itself is unblockable -- Status.Effect
 		# has no BLOCK_CROUCH, deliberately -- so one outlet is always open
 		# and the press is always spendable here.
+		# [ME:CONFIRMED] Owner: the original cannot enter a slide sideways or
+		# backwards. Judged on the SAME arc the ground speed limit uses, so
+		# there is one answer to "is this forwards" rather than two that drift
+		# apart -- and on travel rather than input, so coasting still slides.
 		var slide_blocked: bool = player.statuses.is_move_blocked(SLIDE)
 		var wants_slide: bool = not slide_blocked \
+			and player.in_forward_arc(player.wish_direction(input) \
+				if player.wish_direction(input) != Vector3.ZERO \
+				else Vector3(player.velocity.x, 0.0, player.velocity.z)) \
 			and player.horizontal_speed() >= config.slide.slide_abort_speed
 		if player.consume_roll():
 			if wants_slide:

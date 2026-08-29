@@ -121,9 +121,15 @@ func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
 		await step(SETTLE_TICKS)
 		assert_true(world["player"].grounded, "player did not settle onto the slope -- test setup is wrong")
 
-		# Forward (local -Z) climbs this positively-inclined slope; backward
-		# descends it -- see build_on_slope()'s own comment.
-		world["input"].state.move = Vector2(0.0, 1.0 if uphill else -1.0)
+		# Forward (local -Z) climbs this positively-inclined slope, so the
+		# downhill run TURNS ROUND rather than reversing. Backing down it was
+		# how this read before Player.in_forward_arc() existed, and a slide
+		# cannot be entered backwards any more -- nor could it in the original.
+		# Turning to face the way you are going is what a player does anyway.
+		if not uphill:
+			world["player"].rotation.y += PI
+			await step(1)
+		world["input"].state.move = Vector2(0.0, 1.0)
 		for i in RUN_TICKS:
 			await step(1)
 		var before: float = world["player"].horizontal_speed()
@@ -176,9 +182,12 @@ func test_downhill_past_break_even_grade_nets_acceleration_through_slide_move() 
 	await step(SETTLE_TICKS)
 	assert_true(world["player"].grounded, "player did not settle onto the slope -- test setup is wrong")
 
-	# Backward (local +Z) descends this positively-inclined slope -- see
-	# build_on_slope()'s own comment.
-	world["input"].state.move = Vector2(0.0, -1.0)
+	# Turned to FACE the descent rather than backing down it: forward (local
+	# -Z) climbs this positively-inclined slope, and since Player.in_forward_arc()
+	# a slide cannot be entered backwards -- nor could it in the original.
+	world["player"].rotation.y += PI
+	await step(1)
+	world["input"].state.move = Vector2(0.0, 1.0)
 	for i in RUN_TICKS:
 		await step(1)
 	var before: float = world["player"].horizontal_speed()

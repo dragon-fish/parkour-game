@@ -3936,6 +3936,26 @@ func ground_grade(direction: Vector3) -> float:
 ## Ground movement: converge on the target velocity, and brake when idle.
 ## `grade` is the downhill component of the current heading (+1 straight
 ## down the fall line, -1 straight up, 0 flat); see Friction.
+## Whether a direction of travel counts as forwards, and so earns the full
+## ground speed.
+##
+## Measured against the BODY's facing, not the camera's: in third person the
+## two differ, and it is the body that is doing the running.
+func in_forward_arc(direction: Vector3) -> bool:
+	var flat := Vector3(direction.x, 0.0, direction.z)
+	if flat.length_squared() < 0.0001:
+		return true
+	var facing := -global_transform.basis.z
+	facing.y = 0.0
+	if facing.length_squared() < 0.0001:
+		return true
+	return flat.normalized().dot(facing.normalized()) \
+		>= cos(deg_to_rad(config.pawn.forward_arc_deg))
+
+## GROUND SPEED ONLY. DO NOT fold the arc limit below into speed_cap(): the
+## original limits the ground and leaves the air alone -- backwards with S and
+## space passes 18 km/h up there and finds no ceiling -- and speed_cap() is
+## what every airborne state reads.
 func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float, grade: float = 0.0) -> void:
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	if wish_dir == Vector3.ZERO:
@@ -3943,7 +3963,17 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float, gra
 			move_manager.current_move_friction_modifier(), grade)
 		horizontal = horizontal.move_toward(Vector3.ZERO, braking * delta)
 	else:
-		horizontal = horizontal.move_toward(wish_dir * target_speed, config.pawn.accel_rate * delta)
+		# A CEILING, never a floor, so a state already slower than it -- the
+		# crouch at 40% -- is not sped up by turning sideways.
+		if not in_forward_arc(wish_dir):
+			target_speed = minf(target_speed, config.pawn.lateral_speed)
+		# Leaving the arc at speed bleeds off under DRAG, not under the
+		# acceleration rate: at 61.44 the drop from 7.2 to 4.0 takes 0.05 s,
+		# which is a snap rather than a slowdown. See PawnConfig.lateral_drag.
+		var rate: float = config.pawn.accel_rate
+		if horizontal.length() > target_speed:
+			rate = config.pawn.lateral_drag
+		horizontal = horizontal.move_toward(wish_dir * target_speed, rate * delta)
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 

@@ -18,6 +18,37 @@ extends Resource
 @export var air_speed: float = 24.0
 ## [ME:CONFIRMED 02 §2.3] AccelRate = 6144 uu/s^2 -> 61.44.
 @export var accel_rate: float = 61.44
+
+## Top speed when NOT travelling roughly forwards, in m/s.
+##
+## [ME:CONFIRMED] Owner measured 14.4 km/h in the original running fully
+## sideways or backwards, against 25.92 km/h (ground_speed) forwards. The two
+## are not a curve: inside the arc below the full speed is available, outside
+## it this is.
+##
+## GROUND ONLY, and deliberately so -- see Player.ground_accelerate(). The air
+## has no such limit in the original: the owner reached 18 km/h backwards with
+## S and space and did not find a ceiling. So this must never move into
+## Player.speed_cap(), which every airborne state reads too.
+@export var lateral_speed: float = 4.0
+
+## Half-angle of the arc, in degrees, inside which the full ground speed is
+## available. 45 makes the arc 90 degrees wide: straight ahead and both
+## diagonals run at full speed, straight sideways does not.
+##
+## [ME:CONFIRMED] Owner: "前方90°内才能到满速".
+@export var forward_arc_deg: float = 45.0
+
+## How hard speed bleeds off on leaving the arc, in m/s^2.
+##
+## SEPARATE FROM accel_rate, WHICH IS FAR TOO FAST FOR THIS. At 61.44 the drop
+## from 7.2 to 4.0 takes 0.05 s, which is a snap rather than a slowdown. The
+## owner described the original as "很快的减速但不是零点几秒，类似于受到了阻力
+## 一样", so this is priced as a drag: at 8.0 the same drop takes 0.4 s.
+##
+## A DIAL, not a derivation -- turn it until turning to run sideways feels like
+## the original rather than like hitting a wall.
+@export var lateral_drag: float = 8.0
 ## [ME:CONFIRMED 02 §2.3] AirControl = 0.025. Engine default is 0.05; DICE
 ## halved it. Used as a multiplier on accel_rate (09 §9.1):
 ## air_accel = accel_rate * air_control = 61.44 * 0.025 = 1.536 m/s^2,
