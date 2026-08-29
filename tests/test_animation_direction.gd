@@ -110,12 +110,25 @@ func test_the_diagonals_do_not_cross_over() -> void:
 
 # --- the slower bands use their own sets ---------------------------------------
 
-func test_the_walk_band_strafes_on_the_walk_set() -> void:
-	# 2 m/s is above the idle threshold and below _run_band_speed()'s 3.6, so
-	# this is the middle band -- and it must not borrow the jog's set, which is
-	# a different gait at a different pace.
-	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(2.0, 0.0, 0.0)),
-		"Walk_R", "strafing at walking pace")
+func test_ctrl_is_what_reaches_the_walk_set() -> void:
+	# There is no walk BAND any more: without Ctrl a body crosses everything
+	# below a run in a handful of frames, and threading a walk loop through them
+	# buys a cadence nobody can see. Ctrl is the walk, and it is the only way to
+	# the walk's own eight-way set.
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.WALKING)
+	_travel(player, Vector3(2.0, 0.0, 0.0))
+
+	assert_eq(String(animator._target_animation()), "Jog_Right",
+		"strafing at two metres a second without Ctrl went looking for a walk band")
+
+	var creep := MoveInput.new()
+	creep.move = Vector2(1.0, 0.0)
+	creep.walk_held = true
+	player.last_input = creep
+	assert_eq(String(animator._target_animation()), "Walk_R",
+		"Ctrl did not reach the walk's own set")
 
 func test_a_crouched_strafe_stays_crouched() -> void:
 	assert_eq(await _asked_for(FULL_CLIPS, Move.CROUCH, Vector3(2.0, 0.0, 0.0)),

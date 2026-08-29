@@ -526,49 +526,75 @@ func test_each_death_picks_its_own_clip_rather_than_the_first_one_ever() -> void
 		"the second death replayed the first one's choice")
 	player.set_dying(false)
 
-func test_crossing_into_the_run_band_arms_the_sprint_entry() -> void:
-	# The pack ships Sprint_Enter and Sprint_Exit and nothing was asking for
-	# them, so the engine was cross-fading a walk loop into a run loop -- a
-	# blend standing in for a performance. It also crossed two bands in quick
-	# succession from a standing start, which left the state machine starting
-	# a second transition while the first was still going and the feet visibly
-	# hung. A one-shot outranks the routing for its whole length.
+func test_the_launch_is_armed_at_the_start_of_moving() -> void:
+	# Sprint_Enter is a standstill LAUNCH: measured off the asset, its pelvis
+	# drops from 0.086 to -0.163 and springs back, a quarter of a metre of
+	# crouch. It belongs at the moment the body starts moving, and its 0.867 s
+	# covers the whole stretch where idle, walk and run used to collide.
 	var animator := await _animator_with([&"Idle", &"Walk", &"Sprint",
 		&"Sprint_Enter", &"Sprint_Exit", &"Jog_Fwd"])
 	var player: Player = _world["player"]
 	player.move_manager.start(Move.WALKING)
 
-	# Standing: no band, nothing armed.
 	player.velocity = Vector3.ZERO
-	animator._arm_run_band_oneshot()
-	assert_false(animator._in_run_band, "test setup: standing still counts as running")
+	animator._arm_launch_oneshot()
+	assert_false(animator._moving_under_power, "test setup: standing still counts as moving")
 
-	# Straight ahead and fast: the entry.
-	player.velocity = -player.global_transform.basis.z * 6.0
-	animator._arm_run_band_oneshot()
-	assert_true(animator._in_run_band, "test setup: 6 m/s ahead is not in the run band")
-	assert_eq(animator._oneshot, &"Sprint_Enter", "the sprint's own entry was left on the shelf")
+	player.velocity = -player.global_transform.basis.z * 2.0
+	animator._arm_launch_oneshot()
+	assert_eq(animator._oneshot, &"Sprint_Enter", "starting to move did not launch")
 
-	# And leaving it the other way.
 	player.velocity = Vector3.ZERO
-	animator._arm_run_band_oneshot()
-	assert_eq(animator._oneshot, &"Sprint_Exit", "the sprint's own exit was left on the shelf")
+	animator._arm_launch_oneshot()
+	assert_eq(animator._oneshot, &"Sprint_Exit", "coming to a stop did not pull up")
 
-func test_leaving_walking_adopts_the_band_instead_of_arming() -> void:
-	# A jump does not deserve a sprint-stop, and landing back at pace does not
-	# deserve a sprint-start.
+func test_the_launch_does_not_fire_again_mid_run() -> void:
+	# The regression this replaces: armed at the walk-to-run band instead, a
+	# body already doing 3.6 m/s squatted a quarter of a metre and sprang
+	# again. The owner saw it at about 4.2.
+	var animator := await _animator_with([&"Idle", &"Walk", &"Sprint",
+		&"Sprint_Enter", &"Sprint_Exit", &"Jog_Fwd"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.WALKING)
+	player.velocity = -player.global_transform.basis.z * 2.0
+	animator._arm_launch_oneshot()
+	animator._oneshot = Move.KEEP
+
+	for speed in [3.0, 4.2, 5.0, 6.5]:
+		player.velocity = -player.global_transform.basis.z * speed
+		animator._arm_launch_oneshot()
+		assert_eq(animator._oneshot, Move.KEEP,
+			"accelerating through %.1f m/s crouched and launched again" % speed)
+
+func test_a_creep_does_not_launch() -> void:
+	# Ctrl asks for a walk, and a walk does not launch.
+	var animator := await _animator_with([&"Idle", &"Walk", &"Sprint",
+		&"Sprint_Enter", &"Sprint_Exit"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.WALKING)
+	var creep := MoveInput.new()
+	creep.move = Vector2(0.0, -1.0)
+	creep.walk_held = true
+	player.last_input = creep
+	player.velocity = -player.global_transform.basis.z * 2.0
+	animator._arm_launch_oneshot()
+	assert_eq(animator._oneshot, Move.KEEP, "a Ctrl creep played a sprint launch")
+
+func test_leaving_walking_adopts_the_state_instead_of_arming() -> void:
+	# A jump does not deserve a pull-up, and landing back at pace does not
+	# deserve a launch.
 	var animator := await _animator_with([&"Idle", &"Walk", &"Sprint",
 		&"Sprint_Enter", &"Sprint_Exit", &"Jump"])
 	var player: Player = _world["player"]
 	player.move_manager.start(Move.WALKING)
 	player.velocity = -player.global_transform.basis.z * 6.0
-	animator._arm_run_band_oneshot()
+	animator._arm_launch_oneshot()
 	animator._oneshot = Move.KEEP
 
 	player.move_manager.start(Move.JUMP)
 	player.velocity = Vector3.ZERO
-	animator._arm_run_band_oneshot()
-	assert_eq(animator._oneshot, Move.KEEP, "leaving the ground played a sprint-stop")
+	animator._arm_launch_oneshot()
+	assert_eq(animator._oneshot, Move.KEEP, "leaving the ground pulled up short")
 
 func test_the_jog_is_the_top_band_and_the_sprint_is_below_it() -> void:
 	# Backwards until you look at the clips instead of their names: the pack's
