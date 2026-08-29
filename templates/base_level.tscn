@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" uid="uid://c0r485cb3u71f" path="res://scripts/level/arena.gd" id="1_tbgi4"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="2_tefeu"]
-[ext_resource type="Shader" uid="uid://w0t31whsjtxu" path="res://shaders/acrylic.gdshader" id="3_lq2vf"]
 [ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="4_tipki"]
 [ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="5_85g3d"]
 [ext_resource type="Script" uid="uid://bhucofvtd1e8a" path="res://scripts/level/spawn_point.gd" id="6_spawn"]
@@ -23,25 +22,6 @@ ambient_light_color = Color(0.22352941, 0.46666667, 0.7411765, 1)
 ssr_enabled = true
 ssr_max_steps = 32
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_trceg"]
-size = Vector3(60, 1, 60)
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_avty2"]
-render_priority = 0
-shader = ExtResource("3_lq2vf")
-shader_parameter/base_color = Color(0.94, 0.95, 0.97, 1)
-shader_parameter/dot_color = Color(0.62, 0.7, 0.8, 1)
-shader_parameter/dot_opacity = 0.10000000475
-shader_parameter/spacing = 0.35
-shader_parameter/dot_radius = 0.05
-shader_parameter/metallic_amount = 0.4
-shader_parameter/roughness_amount = 0.12
-shader_parameter/projection_sharpness = 6.0
-
-[sub_resource type="BoxMesh" id="BoxMesh_jkv2x"]
-material = SubResource("ShaderMaterial_avty2")
-size = Vector3(60, 1, 60)
-
 [node name="Arena" type="Node3D" unique_id=411242539 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_tbgi4")
 player = NodePath("Player")
@@ -59,15 +39,6 @@ environment = SubResource("Environment_eb6dy")
 [node name="SpawnPoint" type="Marker3D" parent="." unique_id=1155736096]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 script = ExtResource("6_spawn")
-
-[node name="Floor" type="StaticBody3D" parent="." unique_id=690524087]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
-
-[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=1922851733]
-shape = SubResource("BoxShape3D_trceg")
-
-[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=1043381304]
-mesh = SubResource("BoxMesh_jkv2x")
 
 [node name="Player" parent="." unique_id=1082204191 instance=ExtResource("2_tefeu")]
 

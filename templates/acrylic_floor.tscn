@@ -1,0 +1,31 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Shader" uid="uid://w0t31whsjtxu" path="res://shaders/acrylic.gdshader" id="1_acrylic"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
+size = Vector3(60, 1, 60)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_floor"]
+render_priority = 0
+shader = ExtResource("1_acrylic")
+shader_parameter/base_color = Color(0.94, 0.95, 0.97, 1)
+shader_parameter/dot_color = Color(0.62, 0.7, 0.8, 1)
+shader_parameter/dot_opacity = 0.10000000475
+shader_parameter/spacing = 0.35
+shader_parameter/dot_radius = 0.05
+shader_parameter/metallic_amount = 0.4
+shader_parameter/roughness_amount = 0.12
+shader_parameter/projection_sharpness = 6.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+material = SubResource("ShaderMaterial_floor")
+size = Vector3(60, 1, 60)
+
+[node name="Floor" type="StaticBody3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_floor")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_floor")

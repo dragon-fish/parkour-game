@@ -17,12 +17,19 @@ touching either.
    that came from the base. If you find yourself wanting to remove or
    restructure something from the template, that is a sign it belongs in the
    child instead of being fought in the editor.
-4. Don't touch `Sun`, `WorldEnvironment`, `SpawnPoint`, `Floor`, `Player`,
+4. Don't touch `Sun`, `WorldEnvironment`, `SpawnPoint`, `Player`,
    `DebugHud`, or `TuningPanel` in the child unless you specifically mean to
-   override them (e.g. moving `SpawnPoint`, resizing `Floor`). Everything
-   else — ramps, walls, gaps, platforms — are new siblings you add under the
-   inherited root.
-5. Every level built from the template inherits its cold-blue ambient tint
+   override them (e.g. moving `SpawnPoint`, or switching `Sun` off for an
+   interior). Everything else — ramps, walls, gaps, platforms — are new
+   siblings you add under the inherited root.
+5. **The template has no ground.** Instance
+   `templates/acrylic_floor.tscn` for the 60×60 slab the whiteboxes use, or
+   build the level's own. A floor is level GEOMETRY, not part of the frame:
+   a shaft has none, and a finished interior has its own, so a slab in the
+   base would be buried scenery in every level that is not a flat whitebox —
+   and an inherited node cannot be deleted, only hidden. What the base holds
+   is what every level genuinely shares.
+6. Every level built from the template inherits its cold-blue ambient tint
    (`WorldEnvironment`'s `ambient_light_color`, Mirror's Edge-leaning shadows)
    for free; tune how strong it reads with the F1 panel's
    `ambient_cold_strength` dial (Camera tab).
