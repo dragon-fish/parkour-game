@@ -55,6 +55,13 @@ extends Resource
 ## of ground_speed) reads as exactly that, not as an implausible number, so
 ## there was no reason to substitute a different one.
 @export var walk_velocity: float = 0.5
+
+## [ME:CONFIRMED 02 §2.2] SprintVelocity = 630 uu/s. One of five discrete
+## velocities on the original's TdPawn, and 02 already suspects what they are
+## for: they are too low to be the speed cap (the curve decides that) and read
+## much more like ANIMATION BLEND thresholds -- which set of locomotion clips
+## is playing. This is the top one, and it is used here for exactly that.
+@export var sprint_velocity: float = 6.3
 ## [ME:CONFIRMED 02 §2.3] CrouchedPct = 0.4. Also lives as CrouchConfig's own
 ## speed_modifier; kept here too because the original declares it Pawn-wide.
 @export var crouched_pct: float = 0.4

@@ -569,3 +569,30 @@ func test_leaving_walking_adopts_the_band_instead_of_arming() -> void:
 	player.velocity = Vector3.ZERO
 	animator._arm_run_band_oneshot()
 	assert_eq(animator._oneshot, Move.KEEP, "leaving the ground played a sprint-stop")
+
+func test_the_jog_is_the_top_band_and_the_sprint_is_below_it() -> void:
+	# Backwards until you look at the clips instead of their names: the pack's
+	# Jog is a long loping stride and its Sprint a shorter, faster cadence, so
+	# the jog is what a body already at full pace looks like. The names come
+	# from the animation pack, not from the original, and matching them to the
+	# original's own vocabulary is how they would end up swapped.
+	var animator := await _animator_with([&"Idle", &"Walk", &"Walk_Fwd",
+		&"Sprint", &"Jog_Fwd"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.WALKING)
+	var top: float = player.config.pawn.sprint_velocity
+
+	player.velocity = -player.global_transform.basis.z * (top - 1.0)
+	assert_eq(animator._target_animation(), &"Sprint",
+		"below the top band the sprint should be running")
+
+	player.velocity = -player.global_transform.basis.z * (top + 1.0)
+	assert_eq(animator._target_animation(), &"Jog_Fwd",
+		"at full pace the stride should have opened out into the jog")
+
+func test_the_top_band_sits_where_the_original_put_it() -> void:
+	# [ME:CONFIRMED 02 §2.2] SprintVelocity, the top of the original's five
+	# discrete velocities -- values 02 reads as animation blend thresholds
+	# rather than speed caps, which is the use they are put to here.
+	assert_almost_eq(MovementConfig.new().pawn.sprint_velocity, 6.3, 0.001,
+		"the top band stopped being the original's SprintVelocity")

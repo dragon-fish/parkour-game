@@ -973,6 +973,22 @@ func _target_animation() -> StringName:
 				# eight-way sprint to use instead. The seam is a change of
 				# cadence when turning sharply out of a straight run.
 				if _travel_octant() <= 0:
+					# TWO BANDS AHEAD, not one, and the jog is the TOP one.
+					#
+					# Which reads backwards until you look at the clips rather than
+					# at their names: the pack's Jog is a long loping stride and its
+					# Sprint is a shorter, faster cadence, so the jog is what a body
+					# already at full pace looks like -- ✅ the owner, "jog 是大胯步,
+					# 用在最后一档速度". The names come from Quaternius, not from the
+					# original, and matching them to the original's own vocabulary is
+					# how they would get swapped.
+					#
+					# [ME:CONFIRMED 02 §2.2] The threshold is SprintVelocity, the top
+					# of the original's five discrete velocities -- values 02 already
+					# reads as animation blend thresholds rather than speed caps,
+					# which is precisely the use they are put to here.
+					if speed >= player.config.pawn.sprint_velocity:
+						return _first_available([&"Jog_Fwd", &"Sprint", &"Walk_Fwd", &"run", &"idle"])
 					return _first_available([&"Sprint", &"Jog_Fwd", &"Walk_Fwd", &"run", &"idle"])
 				return _first_available_directional([&"Jog", &"Walk", &"Sprint", &"run", &"idle"])
 			if speed > player.config.pawn.run_animation_speed_threshold:
