@@ -40,10 +40,14 @@ const RISE_TIME := 1.5
 ## cubic-bezier(0.65, 0, 0.35, 1) = TRANS_CUBIC / EASE_IN_OUT.
 const BODY_RISE_DELAY := 0.0
 const BODY_STAND_BLEND := 1.5  # = RISE_TIME: fully up the frame the camera lands (✅ the owner)
-## Ground-space dot flow per second while walking (✅ the owner: slower than
-## the first guess, and the flow must FOLLOW the character's facing -- she
-## walks screen-right in the opening, toward the lens after the turn).
-const FLOOR_SCROLL_SPEED := 0.35
+## METRES PER SECOND the ground slides past while she walks -- a real unit
+## now that the floor is a real plane. The old number lived in the fake
+## projection's own space and meant nothing outside it, so it could not be
+## carried across.
+##
+## The direction is read off the body each frame rather than written down:
+## which axis is forward is a convention argument nobody wins twice.
+const FLOOR_SCROLL_SPEED := 0.55
 const LOGO_FADE_TIME := 0.4
 const WALK_TO_MENU_DELAY := 0.15
 const MENU_PANEL_TIME := 0.45
@@ -75,7 +79,8 @@ const HEAD_TOP_PAD := 0.16
 ## so yaw -180); the CAMERA orbits from her right side (azimuth 0 = profile,
 ## head to screen right) around to her front (azimuth 90 = facing the lens),
 ## and the floor pattern turns off the same azimuth -- one number, one
-## rotation, nothing to desync.
+## rotation, nothing to desync -- and since the floor became a real plane it
+## does not need telling at all: it turns because the camera moved.
 const FRONT_YAW_DEG := -180.0
 const CLOSE_AZIMUTH_DEG := 180.0
 const FAR_AZIMUTH_DEG := 90.0
@@ -111,9 +116,6 @@ var _head_point := Vector3(0.0, 0.8, 0.0)
 var _body_centre := Vector3(0.0, 0.8, 0.0)
 var _d_close := 1.1
 var _d_far := 2.3
-## Live camera azimuth in degrees -- _apply_cam writes it, _process reads
-## it to turn the floor pattern.
-var _cam_azimuth_deg := 0.0
 ## Screen fraction of the character's feet line in the FAR framing -- where
 ## the mirror's fold sits.
 var _feet_screen_frac := 0.82
@@ -183,14 +185,24 @@ func _process(delta: float) -> void:
 		_poll_loading(delta)
 	if _floor == null or not (_floor.material is ShaderMaterial):
 		return
-	# The angle updates EVERY frame -- the ground visibly turns with the
-	# body even while the flow is still gated off; only the phase waits
-	# for the first steps.
-	var a: float = deg_to_rad(_cam_azimuth_deg - FAR_AZIMUTH_DEG)
+	# THE CAMERA, HANDED OVER WHOLE. The ground is unprojected per pixel from
+	# these, so there is no separate pattern rotation to keep in step any
+	# more: the plane turns because the camera does, the way a floor's would.
 	_floor_phase += FLOOR_SCROLL_SPEED * _floor_gain * delta
 	var mat := _floor.material as ShaderMaterial
-	mat.set_shader_parameter("flow_angle", a)
+	var eye := _silhouette_camera.global_position
+	var tan_v: float = tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
+	mat.set_shader_parameter("eye_height", maxf(eye.y, 0.05))
+	mat.set_shader_parameter("cam_yaw", _silhouette_camera.rotation.y)
+	mat.set_shader_parameter("cam_pos", Vector2(eye.x, eye.z))
+	mat.set_shader_parameter("tan_v", tan_v)
+	mat.set_shader_parameter("tan_h", tan_v * (maxf(size.x, 1.0) / maxf(size.y, 1.0)))
 	mat.set_shader_parameter("flow_phase", _floor_phase)
+	# Read off the body rather than written down: model forward is -Z and
+	# the root carries a yaw, so the world direction she walks is a product
+	# of two conventions and neither is worth arguing about twice.
+	var forward: Vector3 = -_silhouette_root.global_transform.basis.z
+	mat.set_shader_parameter("flow_dir", Vector2(forward.x, forward.z).normalized())
 
 func _on_resized() -> void:
 	# Aspect changed: re-solve the framing math and re-aim whatever state
@@ -636,7 +648,6 @@ func _apply_cam(t: float) -> void:
 ## look target, and where that target should land in NDC.
 func _place_cam(azimuth_deg: float, d: float, target: Vector3, ndc: Vector2) -> void:
 	var azimuth := deg_to_rad(azimuth_deg)
-	_cam_azimuth_deg = azimuth_deg
 	var tan_v := tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
 	var tan_h := tan_v * (maxf(size.x, 1.0) / maxf(size.y, 1.0))
 	var back := Vector3(cos(azimuth), 0.0, sin(azimuth))
