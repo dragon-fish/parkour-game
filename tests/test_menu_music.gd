@@ -85,3 +85,62 @@ func test_the_title_fragment_is_held_well_below_the_chorus() -> void:
 		"the quiet part is not quieter than the loud part")
 	assert_lt(linear_to_db(MenuMusic.CHORUS_LEVEL) - linear_to_db(MenuMusic.HELD_LEVEL), 18.0,
 		"the lift into the chorus is a jump, not a swell")
+
+func test_the_sweep_runs_in_octaves_and_not_in_hertz() -> void:
+	# Pitch is logarithmic. A linear ramp through frequency spends nearly all
+	# its time in the top octave, where almost nothing is happening, and
+	# crosses the octaves that matter in an instant -- so it reads as a click
+	# rather than as an opening.
+	assert_almost_eq(MenuMusic.cutoff_at(0.0), MenuMusic.SWEEP_FROM_HZ, 0.1,
+		"the sweep does not start shut")
+	assert_almost_eq(MenuMusic.cutoff_at(1.0), MenuMusic.SWEEP_TO_HZ, 0.1,
+		"the sweep does not finish open")
+	# Halfway through is the geometric middle, not the arithmetic one.
+	var middle: float = MenuMusic.cutoff_at(0.5)
+	assert_almost_eq(middle, sqrt(MenuMusic.SWEEP_FROM_HZ * MenuMusic.SWEEP_TO_HZ), 1.0,
+		"halfway is %.0f Hz, which means the ramp is linear in frequency" % middle)
+	# Every quarter of the sweep covers the same number of octaves.
+	var first: float = log(MenuMusic.cutoff_at(0.25) / MenuMusic.cutoff_at(0.0))
+	var last: float = log(MenuMusic.cutoff_at(1.0) / MenuMusic.cutoff_at(0.75))
+	assert_almost_eq(first, last, 0.01, "the sweep is not even across its own range")
+
+func test_the_sweep_starts_below_the_voice_of_the_fragment() -> void:
+	# The point of entering muffled is that there is little to notice about
+	# the swap: the incoming record has to start darker than the melodic
+	# figure it is replacing, not merely a bit rolled off.
+	assert_lt(MenuMusic.SWEEP_FROM_HZ, 600.0,
+		"the record enters bright enough to be heard arriving")
+
+func test_the_sweep_gets_a_bus_of_its_own_and_gives_it_back() -> void:
+	# The only part of this that is not arithmetic, and the part where a typo
+	# in an AudioServer call would be invisible: buses are engine-wide, so one
+	# left behind by every visit to the menu accumulates for the session.
+	assert_eq(AudioServer.get_bus_index(MenuMusic.BUS), -1,
+		"test setup: something already left this bus behind")
+	var music := MenuMusic.new()
+	add_child(music)
+	await step(1)
+	var index: int = AudioServer.get_bus_index(MenuMusic.BUS)
+	assert_ne(index, -1, "the sweep has nowhere to live")
+	assert_eq(AudioServer.get_bus_effect_count(index), 1, "the filter was not installed")
+	assert_true(AudioServer.get_bus_effect(index, 0) is AudioEffectLowPassFilter,
+		"the effect on the bus is not the filter")
+	music.free()
+	await step(1)
+	assert_eq(AudioServer.get_bus_index(MenuMusic.BUS), -1,
+		"the bus outlived the menu that made it")
+
+func test_a_second_menu_does_not_stack_a_second_bus() -> void:
+	var first := MenuMusic.new()
+	var second := MenuMusic.new()
+	add_child(first)
+	add_child(second)
+	await step(1)
+	var buses: int = 0
+	for i in AudioServer.bus_count:
+		if AudioServer.get_bus_name(i) == MenuMusic.BUS:
+			buses += 1
+	first.free()
+	second.free()
+	await step(1)
+	assert_eq(buses, 1, "a rebuilt menu added a second bus of the same name")

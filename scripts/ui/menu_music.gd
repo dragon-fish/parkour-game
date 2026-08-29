@@ -72,6 +72,22 @@ const CHORUS_LEVEL := 0.62
 ## material, not of volume.
 const HANDOFF := 0.6
 
+## THE FILTER SWEEP, which is the other half of not sounding abrupt and the
+## one that needs no stems.
+##
+## The incoming record enters heavily muffled -- close to the held fragment's
+## own texture, so there is little to notice about the swap -- and opens up as
+## it runs at the drop. It is the standard way a DJ joins two records, and it
+## works on a finished mix, which separating this track into stems did not:
+## the kick and the sub-bass overlap too far for any model to pull apart, so
+## a drum-less version still had most of its kick.
+##
+## Swept in CENTS, not hertz. Pitch is logarithmic, so a linear ramp through
+## frequency spends nearly all its time in the top octave, where almost
+## nothing is happening, and crosses the octaves that matter in an instant.
+const SWEEP_FROM_HZ := 320.0
+const SWEEP_TO_HZ := 20500.0
+
 ## The lift to CHORUS_LEVEL runs from the moment of the click until the drop,
 ## so it is not a constant: it is however much of the approach is left. That
 ## way the level arrives exactly when the chorus does, rather than still
@@ -87,8 +103,14 @@ const REST := 3.0
 ## finishing early.
 const FADE_OUT := 2.2
 
+## The bus the record plays through, so the sweep has somewhere to live. The
+## fragment is left on Master: it is already the dark end of the sweep, and
+## filtering it too would only take away the thing being matched.
+const BUS := &"MenuMusicSweep"
+
 var _loop: AudioStreamPlayer
 var _record: AudioStreamPlayer
+var _filter: AudioEffectLowPassFilter
 var _in_chorus: bool = false
 ## True once the menu is on its way out, which cancels the rest-and-restart
 ## cycle. Without it a piece that ends mid-fade schedules itself to start
@@ -96,12 +118,41 @@ var _in_chorus: bool = false
 var _leaving: bool = false
 
 func _ready() -> void:
+	_build_bus()
 	_loop = _player(LOOP_STREAM, true)
 	_record = _player(FULL_STREAM, false)
 	_loop.volume_db = _gain_db(HELD_LEVEL)
 	_record.volume_db = _gain_db(0.0)
+	_record.bus = BUS
 	_record.finished.connect(_rest_then_play_from_the_top)
 	_loop.play()
+
+## Reused rather than added again if one is already there: a menu rebuilt (a
+## return from the level, a scene reload) would otherwise stack a new bus per
+## visit, and the buses are engine-wide.
+func _build_bus() -> void:
+	var index: int = AudioServer.get_bus_index(BUS)
+	if index == -1:
+		index = AudioServer.bus_count
+		AudioServer.add_bus(index)
+		AudioServer.set_bus_name(index, BUS)
+		AudioServer.set_bus_send(index, &"Master")
+	while AudioServer.get_bus_effect_count(index) > 0:
+		AudioServer.remove_bus_effect(index, 0)
+	_filter = AudioEffectLowPassFilter.new()
+	_filter.cutoff_hz = SWEEP_TO_HZ
+	# 24 dB per octave. A gentler slope leaves enough of the top through that
+	# the sweep reads as a volume change rather than as an opening.
+	_filter.db = AudioEffectFilter.FILTER_24DB
+	AudioServer.add_bus_effect(index, _filter)
+
+## Engine-wide state, so it is this node's to clean up. Looked up by name
+## rather than by a remembered index: another system adding a bus in the
+## meantime shifts every index after its own.
+func _exit_tree() -> void:
+	var index: int = AudioServer.get_bus_index(BUS)
+	if index != -1:
+		AudioServer.remove_bus(index)
 
 ## `looping` decides who owns the repeat. The title fragment is looped by the
 ## engine, which is sample-accurate and gapless; the record is left un-looped
@@ -145,14 +196,22 @@ func to_chorus() -> void:
 		return
 	_in_chorus = true
 	var entry: float = chorus_entry(_loop.get_playback_position())
+	var run_up: float = time_to_the_drop(entry)
+	_set_cutoff(0.0)
 	_record.play(entry)
-	var hand := create_tween()
+	var hand := create_tween().set_parallel()
 	hand.tween_method(_set_handoff, 0.0, 1.0, HANDOFF)
-	hand.tween_callback(_loop.stop)
-	# Ends ON the drop, not before or after it.
-	hand.tween_method(_set_record_level, HELD_LEVEL, CHORUS_LEVEL,
-		time_to_the_drop(entry) - HANDOFF) \
+	# The sweep and the swell both END ON THE DROP, so the record arrives
+	# open and at level exactly as the chorus's downbeat lands.
+	hand.tween_method(_set_cutoff, 0.0, 1.0, run_up) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	hand.tween_method(_set_record_level, HELD_LEVEL, CHORUS_LEVEL, run_up) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	# Its own tween: the fragment is silent once the handoff ends, and the
+	# sweep it runs alongside is five times longer.
+	var release := create_tween()
+	release.tween_interval(HANDOFF)
+	release.tween_callback(_loop.stop)
 
 ## Where in the RECORD to start, given where the title fragment had got to.
 ## The approach's own downbeat, plus however far into a bar the fragment was,
@@ -188,6 +247,17 @@ func _set_handoff(k: float) -> void:
 
 func _set_record_level(level: float) -> void:
 	_record.volume_db = _gain_db(level)
+
+## `k` runs 0 (shut) to 1 (open), mapped through frequency ratio rather than
+## through hertz -- see SWEEP_FROM_HZ.
+func _set_cutoff(k: float) -> void:
+	if _filter != null:
+		_filter.cutoff_hz = cutoff_at(k)
+
+## Where the sweep is at `k`, 0 shut to 1 open. Static so the curve can be
+## checked without an audio device.
+static func cutoff_at(k: float) -> float:
+	return SWEEP_FROM_HZ * pow(SWEEP_TO_HZ / SWEEP_FROM_HZ, clampf(k, 0.0, 1.0))
 
 ## Silence is -80 dB, not -inf: linear_to_db(0) returns -inf and the mixer
 ## refuses it. Same floor SettingsStore uses for a volume slider at zero.
