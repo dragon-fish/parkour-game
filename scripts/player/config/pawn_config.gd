@@ -21,35 +21,31 @@ extends Resource
 
 ## Top speed when NOT travelling roughly forwards, in m/s.
 ##
-## [ME:CONFIRMED] Owner measured 14.4 km/h in the original running fully
-## sideways or backwards, against 25.92 km/h (ground_speed) forwards. The two
-## are not a curve: inside the arc below the full speed is available, outside
-## it this is.
+## The floor the ceiling decays TO when travel leaves the arc. Not a clamp.
 ##
-## GROUND ONLY, and deliberately so -- see Player.ground_accelerate(). The air
-## has no such limit in the original: the owner reached 18 km/h backwards with
-## S and space and did not find a ceiling. So this must never move into
-## Player.speed_cap(), which every airborne state reads too.
-## [ME:CONFIRMED] Owner measured 14.4 km/h in the original running fully
-## sideways or backwards, against 25.92 km/h forwards.
+## [ME:CONFIRMED] Read off a 120 fps capture of the original through
+## docs/mirrors-edge-deep-research/tools/hud_ocr.py, with the view held still
+## so the HUD's yaw is constant and heading comes from differencing X/Y:
 ##
-## A CURVE THAT LOOKED LIKE A COUNTER-EXAMPLE, AND WAS NOT. Leaving full
-## speed for a hard left first appeared to dip, RECOVER to about 23 km/h,
-## then settle -- which would have meant the ceiling was not 14.4 at that
-## moment, and that the original drags its ceiling down instead of clamping.
-## The recovery turned out to be the hand: W and A were both down for a few
-## frames, and a diagonal sits INSIDE the arc, where 25.92 is correct. Owner,
-## on releasing W cleanly first: speed drops to near zero and then climbs
-## back to 14.4, which is this clamp plus the turn billing already here.
+##   t=18.87  25.9 km/h   heading  -0.2 deg   running straight
+##   t=18.93  20.6 km/h   heading  63.2 deg   the dip
+##   t=19.03  22.6 km/h   heading  86.9 deg   already fully sideways
+##   t=19.28  24.8 km/h   heading  89.8 deg   STILL CLIMBING, sideways
+##   t=19.90  22.2 km/h   heading  89.8 deg   the decay begins
+##   t=21.93  14.5 km/h   heading  89.8 deg   settled
 ##
-## Worth keeping because the false reading is easy to reproduce -- no hand
-## releases one key exactly as it presses another -- and because it is
-## evidence FOR the arc: the diagonal held full speed exactly as it should.
+## THE CLIMB AT 89.8 DEGREES IS THE WHOLE POINT. A body running dead sideways
+## accelerated to 24.8 km/h, which no ceiling of 14.4 permits. The limit is
+## not applied to the speed; it is the ceiling itself sliding down, and taking
+## 2.65 s about it -- against speed_energy_deceleration_time's [ME:CONFIRMED]
+## 3.0. Then it stops at 14.4 rather than continuing to zero, which is what
+## makes this a floor.
 ##
-## STILL OPEN: how fast the climb back to 14.4 goes. Here it is accel_rate,
-## which covers 0 to 4.0 in 0.065 s; the owner describes the original as
-## climbing "慢慢". A clean measurement is a standing start with only A held,
-## which has no turn and no second key to be early or late.
+## AN EARLIER READING BLAMED THE HAND -- W and D both down for a few frames,
+## putting travel on a diagonal where full speed is correct. Both keys really
+## were down between 18.88 and 19.02, where the heading jumps about between 5
+## and 65 degrees. But the climb continues well past that, at a heading of
+## 86.9 degrees and beyond, so the hand does not explain it.
 @export var lateral_speed: float = 4.0
 
 ## Half-angle of the arc, in degrees, inside which the full ground speed is
