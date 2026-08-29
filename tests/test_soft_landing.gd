@@ -46,6 +46,15 @@ func _drop_from_lethal(player: Player) -> void:
 	await step(1)
 
 ## Runs the fall out, stopping early if it turns fatal.
+## Runs until the fall has been judged one way or the other.
+func _reach_the_verdict(player: Player) -> void:
+	for i in 300:
+		await step(1)
+		var now: StringName = player.move_manager.current_name
+		if now == Move.FALL_UNCONTROLLED or now == Move.SOFT_LANDING:
+			return
+
+
 func _fall_until_settled(player: Player) -> void:
 	for i in 300:
 		await step(1)
@@ -65,45 +74,53 @@ func test_a_fatal_fall_onto_ordinary_ground_still_kills() -> void:
 	assert_eq(player.move_manager.current_name, Move.FALL_UNCONTROLLED, \
 		"test setup: this drop was survivable, so nothing below proves anything")
 
-func test_a_pad_under_a_fatal_fall_is_never_reached_as_a_death() -> void:
+func test_a_pad_under_a_fatal_fall_is_caught_by_a_state_of_its_own() -> void:
 	var world := await _settled()
 	var player: Player = world["player"]
 	_slab_under(player, 1.0).add_to_group(Probes.SOFT_LANDING_GROUP)
 	await _drop_from_lethal(player)
-	await _fall_until_settled(player)
-	assert_ne(player.move_manager.current_name, Move.FALL_UNCONTROLLED, \
-		"the pad was under the body the whole way down and it died anyway")
+	await _reach_the_verdict(player)
+	assert_eq(player.move_manager.current_name, Move.SOFT_LANDING, 		"the pad was under the body the whole way down and it died anyway")
 
-func test_a_pad_absorbs_the_landing_as_well_as_the_death() -> void:
-	# One rule, not two. The drop is treated as though it never happened, so
-	# there is no landing cost to pay and no roll to have missed -- a pad the
-	# player has to roll off is a pad that punishes being rescued.
+func test_the_pad_changes_the_ending_and_not_the_fall() -> void:
+	# It does NOT hand the controls back. A rescue that also returned them
+	# would make the lethal height mean nothing wherever a pad was in reach:
+	# the player would simply fly on. What the pad buys is arriving alive.
+	var world := await _settled()
+	var player: Player = world["player"]
+	_slab_under(player, 1.0).add_to_group(Probes.SOFT_LANDING_GROUP)
+	await _drop_from_lethal(player)
+	await _reach_the_verdict(player)
+	assert_eq(player.move_manager.current_name, Move.SOFT_LANDING, "test setup: never rescued")
+	assert_true(player.is_input_locked(), "the pad handed the controls back mid-fall")
+
+func test_a_rescued_fall_is_put_down_hard_rather_than_walked_off() -> void:
+	# Alive, and still charged for the drop: the landing lockout is the whole
+	# difference between being caught and being let off.
 	var world := await _settled()
 	var player: Player = world["player"]
 	_slab_under(player, 1.0).add_to_group(Probes.SOFT_LANDING_GROUP)
 	await _drop_from_lethal(player)
 	await _fall_until_settled(player)
 	assert_true(player.grounded, "test setup: the body never reached the pad")
-	assert_almost_eq(player.last_landing_fall_height, 0.0, 0.001, \
-		"the pad let the fall through to the landing rules")
+	assert_eq(player.move_manager.current_name, Move.LANDING, 		"a fall past the lethal height was walked off as though it never happened")
+	assert_false(player.is_dying(), "the pad caught the body and it died anyway")
 
-func test_the_reprieve_is_rechecked_rather_than_latched() -> void:
-	# Falling still has air control, so a body reprieved at the top can leave
-	# the pad on the way down. Simulated by taking the pad away, which is the
-	# same thing from the prediction's side and does not depend on how hard
-	# the air can be steered.
+func test_the_verdict_is_reached_once_and_never_revisited() -> void:
+	# [12 §12.5] The original asks at the tick control is lost and not again.
+	# Taking the pad away afterwards is the strongest form of the question:
+	# there is no pad left to find, and the fall must still end safely.
 	var world := await _settled()
 	var player: Player = world["player"]
 	var pad := _slab_under(player, 1.0)
 	pad.add_to_group(Probes.SOFT_LANDING_GROUP)
 	await _drop_from_lethal(player)
-	await step(6)
-	assert_ne(player.move_manager.current_name, Move.FALL_UNCONTROLLED, \
-		"test setup: the reprieve never took")
+	await _reach_the_verdict(player)
+	assert_eq(player.move_manager.current_name, Move.SOFT_LANDING, "test setup: never rescued")
 	pad.remove_from_group(Probes.SOFT_LANDING_GROUP)
 	await _fall_until_settled(player)
-	assert_eq(player.move_manager.current_name, Move.FALL_UNCONTROLLED, \
-		"the reprieve was decided once and never revisited")
+	assert_ne(player.move_manager.current_name, Move.FALL_UNCONTROLLED, 		"the verdict was revisited on the way down")
+
 
 # The group is silent when it lands on the wrong node: the pad simply is not
 # soft, and the player finds out by dying on it. These cover the reasons a

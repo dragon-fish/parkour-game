@@ -1222,6 +1222,7 @@ func _build_moves() -> void:
 		[Move.COIL, CoilMove.new(), config.coil],
 		[Move.FALLING, FallingMove.new(), config.falling],
 		[Move.FALL_UNCONTROLLED, FallUncontrolledMove.new(), config.fall_uncontrolled],
+		[Move.SOFT_LANDING, SoftLandingMove.new(), config.soft_landing],
 		[Move.LANDING, LandingMove.new(), config.landing],
 		[Move.SKILL_ROLL, SkillRollMove.new(), config.skill_roll],
 		[Move.SLIDE, SlideMove.new(), config.slide],

@@ -590,16 +590,16 @@ behaves like ordinary floor. Both fall out of one model — an uncontrolled fall
 is a *prediction* about where the body is going to come down, and a predicted
 landing on something soft is never fatal.
 
-**It absorbs the whole fall, not just the death.** The drop is treated as
-though it never happened: no landing cost, no speed lost, and no roll to have
-missed. A pad the player has to roll off is a pad that punishes being rescued.
+**It changes the ending, not the fall.** The player still loses control at the
+lethal height and is still put down hard: the landing lockout runs exactly as
+it would have, minus the death. A pad is a rescue, not a trampoline.
 
 Two things follow that are worth knowing before placing one:
 
-- **The reprieve is re-checked, not latched.** Falling still has air control,
-  so a player reprieved at the top can steer off the pad and die anyway, and
-  one already doomed can steer onto it and live. A pad does not have to be
-  directly below the jump to work.
+- **The window is one tick wide.** The arc is checked at the moment control is
+  taken away and never again. Jump badly, or carry too much horizontal speed,
+  and there is nothing to be done about it on the way down — which is the
+  point: every action is decided before it is taken.
 - **The arc is walked from the feet, ignoring input that has not happened.**
   A pad tucked under an overhang the arc clips will not be found. If a rescue
   reads as unreliable, the obstruction on the way down is the first thing to

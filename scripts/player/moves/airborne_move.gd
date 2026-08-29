@@ -309,15 +309,6 @@ func settle_landing(delta: float) -> StringName:
 	player.fall_tracker.update(delta, -impact_speed, player.global_position.y)
 	# Read BEFORE set_grounded(), which resets the counter.
 	var fall_height: float = player.fall_tracker.fall_height
-	# [ME:INFERRED 12 §12.5] THE PAD ABSORBS THE FALL, all of it. One rule
-	# rather than two: the drop is treated as though it never happened, so the
-	# roll is unnecessary rather than merely allowed, no landing cost is
-	# charged, and the body walks off the pad at the speed it arrived with.
-	# That also covers the observation the model was built from -- a pad
-	# reached from an ordinary height behaves exactly like ordinary floor,
-	# because at those heights there was nothing to absorb.
-	if _landed_on_something_soft():
-		fall_height = 0.0
 	# `and` short-circuits left-to-right, and the order of the three conjuncts
 	# below is load-bearing. The block comes first: refusing the SKILL_ROLL
 	# transition later would still let _apply_landing_cost() below charge
@@ -337,21 +328,6 @@ func settle_landing(delta: float) -> StringName:
 	player.notify_landed(impact_speed)
 	_apply_landing_cost(fall_height, rolled)
 	return landing_destination(fall_height, rolled)
-
-## Whether any of this tick's contacts was with a floor that absorbs falls.
-##
-## Read off the slide collisions rather than predicted: by here the body has
-## already arrived, and what it actually touched outranks anything an arc
-## walked on the way down had to say.
-func _landed_on_something_soft() -> bool:
-	for i in player.get_slide_collision_count():
-		# Typed explicitly: Move.player is untyped by design, so the call
-		# returns a Variant and := has nothing to infer from.
-		var contact: KinematicCollision3D = player.get_slide_collision(i)
-		# Floors only. A pad's own side wall is not something you land on.
-		if contact.get_normal().y >= config.pawn.walkable_floor_z 				and Probes.is_soft(contact.get_collider()):
-			return true
-	return false
 
 ## Whether a ledge is close enough to reach for, horizontally.
 ##

@@ -673,6 +673,12 @@ func _has_clip(clip_name: StringName) -> bool:
 ## the calling move; every entry after it is a progressively less accurate
 ## but still-better-than-nothing fallback. Returns Move.KEEP if the
 ## attached body (or the lack of one) has none of them.
+## The airborne loop, in preference order. `Jump` is the pack's AIRBORNE LOOP
+## (Jump_Loop, with the suffix stripped on merge), which is what a fall is. It
+## led with the fox's `jump` before, which is a whole take-off-to-landing clip.
+const AIRBORNE_LOOP: Array[StringName] = [&"Jump", &"NinjaJump_Idle", &"jump",
+	&"Idle", &"idle"]
+
 func _first_available(candidates: Array[StringName]) -> StringName:
 	for candidate in candidates:
 		if _has_clip(candidate):
@@ -847,10 +853,16 @@ func _target_animation() -> StringName:
 				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			return _first_available([&"Idle", &"Idle_FoldArms", &"idle", &"Walk"])
 		Move.FALLING:
-			# `Jump` is the pack's AIRBORNE LOOP (Jump_Loop, with the suffix
-			# stripped on merge), which is what a fall is. It led with the fox's
-			# `jump` before, which is a whole take-off-to-landing clip.
-			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"Idle", &"idle"])
+			return _first_available(AIRBORNE_LOOP)
+		Move.SOFT_LANDING:
+			# A RESCUED FALL LOOKS LIKE AN ORDINARY ONE. LiftAir is the dying clip
+			# and stays with FALL_UNCONTROLLED: the body about to be caught is not
+			# going limp, it just has no say in where it lands.
+			#
+			# Its own case rather than sharing FALLING's, because
+			# test_every_move_has_its_own_case looks for the literal "Move.X:" --
+			# a combined case hides whichever name is not last.
+			return _first_available(AIRBORNE_LOOP)
 		Move.ZIPLINE:
 			# No zipline clip in the packs. The airborne loop is the closest
 			# honest pose until contact IK gives the hands the cable -- animation

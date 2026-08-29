@@ -26,6 +26,7 @@ extends Resource
 @export var coil: CoilConfig = CoilConfig.new()
 @export var falling: FallingConfig = FallingConfig.new()
 @export var fall_uncontrolled: FallUncontrolledConfig = FallUncontrolledConfig.new()
+@export var soft_landing: SoftLandingConfig = SoftLandingConfig.new()
 @export var landing: LandingConfig = LandingConfig.new()
 @export var skill_roll: SkillRollConfig = SkillRollConfig.new()
 @export var slide: SlideConfig = SlideConfig.new()
