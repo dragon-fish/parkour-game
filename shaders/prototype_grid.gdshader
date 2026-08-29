@@ -77,19 +77,25 @@ uniform float fine_fade : hint_range(0.0, 1.0) = 0.45;
 //   2.71  where the feet are at the top of the climb (measured, SZD)
 // + 2.80  GrabConfig.ledge_max_height, reach from the feet
 //   ----
-//   5.51  rounded down to 5.5
+//   5.51  where an IntoGrab is still ATTEMPTED
 //
-// AT FULL SPEED ONLY. climb_height_running is the run_speed_limit end of a
-// dial whose other end is climb_height (1.30) for a standing kick, so a wall
-// approached from a standstill tops out around 4.1 m. The line is the
-// optimistic bound: what a good run-up can still reach, not what any approach
-// will.
+// DRAWN AT 5.0, WHICH IS LOWER ON PURPOSE. Played, rather than derived: at
+// 5.5 the body reaches and misses, and 5.2 goes only on a near-perfect run.
+// The arithmetic says where the attempt begins, not where it lands, and a
+// blockout line that marks the far edge of what a specialist can do would have
+// level geometry built against the limit of human timing. This one marks what
+// a player can rely on. Above it, expect to be sending the hardcore.
+//
+// AT FULL SPEED EITHER WAY. climb_height_running is the run_speed_limit end of
+// a dial whose other end is climb_height (1.30) for a standing kick, so a wall
+// approached from a standstill tops out far lower, around 4.1 m by the same
+// arithmetic.
 //
 // AN EARLIER VERSION SAID 4.0, which was the jump plus the grab with the climb
 // left out entirely -- it drew a ceiling under walls the body climbs routinely.
 // If this ever needs re-deriving, the chain is Jump -> Airborne -> WallClimb ->
 // Falling -> IntoGrab, and every link contributes height.
-uniform float reach_ceiling = 5.5;
+uniform float reach_ceiling = 5.0;
 
 // WHERE THE FLOOR UNDER THIS OBJECT IS, in world Y.
 //
