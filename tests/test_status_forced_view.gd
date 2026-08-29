@@ -54,3 +54,29 @@ func test_the_view_key_does_nothing_while_forced() -> void:
 	await step(1)
 	p.camera_rig.toggle_third_person()
 	assert_false(p.camera_rig.third_person, "the key changed the preference under a force")
+
+func test_the_view_eases_in_whichever_way_it_is_going() -> void:
+	# THE BUG THIS PINS. Easing an absolute 0..1 blend is ease-in one way and
+	# ease-out the other: pow(t, 5) climbing from 0 starts slow, but the same
+	# expression on a t falling from 1 drops fastest immediately. Measured as a
+	# fraction of the distance covered in the first quarter of the blend, which
+	# a slow start keeps well under a quarter in BOTH directions.
+	var p := _player()
+	await step(1)
+	var quarter: int = maxi(int(p.config.camera.view_blend_time * 60.0 / 4.0), 1)
+	
+	# first -> third
+	p.camera_rig.third_person = true
+	await step(quarter)
+	var out_early: float = p.camera_rig._eased_view_blend()
+	await step(120)
+	assert_almost_eq(p.camera_rig._eased_view_blend(), 1.0, 0.001, "test setup: never arrived")
+	
+	# third -> first, measured as distance travelled from where it started
+	p.camera_rig.third_person = false
+	await step(quarter)
+	var back_early: float = 1.0 - p.camera_rig._eased_view_blend()
+	
+	assert_lt(out_early, 0.25, "leaving the eye did not start slowly")
+	assert_lt(back_early, 0.25, \
+		"returning to the eye started fast: the curve is riding position, not progress")

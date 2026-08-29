@@ -170,20 +170,35 @@ func _advance_view_blend(delta: float) -> void:
 	var wanted: float = 1.0 if in_third_person() else 0.0
 	if _view_blend < 0.0:
 		_view_blend = wanted
+		_view_from = wanted
+		_view_to = wanted
+		_view_progress = 1.0
 		return
+	if not is_equal_approx(wanted, _view_to):
+		# RESTARTED FROM WHERE THE EYE ACTUALLY IS, not from the end it was
+		# heading for. A view flipped back half way has to ease out of the
+		# position it had reached, or it jumps to the far end first.
+		_view_from = _view_blend
+		_view_to = wanted
+		_view_progress = 0.0
 	var seconds: float = maxf(_config.camera.view_blend_time, 0.001)
-	_view_blend = move_toward(_view_blend, wanted, delta / seconds)
+	_view_progress = move_toward(_view_progress, 1.0, delta / seconds)
+	_view_blend = lerpf(_view_from, _view_to, _curve(_view_progress))
 
-## Where the view actually sits, as opposed to how far through the journey
-## it is. The stored blend advances linearly because move_toward is what
-## makes the duration exact; the curve is applied on the way OUT.
+## The shape of a view change. Quintic ease-in: the eye clings to where it
+## was and then leaves in a rush.
 ##
-## Quintic ease-in: the eye clings to where it was and then leaves in a
-## rush. One line to change, and worth changing as a pair with
-## view_blend_time -- a slower curve wants a shorter duration to read the
-## same.
+## Takes PROGRESS, never position -- see _view_progress. One line to change,
+## and worth changing as a pair with view_blend_time, since a curve that
+## spends longer near its start wants a shorter duration to read the same.
+func _curve(progress: float) -> float:
+	return pow(progress, 5.0)
+
+## Where the view sits between the eye and the seat, curve already applied.
+## _view_blend IS that position now -- the curve is spent in
+## _advance_view_blend(), on the journey rather than on the destination.
 func _eased_view_blend() -> float:
-	return pow(_view_blend, 5.0)
+	return _view_blend
 
 ## How much screen blur the view change wants right now. Fed to ScreenEffects
 ## by Player -- this rig is handed values and never reaches for a node.
@@ -231,6 +246,18 @@ var _shoulder_across: float = INF
 ## seeded yet" -- the first frame of a life snaps to whichever view is in
 ## force, because a blend played on spawn is a blend nobody asked for.
 var _view_blend: float = -1.0
+
+## The journey currently under way: where it started, where it is going, and
+## how far through it is.
+##
+## THE CURVE HAS TO RIDE THIS, NOT THE POSITION. Easing an absolute 0..1
+## blend looks right in one direction and backwards in the other: pow(t, 5)
+## climbing from 0 starts slow, but the same expression on a t falling from
+## 1 drops fastest immediately. Progress always runs 0 -> 1 whichever way
+## the view is going, so a slow start is a slow start both ways.
+var _view_from: float = 0.0
+var _view_to: float = 0.0
+var _view_progress: float = 1.0
 
 ## Wheel-adjusted distance, in metres. Negative until the first update seeds it
 ## from third_person_back, so a config change is picked up rather than being
@@ -571,6 +598,7 @@ func reset_state() -> void:
 		camera.position = Vector3.ZERO
 	# Re-seeded, not eased: a respawn must not play the journey between views.
 	_view_blend = -1.0
+	_view_progress = 1.0
 	# third_person deliberately NOT reset. It is a VIEWING PREFERENCE, not
 	# movement state: someone who chose to watch their own body did not choose
 	# it for one life. The owner reported dying and being put back in first
