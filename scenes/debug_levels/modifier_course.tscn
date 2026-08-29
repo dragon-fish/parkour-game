@@ -112,36 +112,36 @@ material = SubResource("Material_obstacle")
 size = Vector3(4, 1, 3)
 
 [sub_resource type="Resource" id="Spec_cap05"]
-resource_name = "SPEED_CAP 0.50 (1.5 s)"
+resource_name = "SPEED_CAP 0.50 (0.15 s)"
 script = ExtResource("10_spec")
 amount = 0.5
-seconds = 1.5
+seconds = 0.15
 
 [sub_resource type="Resource" id="Spec_nojump"]
-resource_name = "BLOCK_JUMP (1.5 s)"
+resource_name = "BLOCK_JUMP (0.15 s)"
 script = ExtResource("10_spec")
 effect = 2
-seconds = 1.5
+seconds = 0.15
 
 [sub_resource type="Resource" id="Spec_first"]
-resource_name = "FORCE_VIEW FIRST (1.5 s)"
+resource_name = "FORCE_VIEW FIRST (0.15 s)"
 script = ExtResource("10_spec")
 effect = 1
 view = 1
-seconds = 1.5
+seconds = 0.15
 
 [sub_resource type="Resource" id="Spec_third"]
-resource_name = "FORCE_VIEW THIRD (1.5 s)"
+resource_name = "FORCE_VIEW THIRD (0.15 s)"
 script = ExtResource("10_spec")
 effect = 1
 view = 2
-seconds = 1.5
+seconds = 0.15
 
 [sub_resource type="Resource" id="Spec_nowallrun"]
-resource_name = "BLOCK_WALL_RUN (1.5 s)"
+resource_name = "BLOCK_WALL_RUN (0.15 s)"
 script = ExtResource("10_spec")
 effect = 6
-seconds = 1.5
+seconds = 0.15
 
 [sub_resource type="Resource" id="Spec_stagger"]
 resource_name = "STAGGER (1.0 s)"
@@ -240,7 +240,7 @@ mesh = SubResource("Mesh_fence")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -16)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_cap05")])
-refresh_interval = 0.5
+refresh_interval = 0.05
 
 [node name="Shape" type="CollisionShape3D" parent="T1SpeedCap"]
 shape = SubResource("Shape_vol12")
@@ -262,7 +262,7 @@ outline_size = 10
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -32)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_nojump")])
-refresh_interval = 0.5
+refresh_interval = 0.05
 
 [node name="Shape" type="CollisionShape3D" parent="T2NoJump"]
 shape = SubResource("Shape_vol12")
@@ -284,7 +284,7 @@ outline_size = 10
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -48)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_first")])
-refresh_interval = 0.5
+refresh_interval = 0.05
 
 [node name="Shape" type="CollisionShape3D" parent="T3ForceFirst"]
 shape = SubResource("Shape_vol12")
@@ -306,7 +306,7 @@ outline_size = 10
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -64)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_third")])
-refresh_interval = 0.5
+refresh_interval = 0.05
 
 [node name="Shape" type="CollisionShape3D" parent="T4ForceThird"]
 shape = SubResource("Shape_vol12")
@@ -328,7 +328,7 @@ outline_size = 10
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -80)
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_nowallrun")])
-refresh_interval = 0.5
+refresh_interval = 0.05
 
 [node name="Shape" type="CollisionShape3D" parent="T5NoWallRun"]
 shape = SubResource("Shape_vol12")

@@ -216,6 +216,12 @@ var fall_tracker: FallTracker
 ## outside StatusList interprets an entry.
 var statuses: StatusList
 
+## Where speed_cap()'s scale has actually got to, as opposed to where the
+## status list says it should be. Eased over pawn.speed_cap_blend_time so a
+## level's speed change reads as a slow-down rather than a cut -- see
+## _blend_speed_scale().
+var _speed_scale: float = 1.0
+
 ## Emitted on the touchdown that ends an uncontrolled fall. The fall itself is
 ## already lost by then -- this only tells whoever owns respawning that the
 ## body has finished arriving.
@@ -1119,6 +1125,9 @@ func reset_state() -> void:
 		fall_tracker.reset(global_position.y)
 	if speed_energy != null:
 		speed_energy.reset()
+	# A respawn is not a transition to watch: the ceiling starts where the new
+	# life's statuses put it, with no slide inherited from the old one.
+	_speed_scale = statuses.speed_scale() if statuses != null else 1.0
 	_last_wish_dir = Vector3.ZERO
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
@@ -2725,6 +2734,7 @@ func _physics_process(delta: float) -> void:
 	# Aged alongside the other timers and BEFORE the moves run, so a status
 	# that expires this tick is already gone by the time anything reads it.
 	statuses.tick(delta)
+	_blend_speed_scale(delta)
 	# AHEAD OF EVERY READER OF in_third_person(), and immediately after the
 	# ageing above so it answers for this tick rather than the last one. Both
 	# _drive_body_yaw() below and the moves consult the rig for which view is
@@ -3575,7 +3585,24 @@ func speed_cap() -> float:
 	# move asks "how fast may I go", so a status applied to it reaches all of
 	# them and none of them needs to know statuses exist. Same shape as
 	# MoveConfig.speed_modifier, which the crouch already rides.
-	return speed_energy.cap() * statuses.speed_scale()
+	#
+	# The scale is the EASED one, not statuses.speed_scale(). See
+	# _blend_speed_scale(): the ceiling slides, the body chases it.
+	return speed_energy.cap() * _speed_scale
+
+## Slides the ceiling's scale toward whatever the status list currently says.
+##
+## DO NOT ease this by lowering accel_rate instead: that is the body's own
+## responsiveness and it belongs to every move, not to the one region that
+## happens to be capping the player.
+##
+## move_toward on a 0..1 scale, so the dial is a time for the full range and a
+## half-range change takes half of it -- which is what "a cap change should
+## feel proportional to how big it is" wants.
+func _blend_speed_scale(delta: float) -> void:
+	var wanted: float = statuses.speed_scale()
+	var seconds: float = maxf(config.pawn.speed_cap_blend_time, 0.001)
+	_speed_scale = move_toward(_speed_scale, wanted, delta / seconds)
 
 ## Which accumulation factor this tick's input asks for. The original
 ## declares three (02 §2.1) and this is the reading that makes all three

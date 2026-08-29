@@ -293,3 +293,15 @@ extends Resource
 ## following the view. A dead zone rather than an exact zero, so a stick barely
 ## off centre does not count as a decision to turn.
 @export var body_turn_input_threshold: float = 0.2
+
+## How long Player.speed_cap() takes to slide to a new ceiling when a level
+## puts a SPEED_CAP status on, or lifts one. PROJECT-DEFINED: the original has
+## no counterpart, because it has no such status.
+##
+## The acceleration curve alone does NOT hide the change. accel_rate is 61.44,
+## so the body covers the 3.6 m/s from full sprint to a half cap in 0.06 s --
+## about three frames, which the eye reads as a cut rather than a slow-down.
+## What is eased here is the CEILING; the body then chases it with the same
+## ground_accelerate() it always uses, so nothing about ordinary acceleration
+## changes and both endpoints are exactly what they were.
+@export var speed_cap_blend_time: float = 0.3

@@ -403,17 +403,28 @@ Nothing tracks who is inside a volume — there is no exit handler and no
 membership list. A region-wide modification is a short-lived status the
 volume keeps renewing:
 
-- Set `refresh_interval` to how often it re-applies, e.g. `0.5`.
-- Set each row's `seconds` to **at least twice** that, e.g. `1.0`.
+- Set `refresh_interval` to how often it re-applies, e.g. `0.05`.
+- Set each row's `seconds` to **at least twice** that, e.g. `0.15`.
 
 The status is then continuously renewed while the player is inside and lapses
-on its own shortly after they leave. Do not give `seconds` the same value as
-`refresh_interval`: both clocks then start from the same number and subtract
-the same delta, so the status expires on the very tick it is renewed and
-survives only because the volume is ordered ahead of the player. That is zero
-margin — anything that lets the two drift puts the expiry a frame ahead of the
-renewal, and one frame is enough for a buffered jump to fire inside a no-jump
-region. Twice the interval leaves a whole interval of slack.
+on its own shortly after they leave.
+
+**Both numbers want to be small, and the reason is the exit.** `seconds` is
+not only the renewal margin — it is also how long the modification outlives
+the player leaving the volume. What lapses is the last renewal, so the lag on
+the way out is `seconds` minus however long ago the last one fired: somewhere
+between `seconds - refresh_interval` and `seconds`. A 0.5 / 1.5 pairing is a
+full second to a second and a half of still being slowed after the red floor
+is behind you, and that is felt. 0.05 / 0.15 costs twenty polls a second per
+volume and brings it down to about a tenth of a second.
+
+Do not give `seconds` the same value as `refresh_interval`: both clocks then
+start from the same number and subtract the same delta, so the status expires
+on the very tick it is renewed and survives only because the volume is ordered
+ahead of the player. That is zero margin — anything that lets the two drift
+puts the expiry a frame ahead of the renewal, and one frame is enough for a
+buffered jump to fire inside a no-jump region. Twice the interval leaves a
+whole interval of slack.
 
 Leave `refresh_interval` at `0` for a one-shot: a status with a fixed
 `seconds` that starts counting the moment the player crosses the boundary and

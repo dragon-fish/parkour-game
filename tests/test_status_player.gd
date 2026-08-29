@@ -30,12 +30,30 @@ func _cap_spec(scale: float) -> StatusSpec:
 	return s
 
 func test_a_speed_cap_scales_what_every_move_asks_for() -> void:
+	# The ceiling SLIDES to the new scale rather than cutting to it, so this
+	# asserts where it arrives, not where it stands one frame in.
 	var p := _player()
 	await step(1)
 	var free_cap: float = p.speed_cap()
 	p.statuses.apply(_cap_spec(0.5), p, 0)
+	await step(60)
 	assert_almost_eq(p.speed_cap(), free_cap * 0.5, 0.0001, \
-		"speed_cap() ignored the status")
+		"speed_cap() never arrived at the status's scale")
+
+func test_a_speed_cap_does_not_cut_the_ceiling_in_one_frame() -> void:
+	# The reason the test above waits. A cap that lands instantly is what the
+	# owner reported feeling as a cut: accel_rate is 61.44, so the body covers
+	# the whole drop in about three frames and the eye reads no slow-down at
+	# all. DO NOT "fix" this by making the scale apply at once.
+	var p := _player()
+	await step(1)
+	var free_cap: float = p.speed_cap()
+	p.statuses.apply(_cap_spec(0.5), p, 0)
+	await step(1)
+	assert_gt(p.speed_cap(), free_cap * 0.5 + 0.0001, \
+		"the ceiling cut straight to the capped value instead of sliding")
+	assert_lt(p.speed_cap(), free_cap, \
+		"the ceiling did not begin to slide at all")
 
 func test_removing_the_cap_restores_the_ceiling_immediately() -> void:
 	# The energy budget is deliberately NOT cleared while capped, so the
