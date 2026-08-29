@@ -426,3 +426,31 @@ extends Resource
 ## DO NOT set this to 0 or 1: at either end the swap coincides with the camera
 ## being inside the head, which is the clipping the split exists to prevent.
 @export_range(0.05, 0.95, 0.05) var view_blend_body_swap: float = 0.35
+
+## [13.4] WHERE THE WOUNDED PICTURE BEGINS, as a fraction of full health.
+## Below this the colour starts draining; at zero it is fully grey.
+##
+## The original has no health bar -- the picture IS the readout -- so these
+## two thresholds are the whole of the interface. PROJECT-DEFINED: the
+## original's own numbers were never measured.
+@export var wounded_desaturation_at: float = 0.5
+
+## [13.4] Where the edge of the screen starts pulsing red. Below the grey
+## threshold on purpose: draining colour says "you have been hurt", and the
+## red is the last band, saved for actually being about to die. DO NOT swap
+## the two -- reversed, the gentlest cue arrives at the most dangerous moment.
+@export var wounded_alarm_at: float = 0.3
+
+## How hard the red edge closes in at zero health, and how often it breathes.
+## Gentle on purpose: it has to be readable while running without becoming
+## the thing being looked at.
+@export var wounded_alarm_strength: float = 0.45
+@export var wounded_alarm_hz: float = 0.8
+
+## [13.4] LOSING CONSCIOUSNESS, reached over the death sequence rather than
+## cut to: the picture dims, steepens, and goes soft, on top of the grey the
+## death already has. Dimming alone reads as a fade-out; steepening with it is
+## what makes the light go while the shapes stay.
+@export var death_brightness: float = 0.72
+@export var death_contrast: float = 1.4
+@export var death_blur: float = 0.45

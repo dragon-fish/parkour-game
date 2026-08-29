@@ -105,6 +105,45 @@ func take_damage(amount: float, cause: int) -> bool:
 		return false
 	return health.damage(amount, cause)
 
+## Runs the alarm's pulse. Kept on Player rather than read off a global clock
+## so a paused game does not come back with the edge mid-flash.
+var _alarm_clock: float = 0.0
+
+## [13.4] THE PICTURE IS THE HEALTH BAR. There is no number on screen in the
+## original and there is none here: colour drains as the body is hurt, and the
+## edge starts pulsing red when it is nearly out.
+##
+## PUSHED BEFORE THE MOVES RUN, so anything that owns these channels for its
+## own reasons writes after this and wins -- FallUncontrolledMove drives both
+## desaturation and blur every tick of a fatal fall.
+##
+## SILENT WHILE DYING: from there DeathSequence owns the whole picture, and
+## two writers ramping the same channels against each other would fight for
+## every frame of it.
+func _push_wounded_screen(delta: float) -> void:
+	_alarm_clock += delta
+	if screen_effects == null or health == null or _dying:
+		return
+	var camera: CameraConfig = config.camera
+	var left: float = health.fraction()
+	screen_effects.set_desaturation(_wounded_ramp(left, camera.wounded_desaturation_at))
+	var alarm: float = _wounded_ramp(left, camera.wounded_alarm_at)
+	if alarm <= 0.0:
+		if screen_effects.vignette_amount > 0.0:
+			screen_effects.set_vignette(Color.RED, 0.0)
+		return
+	# Breathing rather than blinking: a hard on/off at this size reads as a
+	# rendering fault, and the player is meant to keep running through it.
+	var pulse: float = 0.5 + 0.5 * sin(TAU * camera.wounded_alarm_hz * _alarm_clock)
+	screen_effects.set_vignette(Color.RED,
+		alarm * camera.wounded_alarm_strength * pulse)
+
+## 0 at or above `threshold`, rising to 1 as health reaches zero.
+static func _wounded_ramp(left: float, threshold: float) -> float:
+	if threshold <= 0.0 or left >= threshold:
+		return 0.0
+	return clampf((threshold - left) / threshold, 0.0, 1.0)
+
 ## [13.2] THE ONLY DEATH TEST THERE IS. Every source -- a fall, a hard
 ## landing, wire, a volume the level marked lethal -- differs only in how much
 ## it takes off, and this is where the consequence is read.
@@ -2863,6 +2902,7 @@ func _physics_process(delta: float) -> void:
 		# this costs the channel nothing when no view is changing.
 		if screen_effects != null:
 			screen_effects.set_blur(camera_rig.view_blur())
+	_push_wounded_screen(delta)
 	# Before the moves run, so the body moves this tick at whatever size it is
 	# now entitled to. A restore owed from an exit under a ceiling comes back
 	# on the first tick there is room for it.

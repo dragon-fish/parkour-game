@@ -186,6 +186,7 @@ func play(player: Player) -> void:
 				_player.camera_rig.begin_cinematic()
 		if _player.screen_effects != null:
 			_player.screen_effects.set_desaturation(1.0)
+			_player.screen_effects.set_vignette(Color.BLACK, 0.0)
 		_player.lock_input()
 
 func _physics_process(delta: float) -> void:
@@ -223,6 +224,7 @@ func _physics_process(delta: float) -> void:
 		var pose := _pose_at(_elapsed)
 		_player.camera_rig.set_cinematic_pose(pose[0], pose[1], pose[2])
 		_offer_the_view()
+	_fade_out_of_consciousness()
 	# THE CURTAIN. Ramped over the last BLACKOUT seconds, so the moment the
 	# solver is taken away -- and the skeleton snaps back to whatever the
 	# animation wanted -- happens behind it.
@@ -329,7 +331,38 @@ func _release_player() -> void:
 	_cinematic = false
 	if _player.screen_effects != null:
 		_player.screen_effects.set_desaturation(0.0)
+		# The grade and the softness go with it. Left behind, the next life is
+		# played out through a dim, steepened, blurred picture with nothing on
+		# screen to explain why.
+		_player.screen_effects.set_grade(1.0, 1.0)
+		_player.screen_effects.set_blur(0.0)
+		_player.screen_effects.set_vignette(Color.BLACK, 0.0)
 	_player.unlock_input()
+
+## [13.4] LOSING CONSCIOUSNESS, over the whole sequence rather than cut to.
+##
+## The grey is already there from the first frame -- that is the death saying
+## so. What arrives gradually is everything else: the light goes out of the
+## picture, the contrast steepens so the shapes stay while the light leaves,
+## and it goes soft. Cut to all at once it reads as a post-process bug; ramped
+## over four seconds it reads as the lights going out behind the eyes.
+##
+## RAMPED ON A SQUARE, not linearly: consciousness does not leave at a
+## constant rate, and a linear dim spends its first second doing something
+## barely visible and its last second doing far too much at once.
+##
+## DO NOT ramp the blur past the point the curtain starts. The blackout is
+## already covering the ragdoll's release by then, and blur on top of black
+## costs a full-screen sample for nothing.
+func _fade_out_of_consciousness() -> void:
+	if _player == null or _player.screen_effects == null or _player.config == null:
+		return
+	var camera: CameraConfig = _player.config.camera
+	var t: float = clampf(_elapsed / maxf(total_duration(), 0.001), 0.0, 1.0)
+	var k: float = t * t
+	_player.screen_effects.set_grade(lerpf(1.0, camera.death_brightness, k),
+		lerpf(1.0, camera.death_contrast, k))
+	_player.screen_effects.set_blur(lerpf(0.0, camera.death_blur, k))
 
 ## Local camera offset, roll and pitch at time t. Returns [Vector3, float, float].
 ##
