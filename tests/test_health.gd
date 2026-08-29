@@ -162,3 +162,17 @@ func test_a_stagger_that_takes_nothing_says_so_rather_than_reading_as_unset() ->
 	var spec := StatusSpec.new()
 	spec.effect = Status.Effect.STAGGER
 	assert_string_contains(spec.summary(), "no damage")
+
+func test_the_menu_and_the_r_key_respawn_the_same_way() -> void:
+	# One action, two ways of asking for it. The menu used to reach past the
+	# key's own path straight to reset_player(), so the identical choice read
+	# as a glitch from the menu and as deliberate from the key.
+	var arena: Arena = preload("res://scenes/main.tscn").instantiate()
+	add_child_autofree(arena)
+	await step(2)
+	arena.respawn_at_checkpoint()
+	await step(1)
+	assert_true(arena._death_sequence.is_covering(), \
+		"a checkpoint respawn teleported the body with no transition")
+	assert_eq(arena.player.screen_effects.tint_color(), Color.WHITE, \
+		"a respawn the player asked for did not read as their own choice")

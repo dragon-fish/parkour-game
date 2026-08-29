@@ -310,6 +310,10 @@ func _load_calibration_course() -> void:
 		(course as Node3D).position = Vector3(0.0, 0.0, 60.0)
 	add_child(course)
 
+## What the K key takes off. One barbed-wire hit, so three presses kill and
+## the thresholds in between can be walked through one press at a time.
+const DEBUG_BITE := 35.0
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and not event.echo and event.physical_keycode == KEY_R:
 		# Hold-to-interact: the hold FIRES THE MOMENT it reaches the threshold --
@@ -320,17 +324,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			_r_pressed_at_ms = Time.get_ticks_msec()
 		elif _r_pressed_at_ms >= 0:
 			_r_pressed_at_ms = -1
-			# WHITE, because the player chose this. Black is reserved for a death;
-			# an uncovered teleport reads as a glitch either way.
-			respawn_under_cover(Color.WHITE)
+			respawn_at_checkpoint()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_K:
-			# DEBUG. Routed through died_from_fall rather than reset_player()
-			# so it exercises the real chain -- cutscene, then respawn --
-			# which is the thing worth being able to trigger on demand.
+			# DEBUG. A BLOW, not a death: health is the only death test there is,
+			# so taking a bite out of the bar exercises the whole chain -- the
+			# wounded screen, the regeneration delay, and eventually the death
+			# and respawn -- through the same path a hazard uses. Emitting a
+			# death here instead would test a route nothing else takes.
 			if player != null:
-				player.died_from_fall.emit()
+				player.take_damage(DEBUG_BITE, Health.Cause.HAZARD)
 
 ## Blends the WorldEnvironment's ambient light between neutral and the cold
 ## tint every frame, reading CameraConfig.ambient_cold_strength off `config`
@@ -437,6 +441,16 @@ func _physics_process(_delta: float) -> void:
 ## REFUSED WHILE A CURTAIN IS ALREADY UP. A kill volume fires on touch, so
 ## a respawn that lands the body back inside one would start a second
 ## curtain every frame and never let go.
+## THE ACTION, of which the R tap is only a shortcut. The pause menu's "last
+## checkpoint" is the same thing chosen a slower way, and both go through here
+## so neither can drift into respawning without a transition -- which is what
+## the menu did.
+##
+## WHITE, because the player chose this. Black is reserved for a death; an
+## uncovered teleport reads as a glitch either way.
+func respawn_at_checkpoint() -> void:
+	respawn_under_cover(Color.WHITE)
+
 func respawn_under_cover(colour: Color = Color.WHITE) -> void:
 	if not is_instance_valid(player):
 		return
