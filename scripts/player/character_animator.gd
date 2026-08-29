@@ -90,13 +90,7 @@ const CROUCHED_CLIPS: Array[StringName] = [
 	&"sneak", &"sneaking", &"Crouch_Idle", &"Crouch_Fwd",
 ]
 
-## The rails, and only rails. A clip plays at speed / reference; these exist
-## so a body drifting to a halt does not freeze its own feet and a body carried
-## by something else does not run at twenty times life. They are NOT part of
-## the mapping, and a value that bites inside the ordinary speed range would
-## be -- the floor used to sit at 0.5, which quietly overrode the proportion
-## for every family whose reference is well above walking pace.
-const SPEED_SCALE_MIN := 0.1
+const SPEED_SCALE_MIN := 0.5
 const SPEED_SCALE_MAX := 2.0
 
 ## Bounds on fitting a clip to a scripted move's clock. Wider than the
@@ -113,48 +107,36 @@ const WALK_CLIPS: Array[StringName] = [&"Walk", &"Walk_Carry"]
 
 ## What a walk clip's 1.0 means, as a fraction of body_run_reference_speed.
 ##
-## 0.25 of 7.2 is 1.8 m/s, a brisk walk and a plausible authored speed for the
-## pack's Walk_Loop -- plausible, not measured: every locomotion clip in the
-## pack is authored IN PLACE, so there is no travelled distance to read a speed
-## off. The cadence is all the asset says.
+## DERIVED, not picked. The two scale bounds above already define how far any
+## clip can be stretched, so the walk's reference is set so that its CEILING
+## lands exactly on the run's FLOOR:
 ##
-## Nothing hands over to it any more: Ctrl is the walk, and without Ctrl the
-## walk band is skipped entirely, so this number answers to the walk alone.
+##   walk at SPEED_SCALE_MAX = 7.2 * 0.25 * 2.0 = 3.6 m/s
+##   run  at SPEED_SCALE_MIN = 7.2 * 0.5       = 3.6 m/s
 ##
-## THE ONE KNOB HERE. If the walk looks like it is hurrying or dawdling, this
-## is the number.
+## which is also where _run_band_speed() hands one clip over to the other. At
+## the seam both clips are at the exact edge of their usable range, so neither
+## is ever asked to do the other's job. 0.25 of 7.2 is 1.8 m/s, a brisk walk
+## and a plausible authored speed for the pack's Walk_Loop.
+##
+## THE ONE KNOB HERE. If the walk looks like it is hurrying or dawdling,
+## this is the number -- and moving it moves the handover with it, which is
+## the point.
 const WALK_REFERENCE_PCT := 0.25
 
 ## What a JOG clip's 1.0 means, as a fraction of body_run_reference_speed.
 ##
-## ONE, because the jog IS the run here. It carries every direction at every
-## speed above the idle threshold, so full ground speed has to be the place it
-## plays at its authored cadence -- 7.2 m/s reads 1.0 and nothing above it is
-## reachable on the ground.
+## Derived the same way the walk's is. The jog only ever plays SIDEWAYS or
+## BACKWARD here (see Move.WALKING), so its range is the run band: from
+## _run_band_speed() at the bottom to the full ground speed at the top. Setting
+## its reference to the bottom of that band puts it at 1.0 where the band starts
+## and at SPEED_SCALE_MAX where it ends, which is the whole of the range and no
+## more.
 ##
-## Half of that was right only while a sprint sat above the jog and left it the
-## bottom of the band. With the sprint gone the jog inherited the top of the
-## range and kept the band-bottom reference, so a body at full speed played its
-## stride at DOUBLE rate: it did not read as a long stride, it read as the
-## footage running fast.
-const JOG_REFERENCE_PCT := 1.0
-
-## And the crouch's, which until now had none: it borrowed
-## PawnConfig.crouched_pct, a GAMEPLAY cap saying a crouched body moves at 40%
-## of ground speed. That number has nothing to say about the cadence the clip
-## was authored at, and the two agreeing was a coincidence rather than a
-## reason -- so a crouch that looked slow had no knob to turn, only a gameplay
-## dial that would have moved the movement itself.
-##
-## Left at the value it was effectively using, so this change moves nothing on
-## screen. What it moves is where to reach: if the crouch looks like it is
-## dawdling, this is the number now.
-##
-## The pack's cycle lengths, for whoever turns it: sprint 0.667 s, jog
-## 0.933 s, walk 1.333 s, crouch 2.000 s -- a ratio of 1 : 1.4 : 2 : 3. Every
-## clip is authored IN PLACE (the root translates nowhere), so there is no
-## authored speed to read off them; the cadence is all the asset says.
-const CROUCH_REFERENCE_PCT := 0.4
+## DO NOT measure the jog against the same 7.2 reference the run uses: a jog
+## covering 7.2 m/s would then play at 1.0, and the stride has to be enormous
+## to cover that much ground at a jogging cadence.
+const JOG_REFERENCE_PCT := 0.5
 
 ## The packs' EIGHT-WAY sets, as suffixes clockwise from straight ahead.
 ##
@@ -460,22 +442,13 @@ func _creeping() -> bool:
 		return false
 	return player.wish_direction(player.last_input).length_squared() > 0.0001
 
-## Where the walk hands over to the run.
+## Where the walk hands over to the run: the speed at which the run clip would
+## be scaled to SPEED_SCALE_MIN, i.e. the slowest it can honestly go.
 ##
-## ITS OWN NUMBER NOW. It used to be derived from SPEED_SCALE_MIN, on the
-## reasoning that the handover belongs at the slowest speed the run clip can
-## honestly play. That tied a ROUTING threshold to a playback RAIL, and the
-## two have nothing to do with each other: lowering the rail so it would stop
-## overriding the proportional scale moved the handover from 3.6 m/s to 0.72
-## and sent a walking-pace strafe to the jog.
-##
-## Left at the value the old derivation produced, so nothing moves on screen.
-## This is the knob for WHICH clip runs at which speed; the references are the
-## knobs for how fast each one plays.
-const RUN_BAND_PCT := 0.5
-
+## Not a new tuning value -- it falls out of bounds that already existed, and
+## WALK_REFERENCE_PCT is set so the walk's ceiling lands on the same number.
 func _run_band_speed() -> float:
-	return player.body_run_reference_speed * RUN_BAND_PCT
+	return player.body_run_reference_speed * SPEED_SCALE_MIN
 
 ## Moves whose end is a LANDING. Leaving one of these for WALKING is the moment
 ## the feet arrive, which is what Jump_Land is a clip of.
@@ -624,7 +597,7 @@ func _drive_speed(clip: StringName) -> void:
 	# floor for its entire range.
 	var family := _family_of(base_clip)
 	if CROUCHED_CLIPS.has(base_clip) or family == &"Crouch":
-		reference *= CROUCH_REFERENCE_PCT
+		reference *= player.config.pawn.crouched_pct
 	elif WALK_CLIPS.has(base_clip) or family == &"Walk":
 		reference *= WALK_REFERENCE_PCT
 	elif family == &"Jog":
@@ -641,13 +614,15 @@ func _drive_speed(clip: StringName) -> void:
 		# travel_speed(), NOT horizontal_speed() -- see travel_speed()'s own
 		# note on why velocity lies through a vault or a mantle. The eye already
 		# reads it for the same reason.
-		# STRICTLY PROPORTIONAL: at its family's reference speed a clip plays at
-		# 1.0, at half of it at 0.5, and that is the whole rule. The rails below
-		# are there to catch degenerate values, not to shape the curve -- a walk
-		# used to get a floor of its own, derived from the creep speed, and a
-		# per-family exception to proportionality is exactly the kind of decision
-		# that belongs to whoever is tuning the references rather than to this.
-		scale = clampf(player.travel_speed() / reference, SPEED_SCALE_MIN, SPEED_SCALE_MAX)
+		# A LOWER FLOOR FOR THE WALK, and it is derived rather than picked: the
+		# creep is 0.5 m/s against a walk authored near 1.8, so the honest scale
+		# there is 0.28 and the ordinary 0.5 floor would run the feet at 0.9 m/s
+		# under a body doing 0.5. SPEED_SCALE_MIN exists to stop ONE clip being
+		# stretched across everything; a walk asked to walk slowly is not that.
+		var scale_min := SPEED_SCALE_MIN
+		if WALK_CLIPS.has(base_clip) or family == &"Walk":
+			scale_min = minf(SPEED_SCALE_MIN, player.config.pawn.walk_velocity / reference)
+		scale = clampf(player.travel_speed() / reference, scale_min, SPEED_SCALE_MAX)
 	anim_tree.set("parameters/%s/scale" % GRAPH_TIME_SCALE, scale)
 
 ## The time scale that makes `clip` finish exactly when the scripted move
@@ -789,9 +764,8 @@ func _travel_octant() -> int:
 	var angle: float = atan2(travel.dot(right), travel.dot(facing))
 	return posmod(int(round(angle / (PI / 4.0))), 8)
 
-## Whether the clip on screen expresses the travel direction ITSELF -- a real
-## octant clip out of an eight-way family, rather than that family's forward
-## twin standing in for a direction it does not have.
+## Whether the mounted body REGISTERS an eight-way set for the clip on screen,
+## and so expresses travel direction in the animation itself.
 ##
 ## Player._drive_body_yaw() asks, and stops turning the model when the answer
 ## is yes. The two were double-counting: the octant is chosen against the
@@ -800,23 +774,18 @@ func _travel_octant() -> int:
 ## sideways again for as long as those two disagreed -- which, at a finite
 ## turn speed, is every change of direction.
 ##
-## Derived from the clip's own name rather than recorded as a flag: there is
-## no second copy to fall out of step with what is actually playing.
+## ASKED OF THE BODY, NOT OF THIS FRAME'S CLIP. Asking whether the clip playing
+## right now is a non-forward octant makes the forward twin answer "no", and
+## _travel_octant() rounds to the nearest eighth: a body running a hair left of
+## straight then crosses between Jog_Fwd and Jog_Fwd_L on velocity noise alone.
+## One answer squares the model up to the collision body and the other eases it
+## toward the look, so the model snaps back and forth every few frames -- and in
+## first person the eye rides the head bone, so it surfaces as a shaking CAMERA,
+## a long way from where the fault is.
 ##
-## ASKED OF THE BODY, NOT OF THIS FRAME'S CLIP, and that distinction is the
-## whole of it. The first cut asked whether the clip playing right now was a
-## non-forward octant, so the forward twin answered "no" -- and _travel_octant()
-## rounds to the nearest eighth, so a body running a hair left of straight
-## crosses between Jog_Fwd and Jog_Fwd_L on velocity noise alone. One answer
-## squares the model up to the collision body and the other eases it toward the
-## look, so the model snapped back and forth every few frames. In first person
-## the eye rides the head bone: that read as the CAMERA shaking, which is a
-## long way from where the bug was.
-##
-## Whether the set EXISTS cannot flicker. A body that has the octants expresses
-## every direction it travels with a clip, forward included, so the procedural
-## turn has nothing to add for any of them; a body that lacks them gets the
-## turn for all of them. There is no third case, and no per-frame edge to sit on.
+## Whether the set exists cannot flicker. A body that has the octants expresses
+## every direction it travels, forward included, so the procedural turn has
+## nothing to add for any of them; a body without them gets the turn throughout.
 func clip_carries_direction() -> bool:
 	var family: StringName = _family_of(current_clip)
 	if family == &"":
@@ -927,25 +896,26 @@ func _target_animation() -> StringName:
 			if _creeping():
 				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			var speed: float = player.horizontal_speed()
+			if speed > _run_band_speed():
+				# SPRINT AHEAD, JOG TO THE SIDES AND BEHIND.
+				#
+				# Neither pack has an eight-way sprint -- Sprint is one clip,
+				# forward only -- and the eight-way sets are the jog's and the
+				# walk's. So the run band is split by DIRECTION rather than run
+				# on one clip: straight ahead is the sprint the owner asked for,
+				# and everything else takes the jog, which is the only thing
+				# that can strafe at all.
+				#
+				# This extends "do not use the jog" (which was about the
+				# forward run) to the sideways case, where a reversed or
+				# rotated sprint is the only alternative and there is no
+				# eight-way sprint to use instead. The seam is a change of
+				# cadence when turning sharply out of a straight run.
+				if _travel_octant() <= 0:
+					return _first_available([&"Sprint", &"Jog_Fwd", &"Walk_Fwd", &"run", &"idle"])
+				return _first_available_directional([&"Jog", &"Walk", &"Sprint", &"run", &"idle"])
 			if speed > player.config.pawn.run_animation_speed_threshold:
-				# NO WALK BAND WITHOUT CTRL. Ctrl IS the walk -- the branch
-				# above -- and without it a body crosses everything below a run
-				# in a handful of frames. Threading a walk loop through those
-				# frames buys a cadence nobody can see and costs a state-machine
-				# transition that collides with the next one: the owner's own
-				# words, 从0到2.88几乎只有几帧, 何必为了那几帧插入一个walk.
-				#
-				# DO NOT PUT THE SPRINT BACK. It was here, split off as a band
-				# below the jog, and its stride is far larger than this project
-				# wants -- the owner's call after seeing it run. Its Enter and
-				# Exit went with it: a launch clip has nothing to launch into
-				# once the thing it launches into is not being used.
-				#
-				# So the whole of moving under your own power is the jog's
-				# eight-way set. It is also the only set that reaches running
-				# pace in every direction, which is why the sprint was never
-				# more than the forward octant's exception in the first place.
-				return _first_available_directional([&"Jog", &"Walk", &"run", &"idle"])
+				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			return _first_available([&"Idle", &"Idle_FoldArms", &"idle", &"Walk"])
 		Move.FALLING:
 			return _first_available(AIRBORNE_LOOP)

@@ -70,13 +70,11 @@ func _asked_for(clips: Array, move: StringName, velocity: Vector3) -> String:
 
 # --- the run band splits by direction -----------------------------------------
 
-func test_running_straight_ahead_takes_the_jog() -> void:
-	# The sprint was here, as the forward octant's exception to the jog's
-	# eight-way set. Its stride is far larger than this project wants, so the
-	# exception is gone and every direction is the jog's -- which is also the
-	# only set that reaches running pace in all eight.
+func test_running_straight_ahead_sprints() -> void:
+	# Neither pack has an eight-way sprint, so straight ahead is the one
+	# direction the sprint can serve -- and the owner asked for it there.
 	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(0.0, 0.0, -6.0)),
-		"Jog_Fwd", "a straight run did not take the jog")
+		"Sprint", "a straight run did not sprint")
 
 func test_strafing_at_speed_takes_the_jog() -> void:
 	# The jog is the only eight-way set that reaches running pace. Sideways
@@ -112,25 +110,12 @@ func test_the_diagonals_do_not_cross_over() -> void:
 
 # --- the slower bands use their own sets ---------------------------------------
 
-func test_ctrl_is_what_reaches_the_walk_set() -> void:
-	# There is no walk BAND any more: without Ctrl a body crosses everything
-	# below a run in a handful of frames, and threading a walk loop through them
-	# buys a cadence nobody can see. Ctrl is the walk, and it is the only way to
-	# the walk's own eight-way set.
-	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
-	var player: Player = _world["player"]
-	player.move_manager.start(Move.WALKING)
-	_travel(player, Vector3(2.0, 0.0, 0.0))
-
-	assert_eq(String(animator._target_animation()), "Jog_Right",
-		"strafing at two metres a second without Ctrl went looking for a walk band")
-
-	var creep := MoveInput.new()
-	creep.move = Vector2(1.0, 0.0)
-	creep.walk_held = true
-	player.last_input = creep
-	assert_eq(String(animator._target_animation()), "Walk_R",
-		"Ctrl did not reach the walk's own set")
+func test_the_walk_band_strafes_on_the_walk_set() -> void:
+	# 2 m/s is above the idle threshold and below _run_band_speed()'s 3.6, so
+	# this is the middle band -- and it must not borrow the jog's set, which is
+	# a different gait at a different pace.
+	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(2.0, 0.0, 0.0)),
+		"Walk_R", "strafing at walking pace")
 
 func test_a_crouched_strafe_stays_crouched() -> void:
 	assert_eq(await _asked_for(FULL_CLIPS, Move.CROUCH, Vector3(2.0, 0.0, 0.0)),
