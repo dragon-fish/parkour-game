@@ -128,6 +128,7 @@ var _metadata_labels: Array[Control] = []
 var _floor_phase := 0.0
 var _floor_gain := 0.0
 var _click_prompt: Label
+var _music: MenuMusic
 var _prompt_tween: Tween
 var _prompt_shown := false
 var _quit_confirm: Control
@@ -231,6 +232,7 @@ func _build_ui() -> void:
 	_build_footer()
 	_build_logo_mark()
 	_build_click_prompt()
+	_build_music()
 
 func _build_floor() -> void:
 	_floor = ColorRect.new()
@@ -384,6 +386,19 @@ func _build_corner_metadata() -> void:
 func _build_footer() -> void:
 	_footer = MeTheme.footer_label("↑↓ 选择 · Enter 确认")
 	add_child(_footer)
+
+## The held title shot loops eight restrained bars; the click drops into the
+## chorus. Built last so nothing else waits on a stream load.
+##
+## SKIPPED HEADLESS. There is no audio device under the dummy driver, and the
+## menu's own tests drive the click seam on every run -- a music node there
+## would be loading a megabyte of ogg for nothing.
+func _build_music() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	_music = MenuMusic.new()
+	_music.name = "MenuMusic"
+	add_child(_music)
 
 ## Beat 0a: the simplified logo/title version pressed over the crouched
 ## close-up, plus a fake ~0.8s loading bar that covers the real body
@@ -648,6 +663,11 @@ func _show_click_prompt() -> void:
 ## The click: prompt out, and the whole show plays through to the menu.
 func _begin_show() -> void:
 	_prompt_shown = false
+	# THE HANDOFF, on the click itself rather than on the beat that follows it:
+	# the chorus is entered at the phase the loop had reached, so the grid does
+	# not break and the drop reads as something this press caused.
+	if _music != null:
+		_music.to_chorus()
 	if _prompt_tween != null and _prompt_tween.is_valid():
 		_prompt_tween.kill()
 	var fade := _track(create_tween())
@@ -854,6 +874,11 @@ func _on_start_pressed() -> void:
 		_change_scene.call(MAIN_SCENE)
 		return
 	_loading = true
+	# Started with the load, not with the scene swap: the fade wants the whole
+	# of the loading run to breathe over, and by the time the swap happens this
+	# node is about to be freed anyway.
+	if _music != null:
+		_music.fade_out()
 	_load_min_elapsed = 0.0
 	_load_started_ms = Time.get_ticks_msec()
 	ResourceLoader.load_threaded_request(MAIN_SCENE)
