@@ -555,10 +555,27 @@ with a payload nothing reads.
 
 ## Placing a soft landing pad
 
-A pad is any body that carries the group **`soft_landing`**. That is the whole
-of the interface — no node type, no script, no exports. Select the body, open
-the Node dock's *Groups* tab, and add `soft_landing`. A CSG shape or a GridMap
-tile qualifies exactly as readily as a `StaticBody3D`.
+A pad is whatever the raycast hits, carrying the group **`soft_landing`**. That
+is the whole of the interface — no node type, no script, no exports. Select the
+node, open the Node dock's *Groups* tab, and add `soft_landing`.
+
+**The group goes on whichever node OWNS the collision**, which is not always
+the node you drew the box with. Verified against 4.7:
+
+| what you placed | who the ray reports | where the group goes |
+|---|---|---|
+| `StaticBody3D` + `CollisionShape3D` | the `StaticBody3D` | the body |
+| a lone `CSGBox3D`, `use_collision` on | the `CSGBox3D` itself | that box |
+| `CSGCombiner3D` with child brushes | the **combiner** | the combiner, never a child brush |
+| `GridMap` | the `GridMap` node | the GridMap — see below |
+
+So a CSG box is a perfectly good pad: tick `use_collision`, add the group,
+done. Inside a CSG tree only the root owns collision, so a group on a child
+brush is read by nothing and fails silently.
+
+⚠️ **A GridMap is all-or-nothing.** The ray reports the GridMap node, not the
+tile, so putting it in the group makes *every cell in that map* soft. For one
+soft ledge among hard ones, use a separate body.
 
 [ME:INFERRED 12 §12.5] A group rather than a node class because the original's
 pads are ordinary collision boxes carrying a property: there is one in a level
