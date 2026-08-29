@@ -472,18 +472,13 @@ shape = SubResource("BoxShape3D_3qddd")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.3640547, 4.43669, -62.92401)
 shape = SubResource("BoxShape3D_xfrr3")
 
-[node name="WireRight" type="Path3D" parent="两端铁丝网"]
+[node name="WireRight" type="Path3D" parent="两端铁丝网" unique_id=1252463532]
 curve = SubResource("Curve_wire_right")
 script = ExtResource("11_wire")
-coils_per_metre = 1.5
-samples_per_coil = 12
 
-[node name="WireLeft" type="Path3D" parent="两端铁丝网"]
+[node name="WireLeft" type="Path3D" parent="两端铁丝网" unique_id=2098368324]
 curve = SubResource("Curve_wire_left")
 script = ExtResource("11_wire")
-coils_per_metre = 1.5
-samples_per_coil = 12
-
 
 [node name="Player" parent="." unique_id=1413053633 instance=ExtResource("4_player")]
 

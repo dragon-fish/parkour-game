@@ -88,10 +88,17 @@ extends Path3D
 		material = value
 		_rebuild()
 
-## Above this the configuration warning fires. Not a limit -- a long run of
-## tight coil legitimately costs this much -- but a number worth seeing before
-## an editor starts to crawl.
-const TRIANGLE_BUDGET := 60000
+## Above this the configuration warning fires. NOT A BUDGET IN ANY REAL
+## SENSE -- a single character model in this project carries about forty
+## thousand triangles, and 140 m of coil down both walls of the test
+## corridor measured 6.81 ms a frame against 7.23 ms with the wire deleted,
+## which is noise. It is set where a run stops being wire and starts being a
+## mistake, not where a GPU starts to care.
+##
+## DO NOT trade the coil's shape against this number. samples_per_coil is
+## what makes a loop round rather than hexagonal, and dropping it to save
+## triangles buys nothing measurable and costs the only thing anyone looks at.
+const TRIANGLE_BUDGET := 400000
 
 var _mesh_instance: MeshInstance3D = null
 

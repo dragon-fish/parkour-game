@@ -464,10 +464,13 @@ deliberate, and it is why the three can be combined freely:
 
 Wire that is merely decorative wants neither of those, and gets neither.
 
-`samples_per_coil` is the biggest lever on the triangle count, so it is the
-first dial to drop when the configuration warning fires. A 140 m run at
-`coils_per_metre = 1.5` and `samples_per_coil = 6` costs about 15,000
-triangles and measures as free next to the rest of a whitebox level.
+`samples_per_coil` is the biggest lever on the triangle count, but do not
+trade the coil's shape against it: it is what makes a loop round rather than
+hexagonal, and the triangles it costs are not worth having. A single character
+model here carries about forty thousand; 140 m of coil down both walls of the
+test corridor measured 6.81 ms a frame against 7.23 ms with the wire deleted,
+which is noise. The configuration warning is set where a run stops being wire
+and starts being a mistake, not where a GPU starts to care.
 
 ### `layer_priority`
 
