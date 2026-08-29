@@ -1892,6 +1892,36 @@ var death_cause: int = DeathCause.FALL
 
 func set_dying(dying: bool) -> void:
 	_dying = dying
+	# WHICH VIEW changes here, and DeathSequence.play() reads it back inside
+	# the same call -- to pick between the two death pitches -- so it cannot
+	# wait for the next tick's push. death_cause is set before this at every
+	# declaring site, which is what makes the answer available already.
+	_push_forced_view()
+
+## THE BODY IS WATCHED FROM OUTSIDE WHILE IT DIES, unless the death is a fall.
+##
+## Death02 collapses FACE DOWN. In first person that ends with the eye below
+## the floor looking up through the model -- not a framing that can be tuned
+## out, the head simply arrives where the camera is. The falling performance
+## has its own camera and wants none of this.
+##
+## ONLY WITH A BODY. With nothing mounted there is no head to clip through,
+## which is the entire reason this exists, and a forced third person would
+## just pull the eye back off an invisible player.
+##
+## OUTRANKS A LEVEL'S FORCE_VIEW rather than yielding to it: a level that
+## pinned the view is in no position to keep a death legible. The pin comes
+## back the moment the body is released, because this is the only writer of
+## the field and it re-derives the answer from scratch every tick.
+func _push_forced_view() -> void:
+	# statuses is built in setup(), and set_dying() below is reachable from a
+	# bare Player.new() that skipped it -- the same case DeathSequence guards.
+	if camera_rig == null or statuses == null:
+		return
+	if _dying and death_cause != DeathCause.FALL and body != null:
+		camera_rig.forced_view = Status.View.THIRD
+		return
+	camera_rig.forced_view = statuses.forced_view()
 
 func is_dying() -> bool:
 	return _dying
@@ -2788,7 +2818,7 @@ func _physics_process(delta: float) -> void:
 	# once, for the whole death, so a stale read there is wrong until the body
 	# stops falling. _drive_body_yaw() would merely be wrong for a frame.
 	if camera_rig != null:
-		camera_rig.forced_view = statuses.forced_view()
+		_push_forced_view()
 		# Pushed HERE, before the moves run, so anything that owns the blur
 		# for its own reasons -- FallUncontrolledMove does, every tick of a
 		# death -- writes after this and wins. At rest the curve is zero, so
