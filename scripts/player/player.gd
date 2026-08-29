@@ -77,6 +77,16 @@ var interest_lines: Array[InterestLine] = []
 ## Checkpoint). Survives deaths and resets by design.
 var active_checkpoint: Checkpoint = null
 
+## Entry point for DeathVolume, duck-typed the same way touch_checkpoint() is.
+##
+## THE DEAD DO NOT DIE TWICE, for the same reason a corpse does not save: a
+## body already on its way out through the fall cutscene must not have a second
+## ending queued behind the first.
+func die_in_volume() -> void:
+	if _dying or move_manager.current_name == Move.FALL_UNCONTROLLED:
+		return
+	died_in_volume.emit()
+
 func touch_checkpoint(checkpoint: Checkpoint) -> void:
 	# THE DEAD DON'T SAVE. A checkpoint records "reached alive and in
 	# control": a fatal dive that clips the volume on the way to the ragdoll
@@ -235,6 +245,11 @@ var pending_stagger: bool = false
 ## already lost by then -- this only tells whoever owns respawning that the
 ## body has finished arriving.
 signal died_from_fall
+
+## A volume the level marked lethal. Separate from died_from_fall because the
+## two want different endings: that one earns the topple cutscene, this one is
+## a curtain and a respawn, which is the entire reason a level uses it.
+signal died_in_volume
 
 ## The ground-speed curve (02 §2.1/02 §2.5): layer 2 of the two-layer speed
 ## model, see SpeedEnergy's own header comment. Built in setup(), driven every

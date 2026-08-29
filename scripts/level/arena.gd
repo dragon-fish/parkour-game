@@ -137,6 +137,11 @@ func _ready() -> void:
 	# also teleports the body and restarts the move manager, and this
 	# function's own header already warns it spans a physics frame; a direct
 	# connection would have all of that run inside one.
+	if not player.died_in_volume.is_connected(kill_player):
+		# DEFERRED for the same reason the line below is: the signal is
+		# emitted from inside an Area3D callback mid-physics, and the
+		# respawn it starts teleports the very body being reported.
+		player.died_in_volume.connect(kill_player, CONNECT_DEFERRED)
 	if not player.died_from_fall.is_connected(_on_died_from_fall):
 		player.died_from_fall.connect(_on_died_from_fall, CONNECT_DEFERRED)
 
@@ -279,7 +284,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_r_pressed_at_ms = Time.get_ticks_msec()
 		elif _r_pressed_at_ms >= 0:
 			_r_pressed_at_ms = -1
-			reset_player()
+			# WHITE, because the player chose this. Black is reserved for a death;
+			# an uncovered teleport reads as a glitch either way.
+			respawn_under_cover(Color.WHITE)
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_K:
@@ -381,7 +388,34 @@ func _physics_process(_delta: float) -> void:
 	if player.ragdoll != null and player.ragdoll.is_simulating():
 		depth = player.ragdoll.hips_position().y
 	if depth < -config.pawn.fall_recovery_depth:
+		# A DEATH, not a rescue. Falling out of the world is falling to your
+		# death by any reading the player has; teleporting them back with no
+		# curtain reads as the level catching a bug rather than as an
+		# outcome. No cutscene either -- there is no floor down there to
+		# topple onto.
+		respawn_under_cover(Color.BLACK)
+
+## Fades to `colour`, respawns under full cover, and lifts. The one way
+## anything other than the death cutscene puts the player back.
+##
+## REFUSED WHILE A CURTAIN IS ALREADY UP. A kill volume fires on touch, so
+## a respawn that lands the body back inside one would start a second
+## curtain every frame and never let go.
+func respawn_under_cover(colour: Color = Color.WHITE) -> void:
+	if not is_instance_valid(player):
+		return
+	if _death_sequence == null:
 		reset_player()
+		return
+	if _death_sequence.is_covering():
+		return
+	_death_sequence.cover_respawn(player, reset_player, colour)
+
+## A volume the level marked lethal. Same curtain as falling out of the
+## world, and for the same reason: an elevator shaft exists so the player
+## dies at the top of it instead of spending fifteen seconds finding out.
+func kill_player() -> void:
+	respawn_under_cover(Color.BLACK)
 
 ## The R-hold action, also reachable from the pause menu's Restart option:
 ## forget the checkpoint and respawn at the level's own spawn. Under the

@@ -248,13 +248,25 @@ func _physics_process(delta: float) -> void:
 ## clear) but still deserves the curtain -- an uncovered teleport is jarring.
 ## Fades to black over COVER_FADE, runs `on_black` under full black,
 ## then holds and lifts exactly like the death path's own cover.
-func cover_respawn(player: Player, on_black: Callable) -> void:
+## `colour` says WHY, and the player reads it without being told: black is a
+## death, white is a reset they asked for. Defaulted to white because the
+## only caller that predates the distinction is the manual restart key.
+func cover_respawn(player: Player, on_black: Callable, colour: Color = Color.WHITE) -> void:
 	_player = player
 	_on_black = on_black
-	_cover_color = Color.WHITE
+	_cover_color = colour
 	_cover_in_left = COVER_FADE
 	if _player != null:
 		_player.lock_input()
+
+## True from the first frame of a curtain until the last frame of its lift.
+##
+## THE RE-ENTRY GUARD. A kill volume fires on touch, and a respawn that
+## puts the body back inside one -- a checkpoint an author placed in the
+## shaft -- would otherwise kill it again on the next frame, forever. The
+## level asks this before starting another curtain.
+func is_covering() -> bool:
+	return _cover_in_left > 0.0 or _cover_left > 0.0
 
 ## Cancels a sequence in progress. The level calls this whenever it respawns by
 ## some other route (the manual reset key), because a sequence left running

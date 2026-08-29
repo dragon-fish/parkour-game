@@ -63,12 +63,12 @@ roughness = 0.5
 material = SubResource("Material_obstacle")
 size = Vector3(4, 1, 3)
 
-[sub_resource type="BoxShape3D" id="Shape_fence"]
-size = Vector3(10, 1.2, 0.3)
-
 [sub_resource type="BoxMesh" id="Mesh_fence"]
 material = SubResource("Material_obstacle")
-size = Vector3(10, 1.2, 0.3)
+size = Vector3(10, 0.8636719, 0.3)
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_myp37"]
+points = PackedVector3Array(-5.038462, -0.47026154, -0.18846151, 5.038462, 0.45281544, 0.19615385, 5.038462, 0.45281544, -0.18846151, -5.038462, 0.45281544, 0.19615385, 5.038462, -0.47026154, 0.19615385, 5.038462, -0.47026154, -0.18846151, -5.038462, 0.45281544, -0.18846151, -5.038462, -0.47026154, 0.19615385)
 
 [sub_resource type="Resource" id="Spec_cap05"]
 resource_name = "SPEED_CAP 0.50 (0.15 s)"
@@ -119,11 +119,18 @@ effect = 15
 seconds = 1.0
 
 [sub_resource type="BoxShape3D" id="Shape_wire"]
-size = Vector3(10, 1.34906, 0.6360596)
+size = Vector3(10, 0.59352875, 0.47187272)
 
 [sub_resource type="BoxMesh" id="Mesh_patch_wire"]
 material = SubResource("Material_red")
 size = Vector3(9.4, 0.02, 1.4)
+
+[sub_resource type="Curve3D" id="Curve3D_vxffk"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 5, -0.044056416, -0.0640564, 0, 0, 0, 0, 0, 0, -5, 0.00035512447, 0.038871765),
+"tilts": PackedFloat32Array(0, 0)
+}
+point_count = 2
 
 [sub_resource type="Resource" id="Spec_ward_cap"]
 resource_name = "SPEED_CAP 0.40 (until removed)"
@@ -258,11 +265,13 @@ mesh = SubResource("Mesh_block")
 [node name="Fence" type="StaticBody3D" parent="." unique_id=1710649408]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, -90)
 
-[node name="Collision" type="CollisionShape3D" parent="Fence" unique_id=724928509]
-shape = SubResource("Shape_fence")
-
 [node name="Mesh" type="MeshInstance3D" parent="Fence" unique_id=1626730565]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.16816407, 0)
 mesh = SubResource("Mesh_fence")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Fence" unique_id=452002140]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.16816407, 0)
+shape = SubResource("ConvexPolygonShape3D_myp37")
 
 [node name="T1SpeedCap" type="Area3D" parent="." unique_id=1037649822]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -16)
@@ -380,7 +389,7 @@ script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Spec_stagger")])
 
 [node name="Shape" type="CollisionShape3D" parent="T6BarbedWire" unique_id=1074278712]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.57547, -0.010238647)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.13039017, -0.025466919)
 shape = SubResource("Shape_wire")
 
 [node name="Patch" type="MeshInstance3D" parent="T6BarbedWire" unique_id=1474547242]
@@ -395,6 +404,12 @@ text = "6  STAGGER (barbed wire)
 vault it: the cut lands in mid-air"
 font_size = 64
 outline_size = 10
+
+[node name="BarbedWire" type="Path3D" parent="T6BarbedWire" unique_id=1283846439]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.026291132, 0)
+curve = SubResource("Curve3D_vxffk")
+script = ExtResource("11_wire")
+metadata/_custom_type_script = "uid://cg57yu74dh3ns"
 
 [node name="T7Ward" type="Area3D" parent="." unique_id=1862216436]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -97)
