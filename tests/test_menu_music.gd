@@ -89,27 +89,39 @@ func test_the_title_fragment_is_held_well_below_the_chorus() -> void:
 func test_the_sweep_runs_in_octaves_and_not_in_hertz() -> void:
 	# Pitch is logarithmic. A linear ramp through frequency spends nearly all
 	# its time in the top octave, where almost nothing is happening, and
-	# crosses the octaves that matter in an instant -- so it reads as a click
+	# crosses the octaves that matter in an instant, so it reads as a click
 	# rather than as an opening.
-	assert_almost_eq(MenuMusic.cutoff_at(0.0), MenuMusic.SWEEP_FROM_HZ, 0.1,
-		"the sweep does not start shut")
-	assert_almost_eq(MenuMusic.cutoff_at(1.0), MenuMusic.SWEEP_TO_HZ, 0.1,
-		"the sweep does not finish open")
-	# Halfway through is the geometric middle, not the arithmetic one.
-	var middle: float = MenuMusic.cutoff_at(0.5)
-	assert_almost_eq(middle, sqrt(MenuMusic.SWEEP_FROM_HZ * MenuMusic.SWEEP_TO_HZ), 1.0,
-		"halfway is %.0f Hz, which means the ramp is linear in frequency" % middle)
-	# Every quarter of the sweep covers the same number of octaves.
-	var first: float = log(MenuMusic.cutoff_at(0.25) / MenuMusic.cutoff_at(0.0))
-	var last: float = log(MenuMusic.cutoff_at(1.0) / MenuMusic.cutoff_at(0.75))
-	assert_almost_eq(first, last, 0.01, "the sweep is not even across its own range")
+	var lo: float = MenuMusic.TOP_FROM_HZ
+	var hi: float = MenuMusic.TOP_TO_HZ
+	assert_almost_eq(MenuMusic.sweep_at(0.0, lo, hi), lo, 0.1, "the sweep does not start closed")
+	assert_almost_eq(MenuMusic.sweep_at(1.0, lo, hi), hi, 0.1, "the sweep does not finish open")
+	assert_almost_eq(MenuMusic.sweep_at(0.5, lo, hi), sqrt(lo * hi), 1.0,
+		"halfway is not the geometric middle, so the ramp is linear in frequency")
 
-func test_the_sweep_starts_below_the_voice_of_the_fragment() -> void:
-	# The point of entering muffled is that there is little to notice about
-	# the swap: the incoming record has to start darker than the melodic
-	# figure it is replacing, not merely a bit rolled off.
-	assert_lt(MenuMusic.SWEEP_FROM_HZ, 600.0,
-		"the record enters bright enough to be heard arriving")
+func test_the_closed_state_is_a_band_and_not_a_muffle() -> void:
+	# Measured off a shipped menu that does this properly: between its quiet
+	# loop and its full arrangement the sub, the low and the top each rise
+	# about 8 dB while the mids rise 2.5. The melodic core is the same layer
+	# in both states; what arrives on the click is the bottom and the air.
+	#
+	# A plain low-pass is that fingerprint upside down -- it keeps the bottom
+	# and takes the mids away -- and sounds like a filter rather than like
+	# instruments arriving.
+	assert_gt(MenuMusic.BOTTOM_FROM_HZ, 120.0,
+		"the closed state still passes the kick, so the click has no bottom to bring in")
+	assert_lt(MenuMusic.TOP_FROM_HZ, 5000.0,
+		"the closed state still passes the air, so the click has no top to bring in")
+	assert_lt(MenuMusic.BOTTOM_FROM_HZ, MenuMusic.TOP_FROM_HZ,
+		"the two filters close past each other, which passes nothing at all")
+	# And what is left between them has to be the mids.
+	assert_lt(MenuMusic.BOTTOM_FROM_HZ, 400.0, "the band starts above the melody")
+	assert_gt(MenuMusic.TOP_FROM_HZ, 1800.0, "the band ends below the melody")
+
+func test_both_ends_are_open_by_the_time_the_drop_lands() -> void:
+	var bottom: float = MenuMusic.sweep_at(1.0, MenuMusic.BOTTOM_FROM_HZ, MenuMusic.BOTTOM_TO_HZ)
+	assert_lt(bottom, 30.0, "the record still has its sub filtered out when the chorus lands")
+	var top: float = MenuMusic.sweep_at(1.0, MenuMusic.TOP_FROM_HZ, MenuMusic.TOP_TO_HZ)
+	assert_gt(top, 18000.0, "the record still has its air filtered out when the chorus lands")
 
 func test_the_sweep_gets_a_bus_of_its_own_and_gives_it_back() -> void:
 	# The only part of this that is not arithmetic, and the part where a typo
@@ -122,9 +134,11 @@ func test_the_sweep_gets_a_bus_of_its_own_and_gives_it_back() -> void:
 	await step(1)
 	var index: int = AudioServer.get_bus_index(MenuMusic.BUS)
 	assert_ne(index, -1, "the sweep has nowhere to live")
-	assert_eq(AudioServer.get_bus_effect_count(index), 1, "the filter was not installed")
-	assert_true(AudioServer.get_bus_effect(index, 0) is AudioEffectLowPassFilter,
-		"the effect on the bus is not the filter")
+	assert_eq(AudioServer.get_bus_effect_count(index), 2, "both ends of the band need a filter")
+	assert_true(AudioServer.get_bus_effect(index, 0) is AudioEffectHighPassFilter,
+		"nothing is holding the bottom back")
+	assert_true(AudioServer.get_bus_effect(index, 1) is AudioEffectLowPassFilter,
+		"nothing is holding the top back")
 	music.free()
 	await step(1)
 	assert_eq(AudioServer.get_bus_index(MenuMusic.BUS), -1,

@@ -72,21 +72,30 @@ const CHORUS_LEVEL := 0.62
 ## material, not of volume.
 const HANDOFF := 0.6
 
-## THE FILTER SWEEP, which is the other half of not sounding abrupt and the
-## one that needs no stems.
+## THE SWEEP OPENS AT BOTH ENDS, and that shape was measured rather than
+## chosen. A recording of a shipped menu that does this properly -- a quiet
+## loop, a click, a full arrangement -- differs between its two states by
+## +7.3 dB in the sub, +8.0 dB in the low and +7.4 dB in the top, against
+## only +2.5 dB across the mids. That is the fingerprint of vertical
+## layering: the melodic core is the SAME layer in both states, and what
+## arrives on the click is the bottom (kick and bass) and the air (hats and
+## percussion).
 ##
-## The incoming record enters heavily muffled -- close to the held fragment's
-## own texture, so there is little to notice about the swap -- and opens up as
-## it runs at the drop. It is the standard way a DJ joins two records, and it
-## works on a finished mix, which separating this track into stems did not:
-## the kick and the sub-bass overlap too far for any model to pull apart, so
-## a drum-less version still had most of its kick.
+## So the closed state is a BAND, not a muffle. A plain low-pass is that
+## fingerprint upside down -- it keeps the bottom and takes the mids away --
+## and it sounds like a filter, where this sounds like instruments arriving.
 ##
-## Swept in CENTS, not hertz. Pitch is logarithmic, so a linear ramp through
+## This is as close to layering as a finished mix gets, and as close as this
+## track allows: separated into stems, its kick and its sub-bass overlapped
+## too far to be pulled apart, and a drum-less version kept most of its kick.
+##
+## Swept in OCTAVES, not hertz. Pitch is logarithmic, so a linear ramp through
 ## frequency spends nearly all its time in the top octave, where almost
 ## nothing is happening, and crosses the octaves that matter in an instant.
-const SWEEP_FROM_HZ := 320.0
-const SWEEP_TO_HZ := 20500.0
+const TOP_FROM_HZ := 2600.0
+const TOP_TO_HZ := 20500.0
+const BOTTOM_FROM_HZ := 260.0
+const BOTTOM_TO_HZ := 20.0
 
 ## The lift to CHORUS_LEVEL runs from the moment of the click until the drop,
 ## so it is not a constant: it is however much of the approach is left. That
@@ -104,13 +113,14 @@ const REST := 3.0
 const FADE_OUT := 2.2
 
 ## The bus the record plays through, so the sweep has somewhere to live. The
-## fragment is left on Master: it is already the dark end of the sweep, and
-## filtering it too would only take away the thing being matched.
+## fragment is left on Master: it already sits inside the band the sweep opens
+## out of, and filtering it too would only take away the thing being matched.
 const BUS := &"MenuMusicSweep"
 
 var _loop: AudioStreamPlayer
 var _record: AudioStreamPlayer
-var _filter: AudioEffectLowPassFilter
+var _top: AudioEffectLowPassFilter
+var _bottom: AudioEffectHighPassFilter
 var _in_chorus: bool = false
 ## True once the menu is on its way out, which cancels the rest-and-restart
 ## cycle. Without it a piece that ends mid-fade schedules itself to start
@@ -139,12 +149,16 @@ func _build_bus() -> void:
 		AudioServer.set_bus_send(index, &"Master")
 	while AudioServer.get_bus_effect_count(index) > 0:
 		AudioServer.remove_bus_effect(index, 0)
-	_filter = AudioEffectLowPassFilter.new()
-	_filter.cutoff_hz = SWEEP_TO_HZ
-	# 24 dB per octave. A gentler slope leaves enough of the top through that
-	# the sweep reads as a volume change rather than as an opening.
-	_filter.db = AudioEffectFilter.FILTER_24DB
-	AudioServer.add_bus_effect(index, _filter)
+	# 24 dB per octave on both. A gentler slope leaves enough through that the
+	# sweep reads as a change of volume rather than as instruments arriving.
+	_bottom = AudioEffectHighPassFilter.new()
+	_bottom.cutoff_hz = BOTTOM_TO_HZ
+	_bottom.db = AudioEffectFilter.FILTER_24DB
+	AudioServer.add_bus_effect(index, _bottom)
+	_top = AudioEffectLowPassFilter.new()
+	_top.cutoff_hz = TOP_TO_HZ
+	_top.db = AudioEffectFilter.FILTER_24DB
+	AudioServer.add_bus_effect(index, _top)
 
 ## Engine-wide state, so it is this node's to clean up. Looked up by name
 ## rather than by a remembered index: another system adding a bus in the
@@ -197,13 +211,13 @@ func to_chorus() -> void:
 	_in_chorus = true
 	var entry: float = chorus_entry(_loop.get_playback_position())
 	var run_up: float = time_to_the_drop(entry)
-	_set_cutoff(0.0)
+	_set_openness(0.0)
 	_record.play(entry)
 	var hand := create_tween().set_parallel()
 	hand.tween_method(_set_handoff, 0.0, 1.0, HANDOFF)
 	# The sweep and the swell both END ON THE DROP, so the record arrives
 	# open and at level exactly as the chorus's downbeat lands.
-	hand.tween_method(_set_cutoff, 0.0, 1.0, run_up) \
+	hand.tween_method(_set_openness, 0.0, 1.0, run_up) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	hand.tween_method(_set_record_level, HELD_LEVEL, CHORUS_LEVEL, run_up) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
@@ -248,16 +262,19 @@ func _set_handoff(k: float) -> void:
 func _set_record_level(level: float) -> void:
 	_record.volume_db = _gain_db(level)
 
-## `k` runs 0 (shut) to 1 (open), mapped through frequency ratio rather than
-## through hertz -- see SWEEP_FROM_HZ.
-func _set_cutoff(k: float) -> void:
-	if _filter != null:
-		_filter.cutoff_hz = cutoff_at(k)
+## 0 is the band alone, 1 is the whole spectrum. Both ends move together, so
+## the bottom and the top arrive on the same beat.
+func _set_openness(k: float) -> void:
+	if _top != null:
+		_top.cutoff_hz = sweep_at(k, TOP_FROM_HZ, TOP_TO_HZ)
+	if _bottom != null:
+		_bottom.cutoff_hz = sweep_at(k, BOTTOM_FROM_HZ, BOTTOM_TO_HZ)
 
-## Where the sweep is at `k`, 0 shut to 1 open. Static so the curve can be
+## Where a sweep is at `k`, 0 closed to 1 open. Geometric, so equal stretches
+## of the tween cover equal numbers of octaves. Static so the curve can be
 ## checked without an audio device.
-static func cutoff_at(k: float) -> float:
-	return SWEEP_FROM_HZ * pow(SWEEP_TO_HZ / SWEEP_FROM_HZ, clampf(k, 0.0, 1.0))
+static func sweep_at(k: float, from_hz: float, to_hz: float) -> float:
+	return from_hz * pow(to_hz / from_hz, clampf(k, 0.0, 1.0))
 
 ## Silence is -80 dB, not -inf: linear_to_db(0) returns -inf and the mixer
 ## refuses it. Same floor SettingsStore uses for a volume slider at zero.
