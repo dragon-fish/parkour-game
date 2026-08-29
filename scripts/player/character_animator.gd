@@ -138,6 +138,23 @@ const WALK_REFERENCE_PCT := 0.25
 ## to cover that much ground at a jogging cadence.
 const JOG_REFERENCE_PCT := 0.5
 
+## And the crouch's, which until now had none: it borrowed
+## PawnConfig.crouched_pct, a GAMEPLAY cap saying a crouched body moves at 40%
+## of ground speed. That number has nothing to say about the cadence the clip
+## was authored at, and the two agreeing was a coincidence rather than a
+## reason -- so a crouch that looked slow had no knob to turn, only a gameplay
+## dial that would have moved the movement itself.
+##
+## Left at the value it was effectively using, so this change moves nothing on
+## screen. What it moves is where to reach: if the crouch looks like it is
+## dawdling, this is the number now.
+##
+## 🔶 The pack's cycle lengths, for whoever turns it: sprint 0.667 s, jog
+## 0.933 s, walk 1.333 s, crouch 2.000 s -- a ratio of 1 : 1.4 : 2 : 3. Every
+## clip is authored IN PLACE (the root translates nowhere), so there is no
+## authored speed to read off them; the cadence is all the asset says.
+const CROUCH_REFERENCE_PCT := 0.4
+
 ## The packs' EIGHT-WAY sets, as suffixes clockwise from straight ahead.
 ##
 ## THE TWO PACKS DO NOT AGREE ON THE SIDE NAMES. UAL1 spells them Left and
@@ -597,7 +614,7 @@ func _drive_speed(clip: StringName) -> void:
 	# floor for its entire range.
 	var family := _family_of(base_clip)
 	if CROUCHED_CLIPS.has(base_clip) or family == &"Crouch":
-		reference *= player.config.pawn.crouched_pct
+		reference *= CROUCH_REFERENCE_PCT
 	elif WALK_CLIPS.has(base_clip) or family == &"Walk":
 		reference *= WALK_REFERENCE_PCT
 	elif family == &"Jog":
