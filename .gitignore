@@ -77,3 +77,8 @@ dist/
 # path-wide `git add`; they stay named here for that reason.
 scenes/debug_levels/vrm_course.tscn
 scenes/player/player_vrm.tscn
+
+# Export output. Swept into a commit by a path-wide `git add` once, and
+# rejected at the remote for it -- the pck alone is 129 MB. Named here for
+# the same reason as the two scenes above.
+.out/

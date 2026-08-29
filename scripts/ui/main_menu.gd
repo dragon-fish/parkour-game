@@ -43,7 +43,7 @@ const BODY_STAND_BLEND := 1.5  # = RISE_TIME: fully up the frame the camera land
 ## Ground-space dot flow per second while walking (✅ the owner: slower than
 ## the first guess, and the flow must FOLLOW the character's facing -- she
 ## walks screen-right in the opening, toward the lens after the turn).
-const FLOOR_SCROLL_SPEED := 0.28
+const FLOOR_SCROLL_SPEED := 0.35
 const LOGO_FADE_TIME := 0.4
 const WALK_TO_MENU_DELAY := 0.15
 const MENU_PANEL_TIME := 0.45
@@ -644,33 +644,16 @@ func _place_cam(azimuth_deg: float, d: float, target: Vector3, ndc: Vector2) -> 
 	# Screen-right = forward x up, forward = -back. (The first cut negated
 	# this and quietly mirrored every horizontal framing fraction.)
 	var right := (-back).cross(Vector3.UP).normalized()
-	var lateral := right * (ndc.x * d * tan_h)
 	_silhouette_camera.position = target + back * d \
-		- lateral - Vector3.UP * (ndc.y * d * tan_v)
+		- right * (ndc.x * d * tan_h) - Vector3.UP * (ndc.y * d * tan_v)
 	_silhouette_camera.rotation = Vector3(0.0, cam_yaw, 0.0)
-	_face_the_camera(back * d - lateral, cam_yaw)
 
-## Turns the body to face where the camera actually IS, not where its optical
-## axis points.
-##
-## The framing is done by SLIDING the camera sideways rather than by aiming
-## it: that is what puts the character off-centre without distorting the
-## perspective. But sliding it means she is then seen obliquely -- her facing
-## runs parallel to the optical axis while she sits off to one side of the
-## frame -- and obliquely is how "she is not walking toward me, she is walking
-## slightly past me" is read. At the settled framing the angle is about
-## thirteen degrees, which is plenty to notice and not enough to name.
-##
-## Solved from the camera's own displacement rather than from the framing
-## fraction, so the two cannot drift apart and no sign has to be guessed: the
-## body turns to the yaw that points at the camera, minus the yaw it would
-## have pointed at with no slide.
-func _face_the_camera(to_camera: Vector3, centred_yaw: float) -> void:
-	if _silhouette_root == null:
-		return
-	var turn: float = atan2(to_camera.x, to_camera.z) - centred_yaw
-	_silhouette_root.rotation_degrees = Vector3(0.0,
-		FRONT_YAW_DEG + rad_to_deg(turn), 0.0)
+# DO NOT turn the body to face the camera's actual position. It was tried:
+# framing slides the camera sideways rather than aiming it, so she is seen
+# obliquely, and the thirteen degrees of correction that squares her up to
+# the lens is thirteen degrees of NOT squaring her up to the frame. She is
+# genuinely standing to one side, and a body facing the viewer from over
+# there reads as posed. The oblique view is the honest one.
 
 func _frame_close() -> void:
 	_silhouette_root.rotation_degrees = Vector3(0.0, FRONT_YAW_DEG, 0.0)
