@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://ccci40vo7pvke"]
 
 [ext_resource type="Script" uid="uid://cfw52j47lwvj6" path="res://scripts/ui/main_menu.gd" id="1_menu"]
-[ext_resource type="Script" path="res://scripts/ui/chladni_field.gd" id="2_field"]
+[ext_resource type="Script" uid="uid://cg2kxichryqbs" path="res://scripts/ui/chladni_field.gd" id="2_field"]
 
 [node name="MainMenu" type="Control" unique_id=10640388]
 layout_mode = 3
@@ -11,9 +11,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_menu")
-FLOOR_SCROLL_SPEED = 0.85
+FLOOR_SCROLL_SPEED = 0.875
 
-[node name="ChladniField" type="ColorRect" parent="."]
+[node name="ChladniField" type="ColorRect" parent="." unique_id=331184330]
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
