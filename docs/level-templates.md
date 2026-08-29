@@ -553,6 +553,38 @@ with a payload nothing reads.
   as anything can, so a value like `0.008` behaves exactly like one whole
   tick and the number typed means nothing.
 
+## Placing a soft landing pad
+
+A pad is any body that carries the group **`soft_landing`**. That is the whole
+of the interface — no node type, no script, no exports. Select the body, open
+the Node dock's *Groups* tab, and add `soft_landing`. A CSG shape or a GridMap
+tile qualifies exactly as readily as a `StaticBody3D`.
+
+[ME:INFERRED 12 §12.5] A group rather than a node class because the original's
+pads are ordinary collision boxes carrying a property: there is one in a level
+with no trigger anywhere near it, and a pad reached from an ordinary height
+behaves like ordinary floor. Both fall out of one model — an uncontrolled fall
+is a *prediction* about where the body is going to come down, and a predicted
+landing on something soft is never fatal.
+
+**It absorbs the whole fall, not just the death.** The drop is treated as
+though it never happened: no landing cost, no speed lost, and no roll to have
+missed. A pad the player has to roll off is a pad that punishes being rescued.
+
+Two things follow that are worth knowing before placing one:
+
+- **The reprieve is re-checked, not latched.** Falling still has air control,
+  so a player reprieved at the top can steer off the pad and die anyway, and
+  one already doomed can steer onto it and live. A pad does not have to be
+  directly below the jump to work.
+- **The arc is walked from the feet, ignoring input that has not happened.**
+  A pad tucked under an overhang the arc clips will not be found. If a rescue
+  reads as unreliable, the obstruction on the way down is the first thing to
+  look at.
+
+There is no configuration warning for a pad, because there is nothing to
+misconfigure: an unreachable pad is just floor.
+
 ## ⚠️ Do not put comments in a `.tscn`
 
 Godot's editor rewrites any scene it saves, and it does not preserve `;`

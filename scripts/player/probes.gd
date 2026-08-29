@@ -803,6 +803,54 @@ func side_hit(from: Vector3, direction: Vector3, distance: float) -> Dictionary:
 ## A direct space query rather than one of the persistent rays: those are
 ## children of the player and travel with it, while these are fired from
 ## arbitrary points out along a ledge.
+## Bodies in this group absorb a fall. A landing on one is not a fall at all,
+## and a fall PREDICTED to end on one never becomes an uncontrolled one.
+##
+## [ME:INFERRED 12 §12.5] A group rather than a node type, because the
+## original's pads are ordinary collision boxes carrying a property -- there
+## is no actor class to mirror, and requiring one here would put soft landings
+## out of reach of a CSG shape or a GridMap tile.
+const SOFT_LANDING_GROUP := &"soft_landing"
+
+static func is_soft(collider: Object) -> bool:
+	var node := collider as Node
+	return node != null and node.is_in_group(SOFT_LANDING_GROUP)
+
+## How finely the predicted arc is walked, and how far along it anyone looks.
+##
+## The cap is a VOID GUARD, not a budget: a body falling where there is no
+## floor would otherwise march until the loop ran out either way, and six
+## seconds is already well past any fall a level can survive. Nearly every
+## real call stops on its first few segments, because by the time anyone asks
+## this the ground is close.
+const PREDICT_STEP := 0.05
+const PREDICT_SPAN := 120
+
+## Where the body would come down if it stopped steering now, as a raycast
+## result, or {} for nothing within PREDICT_SPAN.
+##
+## AIR CONTROL IS DELIBERATELY IGNORED. There is no honest way to predict input
+## that has not been given, and the caller re-asks often enough that steering
+## onto a pad -- or off one -- is answered by the next prediction rather than
+## by guessing at this one.
+func predicted_landing(velocity: Vector3) -> Dictionary:
+	if _config == null:
+		return {}
+	var pawn: PawnConfig = _config.pawn
+	# From the FEET. Started at the origin instead, the arc reports a floor
+	# half a body late, which for a pad at the bottom of a shaft is the
+	# difference between clearing its lip and landing on it.
+	var at := Vector3(global_position.x, _feet_y(), global_position.z)
+	var v := velocity
+	for i in PREDICT_SPAN:
+		v.y = maxf(v.y - pawn.gravity * PREDICT_STEP, -pawn.terminal_velocity)
+		var next := at + v * PREDICT_STEP
+		var hit := _cast(at, next)
+		if not hit.is_empty():
+			return hit
+		at = next
+	return {}
+
 func _cast(from: Vector3, to: Vector3) -> Dictionary:
 	var space := get_world_3d().direct_space_state
 	if space == null:
