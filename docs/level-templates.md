@@ -437,6 +437,38 @@ Leave `refresh_interval` at `0` for a one-shot: a status with a fixed
 `seconds` that starts counting the moment the player crosses the boundary and
 runs out wherever they happen to be.
 
+### Running barbed wire along a path
+
+`BarbedWire` (`scripts/level/barbed_wire.gd`) is a `Path3D` that winds a coil
+of concertina wire about its own curve. **The curve is the AXIS, not the
+strand**: drag it along the top of a wall and the coil wraps it.
+
+1. **Add Node → `BarbedWire`**, and drag its curve where the wire should run.
+2. Set `coils_per_metre` for how tight the concertina reads, `coil_radius` for
+   how far the loops stand off the path, and `wire_radius` for the strand's own
+   thickness. `barbs_per_metre`, `barb_length` and `barb_seed` place the barbs.
+3. That is all it does.
+
+**It produces geometry and nothing else** — no hazard, no collision. That is
+deliberate, and it is why the three can be combined freely:
+
+- To make the wire *hurt*, put a `ModifierVolume` beside it carrying `STAGGER`.
+  The stagger knocks the player into the landing lockout, which also takes
+  their hands off any ledge they were holding.
+- To make a wall *unclimbable*, give its top a collider the ledge probe will
+  not accept. `Probes.ledge_query()` refuses any surface whose `normal.y` is
+  below `PawnConfig.walkable_floor_z` (0.71), so a ridge along the top works if
+  it is **taller than half its width** — that is `atan(h / halfwidth) > 44.8°`.
+  This is how the original does it, and it costs nothing at runtime: there is
+  no rule to evaluate, because there is no ledge to find.
+
+Wire that is merely decorative wants neither of those, and gets neither.
+
+`samples_per_coil` is the biggest lever on the triangle count, so it is the
+first dial to drop when the configuration warning fires. A 140 m run at
+`coils_per_metre = 1.5` and `samples_per_coil = 6` costs about 15,000
+triangles and measures as free next to the rest of a whitebox level.
+
 ### `layer_priority`
 
 Which layer this volume speaks on, when two volumes claim the same status at
