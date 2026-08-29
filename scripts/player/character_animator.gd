@@ -764,6 +764,31 @@ func _travel_octant() -> int:
 	var angle: float = atan2(travel.dot(right), travel.dot(facing))
 	return posmod(int(round(angle / (PI / 4.0))), 8)
 
+## Whether the clip on screen expresses the travel direction ITSELF -- a real
+## octant clip out of an eight-way family, rather than that family's forward
+## twin standing in for a direction it does not have.
+##
+## Player._drive_body_yaw() asks, and stops turning the model when the answer
+## is yes. The two were double-counting: the octant is chosen against the
+## COLLISION body's facing, while the model is then rotated on top by
+## _visual_yaw - rotation.y, so an authored sideways walk was being turned
+## sideways again for as long as those two disagreed -- which, at a finite
+## turn speed, is every change of direction.
+##
+## Derived from the clip's own name rather than recorded as a flag: there is
+## no second copy to fall out of step with what is actually playing.
+##
+## THE FORWARD TWIN DELIBERATELY COUNTS AS "NO". That is the case where the
+## body lacks the octant and the forward clip is standing in for it -- the
+## clip is NOT expressing the direction, so the procedural turn is still the
+## best thing available and should keep running.
+func clip_carries_direction() -> bool:
+	var family: StringName = _family_of(current_clip)
+	if family == &"":
+		return false
+	var suffixes: Array = DIRECTION_SETS[family]
+	return current_clip != StringName(String(family) + String(suffixes[0]))
+
 ## The eight-way family a clip belongs to, or an empty name. Used by
 ## _drive_speed() so that a strafe scales against the same reference its
 ## forward twin does -- Walk_L is a walk, and measuring it against the run would

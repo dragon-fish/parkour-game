@@ -2258,6 +2258,24 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 		_visual_yaw = rotation.y
 		_visual_yaw_started = true
 
+	# THE CLIP GETS TO SAY IT FIRST. With the full eight-way set mounted, the
+	# animation already travels sideways on its own, and turning the model on
+	# top of it counts the direction twice -- the octant is chosen against the
+	# COLLISION body while this rotates the MODEL, so an authored sideways walk
+	# was being turned sideways again for as long as the two disagreed. At a
+	# finite turn speed that is every change of direction, which in eight-way
+	# movement is most of the time.
+	#
+	# Squared up instead, exactly as the first-person branch above does it. The
+	# procedural turn stays for bodies WITHOUT the set -- the free tier, the fox
+	# -- where the forward clip is standing in for a strafe and really does need
+	# the help. See CharacterAnimator.clip_carries_direction().
+	var animator := get_node_or_null("BodyRoot/CharacterAnimator") as CharacterAnimator
+	if animator != null and animator.clip_carries_direction():
+		_visual_yaw = rotation.y
+		body_root.rotation.y = 0.0
+		return
+
 	# Any deliberate movement is a decision to face that way. Read from the
 	# INPUT rather than from velocity: a body still sliding to a halt has not
 	# asked to turn, and one just starting to move has.
