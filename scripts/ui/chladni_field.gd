@@ -43,7 +43,14 @@ const FULL_DRIVE := 0.12
 @export var tint: Color = Color(0.34, 0.41, 0.52, 1.0)
 ## How strongly the field shows at all. It sits behind a title card and a
 ## figure; it is scenery, not a visualiser.
-@export var strength: float = 0.5
+@export var strength: float = 0.42
+
+## Where the figure is centred across the rect, 0 to 1. The plate is
+## symmetric about this point, so it belongs where the composition's
+## subject is rather than in the middle of the screen -- the character
+## stands left of centre, and a figure centred on the screen reads as two
+## pictures that disagree about where the middle is.
+@export var centre_x: float = 0.5
 
 var _material: ShaderMaterial
 var _analyzer: AudioEffectSpectrumAnalyzerInstance
@@ -62,6 +69,7 @@ func _ready() -> void:
 	_material.shader = SHADER
 	material = _material
 	_material.set_shader_parameter("tint", tint)
+	_material.set_shader_parameter("centre_x", centre_x)
 	_install_analyzer()
 
 ## On Master rather than on the music's own bus: the music plays through two
@@ -109,7 +117,10 @@ func _process(delta: float) -> void:
 	_material.set_shader_parameter("agitation", _drive)
 	# A plate driven harder holds its powder less tightly, so the figure
 	# thickens rather than only shaking.
-	_material.set_shader_parameter("settle", lerpf(0.10, 0.30, _drive))
+	# Wider than it was, and with a long tail past it -- see the shader. A
+	# tight band packs the grains into solid shapes, which at this size is
+	# a stain rather than powder and is unpleasant to sit behind a menu.
+	_material.set_shader_parameter("settle", lerpf(0.20, 0.42, _drive))
 	_material.set_shader_parameter("brightness", strength * lerpf(0.55, 1.0, _drive))
 	_material.set_shader_parameter("aspect", maxf(size.x, 1.0) / maxf(size.y, 1.0))
 

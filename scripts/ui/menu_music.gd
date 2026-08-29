@@ -141,6 +141,15 @@ const REST := 3.0
 ## finishing early.
 const FADE_OUT := 2.2
 
+## Where the goodbye ramp ENDS, before the last step to true silence is taken
+## in one go. Low enough to be inaudible under a loading screen, high enough
+## that the ramp above it spends its whole length somewhere audible.
+##
+## DO NOT aim the ramp at the -80 dB floor instead. Decibels are logarithmic
+## and that floor is far below hearing, so most of the ramp's length would be
+## spent going from inaudible to more inaudible.
+const FADE_FLOOR_DB := -34.0
+
 ## The bus the record plays through, so the sweep has somewhere to live. The
 ## fragment is left on Master: it already sits inside the band the sweep opens
 ## out of, and filtering it too would only take away the thing being matched.
@@ -284,12 +293,25 @@ static func time_to_the_drop(entry: float) -> float:
 	return CHORUS_START - entry
 
 ## Leaving the menu. Silence would be as wrong as a hard cut.
+##
+## DECIBELS, BUT NOT ALL THE WAY DOWN. Hearing is logarithmic, so decibels are
+## the scale a fade should be even in -- but they run to negative infinity,
+## and aiming a straight line at the -80 dB floor put half the fade below
+## -42 dB, which is already gone. A 2.2 s goodbye sounded like a one-second
+## one because its whole audible part happened in the first third.
+##
+## So the ramp ends at FADE_FLOOR_DB, which is quiet enough to be inaudible
+## under a loading screen, and the last step to true silence is taken in one
+## go where nobody can hear it happen.
 func fade_out(seconds: float = FADE_OUT) -> void:
 	_leaving = true
 	var out := create_tween().set_parallel()
 	for player in [_loop, _record]:
 		if player.playing:
-			out.tween_property(player, "volume_db", _gain_db(0.0), seconds)
+			out.tween_property(player, "volume_db", FADE_FLOOR_DB, seconds)
+	out.chain().tween_callback(func() -> void:
+		_loop.volume_db = _gain_db(0.0)
+		_record.volume_db = _gain_db(0.0))
 
 ## Equal power at a CONSTANT total, not a fade up to a new level: two halves
 ## of a linear crossfade sum to a dip in the middle, which on a continuous

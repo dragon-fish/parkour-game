@@ -38,6 +38,15 @@ uniform float brightness : hint_range(0.0, 1.0) = 0.5;
 // The rect is wide and the plate is square: without this the figure is
 // stretched and stops being symmetric, which is the one thing it is for.
 uniform float aspect : hint_range(0.1, 8.0) = 1.777;
+// Where the plate is centred across the rect, 0 to 1. The figure is
+// symmetric about its own centre, so leaving this at 0.5 puts the symmetry
+// somewhere the composition does not have anything -- the character stands
+// left of centre, and the picture reads as two things that disagree.
+uniform float centre_x : hint_range(0.0, 1.0) = 0.5;
+// How far past the settling band grains keep appearing, thinning out. A hard
+// edge makes the figure a solid shape with a boundary, which at this size
+// reads as a stain rather than as powder.
+uniform float spread : hint_range(0.0, 2.0) = 0.9;
 // Fades the field out toward the horizon, so it sits in the picture rather
 // than ending on a line.
 uniform float horizon_fade : hint_range(0.0, 1.0) = 0.35;
@@ -54,8 +63,9 @@ float plate(vec2 p, float n, float m) {
 }
 
 void fragment() {
-	// Square plate coordinates, centred, with the wide axis corrected.
-	vec2 plate_uv = vec2((UV.x - 0.5) * aspect + 0.5, UV.y);
+	// Square plate coordinates, with the wide axis corrected and the whole
+	// figure hung off centre_x rather than off the middle of the rect.
+	vec2 plate_uv = vec2((UV.x - centre_x) * aspect + 0.5, UV.y);
 
 	vec2 grid = plate_uv * grain_density;
 	vec2 cell = floor(grid);
@@ -72,13 +82,20 @@ void fragment() {
 	float grain = 1.0 - smoothstep(grain_size, grain_size + 0.10, dist);
 
 	// How well this grain's own place holds it: right on the line, entirely;
-	// a band away, not at all.
+	// well past the band, hardly at all.
+	//
+	// A LONG TAIL RATHER THAN AN EDGE. smoothstep to zero draws the figure as
+	// a solid shape with a boundary, which at this size reads as a stain --
+	// and a dense one is unfriendly to look at. Powder is dense on the line
+	// and keeps going, thinning, for some way either side, so the falloff
+	// runs past `settle` and decays instead of ending.
 	vec2 at = (cell + 0.5 + offset) / grain_density;
-	float settled = 1.0 - smoothstep(0.0, settle, abs(plate(at, mode_n, mode_m)));
+	float away = abs(plate(at, mode_n, mode_m)) / max(settle, 0.001);
+	float settled = 1.0 / (1.0 + away * away / max(spread, 0.001));
 
 	// A few grains never settle. Without them the empty regions are empty in
 	// a way that reads as a mask rather than as powder.
-	float strays = 0.06 * step(0.965, hash(cell + 5.1));
+	float strays = 0.10 * step(0.94, hash(cell + 5.1));
 
 	float alpha = grain * clamp(settled + strays, 0.0, 1.0) * brightness;
 	alpha *= smoothstep(0.0, horizon_fade, 1.0 - UV.y);

@@ -190,3 +190,17 @@ func test_every_entry_still_lands_on_the_grid() -> void:
 		var kept: float = fmod(entry - phase, MenuMusic.BAR)
 		assert_true(kept < 0.001 or absf(kept - MenuMusic.BAR) < 0.001,
 			"a click at phase %.2f s entered off the grid by %.4f s" % [phase, kept])
+
+func test_the_goodbye_ramp_stays_somewhere_audible() -> void:
+	# Hearing is logarithmic, so the fade is even in decibels -- but decibels
+	# run to negative infinity, and aiming the ramp at the silence floor put
+	# half its length below -42 dB, which is already gone. A 2.2 s goodbye
+	# sounded like a one-second one.
+	assert_gt(MenuMusic.FADE_FLOOR_DB, MenuMusic._gain_db(0.0) + 20.0,
+		"the ramp still ends at the silence floor, so most of it is inaudible")
+	assert_lt(MenuMusic.FADE_FLOOR_DB, -20.0,
+		"the ramp stops while the music is still clearly there")
+	# And the level it starts from has to be well above where it ends, or
+	# there is no ramp to hear at all.
+	assert_gt(linear_to_db(MenuMusic.CHORUS_LEVEL) - MenuMusic.FADE_FLOOR_DB, 20.0,
+		"there is less than 20 dB of fade between playing and gone")

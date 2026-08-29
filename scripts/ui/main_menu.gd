@@ -246,6 +246,11 @@ func _build_ui() -> void:
 func _build_chladni() -> void:
 	_chladni = ChladniField.new()
 	_chladni.name = "ChladniField"
+	# Hung off where the character stands, not off the middle of the screen.
+	# The figure is symmetric about its own centre, so putting that centre
+	# where the composition has nothing leaves two pictures disagreeing
+	# about where the middle is.
+	_chladni.centre_x = FAR_X_FRAC
 	_chladni.anchor_left = 0.0
 	_chladni.anchor_right = 1.0
 	_chladni.anchor_top = 0.0
@@ -639,9 +644,33 @@ func _place_cam(azimuth_deg: float, d: float, target: Vector3, ndc: Vector2) -> 
 	# Screen-right = forward x up, forward = -back. (The first cut negated
 	# this and quietly mirrored every horizontal framing fraction.)
 	var right := (-back).cross(Vector3.UP).normalized()
+	var lateral := right * (ndc.x * d * tan_h)
 	_silhouette_camera.position = target + back * d \
-		- right * (ndc.x * d * tan_h) - Vector3.UP * (ndc.y * d * tan_v)
+		- lateral - Vector3.UP * (ndc.y * d * tan_v)
 	_silhouette_camera.rotation = Vector3(0.0, cam_yaw, 0.0)
+	_face_the_camera(back * d - lateral, cam_yaw)
+
+## Turns the body to face where the camera actually IS, not where its optical
+## axis points.
+##
+## The framing is done by SLIDING the camera sideways rather than by aiming
+## it: that is what puts the character off-centre without distorting the
+## perspective. But sliding it means she is then seen obliquely -- her facing
+## runs parallel to the optical axis while she sits off to one side of the
+## frame -- and obliquely is how "she is not walking toward me, she is walking
+## slightly past me" is read. At the settled framing the angle is about
+## thirteen degrees, which is plenty to notice and not enough to name.
+##
+## Solved from the camera's own displacement rather than from the framing
+## fraction, so the two cannot drift apart and no sign has to be guessed: the
+## body turns to the yaw that points at the camera, minus the yaw it would
+## have pointed at with no slide.
+func _face_the_camera(to_camera: Vector3, centred_yaw: float) -> void:
+	if _silhouette_root == null:
+		return
+	var turn: float = atan2(to_camera.x, to_camera.z) - centred_yaw
+	_silhouette_root.rotation_degrees = Vector3(0.0,
+		FRONT_YAW_DEG + rad_to_deg(turn), 0.0)
 
 func _frame_close() -> void:
 	_silhouette_root.rotation_degrees = Vector3(0.0, FRONT_YAW_DEG, 0.0)
