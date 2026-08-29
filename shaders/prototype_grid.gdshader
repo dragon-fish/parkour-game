@@ -67,22 +67,34 @@ uniform float fine_fade : hint_range(0.0, 1.0) = 0.45;
 
 // -- The reach ceiling -----------------------------------------------------
 
-// Height of the line ABOVE mark_base_y, in metres. Set to 0 to switch it off.
+// Height of the line ABOVE base_y, in metres. Set to 0 to switch it off.
 //
-// 4.04 = base_jump_z^2 / (2 * gravity) + GrabConfig.ledge_max_height
-//      = 1.24 (feet at the apex of a jump) + 2.8 (reach from the feet)
-// [ME:DERIVED] from two [ME:CONFIRMED] values plus one project value. The
-// airborne half is a clean ballistic result; whether a grab actually latches
-// at the very top of the arc is a question for a playtest, so treat this as
-// the optimistic bound. Nothing above it is reachable by any means.
-uniform float reach_ceiling = 4.04;
-// WHERE THE FLOOR IS, in world Y. The whole point of failure for the version
-// of this that had six lines: heights are measured from the ground the player
-// stands on, and a rooftop level stands 60 m up, which put every line in the
-// basement. There is no way for a shader to know which floor is under a given
-// wall, so it is declared -- one material per storey, and a level built on one
-// slab needs only the default.
-uniform float mark_base_y = 0.0;
+// Four metres, near enough: the apex of a jump puts the feet 1.24 m up and
+// GrabConfig.ledge_max_height reaches 2.8 m from them. Rounded, because the
+// third decimal of an optimistic bound is a false precision -- whether a grab
+// latches at the very top of an arc is a playtest question, not an arithmetic
+// one. Above this there is nothing to be done with a wall by any timing or
+// run-up.
+uniform float reach_ceiling = 4.0;
+
+// WHERE THE FLOOR UNDER THIS OBJECT IS, in world Y.
+//
+// PER INSTANCE, because a height is measured from the ground the player stands
+// on and a rooftop level stands 60 m up -- a single global value put every line
+// in the basement the moment anything was built off the slab. Set it in the
+// inspector under Geometry > Instance Shader Parameters, per box, so a wall
+// carries its own answer and keeps it when moved.
+//
+// A SHADER CANNOT WORK THIS OUT ITSELF. Fragments know their own world
+// position and nothing about the object they belong to: there is no bounding
+// box, no object height, no "bottom" to read. NODE_POSITION_WORLD gives the
+// ORIGIN, which for a CSGBox3D is its centre, so deriving the base from it
+// still needs the height nobody has. Hence a declared value.
+//
+// ON A CSG TREE, SET IT ON THE ROOT. A CSGCombiner3D merges its children into
+// one mesh and only the root remains a GeometryInstance3D, so a parameter set
+// on a child inside a combiner is silently ignored.
+instance uniform float base_y = 0.0;
 uniform vec4 reach_color : source_color = vec4(0.78, 0.16, 0.13, 1.0);
 uniform float reach_opacity : hint_range(0.0, 1.0) = 0.22;
 uniform float reach_width = 0.03;
@@ -151,7 +163,7 @@ void fragment() {
 	// drawn on one it would be a stripe across open ground at a height the
 	// ground does not have.
 	if (reach_ceiling > 0.0) {
-		float at_height = line_at(world_position.y - mark_base_y,
+		float at_height = line_at(world_position.y - base_y,
 			reach_ceiling, reach_width);
 		// The axis that runs ACROSS the face, so the dashes march along the
 		// line rather than chopping it where two projections meet.
