@@ -169,3 +169,35 @@ func test_a_staggered_body_stops_the_moment_it_lands() -> void:
 	assert_true(p.grounded, "test setup: the body never reached the floor")
 	assert_almost_eq(Vector2(p.velocity.x, p.velocity.z).length(), 0.0, 0.001, \
 		"the staggered body kept sliding after it landed")
+
+func test_standing_in_the_wire_costs_again_once_the_window_closes() -> void:
+	# A hazard the player can stand in has to keep charging, or they walk the
+	# whole length of it having paid once. The cadence is not a third number:
+	# it falls out of lockout_time (locked, cannot move) plus
+	# stagger_immunity_time (free, and the only chance to leave).
+	var p := await _standing_player()
+	p.move_manager.start(Move.WALKING)
+	var lockout: float = p.config.landing.lockout_time
+	var immunity: float = p.config.pawn.stagger_immunity_time
+	
+	# A volume renewing the status is what standing in wire looks like.
+	var renew := func() -> void: p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	renew.call()
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.LANDING, "the first hit missed")
+	
+	# Through the lockout and into the window: renewing here must be eaten.
+	for i in int((lockout + immunity * 0.5) * 60.0):
+		renew.call()
+		await step(1)
+	assert_ne(p.move_manager.current_name, Move.LANDING, \
+		"the window never opened, so there is no tick in which to walk out")
+	
+	# Past the window it has to bite again.
+	for i in int(immunity * 60.0) + 8:
+		renew.call()
+		await step(1)
+		if p.move_manager.current_name == Move.LANDING:
+			break
+	assert_eq(p.move_manager.current_name, Move.LANDING, \
+		"staying in the wire stopped costing anything after the first hit")

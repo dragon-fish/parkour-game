@@ -404,6 +404,19 @@ The immunity is armed by *any* landing lockout, not only one a stagger caused
 — a body that has just picked itself up off the floor is exactly as unable to
 absorb another stumble.
 
+**A wire the player can stand in needs a `refresh_interval`.** Without one the
+volume charges on entry and never again, so a run of wire along a wall can be
+walked end to end having paid once. Give it a short interval — `0.25` — and the
+cadence looks after itself: the stagger fires, the lockout refuses input for
+`landing.lockout_time`, the immunity window opens for
+`pawn.stagger_immunity_time`, and the next renewal past that bites again. The
+window is the only tick the player can move in, so it is also the only chance
+they get to step off.
+
+DO NOT write that cadence as an interval of its own. Three seconds between hits
+is `lockout_time + stagger_immunity_time`, and a third number would have to be
+kept in step with both by hand.
+
 ### Attaching a modification to a region rather than to a moment
 
 Nothing tracks who is inside a volume — there is no exit handler and no

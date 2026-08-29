@@ -176,9 +176,10 @@ material = SubResource("Material_red")
 size = Vector3(9.4, 0.02, 8)
 
 [sub_resource type="Resource" id="Resource_3qddd"]
-resource_name = "STAGGER (until removed)"
+resource_name = "STAGGER (0.5 s)"
 script = ExtResource("10_spec")
 effect = 15
+seconds = 0.5
 metadata/_custom_type_script = "uid://dklpkdy6gfsxl"
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_3qddd"]
@@ -462,6 +463,7 @@ outline_size = 10
 [node name="两端铁丝网" type="Area3D" parent="." unique_id=1720217055]
 script = ExtResource("9_volume")
 apply = Array[ExtResource("10_spec")]([SubResource("Resource_3qddd")])
+refresh_interval = 0.25
 metadata/_custom_type_script = "uid://ce6ce3fbl2bxb"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="两端铁丝网" unique_id=158208513]
