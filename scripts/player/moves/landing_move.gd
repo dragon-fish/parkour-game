@@ -76,6 +76,14 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# in the sky for the whole lockout.
 	if player.grounded:
 		player.velocity.y = -config.pawn.floor_snap_speed
+		# THE INERTIA A STAGGER KEEPS BELONGS TO THE FALL, NOT TO THE FLOOR.
+		# Carrying it past touchdown slides the body across the ground at
+		# speed through a lockout that refuses every input, which reads as
+		# the character drifting off on its own. Dropped on contact rather
+		# than braked: there is nothing here for friction to model, the
+		# player is simply down.
+		player.velocity.x = 0.0
+		player.velocity.z = 0.0
 	else:
 		player.velocity.y -= player.effective_gravity() * delta
 		player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)

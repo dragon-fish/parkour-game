@@ -152,3 +152,20 @@ func test_a_second_stagger_is_eaten_by_the_immunity_window() -> void:
 		"a stagger landed inside the immunity window")
 	assert_false(p.statuses.has(Status.Effect.STAGGER), \
 		"the eaten stagger was left in the list to fire when the window closed")
+
+func test_a_staggered_body_stops_the_moment_it_lands() -> void:
+	# The knock-down keeps speed so a wired fence stays passable, but that
+	# inertia is for the ARC. Carried past touchdown it slides the body across
+	# the floor through a lockout that refuses every input, which reads as the
+	# character walking off by itself.
+	var p := await _falling_player()
+	p.velocity = Vector3(6.0, 0.0, 0.0)
+	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.LANDING, "test setup: no stagger")
+	assert_gt(absf(p.velocity.x), 0.5, \
+		"test setup: the knock-down kept no inertia to carry into the fall")
+	await step(60)
+	assert_true(p.grounded, "test setup: the body never reached the floor")
+	assert_almost_eq(Vector2(p.velocity.x, p.velocity.z).length(), 0.0, 0.001, \
+		"the staggered body kept sliding after it landed")
