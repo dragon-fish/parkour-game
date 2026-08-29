@@ -3963,9 +3963,22 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float, gra
 			move_manager.current_move_friction_modifier(), grade)
 		horizontal = horizontal.move_toward(Vector3.ZERO, braking * delta)
 	else:
+		# JUDGED ON WHERE THE BODY IS GOING, NOT ON THE KEY HELD. Pressing A
+		# at full speed does not teleport the run sideways: the heading
+		# curves round, and it is inside the arc for the first half of that
+		# curve. Reading wish_dir instead drops the ceiling to 4.0 on the
+		# frame the key goes down, which loses the shape the owner measured
+		# in the original -- speed dips as the heading swings, RECOVERS while
+		# the curve is still within 45 degrees, and only then bleeds away.
+		# The dip, the recovery and the bleed all fall out of this one line.
+		#
+		# A standing start has no heading to read, so the key answers there.
+		var travelling: Vector3 = wish_dir
+		if horizontal.length_squared() > 0.01:
+			travelling = horizontal
 		# A CEILING, never a floor, so a state already slower than it -- the
 		# crouch at 40% -- is not sped up by turning sideways.
-		if not in_forward_arc(wish_dir):
+		if not in_forward_arc(travelling):
 			target_speed = minf(target_speed, config.pawn.lateral_speed)
 		var speed: float = horizontal.length()
 		if speed > target_speed:
