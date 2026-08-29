@@ -176,21 +176,36 @@ func _advance_view_blend(delta: float) -> void:
 
 ## Where the view actually sits, as opposed to how far through the journey
 ## it is. The stored blend advances linearly because move_toward is what
-## makes the duration exact; the Hermite is applied on the way OUT, so the
-## camera leaves and arrives slowly and only crosses the open air quickly.
+## makes the duration exact; the curve is applied on the way OUT.
+##
+## Quintic ease-in: the eye clings to where it was and then leaves in a
+## rush. One line to change, and worth changing as a pair with
+## view_blend_time -- a slower curve wants a shorter duration to read the
+## same.
 func _eased_view_blend() -> float:
-	return smoothstep(0.0, 1.0, _view_blend)
+	return pow(_view_blend, 5.0)
 
 ## How much screen blur the view change wants right now. Fed to ScreenEffects
 ## by Player -- this rig is handed values and never reaches for a node.
 ##
-## A half sine over the LINEAR progress, so it is zero at both rest states
-## without needing any state of its own to remember whether a transition is
-## running, and peaks in the middle where the body's mesh swap lands.
+## PEAKED WHERE THE SEAM IS, not in the middle of the journey. The blur is
+## here to cover the body swapping its mesh, and that lands at
+## view_blend_body_swap -- which sits near the first-person end, because
+## that is where the camera is close enough to the head for the swap to be
+## visible at all. A blur peaking at the midpoint is heaviest out in open
+## air where there was nothing to hide.
+##
+## Two quarter-sines meeting at that point, so it is still zero at both
+## rest states and still needs no state of its own to know whether a
+## transition is running. Driven off the EASED blend, the same value the
+## swap itself is judged on, so the two cannot drift apart.
 func view_blur() -> float:
 	if _view_blend < 0.0:
 		return 0.0
-	return sin(PI * _view_blend) * _config.camera.view_blend_blur
+	var eased: float = _eased_view_blend()
+	var seam: float = clampf(_config.camera.view_blend_body_swap, 0.01, 0.99)
+	var rise: float = eased / seam if eased <= seam else (1.0 - eased) / (1.0 - seam)
+	return sin(PI * 0.5 * rise) * _config.camera.view_blend_blur
 
 func in_third_person() -> bool:
 	if forced_view == Status.View.FIRST:
