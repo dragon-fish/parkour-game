@@ -4,12 +4,14 @@ extends Node
 # The menu's music, in two pieces cut from one track.
 #
 # THE POINT IS THE HANDOFF. The held title shot plays eight restrained bars;
-# the click drops into the chorus. Because both pieces come from the same
-# recording at the same tempo and both start on a downbeat, the chorus is
-# entered AT THE PHASE THE LOOP HAD REACHED -- so the beat never breaks, and
-# the crossfade can be short enough to feel like the click caused it. Waiting
-# for the next bar line would be up to 1.8 s of nothing happening, which on a
-# button reads as the button not working.
+# the click enters the record two bars before its chorus, on the approach the
+# composer wrote into it, and the drop then arrives by itself.
+#
+# It works because the tempo never changes across the track, so the phase the
+# fragment had reached is still the right phase anywhere in the record. Enter
+# at that phase and the grid runs unbroken through the crossfade: no waiting
+# for a bar line, which on a button would read as the button not working, and
+# no restarting the count inside the fade.
 #
 # THREE MOMENTS, TWO FILES. The title fragment loops continuously and
 # gaplessly -- background for a decision nobody is being hurried into. The
@@ -33,9 +35,29 @@ const FULL_STREAM := "res://assets/audio/menu_full.ogg"
 ## at 0.000 s. A cross-correlation estimate of 132.63 was the outlier.
 const BAR := 1.811217
 
-## Where the chorus lands in the record: bar 32. The click enters here, and
-## the phase the title fragment had reached is added on top.
+## Where the chorus lands in the record: bar 32.
 const CHORUS_START := 32.0 * BAR
+
+## AND WHERE THE CLICK ACTUALLY ENTERS: two bars earlier, on the approach the
+## composer wrote into it.
+##
+## Entering at the chorus itself was the first attempt and it was abrupt, for
+## a reason worth keeping: aligning the BEAT is the weakest alignment there
+## is. Music is beats inside bars inside phrases, and entering bar 32 partway
+## through means its downbeat -- the heaviest moment in the piece -- has
+## already gone by. The full arrangement simply appears, with no arrival.
+##
+## Bars 30 and 31 are the lift: the same sparse texture the title fragment
+## has, with a riser climbing through it. Entering there, the crossfade is
+## between two quiet things and is barely audible, and because the grid runs
+## unbroken the chorus's own downbeat then lands on time and at full weight
+## three and a half seconds later -- which is also about when the menu
+## finishes arriving.
+##
+## This is the cheap version of what a middleware transition does with a
+## composed bridge or a stinger: use the composer's own approach as the
+## transition rather than butting two sections together.
+const APPROACH_START := 30.0 * BAR
 
 
 ## Held back on purpose. This plays under a title card while the player is
@@ -50,10 +72,10 @@ const CHORUS_LEVEL := 0.62
 ## material, not of volume.
 const HANDOFF := 0.6
 
-## And then the lift to CHORUS_LEVEL, slowly. Long enough that no single
-## moment of it is a jump, which is the whole requirement -- a menu that
-## suddenly gets louder is a menu that made the player flinch.
-const SWELL := 5.0
+## The lift to CHORUS_LEVEL runs from the moment of the click until the drop,
+## so it is not a constant: it is however much of the approach is left. That
+## way the level arrives exactly when the chorus does, rather than still
+## climbing through it or having got there early and sat waiting.
 
 ## The pause before the record starts over. Long enough to read as deliberate
 ## rather than as a dropout; the piece it follows is two and a half minutes
@@ -122,22 +144,31 @@ func to_chorus() -> void:
 	if _in_chorus or _record.stream == null:
 		return
 	_in_chorus = true
-	_record.play(chorus_entry(_loop.get_playback_position()))
+	var entry: float = chorus_entry(_loop.get_playback_position())
+	_record.play(entry)
 	var hand := create_tween()
 	hand.tween_method(_set_handoff, 0.0, 1.0, HANDOFF)
 	hand.tween_callback(_loop.stop)
-	hand.tween_method(_set_record_level, HELD_LEVEL, CHORUS_LEVEL, SWELL) \
+	# Ends ON the drop, not before or after it.
+	hand.tween_method(_set_record_level, HELD_LEVEL, CHORUS_LEVEL,
+		time_to_the_drop(entry) - HANDOFF) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 ## Where in the RECORD to start, given where the title fragment had got to.
-## The chorus's own downbeat, plus however far into a bar the loop was, so the
-## grid continues through the crossfade instead of restarting inside it.
+## The approach's own downbeat, plus however far into a bar the fragment was,
+## so the grid continues through the crossfade instead of restarting inside
+## it -- and so the chorus that follows lands on time.
 ##
 ## Pure and static so the arithmetic can be checked without an audio device: a
 ## headless run has a dummy driver and reports a playback position of zero
 ## forever, which would make a test of this pass for the wrong reason.
 static func chorus_entry(loop_position: float) -> float:
-	return CHORUS_START + fmod(maxf(loop_position, 0.0), BAR)
+	return APPROACH_START + fmod(maxf(loop_position, 0.0), BAR)
+
+## How long the entry has before the chorus lands on it. The swell is given
+## exactly this, so the two arrive together.
+static func time_to_the_drop(entry: float) -> float:
+	return maxf(CHORUS_START - entry, 0.1)
 
 ## Leaving the menu. Silence would be as wrong as a hard cut.
 func fade_out(seconds: float = FADE_OUT) -> void:
