@@ -22,13 +22,15 @@ touching either.
    override them (e.g. moving `SpawnPoint`, or switching `Sun` off for an
    interior). Everything else — ramps, walls, gaps, platforms — are new
    siblings you add under the inherited root.
-5. **The template has no ground.** Instance
-   `templates/acrylic_floor.tscn` for the 60×60 slab the whiteboxes use, or
-   build the level's own. A floor is level GEOMETRY, not part of the frame:
-   a shaft has none, and a finished interior has its own, so a slab in the
-   base would be buried scenery in every level that is not a flat whitebox —
-   and an inherited node cannot be deleted, only hidden. What the base holds
-   is what every level genuinely shares.
+5. `Floor` is a **safety net**, not the level's ground. It is a 60×60 slab
+   instanced from `templates/acrylic_floor.tscn`, and it is in the base for
+   one reason: a level part-way through being built has nowhere to stand, and
+   without it every playtest of an unfinished level begins by falling forever.
+   Once the level has its own ground, switch the net off in the child —
+   `visible = false` on `Floor/Mesh` and `disabled = true` on
+   `Floor/Collision`. **An inherited node cannot be deleted, only overridden**,
+   so this is as far as removing it goes. Instance the same scene again if you
+   want another slab somewhere; the ME acrylic material comes with it.
 6. Every level built from the template inherits its cold-blue ambient tint
    (`WorldEnvironment`'s `ambient_light_color`, Mirror's Edge-leaning shadows)
    for free; tune how strong it reads with the F1 panel's
