@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/debug/animation_lab.gd" id="9_lab"]
 [ext_resource type="Script" path="res://scripts/debug/spectator_camera.gd" id="10_cam"]
 [ext_resource type="Sky" path="res://assets/sky/day_sky.tres" id="8_sky"]
+[ext_resource type="Resource" path="res://presets/default.tres" id="preset_default"]
 
 [sub_resource type="Environment" id="Environment_eb6dy"]
 background_mode = 2
@@ -25,6 +26,7 @@ size = Vector3(60, 1, 60)
 
 [node name="AnimationLabLevel" type="Node3D" unique_id=411242539 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_tbgi4")
+config = ExtResource("preset_default")
 capture_mouse = false
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")

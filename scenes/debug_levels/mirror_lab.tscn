@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://bhucofvtd1e8a" path="res://scripts/level/spawn_point.gd" id="6_spawn"]
 [ext_resource type="Script" uid="uid://yeo4uthycgl7" path="res://scripts/debug/debug_hud.gd" id="7_hud"]
 [ext_resource type="Script" uid="uid://ds4fksae8u45h" path="res://scripts/debug/tuning_panel.gd" id="8_panel"]
+[ext_resource type="Resource" path="res://presets/default.tres" id="preset_default"]
 
 [sub_resource type="Environment" id="Environment_lab"]
 background_mode = 2
@@ -126,6 +127,7 @@ size = Vector3(1.9, 0.12, 0.7)
 
 [node name="MirrorLab" type="Node3D" unique_id=850653922 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_arena")
+config = ExtResource("preset_default")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
 

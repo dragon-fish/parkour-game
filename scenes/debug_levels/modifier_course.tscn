@@ -12,6 +12,7 @@
 [ext_resource type="Script" uid="uid://dklpkdy6gfsxl" path="res://scripts/player/status/status_spec.gd" id="10_spec"]
 [ext_resource type="Script" uid="uid://cg57yu74dh3ns" path="res://scripts/level/barbed_wire.gd" id="11_wire"]
 [ext_resource type="Script" uid="uid://bp8ln0665h47i" path="res://scripts/level/death_volume.gd" id="12_vxffk"]
+[ext_resource type="Resource" path="res://presets/default.tres" id="preset_default"]
 
 [sub_resource type="Resource" id="Resource_fog"]
 resource_local_to_scene = true
@@ -216,6 +217,7 @@ point_count = 2
 
 [node name="ModifierCourse" type="Node3D" unique_id=1493923550 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_arena")
+config = ExtResource("preset_default")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
 fog = SubResource("Resource_fog")
