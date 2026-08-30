@@ -1,22 +1,41 @@
 {
-  "_comment": "Beriul (Amanosora) -- a 0.97 m model stretched to the shared eye height. See beriul-integration notes; the model itself is licence-bound and untracked.",
+	"_comment": "Beriul (Amanosora) -- a 0.97 m model stretched to the shared eye height. See beriul-integration notes; the model itself is licence-bound and untracked.",
 
-  "mount_scale": 2.1,
-  "mount_offset": [0, 0, 0],
-  "eye_forward": 0.13,
-  "head_path": "Armature/GeneralSkeleton/HeadMount",
+	"mount_scale": 2.1,
+	"mount_offset": [0, 0, 0],
+	"eye_forward": 0.13,
+	"head_path": "Armature/GeneralSkeleton/HeadMount",
 
-  "clip_offsets": {
-	"LiftAir_Fall":        [[0, 0.15,   0], [0, 0, 0]],
-	"LiftAir_Fall_Impact": [[0, 0.15,   0], [0, 0, 0]],
-	"StepUp":              [[0, 0,  -0.2], [0, 0, 0]],
-	"WallRun_L":           [[0.6, 0,   0], [0, 0, 0]],
-	"WallRun_R":           [[-0.6, 0,  0], [0, 0, 0]]
-  },
+	"clip_offsets": {
+	"LiftAir_Fall": [
+		[0, 0.15, 0],
+		[0, 0, 0]
+	],
+	"LiftAir_Fall_Impact": [
+		[0, 0.15, 0],
+		[0, 0, 0]
+	],
+	"Death01": [
+		[0, 0.1, 0],
+		[0, 0, 0]
+	],
+	"StepUp": [
+		[0, 0, -0.2],
+		[0, 0, 0]
+	],
+	"WallRun_L": [
+		[0.6, 0, 0],
+		[0, 0, 0]
+	],
+	"WallRun_R": [
+		[-0.6, 0, 0],
+		[0, 0, 0]
+	]
+	},
 
-  "clip_timings": {
+	"clip_timings": {
 	"StepUp": [0.16666667, 0.0]
-  },
+	},
 
-  "slide_eye_lift": 0.15
+	"slide_eye_lift": 0.15
 }
