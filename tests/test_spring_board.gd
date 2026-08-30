@@ -108,6 +108,40 @@ func test_a_wide_step_is_a_spring_board_too() -> void:
 	assert_true(player.probes.springboard_query()["valid"],
 		"two wide tiers were not seen as a spring board")
 
+## AN EDGE GRAZE IS NOT A FOOTING. The forward samples are anchored to the
+## FEET, so where the player happens to stop decides the grid's phase against
+## a plant's face. A sample landing short of that face still catches the top
+## EDGE with the probe sphere, and the point it returns hangs off the side:
+## the query says valid, fits_standing_at refuses it, and WalkingMove drops
+## the whole thing to a plain jump. Measured before springboard_query()
+## stepped off the lip, the refusal alternated with the player's position at a
+## quarter of plant_sample_step -- half of all approaches lost the move.
+##
+## Swept over a full cycle of the grid, and including the case that matters
+## most: the capsule walked into the first plant's face and stopped a radius
+## short of it, which is where a player who runs at a spring board ends up.
+func test_every_approach_position_finds_plants_the_body_can_stand_on() -> void:
+	var player: Player = await _standing_player()
+	_spring_board_ahead(1.0)
+	await step(2)
+	var home: Vector3 = player.global_position
+	# Facing -Z, so +Z backs away: a quarter of plant_sample_step each time
+	# covers one full phase, and -0.45 is the capsule against the face
+	# (the first plant's front is at z = -0.85).
+	for offset in [0.0, 0.025, 0.05, 0.075, -0.45]:
+		player.global_position = Vector3(home.x, home.y, offset)
+		player.velocity = Vector3.ZERO
+		await step(2)
+		var hit: Dictionary = player.probes.springboard_query()
+		assert_true(hit["valid"],
+			"no spring board seen from z = %.3f" % offset)
+		if not hit["valid"]:
+			continue
+		assert_true(player.fits_standing_at(hit["plant_1"]),
+			"from z = %.3f the first plant %s is not standable" % [offset, hit["plant_1"]])
+		assert_true(player.fits_standing_at(hit["plant_2"]),
+			"from z = %.3f the second plant %s is not standable" % [offset, hit["plant_2"]])
+
 # --- the move --------------------------------------------------------------
 
 ## Stands the player 1 m short of a spring board and presses jump.

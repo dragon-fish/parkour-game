@@ -105,6 +105,15 @@ const WALL_AHEAD_CHEST_Y := 0.2
 ## sole plane grazes the floor when a run ends at ground level.
 const WALL_CONTACT_FOOT_MARGIN := 0.15
 
+## How many samples a spring board's plant point may be walked deeper to get
+## it off a lip and on to the face. See _walk_plant_off_the_lip().
+##
+## PROJECT-DEFINED, and a guard rather than a target: the walk halts itself on
+## the first sample that reads no higher, which on any real face is the one
+## after it clears the lip. This only bounds a staircase of ever-rising
+## samples, which no plant is.
+const EDGE_ADVANCE_LIMIT: int = 3
+
 # Looked up live via _ensure_rays() rather than cached in @onready vars: @onready
 # resolves on Probes' own _ready(), but TestWorld.build() (and player.tscn's
 # real instantiation path) calls Player.setup() -> Probes.setup() on the same
@@ -632,6 +641,9 @@ func _ledge_from_face() -> Dictionary:
 ## somewhat past 53 degrees measured axis-to-axis. DO NOT pull the sampled
 ## bearings in to compensate: 53 is the original's number, the near edge is
 ## what "nearest first" means, and a wide tier's first plant depends on it.
+##
+## Both plants are then walked off the lip they were found on -- see
+## _walk_plant_off_the_lip(), which is what makes them standable at all.
 func springboard_query() -> Dictionary:
 	if _config == null:
 		return _no_hit()
@@ -652,7 +664,10 @@ func springboard_query() -> Dictionary:
 		if is_nan(top):
 			continue
 		if absf(top - feet.y - cfg.plant_1_height) <= cfg.plant_height_tolerance:
-			plant_1 = Vector3(at.x, top, at.z)
+			plant_1 = _walk_plant_off_the_lip(at, top, forward,
+				feet.y + cfg.plant_1_height - cfg.plant_height_tolerance,
+				feet.y + cfg.plant_1_height + cfg.plant_height_tolerance,
+				cfg.plant_1_height + cfg.plant_height_tolerance, cfg)
 			found_first = true
 			break
 	if not found_first:
@@ -683,8 +698,56 @@ func springboard_query() -> Dictionary:
 			# is inside plant_2's range when it stands tall.
 			if top <= plant_1.y + cfg.plant_height_tolerance:
 				continue
-			return {"valid": true, "plant_1": plant_1, "plant_2": Vector3(at.x, top, at.z)}
+			var plant_2: Vector3 = _walk_plant_off_the_lip(at, top, toward,
+				maxf(feet.y + cfg.plant_2_min_height,
+					plant_1.y + cfg.plant_height_tolerance),
+				feet.y + cfg.plant_2_max_height, cfg.plant_2_max_height, cfg)
+			return {"valid": true, "plant_1": plant_1, "plant_2": plant_2}
 	return _no_hit()
+
+## Walks an accepted plant point deeper along `direction` until it rests on a
+## FACE rather than on a lip, and returns it.
+##
+## AN EDGE GRAZE IS NOT A FOOTING. A sphere dropped a step short of a plant's
+## face comes to rest on its top EDGE, out over the drop, and the point
+## computed from it hangs off the side with it. WalkingMove asks
+## fits_standing_at() of both plants and refuses the whole move when a body
+## will not fit there, so a grazed point does not merely read a few
+## centimetres low -- it loses the spring board outright, to a plain jump.
+## The forward samples are anchored to the FEET, so which of the two happened
+## was decided by the player's sub-decimetre stopping position: swept at a
+## quarter of plant_sample_step the refusal alternated every other position,
+## and standing against the plant's face -- the commonest approach there is --
+## was one of the losing ones.
+##
+## STOPS THE MOMENT THE READING STOPS IMPROVING, which is what keeps this to
+## the lip and off the middle of the face. A sphere clear of the edge reads
+## the same top wherever else on that face it lands, so "strictly higher"
+## halts one step in -- about the sphere's own radius, the least that clears
+## the overhang. DO NOT relax this to "no lower": a wide box then reads equal
+## all the way across and the point walks the full EDGE_ADVANCE_LIMIT inland,
+## 0.3 m, which is past plant_reach measured from where that same box's face
+## stops the capsule -- the approach can never close the gap and every box
+## lane times out back to walking. Measured: the three box lanes of the debug
+## gallery handed back at tick 36 of 36.
+func _walk_plant_off_the_lip(at: Vector3, top: float, direction: Vector3,
+		lo: float, hi: float, reach: float, cfg: SpringBoardConfig) -> Vector3:
+	# THE BEST TOP IS KEPT AS A float, never read back out of a Vector3: those
+	# components are 32-bit, so a top round-tripped through one returns a few
+	# ten-millionths lower than it went in and every sample on a flat face then
+	# compares as an improvement. That silently turns any halting rule written
+	# against it into "always advance", and the point walks the full limit.
+	var best_at: Vector3 = at
+	var best_top: float = top
+	var probe: Vector3 = at
+	for _i in range(EDGE_ADVANCE_LIMIT):
+		probe += direction * cfg.plant_sample_step
+		var next_top: float = _plant_top(probe, reach, cfg)
+		if is_nan(next_top) or next_top < lo or next_top > hi or next_top <= best_top:
+			break
+		best_at = probe
+		best_top = next_top
+	return Vector3(best_at.x, best_top, best_at.z)
 
 ## The top surface under a sphere dropped onto `at` from `reach` above it,
 ## as a world Y, or NAN when nothing is there down to a little below `at`.

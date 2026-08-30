@@ -243,7 +243,7 @@ shape = SubResource("BoxShape3D_3qddd")
 disabled = true
 
 [node name="SpringGallery" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 4.75, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27.5, 4.75, 0)
 
 [node name="Collision" type="CollisionShape3D" parent="SpringGallery"]
 shape = SubResource("Shape_gallery")
