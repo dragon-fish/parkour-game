@@ -40,7 +40,7 @@
 | `tests/test_spring_board.gd`（新） | 探针 + Move 的结构性测试 |
 | `tests/test_config_layout.gd` | 聚合根多一项 |
 | `tests/test_animation_routing.gd` | 路由分支 |
-| `scenes/debug_levels/balance_course.tscn` | 摆两根柱子供实机验证 |
+| `scenes/debug_levels/balance_course.tscn` | 一排踏板变体供实机验证 |
 
 ---
 
@@ -957,7 +957,7 @@ git commit -m "feat(spring-board): route the steps onto StepUp and the rise onto
 
 ---
 
-### Task 5: 白盒关卡里的踏板 + 全套验证
+### Task 5: 白盒关卡里的踏板画廊 + 全套验证
 
 **Files:**
 - Modify: `scenes/debug_levels/balance_course.tscn`
@@ -966,50 +966,115 @@ git commit -m "feat(spring-board): route the steps onto StepUp and the rise onto
 **Interfaces:**
 - Consumes: 以上全部。
 
-- [ ] **Step 1: 摆两根柱子**
+- [ ] **Step 1: 摆一排踏板变体（"画廊"）**
 
-在 `scenes/debug_levels/balance_course.tscn` 里，`[sub_resource type="BoxShape3D" id="Shape_endplatform"]` 之前加两个形状与网格：
+在 `scenes/debug_levels/balance_course.tscn` 里加一块新平台 `SpringGallery`，
+紧贴 PlatformA（中心 (20, 4.75, 0)，3 m 见方，顶面 y = 5.0）的 +X 侧，从出生点
+往 +X 走就到。平台 12 × 0.5 × 12，中心 (28, 4.75, 0)，顶面 5.0，x 22..34，z -6..6。
+四条通道沿 +X 方向，各自一种几何，第一落脚点的前沿都在 x = 25.5，第二落脚点的
+前沿在 x = 26.62（相距 1.12）：
+
+| 通道 z | 第一级（顶面脚上 0.64） | 第二级（顶面脚上 1.24） |
+|---|---|---|
+| -4.5 | 箱子 1.2 宽 × 1.0 深，中心 x 26.0 | 箱子 1.2 宽 × 1.0 深，中心 x 27.12 |
+| -1.5 | 箱子（同上） | 柱子 0.3 × 0.3，中心 x 26.77 |
+| 1.5 | 柱子 0.3 × 0.3，中心 x 25.65 | 柱子 0.3 × 0.3，中心 x 26.77 |
+| 4.5 | 栏杆：0.1 厚 × 1.5 宽的薄板，中心 x 25.55 | 矮墙：0.2 厚 × 1.5 宽，中心 x 26.72 |
+
+（中心 y：0.64 高的是 5.32，1.24 高的是 5.62。）
+
+在 `[sub_resource type="BoxShape3D" id="Shape_endplatform"]` 之前加形状与网格
+（网格材质复用 `Material_platform` / `Material_ledge`）：
 
 ```
-[sub_resource type="BoxShape3D" id="Shape_spring_low"]
-size = Vector3(0.4, 0.64, 0.4)
+[sub_resource type="BoxShape3D" id="Shape_gallery"]
+size = Vector3(12, 0.5, 12)
 
-[sub_resource type="BoxMesh" id="Mesh_spring_low"]
+[sub_resource type="BoxMesh" id="Mesh_gallery"]
+material = SubResource("Material_platform")
+size = Vector3(12, 0.5, 12)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_box_low"]
+size = Vector3(1.0, 0.64, 1.2)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_box_low"]
 material = SubResource("Material_ledge")
-size = Vector3(0.4, 0.64, 0.4)
+size = Vector3(1.0, 0.64, 1.2)
 
-[sub_resource type="BoxShape3D" id="Shape_spring_high"]
-size = Vector3(0.4, 1.24, 0.4)
+[sub_resource type="BoxShape3D" id="Shape_sb_box_high"]
+size = Vector3(1.0, 1.24, 1.2)
 
-[sub_resource type="BoxMesh" id="Mesh_spring_high"]
+[sub_resource type="BoxMesh" id="Mesh_sb_box_high"]
 material = SubResource("Material_ledge")
-size = Vector3(0.4, 1.24, 0.4)
+size = Vector3(1.0, 1.24, 1.2)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_pole_low"]
+size = Vector3(0.3, 0.64, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_pole_low"]
+material = SubResource("Material_ledge")
+size = Vector3(0.3, 0.64, 0.3)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_pole_high"]
+size = Vector3(0.3, 1.24, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_pole_high"]
+material = SubResource("Material_ledge")
+size = Vector3(0.3, 1.24, 0.3)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_rail"]
+size = Vector3(0.1, 0.64, 1.5)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_rail"]
+material = SubResource("Material_ledge")
+size = Vector3(0.1, 0.64, 1.5)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_wall"]
+size = Vector3(0.2, 1.24, 1.5)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_wall"]
+material = SubResource("Material_ledge")
+size = Vector3(0.2, 1.24, 1.5)
 
 ```
 
-在文件末尾（最后一个节点之后）加两根柱子，立在 PlatformA（顶面 y = 5.0，中心 (20, 4.75, 0)，3 m 见方）上，从出生点往 -X 走过去 2 m 与 3.12 m 处：
+（注意箱子的 `size` 是 (深 x, 高, 宽 z)：通道沿 +X，所以"深"在 x。）
+
+在文件末尾加节点。每个障碍都是 `StaticBody3D` + `Collision` + `Mesh` 三个节点，
+模板如下，按表格换名字、形状、网格与 transform 的平移：
 
 ```
-[node name="SpringLow" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 18.0, 5.32, 0)
+[node name="SpringGallery" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 4.75, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="SpringLow"]
-shape = SubResource("Shape_spring_low")
+[node name="Collision" type="CollisionShape3D" parent="SpringGallery"]
+shape = SubResource("Shape_gallery")
 
-[node name="Mesh" type="MeshInstance3D" parent="SpringLow"]
-mesh = SubResource("Mesh_spring_low")
+[node name="Mesh" type="MeshInstance3D" parent="SpringGallery"]
+mesh = SubResource("Mesh_gallery")
 
-[node name="SpringHigh" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.88, 5.62, 0)
+[node name="SbBoxBoxLow" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26.0, 5.32, -4.5)
 
-[node name="Collision" type="CollisionShape3D" parent="SpringHigh"]
-shape = SubResource("Shape_spring_high")
+[node name="Collision" type="CollisionShape3D" parent="SbBoxBoxLow"]
+shape = SubResource("Shape_sb_box_low")
 
-[node name="Mesh" type="MeshInstance3D" parent="SpringHigh"]
-mesh = SubResource("Mesh_spring_high")
+[node name="Mesh" type="MeshInstance3D" parent="SbBoxBoxLow"]
+mesh = SubResource("Mesh_sb_box_low")
 ```
 
-（`SpringLow` 中心 y = 5.0 + 0.32，顶面 5.64 = 脚上 0.64；`SpringHigh` 中心 y = 5.0 + 0.62，顶面 6.24 = 脚上 1.24；两者 X 相距 1.12。）⚠️ 平台边缘在 x = 18.5：`SpringLow` 在 x = 18.0 还在平台上，`SpringHigh` 在 16.88 已经出了平台——它自己是 StaticBody，悬空无妨，柱底到地面没有碰撞体也不影响探针（探针只看顶面）。
+全部节点（名字 → 形状/网格 id 后缀 → 平移）：
+
+| 节点名 | 形状/网格后缀 | 平移 (x, y, z) |
+|---|---|---|
+| `SbBoxBoxLow` | `sb_box_low` | (26.0, 5.32, -4.5) |
+| `SbBoxBoxHigh` | `sb_box_high` | (27.12, 5.62, -4.5) |
+| `SbBoxPoleLow` | `sb_box_low` | (26.0, 5.32, -1.5) |
+| `SbBoxPoleHigh` | `sb_pole_high` | (26.77, 5.62, -1.5) |
+| `SbPolePoleLow` | `sb_pole_low` | (25.65, 5.32, 1.5) |
+| `SbPolePoleHigh` | `sb_pole_high` | (26.77, 5.62, 1.5) |
+| `SbRailLow` | `sb_rail` | (25.55, 5.32, 4.5) |
+| `SbRailHigh` | `sb_wall` | (26.72, 5.62, 4.5) |
 
 - [ ] **Step 2: 用引擎加载验证场景**
 
@@ -1026,28 +1091,35 @@ func _initialize() -> void:
 	var player: Player = level.get_node("Player")
 	var scripted := ScriptedInputSource.new()
 	player.input_source = scripted
-	player.global_position = Vector3(19.2, 5.95, 0.0)
-	player.rotation.y = LineWalkMove.yaw_of(Vector3(-1.0, 0.0, 0.0))
-	for i in 20:
-		await physics_frame
-	print("query: ", player.probes.springboard_query())
-	scripted.state.jump_pressed = true
-	scripted.state.jump_held = true
-	var seen: Array = []
-	var last: StringName = &""
-	for tick in 120:
-		await physics_frame
-		scripted.state.jump_pressed = false
-		var now: StringName = player.move_manager.current_name
-		if now != last:
-			seen.append("%d:%s y=%.2f" % [tick, now, player.global_position.y])
-			last = now
-	print(seen)
+	# Lane by lane: the two boxes, box + pole, two poles, rail + wall.
+	for lane_z in [-4.5, -1.5, 1.5, 4.5]:
+		player.move_manager.start(Move.WALKING)
+		player.global_position = Vector3(24.3, 5.95, lane_z)
+		player.rotation.y = LineWalkMove.yaw_of(Vector3(1.0, 0.0, 0.0))
+		player.velocity = Vector3.ZERO
+		for i in 20:
+			await physics_frame
+		print("lane %.1f query: %s" % [lane_z, player.probes.springboard_query()])
+		scripted.state.jump_pressed = true
+		scripted.state.jump_held = true
+		var seen: Array = []
+		var last: StringName = &""
+		for tick in 120:
+			await physics_frame
+			scripted.state.jump_pressed = false
+			var now: StringName = player.move_manager.current_name
+			if now != last:
+				seen.append("%d:%s y=%.2f" % [tick, now, player.global_position.y])
+				last = now
+		print("lane %.1f: %s" % [lane_z, seen])
+		scripted.state.jump_held = false
+		for i in 60:
+			await physics_frame
 	quit()
 ```
 
 Run: `./.engine/Godot_v4.7.1-stable_win64_console.exe --headless --fixed-fps 60 --path . -s res://tools/_probe_spring.gd`
-Expected: `query` 为 valid，序列形如 `["1:SpringBoard y=5.95", "~45:Falling y=~9.5"]`——顶点约在起跳点（6.24 + 0.9 = 7.14）之上 2.82 m。删除 `tools/_probe_spring.gd` 与 `.uid`。
+Expected: 四条通道的 `query` 都为 valid，序列都形如 `["1:SpringBoard y=5.95", "~45:Falling y=~9.5"]`——顶点约在起跳点（6.24 + 0.9 = 7.14）之上 2.82 m。栏杆那条若探针漏掉薄板（0.1 m 厚 vs 球半径 0.12），把 `SbRailLow` 加厚到 0.15 再试，并把结论记到 spec 的已知空白。删除 `tools/_probe_spring.gd` 与 `.uid`。
 
 - [ ] **Step 3: 全套测试**
 
@@ -1058,7 +1130,7 @@ Expected: 除既有 pending 的 `test_hand_ik.gd` 外全部 PASS，无 `SCRIPT E
 
 ```bash
 git add scenes/debug_levels/balance_course.tscn
-git commit -m "feat(debug): two posts on the balance course to spring board off"
+git commit -m "feat(debug): a spring board gallery on the balance course -- boxes, poles, a rail"
 ```
 
 - [ ] **Step 5: 实机验证（owner）**
