@@ -689,6 +689,17 @@ func springboard_query() -> Dictionary:
 ## The top surface under a sphere dropped onto `at` from `reach` above it,
 ## as a world Y, or NAN when nothing is there down to a little below `at`.
 ## The sphere's radius is the config's plant_probe_radius.
+##
+## READS A LITTLE LOW, ALWAYS. DO NOT treat the value as an exact surface
+## height -- do not place a foot on it and expect contact. Two margins stack:
+## cast_motion returns the SAFE fraction, which stops the sphere short of
+## contact rather than on it, and a sphere that comes to rest on a top EDGE
+## rather than a face sits out over the drop, so the underside computed from
+## it falls further below the surface still. Measured at the shipped dials: a
+## 0.64 m pole reads 0.625, and a 1.24 m tier approached head-on reads 0.586.
+## plant_height_tolerance is what absorbs both, which is why every height test
+## in springboard_query() is written against that tolerance and never against
+## an equality.
 func _plant_top(at: Vector3, reach: float, cfg: SpringBoardConfig) -> float:
 	var space := get_world_3d().direct_space_state
 	if space == null:
@@ -710,7 +721,8 @@ func _plant_top(at: Vector3, reach: float, cfg: SpringBoardConfig) -> float:
 	var fractions: PackedFloat32Array = space.cast_motion(params)
 	if fractions.size() < 2 or fractions[0] >= 1.0:
 		return NAN
-	# The sphere's underside where it stopped is the surface it stopped on.
+	# The sphere's underside where it stopped: a little BELOW the surface it
+	# stopped on, by the safe fraction's margin and by more again on an edge.
 	return start_y - fractions[0] * drop - cfg.plant_probe_radius
 
 ## Whether the ledge the player is hanging from continues `step` metres to one
