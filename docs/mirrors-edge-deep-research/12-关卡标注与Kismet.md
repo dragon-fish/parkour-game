@@ -83,7 +83,10 @@ SavedSelections     <编辑器选区残留，32 个体积上有>
 
 以此路线对上表全部体积做提取：**129 / 129 成功**，每个 1 个凸包 8 个顶点（都是盒子）。
 
-`build_blockout.py` 目前只为 marker 输出 `pos`，没有尺寸——不是解不出来，是没接这根线。
+这根线现已接上：`build_blockout.py` 为 marker 输出 `hull`（刷子凸包，局部空间）、
+`start`/`end`/`middle`、`wall`/`dir`/`floor` 方向、`spline`（滑索垂弧）与 `cyl`
+（圆柱触发器）；持久层 Tutorial_p 的跨包网格 import 也按名字在 26 个共享 .upk
+（未压缩，CompressionFlags 0x0）里解析，851/920 个摆放得以恢复。
 
 ## 12.3 Kismet 才是「用途」所在
 

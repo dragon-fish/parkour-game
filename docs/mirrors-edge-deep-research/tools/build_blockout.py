@@ -52,11 +52,131 @@ def ref_index(v):
     return v[1] if (isinstance(v, tuple) and len(v) == 2 and v[0] == 'obj' and v[1] > 0) else None
 
 
-PATH_CLASSES = ('checkpoint',)
+def imp_index(v):
+    """0-based position into pkg.imports for a negative object reference."""
+    if isinstance(v, tuple) and len(v) == 2 and v[0] == 'obj' and v[1] < 0:
+        return -v[1] - 1
+    return None
+
+
+def imp_root_pkg(pkg, i):
+    """Root package name of import #i (0-based), walking the outer chain."""
+    e = pkg.imports[i]
+    while True:
+        o = e.get('outer', 0)
+        if not o:
+            return e['name']
+        if o < 0:
+            e = pkg.imports[-o - 1]
+        else:
+            return pkg.exports[o - 1]['name']
+
+
+def sane_bounds(b):
+    """FBoxSphereBounds sanity: the sphere reaches the farthest VERTEX, so it
+    is legitimately shorter than the box diagonal but never longer."""
+    ex, ey, ez, r = b[3], b[4], b[5], b[6]
+    diag = math.sqrt(ex * ex + ey * ey + ez * ez)
+    return diag > 0 and 0.40 <= r / diag <= 1.05 and min(ex, ey, ez) >= 0 and r < 1e6
+
+
+# A cooked persistent map does not necessarily embed its meshes. Tutorial_Art
+# and Tutorial_Bac cook theirs in (125/89 StaticMesh exports), but Tutorial_p
+# has ZERO -- its 852 mesh references are IMPORTS into 26 shared packages
+# (P_Renovation, P_Catwalks, ...) elsewhere under CookedPC. DO NOT assume
+# in-package resolution is enough because two sublevels happened to work; the
+# persistent level is the one that loses 900+ placements silently.
+# Shared packages are found by indexing *.upk under the CookedPC root (derived
+# from the MAPS argument), loaded lazily, and keyed by mesh NAME.
+COOKED_SKIP = {'engine', 'core', 'tdgame', 'gameframework', 'unrealed'}
+_upk_index = None
+_lib_bounds = {}      # mesh name -> ((ox,oy,oz), (ex,ey,ez))
+_lib_hulls = {}       # mesh name -> hulls in HullReader's raw shape
+_libs_loaded = set()
+
+
+def _find_cooked_root(path):
+    p2 = os.path.abspath(path)
+    while True:
+        if os.path.basename(p2).lower() == 'cookedpc':
+            return p2
+        np2 = os.path.dirname(p2)
+        if np2 == p2:
+            return None
+        p2 = np2
+
+
+def _index_upks():
+    global _upk_index
+    _upk_index = {}
+    root_dir = _find_cooked_root(MAPS)
+    if not root_dir:
+        return
+    for root, _dirs, files in os.walk(root_dir):
+        for fn in files:
+            if fn.lower().endswith('.upk'):
+                _upk_index.setdefault(fn[:-4].lower(), os.path.join(root, fn))
+
+
+def _pkg_cflags(path):
+    """CompressionFlags out of a UE3 package header (same walk as
+    ue3_decompress.py)."""
+    import struct
+    with open(path, 'rb') as fh:
+        raw = fh.read(4096)
+    off = 12
+    slen, = struct.unpack_from('<i', raw, off); off += 4
+    off += slen if slen >= 0 else -slen * 2
+    off += 4 + 28 + 16
+    gencount, = struct.unpack_from('<i', raw, off); off += 4
+    off += gencount * 12 + 8
+    return struct.unpack_from('<I', raw, off)[0]
+
+
+def load_lib(name):
+    """Harvest StaticMesh bounds and hulls from shared package `name`, once."""
+    key = name.lower()
+    if key in _libs_loaded or key in COOKED_SKIP:
+        return
+    _libs_loaded.add(key)
+    if _upk_index is None:
+        _index_upks()
+    src = _upk_index.get(key)
+    if not src:
+        return
+    # Shared prop/building packages ship UNCOMPRESSED (CompressionFlags 0),
+    # unlike the LZO-chunked .me1 maps -- read those in place.
+    dec = src if _pkg_cflags(src) == 0 else os.path.join(SP, name + '.upk.dec')
+    if not os.path.exists(dec):
+        subprocess.run([sys.executable, os.path.join(SP, 'ue3_decompress.py'), src, dec],
+                       check=True, capture_output=True)
+    mr = MapReader(dec)
+    pkg = mr.pkg
+    n_b = 0
+    for i, e in enumerate(pkg.exports):
+        if pkg.class_of(e) != 'StaticMesh':
+            continue
+        b = mr.bounds(i + 1)
+        if b and sane_bounds(b):
+            _lib_bounds.setdefault(e['name'], ((b[0], b[1], b[2]), (b[3], b[4], b[5])))
+            n_b += 1
+    n_h = 0
+    for mesh, hs in HullReader(dec).by_mesh().items():
+        if mesh not in _lib_hulls:
+            _lib_hulls[mesh] = hs
+            n_h += 1
+    print("    共享包 %-22s -> %4d 网格包围盒, %3d 凸包网格" % (name, n_b, n_h))
+
 
 # Actor classes worth carrying into the blockout as markers. These are what
 # tell you WHERE each mechanic was meant to be used -- far more informative
 # than the geometry alone.
+#
+# The three checkpoint classes are now told apart instead of being mixed into
+# one point cloud (the README's own complaint): TdTutorialCheckpoint (teaching
+# progress dots) stays the `path`, TdCheckpointVolume (respawn volumes, with
+# their real brush shape) and the one TdCheckpoint (the level's master
+# checkpoint) become first-class markers.
 MARKER_CLASSES = {
     'TdZiplineVolume': 'zipline',
     'TdSwingVolume': 'swing',
@@ -70,19 +190,124 @@ MARKER_CLASSES = {
     'PathNode': 'pathnode',
     'BookMark': 'bookmark',
     'InterpActor': 'mover',
+    'TdCheckpointVolume': 'checkpointvolume',
+    'TdCheckpoint': 'checkpoint',
 }
 
 
+def dir_godot(v):
+    """UE3 direction -> unit Godot direction (axis map only, no unit scale)."""
+    n = (v[0], v[2], v[1])
+    ln = math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]) or 1.0
+    return [round(c / ln, 4) for c in n]
+
+
+def pt(v):
+    return [round(c, 3) for c in to_godot(v[0], v[1], v[2])]
+
+
+# One volume in the wild (TdBarbedWireVolume_12) carries NaN in its Start and
+# SplineLocations. Python's json writes NaN happily and Godot's parser then
+# rejects the WHOLE file -- drop non-finite vectors at the source.
+def finite(v):
+    return all(c == c and abs(c) < 1e30 for c in v)
+
+
+def _raw_entry(mr, idx, name):
+    chain, _ = mr.chain_of(idx)
+    for (n, typ, extra, q, sz, arr) in chain:
+        if n == name:
+            return (typ, extra, q, sz)
+    return None
+
+
+def vec_array(mr, idx, name):
+    """A raw ArrayProperty of FVector on export #idx, or None."""
+    import struct
+    r = _raw_entry(mr, idx, name)
+    if not r:
+        return None
+    _, _, q, sz = r
+    cnt = struct.unpack_from('<i', mr.d, q)[0]
+    if cnt <= 0 or sz - 4 < cnt * 12:
+        return None
+    return [struct.unpack_from('<3f', mr.d, q + 4 + i * 12) for i in range(cnt)]
+
+
+def brush_hulls(mr, comp_idx):
+    """KConvexElem hulls out of a BrushComponent's BrushAggGeom -- the same
+    FKAggregateGeom that hulls.py reads from RB_BodySetup.AggGeom (12 sec
+    12.2: all 129 volumes resolve this way, one 8-vertex box hull each).
+    Vertices are LOCAL and unscaled; the marker's basis carries rotation and
+    scale."""
+    import struct
+    r = _raw_entry(mr, comp_idx, 'BrushAggGeom')
+    if not r:
+        return None
+    _, _, q, sz = r
+    ok, tags, _ = mr._chain(q, q + sz)
+    for (n, _t, _x, q2, sz2, _a) in tags:
+        if n != 'ConvexElems':
+            continue
+        cnt = struct.unpack_from('<i', mr.d, q2)[0]
+        p = q2 + 4
+        limit = q2 + sz2
+        hulls = []
+        for _ in range(max(cnt, 0)):
+            ok2, elem, _nat = mr._chain(p, limit)
+            if not elem:
+                break
+            verts, tris = None, []
+            for (en, _et, _ex, eq, esz, _ea) in elem:
+                if en == 'VertexData':
+                    c2 = struct.unpack_from('<i', mr.d, eq)[0]
+                    if c2 > 0 and esz - 4 >= c2 * 12:
+                        verts = [struct.unpack_from('<3f', mr.d, eq + 4 + i * 12)
+                                 for i in range(c2)]
+                elif en == 'FaceTriData':
+                    c2 = struct.unpack_from('<i', mr.d, eq)[0]
+                    if c2 > 0 and esz - 4 >= c2 * 4:
+                        tris = list(struct.unpack_from('<%di' % c2, mr.d, eq + 4))
+            last = elem[-1]
+            p = last[3] + last[4]
+            while p + 8 <= limit:
+                ni = struct.unpack_from('<i', mr.d, p)[0]
+                if mr.nm(ni) == 'None':
+                    p += 8
+                    break
+                p += 4
+            if verts:
+                hulls.append({'v': [pt(v) for v in verts], 't': tris})
+        return hulls or None
+    return None
+
+
 def collect_annotations(dec_path):
-    """Route points, spawn points (with facing) and gameplay markers."""
+    """Teaching-progress dots (path), spawn points (with facing) and gameplay
+    markers. A marker carries everything the map knows about it:
+
+      kind, pos, name           always
+      basis                     when rotated/scaled (same convention as boxes)
+      start/end/middle          the volume's own line, metres, Godot space
+      wall/dir/floor            unit directions (WallNormal / MoveDirection /
+                                FloorNormal) -- `wall` is what a ledge's or
+                                ladder's facing is authored against
+      spline                    SplineLocations, the real curve (a zipline's
+                                sag lives here, 11 points over 88 m)
+      hull                      the volume's convex shape, local space,
+                                {v: verts, t: tri indices} per element
+      cyl                       [radius, height] for cylinder-touch actors
+
+    The importer maps these onto the project's own nodes (InterestLine,
+    Checkpoint, SpawnPoint, blocking StaticBody3D, BarbedWire) instead of the
+    old anonymous red dots."""
     mr = MapReader(dec_path)
     pkg = mr.pkg
     path, spawns, markers = [], [], []
     for i, e in enumerate(pkg.exports):
         cls = pkg.class_of(e)
-        low = cls.lower()
-        is_path = any(k in low for k in PATH_CLASSES)
         kind = MARKER_CLASSES.get(cls)
+        is_path = cls == 'TdTutorialCheckpoint'
         is_spawn = cls == 'TdTutorialStart'
         if not (is_path or kind or is_spawn):
             continue
@@ -90,14 +315,46 @@ def collect_annotations(dec_path):
         if not pr or 'Location' not in pr:
             continue
         l = pr['Location']
-        p = [round(v, 2) for v in to_godot(l[0], l[1], l[2])]
+        p = pt(l)
         if is_spawn:
             rot = pr.get('Rotation') or (0, 0, 0)
             spawns.append({'pos': p, 'yaw': round(rot[1] * ROT, 1), 'name': e['name']})
-        elif is_path:
+            continue
+        if is_path:
             path.append(p)
-        else:
-            markers.append({'kind': kind, 'pos': p, 'name': e['name']})
+            continue
+        m = {'kind': kind, 'pos': p, 'name': e['name']}
+        rot = pr.get('Rotation') or (0, 0, 0)
+        s3 = pr.get('DrawScale3D') or (1.0, 1.0, 1.0)
+        ds = pr.get('DrawScale')
+        ds = ds if isinstance(ds, float) else 1.0
+        scale = (ds * s3[0], ds * s3[1], ds * s3[2])
+        if tuple(rot) != (0, 0, 0) or scale != (1.0, 1.0, 1.0):
+            m['basis'] = godot_basis(rot, scale)
+        for k_src, k_out in (('Start', 'start'), ('End', 'end'), ('Middle', 'middle')):
+            v = pr.get(k_src)
+            if isinstance(v, tuple) and len(v) == 3 and finite(v):
+                m[k_out] = pt(v)
+        for k_src, k_out in (('WallNormal', 'wall'), ('MoveDirection', 'dir'),
+                             ('FloorNormal', 'floor')):
+            v = pr.get(k_src)
+            if isinstance(v, tuple) and len(v) == 3 and finite(v):
+                m[k_out] = dir_godot(v)
+        sp = vec_array(mr, i + 1, 'SplineLocations')
+        if sp and len(sp) > 2 and all(finite(v) for v in sp):
+            m['spline'] = [pt(v) for v in sp]
+        comp = ref_index(pr.get('BrushComponent'))
+        if comp:
+            h = brush_hulls(mr, comp)
+            if h:
+                m['hull'] = h
+        cyl = ref_index(pr.get('CylinderComponent'))
+        if cyl:
+            cpr, _ = mr.props_inherited(cyl)
+            if cpr and 'CollisionRadius' in cpr:
+                m['cyl'] = [round(cpr['CollisionRadius'] / UU, 3),
+                            round(float(cpr.get('CollisionHeight', 16.0)) / UU, 3)]
+        markers.append(m)
     return path, spawns, markers
 
 
@@ -109,15 +366,9 @@ def collect(dec_path, tag):
         if pkg.class_of(e) != 'StaticMesh':
             continue
         b = mr.bounds(i + 1)
-        if not b:
-            continue
-        ex, ey, ez, r = b[3], b[4], b[5], b[6]
-        diag = math.sqrt(ex * ex + ey * ey + ez * ez)
-        # SphereRadius is the distance from Origin to the farthest VERTEX, so for
-        # anything that does not fill its box it is legitimately shorter than the
-        # box diagonal. Requiring ratio > 0.95 rejected valid bounds; the real
-        # sanity check is only that the sphere is not LARGER than the diagonal.
-        if diag > 0 and 0.40 <= r / diag <= 1.05 and min(ex, ey, ez) >= 0 and r < 1e6:
+        # Requiring sphere/diagonal > 0.95 once rejected valid bounds; the
+        # real sanity check lives in sane_bounds().
+        if b and sane_bounds(b):
             bounds[i + 1] = b
 
     out = []
@@ -138,11 +389,17 @@ def collect(dec_path, tag):
             cpr, _ = mr.props_inherited(ci)
             if cpr:
                 mi = ref_index(cpr.get('StaticMesh'))
+                ii = imp_index(cpr.get('StaticMesh'))
                 if mi:
                     mesh = pkg.exports[mi - 1]['name']
                     if mi in bounds:
                         b = bounds[mi]
                         org, ext = (b[0], b[1], b[2]), (b[3], b[4], b[5])
+                elif ii is not None:
+                    mesh = pkg.imports[ii]['name']
+                    load_lib(imp_root_pkg(pkg, ii))
+                    if mesh in _lib_bounds:
+                        org, ext = _lib_bounds[mesh]
         if ext is None:
             continue                                  # no size -> useless for a blockout
 
@@ -203,6 +460,20 @@ for f in FILES:
     all_path.extend(pts)
     all_spawns.extend(spawns)
     all_markers.extend(markers)
+
+# Hulls harvested from shared packages, kept only for meshes some placement
+# actually uses -- dumping every lib hull would triple the manifest for
+# nothing.
+referenced = {b['mesh'] for b in all_items}
+n_lib_hulls = 0
+for mesh, hs in _lib_hulls.items():
+    if mesh in all_hulls or mesh not in referenced:
+        continue
+    all_hulls[mesh] = [{'v': [[round(c, 3) for c in to_godot(*v)] for v in h['verts']],
+                        't': h['tris']} for h in hs]
+    n_lib_hulls += 1
+if n_lib_hulls:
+    print("共享包凸包并入 %d 个网格" % n_lib_hulls)
 
 json.dump({'boxes': all_items, 'path': all_path, 'spawns': all_spawns,
            'markers': all_markers, 'hulls': all_hulls},
