@@ -944,6 +944,15 @@ func _target_animation() -> StringName:
 			# epsilon to keep in step with the first: Ctrl held with a direction
 			# asked for is a walk, whatever the body has actually reached yet.
 			# Ctrl held while standing still falls through to idle below.
+			# STEPPING ROUND on the spot: the pack's quarter turn, on the side
+			# the body steps to, fitted to PawnConfig.turn_in_place_time
+			# through WalkingMove.scripted_duration(). Both clips are in
+			# Player.SCRIPTED_MOVE_CLIPS, so _route() puts them on a scripted
+			# slot like any other one-shot. See Player._begin_turn_in_place().
+			if player.is_turning_in_place():
+				var wanted: StringName = player.turn_in_place_clip()
+				var other: StringName = &"Turn90_L" if wanted == &"Turn90_R" else &"Turn90_R"
+				return _first_available([wanted, other, &"Idle", &"idle"])
 			if _creeping():
 				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			var speed: float = player.horizontal_speed()

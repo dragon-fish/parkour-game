@@ -604,3 +604,22 @@ func test_a_ledge_turning_round_plays_the_packs_half_turn() -> void:
 	ledge.note_travel(1.0)
 	assert_eq(String(animator._target_animation()), "Walk_R",
 		"the shuffle did not come back once the turn was over")
+
+func test_a_body_stepping_round_plays_the_packs_quarter_turn() -> void:
+	# The step's own state is poked, the way the ledge's turn is above.
+	var animator: CharacterAnimator = await _animator_with(
+		[&"Turn90_L", &"Turn90_R", &"Idle", &"Sprint"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.WALKING)
+	player._turn_in_place_left = 0.2
+	player._turn_in_place_sign = 1.0
+	assert_eq(String(animator._target_animation()), "Turn90_L",
+		"stepping round to the left asked for '%s'" % String(animator._target_animation()))
+	player._turn_in_place_sign = -1.0
+	assert_eq(String(animator._target_animation()), "Turn90_R",
+		"stepping round to the right asked for '%s'" % String(animator._target_animation()))
+	assert_true(Player.SCRIPTED_MOVE_CLIPS.has(&"Turn90_L") and Player.SCRIPTED_MOVE_CLIPS.has(&"Turn90_R"),
+		"the quarter-turn clips are not routed onto a scripted slot")
+	player._turn_in_place_left = 0.0
+	assert_eq(String(animator._target_animation()), "Idle",
+		"standing still did not come back once the step was over")

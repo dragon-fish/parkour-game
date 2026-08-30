@@ -1289,6 +1289,7 @@ func reset_state() -> void:
 	# the exit, so the list is cleared here rather than trusted.
 	interest_lines.clear()
 	_visual_yaw_started = false
+	_turn_in_place_left = 0.0
 	_swing_pitch_target = 0.0
 	if camera_rig != null:
 		camera_rig.extra_eye_forward = 0.0
@@ -1497,10 +1498,10 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# two and the shimmy plays Climb_Idle throughout with no left/right climb
 	# animation ever visible, even though the body has the clips.
 	&"Climb_Left", &"Climb_Right",
-	# Turn180_L is wired and never asked for: the move only ever turns right.
-	# Here anyway, so that the day the turn stops being one-sided the clip is
-	# already in the graph rather than a silent miss.
-	&"Turn180_L", &"Turn180_R",
+	# Turn180_L/R: the ledge walk turns round on whichever side the view is.
+	# Turn90_L/R: a first-person body stepping round on the spot, see
+	# _begin_turn_in_place().
+	&"Turn180_L", &"Turn180_R", &"Turn90_L", &"Turn90_R",
 	# The level's death sequence, not a Move -- see CharacterAnimator.
 	&"Death01", &"Death02",
 	# The uncontrolled fall and its arrival.
@@ -2328,33 +2329,84 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# swinging round under a slide look ridiculous from inside the head too.
 	var active: MoveConfig = move_manager.current_config() if move_manager != null else null
 	var frozen: bool = active != null and active.freeze_visual_yaw
-	# THIRD PERSON ONLY OTHERWISE, on the owner's correction: from inside the
-	# head a body that does not turn with the view is worse than one that does,
-	# because the shoulders swivel under a head that did not move. That effect
-	# is about watching a character; there is no character to watch from in
-	# here.
-	if not frozen and (camera_rig == null or not camera_rig.in_third_person()):
-		_visual_yaw = rotation.y
-		body_root.rotation.y = 0.0
-		return
+	# BOTH VIEWS, on the owner's call. First person used to weld the model to
+	# the view outright, and from inside the head that read as the whole body
+	# swivelling under every glance. Now the eye turns the head and the spine
+	# (HeadLook, up to a quarter turn) over legs that stay put, and past that
+	# the legs take a step round -- exactly what the outside view already did.
 	if not _visual_yaw_started:
 		_visual_yaw = rotation.y
 		_visual_yaw_started = true
 
+	var remaining: float = wrapf(rotation.y - _visual_yaw, -PI, PI)
+	var moving: bool = input.move.length() > config.pawn.body_turn_input_threshold
 	# Any deliberate movement is a decision to face that way. Read from the
 	# INPUT rather than from velocity: a body still sliding to a halt has not
 	# asked to turn, and one just starting to move has.
 	# A frozen move holds the model where the move began, whatever the input
 	# says: the point is that the body CANNOT turn, so asking it to is not a
 	# reason for it to.
-	if not frozen and input.move.length() > config.pawn.body_turn_input_threshold:
+	if not frozen and moving:
+		# Movement outranks a step round in progress: the run's own catch-up
+		# takes over from wherever the step had got to.
+		_turn_in_place_left = 0.0
 		var step: float = deg_to_rad(config.pawn.body_turn_speed_deg) * delta
-		var remaining: float = wrapf(rotation.y - _visual_yaw, -PI, PI)
 		_visual_yaw += clampf(remaining, -step, step)
+	elif _turn_in_place_left > 0.0:
+		_advance_turn_in_place(delta)
+	elif not frozen and grounded and move_manager != null \
+			and move_manager.current_name == Move.WALKING \
+			and (camera_rig == null or not camera_rig.in_third_person()) \
+			and absf(remaining) > deg_to_rad(config.pawn.turn_in_place_angle_deg):
+		# FIRST PERSON ONLY, the owner's call: watched from outside, a body
+		# that keeps its heading however far the camera goes round is the
+		# point -- it is how you get to see the character's face.
+		_begin_turn_in_place(remaining)
 
 	# Counter-rotated, so the model's WORLD yaw is _visual_yaw whatever the body
 	# is doing. Wrapped, so a player who spins on the spot cannot wind this up.
 	body_root.rotation.y = wrapf(_visual_yaw - rotation.y, -PI, PI)
+
+# --- the step round --------------------------------------------------------------
+#
+# A body standing still whose view has gone past turn_in_place_angle_deg takes
+# ONE step round by that much, toward the view, over turn_in_place_time -- on
+# the pack's Turn90 clip, fitted to the same window (WalkingMove hands
+# turn_in_place_duration() to CharacterAnimator._scripted_fit()). Only while
+# WALKING and grounded: nothing else stands on its feet with nothing better to
+# do. See PawnConfig.turn_in_place_angle_deg.
+
+## Seconds left in the step round, 0 when not turning.
+var _turn_in_place_left: float = 0.0
+## The model's yaw when the step began, and which way it goes: +1 turns LEFT
+## (Godot's yaw grows counter-clockwise), -1 right.
+var _turn_in_place_from: float = 0.0
+var _turn_in_place_sign: float = -1.0
+
+func _begin_turn_in_place(remaining: float) -> void:
+	_turn_in_place_from = _visual_yaw
+	_turn_in_place_sign = 1.0 if remaining > 0.0 else -1.0
+	_turn_in_place_left = maxf(config.pawn.turn_in_place_time, 0.001)
+
+func _advance_turn_in_place(delta: float) -> void:
+	var total: float = maxf(config.pawn.turn_in_place_time, 0.001)
+	_turn_in_place_left = maxf(_turn_in_place_left - delta, 0.0)
+	var t: float = 1.0 - _turn_in_place_left / total
+	var angle: float = deg_to_rad(config.pawn.turn_in_place_angle_deg)
+	_visual_yaw = wrapf(_turn_in_place_from + _turn_in_place_sign * angle * t, -PI, PI)
+
+func is_turning_in_place() -> bool:
+	return _turn_in_place_left > 0.0
+
+## The pack's quarter turn, on the side the body is stepping to. Read by
+## CharacterAnimator while is_turning_in_place().
+func turn_in_place_clip() -> StringName:
+	return &"Turn90_L" if _turn_in_place_sign > 0.0 else &"Turn90_R"
+
+## The window the turn clip is fitted to, or 0 when not turning -- see
+## WalkingMove.scripted_duration().
+func turn_in_place_duration() -> float:
+	return config.pawn.turn_in_place_time if is_turning_in_place() else 0.0
 
 ## Where the visible model is facing, in world radians.
 func visual_yaw() -> float:
@@ -2835,7 +2887,7 @@ func _body_has_clip(anim_player: AnimationPlayer, clip_name: StringName) -> bool
 ## answer it would drift.
 const SCRIPTED_MOVE_CLIPS := [&"StepUp", &"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
 	&"SafetyVault", &"Climb_Left", &"Climb_Right", &"Climb_Idle",
-	&"Turn180_L", &"Turn180_R"]
+	&"Turn180_L", &"Turn180_R", &"Turn90_L", &"Turn90_R"]
 
 ## How far each scripted clip lifts its own hips above rest, in metres.
 ##

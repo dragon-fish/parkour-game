@@ -169,3 +169,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.velocity.y = 0.0
 		return FALLING
 	return KEEP
+
+## The scripted-fit hook (CharacterAnimator._scripted_fit): while the body is
+## stepping round on the spot, the Turn90 clip is fitted to
+## PawnConfig.turn_in_place_time; 0 otherwise. The step itself lives on
+## Player (_drive_body_yaw), since it is about the visible body and not a
+## move of its own; this is only where the animator is told how long it
+## lasts.
+func scripted_duration() -> float:
+	return player.turn_in_place_duration()

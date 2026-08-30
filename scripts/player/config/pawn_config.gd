@@ -331,6 +331,21 @@ extends Resource
 ## off centre does not count as a decision to turn.
 @export var body_turn_input_threshold: float = 0.2
 
+## How far the view may turn off the held heading, in degrees, before a body
+## standing still turns to catch up -- and how far that turn goes. The head
+## and the spine follow the view up to HeadLook's own limit (a quarter turn);
+## past this the legs take one step round by this much, on the pack's Turn90
+## clip, and the head is back inside its range. FIRST PERSON ONLY, both by
+## the owner's call: from inside the head a body that swivels whole under
+## every glance reads as welded to the mouse, while from outside a body that
+## keeps its heading however far the camera goes round is how you get to see
+## the character's face.
+@export var turn_in_place_angle_deg: float = 90.0
+
+## How long that step round takes, seconds. The Turn90 clip (2.0 s as
+## authored) is fitted to this window by CharacterAnimator._scripted_fit().
+@export var turn_in_place_time: float = 0.45
+
 ## How long Player.speed_cap() takes to slide to a new ceiling when a level
 ## puts a SPEED_CAP status on, or lifts one. PROJECT-DEFINED: the original has
 ## no counterpart, because it has no such status.
