@@ -57,7 +57,6 @@ extends MoveConfig
 ## See docs/superpowers/specs/2026-08-30-balance-and-ledge-walk-design.md.
 @export var gravity_influence: float = 0.3
 
-## How far the body may drift off the centreline before the feet miss, metres.
 ## How far off the centreline the body may drift before the feet miss, metres.
 ##
 ## PAST HALF THE CAPSULE'S OWN WIDTH, not past the beam's. The capsule's radius
@@ -85,7 +84,7 @@ extends MoveConfig
 ## scenes/debug_levels/balance_course.tscn. The opposite (horizon tipping
 ## away from the fall) reads as the camera fighting the lean instead of
 ## reporting it.
-@export var max_camera_roll_deg: float = 12.0
+@export var max_camera_roll_deg: float = 40.0
 
 ## Largest body lean the skeleton shows, degrees.
 @export var max_body_lean_deg: float = 18.0

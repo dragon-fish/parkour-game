@@ -230,3 +230,15 @@ func duplicate_lean_after(seconds: float, lateral_input: float) -> float:
 	# unfreed one as an orphan.
 	probe.free()
 	return result
+
+## The lean's RATE, normalised the same way lean_severity() normalises the lean
+## itself: how much of the distance to the edge this rate covers in one
+## divergence time constant. Signed toward the line's right-hand normal.
+##
+## Exists for the tuning readout. The pendulum's whole skill is zeroing the
+## offset AND its rate together, and a display that shows only the offset hides
+## the half the player is actually failing at.
+func signed_rate_severity() -> float:
+	var edge: float = maxf(cfg.beam_half_width, 0.0001)
+	var reach: float = _lean_rate * cfg.divergence_time * cfg.gravity_influence
+	return clampf(reach / edge, -1.0, 1.0)
