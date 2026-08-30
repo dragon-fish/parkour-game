@@ -1336,6 +1336,7 @@ func _build_moves() -> void:
 		[Move.ZIPLINE, ZiplineMove.new(), config.zipline],
 		[Move.SWING, SwingMove.new(), config.swing],
 		[Move.LADDER, LadderMove.new(), config.ladder],
+		[Move.LEDGE_WALK, LedgeWalkMove.new(), config.ledge_walk],
 	]
 	for row in table:
 		var move: Move = row[1]

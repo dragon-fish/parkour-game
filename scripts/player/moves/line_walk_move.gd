@@ -1,0 +1,166 @@
+class_name LineWalkMove
+extends LineMove
+
+# The half of the "along a line" family that stands ON the line, as opposed to
+# the half that hangs UNDER it (zipline, swing) and the ladder's own vertical
+# climb. 05 §5.6.5 draws exactly this line: a zipline hangs below and slides
+# along, a bar hangs below and swings across, a beam STANDS ON TOP and walks
+# along.
+#
+# Two subclasses: BalanceMove adds an inverted pendulum, LedgeWalkMove adds
+# nothing at all. DO NOT collapse them into one move with a switch -- the ledge
+# would then carry a whole pendulum pinned at zero, and this project answers
+# every "can I go from X to Y" in exactly one place.
+
+## Arc length along the line, metres.
+var _offset_along: float = 0.0
+## The body's yaw while on the line: the line's own heading turned by the
+## config's body_yaw_offset_deg. Captured on entry and NOT re-derived per tick,
+## for the reason project_input() documents.
+var _walk_yaw: float = 0.0
+
+## Which kind of line this move rides. Subclasses MUST override.
+func kind() -> InterestLine.Kind:
+	push_error("LineWalkMove subclass must declare its kind()")
+	return InterestLine.Kind.BALANCE
+
+## Input mapped onto the LINE rather than onto a key.
+##
+## Returns (along, lateral): the input direction projected on the line's own
+## tangent, and on its horizontal normal. Everything about "a beam is W/S and a
+## ledge is A/D" lives in body_yaw_offset -- a beam's shoulders are along the
+## line so W projects fully and A/D project to nothing, a ledge's are across it
+## so the same arithmetic hands travel to A/D. There is no branch anywhere.
+##
+## THE BASIS IS THE LINE'S, NOT THE BODY'S. Player.wish_direction() turns the
+## input by the CURRENT body basis, and the body still yaws with the view inside
+## the look constraint -- a glance 33 degrees off the beam would then multiply
+## walking speed by cos(33). The heading captured on entry has no such drift.
+static func project_input(move: Vector2, line_yaw: float, yaw_offset: float) -> Vector2:
+	var body := Basis(Vector3.UP, line_yaw + yaw_offset)
+	var world: Vector3 = body * Vector3(move.x, 0.0, -move.y)
+	var tangent := Vector3(sin(line_yaw), 0.0, cos(line_yaw))
+	var normal := Vector3(tangent.z, 0.0, -tangent.x)
+	# THE ALONG AXIS IS NEGATED, THE LATERAL ONE IS NOT. Godot's forward is
+	# local -Z (Basis(UP, th) * (0,0,-1) = (-sin th, 0, -cos th)), while
+	# `tangent` is reconstructed from yaw_of()'s atan2(x,z) convention as
+	# (+sin th, 0, +cos th) -- the same "faces -direction" mismatch
+	# LadderMove's own _target_yaw relies on for facing the wall
+	# (ladder_move.gd: "looks toward -front"). Dotted straight against `world`
+	# that mismatch flips the along-line sign only: W on a squared-up beam
+	# would otherwise walk the offset backwards while looking to have driven
+	# it forwards. `normal` is 90 degrees off `tangent`, not derived from
+	# world's own forward axis, so it carries no such mismatch and must stay
+	# unflipped -- confirmed against both project_input tests in
+	# tests/test_line_walk.gd (beam AND ledge, along AND lateral).
+	return Vector2(-world.dot(tangent), world.dot(normal))
+
+## Yaw of a line tangent, in the same convention _target_yaw is built with.
+static func yaw_of(tangent: Vector3) -> float:
+	var flat := Vector3(tangent.x, 0.0, tangent.z)
+	if flat.length_squared() < 0.0001:
+		return 0.0
+	flat = flat.normalized()
+	return atan2(flat.x, flat.z)
+
+## Whether the FEET are at the line's own height -- the extra condition every
+## entry gate in this tier asks on top of the reach volume.
+##
+## InterestLine's reach_radius is 0.6 m by default, which is wide enough to
+## catch a body running PAST a beam at ground level. Balance is a state that
+## takes control away and cannot be walked out of sideways, so a false catch
+## costs far more than a missed one.
+static func foot_gate_at(line: InterestLine, body_pos: Vector3, snap_height: float) -> bool:
+	var at: Vector3 = line.sample(line.closest_offset(body_pos))["position"]
+	return absf(body_pos.y - at.y) <= snap_height
+
+func enter(_previous: StringName) -> void:
+	# DECLARED, never inferred: a scripted move never calls move_and_slide(),
+	# so MoveManager's grounded invariant is satisfied here and nowhere else.
+	player.set_grounded(true)
+	_aborted = not acquire_line(kind())
+	if _aborted:
+		return
+	_offset_along = _line.closest_offset(player.global_position)
+	var s: Dictionary = _line.sample(_offset_along)
+	_walk_yaw = LineWalkMove.yaw_of(s["tangent"])
+	_target_yaw = _walk_yaw + deg_to_rad(_yaw_offset())
+	# The multiplier applies to the GroundSpeed constant, not to what was
+	# carried in: arriving fast must not survive the step onto the line.
+	player.velocity = Vector3.ZERO
+	_fade = 0.0
+	_entry_pos = player.global_position
+	_entry_yaw = player.rotation.y
+	_fan_centred = false
+
+func physics_update(delta: float, input: MoveInput) -> StringName:
+	if _aborted or not is_instance_valid(_line):
+		return FALLING
+	player.set_grounded(true)
+	player.fall_tracker.reset(player.global_position.y)
+	if input.jump_pressed:
+		player.consume_roll()
+		return FALLING
+	if input.crouch_pressed:
+		player.consume_roll()
+		return FALLING
+	var s: Dictionary = _line.sample(_offset_along)
+	_walk_yaw = LineWalkMove.yaw_of(s["tangent"])
+	var projected := LineWalkMove.project_input(
+		input.move, _walk_yaw, deg_to_rad(_yaw_offset()))
+	var speed: float = config.pawn.ground_speed * cfg.speed_modifier
+	_offset_along += projected.x * speed * delta
+	note_travel(projected.x)
+	# Walking off either end is how you leave: the line ran out, so the body is
+	# simply standing on whatever is there.
+	if _offset_along <= 0.0 or _offset_along >= _line.length():
+		_offset_along = clampf(_offset_along, 0.0, _line.length())
+		return WALKING
+	var next := lateral_update(delta, projected.y)
+	if next != KEEP:
+		return next
+	var stand: Vector3 = _line.sample(_offset_along)["position"] \
+		+ Vector3.UP * (player.standing_height() * 0.5) \
+		+ lateral_offset() * _normal_at(_walk_yaw)
+	_fade += delta
+	if _fade < fade_in_time():
+		var t: float = _fade / fade_in_time()
+		player.global_position = _entry_pos.lerp(stand, t)
+		_turn_body_to(lerp_angle(_entry_yaw, _target_yaw, t))
+	else:
+		slide_to(stand)
+		if not _fan_centred:
+			_centre_fan()
+	return KEEP
+
+func exit() -> void:
+	note_left(cfg.redo_move_time, true)
+
+## Arc length along the line, metres. Read by the HUD and by tests.
+func line_offset() -> float:
+	return _offset_along
+
+## Hook for a subclass that has lateral state of its own (BalanceMove's
+## pendulum). Returns a move name to leave, or KEEP. The base tier has none.
+func lateral_update(_delta: float, _lateral_input: float) -> StringName:
+	return KEEP
+
+## How far off the line's centreline the body currently stands, metres.
+func lateral_offset() -> float:
+	return 0.0
+
+## Hook for a subclass that needs to know which way along the line the last tick
+## travelled. LedgeWalkMove picks its sidestep clip off this; a beam does not
+## care, since Walk is the clip either way.
+func note_travel(_along: float) -> void:
+	pass
+
+func _yaw_offset() -> float:
+	return cfg.get("body_yaw_offset_deg")
+
+func fade_in_time() -> float:
+	return 0.15
+
+func _normal_at(line_yaw: float) -> Vector3:
+	var tangent := Vector3(sin(line_yaw), 0.0, cos(line_yaw))
+	return Vector3(tangent.z, 0.0, -tangent.x)
