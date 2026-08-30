@@ -22,6 +22,14 @@ extends AirborneMove
 
 enum Phase { APPROACH, STEP_1, STEP_2, RISE }
 
+## The approach counts itself blocked when move_and_slide carries the body
+## less than this, horizontally, for this many ticks running. Both project
+## dials, and deliberately tight: a walk driven at xy_min covers 0.067 m a
+## tick, so 0.005 is an order of magnitude below anything that is still
+## moving, and three ticks is 50 ms -- under one step of the climb.
+const STALL_PROGRESS := 0.005
+const STALL_TICKS := 3
+
 ## The step being walked, and the arc it is on. A child so its lifetime is
 ## this move's; see LadderMove._top_exit.
 var _hop: ScriptedMove = ScriptedMove.new()
@@ -33,6 +41,7 @@ var _plant_2: Vector3 = Vector3.ZERO
 ## BalanceMove.enter() documents.
 var _entry_speed: float = 0.0
 var _approach_time: float = 0.0
+var _stalled_ticks: int = 0
 var _launched: bool = false
 var _aborted: bool = false
 
@@ -56,6 +65,7 @@ func enter(_previous: StringName) -> void:
 	_plant_2 = board["plant_2"]
 	_entry_speed = player.horizontal_speed()
 	_approach_time = 0.0
+	_stalled_ticks = 0
 	_hop.player = player
 	# The feet are on things for the whole of the walk and the steps:
 	# declared, never inferred, and set again every tick below.
@@ -93,7 +103,8 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			return _rise(delta, input)
 	return KEEP
 
-## Walking on to the first plant until the feet are within plant_reach of it.
+## Walking on to the first plant until the feet are within plant_reach of it,
+## or until the body has stopped making progress toward it.
 ## [ME:CONFIRMED] the recording: 0.1-0.2 s of ordinary travel between the
 ## press and the climb. Timed out rather than waited on forever: a body that
 ## never gets there -- the press was taken from further out than the walk can
@@ -103,14 +114,29 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 ## this phase nor the steps read input.move -- so nothing else is pushing the
 ## body: a press taken from a standstill would coast nowhere and time out,
 ## which would make a spring board something only a run can have.
-## plant_reach is the distance a box's own face stops the capsule at, so
-## widening it instead would be widening a measurement of the geometry to
-## paper over a body that never moves.
 ##
 ## AT NO LESS THAN THE THROW'S OWN FLOOR SPEED, xy_min, and never below the
 ## speed the body arrived with -- a run must not be braked on its way in. The
-## band this phase ever has to cover is trigger_distance minus plant_reach,
-## 0.65 m, which at that speed is 0.16 s: the 0.1-0.2 s the recording shows.
+## band this phase has to cover is trigger_distance minus plant_reach, 1.6 m,
+## which at that speed is 0.4 s.
+##
+## ENDS ON REACH OR ON THE BODY HAVING STOPPED. The second exists because the
+## gap has a floor the body cannot get under: a plant on a box sits INSIDE the
+## face (springboard_query walks each plant off the lip it was found on, so
+## 0.1-0.2 m in), while the capsule's own radius holds the feet 0.4 m short of
+## that face. The sum is what plant_reach has to cover, and how far in the
+## plant sits depends on the face the player met -- so a body that is being
+## driven and is not moving has arrived, and the step's arc covers the rest.
+##
+## THE CHEAPER FAILURE IS THE ONE TO PICTURE. Without this the approach runs
+## to approach_timeout and hands back to WALKING, and the ordinary step-up
+## then lifts the body onto the first tier on its own -- so the move is not
+## refused, it is entered and abandoned, which reads in play as a spring board
+## that sticks on the first step with no hops and no throw.
+##
+## Measured on the debug gallery at the shipped dials, this never fires: the
+## gap against those boxes settles at 0.4-0.5 m, inside plant_reach. It is
+## insurance for a face that seats a plant deeper, not load-bearing today.
 func _approach(delta: float) -> StringName:
 	_approach_time += delta
 	var feet := Vector3(player.global_position.x, player.probes.feet_y(), player.global_position.z)
@@ -128,8 +154,18 @@ func _approach(delta: float) -> StringName:
 	# The same downward bias WalkingMove keeps: without it is_on_floor()
 	# flickers across a seam and the walk-up leaves the ground for a tick.
 	player.velocity.y = -config.pawn.floor_snap_speed
+	var was: Vector3 = player.global_position
 	player.move_and_slide()
 	player.set_grounded(true)
+	var moved: float = Vector2(player.global_position.x - was.x,
+		player.global_position.z - was.z).length()
+	if moved < STALL_PROGRESS and gap.length() <= cfg.trigger_distance:
+		_stalled_ticks += 1
+	else:
+		_stalled_ticks = 0
+	if _stalled_ticks >= STALL_TICKS:
+		_begin_step(_plant_1, cfg.step_time_1)
+		_phase = Phase.STEP_1
 	return KEEP
 
 ## One step: a small arc from where the body is to `plant`, the capsule's

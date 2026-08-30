@@ -91,10 +91,10 @@ func test_the_second_plant_may_lie_off_the_facing_inside_the_fan() -> void:
 
 func test_a_first_plant_beyond_the_trigger_distance_is_out_of_reach() -> void:
 	var player: Player = await _standing_player()
-	_spring_board_ahead(2.0)
+	_spring_board_ahead(3.0)
 	await step(2)
 	assert_false(player.probes.springboard_query()["valid"],
-		"a spring board 2 m out was accepted")
+		"a spring board 3 m out was accepted")
 
 func test_a_wide_step_is_a_spring_board_too() -> void:
 	# The plants are points on whatever is there: two tiers 3 m wide work
@@ -215,6 +215,46 @@ func test_the_steps_put_the_feet_on_each_plant_in_turn() -> void:
 	var feet_2: float = player.probes.feet_y()
 	assert_almost_eq(feet_2, 1.24, 0.08,
 		"after the second step the feet are at %.2f, not on the second plant" % feet_2)
+
+## A BOX, NOT TWO POLES, and end to end: every other test of the climb here
+## stands the body in front of two 0.3 m poles, which is the easy shape. A box
+## is the tight one, because the capsule's own radius stops the feet 0.4 m
+## short of its face while the plant sits inside that face -- the approach's
+## gap floors out around 0.5 m and cannot close further, so plant_reach has to
+## cover the sum or the walk-up never ends. The pair is the debug gallery's
+## two-box lane at test-world scale.
+##
+## THIS DOES NOT PIN THE STALL DETECTOR. Measured: it passes with the detector
+## disabled and with plant_reach back at 0.55, because 0.5 already fits inside
+## 0.55. The detector covers plants sunk deeper than reach, which no shape
+## built out of the lip-walk produces -- see the fix report for the numbers.
+func test_a_spring_board_built_from_boxes_reaches_the_throw() -> void:
+	var player: Player = await _standing_player()
+	var cfg := SpringBoardConfig.new()
+	_pole(0.0, -1.5, cfg.plant_1_height, 1.2, 1.0)
+	_pole(0.0, -2.62, 1.24, 1.2, 1.0)
+	await step(2)
+	_world["input"].state.jump_pressed = true
+	_world["input"].state.jump_held = true
+	await step(1)
+	_world["input"].state.jump_pressed = false
+	assert_eq(player.move_manager.current_name, Move.SPRING_BOARD,
+		"jump in front of two boxes did not spring board")
+	var board := player.move_manager.move_for(Move.SPRING_BOARD) as SpringBoardMove
+	# Bounded in the condition: a throw that never comes must fail this test,
+	# not hang the suite.
+	var ticks: int = 0
+	while not board.has_launched() and ticks < 180:
+		await step(1)
+		ticks += 1
+	assert_true(board.has_launched(),
+		"the climb off a box never reached the throw -- it stuck on the approach")
+	while player.velocity.y > 0.0 and ticks < 300:
+		await step(1)
+		ticks += 1
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.FALLING,
+		"past the apex the box spring board did not hand off to Falling")
 
 func test_the_throw_is_the_configs_and_the_rise_ends_in_falling() -> void:
 	var player: Player = await _press_jump_at_a_spring_board()

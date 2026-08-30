@@ -55,7 +55,8 @@ extends MoveConfig
 ## a spring board, metres. A project dial: the recording shows 1.2 m accepted
 ## and standing against the face accepted; the far limit was never swept.
 ## CheckDistanceTime = 1.0 s in the CDO is unexplained and NOT this.
-@export var trigger_distance: float = 1.2
+## 2.4 is the owner's play-tested value -- 1.2 reads as too short to aim at.
+@export var trigger_distance: float = 2.4
 
 ## Spacing of the samples walked forward looking for the first plant, metres.
 @export var plant_sample_step: float = 0.1
@@ -72,13 +73,21 @@ extends MoveConfig
 @export var plant_probe_radius: float = 0.12
 
 ## How close the feet must come to the first plant, horizontally, before the
-## first step begins, metres. Wider than the capsule's radius (0.4): a box's
-## face stops the capsule that far short of a plant on its top edge.
-@export var plant_reach: float = 0.55
+## first step begins, metres. Wider than the capsule's radius (0.4), which is
+## what a box's face stops the feet at, PLUS the depth a plant sits inside
+## that face: springboard_query() walks each plant off the lip it was found
+## on, so a plant on a box reads 0.1-0.2 m in from the face rather than on it.
+## A dial, and the generous side of one -- SpringBoardMove also gives up
+## driving when the body has stopped moving, so this only decides whether the
+## common case ends by reach or by that.
+@export var plant_reach: float = 0.8
 
 ## How long the walk to the first plant may take before the move gives up
-## and hands back, seconds. The recording took 0.1 to 0.2.
-@export var approach_timeout: float = 0.6
+## and hands back, seconds. The recording took 0.1 to 0.2. Sized against the
+## dials rather than against that: trigger_distance at the xy_min floor is
+## 2.4 / 4.0 = 0.6 s, so a timeout of 0.6 fires exactly on the boundary and
+## the longest legal approach loses its move.
+@export var approach_timeout: float = 1.0
 
 ## How far each step's arc peaks above the higher of its two ends, metres,
 ## and where the arc's control point sits (ScriptedMove.begin's control_bias:
