@@ -23,3 +23,4 @@ func _init() -> void:
 	check_for_swing = true
 	check_for_ladder = true
 	check_for_ledge_walk = true
+	check_for_balance = true

@@ -257,6 +257,15 @@ func probe_transition() -> StringName:
 				player, ledge, config.ledge_walk.foot_snap_height):
 			return LEDGE_WALK
 
+	# A beam, same interest-point reasoning: catch_gate() is the single
+	# question every entry site asks, so jumping onto a beam and falling onto
+	# one both get answered identically to walking onto one.
+	if c.check_for_balance and player.move_manager.can_enter(BALANCE):
+		var beam: InterestLine = player.nearest_interest_line(InterestLine.Kind.BALANCE)
+		if beam != null and BalanceMove.catch_gate(
+				player, beam, config.balance.foot_snap_height):
+			return BALANCE
+
 	if c.check_for_grab and player.probes != null and player.move_manager.can_enter(GRAB):
 		var ledge: Dictionary = player.probes.ledge_query()
 		# The REACH's own range is checked here rather than inside it. Checked

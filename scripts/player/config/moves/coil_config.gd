@@ -26,9 +26,10 @@ func _init() -> void:
 	allows_turn = false
 
 	# A coil is how a wide gap gets crossed, and the far edge is exactly as
-	# likely to be a ledge as solid ground -- so unlike the three probe flags
-	# below, this one stays on.
+	# likely to be a ledge -- or a beam -- as solid ground, so unlike the
+	# three probe flags below, these two stay on.
 	check_for_ledge_walk = true
+	check_for_balance = true
 
 	# ⚠️ THE THREE PROBE FLAGS ARE LEFT FALSE, AND THAT IS THE MOVE.
 	#

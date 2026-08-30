@@ -28,6 +28,17 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 				player, ledge, config.ledge_walk.foot_snap_height):
 			return LEDGE_WALK
 
+	# A beam is caught by walking onto it, same reasoning as the ledge above:
+	# no check_for_balance flag here either (that switch is airborne-only, see
+	# MoveConfig.check_for_balance's own note) -- the ground entry is
+	# unconditional, gated only by catch_gate()'s own reach and foot-height
+	# checks.
+	if player.grounded and player.move_manager.can_enter(BALANCE):
+		var beam: InterestLine = player.nearest_interest_line(InterestLine.Kind.BALANCE)
+		if beam != null and BalanceMove.catch_gate(
+				player, beam, config.balance.foot_snap_height):
+			return BALANCE
+
 	var wish_dir: Vector3 = player.wish_direction(input)
 	# [ME:CONFIRMED 02 §2.1] No sprint key: the curve IS the sprint. The walk
 	# modifier is the one thing that overrides it, with its own confirmed hard
