@@ -83,6 +83,17 @@ static func entry_lean(cfg: BalanceConfig, entry_speed: float,
 		+ cfg.entry_speed_influence * cfg.base_wobble * (entry_speed / reference)
 	return magnitude * float(sign_pick)
 
+## Above a level's own FORCE_VIEW volumes, which author at the default
+## layer_priority (0) unless they deliberately raise it -- see
+## ModifierVolume.layer_priority. The beam's forced first person is not
+## meant to be something a level accidentally outranks by sharing that default.
+const FORCE_VIEW_PRIORITY: int = 10
+
+## True only once THIS instance has pushed its own FORCE_VIEW status --
+## guards exit() against clearing a status it never applied (see exit()'s own
+## note): the abort path below returns before ever reaching the push.
+var _forced_first_person: bool = false
+
 func enter(previous: StringName) -> void:
 	# READ BEFORE super.enter(previous), NOT AFTER: LineWalkMove.enter()
 	# zeroes player.velocity (see its own note on why). Move this read past
@@ -96,6 +107,17 @@ func enter(previous: StringName) -> void:
 		return
 	var pick: int = 1 if randf() < 0.5 else -1
 	seed_lean(BalanceMove.entry_lean(cfg, entry_speed, config.pawn.ground_speed, pick), 0.0)
+	# THIRD PERSON READS BADLY ON A BEAM -- beam only, not LedgeWalkMove, which
+	# keeps the player's own view choice. Goes through the status system's own
+	# FORCE_VIEW mechanism (the same one a level volume or a death uses,
+	# resolved every tick by Player._push_forced_view()) rather than a
+	# parallel flag, so every existing reader of the view already understands
+	# it without change.
+	var spec := StatusSpec.new()
+	spec.effect = Status.Effect.FORCE_VIEW
+	spec.view = Status.View.FIRST
+	player.apply_status(spec, self, FORCE_VIEW_PRIORITY)
+	_forced_first_person = true
 
 ## Test seam and entry seam both: sets the pendulum's two numbers outright.
 func seed_lean(lean: float, rate: float) -> void:
@@ -149,6 +171,21 @@ func lateral_update(delta: float, lateral_input: float) -> StringName:
 
 func exit() -> void:
 	super.exit()
+	# GUARDED ON _forced_first_person, NOT UNCONDITIONAL: remove_status() would
+	# otherwise strip ANY active FORCE_VIEW entry, including one this instance
+	# never applied (the abort path in enter() returns before pushing one) --
+	# a level's own forced view has no relation to this move and must not be
+	# collateral damage on an aborted entry.
+	#
+	# EVERY EXIT PATH ROUTES HERE: MoveManager.start() calls the outgoing
+	# move's exit() unconditionally before entering the next one, whether that
+	# is walking off either end (WALKING), jumping or crouching off
+	# (FALLING), losing balance (FALLING, via lateral_update() above), or a
+	# mid-beam death's respawn restarting into WALKING -- one exit(), not one
+	# per cause, so there is nowhere for the restore to be missed.
+	if _forced_first_person:
+		player.remove_status(Status.Effect.FORCE_VIEW, &"")
+		_forced_first_person = false
 	# Zeroed on the way out so the roll and the squeeze do not follow the
 	# player off the beam -- see LadderMove.exit()'s own tint reset for the
 	# same pattern.

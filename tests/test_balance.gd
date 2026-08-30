@@ -130,6 +130,12 @@ func test_correction_opposes_the_lean() -> void:
 	assert_lt(corrected, free, "A/D must fight the lean, not steer")
 	move.free()
 
+# --- bidirectional entry: which way the body walks is decided by how the
+# player arrived, not by the curve's own fixed drawing direction. Two ends,
+# each entered from a run-up pointed AT it, must each send the body on to the
+# OPPOSITE end, and the correction key must fight a seeded lean the same way
+# regardless of which end that was. -----------------------------------------
+
 func test_entering_the_beam_from_its_start_walks_toward_the_far_end() -> void:
 	_world = TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
@@ -232,6 +238,182 @@ func test_the_ledge_walk_has_no_pendulum() -> void:
 	assert_false(move.has_method("lean"),
 		"LedgeWalk carries none of TdMove_Balance's five pendulum fields")
 	move.free()
+
+# --- forced first person: the beam is not third-person eligible, whatever the
+# player's own saved preference. BEAM ONLY -- LedgeWalkMove keeps the
+# player's own view choice, so it gets its own guard test below rather than
+# sharing the machinery. ------------------------------------------------
+
+func _make_balance_beam(player: Player) -> InterestLine:
+	var beam := InterestLine.new()
+	beam.kind = InterestLine.Kind.BALANCE
+	beam.curve = Curve3D.new()
+	beam.curve.add_point(Vector3.ZERO)
+	beam.curve.add_point(Vector3(10.0, 0.0, 0.0))
+	beam.position = player.global_position
+	return beam
+
+func test_entering_the_beam_forces_first_person_over_the_saved_preference() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	var beam := _make_balance_beam(player)
+	add_child_autofree(beam)
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(beam),
+		"test setup: the beam's reach volume never registered the player")
+
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: the move manager did not enter Balance")
+	await step(1)
+	assert_false(player.camera_rig.in_third_person(),
+		"the beam did not force first person over the player's saved third-person preference")
+	# THE PREFERENCE ITSELF MUST SURVIVE, not merely be overridden --
+	# see test_status_forced_view.gd's own test of this same distinction for
+	# the status mechanism in general.
+	assert_true(player.camera_rig.third_person,
+		"forcing the view overwrote the saved preference instead of merely overriding it")
+
+## Drives a REAL transition through MoveManager.start(), the same shape
+## test_exiting_the_move_zeroes_the_camera_lean above uses -- deleting
+## BalanceMove.exit()'s status removal must fail this test; it cannot fail a
+## test that never calls exit() at all.
+func test_leaving_the_beam_restores_the_saved_preference() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	var beam := _make_balance_beam(player)
+	add_child_autofree(beam)
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(beam),
+		"test setup: the beam's reach volume never registered the player")
+
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: the move manager did not enter Balance")
+	await step(1)
+	assert_false(player.camera_rig.in_third_person(),
+		"test setup: the beam did not force first person")
+
+	player.move_manager.start(Move.WALKING)
+	await step(1)
+	assert_true(player.camera_rig.in_third_person(),
+		"leaving the beam left the forced first person behind")
+
+## Exercises the WALKING exit path with real per-tick input rather than a
+## forced move_manager.start(), on a beam short enough that a few ticks of W
+## clears it.
+func test_walking_off_the_beams_end_restores_the_saved_preference() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	var beam := InterestLine.new()
+	beam.kind = InterestLine.Kind.BALANCE
+	beam.curve = Curve3D.new()
+	beam.curve.add_point(Vector3.ZERO)
+	beam.curve.add_point(Vector3(0.5, 0.0, 0.0))  # short: a handful of ticks of W clears it
+	beam.position = player.global_position
+	add_child_autofree(beam)
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(beam),
+		"test setup: the beam's reach volume never registered the player")
+
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: the move manager did not enter Balance")
+	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	move.seed_lean(0.0, 0.0)  # isolate travel from the random entry wobble
+	await step(5)  # past the magnet fade
+	assert_false(player.camera_rig.in_third_person(),
+		"test setup: the beam did not force first person")
+
+	_world["input"].state.move = Vector2(0.0, 1.0)  # W, straight off the end
+	for i in 60:
+		await step(1)
+		if player.move_manager.current_name == Move.WALKING:
+			break
+	assert_eq(player.move_manager.current_name, Move.WALKING,
+		"test setup: walking never reached the beam's own end")
+	# _push_forced_view() reads the STATUS LIST one tick before the moves run
+	# (see its own note in player.gd), so the exit() that just removed the
+	# status this tick is not reflected in camera_rig.forced_view until the
+	# NEXT tick's push.
+	await step(1)
+	assert_true(player.camera_rig.in_third_person(),
+		"walking off the beam's end left the forced first person behind")
+
+## Exercises the FALLING exit path via the real per-tick loop discovering an
+## over-edge lean, the same seed test_falling_off_the_beam_is_geometric uses --
+## but let MoveManager transition on its own instead of reading
+## lateral_update()'s return value by hand, since exit() only runs on a
+## genuine transition.
+func test_losing_balance_restores_the_saved_preference() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	var beam := _make_balance_beam(player)
+	add_child_autofree(beam)
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(beam),
+		"test setup: the beam's reach volume never registered the player")
+
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: the move manager did not enter Balance")
+	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	await step(5)  # past the magnet fade
+	assert_false(player.camera_rig.in_third_person(),
+		"test setup: the beam did not force first person")
+
+	var over_the_edge: float = (move.cfg.beam_half_width / move.cfg.gravity_influence) + 0.1
+	move.seed_lean(over_the_edge, 0.0)
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.FALLING,
+		"test setup: the over-edge lean did not fall the player off the beam")
+	# See the identical note in test_walking_off_the_beams_end_restores_the_
+	# saved_preference above: the push that reflects this tick's exit() lands
+	# on the NEXT tick.
+	await step(1)
+	assert_true(player.camera_rig.in_third_person(),
+		"losing balance and falling off left the forced first person behind")
+
+func test_the_ledge_walk_does_not_force_the_view() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	var ledge := InterestLine.new()
+	ledge.kind = InterestLine.Kind.LEDGE_WALK
+	ledge.curve = Curve3D.new()
+	ledge.curve.add_point(Vector3.ZERO)
+	ledge.curve.add_point(Vector3(10.0, 0.0, 0.0))
+	ledge.position = player.global_position
+	add_child_autofree(ledge)
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(ledge),
+		"test setup: the ledge's reach volume never registered the player")
+
+	player.move_manager.start(Move.LEDGE_WALK)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"test setup: the move manager did not enter LedgeWalk")
+	await step(1)
+	assert_true(player.camera_rig.in_third_person(),
+		"the ledge walk touched the player's own view choice -- that is BalanceMove's job alone")
 
 ## Falling off is GEOMETRIC: the same lateral_offset() the camera/skeleton/HUD
 ## read is what lateral_update() compares against beam_half_width. Needs a
