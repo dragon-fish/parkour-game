@@ -771,14 +771,14 @@ func test_the_apex_is_stationary() -> void:
 
 func test_a_standstill_entry_still_leans() -> void:
 	var cfg := BalanceConfig.new()
-	var lean := BalanceMove.entry_lean(cfg, 0.0, 1)
+	var lean := BalanceMove.entry_lean(cfg, 0.0, 7.2, 1)
 	assert_gt(absf(lean), 0.0,
 		"the owner measured that standing still on a beam still loses balance")
 
 func test_entry_lean_grows_with_entry_speed() -> void:
 	var cfg := BalanceConfig.new()
-	var slow := absf(BalanceMove.entry_lean(cfg, 0.0, 1))
-	var fast := absf(BalanceMove.entry_lean(cfg, 7.2, 1))
+	var slow := absf(BalanceMove.entry_lean(cfg, 0.0, 7.2, 1))
+	var fast := absf(BalanceMove.entry_lean(cfg, 7.2, 7.2, 1))
 	assert_gt(fast, slow, "SpeedInfluence magnifies the ENTRY offset")
 
 func test_correction_opposes_the_lean() -> void:
@@ -837,10 +837,11 @@ static func catch_gate(player: Player, line: InterestLine, snap_height: float) -
 ## thing this move rewards: the stable stretch an expert earns by zeroing the
 ## offset early. The owner's measurement is explicit that the wobble is NOT a
 ## series of random pushes.
-static func entry_lean(cfg: BalanceConfig, entry_speed: float, sign_pick: int) -> float:
-	var ground: float = 7.2
+static func entry_lean(cfg: BalanceConfig, entry_speed: float,
+		ground_speed: float, sign_pick: int) -> float:
+	var reference: float = maxf(ground_speed, 0.0001)
 	var magnitude: float = cfg.base_wobble \
-		+ cfg.entry_speed_influence * cfg.base_wobble * (entry_speed / ground)
+		+ cfg.entry_speed_influence * cfg.base_wobble * (entry_speed / reference)
 	return magnitude * float(sign_pick)
 
 func enter(previous: StringName) -> void:
@@ -849,7 +850,7 @@ func enter(previous: StringName) -> void:
 	if _aborted:
 		return
 	var pick: int = 1 if randf() < 0.5 else -1
-	seed_lean(BalanceMove.entry_lean(cfg, entry_speed, pick), 0.0)
+	seed_lean(BalanceMove.entry_lean(cfg, entry_speed, config.pawn.ground_speed, pick), 0.0)
 
 ## Test seam and entry seam both: sets the pendulum's two numbers outright.
 func seed_lean(lean: float, rate: float) -> void:
@@ -1160,9 +1161,13 @@ func request_lean(signed: float, max_lean: float, hips_lean: float) -> void:
 	_max_lean = max_lean
 	_hips_lean = hips_lean
 
-func _process_modification() -> void:
+# THE 4.7 SIGNATURE IS _with_delta. head_look.gd uses the same one; a plain
+# _process_modification() is never called and the lean silently does nothing.
+func _process_modification_with_delta(_delta: float) -> void:
 	var skeleton := get_skeleton()
 	if skeleton == null:
+		return
+	if is_zero_approx(_lean):
 		return
 	var total: float = _lean * _max_lean
 	var hips: float = _lean * _hips_lean
@@ -1183,11 +1188,40 @@ func _roll_chain(skeleton: Skeleton3D, chain: Array[StringName], radians: float)
 	if present.is_empty():
 		return
 	var each: float = radians / float(present.size())
+	var axis: Vector3 = _lean_axis(skeleton)
 	for idx in present:
 		var pose: Transform3D = skeleton.get_bone_global_pose(idx)
-		pose.basis = Basis(Vector3.FORWARD, each) * pose.basis
-		skeleton.set_bone_global_pose(idx, pose)
+		# READ-MODIFY-WRITE, never an absolute pose. HeadLook runs in the same
+		# modifier chain and multiplies onto whatever it reads; writing an
+		# absolute pose here would erase its work for the frame. This is what
+		# makes the two compose -- see the spec's own section on it.
+		var turn := Basis(axis, each)
+		skeleton.set_bone_global_pose(idx, Transform3D(turn * pose.basis, pose.origin))
+
+## The axis a sideways lean turns about: the character's own FORWARD.
+##
+## DO NOT use Vector3.FORWARD, and DO NOT take it from a bone's own -Z.
+## head_look.gd's _pitch_axis() carries the warning this copies: a VRM faces +Z
+## by specification, so a bone's -Z points out of its back, and a check written
+## against that same -Z agrees with itself. The mistake therefore survives every
+## headless verification and only shows up in play. Derive it from the SHOULDERS,
+## which do not care which way the format decided forward is.
+func _lean_axis(skeleton: Skeleton3D) -> Vector3:
+	var left: int = skeleton.find_bone(&"LeftUpperArm")
+	var right: int = skeleton.find_bone(&"RightUpperArm")
+	if left < 0 or right < 0:
+		return Vector3.FORWARD
+	var across: Vector3 = skeleton.get_bone_global_pose(left).origin 		- skeleton.get_bone_global_pose(right).origin
+	across.y = 0.0
+	if across.length_squared() < 0.000001:
+		return Vector3.FORWARD
+	return Vector3.UP.cross(across.normalized()).normalized()
 ```
+
+⚠️ `_lean_axis()` 的**符号**（左肩减右肩，还是反过来）决定倾斜朝哪边。照
+`head_look.gd:_pitch_axis()` 的既有取法核对一遍，并让 Step 1 的测试钉住方向：
+`request_lean(+1, ...)` 必须把上半身倒向线的**右侧**，与 `BalanceMove` 里
+「正 = 线的右手法线」的约定一致。
 
 - [ ] **Step 4: 挂载并喂值**
 
