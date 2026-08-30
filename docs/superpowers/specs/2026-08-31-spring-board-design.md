@@ -23,7 +23,25 @@ bCheckExitToFalling           True
 CheckDistanceTime             1.0 s                 ❓ 无释义，本设计不用
 ```
 
-🔶 g = 16 时 9.5 m/s 峰高 2.82 m；✅ owner 实测「可以跳 2 米多」吻合。
+### ✅ 2026-08-31 录像实测（`tools/hud_ocr.py`，两次有效踏板跳）
+
+同一处踏板（前低后高两个帆布箱，立面在 X ≈ -33.7，地面 Z = 43.17），
+HUD 单位为米，帧率 120：
+
+| 阶段 | 第 1 次 | 第 2 次 | 结论 |
+|---|---|---|---|
+| 触发点距低箱立面 | 1.2 m | 0.45 m | ≥ 1.2 m 处按空格可触发 |
+| 触发 → 到达立面 | 0.20 s，行走速度 5.4 m/s | 0.10 s | 先照常走到立面 |
+| 爬升（`PHYS_Flying`） | 0.40 s，Z +1.22，X +1.9 | 0.40 s，Z +1.27，X +2.15 | = StepTime1 + StepTime2 |
+| 起跳高度（SZ 重置值） | 44.39 ~ 44.45 | 44.44 | 第二落脚点 ≈ +1.24 m |
+| 起跳 → 顶点 | 0.60 s，+2.82 m | 0.60 s，+2.82 m | 9.5 m/s、g = 16 |
+| 起跳后水平速度 | 4.5 m/s（行走 5.75 − 1.0） | 4.5 m/s | `XYAdd = -1.0`，高于 `XYMin` |
+| 状态 | `SpringBoarding` 持续到顶点才转 `Falling` | 同 | 爬升与上升段都归本 Move |
+
+爬升段 Z 近似匀速上升，没有在 0.64 m 处停顿——两次蹬踏在数据上是一段连续的
+0.4 s 爬升，落脚点只决定终点。
+
+🔶 g = 16 时 9.5 m/s 峰高 2.82 m；✅ 实测 2.82 m，两次一致。
 
 ### ✅ owner 实机探明：触发是地形组合，不是触发器
 
@@ -41,9 +59,9 @@ CheckDistanceTime             1.0 s                 ❓ 无释义，本设计不
 
 ### 项目自定
 
-- **触发距离 1.2 m**：脚距第一个落脚点的水平距离上限。`CheckDistanceTime = 1.0 s`
-  字面是「一秒路程内」，全速下 7 m，明显不是触发距离；owner 未量过，裁定 1.2 m，
-  做成旋钮。
+- **触发距离 1.2 m**：脚距第一个落脚点的水平距离上限。录像证明 1.2 m 处按空格
+  被接受；更远没有测过，`CheckDistanceTime = 1.0 s` 字面「一秒路程」全速下 7 m
+  明显不是。取 1.2 m 做旋钮，是实测下界。
 - 各容差与采样密度（见探测）。
 - 每段弧线的小顶点高度。
 
@@ -72,8 +90,10 @@ CheckDistanceTime             1.0 s                 ❓ 无释义，本设计不
 
 ## `SpringBoardMove`
 
-新文件 `scripts/player/moves/spring_board_move.gd`，`Move.SPRING_BOARD`，
-继承 `ScriptedMove`（与 `SpeedVaultMove` 同族）。
+新文件 `scripts/player/moves/spring_board_move.gd`，`Move.SPRING_BOARD`。
+**继承 `AirborneMove`**（上升段要它的空气物理和探针），**组合一个 `ScriptedMove`
+子节点**跑两段弧——`LadderMove._top_exit` 的同一做法（GDScript 单继承）。
+一个 Move 走完四个阶段：走到立面 → 两次蹬踏 → 抛出 → 上升到顶点。
 
 ### 进入
 
@@ -88,22 +108,28 @@ CheckDistanceTime             1.0 s                 ❓ 无释义，本设计不
 
 没命中照旧走 JUMP。
 
-### 两次蹬踏
+### 阶段 1：走到立面（实测 0.1–0.2 s）
 
-进入时**先**读水平速度 `h`（`LineWalkMove.enter` 同一个坑：归零之后就读不到了），
-`lock_input()` 0.4 s，`set_grounded(true)`——脚在东西上，声明而不是推断。
+进入时**先**读水平速度 `h`（`LineWalkMove.enter` 同一个坑），`lock_input()`。
+身体以进入时的水平速度继续前进（`carry_ballistically`，`SpeedVaultMove` 的
+接近段），`set_grounded(true)`，直到脚的水平位置到达 `plant_1` 前
+`plant_reach`（0.35 m，项目旋钮）以内；超过 `approach_timeout`（0.6 s）还没到
+→ 交还 WALKING。
 
-- 段 1（`step_time_1` 0.2 s）：脚从当前位置到 `plant_1`，`ScriptedMove.begin()`
-  贝塞尔，顶点 `plant_arc_height`（0.15 m，项目旋钮）高于两端较高者，
-  `control_bias` 取「先起后送」。
-- 段 2（`step_time_2` 0.2 s）：`plant_1 → plant_2`，同样一段弧。
+### 阶段 2：两次蹬踏（各 `step_time_1/2` 0.2 s，无重力）
 
-胶囊位置 = 脚落点 + 半身高，直接写位置（`SpeedVaultMove` 的做法）；无重力——
-蹬踏期完全由脚本驱动，这就是 `PHYS_Flying`。模型 `pin_visual_yaw` 朝
+- 段 1：脚从当前位置到 `plant_1`，`ScriptedMove.begin()` 贝塞尔，顶点
+  `plant_arc_height`（0.15 m，项目旋钮）高于两端较高者，`control_bias` 取
+  「先起后送」。
+- 段 2：`plant_1 → plant_2`，同样一段弧。
+
+胶囊位置 = 脚落点 + 半身高，由 `ScriptedMove.advance()` 直接写位置；
+`set_grounded(true)`——脚在东西上，声明而不是推断。模型 `pin_visual_yaw` 朝
 `plant_1 → plant_2` 的水平方向；胶囊与视线不动（原作 `ControllerState =
-PlayerWalking`，视角自由，无视线约束）。
+PlayerWalking`，视角自由，无视线约束）。实测这 0.4 s 里 Z 近似匀速上升 1.2 m、
+前进约 2 m，两段小弧只是让脚落到点上，不必刻意做出停顿。
 
-### 抛出
+### 阶段 3：抛出
 
 段 2 结束那一帧：
 
@@ -113,15 +139,23 @@ xy       = max(h + xy_add, xy_min)        = max(h - 1.0, 4.0)
 velocity = dir * xy + UP * jump_z         jump_z = 9.5
 ```
 
-`fall_tracker.reset(当前高度)`；`unlock_input()`；返回 **`JUMP`**。
-空中由 `JumpMove` 接管：coil、grab、vault、wallclimb 检查与落地判定全部现成，
-对应 CDO 的 `bCheckForGrab / VaultOver / WallClimb / bCheckExitToFalling`。
+`fall_tracker.reset(当前高度)`，`set_grounded(false)`，`unlock_input()`。
+
+### 阶段 4：上升到顶点（实测 0.6 s）
+
+**不交给 `JumpMove`。** 原作在整段上升期都停留在 `SpringBoarding`，到顶点
+（`bCheckExitToFalling`：垂直速度归零）才转 `Falling`。本 Move 用继承来的
+`apply_air_physics()`（重力、空中操控）和 `probe_transition()`（按配置的
+`check_for_grab / check_for_vault_over / check_for_wall_climb`）跑这一段；
+`velocity.y <= 0` 时返回 `FALLING`。
+
+这样做而不是交给 JUMP 的两个后果都是原作的：**不能 coil**（Coil 只从 Jump 进入，
+05 §5.2），空中检查的是 SpringBoard 自己的三个 `bCheckFor*`。
 
 ### 中断
 
 - `_aborted`（`pending_spring_board` 为空）→ 第一帧返回 WALKING。
-- 蹬踏期不接受任何输入（已锁），不检查 grab / vault（原作那三个 `bCheckFor*`
-  是起跳后的事，起跳后已交给 `JumpMove`）。
+- 蹬踏期不接受任何输入（已锁），不检查 grab / vault。
 - 无 `redo_move_time`（CDO 无此字段）。
 
 ## 配置：`SpringBoardConfig`
@@ -131,29 +165,33 @@ velocity = dir * xy + UP * jump_z         jump_z = 9.5
 
 | 字段 | 值 | 标记 |
 |---|---|---|
-| `jump_z` | 9.5 | `[ME:CONFIRMED]` |
-| `xy_add` | -1.0 | `[ME:CONFIRMED]` |
+| `jump_z` | 9.5 | `[ME:CONFIRMED]` CDO + 录像 |
+| `xy_add` | -1.0 | `[ME:CONFIRMED]` CDO + 录像 |
 | `xy_min` | 4.0 | `[ME:CONFIRMED]` |
 | `plant_1_height` | 0.64 | `[ME:CONFIRMED]` |
 | `plant_spacing` | 1.12 | `[ME:CONFIRMED]` |
-| `plant_2_min_height` / `plant_2_max_height` | 0.8 / 1.48 | `[ME:CONFIRMED]` |
-| `step_time_1` / `step_time_2` | 0.2 / 0.2 | `[ME:CONFIRMED]` |
+| `plant_2_min_height` / `plant_2_max_height` | 0.8 / 1.48 | `[ME:CONFIRMED]`（录像 1.24） |
+| `step_time_1` / `step_time_2` | 0.2 / 0.2 | `[ME:CONFIRMED]` CDO + 录像 0.4 |
 | `approach_angle_deg` | 53 | `[ME:COMMUNITY]` |
-| `trigger_distance` | 1.2 | 项目自定 |
+| `trigger_distance` | 1.2 | 项目自定（录像实测下界） |
+| `plant_reach` | 0.35 | 项目自定 |
+| `approach_timeout` | 0.6 | 项目自定 |
 | `plant_height_tolerance` | 0.2 | 项目自定 |
 | `plant_spacing_tolerance` | 0.3 | 项目自定 |
 | `plant_probe_radius` | 0.12 | 项目自定 |
 | `plant_arc_height` | 0.15 | 项目自定 |
 
 `MoveConfig` 的行为开关：`constrain_look = false`、`freeze_visual_yaw = true`
-（蹬踏期模型钉在两点连线方向）、`allows_turn = false`。
+（蹬踏期模型钉在两点连线方向）、`allows_turn = false`、
+`check_for_grab = check_for_vault_over = check_for_wall_climb = true`（上升段），
+不开 coil。
 
 ## 表现层
 
-- **动画**：`CharacterAnimator` 加 `Move.SPRING_BOARD` 分支——蹬踏期
+- **动画**：`CharacterAnimator` 加 `Move.SPRING_BOARD` 分支——走到立面与蹬踏期
   `_first_available([&"StepUp", &"Jump_Start", &"jump"])`，`scripted_duration()`
-  返回 0.4 s 由 `_scripted_fit()` 拟合（`StepUp` 0.67 s → 1.7×）。起跳后是
-  `JumpMove` 自己的空中片段。库里没有专门的踏板跳片段，以后可换。
+  返回 0.4 s 由 `_scripted_fit()` 拟合（`StepUp` 0.67 s → 1.7×）；抛出后走
+  空中循环（`AIRBORNE_LOOP`）。库里没有专门的踏板跳片段，以后可换。
 - **镜头**：不加滚转、不加 FOV；脚本驱动的位移由现有镜头规则处理
   （docs/camera-authority.md）。
 - **调试 HUD**：`scripted` 行通过 `path_debug()` 显示当前段路径。
@@ -171,21 +209,24 @@ velocity = dir * xy + UP * jump_z         jump_z = 9.5
 2. 只有一根柱子 → 普通 `JUMP`。
 3. 两柱连线偏离面朝 70° → 普通 `JUMP`。
 4. 脚距第一根 2 m → 普通 `JUMP`。
-5. 蹬踏期：0.2 s 时脚在第一根柱顶、0.4 s 时脚在第二根柱顶（容差 5 cm），
+5. 蹬踏期：到达立面后 0.2 s 脚在第一根柱顶、0.4 s 在第二根柱顶（容差 5 cm），
    期间 `grounded` 为真、输入被锁。
-6. 抛出：交给 `JUMP` 那一帧 `velocity.y == jump_z`，水平速度 =
-   `max(进入速度 - 1.0, 4.0)`，方向为两柱连线；`fall_tracker` 已重置。
+6. 抛出：段 2 结束那一帧 `velocity.y == jump_z`，水平速度 =
+   `max(进入速度 - 1.0, 4.0)`，方向为两柱连线；`fall_tracker` 已重置；
+   之后仍是 `SPRING_BOARD`，`velocity.y` 过零那一帧才转 `FALLING`。
 7. 柱顶放不下身体（`fits_standing_at` 假）→ 普通 `JUMP`。
-8. 动画路由：`SPRING_BOARD` 分支存在（`test_every_move_has_its_own_case`
+8. 上升段按下蹲不 coil（`SPRING_BOARD` 不会转 `COIL`）。
+9. 动画路由：`SPRING_BOARD` 分支存在（`test_every_move_has_its_own_case`
    自动覆盖），蹬踏期请求 `StepUp`，`scripted_duration()` = 0.4。
-9. `test_config_layout` / 生成场景测试因新增 `MovementConfig.spring_board`
-   需要更新的一并更新；`check_references.gd` 过一遍 `default.tres`。
+10. `test_config_layout` / 生成场景测试因新增 `MovementConfig.spring_board`
+    需要更新的一并更新；`check_references.gd` 过一遍 `default.tres`。
 
 不测的：弧线顶点高度、手感数值——这些是旋钮。
 
 ## 已知空白
 
-- `CheckDistanceTime = 1.0 s` 含义未明；触发距离 1.2 m 是裁定值，等 owner 实测
-  后改旋钮即可。
+- 触发距离上限没有扫过，1.2 m 是实测下界；`CheckDistanceTime = 1.0 s` 含义未明。
 - 53° 是实测行为，无 CDO 出处。
 - 无专门动画片段。
+- 录像里的字形库对这次 HUD（14 行、无 IGT 行）识别偏差较大，数值靠逐帧肉眼读取；
+  下次先用一帧 `calib --append` 补字形。
