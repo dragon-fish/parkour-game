@@ -303,6 +303,8 @@ func test_the_rise_cannot_coil() -> void:
 	while not board.has_launched() and ticks < 120:
 		await step(1)
 		ticks += 1
+	assert_true(board.has_launched(),
+		"the throw never came, so the coil assertion below would pass vacuously")
 	_world["input"].state.crouch_pressed = true
 	_world["input"].state.crouch_held = true
 	await step(3)
