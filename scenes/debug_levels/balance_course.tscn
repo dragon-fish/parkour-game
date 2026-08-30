@@ -76,6 +76,55 @@ _data = {
 }
 point_count = 2
 
+[sub_resource type="BoxShape3D" id="Shape_gallery"]
+size = Vector3(12, 0.5, 12)
+
+[sub_resource type="BoxMesh" id="Mesh_gallery"]
+material = SubResource("Material_platform")
+size = Vector3(12, 0.5, 12)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_box_low"]
+size = Vector3(1.0, 0.64, 1.2)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_box_low"]
+material = SubResource("Material_ledge")
+size = Vector3(1.0, 0.64, 1.2)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_box_high"]
+size = Vector3(1.0, 1.24, 1.2)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_box_high"]
+material = SubResource("Material_ledge")
+size = Vector3(1.0, 1.24, 1.2)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_pole_low"]
+size = Vector3(0.3, 0.64, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_pole_low"]
+material = SubResource("Material_ledge")
+size = Vector3(0.3, 0.64, 0.3)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_pole_high"]
+size = Vector3(0.3, 1.24, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_pole_high"]
+material = SubResource("Material_ledge")
+size = Vector3(0.3, 1.24, 0.3)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_rail"]
+size = Vector3(0.1, 0.64, 1.5)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_rail"]
+material = SubResource("Material_ledge")
+size = Vector3(0.1, 0.64, 1.5)
+
+[sub_resource type="BoxShape3D" id="Shape_sb_wall"]
+size = Vector3(0.2, 1.24, 1.5)
+
+[sub_resource type="BoxMesh" id="Mesh_sb_wall"]
+material = SubResource("Material_ledge")
+size = Vector3(0.2, 1.24, 1.5)
+
 [sub_resource type="BoxShape3D" id="Shape_endplatform"]
 size = Vector3(3, 0.5, 4)
 
@@ -191,3 +240,85 @@ metadata/_custom_type_script = "uid://ce6ce3fbl2bxb"
 [node name="CollisionShape3D" type="CollisionShape3D" parent="ModifierVolume" index="0" unique_id=1376350212]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.085205, 6.475342, 28.203308)
 shape = SubResource("BoxShape3D_3qddd")
+disabled = true
+
+[node name="SpringGallery" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 4.75, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="SpringGallery"]
+shape = SubResource("Shape_gallery")
+
+[node name="Mesh" type="MeshInstance3D" parent="SpringGallery"]
+mesh = SubResource("Mesh_gallery")
+
+[node name="SbBoxBoxLow" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26.0, 5.32, -4.5)
+
+[node name="Collision" type="CollisionShape3D" parent="SbBoxBoxLow"]
+shape = SubResource("Shape_sb_box_low")
+
+[node name="Mesh" type="MeshInstance3D" parent="SbBoxBoxLow"]
+mesh = SubResource("Mesh_sb_box_low")
+
+[node name="SbBoxBoxHigh" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27.12, 5.62, -4.5)
+
+[node name="Collision" type="CollisionShape3D" parent="SbBoxBoxHigh"]
+shape = SubResource("Shape_sb_box_high")
+
+[node name="Mesh" type="MeshInstance3D" parent="SbBoxBoxHigh"]
+mesh = SubResource("Mesh_sb_box_high")
+
+[node name="SbBoxPoleLow" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26.0, 5.32, -1.5)
+
+[node name="Collision" type="CollisionShape3D" parent="SbBoxPoleLow"]
+shape = SubResource("Shape_sb_box_low")
+
+[node name="Mesh" type="MeshInstance3D" parent="SbBoxPoleLow"]
+mesh = SubResource("Mesh_sb_box_low")
+
+[node name="SbBoxPoleHigh" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26.77, 5.62, -1.5)
+
+[node name="Collision" type="CollisionShape3D" parent="SbBoxPoleHigh"]
+shape = SubResource("Shape_sb_pole_high")
+
+[node name="Mesh" type="MeshInstance3D" parent="SbBoxPoleHigh"]
+mesh = SubResource("Mesh_sb_pole_high")
+
+[node name="SbPolePoleLow" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.65, 5.32, 1.5)
+
+[node name="Collision" type="CollisionShape3D" parent="SbPolePoleLow"]
+shape = SubResource("Shape_sb_pole_low")
+
+[node name="Mesh" type="MeshInstance3D" parent="SbPolePoleLow"]
+mesh = SubResource("Mesh_sb_pole_low")
+
+[node name="SbPolePoleHigh" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26.77, 5.62, 1.5)
+
+[node name="Collision" type="CollisionShape3D" parent="SbPolePoleHigh"]
+shape = SubResource("Shape_sb_pole_high")
+
+[node name="Mesh" type="MeshInstance3D" parent="SbPolePoleHigh"]
+mesh = SubResource("Mesh_sb_pole_high")
+
+[node name="SbRailLow" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.55, 5.32, 4.5)
+
+[node name="Collision" type="CollisionShape3D" parent="SbRailLow"]
+shape = SubResource("Shape_sb_rail")
+
+[node name="Mesh" type="MeshInstance3D" parent="SbRailLow"]
+mesh = SubResource("Mesh_sb_rail")
+
+[node name="SbRailHigh" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26.72, 5.62, 4.5)
+
+[node name="Collision" type="CollisionShape3D" parent="SbRailHigh"]
+shape = SubResource("Shape_sb_wall")
+
+[node name="Mesh" type="MeshInstance3D" parent="SbRailHigh"]
+mesh = SubResource("Mesh_sb_wall")

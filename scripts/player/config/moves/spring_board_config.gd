@@ -7,9 +7,10 @@ extends MoveConfig
 # ledge into a double jump and breaks the level language. Here the TERRAIN
 # decides where a spring board is, exactly as the original does:
 # [ME:CONFIRMED] the owner, in the original -- there is no trigger volume;
-# two standable points 0.6 m apart in height and about a metre apart
-# horizontally, faced within 53 degrees, ARE the spring board. Two poles
-# qualify. See docs/superpowers/specs/2026-08-31-spring-board-design.md.
+# two standable points, the first about 0.64 m above the feet and the second
+# 0.8 to 1.48 m above the feet, about a metre apart horizontally, faced within
+# 53 degrees, ARE the spring board. Two poles qualify.
+# See docs/superpowers/specs/2026-08-31-spring-board-design.md.
 
 ## Vertical launch speed, m/s. [ME:CONFIRMED] SpringBoardJumpZ = 950 uu/s;
 ## a recording put the apex 2.82 m above the launch, 0.6 s later, which is

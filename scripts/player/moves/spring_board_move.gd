@@ -99,9 +99,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 ## never gets there -- the press was taken from further out than the walk can
 ## cover -- is handed back to walk.
 ##
-## DRIVEN, NOT COASTED. Input is locked from enter(), so nothing else is
-## pushing the body: a press taken from a standstill would coast nowhere and
-## time out, which would make a spring board something only a run can have.
+## DRIVEN, NOT COASTED. Movement input is ignored by construction -- neither
+## this phase nor the steps read input.move -- so nothing else is pushing the
+## body: a press taken from a standstill would coast nowhere and time out,
+## which would make a spring board something only a run can have.
 ## plant_reach is the distance a box's own face stops the capsule at, so
 ## widening it instead would be widening a measurement of the geometry to
 ## paper over a body that never moves.
