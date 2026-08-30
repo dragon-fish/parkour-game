@@ -92,21 +92,46 @@ func test_running_backwards_takes_the_backward_jog() -> void:
 	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(0.0, 0.0, 6.0)),
 		"Jog_Bwd", "running backwards")
 
-func test_the_diagonals_do_not_cross_over() -> void:
-	# ⚠️ THE SIGN. Forward-and-right must not resolve to the forward-LEFT clip,
-	# and the backward diagonals must not fold onto the forward ones -- which is
-	# exactly the mistake an earlier signed_angle_to() made in the torso twist.
+func test_the_forward_diagonals_sprint_like_straight_ahead() -> void:
+	# W+A and W+D are 45 degrees, which is INSIDE PawnConfig.forward_arc_deg,
+	# so they reach the same full ground speed a straight run does and take the
+	# same clip. Sending them to the jog instead played a clip referenced to
+	# 3.6 m/s under a body doing 7.2, which pinned the time scale to
+	# SPEED_SCALE_MAX: the cadence doubled the moment a strafe key went down.
 	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(5.0, 0.0, -5.0)),
-		"Jog_Fwd_R", "ahead and to the right")
+		"Sprint", "ahead and to the right")
 	after_each()
 	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(-5.0, 0.0, -5.0)),
-		"Jog_Fwd_L", "ahead and to the left")
-	after_each()
+		"Sprint", "ahead and to the left")
+
+func test_the_backward_diagonals_do_not_fold_onto_the_forward_ones() -> void:
+	# THE SIGN, on the pair still routed by octant. Behind-and-right must not
+	# resolve to the forward clip, which is exactly the mistake an earlier
+	# signed_angle_to() made in the torso twist.
 	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(5.0, 0.0, 5.0)),
 		"Jog_Bwd_R", "behind and to the right")
 	after_each()
 	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(-5.0, 0.0, 5.0)),
 		"Jog_Bwd_L", "behind and to the left")
+
+func test_the_diagonals_do_not_cross_over() -> void:
+	# THE SIGN, on all four. Forward-and-right must not resolve to the
+	# forward-LEFT clip, nor the backward diagonals fold onto the forward ones.
+	#
+	# Asked in the WALK band, because that is where all four diagonals still
+	# route by octant: the run band's forward pair is inside the arc and takes
+	# the sprint, which has no side to get wrong and so cannot carry this.
+	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(1.4, 0.0, -1.4)),
+		"Walk_Fwd_R", "ahead and to the right")
+	after_each()
+	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(-1.4, 0.0, -1.4)),
+		"Walk_Fwd_L", "ahead and to the left")
+	after_each()
+	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(1.4, 0.0, 1.4)),
+		"Walk_Bwd_R", "behind and to the right")
+	after_each()
+	assert_eq(await _asked_for(FULL_CLIPS, Move.WALKING, Vector3(-1.4, 0.0, 1.4)),
+		"Walk_Bwd_L", "behind and to the left")
 
 # --- the slower bands use their own sets ---------------------------------------
 

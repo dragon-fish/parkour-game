@@ -11,11 +11,22 @@ extends SkeletonModifier3D
 # the half in between -- the body stays put and the head follows, which is what
 # a person does.
 #
+# It also turns the LOWER body the other way, at the hips, for the direction
+# the clip on screen is not expressing -- see request_lower_twist(). The two
+# live in one modifier because they share the arithmetic below: both are angles
+# handed to a chain that has to hold the head still while the rest of the body
+# moves under it, and splitting them would put half of that subtraction in one
+# object and half in another.
+#
 # THE HEAD GETS THE WHOLE ANGLE, the spine only a share of it. Both are applied
 # in skeleton space parent-to-child, so each bone's rotation accumulates onto
 # everything below it: the spine's share plus the neck's plus the head's is what
 # the head ends up at. Rotating the head by the full amount on top of a turned
 # chest would overshoot by exactly the chest's contribution.
+#
+# The hips ride the same rule from the other end: they are the top of the chain,
+# so their turn reaches every bone above them and the spine subtracts it back
+# out. What is left is legs aimed one way and shoulders another.
 #
 # Worked through set_bone_global_pose rather than by composing local rotations.
 # A humanoid bone's local axes are whatever its rest pose made them, and getting
@@ -39,6 +50,19 @@ const SPINE_CHAIN: Array[StringName] = [&"Spine", &"Chest", &"UpperChest"]
 ## Neck and Head both pivot at their own joints, which puts the head's own
 ## tilt at the base of the skull rather than somewhere inside it.
 const HEAD_CHAIN: Array[StringName] = [&"Neck", &"Head"]
+
+## What the LOWER body turns about. Everything below the waist hangs off this
+## one bone, so turning it aims the legs without touching anything else
+## directly -- see request_lower_twist().
+const HIPS_CHAIN: Array[StringName] = [&"Hips"]
+
+## How far the lower body may turn away from the body's own facing, in degrees.
+##
+## Covers PawnConfig.forward_arc_deg with room to spare: the caller only ever
+## asks for an angle inside that arc, and in_forward_arc()'s tolerance lets a
+## 45-degree diagonal read a shade over 45. A limit sitting exactly on the arc
+## would clip the one direction this exists to serve.
+const LOWER_TWIST_LIMIT_DEG := 50.0
 
 ## How much of the yaw the upper body is allowed to contribute, in degrees.
 ## Enough that the shoulders read as following, not enough to look like the
@@ -80,6 +104,9 @@ var _wanted_yaw: float = 0.0
 var _wanted_pitch: float = 0.0
 var _yaw: float = 0.0
 var _pitch: float = 0.0
+## See request_lower_twist().
+var _wanted_twist: float = 0.0
+var _twist: float = 0.0
 
 ## Asks the head to look `yaw` from the body's own heading and `pitch` up or
 ## down, both in radians. Driven by Player every physics tick; see
@@ -112,9 +139,38 @@ func request(yaw: float, pitch: float, pitch_limit_deg: float = 89.0,
 	_wanted_yaw = clampf(yaw, -limit, limit) * weight
 	_wanted_pitch = pitch * weight
 
+## Aims the LOWER body `yaw` radians off the body's own facing, and takes the
+## same angle back off the upper body so the chest and head stay where the
+## camera left them. Zero stands the legs back up under it.
+##
+## `yaw` is a rotation ABOUT Vector3.UP, applied as one below: positive turns a
+## body facing -Z to its LEFT. That is the opposite of the right-positive
+## convention the octant clips are named in, so the caller flips it -- see
+## CharacterAnimator.lower_body_twist(), which is where the flip is explained
+## and where it belongs.
+##
+## This is what carries travel direction when the CLIP does not: inside the
+## forward arc every direction plays one forward run, so without this a body
+## running a diagonal at full speed points its legs straight ahead. See
+## CharacterAnimator.lower_body_twist(), which is the only thing that should be
+## deciding when that is true.
+##
+## DO NOT ask for this while an authored octant clip is playing. The packs
+## express direction by rotating Hips 43-47 degrees themselves, and a
+## procedural turn on top of an authored one is a double-count -- it reads as
+## the model juddering, and in first person as a shaking camera, because the
+## eye rides the head bone.
+func request_lower_twist(yaw: float) -> void:
+	var limit: float = deg_to_rad(LOWER_TWIST_LIMIT_DEG)
+	_wanted_twist = clampf(yaw, -limit, limit)
+
 ## What is actually applied right now, for tests and the debug HUD.
 func applied() -> Vector2:
 	return Vector2(_yaw, _pitch)
+
+## The lower body's current turn, in radians, for tests and the debug HUD.
+func applied_lower_twist() -> float:
+	return _twist
 
 func _process_modification_with_delta(delta: float) -> void:
 	# NOT scaled by influence here: Skeleton3D applies that itself to every pose
@@ -122,7 +178,11 @@ func _process_modification_with_delta(delta: float) -> void:
 	var step: float = RATE * delta
 	_yaw = move_toward(_yaw, _wanted_yaw, step)
 	_pitch = move_toward(_pitch, _wanted_pitch, step)
-	if is_zero_approx(_yaw) and is_zero_approx(_pitch):
+	# EASED LIKE THE OTHERS, and for a sharper reason: this one swings 45
+	# degrees the instant a strafe key goes down. Snapped there, the legs
+	# teleport into the turn on a single frame.
+	_twist = move_toward(_twist, _wanted_twist, step)
+	if is_zero_approx(_yaw) and is_zero_approx(_pitch) and is_zero_approx(_twist):
 		return
 	var skeleton := get_skeleton()
 	if skeleton == null:
@@ -142,7 +202,20 @@ func _process_modification_with_delta(delta: float) -> void:
 	var share_at_limit: float = deg_to_rad( 		SPINE_PITCH_DOWN_DEG if _pitch < 0.0 else SPINE_PITCH_UP_DEG)
 	var pitch_limit: float = deg_to_rad(maxf(_pitch_limit_deg, 1.0))
 	var spine_pitch: float = _pitch / pitch_limit * share_at_limit
-	_apply(skeleton, SPINE_CHAIN, spine_yaw, spine_pitch)
+	# THE HIPS FIRST, because everything below is measured against what they
+	# leave behind. Turning them carries the legs -- which is the whole point,
+	# they are what has to point where the body is going -- and carries the
+	# spine along with them as a side effect, since the chain runs through
+	# here. The spine takes that side effect straight back off below.
+	if not is_zero_approx(_twist):
+		_apply(skeleton, HIPS_CHAIN, _twist, 0.0)
+	# MINUS THE TWIST, so the upper body ends up at spine_yaw exactly as it
+	# would have with the hips square. Every rotation here accumulates onto
+	# what its parent already did, so the hips' turn reaches the chest unless
+	# something subtracts it, and a chest that swung 45 degrees with the legs
+	# is not a twist at the waist -- it is the whole body turned, which is what
+	# the clip was already refusing to do.
+	_apply(skeleton, SPINE_CHAIN, spine_yaw - _twist, spine_pitch)
 	# The remainder, so the head lands on the full angle rather than on the
 	# angle plus whatever the spine already contributed.
 	_apply(skeleton, HEAD_CHAIN, _yaw - spine_yaw, _pitch - spine_pitch)

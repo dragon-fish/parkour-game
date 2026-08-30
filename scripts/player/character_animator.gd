@@ -126,16 +126,22 @@ const WALK_REFERENCE_PCT := 0.25
 
 ## What a JOG clip's 1.0 means, as a fraction of body_run_reference_speed.
 ##
-## Derived the same way the walk's is. The jog only ever plays SIDEWAYS or
-## BACKWARD here (see Move.WALKING), so its range is the run band: from
-## _run_band_speed() at the bottom to the full ground speed at the top. Setting
-## its reference to the bottom of that band puts it at 1.0 where the band starts
-## and at SPEED_SCALE_MAX where it ends, which is the whole of the range and no
-## more.
+## Derived the same way the walk's is, and set at the bottom of the run band
+## so the walk hands over to it at 1.0 (see _run_band_speed()).
 ##
-## DO NOT measure the jog against the same 7.2 reference the run uses: a jog
-## covering 7.2 m/s would then play at 1.0, and the stride has to be enormous
-## to cover that much ground at a jogging cadence.
+## The jog only ever plays OUTSIDE THE FORWARD ARC here (see Move.WALKING), and
+## that is also where PawnConfig's arc limit drops the ground ceiling to
+## speed_max_base_velocity, 4.0 m/s. So the range it actually covers is 3.6 to
+## 4.0 -- 1.0 to 1.11 -- and it comes nowhere near SPEED_SCALE_MAX.
+##
+## DO NOT raise this to stop a jog running away with itself. A jog pinned at
+## SPEED_SCALE_MAX means the clip is being played at a speed the arc says it
+## can never reach, so the ROUTING has sent an in-arc diagonal to the jog and
+## this number is not the fault.
+##
+## DO NOT measure the jog against the same 7.2 reference the run uses either: a
+## jog covering 7.2 m/s would then play at 1.0, and the stride has to be
+## enormous to cover that much ground at a jogging cadence.
 const JOG_REFERENCE_PCT := 0.5
 
 ## The packs' EIGHT-WAY sets, as suffixes clockwise from straight ahead.
@@ -146,8 +152,8 @@ const JOG_REFERENCE_PCT := 0.5
 ## a family added later has to be read off the gallery rather than guessed.
 ##
 ## There is NO eight-way Sprint in either pack, which is why Move.WALKING sends
-## the sideways and backward octants to the jog and keeps the sprint for
-## straight ahead.
+## travel from OUTSIDE the forward arc to the jog and keeps the sprint for
+## everything inside it, the diagonals included.
 const DIRECTION_SETS := {
 	&"Jog": ["_Fwd", "_Fwd_R", "_Right", "_Bwd_R", "_Bwd", "_Bwd_L", "_Left", "_Fwd_L"],
 	&"Walk": ["_Fwd", "_Fwd_R", "_R", "_Bwd_R", "_Bwd", "_Bwd_L", "_L", "_Fwd_L"],
@@ -749,20 +755,86 @@ func _first_available(candidates: Array[StringName]) -> StringName:
 ## The dead zone matters: strafing is neither forward nor backward, and a body
 ## sidestepping must not flicker between a clip and its reverse on float noise.
 func _travel_octant() -> int:
+	var angle: float = _travel_angle()
+	if is_nan(angle):
+		return -1
+	return posmod(int(round(angle / (PI / 4.0))), 8)
+
+## The signed angle from the FACING to the direction of travel, in radians,
+## positive to the RIGHT. NAN when there is nothing to measure: a body at rest,
+## or one with no horizontal facing.
+##
+## One measurement for both readers. The octant above rounds it; the twist
+## below uses it whole, and two atan2 calls with their own sign conventions is
+## how the left diagonal ends up on the right clip.
+func _travel_angle() -> float:
 	var travel := Vector3(player.velocity.x, 0.0, player.velocity.z)
 	if travel.length_squared() < 0.04:
-		return -1
+		return NAN
 	var facing: Vector3 = -player.global_transform.basis.z
 	facing.y = 0.0
 	if facing.length_squared() < 0.0001:
-		return -1
+		return NAN
 	facing = facing.normalized()
 	# Positive to the RIGHT of the facing, the same axis Player._drive_body_yaw()
 	# builds for the torso twist -- for a facing of -Z this cross product is +X.
 	var right: Vector3 = facing.cross(Vector3.UP)
 	travel = travel.normalized()
-	var angle: float = atan2(travel.dot(right), travel.dot(facing))
-	return posmod(int(round(angle / (PI / 4.0))), 8)
+	return atan2(travel.dot(right), travel.dot(facing))
+
+## The yaw the LOWER body has to carry because the clip on screen does not, as
+## a rotation ABOUT Vector3.UP -- which is to say positive turns the body to
+## its LEFT, and the sign is the opposite of _travel_angle()'s.
+##
+## THE FLIP IS THE POINT, and getting it wrong turns the legs away from the
+## direction of travel while the shoulders swing into it, which reads as the
+## whole body facing backwards. Two conventions meet here and neither is free
+## to change: _travel_angle() is positive to the RIGHT because DIRECTION_SETS
+## runs clockwise from straight ahead, while Basis(Vector3.UP, angle) is a
+## right-handed turn about UP, so for a body facing -Z a positive angle goes
+## LEFT. This function speaks the second, because what it feeds is the first
+## argument of exactly that Basis.
+##
+## Inside the forward arc the run band plays ONE forward clip for every
+## direction in it (see _target_animation()), so a body running a diagonal at
+## full speed has its legs pointing straight ahead while it travels 45 degrees
+## off. The packs' own octant clips answer exactly this by rotating the whole
+## of Hips 43-47 degrees; this is the same answer for the directions inside the
+## arc, where there is no octant clip to reach for.
+##
+## ZERO WHEREVER AN AUTHORED CLIP IS ALREADY TURNED. Outside the arc the
+## eight-way set is playing, and turning the body again on top of it is the
+## double-count that shook the first-person camera -- the eye rides the head
+## bone, so a fault in the hips surfaces a long way from where it is.
+##
+## The test is the ARC, not this frame's clip name. The arc carries a tolerance
+## across the diagonal it sits on; a question asked of the clip flips on
+## velocity noise, which is what made the model judder the last time this was
+## tried.
+func lower_body_twist() -> float:
+	if player.move_manager == null \
+			or player.move_manager.current_name != Move.WALKING:
+		return 0.0
+	if player.horizontal_speed() <= _run_band_speed():
+		return 0.0
+	if not _travelling_in_forward_arc():
+		return 0.0
+	var angle: float = _travel_angle()
+	return 0.0 if is_nan(angle) else -angle
+
+## True while the body is TRAVELLING inside the forward arc, the same arc that
+## decides whether it may reach full ground speed.
+##
+## Read off velocity rather than off the input, for the reason _travel_octant()
+## is: a body carried sideways by a slide or a wall kick is travelling
+## sideways whatever the keys say, and the cadence has to answer to the ground
+## it is covering.
+##
+## Motionless counts as forward, matching in_forward_arc()'s own answer for a
+## zero direction. Nothing reaches this while standing still -- the run band
+## starts at 3.6 m/s -- so it exists to be a defined answer, not a case.
+func _travelling_in_forward_arc() -> bool:
+	return player.in_forward_arc(Vector3(player.velocity.x, 0.0, player.velocity.z))
 
 ## The eight-way family a clip belongs to, or an empty name. Used by
 ## _drive_speed() so that a strafe scales against the same reference its
@@ -865,21 +937,37 @@ func _target_animation() -> StringName:
 				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			var speed: float = player.horizontal_speed()
 			if speed > _run_band_speed():
-				# SPRINT AHEAD, JOG TO THE SIDES AND BEHIND.
+				# SPRINT ACROSS THE FORWARD ARC, JOG OUTSIDE IT.
 				#
 				# Neither pack has an eight-way sprint -- Sprint is one clip,
 				# forward only -- and the eight-way sets are the jog's and the
 				# walk's. So the run band is split by DIRECTION rather than run
-				# on one clip: straight ahead is the sprint the owner asked for,
-				# and everything else takes the jog, which is the only thing
-				# that can strafe at all.
+				# on one clip: the arc takes the sprint, and outside it the jog
+				# is the only thing that can strafe at all.
 				#
-				# This extends "do not use the jog" (which was about the
-				# forward run) to the sideways case, where a reversed or
-				# rotated sprint is the only alternative and there is no
-				# eight-way sprint to use instead. The seam is a change of
-				# cadence when turning sharply out of a straight run.
-				if _travel_octant() <= 0:
+				# THE SAME ARC THE SPEED USES, asked of Player rather than
+				# rounded to an octant here. Two reasons, and both have already
+				# cost a session:
+				#
+				# ONE ARC, NOT TWO -- the rule 46b5148 set when the slide gate
+				# was made to ask in_forward_arc() instead of carrying its own
+				# angle. A second angle here would drift from PawnConfig's
+				# forward_arc_deg, and the pair is what makes the cadence agree
+				# with the speed: inside the arc the body reaches the full
+				# 7.2 m/s and the sprint's reference IS 7.2, so it plays at
+				# 1.0; outside it the ceiling falls to 4.0 against the jog's
+				# 3.6 and it plays at 1.11. Split them and a diagonal ran at
+				# full speed on a clip referenced to half of it, which pinned
+				# the time scale to SPEED_SCALE_MAX and doubled the cadence
+				# the moment a strafe key went down.
+				#
+				# THE DIAGONAL SITS EXACTLY ON THE EDGE. W+A is 45 degrees and
+				# the arc is 45 degrees, so any comparison written here would
+				# be between two floats equal in exact arithmetic and not in
+				# practice. in_forward_arc() already carries the tolerance that
+				# fixes it; rounding travel to the nearest eighth does not, and
+				# an octant boundary lands on the diagonal too.
+				if _travelling_in_forward_arc():
 					return _first_available([&"Sprint", &"Jog_Fwd", &"Walk_Fwd", &"run", &"idle"])
 				return _first_available_directional([&"Jog", &"Walk", &"Sprint", &"run", &"idle"])
 			if speed > player.config.pawn.run_animation_speed_threshold:

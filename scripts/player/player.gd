@@ -1859,6 +1859,16 @@ func _current_clip() -> StringName:
 	var animator := get_node_or_null("BodyRoot/CharacterAnimator") as CharacterAnimator
 	return animator.current_clip if animator != null else Move.KEEP
 
+## How far the legs have to turn to point where the body is going, in radians,
+## or 0 when the clip on screen already points them there.
+##
+## THE ANIMATOR DECIDES, not this. Whether the clip expresses direction is a
+## fact about the routing, and a second opinion here would be a second set of
+## thresholds to keep in step with the first.
+func _lower_body_twist() -> float:
+	var animator := get_node_or_null("BodyRoot/CharacterAnimator") as CharacterAnimator
+	return animator.lower_body_twist() if animator != null else 0.0
+
 ## Places the body at the cached mount plus wherever the offset has eased to.
 ##
 ## The rotation goes OUTSIDE the mount basis and the position is added in
@@ -2187,6 +2197,11 @@ func _attach_head_look(body_node: Node3D) -> void:
 func _drive_head_look() -> void:
 	if head_look == null:
 		return
+	# ASKED EVERY TICK, camera_rig or not. The legs point where the body is
+	# going, which is a fact about the ground and not about the view, and a
+	# path that skipped it would leave the hips turned from the last tick that
+	# did.
+	head_look.request_lower_twist(_lower_body_twist())
 	if camera_rig == null:
 		head_look.request(0.0, 0.0, config.camera.pitch_limit_deg)
 		return
