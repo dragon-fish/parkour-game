@@ -1066,6 +1066,18 @@ func _target_animation() -> StringName:
 			# Everything after Slide is the old PLACEHOLDER reasoning: a slide
 			# is fast, committed ground momentum, so a run is the closest thing.
 			return _first_available([&"Slide", &"Sprint", &"run", &"idle"])
+		Move.SPRING_BOARD:
+			# The walk up and the two steps play the pack's StepUp -- a
+			# no-hands scramble is what stepping up two plants is -- fitted
+			# to both step times through scripted_duration(). The rise is a
+			# rise: the same airborne loop every other one plays. No clip in
+			# the pack is a spring board; this is the nearest shape.
+			var board = player.move_manager.move_for(Move.SPRING_BOARD)
+			if board != null and board.is_stepping():
+				return _first_available([&"StepUp", &"Jump_Start", &"jump", &"idle"])
+			if board != null and board.has_launched():
+				return _first_available(AIRBORNE_LOOP)
+			return _first_available([&"StepUp", &"Jump_Start", &"Idle", &"idle"])
 		Move.SPEED_VAULT:
 			# TWO DIFFERENT MOVES BEHIND ONE STATE, told apart the way GRAB's
 			# two phases are -- by asking the move.

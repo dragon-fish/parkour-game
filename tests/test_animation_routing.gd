@@ -623,3 +623,27 @@ func test_a_body_stepping_round_plays_the_packs_quarter_turn() -> void:
 	player._turn_clip_left = 0.0
 	assert_eq(String(animator._target_animation()), "Idle",
 		"standing still did not come back once the step was over")
+
+func test_a_spring_board_steps_on_step_up_and_rises_on_the_airborne_loop() -> void:
+	# The move's own phase is poked, the way the ledge's turn is above: with
+	# no plants registered the move aborts, but the routing only asks the
+	# move which phase it is in.
+	var animator: CharacterAnimator = await _animator_with(
+		[&"StepUp", &"Jump", &"Idle"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.SPRING_BOARD)
+	var board := player.move_manager.move_for(Move.SPRING_BOARD) as SpringBoardMove
+	assert_not_null(board, "no SpringBoardMove to drive")
+	board._phase = SpringBoardMove.Phase.STEP_1
+	assert_eq(String(animator._target_animation()), "StepUp",
+		"the steps asked for '%s'" % String(animator._target_animation()))
+	assert_almost_eq(board.scripted_duration(),
+		player.config.spring_board.step_time_1 + player.config.spring_board.step_time_2, 0.001,
+		"the steps did not offer the clip both step times as its window")
+	# Both fields, because _launch() writes both and the routing asks
+	# has_launched(): a phase poked on its own is a state the move never
+	# reaches, and the animator has no business reading _phase.
+	board._phase = SpringBoardMove.Phase.RISE
+	board._launched = true
+	assert_eq(String(animator._target_animation()), "Jump",
+		"the rise asked for '%s'" % String(animator._target_animation()))
