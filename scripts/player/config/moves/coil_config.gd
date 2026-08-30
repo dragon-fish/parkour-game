@@ -25,6 +25,11 @@ func _init() -> void:
 	# SkillRollConfig's own, and the same field carries it.
 	allows_turn = false
 
+	# A coil is how a wide gap gets crossed, and the far edge is exactly as
+	# likely to be a ledge as solid ground -- so unlike the three probe flags
+	# below, this one stays on.
+	check_for_ledge_walk = true
+
 	# ⚠️ THE THREE PROBE FLAGS ARE LEFT FALSE, AND THAT IS THE MOVE.
 	#
 	# 11 §11.2's capability matrix gives Coil none of bCheckForGrab,

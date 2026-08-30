@@ -130,3 +130,42 @@ func test_a_beam_moves_the_body_toward_its_own_forward_on_w() -> void:
 	var displacement: Vector3 = player.global_position - before
 	assert_gt(displacement.dot(forward), 0.0,
 		"W on a beam did not move the body toward its own forward")
+
+# --- entry gate wiring: WalkingMove and AirborneMove both ask
+# LedgeWalkMove.catch_gate() before transitioning (Task 4). ------------------
+
+func test_walking_onto_a_ledge_line_enters_the_move() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	# The line passes right through where the settled player already stands,
+	# at the same height -- catch_gate's foot check should pass immediately.
+	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
+		player.global_position - Vector3(5.0, 0.0, 0.0),
+		player.global_position + Vector3(5.0, 0.0, 0.0))
+	for i in 10:
+		await step(1)
+		if player.move_manager.current_name == Move.LEDGE_WALK:
+			break
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"walking onto a ledge line did not catch it")
+
+func test_running_past_below_a_ledge_line_does_not_enter() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	# 0.5 m above the player's feet: inside the reach volume's capsule
+	# radius (0.6 m) so the line still registers in player.interest_lines,
+	# but past LedgeWalkConfig.foot_snap_height (0.35 m), so it is
+	# catch_gate's foot check that must refuse this, not a missed overlap.
+	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
+		player.global_position + Vector3(-5.0, 0.5, 0.0),
+		player.global_position + Vector3(5.0, 0.5, 0.0))
+	for i in 10:
+		await step(1)
+	assert_eq(player.move_manager.current_name, Move.WALKING,
+		"a ledge 0.5 m overhead caught a body it should have refused")

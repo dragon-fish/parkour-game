@@ -17,6 +17,17 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		if rail != null and LadderMove.catch_gate(player, rail):
 			return LADDER
 
+	# A ledge is caught by walking onto it, the same way a ladder is caught
+	# above: no check_for_ledge_walk flag here either (that switch is
+	# airborne-only, see MoveConfig.check_for_ledge_walk's own note) -- the
+	# ground entry is unconditional, gated only by catch_gate()'s own reach
+	# and foot-height checks.
+	if player.grounded and player.move_manager.can_enter(LEDGE_WALK):
+		var ledge: InterestLine = player.nearest_interest_line(InterestLine.Kind.LEDGE_WALK)
+		if ledge != null and LedgeWalkMove.catch_gate(
+				player, ledge, config.ledge_walk.foot_snap_height):
+			return LEDGE_WALK
+
 	var wish_dir: Vector3 = player.wish_direction(input)
 	# [ME:CONFIRMED 02 §2.1] No sprint key: the curve IS the sprint. The walk
 	# modifier is the one thing that overrides it, with its own confirmed hard
