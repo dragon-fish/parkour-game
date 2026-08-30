@@ -48,6 +48,17 @@ var _landing_pitch: float = 0.0
 ## is +180 degrees, which is the manoeuvre going over.
 var _roll_spin: float = 0.0
 
+## Fed every tick by BalanceMove: the roll the lost balance asks for, in
+## RADIANS, already scaled by that move's own limit; and how many degrees of
+## FOV the squeeze wants. Values only, like every other channel here -- this
+## rig does not know what a beam is.
+var _balance_roll: float = 0.0
+## The squeeze is SUBTRACTED after the speed-driven FOV has been computed, not
+## folded into it: that channel opens the view as you go faster, and the beam
+## is slow, so leaving this to the speed curve would widen the view at exactly
+## the moment it should be closing in.
+var _balance_squeeze: float = 0.0
+
 ## The active move's look clamp, in radians, or "no clamp" when
 ## _has_look_constraint is false. Driven by MoveManager every tick; consumed
 ## by apply_look() from Task 15 onward.
@@ -384,6 +395,14 @@ func set_death_lift(metres: float) -> void:
 func set_vault_roll(radians: float) -> void:
 	_vault_roll = radians
 
+## Sets this tick's balance lean, already converted to radians and scaled by
+## the move's own limit -- see the fields this feeds. Called every tick
+## BalanceMove is active; the move zeroes both on exit() so the roll and the
+## squeeze cannot follow the player off the beam.
+func set_balance_lean(roll_radians: float, squeeze_deg: float) -> void:
+	_balance_roll = roll_radians
+	_balance_squeeze = squeeze_deg
+
 ## Sets the look pitch outright.
 ##
 ## For a move that TAKES OVER the pitch rather than offsetting it. SkillRoll is
@@ -591,6 +610,8 @@ func reset_state() -> void:
 	_wall_side = 0
 	_roll = 0.0
 	_vault_roll = 0.0
+	_balance_roll = 0.0
+	_balance_squeeze = 0.0
 	_death_lift = 0.0
 	_landing_pitch = 0.0
 	_roll_spin = 0.0
@@ -779,6 +800,13 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 
 	var target_fov := lerpf(_config.camera.fov_base, _config.camera.fov_max, speed_ratio)
 	camera.fov = lerpf(camera.fov, target_fov, clampf(_config.camera.fov_lerp_speed * delta, 0.0, 1.0))
+	# Balance's own tension cue -- simulated fear of heights, tied to how far the
+	# lean has gone rather than to a constant on entry. SUBTRACTED here, after
+	# the speed lerp above rather than folded into it: that channel OPENS the
+	# view as horizontal speed rises, and the beam is slow (2.448 m/s), so
+	# leaving the squeeze to the speed curve would widen the view at exactly the
+	# moment lost balance should be closing it in.
+	camera.fov -= _balance_squeeze
 
 	var bob_target := 1.0 if grounded else 0.0
 	_bob_weight = move_toward(_bob_weight, bob_target, _config.camera.bob_fade_speed * delta)
@@ -953,7 +981,14 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# direction if the legacy suite is ever restored.
 	var target_roll := deg_to_rad(_config.camera.wall_camera_roll_deg) * float(_wall_side)
 	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.camera.wall_camera_roll_speed) * delta)
-	rotation.z = _roll + _vault_roll
+	# Softened in third person: the horizon tipping IS the balance feedback in
+	# first person, but seen from outside the same roll tips the whole world
+	# around a character who is already visibly leaning, which reads as nausea
+	# rather than information. The body's own lean carries the signal there.
+	var balance_roll: float = _balance_roll
+	if in_third_person():
+		balance_roll *= _config.camera.third_person_balance_roll_scale
+	rotation.z = _roll + _vault_roll + balance_roll
 
 	# Layered on top of the ordinary look pitch, same relationship _dip has to
 	# bob above: apply_look() already wrote rotation.x = _pitch for this tick's

@@ -311,6 +311,15 @@ extends Resource
 ## holding this one next to. Flip it back the day a left-handed clip exists.
 @export var vault_roll_deg: float = -7.0
 
+## How much of the balance roll survives in third person.
+##
+## SMALL ON PURPOSE. In first person the roll IS the feedback -- the horizon
+## tipping is what tells you which way you are going over. Seen from outside,
+## the same roll tips the whole world around a character who is visibly leaning
+## anyway, which reads as nausea rather than as information. The body's own lean
+## carries the signal there; see BalanceConfig.max_body_lean_deg.
+@export var third_person_balance_roll_scale: float = 0.15
+
 ## Where the eye sits when the third-person view is on, as THREE FLOATS rather
 ## than the Vector3 this obviously wants to be.
 ##

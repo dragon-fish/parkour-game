@@ -357,3 +357,76 @@ func test_a_corner_never_leaves_the_view_behind_the_body() -> void:
 			rig._config.camera.scripted_yaw_max_lag, 0.01,
 			"third_person=%s absorbed %.2f rad of a corner"
 			% [third, absf(rig._scripted_yaw_lag)])
+
+# --- balance lean: roll and FOV squeeze ---------------------------------------
+
+func test_third_person_softens_the_balance_roll() -> void:
+	# The horizon tipping IS the feedback in first person -- outside the body,
+	# the same roll tips the whole world around a character who is already
+	# visibly leaning, which reads as nausea rather than information.
+	var rig := _rig()
+	await step(1)
+	rig.set_balance_lean(deg_to_rad(12.0), 0.0)
+	for i in 10:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	var first_person_roll := absf(rig.rotation.z)
+
+	rig.third_person = true
+	for i in 10:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	var third_person_roll := absf(rig.rotation.z)
+
+	assert_lt(third_person_roll, first_person_roll,
+		"an outside view tilting with the body is nauseating, not informative")
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_the_squeeze_closes_the_fov_rather_than_opening_it() -> void:
+	# The speed-driven FOV opens the view as horizontal speed rises; the balance
+	# squeeze must close it instead, or fear-of-heights tension would read as
+	# the opposite of what it is meant to.
+	var rig := _rig()
+	await step(1)
+	rig.set_balance_lean(0.0, 0.0)
+	for i in 10:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	var calm := rig.camera.fov
+
+	rig.set_balance_lean(0.0, 10.0)
+	for i in 10:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	assert_lt(rig.camera.fov, calm,
+		"the speed-driven FOV opens with speed; this must close against it")
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_leaving_the_move_restores_the_camera() -> void:
+	# BalanceMove.exit() must hand the rig zeros, or the roll and the squeeze
+	# survive the move and follow the player off the beam.
+	#
+	# The squeeze is subtracted from the FOV every tick it is asked for (not
+	# folded into the speed-driven target), so a single tick of full lean is
+	# enough to prove both directions -- ONE tick, not a held run of them,
+	# because the FOV lerp's own smoothing means a squeeze sustained across
+	# many ticks does not undo itself in the same handful of frames it took to
+	# apply. Given a real second to recover, it must land back at neutral.
+	var rig := _rig()
+	await step(1)
+	for i in 10:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	var neutral_fov := rig.camera.fov
+
+	rig.set_balance_lean(deg_to_rad(12.0), 10.0)
+	rig.update_effects(1.0 / 60.0, 0.0, true)
+	assert_gt(absf(rig.rotation.z), 0.0001, "test setup: the lean produced no roll")
+	assert_lt(rig.camera.fov, neutral_fov, "test setup: the lean produced no squeeze")
+
+	rig.set_balance_lean(0.0, 0.0)
+	for i in 60:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	assert_almost_eq(rig.rotation.z, 0.0, 0.001,
+		"zeroing the balance lean left the camera rolled")
+	assert_almost_eq(rig.camera.fov, neutral_fov, 0.5,
+		"zeroing the balance lean left the FOV squeezed")
+	rig.get_parent().queue_free()
+	await step(1)

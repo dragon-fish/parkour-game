@@ -95,7 +95,24 @@ func lateral_update(delta: float, lateral_input: float) -> StringName:
 	if absf(lateral_offset()) > cfg.beam_half_width:
 		player.consume_roll()
 		return FALLING
+	if player.camera_rig != null:
+		# Driven ONLY by how far balance is already lost, never by a constant
+		# on entry: standing steady on the beam must look completely normal,
+		# and only a body about to fall gets the roll and the tunnel. That
+		# rewards the same thing the pendulum itself rewards -- settle the
+		# lean and its rate early and the camera stops fighting you too.
+		player.camera_rig.set_balance_lean(
+			deg_to_rad(signed_severity() * cfg.max_camera_roll_deg),
+			lean_severity() * cfg.fov_squeeze_deg)
 	return KEEP
+
+func exit() -> void:
+	super.exit()
+	# Zeroed on the way out so the roll and the squeeze do not follow the
+	# player off the beam -- see LadderMove.exit()'s own tint reset for the
+	# same pattern.
+	if player.camera_rig != null:
+		player.camera_rig.set_balance_lean(0.0, 0.0)
 
 func lateral_offset() -> float:
 	return _lean * cfg.gravity_influence
