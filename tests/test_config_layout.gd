@@ -63,3 +63,21 @@ func test_move_config_defaults_are_neutral() -> void:
 	assert_almost_eq(cfg.friction_modifier, 1.0, 0.0001, "default friction_modifier is not neutral")
 	assert_almost_eq(cfg.redo_move_time, 0.0, 0.0001, "default redo_move_time is not zero")
 	assert_true(not cfg.constrain_look, "look is constrained by default")
+
+func test_balance_and_ledge_walk_are_on_the_aggregate() -> void:
+	var config := MovementConfig.new()
+	assert_not_null(config.balance, "MovementConfig must carry a BalanceConfig")
+	assert_not_null(config.ledge_walk, "MovementConfig must carry a LedgeWalkConfig")
+	assert_true(config.balance is BalanceConfig)
+	assert_true(config.ledge_walk is LedgeWalkConfig)
+
+func test_the_two_line_walks_declare_the_original_speed_modifiers() -> void:
+	var config := MovementConfig.new()
+	# [ME:CONFIRMED] TdMove_Balance 0.34, TdMove_LedgeWalk 0.10.
+	assert_almost_eq(config.balance.speed_modifier, 0.34, 0.001)
+	assert_almost_eq(config.ledge_walk.speed_modifier, 0.10, 0.001)
+
+func test_the_beam_faces_along_the_line_and_the_ledge_across_it() -> void:
+	var config := MovementConfig.new()
+	assert_almost_eq(config.balance.body_yaw_offset_deg, 0.0, 0.001)
+	assert_almost_eq(config.ledge_walk.body_yaw_offset_deg, 90.0, 0.001)

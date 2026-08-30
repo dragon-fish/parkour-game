@@ -17,7 +17,7 @@ extends Path3D
 # to_local()/to_global(), which is exact for translation and rotation; a scale
 # would change arc lengths the curve's own baked table knows nothing about.
 
-enum Kind { ZIPLINE, SWING, BALANCE, LADDER }
+enum Kind { ZIPLINE, SWING, BALANCE, LADDER, LEDGE_WALK }
 
 @export var kind: Kind = Kind.ZIPLINE
 ## How far from the line a body counts as able to reach it, in metres.

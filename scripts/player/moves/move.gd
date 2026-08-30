@@ -38,6 +38,8 @@ const TURN_180: StringName = &"Turn180"
 const ZIPLINE: StringName = &"Zipline"
 const SWING: StringName = &"Swing"
 const LADDER: StringName = &"Ladder"
+const BALANCE: StringName = &"Balance"
+const LEDGE_WALK: StringName = &"LedgeWalk"
 
 ## Set by Player before the manager starts. Untyped for the same reason the
 ## names live here: a typed reference would reintroduce the cycle.

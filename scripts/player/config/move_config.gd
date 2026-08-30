@@ -139,6 +139,15 @@ extends Resource
 ## would always be true for them.
 @export var check_for_ladder: bool = false
 
+## Whether this move may hand off to Balance when the body is standing on a
+## BALANCE InterestLine. Airborne moves only -- the ground entry asks
+## BalanceMove's own static gate directly, the same split check_for_ladder
+## documents.
+@export var check_for_balance: bool = false
+
+## Whether this move may hand off to LedgeWalk. Same shape as check_for_balance.
+@export var check_for_ledge_walk: bool = false
+
 ## Whether a crouch pressed in mid-air out of this move tucks the legs up.
 ##
 ## ⚠️ TRUE ON EXACTLY ONE MOVE, and that narrowness is the point. ✅ The owner,
