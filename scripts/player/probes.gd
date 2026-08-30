@@ -605,6 +605,114 @@ func _ledge_from_face() -> Dictionary:
 		# already exists for exactly this.
 		"face_normal": _vault_high.get_collision_normal()}
 
+## Two foot plants ahead for a spring board, or a miss: {valid, plant_1,
+## plant_2}, both world positions of the feet on top of each plant.
+##
+## FINDS POINTS, NOT FACES. [ME:CONFIRMED] the owner, in the original: two
+## poles about a metre apart, one 0.6 m tall and one 1.2 m, are a spring
+## board, and nothing about width or depth is asked. So every probe here is a
+## SPHERE dropped from above onto a candidate point -- a pole can be thinner
+## than the capsule, and a ray fired beside it reports nothing at all.
+##
+## The first plant is looked for straight ahead, nearest first, out to
+## trigger_distance. The second is looked for on rings of plant_spacing
+## around the first, inside the approach fan -- and the fan is walked from
+## the facing OUTWARD, so on a wide tier the second plant is where the
+## facing crosses it (in at an angle, out at that angle) and only two bare
+## poles land it at the fan's edge. Whether the body FITS on either point is
+## not asked here: Probes answer geometry, and standing room is Player's
+## question (fits_standing_at), the same split ledge_query() keeps.
+##
+## THE FAN IS WIDER IN PRACTICE THAN approach_angle_deg, and that is measured,
+## not a slip: the outermost bearing is sampled ON the boundary and the probe
+## is a sphere, so it reaches asin(plant_probe_radius / plant_spacing) past it
+## -- about 6 degrees at the shipped dials -- and the first plant lands on a
+## pole's NEAR EDGE rather than its axis, which swings the second plant's
+## bearing further in again. A pair of bare poles is therefore accepted
+## somewhat past 53 degrees measured axis-to-axis. DO NOT pull the sampled
+## bearings in to compensate: 53 is the original's number, the near edge is
+## what "nearest first" means, and a wide tier's first plant depends on it.
+func springboard_query() -> Dictionary:
+	if _config == null:
+		return _no_hit()
+	var cfg: SpringBoardConfig = _config.spring_board
+	var feet := Vector3(global_position.x, feet_y(), global_position.z)
+	var forward: Vector3 = -global_transform.basis.z
+	forward.y = 0.0
+	if forward.length_squared() < 0.0001:
+		return _no_hit()
+	forward = forward.normalized()
+
+	var plant_1 := Vector3.ZERO
+	var found_first := false
+	var samples: int = int(ceil(cfg.trigger_distance / maxf(cfg.plant_sample_step, 0.01)))
+	for i in range(samples + 1):
+		var at: Vector3 = feet + forward * (float(i) * cfg.plant_sample_step)
+		var top: float = _plant_top(at, cfg.plant_1_height + cfg.plant_height_tolerance, cfg)
+		if is_nan(top):
+			continue
+		if absf(top - feet.y - cfg.plant_1_height) <= cfg.plant_height_tolerance:
+			plant_1 = Vector3(at.x, top, at.z)
+			found_first = true
+			break
+	if not found_first:
+		return _no_hit()
+
+	# Bearings from the facing outward, alternating sides: 0, +a, -a, +2a, ...
+	var half_fan: float = deg_to_rad(cfg.approach_angle_deg)
+	var bearings: Array[float] = [0.0]
+	for k in range(1, 4):
+		var a: float = half_fan * float(k) / 3.0
+		bearings.append(a)
+		bearings.append(-a)
+	var radii: Array[float] = [cfg.plant_spacing,
+		cfg.plant_spacing - cfg.plant_spacing_tolerance,
+		cfg.plant_spacing + cfg.plant_spacing_tolerance]
+	for bearing in bearings:
+		var toward: Vector3 = forward.rotated(Vector3.UP, bearing)
+		for radius in radii:
+			var at: Vector3 = plant_1 + toward * radius
+			at.y = feet.y
+			var top: float = _plant_top(at, cfg.plant_2_max_height, cfg)
+			if is_nan(top):
+				continue
+			var rise: float = top - feet.y
+			if rise < cfg.plant_2_min_height or rise > cfg.plant_2_max_height:
+				continue
+			# A second TIER, not the same one again: the first plant's own top
+			# is inside plant_2's range when it stands tall.
+			if top <= plant_1.y + cfg.plant_height_tolerance:
+				continue
+			return {"valid": true, "plant_1": plant_1, "plant_2": Vector3(at.x, top, at.z)}
+	return _no_hit()
+
+## The top surface under a sphere dropped onto `at` from `reach` above it,
+## as a world Y, or NAN when nothing is there down to a little below `at`.
+## The sphere's radius is the config's plant_probe_radius.
+func _plant_top(at: Vector3, reach: float, cfg: SpringBoardConfig) -> float:
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return NAN
+	var sphere := SphereShape3D.new()
+	sphere.radius = cfg.plant_probe_radius
+	var params := PhysicsShapeQueryParameters3D.new()
+	params.shape = sphere
+	# Start a little above the reach so a top exactly at the reach is still
+	# met from above rather than started inside.
+	var start_y: float = at.y + reach + cfg.plant_probe_radius + 0.3
+	params.transform = Transform3D(Basis.IDENTITY, Vector3(at.x, start_y, at.z))
+	var drop: float = start_y - at.y + cfg.plant_height_tolerance
+	params.motion = Vector3.DOWN * drop
+	params.collision_mask = _surface.collision_mask if _surface != null else 1
+	var body := get_parent() as CollisionObject3D
+	if body != null:
+		params.exclude = [body.get_rid()]
+	var fractions: PackedFloat32Array = space.cast_motion(params)
+	if fractions.size() < 2 or fractions[0] >= 1.0:
+		return NAN
+	# The sphere's underside where it stopped is the surface it stopped on.
+	return start_y - fractions[0] * drop - cfg.plant_probe_radius
+
 ## Whether the ledge the player is hanging from continues `step` metres to one
 ## side, and where its top is if it does.
 ##
