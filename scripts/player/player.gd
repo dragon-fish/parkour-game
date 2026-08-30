@@ -2208,6 +2208,21 @@ func _attach_balance_lean(body_node: Node3D) -> void:
 	skeleton.add_child(lean)
 	balance_lean = lean
 
+## The signed lean BalanceLean should be asked for this tick: the move's own
+## signed_severity() while `active`, and exactly zero the instant it is not --
+## a lean that outlives the move would follow the player off the beam. Pulled
+## out as a static function so this decision is testable without a
+## body-mounted skeleton: every test in this repo runs with body_scene unset,
+## so balance_lean is always null and _drive_balance_lean() below always
+## early-returns, which would let a broken ternary here pass the whole suite
+## silently. See test_balance_lean_signed_is_exactly_zero_when_inactive.
+##
+## `move` untyped for the same reason move_manager.player is -- see that
+## var's own note. It is always a BalanceMove when `active` is true, since
+## that is the only thing MoveManager ever registers under Move.BALANCE.
+static func balance_lean_signed(active: bool, move) -> float:
+	return move.signed_severity() if active else 0.0
+
 ## Feeds the balance lean this tick's signed severity while BalanceMove is the
 ## active move, and zero the instant it is not -- a lean that outlives the
 ## move would follow the player off the beam.
@@ -2217,7 +2232,7 @@ func _drive_balance_lean() -> void:
 	var move = move_manager.move_for(Move.BALANCE)
 	var active: bool = move_manager.current_name == Move.BALANCE
 	balance_lean.request_lean(
-		move.signed_severity() if active else 0.0,
+		Player.balance_lean_signed(active, move),
 		deg_to_rad(config.balance.max_body_lean_deg),
 		deg_to_rad(config.balance.hips_lean_share_deg))
 
