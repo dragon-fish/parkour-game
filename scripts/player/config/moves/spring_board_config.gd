@@ -77,9 +77,8 @@ extends MoveConfig
 ## what a box's face stops the feet at, PLUS the depth a plant sits inside
 ## that face: springboard_query() walks each plant off the lip it was found
 ## on, so a plant on a box reads 0.1-0.2 m in from the face rather than on it.
-## A dial, and the generous side of one -- SpringBoardMove also gives up
-## driving when the body has stopped moving, so this only decides whether the
-## common case ends by reach or by that.
+## A dial, and the generous side of one: this is the only thing that ends the
+## walk-up, so a plant it cannot cover is a move entered and then abandoned.
 @export var plant_reach: float = 0.8
 
 ## How long the walk to the first plant may take before the move gives up

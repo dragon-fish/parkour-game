@@ -223,11 +223,6 @@ func test_the_steps_put_the_feet_on_each_plant_in_turn() -> void:
 ## gap floors out around 0.5 m and cannot close further, so plant_reach has to
 ## cover the sum or the walk-up never ends. The pair is the debug gallery's
 ## two-box lane at test-world scale.
-##
-## THIS DOES NOT PIN THE STALL DETECTOR. Measured: it passes with the detector
-## disabled and with plant_reach back at 0.55, because 0.5 already fits inside
-## 0.55. The detector covers plants sunk deeper than reach, which no shape
-## built out of the lip-walk produces -- see the fix report for the numbers.
 func test_a_spring_board_built_from_boxes_reaches_the_throw() -> void:
 	var player: Player = await _standing_player()
 	var cfg := SpringBoardConfig.new()
