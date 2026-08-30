@@ -23,6 +23,22 @@ extends LineWalkMove
 ## toward the line's right-hand normal.
 var _lean: float = 0.0
 var _lean_rate: float = 0.0
+## The beam's own wind: a smooth bounded wander sampled by time, not a value
+## drawn fresh each tick. Perlin because the owner describes being MOVED by it
+## rather than rattled -- white noise averages to nothing and reads as a buzz,
+## while a smooth walk leans the body one way for a moment and then the other,
+## which is also why two stretches of it sometimes hand the correction back for
+## free.
+var _wind_noise: FastNoiseLite = BalanceMove._make_wind_noise()
+var _wind_phase: float = 0.0
+
+static func _make_wind_noise() -> FastNoiseLite:
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	# Left at a plain 1 and sampled through wind_frequency at the call site, so
+	# that dial means what it says instead of multiplying with this one.
+	noise.frequency = 1.0
+	return noise
 
 func kind() -> InterestLine.Kind:
 	return InterestLine.Kind.BALANCE
@@ -64,10 +80,10 @@ static func catch_gate(player: Player, line: InterestLine, snap_height: float) -
 
 ## The ONE random draw of the whole move.
 ##
-## DO NOT ADD A SECOND. Shoving the body every few seconds destroys the exact
-## thing this move rewards: the stable stretch an expert earns by zeroing the
-## offset early. The owner's measurement is explicit that the wobble is NOT a
-## series of random pushes.
+## THE ENTRY DRAW IS ONE OF TWO RANDOM SOURCES, and the only one that decides
+## which side the beam starts against. The other is the wind in
+## integrate_lean(); see BalanceConfig.wind_strength for the measurement that
+## put it there.
 ##
 ## entry_speed_influence SCALES base_wobble (magnitude = base_wobble * (1 +
 ## entry_speed_influence * v / ground_speed)); it does not ADD to it. The
@@ -107,6 +123,8 @@ func enter(previous: StringName) -> void:
 		return
 	var pick: int = 1 if randf() < 0.5 else -1
 	seed_lean(BalanceMove.entry_lean(cfg, entry_speed, config.pawn.ground_speed, pick), 0.0)
+	_wind_noise.seed = randi()
+	_wind_phase = 0.0
 	# THIRD PERSON READS BADLY ON A BEAM -- beam only, not LedgeWalkMove, which
 	# keeps the player's own view choice. Goes through the status system's own
 	# FORCE_VIEW mechanism (the same one a level volume or a death uses,
@@ -144,8 +162,42 @@ func seed_lean(lean: float, rate: float) -> void:
 func integrate_lean(delta: float, lateral_input: float) -> void:
 	var rate: float = 1.0 / maxf(cfg.divergence_time, 0.0001)
 	var accel: float = _lean * rate * rate + correction_gain_at(_lean) * lateral_input
-	_lean_rate += accel * delta
+	_lean_rate += accel * delta + _wind(delta)
 	_lean += _lean_rate * delta
+
+## The beam's own shove for this tick, or zero on the ticks between shoves.
+##
+## STILL NOT DAMPING, and the distinction matters: this only ever ADDS to the
+## rate, in a direction that has nothing to do with the rate's own sign, so it
+## cannot quietly steady a player who has stopped correcting. A body left alone
+## still runs away from the apex; the shoves decide which way and when it gets
+## interesting.
+##
+## Wound to a fresh random wait each time it fires, rather than a fixed period:
+## a metronome is something a player learns to sit on, and the owner's report
+## is specifically that the beam gives no warning.
+func _wind(delta: float) -> float:
+	if cfg.wind_strength <= 0.0:
+		return 0.0
+	# BOTH THE HEIGHT AND THE RATE OF THE GUSTS RIDE ON THIS. [ME:CONFIRMED] the
+	# owner: 「这个频率和力度都是会随着体态变化的」-- so the phase advances more
+	# slowly as the body goes, which stretches the wave out rather than merely
+	# shrinking it. A body near the edge is not being buffeted quietly; it is
+	# being buffeted slowly, which is what leaves room to answer.
+	var composure: float = 1.0 - lean_severity()
+	_wind_phase += delta * cfg.wind_frequency * composure
+	var gust: float = _wind_noise.get_noise_1d(_wind_phase)
+	# SCALED DOWN BY HOW FAR GONE THE BODY ALREADY IS. [ME:CONFIRMED] the owner,
+	# in play: 「玩家的体态会抑制波峰的绝对值，越接近平衡波峰越激烈，越接近失控则
+	# 越平缓，游戏不会让你安稳的走过独木桥，但也不会在你快要掉下去的时候给你增加
+	# 压力」-- the gusts are fiercest while the player is holding it together and
+	# flatten out as the beam is lost.
+	#
+	# DO NOT "fix" this into a constant. The pressure belongs where the player
+	# is winning; adding it where they are already losing turns a recoverable
+	# fall into a coin toss, and the correction boost above exists to make that
+	# same stretch winnable.
+	return gust * cfg.wind_strength * composure * delta
 
 ## The correction authority available at `lean`, which GROWS as the body nears
 ## the edge.
@@ -164,7 +216,7 @@ func integrate_lean(delta: float, lateral_input: float) -> void:
 func correction_gain_at(lean: float) -> float:
 	var edge: float = maxf(cfg.beam_half_width, 0.0001)
 	var severity: float = clampf(absf(lean) * cfg.gravity_influence / edge, 0.0, 1.0)
-	var t: float = smoothstep(cfg.correction_boost_start, 1.0, severity)
+	var t: float = pow(severity, maxf(cfg.correction_boost_exponent, 0.01))
 	return lerpf(cfg.correction_gain, cfg.correction_gain_at_edge, t)
 
 func lateral_update(delta: float, lateral_input: float) -> StringName:

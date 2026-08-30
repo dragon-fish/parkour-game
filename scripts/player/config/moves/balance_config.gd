@@ -27,25 +27,31 @@ extends MoveConfig
 ## hopelessly late.
 @export var divergence_time: float = 0.8
 
-## Correction authority of A/D against the lean.
-## [ME:CONFIRMED] ControlInfluence = 1.5.
-@export var correction_gain: float = 1.5
-
-## Where the correction starts gaining authority, as a fraction of the way to
-## the edge. Below this the gain is flat.
+## Correction authority of A/D against the lean, at rest in the middle.
 ##
-## The owner, measured in play: past a certain angle the beam was unrecoverable
-## whatever the player did. That is arithmetic, not reflexes -- see
-## BalanceMove.correction_gain_at().
-@export var correction_boost_start: float = 0.55
+## [ME:CONFIRMED] ControlInfluence = 1.5 is the CDO's number, but the dump gives
+## no formula to spend it in, and at 1.5 the middle of the beam answered too
+## slowly to match the original. Read as the shape of the field rather than as
+## a coefficient this project's own arithmetic must adopt outright.
+@export var correction_gain: float = 2.5
+
+## How sharply the correction gains authority on the way to the edge. Higher
+## keeps the boost out of the way until the body is genuinely far out.
+##
+## The gain runs correction_gain -> correction_gain_at_edge across
+## `severity ^ this`, so 1 is a straight ramp and 3 leaves the first half of
+## the beam feeling exactly like the flat gain it used to have.
+@export var correction_boost_exponent: float = 3.0
 
 ## Correction authority at the very edge.
 ##
-## MUST STAY ABOVE beam_half_width / (gravity_influence * divergence_time^2),
-## which is what the divergence term reaches there. Below it, a full-strength
-## correction at the edge still loses, which is the state this dial exists to
-## end.
-@export var correction_gain_at_edge: float = 3.0
+## [ME:CONFIRMED] the owner, in play: even nearly all the way over to one side
+## the original pulls back fairly quickly, unless the player presses nothing at
+## all. So this is well clear of the bare minimum -- beam_half_width /
+## (gravity_influence * divergence_time^2), which is only the point where a
+## full correction stops LOSING. Recovering promptly needs authority past that,
+## not merely equal to it.
+@export var correction_gain_at_edge: float = 8.0
 
 ## How much the ENTRY speed magnifies the one-off starting lean.
 ## [ME:CONFIRMED] SpeedInfluence = 2.5. It magnifies the entry offset ONLY --
@@ -60,6 +66,37 @@ extends MoveConfig
 ## falls, and the owner measured that standing still on a beam DOES lose
 ## balance. This is what denies the player that perfect apex.
 @export var base_wobble: float = 0.02
+
+## How hard the beam pushes the body about on its own, in lean units per second
+## squared. Zero switches it off and leaves a pure inverted pendulum.
+##
+## [ME:CONFIRMED] the owner, in play: the original does push the player about on
+## a beam -- the lean crosses from one side to the other with no warning, and
+## there is a visible jitter a bare divergence cannot produce (a pendulum runs
+## AWAY from its apex; it never changes its mind). Described as feeling like
+## wind moving you: a continuous wander inside a bounded range, not a series of
+## discrete shoves.
+##
+## This overturns an earlier reading of the same section, which took the
+## measured wobble for the divergence alone and forbade any push after entry.
+## Both mechanisms are present: the divergence is what makes standing still
+## impossible, the wind is what makes it unpredictable.
+##
+## FADES OUT AS THE EDGE NEARS -- see BalanceMove._wind(). [ME:CONFIRMED] the
+## owner: the pushes are strongest while the player is holding it together and
+## stop once the beam is nearly lost.
+@export var wind_strength: float = 5.5
+
+## How quickly the wind wanders, in noise units per second. Higher is gustier;
+## low enough and the body leans slowly one way and then the other, which is
+## what a bounded wander looks like rather than a rattle.
+##
+## SCALED BY COMPOSURE ALONGSIDE THE STRENGTH, so a body near the edge is
+## buffeted slowly rather than quietly -- see BalanceMove._wind(). [ME:CONFIRMED]
+## the owner: dead centre on the original's beams the body swings about a fair
+## amount, and both the rate and the size of it move with how well the player is
+## holding it.
+@export var wind_frequency: float = 2.6
 
 ## Lean turned into real lateral displacement off the beam's centreline,
 ## metres per unit of lean.

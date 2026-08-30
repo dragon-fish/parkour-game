@@ -18,6 +18,10 @@ func after_each() -> void:
 func test_lean_diverges_when_nobody_corrects() -> void:
 	var move := BalanceMove.new()
 	move.cfg = BalanceConfig.new()
+	# The wind is the beam's own randomness, not the pendulum's -- silenced
+	# here so this measures the arithmetic it names.
+	# test_the_wind_moves_a_body_that_is_doing_nothing covers the wind itself.
+	move.cfg.wind_strength = 0.0
 	move.seed_lean(0.01, 0.0)
 	var first := absf(move.lean())
 	for i in 10:
@@ -41,6 +45,10 @@ func test_lean_diverges_when_nobody_corrects() -> void:
 func test_the_free_pendulum_matches_the_undamped_closed_form() -> void:
 	var move := BalanceMove.new()
 	move.cfg = BalanceConfig.new()
+	# The wind is the beam's own randomness, not the pendulum's -- silenced
+	# here so this measures the arithmetic it names.
+	# test_the_wind_moves_a_body_that_is_doing_nothing covers the wind itself.
+	move.cfg.wind_strength = 0.0
 	var lean0: float = 0.01
 	move.seed_lean(lean0, 0.0)
 	var dt: float = 1.0 / 60.0
@@ -57,6 +65,10 @@ func test_the_free_pendulum_matches_the_undamped_closed_form() -> void:
 func test_the_apex_is_stationary() -> void:
 	var move := BalanceMove.new()
 	move.cfg = BalanceConfig.new()
+	# The wind is the beam's own randomness, not the pendulum's -- silenced
+	# here so this measures the arithmetic it names.
+	# test_the_wind_moves_a_body_that_is_doing_nothing covers the wind itself.
+	move.cfg.wind_strength = 0.0
 	move.seed_lean(0.0, 0.0)
 	for i in 60:
 		move.integrate_lean(1.0 / 60.0, 0.0)
@@ -130,6 +142,10 @@ func test_enter_reads_entry_speed_before_super_zeroes_it() -> void:
 func test_correction_opposes_the_lean() -> void:
 	var move := BalanceMove.new()
 	move.cfg = BalanceConfig.new()
+	# The wind is the beam's own randomness, not the pendulum's -- silenced
+	# here so this measures the arithmetic it names.
+	# test_the_wind_moves_a_body_that_is_doing_nothing covers the wind itself.
+	move.cfg.wind_strength = 0.0
 	move.seed_lean(0.05, 0.0)
 	var free := move.duplicate_lean_after(0.2, 0.0)
 	var corrected := move.duplicate_lean_after(0.2, -1.0)
@@ -542,6 +558,10 @@ func test_a_full_correction_at_the_edge_can_still_turn_the_lean_around() -> void
 	# a structural property of the two curves, not a feel value.
 	var move := BalanceMove.new()
 	move.cfg = BalanceConfig.new()
+	# The wind is the beam's own randomness, not the pendulum's -- silenced
+	# here so this measures the arithmetic it names.
+	# test_the_wind_moves_a_body_that_is_doing_nothing covers the wind itself.
+	move.cfg.wind_strength = 0.0
 	var edge_lean: float = move.cfg.beam_half_width / move.cfg.gravity_influence
 	# Just inside the edge, already falling, correcting at full strength.
 	move.seed_lean(edge_lean * 0.97, 0.0)
@@ -559,4 +579,59 @@ func test_the_correction_gain_only_grows_near_the_edge() -> void:
 		"the boost reached all the way back to the apex")
 	assert_gt(move.correction_gain_at(edge_lean), move.correction_gain_at(edge_lean * 0.5),
 		"the correction gained no authority on the way to the edge")
+	move.free()
+
+func test_the_wind_moves_a_body_that_is_doing_nothing() -> void:
+	# The owner, in play: the original pushes the player about on a beam -- the
+	# lean crosses sides with no warning and visibly jitters. A bare divergence
+	# cannot do that; it only ever runs further from the apex it started on.
+	var move := BalanceMove.new()
+	move.cfg = BalanceConfig.new()
+	move.seed_lean(0.0, 0.0)
+	for i in 240:
+		move.integrate_lean(1.0 / 60.0, 0.0)
+	assert_ne(move.lean_rate(), 0.0,
+		"a body sitting exactly on the apex was never moved off it")
+	move.free()
+
+func test_silencing_the_wind_leaves_the_apex_alone() -> void:
+	# The wind is a dial, and zero must mean zero -- a pure pendulum for anyone
+	# who wants to reason about the arithmetic without it.
+	var move := BalanceMove.new()
+	move.cfg = BalanceConfig.new()
+	move.cfg.wind_strength = 0.0
+	move.seed_lean(0.0, 0.0)
+	for i in 240:
+		move.integrate_lean(1.0 / 60.0, 0.0)
+	assert_eq(move.lean_rate(), 0.0,
+		"a silenced wind still moved a body sitting on the apex")
+	move.free()
+
+func test_the_wind_fades_out_as_the_body_nears_the_edge() -> void:
+	# The owner, in play: the pushes are strongest while the player is holding
+	# it together and stop once the beam is nearly lost. The beam gives you
+	# something to do while you are winning; it does not pile on while you are
+	# trying to recover.
+	var move := BalanceMove.new()
+	move.cfg = BalanceConfig.new()
+	var edge_lean: float = move.cfg.beam_half_width / move.cfg.gravity_influence
+	# Sampled rather than taken once: the wind's direction wanders, so only
+	# the magnitude over many samples carries the property being asserted.
+	var steady_total: float = 0.0
+	var edge_total: float = 0.0
+	for i in 400:
+		move.seed_lean(0.0, 0.0)
+		move._wind_phase += 0.37
+		move.integrate_lean(1.0 / 60.0, 0.0)
+		steady_total += absf(move.lean_rate())
+		move.seed_lean(edge_lean * 0.98, 0.0)
+		move._wind_phase += 0.37
+		move.integrate_lean(1.0 / 60.0, 0.0)
+		# The divergence term is enormous out here and would swamp the wind;
+		# subtract the run it would have had on its own.
+		var free_run: float = edge_lean * 0.98 \
+			/ (move.cfg.divergence_time * move.cfg.divergence_time) * (1.0 / 60.0)
+		edge_total += absf(move.lean_rate() - free_run)
+	assert_gt(steady_total, edge_total,
+		"the beam pushed a body about to fall as hard as one holding steady")
 	move.free()
