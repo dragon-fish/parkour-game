@@ -108,11 +108,18 @@ func test_a_beam_moves_the_body_toward_its_own_forward_on_w() -> void:
 	await step(5)
 	assert_true(player.interest_lines.has(_line),
 		"test setup: the beam's reach volume never registered the player")
-	# BalanceMove does not exist yet (a later task) -- LineWalkBeamStub is a
-	# bare BALANCE-kind LineWalkMove, registered exactly the way
-	# Player._build_moves() registers every real move, so this test still
-	# drives the real per-tick input/physics loop rather than hand-calling
-	# physics_update().
+	# LineWalkBeamStub isolates LineWalkMove's own projection from
+	# BalanceMove's pendulum -- see the stub's own note. Registered exactly
+	# the way Player._build_moves() registers every real move, so this test
+	# still drives the real per-tick input/physics loop rather than
+	# hand-calling physics_update().
+	#
+	# register() (move_manager.gd's own) is a plain dictionary write with no
+	# guard, so this OVERWRITES the real BalanceMove Player already
+	# registered for Move.BALANCE -- the stub shadows it for the rest of this
+	# test. Harmless here (nothing asks for BALANCE by name before this
+	# line), but the real move is not reachable through this player again
+	# once it runs.
 	var stub := BeamStub.new()
 	stub.player = player
 	stub.config = player.config

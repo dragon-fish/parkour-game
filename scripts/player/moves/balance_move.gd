@@ -2,15 +2,16 @@ class_name BalanceMove
 extends LineWalkMove
 
 # The original's TdMove_Balance: walking a pipe at a third of walking speed
-# while an inverted pendulum tries to tip you off it.
+# [ME:CONFIRMED 05 §5.6] while an inverted pendulum tries to tip you off it.
 #
-# THE MODEL IS A BALL ON A DOME, and the owner measured it against the original
-# rather than reading it off field names -- twice the field names gave the wrong
-# answer. Entering, the game drops the ball a little off the apex, to the left
-# or the right at random, further the faster you came in. Everything after that
-# is the ball rolling off a dome it was never stable on. Get the offset AND its
-# rate to zero early and it sits at the apex for the rest of the beam, which is
-# why an expert barely touches A/D after the first moment.
+# [ME:CONFIRMED 05 §5.6] THE MODEL IS A BALL ON A DOME -- the owner's own
+# playtested description, and it overturned two prior readings taken from the
+# CDO's field names alone. Entering, the game drops the ball a little off the
+# apex, to the left or the right at random, further off the faster you came
+# in. Everything after that is the ball rolling off a dome it was never
+# stable on: get the offset AND its rate to zero early and it sits at the
+# apex for the rest of the beam, which is why an expert barely touches A/D
+# after the first moment.
 #
 # See docs/mirrors-edge-deep-research/05-动作库总览.md §5.6.
 
@@ -41,6 +42,12 @@ static func entry_lean(cfg: BalanceConfig, entry_speed: float,
 	return magnitude * float(sign_pick)
 
 func enter(previous: StringName) -> void:
+	# READ BEFORE super.enter(previous), NOT AFTER: LineWalkMove.enter()
+	# zeroes player.velocity (see its own note on why). Move this read past
+	# that call and every entry measures a standstill, entry_speed_influence
+	# goes dead, and nothing in the suite notices -- see
+	# test_enter_reads_entry_speed_before_super_zeroes_it, which exercises
+	# THIS function rather than entry_lean() alone.
 	var entry_speed: float = Vector3(player.velocity.x, 0.0, player.velocity.z).length()
 	super.enter(previous)
 	if _aborted:
@@ -56,19 +63,20 @@ func seed_lean(lean: float, rate: float) -> void:
 ## One tick of the pendulum.
 ##
 ## NO DAMPING TERM, NOT ONE. Nothing in here may pull _lean_rate back toward
-## zero on the player's behalf: "the expert zeroes the offset AND its rate" only
-## means anything while no one else is doing it for them. A damping term is the
-## system steadying the player, and it takes the reward with it.
+## zero on the player's behalf: "the expert zeroes the offset AND its rate"
+## only means anything while no one else is doing it for them. A damping term
+## is the system steadying the player, and it takes the reward with it.
+## test_lean_diverges_when_nobody_corrects cannot see one -- its sign of
+## divergence survives any damping coefficient. Only
+## test_the_free_pendulum_matches_the_undamped_closed_form, which checks the
+## rate against the exact undamped solution, can.
 ##
 ## THE CORRECTION TERM IS ADDED, NOT SUBTRACTED. `lateral_input` shares
 ## _lean's own sign convention (positive is toward the line's right-hand
-## normal), so fighting a positive lean means pushing a NEGATIVE lateral_input
-## -- away from the side the body is falling toward, the same instinct as
-## leaning right and pushing back left. `+ gain * lateral_input` is what makes
-## that opposite-signed push subtract energy from the divergence term below;
-## a `-` here was tried and passes only when the input matches the lean's own
-## sign, which is steering the fall rather than fighting it -- caught by
-## test_correction_opposes_the_lean, which a `-` here fails.
+## normal), so fighting a positive lean means pushing a NEGATIVE
+## lateral_input -- away from the side the body is falling toward. Only
+## `+ gain * lateral_input` makes that opposite-signed push subtract from the
+## divergence term below; test_correction_opposes_the_lean pins the sign.
 func integrate_lean(delta: float, lateral_input: float) -> void:
 	var rate: float = 1.0 / maxf(cfg.divergence_time, 0.0001)
 	var accel: float = _lean * rate * rate + cfg.correction_gain * lateral_input
@@ -118,4 +126,8 @@ func duplicate_lean_after(seconds: float, lateral_input: float) -> float:
 	while t < seconds:
 		probe.integrate_lean(step, lateral_input)
 		t += step
-	return absf(probe.lean())
+	var result: float = absf(probe.lean())
+	# Move extends Node and this probe never enters the tree -- GUT counts an
+	# unfreed one as an orphan.
+	probe.free()
+	return result
