@@ -12,12 +12,32 @@ extends LineWalkMove
 func kind() -> InterestLine.Kind:
 	return InterestLine.Kind.LEDGE_WALK
 
+## LedgeWalkConfig.body_yaw_offset_deg (90) only names the MAGNITUDE -- turn
+## a quarter turn off the tangent. Which of the two directions perpendicular
+## to the tangent that lands on depends on which way the curve's points were
+## drawn, and offset_input()/yaw_of()'s shared convention (see their own
+## notes) makes +90 land on -normal_at(tangent) and -90 on +normal_at(tangent).
+## The authored convention that is SUPPOSED to decide is the node's own -Z
+## pointing at the wall (InterestLine.front()) -- so pick whichever sign
+## faces the body away from that, instead of trusting the curve's own
+## direction to happen to agree with it. Without this, reversing a level
+## author's two curve points silently turns the walk to face the wall.
+func _yaw_offset(tangent: Vector3) -> float:
+	var magnitude: float = cfg.get("body_yaw_offset_deg")
+	var normal := Vector3(-tangent.z, 0.0, tangent.x)
+	var wall: Vector3 = _line.front()
+	# +magnitude faces -normal_at(tangent); that faces away from the wall
+	# exactly when normal itself points TOWARD the wall (normal.dot(wall) > 0).
+	return magnitude if normal.dot(wall) > 0.0 else -magnitude
+
 ## THE ONE ENTRY GATE, static so every entry site asks the same question before
 ## transitioning -- no enter-then-abort flutter. Mirrors LadderMove.catch_gate().
 static func catch_gate(player: Player, line: InterestLine, snap_height: float) -> bool:
 	if not player.line_ready(line):
 		return false
-	return LineWalkMove.foot_gate_at(line, player.global_position, snap_height)
+	var feet: Vector3 = player.global_position
+	feet.y = player.probes.feet_y()
+	return LineWalkMove.foot_gate_at(line, feet, snap_height)
 
 ## -1 (toward the line's start), 0 (still), +1 (toward its end) -- what the last
 ## tick's input actually asked for. CharacterAnimator picks Walk_L/Walk_R off it.

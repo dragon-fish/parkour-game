@@ -46,14 +46,18 @@ func test_a_ledge_travels_on_a_and_d_and_ignores_w() -> void:
 		Vector2(0.0, 1.0), 0.0, deg_to_rad(cfg.body_yaw_offset_deg))
 	assert_almost_eq(out.x, 0.0, 0.001, "W must not walk you off the ledge")
 
-func test_the_foot_gate_refuses_a_body_running_past_at_ground_level() -> void:
+func test_the_foot_gate_refuses_feet_half_a_metre_above_the_line() -> void:
+	# `body_pos` is the contract foot_gate_at() actually takes: a FEET
+	# position, already converted (see catch_gate() in BalanceMove /
+	# LedgeWalkMove). 0.5 m clears foot_snap_height (0.35 m) by 0.15 m, so
+	# this is the real edge the gate exists to refuse, not an arbitrary drop.
 	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
 		Vector3(0, 3, 0), Vector3(0, 3, 4))
-	var body_on_it := Vector3(0, 3, 2)
-	var body_below := Vector3(0, 0, 2)
-	assert_true(LineWalkMove.foot_gate_at(_line, body_on_it, 0.35))
-	assert_false(LineWalkMove.foot_gate_at(_line, body_below, 0.35),
-		"the reach volume alone would swallow a body running past below")
+	var feet_on_it := Vector3(0, 3, 2)
+	var feet_half_a_metre_up := Vector3(0, 3.5, 2)
+	assert_true(LineWalkMove.foot_gate_at(_line, feet_on_it, 0.35))
+	assert_false(LineWalkMove.foot_gate_at(_line, feet_half_a_metre_up, 0.35),
+		"the reach volume alone would swallow feet running past half a metre above the line")
 
 # --- structural invariant: the key you press moves you the way you face ----
 #
@@ -147,18 +151,21 @@ func test_walking_onto_a_ledge_line_enters_the_move() -> void:
 	TestWorld.place(_world)
 	await step(20)
 	var player: Player = _world["player"]
-	# The line STARTS at the settled player's own position and runs away
-	# from it, so the catch lands at arc-length offset 0.0 exactly -- the
-	# boundary LineWalkMove.physics_update()'s `at_end` guard exists for.
-	# A body caught right on the line's own start, with no input yet, must
-	# not read as having already walked past that end on its first tick
-	# (the old ungated form of that check did exactly that -- see its own
-	# comment). Placing the catch mid-line, as an earlier version of this
-	# test did, cannot exercise that path at all: closest_offset() there
-	# lands nowhere near either boundary.
+	# The line STARTS genuinely underfoot -- Probes.feet_y(), 0.9 m below the
+	# settled player's own centre, not the centre itself -- and runs away
+	# from there, so the catch lands at arc-length offset 0.0 exactly, AND
+	# this is the one test that proves a flush walk-on (no fall required)
+	# actually works. The boundary LineWalkMove.physics_update()'s `at_end`
+	# guard is what offset 0.0 exercises: a body caught right on the line's
+	# own start, with no input yet, must not read as having already walked
+	# past that end on its first tick (the old ungated form of that check did
+	# exactly that -- see its own comment). Placing the catch mid-line, as an
+	# earlier version of this test did, cannot exercise that path at all:
+	# closest_offset() there lands nowhere near either boundary.
+	var feet: Vector3 = player.global_position
+	feet.y = player.probes.feet_y()
 	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
-		player.global_position,
-		player.global_position + Vector3(10.0, 0.0, 0.0))
+		feet, feet + Vector3(10.0, 0.0, 0.0))
 	for i in 10:
 		await step(1)
 		if player.move_manager.current_name == Move.LEDGE_WALK:
@@ -178,13 +185,17 @@ func test_running_past_below_a_ledge_line_does_not_enter() -> void:
 	TestWorld.place(_world)
 	await step(20)
 	var player: Player = _world["player"]
-	# 0.5 m above the player's feet: inside the reach volume's capsule
-	# radius (0.6 m) so the line still registers in player.interest_lines,
-	# but past LedgeWalkConfig.foot_snap_height (0.35 m), so it is
-	# catch_gate's foot check that must refuse this, not a missed overlap.
+	# 0.5 m above the player's FEET (Probes.feet_y(), not global_position --
+	# the centre already sits 0.9 m above the feet on its own): inside the
+	# reach volume's capsule radius (0.6 m) so the line still registers in
+	# player.interest_lines, but past LedgeWalkConfig.foot_snap_height
+	# (0.35 m), so it is catch_gate's foot check that must refuse this, not a
+	# missed overlap.
+	var feet: Vector3 = player.global_position
+	feet.y = player.probes.feet_y()
 	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
-		player.global_position + Vector3(-5.0, 0.5, 0.0),
-		player.global_position + Vector3(5.0, 0.5, 0.0))
+		feet + Vector3(-5.0, 0.5, 0.0),
+		feet + Vector3(5.0, 0.5, 0.0))
 	await step(5)  # lets the reach volume's Area3D register the overlap
 	assert_true(player.interest_lines.has(_line),
 		"test setup: the ledge's reach volume never registered the player")
@@ -192,3 +203,48 @@ func test_running_past_below_a_ledge_line_does_not_enter() -> void:
 		await step(1)
 	assert_eq(player.move_manager.current_name, Move.WALKING,
 		"a ledge 0.5 m overhead caught a body it should have refused")
+
+# --- yaw sign: the "-Z points at the wall" convention must be what decides,
+# not the curve's own drawing direction (Task 9 review item 6). -------------
+
+func test_reversing_a_ledge_lines_curve_does_not_flip_the_facing() -> void:
+	# _yaw_offset()'s magnitude (LedgeWalkConfig.body_yaw_offset_deg, 90) only
+	# says "turn a quarter turn off the tangent" -- which of the two
+	# perpendicular directions that lands on is decided by InterestLine.front()
+	# (the node's own -Z), NOT by which way the curve's two points happen to
+	# be ordered. Build the identical wall-facing line twice, points reversed
+	# the second time, and confirm the resulting facing is the same either way.
+	var move := LedgeWalkMove.new()
+	add_child_autofree(move)
+	move.cfg = LedgeWalkConfig.new()
+
+	var forward_line := InterestLine.new()
+	forward_line.kind = InterestLine.Kind.LEDGE_WALK
+	forward_line.curve = Curve3D.new()
+	forward_line.curve.add_point(Vector3.ZERO)
+	forward_line.curve.add_point(Vector3(4, 0, 0))
+	add_child_autofree(forward_line)
+
+	var reversed_line := InterestLine.new()
+	reversed_line.kind = InterestLine.Kind.LEDGE_WALK
+	reversed_line.curve = Curve3D.new()
+	reversed_line.curve.add_point(Vector3(4, 0, 0))
+	reversed_line.curve.add_point(Vector3.ZERO)
+	add_child_autofree(reversed_line)
+
+	move._line = forward_line
+	var tangent_forward: Vector3 = forward_line.sample(0.0)["tangent"]
+	var yaw_forward: float = LineWalkMove.yaw_of(tangent_forward) \
+		+ deg_to_rad(move._yaw_offset(tangent_forward))
+
+	move._line = reversed_line
+	var tangent_reversed: Vector3 = reversed_line.sample(0.0)["tangent"]
+	var yaw_reversed: float = LineWalkMove.yaw_of(tangent_reversed) \
+		+ deg_to_rad(move._yaw_offset(tangent_reversed))
+
+	var facing_forward := Vector3(-sin(yaw_forward), 0.0, -cos(yaw_forward))
+	var facing_reversed := Vector3(-sin(yaw_reversed), 0.0, -cos(yaw_reversed))
+	assert_almost_eq(facing_forward.x, facing_reversed.x, 0.001,
+		"reversing the curve's point order flipped which way the body faces")
+	assert_almost_eq(facing_forward.z, facing_reversed.z, 0.001,
+		"reversing the curve's point order flipped which way the body faces")

@@ -30,7 +30,9 @@ func kind() -> InterestLine.Kind:
 static func catch_gate(player: Player, line: InterestLine, snap_height: float) -> bool:
 	if not player.line_ready(line):
 		return false
-	return LineWalkMove.foot_gate_at(line, player.global_position, snap_height)
+	var feet: Vector3 = player.global_position
+	feet.y = player.probes.feet_y()
+	return LineWalkMove.foot_gate_at(line, feet, snap_height)
 
 ## The ONE random draw of the whole move.
 ##

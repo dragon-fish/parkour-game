@@ -70,6 +70,13 @@ static func yaw_of(tangent: Vector3) -> float:
 ## Whether the FEET are at the line's own height -- the extra condition every
 ## entry gate in this tier asks on top of the reach volume.
 ##
+## `body_pos` MUST already be the feet position (Probes.feet_y(), not
+## global_position): the capsule's centre sits standing_height * 0.5 above
+## the feet at every stance, and this function has no way to correct for
+## that on the caller's behalf. Passing the centre silently misses the gate
+## by that same half-height on every flush approach -- see catch_gate() in
+## BalanceMove/LedgeWalkMove for how the feet position is built.
+##
 ## InterestLine's reach_radius is 0.6 m by default, which is wide enough to
 ## catch a body running PAST a beam at ground level. Balance is a state that
 ## takes control away and cannot be walked out of sideways, so a false catch
@@ -88,7 +95,7 @@ func enter(_previous: StringName) -> void:
 	_offset_along = _line.closest_offset(player.global_position)
 	var s: Dictionary = _line.sample(_offset_along)
 	_walk_yaw = LineWalkMove.yaw_of(s["tangent"])
-	_target_yaw = _walk_yaw + deg_to_rad(_yaw_offset())
+	_target_yaw = _walk_yaw + deg_to_rad(_yaw_offset(s["tangent"]))
 	# The multiplier applies to the GroundSpeed constant, not to what was
 	# carried in: arriving fast must not survive the step onto the line.
 	player.velocity = Vector3.ZERO
@@ -111,7 +118,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	var s: Dictionary = _line.sample(_offset_along)
 	_walk_yaw = LineWalkMove.yaw_of(s["tangent"])
 	var projected := LineWalkMove.project_input(
-		input.move, _walk_yaw, deg_to_rad(_yaw_offset()))
+		input.move, _walk_yaw, deg_to_rad(_yaw_offset(s["tangent"])))
 	var speed: float = config.pawn.ground_speed * cfg.speed_modifier
 	_offset_along += projected.x * speed * delta
 	note_travel(projected.x)
@@ -169,7 +176,13 @@ func lateral_offset() -> float:
 func note_travel(_along: float) -> void:
 	pass
 
-func _yaw_offset() -> float:
+## Signed degrees applied on top of the line's own facing (yaw_of(tangent))
+## to get the body's target yaw. Base tier reads the magnitude straight off
+## the config -- BalanceMove's is 0, so the sign never matters there. A
+## subclass whose magnitude is ambiguous without more context (LEDGE_WALK:
+## which of the two directions perpendicular to the tangent points away from
+## the wall) overrides this and uses `tangent` to pick the sign.
+func _yaw_offset(_tangent: Vector3) -> float:
 	return cfg.get("body_yaw_offset_deg")
 
 ## Reads the DIAL, not a hardcoded number -- LadderConfig.fade_in_time (0.15),

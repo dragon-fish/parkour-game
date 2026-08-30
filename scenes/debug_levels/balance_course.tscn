@@ -30,6 +30,9 @@ size = Vector3(3, 0.5, 3)
 material = SubResource("Material_beam")
 size = Vector3(0.35, 0.3, 12)
 
+[sub_resource type="BoxShape3D" id="Shape_beam"]
+size = Vector3(0.35, 0.3, 12)
+
 [sub_resource type="Curve3D" id="Curve_beam"]
 _data = {
 "points": PackedVector3Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12),
@@ -55,6 +58,9 @@ size = Vector3(0.5, 4.5, 6.5)
 material = SubResource("Material_ledge")
 size = Vector3(1.0, 0.15, 6)
 
+[sub_resource type="BoxShape3D" id="Shape_ledge"]
+size = Vector3(1.0, 0.15, 6)
+
 [sub_resource type="Curve3D" id="Curve_ledge"]
 _data = {
 "points": PackedVector3Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -6, 0, 0),
@@ -72,7 +78,7 @@ size = Vector3(3, 0.5, 4)
 [node name="Arena" instance=ExtResource("1_base")]
 
 [node name="SpawnPoint" parent="." index="2"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 20, 8, 2.5)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 20, 5.9, 1)
 
 [node name="PlatformA" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 4.75, 0)
@@ -83,8 +89,11 @@ shape = SubResource("Shape_platform")
 [node name="Mesh" type="MeshInstance3D" parent="PlatformA"]
 mesh = SubResource("Mesh_platform")
 
-[node name="Beam" type="Node3D" parent="."]
+[node name="Beam" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 4.85, 7.5)
+
+[node name="Collision" type="CollisionShape3D" parent="Beam"]
+shape = SubResource("Shape_beam")
 
 [node name="Mesh" type="MeshInstance3D" parent="Beam"]
 mesh = SubResource("Mesh_beam")
@@ -122,8 +131,11 @@ shape = SubResource("Shape_wall")
 [node name="Mesh" type="MeshInstance3D" parent="Wall"]
 mesh = SubResource("Mesh_wall")
 
-[node name="Ledge" type="Node3D" parent="."]
+[node name="Ledge" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21, 3.425, 28)
+
+[node name="Collision" type="CollisionShape3D" parent="Ledge"]
+shape = SubResource("Shape_ledge")
 
 [node name="Mesh" type="MeshInstance3D" parent="Ledge"]
 mesh = SubResource("Mesh_ledge")

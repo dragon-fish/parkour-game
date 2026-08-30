@@ -154,7 +154,12 @@ func setup(cfg: MovementConfig, foot_offset: float) -> void:
 	_config = cfg
 	_foot_offset = foot_offset
 
-func _feet_y() -> float:
+## World Y of the capsule's own feet, converted here so states never have to
+## think about the capsule origin. `_foot_offset` is seeded from
+## `standing_height * 0.5` and does not change with a crouch: the capsule
+## resizes about its own feet (`set_capsule_height()`), so this stays correct
+## through every crouch/stand transition without re-deriving it.
+func feet_y() -> float:
 	return global_position.y - _foot_offset
 
 ## Points a forward ray at the given reach and fires it. Rays point along -Z,
@@ -281,7 +286,7 @@ func vault_query() -> Dictionary:
 	# met at the top of a jump and a wall when met from standing. That is not a
 	# special case, it is what the frame predicts, and it is what play confirms
 	# -- with good jump timing even a taller obstacle vaults.
-	var feet: float = _feet_y()
+	var feet: float = feet_y()
 	# 1.89 m, measured twice from two different approaches. NOT the eye -- see
 	# SpeedVaultConfig.max_edge_above_feet. A vault is a hands-on-top move, so
 	# its ceiling is hand reach, which is a little above the head.
@@ -529,8 +534,8 @@ func ledge_query() -> Dictionary:
 	# reports the same face and the first one tried succeeds.
 	for i in range(LEDGE_COLUMN_SAMPLES - 1, -1, -1):
 		var t: float = float(i) / float(LEDGE_COLUMN_SAMPLES - 1)
-		var sample_y: float = lerpf(_feet_y() + COLUMN_FLOOR_MARGIN,
-			_feet_y() + _config.grab.ledge_max_height, t)
+		var sample_y: float = lerpf(feet_y() + COLUMN_FLOOR_MARGIN,
+			feet_y() + _config.grab.ledge_max_height, t)
 		_vault_high.position.y = sample_y - global_position.y
 		_aim_forward(_vault_high, _config.grab.ledge_find_distance)
 		if not _vault_high.is_colliding():
@@ -573,7 +578,7 @@ func _ledge_from_face() -> Dictionary:
 	# correctly rejected there instead.
 	if normal != Vector3.ZERO and normal.y < _config.pawn.walkable_floor_z:
 		return _no_hit()
-	var height := edge.y - _feet_y()
+	var height := edge.y - feet_y()
 	# height <= MIN_HEIGHT_EPSILON, not just < min_wall_height: guards the
 	# same floor-noise case as vault_query() (see MIN_HEIGHT_EPSILON's
 	# declaration) before the real min_wall_height gate below it.
@@ -840,7 +845,7 @@ func predicted_landing(velocity: Vector3) -> Dictionary:
 	# From the FEET. Started at the origin instead, the arc reports a floor
 	# half a body late, which for a pad at the bottom of a shaft is the
 	# difference between clearing its lip and landing on it.
-	var at := Vector3(global_position.x, _feet_y(), global_position.z)
+	var at := Vector3(global_position.x, feet_y(), global_position.z)
 	var v := velocity
 	for i in PREDICT_SPAN:
 		v.y = maxf(v.y - pawn.gravity * PREDICT_STEP, -pawn.terminal_velocity)
@@ -993,7 +998,7 @@ func wall_ahead_query(heading: Vector3 = Vector3.ZERO) -> Dictionary:
 	# if the wall is still there up top, it is tall enough to be worth kicking
 	# up. Cheaper and more honest than measuring the wall's real height, which
 	# a raycast cannot do anyway.
-	_wall_ahead_high.position.y = _feet_y() - global_position.y + _config.wall_climb.min_wall_height
+	_wall_ahead_high.position.y = feet_y() - global_position.y + _config.wall_climb.min_wall_height
 	_aim_forward(_wall_ahead_high, reach)
 	var tall_enough: bool = _wall_ahead_high.is_colliding() \
 		and absf(_wall_ahead_high.get_collision_normal().y) < MAX_WALL_NORMAL_Y
@@ -1027,7 +1032,7 @@ func wall_tracked_query(direction: Vector3, reach: float) -> Dictionary:
 	# the wall. wall_query()'s own chest-height rays are right where they are --
 	# they decide whether there is a wall worth STARTING on, and a kerb at ankle
 	# height is not one.
-	_wall_left.position.y = _feet_y() - global_position.y + WALL_CONTACT_FOOT_MARGIN
+	_wall_left.position.y = feet_y() - global_position.y + WALL_CONTACT_FOOT_MARGIN
 	# Into the ray's own local space: the direction is given in world terms and
 	# target_position is not.
 	var local: Vector3 = _wall_left.global_transform.basis.inverse() * direction.normalized()
