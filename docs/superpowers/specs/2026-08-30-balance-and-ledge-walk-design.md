@@ -247,10 +247,30 @@ owner 已裁定那不适合这里，而且这也是平衡木动画缺口消失�
 压到很小之后，脚的位移只剩髋部带出来的那一点，视觉上就是脚扎在梁上、身子在上面
 晃。真要脚完全钉死得另开 foot IK，**不在本次范围内**。
 
-⚠️ **技术风险，必须先验证**：`HeadLook` 与这个新 modifier 会同时改同一批骨骼（走
-平衡木时照样在东张西望），两个 `SkeletonModifier3D` 都用 `set_bone_global_pose`
-时能否干净叠加未经验证。叠不了就合并进 `HeadLook`——它自己的注释已经说过「两件事
-合在一个 modifier 里是因为共享同一套减法算术」，roll 共享的正是同一套。
+### 与 HeadLook 的叠加（已裁定：写独立 modifier）
+
+`HeadLook` 与倾斜 modifier 会同时改同一批骨骼（走平衡木时照样在东张西望）。裁定
+依据是架构事实而非实测：`SkeletonModifier3D` 是**链式**的，`Skeleton3D` 按子节点
+顺序逐个调用，而 `HeadLook._apply()` 写的是 `turn * pose.basis`——**读当前 pose
+再乘**，因此对前一个 modifier 的结果天然叠加。
+
+⚠️ **代价是新 modifier 也必须读-改-写**，绝不能写绝对 pose：那会把 HeadLook 这一
+帧的成果整个抹掉。
+
+📌 裸骨架上验不出来这件事。一次性探针（`SceneTree` + 两个 `ProbeMod` 改同一根骨骼）
+跑出来两个通道都是零——没有动画驱动时 `Skeleton3D` 不跑 modifier。项目自己的
+`tests/test_arm_splay.gd` 也是读 modifier 记录的 `_applied` 字段、而不是读骨架
+pose 来验证的，同一个原因。**真正的叠加验证留给 Task 7 在挂了 body 的关卡里做**，
+判据是「转头时倾斜仍在、倾斜时转头仍在」。
+
+📌 虚方法名是 `_process_modification_with_delta(delta)`（Godot 4.7），不是
+`_process_modification()`。
+
+⚠️ **roll 轴不许用世界轴或骨骼的 -Z。** `head_look.gd` 的 `_pitch_axis()` 留了血泪
+警告：VRM 规范里角色面朝 +Z，头骨的 -Z 指向后脑，照它推出来的旋转会朝错方向，
+**而照同一个 -Z 写的校验会自洽地通过，所以这个错误躲得过每一次无头验证，只在实机
+里露馅**。倾斜轴同样要从**肩膀连线**推出来（`LeftUpperArm` / `RightUpperArm`），
+与 `_pitch_axis()` 同一手法。
 
 ### 镜头 roll
 
