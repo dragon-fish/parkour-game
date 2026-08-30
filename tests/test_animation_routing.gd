@@ -535,8 +535,16 @@ func test_the_beam_walks_rather_than_leans() -> void:
 	var animator: CharacterAnimator = await _animator_with([&"Walk", &"Idle"])
 	var player: Player = _world["player"]
 	player.move_manager.start(Move.BALANCE)
+	var beam := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	# A body actually walking the beam. Standing still on one is Idle -- the
+	# wind keeps the lean alive either way, so the move being active is not on
+	# its own a reason to play a walk cycle.
+	beam.note_travel_for_test(1.0)
 	assert_eq(String(animator._target_animation()), "Walk",
-		"the beam asked for '%s'" % String(animator._target_animation()))
+		"a beam being walked asked for '%s'" % String(animator._target_animation()))
+	beam.note_travel_for_test(0.0)
+	assert_eq(String(animator._target_animation()), "Idle",
+		"a beam being stood on asked for '%s'" % String(animator._target_animation()))
 
 func test_the_ledge_shuffles_sideways() -> void:
 	# LedgeWalkMove.note_travel() is driven directly, the same way
@@ -572,3 +580,27 @@ func test_both_fall_back_when_the_pack_is_absent() -> void:
 	player.move_manager.start(Move.LEDGE_WALK)
 	assert_eq(String(animator._target_animation()), "idle",
 		"a ledge with no Walk clips asked for '%s'" % String(animator._target_animation()))
+
+func test_a_ledge_turning_round_plays_the_packs_half_turn() -> void:
+	# Driven the same way test_the_ledge_shuffles_sideways() drives the
+	# shuffle: the turn's own state is poked, since with no InterestLine the
+	# move's physics never runs.
+	var animator: CharacterAnimator = await _animator_with(
+		[&"Turn180_L", &"Turn180_R", &"Walk_L", &"Walk_R", &"Idle"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.LEDGE_WALK)
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	assert_not_null(ledge, "no LedgeWalkMove to drive")
+	ledge._turning = true
+	ledge._turn_sign = -1.0
+	assert_eq(String(animator._target_animation()), "Turn180_R",
+		"turning right on a ledge asked for '%s'" % String(animator._target_animation()))
+	ledge._turn_sign = 1.0
+	assert_eq(String(animator._target_animation()), "Turn180_L",
+		"turning left on a ledge asked for '%s'" % String(animator._target_animation()))
+	assert_true(Player.SCRIPTED_MOVE_CLIPS.has(&"Turn180_L") and Player.SCRIPTED_MOVE_CLIPS.has(&"Turn180_R"),
+		"the turn clips are not routed onto a scripted slot")
+	ledge._turning = false
+	ledge.note_travel(1.0)
+	assert_eq(String(animator._target_animation()), "Walk_R",
+		"the shuffle did not come back once the turn was over")

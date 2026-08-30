@@ -2258,15 +2258,25 @@ func _drive_head_look() -> void:
 	# The MODEL's heading, not the body's -- the body is always looking exactly
 	# where the camera is, so measuring against it would always be zero.
 	var yaw: float = wrapf(rotation.y - _visual_yaw, -PI, PI)
-	# A move may add its own glance on top -- LedgeWalkMove turns the head the
-	# way the body is shuffling, since its shoulders are pinned across the line
-	# and cannot. Duck-typed, like every other optional per-move contribution
-	# this file reaches for, so a move opts in by having the method rather than
-	# by being named here.
+	# A move may say where the head looks INSTEAD -- LedgeWalkMove points it the
+	# way the body last travelled and holds it there, since its shoulders are
+	# pinned across the line and cannot turn. Replaces the view-following angle
+	# rather than adding to it: a head that also tracked the camera would drift
+	# off the direction it is supposed to be watching. Duck-typed, like every
+	# other optional per-move contribution this file reaches for.
 	var move = move_manager.move_for(move_manager.current_name) if move_manager != null else null
-	if move != null and move.has_method("head_yaw_bias"):
-		yaw = wrapf(yaw + move.head_yaw_bias(), -PI, PI)
+	if move != null and move.has_method("head_yaw_override"):
+		var override: float = move.head_yaw_override()
+		if not is_nan(override):
+			yaw = override
 	var pitch: float = float(camera_rig.look_debug()["pitch"])
+	# Same arrangement for the pitch: a move that has the head watching
+	# something -- LedgeWalkMove has it watching the ledge -- says so INSTEAD
+	# of the camera's pitch, and the camera's pitch is otherwise the head's.
+	if move != null and move.has_method("head_pitch_override"):
+		var pitch_override: float = move.head_pitch_override()
+		if not is_nan(pitch_override):
+			pitch = pitch_override
 	# The active move decides whether the chest may join in -- see
 	# MoveConfig.allows_spine_twist.
 	var active: MoveConfig = move_manager.current_config() if move_manager != null else null
@@ -2824,7 +2834,8 @@ func _body_has_clip(anim_player: AnimationPlayer, clip_name: StringName) -> bool
 ## same question -- "is a scripted move playing this?" -- and two lists that
 ## answer it would drift.
 const SCRIPTED_MOVE_CLIPS := [&"StepUp", &"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
-	&"SafetyVault", &"Climb_Left", &"Climb_Right", &"Climb_Idle"]
+	&"SafetyVault", &"Climb_Left", &"Climb_Right", &"Climb_Idle",
+	&"Turn180_L", &"Turn180_R"]
 
 ## How far each scripted clip lifts its own hips above rest, in metres.
 ##
@@ -3329,12 +3340,38 @@ func line_ready(line: InterestLine) -> bool:
 		return false
 	if not _lines_awaiting_exit.has(id):
 		return true
-	var at: Vector3 = line.sample(line.closest_offset(global_position))["position"]
+	var offset: float = line.closest_offset(global_position)
+	var sampled: Dictionary = line.sample(offset)
+	var at: Vector3 = sampled["position"]
 	var toward := Vector3(at.x - global_position.x, 0.0, at.z - global_position.z)
+	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
+	# STANDING ON THE LINE, the way a body that walked off a beam's or a
+	# ledge's end stands, the way back in is ALONG it, not toward its nearest
+	# point. Measured toward the nearest point, a ledge never re-caught at all:
+	# the wall pushes the capsule a few centimetres off the line, so the
+	# nearest point is always sideways, and a body walking straight back along
+	# the ledge scored zero against it -- onto a ledge with nothing under it.
+	# The beam only got away with it by standing dead on its line, where
+	# `toward` vanished and the old code said yes unconditionally, which was
+	# the other failure: standing at the end re-caught on its own.
+	var beside: Vector3 = sampled["tangent"]
+	beside.y = 0.0
+	if toward.length() < LINE_BESIDE_TOLERANCE and beside.length_squared() > 0.01:
+		var inward: Vector3 = beside.normalized() \
+			* (1.0 if offset < line.length() * 0.5 else -1.0)
+		return horizontal.dot(inward) > LINE_RELATCH_SPEED
+	# A vertical line (a ladder) has no "along" to walk back in on: pushing
+	# toward it is the whole question, as it always was.
 	if toward.length_squared() < 0.0001:
 		return true
-	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	return horizontal.dot(toward.normalized()) > LINE_RELATCH_SPEED
+
+## How far off a line a body can stand and still count as ON it for the
+## re-catch above, metres. Wider than the capsule's own radius (0.4 m) plus
+## the few centimetres a wall pushes a ledge-walker off its line; narrower
+## than BalanceConfig.fall_push_distance, so a body shoved off a beam is
+## judged beside it, not on it.
+const LINE_BESIDE_TOLERANCE := 0.5
 
 ## Spends `line`'s one passive chance: the volume will not catch this body
 ## again until it leaves and returns -- or pushes toward the line (the same

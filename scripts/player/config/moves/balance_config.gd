@@ -60,12 +60,14 @@ extends MoveConfig
 ## has nothing to do with speed.
 @export var entry_speed_influence: float = 2.5
 
-## The starting lean a body gets even at a standstill.
+## The starting lean a body gets even at a standstill -- the floor under every
+## entry, which entry_speed_influence then scales up with the speed carried in.
 ##
-## MUST STAY NON-ZERO. An inverted pendulum sitting exactly on its apex never
-## falls, and the owner measured that standing still on a beam DOES lose
-## balance. This is what denies the player that perfect apex.
-@export var base_wobble: float = 0.02
+## MUST STAY NON-ZERO, and generous enough to be felt. An inverted pendulum
+## sitting exactly on its apex never falls, and the owner measured that standing
+## still on a beam DOES lose balance; creeping onto one must not buy a free
+## crossing either. This is what denies the player both.
+@export var base_wobble: float = 0.09
 
 ## How hard the beam pushes the body about on its own, in lean units per second
 ## squared. Zero switches it off and leaves a pure inverted pendulum.
@@ -124,6 +126,22 @@ extends MoveConfig
 ## beam-width threshold gives.
 @export var beam_half_width: float = 0.45
 
+## The shove that ends the ride: how long it takes, seconds, how far sideways
+## it carries the capsule, metres, and how far DOWN it has dropped by the end.
+##
+## The ride itself leaves the capsule ON the line -- see
+## BalanceMove.lateral_offset() for why it does not drift sideways with the
+## lean. This is the one moment it does move: a short arc clear of the beam
+## and down its side, so the fall starts beside and below the beam rather than
+## from inside it. Sideways far enough to carry the capsule's own radius past
+## the edge; quick enough to read as losing your footing rather than as
+## stepping off; and dropping, because a body that only slides sideways and
+## THEN starts to fall from rest stalls in the air for a frame -- the owner's
+## word was 顿挫. See BalanceMove.lateral_offset() for the curve's shape.
+@export var fall_push_time: float = 0.3
+@export var fall_push_distance: float = 0.7
+@export var fall_push_drop: float = 0.5
+
 ## Largest camera roll the lean may reach in first person, degrees.
 ##
 ## THIS IS WHAT CameraInfluence BECAME. [ME:CONFIRMED] the CDO's
@@ -158,7 +176,11 @@ func _init() -> void:
 	# at 25.9 km/h still drops you to 8.8.
 	speed_modifier = 0.34
 	# [ME:CONFIRMED] RedoMoveTime = 0.5 -- half a second before a beam may be
-	# re-entered, so jumping off does not get you sucked straight back on.
+	# re-entered, so being thrown off does not get you sucked straight back on.
+	# ARMED ON A FALL ONLY (LineWalkMove.exit()): the original's beam has a
+	# floor under it and this one's does not, so a timer that also refused a
+	# body walking back onto the beam it had just walked off was a death, not
+	# a cooldown. The walk-off is guarded by the release latch instead.
 	redo_move_time = 0.5
 	constrain_look = true
 	# [ME:CONFIRMED] MinLookConstraint (-13000, -6000, -32768) -> pitch -71.4,

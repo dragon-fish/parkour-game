@@ -54,6 +54,15 @@ extends Resource
 ## and the visible body, so freezing the body IS what asks the head to turn.
 @export var freeze_visual_yaw: bool = false
 
+## Whether the third-person camera is pulled off the player's shoulder to
+## the centre while this move runs. Pushed to CameraRig every tick by
+## MoveManager alongside the look constraint, and eased there on
+## CameraConfig.third_person_shoulder_time, both in and back out. A move
+## whose body stands with a wall along one side wants this: LedgeWalk faces
+## the wall, and a camera out on the right shoulder is inside that wall
+## before the view has turned far to the right at all.
+@export var centre_shoulder: bool = false
+
 ## Whether the CHEST may take its share of a head turn while this move runs.
 ##
 ## TRUE ALMOST EVERYWHERE, and false is the interesting case. HeadLook splits a

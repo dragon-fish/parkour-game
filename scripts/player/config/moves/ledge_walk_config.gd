@@ -1,8 +1,8 @@
 class_name LedgeWalkConfig
 extends MoveConfig
 
-# The original's TdMove_LedgeWalk. Shuffling along a narrow ledge with your
-# back to the wall.
+# The original's TdMove_LedgeWalk. Shuffling along a narrow ledge, a hand on
+# the wall.
 #
 # THERE IS NO BALANCE HERE, and that is the whole point of the move. The CDO
 # carries none of TdMove_Balance's five pendulum fields -- no GravityInfluence,
@@ -14,10 +14,15 @@ extends MoveConfig
 # It is a LEVEL PACING TOOL rather than a movement ability: the geometry is
 # walkable anyway, and the interest point exists to force the player to slow
 # down. SpeedModifier 0.1 is the harshest in the game.
+#
+# Which way the body faces is decided by the view -- back to the wall in first
+# person, facing it in third -- see LedgeWalkMove's own header.
 
 ## How far the body is turned off the line's own tangent, degrees. 90 puts the
-## shoulders across the line -- back to the wall, shuffling sideways -- which is
-## what makes A/D the travel keys here without a single branch in LineWalkMove.
+## shoulders across the line -- shuffling sideways -- which is what makes A/D
+## the travel keys here without a single branch in LineWalkMove. The MAGNITUDE
+## only: which of the two sides across the line it lands on is
+## LedgeWalkMove._yaw_offset()'s call, from the wall and the view.
 ## [ME:CONFIRMED] the first game's LedgeWalk always faces AWAY from the wall;
 ## only Catalyst added a facing-the-wall variant.
 @export var body_yaw_offset_deg: float = 90.0
@@ -32,39 +37,58 @@ extends MoveConfig
 ## line" family's own fade dial.
 @export var fade_in_time: float = 0.15
 
-## Width, in degrees, of the arc the THIRD-PERSON camera's bearing around the
-## player is held inside, centred on the LINE's own outward normal. 160 means
-## +-80, an arc entirely on the side away from the wall.
-##
-## The camera sits opposite the view, and the view here points away from a wall
-## the back is against -- so an unclamped third-person camera sits inside that
-## wall, and the collision probe's answer to that is to haul it in against the
-## player instead.
-##
-## NOT min/max_look_constraint: that is [ME:CONFIRMED] and governs where the
-## PLAYER may LOOK. This is the owner's own call and governs where the CAMERA
-## may SIT. The original has no third person to have had an opinion.
-@export var third_person_bearing_arc_deg: float = 160.0
+## How long the body takes to turn round on the spot when the view switches
+## mid-ledge, seconds. The pack's Turn180 clip (1.67 s as authored) is fitted
+## to this window by CharacterAnimator._scripted_fit(), and no travel happens
+## for its duration. A project dial: the original never switches views.
+@export var turn_time: float = 0.5
+
+## Full width, degrees, of the yaw fan the view is held inside in THIRD
+## person -- 175 means +-87.5 either side of the body's facing. First person
+## keeps the [ME:CONFIRMED] +-54.93 of min/max_look_constraint below: that
+## number was measured through the original's eye, and an outside camera
+## looking past the body's back at the wall has room the eye never had. A
+## project dial; see LedgeWalkMove.look_yaw_half_span().
+@export var third_person_look_yaw_deg: float = 175.0
 
 ## How far the head turns toward the way the body is shuffling, in degrees,
 ## while the camera is watching from outside.
 ##
 ## THIRD PERSON ONLY. The shoulders are pinned across the line, so a shuffling
-## character otherwise stares straight out while travelling sideways, which
-## reads as being dragged. In first person the camera follows a head node by
-## position, so the same turn would slide the eye sideways for no reason the
-## player asked for.
+## character otherwise stares straight at the wall while travelling sideways,
+## which reads as being dragged. In first person the camera follows a head
+## node by position, so the same turn would slide the eye sideways for no
+## reason the player asked for.
 ##
 ## Kept well inside HeadLook's own release curve: this stacks on however far
 ## the view has already turned, and a total past a quarter turn starts easing
 ## itself out.
 @export var head_turn_deg: float = 40.0
 
-## How far the VIEW must have turned off the body's own front, in degrees,
+## Where the head's pitch is held, in degrees, while the camera is watching
+## from outside. Negative is down. The owner's call: a shuffling body watches
+## its own feet on the ledge, not wherever the camera happens to be pitched.
+##
+## THIRD PERSON ONLY, like head_turn_deg above and for the same reason -- in
+## first person the eye IS the head, and pitching it under the player would
+## pull the view off wherever they are looking.
+@export var head_pitch_deg: float = -10.0
+
+## Playback rate of the sidestep clips (Walk_L / Walk_R) while shuffling,
+## as a plain multiplier on the authored pace. Replaces the speed match
+## CharacterAnimator._drive_speed() would otherwise apply, which fits a
+## walking gait to 0.72 m/s and lands near 0.4x -- far too slow, because a
+## shuffle is not a walk: the steps are short and the cadence is not.
+## 1.0 is the clip as authored.
+@export var shuffle_clip_scale: float = 1.0
+
+## How far the VIEW must have turned off the ledge's normal, in degrees,
 ## before W/S get a look-relative assist on top of their ordinary (here,
-## null) body-relative reading -- see LedgeWalkMove._adjust_along(). Facing
-## straight out and pressing W must still do nothing, which is what the gate
-## is for.
+## null) body-relative reading -- see LedgeWalkMove._resolve_look_assist().
+## The view is wherever the camera looks: the eye in first person, the
+## camera behind the view in third. Looking straight out from the wall, or
+## straight at it, and pressing W must still do nothing, which is what the
+## gate is for.
 @export var look_assist_angle_deg: float = 45.0
 
 func _init() -> void:
@@ -84,16 +108,21 @@ func _init() -> void:
 	# [ME:CONFIRMED] the CDO expresses the same intent through
 	# bDisableFaceRotation + bDisableControllerFacingPawnYawRotation.
 	absolute_yaw_constraint = true
-	# The SAME line refuses a re-catch for this long after release. Without it
-	# the cooldown is MoveConfig's neutral zero, and walking off an end returns
-	# WALKING only for the next grounded tick's catch_gate() to pass again --
-	# the release latch does not save it either, since the direction that
-	# walked the body off the end is still held and that satisfies the latch's
-	# own push-toward bypass. A project dial: TdMove_LedgeWalk carries no
-	# RedoMoveTime, so there is nothing confirmed to copy.
-	redo_move_time = 0.4
+	# NO TIMED COOLDOWN, and it is not MoveConfig's neutral default by
+	# accident: TdMove_LedgeWalk carries no RedoMoveTime, and the one this
+	# move briefly had was lethal -- turn round inside it after walking off an
+	# end and the next step lands on a ledge that refuses you, over a mesh
+	# with no collider. Walking off an end is guarded by the release latch
+	# alone (Player.line_ready()): the line re-catches when the body walks
+	# back IN along it, and neither standing at the end nor walking on away
+	# from it counts. LineWalkMove.exit() would only arm this on a fall, and a
+	# ledge has no fall.
+	redo_move_time = 0.0
 	# The body must not swivel to follow the view: the shoulders are square to
 	# the wall and a hand is on it. [ME:CONFIRMED] bDisableFaceRotation.
 	freeze_visual_yaw = true
 	# [ME:CONFIRMED] MG_OneHandBusy -- no spare limbs to spin on.
 	allows_turn = false
+	# The wall is along one side of the body for the whole walk; a shoulder
+	# camera on that side is in it. See MoveConfig.centre_shoulder.
+	centre_shoulder = true

@@ -286,13 +286,11 @@ func test_reversing_a_ledge_lines_curve_does_not_flip_the_facing() -> void:
 	assert_almost_eq(facing_forward.z, facing_reversed.z, 0.001,
 		"reversing the curve's point order flipped which way the body faces")
 
-# --- A/D: screen-relative in third person, latched on press -----------------
+# --- A/D are the body's own left and right, in both views ------------------
 #
-# The camera arc clamp keeps a third-person ledge view within the body's own
-# front hemisphere the whole time (test_a_bearing_behind_the_body_clamps_...
-# in test_camera_constraints.gd), and CameraRig never re-aims the camera at
-# the body, so from that side raw body-relative D reads backwards on screen.
-# This flips it -- and the flip must survive the camera changing mid-press.
+# The third-person camera sits behind the view, and the view is held within
+# the fan centred on the body's facing, so the body's right is screen right
+# whichever way the body faces. Nothing flips.
 
 func _enter_ledge_walk(player: Player) -> void:
 	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
@@ -306,53 +304,8 @@ func _enter_ledge_walk(player: Player) -> void:
 		"test setup: never entered the ledge walk")
 	await step(20)  # past the magnet fade
 
-func test_third_person_d_reads_as_the_bodys_left_and_holds_through_a_camera_change() -> void:
-	_world = TestWorld.build(get_tree(), MovementConfig.new())
-	await step(1)
-	TestWorld.place(_world)
-	await step(20)
-	var player: Player = _world["player"]
-	player.camera_rig.third_person = true
-	await _enter_ledge_walk(player)
-	await step(20)  # lets the arc clamp settle the camera into the front arc
-
-	var right: Vector3 = player.global_transform.basis.x
-	var before: Vector3 = player.global_position
-	_world["input"].state.move = Vector2(1.0, 0.0)  # D
-	await step(10)
-	var displacement: Vector3 = player.global_position - before
-	assert_lt(displacement.dot(right), 0.0,
-		"D on a third-person ledge did not read as the body's own left")
-	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
-	assert_eq(ledge.shuffle_direction(), -1,
-		"the mirrored travel was not reported to the animator as a step to the body's left")
-
-	# Held the same key throughout: drop out of third person mid-press. A live
-	# re-resolve would flip the travel direction straight back to normal; the
-	# latch must not.
-	player.camera_rig.third_person = false
-	var mid: Vector3 = player.global_position
-	await step(10)
-	var still_flipped: Vector3 = player.global_position - mid
-	assert_lt(still_flipped.dot(right), 0.0,
-		"turning the camera mid-press changed which way D travelled")
-
-	# Release and press again: a fresh press re-resolves against the new
-	# camera state (now first person, so unflipped).
-	_world["input"].state.move = Vector2.ZERO
-	await step(5)
-	var before_2: Vector3 = player.global_position
-	_world["input"].state.move = Vector2(1.0, 0.0)
-	await step(10)
-	var after_release: Vector3 = player.global_position - before_2
-	assert_gt(after_release.dot(right), 0.0,
-		"a fresh press did not re-resolve against the camera state at the new press")
-
 func test_first_person_d_is_never_mirrored() -> void:
-	# No separate camera position exists in first person -- the eye IS the
-	# view -- so there is nothing for the arc clamp to put in front, and D
-	# must keep reading as the body's own right exactly as project_input()
-	# returns it.
+	# D reads as the body's own right exactly as project_input() returns it.
 	_world = TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(_world)
@@ -376,11 +329,16 @@ func test_facing_straight_out_and_holding_w_does_nothing() -> void:
 	await step(20)
 	var player: Player = _world["player"]
 	await _enter_ledge_walk(player)
+	# Actually facing out. The catch leaves the view wherever the approach
+	# had it and lets the look fan ease it round, so "straight out" has to be
+	# set, not assumed.
+	_turn_view(player, 0.0)
+	await step(1)
 	var before: Vector3 = player.global_position
 	_world["input"].state.move = Vector2(0.0, 1.0)  # W
 	await step(10)
 	assert_almost_eq(player.global_position.distance_to(before), 0.0, 0.01,
-		"W moved the body before the view ever turned off the body's own facing")
+		"W moved the body before the view ever turned off the ledge's normal")
 
 func test_holding_w_with_the_view_turned_past_the_threshold_carries_the_body() -> void:
 	# The owner's own scenario: a third-person player holds W and steers with
@@ -518,3 +476,377 @@ func test_jump_is_refused_on_a_beam() -> void:
 	await step(5)
 	assert_eq(player.move_manager.current_name, Move.BALANCE,
 		"jump launched a body that has no footing to launch from")
+
+# --- a ledge the capsule is wider than ---------------------------------------
+#
+# The capsule's radius is 0.4 m; the debug course's ledge puts its wall 0.34 m
+# from the line, and a level author will do the same wherever a ledge is
+# narrow. The wall must not eat the step -- see
+# LineWalkMove._slide_along_geometry() for what it cost when it did.
+
+## A 10 m ledge line running +X from 1.5 m behind the player, with a wall
+## along its -Z side (the unrotated line's own front) whose face sits
+## `wall_gap` from the line. The body faces +Z on it and D walks it toward -X,
+## which is the line's start, 1.5 m away.
+## `at_feet` puts the line 5 cm above the floor instead of at the capsule's
+## centre, so walking off an end is a step onto the floor rather than a drop.
+func _enter_ledge_walk_beside_a_wall(player: Player, wall_gap: float, at_feet: bool = false) -> void:
+	var origin: Vector3 = player.global_position
+	var line_y: float = origin.y
+	if at_feet:
+		line_y = origin.y - (player.standing_height() * 0.5 - 0.05)
+	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
+		Vector3(origin.x - 1.5, line_y, origin.z), Vector3(origin.x + 8.5, line_y, origin.z))
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(14.0, 6.0, 1.0)
+	shape.shape = box
+	wall.add_child(shape)
+	add_child_autofree(wall)
+	wall.global_position = origin + Vector3(3.5, 1.0, -(wall_gap + 0.5))
+	await step(5)
+	player.move_manager.start(Move.LEDGE_WALK)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"test setup: never entered the ledge walk")
+	await step(20)  # past the magnet fade
+
+func test_a_ledge_walked_against_a_wall_is_left_at_the_lines_end() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk_beside_a_wall(player, 0.34)
+	var end: Vector3 = _line.sample(0.0)["position"]
+	_world["input"].state.move = Vector2(1.0, 0.0)  # D, toward the line's start
+	var ticks: int = 0
+	while player.move_manager.current_name == Move.LEDGE_WALK and ticks < 400:
+		await step(1)
+		ticks += 1
+	assert_eq(player.move_manager.current_name, Move.WALKING,
+		"the ledge was never walked off its end")
+	assert_almost_eq(player.global_position.x, end.x, 0.05,
+		"the move ended with the body %.2f m short of the line's end"
+			% absf(player.global_position.x - end.x))
+
+func test_a_body_against_a_wall_stops_when_the_keys_are_released() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk_beside_a_wall(player, 0.34)
+	_world["input"].state.move = Vector2(-1.0, 0.0)  # A, toward the long end
+	await step(30)
+	_world["input"].state.move = Vector2.ZERO
+	await step(1)
+	var released_at: Vector3 = player.global_position
+	await step(20)
+	assert_almost_eq(player.global_position.distance_to(released_at), 0.0, 0.005,
+		"the body kept sliding %.3f m after every key was released"
+			% player.global_position.distance_to(released_at))
+
+## Bearing of the third-person camera round the line's outward normal (+Z
+func _camera_bearing(player: Player) -> float:
+	var to_camera: Vector3 = player.camera_rig.camera.global_transform.origin \
+		- player.global_position
+	to_camera.y = 0.0
+	return rad_to_deg(Vector3(0.0, 0.0, 1.0).signed_angle_to(to_camera.normalized(), Vector3.UP))
+
+## Points the view so the ORDINARY third-person camera, which sits opposite
+func _aim_camera_at_bearing(player: Player, bearing_deg: float) -> void:
+	var camera_dir: Vector3 = Vector3(0.0, 0.0, 1.0).rotated(Vector3.UP, deg_to_rad(bearing_deg))
+	var forward: Vector3 = -camera_dir
+	player.rotation.y = atan2(-forward.x, -forward.z)
+
+func test_the_head_pitch_is_the_ledges_own_in_third_person_only() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	await _enter_ledge_walk(player)
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	assert_almost_eq(ledge.head_pitch_override(), deg_to_rad(ledge.cfg.head_pitch_deg), 0.001,
+		"in third person the head's pitch is not the ledge's own dial")
+	player.camera_rig.third_person = false
+	assert_true(is_nan(ledge.head_pitch_override()),
+		"in first person the ledge must leave the head's pitch to the eye")
+
+# --- walking off an end and straight back in ---------------------------------
+#
+# The owner's report: walk a ledge end to end, leave, turn round, walk back
+# in -- and fall straight through. Two guards were refusing the re-catch: a
+# timed cooldown, and a release latch that measured "pushing toward the line"
+# against its nearest point, which for a body standing beside a ledge is
+# always sideways. See Player.line_ready() and LineWalkMove.exit().
+
+func test_walking_off_a_ledge_end_and_straight_back_in_re_catches() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk_beside_a_wall(player, 0.34, true)
+	_world["input"].state.move = Vector2(1.0, 0.0)  # D, toward the near end
+	var ticks: int = 0
+	while player.move_manager.current_name == Move.LEDGE_WALK and ticks < 400:
+		await step(1)
+		ticks += 1
+	assert_eq(player.move_manager.current_name, Move.WALKING,
+		"test setup: the ledge was never walked off its end")
+	# Straight back, with no pause at all -- the case a timer refuses.
+	_world["input"].state.move = Vector2(-1.0, 0.0)  # A, back in
+	var caught: bool = false
+	for i in 60:
+		await step(1)
+		if player.move_manager.current_name == Move.LEDGE_WALK:
+			caught = true
+			break
+	assert_true(caught, "walking straight back onto the ledge was refused")
+	# ...and it stays caught: not a flutter.
+	await step(10)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"the re-catch let go again")
+
+# --- which way the body faces is the view's call -----------------------------
+#
+# First person backs onto the wall; third person faces it; a view change
+# mid-ledge turns the body round in place over LedgeWalkConfig.turn_time.
+# See LedgeWalkMove's own header.
+
+## Whether the visible model faces the line's wall (its own -Z).
+func _model_faces_wall(player: Player) -> bool:
+	var yaw: float = player.visual_yaw()
+	var facing := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	return facing.dot(_line.front()) > 0.5
+
+func test_first_person_backs_onto_the_wall() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk(player)
+	assert_false(_model_faces_wall(player),
+		"in first person the body must have its back to the wall")
+
+func test_third_person_faces_the_wall() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	await _enter_ledge_walk(player)
+	assert_true(_model_faces_wall(player),
+		"in third person the body must face the wall")
+
+func test_switching_to_first_person_mid_ledge_turns_the_body_round() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	await _enter_ledge_walk(player)
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	_world["input"].state.move = Vector2(1.0, 0.0)  # D, and held throughout
+	await step(10)
+
+	player.camera_rig.third_person = false
+	await step(2)
+	assert_true(ledge.is_turning(), "switching the view did not start a turn")
+	assert_almost_eq(ledge.scripted_duration(), ledge.cfg.turn_time, 0.001,
+		"the turn did not offer its clip the window to fit")
+	assert_true(String(ledge.turn_clip()).begins_with("Turn180_"),
+		"the turn did not ask for the pack's half turn")
+	# The feet are busy: no travel while turning, however hard D is held.
+	var mid: Vector3 = player.global_position
+	await step(5)
+	assert_almost_eq(player.global_position.distance_to(mid), 0.0, 0.001,
+		"the body kept shuffling while turning round")
+
+	await step(int(ledge.cfg.turn_time * 60.0) + 5)
+	assert_false(ledge.is_turning(), "the turn never ended")
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"turning round left the ledge")
+	assert_false(_model_faces_wall(player),
+		"after switching to first person the body still faces the wall")
+	# ...and the shuffle resumes on the same held key.
+	var after: Vector3 = player.global_position
+	await step(15)
+	assert_gt(player.global_position.distance_to(after), 0.05,
+		"travel did not resume once the turn was done")
+
+func test_switching_to_third_person_mid_ledge_turns_the_body_to_face_the_wall() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk(player)
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	player.camera_rig.third_person = true
+	await step(int(ledge.cfg.turn_time * 60.0) + 8)
+	assert_false(ledge.is_turning(), "the turn never ended")
+	assert_true(_model_faces_wall(player),
+		"after switching to third person the body still has its back to the wall")
+
+func test_the_turn_goes_toward_the_side_the_view_is_on() -> void:
+	# Looking left when the view switches, the body turns left; looking
+	# right, right. The owner: a body that always turned the same way looked
+	# wrong half the time.
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk(player)  # first person, back to the wall
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+
+	_turn_view(player, 30.0)  # left of the body's facing
+	await step(1)
+	player.camera_rig.third_person = true
+	await step(2)
+	assert_true(ledge.is_turning(), "test setup: no turn began")
+	assert_eq(String(ledge.turn_clip()), "Turn180_L",
+		"looking left, the body turned the other way (%s)" % String(ledge.turn_clip()))
+	await step(int(ledge.cfg.turn_time * 60.0) + 8)
+	assert_false(ledge.is_turning(), "the turn never ended")
+
+	_turn_view(player, -30.0)  # right of the NEW facing
+	await step(1)
+	player.camera_rig.third_person = false
+	await step(2)
+	assert_true(ledge.is_turning(), "test setup: the second turn never began")
+	assert_eq(String(ledge.turn_clip()), "Turn180_R",
+		"looking right, the body turned the other way (%s)" % String(ledge.turn_clip()))
+
+func test_the_head_keeps_its_world_direction_through_a_turn() -> void:
+	# A step to the body's right becomes a step to its left once it has
+	# turned round; the direction the head watches is a direction in the
+	# world, and must not flip with the body.
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	await _enter_ledge_walk(player)
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	_world["input"].state.move = Vector2(1.0, 0.0)  # D
+	await step(10)
+	_world["input"].state.move = Vector2.ZERO
+	await step(2)
+	var before: int = ledge._last_shuffle
+	assert_ne(before, 0, "test setup: the body never travelled")
+	player.camera_rig.third_person = false
+	await step(2)
+	assert_eq(ledge._last_shuffle, -before,
+		"turning round did not carry the watched direction into the new body frame")
+
+func test_third_person_looks_through_its_own_wider_fan() -> void:
+	# The confirmed +-54.93 was measured through the original's eye; an
+	# outside camera gets LedgeWalkConfig.third_person_look_yaw_deg instead,
+	# and switching views swaps the fan on the spot.
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk(player)
+	var rig: CameraRig = player.camera_rig
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	assert_almost_eq(rig._look_max.y, ledge.cfg.max_look_constraint.y, 0.001,
+		"first person is not looking through the confirmed fan")
+	player.camera_rig.third_person = true
+	await step(2)
+	assert_almost_eq(rig._look_max.y, deg_to_rad(ledge.cfg.third_person_look_yaw_deg) * 0.5, 0.001,
+		"third person is not looking through its own fan")
+	assert_almost_eq(rig._look_min.y, -rig._look_max.y, 0.001, "the third-person fan is lopsided")
+
+func test_the_shoulder_slides_to_the_centre_on_the_ledge_and_back_out_after() -> void:
+	# Facing the wall with the camera out on the wall-side shoulder puts the
+	# camera in the wall before the view has turned far at all. The ledge
+	# asks for the centre (MoveConfig.centre_shoulder) and the rig slides
+	# there on its own shoulder-cycle ease -- and slides back out on leaving.
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	await step(20)
+	var rig: CameraRig = player.camera_rig
+	var out: float = rig._shoulder_across
+	assert_gt(absf(out), 0.1, "test setup: no shoulder offset to centre")
+	var feet: Vector3 = player.global_position \
+		- Vector3.UP * (player.standing_height() * 0.5 - 0.05)
+	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
+		feet - Vector3(8.5, 0.0, 0.0), feet + Vector3(1.5, 0.0, 0.0))
+	await step(5)
+	player.move_manager.start(Move.LEDGE_WALK)
+	await step(1)
+	# Eased, not cut: somewhere strictly between where it was and the centre.
+	assert_gt(absf(rig._shoulder_across), 0.0,
+		"the shoulder cut to the centre on the tick the ledge was caught")
+	assert_lt(absf(rig._shoulder_across), absf(out),
+		"the shoulder did not start sliding to the centre")
+	await step(int(player.config.camera.third_person_shoulder_time * 60.0) + 10)
+	assert_almost_eq(rig._shoulder_across, 0.0, 0.01,
+		"the shoulder never reached the centre on the ledge")
+	# Off the far end and onto the floor: the shoulder comes back.
+	_world["input"].state.move = Vector2(1.0, 0.0)  # D: facing the wall, the body's right is +X
+	var ticks: int = 0
+	while player.move_manager.current_name == Move.LEDGE_WALK and ticks < 400:
+		await step(1)
+		ticks += 1
+	assert_ne(player.move_manager.current_name, Move.LEDGE_WALK,
+		"test setup: the ledge was never walked off")
+	_world["input"].state.move = Vector2.ZERO
+	await step(int(player.config.camera.third_person_shoulder_time * 60.0) + 10)
+	assert_almost_eq(absf(rig._shoulder_across), absf(out), 0.01,
+		"leaving the ledge did not hand the shoulder back")
+
+func test_a_key_held_through_leaving_one_catch_is_read_afresh_at_the_next() -> void:
+	# The owner's report: walk off a ledge's end with W held, turn round, walk
+	# back in still holding it -- caught, ejected on the first tick, caught
+	# again two ticks later, for as long as the key stays down. The W assist
+	# is latched on press, and the press that began on the previous ledge
+	# had kept the sign that ledge resolved.
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk_beside_a_wall(player, 0.34, true)  # first person, near end 1.5 m to -X
+	# View turned right of the facing (+Z): right is -X, along the line, so W
+	# walks the body toward the near end and off it.
+	_turn_view(player, -50.0)
+	await step(1)
+	_world["input"].state.move = Vector2(0.0, 1.0)  # W, and held throughout
+	var ticks: int = 0
+	while player.move_manager.current_name == Move.LEDGE_WALK and ticks < 400:
+		await step(1)
+		ticks += 1
+	assert_eq(player.move_manager.current_name, Move.WALKING,
+		"test setup: W never walked the body off the far end")
+	# Turn round to face back along the ledge and keep walking.
+	player.rotation.y = LineWalkMove.yaw_of(Vector3(1.0, 0.0, 0.0))
+	var caught_at: int = -1
+	for i in 60:
+		await step(1)
+		if player.move_manager.current_name == Move.LEDGE_WALK:
+			caught_at = i
+			break
+	assert_true(caught_at >= 0, "test setup: walking back in never re-caught the ledge")
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	var offset_in: float = ledge.line_offset()
+	await step(20)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"the re-catch let go again: the held key was read with the previous ledge's sign")
+	assert_gt(ledge.line_offset(), offset_in + 0.05,
+		"W did not carry the body back in along the ledge after the re-catch")

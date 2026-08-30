@@ -1,16 +1,34 @@
 class_name LedgeWalkMove
 extends LineWalkMove
 
-# The original's TdMove_LedgeWalk: shuffling a narrow ledge with your back to
-# the wall at a tenth of walking speed.
+# The original's TdMove_LedgeWalk: shuffling a narrow ledge at a tenth of
+# walking speed, a hand on the wall.
 #
 # IT IS THIS SHORT ON PURPOSE. The CDO carries no balance fields at all, so
 # there is nothing to fall off and nothing to correct -- every difference from
 # BalanceMove is declared in LedgeWalkConfig rather than written here. See that
 # file's own header.
+#
+# TWO FACINGS, AND THE VIEW DECIDES. [ME:CONFIRMED] the first game's LedgeWalk
+# always faces AWAY from the wall; only Catalyst added the facing-the-wall
+# variant. This project uses both, the owner's call: FIRST PERSON backs onto
+# the wall -- an eye a hand's length from a wall, facing it, is unplayable --
+# and THIRD PERSON faces it. A third-person player walks up to a ledge looking
+# at the wall, and a model pinned with its back to that wall turned round on
+# the spot the moment it was caught. Facing the wall also puts the ordinary
+# third-person camera, which sits behind the view, on the open side of the
+# ledge by itself: nothing has to hold it out of the wall, orbit it round the
+# body or re-aim it, and every mechanism that once did exactly that is gone
+# from here for good reason. Switching views mid-ledge turns the body round in
+# place -- see _begin_turn().
 
 func kind() -> InterestLine.Kind:
 	return InterestLine.Kind.LEDGE_WALK
+
+## Which way the body stands on this ledge: facing the wall (third person)
+## or with its back to it (first person). Chosen at the catch and re-chosen
+## by a turn whenever the view changes.
+var _faces_wall: bool = false
 
 ## Which branch _yaw_offset() picked THIS tick: +1 when the body's right
 ## coincides with +tangent (magnitude landed on +90), -1 when it landed on
@@ -23,18 +41,19 @@ var _facing_sign: float = 1.0
 ## to the tangent that lands on depends on which way the curve's points were
 ## drawn, and offset_input()/yaw_of()'s shared convention (see their own
 ## notes) makes +90 land on -normal_at(tangent) and -90 on +normal_at(tangent).
-## The authored convention that is SUPPOSED to decide is the node's own -Z
-## pointing at the wall (InterestLine.front()) -- so pick whichever sign
-## faces the body away from that, instead of trusting the curve's own
-## direction to happen to agree with it. Without this, reversing a level
-## author's two curve points silently turns the walk to face the wall.
+## The authored convention that decides is the node's own -Z pointing at the
+## wall (InterestLine.front()): the sign is picked to face the body away from
+## that, or toward it when _faces_wall says so, instead of trusting the
+## curve's own direction to happen to agree. Without this, reversing a level
+## author's two curve points silently turns the walk round.
 func _yaw_offset(tangent: Vector3) -> float:
 	var magnitude: float = cfg.get("body_yaw_offset_deg")
 	var normal := Vector3(-tangent.z, 0.0, tangent.x)
 	var wall: Vector3 = _line.front()
 	# +magnitude faces -normal_at(tangent); that faces away from the wall
 	# exactly when normal itself points TOWARD the wall (normal.dot(wall) > 0).
-	var signed: float = magnitude if normal.dot(wall) > 0.0 else -magnitude
+	var away: float = magnitude if normal.dot(wall) > 0.0 else -magnitude
+	var signed: float = -away if _faces_wall else away
 	_facing_sign = signf(signed)
 	return signed
 
@@ -63,7 +82,8 @@ func shuffle_direction() -> int:
 ## before note_travel(), see LineWalkMove.physics_update()), converts to the
 ## body's frame before the sign reaches CharacterAnimator. Skipping this
 ## mirrors the sidestep clip on whichever ledges a level author's curve point
-## order happens to make _yaw_offset() pick -90 for.
+## order happens to make _yaw_offset() pick -90 for -- and on every ledge
+## walked facing the wall.
 ##
 ## Deadzoned so a body that has stopped, or is only correcting a fraction of a
 ## metre near the deadzone in LineWalkMove.physics_update(), does not flicker
@@ -72,79 +92,33 @@ func shuffle_direction() -> int:
 func note_travel(along: float) -> void:
 	var lateral: float = along * _facing_sign
 	_shuffle_dir = int(signf(lateral)) if absf(lateral) > 0.1 else 0
+	if _shuffle_dir != 0:
+		_last_shuffle = _shuffle_dir
 
-# --- A/D: screen-relative, latched on press -----------------------------------
-#
-# LedgeWalkConfig's bearing arc keeps third person watching from the front
-# more or less the whole time, so from that side a body-relative D (the body's
-# own right, which is what project_input() already returns and is all
-# BalanceMove ever wants) reads backwards on screen the way it never did
-# watched from behind.
-#
-# NOT a live angle check -- the owner rejected that: a camera hovering near
-# the switch-over point would make A/D flutter. The meaning is resolved once,
-# the instant a lateral key goes down, and held until release; turning the
-# camera mid-press changes nothing. This is also why no hysteresis dial is
-# needed -- the latch already removes the flutter a live threshold would need
-# one to fix.
-
-## True while a lateral key is being held, so a fresh press (0 -> nonzero) can
-## be told apart from a continued hold.
-var _lateral_held: bool = false
-## +1: D means the body's own right, project_input()'s own reading, unchanged.
-## -1: flipped. Resolved once per press by _resolve_lateral_flip().
-var _lateral_flip: float = 1.0
+## The last direction the body actually travelled, HELD after the key is
+## released -- unlike _shuffle_dir, which falls back to 0 the moment the input
+## does. Where the head keeps looking; see head_yaw_override().
+var _last_shuffle: int = 0
 
 func _adjust_along(along: float, input: MoveInput) -> float:
-	_update_lateral_latch(input)
 	_update_look_assist_latch(input)
+	# NOTHING TRAVELS WHILE THE BODY IS TURNING ROUND. The feet are busy.
+	if _turning:
+		return 0.0
 	var assist: float = _ws_assist_sign * input.move.y if _ws_assist_engaged else 0.0
-	return along * _lateral_flip + assist
+	return along + assist
 
-func _update_lateral_latch(input: MoveInput) -> void:
-	var held: bool = absf(input.move.x) > 0.0001
-	if held and not _lateral_held:
-		_lateral_flip = _resolve_lateral_flip()
-	elif not held:
-		_lateral_flip = 1.0
-	_lateral_held = held
-
-## Resolved from where the third-person camera actually sits, not merely from
-## being in third person: LedgeWalkConfig's own bearing arc keeps it across the
-## body's front for the whole time this move owns the view, so any third-person
-## framing here reads flipped. First person has no separate camera position at
-## all -- the eye IS the view -- so there is nothing to flip.
-func _resolve_lateral_flip() -> float:
-	if player.camera_rig == null or player.camera_rig.camera == null \
-			or not player.camera_rig.in_third_person():
-		return 1.0
-	var to_camera: Vector3 = player.camera_rig.camera.global_transform.origin \
-		- player.global_position
-	to_camera.y = 0.0
-	if to_camera.length_squared() < 0.0001:
-		return 1.0
-	return -1.0 if to_camera.normalized().dot(_outward()) > 0.0 else 1.0
-
-## The direction the body faces on this ledge: away from the wall, which is the
-## line's own -Z flattened and negated.
-##
-## FIXED IN THE WORLD, and that is why every reference in this file comes from
-## here. The capsule's yaw turns with the view the whole time this move runs,
-## and the visible model is not bound to the capsule at all -- a reference read
-## off either would swing around with the very view these checks exist to be
-## independent of.
-func _outward() -> Vector3:
-	return -_line.front()
-
-# --- W/S: camera-assisted, latched the same way -------------------------------
+# --- W/S: camera-assisted, latched on press ----------------------------------
 #
 # Owner: looking well off the ledge and holding W should carry a body along
 # it the way A/D already do, so a third-person player can steer with the
-# camera instead of the keyboard. Same latch shape as A/D above and for the
-# same reason: turning the view while W is held must not make the travel
-# direction jump mid-stride.
+# camera instead of the keyboard. Latched on press: turning the view while W
+# is held must not make the travel direction jump mid-stride. NOT a live
+# angle check -- a camera hovering near the switch-over point would make it
+# flutter -- and that latch is also why no hysteresis dial is needed.
 
-## Same shape as _lateral_held, for W/S.
+## True while W/S is being held, so a fresh press (0 -> nonzero) can be told
+## apart from a continued hold.
 var _ws_held: bool = false
 ## Whether this press engaged the assist at all, and which way along the
 ## CURRENT tangent it drives -- both frozen at the moment the key went down.
@@ -159,75 +133,211 @@ func _update_look_assist_latch(input: MoveInput) -> void:
 		_ws_assist_engaged = false
 	_ws_held = held
 
-## Gated on how far the VIEW has turned off the body's own FROZEN facing
-## (Player.visual_yaw() -- what the player actually sees the model doing, NOT
-## _walk_yaw, which drifts along a curved line and would gate on a direction
-## the player cannot see). Below the threshold this press never engages,
-## however far the view turns later -- resolved once, like the A/D flip
-## above, and for the same reason.
+## Gated on how far the VIEW has turned off the ledge's own normal, either way
+## along the line. Below the threshold this press never engages, however far
+## the view turns later -- resolved once, for the reason above.
 ##
-## The SIGN, once engaged, comes from the CURRENT tangent (_walk_yaw) instead:
-## that is the direction _offset_along actually advances in, and a reading
-## taken off the frozen facing would push travel a fixed +-90 degrees away
-## from where the line is really heading.
+## THE VIEW IS WHEREVER THE CAMERA LOOKS, in both views. In first person the
+## camera is the eye, so this is the body's own yaw. In third person the
+## camera sits behind the view, looking past the body's back at the wall, and
+## the rule is the ordinary third-person one: W goes where the camera is
+## looking, projected onto the line. A camera looking straight at the wall
+## sends W nowhere; one looking along the ledge walks the body that way.
+##
+## Measured against the normal AXIS rather than against either direction
+## along it, so the same dial reads the same with the body facing the wall or
+## backing onto it: 50 degrees off the normal puts sin(50) of the view along
+## the tangent either way, and either way it engages.
+##
+## The SIGN, once engaged, comes from the CURRENT tangent (_walk_yaw): that is
+## the direction _offset_along actually advances in, and a reading taken off
+## the frozen facing would push travel a fixed +-90 degrees away from where
+## the line is really heading.
 func _resolve_look_assist() -> void:
-	# THE BODY'S OWN FACING IS THE VIEW HERE. freeze_visual_yaw holds the
-	# visible model still, but the collision body still yaws with the view, so
-	# this is where the view's heading lives.
-	#
-	# DO NOT read the camera node instead. It carries the bearing-arc
-	# correction, which aims it back at the player rather than along the view,
-	# so gating on it would measure where the camera ended up looking instead of
-	# where the player is looking.
-	var view_forward: Vector3 = -player.global_transform.basis.z
-	view_forward.y = 0.0
+	var view_forward: Vector3 = _view_forward()
 	if view_forward.length_squared() < 0.0001:
 		_ws_assist_engaged = false
 		return
-	view_forward = view_forward.normalized()
-	var deviation: float = _outward().signed_angle_to(view_forward, Vector3.UP)
-	if absf(deviation) <= deg_to_rad(cfg.get("look_assist_angle_deg")):
+	var tangent := Vector3(-sin(_walk_yaw), 0.0, -cos(_walk_yaw))
+	var along: float = view_forward.dot(tangent)
+	if absf(along) <= sin(deg_to_rad(cfg.get("look_assist_angle_deg"))):
 		_ws_assist_engaged = false
 		return
-	var tangent := Vector3(-sin(_walk_yaw), 0.0, -cos(_walk_yaw))
-	_ws_assist_sign = signf(view_forward.dot(tangent))
-	_ws_assist_engaged = _ws_assist_sign != 0.0
+	_ws_assist_sign = signf(along)
+	_ws_assist_engaged = true
 
-# --- the head glances the way the body is going -------------------------------
+## The camera's own forward, flattened and unit length, or zero when there is
+## no direction to read. Falls back to the body's yaw without a camera node --
+## the same fallback LadderMove._faces_line() makes.
+func _view_forward() -> Vector3:
+	var forward: Vector3
+	if player.camera_rig != null and player.camera_rig.camera != null:
+		forward = -player.camera_rig.camera.global_transform.basis.z
+	else:
+		forward = -player.global_transform.basis.z
+	forward.y = 0.0
+	if forward.length_squared() < 0.0001:
+		return Vector3.ZERO
+	return forward.normalized()
 
-## Extra head yaw, radians, on top of however far the view has turned. Read by
-## Player._drive_head_look() by duck-typing, the same way it reaches every other
-## optional per-move contribution.
-##
-## THIRD PERSON ONLY, and zero whenever the body is not actually travelling.
-## The shoulders are pinned across the line here, so a shuffling character
-## otherwise stares straight out while moving sideways. In first person the
-## camera follows a head node by POSITION, so the same turn would slide the eye
-## sideways without the player having asked for it.
-##
-## NEGATED against shuffle_direction(): that reports +1 for a step to the body's
-## own right, and a yaw measured as "view minus model facing" counts positive to
-## the LEFT. HeadLook eases the value it is handed, so the discrete -1/0/+1 this
-## rides on does not reach the neck as a snap.
-func head_yaw_bias() -> float:
-	if player.camera_rig == null or not player.camera_rig.in_third_person():
-		return 0.0
-	return -float(_shuffle_dir) * deg_to_rad(cfg.get("head_turn_deg"))
+# --- the facing follows the view -----------------------------------------------
 
-# --- the third-person camera is held across the body's front ------------------
+func enter(previous: StringName) -> void:
+	# BEFORE super.enter(): that is where _target_yaw is built, through
+	# _yaw_offset() above, which reads this.
+	_faces_wall = _wants_to_face_wall()
+	_turning = false
+	# THE LATCHES START OVER AT EVERY CATCH. They are resolved on a fresh
+	# press, and a key held straight through leaving one ledge and catching
+	# the next is a fresh press as far as that ledge is concerned: left
+	# unreset, W kept the SIGN it had on the previous ledge, which on the way
+	# back in pointed off the end -- caught, ejected on the first tick,
+	# caught again two ticks later for as long as the key stayed down.
+	_ws_held = false
+	_ws_assist_engaged = false
+	_ws_assist_sign = 0.0
+	_shuffle_dir = 0
+	_last_shuffle = 0
+	super.enter(previous)
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
+	# is_instance_valid(): a line freed under a live move (a level going away)
+	# still gets one more tick before super returns FALLING, and a view that
+	# changed on that same tick must not reach for the line's wall.
+	if not _aborted and is_instance_valid(_line) and not _turning \
+			and _wants_to_face_wall() != _faces_wall:
+		_begin_turn()
 	var next := super.physics_update(delta, input)
-	if next == KEEP and player.camera_rig != null:
-		# Centred on the LINE's own outward normal. The capsule is free to yaw
-		# with the view -- nothing here reads it -- and the visible model is not
-		# bound to the capsule either, so the line is the only reference that
-		# stays put while the player looks around.
-		player.camera_rig.set_bearing_arc(
-			deg_to_rad(cfg.get("third_person_bearing_arc_deg")) * 0.5, _outward())
+	if next == KEEP and _turning:
+		_advance_turn(delta)
 	return next
 
 func exit() -> void:
 	super.exit()
+	_turning = false
+
+func faces_wall() -> bool:
+	return _faces_wall
+
+## The wider third-person fan -- see LedgeWalkConfig.third_person_look_yaw_deg.
+## First person answers NAN and keeps the config's own confirmed number.
+func look_yaw_half_span() -> float:
+	if player.camera_rig == null or not player.camera_rig.in_third_person():
+		return NAN
+	return deg_to_rad(cfg.get("third_person_look_yaw_deg")) * 0.5
+
+func _wants_to_face_wall() -> bool:
+	return player.camera_rig != null and player.camera_rig.in_third_person()
+
+## True from the tick a view change asks for the other facing until the body
+## has turned round. Travel is refused for the duration (see _adjust_along())
+## and CharacterAnimator plays turn_clip() fitted to the same window.
+var _turning: bool = false
+var _turn_elapsed: float = 0.0
+## The model's yaw when the turn began, and which way round it goes: +1 turns
+## LEFT (Godot's yaw grows counter-clockwise), -1 turns right.
+var _turn_from: float = 0.0
+var _turn_sign: float = -1.0
+
+## Turns the body round on the spot, over LedgeWalkConfig.turn_time.
+##
+## THE CAPSULE DOES NOT MOVE. It is on the line either way; only the pinned
+## model yaw and the look fan change. The fan is re-centred on the new facing
+## at once and left to ease the view round on its own settle -- in first
+## person that IS the turn the player sees, since the model is out of view
+## from the eye; in third person the camera swings round behind the new
+## facing the same way, and the turn clip on the model is what the player
+## watches.
+##
+## TURNS TOWARD THE VIEW. The owner: a body that always turned right looked
+## wrong whenever the player was looking left. The side the view is on when
+## the turn begins is the side the face sweeps through -- looking left, the
+## body turns left, and the view (which the fan eases to whichever of its
+## edges is nearer) ends up on the new facing's right, so a third-person head
+## left to follow the view keeps looking where the player was looking. Only a
+## view dead ahead falls back to the side the body last travelled, on the
+## leading foot; right when it has not travelled at all.
+func _begin_turn() -> void:
+	_faces_wall = not _faces_wall
+	_turning = true
+	_turn_elapsed = 0.0
+	_turn_from = player.visual_yaw()
+	# Read BEFORE the fan is re-centred below: that rewrites the running
+	# total the view is measured by, not the body's yaw itself, but the yaw
+	# is the honest reading either way and this is the moment it is honest
+	# against the OLD facing.
+	var view_off: float = wrapf(player.rotation.y - _turn_from, -PI, PI)
+	if absf(view_off) > deg_to_rad(5.0):
+		_turn_sign = 1.0 if view_off > 0.0 else -1.0
+	else:
+		_turn_sign = 1.0 if _last_shuffle < 0 else -1.0
+	# A step that was to the body's right is to its LEFT once it has turned
+	# round; the head keeps watching the same direction in the world.
+	_last_shuffle = -_last_shuffle
+	var facing_tangent := Vector3(-sin(_walk_yaw), 0.0, -cos(_walk_yaw))
+	_target_yaw = _walk_yaw + deg_to_rad(_yaw_offset(facing_tangent))
 	if player.camera_rig != null:
-		player.camera_rig.set_bearing_arc(0.0)
+		player.camera_rig.recentre_yaw_reference(_target_yaw)
+
+func _advance_turn(delta: float) -> void:
+	_turn_elapsed += delta
+	var t: float = clampf(_turn_elapsed / maxf(cfg.get("turn_time"), 0.001), 0.0, 1.0)
+	if t >= 1.0:
+		_turning = false
+		player.pin_visual_yaw(_target_yaw)
+		return
+	player.pin_visual_yaw(wrapf(_turn_from + _turn_sign * PI * t, -PI, PI))
+
+func is_turning() -> bool:
+	return _turning
+
+## The pack's own half turn, on the side the body is pivoting to. Read by
+## CharacterAnimator while is_turning().
+func turn_clip() -> StringName:
+	return &"Turn180_L" if _turn_sign > 0.0 else &"Turn180_R"
+
+## The scripted-fit hook (CharacterAnimator._scripted_fit): while turning, the
+## clip is stretched or squeezed to end with the turn; 0 otherwise.
+func scripted_duration() -> float:
+	return cfg.get("turn_time") if _turning else 0.0
+
+## Playback rate for whatever clip is on the body while this move runs, or 0
+## to leave it to CharacterAnimator's own speed match. Duck-typed there, the
+## same way _scripted_fit() is; see LedgeWalkConfig.shuffle_clip_scale. The
+## turn clip is fitted, not scaled, so it answers 0 while turning.
+func clip_time_scale() -> float:
+	return 0.0 if _turning else cfg.get("shuffle_clip_scale")
+
+# --- the head watches where the body is going ------------------------------
+
+## Where the head should point, in radians off the model's own facing, or NAN
+## when this move has nothing to say about it.
+##
+## REPLACES the view-following turn rather than adding to it. The owner: in
+## third person the head should not track the camera at all -- it watches the
+## direction of travel, and it KEEPS watching it after the keys are released.
+## Only travelling the other way moves it.
+##
+## THIRD PERSON ONLY. In first person the camera follows a head node by
+## position, so turning the head slides the eye sideways for no reason the
+## player asked for. And not while turning round: the turn clip owns the
+## whole body for that half second.
+##
+## Negated against _last_shuffle: that counts +1 for a step to the body's own
+## right, and a yaw measured as "view minus model facing" counts positive to the
+## LEFT.
+func head_yaw_override() -> float:
+	if _turning or player.camera_rig == null or not player.camera_rig.in_third_person():
+		return NAN
+	if _last_shuffle == 0:
+		return NAN
+	return -float(_last_shuffle) * deg_to_rad(cfg.get("head_turn_deg"))
+
+## Where the head's pitch is held, in radians, or NAN when this move has
+## nothing to say about it. Same terms as head_yaw_override() above: replaces
+## the camera's pitch rather than adding to it, and third person only. See
+## LedgeWalkConfig.head_pitch_deg.
+func head_pitch_override() -> float:
+	if _turning or player.camera_rig == null or not player.camera_rig.in_third_person():
+		return NAN
+	return deg_to_rad(cfg.get("head_pitch_deg"))

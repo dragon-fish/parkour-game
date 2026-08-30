@@ -26,6 +26,16 @@
 [ext_resource type="Script" uid="uid://b1l80ab3gfk0d" path="res://scripts/player/config/moves/balance_config.gd" id="24_b1a4c"]
 [ext_resource type="Script" uid="uid://r810qxlyg1h6" path="res://scripts/player/config/moves/ledge_walk_config.gd" id="25_lw81h"]
 
+[sub_resource type="Resource" id="Resource_b1a4c"]
+script = ExtResource("24_b1a4c")
+speed_modifier = 0.34
+redo_move_time = 0.5
+min_look_constraint = Vector3(-1.246165, -0.5752605, -3.1415927)
+max_look_constraint = Vector3(1.5707964, 0.5752605, 3.1415927)
+constrain_look = true
+freeze_visual_yaw = true
+allows_turn = false
+
 [sub_resource type="Resource" id="Resource_s8tvx"]
 script = ExtResource("1_j7ihq")
 
@@ -91,6 +101,15 @@ min_look_constraint = Vector3(-3.1415927, -0.2, -3.1415927)
 max_look_constraint = Vector3(3.1415927, 0.2, 3.1415927)
 constrain_look = true
 absolute_yaw_constraint = true
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_lw81h"]
+script = ExtResource("25_lw81h")
+speed_modifier = 0.1
+min_look_constraint = Vector3(-1.3421582, -0.95870936, -3.1415927)
+max_look_constraint = Vector3(1.5707964, 0.95870936, 3.1415927)
+constrain_look = true
+freeze_visual_yaw = true
 allows_turn = false
 
 [sub_resource type="Resource" id="Resource_oya74"]
@@ -173,25 +192,6 @@ max_look_constraint = Vector3(1.3962634, 1.5707964, 3.1415927)
 constrain_look = true
 freeze_visual_yaw = true
 absolute_yaw_constraint = true
-allows_turn = false
-
-[sub_resource type="Resource" id="Resource_b1a4c"]
-script = ExtResource("24_b1a4c")
-speed_modifier = 0.34
-redo_move_time = 0.5
-min_look_constraint = Vector3(-1.246165, -0.5752605, -3.1415927)
-max_look_constraint = Vector3(1.5707964, 0.5752605, 3.1415927)
-constrain_look = true
-freeze_visual_yaw = true
-allows_turn = false
-
-[sub_resource type="Resource" id="Resource_lw81h"]
-script = ExtResource("25_lw81h")
-speed_modifier = 0.1
-min_look_constraint = Vector3(-1.3421582, -0.95870936, -3.1415927)
-max_look_constraint = Vector3(1.5707964, 0.95870936, 3.1415927)
-constrain_look = true
-freeze_visual_yaw = true
 allows_turn = false
 
 [resource]

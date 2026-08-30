@@ -55,26 +55,6 @@ var _roll_spin: float = 0.0
 var _balance_roll: float = 0.0
 var _balance_squeeze: float = 0.0
 
-## Half the width of the arc the third-person camera's bearing is held inside,
-## in radians, and the WORLD direction that arc is centred on. Zero half-width
-## leaves the bearing free.
-##
-## THE CENTRE IS A WORLD DIRECTION HANDED IN, never derived from the body. The
-## move that asks for an arc takes it from its own geometry -- for a ledge, the
-## interest line's own normal -- because that is fixed in the world and the
-## collision body is not: the capsule yaws with the view the whole time, so any
-## centre read off it would swing the arc around with the view it exists to be
-## independent of. The visible model is not bound to the capsule either.
-var _bearing_arc_half_rad: float = 0.0
-var _bearing_arc_centre: Vector3 = Vector3.FORWARD
-
-## How far _clamp_bearing() had to turn the camera off the view's own axis this
-## frame, radians. Applied back to the camera's own yaw so it keeps facing the
-## player: this rig sets camera.position and never camera.rotation, so the eye
-## looks wherever the view looks, and a camera moved off that axis without this
-## correction would carry on staring past the player it was moved to frame.
-var _bearing_correction: float = 0.0
-
 ## The speed-driven FOV, held on its OWN field rather than read back from
 ## camera.fov. camera.fov also carries the balance squeeze (see
 ## update_effects()), and reading a squeezed value back as this lerp's own
@@ -428,18 +408,23 @@ func set_vault_roll(radians: float) -> void:
 ## BalanceMove is active; the move zeroes both on exit() so the roll and the
 ## squeeze cannot follow the player off the beam.
 func set_balance_lean(roll_radians: float, squeeze_deg: float) -> void:
-	_balance_roll = roll_radians
-	_balance_squeeze = squeeze_deg
+	_balance_roll_target = roll_radians
+	_balance_squeeze_target = squeeze_deg
 
-## Half-width in radians of the arc the third-person camera's bearing is held
-## inside, and the world direction it is centred on. Zero half-width leaves the
-## bearing free. Fed by the move that wants it, so the centre comes from that
-## move's own geometry rather than from anything this rig could infer.
-func set_bearing_arc(half_arc_rad: float, centre: Vector3 = Vector3.FORWARD) -> void:
-	_bearing_arc_half_rad = maxf(half_arc_rad, 0.0)
-	var flat := Vector3(centre.x, 0.0, centre.z)
-	if flat.length_squared() > 0.0001:
-		_bearing_arc_centre = flat.normalized()
+## What set_balance_lean() last asked for; _balance_roll / _balance_squeeze
+## are eased toward these in update_effects() on
+## CameraConfig.balance_recover_time.
+var _balance_roll_target: float = 0.0
+var _balance_squeeze_target: float = 0.0
+
+## Pulls the third-person camera off the shoulder to the centre, or lets it
+## back out. Pushed every tick by MoveManager from the active move's
+## MoveConfig.centre_shoulder; eased by _shoulder_across's own move_toward
+## in update_effects(), the same slide the shoulder cycle makes.
+func set_shoulder_centred(centred: bool) -> void:
+	_shoulder_centred_by_move = centred
+
+var _shoulder_centred_by_move: bool = false
 
 ## Sets the look pitch outright.
 ##
@@ -646,12 +631,13 @@ func reset_state() -> void:
 	_crouch_offset = 0.0
 	_has_eye_ground = false
 	_wall_side = 0
+	_shoulder_centred_by_move = false
 	_roll = 0.0
 	_vault_roll = 0.0
 	_balance_roll = 0.0
 	_balance_squeeze = 0.0
-	_bearing_arc_half_rad = 0.0
-	_bearing_correction = 0.0
+	_balance_roll_target = 0.0
+	_balance_squeeze_target = 0.0
 	if _config != null:
 		_speed_fov = _config.camera.fov_base
 	_death_lift = 0.0
@@ -857,6 +843,13 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# where set_fov() starts silently rejecting the write. floored at 1.0 for
 	# the same reason: a larger fov_squeeze_deg than today's must still miss
 	# that floor rather than trip it.
+	# EASED, on their own clock -- see CameraConfig.balance_recover_time for
+	# the exit snap this exists to remove. Exponential rather than
+	# move_toward, so the roll and the squeeze arrive together whatever their
+	# sizes.
+	var balance_ease: float = 1.0 - exp(-delta / maxf(_config.camera.balance_recover_time, 0.001))
+	_balance_roll = lerpf(_balance_roll, _balance_roll_target, balance_ease)
+	_balance_squeeze = lerpf(_balance_squeeze, _balance_squeeze_target, balance_ease)
 	camera.fov = maxf(_speed_fov - _balance_squeeze, 1.0)
 
 	var bob_target := 1.0 if grounded else 0.0
@@ -875,11 +868,6 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# overwriting it here would silently delete the walk bob whenever the view
 	# was behind the body.
 	var back := Vector3.ZERO
-	# Zeroed before the branch, not inside _clamp_bearing() alone: first person
-	# never reaches that call, and a correction left over from the last
-	# third-person frame would yaw the eye off the view for as long as the
-	# player stayed in first person.
-	_bearing_correction = 0.0
 	if _view_blend > 0.0:
 		# EASED HERE, where there is a delta -- _third_person_position() is also
 		# reached from tests and from the debug readout, and neither has one.
@@ -888,14 +876,14 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 			_shoulder_across = wanted_across
 		else:
 			var span: float = maxf(absf(_config.camera.third_person_right), 0.0001)
-			var rate: float = (span * 2.0) 					/ maxf(_config.camera.third_person_shoulder_time, 0.001)
+			var rate: float = (span * 2.0) / maxf(_config.camera.third_person_shoulder_time, 0.001)
 			_shoulder_across = move_toward(_shoulder_across, wanted_across, rate * delta)
 		back = _third_person_position() * _eased_view_blend()
 	camera.position = Vector3(back.x, bob - _dip + back.y, back.z)
-	# Scaled by the same blend the position is, so a view switch does not swing
-	# the eye through the correction in one frame while the body slides out to
-	# meet it.
-	camera.rotation.y = _bearing_correction * _eased_view_blend()
+	# The eye looks wherever the view looks: this rig sets camera.position and
+	# never its rotation. Every third-person move keeps the camera on the
+	# view's own axis, behind the body, so there is nothing to re-aim.
+	camera.rotation = Vector3.ZERO
 	_apply_body_layers()
 
 	# Tracked as an offset independent of base_position.y (mirroring _dip
@@ -1194,6 +1182,11 @@ func shift_yaw_reference(yaw: float, assist: float) -> void:
 ## camera, before easing. The PRESET decides the side; third_person_right
 ## decides how far over, so the panel slider still means something.
 func _wanted_shoulder_across() -> float:
+	# A move standing beside a wall asks for the centre -- see
+	# MoveConfig.centre_shoulder. Eased there by the caller's move_toward, so
+	# the slide in and back out is the shoulder cycle's own.
+	if _shoulder_centred_by_move:
+		return 0.0
 	var across: float = _config.camera.third_person_right
 	# A WALL RUN BORROWS THE OTHER SHOULDER: on a left-hand wall, the camera
 	# takes the preset RIGHT shoulder for the duration, and the other way round
@@ -1231,7 +1224,6 @@ func _third_person_position() -> Vector3:
 		_shoulder_across = _wanted_shoulder_across()
 	var across: float = _shoulder_across
 	var wanted := Vector3( 		across + _tp_drag.x, 		camera_config.third_person_up + _tp_drag.y, 		_tp_distance)
-	wanted = _clamp_bearing(wanted)
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return wanted
@@ -1249,58 +1241,6 @@ func _third_person_position() -> Vector3:
 	var full: float = wanted.length()
 	var fraction: float = clampf(reached / maxf(full, 0.001), 		_config.camera.third_person_min_fraction, 1.0)
 	return wanted * fraction
-
-## Holds `local_offset`'s bearing around the player inside the declared arc,
-## measured in WORLD space from _bearing_arc_centre. The offset arrives in this
-## rig's own local frame, which turns with the live view, so the conversion is
-## not optional: a clamp written against the local frame would chase its own
-## reference every frame the view moved.
-##
-## WHY THE LIVE FRAME IS THE WRONG ONE TO MEASURE FROM: local_offset's own Z
-## is fixed at third_person_back, so in THIS rig's own turning frame the
-## camera always reads as "behind" no matter which way the mouse has turned
-## the view -- that is what "opposite the view direction" means. Ledge walk
-## turns the collision body with the view (its look constraint is absolute
-## yaw), but freezes the MODEL the player is actually looking at, so "behind
-## the view" drifts up to the look constraint's own yaw span away from
-## "behind the frozen model" and can still land on the wall side. Measuring
-## against the frozen model direction instead is what actually guarantees the
-## clamped arc never touches it, for the whole span the view is allowed to
-## turn through.
-##
-## STATELESS: recomputed from scratch every call, off whatever local_offset
-## the shoulder/distance/drag settings produced this frame. A bearing already
-## inside the arc comes back UNCHANGED (return local_offset itself, not a
-## recomputed equivalent) -- so a camera already in front when the move
-## starts is never wrenched, and one outside it is moved to the nearest edge
-## every frame, with no separate "already corrected" flag to fall out of
-## sync with the camera's actual position.
-func _clamp_bearing(local_offset: Vector3) -> Vector3:
-	_bearing_correction = 0.0
-	if _bearing_arc_half_rad <= 0.0:
-		return local_offset
-	var world_offset: Vector3 = to_global(local_offset) - global_position
-	var front: Vector3 = _bearing_arc_centre
-	var right := Vector3(-front.z, 0.0, front.x)
-	var forward_component: float = world_offset.dot(front)
-	var right_component: float = world_offset.dot(right)
-	var radius: float = sqrt(forward_component * forward_component \
-		+ right_component * right_component)
-	if radius < 0.0001:
-		return local_offset
-	var bearing: float = atan2(right_component, forward_component)
-	var clamped: float = clampf(bearing, -_bearing_arc_half_rad, _bearing_arc_half_rad)
-	if is_equal_approx(clamped, bearing):
-		return local_offset
-	# THE CAMERA MUST BE TURNED BACK BY WHAT THE POSITION WAS TURNED, or the
-	# whole clamp is worse than not clamping: this rig never writes
-	# camera.rotation, so the eye faces wherever the view faces, and an eye
-	# moved a quarter-turn around the player while still aiming along the view
-	# has the player out of frame entirely.
-	_bearing_correction = clamped - bearing
-	var new_world_offset: Vector3 = front * (radius * cos(clamped)) \
-		+ right * (radius * sin(clamped)) + Vector3.UP * world_offset.y
-	return to_local(global_position + new_world_offset)
 
 ## Flips between the first-person eye and the pulled-back one. Called from
 ## Player's V key. Saved, because the choice outlives the life it was made in.

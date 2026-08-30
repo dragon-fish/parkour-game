@@ -31,6 +31,9 @@ var _lean_rate: float = 0.0
 ## free.
 var _wind_noise: FastNoiseLite = BalanceMove._make_wind_noise()
 var _wind_phase: float = 0.0
+## 0 while the body is still on the beam, then climbing to 1 across
+## fall_push_time as the capsule is carried clear of the line.
+var _fall_push: float = 0.0
 
 static func _make_wind_noise() -> FastNoiseLite:
 	var noise := FastNoiseLite.new()
@@ -53,22 +56,33 @@ const MEANINGFUL_ARRIVAL_SPEED: float = 0.05
 ## inverted pendulum for why direction otherwise has no bearing on the pendulum
 ## itself, only on which way W drives the body. Two candidate signals exist for
 ## "which way did the player mean to walk": the body's facing, or its
-## horizontal velocity. Velocity wins when it is meaningful: a body arriving at
-## a run chose that direction with its feet, which is a clearer statement of
-## intent than whatever way it happened to be looking (mouse look is
-## independent of travel). Below MEANINGFUL_ARRIVAL_SPEED there is no run to
-## read, so facing is what is left -- covers stepping onto the beam from a
-## standstill, or turning in place at one end before walking on.
+## horizontal velocity. Velocity wins when it is meaningful AND the body is
+## moving the way it faces: a body arriving at a run chose that direction with
+## its feet, which is a clearer statement of intent than whatever way it
+## happened to be looking (mouse look is independent of travel). Below
+## MEANINGFUL_ARRIVAL_SPEED there is no run to read, so facing is what is left
+## -- covers stepping onto the beam from a standstill, or turning in place at
+## one end before walking on.
+##
+## A BODY BACKING ONTO THE BEAM KEEPS ITS FACING. Its velocity points along
+## the beam but its face points off it, and the key it is holding is S. Facing
+## the body along the velocity would turn it round under the player's held S,
+## which then walks it straight back off the end it just came in by -- and
+## with nothing but the line holding it up, that is a fall on the first tick.
+## Reported in play as "walk onto the beam backwards, enter, leave, drop".
+## Keeping the facing means S carries on driving the body backwards along the
+## beam, exactly as it was driving it before the catch.
 func _pick_direction_sign(tangent: Vector3) -> float:
 	var flat_tangent := Vector3(tangent.x, 0.0, tangent.z)
 	if flat_tangent.length_squared() < 0.0001:
 		return 1.0
+	var facing: Vector3 = -player.global_transform.basis.z
+	facing.y = 0.0
 	var horizontal_velocity := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	var arrival: Vector3
-	if horizontal_velocity.length() > MEANINGFUL_ARRIVAL_SPEED:
+	var arrival: Vector3 = facing
+	if horizontal_velocity.length() > MEANINGFUL_ARRIVAL_SPEED \
+			and horizontal_velocity.dot(facing) >= 0.0:
 		arrival = horizontal_velocity
-	else:
-		arrival = -player.global_transform.basis.z
 	return 1.0 if arrival.dot(flat_tangent) >= 0.0 else -1.0
 
 static func catch_gate(player: Player, line: InterestLine, snap_height: float) -> bool:
@@ -125,6 +139,7 @@ func enter(previous: StringName) -> void:
 	seed_lean(BalanceMove.entry_lean(cfg, entry_speed, config.pawn.ground_speed, pick), 0.0)
 	_wind_noise.seed = randi()
 	_wind_phase = 0.0
+	_fall_push = 0.0
 	# THIRD PERSON READS BADLY ON A BEAM -- beam only, not LedgeWalkMove, which
 	# keeps the player's own view choice. Goes through the status system's own
 	# FORCE_VIEW mechanism (the same one a level volume or a death uses,
@@ -220,13 +235,34 @@ func correction_gain_at(lean: float) -> float:
 	return lerpf(cfg.correction_gain, cfg.correction_gain_at_edge, t)
 
 func lateral_update(delta: float, lateral_input: float) -> StringName:
+	# THE SHOVE OWNS THE BODY ONCE IT STARTS. The lean stops being integrated --
+	# there is nothing left to correct, the fall is decided -- and the capsule
+	# is carried off the line over fall_push_time before the handover. Falling
+	# off is still geometric: the feet leave the beam because the body was moved
+	# clear of it, not because a counter reached a number and teleported it.
+	if _fall_push > 0.0:
+		var push_time: float = maxf(cfg.fall_push_time, 0.0001)
+		_fall_push += delta / push_time
+		if _fall_push >= 1.0:
+			player.consume_roll()
+			# HANDED OVER AT THE ARC'S OWN SPEED. The arc ends heading straight
+			# down at 2 * drop / time (its derivative at t = 1, see
+			# lateral_offset()), and the fall has to pick up from there: a fall
+			# that starts from rest after a body was visibly moving is the
+			# stall the owner reported. LineWalkMove zeroed the velocity on
+			# entry, so nothing else is in it to carry.
+			player.velocity = Vector3.DOWN * (2.0 * cfg.fall_push_drop / push_time)
+			return FALLING
+		return KEEP
 	integrate_lean(delta, lateral_input)
-	# Falling off is GEOMETRIC: the lean is a real displacement off the
-	# centreline, and past the beam's half width the feet have nothing under
-	# them. Not a separate threshold that happens to be checked here.
-	if absf(lateral_offset()) > cfg.beam_half_width:
-		player.consume_roll()
-		return FALLING
+	if absf(_lean) > fall_lean():
+		# Started, not finished: the next tick carries the capsule out.
+		_fall_push = 0.0001
+		# THE VIEW IS THE PLAYER'S AGAIN FROM THIS TICK, not from the handover:
+		# the forced first person exists for the ride, and the ride is over the
+		# instant balance is lost. The owner's call: the shove is watched from
+		# wherever the player had chosen to watch from.
+		_release_forced_view()
 	if player.camera_rig != null:
 		# Driven ONLY by how far balance is already lost, never by a constant
 		# on entry: standing steady on the beam must look completely normal,
@@ -255,17 +291,58 @@ func exit() -> void:
 	# (FALLING), losing balance (FALLING, via lateral_update() above), or a
 	# mid-beam death's respawn restarting into WALKING -- one exit(), not one
 	# per cause, so there is nowhere for the restore to be missed.
-	if _forced_first_person:
-		player.remove_status(Status.Effect.FORCE_VIEW, &"")
-		_forced_first_person = false
+	_release_forced_view()
 	# Zeroed on the way out so the roll and the squeeze do not follow the
 	# player off the beam -- see LadderMove.exit()'s own tint reset for the
 	# same pattern.
 	if player.camera_rig != null:
 		player.camera_rig.set_balance_lean(0.0, 0.0)
 
+## The shove is the one way off a beam that is a fall -- see
+## LineWalkMove.exit() for what the cooldown it arms is for.
+func _left_by_falling() -> bool:
+	return _fall_push > 0.0
+
+## Gives the view back. Reached twice on a lost balance -- the tick the shove
+## starts (lateral_update()) and exit() -- and once on every other way off;
+## the flag makes the second call a no-op rather than a second removal.
+func _release_forced_view() -> void:
+	if _forced_first_person:
+		player.remove_status(Status.Effect.FORCE_VIEW, &"")
+		_forced_first_person = false
+
+## How far off the centreline the capsule stands. ZERO for the whole ride, and
+## non-zero only during the shove that ends it.
+##
+## THE CAPSULE RIDES THE LINE. Sliding it sideways with the lean drags the
+## visible model along with it, which reads as the character skating rather than
+## wobbling -- the owner's call, and it matches the rest of the "along a line"
+## family, none of which translate the body off their line either. The lean is
+## carried by the camera roll and the segmented skeleton lean instead; both are
+## presentation, and both already exist.
+##
+## THE SHOVE IS ONE QUADRATIC BEZIER, in the line's (normal, up) plane: from
+## the stand, through a control point fall_push_distance out at the SAME
+## height, to fall_push_distance out and fall_push_drop down. The owner's
+## sketch: pushed sideways first, then taken by gravity, arriving beside and
+## below the beam. That gives sideways = D * t * (2 - t) (fast off the line,
+## easing out) and down = H * t * t (nothing at first, then all of it), and
+## its end tangent is straight down at 2H per unit t -- which is the velocity
+## the fall is handed, see lateral_update(). drop_offset() is the other half
+## of this same curve; do not tune one shape without the other.
 func lateral_offset() -> float:
-	return _lean * cfg.gravity_influence
+	if _fall_push <= 0.0:
+		return 0.0
+	var t: float = clampf(_fall_push, 0.0, 1.0)
+	return signf(_lean) * cfg.fall_push_distance * t * (2.0 - t)
+
+## How far BELOW the line the capsule stands, metres, positive down. Zero for
+## the ride; the vertical half of the shove's curve, see lateral_offset().
+func drop_offset() -> float:
+	if _fall_push <= 0.0:
+		return 0.0
+	var t: float = clampf(_fall_push, 0.0, 1.0)
+	return cfg.fall_push_drop * t * t
 
 ## Read by the camera, the skeleton lean, the FOV squeeze and the debug HUD --
 ## one source, several presentations.
@@ -277,9 +354,17 @@ func lean_rate() -> float:
 
 ## Normalised 0..1 severity, which is what every presentation channel actually
 ## wants. 1 means the feet are about to miss.
+##
+## MEASURED OFF THE LEAN ITSELF, not off lateral_offset(): the capsule no longer
+## moves with the lean, so a severity read from its position would sit at zero
+## for the whole ride and then jump to 1 during the shove.
 func lean_severity() -> float:
-	var edge: float = maxf(cfg.beam_half_width, 0.0001)
-	return clampf(absf(lateral_offset()) / edge, 0.0, 1.0)
+	return clampf(absf(_lean) / maxf(fall_lean(), 0.0001), 0.0, 1.0)
+
+## The lean at which the feet run out of beam -- the edge every severity is
+## measured against, and the trigger for the shove that ends the ride.
+func fall_lean() -> float:
+	return cfg.beam_half_width / maxf(cfg.gravity_influence, 0.0001)
 
 ## Signed version of the above, for channels that need a direction (camera
 ## roll, body lean).

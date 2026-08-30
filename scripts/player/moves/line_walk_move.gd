@@ -106,6 +106,15 @@ func enter(_previous: StringName) -> void:
 	# default override reads the live arrival velocity, and by the time this
 	# function returns that velocity is gone.
 	_direction_sign = _pick_direction_sign(s["tangent"])
+	# NOT forced to face into the line when caught at an end. That was tried:
+	# a body backing onto a beam faces off the line, the guard turned it round,
+	# and the S it was still holding then walked it straight back off the end
+	# -- a fall on the first tick, since the mesh under a beam carries no
+	# collider, deliberately. The end guard in physics_update() is gated on the
+	# input actually driving past the end, so a catch at an end facing outward
+	# is safe on its own: nothing leaves until a key says so, and the key that
+	# brought the body in keeps carrying it in. See BalanceMove's own
+	# _pick_direction_sign() for how a backing body keeps its facing.
 	var facing_tangent: Vector3 = s["tangent"] * _direction_sign
 	_walk_yaw = LineWalkMove.yaw_of(facing_tangent)
 	_target_yaw = _walk_yaw + deg_to_rad(_yaw_offset(facing_tangent))
@@ -127,9 +136,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# for both members of this tier. The press is simply dropped: a fresh
 	# MoveInput is built every tick, so nothing downstream inherits it, and no
 	# roll is consumed because no press was spent.
-	if input.crouch_pressed:
-		player.consume_roll()
-		return FALLING
+	# CROUCH IS REFUSED TOO, for the same reason as jump above and one more:
+	# crouch is Shift on this keyboard, which a player holds for all sorts of
+	# reasons, and letting it drop the body off a beam or a ledge -- neither of
+	# which has a collider under it to land back on -- turns a stray keypress
+	# into a death. Walking off an end is how you leave; losing your balance is
+	# how the beam throws you off.
 	var s: Dictionary = _line.sample(_offset_along)
 	var facing_tangent: Vector3 = s["tangent"] * _direction_sign
 	_walk_yaw = LineWalkMove.yaw_of(facing_tangent)
@@ -145,6 +157,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# sign that turned the raw tangent into facing_tangent above.
 	var signed_along: float = along * _direction_sign
 	_offset_along += signed_along * speed * delta
+	_last_along = along
 	note_travel(along)
 	# Walking off either end is how you leave: the line ran out, so the body is
 	# simply standing on whatever is there.
@@ -171,7 +184,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if next != KEEP:
 		return next
 	var stand: Vector3 = _line.sample(_offset_along)["position"] \
-		+ Vector3.UP * (player.standing_height() * 0.5) \
+		+ Vector3.UP * (player.standing_height() * 0.5 - drop_offset()) \
 		+ lateral_offset() * _normal_at(_walk_yaw)
 	_fade += delta
 	if _fade < fade_in_time():
@@ -179,13 +192,54 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.global_position = _entry_pos.lerp(stand, t)
 		_turn_body_to(lerp_angle(_entry_yaw, _target_yaw, t))
 	else:
-		slide_to(stand)
+		_slide_along_geometry(stand)
 		if not _fan_centred:
 			_centre_fan()
 	return KEEP
 
+## Moves the body toward `stand` and, if something blocks the way, spends the
+## rest of the step SLIDING ALONG that surface rather than stopping at it.
+##
+## The capsule is wider than the ledges it walks. Its radius is 0.4 m; a ledge
+## authored with the line down its centre puts the wall nearer than that, so
+## every tick the capsule is pushed back out of the wall and every tick `stand`
+## asks it to move diagonally: back toward the line AND along it. A bare
+## move_and_collide() stops the whole motion at the first contact, which is
+## immediate, and the along component goes with it. Measured on the debug
+## course: the body crawls while _offset_along runs ahead, then keeps
+## catching up after every key is released (reads as inertia), and the move
+## exits with the feet still 0.9 m short of the line's end. One extra slide
+## of the remainder along the contact plane is what turns a wall the body is
+## leaning on back into something it can walk beside.
+func _slide_along_geometry(stand: Vector3) -> void:
+	var hit: KinematicCollision3D = slide_to(stand)
+	if hit == null:
+		return
+	var remainder: Vector3 = hit.get_remainder().slide(hit.get_normal())
+	if remainder.length_squared() > 0.000001:
+		player.move_and_collide(remainder)
+
+## The timed cooldown is armed ONLY when the body left by falling. A walk-off
+## at an end is covered by the release latch alone (Player.line_ready(): the
+## line re-catches when the body walks back IN along it, and not otherwise),
+## and a timer on top of that was lethal: turn round inside it and the next
+## step lands on a line that refuses you and a mesh that carries no
+## collider. Nothing to guard there. The fall is different -- the body is
+## still inside the volume, airborne, for the first ticks of the shove, and
+## the timer is what stops the catch gate taking it straight back.
 func exit() -> void:
-	note_left(cfg.redo_move_time, true)
+	note_left(redo_cooldown(), true)
+
+## Both cooldowns -- the line's own (note_left() above) and MoveManager's
+## redo timer on the move -- take this same answer, so a walk-off arms
+## neither and a fall arms both.
+func redo_cooldown() -> float:
+	return cfg.redo_move_time if _left_by_falling() else 0.0
+
+## Whether this exit is the body being thrown off rather than walking off.
+## The base tier cannot fall; BalanceMove's shove overrides this.
+func _left_by_falling() -> bool:
+	return false
 
 ## Arc length along the line, metres. Read by the HUD and by tests.
 func line_offset() -> float:
@@ -220,9 +274,28 @@ func _pick_direction_sign(_tangent: Vector3) -> float:
 func lateral_offset() -> float:
 	return 0.0
 
+## How far BELOW the line the body currently stands, metres, positive down.
+## The base tier stands on its line; BalanceMove's shove drops off it.
+func drop_offset() -> float:
+	return 0.0
+
 ## Hook for a subclass that needs to know which way along the line the last tick
 ## travelled. LedgeWalkMove picks its sidestep clip off this; a beam does not
 ## care, since Walk is the clip either way.
+## Test seam: sets what travelling() reports without running a physics tick.
+func note_travel_for_test(along: float) -> void:
+	_last_along = along
+	note_travel(along)
+
+## Whether the body actually moved along the line last tick. Read by
+## CharacterAnimator: a beam standing still must not keep playing a walk cycle.
+func travelling() -> bool:
+	return absf(_last_along) > 0.1
+
+## Signed travel from the last tick, in the body's own frame. Recorded for
+## travelling() above; subclasses that need the direction override note_travel.
+var _last_along: float = 0.0
+
 func note_travel(_along: float) -> void:
 	pass
 
@@ -244,3 +317,31 @@ func fade_in_time() -> float:
 func _normal_at(line_yaw: float) -> Vector3:
 	var tangent := Vector3(-sin(line_yaw), 0.0, -cos(line_yaw))
 	return Vector3(-tangent.z, 0.0, tangent.x)
+
+# --- the capsule is not turned by this tier ----------------------------------
+#
+# The rest of the "along a line" family swings the collision body onto its line,
+# and rightly: a hand or both hands are on the thing, so the whole body has to
+# follow it. STANDING on a line is not that. The feet are what is on it, the
+# shoulders are free, and the player is looking around with a mouse the whole
+# time -- turning the capsule under them fights the one input they are actively
+# using. Entering snapped the view a quarter turn, leaving snapped it back, and
+# the snap on the way out could drop the body back inside the volume it had just
+# walked out of.
+#
+# Only the MODEL is pinned, which is what freeze_visual_yaw already means
+# everywhere else in this project: the capsule goes where the view goes, the
+# model holds its own heading. Nothing else in this tier reads the capsule's yaw
+# -- project_input() works in the LINE's frame, and the entry gate is a height
+# test -- so letting it float costs nothing.
+
+func _turn_body_to(yaw: float) -> void:
+	player.pin_visual_yaw(yaw)
+
+func _centre_fan() -> void:
+	_fan_centred = true
+	# The yaw fan still belongs to the line, so the reference is still handed
+	# over; it is only the capsule that is left alone.
+	if player.camera_rig != null:
+		player.camera_rig.recentre_yaw_reference(_target_yaw)
+	player.pin_visual_yaw(_target_yaw)

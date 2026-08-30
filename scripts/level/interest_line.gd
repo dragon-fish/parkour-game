@@ -19,8 +19,31 @@ extends Path3D
 
 enum Kind { ZIPLINE, SWING, BALANCE, LADDER, LEDGE_WALK }
 
-@export var kind: Kind = Kind.ZIPLINE
+## The reach a line of each kind starts with, metres. Picking a kind in the
+## inspector (or in code) writes the kind's entry into reach_radius, which
+## stays editable after that -- the number a level author sees IS the number
+## the volume is built from.
+##
+## A LEDGE REACHES FURTHER. The ledge itself is 0.7 m wide and the walkway
+## feeding it is 3 m, so at 0.6 m only the strip nearest the wall was
+## caught: a body running in at speed anywhere else passed beside the volume
+## and, with nothing under the ledge mesh, straight into the drop. The owner
+## measured 1.0 as the point past which that stops happening.
+const KIND_REACH := {
+	Kind.ZIPLINE: 0.6,
+	Kind.SWING: 0.6,
+	Kind.BALANCE: 0.6,
+	Kind.LADDER: 0.6,
+	Kind.LEDGE_WALK: 1.0,
+}
+
+@export var kind: Kind = Kind.ZIPLINE:
+	set(value):
+		kind = value
+		reach_radius = KIND_REACH[value]
 ## How far from the line a body counts as able to reach it, in metres.
+## Seeded from KIND_REACH whenever `kind` is set; a value written after that
+## (a scene file lists kind before this property) wins.
 @export var reach_radius: float = 0.6
 ## Lets a level forbid THIS line by name -- see Status.Effect.BLOCK_INTEREST_LINE.
 ## Empty means the line cannot be singled out; it still obeys a blanket ban on

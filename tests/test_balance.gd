@@ -184,9 +184,13 @@ func test_entering_the_beam_from_its_start_walks_toward_the_far_end() -> void:
 		"test setup: never entered the beam")
 	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
 	move.seed_lean(0.0, 0.0)  # isolate travel from the random entry wobble
+	# And from the wind: the correction check below compares this ride
+	# against duplicate_lean_after(), and two rides under two random gusts
+	# differ by more than a fifth of a second of correction.
+	move.cfg.wind_strength = 0.0
 	await step(5)  # past the magnet fade
 	var before: Vector3 = player.global_position
-	var forward: Vector3 = -player.global_transform.basis.z
+	var forward: Vector3 = _model_forward(player)
 	_world["input"].state.move = Vector2(0.0, 1.0)  # W
 	await step(30)
 	var displacement: Vector3 = player.global_position - before
@@ -235,9 +239,10 @@ func test_entering_the_beam_from_its_far_end_walks_toward_the_start_end() -> voi
 		"test setup: never entered the beam")
 	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
 	move.seed_lean(0.0, 0.0)
+	move.cfg.wind_strength = 0.0  # see the twin test above
 	await step(5)  # past the magnet fade
 	var before: Vector3 = player.global_position
-	var forward: Vector3 = -player.global_transform.basis.z
+	var forward: Vector3 = _model_forward(player)
 	_world["input"].state.move = Vector2(0.0, 1.0)  # W
 	await step(30)
 	var displacement: Vector3 = player.global_position - before
@@ -400,10 +405,15 @@ func test_losing_balance_restores_the_saved_preference() -> void:
 	assert_false(player.camera_rig.in_third_person(),
 		"test setup: the beam did not force first person")
 
-	var over_the_edge: float = (move.cfg.beam_half_width / move.cfg.gravity_influence) + 0.1
+	var over_the_edge: float = move.fall_lean() + 0.1
 	move.seed_lean(over_the_edge, 0.0)
-	await step(1)
-	assert_eq(player.move_manager.current_name, Move.FALLING,
+	# The capsule is carried off the line over fall_push_time before the
+	# handover -- losing balance is a shove, not a teleport.
+	await step(int(move.cfg.fall_push_time * 60.0) + 10)
+	# Off the beam is all that matters here; on this floor-height fixture the
+	# shove's drop lands the body straight away, so the move may already be
+	# past FALLING.
+	assert_ne(player.move_manager.current_name, Move.BALANCE,
 		"test setup: the over-edge lean did not fall the player off the beam")
 	# See the identical note in test_walking_off_the_beams_end_restores_the_
 	# saved_preference above: the push that reflects this tick's exit() lands
@@ -450,13 +460,22 @@ func test_falling_off_the_beam_is_geometric() -> void:
 	move.player = player
 	move.config = player.config
 	move.cfg = BalanceConfig.new()
-	# A lean whose real lateral displacement (lean * gravity_influence)
-	# already clears the beam's half width.
-	var over_the_edge: float = (move.cfg.beam_half_width / move.cfg.gravity_influence) + 0.1
-	move.seed_lean(over_the_edge, 0.0)
+	# A lean past the point where the feet run out of beam.
+	move.seed_lean(move.fall_lean() + 0.1, 0.0)
+	# The first tick starts the shove; the handover comes once it has carried
+	# the capsule clear, which is what makes the fall geometric rather than a
+	# counter reaching a number.
 	var result: StringName = move.lateral_update(1.0 / 60.0, 0.0)
+	assert_eq(result, Move.KEEP,
+		"losing balance handed over before the body had been moved anywhere")
+	var ticks: int = 0
+	while result == Move.KEEP and ticks < 120:
+		result = move.lateral_update(1.0 / 60.0, 0.0)
+		ticks += 1
 	assert_eq(result, Move.FALLING,
 		"past the beam's half width the feet have nothing under them")
+	assert_gt(absf(move.lateral_offset()), 0.0,
+		"the body was handed to the fall still sitting on the line")
 	move.free()
 
 ## Constraint 3 (the lean is REAL lateral displacement, not one more
@@ -491,17 +510,26 @@ func test_the_lean_displaces_the_body_off_the_centreline() -> void:
 	move.seed_lean(0.0, 0.0)
 	await step(5)  # past the magnet fade
 	var before: Vector3 = player.global_position
-	var right: Vector3 = player.global_transform.basis.x
+	var right: Vector3 = _model_forward(player).cross(Vector3.UP)
 
-	# Sub-edge: well under beam_half_width in real displacement, so
-	# lateral_update() keeps returning KEEP and the body stays on the beam.
-	var lean: float = move.cfg.beam_half_width / move.cfg.gravity_influence * 0.5
+	# Sub-edge: the ride keeps the capsule ON the line, whatever the lean is
+	# doing. Sliding it sideways drags the visible model with it, which reads
+	# as skating rather than wobbling -- the lean is carried by the camera roll
+	# and the skeleton instead.
+	var lean: float = move.fall_lean() * 0.5
 	move.seed_lean(lean, 0.0)
 	await step(3)
+	var held: Vector3 = player.global_position - before
+	assert_almost_eq(held.dot(right), 0.0, 0.02,
+		"a lean short of the edge slid the capsule off the line")
 
+	# Past the edge, the shove is the one thing that does move it, and it moves
+	# it the way lateral_offset() reports.
+	move.seed_lean(move.fall_lean() + 0.1, 0.0)
+	await step(int(move.cfg.fall_push_time * 60.0) - 5)
 	var displacement: Vector3 = player.global_position - before
 	assert_gt(displacement.dot(right) * signf(move.lateral_offset()), 0.0,
-		"seeding a sub-edge lean did not move the body off the centreline in the direction lateral_offset() reports")
+		"losing balance never carried the body off the line")
 
 ## Drives a REAL transition through MoveManager.start() -- calling
 ## set_balance_lean(0.0, 0.0) directly on a rig proves the rig responds to
@@ -536,18 +564,21 @@ func test_exiting_the_move_zeroes_the_camera_lean() -> void:
 	move.seed_lean(move.cfg.beam_half_width / move.cfg.gravity_influence * 0.5, 0.0)
 	move.lateral_update(1.0 / 60.0, 0.0)
 
+	# The TARGETS: what the move asks for. The rig eases its own roll and
+	# squeeze toward them (see CameraConfig.balance_recover_time), and that
+	# ease is the rig's business, covered in test_camera_constraints.gd.
 	var rig: CameraRig = player.camera_rig
-	assert_gt(absf(rig._balance_roll), 0.0,
+	assert_gt(absf(rig._balance_roll_target), 0.0,
 		"test setup: the lean produced no roll for the camera to carry")
-	assert_gt(rig._balance_squeeze, 0.0,
+	assert_gt(rig._balance_squeeze_target, 0.0,
 		"test setup: the lean produced no squeeze for the camera to carry")
 
 	# A real transition, not a direct call -- exit() is under test, not the
 	# rig's own response to zeros.
 	player.move_manager.start(Move.WALKING)
-	assert_almost_eq(rig._balance_roll, 0.0, 0.0001,
+	assert_almost_eq(rig._balance_roll_target, 0.0, 0.0001,
 		"leaving Balance left the camera roll behind")
-	assert_almost_eq(rig._balance_squeeze, 0.0, 0.0001,
+	assert_almost_eq(rig._balance_squeeze_target, 0.0, 0.0001,
 		"leaving Balance left the FOV squeeze behind")
 
 func test_a_full_correction_at_the_edge_can_still_turn_the_lean_around() -> void:
@@ -635,3 +666,163 @@ func test_the_wind_fades_out_as_the_body_nears_the_edge() -> void:
 	assert_gt(steady_total, edge_total,
 		"the beam pushed a body about to fall as hard as one holding steady")
 	move.free()
+
+## Where the visible model faces -- the reference every "toward its own
+## forward" claim in this file measures against. NOT the capsule's basis: this
+## tier leaves the capsule to the view (see LineWalkMove's own note on why it
+## stopped turning it), so the capsule's -Z is wherever the mouse was at the
+## catch, not the beam.
+func _model_forward(player: Player) -> Vector3:
+	var yaw: float = player.visual_yaw()
+	return Vector3(-sin(yaw), 0.0, -cos(yaw))
+
+func test_backing_onto_the_beam_keeps_backing_along_it() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	var beam := InterestLine.new()
+	beam.kind = InterestLine.Kind.BALANCE
+	beam.curve = Curve3D.new()
+	beam.curve.add_point(Vector3.ZERO)
+	beam.curve.add_point(Vector3(10.0, 0.0, 0.0))
+	beam.position = player.global_position
+	add_child_autofree(beam)
+	await step(5)
+	assert_true(player.interest_lines.has(beam),
+		"test setup: the beam's reach volume never registered the player")
+
+	# Facing -X and moving +X with S held: walking backwards onto the beam's
+	# start, the key still down through the catch.
+	player.rotation.y = LineWalkMove.yaw_of(Vector3(-1.0, 0.0, 0.0))
+	player.velocity = Vector3(player.config.pawn.ground_speed, 0.0, 0.0)
+	_world["input"].state.move = Vector2(0.0, -1.0)  # S
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: never entered the beam")
+	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	move.seed_lean(0.0, 0.0)
+	await step(30)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"S held through a backwards catch walked the body straight back off the end")
+	assert_gt(move.line_offset(), 0.2,
+		"S did not carry the body on along the beam (%.2f m)" % move.line_offset())
+
+# --- the shove that ends the ride --------------------------------------------
+
+func test_losing_balance_gives_the_view_back_the_tick_the_shove_starts() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	var beam := _make_balance_beam(player)
+	add_child_autofree(beam)
+	await step(5)
+	player.move_manager.start(Move.BALANCE)
+	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	await step(5)
+	assert_false(player.camera_rig.in_third_person(),
+		"test setup: the beam did not force first person")
+	move.seed_lean(move.fall_lean() + 0.1, 0.0)
+	# One tick starts the shove, the next reflects the status change -- see
+	# the note in test_walking_off_the_beams_end_restores_the_saved_preference.
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: the shove handed over before it had carried the body anywhere")
+	assert_true(player.camera_rig.in_third_person(),
+		"the forced first person outlived the balance it was there for")
+
+func test_the_shove_drops_the_body_and_hands_the_fall_its_own_speed() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	# Two metres up, body and beam both, so the fall the shove hands over to
+	# has room to be a fall: with the beam at floor height the landing probe
+	# catches the floor on the first airborne tick and the handover reads as
+	# a step.
+	player.global_position += Vector3.UP * 2.0
+	var beam := InterestLine.new()
+	beam.kind = InterestLine.Kind.BALANCE
+	beam.curve = Curve3D.new()
+	beam.curve.add_point(Vector3.ZERO)
+	beam.curve.add_point(Vector3(10.0, 0.0, 0.0))
+	beam.position = player.global_position
+	add_child_autofree(beam)
+	await step(5)
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: never entered the beam")
+	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	move.seed_lean(0.0, 0.0)
+	await step(15)  # past the magnet fade, standing on the line
+	var on_the_line: float = player.global_position.y
+	move.seed_lean(move.fall_lean() + 0.1, 0.0)
+	var ticks: int = 0
+	while player.move_manager.current_name == Move.BALANCE and ticks < 120:
+		await step(1)
+		ticks += 1
+	assert_eq(player.move_manager.current_name, Move.FALLING,
+		"the over-edge lean did not fall the player off the beam")
+	assert_lt(player.global_position.y, on_the_line - move.cfg.fall_push_drop * 0.8,
+		"the shove left the body at the beam's own height instead of beside and below it")
+	# The fall has already added one tick of its own gravity, so the arc's
+	# end speed must still be there underneath it.
+	var arc_end_speed: float = 2.0 * move.cfg.fall_push_drop / move.cfg.fall_push_time
+	assert_lt(player.velocity.y, -arc_end_speed * 0.9,
+		"the fall started from rest after the shove (%.2f m/s, arc ends at %.2f)"
+			% [player.velocity.y, -arc_end_speed])
+	# Being thrown off is the one exit that arms the [ME:CONFIRMED] half-second
+	# cooldown -- the body is still inside the volume for the first airborne
+	# ticks, and the catch gate must not take it straight back.
+	assert_false(player.move_manager.can_enter(Move.BALANCE),
+		"losing balance left the beam ready to re-catch the falling body")
+
+func test_walking_off_the_beams_end_and_straight_back_in_re_catches() -> void:
+	# The owner's report: walk the beam end to end, leave, turn round, walk
+	# back on -- and fall straight through, because the timed cooldown that
+	# guards being thrown off was also refusing the walk back. See
+	# LineWalkMove.exit() and Player.line_ready().
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	# At the feet, so walking off the end is a step onto the floor. Short, so
+	# the walk-off is quick; entered at its middle.
+	var feet: Vector3 = player.global_position 		- Vector3.UP * (player.standing_height() * 0.5 - 0.05)
+	var beam := InterestLine.new()
+	beam.kind = InterestLine.Kind.BALANCE
+	beam.curve = Curve3D.new()
+	beam.curve.add_point(Vector3.ZERO)
+	beam.curve.add_point(Vector3(2.0, 0.0, 0.0))
+	beam.position = feet - Vector3(1.0, 0.0, 0.0)
+	add_child_autofree(beam)
+	await step(5)
+	player.rotation.y = LineWalkMove.yaw_of(Vector3(1.0, 0.0, 0.0))
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: never entered the beam")
+	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	move.seed_lean(0.0, 0.0)
+	move.cfg.wind_strength = 0.0
+	_world["input"].state.move = Vector2(0.0, 1.0)  # W, to the far end
+	var ticks: int = 0
+	while player.move_manager.current_name == Move.BALANCE and ticks < 300:
+		move.seed_lean(0.0, 0.0)
+		await step(1)
+		ticks += 1
+	assert_eq(player.move_manager.current_name, Move.WALKING,
+		"test setup: the beam was never walked off its end")
+	_world["input"].state.move = Vector2(0.0, -1.0)  # S, straight back on
+	var caught: bool = false
+	for i in 60:
+		await step(1)
+		if player.move_manager.current_name == Move.BALANCE:
+			caught = true
+			break
+	assert_true(caught, "walking straight back onto the beam was refused")

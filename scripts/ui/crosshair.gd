@@ -111,9 +111,19 @@ func _process(_delta: float) -> void:
 		_dot.visible = wanted
 	# The dot alone never changes, but the balance arc over it does, every
 	# tick. Redrawn only while a move is actually reporting a lean, so an
-	# ordinary run costs the same nothing it always did.
-	if wanted and _balance_readout_active():
+	# ordinary run costs the same nothing it always did -- PLUS the one frame
+	# the readout goes away. A CanvasItem keeps its last drawing until someone
+	# asks for another, and on the frame the beam is left nobody is reporting a
+	# lean any more, so without that extra redraw the final arc stays painted
+	# over the dot for the rest of the run.
+	var active: bool = wanted and _balance_readout_active()
+	if active or _readout_drawn:
 		_dot.queue_redraw()
+	_readout_drawn = active
+
+## Whether the last redraw this file asked for carried the balance arc. See
+## _process() for why the frame after it goes away needs one more.
+var _readout_drawn: bool = false
 
 func _balance_readout_active() -> bool:
 	if player == null or player.move_manager == null:

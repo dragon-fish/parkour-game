@@ -320,6 +320,14 @@ extends Resource
 ## carries the signal there; see BalanceConfig.max_body_lean_deg.
 @export var third_person_balance_roll_scale: float = 0.15
 
+## Time constant, seconds, on which the balance roll and FOV squeeze follow
+## what BalanceMove asks for. Bites on the way OUT: the move zeroes both the
+## instant the beam is left or lost, and without the ease a horizon tipped
+## by up to max_camera_roll_deg snaps level in one frame -- the owner's call
+## that a view leaving the beam eases back rather than cuts. The ride itself
+## barely notices it, since the lean moves on a slower clock than this.
+@export var balance_recover_time: float = 0.25
+
 ## Where the eye sits when the third-person view is on, as THREE FLOATS rather
 ## than the Vector3 this obviously wants to be.
 ##
