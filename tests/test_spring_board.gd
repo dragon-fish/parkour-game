@@ -159,6 +159,13 @@ func test_a_plant_the_body_cannot_stand_on_is_refused() -> void:
 func test_the_steps_put_the_feet_on_each_plant_in_turn() -> void:
 	var player: Player = await _press_jump_at_a_spring_board()
 	var board := player.move_manager.move_for(Move.SPRING_BOARD) as SpringBoardMove
+	# HELD FROM BEFORE THE CLIMB AND NEVER LET GO, which is the real case: a
+	# player runs at the board with W down. Neither the walk-up nor the steps
+	# read input.move, so the arcs below must land on the plants to the
+	# centimetre with the key still down -- that, not a lock, is what makes
+	# movement input harmless here. A lock would take the mouse with it, and
+	# the view has to stay live for the throw to be aimable.
+	_world["input"].state.move = Vector2(0.0, 1.0)  # W
 	# Walk on to the first plant's face.
 	var ticks: int = 0
 	while not board.is_stepping() and ticks < 60:
@@ -166,7 +173,6 @@ func test_the_steps_put_the_feet_on_each_plant_in_turn() -> void:
 		ticks += 1
 	assert_true(board.is_stepping(), "the steps never began")
 	assert_true(player.grounded, "stepping on the plants is not declared grounded")
-	assert_true(player.is_input_locked(), "the steps did not lock input")
 	await step(int(player.config.spring_board.step_time_1 * 60.0))
 	var feet_1: float = player.probes.feet_y()
 	assert_almost_eq(feet_1, 0.64, 0.08,
@@ -181,10 +187,13 @@ func test_the_throw_is_the_configs_and_the_rise_ends_in_falling() -> void:
 	var board := player.move_manager.move_for(Move.SPRING_BOARD) as SpringBoardMove
 	var cfg: SpringBoardConfig = player.config.spring_board
 	var ticks: int = 0
-	while board.is_stepping() or not board.has_launched():
+	# Bounded IN THE CONDITION, like every other loop here: a GUT assert does
+	# not stop execution, so a throw that never comes spins this test forever
+	# instead of failing it -- which is a hung suite, not a red one.
+	while (board.is_stepping() or not board.has_launched()) and ticks < 120:
 		await step(1)
 		ticks += 1
-		assert_true(ticks < 120, "the throw never came")
+	assert_true(board.has_launched(), "the throw never came")
 	assert_eq(player.move_manager.current_name, Move.SPRING_BOARD,
 		"the throw handed off instead of the move keeping the rise")
 	# One tick of the rise's own gravity has come off already.

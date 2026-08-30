@@ -45,18 +45,27 @@ func enter(_previous: StringName) -> void:
 	player.pending_spring_board = {}
 	_aborted = board.is_empty() or not bool(board.get("valid", false))
 	_launched = false
+	# ABOVE THE ABORT, the way LadderMove resets _top_exiting above its own:
+	# an interrupted move left mid-step keeps whatever phase it died in, and
+	# is_stepping()/scripted_duration() would then answer for a move that is
+	# not running -- which is exactly what CharacterAnimator routes on.
+	_phase = Phase.APPROACH
 	if _aborted:
 		return
 	_plant_1 = board["plant_1"]
 	_plant_2 = board["plant_2"]
 	_entry_speed = player.horizontal_speed()
-	_phase = Phase.APPROACH
 	_approach_time = 0.0
 	_hop.player = player
 	# The feet are on things for the whole of the walk and the steps:
 	# declared, never inferred, and set again every tick below.
 	player.set_grounded(true)
-	player.lock_input()
+	# NO INPUT LOCK. [ME:CONFIRMED] ControllerState = PlayerWalking and no
+	# bConstrainLook: the view stays live for the whole climb, which is what
+	# lets a fast mouse throw the body backwards. A lock would substitute an
+	# empty MoveInput and freeze the look with it, putting that behaviour out
+	# of reach. Movement keys are ignored by construction instead -- the
+	# approach and the steps never read input.move.
 	# The model faces along the plants for the steps; the capsule keeps
 	# following the view, which is what the throw reads.
 	var along: Vector3 = _plant_2 - _plant_1
@@ -69,7 +78,6 @@ func enter(_previous: StringName) -> void:
 	player.set_clip_lift_cancelled(true)
 
 func exit() -> void:
-	player.unlock_input()
 	player.set_clip_lift_cancelled(false)
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
@@ -165,11 +173,16 @@ func _launch() -> void:
 	dir = dir.normalized()
 	var xy: float = maxf(_entry_speed + cfg.xy_add, cfg.xy_min)
 	player.velocity = dir * xy + Vector3.UP * cfg.jump_z
+	# REPINNED TO THE THROW, because freeze_visual_yaw holds this move's pin
+	# for the whole rise: left facing along the plants the model flies 0.6 s
+	# sideways and snaps round the moment Falling takes over. The model
+	# follows displacement, and from this tick the displacement is the
+	# throw's.
+	player.pin_visual_yaw(atan2(-dir.x, -dir.z))
 	# The fall is measured from the launch, not from the ground the walk
 	# began on: a spring board is not a 1.2 m drop before it has even risen.
 	player.fall_tracker.reset(player.global_position.y)
 	player.set_grounded(false)
-	player.unlock_input()
 	player.set_clip_lift_cancelled(false)
 	_launched = true
 	_phase = Phase.RISE
