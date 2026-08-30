@@ -342,13 +342,23 @@ extends Resource
 ## the character's face.
 @export var turn_in_place_angle_deg: float = 90.0
 
+## How long the heading takes to come round by turn_in_place_angle_deg,
+## seconds. Quick: the legs are what the eye reads the facing from, and a
+## heading that crawled round over the whole clip left the player looking
+## at their own back. The clip is NOT tied to this -- see the next dial.
+@export var turn_in_place_time: float = 0.3
+
 ## Playback rate of the Turn90 clip while stepping round, as a multiplier on
-## the authored pace, and the body's heading turns over the same window the
-## clip takes at that rate (its kept length, see body_clip_timings, divided
-## by this). NOT fitted into a fixed window: squeezed into half a second the
-## step read as a flinch. The owner: a body that lags the head a little is
-## fine; a body that jerks round is not.
+## the authored pace. The clip plays through at this rate however fast the
+## heading came round above -- lagging the heading a little is fine, the
+## owner's call; squeezed to finish with it, the step read as a flinch.
 @export var turn_in_place_clip_scale: float = 1.0
+
+## In first person the heading may never fall further than
+## turn_in_place_angle_deg behind the view, whatever the mouse does: a flick
+## past it drags the legs round at once, and the step above turns the rest.
+## The owner: a little clipping beats seeing your own back. Third person is
+## the opposite call and is not clamped -- see _drive_body_yaw().
 
 ## How long Player.speed_cap() takes to slide to a new ceiling when a level
 ## puts a SPEED_CAP status on, or lifts one. PROJECT-DEFINED: the original has

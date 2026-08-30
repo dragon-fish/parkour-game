@@ -46,12 +46,17 @@ func test_looking_past_the_angle_steps_the_body_round_by_it() -> void:
 		"the step did not name the clip's own pace")
 	assert_gt(player.turn_in_place_window(), 0.0, "the step has no window to turn over")
 	await step(int(player.turn_in_place_window() * 60.0) + 5)
-	assert_false(player.is_turning_in_place(), "the step round never ended")
-	assert_almost_eq(wrapf(player.visual_yaw() - heading, -PI, PI), angle, 0.01,
-		"the body did not step round by the angle")
-	# Fifteen degrees left for the head, well inside its range: no second step.
-	await step(10)
-	assert_false(player.is_turning_in_place(), "a second step began with the head inside its range")
+	# The clamp took the 15 degrees of excess at once, and the step the
+	# remaining 90: the heading lands on the view.
+	assert_almost_eq(wrapf(player.rotation.y - player.visual_yaw(), -PI, PI), 0.0, 0.01,
+		"the heading did not come round to the view in its own time")
+	# The clip keeps going on its own clock after the heading has arrived.
+	assert_true(player.is_turning_in_place(),
+		"the turn clip was cut the moment the heading arrived")
+	await step(int(Player.TURN_IN_PLACE_FALLBACK_CLIP_TIME * 60.0) + 5)
+	assert_false(player.is_turning_in_place(), "the turn clip never ended")
+	assert_almost_eq(wrapf(player.rotation.y - player.visual_yaw(), -PI, PI), 0.0, 0.01,
+		"the heading drifted after the step")
 
 func test_third_person_keeps_its_heading_however_far_the_camera_goes() -> void:
 	# The owner's own touch: from outside, the body holds and the camera
@@ -76,3 +81,20 @@ func test_moving_cancels_the_step_and_the_run_catches_up() -> void:
 	await step(30)
 	assert_almost_eq(wrapf(player.rotation.y - player.visual_yaw(), -PI, PI), 0.0, 0.05,
 		"the run did not bring the body round to face the way it is going")
+
+func test_a_flick_past_the_angle_drags_the_legs_round_at_once_in_first_person() -> void:
+	# The owner: a little clipping beats seeing your own back. Whatever the
+	# mouse does, the heading never falls further than the angle behind the
+	# view in first person.
+	var player: Player = await _standing_player(false)
+	var angle: float = deg_to_rad(player.config.pawn.turn_in_place_angle_deg)
+	player.rotation.y += deg_to_rad(175.0)
+	await step(1)
+	var behind: float = absf(wrapf(player.rotation.y - player.visual_yaw(), -PI, PI))
+	assert_true(behind <= angle + 0.001,
+		"a flick left the legs %.0f degrees behind the view" % rad_to_deg(behind))
+	# ...and the step then brings the rest round.
+	await step(int(player.turn_in_place_window() * 60.0) + 5)
+	behind = absf(wrapf(player.rotation.y - player.visual_yaw(), -PI, PI))
+	assert_lt(behind, deg_to_rad(20.0),
+		"after the step the legs were still %.0f degrees behind" % rad_to_deg(behind))
