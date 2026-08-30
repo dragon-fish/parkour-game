@@ -2,16 +2,20 @@ class_name BalanceMove
 extends LineWalkMove
 
 # The original's TdMove_Balance: walking a pipe at a third of walking speed
-# [ME:CONFIRMED 05 §5.6] while an inverted pendulum tries to tip you off it.
+# [ME:CONFIRMED 05 §5.6]. An inverted pendulum tries to tip you off it -- see
+# the model below.
 #
-# [ME:CONFIRMED 05 §5.6] THE MODEL IS A BALL ON A DOME -- the owner's own
-# playtested description, and it overturned two prior readings taken from the
-# CDO's field names alone. Entering, the game drops the ball a little off the
-# apex, to the left or the right at random, further off the faster you came
-# in. Everything after that is the ball rolling off a dome it was never
-# stable on: get the offset AND its rate to zero early and it sits at the
-# apex for the rest of the beam, which is why an expert barely touches A/D
-# after the first moment.
+# [ME:CONFIRMED 05 §5.6] Standing still on the beam still loses balance, and
+# the wobble itself does not depend on speed -- both are the owner's own
+# measurements, overturning two prior readings taken from the CDO's field
+# names alone. [ME:INFERRED] THE MODEL FITTED TO THOSE MEASUREMENTS IS A BALL
+# ON A DOME (an inverted pendulum), not a formula recovered from the
+# original -- no formula exists in the dump, only names and numbers.
+# Entering, the game drops the ball a little off the apex, to the left or
+# the right at random, further off the faster you came in. Everything after
+# that is the ball rolling off a dome it was never stable on: get the offset
+# AND its rate to zero early and it sits at the apex for the rest of the
+# beam, which is why an expert barely touches A/D after the first moment.
 #
 # See docs/mirrors-edge-deep-research/05-动作库总览.md §5.6.
 
