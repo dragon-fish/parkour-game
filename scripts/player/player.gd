@@ -2370,14 +2370,21 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 # --- the step round --------------------------------------------------------------
 #
 # A body standing still whose view has gone past turn_in_place_angle_deg takes
-# ONE step round by that much, toward the view, over turn_in_place_time -- on
-# the pack's Turn90 clip, fitted to the same window (WalkingMove hands
-# turn_in_place_duration() to CharacterAnimator._scripted_fit()). Only while
+# ONE step round by that much, toward the view -- on the pack's Turn90 clip,
+# played at PawnConfig.turn_in_place_clip_scale, and the heading turns over
+# the window the clip takes at that rate. THE CLIP SETS THE PACE, not a fixed
+# window: fitted into half a second the step read as a flinch, and a body
+# that lags the head a little is what the owner asked for instead. Only while
 # WALKING and grounded: nothing else stands on its feet with nothing better to
 # do. See PawnConfig.turn_in_place_angle_deg.
 
-## Seconds left in the step round, 0 when not turning.
+## The window when there is no body, or the body has no turn clip: the
+## heading still has to come round in SOME time.
+const TURN_IN_PLACE_FALLBACK_TIME := 0.8
+
+## Seconds left in the step round, 0 when not turning, and the whole window.
 var _turn_in_place_left: float = 0.0
+var _turn_in_place_total: float = TURN_IN_PLACE_FALLBACK_TIME
 ## The model's yaw when the step began, and which way it goes: +1 turns LEFT
 ## (Godot's yaw grows counter-clockwise), -1 right.
 var _turn_in_place_from: float = 0.0
@@ -2386,12 +2393,17 @@ var _turn_in_place_sign: float = -1.0
 func _begin_turn_in_place(remaining: float) -> void:
 	_turn_in_place_from = _visual_yaw
 	_turn_in_place_sign = 1.0 if remaining > 0.0 else -1.0
-	_turn_in_place_left = maxf(config.pawn.turn_in_place_time, 0.001)
+	_turn_in_place_total = TURN_IN_PLACE_FALLBACK_TIME
+	var animator := get_node_or_null(^"BodyRoot/CharacterAnimator") as CharacterAnimator
+	if animator != null:
+		var length: float = animator.clip_play_length(turn_in_place_clip())
+		if length > 0.0:
+			_turn_in_place_total = length / maxf(config.pawn.turn_in_place_clip_scale, 0.01)
+	_turn_in_place_left = _turn_in_place_total
 
 func _advance_turn_in_place(delta: float) -> void:
-	var total: float = maxf(config.pawn.turn_in_place_time, 0.001)
 	_turn_in_place_left = maxf(_turn_in_place_left - delta, 0.0)
-	var t: float = 1.0 - _turn_in_place_left / total
+	var t: float = 1.0 - _turn_in_place_left / maxf(_turn_in_place_total, 0.001)
 	var angle: float = deg_to_rad(config.pawn.turn_in_place_angle_deg)
 	_visual_yaw = wrapf(_turn_in_place_from + _turn_in_place_sign * angle * t, -PI, PI)
 
@@ -2403,10 +2415,15 @@ func is_turning_in_place() -> bool:
 func turn_in_place_clip() -> StringName:
 	return &"Turn90_L" if _turn_in_place_sign > 0.0 else &"Turn90_R"
 
-## The window the turn clip is fitted to, or 0 when not turning -- see
-## WalkingMove.scripted_duration().
-func turn_in_place_duration() -> float:
-	return config.pawn.turn_in_place_time if is_turning_in_place() else 0.0
+## How long the step round takes, seconds -- the clip's own kept length at
+## turn_in_place_clip_scale, or TURN_IN_PLACE_FALLBACK_TIME without one.
+func turn_in_place_window() -> float:
+	return _turn_in_place_total
+
+## The clip's playback rate while stepping round, or 0 when not -- see
+## WalkingMove.clip_time_scale().
+func turn_in_place_clip_scale() -> float:
+	return config.pawn.turn_in_place_clip_scale if is_turning_in_place() else 0.0
 
 ## Where the visible model is facing, in world radians.
 func visual_yaw() -> float:

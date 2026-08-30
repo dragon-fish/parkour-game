@@ -342,9 +342,13 @@ extends Resource
 ## the character's face.
 @export var turn_in_place_angle_deg: float = 90.0
 
-## How long that step round takes, seconds. The Turn90 clip (2.0 s as
-## authored) is fitted to this window by CharacterAnimator._scripted_fit().
-@export var turn_in_place_time: float = 0.45
+## Playback rate of the Turn90 clip while stepping round, as a multiplier on
+## the authored pace, and the body's heading turns over the same window the
+## clip takes at that rate (its kept length, see body_clip_timings, divided
+## by this). NOT fitted into a fixed window: squeezed into half a second the
+## step read as a flinch. The owner: a body that lags the head a little is
+## fine; a body that jerks round is not.
+@export var turn_in_place_clip_scale: float = 1.0
 
 ## How long Player.speed_cap() takes to slide to a new ceiling when a level
 ## puts a SPEED_CAP status on, or lifts one. PROJECT-DEFINED: the original has

@@ -170,11 +170,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return FALLING
 	return KEEP
 
-## The scripted-fit hook (CharacterAnimator._scripted_fit): while the body is
-## stepping round on the spot, the Turn90 clip is fitted to
-## PawnConfig.turn_in_place_time; 0 otherwise. The step itself lives on
-## Player (_drive_body_yaw), since it is about the visible body and not a
-## move of its own; this is only where the animator is told how long it
-## lasts.
-func scripted_duration() -> float:
-	return player.turn_in_place_duration()
+## The playback-rate hook (CharacterAnimator._drive_speed): while the body is
+## stepping round on the spot, the Turn90 clip plays at
+## PawnConfig.turn_in_place_clip_scale; 0 otherwise leaves the speed match
+## alone. The step itself lives on Player (_drive_body_yaw), since it is
+## about the visible body and not a move of its own; this is only where the
+## animator is told how fast the clip goes.
+func clip_time_scale() -> float:
+	return player.turn_in_place_clip_scale()

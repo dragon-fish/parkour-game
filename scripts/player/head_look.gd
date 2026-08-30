@@ -34,7 +34,8 @@ extends SkeletonModifier3D
 # see, only measure. A global-space rotation is the same rotation whatever the
 # rest pose is.
 
-## Takes the share of the yaw named by SPINE_SHARE_DEG, split evenly.
+## Takes the share of the yaw named by SPINE_SHARE_DEG, building up the
+## chain on SPINE_RAMP.
 ##
 ## STARTS AT Spine, not Chest. The head's pitch pivots at the joint with the
 ## NECK and the upper body around the PELVIS -- neither turns about its own
@@ -68,6 +69,12 @@ const LOWER_TWIST_LIMIT_DEG := 50.0
 ## Enough that the shoulders read as following, not enough to look like the
 ## whole torso turned.
 const SPINE_SHARE_DEG := 15.0
+## How the spine's share builds up the chain: each bone takes this much more
+## than the one below, in units of the lowest bone's share (1.0 puts Spine,
+## Chest and UpperChest at 1:2:3). The owner: split evenly, the torso turned
+## as one block, which read as stiff; a twist that grows up the spine is what
+## a person does, and the sum at the neck is still exactly the share.
+const SPINE_RAMP := 1.0
 ## And of the pitch, which is ASYMMETRIC. Looking up wants very little: a chest
 ## that tips back with every glance upward reads as a bow. Looking down wants a
 ## lot more: with too little the head rotates down INTO its own chest instead
@@ -215,13 +222,18 @@ func _process_modification_with_delta(delta: float) -> void:
 	# something subtracts it, and a chest that swung 45 degrees with the legs
 	# is not a twist at the waist -- it is the whole body turned, which is what
 	# the clip was already refusing to do.
-	_apply(skeleton, SPINE_CHAIN, spine_yaw - _twist, spine_pitch)
+	_apply(skeleton, SPINE_CHAIN, spine_yaw - _twist, spine_pitch, SPINE_RAMP)
 	# The remainder, so the head lands on the full angle rather than on the
 	# angle plus whatever the spine already contributed.
 	_apply(skeleton, HEAD_CHAIN, _yaw - spine_yaw, _pitch - spine_pitch)
 
-## Spreads `yaw` and `pitch` evenly across `chain`, parent to child.
-func _apply(skeleton: Skeleton3D, chain: Array[StringName], yaw: float, pitch: float) -> void:
+## Spreads `yaw` and `pitch` across `chain`, parent to child, so the whole
+## of each arrives at the chain's last bone. Evenly by default; with `ramp`
+## each bone takes that much more than the one below it, in units of the
+## lowest bone's share, so the turn builds up the chain instead of being
+## stamped onto every bone alike.
+func _apply(skeleton: Skeleton3D, chain: Array[StringName], yaw: float, pitch: float,
+		ramp: float = 0.0) -> void:
 	var present: Array[int] = []
 	for name in chain:
 		var index: int = skeleton.find_bone(name)
@@ -229,15 +241,21 @@ func _apply(skeleton: Skeleton3D, chain: Array[StringName], yaw: float, pitch: f
 			present.append(index)
 	if present.is_empty():
 		return
-	var share: float = 1.0 / float(present.size())
+	var weights: Array[float] = []
+	var total: float = 0.0
+	for i in present.size():
+		var weight: float = 1.0 + ramp * float(i)
+		weights.append(weight)
+		total += weight
 	# Yaw about UP is the same rotation whatever the rest pose is. Pitch is
 	# about the model's own right, taken from the bone being turned rather than
 	# assumed, so a body mounted facing either way tips the correct way.
 	var axis: Vector3 = _pitch_axis(skeleton)
-	for index in present:
-		var pose: Transform3D = skeleton.get_bone_global_pose(index)
+	for i in present.size():
+		var share: float = weights[i] / total
+		var pose: Transform3D = skeleton.get_bone_global_pose(present[i])
 		var turn := Basis(Vector3.UP, yaw * share) * Basis(axis, pitch * share)
-		skeleton.set_bone_global_pose(index, Transform3D(turn * pose.basis, pose.origin))
+		skeleton.set_bone_global_pose(present[i], Transform3D(turn * pose.basis, pose.origin))
 
 ## The character's own left-to-right axis, taken from the SHOULDERS.
 ##

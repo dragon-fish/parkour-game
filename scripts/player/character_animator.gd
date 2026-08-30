@@ -545,6 +545,13 @@ func _oneshot_target(delta: float) -> StringName:
 ## already pointed at. Read rather than configured so a one-shot's window can
 ## never drift from the clip it is a window for -- swapping in a longer
 ## Slide_Exit needs no number changed anywhere.
+## How long `clip` plays for at 1.0x -- its kept length, see _clip_length().
+## For a caller outside this file that paces something on the clip rather
+## than the clip on it (Player's step round turns the heading over the
+## Turn90 clip's own length).
+func clip_play_length(clip: StringName) -> float:
+	return _clip_length(clip)
+
 func _clip_length(clip: StringName) -> float:
 	if anim_tree == null:
 		return 0.0
@@ -945,8 +952,8 @@ func _target_animation() -> StringName:
 			# asked for is a walk, whatever the body has actually reached yet.
 			# Ctrl held while standing still falls through to idle below.
 			# STEPPING ROUND on the spot: the pack's quarter turn, on the side
-			# the body steps to, fitted to PawnConfig.turn_in_place_time
-			# through WalkingMove.scripted_duration(). Both clips are in
+			# the body steps to, at PawnConfig.turn_in_place_clip_scale through
+			# WalkingMove.clip_time_scale(). Both clips are in
 			# Player.SCRIPTED_MOVE_CLIPS, so _route() puts them on a scripted
 			# slot like any other one-shot. See Player._begin_turn_in_place().
 			if player.is_turning_in_place():

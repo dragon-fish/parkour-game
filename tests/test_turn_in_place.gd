@@ -42,9 +42,10 @@ func test_looking_past_the_angle_steps_the_body_round_by_it() -> void:
 	assert_true(player.is_turning_in_place(), "looking past the angle did not start a step round")
 	assert_eq(String(player.turn_in_place_clip()), "Turn90_L",
 		"looking left, the body stepped the other way (%s)" % String(player.turn_in_place_clip()))
-	assert_almost_eq(player.turn_in_place_duration(), player.config.pawn.turn_in_place_time, 0.001,
-		"the step did not offer its clip the window to fit")
-	await step(int(player.config.pawn.turn_in_place_time * 60.0) + 5)
+	assert_almost_eq(player.turn_in_place_clip_scale(), player.config.pawn.turn_in_place_clip_scale, 0.001,
+		"the step did not name the clip's own pace")
+	assert_gt(player.turn_in_place_window(), 0.0, "the step has no window to turn over")
+	await step(int(player.turn_in_place_window() * 60.0) + 5)
 	assert_false(player.is_turning_in_place(), "the step round never ended")
 	assert_almost_eq(wrapf(player.visual_yaw() - heading, -PI, PI), angle, 0.01,
 		"the body did not step round by the angle")
@@ -58,7 +59,7 @@ func test_third_person_keeps_its_heading_however_far_the_camera_goes() -> void:
 	var player: Player = await _standing_player(true)
 	var heading: float = player.visual_yaw()
 	player.rotation.y -= deg_to_rad(150.0)
-	await step(int(player.config.pawn.turn_in_place_time * 60.0) + 10)
+	await step(60)
 	assert_false(player.is_turning_in_place(), "third person stepped round")
 	assert_almost_eq(wrapf(player.visual_yaw() - heading, -PI, PI), 0.0, 0.001,
 		"the body turned in third person while the player only looked")
