@@ -525,3 +525,50 @@ func test_each_death_picks_its_own_clip_rather_than_the_first_one_ever() -> void
 	assert_eq(animator._target_animation(), &"Death02", \
 		"the second death replayed the first one's choice")
 	player.set_dying(false)
+
+# --- the balance beam is a walk, the ledge shuffle is direction-aware --------
+
+func test_the_beam_walks_rather_than_leans() -> void:
+	# The wobble is carried entirely by the camera roll and the skeleton lean
+	# (BalanceLean) -- the body itself is just walking at 8.81 km/h, so a
+	# genuine Walk is the honest clip and no lean variant is ever reached for.
+	var animator: CharacterAnimator = await _animator_with([&"Walk", &"Idle"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(String(animator._target_animation()), "Walk",
+		"the beam asked for '%s'" % String(animator._target_animation()))
+
+func test_the_ledge_shuffles_sideways() -> void:
+	# LedgeWalkMove.note_travel() is driven directly, the same way
+	# test_a_shimmy_plays_the_travel_clips() pokes GrabMove._shimmy: entering
+	# with no InterestLine registered aborts the move's own physics, but the
+	# routing under test only reads move_manager.current_name and the move
+	# instance, neither of which the abort touches.
+	var animator: CharacterAnimator = await _animator_with(
+		[&"Walk_L", &"Walk_R", &"Walk", &"Idle"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.LEDGE_WALK)
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	assert_not_null(ledge, "no LedgeWalkMove to drive")
+
+	ledge.note_travel(-1.0)
+	assert_eq(String(animator._target_animation()), "Walk_L",
+		"shuffling toward the line's start asked for '%s'" % String(animator._target_animation()))
+	ledge.note_travel(1.0)
+	assert_eq(String(animator._target_animation()), "Walk_R",
+		"shuffling toward the line's end asked for '%s'" % String(animator._target_animation()))
+	ledge.note_travel(0.0)
+	assert_eq(String(animator._target_animation()), "Idle",
+		"standing still on a ledge asked for '%s'" % String(animator._target_animation()))
+
+func test_both_fall_back_when_the_pack_is_absent() -> void:
+	# The chain still degrades: a body with only the fox's six clips uses
+	# `idle` rather than standing on the default pose.
+	var animator: CharacterAnimator = await _animator_with([&"idle"])
+	var player: Player = _world["player"]
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(String(animator._target_animation()), "idle",
+		"a balance beam with no Walk clip asked for '%s'" % String(animator._target_animation()))
+	player.move_manager.start(Move.LEDGE_WALK)
+	assert_eq(String(animator._target_animation()), "idle",
+		"a ledge with no Walk clips asked for '%s'" % String(animator._target_animation()))

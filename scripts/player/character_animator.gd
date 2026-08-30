@@ -1238,6 +1238,26 @@ func _target_animation() -> StringName:
 			if turn_speed > player.config.pawn.run_animation_speed_threshold:
 				return _first_available([&"Walk", &"Sprint", &"run", &"idle"])
 			return _first_available([&"Idle", &"idle", &"Walk", &"run"])
+		Move.BALANCE:
+			# The wobble is carried entirely by the camera roll and the
+			# skeleton lean (BalanceLean) -- the body itself is just walking.
+			# [ME:CONFIRMED 05 §5.6] the beam speed is 8.81 km/h, so Walk is
+			# the honest clip. The owner ruled out the packs' lean variants
+			# (Jog_Fwd_LeanL/R): those are authored for leaning into a
+			# full-speed run, which this is not.
+			return _first_available([&"Walk", &"Idle", &"idle"])
+		Move.LEDGE_WALK:
+			# Direction-aware, off the Walk family's own _L/_R suffixes (see
+			# DIRECTION_SETS). UAL2's Walk_L / Walk_R are a walking-cadence
+			# sidestep, which is exactly what shuffling a ledge with your
+			# back to the wall is.
+			var ledge = player.move_manager.move_for(Move.LEDGE_WALK)
+			var dir: int = ledge.shuffle_direction() if ledge != null else 0
+			if dir < 0:
+				return _first_available([&"Walk_L", &"Walk", &"idle"])
+			if dir > 0:
+				return _first_available([&"Walk_R", &"Walk", &"idle"])
+			return _first_available([&"Idle", &"Walk", &"idle"])
 		_:
 			# Any move without an explicit case above. Reaching here is a
 			# signal that a move was added without deciding what it looks

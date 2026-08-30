@@ -18,3 +18,17 @@ static func catch_gate(player: Player, line: InterestLine, snap_height: float) -
 	if not player.line_ready(line):
 		return false
 	return LineWalkMove.foot_gate_at(line, player.global_position, snap_height)
+
+## -1 (toward the line's start), 0 (still), +1 (toward its end) -- what the last
+## tick's input actually asked for. CharacterAnimator picks Walk_L/Walk_R off it.
+var _shuffle_dir: int = 0
+
+func shuffle_direction() -> int:
+	return _shuffle_dir
+
+## Deadzoned so a body that has stopped, or is only correcting a fraction of a
+## metre near the deadzone in LineWalkMove.physics_update(), does not flicker
+## between Walk_L and Walk_R on float noise -- the same reasoning
+## CharacterAnimator._travel_angle() applies to its own dead zone.
+func note_travel(along: float) -> void:
+	_shuffle_dir = int(signf(along)) if absf(along) > 0.1 else 0
