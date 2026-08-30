@@ -34,6 +34,12 @@ var last_input: MoveInput = MoveInput.new()
 
 var _input_locked: bool = false
 
+## The two foot plants the spring board about to start was admitted on --
+## WalkingMove's own springboard_query() result -- so SpringBoardMove.enter()
+## does not probe again from a body that has moved a tick since. One-shot:
+## SpringBoardMove.enter() reads it and clears it.
+var pending_spring_board: Dictionary = {}
+
 ## Set by WalkingMove/FallingMove the instant SpeedVaultConfig.should_commit()
 ## fires, immediately before returning SPEED_VAULT -- the committed variant a
 ## same-tick pick_variant() already matched, carried across the state
@@ -1345,6 +1351,7 @@ func _build_moves() -> void:
 		[Move.LADDER, LadderMove.new(), config.ladder],
 		[Move.LEDGE_WALK, LedgeWalkMove.new(), config.ledge_walk],
 		[Move.BALANCE, BalanceMove.new(), config.balance],
+		[Move.SPRING_BOARD, SpringBoardMove.new(), config.spring_board],
 	]
 	for row in table:
 		var move: Move = row[1]

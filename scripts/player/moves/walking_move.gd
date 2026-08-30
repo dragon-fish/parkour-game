@@ -41,6 +41,23 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	var grade: float = player.ground_grade(Vector3(player.velocity.x, 0.0, player.velocity.z))
 	player.ground_accelerate(wish_dir, target_speed, delta, grade)
 
+	# A SPRING BOARD OUTRANKS A PLAIN JUMP. [ME:CONFIRMED] the owner, in the
+	# original: two foot plants ahead and the jump key IS the spring board.
+	# Asked on the press only, and only from the ground -- the original never
+	# enters this from the air. Standing room on both plants is Player's
+	# question, not the probe's, the same split ledge_query() keeps.
+	if player.grounded and input.jump_pressed and player.probes != null \
+			and player.move_manager.can_enter(SPRING_BOARD):
+		var board: Dictionary = player.probes.springboard_query()
+		if board["valid"] and player.fits_standing_at(board["plant_1"]) \
+				and player.fits_standing_at(board["plant_2"]):
+			# Spent here so the buffered press cannot fire a second jump on
+			# the way down; refused only by a level's own jump block, in
+			# which case the plain jump below is refused the same way.
+			if player.consume_jump():
+				player.pending_spring_board = board
+				return SPRING_BOARD
+
 	if player.consume_jump():
 		player.velocity.y = config.pawn.base_jump_z
 		player.velocity += player.jump_add_velocity(input)

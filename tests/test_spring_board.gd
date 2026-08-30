@@ -107,3 +107,126 @@ func test_a_wide_step_is_a_spring_board_too() -> void:
 	await step(2)
 	assert_true(player.probes.springboard_query()["valid"],
 		"two wide tiers were not seen as a spring board")
+
+# --- the move --------------------------------------------------------------
+
+## Stands the player 1 m short of a spring board and presses jump.
+func _press_jump_at_a_spring_board(bearing_deg: float = 0.0) -> Player:
+	var player: Player = await _standing_player()
+	_spring_board_ahead(1.0, bearing_deg)
+	await step(2)
+	_world["input"].state.jump_pressed = true
+	_world["input"].state.jump_held = true
+	await step(1)
+	_world["input"].state.jump_pressed = false
+	return player
+
+func test_jump_at_a_spring_board_is_a_spring_board_not_a_jump() -> void:
+	var player: Player = await _press_jump_at_a_spring_board()
+	assert_eq(player.move_manager.current_name, Move.SPRING_BOARD,
+		"jump in front of two plants did not spring board")
+
+func test_jump_with_only_one_plant_ahead_is_a_plain_jump() -> void:
+	var player: Player = await _standing_player()
+	_pole(0.0, -1.0, 0.64)
+	await step(2)
+	_world["input"].state.jump_pressed = true
+	_world["input"].state.jump_held = true
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.JUMP,
+		"one pole ahead turned a jump into something else")
+
+func test_a_plant_the_body_cannot_stand_on_is_refused() -> void:
+	# A slab hanging 1.0 m above the second plant's top: the capsule is 1.8 m.
+	var player: Player = await _standing_player()
+	_spring_board_ahead(1.0)
+	var roof := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(1.0, 0.2, 1.0)
+	shape.shape = box
+	roof.add_child(shape)
+	get_tree().root.add_child(roof)
+	roof.global_position = Vector3(0.0, 1.24 + 1.0 + 0.1, -2.12)
+	_props.append(roof)
+	await step(2)
+	_world["input"].state.jump_pressed = true
+	_world["input"].state.jump_held = true
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.JUMP,
+		"a spring board the body cannot stand on top of was still taken")
+
+func test_the_steps_put_the_feet_on_each_plant_in_turn() -> void:
+	var player: Player = await _press_jump_at_a_spring_board()
+	var board := player.move_manager.move_for(Move.SPRING_BOARD) as SpringBoardMove
+	# Walk on to the first plant's face.
+	var ticks: int = 0
+	while not board.is_stepping() and ticks < 60:
+		await step(1)
+		ticks += 1
+	assert_true(board.is_stepping(), "the steps never began")
+	assert_true(player.grounded, "stepping on the plants is not declared grounded")
+	assert_true(player.is_input_locked(), "the steps did not lock input")
+	await step(int(player.config.spring_board.step_time_1 * 60.0))
+	var feet_1: float = player.probes.feet_y()
+	assert_almost_eq(feet_1, 0.64, 0.08,
+		"after the first step the feet are at %.2f, not on the first plant" % feet_1)
+	await step(int(player.config.spring_board.step_time_2 * 60.0))
+	var feet_2: float = player.probes.feet_y()
+	assert_almost_eq(feet_2, 1.24, 0.08,
+		"after the second step the feet are at %.2f, not on the second plant" % feet_2)
+
+func test_the_throw_is_the_configs_and_the_rise_ends_in_falling() -> void:
+	var player: Player = await _press_jump_at_a_spring_board()
+	var board := player.move_manager.move_for(Move.SPRING_BOARD) as SpringBoardMove
+	var cfg: SpringBoardConfig = player.config.spring_board
+	var ticks: int = 0
+	while board.is_stepping() or not board.has_launched():
+		await step(1)
+		ticks += 1
+		assert_true(ticks < 120, "the throw never came")
+	assert_eq(player.move_manager.current_name, Move.SPRING_BOARD,
+		"the throw handed off instead of the move keeping the rise")
+	# One tick of the rise's own gravity has come off already.
+	assert_gt(player.velocity.y, cfg.jump_z - player.config.pawn.gravity * 0.05,
+		"the throw's vertical speed is not the config's (%.2f)" % player.velocity.y)
+	assert_almost_eq(player.horizontal_speed(), cfg.xy_min, 0.3,
+		"a standing start must be thrown at xy_min (%.2f)" % player.horizontal_speed())
+	assert_false(player.is_input_locked(), "the rise did not give input back")
+	# The rise stays with the move until the apex.
+	while player.velocity.y > 0.0 and ticks < 200:
+		assert_eq(player.move_manager.current_name, Move.SPRING_BOARD, "the rise left the move early")
+		await step(1)
+		ticks += 1
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.FALLING,
+		"past the apex the move did not hand off to Falling")
+
+func test_the_throw_goes_where_the_camera_looks_at_that_instant() -> void:
+	# The owner: turn the view round during the steps and the body is thrown
+	# backwards -- a known glitch in the original, copied on purpose.
+	var player: Player = await _press_jump_at_a_spring_board()
+	var board := player.move_manager.move_for(Move.SPRING_BOARD) as SpringBoardMove
+	var ticks: int = 0
+	while not board.is_stepping() and ticks < 60:
+		await step(1)
+		ticks += 1
+	player.rotation.y += PI  # facing +Z now
+	while not board.has_launched() and ticks < 120:
+		await step(1)
+		ticks += 1
+	assert_gt(player.velocity.z, 0.0,
+		"thrown along the plants (-Z) instead of the way the camera looks (+Z)")
+
+func test_the_rise_cannot_coil() -> void:
+	var player: Player = await _press_jump_at_a_spring_board()
+	var board := player.move_manager.move_for(Move.SPRING_BOARD) as SpringBoardMove
+	var ticks: int = 0
+	while not board.has_launched() and ticks < 120:
+		await step(1)
+		ticks += 1
+	_world["input"].state.crouch_pressed = true
+	_world["input"].state.crouch_held = true
+	await step(3)
+	assert_ne(player.move_manager.current_name, Move.COIL,
+		"a spring board coiled: Coil belongs to Jump alone")
