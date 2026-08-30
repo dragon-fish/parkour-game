@@ -889,6 +889,11 @@ var hand_ik: HandIK = null
 ## HeadLook's own header.
 var head_look: HeadLook = null
 
+## Leans the attached body's torso to show a balance beam's wobble, feet
+## planted. Built alongside HeadLook, and null for a body without the chain it
+## needs. See BalanceLean's own header.
+var balance_lean: BalanceLean = null
+
 ## The world yaw the MODEL is currently showing, which is not always the body's
 ## own. See _drive_body_yaw().
 var _visual_yaw: float = 0.0
@@ -1428,6 +1433,7 @@ func _attach_body(scene: PackedScene) -> void:
 	if camera_rig != null:
 		camera_rig.eye_forward = body_eye_forward
 	_attach_head_look(body)
+	_attach_balance_lean(body)
 	_mark.call("head look")
 	if head_node != null:
 		head_rest_local = to_local(head_node.global_position)
@@ -2187,6 +2193,33 @@ func _attach_head_look(body_node: Node3D) -> void:
 	look.name = "HeadLook"
 	skeleton.add_child(look)
 	head_look = look
+
+## Builds the balance lean on the body's skeleton, if it has the chain to
+## carry a lean. Mounted alongside HeadLook -- both live on the same
+## Skeleton3D and compose in the same modifier pass.
+func _attach_balance_lean(body_node: Node3D) -> void:
+	balance_lean = null
+	var skeleton := _find_skeleton(body_node)
+	if skeleton == null or skeleton.find_bone(&"Hips") < 0:
+		return
+	skeleton.modifier_callback_mode_process = 		Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_PHYSICS
+	var lean := BalanceLean.new()
+	lean.name = "BalanceLean"
+	skeleton.add_child(lean)
+	balance_lean = lean
+
+## Feeds the balance lean this tick's signed severity while BalanceMove is the
+## active move, and zero the instant it is not -- a lean that outlives the
+## move would follow the player off the beam.
+func _drive_balance_lean() -> void:
+	if balance_lean == null or move_manager == null:
+		return
+	var move = move_manager.move_for(Move.BALANCE)
+	var active: bool = move_manager.current_name == Move.BALANCE
+	balance_lean.request_lean(
+		move.signed_severity() if active else 0.0,
+		deg_to_rad(config.balance.max_body_lean_deg),
+		deg_to_rad(config.balance.hips_lean_share_deg))
 
 ## Feeds the head look the angle between where the MODEL faces and where the
 ## CAMERA points.
@@ -2954,6 +2987,7 @@ func _physics_process(delta: float) -> void:
 	_drive_body_yaw(delta, input)
 	_drive_clip_offset(delta)
 	_drive_head_look()
+	_drive_balance_lean()
 
 	if camera_rig != null:
 		camera_rig.apply_look(input.look, self, delta)
