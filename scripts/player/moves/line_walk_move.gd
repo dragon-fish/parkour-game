@@ -19,6 +19,14 @@ var _offset_along: float = 0.0
 ## body's live rotation, which drifts with mouse look inside the look
 ## constraint. See project_input()'s own note on why that distinction matters.
 var _walk_yaw: float = 0.0
+## +1 to face the curve's own tangent, -1 to face -tangent. Chosen once at
+## entry (see _pick_direction_sign()) and held for the life of the move --
+## _offset_along stays in the curve's own arc-length frame throughout
+## (the line's start is still offset 0 regardless of which way the body
+## walks), so this sign is what turns "arc length increasing" into "the
+## body's own forward" everywhere that distinction matters: _walk_yaw,
+## _yaw_offset()'s argument, and the arc-length delta below.
+var _direction_sign: float = 1.0
 
 ## Which kind of line this move rides. Subclasses MUST override.
 func kind() -> InterestLine.Kind:
@@ -94,8 +102,13 @@ func enter(_previous: StringName) -> void:
 		return
 	_offset_along = _line.closest_offset(player.global_position)
 	var s: Dictionary = _line.sample(_offset_along)
-	_walk_yaw = LineWalkMove.yaw_of(s["tangent"])
-	_target_yaw = _walk_yaw + deg_to_rad(_yaw_offset(s["tangent"]))
+	# MUST run before player.velocity is zeroed below -- _pick_direction_sign()'s
+	# default override reads the live arrival velocity, and by the time this
+	# function returns that velocity is gone.
+	_direction_sign = _pick_direction_sign(s["tangent"])
+	var facing_tangent: Vector3 = s["tangent"] * _direction_sign
+	_walk_yaw = LineWalkMove.yaw_of(facing_tangent)
+	_target_yaw = _walk_yaw + deg_to_rad(_yaw_offset(facing_tangent))
 	# The multiplier applies to the GroundSpeed constant, not to what was
 	# carried in: arriving fast must not survive the step onto the line.
 	player.velocity = Vector3.ZERO
@@ -116,11 +129,18 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.consume_roll()
 		return FALLING
 	var s: Dictionary = _line.sample(_offset_along)
-	_walk_yaw = LineWalkMove.yaw_of(s["tangent"])
+	var facing_tangent: Vector3 = s["tangent"] * _direction_sign
+	_walk_yaw = LineWalkMove.yaw_of(facing_tangent)
 	var projected := LineWalkMove.project_input(
-		input.move, _walk_yaw, deg_to_rad(_yaw_offset(s["tangent"])))
+		input.move, _walk_yaw, deg_to_rad(_yaw_offset(facing_tangent)))
 	var speed: float = config.pawn.ground_speed * cfg.speed_modifier
-	_offset_along += projected.x * speed * delta
+	# projected.x is already "along the direction the body faces" (project_input's
+	# own invariant). _offset_along, though, stays in the curve's RAW arc-length
+	# frame -- the line's start is offset 0 no matter which way the body walks --
+	# so converting a facing-frame step into an arc-length delta needs the same
+	# sign that turned the raw tangent into facing_tangent above.
+	var signed_along: float = projected.x * _direction_sign
+	_offset_along += signed_along * speed * delta
 	note_travel(projected.x)
 	# Walking off either end is how you leave: the line ran out, so the body is
 	# simply standing on whatever is there.
@@ -132,8 +152,14 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# _offset_along already sitting on the boundary; without the input check,
 	# the very first physics_update -- before any key has been pressed --
 	# would see "at the boundary" and exit on the spot.
-	var at_end: bool = (_offset_along <= 0.0 and projected.x < 0.0) \
-		or (_offset_along >= _line.length() and projected.x > 0.0)
+	#
+	# Checked against signed_along (the raw arc-length direction), NOT
+	# projected.x: on the reversed branch (_direction_sign < 0) walking toward
+	# offset 0 is what the body's OWN forward drives, so gating on projected.x
+	# here would let a body walking off the reversed end's "far" side exit one
+	# tick early or never.
+	var at_end: bool = (_offset_along <= 0.0 and signed_along < 0.0) \
+		or (_offset_along >= _line.length() and signed_along > 0.0)
 	_offset_along = clampf(_offset_along, 0.0, _line.length())
 	if at_end:
 		return WALKING
@@ -165,6 +191,18 @@ func line_offset() -> float:
 ## pendulum). Returns a move name to leave, or KEEP. The base tier has none.
 func lateral_update(_delta: float, _lateral_input: float) -> StringName:
 	return KEEP
+
+## Which way along `tangent` (the line's own, un-flipped) the body should
+## face: +1 keeps the curve's authored direction, -1 reverses it. Called once
+## at entry, before player.velocity is zeroed -- see enter()'s own note.
+##
+## Base tier never reverses. LedgeWalkMove keeps this default: its two
+## possible facings are already resolved by _yaw_offset()'s own wall-relative
+## sign (InterestLine.front()), a property of the LINE, not of how the player
+## walked up to it, so there is nothing here for it to decide. BalanceMove
+## overrides this -- see its own note for which arrival signal it reads.
+func _pick_direction_sign(_tangent: Vector3) -> float:
+	return 1.0
 
 ## How far off the line's centreline the body currently stands, metres.
 func lateral_offset() -> float:

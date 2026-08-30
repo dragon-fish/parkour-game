@@ -27,6 +27,34 @@ var _lean_rate: float = 0.0
 func kind() -> InterestLine.Kind:
 	return InterestLine.Kind.BALANCE
 
+## Below this horizontal speed, arrival velocity carries no real direction --
+## it is float noise from standing still or from a body that turned in place
+## before stepping on, not a run-up. Comfortably above physics jitter, well
+## below a walking pace.
+const MEANINGFUL_ARRIVAL_SPEED: float = 0.05
+
+## The beam is enterable from either end -- see this file's own header on the
+## inverted pendulum for why direction otherwise has no bearing on the pendulum
+## itself, only on which way W drives the body. Two candidate signals exist for
+## "which way did the player mean to walk": the body's facing, or its
+## horizontal velocity. Velocity wins when it is meaningful: a body arriving at
+## a run chose that direction with its feet, which is a clearer statement of
+## intent than whatever way it happened to be looking (mouse look is
+## independent of travel). Below MEANINGFUL_ARRIVAL_SPEED there is no run to
+## read, so facing is what is left -- covers stepping onto the beam from a
+## standstill, or turning in place at one end before walking on.
+func _pick_direction_sign(tangent: Vector3) -> float:
+	var flat_tangent := Vector3(tangent.x, 0.0, tangent.z)
+	if flat_tangent.length_squared() < 0.0001:
+		return 1.0
+	var horizontal_velocity := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	var arrival: Vector3
+	if horizontal_velocity.length() > MEANINGFUL_ARRIVAL_SPEED:
+		arrival = horizontal_velocity
+	else:
+		arrival = -player.global_transform.basis.z
+	return 1.0 if arrival.dot(flat_tangent) >= 0.0 else -1.0
+
 static func catch_gate(player: Player, line: InterestLine, snap_height: float) -> bool:
 	if not player.line_ready(line):
 		return false

@@ -130,6 +130,103 @@ func test_correction_opposes_the_lean() -> void:
 	assert_lt(corrected, free, "A/D must fight the lean, not steer")
 	move.free()
 
+func test_entering_the_beam_from_its_start_walks_toward_the_far_end() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	var beam := InterestLine.new()
+	beam.kind = InterestLine.Kind.BALANCE
+	beam.curve = Curve3D.new()
+	beam.curve.add_point(Vector3.ZERO)
+	beam.curve.add_point(Vector3(10.0, 0.0, 0.0))
+	# The player sits at local offset 0 -- the curve's own start.
+	beam.position = player.global_position
+	add_child_autofree(beam)
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(beam),
+		"test setup: the beam's reach volume never registered the player")
+
+	# A run-up AT the far end: arriving at the start moving toward +X, the
+	# same direction the curve's own tangent already points.
+	player.velocity = Vector3(player.config.pawn.ground_speed, 0.0, 0.0)
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: never entered the beam")
+	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	move.seed_lean(0.0, 0.0)  # isolate travel from the random entry wobble
+	await step(5)  # past the magnet fade
+	var before: Vector3 = player.global_position
+	var forward: Vector3 = -player.global_transform.basis.z
+	_world["input"].state.move = Vector2(0.0, 1.0)  # W
+	await step(30)
+	var displacement: Vector3 = player.global_position - before
+	assert_gt(displacement.dot(forward), 0.0,
+		"W did not move the body toward its own forward")
+	assert_gt(displacement.x, 0.0,
+		"entering at the start moving toward +X did not carry the body on toward the far end")
+
+	# Correction: a lean seeded toward the body's own right must be fought by
+	# the body-relative correction key (A), not by a world-fixed one.
+	var lean0: float = 0.05
+	move.seed_lean(lean0, 0.0)
+	var free: float = move.duplicate_lean_after(0.2, 0.0)
+	_world["input"].state.move = Vector2(-1.0, 0.0)  # A
+	for i in 12:  # 0.2s at the suite's fixed 60 fps
+		await step(1)
+	assert_lt(absf(move.lean()), free,
+		"A did not fight a lean seeded while entering from the beam's start")
+
+func test_entering_the_beam_from_its_far_end_walks_toward_the_start_end() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	var beam := InterestLine.new()
+	beam.kind = InterestLine.Kind.BALANCE
+	beam.curve = Curve3D.new()
+	beam.curve.add_point(Vector3.ZERO)
+	beam.curve.add_point(Vector3(10.0, 0.0, 0.0))
+	# The player sits at local offset 10 -- the curve's own far end -- by
+	# shifting the line's origin back instead of touching the curve itself
+	# (the curve's own drawing direction, +X, must stay the same as the test
+	# above; only WHERE the player meets it changes).
+	beam.position = player.global_position - Vector3(10.0, 0.0, 0.0)
+	add_child_autofree(beam)
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(beam),
+		"test setup: the beam's reach volume never registered the player")
+
+	# A run-up AT the start end: arriving at the far end moving toward -X,
+	# AGAINST the curve's own tangent.
+	player.velocity = Vector3(-player.config.pawn.ground_speed, 0.0, 0.0)
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: never entered the beam")
+	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	move.seed_lean(0.0, 0.0)
+	await step(5)  # past the magnet fade
+	var before: Vector3 = player.global_position
+	var forward: Vector3 = -player.global_transform.basis.z
+	_world["input"].state.move = Vector2(0.0, 1.0)  # W
+	await step(30)
+	var displacement: Vector3 = player.global_position - before
+	assert_gt(displacement.dot(forward), 0.0,
+		"W did not move the body toward its own forward")
+	assert_lt(displacement.x, 0.0,
+		"entering at the far end moving toward -X did not carry the body on toward the start end")
+
+	var lean0: float = 0.05
+	move.seed_lean(lean0, 0.0)
+	var free: float = move.duplicate_lean_after(0.2, 0.0)
+	_world["input"].state.move = Vector2(-1.0, 0.0)  # A
+	for i in 12:
+		await step(1)
+	assert_lt(absf(move.lean()), free,
+		"A did not fight a lean seeded while entering from the beam's far end")
+
 func test_the_ledge_walk_has_no_pendulum() -> void:
 	var move := LedgeWalkMove.new()
 	assert_false(move.has_method("lean"),
