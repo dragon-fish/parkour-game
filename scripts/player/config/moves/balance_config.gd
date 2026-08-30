@@ -58,7 +58,19 @@ extends MoveConfig
 @export var gravity_influence: float = 0.3
 
 ## How far the body may drift off the centreline before the feet miss, metres.
-@export var beam_half_width: float = 0.14
+## How far off the centreline the body may drift before the feet miss, metres.
+##
+## PAST HALF THE CAPSULE'S OWN WIDTH, not past the beam's. The capsule's radius
+## is 0.4, so anything under that has the body still overlapping the line it is
+## supposed to have fallen off -- it reads as being yanked off a beam that is
+## plainly still underfoot. The lean has to carry the body clear of itself
+## first.
+##
+## Reached through gravity_influence, so the time to fall is
+## divergence_time * ln(beam_half_width / (gravity_influence * base_wobble))
+## with no correction at all -- a few seconds, not the fraction of one a
+## beam-width threshold gives.
+@export var beam_half_width: float = 0.45
 
 ## Largest camera roll the lean may reach in first person, degrees.
 ##
@@ -104,6 +116,17 @@ func _init() -> void:
 	# here. DO NOT put 137 back without evidence.
 	min_look_constraint = Vector3(deg_to_rad(-71.4), deg_to_rad(-32.96), -PI)
 	max_look_constraint = Vector3(deg_to_rad(90.0), deg_to_rad(32.96), PI)
+	# MEASURED AGAINST THE FACING THE CATCH BEGAN WITH, not against the body's
+	# current one. freeze_visual_yaw below holds the visible MODEL still, but
+	# the collision body still yaws with the view, so a fan measured against it
+	# travels with the view it is supposed to be limiting -- reach the edge,
+	# keep turning, and it keeps giving, all the way round the beam.
+	#
+	# [ME:CONFIRMED] the CDO sets bDisableFaceRotation and
+	# bDisableControllerFacingPawnYawRotation, which this project does not
+	# implement directly; absolute yaw is its stand-in, exactly as GrabConfig
+	# documents for the same pair.
+	absolute_yaw_constraint = true
 	freeze_visual_yaw = true
 	# [ME:CONFIRMED] MG_TwoHandsBusy.
 	allows_turn = false

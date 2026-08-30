@@ -73,33 +73,13 @@ func note_travel(along: float) -> void:
 	var lateral: float = along * _facing_sign
 	_shuffle_dir = int(signf(lateral)) if absf(lateral) > 0.1 else 0
 
-# --- third-person camera arc --------------------------------------------------
-#
-# Owner's own call, not a claim about the original: the camera normally sits
-# opposite the view direction, which puts it inside the wall the body's back
-# is against. CameraRig.set_ledge_camera_arc() clamps the bearing instead;
-# this is only where that gets fed every tick and cleared on exit. BalanceMove
-# does not call this, so its forced first person is untouched.
-
-func physics_update(delta: float, input: MoveInput) -> StringName:
-	var next := super.physics_update(delta, input)
-	if next == KEEP and player.camera_rig != null:
-		player.camera_rig.set_ledge_camera_arc(
-			player.visual_yaw(), deg_to_rad(cfg.get("camera_arc_deg")) * 0.5)
-	return next
-
-func exit() -> void:
-	super.exit()
-	if player.camera_rig != null:
-		player.camera_rig.clear_ledge_camera_arc()
-
 # --- A/D: screen-relative, latched on press -----------------------------------
 #
-# The arc above keeps third person watching from the front more or less the
-# whole time, and CameraRig never re-aims the camera at the body -- it only
-# translates -- so from that side a body-relative D (the body's own right,
-# which is what project_input() already returns and is all BalanceMove ever
-# wants) reads backwards on screen the way it never did watched from behind.
+# LedgeWalkConfig's bearing arc keeps third person watching from the front
+# more or less the whole time, so from that side a body-relative D (the body's
+# own right, which is what project_input() already returns and is all
+# BalanceMove ever wants) reads backwards on screen the way it never did
+# watched from behind.
 #
 # NOT a live angle check -- the owner rejected that: a camera hovering near
 # the switch-over point would make A/D flutter. The meaning is resolved once,
@@ -130,11 +110,10 @@ func _update_lateral_latch(input: MoveInput) -> void:
 	_lateral_held = held
 
 ## Resolved from where the third-person camera actually sits, not merely from
-## being in third person: the arc clamp above keeps it within the body's own
-## front hemisphere (never past +-90 degrees of Player.visual_yaw()) for the
-## whole time this move owns the camera, so any third-person framing here
-## reads flipped. First person has no separate camera position at all -- the
-## eye IS the view -- so there is nothing to flip.
+## being in third person: LedgeWalkConfig's own bearing arc keeps it across the
+## body's front for the whole time this move owns the view, so any third-person
+## framing here reads flipped. First person has no separate camera position at
+## all -- the eye IS the view -- so there is nothing to flip.
 func _resolve_lateral_flip() -> float:
 	if player.camera_rig == null or player.camera_rig.camera == null \
 			or not player.camera_rig.in_third_person():
@@ -144,9 +123,18 @@ func _resolve_lateral_flip() -> float:
 	to_camera.y = 0.0
 	if to_camera.length_squared() < 0.0001:
 		return 1.0
-	var front_yaw: float = player.visual_yaw()
-	var front := Vector3(-sin(front_yaw), 0.0, -cos(front_yaw))
-	return -1.0 if to_camera.normalized().dot(front) > 0.0 else 1.0
+	return -1.0 if to_camera.normalized().dot(_outward()) > 0.0 else 1.0
+
+## The direction the body faces on this ledge: away from the wall, which is the
+## line's own -Z flattened and negated.
+##
+## FIXED IN THE WORLD, and that is why every reference in this file comes from
+## here. The capsule's yaw turns with the view the whole time this move runs,
+## and the visible model is not bound to the capsule at all -- a reference read
+## off either would swing around with the very view these checks exist to be
+## independent of.
+func _outward() -> Vector3:
+	return -_line.front()
 
 # --- W/S: camera-assisted, latched the same way -------------------------------
 #
@@ -183,20 +171,63 @@ func _update_look_assist_latch(input: MoveInput) -> void:
 ## taken off the frozen facing would push travel a fixed +-90 degrees away
 ## from where the line is really heading.
 func _resolve_look_assist() -> void:
+	# THE BODY'S OWN FACING IS THE VIEW HERE. freeze_visual_yaw holds the
+	# visible model still, but the collision body still yaws with the view, so
+	# this is where the view's heading lives.
+	#
+	# DO NOT read the camera node instead. It carries the bearing-arc
+	# correction, which aims it back at the player rather than along the view,
+	# so gating on it would measure where the camera ended up looking instead of
+	# where the player is looking.
 	var view_forward: Vector3 = -player.global_transform.basis.z
-	if player.camera_rig != null and player.camera_rig.camera != null:
-		view_forward = -player.camera_rig.camera.global_transform.basis.z
 	view_forward.y = 0.0
 	if view_forward.length_squared() < 0.0001:
 		_ws_assist_engaged = false
 		return
 	view_forward = view_forward.normalized()
-	var front_yaw: float = player.visual_yaw()
-	var front := Vector3(-sin(front_yaw), 0.0, -cos(front_yaw))
-	var deviation: float = front.signed_angle_to(view_forward, Vector3.UP)
+	var deviation: float = _outward().signed_angle_to(view_forward, Vector3.UP)
 	if absf(deviation) <= deg_to_rad(cfg.get("look_assist_angle_deg")):
 		_ws_assist_engaged = false
 		return
 	var tangent := Vector3(-sin(_walk_yaw), 0.0, -cos(_walk_yaw))
 	_ws_assist_sign = signf(view_forward.dot(tangent))
 	_ws_assist_engaged = _ws_assist_sign != 0.0
+
+# --- the head glances the way the body is going -------------------------------
+
+## Extra head yaw, radians, on top of however far the view has turned. Read by
+## Player._drive_head_look() by duck-typing, the same way it reaches every other
+## optional per-move contribution.
+##
+## THIRD PERSON ONLY, and zero whenever the body is not actually travelling.
+## The shoulders are pinned across the line here, so a shuffling character
+## otherwise stares straight out while moving sideways. In first person the
+## camera follows a head node by POSITION, so the same turn would slide the eye
+## sideways without the player having asked for it.
+##
+## NEGATED against shuffle_direction(): that reports +1 for a step to the body's
+## own right, and a yaw measured as "view minus model facing" counts positive to
+## the LEFT. HeadLook eases the value it is handed, so the discrete -1/0/+1 this
+## rides on does not reach the neck as a snap.
+func head_yaw_bias() -> float:
+	if player.camera_rig == null or not player.camera_rig.in_third_person():
+		return 0.0
+	return -float(_shuffle_dir) * deg_to_rad(cfg.get("head_turn_deg"))
+
+# --- the third-person camera is held across the body's front ------------------
+
+func physics_update(delta: float, input: MoveInput) -> StringName:
+	var next := super.physics_update(delta, input)
+	if next == KEEP and player.camera_rig != null:
+		# Centred on the LINE's own outward normal. The capsule is free to yaw
+		# with the view -- nothing here reads it -- and the visible model is not
+		# bound to the capsule either, so the line is the only reference that
+		# stays put while the player looks around.
+		player.camera_rig.set_bearing_arc(
+			deg_to_rad(cfg.get("third_person_bearing_arc_deg")) * 0.5, _outward())
+	return next
+
+func exit() -> void:
+	super.exit()
+	if player.camera_rig != null:
+		player.camera_rig.set_bearing_arc(0.0)

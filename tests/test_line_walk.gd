@@ -400,7 +400,7 @@ func test_holding_w_with_the_view_turned_past_the_threshold_carries_the_body() -
 	# whatever player.rotation.y already is on a tick with zero look input --
 	# which is exactly what setting it directly and then feeding zero input
 	# relies on.
-	player.rotation.y = player.visual_yaw() + deg_to_rad(50.0)
+	_turn_view(player, 50.0)
 	await step(1)
 	var before: Vector3 = player.global_position
 	_world["input"].state.move = Vector2(0.0, 1.0)  # W
@@ -410,6 +410,17 @@ func test_holding_w_with_the_view_turned_past_the_threshold_carries_the_body() -
 		"holding W with the view turned 50 degrees off the body's facing did not carry the body (%.3f m)"
 			% moved)
 
+## Turns the VIEW by `degrees` off the body's own frozen facing.
+##
+## Both halves are needed, and writing rotation.y alone is not enough:
+## LedgeWalkConfig sets absolute_yaw_constraint, so apply_look() rebuilds the
+## body's yaw every tick from the rig's captured reference plus its own running
+## total. A test that writes only rotation.y has it overwritten on the next
+## frame and measures a view that never turned.
+func _turn_view(player: Player, degrees: float) -> void:
+	player.camera_rig._look_relative_yaw = deg_to_rad(degrees)
+	player.rotation.y = player.visual_yaw() + deg_to_rad(degrees)
+
 func test_the_look_assist_latches_through_a_view_change_held_through_the_press() -> void:
 	_world = TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
@@ -418,7 +429,7 @@ func test_the_look_assist_latches_through_a_view_change_held_through_the_press()
 	var player: Player = _world["player"]
 	player.camera_rig.third_person = true
 	await _enter_ledge_walk(player)
-	player.rotation.y = player.visual_yaw() + deg_to_rad(50.0)
+	_turn_view(player, 50.0)
 	await step(1)
 	_world["input"].state.move = Vector2(0.0, 1.0)  # W
 	await step(10)
@@ -426,7 +437,7 @@ func test_the_look_assist_latches_through_a_view_change_held_through_the_press()
 
 	# Turn the view back under the threshold WHILE W is still held. A live
 	# re-gate would stop the assist on the spot; the latch must not.
-	player.rotation.y = player.visual_yaw() + deg_to_rad(10.0)
+	_turn_view(player, 10.0)
 	await step(10)
 	var kept: float = player.global_position.distance_to(mid)
 	assert_gt(kept, 0.05,
@@ -442,3 +453,68 @@ func test_the_look_assist_latches_through_a_view_change_held_through_the_press()
 	assert_almost_eq(player.global_position.distance_to(before_fresh), 0.0, 0.01,
 		"a fresh press with the view under the threshold was not re-gated (%.3f m)"
 			% player.global_position.distance_to(before_fresh))
+
+# --- leaving actually leaves, and jump is refused ---------------------------
+
+func test_walking_off_a_ledge_end_does_not_re_catch() -> void:
+	# The owner's own report: the ledge could not be left, because
+	# LedgeWalkConfig inherited MoveConfig's neutral zero cooldown and the very
+	# next grounded tick's catch_gate() passed again.
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	# SHORT ON PURPOSE: 0.72 m/s (ground_speed * 0.10) crosses a 1 m ledge in
+	# well under a second, so the walk-off happens inside a sane frame budget.
+	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
+		player.global_position - Vector3(0.5, 0.0, 0.0),
+		player.global_position + Vector3(0.5, 0.0, 0.0))
+	await step(5)
+	assert_true(player.interest_lines.has(_line),
+		"test setup: the ledge's reach volume never registered the player")
+	player.move_manager.start(Move.LEDGE_WALK)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"test setup: never entered the ledge walk")
+	await step(20)  # past the magnet fade
+	# Held the whole way, which is what defeated the release latch's own
+	# push-toward bypass in the reported failure.
+	_world["input"].state.move = Vector2(1.0, 0.0)
+	await step(120)
+	assert_ne(player.move_manager.current_name, Move.LEDGE_WALK,
+		"holding a direction off the end never left the ledge")
+
+func test_jump_is_refused_on_a_ledge() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk(player)
+	_world["input"].state.jump_pressed = true
+	_world["input"].state.jump_held = true
+	await step(5)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"jump launched a body that has no footing to launch from")
+
+func test_jump_is_refused_on_a_beam() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	_line = _make_line(InterestLine.Kind.BALANCE,
+		player.global_position - Vector3(5.0, 0.0, 0.0),
+		player.global_position + Vector3(5.0, 0.0, 0.0))
+	await step(5)
+	assert_true(player.interest_lines.has(_line),
+		"test setup: the beam's reach volume never registered the player")
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: never entered the balance walk")
+	await step(20)
+	_world["input"].state.jump_pressed = true
+	_world["input"].state.jump_held = true
+	await step(5)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"jump launched a body that has no footing to launch from")

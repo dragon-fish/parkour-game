@@ -107,6 +107,11 @@ func test_enter_reads_entry_speed_before_super_zeroes_it() -> void:
 	still.cfg = player.config.balance
 	still.enter(Move.WALKING)
 	var standstill_lean: float = absf(still.lean())
+	# EXITED, not merely freed. enter() applies a forced-view status that names
+	# this move as its source, and a move freed without exiting leaves that
+	# status behind holding a dangling reference -- the next enter() then trips
+	# StatusList's own conflict check against a freed object.
+	still.exit()
 	still.free()
 
 	player.velocity = Vector3(0.0, 0.0, -player.config.pawn.ground_speed)
@@ -116,6 +121,7 @@ func test_enter_reads_entry_speed_before_super_zeroes_it() -> void:
 	fast.cfg = player.config.balance
 	fast.enter(Move.WALKING)
 	var fast_lean: float = absf(fast.lean())
+	fast.exit()
 	fast.free()
 
 	assert_gt(fast_lean, standstill_lean,

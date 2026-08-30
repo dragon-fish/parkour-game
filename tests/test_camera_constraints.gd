@@ -435,11 +435,14 @@ func test_a_bearing_already_inside_the_ledge_arc_is_left_untouched() -> void:
 	var rig := _rig()
 	await step(1)
 	rig.rotation = Vector3.ZERO
-	rig._ledge_arc_front_yaw = 0.0
-	rig._ledge_arc_half_rad = deg_to_rad(80.0)
+	# Centre handed in as a world direction, the way the move hands it the
+	# line's own outward normal. -Z is this rig's unrotated front.
+	rig.set_bearing_arc(deg_to_rad(80.0), Vector3(0.0, 0.0, -1.0))
 	var inside := Vector3(1.0, 1.5, -3.0)   # bearing ~18 degrees off front
-	var out: Vector3 = rig._clamp_to_ledge_arc(inside)
+	var out: Vector3 = rig._clamp_bearing(inside)
 	assert_eq(out, inside, "a bearing already inside the arc was moved")
+	assert_eq(rig._bearing_correction, 0.0,
+		"an untouched bearing still asked the camera to turn")
 	rig.get_parent().queue_free()
 	await step(1)
 
@@ -449,10 +452,11 @@ func test_a_bearing_behind_the_body_clamps_to_the_arcs_near_edge() -> void:
 	var rig := _rig()
 	await step(1)
 	rig.rotation = Vector3.ZERO
-	rig._ledge_arc_front_yaw = 0.0
-	rig._ledge_arc_half_rad = deg_to_rad(80.0)
+	# Centre handed in as a world direction, the way the move hands it the
+	# line's own outward normal. -Z is this rig's unrotated front.
+	rig.set_bearing_arc(deg_to_rad(80.0), Vector3(0.0, 0.0, -1.0))
 	var behind := Vector3(0.5, 1.5, 4.0)   # right-of-centre and well behind
-	var out: Vector3 = rig._clamp_to_ledge_arc(behind)
+	var out: Vector3 = rig._clamp_bearing(behind)
 	var front := Vector3(0.0, 0.0, -1.0)
 	var right := Vector3(1.0, 0.0, 0.0)
 	var bearing: float = atan2(out.dot(right), out.dot(front))

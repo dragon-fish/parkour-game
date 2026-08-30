@@ -33,15 +33,32 @@ extends MoveConfig
 @export var fade_in_time: float = 0.15
 
 ## Width, in degrees, of the arc the THIRD-PERSON camera's bearing around the
-## player is clamped to, centred on the character's own front (the direction
-## the model faces, back to the wall). 160 means +-80 -- an arc that sits
-## entirely on the outward side, since the character's back (where the
-## unclamped camera would otherwise sit) is the wall. NOT min/max_look_
-## constraint below: that is [ME:CONFIRMED] and governs where the PLAYER may
-## LOOK; this is the owner's own call and governs where the CAMERA may SIT in
-## third person. Widening one must never be read as license to widen the
-## other. See CameraRig.set_ledge_camera_arc().
-@export var camera_arc_deg: float = 160.0
+## player is held inside, centred on the LINE's own outward normal. 160 means
+## +-80, an arc entirely on the side away from the wall.
+##
+## The camera sits opposite the view, and the view here points away from a wall
+## the back is against -- so an unclamped third-person camera sits inside that
+## wall, and the collision probe's answer to that is to haul it in against the
+## player instead.
+##
+## NOT min/max_look_constraint: that is [ME:CONFIRMED] and governs where the
+## PLAYER may LOOK. This is the owner's own call and governs where the CAMERA
+## may SIT. The original has no third person to have had an opinion.
+@export var third_person_bearing_arc_deg: float = 160.0
+
+## How far the head turns toward the way the body is shuffling, in degrees,
+## while the camera is watching from outside.
+##
+## THIRD PERSON ONLY. The shoulders are pinned across the line, so a shuffling
+## character otherwise stares straight out while travelling sideways, which
+## reads as being dragged. In first person the camera follows a head node by
+## position, so the same turn would slide the eye sideways for no reason the
+## player asked for.
+##
+## Kept well inside HeadLook's own release curve: this stacks on however far
+## the view has already turned, and a total past a quarter turn starts easing
+## itself out.
+@export var head_turn_deg: float = 40.0
 
 ## How far the VIEW must have turned off the body's own front, in degrees,
 ## before W/S get a look-relative assist on top of their ordinary (here,
@@ -59,6 +76,22 @@ func _init() -> void:
 	# pitch -76.9..+90.0, yaw +-54.93, roll unconstrained.
 	min_look_constraint = Vector3(deg_to_rad(-76.9), deg_to_rad(-54.93), -PI)
 	max_look_constraint = Vector3(deg_to_rad(90.0), deg_to_rad(54.93), PI)
+	# MEASURED AGAINST THE FACING THE CATCH BEGAN WITH, not against the body's
+	# current one. freeze_visual_yaw below holds the visible MODEL still, but
+	# the collision body still yaws with the view, so a fan measured against it
+	# travels with the view it is supposed to be limiting: reach the edge, keep
+	# turning, and it keeps giving. WallRun sets this for the same reason.
+	# [ME:CONFIRMED] the CDO expresses the same intent through
+	# bDisableFaceRotation + bDisableControllerFacingPawnYawRotation.
+	absolute_yaw_constraint = true
+	# The SAME line refuses a re-catch for this long after release. Without it
+	# the cooldown is MoveConfig's neutral zero, and walking off an end returns
+	# WALKING only for the next grounded tick's catch_gate() to pass again --
+	# the release latch does not save it either, since the direction that
+	# walked the body off the end is still held and that satisfies the latch's
+	# own push-toward bypass. A project dial: TdMove_LedgeWalk carries no
+	# RedoMoveTime, so there is nothing confirmed to copy.
+	redo_move_time = 0.4
 	# The body must not swivel to follow the view: the shoulders are square to
 	# the wall and a hand is on it. [ME:CONFIRMED] bDisableFaceRotation.
 	freeze_visual_yaw = true

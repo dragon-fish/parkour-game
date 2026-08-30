@@ -2258,6 +2258,14 @@ func _drive_head_look() -> void:
 	# The MODEL's heading, not the body's -- the body is always looking exactly
 	# where the camera is, so measuring against it would always be zero.
 	var yaw: float = wrapf(rotation.y - _visual_yaw, -PI, PI)
+	# A move may add its own glance on top -- LedgeWalkMove turns the head the
+	# way the body is shuffling, since its shoulders are pinned across the line
+	# and cannot. Duck-typed, like every other optional per-move contribution
+	# this file reaches for, so a move opts in by having the method rather than
+	# by being named here.
+	var move = move_manager.move_for(move_manager.current_name) if move_manager != null else null
+	if move != null and move.has_method("head_yaw_bias"):
+		yaw = wrapf(yaw + move.head_yaw_bias(), -PI, PI)
 	var pitch: float = float(camera_rig.look_debug()["pitch"])
 	# The active move decides whether the chest may join in -- see
 	# MoveConfig.allows_spine_twist.

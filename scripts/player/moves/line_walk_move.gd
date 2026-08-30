@@ -122,9 +122,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		return FALLING
 	player.set_grounded(true)
 	player.fall_tracker.reset(player.global_position.y)
-	if input.jump_pressed:
-		player.consume_roll()
-		return FALLING
+	# JUMP IS REFUSED OUTRIGHT, not routed anywhere. A body standing on a pipe
+	# or edging a ledge has no footing to launch from -- the owner's own call
+	# for both members of this tier. The press is simply dropped: a fresh
+	# MoveInput is built every tick, so nothing downstream inherits it, and no
+	# roll is consumed because no press was spent.
 	if input.crouch_pressed:
 		player.consume_roll()
 		return FALLING
