@@ -197,6 +197,12 @@ var _hidden_start: StringName = &""
 var _previous_move: StringName = Move.KEEP
 ## The one-shot currently playing, or KEEP. See _arm_oneshot().
 var _oneshot: StringName = Move.KEEP
+
+## Set by a routing case that wants the scripted clip already on the body
+## started again from its first frame; _route() spends it. The step round is
+## the case: one Turn90 after another, all with the same name.
+var _replay: bool = false
+var _turn_serial_seen: int = 0
 ## Seconds of it left to play. Real seconds, and that is only true because a
 ## one-shot is never in SPEED_MATCHED_CLIPS: the graph time scale is pinned to
 ## 1.0 while one plays, so the clock here and the clip agree.
@@ -335,8 +341,9 @@ func _route(target: StringName, delta: float) -> void:
 		# ALREADY ON SCREEN -- and this is the common case, since the drive runs
 		# every tick for the whole of a move. Re-requesting the input the gate is
 		# showing would re-enter it, and the slots reset on entry.
-		if _gate_input == _slot_name() and _slot_clip() == target:
+		if _gate_input == _slot_name() and _slot_clip() == target and not _replay:
 			return
+		_replay = false
 		_slot = 0 if _slot < 0 else (_slot + 1) % GRAPH_SCRIPTED_SLOTS.size()
 		_load_slot(target)
 		_request(_slot_name())
@@ -957,6 +964,11 @@ func _target_animation() -> StringName:
 			# Player.SCRIPTED_MOVE_CLIPS, so _route() puts them on a scripted
 			# slot like any other one-shot. See Player._begin_turn_in_place().
 			if player.is_turning_in_place():
+				# A NEW step replays the clip even though its name has not
+				# changed -- see Player._turn_in_place_serial.
+				if player.turn_in_place_serial() != _turn_serial_seen:
+					_turn_serial_seen = player.turn_in_place_serial()
+					_replay = true
 				var wanted: StringName = player.turn_in_place_clip()
 				var other: StringName = &"Turn90_L" if wanted == &"Turn90_R" else &"Turn90_R"
 				return _first_available([wanted, other, &"Idle", &"idle"])

@@ -45,7 +45,7 @@ func test_looking_past_the_angle_steps_the_body_round_by_it() -> void:
 	assert_almost_eq(player.turn_in_place_clip_scale(), player.config.pawn.turn_in_place_clip_scale, 0.001,
 		"the step did not name the clip's own pace")
 	assert_gt(player.turn_in_place_window(), 0.0, "the step has no window to turn over")
-	await step(int(player.turn_in_place_window() * 60.0) + 5)
+	await step(int(player.turn_in_place_window() * 60.0) + 8)
 	# The clamp took the 15 degrees of excess at once, and the step the
 	# remaining 90: the heading lands on the view.
 	assert_almost_eq(wrapf(player.rotation.y - player.visual_yaw(), -PI, PI), 0.0, 0.01,
@@ -98,3 +98,32 @@ func test_a_flick_past_the_angle_drags_the_legs_round_at_once_in_first_person() 
 	behind = absf(wrapf(player.rotation.y - player.visual_yaw(), -PI, PI))
 	assert_lt(behind, deg_to_rad(20.0),
 		"after the step the legs were still %.0f degrees behind" % rad_to_deg(behind))
+
+func test_turning_on_steadily_takes_one_step_after_another() -> void:
+	# The owner: turning right and keeping going only ever played one Turn90.
+	# Each time the head runs out of range again is a new step, with its own
+	# number for the animator to replay the clip on.
+	var player: Player = await _standing_player(false)
+	var angle: float = deg_to_rad(player.config.pawn.turn_in_place_angle_deg)
+	player.rotation.y -= angle + deg_to_rad(5.0)
+	await step(2)
+	var first: int = player.turn_in_place_serial()
+	assert_gt(first, 0, "test setup: no first step")
+	await step(int(player.turn_in_place_window() * 60.0) + 8)
+	# Keep turning the same way past the angle again.
+	player.rotation.y -= angle + deg_to_rad(5.0)
+	await step(2)
+	assert_eq(player.turn_in_place_serial(), first + 1,
+		"a second run past the angle did not count as a second step")
+
+func test_a_spin_faster_than_the_step_never_puts_the_body_on_the_far_side() -> void:
+	# Twenty degrees a tick, for a while: the heading must stay within the
+	# angle behind the view on the short side every tick, never flip across.
+	var player: Player = await _standing_player(false)
+	var angle: float = deg_to_rad(player.config.pawn.turn_in_place_angle_deg)
+	for i in 40:
+		player.rotation.y += deg_to_rad(20.0)
+		await step(1)
+		var behind: float = absf(wrapf(player.rotation.y - player.visual_yaw(), -PI, PI))
+		assert_true(behind <= angle + 0.001,
+			"tick %d: the legs were %.0f degrees off the view" % [i, rad_to_deg(behind)])

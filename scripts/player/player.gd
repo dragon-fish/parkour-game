@@ -1289,7 +1289,7 @@ func reset_state() -> void:
 	# the exit, so the list is cleared here rather than trusted.
 	interest_lines.clear()
 	_visual_yaw_started = false
-	_turn_heading_left = 0.0
+	_turn_heading_active = false
 	_turn_clip_left = 0.0
 	_swing_pitch_target = 0.0
 	if camera_rig != null:
@@ -2282,7 +2282,7 @@ func _drive_head_look() -> void:
 	# The active move decides whether the chest may join in -- see
 	# MoveConfig.allows_spine_twist.
 	var active: MoveConfig = move_manager.current_config() if move_manager != null else null
-	var spine: float = HeadLook.SPINE_SHARE_DEG
+	var spine: float = HeadLook.SPINE_YAW_SHARE
 	if active != null and not active.allows_spine_twist:
 		spine = 0.0
 	head_look.request(yaw, pitch, config.camera.pitch_limit_deg, spine)
@@ -2352,13 +2352,12 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	if not frozen and moving:
 		# Movement outranks a step round in progress: the run's own catch-up
 		# takes over from wherever the step had got to.
-		_turn_heading_left = 0.0
+		_turn_heading_active = false
 		_turn_clip_left = 0.0
 		var step: float = deg_to_rad(config.pawn.body_turn_speed_deg) * delta
 		_visual_yaw += clampf(remaining, -step, step)
 	else:
-		if _turn_clip_left > 0.0:
-			_advance_turn_in_place(delta)
+		_turn_clip_left = maxf(_turn_clip_left - delta, 0.0)
 		# FIRST PERSON ONLY, the owner's call: watched from outside, a body
 		# that keeps its heading however far the camera goes round is the
 		# point -- it is how you get to see the character's face.
@@ -2366,15 +2365,16 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 			# THE HARD LINE FIRST: a flick past the angle drags the heading to
 			# it at once, whatever step is or is not under way. A little
 			# clipping beats the player seeing their own back.
-			remaining = wrapf(rotation.y - _visual_yaw, -PI, PI)
 			if absf(remaining) > angle:
 				_visual_yaw = wrapf(rotation.y - signf(remaining) * angle, -PI, PI)
 				remaining = signf(remaining) * angle
-			# Then the step, which brings the rest round over turn_in_place_time.
-			if _turn_heading_left <= 0.0 and grounded and move_manager != null \
+			# Then the step, which chases the view round the rest of the way.
+			if not _turn_heading_active and grounded and move_manager != null \
 					and move_manager.current_name == Move.WALKING \
 					and absf(remaining) >= angle - deg_to_rad(0.5):
 				_begin_turn_in_place(remaining)
+			if _turn_heading_active:
+				_advance_turn_in_place(delta, remaining)
 
 	# Counter-rotated, so the model's WORLD yaw is _visual_yaw whatever the body
 	# is doing. Wrapped, so a player who spins on the spot cannot wind this up.
@@ -2387,10 +2387,11 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 # The hard clamp in _drive_body_yaw() has already taken any excess, so the
 # step always starts exactly the angle behind and lands the heading ON the
 # view: after a turn round the head looks straight ahead again.
-# TWO CLOCKS, deliberately: the HEADING comes round over turn_in_place_time,
-# quick, because the legs are what the eye reads the facing from; the pack's
-# Turn90 CLIP plays through at turn_in_place_clip_scale on its own and may
-# finish well after the heading has. Tied together on the clip's clock the
+# TWO CLOCKS, deliberately: the HEADING chases the view at
+# turn_in_place_angle_deg per turn_in_place_time, quick, because the legs are
+# what the eye reads the facing from; the pack's Turn90 CLIP plays through at
+# turn_in_place_clip_scale on its own and may finish well after the heading
+# has. Tied together on the clip's clock the
 # legs crawled round for two seconds; tied on the heading's, the clip
 # flinched. Only while WALKING and grounded: nothing else stands on its feet
 # with nothing better to do. See PawnConfig.turn_in_place_angle_deg.
@@ -2398,18 +2399,21 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 ## The clip's window when there is no body, or the body has no turn clip.
 const TURN_IN_PLACE_FALLBACK_CLIP_TIME := 0.8
 
-## Seconds left on each clock, 0 when idle.
-var _turn_heading_left: float = 0.0
+## Whether the heading is chasing the view, and how long the clip has left.
+var _turn_heading_active: bool = false
 var _turn_clip_left: float = 0.0
-## The model's yaw when the step began, and which way it goes: +1 turns LEFT
-## (Godot's yaw grows counter-clockwise), -1 right.
-var _turn_in_place_from: float = 0.0
+## Which way the current step goes: +1 turns LEFT (Godot's yaw grows
+## counter-clockwise), -1 right.
 var _turn_in_place_sign: float = -1.0
+## Counts steps, so CharacterAnimator can tell a NEW step from the one whose
+## clip is already on the body and replay it -- turning steadily right is
+## one step after another, each with its own Turn90.
+var _turn_in_place_serial: int = 0
 
 func _begin_turn_in_place(remaining: float) -> void:
-	_turn_in_place_from = _visual_yaw
+	_turn_heading_active = true
 	_turn_in_place_sign = 1.0 if remaining > 0.0 else -1.0
-	_turn_heading_left = maxf(config.pawn.turn_in_place_time, 0.001)
+	_turn_in_place_serial += 1
 	_turn_clip_left = TURN_IN_PLACE_FALLBACK_CLIP_TIME
 	var animator := get_node_or_null(^"BodyRoot/CharacterAnimator") as CharacterAnimator
 	if animator != null:
@@ -2417,20 +2421,28 @@ func _begin_turn_in_place(remaining: float) -> void:
 		if length > 0.0:
 			_turn_clip_left = length / maxf(config.pawn.turn_in_place_clip_scale, 0.01)
 
-func _advance_turn_in_place(delta: float) -> void:
-	_turn_clip_left = maxf(_turn_clip_left - delta, 0.0)
-	if _turn_heading_left <= 0.0:
-		return
-	var total: float = maxf(config.pawn.turn_in_place_time, 0.001)
-	_turn_heading_left = maxf(_turn_heading_left - delta, 0.0)
-	var t: float = 1.0 - _turn_heading_left / total
-	var angle: float = deg_to_rad(config.pawn.turn_in_place_angle_deg)
-	_visual_yaw = wrapf(_turn_in_place_from + _turn_in_place_sign * angle * t, -PI, PI)
+## CHASES, never interpolates from where it began. An absolute
+## start-plus-progress heading fought the clamp above: the clamp dragged the
+## heading on, the next tick's progress put it back, and once the view had
+## gone half a turn past the start the wrapped difference changed sign and
+## the clamp put the body on the OTHER side of the view. Moving toward the
+## view by a rate each tick has no start to fight with and always takes the
+## short way round.
+func _advance_turn_in_place(delta: float, remaining: float) -> void:
+	var rate: float = deg_to_rad(config.pawn.turn_in_place_angle_deg) / maxf(config.pawn.turn_in_place_time, 0.001)
+	var step: float = clampf(remaining, -rate * delta, rate * delta)
+	_visual_yaw = wrapf(_visual_yaw + step, -PI, PI)
+	if absf(remaining - step) < deg_to_rad(0.5):
+		_turn_heading_active = false
 
 ## True while the turn CLIP is on the body -- what CharacterAnimator asks.
 ## The heading may already have arrived; see the two clocks above.
 func is_turning_in_place() -> bool:
 	return _turn_clip_left > 0.0
+
+## Which step this is; see _turn_in_place_serial.
+func turn_in_place_serial() -> int:
+	return _turn_in_place_serial
 
 ## The pack's quarter turn, on the side the body is stepping to. Read by
 ## CharacterAnimator while is_turning_in_place().

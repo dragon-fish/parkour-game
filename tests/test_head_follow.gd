@@ -115,8 +115,8 @@ func test_the_chest_takes_its_share_by_default() -> void:
 	var look := HeadLook.new()
 	add_child(look)
 	look.request(deg_to_rad(60.0), 0.0, 89.0)
-	assert_almost_eq(look._spine_share_deg, HeadLook.SPINE_SHARE_DEG, 0.001,
-		"the default request gave the chest %.1f degrees" % look._spine_share_deg)
+	assert_almost_eq(look._spine_share, HeadLook.SPINE_YAW_SHARE, 0.001,
+		"the default request gave the chest a share of %.2f" % look._spine_share)
 	look.free()
 
 func test_a_move_can_take_the_chest_out_of_it() -> void:
@@ -126,8 +126,8 @@ func test_a_move_can_take_the_chest_out_of_it() -> void:
 	var look := HeadLook.new()
 	add_child(look)
 	look.request(deg_to_rad(60.0), 0.0, 89.0, 0.0)
-	assert_almost_eq(look._spine_share_deg, 0.0, 0.001,
-		"the chest kept %.1f degrees on a hang" % look._spine_share_deg)
+	assert_almost_eq(look._spine_share, 0.0, 0.001,
+		"the chest kept a share of %.2f on a hang" % look._spine_share)
 	look.free()
 
 func test_grab_is_the_move_that_asks_for_it() -> void:

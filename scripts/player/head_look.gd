@@ -34,7 +34,7 @@ extends SkeletonModifier3D
 # see, only measure. A global-space rotation is the same rotation whatever the
 # rest pose is.
 
-## Takes the share of the yaw named by SPINE_SHARE_DEG, building up the
+## Takes the share of the yaw named by SPINE_YAW_SHARE, building up the
 ## chain on SPINE_RAMP.
 ##
 ## STARTS AT Spine, not Chest. The head's pitch pivots at the joint with the
@@ -65,10 +65,13 @@ const HIPS_CHAIN: Array[StringName] = [&"Hips"]
 ## would clip the one direction this exists to serve.
 const LOWER_TWIST_LIMIT_DEG := 50.0
 
-## How much of the yaw the upper body is allowed to contribute, in degrees.
-## Enough that the shoulders read as following, not enough to look like the
-## whole torso turned.
-const SPINE_SHARE_DEG := 15.0
+## How much of the yaw the upper body takes, as a fraction of the whole: the
+## spine chain turns this much of it and the neck and head the rest. A
+## PROPORTION, not a fixed few degrees: capped at 15 the shoulders followed
+## a glance and then stopped, and every further degree went to the neck
+## alone, which read as an owl on a stiff torso. The owner: a head turned
+## a quarter turn should have the spine carrying about half of it.
+const SPINE_YAW_SHARE := 0.5
 ## How the spine's share builds up the chain: each bone takes this much more
 ## than the one below, in units of the lowest bone's share (1.0 puts Spine,
 ## Chest and UpperChest at 1:2:3). The owner: split evenly, the torso turned
@@ -105,8 +108,8 @@ const RATE := 10.0
 ## which has the config this modifier does not.
 var _pitch_limit_deg: float = 89.0
 
-## The chest's allowance for the CURRENT request. See request().
-var _spine_share_deg: float = SPINE_SHARE_DEG
+## The chest's share for the CURRENT request. See request().
+var _spine_share: float = SPINE_YAW_SHARE
 var _wanted_yaw: float = 0.0
 var _wanted_pitch: float = 0.0
 var _yaw: float = 0.0
@@ -118,8 +121,8 @@ var _twist: float = 0.0
 ## Asks the head to look `yaw` from the body's own heading and `pitch` up or
 ## down, both in radians. Driven by Player every physics tick; see
 ## Player._drive_head_look().
-## `spine_share_deg` is how much of the yaw the CHEST may take. Passing 0 leaves
-## the whole turn to the neck and head.
+## `spine_share` is the fraction of the yaw the CHEST may take. Passing 0
+## leaves the whole turn to the neck and head.
 ##
 ## A PARAMETER RATHER THAN A CONSTANT because a hanging body has to be able to
 ## refuse it. The chest's share is what makes looking around read as a person
@@ -130,8 +133,8 @@ var _twist: float = 0.0
 ## DO NOT let the upper body take its share during a grab: turning the head
 ## left or right then swings both arms with it and they clip into the wall.
 func request(yaw: float, pitch: float, pitch_limit_deg: float = 89.0,
-		spine_share_deg: float = SPINE_SHARE_DEG) -> void:
-	_spine_share_deg = maxf(spine_share_deg, 0.0)
+		spine_share: float = SPINE_YAW_SHARE) -> void:
+	_spine_share = clampf(spine_share, 0.0, 1.0)
 	_pitch_limit_deg = pitch_limit_deg
 	# RELEASED PAST A QUARTER TURN, and eased out rather than cut: at exactly
 	# the limit a hard cutoff would drop the head from fully turned to forward
@@ -195,8 +198,7 @@ func _process_modification_with_delta(delta: float) -> void:
 	if skeleton == null:
 		return
 
-	var spine_yaw: float = clampf(_yaw, \
-		-deg_to_rad(_spine_share_deg), deg_to_rad(_spine_share_deg))
+	var spine_yaw: float = _yaw * _spine_share
 	# PROPORTIONAL, not clamped. DO NOT clamp the chest's pitch share: it then
 	# reaches its full bend the moment the camera passes 22 degrees and stays
 	# there for the whole rest of the range, so the body finishes folding while
