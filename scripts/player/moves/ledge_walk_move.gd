@@ -12,6 +12,12 @@ extends LineWalkMove
 func kind() -> InterestLine.Kind:
 	return InterestLine.Kind.LEDGE_WALK
 
+## Which branch _yaw_offset() picked THIS tick: +1 when the body's right
+## coincides with +tangent (magnitude landed on +90), -1 when it landed on
+## -90 and the body's right is -tangent instead. note_travel() needs this to
+## turn a line-frame reading into a body-frame one -- see its own comment.
+var _facing_sign: float = 1.0
+
 ## LedgeWalkConfig.body_yaw_offset_deg (90) only names the MAGNITUDE -- turn
 ## a quarter turn off the tangent. Which of the two directions perpendicular
 ## to the tangent that lands on depends on which way the curve's points were
@@ -28,7 +34,9 @@ func _yaw_offset(tangent: Vector3) -> float:
 	var wall: Vector3 = _line.front()
 	# +magnitude faces -normal_at(tangent); that faces away from the wall
 	# exactly when normal itself points TOWARD the wall (normal.dot(wall) > 0).
-	return magnitude if normal.dot(wall) > 0.0 else -magnitude
+	var signed: float = magnitude if normal.dot(wall) > 0.0 else -magnitude
+	_facing_sign = signf(signed)
+	return signed
 
 ## THE ONE ENTRY GATE, static so every entry site asks the same question before
 ## transitioning -- no enter-then-abort flutter. Mirrors LadderMove.catch_gate().
@@ -39,16 +47,28 @@ static func catch_gate(player: Player, line: InterestLine, snap_height: float) -
 	feet.y = player.probes.feet_y()
 	return LineWalkMove.foot_gate_at(line, feet, snap_height)
 
-## -1 (toward the line's start), 0 (still), +1 (toward its end) -- what the last
-## tick's input actually asked for. CharacterAnimator picks Walk_L/Walk_R off it.
+## -1 (a step to the body's left), 0 (still), +1 (a step to the body's right)
+## -- IN THE BODY'S FRAME, not the line's. CharacterAnimator picks
+## Walk_L/Walk_R off it.
 var _shuffle_dir: int = 0
 
 func shuffle_direction() -> int:
 	return _shuffle_dir
 
+## `along` arrives in the LINE's frame (positive toward the line's end -- see
+## project_input()'s own note), but that only reads as a step to the body's
+## right when _yaw_offset() picked +90; on the -90 branch the body's right is
+## -tangent, so the same positive `along` is a step to the LEFT. Multiplying
+## by `_facing_sign`, cached from this tick's _yaw_offset() call (always made
+## before note_travel(), see LineWalkMove.physics_update()), converts to the
+## body's frame before the sign reaches CharacterAnimator. Skipping this
+## mirrors the sidestep clip on whichever ledges a level author's curve point
+## order happens to make _yaw_offset() pick -90 for.
+##
 ## Deadzoned so a body that has stopped, or is only correcting a fraction of a
 ## metre near the deadzone in LineWalkMove.physics_update(), does not flicker
 ## between Walk_L and Walk_R on float noise -- the same reasoning
 ## CharacterAnimator._travel_angle() applies to its own dead zone.
 func note_travel(along: float) -> void:
-	_shuffle_dir = int(signf(along)) if absf(along) > 0.1 else 0
+	var lateral: float = along * _facing_sign
+	_shuffle_dir = int(signf(lateral)) if absf(lateral) > 0.1 else 0

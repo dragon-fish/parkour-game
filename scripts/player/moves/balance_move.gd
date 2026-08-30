@@ -40,6 +40,14 @@ static func catch_gate(player: Player, line: InterestLine, snap_height: float) -
 ## thing this move rewards: the stable stretch an expert earns by zeroing the
 ## offset early. The owner's measurement is explicit that the wobble is NOT a
 ## series of random pushes.
+##
+## entry_speed_influence SCALES base_wobble (magnitude = base_wobble * (1 +
+## entry_speed_influence * v / ground_speed)); it does not ADD to it. The
+## spec's own formula (base_wobble + entry_speed_influence * v / ground_speed)
+## puts a full-speed entry at 2.52 of lean against a 0.14 m beam_half_width --
+## instantly off the beam. Scaling base_wobble instead keeps a standstill
+## entry's non-zero wobble (constraint 2) proportionally present at speed,
+## rather than swamped by an unrelated additive term.
 static func entry_lean(cfg: BalanceConfig, entry_speed: float,
 		ground_speed: float, sign_pick: int) -> float:
 	var reference: float = maxf(ground_speed, 0.0001)

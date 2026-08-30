@@ -2926,3 +2926,12 @@ capsule.radius = clampf(length * RADIUS_RATIO, RADIUS_MIN, RADIUS_MAX)
 **修法方向**：在 shader 里按屏幕空间导数（`fwidth`）做解析抗锯齿，让点随距离平滑淡成均匀灰，而不是随机闪烁；或者改用带 mipmap 的纹理，把滤波交给硬件。
 
 ⚠️ 「开 MSAA 之后才变糊」这一点**未经验证**：MSAA 进不了无头截图那条路径（见 `.claude/skills/verifying-visuals-headlessly` 的「截图路径的盲区」），所以无法从这边分辨是 MSAA 真的改变了什么，还是本来就有的走样被注意到了。要确认只需在游戏里把抗锯齿切到「关闭」看同一处地板。
+
+## 75. 弯曲的线上，磁吸淡入结束后身体朝向不再跟着线转
+
+`LineWalkMove`（`BalanceMove` / `LedgeWalkMove`）沿用 `LineMove` 家族的既有形状：`_turn_body_to()` 只在磁吸淡入期间写身体 yaw（`scripts/player/moves/line_move.gd:34-35`），淡入结束后 `_centre_fan()` 把视角扇形定死在入线那一刻的切线上，此后身体朝向交给 `apply_look()`（鼠标视角），不再读线的当前切线。
+
+`_offset_along` 沿曲线推进会跟着线弯，但身体朝向不会——只有沿线的位移跟着曲线走，朝向仍锚在入线时的那个切线上。梁上问题不大（身体本就顺着线走，弯曲只让走向偏几度，玩家自己也能用鼠标转回来）；檐上更明显：`LedgeWalkConfig.body_yaw_offset_deg = 90`，玩家背对墙站，线一弯，背就不再对着墙了，且视角扇形也是照入线时的墙面定的。
+
+不是本分支引入的缺陷，是继承自 `LineMove` 家族（滑索/单杠/梯子）本来就有的既有惯例。当前没有弯曲的 Balance/LedgeWalk 线在关卡里，所以从未暴露；但设计文档明确预告了多段管子拼接的场景
+（`docs/superpowers/specs/2026-08-30-balance-and-ledge-walk-design.md`），届时这条会变得可见。

@@ -158,10 +158,54 @@ func test_falling_off_the_beam_is_geometric() -> void:
 		"past the beam's half width the feet have nothing under them")
 	move.free()
 
+## Constraint 3 (the lean is REAL lateral displacement, not one more
+## threshold check): lateral_offset() must actually reach global_position
+## through LineWalkMove.physics_update()'s `stand` calculation, not merely be
+## a number lateral_update() compares against beam_half_width in isolation.
+## Deleting the "+ lateral_offset() * _normal_at(_walk_yaw)" term there keeps
+## every other test in this file green.
+func test_the_lean_displaces_the_body_off_the_centreline() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	var beam := InterestLine.new()
+	beam.kind = InterestLine.Kind.BALANCE
+	beam.curve = Curve3D.new()
+	beam.curve.add_point(Vector3.ZERO)
+	beam.curve.add_point(Vector3(10.0, 0.0, 0.0))
+	beam.position = player.global_position
+	add_child_autofree(beam)
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(beam),
+		"test setup: the beam's reach volume never registered the player")
+
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: the move manager did not enter Balance")
+	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	# Zero out the random entry lean so the body settles dead on the
+	# centreline before the sub-edge lean below is seeded.
+	move.seed_lean(0.0, 0.0)
+	await step(5)  # past the magnet fade
+	var before: Vector3 = player.global_position
+	var right: Vector3 = player.global_transform.basis.x
+
+	# Sub-edge: well under beam_half_width in real displacement, so
+	# lateral_update() keeps returning KEEP and the body stays on the beam.
+	var lean: float = move.cfg.beam_half_width / move.cfg.gravity_influence * 0.5
+	move.seed_lean(lean, 0.0)
+	await step(3)
+
+	var displacement: Vector3 = player.global_position - before
+	assert_gt(displacement.dot(right) * signf(move.lateral_offset()), 0.0,
+		"seeding a sub-edge lean did not move the body off the centreline in the direction lateral_offset() reports")
+
 ## Drives a REAL transition through MoveManager.start() -- calling
-## set_balance_lean(0.0, 0.0) directly on a rig, as a smaller version of this
-## test once did, proves the rig responds to zeros (already covered by
-## test_camera_constraints.gd) but never proves exit() is what SENDS them.
+## set_balance_lean(0.0, 0.0) directly on a rig proves the rig responds to
+## zeros (already covered by test_camera_constraints.gd) but never proves
+## exit() is what SENDS them.
 ## Deleting BalanceMove.exit()'s body must fail this test; it cannot fail a
 ## test that never calls exit() at all -- see LadderMove.exit()'s own tint
 ## reset for the precedent this follows.

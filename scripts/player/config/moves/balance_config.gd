@@ -20,9 +20,10 @@ extends MoveConfig
 
 ## Seconds for the lean to grow by a factor of e.
 ##
-## [ME:CONFIRMED] TimeToCounter = 0.8. READ AS A DIVERGENCE TIME CONSTANT, not
-## as a "window to correct in": exponential divergence has no grace period, only
-## a time constant, and that is what explains why being a fraction late is
+## [ME:CONFIRMED] TimeToCounter = 0.8 -- the NUMBER only. Reading it as a
+## divergence time constant rather than as a correction window is this
+## design's: exponential divergence has no grace period, only a time
+## constant, and that is what explains why being a fraction late is
 ## hopelessly late.
 @export var divergence_time: float = 0.8
 

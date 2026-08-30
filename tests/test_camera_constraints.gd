@@ -406,11 +406,11 @@ func test_the_squeeze_closes_the_fov_rather_than_opening_it() -> void:
 
 func test_a_sustained_lean_settles_instead_of_walking_past_the_camera_floor() -> void:
 	# REGRESSION: subtracting the squeeze into the same field the speed lerp
-	# reads back next frame compounds every tick it stays applied. Held across
-	# many ticks that used to converge toward speed_fov - squeeze/lerp_rate --
-	# with the shipped fov_lerp_speed, past Camera3D's 1-degree floor, where
-	# set_fov() silently rejects the write. The squeeze must settle at a
-	# bounded offset from the speed-driven value instead.
+	# reads back next frame compounds every tick it stays applied: held across
+	# many ticks it converges toward speed_fov - squeeze/lerp_rate -- with the
+	# shipped fov_lerp_speed, past Camera3D's 1-degree floor, where set_fov()
+	# silently rejects the write. The squeeze must settle at a bounded offset
+	# from the speed-driven value instead.
 	var rig := _rig()
 	await step(1)
 	var squeeze_deg: float = BalanceConfig.new().fov_squeeze_deg

@@ -84,8 +84,8 @@ func test_the_ledge_walk_moves_the_body_toward_its_own_right_on_d() -> void:
 	await step(5)  # lets the reach volume's Area3D register the overlap
 	assert_true(player.interest_lines.has(_line),
 		"test setup: the ledge's reach volume never registered the player")
-	# LEDGE_WALK is already registered by Player._build_moves() (Task 3), so
-	# this drives the SAME instance the real game uses, through the real
+	# LEDGE_WALK is already registered by Player._build_moves(), so this
+	# drives the SAME instance the real game uses, through the real
 	# per-tick input/physics loop -- only the entry itself is forced, since
 	# no entry site is wired to LedgeWalkMove.catch_gate() yet.
 	player.move_manager.start(Move.LEDGE_WALK)
@@ -99,6 +99,43 @@ func test_the_ledge_walk_moves_the_body_toward_its_own_right_on_d() -> void:
 	var displacement: Vector3 = player.global_position - before
 	assert_gt(displacement.dot(right), 0.0,
 		"D on a ledge did not move the body toward its own right")
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	assert_eq(ledge.shuffle_direction(), 1,
+		"D on a ledge did not pick the sidestep clip for a step to the body's own right")
+
+## Twin of the test above with the curve's two points swapped. Which branch
+## LedgeWalkMove._yaw_offset() takes (+90 or -90) follows the curve's point
+## order, and that is deliberately NOT supposed to change which way D
+## shuffles the body (test_reversing_a_ledge_lines_curve_does_not_flip_the_facing
+## pins the facing side of that same guarantee). D must read as a step to the
+## body's own right -- both in real displacement AND in the clip
+## shuffle_direction() hands to CharacterAnimator -- on whichever branch fired.
+func test_the_ledge_walk_moves_the_body_toward_its_own_right_on_d_with_a_reversed_curve() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
+		player.global_position + Vector3(5.0, 0.0, 0.0),
+		player.global_position - Vector3(5.0, 0.0, 0.0))
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(_line),
+		"test setup: the ledge's reach volume never registered the player")
+	player.move_manager.start(Move.LEDGE_WALK)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"test setup: never entered the ledge walk")
+	await step(20)  # past the magnet fade
+	var before: Vector3 = player.global_position
+	var right: Vector3 = player.global_transform.basis.x
+	_world["input"].state.move = Vector2(1.0, 0.0)  # D
+	await step(30)
+	var displacement: Vector3 = player.global_position - before
+	assert_gt(displacement.dot(right), 0.0,
+		"D on a ledge did not move the body toward its own right")
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	assert_eq(ledge.shuffle_direction(), 1,
+		"D on a ledge did not pick the sidestep clip for a step to the body's own right")
 
 func test_a_beam_moves_the_body_toward_its_own_forward_on_w() -> void:
 	_world = TestWorld.build(get_tree(), MovementConfig.new())
@@ -159,9 +196,9 @@ func test_walking_onto_a_ledge_line_enters_the_move() -> void:
 	# guard is what offset 0.0 exercises: a body caught right on the line's
 	# own start, with no input yet, must not read as having already walked
 	# past that end on its first tick (the old ungated form of that check did
-	# exactly that -- see its own comment). Placing the catch mid-line, as an
-	# earlier version of this test did, cannot exercise that path at all:
-	# closest_offset() there lands nowhere near either boundary.
+	# exactly that -- see its own comment). A catch placed mid-line cannot
+	# exercise that path at all: closest_offset() there lands nowhere near
+	# either boundary.
 	var feet: Vector3 = player.global_position
 	feet.y = player.probes.feet_y()
 	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
@@ -205,7 +242,7 @@ func test_running_past_below_a_ledge_line_does_not_enter() -> void:
 		"a ledge 0.5 m overhead caught a body it should have refused")
 
 # --- yaw sign: the "-Z points at the wall" convention must be what decides,
-# not the curve's own drawing direction (Task 9 review item 6). -------------
+# not the curve's own drawing direction. ------------------------------------
 
 func test_reversing_a_ledge_lines_curve_does_not_flip_the_facing() -> void:
 	# _yaw_offset()'s magnitude (LedgeWalkConfig.body_yaw_offset_deg, 90) only

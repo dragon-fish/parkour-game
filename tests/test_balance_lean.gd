@@ -9,21 +9,17 @@ extends ParkourTest
 #
 # THE MODIFIER IS CALLED DIRECTLY, never scheduled. A bare Skeleton3D with no
 # AnimationPlayer driving it never runs SkeletonModifier3D callbacks on its
-# own -- established by a spike earlier in this plan -- so _tick() below
-# invokes _process_modification_with_delta() by hand instead of waiting for
-# the engine to get around to it.
+# own, so _tick() below invokes _process_modification_with_delta() by hand
+# instead of waiting for the engine to get around to it.
 
-## THE SHOULDERS MUST NOT BOTH SIT AT z=0. A first draft of this fixture put
-## LeftUpperArm and RightUpperArm at the same y and z, differing only in x --
-## so `right - left` came out exactly (0.4, 0, 0), and UP.cross(that) came out
-## exactly (0, 0, -1), which IS Vector3.FORWARD. Every test in this file
-## stayed green with _lean_axis() hardcoded to `return Vector3.FORWARD`,
-## deleting the entire shoulder read -- caught only by a reviewer mutating the
-## code and watching nothing fail. Giving RightUpperArm a nonzero z the left
-## shoulder does not share makes the derived axis provably NOT (0, 0, -1), so
-## a hardcoded FORWARD is distinguishable from the real thing. See
-## test_positive_lean_tips_the_torso_toward_the_bodys_right and the mutation
-## transcript in the task report.
+## THE SHOULDERS MUST NOT BOTH SIT AT z=0. Shoulders that differ only in x
+## make `right - left` exactly (0.4, 0, 0), whose UP.cross() is exactly
+## (0, 0, -1) -- which IS Vector3.FORWARD, so every test in this file passes
+## with _lean_axis() hardcoded to `return Vector3.FORWARD` and the entire
+## shoulder read deleted. Giving RightUpperArm a nonzero z the left shoulder
+## does not share makes the derived axis provably NOT (0, 0, -1), so a
+## hardcoded FORWARD is distinguishable from the real thing. See
+## test_positive_lean_tips_the_torso_toward_the_bodys_right.
 const LEFT_SHOULDER := Vector3(-0.2, 0.1, 0.0)
 const RIGHT_SHOULDER := Vector3(0.2, 0.1, 0.4)
 
@@ -121,8 +117,8 @@ func test_the_hips_take_far_less_of_the_lean_than_the_torso() -> void:
 	# read-modify-write round trip through a zero-radians SPINE_CHAIN call
 	# still perturbs chest by float noise on the order of 1e-8 -- enough for
 	# a bare `hips < chest` to pass by ACCIDENT depending on which way the
-	# rounding falls, which a run of this exact mutation caught. "far less"
-	# needs a real margin: the config default ratio is 4/18 =~ 0.22, so
+	# rounding falls. "far less" needs a real margin: the config default
+	# ratio is 4/18 =~ 0.22, so
 	# requiring hips under half of chest is generous room above that and
 	# nowhere near float noise.
 	assert_lt(hips, chest * 0.5,
