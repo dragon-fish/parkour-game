@@ -95,7 +95,9 @@ func enter(_previous: StringName) -> void:
 	#
 	# SWUNG, NOT PINNED. Setting it outright is a 180 degree turn inside one
 	# frame, which reads as the model being replaced rather than turning.
-	# physics_update() walks it round at model_turn_speed_deg instead.
+	# physics_update() walks it round at the ordinary third-person model
+	# turn rate instead -- the same one running uses, because this is the
+	# same body turning, not a special effect that needs its own speed.
 	_model_yaw_target = player.visual_yaw()
 	if _direction != Vector3.ZERO:
 		_model_yaw_target = atan2(-_direction.x, -_direction.z)
@@ -171,7 +173,7 @@ func exit() -> void:
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	_elapsed += delta
-	var swing: float = deg_to_rad(cfg.model_turn_speed_deg) * delta
+	var swing: float = deg_to_rad(config.pawn.body_turn_speed_deg) * delta
 	var owed: float = wrapf(_model_yaw_target - player.visual_yaw(), -PI, PI)
 	if absf(owed) > 0.0001:
 		player.pin_visual_yaw(player.visual_yaw() + clampf(owed, -swing, swing))

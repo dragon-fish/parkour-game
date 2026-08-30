@@ -122,14 +122,3 @@ func _init() -> void:
 ## measurement behind the move came from it. Recorded as a switch rather than
 ## hard-coded so changing that decision is a line rather than an excavation.
 @export var aim_with_view: bool = true
-
-## How fast the MODEL swings round to face the roll, in degrees per second.
-##
-## The roll is a scripted displacement along the view, so the model owes it a
-## direction (see docs/capsule-leads-presentation.md). Pinning it outright was
-## the first cut and read as a body snapping through 180 degrees in one frame.
-##
-## 720 covers a full reversal in a quarter second -- inside the roll, so it is
-## finished by the time the body is up, and not so fast that it reads as a cut.
-## A DIAL: if a hard reversal still looks like a snap, this is the number.
-@export var model_turn_speed_deg: float = 720.0

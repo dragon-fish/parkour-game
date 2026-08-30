@@ -186,6 +186,13 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	var turn_floor: float = cfg.min_align_turn_speed * delta
 	var turn_step: float = maxf(remaining_turn * delta / remaining_time, turn_floor)
 	_turn_body_toward(_target_yaw, turn_step)
+	# THE MODEL COMES ROUND WITH THE CAPSULE. Turning only the capsule leaves
+	# the body hanging at whatever angle the reach began at, because in third
+	# person the model follows the view only while a direction key is held --
+	# and a grab is the case where nobody is holding one. The capsule is
+	# already being eased round, so borrowing its heading gives the model the
+	# same easing for free. See docs/capsule-leads-presentation.md.
+	player.pin_visual_yaw(player.rotation.y)
 	to_target = _target - player.global_position
 	# BOTH have to have arrived. DO NOT finish on position alone: correcting
 	# the facing afterward in one lump via _settle() hands the camera a lag
@@ -229,6 +236,9 @@ func _settle() -> StringName:
 	# already within a rounding error of the target, and reporting that sliver
 	# to the camera as a lag is noise.
 	player.rotation.y = _target_yaw
+	# Square the model to the wall on the same tick, so the hands and the hips
+	# agree about which way the ledge runs.
+	player.pin_visual_yaw(_target_yaw)
 	if player.camera_rig != null:
 		player.camera_rig.recentre_yaw_reference(_target_yaw)
 	return GRAB
