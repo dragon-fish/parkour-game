@@ -24,6 +24,8 @@ var _elapsed: float = 0.0
 ## Fixed at touchdown, from the VIEW rather than from the momentum -- see
 ## enter(). Zero only if the facing is degenerate, which nothing produces.
 var _direction: Vector3 = Vector3.ZERO
+## Where the model is being walked round to -- see enter().
+var _model_yaw_target: float = 0.0
 var _speed: float = 0.0
 ## True once the ground has run out mid-roll. The roll does NOT end there -- see
 ## physics_update().
@@ -82,6 +84,21 @@ func enter(_previous: StringName) -> void:
 		var facing: Vector3 = -player.global_transform.basis.z
 		facing.y = 0.0
 		_direction = facing.normalized() if facing.length_squared() > 0.0001 else Vector3.ZERO
+
+	# THE MODEL IS TURNED TO FACE THE ROLL, and it has to be said here because
+	# nothing else will say it. In third person the model only turns while a
+	# direction key is held, so a body that lands, swings the view round and
+	# rolls without touching a key rolls along its new facing while still
+	# pointing the old way -- it reads as rolling backwards. The roll is a
+	# scripted displacement along the view, not a continuation of momentum, so
+	# the model owes the direction the same as the capsule does.
+	#
+	# SWUNG, NOT PINNED. Setting it outright is a 180 degree turn inside one
+	# frame, which reads as the model being replaced rather than turning.
+	# physics_update() walks it round at model_turn_speed_deg instead.
+	_model_yaw_target = player.visual_yaw()
+	if _direction != Vector3.ZERO:
+		_model_yaw_target = atan2(-_direction.x, -_direction.z)
 
 	# THE ROLL TAKES THE PITCH OVER, rather than offsetting it.
 	#
@@ -154,6 +171,10 @@ func exit() -> void:
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	_elapsed += delta
+	var swing: float = deg_to_rad(cfg.model_turn_speed_deg) * delta
+	var owed: float = wrapf(_model_yaw_target - player.visual_yaw(), -PI, PI)
+	if absf(owed) > 0.0001:
+		player.pin_visual_yaw(player.visual_yaw() + clampf(owed, -swing, swing))
 
 	# Input is ignored entirely -- see the file header. The roll carries the
 	# body along the heading it landed on.
