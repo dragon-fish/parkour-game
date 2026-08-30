@@ -65,8 +65,9 @@ HUD 单位为米，帧率 120：
   （触发距离下界是 0）。
 - 太远就是普通跳。
 - 起跳后按住 W 的空中加速与普通跳一样。
-- **斜着进就斜着出**：在 53° 以内斜着走向两级，人沿着面朝方向斜穿过两级、
-  沿同一方向抛出，不会被掰正到两级的法线上。
+- **抛出方向是起跳那一瞬间的镜头方向**，不是两级的法线：斜着进就斜着出。
+  两步蹬踏是脚本移动，一旦触发就沿路径走，但期间视角不受限——鼠标转得够快，
+  可以在 0.4 s 里扭头 180° 往后面飞出去（社区已知 glitch，照抄）。
 
 ### 项目自定
 
@@ -138,8 +139,8 @@ HUD 单位为米，帧率 120：
 
 胶囊位置 = 脚落点 + 半身高，由 `ScriptedMove.advance()` 直接写位置；
 `set_grounded(true)`——脚在东西上，声明而不是推断。模型 `pin_visual_yaw` 朝
-进入时的面朝方向；胶囊与视线不动（原作 `ControllerState = PlayerWalking`，
-视角自由，无视线约束）。实测这 0.4 s 里 Z 近似匀速上升 1.2 m、
+进入时的面朝方向；胶囊与视线照常跟鼠标（原作 `ControllerState =
+PlayerWalking`，CDO 无 `bConstrainLook`），路径不受视角影响。实测这 0.4 s 里 Z 近似匀速上升 1.2 m、
 前进约 2 m，两段小弧只是让脚落到点上，不必刻意做出停顿。
 
 ### 阶段 3：抛出
@@ -147,7 +148,7 @@ HUD 单位为米，帧率 120：
 段 2 结束那一帧：
 
 ```
-dir      = 进入时的面朝方向（水平归一）     ✅ owner：斜着进就斜着出
+dir      = 抛出这一帧的镜头 yaw（水平归一）  ✅ owner：斜着进就斜着出，扭头 180° 就往后飞
 xy       = max(h + xy_add, xy_min)        = max(h - 1.0, 4.0)
 velocity = dir * xy + UP * jump_z         jump_z = 9.5
 ```
@@ -168,7 +169,7 @@ velocity = dir * xy + UP * jump_z         jump_z = 9.5
 ### 中断
 
 - `_aborted`（`pending_spring_board` 为空）→ 第一帧返回 WALKING。
-- 蹬踏期不接受任何输入（已锁），不检查 grab / vault。
+- 蹬踏期不接受移动/跳跃输入（已锁），鼠标视角照常；不检查 grab / vault。
 - 无 `redo_move_time`（CDO 无此字段）。
 
 ## 配置：`SpringBoardConfig`
@@ -225,8 +226,8 @@ velocity = dir * xy + UP * jump_z         jump_z = 9.5
 5. 蹬踏期：到达立面后 0.2 s 脚在第一根柱顶、0.4 s 在第二根柱顶（容差 5 cm），
    期间 `grounded` 为真、输入被锁。
 6. 抛出：段 2 结束那一帧 `velocity.y == jump_z`，水平速度 =
-   `max(进入速度 - 1.0, 4.0)`，方向为进入时的面朝方向（斜 40° 进入的用例
-   里，抛出方向仍是那 40°）；`fall_tracker` 已重置；
+   `max(进入速度 - 1.0, 4.0)`，方向为该帧的镜头 yaw——蹬踏期把视角扭到
+   180° 的用例里，人往后飞；`fall_tracker` 已重置；
    之后仍是 `SPRING_BOARD`，`velocity.y` 过零那一帧才转 `FALLING`。
 7. 柱顶放不下身体（`fits_standing_at` 假）→ 普通 `JUMP`。
 8. 上升段按下蹲不 coil（`SPRING_BOARD` 不会转 `COIL`）。
