@@ -144,6 +144,7 @@ func _process(delta: float) -> void:
 		"scripted   %s" % _scripted_line(),
 		"zip        %s" % _zip_line(),
 		"swing      %s" % _swing_line(),
+		"balance    %s" % _balance_line(),
 		"speed      h %.2f  v %.2f m/s"
 			% [player.horizontal_speed(), player.velocity.y],
 		# ABSOLUTE, world-space: the body's own facing and the eye's own pitch,
@@ -387,3 +388,17 @@ func _swing_line() -> String:
 		rad_to_deg(move.swing_theta()), move.swing_omega(),
 		absf(move.tangential_speed()), pump,
 		"JUMP OPEN" if move.jump_window_open() else "closed"]
+
+## The inverted pendulum, or "-" when not on the beam. THE ONLY WINDOW into
+## an otherwise invisible number -- lean and its rate never touch a probe or
+## a marker, so tuning divergence_time/correction_gain/base_wobble without
+## this line is reading tea leaves off how the camera rolls.
+func _balance_line() -> String:
+	if player == null or player.move_manager == null \
+			or player.move_manager.current_name != Move.BALANCE:
+		return "-"
+	var move: BalanceMove = player.move_manager.move_for(Move.BALANCE)
+	if move == null:
+		return "-"
+	return "lean %.3f  rate %+.3f  severity %.2f" % [
+		move.lean(), move.lean_rate(), move.lean_severity()]

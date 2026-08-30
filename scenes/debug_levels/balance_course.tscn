@@ -1,0 +1,144 @@
+[gd_scene load_steps=19 format=3]
+
+[ext_resource type="PackedScene" uid="uid://lq3dqgc2iapg" path="res://templates/base_level.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://bm66kmrjectfn" path="res://scripts/level/interest_line.gd" id="2_line"]
+
+[sub_resource type="StandardMaterial3D" id="Material_platform"]
+albedo_color = Color(0.55, 0.55, 0.58, 1)
+roughness = 0.7
+
+[sub_resource type="StandardMaterial3D" id="Material_beam"]
+albedo_color = Color(0.62, 0.48, 0.28, 1)
+roughness = 0.5
+
+[sub_resource type="StandardMaterial3D" id="Material_wall"]
+albedo_color = Color(0.35, 0.35, 0.4, 1)
+roughness = 0.8
+
+[sub_resource type="StandardMaterial3D" id="Material_ledge"]
+albedo_color = Color(0.78, 0.58, 0.22, 1)
+roughness = 0.5
+
+[sub_resource type="BoxShape3D" id="Shape_platform"]
+size = Vector3(3, 0.5, 3)
+
+[sub_resource type="BoxMesh" id="Mesh_platform"]
+material = SubResource("Material_platform")
+size = Vector3(3, 0.5, 3)
+
+[sub_resource type="BoxMesh" id="Mesh_beam"]
+material = SubResource("Material_beam")
+size = Vector3(0.35, 0.3, 12)
+
+[sub_resource type="Curve3D" id="Curve_beam"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12),
+"tilts": PackedFloat32Array(0, 0)
+}
+point_count = 2
+
+[sub_resource type="BoxShape3D" id="Shape_walkway"]
+size = Vector3(3, 0.5, 8.5)
+
+[sub_resource type="BoxMesh" id="Mesh_walkway"]
+material = SubResource("Material_platform")
+size = Vector3(3, 0.5, 8.5)
+
+[sub_resource type="BoxShape3D" id="Shape_wall"]
+size = Vector3(0.5, 4.5, 6.5)
+
+[sub_resource type="BoxMesh" id="Mesh_wall"]
+material = SubResource("Material_wall")
+size = Vector3(0.5, 4.5, 6.5)
+
+[sub_resource type="BoxMesh" id="Mesh_ledge"]
+material = SubResource("Material_ledge")
+size = Vector3(1.0, 0.15, 6)
+
+[sub_resource type="Curve3D" id="Curve_ledge"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -6, 0, 0),
+"tilts": PackedFloat32Array(0, 0)
+}
+point_count = 2
+
+[sub_resource type="BoxShape3D" id="Shape_endplatform"]
+size = Vector3(3, 0.5, 4)
+
+[sub_resource type="BoxMesh" id="Mesh_endplatform"]
+material = SubResource("Material_platform")
+size = Vector3(3, 0.5, 4)
+
+[node name="Arena" instance=ExtResource("1_base")]
+
+[node name="SpawnPoint" parent="." index="2"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 20, 8, 2.5)
+
+[node name="PlatformA" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 4.75, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="PlatformA"]
+shape = SubResource("Shape_platform")
+
+[node name="Mesh" type="MeshInstance3D" parent="PlatformA"]
+mesh = SubResource("Mesh_platform")
+
+[node name="Beam" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 4.85, 7.5)
+
+[node name="Mesh" type="MeshInstance3D" parent="Beam"]
+mesh = SubResource("Mesh_beam")
+
+[node name="PlatformB" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 4.75, 15)
+
+[node name="Collision" type="CollisionShape3D" parent="PlatformB"]
+shape = SubResource("Shape_platform")
+
+[node name="Mesh" type="MeshInstance3D" parent="PlatformB"]
+mesh = SubResource("Mesh_platform")
+
+[node name="BeamLine" type="Path3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 5, 1.5)
+curve = SubResource("Curve_beam")
+script = ExtResource("2_line")
+kind = 2
+
+[node name="Walkway" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 4.75, 20.75)
+
+[node name="Collision" type="CollisionShape3D" parent="Walkway"]
+shape = SubResource("Shape_walkway")
+
+[node name="Mesh" type="MeshInstance3D" parent="Walkway"]
+mesh = SubResource("Mesh_walkway")
+
+[node name="Wall" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21.75, 5.75, 28.25)
+
+[node name="Collision" type="CollisionShape3D" parent="Wall"]
+shape = SubResource("Shape_wall")
+
+[node name="Mesh" type="MeshInstance3D" parent="Wall"]
+mesh = SubResource("Mesh_wall")
+
+[node name="Ledge" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 21, 3.425, 28)
+
+[node name="Mesh" type="MeshInstance3D" parent="Ledge"]
+mesh = SubResource("Mesh_ledge")
+
+[node name="LedgeLine" type="Path3D" parent="."]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 20.8, 3.5, 31)
+curve = SubResource("Curve_ledge")
+script = ExtResource("2_line")
+kind = 4
+
+[node name="EndPlatform" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 3.25, 33)
+
+[node name="Collision" type="CollisionShape3D" parent="EndPlatform"]
+shape = SubResource("Shape_endplatform")
+
+[node name="Mesh" type="MeshInstance3D" parent="EndPlatform"]
+mesh = SubResource("Mesh_endplatform")

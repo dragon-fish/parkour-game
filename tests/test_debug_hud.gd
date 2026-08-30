@@ -62,6 +62,7 @@ func test_the_compact_tier_keeps_health_and_the_key_legend() -> void:
 
 func test_the_compact_tier_drops_the_rows_that_answer_one_question() -> void:
 	var hud := await _hud()
-	for row in ["shimmy     -", "model      y +0.00", "wall ahead -", "swing      -"]:
+	for row in ["shimmy     -", "model      y +0.00", "wall ahead -", "swing      -",
+			"balance    -"]:
 		assert_false(hud._worth_reading_while_playing(row), \
 			"'%s' is a specific question's answer and belongs in the full tier" % row)

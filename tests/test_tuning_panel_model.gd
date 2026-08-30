@@ -17,6 +17,20 @@ func test_it_reaches_floats_inside_every_sub_resource() -> void:
 	assert_true(paths.has("slide.slide_abort_speed"), "per-move floats not reached")
 	assert_true(paths.has("wall_run.wall_running_horisontal_acceleration"), "wall_run floats not reached")
 
+func test_balance_and_ledge_walk_groups_are_reached() -> void:
+	# BalanceConfig and LedgeWalkConfig need no panel code of their own --
+	# MovementConfig already exports `balance` and `ledge_walk`, so the same
+	# generic walk that finds every other move's group finds these too. This
+	# pins that the wiring stays automatic rather than silently regressing to
+	# needing a hand-added group the next time a move's config changes shape.
+	var config := MovementConfig.new()
+	var paths := _paths(TuningPanel.collect_tunables(config))
+	assert_true(paths.has("balance.divergence_time"), "balance's pendulum dials not reached")
+	assert_true(paths.has("balance.beam_half_width"), "balance's fall threshold not reached")
+	assert_true(paths.has("ledge_walk.body_yaw_offset_deg"), "ledge_walk's own dials not reached")
+	assert_true(paths.has("ledge_walk.speed_modifier"),
+		"ledge_walk's inherited MoveConfig fields not reached")
+
 func test_inherited_move_config_fields_are_reached_too() -> void:
 	# speed_modifier/friction_modifier live on the MoveConfig BASE class, not
 	# on CrouchConfig itself. A walk that only reported a resource's own

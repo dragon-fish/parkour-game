@@ -343,6 +343,62 @@ just drawn and aimed differently.
 The collision volume is built along the curve at runtime, same as any other
 interest line — do not add one by hand.
 
+## Placing a balance beam or a ledge walk
+
+Same `InterestLine` node again, `kind = BALANCE` or `kind = LEDGE_WALK`. These
+two are the trap in the family: **a flush walk-on can never catch them**, no
+matter how carefully the curve is drawn, and the reason is arithmetic rather
+than a level-building mistake.
+
+`BalanceMove`/`LedgeWalkMove`'s entry gate (`LineWalkMove.foot_gate_at()`)
+compares the approaching body's CURRENT CENTRE height to the curve's own Y,
+tolerance `foot_snap_height` (0.35 m default). A body standing or walking on
+flat ground rests with its centre a full `standing_height / 2` (0.9 m) above
+that ground — so a curve drawn at the adjacent platform's own surface height
+misses the gate by 0.9 m, and a curve drawn at the platform's centre-height
+(to satisfy the gate) then makes the caught body's feet settle 0.9 m ABOVE
+the visible mesh (`LineWalkMove.physics_update()`'s `stand` target is
+`curve.y + standing_height / 2`, so feet always end up sitting at `curve.y`
+exactly — never at "the mesh's surface" unless the mesh's surface IS
+`curve.y`). Neither number can be tuned around; the 0.9 m gap is
+`PawnConfig`'s own capsule height, not a level dial.
+
+The gate only opens on a FALL: `FallingConfig`/`JumpConfig` both set
+`check_for_balance` / `check_for_ledge_walk`, so a body descending through
+the air has its centre sweep continuously through every height, including
+the curve's own ±0.35 m window, at whatever moment it happens to pass
+through — no such sweep exists for a body walking flush across matching
+heights.
+
+1. Add Node → `InterestLine`, curve along the beam's or ledge's own **centre
+   line, at the height you want the caught body's FEET to rest** — same as
+   any other interest line, and exactly where you would draw it for a
+   zipline or ladder.
+2. **Do not give the beam/ledge mesh a `CollisionShape3D`.** A solid
+   collider stops the fall via ordinary physics at `curve.y + standing_height
+   / 2` — a half body-height above the gate's own window — so the body lands
+   as plain `WALKING` before the interest line ever gets a chance to catch
+   it. Build it as a bare `MeshInstance3D` (no `StaticBody3D`) instead: a
+   missed catch then falls straight through into open air below, which is
+   the correct outcome anyway (see `docs/contact-drives-movement.md` and the
+   "misses cost more than false catches" ruling in
+   `docs/superpowers/specs/2026-08-30-balance-and-ledge-walk-design.md`).
+3. Shape the approach so the player is genuinely FALLING when they reach the
+   line: spawn them a couple of metres above it, or put the take-off platform
+   higher than the beam/ledge with an open step-off edge — either way, no
+   input is required, gravity alone drives the catch. `LEDGE_WALK` additionally
+   needs the player's landing spot to be within `reach_radius` (0.6 m default)
+   of the curve horizontally, so aim the drop at the line, not merely
+   "somewhere above it."
+4. The FAR end (where the move is meant to be walked off normally) has no
+   such restriction — reaching the end of the line always returns `WALKING`
+   regardless of height, so the platform there may sit flush with the curve.
+5. `LEDGE_WALK` additionally needs the curve kept clear of its own wall by at
+   least the capsule radius (0.4 m) plus a little slack — a curve drawn
+   flush against the wall face gets its `stand` target clipped short by the
+   wall's own collision, and the body settles short of where the curve says
+   it should.
+
 ## Placing a checkpoint
 
 1. Add Node → `Checkpoint` (an `Area3D`; the class comes from
