@@ -55,7 +55,16 @@ HUD 单位为米，帧率 120：
 两个 CDO 参数由此对上：`IntermediateFootPlant*` 就是「第二只脚踩在哪」——
 这一跳有两次蹬踏，第一次在近的那点，第二次在远的那点。
 
-⚠️ 53° 在 CDO 里没有对应字段，标 `[ME:COMMUNITY]`（owner 实测行为，无出处）。
+53° 在 CDO 里没有对应字段，是 owner 实机反复确认的行为，标 `[ME:CONFIRMED]`
+（同 05 §5.6 的 owner 实测例）。
+
+### ✅ owner 补充确认（2026-08-31）
+
+- 离地后不触发：只从地面进入。
+- 慢走能触发；离 1.2 m 刚起步就按也能触发；紧贴着立面按 W + 空格也能触发
+  （触发距离下界是 0）。
+- 太远就是普通跳。
+- 起跳后按住 W 的空中加速与普通跳一样。
 
 ### 项目自定
 
@@ -172,7 +181,7 @@ velocity = dir * xy + UP * jump_z         jump_z = 9.5
 | `plant_spacing` | 1.12 | `[ME:CONFIRMED]` |
 | `plant_2_min_height` / `plant_2_max_height` | 0.8 / 1.48 | `[ME:CONFIRMED]`（录像 1.24） |
 | `step_time_1` / `step_time_2` | 0.2 / 0.2 | `[ME:CONFIRMED]` CDO + 录像 0.4 |
-| `approach_angle_deg` | 53 | `[ME:COMMUNITY]` |
+| `approach_angle_deg` | 53 | `[ME:CONFIRMED]` owner 实测 |
 | `trigger_distance` | 1.2 | 项目自定（录像实测下界） |
 | `plant_reach` | 0.35 | 项目自定 |
 | `approach_timeout` | 0.6 | 项目自定 |
@@ -226,7 +235,7 @@ velocity = dir * xy + UP * jump_z         jump_z = 9.5
 ## 已知空白
 
 - 触发距离上限没有扫过，1.2 m 是实测下界；`CheckDistanceTime = 1.0 s` 含义未明。
-- 53° 是实测行为，无 CDO 出处。
+- 53° 无 CDO 出处，只有实测。
 - 无专门动画片段。
 - 录像里的字形库对这次 HUD（14 行、无 IGT 行）识别偏差较大，数值靠逐帧肉眼读取；
   下次先用一帧 `calib --append` 补字形。
