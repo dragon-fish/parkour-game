@@ -64,7 +64,9 @@ HUD 单位为米，帧率 120：
 - 慢走能触发；离 1.2 m 刚起步就按也能触发；紧贴着立面按 W + 空格也能触发
   （触发距离下界是 0）。
 - 太远就是普通跳。
-- 起跳后按住 W 的空中加速与普通跳一样。
+- 起跳后按住 W 的空中加速与普通跳一样；**不按 W 飞出时 V = 14.4 km/h = 4.0 m/s**，
+  就是 `XYMin`（也是倒走/横走的基础速度）。
+- 第二段录像（01.42.53）：蹬踏期扭头 180°，起跳后往镜头方向飞。
 - **抛出方向是起跳那一瞬间的镜头方向**，不是两级的法线：斜着进就斜着出。
   两步蹬踏是脚本移动，一旦触发就沿路径走，但期间视角不受限——鼠标转得够快，
   可以在 0.4 s 里扭头 180° 往后面飞出去（社区已知 glitch，照抄）。
@@ -181,7 +183,7 @@ velocity = dir * xy + UP * jump_z         jump_z = 9.5
 |---|---|---|
 | `jump_z` | 9.5 | `[ME:CONFIRMED]` CDO + 录像 |
 | `xy_add` | -1.0 | `[ME:CONFIRMED]` CDO + 录像 |
-| `xy_min` | 4.0 | `[ME:CONFIRMED]` |
+| `xy_min` | 4.0 | `[ME:CONFIRMED]` CDO + 录像（不按 W 时 14.4 km/h） |
 | `plant_1_height` | 0.64 | `[ME:CONFIRMED]` |
 | `plant_spacing` | 1.12 | `[ME:CONFIRMED]` |
 | `plant_2_min_height` / `plant_2_max_height` | 0.8 / 1.48 | `[ME:CONFIRMED]`（录像 1.24） |
