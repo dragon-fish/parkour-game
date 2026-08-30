@@ -133,15 +133,17 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	_walk_yaw = LineWalkMove.yaw_of(facing_tangent)
 	var projected := LineWalkMove.project_input(
 		input.move, _walk_yaw, deg_to_rad(_yaw_offset(facing_tangent)))
+	var along: float = _adjust_along(projected.x, input)
 	var speed: float = config.pawn.ground_speed * cfg.speed_modifier
-	# projected.x is already "along the direction the body faces" (project_input's
-	# own invariant). _offset_along, though, stays in the curve's RAW arc-length
-	# frame -- the line's start is offset 0 no matter which way the body walks --
-	# so converting a facing-frame step into an arc-length delta needs the same
+	# along is already "along the direction the body faces" (project_input's
+	# own invariant, which _adjust_along()'s default identity preserves).
+	# _offset_along, though, stays in the curve's RAW arc-length frame -- the
+	# line's start is offset 0 no matter which way the body walks -- so
+	# converting a facing-frame step into an arc-length delta needs the same
 	# sign that turned the raw tangent into facing_tangent above.
-	var signed_along: float = projected.x * _direction_sign
+	var signed_along: float = along * _direction_sign
 	_offset_along += signed_along * speed * delta
-	note_travel(projected.x)
+	note_travel(along)
 	# Walking off either end is how you leave: the line ran out, so the body is
 	# simply standing on whatever is there.
 	#
@@ -153,11 +155,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# the very first physics_update -- before any key has been pressed --
 	# would see "at the boundary" and exit on the spot.
 	#
-	# Checked against signed_along (the raw arc-length direction), NOT
-	# projected.x: on the reversed branch (_direction_sign < 0) walking toward
-	# offset 0 is what the body's OWN forward drives, so gating on projected.x
-	# here would let a body walking off the reversed end's "far" side exit one
-	# tick early or never.
+	# Checked against signed_along (the raw arc-length direction), NOT along:
+	# on the reversed branch (_direction_sign < 0) walking toward offset 0 is
+	# what the body's OWN forward drives, so gating on along here would let a
+	# body walking off the reversed end's "far" side exit one tick early or
+	# never.
 	var at_end: bool = (_offset_along <= 0.0 and signed_along < 0.0) \
 		or (_offset_along >= _line.length() and signed_along > 0.0)
 	_offset_along = clampf(_offset_along, 0.0, _line.length())
@@ -191,6 +193,14 @@ func line_offset() -> float:
 ## pendulum). Returns a move name to leave, or KEEP. The base tier has none.
 func lateral_update(_delta: float, _lateral_input: float) -> StringName:
 	return KEEP
+
+## Hook for a subclass that reinterprets project_input()'s own along reading
+## before it drives _offset_along and note_travel(). Default is the identity
+## -- the base tier and BalanceMove both take it unmodified. LedgeWalkMove
+## overrides this for its screen-relative A/D latch and its camera-assisted
+## W/S; see its own note for why those live there and not here.
+func _adjust_along(along: float, _input: MoveInput) -> float:
+	return along
 
 ## Which way along `tangent` (the line's own, un-flipped) the body should
 ## face: +1 keeps the curve's authored direction, -1 reverses it. Called once

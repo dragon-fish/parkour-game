@@ -32,6 +32,24 @@ extends MoveConfig
 ## line" family's own fade dial.
 @export var fade_in_time: float = 0.15
 
+## Width, in degrees, of the arc the THIRD-PERSON camera's bearing around the
+## player is clamped to, centred on the character's own front (the direction
+## the model faces, back to the wall). 160 means +-80 -- an arc that sits
+## entirely on the outward side, since the character's back (where the
+## unclamped camera would otherwise sit) is the wall. NOT min/max_look_
+## constraint below: that is [ME:CONFIRMED] and governs where the PLAYER may
+## LOOK; this is the owner's own call and governs where the CAMERA may SIT in
+## third person. Widening one must never be read as license to widen the
+## other. See CameraRig.set_ledge_camera_arc().
+@export var camera_arc_deg: float = 160.0
+
+## How far the VIEW must have turned off the body's own front, in degrees,
+## before W/S get a look-relative assist on top of their ordinary (here,
+## null) body-relative reading -- see LedgeWalkMove._adjust_along(). Facing
+## straight out and pressing W must still do nothing, which is what the gate
+## is for.
+@export var look_assist_angle_deg: float = 45.0
+
 func _init() -> void:
 	# [ME:CONFIRMED] SpeedModifier 0.10 -> 720 * 0.1 = 72 uu/s = 2.59 km/h.
 	speed_modifier = 0.10

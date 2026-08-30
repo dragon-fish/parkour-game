@@ -285,3 +285,160 @@ func test_reversing_a_ledge_lines_curve_does_not_flip_the_facing() -> void:
 		"reversing the curve's point order flipped which way the body faces")
 	assert_almost_eq(facing_forward.z, facing_reversed.z, 0.001,
 		"reversing the curve's point order flipped which way the body faces")
+
+# --- A/D: screen-relative in third person, latched on press -----------------
+#
+# The camera arc clamp keeps a third-person ledge view within the body's own
+# front hemisphere the whole time (test_a_bearing_behind_the_body_clamps_...
+# in test_camera_constraints.gd), and CameraRig never re-aims the camera at
+# the body, so from that side raw body-relative D reads backwards on screen.
+# This flips it -- and the flip must survive the camera changing mid-press.
+
+func _enter_ledge_walk(player: Player) -> void:
+	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
+		player.global_position - Vector3(5.0, 0.0, 0.0),
+		player.global_position + Vector3(5.0, 0.0, 0.0))
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(_line),
+		"test setup: the ledge's reach volume never registered the player")
+	player.move_manager.start(Move.LEDGE_WALK)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"test setup: never entered the ledge walk")
+	await step(20)  # past the magnet fade
+
+func test_third_person_d_reads_as_the_bodys_left_and_holds_through_a_camera_change() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	await _enter_ledge_walk(player)
+	await step(20)  # lets the arc clamp settle the camera into the front arc
+
+	var right: Vector3 = player.global_transform.basis.x
+	var before: Vector3 = player.global_position
+	_world["input"].state.move = Vector2(1.0, 0.0)  # D
+	await step(10)
+	var displacement: Vector3 = player.global_position - before
+	assert_lt(displacement.dot(right), 0.0,
+		"D on a third-person ledge did not read as the body's own left")
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	assert_eq(ledge.shuffle_direction(), -1,
+		"the mirrored travel was not reported to the animator as a step to the body's left")
+
+	# Held the same key throughout: drop out of third person mid-press. A live
+	# re-resolve would flip the travel direction straight back to normal; the
+	# latch must not.
+	player.camera_rig.third_person = false
+	var mid: Vector3 = player.global_position
+	await step(10)
+	var still_flipped: Vector3 = player.global_position - mid
+	assert_lt(still_flipped.dot(right), 0.0,
+		"turning the camera mid-press changed which way D travelled")
+
+	# Release and press again: a fresh press re-resolves against the new
+	# camera state (now first person, so unflipped).
+	_world["input"].state.move = Vector2.ZERO
+	await step(5)
+	var before_2: Vector3 = player.global_position
+	_world["input"].state.move = Vector2(1.0, 0.0)
+	await step(10)
+	var after_release: Vector3 = player.global_position - before_2
+	assert_gt(after_release.dot(right), 0.0,
+		"a fresh press did not re-resolve against the camera state at the new press")
+
+func test_first_person_d_is_never_mirrored() -> void:
+	# No separate camera position exists in first person -- the eye IS the
+	# view -- so there is nothing for the arc clamp to put in front, and D
+	# must keep reading as the body's own right exactly as project_input()
+	# returns it.
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk(player)
+	var right: Vector3 = player.global_transform.basis.x
+	var before: Vector3 = player.global_position
+	_world["input"].state.move = Vector2(1.0, 0.0)  # D
+	await step(10)
+	var displacement: Vector3 = player.global_position - before
+	assert_gt(displacement.dot(right), 0.0,
+		"D in first person did not move the body toward its own right")
+
+# --- W/S: camera-assisted, latched the same way ------------------------------
+
+func test_facing_straight_out_and_holding_w_does_nothing() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	await _enter_ledge_walk(player)
+	var before: Vector3 = player.global_position
+	_world["input"].state.move = Vector2(0.0, 1.0)  # W
+	await step(10)
+	assert_almost_eq(player.global_position.distance_to(before), 0.0, 0.01,
+		"W moved the body before the view ever turned off the body's own facing")
+
+func test_holding_w_with_the_view_turned_past_the_threshold_carries_the_body() -> void:
+	# The owner's own scenario: a third-person player holds W and steers with
+	# the camera for a whole ledge section.
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	await _enter_ledge_walk(player)
+	# Past LedgeWalkConfig.look_assist_angle_deg (45) and inside the shipped
+	# +-54.93 degree look constraint. Driven directly rather than through
+	# simulated mouse pixels: LedgeWalkConfig does not set
+	# absolute_yaw_constraint, so apply_look()'s relative branch rate-limits
+	# yaw_delta PER TICK rather than keeping a running total, and just holds
+	# whatever player.rotation.y already is on a tick with zero look input --
+	# which is exactly what setting it directly and then feeding zero input
+	# relies on.
+	player.rotation.y = player.visual_yaw() + deg_to_rad(50.0)
+	await step(1)
+	var before: Vector3 = player.global_position
+	_world["input"].state.move = Vector2(0.0, 1.0)  # W
+	await step(30)
+	var moved: float = player.global_position.distance_to(before)
+	assert_gt(moved, 0.1,
+		"holding W with the view turned 50 degrees off the body's facing did not carry the body (%.3f m)"
+			% moved)
+
+func test_the_look_assist_latches_through_a_view_change_held_through_the_press() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.camera_rig.third_person = true
+	await _enter_ledge_walk(player)
+	player.rotation.y = player.visual_yaw() + deg_to_rad(50.0)
+	await step(1)
+	_world["input"].state.move = Vector2(0.0, 1.0)  # W
+	await step(10)
+	var mid: Vector3 = player.global_position
+
+	# Turn the view back under the threshold WHILE W is still held. A live
+	# re-gate would stop the assist on the spot; the latch must not.
+	player.rotation.y = player.visual_yaw() + deg_to_rad(10.0)
+	await step(10)
+	var kept: float = player.global_position.distance_to(mid)
+	assert_gt(kept, 0.05,
+		"turning the view back under the threshold mid-press stopped the assist (%.3f m)" % kept)
+
+	# Release and press again with the view now under the threshold: the gate
+	# applies fresh.
+	_world["input"].state.move = Vector2.ZERO
+	await step(5)
+	var before_fresh: Vector3 = player.global_position
+	_world["input"].state.move = Vector2(0.0, 1.0)
+	await step(15)
+	assert_almost_eq(player.global_position.distance_to(before_fresh), 0.0, 0.01,
+		"a fresh press with the view under the threshold was not re-gated (%.3f m)"
+			% player.global_position.distance_to(before_fresh))
