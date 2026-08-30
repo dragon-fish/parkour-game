@@ -137,8 +137,13 @@ func lateral_update(delta: float, lateral_input: float) -> StringName:
 		# Driven ONLY by how far balance is already lost, never by a constant
 		# on entry: standing steady on the beam must look completely normal,
 		# and only a body about to fall gets the roll and the tunnel.
+		#
+		# NEGATED: signed_severity() > 0 is a lean toward the body's right, but
+		# CameraRig's own rotation.z convention tips the eye toward -X (left)
+		# for a POSITIVE value -- see max_camera_roll_deg's own note for the
+		# direction this must produce instead.
 		player.camera_rig.set_balance_lean(
-			deg_to_rad(signed_severity() * cfg.max_camera_roll_deg),
+			deg_to_rad(-signed_severity() * cfg.max_camera_roll_deg),
 			lean_severity() * cfg.fov_squeeze_deg)
 	return KEEP
 

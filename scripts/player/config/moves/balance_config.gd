@@ -67,6 +67,12 @@ extends MoveConfig
 ## reports is already normalised against beam_half_width, so a second rate
 ## multiplying it would just be a smaller number to reach the same angle. One
 ## angle you can dial beats two coefficients whose product you have to work out.
+##
+## DIRECTION: the horizon tips toward the side the body is falling to, the
+## same way a head tips when the shoulders under it do -- judged in play on
+## scenes/debug_levels/balance_course.tscn. The opposite (horizon tipping
+## away from the fall) reads as the camera fighting the lean instead of
+## reporting it.
 @export var max_camera_roll_deg: float = 12.0
 
 ## Largest body lean the skeleton shows, degrees.
