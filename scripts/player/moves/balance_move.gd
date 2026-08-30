@@ -98,9 +98,7 @@ func lateral_update(delta: float, lateral_input: float) -> StringName:
 	if player.camera_rig != null:
 		# Driven ONLY by how far balance is already lost, never by a constant
 		# on entry: standing steady on the beam must look completely normal,
-		# and only a body about to fall gets the roll and the tunnel. That
-		# rewards the same thing the pendulum itself rewards -- settle the
-		# lean and its rate early and the camera stops fighting you too.
+		# and only a body about to fall gets the roll and the tunnel.
 		player.camera_rig.set_balance_lean(
 			deg_to_rad(signed_severity() * cfg.max_camera_roll_deg),
 			lean_severity() * cfg.fov_squeeze_deg)

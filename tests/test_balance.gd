@@ -157,3 +157,50 @@ func test_falling_off_the_beam_is_geometric() -> void:
 	assert_eq(result, Move.FALLING,
 		"past the beam's half width the feet have nothing under them")
 	move.free()
+
+## Drives a REAL transition through MoveManager.start() -- calling
+## set_balance_lean(0.0, 0.0) directly on a rig, as a smaller version of this
+## test once did, proves the rig responds to zeros (already covered by
+## test_camera_constraints.gd) but never proves exit() is what SENDS them.
+## Deleting BalanceMove.exit()'s body must fail this test; it cannot fail a
+## test that never calls exit() at all -- see LadderMove.exit()'s own tint
+## reset for the precedent this follows.
+func test_exiting_the_move_zeroes_the_camera_lean() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	var beam := InterestLine.new()
+	beam.kind = InterestLine.Kind.BALANCE
+	beam.curve = Curve3D.new()
+	beam.curve.add_point(Vector3.ZERO)
+	beam.curve.add_point(Vector3(10.0, 0.0, 0.0))
+	beam.position = player.global_position
+	add_child_autofree(beam)
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(beam),
+		"test setup: the beam's reach volume never registered the player")
+
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: the move manager did not enter Balance")
+	var move := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	# Half the beam's own width -- enough lean for a non-zero roll and squeeze
+	# without tripping the FALLING transition lateral_update() would return.
+	move.seed_lean(move.cfg.beam_half_width / move.cfg.gravity_influence * 0.5, 0.0)
+	move.lateral_update(1.0 / 60.0, 0.0)
+
+	var rig: CameraRig = player.camera_rig
+	assert_gt(absf(rig._balance_roll), 0.0,
+		"test setup: the lean produced no roll for the camera to carry")
+	assert_gt(rig._balance_squeeze, 0.0,
+		"test setup: the lean produced no squeeze for the camera to carry")
+
+	# A real transition, not a direct call -- exit() is under test, not the
+	# rig's own response to zeros.
+	player.move_manager.start(Move.WALKING)
+	assert_almost_eq(rig._balance_roll, 0.0, 0.0001,
+		"leaving Balance left the camera roll behind")
+	assert_almost_eq(rig._balance_squeeze, 0.0, 0.0001,
+		"leaving Balance left the FOV squeeze behind")

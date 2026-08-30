@@ -53,11 +53,18 @@ var _roll_spin: float = 0.0
 ## FOV the squeeze wants. Values only, like every other channel here -- this
 ## rig does not know what a beam is.
 var _balance_roll: float = 0.0
-## The squeeze is SUBTRACTED after the speed-driven FOV has been computed, not
-## folded into it: that channel opens the view as you go faster, and the beam
-## is slow, so leaving this to the speed curve would widen the view at exactly
-## the moment it should be closing in.
 var _balance_squeeze: float = 0.0
+
+## The speed-driven FOV, held on its OWN field rather than read back from
+## camera.fov. camera.fov also carries the balance squeeze (see
+## update_effects()), and reading a squeezed value back as this lerp's own
+## previous state would compound the subtraction every tick it stays applied:
+## held for N ticks it converges toward target - squeeze / lerp_rate, not
+## toward target - squeeze, and at the shipped fov_lerp_speed a sustained full
+## lean walks the FOV straight past Camera3D's 1-degree floor. Keeping the two
+## separate makes the squeeze a pure per-frame display offset with no memory
+## of its own.
+var _speed_fov: float = 90.0
 
 ## The active move's look clamp, in radians, or "no clamp" when
 ## _has_look_constraint is false. Driven by MoveManager every tick; consumed
@@ -319,6 +326,7 @@ func setup(cfg: MovementConfig) -> void:
 	_config = cfg
 	position.y = cfg.camera.eye_height
 	position.z = -eye_forward
+	_speed_fov = cfg.camera.fov_base
 	if camera != null:
 		camera.fov = cfg.camera.fov_base
 	# NOT loaded here. setup() runs in tests too, and a preference file left
@@ -612,6 +620,8 @@ func reset_state() -> void:
 	_vault_roll = 0.0
 	_balance_roll = 0.0
 	_balance_squeeze = 0.0
+	if _config != null:
+		_speed_fov = _config.camera.fov_base
 	_death_lift = 0.0
 	_landing_pitch = 0.0
 	_roll_spin = 0.0
@@ -799,14 +809,23 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 
 	var target_fov := lerpf(_config.camera.fov_base, _config.camera.fov_max, speed_ratio)
-	camera.fov = lerpf(camera.fov, target_fov, clampf(_config.camera.fov_lerp_speed * delta, 0.0, 1.0))
+	_speed_fov = lerpf(_speed_fov, target_fov, clampf(_config.camera.fov_lerp_speed * delta, 0.0, 1.0))
 	# Balance's own tension cue -- simulated fear of heights, tied to how far the
 	# lean has gone rather than to a constant on entry. SUBTRACTED here, after
 	# the speed lerp above rather than folded into it: that channel OPENS the
-	# view as horizontal speed rises, and the beam is slow (2.448 m/s), so
-	# leaving the squeeze to the speed curve would widen the view at exactly the
-	# moment lost balance should be closing it in.
-	camera.fov -= _balance_squeeze
+	# view as speed rises, and the squeeze must survive a state that stays slow
+	# the whole time, so leaving it to the speed curve would widen the view at
+	# exactly the moment lost balance should be closing it in.
+	#
+	# APPLIED TO A DISPLAY VALUE, NOT FED BACK INTO _speed_fov's OWN LERP.
+	# _speed_fov must hold the UNSQUEEZED value across ticks -- subtracting into
+	# the same field the lerp reads back next frame compounds every tick the
+	# squeeze stays applied, and at this rig's own fov_lerp_speed a lean held
+	# for a third of a second walks the FOV past Camera3D's 1-degree floor,
+	# where set_fov() starts silently rejecting the write. floored at 1.0 for
+	# the same reason: a larger fov_squeeze_deg than today's must still miss
+	# that floor rather than trip it.
+	camera.fov = maxf(_speed_fov - _balance_squeeze, 1.0)
 
 	var bob_target := 1.0 if grounded else 0.0
 	_bob_weight = move_toward(_bob_weight, bob_target, _config.camera.bob_fade_speed * delta)

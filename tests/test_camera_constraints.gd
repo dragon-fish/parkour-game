@@ -378,6 +378,10 @@ func test_third_person_softens_the_balance_roll() -> void:
 
 	assert_lt(third_person_roll, first_person_roll,
 		"an outside view tilting with the body is nauseating, not informative")
+	# A scale accidentally left at 0.0 would also satisfy the comparison above
+	# by deleting the third-person cue outright -- pin that some roll survives.
+	assert_gt(third_person_roll, 0.0,
+		"third person lost the balance roll entirely rather than softening it")
 	rig.get_parent().queue_free()
 	await step(1)
 
@@ -400,33 +404,25 @@ func test_the_squeeze_closes_the_fov_rather_than_opening_it() -> void:
 	rig.get_parent().queue_free()
 	await step(1)
 
-func test_leaving_the_move_restores_the_camera() -> void:
-	# BalanceMove.exit() must hand the rig zeros, or the roll and the squeeze
-	# survive the move and follow the player off the beam.
-	#
-	# The squeeze is subtracted from the FOV every tick it is asked for (not
-	# folded into the speed-driven target), so a single tick of full lean is
-	# enough to prove both directions -- ONE tick, not a held run of them,
-	# because the FOV lerp's own smoothing means a squeeze sustained across
-	# many ticks does not undo itself in the same handful of frames it took to
-	# apply. Given a real second to recover, it must land back at neutral.
+func test_a_sustained_lean_settles_instead_of_walking_past_the_camera_floor() -> void:
+	# REGRESSION: subtracting the squeeze into the same field the speed lerp
+	# reads back next frame compounds every tick it stays applied. Held across
+	# many ticks that used to converge toward speed_fov - squeeze/lerp_rate --
+	# with the shipped fov_lerp_speed, past Camera3D's 1-degree floor, where
+	# set_fov() silently rejects the write. The squeeze must settle at a
+	# bounded offset from the speed-driven value instead.
 	var rig := _rig()
 	await step(1)
+	var squeeze_deg: float = BalanceConfig.new().fov_squeeze_deg
+	rig.set_balance_lean(0.0, 0.0)
 	for i in 10:
 		rig.update_effects(1.0 / 60.0, 0.0, true)
-	var neutral_fov := rig.camera.fov
+	var speed_fov := rig.camera.fov
 
-	rig.set_balance_lean(deg_to_rad(12.0), 10.0)
-	rig.update_effects(1.0 / 60.0, 0.0, true)
-	assert_gt(absf(rig.rotation.z), 0.0001, "test setup: the lean produced no roll")
-	assert_lt(rig.camera.fov, neutral_fov, "test setup: the lean produced no squeeze")
-
-	rig.set_balance_lean(0.0, 0.0)
-	for i in 60:
+	rig.set_balance_lean(0.0, squeeze_deg)
+	for i in 120:
 		rig.update_effects(1.0 / 60.0, 0.0, true)
-	assert_almost_eq(rig.rotation.z, 0.0, 0.001,
-		"zeroing the balance lean left the camera rolled")
-	assert_almost_eq(rig.camera.fov, neutral_fov, 0.5,
-		"zeroing the balance lean left the FOV squeezed")
+	assert_almost_eq(rig.camera.fov, speed_fov - squeeze_deg, 0.5,
+		"a sustained lean drove the FOV past the intended squeeze depth")
 	rig.get_parent().queue_free()
 	await step(1)
