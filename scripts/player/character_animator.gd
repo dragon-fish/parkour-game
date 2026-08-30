@@ -616,6 +616,17 @@ func _drive_speed(clip: StringName) -> void:
 	if fitted > 0.0:
 		anim_tree.set("parameters/%s/scale" % GRAPH_TIME_SCALE, fitted)
 		return
+	# A MOVE MAY NAME ITS OWN RATE OUTRIGHT, the same way it may fit a clip to
+	# its own clock above. LedgeWalkMove does: its sidestep is a shuffle, not a
+	# walk, and a walk cycle matched to shuffle speed lands near 0.4x. Duck-
+	# typed like every other optional per-move contribution here.
+	var move = player.move_manager.move_for(player.move_manager.current_name) \
+		if player.move_manager != null else null
+	if move != null and move.has_method("clip_time_scale"):
+		var named: float = move.clip_time_scale()
+		if named > 0.0:
+			anim_tree.set("parameters/%s/scale" % GRAPH_TIME_SCALE, named)
+			return
 	if reference > 0.0 and (SPEED_MATCHED_CLIPS.has(base_clip) or family != &""):
 		# travel_speed(), NOT horizontal_speed() -- see travel_speed()'s own
 		# note on why velocity lies through a vault or a mantle. The eye already
@@ -1238,6 +1249,43 @@ func _target_animation() -> StringName:
 			if turn_speed > player.config.pawn.run_animation_speed_threshold:
 				return _first_available([&"Walk", &"Sprint", &"run", &"idle"])
 			return _first_available([&"Idle", &"idle", &"Walk", &"run"])
+		Move.BALANCE:
+			# The wobble is carried entirely by the camera roll and the
+			# skeleton lean (BalanceLean) -- the body itself is just walking.
+			# [ME:CONFIRMED 05 §5.6] the beam speed is 8.81 km/h, so Walk is
+			# the honest clip. The owner ruled out the packs' lean variants
+			# (Jog_Fwd_LeanL/R): those are authored for leaning into a
+			# full-speed run, which this is not.
+			#
+			# STANDING STILL IS STILL STANDING. The beam's own wind keeps the
+			# lean moving whether or not the player is walking, so routing on
+			# the move being active alone leaves a walk cycle playing under a
+			# body that is going nowhere.
+			var beam = player.move_manager.move_for(Move.BALANCE)
+			if beam != null and not beam.travelling():
+				return _first_available([&"Idle", &"idle", &"Walk"])
+			return _first_available([&"Walk", &"Idle", &"idle"])
+		Move.LEDGE_WALK:
+			# Direction-aware, off the Walk family's own _L/_R suffixes (see
+			# DIRECTION_SETS). UAL2's Walk_L / Walk_R are a walking-cadence
+			# sidestep, which is exactly what shuffling a ledge with your
+			# back to the wall is.
+			var ledge = player.move_manager.move_for(Move.LEDGE_WALK)
+			# TURNING ROUND on a view change: the pack's own half turn, on the
+			# side the body pivots to, fitted to LedgeWalkConfig.turn_time
+			# through scripted_duration(). Both turn clips are in
+			# Player.SCRIPTED_MOVE_CLIPS, so _route() puts them on a scripted
+			# slot like any other one-shot.
+			if ledge != null and ledge.is_turning():
+				var wanted: StringName = ledge.turn_clip()
+				var other: StringName = &"Turn180_L" if wanted == &"Turn180_R" else &"Turn180_R"
+				return _first_available([wanted, other, &"Idle", &"idle"])
+			var dir: int = ledge.shuffle_direction() if ledge != null else 0
+			if dir < 0:
+				return _first_available([&"Walk_L", &"Walk", &"idle"])
+			if dir > 0:
+				return _first_available([&"Walk_R", &"Walk", &"idle"])
+			return _first_available([&"Idle", &"Walk", &"idle"])
 		_:
 			# Any move without an explicit case above. Reaching here is a
 			# signal that a move was added without deciding what it looks

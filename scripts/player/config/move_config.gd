@@ -54,6 +54,15 @@ extends Resource
 ## and the visible body, so freezing the body IS what asks the head to turn.
 @export var freeze_visual_yaw: bool = false
 
+## Whether the third-person camera is pulled off the player's shoulder to
+## the centre while this move runs. Pushed to CameraRig every tick by
+## MoveManager alongside the look constraint, and eased there on
+## CameraConfig.third_person_shoulder_time, both in and back out. A move
+## whose body stands with a wall along one side wants this: LedgeWalk faces
+## the wall, and a camera out on the right shoulder is inside that wall
+## before the view has turned far to the right at all.
+@export var centre_shoulder: bool = false
+
 ## Whether the CHEST may take its share of a head turn while this move runs.
 ##
 ## TRUE ALMOST EVERYWHERE, and false is the interesting case. HeadLook splits a
@@ -138,6 +147,15 @@ extends Resource
 ## LadderMove.front_side_allows() directly rather than through a switch that
 ## would always be true for them.
 @export var check_for_ladder: bool = false
+
+## Whether this move may hand off to Balance when the body is standing on a
+## BALANCE InterestLine. Airborne moves only -- the ground entry asks
+## BalanceMove's own static gate directly, the same split check_for_ladder
+## documents.
+@export var check_for_balance: bool = false
+
+## Whether this move may hand off to LedgeWalk. Same shape as check_for_balance.
+@export var check_for_ledge_walk: bool = false
 
 ## Whether a crouch pressed in mid-air out of this move tucks the legs up.
 ##

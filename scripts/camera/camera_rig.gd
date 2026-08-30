@@ -48,6 +48,24 @@ var _landing_pitch: float = 0.0
 ## is +180 degrees, which is the manoeuvre going over.
 var _roll_spin: float = 0.0
 
+## Fed every tick by BalanceMove: the roll the lost balance asks for, in
+## RADIANS, already scaled by that move's own limit; and how many degrees of
+## FOV the squeeze wants. Values only, like every other channel here -- this
+## rig does not know what a beam is.
+var _balance_roll: float = 0.0
+var _balance_squeeze: float = 0.0
+
+## The speed-driven FOV, held on its OWN field rather than read back from
+## camera.fov. camera.fov also carries the balance squeeze (see
+## update_effects()), and reading a squeezed value back as this lerp's own
+## previous state would compound the subtraction every tick it stays applied:
+## held for N ticks it converges toward target - squeeze / lerp_rate, not
+## toward target - squeeze, and at the shipped fov_lerp_speed a sustained full
+## lean walks the FOV straight past Camera3D's 1-degree floor. Keeping the two
+## separate makes the squeeze a pure per-frame display offset with no memory
+## of its own.
+var _speed_fov: float = 90.0
+
 ## The active move's look clamp, in radians, or "no clamp" when
 ## _has_look_constraint is false. Driven by MoveManager every tick; consumed
 ## by apply_look() from Task 15 onward.
@@ -308,6 +326,7 @@ func setup(cfg: MovementConfig) -> void:
 	_config = cfg
 	position.y = cfg.camera.eye_height
 	position.z = -eye_forward
+	_speed_fov = cfg.camera.fov_base
 	if camera != null:
 		camera.fov = cfg.camera.fov_base
 	# NOT loaded here. setup() runs in tests too, and a preference file left
@@ -383,6 +402,29 @@ func set_death_lift(metres: float) -> void:
 
 func set_vault_roll(radians: float) -> void:
 	_vault_roll = radians
+
+## Sets this tick's balance lean, already converted to radians and scaled by
+## the move's own limit -- see the fields this feeds. Called every tick
+## BalanceMove is active; the move zeroes both on exit() so the roll and the
+## squeeze cannot follow the player off the beam.
+func set_balance_lean(roll_radians: float, squeeze_deg: float) -> void:
+	_balance_roll_target = roll_radians
+	_balance_squeeze_target = squeeze_deg
+
+## What set_balance_lean() last asked for; _balance_roll / _balance_squeeze
+## are eased toward these in update_effects() on
+## CameraConfig.balance_recover_time.
+var _balance_roll_target: float = 0.0
+var _balance_squeeze_target: float = 0.0
+
+## Pulls the third-person camera off the shoulder to the centre, or lets it
+## back out. Pushed every tick by MoveManager from the active move's
+## MoveConfig.centre_shoulder; eased by _shoulder_across's own move_toward
+## in update_effects(), the same slide the shoulder cycle makes.
+func set_shoulder_centred(centred: bool) -> void:
+	_shoulder_centred_by_move = centred
+
+var _shoulder_centred_by_move: bool = false
 
 ## Sets the look pitch outright.
 ##
@@ -589,8 +631,15 @@ func reset_state() -> void:
 	_crouch_offset = 0.0
 	_has_eye_ground = false
 	_wall_side = 0
+	_shoulder_centred_by_move = false
 	_roll = 0.0
 	_vault_roll = 0.0
+	_balance_roll = 0.0
+	_balance_squeeze = 0.0
+	_balance_roll_target = 0.0
+	_balance_squeeze_target = 0.0
+	if _config != null:
+		_speed_fov = _config.camera.fov_base
 	_death_lift = 0.0
 	_landing_pitch = 0.0
 	_roll_spin = 0.0
@@ -778,7 +827,30 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 
 	var target_fov := lerpf(_config.camera.fov_base, _config.camera.fov_max, speed_ratio)
-	camera.fov = lerpf(camera.fov, target_fov, clampf(_config.camera.fov_lerp_speed * delta, 0.0, 1.0))
+	_speed_fov = lerpf(_speed_fov, target_fov, clampf(_config.camera.fov_lerp_speed * delta, 0.0, 1.0))
+	# Balance's own tension cue -- simulated fear of heights, tied to how far the
+	# lean has gone rather than to a constant on entry. SUBTRACTED here, after
+	# the speed lerp above rather than folded into it: that channel OPENS the
+	# view as speed rises, and the squeeze must survive a state that stays slow
+	# the whole time, so leaving it to the speed curve would widen the view at
+	# exactly the moment lost balance should be closing it in.
+	#
+	# APPLIED TO A DISPLAY VALUE, NOT FED BACK INTO _speed_fov's OWN LERP.
+	# _speed_fov must hold the UNSQUEEZED value across ticks -- subtracting into
+	# the same field the lerp reads back next frame compounds every tick the
+	# squeeze stays applied, and at this rig's own fov_lerp_speed a lean held
+	# for a third of a second walks the FOV past Camera3D's 1-degree floor,
+	# where set_fov() starts silently rejecting the write. floored at 1.0 for
+	# the same reason: a larger fov_squeeze_deg than today's must still miss
+	# that floor rather than trip it.
+	# EASED, on their own clock -- see CameraConfig.balance_recover_time for
+	# the exit snap this exists to remove. Exponential rather than
+	# move_toward, so the roll and the squeeze arrive together whatever their
+	# sizes.
+	var balance_ease: float = 1.0 - exp(-delta / maxf(_config.camera.balance_recover_time, 0.001))
+	_balance_roll = lerpf(_balance_roll, _balance_roll_target, balance_ease)
+	_balance_squeeze = lerpf(_balance_squeeze, _balance_squeeze_target, balance_ease)
+	camera.fov = maxf(_speed_fov - _balance_squeeze, 1.0)
 
 	var bob_target := 1.0 if grounded else 0.0
 	_bob_weight = move_toward(_bob_weight, bob_target, _config.camera.bob_fade_speed * delta)
@@ -804,10 +876,14 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 			_shoulder_across = wanted_across
 		else:
 			var span: float = maxf(absf(_config.camera.third_person_right), 0.0001)
-			var rate: float = (span * 2.0) 					/ maxf(_config.camera.third_person_shoulder_time, 0.001)
+			var rate: float = (span * 2.0) / maxf(_config.camera.third_person_shoulder_time, 0.001)
 			_shoulder_across = move_toward(_shoulder_across, wanted_across, rate * delta)
 		back = _third_person_position() * _eased_view_blend()
 	camera.position = Vector3(back.x, bob - _dip + back.y, back.z)
+	# The eye looks wherever the view looks: this rig sets camera.position and
+	# never its rotation. Every third-person move keeps the camera on the
+	# view's own axis, behind the body, so there is nothing to re-aim.
+	camera.rotation = Vector3.ZERO
 	_apply_body_layers()
 
 	# Tracked as an offset independent of base_position.y (mirroring _dip
@@ -953,7 +1029,14 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# direction if the legacy suite is ever restored.
 	var target_roll := deg_to_rad(_config.camera.wall_camera_roll_deg) * float(_wall_side)
 	_roll = move_toward(_roll, target_roll, deg_to_rad(_config.camera.wall_camera_roll_speed) * delta)
-	rotation.z = _roll + _vault_roll
+	# Softened in third person: the horizon tipping IS the balance feedback in
+	# first person, but seen from outside the same roll tips the whole world
+	# around a character who is already visibly leaning, which reads as nausea
+	# rather than information. The body's own lean carries the signal there.
+	var balance_roll: float = _balance_roll
+	if in_third_person():
+		balance_roll *= _config.camera.third_person_balance_roll_scale
+	rotation.z = _roll + _vault_roll + balance_roll
 
 	# Layered on top of the ordinary look pitch, same relationship _dip has to
 	# bob above: apply_look() already wrote rotation.x = _pitch for this tick's
@@ -1099,6 +1182,11 @@ func shift_yaw_reference(yaw: float, assist: float) -> void:
 ## camera, before easing. The PRESET decides the side; third_person_right
 ## decides how far over, so the panel slider still means something.
 func _wanted_shoulder_across() -> float:
+	# A move standing beside a wall asks for the centre -- see
+	# MoveConfig.centre_shoulder. Eased there by the caller's move_toward, so
+	# the slide in and back out is the shoulder cycle's own.
+	if _shoulder_centred_by_move:
+		return 0.0
 	var across: float = _config.camera.third_person_right
 	# A WALL RUN BORROWS THE OTHER SHOULDER: on a left-hand wall, the camera
 	# takes the preset RIGHT shoulder for the duration, and the other way round

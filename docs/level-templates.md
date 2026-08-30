@@ -343,6 +343,40 @@ just drawn and aimed differently.
 The collision volume is built along the curve at runtime, same as any other
 interest line — do not add one by hand.
 
+## Placing a balance beam or a ledge walk
+
+Same `InterestLine` node again, `kind = BALANCE` or `kind = LEDGE_WALK`.
+
+`BalanceMove`/`LedgeWalkMove`'s entry gate (`LineWalkMove.foot_gate_at()`)
+compares the approaching body's FEET height (`Probes.feet_y()`, not
+`global_position`) to the curve's own Y, tolerance `foot_snap_height`
+(0.35 m default). A curve drawn at the beam's or ledge's own surface height
+therefore catches a flush walk-on the same way a zipline or ladder's curve
+does — a fall onto the line works too, but is not required.
+
+1. Add Node → `InterestLine`, curve along the beam's or ledge's own **centre
+   line, at the height you want the caught body's FEET to rest** — same as
+   any other interest line, and exactly where you would draw it for a
+   zipline or ladder.
+2. Give the beam/ledge mesh a real `StaticBody3D` + `CollisionShape3D`, same
+   as any other standable geometry. Leaving it collider-less does not help
+   the catch (see above) and breaks the JUMP exit: JUMP → `FALLING` starts
+   the `redo_move_time` cooldown with no interest line active during it, so
+   without a collider a jump off the move falls through open air instead of
+   landing back on the surface it just left.
+3. `LEDGE_WALK` additionally needs the player's landing spot to be within
+   `reach_radius` (0.6 m default) of the curve horizontally — relevant for a
+   jump- or fall-in entry, not for the flush walk-on.
+4. The FAR end (where the move is meant to be walked off normally) has no
+   height restriction — reaching the end of the line always returns
+   `WALKING` regardless of height, so the platform there may sit flush with
+   the curve.
+5. `LEDGE_WALK` additionally needs the curve kept clear of its own wall by at
+   least the capsule radius (0.4 m) plus a little slack — a curve drawn
+   flush against the wall face gets its `stand` target clipped short by the
+   wall's own collision, and the body settles short of where the curve says
+   it should.
+
 ## Placing a checkpoint
 
 1. Add Node → `Checkpoint` (an `Area3D`; the class comes from

@@ -97,7 +97,9 @@ func _tick_cooldowns(delta: float) -> void:
 			_redo_cooldowns[key] = remaining
 
 func _arm_cooldown(move_name: StringName, move: Move) -> void:
-	var seconds: float = move.cfg.redo_move_time if move.cfg != null else 0.0
+	# Asked of the move, not read off its config: a move may know that THIS
+	# exit is not the kind its cooldown is for. See Move.redo_cooldown().
+	var seconds: float = move.redo_cooldown()
 	if seconds > 0.0:
 		_redo_cooldowns[move_name] = seconds
 
@@ -354,6 +356,9 @@ func _push_look_constraint() -> void:
 	if rig == null:
 		return
 	var active: MoveConfig = _current.current_config()
+	# Pushed here, every tick, for the same reason the look constraint is:
+	# no move can forget to hand the shoulder back on the way out.
+	rig.set_shoulder_centred(active != null and active.centre_shoulder)
 	if active == null or not active.constrain_look:
 		rig.clear_look_constraint()
 		return
@@ -368,6 +373,13 @@ func _push_look_constraint() -> void:
 		var flipped_high: float = -low.y
 		low.y = flipped_low
 		high.y = flipped_high
+	# A move may name its own yaw width for this tick -- see
+	# Move.look_yaw_half_span(). Symmetric, so it cannot be combined with the
+	# one-sided fans above; none of the moves that answer have one.
+	var half_span: float = _current.look_yaw_half_span()
+	if not is_nan(half_span):
+		low.y = -absf(half_span)
+		high.y = absf(half_span)
 	rig.set_look_constraint(low, high, \
 		active.absolute_yaw_constraint, active.pitch_relaxes_with_yaw, \
 		active.pitch_min_turned_away, active.pitch_relax_yaw_threshold, \

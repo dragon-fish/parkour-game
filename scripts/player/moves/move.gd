@@ -38,6 +38,8 @@ const TURN_180: StringName = &"Turn180"
 const ZIPLINE: StringName = &"Zipline"
 const SWING: StringName = &"Swing"
 const LADDER: StringName = &"Ladder"
+const BALANCE: StringName = &"Balance"
+const LEDGE_WALK: StringName = &"LedgeWalk"
 
 ## Set by Player before the manager starts. Untyped for the same reason the
 ## names live here: a typed reference would reintroduce the cycle.
@@ -148,3 +150,20 @@ func carry_ballistically(delta: float) -> void:
 	player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
+
+## How long MoveManager refuses re-entry to this move after it leaves,
+## seconds. The config's redo_move_time by default; a move overrides this
+## when it can tell that THIS exit is not the kind the cooldown guards --
+## LineWalkMove arms it for a fall off the line and not for a walk off its
+## end (see there). Asked by MoveManager._arm_cooldown() after exit().
+func redo_cooldown() -> float:
+	return cfg.redo_move_time if cfg != null else 0.0
+
+## Half-width of the look fan's YAW, radians, when the move wants something
+## other than its config's min/max_look_constraint.y this tick, or NAN to
+## take the config's. Asked by MoveManager._push_look_constraint() every tick,
+## so a move may answer differently as its own state changes -- LedgeWalkMove
+## widens the fan in third person, where the confirmed first-person number is
+## not the one being looked through.
+func look_yaw_half_span() -> float:
+	return NAN

@@ -41,3 +41,5 @@ extends Resource
 @export var zipline: ZiplineConfig = ZiplineConfig.new()
 @export var swing: SwingConfig = SwingConfig.new()
 @export var ladder: LadderConfig = LadderConfig.new()
+@export var balance: BalanceConfig = BalanceConfig.new()
+@export var ledge_walk: LedgeWalkConfig = LedgeWalkConfig.new()

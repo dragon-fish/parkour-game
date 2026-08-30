@@ -357,3 +357,97 @@ func test_a_corner_never_leaves_the_view_behind_the_body() -> void:
 			rig._config.camera.scripted_yaw_max_lag, 0.01,
 			"third_person=%s absorbed %.2f rad of a corner"
 			% [third, absf(rig._scripted_yaw_lag)])
+
+# --- balance lean: roll and FOV squeeze ---------------------------------------
+
+func test_third_person_softens_the_balance_roll() -> void:
+	# The horizon tipping IS the feedback in first person -- outside the body,
+	# the same roll tips the whole world around a character who is already
+	# visibly leaning, which reads as nausea rather than information.
+	var rig := _rig()
+	await step(1)
+	rig.set_balance_lean(deg_to_rad(12.0), 0.0)
+	for i in 10:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	var first_person_roll := absf(rig.rotation.z)
+
+	rig.third_person = true
+	for i in 10:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	var third_person_roll := absf(rig.rotation.z)
+
+	assert_lt(third_person_roll, first_person_roll,
+		"an outside view tilting with the body is nauseating, not informative")
+	# A scale accidentally left at 0.0 would also satisfy the comparison above
+	# by deleting the third-person cue outright -- pin that some roll survives.
+	assert_gt(third_person_roll, 0.0,
+		"third person lost the balance roll entirely rather than softening it")
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_the_squeeze_closes_the_fov_rather_than_opening_it() -> void:
+	# The speed-driven FOV opens the view as horizontal speed rises; the balance
+	# squeeze must close it instead, or fear-of-heights tension would read as
+	# the opposite of what it is meant to.
+	var rig := _rig()
+	await step(1)
+	rig.set_balance_lean(0.0, 0.0)
+	for i in 10:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	var calm := rig.camera.fov
+
+	rig.set_balance_lean(0.0, 10.0)
+	for i in 10:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	assert_lt(rig.camera.fov, calm,
+		"the speed-driven FOV opens with speed; this must close against it")
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_a_sustained_lean_settles_instead_of_walking_past_the_camera_floor() -> void:
+	# REGRESSION: subtracting the squeeze into the same field the speed lerp
+	# reads back next frame compounds every tick it stays applied: held across
+	# many ticks it converges toward speed_fov - squeeze/lerp_rate -- with the
+	# shipped fov_lerp_speed, past Camera3D's 1-degree floor, where set_fov()
+	# silently rejects the write. The squeeze must settle at a bounded offset
+	# from the speed-driven value instead.
+	var rig := _rig()
+	await step(1)
+	var squeeze_deg: float = BalanceConfig.new().fov_squeeze_deg
+	rig.set_balance_lean(0.0, 0.0)
+	for i in 10:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	var speed_fov := rig.camera.fov
+
+	rig.set_balance_lean(0.0, squeeze_deg)
+	for i in 120:
+		rig.update_effects(1.0 / 60.0, 0.0, true)
+	assert_almost_eq(rig.camera.fov, speed_fov - squeeze_deg, 0.5,
+		"a sustained lean drove the FOV past the intended squeeze depth")
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_leaving_the_beam_eases_the_roll_back_rather_than_cutting_it() -> void:
+	# BalanceMove zeroes the roll the instant the beam is left or lost; the
+	# horizon must come back level over CameraConfig.balance_recover_time, not
+	# in one frame.
+	var rig := _rig()
+	await step(1)
+	var delta := 1.0 / 60.0
+	rig.set_balance_lean(deg_to_rad(30.0), 8.0)
+	for i in 120:
+		rig.update_effects(delta, 0.0, true)
+	var tipped: float = absf(rig.rotation.z)
+	assert_gt(tipped, deg_to_rad(25.0), "test setup: the roll never arrived")
+
+	rig.set_balance_lean(0.0, 0.0)
+	rig.update_effects(delta, 0.0, true)
+	assert_gt(absf(rig.rotation.z), tipped * 0.5,
+		"the roll cut back to level on the frame the beam was left")
+	for i in int(rig._config.camera.balance_recover_time * 60.0 * 5.0):
+		rig.update_effects(delta, 0.0, true)
+	assert_almost_eq(rig.rotation.z, 0.0, deg_to_rad(0.5),
+		"the roll never came back to level after leaving the beam")
+	rig.get_parent().queue_free()
+	await step(1)
+

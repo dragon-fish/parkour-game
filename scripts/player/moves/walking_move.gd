@@ -11,11 +11,26 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# the way a jump onto a cable catches from the air. No check_for_ladder
 	# flag here (that switch is airborne-only, see MoveConfig's own note) --
 	# the ground entry is unconditional, gated only by the same frontal fan
-	# every other entry site asks.
+	# every other entry site asks. The ledge and beam blocks below ask the
+	# identical question through their own catch_gate()s.
 	if player.grounded and player.move_manager.can_enter(LADDER):
 		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
 		if rail != null and LadderMove.catch_gate(player, rail):
 			return LADDER
+
+	# Same reasoning as the ladder above -- see its own comment.
+	if player.grounded and player.move_manager.can_enter(LEDGE_WALK):
+		var ledge: InterestLine = player.nearest_interest_line(InterestLine.Kind.LEDGE_WALK)
+		if ledge != null and LedgeWalkMove.catch_gate(
+				player, ledge, config.ledge_walk.foot_snap_height):
+			return LEDGE_WALK
+
+	# Same reasoning as the ladder above -- see its own comment.
+	if player.grounded and player.move_manager.can_enter(BALANCE):
+		var beam: InterestLine = player.nearest_interest_line(InterestLine.Kind.BALANCE)
+		if beam != null and BalanceMove.catch_gate(
+				player, beam, config.balance.foot_snap_height):
+			return BALANCE
 
 	var wish_dir: Vector3 = player.wish_direction(input)
 	# [ME:CONFIRMED 02 §2.1] No sprint key: the curve IS the sprint. The walk
