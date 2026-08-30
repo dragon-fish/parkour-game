@@ -169,3 +169,12 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.velocity.y = 0.0
 		return FALLING
 	return KEEP
+
+## The playback-rate hook (CharacterAnimator._drive_speed): while the body is
+## stepping round on the spot, the Turn90 clip plays at
+## PawnConfig.turn_in_place_clip_scale; 0 otherwise leaves the speed match
+## alone. The step itself lives on Player (_drive_body_yaw), since it is
+## about the visible body and not a move of its own; this is only where the
+## animator is told how fast the clip goes.
+func clip_time_scale() -> float:
+	return player.turn_in_place_clip_scale()

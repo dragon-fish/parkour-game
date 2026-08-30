@@ -197,6 +197,12 @@ var _hidden_start: StringName = &""
 var _previous_move: StringName = Move.KEEP
 ## The one-shot currently playing, or KEEP. See _arm_oneshot().
 var _oneshot: StringName = Move.KEEP
+
+## Set by a routing case that wants the scripted clip already on the body
+## started again from its first frame; _route() spends it. The step round is
+## the case: one Turn90 after another, all with the same name.
+var _replay: bool = false
+var _turn_serial_seen: int = 0
 ## Seconds of it left to play. Real seconds, and that is only true because a
 ## one-shot is never in SPEED_MATCHED_CLIPS: the graph time scale is pinned to
 ## 1.0 while one plays, so the clock here and the clip agree.
@@ -335,8 +341,9 @@ func _route(target: StringName, delta: float) -> void:
 		# ALREADY ON SCREEN -- and this is the common case, since the drive runs
 		# every tick for the whole of a move. Re-requesting the input the gate is
 		# showing would re-enter it, and the slots reset on entry.
-		if _gate_input == _slot_name() and _slot_clip() == target:
+		if _gate_input == _slot_name() and _slot_clip() == target and not _replay:
 			return
+		_replay = false
 		_slot = 0 if _slot < 0 else (_slot + 1) % GRAPH_SCRIPTED_SLOTS.size()
 		_load_slot(target)
 		_request(_slot_name())
@@ -545,6 +552,13 @@ func _oneshot_target(delta: float) -> StringName:
 ## already pointed at. Read rather than configured so a one-shot's window can
 ## never drift from the clip it is a window for -- swapping in a longer
 ## Slide_Exit needs no number changed anywhere.
+## How long `clip` plays for at 1.0x -- its kept length, see _clip_length().
+## For a caller outside this file that paces something on the clip rather
+## than the clip on it (Player's step round turns the heading over the
+## Turn90 clip's own length).
+func clip_play_length(clip: StringName) -> float:
+	return _clip_length(clip)
+
 func _clip_length(clip: StringName) -> float:
 	if anim_tree == null:
 		return 0.0
@@ -944,6 +958,20 @@ func _target_animation() -> StringName:
 			# epsilon to keep in step with the first: Ctrl held with a direction
 			# asked for is a walk, whatever the body has actually reached yet.
 			# Ctrl held while standing still falls through to idle below.
+			# STEPPING ROUND on the spot: the pack's quarter turn, on the side
+			# the body steps to, at PawnConfig.turn_in_place_clip_scale through
+			# WalkingMove.clip_time_scale(). Both clips are in
+			# Player.SCRIPTED_MOVE_CLIPS, so _route() puts them on a scripted
+			# slot like any other one-shot. See Player._begin_turn_in_place().
+			if player.is_turning_in_place():
+				# A NEW step replays the clip even though its name has not
+				# changed -- see Player._turn_in_place_serial.
+				if player.turn_in_place_serial() != _turn_serial_seen:
+					_turn_serial_seen = player.turn_in_place_serial()
+					_replay = true
+				var wanted: StringName = player.turn_in_place_clip()
+				var other: StringName = &"Turn90_L" if wanted == &"Turn90_R" else &"Turn90_R"
+				return _first_available([wanted, other, &"Idle", &"idle"])
 			if _creeping():
 				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			var speed: float = player.horizontal_speed()
