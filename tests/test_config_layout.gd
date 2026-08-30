@@ -81,3 +81,12 @@ func test_the_beam_faces_along_the_line_and_the_ledge_across_it() -> void:
 	var config := MovementConfig.new()
 	assert_almost_eq(config.balance.body_yaw_offset_deg, 0.0, 0.001)
 	assert_almost_eq(config.ledge_walk.body_yaw_offset_deg, 90.0, 0.001)
+
+func test_spring_board_is_on_the_aggregate() -> void:
+	var config := MovementConfig.new()
+	assert_not_null(config.spring_board, "MovementConfig must carry a SpringBoardConfig")
+	assert_true(config.spring_board is SpringBoardConfig)
+	# The throw's own numbers, straight off the CDO. Declared, not defaulted.
+	assert_almost_eq(config.spring_board.jump_z, 9.5, 0.001)
+	assert_true(config.spring_board.check_for_grab, "the rise must keep the original's grab check")
+	assert_false(config.spring_board.check_for_coil, "a spring board cannot coil: Coil is Jump's alone")

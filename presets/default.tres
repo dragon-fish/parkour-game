@@ -25,6 +25,7 @@
 [ext_resource type="Script" uid="uid://dhiocxdni04oj" path="res://scripts/player/config/moves/zipline_config.gd" id="23_kaqig"]
 [ext_resource type="Script" uid="uid://b1l80ab3gfk0d" path="res://scripts/player/config/moves/balance_config.gd" id="24_b1a4c"]
 [ext_resource type="Script" uid="uid://r810qxlyg1h6" path="res://scripts/player/config/moves/ledge_walk_config.gd" id="25_lw81h"]
+[ext_resource type="Script" path="res://scripts/player/config/moves/spring_board_config.gd" id="26_sprbd"]
 
 [sub_resource type="Resource" id="Resource_b1a4c"]
 script = ExtResource("24_b1a4c")
@@ -109,6 +110,14 @@ speed_modifier = 0.1
 min_look_constraint = Vector3(-1.3421582, -0.95870936, -3.1415927)
 max_look_constraint = Vector3(1.5707964, 0.95870936, 3.1415927)
 constrain_look = true
+freeze_visual_yaw = true
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_sprbd"]
+script = ExtResource("26_sprbd")
+check_for_grab = true
+check_for_vault_over = true
+check_for_wall_climb = true
 freeze_visual_yaw = true
 allows_turn = false
 
@@ -220,3 +229,4 @@ swing = SubResource("Resource_6r03e")
 ladder = SubResource("Resource_c2853")
 balance = SubResource("Resource_b1a4c")
 ledge_walk = SubResource("Resource_lw81h")
+spring_board = SubResource("Resource_sprbd")
