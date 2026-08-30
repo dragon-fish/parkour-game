@@ -14,9 +14,10 @@ extends LineMove
 
 ## Arc length along the line, metres.
 var _offset_along: float = 0.0
-## The body's yaw while on the line: the line's own heading turned by the
-## config's body_yaw_offset_deg. Captured on entry and NOT re-derived per tick,
-## for the reason project_input() documents.
+## The line's own heading (plus the config's body_yaw_offset_deg): read fresh
+## from the line's current tangent every physics_update, NEVER from the
+## body's live rotation, which drifts with mouse look inside the look
+## constraint. See project_input()'s own note on why that distinction matters.
 var _walk_yaw: float = 0.0
 
 ## Which kind of line this move rides. Subclasses MUST override.
@@ -35,33 +36,36 @@ func kind() -> InterestLine.Kind:
 ## THE BASIS IS THE LINE'S, NOT THE BODY'S. Player.wish_direction() turns the
 ## input by the CURRENT body basis, and the body still yaws with the view inside
 ## the look constraint -- a glance 33 degrees off the beam would then multiply
-## walking speed by cos(33). The heading captured on entry has no such drift.
+## walking speed by cos(33). Reading line_yaw off the LINE's own tangent, fresh
+## every tick, has no such drift.
 static func project_input(move: Vector2, line_yaw: float, yaw_offset: float) -> Vector2:
 	var body := Basis(Vector3.UP, line_yaw + yaw_offset)
 	var world: Vector3 = body * Vector3(move.x, 0.0, -move.y)
-	var tangent := Vector3(sin(line_yaw), 0.0, cos(line_yaw))
-	var normal := Vector3(tangent.z, 0.0, -tangent.x)
-	# THE ALONG AXIS IS NEGATED, THE LATERAL ONE IS NOT. Godot's forward is
-	# local -Z (Basis(UP, th) * (0,0,-1) = (-sin th, 0, -cos th)), while
-	# `tangent` is reconstructed from yaw_of()'s atan2(x,z) convention as
-	# (+sin th, 0, +cos th) -- the same "faces -direction" mismatch
-	# LadderMove's own _target_yaw relies on for facing the wall
-	# (ladder_move.gd: "looks toward -front"). Dotted straight against `world`
-	# that mismatch flips the along-line sign only: W on a squared-up beam
-	# would otherwise walk the offset backwards while looking to have driven
-	# it forwards. `normal` is 90 degrees off `tangent`, not derived from
-	# world's own forward axis, so it carries no such mismatch and must stay
-	# unflipped -- confirmed against both project_input tests in
-	# tests/test_line_walk.gd (beam AND ledge, along AND lateral).
-	return Vector2(-world.dot(tangent), world.dot(normal))
+	# `tangent` MUST equal the real +tangent (the direction _offset_along
+	# grows in), and `normal` MUST equal tangent x UP (the line's RIGHT-hand
+	# normal -- BalanceMove's own lean sign convention). Godot's forward is
+	# local -Z, so reconstructing a direction from a yaw that FACES it takes
+	# the negative sin/cos form below, matching yaw_of()'s facing convention;
+	# reconstructing with the bare +sin/+cos form here (as if yaw_of used
+	# atan2(x,z)) silently drives travel opposite to where the body ends up
+	# facing. Do not "simplify" back to +sin/+cos without re-deriving against
+	# yaw_of() first -- see tests/test_line_walk.gd's structural cases.
+	var tangent := Vector3(-sin(line_yaw), 0.0, -cos(line_yaw))
+	var normal := Vector3(-tangent.z, 0.0, tangent.x)
+	return Vector2(world.dot(tangent), world.dot(normal))
 
-## Yaw of a line tangent, in the same convention _target_yaw is built with.
+## Yaw a body must have to FACE `tangent` -- the same facing convention
+## LadderMove._camera_yaw() documents (facing d means yaw = atan2(-d.x,-d.z)).
+## NOT atan2(d.x,d.z): that convention faces -d instead, which is what
+## LadderMove's own _target_yaw deliberately exploits to face the wall
+## ("looks toward -front") but would silently turn a beam-walker to face
+## backwards along the direction W is about to drive _offset_along in.
 static func yaw_of(tangent: Vector3) -> float:
 	var flat := Vector3(tangent.x, 0.0, tangent.z)
 	if flat.length_squared() < 0.0001:
 		return 0.0
 	flat = flat.normalized()
-	return atan2(flat.x, flat.z)
+	return atan2(-flat.x, -flat.z)
 
 ## Whether the FEET are at the line's own height -- the extra condition every
 ## entry gate in this tier asks on top of the reach volume.
@@ -113,8 +117,18 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	note_travel(projected.x)
 	# Walking off either end is how you leave: the line ran out, so the body is
 	# simply standing on whatever is there.
-	if _offset_along <= 0.0 or _offset_along >= _line.length():
-		_offset_along = clampf(_offset_along, 0.0, _line.length())
+	#
+	# GATED ON THE INPUT HAVING ACTUALLY DRIVEN PAST THE END, mirroring
+	# LadderMove's own bottom-end release (`_offset <= 0.01 and
+	# input.move.y < 0.0`). closest_offset() clamps to [0, length], so a body
+	# that CATCHES the line exactly at one end starts this move with
+	# _offset_along already sitting on the boundary; without the input check,
+	# the very first physics_update -- before any key has been pressed --
+	# would see "at the boundary" and exit on the spot.
+	var at_end: bool = (_offset_along <= 0.0 and projected.x < 0.0) \
+		or (_offset_along >= _line.length() and projected.x > 0.0)
+	_offset_along = clampf(_offset_along, 0.0, _line.length())
+	if at_end:
 		return WALKING
 	var next := lateral_update(delta, projected.y)
 	if next != KEEP:
@@ -158,9 +172,12 @@ func note_travel(_along: float) -> void:
 func _yaw_offset() -> float:
 	return cfg.get("body_yaw_offset_deg")
 
+## Reads the DIAL, not a hardcoded number -- LadderConfig.fade_in_time (0.15),
+## SwingConfig.fade_in_time (0.1) and ZiplineConfig.fade_in_time (0.1) are the
+## same family knob; LedgeWalkConfig and BalanceConfig carry their own.
 func fade_in_time() -> float:
-	return 0.15
+	return cfg.get("fade_in_time")
 
 func _normal_at(line_yaw: float) -> Vector3:
-	var tangent := Vector3(sin(line_yaw), 0.0, cos(line_yaw))
-	return Vector3(tangent.z, 0.0, -tangent.x)
+	var tangent := Vector3(-sin(line_yaw), 0.0, -cos(line_yaw))
+	return Vector3(-tangent.z, 0.0, tangent.x)

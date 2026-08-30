@@ -27,6 +27,11 @@ extends MoveConfig
 ## body running PAST the ledge at ground level.
 @export var foot_snap_height: float = 0.35
 
+## How long the magnet catch takes to pull the body onto the ledge. Same shape
+## and same number as LadderConfig.fade_in_time -- the rest of the "along a
+## line" family's own fade dial.
+@export var fade_in_time: float = 0.15
+
 func _init() -> void:
 	# [ME:CONFIRMED] SpeedModifier 0.10 -> 720 * 0.1 = 72 uu/s = 2.59 km/h.
 	speed_modifier = 0.10

@@ -13,6 +13,11 @@ extends MoveConfig
 
 @export var foot_snap_height: float = 0.35
 
+## How long the magnet catch takes to pull the body onto the beam. Same shape
+## and same number as LadderConfig.fade_in_time -- the rest of the "along a
+## line" family's own fade dial.
+@export var fade_in_time: float = 0.15
+
 ## Seconds for the lean to grow by a factor of e.
 ##
 ## [ME:CONFIRMED] TimeToCounter = 0.8. READ AS A DIVERGENCE TIME CONSTANT, not

@@ -54,3 +54,79 @@ func test_the_foot_gate_refuses_a_body_running_past_at_ground_level() -> void:
 	assert_true(LineWalkMove.foot_gate_at(_line, body_on_it, 0.35))
 	assert_false(LineWalkMove.foot_gate_at(_line, body_below, 0.35),
 		"the reach volume alone would swallow a body running past below")
+
+# --- structural invariant: the key you press moves you the way you face ----
+#
+# project_input()'s output is a function of the yaw OFFSET alone -- the
+# line's own heading cancels out of the algebra -- so no assertion on
+# project_input() in isolation can ever catch a sign disagreement between it
+# and yaw_of()/_target_yaw (the two moves have already shipped exactly that
+# bug once). This drives a REAL move on a REAL line instead and checks the
+# outcome: does the body actually travel toward the side it ends up facing.
+
+const BeamStub = preload("res://tests/line_walk_beam_stub.gd")
+
+func test_the_ledge_walk_moves_the_body_toward_its_own_right_on_d() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	# Mid-line, well clear of either end so the boundary-exit guard added
+	# alongside this test cannot interfere with the measurement.
+	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
+		player.global_position - Vector3(5.0, 0.0, 0.0),
+		player.global_position + Vector3(5.0, 0.0, 0.0))
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(_line),
+		"test setup: the ledge's reach volume never registered the player")
+	# LEDGE_WALK is already registered by Player._build_moves() (Task 3), so
+	# this drives the SAME instance the real game uses, through the real
+	# per-tick input/physics loop -- only the entry itself is forced, since
+	# no entry site is wired to LedgeWalkMove.catch_gate() yet.
+	player.move_manager.start(Move.LEDGE_WALK)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"test setup: never entered the ledge walk")
+	await step(20)  # past the magnet fade
+	var before: Vector3 = player.global_position
+	var right: Vector3 = player.global_transform.basis.x
+	_world["input"].state.move = Vector2(1.0, 0.0)  # D
+	await step(30)
+	var displacement: Vector3 = player.global_position - before
+	assert_gt(displacement.dot(right), 0.0,
+		"D on a ledge did not move the body toward its own right")
+
+func test_a_beam_moves_the_body_toward_its_own_forward_on_w() -> void:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	_line = _make_line(InterestLine.Kind.BALANCE,
+		player.global_position - Vector3(5.0, 0.0, 0.0),
+		player.global_position + Vector3(5.0, 0.0, 0.0))
+	await step(5)
+	assert_true(player.interest_lines.has(_line),
+		"test setup: the beam's reach volume never registered the player")
+	# BalanceMove does not exist yet (a later task) -- LineWalkBeamStub is a
+	# bare BALANCE-kind LineWalkMove, registered exactly the way
+	# Player._build_moves() registers every real move, so this test still
+	# drives the real per-tick input/physics loop rather than hand-calling
+	# physics_update().
+	var stub := BeamStub.new()
+	stub.player = player
+	stub.config = player.config
+	stub.cfg = player.config.balance
+	player.move_manager.add_child(stub)
+	player.move_manager.register(Move.BALANCE, stub)
+	player.move_manager.start(Move.BALANCE)
+	assert_eq(player.move_manager.current_name, Move.BALANCE,
+		"test setup: never entered the beam")
+	await step(20)  # past the magnet fade
+	var before: Vector3 = player.global_position
+	var forward: Vector3 = -player.global_transform.basis.z
+	_world["input"].state.move = Vector2(0.0, 1.0)  # W
+	await step(30)
+	var displacement: Vector3 = player.global_position - before
+	assert_gt(displacement.dot(forward), 0.0,
+		"W on a beam did not move the body toward its own forward")
