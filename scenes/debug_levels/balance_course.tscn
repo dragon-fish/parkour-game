@@ -78,7 +78,7 @@ size = Vector3(3, 0.5, 4)
 [node name="Arena" instance=ExtResource("1_base")]
 
 [node name="SpawnPoint" parent="." index="2"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 20, 5.9, 1)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 20, 5.9, 0)
 
 [node name="PlatformA" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 4.75, 0)
