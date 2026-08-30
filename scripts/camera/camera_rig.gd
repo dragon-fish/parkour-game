@@ -55,6 +55,15 @@ var _roll_spin: float = 0.0
 var _balance_roll: float = 0.0
 var _balance_squeeze: float = 0.0
 
+## Fed every tick by LedgeWalkMove: the fixed world yaw its body's own model
+## faces (Player.visual_yaw(), NOT the live view yaw this rig's local frame
+## turns with), and half the width of the arc its third-person camera's
+## bearing is clamped to, in radians. A negative half-width means the clamp
+## is off -- see set_ledge_camera_arc() and _clamp_to_ledge_arc(). BalanceMove
+## never touches this, so the beam's camera is entirely unaffected.
+var _ledge_arc_front_yaw: float = 0.0
+var _ledge_arc_half_rad: float = -1.0
+
 ## The speed-driven FOV, held on its OWN field rather than read back from
 ## camera.fov. camera.fov also carries the balance squeeze (see
 ## update_effects()), and reading a squeezed value back as this lerp's own
@@ -411,6 +420,15 @@ func set_balance_lean(roll_radians: float, squeeze_deg: float) -> void:
 	_balance_roll = roll_radians
 	_balance_squeeze = squeeze_deg
 
+## Called every tick LedgeWalkMove is active -- see the fields this feeds.
+func set_ledge_camera_arc(front_yaw: float, half_arc_rad: float) -> void:
+	_ledge_arc_front_yaw = front_yaw
+	_ledge_arc_half_rad = half_arc_rad
+
+## Called on exit() so the clamp cannot follow the player off the ledge.
+func clear_ledge_camera_arc() -> void:
+	_ledge_arc_half_rad = -1.0
+
 ## Sets the look pitch outright.
 ##
 ## For a move that TAKES OVER the pitch rather than offsetting it. SkillRoll is
@@ -620,6 +638,7 @@ func reset_state() -> void:
 	_vault_roll = 0.0
 	_balance_roll = 0.0
 	_balance_squeeze = 0.0
+	_ledge_arc_half_rad = -1.0
 	if _config != null:
 		_speed_fov = _config.camera.fov_base
 	_death_lift = 0.0
@@ -1190,6 +1209,8 @@ func _third_person_position() -> Vector3:
 		_shoulder_across = _wanted_shoulder_across()
 	var across: float = _shoulder_across
 	var wanted := Vector3( 		across + _tp_drag.x, 		camera_config.third_person_up + _tp_drag.y, 		_tp_distance)
+	if _ledge_arc_half_rad >= 0.0:
+		wanted = _clamp_to_ledge_arc(wanted)
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return wanted
@@ -1207,6 +1228,47 @@ func _third_person_position() -> Vector3:
 	var full: float = wanted.length()
 	var fraction: float = clampf(reached / maxf(full, 0.001), 		_config.camera.third_person_min_fraction, 1.0)
 	return wanted * fraction
+
+## Clamps `local_offset` -- this rig's own local frame, which turns with the
+## LIVE view yaw, not the frozen body facing -- so its bearing around the
+## player, measured from the FIXED world direction the body's own model
+## actually faces (_ledge_arc_front_yaw), never exceeds _ledge_arc_half_rad.
+##
+## WHY THE LIVE FRAME IS THE WRONG ONE TO MEASURE FROM: local_offset's own Z
+## is fixed at third_person_back, so in THIS rig's own turning frame the
+## camera always reads as "behind" no matter which way the mouse has turned
+## the view -- that is what "opposite the view direction" means. Ledge walk
+## turns the collision body with the view (its look constraint is absolute
+## yaw), but freezes the MODEL the player is actually looking at, so "behind
+## the view" drifts up to the look constraint's own yaw span away from
+## "behind the frozen model" and can still land on the wall side. Measuring
+## against the frozen model direction instead is what actually guarantees the
+## clamped arc never touches it, for the whole span the view is allowed to
+## turn through.
+##
+## STATELESS: recomputed from scratch every call, off whatever local_offset
+## the shoulder/distance/drag settings produced this frame. A bearing already
+## inside the arc comes back UNCHANGED (return local_offset itself, not a
+## recomputed equivalent) -- so a camera already in front when the move
+## starts is never wrenched, and one outside it is moved to the nearest edge
+## every frame, with no separate "already corrected" flag to fall out of
+## sync with the camera's actual position.
+func _clamp_to_ledge_arc(local_offset: Vector3) -> Vector3:
+	var world_offset: Vector3 = to_global(local_offset) - global_position
+	var front := Vector3(-sin(_ledge_arc_front_yaw), 0.0, -cos(_ledge_arc_front_yaw))
+	var right := Vector3(-front.z, 0.0, front.x)
+	var forward_component: float = world_offset.dot(front)
+	var right_component: float = world_offset.dot(right)
+	var radius: float = sqrt(forward_component * forward_component + right_component * right_component)
+	if radius < 0.0001:
+		return local_offset
+	var bearing: float = atan2(right_component, forward_component)
+	var clamped: float = clampf(bearing, -_ledge_arc_half_rad, _ledge_arc_half_rad)
+	if is_equal_approx(clamped, bearing):
+		return local_offset
+	var new_world_offset: Vector3 = front * (radius * cos(clamped)) \
+		+ right * (radius * sin(clamped)) + Vector3.UP * world_offset.y
+	return to_local(global_position + new_world_offset)
 
 ## Flips between the first-person eye and the pulled-back one. Called from
 ## Player's V key. Saved, because the choice outlives the life it was made in.

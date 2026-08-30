@@ -426,3 +426,44 @@ func test_a_sustained_lean_settles_instead_of_walking_past_the_camera_floor() ->
 		"a sustained lean drove the FOV past the intended squeeze depth")
 	rig.get_parent().queue_free()
 	await step(1)
+
+# --- ledge walk: the third-person camera arc (owner's own call) --------------
+
+func test_a_bearing_already_inside_the_ledge_arc_is_left_untouched() -> void:
+	# Do not wrench the camera on entry: only a bearing OUTSIDE the arc may
+	# ever be moved.
+	var rig := _rig()
+	await step(1)
+	rig.rotation = Vector3.ZERO
+	rig._ledge_arc_front_yaw = 0.0
+	rig._ledge_arc_half_rad = deg_to_rad(80.0)
+	var inside := Vector3(1.0, 1.5, -3.0)   # bearing ~18 degrees off front
+	var out: Vector3 = rig._clamp_to_ledge_arc(inside)
+	assert_eq(out, inside, "a bearing already inside the arc was moved")
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_a_bearing_behind_the_body_clamps_to_the_arcs_near_edge() -> void:
+	# The ordinary third-person offset sits BEHIND the body (positive local Z,
+	# opposite the view direction) -- exactly where the wall is on a ledge.
+	var rig := _rig()
+	await step(1)
+	rig.rotation = Vector3.ZERO
+	rig._ledge_arc_front_yaw = 0.0
+	rig._ledge_arc_half_rad = deg_to_rad(80.0)
+	var behind := Vector3(0.5, 1.5, 4.0)   # right-of-centre and well behind
+	var out: Vector3 = rig._clamp_to_ledge_arc(behind)
+	var front := Vector3(0.0, 0.0, -1.0)
+	var right := Vector3(1.0, 0.0, 0.0)
+	var bearing: float = atan2(out.dot(right), out.dot(front))
+	assert_almost_eq(absf(bearing), deg_to_rad(80.0), 0.01,
+		"a behind-the-body bearing did not land on the arc's near edge (%.1f degrees)"
+			% rad_to_deg(bearing))
+	assert_gt(bearing, 0.0, "a right-of-centre bearing clamped to the wrong edge")
+	var radius_before: float = Vector2(behind.x, behind.z).length()
+	var radius_after: float = Vector2(out.x, out.z).length()
+	assert_almost_eq(radius_after, radius_before, 0.01,
+		"the clamp changed the camera's distance from the player")
+	assert_almost_eq(out.y, behind.y, 0.001, "the clamp touched the camera's height")
+	rig.get_parent().queue_free()
+	await step(1)
