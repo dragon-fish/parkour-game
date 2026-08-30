@@ -379,7 +379,7 @@ var speed_energy: SpeedEnergy
 ## Last tick's wish direction, for charging heading changes. Zero means "no
 ## input last tick", which is deliberately NOT a heading -- see
 ## _charge_turn().
-var _last_wish_dir: Vector3 = Vector3.ZERO
+var _last_facing: Vector3 = Vector3.ZERO
 
 ## Time left in the stand-up after a slide.
 ##
@@ -1272,7 +1272,7 @@ func reset_state() -> void:
 	# life's statuses put it, with no slide inherited from the old one.
 	_speed_scale = statuses.speed_scale() if statuses != null else 1.0
 	_stagger_immunity = 0.0
-	_last_wish_dir = Vector3.ZERO
+	_last_facing = Vector3.ZERO
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
 	_line_cooldowns.clear()
@@ -3839,7 +3839,7 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 			_takeoff_ground_speed = horizontal_speed()
 			_airborne_time = 0.0
 		_airborne_time += delta
-		_last_wish_dir = wish
+		_last_facing = facing
 		return
 	# Just landed with a heading owed. Billed as ONE turn through the angle
 	# between take-off and touchdown, at the rate it was actually swung
@@ -3856,7 +3856,7 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 				speed_energy.spend_turn(swung, maxf(_airborne_time, delta))
 		_takeoff_dir = Vector3.ZERO
 		_airborne_time = 0.0
-	_charge_turn(wish, delta)
+	_charge_turn(facing, delta)
 	if wish == Vector3.ZERO:
 		speed_energy.decay(delta)
 		return
@@ -3933,7 +3933,7 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 ## on the tick after the turn is charged normally, measured from the facing the
 ## turn actually left them with.
 func forgive_turn() -> void:
-	_last_wish_dir = wish_direction(last_input) if last_input != null else Vector3.ZERO
+	_last_facing = -global_transform.basis.z * Vector3(1.0, 0.0, 1.0)
 
 ## Turning is a continuous tax with no free allowance (10.1 mechanic 3): the
 ## research searched for a "costs nothing below N degrees" parameter and
@@ -3946,16 +3946,27 @@ func forgive_turn() -> void:
 ## either, because accel_rate 61.44 makes the velocity lag the intent, which
 ## would smear the charge across the frames after the decision instead of
 ## billing the decision itself.
-func _charge_turn(wish: Vector3, delta: float) -> void:
-	if wish == Vector3.ZERO or _last_wish_dir == Vector3.ZERO:
+## BILLED ON THE FACING, NOT ON THE WISH DIRECTION, and the difference is a
+## keypress against a mouse movement. Both swing the wish vector 90 degrees
+## in the world: turning the view does it because wish is expressed relative
+## to the view, and pressing A does it because the key changed. Only one of
+## them is a turn. Billing wish charged a body that pressed A the same as one
+## that whipped the mouse 90 degrees, which emptied the whole budget in a
+## single tick -- in the original the same press leaves the view untouched
+## (yaw is constant across the capture) and the speed climbs afterwards.
+##
+## The airborne path above already billed the facing (_takeoff_dir), so this
+## also ends a split where the ground and the air taxed different things.
+func _charge_turn(facing: Vector3, delta: float) -> void:
+	if facing == Vector3.ZERO or _last_facing == Vector3.ZERO:
 		# Nothing to compare against. A momentary key release passes through
 		# zero, and billing that transition would charge for letting go.
-		_last_wish_dir = wish
+		_last_facing = facing
 		return
-	var radians: float = absf(_last_wish_dir.signed_angle_to(wish, Vector3.UP))
+	var radians: float = absf(_last_facing.signed_angle_to(facing, Vector3.UP))
 	if radians > 0.0:
 		speed_energy.spend_turn(radians, delta)
-	_last_wish_dir = wish
+	_last_facing = facing
 
 ## The downhill component of `direction`, projected onto the current floor,
 ## in Friction's convention (+1 straight down the fall line, -1 straight up,

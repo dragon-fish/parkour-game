@@ -42,22 +42,34 @@ func test_running_sideways_settles_at_base_speed() -> void:
 	await step(1)
 
 func test_leaving_the_arc_lowers_the_ceiling_over_seconds_not_frames() -> void:
-	# PENDING, and the reason is worth more than the test. Nothing caps
-	# sideways speed in the original: the CEILING decays to base speed over
-	# about 2.6 s and the body follows it down, still ACCELERATING a quarter
-	# second in (see PawnConfig.speed_max_base_velocity for the capture).
+	# THE SHAPE, WHICH IS THE HALF THAT IS EASY TO LOSE. Nothing caps sideways
+	# speed: the CEILING decays to base speed and the body follows it down. In
+	# the original a body already running dead sideways is still ACCELERATING
+	# a quarter second in, and only settles about 2.6 s later -- see
+	# PawnConfig.speed_max_base_velocity for the capture.
 	#
-	# Here it arrives in one frame, and the decay is not what does it:
-	# Player._charge_turn() bills the change of the wish direction, so
-	# pressing A swings that vector 90 degrees in a single tick and
-	# spend_turn() empties the budget straight to the floor. In the original
-	# the same press moves the VIEW not at all -- yaw is constant across the
-	# capture -- and speed climbs afterwards, so no such bill is charged.
-	#
-	# Billing facing instead of wish is the fix, and it lands on a pile of
-	# turn tests that stand in for a turn by rotating input.move, where
-	# facing never changes. That is its own piece of work.
-	pending("charge_turn bills a keypress as a 90 degree turn -- see the comment")
+	# This failed for as long as _charge_turn() billed the wish direction:
+	# pressing A swung that vector 90 degrees in one tick and emptied the
+	# budget to the floor immediately. Billing the facing is what lets a
+	# keypress be a change of direction rather than a turn.
+	var world := _world()
+	await _settle(world)
+	world["input"].state.move = Vector2(0.0, 1.0)
+	for i in 300:
+		await step(1)
+	var player: Player = world["player"]
+	var base_speed: float = player.config.pawn.speed_max_base_velocity
+	world["input"].state.move = Vector2(-1.0, 0.0)
+	for i in 30:
+		await step(1)
+	assert_gt(player.speed_cap(), base_speed + 0.5, \
+		"the ceiling was dumped to base speed within half a second")
+	for i in 300:
+		await step(1)
+	assert_almost_eq(player.speed_cap(), base_speed, 0.3, \
+		"the ceiling never came down to base speed")
+	TestWorld.teardown(world)
+	await step(1)
 
 func test_the_air_is_not_held_to_the_arc() -> void:
 	# THE INVARIANT THIS FILE EXISTS FOR. The original limits the ground and

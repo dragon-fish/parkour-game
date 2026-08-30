@@ -16,8 +16,11 @@ func test_turning_costs_banked_speed_energy() -> void:
 	await _run_up(world, 430)
 	var before: float = world["player"].speed_energy.energy
 	assert_gt(before, 6.5, "never banked a full budget")
-	# A hard left: the wish direction swings 90 degrees in one tick.
-	world["input"].state.move = Vector2(-1.0, 0.0)
+	# A hard left, MADE WITH THE VIEW. Rotating input.move instead would be a
+	# body pressing A while looking straight ahead, which is a change of
+	# direction and not a turn -- the tax is billed on the facing, so that
+	# costs nothing here and should not.
+	world["player"].rotation.y += deg_to_rad(90.0)
 	await step(1)
 	var after: float = world["player"].speed_energy.energy
 	assert_true(after < before - 3.0, "a 90 degree turn cost almost nothing (%f -> %f)" % [before, after])
@@ -107,7 +110,7 @@ func test_even_a_one_degree_turn_costs_something() -> void:
 	await step(1)
 	var straight_gain: float = world["player"].speed_energy.energy - before
 	var pivot: float = world["player"].speed_energy.energy
-	world["input"].state.move = Vector2(0.0, 1.0).rotated(deg_to_rad(1.0))
+	world["player"].rotation.y += deg_to_rad(1.0)
 	await step(1)
 	var turned_gain: float = world["player"].speed_energy.energy - pivot
 	assert_true(turned_gain < straight_gain, 		"a one degree turn cost nothing (straight %f vs turned %f)" 		% [straight_gain, turned_gain])
@@ -129,7 +132,7 @@ func test_turn_cost_wraps_correctly_across_180_degrees() -> void:
 	# Swing to just past +180 degrees from straight ahead. This is itself a
 	# near-maximal reversal and drains the budget close to zero -- that is
 	# incidental setup cost, not what this test is about.
-	world["input"].state.move = Vector2(0.0, 1.0).rotated(deg_to_rad(179.0))
+	world["player"].rotation.y += deg_to_rad(179.0)
 	await step(1)
 	# Hold that heading long enough to settle. It does NOT rebank to a full
 	# budget: 179 degrees is running backwards, which drains to the base-speed
@@ -141,7 +144,7 @@ func test_turn_cost_wraps_correctly_across_180_degrees() -> void:
 	var before: float = world["player"].speed_energy.energy
 	assert_gt(before, 0.3, "did not settle above the floor, so the check proves nothing")
 	# Flip to just past -180 degrees -- a real turn of about 2 degrees.
-	world["input"].state.move = Vector2(0.0, 1.0).rotated(deg_to_rad(-179.0))
+	world["player"].rotation.y += deg_to_rad(-358.0)
 	await step(1)
 	var after: float = world["player"].speed_energy.energy
 	var drop: float = before - after
