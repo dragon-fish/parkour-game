@@ -131,14 +131,15 @@ func test_turn_cost_wraps_correctly_across_180_degrees() -> void:
 	# incidental setup cost, not what this test is about.
 	world["input"].state.move = Vector2(0.0, 1.0).rotated(deg_to_rad(179.0))
 	await step(1)
-	# Hold that heading (no further direction change, so no further turn
-	# cost) long enough to rebank a meaningfully large energy cushion, so the
-	# actual assertion below has something to lose if the wraparound were
-	# read as a near-full-lap turn instead of a ~2 degree one.
+	# Hold that heading long enough to settle. It does NOT rebank to a full
+	# budget: 179 degrees is running backwards, which drains to the base-speed
+	# floor and stays there (Player._update_speed_energy()). The floor is
+	# still a cushion with something to lose -- a wraparound read as a
+	# near-full-lap turn would take it to nothing.
 	for i in 180:
 		await step(1)
 	var before: float = world["player"].speed_energy.energy
-	assert_gt(before, 0.5, "did not rebank enough energy for the wraparound check to be meaningful")
+	assert_gt(before, 0.3, "did not settle above the floor, so the check proves nothing")
 	# Flip to just past -180 degrees -- a real turn of about 2 degrees.
 	world["input"].state.move = Vector2(0.0, 1.0).rotated(deg_to_rad(-179.0))
 	await step(1)

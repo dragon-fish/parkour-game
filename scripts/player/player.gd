@@ -3856,6 +3856,44 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	if wish == Vector3.ZERO:
 		speed_energy.decay(delta)
 		return
+	# TRAVELLING OUTSIDE THE ARC BLEEDS THE CEILING. This is where the
+	# sideways limit actually comes from: not a cap on the speed, but energy
+	# draining while the body runs across its own facing, so the ceiling
+	# slides from a full sprint down to base speed over about three seconds.
+	# Measured that way in the original -- see PawnConfig.speed_max_base_velocity
+	# for the capture, and note speed_energy_deceleration_time is 3.0.
+	#
+	# READ OFF THE KEY HERE, unlike ground_accelerate() which reads travel,
+	# and the two answer different questions. This one asks whether the
+	# player is ASKING to run across their own facing; that one asks where
+	# the body has actually got to so far.
+	#
+	# Travel is wrong for this because a turn puts it outside the arc all by
+	# itself: swing the view and the heading lags behind the facing for a few
+	# frames while W is still held. Billing that as sideways running charges
+	# an ordinary turn twice, once through spend_turn() above and again here
+	# -- which is exactly what test_turn_deceleration and test_turn_180
+	# caught when this read travel.
+	if not in_forward_arc(wish):
+		# DOWN TO BASE SPEED AND NO FURTHER. speed_max_base_velocity is 4.0 m/s
+		# -- 14.4 km/h, exactly the sideways speed measured in the original --
+		# and spend_turn() already treats it as the floor no amount of turning
+		# can bill past. Running across your own facing lands on the same
+		# floor, which is why no separate sideways limit is declared anywhere:
+		# the number was never a limit on sideways running, it is what a body
+		# moves at with no speed banked at all.
+		var floor_energy: float = SpeedEnergy.energy_for_speed(config.pawn,
+			config.pawn.speed_max_base_velocity)
+		if speed_energy.energy > floor_energy:
+			speed_energy.decay(delta)
+			speed_energy.energy = maxf(speed_energy.energy, floor_energy)
+		else:
+			# A FLOOR, NOT A TARGET TO DECAY TOWARD. Base speed is what a body
+			# moves at with nothing banked, so stepping sideways from a standstill
+			# has it at once -- without this the ceiling sits at
+			# speed_min_base_velocity (0.1 m/s) and sideways is a crawl.
+			speed_energy.energy = floor_energy
+		return
 	# Scaled by the active move's own ceiling. Without this the threshold is
 	# measured against the STANDING cap while a crouch is held to 40% of it,
 	# so crouching can never bank -- and since turning still charges, a
@@ -3949,8 +3987,14 @@ func in_forward_arc(direction: Vector3) -> bool:
 	facing.y = 0.0
 	if facing.length_squared() < 0.0001:
 		return true
+	# THE DIAGONAL MUST LAND INSIDE, and it lands exactly ON the edge: W+A is
+	# 45 degrees and the arc is 45 degrees, so the comparison is between two
+	# floats equal in exact arithmetic and not, frame to frame, in practice.
+	# Without the tolerance a diagonal run flickers between the full ceiling
+	# and base speed on float noise -- the owner saw the cap swinging between
+	# 4 and 7.2 at random.
 	return flat.normalized().dot(facing.normalized()) \
-		>= cos(deg_to_rad(config.pawn.forward_arc_deg))
+		>= cos(deg_to_rad(config.pawn.forward_arc_deg)) - 0.01
 
 ## GROUND SPEED ONLY. DO NOT fold the arc limit below into speed_cap(): the
 ## original limits the ground and leaves the air alone -- backwards with S and
@@ -3963,39 +4007,8 @@ func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float, gra
 			move_manager.current_move_friction_modifier(), grade)
 		horizontal = horizontal.move_toward(Vector3.ZERO, braking * delta)
 	else:
-		# JUDGED ON WHERE THE BODY IS GOING, NOT ON THE KEY HELD. Pressing A
-		# at full speed does not teleport the run sideways: the heading
-		# curves round, and it is inside the arc for the first half of that
-		# curve. Reading wish_dir instead drops the ceiling to 4.0 on the
-		# frame the key goes down, which loses the shape the owner measured
-		# in the original -- speed dips as the heading swings, RECOVERS while
-		# the curve is still within 45 degrees, and only then bleeds away.
-		# The dip, the recovery and the bleed all fall out of this one line.
-		#
-		# A standing start has no heading to read, so the key answers there.
-		var travelling: Vector3 = wish_dir
-		if horizontal.length_squared() > 0.01:
-			travelling = horizontal
-		# A CEILING, never a floor, so a state already slower than it -- the
-		# crouch at 40% -- is not sped up by turning sideways.
-		if not in_forward_arc(travelling):
-			target_speed = minf(target_speed, config.pawn.lateral_speed)
-		var speed: float = horizontal.length()
-		if speed > target_speed:
-			# TURNING AND SLOWING ARE SEPARATE HERE, and combining them is
-			# the trap. One move_toward() at the drag rate would take the
-			# seconds the slowdown is meant to take to merely FACE the new
-			# direction, so a body asked to run left would keep running
-			# forwards while it bled. The heading swings at the ordinary
-			# acceleration rate; only the magnitude is held back.
-			var heading: Vector3 = horizontal / speed
-			heading = heading.move_toward(wish_dir,
-				(config.pawn.accel_rate / speed) * delta).normalized()
-			speed = maxf(target_speed, speed - config.pawn.lateral_drag * delta)
-			horizontal = heading * speed
-		else:
-			horizontal = horizontal.move_toward(wish_dir * target_speed,
-				config.pawn.accel_rate * delta)
+		horizontal = horizontal.move_toward(wish_dir * target_speed,
+			config.pawn.accel_rate * delta)
 	velocity.x = horizontal.x
 	velocity.z = horizontal.z
 

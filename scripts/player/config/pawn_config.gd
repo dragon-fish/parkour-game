@@ -21,32 +21,29 @@ extends Resource
 
 ## Top speed when NOT travelling roughly forwards, in m/s.
 ##
-## The floor the ceiling decays TO when travel leaves the arc. Not a clamp.
+## Sideways running settles at speed_max_base_velocity, and that is not a
+## coincidence to be tidied away later.
 ##
-## [ME:CONFIRMED] Read off a 120 fps capture of the original through
-## docs/mirrors-edge-deep-research/tools/hud_ocr.py, with the view held still
-## so the HUD's yaw is constant and heading comes from differencing X/Y:
+## [ME:CONFIRMED] Read off a 120 fps capture through hud_ocr.py, view held
+## still so heading comes from differencing the HUD's X/Y:
 ##
 ##   t=18.87  25.9 km/h   heading  -0.2 deg   running straight
-##   t=18.93  20.6 km/h   heading  63.2 deg   the dip
+##   t=18.93  20.6 km/h   heading  63.2 deg   the dip, as the turn is billed
 ##   t=19.03  22.6 km/h   heading  86.9 deg   already fully sideways
 ##   t=19.28  24.8 km/h   heading  89.8 deg   STILL CLIMBING, sideways
-##   t=19.90  22.2 km/h   heading  89.8 deg   the decay begins
-##   t=21.93  14.5 km/h   heading  89.8 deg   settled
+##   t=19.90  22.2 km/h   heading  89.8 deg   the ceiling starts down
+##   t=21.93  14.5 km/h   heading  89.8 deg   settled at base speed
 ##
-## THE CLIMB AT 89.8 DEGREES IS THE WHOLE POINT. A body running dead sideways
-## accelerated to 24.8 km/h, which no ceiling of 14.4 permits. The limit is
-## not applied to the speed; it is the ceiling itself sliding down, and taking
-## 2.65 s about it -- against speed_energy_deceleration_time's [ME:CONFIRMED]
-## 3.0. Then it stops at 14.4 rather than continuing to zero, which is what
-## makes this a floor.
+## THE CLIMB AT 89.8 DEGREES IS WHY THERE IS NO SIDEWAYS CAP. A body running
+## dead sideways accelerated to 24.8 km/h, which no ceiling of 14.4 permits.
+## Nothing limits the speed; the CEILING slides down, over about 2.6 s
+## against speed_energy_deceleration_time's 3.0, and stops where every other
+## drain stops -- at the energy that buys speed_max_base_velocity, 4.0 m/s,
+## which is 14.4 km/h. See Player._update_speed_energy().
 ##
-## AN EARLIER READING BLAMED THE HAND -- W and D both down for a few frames,
-## putting travel on a diagonal where full speed is correct. Both keys really
-## were down between 18.88 and 19.02, where the heading jumps about between 5
-## and 65 degrees. But the climb continues well past that, at a heading of
-## 86.9 degrees and beyond, so the hand does not explain it.
-@export var lateral_speed: float = 4.0
+## An earlier version of this file declared a lateral_speed of 4.0 and
+## clamped the speed to it. It produced the right endpoint and the wrong
+## curve, and it hid the fact that 14.4 was a number the model already had.
 
 ## Half-angle of the arc, in degrees, inside which the full ground speed is
 ## available. 45 makes the arc 90 degrees wide: straight ahead and both
@@ -55,23 +52,6 @@ extends Resource
 ## [ME:CONFIRMED] Owner: "前方90°内才能到满速".
 @export var forward_arc_deg: float = 45.0
 
-## How hard speed bleeds off on leaving the arc, in m/s^2.
-##
-## MAGNITUDE ONLY -- the heading still swings at accel_rate. See
-## Player.ground_accelerate() for why the two cannot share a rate.
-##
-## [ME:CONFIRMED] Owner timed the original from full speed into a straight
-## left: 25.92 km/h drops to about 20 almost at once, then takes roughly 3 s
-## to settle at 14.4. That second leg is 5.56 -> 4.0 m/s in 3 s, near enough
-## 0.5 m/s^2.
-##
-## ONE LEG, NOT TWO. Only the slow leg is modelled; 1.0 spends the whole
-## 7.2 -> 4.0 in about 3.2 s, matching how long the original takes overall
-## rather than its shape. What produces the original's fast first drop is not
-## known -- it may be nothing more than the heading swinging through 90
-## degrees, which costs magnitude on its own. Worth re-measuring before
-## anyone builds a second leg to chase it.
-@export var lateral_drag: float = 1.0
 ## [ME:CONFIRMED 02 §2.3] AirControl = 0.025. Engine default is 0.05; DICE
 ## halved it. Used as a multiplier on accel_rate (09 §9.1):
 ## air_accel = accel_rate * air_control = 61.44 * 0.025 = 1.536 m/s^2,
