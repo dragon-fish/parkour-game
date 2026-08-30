@@ -533,3 +533,30 @@ func test_exiting_the_move_zeroes_the_camera_lean() -> void:
 		"leaving Balance left the camera roll behind")
 	assert_almost_eq(rig._balance_squeeze, 0.0, 0.0001,
 		"leaving Balance left the FOV squeeze behind")
+
+func test_a_full_correction_at_the_edge_can_still_turn_the_lean_around() -> void:
+	# The owner, in play: past a certain angle nothing the player did mattered.
+	# The divergence term grows with the lean and a flat gain does not, so a
+	# fixed correction is arithmetically overwhelmed somewhere short of the
+	# edge. This pins that the boost puts the far end back within reach --
+	# a structural property of the two curves, not a feel value.
+	var move := BalanceMove.new()
+	move.cfg = BalanceConfig.new()
+	var edge_lean: float = move.cfg.beam_half_width / move.cfg.gravity_influence
+	# Just inside the edge, already falling, correcting at full strength.
+	move.seed_lean(edge_lean * 0.97, 0.0)
+	for i in 30:
+		move.integrate_lean(1.0 / 60.0, -1.0)
+	assert_lt(move.lean_rate(), 0.0,
+		"a held full-strength correction at the edge never turned the lean around")
+	move.free()
+
+func test_the_correction_gain_only_grows_near_the_edge() -> void:
+	var move := BalanceMove.new()
+	move.cfg = BalanceConfig.new()
+	var edge_lean: float = move.cfg.beam_half_width / move.cfg.gravity_influence
+	assert_almost_eq(move.correction_gain_at(0.0), move.cfg.correction_gain, 0.0001,
+		"the boost reached all the way back to the apex")
+	assert_gt(move.correction_gain_at(edge_lean), move.correction_gain_at(edge_lean * 0.5),
+		"the correction gained no authority on the way to the edge")
+	move.free()

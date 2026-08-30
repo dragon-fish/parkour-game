@@ -143,9 +143,29 @@ func seed_lean(lean: float, rate: float) -> void:
 ## divergence term below; test_correction_opposes_the_lean pins the sign.
 func integrate_lean(delta: float, lateral_input: float) -> void:
 	var rate: float = 1.0 / maxf(cfg.divergence_time, 0.0001)
-	var accel: float = _lean * rate * rate + cfg.correction_gain * lateral_input
+	var accel: float = _lean * rate * rate + correction_gain_at(_lean) * lateral_input
 	_lean_rate += accel * delta
 	_lean += _lean_rate * delta
+
+## The correction authority available at `lean`, which GROWS as the body nears
+## the edge.
+##
+## WITHOUT THIS THERE IS A ZONE THAT CANNOT BE RECOVERED FROM, and it is not a
+## matter of reflexes. The divergence term grows linearly with the lean while a
+## fixed gain does not, so past `correction_gain / divergence_time^-2` even a
+## held, perfect, full-strength correction still accelerates the fall. At the
+## shipped dials that boundary sits around two thirds of the way to the edge,
+## which leaves the last third decided before the player touched anything.
+##
+## The boost does not make the beam easy: reaching the edge still needs a
+## prompt, sustained correction, and the rate the body has built up by then
+## takes time to turn round. What it removes is the stretch where pressing the
+## key correctly changes nothing at all.
+func correction_gain_at(lean: float) -> float:
+	var edge: float = maxf(cfg.beam_half_width, 0.0001)
+	var severity: float = clampf(absf(lean) * cfg.gravity_influence / edge, 0.0, 1.0)
+	var t: float = smoothstep(cfg.correction_boost_start, 1.0, severity)
+	return lerpf(cfg.correction_gain, cfg.correction_gain_at_edge, t)
 
 func lateral_update(delta: float, lateral_input: float) -> StringName:
 	integrate_lean(delta, lateral_input)

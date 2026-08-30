@@ -31,6 +31,22 @@ extends MoveConfig
 ## [ME:CONFIRMED] ControlInfluence = 1.5.
 @export var correction_gain: float = 1.5
 
+## Where the correction starts gaining authority, as a fraction of the way to
+## the edge. Below this the gain is flat.
+##
+## The owner, measured in play: past a certain angle the beam was unrecoverable
+## whatever the player did. That is arithmetic, not reflexes -- see
+## BalanceMove.correction_gain_at().
+@export var correction_boost_start: float = 0.55
+
+## Correction authority at the very edge.
+##
+## MUST STAY ABOVE beam_half_width / (gravity_influence * divergence_time^2),
+## which is what the divergence term reaches there. Below it, a full-strength
+## correction at the edge still loses, which is the state this dial exists to
+## end.
+@export var correction_gain_at_edge: float = 3.0
+
 ## How much the ENTRY speed magnifies the one-off starting lean.
 ## [ME:CONFIRMED] SpeedInfluence = 2.5. It magnifies the entry offset ONLY --
 ## the divergence afterwards is speed-independent, which is what reconciles
