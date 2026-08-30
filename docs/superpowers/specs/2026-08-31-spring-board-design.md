@@ -65,6 +65,8 @@ HUD 单位为米，帧率 120：
   （触发距离下界是 0）。
 - 太远就是普通跳。
 - 起跳后按住 W 的空中加速与普通跳一样。
+- **斜着进就斜着出**：在 53° 以内斜着走向两级，人沿着面朝方向斜穿过两级、
+  沿同一方向抛出，不会被掰正到两级的法线上。
 
 ### 项目自定
 
@@ -87,7 +89,9 @@ HUD 单位为米，帧率 120：
    `plant_spacing ± plant_spacing_tolerance`（1.12 ± 0.3 m，取 3 圈）、
    身体前向 ±`approach_angle_deg`（53°）的扇形内采样 7 个方位，同样向下投射，
    找顶面高出脚 `plant_2_min_height ~ plant_2_max_height`（0.8 ~ 1.48 m）的点。
-   扇形就是「角度对了才触发」：两点连线必须落在面朝方向 53° 以内。
+   **从面朝方向 0° 开始向两侧交替采样，取第一个命中**：宽台阶上就是面朝方向
+   这条线与第二级的交点（斜着进就斜着穿过去），只有两根柱子时才会落到扇形
+   边缘。扇形就是「角度对了才触发」：两点连线必须落在面朝方向 53° 以内。
 3. **站得住**：`plant_1`、`plant_2` 都过 `Player.fits_standing_at()`
    （`ShapeCast3D`，身体有宽度）。Probes 只回答几何，「身体放不放得下」是
    Player 的事——与 §34 的分层一致。
@@ -134,8 +138,8 @@ HUD 单位为米，帧率 120：
 
 胶囊位置 = 脚落点 + 半身高，由 `ScriptedMove.advance()` 直接写位置；
 `set_grounded(true)`——脚在东西上，声明而不是推断。模型 `pin_visual_yaw` 朝
-`plant_1 → plant_2` 的水平方向；胶囊与视线不动（原作 `ControllerState =
-PlayerWalking`，视角自由，无视线约束）。实测这 0.4 s 里 Z 近似匀速上升 1.2 m、
+进入时的面朝方向；胶囊与视线不动（原作 `ControllerState = PlayerWalking`，
+视角自由，无视线约束）。实测这 0.4 s 里 Z 近似匀速上升 1.2 m、
 前进约 2 m，两段小弧只是让脚落到点上，不必刻意做出停顿。
 
 ### 阶段 3：抛出
@@ -143,7 +147,7 @@ PlayerWalking`，视角自由，无视线约束）。实测这 0.4 s 里 Z 近�
 段 2 结束那一帧：
 
 ```
-dir      = (plant_2 - plant_1) 水平归一
+dir      = 进入时的面朝方向（水平归一）     ✅ owner：斜着进就斜着出
 xy       = max(h + xy_add, xy_min)        = max(h - 1.0, 4.0)
 velocity = dir * xy + UP * jump_z         jump_z = 9.5
 ```
@@ -221,7 +225,8 @@ velocity = dir * xy + UP * jump_z         jump_z = 9.5
 5. 蹬踏期：到达立面后 0.2 s 脚在第一根柱顶、0.4 s 在第二根柱顶（容差 5 cm），
    期间 `grounded` 为真、输入被锁。
 6. 抛出：段 2 结束那一帧 `velocity.y == jump_z`，水平速度 =
-   `max(进入速度 - 1.0, 4.0)`，方向为两柱连线；`fall_tracker` 已重置；
+   `max(进入速度 - 1.0, 4.0)`，方向为进入时的面朝方向（斜 40° 进入的用例
+   里，抛出方向仍是那 40°）；`fall_tracker` 已重置；
    之后仍是 `SPRING_BOARD`，`velocity.y` 过零那一帧才转 `FALLING`。
 7. 柱顶放不下身体（`fits_standing_at` 假）→ 普通 `JUMP`。
 8. 上升段按下蹲不 coil（`SPRING_BOARD` 不会转 `COIL`）。
