@@ -140,17 +140,30 @@ func test_walking_onto_a_ledge_line_enters_the_move() -> void:
 	TestWorld.place(_world)
 	await step(20)
 	var player: Player = _world["player"]
-	# The line passes right through where the settled player already stands,
-	# at the same height -- catch_gate's foot check should pass immediately.
+	# The line STARTS at the settled player's own position and runs away
+	# from it, so the catch lands at arc-length offset 0.0 exactly -- the
+	# boundary LineWalkMove.physics_update()'s `at_end` guard exists for.
+	# A body caught right on the line's own start, with no input yet, must
+	# not read as having already walked past that end on its first tick
+	# (the old ungated form of that check did exactly that -- see its own
+	# comment). Placing the catch mid-line, as an earlier version of this
+	# test did, cannot exercise that path at all: closest_offset() there
+	# lands nowhere near either boundary.
 	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
-		player.global_position - Vector3(5.0, 0.0, 0.0),
-		player.global_position + Vector3(5.0, 0.0, 0.0))
+		player.global_position,
+		player.global_position + Vector3(10.0, 0.0, 0.0))
 	for i in 10:
 		await step(1)
 		if player.move_manager.current_name == Move.LEDGE_WALK:
 			break
 	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
-		"walking onto a ledge line did not catch it")
+		"walking onto a ledge line's own start did not catch it")
+	# No input at all for several more ticks: the boundary-exit guard must
+	# not fire on a body that never pushed past the end it was caught at.
+	for i in 5:
+		await step(1)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK,
+		"a catch at the line's own start immediately exited back to WALKING")
 
 func test_running_past_below_a_ledge_line_does_not_enter() -> void:
 	_world = TestWorld.build(get_tree(), MovementConfig.new())
@@ -165,7 +178,10 @@ func test_running_past_below_a_ledge_line_does_not_enter() -> void:
 	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
 		player.global_position + Vector3(-5.0, 0.5, 0.0),
 		player.global_position + Vector3(5.0, 0.5, 0.0))
-	for i in 10:
+	await step(5)  # lets the reach volume's Area3D register the overlap
+	assert_true(player.interest_lines.has(_line),
+		"test setup: the ledge's reach volume never registered the player")
+	for i in 5:
 		await step(1)
 	assert_eq(player.move_manager.current_name, Move.WALKING,
 		"a ledge 0.5 m overhead caught a body it should have refused")
