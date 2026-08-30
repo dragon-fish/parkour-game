@@ -134,9 +134,12 @@ extends Resource
 ## see Player.landing_tier() and landing_keep_ratio().
 @export var base_jump_z: float = 6.3
 ## [ME:CONFIRMED 02 §2.4] JumpAddXY = 100 uu/s as a VALUE. [ME:INFERRED] as a
-## ROLE: read as an ADDITION along the facing at take-off rather than a
-## minimum, since taking off is itself a small forward commitment -- whether
-## the original adds or floors is not verified. Wired into WalkingMove's and
+## ROLE: read as an ADDITION along the direction being ASKED FOR at take-off
+## rather than a minimum, since taking off is itself a small commitment in
+## the direction of travel -- whether the original adds or floors is not
+## verified. Along the facing it was worse than unverified: a backward jump
+## came out at 3 m/s with this subtracted, and a sideways one at 4.12 aimed
+## diagonally forwards, because the nudge pointed wherever the camera did. Wired into WalkingMove's and
 ## SlideMove's jump branches via Player.jump_add_velocity().
 @export var jump_add_xy: float = 1.0
 ## No confirmed counterpart in the original (02 §2.4 searched and found

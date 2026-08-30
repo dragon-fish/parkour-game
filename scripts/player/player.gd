@@ -3753,11 +3753,15 @@ func travel_speed() -> float:
 func jump_add_velocity(input: MoveInput) -> Vector3:
 	if input.move == Vector2.ZERO:
 		return Vector3.ZERO
-	var facing: Vector3 = -global_transform.basis.z
-	facing.y = 0.0
-	if facing.length_squared() < 0.0001:
+	# ALONG THE TRAVEL, NOT ALONG THE FACING. Reading it off the facing makes
+	# the nudge point wherever the camera does, which is only the same thing
+	# when running straight ahead: a backward jump had 1 m/s subtracted from
+	# it and left at 3, and a sideways jump came out at 4.12 aimed diagonally
+	# forwards. The take-off commits along the direction being asked for.
+	var wish: Vector3 = wish_direction(input)
+	if wish.length_squared() < 0.0001:
 		return Vector3.ZERO
-	return facing.normalized() * config.pawn.jump_add_xy
+	return wish.normalized() * config.pawn.jump_add_xy
 
 ## True while the body is mid-step-up: raised, but not yet set down on the
 ## step. Callers use it to tell "climbing a kerb" apart from "walked off a
