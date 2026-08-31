@@ -80,3 +80,35 @@ static func block_from_drag(anchor: Vector3, basis: Basis, extent: Vector2,
 		"size": Vector3(absf(width), rise, absf(depth)),
 		"transform": Transform3D(basis, anchor + basis * centre_local),
 	}
+
+## The cylinder a centre-out drag describes: the drag starts at the footprint's
+## centre and reaches to its rim, so `radius` is that reach.
+##
+## Sits ON the surface like a block does, growing along the normal, which is
+## why the origin is half a height up: a CSGCylinder3D is centred on its own
+## origin and runs along its local Y.
+##
+## A radius under one grid step is widened to one, for the same reason a click
+## with no drag still lays a whole tile.
+static func cylinder_from_drag(anchor: Vector3, basis: Basis, radius: float,
+		height: float, step: float) -> Dictionary:
+	var reach: float = maxf(absf(radius), maxf(step, MIN_THICKNESS))
+	var rise: float = maxf(height, MIN_THICKNESS)
+	return {
+		"radius": reach,
+		"height": rise,
+		"transform": Transform3D(basis, anchor + basis.y * (rise * 0.5)),
+	}
+
+## The sphere a centre-out drag describes.
+##
+## Rests on the surface rather than centring on it: a ball half sunk into the
+## floor is nobody's intent, and the drag names the footprint's centre, not the
+## solid's. Thickness has no meaning here, so it takes none.
+static func sphere_from_drag(anchor: Vector3, basis: Basis, radius: float,
+		step: float) -> Dictionary:
+	var reach: float = maxf(absf(radius), maxf(step, MIN_THICKNESS))
+	return {
+		"radius": reach,
+		"transform": Transform3D(basis, anchor + basis.y * reach),
+	}

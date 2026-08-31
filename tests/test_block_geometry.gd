@@ -64,3 +64,34 @@ func test_a_thin_block_survives_a_coarse_grid() -> void:
 		"the snap grid inflated the block's thickness")
 	assert_almost_eq((plan["transform"] as Transform3D).origin.y, 0.05, 0.001, \
 		"a thin block is not resting on its anchor")
+
+func test_a_cylinder_stands_on_its_footprint() -> void:
+	var plan: Dictionary = Geometry.cylinder_from_drag(
+		Vector3.ZERO, Basis.IDENTITY, 2.0, 0.2, 0.2)
+	assert_almost_eq(plan["radius"] as float, 2.0, 0.001)
+	assert_almost_eq(plan["height"] as float, 0.2, 0.001)
+	# A CSGCylinder3D is centred on its own origin, so resting on the surface
+	# means half a height up -- not level with it.
+	assert_almost_eq((plan["transform"] as Transform3D).origin, \
+		Vector3(0.0, 0.1, 0.0), Vector3.ONE * 0.001, "the cylinder is sunk into its surface")
+
+func test_a_sphere_rests_on_the_surface_rather_than_in_it() -> void:
+	var plan: Dictionary = Geometry.sphere_from_drag(
+		Vector3.ZERO, Basis.IDENTITY, 1.5, 0.2)
+	assert_almost_eq(plan["radius"] as float, 1.5, 0.001)
+	assert_almost_eq((plan["transform"] as Transform3D).origin, \
+		Vector3(0.0, 1.5, 0.0), Vector3.ONE * 0.001, "the ball is half buried in the floor")
+
+func test_a_round_solid_on_a_wall_grows_out_of_the_wall() -> void:
+	# The regression this guards: using the world's up instead of the face's
+	# puts everything drawn on a wall inside the wall.
+	var wall: Basis = Geometry.face_basis(Vector3.RIGHT)
+	var plan: Dictionary = Geometry.sphere_from_drag(Vector3.ZERO, wall, 1.0, 0.2)
+	assert_almost_eq((plan["transform"] as Transform3D).origin, \
+		Vector3(1.0, 0.0, 0.0), Vector3.ONE * 0.001, "the ball grew along the wrong axis")
+
+func test_a_click_with_no_drag_still_gives_a_round_solid_a_radius() -> void:
+	var plan: Dictionary = Geometry.cylinder_from_drag(
+		Vector3.ZERO, Basis.IDENTITY, 0.0, 0.2, 0.2)
+	assert_almost_eq(plan["radius"] as float, 0.2, 0.001, \
+		"a click produced a cylinder with no radius")
