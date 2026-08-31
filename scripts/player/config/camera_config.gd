@@ -32,6 +32,14 @@ extends Resource
 ## a head mount shakes with every glance, and the lower, steadier viewpoint
 ## reads as MORE natural first person rather than less.
 ##
+## THE TEST IS WHAT READS RIGHT, NOT WHAT IS TRUE. At a real eye height you
+## cannot see your own hands while walking unless you deliberately raise them,
+## and every first-person game shows them swinging anyway -- because that is
+## what the view is expected to look like, not because it is accurate. Anatomy
+## is worth citing when it AGREES with a placement that already feels right;
+## it is not what the placement is derived from, and a change argued from it
+## alone is arguing from the wrong thing.
+##
 ## ⚠️ DO NOT READ THE OFFSETS BELOW AS ERRORS TO BE CORRECTED. They are not
 ## compensating for the camera failing to pitch about the neck joint the way a
 ## head does -- not pitching that way is the point. Hanging the eye off the
