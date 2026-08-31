@@ -379,12 +379,24 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# anchored to in the first place.
 		# NOWHERE TO GO IS NOT A MANTLE.
 		#
-		# [ME:INFERRED] An overhung ledge (a slab above it) can be hung from
-		# and shimmied along but stays out of reach for a pull-up -- the
-		# original leaves the player on the hang rather than pulling through
-		# the slab. DO NOT let the pull-up ignore headroom above the ledge:
-		# without the check the body pulls up into the geometry, clipping
-		# through the wall above it.
+		# DO NOT let the pull-up ignore headroom above the ledge: without a
+		# check the body pulls up into the geometry and clips through the wall
+		# above it.
+		#
+		# MEASURED AT THE CROUCH HEIGHT -- the height this move folds the
+		# capsule to thirty lines below, because a pull-up arrives
+		# knees-to-chest and not upright. Gating on a standing body refused
+		# every duct and vent a crouched one fits through. KEEP THESE TWO THE
+		# SAME NUMBER: a gate measuring a pose the climb never adopts is
+		# exactly how a body ends up inside geometry, in whichever direction
+		# they drift.
+		#
+		# [ME:INFERRED] The original leaves the player hanging under an
+		# overhung ledge rather than pulling through the slab. A DELIBERATE
+		# DEPARTURE: a slab 0.9 m or more above the lip now admits a pull-up
+		# into a crouch. What that inference guards against -- a body inside
+		# the geometry -- cannot happen while the gate measures the body's real
+		# height, so the departure costs fidelity and no correctness.
 		#
 		# Refused rather than aborted: the hang is still perfectly valid, and
 		# staying on it is what the original does -- AND, since this move grew
@@ -393,11 +405,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# travel along it to somewhere the slab does not reach, and pull up
 		# there.
 		#
-		# Asked of the BODY, not of the probe. Player.fits_standing_at() moves
-		# the shapecast that already exists for the crouch-to-stand restore --
-		# a SHAPE, because a body has width, where a ray threads between two
-		# slabs it could never fit through.
-		if not player.fits_standing_at(top):
+		# Asked of the BODY, not of the probe. Player.fits_at() moves and
+		# resizes the shapecast that already exists for the crouch-to-stand
+		# restore -- a SHAPE, because a body has width, where a ray threads
+		# between two slabs it could never fit through.
+		if not player.fits_at(top, config.crouch.crouch_capsule_height):
 			return KEEP
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration,

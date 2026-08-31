@@ -1042,35 +1042,66 @@ static func compute_mount_transform(capsule_height: float, mount_offset: Vector3
 func body_mount_transform() -> Transform3D:
 	return compute_mount_transform(current_capsule_height(), body_mount_offset, 		body_mount_rotation_degrees, body_mount_scale)
 
-## True when a standing body would FIT with its feet at `feet_point`.
+## True when a body `height` tall would FIT with its feet at `feet_point`.
 ##
-## THE SAME SHAPECAST, MOVED. has_headroom() below asks the question here, and
-## this asks it somewhere else -- which is all "is there room to pull up onto
-## this ledge" ever needed. A first attempt wrote a fresh upward raycast in
-## Probes for that, and it did not work; this mechanism was sitting on Player
-## the whole time, doing the job for the crouch-to-stand restore.
+## ASK ABOUT THE POSE THAT ARRIVES, not about standing. A pull-up arrives
+## FOLDED -- GrabMove shortens the capsule to the crouch height for the climb
+## -- so gating it on a standing body refuses every duct and vent a crouched
+## one walks into. Callers whose move ends upright (a ladder top-out, a vault,
+## a spring board plant) want fits_standing_at() below and its full height.
+##
+## THE SAME SHAPECAST, MOVED AND RESIZED. has_headroom() below asks the
+## question where the body already is, and this asks it somewhere else --
+## which is all "is there room to pull up onto this ledge" ever needed. A first
+## attempt wrote a fresh upward raycast in Probes for that, and it did not
+## work; this mechanism was sitting on Player the whole time, doing the job for
+## the crouch-to-stand restore.
 ##
 ## A SHAPE, not a ray, and that is the point: a body has width. A ray fired up
 ## from an edge threads between two slabs that a body could never fit through,
 ## and it misses a cap it grazes.
 ##
-## Restored afterwards rather than left where it was put: the node's resting
-## place is the body's own centre, and has_headroom() reads it there every time
-## a crouch tries to stand up.
-func fits_standing_at(feet_point: Vector3) -> bool:
+## Resizing is safe because StandClearance owns a CapsuleShape3D of its own --
+## player.tscn gives it CapsuleShape3D_fcs02 while the body holds _ugbui. DO
+## NOT point the two at one resource: this would then resize the body itself,
+## mid-query, every time anything asked.
+##
+## That shape is NOT resource_local_to_scene, so every Player in the process
+## shares the one instance. Harmless while the resize and the restore sit in a
+## single synchronous call, as they do here -- and the reason they must stay
+## that way. It also means a test cannot read a baseline off it: whatever the
+## previous test left is what it reads.
+##
+## Position AND height are restored before returning rather than left where
+## they were put: the node's resting pose is the body's own centre at standing
+## height, and has_headroom() reads it there every time a crouch tries to stand
+## up.
+func fits_at(feet_point: Vector3, height: float) -> bool:
 	if _stand_clearance == null:
 		return true
-	var resting: Vector3 = _stand_clearance.global_position
+	var capsule := _stand_clearance.shape as CapsuleShape3D
+	var resting_position: Vector3 = _stand_clearance.global_position
+	var resting_height: float = capsule.height if capsule != null else 0.0
+	if capsule != null:
+		capsule.height = height
 	# Lifted a hair clear of the surface being stood ON. A shapecast resting
 	# exactly on a face reports a collision with it, so testing "would a body
 	# fit with its feet here" against the very ledge those feet are on comes
 	# back as blocked -- which would refuse every mantle in the game.
 	const CLEARANCE_LIFT := 0.03
-	_stand_clearance.global_position = feet_point 		+ Vector3.UP * (standing_height() * 0.5 + CLEARANCE_LIFT)
+	_stand_clearance.global_position = feet_point \
+		+ Vector3.UP * (height * 0.5 + CLEARANCE_LIFT)
 	_stand_clearance.force_shapecast_update()
 	var blocked: bool = _stand_clearance.is_colliding()
-	_stand_clearance.global_position = resting
+	_stand_clearance.global_position = resting_position
+	if capsule != null:
+		capsule.height = resting_height
 	return not blocked
+
+## True when a STANDING body would fit with its feet at `feet_point`. For moves
+## that end upright; a pull-up must not use this -- see fits_at() above.
+func fits_standing_at(feet_point: Vector3) -> bool:
+	return fits_at(feet_point, standing_height())
 
 ## True when the standing-size capsule fits where the body currently is.
 ## Tests that build a Player by hand have no probe node, so absence means yes.

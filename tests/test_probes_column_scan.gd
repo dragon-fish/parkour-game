@@ -207,6 +207,52 @@ func test_a_body_fits_on_an_open_ledge() -> void:
 	await step(1)
 	assert_true(player.fits_standing_at(ledge_top), 		"a body was said not to fit on a ledge with open sky above it")
 
+func test_a_duct_admits_a_crouched_body_though_not_a_standing_one() -> void:
+	# A vent in a wall is the case: too low to stand in, plenty for the folded
+	# capsule a pull-up actually arrives in. GrabMove gated this on a STANDING
+	# body and so refused every one of them, while folding the capsule to the
+	# crouch height thirty lines later.
+	var player: Player = await _standing_player()
+	var crouch: float = MovementConfig.new().crouch.crouch_capsule_height
+	var ledge_top := Vector3(0.0, 1.9, -1.1)
+	_slab(0.0, 1.9, 0.6, -1.1)
+	# Roof 1.1 m over the ledge: no standing, comfortable crouching.
+	_slab(3.0, 3.5, 2.4, -1.5)
+	await step(1)
+	assert_false(player.fits_standing_at(ledge_top), \
+		"a standing body was said to fit under a roof 1.1 m up")
+	assert_true(player.fits_at(ledge_top, crouch), \
+		"a crouched body was refused a duct with 1.1 m of room")
+
+func test_a_gap_too_low_even_to_crouch_in_is_still_refused() -> void:
+	# The control for the one above. Relaxing the gate to the crouch height
+	# must not relax it to nothing -- a body still cannot go where a body does
+	# not fit.
+	var player: Player = await _standing_player()
+	var crouch: float = MovementConfig.new().crouch.crouch_capsule_height
+	var ledge_top := Vector3(0.0, 1.9, -1.1)
+	_slab(0.0, 1.9, 0.6, -1.1)
+	_slab(2.3, 2.8, 2.4, -1.5)
+	await step(1)
+	assert_false(player.fits_at(ledge_top, crouch), \
+		"a crouched body was said to fit under a slab 0.4 m above the ledge")
+
+func test_the_clearance_probe_gets_its_height_back_too() -> void:
+	# fits_at() RESIZES the shapecast as well as moving it. Left short, every
+	# later has_headroom() would be answering for a crouched body -- a player
+	# who stands up into a ceiling, and no error anywhere.
+	var player: Player = await _standing_player()
+	var probe: ShapeCast3D = player.get_node("StandClearance")
+	var capsule := probe.shape as CapsuleShape3D
+	# SET, not read. player.tscn's CapsuleShape3D is not resource_local_to_scene,
+	# so every Player built in this run shares one -- reading a baseline off it
+	# gets whatever the previous test left there, and the assertion then compares
+	# a polluted value with itself and passes no matter what.
+	capsule.height = player.standing_height()
+	player.fits_at(Vector3(0.0, 12.0, -30.0), 0.9)
+	assert_almost_eq(capsule.height, player.standing_height(), 0.0001, \
+		"the clearance probe was left at the height of the last question")
+
 func test_the_clearance_probe_goes_back_where_it_belongs() -> void:
 	# fits_standing_at() MOVES the shapecast. Left where it was put, the
 	# crouch-to-stand restore would be asking about a ledge somewhere across the
