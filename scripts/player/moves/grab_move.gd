@@ -115,6 +115,14 @@ var _mantling: bool = false
 func is_mantling() -> bool:
 	return _mantling
 
+## Narrows the look fan for the pull-up only. Answered per tick, which is the
+## whole point of the hook: the hang and the mantle are one move with two very
+## different amounts of freedom.
+func look_yaw_half_span() -> float:
+	if not _mantling:
+		return NAN
+	return deg_to_rad(config.grab.pull_up_look_yaw_deg) * 0.5
+
 ## Whether the pull-up under way ends somewhere too low to stand. Read from
 ## outside by CharacterAnimator, the same way is_mantling() is.
 func is_climbing_low() -> bool:
