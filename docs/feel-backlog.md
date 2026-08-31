@@ -2620,11 +2620,14 @@ var spine_pitch := _pitch / pitch_limit * share_at_limit
 **所以这一栏没有"正确值"，只有"和另外两栏搭配起来对不对"。**
 这也正是对齐工作台存在的理由：三个数要一起看。
 
-## 69. 两条还没实现的动作，机制已经探明
+## 69. 两条动作的机制资料（**均已实现**）
 
-owner 在 ME 里实测补齐的两个动作，参数和触发条件都已经落进
-`docs/mirrors-edge-deep-research/`。记在这里是因为**它们是"可以开工"的状态**，
-不再是"需要先研究"的状态——省得下次又从头查一遍。
+两个动作的参数和触发条件都已落进 `docs/mirrors-edge-deep-research/`，**两个都已经
+实现**（`SpringBoardMove` / `DodgeJumpMove`）。本节保留的是资料本身，不再是待办。
+
+⚠️ 其中 dodge 那条的触发条件后来被实测推翻了一次：`StrafeThreshold = 0.99` 量的是
+**未归一化的输入轴**，所以斜向的 W+A 也触发，而不是只有纯 A/D。更正与手柄上的存疑见
+[04 §4.5](mirrors-edge-deep-research/04-墙面动作.md#45-墙面相关的其他跳跃)。
 
 ### SpringBoard（踩踏跳）→ [05 §5.3](mirrors-edge-deep-research/05-动作库总览.md#53-springboard踩踏跳)
 
