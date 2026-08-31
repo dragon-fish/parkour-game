@@ -34,7 +34,8 @@ var _extent: Vector2 = Vector2.ZERO
 func _enter_tree() -> void:
 	_toggle = CheckButton.new()
 	_toggle.text = "Block"
-	_toggle.tooltip_text = "Drag a rectangle on any surface to lay a CSGBox3D against it."
+	_toggle.tooltip_text = "Drag a rectangle on any surface to lay a CSGBox3D against it.\n" \
+		+ "Hold any modifier to box select instead. Esc or right click cancels a drag."
 	_toggle.toggled.connect(_on_toggled)
 
 	_step_field = SpinBox.new()
@@ -89,6 +90,14 @@ func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 		var button := event as InputEventMouseButton
 		if button.button_index == MOUSE_BUTTON_LEFT:
 			if button.pressed:
+				# A modifier means the editor's gesture, not ours. Box select
+				# and its add/subtract variants stay reachable without leaving
+				# the tool, which is the whole reason this check exists -- and
+				# claiming a modifier of our own is not an option: Alt+Drag is
+				# already "move selected node" and Ctrl/Cmd+Alt+Drag is scale.
+				if button.shift_pressed or button.ctrl_pressed \
+						or button.meta_pressed or button.alt_pressed:
+					return AFTER_GUI_INPUT_PASS
 				return _begin(camera, button.position)
 			if _dragging:
 				return _commit()
