@@ -3,8 +3,8 @@ extends EditorPlugin
 
 # Drag on a surface; a CSG solid is laid flush against it, thin. Pulling it to
 # height is Godot's own CSG handle -- this plugin deliberately stops at the
-# footprint. A box is drawn corner to corner, a cylinder and a sphere centre to
-# rim.
+# footprint. A box is drawn corner to corner; a cylinder and a sphere centre to
+# rim, the sphere centred on the point the drag started from.
 #
 # ONE CHECKBOX AND ONE PICKER, not a button per shape: the toolbar is shared
 # with the editor's own controls and a row that grows with every shape added
@@ -23,6 +23,18 @@ const Geometry := preload("res://addons/blockout_tools/block_geometry.gd")
 const Probe := preload("res://addons/blockout_tools/surface_probe.gd")
 
 enum Shape { BOX, CYLINDER, SPHERE }
+
+## What a drag produces. The shape picker says which solid; this says whether
+## it is geometry or a volume.
+enum Output { CSG, COLLISION }
+
+const OUTPUTS: Array[Dictionary] = [
+	{"output": Output.CSG, "label": "CSG",
+		"hint": "A CSGShape3D: whitebox geometry with collision baked in."},
+	{"output": Output.COLLISION, "label": "Collision",
+		"hint": "A CollisionShape3D. Dropped into the selected body or area if there is one,"
+			+ " otherwise wrapped in a new Area3D so it is a working trigger."},
+]
 
 ## Far enough to cross any level from any angle. A ray is cheap; a click that
 ## silently falls short is not.
@@ -49,12 +61,13 @@ const SHAPES: Array[Dictionary] = [
 	{"shape": Shape.CYLINDER, "icon": "CSGCylinder3D", "label": "Cylinder",
 		"hint": "Cylinder: drag centre to rim."},
 	{"shape": Shape.SPHERE, "icon": "CSGSphere3D", "label": "Sphere",
-		"hint": "Sphere: drag centre to rim. Rests on the surface."},
+		"hint": "Sphere: drag centre to rim. Centred on where the drag started."},
 ]
 
 var _bar: HBoxContainer = null
 var _toggle: CheckBox = null
 var _picker: OptionButton = null
+var _output_picker: OptionButton = null
 var _grid_field: SpinBox = null
 var _thickness_field: SpinBox = null
 
@@ -70,6 +83,7 @@ func _enter_tree() -> void:
 
 	_toggle = _build_toggle()
 	_picker = _build_picker()
+	_output_picker = _build_output_picker()
 	_grid_field = _build_field("grid ", DEFAULT_GRID, 0.0,
 		"Grid the drag snaps to, in metres. 0 disables snapping.\n"
 		+ "Type any value; the arrows step by 0.2.")
@@ -77,6 +91,7 @@ func _enter_tree() -> void:
 		"How thick a new solid starts out. Godot's own CSG handle takes it from there.")
 	_bar.add_child(_toggle)
 	_bar.add_child(_picker)
+	_bar.add_child(_output_picker)
 	_bar.add_child(_grid_field)
 	_bar.add_child(_thickness_field)
 
@@ -90,6 +105,7 @@ func _exit_tree() -> void:
 	_bar = null
 	_toggle = null
 	_picker = null
+	_output_picker = null
 	_grid_field = null
 	_thickness_field = null
 
@@ -122,6 +138,16 @@ func _build_picker() -> OptionButton:
 				entry["label"], entry["shape"])
 		else:
 			picker.add_item(entry["label"], entry["shape"])
+	picker.item_selected.connect(_on_shape_selected)
+	return picker
+
+func _build_output_picker() -> OptionButton:
+	var picker := OptionButton.new()
+	picker.flat = true
+	picker.fit_to_longest_item = false
+	for entry in OUTPUTS:
+		picker.add_item(entry["label"], entry["output"])
+	picker.tooltip_text = "\n".join([OUTPUTS[0]["hint"], OUTPUTS[1]["hint"]])
 	picker.item_selected.connect(_on_shape_selected)
 	return picker
 
@@ -159,6 +185,11 @@ func _load_prefs() -> void:
 		var index: int = _picker.get_item_index(shape)
 		if index >= 0:
 			_picker.select(index)
+		var output: int = int(settings.get_project_metadata(
+			PREFS_SECTION, "output", Output.CSG))
+		var output_index: int = _output_picker.get_item_index(output)
+		if output_index >= 0:
+			_output_picker.select(output_index)
 
 func _save_prefs() -> void:
 	var settings: EditorSettings = _prefs()
@@ -167,6 +198,7 @@ func _save_prefs() -> void:
 	settings.set_project_metadata(PREFS_SECTION, "grid", _grid_field.value)
 	settings.set_project_metadata(PREFS_SECTION, "thickness", _thickness_field.value)
 	settings.set_project_metadata(PREFS_SECTION, "shape", _picked_shape())
+	settings.set_project_metadata(PREFS_SECTION, "output", _picked_output())
 
 func _on_field_changed(_value: float) -> void:
 	_save_prefs()
@@ -195,6 +227,9 @@ func _on_toggled(pressed: bool) -> void:
 
 func _picked_shape() -> int:
 	return _picker.get_selected_id() if _picker != null else Shape.BOX
+
+func _picked_output() -> int:
+	return _output_picker.get_selected_id() if _output_picker != null else Output.CSG
 
 func _armed() -> bool:
 	return _toggle != null and _toggle.button_pressed
@@ -291,6 +326,100 @@ func _cancel() -> void:
 	_radius = 0.0
 	update_overlays()
 
+## Where a new node goes.
+##
+## A SIBLING of whatever is selected, not a child of it: every drag selects
+## what it just made, so parenting to the selection would thread each solid
+## through the last one and build a chain nobody asked for. Siblings keep a run
+## of them in one place.
+##
+## The exception is a collision shape dropped on something that takes one -- an
+## Area3D volume, a body -- where being a child IS the point. This project's
+## volumes are built exactly that way: Checkpoint, DeathVolume and
+## ModifierVolume are all Area3D asking for "whatever CollisionShape3D children
+## the spot needs".
+func _target_parent(root: Node, collision: bool) -> Node:
+	var selected: Node = null
+	for node in EditorInterface.get_selection().get_selected_nodes():
+		if node is Node3D:
+			selected = node
+			break
+	if selected == null or selected == root:
+		return root
+	if collision and selected is CollisionObject3D:
+		return selected
+	var parent: Node = selected.get_parent()
+	return parent if parent != null else root
+
+func _plan() -> Dictionary:
+	var grid: float = _grid()
+	var thickness: float = _thickness()
+	match _picked_shape():
+		Shape.CYLINDER:
+			return Geometry.cylinder_from_drag(_anchor, _face, _radius, thickness, grid)
+		Shape.SPHERE:
+			return Geometry.sphere_from_drag(_anchor, _face, _radius, grid)
+		_:
+			return Geometry.block_from_drag(_anchor, _face, _extent, thickness, grid)
+
+func _build_csg(plan: Dictionary) -> CSGShape3D:
+	match _picked_shape():
+		Shape.CYLINDER:
+			var cylinder := CSGCylinder3D.new()
+			cylinder.name = "Cylinder"
+			cylinder.radius = plan["radius"]
+			cylinder.height = plan["height"]
+			return cylinder
+		Shape.SPHERE:
+			var sphere := CSGSphere3D.new()
+			sphere.name = "Sphere"
+			sphere.radius = plan["radius"]
+			return sphere
+		_:
+			var box := CSGBox3D.new()
+			box.name = "Box"
+			box.size = plan["size"]
+			return box
+
+func _build_shape(plan: Dictionary) -> Shape3D:
+	match _picked_shape():
+		Shape.CYLINDER:
+			var cylinder := CylinderShape3D.new()
+			cylinder.radius = plan["radius"]
+			cylinder.height = plan["height"]
+			return cylinder
+		Shape.SPHERE:
+			var sphere := SphereShape3D.new()
+			sphere.radius = plan["radius"]
+			return sphere
+		_:
+			var box := BoxShape3D.new()
+			box.size = plan["size"]
+			return box
+
+## Returns {"node": the Node3D to add to the parent, "inner": a descendant that
+## also needs an owner, or null}.
+func _build_output(plan: Dictionary, collision: bool, parent: Node) -> Dictionary:
+	if not collision:
+		var solid: CSGShape3D = _build_csg(plan)
+		solid.use_collision = true
+		return {"node": solid, "inner": null}
+
+	var shape := CollisionShape3D.new()
+	shape.name = "CollisionShape3D"
+	shape.shape = _build_shape(plan)
+	if parent is CollisionObject3D:
+		return {"node": shape, "inner": null}
+
+	# A CollisionShape3D belonging to nothing is inert, and the editor flags it
+	# with a warning rather than doing anything about it. Wrapping keeps every
+	# drag productive: what comes out is a trigger that already works, and
+	# swapping the Area3D for a Checkpoint or a DeathVolume is one field.
+	var area := Area3D.new()
+	area.name = "Trigger"
+	area.add_child(shape)
+	return {"node": area, "inner": shape}
+
 func _commit() -> int:
 	_dragging = false
 	update_overlays()
@@ -298,56 +427,37 @@ func _commit() -> int:
 	if root == null:
 		return AFTER_GUI_INPUT_STOP
 
-	var grid: float = _grid()
-	var thickness: float = _thickness()
-	var solid: CSGShape3D
-	var placement: Transform3D
-	match _picked_shape():
-		Shape.CYLINDER:
-			var plan: Dictionary = Geometry.cylinder_from_drag(
-				_anchor, _face, _radius, thickness, grid)
-			var cylinder := CSGCylinder3D.new()
-			cylinder.radius = plan["radius"]
-			cylinder.height = plan["height"]
-			solid = cylinder
-			placement = plan["transform"]
-		Shape.SPHERE:
-			var plan: Dictionary = Geometry.sphere_from_drag(
-				_anchor, _face, _radius, grid)
-			var sphere := CSGSphere3D.new()
-			sphere.radius = plan["radius"]
-			solid = sphere
-			placement = plan["transform"]
-		_:
-			var plan: Dictionary = Geometry.block_from_drag(
-				_anchor, _face, _extent, thickness, grid)
-			var box := CSGBox3D.new()
-			box.size = plan["size"]
-			solid = box
-			placement = plan["transform"]
+	var plan: Dictionary = _plan()
+	var collision: bool = _picked_output() == Output.COLLISION
+	var parent: Node = _target_parent(root, collision)
+	var built: Dictionary = _build_output(plan, collision, parent)
+	var node: Node3D = built["node"]
 
-	solid.name = "Block"
-	solid.transform = root.global_transform.affine_inverse() * placement
-	solid.use_collision = true
+	# The placement is in world space and the node is about to live under a
+	# parent that may be anywhere: without this the whole thing lands wherever
+	# the parent's own transform puts it.
+	var frame := Transform3D.IDENTITY
+	if parent is Node3D:
+		frame = (parent as Node3D).global_transform
+	node.transform = Geometry.local_placement(frame, plan["transform"] as Transform3D)
 
-	# Always the scene root, never the current selection: the new solid is
-	# selected below so its CSG handles are under the mouse straight away, and
-	# parenting to the selection would then thread every new one through the
-	# last.
 	var undo: EditorUndoRedoManager = get_undo_redo()
-	undo.create_action("Draw solid")
-	undo.add_do_method(root, "add_child", solid, true)
-	undo.add_do_method(solid, "set_owner", root)
-	undo.add_do_reference(solid)
-	undo.add_undo_method(root, "remove_child", solid)
+	undo.create_action("Draw %s" % node.name)
+	undo.add_do_method(parent, "add_child", node, true)
+	undo.add_do_method(node, "set_owner", root)
+	if built["inner"] != null:
+		# A descendant with no owner is dropped when the scene is saved.
+		undo.add_do_method(built["inner"], "set_owner", root)
+	undo.add_do_reference(node)
+	undo.add_undo_method(parent, "remove_child", node)
 	undo.commit_action()
 
 	var selection: EditorSelection = EditorInterface.get_selection()
 	selection.clear()
-	selection.add_node(solid)
+	selection.add_node(node)
 	# Disarm, because the next thing anyone does is pull the thing they just
 	# drew to height -- and while the tool is armed this plugin eats the bare
-	# left click, so the CSG handles cannot be grabbed. Selecting the new solid
+	# left click, so the handles cannot be grabbed. Selecting the new node
 	# without disarming hands over a gizmo that does not answer.
 	_toggle.set_pressed_no_signal(false)
 	return AFTER_GUI_INPUT_STOP

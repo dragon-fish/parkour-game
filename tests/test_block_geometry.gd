@@ -75,23 +75,38 @@ func test_a_cylinder_stands_on_its_footprint() -> void:
 	assert_almost_eq((plan["transform"] as Transform3D).origin, \
 		Vector3(0.0, 0.1, 0.0), Vector3.ONE * 0.001, "the cylinder is sunk into its surface")
 
-func test_a_sphere_rests_on_the_surface_rather_than_in_it() -> void:
+func test_a_sphere_is_centred_where_the_drag_started() -> void:
+	# Dragging a centre and a radius means the centre is where you pointed.
+	# This used to lift the ball to rest on the surface, which put it somewhere
+	# nobody asked for.
 	var plan: Dictionary = Geometry.sphere_from_drag(
-		Vector3.ZERO, Basis.IDENTITY, 1.5, 0.2)
+		Vector3(2.0, 1.0, -3.0), Basis.IDENTITY, 1.5, 0.2)
 	assert_almost_eq(plan["radius"] as float, 1.5, 0.001)
 	assert_almost_eq((plan["transform"] as Transform3D).origin, \
-		Vector3(0.0, 1.5, 0.0), Vector3.ONE * 0.001, "the ball is half buried in the floor")
+		Vector3(2.0, 1.0, -3.0), Vector3.ONE * 0.001, "the ball drifted off its centre")
 
-func test_a_round_solid_on_a_wall_grows_out_of_the_wall() -> void:
+func test_a_cylinder_on_a_wall_grows_out_of_the_wall() -> void:
 	# The regression this guards: using the world's up instead of the face's
 	# puts everything drawn on a wall inside the wall.
 	var wall: Basis = Geometry.face_basis(Vector3.RIGHT)
-	var plan: Dictionary = Geometry.sphere_from_drag(Vector3.ZERO, wall, 1.0, 0.2)
+	var plan: Dictionary = Geometry.cylinder_from_drag(Vector3.ZERO, wall, 1.0, 0.4, 0.2)
 	assert_almost_eq((plan["transform"] as Transform3D).origin, \
-		Vector3(1.0, 0.0, 0.0), Vector3.ONE * 0.001, "the ball grew along the wrong axis")
+		Vector3(0.2, 0.0, 0.0), Vector3.ONE * 0.001, "the cylinder grew along the wrong axis")
 
 func test_a_click_with_no_drag_still_gives_a_round_solid_a_radius() -> void:
 	var plan: Dictionary = Geometry.cylinder_from_drag(
 		Vector3.ZERO, Basis.IDENTITY, 0.0, 0.2, 0.2)
 	assert_almost_eq(plan["radius"] as float, 0.2, 0.001, \
 		"a click produced a cylinder with no radius")
+
+func test_a_solid_lands_where_it_was_drawn_under_a_moved_parent() -> void:
+	# The hazard: a Node3D's transform is read against its parent, so handing
+	# it the world placement puts a solid drawn on a rotated platform somewhere
+	# off to the side. One inverse of the parent's GLOBAL transform is the
+	# whole correction -- that transform already carries the ancestor chain.
+	var parent := Transform3D(Basis(Vector3.UP, deg_to_rad(37.0)), Vector3(10.0, -4.0, 6.0))
+	var world := Transform3D(Basis(Vector3.RIGHT, deg_to_rad(20.0)), Vector3(-2.0, 1.5, 3.0))
+	var local: Transform3D = Geometry.local_placement(parent, world)
+	assert_almost_eq((parent * local).origin, world.origin, Vector3.ONE * 0.0001, \
+		"the solid drifted off the point it was drawn at")
+	assert_true((parent * local).is_equal_approx(world), "the solid came out skewed")

@@ -102,13 +102,25 @@ static func cylinder_from_drag(anchor: Vector3, basis: Basis, radius: float,
 
 ## The sphere a centre-out drag describes.
 ##
-## Rests on the surface rather than centring on it: a ball half sunk into the
-## floor is nobody's intent, and the drag names the footprint's centre, not the
-## solid's. Thickness has no meaning here, so it takes none.
+## Centred exactly where the drag started, half of it under the surface. That
+## is what dragging a centre and a radius means, and lifting it to sit on the
+## surface -- which this used to do, meaning well -- put the ball somewhere
+## nobody pointed at. Thickness has no meaning here, so it takes none.
 static func sphere_from_drag(anchor: Vector3, basis: Basis, radius: float,
 		step: float) -> Dictionary:
-	var reach: float = maxf(absf(radius), maxf(step, MIN_THICKNESS))
 	return {
-		"radius": reach,
-		"transform": Transform3D(basis, anchor + basis.y * reach),
+		"radius": maxf(absf(radius), maxf(step, MIN_THICKNESS)),
+		"transform": Transform3D(basis, anchor),
 	}
+
+## Turns a world placement into one relative to the parent a node is about to
+## be added under.
+##
+## A Node3D's `transform` is read against its parent, so handing it a world
+## transform lands it wherever the parent's own chain happens to put it -- a
+## solid drawn on a rotated platform ends up skewed somewhere off to the side.
+## `parent_global` already carries the whole ancestor chain, so one inverse is
+## the entire correction; walking up level by level is not needed and is not
+## more correct.
+static func local_placement(parent_global: Transform3D, world: Transform3D) -> Transform3D:
+	return parent_global.affine_inverse() * world
