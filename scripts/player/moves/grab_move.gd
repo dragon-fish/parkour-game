@@ -12,6 +12,9 @@ extends ScriptedMove
 var _aborted: bool = false
 
 var _edge: Vector3 = Vector3.ZERO
+## Whether the pull-up in progress lands somewhere too low to stand. Read by
+## CharacterAnimator, which cuts the climb clip before its stand-up half.
+var _low_ceiling: bool = false
 ## The WALL FACE's normal, pointing away from the wall and back toward the
 ## player -- kept because a shimmy runs along the ledge, and the only thing
 ## that knows which way "along" is, is the wall.
@@ -111,6 +114,12 @@ var _mantling: bool = false
 ## vocabulary (`ladder_stillness`); the mantle phase still does not.
 func is_mantling() -> bool:
 	return _mantling
+
+## Whether the pull-up under way ends somewhere too low to stand. Read from
+## outside by CharacterAnimator, the same way is_mantling() is.
+func is_climbing_low() -> bool:
+	return _mantling and _low_ceiling
+
 
 ## Which way the hands are travelling along the ledge: -1 left, +1 right, 0
 ## still. Exposed for the same reason is_mantling() is -- nothing outside this
@@ -256,6 +265,7 @@ func enter(_previous: StringName) -> void:
 ## Safe on the hang-and-drop path too, where nothing was ever shrunk: asking for
 ## a standing capsule you already have costs nothing.
 func exit() -> void:
+	_low_ceiling = false
 	player.request_standing_capsule()
 	player.set_body_folded(false)
 	player.set_clip_lift_cancelled(false)
@@ -290,6 +300,17 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			# checks are themselves gated on grounded being true, so this
 			# hand-off cannot chain straight into a second scripted move
 			# either.
+			#
+			# CROUCH WHEN THE ROOF SAYS SO, the same rule SlideMove ends on:
+			# the only thing that ever needed headroom was standing up. A
+			# pull-up into a duct lands under one, and exit() asks for the
+			# standing capsule REQUEST-style, so the collider stays folded and
+			# correct -- but handing that body to Walking gives it a standing
+			# animation over a 0.9 m capsule, which is a head through the
+			# ceiling. Crouch costs no headroom check of its own: it is the
+			# height the climb already folded to.
+			if not player.has_headroom():
+				return CROUCH
 			return WALKING
 		return KEEP
 
@@ -379,12 +400,24 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# anchored to in the first place.
 		# NOWHERE TO GO IS NOT A MANTLE.
 		#
-		# [ME:INFERRED] An overhung ledge (a slab above it) can be hung from
-		# and shimmied along but stays out of reach for a pull-up -- the
-		# original leaves the player on the hang rather than pulling through
-		# the slab. DO NOT let the pull-up ignore headroom above the ledge:
-		# without the check the body pulls up into the geometry, clipping
-		# through the wall above it.
+		# DO NOT let the pull-up ignore headroom above the ledge: without a
+		# check the body pulls up into the geometry and clips through the wall
+		# above it.
+		#
+		# MEASURED AT THE CROUCH HEIGHT -- the height this move folds the
+		# capsule to thirty lines below, because a pull-up arrives
+		# knees-to-chest and not upright. Gating on a standing body refused
+		# every duct and vent a crouched one fits through. KEEP THESE TWO THE
+		# SAME NUMBER: a gate measuring a pose the climb never adopts is
+		# exactly how a body ends up inside geometry, in whichever direction
+		# they drift.
+		#
+		# [ME:INFERRED] The original leaves the player hanging under an
+		# overhung ledge rather than pulling through the slab. A DELIBERATE
+		# DEPARTURE: a slab 0.9 m or more above the lip now admits a pull-up
+		# into a crouch. What that inference guards against -- a body inside
+		# the geometry -- cannot happen while the gate measures the body's real
+		# height, so the departure costs fidelity and no correctness.
 		#
 		# Refused rather than aborted: the hang is still perfectly valid, and
 		# staying on it is what the original does -- AND, since this move grew
@@ -393,12 +426,21 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# travel along it to somewhere the slab does not reach, and pull up
 		# there.
 		#
-		# Asked of the BODY, not of the probe. Player.fits_standing_at() moves
-		# the shapecast that already exists for the crouch-to-stand restore --
-		# a SHAPE, because a body has width, where a ray threads between two
-		# slabs it could never fit through.
-		if not player.fits_standing_at(top):
+		# Asked of the BODY, not of the probe. Player.fits_at() moves and
+		# resizes the shapecast that already exists for the crouch-to-stand
+		# restore -- a SHAPE, because a body has width, where a ray threads
+		# between two slabs it could never fit through.
+		# _edge, NOT `top`. fits_at() takes the point the FEET land on and
+		# builds the capsule up from there; `top` is already the capsule's
+		# CENTRE, half a standing height above the lip. Handing it over lifted
+		# the whole test body 0.9 m and measured the wall above the opening
+		# instead of the opening: an aperture 1.28 m tall, easily clear for the
+		# 0.9 m the climb folds down to, came back blocked every time.
+		if not player.fits_at(_edge, config.crouch.crouch_capsule_height):
 			return KEEP
+		# Asked ONCE, here, and not again: the animator reads it every frame of
+		# the climb and the answer must not change halfway through a clip.
+		_low_ceiling = not player.fits_standing_at(_edge)
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration,
 				# DO NOT add mantle_apex_above_top to `top` directly. `top`

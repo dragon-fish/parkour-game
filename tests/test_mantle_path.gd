@@ -41,7 +41,10 @@ func after_each() -> void:
 	TestWorld.teardown(_world)
 	_world = {}
 
-func _mantling_player() -> Array:
+## `roof_clearance` puts a ceiling that far above the ledge, which is what an
+## opening in a wall is: a lip with something solid over it. Zero means open
+## sky, the shape every test here had before.
+func _mantling_player(roof_clearance: float = 0.0) -> Array:
 	_world = TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(_world)
@@ -56,6 +59,17 @@ func _mantling_player() -> Array:
 	player.get_parent().add_child(body)
 	body.global_position = Vector3(0.0, LEDGE_TOP * 0.5, LEDGE_FACE_Z - 0.5)
 	_extra.append(body)
+	if roof_clearance > 0.0:
+		var roof := StaticBody3D.new()
+		var roof_shape := CollisionShape3D.new()
+		var roof_box := BoxShape3D.new()
+		roof_box.size = Vector3(6.0, 1.0, 3.0)
+		roof_shape.shape = roof_box
+		roof.add_child(roof_shape)
+		player.get_parent().add_child(roof)
+		roof.global_position = Vector3(0.0, LEDGE_TOP + roof_clearance + 0.5,
+			LEDGE_FACE_Z - 1.0)
+		_extra.append(roof)
 	player.rotation.y = 0.0
 	var query := {"valid": true, "edge": EDGE, "top": EDGE,
 			"normal": TOP_NORMAL, "face_normal": FACE_NORMAL}
@@ -160,3 +174,75 @@ func test_the_ease_is_still_there_for_anything_that_asks() -> void:
 	var straight: Vector3 = start.lerp(target, 0.5)
 	assert_gt(at.distance_to(straight), 0.05,
 		"asking for an ease of 2.0 still produced a straight line")
+
+
+# --- climbing into an opening ----------------------------------------------------
+
+func test_an_opening_too_low_to_stand_in_is_still_climbed_into() -> void:
+	# A vent or a duct: 1.28 m of clear height, which no standing body fits in
+	# and every folded one does -- and folding is what a pull-up does, thirty
+	# lines into GrabMove.physics_update().
+	#
+	# The gate was handed `top`, the capsule's CENTRE, by a function that
+	# builds its capsule up from the FEET. That lifted the test body 0.9 m and
+	# measured the wall above the opening rather than the opening.
+	var bits: Array = await _mantling_player(1.278)
+	var grab: GrabMove = bits[1]
+	assert_true(grab.is_mantling(), \
+		"a 1.28 m opening refused a climb that folds down to 0.9 m")
+
+func test_a_gap_no_body_fits_through_is_still_refused() -> void:
+	# The control. Measuring at the crouch height must not become measuring at
+	# nothing: pulling up into a slab is the clipping this gate exists to stop.
+	var bits: Array = await _mantling_player(0.5)
+	var grab: GrabMove = bits[1]
+	assert_false(grab.is_mantling(), \
+		"a 0.5 m gap admitted a pull-up no body could survive")
+
+
+func test_a_climb_into_an_opening_ends_crouched_not_walking() -> void:
+	# The capsule stays folded under a roof -- request_standing_capsule() sees
+	# to that -- but the MOVE decides the animation, and Walking over a 0.9 m
+	# capsule is a standing body with its head through the ceiling.
+	var bits: Array = await _mantling_player(1.278)
+	var player: Player = bits[0]
+	var grab: GrabMove = bits[1]
+	assert_true(grab.is_mantling(), "the fixture never started a pull-up")
+	var landed: StringName = Move.KEEP
+	for i in 200:
+		landed = grab.physics_update(1.0 / 60.0, MoveInput.new())
+		if landed != Move.KEEP:
+			break
+		await step(1)
+	assert_eq(landed, Move.CROUCH, \
+		"a pull-up under a roof handed the body to a standing move")
+	assert_false(player.has_headroom(), "the fixture left room to stand after all")
+
+func test_a_climb_into_open_sky_still_ends_walking() -> void:
+	# The control: nothing above the ledge must still walk out of the climb.
+	var bits: Array = await _mantling_player()
+	var grab: GrabMove = bits[1]
+	var landed: StringName = Move.KEEP
+	for i in 200:
+		landed = grab.physics_update(1.0 / 60.0, MoveInput.new())
+		if landed != Move.KEEP:
+			break
+		await step(1)
+	assert_eq(landed, Move.WALKING, "an open ledge stopped handing over to Walking")
+
+func test_a_climb_into_an_opening_knows_it_cannot_stand() -> void:
+	# What the animator reads to decide whether to cut the climb clip before
+	# its stand-up half. The number of frames it keeps is an eye value and is
+	# not pinned here; WHETHER it cuts is not.
+	var bits: Array = await _mantling_player(1.278)
+	var grab: GrabMove = bits[1]
+	assert_true(grab.is_mantling(), "the fixture never started a pull-up")
+	assert_true(grab.is_climbing_low(), \
+		"a climb into a 1.28 m opening was reported as having room to stand")
+
+func test_a_climb_into_open_sky_is_not_reported_as_low() -> void:
+	# The control: cutting every climb short would be worse than cutting none.
+	var bits: Array = await _mantling_player()
+	var grab: GrabMove = bits[1]
+	assert_true(grab.is_mantling(), "the fixture never started a pull-up")
+	assert_false(grab.is_climbing_low(), "an open ledge was treated as a duct")

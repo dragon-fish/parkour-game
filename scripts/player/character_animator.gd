@@ -439,7 +439,47 @@ func _load_slot(clip: StringName) -> void:
 	var anim_player := anim_tree.get_node_or_null(anim_tree.anim_player) as AnimationPlayer
 	if anim_player == null:
 		return
-	player.apply_clip_timing(node, clip, anim_player)
+	player.apply_clip_timing(node, clip, anim_player, _scripted_trim(clip))
+
+## The trim this clip should play with RIGHT NOW, or [] to use the table's.
+##
+## A pull-up into a duct keeps only the first frames of the climb: the rest of
+## the clip is a stand-up, and standing is exactly what the body must not do
+## there. GrabConfig.low_ceiling_clip_frames is the count; the clip's own step
+## turns it into seconds, so a pack authored at some rate other than 30 is not
+## misread.
+##
+## _clip_length() consults this too. It must: the scripted fit stretches the
+## KEPT length into the move's duration, and fitting the whole clip's length
+## while only part of it plays finishes the animation early and holds the last
+## pose for the rest of the move.
+func _scripted_trim(clip: StringName) -> Array:
+	if player == null or player.config == null or player.move_manager == null:
+		return []
+	var grab = player.move_manager.move_for(Move.GRAB)
+	if grab == null or not grab.is_climbing_low():
+		return []
+	if _mantle_clip_names().find(clip) < 0:
+		return []
+	var frames: float = player.config.grab.low_ceiling_clip_frames
+	if frames <= 0.0:
+		return []
+	return [0.0, frames * _frame_seconds(clip)]
+
+## Which clips a pull-up may pick, so a trim meant for the climb cannot land on
+## whatever else happens to be in the slot.
+func _mantle_clip_names() -> Array[StringName]:
+	return [&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge"]
+
+## One frame of `clip`, in seconds, read off the clip rather than assumed at 30.
+func _frame_seconds(clip: StringName) -> float:
+	if anim_tree == null:
+		return 1.0 / 30.0
+	var anim_player := anim_tree.get_node_or_null(anim_tree.anim_player) as AnimationPlayer
+	if anim_player == null or not anim_player.has_animation(clip):
+		return 1.0 / 30.0
+	var step: float = anim_player.get_animation(clip).step
+	return step if step > 0.0001 else 1.0 / 30.0
 
 ## Asks the gate for one of its inputs, by name.
 func _request(input: StringName) -> void:
@@ -576,6 +616,9 @@ func _clip_length(clip: StringName) -> float:
 	# 20-frame length makes the fit too slow for what is actually left, so the
 	# trimmed clip finishes early and the move runs on for the rest of its
 	# duration on a held pose -- 0.70 s of animation inside a 1.00 s move.
+	var override: Array = _scripted_trim(clip)
+	if override.size() >= 2 and float(override[1]) > 0.0:
+		return float(override[1])
 	if player == null or not player.body_clip_timings.has(clip):
 		return whole
 	var entry = player.body_clip_timings[clip]
