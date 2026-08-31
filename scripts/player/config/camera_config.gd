@@ -26,6 +26,12 @@ extends Resource
 ##     from behind. See camera_head_follow_strength: 9 cm of bob against the
 ##     1-3 cm a first-person view tolerates.
 ##
+## THE SAME PLACEMENT IS ARRIVED AT OUTSIDE GAMES, which is worth knowing
+## before treating it as a rendering workaround: vlog cameras are worn on the
+## neck or the chest rather than on the head, for two of the reasons above --
+## a head mount shakes with every glance, and the lower, steadier viewpoint
+## reads as MORE natural first person rather than less.
+##
 ## ⚠️ DO NOT READ THE OFFSETS BELOW AS ERRORS TO BE CORRECTED. They are not
 ## compensating for the camera failing to pitch about the neck joint the way a
 ## head does -- not pitching that way is the point. Hanging the eye off the
