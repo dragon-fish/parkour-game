@@ -514,7 +514,7 @@ func _run_band_speed() -> float:
 ## out of, and it already routes to Jump_Land as its own clip for the whole of
 ## its two-second lockout.
 const _AIRBORNE_MOVES: Array[StringName] = [
-	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED, Move.COIL,
+	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED, Move.COIL, Move.DODGE_JUMP,
 ]
 
 ## Decides whether the move that just started owes a one-shot -- a clip played
@@ -1281,6 +1281,21 @@ func _target_animation() -> StringName:
 			# clip STOOD STILL through its own take-off while FALLING, one tick
 			# later, correctly played a jump.
 			return _first_available([&"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
+		Move.DODGE_JUMP:
+			# UAL 1 has the pair, and they are named for the side the body
+			# goes, not for anything it pushes off. Same naming guess as
+			# WallRun_L/R above: if a dodge reads mirrored, flip both lines
+			# together.
+			#
+			# The clip is 1.3 s long and the move is over in about a third of
+			# that -- a dodge crosses enter_to_falling_z_speed and hands off to
+			# FALLING, whose airborne loop takes over mid-clip. That is the
+			# same arrangement Jump_Start already lives with, not a fault.
+			var dodge_move = player.move_manager.move_for(Move.DODGE_JUMP)
+			var dodge_side: int = dodge_move.side() if dodge_move != null else 0
+			var dodge_clip: StringName = &"Dodge_Right" if dodge_side > 0 else &"Dodge_Left"
+			return _first_available([dodge_clip, &"Dodge_Left", &"Dodge_Right",
+				&"Jump_Start", &"jump", &"idle"])
 		Move.FALL_UNCONTROLLED:
 			# NO LONGER THE SAME AS AN ORDINARY FALL: LiftAir_Fall_Air is the
 			# pack's own out-of-control descent, where Jump is a controlled

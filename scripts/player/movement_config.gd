@@ -44,3 +44,4 @@ extends Resource
 @export var balance: BalanceConfig = BalanceConfig.new()
 @export var ledge_walk: LedgeWalkConfig = LedgeWalkConfig.new()
 @export var spring_board: SpringBoardConfig = SpringBoardConfig.new()
+@export var dodge_jump: DodgeJumpConfig = DodgeJumpConfig.new()

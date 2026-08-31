@@ -152,10 +152,32 @@ func spend_turn(radians: float, delta: float) -> void:
 	#
 	# Only turning is floored. decay() still empties the budget completely when
 	# the player stops, or standing still would leave them permanently primed.
-	var floor_energy: float = energy_for_speed(_pawn, _pawn.speed_max_base_velocity)
+	var floor_energy: float = base_floor()
 	if energy <= floor_energy:
 		return
 	energy = maxf(energy - absf(cost), floor_energy)
+	_rebase_decay()
+
+## THE floor -- the energy that buys speed_max_base_velocity, 4.0 m/s, 14.4
+## km/h. Every drain in the project stops here except decay() from a
+## standstill, and they all ask this rather than each spelling the pair out,
+## so the floor cannot end up meaning two slightly different things.
+func base_floor() -> float:
+	return energy_for_speed(_pawn, _pawn.speed_max_base_velocity)
+
+## Drops the whole banked budget to base_floor() in one go. A dodge's entire
+## cost: [ME:CONFIRMED 04 §4.5] a dodge out of a run leaves the speed energy
+## at 14.4 km/h.
+##
+## The SPEED is not touched, only the ceiling: the body keeps what it is
+## carrying and the cap drags it down from above, exactly as it does after a
+## hard turn. See DodgeJumpConfig's own note on why InertiaConservation is not
+## implemented on top of this.
+func spend_to_base() -> void:
+	var floor_energy: float = base_floor()
+	if energy <= floor_energy:
+		return
+	energy = floor_energy
 	_rebase_decay()
 
 ## The energy at which the speed curve first reaches `speed` -- the inverse of

@@ -46,6 +46,11 @@ func poll() -> MoveInput:
 	out.move = Vector2(strafe, forward)
 	if out.move.length_squared() > 1.0:
 		out.move = out.move.normalized()
+	# BEFORE the normalisation, deliberately: a key is a full-scale axis and
+	# holding W as well does not make A any less pressed. See
+	# MoveInput.strafe_axis, and DodgeJumpConfig.strafe_threshold for the one
+	# move that reads it.
+	out.strafe_axis = strafe
 
 	out.look = _look_accumulator
 	_look_accumulator = Vector2.ZERO
