@@ -506,10 +506,11 @@ func clear_head_position() -> void:
 func _damped_look(step: float, room: float) -> float:
 	if step == 0.0 or _config == null:
 		return step
-	var band: float = deg_to_rad(_config.camera.look_damp_deg)
-	if band <= 0.0 or room >= band or room < 0.0:
+	var half: float = deg_to_rad(_config.camera.look_damp_half_deg)
+	# Negative room is passed through: see this function's own note.
+	if half <= 0.0 or room < 0.0:
 		return step
-	return step * clampf(room / band, 0.0, 1.0)
+	return step * (room / (room + half))
 
 ## facing the move began with.
 func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \

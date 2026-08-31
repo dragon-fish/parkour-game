@@ -395,9 +395,38 @@ extends Resource
 ## reached, which is the point -- there is no frame where the view slams to a
 ## stop.
 ##
-## 2-3 degrees on the owner's report of the original. Verified by feel only;
-## it is a taste value with nothing measured behind the exact number.
-@export var look_damp_deg: float = 2.5
+## Degrees from a look limit at which the view moves at HALF speed. Zero
+## restores the hard stop.
+##
+## INVERSE, NOT A BAND: the scale is room / (room + this), so there is no edge
+## where damping switches on and no corner in the response. Resistance grows
+## continuously the whole way in and the limit is approached asymptotically,
+## which is what reads as weight. A band -- full speed outside it, a straight
+## ramp inside -- was tried first and is two straight lines with a kink where
+## they meet; at any width narrow enough not to feel mushy it was also crossed
+## inside a tick or two and could not be felt at all.
+##
+## What the number means, directly: at this many degrees out the view moves at
+## half the speed the mouse asks for, at three times it about three quarters,
+## at a third of it about a quarter. Far from any limit the factor is
+## indistinguishable from 1, so ordinary looking is untouched.
+##
+## ONE NUMBER SERVES LIMITS OF VERY DIFFERENT SIZES -- 89 degrees of pitch, a
+## 170 degree hang, a 45 degree shimmy -- so it is deliberately small: the tail
+## is long and gentle rather than the last stretch being heavy.
+## MEASURED, pitch driven into its 89 degree limit at a slow 1.5 degrees per
+## tick. Samples eight ticks apart, over the last stretch:
+##
+##     0.0   85.50 -> 89.00                            the hard stop
+##     1.5   81.85 -> 88.95 -> 89.00
+##     3.0   79.09 -> 86.89 -> 88.97 -> 89.00
+##     6.0   74.73 -> 82.36 -> 87.18 -> 88.75 -> 88.97
+##
+## Verified by feel from there. The first attempt at this feature shipped a
+## 2.5 degree BAND and could not be felt at all -- worth knowing, because the
+## width that sounds right when describing the original is not the width that
+## survives a mouse crossing it in one tick.
+@export var look_damp_half_deg: float = 3.0
 
 ## the dial stops being honest there, and it does so silently.
 @export var third_person_probe_radius: float = 0.2
