@@ -353,6 +353,36 @@ extends Resource
 
 @export var third_person_min_fraction: float = 0.15
 
+## Radius of the sphere the third-person probe sweeps, in metres. What it buys
+## is CLEARANCE: the camera comes to rest at least this far off whatever it
+## backed away from, instead of flat against it.
+##
+## THE FLOOR IS GEOMETRY, NOT TASTE. A camera sitting exactly on a surface has
+## that surface cutting through its near plane, so half the shot is inside the
+## wall -- the near plane has width, and a ray probe cannot know that. Clearing
+## it needs the near plane's half-diagonal: at near = 0.05 (Godot's default,
+## and this project never sets it) and fov_max = 105 vertical, that is 0.065 up
+## and 0.116 across on a 16:9 view, so 0.133 -- and 0.165 at 21:9. Anything
+## below that and the clipping comes back on a wide monitor.
+##
+## Above the floor it IS taste, and the trade runs both ways: a bigger radius
+## keeps the camera further off walls everywhere, including corridors where it
+## did not need to back off at all. The shipped 0.2 is the smallest value that
+## clears 21:9 with room to spare; 0.2-0.35 is the band worth trying.
+##
+## MEASURED, so the number is not a lie -- camera backed into a flat wall, the
+## gap it comes to rest with:
+##
+##     dialled  0.05   0.10   0.20   0.35   0.45   0.60   0.80
+##     actual   0.051  0.101  0.201  0.352  0.451  0.527  0.527
+##
+## DO NOT dial past about 0.45. The clearance tracks the radius to within one
+## percent below that and then stops tracking it at all -- 0.60 and 0.80 give
+## the identical 0.527, so the sweep has hit some cap of the physics backend's
+## own. A radius that large is an absurd camera anyway; what matters is that
+## the dial stops being honest there, and it does so silently.
+@export var third_person_probe_radius: float = 0.2
+
 ## The render layer carrying the body's FIRST-PERSON meshes, as a mask.
 ##
 ## VRM has a mechanism for this in the spec, and godot-vrm implements it: with

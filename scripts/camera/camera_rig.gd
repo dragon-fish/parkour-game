@@ -1227,19 +1227,36 @@ func _third_person_position() -> Vector3:
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return wanted
-	var query := PhysicsRayQueryParameters3D.create( 		global_position, to_global(wanted))
+	# A SPHERE, NOT A RAY. A ray asks whether the camera's exact centre is clear,
+	# and the camera is not a point: the near plane has width, so a centre
+	# resting on a surface puts half the shot inside it. Worse, a ray threads
+	# gaps -- through a corner seam or a railing -- and reports the far side
+	# clear while the camera lands wholly inside the geometry it slipped past.
+	# CameraConfig.third_person_probe_radius is the sphere, and the clearance.
+	#
+	# cast_motion, not intersect_ray plus a hand-rolled pull-back: it returns
+	# the SAFE fraction, stopping the sphere short of contact rather than on it,
+	# which is exactly the margin wanted here. Same call and the same reading of
+	# it as Probes._plant_top(), which has the pothole notes.
+	var sphere := SphereShape3D.new()
+	sphere.radius = _config.camera.third_person_probe_radius
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = sphere
+	query.transform = Transform3D(Basis.IDENTITY, global_position)
+	query.motion = to_global(wanted) - global_position
 	var body := get_parent()
 	if body is CollisionObject3D:
 		query.exclude = [(body as CollisionObject3D).get_rid()]
-	var hit := space.intersect_ray(query)
-	if hit.is_empty():
+	var fractions: PackedFloat32Array = space.cast_motion(query)
+	# An EMPTY result means the sphere started already overlapping something --
+	# the head itself is against a wall. Treated as "no room at all" rather than
+	# as "all clear": the min_fraction clamp below is what keeps the camera off
+	# the head, and it is the same answer a ray hitting immediately gave.
+	if fractions.size() < 2:
+		return wanted * _config.camera.third_person_min_fraction
+	if fractions[0] >= 1.0:
 		return wanted
-	# Back off from the surface by the same fraction rather than sitting exactly
-	# on it: a camera flush against a wall has that wall's near plane clipping
-	# through it.
-	var reached: float = global_position.distance_to(hit["position"])
-	var full: float = wanted.length()
-	var fraction: float = clampf(reached / maxf(full, 0.001), 		_config.camera.third_person_min_fraction, 1.0)
+	var fraction: float = clampf(fractions[0], 		_config.camera.third_person_min_fraction, 1.0)
 	return wanted * fraction
 
 ## Flips between the first-person eye and the pulled-back one. Called from
