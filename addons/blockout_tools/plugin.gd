@@ -26,7 +26,10 @@ const EDGE_COLOUR := Color(0.55, 0.85, 1.0, 0.9)
 ## decides the footprint and Godot's CSG handle decides the height, so this
 ## only has to be thin enough to stay out of the way and thick enough to have
 ## grabbable handles. It is not tied to the grid and must not be re-tied to it.
-const NEW_BLOCK_THICKNESS: float = 0.1
+##
+## 0.2 because that is the unit this project's heights are built from -- 3.8,
+## 4.4, 5.0 -- so the first pull off a new block already lands on one.
+const NEW_BLOCK_THICKNESS: float = 0.2
 
 var _bar: HBoxContainer = null
 var _toggle: Button = null
@@ -49,12 +52,14 @@ func _enter_tree() -> void:
 	# custom_arrow_step is for. Keep them apart: a 0.05 step made 0.01 round
 	# away to nothing.
 	_step_field.step = 0.01
-	_step_field.custom_arrow_step = 0.25
+	# 0.2, so the arrows walk the units this project's heights are built from.
+	# A 0.25 stride went 0.2 -> 0.45 and landed on nothing usable.
+	_step_field.custom_arrow_step = 0.2
 	_step_field.value = 0.5
 	_step_field.prefix = "grid "
 	_step_field.custom_minimum_size = Vector2(96, 0)
 	_step_field.tooltip_text = "Grid the drag snaps to, in metres. 0 disables snapping.\n" \
-		+ "Type any value; the arrows step by 0.25."
+		+ "Type any value; the arrows step by 0.2."
 
 	_bar = HBoxContainer.new()
 	_bar.add_child(VSeparator.new())
