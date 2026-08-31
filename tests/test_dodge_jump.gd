@@ -160,6 +160,28 @@ func test_the_dodge_spends_speed_energy_down_to_base() -> void:
 	assert_almost_eq(player.speed_energy.energy, floor_energy, 0.001,
 		"the dodge did not spend the banked energy down to base velocity")
 
+func test_a_dodge_out_of_a_run_gives_up_the_forward_momentum() -> void:
+	# [ME:CONFIRMED 04 §4.5] a dodge thrown out of a run does not carry the run
+	# with it: the forward speed is cut to base velocity AT ONCE, and the body
+	# turns a corner no real one could. Dodging by accident at speed is meant
+	# to hurt.
+	#
+	# Without this the two speeds compose instead: 4.0 forward and 6.0
+	# sideways leave along the diagonal at 7.2, which is FASTER than the run
+	# that entered, and the hop covers most of a jump's distance in the wrong
+	# direction.
+	var player: Player = await _running()
+	var before := _horizontal(player)
+	var base: float = player.config.pawn.speed_max_base_velocity
+	assert_gt(before.length(), base, "test setup: the run never passed base velocity")
+
+	_world["input"].hold_move(1.0, 1.0)
+	_world["input"].press_jump()
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
+	assert_lt(_horizontal(player).dot(before.normalized()), base + 0.001,
+		"the dodge carried the run's forward speed through the turn")
+
 # --- the capability set ----------------------------------------------------------
 
 func test_a_dodge_reaches_for_nothing() -> void:

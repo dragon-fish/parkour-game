@@ -77,16 +77,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			player.velocity.y = config.pawn.base_jump_z
 			player.velocity += player.jump_add_velocity(input)
 		else:
-			# SPENT ONCE, HERE, AS A WORLD VECTOR -- see DodgeJumpMove's own
-			# note on why it must never be recomputed against the facing.
-			var dodge_cfg: DodgeJumpConfig = config.dodge_jump
-			player.velocity.y = dodge_cfg.base_jump_z
-			player.velocity += dodge * dodge_cfg.jump_add_xy
-			# THE WHOLE COST OF THE MOVE. The speed already in the body is
-			# left alone; what is taken is the ceiling holding it up. See
-			# DodgeJumpConfig on why InertiaConservation is not applied on
-			# top of this.
-			player.speed_energy.spend_to_base()
+			# The launch itself -- what it costs and why it costs that -- is
+			# Player.dodge_launch()'s.
+			player.dodge_launch(dodge)
 			player.pending_dodge_side = 1 if input.strafe_axis > 0.0 else -1
 			next = DODGE_JUMP
 		player.move_and_slide()

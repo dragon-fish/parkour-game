@@ -4076,6 +4076,39 @@ func dodge_direction(input: MoveInput) -> Vector3:
 		return Vector3.ZERO
 	return dir.normalized()
 
+## Throws a dodge along `direction`, which must already be the square-sideways
+## world vector dodge_direction() returns.
+##
+## THE MOMENTUM GOES FIRST, AND IT GOES AT ONCE. [ME:CONFIRMED 04 §4.5] a
+## dodge out of a run drops the forward speed to base velocity on the spot and
+## turns a corner no real body could -- dodging by accident at speed is meant
+## to hurt, and the speedrun value of the move comes from the impulse it hands
+## out, never from the run it interrupts.
+##
+## DO NOT let the two speeds compose instead. Carrying a 6.2 m/s run into a
+## 6.0 m/s sideways impulse leaves along the diagonal at 8.6, which is FASTER
+## than the run that entered it, and the hop covers a jump's distance aimed
+## somewhere nobody asked for. That was this move's first outing and it was
+## wrong in both directions at once.
+##
+## The energy is spent to the same floor the speed is cut to, so the ceiling
+## does not immediately pull the body back up to the speed just taken off it.
+## Turning through the corner would bill a second time, but spend_turn() stops
+## at that floor as well, so the corner is free once the dodge has paid --
+## which is the whole reason both costs can be one number.
+func dodge_launch(direction: Vector3) -> void:
+	var carried := Vector3(velocity.x, 0.0, velocity.z)
+	var base_speed: float = config.pawn.speed_max_base_velocity
+	if carried.length() > base_speed:
+		carried = carried.normalized() * base_speed
+	velocity.x = carried.x
+	velocity.z = carried.z
+	velocity.y = config.dodge_jump.base_jump_z
+	# SPENT ONCE, AS A WORLD VECTOR -- see DodgeJumpMove on why it must never
+	# be recomputed against the facing afterwards.
+	velocity += direction * config.dodge_jump.jump_add_xy
+	speed_energy.spend_to_base()
+
 ## Which way the body is going AT something, as a unit vector, or ZERO if it is
 ## going nowhere and asking for nothing.
 ##
