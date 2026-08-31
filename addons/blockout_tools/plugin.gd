@@ -6,10 +6,11 @@ extends EditorPlugin
 # footprint. A box is drawn corner to corner, a cylinder and a sphere centre to
 # rim.
 #
-# ONE TOGGLE AND ONE PICKER, not a button per shape: the toolbar is shared with
-# the editor's own controls and a row that grows with every shape added would
-# crowd them out. The toggle wears the picked shape's icon, so the row still
-# says what a drag will draw.
+# ONE CHECKBOX AND ONE PICKER, not a button per shape: the toolbar is shared
+# with the editor's own controls and a row that grows with every shape added
+# would crowd them out. The picker carries the shape and its icon, which leaves
+# the checkbox saying only on or off -- the one thing it has to say without
+# ambiguity, since armed changes what a bare left drag means.
 #
 # WHY SO LITTLE UI generally: Cyclops Level Builder does the same job with its
 # own menu system, several docks and an autoload, and on macOS that combination
@@ -52,7 +53,7 @@ const SHAPES: Array[Dictionary] = [
 ]
 
 var _bar: HBoxContainer = null
-var _toggle: Button = null
+var _toggle: CheckBox = null
 var _picker: OptionButton = null
 var _grid_field: SpinBox = null
 var _thickness_field: SpinBox = null
@@ -92,45 +93,20 @@ func _exit_tree() -> void:
 	_grid_field = null
 	_thickness_field = null
 
-## Dressed as one of the 3D toolbar's own mode buttons -- flat, icon only, an
-## accent plate while armed. It cannot actually JOIN that group: the editor
-## exposes no API for adding to it, so picking Move or Rotate will not switch
-## this off.
-func _build_toggle() -> Button:
-	var button := Button.new()
-	button.toggle_mode = true
-	button.flat = true
-	button.tooltip_text = "Draw the picked solid on any surface.\n" \
+## A plain CheckBox, because the picker beside it already carries the shape's
+## icon -- the switch only has to say on or off, and a checkbox says that in
+## the editor's own vocabulary without a stylebox fighting the theme for
+## contrast.
+##
+## Being unmistakable matters here more than it looks: armed changes what a
+## bare left drag means in the viewport. An earlier icon-button version leaned
+## on alpha for the same job and read as off when it was on.
+func _build_toggle() -> CheckBox:
+	var box := CheckBox.new()
+	box.tooltip_text = "Draw the picked solid on any surface.\n" \
 		+ "Hold any modifier to box select instead. Esc or right click cancels."
-
-	var theme: Theme = EditorInterface.get_editor_theme()
-	if theme == null:
-		button.text = "Draw"
-		return button
-	var accent := Color(0.4, 0.7, 1.0)
-	if theme.has_color(&"accent_color", &"Editor"):
-		accent = theme.get_color(&"accent_color", &"Editor")
-
-	# Fade, do not tint: these icons carry their own colours and an accent
-	# multiply turns them to mud. The gap has to be WIDE -- armed changes what
-	# a bare left drag means, and a few percent of alpha is not a state anyone
-	# reads at a glance. Do not narrow it back, and do not leave these unset:
-	# the default theme fades the PRESSED state, which reads as armed-is-off.
-	button.add_theme_color_override(&"icon_normal_color", Color(1, 1, 1, 0.35))
-	button.add_theme_color_override(&"icon_hover_color", Color(1, 1, 1, 0.7))
-	button.add_theme_color_override(&"icon_pressed_color", Color(1, 1, 1, 1))
-	button.add_theme_color_override(&"icon_hover_pressed_color", Color(1, 1, 1, 1))
-
-	var armed := StyleBoxFlat.new()
-	armed.bg_color = Color(accent, 0.35)
-	armed.border_color = accent
-	armed.set_border_width_all(1)
-	armed.set_corner_radius_all(4)
-	armed.set_content_margin_all(4)
-	button.add_theme_stylebox_override(&"pressed", armed)
-	button.add_theme_stylebox_override(&"hover_pressed", armed)
-	button.toggled.connect(_on_toggled)
-	return button
+	box.toggled.connect(_on_toggled)
+	return box
 
 func _build_picker() -> OptionButton:
 	var picker := OptionButton.new()
@@ -183,7 +159,6 @@ func _load_prefs() -> void:
 		var index: int = _picker.get_item_index(shape)
 		if index >= 0:
 			_picker.select(index)
-	_sync_toggle_icon()
 
 func _save_prefs() -> void:
 	var settings: EditorSettings = _prefs()
@@ -197,25 +172,7 @@ func _on_field_changed(_value: float) -> void:
 	_save_prefs()
 
 func _on_shape_selected(_index: int) -> void:
-	_sync_toggle_icon()
 	_save_prefs()
-
-## The toggle wears the picked shape's icon, so the row still says what a drag
-## will draw without a button per shape.
-func _sync_toggle_icon() -> void:
-	var theme: Theme = EditorInterface.get_editor_theme()
-	if theme == null or _toggle == null:
-		return
-	for entry in SHAPES:
-		if entry["shape"] != _picked_shape():
-			continue
-		var icon_name := StringName(entry["icon"])
-		if theme.has_icon(icon_name, &"EditorIcons"):
-			_toggle.icon = theme.get_icon(icon_name, &"EditorIcons")
-			_toggle.text = ""
-		else:
-			_toggle.text = entry["label"]
-		return
 
 # The editor only forwards viewport input to a plugin that claims the current
 # selection, so this claims everything -- and _on_toggled makes sure something
