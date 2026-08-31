@@ -15,9 +15,18 @@ extends EditorPlugin
 # WHY SO LITTLE UI generally: Cyclops Level Builder does the same job with its
 # own menu system, several docks and an autoload, and on macOS that combination
 # locks the editor's input up entirely (upstream issue #242, open,
-# unreproducible for its Windows-only author). Input here arrives through
-# _forward_3d_gui_input -- the hook scoped to the 3D viewport -- never a global
-# _input().
+# unreproducible for its Windows-only author). Drag input arrives through
+# _forward_3d_gui_input -- the hook scoped to the 3D viewport -- and there is
+# no global _input() anywhere in here.
+#
+# THE ONE THING THAT CANNOT USE THAT HOOK is arming the tool. The editor only
+# forwards viewport input to a plugin that handles the CURRENT SELECTION, and
+# what guarantees a selection exists is _on_toggled -- so with nothing selected
+# the hook is never called, which is exactly the moment the shortcut has to
+# work. It goes through _shortcut_input() instead: a narrower channel than
+# _input(), blind to mouse motion and reached only after the focused control
+# has had the key, so typing in a SpinBox cannot trip it. It is still global in
+# scope, so it answers only while the 3D screen is the one on show.
 
 const Geometry := preload("res://addons/GodotchUp/block_geometry.gd")
 const Probe := preload("res://addons/GodotchUp/surface_probe.gd")
@@ -49,6 +58,10 @@ const CIRCLE_SEGMENTS: int = 48
 ## in .godot/, which is per-machine and already ignored by git -- a grid size is
 ## one person's working habit, not the project's.
 const PREFS_SECTION := "godotchup"
+
+## Where the toggle's shortcut lives in Editor Settings -> Shortcuts. The
+## leading segment is the category the editor groups it under.
+const TOGGLE_SHORTCUT_PATH := "GodotchUp/Toggle draw mode"
 
 ## 0.2 in both because that is the unit this project's heights are built from
 ## -- 3.8, 4.4, 5.0 -- so a new solid and the first pull off it both land on
@@ -98,6 +111,12 @@ func _enter_tree() -> void:
 
 	_load_prefs()
 	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, _bar)
+	_register_toggle_shortcut()
+	# Asked for outright rather than left to the engine noticing the override:
+	# whether defining _shortcut_input() in a script enables the flag on its own
+	# is undocumented in 4.7's class reference, and a shortcut that silently
+	# never fires is an expensive thing to debug.
+	set_process_shortcut_input(true)
 
 func _exit_tree() -> void:
 	if _bar != null:
@@ -228,6 +247,53 @@ func _on_toggled(pressed: bool) -> void:
 	var selection: EditorSelection = EditorInterface.get_selection()
 	if selection.get_selected_nodes().is_empty():
 		selection.add_node(root)
+
+## Registers the toggle as a REBINDABLE editor shortcut, so it shows up under
+## Editor Settings -> Shortcuts next to the editor's own and can be changed or
+## cleared there. Needs Godot 4.6, where add_shortcut() started carrying the
+## metadata that tree needs; below that the call does nothing useful and the
+## toolbar checkbox is the only way in.
+##
+## Shift+B is a DEFAULT, not a claim. It keeps clear of the 3D viewport's own
+## Q/W/E/R/T/F and of the Godot 3D Cursor plugin's Shift+S, but a conflict is
+## something the Shortcuts tab shows and the reader can settle there.
+func _register_toggle_shortcut() -> void:
+	var settings: EditorSettings = _prefs()
+	if settings == null:
+		return
+	# Already registered by an earlier _enter_tree -- the editor keeps the
+	# binding across a plugin reload, and re-adding would discard a rebind.
+	if settings.get_shortcut(TOGGLE_SHORTCUT_PATH) != null:
+		return
+	var event := InputEventKey.new()
+	event.keycode = KEY_B
+	event.shift_pressed = true
+	var shortcut := Shortcut.new()
+	shortcut.resource_name = "Toggle draw mode"
+	shortcut.events = [event]
+	settings.add_shortcut(TOGGLE_SHORTCUT_PATH, shortcut)
+
+## NOT _input(): see this file's header. _shortcut_input() runs after the
+## focused control has had its go, so a key typed into the grid or thickness
+## field is spent before it reaches here.
+func _shortcut_input(event: InputEvent) -> void:
+	if _toggle == null or not event.is_pressed() or event.is_echo():
+		return
+	# Global in scope, so it has to ask where it is. The bar lives on the 3D
+	# toolbar and follows it out of sight, which is the same question asked in
+	# the terms this plugin already has an answer for.
+	if _bar == null or not _bar.is_visible_in_tree():
+		return
+	var settings: EditorSettings = _prefs()
+	if settings == null:
+		return
+	var shortcut: Shortcut = settings.get_shortcut(TOGGLE_SHORTCUT_PATH)
+	if shortcut == null or not shortcut.matches_event(event):
+		return
+	# button_pressed = is the assignment the toggled signal fires from, so this
+	# runs _on_toggled exactly as clicking the box does.
+	_toggle.button_pressed = not _toggle.button_pressed
+	get_viewport().set_input_as_handled()
 
 func _picked_shape() -> int:
 	return _picker.get_selected_id() if _picker != null else Shape.BOX
@@ -417,13 +483,28 @@ func _commit() -> int:
 	var frame := Transform3D.IDENTITY
 	if parent is Node3D:
 		frame = (parent as Node3D).global_transform
-	node.transform = Geometry.local_placement(frame, plan["transform"] as Transform3D)
+	var placement: Transform3D = Geometry.local_placement(
+		frame, plan["transform"] as Transform3D)
+	node.transform = placement
 
 	var undo: EditorUndoRedoManager = get_undo_redo()
 	# get_class(), not `name`: nothing has named the node and nothing will until
 	# add_child() does, so reading `name` here labels the action "Draw ".
 	undo.create_action("Draw %s" % node.get_class())
 	undo.add_do_method(parent, "add_child", node, true)
+	# THE PLACEMENT IS RE-ASSERTED AFTER THE ADD, and setting it above is not
+	# enough on its own. SceneTree.node_added fires SYNCHRONOUSLY inside
+	# add_child(), and a listener is handed the node while it is free to move
+	# it -- the Godot 3D Cursor plugin writes global_position onto every Node3D
+	# entering the edited scene, so a transform written only before the add is
+	# already gone by the time add_child() returns, and every solid lands on
+	# the cursor instead of under the drag. Last writer wins, and where a solid
+	# goes is the drag's decision.
+	#
+	# Not a workaround aimed at that one plugin: anything watching node_added
+	# is refused the same way. No paired undo either -- the undo below removes
+	# the node outright, so there is no transform left to restore.
+	undo.add_do_property(node, "transform", placement)
 	if index >= 0:
 		# add_child() appends; a sibling belongs beside the node it joined.
 		undo.add_do_method(parent, "move_child", node, index)
