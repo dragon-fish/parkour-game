@@ -21,6 +21,7 @@ extends EditorPlugin
 
 const Geometry := preload("res://addons/blockout_tools/block_geometry.gd")
 const Probe := preload("res://addons/blockout_tools/surface_probe.gd")
+const Placement := preload("res://addons/blockout_tools/placement.gd")
 
 enum Shape { BOX, CYLINDER, SPHERE }
 
@@ -326,30 +327,11 @@ func _cancel() -> void:
 	_radius = 0.0
 	update_overlays()
 
-## Where a new node goes.
-##
-## A SIBLING of whatever is selected, not a child of it: every drag selects
-## what it just made, so parenting to the selection would thread each solid
-## through the last one and build a chain nobody asked for. Siblings keep a run
-## of them in one place.
-##
-## The exception is a collision shape dropped on something that takes one -- an
-## Area3D volume, a body -- where being a child IS the point. This project's
-## volumes are built exactly that way: Checkpoint, DeathVolume and
-## ModifierVolume are all Area3D asking for "whatever CollisionShape3D children
-## the spot needs".
-func _target_parent(root: Node, collision: bool) -> Node:
-	var selected: Node = null
+func _selected_node3d() -> Node:
 	for node in EditorInterface.get_selection().get_selected_nodes():
 		if node is Node3D:
-			selected = node
-			break
-	if selected == null or selected == root:
-		return root
-	if collision and selected is CollisionObject3D:
-		return selected
-	var parent: Node = selected.get_parent()
-	return parent if parent != null else root
+			return node
+	return null
 
 func _plan() -> Dictionary:
 	var grid: float = _grid()
@@ -416,7 +398,9 @@ func _commit() -> int:
 
 	var plan: Dictionary = _plan()
 	var collision: bool = _picked_output() == Output.COLLISION
-	var parent: Node = _target_parent(root, collision)
+	var selected: Node = _selected_node3d()
+	var parent: Node = Placement.parent_for(selected, root, collision)
+	var index: int = Placement.insert_index(parent, selected)
 	var node: Node3D = _build_output(plan, collision)
 
 	# The placement is in world space and the node is about to live under a
@@ -430,6 +414,9 @@ func _commit() -> int:
 	var undo: EditorUndoRedoManager = get_undo_redo()
 	undo.create_action("Draw %s" % node.name)
 	undo.add_do_method(parent, "add_child", node, true)
+	if index >= 0:
+		# add_child() appends; a sibling belongs beside the node it joined.
+		undo.add_do_method(parent, "move_child", node, index)
 	undo.add_do_method(node, "set_owner", root)
 	undo.add_do_reference(node)
 	undo.add_undo_method(parent, "remove_child", node)
