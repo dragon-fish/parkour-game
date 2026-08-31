@@ -23,7 +23,7 @@ const FILL_COLOUR := Color(0.35, 0.7, 1.0, 0.18)
 const EDGE_COLOUR := Color(0.55, 0.85, 1.0, 0.9)
 
 var _bar: HBoxContainer = null
-var _toggle: CheckButton = null
+var _toggle: Button = null
 var _step_field: SpinBox = null
 
 var _dragging: bool = false
@@ -32,10 +32,21 @@ var _face: Basis = Basis.IDENTITY
 var _extent: Vector2 = Vector2.ZERO
 
 func _enter_tree() -> void:
-	_toggle = CheckButton.new()
-	_toggle.text = "Block"
-	_toggle.tooltip_text = "Drag a rectangle on any surface to lay a CSGBox3D against it.\n" \
+	# Dressed as one of the 3D toolbar's own mode buttons -- flat, icon only.
+	# It cannot actually JOIN that group: the editor exposes no API for adding
+	# to it, so picking Move or Rotate will not switch this off. It stays a
+	# toggle of its own, and looking like its neighbours is as close as a
+	# plugin gets.
+	_toggle = Button.new()
+	_toggle.toggle_mode = true
+	_toggle.flat = true
+	_toggle.tooltip_text = "Block: drag a rectangle on any surface to lay a CSGBox3D against it.\n" \
 		+ "Hold any modifier to box select instead. Esc or right click cancels a drag."
+	var theme: Theme = EditorInterface.get_editor_theme()
+	if theme != null and theme.has_icon(&"CSGBox3D", &"EditorIcons"):
+		_toggle.icon = theme.get_icon(&"CSGBox3D", &"EditorIcons")
+	else:
+		_toggle.text = "Block"
 	_toggle.toggled.connect(_on_toggled)
 
 	_step_field = SpinBox.new()
@@ -48,6 +59,7 @@ func _enter_tree() -> void:
 	_step_field.tooltip_text = "Grid the drag snaps to, and the thickness a new block starts at. 0 disables snapping."
 
 	_bar = HBoxContainer.new()
+	_bar.add_child(VSeparator.new())
 	_bar.add_child(_toggle)
 	_bar.add_child(_step_field)
 	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, _bar)
