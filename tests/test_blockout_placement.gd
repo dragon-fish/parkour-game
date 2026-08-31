@@ -3,7 +3,7 @@ extends ParkourTest
 # The rule deciding where a drawn node lands in the tree. Real nodes, no
 # editor -- which is the reason this rule does not live in the plugin script.
 
-const Placement := preload("res://addons/blockout_tools/placement.gd")
+const Placement := preload("res://addons/godotchup/placement.gd")
 
 var _root: Node3D
 

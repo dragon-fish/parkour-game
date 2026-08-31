@@ -19,9 +19,9 @@ extends EditorPlugin
 # _forward_3d_gui_input -- the hook scoped to the 3D viewport -- never a global
 # _input().
 
-const Geometry := preload("res://addons/blockout_tools/block_geometry.gd")
-const Probe := preload("res://addons/blockout_tools/surface_probe.gd")
-const Placement := preload("res://addons/blockout_tools/placement.gd")
+const Geometry := preload("res://addons/godotchup/block_geometry.gd")
+const Probe := preload("res://addons/godotchup/surface_probe.gd")
+const Placement := preload("res://addons/godotchup/placement.gd")
 
 enum Shape { BOX, CYLINDER, SPHERE }
 
@@ -48,7 +48,7 @@ const CIRCLE_SEGMENTS: int = 48
 ## Where the toolbar's settings are remembered. Editor project metadata lands
 ## in .godot/, which is per-machine and already ignored by git -- a grid size is
 ## one person's working habit, not the project's.
-const PREFS_SECTION := "blockout_tools"
+const PREFS_SECTION := "godotchup"
 
 ## 0.2 in both because that is the unit this project's heights are built from
 ## -- 3.8, 4.4, 5.0 -- so a new solid and the first pull off it both land on
@@ -353,22 +353,22 @@ func _plan() -> Dictionary:
 		_:
 			return Geometry.block_from_drag(_anchor, _face, _extent, thickness, grid)
 
+## NO NAMES SET, on any of these. add_child(node, true) derives one from the
+## class -- CSGBox3D, CSGBox3D2 -- which is what a node made by hand in the
+## editor is called, and a scene should not say which tool drew which node.
 func _build_csg(plan: Dictionary) -> CSGShape3D:
 	match _picked_shape():
 		Shape.CYLINDER:
 			var cylinder := CSGCylinder3D.new()
-			cylinder.name = "Cylinder"
 			cylinder.radius = plan["radius"]
 			cylinder.height = plan["height"]
 			return cylinder
 		Shape.SPHERE:
 			var sphere := CSGSphere3D.new()
-			sphere.name = "Sphere"
 			sphere.radius = plan["radius"]
 			return sphere
 		_:
 			var box := CSGBox3D.new()
-			box.name = "Box"
 			box.size = plan["size"]
 			return box
 
@@ -391,7 +391,6 @@ func _build_shape(plan: Dictionary) -> Shape3D:
 func _build_output(plan: Dictionary, collision: bool) -> Node3D:
 	if collision:
 		var shape := CollisionShape3D.new()
-		shape.name = "CollisionShape3D"
 		shape.shape = _build_shape(plan)
 		return shape
 	var solid: CSGShape3D = _build_csg(plan)
@@ -421,7 +420,9 @@ func _commit() -> int:
 	node.transform = Geometry.local_placement(frame, plan["transform"] as Transform3D)
 
 	var undo: EditorUndoRedoManager = get_undo_redo()
-	undo.create_action("Draw %s" % node.name)
+	# get_class(), not `name`: nothing has named the node and nothing will until
+	# add_child() does, so reading `name` here labels the action "Draw ".
+	undo.create_action("Draw %s" % node.get_class())
 	undo.add_do_method(parent, "add_child", node, true)
 	if index >= 0:
 		# add_child() appends; a sibling belongs beside the node it joined.

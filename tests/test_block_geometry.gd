@@ -3,7 +3,7 @@ extends ParkourTest
 # The block tool's geometry, which is the part of it a headless test can reach.
 # How the drag FEELS is not in here and cannot be.
 
-const Geometry := preload("res://addons/blockout_tools/block_geometry.gd")
+const Geometry := preload("res://addons/godotchup/block_geometry.gd")
 
 func _is_right_handed(basis: Basis) -> bool:
 	return basis.determinant() > 0.0
