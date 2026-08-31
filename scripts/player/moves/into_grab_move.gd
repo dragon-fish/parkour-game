@@ -270,6 +270,13 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 			# IntoGrabConfig.redo_move_time's job, not this line's.
 			if player.grounded and player.velocity.y <= 0.0:
 				return FALLING
+			# STILL CLOSING? Committing on a body that was approaching is not
+			# enough: a tap toward the wall passes AirborneMove's gate and has
+			# decayed by the next tick, leaving the reach to wait out its whole
+			# max_duration for a contact that can no longer happen -- and the
+			# player has no control for any of it.
+			if not closing_on(_face_point):
+				return FALLING
 			return KEEP
 		# CONTACT. The reach starts HERE, from wherever the body has actually
 		# got to -- not from where it was when the ledge was first seen.

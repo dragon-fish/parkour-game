@@ -280,7 +280,7 @@ func probe_transition() -> StringName:
 		# just left.
 		var same_side: bool = ledge["valid"] \
 			and player.recent_wall_refuses_climb_onto(ledge["edge"])
-		if ledge["valid"] and _within_reach(ledge) and not same_side:
+		if ledge["valid"] and _within_reach(ledge) and _can_close_the_gap(ledge) 				and not same_side:
 			return INTO_GRAB
 
 	return KEEP
@@ -351,6 +351,37 @@ func landing_damage(fall_height: float, rolled: bool) -> float:
 ## magnet -- jump vaguely wallward and get pulled in across open air -- so
 ## DO NOT widen the reach to match it; the reach is held to its own, much
 ## shorter range. See IntoGrabConfig.max_reach_distance.
+## Whether a reach at this ledge could ever make CONTACT, which is a different
+## question from _within_reach() above and the one that was missing.
+##
+## The approach phase moves the body not at all -- it flies its own arc and the
+## reach waits to see whether the hands arrive (docs/contact-drives-movement.md).
+## So a body with no horizontal travel toward the face keeps exactly the gap it
+## started with, and if that gap is wider than contact_reach() the hands never
+## arrive: the reach burns its whole max_duration, hands back to Falling, waits
+## out redo_move_time, and commits again on a ledge that has not moved. Nothing
+## about the situation changes, so the loop does not end -- and the player has
+## no control for the 1.5 s of each pass, which is a soft lock rather than a
+## flutter.
+##
+## Reported at 0.8 m of commit range against 0.48 m of contact range, so any
+## ledge in that band locked the player up. Standing 0.8 m out and jumping
+## straight up did it; so did standing flush and looking 34 degrees off square,
+## because the probe measures along the LOOK direction and turning the view
+## lengthens the same gap.
+##
+## DO NOT fix this by shrinking max_reach_distance to the contact range. The
+## wider commit is right for the case it was written for: a body flying AT a
+## wall closes the gap on its own within a tick or two, and refusing it at
+## 0.8 m would take away the ordinary running grab. What is wrong is committing
+## when nothing will close the gap.
+##
+## Asked every tick rather than once at take-off, so a jump straight up
+## followed by air control toward the wall still commits the moment the body
+## starts going there.
+func _can_close_the_gap(ledge: Dictionary) -> bool:
+	return closing_on(ledge.get("face_point", Vector3.ZERO))
+
 func _within_reach(ledge: Dictionary) -> bool:
 	# Measured to the WALL, not to the edge point. `edge` is on the ledge's
 	# top, found by dropping a probe past the face, so against anything with
