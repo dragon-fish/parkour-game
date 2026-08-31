@@ -1738,14 +1738,18 @@ func _drive_clip_offset(delta: float) -> void:
 		var on_a_wall: bool = move_manager.current_name == Move.WALL_RUN
 		camera_rig.set_head_follow_scale(
 			config.wall_run.head_follow_scale if on_a_wall else 1.0)
-		# TOWARD THE WALL, and zero everywhere else. The clip offset holds the
-		# MODEL off the wall so the feet clear it, and the head follow subtracts
-		# that back out so the view is not swung -- which leaves the eye on the
-		# capsule while the body is most of a metre to the side. Set every tick
-		# and to zero by everyone else, the way the scale beside it is.
+		# AWAY FROM THE WALL, and zero everywhere else. The clip offset holds
+		# the MODEL out from the wall so the feet clear it, and the head follow
+		# subtracts that back out so the view is not swung -- which leaves the eye
+		# on the capsule while the body is most of a metre outboard of it. The
+		# eye goes the way the body already went.
+		#
+		# NEGATED: wall_side is +1 for a wall on the RIGHT, so following the body
+		# means going left. Written with the sign the phrase 'toward the wall'
+		# suggests, it puts the camera inside the wall.
 		var eye_side: float = 0.0
 		if on_a_wall:
-			eye_side = float(wall_side) * config.wall_run.eye_toward_wall
+			eye_side = -float(wall_side) * config.wall_run.eye_off_wall
 		camera_rig.set_eye_lateral(eye_side)
 	var wanted_position := Vector3.ZERO
 	var wanted_rotation := Vector3.ZERO

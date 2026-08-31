@@ -236,7 +236,7 @@ func _init() -> void:
 ## 1.0 restores the global follow; 0 pins the eye to the procedural position.
 @export_range(0.0, 1.0) var head_follow_scale: float = 0.5
 
-## How far the FIRST-PERSON eye slides TOWARD the wall during a run, metres.
+## How far the FIRST-PERSON eye slides AWAY FROM the wall during a run, metres.
 ##
 ## THE MODEL IS DELIBERATELY OFF THE AXIS HERE. The wall-run clip offset in
 ## scenes/player/tuning/*.json holds the body out from the wall so the feet do
@@ -253,4 +253,9 @@ func _init() -> void:
 ## DO NOT REACH FOR head_follow_scale INSTEAD. That scales the head bone's own
 ## animated motion, centimetres of it, and the offset in question never reaches
 ## the rig at all.
-@export var eye_toward_wall: float = 0.35
+## AWAY, because that is where the model is. The clip offset pushes the body
+## OUT from the wall (WallRun_R is -0.6, and wall_side is +1 for a wall on the
+## right), so an eye moved toward the wall goes straight into it -- which is
+## exactly what happened when this was first written with the sign the name
+## suggested rather than the sign the offset has.
+@export var eye_off_wall: float = 0.35

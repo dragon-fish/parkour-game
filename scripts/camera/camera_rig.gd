@@ -144,7 +144,7 @@ var extra_eye_forward: float = 0.0
 ## Its vertical twin -- see the swing's eye_lift_lean.
 var extra_eye_lift: float = 0.0
 ## Its SIDEWAYS twin, positive to the body's right -- see the wall run's
-## eye_toward_wall. Eased rather than hard-set, because unlike the swing's two
+## eye_off_wall. Eased rather than hard-set, because unlike the swing's two
 ## there is no lean easing home behind it to ride: entering and leaving a wall
 ## run would step the eye a third of a metre in one frame.
 var extra_eye_lateral: float = 0.0
