@@ -6,12 +6,17 @@ extends EditorPlugin
 # footprint. A box is drawn corner to corner, a cylinder and a sphere centre to
 # rim.
 #
-# WHY SO LITTLE UI: Cyclops Level Builder does the same job with its own menu
-# system, several docks and an autoload, and on macOS that combination locks
-# the editor's input up entirely (upstream issue #242, open, unreproducible for
-# its Windows-only author). A few toolbar controls is the whole surface here,
-# and input arrives through _forward_3d_gui_input -- the hook scoped to the 3D
-# viewport -- never a global _input().
+# ONE TOGGLE AND ONE PICKER, not a button per shape: the toolbar is shared with
+# the editor's own controls and a row that grows with every shape added would
+# crowd them out. The toggle wears the picked shape's icon, so the row still
+# says what a drag will draw.
+#
+# WHY SO LITTLE UI generally: Cyclops Level Builder does the same job with its
+# own menu system, several docks and an autoload, and on macOS that combination
+# locks the editor's input up entirely (upstream issue #242, open,
+# unreproducible for its Windows-only author). Input here arrives through
+# _forward_3d_gui_input -- the hook scoped to the 3D viewport -- never a global
+# _input().
 
 const Geometry := preload("res://addons/blockout_tools/block_geometry.gd")
 const Probe := preload("res://addons/blockout_tools/surface_probe.gd")
@@ -26,9 +31,9 @@ const FILL_COLOUR := Color(0.35, 0.7, 1.0, 0.18)
 const EDGE_COLOUR := Color(0.55, 0.85, 1.0, 0.9)
 const CIRCLE_SEGMENTS: int = 48
 
-## Where the toolbar's two fields are remembered. Editor project metadata lands
-## in .godot/, which is per-machine and already ignored by git -- a grid size
-## is one person's working habit, not the project's.
+## Where the toolbar's settings are remembered. Editor project metadata lands
+## in .godot/, which is per-machine and already ignored by git -- a grid size is
+## one person's working habit, not the project's.
 const PREFS_SECTION := "blockout_tools"
 
 ## 0.2 in both because that is the unit this project's heights are built from
@@ -37,18 +42,18 @@ const PREFS_SECTION := "blockout_tools"
 const DEFAULT_GRID: float = 0.2
 const DEFAULT_THICKNESS: float = 0.2
 
-const SHAPE_BUTTONS: Array[Dictionary] = [
+const SHAPES: Array[Dictionary] = [
 	{"shape": Shape.BOX, "icon": "CSGBox3D", "label": "Box",
 		"hint": "Box: drag corner to corner."},
-	{"shape": Shape.CYLINDER, "icon": "CSGCylinder3D", "label": "Cyl",
+	{"shape": Shape.CYLINDER, "icon": "CSGCylinder3D", "label": "Cylinder",
 		"hint": "Cylinder: drag centre to rim."},
-	{"shape": Shape.SPHERE, "icon": "CSGSphere3D", "label": "Ball",
+	{"shape": Shape.SPHERE, "icon": "CSGSphere3D", "label": "Sphere",
 		"hint": "Sphere: drag centre to rim. Rests on the surface."},
 ]
 
 var _bar: HBoxContainer = null
-var _buttons: Array[Button] = []
-var _group: ButtonGroup = null
+var _toggle: Button = null
+var _picker: OptionButton = null
 var _grid_field: SpinBox = null
 var _thickness_field: SpinBox = null
 
@@ -62,24 +67,19 @@ func _enter_tree() -> void:
 	_bar = HBoxContainer.new()
 	_bar.add_child(VSeparator.new())
 
-	_group = ButtonGroup.new()
-	# So clicking the armed shape disarms it, instead of leaving no way back to
-	# a viewport that behaves normally.
-	_group.allow_unpress = true
-	for entry in SHAPE_BUTTONS:
-		var button: Button = _build_shape_button(entry)
-		_buttons.append(button)
-		_bar.add_child(button)
-
+	_toggle = _build_toggle()
+	_picker = _build_picker()
 	_grid_field = _build_field("grid ", DEFAULT_GRID, 0.0,
 		"Grid the drag snaps to, in metres. 0 disables snapping.\n"
 		+ "Type any value; the arrows step by 0.2.")
 	_thickness_field = _build_field("thick ", DEFAULT_THICKNESS, 0.01,
 		"How thick a new solid starts out. Godot's own CSG handle takes it from there.")
+	_bar.add_child(_toggle)
+	_bar.add_child(_picker)
 	_bar.add_child(_grid_field)
 	_bar.add_child(_thickness_field)
-	_load_prefs()
 
+	_load_prefs()
 	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, _bar)
 
 func _exit_tree() -> void:
@@ -87,8 +87,8 @@ func _exit_tree() -> void:
 		remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, _bar)
 		_bar.queue_free()
 	_bar = null
-	_buttons.clear()
-	_group = null
+	_toggle = null
+	_picker = null
 	_grid_field = null
 	_thickness_field = null
 
@@ -96,24 +96,17 @@ func _exit_tree() -> void:
 ## accent plate while armed. It cannot actually JOIN that group: the editor
 ## exposes no API for adding to it, so picking Move or Rotate will not switch
 ## this off.
-func _build_shape_button(entry: Dictionary) -> Button:
+func _build_toggle() -> Button:
 	var button := Button.new()
 	button.toggle_mode = true
 	button.flat = true
-	button.button_group = _group
-	button.tooltip_text = "%s\nHold any modifier to box select instead. Esc or right click cancels." \
-		% entry["hint"]
+	button.tooltip_text = "Draw the picked solid on any surface.\n" \
+		+ "Hold any modifier to box select instead. Esc or right click cancels."
 
 	var theme: Theme = EditorInterface.get_editor_theme()
 	if theme == null:
-		button.text = entry["label"]
+		button.text = "Draw"
 		return button
-	var icon_name: StringName = StringName(entry["icon"])
-	if theme.has_icon(icon_name, &"EditorIcons"):
-		button.icon = theme.get_icon(icon_name, &"EditorIcons")
-	else:
-		button.text = entry["label"]
-
 	var accent := Color(0.4, 0.7, 1.0)
 	if theme.has_color(&"accent_color", &"Editor"):
 		accent = theme.get_color(&"accent_color", &"Editor")
@@ -136,8 +129,25 @@ func _build_shape_button(entry: Dictionary) -> Button:
 	armed.set_content_margin_all(4)
 	button.add_theme_stylebox_override(&"pressed", armed)
 	button.add_theme_stylebox_override(&"hover_pressed", armed)
-	button.toggled.connect(_on_shape_toggled)
+	button.toggled.connect(_on_toggled)
 	return button
+
+func _build_picker() -> OptionButton:
+	var picker := OptionButton.new()
+	picker.flat = true
+	# Otherwise the control keeps the width of "Cylinder" whatever is picked,
+	# and this row is a guest on the editor's own toolbar.
+	picker.fit_to_longest_item = false
+	var theme: Theme = EditorInterface.get_editor_theme()
+	for entry in SHAPES:
+		var icon_name := StringName(entry["icon"])
+		if theme != null and theme.has_icon(icon_name, &"EditorIcons"):
+			picker.add_icon_item(theme.get_icon(icon_name, &"EditorIcons"),
+				entry["label"], entry["shape"])
+		else:
+			picker.add_item(entry["label"], entry["shape"])
+	picker.item_selected.connect(_on_shape_selected)
+	return picker
 
 func _build_field(prefix: String, value: float, minimum: float, hint: String) -> SpinBox:
 	var field := SpinBox.new()
@@ -161,28 +171,60 @@ func _prefs() -> EditorSettings:
 
 func _load_prefs() -> void:
 	var settings: EditorSettings = _prefs()
-	if settings == null:
-		return
-	_grid_field.value = float(settings.get_project_metadata(
-		PREFS_SECTION, "grid", DEFAULT_GRID))
-	_thickness_field.value = float(settings.get_project_metadata(
-		PREFS_SECTION, "thickness", DEFAULT_THICKNESS))
+	if settings != null:
+		_grid_field.value = float(settings.get_project_metadata(
+			PREFS_SECTION, "grid", DEFAULT_GRID))
+		_thickness_field.value = float(settings.get_project_metadata(
+			PREFS_SECTION, "thickness", DEFAULT_THICKNESS))
+		var shape: int = int(settings.get_project_metadata(
+			PREFS_SECTION, "shape", Shape.BOX))
+		# There is no select_by_id(); an id has to be turned into an index
+		# first, and an id that is no longer offered comes back as -1.
+		var index: int = _picker.get_item_index(shape)
+		if index >= 0:
+			_picker.select(index)
+	_sync_toggle_icon()
 
-func _on_field_changed(_value: float) -> void:
+func _save_prefs() -> void:
 	var settings: EditorSettings = _prefs()
 	if settings == null:
 		return
 	settings.set_project_metadata(PREFS_SECTION, "grid", _grid_field.value)
 	settings.set_project_metadata(PREFS_SECTION, "thickness", _thickness_field.value)
+	settings.set_project_metadata(PREFS_SECTION, "shape", _picked_shape())
+
+func _on_field_changed(_value: float) -> void:
+	_save_prefs()
+
+func _on_shape_selected(_index: int) -> void:
+	_sync_toggle_icon()
+	_save_prefs()
+
+## The toggle wears the picked shape's icon, so the row still says what a drag
+## will draw without a button per shape.
+func _sync_toggle_icon() -> void:
+	var theme: Theme = EditorInterface.get_editor_theme()
+	if theme == null or _toggle == null:
+		return
+	for entry in SHAPES:
+		if entry["shape"] != _picked_shape():
+			continue
+		var icon_name := StringName(entry["icon"])
+		if theme.has_icon(icon_name, &"EditorIcons"):
+			_toggle.icon = theme.get_icon(icon_name, &"EditorIcons")
+			_toggle.text = ""
+		else:
+			_toggle.text = entry["label"]
+		return
 
 # The editor only forwards viewport input to a plugin that claims the current
-# selection, so this claims everything -- and _on_shape_toggled makes sure
-# something is selected at all. Without both, arming a shape with an empty
-# selection yields a tool that silently receives nothing.
+# selection, so this claims everything -- and _on_toggled makes sure something
+# is selected at all. Without both, arming the tool with an empty selection
+# yields a tool that silently receives nothing.
 func _handles(_object: Object) -> bool:
 	return true
 
-func _on_shape_toggled(pressed: bool) -> void:
+func _on_toggled(pressed: bool) -> void:
 	_dragging = false
 	update_overlays()
 	if not pressed:
@@ -194,15 +236,11 @@ func _on_shape_toggled(pressed: bool) -> void:
 	if selection.get_selected_nodes().is_empty():
 		selection.add_node(root)
 
-func _armed_shape() -> int:
-	for i in _buttons.size():
-		if _buttons[i].button_pressed:
-			return SHAPE_BUTTONS[i]["shape"]
-	return -1
+func _picked_shape() -> int:
+	return _picker.get_selected_id() if _picker != null else Shape.BOX
 
-func _disarm() -> void:
-	for button in _buttons:
-		button.set_pressed_no_signal(false)
+func _armed() -> bool:
+	return _toggle != null and _toggle.button_pressed
 
 func _grid() -> float:
 	return _grid_field.value if _grid_field != null else 0.0
@@ -211,7 +249,7 @@ func _thickness() -> float:
 	return _thickness_field.value if _thickness_field != null else DEFAULT_THICKNESS
 
 func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
-	if camera == null or _armed_shape() < 0:
+	if camera == null or not _armed():
 		return AFTER_GUI_INPUT_PASS
 
 	if event is InputEventMouseButton:
@@ -297,18 +335,17 @@ func _cancel() -> void:
 	update_overlays()
 
 func _commit() -> int:
-	var shape: int = _armed_shape()
 	_dragging = false
 	update_overlays()
 	var root: Node = EditorInterface.get_edited_scene_root()
-	if root == null or shape < 0:
+	if root == null:
 		return AFTER_GUI_INPUT_STOP
 
 	var grid: float = _grid()
 	var thickness: float = _thickness()
 	var solid: CSGShape3D
 	var placement: Transform3D
-	match shape:
+	match _picked_shape():
 		Shape.CYLINDER:
 			var plan: Dictionary = Geometry.cylinder_from_drag(
 				_anchor, _face, _radius, thickness, grid)
@@ -352,10 +389,10 @@ func _commit() -> int:
 	selection.clear()
 	selection.add_node(solid)
 	# Disarm, because the next thing anyone does is pull the thing they just
-	# drew to height -- and while a shape is armed this plugin eats the bare
+	# drew to height -- and while the tool is armed this plugin eats the bare
 	# left click, so the CSG handles cannot be grabbed. Selecting the new solid
 	# without disarming hands over a gizmo that does not answer.
-	_disarm()
+	_toggle.set_pressed_no_signal(false)
 	return AFTER_GUI_INPUT_STOP
 
 func _forward_3d_draw_over_viewport(overlay: Control) -> void:
@@ -364,9 +401,8 @@ func _forward_3d_draw_over_viewport(overlay: Control) -> void:
 	var camera: Camera3D = EditorInterface.get_editor_viewport_3d().get_camera_3d()
 	if camera == null:
 		return
-	var corners: Array[Vector3] = _footprint()
 	var screen := PackedVector2Array()
-	for corner in corners:
+	for corner in _footprint():
 		if camera.is_position_behind(corner):
 			return
 		screen.append(camera.unproject_position(corner))
@@ -378,7 +414,7 @@ func _forward_3d_draw_over_viewport(overlay: Control) -> void:
 
 func _footprint() -> Array[Vector3]:
 	var points: Array[Vector3] = []
-	if _armed_shape() == Shape.BOX:
+	if _picked_shape() == Shape.BOX:
 		points.append(_anchor)
 		points.append(_anchor + _face * Vector3(_extent.x, 0.0, 0.0))
 		points.append(_anchor + _face * Vector3(_extent.x, 0.0, _extent.y))
