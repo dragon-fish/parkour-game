@@ -311,7 +311,7 @@ func vault_query() -> Dictionary:
 		var sample_y: float = lerpf(feet + COLUMN_FLOOR_MARGIN, feet + reach_ceiling, t)
 		_vault_low.position.y = sample_y - global_position.y
 		_aim_forward(_vault_low, reach)
-		if not _vault_low.is_colliding():
+		if not _live(_vault_low):
 			continue
 		var normal: Vector3 = _vault_low.get_collision_normal()
 		# A surface CharacterBody3D's own locomotion already climbs is a ramp,
@@ -361,7 +361,7 @@ func vault_query() -> Dictionary:
 	# the retry.
 	for margin in [LEDGE_ANCHOR_MARGIN * 0.3, LEDGE_ANCHOR_MARGIN]:
 		_query_surface_above(distance + margin, highest_hit_y)
-		if not _surface.is_colliding():
+		if not _live(_surface):
 			continue
 		var point: Vector3 = _surface.get_collision_point()
 		# THE TOP MUST BE ABOVE THE HIGHEST SAMPLE THAT HIT, by construction:
@@ -469,7 +469,7 @@ func _query_vault_over(top: Vector3) -> bool:
 	var depth: float = _config.speed_vault.table_ceiling() + SURFACE_ORIGIN_MARGIN
 	_vault_over.target_position = Vector3(0.0, -depth, 0.0)
 	_vault_over.force_raycast_update()
-	if not _vault_over.is_colliding():
+	if not _live(_vault_over):
 		# NOTHING WITHIN A VAULT'S REACH IS STILL AN OVER, with no landing.
 		#
 		# DO NOT return false here for an obstacle with no far-side landing: a
@@ -547,7 +547,7 @@ func ledge_query() -> Dictionary:
 			feet_y() + _config.grab.ledge_max_height, t)
 		_vault_high.position.y = sample_y - global_position.y
 		_aim_forward(_vault_high, _config.grab.ledge_find_distance)
-		if not _vault_high.is_colliding():
+		if not _live(_vault_high):
 			continue
 		var found: Dictionary = _ledge_from_face()
 		if found.get("valid", false):
@@ -575,7 +575,7 @@ func _ledge_from_face() -> Dictionary:
 	var face_distance: float = Vector2(to_face.x, to_face.z).length()
 
 	_query_surface(face_distance + LEDGE_ANCHOR_MARGIN)
-	if not _surface.is_colliding():
+	if not _live(_surface):
 		return _no_hit()
 	var edge: Vector3 = _surface.get_collision_point()
 	var normal: Vector3 = _surface.get_collision_normal()
@@ -784,6 +784,17 @@ func _plant_top(at: Vector3, reach: float, cfg: SpringBoardConfig) -> float:
 	var fractions: PackedFloat32Array = space.cast_motion(params)
 	if fractions.size() < 2 or fractions[0] >= 1.0:
 		return NAN
+	# WHAT STOPPED THE SPHERE, which cast_motion does not report -- it returns
+	# fractions and nothing else. A plant on an inert surface is not a plant,
+	# so the sphere is re-tested where it came to rest, widened by a margin
+	# because it stops SHORT of contact (see this function's own note) and
+	# would otherwise touch nothing.
+	params.transform = Transform3D(Basis.IDENTITY,
+		Vector3(at.x, start_y, at.z) + params.motion * fractions[0])
+	params.margin = cfg.plant_probe_radius
+	for touched in space.intersect_shape(params, PLANT_CONTACT_RESULTS):
+		if is_inert(touched.get("collider")):
+			return NAN
 	# The sphere's underside where it stopped: a little BELOW the surface it
 	# stopped on, by the safe fraction's margin and by more again on an edge.
 	return start_y - fractions[0] * drop - cfg.plant_probe_radius
@@ -1004,6 +1015,41 @@ static func is_soft(collider: Object) -> bool:
 	var node := collider as Node
 	return node != null and node.is_in_group(SOFT_LANDING_GROUP)
 
+## Geometry the body may stand on and nothing else: an air wall, or a ramp laid
+## over a lip the player kept catching on. Every affordance query in this file
+## refuses a hit carrying the group, so nothing here is grabbable, vaultable,
+## wall-runnable, wall-climbable or plantable -- while the floor, the landing
+## prediction and move_and_slide() go on seeing it exactly as they did. Walking
+## over the top is what is left.
+##
+## A GROUP, read off the same thing is_soft() reads: whatever the ray reports
+## as the collider. That is the StaticBody3D under a pile of CollisionShape3D
+## children -- one group covers all of them -- or the ROOT of a CSG tree, a
+## lone CSGBox3D included. It is NOT read off a CollisionShape3D, nor off a
+## brush inside a combiner; Arena warns at load about both.
+##
+## THE NAME OF ANY LATER, NARROWER TAG BELONGS TO MoveConfig. check_for_grab,
+## check_for_vault_over and check_for_wall_climb are this same capability set
+## asked from the state's side [ME:CONFIRMED 11 §11.2], so a per-behaviour tag
+## is no_grab, no_vault_over, no_wall_climb -- never a fresh vocabulary for the
+## half of a matrix that already has one.
+const NO_INTERACTION_GROUP := &"no_interaction"
+
+static func is_inert(collider: Object) -> bool:
+	var node := collider as Node
+	return node != null and node.is_in_group(NO_INTERACTION_GROUP)
+
+## Whether `ray` found something that offers an affordance at all.
+##
+## DO NOT read is_colliding() directly in a query. An inert hit still STOPS the
+## ray, so whatever stands behind it stays unseen -- which is the point for an
+## air wall, and is why this answers "nothing here" rather than casting past
+## it. A query that wants the geometry regardless does not come through here:
+## predicted_landing() is the one that does not, because the top is walkable
+## and a fall onto it has to be predicted like any other.
+func _live(ray: RayCast3D) -> bool:
+	return ray.is_colliding() and not is_inert(ray.get_collider())
+
 ## How finely the predicted arc is walked, and how far along it anyone looks.
 ##
 ## The cap is a VOID GUARD, not a budget: a body falling where there is no
@@ -1011,6 +1057,10 @@ static func is_soft(collider: Object) -> bool:
 ## seconds is already well past any fall a level can survive. Nearly every
 ## real call stops on its first few segments, because by the time anyone asks
 ## this the ground is close.
+## How many bodies the plant's resting sphere may report before the rest are
+## ignored. A plant sits on one surface; a handful covers a seam between two.
+const PLANT_CONTACT_RESULTS := 8
+
 const PREDICT_STEP := 0.05
 const PREDICT_SPAN := 120
 
@@ -1033,13 +1083,21 @@ func predicted_landing(velocity: Vector3) -> Dictionary:
 	for i in PREDICT_SPAN:
 		v.y = maxf(v.y - pawn.gravity * PREDICT_STEP, -pawn.terminal_velocity)
 		var next := at + v * PREDICT_STEP
-		var hit := _cast(at, next)
+		# include_inert: the top of an air wall is walkable, so a fall onto one
+		# is a fall like any other and has to be predicted as one. Refusing it
+		# here would report open air under the body and turn every drop onto a
+		# blocker into an uncontrolled fall.
+		var hit := _cast(at, next, true)
 		if not hit.is_empty():
 			return hit
 		at = next
 	return {}
 
-func _cast(from: Vector3, to: Vector3) -> Dictionary:
+## `include_inert` is for the ONE caller that must see an air wall: a body
+## falls onto the top of one like any other surface, so predicted_landing()
+## asks for the geometry rather than for the affordance. Every other caller
+## here is asking "is there something to act on", and an inert hit is a no.
+func _cast(from: Vector3, to: Vector3, include_inert: bool = false) -> Dictionary:
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return {}
@@ -1068,7 +1126,10 @@ func _cast(from: Vector3, to: Vector3) -> Dictionary:
 	var body := get_parent() as CollisionObject3D
 	if body != null:
 		query.exclude = [body.get_rid()]
-	return space.intersect_ray(query)
+	var hit := space.intersect_ray(query)
+	if not include_inert and is_inert(hit.get("collider")):
+		return {}
+	return hit
 
 ## Points a side ray at the given reach and fires it. Aimed live from the
 ## config on every call, same as _aim_forward() above and for the same
@@ -1116,7 +1177,7 @@ func wall_query(heading: Vector3 = Vector3.ZERO) -> Dictionary:
 	# on that field.
 	var reach: float = _config.wall_run.wall_running_forward_check_distance
 	_aim_side(_wall_left, -1.0, reach)
-	if _wall_left.is_colliding():
+	if _live(_wall_left):
 		var normal: Vector3 = _wall_left.get_collision_normal()
 		# Only a near-vertical surface counts as a wall -- MAX_WALL_NORMAL_Y is
 		# a stricter gate than vault/ledge's walkable_floor_z (which admits
@@ -1127,7 +1188,7 @@ func wall_query(heading: Vector3 = Vector3.ZERO) -> Dictionary:
 				"incidence": _incidence(normal, heading)}
 
 	_aim_side(_wall_right, 1.0, reach)
-	if _wall_right.is_colliding():
+	if _live(_wall_right):
 		var normal: Vector3 = _wall_right.get_collision_normal()
 		if absf(normal.y) < MAX_WALL_NORMAL_Y:
 			return {"valid": true, "normal": normal, "side": 1, \
@@ -1166,7 +1227,7 @@ func wall_ahead_query(heading: Vector3 = Vector3.ZERO) -> Dictionary:
 	# enough to clear the ankle-height clutter a floor-level ray would snag on.
 	_wall_ahead_low.position.y = WALL_AHEAD_CHEST_Y
 	_aim_forward(_wall_ahead_low, reach)
-	if not _wall_ahead_low.is_colliding():
+	if not _live(_wall_ahead_low):
 		return NO_WALL_AHEAD.duplicate()
 	var normal: Vector3 = _wall_ahead_low.get_collision_normal()
 	# Same verticality gate wall_query() applies: a surface you can kick up
@@ -1183,7 +1244,7 @@ func wall_ahead_query(heading: Vector3 = Vector3.ZERO) -> Dictionary:
 	# a raycast cannot do anyway.
 	_wall_ahead_high.position.y = feet_y() - global_position.y + _config.wall_climb.min_wall_height
 	_aim_forward(_wall_ahead_high, reach)
-	var tall_enough: bool = _wall_ahead_high.is_colliding() \
+	var tall_enough: bool = _live(_wall_ahead_high) \
 		and absf(_wall_ahead_high.get_collision_normal().y) < MAX_WALL_NORMAL_Y
 
 	return {"valid": true, "normal": normal, "distance": distance, \
@@ -1221,7 +1282,7 @@ func wall_tracked_query(direction: Vector3, reach: float) -> Dictionary:
 	var local: Vector3 = _wall_left.global_transform.basis.inverse() * direction.normalized()
 	_wall_left.target_position = local * reach
 	_wall_left.force_raycast_update()
-	if not _wall_left.is_colliding():
+	if not _live(_wall_left):
 		return {"valid": false, "normal": Vector3.ZERO, "side": 0, "incidence": 0.0}
 	var normal: Vector3 = _wall_left.get_collision_normal()
 	if absf(normal.y) >= MAX_WALL_NORMAL_Y:

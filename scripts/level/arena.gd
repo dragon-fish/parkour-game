@@ -176,26 +176,28 @@ func _ready() -> void:
 
 	reset_player()
 	_mark.call("markers + reset_player")
-	_warn_about_unreachable_pads()
+	_warn_about_unreadable_tags()
 
-## A body in the soft_landing group that nothing will ever read is silent:
-## the pad simply is not soft, and the player finds out by dying on it. This
-## turns each one into a console line at load, which is the whole reason it
-## exists -- see the spring-bone lesson in
-## .claude/skills/authoring-godot-scene-files.
+## A surface group that nothing will ever read is SILENT, and both of them
+## fail the same way: a soft pad is simply not soft and the player finds out by
+## dying on it, an inert wall is simply not inert and they find out by climbing
+## something meant to be unclimbable. This turns each one into a console line
+## at load, which is the whole reason it exists -- see the spring-bone lesson
+## in .claude/skills/authoring-godot-scene-files.
 ##
-## The trap is CSG. Only the ROOT of a CSG tree owns collision, so a group on
-## a child brush is read by nothing -- and a brush is exactly what an author
-## draws when they want one soft ledge in a level built out of CSG.
-func _warn_about_unreachable_pads() -> void:
-	for node in get_tree().get_nodes_in_group(Probes.SOFT_LANDING_GROUP):
-		var why := _why_a_pad_cannot_be_felt(node as Node)
-		if why != "":
-			push_warning("Soft landing pad '%s' will never be felt: %s"
-				% [(node as Node).name if node is Node else node, why])
+## The trap is CSG. Only the ROOT of a CSG tree owns collision, so a group on a
+## child brush is read by nothing -- and a brush is exactly what an author
+## draws when they want one tagged surface in a level built out of CSG.
+func _warn_about_unreadable_tags() -> void:
+	for group in [Probes.SOFT_LANDING_GROUP, Probes.NO_INTERACTION_GROUP]:
+		for node in get_tree().get_nodes_in_group(group):
+			var why := _why_a_tag_cannot_be_read(node as Node)
+			if why != "":
+				push_warning("Group '%s' on '%s' will never be read: %s"
+					% [group, (node as Node).name if node is Node else node, why])
 
 ## Empty when the node is something a ray can report, a reason otherwise.
-func _why_a_pad_cannot_be_felt(node: Node) -> String:
+func _why_a_tag_cannot_be_read(node: Node) -> String:
 	if node == null:
 		return "not a node"
 	if node is CSGShape3D:
@@ -203,8 +205,8 @@ func _why_a_pad_cannot_be_felt(node: Node) -> String:
 		if node.get_parent() is CSGShape3D:
 			return ("it is a brush inside a CSG tree, so the collision belongs to "
 				+ "its root. Move it out of the tree and give it its own "
-				+ "use_collision, or put the group on the root -- which makes the "
-				+ "whole tree soft.")
+				+ "use_collision, or put the group on the root -- which applies it "
+				+ "to the whole tree.")
 		if not (node as CSGShape3D).use_collision:
 			return "use_collision is off, so it has no collision to be hit."
 		return ""

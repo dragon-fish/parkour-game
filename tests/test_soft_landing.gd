@@ -143,30 +143,30 @@ func test_a_brush_inside_a_csg_tree_is_reported_as_unreachable() -> void:
 	brush.add_to_group(Probes.SOFT_LANDING_GROUP)
 	root.add_child(brush)
 	arena.add_child(root)
-	assert_string_contains(arena._why_a_pad_cannot_be_felt(brush), "brush inside a CSG tree")
+	assert_string_contains(arena._why_a_tag_cannot_be_read(brush), "brush inside a CSG tree")
 
 func test_a_lone_csg_box_with_collision_is_a_perfectly_good_pad() -> void:
 	var arena := _arena()
 	var box := CSGBox3D.new()
 	box.use_collision = true
 	arena.add_child(box)
-	assert_eq(arena._why_a_pad_cannot_be_felt(box), "", "a lone CSG box was refused")
+	assert_eq(arena._why_a_tag_cannot_be_read(box), "", "a lone CSG box was refused")
 
 func test_a_csg_box_with_collision_off_is_reported() -> void:
 	var arena := _arena()
 	var box := CSGBox3D.new()
 	box.use_collision = false
 	arena.add_child(box)
-	assert_string_contains(arena._why_a_pad_cannot_be_felt(box), "use_collision")
+	assert_string_contains(arena._why_a_tag_cannot_be_read(box), "use_collision")
 
 func test_a_mesh_instance_is_reported_as_owning_no_collision() -> void:
 	var arena := _arena()
 	var visual := MeshInstance3D.new()
 	arena.add_child(visual)
-	assert_string_contains(arena._why_a_pad_cannot_be_felt(visual), "owns no collision")
+	assert_string_contains(arena._why_a_tag_cannot_be_read(visual), "owns no collision")
 
 func test_a_static_body_passes() -> void:
 	var arena := _arena()
 	var body := StaticBody3D.new()
 	arena.add_child(body)
-	assert_eq(arena._why_a_pad_cannot_be_felt(body), "", "a StaticBody3D was refused")
+	assert_eq(arena._why_a_tag_cannot_be_read(body), "", "a StaticBody3D was refused")
