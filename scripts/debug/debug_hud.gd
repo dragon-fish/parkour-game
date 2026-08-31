@@ -89,8 +89,15 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_TAB:
-			_tier = (_tier + 1) % Tier.size()
-			visible = _tier != Tier.OFF
+			set_tier((_tier + 1) % Tier.size())
+
+## Opens the HUD at a chosen tier, for a scene that wants it up before anyone
+## has pressed anything -- and for one where nobody CAN: a scene whose own
+## panel has focusable fields never sees Tab, because the GUI takes it for
+## focus traversal long before _unhandled_input().
+func set_tier(tier: int) -> void:
+	_tier = clampi(tier, 0, Tier.size() - 1)
+	visible = _tier != Tier.OFF
 
 ## The rows the compact tier keeps: what the body is doing, where it is, and
 ## what is about to kill it. Everything else answers a SPECIFIC question --

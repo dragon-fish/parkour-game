@@ -216,8 +216,25 @@ func _focus_the_scene() -> void:
 	# because they are on the left. Every CanvasLayer under the LEVEL is a panel
 	# this scene did not ask for; the lab's own UI hangs off this node instead.
 	for child in level.get_children():
-		if child is CanvasLayer:
-			(child as CanvasLayer).visible = false
+		if not (child is CanvasLayer):
+			continue
+		# THE HUD STAYS, AND AT ITS FULLEST. Its model-root decomposition
+		# (mount / fold / lift / cancel / clip) exists nowhere else, and this
+		# panel's numbers describe the RECORDED frame while the HUD's describe
+		# the LIVE body. Tab would have opened it, but this panel's own fields
+		# take Tab for focus traversal, so the scene opens it itself.
+		#
+		# BY METHOD, NOT BY NAME. The first version of the loop below looked
+		# for "DebugHUD" against a node called "DebugHud" and hid nothing.
+		#
+		# THE TWO SETS OF NUMBERS DISAGREE BY DESIGN -- one describes the frame
+		# being scrubbed, the other a body standing still. Reading one against
+		# the other cost a debugging session once. Which side of the screen a
+		# number came from is part of the number.
+		if child.has_method("set_tier"):
+			child.call("set_tier", DebugHud.Tier.FULL)
+			continue
+		(child as CanvasLayer).visible = false
 	for child in level.get_children():
 		if child.has_method("show_overlay"):
 			child.call("show_overlay", true)
