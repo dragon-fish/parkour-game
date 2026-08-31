@@ -4079,30 +4079,28 @@ func dodge_direction(input: MoveInput) -> Vector3:
 ## Throws a dodge along `direction`, which must already be the square-sideways
 ## world vector dodge_direction() returns.
 ##
-## THE MOMENTUM GOES FIRST, AND IT GOES AT ONCE. [ME:CONFIRMED 04 §4.5] a
-## dodge out of a run drops the forward speed to base velocity on the spot and
-## turns a corner no real body could -- dodging by accident at speed is meant
-## to hurt, and the speedrun value of the move comes from the impulse it hands
-## out, never from the run it interrupts.
+## THE MOMENTUM IS GONE, NOT SCALED AND NOT CLAMPED. [ME:CONFIRMED 04 §4.5] a
+## dodge out of a run leaves along the impulse and nothing else, turning a
+## corner no real body could -- dodging by accident at speed is meant to hurt,
+## and what makes the move worth anything outside combat is the impulse it
+## hands out, never the run it interrupts.
 ##
-## DO NOT let the two speeds compose instead. Carrying a 6.2 m/s run into a
-## 6.0 m/s sideways impulse leaves along the diagonal at 8.6, which is FASTER
-## than the run that entered it, and the hop covers a jump's distance aimed
-## somewhere nobody asked for. That was this move's first outing and it was
-## wrong in both directions at once.
+## DO NOT LEAVE A FLOOR UNDER THE HORIZONTAL SPEED. base_velocity is where the
+## CEILING lands -- the speed a run rebuilds from after touchdown -- and it is
+## tempting to read it as a floor the airborne body may keep. It is not, and
+## anything kept COMPOSES with the impulse rather than being replaced by it:
+## keeping 4.0 of a 5.0 run and adding 6.0 sideways leaves at 7.2, faster than
+## the run that entered and aimed 34 degrees off the way the dodge was thrown.
+## Both of this move's first two outings were wrong in exactly that way.
 ##
-## The energy is spent to the same floor the speed is cut to, so the ceiling
-## does not immediately pull the body back up to the speed just taken off it.
+## The energy goes to that ceiling in the same breath, so the cap the body
+## rebuilds against is base velocity rather than whatever the run had banked.
 ## Turning through the corner would bill a second time, but spend_turn() stops
-## at that floor as well, so the corner is free once the dodge has paid --
-## which is the whole reason both costs can be one number.
+## at that same floor, so the corner is free once the dodge has paid -- which
+## is what lets both costs be one number instead of two.
 func dodge_launch(direction: Vector3) -> void:
-	var carried := Vector3(velocity.x, 0.0, velocity.z)
-	var base_speed: float = config.pawn.speed_max_base_velocity
-	if carried.length() > base_speed:
-		carried = carried.normalized() * base_speed
-	velocity.x = carried.x
-	velocity.z = carried.z
+	velocity.x = 0.0
+	velocity.z = 0.0
 	velocity.y = config.dodge_jump.base_jump_z
 	# SPENT ONCE, AS A WORLD VECTOR -- see DodgeJumpMove on why it must never
 	# be recomputed against the facing afterwards.

@@ -14,15 +14,14 @@ extends MoveConfig
 #     InertiaConservation = 0.3
 #     StrafeThreshold     = 0.99
 #
-# InertiaConservation IS NOT A MULTIPLIER ON THE INCOMING SPEED, and is not
-# declared below as a dial nobody reads. Scaling a full-speed run by 0.3 gives
-# 7.8 km/h; what a dodge out of a run actually lands on is 14.4 km/h
-# [ME:CONFIRMED 04 §4.5], which is speed_max_base_velocity. So the cost is a
-# CUT TO THAT FLOOR, taken at once and on both sides of the same line --
-# Player.dodge_launch() clamps the carried speed to it and spends the energy
-# to it in the same breath. What 0.3 is really scaling is not known, and
-# guessing costs more than leaving it out: a multiplier stacked on top of the
-# clamp would take the speed twice.
+# InertiaConservation IS NOT IMPLEMENTED, and is not declared below as a dial
+# nobody reads. Nothing survives the launch for it to scale: [ME:CONFIRMED 04
+# §4.5] the horizontal momentum is gone on the tick the dodge starts, and the
+# body leaves along jump_add_xy and nothing else. The 14.4 km/h a dodge is
+# measured to land on is where the CEILING goes -- the speed the run rebuilds
+# from after touchdown -- not a speed the airborne body keeps. Both halves are
+# Player.dodge_launch(), and its own note has the two wrong readings that came
+# before this one.
 
 func _init() -> void:
 	# THE THREE PROBE FLAGS ARE LEFT FALSE, AND THAT IS THE MOVE.
