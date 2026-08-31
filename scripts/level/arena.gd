@@ -571,8 +571,13 @@ func reset_player() -> void:
 		player.global_position = checkpoint.global_position
 		player.rotation = Vector3(0.0, checkpoint.global_rotation.y, 0.0)
 	else:
+		# THE SPAWN POINT'S FACING COUNTS TOO. This used to hand back
+		# Vector3.ZERO, so a level whose spawn was turned to face its first
+		# obstacle started every run looking down world -Z instead -- and the
+		# respawn_gizmos preview drew the arrow the marker was turned to,
+		# promising a facing nothing honoured.
 		player.global_position = spawn_point.global_position
-		player.rotation = Vector3.ZERO
+		player.rotation = Vector3(0.0, spawn_point.global_rotation.y, 0.0)
 	player.reset_state()
 	# EVERY temporary modification is a property of one life. Cleared here
 	# rather than in reset_state() because the volumes that put them there are
