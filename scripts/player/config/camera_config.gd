@@ -11,6 +11,53 @@ extends Resource
 ## panel can tune it live like every other camera value.
 ## [ME:CONFIRMED 09 §9.1] BaseEyeHeight = 76 uu. 0.76 m above the capsule
 ## centre puts the eye at 1.66 m off the floor on this project's 1.8 m body --
+## THE FIRST-PERSON CAMERA IS NOT AT THE MODEL'S EYES, AND MUST NOT BE MOVED
+## THERE. It sits at the neck, pushed slightly forward -- what essentially every
+## FPS does, arrived at by the industry over many years rather than picked here.
+## Four things break the moment it is moved to the eyes:
+##
+##   * The neck is directly below the eyes, so looking down puts it in frame
+##     unavoidably. From in front of it, the downward cone clears it entirely.
+##   * A weapon held at the shoulder needs the view far enough forward to see
+##     it at all; from inside the skull it is behind the near plane or behind
+##     the body.
+##   * The nose, cheeks and hair intersect the near plane.
+##   * A head bone carries the whole of an animation authored to be watched
+##     from behind. See camera_head_follow_strength: 9 cm of bob against the
+##     1-3 cm a first-person view tolerates.
+##
+## THE SAME PLACEMENT IS ARRIVED AT OUTSIDE GAMES, which is worth knowing
+## before treating it as a rendering workaround: vlog cameras are worn on the
+## neck or the chest rather than on the head, for two of the reasons above --
+## a head mount shakes with every glance, and the lower, steadier viewpoint
+## reads as MORE natural first person rather than less.
+##
+## THE TEST IS WHAT READS RIGHT, NOT WHAT IS TRUE. At a real eye height you
+## cannot see your own hands while walking unless you deliberately raise them,
+## and every first-person game shows them swinging anyway -- because that is
+## what the view is expected to look like, not because it is accurate. Anatomy
+## is worth citing when it AGREES with a placement that already feels right;
+## it is not what the placement is derived from, and a change argued from it
+## alone is arguing from the wrong thing.
+##
+## ⚠️ DO NOT READ THE OFFSETS BELOW AS ERRORS TO BE CORRECTED. They are not
+## compensating for the camera failing to pitch about the neck joint the way a
+## head does -- not pitching that way is the point. Hanging the eye off the
+## neck joint has been tried and abandoned; VRM even ships the author's own
+## viewpoint (a LookOffset node, 0.06 m above the head bone with essentially no
+## forward component) and it is the wrong position for all four reasons above.
+##
+## ⚠️ AND THEY ARE NOT INDEPENDENT DIALS. Each is pinned by a different worst
+## case, from opposite directions, and moving one to fix what you are looking
+## at will silently break the case the other is holding:
+##
+##   eye_height   pinned from ABOVE by crouching into a low gap -- raise it and
+##                the eye goes through the ceiling of the gap.
+##   eye_forward  pinned from BELOW by looking straight down (pitch -89) --
+##                shrink it and the view goes into the character's own chest.
+##
+## Anyone retuning either needs both in hand, and a check of the other case.
+
 ## the original's own eye line, not a guessed one.
 @export var eye_height: float = 0.76
 @export var mouse_sensitivity: float = 0.0022
@@ -380,6 +427,54 @@ extends Resource
 ## percent below that and then stops tracking it at all -- 0.60 and 0.80 give
 ## the identical 0.527, so the sweep has hit some cap of the physics backend's
 ## own. A radius that large is an absurd camera anyway; what matters is that
+## Width of the band in front of a look limit where the input is progressively
+## damped, degrees. Zero restores the hard stop.
+##
+## A CLAMP ALONE READS AS HITTING SOMETHING. The mouse keeps moving and the
+## view simply stops, with nothing in between -- and every constrained move in
+## this project shares that edge, so it is one feel and not several. In the
+## original the last couple of degrees go heavy instead: you can tell the limit
+## is coming before you arrive at it.
+##
+## Scaled by the room LEFT, so the input fades toward the edge rather than
+## being cut at it: half a band out the mouse moves the view half as far, and
+## the approach is asymptotic. That also means the limit is never quite
+## reached, which is the point -- there is no frame where the view slams to a
+## stop.
+##
+## Degrees from a look limit at which the view moves at HALF speed. Zero
+## restores the hard stop.
+##
+## INVERSE, NOT A BAND: the scale is room / (room + this), so there is no edge
+## where damping switches on and no corner in the response. Resistance grows
+## continuously the whole way in and the limit is approached asymptotically,
+## which is what reads as weight. A band -- full speed outside it, a straight
+## ramp inside -- was tried first and is two straight lines with a kink where
+## they meet; at any width narrow enough not to feel mushy it was also crossed
+## inside a tick or two and could not be felt at all.
+##
+## What the number means, directly: at this many degrees out the view moves at
+## half the speed the mouse asks for, at three times it about three quarters,
+## at a third of it about a quarter. Far from any limit the factor is
+## indistinguishable from 1, so ordinary looking is untouched.
+##
+## ONE NUMBER SERVES LIMITS OF VERY DIFFERENT SIZES -- 89 degrees of pitch, a
+## 170 degree hang, a 45 degree shimmy -- so it is deliberately small: the tail
+## is long and gentle rather than the last stretch being heavy.
+## MEASURED, pitch driven into its 89 degree limit at a slow 1.5 degrees per
+## tick. Samples eight ticks apart, over the last stretch:
+##
+##     0.0   85.50 -> 89.00                            the hard stop
+##     1.5   81.85 -> 88.95 -> 89.00
+##     3.0   79.09 -> 86.89 -> 88.97 -> 89.00
+##     6.0   74.73 -> 82.36 -> 87.18 -> 88.75 -> 88.97
+##
+## Verified by feel from there. The first attempt at this feature shipped a
+## 2.5 degree BAND and could not be felt at all -- worth knowing, because the
+## width that sounds right when describing the original is not the width that
+## survives a mouse crossing it in one tick.
+@export var look_damp_half_deg: float = 3.0
+
 ## the dial stops being honest there, and it does so silently.
 @export var third_person_probe_radius: float = 0.2
 

@@ -289,8 +289,40 @@ extends MoveConfig
 ## a number -- and the CDO agrees from its own side: TdMove_Grab carries
 ## `MovementGroup = MG_TwoHandsBusy`. Past this angle the body is hanging by one
 ## arm, so it can neither travel along the ledge nor haul itself over one. See
+
+## Half-width of the look fan DURING THE PULL-UP, degrees of full width -- 175
+## here, so the view may go 87.5 degrees either side and no further.
+##
+## The hang itself keeps its own fan; this replaces it only while the body is
+## mantling, because that is the stretch with an animation to contradict. With
+## no clamp the player can look back over their own shoulder mid-pull and watch
+## their back from the inside.
+##
+## [ME:INFERRED] the original clamps here too -- the owner reports the
+## restriction exists -- but the width has NOT been measured. 175 is a placeholder
+## chosen to stop the look-behind and nothing more. DO NOT cite it as measured.
+@export var pull_up_look_yaw_deg: float = 175.0
+
 ## GrabMove._two_handed(), which is where the single predicate lives.
 @export var pull_up_angle_deg: float = 45.0
+
+## How far the view may be turned off the wall and still have the shimmy WIN
+## the argument, degrees. Past it the turn is read as aiming a jump instead.
+##
+## [ME:CONFIRMED] the owner, in the original: holding a strafe key does not
+## merely survive a turned view, it PULLS THE VIEW BACK. Between
+## pull_up_angle_deg and this the shimmy travels and the fan narrows to the
+## two-handed angle, which walks the view home; past this the game leaves the
+## view alone, because a body looking back over its shoulder is lining up a
+## jump off the wall and taking that away would be worse than refusing a
+## shimmy.
+##
+## THE BAND IS RE-READ EVERY TICK, not latched when the key goes down, and it
+## needs no latch: the narrowed fan is what stops a held shimmy from ever
+## reaching this angle again, so the only way back out is to let go. That also
+## gives the other half of the owner's report for free -- press the key at 120
+## degrees, turn back under 90 without releasing, and the shimmy simply starts.
+@export var shimmy_assist_angle_deg: float = 90.0
 
 ## Upward speed of a jump off a hang, in metres/second.
 ##

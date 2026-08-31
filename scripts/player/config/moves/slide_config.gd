@@ -20,7 +20,20 @@ extends MoveConfig
 ## Project-specific, no counterpart in the original: the capsule size and how
 ## fast the line can be steered.
 @export var slide_capsule_height: float = 0.9
-@export var slide_steer_rate: float = 1.2
+
+## Radians per second the slide's line may be turned by the input. ZERO, so a
+## slide holds the direction it launched on and cannot be aimed once it has
+## started -- the same absolute-vector rule the dodge follows.
+##
+## THE LOOK CLAMP DOES NOT COVER THIS, which is why it read as a bug rather
+## than as a dial. The clamp bounds how far the view may turn; the steering
+## reads wish_direction(), which is RELATIVE to the view -- so any yaw the
+## clamp still allows was a slice of steering the slide would accept. The two
+## limit different things and only this one aims the body.
+##
+## Turn it back up for a slide that can be nudged; there is nothing in the
+## original arguing either way, because the original has no such control.
+@export var slide_steer_rate: float = 0.0
 ## Project-specific SAFETY VALVE, not a feel knob. A slide that stops under a
 ## ceiling too low to stand up in has no exit at all -- every route back is
 ## gated on headroom and nothing in this move generates speed. The original

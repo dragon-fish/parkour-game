@@ -230,8 +230,55 @@ func _init() -> void:
 @export var view_assist: float = 0.6
 
 ## ⚠️ PROJECT-DEFINED, by eye. How much of the model head's own offset the
-## first-person eye follows DURING a wall run. The run's authored lean puts
-## the head ~0.7 m off the capsule axis, and following it in full reads as
-## the camera flying off the wall -- ✅ the owner: halve it ("偏移0.35m我看看").
-## 1.0 restores the global follow; 0 pins the eye to the procedural position.
-@export_range(0.0, 1.0) var head_follow_scale: float = 0.5
+## first-person eye follows DURING a wall run. 1.0 restores the global follow;
+## 0 pins the eye to the procedural position.
+##
+## ⚠️ THE "0.7 m OFF THE AXIS" THIS ONCE CITED IS NOT WHAT IT SCALES. That
+## figure is the clip offset in scenes/player/tuning/*.json, and
+## Player._camera_head_offset() subtracts it before the rig ever sees it -- so
+## halving this never touched it. Holding the model off the wall is
+## eye_off_wall's job now.
+##
+## What it really scales is how much of the head bone's OWN motion reaches the
+## first-person eye, which is the same question camera_head_follow_strength
+## answers globally: an animation authored to be watched from behind carries
+## more head travel than a view sat in it can stand. A wall run's lean is the
+## most of it in this project, which is why the move names its own number.
+##
+## ✅ the owner tuned 0.75 by eye: below it the head bone swings far enough away
+## from the eye for the neck to come into frame when looking down; above it the
+## lean starts riding the view.
+##
+## 📌 THIS IS NOT COMPENSATING FOR THE CAMERA NOT PITCHING ABOUT THE NECK. That
+## it pitches about itself is deliberate -- see CameraConfig's note beside
+## eye_height on why the first-person camera sits in front of the neck rather
+## than at the eyes, and why moving it there has been tried and abandoned.
+@export_range(0.0, 1.0) var head_follow_scale: float = 0.75
+
+## How far the FIRST-PERSON eye slides AWAY FROM the wall during a run, metres.
+##
+## THE MODEL IS DELIBERATELY OFF THE AXIS HERE. The wall-run clip offset in
+## scenes/player/tuning/*.json holds the body out from the wall so the feet do
+## not go through it, and Player._camera_head_offset() subtracts that back out
+## so the view is not swung by it. Both halves are right. What the pair leaves
+## is an eye on the capsule while the body is most of a metre to the side, so
+## looking down shows it somewhere it visibly is not.
+##
+## Same answer CameraConfig.eye_forward already gives for the same shape of
+## problem, quoted there: keep the model where it meets the world and push the
+## EYE by the matching amount. This is that, sideways, and it moves nothing but
+## the eye -- the feet stay out of the wall.
+##
+## NOT CLAMPED to the clip offset. Tuned by eye it went past it -- 0.7 against
+## beriul's 0.6 -- and that is allowed: what the number has to satisfy is the
+## view, not an equality with the model's own displacement.
+##
+## DO NOT REACH FOR head_follow_scale INSTEAD. That scales the head bone's own
+## animated motion, centimetres of it, and the offset in question never reaches
+## the rig at all.
+## AWAY, because that is where the model is. The clip offset pushes the body
+## OUT from the wall (WallRun_R is -0.6, and wall_side is +1 for a wall on the
+## right), so an eye moved toward the wall goes straight into it -- which is
+## exactly what happened when this was first written with the sign the name
+## suggested rather than the sign the offset has.
+@export var eye_off_wall: float = 0.7

@@ -143,6 +143,12 @@ var eye_forward: float = 0.0
 var extra_eye_forward: float = 0.0
 ## Its vertical twin -- see the swing's eye_lift_lean.
 var extra_eye_lift: float = 0.0
+## Its SIDEWAYS twin, positive to the body's right -- see the wall run's
+## eye_off_wall. Eased rather than hard-set, because unlike the swing's two
+## there is no lean easing home behind it to ride: entering and leaving a wall
+## run would step the eye a third of a metre in one frame.
+var extra_eye_lateral: float = 0.0
+var _extra_eye_lateral_target: float = 0.0
 
 var _head_local_offset: Vector3 = Vector3.ZERO
 ## Per-move scaling of the head follow (wall run halves it -- see
@@ -473,6 +479,12 @@ func absorb_body_yaw(radians: float) -> void:
 ## a head is available.
 ## Sets where the head follow is headed, per move -- 1.0 everywhere except
 ## the states that ask for less. Eased in update_effects().
+## Slides the first-person eye sideways, positive to the body's right. Set
+## every tick by whoever wants it and to zero by everyone else, exactly like
+## set_head_follow_scale() beside it.
+func set_eye_lateral(target: float) -> void:
+	_extra_eye_lateral_target = target
+
 func set_head_follow_scale(target: float) -> void:
 	_head_follow_scale_target = clampf(target, 0.0, 1.0)
 
@@ -494,6 +506,24 @@ func clear_head_position() -> void:
 ## unconstrained-to-constrained transition captures _yaw_reference: repeat
 ## calls while already constrained must leave it alone, or an absolute-yaw
 ## fan would drift to follow the player instead of staying pinned to the
+## Scales one tick of look input down as it runs out of room, so a limit is
+## felt before it is reached instead of arriving as a stop.
+##
+## `room` is how far the view may still travel THE WAY IT IS GOING. Negative
+## room means the view is already outside -- which never happens by pushing,
+## only by the limit itself moving (a fan re-centring on a wall, a pitch floor
+## rising). Those cases have their own easing and must not be damped on top:
+## damping there would fight the very motion bringing the view back, so the
+## input is passed through untouched.
+func _damped_look(step: float, room: float) -> float:
+	if step == 0.0 or _config == null:
+		return step
+	var half: float = deg_to_rad(_config.camera.look_damp_half_deg)
+	# Negative room is passed through: see this function's own note.
+	if half <= 0.0 or room < 0.0:
+		return step
+	return step * (room / (room + half))
+
 ## facing the move began with.
 func set_look_constraint(min_c: Vector3, max_c: Vector3, absolute_yaw: bool, \
 		pitch_relaxes: bool = false, pitch_min_turned: float = -PI, \
@@ -722,6 +752,13 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 					low = lerpf(_look_relative_yaw, low, settle)
 				elif _look_relative_yaw > high:
 					high = lerpf(_look_relative_yaw, high, settle)
+			# Damped against the edge the view is heading FOR, and against the
+			# EASED edge rather than the declared one, so a fan still moving in to
+			# meet the view is not also resisting it.
+			var room: float = high - _look_relative_yaw
+			if yaw_delta <= 0.0:
+				room = _look_relative_yaw - low
+			yaw_delta = _damped_look(yaw_delta, room)
 			_look_relative_yaw = clampf(_look_relative_yaw + yaw_delta, low, high)
 			relative = _look_relative_yaw
 		else:
@@ -744,7 +781,16 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 		floor_pitch = _relaxed_pitch_floor() if _look_pitch_relaxes else _look_min.x
 		pitch_min = maxf(pitch_min, floor_pitch)
 		pitch_max = minf(pitch_max, _look_max.x)
-	var wanted: float = _pitch - look_delta.y * _config.camera.mouse_sensitivity
+	var pitch_step: float = -look_delta.y * _config.camera.mouse_sensitivity
+	# Damped the same way as the yaw above, against the DECLARED floor: the
+	# eased floor is computed below, and _damped_look() passes negative room
+	# through untouched, so a floor still rising to meet the view resists
+	# nothing.
+	var pitch_room: float = pitch_max - _pitch
+	if pitch_step <= 0.0:
+		pitch_room = _pitch - pitch_min
+	pitch_step = _damped_look(pitch_step, pitch_room)
+	var wanted: float = _pitch + pitch_step
 	# The floor is EASED UP to meet a view already below it, rather than that
 	# view being yanked up to meet the floor.
 	#
@@ -823,6 +869,10 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# third-person zero, so neither end moved; the eye simply retreats to the
 	# head as the seat pulls back, instead of teleporting there.
 	base_position.z = -(eye_forward + extra_eye_forward) * (1.0 - _eased_view_blend())
+	# Faded out of third person for the same reason the forward offset is: it
+	# exists to put the FIRST-PERSON eye where the model's head already is, and
+	# the pulled-back seat is looking at that head from outside.
+	base_position.x = extra_eye_lateral * (1.0 - _eased_view_blend())
 
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 
@@ -995,6 +1045,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var scale_t: float = 1.0 - exp(-delta / maxf(
 		_config.camera.scripted_eye_offset_blend_time, 0.001))
 	_head_follow_scale = lerpf(_head_follow_scale, _head_follow_scale_target, scale_t)
+	extra_eye_lateral = lerpf(extra_eye_lateral, _extra_eye_lateral_target, scale_t)
 	if _has_head:
 		var strength := clampf(_config.camera.camera_head_follow_strength, 0.0, 1.0) \
 			* _head_follow_scale

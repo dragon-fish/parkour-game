@@ -1234,6 +1234,46 @@ func is_input_locked() -> bool:
 func begin_slide_recovery() -> void:
 	_slide_recovery_timer = config.slide.recovery_time
 
+## The config that governs the LOOK CLAMP and the model's yaw freeze while the
+## stand-up out of a slide is still playing, or null when the active move's own
+## config governs as usual.
+##
+## THE SLIDE'S CLAMP OUTLIVES THE SLIDE. SlideMove exits the moment the slide
+## proper is spent, but the body is still getting up for recovery_time after
+## that -- and a clamp that ends with the state lets the view whip round over a
+## body that has not finished standing. The eye height and the speed budget
+## already read slide_recovery_fraction() for the same reason; this is the
+## third reader of the same tail.
+##
+## PACED ON THE CLIP, NOT ON recovery_time. DO NOT reach for that field here:
+## despite the name it is the RE-ENTRY COOLDOWN -- SlideConfig assigns it
+## straight to redo_move_time, and its value is borrowed from the original's
+## RumpSlide RedoMoveTime so that a slide cannot be spammed. It says nothing
+## about how long getting up takes, and it is the longer of the two, so pacing
+## the freeze on it leaves the legs refusing to turn for most of a second after
+## the animation has visibly finished.
+##
+## The stand-up is Slide_Exit, armed as a one-shot by CharacterAnimator, so its
+## own length is the honest window and swapping the clip moves the window with
+## it. A body with no such clip arms nothing and gets no residual, which is
+## right: there is no lower half to look wrong.
+##
+## A slide that ends in a CROUCH arms no Slide_Exit either -- the body simply
+## stays down, there is no getting up, and so there is nothing to cover.
+##
+## GROUNDED ONLY, because a jump out of a slide is not a stand-up: clamping the
+## view through it would be the move holding onto a player who has already left.
+func residual_look_config() -> MoveConfig:
+	if config == null or not grounded:
+		return null
+	# Fetched here rather than held, the same way every other reader of the
+	# animator in this file does it: the body is optional and can be swapped
+	# at runtime, so there is nothing stable to cache.
+	var body_animator := get_node_or_null(^"BodyRoot/CharacterAnimator") as CharacterAnimator
+	if body_animator == null or body_animator.active_oneshot() != &"Slide_Exit":
+		return null
+	return config.slide
+
 ## How far through the stand-up the body is, 1 at the instant the slide ended
 ## and 0 once it is over. Read by the camera to raise the eye, and by the speed
 ## budget to know it must not grow.
@@ -1695,9 +1735,22 @@ func _drive_clip_offset(delta: float) -> void:
 	# The wall run follows the head at half strength -- the authored lean is
 	# ~0.7 m and the full ride reads as flying off the wall.
 	if camera_rig != null:
+		var on_a_wall: bool = move_manager.current_name == Move.WALL_RUN
 		camera_rig.set_head_follow_scale(
-			config.wall_run.head_follow_scale
-			if move_manager.current_name == Move.WALL_RUN else 1.0)
+			config.wall_run.head_follow_scale if on_a_wall else 1.0)
+		# AWAY FROM THE WALL, and zero everywhere else. The clip offset holds
+		# the MODEL out from the wall so the feet clear it, and the head follow
+		# subtracts that back out so the view is not swung -- which leaves the eye
+		# on the capsule while the body is most of a metre outboard of it. The
+		# eye goes the way the body already went.
+		#
+		# NEGATED: wall_side is +1 for a wall on the RIGHT, so following the body
+		# means going left. Written with the sign the phrase 'toward the wall'
+		# suggests, it puts the camera inside the wall.
+		var eye_side: float = 0.0
+		if on_a_wall:
+			eye_side = -float(wall_side) * config.wall_run.eye_off_wall
+		camera_rig.set_eye_lateral(eye_side)
 	var wanted_position := Vector3.ZERO
 	var wanted_rotation := Vector3.ZERO
 	var offset: Array = clip_offset_for(_current_clip())
@@ -2384,6 +2437,11 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# character, while here it is a body that physically cannot turn. Legs
 	# swinging round under a slide look ridiculous from inside the head too.
 	var active: MoveConfig = move_manager.current_config() if move_manager != null else null
+	# The slide's stand-up governs both of this move's presentation facts for
+	# as long as it lasts -- see residual_look_config().
+	var residual: MoveConfig = residual_look_config()
+	if residual != null:
+		active = residual
 	var frozen: bool = active != null and active.freeze_visual_yaw
 	# BOTH VIEWS, on the owner's call. First person used to weld the model to
 	# the view outright, and from inside the head that read as the whole body

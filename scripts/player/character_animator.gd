@@ -589,6 +589,13 @@ func _dodge_clip() -> StringName:
 	var side: int = move.side() if move != null and move.has_method("side") else 0
 	return &"Dodge_Right" if side > 0 else &"Dodge_Left"
 
+## The one-shot on screen right now, or KEEP. Read from outside by anything
+## that has to last exactly as long as a transition CLIP does rather than as
+## long as some state or cooldown -- the stand-up out of a slide is the case
+## this exists for.
+func active_oneshot() -> StringName:
+	return _oneshot
+
 ## Arms `clip` for its own natural length, if the attached body has it at all.
 func _start_oneshot(clip: StringName) -> void:
 	if not _has_clip(clip):
