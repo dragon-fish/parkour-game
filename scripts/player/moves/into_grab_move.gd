@@ -215,6 +215,26 @@ static func hanging_pose(body: Node3D, cfg_all: MovementConfig, hit: Dictionary)
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	if _aborted:
 		return FALLING
+
+	# [ME:CONFIRMED 11 §11.2] IntoGrab is one of the six states holding
+	# bCheckExitToUncontrolledFalling, alongside Falling and Coil -- the other
+	# two this project has, both of which check. A reach cannot save a body
+	# that has already dropped too far.
+	#
+	# DO NOT read this as a tickbox copied for completeness. The approach phase
+	# below carries the body under its own gravity while it waits for a hand to
+	# arrive, and touching() measures HORIZONTAL distance only -- so a body
+	# dropping fast down the face of a wall stays "still approaching" all the
+	# way down without ever arriving. Measured on a 40 m block: committed at
+	# y = 18.75 and still here at y = 1.15, an unsurvivable drop arriving
+	# survivable in a grab pose, because this state tested nothing.
+	#
+	# STRAIGHT TO UNCONTROLLED, with no soft-landing branch of its own:
+	# [ME:CONFIRMED 11 §11.2] ForSoftLanding is held by 180TurnInAir, Falling,
+	# FallingUncontrolled and SoftLanding, and IntoGrab is in none of them.
+	if player.fall_tracker.fall_height >= config.pawn.falling_uncontrolled_height:
+		return advance_and_hand_off(FALL_UNCONTROLLED)
+
 	_reach_time += delta
 
 	# THE APPROACH. Nothing has been touched, so nothing moves the body but the
