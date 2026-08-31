@@ -417,13 +417,28 @@ func _commit() -> int:
 	var frame := Transform3D.IDENTITY
 	if parent is Node3D:
 		frame = (parent as Node3D).global_transform
-	node.transform = Geometry.local_placement(frame, plan["transform"] as Transform3D)
+	var placement: Transform3D = Geometry.local_placement(
+		frame, plan["transform"] as Transform3D)
+	node.transform = placement
 
 	var undo: EditorUndoRedoManager = get_undo_redo()
 	# get_class(), not `name`: nothing has named the node and nothing will until
 	# add_child() does, so reading `name` here labels the action "Draw ".
 	undo.create_action("Draw %s" % node.get_class())
 	undo.add_do_method(parent, "add_child", node, true)
+	# THE PLACEMENT IS RE-ASSERTED AFTER THE ADD, and setting it above is not
+	# enough on its own. SceneTree.node_added fires SYNCHRONOUSLY inside
+	# add_child(), and a listener is handed the node while it is free to move
+	# it -- the Godot 3D Cursor plugin writes global_position onto every Node3D
+	# entering the edited scene, so a transform written only before the add is
+	# already gone by the time add_child() returns, and every solid lands on
+	# the cursor instead of under the drag. Last writer wins, and where a solid
+	# goes is the drag's decision.
+	#
+	# Not a workaround aimed at that one plugin: anything watching node_added
+	# is refused the same way. No paired undo either -- the undo below removes
+	# the node outright, so there is no transform left to restore.
+	undo.add_do_property(node, "transform", placement)
 	if index >= 0:
 		# add_child() appends; a sibling belongs beside the node it joined.
 		undo.add_do_method(parent, "move_child", node, index)
