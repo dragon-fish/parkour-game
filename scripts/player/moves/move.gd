@@ -134,9 +134,40 @@ func touching(face_point: Vector3) -> bool:
 	# Adding the distance this tick will cover means the scripted motion always
 	# takes over before the collision resolves, which is what makes the vault
 	# read as one continuous movement rather than a stumble and a recovery.
-	var speed: float = player.horizontal_speed()
-	var reach: float = player.current_capsule_radius() + CONTACT_MARGIN + speed * _tick_travel
-	return Vector2(face_point.x - here.x, face_point.z - here.z).length() <= reach
+	return Vector2(face_point.x - here.x, face_point.z - here.z).length() <= contact_reach()
+
+## How close the body's centre has to get to a face before the hands count as
+## on it. Shared with whoever has to decide whether contact is REACHABLE at
+## all, so the question "have the hands arrived" and the question "can they
+## ever" cannot end up asking different distances -- which is exactly how a
+## reach came to be committed at up to 0.8 m while contact needed 0.48.
+func contact_reach() -> float:
+	return player.current_capsule_radius() + CONTACT_MARGIN 		+ player.horizontal_speed() * _tick_travel
+
+## Whether the hands can still arrive at `face_point`: either they are already
+## within contact_reach() of it, or the body is travelling that way.
+##
+## ASKED TWICE, and it has to be. Before a reach is committed, because the
+## approach phase moves the body not at all (docs/contact-drives-movement.md)
+## and a body going nowhere near the face keeps its gap forever -- burning the
+## whole max_duration, handing back, and committing again on a ledge that has
+## not moved, which is a soft lock and not a flutter. And DURING the approach,
+## because closing at the moment of commit does not mean still closing: a tap
+## of the stick toward the wall passes the first test and has decayed to
+## nothing by the next tick, which is exactly how the first version of this
+## guard was got round.
+func closing_on(face_point: Vector3) -> bool:
+	if face_point == Vector3.ZERO:
+		# touching() refuses a zero face outright, so nothing could arrive.
+		return false
+	var here: Vector3 = player.global_position
+	var gap := Vector2(face_point.x - here.x, face_point.z - here.z)
+	if gap.length() <= contact_reach():
+		return true
+	# Closing, however slowly. A body creeping in too slowly to arrive inside
+	# max_duration still gets its one wasted reach; what this stops is the body
+	# that is not approaching at all, which is the one that never stops.
+	return Vector2(player.velocity.x, player.velocity.z).dot(gap) > 0.0
 
 ## Carries the body through one tick of its own ballistic motion: full gravity,
 ## real collisions, no scripted displacement at all.

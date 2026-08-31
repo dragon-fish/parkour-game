@@ -48,7 +48,13 @@ func _dropping_past_a_lip() -> Player:
 	# Baselines the fall counter HERE rather than at the spawn point, so the
 	# height the test reasons about is the height the body really falls.
 	player.set_grounded(true)
-	player.velocity = Vector3(0.0, -18.0, 0.0)
+	# DRIFTING IN, not dropping straight down. A body with no horizontal travel
+	# toward the face is refused the reach outright now (see
+	# AirborneMove._can_close_the_gap), and rightly -- but then this case tests
+	# nothing. 0.2 m/s closes the gap far too slowly to arrive before the drop
+	# is over, which is the shape that has to stay survivable-proof: committed,
+	# still approaching, and twenty metres down.
+	player.velocity = Vector3(0.0, -18.0, -0.2)
 	player.move_manager.start(Move.FALLING)
 	return player
 
