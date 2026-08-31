@@ -19,9 +19,9 @@ extends EditorPlugin
 # _forward_3d_gui_input -- the hook scoped to the 3D viewport -- never a global
 # _input().
 
-const Geometry := preload("res://addons/godotchup/block_geometry.gd")
-const Probe := preload("res://addons/godotchup/surface_probe.gd")
-const Placement := preload("res://addons/godotchup/placement.gd")
+const Geometry := preload("res://addons/GodotchUp/block_geometry.gd")
+const Probe := preload("res://addons/GodotchUp/surface_probe.gd")
+const Placement := preload("res://addons/GodotchUp/placement.gd")
 
 enum Shape { BOX, CYLINDER, SPHERE }
 
