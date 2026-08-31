@@ -1498,6 +1498,11 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# so these five are the whole of what a parkour game can use from it. There
 	# is no run and no plain idle in it at all.
 	&"Slide", &"Slide_Start", &"Slide_Exit", &"ClimbUp_1m", &"Walk_Carry",
+	# Crouch_Enter is the one-shot the legs fold through when a pull-up lands
+	# somewhere too low to stand. A name the animator can route to and this list
+	# omits reads EXACTLY like a clip the body does not have -- see the test that
+	# now pins the pair.
+	&"Crouch_Enter",
 	&"NinjaJump_Start", &"NinjaJump_Idle", &"NinjaJump_Land",
 	# The pack has eight Idle_* clips and not one plain idle: they are a
 	# lantern, a phone call, a shield, a head-shake. FoldArms is the least
@@ -2703,7 +2708,18 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	for index in CharacterAnimator.GRAPH_GATE_INPUTS.size():
 		blend_tree.connect_node(CharacterAnimator.GRAPH_GATE, index,
 			CharacterAnimator.GRAPH_GATE_INPUTS[index])
-	blend_tree.connect_node(CharacterAnimator.GRAPH_TIME_SCALE, 0, CharacterAnimator.GRAPH_GATE)
+	# THE ARM OVERLAY goes between the gate and the time scale, so its own clip
+	# is scaled with everything else and the routing never learns it exists.
+	blend_tree.add_node(CharacterAnimator.GRAPH_ARM_OVERLAY_CLIP,
+		_arm_overlay_clip(anim_player))
+	blend_tree.add_node(CharacterAnimator.GRAPH_ARM_OVERLAY,
+		_arm_overlay(anim_player))
+	blend_tree.connect_node(CharacterAnimator.GRAPH_ARM_OVERLAY, 0,
+		CharacterAnimator.GRAPH_GATE)
+	blend_tree.connect_node(CharacterAnimator.GRAPH_ARM_OVERLAY, 1,
+		CharacterAnimator.GRAPH_ARM_OVERLAY_CLIP)
+	blend_tree.connect_node(CharacterAnimator.GRAPH_TIME_SCALE, 0,
+		CharacterAnimator.GRAPH_ARM_OVERLAY)
 	blend_tree.connect_node(&"output", 0, CharacterAnimator.GRAPH_TIME_SCALE)
 
 	_wm.call("every ordered-pair transition")
@@ -2905,6 +2921,59 @@ func _exit_blend_time(from_name: StringName, to_name: StringName) -> float:
 ## entering it has to rewind, so that the action begins now. The state machine
 ## is the opposite case: coming
 ## back to a run that has been playing underneath all along must not restart it.
+## The bones the arm overlay takes from its own clip. The main chain only --
+## fingers follow their parents, and adding them multiplies the filter list for
+## nothing anyone can see at this scale.
+const ARM_OVERLAY_BONES: Array[String] = ["Shoulder", "UpperArm", "LowerArm", "Hand"]
+
+## Which clip the overlay wears, in preference order -- the same pull-up clips
+## the mantle would otherwise have played, because a pull-up whose body had to
+## crouch is the only thing that asks for this.
+const ARM_OVERLAY_CLIPS: Array[StringName] = [&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge"]
+
+func _arm_overlay_clip_name(anim_player: AnimationPlayer) -> StringName:
+	for clip in ARM_OVERLAY_CLIPS:
+		if _body_has_clip(anim_player, clip):
+			return clip
+	return &""
+
+func _arm_overlay_clip(anim_player: AnimationPlayer) -> AnimationNodeAnimation:
+	var node := AnimationNodeAnimation.new()
+	var clip: StringName = _arm_overlay_clip_name(anim_player)
+	if clip != &"":
+		node.animation = clip
+	return node
+
+## A Blend2 filtered to the arm chain, so its second input shows through there
+## and nowhere else.
+##
+## THE FILTER PATHS ARE READ OFF THE CLIP'S OWN TRACKS rather than written out
+## here. A skeleton track's path is "<path to the Skeleton3D>:<BoneName>" and
+## the first half differs between rigs, so a hand-written list would filter
+## nothing on a body whose skeleton sits somewhere else -- and filtering nothing
+## fails SILENTLY, as a blend that simply does not appear.
+##
+## IF THE ARMS AND THE BODY COME OUT SWAPPED, the filter's sense is the
+## opposite of what is assumed here: filtered paths are taken to be where input
+## 1 shows through. Invert by filtering every track EXCEPT the arm chain.
+func _arm_overlay(anim_player: AnimationPlayer) -> AnimationNodeBlend2:
+	var overlay := AnimationNodeBlend2.new()
+	overlay.filter_enabled = true
+	var clip: StringName = _arm_overlay_clip_name(anim_player)
+	if clip == &"":
+		return overlay
+	var anim: Animation = anim_player.get_animation(clip)
+	if anim == null:
+		return overlay
+	for index in anim.get_track_count():
+		var path: String = String(anim.track_get_path(index))
+		var bone: String = path.get_slice(":", 1)
+		for part in ARM_OVERLAY_BONES:
+			if bone.ends_with(part):
+				overlay.set_filter_path(NodePath(path), true)
+				break
+	return overlay
+
 func _scripted_gate(seconds: float) -> AnimationNodeTransition:
 	var gate := AnimationNodeTransition.new()
 	gate.set_input_count(CharacterAnimator.GRAPH_GATE_INPUTS.size())

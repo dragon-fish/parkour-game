@@ -46,6 +46,15 @@ const GRAPH_SCRIPTED_A := &"scripted_a"
 const GRAPH_SCRIPTED_B := &"scripted_b"
 const GRAPH_TIME_SCALE := &"speed"
 
+## The arm overlay: a filtered Blend2 sitting BETWEEN the gate and the time
+## scale, so it can put one clip's arms on top of whatever the gate is playing
+## without the routing knowing anything about it. Adding a gate input instead
+## would have meant teaching _route() a fourth path, and that function's
+## comments are a list of measured pitfalls -- the sandwich, the promotion, the
+## hold -- none of which this needs to disturb.
+const GRAPH_ARM_OVERLAY := &"arm_overlay"
+const GRAPH_ARM_OVERLAY_CLIP := &"arm_overlay_clip"
+
 ## The two bare AnimationNodeAnimation slots the scripted clips play on, in
 ## ping-pong order. See _route().
 const GRAPH_SCRIPTED_SLOTS: Array[StringName] = [GRAPH_SCRIPTED_A, GRAPH_SCRIPTED_B]
@@ -331,7 +340,24 @@ func _physics_process(delta: float) -> void:
 ## and honoured the moment the input goes live again), but what the machine does
 ## meanwhile is hold its last pose -- which is the right thing to fade back into
 ## anyway.
+## How much of the arm overlay is showing, 0..1, eased so it cannot pop.
+##
+## ONLY A LOW CLIMB ASKS FOR IT. A pull-up into a duct plays a crouch for the
+## body -- see the clip choice for why -- and this puts the climb's arms back
+## on top of it, so the hands still reach for the lip while the body stays
+## folded. Everything else runs at zero and pays a lerp per tick.
+func _drive_arm_overlay(delta: float) -> void:
+	if anim_tree == null or player == null or player.move_manager == null:
+		return
+	var grab = player.move_manager.move_for(Move.GRAB)
+	var wanted: float = 1.0 if grab != null and grab.is_climbing_low() else 0.0
+	var path := "parameters/%s/blend_amount" % GRAPH_ARM_OVERLAY
+	var current: float = float(anim_tree.get(path))
+	var rate: float = 1.0 - exp(-delta / maxf(_blend_time(), 0.001))
+	anim_tree.set(path, lerpf(current, wanted, rate))
+
 func _route(target: StringName, delta: float) -> void:
+	_drive_arm_overlay(delta)
 	if Player.SCRIPTED_MOVE_CLIPS.has(target):
 		# ARMED FOR THE NEXT ORDINARY CLIP, every tick a scripted one is wanted,
 		# so the hold measures how long the ORDINARY target has persisted rather
@@ -1131,8 +1157,19 @@ func _target_animation() -> StringName:
 				# presentation follows -- docs/capsule-leads-presentation.md --
 				# and here that means arriving in the pose the body will be in
 				# rather than acting out a stand-up it has to undo.
-				return _first_available([&"Crouch_Fwd", &"Crouch_Idle",
-					&"sneaking", &"sneak", &"idle"])
+				# Crouch_Enter LEADS. It is a one-shot that folds the legs
+				# under the body, and _scripted_fit() stretches it across the
+				# whole crossing -- so they tuck over the climb rather than
+				# snapping in at the end, and its last frame is already the
+				# pose the body hands over into. A locomotion loop can do
+				# neither: it ends wherever the cycle happened to be, which is
+				# what made the feet twitch at the hand-off.
+				#
+				# NOT THE PACK'S Crawl_* SET, though it has one and it is a
+				# closer name. Crawl there is PRONE, on hands and knees, and
+				# this project has no prone state for it to hand over to.
+				return _first_available([&"Crouch_Enter", &"Crouch_Fwd",
+					&"Crouch_Idle", &"sneaking", &"sneak", &"idle"])
 			if grab_move != null and grab_move.is_mantling():
 				# ClimbUp_1m leads: the pelvis is pinned to the capsule and a
 				# bezier lifts it through the mantle, so what the clip needs
