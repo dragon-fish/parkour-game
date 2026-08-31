@@ -12,6 +12,9 @@ extends ScriptedMove
 var _aborted: bool = false
 
 var _edge: Vector3 = Vector3.ZERO
+## Whether the pull-up in progress lands somewhere too low to stand. Read by
+## CharacterAnimator, which cuts the climb clip before its stand-up half.
+var _low_ceiling: bool = false
 ## The WALL FACE's normal, pointing away from the wall and back toward the
 ## player -- kept because a shimmy runs along the ledge, and the only thing
 ## that knows which way "along" is, is the wall.
@@ -111,6 +114,12 @@ var _mantling: bool = false
 ## vocabulary (`ladder_stillness`); the mantle phase still does not.
 func is_mantling() -> bool:
 	return _mantling
+
+## Whether the pull-up under way ends somewhere too low to stand. Read from
+## outside by CharacterAnimator, the same way is_mantling() is.
+func is_climbing_low() -> bool:
+	return _mantling and _low_ceiling
+
 
 ## Which way the hands are travelling along the ledge: -1 left, +1 right, 0
 ## still. Exposed for the same reason is_mantling() is -- nothing outside this
@@ -256,6 +265,7 @@ func enter(_previous: StringName) -> void:
 ## Safe on the hang-and-drop path too, where nothing was ever shrunk: asking for
 ## a standing capsule you already have costs nothing.
 func exit() -> void:
+	_low_ceiling = false
 	player.request_standing_capsule()
 	player.set_body_folded(false)
 	player.set_clip_lift_cancelled(false)
@@ -428,6 +438,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# 0.9 m the climb folds down to, came back blocked every time.
 		if not player.fits_at(_edge, config.crouch.crouch_capsule_height):
 			return KEEP
+		# Asked ONCE, here, and not again: the animator reads it every frame of
+		# the climb and the answer must not change halfway through a clip.
+		_low_ceiling = not player.fits_standing_at(_edge)
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration,
 				# DO NOT add mantle_apex_above_top to `top` directly. `top`

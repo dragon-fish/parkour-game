@@ -414,3 +414,19 @@ func _init() -> void:
 	# 0.5). Changing it is a feel decision for the owner, not a transcription
 	# fix -- see the spec's own deviation list.
 	redo_move_time = 0.45
+
+## Frames of the pull-up clip kept when the climb lands somewhere too low to
+## stand -- a duct, a vent, a crawlspace.
+##
+## The clip's own second half is a stand-up, and no dial can cancel a POSE the
+## way set_clip_lift_cancelled() cancels root motion: the hips stay pinned to
+## the capsule while the shoulders and head rise out of it anyway, taking the
+## first-person eye through the ceiling before the move ends and hands over to
+## Crouch. Cutting the clip before that half is the only lever.
+##
+## IN FRAMES, converted against the clip's own step at runtime, so a pack
+## authored at some rate other than 30 is not quietly misread.
+##
+## An eye value. What it should be is what looks right, and nothing here can
+## derive it.
+@export var low_ceiling_clip_frames: float = 12.0

@@ -229,3 +229,20 @@ func test_a_climb_into_open_sky_still_ends_walking() -> void:
 			break
 		await step(1)
 	assert_eq(landed, Move.WALKING, "an open ledge stopped handing over to Walking")
+
+func test_a_climb_into_an_opening_knows_it_cannot_stand() -> void:
+	# What the animator reads to decide whether to cut the climb clip before
+	# its stand-up half. The number of frames it keeps is an eye value and is
+	# not pinned here; WHETHER it cuts is not.
+	var bits: Array = await _mantling_player(1.278)
+	var grab: GrabMove = bits[1]
+	assert_true(grab.is_mantling(), "the fixture never started a pull-up")
+	assert_true(grab.is_climbing_low(), \
+		"a climb into a 1.28 m opening was reported as having room to stand")
+
+func test_a_climb_into_open_sky_is_not_reported_as_low() -> void:
+	# The control: cutting every climb short would be worse than cutting none.
+	var bits: Array = await _mantling_player()
+	var grab: GrabMove = bits[1]
+	assert_true(grab.is_mantling(), "the fixture never started a pull-up")
+	assert_false(grab.is_climbing_low(), "an open ledge was treated as a duct")

@@ -2827,7 +2827,13 @@ func refresh_clip_timings() -> void:
 ## machine's per-clip nodes; CharacterAnimator uses it on a scripted slot the
 ## moment it loads a clip into one. A clip has to trim identically whichever of
 ## the two is playing it, and two copies of these five lines would not.
-func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		anim_player: AnimationPlayer) -> void:
+## `override`, when it is a [start, length] pair, replaces the table's entry for
+## this load only -- a trim that depends on WHERE the move is going rather than
+## on which clip it is, which a table keyed by clip name cannot say.
+func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		anim_player: AnimationPlayer, override: Array = []) -> void:
+	if override.size() >= 2:
+		_write_clip_timing(node, float(override[0]), float(override[1]), clip_name, anim_player)
+		return
 	if not body_clip_timings.has(clip_name):
 		# CLEARED, not left alone. A slot carries whatever the last scripted move
 		# put on it, so an untrimmed clip loaded onto a slot that was trimmed
@@ -2838,8 +2844,9 @@ func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		an
 	if not (entry is Array and entry.size() >= 2):
 		push_warning("clip_timings['%s'] is not [start, length]" % clip_name)
 		return
-	var start: float = float(entry[0])
-	var length: float = float(entry[1])
+	_write_clip_timing(node, float(entry[0]), float(entry[1]), clip_name, anim_player)
+
+func _write_clip_timing(node: AnimationNodeAnimation, start: float, length: float, 		clip_name: StringName, anim_player: AnimationPlayer) -> void:
 	var whole: float = 0.0
 	if anim_player.has_animation(clip_name):
 		whole = anim_player.get_animation(clip_name).length
