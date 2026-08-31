@@ -22,23 +22,11 @@ const RAY_LENGTH: float = 4096.0
 const FILL_COLOUR := Color(0.35, 0.7, 1.0, 0.18)
 const EDGE_COLOUR := Color(0.55, 0.85, 1.0, 0.9)
 
-## The toolbar icon: an isometric box with its top face filled, for "a
-## rectangle drawn on a face".
-##
-## Drawn in WHITE and tinted through the button's icon_* theme colours, which
-## is what lets it read as inactive, hovered and armed without three files --
-## and what keeps it visible under a light editor theme. A coloured icon here
-## would be invisible in one theme or the other.
-##
-## Built with Image.load_svg_from_string() rather than shipped as a .svg: an
-## imported texture needs a .import file and a first import pass, and it would
-## be rasterised once at whatever editor scale did the importing.
-const ICON_SVG := """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-<g fill="none" stroke="#ffffff" stroke-width="1.3" stroke-linejoin="round">
-<path d="M8 1.7 14.1 5.3 8 8.9 1.9 5.3Z" fill="#ffffff"/>
-<path d="M1.9 5.3v5.5L8 14.3l6.1-3.5V5.3"/>
-<path d="M8 8.9v5.4"/>
-</g></svg>"""
+## How thick a block comes out. Deliberately NOT the snap step: the drag
+## decides the footprint and Godot's CSG handle decides the height, so this
+## only has to be thin enough to stay out of the way and thick enough to have
+## grabbable handles. It is not tied to the grid and must not be re-tied to it.
+const NEW_BLOCK_THICKNESS: float = 0.1
 
 var _bar: HBoxContainer = null
 var _toggle: Button = null
@@ -56,11 +44,17 @@ func _enter_tree() -> void:
 	_step_field = SpinBox.new()
 	_step_field.min_value = 0.0
 	_step_field.max_value = 8.0
-	_step_field.step = 0.05
+	# A SpinBox rounds its value to `step`, so `step` is the finest grid that
+	# can be TYPED here, not just the arrows' stride -- that is what
+	# custom_arrow_step is for. Keep them apart: a 0.05 step made 0.01 round
+	# away to nothing.
+	_step_field.step = 0.01
+	_step_field.custom_arrow_step = 0.25
 	_step_field.value = 0.5
 	_step_field.prefix = "grid "
 	_step_field.custom_minimum_size = Vector2(96, 0)
-	_step_field.tooltip_text = "Grid the drag snaps to, and the thickness a new block starts at. 0 disables snapping."
+	_step_field.tooltip_text = "Grid the drag snaps to, in metres. 0 disables snapping.\n" \
+		+ "Type any value; the arrows step by 0.25."
 
 	_bar = HBoxContainer.new()
 	_bar.add_child(VSeparator.new())
@@ -79,26 +73,28 @@ func _build_toggle() -> Button:
 	button.tooltip_text = "Block: drag a rectangle on any surface to lay a CSGBox3D against it.\n" \
 		+ "Hold any modifier to box select instead. Esc or right click cancels a drag."
 
-	var image := Image.new()
-	if image.load_svg_from_string(ICON_SVG, EditorInterface.get_editor_scale()) == OK:
-		button.icon = ImageTexture.create_from_image(image)
+	var theme: Theme = EditorInterface.get_editor_theme()
+	if theme == null:
+		button.text = "Block"
+		return button
+	if theme.has_icon(&"CSGBox3D", &"EditorIcons"):
+		button.icon = theme.get_icon(&"CSGBox3D", &"EditorIcons")
 	else:
 		button.text = "Block"
 
-	var theme: Theme = EditorInterface.get_editor_theme()
-	if theme == null:
-		return button
 	var accent := Color(0.4, 0.7, 1.0)
 	if theme.has_color(&"accent_color", &"Editor"):
 		accent = theme.get_color(&"accent_color", &"Editor")
-	var resting := Color(1, 1, 1)
-	if theme.has_color(&"font_color", &"Editor"):
-		resting = theme.get_color(&"font_color", &"Editor")
 
-	button.add_theme_color_override(&"icon_normal_color", Color(resting, 0.7))
-	button.add_theme_color_override(&"icon_hover_color", resting)
-	button.add_theme_color_override(&"icon_pressed_color", accent)
-	button.add_theme_color_override(&"icon_hover_pressed_color", accent)
+	# Fade, do not tint. The editor's CSGBox3D icon carries its own colours, so
+	# an accent-coloured pressed state multiplies them into mud. Armed is the
+	# icon at full strength on a plate; idle is the same icon faded. The
+	# default theme fades the PRESSED state, which reads as armed-means-off --
+	# do not go back to leaving these unset.
+	button.add_theme_color_override(&"icon_normal_color", Color(1, 1, 1, 0.55))
+	button.add_theme_color_override(&"icon_hover_color", Color(1, 1, 1, 0.85))
+	button.add_theme_color_override(&"icon_pressed_color", Color(1, 1, 1, 1))
+	button.add_theme_color_override(&"icon_hover_pressed_color", Color(1, 1, 1, 1))
 
 	# An explicit armed background rather than trusting the flat button's own
 	# pressed stylebox: whether a flat Button paints one is a theme's decision,
@@ -233,7 +229,8 @@ func _commit() -> int:
 		return AFTER_GUI_INPUT_STOP
 
 	var step: float = _step()
-	var plan: Dictionary = Geometry.block_from_drag(_anchor, _face, _extent, step, step)
+	var plan: Dictionary = Geometry.block_from_drag(
+		_anchor, _face, _extent, NEW_BLOCK_THICKNESS, step)
 	var box := CSGBox3D.new()
 	box.name = "Block"
 	box.size = plan["size"]

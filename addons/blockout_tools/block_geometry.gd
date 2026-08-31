@@ -10,6 +10,11 @@ extends RefCounted
 ## grid rather than to some arbitrary tangent.
 const AXES: Array[Vector3] = [Vector3.RIGHT, Vector3.UP, Vector3.BACK]
 
+## The thinnest a block may be. Below this a CSGBox3D is degenerate: it draws
+## nothing and its two size handles land on top of each other, so there is no
+## way to pull it back open.
+const MIN_THICKNESS: float = 0.001
+
 ## An orthonormal basis whose Y column is `normal`, so a box built in it lies
 ## flush against the surface that normal came from and grows away from it.
 ##
@@ -56,18 +61,20 @@ static func snap_vector(value: Vector3, step: float) -> Vector3:
 ## A drag shorter than one step in either direction is widened to one step
 ## rather than rejected: a plain click is a deliberate way to lay a single
 ## tile, and a zero-width box is a degenerate CSG shape with no handles to
-## grab. For the same reason `height` is never allowed to reach zero here --
-## the caller's job is to pick how thin, not whether.
+## grab. `height` gets the same protection but NOT the same floor -- it is
+## clamped to MIN_THICKNESS, never to the grid. A new block is meant to be
+## thinner than the grid it snaps to, so tying the two put a 0.1 block back up
+## to 0.5 whenever the grid was coarse.
 static func block_from_drag(anchor: Vector3, basis: Basis, extent: Vector2,
 		height: float, step: float) -> Dictionary:
-	var floor_step: float = maxf(step, 0.001)
+	var floor_step: float = maxf(step, MIN_THICKNESS)
 	var width: float = extent.x
 	if absf(width) < floor_step:
 		width = floor_step if width >= 0.0 else -floor_step
 	var depth: float = extent.y
 	if absf(depth) < floor_step:
 		depth = floor_step if depth >= 0.0 else -floor_step
-	var rise: float = maxf(height, floor_step)
+	var rise: float = maxf(height, MIN_THICKNESS)
 	var centre_local := Vector3(width * 0.5, rise * 0.5, depth * 0.5)
 	return {
 		"size": Vector3(absf(width), rise, absf(depth)),

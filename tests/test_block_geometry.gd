@@ -53,3 +53,14 @@ func test_snapping_off_is_a_setting_not_a_crash() -> void:
 	assert_eq(Geometry.snap(1.234, 0.0), 1.234, "a zero step should leave the value alone")
 	assert_eq(Geometry.snap(1.24, 0.5), 1.0)
 	assert_eq(Geometry.snap(1.26, 0.5), 1.5)
+
+func test_a_thin_block_survives_a_coarse_grid() -> void:
+	# Thickness is the caller's to choose and the grid may not raise it. While
+	# the two shared a floor, asking for a 0.1 block on a 1 m grid returned a
+	# 1 m slab.
+	var plan: Dictionary = Geometry.block_from_drag(
+		Vector3.ZERO, Basis.IDENTITY, Vector2(2.0, 2.0), 0.1, 1.0)
+	assert_almost_eq((plan["size"] as Vector3).y, 0.1, 0.001, \
+		"the snap grid inflated the block's thickness")
+	assert_almost_eq((plan["transform"] as Transform3D).origin.y, 0.05, 0.001, \
+		"a thin block is not resting on its anchor")
