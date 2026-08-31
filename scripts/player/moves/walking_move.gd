@@ -59,11 +59,32 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 				return SPRING_BOARD
 
 	if player.consume_jump():
-		player.velocity.y = config.pawn.base_jump_z
-		player.velocity += player.jump_add_velocity(input)
+		# A DODGE IS WHAT A JUMP IS WHEN THE STRAFE AXIS IS PUSHED, and that
+		# INCLUDES a diagonal: [ME:CONFIRMED 04 §4.5] W+A and space fires a
+		# left dodge in the original. So this is not a rare special case
+		# reachable only from a pure sidestep -- it takes over every jump made
+		# while a strafe key is down, and running diagonally is the common
+		# way to be in that position. DodgeJumpConfig.strafe_threshold is
+		# where that reading is argued.
+		#
+		# Sharing consume_jump() with the plain jump below rather than asking
+		# for the press separately: coyote time, the jump buffer and a level's
+		# own jump block are all decided in there, and a dodge is a jump for
+		# every one of those purposes.
+		var dodge: Vector3 = player.dodge_direction(input)
+		var next: StringName = JUMP
+		if dodge == Vector3.ZERO:
+			player.velocity.y = config.pawn.base_jump_z
+			player.velocity += player.jump_add_velocity(input)
+		else:
+			# The launch itself -- what it costs and why it costs that -- is
+			# Player.dodge_launch()'s.
+			player.dodge_launch(dodge)
+			player.pending_dodge_side = 1 if input.strafe_axis > 0.0 else -1
+			next = DODGE_JUMP
 		player.move_and_slide()
 		player.set_grounded(player.is_on_floor())
-		return JUMP
+		return next
 
 	# Slide and Vault entry are both gated on player.grounded being TRUE —
 	# i.e. already verified by a move_and_slide() this tick or a prior one —

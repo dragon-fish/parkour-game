@@ -358,6 +358,14 @@ var _stagger_immunity: float = 0.0
 ## One-shot: the reader clears it, same as pending_vault_variant.
 var pending_stagger: bool = false
 
+## One-shot: which way a dodge was thrown, -1 for left and +1 for right. Set
+## by WalkingMove as it launches, read and cleared by DodgeJumpMove.enter().
+##
+## The DIRECTION is not carried with it -- the impulse has already been spent
+## into velocity by the time the move starts, which is the point of the move.
+## This is only what the animator needs to pick a clip.
+var pending_dodge_side: int = 0
+
 ## Emitted on the touchdown that ends an uncontrolled fall. The fall itself is
 ## already lost by then -- this only tells whoever owns respawning that the
 ## body has finished arriving.
@@ -1383,6 +1391,7 @@ func _build_moves() -> void:
 		[Move.LEDGE_WALK, LedgeWalkMove.new(), config.ledge_walk],
 		[Move.BALANCE, BalanceMove.new(), config.balance],
 		[Move.SPRING_BOARD, SpringBoardMove.new(), config.spring_board],
+		[Move.DODGE_JUMP, DodgeJumpMove.new(), config.dodge_jump],
 	]
 	for row in table:
 		var move: Move = row[1]
@@ -1527,6 +1536,9 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# Move.SPEED_VAULT case, and SpeedVaultMove.is_scramble().
 	&"StepUp",
 	&"WallRun_L", &"WallRun_R", &"WallRun_Jump_L", &"WallRun_Jump_R",
+	# The dodge's pair, named for the side the body goes -- see
+	# CharacterAnimator's Move.DODGE_JUMP case.
+	&"Dodge_Left", &"Dodge_Right",
 	&"ClimbUp_2m", &"ClimbLedge", &"Climb_Idle", &"Climb_Enter", &"Climb_Exit",
 	# The ladder's climb cycles (full tier only; free-tier bodies fall back
 	# to Climb_Idle). Absent from this list they had library clips but no
@@ -4044,6 +4056,54 @@ func wish_direction(input: MoveInput) -> Vector3:
 		return Vector3.ZERO
 	return dir.normalized()
 
+## World-space direction a dodge would be thrown in, or ZERO when this input
+## is not asking for one.
+##
+## SQUARE SIDEWAYS, NOT THE DIAGONAL THE INPUT ASKS FOR. A dodge out of W+A
+## travels left and keeps whatever forward speed the body already had; it does
+## not aim itself up the diagonal. Reading it off wish_direction() instead
+## would turn every diagonal dodge into a forward-left leap and quietly change
+## what the move is for.
+##
+## The gate is on the raw strafe AXIS rather than on move.x -- see
+## DodgeJumpConfig.strafe_threshold, which is where the whole subtlety lives.
+func dodge_direction(input: MoveInput) -> Vector3:
+	if absf(input.strafe_axis) < config.dodge_jump.strafe_threshold:
+		return Vector3.ZERO
+	var dir: Vector3 = global_transform.basis.x * signf(input.strafe_axis)
+	dir.y = 0.0
+	if dir.length_squared() < 0.0001:
+		return Vector3.ZERO
+	return dir.normalized()
+
+## Throws a dodge along `direction`, which must already be the square-sideways
+## world vector dodge_direction() returns.
+##
+## THE HORIZONTAL MOMENTUM IS SCALED, NOT DROPPED. [ME:CONFIRMED 04 §4.5] the
+## body carries DodgeJumpInertiaConservation of what it had into the launch and
+## the impulse is added on top, so a dodge out of a run leaves faster than one
+## from a standstill and slightly faster than the run itself. Zeroing here
+## makes every dodge leave at jump_add_xy, which matches a standstill dodge
+## exactly and nothing else -- see DodgeJumpConfig.inertia_conservation for the
+## measurements that separate the two readings.
+##
+## THE DODGE COSTS NO SPEED ENERGY. It is tempting to bill it down to base
+## velocity, because a dodge out of a sprint does bottom out near there
+## afterwards. That floor is the VELOCITY being turned back under the held
+## input on touchdown, not a ceiling the dodge lowered: swing the view into the
+## dodge before landing and the speed does not sag at all -- measured, four
+## runs, the ground speed climbs from the moment the feet land. A ceiling
+## dropped to base velocity would drag those back down instead, and it is the
+## same drag that would quietly kill the side-jump boost this move exists for.
+func dodge_launch(direction: Vector3) -> void:
+	var kept: float = config.dodge_jump.inertia_conservation
+	velocity.x *= kept
+	velocity.z *= kept
+	velocity.y = config.dodge_jump.base_jump_z
+	# SPENT ONCE, AS A WORLD VECTOR -- see DodgeJumpMove on why it must never
+	# be recomputed against the facing afterwards.
+	velocity += direction * config.dodge_jump.jump_add_xy
+
 ## Which way the body is going AT something, as a unit vector, or ZERO if it is
 ## going nowhere and asking for nothing.
 ##
@@ -4241,8 +4301,7 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 		# floor, which is why no separate sideways limit is declared anywhere:
 		# the number was never a limit on sideways running, it is what a body
 		# moves at with no speed banked at all.
-		var floor_energy: float = SpeedEnergy.energy_for_speed(config.pawn,
-			config.pawn.speed_max_base_velocity)
+		var floor_energy: float = speed_energy.base_floor()
 		if speed_energy.energy > floor_energy:
 			speed_energy.decay(delta)
 			speed_energy.energy = maxf(speed_energy.energy, floor_energy)

@@ -152,11 +152,18 @@ func spend_turn(radians: float, delta: float) -> void:
 	#
 	# Only turning is floored. decay() still empties the budget completely when
 	# the player stops, or standing still would leave them permanently primed.
-	var floor_energy: float = energy_for_speed(_pawn, _pawn.speed_max_base_velocity)
+	var floor_energy: float = base_floor()
 	if energy <= floor_energy:
 		return
 	energy = maxf(energy - absf(cost), floor_energy)
 	_rebase_decay()
+
+## THE floor -- the energy that buys speed_max_base_velocity, 4.0 m/s, 14.4
+## km/h. Every drain in the project stops here except decay() from a
+## standstill, and they all ask this rather than each spelling the pair out,
+## so the floor cannot end up meaning two slightly different things.
+func base_floor() -> float:
+	return energy_for_speed(_pawn, _pawn.speed_max_base_velocity)
 
 ## The energy at which the speed curve first reaches `speed` -- the inverse of
 ## curve_at(). Linear search over the same knots, so the two cannot disagree.

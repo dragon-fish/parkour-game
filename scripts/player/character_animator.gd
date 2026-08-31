@@ -514,7 +514,7 @@ func _run_band_speed() -> float:
 ## out of, and it already routes to Jump_Land as its own clip for the whole of
 ## its two-second lockout.
 const _AIRBORNE_MOVES: Array[StringName] = [
-	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED, Move.COIL,
+	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED, Move.COIL, Move.DODGE_JUMP,
 ]
 
 ## Decides whether the move that just started owes a one-shot -- a clip played
@@ -531,8 +531,26 @@ const _AIRBORNE_MOVES: Array[StringName] = [
 ## Clears any previous one-shot when nothing matches, so a second transition
 ## during one cuts it off rather than letting it outlive its moment.
 func _arm_oneshot(from: StringName, to: StringName) -> void:
+	# A DODGE HANDING OFF TO FALLING IS NOT A SECOND MOMENT. It is one airborne
+	# arc that changes state halfway through, because DodgeJump ends the tick
+	# the rise crosses enter_to_falling_z_speed rather than at touchdown. Left
+	# to clear below, the armed clip dies about a quarter of the way in and the
+	# airborne loop takes the body back in mid-sidestep -- which is the twitch,
+	# not the clip's own pacing. Nothing here changes how FAST it plays: the
+	# dodge is in neither SPEED_MATCHED_CLIPS nor DIRECTION_SETS and exposes no
+	# scripted_duration(), so _drive_speed() leaves it at 1.0x either way.
+	if from == Move.DODGE_JUMP and to == Move.FALLING:
+		return
 	_oneshot = Move.KEEP
 	_oneshot_left = 0.0
+	if to == Move.DODGE_JUMP:
+		# Its own authored length, like every other one-shot. The landing
+		# clears it through the ordinary path above, so what it actually owns
+		# is the airborne arc rather than the whole 1.3 s -- a dodge clip still
+		# running while the body sprints away would be a worse lie than the
+		# handoff it replaces.
+		_start_oneshot(_dodge_clip())
+		return
 	if to == Move.SLIDE:
 		_start_oneshot(&"Slide_Start")
 		return
@@ -561,6 +579,15 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 		# in the middle of that would be the animation contradicting them.
 		if player.wish_direction(player.last_input).length_squared() < 0.0001:
 			_start_oneshot(&"Jump_Land")
+
+## Which of the dodge pair the live dodge wants, named for the side the body
+## goes. Read off the move rather than off velocity, which air control has
+## already had a tick at by the time anything asks -- the same job
+## JumpMove.kick_side() does for the wall-kick clips.
+func _dodge_clip() -> StringName:
+	var move = player.move_manager.move_for(Move.DODGE_JUMP) 		if player != null and player.move_manager != null else null
+	var side: int = move.side() if move != null and move.has_method("side") else 0
+	return &"Dodge_Right" if side > 0 else &"Dodge_Left"
 
 ## Arms `clip` for its own natural length, if the attached body has it at all.
 func _start_oneshot(clip: StringName) -> void:
@@ -1281,6 +1308,18 @@ func _target_animation() -> StringName:
 			# clip STOOD STILL through its own take-off while FALLING, one tick
 			# later, correctly played a jump.
 			return _first_available([&"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
+		Move.DODGE_JUMP:
+			# UAL 1 has the pair, and they are named for the side the body
+			# goes, not for anything it pushes off. Same naming guess as
+			# WallRun_L/R above: if a dodge reads mirrored, flip both lines
+			# together.
+			#
+			# The clip runs about four times as long as the move: a dodge
+			# crosses enter_to_falling_z_speed in roughly 0.3 s and hands off
+			# to FALLING. It is armed as a one-shot at entry so the airborne
+			# loop cannot take the body back mid-clip -- see _arm_oneshot().
+			return _first_available([_dodge_clip(), &"Dodge_Left", &"Dodge_Right",
+				&"Jump_Start", &"jump", &"idle"])
 		Move.FALL_UNCONTROLLED:
 			# NO LONGER THE SAME AS AN ORDINARY FALL: LiftAir_Fall_Air is the
 			# pack's own out-of-control descent, where Jump is a controlled

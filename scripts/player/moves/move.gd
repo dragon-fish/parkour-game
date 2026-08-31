@@ -41,6 +41,7 @@ const LADDER: StringName = &"Ladder"
 const BALANCE: StringName = &"Balance"
 const LEDGE_WALK: StringName = &"LedgeWalk"
 const SPRING_BOARD: StringName = &"SpringBoard"
+const DODGE_JUMP: StringName = &"DodgeJump"
 
 ## Set by Player before the manager starts. Untyped for the same reason the
 ## names live here: a typed reference would reintroduce the cycle.

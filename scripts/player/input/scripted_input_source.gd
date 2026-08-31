@@ -7,6 +7,17 @@ extends InputSource
 
 var state := MoveInput.new()
 
+## Holds a direction the way the keyboard source would: `strafe` and `forward`
+## are KEY states (-1, 0 or 1), and this reproduces both what the keyboard
+## does to them -- the circular normalisation of `move` -- and what it does
+## NOT do to `strafe_axis`. Tests that need to tell a stick from a key write
+## `state.strafe_axis` directly afterwards.
+func hold_move(strafe: float, forward: float) -> void:
+	state.move = Vector2(strafe, forward)
+	if state.move.length_squared() > 1.0:
+		state.move = state.move.normalized()
+	state.strafe_axis = strafe
+
 func press_jump() -> void:
 	state.jump_pressed = true
 	state.jump_held = true
