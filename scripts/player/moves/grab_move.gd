@@ -42,6 +42,9 @@ var _face_normal: Vector3 = Vector3.BACK
 ## it rather than getting a dedicated corner clip -- no such clip exists in
 ## either animation pack.
 var _shimmy: float = 0.0
+## Whether a strafe is being asked for THIS tick, whether or not it is granted.
+## Read by look_yaw_half_span(), which runs outside physics_update().
+var _shimmy_wanted: bool = false
 
 ## Rounding a ninety-degree corner: a scripted swing of the whole body onto a
 ## perpendicular face, over corner_duration.
@@ -119,9 +122,22 @@ func is_mantling() -> bool:
 ## whole point of the hook: the hang and the mantle are one move with two very
 ## different amounts of freedom.
 func look_yaw_half_span() -> float:
-	if not _mantling:
-		return NAN
-	return deg_to_rad(config.grab.pull_up_look_yaw_deg) * 0.5
+	if _mantling:
+		return deg_to_rad(config.grab.pull_up_look_yaw_deg) * 0.5
+	# THE SHIMMY ASSIST, and narrowing the fan is the WHOLE of it. CameraRig
+	# eases a fan edge in to meet a view already outside it rather than cutting
+	# the view to the edge (see its own note beside look_settle_speed), which
+	# is the same treatment a wall run gets when it re-centres on the wall it
+	# just caught. So asking for the two-handed angle here walks the view home
+	# at the camera's ordinary rate, and there is no turn to drive by hand.
+	#
+	# Held only while the key is: let go and the hang's own wide fan comes
+	# back, with the view left wherever the assist brought it rather than
+	# sprung back to where it was pointing. Being moved twice would read as the
+	# camera being taken away twice.
+	if _shimmy_wanted:
+		return deg_to_rad(config.grab.pull_up_angle_deg)
+	return NAN
 
 ## Whether the pull-up under way ends somewhere too low to stand. Read from
 ## outside by CharacterAnimator, the same way is_mantling() is.
@@ -505,6 +521,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 ## player onto thin air, and a body that has crept past its anchor would hang
 ## from a point the ledge no longer occupies.
 func _advance_shimmy(delta: float, input: MoveInput) -> void:
+	# Recorded before every refusal below, because the assist is owed to the
+	# ASKING and not to the travelling: the whole point is that a view turned
+	# too far to shimmy gets walked back until it is not.
+	_shimmy_wanted = absf(input.move.x) >= config.grab.shimmy_deadzone 		and _turned_from_wall() <= deg_to_rad(config.grab.shimmy_assist_angle_deg)
 	if player.probes == null:
 		return
 	# [ME:DERIVED] The lockout exists because a corner leaves the hands a
@@ -514,9 +534,14 @@ func _advance_shimmy(delta: float, input: MoveInput) -> void:
 	# DO NOT gate only the pull-up on _two_handed(): travelling needs both
 	# hands too, or a body hanging by one arm could hand-over-hand along the
 	# ledge.
-	if not _two_handed():
+	# NOT _two_handed(), which is the PULL-UP's angle and stays at 45: a shimmy
+	# asked for between there and shimmy_assist_angle_deg is granted, and the
+	# narrowed fan above brings the view back inside meanwhile. Refusing here
+	# instead -- which is what this did -- meant a glance along the ledge, the
+	# natural thing to do before travelling it, cancelled the travel.
+	if not _shimmy_wanted and absf(input.move.x) >= config.grab.shimmy_deadzone:
 		_shimmy = 0.0
-		_shimmy_report = "one-handed: the view is turned too far to travel"
+		_shimmy_report = "turned too far: reading this as a jump, not a shimmy"
 		return
 	if _shimmy_lockout > 0.0:
 		_shimmy_lockout -= delta

@@ -306,6 +306,24 @@ extends MoveConfig
 ## GrabMove._two_handed(), which is where the single predicate lives.
 @export var pull_up_angle_deg: float = 45.0
 
+## How far the view may be turned off the wall and still have the shimmy WIN
+## the argument, degrees. Past it the turn is read as aiming a jump instead.
+##
+## [ME:CONFIRMED] the owner, in the original: holding a strafe key does not
+## merely survive a turned view, it PULLS THE VIEW BACK. Between
+## pull_up_angle_deg and this the shimmy travels and the fan narrows to the
+## two-handed angle, which walks the view home; past this the game leaves the
+## view alone, because a body looking back over its shoulder is lining up a
+## jump off the wall and taking that away would be worse than refusing a
+## shimmy.
+##
+## THE BAND IS RE-READ EVERY TICK, not latched when the key goes down, and it
+## needs no latch: the narrowed fan is what stops a held shimmy from ever
+## reaching this angle again, so the only way back out is to let go. That also
+## gives the other half of the owner's report for free -- press the key at 120
+## degrees, turn back under 90 without releasing, and the shimmy simply starts.
+@export var shimmy_assist_angle_deg: float = 90.0
+
 ## Upward speed of a jump off a hang, in metres/second.
 ##
 ## ✅ `TdMove_GrabJump.GrabJumpOffZHeight = 160` uu.
