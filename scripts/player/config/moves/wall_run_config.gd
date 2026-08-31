@@ -235,27 +235,3 @@ func _init() -> void:
 ## the camera flying off the wall -- ✅ the owner: halve it ("偏移0.35m我看看").
 ## 1.0 restores the global follow; 0 pins the eye to the procedural position.
 @export_range(0.0, 1.0) var head_follow_scale: float = 0.5
-
-## How far the FIRST-PERSON eye follows the model's own wall-run clip offset,
-## metres. Zero is the old behaviour: the eye ignores it completely.
-##
-## THE CLIP OFFSET IS THE MODEL'S, AND IT IS NOT A MISTAKE TO BE CORRECTED.
-## scenes/player/tuning/*.json pushes the body outward during a wall run --
-## 0.6 m for beriul, 0.7 m for the reference -- so the feet do not go through
-## the wall. Player._camera_head_offset() then subtracts it back out of the
-## head follow so the view is not swung by it. Both halves are deliberate.
-##
-## What that leaves is the eye sitting where the capsule is while the MODEL is
-## two thirds of a metre to the side, so looking down in first person shows the
-## body somewhere it visibly is not. This lets the eye take part of the offset
-## back: it moves the eye alone, never the model, so the feet stay out of the
-## wall.
-##
-## DO NOT TUNE THIS BY EDITING THE CLIP OFFSET INSTEAD. That number is holding
-## the body out of the geometry; shrinking it puts the feet back in the wall
-## and moves the model along with the eye, which is not what is wanted.
-##
-## In METRES rather than as a fraction of the offset, because the offset is
-## per-body and a fraction would mean a different distance on each one.
-## Clamped to the offset available, so it can never pull the eye past the model.
-@export var eye_follows_clip_offset: float = 0.35

@@ -1730,18 +1730,6 @@ func _drive_clip_offset(delta: float) -> void:
 	# NOT SNAP: StepUp's 0.2 m offset flashed visibly on both entry and exit
 	# before this was eased.
 	var follow_target: float = 1.0 if scripted_progress() >= 0.0 else 0.0
-	# A WALL RUN TAKES PART OF ITS OWN CLIP OFFSET BACK. The offset holds the
-	# MODEL off the wall so the feet do not go through it, and the head follow
-	# subtracts it so the view is not swung -- which leaves the eye where the
-	# capsule is while the body is most of a metre to the side, and looking down
-	# shows it there. Riding the same eased channel as a scripted move rather
-	# than a second blend of its own: it is the same quantity, how much of the
-	# clip offset the eye is willing to follow.
-	if move_manager != null and move_manager.current_name == Move.WALL_RUN:
-		var offset_length: float = _clip_offset_position.length()
-		if offset_length > 0.001:
-			follow_target = maxf(follow_target, clampf(
-				config.wall_run.eye_follows_clip_offset / offset_length, 0.0, 1.0))
 	var follow_t: float = 1.0 - exp(-delta / maxf(config.camera.scripted_eye_offset_blend_time, 0.001))
 	_scripted_eye_follow = lerpf(_scripted_eye_follow, follow_target, follow_t)
 	# The wall run follows the head at half strength -- the authored lean is
