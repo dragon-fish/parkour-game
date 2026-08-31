@@ -290,6 +290,17 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			# checks are themselves gated on grounded being true, so this
 			# hand-off cannot chain straight into a second scripted move
 			# either.
+			#
+			# CROUCH WHEN THE ROOF SAYS SO, the same rule SlideMove ends on:
+			# the only thing that ever needed headroom was standing up. A
+			# pull-up into a duct lands under one, and exit() asks for the
+			# standing capsule REQUEST-style, so the collider stays folded and
+			# correct -- but handing that body to Walking gives it a standing
+			# animation over a 0.9 m capsule, which is a head through the
+			# ceiling. Crouch costs no headroom check of its own: it is the
+			# height the climb already folded to.
+			if not player.has_headroom():
+				return CROUCH
 			return WALKING
 		return KEEP
 
@@ -409,7 +420,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# resizes the shapecast that already exists for the crouch-to-stand
 		# restore -- a SHAPE, because a body has width, where a ray threads
 		# between two slabs it could never fit through.
-		if not player.fits_at(top, config.crouch.crouch_capsule_height):
+		# _edge, NOT `top`. fits_at() takes the point the FEET land on and
+		# builds the capsule up from there; `top` is already the capsule's
+		# CENTRE, half a standing height above the lip. Handing it over lifted
+		# the whole test body 0.9 m and measured the wall above the opening
+		# instead of the opening: an aperture 1.28 m tall, easily clear for the
+		# 0.9 m the climb folds down to, came back blocked every time.
+		if not player.fits_at(_edge, config.crouch.crouch_capsule_height):
 			return KEEP
 		top += _exit_direction * config.grab.mantle_forward_offset
 		begin(player.global_position, top, config.grab.mantle_duration,
