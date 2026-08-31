@@ -1,0 +1,5 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" uid="uid://lq3dqgc2iapg" path="res://templates/base_level.tscn" id="1_base"]
+
+[node name="Arena" instance=ExtResource("1_base")]
