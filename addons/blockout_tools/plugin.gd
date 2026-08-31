@@ -285,8 +285,14 @@ func _begin(camera: Camera3D, screen: Vector2) -> int:
 	var point: Vector3
 	var normal: Vector3
 	if hit.is_empty():
-		# Nothing under the cursor is still a place to build: fall back to the
-		# ground plane so an empty scene is not a dead viewport.
+		# DRAWING IN OPEN SPACE IS A FEATURE, not a fallback -- laying out a
+		# floor plan on bare ground is how a level starts, and an empty scene
+		# would otherwise be a dead viewport. Do not make an empty ray refuse
+		# the drag.
+		#
+		# The plane is the world's y = 0 and nothing cleverer: a drag over open
+		# sky while working on an upper storey lands the solid down at ground
+		# level, which is the honest cost of a rule with no hidden state.
 		var ground := Plane(Vector3.UP, 0.0)
 		var landing: Variant = ground.intersects_ray(from, direction)
 		if landing == null:
