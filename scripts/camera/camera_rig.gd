@@ -143,6 +143,12 @@ var eye_forward: float = 0.0
 var extra_eye_forward: float = 0.0
 ## Its vertical twin -- see the swing's eye_lift_lean.
 var extra_eye_lift: float = 0.0
+## Its SIDEWAYS twin, positive to the body's right -- see the wall run's
+## eye_toward_wall. Eased rather than hard-set, because unlike the swing's two
+## there is no lean easing home behind it to ride: entering and leaving a wall
+## run would step the eye a third of a metre in one frame.
+var extra_eye_lateral: float = 0.0
+var _extra_eye_lateral_target: float = 0.0
 
 var _head_local_offset: Vector3 = Vector3.ZERO
 ## Per-move scaling of the head follow (wall run halves it -- see
@@ -473,6 +479,12 @@ func absorb_body_yaw(radians: float) -> void:
 ## a head is available.
 ## Sets where the head follow is headed, per move -- 1.0 everywhere except
 ## the states that ask for less. Eased in update_effects().
+## Slides the first-person eye sideways, positive to the body's right. Set
+## every tick by whoever wants it and to zero by everyone else, exactly like
+## set_head_follow_scale() beside it.
+func set_eye_lateral(target: float) -> void:
+	_extra_eye_lateral_target = target
+
 func set_head_follow_scale(target: float) -> void:
 	_head_follow_scale_target = clampf(target, 0.0, 1.0)
 
@@ -857,6 +869,10 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	# third-person zero, so neither end moved; the eye simply retreats to the
 	# head as the seat pulls back, instead of teleporting there.
 	base_position.z = -(eye_forward + extra_eye_forward) * (1.0 - _eased_view_blend())
+	# Faded out of third person for the same reason the forward offset is: it
+	# exists to put the FIRST-PERSON eye where the model's head already is, and
+	# the pulled-back seat is looking at that head from outside.
+	base_position.x = extra_eye_lateral * (1.0 - _eased_view_blend())
 
 	var speed_ratio := clampf(horizontal_speed / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 
@@ -1029,6 +1045,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var scale_t: float = 1.0 - exp(-delta / maxf(
 		_config.camera.scripted_eye_offset_blend_time, 0.001))
 	_head_follow_scale = lerpf(_head_follow_scale, _head_follow_scale_target, scale_t)
+	extra_eye_lateral = lerpf(extra_eye_lateral, _extra_eye_lateral_target, scale_t)
 	if _has_head:
 		var strength := clampf(_config.camera.camera_head_follow_strength, 0.0, 1.0) \
 			* _head_follow_scale

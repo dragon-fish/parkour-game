@@ -1735,9 +1735,18 @@ func _drive_clip_offset(delta: float) -> void:
 	# The wall run follows the head at half strength -- the authored lean is
 	# ~0.7 m and the full ride reads as flying off the wall.
 	if camera_rig != null:
+		var on_a_wall: bool = move_manager.current_name == Move.WALL_RUN
 		camera_rig.set_head_follow_scale(
-			config.wall_run.head_follow_scale
-			if move_manager.current_name == Move.WALL_RUN else 1.0)
+			config.wall_run.head_follow_scale if on_a_wall else 1.0)
+		# TOWARD THE WALL, and zero everywhere else. The clip offset holds the
+		# MODEL off the wall so the feet clear it, and the head follow subtracts
+		# that back out so the view is not swung -- which leaves the eye on the
+		# capsule while the body is most of a metre to the side. Set every tick
+		# and to zero by everyone else, the way the scale beside it is.
+		var eye_side: float = 0.0
+		if on_a_wall:
+			eye_side = float(wall_side) * config.wall_run.eye_toward_wall
+		camera_rig.set_eye_lateral(eye_side)
 	var wanted_position := Vector3.ZERO
 	var wanted_rotation := Vector3.ZERO
 	var offset: Array = clip_offset_for(_current_clip())

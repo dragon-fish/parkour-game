@@ -235,3 +235,22 @@ func _init() -> void:
 ## the camera flying off the wall -- ✅ the owner: halve it ("偏移0.35m我看看").
 ## 1.0 restores the global follow; 0 pins the eye to the procedural position.
 @export_range(0.0, 1.0) var head_follow_scale: float = 0.5
+
+## How far the FIRST-PERSON eye slides TOWARD the wall during a run, metres.
+##
+## THE MODEL IS DELIBERATELY OFF THE AXIS HERE. The wall-run clip offset in
+## scenes/player/tuning/*.json holds the body out from the wall so the feet do
+## not go through it, and Player._camera_head_offset() subtracts that back out
+## so the view is not swung by it. Both halves are right. What the pair leaves
+## is an eye on the capsule while the body is most of a metre to the side, so
+## looking down shows it somewhere it visibly is not.
+##
+## Same answer CameraConfig.eye_forward already gives for the same shape of
+## problem, quoted there: keep the model where it meets the world and push the
+## EYE by the matching amount. This is that, sideways, and it moves nothing but
+## the eye -- the feet stay out of the wall.
+##
+## DO NOT REACH FOR head_follow_scale INSTEAD. That scales the head bone's own
+## animated motion, centimetres of it, and the offset in question never reaches
+## the rig at all.
+@export var eye_toward_wall: float = 0.35
