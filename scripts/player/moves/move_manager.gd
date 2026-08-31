@@ -356,6 +356,12 @@ func _push_look_constraint() -> void:
 	if rig == null:
 		return
 	var active: MoveConfig = _current.current_config()
+	# A slide's stand-up keeps the slide's clamp after SlideMove has gone --
+	# see Player.residual_look_config(). Applied over current_config() rather
+	# than instead of it, so a move that composes phases still picks its own.
+	var residual: MoveConfig = _current.player.residual_look_config()
+	if residual != null:
+		active = residual
 	# Pushed here, every tick, for the same reason the look constraint is:
 	# no move can forget to hand the shoulder back on the way out.
 	rig.set_shoulder_centred(active != null and active.centre_shoulder)

@@ -1234,6 +1234,26 @@ func is_input_locked() -> bool:
 func begin_slide_recovery() -> void:
 	_slide_recovery_timer = config.slide.recovery_time
 
+## The config that governs the LOOK CLAMP and the model's yaw freeze while the
+## stand-up out of a slide is still playing, or null when the active move's own
+## config governs as usual.
+##
+## THE SLIDE'S CLAMP OUTLIVES THE SLIDE. SlideMove exits the moment the slide
+## proper is spent, but the body is still getting up for recovery_time after
+## that -- and a clamp that ends with the state lets the view whip round over a
+## body that has not finished standing. The eye height and the speed budget
+## already read slide_recovery_fraction() for the same reason; this is the
+## third reader of the same tail.
+##
+## GROUNDED ONLY, because the tail is armed by every exit and not all of them
+## are a stand-up: jumping out of a slide starts the same timer, and clamping
+## the view through a jump would be the move holding onto a player who has
+## already left it.
+func residual_look_config() -> MoveConfig:
+	if config == null or _slide_recovery_timer <= 0.0 or not grounded:
+		return null
+	return config.slide
+
 ## How far through the stand-up the body is, 1 at the instant the slide ended
 ## and 0 once it is over. Read by the camera to raise the eye, and by the speed
 ## budget to know it must not grow.
@@ -2384,6 +2404,11 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# character, while here it is a body that physically cannot turn. Legs
 	# swinging round under a slide look ridiculous from inside the head too.
 	var active: MoveConfig = move_manager.current_config() if move_manager != null else null
+	# The slide's stand-up governs both of this move's presentation facts for
+	# as long as it lasts -- see residual_look_config().
+	var residual: MoveConfig = residual_look_config()
+	if residual != null:
+		active = residual
 	var frozen: bool = active != null and active.freeze_visual_yaw
 	# BOTH VIEWS, on the owner's call. First person used to weld the model to
 	# the view outright, and from inside the head that read as the whole body
