@@ -63,6 +63,7 @@ func enter(_previous: StringName) -> void:
 	if float(query.get("face_distance", INF)) > cfg.max_reach_distance:
 		_aborted = true
 		return
+	query = _slid_into_the_safe_zone(query)
 	var gap: Vector3 = query["edge"] - player.global_position
 	gap.y = 0.0
 	_target = hanging_pose(player, config, query)
@@ -89,6 +90,100 @@ func enter(_previous: StringName) -> void:
 	# finishes, the body can no longer see the edge it is hanging from.
 	player.pending_ledge = query
 	_face_point = query.get("face_point", Vector3.ZERO)
+
+
+## The lateral offsets to try, nearest first and alternating sides.
+##
+## Nearest-first is the whole rule: a grab aimed at the bleed zone should move
+## the SHORTEST distance that makes it legal, never to the middle of the ledge.
+## Alternating sides so an equal distance either way is a coin toss rather than
+## a bias toward one hand.
+static func search_offsets(limit: float, samples: int) -> Array[float]:
+	var out: Array[float] = [0.0]
+	if limit <= 0.0 or samples <= 0:
+		return out
+	var step: float = limit / float(samples)
+	for i in range(1, samples + 1):
+		out.append(step * float(i))
+		out.append(-step * float(i))
+	return out
+
+## How many offsets are tried on each side. Four puts a candidate every 0.1 m
+## across a 0.4 m bleed zone, which is finer than the hands can be aimed.
+const SAFE_ZONE_SAMPLES: int = 4
+
+## Slides the caught edge along the wall to the nearest place a hanging body
+## actually fits, and hands back the query pointing there.
+##
+## EVERY GRABBABLE LIP HAS A SAFE ZONE AND TWO BLEED ZONES, and the bleed is
+## ONE CAPSULE RADIUS wide. That is not a chosen number: the safe zone is where
+## the body's centre line can sit, so it ends exactly a radius short of each
+## corner. A 1.15 m duct mouth against a 0.8 m body leaves 0.35 m of safe zone
+## and 0.4 m of bleed either side.
+##
+## DO NOT USE shimmy_body_half_width HERE, which was tried. It measures how far
+## a MOVING hand reaches past the shoulder it hangs from -- 0.55, deliberately
+## wider than the body -- so demanding it either side wanted 1.1 m of lip and
+## found no legal spot on the very openings this exists for. Travelling and
+## arriving are not the same question.
+##
+## Jumping at the bleed is allowed; landing the hands there is not. A body that
+## catches a duct's corner hangs with half a hand inside the wall, unable to
+## shimmy and unable to pull up.
+##
+## CORRECTED IN THE AIR, WHICH COSTS NOTHING NEW. IntoGrab already slides the
+## body to hanging_pose() over align_speed, so moving the TARGET is the whole
+## implementation -- no motion code, no snap.
+##
+## THE SEARCH REACHES EXACTLY ONE RADIUS, which is all it ever needs: the
+## furthest a legal grab can sit from the safe zone is the width of the bleed,
+## and that is the same radius. Correcting further would
+## drag a player who deliberately aimed at a corner into the middle, and
+## docs/feel-backlog.md 22 records what over-helping feels like here: the owner
+## called an earlier alignment "被磁铁吸过去".
+##
+## Asks ledge_beside() a radius out on each side -- is there still lip under
+## the hands -- and then whether a pull-up would be admitted, because hanging somewhere that refuses
+## the climb is the complaint this exists to fix. It does NOT ask the shimmy's
+## second, face-still-there probe: that one guards outside corners, and the
+## openings this is for are inside ones. Add it if an outside corner starts
+## reading as safe.
+##
+## Finding nothing leaves the query alone. An awkward hang beats a refused one.
+func _slid_into_the_safe_zone(query: Dictionary) -> Dictionary:
+	if player.probes == null:
+		return query
+	var face_normal: Vector3 = query.get("face_normal", Vector3.ZERO)
+	face_normal.y = 0.0
+	if face_normal.length_squared() < 0.0001:
+		return query
+	face_normal = face_normal.normalized()
+	# ALONG the ledge is ACROSS the wall, the same quarter turn the shimmy takes.
+	var sideways: Vector3 = (-face_normal).cross(Vector3.UP)
+	var edge: Vector3 = query["edge"]
+	var reach: float = player.current_capsule_radius()
+	if reach <= 0.0:
+		# A player built without a collision shape -- tests do this. There is
+		# nothing to measure a safe zone against, so there is nothing to fix.
+		return query
+	for offset in search_offsets(reach, SAFE_ZONE_SAMPLES):
+		var candidate: Vector3 = edge + sideways * offset
+		if not _hangable(candidate, sideways, face_normal, reach):
+			continue
+		var moved: Dictionary = query.duplicate()
+		moved["edge"] = candidate
+		moved["top"] = candidate
+		return moved
+	return query
+
+func _hangable(edge: Vector3, sideways: Vector3, face_normal: Vector3, reach: float) -> bool:
+	for side in [1.0, -1.0]:
+		var beside: Dictionary = player.probes.ledge_beside(edge, sideways * (side * reach),
+			face_normal, Probes.LEDGE_ANCHOR_MARGIN,
+			config.grab.shimmy_probe_lift, config.grab.shimmy_edge_tolerance)
+		if not beside.get("valid", false):
+			return false
+	return player.fits_at(edge, config.crouch.crouch_capsule_height)
 
 ## Where the body ends up, given the ledge it caught.
 ##

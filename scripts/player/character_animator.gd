@@ -46,6 +46,18 @@ const GRAPH_SCRIPTED_A := &"scripted_a"
 const GRAPH_SCRIPTED_B := &"scripted_b"
 const GRAPH_TIME_SCALE := &"speed"
 
+## The arm overlay: a filtered Blend2 sitting BETWEEN the gate and the time
+## scale, so it can put one clip's arms on top of whatever the gate is playing
+## without the routing knowing anything about it. Adding a gate input instead
+## would have meant teaching _route() a fourth path, and that function's
+## comments are a list of measured pitfalls -- the sandwich, the promotion, the
+## hold -- none of which this needs to disturb.
+const GRAPH_ARM_OVERLAY := &"arm_overlay"
+const GRAPH_ARM_OVERLAY_CLIP := &"arm_overlay_clip"
+## Between the overlay's clip and the blend, so the arms can be SCRUBBED to the
+## climb's own progress instead of running a loop of their own.
+const GRAPH_ARM_OVERLAY_SEEK := &"arm_overlay_seek"
+
 ## The two bare AnimationNodeAnimation slots the scripted clips play on, in
 ## ping-pong order. See _route().
 const GRAPH_SCRIPTED_SLOTS: Array[StringName] = [GRAPH_SCRIPTED_A, GRAPH_SCRIPTED_B]
@@ -331,7 +343,39 @@ func _physics_process(delta: float) -> void:
 ## and honoured the moment the input goes live again), but what the machine does
 ## meanwhile is hold its last pose -- which is the right thing to fade back into
 ## anyway.
+## How much of the arm overlay is showing, 0..1, eased so it cannot pop.
+##
+## ONLY A LOW CLIMB ASKS FOR IT. A pull-up into a duct plays a crouch for the
+## body -- see the clip choice for why -- and this puts the climb's arms back
+## on top of it, so the hands still reach for the lip while the body stays
+## folded. Everything else runs at zero and pays a lerp per tick.
+func _drive_arm_overlay(delta: float) -> void:
+	if anim_tree == null or player == null or player.move_manager == null:
+		return
+	var grab = player.move_manager.move_for(Move.GRAB)
+	var wanted: float = 1.0 if grab != null and grab.is_climbing_low() else 0.0
+	var path := "parameters/%s/blend_amount" % GRAPH_ARM_OVERLAY
+	var current: float = float(anim_tree.get(path))
+	var rate: float = 1.0 - exp(-delta / maxf(_blend_time(), 0.001))
+	anim_tree.set(path, lerpf(current, wanted, rate))
+	if wanted <= 0.0:
+		return
+	# SCRUBBED, NOT PLAYED. Left to run, the overlay keeps its own clock and
+	# swings the arms several times across one climb -- the clip is 0.63 s and
+	# the pull-up 1.3. Seeking it to the move's own progress every tick makes
+	# the arms a function of how far up the wall the body is, which is the only
+	# clock that means anything here.
+	var progress: float = player.scripted_progress()
+	if progress < 0.0:
+		return
+	var length: float = _clip_length(player.arm_overlay_clip)
+	if length <= 0.0:
+		return
+	anim_tree.set("parameters/%s/seek_request" % GRAPH_ARM_OVERLAY_SEEK,
+		clampf(progress, 0.0, 1.0) * length)
+
 func _route(target: StringName, delta: float) -> void:
+	_drive_arm_overlay(delta)
 	if Player.SCRIPTED_MOVE_CLIPS.has(target):
 		# ARMED FOR THE NEXT ORDINARY CLIP, every tick a scripted one is wanted,
 		# so the hold measures how long the ORDINARY target has persisted rather
@@ -439,47 +483,7 @@ func _load_slot(clip: StringName) -> void:
 	var anim_player := anim_tree.get_node_or_null(anim_tree.anim_player) as AnimationPlayer
 	if anim_player == null:
 		return
-	player.apply_clip_timing(node, clip, anim_player, _scripted_trim(clip))
-
-## The trim this clip should play with RIGHT NOW, or [] to use the table's.
-##
-## A pull-up into a duct keeps only the first frames of the climb: the rest of
-## the clip is a stand-up, and standing is exactly what the body must not do
-## there. GrabConfig.low_ceiling_clip_frames is the count; the clip's own step
-## turns it into seconds, so a pack authored at some rate other than 30 is not
-## misread.
-##
-## _clip_length() consults this too. It must: the scripted fit stretches the
-## KEPT length into the move's duration, and fitting the whole clip's length
-## while only part of it plays finishes the animation early and holds the last
-## pose for the rest of the move.
-func _scripted_trim(clip: StringName) -> Array:
-	if player == null or player.config == null or player.move_manager == null:
-		return []
-	var grab = player.move_manager.move_for(Move.GRAB)
-	if grab == null or not grab.is_climbing_low():
-		return []
-	if _mantle_clip_names().find(clip) < 0:
-		return []
-	var frames: float = player.config.grab.low_ceiling_clip_frames
-	if frames <= 0.0:
-		return []
-	return [0.0, frames * _frame_seconds(clip)]
-
-## Which clips a pull-up may pick, so a trim meant for the climb cannot land on
-## whatever else happens to be in the slot.
-func _mantle_clip_names() -> Array[StringName]:
-	return [&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge"]
-
-## One frame of `clip`, in seconds, read off the clip rather than assumed at 30.
-func _frame_seconds(clip: StringName) -> float:
-	if anim_tree == null:
-		return 1.0 / 30.0
-	var anim_player := anim_tree.get_node_or_null(anim_tree.anim_player) as AnimationPlayer
-	if anim_player == null or not anim_player.has_animation(clip):
-		return 1.0 / 30.0
-	var step: float = anim_player.get_animation(clip).step
-	return step if step > 0.0001 else 1.0 / 30.0
+	player.apply_clip_timing(node, clip, anim_player)
 
 ## Asks the gate for one of its inputs, by name.
 func _request(input: StringName) -> void:
@@ -616,9 +620,6 @@ func _clip_length(clip: StringName) -> float:
 	# 20-frame length makes the fit too slow for what is actually left, so the
 	# trimmed clip finishes early and the move runs on for the rest of its
 	# duration on a held pose -- 0.70 s of animation inside a 1.00 s move.
-	var override: Array = _scripted_trim(clip)
-	if override.size() >= 2 and float(override[1]) > 0.0:
-		return float(override[1])
 	if player == null or not player.body_clip_timings.has(clip):
 		return whole
 	var entry = player.body_clip_timings[clip]
@@ -1147,6 +1148,46 @@ func _target_animation() -> StringName:
 			# GrabMove.is_mantling(), the same way test_arena.gd reads
 			# SlideMove.is_crawling() to see inside a move from the outside.
 			var grab_move = player.move_manager.move_for(Move.GRAB)
+			if grab_move != null and grab_move.is_climbing_low():
+				# A CLIMB INTO A DUCT IS NOT ANIMATED IN THIS PACK, so it is
+				# not animated as a climb.
+				#
+				# [ME:CONFIRMED] The original carries a SECOND climb for this.
+				# A pull-up there pushes the body up on both hands and then
+				# brings the feet through; going into a low opening puts the
+				# RIGHT FOOT up first and hooks the body in after it. Two
+				# actions, not one action trimmed. THE PROPER FIX IS THAT CLIP,
+				# and until the pack has one this is a stopgap, kept because a
+				# crouch that reads oddly beats a climb that puts the head
+				# through the ceiling.
+				#
+				# Every frame of ClimbUp_1m is a body
+				# hauling itself upright -- head high, feet off the floor --
+				# and there is no frame in it that is compact, so cutting the
+				# clip only chooses which tall pose to end on -- which is why
+				# the frame-count trim that used to live here is gone. In a space too
+				# low to stand in, that pose is inside the ceiling: the eye
+				# leaves the capsule in first person and the model clips in
+				# third.
+				#
+				# So the pose crouches for the whole crossing while the
+				# scripted path does the travelling. The capsule leads and the
+				# presentation follows -- docs/capsule-leads-presentation.md --
+				# and here that means arriving in the pose the body will be in
+				# rather than acting out a stand-up it has to undo.
+				# Crouch_Enter LEADS. It is a one-shot that folds the legs
+				# under the body, and _scripted_fit() stretches it across the
+				# whole crossing -- so they tuck over the climb rather than
+				# snapping in at the end, and its last frame is already the
+				# pose the body hands over into. A locomotion loop can do
+				# neither: it ends wherever the cycle happened to be, which is
+				# what made the feet twitch at the hand-off.
+				#
+				# NOT THE PACK'S Crawl_* SET, though it has one and it is a
+				# closer name. Crawl there is PRONE, on hands and knees, and
+				# this project has no prone state for it to hand over to.
+				return _first_available([&"Crouch_Enter", &"Crouch_Fwd",
+					&"Crouch_Idle", &"sneaking", &"sneak", &"idle"])
 			if grab_move != null and grab_move.is_mantling():
 				# ClimbUp_1m leads: the pelvis is pinned to the capsule and a
 				# bezier lifts it through the mantle, so what the clip needs

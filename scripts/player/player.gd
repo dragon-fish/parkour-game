@@ -1498,6 +1498,11 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# so these five are the whole of what a parkour game can use from it. There
 	# is no run and no plain idle in it at all.
 	&"Slide", &"Slide_Start", &"Slide_Exit", &"ClimbUp_1m", &"Walk_Carry",
+	# Crouch_Enter is the one-shot the legs fold through when a pull-up lands
+	# somewhere too low to stand. A name the animator can route to and this list
+	# omits reads EXACTLY like a clip the body does not have -- see the test that
+	# now pins the pair.
+	&"Crouch_Enter",
 	&"NinjaJump_Start", &"NinjaJump_Idle", &"NinjaJump_Land",
 	# The pack has eight Idle_* clips and not one plain idle: they are a
 	# lantern, a phone call, a shield, a head-shake. FoldArms is the least
@@ -2585,7 +2590,13 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# all sustained, hold-or-repeat clips that must keep going for as long as
 	# the state holds; jump is a discrete one-shot action and is deliberately
 	# left alone.
-	_ensure_clips_loop(anim_player, [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle", &"Climb_Left", &"Climb_Right", &"Climb_Up", &"Climb_Down", &"GroundSit_Idle"])
+	# ONE CALL, AND IT HAS TO STAY ONE. _ensure_clips_loop() deep-duplicates the
+	# whole animation library every time it runs, and that duplication was
+	# measured at ~70% of scene load -- the reason the suite once took seven
+	# minutes. A second call for a handful of extra clips doubles it. Append to
+	# this list instead; ARM_OVERLAY_CLIPS is added from its own constant so the
+	# overlay's clips and the loop list cannot drift apart.
+	_ensure_clips_loop(anim_player, [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle", &"Climb_Left", &"Climb_Right", &"Climb_Up", &"Climb_Down", &"GroundSit_Idle"] + ARM_OVERLAY_CLIPS)
 	_wm.call("loop-mode fixups")
 	_measure_scripted_hip_peaks(anim_player)
 	_wm.call("_measure_scripted_hip_peaks")
@@ -2703,7 +2714,22 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	for index in CharacterAnimator.GRAPH_GATE_INPUTS.size():
 		blend_tree.connect_node(CharacterAnimator.GRAPH_GATE, index,
 			CharacterAnimator.GRAPH_GATE_INPUTS[index])
-	blend_tree.connect_node(CharacterAnimator.GRAPH_TIME_SCALE, 0, CharacterAnimator.GRAPH_GATE)
+	# THE ARM OVERLAY goes between the gate and the time scale, so its own clip
+	# is scaled with everything else and the routing never learns it exists.
+	blend_tree.add_node(CharacterAnimator.GRAPH_ARM_OVERLAY_CLIP,
+		_arm_overlay_clip(anim_player))
+	blend_tree.add_node(CharacterAnimator.GRAPH_ARM_OVERLAY,
+		_arm_overlay(anim_player))
+	blend_tree.connect_node(CharacterAnimator.GRAPH_ARM_OVERLAY, 0,
+		CharacterAnimator.GRAPH_GATE)
+	blend_tree.add_node(CharacterAnimator.GRAPH_ARM_OVERLAY_SEEK,
+		AnimationNodeTimeSeek.new())
+	blend_tree.connect_node(CharacterAnimator.GRAPH_ARM_OVERLAY_SEEK, 0,
+		CharacterAnimator.GRAPH_ARM_OVERLAY_CLIP)
+	blend_tree.connect_node(CharacterAnimator.GRAPH_ARM_OVERLAY, 1,
+		CharacterAnimator.GRAPH_ARM_OVERLAY_SEEK)
+	blend_tree.connect_node(CharacterAnimator.GRAPH_TIME_SCALE, 0,
+		CharacterAnimator.GRAPH_ARM_OVERLAY)
 	blend_tree.connect_node(&"output", 0, CharacterAnimator.GRAPH_TIME_SCALE)
 
 	_wm.call("every ordered-pair transition")
@@ -2827,13 +2853,7 @@ func refresh_clip_timings() -> void:
 ## machine's per-clip nodes; CharacterAnimator uses it on a scripted slot the
 ## moment it loads a clip into one. A clip has to trim identically whichever of
 ## the two is playing it, and two copies of these five lines would not.
-## `override`, when it is a [start, length] pair, replaces the table's entry for
-## this load only -- a trim that depends on WHERE the move is going rather than
-## on which clip it is, which a table keyed by clip name cannot say.
-func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		anim_player: AnimationPlayer, override: Array = []) -> void:
-	if override.size() >= 2:
-		_write_clip_timing(node, float(override[0]), float(override[1]), clip_name, anim_player)
-		return
+func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		anim_player: AnimationPlayer) -> void:
 	if not body_clip_timings.has(clip_name):
 		# CLEARED, not left alone. A slot carries whatever the last scripted move
 		# put on it, so an untrimmed clip loaded onto a slot that was trimmed
@@ -2844,9 +2864,8 @@ func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		an
 	if not (entry is Array and entry.size() >= 2):
 		push_warning("clip_timings['%s'] is not [start, length]" % clip_name)
 		return
-	_write_clip_timing(node, float(entry[0]), float(entry[1]), clip_name, anim_player)
-
-func _write_clip_timing(node: AnimationNodeAnimation, start: float, length: float, 		clip_name: StringName, anim_player: AnimationPlayer) -> void:
+	var start: float = float(entry[0])
+	var length: float = float(entry[1])
 	var whole: float = 0.0
 	if anim_player.has_animation(clip_name):
 		whole = anim_player.get_animation(clip_name).length
@@ -2912,6 +2931,84 @@ func _exit_blend_time(from_name: StringName, to_name: StringName) -> float:
 ## entering it has to rewind, so that the action begins now. The state machine
 ## is the opposite case: coming
 ## back to a run that has been playing underneath all along must not restart it.
+## The bones the arm overlay takes from its own clip. The main chain only --
+## fingers follow their parents, and adding them multiplies the filter list for
+## nothing anyone can see at this scale.
+const ARM_OVERLAY_BONES: Array[String] = ["Shoulder", "UpperArm", "LowerArm", "Hand"]
+
+## Which clip the overlay wears, in preference order.
+##
+## ClimbUp_1m leads. ClimbLedge was tried on the reasoning that the thing which
+## disqualified it from the mantle proper -- at 0.633 s it is over before the
+## body has left the lip -- cannot matter when only the arm tracks are
+## borrowed. The reasoning holds and the result was still worse to watch, so
+## the order is what looked right rather than what argued well.
+const ARM_OVERLAY_CLIPS: Array[StringName] = [&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge"]
+
+## Which of ARM_OVERLAY_CLIPS this body actually had, resolved once at wiring.
+## Read by CharacterAnimator, which needs its length to scrub it.
+var arm_overlay_clip: StringName = &""
+
+func _arm_overlay_clip_name(anim_player: AnimationPlayer) -> StringName:
+	for clip in ARM_OVERLAY_CLIPS:
+		if _body_has_clip(anim_player, clip):
+			return clip
+	return &""
+
+func _arm_overlay_clip(anim_player: AnimationPlayer) -> AnimationNodeAnimation:
+	var node := AnimationNodeAnimation.new()
+	var clip: StringName = _arm_overlay_clip_name(anim_player)
+	arm_overlay_clip = clip
+	if clip != &"":
+		node.animation = clip
+	# THE CLIP IS MADE TO LOOP IN THE LIBRARY, not here. This node has a
+	# loop_mode of its own and it does nothing on its own: it only overrides
+	# the Animation's setting when use_custom_timeline is also on. Set alone it
+	# is silently inert, and the arms stay frozen on whichever frame the tree's
+	# first pass left them -- which is what it looked like, a pair of arms
+	# spread mid-reach for the whole climb.
+	return node
+
+## A Blend2 filtered to the arm chain, so its second input shows through there
+## and nowhere else.
+##
+## THE FILTER PATHS ARE READ OFF THE CLIP'S OWN TRACKS rather than written out
+## here. A skeleton track's path is "<path to the Skeleton3D>:<BoneName>" and
+## the first half differs between rigs, so a hand-written list would filter
+## nothing on a body whose skeleton sits somewhere else -- and filtering nothing
+## fails SILENTLY, as a blend that simply does not appear.
+##
+## IF THE ARMS AND THE BODY COME OUT SWAPPED, the filter's sense is the
+## opposite of what is assumed here: filtered paths are taken to be where input
+## 1 shows through. Invert by filtering every track EXCEPT the arm chain.
+func _arm_overlay(anim_player: AnimationPlayer) -> AnimationNodeBlend2:
+	var overlay := AnimationNodeBlend2.new()
+	overlay.filter_enabled = true
+	# ADVANCE EVEN AT ZERO WEIGHT. Left off, Blend2 freezes an input whose
+	# blend is 0 -- so the overlay would resume from wherever the last climb
+	# abandoned it, and the first climb of a session would start from frame 0
+	# no matter how long the game had been running.
+	#
+	# This is not the same as being IN TIME with the climb: the loop runs on
+	# its own clock. Timing the arms to the crossing needs a one-shot fired
+	# when the pull-up begins, which is worth building only once the motion
+	# itself reads right.
+	overlay.sync = true
+	var clip: StringName = _arm_overlay_clip_name(anim_player)
+	if clip == &"":
+		return overlay
+	var anim: Animation = anim_player.get_animation(clip)
+	if anim == null:
+		return overlay
+	for index in anim.get_track_count():
+		var path: String = String(anim.track_get_path(index))
+		var bone: String = path.get_slice(":", 1)
+		for part in ARM_OVERLAY_BONES:
+			if bone.ends_with(part):
+				overlay.set_filter_path(NodePath(path), true)
+				break
+	return overlay
+
 func _scripted_gate(seconds: float) -> AnimationNodeTransition:
 	var gate := AnimationNodeTransition.new()
 	gate.set_input_count(CharacterAnimator.GRAPH_GATE_INPUTS.size())

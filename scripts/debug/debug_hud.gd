@@ -89,8 +89,15 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_TAB:
-			_tier = (_tier + 1) % Tier.size()
-			visible = _tier != Tier.OFF
+			set_tier((_tier + 1) % Tier.size())
+
+## Opens the HUD at a chosen tier, for a scene that wants it up before anyone
+## has pressed anything -- and for one where nobody CAN: a scene whose own
+## panel has focusable fields never sees Tab, because the GUI takes it for
+## focus traversal long before _unhandled_input().
+func set_tier(tier: int) -> void:
+	_tier = clampi(tier, 0, Tier.size() - 1)
+	visible = _tier != Tier.OFF
 
 ## The rows the compact tier keeps: what the body is doing, where it is, and
 ## what is about to kill it. Everything else answers a SPECIFIC question --
@@ -176,9 +183,15 @@ func _process(delta: float) -> void:
 		# -- and a vault's pose can raise the head half a metre by itself. When
 		# the two disagree it is the pose, and no amount of moving the root
 		# fixes a pose.
-		"model      y %+.2f  (mount %+.2f  fold %.2f  lift %.2f  clip %+.2f)"
+		# `lift` is what the root is pushed DOWN by to cancel the clip raising
+		# the hips, and `cancel` is the FRACTION of that rise currently being
+		# taken off. Only the pair says whether the cancellation is keeping up:
+		# a cancel below 1 leaves the difference in the root, which is the
+		# body riding above its own path, and lift alone cannot show it.
+		"model      y %+.2f  (mount %+.2f  fold %.2f  lift %.2f  cancel %.2f  clip %+.2f)"
 			% [player.body_root_debug()["y"], player.body_root_debug()["mount_y"],
 			player.body_root_debug()["drop"], player.body_root_debug()["lift"],
+			player.body_root_debug()["lift_cancel"],
 			player.body_root_debug()["clip_y"]],
 		"capsule    %.2f / %.2f m%s" % [player.current_capsule_height(),
 			player.standing_height(),
