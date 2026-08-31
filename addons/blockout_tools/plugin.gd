@@ -164,7 +164,10 @@ func _build_field(prefix: String, value: float, minimum: float, hint: String) ->
 	field.custom_arrow_step = 0.2
 	field.value = value
 	field.prefix = prefix
-	field.custom_minimum_size = Vector2(88, 0)
+	# Scaled, because custom_minimum_size is raw pixels while the font it has
+	# to hold is not: on a HiDPI editor the unscaled width cropped the "thick"
+	# prefix down to "ick".
+	field.custom_minimum_size = Vector2(112, 0) * EditorInterface.get_editor_scale()
 	field.tooltip_text = hint
 	field.value_changed.connect(_on_field_changed)
 	return field
