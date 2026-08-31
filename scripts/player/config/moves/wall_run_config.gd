@@ -230,11 +230,27 @@ func _init() -> void:
 @export var view_assist: float = 0.6
 
 ## ⚠️ PROJECT-DEFINED, by eye. How much of the model head's own offset the
-## first-person eye follows DURING a wall run. The run's authored lean puts
-## the head ~0.7 m off the capsule axis, and following it in full reads as
-## the camera flying off the wall -- ✅ the owner: halve it ("偏移0.35m我看看").
-## 1.0 restores the global follow; 0 pins the eye to the procedural position.
-@export_range(0.0, 1.0) var head_follow_scale: float = 0.5
+## first-person eye follows DURING a wall run. 1.0 restores the global follow;
+## 0 pins the eye to the procedural position.
+##
+## ⚠️ THE "0.7 m OFF THE AXIS" THIS ONCE CITED IS NOT WHAT IT SCALES. That
+## figure is the clip offset in scenes/player/tuning/*.json, and
+## Player._camera_head_offset() subtracts it before the rig ever sees it -- so
+## halving this never touched it. Holding the model off the wall is
+## eye_off_wall's job now.
+##
+## What it really scales is the head bone's OWN motion, and raising it is why
+## looking down stopped showing the neck: the camera pitches about its own
+## centre rather than about the neck joint, so at a steep pitch it sits well
+## above where the eyes belong -- and a fuller follow of a head bone that
+## itself swings forward and down happens to approximate the arc the camera
+## should be travelling. ✅ the owner tuned 0.75 by eye.
+##
+## 📌 That makes this number a COMPENSATION for a wrong pivot, not a fact about
+## wall running. If the eye is ever hung off the neck joint properly, every
+## value calibrated against the old pivot -- this one first -- has to be
+## revisited rather than carried over.
+@export_range(0.0, 1.0) var head_follow_scale: float = 0.75
 
 ## How far the FIRST-PERSON eye slides AWAY FROM the wall during a run, metres.
 ##
@@ -250,6 +266,10 @@ func _init() -> void:
 ## EYE by the matching amount. This is that, sideways, and it moves nothing but
 ## the eye -- the feet stay out of the wall.
 ##
+## NOT CLAMPED to the clip offset. Tuned by eye it went past it -- 0.7 against
+## beriul's 0.6 -- and that is allowed: what the number has to satisfy is the
+## view, not an equality with the model's own displacement.
+##
 ## DO NOT REACH FOR head_follow_scale INSTEAD. That scales the head bone's own
 ## animated motion, centimetres of it, and the offset in question never reaches
 ## the rig at all.
@@ -258,4 +278,4 @@ func _init() -> void:
 ## right), so an eye moved toward the wall goes straight into it -- which is
 ## exactly what happened when this was first written with the sign the name
 ## suggested rather than the sign the offset has.
-@export var eye_off_wall: float = 0.35
+@export var eye_off_wall: float = 0.7
