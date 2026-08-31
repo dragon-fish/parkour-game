@@ -2590,7 +2590,13 @@ func _wire_body_animation(body_node: Node3D) -> void:
 	# all sustained, hold-or-repeat clips that must keep going for as long as
 	# the state holds; jump is a discrete one-shot action and is deliberately
 	# left alone.
-	_ensure_clips_loop(anim_player, [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle", &"Climb_Left", &"Climb_Right", &"Climb_Up", &"Climb_Down", &"GroundSit_Idle"])
+	# ONE CALL, AND IT HAS TO STAY ONE. _ensure_clips_loop() deep-duplicates the
+	# whole animation library every time it runs, and that duplication was
+	# measured at ~70% of scene load -- the reason the suite once took seven
+	# minutes. A second call for a handful of extra clips doubles it. Append to
+	# this list instead; ARM_OVERLAY_CLIPS is added from its own constant so the
+	# overlay's clips and the loop list cannot drift apart.
+	_ensure_clips_loop(anim_player, [&"idle", &"run", &"sneak", &"sneaking", &"ladder_stillness", 			&"Slide", &"Walk_Carry", &"NinjaJump_Idle", &"Idle_FoldArms", 			&"Idle", &"Walk", &"Sprint", &"Crouch_Idle", &"Crouch_Fwd", &"LiftAir_Fall_Air", &"Jog_Fwd", &"Jog_Fwd_L", &"Jog_Fwd_R", &"Jog_Left", &"Jog_Right", &"Jog_Bwd", &"Jog_Bwd_L", &"Jog_Bwd_R", &"Walk_Fwd", &"Walk_Fwd_L", &"Walk_Fwd_R", &"Walk_L", &"Walk_R", &"Walk_Bwd", &"Walk_Bwd_L", &"Walk_Bwd_R", &"Crouch_Fwd_L", &"Crouch_Fwd_R", &"Crouch_Left", &"Crouch_Right", &"Crouch_Bwd", &"Crouch_Bwd_L", &"Crouch_Bwd_R", &"WallRun_L", &"WallRun_R", &"Climb_Idle", &"Climb_Left", &"Climb_Right", &"Climb_Up", &"Climb_Down", &"GroundSit_Idle"] + ARM_OVERLAY_CLIPS)
 	_wm.call("loop-mode fixups")
 	_measure_scripted_hip_peaks(anim_player)
 	_wm.call("_measure_scripted_hip_peaks")
@@ -2716,8 +2722,12 @@ func _wire_body_animation(body_node: Node3D) -> void:
 		_arm_overlay(anim_player))
 	blend_tree.connect_node(CharacterAnimator.GRAPH_ARM_OVERLAY, 0,
 		CharacterAnimator.GRAPH_GATE)
-	blend_tree.connect_node(CharacterAnimator.GRAPH_ARM_OVERLAY, 1,
+	blend_tree.add_node(CharacterAnimator.GRAPH_ARM_OVERLAY_SEEK,
+		AnimationNodeTimeSeek.new())
+	blend_tree.connect_node(CharacterAnimator.GRAPH_ARM_OVERLAY_SEEK, 0,
 		CharacterAnimator.GRAPH_ARM_OVERLAY_CLIP)
+	blend_tree.connect_node(CharacterAnimator.GRAPH_ARM_OVERLAY, 1,
+		CharacterAnimator.GRAPH_ARM_OVERLAY_SEEK)
 	blend_tree.connect_node(CharacterAnimator.GRAPH_TIME_SCALE, 0,
 		CharacterAnimator.GRAPH_ARM_OVERLAY)
 	blend_tree.connect_node(&"output", 0, CharacterAnimator.GRAPH_TIME_SCALE)
@@ -2926,10 +2936,18 @@ func _exit_blend_time(from_name: StringName, to_name: StringName) -> float:
 ## nothing anyone can see at this scale.
 const ARM_OVERLAY_BONES: Array[String] = ["Shoulder", "UpperArm", "LowerArm", "Hand"]
 
-## Which clip the overlay wears, in preference order -- the same pull-up clips
-## the mantle would otherwise have played, because a pull-up whose body had to
-## crouch is the only thing that asks for this.
+## Which clip the overlay wears, in preference order.
+##
+## ClimbUp_1m leads. ClimbLedge was tried on the reasoning that the thing which
+## disqualified it from the mantle proper -- at 0.633 s it is over before the
+## body has left the lip -- cannot matter when only the arm tracks are
+## borrowed. The reasoning holds and the result was still worse to watch, so
+## the order is what looked right rather than what argued well.
 const ARM_OVERLAY_CLIPS: Array[StringName] = [&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge"]
+
+## Which of ARM_OVERLAY_CLIPS this body actually had, resolved once at wiring.
+## Read by CharacterAnimator, which needs its length to scrub it.
+var arm_overlay_clip: StringName = &""
 
 func _arm_overlay_clip_name(anim_player: AnimationPlayer) -> StringName:
 	for clip in ARM_OVERLAY_CLIPS:
@@ -2940,8 +2958,15 @@ func _arm_overlay_clip_name(anim_player: AnimationPlayer) -> StringName:
 func _arm_overlay_clip(anim_player: AnimationPlayer) -> AnimationNodeAnimation:
 	var node := AnimationNodeAnimation.new()
 	var clip: StringName = _arm_overlay_clip_name(anim_player)
+	arm_overlay_clip = clip
 	if clip != &"":
 		node.animation = clip
+	# THE CLIP IS MADE TO LOOP IN THE LIBRARY, not here. This node has a
+	# loop_mode of its own and it does nothing on its own: it only overrides
+	# the Animation's setting when use_custom_timeline is also on. Set alone it
+	# is silently inert, and the arms stay frozen on whichever frame the tree's
+	# first pass left them -- which is what it looked like, a pair of arms
+	# spread mid-reach for the whole climb.
 	return node
 
 ## A Blend2 filtered to the arm chain, so its second input shows through there
@@ -2959,6 +2984,16 @@ func _arm_overlay_clip(anim_player: AnimationPlayer) -> AnimationNodeAnimation:
 func _arm_overlay(anim_player: AnimationPlayer) -> AnimationNodeBlend2:
 	var overlay := AnimationNodeBlend2.new()
 	overlay.filter_enabled = true
+	# ADVANCE EVEN AT ZERO WEIGHT. Left off, Blend2 freezes an input whose
+	# blend is 0 -- so the overlay would resume from wherever the last climb
+	# abandoned it, and the first climb of a session would start from frame 0
+	# no matter how long the game had been running.
+	#
+	# This is not the same as being IN TIME with the climb: the loop runs on
+	# its own clock. Timing the arms to the crossing needs a one-shot fired
+	# when the pull-up begins, which is worth building only once the motion
+	# itself reads right.
+	overlay.sync = true
 	var clip: StringName = _arm_overlay_clip_name(anim_player)
 	if clip == &"":
 		return overlay

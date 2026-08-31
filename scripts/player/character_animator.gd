@@ -54,6 +54,9 @@ const GRAPH_TIME_SCALE := &"speed"
 ## hold -- none of which this needs to disturb.
 const GRAPH_ARM_OVERLAY := &"arm_overlay"
 const GRAPH_ARM_OVERLAY_CLIP := &"arm_overlay_clip"
+## Between the overlay's clip and the blend, so the arms can be SCRUBBED to the
+## climb's own progress instead of running a loop of their own.
+const GRAPH_ARM_OVERLAY_SEEK := &"arm_overlay_seek"
 
 ## The two bare AnimationNodeAnimation slots the scripted clips play on, in
 ## ping-pong order. See _route().
@@ -355,6 +358,21 @@ func _drive_arm_overlay(delta: float) -> void:
 	var current: float = float(anim_tree.get(path))
 	var rate: float = 1.0 - exp(-delta / maxf(_blend_time(), 0.001))
 	anim_tree.set(path, lerpf(current, wanted, rate))
+	if wanted <= 0.0:
+		return
+	# SCRUBBED, NOT PLAYED. Left to run, the overlay keeps its own clock and
+	# swings the arms several times across one climb -- the clip is 0.63 s and
+	# the pull-up 1.3. Seeking it to the move's own progress every tick makes
+	# the arms a function of how far up the wall the body is, which is the only
+	# clock that means anything here.
+	var progress: float = player.scripted_progress()
+	if progress < 0.0:
+		return
+	var length: float = _clip_length(player.arm_overlay_clip)
+	if length <= 0.0:
+		return
+	anim_tree.set("parameters/%s/seek_request" % GRAPH_ARM_OVERLAY_SEEK,
+		clampf(progress, 0.0, 1.0) * length)
 
 func _route(target: StringName, delta: float) -> void:
 	_drive_arm_overlay(delta)
