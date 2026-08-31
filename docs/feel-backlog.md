@@ -2625,9 +2625,14 @@ var spine_pitch := _pitch / pitch_limit * share_at_limit
 两个动作的参数和触发条件都已落进 `docs/mirrors-edge-deep-research/`，**两个都已经
 实现**（`SpringBoardMove` / `DodgeJumpMove`）。本节保留的是资料本身，不再是待办。
 
-⚠️ 其中 dodge 那条的触发条件后来被实测推翻了一次：`StrafeThreshold = 0.99` 量的是
-**未归一化的输入轴**，所以斜向的 W+A 也触发，而不是只有纯 A/D。更正与手柄上的存疑见
-[04 §4.5](mirrors-edge-deep-research/04-墙面动作.md#45-墙面相关的其他跳跃)。
+⚠️ 其中 dodge 那条被逐帧实测推翻过**三次**，三条更正都在
+[04 §4.5](mirrors-edge-deep-research/04-墙面动作.md#45-墙面相关的其他跳跃)：
+
+1. `StrafeThreshold = 0.99` 量的是**未归一化的输入轴**，所以斜向的 W+A 也触发，不是只有纯 A/D。
+2. 水平动量**不是清零**，而是按 `InertiaConservation = 0.3` 保留——站定 dodge 恰好等于
+   冲量本身，是唯一分辨不出这两种读法的入场条件，也正是它骗过人的地方。
+3. dodge **不扣速度能量**。全速 dodge 之后掉到 16 km/h 是速度矢量被 W 掰回来的损失，
+   不是天花板被压低；转头对准再落地的四次全部落地即回升。
 
 ### SpringBoard（踩踏跳）→ [05 §5.3](mirrors-edge-deep-research/05-动作库总览.md#53-springboard踩踏跳)
 

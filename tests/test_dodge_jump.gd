@@ -20,11 +20,17 @@ extends ParkourTest
 #     current facing. A per-tick push along the body's own right would grow
 #     the speed instead of carrying it, which is what these cases watch for.
 #
-#   * THE COST IS SPEED ENERGY, DOWN TO THE FLOOR EVERYTHING ELSE STOPS AT.
-#     [ME:CONFIRMED 04 §4.5] a dodge out of a run leaves the speed energy at
-#     base velocity, 14.4 km/h. That floor already exists twice over
-#     (SpeedEnergy.spend_turn() and Player's out-of-arc drain), and this is a
-#     third caller of it rather than a fourth number.
+#   * THE RUN IS CARRIED INTO THE LAUNCH, SCALED. [ME:CONFIRMED 04 §4.5]
+#     DodgeJumpInertiaConservation = 0.3 is applied to the horizontal velocity
+#     and the impulse added on top, so a dodge out of a run leaves FASTER than
+#     one from a standstill. Dropping the momentum instead predicts the
+#     standstill case exactly and every other case wrong, which is why the
+#     cases below pin the run one.
+#
+#   * IT COSTS NO SPEED ENERGY. A dodge out of a sprint does sag to near base
+#     velocity afterwards, but that is the velocity being turned back under the
+#     held input on touchdown -- land already facing the way the dodge threw
+#     you and the speed climbs from the first grounded tick instead.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -143,59 +149,71 @@ func test_the_dodge_carries_the_view_swing_rather_than_following_it() -> void:
 
 # --- the cost ------------------------------------------------------------------
 
-func test_the_dodge_spends_speed_energy_down_to_base() -> void:
-	# [ME:CONFIRMED 04 §4.5] a dodge out of a run drops the speed energy to
-	# base velocity, 14.4 km/h. Not a separate number --
-	# PawnConfig.speed_max_base_velocity is where turning and out-of-arc
-	# running already stop.
+func test_a_dodge_does_not_spend_speed_energy() -> void:
+	# The banked energy is what the run rebuilds against, and billing it here
+	# would drag the landing back down to base velocity -- which is precisely
+	# the speed the side-jump boost exists to keep. The sag a run-entered dodge
+	# really does show belongs to the velocity being turned, not to a ceiling
+	# this move lowered.
 	var player: Player = await _running()
-	var floor_energy: float = player.speed_energy.base_floor()
-	assert_gt(player.speed_energy.energy, floor_energy,
+	var banked: float = player.speed_energy.energy
+	assert_gt(banked, player.speed_energy.base_floor(),
 		"test setup: the run banked no energy to spend")
 
 	_world["input"].hold_move(1.0, 1.0)
 	_world["input"].press_jump()
 	await step(2)
 	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
-	assert_almost_eq(player.speed_energy.energy, floor_energy, 0.001,
-		"the dodge did not spend the banked energy down to base velocity")
+	assert_almost_eq(player.speed_energy.energy, banked, 0.001,
+		"the dodge billed the banked speed energy")
 
-func test_a_dodge_out_of_a_run_gives_up_the_forward_momentum() -> void:
-	# [ME:CONFIRMED 04 §4.5] the forward momentum is GONE on the tick the dodge
-	# starts -- not scaled, not clamped -- and the body turns a corner no real
-	# one could. Base velocity is where the CEILING lands, i.e. the speed the
-	# run rebuilds from after touchdown; it is not a floor the airborne body
-	# gets to keep.
-	#
-	# Anything left in the forward direction composes with the impulse instead
-	# of being replaced by it, and the dodge comes out FASTER than the run that
-	# entered it, aimed up the diagonal. Keeping 4.0 of a 5.0 run did exactly
-	# that: 4 forward and 6 sideways leave at 7.2, pointing 34 degrees off the
-	# way the dodge was thrown.
+func test_a_dodge_from_a_standstill_leaves_at_the_impulse() -> void:
+	# With nothing to conserve, inertia_conservation has nothing to scale and
+	# the body leaves along jump_add_xy alone. THIS CASE CANNOT TELL THE TWO
+	# READINGS APART -- dropping the momentum predicts it just as well -- and
+	# it is here to say so, next to the run case that does separate them.
+	var player: Player = await _standing()
+	# Jumped on the same tick the strafe starts: WalkingMove accelerates before
+	# it reads the press, so every tick held first is momentum the launch then
+	# has something to conserve, and the case stops being a standstill one.
+	_world["input"].hold_move(1.0, 0.0)
+	_world["input"].press_jump()
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
+	assert_almost_eq(_horizontal(player).length(), player.config.dodge_jump.jump_add_xy, 0.3,
+		"a standing dodge did not leave at the impulse")
+
+func test_a_dodge_out_of_a_run_leaves_faster_than_the_impulse_alone() -> void:
+	# The fact that kills "the horizontal momentum is gone": if it were, every
+	# dodge would leave at jump_add_xy whatever ran into it. Measured off the
+	# original, a standstill dodge leaves at 21.60 km/h and a dodge out of a
+	# 25.58 km/h run leaves at 26.51 [ME:CONFIRMED 04 §4.5].
 	var player: Player = await _running()
-	var before := _horizontal(player)
-	assert_gt(before.length(), player.config.pawn.speed_max_base_velocity,
+	assert_gt(_horizontal(player).length(), player.config.pawn.speed_max_base_velocity,
 		"test setup: the run never passed base velocity")
 
 	_world["input"].hold_move(1.0, 1.0)
 	_world["input"].press_jump()
 	await step(2)
 	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
-	assert_almost_eq(_horizontal(player).dot(before.normalized()), 0.0, 0.05,
-		"the dodge carried forward speed through the turn")
+	assert_gt(_horizontal(player).length(), player.config.dodge_jump.jump_add_xy + 0.1,
+		"a dodge out of a run left with no more than the impulse")
 
-func test_a_dodge_leaves_along_the_impulse_and_nothing_else() -> void:
-	# The other half of the same fact, stated as a speed rather than as a
-	# direction: what the body leaves with IS the impulse. A run that
-	# contributes anything at all shows up here as a horizontal speed above
-	# jump_add_xy.
+func test_a_dodge_out_of_a_run_carries_a_share_of_the_forward_speed() -> void:
+	# Scaled, not kept whole and not dropped: the component along the way the
+	# run was going survives the launch and is smaller than it was. Stated as a
+	# band rather than as a number because inertia_conservation is a dial --
+	# what must not move is that both ends of the band are open.
 	var player: Player = await _running()
+	var before := _horizontal(player)
+
 	_world["input"].hold_move(1.0, 1.0)
 	_world["input"].press_jump()
 	await step(2)
 	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
-	assert_almost_eq(_horizontal(player).length(), player.config.dodge_jump.jump_add_xy, 0.05,
-		"the dodge left with more than the impulse it was given")
+	var carried: float = _horizontal(player).dot(before.normalized())
+	assert_gt(carried, 0.0, "the dodge dropped the forward speed entirely")
+	assert_lt(carried, before.length(), "the dodge carried the whole run through the turn")
 
 # --- the capability set ----------------------------------------------------------
 

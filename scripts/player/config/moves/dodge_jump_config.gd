@@ -14,14 +14,12 @@ extends MoveConfig
 #     InertiaConservation = 0.3
 #     StrafeThreshold     = 0.99
 #
-# InertiaConservation IS NOT IMPLEMENTED, and is not declared below as a dial
-# nobody reads. Nothing survives the launch for it to scale: [ME:CONFIRMED 04
-# §4.5] the horizontal momentum is gone on the tick the dodge starts, and the
-# body leaves along jump_add_xy and nothing else. The 14.4 km/h a dodge is
-# measured to land on is where the CEILING goes -- the speed the run rebuilds
-# from after touchdown -- not a speed the airborne body keeps. Both halves are
-# Player.dodge_launch(), and its own note has the two wrong readings that came
-# before this one.
+# ALL FOUR ARE IMPLEMENTED, InertiaConservation included. It is tempting to
+# read the move as "the horizontal momentum is gone and the body leaves along
+# jump_add_xy alone", because a dodge thrown from a STANDSTILL leaves at
+# exactly 6.0 m/s and that reading predicts it perfectly. It is wrong, and a
+# standstill is the one entry speed that cannot tell the two apart. See
+# inertia_conservation below for what separates them.
 
 func _init() -> void:
 	# THE THREE PROBE FLAGS ARE LEFT FALSE, AND THAT IS THE MOVE.
@@ -49,6 +47,26 @@ func _init() -> void:
 ##
 ## SPENT ONCE, ON ENTRY, AS A WORLD VECTOR. See DodgeJumpMove.enter().
 @export var jump_add_xy: float = 6.0
+
+## [ME:CONFIRMED 04 §4.5] DodgeJumpInertiaConservation = 0.3. The share of the
+## horizontal velocity the body carries into the dodge, before jump_add_xy is
+## added to it.
+##
+## DO NOT ZERO THE HORIZONTAL VELOCITY HERE. If the momentum were dropped, the
+## dodge would leave at jump_add_xy and nothing else, so EVERY dodge would
+## leave at the same speed no matter what ran into it. Measured frame by frame
+## off the original's debug HUD, eleven dodges, it does not: a dodge from a
+## standstill leaves at 21.60 km/h and a dodge out of a 25.58 km/h run leaves
+## at 26.51, and the whole set fits 0.205 * entry + 22.19 km/h to R^2 = 0.968.
+## The forward component measured DURING three run-entered dodges is 4.67,
+## 5.08 and 5.03 km/h where dropping the momentum predicts zero.
+##
+## A dodge out of a run therefore comes out FASTER than the run that entered
+## it, and above the 25.92 km/h ground ceiling. That is not a symptom of the
+## reading being wrong -- it is the move: the landing frame reads exactly
+## 25.92, the ground clamp catching what the airborne body was allowed to
+## carry, and it is why the side-jump boost is worth doing at all.
+@export var inertia_conservation: float = 0.3
 
 ## [ME:CONFIRMED 04 §4.5] StrafeThreshold = 0.99, asked of
 ## MoveInput.strafe_axis -- the raw axis, NOT the normalised move vector.

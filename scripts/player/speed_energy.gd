@@ -165,21 +165,6 @@ func spend_turn(radians: float, delta: float) -> void:
 func base_floor() -> float:
 	return energy_for_speed(_pawn, _pawn.speed_max_base_velocity)
 
-## Drops the whole banked budget to base_floor() in one go. A dodge's entire
-## cost: [ME:CONFIRMED 04 §4.5] a dodge out of a run leaves the speed energy
-## at 14.4 km/h.
-##
-## The SPEED is not touched, only the ceiling: the body keeps what it is
-## carrying and the cap drags it down from above, exactly as it does after a
-## hard turn. See DodgeJumpConfig's own note on why InertiaConservation is not
-## implemented on top of this.
-func spend_to_base() -> void:
-	var floor_energy: float = base_floor()
-	if energy <= floor_energy:
-		return
-	energy = floor_energy
-	_rebase_decay()
-
 ## The energy at which the speed curve first reaches `speed` -- the inverse of
 ## curve_at(). Linear search over the same knots, so the two cannot disagree.
 ##

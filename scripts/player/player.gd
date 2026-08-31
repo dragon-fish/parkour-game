@@ -4079,33 +4079,30 @@ func dodge_direction(input: MoveInput) -> Vector3:
 ## Throws a dodge along `direction`, which must already be the square-sideways
 ## world vector dodge_direction() returns.
 ##
-## THE MOMENTUM IS GONE, NOT SCALED AND NOT CLAMPED. [ME:CONFIRMED 04 §4.5] a
-## dodge out of a run leaves along the impulse and nothing else, turning a
-## corner no real body could -- dodging by accident at speed is meant to hurt,
-## and what makes the move worth anything outside combat is the impulse it
-## hands out, never the run it interrupts.
+## THE HORIZONTAL MOMENTUM IS SCALED, NOT DROPPED. [ME:CONFIRMED 04 §4.5] the
+## body carries DodgeJumpInertiaConservation of what it had into the launch and
+## the impulse is added on top, so a dodge out of a run leaves faster than one
+## from a standstill and slightly faster than the run itself. Zeroing here
+## makes every dodge leave at jump_add_xy, which matches a standstill dodge
+## exactly and nothing else -- see DodgeJumpConfig.inertia_conservation for the
+## measurements that separate the two readings.
 ##
-## DO NOT LEAVE A FLOOR UNDER THE HORIZONTAL SPEED. base_velocity is where the
-## CEILING lands -- the speed a run rebuilds from after touchdown -- and it is
-## tempting to read it as a floor the airborne body may keep. It is not, and
-## anything kept COMPOSES with the impulse rather than being replaced by it:
-## keeping 4.0 of a 5.0 run and adding 6.0 sideways leaves at 7.2, faster than
-## the run that entered and aimed 34 degrees off the way the dodge was thrown.
-## Both of this move's first two outings were wrong in exactly that way.
-##
-## The energy goes to that ceiling in the same breath, so the cap the body
-## rebuilds against is base velocity rather than whatever the run had banked.
-## Turning through the corner would bill a second time, but spend_turn() stops
-## at that same floor, so the corner is free once the dodge has paid -- which
-## is what lets both costs be one number instead of two.
+## THE DODGE COSTS NO SPEED ENERGY. It is tempting to bill it down to base
+## velocity, because a dodge out of a sprint does bottom out near there
+## afterwards. That floor is the VELOCITY being turned back under the held
+## input on touchdown, not a ceiling the dodge lowered: swing the view into the
+## dodge before landing and the speed does not sag at all -- measured, four
+## runs, the ground speed climbs from the moment the feet land. A ceiling
+## dropped to base velocity would drag those back down instead, and it is the
+## same drag that would quietly kill the side-jump boost this move exists for.
 func dodge_launch(direction: Vector3) -> void:
-	velocity.x = 0.0
-	velocity.z = 0.0
+	var kept: float = config.dodge_jump.inertia_conservation
+	velocity.x *= kept
+	velocity.z *= kept
 	velocity.y = config.dodge_jump.base_jump_z
 	# SPENT ONCE, AS A WORLD VECTOR -- see DodgeJumpMove on why it must never
 	# be recomputed against the facing afterwards.
 	velocity += direction * config.dodge_jump.jump_add_xy
-	speed_energy.spend_to_base()
 
 ## Which way the body is going AT something, as a unit vector, or ZERO if it is
 ## going nowhere and asking for nothing.
