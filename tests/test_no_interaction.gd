@@ -94,6 +94,49 @@ func test_an_inert_surface_is_still_something_to_land_on() -> void:
 	assert_false(landing.is_empty(), "the landing prediction went blind to an inert surface")
 	assert_eq(landing.get("collider"), box, "the prediction found something other than the box")
 
+## The wall-climb fixture from test_wall_climb.gd, which is the run this whole
+## group exists to refuse: 4 m of wall, a head-on run-up, and a jump.
+func _wall_ahead(height: float) -> StaticBody3D:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(20.0, height, 1.0)
+	shape.shape = box
+	wall.add_child(shape)
+	get_tree().root.add_child(wall)
+	wall.global_position = Vector3(0.0, height * 0.5, -2.5)
+	_world["box"] = wall
+	return wall
+
+func _run_at_the_wall() -> Player:
+	var player: Player = _world["player"]
+	player.global_position = Vector3(0.0, 1.5, -1.55)
+	player.velocity = Vector3(0.0, 2.0, -6.0)
+	player.move_manager.start(Move.JUMP)
+	return player
+
+func test_a_run_up_at_an_inert_wall_starts_no_climb() -> void:
+	# THE CASE THE QUERY TESTS ABOVE DO NOT COVER. They ask the probe and stop
+	# there; a state could still be entered off a stale value, a second probe,
+	# or a branch that reads tall_enough without reading valid. This one drives
+	# the move manager and looks at what it actually became.
+	var wall := await _wall_ahead(4.0)
+	_run_at_the_wall()
+	await step(2)
+	assert_eq(_world["player"].move_manager.current_name, Move.WALL_CLIMB,
+		"test setup: a head-on run into a tall wall did not climb to begin with")
+
+	await after_each()
+	wall = await _wall_ahead(4.0)
+	_tag(wall)
+	_run_at_the_wall()
+	await step(2)
+	assert_ne(_world["player"].move_manager.current_name, Move.WALL_CLIMB,
+		"an inert wall was climbed")
+
 func test_the_group_is_reported_when_it_cannot_be_read() -> void:
 	# Same load-time check the soft landing pads get, and the same CSG trap:
 	# a brush inside a combiner owns no collision, so the tag on it is silent.
@@ -110,3 +153,24 @@ func test_the_group_is_reported_when_it_cannot_be_read() -> void:
 	var body := StaticBody3D.new()
 	arena.add_child(body)
 	assert_eq(arena._why_a_tag_cannot_be_read(body), "", "a StaticBody3D was refused")
+
+func test_a_mistyped_tag_is_close_enough_to_be_reported() -> void:
+	# The failure that cost a debugging round: a group that ALMOST names the tag
+	# is in no tag's group, so the unreadable-tag walk above cannot see it and
+	# the silence is total.
+	var arena: Arena = preload("res://scenes/main.tscn").instantiate()
+	add_child_autofree(arena)
+	assert_lte(arena._edit_distance("no_interactive", "no_interaction"),
+		Arena.TAG_TYPO_DISTANCE, "the spelling that actually happened is not caught")
+	assert_lte(arena._edit_distance("soft_landings", "soft_landing"),
+		Arena.TAG_TYPO_DISTANCE, "a trailing plural is not caught")
+
+func test_the_projects_own_group_names_are_not_reported_as_typos() -> void:
+	# The other half: a warning that cries at every unrelated group is one
+	# nobody reads. These are the groups this project really uses.
+	var arena: Arena = preload("res://scenes/main.tscn").instantiate()
+	add_child_autofree(arena)
+	for innocent in ["interest_lines", "modifier_volumes", "debug_overlay", "player"]:
+		for tag in Arena.AUTHORED_TAGS:
+			assert_gt(arena._edit_distance(innocent, String(tag)),
+				Arena.TAG_TYPO_DISTANCE, "'%s' reads as a typo of '%s'" % [innocent, tag])
