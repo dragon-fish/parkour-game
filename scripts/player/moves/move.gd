@@ -153,6 +153,28 @@ func carry_ballistically(delta: float) -> void:
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
 
+## ON Move RATHER THAN AirborneMove, though every other caller is one: a
+## reach is a plain Move and is airborne for the whole of its approach
+## phase, so it needs the same hand-off and there is nothing airborne-
+## specific in here to justify a second copy.
+## Carries the body through THIS tick and hands off, for the transitions that
+## leave one airborne state for another. Without it the hand-off tick covers
+## zero distance -- the move returns before settle_landing()'s own
+## move_and_slide() -- and Player._travel_speed, which is measured from actual
+## displacement, reads zero for one frame. The speed-driven FOV dips and
+## springs back, which is visible as a flicker at the exact moment Jump becomes
+## Falling.
+##
+## Landing is deliberately NOT settled here: a tick that both crosses a
+## threshold and touches down is judged by the state it is handing off TO, one
+## tick later. See JumpMove's own note on the descent being what the landing
+## is judged on -- this survives because the fall tracker has already counted
+## this tick's descent.
+func advance_and_hand_off(destination: StringName) -> StringName:
+	player.move_and_slide()
+	player.set_grounded(player.is_on_floor())
+	return destination
+
 ## How long MoveManager refuses re-entry to this move after it leaves,
 ## seconds. The config's redo_move_time by default; a move overrides this
 ## when it can tell that THIS exit is not the kind the cooldown guards --

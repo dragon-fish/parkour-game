@@ -32,6 +32,10 @@ window/stretch/mode="canvas_items"
 
 enabled=PackedStringArray("res://addons/Godot-MToon-Shader/plugin.cfg", "res://addons/GodotchUp/plugin.cfg", "res://addons/game_window_memory/plugin.cfg", "res://addons/godot_3d_cursor/plugin.cfg", "res://addons/gut/plugin.cfg", "res://addons/respawn_gizmos/plugin.cfg", "res://addons/vrm/plugin.cfg")
 
+[global_group]
+
+no_interaction="无法交互的空气墙，阻挡玩家前进"
+
 [gui]
 
 theme/custom_font="res://assets/fonts/noto_sans_sc.tres"

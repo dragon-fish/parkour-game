@@ -176,26 +176,97 @@ func _ready() -> void:
 
 	reset_player()
 	_mark.call("markers + reset_player")
-	_warn_about_unreachable_pads()
+	_warn_about_unreadable_tags()
+	_warn_about_near_miss_tags()
 
-## A body in the soft_landing group that nothing will ever read is silent:
-## the pad simply is not soft, and the player finds out by dying on it. This
-## turns each one into a console line at load, which is the whole reason it
-## exists -- see the spring-bone lesson in
-## .claude/skills/authoring-godot-scene-files.
+## A surface group that nothing will ever read is SILENT, and both of them
+## fail the same way: a soft pad is simply not soft and the player finds out by
+## dying on it, an inert wall is simply not inert and they find out by climbing
+## something meant to be unclimbable. This turns each one into a console line
+## at load, which is the whole reason it exists -- see the spring-bone lesson
+## in .claude/skills/authoring-godot-scene-files.
 ##
-## The trap is CSG. Only the ROOT of a CSG tree owns collision, so a group on
-## a child brush is read by nothing -- and a brush is exactly what an author
-## draws when they want one soft ledge in a level built out of CSG.
-func _warn_about_unreachable_pads() -> void:
-	for node in get_tree().get_nodes_in_group(Probes.SOFT_LANDING_GROUP):
-		var why := _why_a_pad_cannot_be_felt(node as Node)
-		if why != "":
-			push_warning("Soft landing pad '%s' will never be felt: %s"
-				% [(node as Node).name if node is Node else node, why])
+## The trap is CSG. Only the ROOT of a CSG tree owns collision, so a group on a
+## child brush is read by nothing -- and a brush is exactly what an author
+## draws when they want one tagged surface in a level built out of CSG.
+func _warn_about_unreadable_tags() -> void:
+	for group in [Probes.SOFT_LANDING_GROUP, Probes.NO_INTERACTION_GROUP]:
+		for node in get_tree().get_nodes_in_group(group):
+			var why := _why_a_tag_cannot_be_read(node as Node)
+			if why != "":
+				push_warning("Group '%s' on '%s' will never be read: %s"
+					% [group, (node as Node).name if node is Node else node, why])
 
 ## Empty when the node is something a ray can report, a reason otherwise.
-func _why_a_pad_cannot_be_felt(node: Node) -> String:
+## The tags an author types by hand, and the only ones worth guarding against
+## a typo. The rest of this project's groups -- interest_lines,
+## modifier_volumes, debug_overlay, player -- are added from code, where a
+## misspelling is a parse error rather than a silent nothing.
+const AUTHORED_TAGS: Array[StringName] = [
+	Probes.SOFT_LANDING_GROUP, Probes.NO_INTERACTION_GROUP,
+]
+
+## How far off a group name may be and still be taken for a typo of a tag. Two
+## edits catches the ways a hand-typed name really goes wrong -- a swapped
+## suffix (no_interactive), a dropped separator, a doubled letter -- while the
+## tags are long enough (12 and 14 characters) that nothing unrelated lands
+## that close.
+const TAG_TYPO_DISTANCE := 2
+const TAG_TYPO_MIN_LENGTH := 6
+
+## A group that ALMOST names a tag does nothing at all, and says nothing while
+## it does it: _warn_about_unreadable_tags() above can only walk nodes that are
+## in a tag's group, and a misspelling puts them in no such group. So the
+## silence is total, and the author is left looking at a correct-looking Groups
+## tab wondering why the wall is still climbable.
+##
+## AN ALIAS WOULD HAVE BEEN THE WRONG FIX. There is no bounded set of ways to
+## mistype a name, so every alias accepted teaches that near enough works and
+## makes the next unlisted spelling more surprising, not less. This catches all
+## of them and names the one that is right.
+func _warn_about_near_miss_tags() -> void:
+	var reported := {}
+	for node in _nodes_under(self):
+		for group in node.get_groups():
+			var name := String(group)
+			if reported.has(name) or name.length() < TAG_TYPO_MIN_LENGTH:
+				continue
+			for tag in AUTHORED_TAGS:
+				var real := String(tag)
+				if name == real:
+					break
+				if _edit_distance(name, real) <= TAG_TYPO_DISTANCE:
+					reported[name] = true
+					push_warning(("Group '%s' on '%s' does nothing -- did you mean "
+						+ "'%s'? Nothing reads '%s'.") % [name, node.name, real, name])
+					break
+
+func _nodes_under(root: Node) -> Array[Node]:
+	var out: Array[Node] = []
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		out.append(node)
+		for child in node.get_children():
+			stack.append(child)
+	return out
+
+## Levenshtein, two rows rather than a full matrix. Small enough inputs that
+## the shape matters less than not pulling in a dependency for one call site.
+func _edit_distance(a: String, b: String) -> int:
+	var previous: Array[int] = []
+	for j in b.length() + 1:
+		previous.append(j)
+	for i in a.length():
+		var current: Array[int] = [i + 1]
+		for j in b.length():
+			var cost: int = 0 if a[i] == b[j] else 1
+			current.append(mini(mini(current[j] + 1, previous[j + 1] + 1),
+				previous[j] + cost))
+		previous = current
+	return previous[b.length()]
+
+func _why_a_tag_cannot_be_read(node: Node) -> String:
 	if node == null:
 		return "not a node"
 	if node is CSGShape3D:
@@ -203,8 +274,8 @@ func _why_a_pad_cannot_be_felt(node: Node) -> String:
 		if node.get_parent() is CSGShape3D:
 			return ("it is a brush inside a CSG tree, so the collision belongs to "
 				+ "its root. Move it out of the tree and give it its own "
-				+ "use_collision, or put the group on the root -- which makes the "
-				+ "whole tree soft.")
+				+ "use_collision, or put the group on the root -- which applies it "
+				+ "to the whole tree.")
 		if not (node as CSGShape3D).use_collision:
 			return "use_collision is off, so it has no collision to be hit."
 		return ""

@@ -659,6 +659,48 @@ root with `use_collision` off, a bare `MeshInstance3D`. Each of those looks
 entirely correct in the editor and does nothing at runtime, so the failure is
 otherwise found by dying on the pad.
 
+## 只能站上去的表面：`no_interaction`
+
+组名 **`no_interaction`**。挂上它的碰撞体，玩家**除了从顶上走过去，什么都做不了**——
+抓不住、翻不过、蹬不了、爬不上、踩不了弹板。地面碰撞、落点预测和 `move_and_slide()`
+完全不受影响。
+
+两个典型用途：
+
+- **空气墙**：`StaticBody3D` + 若干 `CollisionShape3D`，纯粹挡住玩家不让进某片区域。
+  组挂在 **body** 上就够了，它底下所有 shape 一起生效，不用一个个加。
+- **防卡斜坡**：铺在一道玩家老是卡住的小坎上，让人顺着滑过去而不是在那儿翻越。
+
+⚠️ **也用来救"碰撞体比模型大"的场景**。给一块 wall_run 的木板加一圈比模型高很多的
+碰撞箱，是为了让浅角度切入的玩家不被踢飞——但那圈碰撞箱同时也变得**可以抓**，新手以
+小于 53° 跳上去、竖着翻过顶端、摔死。那圈箱子是给 wall_run 用的脚手架，不是真的边缘，
+探针分不出来——除非你告诉它。
+
+⚠️ **这是全有全无的。** 现在只有"全部禁止"这一档；`no_interaction` 会连 wall_run
+一起关掉，所以上面那个木板的例子**目前还救不了**——要救得有 `no_grab` 这样的单项标签。
+真要加的时候，名字照 `MoveConfig` 的 `check_for_grab` / `check_for_vault_over` /
+`check_for_wall_climb` 取（`no_grab` / `no_vault_over` / `no_wall_climb`），
+别另发明一套词：那是同一张能力矩阵的两侧，用两套词汇会让人对不上号。
+
+**挂哪个节点的规则和 `soft_landing` 完全一样**，上面那张表照抄；`Arena` 也用同一套
+检查在加载时对这个组打印警告。
+
+⚠️ **组名拼错了不会有任何反应，但会被告知。** `Arena` 在加载时除了检查"挂了组但读不到"，
+还会扫一遍场景里所有的组名，凡是**差一两个字母就等于**某个标签的（`no_interactive`、
+`soft_landings`……）就打印一行并告诉你正确拼法。
+
+之所以要单独有这一条：拼错的节点**不在任何标签的组里**，上面那条"挂了组但读不到"的检查
+根本遍历不到它，所以失败是完全静默的——你会对着一个看起来完全正确的 Groups 页，
+想不通墙为什么还能爬。
+
+📌 **没有做别名。** 拼错的方式没有边界，收了 `no_interactive` 之后 `nointeraction`、
+`no-interaction`、`no_interact` 呢？每收一个都在教"差不多就行"，而下一个没收录的拼法
+只会更让人意外。警告能抓全部，而且教的是正确的那个名字。
+
+⚠️ **inert 的表面会挡住它背后的探针。** 射线打中它就停下，不会穿过去继续找——所以
+一面 `no_interaction` 的墙后面即使有真的可抓边缘，也是看不见的。对空气墙来说这正是
+想要的行为，但别拿它当"隐形的装饰"用。
+
 [ME:INFERRED 12 §12.5] A group rather than a node class because the original's
 pads are ordinary collision boxes carrying a property: there is one in a level
 with no trigger anywhere near it, and a pad reached from an ordinary height
