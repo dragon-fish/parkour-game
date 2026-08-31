@@ -11,6 +11,39 @@ extends Resource
 ## panel can tune it live like every other camera value.
 ## [ME:CONFIRMED 09 §9.1] BaseEyeHeight = 76 uu. 0.76 m above the capsule
 ## centre puts the eye at 1.66 m off the floor on this project's 1.8 m body --
+## THE FIRST-PERSON CAMERA IS NOT AT THE MODEL'S EYES, AND MUST NOT BE MOVED
+## THERE. It sits at the neck, pushed slightly forward -- what essentially every
+## FPS does, arrived at by the industry over many years rather than picked here.
+## Four things break the moment it is moved to the eyes:
+##
+##   * The neck is directly below the eyes, so looking down puts it in frame
+##     unavoidably. From in front of it, the downward cone clears it entirely.
+##   * A weapon held at the shoulder needs the view far enough forward to see
+##     it at all; from inside the skull it is behind the near plane or behind
+##     the body.
+##   * The nose, cheeks and hair intersect the near plane.
+##   * A head bone carries the whole of an animation authored to be watched
+##     from behind. See camera_head_follow_strength: 9 cm of bob against the
+##     1-3 cm a first-person view tolerates.
+##
+## ⚠️ DO NOT READ THE OFFSETS BELOW AS ERRORS TO BE CORRECTED. They are not
+## compensating for the camera failing to pitch about the neck joint the way a
+## head does -- not pitching that way is the point. Hanging the eye off the
+## neck joint has been tried and abandoned; VRM even ships the author's own
+## viewpoint (a LookOffset node, 0.06 m above the head bone with essentially no
+## forward component) and it is the wrong position for all four reasons above.
+##
+## ⚠️ AND THEY ARE NOT INDEPENDENT DIALS. Each is pinned by a different worst
+## case, from opposite directions, and moving one to fix what you are looking
+## at will silently break the case the other is holding:
+##
+##   eye_height   pinned from ABOVE by crouching into a low gap -- raise it and
+##                the eye goes through the ceiling of the gap.
+##   eye_forward  pinned from BELOW by looking straight down (pitch -89) --
+##                shrink it and the view goes into the character's own chest.
+##
+## Anyone retuning either needs both in hand, and a check of the other case.
+
 ## the original's own eye line, not a guessed one.
 @export var eye_height: float = 0.76
 @export var mouse_sensitivity: float = 0.0022

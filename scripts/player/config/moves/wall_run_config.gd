@@ -239,17 +239,20 @@ func _init() -> void:
 ## halving this never touched it. Holding the model off the wall is
 ## eye_off_wall's job now.
 ##
-## What it really scales is the head bone's OWN motion, and raising it is why
-## looking down stopped showing the neck: the camera pitches about its own
-## centre rather than about the neck joint, so at a steep pitch it sits well
-## above where the eyes belong -- and a fuller follow of a head bone that
-## itself swings forward and down happens to approximate the arc the camera
-## should be travelling. ✅ the owner tuned 0.75 by eye.
+## What it really scales is how much of the head bone's OWN motion reaches the
+## first-person eye, which is the same question camera_head_follow_strength
+## answers globally: an animation authored to be watched from behind carries
+## more head travel than a view sat in it can stand. A wall run's lean is the
+## most of it in this project, which is why the move names its own number.
 ##
-## 📌 That makes this number a COMPENSATION for a wrong pivot, not a fact about
-## wall running. If the eye is ever hung off the neck joint properly, every
-## value calibrated against the old pivot -- this one first -- has to be
-## revisited rather than carried over.
+## ✅ the owner tuned 0.75 by eye: below it the head bone swings far enough away
+## from the eye for the neck to come into frame when looking down; above it the
+## lean starts riding the view.
+##
+## 📌 THIS IS NOT COMPENSATING FOR THE CAMERA NOT PITCHING ABOUT THE NECK. That
+## it pitches about itself is deliberate -- see CameraConfig's note beside
+## eye_height on why the first-person camera sits in front of the neck rather
+## than at the eyes, and why moving it there has been tried and abandoned.
 @export_range(0.0, 1.0) var head_follow_scale: float = 0.75
 
 ## How far the FIRST-PERSON eye slides AWAY FROM the wall during a run, metres.
