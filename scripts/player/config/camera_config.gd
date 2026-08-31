@@ -380,6 +380,25 @@ extends Resource
 ## percent below that and then stops tracking it at all -- 0.60 and 0.80 give
 ## the identical 0.527, so the sweep has hit some cap of the physics backend's
 ## own. A radius that large is an absurd camera anyway; what matters is that
+## Width of the band in front of a look limit where the input is progressively
+## damped, degrees. Zero restores the hard stop.
+##
+## A CLAMP ALONE READS AS HITTING SOMETHING. The mouse keeps moving and the
+## view simply stops, with nothing in between -- and every constrained move in
+## this project shares that edge, so it is one feel and not several. In the
+## original the last couple of degrees go heavy instead: you can tell the limit
+## is coming before you arrive at it.
+##
+## Scaled by the room LEFT, so the input fades toward the edge rather than
+## being cut at it: half a band out the mouse moves the view half as far, and
+## the approach is asymptotic. That also means the limit is never quite
+## reached, which is the point -- there is no frame where the view slams to a
+## stop.
+##
+## 2-3 degrees on the owner's report of the original. Verified by feel only;
+## it is a taste value with nothing measured behind the exact number.
+@export var look_damp_deg: float = 2.5
+
 ## the dial stops being honest there, and it does so silently.
 @export var third_person_probe_radius: float = 0.2
 
