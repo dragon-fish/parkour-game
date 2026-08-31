@@ -32,8 +32,8 @@ const OUTPUTS: Array[Dictionary] = [
 	{"output": Output.CSG, "label": "CSG",
 		"hint": "A CSGShape3D: whitebox geometry with collision baked in."},
 	{"output": Output.COLLISION, "label": "Collision",
-		"hint": "A CollisionShape3D. Dropped into the selected body or area if there is one,"
-			+ " otherwise wrapped in a new Area3D so it is a working trigger."},
+		"hint": "A CollisionShape3D. Becomes a child of the selected body or area,"
+			+ " or a sibling of whatever else is selected."},
 ]
 
 ## Far enough to cross any level from any angle. A ray is cheap; a click that
@@ -397,28 +397,15 @@ func _build_shape(plan: Dictionary) -> Shape3D:
 			box.size = plan["size"]
 			return box
 
-## Returns {"node": the Node3D to add to the parent, "inner": a descendant that
-## also needs an owner, or null}.
-func _build_output(plan: Dictionary, collision: bool, parent: Node) -> Dictionary:
-	if not collision:
-		var solid: CSGShape3D = _build_csg(plan)
-		solid.use_collision = true
-		return {"node": solid, "inner": null}
-
-	var shape := CollisionShape3D.new()
-	shape.name = "CollisionShape3D"
-	shape.shape = _build_shape(plan)
-	if parent is CollisionObject3D:
-		return {"node": shape, "inner": null}
-
-	# A CollisionShape3D belonging to nothing is inert, and the editor flags it
-	# with a warning rather than doing anything about it. Wrapping keeps every
-	# drag productive: what comes out is a trigger that already works, and
-	# swapping the Area3D for a Checkpoint or a DeathVolume is one field.
-	var area := Area3D.new()
-	area.name = "Trigger"
-	area.add_child(shape)
-	return {"node": area, "inner": shape}
+func _build_output(plan: Dictionary, collision: bool) -> Node3D:
+	if collision:
+		var shape := CollisionShape3D.new()
+		shape.name = "CollisionShape3D"
+		shape.shape = _build_shape(plan)
+		return shape
+	var solid: CSGShape3D = _build_csg(plan)
+	solid.use_collision = true
+	return solid
 
 func _commit() -> int:
 	_dragging = false
@@ -430,8 +417,7 @@ func _commit() -> int:
 	var plan: Dictionary = _plan()
 	var collision: bool = _picked_output() == Output.COLLISION
 	var parent: Node = _target_parent(root, collision)
-	var built: Dictionary = _build_output(plan, collision, parent)
-	var node: Node3D = built["node"]
+	var node: Node3D = _build_output(plan, collision)
 
 	# The placement is in world space and the node is about to live under a
 	# parent that may be anywhere: without this the whole thing lands wherever
@@ -445,9 +431,6 @@ func _commit() -> int:
 	undo.create_action("Draw %s" % node.name)
 	undo.add_do_method(parent, "add_child", node, true)
 	undo.add_do_method(node, "set_owner", root)
-	if built["inner"] != null:
-		# A descendant with no owner is dropped when the scene is saved.
-		undo.add_do_method(built["inner"], "set_owner", root)
 	undo.add_do_reference(node)
 	undo.add_undo_method(parent, "remove_child", node)
 	undo.commit_action()
