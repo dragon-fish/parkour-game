@@ -115,6 +115,21 @@ pipeline (see `docs/level-templates.md`).
   levels went unused, and four fifths of the ✅ ended up tagging design
   decisions the scale never covered. Anything that looks decorative gets
   deleted as noise by the next reader, human or model.
+- **Never quote a conversation in a comment.** Not the owner's words, not who
+  asked for what, not the exchange a decision came out of. This one is specific
+  to agents — a person writing this code would not think to quote themselves —
+  and it is the rule that keeps being broken. Write the constraint the quote was
+  evidence FOR, then delete the quote:
+
+  | | |
+  | --- | --- |
+  | wrong | `## The owner: "give the over-shoulder camera a bit of easing."` |
+  | right | `## EASED, not snapped. It matters most for the wall run, which swaps sides on its own -- a shot that jumps across the body reads as a cut.` |
+
+  A quotation reads as evidence, so no later reader dares delete it, and every
+  session adds another. That is how a file ends up carrying more attribution
+  than constraint. What the next reader needs is the constraint; where it came
+  from is in git.
 - **The only marked claims are claims about the original game**, and they use
   ASCII tags — the same five levels as
   `docs/mirrors-edge-deep-research/01-方法论与可信度分级.md`, so a value's
@@ -132,13 +147,12 @@ pipeline (see `docs/level-templates.md`).
   tag. A hazard is a sentence beginning "DO NOT"; emphasis is the sentence
   itself.
 - **A comment exists so a mistake is not repeated, not so the history can be
-  read** — see CONTRIBUTING.md for the full rule. Constraints, potholes and what
-  they cost, prohibitions; no quoted conversations, no dates, no before/after.
-  Rewrite a comment when the logic changes instead of appending to it: it should
-  read as though written in one sitting. An evidence tag is a *constraint*, not a
-  quotation — "[ME:CONFIRMED 02 §2.4] gravity is 16.0; the ini's 800 is wrong,
-  do not put it back" — and stays. Lessons learned go to `.claude/skills/`,
-  derivations to `docs/`, history to git.
+  read.** Constraints, potholes and what they cost, prohibitions; no dates, no
+  before/after. Rewrite a comment when the logic changes instead of appending to
+  it: it should read as though written in one sitting. An evidence tag is a
+  *constraint*, not a quotation — "[ME:CONFIRMED 02 §2.4] gravity is 16.0; the
+  ini's 800 is wrong, do not put it back" — and stays. Lessons learned go to
+  `.claude/skills/`, derivations to `docs/`, history to git.
 - **`docs/feel-backlog.md`** is the standing record of known-wrong feel with root
   causes already derived. Read it before "fixing" a movement value.
 - **`.claude/skills/`** holds practices this project learned the hard way — each
