@@ -58,15 +58,27 @@ func test_dot_grid_material_loads_its_shader() -> void:
 ## reach the process id.
 var _test_settings_path: String
 var _real_settings_path: String
+## Same redirect-away-from-the-real-file reasoning as SettingsStore.path
+## above, for ProgressStore: PauseUi._refresh_entries() reads
+## ProgressStore.tutorial_finished() on every pause, so any test that pauses
+## would otherwise read (and could leave finished) the author's real
+## user://progress.cfg.
+var _test_progress_path: String
+var _real_progress_path: String
 
 func before_all() -> void:
 	_test_settings_path = "user://settings_test_%d.cfg" % OS.get_process_id()
 	_real_settings_path = SettingsStore.path
 	SettingsStore.path = _test_settings_path
+	_test_progress_path = "user://progress_test_%d.cfg" % OS.get_process_id()
+	_real_progress_path = ProgressStore.path
+	ProgressStore.path = _test_progress_path
 
 func after_all() -> void:
 	_delete_settings_file()
 	SettingsStore.path = _real_settings_path
+	_delete_progress_file()
+	ProgressStore.path = _real_progress_path
 
 func before_each() -> void:
 	_delete_settings_file()
@@ -96,6 +108,10 @@ func after_each() -> void:
 func _delete_settings_file() -> void:
 	if FileAccess.file_exists(SettingsStore.path):
 		DirAccess.remove_absolute(SettingsStore.path)
+
+func _delete_progress_file() -> void:
+	if FileAccess.file_exists(ProgressStore.path):
+		DirAccess.remove_absolute(ProgressStore.path)
 
 func test_load_settings_with_no_file_returns_defaults() -> void:
 	var loaded := SettingsStore.load_settings()
@@ -605,3 +621,62 @@ func test_choosing_a_row_runs_that_rows_handler() -> void:
 		"choosing 设置 did not open the settings page")
 	PauseUi._on_settings_closed()
 	PauseUi._resume()
+
+
+# ---------------------------------------------------------------------------
+# 回主菜单 is withheld until the tutorial has been finished once -- see
+# ProgressStore.tutorial_finished(). ProgressStore.path is redirected to a
+# per-process file in before_all()/after_all() above, same as
+# SettingsStore.path, so these never touch the author's real progress.cfg.
+# ---------------------------------------------------------------------------
+
+func test_the_main_menu_row_is_absent_until_the_tutorial_is_finished() -> void:
+	# Until it has been finished once the tutorial IS the front door, so there
+	# is nothing behind it to go back to.
+	_delete_progress_file()
+	PauseUi.toggle_pause()
+	for entry in PauseUi._entries:
+		assert_ne(entry.handler, &"go_to_main_menu",
+			"回主菜单 is on the pause menu before the tutorial has ever been finished")
+	PauseUi._resume()
+
+func test_hiding_the_main_menu_row_does_not_renumber_the_rows_below_it() -> void:
+	# THE BUG THE WHOLE TABLE EXISTS FOR. With positional dispatch, omitting
+	# 回主菜单 moved 退出游戏 up onto its number, so the last row quit to the
+	# main menu -- or, the other way round, quit the game outright.
+	_delete_progress_file()
+	PauseUi.toggle_pause()
+	var last: int = PauseUi._entries.size() - 1
+	assert_eq(PauseUi._entries[last].handler, &"_show_quit_confirm",
+		"the last pause row is no longer 退出游戏 once a row above it is hidden")
+	PauseUi._resume()
+
+func test_choosing_the_last_row_still_runs_quit_once_a_row_above_it_is_hidden() -> void:
+	# The dispatch-level twin of the renumbering test above. That one checks
+	# the TABLE still names the right handler; this one actually drives the
+	# choice through _on_chosen() and checks what ran -- the table alone would
+	# not have caught a regression back to matching by position, since a
+	# hardcoded index 4 (回主菜单's old slot) still exists and would silently
+	# fire go_to_main_menu() instead.
+	_delete_progress_file()
+	PauseUi.toggle_pause()
+	var last: int = PauseUi._entries.size() - 1
+	PauseUi._on_chosen(last)
+	assert_true(PauseUi._quit_confirm != null and PauseUi._quit_confirm.visible,
+		"choosing the last row once 回主菜单 is hidden did not run 退出游戏's handler")
+	if PauseUi._quit_confirm != null:
+		PauseUi._quit_confirm.visible = false
+	PauseUi._resume()
+
+func test_the_main_menu_row_comes_back_once_the_tutorial_is_finished() -> void:
+	# Rebuilt on every pause rather than only at boot: the tutorial is finished
+	# DURING a session, and the row has to appear without a restart.
+	ProgressStore.mark_tutorial_finished()
+	PauseUi.toggle_pause()
+	var found := false
+	for entry in PauseUi._entries:
+		if entry.handler == &"go_to_main_menu":
+			found = true
+	assert_true(found, "回主菜单 never came back after the tutorial was finished")
+	PauseUi._resume()
+	_delete_progress_file()

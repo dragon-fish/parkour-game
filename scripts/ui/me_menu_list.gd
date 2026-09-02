@@ -82,6 +82,14 @@ func set_items(items: Array[String]) -> void:
 	for label in _labels:
 		label.queue_free()
 	_labels.clear()
+	# BEFORE the loop below, not after. add_child() can fire a label's
+	# item_rect_changed synchronously (a container sorting its children on
+	# insertion), which calls back into _sync_widths() -- and that reads
+	# _selected_index against _labels while _labels is still being built one
+	# element at a time. A caller that rebuilds the list on every open (the
+	# pause menu does, once the player has moved off row 0) leaves a stale,
+	# now out-of-range _selected_index sitting here otherwise.
+	_selected_index = 0
 
 	for i in items.size():
 		var label := Label.new()
@@ -105,7 +113,6 @@ func set_items(items: Array[String]) -> void:
 		_items_box.add_child(label)
 		_labels.append(label)
 
-	_selected_index = 0
 	_refresh_colors()
 	call_deferred("_sync_widths")
 

@@ -55,14 +55,16 @@ var _showing_settings: bool = false
 ## The pause menu's rows, in order. Named fields rather than a positional
 ## array because this table will grow more of them; see
 ## .claude/skills/naming-config-fields.
-##   label    String -- what the row says
-##   handler  StringName -- the method on this node the row runs
+##   label           String -- what the row says
+##   handler         StringName -- the method on this node the row runs
+##   needs_tutorial  bool, default false -- the row is left out entirely until
+##                   the tutorial has been finished once
 const _ENTRIES := [
 	{label = "继续游戏", handler = &"_resume"},
 	{label = "上一检查点", handler = &"_respawn_at_checkpoint"},
 	{label = "重新开始", handler = &"_restart_from_spawn"},
 	{label = "设置", handler = &"_show_settings"},
-	{label = "回主菜单", handler = &"go_to_main_menu"},
+	{label = "回主菜单", handler = &"go_to_main_menu", needs_tutorial = true},
 	{label = "退出游戏", handler = &"_show_quit_confirm"},
 ]
 
@@ -240,6 +242,9 @@ func toggle_pause() -> void:
 
 func _pause() -> void:
 	get_tree().paused = true
+	# BEFORE _set_shown(). The tutorial can be finished during a session, and
+	# the row it unlocks has to appear on the very next pause.
+	_refresh_entries()
 	_set_shown(true)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -248,6 +253,24 @@ func _resume() -> void:
 	_set_shown(false)
 	if _current_scene_wants_mouse_capture():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+## Rebuilds the row list from _ENTRIES. Rebuilt rather than diffed: MeMenuList
+## resets its selection on set_items(), and a pause that opens on the top row
+## is what a fresh pause should do anyway.
+##
+## THE ROW IS LEFT OUT, NOT DISABLED. Until the tutorial has been finished once
+## the tutorial IS the front door, and a greyed row would promise a way back
+## that does not exist.
+func _refresh_entries() -> void:
+	var finished: bool = ProgressStore.tutorial_finished()
+	_entries = []
+	var labels: Array[String] = []
+	for entry in _ENTRIES:
+		if entry.get(&"needs_tutorial", false) and not finished:
+			continue
+		_entries.append(entry)
+		labels.append(entry.label)
+	_menu_list.set_items(labels)
 
 ## Single source of truth for "is the pause menu on screen" AND "which
 ## sub-page is showing" -- _show_settings()/_on_settings_closed() below only
@@ -267,17 +290,6 @@ func _resume() -> void:
 ## non-cascading CanvasLayer gotcha applies to them exactly as much as it did
 ## to MeMenuList -- choosing between the list and the settings page via
 ## _showing_settings.
-## Rebuilds the row list from _ENTRIES. Rebuilt rather than diffed: MeMenuList
-## resets its selection on set_items(), and a pause that opens on the top row
-## is what a fresh pause should do anyway.
-func _refresh_entries() -> void:
-	_entries = []
-	var labels: Array[String] = []
-	for entry in _ENTRIES:
-		_entries.append(entry)
-		labels.append(entry.label)
-	_menu_list.set_items(labels)
-
 func _set_shown(on: bool) -> void:
 	visible = on
 	_backdrop.visible = on
