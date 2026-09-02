@@ -1,9 +1,10 @@
 class_name LevelZero
 extends Node
 
-# The tutorial's own chain, and nothing else: the lessons run out, the tower
-# stands up, stepping onto it takes the plain away, and the orb at the top ends
-# the level. Everything below this is either Arena's or TutorialDirector's.
+# The tutorial's own chain, and nothing else: the opening says its three lines,
+# the lessons run out, the tower stands up, stepping onto it takes the plain
+# away, and the orb at the top ends the level. Everything below this is either
+# Arena's or TutorialDirector's.
 #
 # THE TOWER APPEARS IN FRONT OF THE BODY, not at a fixed spot. The plain is a
 # torus: a body that has crossed a few boundaries is nowhere in particular, and
@@ -24,6 +25,9 @@ extends Node
 const THANKS_SCENE := "res://scenes/ui/thanks_for_playing.tscn"
 
 @export var player: Player
+## The three lines the level opens with. Optional: a level built without one
+## simply starts in silence.
+@export var opening: TutorialOpening
 @export var director: TutorialDirector
 @export var wrap: TorusWrap
 ## The whole tower, hidden and intangible until the lessons run out.
@@ -94,6 +98,12 @@ func _real_change_scene(path: String) -> void:
 	get_tree().change_scene_to_file(path)
 
 func _ready() -> void:
+	# THE FIRST BEAT OF THE SAME CHAIN, and it starts here rather than starting
+	# itself: this node is what decides the order the tutorial's beats happen
+	# in, and an opening that plays on its own _ready() would also play in
+	# every scene that merely contains one.
+	if opening != null:
+		opening.play()
 	if director != null:
 		director.finished.connect(raise_tower)
 	if tower != null:

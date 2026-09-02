@@ -108,6 +108,15 @@ func _initialize() -> void:
 	director.set("wrap", wrap)
 	director.set("lessons", _lessons())
 
+	# THE ONLY THREE LINES THIS LEVEL SAYS ABOUT CONTROLS. Without it the
+	# tutorial opens on an empty plain with no text and no geometry -- lesson 0
+	# has no scene on purpose -- and the player is left to guess.
+	var opening := Node.new()
+	opening.name = "TutorialOpening"
+	opening.set_script(load("res://scripts/level/tutorial_opening.gd"))
+	root.add_child(opening)
+	opening.set("subtitle", player.get_node("CameraRig/Subtitle"))
+
 	var tower: Node = load("%s/tower.tscn" % LESSON_DIR).instantiate()
 	tower.name = "Tower"
 	root.add_child(tower)
@@ -131,6 +140,7 @@ func _initialize() -> void:
 	# tower when the plain goes, so a restart lands on the climb instead of on
 	# a plain that is no longer there.
 	chain.set("spawn_point", spawn)
+	chain.set("opening", opening)
 	chain.set("void_colour", PALE)
 
 	_claim(root)

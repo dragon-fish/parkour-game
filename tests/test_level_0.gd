@@ -76,6 +76,28 @@ func test_level_zero_found_every_node_it_drives() -> void:
 	assert_not_null(chain.plain_collision, "LevelZero has no plain collision")
 	assert_not_null(chain.spawn_point, "LevelZero has no spawn point")
 
+func test_the_level_opens_by_saying_its_three_lines() -> void:
+	# LESSON 0 HAS NO GEOMETRY ON PURPOSE, so these lines are the only thing
+	# there is when the level begins. An opening that was never built, or built
+	# and never played, or played into a layer that is not the one on screen,
+	# all leave the same thing: a blank white plain, nothing said, nothing to
+	# look at, and the player guessing which key to press.
+	#
+	# THE WORDING IS NOT ASSERTED -- it is content, and it is rewritten from the
+	# key table anyway. What is asserted is that what reached the screen came
+	# from this opening.
+	var level: Node = await _loaded()
+	var opening: TutorialOpening = level.get_node_or_null("TutorialOpening")
+	assert_not_null(opening, "the generated level has no TutorialOpening")
+	if opening == null:
+		return
+	assert_eq(opening.subtitle, level.player.subtitle,
+		"the opening does not speak into the player's own subtitle layer")
+	if opening.subtitle == null:
+		return
+	assert_true(opening.lines().has(opening.subtitle.text()),
+		"the level began and the opening said nothing")
+
 func test_the_director_and_the_wrap_both_have_the_body() -> void:
 	# Both are wired by NodePath and both fail the same silent way: a director
 	# with no player never hears a move happen, a wrap with no player never
