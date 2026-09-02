@@ -25,6 +25,18 @@ signal beat_title
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 
+## TEMPORARY, for hand-testing the torus plain. Delete this block, the
+## STRAIGHT_INTO_LEVEL switch and _straight_into_level once the tutorial has a
+## level of its own and the first-run routing in the spec is built.
+##
+## The click that stands her up drops straight into the level instead of
+## landing the menu -- which is what the finished opening does anyway (see
+## docs/superpowers/specs/2026-09-02-tutorial-void-design.md, 「首次启动与主菜单」).
+## HOLD SHIFT while clicking to get the menu instead, which is the only way to
+## reach settings and the character showcase while this is on.
+const VOID_PLAIN_SCENE := "res://scenes/debug_levels/void_plain.tscn"
+const STRAIGHT_INTO_LEVEL := true
+
 ## Same lookup as scripts/level/arena.gd's BODY_PROFILE/LOCAL_PROFILE_CONFIG,
 ## and see there for what each one is for -- copied rather than shared, since
 ## Arena is level code and this is UI code with no business depending on it.
@@ -207,6 +219,15 @@ var _beat_title_fired: bool = false
 ## pressed" without a real change_scene_to_file() replacing the scene tree
 ## out from under GUT's own runner mid-suite. Defaults to the real thing.
 var _change_scene: Callable = Callable(self, "_real_change_scene")
+
+## Which scene the start entry loads. A field rather than the constant
+## directly, so
+## the temporary straight-into-level path can retarget it without a second
+## copy of the whole threaded-load sequence.
+var _target_scene: String = MAIN_SCENE
+
+## TEMPORARY: set on the click that starts the show. See STRAIGHT_INTO_LEVEL.
+var _straight_into_level: bool = false
 ## Diagnostic only -- see the [load] prints. ✅ THE OWNER: "那就加可观测性，打
 ## 日志，我来真的点一次看看控制台输出什么东西."
 var _load_started_ms: int = 0
@@ -782,6 +803,11 @@ func _begin_show() -> void:
 	var pacing := _track(create_tween())
 	pacing.tween_callback(_beat_rise_begin)
 	pacing.tween_interval(RISE_TIME)
+	# TEMPORARY: hand over as soon as she is on her feet, without the walk
+	# loop or the menu ever arriving. See STRAIGHT_INTO_LEVEL.
+	if _straight_into_level:
+		pacing.tween_callback(_on_start_pressed)
+		return
 	pacing.tween_callback(_start_walk_loop)
 	pacing.tween_interval(0.3)
 	pacing.tween_callback(_beat_menu_parallax)
@@ -938,6 +964,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _prompt_shown:
 		# The invited click on the held title shot: play the whole show.
+		# TEMPORARY: Shift held means "give me the menu" -- see
+		# STRAIGHT_INTO_LEVEL.
+		_straight_into_level = STRAIGHT_INTO_LEVEL \
+			and not Input.is_physical_key_pressed(KEY_SHIFT)
+		if _straight_into_level:
+			_target_scene = VOID_PLAIN_SCENE
 		_begin_show()
 	else:
 		# Mid-show impatience: jump straight to the settled menu. An entrance
@@ -998,7 +1030,7 @@ func _on_start_pressed() -> void:
 	# window renders fine, and lumping it in here sent the owner straight
 	# back to the frozen switch this feature exists to kill.
 	if DisplayServer.get_name() == "headless":
-		_change_scene.call(MAIN_SCENE)
+		_change_scene.call(_target_scene)
 		return
 	_loading = true
 	# Started with the load, not with the scene swap: the fade wants the whole
@@ -1008,7 +1040,7 @@ func _on_start_pressed() -> void:
 		_music.fade_out()
 	_load_min_elapsed = 0.0
 	_load_started_ms = Time.get_ticks_msec()
-	ResourceLoader.load_threaded_request(MAIN_SCENE)
+	ResourceLoader.load_threaded_request(_target_scene)
 	print("[load] threaded request sent")
 	play_run_look()
 
@@ -1069,16 +1101,16 @@ func _start_run_clip() -> void:
 ## its beat), the camera dives into her eye and the white takes over.
 func _poll_loading(delta: float) -> void:
 	_load_min_elapsed += delta
-	var status := ResourceLoader.load_threaded_get_status(MAIN_SCENE)
+	var status := ResourceLoader.load_threaded_get_status(_target_scene)
 	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS or _load_min_elapsed < LOAD_MIN_RUN:
 		return
 	if status == ResourceLoader.THREAD_LOAD_FAILED or status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
 		# Fall back to the plain (blocking) switch rather than stranding
 		# the player on the menu.
 		_loading = false
-		_change_scene.call(MAIN_SCENE)
+		_change_scene.call(_target_scene)
 		return
-	var packed := ResourceLoader.load_threaded_get(MAIN_SCENE) as PackedScene
+	var packed := ResourceLoader.load_threaded_get(_target_scene) as PackedScene
 	_loading = false
 	# ⚠️ THIS NUMBER COVERS ONLY main.tscn AND ITS DEPENDENCY TREE -- nine
 	# entries, all scripts plus player.tscn. The body, the animation packs and
