@@ -1,0 +1,19 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://shaders/acrylic.gdshader" id="1_shader"]
+
+[resource]
+resource_name = "AcrylicVoid"
+shader = ExtResource("1_shader")
+shader_parameter/base_color = Color(0.96, 0.96, 0.94, 1)
+shader_parameter/dot_color = Color(0.62, 0.7, 0.8, 1)
+shader_parameter/dot_opacity = 0.35
+shader_parameter/spacing = 1.0
+shader_parameter/dot_radius = 0.05
+shader_parameter/metallic_amount = 0.55
+shader_parameter/roughness_amount = 0.06
+shader_parameter/projection_sharpness = 6.0
+shader_parameter/dot_base = 0.5
+shader_parameter/dot_pulse = 0.5
+shader_parameter/dot_pulse_speed = 1.2
+shader_parameter/phase_wrap = 100.0

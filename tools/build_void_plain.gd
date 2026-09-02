@@ -202,12 +202,12 @@ func _floor() -> StaticBody3D:
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	mesh_instance.mesh = mesh
-	# THE SHARED ACRYLIC GROUND, not a fresh material. shaders/acrylic.gdshader
-	# already carries a world-space dot grid and is generalised for any mesh to
-	# wear; materials/acrylic_ground.tres is its large-surface preset (wider
-	# spacing, fainter dots). This is the same language the menu floor speaks,
-	# which is the point -- the level should look like the screen it came from.
-	mesh_instance.material_override = load("res://materials/acrylic_ground.tres")
+	# THE SHARED ACRYLIC SHADER, not a fresh material. materials/acrylic_void.tres
+	# is its preset for this level: the menu's own backdrop shade, a glossier
+	# sheet, and the dots BREATHING -- each cell on its own phase, the way
+	# scripts/ui/dot_grid.gdshader does it for the menu floor. The level should
+	# look like the screen it is entered from.
+	mesh_instance.material_override = load("res://materials/acrylic_void.tres")
 	_attach(body, mesh_instance)
 	return body
 
