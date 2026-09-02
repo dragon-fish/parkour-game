@@ -5,10 +5,10 @@ extends SceneTree
 #
 # NOT A TEMPLATE FOR REAL LESSONS. A real lesson inherits
 # templates/base_level.tscn so its author can open it and run around in it
-# while shaping the geometry (see docs/level-templates.md and the spec's
-# 「每一课都是一个能单独打开游玩的关卡」). An inherited scene cannot be built
-# from code -- inheritance is an editor concept -- so this sample carries only
-# a root and a Content node, and cannot be played on its own.
+# while shaping the geometry -- every lesson is a level you can enter on its
+# own (see docs/level-templates.md). An inherited scene cannot be built from
+# code, because inheritance is an editor concept, so this sample carries only
+# a root and a Content node and cannot be played on its own.
 #
 # Run with:
 #   .engine/Godot_v4.7.1-stable_macos.universal.app/Contents/MacOS/Godot \
