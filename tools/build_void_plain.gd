@@ -5,16 +5,19 @@ extends SceneTree
 # hand-written .tscn in this project has cost sessions (see
 # .claude/skills/authoring-godot-scene-files).
 #
-# THE CONTENT IS PERIODIC ON PURPOSE. A torus whose furniture sits in only one
-# period gives itself away the instant the player looks across a seam: the
-# ground beyond x = +50 would be empty where the world says x = -50 stands.
-# Tiling the boxes 3x3 makes both sides of every seam identical, which is what
-# the finished level gets for free from the collapse radius (nothing beyond it
-# is drawn at all).
+# SCENERY FOLLOWS THE PLAYER, IT IS NOT TILED. An earlier version laid copies
+# of a fixed layout one period apart in both axes, so both sides of a seam
+# would match. It works, and it is the wrong shape: a wrap exists so the player
+# can run forever, NOT so he can see infinite copies of a world. Tiling also
+# drags in constraints that belong to the scaffolding rather than to the level
+# -- sight confined inside the tiled area, the period forced to divide the
+# ground pattern's spacing, the ring count re-derived on every change of view
+# distance. RoamingProps recycles instead, which is also what the real tutorial
+# does with its obstacles.
 #
-# A correct wrap is therefore INVISIBLE, which is why this scene carries a
-# readout (VoidProbe) and two coloured seam lines: without them there is no way
-# to tell a crossing from an ordinary stride.
+# A correct wrap is invisible, which is why this scene carries a readout
+# (VoidProbe) and two coloured seam lines: without them there is no way to tell
+# a crossing from an ordinary stride.
 #
 # Run with:
 #   .engine/Godot_v4.7.1-stable_macos.universal.app/Contents/MacOS/Godot \
@@ -22,29 +25,19 @@ extends SceneTree
 
 const OUTPUT := "res://scenes/debug_levels/void_plain.tscn"
 
-## Matches TorusWrap.period's default. The plain is built three periods wide so
-## the player can see a whole neighbouring copy across either seam.
-## MUST be an exact multiple of the ground pattern's spacing
-## (materials/acrylic_ground.tres, spacing 1.0), or crossing a seam shifts the
-## dot grid's phase and the ground itself flickers.
+## The wrap period: how far the player runs before the plain repeats him back.
+## NOTHING ELSE DEPENDS ON IT ANY MORE -- with scenery that follows, sight and
+## the floor are free of it. It only sets how often a crossing happens.
 const PERIOD := 100.0
-## How far the camera draws. Everything else here is derived from it.
+
+## How far the camera draws. Free to be whatever looks right: there are no
+## copies out there to give the wrap away.
 const VIEW_DISTANCE := 240.0
 
-## How many rings of copies to lay around the centre tile, DERIVED rather than
-## chosen. The body never leaves the centre tile, so it sees at most
-## PERIOD/2 + VIEW_DISTANCE from the origin, and `rings` rings of tiling reach
-## (rings + 0.5) * PERIOD. Solving for rings gives VIEW_DISTANCE / PERIOD.
-##
-## COMPUTED SO IT CANNOT DRIFT. Pick the ring count by hand and every later
-## change to the view distance silently risks exposing the edge of the tiling,
-## which is the one thing that gives the wrap away.
-static func rings() -> int:
-	return maxi(1, ceili(VIEW_DISTANCE / PERIOD))
+## Floor wide enough that the player never reaches its edge -- he is always
+## inside the centre period, so this only has to cover sight plus that.
+const FLOOR_SPAN := (VIEW_DISTANCE + PERIOD) * 2.0
 
-## Floor wide enough to hold the whole tiling plus a margin.
-static func floor_span() -> float:
-	return (float(rings()) * 2.0 + 1.0) * PERIOD + 20.0
 const FLOOR_THICKNESS := 2.0
 ## The seam lines at +/- PERIOD/2, in their own colour.
 const SEAM_WIDTH := 0.5
@@ -75,14 +68,8 @@ func _run() -> void:
 	root.set("rescue_below_hp", 30.0)
 	# The hard edge of sight, just past where the fog finishes. Fog hides the
 	# cut; the cut is what stops a distant box from keeping its silhouette.
-	#
-	# THE LIMIT IS THE TILING'S EDGE, NOT HALF A PERIOD. Seeing a COPY is
-	# harmless: a copy is identical to what it copies, so nobody can tell one
-	# from the other. The tell is seeing where the tiling STOPS. The body never
-	# leaves the centre tile, so it sees at most P/2 + view_distance from the
-	# origin, and a 3x3 tiling reaches 1.5P -- view_distance may therefore go
-	# all the way to one whole period. Widen the tiling to 5x5 and it may go to
-	# two.
+	# Free of the period now that scenery follows instead of tiling -- there is
+	# nothing repeated out there for a long view to expose.
 	root.set("view_distance", VIEW_DISTANCE)
 	var fog := FogConfig.new()
 	fog.resource_local_to_scene = true
@@ -135,7 +122,6 @@ func _run() -> void:
 
 	_attach(root, _floor())
 	_attach(root, _seams())
-	_attach(root, _furniture())
 
 	var player: Node = load("res://scenes/player/player.tscn").instantiate()
 	player.name = "Player"
@@ -149,6 +135,12 @@ func _run() -> void:
 	wrap.set("period", PERIOD)
 	root.add_child(wrap)
 	wrap.set("player", player)
+
+	var props := Node3D.new()
+	props.name = "RoamingProps"
+	props.set_script(load("res://scripts/debug/roaming_props.gd"))
+	root.add_child(props)
+	props.set("player", player)
 
 	var probe := CanvasLayer.new()
 	probe.name = "VoidProbe"
@@ -195,8 +187,7 @@ func _floor() -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.name = "Floor"
 	body.position = Vector3(0.0, -FLOOR_THICKNESS * 0.5, 0.0)
-	var span: float = floor_span()
-	var size := Vector3(span, FLOOR_THICKNESS, span)
+	var size := Vector3(FLOOR_SPAN, FLOOR_THICKNESS, FLOOR_SPAN)
 
 	var shape := CollisionShape3D.new()
 	shape.name = "Collision"
@@ -225,7 +216,7 @@ func _seams() -> Node3D:
 	var seams := Node3D.new()
 	seams.name = "Seams"
 	var half: float = PERIOD * 0.5
-	var span: float = floor_span()
+	var span: float = FLOOR_SPAN
 	var colour := Color("#e90100")
 	for sign_index in 2:
 		var at: float = half if sign_index == 0 else -half
@@ -244,47 +235,3 @@ func _stripe(stripe_name: String, size: Vector3, pos: Vector3, colour: Color) ->
 	mesh.material = _material(colour, true)
 	mesh_instance.mesh = mesh
 	return mesh_instance
-
-## Boxes to look at, TILED ONE PERIOD APART IN BOTH AXES, over as many rings as
-## the view distance needs (see rings()). The copies are what make a crossing
-## invisible: whatever stands at x also stands at x +/- PERIOD, so the view
-## across a seam matches the view behind you. Remove the tiling and the plain
-## stops being a torus to the eye, whatever the code does.
-func _furniture() -> Node3D:
-	var furniture := Node3D.new()
-	furniture.name = "Furniture"
-	# One period's worth of content. Deliberately off-centre and uneven: a
-	# symmetric arrangement would look the same after a crossing even if the
-	# wrap were broken, which would prove nothing.
-	var pieces: Array[Dictionary] = [
-		{size = Vector3(4.0, 3.0, 4.0), at = Vector3(-18.0, 1.5, -12.0), colour = Color(0.55, 0.60, 0.68)},
-		{size = Vector3(2.0, 8.0, 2.0), at = Vector3(12.0, 4.0, -30.0), colour = Color(0.45, 0.50, 0.58)},
-		{size = Vector3(10.0, 1.2, 3.0), at = Vector3(28.0, 0.6, 8.0), colour = Color(0.62, 0.66, 0.72)},
-		{size = Vector3(3.0, 5.0, 3.0), at = Vector3(-34.0, 2.5, 24.0), colour = Color(0.50, 0.55, 0.63)},
-		{size = Vector3(6.0, 2.0, 6.0), at = Vector3(4.0, 1.0, 36.0), colour = Color(0.58, 0.63, 0.70)},
-	]
-	var reach: int = rings()
-	for tile_x in range(-reach, reach + 1):
-		for tile_z in range(-reach, reach + 1):
-			var offset := Vector3(float(tile_x) * PERIOD, 0.0, float(tile_z) * PERIOD)
-			var index: int = 0
-			for piece in pieces:
-				var body := StaticBody3D.new()
-				body.name = "Box%d_%d_%d" % [index, tile_x + reach, tile_z + reach]
-				body.position = piece["at"] + offset
-				var shape := CollisionShape3D.new()
-				shape.name = "Collision"
-				var box := BoxShape3D.new()
-				box.size = piece["size"]
-				shape.shape = box
-				_attach(body, shape)
-				var mesh_instance := MeshInstance3D.new()
-				mesh_instance.name = "Mesh"
-				var mesh := BoxMesh.new()
-				mesh.size = piece["size"]
-				mesh.material = _material(piece["colour"])
-				mesh_instance.mesh = mesh
-				_attach(body, mesh_instance)
-				_attach(furniture, body)
-				index += 1
-	return furniture
