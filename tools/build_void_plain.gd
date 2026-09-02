@@ -141,6 +141,7 @@ func _run() -> void:
 	props.set_script(load("res://scripts/debug/roaming_props.gd"))
 	root.add_child(props)
 	props.set("player", player)
+	props.set("wrap", wrap)
 
 	var probe := CanvasLayer.new()
 	probe.name = "VoidProbe"

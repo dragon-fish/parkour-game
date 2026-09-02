@@ -24,6 +24,13 @@ extends Node3D
 ## The body props arrange themselves around.
 @export var player: Player
 
+## The level's wrap. Props MUST take the same step the body takes across a
+## seam: the wrap moves the player a whole period while the world stands
+## still, so anything not carried along lands a period away from where the
+## player last saw it. A box that was fifty metres ahead is suddenly fifty
+## metres behind, and the crossing announces itself.
+@export var wrap: TorusWrap
+
 ## How many props to keep alive.
 @export var count: int = 26
 
@@ -44,6 +51,8 @@ var _props: Array[Node3D] = []
 var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
+	if wrap != null:
+		wrap.wrapped.connect(_on_wrapped)
 	_rng.seed = 20260903
 	for i in count:
 		var prop := _build_prop(i)
@@ -60,6 +69,13 @@ func _physics_process(_delta: float) -> void:
 		away.y = 0.0
 		if away.length() > recycle_distance:
 			_place(prop)
+
+## Carries every prop across the seam with the body, so their positions
+## relative to it never change. Recycling happens afterwards, on distance, as
+## usual -- this only preserves continuity through the teleport itself.
+func _on_wrapped(offset: Vector3) -> void:
+	for prop in _props:
+		prop.global_position += offset
 
 ## Puts one prop somewhere around the player, at a random distance and bearing.
 func _place(prop: Node3D) -> void:
