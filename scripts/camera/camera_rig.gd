@@ -1399,7 +1399,11 @@ func third_person_debug() -> Dictionary:
 ## user:// rather than the project, because it is one person's preference about
 ## one machine's screen, not a fact about the game. Nothing here affects
 ## movement, so a missing or corrupt file just means the defaults.
-const PREFS_PATH := "user://camera_prefs.cfg"
+##
+## Injectable rather than a const, the same way SettingsStore.path is: a test
+## points this at its own file so the suite never reads, writes or deletes the
+## player's real preferences.
+static var prefs_path := "user://camera_prefs.cfg"
 
 ## Writes the third-person framing out. Called whenever it changes rather than
 ## on quit: a crash or a kill from the editor's stop button should not lose it,
@@ -1410,13 +1414,13 @@ func save_preferences() -> void:
 	file.set_value("third_person", "shoulder", _shoulder)
 	file.set_value("third_person", "distance", _tp_distance)
 	file.set_value("third_person", "drag", _tp_drag)
-	file.save(PREFS_PATH)
+	file.save(prefs_path)
 
 ## Reads it back. Silently keeps the defaults when there is nothing to read,
 ## which is every first run.
 func load_preferences() -> void:
 	var file := ConfigFile.new()
-	if file.load(PREFS_PATH) != OK:
+	if file.load(prefs_path) != OK:
 		return
 	third_person = bool(file.get_value("third_person", "on", third_person))
 	_shoulder = int(file.get_value("third_person", "shoulder", _shoulder))

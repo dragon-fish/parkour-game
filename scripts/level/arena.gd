@@ -54,6 +54,19 @@ extends Node3D
 ## things wink out of existence at a fixed radius.
 @export var view_distance: float = 0.0
 
+## Start this level with the camera behind the body rather than at the eye.
+##
+## THE PREFERENCE, NOT A PIN. This writes CameraRig.third_person, which is the
+## field V toggles, so the player can go back to first person immediately. DO
+## NOT route this through forced_view: Player._push_forced_view() re-derives
+## that field from the status list every tick and would overwrite it inside a
+## frame, and while it held, V would be refused.
+##
+## AND IT DOES NOT SAVE. The player's own saved preference is read a line
+## earlier in _ready() and has to survive a visit to a level that starts him
+## somewhere else.
+@export var start_in_third_person: bool = false
+
 ## How many rescues have happened. Read by tests; a level never needs it.
 var rescued_count: int = 0
 
@@ -131,6 +144,8 @@ func _ready() -> void:
 		# rig's own setup() because that runs in tests, where a file written by
 		# an earlier run has no business deciding what the test starts in.
 		player.camera_rig.load_preferences()
+		if start_in_third_person:
+			player.camera_rig.third_person = true
 	_mark.call("camera_rig.setup+prefs")
 
 	# AFTER setup(), which is what gives the player its config -- the mount
