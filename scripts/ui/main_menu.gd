@@ -25,17 +25,10 @@ signal beat_title
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 
-## TEMPORARY, for hand-testing the torus plain. Delete this block, the
-## STRAIGHT_INTO_LEVEL switch and _straight_into_level once the tutorial has a
-## level of its own and the first-run routing in the spec is built.
-##
-## The click that stands her up drops straight into the level instead of
-## landing the menu -- which is what the finished opening does anyway (see
-## docs/superpowers/specs/2026-09-02-tutorial-void-design.md, 「首次启动与主菜单」).
-## HOLD SHIFT while clicking to get the menu instead, which is the only way to
-## reach settings and the character showcase while this is on.
+## TEMPORARY. The start entry loads the torus plain instead of the arena while
+## the tutorial level is being built. Put MAIN_SCENE back in _target_scene, and
+## delete this, once the tutorial has a level of its own.
 const VOID_PLAIN_SCENE := "res://scenes/debug_levels/void_plain.tscn"
-const STRAIGHT_INTO_LEVEL := true
 
 ## Same lookup as scripts/level/arena.gd's BODY_PROFILE/LOCAL_PROFILE_CONFIG,
 ## and see there for what each one is for -- copied rather than shared, since
@@ -220,14 +213,11 @@ var _beat_title_fired: bool = false
 ## out from under GUT's own runner mid-suite. Defaults to the real thing.
 var _change_scene: Callable = Callable(self, "_real_change_scene")
 
-## Which scene the start entry loads. A field rather than the constant
-## directly, so
-## the temporary straight-into-level path can retarget it without a second
-## copy of the whole threaded-load sequence.
-var _target_scene: String = MAIN_SCENE
-
-## TEMPORARY: set on the click that starts the show. See STRAIGHT_INTO_LEVEL.
-var _straight_into_level: bool = false
+## Which scene the start entry loads. A field rather than the constant used
+## directly, so the level under construction can be retargeted in one place
+## instead of at each of the four sites the threaded load touches.
+## TEMPORARY VALUE -- see VOID_PLAIN_SCENE.
+var _target_scene: String = VOID_PLAIN_SCENE
 ## Diagnostic only -- see the [load] prints. ✅ THE OWNER: "那就加可观测性，打
 ## 日志，我来真的点一次看看控制台输出什么东西."
 var _load_started_ms: int = 0
@@ -803,11 +793,6 @@ func _begin_show() -> void:
 	var pacing := _track(create_tween())
 	pacing.tween_callback(_beat_rise_begin)
 	pacing.tween_interval(RISE_TIME)
-	# TEMPORARY: hand over as soon as she is on her feet, without the walk
-	# loop or the menu ever arriving. See STRAIGHT_INTO_LEVEL.
-	if _straight_into_level:
-		pacing.tween_callback(_on_start_pressed)
-		return
 	pacing.tween_callback(_start_walk_loop)
 	pacing.tween_interval(0.3)
 	pacing.tween_callback(_beat_menu_parallax)
@@ -964,12 +949,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _prompt_shown:
 		# The invited click on the held title shot: play the whole show.
-		# TEMPORARY: Shift held means "give me the menu" -- see
-		# STRAIGHT_INTO_LEVEL.
-		_straight_into_level = STRAIGHT_INTO_LEVEL \
-			and not Input.is_physical_key_pressed(KEY_SHIFT)
-		if _straight_into_level:
-			_target_scene = VOID_PLAIN_SCENE
 		_begin_show()
 	else:
 		# Mid-show impatience: jump straight to the settled menu. An entrance

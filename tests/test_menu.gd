@@ -425,8 +425,12 @@ func test_start_pressed_requests_the_scene_change_via_the_seam() -> void:
 
 	menu._on_start_pressed()
 
-	assert_eq(requested[0], MainMenu.MAIN_SCENE, \
-		"开始 did not request scenes/main.tscn through the change-scene seam")
+	# Asserted against the menu's OWN target, not a hardcoded path: what this
+	# test is about is that the press goes through the change-scene seam at
+	# all. Which level the seam is currently pointed at is a level-authoring
+	# decision and changes while a new one is being built.
+	assert_eq(requested[0], menu._target_scene, \
+		"开始 did not request its target scene through the change-scene seam")
 
 ## PauseUi's main-menu guard (_is_main_menu_scene()) now prefers `is
 ## MainMenu` over the node-name fallback it used before this task's

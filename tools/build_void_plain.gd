@@ -29,11 +29,12 @@ const PERIOD := 100.0
 ## standing at a seam still has ground under the copy it is looking at.
 const FLOOR_SPAN := PERIOD * 3.0 + 20.0
 const FLOOR_THICKNESS := 2.0
-## One line every this many metres, for reading distance travelled at a glance.
-const GRID_STEP := 10.0
-const GRID_WIDTH := 0.12
 ## The seam lines at +/- PERIOD/2, in their own colour.
 const SEAM_WIDTH := 0.5
+## The menu's own backdrop shade. The environment background, the fog and the
+## ground all sit on this colour, which is what removes the horizon: once the
+## fog has taken a distant object it is the same value as the background behind it.
+const BACKDROP := Color(0.96, 0.96, 0.94)
 
 ## The scene root, held so _attach() can hand every descendant the ownership
 ## Godot serialises by. A node whose owner is its immediate parent rather than
@@ -55,6 +56,11 @@ func _run() -> void:
 	# She cannot die here either -- a fall off the plain should cost time and
 	# nothing else, same contract the tutorial itself runs under.
 	root.set("rescue_below_hp", 30.0)
+	# The hard edge of sight, just past where the fog finishes. Fog hides the
+	# cut; the cut is what stops a distant box from keeping its silhouette.
+	# MUST stay under half a period (50 m) or the far copy of the world becomes
+	# visible and the seam announces itself.
+	root.set("view_distance", 46.0)
 	var fog := FogConfig.new()
 	fog.resource_local_to_scene = true
 	# FOG IS NOT ATMOSPHERE HERE, IT IS THE SEAM'S COVER. Without a limit on
@@ -69,6 +75,9 @@ func _run() -> void:
 	fog.fade_begin_distance = 18.0
 	fog.fade_end_distance = 44.0
 	fog.max_opacity = 1.0
+	# Fog the same shade as the background, so a swallowed object does not
+	# merely dim -- it stops existing as a shape.
+	fog.tint = BACKDROP
 	root.set("fog", fog)
 
 	var sun := DirectionalLight3D.new()
@@ -80,10 +89,18 @@ func _run() -> void:
 	var world_env := WorldEnvironment.new()
 	world_env.name = "WorldEnvironment"
 	var environment := Environment.new()
-	environment.background_mode = Environment.BG_SKY
-	environment.sky = load("res://assets/sky/day_sky.tres")
+	# NO SKY. A sky is what made the wrap visible: fog deliberately does not
+	# touch the background (see Arena.SKY_FOG_AFFECT), so distant boxes kept
+	# their contrast against it and the far ring of tiles could be read popping
+	# in and out across a seam. A flat background the same shade as the fog
+	# leaves them nothing to be silhouetted against.
+	environment.background_mode = Environment.BG_COLOR
+	environment.background_color = BACKDROP
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color(0.223529, 0.466667, 0.741176)
+	# The acrylic ground is glossy; without this it reflects nothing.
+	environment.ssr_enabled = true
+	environment.ssr_max_steps = 32
 	world_env.environment = environment
 	_attach(root, world_env)
 
@@ -94,7 +111,6 @@ func _run() -> void:
 	_attach(root, spawn)
 
 	_attach(root, _floor())
-	_attach(root, _grid())
 	_attach(root, _seams())
 	_attach(root, _furniture())
 
@@ -169,30 +185,15 @@ func _floor() -> StaticBody3D:
 	mesh_instance.name = "Mesh"
 	var mesh := BoxMesh.new()
 	mesh.size = size
-	mesh.material = _material(Color(0.82, 0.85, 0.89))
 	mesh_instance.mesh = mesh
+	# THE SHARED ACRYLIC GROUND, not a fresh material. shaders/acrylic.gdshader
+	# already carries a world-space dot grid and is generalised for any mesh to
+	# wear; materials/acrylic_ground.tres is its large-surface preset (wider
+	# spacing, fainter dots). This is the same language the menu floor speaks,
+	# which is the point -- the level should look like the screen it came from.
+	mesh_instance.material_override = load("res://materials/acrylic_ground.tres")
 	_attach(body, mesh_instance)
 	return body
-
-## Flat stripes every GRID_STEP metres, so distance covered is readable without
-## looking at the numbers. Decoration only -- no collision.
-func _grid() -> Node3D:
-	var grid := Node3D.new()
-	grid.name = "Grid"
-	var half: float = FLOOR_SPAN * 0.5
-	var colour := Color(0.62, 0.68, 0.76)
-	var line: int = 0
-	var at: float = -half
-	while at <= half:
-		# The seam lines own +/- PERIOD/2; leave those to _seams().
-		if not is_equal_approx(absf(at), PERIOD * 0.5):
-			_attach(grid, _stripe("GridX%d" % line, Vector3(GRID_WIDTH, 0.02, FLOOR_SPAN),
-				Vector3(at, 0.011, 0.0), colour))
-			_attach(grid, _stripe("GridZ%d" % line, Vector3(FLOOR_SPAN, 0.02, GRID_WIDTH),
-				Vector3(0.0, 0.011, at), colour))
-		line += 1
-		at += GRID_STEP
-	return grid
 
 ## The four seams, in their own colour and wider than a grid line. Crossing one
 ## is the event everything else in this scene exists to make readable.
