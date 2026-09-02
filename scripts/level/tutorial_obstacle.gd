@@ -32,6 +32,15 @@ extends Node3D
 ## Never stand this close to an obstacle in `avoid`.
 @export var min_separation: float = 12.0
 
+## Hard ceiling on how far the retry in _place() may push the obstacle out,
+## metres. Must stay inside the level's collapse radius, same constraint
+## spawn_distance's own doc states -- past that radius the growth show is
+## invisible. A crowd of `avoid` obstacles can otherwise walk the retry's
+## distance out arbitrarily far chasing separation (8 attempts * min_separation
+## alone reaches 30 + 8*12 = 126 m against a design radius under 50 m); this is
+## what stops it.
+@export var max_spawn_distance: float = 45.0
+
 ## Obstacles that still exist and must not be overlapped -- typically the one
 ## currently collapsing.
 var avoid: Array[TutorialObstacle] = []
@@ -85,14 +94,17 @@ func _place() -> void:
 	var base: Vector3 = player.global_position
 	var forward: Vector3 = _facing()
 	var distance: float = spawn_distance
-	# Pushed further out until it clears everything still standing. Safe at
-	# any distance: this happens before the obstacle is drawn.
+	# Pushed further out until it clears everything still standing, capped at
+	# max_spawn_distance so the retry can never carry the obstacle past the
+	# distance the growth show can still be read from.
 	for _attempt in 8:
 		var candidate: Vector3 = base + forward * distance
 		if not _too_close(candidate):
 			global_position = candidate
 			return
-		distance += min_separation
+		if distance >= max_spawn_distance:
+			break
+		distance = minf(distance + min_separation, max_spawn_distance)
 	global_position = base + forward * distance
 
 func _too_close(candidate: Vector3) -> bool:

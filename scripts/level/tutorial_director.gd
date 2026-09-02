@@ -19,7 +19,9 @@ extends Node
 ## array because this table will grow more of them (a hint line, an obstacle
 ## scene, a shortcut flag):
 ##   teaches  StringName -- the Move whose first performance passes this lesson
-##   scene    PackedScene -- optional; the obstacle instanced for this lesson
+##   scene    PackedScene -- RESERVED, NOT READ BY ANYTHING YET. A later plan
+##            wires the growth show to a per-lesson obstacle; filling this in
+##            today does nothing.
 @export var lessons: Array[Dictionary] = []
 
 ## The level's wrap, if it has one. A standing obstacle must take the same
@@ -32,8 +34,6 @@ var index: int = 0
 
 signal lesson_passed(passed_index: int)
 signal finished
-
-var _finished_announced: bool = false
 
 ## Obstacles currently in the world, oldest first. They travel together on a
 ## wrap, so this list is what the wrap talks to.
@@ -60,8 +60,10 @@ func _on_move_changed(_from: StringName, to: StringName) -> void:
 	var passed: int = index
 	index += 1
 	lesson_passed.emit(passed)
-	if index >= lessons.size() and not _finished_announced:
-		_finished_announced = true
+	# The top-of-function guard (index >= lessons.size() -> return) is what
+	# makes this reachable exactly once: the tick after index reaches
+	# lessons.size(), every later call returns before this line.
+	if index >= lessons.size():
 		finished.emit()
 
 ## Connects the level's wrap. Idempotent, and safe with no wrap at all -- a
@@ -75,13 +77,6 @@ func attach_wrap() -> void:
 func adopt(obstacle: TutorialObstacle) -> void:
 	if obstacle != null and not _standing.has(obstacle):
 		_standing.append(obstacle)
-
-## The obstacle for the lesson currently being taught, or null.
-func current_obstacle() -> TutorialObstacle:
-	for obstacle in _standing:
-		if is_instance_valid(obstacle) and not obstacle.locked:
-			return obstacle
-	return _standing.back() if not _standing.is_empty() else null
 
 func _on_wrapped(offset: Vector3) -> void:
 	for obstacle in _standing:

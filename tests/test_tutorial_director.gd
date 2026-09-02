@@ -121,3 +121,32 @@ func test_a_wrap_carries_the_standing_obstacle() -> void:
 	await step(2)
 	assert_almost_eq(obstacle.anchor.x, before.x - 100.0, 0.01,
 		"the standing obstacle did not travel with the wrap")
+
+func test_adopting_the_same_obstacle_twice_does_not_double_the_wrap_shift() -> void:
+	# A double-adopt puts the same obstacle in _standing twice. _on_wrapped
+	# loops _standing calling shift_by() on each entry, so a duplicate would
+	# shift the obstacle by TWO periods on one crossing -- landing it a full
+	# period behind the body shift_by exists to keep it in step with.
+	var player: Player = await _directed([{teaches = Move.CROUCH}])
+	var wrap := TorusWrap.new()
+	wrap.player = player
+	wrap.period = 100.0
+	get_tree().root.add_child(wrap)
+	_extra_free(wrap)
+	_director.wrap = wrap
+	_director.attach_wrap()
+
+	var obstacle := TutorialObstacle.new()
+	obstacle.player = player
+	get_tree().root.add_child(obstacle)
+	_extra_free(obstacle)
+	await step(2)
+	obstacle.lock()
+	_director.adopt(obstacle)
+	_director.adopt(obstacle)
+	var before: Vector3 = obstacle.anchor
+
+	player.global_position = Vector3(51.0, player.global_position.y, 0.0)
+	await step(2)
+	assert_almost_eq(obstacle.anchor.x, before.x - 100.0, 0.01,
+		"adopting the same obstacle twice shifted it more than one period")

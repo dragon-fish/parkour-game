@@ -551,7 +551,13 @@ func _physics_process(_delta: float) -> void:
 		# has, and teleporting them back with no curtain reads as the level
 		# catching a bug rather than as an outcome. No cutscene either -- there
 		# is no floor down there to topple onto.
-		if rescue_below_hp > 0.0:
+		#
+		# GUARDED THE SAME WAY THE HP/RAGDOLL BRANCH ABOVE IS: while the
+		# curtain from an earlier _rescue() is still up, the body is still
+		# below fall_recovery_depth (the respawn has not landed yet), so this
+		# branch would otherwise re-run every tick -- inflating rescued_count
+		# and re-firing health.reset() for a rescue that already happened.
+		if rescue_below_hp > 0.0 and not _death_sequence.is_covering():
 			_rescue()
 			return
 		respawn_under_cover(Color.BLACK)
