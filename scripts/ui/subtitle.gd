@@ -43,13 +43,18 @@ func _ready() -> void:
 
 ## Shows `text` through the fade-hold-fade cycle. A call while a line is
 ## still up replaces it and restarts the cycle.
-func show_text(text: String) -> void:
+##
+## `hold` is per line because a line's right length is a property of the LINE,
+## not of the layer: a three-word cue and a sentence of story do not deserve
+## the same beat. The fades are not overridable -- those are the layer's
+## voice, and a line that wants its own fade wants a different layer.
+func show_text(text: String, hold: float = HOLD) -> void:
 	_label.text = text
 	if _tween != null:
 		_tween.kill()
 	_tween = create_tween()
 	_tween.tween_property(_label, "modulate:a", 1.0, FADE_IN)
-	_tween.tween_interval(HOLD)
+	_tween.tween_interval(hold)
 	_tween.tween_property(_label, "modulate:a", 0.0, FADE_OUT)
 
 # --- read by the tests -----------------------------------------------------
