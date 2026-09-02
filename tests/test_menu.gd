@@ -87,6 +87,10 @@ func before_each() -> void:
 func after_each() -> void:
 	_delete_settings_file()
 	_delete_progress_file()
+	# Session-only and static, so unlike the file above it survives a deleted
+	# progress.cfg: left true by a test that failed mid-way it would send every
+	# later front-door test down the tutorial branch.
+	ProgressStore.replay_requested = false
 	# Unconditional pause/mouse-mode cleanup, run for EVERY test in this file
 	# (not just the PauseUi ones below) so a failed assertion mid-test never
 	# leaves the tree paused for every suite that runs after this one -- a
@@ -680,3 +684,138 @@ func test_the_main_menu_row_comes_back_once_the_tutorial_is_finished() -> void:
 			found = true
 	assert_true(found, "回主菜单 never came back after the tutorial was finished")
 	PauseUi._resume()
+
+
+# ---------------------------------------------------------------------------
+# The first click. It means one of two entirely different things depending on
+# whether the tutorial has ever been finished, and the wrong one is a player
+# either dumped into a menu he has not earned or trapped in a tutorial he has
+# already done.
+#
+# EIGHT FRAMES, not three. MainMenu._ready() awaits six process frames for the
+# framing solve before _play_entrance() sets _entrance_active, and
+# _unhandled_input() drops every event until it does -- a shorter wait makes
+# these tests pass or fail on nothing at all. _prompt_shown is then forced
+# rather than waited for: it arrives on LOGO_HOLD * 0.5, half a second later,
+# and that half second is the entrance's pacing, not this test's subject.
+# ---------------------------------------------------------------------------
+
+func test_the_first_ever_click_goes_straight_into_the_tutorial() -> void:
+	_delete_progress_file()
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(8)
+	var requested := [""]
+	menu._change_scene = func(path): requested[0] = path
+	menu._prompt_shown = true
+
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	menu._unhandled_input(click)
+	await step(2)
+
+	assert_true(menu._entering_tutorial,
+		"the first click did not take the tutorial branch")
+	assert_eq(requested[0], MainMenu.LEVEL_0_SCENE,
+		"the tutorial branch did not ask for the tutorial level")
+	assert_false(menu._menu_list.visible,
+		"the menu list appeared on a launch that should have had no menu at all")
+
+func test_the_first_click_opens_the_menu_once_the_tutorial_is_finished() -> void:
+	ProgressStore.mark_tutorial_finished()
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(8)
+	var requested := [""]
+	menu._change_scene = func(path): requested[0] = path
+	menu._prompt_shown = true
+
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	menu._unhandled_input(click)
+	await step(2)
+
+	assert_false(menu._entering_tutorial,
+		"a finished player was sent back into the tutorial")
+	assert_true(menu._beat_rise_fired,
+		"the ordinary entrance did not play")
+	# The menu branch loads NOTHING on the click: 开始 is still ahead of it.
+	# Without this the branch could take the tutorial's load path and still
+	# look right, since _entering_tutorial would only be a flag nobody read.
+	assert_eq(requested[0], "",
+		"the ordinary entrance requested a scene change before 开始 was ever pressed")
+
+func test_a_replay_request_takes_the_tutorial_branch_even_when_finished() -> void:
+	ProgressStore.mark_tutorial_finished()
+	ProgressStore.replay_requested = true
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(8)
+	menu._change_scene = func(_path): pass
+	menu._prompt_shown = true
+
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	menu._unhandled_input(click)
+	await step(2)
+
+	assert_true(menu._entering_tutorial,
+		"重玩新手教程 did not survive the trip back to the front door")
+
+func test_a_second_click_during_the_tutorial_opening_never_summons_the_menu() -> void:
+	# A REPEATED SHOW MUST BE SKIPPABLE, and the only skip available on this
+	# path is dropping the hold. Falling through to _skip_entrance() instead
+	# settles the MENU -- column, dressing and all -- on top of an opening
+	# that is already on its way into the level.
+	ProgressStore.replay_requested = true
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(8)
+	menu._change_scene = func(_path): pass
+	menu._prompt_shown = true
+
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	menu._unhandled_input(click)
+	await step(2)
+	assert_gt(menu._tutorial_hold, 0.0, "test setup: the opening was not holding")
+
+	menu._unhandled_input(click)
+	await step(2)
+
+	assert_eq(menu._tutorial_hold, 0.0,
+		"an impatient click during the tutorial opening did not drop the hold")
+	assert_false(menu._menu_list.visible,
+		"an impatient click during the tutorial opening settled the menu over it")
+
+## THE ONE FAILURE NOTHING ELSE CAN SEE. Every other test here asserts against
+## _target_scene or the constants themselves, so a mistyped path stays green
+## through the whole suite and breaks the game at the instant the player
+## clicks. Iterated rather than compared to written-out values: an equality
+## test on the paths would redden the moment a level is legitimately moved,
+## which is the opposite of what this is for.
+##
+## SCENES ONLY. BODY_PROFILE and LOCAL_PROFILE_CONFIG are machine-local
+## (untracked, absent on a fresh checkout by design -- see
+## _resolve_body_profile), so requiring them to exist would fail the suite on
+## exactly the machines this project promises to run on.
+func test_every_scene_path_the_main_menu_names_actually_exists() -> void:
+	# Through a Script-typed local, not MainMenu.get_script_constant_map():
+	# get_script_constant_map() is an instance method on Script, and calling it
+	# on the class global directly is a parse error.
+	var script: GDScript = MainMenu
+	var constants: Dictionary = script.get_script_constant_map()
+	var checked := 0
+	for key in constants:
+		var value = constants[key]
+		if not (value is String and (value as String).ends_with(".tscn")):
+			continue
+		checked += 1
+		assert_true(ResourceLoader.exists(value),
+			"MainMenu.%s points at %s, which is not a scene that exists" % [key, value])
+	assert_gt(checked, 0,
+		"no scene-path constant was found on MainMenu -- this test checked nothing")
