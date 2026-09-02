@@ -19,9 +19,13 @@ func after_each() -> void:
 	TestWorld.teardown(_world)
 	_world = {}
 
-func _obstacle_for(player: Player) -> TutorialObstacle:
+# player and avoid must be set BEFORE add_child(), because _ready() runs
+# _place() as soon as the node enters the tree -- assigning avoid afterward
+# means the first placement never sees it.
+func _obstacle_for(player: Player, avoid: Array[TutorialObstacle] = []) -> TutorialObstacle:
 	var obstacle := TutorialObstacle.new()
 	obstacle.player = player
+	obstacle.avoid = avoid
 	get_tree().root.add_child(obstacle)
 	_extra.append(obstacle)
 	return obstacle
@@ -52,6 +56,11 @@ func test_it_follows_the_player_turning_while_unlocked() -> void:
 	await step(2)
 	assert_gt(before.distance_to(obstacle.anchor), 1.0,
 		"turning around did not move the unlocked obstacle")
+	var new_forward: Vector3 = -player.global_transform.basis.z
+	var to_obstacle: Vector3 = obstacle.anchor - player.global_position
+	to_obstacle.y = 0.0
+	assert_gt(new_forward.normalized().dot(to_obstacle.normalized()), 0.9,
+		"the obstacle moved but not into the player's new facing")
 
 func test_locking_pins_it_for_good() -> void:
 	# THE HARD REQUIREMENT. Without it the player turns his head and watches
@@ -68,16 +77,15 @@ func test_locking_pins_it_for_good() -> void:
 		"a locked obstacle moved")
 
 func test_it_keeps_its_distance_from_one_that_is_still_leaving() -> void:
-	# The player finishing an obstacle and immediately turning round makes
-	# "in front" point at the one that is still collapsing.
+	# The player is still facing the obstacle he just cleared -- no turn here.
+	# With the same facing, the only thing that can keep the new obstacle off
+	# the old one's anchor is _too_close()'s retry loop.
 	var player: Player = await _standing_player()
 	var leaving := _obstacle_for(player)
 	await step(2)
 	leaving.lock()
-	var arriving := _obstacle_for(player)
-	arriving.avoid = [leaving]
-	player.rotate_y(PI)
-	await step(4)
+	var arriving := _obstacle_for(player, [leaving])
+	await step(2)
 	assert_gt(arriving.anchor.distance_to(leaving.anchor), arriving.min_separation - 0.01,
 		"a new obstacle was placed on top of one that had not left yet")
 

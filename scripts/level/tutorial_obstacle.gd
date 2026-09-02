@@ -20,10 +20,10 @@ extends Node3D
 ## The body this obstacle places itself in front of.
 @export var player: Player
 
-## How far ahead to stand. Near enough that the growth show can be READ --
-## an early design put obstacles beyond the collapse radius so the placement
-## would be invisible, which hid the best-looking thing in the level. Tuning
-## value.
+## How far ahead to stand. Must stay close enough that the growth show can be
+## READ as the player closes the distance, and must NOT be pushed out beyond
+## the collapse radius -- past that radius growth is invisible, which throws
+## away the best-looking thing in the level. Tuning value.
 @export var spawn_distance: float = 30.0
 
 ## Re-place once the player's facing has turned this far off the anchor.
