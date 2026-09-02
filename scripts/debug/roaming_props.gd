@@ -41,12 +41,12 @@ extends Node3D
 
 ## A prop starts leaving once it is further than this. MUST be comfortably
 ## INSIDE the camera's far plane: the player is supposed to see it go.
-@export var recycle_distance: float = 150.0
+@export var recycle_distance: float = 190.0
 
 ## Where a returning prop appears, as a distance from the player. Both ends
 ## inside the view, so arriving is something that happens on screen.
-@export var place_min: float = 70.0
-@export var place_max: float = 170.0
+@export var place_min: float = 60.0
+@export var place_max: float = 150.0
 
 ## Half-angle of the fan a returning prop is placed into, measured off the
 ## direction the player is TRAVELLING. Narrow, because the rule is "ahead of
@@ -72,6 +72,20 @@ var _props: Array[Dictionary] = []
 var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
+	# THESE FOUR ARE ORDERED, and nothing else enforces it:
+	#
+	#     place_min < place_max < recycle_distance < the camera's far plane
+	#
+	# Break the middle one and a prop is already too far away the moment it
+	# finishes arriving, so it turns round and leaves again -- the far ones
+	# flicker forever and it reads as noise rather than as a bug. Break the
+	# last one and props leave off-camera, which defeats the point of watching
+	# them go.
+	if place_min >= place_max:
+		push_error("RoamingProps: place_min must be less than place_max")
+	if place_max >= recycle_distance:
+		push_error("RoamingProps: place_max must be less than recycle_distance, " \
+			+ "or a prop is too far away as soon as it arrives")
 	if wrap != null:
 		wrap.wrapped.connect(_on_wrapped)
 	_rng.seed = 20260903
