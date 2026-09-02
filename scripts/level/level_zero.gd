@@ -45,7 +45,20 @@ const THANKS_SCENE := "res://scenes/ui/thanks_for_playing.tscn"
 ## What the sheet is painted as it goes: the colour of the void behind it, so
 ## a floor painted this has no edge left. Tuning value -- keep it equal to the
 ## level's own horizon colour.
+##
+## COLOUR IS NOT WHAT MAKES THE FLOOR VISIBLE, so this alone changes nothing.
+## acrylic_void.tres already ships the horizon colour as its albedo; what the
+## eye actually reads is the mirror -- metallic 0.9, roughness 0.04. The sheen
+## is what has to go, and acrylic.gdshader writes no ALPHA, so there is nothing
+## to fade instead. DO NOT "fix" a floor that will not leave by lengthening
+## floor_fade_time; check that these three move together.
 @export var void_colour: Color = Color(0.93, 0.96, 0.98)
+
+## What the surface stops being as it goes. Flat and rough is a plane that
+## reflects nothing, which against a void of the same colour is no plane at
+## all. Tuning values.
+@export var void_metallic: float = 0.0
+@export var void_roughness: float = 1.0
 
 ## Seconds the surface takes to go. Tuning value.
 @export var floor_fade_time: float = 3.0
@@ -136,23 +149,33 @@ func _on_tower_reached(_body: Node3D) -> void:
 	_dissolve_floor()
 
 func _dissolve_floor() -> void:
-	if plain_mesh == null or not (plain_mesh.material_override is ShaderMaterial):
-		return
-	# THE MATERIAL IS DUPLICATED FIRST. materials/acrylic_void.tres is shared
-	# with the debug plain, and tweening the shared resource would repaint
-	# every other scene that loads it in this session.
-	var material := (plain_mesh.material_override as ShaderMaterial).duplicate() as ShaderMaterial
-	plain_mesh.material_override = material
-	var from_colour: Color = material.get_shader_parameter("base_color")
-	var from_dots: float = float(material.get_shader_parameter("dot_opacity"))
+	# THE MATERIAL GATES ONLY THE FADE. Losing the floor and sinking the dots
+	# are what let the player off the plain, and neither reads the material --
+	# returning early on a mis-wired scene would leave a permanently solid
+	# floor and say nothing about why.
+	var material: ShaderMaterial = null
+	if plain_mesh != null and plain_mesh.material_override is ShaderMaterial:
+		# DUPLICATED FIRST. materials/acrylic_void.tres is shared with the
+		# debug plain, and tweening the shared resource would repaint every
+		# other scene that loads it in this session.
+		material = (plain_mesh.material_override as ShaderMaterial).duplicate() as ShaderMaterial
+		plain_mesh.material_override = material
 
 	var tween := create_tween()
-	# THE SURFACE GOES FIRST AND THE DOTS STAY. Painted the colour of the void
-	# behind it, the sheet has no edge left; the dots are what the floor turns
-	# into, so they are still there when it starts to fall.
-	tween.tween_method(func(colour: Color) -> void:
-		material.set_shader_parameter("base_color", colour),
-		from_colour, void_colour, floor_fade_time)
+	if material != null:
+		var from_colour: Color = material.get_shader_parameter("base_color")
+		var from_metallic: float = float(material.get_shader_parameter("metallic_amount"))
+		var from_roughness: float = float(material.get_shader_parameter("roughness_amount"))
+		# THE SURFACE GOES FIRST AND THE DOTS STAY. It goes by losing its
+		# sheen, not its colour -- see void_colour. The dots are what the floor
+		# turns into, so they are still there when it starts to fall.
+		tween.tween_method(func(k: float) -> void:
+			material.set_shader_parameter("base_color", from_colour.lerp(void_colour, k))
+			material.set_shader_parameter("metallic_amount", lerpf(from_metallic, void_metallic, k))
+			material.set_shader_parameter("roughness_amount", lerpf(from_roughness, void_roughness, k)),
+			0.0, 1.0, floor_fade_time)
+	else:
+		tween.tween_interval(floor_fade_time)
 	# NOT BEFORE THE FADE. The player is standing on the tower's first platform
 	# by now, but a body still crossing the last few metres of plain must not
 	# drop through it mid-stride. Deferred because a body may be resting on
@@ -164,9 +187,11 @@ func _dissolve_floor() -> void:
 		tween.tween_property(plain, "position:y",
 			plain.position.y - floor_drop_depth, floor_drop_time) \
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
-	tween.parallel().tween_method(func(opacity: float) -> void:
-		material.set_shader_parameter("dot_opacity", opacity),
-		from_dots, floor_dots_remaining, floor_drop_time)
+	if material != null:
+		var from_dots: float = float(material.get_shader_parameter("dot_opacity"))
+		tween.parallel().tween_method(func(opacity: float) -> void:
+			material.set_shader_parameter("dot_opacity", opacity),
+			from_dots, floor_dots_remaining, floor_drop_time)
 
 func _on_orb_entered(_body: Node3D) -> void:
 	if _finished:

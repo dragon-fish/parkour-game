@@ -166,6 +166,42 @@ func test_the_base_checkpoint_is_also_what_takes_the_floor_away() -> void:
 	assert_true((live.collision as CollisionShape3D).disabled,
 		"stepping onto the tower did not start the floor leaving")
 
+func test_the_surface_stops_being_a_mirror_not_just_a_colour() -> void:
+	# WHAT MAKES THE FLOOR VISIBLE IS THE SHEEN, NOT THE COLOUR. acrylic_void
+	# already carries the horizon colour as its albedo, so a fade that moves
+	# base_color alone moves nothing an eye can see -- and the shader writes no
+	# ALPHA, so there is no transparency to fall back on. This asserts the
+	# surface stopped reflecting; how far it goes is a tuning value and is not
+	# asserted.
+	var live: Dictionary = await _level()
+	var level: LevelZero = live.level
+	level.floor_fade_time = 0.05
+	level.floor_drop_time = 0.05
+	var before: float = float((live.shared as ShaderMaterial).get_shader_parameter("metallic_amount"))
+	var body := TouchLog.new()
+	add_child_autofree(body)
+	(live.checkpoint as Checkpoint).body_entered.emit(body)
+	await step(40)
+	var worn := (live.plain_mesh as MeshInstance3D).material_override as ShaderMaterial
+	assert_lt(float(worn.get_shader_parameter("metallic_amount")), before,
+		"the floor faded its colour but kept its mirror, so nothing left the screen")
+
+func test_a_floor_with_no_shader_still_lets_the_player_off_the_plain() -> void:
+	# THE MATERIAL GATES ONLY THE SHOW. A scene wired without a ShaderMaterial
+	# still has to drop its floor: skipping that leaves the plain permanently
+	# solid and reports nothing, which reads as "the tower beat never fired".
+	var live: Dictionary = await _level()
+	var level: LevelZero = live.level
+	level.floor_fade_time = 0.05
+	level.floor_drop_time = 0.05
+	(live.plain_mesh as MeshInstance3D).material_override = null
+	var body := TouchLog.new()
+	add_child_autofree(body)
+	(live.checkpoint as Checkpoint).body_entered.emit(body)
+	await step(40)
+	assert_true((live.collision as CollisionShape3D).disabled,
+		"a floor with no shader material never lost its collision")
+
 func test_the_floor_turns_into_light_and_falls_away() -> void:
 	# Four ways this goes wrong and none of them can be seen from a tally: a
 	# misspelled uniform aborts the whole dissolve, a surface that never fades
