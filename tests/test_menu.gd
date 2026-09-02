@@ -404,6 +404,54 @@ func test_settings_menu_default_resets_controls_without_saving() -> void:
 		"默认 did not reset the sensitivity slider's displayed value")
 	assert_false(FileAccess.file_exists(SettingsStore.path), "默认 must not write settings.cfg")
 
+func test_replaying_the_tutorial_arms_it_and_returns_to_the_front_door() -> void:
+	# Both halves fail silently. Without the flag the click sends the player to
+	# a main menu he then clicks past into the menu again -- nothing happens,
+	# twice. Without the scene change he stays on the settings page.
+	ProgressStore.mark_tutorial_finished()
+	ProgressStore.replay_requested = false
+	var page := MeSettingsMenu.new()
+	add_child_autofree(page)
+	await step(1)
+	var requested := [""]
+	PauseUi._change_scene = func(path): requested[0] = path
+
+	page._on_replay_tutorial_pressed()
+	await step(1)
+
+	assert_true(ProgressStore.replay_requested,
+		"重玩新手教程 did not arm the next click on the front door")
+	assert_eq(requested[0], PauseUi.MAIN_MENU_SCENE,
+		"重玩新手教程 did not send the game back to the front door")
+	PauseUi._change_scene = Callable(PauseUi, "_real_change_scene")
+	PauseUi._pending_scene_change = false
+	ProgressStore.replay_requested = false
+	_delete_progress_file()
+
+func test_the_settings_page_still_builds_every_row() -> void:
+	# The build loop routes a row by key. A key that loses its branch does not
+	# come up unbuilt -- _build_slider() unconditionally writes into _sliders
+	# no matter what its match statement recognized, so a row that fell through
+	# to it still registers as "some known kind". Checking membership in ANY
+	# bucket cannot see that; only checking a row landed in EXACTLY the one
+	# bucket its own key implies can.
+	var page := MeSettingsMenu.new()
+	add_child_autofree(page)
+	await step(1)
+	for row in MeSettingsMenu._ROWS:
+		var key: String = row["key"]
+		var in_slider: bool = page._sliders.has(key)
+		var in_stepper: bool = page._stepper_value_labels.has(key)
+		if key in MeSettingsMenu._ACTION_KEYS:
+			assert_false(in_slider, "action row %s was ALSO built as a slider" % key)
+			assert_false(in_stepper, "action row %s was ALSO built as a stepper" % key)
+		elif key in ["window_mode", "window_size", "antialiasing"]:
+			assert_true(in_stepper, "stepper row %s was not built as a stepper" % key)
+			assert_false(in_slider, "stepper row %s was ALSO built as a slider" % key)
+		else:
+			assert_true(in_slider, "slider row %s was not built as a slider" % key)
+			assert_false(in_stepper, "slider row %s was ALSO built as a stepper" % key)
+
 
 # ---------------------------------------------------------------------------
 # MainMenu (Task 5 of the menu feature): the project's front-door scene. Its

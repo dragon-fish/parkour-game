@@ -40,6 +40,12 @@ const ANTIALIASING_LABELS := {
 	"off": "关闭", "fxaa": "FXAA", "msaa_2x": "MSAA 2×", "msaa_4x": "MSAA 4×",
 }
 
+## Rows that are a BUTTON rather than a value: they do something once and have
+## nothing to save. THE THIRD ROW KIND -- before this there were only steppers
+## and sliders, and the build loop below routes on this list.
+const _ACTION_KEYS := ["replay_tutorial"]
+const _ACTION_LABELS := {"replay_tutorial": "重玩新手教程"}
+
 const _ROWS := [
 	{"key": "window_mode", "label": "窗口模式", "desc": "窗口化、无边框窗口，或全屏。"},
 	{"key": "window_size", "label": "窗口大小", "desc": "选择窗口化模式下的分辨率，全屏时不可用。"},
@@ -47,6 +53,7 @@ const _ROWS := [
 	{"key": "sensitivity", "label": "鼠标灵敏度", "desc": "调整视角转动的鼠标灵敏度。"},
 	{"key": "fov", "label": "视野 FOV", "desc": "调整摄像机基准视野角度。"},
 	{"key": "volume", "label": "总音量", "desc": "调整主音量大小。"},
+	{"key": "replay_tutorial", "label": "新手教程", "desc": "回到开场画面重玩一次新手教程。这不会清除任何已保存的进度。"},
 ]
 
 const _DEFAULT_DESCRIPTION := "将鼠标移到左侧设置项上查看说明。"
@@ -161,7 +168,9 @@ func _build_ui() -> void:
 		label.mouse_entered.connect(_show_description.bind(desc))
 		line.add_child(label)
 
-		if key in ["window_mode", "window_size", "antialiasing"]:
+		if key in _ACTION_KEYS:
+			_build_action(line, key, desc)
+		elif key in ["window_mode", "window_size", "antialiasing"]:
 			_build_stepper(line, key, desc)
 		else:
 			_build_slider(line, key, desc)
@@ -263,6 +272,32 @@ func _build_slider(line: HBoxContainer, key: String, desc: String) -> void:
 	MeTheme.fit_shadow(value_label)
 	line.add_child(value_label)
 	_slider_value_labels[key] = value_label
+
+## An action row: one red button, no value, nothing saved. It runs the moment
+## it is pressed -- 保存设置 has nothing to do with it.
+func _build_action(line: HBoxContainer, key: String, desc: String) -> void:
+	var button := _make_bottom_button(_ACTION_LABELS.get(key, key), _action_handler(key))
+	button.custom_minimum_size = Vector2(200.0, _ROW_HEIGHT)
+	button.mouse_entered.connect(_show_description.bind(desc))
+	line.add_child(button)
+
+func _action_handler(key: String) -> Callable:
+	if key == "replay_tutorial":
+		return _on_replay_tutorial_pressed
+	return func() -> void: pass
+
+## 重玩新手教程: back to the click-to-start screen, with the next click there
+## pointed at the tutorial instead of the menu.
+##
+## THE ARMING IS PER SESSION, NEVER SAVED. Written to disk it would send the
+## player into the tutorial on every launch from then on, with the settings row
+## that caused it three screens away.
+func _on_replay_tutorial_pressed() -> void:
+	ProgressStore.replay_requested = true
+	closed.emit()
+	# The same route the pause menu's own row takes, so there is one way back
+	# to the front door rather than two that can drift apart.
+	PauseUi.go_to_main_menu()
 
 ## Esc anywhere on this page = 取消 (✅ the owner could not find a way back
 ## from the main menu's settings). Runs on the page itself so BOTH hosts get
