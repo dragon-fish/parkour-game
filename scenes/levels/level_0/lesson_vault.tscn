@@ -1,0 +1,99 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/level/arena.gd" id="1_amrb1"]
+[ext_resource type="Resource" path="res://presets/default.tres" id="2_2grc4"]
+[ext_resource type="Script" path="res://scripts/level/spawn_point.gd" id="3_kn4oh"]
+[ext_resource type="Material" path="res://materials/acrylic_void.tres" id="4_4wseg"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="5_lkcuu"]
+[ext_resource type="Script" path="res://scripts/player/player.gd" id="6_m0hjh"]
+[ext_resource type="Script" path="res://scripts/level/cube_swarm.gd" id="7_5fq46"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_8vxoj"]
+sky_top_color = Color(0.78, 0.86, 0.93, 1)
+sky_horizon_color = Color(0.93, 0.96, 0.98, 1)
+ground_bottom_color = Color(0.78, 0.86, 0.93, 1)
+ground_horizon_color = Color(0.93, 0.96, 0.98, 1)
+sun_angle_max = 0.0
+sun_curve = 0.0
+
+[sub_resource type="Sky" id="Sky_xknf8"]
+sky_material = SubResource("ProceduralSkyMaterial_8vxoj")
+
+[sub_resource type="Environment" id="Environment_htfob"]
+background_mode = 2
+sky = SubResource("Sky_xknf8")
+ambient_light_source = 2
+ambient_light_color = Color(0.223529, 0.466667, 0.741176, 1)
+ssr_enabled = true
+ssr_max_steps = 32
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_wqhsd"]
+size = Vector3(120, 2, 120)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ml753"]
+size = Vector3(120, 2, 120)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_atvw6"]
+size = Vector3(9, 1, 0.6)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_oiho1"]
+size = Vector3(9, 0.08, 0.7)
+
+[node name="LessonVault" type="Node3D" unique_id=1786001131 node_paths=PackedStringArray("player", "spawn_point")]
+script = ExtResource("1_amrb1")
+player = NodePath("Player")
+spawn_point = NodePath("SpawnPoint")
+config = ExtResource("2_2grc4")
+rescue_below_hp = 30.0
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=2123450333]
+transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 0, 0)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1529324426]
+environment = SubResource("Environment_htfob")
+
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1061877044]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 16)
+script = ExtResource("3_kn4oh")
+
+[node name="Floor" type="StaticBody3D" parent="." unique_id=1685599660]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=131452678]
+shape = SubResource("BoxShape3D_wqhsd")
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=1298999746]
+material_override = ExtResource("4_4wseg")
+mesh = SubResource("BoxMesh_ml753")
+
+[node name="Player" type="CharacterBody3D" parent="." unique_id=1639581019 node_paths=PackedStringArray("camera_rig", "probes", "screen_effects", "subtitle", "toast") instance=ExtResource("5_lkcuu")]
+script = ExtResource("6_m0hjh")
+camera_rig = NodePath("CameraRig")
+probes = NodePath("Probes")
+screen_effects = NodePath("CameraRig/ScreenEffects")
+subtitle = NodePath("CameraRig/Subtitle")
+toast = NodePath("CameraRig/Toast")
+
+[node name="Content" type="Node3D" parent="." unique_id=1590645019]
+
+[node name="Wall" type="StaticBody3D" parent="Content" unique_id=1447991630]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Content/Wall" unique_id=2026143195]
+shape = SubResource("BoxShape3D_atvw6")
+
+[node name="Swarm" type="MultiMeshInstance3D" parent="Content/Wall" unique_id=1506929066]
+script = ExtResource("7_5fq46")
+box_size = Vector3(9, 1, 0.6)
+base_color = Color(0.93, 0.96, 0.98, 1)
+
+[node name="Lip" type="StaticBody3D" parent="Content" unique_id=1000753664]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.04, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Content/Lip" unique_id=585944288]
+shape = SubResource("BoxShape3D_oiho1")
+
+[node name="Swarm" type="MultiMeshInstance3D" parent="Content/Lip" unique_id=497545881]
+script = ExtResource("7_5fq46")
+box_size = Vector3(9, 0.08, 0.7)
+base_color = Color(0.91, 0.02, 0, 1)
