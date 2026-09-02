@@ -49,7 +49,7 @@ size = Vector3(680, 2, 680)
 [sub_resource type="BoxMesh" id="BoxMesh_tfcjo"]
 size = Vector3(680, 2, 680)
 
-[node name="Level0" type="Node3D" unique_id=582989245 node_paths=PackedStringArray("player", "spawn_point")]
+[node name="Level0" type="Node3D" unique_id=1789336463 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_j3355")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
@@ -59,23 +59,23 @@ rescue_below_hp = 30.0
 view_distance = 240.0
 start_in_third_person = true
 
-[node name="Sun" type="DirectionalLight3D" parent="." unique_id=477564724]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1549924557]
 transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 0, 0)
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1466791605]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=2006171842]
 environment = SubResource("Environment_5jpnr")
 
-[node name="SpawnPoint" type="Marker3D" parent="." unique_id=787598433]
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1231668382]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 25)
 script = ExtResource("4_jbev3")
 
-[node name="Plain" type="StaticBody3D" parent="." unique_id=1567987945]
+[node name="Plain" type="StaticBody3D" parent="." unique_id=1544035173]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="Plain" unique_id=1338615726]
+[node name="Collision" type="CollisionShape3D" parent="Plain" unique_id=1282203802]
 shape = SubResource("BoxShape3D_ka16a")
 
-[node name="Mesh" type="MeshInstance3D" parent="Plain" unique_id=1411334233]
+[node name="Mesh" type="MeshInstance3D" parent="Plain" unique_id=497256489]
 material_override = ExtResource("5_uf3om")
 mesh = SubResource("BoxMesh_tfcjo")
 
@@ -87,11 +87,11 @@ screen_effects = NodePath("CameraRig/ScreenEffects")
 subtitle = NodePath("CameraRig/Subtitle")
 toast = NodePath("CameraRig/Toast")
 
-[node name="TorusWrap" type="Node" parent="." unique_id=1305570626 node_paths=PackedStringArray("player")]
+[node name="TorusWrap" type="Node" parent="." unique_id=1147110040 node_paths=PackedStringArray("player")]
 script = ExtResource("8_x8gn0")
 player = NodePath("../Player")
 
-[node name="TutorialDirector" type="Node" parent="." unique_id=1131732673 node_paths=PackedStringArray("player", "wrap")]
+[node name="TutorialDirector" type="Node" parent="." unique_id=1402659478 node_paths=PackedStringArray("player", "wrap")]
 script = ExtResource("9_0fku3")
 player = NodePath("../Player")
 lessons = Array[Dictionary]([{
@@ -112,13 +112,13 @@ lessons = Array[Dictionary]([{
 }])
 wrap = NodePath("../TorusWrap")
 
-[node name="TutorialOpening" type="Node" parent="." unique_id=2073276360 node_paths=PackedStringArray("subtitle")]
+[node name="TutorialOpening" type="Node" parent="." unique_id=1368497741 node_paths=PackedStringArray("subtitle")]
 script = ExtResource("14_ankgd")
 subtitle = NodePath("../Player/CameraRig/Subtitle")
 
-[node name="Tower" type="Node3D" parent="." unique_id=124875666 instance=ExtResource("15_6jayi")]
+[node name="Tower" type="Node3D" parent="." unique_id=382396853 instance=ExtResource("15_6jayi")]
 
-[node name="LevelZero" type="Node" parent="." unique_id=2097028673 node_paths=PackedStringArray("player", "opening", "director", "wrap", "tower", "tower_checkpoint", "orb", "plain", "plain_mesh", "plain_collision", "spawn_point")]
+[node name="LevelZero" type="Node" parent="." unique_id=1949752661 node_paths=PackedStringArray("player", "opening", "director", "wrap", "tower", "tower_checkpoint", "orb", "plain", "plain_mesh", "plain_collision", "spawn_point")]
 script = ExtResource("16_1baj3")
 player = NodePath("../Player")
 opening = NodePath("../TutorialOpening")

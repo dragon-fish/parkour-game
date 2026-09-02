@@ -63,7 +63,14 @@ static func platform_yaw(shape: Dictionary, index: int) -> float:
 ## own radius below its centre. Anything above that sum is an orb the player
 ## can see, climb the whole tower for, and never touch -- which is the whole
 ## level with no ending.
-const SUMMIT_CLEARANCE := 3.0
+##
+## THE ENDING IS A JUMP, so there is a floor to this as well as a ceiling. A
+## standing body is already 1.8 m of reach; hang the orb any lower than
+## 1.8 + radius and walking onto the last platform ends the level with no
+## input at all. The window the two bounds leave is narrow, and this sits in
+## the middle of it -- move it and check BOTH ends, not just the one you meant
+## to change.
+const SUMMIT_CLEARANCE := 4.6
 
 ## Where the orb hangs: directly over the TOP PLATFORM.
 ##

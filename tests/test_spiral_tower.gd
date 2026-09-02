@@ -69,14 +69,33 @@ func test_the_orb_can_be_reached_from_the_top_platform() -> void:
 	assert_lt(sideways, minf(slab.size.x, slab.size.z) * 0.5,
 		"the orb hangs off the side of the top platform rather than over it")
 
-	# A jump lifts the feet base_jump_z^2 / (2 * gravity), and the trigger
-	# volume hangs its own radius below the orb. Deliberately conservative: the
-	# body's own standing height is real reach and is not counted here.
+	# BOTH ENDS, because each one alone is satisfied by a broken tower. Reach
+	# is the body's own standing height plus, when he jumps, base_jump_z^2 /
+	# (2 * gravity); the trigger volume hangs its own radius below the orb.
+	# Nothing here is a number typed into this file -- the body comes from the
+	# player scene, the jump from the movement config, the rest from the tower.
 	var pawn: PawnConfig = MovementConfig.new().pawn
 	var apex: float = pawn.base_jump_z * pawn.base_jump_z / (2.0 * pawn.gravity)
-	assert_lt(orb.position.y - surface.y - reach, apex,
+	var standing: float = _standing_height()
+	var gap: float = orb.position.y - surface.y - reach
+	# THE ENDING IS A JUMP. An orb low enough to touch while standing ends the
+	# level the moment the last platform is reached, with no input at all.
+	assert_gt(gap, standing,
+		"the orb is low enough to touch standing, so arriving ends the level without a jump")
+	assert_lt(gap, standing + apex,
 		"the orb hangs higher above the top platform than a jump can reach")
 	tower.free()
+
+## The body's own reach, out of the player scene rather than typed here: it is
+## the difference between an orb that needs a jump and one that does not.
+func _standing_height() -> float:
+	var player: Node = load("res://scenes/player/player.tscn").instantiate()
+	var tallest := 0.0
+	for shape in player.find_children("*", "CollisionShape3D", true, false):
+		if shape.shape is CapsuleShape3D:
+			tallest = maxf(tallest, (shape.shape as CapsuleShape3D).height)
+	player.free()
+	return tallest
 
 func test_every_platform_wears_the_same_material() -> void:
 	# A pipeline is compiled the first time a material is actually DRAWN. One
