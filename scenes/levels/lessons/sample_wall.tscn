@@ -1,0 +1,25 @@
+[gd_scene format=3]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_4axuh"]
+size = Vector3(6, 1, 0.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_11yxb"]
+transparency = 1
+albedo_color = Color(0.55, 0.6, 0.68, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_jesig"]
+material = SubResource("StandardMaterial3D_11yxb")
+size = Vector3(6, 1, 0.6)
+
+[node name="SampleWall" type="Node3D" unique_id=830963531]
+
+[node name="Content" type="Node3D" parent="." unique_id=2141362407]
+
+[node name="Wall" type="StaticBody3D" parent="Content" unique_id=1674779023]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Content/Wall" unique_id=1178365897]
+shape = SubResource("BoxShape3D_4axuh")
+
+[node name="Mesh" type="MeshInstance3D" parent="Content/Wall" unique_id=1164264325]
+mesh = SubResource("BoxMesh_jesig")
