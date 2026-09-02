@@ -47,7 +47,7 @@ GUT（`bun tools/run_tests.ts`）。
 |---|---|
 | `scripts/level/lesson_content.gd`（新） | 从一课的 `.tscn` 里取出 `Content` 子树，绝不 add_child 整个场景 |
 | `scripts/player/input/input_names.gd`（新） | 动作 -> 当前绑定的键名。今天返回硬编码值，将来读映射表 |
-| `scripts/level/growing_solid.gd`（改） | 碰撞不再等生长；崩塌放开整一块的碰撞，而不只是第一层 |
+| `scripts/level/growing_solid.gd`（改） | 删掉碰撞管理：两端玩家都够不到，那是凭空造的复杂度 |
 | `scripts/level/tutorial_director.gd`（改） | 每课的生长/崩塌接线；`_standing` 从「锚点数组」改为「每课一条记录」 |
 | `scripts/level/tutorial_opening.gd`（新） | 开场三句，键名经 InputNames 取 |
 | `tools/build_lesson_sample.gd`（新） | 生成一块最小示例课程场景，供端到端跑通与测试用 |
@@ -354,71 +354,57 @@ git commit -m "feat(input): name keys through a table so copy survives rebinding
 
 ---
 
-## Task 3: 崩塌放开整一块的碰撞
+## Task 3: 把碰撞管理从 GrowingSolid 里删掉
 
 **Files:**
 - Modify: `scripts/level/growing_solid.gd`
-- Test: `tests/test_growing_solid.gd`（改）
+- Modify: `tests/test_growing_solid.gd`
 
 **Interfaces:**
-- Produces: `GrowingSolid.body` 的语义从「那一个碰撞体」改为「这一块的碰撞根」；
-  生长不再影响碰撞，只有崩塌影响
+- Removes: `GrowingSolid.body`、`GrowingSolid.solid`、`_set_solid()`
 
-**背景：** `GrowingSolid` 建于前一份计划，当时一个障碍被设想成一个物件，所以
-`body: CollisionObject3D` 指向唯一的碰撞体，且碰撞在生长完成时才启用。两处都要改：
+**背景：** `GrowingSolid` 建于前一份计划，当时按「碰撞在生长完成时一次性启用」设计，
+理由是不让碰撞面跟着生长面爬。那条理由成立，但它保护的状态**没人观测**：
 
-**一、碰撞从一开始就在。** 「生长完成才启用」看起来更正确，实际上是拿一个不存在的
-问题换一个真的：时序契约（`grow_time x 冲刺速度 < spawn_distance - 余量`）已经保证
-玩家到不了没长完的场景，所以生长期间的碰撞状态根本没人观测；而延后启用会造出新故障
-——玩家站在那块几何将要占据的位置上，碰撞一开就把他封在里面。
+- 生长发生在摆放距离处，时序契约（`grow_time x 冲刺速度 < spawn_distance - 余量`）
+  保证玩家到不了；
+- 崩塌发生在回收距离处，那已经离玩家很远了。
 
-**二、崩塌要放开整一块。** 一课是一整块场景（spec「一课 = 一整块场景」），里面有任意
-多个碰撞体。一块正在离开的场景必须立刻、全部放弃碰撞，因为玩家跑过它正在腾出的空间
-正是它离开的理由。
+**两端玩家都够不到，所以整套碰撞管理是凭空造出来的复杂度。** 更糟的是其中一种写法
+（生长完成才启用）会造出一个真故障：玩家站在那块几何将要占据的位置上，碰撞一开就把他
+封在里面。
 
-- [ ] **Step 1: 改掉断言生长期间无碰撞的那条测试，加上新的**
+几何一出现就是实心的，直到被释放。**生长和崩塌只是视觉。**
 
-`tests/test_growing_solid.gd` 里 `test_it_is_not_solid_before_it_has_finished_growing`
-断言的行为不再成立，整条替换为：
+删而不是留着不用：留着的话下一个读者会以为它承重，会去维护它，而它头上那段关于碰撞
+时序的推理会把他带进一个不存在的问题。
+
+- [ ] **Step 1: 删掉那三条测试**
+
+`tests/test_growing_solid.gd` 里删除：
+
+- `test_it_is_not_solid_before_it_has_finished_growing`
+- `test_it_becomes_solid_when_growth_completes`
+- `test_collapse_gives_up_solidity_immediately`
+
+以及 `_growing()` 里建 `StaticBody3D` / `CollisionShape3D` / `BoxShape3D` 并赋给
+`_solid.body` 的部分，和成员 `var _body: StaticBody3D`。
+
+保留 `test_growth_announces_itself_once` 与
+`test_beginning_locks_the_obstacle_it_belongs_to`，它们测的是时序与锚点，与碰撞无关。
+
+追加一条守住「生长有可观测的中间态」：
 
 ```gdscript
-func test_it_is_solid_the_whole_way_up() -> void:
-	# Collision does NOT wait for growth. The level guarantees the player
-	# cannot reach an unfinished block, so nothing observes that state -- while
-	# switching collision on at the end would seal in anyone standing where the
-	# block lands.
+func test_growth_passes_through_the_middle_instead_of_snapping() -> void:
+	# The show may be crude -- it is alpha today and a dissolve shader later --
+	# but it must take the time it says it takes. A snap would mean the timing
+	# contract has quietly stopped holding.
 	var solid: GrowingSolid = await _growing(1.0)
 	solid.begin()
 	await step(10)
-	assert_gt(solid.progress, 0.0, "test setup: growth did not start")
-	assert_lt(solid.progress, 1.0, "test setup: growth finished too fast to observe")
-	assert_true(solid.solid, "a growing block gave up its collision and could seal the player in")
-```
-
-并追加整块放开的覆盖：
-
-```gdscript
-func test_collapse_frees_every_shape_in_the_block() -> void:
-	# A block is scenery with as many bodies as it needs. If only the first
-	# level of shapes lets go, the player runs into the ghost of something he
-	# just watched leave.
-	var solid: GrowingSolid = await _growing(0.1)
-	var second := StaticBody3D.new()
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(1.0, 1.0, 1.0)
-	shape.shape = box
-	second.add_child(shape)
-	_body.add_child(second)
-	await step(1)
-
-	solid.begin()
-	await step(20)
-	assert_false(shape.disabled, "test setup: the deeper shape was not live to begin with")
-
-	solid.collapse()
-	await step(2)
-	assert_true(shape.disabled, "a shape deeper in the block kept colliding after collapse began")
+	assert_gt(solid.progress, 0.0, "growth never started")
+	assert_lt(solid.progress, 1.0, "growth finished instantly instead of taking grow_time")
 ```
 
 - [ ] **Step 2: 跑测试，确认它失败**
@@ -427,42 +413,30 @@ func test_collapse_frees_every_shape_in_the_block() -> void:
 bun tools/run_tests.ts growing_solid
 ```
 
-预期：两条都失败——第一条因为当前实现在生长期间不实心，第二条因为只有第一层 shape
-被处理。
+预期：编译期就报 `body` 仍被引用，或新测试之外的旧测试引用了已删成员。
 
-- [ ] **Step 3: 改 `_set_solid()` 与 `_ready()`**
+- [ ] **Step 3: 从 GrowingSolid 里删掉碰撞管理**
 
-`growing_solid.gd` 里，把 `body` 的文档与 `_set_solid()` 换成：
+`scripts/level/growing_solid.gd`：
+
+- 删掉 `@export var body: CollisionObject3D`
+- 删掉 `var solid: bool = false`
+- 删掉 `func _set_solid(on: bool) -> void:` 整个函数
+- 删掉 `_ready()` 里的 `_set_solid(false)`
+- 删掉 `Phase.GROWING` 分支里的 `_set_solid(true)`
+- 删掉 `collapse()` 里的 `_set_solid(false)`
+
+并把文件头那段关于碰撞时序的说明换成：
 
 ```gdscript
-## The root of everything in this block that collides. Every CollisionShape3D
-## underneath it is released the moment collapse begins -- a block may hold as
-## many bodies as its scenery needs.
-@export var body: CollisionObject3D
+# COLLISION IS NOT THIS CLASS'S BUSINESS. Geometry is solid from the moment it
+# exists until it is freed. Both ends of a block's life happen where the player
+# cannot reach it -- growth at the placement distance, which the timing
+# contract keeps beyond his reach, and collapse at the recycle distance, which
+# is already far away -- so there is no state for collision to protect. An
+# earlier version gated collision on growth completing, which protected nothing
+# and could seal a player inside a block that landed on him.
 ```
-
-```gdscript
-## COLLISION IS NOT GATED ON GROWTH, only on collapse. The level guarantees a
-## player cannot reach a block that is still growing (grow_time x sprint speed
-## < placement distance - margin), so nothing observes that state; switching
-## collision on at the end of growth would instead seal in anyone standing
-## where the block lands. Collapse is the opposite case and does have to let
-## go at once: running through the space a block is vacating is the whole
-## reason it is leaving.
-func _set_solid(on: bool) -> void:
-	solid = on
-	if body == null:
-		return
-	body.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
-	# THE WHOLE SUBTREE, not just this node's own children.
-	for node in body.find_children("*", "CollisionShape3D", true, false):
-		# DEFERRED: a direct write can land mid-physics-query.
-		(node as CollisionShape3D).set_deferred("disabled", not on)
-```
-
-`_ready()` 里的 `_set_solid(false)` 改为 `_set_solid(true)`，`begin()` 中不再有
-`_set_solid` 调用，`Phase.GROWING -> Phase.STANDING` 的那次 `_set_solid(true)` 删掉
-（已经是实心的），`collapse()` 里的 `_set_solid(false)` 保留。
 
 - [ ] **Step 4: 跑测试，确认通过**
 
@@ -470,14 +444,14 @@ func _set_solid(on: bool) -> void:
 bun tools/run_tests.ts growing_solid
 ```
 
-预期：6 passing。
+预期：3 passing。
 
 - [ ] **Step 5: 跑全量并提交**
 
 ```sh
 bun tools/run_tests.ts
 git add scripts/level/growing_solid.gd tests/test_growing_solid.gd
-git commit -m "feat(level): collision waits for nothing, and collapse releases the whole block"
+git commit -m "refactor(level): growth and collapse are visual only -- delete the collision gating"
 ```
 
 ---
