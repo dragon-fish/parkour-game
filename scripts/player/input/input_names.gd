@@ -3,15 +3,11 @@ extends RefCounted
 
 # What a key is CALLED, for anything that has to say so on screen.
 #
-# TUTORIAL COPY MUST NAME KEYS THROUGH HERE, NEVER AS LITERALS. Rebinding is
-# not built yet -- KeyboardInputSource reads fixed physical keycodes and says
-# so in its own header -- but copy written with "Shift" spelled into it will
-# keep telling a player to press Shift after he has moved crouch to C, and
-# finding every such line later means a full-text search that will miss one.
-# Going through this table costs nothing today and makes that search
-# unnecessary.
-#
-# When rebinding lands, only _BINDINGS changes.
+# TUTORIAL COPY MUST NAME KEYS THROUGH HERE, NEVER AS LITERALS. The bindings
+# here reference KeyboardInputSource's constants directly, so if someone
+# changes a key in KeyboardInputSource, it changes everywhere at once. There
+# is only one place that says "jump is SPACE" and both the game and the UI
+# read from it.
 
 const MOVE := &"move"
 const JUMP := &"jump"
@@ -19,14 +15,13 @@ const CROUCH := &"crouch"
 const WALK := &"walk"
 const TURN := &"turn"
 
-## The keys KeyboardInputSource actually polls. DO NOT let these drift from
-## it -- a tutorial that names a key the game does not listen to is worse than
-## one that names none.
+## The keys KeyboardInputSource actually polls. This dictionary references
+## KeyboardInputSource's constants, so these cannot drift.
 const _BINDINGS: Dictionary = {
-	JUMP: KEY_SPACE,
-	CROUCH: KEY_SHIFT,
-	WALK: KEY_CTRL,
-	TURN: KEY_Q,
+	JUMP: KeyboardInputSource.JUMP_KEY,
+	CROUCH: KeyboardInputSource.CROUCH_KEY,
+	WALK: KeyboardInputSource.WALK_KEY,
+	TURN: KeyboardInputSource.TURN_KEY,
 }
 
 ## Movement is four keys, so it has no single keycode and carries its own

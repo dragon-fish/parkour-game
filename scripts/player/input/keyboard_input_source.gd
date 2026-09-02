@@ -4,6 +4,16 @@ extends InputSource
 # Reads physical key positions so the bindings do not shift with keyboard
 # layout. No InputMap actions are registered: rebinding is out of scope for
 # the prototype.
+#
+# The physical keys read by this source are THE SINGLE SOURCE OF TRUTH for
+# which physical key each action listens to. Anything that names a key on
+# screen must ask InputNames, which reads these constants -- that way, if a
+# key changes, it changes once and everywhere.
+
+const JUMP_KEY := KEY_SPACE
+const CROUCH_KEY := KEY_SHIFT
+const WALK_KEY := KEY_CTRL
+const TURN_KEY := KEY_Q
 
 var _jump_was_held := false
 var _crouch_was_held := false
@@ -24,9 +34,9 @@ func poll() -> MoveInput:
 		# Resync to the physical key state rather than leaving it stale, so a
 		# jump or crouch held across the capture/release boundary does not
 		# read as a fresh press the moment the mouse is recaptured.
-		_jump_was_held = Input.is_physical_key_pressed(KEY_SPACE)
-		_crouch_was_held = Input.is_physical_key_pressed(KEY_SHIFT)
-		_turn_was_held = Input.is_physical_key_pressed(KEY_Q)
+		_jump_was_held = Input.is_physical_key_pressed(JUMP_KEY)
+		_crouch_was_held = Input.is_physical_key_pressed(CROUCH_KEY)
+		_turn_was_held = Input.is_physical_key_pressed(TURN_KEY)
 		return MoveInput.new()
 
 	var out := MoveInput.new()
@@ -55,19 +65,19 @@ func poll() -> MoveInput:
 	out.look = _look_accumulator
 	_look_accumulator = Vector2.ZERO
 
-	var jump_held := Input.is_physical_key_pressed(KEY_SPACE)
+	var jump_held := Input.is_physical_key_pressed(JUMP_KEY)
 	out.jump_pressed = jump_held and not _jump_was_held
 	out.jump_held = jump_held
 	_jump_was_held = jump_held
 
-	out.walk_held = Input.is_physical_key_pressed(KEY_CTRL)
+	out.walk_held = Input.is_physical_key_pressed(WALK_KEY)
 
-	var crouch_held := Input.is_physical_key_pressed(KEY_SHIFT)
+	var crouch_held := Input.is_physical_key_pressed(CROUCH_KEY)
 	out.crouch_held = crouch_held
 	out.crouch_pressed = crouch_held and not _crouch_was_held
 	_crouch_was_held = crouch_held
 
-	var turn_held := Input.is_physical_key_pressed(KEY_Q)
+	var turn_held := Input.is_physical_key_pressed(TURN_KEY)
 	out.turn_pressed = turn_held and not _turn_was_held
 	_turn_was_held = turn_held
 	return out
