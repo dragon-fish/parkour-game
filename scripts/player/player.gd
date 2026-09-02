@@ -205,8 +205,10 @@ func touch_checkpoint(checkpoint: Checkpoint) -> void:
 		return
 	var changed: bool = checkpoint != active_checkpoint
 	active_checkpoint = checkpoint
-	if changed and checkpoint.display_name != "" and subtitle != null:
-		subtitle.show_text("检查点 %s 已保存" % checkpoint.display_name)
+	# A REPORT, NOT A LINE OF DIALOGUE: this belongs in the corner, not across
+	# the bottom of the screen. See Toast's own note on the split.
+	if changed and checkpoint.display_name != "" and toast != null:
+		toast.show_text("检查点 %s 已保存" % checkpoint.display_name)
 
 func enter_interest_line(line: InterestLine) -> void:
 	if not interest_lines.has(line):
@@ -495,6 +497,10 @@ func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
 ## Assigned by tools/player_builder.gd; optional so a hand-built test player
 ## without one simply stays silent.
 @export var subtitle: Subtitle
+
+## The corner toast layer -- the game reporting that something happened.
+## Same optionality as `subtitle` above, and the same reason.
+@export var toast: Toast
 
 ## The visible character body to attach under BodyRoot at runtime, or null
 ## for none. Deliberately NOT wired by tools/build_player_scene.gd -- see

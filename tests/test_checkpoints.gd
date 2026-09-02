@@ -80,23 +80,26 @@ func test_a_named_checkpoint_announces_and_an_unnamed_one_stays_quiet() -> void:
 	# 「检查点 xx 已保存」 -- shown only when the author gave the point a name,
 	# and only when the active respawn actually changes.
 	var player: Player = await _standing_player()
-	var subtitle := Subtitle.new()
-	add_child_autofree(subtitle)
+	# The corner TOAST, not the subtitle: a checkpoint is a report that
+	# something happened, not the game talking to the player.
+	var toast := Toast.new()
+	add_child_autofree(toast)
 	await step(1)
-	player.subtitle = subtitle
+	player.toast = toast
 
 	var silent := _checkpoint(player.global_position)
 	await step(3)
 	assert_eq(player.active_checkpoint, silent, "test setup: the unnamed touch did not register")
-	assert_false(subtitle.showing(), "an unnamed checkpoint put text on screen")
+	assert_eq(toast.count(), 0, "an unnamed checkpoint put text on screen")
 
 	silent.position = Vector3(40.0, 1.0, 0.0)
 	var named := _checkpoint(player.global_position)
 	named.display_name = "天台"
 	await step(3)
 	assert_eq(player.active_checkpoint, named, "test setup: the named touch did not register")
-	assert_true(subtitle.showing(), "a named checkpoint showed nothing")
-	assert_true(subtitle.text().contains("天台"), "the line does not carry the name: %s" % subtitle.text())
+	assert_eq(toast.count(), 1, "a named checkpoint showed nothing")
+	assert_true(toast.texts()[0].contains("天台"),
+		"the line does not carry the name: %s" % [toast.texts()])
 
 func test_a_dying_body_saves_nothing() -> void:
 	# ✅ THE OWNER: jumping off a roof onto a checkpoint turned the death

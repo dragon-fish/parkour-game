@@ -79,7 +79,13 @@ func build() -> CharacterBody3D:
 	subtitle.name = "Subtitle"
 	subtitle.set_script(load("res://scripts/ui/subtitle.gd"))
 	rig.add_child(subtitle)
+
+	var toast := CanvasLayer.new()
+	toast.name = "Toast"
+	toast.set_script(load("res://scripts/ui/toast.gd"))
+	rig.add_child(toast)
 	subtitle.owner = player
+	toast.owner = player
 
 	# Mount point for the visible character body. Reserved empty for the P5
 	# procedural/attachable first-person body, and it MUST STAY that way in
@@ -127,6 +133,7 @@ func build() -> CharacterBody3D:
 	player.camera_rig = rig
 	player.screen_effects = fx
 	player.subtitle = subtitle
+	player.toast = toast
 	crosshair.player = player
 
 	# Probe rig. Heights are expressed relative to the body origin, which sits
