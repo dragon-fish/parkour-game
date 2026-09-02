@@ -46,11 +46,28 @@ func test_the_lines_arrive_in_order_and_then_stop() -> void:
 	assert_eq(seen, [0, 1, 2] as Array[int], "the lines did not arrive in order: %s" % [seen])
 	assert_eq(ended[0], 1, "the opening announced its end %d times" % ended[0])
 
-func test_it_says_nothing_without_a_subtitle_layer() -> void:
-	# A level built without one (every test world is) must not crash.
+func test_it_runs_to_the_end_without_a_subtitle_layer() -> void:
+	# A level built without one -- every test world is -- must still run the
+	# opening through to its end.
+	#
+	# ASSERT THE SIGNALS, NOT THE ABSENCE OF A CRASH. This runner does not
+	# count a GDScript error as a failure (see reading-past-a-green-suite), so
+	# "it did not crash" is unobservable here. Dereferencing a null subtitle
+	# aborts _advance() before spoken.emit(), which IS observable: without the
+	# guard, seen comes back empty.
 	var opening := TutorialOpening.new()
+	opening.hold = 0.05
+	opening.gap = 0.05
 	add_child_autofree(opening)
 	await step(1)
+
+	var seen: Array[int] = []
+	opening.spoken.connect(func(i: int) -> void: seen.append(i))
+	var ended := [0]
+	opening.done.connect(func() -> void: ended[0] += 1)
+
 	opening.play()
-	await step(10)
-	assert_eq(opening.lines().size(), 3, "the lines went missing without a subtitle")
+	await step(60)
+
+	assert_eq(seen, [0, 1, 2] as Array[int], "the opening stalled without a subtitle: %s" % [seen])
+	assert_eq(ended[0], 1, "the opening announced its end %d times" % ended[0])
