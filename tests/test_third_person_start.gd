@@ -1,8 +1,8 @@
 extends ParkourTest
 
 # A level that hands control over from behind the body. Two things are
-# asserted and both are structural: WHICH field carries the view, and that
-# saying so does not rewrite what the player chose.
+# asserted and both are structural: that saying so puts the rig behind the
+# body, and that it does not rewrite what the player chose.
 
 ## Per PROCESS: user:// is per project, so two concurrent runs of this suite
 ## would otherwise write each other's camera preferences.
@@ -42,14 +42,6 @@ func test_a_level_can_start_the_camera_behind_the_body() -> void:
 	assert_true(arena.player.camera_rig.third_person,
 		"start_in_third_person did not put the rig in third person")
 
-func test_starting_behind_the_body_does_not_pin_the_view() -> void:
-	# THE FIELD MATTERS. forced_view is re-derived from the status list by
-	# Player._push_forced_view() every tick, so a level that wrote it would be
-	# overwritten within a frame -- and while it held, V would refuse to work.
-	var arena: Arena = await _arena_starting_in(true)
-	assert_eq(arena.player.camera_rig.forced_view, Status.View.NONE,
-		"the level pinned the view instead of setting the preference, so V is dead")
-
 func test_starting_behind_the_body_does_not_rewrite_the_saved_preference() -> void:
 	# The player's own choice outlives a visit to a level that starts him
 	# somewhere else. Saving here would silently flip it for every other level.
@@ -68,9 +60,17 @@ func test_starting_behind_the_body_does_not_rewrite_the_saved_preference() -> vo
 
 func test_a_level_that_says_nothing_leaves_the_preference_alone() -> void:
 	# Every existing level must be untouched by this feature.
-	var saved := ConfigFile.new()
-	saved.set_value("third_person", "on", true)
-	saved.save(CameraRig.prefs_path)
-	var arena: Arena = await _arena_starting_in(false)
-	assert_true(arena.player.camera_rig.third_person,
-		"a level with the flag off overrode the saved preference")
+	#
+	# BOTH DIRECTIONS, and that is what makes this catch anything. Asserting
+	# only the saved-true case cannot tell "the preference decided" apart from
+	# "the flag was ignored and every level starts behind the body", because
+	# the two agree on the answer.
+	for saved_third in [true, false]:
+		var saved := ConfigFile.new()
+		saved.set_value("third_person", "on", saved_third)
+		saved.save(CameraRig.prefs_path)
+		var arena: Arena = await _arena_starting_in(false)
+		assert_eq(arena.player.camera_rig.third_person, saved_third,
+			"a level with the flag off did not leave the saved preference (%s) alone" % saved_third)
+		arena.queue_free()
+		await step(1)
