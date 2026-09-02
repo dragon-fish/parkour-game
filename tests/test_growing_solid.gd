@@ -50,3 +50,34 @@ func test_beginning_locks_the_obstacle_it_belongs_to() -> void:
 	solid.begin()
 	await step(1)
 	assert_true(obstacle.locked, "growth began without pinning the anchor")
+
+func test_a_block_with_a_swarm_drives_the_swarm_rather_than_its_alpha() -> void:
+	# The wiring bug this catches: a CubeSwarm IS a GeometryInstance3D, so an
+	# unfiltered find_children() sweeps it into the fade list. The block then
+	# fades out with all its cubes standing still -- the exact effect the
+	# swarm exists to replace, and no error anywhere.
+	var solid := GrowingSolid.new()
+	solid.grow_time = 1.0
+	var swarm := CubeSwarm.new()
+	swarm.box_size = Vector3.ONE
+	swarm.cube_size = 0.5
+	solid.add_child(swarm)
+	add_child_autofree(solid)
+	await step(1)
+	assert_almost_eq(swarm.progress, 1.0, 0.01,
+		"a block that has not grown yet is not fully dispersed")
+	assert_almost_eq(swarm.transparency, 0.0, 0.01,
+		"the swarm was faded instead of dispersed")
+
+func test_a_block_with_no_swarm_still_fades() -> void:
+	# The fallback must keep working: not everything in this game is a box,
+	# and a lesson without a swarm may not simply stop appearing.
+	var solid := GrowingSolid.new()
+	solid.grow_time = 1.0
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = BoxMesh.new()
+	solid.add_child(mesh)
+	add_child_autofree(solid)
+	await step(1)
+	assert_almost_eq(mesh.transparency, 1.0, 0.01,
+		"a block with no swarm is visible before it has grown")

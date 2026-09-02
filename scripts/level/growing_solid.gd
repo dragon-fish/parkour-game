@@ -5,9 +5,9 @@ extends Node3D
 # existence rather than switched on. This class owns the TIMING of that; what
 # it LOOKS like is deliberately separate.
 #
-# THE SHOW MAY START CRUDE, THE TIMING MAY NOT. Today growth is an alpha fade
-# and collapse is a fade out. The wireframe, the advancing cut plane, the lit
-# seam and the feathers all come later, and none of them changes a line here.
+# THE SHOW MAY START CRUDE, THE TIMING MAY NOT. A block made of boxes carries
+# CubeSwarm children and comes apart into glowing cubes; anything else falls
+# back to an alpha fade. Neither of them changes a line of the timing here.
 # Doing it the other way round -- look first, timing after -- leaves the
 # hardest part until the geometry is buried under art.
 #
@@ -47,24 +47,36 @@ var _elapsed: float = 0.0
 # growth is wasted work over a set that cannot change after _ready().
 var _geometry: Array[GeometryInstance3D] = []
 
+# The block's cube swarms, if it has any. A block made of boxes takes itself
+# apart into glowing cubes; anything else falls back to the alpha fade, which
+# is what everything used before and what non-box geometry still gets.
+var _swarms: Array[CubeSwarm] = []
+
 func _ready() -> void:
+	for node in find_children("*", "CubeSwarm", true, false):
+		_swarms.append(node as CubeSwarm)
 	for node in find_children("*", "GeometryInstance3D", true, false):
+		# A CubeSwarm IS a GeometryInstance3D. It is driven by its own progress,
+		# and driving its transparency as well would fade it out from under its
+		# own animation.
+		if node is CubeSwarm:
+			continue
 		_geometry.append(node as GeometryInstance3D)
-	_apply_alpha(0.0)
+	_apply_visual(0.0)
 
 func _physics_process(delta: float) -> void:
 	match _phase:
 		Phase.GROWING:
 			_elapsed += delta
 			progress = clampf(_elapsed / maxf(grow_time, 0.001), 0.0, 1.0)
-			_apply_alpha(progress)
+			_apply_visual(progress)
 			if progress >= 1.0:
 				_phase = Phase.STANDING
 				grown.emit()
 		Phase.COLLAPSING:
 			_elapsed += delta
 			var k: float = clampf(_elapsed / maxf(collapse_time, 0.001), 0.0, 1.0)
-			_apply_alpha(1.0 - k)
+			_apply_visual(1.0 - k)
 			if k >= 1.0:
 				_phase = Phase.DONE
 				gone.emit()
@@ -86,8 +98,14 @@ func collapse() -> void:
 	_phase = Phase.COLLAPSING
 	_elapsed = 0.0
 
-## MVP: plain transparency. Replaced by the dissolve shader later; nothing
-## outside this function knows which is in use.
-func _apply_alpha(k: float) -> void:
+## `k` is how much of the block EXISTS: 0 nothing, 1 whole. A swarm reads the
+## complement -- how far it has dispersed -- which is what makes growth and
+## collapse the same animation run in opposite directions.
+##
+## MVP for anything that is not a box: plain transparency. Nothing outside this
+## function knows which of the two is in use.
+func _apply_visual(k: float) -> void:
 	for node in _geometry:
 		node.transparency = clampf(1.0 - k, 0.0, 1.0)
+	for swarm in _swarms:
+		swarm.progress = 1.0 - clampf(k, 0.0, 1.0)
