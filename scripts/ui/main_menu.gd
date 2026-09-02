@@ -813,15 +813,36 @@ func _beat_rise_begin() -> void:
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 
 	var body := _track(create_tween())
-	body.tween_interval(BODY_RISE_DELAY)
+	body.tween_interval(_stand_up_delay())
 	body.tween_callback(_start_stand_up)
 
 	var mirror := _track(create_tween())
 	mirror.tween_property(_mirror_window, "modulate:a", MIRROR_ALPHA, RISE_TIME * 0.5) \
 		.set_delay(RISE_TIME * 0.5)
 
+## When to START standing so the body finishes WITH the camera. A real
+## Crouch_Exit is shorter than the blend it replaces, so it begins later --
+## stretching it to fill RISE_TIME instead would play a 0.83 s motion at 0.55x
+## and read as wading through treacle.
+func _stand_up_delay() -> float:
+	if _anim_player != null and _anim_player.has_animation(&"Crouch_Exit"):
+		return maxf(RISE_TIME - _anim_player.get_animation(&"Crouch_Exit").length, 0.0)
+	return BODY_RISE_DELAY
+
+## Crouch_Exit is a real stand-up -- weight shifts, a hand leaves the floor.
+## The Crouch_Idle -> Idle blend below is the fallback, and it is what the free
+## animation tier gets: Crouch_Exit ships only in the paid UAL1 tier, and this
+## project runs without it. The blend is two static poses interpolated, which
+## reads as the body inflating rather than pushing off.
 func _start_stand_up() -> void:
-	if _anim_player != null and _anim_player.has_animation(&"Idle"):
+	if _anim_player == null:
+		return
+	if _anim_player.has_animation(&"Crouch_Exit"):
+		_anim_player.play(&"Crouch_Exit")
+		# Its last frame IS the standing pose, so Idle follows with no blend.
+		_anim_player.queue(&"Idle")
+		return
+	if _anim_player.has_animation(&"Idle"):
 		_anim_player.play(&"Idle", BODY_STAND_BLEND)
 
 func _start_walk_loop() -> void:
