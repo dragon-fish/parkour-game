@@ -61,9 +61,15 @@ func _run() -> void:
 	root.set("rescue_below_hp", 30.0)
 	# The hard edge of sight, just past where the fog finishes. Fog hides the
 	# cut; the cut is what stops a distant box from keeping its silhouette.
-	# MUST stay under half a period (50 m) or the far copy of the world becomes
-	# visible and the seam announces itself.
-	root.set("view_distance", 140.0)
+	#
+	# THE LIMIT IS THE TILING'S EDGE, NOT HALF A PERIOD. Seeing a COPY is
+	# harmless: a copy is identical to what it copies, so nobody can tell one
+	# from the other. The tell is seeing where the tiling STOPS. The body never
+	# leaves the centre tile, so it sees at most P/2 + view_distance from the
+	# origin, and a 3x3 tiling reaches 1.5P -- view_distance may therefore go
+	# all the way to one whole period. Widen the tiling to 5x5 and it may go to
+	# two.
+	root.set("view_distance", 280.0)
 	var fog := FogConfig.new()
 	fog.resource_local_to_scene = true
 	# FOG IS NOT ATMOSPHERE HERE, IT IS THE SEAM'S COVER. Without a limit on
@@ -75,8 +81,8 @@ func _run() -> void:
 	# THE END DISTANCE MUST STAY UNDER HALF A PERIOD -- that is the spec's
 	# `2R < P`. Push it past 50 here and the pop comes back.
 	fog.enabled = true
-	fog.fade_begin_distance = 55.0
-	fog.fade_end_distance = 132.0
+	fog.fade_begin_distance = 110.0
+	fog.fade_end_distance = 265.0
 	fog.max_opacity = 1.0
 	# Fog the same shade as the background, so a swallowed object does not
 	# merely dim -- it stops existing as a shape.
