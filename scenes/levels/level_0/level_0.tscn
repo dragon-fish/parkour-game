@@ -1,0 +1,126 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/level/arena.gd" id="1_ludcj"]
+[ext_resource type="Resource" path="res://presets/default.tres" id="2_j3355"]
+[ext_resource type="Script" path="res://scripts/level/fog_config.gd" id="3_d5psl"]
+[ext_resource type="Script" path="res://scripts/level/spawn_point.gd" id="4_ovr75"]
+[ext_resource type="Material" path="res://materials/acrylic_void.tres" id="5_jbev3"]
+[ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="6_uf3om"]
+[ext_resource type="Script" path="res://scripts/player/player.gd" id="7_j22ga"]
+[ext_resource type="Script" path="res://scripts/level/torus_wrap.gd" id="8_5xt5c"]
+[ext_resource type="Script" path="res://scripts/level/tutorial_director.gd" id="9_x8gn0"]
+[ext_resource type="PackedScene" path="res://scenes/levels/level_0/lesson_vault.tscn" id="10_0fku3"]
+[ext_resource type="PackedScene" path="res://scenes/levels/level_0/lesson_slide.tscn" id="11_1r6xc"]
+[ext_resource type="PackedScene" path="res://scenes/levels/level_0/lesson_wall_run.tscn" id="12_obtqw"]
+[ext_resource type="PackedScene" path="res://scenes/levels/level_0/lesson_grab.tscn" id="13_j63b3"]
+[ext_resource type="PackedScene" path="res://scenes/levels/level_0/tower.tscn" id="14_7sdkp"]
+[ext_resource type="Script" path="res://scripts/level/level_zero.gd" id="15_ankgd"]
+
+[sub_resource type="Resource" id="Resource_6jayi"]
+resource_local_to_scene = true
+script = ExtResource("3_d5psl")
+fade_begin_distance = 96.0
+fade_end_distance = 228.0
+tint = Color(0.93, 0.96, 0.98, 1)
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1baj3"]
+sky_top_color = Color(0.78, 0.86, 0.93, 1)
+sky_horizon_color = Color(0.93, 0.96, 0.98, 1)
+ground_bottom_color = Color(0.78, 0.86, 0.93, 1)
+ground_horizon_color = Color(0.93, 0.96, 0.98, 1)
+sun_angle_max = 0.0
+sun_curve = 0.0
+
+[sub_resource type="Sky" id="Sky_aqg2h"]
+sky_material = SubResource("ProceduralSkyMaterial_1baj3")
+
+[sub_resource type="Environment" id="Environment_0opk6"]
+background_mode = 2
+sky = SubResource("Sky_aqg2h")
+ambient_light_source = 2
+ambient_light_color = Color(0.223529, 0.466667, 0.741176, 1)
+ssr_enabled = true
+ssr_max_steps = 32
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_46h73"]
+size = Vector3(680, 2, 680)
+
+[sub_resource type="BoxMesh" id="BoxMesh_5jpnr"]
+size = Vector3(680, 2, 680)
+
+[node name="Level0" type="Node3D" unique_id=1914551632 node_paths=PackedStringArray("player", "spawn_point")]
+script = ExtResource("1_ludcj")
+player = NodePath("Player")
+spawn_point = NodePath("SpawnPoint")
+config = ExtResource("2_j3355")
+fog = SubResource("Resource_6jayi")
+rescue_below_hp = 30.0
+view_distance = 240.0
+start_in_third_person = true
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1352415555]
+transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 0, 0)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=362870298]
+environment = SubResource("Environment_0opk6")
+
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=695370607]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 25)
+script = ExtResource("4_ovr75")
+
+[node name="Plain" type="StaticBody3D" parent="." unique_id=1677242963]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="Plain" unique_id=2118557262]
+shape = SubResource("BoxShape3D_46h73")
+
+[node name="Mesh" type="MeshInstance3D" parent="Plain" unique_id=249959377]
+material_override = ExtResource("5_jbev3")
+mesh = SubResource("BoxMesh_5jpnr")
+
+[node name="Player" type="CharacterBody3D" parent="." unique_id=1639581019 node_paths=PackedStringArray("camera_rig", "probes", "screen_effects", "subtitle", "toast") instance=ExtResource("6_uf3om")]
+script = ExtResource("7_j22ga")
+camera_rig = NodePath("CameraRig")
+probes = NodePath("Probes")
+screen_effects = NodePath("CameraRig/ScreenEffects")
+subtitle = NodePath("CameraRig/Subtitle")
+toast = NodePath("CameraRig/Toast")
+
+[node name="TorusWrap" type="Node" parent="." unique_id=944069860 node_paths=PackedStringArray("player")]
+script = ExtResource("8_5xt5c")
+player = NodePath("../Player")
+
+[node name="TutorialDirector" type="Node" parent="." unique_id=9927027 node_paths=PackedStringArray("player", "wrap")]
+script = ExtResource("9_x8gn0")
+player = NodePath("../Player")
+lessons = Array[Dictionary]([{
+&"scene": null,
+&"teaches": &"Jump"
+}, {
+&"scene": ExtResource("10_0fku3"),
+&"teaches": &"SpeedVault"
+}, {
+&"scene": ExtResource("11_1r6xc"),
+&"teaches": &"Slide"
+}, {
+&"scene": ExtResource("12_obtqw"),
+&"teaches": &"WallRun"
+}, {
+&"scene": ExtResource("13_j63b3"),
+&"teaches": &"Grab"
+}])
+wrap = NodePath("../TorusWrap")
+
+[node name="Tower" type="Node3D" parent="." unique_id=813713562 instance=ExtResource("14_7sdkp")]
+
+[node name="LevelZero" type="Node" parent="." unique_id=166328764 node_paths=PackedStringArray("player", "director", "wrap", "tower", "tower_checkpoint", "orb", "plain", "plain_mesh", "plain_collision")]
+script = ExtResource("15_ankgd")
+player = NodePath("../Player")
+director = NodePath("../TutorialDirector")
+wrap = NodePath("../TorusWrap")
+tower = NodePath("../Tower")
+tower_checkpoint = NodePath("../Tower/Checkpoint00")
+orb = NodePath("../Tower/Orb")
+plain = NodePath("../Plain")
+plain_mesh = NodePath("../Plain/Mesh")
+plain_collision = NodePath("../Plain/Collision")
