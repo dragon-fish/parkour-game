@@ -34,6 +34,26 @@ hosts (pause menu, main menu) parent it, and there it lived in the corner.
 **Rule: verify UI inside its real host, not in a preview scene where it is
 the root.**
 
+### Why the name lies
+
+`set_anchors_preset(preset, keep_offsets = false)` reads as "reset the offsets
+to match the preset". It does the opposite: `false` means **recompute the
+offsets so the node keeps the rect it has right now** under the new anchors. A
+freshly constructed `Control` has a rect of 0×0, so the preset faithfully
+preserves nothing.
+
+Which makes **call order** the whole story, and it is the reason this bug is so
+good at hiding:
+
+| when you call it | what happens |
+| --- | --- |
+| before `add_child()` | offsets are computed with no parent, and once parented that evaluates to full size — it works, by accident |
+| in `_ready()`, already parented | offsets come back as the 0×0 rect, and the node stays a point in the corner |
+
+So a file in this repo that calls it before parenting is **not** a pattern to
+copy into a `_ready()`. Use `set_anchors_and_offsets_preset()` and the order
+stops mattering.
+
 ## Visibility has two truths
 
 ```gdscript
