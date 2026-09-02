@@ -73,13 +73,13 @@ func build() -> CharacterBody3D:
 	crosshair.owner = player
 
 	# The one-line text layer (checkpoint saves), on the player for the same
-	# reason the two above are. Its Label child is built by Notice._ready(),
+	# reason the two above are. Its Label child is built by Subtitle._ready(),
 	# not here.
-	var notice := CanvasLayer.new()
-	notice.name = "Notice"
-	notice.set_script(load("res://scripts/ui/notice.gd"))
-	rig.add_child(notice)
-	notice.owner = player
+	var subtitle := CanvasLayer.new()
+	subtitle.name = "Subtitle"
+	subtitle.set_script(load("res://scripts/ui/subtitle.gd"))
+	rig.add_child(subtitle)
+	subtitle.owner = player
 
 	# Mount point for the visible character body. Reserved empty for the P5
 	# procedural/attachable first-person body, and it MUST STAY that way in
@@ -126,7 +126,7 @@ func build() -> CharacterBody3D:
 
 	player.camera_rig = rig
 	player.screen_effects = fx
-	player.notice = notice
+	player.subtitle = subtitle
 	crosshair.player = player
 
 	# Probe rig. Heights are expressed relative to the body origin, which sits

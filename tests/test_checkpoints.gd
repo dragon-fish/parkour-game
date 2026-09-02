@@ -80,23 +80,23 @@ func test_a_named_checkpoint_announces_and_an_unnamed_one_stays_quiet() -> void:
 	# 「检查点 xx 已保存」 -- shown only when the author gave the point a name,
 	# and only when the active respawn actually changes.
 	var player: Player = await _standing_player()
-	var notice := Notice.new()
-	add_child_autofree(notice)
+	var subtitle := Subtitle.new()
+	add_child_autofree(subtitle)
 	await step(1)
-	player.notice = notice
+	player.subtitle = subtitle
 
 	var silent := _checkpoint(player.global_position)
 	await step(3)
 	assert_eq(player.active_checkpoint, silent, "test setup: the unnamed touch did not register")
-	assert_false(notice.showing(), "an unnamed checkpoint put text on screen")
+	assert_false(subtitle.showing(), "an unnamed checkpoint put text on screen")
 
 	silent.position = Vector3(40.0, 1.0, 0.0)
 	var named := _checkpoint(player.global_position)
 	named.display_name = "天台"
 	await step(3)
 	assert_eq(player.active_checkpoint, named, "test setup: the named touch did not register")
-	assert_true(notice.showing(), "a named checkpoint showed nothing")
-	assert_true(notice.text().contains("天台"), "the line does not carry the name: %s" % notice.text())
+	assert_true(subtitle.showing(), "a named checkpoint showed nothing")
+	assert_true(subtitle.text().contains("天台"), "the line does not carry the name: %s" % subtitle.text())
 
 func test_a_dying_body_saves_nothing() -> void:
 	# ✅ THE OWNER: jumping off a roof onto a checkpoint turned the death
@@ -115,3 +115,32 @@ func test_a_dying_body_saves_nothing() -> void:
 	await step(3)
 	assert_eq(player.active_checkpoint, checkpoint,
 		"the same checkpoint refused an honest, living touch afterwards")
+
+func test_a_higher_index_takes_over_from_a_lower_one() -> void:
+	# Climbing: each point up the spiral outranks the one below it.
+	var player: Player = await _standing_player()
+	var low := _checkpoint(player.global_position)
+	low.index = 10
+	await step(3)
+	assert_eq(player.active_checkpoint, low, "test setup: the low point did not register")
+	low.position = Vector3(40.0, 1.0, 0.0)
+	var high := _checkpoint(player.global_position)
+	high.index = 20
+	await step(3)
+	assert_eq(player.active_checkpoint, high, "a higher index did not take over")
+
+func test_a_lower_index_does_not_take_over() -> void:
+	# Falling: the body drops back through the points it already passed. Those
+	# touches must not undo the climb -- this is the whole reason index exists.
+	var player: Player = await _standing_player()
+	var high := _checkpoint(player.global_position)
+	high.index = 20
+	high.display_name = "顶端"
+	await step(3)
+	assert_eq(player.active_checkpoint, high, "test setup: the high point did not register")
+	high.position = Vector3(40.0, 1.0, 0.0)
+	var low := _checkpoint(player.global_position)
+	low.index = 10
+	await step(3)
+	assert_eq(player.active_checkpoint, high,
+		"falling back through a lower checkpoint undid the progress above it")

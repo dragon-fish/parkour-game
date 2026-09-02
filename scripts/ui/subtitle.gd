@@ -1,8 +1,10 @@
-class_name Notice
+class_name Subtitle
 extends CanvasLayer
 
-# One line of player-facing text that fades in, holds, and fades out --
-# checkpoint saves today, whatever else needs a quiet word tomorrow.
+# One line of player-facing text along the bottom of the screen, faded in,
+# held, faded out. THIS IS THE GAME TALKING TO THE PLAYER -- tutorial lines,
+# story. A report that something HAPPENED (a checkpoint saved, an item taken)
+# is not a subtitle; that belongs in the corner toast, not here.
 #
 # Lives on the PLAYER next to Crosshair and ScreenEffects, for the same
 # reason those do: it talks about what happened to this player, and must
