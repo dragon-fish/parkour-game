@@ -160,6 +160,39 @@ DO NOT 为了画面更壮观而调大它——那会同时拆掉传送的掩护�
 
 ## 教学部分
 
+### 每一课都是一个能单独打开游玩的关卡
+
+**一课的 `.tscn` 必须能直接双击打开就玩**——有地板、有光、有出生点、有玩家。作者要在
+里面反复调几何，而每次都得先启动整个教程关才能看一眼，是不可接受的。
+
+做法是继承 `templates/base_level.tscn`（Godot 的 Scene > New Inherited Scene）。它
+已经带着 `Sun` / `WorldEnvironment` / `SpawnPoint` / `Floor`（8×8 安全垫）/ `Player` /
+`DebugHud` / `TuningPanel`，见 `docs/level-templates.md`。
+
+#### 教程关只取约定的那一棵子树
+
+课程场景里，**真正属于这一课的几何全部放在名为 `Content` 的节点下**。教程关拼接时只
+拿这一棵，地板、环境、光、玩家一律丢掉——那些是为了单独游玩而存在的脚手架，不是这一课
+的内容。
+
+```gdscript
+var whole: Node = load(lesson_path).instantiate()   # 不 add_child
+var content: Node = whole.get_node_or_null("Content")
+whole.remove_child(content)
+tutorial_root.add_child(content)
+whole.free()
+```
+
+**INSTANTIATE 但绝不 ADD_CHILD。** `_ready()` 只在节点进入场景树时运行，所以这样
+`Arena._ready()` 从不执行：不会加载第二具角色模型，不会出现第二个 `Player`，不会有
+第二个 `TuningPanel` 抢 F1。把整个场景加进树再删掉多余节点是同一件事的错误做法——
+那些 `_ready()` 已经跑过了，而其中一个要花几百毫秒加载身体。
+
+#### 这条约定同时解决了「一课是一个单位」
+
+`Content` 就是那个单位：整棵子树一起生长、一起崩塌、一起随传送平移。生长/崩塌作用在
+`Content` 的根上，而不是它下面的每个几何体各自淡入淡出。
+
 ### 一课 = 一整块场景，作为一个单位出现和消失
 
 平地上一次只出现**一块**场景，教会一个动作，然后整块消失，下一块出现。不是铺开一片
