@@ -494,13 +494,19 @@ DO NOT 在塔上放需要停下来瞄准的跳跃。够不着就该是走捷径�
   玩家直接获得操作权。
 - 红色剪影的视觉已存在：`main_menu.gd` 在 SubViewport 里用
   `silhouette_glitch.gdshader` 做三段式着色，无模型也能工作。
-- 起身用 `Crouch_Exit`。主菜单的剪影本来就播 `Crouch_Idle`（`main_menu.gd:579`）
-  ——她一开始就是蹲着的，点击才起身，起点已经对了。
-- **但 `Crouch_Exit` 只在付费的 UAL1 完整版里**，免费的 `ual1_standard.glb` 只有
+- **起身这一拍已经实现了，在主菜单里。** `main_menu.gd` 的 `_beat_rise_begin()`：
+  第 0 帧就是蹲姿 + 白色标记 + 微弱地板，然后身体站起、相机 ease-in-out 拉出、logo
+  淡出、地板点阵与镜面到位。**教程关开场与它只差终点**——主菜单拉到正面全身然后出
+  菜单，教程关落到剪影身后交出控制权。前半段整段复用。
+- 其中一条设计约束照搬：**身体只站起来，从不转身；所有转动由相机完成。**
+- 起身当前是 `Crouch_Idle -> Idle` 的引擎混合，`BODY_STAND_BLEND = 1.5` s（= `RISE_TIME`，
+  相机落位那一帧身体正好站直）。**不是 `Crouch_Exit`。**
+- `Crouch_Exit` 是一个**升级项，不是缺失素材**：它有真实的重心转移，而混合只是两个
+  静态姿势之间插值。但它只在付费的 UAL1 完整版里，免费的 `ual1_standard.glb` 只有
   `Crouch_Idle_Loop` / `Crouch_Fwd_Loop`。本项目的底线是没有付费包也跑得起来，所以
-  开场必须能降级：缺它就直接切到站立待机，不播起身。照抄 `main_menu.gd:579` 那段
-  `has_animation()` 优先级回退即可。
-- 库里的名字带 `_Loop` 后缀而主菜单查的是 `Crouch_Idle`，中间有一层改名或别名。
+  写成优先级回退：**有 `Crouch_Exit` 就播它，没有就退回现在这个混合**——两条路都
+  不会让人看到 T-pose 或僵在半空。这与 `character_animator.gd` 的惯例一致。
+- 库里的 clip 名带 `_Loop` 后缀而主菜单查的是 `Crouch_Idle`，中间有一层改名或别名。
   接 `Crouch_Exit` 时走同一层，不要直接写库里的原名。
 - 第三人称相机已完整（`V` 切换，`CameraRig` 视其为保存的偏好）。
 - 落点：塔顶光球 → 白幕 → 第一关，从医院醒来。白幕符合项目的转场约定（正常转场
