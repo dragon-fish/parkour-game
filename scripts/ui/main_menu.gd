@@ -23,7 +23,6 @@ extends Control
 signal beat_rise
 signal beat_title
 
-const MAIN_SCENE := "res://scenes/main.tscn"
 
 ## What 开始 loads, and where the first-ever click goes. The tutorial is the
 ## first level as well as the game's front door.

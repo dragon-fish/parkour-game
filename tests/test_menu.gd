@@ -740,7 +740,7 @@ func test_the_main_menu_row_comes_back_once_the_tutorial_is_finished() -> void:
 # either dumped into a menu he has not earned or trapped in a tutorial he has
 # already done.
 #
-# EIGHT FRAMES, not three. MainMenu._ready() awaits six process frames for the
+# EIGHT FRAMES. MainMenu._ready() awaits six process frames for the
 # framing solve before _play_entrance() sets _entrance_active, and
 # _unhandled_input() drops every event until it does -- a shorter wait makes
 # these tests pass or fail on nothing at all. _prompt_shown is then forced
