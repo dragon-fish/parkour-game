@@ -12,12 +12,14 @@ extends Node3D
 # hardest part until the geometry is buried under art.
 #
 # COLLISION IS NOT THIS CLASS'S BUSINESS. Geometry is solid from the moment it
-# exists until it is freed. Both ends of a block's life happen where the player
-# cannot reach it -- growth at the placement distance, which the timing
-# contract keeps beyond his reach, and collapse at the recycle distance, which
-# is already far away -- so there is no state for collision to protect. An
-# earlier version gated collision on growth completing, which protected nothing
-# and could seal a player inside a block that landed on him.
+# exists until it is freed, and neither end of the animation touches that.
+# Growth happens at the placement distance, which the timing contract keeps
+# beyond the player's reach. Collapse does NOT: a lesson is passed by
+# performing its move, so the player is standing at the block -- often on it --
+# when it is told to leave, and it stays solid under him the whole way out.
+# When it is finally freed he drops onto the plain, which is the fiction.
+# DO NOT gate collision on progress. An earlier version did, which protected
+# nothing and could seal a player inside a block that landed on him.
 
 ## How long the growth takes. Must satisfy the inequality above against
 ## TutorialObstacle.spawn_distance.

@@ -124,10 +124,10 @@ func test_a_wrap_carries_the_standing_obstacle() -> void:
 		"the standing obstacle did not travel with the wrap")
 
 func test_adopting_the_same_obstacle_twice_does_not_double_the_wrap_shift() -> void:
-	# A double-adopt puts the same obstacle in _standing twice. _on_wrapped
-	# loops _standing calling shift_by() on each entry, so a duplicate would
-	# shift the obstacle by TWO periods on one crossing -- landing it a full
-	# period behind the body shift_by exists to keep it in step with.
+	# A double-adopt would put the same obstacle in _live twice. _on_wrapped
+	# calls shift_by() once per entry, so a duplicate shifts the obstacle by
+	# TWO periods on one crossing -- landing it a full period behind the body
+	# shift_by exists to keep it in step with.
 	var player: Player = await _directed([{teaches = Move.CROUCH}])
 	var wrap := TorusWrap.new()
 	wrap.player = player
@@ -201,17 +201,22 @@ func test_passing_a_lesson_collapses_it_and_builds_the_next() -> void:
 	assert_not_null(_director.find_child("First", true, false),
 		"the passed lesson vanished instantly instead of collapsing")
 
-func test_a_lesson_without_a_scene_still_advances() -> void:
-	# The table is authored a row at a time; a row with no scene yet must not
-	# stop the sequence from being testable.
+func test_a_lesson_without_a_scene_builds_nothing_and_still_advances() -> void:
+	# The table is authored a row at a time, and a half-filled one must stay
+	# walkable. A row with no scene teaches nothing visible: it must advance
+	# like any other AND leave the world empty. A block built for it would be
+	# an invisible solid standing in the player's path, and would go on to
+	# push every later lesson away through `avoid`.
 	var player: Player = await _directed([
 		{teaches = Move.CROUCH},
 		{teaches = Move.SLIDE},
 	])
 	await step(3)
+	assert_eq(_director.live_count(), 0, "a sceneless lesson built a block anyway")
 	player.move_manager.start(Move.CROUCH)
 	await step(3)
 	assert_eq(_director.index, 1, "a sceneless lesson blocked the sequence")
+	assert_eq(_director.live_count(), 0, "advancing past a sceneless lesson built a block")
 
 func test_the_lessons_own_geometry_fades_in_with_the_block() -> void:
 	# A lesson is ONE block: the fade acts on the whole of its geometry, not on

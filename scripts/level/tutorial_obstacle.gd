@@ -5,17 +5,24 @@ extends Node3D
 # negotiable:
 #
 #   PLACE   anchor = player position + facing * spawn_distance
-#   FOLLOW  while growth has not started, re-place it as the player turns --
+#   FOLLOW  while the anchor is unlocked, re-place it as the player turns --
 #           he never sees this happen, because it only happens out where
 #           nothing is drawn yet
 #   LOCK    the instant growth starts, the anchor is pinned for good
 #
 # WITHOUT THE LOCK the player turns his head and watches the obstacle drift
 # through the void, and everything this level builds up about the world being
-# a real place collapses in one shot.
+# a real place collapses in one shot. Worse, an obstacle that keeps following
+# retreats from a player running straight at it.
 #
-# Standing still and spinning keeps it following forever and growth never
-# starts -- that is correct. It only means the player is not running yet.
+# WHICH PATHS EVER FOLLOW. TutorialDirector builds an obstacle and starts its
+# growth in the same frame, so lock() lands before the first _physics_process
+# ever runs: on that path the anchor is placed exactly once and FOLLOW is
+# never reached. FOLLOW is for an obstacle nothing has begun to draw yet --
+# one standing in a level by hand and handed over through adopt(). Such an
+# obstacle follows for as long as it is left unlocked, and a player who stands
+# still and spins keeps it following forever; that is correct, and only means
+# nothing has started growing in it.
 
 ## The body this obstacle places itself in front of.
 @export var player: Player

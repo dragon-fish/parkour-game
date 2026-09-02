@@ -65,7 +65,8 @@ signal finished
 ## because this grows: see naming-config-fields.
 ##   lesson    int -- index into `lessons`, or -1 for an adopted stranger
 ##   obstacle  TutorialObstacle -- the placement anchor
-##   growth    GrowingSolid -- owns this block's grow/collapse timing
+##   growth    GrowingSolid -- owns this block's grow/collapse timing; null
+##             for an adopted obstacle, which grows on nobody's clock
 ##   leaving   true once it has been told to collapse
 var _live: Array[Dictionary] = []
 
@@ -107,13 +108,18 @@ func attach_wrap() -> void:
 
 ## Takes ownership of an obstacle already in the scene so it travels on a
 ## wrap. Used by the level builder and by tests.
-func adopt(obstacle: TutorialObstacle, growth: GrowingSolid = null) -> void:
+##
+## An adopted obstacle is a stranger: this class did not build it, does not
+## own its growth, and never collapses it. It is here for the wrap and for
+## nothing else, so its entry carries no block and an index no lesson can
+## match.
+func adopt(obstacle: TutorialObstacle) -> void:
 	if obstacle == null:
 		return
 	for entry in _live:
 		if entry.get(&"obstacle") == obstacle:
 			return
-	_live.append({lesson = -1, obstacle = obstacle, growth = growth, leaving = false})
+	_live.append({lesson = -1, obstacle = obstacle, growth = null, leaving = false})
 
 ## The anchor of the lesson currently being taught, or null.
 func current_obstacle() -> TutorialObstacle:
