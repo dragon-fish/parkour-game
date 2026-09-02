@@ -167,7 +167,7 @@ if height <= _config.pawn.max_step_height or height > vault_max_height:
 以下这些依赖真人操作，**我全部没有验证，也不会在报告里声称验证过**：
 
 - 鼠标转视角的跟手程度与灵敏度
-- `Shift` 冲刺 / `Space` 跳跃 / `Tab` / `F1` / `Esc` 的键盘交互
+- `Shift` 蹲下 / `Space` 跳跃 / `Ctrl` 走 / `Q` 转身 / `F1` / `Esc` 的键盘交互
 - 落地下沉、步频晃动、FOV 变化的观感强度
 - **手感本身——跑起来爽不爽**
 

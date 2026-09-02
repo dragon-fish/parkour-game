@@ -5,8 +5,9 @@ extends Node3D
 # body on the left under a free orbit camera, the clip list in the menu's
 # own red column on the right. Left-drag turns HER, right-drag pans the
 # camera, the wheel zooms. A looping clip loops; a one-shot returns to Idle
-# when it ends. The floor speaks the menu's dot-grid language
-# (dot_grid_floor.gdshader) with SSR for the sheen.
+# when it ends. The floor is the shared acrylic material
+# (materials/acrylic.tres, shaders/acrylic.gdshader) with SSR for the sheen,
+# the same surface the menu stands on.
 #
 # Whole scene built from code on a one-node .tscn, exactly like MainMenu.
 
