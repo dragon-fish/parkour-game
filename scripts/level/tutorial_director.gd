@@ -19,7 +19,12 @@ extends Node
 ## array because this table will grow more of them (a hint line, an obstacle
 ## scene, a shortcut flag):
 ##   teaches  StringName -- the Move whose first performance passes this lesson
+##   scene    PackedScene -- optional; the obstacle instanced for this lesson
 @export var lessons: Array[Dictionary] = []
+
+## The level's wrap, if it has one. A standing obstacle must take the same
+## step the body takes when it crosses an edge.
+@export var wrap: TorusWrap
 
 ## How far along the player is. The lesson at this index is the one currently
 ## being taught; equal to lessons.size() once every lesson is passed.
@@ -30,9 +35,14 @@ signal finished
 
 var _finished_announced: bool = false
 
+## Obstacles currently in the world, oldest first. They travel together on a
+## wrap, so this list is what the wrap talks to.
+var _standing: Array[TutorialObstacle] = []
+
 func _ready() -> void:
 	if player != null and player.move_manager != null:
 		player.move_manager.move_changed.connect(_on_move_changed)
+	attach_wrap()
 
 func _on_move_changed(_from: StringName, to: StringName) -> void:
 	# An empty table never announces finished. A level author who forgot to
@@ -53,3 +63,27 @@ func _on_move_changed(_from: StringName, to: StringName) -> void:
 	if index >= lessons.size() and not _finished_announced:
 		_finished_announced = true
 		finished.emit()
+
+## Connects the level's wrap. Idempotent, and safe with no wrap at all -- a
+## level without one simply never shifts.
+func attach_wrap() -> void:
+	if wrap != null and not wrap.wrapped.is_connected(_on_wrapped):
+		wrap.wrapped.connect(_on_wrapped)
+
+## Takes ownership of an obstacle already in the scene, so it travels on a
+## wrap. Used by the level builder and by tests.
+func adopt(obstacle: TutorialObstacle) -> void:
+	if obstacle != null and not _standing.has(obstacle):
+		_standing.append(obstacle)
+
+## The obstacle for the lesson currently being taught, or null.
+func current_obstacle() -> TutorialObstacle:
+	for obstacle in _standing:
+		if is_instance_valid(obstacle) and not obstacle.locked:
+			return obstacle
+	return _standing.back() if not _standing.is_empty() else null
+
+func _on_wrapped(offset: Vector3) -> void:
+	for obstacle in _standing:
+		if is_instance_valid(obstacle):
+			obstacle.shift_by(offset)

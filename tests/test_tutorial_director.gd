@@ -8,8 +8,16 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 
 var _world: Dictionary = {}
 var _director: TutorialDirector
+var _loose: Array[Node] = []
+
+func _extra_free(node: Node) -> void:
+	_loose.append(node)
 
 func after_each() -> void:
+	for node in _loose:
+		if is_instance_valid(node):
+			node.queue_free()
+	_loose.clear()
 	if is_instance_valid(_director):
 		_director.queue_free()
 	_director = null
@@ -86,3 +94,30 @@ func test_an_empty_table_neither_advances_nor_crashes() -> void:
 	player.move_manager.start(Move.CROUCH)
 	await step(2)
 	assert_eq(_director.index, 0, "an empty table moved its index")
+
+func test_a_wrap_carries_the_standing_obstacle() -> void:
+	# The body is shifted one period on a crossing. An obstacle already
+	# growing in front of it must take the same step, or what was dead ahead
+	# is suddenly a hundred metres behind.
+	var player: Player = await _directed([{teaches = Move.CROUCH}])
+	var wrap := TorusWrap.new()
+	wrap.player = player
+	wrap.period = 100.0
+	get_tree().root.add_child(wrap)
+	_extra_free(wrap)
+	_director.wrap = wrap
+	_director.attach_wrap()
+
+	var obstacle := TutorialObstacle.new()
+	obstacle.player = player
+	get_tree().root.add_child(obstacle)
+	_extra_free(obstacle)
+	await step(2)
+	obstacle.lock()
+	_director.adopt(obstacle)
+	var before: Vector3 = obstacle.anchor
+
+	player.global_position = Vector3(51.0, player.global_position.y, 0.0)
+	await step(2)
+	assert_almost_eq(obstacle.anchor.x, before.x - 100.0, 0.01,
+		"the standing obstacle did not travel with the wrap")
