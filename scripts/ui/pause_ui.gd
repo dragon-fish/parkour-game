@@ -33,7 +33,7 @@ var _quit_confirm: Control
 ## pause always opens back on the list -- see _set_shown().
 var _showing_settings: bool = false
 
-## Set by _go_to_main_menu(), cleared by a call_deferred() queued right after
+## Set by go_to_main_menu(), cleared by a call_deferred() queued right after
 ## the scene-change request itself. Guards a same-frame race:
 ## change_scene_to_file() is deferred -- for at least the rest of this frame
 ## get_tree().current_scene is still the OLD scene while the new one is only
@@ -52,13 +52,35 @@ var _showing_settings: bool = false
 ## in the same message queue, so by the time this runs the swap has already
 ## happened -- and it fires exactly once, on a fixed one-frame schedule,
 ## with no dependency on what the player does afterward.
+## The pause menu's rows, in order. Named fields rather than a positional
+## array because this table will grow more of them; see
+## .claude/skills/naming-config-fields.
+##   label    String -- what the row says
+##   handler  StringName -- the method on this node the row runs
+const _ENTRIES := [
+	{label = "继续游戏", handler = &"_resume"},
+	{label = "上一检查点", handler = &"_respawn_at_checkpoint"},
+	{label = "重新开始", handler = &"_restart_from_spawn"},
+	{label = "设置", handler = &"_show_settings"},
+	{label = "回主菜单", handler = &"go_to_main_menu"},
+	{label = "退出游戏", handler = &"_show_quit_confirm"},
+]
+
+## The rows currently on screen, in the order MeMenuList was handed them.
+##
+## DISPATCH IS BY IDENTITY, NOT BY POSITION. MeMenuList reports an index into
+## the labels it was given and nothing else, so leaving a row out used to
+## renumber every handler below it with no error anywhere: 退出游戏 moved up
+## onto 回主菜单's number and quit the game.
+var _entries: Array[Dictionary] = []
+
 var _pending_scene_change: bool = false
 ## The loading transition's white sheet -- lives here because this autoload
 ## survives the scene switch; MainMenu hands over at full white and the
 ## lift happens in the freshly-loaded level.
 var _white: ColorRect
 
-## Seam for _go_to_main_menu(): swappable so a test can observe "Back to
+## Seam for go_to_main_menu(): swappable so a test can observe "Back to
 ## Main Menu was requested" without a real change_scene_to_file() replacing
 ## the scene tree out from under GUT's own runner mid-suite. Same shape as
 ## MainMenu's own
@@ -115,7 +137,7 @@ func _build_ui() -> void:
 	_menu_list.offset_top = 0.0
 	_menu_list.offset_bottom = 0.0
 	add_child(_menu_list)
-	_menu_list.set_items(["继续游戏", "上一检查点", "重新开始", "设置", "回主菜单", "退出游戏"])
+	_refresh_entries()
 	_menu_list.chosen.connect(_on_chosen)
 
 	_settings_menu = MeSettingsMenu.new()
@@ -245,6 +267,17 @@ func _resume() -> void:
 ## non-cascading CanvasLayer gotcha applies to them exactly as much as it did
 ## to MeMenuList -- choosing between the list and the settings page via
 ## _showing_settings.
+## Rebuilds the row list from _ENTRIES. Rebuilt rather than diffed: MeMenuList
+## resets its selection on set_items(), and a pause that opens on the top row
+## is what a fresh pause should do anyway.
+func _refresh_entries() -> void:
+	_entries = []
+	var labels: Array[String] = []
+	for entry in _ENTRIES:
+		_entries.append(entry)
+		labels.append(entry.label)
+	_menu_list.set_items(labels)
+
 func _set_shown(on: bool) -> void:
 	visible = on
 	_backdrop.visible = on
@@ -278,19 +311,9 @@ func _current_scene_wants_mouse_capture() -> bool:
 	return true
 
 func _on_chosen(index: int) -> void:
-	match index:
-		0:
-			_resume()
-		1:
-			_respawn_at_checkpoint()
-		2:
-			_restart_from_spawn()
-		3:
-			_show_settings()
-		4:
-			_go_to_main_menu()
-		5:
-			_show_quit_confirm()
+	if index < 0 or index >= _entries.size():
+		return
+	call(_entries[index].handler)
 
 ## The "last checkpoint" menu choice: the R-tap action, from the menu --
 ## resume first (the pause menu has no business surviving its own choice),
@@ -347,7 +370,9 @@ func _on_settings_closed() -> void:
 	_showing_settings = false
 	_set_shown(visible)
 
-func _go_to_main_menu() -> void:
+## Sends the game back to the front door. PUBLIC because the settings page's
+## 重玩新手教程 row needs this exact route from either of its two hosts.
+func go_to_main_menu() -> void:
 	if not ResourceLoader.exists(MAIN_MENU_SCENE):
 		return
 	_set_shown(false)

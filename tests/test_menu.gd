@@ -86,10 +86,10 @@ func after_each() -> void:
 	get_tree().paused = false
 	PauseUi._set_shown(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	# Same reasoning as the two lines above, for the FIX 5 pending-scene-change
-	# guard (test_go_to_main_menu_unpauses_before_requesting_the_scene_change
-	# below): a stuck true would silently no-op every toggle_pause() in every
-	# test that runs after it.
+	# Same reasoning as the two lines above, for the pending-scene-change guard
+	# (test_go_to_main_menu_unpauses_before_requesting_the_scene_change below):
+	# a stuck true would silently no-op every toggle_pause() in every test
+	# that runs after it.
 	PauseUi._pending_scene_change = false
 	PauseUi._change_scene = Callable(PauseUi, "_real_change_scene")
 
@@ -264,32 +264,31 @@ func test_esc_while_settings_open_under_pause_cancels_back_to_the_list() -> void
 	assert_true(get_tree().paused, "Esc-cancel out of settings must not also resume the game")
 	assert_true(PauseUi._menu_list.is_visible_in_tree(), "the menu list should be back on screen after Esc-cancel")
 
-## FIX 6b (final whole-branch review): _go_to_main_menu() unpauses BEFORE
-## requesting the scene change, not after -- change_scene_to_file() is
-## deferred, so the opposite order would leave the tree paused for the rest
-## of the frame while the old scene is still current. Exercised through the
-## real handler with PauseUi's own _change_scene seam stubbed (same shape as
-## MainMenu._change_scene), so this never actually swaps GUT's runner scene.
+## go_to_main_menu() unpauses BEFORE requesting the scene change, not after --
+## change_scene_to_file() is deferred, so the opposite order would leave the
+## tree paused for the rest of the frame while the old scene is still
+## current. Exercised through the real handler with PauseUi's own
+## _change_scene seam stubbed (same shape as MainMenu._change_scene), so this
+## never actually swaps GUT's runner scene.
 func test_go_to_main_menu_unpauses_before_requesting_the_scene_change() -> void:
 	PauseUi.toggle_pause()
 	assert_true(get_tree().paused, "test setup: tree should be paused")
 
 	# The stub snapshots pause state AT CALL TIME -- asserting after the
-	# call cannot pin the order, since both effects are synchronous (the
-	# re-review's catch: the first version of this test overclaimed).
+	# call cannot pin the order, since both effects are synchronous.
 	var requested := [""]
 	var paused_at_call := [true]
 	PauseUi._change_scene = func(path):
 		requested[0] = path
 		paused_at_call[0] = get_tree().paused
 
-	PauseUi._go_to_main_menu()
+	PauseUi.go_to_main_menu()
 
 	assert_false(paused_at_call[0],
 		"the tree was still paused at the moment the scene change was requested")
-	assert_false(get_tree().paused, "_go_to_main_menu did not unpause the tree")
+	assert_false(get_tree().paused, "go_to_main_menu did not unpause the tree")
 	assert_eq(requested[0], PauseUi.MAIN_MENU_SCENE, \
-		"_go_to_main_menu did not request scenes/ui/main_menu.tscn through the change-scene seam")
+		"go_to_main_menu did not request scenes/ui/main_menu.tscn through the change-scene seam")
 
 ## FIX 6c (final whole-branch review): _resume() honors a current scene's
 ## capture_mouse = false (Arena's own contract, arena.gd) rather than always
@@ -576,3 +575,33 @@ func test_the_pause_menu_sits_above_the_screen_effects() -> void:
 	await step(1)
 	assert_gt(PauseUi.layer, fx.layer, \
 		"the pause menu is underneath the screen effects, so a blur or a fade hides it")
+
+
+# ---------------------------------------------------------------------------
+# The pause menu's rows. MeMenuList only ever reports an INDEX into the labels
+# it was handed, so the table that produced those labels is the only thing
+# that can say what an index means.
+# ---------------------------------------------------------------------------
+
+func test_every_pause_row_names_a_method_that_exists() -> void:
+	# A typo'd handler is SILENT: call() on a missing method logs an engine
+	# error, and this suite's failure_error_types does not include those, so
+	# the row would simply do nothing forever.
+	for entry in PauseUi._ENTRIES:
+		assert_true(PauseUi.has_method(entry.handler),
+			"pause row %s points at a method that does not exist: %s" % [entry.label, entry.handler])
+
+func test_choosing_a_row_runs_that_rows_handler() -> void:
+	# Dispatch wired to the wrong index puts 退出游戏 on 设置. Found by name,
+	# never by a hardcoded number -- that is the whole point of the table.
+	PauseUi.toggle_pause()
+	var settings_at := -1
+	for i in PauseUi._entries.size():
+		if PauseUi._entries[i].handler == &"_show_settings":
+			settings_at = i
+	assert_gt(settings_at, -1, "test setup: no 设置 row on the pause menu")
+	PauseUi._on_chosen(settings_at)
+	assert_true(PauseUi._showing_settings,
+		"choosing 设置 did not open the settings page")
+	PauseUi._on_settings_closed()
+	PauseUi._resume()
