@@ -74,7 +74,7 @@ albedo_color = Color(0.9137255, 0.003921569, 0, 1)
 material = SubResource("StandardMaterial3D_jw1qv")
 size = Vector3(680, 0.02, 0.5)
 
-[node name="VoidPlain" type="Node3D" unique_id=467598252 node_paths=PackedStringArray("player", "spawn_point")]
+[node name="VoidPlain" type="Node3D" unique_id=2021839663 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_kx77m")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
@@ -82,41 +82,41 @@ fog = SubResource("Resource_3m4ow")
 rescue_below_hp = 30.0
 view_distance = 240.0
 
-[node name="Sun" type="DirectionalLight3D" parent="." unique_id=722383313]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=592894367]
 transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 0, 0)
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1559768734]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=659456782]
 environment = SubResource("Environment_llwrr")
 
-[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1828584332]
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=824245146]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)
 script = ExtResource("3_1grqu")
 
-[node name="Floor" type="StaticBody3D" parent="." unique_id=1685696044]
+[node name="Floor" type="StaticBody3D" parent="." unique_id=1298804392]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=305580005]
+[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=1350825754]
 shape = SubResource("BoxShape3D_0sfcq")
 
-[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=490849669]
+[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=561470797]
 material_override = ExtResource("4_7ldlf")
 mesh = SubResource("BoxMesh_5bgmd")
 
-[node name="Seams" type="Node3D" parent="." unique_id=1231630397]
+[node name="Seams" type="Node3D" parent="." unique_id=1875562799]
 
-[node name="SeamX0" type="MeshInstance3D" parent="Seams" unique_id=1128361414]
+[node name="SeamX0" type="MeshInstance3D" parent="Seams" unique_id=390293694]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0.012, 0)
 mesh = SubResource("BoxMesh_iofvo")
 
-[node name="SeamZ0" type="MeshInstance3D" parent="Seams" unique_id=1572270098]
+[node name="SeamZ0" type="MeshInstance3D" parent="Seams" unique_id=1736045269]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, 50)
 mesh = SubResource("BoxMesh_565xk")
 
-[node name="SeamX1" type="MeshInstance3D" parent="Seams" unique_id=2047041977]
+[node name="SeamX1" type="MeshInstance3D" parent="Seams" unique_id=541500031]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -50, 0.012, 0)
 mesh = SubResource("BoxMesh_f3482")
 
-[node name="SeamZ1" type="MeshInstance3D" parent="Seams" unique_id=1920136205]
+[node name="SeamZ1" type="MeshInstance3D" parent="Seams" unique_id=2010916019]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, -50)
 mesh = SubResource("BoxMesh_m4eli")
 
@@ -128,14 +128,14 @@ screen_effects = NodePath("CameraRig/ScreenEffects")
 subtitle = NodePath("CameraRig/Subtitle")
 toast = NodePath("CameraRig/Toast")
 
-[node name="TorusWrap" type="Node" parent="." unique_id=1274974021 node_paths=PackedStringArray("player")]
+[node name="TorusWrap" type="Node" parent="." unique_id=331273481 node_paths=PackedStringArray("player")]
 script = ExtResource("7_gdf7o")
 player = NodePath("../Player")
 
-[node name="RoamingProps" type="Node3D" parent="." unique_id=1548005969 node_paths=PackedStringArray("player", "wrap")]
+[node name="RoamingProps" type="Node3D" parent="." unique_id=1543177139 node_paths=PackedStringArray("player", "wrap")]
 script = ExtResource("8_xrmqw")
 player = NodePath("../Player")
 wrap = NodePath("../TorusWrap")
 
-[node name="VoidProbe" type="CanvasLayer" parent="." unique_id=257665663]
+[node name="VoidProbe" type="CanvasLayer" parent="." unique_id=381856029]
 script = ExtResource("9_fnnw6")

@@ -199,7 +199,13 @@ func _build_prop(index: int) -> StaticBody3D:
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.55, 0.60, 0.68)
+	# WHITE, and that is what produces the contrast rather than any shadow. A
+	# white surface reflects whatever light reaches it unaltered, so a face
+	# turned away from the sun shows the ambient colour NEAT -- and this
+	# project's ambient is a saturated blue (Arena.COLD_AMBIENT_TINT). A grey
+	# albedo mutes that into sludge and flattens lit and unlit into the same
+	# reading, which is what the first pass did.
+	material.albedo_color = Color(0.97, 0.98, 0.99)
 	# Transparency is what growth and collapse are made of here, so the
 	# material has to be able to express it at all.
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
