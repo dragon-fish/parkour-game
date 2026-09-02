@@ -71,6 +71,13 @@ func can_enter(move_name: StringName) -> bool:
 func current_config() -> MoveConfig:
 	return _current.current_config() if _current != null else null
 
+## True while a ScriptedMove is driving the body along a computed path.
+## ANYTHING THAT MOVES THE BODY FROM OUTSIDE MUST ASK THIS FIRST: a scripted
+## move holds world-space target points, so a teleport mid-move tears the body
+## off its own path and it finishes somewhere it was never sent.
+func current_is_scripted() -> bool:
+	return _current is ScriptedMove
+
 func current_move_friction_modifier() -> float:
 	if _current == null:
 		return 1.0
