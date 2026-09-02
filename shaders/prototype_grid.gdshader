@@ -45,13 +45,22 @@ shader_type spatial;
 // 0.2 m subdivision exist at all.
 
 // acrylic.gdshader's own values, unchanged.
-uniform vec4 base_color : source_color = vec4(0.94, 0.95, 0.97, 1.0);
+// WHITE, and that is what produces the shading rather than any tint in here.
+// A white surface returns whatever light reaches it unaltered, so a face
+// turned away from the sun shows the ambient colour neat -- and this project's
+// ambient is a saturated blue (Arena.COLD_AMBIENT_TINT). Grey albedo mutes
+// that into sludge and flattens lit and unlit into one reading.
+uniform vec4 base_color : source_color = vec4(0.98, 0.99, 1.0, 1.0);
 uniform vec4 line_color : source_color = vec4(0.62, 0.7, 0.8, 1.0);
 // As faint as the dots were. The grid is there to say whether you are moving
 // and how big a thing is; it is not the subject of the picture.
 uniform float line_opacity : hint_range(0.0, 1.0) = 0.1;
-uniform float metallic_amount : hint_range(0.0, 1.0) = 0.4;
-uniform float roughness_amount : hint_range(0.0, 1.0) = 0.12;
+// MATTE. A blockout surface is meant to read as a diagram: flat white with
+// blue shade and the grid on top. Gloss puts the room's reflection into it,
+// which competes with the lines for the same pixels and makes distances
+// harder to judge, not easier.
+uniform float metallic_amount : hint_range(0.0, 1.0) = 0.0;
+uniform float roughness_amount : hint_range(0.0, 1.0) = 0.95;
 uniform float projection_sharpness : hint_range(1.0, 16.0) = 6.0;
 
 // The metre. Every count is in these.

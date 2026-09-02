@@ -93,6 +93,21 @@ extends Resource
 ## defaults to 0 gets a 0..0.01 slider nobody can move.
 @export var sky_blend: float = 0.25
 
+## How much the depth fog is allowed to swallow the SKY, 0 to 1.
+##
+## ZERO FOR AN ORDINARY LEVEL, and that is the default. The fog's job there is
+## hiding unfinished GROUND; a fog that eats the sky as well turns a rooftop
+## view into a flat white void, which is worse than the horizon it was sent to
+## hide.
+##
+## ONE IS FOR A LEVEL THAT WANTS EXACTLY THAT VOID. Sky and ground arriving at
+## the same value is what deletes a horizon, and a level built out of white
+## needs the sky to stop being a separate thing behind the world. Turning this
+## up is the way to get there WITHOUT swapping the shared sky resource -- the
+## sky is still there, still lighting the scene and still being reflected in
+## glossy surfaces; it is only its own image that the fog takes.
+@export var sky_affect: float = 0.0
+
 ## Whether this level pays for the volumetric fog at all -- the froxel grid is
 ## per-frame work a level that only wants the far-fade curtain has no use for.
 ##

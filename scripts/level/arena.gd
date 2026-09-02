@@ -97,12 +97,6 @@ const MIN_FOG_FADE_SPAN := 0.01
 ## MIN_FOG_FADE_SPAN above: a dial dragged to zero must not hand the renderer a
 ## degenerate volume.
 const MIN_VOLUMETRIC_DISTANCE := 1.0
-## How much the depth fog is allowed to obscure the SKY. Zero, deliberately:
-## the fog's job here is hiding unfinished GROUND, and a fog that also eats the
-## sky turns a rooftop view into a flat white void -- worse than the horizon it
-## was hired to hide. Not a dial because no level has wanted the other answer;
-## make it one the first time one does.
-const FOG_SKY_AFFECT := 0.0
 
 ## Found by name, same as TuningPanel below -- both templates/base_level.tscn
 ## and the generated main.tscn name this node "WorldEnvironment" (see
@@ -505,7 +499,7 @@ func _apply_fog(environment: Environment) -> void:
 	# fog shader. Clamping to a hair beyond the begin gives the hard wall that
 	# dragging end below begin honestly deserves, with no special case.
 	environment.fog_depth_end = maxf(fog.fade_end_distance, fog.fade_begin_distance + MIN_FOG_FADE_SPAN)
-	environment.fog_sky_affect = FOG_SKY_AFFECT
+	environment.fog_sky_affect = fog.sky_affect
 	# A DIAL, not the constant this used to be -- see FogConfig.sky_blend for
 	# the bug that made it one: at the old hardcoded 0.6 a fog tint set to pure
 	# white came out grey, because what it was blending toward is the default
