@@ -198,3 +198,16 @@ extends Resource
 ##
 ## The MECHANISM is project-defined. The values it mirrors are not.
 @export var mirror_yaw_by_wall_side: bool = false
+
+## Whether this move is steering the body toward a position it computed in
+## WORLD SPACE -- a scripted arc's endpoint, a ledge's aligned pose, a point
+## sampled off an InterestLine, a wall-climb's drift anchor.
+##
+## ANYTHING THAT RELOCATES THE BODY FROM OUTSIDE THE MOVE MUST ASK THIS FIRST
+## (MoveManager.current_holds_world_path()). A move that answers true computed
+## its target from where the body and the geometry were when the move started;
+## an external teleport moves the body but not that target, so the move either
+## tears the body off its own path or, for a move that only keeps an anchor
+## for a drift check (WallClimbMove), reads a sudden displacement as drift it
+## never actually made.
+@export var holds_world_path: bool = false

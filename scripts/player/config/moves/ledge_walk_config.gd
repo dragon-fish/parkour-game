@@ -92,6 +92,8 @@ extends MoveConfig
 @export var look_assist_angle_deg: float = 45.0
 
 func _init() -> void:
+	# Rides a world-space InterestLine target. See MoveConfig.holds_world_path.
+	holds_world_path = true
 	# [ME:CONFIRMED] SpeedModifier 0.10 -> 720 * 0.1 = 72 uu/s = 2.59 km/h.
 	speed_modifier = 0.10
 	constrain_look = true

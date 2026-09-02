@@ -170,6 +170,8 @@ extends MoveConfig
 @export var fov_squeeze_deg: float = 10.0
 
 func _init() -> void:
+	# Rides a world-space InterestLine target. See MoveConfig.holds_world_path.
+	holds_world_path = true
 	# [ME:CONFIRMED] SpeedModifier 0.34 -> 720 * 0.34 = 244.8 uu/s = 8.81 km/h,
 	# which matches the owner's own HUD reading to two decimals. The multiplier
 	# applies to the GroundSpeed CONSTANT, not to the speed carried in: arriving

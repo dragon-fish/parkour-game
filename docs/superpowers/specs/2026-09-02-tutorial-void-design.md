@@ -59,12 +59,19 @@
 
 ### 传送的唯一门槛
 
-**活动 move 是 `ScriptedMove` 的子类时不传送。** 脚本动作（Grab 的贝塞尔、
-LineMove 家族的线、Zipline / Swing / Ladder）持有世界坐标目标点，传送会把它们
-打断。这些动作都是短时长的，等它结束再搬，玩家察觉不到——虚空里他无从判断自己
-「本该」在哪。
+**活动 move 的 config 声明 `holds_world_path = true` 时不传送。** 这不是
+`ScriptedMove` 子类名单——判据是 `MoveConfig.holds_world_path`，声明在每个
+move 自己的 config 上（`MoveManager.current_holds_world_path()` 读取）。持有
+世界坐标目标点的都要声明它：Grab / SpeedVault / IntoGrab 这几个脚本动作，
+LineMove 家族（Ladder / Zipline / Swing / Balance / LedgeWalk，均非
+`ScriptedMove` 子类，但同样每帧从线的世界坐标采样重写位置），WallClimb（
+用世界坐标锚点算漂移，传送会把锚点读成一次假漂移），以及 SpringBoard（两次
+踏步内部组合了一个 `ScriptedMove`）。传送会把这些动作正在走的路径扯断。这些
+动作都是短时长的，等它结束再搬，玩家察觉不到——虚空里他无从判断自己「本该」
+在哪。
 
-DO NOT 用「离边界多远」之类的距离条件替代这条判据。状态是唯一可靠的信号。
+DO NOT 用「离边界多远」之类的距离条件替代这条判据，也不要用 move 的类名/继承
+关系替代它——config 上的声明才是唯一可靠的信号。
 
 ### 三个数
 

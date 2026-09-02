@@ -27,10 +27,13 @@ signal wrapped(offset: Vector3)
 func _physics_process(_delta: float) -> void:
 	if player == null or period <= 0.0:
 		return
-	# THE ONE STATE THAT FORBIDS A WRAP. See MoveManager.current_is_scripted().
-	# Scripted moves are short, so waiting one out costs nothing -- and in a
-	# void the player cannot tell he was held.
-	if player.move_manager != null and player.move_manager.current_is_scripted():
+	# THE ONE THING THAT FORBIDS A WRAP. See
+	# MoveManager.current_holds_world_path() / MoveConfig.holds_world_path --
+	# every move that steers the body toward a world-space target it computed
+	# on entry, not just the ScriptedMove subclasses. These moves are short,
+	# so waiting one out costs nothing -- and in a void the player cannot tell
+	# he was held.
+	if player.move_manager != null and player.move_manager.current_holds_world_path():
 		return
 	var offset := _offset_for(player.global_position)
 	if offset == Vector3.ZERO:

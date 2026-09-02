@@ -6,6 +6,8 @@ extends MoveConfig
 # attachment, and a lenient fixed-angle exit jump.
 
 func _init() -> void:
+	# Rides a world-space InterestLine target. See MoveConfig.holds_world_path.
+	holds_world_path = true
 	allows_turn = false  # both hands on the bar (MG_TwoHandsBusy)
 	constrain_look = true
 	absolute_yaw_constraint = true

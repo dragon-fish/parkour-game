@@ -14,6 +14,9 @@ extends MoveConfig
 # duration is a consequence, not a setting.
 
 func _init() -> void:
+	# The reach steers straight at a world-space target pose. See
+	# MoveConfig.holds_world_path.
+	holds_world_path = true
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: mid-reach, being carried to the ledge.
 	# ✅ TdMove_IntoGrab: bCheckForVaultOver is set, so a reach can still turn

@@ -6,6 +6,8 @@ extends MoveConfig
 # km/h, which the owner has seen exceed 80 km/h in the original.
 
 func _init() -> void:
+	# Rides a world-space InterestLine target. See MoveConfig.holds_world_path.
+	holds_world_path = true
 	allows_turn = false  # both hands on the cable
 	# The view may swing either way across the cable but the body keeps its
 	# heading (bDisableFaceRotation). Same machinery Grab uses.

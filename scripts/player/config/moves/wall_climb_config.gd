@@ -24,6 +24,9 @@ extends MoveConfig
 # attached.
 
 func _init() -> void:
+	# The drift check compares the current position against a world-space
+	# anchor captured on entry. See MoveConfig.holds_world_path.
+	holds_world_path = true
 	# ✅ TdMove_WallClimb has all three set, so a kick up a wall can still turn
 	# into a mantle or a vault the moment either becomes possible. This is what
 	# makes "kick up, catch the lip" one continuous motion rather than two

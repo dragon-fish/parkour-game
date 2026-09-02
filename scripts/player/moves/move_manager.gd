@@ -71,12 +71,16 @@ func can_enter(move_name: StringName) -> bool:
 func current_config() -> MoveConfig:
 	return _current.current_config() if _current != null else null
 
-## True while a ScriptedMove is driving the body along a computed path.
-## ANYTHING THAT MOVES THE BODY FROM OUTSIDE MUST ASK THIS FIRST: a scripted
-## move holds world-space target points, so a teleport mid-move tears the body
-## off its own path and it finishes somewhere it was never sent.
-func current_is_scripted() -> bool:
-	return _current is ScriptedMove
+## True while the active move is steering the body toward a position it
+## computed in world space -- see MoveConfig.holds_world_path for the full
+## list and why each one is on it. Read off the CONFIG, not off the move's
+## class, so a move that composes a ScriptedMove internally (SpringBoard's
+## two steps) or holds a world-space anchor without being one at all
+## (WallClimb's drift check) is covered the same way a straight ScriptedMove
+## subclass is.
+func current_holds_world_path() -> bool:
+	var active: MoveConfig = current_config()
+	return active != null and active.holds_world_path
 
 func current_move_friction_modifier() -> float:
 	if _current == null:

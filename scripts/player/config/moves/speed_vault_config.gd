@@ -2,6 +2,8 @@ class_name SpeedVaultConfig
 extends MoveConfig
 
 func _init() -> void:
+	# The vault arc is a scripted world-space curve. See MoveConfig.holds_world_path.
+	holds_world_path = true
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: hands and feet are both on the obstacle.
 

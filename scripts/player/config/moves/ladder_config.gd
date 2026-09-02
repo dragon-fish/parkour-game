@@ -15,6 +15,8 @@ extends MoveConfig
 # dials the rest once footage exists.
 
 func _init() -> void:
+	# Rides a world-space InterestLine target. See MoveConfig.holds_world_path.
+	holds_world_path = true
 	# Both hands are on the rungs: the body stays squared to the ladder and
 	# only the head turns -- ✅ the owner: "得锁人物模型，只允许转头，和grab一样."
 	# See MoveConfig.freeze_visual_yaw.
