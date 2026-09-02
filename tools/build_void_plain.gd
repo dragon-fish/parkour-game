@@ -41,10 +41,21 @@ const FLOOR_SPAN := (VIEW_DISTANCE + PERIOD) * 2.0
 const FLOOR_THICKNESS := 2.0
 ## The seam lines at +/- PERIOD/2, in their own colour.
 const SEAM_WIDTH := 0.5
-## The menu's own backdrop shade. The environment background, the fog and the
-## ground all sit on this colour, which is what removes the horizon: once the
-## fog has taken a distant object it is the same value as the background behind it.
-const BACKDROP := Color(0.96, 0.96, 0.94)
+# THE PALETTE IS HIGH-KEY BUT NOT WHITE, and the difference is the whole
+# reason it can be looked at. A screen that is one flat bright value has
+# nowhere for the eye to rest; the reference this is built from carries almost
+# the same brightness everywhere but splits it by HUE -- lit faces near white,
+# shadowed faces distinctly blue. Contrast by colour, not by darkness.
+#
+# The sky is a gradient for the same reason: a dead-flat sky is what made the
+# first attempt hurt to look at.
+
+## Bright end: lit surfaces and the horizon, where sky and ground meet and must
+## be indistinguishable.
+const PALE := Color(0.93, 0.96, 0.98)
+## Cool end: the top of the sky and the ground under it. Blue rather than grey
+## -- this is the shade Arena.COLD_AMBIENT_TINT already tints shadows with.
+const COOL := Color(0.78, 0.86, 0.93)
 
 ## The scene root, held so _attach() can hand every descendant the ownership
 ## Godot serialises by. A node whose owner is its immediate parent rather than
@@ -87,7 +98,9 @@ func _run() -> void:
 	fog.max_opacity = 1.0
 	# Fog the same shade as the background, so a swallowed object does not
 	# merely dim -- it stops existing as a shape.
-	fog.tint = BACKDROP
+	# The horizon's own value, so anything the fog swallows arrives at exactly
+	# the colour behind it.
+	fog.tint = PALE
 	root.set("fog", fog)
 
 	var sun := DirectionalLight3D.new()
@@ -118,10 +131,13 @@ func _run() -> void:
 	# The sun disc is switched off -- a bright spot in the sky would be the one
 	# landmark this level must not have.
 	var sky_material := ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = BACKDROP
-	sky_material.sky_horizon_color = BACKDROP
-	sky_material.ground_bottom_color = BACKDROP
-	sky_material.ground_horizon_color = BACKDROP
+	# THE HORIZON PAIR MUST MATCH. Sky and ground meeting at the same value is
+	# what deletes the horizon; the gradient lives above and below it, never
+	# across it.
+	sky_material.sky_horizon_color = PALE
+	sky_material.ground_horizon_color = PALE
+	sky_material.sky_top_color = COOL
+	sky_material.ground_bottom_color = COOL
 	sky_material.sun_angle_max = 0.0
 	sky_material.sun_curve = 0.0
 	var sky := Sky.new()

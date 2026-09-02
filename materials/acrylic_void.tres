@@ -5,7 +5,7 @@
 [resource]
 resource_name = "AcrylicVoid"
 shader = ExtResource("1_shader")
-shader_parameter/base_color = Color(0.96, 0.96, 0.94, 1)
+shader_parameter/base_color = Color(0.93, 0.96, 0.98, 1)
 shader_parameter/dot_color = Color(0.62, 0.7, 0.8, 1)
 shader_parameter/dot_opacity = 0.35
 shader_parameter/spacing = 1.0
