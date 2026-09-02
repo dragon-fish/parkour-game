@@ -75,6 +75,51 @@ else (materials, modifiers, attachment points, physics) belongs in a
 **wrapper scene** that instances the model. The wrapper is an ordinary scene
 file: it survives re-imports, and it is the single place to change the model.
 
+## A crash on click is a UI path, not bad data
+
+An editor that dies reliably when you click one property is accusing its own
+inspector, not your file. Before touching the data, load the same scene with a
+rendering run and see whether it is fine:
+
+```sh
+<engine> --path . --resolution 640x360 --quit-after 180 \
+    --script res://tools/capture.gd -- <scene> <out.png> 60
+```
+
+If that renders, the resource is sound and the fault is in how the editor is
+displaying it -- so the fix is to change the SHAPE of the display, not the
+content.
+
+**Known: nested resource inspectors crash on ShaderMaterial (Godot 4.7.1).**
+Reaching a material through `MeshInstance3D -> Mesh -> Material` is three
+inspector levels deep, and expanding that last one logs
+
+```
+Object was freed or unreferenced while a signal is being emitted from it
+Cannot connect to 'property_list_changed': 'EditorInspector::_changed_callback'
+```
+
+then collapses the group; clicking again takes the editor down. It survives
+restarts and deleting `.godot/editor/editor_layout.cfg`, because nothing is
+cached -- the crash is the click.
+
+**Put the material on the NODE instead**, where it is a top-level property:
+
+```
+[node name="Mesh" type="MeshInstance3D"]
+mesh = SubResource("BoxMesh_floor")
+material_override = ExtResource("1_mat")
+```
+
+Both spellings are legitimate API and mean different things -- `mesh.material`
+belongs to the mesh and travels with it to every instance, `material_override`
+belongs to this node. For a mesh used in one place they are equivalent, so
+prefer the override and stay out of the nesting.
+
+DO NOT go hunting through shader code for this. Two evenings were lost to
+suspecting a shader edit, an import cache and an editor layout file in turn,
+while the same scene rendered perfectly from the command line the whole time.
+
 ## Common mistakes
 
 - **Typing a memorable uid** (`uid://beriulmatbody`). It parses, loads by
