@@ -33,25 +33,6 @@ var _quit_confirm: Control
 ## pause always opens back on the list -- see _set_shown().
 var _showing_settings: bool = false
 
-## Set by go_to_main_menu(), cleared by a call_deferred() queued right after
-## the scene-change request itself. Guards a same-frame race:
-## change_scene_to_file() is deferred -- for at least the rest of this frame
-## get_tree().current_scene is still the OLD scene while the new one is only
-## queued. Any toggle_pause() that lands in that gap (e.g. a second input
-## event queued behind the one that fired Back to Main Menu) would otherwise re-pause a
-## scene that is about to be torn down, or resume into a half-swapped tree --
-## see toggle_pause() below.
-##
-## A DEFERRED CLEAR, NOT AN "IS IT THE MAIN MENU YET" CHECK. DO NOT clear
-## this flag by having toggle_pause() observe _is_main_menu_scene() ==
-## true: if the player leaves the main menu again (e.g. pressing Start)
-## without ever triggering Esc/toggle_pause() WHILE the main menu was
-## current, that check never fires, and the flag permanently no-ops every
-## future toggle_pause() call, in every level, for the rest of the run.
-## call_deferred() queues behind change_scene_to_file()'s own deferred work
-## in the same message queue, so by the time this runs the swap has already
-## happened -- and it fires exactly once, on a fixed one-frame schedule,
-## with no dependency on what the player does afterward.
 ## The pause menu's rows, in order. Named fields rather than a positional
 ## array because this table will grow more of them; see
 ## .claude/skills/naming-config-fields.
@@ -76,6 +57,25 @@ const _ENTRIES := [
 ## onto 回主菜单's number and quit the game.
 var _entries: Array[Dictionary] = []
 
+## Set by go_to_main_menu(), cleared by a call_deferred() queued right after
+## the scene-change request itself. Guards a same-frame race:
+## change_scene_to_file() is deferred -- for at least the rest of this frame
+## get_tree().current_scene is still the OLD scene while the new one is only
+## queued. Any toggle_pause() that lands in that gap (e.g. a second input
+## event queued behind the one that fired Back to Main Menu) would otherwise re-pause a
+## scene that is about to be torn down, or resume into a half-swapped tree --
+## see toggle_pause() below.
+##
+## A DEFERRED CLEAR, NOT AN "IS IT THE MAIN MENU YET" CHECK. DO NOT clear
+## this flag by having toggle_pause() observe _is_main_menu_scene() ==
+## true: if the player leaves the main menu again (e.g. pressing Start)
+## without ever triggering Esc/toggle_pause() WHILE the main menu was
+## current, that check never fires, and the flag permanently no-ops every
+## future toggle_pause() call, in every level, for the rest of the run.
+## call_deferred() queues behind change_scene_to_file()'s own deferred work
+## in the same message queue, so by the time this runs the swap has already
+## happened -- and it fires exactly once, on a fixed one-frame schedule,
+## with no dependency on what the player does afterward.
 var _pending_scene_change: bool = false
 ## The loading transition's white sheet -- lives here because this autoload
 ## survives the scene switch; MainMenu hands over at full white and the

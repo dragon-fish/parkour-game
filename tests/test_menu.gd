@@ -42,7 +42,7 @@ func test_dot_grid_material_loads_its_shader() -> void:
 ## writes user://settings_test.cfg instead of the author's real
 ## user://settings.cfg. Restored in after_all() so nothing outside this file
 ## ever sees the redirected path.
-## ⚠️ ONE FILE PER PROCESS, not one file. user:// is per PROJECT, not per run,
+## ONE FILE PER PROCESS, not one file. user:// is per PROJECT, not per run,
 ## so a fixed name here is shared by every Godot instance on the machine -- and
 ## two runs of this suite at once then trample each other's settings mid-test.
 ##
@@ -82,9 +82,11 @@ func after_all() -> void:
 
 func before_each() -> void:
 	_delete_settings_file()
+	_delete_progress_file()
 
 func after_each() -> void:
 	_delete_settings_file()
+	_delete_progress_file()
 	# Unconditional pause/mouse-mode cleanup, run for EVERY test in this file
 	# (not just the PauseUi ones below) so a failed assertion mid-test never
 	# leaves the tree paused for every suite that runs after this one -- a
@@ -261,8 +263,7 @@ func test_shown_menu_list_responds_to_arrow_and_enter_keys() -> void:
 	list.chosen.disconnect(on_chosen)
 	assert_eq(chosen_index[0], 1, "Enter did not fire chosen with the selected index while shown")
 
-## FIX 6a (final whole-branch review): Esc while the settings page is open
-## under pause is the CANCEL path, not a second toggle_pause() -- confirmed
+## Esc while the settings page is open under pause is the CANCEL path, not a second toggle_pause() -- confirmed
 ## at the _unhandled_input() level (pause_ui.gd's `if _showing_settings:`
 ## branch) exactly like the two Esc tests above.
 func test_esc_while_settings_open_under_pause_cancels_back_to_the_list() -> void:
@@ -306,7 +307,7 @@ func test_go_to_main_menu_unpauses_before_requesting_the_scene_change() -> void:
 	assert_eq(requested[0], PauseUi.MAIN_MENU_SCENE, \
 		"go_to_main_menu did not request scenes/ui/main_menu.tscn through the change-scene seam")
 
-## FIX 6c (final whole-branch review): _resume() honors a current scene's
+## _resume() honors a current scene's
 ## capture_mouse = false (Arena's own contract, arena.gd) rather than always
 ## grabbing the cursor. Stood in with a bare Node + a runtime-attached script
 ## rather than a real Arena, which needs a whole level built around it.
@@ -505,8 +506,9 @@ func test_a_rescue_resume_on_the_main_menu_never_captures_the_cursor() -> void:
 
 # --- a display change is on probation until somebody says it is fine ---------
 #
-# ⚠️ THESE NEVER WAIT THE REAL FIFTEEN SECONDS (✅ the owner: 单测不能真的等
-# 15s，得模拟，否则得等死). The countdown lives in _process(delta), so a test
+# THESE NEVER WAIT THE REAL FIFTEEN SECONDS. A suite that actually slept
+# through every timeout would be unusable. The countdown lives in
+# _process(delta), so a test
 # hands it one big delta and the timeout has happened -- the same trick the
 # input tests use when they call _unhandled_input() directly.
 
@@ -627,13 +629,14 @@ func test_choosing_a_row_runs_that_rows_handler() -> void:
 # 回主菜单 is withheld until the tutorial has been finished once -- see
 # ProgressStore.tutorial_finished(). ProgressStore.path is redirected to a
 # per-process file in before_all()/after_all() above, same as
-# SettingsStore.path, so these never touch the author's real progress.cfg.
+# SettingsStore.path, and cleared in before_each()/after_each(), so these
+# never touch the author's real progress.cfg and never leak a finished
+# tutorial into a later test when an assertion above fails.
 # ---------------------------------------------------------------------------
 
 func test_the_main_menu_row_is_absent_until_the_tutorial_is_finished() -> void:
 	# Until it has been finished once the tutorial IS the front door, so there
 	# is nothing behind it to go back to.
-	_delete_progress_file()
 	PauseUi.toggle_pause()
 	for entry in PauseUi._entries:
 		assert_ne(entry.handler, &"go_to_main_menu",
@@ -644,7 +647,6 @@ func test_hiding_the_main_menu_row_does_not_renumber_the_rows_below_it() -> void
 	# THE BUG THE WHOLE TABLE EXISTS FOR. With positional dispatch, omitting
 	# 回主菜单 moved 退出游戏 up onto its number, so the last row quit to the
 	# main menu -- or, the other way round, quit the game outright.
-	_delete_progress_file()
 	PauseUi.toggle_pause()
 	var last: int = PauseUi._entries.size() - 1
 	assert_eq(PauseUi._entries[last].handler, &"_show_quit_confirm",
@@ -658,7 +660,6 @@ func test_choosing_the_last_row_still_runs_quit_once_a_row_above_it_is_hidden() 
 	# not have caught a regression back to matching by position, since a
 	# hardcoded index 4 (回主菜单's old slot) still exists and would silently
 	# fire go_to_main_menu() instead.
-	_delete_progress_file()
 	PauseUi.toggle_pause()
 	var last: int = PauseUi._entries.size() - 1
 	PauseUi._on_chosen(last)
@@ -679,4 +680,3 @@ func test_the_main_menu_row_comes_back_once_the_tutorial_is_finished() -> void:
 			found = true
 	assert_true(found, "回主菜单 never came back after the tutorial was finished")
 	PauseUi._resume()
-	_delete_progress_file()
