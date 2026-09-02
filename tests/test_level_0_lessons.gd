@@ -22,6 +22,27 @@ func test_every_lesson_hands_over_a_content_subtree() -> void:
 		assert_gt(content.get_child_count(), 0, "%s has an empty Content node" % path)
 		content.free()
 
+## Everything a lesson scene is allowed to have beside its Content: the
+## scaffolding that exists so the author can open the file and run around in
+## it. LessonContent.take() throws all of it away.
+const SCAFFOLDING := ["Sun", "WorldEnvironment", "SpawnPoint", "Floor", "Player", "Content"]
+
+func test_no_lesson_geometry_sits_outside_content() -> void:
+	# A BLOCK THAT ESCAPES Content IS INVISIBLE IN THE TUTORIAL, and silently
+	# so. Checking that Content is non-empty does not catch it: as long as one
+	# block stays behind, the scene still looks populated while the escaped one
+	# is thrown away with the scaffolding.
+	#
+	# Named from the OUTSIDE for that reason -- listing the blocks that must be
+	# present would pin what a lesson is made of, which is the author's to
+	# change. What is fixed is what may stand beside them.
+	for path in LESSONS:
+		var whole: Node = load(path).instantiate()
+		for child in whole.get_children():
+			assert_true(SCAFFOLDING.has(child.name),
+				"%s: '%s' stands outside Content, so the tutorial never shows it" % [path, child.name])
+		whole.free()
+
 func test_every_lesson_can_be_opened_and_played_on_its_own() -> void:
 	# The whole reason a lesson is its own file: the author shapes the geometry
 	# by running around in it. A scene missing its scaffolding cannot be opened
