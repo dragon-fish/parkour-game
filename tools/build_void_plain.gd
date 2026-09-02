@@ -57,9 +57,18 @@ func _run() -> void:
 	root.set("rescue_below_hp", 30.0)
 	var fog := FogConfig.new()
 	fog.resource_local_to_scene = true
-	# No fog. The whole question this scene exists to answer is whether a seam
-	# is visible, and a curtain of fog would answer it by hiding the evidence.
-	fog.enabled = false
+	# FOG IS NOT ATMOSPHERE HERE, IT IS THE SEAM'S COVER. Without a limit on
+	# sight the wrap gives itself away every time: the furniture is tiled over
+	# a FINITE span, so shifting the body one period also shifts where that
+	# span ends, and the outermost ring of boxes pops in or out. The finished
+	# level solves this with the collapse radius; fog is the cheap equivalent.
+	#
+	# THE END DISTANCE MUST STAY UNDER HALF A PERIOD -- that is the spec's
+	# `2R < P`. Push it past 50 here and the pop comes back.
+	fog.enabled = true
+	fog.fade_begin_distance = 18.0
+	fog.fade_end_distance = 44.0
+	fog.max_opacity = 1.0
 	root.set("fog", fog)
 
 	var sun := DirectionalLight3D.new()
