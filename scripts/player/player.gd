@@ -198,6 +198,11 @@ func touch_checkpoint(checkpoint: Checkpoint) -> void:
 	# The line only fires when the active respawn actually CHANGES --
 	# pacing back and forth through the same gate stays quiet -- and only
 	# for a checkpoint the level author gave a name.
+	# A LOWER RANK CANNOT TAKE OVER -- see Checkpoint.index. Falling off a
+	# spiral re-touches every point below, alive and in control the whole way,
+	# and those touches must not undo the climb.
+	if active_checkpoint != null and checkpoint.index < active_checkpoint.index:
+		return
 	var changed: bool = checkpoint != active_checkpoint
 	active_checkpoint = checkpoint
 	if changed and checkpoint.display_name != "" and notice != null:

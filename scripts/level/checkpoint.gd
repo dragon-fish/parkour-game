@@ -5,12 +5,19 @@ extends Area3D
 # A respawn trigger of any shape: give it whatever CollisionShape3D children
 # the spot needs, and walking in makes it the active respawn.
 #
-# [ME:CONFIRMED] LAST TOUCHED WINS, nothing else -- verified directly against
-# the original by noclip-flying back through the looping tutorial and
+# [ME:CONFIRMED] AT EQUAL INDEX, LAST TOUCHED WINS -- verified directly
+# against the original by noclip-flying back through the looping tutorial and
 # suiciding: it still respawned at the LAST point touched, not the nearest.
 # What looks like "nearest" behaviour is just the second lap walking back
-# INTO the first lap's triggers, re-marking them as last-touched. The loop
-# case is free; no distance query, no ordering data to author.
+# INTO the first lap's triggers, re-marking them as last-touched.
+#
+# `index` ranks points that must not be re-touched out of order. It exists
+# for VERTICAL progress: a body falling off a spiral drops back through
+# every point it already climbed past, and those touches must not undo the
+# climb. A horizontal loop wants none of it -- leave every index at 0 and
+# the rule collapses back to plain last-touched-wins, which is what the
+# original does. No distance query, no ordering data to author unless the
+# level actually stacks.
 #
 # The respawn puts the BODY CENTRE at this node's origin, facing its own -Z
 # -- the same convention as SpawnPoint, so place the node about a body's
@@ -21,6 +28,12 @@ extends Area3D
 ## Announced as 「检查点 <display_name> 已保存」 when this becomes the active
 ## respawn. Leave empty for a silent checkpoint -- no line is shown at all.
 @export var display_name: String = ""
+
+## Rank along the level's progress. A touch on a LOWER index than the active
+## one is ignored; equal ranks fall back to last-touched-wins. Leave at 0
+## throughout a level that never stacks, and nothing changes. Gaps are free:
+## number them 10, 20, 30 so a point can be inserted later.
+@export var index: int = 0
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
