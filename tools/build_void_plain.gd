@@ -27,10 +27,24 @@ const OUTPUT := "res://scenes/debug_levels/void_plain.tscn"
 ## MUST be an exact multiple of the ground pattern's spacing
 ## (materials/acrylic_ground.tres, spacing 1.0), or crossing a seam shifts the
 ## dot grid's phase and the ground itself flickers.
-const PERIOD := 300.0
-## How many metres of floor to lay. Three periods plus a margin, so a body
-## standing at a seam still has ground under the copy it is looking at.
-const FLOOR_SPAN := PERIOD * 3.0 + 20.0
+const PERIOD := 100.0
+## How far the camera draws. Everything else here is derived from it.
+const VIEW_DISTANCE := 240.0
+
+## How many rings of copies to lay around the centre tile, DERIVED rather than
+## chosen. The body never leaves the centre tile, so it sees at most
+## PERIOD/2 + VIEW_DISTANCE from the origin, and `rings` rings of tiling reach
+## (rings + 0.5) * PERIOD. Solving for rings gives VIEW_DISTANCE / PERIOD.
+##
+## COMPUTED SO IT CANNOT DRIFT. Pick the ring count by hand and every later
+## change to the view distance silently risks exposing the edge of the tiling,
+## which is the one thing that gives the wrap away.
+static func rings() -> int:
+	return maxi(1, ceili(VIEW_DISTANCE / PERIOD))
+
+## Floor wide enough to hold the whole tiling plus a margin.
+static func floor_span() -> float:
+	return (float(rings()) * 2.0 + 1.0) * PERIOD + 20.0
 const FLOOR_THICKNESS := 2.0
 ## The seam lines at +/- PERIOD/2, in their own colour.
 const SEAM_WIDTH := 0.5
@@ -69,7 +83,7 @@ func _run() -> void:
 	# origin, and a 3x3 tiling reaches 1.5P -- view_distance may therefore go
 	# all the way to one whole period. Widen the tiling to 5x5 and it may go to
 	# two.
-	root.set("view_distance", 280.0)
+	root.set("view_distance", VIEW_DISTANCE)
 	var fog := FogConfig.new()
 	fog.resource_local_to_scene = true
 	# FOG IS NOT ATMOSPHERE HERE, IT IS THE SEAM'S COVER. Without a limit on
@@ -81,8 +95,8 @@ func _run() -> void:
 	# THE END DISTANCE MUST STAY UNDER HALF A PERIOD -- that is the spec's
 	# `2R < P`. Push it past 50 here and the pop comes back.
 	fog.enabled = true
-	fog.fade_begin_distance = 110.0
-	fog.fade_end_distance = 265.0
+	fog.fade_begin_distance = VIEW_DISTANCE * 0.4
+	fog.fade_end_distance = VIEW_DISTANCE * 0.95
 	fog.max_opacity = 1.0
 	# Fog the same shade as the background, so a swallowed object does not
 	# merely dim -- it stops existing as a shape.
@@ -181,7 +195,8 @@ func _floor() -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.name = "Floor"
 	body.position = Vector3(0.0, -FLOOR_THICKNESS * 0.5, 0.0)
-	var size := Vector3(FLOOR_SPAN, FLOOR_THICKNESS, FLOOR_SPAN)
+	var span: float = floor_span()
+	var size := Vector3(span, FLOOR_THICKNESS, span)
 
 	var shape := CollisionShape3D.new()
 	shape.name = "Collision"
@@ -210,13 +225,14 @@ func _seams() -> Node3D:
 	var seams := Node3D.new()
 	seams.name = "Seams"
 	var half: float = PERIOD * 0.5
+	var span: float = floor_span()
 	var colour := Color("#e90100")
 	for sign_index in 2:
 		var at: float = half if sign_index == 0 else -half
 		_attach(seams, _stripe("SeamX%d" % sign_index,
-			Vector3(SEAM_WIDTH, 0.02, FLOOR_SPAN), Vector3(at, 0.012, 0.0), colour))
+			Vector3(SEAM_WIDTH, 0.02, span), Vector3(at, 0.012, 0.0), colour))
 		_attach(seams, _stripe("SeamZ%d" % sign_index,
-			Vector3(FLOOR_SPAN, 0.02, SEAM_WIDTH), Vector3(0.0, 0.012, at), colour))
+			Vector3(span, 0.02, SEAM_WIDTH), Vector3(0.0, 0.012, at), colour))
 	return seams
 
 func _stripe(stripe_name: String, size: Vector3, pos: Vector3, colour: Color) -> MeshInstance3D:
@@ -229,10 +245,11 @@ func _stripe(stripe_name: String, size: Vector3, pos: Vector3, colour: Color) ->
 	mesh_instance.mesh = mesh
 	return mesh_instance
 
-## Boxes to look at, TILED ONE PERIOD APART IN BOTH AXES. The copies are what
-## make a crossing invisible: whatever stands at x will also stand at x +/-
-## PERIOD, so the view across a seam matches the view behind you. Remove the
-## tiling and the plain stops being a torus to the eye, whatever the code does.
+## Boxes to look at, TILED ONE PERIOD APART IN BOTH AXES, over as many rings as
+## the view distance needs (see rings()). The copies are what make a crossing
+## invisible: whatever stands at x also stands at x +/- PERIOD, so the view
+## across a seam matches the view behind you. Remove the tiling and the plain
+## stops being a torus to the eye, whatever the code does.
 func _furniture() -> Node3D:
 	var furniture := Node3D.new()
 	furniture.name = "Furniture"
@@ -246,13 +263,14 @@ func _furniture() -> Node3D:
 		{size = Vector3(3.0, 5.0, 3.0), at = Vector3(-34.0, 2.5, 24.0), colour = Color(0.50, 0.55, 0.63)},
 		{size = Vector3(6.0, 2.0, 6.0), at = Vector3(4.0, 1.0, 36.0), colour = Color(0.58, 0.63, 0.70)},
 	]
-	for tile_x in [-1, 0, 1]:
-		for tile_z in [-1, 0, 1]:
+	var reach: int = rings()
+	for tile_x in range(-reach, reach + 1):
+		for tile_z in range(-reach, reach + 1):
 			var offset := Vector3(float(tile_x) * PERIOD, 0.0, float(tile_z) * PERIOD)
 			var index: int = 0
 			for piece in pieces:
 				var body := StaticBody3D.new()
-				body.name = "Box%d_%d%d" % [index, tile_x + 1, tile_z + 1]
+				body.name = "Box%d_%d_%d" % [index, tile_x + reach, tile_z + reach]
 				body.position = piece["at"] + offset
 				var shape := CollisionShape3D.new()
 				shape.name = "Collision"
