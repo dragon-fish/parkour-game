@@ -35,6 +35,10 @@ func _ready() -> void:
 		player.move_manager.move_changed.connect(_on_move_changed)
 
 func _on_move_changed(_from: StringName, to: StringName) -> void:
+	# An empty table never announces finished. A level author who forgot to
+	# fill in the lesson table gets a level that sits still, which he notices
+	# immediately. The alternative (silently declaring completion) makes the
+	# tower rise for no reason, which is far harder to diagnose.
 	if index >= lessons.size():
 		return
 	var lesson: Dictionary = lessons[index]

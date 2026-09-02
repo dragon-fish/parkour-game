@@ -78,8 +78,10 @@ func test_the_last_lesson_announces_the_end_once() -> void:
 	await step(2)
 	assert_eq(ends[0], 1, "the end of the tutorial fired %d times" % ends[0])
 
-func test_an_empty_table_finishes_immediately_without_crashing() -> void:
-	# A level under construction has no lessons yet. It must still run.
+func test_an_empty_table_neither_advances_nor_crashes() -> void:
+	# A level under construction has no lessons yet. It must not crash and
+	# must not silently declare itself finished (which would make the tower
+	# rise inexplicably). The teaching director sits still and waits.
 	var player: Player = await _directed([])
 	player.move_manager.start(Move.CROUCH)
 	await step(2)
