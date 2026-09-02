@@ -149,11 +149,23 @@ func _initialize() -> void:
 func _lessons() -> Array[Dictionary]:
 	return [
 		{teaches = Move.JUMP, scene = null},
-		{teaches = Move.SPEED_VAULT, scene = load("%s/lesson_vault.tscn" % LESSON_DIR)},
-		{teaches = Move.SLIDE, scene = load("%s/lesson_slide.tscn" % LESSON_DIR)},
-		{teaches = Move.WALL_RUN, scene = load("%s/lesson_wall_run.tscn" % LESSON_DIR)},
-		{teaches = Move.GRAB, scene = load("%s/lesson_grab.tscn" % LESSON_DIR)},
+		{teaches = Move.SPEED_VAULT, scene = _lesson("lesson_vault")},
+		{teaches = Move.SLIDE, scene = _lesson("lesson_slide")},
+		{teaches = Move.WALL_RUN, scene = _lesson("lesson_wall_run")},
+		{teaches = Move.GRAB, scene = _lesson("lesson_grab")},
 	]
+
+## A MISTYPED PATH MUST NOT LOOK LIKE ROW 0. load() returns null on a path
+## that is not there, and null is also what the opening row carries on
+## purpose, so a typo would bake a level that silently teaches one lesson
+## fewer. Nothing downstream can tell the two apart -- this is the only place
+## that can.
+func _lesson(stem: String) -> PackedScene:
+	var path := "%s/%s.tscn" % [LESSON_DIR, stem]
+	var scene: PackedScene = load(path)
+	if scene == null:
+		push_error("build_level_0: no lesson scene at %s" % path)
+	return scene
 
 func _environment() -> WorldEnvironment:
 	var world_env := WorldEnvironment.new()

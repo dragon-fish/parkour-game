@@ -30,6 +30,18 @@ func test_the_level_starts_the_camera_behind_the_body() -> void:
 	assert_true(level.player.camera_rig.third_person,
 		"level_0 did not actually start behind the body")
 
+func test_only_the_opening_row_teaches_without_a_scene() -> void:
+	# THE OPENING ROW IS THE ONLY LEGITIMATE null. It is an empty plain on
+	# purpose. Every other row's scene comes from load(), which returns null
+	# for a path that is not there -- so a single mistyped filename bakes a
+	# level that quietly teaches one lesson fewer, and looks exactly like the
+	# row that is meant to be empty.
+	var level: Node = await _loaded()
+	var director: TutorialDirector = level.get_node("TutorialDirector")
+	for at in range(1, director.lessons.size()):
+		assert_not_null(director.lessons[at].get(&"scene"),
+			"lesson row %d has no scene, so its path did not load" % at)
+
 func test_the_lesson_table_survived_the_scene_file() -> void:
 	# An exported Array[Dictionary] that does not round-trip through .tscn
 	# leaves the director with nothing to teach. The level then never finishes,
