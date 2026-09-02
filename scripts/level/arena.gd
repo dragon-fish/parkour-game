@@ -40,6 +40,20 @@ extends Node3D
 ## must be able to disagree about this.
 @export var rescue_below_hp: float = 0.0
 
+## Hard limit on how far the camera draws, in metres. Zero (the default) leaves
+## Godot's own far plane alone, which is what every ordinary level wants.
+##
+## THIS IS COVER, NOT AN OPTIMISATION. A level that wraps on itself gives its
+## seam away the instant the player can see further than half a period: the far
+## copy of the world is in view, and the edge of that copy jumps when the body
+## is shifted. Fog alone does not fix it -- fog dims a distant object but leaves
+## its silhouette readable against the background. The far plane removes it.
+##
+## Pair the two, and keep the fog's fade_end_distance BELOW this: the fog has
+## to be opaque by the time geometry reaches the cut, or the player watches
+## things wink out of existence at a fixed radius.
+@export var view_distance: float = 0.0
+
 ## How many rescues have happened. Read by tests; a level never needs it.
 var rescued_count: int = 0
 
@@ -130,6 +144,10 @@ func _ready() -> void:
 	# capsule's height comes from there.
 	_load_body_profile()
 	_mark.call("_load_body_profile")
+
+	if view_distance > 0.0 and player.camera_rig != null \
+			and player.camera_rig.camera != null:
+		player.camera_rig.camera.far = view_distance
 
 	add_child(_death_sequence)
 	_death_sequence.finished.connect(reset_player)
