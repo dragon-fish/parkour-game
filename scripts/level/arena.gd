@@ -26,6 +26,23 @@ extends Node3D
 ## and not one of MovementConfig's groups.
 @export var fog: FogConfig
 
+## Health below which the level rescues instead of killing: white curtain,
+## respawn at the ranked checkpoint, no death sequence, no ragdoll. It also
+## reclassifies the OTHER TWO routes to death -- entering FallUncontrolled and
+## falling out of the level.
+##
+## SHE DOES NOT DIE IN THE TUTORIAL. A death cutscene says "that was serious",
+## and the tutorial's whole point is that it was not. Zero (the default) means
+## this level kills normally, so no existing level changes.
+##
+## A LEVEL PROPERTY, NOT A PLAYER ONE, for the same reason fog is: one
+## MovementConfig travels between levels, and the tutorial and the first level
+## must be able to disagree about this.
+@export var rescue_below_hp: float = 0.0
+
+## How many rescues have happened. Read by tests; a level never needs it.
+var rescued_count: int = 0
+
 ## Holding R this long before release clears the active checkpoint (debug).
 const CHECKPOINT_CLEAR_HOLD := 1.0
 var _r_pressed_at_ms: int = -1
@@ -501,6 +518,18 @@ func _apply_fog(environment: Environment) -> void:
 func _physics_process(_delta: float) -> void:
 	if not is_instance_valid(player):
 		return
+	if rescue_below_hp > 0.0 and not _death_sequence.is_covering():
+		# All three routes to death, intercepted at their own start. Health
+		# alone is not enough: [ME:CONFIRMED 13 §13.2] a fall past
+		# falling_uncontrolled_height enters FallUncontrolled with health
+		# still full, so the ragdoll would take over before the bar ever
+		# moved.
+		var hurt: bool = player.health != null and player.health.hp < rescue_below_hp
+		var ragdolling: bool = player.move_manager != null \
+			and player.move_manager.current_name == Move.FALL_UNCONTROLLED
+		if hurt or ragdolling:
+			_rescue()
+			return
 	# The R hold coming due: trigger NOW, not on release, and mark the press
 	# consumed so the eventual keyup does nothing further.
 	if _r_pressed_at_ms >= 0 \
@@ -517,11 +546,14 @@ func _physics_process(_delta: float) -> void:
 	if player.ragdoll != null and player.ragdoll.is_simulating():
 		depth = player.ragdoll.hips_position().y
 	if depth < -config.pawn.fall_recovery_depth:
-		# A DEATH, not a rescue. Falling out of the world is falling to your
-		# death by any reading the player has; teleporting them back with no
-		# curtain reads as the level catching a bug rather than as an
-		# outcome. No cutscene either -- there is no floor down there to
-		# topple onto.
+		# A DEATH, not a rescue -- unless this level says otherwise. Falling
+		# out of the world is falling to your death by any reading the player
+		# has, and teleporting them back with no curtain reads as the level
+		# catching a bug rather than as an outcome. No cutscene either -- there
+		# is no floor down there to topple onto.
+		if rescue_below_hp > 0.0:
+			_rescue()
+			return
 		respawn_under_cover(Color.BLACK)
 
 ## Fades to `colour`, respawns under full cover, and lifts. The one way
@@ -539,6 +571,16 @@ func _physics_process(_delta: float) -> void:
 ## uncovered teleport reads as a glitch either way.
 func respawn_at_checkpoint() -> void:
 	respawn_under_cover(Color.WHITE)
+
+## The tutorial's answer to everything that would otherwise be a death: full
+## health, white curtain, back to the highest checkpoint reached. Costs time
+## and nothing else -- which is what makes daring a shortcut the rational
+## choice rather than a gamble.
+func _rescue() -> void:
+	rescued_count += 1
+	if player.health != null:
+		player.health.reset()
+	respawn_at_checkpoint()
 
 func respawn_under_cover(colour: Color = Color.WHITE) -> void:
 	if not is_instance_valid(player):
