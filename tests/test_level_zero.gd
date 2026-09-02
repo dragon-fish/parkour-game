@@ -43,12 +43,17 @@ func _level() -> Dictionary:
 
 	var tower := Node3D.new()
 	tower.name = "Tower"
+	# Standing where the lessons happened to end, not at the world origin --
+	# the real one is placed in front of the body. Nothing here may work only
+	# because the tower is at (0, 0, 0).
+	tower.position = Vector3(30.0, 0.0, -40.0)
 	var slab := StaticBody3D.new()
 	slab.name = "Platform00"
 	slab.collision_layer = 1
 	tower.add_child(slab)
 	var checkpoint := Checkpoint.new()
 	checkpoint.name = "Checkpoint00"
+	checkpoint.position = Vector3(9.0, 0.95, 0.0)
 	tower.add_child(checkpoint)
 	var orb := Area3D.new()
 	orb.name = "Orb"
@@ -82,6 +87,15 @@ func _level() -> Dictionary:
 	level.plain_mesh = plain_mesh
 	level.plain_collision = collision
 
+	# Out on the plain and nowhere near the tower, the way the real level
+	# starts: the spawn is the first thing a player sees and the tower is not
+	# there yet.
+	var spawn := Marker3D.new()
+	spawn.name = "SpawnPoint"
+	spawn.position = Vector3(0.0, 0.95, 25.0)
+	level.spawn_point = spawn
+
+	add_child_autofree(spawn)
 	add_child_autofree(tower)
 	add_child_autofree(wrap)
 	add_child_autofree(director)
@@ -89,7 +103,7 @@ func _level() -> Dictionary:
 	add_child_autofree(level)
 	await step(1)
 	return {level = level, tower = tower, slab = slab, wrap = wrap,
-		director = director, plain = plain, collision = collision,
+		director = director, plain = plain, collision = collision, spawn = spawn,
 		plain_mesh = plain_mesh, shared = shared, orb = orb,
 		checkpoint = checkpoint}
 
@@ -165,6 +179,30 @@ func test_the_base_checkpoint_is_also_what_takes_the_floor_away() -> void:
 		"the node that takes the floor away is not a live checkpoint")
 	assert_true((live.collision as CollisionShape3D).disabled,
 		"stepping onto the tower did not start the floor leaving")
+
+func test_the_floor_leaving_takes_the_spawn_point_with_it() -> void:
+	# A RESTART MUST NOT AIM AT A PLAIN THAT IS NO LONGER THERE. The pause
+	# menu's restart row and the R hold are the same action: both clear the
+	# checkpoint and put the body back on the level's spawn point. Left out on
+	# the plain, that spawn is empty air from the moment the floor goes -- fall,
+	# rescue, spawn out of the world, fall again, a white curtain with no exit
+	# -- and before the tutorial has ever been finished the pause menu carries
+	# no route back to the main menu either.
+	#
+	# WHERE the tower stands is not asserted; that it is the tower is.
+	var live: Dictionary = await _level()
+	var level: LevelZero = live.level
+	var spawn: Marker3D = live.spawn
+	var on_the_plain: Vector3 = spawn.global_position
+
+	level._on_tower_reached(null)
+	await step(1)
+
+	assert_ne(spawn.global_position, on_the_plain,
+		"the floor left and the spawn point stayed out on the plain")
+	assert_almost_eq(spawn.global_position.distance_to(
+		(live.checkpoint as Node3D).global_position), 0.0, 0.01,
+		"the spawn point did not land at the foot of the tower")
 
 func test_the_surface_stops_being_a_mirror_not_just_a_colour() -> void:
 	# WHAT MAKES THE FLOOR VISIBLE IS THE SHEEN, NOT THE COLOUR. acrylic_void

@@ -74,6 +74,7 @@ func test_level_zero_found_every_node_it_drives() -> void:
 	assert_not_null(chain.plain, "LevelZero has no plain")
 	assert_not_null(chain.plain_mesh, "LevelZero has no plain mesh")
 	assert_not_null(chain.plain_collision, "LevelZero has no plain collision")
+	assert_not_null(chain.spawn_point, "LevelZero has no spawn point")
 
 func test_the_director_and_the_wrap_both_have_the_body() -> void:
 	# Both are wired by NodePath and both fail the same silent way: a director

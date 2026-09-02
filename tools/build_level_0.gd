@@ -127,6 +127,10 @@ func _initialize() -> void:
 	chain.set("plain", plain)
 	chain.set("plain_mesh", plain.get_node("Mesh"))
 	chain.set("plain_collision", plain.get_node("Collision"))
+	# THE SAME MARKER ARENA RESPAWNS AT. LevelZero moves it to the foot of the
+	# tower when the plain goes, so a restart lands on the climb instead of on
+	# a plain that is no longer there.
+	chain.set("spawn_point", spawn)
 	chain.set("void_colour", PALE)
 
 	_claim(root)

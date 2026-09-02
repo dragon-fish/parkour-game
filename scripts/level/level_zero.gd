@@ -37,6 +37,10 @@ const THANKS_SCENE := "res://scenes/ui/thanks_for_playing.tscn"
 @export var plain: StaticBody3D
 @export var plain_mesh: MeshInstance3D
 @export var plain_collision: CollisionShape3D
+## The level's own spawn -- the thing a restart aims at when no checkpoint is
+## live. It starts out on the plain and does not stay there; see
+## _move_spawn_to_the_tower().
+@export var spawn_point: Marker3D
 
 ## How far ahead of the body the tower stands up. Far enough to see all of it,
 ## near enough to run to. Tuning value.
@@ -146,7 +150,28 @@ func _on_tower_reached(_body: Node3D) -> void:
 	# climbing body.
 	if wrap != null:
 		wrap.set_physics_process(false)
+	_move_spawn_to_the_tower()
 	_dissolve_floor()
+
+## The plain is the beginning of this level only for as long as the plain is
+## there. Restart -- the pause menu's row and the R hold are the same action --
+## clears the checkpoint and puts the body back on the level's spawn point, and
+## a spawn left out on the plain is empty air from here on: fall, rescue, spawn
+## out of the world, fall again. A white curtain with no way out, and before
+## the tutorial has ever been finished the pause menu carries no route back to
+## the main menu either. So the foot of the climb becomes the beginning.
+##
+## THE LEVEL'S CONCERN, NOT ARENA'S. Arena is right that a restart goes to the
+## spawn point; this level is the one that knows its spawn stops existing.
+func _move_spawn_to_the_tower() -> void:
+	if spawn_point == null or tower_checkpoint == null:
+		return
+	# The base checkpoint already stands where a body stands, facing the way
+	# the first platform runs -- Checkpoint and SpawnPoint share the origin =
+	# BODY CENTRE convention, so this is a copy and not a conversion.
+	spawn_point.global_position = tower_checkpoint.global_position
+	spawn_point.global_rotation = Vector3(0.0,
+		tower_checkpoint.global_rotation.y, 0.0)
 
 func _dissolve_floor() -> void:
 	# THE MATERIAL GATES ONLY THE FADE. Losing the floor and sinking the dots
