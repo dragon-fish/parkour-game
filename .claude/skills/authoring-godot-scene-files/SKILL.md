@@ -90,7 +90,10 @@ If that renders, the resource is sound and the fault is in how the editor is
 displaying it -- so the fix is to change the SHAPE of the display, not the
 content.
 
-**Known: nested resource inspectors crash on ShaderMaterial (Godot 4.7.1).**
+**Known engine bug, not yours: godotengine/godot#109748**, open since 4.5 and
+still unfixed with no PR or milestone against it (also reported as #116911 on
+4.6.1). Present in 4.7.1 on both macOS and Windows. Do not expect a version
+bump to solve it.
 Reaching a material through `MeshInstance3D -> Mesh -> Material` is three
 inspector levels deep, and expanding that last one logs
 
