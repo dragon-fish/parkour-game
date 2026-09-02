@@ -47,6 +47,30 @@ suspect the harness before concluding the setting does nothing.** A real
 difference of zero and a path that never applies the setting look alike from
 here, and only one of them is a finding.
 
+## Headless does not merely fail to DRAW — it fails to REMEMBER
+
+Some render state is written straight through to the server, and a headless
+run's server is a dummy that keeps nothing. Reading it back returns the type's
+zero value, silently, with no error anywhere.
+
+Measured here on `MultiMesh`: set one instance's transform to `(7, 8, 9)`, read
+it back with `get_instance_transform()` under `--headless`, get `(0, 0, 0)`.
+
+That makes **any headless test asserting placement by reading a transform back
+vacuous**, and it fails in the most expensive direction — every instance reads
+as identity, so a test that says "these are all inside the box" passes no
+matter where the code actually put them. One such test in this repo stayed
+green after the centring term it existed to protect was deleted outright.
+
+**Keep the value on the CPU side and assert that.** If gameplay code needs to
+know where a cube is, it needs a real answer anyway, so a named field on your
+own data is not test scaffolding — it is the fix. Push to the server for
+drawing; never read back from it to find out what you asked for.
+
+Suspect the same shape anywhere else state is written into a server object
+rather than kept in the node: instance custom data, per-instance colours,
+immediate-mesh contents.
+
 ## Your probe lies too
 
 A probe is code you wrote in one minute to judge code you wrote in ten. It
