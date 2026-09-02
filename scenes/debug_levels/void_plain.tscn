@@ -17,27 +17,30 @@ fade_begin_distance = 96.0
 fade_end_distance = 228.0
 tint = Color(0.96, 0.96, 0.94, 1)
 
-[sub_resource type="Environment" id="Environment_tfod6"]
-background_mode = 1
-background_color = Color(0.96, 0.96, 0.94, 1)
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_tfod6"]
+sky_top_color = Color(0.96, 0.96, 0.94, 1)
+sky_horizon_color = Color(0.96, 0.96, 0.94, 1)
+ground_bottom_color = Color(0.96, 0.96, 0.94, 1)
+ground_horizon_color = Color(0.96, 0.96, 0.94, 1)
+sun_angle_max = 0.0
+sun_curve = 0.0
+
+[sub_resource type="Sky" id="Sky_mkc1g"]
+sky_material = SubResource("ProceduralSkyMaterial_tfod6")
+
+[sub_resource type="Environment" id="Environment_llwrr"]
+background_mode = 2
+sky = SubResource("Sky_mkc1g")
 ambient_light_source = 2
 ambient_light_color = Color(0.223529, 0.466667, 0.741176, 1)
 ssr_enabled = true
 ssr_max_steps = 32
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_mkc1g"]
+[sub_resource type="BoxShape3D" id="BoxShape3D_0sfcq"]
 size = Vector3(680, 2, 680)
-
-[sub_resource type="BoxMesh" id="BoxMesh_llwrr"]
-size = Vector3(680, 2, 680)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_0sfcq"]
-shading_mode = 0
-albedo_color = Color(0.9137255, 0.003921569, 0, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_5bgmd"]
-material = SubResource("StandardMaterial3D_0sfcq")
-size = Vector3(0.5, 0.02, 680)
+size = Vector3(680, 2, 680)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2mo37"]
 shading_mode = 0
@@ -45,7 +48,7 @@ albedo_color = Color(0.9137255, 0.003921569, 0, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_iofvo"]
 material = SubResource("StandardMaterial3D_2mo37")
-size = Vector3(680, 0.02, 0.5)
+size = Vector3(0.5, 0.02, 680)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_o1l31"]
 shading_mode = 0
@@ -53,7 +56,7 @@ albedo_color = Color(0.9137255, 0.003921569, 0, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_565xk"]
 material = SubResource("StandardMaterial3D_o1l31")
-size = Vector3(0.5, 0.02, 680)
+size = Vector3(680, 0.02, 0.5)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wjotc"]
 shading_mode = 0
@@ -61,9 +64,17 @@ albedo_color = Color(0.9137255, 0.003921569, 0, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_f3482"]
 material = SubResource("StandardMaterial3D_wjotc")
+size = Vector3(0.5, 0.02, 680)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_jw1qv"]
+shading_mode = 0
+albedo_color = Color(0.9137255, 0.003921569, 0, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_m4eli"]
+material = SubResource("StandardMaterial3D_jw1qv")
 size = Vector3(680, 0.02, 0.5)
 
-[node name="VoidPlain" type="Node3D" unique_id=855358686 node_paths=PackedStringArray("player", "spawn_point")]
+[node name="VoidPlain" type="Node3D" unique_id=1812391511 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_kx77m")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
@@ -71,44 +82,43 @@ fog = SubResource("Resource_3m4ow")
 rescue_below_hp = 30.0
 view_distance = 240.0
 
-[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1819515077]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1067192011]
 transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 0, 0)
-shadow_enabled = true
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1521237500]
-environment = SubResource("Environment_tfod6")
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1805047673]
+environment = SubResource("Environment_llwrr")
 
-[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1345060698]
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1520905034]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)
 script = ExtResource("3_1grqu")
 
-[node name="Floor" type="StaticBody3D" parent="." unique_id=2027283442]
+[node name="Floor" type="StaticBody3D" parent="." unique_id=270469959]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=1305479066]
-shape = SubResource("BoxShape3D_mkc1g")
+[node name="Collision" type="CollisionShape3D" parent="Floor" unique_id=1231801062]
+shape = SubResource("BoxShape3D_0sfcq")
 
-[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=2116833054]
+[node name="Mesh" type="MeshInstance3D" parent="Floor" unique_id=1937207500]
 material_override = ExtResource("4_7ldlf")
-mesh = SubResource("BoxMesh_llwrr")
-
-[node name="Seams" type="Node3D" parent="." unique_id=602697416]
-
-[node name="SeamX0" type="MeshInstance3D" parent="Seams" unique_id=982379625]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0.012, 0)
 mesh = SubResource("BoxMesh_5bgmd")
 
-[node name="SeamZ0" type="MeshInstance3D" parent="Seams" unique_id=1659700852]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, 50)
+[node name="Seams" type="Node3D" parent="." unique_id=1288195548]
+
+[node name="SeamX0" type="MeshInstance3D" parent="Seams" unique_id=1307058463]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 50, 0.012, 0)
 mesh = SubResource("BoxMesh_iofvo")
 
-[node name="SeamX1" type="MeshInstance3D" parent="Seams" unique_id=1938721276]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -50, 0.012, 0)
+[node name="SeamZ0" type="MeshInstance3D" parent="Seams" unique_id=1445752443]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, 50)
 mesh = SubResource("BoxMesh_565xk")
 
-[node name="SeamZ1" type="MeshInstance3D" parent="Seams" unique_id=1238570030]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, -50)
+[node name="SeamX1" type="MeshInstance3D" parent="Seams" unique_id=2016104160]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -50, 0.012, 0)
 mesh = SubResource("BoxMesh_f3482")
+
+[node name="SeamZ1" type="MeshInstance3D" parent="Seams" unique_id=962211788]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.012, -50)
+mesh = SubResource("BoxMesh_m4eli")
 
 [node name="Player" type="CharacterBody3D" parent="." unique_id=1639581019 node_paths=PackedStringArray("camera_rig", "probes", "screen_effects", "subtitle", "toast") instance=ExtResource("5_8ddg7")]
 script = ExtResource("6_sr814")
@@ -118,14 +128,14 @@ screen_effects = NodePath("CameraRig/ScreenEffects")
 subtitle = NodePath("CameraRig/Subtitle")
 toast = NodePath("CameraRig/Toast")
 
-[node name="TorusWrap" type="Node" parent="." unique_id=954267826 node_paths=PackedStringArray("player")]
+[node name="TorusWrap" type="Node" parent="." unique_id=817987124 node_paths=PackedStringArray("player")]
 script = ExtResource("7_gdf7o")
 player = NodePath("../Player")
 
-[node name="RoamingProps" type="Node3D" parent="." unique_id=663819517 node_paths=PackedStringArray("player", "wrap")]
+[node name="RoamingProps" type="Node3D" parent="." unique_id=2056694722 node_paths=PackedStringArray("player", "wrap")]
 script = ExtResource("8_xrmqw")
 player = NodePath("../Player")
 wrap = NodePath("../TorusWrap")
 
-[node name="VoidProbe" type="CanvasLayer" parent="." unique_id=382147548]
+[node name="VoidProbe" type="CanvasLayer" parent="." unique_id=1566587990]
 script = ExtResource("9_fnnw6")

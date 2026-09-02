@@ -93,24 +93,52 @@ func _run() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.rotation = Vector3(deg_to_rad(-50.0), deg_to_rad(-30.0), 0.0)
-	sun.shadow_enabled = true
+	# NO SHADOWS ANYWHERE. A shadow is a statement about a floor being a
+	# surface, and this floor is not meant to read as one -- she should look
+	# like she is standing on nothing, with the dots as the only clue that
+	# space exists at all. The sun stays on so the body keeps its shading;
+	# it is the cast shadows that would give the void a ground.
+	sun.shadow_enabled = false
 	_attach(root, sun)
 
 	var world_env := WorldEnvironment.new()
 	world_env.name = "WorldEnvironment"
 	var environment := Environment.new()
-	# NO SKY. A sky is what made the wrap visible: fog deliberately does not
-	# touch the background (see Arena.SKY_FOG_AFFECT), so distant boxes kept
-	# their contrast against it and the far ring of tiles could be read popping
-	# in and out across a seam. A flat background the same shade as the fog
-	# leaves them nothing to be silhouetted against.
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = BACKDROP
+	# A SKY THAT IS ONE FLAT COLOUR, not the absence of a sky. Two things need
+	# it and a plain background colour serves neither:
+	#
+	#   The floor is nearly a mirror (see materials/acrylic_void.tres), and a
+	#   metal surface HAS no colour of its own -- it is made of what it
+	#   reflects. With no sky there is no radiance map, so every direction that
+	#   misses geometry reflects black and the white floor comes out charcoal.
+	#
+	#   The horizon has to disappear. Sky and ground being the same value is
+	#   what deletes it; a sky with any gradient at all draws the line back in.
+	#
+	# The sun disc is switched off -- a bright spot in the sky would be the one
+	# landmark this level must not have.
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = BACKDROP
+	sky_material.sky_horizon_color = BACKDROP
+	sky_material.ground_bottom_color = BACKDROP
+	sky_material.ground_horizon_color = BACKDROP
+	sky_material.sun_angle_max = 0.0
+	sky_material.sun_curve = 0.0
+	var sky := Sky.new()
+	sky.sky_material = sky_material
+	environment.background_mode = Environment.BG_SKY
+	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color(0.223529, 0.466667, 0.741176)
 	# The acrylic ground is glossy; without this it reflects nothing.
 	environment.ssr_enabled = true
 	environment.ssr_max_steps = 32
+	# THE BACKGROUND IS THE REFLECTION SOURCE. A metallic surface has no
+	# diffuse of its own -- it is made entirely of what it reflects -- and with
+	# no sky in this level there would be nothing but screen-space hits, so
+	# every direction that misses geometry comes back black. Pointing it at the
+	# background makes the floor mirror the same white the void is made of.
+	environment.reflected_light_source = Environment.REFLECTION_SOURCE_BG
 	world_env.environment = environment
 	_attach(root, world_env)
 
