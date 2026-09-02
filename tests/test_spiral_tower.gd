@@ -37,6 +37,47 @@ func test_the_summit_is_above_the_last_platform() -> void:
 		SpiralTower.platform_origin(shape, last).y,
 		"the summit is not above the top platform")
 
+func test_the_orb_can_be_reached_from_the_top_platform() -> void:
+	# "ABOVE THE TOP PLATFORM" IS NOT THE QUESTION. The orb is this level's
+	# only exit, so the question is whether a body standing on that platform
+	# can touch it. An orb hung over the tower's axis is above every platform,
+	# passes every count and height check, and is a whole radius of open air
+	# away from anywhere a body can stand -- the player climbs the tower and
+	# the level has no ending.
+	#
+	# Read out of the GENERATED scene, so a tower.tscn nobody regenerated after
+	# the arithmetic moved fails here as well. Nothing below is a number typed
+	# into this file: the platform and the orb come from the scene, the jump
+	# from the movement config. Every one of them is the author's to retune.
+	var tower: Node = load(TOWER).instantiate()
+	var top: StaticBody3D = null
+	for body in tower.find_children("Platform*", "StaticBody3D", true, false):
+		if top == null or body.position.y > top.position.y:
+			top = body
+	assert_not_null(top, "the tower scene has no platforms")
+	var slab: BoxShape3D = top.get_node("Collision").shape
+	# A platform's node origin is the centre of its slab; feet stand on the top
+	# of it. Yaw is the only rotation, so neither the height nor the inscribed
+	# footprint below is turned by it.
+	var surface: Vector3 = top.position + Vector3(0.0, slab.size.y * 0.5, 0.0)
+
+	var orb: Area3D = tower.get_node("Orb")
+	var reach: float = (orb.get_node("Collision").shape as SphereShape3D).radius
+
+	var sideways: float = Vector2(orb.position.x - surface.x,
+		orb.position.z - surface.z).length()
+	assert_lt(sideways, minf(slab.size.x, slab.size.z) * 0.5,
+		"the orb hangs off the side of the top platform rather than over it")
+
+	# A jump lifts the feet base_jump_z^2 / (2 * gravity), and the trigger
+	# volume hangs its own radius below the orb. Deliberately conservative: the
+	# body's own standing height is real reach and is not counted here.
+	var pawn: PawnConfig = MovementConfig.new().pawn
+	var apex: float = pawn.base_jump_z * pawn.base_jump_z / (2.0 * pawn.gravity)
+	assert_lt(orb.position.y - surface.y - reach, apex,
+		"the orb hangs higher above the top platform than a jump can reach")
+	tower.free()
+
 func test_every_platform_wears_the_same_material() -> void:
 	# A pipeline is compiled the first time a material is actually DRAWN. One
 	# material per platform means one compiled pipeline per reveal, and the

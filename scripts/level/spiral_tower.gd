@@ -55,6 +55,23 @@ static func platform_origin(shape: Dictionary, index: int) -> Vector3:
 static func platform_yaw(shape: Dictionary, index: int) -> float:
 	return -TAU * float(index) / float(per_turn(shape))
 
-## Where the orb hangs: over the axis, clear of the top platform.
+## Metres from the top platform's running surface up to the orb's centre.
+## Tuning value; the author will move it.
+##
+## THE CEILING IS A JUMP, NOT TASTE. A body leaving that platform rises
+## base_jump_z^2 / (2 * gravity), and the orb's trigger volume reaches down its
+## own radius below its centre. Anything above that sum is an orb the player
+## can see, climb the whole tower for, and never touch -- which is the whole
+## level with no ending.
+const SUMMIT_CLEARANCE := 3.0
+
+## Where the orb hangs: directly over the TOP PLATFORM.
+##
+## NEVER OVER THE AXIS. Nothing stands on the axis -- every platform is out on
+## `radius`, and the middle of this tower is open air all the way down. An orb
+## centred there is arithmetically tidy, passes any "is it above the top
+## platform" check, and is a whole radius of nothing away from the only place a
+## body can jump from.
 static func summit_origin(shape: Dictionary) -> Vector3:
-	return Vector3(0.0, float(shape.rise_per_turn) * float(shape.turns) + 4.0, 0.0)
+	return platform_origin(shape, platform_count(shape) - 1) \
+		+ Vector3(0.0, SUMMIT_CLEARANCE, 0.0)
