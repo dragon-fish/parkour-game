@@ -24,7 +24,10 @@ const OUTPUT := "res://scenes/debug_levels/void_plain.tscn"
 
 ## Matches TorusWrap.period's default. The plain is built three periods wide so
 ## the player can see a whole neighbouring copy across either seam.
-const PERIOD := 100.0
+## MUST be an exact multiple of the ground pattern's spacing
+## (materials/acrylic_ground.tres, spacing 1.0), or crossing a seam shifts the
+## dot grid's phase and the ground itself flickers.
+const PERIOD := 300.0
 ## How many metres of floor to lay. Three periods plus a margin, so a body
 ## standing at a seam still has ground under the copy it is looking at.
 const FLOOR_SPAN := PERIOD * 3.0 + 20.0
@@ -60,7 +63,7 @@ func _run() -> void:
 	# cut; the cut is what stops a distant box from keeping its silhouette.
 	# MUST stay under half a period (50 m) or the far copy of the world becomes
 	# visible and the seam announces itself.
-	root.set("view_distance", 46.0)
+	root.set("view_distance", 140.0)
 	var fog := FogConfig.new()
 	fog.resource_local_to_scene = true
 	# FOG IS NOT ATMOSPHERE HERE, IT IS THE SEAM'S COVER. Without a limit on
@@ -72,8 +75,8 @@ func _run() -> void:
 	# THE END DISTANCE MUST STAY UNDER HALF A PERIOD -- that is the spec's
 	# `2R < P`. Push it past 50 here and the pop comes back.
 	fog.enabled = true
-	fog.fade_begin_distance = 18.0
-	fog.fade_end_distance = 44.0
+	fog.fade_begin_distance = 55.0
+	fog.fade_end_distance = 132.0
 	fog.max_opacity = 1.0
 	# Fog the same shade as the background, so a swallowed object does not
 	# merely dim -- it stops existing as a shape.
