@@ -11,13 +11,13 @@ extends Node3D
 # Doing it the other way round -- look first, timing after -- leaves the
 # hardest part until the geometry is buried under art.
 #
-# COLLISION TURNS ON IN ONE STEP, AT THE END. Never let the collision surface
-# follow the growth surface: that is another order of complexity, and it is
-# unnecessary as long as the level keeps
-#
-#     grow_time * sprint speed < placement distance - margin
-#
-# so the player cannot reach a half-built obstacle in the first place.
+# COLLISION IS NOT THIS CLASS'S BUSINESS. Geometry is solid from the moment it
+# exists until it is freed. Both ends of a block's life happen where the player
+# cannot reach it -- growth at the placement distance, which the timing
+# contract keeps beyond his reach, and collapse at the recycle distance, which
+# is already far away -- so there is no state for collision to protect. An
+# earlier version gated collision on growth completing, which protected nothing
+# and could seal a player inside a block that landed on him.
 
 ## How long the growth takes. Must satisfy the inequality above against
 ## TutorialObstacle.spawn_distance.
@@ -26,19 +26,12 @@ extends Node3D
 ## How long the collapse takes once it starts.
 @export var collapse_time: float = 0.6
 
-## The thing that blocks. Disabled until growth completes, and again the
-## moment collapse begins.
-@export var body: CollisionObject3D
-
 ## The placement this belongs to. Pinned when growth starts. Optional: a
 ## fixed piece of scenery that grows has no anchor to pin.
 @export var obstacle: TutorialObstacle
 
 ## 0 before growth, 1 once fully grown.
 var progress: float = 0.0
-
-## Whether it currently blocks.
-var solid: bool = false
 
 signal grown
 signal gone
@@ -56,7 +49,6 @@ func _ready() -> void:
 	for node in find_children("*", "GeometryInstance3D", true, false):
 		_geometry.append(node as GeometryInstance3D)
 	_apply_alpha(0.0)
-	_set_solid(false)
 
 func _physics_process(delta: float) -> void:
 	match _phase:
@@ -66,7 +58,6 @@ func _physics_process(delta: float) -> void:
 			_apply_alpha(progress)
 			if progress >= 1.0:
 				_phase = Phase.STANDING
-				_set_solid(true)
 				grown.emit()
 		Phase.COLLAPSING:
 			_elapsed += delta
@@ -86,25 +77,12 @@ func begin() -> void:
 	if obstacle != null:
 		obstacle.lock()
 
-## Starts collapsing. Solidity is given up on the spot, not at the end: a
-## player running through the space it is vacating is the reason it leaves.
+## Starts collapsing.
 func collapse() -> void:
 	if _phase == Phase.COLLAPSING or _phase == Phase.DONE:
 		return
 	_phase = Phase.COLLAPSING
 	_elapsed = 0.0
-	_set_solid(false)
-
-func _set_solid(on: bool) -> void:
-	solid = on
-	if body != null:
-		body.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
-		for child in body.get_children():
-			if child is CollisionShape3D:
-				# Deferred: the physics server may be mid-query while this
-				# runs from _physics_process. A direct write can land inside
-				# that query and corrupt it.
-				child.set_deferred("disabled", not on)
 
 ## MVP: plain transparency. Replaced by the dissolve shader later; nothing
 ## outside this function knows which is in use.
