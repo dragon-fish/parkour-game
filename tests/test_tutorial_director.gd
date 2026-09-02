@@ -1,8 +1,9 @@
 extends ParkourTest
 
 # Progress is a line: it advances when the player performs the move the
-# current lesson teaches, and it never goes backwards. What the lesson LOOKS
-# like is Task 4's business; this asserts only the counting.
+# current lesson teaches, and it never goes backwards. Beyond the counting,
+# this asserts the shape of a lesson's life -- built ahead of the player, one
+# block, and still visible while it leaves.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -150,3 +151,82 @@ func test_adopting_the_same_obstacle_twice_does_not_double_the_wrap_shift() -> v
 	await step(2)
 	assert_almost_eq(obstacle.anchor.x, before.x - 100.0, 0.01,
 		"adopting the same obstacle twice shifted it more than one period")
+
+## A stand-in lesson scene: a root plus the Content node the tutorial takes.
+func _lesson_scene(child_name: String) -> PackedScene:
+	var root := Node3D.new()
+	root.name = "Arena"
+	var content := Node3D.new()
+	content.name = "Content"
+	var mesh := MeshInstance3D.new()
+	mesh.name = child_name
+	mesh.mesh = BoxMesh.new()
+	content.add_child(mesh)
+	root.add_child(content)
+	content.owner = root
+	mesh.owner = root
+	var packed := PackedScene.new()
+	packed.pack(root)
+	root.free()
+	return packed
+
+func test_the_first_lesson_grows_its_own_scene_in_front_of_the_player() -> void:
+	var player: Player = await _directed([
+		{teaches = Move.CROUCH, scene = _lesson_scene("Wall")},
+	])
+	await step(3)
+	assert_eq(_director.live_count(), 1, "the first lesson did not build anything")
+	var obstacle: TutorialObstacle = _director.current_obstacle()
+	assert_not_null(obstacle, "no obstacle was placed")
+	assert_not_null(obstacle.find_child("Wall", true, false),
+		"the lesson's own geometry is not under the obstacle")
+	var forward: Vector3 = -player.global_transform.basis.z
+	var to_it: Vector3 = obstacle.anchor - player.global_position
+	to_it.y = 0.0
+	assert_gt(forward.normalized().dot(to_it.normalized()), 0.9,
+		"the lesson was not built ahead of the player")
+
+func test_passing_a_lesson_collapses_it_and_builds_the_next() -> void:
+	var player: Player = await _directed([
+		{teaches = Move.CROUCH, scene = _lesson_scene("First")},
+		{teaches = Move.SLIDE, scene = _lesson_scene("Second")},
+	])
+	await step(3)
+	player.move_manager.start(Move.CROUCH)
+	await step(3)
+	assert_not_null(_director.find_child("Second", true, false),
+		"the next lesson was not built")
+	# The old one is on its way out, not gone on the same frame: the player is
+	# meant to see it go.
+	assert_not_null(_director.find_child("First", true, false),
+		"the passed lesson vanished instantly instead of collapsing")
+
+func test_a_lesson_without_a_scene_still_advances() -> void:
+	# The table is authored a row at a time; a row with no scene yet must not
+	# stop the sequence from being testable.
+	var player: Player = await _directed([
+		{teaches = Move.CROUCH},
+		{teaches = Move.SLIDE},
+	])
+	await step(3)
+	player.move_manager.start(Move.CROUCH)
+	await step(3)
+	assert_eq(_director.index, 1, "a sceneless lesson blocked the sequence")
+
+func test_the_lessons_own_geometry_fades_in_with_the_block() -> void:
+	# A lesson is ONE block: the fade acts on the whole of its geometry, not on
+	# the shell that carries it. GrowingSolid gathers the meshes it fades once,
+	# in its own _ready(), so content hung on after the block is already in the
+	# tree is in no list -- the lesson stands there opaque from the first frame
+	# while the fade runs over nothing.
+	await _directed([
+		{teaches = Move.CROUCH, scene = _lesson_scene("Wall")},
+	])
+	await step(3)
+	var obstacle: TutorialObstacle = _director.current_obstacle()
+	var mesh: GeometryInstance3D = obstacle.find_child("Wall", true, false)
+	assert_not_null(mesh, "test setup: the lesson geometry is not under the obstacle")
+	var early: float = mesh.transparency
+	assert_gt(early, 0.0, "the lesson was fully drawn before its block had grown")
+	await step(30)
+	assert_lt(mesh.transparency, early, "the lesson did not fade in as the block grew")
