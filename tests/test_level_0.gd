@@ -42,6 +42,28 @@ func test_only_the_opening_row_teaches_without_a_scene() -> void:
 		assert_not_null(director.lessons[at].get(&"scene"),
 			"lesson row %d has no scene, so its path did not load" % at)
 
+func test_handing_over_leaves_the_animation_tree_the_only_writer() -> void:
+	# TWO WRITERS ON ONE SKELETON IS AN ANIMATION-LESS CHARACTER. The opening
+	# poses the crouch with AnimationPlayer.play(), which keeps applying its
+	# own tracks for as long as it runs. Switching the tree back on does not
+	# stop it, so the move machine's output is overwritten every frame and the
+	# body holds the crouch through everything the player does.
+	#
+	# The state asserted here is what an ordinary level shows: the tree on, the
+	# player idle. Compare scenes/main.tscn, which has no opening at all.
+	var level: Node = await _loaded()
+	var player: Player = level.get_node("Player")
+	var tree: AnimationTree = player.get_node_or_null("BodyRoot/AnimationTree")
+	if tree == null:
+		return  # No body mounted: there is no skeleton to fight over.
+	var intro: Node = level.get_node("TutorialIntro")
+	intro._hand_over()
+	await step(4)
+	assert_true(tree.active, "the animation tree never came back on")
+	var anim: AnimationPlayer = tree.get_node(tree.anim_player)
+	assert_false(anim.is_playing(),
+		"the opening's clip is still playing, so it overwrites every move")
+
 func test_the_loop_actually_runs_in_the_assembled_scene() -> void:
 	# THE ONE TEST THAT USES THE SCENE'S OWN WIRING ORDER. Every other test of
 	# the director builds the player first and hands it over already set up.

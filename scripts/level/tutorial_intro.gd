@@ -168,6 +168,14 @@ func _hand_over() -> void:
 			player.camera_rig.end_cinematic()
 		player.unlock_input()
 	if _anim_tree != null:
+		# THE TREE MUST BE THE ONLY WRITER AGAIN. Reactivating it is not enough:
+		# a clip started with AnimationPlayer.play() keeps applying its own
+		# tracks to the same skeleton, and whatever the move machine blends is
+		# overwritten by it every frame. The body then holds the crouch through
+		# every move the player makes, which reads as an animation-less
+		# character rather than as two things fighting.
+		if _anim_player != null:
+			_anim_player.stop()
 		_anim_tree.active = true
 	set_physics_process(false)
 	handed_over.emit()
