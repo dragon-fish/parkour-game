@@ -108,6 +108,12 @@ const MENU_FOV_DEG := 55.0
 @export var head_x_frac: float = 0.55
 @export var head_y_frac: float = 0.34
 @export var close_body_frac: float = 0.85
+
+## Which side of her the lens stands on, added to the menu's own azimuth. 180
+## puts it on the other side, which mirrors the profile -- and the framing
+## offset mirrors with it, so head_x_frac has to be mirrored too (0.55 -> 0.45)
+## or she slides out of frame. Change the two together.
+@export var shot_side_degrees: float = 0.0
 const MENU_HEAD_TOP_PAD := 0.16
 const MENU_FRONT_YAW_DEG := -180.0
 const MENU_CLOSE_AZIMUTH_DEG := 180.0
@@ -320,7 +326,7 @@ func _solve_shot() -> void:
 	# FRONT_YAW_DEG, so what carries over is the DIFFERENCE, applied to
 	# whichever way this performer happens to be facing.
 	var azimuth: float = performer.global_rotation.y \
-		+ deg_to_rad(MENU_CLOSE_AZIMUTH_DEG - MENU_FRONT_YAW_DEG)
+		+ deg_to_rad(MENU_CLOSE_AZIMUTH_DEG - MENU_FRONT_YAW_DEG + shot_side_degrees)
 	var back := Vector3(cos(azimuth), 0.0, sin(azimuth))
 	var right: Vector3 = (-back).cross(Vector3.UP).normalized()
 	var ndc := Vector2((head_x_frac - 0.5) * 2.0, (0.5 - head_y_frac) * 2.0)
@@ -376,6 +382,16 @@ func _paint(k: float) -> void:
 		# colour here is overwritten before it is ever drawn. DO NOT go back to
 		# setting the colour.
 		player.config.camera.ambient_cold_strength = lerpf(0.0, _ambient_strength, k)
+	if plain_mesh != null:
+		# THERE IS NO FLOOR IN THE FRONT DOOR'S OPENING. A pure white sky and
+		# nothing under it -- which is why no amount of matching the floor's
+		# colour to the sky ever closed the gap: a lit sheet against an unlit
+		# sky always leaves a horizon. The ground arrives with the click, the
+		# way it does on the menu.
+		#
+		# THE COLLISION STAYS. She is standing on it the whole time; only the
+		# drawing waits.
+		plain_mesh.visible = k > 0.0
 	if _floor_material != null:
 		_floor_material.set_shader_parameter("base_color",
 			opening_colour.lerp(_floor_authored.base, k))
@@ -453,6 +469,14 @@ func _raise_performer() -> void:
 	stance.origin.y -= player.current_capsule_height() * 0.5
 	performer.global_transform = stance
 	performer.hold_crouch()
+	# THE POSE BEFORE THE MEASUREMENT. hold_crouch() only starts the clip; the
+	# skeleton still holds its rest pose until the animation is advanced, and a
+	# shot solved against a STANDING skeleton puts the lens where a standing
+	# body would need it -- too far back, aimed half a metre over the head she
+	# is actually holding. The menu waits six frames for the same reason; this
+	# asks for the pose instead of hoping for it.
+	for node in performer.find_children("*", "AnimationPlayer", true, false):
+		(node as AnimationPlayer).advance(0.0)
 	var body_root: Node3D = player.get_node_or_null("BodyRoot") as Node3D
 	if body_root != null:
 		body_root.visible = false
