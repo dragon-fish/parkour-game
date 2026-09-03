@@ -126,3 +126,16 @@ func test_the_game_starts_at_something_that_decides_where_to_go() -> void:
 	autofree(scene)
 	assert_true(scene is BootRouter,
 		"the game starts on a scene that cannot decide where the launch goes")
+
+func test_the_router_holds_no_mark_of_its_own() -> void:
+	# THE LOGO LIVES IN ONE PLACE, and it is not here. Both destinations open on
+	# MeOpeningPlate and hold the mark from their own first frame; drawn here as
+	# well it appears, dies with this scene and comes back, which on a fast load
+	# is a flash and a vanish. That is what the author saw.
+	var router := BootRouter.new()
+	router._change_scene = func(_path): pass
+	add_child_autofree(router)
+	await step(1)
+	var marks: Array[Node] = router.find_children("*", "TextureRect", true, false)
+	assert_eq(marks.size(), 0,
+		"the router draws a mark of its own, so the logo flashes across the swap")

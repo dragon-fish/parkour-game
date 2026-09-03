@@ -21,18 +21,9 @@ extends Control
 const LEVEL_0_SCENE := "res://scenes/levels/level_0/level_0.tscn"
 const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 
-## The plate: the same ground and the same mark the main menu's own opening
-## beat holds, so the swap into it moves nothing on screen.
-##
-## COPIED, NOT REFERENCED, and it has to be. MainMenu's LOGO_X_FRAC and
-## friends are @export vars, and an exported var is an instance member -- a
-## cross-class reference can only reach a const. Keep these equal to that
-## scene's values; the hand-over is invisible only while the mark does not
-## move. LOGO_TEXTURE itself IS a const there, so the artwork is shared.
+## The plate: the same near-white ground both doors open on, so the swap into
+## either of them moves nothing on screen.
 const PLATE_COLOUR := Color(0.96, 0.96, 0.94)
-const LOGO_X_FRAC := 0.19
-const LOGO_Y_FRAC := 0.55
-const LOGO_SIZE_PX := 220.0
 
 ## Seam for the scene change, same shape as MainMenu._change_scene and
 ## LevelZero._change_scene: a test observes where this launch was routed
@@ -87,6 +78,12 @@ func _process(_delta: float) -> void:
 ## The held picture, built here rather than laid out in the .tscn -- the same
 ## convention every other screen in scripts/ui follows.
 ##
+## THE GROUND AND NOTHING ELSE. DO NOT draw the logo here. Both destinations
+## open on MeOpeningPlate, which holds the mark from their own first frame, and
+## a mark drawn here as well is a mark that appears, dies with this scene and
+## comes back -- which on a fast load is a flash and a vanish, and is exactly
+## what it looked like.
+##
 ## set_anchors_and_offsets_preset, never set_anchors_preset: the second sets
 ## anchors and leaves the offsets describing whatever rect the node has, which
 ## for a freshly built Control is 0x0. See .claude/skills/godot-ui-layout-traps.
@@ -101,19 +98,3 @@ func _build_plate() -> void:
 	add_child(background)
 
 	add_child(MeTheme.paper_noise_layer())
-
-	if not ResourceLoader.exists(MainMenu.LOGO_TEXTURE):
-		return
-	var mark := TextureRect.new()
-	mark.texture = load(MainMenu.LOGO_TEXTURE)
-	mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	mark.anchor_left = LOGO_X_FRAC
-	mark.anchor_right = LOGO_X_FRAC
-	mark.anchor_top = LOGO_Y_FRAC
-	mark.anchor_bottom = LOGO_Y_FRAC
-	mark.offset_left = -LOGO_SIZE_PX * 0.5
-	mark.offset_right = LOGO_SIZE_PX * 0.5
-	mark.offset_top = -LOGO_SIZE_PX * 0.5
-	mark.offset_bottom = LOGO_SIZE_PX * 0.5
-	add_child(mark)
