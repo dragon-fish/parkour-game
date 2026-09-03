@@ -96,19 +96,6 @@ const FALLBACK_CROUCH_HEAD := 0.82
 const FALLBACK_CROUCH_HIPS := 0.51
 const FALLBACK_STAND_HEAD := 1.43
 
-# --- the opening that leads straight into the tutorial ---------------------
-## Where the camera ends up when the click leads into the tutorial: BEHIND
-## her, not in front. The body faces world +Z and never turns, so azimuth 90 is
-## the lens in her face and 270 is over her shoulder -- the orbit runs
-## 180 -> 270, round her left side, rather than the menu's 180 -> 90.
-const BEHIND_AZIMUTH_DEG := 270.0
-## How close the over-the-shoulder shot sits, as a fraction of the settled
-## full-body distance. Tuning value.
-@export var SHOULDER_DISTANCE_SCALE: float = 0.75
-## Seconds the shoulder shot is held before the white takes over, however fast
-## the level loads. Tuning value; a click during it drops it to zero.
-@export var TUTORIAL_HOLD: float = 2.6
-
 # --- logo mark (white recolor of the codex topo emblem) --------------------
 const LOGO_TEXTURE := "res://assets/ui/logo_mark_white.svg"
 ## Centre of the mark, as screen fractions (✅ the owner: left 20% top 66%).
@@ -203,12 +190,6 @@ var _quit_confirm: Control
 ## LEFT side (azimuth 0), then a push into her eye under a white cover.
 var _loading := false
 var _load_min_elapsed := 0.0
-## Set while this click is taking the player straight into the tutorial: no
-## menu, and the hand-over holds the over-the-shoulder shot instead of diving
-## into her eye.
-var _entering_tutorial: bool = false
-## TUTORIAL_HOLD's live copy, so an impatient press can zero it.
-var _tutorial_hold: float = 0.0
 var _run_orbit_t := 0.0
 var _stand_head_y := 1.43
 
@@ -815,76 +796,6 @@ func _begin_show() -> void:
 	pacing.tween_interval(MENU_PANEL_TIME + MeMenuList.ENTRANCE_STAGGER * 3.0 + MeMenuList.TWEEN_TIME)
 	pacing.tween_callback(_beat_settle)
 
-## Whether this click goes straight into the tutorial rather than opening the
-## menu. Two ways in: it has never been finished -- until then the tutorial IS
-## the front door -- or the settings page asked to play it again this session.
-func _should_enter_tutorial() -> bool:
-	return ProgressStore.replay_requested or not ProgressStore.tutorial_finished()
-
-## The click, on a launch with no menu in it. The rise beat, unchanged, except
-## that the camera comes to rest BEHIND her and the level starts loading
-## underneath it.
-##
-## THE MUSIC STAYS ON ITS LOOP. There is no menu to arrive, so there is no drop
-## to enter -- the chorus belongs to the tower, and used twice it is heavy
-## neither time.
-func _begin_tutorial_opening() -> void:
-	_prompt_shown = false
-	_entering_tutorial = true
-	_tutorial_hold = TUTORIAL_HOLD
-	if _prompt_tween != null and _prompt_tween.is_valid():
-		_prompt_tween.kill()
-	var fade := _track(create_tween())
-	fade.tween_property(_click_prompt, "modulate:a", 0.0, 0.2)
-
-	var logo_fade := _track(create_tween())
-	logo_fade.tween_property(_logo_mark, "modulate:a", 0.0, LOGO_FADE_TIME) \
-		.set_ease(Tween.EASE_IN)
-
-	var floor_fade := _track(create_tween())
-	floor_fade.tween_property(_floor, "modulate:a", 1.0, FLOOR_FADE_TIME)
-
-	# Camera leads, body follows -- the same rule as the menu's own rise. The
-	# body only stands; every degree of turning is the camera's.
-	var cam := _track(create_tween())
-	cam.tween_method(_apply_shoulder_cam, 0.0, 1.0, RISE_TIME) \
-		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
-
-	var body := _track(create_tween())
-	body.tween_interval(_stand_up_delay())
-	body.tween_callback(_start_stand_up)
-
-	var walk := _track(create_tween())
-	walk.tween_interval(RISE_TIME)
-	walk.tween_callback(_start_walk_loop)
-
-	_begin_tutorial_load()
-
-## Places the camera for a blend factor t: 0 = the crouched close profile, 1 =
-## the over-the-shoulder shot the tutorial hands over from.
-func _apply_shoulder_cam(t: float) -> void:
-	_place_cam(lerpf(CLOSE_AZIMUTH_DEG, BEHIND_AZIMUTH_DEG, t),
-		lerpf(_d_close, _d_far * SHOULDER_DISTANCE_SCALE, t),
-		_head_point.lerp(_body_centre, t),
-		Vector2((HEAD_X_FRAC - 0.5) * 2.0, (0.5 - HEAD_Y_FRAC) * 2.0) \
-			.lerp(Vector2.ZERO, t))
-
-## Starts the threaded load under the shoulder shot. Same machinery as
-## _on_start_pressed(); what differs is that no menu has to leave first.
-func _begin_tutorial_load() -> void:
-	if _loading:
-		return
-	if DisplayServer.get_name() == "headless":
-		_change_scene.call(_target_scene)
-		return
-	_loading = true
-	if _music != null:
-		_music.fade_out()
-	_load_min_elapsed = 0.0
-	_load_started_ms = Time.get_ticks_msec()
-	ResourceLoader.load_threaded_request(_target_scene)
-	print("[load] threaded request sent (tutorial opening)")
-
 ## Frame 0 is already fully composed at build time (crouched profile, white
 ## mark, faint floor); the first beat is the RISE: the body stands
 ## (Crouch_Idle -> Idle blend) and turns to face the camera while the camera
@@ -1034,17 +945,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (is_key_press or is_click):
 		return
 	if _prompt_shown:
-		# The invited click on the held title shot. What it means depends on
-		# whether this player has ever finished the tutorial.
-		if _should_enter_tutorial():
-			_begin_tutorial_opening()
-		else:
-			_begin_show()
-	elif _entering_tutorial:
-		# A REPEATED SHOW MUST BE SKIPPABLE. On a replay this opening has been
-		# watched before, and holding the shot for someone in a hurry is only
-		# an insistence he watch it again.
-		_tutorial_hold = 0.0
+		# The invited click on the held title shot: the whole entrance plays.
+		# WHERE A LAUNCH GOES IS NOT ASKED HERE. A player who has never finished
+		# the tutorial never reaches this scene -- scripts/ui/boot_router.gd
+		# sent him to the level instead, before this menu was ever built.
+		_begin_show()
 	else:
 		# Mid-show impatience: jump straight to the settled menu. An entrance
 		# already watched a dozen times is not worth forcing on someone in a
@@ -1176,10 +1081,7 @@ func _start_run_clip() -> void:
 func _poll_loading(delta: float) -> void:
 	_load_min_elapsed += delta
 	var status := ResourceLoader.load_threaded_get_status(_target_scene)
-	# The shoulder shot is held on its own clock: the menu's run-up has a shape
-	# that has to finish, the tutorial's opening only has to breathe.
-	var minimum: float = _tutorial_hold if _entering_tutorial else LOAD_MIN_RUN
-	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS or _load_min_elapsed < minimum:
+	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS or _load_min_elapsed < LOAD_MIN_RUN:
 		return
 	if status == ResourceLoader.THREAD_LOAD_FAILED or status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
 		# Fall back to the plain (blocking) switch rather than stranding
@@ -1195,13 +1097,9 @@ func _poll_loading(delta: float) -> void:
 	# figure cannot include them.
 	print("[load] threaded load done: %d ms (the run-up held it open)" \
 		% (Time.get_ticks_msec() - _load_started_ms))
-	# NO DIVE ON THE TUTORIAL PATH. The push into her eye is a hand-over to
-	# FIRST person; the tutorial hands over from behind her, and diving in only
-	# to reappear over her shoulder reads as two different cuts.
-	if not _entering_tutorial:
-		var dive := _track(create_tween())
-		dive.tween_method(_fp_dive, 0.0, 1.0, 0.8) \
-			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	var dive := _track(create_tween())
+	dive.tween_method(_fp_dive, 0.0, 1.0, 0.8) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
 	PauseUi.run_white_transition(packed, 0.7)
 
 ## The push into first person: distance collapses toward her eye height.

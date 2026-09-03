@@ -16,6 +16,10 @@ extends Control
 #   would open a pause menu over a scene with no player -- every row of which
 #   does nothing. Esc is treated as "leave" instead, and consumed.
 
+## THE MENU ITSELF, not the game's front door. This page is reached by
+## finishing the tutorial, and finishing it is what BootRouter's question turns
+## on -- so the router would spend a load beat deciding something already
+## decided one screen ago.
 const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 
 ## Seam for the exit, same shape as MainMenu._change_scene: a test can observe

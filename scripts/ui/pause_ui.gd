@@ -5,14 +5,20 @@ extends CanvasLayer
 # whitebox gets a pause menu for free. Esc toggles pause, or backs out of
 # the settings page when that is what is currently shown; the Settings
 # choice pushes MeSettingsMenu in place of the menu list; the Back to Main
-# Menu choice targets the main menu scene, guarded so it simply does
+# Menu choice targets the game's front door, guarded so it simply does
 # nothing until that scene exists.
 #
 # No class_name: this script's only identity is the autoload singleton name
 # "PauseUi" project.godot binds it to -- a class_name of the same name would
 # collide with that global.
 
-const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
+## THE FRONT DOOR, NOT THE MENU. Leaving a level goes back to the game's own
+## entry scene and lets it decide again, because one of the two callers is the
+## settings row that arms a tutorial replay -- routed straight at the menu it
+## would land on a screen whose click opens the menu, which is not what was
+## asked for. BootRouter answers "menu" for everyone else, so nothing changes
+## for the pause menu's own row.
+const FRONT_DOOR_SCENE := "res://scenes/ui/boot_router.tscn"
 
 var _backdrop: ColorRect
 var _paper_noise: ColorRect
@@ -385,7 +391,7 @@ func _on_settings_closed() -> void:
 ## Sends the game back to the front door. PUBLIC because the settings page's
 ## 重玩新手教程 row needs this exact route from either of its two hosts.
 func go_to_main_menu() -> void:
-	if not ResourceLoader.exists(MAIN_MENU_SCENE):
+	if not ResourceLoader.exists(FRONT_DOOR_SCENE):
 		return
 	_set_shown(false)
 	get_tree().paused = false
@@ -395,10 +401,10 @@ func go_to_main_menu() -> void:
 	# Headless keeps the bare seam for the tests (embedded renders fine and
 	# gets the show).
 	if DisplayServer.get_name() == "headless":
-		_change_scene.call(MAIN_MENU_SCENE)
+		_change_scene.call(FRONT_DOOR_SCENE)
 		call_deferred("_clear_pending_scene_change")
 		return
-	run_white_transition(load(MAIN_MENU_SCENE), 0.4)
+	run_white_transition(load(FRONT_DOOR_SCENE), 0.4)
 	call_deferred("_clear_pending_scene_change")
 
 func _clear_pending_scene_change() -> void:

@@ -11,6 +11,10 @@ extends Node3D
 #
 # Whole scene built from code on a one-node .tscn, exactly like MainMenu.
 
+## THE MENU ITSELF, not the game's front door. BootRouter re-asks whether this
+## launch belongs in the tutorial, and the answer here is already known: this
+## screen is only ever reached from the menu, so going anywhere else would be a
+## second load beat to arrive at the same place.
 const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 const BODY_PROFILE := "res://scenes/player/local/profiles/beriul.tres"
 const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"

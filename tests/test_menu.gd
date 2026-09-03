@@ -308,8 +308,8 @@ func test_go_to_main_menu_unpauses_before_requesting_the_scene_change() -> void:
 	assert_false(paused_at_call[0],
 		"the tree was still paused at the moment the scene change was requested")
 	assert_false(get_tree().paused, "go_to_main_menu did not unpause the tree")
-	assert_eq(requested[0], PauseUi.MAIN_MENU_SCENE, \
-		"go_to_main_menu did not request scenes/ui/main_menu.tscn through the change-scene seam")
+	assert_eq(requested[0], PauseUi.FRONT_DOOR_SCENE, \
+		"go_to_main_menu did not request the front door through the change-scene seam")
 
 ## _resume() honors a current scene's
 ## capture_mouse = false (Arena's own contract, arena.gd) rather than always
@@ -405,9 +405,9 @@ func test_settings_menu_default_resets_controls_without_saving() -> void:
 	assert_false(FileAccess.file_exists(SettingsStore.path), "默认 must not write settings.cfg")
 
 func test_replaying_the_tutorial_arms_it_and_returns_to_the_front_door() -> void:
-	# Both halves fail silently. Without the flag the click sends the player to
-	# a main menu he then clicks past into the menu again -- nothing happens,
-	# twice. Without the scene change he stays on the settings page.
+	# Both halves fail silently. Without the flag the front door routes him
+	# straight back to the menu he just left -- nothing happens, twice. Without
+	# the scene change he stays on the settings page.
 	ProgressStore.mark_tutorial_finished()
 	ProgressStore.replay_requested = false
 	var page := MeSettingsMenu.new()
@@ -421,7 +421,7 @@ func test_replaying_the_tutorial_arms_it_and_returns_to_the_front_door() -> void
 
 	assert_true(ProgressStore.replay_requested,
 		"重玩新手教程 did not arm the next click on the front door")
-	assert_eq(requested[0], PauseUi.MAIN_MENU_SCENE,
+	assert_eq(requested[0], PauseUi.FRONT_DOOR_SCENE,
 		"重玩新手教程 did not send the game back to the front door")
 	PauseUi._change_scene = Callable(PauseUi, "_real_change_scene")
 	PauseUi._pending_scene_change = false
@@ -735,10 +735,10 @@ func test_the_main_menu_row_comes_back_once_the_tutorial_is_finished() -> void:
 
 
 # ---------------------------------------------------------------------------
-# The first click. It means one of two entirely different things depending on
-# whether the tutorial has ever been finished, and the wrong one is a player
-# either dumped into a menu he has not earned or trapped in a tutorial he has
-# already done.
+# The click on the held title shot. WHERE A LAUNCH GOES IS NOT DECIDED HERE any
+# more -- scripts/ui/boot_router.gd routes a player who has never finished the
+# tutorial straight into the level, so anyone who reaches this scene has earned
+# the menu and the click means exactly one thing: play the entrance.
 #
 # EIGHT FRAMES. MainMenu._ready() awaits six process frames for the
 # framing solve before _play_entrance() sets _entrance_active, and
@@ -748,8 +748,7 @@ func test_the_main_menu_row_comes_back_once_the_tutorial_is_finished() -> void:
 # and that half second is the entrance's pacing, not this test's subject.
 # ---------------------------------------------------------------------------
 
-func test_the_first_ever_click_goes_straight_into_the_tutorial() -> void:
-	_delete_progress_file()
+func test_the_click_on_the_title_shot_plays_the_entrance() -> void:
 	var menu := MainMenu.new()
 	add_child_autofree(menu)
 	await step(8)
@@ -763,82 +762,11 @@ func test_the_first_ever_click_goes_straight_into_the_tutorial() -> void:
 	menu._unhandled_input(click)
 	await step(2)
 
-	assert_true(menu._entering_tutorial,
-		"the first click did not take the tutorial branch")
-	assert_eq(requested[0], MainMenu.LEVEL_0_SCENE,
-		"the tutorial branch did not ask for the tutorial level")
-	assert_false(menu._menu_list.visible,
-		"the menu list appeared on a launch that should have had no menu at all")
-
-func test_the_first_click_opens_the_menu_once_the_tutorial_is_finished() -> void:
-	ProgressStore.mark_tutorial_finished()
-	var menu := MainMenu.new()
-	add_child_autofree(menu)
-	await step(8)
-	var requested := [""]
-	menu._change_scene = func(path): requested[0] = path
-	menu._prompt_shown = true
-
-	var click := InputEventMouseButton.new()
-	click.button_index = MOUSE_BUTTON_LEFT
-	click.pressed = true
-	menu._unhandled_input(click)
-	await step(2)
-
-	assert_false(menu._entering_tutorial,
-		"a finished player was sent back into the tutorial")
-	assert_true(menu._beat_rise_fired,
-		"the ordinary entrance did not play")
-	# The menu branch loads NOTHING on the click: 开始 is still ahead of it.
-	# Without this the branch could take the tutorial's load path and still
-	# look right, since _entering_tutorial would only be a flag nobody read.
+	assert_true(menu._beat_rise_fired, "the entrance did not play")
+	# The click loads NOTHING: 开始 is still ahead of it. Without this the
+	# handler could start the level under the entrance and still look right.
 	assert_eq(requested[0], "",
-		"the ordinary entrance requested a scene change before 开始 was ever pressed")
-
-func test_a_replay_request_takes_the_tutorial_branch_even_when_finished() -> void:
-	ProgressStore.mark_tutorial_finished()
-	ProgressStore.replay_requested = true
-	var menu := MainMenu.new()
-	add_child_autofree(menu)
-	await step(8)
-	menu._change_scene = func(_path): pass
-	menu._prompt_shown = true
-
-	var click := InputEventMouseButton.new()
-	click.button_index = MOUSE_BUTTON_LEFT
-	click.pressed = true
-	menu._unhandled_input(click)
-	await step(2)
-
-	assert_true(menu._entering_tutorial,
-		"重玩新手教程 did not survive the trip back to the front door")
-
-func test_a_second_click_during_the_tutorial_opening_never_summons_the_menu() -> void:
-	# A REPEATED SHOW MUST BE SKIPPABLE, and the only skip available on this
-	# path is dropping the hold. Falling through to _skip_entrance() instead
-	# settles the MENU -- column, dressing and all -- on top of an opening
-	# that is already on its way into the level.
-	ProgressStore.replay_requested = true
-	var menu := MainMenu.new()
-	add_child_autofree(menu)
-	await step(8)
-	menu._change_scene = func(_path): pass
-	menu._prompt_shown = true
-
-	var click := InputEventMouseButton.new()
-	click.button_index = MOUSE_BUTTON_LEFT
-	click.pressed = true
-	menu._unhandled_input(click)
-	await step(2)
-	assert_gt(menu._tutorial_hold, 0.0, "test setup: the opening was not holding")
-
-	menu._unhandled_input(click)
-	await step(2)
-
-	assert_eq(menu._tutorial_hold, 0.0,
-		"an impatient click during the tutorial opening did not drop the hold")
-	assert_false(menu._menu_list.visible,
-		"an impatient click during the tutorial opening settled the menu over it")
+		"the click on the title shot requested a scene change before 开始 was pressed")
 
 ## THE ONE FAILURE NOTHING ELSE CAN SEE. Every other test here asserts against
 ## _target_scene or the constants themselves, so a mistyped path stays green
