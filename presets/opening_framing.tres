@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="OpeningFraming" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/opening_framing.gd" id="1_framing"]
+
+[resource]
+script = ExtResource("1_framing")
+fov_degrees = 55.0
+head_screen_fraction = Vector2(0.5, 0.38)
+body_screen_fraction = 0.72
+head_top_padding = 0.16

@@ -63,6 +63,7 @@ extends Node
 ## The close-up's field of view. The game's own fov_base is far wider -- a
 ## portrait framed at it would want the lens close enough to clip through her.
 @export var shot_fov_degrees: float = 55.0
+@export var opening_framing: OpeningFraming = preload("res://presets/opening_framing.tres")
 
 ## The world the shot is composed against, so the opening can flatten it and
 ## hand the level's own palette back as she rises.
@@ -95,22 +96,13 @@ const PLATE_LAYER := 150
 # MainMenu's values; change them there and here together, or better, look at
 # why they diverged.
 #
-# CLOSE_BODY_FRAC is what makes it a close-up: the crouched upper body fills
-# 85% of the frame's height. A medium shot is what you get for leaving it out.
-const MENU_FOV_DEG := 55.0
-## Where the head lands on screen and how much of the frame the crouch fills.
-## MainMenu's own values, exposed because matching the front door by eye is the
-## only way to finish the job -- nothing headless can see whether they agree.
-@export var head_x_frac: float = 0.55
-@export var head_y_frac: float = 0.34
-@export var close_body_frac: float = 0.85
+# OpeningFraming.body_screen_fraction controls how tightly the crouched upper
+# body fills the frame; both hosts read the same editable resource.
 
 ## Which side of her the lens stands on, added to the menu's own azimuth. 180
 ## puts it on the other side, which mirrors the profile -- and the framing
-## offset mirrors with it, so head_x_frac has to be mirrored too (0.55 -> 0.45)
-## or she slides out of frame. Change the two together.
+## offset mirrors with it too; the shared centred target remains centred.
 @export var shot_side_degrees: float = 0.0
-const MENU_HEAD_TOP_PAD := 0.16
 const MENU_FRONT_YAW_DEG := -180.0
 const MENU_CLOSE_AZIMUTH_DEG := 180.0
 const MENU_FALLBACK_CROUCH_HEAD := 0.82
@@ -367,40 +359,31 @@ func _solve_shot() -> void:
 	var size: Vector2 = Vector2(1920.0, 1080.0)
 	if view != null:
 		size = view.get_visible_rect().size
-	var tan_v: float = tan(deg_to_rad(MENU_FOV_DEG) * 0.5)
-	var tan_h: float = tan_v * (maxf(size.x, 1.0) / maxf(size.y, 1.0))
-
 	# Height above the feet, measured on the pose she is actually holding.
 	var feet_y: float = player.global_position.y - player.current_capsule_height() * 0.5
 	var head_world := Vector3(player.global_position.x,
 		feet_y + MENU_FALLBACK_CROUCH_HEAD, player.global_position.z)
 	var hips_world := Vector3(player.global_position.x,
 		feet_y + MENU_FALLBACK_CROUCH_HIPS, player.global_position.z)
-	for node in performer.find_children("*", "Skeleton3D", true, false):
-		var skeleton := node as Skeleton3D
-		var head: int = skeleton.find_bone("Head")
-		var hips: int = skeleton.find_bone("Hips")
-		if head >= 0 and hips >= 0:
-			head_world = (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin
-			hips_world = (skeleton.global_transform * skeleton.get_bone_global_pose(hips)).origin
-			break
+	var skeleton := OpeningFraming.find_skeleton(performer)
+	var measured_head = OpeningFraming.bone_world_position(skeleton, &"Head")
+	var measured_hips = OpeningFraming.bone_world_position(skeleton, &"Hips")
+	if measured_head is Vector3 and measured_hips is Vector3:
+		head_world = measured_head
+		hips_world = measured_hips
 
-	var upper: float = maxf(head_world.y + MENU_HEAD_TOP_PAD - hips_world.y, 0.2)
-	var distance: float = upper / (close_body_frac * 2.0 * tan_v)
+	var upper: float = maxf(head_world.y + opening_framing.head_top_padding - hips_world.y, 0.2)
+	var distance: float = opening_framing.distance_for_span(upper)
 	var target: Vector3 = head_world
 	# The azimuth the menu uses is measured against a body it has yawed to
 	# FRONT_YAW_DEG, so what carries over is the DIFFERENCE, applied to
 	# whichever way this performer happens to be facing.
 	var azimuth: float = player.global_rotation.y \
 		+ deg_to_rad(MENU_CLOSE_AZIMUTH_DEG - MENU_FRONT_YAW_DEG + shot_side_degrees)
-	var back := Vector3(cos(azimuth), 0.0, sin(azimuth))
-	var right: Vector3 = (-back).cross(Vector3.UP).normalized()
-	var ndc := Vector2((head_x_frac - 0.5) * 2.0, (0.5 - head_y_frac) * 2.0)
-	var eye: Vector3 = target + back * distance \
-		- right * (ndc.x * distance * tan_h) - Vector3.UP * (ndc.y * distance * tan_v)
+	var pose := opening_framing.camera_pose(target, distance, azimuth, size)
 
-	_shot_local = player.global_transform.affine_inverse() * eye
-	_shot_yaw = atan2(back.x, back.z) - player.global_rotation.y
+	_shot_local = player.global_transform.affine_inverse() * (pose.eye as Vector3)
+	_shot_yaw = float(pose.yaw) - player.global_rotation.y
 	_solved = true
 
 func _capture_palette() -> void:
@@ -508,7 +491,8 @@ func _pose(k: float) -> void:
 		# other so nothing moves when the rig takes over again.
 		rig.camera.position = _seat * k
 		rig.camera.rotation = _seat_rot * k
-		rig.camera.fov = lerpf(MENU_FOV_DEG if _solved else shot_fov_degrees, _base_fov, k)
+		rig.camera.fov = lerpf(opening_framing.fov_degrees if _solved else shot_fov_degrees,
+			_base_fov, k)
 
 func _hand_over() -> void:
 	if _state == _State.DONE:

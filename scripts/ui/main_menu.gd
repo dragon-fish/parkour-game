@@ -53,10 +53,7 @@ const _DRIFT_BASE_Y := 0.0
 ## screen RIGHT. Beat 1 pushes to the FRONT view: full body centred, 70% of
 ## screen height. All framing is solved at runtime from the live skeleton
 ## (Head/Hips bones), so a different model reframes itself.
-@export var FRAME_FOV_DEG: float = 55.0
-@export var HEAD_X_FRAC: float = 0.55
-@export var HEAD_Y_FRAC: float = 0.34
-@export var CLOSE_BODY_FRAC: float = 0.85
+@export var opening_framing: OpeningFraming = preload("res://presets/opening_framing.tres")
 @export var FAR_BODY_FRAC: float = 0.70
 ## Where the standing walker sits horizontally in the settled view. The
 ## column moved to the RIGHT (✅ the owner: sending her left-to-right would
@@ -64,7 +61,6 @@ const _DRIFT_BASE_Y := 0.0
 ## field left of the column, ~37%.
 @export var FAR_X_FRAC: float = 0.37
 ## Skull above the Head bone, metres -- the bone sits at the neck end.
-@export var HEAD_TOP_PAD: float = 0.16
 ## The body NEVER rotates (✅ the owner: "让镜头转而不是角色模型和地板转").
 ## It faces +Z world for the whole show (model forward is -Z after mount,
 ## so yaw -180); the CAMERA orbits from her right side (azimuth 0 = profile,
@@ -226,7 +222,7 @@ func _process(delta: float) -> void:
 	_floor_phase += _floor_pace * delta
 	var mat := _floor.material as ShaderMaterial
 	var eye := _silhouette_camera.global_position
-	var tan_v: float = tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
+	var tan_v: float = tan(deg_to_rad(opening_framing.fov_degrees) * 0.5)
 	mat.set_shader_parameter("eye_height", maxf(eye.y, 0.05))
 	mat.set_shader_parameter("cam_yaw", _silhouette_camera.rotation.y)
 	mat.set_shader_parameter("cam_pos", Vector2(eye.x, eye.z))
@@ -370,7 +366,7 @@ func _build_viewport() -> void:
 	_viewport.add_child(_silhouette_root)
 
 	_silhouette_camera = Camera3D.new()
-	_silhouette_camera.fov = FRAME_FOV_DEG
+	_silhouette_camera.fov = opening_framing.fov_degrees
 	_viewport.add_child(_silhouette_camera)
 
 ## The hazy floor reflection (✅ the owner: "地板平整无暇，有朦胧的镜像效果"):
@@ -527,24 +523,22 @@ func _solve_framing() -> void:
 	var crouch_head := FALLBACK_CROUCH_HEAD
 	var crouch_hips := FALLBACK_CROUCH_HIPS
 	var stand_head := FALLBACK_STAND_HEAD
-	var skeleton: Skeleton3D = null
-	if _silhouette != null:
-		for child in _silhouette.find_children("*", "Skeleton3D", true, false):
-			skeleton = child
-			break
+	var skeleton := OpeningFraming.find_skeleton(_silhouette)
 	if skeleton != null:
-		var head := skeleton.find_bone("Head")
-		var hips := skeleton.find_bone("Hips")
-		if head >= 0 and hips >= 0:
-			crouch_head = (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin.y
-			crouch_hips = (skeleton.global_transform * skeleton.get_bone_global_pose(hips)).origin.y
-			stand_head = (skeleton.global_transform * skeleton.get_bone_global_rest(head)).origin.y
+		var head = OpeningFraming.bone_world_position(skeleton, &"Head")
+		var hips = OpeningFraming.bone_world_position(skeleton, &"Hips")
+		var head_rest = OpeningFraming.bone_world_position(skeleton, &"Head", true)
+		if head is Vector3 and hips is Vector3:
+			crouch_head = head.y
+			crouch_hips = hips.y
+		if head_rest is Vector3:
+			stand_head = head_rest.y
 	_stand_head_y = stand_head
-	var tan_v := tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
-	var upper: float = maxf(crouch_head + HEAD_TOP_PAD - crouch_hips, 0.2)
-	_d_close = upper / (CLOSE_BODY_FRAC * 2.0 * tan_v)
+	var tan_v := tan(deg_to_rad(opening_framing.fov_degrees) * 0.5)
+	var upper: float = maxf(crouch_head + opening_framing.head_top_padding - crouch_hips, 0.2)
+	_d_close = opening_framing.distance_for_span(upper)
 	_head_point = Vector3(0.0, crouch_head, 0.0)
-	var stature: float = maxf(stand_head + HEAD_TOP_PAD, 0.5)
+	var stature: float = maxf(stand_head + opening_framing.head_top_padding, 0.5)
 	_d_far = stature / (FAR_BODY_FRAC * 2.0 * tan_v)
 	_body_centre = Vector3(0.0, stature * 0.5, 0.0)
 	var feet_ndc: float = (0.0 - _body_centre.y) / (_d_far * tan_v)
@@ -560,23 +554,18 @@ func _apply_cam(t: float) -> void:
 	_place_cam(lerpf(CLOSE_AZIMUTH_DEG, FAR_AZIMUTH_DEG, t),
 		lerpf(_d_close, _d_far, t),
 		_head_point.lerp(_body_centre, t),
-		Vector2((HEAD_X_FRAC - 0.5) * 2.0, (0.5 - HEAD_Y_FRAC) * 2.0) \
+		Vector2((opening_framing.head_screen_fraction.x - 0.5) * 2.0,
+			(0.5 - opening_framing.head_screen_fraction.y) * 2.0) \
 			.lerp(Vector2((FAR_X_FRAC - 0.5) * 2.0, 0.0), t))
 
 ## The one camera-solving primitive: azimuth around the body, distance,
 ## look target, and where that target should land in NDC.
 func _place_cam(azimuth_deg: float, d: float, target: Vector3, ndc: Vector2) -> void:
-	var azimuth := deg_to_rad(azimuth_deg)
-	var tan_v := tan(deg_to_rad(FRAME_FOV_DEG) * 0.5)
-	var tan_h := tan_v * (maxf(size.x, 1.0) / maxf(size.y, 1.0))
-	var back := Vector3(cos(azimuth), 0.0, sin(azimuth))
-	var cam_yaw := atan2(back.x, back.z)
-	# Screen-right = forward x up, forward = -back. (The first cut negated
-	# this and quietly mirrored every horizontal framing fraction.)
-	var right := (-back).cross(Vector3.UP).normalized()
-	_silhouette_camera.position = target + back * d \
-		- right * (ndc.x * d * tan_h) - Vector3.UP * (ndc.y * d * tan_v)
-	_silhouette_camera.rotation = Vector3(0.0, cam_yaw, 0.0)
+	var screen_frac := Vector2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5)
+	var pose := opening_framing.camera_pose(target, d, deg_to_rad(azimuth_deg),
+		size, screen_frac)
+	_silhouette_camera.position = pose.eye
+	_silhouette_camera.rotation = Vector3(0.0, pose.yaw, 0.0)
 
 # DO NOT turn the body to face the camera's actual position. It was tried:
 # framing slides the camera sideways rather than aiming it, so she is seen
