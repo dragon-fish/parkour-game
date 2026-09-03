@@ -42,6 +42,26 @@ func test_only_the_opening_row_teaches_without_a_scene() -> void:
 		assert_not_null(director.lessons[at].get(&"scene"),
 			"lesson row %d has no scene, so its path did not load" % at)
 
+func test_the_loop_actually_runs_in_the_assembled_scene() -> void:
+	# THE ONE TEST THAT USES THE SCENE'S OWN WIRING ORDER. Every other test of
+	# the director builds the player first and hands it over already set up.
+	# A real level does the opposite: a child's _ready() runs before its
+	# parent's, so the director is ready before Arena._ready() has called
+	# player.setup() and move_manager does not exist yet. A director that hooks
+	# up in _ready() connects to nothing, and the whole tutorial sits still
+	# while every hand-wired test still passes.
+	var level: Node = await _loaded()
+	var director: TutorialDirector = level.get_node("TutorialDirector")
+	var player: Player = level.get_node("Player")
+	assert_not_null(player.move_manager, "the player was never set up")
+	var before: int = director.index
+	player.move_manager.move_changed.emit(&"", director.lessons[before].get(&"teaches", &""))
+	await step(2)
+	assert_eq(director.index, before + 1,
+		"performing the taught move did not advance the lesson in the real scene")
+	assert_gt(director.live_count(), 0,
+		"advancing built no geometry, so the player is left on an empty plain")
+
 func test_the_lesson_table_survived_the_scene_file() -> void:
 	# An exported Array[Dictionary] that does not round-trip through .tscn
 	# leaves the director with nothing to teach. The level then never finishes,

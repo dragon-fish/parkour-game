@@ -70,11 +70,29 @@ signal finished
 ##   leaving   true once it has been told to collapse
 var _live: Array[Dictionary] = []
 
+## Whether move_changed has been hooked up yet; see _physics_process().
+var _listening := false
+
 func _ready() -> void:
-	if player != null and player.move_manager != null:
-		player.move_manager.move_changed.connect(_on_move_changed)
 	attach_wrap()
 	_build_lesson(index)
+
+## THE PLAYER IS NOT SET UP YET WHEN THIS NODE IS READY. A child's _ready()
+## runs before its parent's, so a director sitting under the level root is
+## ready before Arena._ready() has called player.setup() -- and move_manager
+## does not exist until it does. Connecting in _ready() therefore connects to
+## nothing, silently, and the whole lesson loop is dead in a real scene while
+## every test still passes, because a test builds the player first by hand.
+##
+## DO NOT move this back into _ready() behind a null check. The check is what
+## hides it.
+func _physics_process(_delta: float) -> void:
+	if _listening:
+		return
+	if player == null or player.move_manager == null:
+		return
+	player.move_manager.move_changed.connect(_on_move_changed)
+	_listening = true
 
 func _on_move_changed(_from: StringName, to: StringName) -> void:
 	# An empty table never announces finished. A level author who forgot to
