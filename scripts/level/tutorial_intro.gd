@@ -3,13 +3,25 @@ extends Node
 
 # The tutorial's opening shot, and the hand-over out of it.
 #
-# THIS IS THE REAL PLAYER, NOT A PICTURE OF ONE. The main menu shows a body
-# instanced into a SubViewport with a camera of its own, which is why getting
-# from that shot into the game needs a scene swap and a curtain over it. Here
-# the crouched figure IS the Player and the lens IS her CameraRig, parked, so
-# standing up, the camera coming round behind her and control arriving are one
-# continuous shot with no load, no swap and nothing that blanks the screen.
-# DO NOT reintroduce a transition anywhere in this file.
+# THE FIGURE IN THE SHOT IS NOT THE PLAYER. She is a SilhouetteBody: a bare
+# model with its own AnimationPlayer and nothing else writing her bones. The
+# real Player stands in the same spot with her body hidden and her input
+# locked, and the two are swapped on the frame the stand-up ends -- both are
+# the same red silhouette in the same place, so the cut is not visible.
+#
+# THIS IS A DECEPTION AND IT IS ALLOWED TO BE ONE. Posing the real Player was
+# tried and it does not work: her skeleton has an AnimationTree fed by the move
+# machine, a HeadLook modifier turning the neck toward the lens every frame,
+# clip-offset drivers and spring bones on it, and silencing them one at a time
+# means the one that gets missed is on screen -- a neck twisted toward a
+# side-on camera, and a body stuck in the crouch clip through every move made
+# afterwards. Both of those shipped. DO NOT bring the AnimationTree, the
+# modifiers or AnimationPlayer.play() on the real body back into this file.
+#
+# NOTHING CUTS AND NOTHING COVERS. The camera is the Player's own rig, parked,
+# so standing up, the lens coming round behind her and control arriving are one
+# continuous shot inside one scene -- no load, no swap, no curtain. DO NOT
+# reintroduce a transition anywhere in this file.
 #
 # THE PLAYER IS NOT SET UP WHEN THIS NODE IS READY. A child's _ready() runs
 # before its parent's, so Arena._ready() has not yet called player.setup() and
@@ -22,13 +34,19 @@ extends Node
 # camera child is left at the origin and the body is left rendering both of its
 # layer variants at once.
 
-## The body being filmed. Without one this node hands over immediately, so a
-## level that forgot to wire it is playable rather than frozen.
+## The body whose place the stand-in takes and whose camera films it. Without
+## one this node hands over immediately, so a level that forgot to wire it is
+## playable rather than frozen.
 @export var player: Player
 
 ## Seconds the stand-up and the camera move take. They are ONE beat: the body
-## reaches fully standing on the frame the camera lands.
+## reaches fully standing on the frame the camera lands. Keep it equal to
+## MainMenu.RISE_TIME -- the two openings are the same move.
 @export var rise_time: float = 1.5
+
+## The blend the stand-up falls back to when the model has no real Crouch_Exit
+## clip. Same value and same reason as MainMenu.BODY_STAND_BLEND.
+@export var stand_blend: float = 1.5
 
 ## The held shot, in the body's own frame, measured from its origin (the
 ## capsule's centre, ~0.95 m off the floor).
@@ -55,6 +73,10 @@ extends Node
 ## said over a shot the player cannot act in.
 signal handed_over
 
+## Above ScreenEffects (100) so nothing the camera does can wash the mark out,
+## and below PauseUi (200) so Esc still puts a menu over the whole thing.
+const PLATE_LAYER := 150
+
 enum _State { WAITING, HELD, RISING, DONE }
 
 var _state: int = _State.WAITING
@@ -70,13 +92,32 @@ var _seat: Vector3 = Vector3.ZERO
 ## ignored those would step ~0.2 m sideways on the frame control arrives.
 var _rest: Vector3 = Vector3.ZERO
 var _base_fov: float = 90.0
-var _anim_tree: AnimationTree
-var _anim_player: AnimationPlayer
+
+## The stand-in. Null on a machine with no body linked, which is a shot with
+## nobody in it and still a level that hands over control.
+var performer: SilhouetteBody
+
+var _plate_layer: CanvasLayer
+var _plate: MeOpeningPlate
 
 ## True until control reaches the player -- from before the first tick, through
 ## the held shot and the rise, up to the frame `handed_over` fires.
 func is_holding() -> bool:
 	return _state != _State.DONE
+
+# THE MARK IS UP FROM THE FIRST FRAME, which is why it is built here and not
+# on the tick the shot begins. The router that launched this level shows a bare
+# ground and no mark of its own precisely so that this one can be the only one
+# on screen; a mark that waited for the player to finish setting up would be
+# the flash-and-vanish that started this rework.
+func _ready() -> void:
+	_plate_layer = CanvasLayer.new()
+	_plate_layer.name = "OpeningPlate"
+	_plate_layer.layer = PLATE_LAYER
+	add_child(_plate_layer)
+	_plate = MeOpeningPlate.new()
+	_plate_layer.add_child(_plate)
+	_plate.open()
 
 func _physics_process(delta: float) -> void:
 	if _state == _State.DONE:
@@ -103,7 +144,8 @@ func _physics_process(delta: float) -> void:
 			var k: float = clampf(_elapsed / maxf(rise_time, 0.001), 0.0, 1.0)
 			if not _stood_up and _elapsed >= _stand_up_delay():
 				_stood_up = true
-				_start_stand_up()
+				if performer != null:
+					performer.start_stand_up(stand_blend)
 			# Cubic ease-in-out, the shape the menu's own rise uses.
 			_pose(k * k * (3.0 - 2.0 * k) if k < 1.0 else 1.0)
 			if k >= 1.0:
@@ -111,6 +153,10 @@ func _physics_process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _state != _State.HELD:
+		return
+	# THE SAME GATE THE MENU USES: a press during the opening hold, before the
+	# invitation is on screen, is not an answer to anything.
+	if _plate != null and not _plate.prompt_shown:
 		return
 	var pressed_key: bool = event is InputEventKey \
 		and (event as InputEventKey).pressed and not (event as InputEventKey).echo
@@ -120,6 +166,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	_state = _State.RISING
 	_elapsed = 0.0
+	if _plate != null:
+		_plate.dismiss()
 
 func _begin_shot() -> void:
 	player.lock_input()
@@ -128,7 +176,7 @@ func _begin_shot() -> void:
 	_rest = rig.position
 	_base_fov = player.config.camera.fov_base
 	rig.begin_cinematic()
-	_hold_the_crouch()
+	_raise_performer()
 	_state = _State.HELD
 	_pose(0.0)
 	# APPLIED ON THIS TICK, not left for the next one. The Player runs before
@@ -137,6 +185,9 @@ func _begin_shot() -> void:
 	# afterwards. Player itself calls update_effects the same way with a zero
 	# delta -- in the cinematic branch it only copies the pose across.
 	rig.update_effects(0.0, 0.0, player.grounded)
+
+func _stand_up_delay() -> float:
+	return performer.stand_up_delay(rise_time) if performer != null else 0.0
 
 ## Places the lens for a blend factor k: 0 is the held profile, 1 is exactly
 ## where the ordinary third-person camera sits, so end_cinematic() lands on the
@@ -163,73 +214,54 @@ func _hand_over() -> void:
 	if _state == _State.DONE:
 		return
 	_state = _State.DONE
+	_dismiss_performer()
+	if _plate_layer != null:
+		_plate_layer.queue_free()
+		_plate_layer = null
+		_plate = null
 	if player != null:
 		if player.camera_rig != null:
 			player.camera_rig.end_cinematic()
 		player.unlock_input()
-	if _anim_tree != null:
-		# THE TREE MUST BE THE ONLY WRITER AGAIN. Reactivating it is not enough:
-		# a clip started with AnimationPlayer.play() keeps applying its own
-		# tracks to the same skeleton, and whatever the move machine blends is
-		# overwritten by it every frame. The body then holds the crouch through
-		# every move the player makes, which reads as an animation-less
-		# character rather than as two things fighting.
-		if _anim_player != null:
-			_anim_player.stop()
-		_anim_tree.active = true
 	set_physics_process(false)
 	handed_over.emit()
 
 # ---------------------------------------------------------------------------
-# The body's own animation. The mounted body is driven by an AnimationTree
-# whose states come from the move machine, and there is no move for "posing for
-# an opening shot" -- so the tree steps aside for the length of the shot and
-# the body's AnimationPlayer is driven directly, the way the main menu drives
-# its own bare silhouette. NO BODY, NO PROBLEM: body_scene is optional and all
-# of this no-ops when nothing is mounted.
+# The stand-in
 # ---------------------------------------------------------------------------
 
-## The clips this shot asks for by name, in the tiers the free asset set
-## actually ships. Crouch_Exit is a real stand-up -- weight shifts, a hand
-## leaves the floor -- and ships only in the paid tier; the Idle blend is what
-## a checkout without it gets, and it reads as the body inflating rather than
-## pushing off.
-const CROUCH_CLIP := &"Crouch_Idle"
-const STAND_UP_CLIP := &"Crouch_Exit"
-const STANDING_CLIP := &"Idle"
+## Stands the performer exactly where the Player's own body is drawn, and takes
+## that body off screen for as long as she is there.
+##
+## THE ORIGIN CONVENTION IS FEET, HERS AND THE MOUNT'S. Player mounts its body
+## at compute_mount_transform(), which drops the capsule's centre by half its
+## height before adding the profile's own offset; SilhouetteBody applies the
+## same offset from its own origin. So dropping this node by half a capsule
+## puts the two models in the same place to the millimetre. DO NOT add the
+## profile's mount_offset here as well -- the stand-in has already applied it.
+func _raise_performer() -> void:
+	performer = SilhouetteBody.build()
+	if performer == null:
+		return
+	var host: Node = player.get_parent()
+	if host == null:
+		host = self
+	host.add_child(performer)
+	var stance: Transform3D = player.global_transform
+	stance.origin.y -= player.current_capsule_height() * 0.5
+	performer.global_transform = stance
+	performer.hold_crouch()
+	var body_root: Node3D = player.get_node_or_null("BodyRoot") as Node3D
+	if body_root != null:
+		body_root.visible = false
 
-func _hold_the_crouch() -> void:
-	_anim_tree = player.get_node_or_null("BodyRoot/AnimationTree") as AnimationTree
-	if _anim_tree == null:
-		return
-	# The tree already knows which AnimationPlayer it drives; asking it beats
-	# searching the body for one that may not be the same node.
-	_anim_player = _anim_tree.get_node_or_null(_anim_tree.anim_player) as AnimationPlayer
-	if _anim_player == null:
-		_anim_tree = null
-		return
-	_anim_tree.active = false
-	if _anim_player.has_animation(CROUCH_CLIP):
-		_anim_player.play(CROUCH_CLIP)
-	elif _anim_player.has_animation(STANDING_CLIP):
-		_anim_player.play(STANDING_CLIP)
-
-## When to START standing so the body finishes WITH the camera. A real
-## Crouch_Exit is shorter than the window it fills, so it begins late --
-## stretching it to fill rise_time instead plays a 0.83 s motion at 0.55x and
-## reads as wading through treacle.
-func _stand_up_delay() -> float:
-	if _anim_player != null and _anim_player.has_animation(STAND_UP_CLIP):
-		return maxf(rise_time - _anim_player.get_animation(STAND_UP_CLIP).length, 0.0)
-	return 0.0
-
-func _start_stand_up() -> void:
-	if _anim_player == null:
-		return
-	if _anim_player.has_animation(STAND_UP_CLIP):
-		_anim_player.play(STAND_UP_CLIP)
-		# Its last frame IS the standing pose, so Idle follows with no blend.
-		_anim_player.queue(STANDING_CLIP)
-		return
-	if _anim_player.has_animation(STANDING_CLIP):
-		_anim_player.play(STANDING_CLIP, rise_time)
+## The swap. Both figures are the same red silhouette standing in the same
+## spot, so this is a cut nobody sees -- which is the whole trick.
+func _dismiss_performer() -> void:
+	if player != null:
+		var body_root: Node3D = player.get_node_or_null("BodyRoot") as Node3D
+		if body_root != null:
+			body_root.visible = true
+	if performer != null:
+		performer.queue_free()
+		performer = null

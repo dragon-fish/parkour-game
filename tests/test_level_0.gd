@@ -42,27 +42,27 @@ func test_only_the_opening_row_teaches_without_a_scene() -> void:
 		assert_not_null(director.lessons[at].get(&"scene"),
 			"lesson row %d has no scene, so its path did not load" % at)
 
-func test_handing_over_leaves_the_animation_tree_the_only_writer() -> void:
-	# TWO WRITERS ON ONE SKELETON IS AN ANIMATION-LESS CHARACTER. The opening
-	# poses the crouch with AnimationPlayer.play(), which keeps applying its
-	# own tracks for as long as it runs. Switching the tree back on does not
-	# stop it, so the move machine's output is overwritten every frame and the
-	# body holds the crouch through everything the player does.
-	#
-	# The state asserted here is what an ordinary level shows: the tree on, the
-	# player idle. Compare scenes/main.tscn, which has no opening at all.
+func test_nothing_ever_poses_the_players_own_skeleton() -> void:
+	# ONE WRITER PER SKELETON, and for the Player that writer is the
+	# AnimationTree the move machine drives. The opening films a stand-in
+	# precisely so it never has to switch that off: an opening that reaches for
+	# the real body has to silence an AnimationTree, a HeadLook modifier, the
+	# clip-offset drivers and the spring bones, and the one it forgets is the
+	# one on screen -- a twisted neck, or a body held in the crouch clip
+	# through every move made afterwards. Both of those have shipped.
 	var level: Node = await _loaded()
 	var player: Player = level.get_node("Player")
 	var tree: AnimationTree = player.get_node_or_null("BodyRoot/AnimationTree")
 	if tree == null:
-		return  # No body mounted: there is no skeleton to fight over.
-	var intro: Node = level.get_node("TutorialIntro")
-	intro._hand_over()
+		pass_test("no body is mounted on this machine, so there is no skeleton to fight over")
+		return
+	assert_true(tree.active, "the opening switched the player's own animation tree off")
+	await _click_through(level)
 	await step(4)
-	assert_true(tree.active, "the animation tree never came back on")
+	assert_true(tree.active, "the player's animation tree is not driving her body")
 	var anim: AnimationPlayer = tree.get_node(tree.anim_player)
 	assert_false(anim.is_playing(),
-		"the opening's clip is still playing, so it overwrites every move")
+		"a clip is being played straight onto the player's skeleton, over the tree")
 
 func test_the_loop_actually_runs_in_the_assembled_scene() -> void:
 	# THE ONE TEST THAT USES THE SCENE'S OWN WIRING ORDER. Every other test of
@@ -156,8 +156,15 @@ func test_the_level_opens_by_saying_its_three_lines() -> void:
 # ---------------------------------------------------------------------------
 
 ## Presses a key at the held shot and runs until the intro reports it is done.
+##
+## THE INVITATION IS FORCED, NOT WAITED FOR. The opening ignores a press made
+## before 「点击任意处开始」 is on screen -- the same gate the main menu has --
+## and the half second it takes to arrive is the beat's own pacing, not any of
+## these tests' subject.
 func _click_through(level: Node) -> TutorialIntro:
 	var intro: TutorialIntro = level.get_node("TutorialIntro")
+	if intro._plate != null:
+		intro._plate.prompt_shown = true
 	var key := InputEventKey.new()
 	key.physical_keycode = KEY_SPACE
 	key.pressed = true
@@ -235,20 +242,6 @@ func test_the_held_shot_is_beside_the_body_and_the_rise_lands_without_a_cut() ->
 	assert_lt(landed.distance_to(settled), 0.15,
 		"the camera jumped the frame control arrived")
 
-func test_the_body_is_animating_again_once_control_arrives() -> void:
-	# The shot drives the body's AnimationPlayer directly, which means switching
-	# the AnimationTree off for the length of it. Left off, the body plays its
-	# last clip forever and no move ever reaches the screen -- and the level is
-	# otherwise completely playable, so nothing says why.
-	var level: Node = await _loaded()
-	var tree: AnimationTree = level.get_node("Player").get_node_or_null("BodyRoot/AnimationTree")
-	if tree == null:
-		pass_test("no body is mounted on this machine, so there is no tree to switch")
-		return
-	assert_false(tree.active, "the tree kept driving the body through the held shot")
-	await _click_through(level)
-	assert_true(tree.active, "the body was left frozen on the shot's last pose")
-
 func test_the_director_and_the_wrap_both_have_the_body() -> void:
 	# Both are wired by NodePath and both fail the same silent way: a director
 	# with no player never hears a move happen, a wrap with no player never
@@ -320,3 +313,71 @@ func test_the_body_in_the_void_is_a_flat_red_silhouette() -> void:
 			"%s is not the brand red the front door uses" % mesh.name)
 		assert_eq(flat.shading_mode, BaseMaterial3D.SHADING_MODE_UNSHADED,
 			"%s is lit, so the void has a light direction in it" % mesh.name)
+
+func test_exactly_one_body_is_on_screen_and_the_stand_in_leaves_with_the_shot() -> void:
+	# THE WHOLE TRICK IS THAT NOBODY SEES THE SWAP. Two red silhouettes in the
+	# same spot is one figure with a doubled outline; none at all is an empty
+	# void with a camera pointed at it. And a stand-in left behind afterwards is
+	# a second body standing exactly where the player is about to run from.
+	var level: Node = await _loaded()
+	var player: Player = level.get_node("Player")
+	var intro: TutorialIntro = level.get_node("TutorialIntro")
+	var body_root: Node3D = player.get_node_or_null("BodyRoot") as Node3D
+	if intro.performer == null:
+		pass_test("no body is mounted on this machine, so there is no stand-in to swap")
+		return
+	assert_true(intro.performer.visible, "the stand-in is not on screen during her own shot")
+	assert_false(body_root.visible,
+		"the player's body is drawn behind the stand-in, so the figure is doubled")
+
+	await _click_through(level)
+	await step(3)
+	assert_true(body_root.visible, "control arrived and the body it belongs to is invisible")
+	assert_false(is_instance_valid(intro.performer),
+		"the stand-in is still standing where the player has to run from")
+
+func test_the_stand_in_carries_nothing_that_writes_its_bones() -> void:
+	# The reason there is a stand-in at all. It is a bare model with its own
+	# AnimationPlayer: give it an AnimationTree or a skeleton modifier and it
+	# becomes the thing it was built to replace, and the deformity that started
+	# this comes back with it.
+	var level: Node = await _loaded()
+	var intro: TutorialIntro = level.get_node("TutorialIntro")
+	if intro.performer == null:
+		pass_test("no body is mounted on this machine, so there is no stand-in to inspect")
+		return
+	# NAMED, not "no SkeletonModifier3D anywhere": a model ships its own spring
+	# bones and those are welcome -- they are jiggle, not a pose. What must not
+	# be here is anything Player._attach_body() adds, because the only way one
+	# of these gets in is the stand-in being built down the Player's own path.
+	for writer in ["AnimationTree", "CharacterAnimator", "HeadLook", "BalanceLean", "HandIK"]:
+		assert_eq(intro.performer.find_children("*", writer, true, false).size(), 0,
+			"the stand-in carries a %s, so something other than its own clip writes its bones" % writer)
+	assert_not_null(intro.performer.anim_player,
+		"the stand-in has nothing driving it at all")
+
+func test_the_opening_holds_the_same_plate_the_front_door_does() -> void:
+	# 和正常主菜单的逻辑完全一样: up to the press, a player who has never
+	# finished the tutorial must see what a returning player sees -- the mark
+	# and 「点击任意处开始」, in the same places on the same beat. Sharing the
+	# class IS the parity; nothing here asserts a fraction or a duration,
+	# because there is now only one place any of them can be changed.
+	var level: Node = await _loaded()
+	var intro: TutorialIntro = level.get_node("TutorialIntro")
+	var plate: MeOpeningPlate = intro._plate
+	assert_not_null(plate, "the tutorial opens with no plate, so there is no mark and no invitation")
+	if plate == null:
+		return
+	# CHECKED BEFORE ANYTHING IS READ OFF IT: a plate that was built but never
+	# parented has no children -- they are made in its _ready() -- and reaching
+	# for logo.texture there is a runtime error, which this runner does not
+	# count as a failure (see .claude/skills/reading-past-a-green-suite).
+	assert_true(plate.is_visible_in_tree(), "the plate is built but not on screen")
+	if not plate.is_inside_tree():
+		return
+	assert_not_null(plate.logo.texture, "the plate is holding no mark")
+
+	await _click_through(level)
+	await step(3)
+	assert_false(is_instance_valid(plate),
+		"the mark and the invitation are still over a level the player is driving")

@@ -12,9 +12,9 @@ extends Control
 # (scripts/ui/pause_ui.gd, settings_menu.gd) and keeping the committed scene
 # out of test_generated_scenes.gd's drift-guard entirely.
 #
-# NO MODEL, NO PROBLEM: the silhouette comes from the same three-stage
-# profile lookup arena.gd uses (local.cfg -> BODY_PROFILE constant -> absent
-# = no body). A fresh checkout with no model gets the complete UI --
+# NO MODEL, NO PROBLEM: SilhouetteBody.build() returns null on a machine with
+# no body linked, and this screen treats that as "no figure in the shot".
+# A fresh checkout with no model gets the complete UI --
 # background, floor, red bar, title, menu, footer -- with the silhouette
 # slot simply empty and the beats that only concern it (rise, camera
 # pull-back, walk loop) skipped. Nothing else in the choreography depends on
@@ -28,29 +28,18 @@ signal beat_title
 ## first level as well as the game's front door.
 const LEVEL_0_SCENE := "res://scenes/levels/level_0/level_0.tscn"
 
-## Same lookup as scripts/level/arena.gd's BODY_PROFILE/LOCAL_PROFILE_CONFIG,
-## and see there for what each one is for -- copied rather than shared, since
-## Arena is level code and this is UI code with no business depending on it.
-const BODY_PROFILE := "res://scenes/player/local/profiles/beriul.tres"
-const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
-
 # --- entrance timing (spec: 入场编排 beats 0a-6) ----------------------------
-## 0a: logo plate over the crouched close-up, fake loading bar.
-@export var LOGO_HOLD: float = 1.0
 ## STAYS A CONSTANT while its neighbours became exports: MenuMusic times the
 ## drop against MainMenu.RISE_TIME, and a cross-class reference can only
 ## reach a const -- an exported var is an instance member. The coupling is
 ## the point (the chorus lands on the body coming up), so it is the export
 ## that gives way, not the coupling.
 const RISE_TIME := 1.5
-## ✅ The owner (final): the body reaches FULLY STANDING the exact moment
-## the camera lands -- same start, same end, one breath. Easing everywhere:
+## The body reaches FULLY STANDING on the frame the camera lands -- same start,
+## same end, one breath. Keep it equal to RISE_TIME. Easing everywhere:
 ## cubic-bezier(0.65, 0, 0.35, 1) = TRANS_CUBIC / EASE_IN_OUT.
-const BODY_RISE_DELAY := 0.0
-@export var BODY_STAND_BLEND: float = 1.5  # = RISE_TIME: fully up the frame the camera lands (✅ the owner)
+@export var BODY_STAND_BLEND: float = 1.5
 
-
-@export var LOGO_FADE_TIME: float = 0.4
 @export var WALK_TO_MENU_DELAY: float = 0.15
 @export var MENU_PANEL_TIME: float = 0.45
 @export var DRIFT_PX: float = 2.0
@@ -95,13 +84,6 @@ const FAR_AZIMUTH_DEG := 90.0
 const FALLBACK_CROUCH_HEAD := 0.82
 const FALLBACK_CROUCH_HIPS := 0.51
 const FALLBACK_STAND_HEAD := 1.43
-
-# --- logo mark (white recolor of the codex topo emblem) --------------------
-const LOGO_TEXTURE := "res://assets/ui/logo_mark_white.svg"
-## Centre of the mark, as screen fractions (✅ the owner: left 20% top 66%).
-@export var LOGO_X_FRAC: float = 0.19
-@export var LOGO_Y_FRAC: float = 0.55
-@export var LOGO_SIZE_PX: float = 220.0
 
 # --- mirror + glitch -------------------------------------------------------
 @export var MIRROR_ALPHA: float = 0.16
@@ -155,8 +137,7 @@ var _viewport_container: SubViewportContainer
 var _viewport: SubViewport
 var _silhouette_root: Node3D
 var _silhouette_camera: Camera3D
-var _silhouette: Node3D
-var _logo_mark: TextureRect
+var _silhouette: SilhouetteBody
 var _mirror: TextureRect
 var _mirror_window: Control
 ## Solved framing parameters (see _solve_framing()/_apply_cam()).
@@ -179,11 +160,10 @@ var _floor_phase := 0.0
 ## Metres per second, so it can be set to a PACE rather than to a factor of
 ## one. See FLOOR_RUN_SPEED for what the factor cost.
 var _floor_pace := 0.0
-var _click_prompt: Label
+## The mark and the invitation: one shared beat, see MeOpeningPlate.
+var _plate: MeOpeningPlate
 var _music: MenuMusic
 var _chladni: ChladniField
-var _prompt_tween: Tween
-var _prompt_shown := false
 var _quit_confirm: Control
 ## The fake-load run (✅ the owner's storyboard): threaded load of the level
 ## while the menu keeps playing -- she sprints screen-left, camera on her
@@ -307,8 +287,7 @@ func _build_ui() -> void:
 	_build_settings_menu()
 	_build_corner_metadata()
 	_build_footer()
-	_build_logo_mark()
-	_build_click_prompt()
+	_build_opening_plate()
 	_build_music()
 
 ## Powder on a driven plate, above the horizon and behind everything else.
@@ -509,165 +488,33 @@ func _build_music() -> void:
 	_music.name = "MenuMusic"
 	add_child(_music)
 
-## Beat 0a: the simplified logo/title version pressed over the crouched
-## close-up, plus a fake ~0.8s loading bar that covers the real body
-## instantiation/animation merge/shader-compile cost that _load_silhouette()
-## already paid by the time this is visible.
-## "点击任意处开始" -- shown once the entrance settles; the menu waits for
-## this click (✅ the owner). Breathing alpha while it waits.
-func _build_click_prompt() -> void:
-	_click_prompt = Label.new()
-	_click_prompt.text = "点击任意处开始"
-	_click_prompt.add_theme_font_size_override("font_size", 22)
-	# The over-anything spec, shared with the subtitles this game will have:
-	# see MeTheme.dress_over_anything for why an outline and not a shadow.
-	_click_prompt.theme = MeTheme.ui_theme()
-	MeTheme.dress_over_anything(_click_prompt)
-	_click_prompt.anchor_left = 0.5
-	_click_prompt.anchor_right = 0.5
-	_click_prompt.anchor_top = 0.86
-	_click_prompt.anchor_bottom = 0.86
-	_click_prompt.position = Vector2(-100.0, 0.0)
-	_click_prompt.size = Vector2(200.0, 30.0)
-	_click_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_click_prompt.visible = false
-	add_child(_click_prompt)
-
-## The white emblem over the crouched silhouette (✅ the owner: codex's topo
-## mark, centre at left 20% / top 66%). Fades out with the rise.
-func _build_logo_mark() -> void:
-	_logo_mark = TextureRect.new()
-	_logo_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_logo_mark.texture = load(LOGO_TEXTURE)
-	_logo_mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_logo_mark.anchor_left = LOGO_X_FRAC
-	_logo_mark.anchor_right = LOGO_X_FRAC
-	_logo_mark.anchor_top = LOGO_Y_FRAC
-	_logo_mark.anchor_bottom = LOGO_Y_FRAC
-	_logo_mark.offset_left = -LOGO_SIZE_PX * 0.5
-	_logo_mark.offset_right = LOGO_SIZE_PX * 0.5
-	_logo_mark.offset_top = -LOGO_SIZE_PX * 0.5
-	_logo_mark.offset_bottom = LOGO_SIZE_PX * 0.5
-	add_child(_logo_mark)
+## Beat 0a: the white mark over the crouched close-up, and the invitation that
+## joins it half a second later.
+##
+## THE SHARED BEAT, NOT A LOCAL ONE. The tutorial opens on the same plate, and
+## the two screens must be indistinguishable up to the press -- see
+## MeOpeningPlate, which owns every fraction and every timing that beat has.
+## Added last of the visual children so it draws over everything.
+func _build_opening_plate() -> void:
+	_plate = MeOpeningPlate.new()
+	_plate.name = "OpeningPlate"
+	add_child(_plate)
 
 # ---------------------------------------------------------------------------
-# Silhouette: profile lookup, body instancing, animation, unshaded red paint
-# (arena.gd's BODY_PROFILE/local.cfg pattern; Player._wire_body_animation's
-# library-merge, minus the state machine -- see this task's brief).
+# The figure. A SilhouetteBody: a bare model with its own AnimationPlayer and
+# nothing else writing its bones. The lookup, the mounting, the library merge
+# and the red paint all live there, because the tutorial's opening films the
+# same stand-in and the two must not drift apart.
 # ---------------------------------------------------------------------------
 
 func _load_silhouette() -> void:
-	var profile := _resolve_body_profile()
-	if profile == null or profile.scene == null:
+	var figure := SilhouetteBody.build()
+	if figure == null:
 		return
-	# The real pipeline never mounts a profile's raw fields directly --
-	# BodyProfile.apply() always runs them through BodyTuning first
-	# (scenes/player/tuning/*.json, keyed by the model's own filename,
-	# default.json as the fallback -- see body_tuning.gd). Reusing those two
-	# calls here rather than profile.apply() itself: that method also writes
-	# a dozen Player-only fields (body_scene, body_clip_offsets, ...) that
-	# this bare silhouette, with no Player around it, has nowhere to put.
-	BodyTuning.apply_to(profile, BodyTuning.load_for(profile.scene.resource_path))
-	var instance := profile.scene.instantiate()
-	if not (instance is Node3D):
-		return
-	_silhouette = instance as Node3D
-	_silhouette_root.add_child(_silhouette)
-	_silhouette.transform = Transform3D(
-		Basis.from_euler(profile.mount_rotation_degrees * (PI / 180.0)) \
-			.scaled(Vector3.ONE * maxf(profile.mount_scale, 0.001)),
-		profile.mount_offset)
-	_merge_animation_library(_silhouette, profile.animation_libraries)
-	_paint_silhouette(_silhouette)
-	_anim_player = _find_animation_player(_silhouette)
-	if _anim_player == null:
-		return
-	_ensure_clip_loops(_anim_player, &"Idle")
-	_ensure_clip_loops(_anim_player, &"Walk")
-	if _anim_player.has_animation(&"Crouch_Idle"):
-		_anim_player.play(&"Crouch_Idle")
-	elif _anim_player.has_animation(&"Idle"):
-		_anim_player.play(&"Idle")
-
-func _resolve_body_profile() -> BodyProfile:
-	var path: String = BODY_PROFILE
-	var local := ConfigFile.new()
-	if local.load(LOCAL_PROFILE_CONFIG) == OK:
-		path = str(local.get_value("body", "profile", BODY_PROFILE))
-	if not ResourceLoader.exists(path):
-		return null
-	return load(path) as BodyProfile
-
-## Every MeshInstance3D under the body gets an unshaded, brand-red material
-## override -- turning whatever model is attached into the flat silhouette
-## the spec asks for regardless of its own materials.
-func _paint_silhouette(node: Node) -> void:
-	if node is MeshInstance3D:
-		var material := StandardMaterial3D.new()
-		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		material.albedo_color = MeTheme.BRAND_RED
-		(node as MeshInstance3D).material_override = material
-	for child in node.get_children():
-		_paint_silhouette(child)
-
-## Same shape as Player._merge_animation_library (scripts/player/player.gd)
-## -- copied rather than shared, since this runs against a bare instanced
-## body with no Player around it at all. Existing clips win; a library only
-## fills gaps.
-func _merge_animation_library(body_node: Node3D, libraries: Array[PackedScene]) -> void:
-	if libraries.is_empty():
-		return
-	var target := _find_animation_player(body_node)
-	if target == null:
-		return
-	# has_ probed first: get_animation_library() on a missing name logs an
-	# engine error, and a fresh AnimationPlayer (an FBX body's wrapper scene,
-	# unlike a VRM's) starts with no "" library at all.
-	var library: AnimationLibrary
-	if target.has_animation_library(""):
-		library = target.get_animation_library("")
-	else:
-		library = AnimationLibrary.new()
-		target.add_animation_library("", library)
-	for packed in libraries:
-		if packed == null:
-			continue
-		var source_scene := packed.instantiate()
-		if source_scene == null:
-			continue
-		var source := _find_animation_player(source_scene)
-		if source == null:
-			source_scene.free()
-			continue
-		for clip_name in source.get_animation_list():
-			if library.has_animation(clip_name):
-				continue
-			library.add_animation(clip_name, source.get_animation(clip_name).duplicate())
-		source_scene.free()
-
-func _find_animation_player(root: Node) -> AnimationPlayer:
-	if root == null:
-		return null
-	var queue: Array[Node] = [root]
-	while not queue.is_empty():
-		var node: Node = queue.pop_front()
-		if node is AnimationPlayer:
-			return node as AnimationPlayer
-		for child in node.get_children():
-			queue.append(child)
-	return null
-
-## Same fix as Player._ensure_clip_loops: glTF/VRM imports carry no "this
-## clip loops" flag, so a merged Walk/Idle clip comes in as LOOP_NONE and
-## would freeze on its last frame instead of cycling.
-func _ensure_clip_loops(anim_player: AnimationPlayer, clip_name: StringName) -> void:
-	var original_library := anim_player.get_animation_library("")
-	if original_library == null or not original_library.has_animation(clip_name):
-		return
-	var library := original_library.duplicate(true) as AnimationLibrary
-	library.get_animation(clip_name).loop_mode = Animation.LOOP_LINEAR
-	anim_player.remove_animation_library("")
-	anim_player.add_animation_library("", library)
+	_silhouette = figure
+	_silhouette_root.add_child(figure)
+	_anim_player = figure.anim_player
+	figure.hold_crouch()
 
 ## Solves both camera positions from the live skeleton (✅ the owner's
 ## screen fractions). Perspective math: a world point p lands at NDC
@@ -751,42 +598,25 @@ func _track(tween: Tween) -> Tween:
 	_active_tweens.append(tween)
 	return tween
 
-## ✅ THE OWNER (v3): "角色起身、转镜头、logo消失、菜单出现，这几个事情是
-## 同时发生的" -- after the LOGO_HOLD, everything launches TOGETHER; the walk
-## takes over when the rise lands, and settle waits for the longest strand.
+## The rise, the camera turn, the mark leaving and the menu arriving are ONE
+## event, not four in sequence -- they all launch off the click together; the
+## walk takes over when the rise lands, and settle waits for the longest
+## strand. The game HOLDS on the opening shot until then: crouched close-up,
+## mark, breathing invitation, and nothing else moving.
 func _play_entrance() -> void:
 	_entrance_active = true
-	# ✅ THE OWNER (final flow): the game HOLDS on the opening shot -- the
-	# crouched close-up with the mark -- and the prompt breathes there. The
-	# click is what plays the whole show: rise, orbit, walk, menu.
-	var pacing := _track(create_tween())
-	pacing.tween_interval(LOGO_HOLD * 0.5)
-	pacing.tween_callback(_show_click_prompt)
-
-## The held title shot: crouched figure, white mark, breathing prompt.
-func _show_click_prompt() -> void:
-	_prompt_shown = true
-	_click_prompt.visible = true
-	_click_prompt.modulate.a = 0.0
-	_prompt_tween = _track(create_tween())
-	_prompt_tween.set_loops()
-	_prompt_tween.tween_property(_click_prompt, "modulate:a", 1.0, 1.1) \
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	_prompt_tween.tween_property(_click_prompt, "modulate:a", 0.55, 1.1) \
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_plate.open()
 
 ## The click: prompt out, and the whole show plays through to the menu.
 func _begin_show() -> void:
-	_prompt_shown = false
 	# THE HANDOFF, on the click itself rather than on the beat that follows it:
 	# the chorus is entered at the phase the loop had reached, so the grid does
 	# not break and the drop reads as something this press caused.
 	if _music != null:
 		_music.to_chorus()
-	if _prompt_tween != null and _prompt_tween.is_valid():
-		_prompt_tween.kill()
-	var fade := _track(create_tween())
-	fade.tween_property(_click_prompt, "modulate:a", 0.0, 0.2)
+	# The invitation goes at once and the mark over the rise that follows --
+	# both on the plate's own timings, shared with the tutorial's opening.
+	_plate.dismiss()
 	var pacing := _track(create_tween())
 	pacing.tween_callback(_beat_rise_begin)
 	pacing.tween_interval(RISE_TIME)
@@ -799,16 +629,12 @@ func _begin_show() -> void:
 ## Frame 0 is already fully composed at build time (crouched profile, white
 ## mark, faint floor); the first beat is the RISE: the body stands
 ## (Crouch_Idle -> Idle blend) and turns to face the camera while the camera
-## eases (✅ ease-in-out) out to the centred full-body front view; the white
-## mark fades away with it; the floor dots and the mirror arrive as it lands.
+## eases (✅ ease-in-out) out to the centred full-body front view; the floor
+## dots and the mirror arrive as it lands, while the plate takes the mark away.
 func _beat_rise_begin() -> void:
 	if not _beat_rise_fired:
 		_beat_rise_fired = true
 		beat_rise.emit()
-
-	var logo_fade := _track(create_tween())
-	logo_fade.tween_property(_logo_mark, "modulate:a", 0.0, LOGO_FADE_TIME) \
-		.set_ease(Tween.EASE_IN)
 
 	var floor_fade := _track(create_tween())
 	floor_fade.tween_property(_floor, "modulate:a", 1.0, FLOOR_FADE_TIME)
@@ -822,36 +648,16 @@ func _beat_rise_begin() -> void:
 
 	var body := _track(create_tween())
 	body.tween_interval(_stand_up_delay())
-	body.tween_callback(_start_stand_up)
+	body.tween_callback(func() -> void:
+		if _silhouette != null:
+			_silhouette.start_stand_up(BODY_STAND_BLEND))
 
 	var mirror := _track(create_tween())
 	mirror.tween_property(_mirror_window, "modulate:a", MIRROR_ALPHA, RISE_TIME * 0.5) \
 		.set_delay(RISE_TIME * 0.5)
 
-## When to START standing so the body finishes WITH the camera. A real
-## Crouch_Exit is shorter than the blend it replaces, so it begins later --
-## stretching it to fill RISE_TIME instead would play a 0.83 s motion at 0.55x
-## and read as wading through treacle.
 func _stand_up_delay() -> float:
-	if _anim_player != null and _anim_player.has_animation(&"Crouch_Exit"):
-		return maxf(RISE_TIME - _anim_player.get_animation(&"Crouch_Exit").length, 0.0)
-	return BODY_RISE_DELAY
-
-## Crouch_Exit is a real stand-up -- weight shifts, a hand leaves the floor.
-## The Crouch_Idle -> Idle blend below is the fallback, and it is what the free
-## animation tier gets: Crouch_Exit ships only in the paid UAL1 tier, and this
-## project runs without it. The blend is two static poses interpolated, which
-## reads as the body inflating rather than pushing off.
-func _start_stand_up() -> void:
-	if _anim_player == null:
-		return
-	if _anim_player.has_animation(&"Crouch_Exit"):
-		_anim_player.play(&"Crouch_Exit")
-		# Its last frame IS the standing pose, so Idle follows with no blend.
-		_anim_player.queue(&"Idle")
-		return
-	if _anim_player.has_animation(&"Idle"):
-		_anim_player.play(&"Idle", BODY_STAND_BLEND)
+	return _silhouette.stand_up_delay(RISE_TIME) if _silhouette != null else 0.0
 
 func _start_walk_loop() -> void:
 	if _anim_player != null and _anim_player.has_animation(&"Walk"):
@@ -920,10 +726,7 @@ func _skip_entrance() -> void:
 		beat_title.emit()
 
 	_floor.modulate.a = 1.0
-	_logo_mark.modulate.a = 0.0
-	_prompt_shown = false
-	if _click_prompt != null:
-		_click_prompt.visible = false
+	_plate.settle()
 	_mirror_window.modulate.a = MIRROR_ALPHA
 	for label in _metadata_labels:
 		label.modulate.a = 1.0
@@ -944,7 +747,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	var is_click := event is InputEventMouseButton and (event as InputEventMouseButton).pressed
 	if not (is_key_press or is_click):
 		return
-	if _prompt_shown:
+	if _plate.prompt_shown:
 		# The invited click on the held title shot: the whole entrance plays.
 		# WHERE A LAUNCH GOES IS NOT ASKED HERE. A player who has never finished
 		# the tutorial never reaches this scene -- scripts/ui/boot_router.gd
@@ -1041,8 +844,8 @@ func play_run_look() -> void:
 	for label in _metadata_labels:
 		out.tween_property(label, "modulate:a", 0.0, 0.3)
 	out.tween_property(_footer, "modulate:a", 0.0, 0.3)
-	if _click_prompt != null:
-		out.tween_property(_click_prompt, "modulate:a", 0.0, 0.2)
+	if _plate != null:
+		out.tween_property(_plate.prompt, "modulate:a", 0.0, 0.2)
 	# Camera swings to her LEFT (azimuth 90 -> 0) while she breaks into a
 	# run toward screen-left; the floor sprints with her (same azimuth).
 	var orbit := _track(create_tween())

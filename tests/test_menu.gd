@@ -622,15 +622,15 @@ func test_a_key_before_the_entrance_is_scheduled_does_not_replay_the_prompt() ->
 	key.echo = false
 	menu._unhandled_input(key)
 
-	# Past _ready()'s six frames and past LOGO_HOLD * 0.5, which is where
-	# _show_click_prompt() fires if the entrance was scheduled after the skip.
+	# Past _ready()'s six frames and past the plate's own hold, which is where
+	# the invitation appears if the entrance was scheduled after the skip.
 	await step(60)
 
 	# Asserted as coherence rather than as one outcome: whether that key is
 	# swallowed or honoured is a decision, but the two states must never
 	# overlap, and the menu must never end up unable to take input at all.
 	var settled: bool = menu._menu_list.is_visible_in_tree()
-	assert_false(settled and menu._click_prompt.visible,
+	assert_false(settled and menu._plate.prompt.visible,
 		"the click prompt is breathing over a menu that has already settled")
 	assert_true(settled or menu._entrance_active,
 		"the menu neither settled nor still takes input -- nothing can reach it")
@@ -743,9 +743,9 @@ func test_the_main_menu_row_comes_back_once_the_tutorial_is_finished() -> void:
 # EIGHT FRAMES. MainMenu._ready() awaits six process frames for the
 # framing solve before _play_entrance() sets _entrance_active, and
 # _unhandled_input() drops every event until it does -- a shorter wait makes
-# these tests pass or fail on nothing at all. _prompt_shown is then forced
-# rather than waited for: it arrives on LOGO_HOLD * 0.5, half a second later,
-# and that half second is the entrance's pacing, not this test's subject.
+# these tests pass or fail on nothing at all. The plate's prompt_shown is then
+# forced rather than waited for: it arrives half a second later, and that half
+# second is the entrance's pacing, not this test's subject.
 # ---------------------------------------------------------------------------
 
 func test_the_click_on_the_title_shot_plays_the_entrance() -> void:
@@ -754,7 +754,7 @@ func test_the_click_on_the_title_shot_plays_the_entrance() -> void:
 	await step(8)
 	var requested := [""]
 	menu._change_scene = func(path): requested[0] = path
-	menu._prompt_shown = true
+	menu._plate.prompt_shown = true
 
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_LEFT
@@ -795,3 +795,33 @@ func test_every_scene_path_the_main_menu_names_actually_exists() -> void:
 			"MainMenu.%s points at %s, which is not a scene that exists" % [key, value])
 	assert_gt(checked, 0,
 		"no scene-path constant was found on MainMenu -- this test checked nothing")
+
+func test_the_front_door_opens_on_the_shared_plate() -> void:
+	# 和正常主菜单的逻辑完全一样 is the requirement the tutorial's opening has to
+	# meet, and it meets it by opening on THIS class. So the parity breaks on
+	# whichever side stops using it: a menu holding no plate, or holding one it
+	# never opens, leaves the two front doors looking nothing like each other
+	# with nothing failing anywhere.
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(8)
+	assert_not_null(menu._plate, "the menu holds no opening plate")
+	if menu._plate == null:
+		return
+	# BEFORE ANYTHING IS READ OFF IT. A plate that was built but never parented
+	# has no children at all -- they are made in its _ready() -- so reaching for
+	# logo.texture there is a runtime error, and a runtime error is not a
+	# failure to this runner (see .claude/skills/reading-past-a-green-suite).
+	assert_true(menu._plate.is_inside_tree(),
+		"the menu built a plate and never put it on screen")
+	if not menu._plate.is_inside_tree():
+		return
+	assert_not_null(menu._plate.logo.texture, "the plate is holding no mark")
+	# HOW LONG the hold lasts is the plate's own business and the author's to
+	# drag. What is asserted is that the invitation arrives at all.
+	for i in 300:
+		await step(1)
+		if menu._plate.prompt_shown:
+			break
+	assert_true(menu._plate.prompt_shown,
+		"the menu never invites the click it is waiting for")
