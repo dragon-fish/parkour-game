@@ -167,7 +167,7 @@ func _ready() -> void:
 	# AFTER THE MOUNT, always. Player._attach_body() instantiates the body scene
 	# fresh, so anything painted before this call is painted onto nothing.
 	if paint_body_as_silhouette and player != null:
-		_paint_silhouette(player.get_node_or_null("BodyRoot"))
+		SilhouetteBody.paint(player.get_node_or_null("BodyRoot"))
 	_mark.call("_load_body_profile")
 
 	if view_distance > 0.0 and player.camera_rig != null \
@@ -444,25 +444,10 @@ func _load_body_profile() -> void:
 	if profile != null:
 		player.adopt_body_profile(profile)
 
-## Gives every mesh under `node` an unshaded brand-red override, turning
-## whatever model is attached into a flat silhouette regardless of its own
-## materials.
-##
-## The same eight lines as MainMenu._paint_silhouette, copied rather than
-## shared -- the same call this file already makes for the body PROFILE lookup,
-## and for the same reason: that one paints a bare body instanced into a
-## viewport with no Player around it, this one paints a mounted one, and the two
-## have no shared lifetime to hang a helper off.
-func _paint_silhouette(node: Node) -> void:
-	if node == null:
-		return
-	if node is MeshInstance3D:
-		var material := StandardMaterial3D.new()
-		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		material.albedo_color = MeTheme.BRAND_RED
-		(node as MeshInstance3D).material_override = material
-	for child in node.get_children():
-		_paint_silhouette(child)
+## THE SAME PAINT THE STAND-IN WEARS, and it has to be the same call: the
+## tutorial's opening swaps a SilhouetteBody for this body in one frame and
+## the swap is invisible only while the two are literally the same red. See
+## SilhouetteBody, which owns the walk and the colour.
 
 func _load_calibration_course() -> void:
 	if not load_calibration_course:
