@@ -92,6 +92,28 @@ signal handed_over
 ## and below PauseUi (200) so Esc still puts a menu over the whole thing.
 const PLATE_LAYER := 150
 
+# THE FRONT DOOR'S OWN FRAMING, not an approximation of it. The menu solves its
+# shot from the figure's actual skeleton -- how tall the crouch is decides how
+# far back the lens goes -- so hand-typed offsets here can only ever be near
+# it, and "near" is what the eye reads as a different shot. These are
+# MainMenu's values; change them there and here together, or better, look at
+# why they diverged.
+#
+# CLOSE_BODY_FRAC is what makes it a close-up: the crouched upper body fills
+# 85% of the frame's height. A medium shot is what you get for leaving it out.
+const MENU_FOV_DEG := 55.0
+## Where the head lands on screen and how much of the frame the crouch fills.
+## MainMenu's own values, exposed because matching the front door by eye is the
+## only way to finish the job -- nothing headless can see whether they agree.
+@export var head_x_frac: float = 0.55
+@export var head_y_frac: float = 0.34
+@export var close_body_frac: float = 0.85
+const MENU_HEAD_TOP_PAD := 0.16
+const MENU_FRONT_YAW_DEG := -180.0
+const MENU_CLOSE_AZIMUTH_DEG := 180.0
+const MENU_FALLBACK_CROUCH_HEAD := 0.82
+const MENU_FALLBACK_CROUCH_HIPS := 0.51
+
 enum _State { WAITING, HELD, RISING, DONE }
 
 var _state: int = _State.WAITING
@@ -101,6 +123,10 @@ var _stood_up: bool = false
 ## takes over. The rise ends exactly there, so handing the rig back is not a
 ## cut -- see _pose().
 var _seat: Vector3 = Vector3.ZERO
+## The camera child's own aim, zeroed for the shot so the rig's yaw is the
+## only thing pointing the lens -- otherwise whatever pitch it was carrying
+## tips the solved framing and the head slides off the top of the frame.
+var _seat_rot: Vector3 = Vector3.ZERO
 ## Where the rig itself rests, captured on the same tick as _seat. The blend
 ## ends HERE rather than at the rig's nominal eye position: the resting spot
 ## also carries the eye's forward offset and the head-follow, and a rise that
@@ -115,12 +141,21 @@ var performer: SilhouetteBody
 var _plate_layer: CanvasLayer
 var _plate: MeOpeningPlate
 
+## The solved shot, in the rig's own local space. Falls back to the shot_*
+## exports when there is no performer to measure.
+var _solved := false
+var _shot_local: Vector3 = Vector3.ZERO
+var _shot_yaw: float = 0.0
+
 ## The level's own palette, read once at the top of the shot and blended back
 ## in over the rise. Null until _begin_shot() has run, and null forever in a
 ## level that wired neither.
 var _sky: ProceduralSkyMaterial = null
 var _floor_material: ShaderMaterial = null
 var _sky_authored: Dictionary = {}
+## How cold this level's ambient is, read once so the opening can flatten it
+## to neutral and hand it back. See Arena._process().
+var _ambient_strength: float = 1.0
 var _floor_authored: Dictionary = {}
 
 ## True until control reaches the player -- from before the first tick, through
@@ -138,6 +173,9 @@ func _ready() -> void:
 	_plate_layer.name = "OpeningPlate"
 	_plate_layer.layer = PLATE_LAYER
 	add_child(_plate_layer)
+	# The front door's paper grain, on the same layer and under the plate so
+	# it grains the world rather than the logo.
+	_plate_layer.add_child(MeTheme.paper_noise_layer())
 	_plate = MeOpeningPlate.new()
 	_plate_layer.add_child(_plate)
 	_plate.open()
@@ -200,11 +238,13 @@ func _begin_shot() -> void:
 	player.lock_input()
 	var rig: CameraRig = player.camera_rig
 	_seat = rig.camera.position if rig.camera != null else Vector3.ZERO
+	_seat_rot = rig.camera.rotation if rig.camera != null else Vector3.ZERO
 	_rest = rig.position
 	_base_fov = player.config.camera.fov_base
 	rig.begin_cinematic()
 	_capture_palette()
 	_raise_performer()
+	_solve_shot()
 	_state = _State.HELD
 	_pose(0.0)
 	_paint(0.0)
@@ -246,7 +286,54 @@ func _take_the_pointer() -> void:
 		return
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
+## Reproduces MainMenu._solve_framing() / _place_cam() against the performer,
+## then expresses the answer in the rig's local space. The rig is a child of
+## the Player, so everything world-space has to come back through the player's
+## own transform before it means anything to set_cinematic_pose().
+func _solve_shot() -> void:
+	if performer == null or player == null:
+		return
+	var view: Viewport = get_viewport()
+	var size: Vector2 = Vector2(1920.0, 1080.0)
+	if view != null:
+		size = view.get_visible_rect().size
+	var tan_v: float = tan(deg_to_rad(MENU_FOV_DEG) * 0.5)
+	var tan_h: float = tan_v * (maxf(size.x, 1.0) / maxf(size.y, 1.0))
+
+	# Height above the feet, measured on the pose she is actually holding.
+	var head_h: float = MENU_FALLBACK_CROUCH_HEAD
+	var hips_h: float = MENU_FALLBACK_CROUCH_HIPS
+	for node in performer.find_children("*", "Skeleton3D", true, false):
+		var skeleton := node as Skeleton3D
+		var head: int = skeleton.find_bone("Head")
+		var hips: int = skeleton.find_bone("Hips")
+		if head >= 0 and hips >= 0:
+			var base_y: float = performer.global_position.y
+			head_h = (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin.y - base_y
+			hips_h = (skeleton.global_transform * skeleton.get_bone_global_pose(hips)).origin.y - base_y
+		break
+
+	var upper: float = maxf(head_h + MENU_HEAD_TOP_PAD - hips_h, 0.2)
+	var distance: float = upper / (close_body_frac * 2.0 * tan_v)
+	var target: Vector3 = performer.global_position + Vector3(0.0, head_h, 0.0)
+	# The azimuth the menu uses is measured against a body it has yawed to
+	# FRONT_YAW_DEG, so what carries over is the DIFFERENCE, applied to
+	# whichever way this performer happens to be facing.
+	var azimuth: float = performer.global_rotation.y \
+		+ deg_to_rad(MENU_CLOSE_AZIMUTH_DEG - MENU_FRONT_YAW_DEG)
+	var back := Vector3(cos(azimuth), 0.0, sin(azimuth))
+	var right: Vector3 = (-back).cross(Vector3.UP).normalized()
+	var ndc := Vector2((head_x_frac - 0.5) * 2.0, (0.5 - head_y_frac) * 2.0)
+	var eye: Vector3 = target + back * distance \
+		- right * (ndc.x * distance * tan_h) - Vector3.UP * (ndc.y * distance * tan_v)
+
+	_shot_local = player.global_transform.affine_inverse() * eye
+	_shot_yaw = atan2(back.x, back.z) - player.global_rotation.y
+	_solved = true
+
 func _capture_palette() -> void:
+	if player != null and player.config != null:
+		_ambient_strength = player.config.camera.ambient_cold_strength
 	if world != null and world.environment != null and world.environment.sky != null:
 		var sky := world.environment.sky.duplicate() as Sky
 		var material := sky.sky_material
@@ -266,6 +353,7 @@ func _capture_palette() -> void:
 		plain_mesh.material_override = _floor_material
 		_floor_authored = {
 			base = _floor_material.get_shader_parameter("base_color"),
+			dots = float(_floor_material.get_shader_parameter("dot_opacity")),
 			metallic = float(_floor_material.get_shader_parameter("metallic_amount")),
 			roughness = float(_floor_material.get_shader_parameter("roughness_amount")),
 		}
@@ -276,9 +364,24 @@ func _paint(k: float) -> void:
 		_sky.sky_horizon_color = opening_colour.lerp(_sky_authored.horizon, k)
 		_sky.ground_bottom_color = opening_colour.lerp(_sky_authored.ground_bottom, k)
 		_sky.ground_horizon_color = opening_colour.lerp(_sky_authored.ground_horizon, k)
+	if player != null and player.config != null:
+		# THE AMBIENT IS WHY FLATTENING THE FLOOR MADE IT BLUER. Dropping
+		# metallic turns a mirror into a diffuse sheet, and a diffuse sheet
+		# drinks this level's cold ambient neat; the menu's ground is an unlit
+		# rectangle and takes no light at all.
+		#
+		# THE DIAL, NOT THE COLOUR. Arena._process() rewrites
+		# ambient_light_color from this strength EVERY frame so the F1 slider
+		# stays live, and _process runs after _physics_process -- writing the
+		# colour here is overwritten before it is ever drawn. DO NOT go back to
+		# setting the colour.
+		player.config.camera.ambient_cold_strength = lerpf(0.0, _ambient_strength, k)
 	if _floor_material != null:
 		_floor_material.set_shader_parameter("base_color",
 			opening_colour.lerp(_floor_authored.base, k))
+		# The menu's ground has no dot field on it at all.
+		_floor_material.set_shader_parameter("dot_opacity",
+			lerpf(0.0, _floor_authored.dots, k))
 		# FLAT AND ROUGH IS WHAT MAKES IT THE MENU'S FLOOR. The colour alone
 		# leaves a mirror standing where the menu has a plain sheet, and a
 		# mirror is the thing the eye reads as "a different place".
@@ -289,21 +392,23 @@ func _paint(k: float) -> void:
 
 func _pose(k: float) -> void:
 	var rig: CameraRig = player.camera_rig
-	var shot := Vector3(shot_right, shot_height, -shot_forward)
+	var shot := _shot_local if _solved else Vector3(shot_right, shot_height, -shot_forward)
 	# What set_cinematic_pose takes is an offset from the rig's nominal eye
 	# position, so every absolute point above is converted here rather than
 	# being authored in the rig's own terms.
 	var base := Vector3(0.0, player.config.camera.eye_height, -rig.eye_forward)
 	rig.set_cinematic_pose(shot.lerp(_rest, k) - base, 0.0,
 		deg_to_rad(shot_pitch_degrees) * (1.0 - k))
-	rig.set_cinematic_yaw(deg_to_rad(shot_yaw_degrees) * (1.0 - k))
+	var yaw: float = _shot_yaw if _solved else deg_to_rad(shot_yaw_degrees)
+	rig.set_cinematic_yaw(yaw * (1.0 - k))
 	if rig.camera != null:
 		# The camera CHILD carries the third-person seat, and the rig's own yaw
 		# swings it round while the shot is coming out of profile. Zero at the
 		# held end so the lens sits where this node put it, and full at the
 		# other so nothing moves when the rig takes over again.
 		rig.camera.position = _seat * k
-		rig.camera.fov = lerpf(shot_fov_degrees, _base_fov, k)
+		rig.camera.rotation = _seat_rot * k
+		rig.camera.fov = lerpf(MENU_FOV_DEG if _solved else shot_fov_degrees, _base_fov, k)
 
 func _hand_over() -> void:
 	if _state == _State.DONE:
