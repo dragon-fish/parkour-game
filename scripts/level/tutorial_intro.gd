@@ -161,6 +161,7 @@ func _physics_process(delta: float) -> void:
 			# Arena calls it on any respawn -- including one that lands while
 			# the shot is still held.
 			player.lock_input()
+			_free_the_pointer()
 			_pose(0.0)
 			_paint(0.0)
 		_State.RISING:
@@ -224,6 +225,27 @@ func _stand_up_delay() -> float:
 ## sub-resource of a scene that may be instanced more than once in a session,
 ## and materials/acrylic_void.tres is shared with the debug plain -- painting
 ## either in place would repaint everything else that has it.
+## THE POINTER IS THE PLAYER'S UNTIL THE GAME STARTS. Before the click this is
+## the front door, and a front door does not grab the mouse -- the menu leaves
+## it visible and so must this. EVERY TICK, not once: Arena._ready() captures
+## it and runs AFTER this node's _ready() (a child is ready before its parent),
+## and PauseUi recaptures on resume.
+func _free_the_pointer() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+## And the level takes it back with control, on its own terms -- a level that
+## wants a free cursor (the animation lab is one) still gets one.
+func _take_the_pointer() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var arena := get_parent() as Arena
+	if arena != null and not arena.capture_mouse:
+		return
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
 func _capture_palette() -> void:
 	if world != null and world.environment != null and world.environment.sky != null:
 		var sky := world.environment.sky.duplicate() as Sky
@@ -297,6 +319,7 @@ func _hand_over() -> void:
 		if player.camera_rig != null:
 			player.camera_rig.end_cinematic()
 		player.unlock_input()
+	_take_the_pointer()
 	set_physics_process(false)
 	handed_over.emit()
 
