@@ -3,25 +3,16 @@ extends Node
 
 # The tutorial's opening shot, and the hand-over out of it.
 #
-# THE FIGURE IN THE SHOT IS NOT THE PLAYER. She is a SilhouetteBody: a bare
-# model with its own AnimationPlayer and nothing else writing her bones. The
-# real Player stands in the same spot with her body hidden and her input
-# locked, and the two are swapped on the frame the stand-up ends -- both are
-# the same red silhouette in the same place, so the cut is not visible.
+# THE FIGURE IS THE PLAYER'S REAL BODY. Player.begin_direct_body_animation()
+# suspends the AnimationTree, CharacterAnimator and procedural skeleton
+# writers as one unit, then this opening drives the body's AnimationPlayer
+# directly. The matching end call restores the ordinary pipeline before input
+# is unlocked. There is one model and one skeleton writer for the whole shot.
 #
-# THIS IS A DECEPTION AND IT IS ALLOWED TO BE ONE. Posing the real Player was
-# tried and it does not work: her skeleton has an AnimationTree fed by the move
-# machine, a HeadLook modifier turning the neck toward the lens every frame,
-# clip-offset drivers and spring bones on it, and silencing them one at a time
-# means the one that gets missed is on screen -- a neck twisted toward a
-# side-on camera, and a body stuck in the crouch clip through every move made
-# afterwards. Both of those shipped. DO NOT bring the AnimationTree, the
-# modifiers or AnimationPlayer.play() on the real body back into this file.
-#
-# NOTHING CUTS AND NOTHING COVERS. The camera is the Player's own rig, parked,
-# so standing up, the lens coming round behind her and control arriving are one
-# continuous shot inside one scene -- no load, no swap, no curtain. DO NOT
-# reintroduce a transition anywhere in this file.
+# THE LOADING CURTAIN ENDS BEFORE THE SHOT BECOMES INTERACTIVE. Once the held
+# crouch is visible, the camera is the Player's own rig, parked, so standing
+# up, the lens coming round behind her and control arriving are one continuous
+# shot inside one scene -- no load, swap or second transition on the click.
 #
 # THE PLAYER IS NOT SET UP WHEN THIS NODE IS READY. A child's _ready() runs
 # before its parent's, so Arena._ready() has not yet called player.setup() and
@@ -34,9 +25,9 @@ extends Node
 # camera child is left at the origin and the body is left rendering both of its
 # layer variants at once.
 
-## The body whose place the stand-in takes and whose camera films it. Without
-## one this node hands over immediately, so a level that forgot to wire it is
-## playable rather than frozen.
+## The body whose camera films it. Without one this node hands over
+## immediately, so a level that forgot to wire it is playable rather than
+## frozen.
 @export var player: Player
 
 ## Seconds the stand-up and the camera move take. They are ONE beat: the body
@@ -145,9 +136,10 @@ var _seat_rot: Vector3 = Vector3.ZERO
 var _rest: Vector3 = Vector3.ZERO
 var _base_fov: float = 90.0
 
-## The stand-in. Null on a machine with no body linked, which is a shot with
-## nobody in it and still a level that hands over control.
-var performer: SilhouetteBody
+## The player's visible body and the AnimationPlayer temporarily driving it.
+## Both are null on a machine with no body linked.
+var performer: Node3D
+var _direct_anim_player: AnimationPlayer
 
 ## The menu's held background is rendered as the Environment's canvas
 ## background, so it sits behind the 3D silhouette instead of tinting it.
@@ -195,7 +187,6 @@ func _ready() -> void:
 	add_child(_plate_layer)
 	_plate = MeOpeningPlate.new()
 	_plate_layer.add_child(_plate)
-	_plate.open()
 	_build_music()
 
 ## Rebuilds the main menu's layers in the same order: warm-white plate, paper
@@ -262,8 +253,7 @@ func _physics_process(delta: float) -> void:
 				0.0, 1.0)
 			if not _stood_up and _elapsed >= _stand_up_delay():
 				_stood_up = true
-				if performer != null:
-					performer.start_stand_up(stand_blend)
+				_start_stand_up()
 			# Cubic ease-in-out, the shape the menu's own rise uses.
 			var eased: float = k * k * (3.0 - 2.0 * k) if k < 1.0 else 1.0
 			var world_eased: float = world_k * world_k * (3.0 - 2.0 * world_k) \
@@ -310,6 +300,10 @@ func _begin_shot() -> void:
 	_state = _State.HELD
 	_pose(0.0)
 	_paint(0.0)
+	# Everything the first visible frame depends on now exists: the real body
+	# holds its crouch, the ordinary animation writers sleep, and the camera is
+	# already in place. Only now may the shared loading curtain reveal it.
+	_plate.open()
 	# APPLIED ON THIS TICK, not left for the next one. The Player runs before
 	# this node and has already placed the rig for the ordinary view; without
 	# this the level's first frame is drawn from behind her and the shot cuts in
@@ -318,7 +312,21 @@ func _begin_shot() -> void:
 	rig.update_effects(0.0, 0.0, player.grounded)
 
 func _stand_up_delay() -> float:
-	return performer.stand_up_delay(rise_time) if performer != null else 0.0
+	if _direct_anim_player == null \
+			or not _direct_anim_player.has_animation(SilhouetteBody.STAND_UP_CLIP):
+		return 0.0
+	return maxf(rise_time
+		- _direct_anim_player.get_animation(SilhouetteBody.STAND_UP_CLIP).length, 0.0)
+
+func _start_stand_up() -> void:
+	if _direct_anim_player == null:
+		return
+	if _direct_anim_player.has_animation(SilhouetteBody.STAND_UP_CLIP):
+		_direct_anim_player.play(SilhouetteBody.STAND_UP_CLIP)
+		if _direct_anim_player.has_animation(SilhouetteBody.STANDING_CLIP):
+			_direct_anim_player.queue(SilhouetteBody.STANDING_CLIP)
+	elif _direct_anim_player.has_animation(SilhouetteBody.STANDING_CLIP):
+		_direct_anim_player.play(SilhouetteBody.STANDING_CLIP, stand_blend)
 
 ## Places the lens for a blend factor k: 0 is the held profile, 1 is exactly
 ## where the ordinary third-person camera sits, so end_cinematic() lands on the
@@ -363,25 +371,27 @@ func _solve_shot() -> void:
 	var tan_h: float = tan_v * (maxf(size.x, 1.0) / maxf(size.y, 1.0))
 
 	# Height above the feet, measured on the pose she is actually holding.
-	var head_h: float = MENU_FALLBACK_CROUCH_HEAD
-	var hips_h: float = MENU_FALLBACK_CROUCH_HIPS
+	var feet_y: float = player.global_position.y - player.current_capsule_height() * 0.5
+	var head_world := Vector3(player.global_position.x,
+		feet_y + MENU_FALLBACK_CROUCH_HEAD, player.global_position.z)
+	var hips_world := Vector3(player.global_position.x,
+		feet_y + MENU_FALLBACK_CROUCH_HIPS, player.global_position.z)
 	for node in performer.find_children("*", "Skeleton3D", true, false):
 		var skeleton := node as Skeleton3D
 		var head: int = skeleton.find_bone("Head")
 		var hips: int = skeleton.find_bone("Hips")
 		if head >= 0 and hips >= 0:
-			var base_y: float = performer.global_position.y
-			head_h = (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin.y - base_y
-			hips_h = (skeleton.global_transform * skeleton.get_bone_global_pose(hips)).origin.y - base_y
-		break
+			head_world = (skeleton.global_transform * skeleton.get_bone_global_pose(head)).origin
+			hips_world = (skeleton.global_transform * skeleton.get_bone_global_pose(hips)).origin
+			break
 
-	var upper: float = maxf(head_h + MENU_HEAD_TOP_PAD - hips_h, 0.2)
+	var upper: float = maxf(head_world.y + MENU_HEAD_TOP_PAD - hips_world.y, 0.2)
 	var distance: float = upper / (close_body_frac * 2.0 * tan_v)
-	var target: Vector3 = performer.global_position + Vector3(0.0, head_h, 0.0)
+	var target: Vector3 = head_world
 	# The azimuth the menu uses is measured against a body it has yawed to
 	# FRONT_YAW_DEG, so what carries over is the DIFFERENCE, applied to
 	# whichever way this performer happens to be facing.
-	var azimuth: float = performer.global_rotation.y \
+	var azimuth: float = player.global_rotation.y \
 		+ deg_to_rad(MENU_CLOSE_AZIMUTH_DEG - MENU_FRONT_YAW_DEG + shot_side_degrees)
 	var back := Vector3(cos(azimuth), 0.0, sin(azimuth))
 	var right: Vector3 = (-back).cross(Vector3.UP).normalized()
@@ -506,7 +516,7 @@ func _hand_over() -> void:
 	_state = _State.DONE
 	_leave_opening_backdrop()
 	_paint(1.0)
-	_dismiss_performer()
+	_release_player_body()
 	if _plate_layer != null:
 		_plate_layer.queue_free()
 		_plate_layer = null
@@ -523,49 +533,28 @@ func _hand_over() -> void:
 	handed_over.emit()
 
 # ---------------------------------------------------------------------------
-# The stand-in
+# Direct control of the player's visible body
 # ---------------------------------------------------------------------------
 
-## Stands the performer exactly where the Player's own body is drawn, and takes
-## that body off screen for as long as she is there.
-##
-## THE ORIGIN CONVENTION IS FEET, HERS AND THE MOUNT'S. Player mounts its body
-## at compute_mount_transform(), which drops the capsule's centre by half its
-## height before adding the profile's own offset; SilhouetteBody applies the
-## same offset from its own origin. So dropping this node by half a capsule
-## puts the two models in the same place to the millimetre. DO NOT add the
-## profile's mount_offset here as well -- the stand-in has already applied it.
 func _raise_performer() -> void:
-	performer = SilhouetteBody.build()
-	if performer == null:
+	performer = player.body
+	_direct_anim_player = player.begin_direct_body_animation()
+	if performer == null or _direct_anim_player == null:
 		return
-	var host: Node = player.get_parent()
-	if host == null:
-		host = self
-	host.add_child(performer)
-	var stance: Transform3D = player.global_transform
-	stance.origin.y -= player.current_capsule_height() * 0.5
-	performer.global_transform = stance
-	performer.hold_crouch()
-	# THE POSE BEFORE THE MEASUREMENT. hold_crouch() only starts the clip; the
+	if _direct_anim_player.has_animation(SilhouetteBody.CROUCH_CLIP):
+		_direct_anim_player.play(SilhouetteBody.CROUCH_CLIP)
+	elif _direct_anim_player.has_animation(SilhouetteBody.STANDING_CLIP):
+		_direct_anim_player.play(SilhouetteBody.STANDING_CLIP)
+	# THE POSE BEFORE THE MEASUREMENT. play() only starts the clip; the
 	# skeleton still holds its rest pose until the animation is advanced, and a
 	# shot solved against a STANDING skeleton puts the lens where a standing
 	# body would need it -- too far back, aimed half a metre over the head she
 	# is actually holding. The menu waits six frames for the same reason; this
 	# asks for the pose instead of hoping for it.
-	for node in performer.find_children("*", "AnimationPlayer", true, false):
-		(node as AnimationPlayer).advance(0.0)
-	var body_root: Node3D = player.get_node_or_null("BodyRoot") as Node3D
-	if body_root != null:
-		body_root.visible = false
+	_direct_anim_player.advance(0.0)
 
-## The swap. Both figures are the same red silhouette standing in the same
-## spot, so this is a cut nobody sees -- which is the whole trick.
-func _dismiss_performer() -> void:
+func _release_player_body() -> void:
 	if player != null:
-		var body_root: Node3D = player.get_node_or_null("BodyRoot") as Node3D
-		if body_root != null:
-			body_root.visible = true
-	if performer != null:
-		performer.queue_free()
-		performer = null
+		player.end_direct_body_animation()
+	_direct_anim_player = null
+	performer = null

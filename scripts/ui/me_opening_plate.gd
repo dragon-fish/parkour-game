@@ -32,6 +32,12 @@ const LOGO_TEXTURE := "res://assets/ui/logo_mark_white.svg"
 
 ## How long the mark is held alone before the invitation joins it.
 @export var hold: float = 0.5
+## The target scene finishes building behind this warm-white curtain, then
+## explicitly calls open(). The mark is already above it, so startup always
+## has something stable to show while models and animation graphs are built.
+@export var loading_colour: Color = Color(0.96, 0.96, 0.94)
+@export var loading_hold: float = 0.18
+@export var reveal_time: float = 0.35
 ## How long the mark takes to leave once the press has landed.
 @export var logo_fade_time: float = 0.4
 ## And the prompt, which goes faster: it is answering the press, not covering
@@ -49,6 +55,7 @@ const LOGO_TEXTURE := "res://assets/ui/logo_mark_white.svg"
 
 var logo: TextureRect
 var prompt: Label
+var loading_cover: ColorRect
 
 ## True from the frame the invitation is on screen until the press is taken.
 ## The host gates its own input on this, so a press during the opening hold is
@@ -67,8 +74,17 @@ func _ready() -> void:
 	# a game that only answers the keyboard.
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	theme = MeTheme.ui_theme()
+	_build_loading_cover()
 	_build_logo()
 	_build_prompt()
+
+func _build_loading_cover() -> void:
+	loading_cover = ColorRect.new()
+	loading_cover.name = "LoadingCover"
+	loading_cover.color = loading_colour
+	loading_cover.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	loading_cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(loading_cover)
 
 func _build_logo() -> void:
 	logo = TextureRect.new()
@@ -108,6 +124,10 @@ func _build_prompt() -> void:
 
 ## Starts the beat: the mark alone, then the invitation breathing under it.
 func open() -> void:
+	var reveal := _track(create_tween())
+	reveal.tween_interval(loading_hold)
+	reveal.tween_property(loading_cover, "modulate:a", 0.0, reveal_time) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	var pacing := _track(create_tween())
 	pacing.tween_interval(hold)
 	pacing.tween_callback(_show_prompt)
@@ -143,6 +163,8 @@ func settle() -> void:
 		prompt.visible = false
 	if logo != null:
 		logo.modulate.a = 0.0
+	if loading_cover != null:
+		loading_cover.modulate.a = 0.0
 
 func _track(tween: Tween) -> Tween:
 	_tweens.append(tween)

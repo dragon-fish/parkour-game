@@ -42,21 +42,17 @@ func test_only_the_opening_row_teaches_without_a_scene() -> void:
 		assert_not_null(director.lessons[at].get(&"scene"),
 			"lesson row %d has no scene, so its path did not load" % at)
 
-func test_nothing_ever_poses_the_players_own_skeleton() -> void:
-	# ONE WRITER PER SKELETON, and for the Player that writer is the
-	# AnimationTree the move machine drives. The opening films a stand-in
-	# precisely so it never has to switch that off: an opening that reaches for
-	# the real body has to silence an AnimationTree, a HeadLook modifier, the
-	# clip-offset drivers and the spring bones, and the one it forgets is the
-	# one on screen -- a twisted neck, or a body held in the crouch clip
-	# through every move made afterwards. Both of those have shipped.
+func test_the_opening_hands_the_players_skeleton_between_one_writer_at_a_time() -> void:
 	var level: Node = await _loaded()
 	var player: Player = level.get_node("Player")
 	var tree: AnimationTree = player.get_node_or_null("BodyRoot/AnimationTree")
 	if tree == null:
 		pass_test("no body is mounted on this machine, so there is no skeleton to fight over")
 		return
-	assert_true(tree.active, "the opening switched the player's own animation tree off")
+	assert_false(tree.active,
+		"the movement AnimationTree is still writing during the direct opening clip")
+	assert_not_null(level.get_node("TutorialIntro")._direct_anim_player,
+		"the tree is off and no direct AnimationPlayer took over")
 	await _click_through(level)
 	await step(4)
 	assert_true(tree.active, "the player's animation tree is not driving her body")
@@ -356,47 +352,44 @@ func test_the_body_in_the_void_is_a_flat_red_silhouette() -> void:
 		assert_eq(flat.shading_mode, BaseMaterial3D.SHADING_MODE_UNSHADED,
 			"%s is lit, so the void has a light direction in it" % mesh.name)
 
-func test_exactly_one_body_is_on_screen_and_the_stand_in_leaves_with_the_shot() -> void:
-	# THE WHOLE TRICK IS THAT NOBODY SEES THE SWAP. Two red silhouettes in the
-	# same spot is one figure with a doubled outline; none at all is an empty
-	# void with a camera pointed at it. And a stand-in left behind afterwards is
-	# a second body standing exactly where the player is about to run from.
+func test_exactly_the_players_body_is_on_screen_for_the_whole_shot() -> void:
 	var level: Node = await _loaded()
 	var player: Player = level.get_node("Player")
 	var intro: TutorialIntro = level.get_node("TutorialIntro")
 	var body_root: Node3D = player.get_node_or_null("BodyRoot") as Node3D
-	if intro.performer == null:
-		pass_test("no body is mounted on this machine, so there is no stand-in to swap")
+	if player.body == null:
+		pass_test("no body is mounted on this machine")
 		return
-	assert_true(intro.performer.visible, "the stand-in is not on screen during her own shot")
-	assert_false(body_root.visible,
-		"the player's body is drawn behind the stand-in, so the figure is doubled")
+	assert_eq(intro.performer, player.body,
+		"the opening is filming a second model instead of the player's body")
+	assert_true(body_root.visible, "the player's only body is hidden during the opening")
+	assert_eq(level.find_children("*", "SilhouetteBody", true, false).size(), 0,
+		"the tutorial created a second silhouette body")
 
 	await _click_through(level)
 	await step(3)
 	assert_true(body_root.visible, "control arrived and the body it belongs to is invisible")
-	assert_false(is_instance_valid(intro.performer),
-		"the stand-in is still standing where the player has to run from")
 
-func test_the_stand_in_carries_nothing_that_writes_its_bones() -> void:
-	# The reason there is a stand-in at all. It is a bare model with its own
-	# AnimationPlayer: give it an AnimationTree or a skeleton modifier and it
-	# becomes the thing it was built to replace, and the deformity that started
-	# this comes back with it.
+func test_every_regular_player_animation_writer_sleeps_during_the_opening() -> void:
 	var level: Node = await _loaded()
+	var player: Player = level.get_node("Player")
 	var intro: TutorialIntro = level.get_node("TutorialIntro")
-	if intro.performer == null:
-		pass_test("no body is mounted on this machine, so there is no stand-in to inspect")
+	var tree := player.get_node_or_null("BodyRoot/AnimationTree") as AnimationTree
+	if tree == null:
+		pass_test("no body is mounted on this machine")
 		return
-	# NAMED, not "no SkeletonModifier3D anywhere": a model ships its own spring
-	# bones and those are welcome -- they are jiggle, not a pose. What must not
-	# be here is anything Player._attach_body() adds, because the only way one
-	# of these gets in is the stand-in being built down the Player's own path.
-	for writer in ["AnimationTree", "CharacterAnimator", "HeadLook", "BalanceLean", "HandIK"]:
-		assert_eq(intro.performer.find_children("*", writer, true, false).size(), 0,
-			"the stand-in carries a %s, so something other than its own clip writes its bones" % writer)
-	assert_not_null(intro.performer.anim_player,
-		"the stand-in has nothing driving it at all")
+	assert_false(tree.active, "AnimationTree is active during the direct clip")
+	assert_eq(player.get_node("BodyRoot/CharacterAnimator").process_mode,
+		Node.PROCESS_MODE_DISABLED, "CharacterAnimator is still routing the tree")
+	if player.head_look != null:
+		assert_false(player.head_look.active, "HeadLook is still writing the skeleton")
+	if player.balance_lean != null:
+		assert_false(player.balance_lean.active, "BalanceLean is still writing the skeleton")
+
+	await _click_through(level)
+	assert_true(tree.active, "AnimationTree was not restored with player control")
+	assert_ne(player.get_node("BodyRoot/CharacterAnimator").process_mode,
+		Node.PROCESS_MODE_DISABLED, "CharacterAnimator was not restored")
 
 func test_the_opening_holds_the_same_plate_the_front_door_does() -> void:
 	# 和正常主菜单的逻辑完全一样: up to the press, a player who has never
@@ -436,8 +429,8 @@ func test_the_held_opening_uses_the_menu_background_behind_the_body() -> void:
 		"the tutorial draws its opening canvas over the body instead of behind it")
 	assert_lt(intro._backdrop_layer.layer, 0,
 		"the opening canvas is on a foreground layer and covers the 3D body")
-	if intro.performer != null and intro.performer.anim_player != null:
-		assert_true(intro.performer.anim_player.is_playing(),
+	if intro._direct_anim_player != null:
+		assert_true(intro._direct_anim_player.is_playing(),
 			"the tutorial crouch pose is frozen instead of looping")
 
 	intro._plate.prompt_shown = true

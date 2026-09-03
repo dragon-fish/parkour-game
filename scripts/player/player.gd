@@ -919,6 +919,17 @@ var head_look: HeadLook = null
 ## needs. See BalanceLean's own header.
 var balance_lean: BalanceLean = null
 
+## True while a cutscene drives the attached body's AnimationPlayer directly.
+## The ordinary tree and procedural writers are suspended as one unit so the
+## skeleton never has two owners.
+var _direct_body_animation: bool = false
+var _direct_anim_player: AnimationPlayer = null
+var _direct_anim_tree: AnimationTree = null
+var _direct_animator: CharacterAnimator = null
+var _direct_animator_process_mode: int = Node.PROCESS_MODE_INHERIT
+var _direct_head_look_active: bool = true
+var _direct_balance_lean_active: bool = true
+
 ## The world yaw the MODEL is currently showing, which is not always the body's
 ## own. See _drive_body_yaw().
 var _visual_yaw: float = 0.0
@@ -1240,6 +1251,53 @@ func unlock_input() -> void:
 ## player is not actually driving.
 func is_input_locked() -> bool:
 	return _input_locked
+
+## Hands the visible body's skeleton to its plain AnimationPlayer. The caller
+## must pair this with end_direct_body_animation() before unlocking input.
+func begin_direct_body_animation() -> AnimationPlayer:
+	if _direct_body_animation:
+		return _direct_anim_player
+	_direct_anim_tree = get_node_or_null("BodyRoot/AnimationTree") as AnimationTree
+	_direct_animator = get_node_or_null("BodyRoot/CharacterAnimator") as CharacterAnimator
+	if _direct_anim_tree == null:
+		return null
+	_direct_anim_player = _direct_anim_tree.get_node_or_null(
+		_direct_anim_tree.anim_player) as AnimationPlayer
+	if _direct_anim_player == null:
+		return null
+	_direct_body_animation = true
+	if _direct_animator != null:
+		_direct_animator_process_mode = _direct_animator.process_mode
+		_direct_animator.process_mode = Node.PROCESS_MODE_DISABLED
+	_direct_anim_tree.active = false
+	if head_look != null:
+		_direct_head_look_active = head_look.active
+		head_look.active = false
+	if balance_lean != null:
+		_direct_balance_lean_active = balance_lean.active
+		balance_lean.active = false
+	return _direct_anim_player
+
+## Restores the ordinary movement-driven animation pipeline after a direct
+## cutscene clip. The plain player stops before the tree wakes, so there is
+## never a frame with both evaluating the same skeleton.
+func end_direct_body_animation() -> void:
+	if not _direct_body_animation:
+		return
+	if _direct_anim_player != null:
+		_direct_anim_player.stop()
+	if _direct_anim_tree != null:
+		_direct_anim_tree.active = true
+	if _direct_animator != null:
+		_direct_animator.process_mode = _direct_animator_process_mode
+	if head_look != null:
+		head_look.active = _direct_head_look_active
+	if balance_lean != null:
+		balance_lean.active = _direct_balance_lean_active
+	_direct_body_animation = false
+	_direct_anim_player = null
+	_direct_anim_tree = null
+	_direct_animator = null
 
 ## Opens the stand-up window. Called by SlideMove.exit().
 func begin_slide_recovery() -> void:
@@ -3341,12 +3399,13 @@ func _physics_process(delta: float) -> void:
 	# on the first tick there is room for it.
 	_service_pending_capsule_restore()
 
-	if hand_ik != null:
-		hand_ik.update(delta)
-	_drive_body_yaw(delta, input)
-	_drive_clip_offset(delta)
-	_drive_head_look()
-	_drive_balance_lean()
+	if not _direct_body_animation:
+		if hand_ik != null:
+			hand_ik.update(delta)
+		_drive_body_yaw(delta, input)
+		_drive_clip_offset(delta)
+		_drive_head_look()
+		_drive_balance_lean()
 
 	if camera_rig != null:
 		camera_rig.apply_look(input.look, self, delta)

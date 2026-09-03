@@ -826,6 +826,20 @@ func test_the_front_door_opens_on_the_shared_plate() -> void:
 	assert_true(menu._plate.prompt_shown,
 		"the menu never invites the click it is waiting for")
 
+func test_the_shared_plate_hides_scene_setup_until_its_host_opens_it() -> void:
+	var plate := MeOpeningPlate.new()
+	add_child_autofree(plate)
+	await step(1)
+	assert_eq(plate.loading_cover.modulate.a, 1.0,
+		"the startup curtain is transparent before the host finishes loading")
+	plate.open()
+	await step(2)
+	assert_eq(plate.loading_cover.modulate.a, 1.0,
+		"the startup curtain does not hold a stable first frame")
+	await step(30)
+	assert_lt(plate.loading_cover.modulate.a, 1.0,
+		"the host opened the startup curtain and it did not begin fading")
+
 func test_the_held_opening_hides_the_menu_navigation_footer() -> void:
 	# Before the first press, returning players and first-time players see the
 	# same opening shot. Navigation has no meaning until the menu itself exists.
