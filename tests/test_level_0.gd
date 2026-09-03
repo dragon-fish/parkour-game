@@ -423,3 +423,24 @@ func test_the_opening_holds_the_same_plate_the_front_door_does() -> void:
 	await step(3)
 	assert_false(is_instance_valid(plate),
 		"the mark and the invitation are still over a level the player is driving")
+
+func test_the_held_opening_uses_the_menu_background_behind_the_body() -> void:
+	var level: Node = await _loaded()
+	var intro: TutorialIntro = level.get_node("TutorialIntro")
+	assert_not_null(intro._chladni,
+		"the tutorial opening is missing the main menu's Chladni field")
+	assert_not_null(intro._opening_background,
+		"the tutorial opening has no warm-white canvas behind the body")
+	assert_eq(level.get_node("WorldEnvironment").environment.background_mode,
+		Environment.BG_CANVAS,
+		"the tutorial draws its opening canvas over the body instead of behind it")
+	assert_lt(intro._backdrop_layer.layer, 0,
+		"the opening canvas is on a foreground layer and covers the 3D body")
+	if intro.performer != null and intro.performer.anim_player != null:
+		assert_true(intro.performer.anim_player.is_playing(),
+			"the tutorial crouch pose is frozen instead of looping")
+
+	await _click_through(level)
+	assert_eq(level.get_node("WorldEnvironment").environment.background_mode,
+		Environment.BG_SKY,
+		"the authored tutorial sky did not return after the opening press")

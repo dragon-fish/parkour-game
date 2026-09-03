@@ -144,8 +144,14 @@ var _base_fov: float = 90.0
 ## nobody in it and still a level that hands over control.
 var performer: SilhouetteBody
 
+## The menu's held background is rendered as the Environment's canvas
+## background, so it sits behind the 3D silhouette instead of tinting it.
+var _backdrop_layer: CanvasLayer
+var _opening_background: ColorRect
+var _chladni: ChladniField
 var _plate_layer: CanvasLayer
 var _plate: MeOpeningPlate
+var _music: MenuMusic
 
 ## The solved shot, in the rig's own local space. Falls back to the shot_*
 ## exports when there is no performer to measure.
@@ -163,6 +169,8 @@ var _sky_authored: Dictionary = {}
 ## to neutral and hand it back. See Arena._process().
 var _ambient_strength: float = 1.0
 var _floor_authored: Dictionary = {}
+var _background_mode: int = Environment.BG_SKY
+var _background_canvas_max_layer: int = 0
 
 ## True until control reaches the player -- from before the first tick, through
 ## the held shot and the rise, up to the frame `handed_over` fires.
@@ -175,16 +183,48 @@ func is_holding() -> bool:
 # on screen; a mark that waited for the player to finish setting up would be
 # the flash-and-vanish that started this rework.
 func _ready() -> void:
+	_build_opening_backdrop()
 	_plate_layer = CanvasLayer.new()
 	_plate_layer.name = "OpeningPlate"
 	_plate_layer.layer = PLATE_LAYER
 	add_child(_plate_layer)
-	# The front door's paper grain, on the same layer and under the plate so
-	# it grains the world rather than the logo.
-	_plate_layer.add_child(MeTheme.paper_noise_layer())
 	_plate = MeOpeningPlate.new()
 	_plate_layer.add_child(_plate)
 	_plate.open()
+	_build_music()
+
+## Rebuilds the main menu's layers in the same order: warm-white plate, paper
+## grain, then the music-driven Chladni field. Environment.BG_CANVAS places
+## this CanvasLayer behind the 3D body while the opening is held.
+func _build_opening_backdrop() -> void:
+	_backdrop_layer = CanvasLayer.new()
+	_backdrop_layer.name = "OpeningBackdrop"
+	_backdrop_layer.layer = -1
+	add_child(_backdrop_layer)
+
+	_opening_background = ColorRect.new()
+	_opening_background.color = opening_colour
+	_opening_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_opening_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_backdrop_layer.add_child(_opening_background)
+	_backdrop_layer.add_child(MeTheme.paper_noise_layer())
+
+	_chladni = ChladniField.new()
+	_chladni.anchor_right = 1.0
+	_chladni.anchor_bottom = 0.5
+	_chladni.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_chladni.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# MainMenu derives this from the settled character column. It is repeated
+	# here because the tutorial has no MainMenu instance whose export to read.
+	_chladni.centre_x = 0.37
+	_backdrop_layer.add_child(_chladni)
+
+func _build_music() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	_music = MenuMusic.new()
+	_music.name = "MenuMusic"
+	add_child(_music)
 
 func _physics_process(delta: float) -> void:
 	if _state == _State.DONE:
@@ -237,6 +277,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	_state = _State.RISING
 	_elapsed = 0.0
+	_leave_opening_backdrop()
+	if _music != null:
+		_music.fade_out(rise_time)
 	if _plate != null:
 		_plate.dismiss()
 
@@ -249,6 +292,7 @@ func _begin_shot() -> void:
 	_base_fov = player.config.camera.fov_base
 	rig.begin_cinematic()
 	_capture_palette()
+	_show_opening_backdrop()
 	_raise_performer()
 	_solve_shot()
 	_state = _State.HELD
@@ -340,13 +384,16 @@ func _solve_shot() -> void:
 func _capture_palette() -> void:
 	if player != null and player.config != null:
 		_ambient_strength = player.config.camera.ambient_cold_strength
+	if world != null and world.environment != null:
+		world.environment = world.environment.duplicate()
+		_background_mode = world.environment.background_mode
+		_background_canvas_max_layer = world.environment.background_canvas_max_layer
 	if world != null and world.environment != null and world.environment.sky != null:
 		var sky := world.environment.sky.duplicate() as Sky
 		var material := sky.sky_material
 		if material is ProceduralSkyMaterial:
 			sky.sky_material = (material as ProceduralSkyMaterial).duplicate()
 			_sky = sky.sky_material as ProceduralSkyMaterial
-			world.environment = world.environment.duplicate()
 			world.environment.sky = sky
 			_sky_authored = {
 				top = _sky.sky_top_color,
@@ -363,6 +410,21 @@ func _capture_palette() -> void:
 			metallic = float(_floor_material.get_shader_parameter("metallic_amount")),
 			roughness = float(_floor_material.get_shader_parameter("roughness_amount")),
 		}
+
+func _show_opening_backdrop() -> void:
+	if world == null or world.environment == null:
+		return
+	world.environment.background_mode = Environment.BG_CANVAS
+	world.environment.background_canvas_max_layer = -1
+
+func _leave_opening_backdrop() -> void:
+	if world != null and world.environment != null:
+		world.environment.background_mode = _background_mode
+		world.environment.background_canvas_max_layer = _background_canvas_max_layer
+	if _backdrop_layer != null:
+		_backdrop_layer.visible = false
+		_backdrop_layer.queue_free()
+		_backdrop_layer = null
 
 func _paint(k: float) -> void:
 	if _sky != null:
@@ -436,6 +498,9 @@ func _hand_over() -> void:
 		_plate_layer.queue_free()
 		_plate_layer = null
 		_plate = null
+	if _music != null:
+		_music.queue_free()
+		_music = null
 	if player != null:
 		if player.camera_rig != null:
 			player.camera_rig.end_cinematic()

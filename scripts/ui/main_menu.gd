@@ -473,6 +473,8 @@ func _build_corner_metadata() -> void:
 
 func _build_footer() -> void:
 	_footer = MeTheme.footer_label("↑↓ 选择 · Enter 确认")
+	# Navigation has no meaning until the menu itself exists.
+	_footer.modulate.a = 0.0
 	add_child(_footer)
 
 ## The held title shot loops eight restrained bars; the click drops into the
@@ -680,6 +682,8 @@ func _beat_menu_parallax() -> void:
 		beat_title.emit()
 
 	_menu_list.visible = true
+	var footer_fade := _track(create_tween())
+	footer_fade.tween_property(_footer, "modulate:a", 1.0, MENU_PANEL_TIME)
 	var panel_from: float = _menu_list.position.x
 	# From the RIGHT now, matching the column's new home.
 	_menu_list.position.x = panel_from + 480.0
@@ -731,6 +735,7 @@ func _skip_entrance() -> void:
 	for label in _metadata_labels:
 		label.modulate.a = 1.0
 	_menu_list.visible = true
+	_footer.modulate.a = 1.0
 	_menu_list.skip_entrance()
 
 	_silhouette_root.rotation_degrees = Vector3(0.0, FRONT_YAW_DEG, 0.0)

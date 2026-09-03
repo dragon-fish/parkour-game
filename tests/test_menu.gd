@@ -825,3 +825,22 @@ func test_the_front_door_opens_on_the_shared_plate() -> void:
 			break
 	assert_true(menu._plate.prompt_shown,
 		"the menu never invites the click it is waiting for")
+
+func test_the_held_opening_hides_the_menu_navigation_footer() -> void:
+	# Before the first press, returning players and first-time players see the
+	# same opening shot. Navigation has no meaning until the menu itself exists.
+	var menu := (load("res://scenes/ui/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	add_child_autofree(menu)
+	await step(8)
+	assert_eq(menu._footer.modulate.a, 0.0,
+		"the menu navigation footer is visible before the opening press")
+
+func test_the_held_opening_keeps_the_crouch_idle_loop_running() -> void:
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(8)
+	if menu._anim_player == null:
+		pass_test("no body is mounted on this machine, so there is no crouch loop")
+		return
+	assert_true(menu._anim_player.is_playing(),
+		"the main-menu crouch pose is frozen instead of looping")
