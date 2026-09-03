@@ -50,7 +50,7 @@ size = Vector3(680, 2, 680)
 [sub_resource type="BoxMesh" id="BoxMesh_va6l8"]
 size = Vector3(680, 2, 680)
 
-[node name="Level0" type="Node3D" unique_id=2114869877 node_paths=PackedStringArray("player", "spawn_point")]
+[node name="Level0" type="Node3D" unique_id=1842765831 node_paths=PackedStringArray("player", "spawn_point")]
 script = ExtResource("1_d5psl")
 player = NodePath("Player")
 spawn_point = NodePath("SpawnPoint")
@@ -61,23 +61,23 @@ view_distance = 240.0
 start_in_third_person = true
 paint_body_as_silhouette = true
 
-[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1006392051]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1733807971]
 transform = Transform3D(0.8660254, 0.38302222, -0.32139382, 0, 0.64278764, 0.76604444, 0.5, -0.66341394, 0.5566704, 0, 0, 0)
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=29029845]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1406432720]
 environment = SubResource("Environment_tfcjo")
 
-[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1078703284]
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=1983346582]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 25)
 script = ExtResource("4_uf3om")
 
-[node name="Plain" type="StaticBody3D" parent="." unique_id=1775344407]
+[node name="Plain" type="StaticBody3D" parent="." unique_id=1131996321]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
 
-[node name="Collision" type="CollisionShape3D" parent="Plain" unique_id=115929186]
+[node name="Collision" type="CollisionShape3D" parent="Plain" unique_id=380195701]
 shape = SubResource("BoxShape3D_ml7nm")
 
-[node name="Mesh" type="MeshInstance3D" parent="Plain" unique_id=925181440]
+[node name="Mesh" type="MeshInstance3D" parent="Plain" unique_id=944950776]
 material_override = ExtResource("5_j22ga")
 mesh = SubResource("BoxMesh_va6l8")
 
@@ -89,11 +89,11 @@ screen_effects = NodePath("CameraRig/ScreenEffects")
 subtitle = NodePath("CameraRig/Subtitle")
 toast = NodePath("CameraRig/Toast")
 
-[node name="TorusWrap" type="Node" parent="." unique_id=1461830691 node_paths=PackedStringArray("player")]
+[node name="TorusWrap" type="Node" parent="." unique_id=395960223 node_paths=PackedStringArray("player")]
 script = ExtResource("8_0fku3")
 player = NodePath("../Player")
 
-[node name="TutorialDirector" type="Node" parent="." unique_id=472620405 node_paths=PackedStringArray("player", "wrap")]
+[node name="TutorialDirector" type="Node" parent="." unique_id=1267711403 node_paths=PackedStringArray("player", "wrap")]
 script = ExtResource("9_1r6xc")
 player = NodePath("../Player")
 lessons = Array[Dictionary]([{
@@ -114,17 +114,19 @@ lessons = Array[Dictionary]([{
 }])
 wrap = NodePath("../TorusWrap")
 
-[node name="TutorialOpening" type="Node" parent="." unique_id=473162261 node_paths=PackedStringArray("subtitle")]
+[node name="TutorialOpening" type="Node" parent="." unique_id=1492400782 node_paths=PackedStringArray("subtitle")]
 script = ExtResource("14_6jayi")
 subtitle = NodePath("../Player/CameraRig/Subtitle")
 
-[node name="TutorialIntro" type="Node" parent="." unique_id=158835737 node_paths=PackedStringArray("player")]
+[node name="TutorialIntro" type="Node" parent="." unique_id=872099972 node_paths=PackedStringArray("player", "world", "plain_mesh")]
 script = ExtResource("15_1baj3")
 player = NodePath("../Player")
+world = NodePath("../WorldEnvironment")
+plain_mesh = NodePath("../Plain/Mesh")
 
 [node name="Tower" type="Node3D" parent="." unique_id=382396853 instance=ExtResource("16_aqg2h")]
 
-[node name="LevelZero" type="Node" parent="." unique_id=145905322 node_paths=PackedStringArray("player", "intro", "opening", "director", "wrap", "tower", "tower_checkpoint", "orb", "plain", "plain_mesh", "plain_collision", "spawn_point")]
+[node name="LevelZero" type="Node" parent="." unique_id=538297377 node_paths=PackedStringArray("player", "intro", "opening", "director", "wrap", "tower", "tower_checkpoint", "orb", "plain", "plain_mesh", "plain_collision", "spawn_point")]
 script = ExtResource("17_0opk6")
 player = NodePath("../Player")
 intro = NodePath("../TutorialIntro")

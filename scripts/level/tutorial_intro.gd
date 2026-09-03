@@ -68,6 +68,21 @@ extends Node
 ## portrait framed at it would want the lens close enough to clip through her.
 @export var shot_fov_degrees: float = 55.0
 
+## The world the shot is composed against, so the opening can flatten it and
+## hand the level's own palette back as she rises.
+@export var world: WorldEnvironment
+@export var plain_mesh: MeshInstance3D
+
+## What sky and floor are painted while she is still crouching: the menu's own
+## flat near-white, one colour with no horizon and no sheen in it.
+##
+## THE MENU IS A FLAT 2D PLATE AND THIS IS A LIT 3D WORLD. Standing them side
+## by side, the level's graduated sky and its mirror of a floor read as a
+## different place -- which is exactly what the opening must not be. Starting
+## here and arriving at the level's own palette over the rise is what makes
+## them the same shot.
+@export var opening_colour: Color = Color(0.96, 0.96, 0.94)
+
 ## Emitted the instant control reaches the player. LevelZero starts the
 ## tutorial's own beats off this rather than off its _ready(), so nothing is
 ## said over a shot the player cannot act in.
@@ -99,6 +114,14 @@ var performer: SilhouetteBody
 
 var _plate_layer: CanvasLayer
 var _plate: MeOpeningPlate
+
+## The level's own palette, read once at the top of the shot and blended back
+## in over the rise. Null until _begin_shot() has run, and null forever in a
+## level that wired neither.
+var _sky: ProceduralSkyMaterial = null
+var _floor_material: ShaderMaterial = null
+var _sky_authored: Dictionary = {}
+var _floor_authored: Dictionary = {}
 
 ## True until control reaches the player -- from before the first tick, through
 ## the held shot and the rise, up to the frame `handed_over` fires.
@@ -139,6 +162,7 @@ func _physics_process(delta: float) -> void:
 			# the shot is still held.
 			player.lock_input()
 			_pose(0.0)
+			_paint(0.0)
 		_State.RISING:
 			_elapsed += delta
 			var k: float = clampf(_elapsed / maxf(rise_time, 0.001), 0.0, 1.0)
@@ -147,7 +171,9 @@ func _physics_process(delta: float) -> void:
 				if performer != null:
 					performer.start_stand_up(stand_blend)
 			# Cubic ease-in-out, the shape the menu's own rise uses.
-			_pose(k * k * (3.0 - 2.0 * k) if k < 1.0 else 1.0)
+			var eased: float = k * k * (3.0 - 2.0 * k) if k < 1.0 else 1.0
+			_pose(eased)
+			_paint(eased)
 			if k >= 1.0:
 				_hand_over()
 
@@ -176,9 +202,11 @@ func _begin_shot() -> void:
 	_rest = rig.position
 	_base_fov = player.config.camera.fov_base
 	rig.begin_cinematic()
+	_capture_palette()
 	_raise_performer()
 	_state = _State.HELD
 	_pose(0.0)
+	_paint(0.0)
 	# APPLIED ON THIS TICK, not left for the next one. The Player runs before
 	# this node and has already placed the rig for the ordinary view; without
 	# this the level's first frame is drawn from behind her and the shot cuts in
@@ -192,6 +220,51 @@ func _stand_up_delay() -> float:
 ## Places the lens for a blend factor k: 0 is the held profile, 1 is exactly
 ## where the ordinary third-person camera sits, so end_cinematic() lands on the
 ## frame the rig would have drawn anyway.
+## Sky and floor over the rise. DUPLICATED FIRST, both of them: the sky is a
+## sub-resource of a scene that may be instanced more than once in a session,
+## and materials/acrylic_void.tres is shared with the debug plain -- painting
+## either in place would repaint everything else that has it.
+func _capture_palette() -> void:
+	if world != null and world.environment != null and world.environment.sky != null:
+		var sky := world.environment.sky.duplicate() as Sky
+		var material := sky.sky_material
+		if material is ProceduralSkyMaterial:
+			sky.sky_material = (material as ProceduralSkyMaterial).duplicate()
+			_sky = sky.sky_material as ProceduralSkyMaterial
+			world.environment = world.environment.duplicate()
+			world.environment.sky = sky
+			_sky_authored = {
+				top = _sky.sky_top_color,
+				horizon = _sky.sky_horizon_color,
+				ground_bottom = _sky.ground_bottom_color,
+				ground_horizon = _sky.ground_horizon_color,
+			}
+	if plain_mesh != null and plain_mesh.material_override is ShaderMaterial:
+		_floor_material = (plain_mesh.material_override as ShaderMaterial).duplicate() as ShaderMaterial
+		plain_mesh.material_override = _floor_material
+		_floor_authored = {
+			base = _floor_material.get_shader_parameter("base_color"),
+			metallic = float(_floor_material.get_shader_parameter("metallic_amount")),
+			roughness = float(_floor_material.get_shader_parameter("roughness_amount")),
+		}
+
+func _paint(k: float) -> void:
+	if _sky != null:
+		_sky.sky_top_color = opening_colour.lerp(_sky_authored.top, k)
+		_sky.sky_horizon_color = opening_colour.lerp(_sky_authored.horizon, k)
+		_sky.ground_bottom_color = opening_colour.lerp(_sky_authored.ground_bottom, k)
+		_sky.ground_horizon_color = opening_colour.lerp(_sky_authored.ground_horizon, k)
+	if _floor_material != null:
+		_floor_material.set_shader_parameter("base_color",
+			opening_colour.lerp(_floor_authored.base, k))
+		# FLAT AND ROUGH IS WHAT MAKES IT THE MENU'S FLOOR. The colour alone
+		# leaves a mirror standing where the menu has a plain sheet, and a
+		# mirror is the thing the eye reads as "a different place".
+		_floor_material.set_shader_parameter("metallic_amount",
+			lerpf(0.0, _floor_authored.metallic, k))
+		_floor_material.set_shader_parameter("roughness_amount",
+			lerpf(1.0, _floor_authored.roughness, k))
+
 func _pose(k: float) -> void:
 	var rig: CameraRig = player.camera_rig
 	var shot := Vector3(shot_right, shot_height, -shot_forward)
@@ -214,6 +287,7 @@ func _hand_over() -> void:
 	if _state == _State.DONE:
 		return
 	_state = _State.DONE
+	_paint(1.0)
 	_dismiss_performer()
 	if _plate_layer != null:
 		_plate_layer.queue_free()

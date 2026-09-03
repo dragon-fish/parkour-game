@@ -81,7 +81,8 @@ func _initialize() -> void:
 	sun.shadow_enabled = false
 	root.add_child(sun)
 
-	root.add_child(_environment())
+	var world_env := _environment()
+	root.add_child(world_env)
 
 	var spawn := Marker3D.new()
 	spawn.name = "SpawnPoint"
@@ -131,6 +132,8 @@ func _initialize() -> void:
 	intro.set_script(load("res://scripts/level/tutorial_intro.gd"))
 	root.add_child(intro)
 	intro.set("player", player)
+	intro.set("world", world_env)
+	intro.set("plain_mesh", plain.get_node("Mesh"))
 
 	var tower: Node = load("%s/tower.tscn" % LESSON_DIR).instantiate()
 	tower.name = "Tower"

@@ -64,6 +64,48 @@ func test_nothing_ever_poses_the_players_own_skeleton() -> void:
 	assert_false(anim.is_playing(),
 		"a clip is being played straight onto the player's skeleton, over the tree")
 
+func test_the_opening_starts_flat_and_hands_the_palette_back() -> void:
+	# THE MENU IS A FLAT PLATE AND THIS IS A LIT WORLD. Held side by side they
+	# read as two different places -- a graduated sky over a mirror of a floor
+	# against one near-white rectangle. The shot starts painted like the menu
+	# and the level's own palette arrives with control.
+	#
+	# Only the RELATIONSHIP is asserted: flat and unreflective while held, the
+	# authored values back afterwards. The colours themselves are the author's.
+	var level: Node = await _loaded()
+	var world: WorldEnvironment = level.get_node("WorldEnvironment")
+	var sky: ProceduralSkyMaterial = world.environment.sky.sky_material
+	var floor_material: ShaderMaterial = level.get_node("Plain/Mesh").material_override
+	assert_eq(sky.sky_top_color, sky.sky_horizon_color,
+		"the held shot has a horizon in its sky, so it is not the menu's flat plate")
+	assert_almost_eq(float(floor_material.get_shader_parameter("metallic_amount")), 0.0, 0.001,
+		"the held shot still mirrors, which is what reads as a different place")
+
+	var authored_top: Color = sky.sky_top_color
+	var authored_metallic: float = float(floor_material.get_shader_parameter("metallic_amount"))
+	level.get_node("TutorialIntro")._hand_over()
+	await step(2)
+	assert_ne(sky.sky_top_color, authored_top,
+		"the sky never came back, so the level is stuck wearing the opening")
+	assert_gt(float(floor_material.get_shader_parameter("metallic_amount")), authored_metallic,
+		"the floor never got its sheen back")
+
+func test_the_opening_does_not_repaint_the_shared_material() -> void:
+	# materials/acrylic_void.tres is shared with the debug plain. Painting it
+	# in place would follow every other scene that loads it for the rest of the
+	# session, and the symptom appears somewhere this level never touched.
+	# WHILE THE SHOT IS STILL HELD. Handing over paints the authored values
+	# back, so afterwards a polluted shared material and a clean one hold the
+	# same numbers and nothing can tell them apart -- the damage is only
+	# visible during the shot, which is also the whole time it would be doing
+	# it to every other scene.
+	var before: float = float(load("res://materials/acrylic_void.tres")
+		.get_shader_parameter("metallic_amount"))
+	var level: Node = await _loaded()
+	assert_almost_eq(float(load("res://materials/acrylic_void.tres")
+		.get_shader_parameter("metallic_amount")), before, 0.001,
+		"the opening painted the shared material rather than its own copy")
+
 func test_the_loop_actually_runs_in_the_assembled_scene() -> void:
 	# THE ONE TEST THAT USES THE SCENE'S OWN WIRING ORDER. Every other test of
 	# the director builds the player first and hands it over already set up.
