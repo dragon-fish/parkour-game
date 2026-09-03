@@ -440,7 +440,18 @@ func test_the_held_opening_uses_the_menu_background_behind_the_body() -> void:
 		assert_true(intro.performer.anim_player.is_playing(),
 			"the tutorial crouch pose is frozen instead of looping")
 
-	await _click_through(level)
+	intro._plate.prompt_shown = true
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_SPACE
+	key.pressed = true
+	intro._unhandled_input(key)
+	await step(1)
+	assert_true(is_instance_valid(intro._backdrop_layer),
+		"the warm-white opening background disappears on the click frame")
+	for i in 200:
+		await step(1)
+		if not intro.is_holding():
+			break
 	assert_eq(level.get_node("WorldEnvironment").environment.background_mode,
 		Environment.BG_SKY,
 		"the authored tutorial sky did not return after the opening press")

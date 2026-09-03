@@ -48,6 +48,11 @@ extends Node
 ## clip. Same value and same reason as MainMenu.BODY_STAND_BLEND.
 @export var stand_blend: float = 1.5
 
+## Keep the shared warm-white opening until the logo has had time to leave.
+## The camera and body already start moving underneath it; the level palette
+## and its reflective floor then arrive over the rest of the rise.
+@export var world_reveal_delay: float = 0.45
+
 ## The held shot, in the body's own frame, measured from its origin (the
 ## capsule's centre, ~0.95 m off the floor).
 ##
@@ -251,14 +256,22 @@ func _physics_process(delta: float) -> void:
 		_State.RISING:
 			_elapsed += delta
 			var k: float = clampf(_elapsed / maxf(rise_time, 0.001), 0.0, 1.0)
+			var world_k: float = clampf(
+				(_elapsed - world_reveal_delay)
+					/ maxf(rise_time - world_reveal_delay, 0.001),
+				0.0, 1.0)
 			if not _stood_up and _elapsed >= _stand_up_delay():
 				_stood_up = true
 				if performer != null:
 					performer.start_stand_up(stand_blend)
 			# Cubic ease-in-out, the shape the menu's own rise uses.
 			var eased: float = k * k * (3.0 - 2.0 * k) if k < 1.0 else 1.0
+			var world_eased: float = world_k * world_k * (3.0 - 2.0 * world_k) \
+				if world_k < 1.0 else 1.0
+			if world_k > 0.0 and _backdrop_layer != null:
+				_leave_opening_backdrop()
 			_pose(eased)
-			_paint(eased)
+			_paint(world_eased)
 			if k >= 1.0:
 				_hand_over()
 
@@ -277,7 +290,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	_state = _State.RISING
 	_elapsed = 0.0
-	_leave_opening_backdrop()
 	if _music != null:
 		_music.fade_out(rise_time)
 	if _plate != null:
@@ -492,6 +504,7 @@ func _hand_over() -> void:
 	if _state == _State.DONE:
 		return
 	_state = _State.DONE
+	_leave_opening_backdrop()
 	_paint(1.0)
 	_dismiss_performer()
 	if _plate_layer != null:

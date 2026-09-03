@@ -628,8 +628,8 @@ func _begin_show() -> void:
 	pacing.tween_interval(MENU_PANEL_TIME + MeMenuList.ENTRANCE_STAGGER * 3.0 + MeMenuList.TWEEN_TIME)
 	pacing.tween_callback(_beat_settle)
 
-## Frame 0 is already fully composed at build time (crouched profile, white
-## mark, faint floor); the first beat is the RISE: the body stands
+## Frame 0 is already fully composed at build time (crouched profile and white
+## mark, with the floor fully hidden); the first beat is the RISE: the body stands
 ## (Crouch_Idle -> Idle blend) and turns to face the camera while the camera
 ## eases (✅ ease-in-out) out to the centred full-body front view; the floor
 ## dots and the mirror arrive as it lands, while the plate takes the mark away.

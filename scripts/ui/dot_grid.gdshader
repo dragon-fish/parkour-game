@@ -70,6 +70,11 @@ float hash(vec2 p) {
 }
 
 void fragment() {
+	// A canvas shader that assigns COLOR replaces the ColorRect's modulate
+	// unless it carries the incoming alpha forward explicitly. MainMenu fades
+	// the floor through modulate.a, so dropping this value turns that 2.4-second
+	// entrance into a one-frame flash.
+	float canvas_alpha = COLOR.a;
 	// Screen NDC for this pixel. The rect is the bottom half, so its UV.y
 	// runs from the horizon (0) to the bottom of the screen (1), which is
 	// NDC y from 0 down to -1.
@@ -108,5 +113,6 @@ void fragment() {
 	float far = 1.0 - smoothstep(fade_from, fade_to, distance_out);
 	float horizon = smoothstep(0.0, 0.03, UV.y);
 
-	COLOR = vec4(tint.rgb, tint.a * dot_mask * brightness * far * horizon);
+	COLOR = vec4(tint.rgb,
+		tint.a * dot_mask * brightness * far * horizon * canvas_alpha);
 }
