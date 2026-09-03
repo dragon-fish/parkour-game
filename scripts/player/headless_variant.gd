@@ -150,6 +150,12 @@ func _split(mi: MeshInstance3D, skeleton: Skeleton3D, head_bones: Dictionary,
 	twin.name = mi.name + "Headless"
 	twin.mesh = headless
 	twin.skin = mi.skin
+	# AN OVERRIDE BELONGS TO THE SURFACE, not to which of the two views draws
+	# it. Null for every ordinary body, so this changes nothing there -- but a
+	# level that repaints the body (Arena.paint_body_as_silhouette) would
+	# otherwise get a painted third-person mesh and a twin still wearing the
+	# model's own materials, visible the moment the player presses V.
+	twin.material_override = mi.material_override
 	twin.layers = first
 	# The twin is the one whose shadow was WRONG -- headless, cut at the neck.
 	# The stand-in above already casts the whole body including the head, so
@@ -173,6 +179,9 @@ func _add_shadow_stand_in(mi: MeshInstance3D, skeleton: Skeleton3D) -> void:
 	stand_in.name = mi.name + "Shadow"
 	stand_in.mesh = mi.mesh
 	stand_in.skin = mi.skin
+	# Carried for the same reason the twin's is: this is a second instance of
+	# the same surfaces, so it wears what they wear.
+	stand_in.material_override = mi.material_override
 	stand_in.layers = mi.layers
 	stand_in.transform = mi.transform
 	stand_in.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY

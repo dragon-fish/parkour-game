@@ -270,3 +270,31 @@ func test_the_spawn_point_is_wired() -> void:
 	# the tower checkpoint has ever been touched.
 	var level: Node = await _loaded()
 	assert_not_null(level.spawn_point, "level_0 has no spawn_point wired")
+
+func test_the_body_in_the_void_is_a_flat_red_silhouette() -> void:
+	# She is the same figure the front door holds on its opening plate, and the
+	# same red. A body that came up lit is a different character in the same
+	# level, and nothing errors -- the level is simply wrong to look at.
+	#
+	# TOLERANT OF A MACHINE WITH NO MODEL: body_scene is optional here by
+	# design, and a checkout without the private asset submodule has nothing
+	# mounted to paint.
+	var level: Node = await _loaded()
+	var body_root: Node = level.get_node("Player").get_node_or_null("BodyRoot")
+	var meshes: Array[Node] = []
+	if body_root != null:
+		meshes = body_root.find_children("*", "MeshInstance3D", true, false)
+	if meshes.is_empty():
+		pass_test("no body is mounted on this machine, so there is nothing to paint")
+		return
+	for mesh in meshes:
+		var override: Material = (mesh as MeshInstance3D).material_override
+		assert_true(override is StandardMaterial3D,
+			"%s kept its own material, so it is not a silhouette" % mesh.name)
+		if not (override is StandardMaterial3D):
+			continue
+		var flat := override as StandardMaterial3D
+		assert_eq(flat.albedo_color, MeTheme.BRAND_RED,
+			"%s is not the brand red the front door uses" % mesh.name)
+		assert_eq(flat.shading_mode, BaseMaterial3D.SHADING_MODE_UNSHADED,
+			"%s is lit, so the void has a light direction in it" % mesh.name)

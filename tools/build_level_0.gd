@@ -56,6 +56,8 @@ func _initialize() -> void:
 	# The tutorial hands control over from behind the body. The preference, not
 	# a pin: V still works, and nothing is written to disk.
 	root.set("start_in_third_person", true)
+	# SHE IS A SILHOUETTE IN THE VOID, the same red she is on the front door.
+	root.set("paint_body_as_silhouette", true)
 
 	var fog := FogConfig.new()
 	fog.resource_local_to_scene = true

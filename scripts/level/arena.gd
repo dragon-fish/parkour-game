@@ -67,6 +67,18 @@ extends Node3D
 ## somewhere else.
 @export var start_in_third_person: bool = false
 
+## Paint the mounted body as a flat silhouette instead of a lit model.
+##
+## THE VOID HAS ONE FIGURE IN IT, and she is the same red as the crouched
+## profile on the front door -- one character, two screens, not a model on one
+## and a shape on the other. False (the default) leaves every other level's
+## body exactly as its own materials describe it.
+##
+## THE COLOUR IS DELIBERATELY NOT A DIAL. It is MeTheme.BRAND_RED because
+## sameness is the whole point; a level free to pick its own red would be free
+## to disagree with the screen the player was just looking at.
+@export var paint_body_as_silhouette: bool = false
+
 ## How many rescues have happened. Read by tests; a level never needs it.
 var rescued_count: int = 0
 
@@ -152,6 +164,10 @@ func _ready() -> void:
 	# transform an attach captures is measured against the capsule, and the
 	# capsule's height comes from there.
 	_load_body_profile()
+	# AFTER THE MOUNT, always. Player._attach_body() instantiates the body scene
+	# fresh, so anything painted before this call is painted onto nothing.
+	if paint_body_as_silhouette and player != null:
+		_paint_silhouette(player.get_node_or_null("BodyRoot"))
 	_mark.call("_load_body_profile")
 
 	if view_distance > 0.0 and player.camera_rig != null \
@@ -427,6 +443,26 @@ func _load_body_profile() -> void:
 			_held_profiles[path] = profile
 	if profile != null:
 		player.adopt_body_profile(profile)
+
+## Gives every mesh under `node` an unshaded brand-red override, turning
+## whatever model is attached into a flat silhouette regardless of its own
+## materials.
+##
+## The same eight lines as MainMenu._paint_silhouette, copied rather than
+## shared -- the same call this file already makes for the body PROFILE lookup,
+## and for the same reason: that one paints a bare body instanced into a
+## viewport with no Player around it, this one paints a mounted one, and the two
+## have no shared lifetime to hang a helper off.
+func _paint_silhouette(node: Node) -> void:
+	if node == null:
+		return
+	if node is MeshInstance3D:
+		var material := StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.albedo_color = MeTheme.BRAND_RED
+		(node as MeshInstance3D).material_override = material
+	for child in node.get_children():
+		_paint_silhouette(child)
 
 func _load_calibration_course() -> void:
 	if not load_calibration_course:
