@@ -327,6 +327,12 @@ func in_cinematic() -> bool:
 var _cinematic_offset: Vector3 = Vector3.ZERO
 var _cinematic_roll: float = 0.0
 var _cinematic_pitch: float = 0.0
+## The yaw the cutscene holds the rig at, radians. SEEDED FROM THE RIG's OWN
+## rotation.y by begin_cinematic(), so a cutscene that never asks for a yaw is
+## frozen exactly where it started -- which is what a cinematic that simply
+## never wrote rotation.y already did. Only a caller that wants the camera
+## AIMED somewhere other than along the body sets it.
+var _cinematic_yaw: float = 0.0
 
 func setup(cfg: MovementConfig) -> void:
 	_config = cfg
@@ -622,6 +628,7 @@ func allow_cinematic_look(allowed: bool) -> void:
 func begin_cinematic() -> void:
 	_cinematic = true
 	_cinematic_look = false
+	_cinematic_yaw = rotation.y
 
 ## Sets this tick's cutscene pose. `offset` is a local offset from the resting
 ## eye position; `roll` is rotation.z and `pitch` is rotation.x, both radians.
@@ -637,6 +644,13 @@ func set_cinematic_pose(offset: Vector3, roll: float, pitch: float = 0.0) -> voi
 	_cinematic_roll = roll
 	_cinematic_pitch = pitch
 
+## Aims the cutscene camera sideways: `radians` is rotation.y, measured in the
+## body's own frame. A shot that looks AT the body rather than along it needs
+## this -- the rig otherwise faces wherever the body faces, so an offset alone
+## puts the camera beside her looking past her.
+func set_cinematic_yaw(radians: float) -> void:
+	_cinematic_yaw = radians
+
 ## Hands the camera back. Resets the cutscene offset/roll to neutral so a
 ## stale pose cannot linger into the next update_effects() call before that
 ## call has a chance to recompute its own transform.
@@ -646,6 +660,7 @@ func end_cinematic() -> void:
 	_cinematic_offset = Vector3.ZERO
 	_cinematic_roll = 0.0
 	_cinematic_pitch = 0.0
+	_cinematic_yaw = 0.0
 
 ## Levels the view and clears landing/bob state. Called on a manual reset
 ## (Arena's R key) so the camera snaps back to a fresh-spawn look instead of
@@ -843,6 +858,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 		position = Vector3(0.0, _config.camera.eye_height, -eye_forward) + _cinematic_offset
 		rotation.z = _cinematic_roll
 		rotation.x = _cinematic_pitch
+		rotation.y = _cinematic_yaw
 		return
 
 	# Where the rig would sit this frame with NO head-follow applied,

@@ -9,8 +9,11 @@ extends SceneTree
 #
 # NODE ORDER IS A CONTRACT. Siblings run _ready() in tree order, and both
 # TutorialDirector and LevelZero reach into the Player during theirs, so both
-# must come AFTER it. LevelZero comes last of all: it connects to the
-# director's own signal.
+# must come AFTER it. TutorialIntro must come after it for a second reason: it
+# freezes the camera rig from its own _physics_process, and that tick has to
+# land after the Player's, on a rig update_effects() has already placed once.
+# LevelZero comes last of all: it connects to the director's own signal and to
+# the intro's.
 #
 # Run with:
 #   .engine/Godot_v4.7.1-stable_macos.universal.app/Contents/MacOS/Godot \
@@ -117,6 +120,16 @@ func _initialize() -> void:
 	root.add_child(opening)
 	opening.set("subtitle", player.get_node("CameraRig/Subtitle"))
 
+	# THE LEVEL OPENS ON A HELD SHOT, not on a curtain. The crouched profile,
+	# the stand-up, the camera swinging round behind her and control arriving
+	# all happen inside this scene, so there is nothing between the picture and
+	# the game -- see scripts/level/tutorial_intro.gd.
+	var intro := Node.new()
+	intro.name = "TutorialIntro"
+	intro.set_script(load("res://scripts/level/tutorial_intro.gd"))
+	root.add_child(intro)
+	intro.set("player", player)
+
 	var tower: Node = load("%s/tower.tscn" % LESSON_DIR).instantiate()
 	tower.name = "Tower"
 	root.add_child(tower)
@@ -141,6 +154,7 @@ func _initialize() -> void:
 	# a plain that is no longer there.
 	chain.set("spawn_point", spawn)
 	chain.set("opening", opening)
+	chain.set("intro", intro)
 	chain.set("void_colour", PALE)
 
 	_claim(root)

@@ -25,6 +25,9 @@ extends Node
 const THANKS_SCENE := "res://scenes/ui/thanks_for_playing.tscn"
 
 @export var player: Player
+## The held opening shot. Optional: without one the level simply begins with
+## the player already driving.
+@export var intro: TutorialIntro
 ## The three lines the level opens with. Optional: a level built without one
 ## simply starts in silence.
 @export var opening: TutorialOpening
@@ -102,8 +105,17 @@ func _ready() -> void:
 	# itself: this node is what decides the order the tutorial's beats happen
 	# in, and an opening that plays on its own _ready() would also play in
 	# every scene that merely contains one.
+	#
+	# THE THREE LINES WAIT FOR CONTROL. They are about keys, and a player who
+	# cannot press one yet has nothing to do with them -- said over the held
+	# shot they would be spent by the time he could move. TutorialIntro emits
+	# `handed_over` on every path it can take, the ones where it gives up
+	# included, so nothing is lost by waiting for it.
 	if opening != null:
-		opening.play()
+		if intro != null:
+			intro.handed_over.connect(opening.play)
+		else:
+			opening.play()
 	if director != null:
 		director.finished.connect(raise_tower)
 	if tower != null:

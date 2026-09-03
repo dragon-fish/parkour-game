@@ -98,10 +98,14 @@ func test_level_zero_found_every_node_it_drives() -> void:
 
 func test_the_level_opens_by_saying_its_three_lines() -> void:
 	# LESSON 0 HAS NO GEOMETRY ON PURPOSE, so these lines are the only thing
-	# there is when the level begins. An opening that was never built, or built
-	# and never played, or played into a layer that is not the one on screen,
-	# all leave the same thing: a blank white plain, nothing said, nothing to
-	# look at, and the player guessing which key to press.
+	# there is once the player can move. An opening that was never built, or
+	# built and never played, or played into a layer that is not the one on
+	# screen, all leave the same thing: a blank white plain, nothing said,
+	# nothing to look at, and the player guessing which key to press.
+	#
+	# AND THEY WAIT FOR CONTROL. Spent over the held opening shot they would be
+	# gone by the time he could press anything -- the same three lines, and
+	# useless.
 	#
 	# THE WORDING IS NOT ASSERTED -- it is content, and it is rewritten from the
 	# key table anyway. What is asserted is that what reached the screen came
@@ -115,8 +119,113 @@ func test_the_level_opens_by_saying_its_three_lines() -> void:
 		"the opening does not speak into the player's own subtitle layer")
 	if opening.subtitle == null:
 		return
+	assert_eq(opening.subtitle.text(), "",
+		"the opening spoke over the held shot, where nothing can be pressed")
+	await _click_through(level)
 	assert_true(opening.lines().has(opening.subtitle.text()),
-		"the level began and the opening said nothing")
+		"control was handed over and the opening still said nothing")
+
+# ---------------------------------------------------------------------------
+# The opening shot. The level begins on a held close-up of the crouched body,
+# and a click stands her up, brings the camera round behind her and hands over
+# control -- all inside this one scene. Every failure below is silent: a level
+# that hands over nothing looks like a level that has frozen, and one that
+# hands over instantly looks like a level with no opening at all.
+# ---------------------------------------------------------------------------
+
+## Presses a key at the held shot and runs until the intro reports it is done.
+func _click_through(level: Node) -> TutorialIntro:
+	var intro: TutorialIntro = level.get_node("TutorialIntro")
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_SPACE
+	key.pressed = true
+	intro._unhandled_input(key)
+	# Long enough for the whole rise at 60 Hz, with room over it. The intro
+	# stops its own physics processing the moment it hands over, so the extra
+	# frames cost nothing and no duration is pinned here.
+	for i in 200:
+		await step(1)
+		if not intro.is_holding():
+			break
+	return intro
+
+func test_the_level_holds_control_until_something_is_pressed() -> void:
+	# The whole point of the opening: she is a picture until the player asks
+	# for her. Unlocked here, the level starts with a body already drivable
+	# under a camera parked off to one side, which reads as broken controls.
+	var level: Node = await _loaded()
+	var intro: TutorialIntro = level.get_node_or_null("TutorialIntro")
+	assert_not_null(intro, "the generated level has no TutorialIntro")
+	if intro == null:
+		return
+	assert_true(intro.is_holding(), "the opening shot was over before it began")
+	assert_true(level.player.is_input_locked(),
+		"the level handed over control before anything was pressed")
+
+func test_a_press_hands_over_control_with_nothing_covering_the_screen() -> void:
+	# THE REASON THIS WORK EXISTS. The old route from the crouched close-up to
+	# the game was a scene swap under a white curtain; here the two are the same
+	# scene, so a curtain or a scene change anywhere on this path is the defect
+	# itself, not a detail. PauseUi is where both live: run_white_transition()
+	# wakes that layer, and go_to_main_menu()/the level's own exit go through
+	# its change-scene seam.
+	var level: Node = await _loaded()
+	var requested := [""]
+	var previous: Callable = PauseUi._change_scene
+	PauseUi._change_scene = func(path): requested[0] = path
+	var intro: TutorialIntro = await _click_through(level)
+	PauseUi._change_scene = previous
+
+	assert_false(intro.is_holding(), "the press never handed control over")
+	assert_false(level.player.is_input_locked(),
+		"control was handed over and the body is still locked")
+	assert_eq(requested[0], "", "the hand-over changed scene")
+	assert_false(PauseUi.visible, "the hand-over pulled a curtain over itself")
+
+func test_the_held_shot_is_beside_the_body_and_the_rise_lands_without_a_cut() -> void:
+	# Three failures, one shot, because each alone leaves a plausible-looking
+	# level: a shot that was never posed opens on the ordinary over-the-shoulder
+	# view (so there is no opening at all), a rig that is never handed back
+	# leaves the camera parked out to the side for the whole tutorial, and a
+	# rise that ends anywhere other than the rig's own seat makes the frame
+	# control arrives a CUT -- which is the exact thing this whole change exists
+	# to remove.
+	#
+	# SIDES AND CONTINUITY, NOT DISTANCES. Where the lens sits is the author's
+	# to retune.
+	var level: Node = await _loaded()
+	var player: Player = level.get_node("Player")
+	var rig: CameraRig = player.camera_rig
+	assert_true(rig.in_cinematic(), "the opening shot never took the camera")
+	var held: Vector3 = player.to_local(rig.camera.global_position)
+	assert_gt(absf(held.x), absf(held.z), "the held shot is not beside the body")
+
+	await _click_through(level)
+	assert_false(rig.in_cinematic(), "the camera was never handed back")
+	var landed: Vector3 = player.to_local(rig.camera.global_position)
+	await step(3)
+	var settled: Vector3 = player.to_local(rig.camera.global_position)
+	# A CUT IS METRES, NOT CENTIMETRES: the third-person seat alone is three of
+	# them behind her, so anything that ends the rise in the wrong place lands
+	# far outside this. What is left inside it is the head's own displacement,
+	# which a cutscene pose does not carry and the rig adds back the moment it
+	# has the camera again.
+	assert_lt(landed.distance_to(settled), 0.15,
+		"the camera jumped the frame control arrived")
+
+func test_the_body_is_animating_again_once_control_arrives() -> void:
+	# The shot drives the body's AnimationPlayer directly, which means switching
+	# the AnimationTree off for the length of it. Left off, the body plays its
+	# last clip forever and no move ever reaches the screen -- and the level is
+	# otherwise completely playable, so nothing says why.
+	var level: Node = await _loaded()
+	var tree: AnimationTree = level.get_node("Player").get_node_or_null("BodyRoot/AnimationTree")
+	if tree == null:
+		pass_test("no body is mounted on this machine, so there is no tree to switch")
+		return
+	assert_false(tree.active, "the tree kept driving the body through the held shot")
+	await _click_through(level)
+	assert_true(tree.active, "the body was left frozen on the shot's last pose")
 
 func test_the_director_and_the_wrap_both_have_the_body() -> void:
 	# Both are wired by NodePath and both fail the same silent way: a director
