@@ -261,6 +261,26 @@ func _physics_process(delta: float) -> void:
 	_route(target, delta)
 	_drive_speed(target)
 
+## Re-baselines the router after an external direct-animation cutscene. No
+## transition happened from the player's point of view, so none may arm a
+## landing/slide/dodge one-shot when the AnimationTree wakes up again.
+func synchronize_to_current_move() -> void:
+	if player == null or player.move_manager == null:
+		return
+	_previous_move = player.move_manager.current_name
+	_oneshot = Move.KEEP
+	_oneshot_left = 0.0
+	_hold_left = 0.0
+	_hidden_start = &""
+	_replay = false
+	var target := _target_animation()
+	if target == Move.KEEP:
+		current_clip = Move.KEEP
+		return
+	current_clip = target
+	_route(target, 0.0)
+	_drive_speed(target)
+
 ## Puts `target` on screen: a scripted move's clip onto one of the gate's own
 ## slots, anything else through the state machine as before.
 ##

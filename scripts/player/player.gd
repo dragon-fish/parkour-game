@@ -1286,6 +1286,8 @@ func end_direct_body_animation() -> void:
 		return
 	if _direct_anim_player != null:
 		_direct_anim_player.stop()
+	if _direct_animator != null:
+		_direct_animator.synchronize_to_current_move()
 	if _direct_anim_tree != null:
 		_direct_anim_tree.active = true
 	if _direct_animator != null:

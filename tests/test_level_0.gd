@@ -390,6 +390,8 @@ func test_every_regular_player_animation_writer_sleeps_during_the_opening() -> v
 	assert_true(tree.active, "AnimationTree was not restored with player control")
 	assert_ne(player.get_node("BodyRoot/CharacterAnimator").process_mode,
 		Node.PROCESS_MODE_DISABLED, "CharacterAnimator was not restored")
+	assert_eq((player.get_node("BodyRoot/CharacterAnimator") as CharacterAnimator).active_oneshot(),
+		Move.KEEP, "animation hand-over armed a landing one-shot")
 
 func test_the_opening_holds_the_same_plate_the_front_door_does() -> void:
 	# 和正常主菜单的逻辑完全一样: up to the press, a player who has never
