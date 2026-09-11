@@ -13,6 +13,8 @@ config_version=5
 config/name="Parkour Game"
 run/main_scene="res://scenes/ui/boot_router.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
+boot_splash/bg_color=Color(0.9607843, 0.9607843, 0.9411765, 1)
+boot_splash/show_image=false
 config/icon="res://icon.svg"
 
 [autoload]
@@ -30,11 +32,12 @@ window/stretch/mode="canvas_items"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/Godot-MToon-Shader/plugin.cfg", "res://addons/GodotchUp/plugin.cfg", "res://addons/game_window_memory/plugin.cfg", "res://addons/godot_3d_cursor/plugin.cfg", "res://addons/gut/plugin.cfg", "res://addons/respawn_gizmos/plugin.cfg", "res://addons/vrm/plugin.cfg")
+enabled=PackedStringArray("res://addons/Godot-MToon-Shader/plugin.cfg", "res://addons/GodotchUp/plugin.cfg", "res://addons/godot_3d_cursor/plugin.cfg", "res://addons/gut/plugin.cfg", "res://addons/respawn_gizmos/plugin.cfg", "res://addons/vrm/plugin.cfg")
 
 [global_group]
 
 no_interaction="无法交互的空气墙，阻挡玩家前进"
+soft_landing=""
 
 [gui]
 

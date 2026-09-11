@@ -26,7 +26,7 @@ signal beat_title
 
 ## What 开始 loads, and where the first-ever click goes. The tutorial is the
 ## first level as well as the game's front door.
-const LEVEL_0_SCENE := "res://scenes/levels/level_0/level_0.tscn"
+const LEVEL_0_SCENE := "res://scenes/local_debug_levels/mirrors_edge/me_level0.tscn"
 
 # --- entrance timing (spec: 入场编排 beats 0a-6) ----------------------------
 ## STAYS A CONSTANT while its neighbours became exports: MenuMusic times the

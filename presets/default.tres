@@ -113,14 +113,6 @@ constrain_look = true
 freeze_visual_yaw = true
 allows_turn = false
 
-[sub_resource type="Resource" id="Resource_sprbd"]
-script = ExtResource("26_sprbd")
-check_for_grab = true
-check_for_vault_over = true
-check_for_wall_climb = true
-freeze_visual_yaw = true
-allows_turn = false
-
 [sub_resource type="Resource" id="Resource_oya74"]
 script = ExtResource("11_obve7")
 speed_curve = PackedVector2Array(0, 0, 0.4, 4, 1, 5.2, 3.5, 6.5, 7, 7.2)
@@ -150,6 +142,14 @@ script = ExtResource("15_i4vxq")
 
 [sub_resource type="Resource" id="Resource_mm3rp"]
 script = ExtResource("16_7bcad")
+allows_turn = false
+
+[sub_resource type="Resource" id="Resource_sprbd"]
+script = ExtResource("26_sprbd")
+freeze_visual_yaw = true
+check_for_grab = true
+check_for_vault_over = true
+check_for_wall_climb = true
 allows_turn = false
 
 [sub_resource type="Resource" id="Resource_6r03e"]
