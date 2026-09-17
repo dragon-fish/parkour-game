@@ -25,8 +25,16 @@ signal beat_title
 
 
 ## What 开始 loads, and where the first-ever click goes. The tutorial is the
-## first level as well as the game's front door.
-const LEVEL_0_SCENE := "res://scenes/local_debug_levels/mirrors_edge/me_level0.tscn"
+## first level as well as the game's front door. Set on main_menu.tscn by
+## dragging a level scene onto it; the editor stores a uid://, so moving or
+## renaming the level does not break it. This default is only what a bare
+## MainMenu.new() sees.
+## DO NOT make this a PackedScene: an exported scene is a hard dependency, so
+## opening the menu would load the whole level synchronously and the threaded
+## load behind 开始 would have nothing left to do.
+## DO NOT copy it into another field at declaration: values from the scene file
+## are applied after initializers run, so the copy would keep this default.
+@export_file("*.tscn") var start_scene: String = "res://scenes/local_debug_levels/mirrors_edge/sp00_tutorial.tscn"
 
 # --- entrance timing (spec: 入场编排 beats 0a-6) ----------------------------
 ## STAYS A CONSTANT while its neighbours became exports: MenuMusic times the
@@ -187,10 +195,6 @@ var _beat_title_fired: bool = false
 ## out from under GUT's own runner mid-suite. Defaults to the real thing.
 var _change_scene: Callable = Callable(self, "_real_change_scene")
 
-## Which scene the start entry loads. A field rather than the constant used
-## directly, so it can be retargeted in one place instead of at each of the
-## four sites the threaded load touches.
-var _target_scene: String = LEVEL_0_SCENE
 ## Diagnostic only -- see the [load] prints. ✅ THE OWNER: "那就加可观测性，打
 ## 日志，我来真的点一次看看控制台输出什么东西."
 var _load_started_ms: int = 0
@@ -806,7 +810,7 @@ func _on_start_pressed() -> void:
 	# window renders fine, and lumping it in here sent the owner straight
 	# back to the frozen switch this feature exists to kill.
 	if DisplayServer.get_name() == "headless":
-		_change_scene.call(_target_scene)
+		_change_scene.call(start_scene)
 		return
 	_loading = true
 	# Started with the load, not with the scene swap: the fade wants the whole
@@ -816,7 +820,7 @@ func _on_start_pressed() -> void:
 		_music.fade_out()
 	_load_min_elapsed = 0.0
 	_load_started_ms = Time.get_ticks_msec()
-	ResourceLoader.load_threaded_request(_target_scene)
+	ResourceLoader.load_threaded_request(start_scene)
 	print("[load] threaded request sent")
 	play_run_look()
 
@@ -877,18 +881,18 @@ func _start_run_clip() -> void:
 ## its beat), the camera dives into her eye and the white takes over.
 func _poll_loading(delta: float) -> void:
 	_load_min_elapsed += delta
-	var status := ResourceLoader.load_threaded_get_status(_target_scene)
+	var status := ResourceLoader.load_threaded_get_status(start_scene)
 	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS or _load_min_elapsed < LOAD_MIN_RUN:
 		return
 	if status == ResourceLoader.THREAD_LOAD_FAILED or status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
 		# Fall back to the plain (blocking) switch rather than stranding
 		# the player on the menu.
 		_loading = false
-		_change_scene.call(_target_scene)
+		_change_scene.call(start_scene)
 		return
-	var packed := ResourceLoader.load_threaded_get(_target_scene) as PackedScene
+	var packed := ResourceLoader.load_threaded_get(start_scene) as PackedScene
 	_loading = false
-	# THIS NUMBER COVERS ONLY _target_scene AND ITS DEPENDENCY TREE. The body,
+	# THIS NUMBER COVERS ONLY start_scene AND ITS DEPENDENCY TREE. The body,
 	# the animation packs and the level's own course pieces are loaded BY PATH
 	# inside Arena._ready(), so the loader was never told about them and this
 	# figure cannot include them.

@@ -497,7 +497,7 @@ func test_start_pressed_requests_the_scene_change_via_the_seam() -> void:
 	# test is about is that the press goes through the change-scene seam at
 	# all. Which level the seam is currently pointed at is a level-authoring
 	# decision and changes while a new one is being built.
-	assert_eq(requested[0], menu._target_scene, \
+	assert_eq(requested[0], menu.start_scene, \
 		"开始 did not request its target scene through the change-scene seam")
 
 ## PauseUi's main-menu guard (_is_main_menu_scene()) now prefers `is
@@ -769,7 +769,7 @@ func test_the_click_on_the_title_shot_plays_the_entrance() -> void:
 		"the click on the title shot requested a scene change before 开始 was pressed")
 
 ## THE ONE FAILURE NOTHING ELSE CAN SEE. Every other test here asserts against
-## _target_scene or the constants themselves, so a mistyped path stays green
+## start_scene or the constants themselves, so a mistyped path stays green
 ## through the whole suite and breaks the game at the instant the player
 ## clicks. Iterated rather than compared to written-out values: an equality
 ## test on the paths would redden the moment a level is legitimately moved,
@@ -795,6 +795,16 @@ func test_every_scene_path_the_main_menu_names_actually_exists() -> void:
 			"MainMenu.%s points at %s, which is not a scene that exists" % [key, value])
 	assert_gt(checked, 0,
 		"no scene-path constant was found on MainMenu -- this test checked nothing")
+	# The start scene is an export: both the script default and the value the
+	# menu scene sets are loaded by some run.
+	var bare := MainMenu.new()
+	assert_true(ResourceLoader.exists(bare.start_scene),
+		"MainMenu.start_scene defaults to %s, which is not a scene that exists" % bare.start_scene)
+	bare.free()
+	var authored := (load("res://scenes/ui/main_menu.tscn") as PackedScene).instantiate() as MainMenu
+	assert_true(ResourceLoader.exists(authored.start_scene),
+		"main_menu.tscn sets start_scene to %s, which is not a scene that exists" % authored.start_scene)
+	authored.free()
 
 func test_the_front_door_opens_on_the_shared_plate() -> void:
 	# 和正常主菜单的逻辑完全一样 is the requirement the tutorial's opening has to
