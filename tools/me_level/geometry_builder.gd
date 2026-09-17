@@ -1,0 +1,186 @@
+@tool
+extends RefCounted
+
+# Geometry scene of one extracted level: placements referencing the mesh
+# library, the compiled BSP, and the original's lights. Nothing editable lives
+# here -- the shell holds interactions, and the scene is regenerated freely.
+
+const Common := preload("res://tools/me_level/me_level_common.gd")
+const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
+const LIGHTS_SCRIPT := preload("res://tools/me_level/me_lights.gd")
+
+## Meshes a hand grips. InterestLine volumes drive those moves, so a solid mesh
+## only stops the capsule short of the line it is reaching for. The 5.6 m
+## S_ZipLineBase_01 post is deliberately absent: running through it reads wrong.
+const GRIP_MESH_MARKERS: Array[String] = ["LadderSystem", "SwingPole",
+		"ZipLineBase_01c", "ZipLineBase_01d", "S_Cable_01"]
+## Climbable drainpipes use the same generic segments as the rooftop pipe runs
+## a runner steps over, so a pipe is passable only where a ladder line runs
+## along it. DO NOT match pipes by name alone.
+const PIPE_GRIP_REACH_M := 0.6
+
+const BSP_MATERIAL_FAMILY := "roof"
+
+
+func build(manifest: Dictionary, root_name: String) -> Node3D:
+	var root := Node3D.new()
+	root.name = root_name
+	var geometry := Node3D.new()
+	geometry.name = "Geometry"
+	root.add_child(geometry)
+	var pipe_line := _ladder_samples(manifest["annotations"])
+	var names := Common.NameAllocator.new()
+	var library := {}
+	var counts := {none = 0, simple = 0, per_poly = 0, grip = 0}
+	for placement: Dictionary in manifest["placements"]:
+		var mesh_name: String = placement["mesh"]
+		if not library.has(mesh_name):
+			library[mesh_name] = load(MeLibrary.path_for(mesh_name))
+		var mesh: ArrayMesh = library[mesh_name]
+		var collision: String = placement["collision"]
+		if collision != "none" and _is_grip(mesh_name, placement, pipe_line):
+			collision = "none"
+			counts.grip += 1
+		counts[collision] += 1
+		var node: Node3D = Node3D.new() if collision == "none" else StaticBody3D.new()
+		node.name = names.take(mesh_name)
+		node.transform = Common.transform_of(placement)
+		node.set_meta("me_collision", collision)
+		if placement["soft_landing"]:
+			node.add_to_group("soft_landing", true)
+		var instance := MeshInstance3D.new()
+		instance.name = "Mesh"
+		instance.mesh = mesh
+		node.add_child(instance)
+		if collision == "simple":
+			var shape_names := Common.NameAllocator.new()
+			for shape: Shape3D in mesh.get_meta("simple_shapes"):
+				_add_shape(node, shape, shape_names.take("Collision"))
+		elif collision == "per_poly":
+			_add_shape(node, mesh.get_meta("per_poly_shape"), "Collision")
+		geometry.add_child(node)
+	print("[me_level] placements: ", counts)
+	root.add_child(_build_bsp(manifest["bsp"]))
+	root.add_child(_build_lights(manifest["lights"]))
+	return root
+
+
+func _add_shape(node: Node3D, shape: Shape3D, name: String) -> void:
+	var collision := CollisionShape3D.new()
+	collision.name = name
+	collision.shape = shape
+	node.add_child(collision)
+
+
+func _is_grip(mesh_name: String, placement: Dictionary, pipe_line: PackedVector3Array) -> bool:
+	for marker in GRIP_MESH_MARKERS:
+		if mesh_name.contains(marker):
+			return true
+	if not mesh_name.to_lower().contains("pipe") or pipe_line.is_empty():
+		return false
+	var box: Dictionary = placement["aabb"]
+	var bounds := AABB(Common.v3(box["min"]), Common.v3(box["max"]) - Common.v3(box["min"]))
+	for p in pipe_line:
+		if bounds.grow(PIPE_GRIP_REACH_M).has_point(p):
+			return true
+	return false
+
+
+static func _ladder_samples(annotations: Array) -> PackedVector3Array:
+	var samples := PackedVector3Array()
+	for a: Dictionary in annotations:
+		if a["kind"] != "ladder":
+			continue
+		var points := line_points(a)
+		for i in range(points.size() - 1):
+			var steps := maxi(1, ceili(points[i].distance_to(points[i + 1]) / 0.25))
+			for s in steps + 1:
+				samples.append(points[i].lerp(points[i + 1], float(s) / steps))
+	return samples
+
+
+## A volume's own line: its spline when it has one (a zipline's sag), else start..end.
+static func line_points(annotation: Dictionary) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	if annotation.has("spline"):
+		for p: Array in annotation["spline"]:
+			out.append(Common.v3(p))
+	elif annotation.has("start") and annotation.has("end"):
+		out.append(Common.v3(annotation["start"]))
+		out.append(Common.v3(annotation["end"]))
+	return out
+
+
+func _build_bsp(faces: Array) -> StaticBody3D:
+	# Final BSP nodes preserve subtractive openings. Raw additive brush bounds
+	# would fill doorways and miss sloping walkways.
+	var body := StaticBody3D.new()
+	body.name = "BSP"
+	var triangles := PackedVector3Array()
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for face: Dictionary in faces:
+		var points: Array[Vector3] = []
+		for raw: Array in face["vertices"]:
+			points.append(Common.v3(raw))
+		var normal := Common.v3(face["normal"]).normalized()
+		for i in range(1, points.size() - 1):
+			var a := points[0]
+			var b := points[i]
+			var c := points[i + 1]
+			if (b - a).cross(c - a).dot(normal) > 0.0:
+				var swap := b
+				b = c
+				c = swap
+			for p in [a, b, c]:
+				surface.set_normal(normal)
+				surface.add_vertex(p)
+				triangles.append(p)
+	if triangles.is_empty():
+		return body
+	var instance := MeshInstance3D.new()
+	instance.name = "Mesh"
+	instance.mesh = surface.commit()
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Common.MATERIAL_PALETTE[BSP_MATERIAL_FAMILY]
+	material.roughness = 0.95
+	instance.material_override = material
+	body.add_child(instance)
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(triangles)
+	_add_shape(body, shape, "Collision")
+	return body
+
+
+func _build_lights(lights: Array) -> Node3D:
+	var parent := Node3D.new()
+	parent.name = "Lights"
+	parent.set_script(LIGHTS_SCRIPT)
+	var scale: float = parent.energy_scale
+	var names := Common.NameAllocator.new()
+	for entry: Dictionary in lights:
+		var light: Light3D
+		match str(entry["class"]):
+			"PointLight", "TdAreaLight":
+				# TdAreaLight carries a PointLightComponent; its baked area shape is not used.
+				var omni := OmniLight3D.new()
+				omni.omni_range = float(entry["radius_m"])
+				light = omni
+			"SpotLight", "SpotLightMovable":
+				var spot := SpotLight3D.new()
+				spot.spot_range = float(entry["radius_m"])
+				spot.spot_angle = clampf(float(entry["outer_cone_deg"]), 1.0, 89.0)
+				light = spot
+			_:
+				push_error("[me_level] unknown light class %s" % entry["class"])
+				continue
+		light.name = names.take(str(entry["name"]))
+		# UE lights shine along the actor's +X.
+		var forward := Common.basis_of(entry["basis"]).x.normalized()
+		var up := Vector3.UP if absf(forward.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT
+		light.transform = Transform3D(Basis.looking_at(forward, up), Common.v3(entry["position"]))
+		light.light_color = Color(entry["color"][0], entry["color"][1], entry["color"][2])
+		light.set_meta("me_brightness", float(entry["brightness"]))
+		light.light_energy = float(entry["brightness"]) * scale
+		parent.add_child(light)
+	return parent
