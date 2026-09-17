@@ -72,8 +72,22 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	return root
 
 
+## Metres below the section's lowest geometry where falling out begins.
+const FALL_OUT_MARGIN := 10.0
+
+
+## Arena.fall_out_height for a section: under everything it contains. A fixed
+## default kills on every spawn in a level built underground.
+static func fall_out_height(manifest: Dictionary) -> float:
+	var lowest := INF
+	for placement: Dictionary in manifest["placements"]:
+		if placement.has("aabb"):
+			lowest = minf(lowest, float(placement["aabb"]["min"][1]))
+	return (lowest if lowest != INF else 0.0) - FALL_OUT_MARGIN
+
+
 ## Packed text of build()'s root -> a scene inheriting base_level.
-static func compose(text: String) -> String:
+static func compose(text: String, fall_out: float) -> String:
 	var lines := text.split("
 ")
 	var out := PackedStringArray()
@@ -86,6 +100,7 @@ static func compose(text: String) -> String:
 			continue
 		if not root_done and line.begins_with('[node name="Arena" type="Node3D"'):
 			out.append('[node name="Arena" instance=ExtResource("me_base_level")]')
+			out.append("fall_out_height = %s" % snappedf(fall_out, 0.01))
 			root_done = true
 			continue
 		for name: String in OVERRIDDEN:

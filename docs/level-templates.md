@@ -259,14 +259,15 @@ whole level down. Because every inherited level shares this one base scene,
 a mistake here breaks every level built from the template at once, not just
 the one you were editing.
 
-### `MovementConfig.fall_recovery_depth` and floating platforms
+### `Arena.fall_out_height` and floating platforms
 
-`Arena._physics_process()` teleports the player back to `SpawnPoint` once
-they fall more than `config.fall_recovery_depth` (default `20.0`) below the
-floor. This is the safety net for missed jumps — but it means **any drop the
-player can fall into that is deeper than `fall_recovery_depth` looks the same
-as falling off the level entirely**: they get yanked back to spawn instead of
-continuing to fall or landing on whatever's below.
+`Arena._physics_process()` treats the player as fallen out of the level once
+they drop below the world height `fall_out_height` (default `-20.0`), and
+respawns them. This is the safety net for missed jumps — but it means **any
+drop that reaches below `fall_out_height` looks the same as falling off the
+level entirely**: they get yanked back to spawn instead of continuing to fall
+or landing on whatever's below. A level whose floor is below the default (an
+underground section) must lower it, or every spawn is a death.
 
 This matters most for levels built from floating platforms with no
 continuous ground underneath: a platform-to-platform layout can have "gaps"
@@ -274,9 +275,9 @@ deeper than 20m between the play surface and whatever's below (or nothing
 below at all), and a player who overshoots a jump there respawns instead of
 falling to their death or into some other trap — which may or may not be
 what you intended. If you want a genuine bottomless pit or a different
-recovery behavior, design around this value (it's tunable per-arena via the
-`config` export, and live via the F1 panel) rather than assuming "falling
-off" always means "off the whole level."
+recovery behavior, design around this value (it is an export on the level's
+Arena root) rather than assuming "falling off" always means "off the whole
+level."
 
 ### Generated vs. hand-authored
 

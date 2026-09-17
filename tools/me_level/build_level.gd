@@ -58,7 +58,7 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 	var staging := "user://me_level_shell_%d.tscn" % OS.get_process_id()
 	if not _save(shell, staging, 0):
 		return false
-	var text := ShellBuilder.compose(FileAccess.get_file_as_string(staging))
+	var text := ShellBuilder.compose(FileAccess.get_file_as_string(staging), ShellBuilder.fall_out_height(manifest))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(staging))
 	if text.is_empty():
 		return false

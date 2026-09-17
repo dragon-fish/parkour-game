@@ -40,6 +40,14 @@ extends Node3D
 ## must be able to disagree about this.
 @export var rescue_below_hp: float = 0.0
 
+## World height below which the player has fallen out of the level: a black
+## curtain and a respawn, or a rescue under rescue_below_hp.
+##
+## A LEVEL PROPERTY. A level built underground has its floor below any fixed
+## number, and a spawn below this line is a death on every respawn, forever.
+## Keep it under the lowest floor the player can stand on.
+@export var fall_out_height: float = -20.0
+
 ## Hard limit on how far the camera draws, in metres. Zero (the default) leaves
 ## Godot's own far plane alone, which is what every ordinary level wants.
 ##
@@ -585,7 +593,7 @@ func _physics_process(_delta: float) -> void:
 		_r_pressed_at_ms = -1
 		restart_from_spawn()
 	# THE RAGDOLL IS THE ONE THAT FALLS: once it takes over, the capsule STOPS
-	# (see FallUncontrolledMove), so its own Y never crosses fall_recovery_depth
+	# (see FallUncontrolledMove), so its own Y never crosses fall_out_height
 	# again -- querying player.global_position.y alone would leave this fall-
 	# out-of-level recovery permanently unreachable once a ragdoll is active,
 	# forcing a six-second wait for the settle timeout instead. The body that
@@ -593,7 +601,7 @@ func _physics_process(_delta: float) -> void:
 	var depth: float = player.global_position.y
 	if player.ragdoll != null and player.ragdoll.is_simulating():
 		depth = player.ragdoll.hips_position().y
-	if depth < -config.pawn.fall_recovery_depth:
+	if depth < fall_out_height:
 		# A DEATH, not a rescue -- unless this level says otherwise. Falling
 		# out of the world is falling to your death by any reading the player
 		# has, and teleporting them back with no curtain reads as the level
@@ -602,7 +610,7 @@ func _physics_process(_delta: float) -> void:
 		#
 		# GUARDED THE SAME WAY THE HP/RAGDOLL BRANCH ABOVE IS: while the
 		# curtain from an earlier _rescue() is still up, the body is still
-		# below fall_recovery_depth (the respawn has not landed yet), so this
+		# below fall_out_height (the respawn has not landed yet), so this
 		# branch would otherwise re-run every tick -- inflating rescued_count
 		# and re-firing health.reset() for a rescue that already happened.
 		if rescue_below_hp > 0.0 and not _death_sequence.is_covering():

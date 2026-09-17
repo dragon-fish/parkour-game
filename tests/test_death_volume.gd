@@ -85,7 +85,7 @@ func test_falling_out_of_the_world_is_a_death_and_a_reset_is_not() -> void:
 	# the plain curtain -- black, because it is still a death.
 	var arena := _arena()
 	await step(2)
-	arena.player.global_position = Vector3(0.0, -arena.config.pawn.fall_recovery_depth - 5.0, 0.0)
+	arena.player.global_position = Vector3(0.0, arena.fall_out_height - 5.0, 0.0)
 	await step(2)
 	assert_true(arena._death_sequence.is_covering(), \
 		"falling out of the world still teleported the body with no curtain")

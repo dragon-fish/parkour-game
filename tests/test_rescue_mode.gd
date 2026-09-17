@@ -49,6 +49,6 @@ func test_entering_fall_uncontrolled_is_rescued() -> void:
 func test_falling_out_of_the_level_is_rescued_not_killed() -> void:
 	var arena: Arena = await _arena_with(30.0)
 	var player: Player = arena.player
-	player.global_position = Vector3(0.0, -arena.config.pawn.fall_recovery_depth - 10.0, 0.0)
+	player.global_position = Vector3(0.0, arena.fall_out_height - 10.0, 0.0)
 	await step(2)
 	assert_true(arena.rescued_count > 0, "falling out of the level was not rescued")

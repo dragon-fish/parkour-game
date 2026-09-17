@@ -307,9 +307,6 @@ extends Resource
 ## the difference is whether the player spends the last second of the fall
 ## still believing they can act.
 @export var falling_uncontrolled_height: float = 10.0
-## How far below y = 0 the player must fall before Arena teleports them back.
-## Project-specific; the original has no equivalent.
-@export var fall_recovery_depth: float = 20.0
 ## Horizontal speed above which CharacterAnimator plays a moving clip. A
 ## readability threshold, not a physics one.
 @export var run_animation_speed_threshold: float = 1.0
