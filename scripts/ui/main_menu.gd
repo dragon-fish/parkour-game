@@ -35,6 +35,8 @@ signal beat_title
 ## DO NOT copy it into another field at declaration: values from the scene file
 ## are applied after initializers run, so the copy would keep this default.
 @export_file("*.tscn") var start_scene: String = "res://scenes/local_debug_levels/mirrors_edge/sp00_tutorial.tscn"
+## What 选择关卡 lists, in this order. An empty list hides the entry.
+@export var levels: Array[LevelEntry] = []
 
 # --- entrance timing (spec: 入场编排 beats 0a-6) ----------------------------
 ## STAYS A CONSTANT while its neighbours became exports: MenuMusic times the
@@ -154,6 +156,12 @@ var _d_far := 2.3
 var _feet_screen_frac := 0.82
 var _anim_player: AnimationPlayer
 var _menu_list: MeMenuList
+## What each row of the main list does, index for index with its labels.
+var _menu_actions: Array[Callable] = []
+## True while _menu_list shows the level select instead of the main entries.
+var _selecting_level := false
+## The scene the threaded load is fetching. Set when a load starts.
+var _loading_scene := ""
 var _settings_menu: MeSettingsMenu
 var _footer: Label
 var _metadata_labels: Array[Control] = []
@@ -430,7 +438,7 @@ func _build_menu_list() -> void:
 	_menu_list.offset_top = 0.0
 	_menu_list.offset_bottom = 0.0
 	add_child(_menu_list)
-	_menu_list.set_items(["开始", "角色", "设置", "退出"])
+	_show_main_entries()
 	_menu_list.chosen.connect(_on_chosen)
 	# Settled instantly at build time so its rows have correct final geometry,
 	# but HIDDEN (visible = false) until beat 4 (_beat_menu_stagger) actually
@@ -739,6 +747,12 @@ func _skip_entrance() -> void:
 	_beat_settle()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _selecting_level and _menu_list.is_visible_in_tree() and event is InputEventKey \
+			and (event as InputEventKey).pressed and not (event as InputEventKey).echo \
+			and (event as InputEventKey).physical_keycode == KEY_ESCAPE:
+		_show_main_entries()
+		get_viewport().set_input_as_handled()
+		return
 	if not _entrance_active:
 		return
 	var is_key_press := event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo
@@ -763,16 +777,34 @@ func _unhandled_input(event: InputEvent) -> void:
 # Menu behavior
 # ---------------------------------------------------------------------------
 
+func _show_main_entries() -> void:
+	_selecting_level = false
+	var items: Array[String] = ["开始"]
+	_menu_actions = [_on_start_pressed]
+	if not levels.is_empty():
+		items.append("选择关卡")
+		_menu_actions.append(_show_level_select)
+	items.append_array(["角色", "设置", "退出"])
+	_menu_actions.append_array([_open_showcase, _show_settings, _show_quit_confirm])
+	_menu_list.set_items(items)
+
 func _on_chosen(index: int) -> void:
-	match index:
-		0:
-			_on_start_pressed()
-		1:
-			_open_showcase()
-		2:
-			_show_settings()
-		3:
-			_show_quit_confirm()
+	if _selecting_level:
+		if index < levels.size():
+			_load_level(levels[index].scene)
+		else:
+			_show_main_entries()
+		return
+	_menu_actions[index].call()
+
+## 选择关卡: the same column, relisted with the levels and a last 返回 row.
+func _show_level_select() -> void:
+	var items: Array[String] = []
+	for entry in levels:
+		items.append(entry.title)
+	items.append("返回")
+	_menu_list.set_items(items)
+	_selecting_level = true
 
 const SHOWCASE_SCENE := "res://scenes/ui/character_showcase.tscn"
 
@@ -803,16 +835,26 @@ const RUN_RAMP_TIME := 1.2
 const LOAD_ORBIT_TIME := 0.9
 
 func _on_start_pressed() -> void:
+	_load_level(start_scene)
+
+func _load_level(scene: String) -> void:
 	if _loading:
+		return
+	# Checked BEFORE the run-up starts. A threaded request for a missing file
+	# fails, the blocking fallback fails too, and the run-up animation had
+	# already begun with nothing left to end it: it played forever.
+	if not ResourceLoader.exists(scene):
+		push_error("[menu] level scene %s does not exist" % scene)
 		return
 	# Headless keeps the old synchronous seam (tests drive it; there is no
 	# show to play without a renderer). ONLY headless -- the editor-embedded
 	# window renders fine, and lumping it in here sent the owner straight
 	# back to the frozen switch this feature exists to kill.
 	if DisplayServer.get_name() == "headless":
-		_change_scene.call(start_scene)
+		_change_scene.call(scene)
 		return
 	_loading = true
+	_loading_scene = scene
 	# Started with the load, not with the scene swap: the fade wants the whole
 	# of the loading run to breathe over, and by the time the swap happens this
 	# node is about to be freed anyway.
@@ -820,7 +862,7 @@ func _on_start_pressed() -> void:
 		_music.fade_out()
 	_load_min_elapsed = 0.0
 	_load_started_ms = Time.get_ticks_msec()
-	ResourceLoader.load_threaded_request(start_scene)
+	ResourceLoader.load_threaded_request(scene)
 	print("[load] threaded request sent")
 	play_run_look()
 
@@ -881,18 +923,18 @@ func _start_run_clip() -> void:
 ## its beat), the camera dives into her eye and the white takes over.
 func _poll_loading(delta: float) -> void:
 	_load_min_elapsed += delta
-	var status := ResourceLoader.load_threaded_get_status(start_scene)
+	var status := ResourceLoader.load_threaded_get_status(_loading_scene)
 	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS or _load_min_elapsed < LOAD_MIN_RUN:
 		return
 	if status == ResourceLoader.THREAD_LOAD_FAILED or status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
 		# Fall back to the plain (blocking) switch rather than stranding
 		# the player on the menu.
 		_loading = false
-		_change_scene.call(start_scene)
+		_change_scene.call(_loading_scene)
 		return
-	var packed := ResourceLoader.load_threaded_get(start_scene) as PackedScene
+	var packed := ResourceLoader.load_threaded_get(_loading_scene) as PackedScene
 	_loading = false
-	# THIS NUMBER COVERS ONLY start_scene AND ITS DEPENDENCY TREE. The body,
+	# THIS NUMBER COVERS ONLY _loading_scene AND ITS DEPENDENCY TREE. The body,
 	# the animation packs and the level's own course pieces are loaded BY PATH
 	# inside Arena._ready(), so the loader was never told about them and this
 	# figure cannot include them.

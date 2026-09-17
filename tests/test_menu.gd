@@ -481,7 +481,44 @@ func test_main_menu_builds_without_error_and_skip_entrance_settles_the_list() ->
 	assert_true(menu._menu_list.is_visible_in_tree(), \
 		"the menu list is not visible in tree once the entrance is skipped")
 	assert_eq(menu._menu_list._labels.size(), 4, \
-		"the main menu list should have exactly 开始/角色/设置/退出")
+		"with no levels listed the main menu should have exactly 开始/角色/设置/退出")
+
+func test_a_missing_level_starts_nothing() -> void:
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(1)
+	var requested := [""]
+	menu._change_scene = func(path): requested[0] = path
+	menu._load_level("res://no/such/level.tscn")
+	assert_eq(requested[0], "", "a missing level still requested a scene change")
+	assert_false(menu._loading, "a missing level still started the loading run")
+	assert_push_error("does not exist")
+
+func test_level_select_loads_the_chosen_level_and_returns() -> void:
+	var menu := MainMenu.new()
+	var first := LevelEntry.new()
+	first.title = "one"
+	first.scene = "res://scenes/main.tscn"
+	var second := LevelEntry.new()
+	second.title = "two"
+	second.scene = "res://templates/base_level.tscn"
+	menu.levels = [first, second]
+	add_child_autofree(menu)
+	await step(1)
+	menu._skip_entrance()
+	var requested := [""]
+	menu._change_scene = func(path): requested[0] = path
+
+	var labels := func() -> Array: return menu._menu_list._labels.map(func(l): return l.text)
+	assert_eq(labels.call(), ["开始", "选择关卡", "角色", "设置", "退出"])
+	menu._on_chosen(1)
+	assert_eq(labels.call(), ["one", "two", "返回"], "选择关卡 did not list the levels")
+	menu._on_chosen(2)
+	assert_eq(labels.call()[1], "选择关卡", "返回 did not bring back the main entries")
+	assert_eq(requested[0], "", "返回 requested a scene change")
+	menu._on_chosen(1)
+	menu._on_chosen(1)
+	assert_eq(requested[0], second.scene, "choosing a level did not load that level")
 
 func test_start_pressed_requests_the_scene_change_via_the_seam() -> void:
 	var menu := MainMenu.new()
@@ -804,6 +841,9 @@ func test_every_scene_path_the_main_menu_names_actually_exists() -> void:
 	var authored := (load("res://scenes/ui/main_menu.tscn") as PackedScene).instantiate() as MainMenu
 	assert_true(ResourceLoader.exists(authored.start_scene),
 		"main_menu.tscn sets start_scene to %s, which is not a scene that exists" % authored.start_scene)
+	for entry in authored.levels:
+		assert_true(ResourceLoader.exists(entry.scene),
+			"main_menu.tscn lists %s at %s, which is not a scene that exists" % [entry.title, entry.scene])
 	authored.free()
 
 func test_the_front_door_opens_on_the_shared_plate() -> void:

@@ -2,6 +2,27 @@
 
 [ext_resource type="Script" uid="uid://cfw52j47lwvj6" path="res://scripts/ui/main_menu.gd" id="1_menu"]
 [ext_resource type="Script" uid="uid://cg2kxichryqbs" path="res://scripts/ui/chladni_field.gd" id="2_field"]
+[ext_resource type="Script" path="res://scripts/ui/level_entry.gd" id="3_level_entry"]
+
+[sub_resource type="Resource" id="level_0"]
+script = ExtResource("3_level_entry")
+title = "教程"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp00_tutorial.tscn"
+
+[sub_resource type="Resource" id="level_1"]
+script = ExtResource("3_level_entry")
+title = "泄洪道"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp02_stdp.tscn"
+
+[sub_resource type="Resource" id="level_2"]
+script = ExtResource("3_level_entry")
+title = "训练场"
+scene = "res://scenes/main.tscn"
+
+[sub_resource type="Resource" id="level_3"]
+script = ExtResource("3_level_entry")
+title = "沙盒"
+scene = "res://scenes/local_debug_levels/sandbox.tscn"
 
 [node name="MainMenu" type="Control" unique_id=10640388]
 layout_mode = 3
@@ -11,9 +32,11 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_menu")
+start_scene = "uid://p2s6xymtvb6j"
 FLOOR_SCROLL_SPEED = 0.8
 FLOOR_RUN_SPEED = 6.0
 floor_spacing = 4.0
+levels = Array[ExtResource("3_level_entry")]([SubResource("level_0"), SubResource("level_1"), SubResource("level_2"), SubResource("level_3")])
 
 [node name="ChladniField" type="ColorRect" parent="." unique_id=331184330]
 layout_mode = 1
