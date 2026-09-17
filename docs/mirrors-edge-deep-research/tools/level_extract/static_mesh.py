@@ -56,7 +56,7 @@ def parse_render(mr, idx):
         material, collide, _old, _shadow, first, triangles, _vmin, _vmax, _mi, fragments = \
             struct.unpack_from('<10i', d, p)
         p += 40 + 8 * fragments
-        elements.append({'material': ref_name(pkg, material), 'collide': bool(collide),
+        elements.append({'material': ref_name(pkg, material), 'material_ref': material, 'collide': bool(collide),
                          'first': first, 'triangles': triangles})
     p += 8                                     # PositionVertexBuffer stride, count
     _, position_count, position_start = bulk(12)
@@ -103,8 +103,8 @@ def parse_render(mr, idx):
         flipped = []
         for t in range(0, len(tri), 3):
             flipped.extend((tri[t], tri[t + 2], tri[t + 1]))
-        surfaces.append({'material': el['material'], 'collide': el['collide'],
-                         'indices': _b64('H', flipped)})
+        surfaces.append({'material': el['material'], 'material_ref': el['material_ref'],
+                         'collide': el['collide'], 'indices': _b64('H', flipped)})
     return {
         'vertices': _b64('f', vertices),
         'normals': None if zero_normals else _b64('f', normals),

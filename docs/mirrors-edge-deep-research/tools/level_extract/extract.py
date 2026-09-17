@@ -25,7 +25,7 @@ import static_mesh
 MAX_EXTENT_M = 250.0
 FX_MESH_MARKERS = ('_FX_', 'SkyDome', 'Sunflare', 'GodRay')
 # Checkpoints are taken from the persistent level when they fall inside the
-# section's own placements (background _Bac packages excluded), grown by this.
+# section's own placements (no slices, no _Bac skyline), grown by this.
 SECTION_MARGIN_M = 2.0
 
 
@@ -48,6 +48,7 @@ class MeshTable:
         self.records = {}
         self._soft = {}
         self._parsed = {}
+        self._materials = {}
 
     def get(self, mr, export_idx):
         key = (mr.label, export_idx)
@@ -64,6 +65,8 @@ class MeshTable:
         record['source'] = mr.label
         record['simple_shapes'] = shapes
         record['soft_landing'] = self._soft_landing(material)
+        for surface in record['surfaces']:
+            surface.update(self._material(mr, surface.pop('material_ref')))
         known = self.records.get(name)
         if known is None:
             self.records[name] = record
@@ -99,6 +102,35 @@ class MeshTable:
         if idx is None:
             raise ExtractError('%s: mesh %s not found in %s' % (mr.label, name, shared.label))
         return self.get(shared, idx)
+
+    def _material(self, mr, reference):
+        """Blend mode and lighting model of a surface's material, following
+        MaterialInstance parents to the root Material across packages. A light
+        shaft is an additive unlit card; drawn opaque it becomes a grey slab."""
+        if not reference:
+            return {'blend': 'opaque', 'unlit': False}
+        key = (mr.label, reference)
+        if key not in self._materials:
+            reader, idx = mr, reference
+            for _ in range(16):
+                if idx < 0:
+                    root, path = pk.import_path(reader.pkg, -idx - 1)
+                    shared = self.packages.shared_reader(root)
+                    target = pk.find_export(shared, path) if shared else None
+                    if target is None:
+                        raise ExtractError('%s: material %s not found' % (mr.label, '.'.join([root] + path)))
+                    reader, idx = shared, target
+                props = reader.props(idx)[0] or {}
+                parent = props.get('Parent')
+                if reader.pkg.class_of(reader.pkg.exports[idx - 1]) == 'Material' or not parent:
+                    blend = str(props.get('BlendMode', 'BLEND_Opaque')).replace('BLEND_', '').lower()
+                    unlit = props.get('LightingModel') == 'MLM_Unlit'
+                    self._materials[key] = {'blend': blend, 'unlit': unlit}
+                    break
+                idx = parent[1]
+            else:
+                raise ExtractError('%s: material parent chain too deep' % mr.label)
+        return self._materials[key]
 
     def _soft_landing(self, material):
         if not material:
@@ -211,7 +243,13 @@ def main(config_path):
 
     if config['sections']:
         persistent = annotations.collect(packages.reader(packages.persistent), defaults, {'unmapped': {}})
-        section = [p for p in placements if '_bac' not in p['package'].lower()]
+        prefix = packages.persistent[:-len('_p.me1')].lower() + '_'
+        own = tuple(prefix + s['name'].lower() for s in config['sections'])
+        # The section's own packages only: slices reach deep into the
+        # neighbouring sections, and _Bac is the skyline.
+        section = [p for p in placements
+                   if any(p['package'].lower() == o + '.me1' or p['package'].lower().startswith(o + '_') for o in own)
+                   and '_bac' not in p['package'].lower()]
         if not section:
             raise ExtractError('no non-background placements to bound the section')
         lo = [min(p['position'][k] for p in section) - SECTION_MARGIN_M for k in range(3)]
