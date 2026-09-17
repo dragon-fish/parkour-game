@@ -15,7 +15,7 @@ const Common := preload("res://tools/me_level/me_level_common.gd")
 const TEXTURE_ALBEDO := Color(0.85, 0.85, 0.85)
 ## Part of every mesh's source hash. Bump when what a library file contains or
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
-const LIBRARY_FORMAT := 2
+const LIBRARY_FORMAT := 3
 
 var _materials := {}
 var _bakes := {}
@@ -78,34 +78,27 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			# Without the texture it is only a dark patch: collide, do not draw.
 			continue
 		var uvs := _uvs(record, _uv_set(surface), positions.size())
-		var arrays := []
-		if normals.is_empty():
-			# The original cooked this mesh without normals: shade it flat.
-			var st := SurfaceTool.new()
-			st.begin(Mesh.PRIMITIVE_TRIANGLES)
-			st.set_smooth_group(-1)
-			for index in indices:
-				if not uvs.is_empty():
-					st.set_uv(uvs[index])
-				st.add_vertex(positions[index])
-			st.generate_normals()
-			arrays = st.commit_to_arrays()
-		else:
-			arrays.resize(Mesh.ARRAY_MAX)
-			arrays[Mesh.ARRAY_VERTEX] = positions
-			arrays[Mesh.ARRAY_NORMAL] = normals
-			arrays[Mesh.ARRAY_INDEX] = indices
-			if not uvs.is_empty():
-				arrays[Mesh.ARRAY_TEX_UV] = uvs
-		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		var material_name: String = surface["material"] if surface["material"] != null else ""
 		var material: Material
 		if _bakes.has(material_name) and surface["blend"] != "additive":
 			material = _textured_material(material_name, surface["blend"], surface["unlit"])
 		else:
 			material = _material(Common.material_family(material_name, name), surface["blend"], surface["unlit"])
-		mesh.surface_set_material(mesh.get_surface_count() - 1, material)
-		mesh.surface_set_name(mesh.get_surface_count() - 1, material_name)
+		_add_surface(mesh, positions, normals, uvs, indices, material, material_name)
+		if surface.get("two_sided", false) and surface["blend"] != "additive":
+			# DO NOT draw two-sided surfaces with CULL_DISABLED. A placement with a
+			# mirroring transform (negative scale) gets FRONT_FACING inverted,
+			# so the lit side renders black and the side facing into the wall
+			# renders lit. A second, reversed surface is lit correctly either way.
+			var back_indices := indices.duplicate()
+			for t in range(0, back_indices.size(), 3):
+				back_indices[t + 1] = indices[t + 2]
+				back_indices[t + 2] = indices[t + 1]
+			var back_normals := PackedVector3Array()
+			back_normals.resize(normals.size())
+			for i in normals.size():
+				back_normals[i] = -normals[i]
+			_add_surface(mesh, positions, back_normals, uvs, back_indices, material, material_name + "_back")
 	var simple: Array[Shape3D] = []
 	for shape: Dictionary in record["simple_shapes"]:
 		var convex := ConvexPolygonShape3D.new()
@@ -123,6 +116,32 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 	var extent := Common.v3(bounds["extent"])
 	mesh.set_meta("bounds", AABB(Common.v3(bounds["origin"]) - extent, extent * 2.0))
 	return mesh
+
+
+func _add_surface(mesh: ArrayMesh, positions: PackedVector3Array, normals: PackedVector3Array,
+		uvs: PackedVector2Array, indices: PackedInt32Array, material: Material, surface_name: String) -> void:
+	var arrays := []
+	if normals.is_empty():
+		# The original cooked this mesh without normals: shade it flat.
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		st.set_smooth_group(-1)
+		for index in indices:
+			if not uvs.is_empty():
+				st.set_uv(uvs[index])
+			st.add_vertex(positions[index])
+		st.generate_normals()
+		arrays = st.commit_to_arrays()
+	else:
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = positions
+		arrays[Mesh.ARRAY_NORMAL] = normals
+		arrays[Mesh.ARRAY_INDEX] = indices
+		if not uvs.is_empty():
+			arrays[Mesh.ARRAY_TEX_UV] = uvs
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.surface_set_material(mesh.get_surface_count() - 1, material)
+	mesh.surface_set_name(mesh.get_surface_count() - 1, surface_name)
 
 
 ## One shared material per (family, blend, unlit). The original's blend mode and
@@ -190,7 +209,7 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 	if _materials.has(key):
 		return _materials[key]
 	var bake: Dictionary = _bakes[material_name]
-	var hash := JSON.stringify([bake, blend, unlit, TEXTURE_ALBEDO]).sha256_text()
+	var hash := JSON.stringify([bake, blend, unlit, TEXTURE_ALBEDO, LIBRARY_FORMAT]).sha256_text()
 	var dir := Common.LIBRARY_DIR.path_join("materials").path_join("textured")
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 	var path := dir.path_join(key + ".res")
@@ -213,10 +232,8 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 		"masked":
 			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 			material.alpha_scissor_threshold = 0.4
-			material.cull_mode = BaseMaterial3D.CULL_DISABLED
 		"translucent":
 			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	material.set_meta("source_hash", hash)
 	ResourceSaver.save(material, path, ResourceSaver.FLAG_COMPRESS)
 	_materials[key] = load(path)

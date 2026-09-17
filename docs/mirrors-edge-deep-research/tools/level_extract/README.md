@@ -75,6 +75,13 @@ MaterialInstance parents to the root Material for `BlendMode` and
 unlit surfaces to distinct materials. Masked surfaces (gratings) are drawn
 solid until textures exist.
 
+**Two-sided means the material says so.** `TwoSided` is read from the root
+Material; masked and translucent are not two-sided by themselves, and drawing
+a storefront from both sides lit the inside of its building. A two-sided
+surface is built as a second, reversed copy, never with `CULL_DISABLED`: a
+placement with a mirroring transform (negative DrawScale) gets Godot's
+`FRONT_FACING` inverted, so its outside renders black.
+
 **Normals.** The packed normal is at byte 4 of each vertex (TangentZ). A few
 meshes were cooked with none, `(128, 128, 128)`; those are shaded flat and
 listed in the report. Any other non-unit normal is a parse error.

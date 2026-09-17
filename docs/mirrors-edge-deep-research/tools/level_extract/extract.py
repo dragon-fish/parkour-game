@@ -112,11 +112,11 @@ class MeshTable:
         return self.get(shared, idx)
 
     def _material(self, mr, reference):
-        """Blend mode and lighting model of a surface's material, following
+        """Blend mode, lighting model and two-sidedness of a surface's material, following
         MaterialInstance parents to the root Material across packages. A light
         shaft is an additive unlit card; drawn opaque it becomes a grey slab."""
         if not reference:
-            return {'blend': 'opaque', 'unlit': False}
+            return {'blend': 'opaque', 'unlit': False, 'two_sided': False}
         key = (mr.label, reference)
         if key not in self._materials:
             reader, idx = mr, reference
@@ -133,7 +133,8 @@ class MeshTable:
                 if reader.pkg.class_of(reader.pkg.exports[idx - 1]) == 'Material' or not parent:
                     blend = str(props.get('BlendMode', 'BLEND_Opaque')).replace('BLEND_', '').lower()
                     unlit = props.get('LightingModel') == 'MLM_Unlit'
-                    self._materials[key] = {'blend': blend, 'unlit': unlit}
+                    two_sided = props.get('TwoSided') is True
+                    self._materials[key] = {'blend': blend, 'unlit': unlit, 'two_sided': two_sided}
                     break
                 idx = parent[1]
             else:
