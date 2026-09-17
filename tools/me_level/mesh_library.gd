@@ -10,7 +10,15 @@ extends RefCounted
 
 const Common := preload("res://tools/me_level/me_level_common.gd")
 
+## Multiplies every baked texture. The original's diffuse maps are near white
+## and were lit by baked light; under a live sun they clip. A dial.
+const TEXTURE_ALBEDO := Color(0.85, 0.85, 0.85)
+## Part of every mesh's source hash. Bump when what a library file contains or
+## references changes shape, so no mesh keeps pointing at a file that is gone.
+const LIBRARY_FORMAT := 2
+
 var _materials := {}
+var _bakes := {}
 
 
 static func path_for(mesh_name: String) -> String:
@@ -18,7 +26,8 @@ static func path_for(mesh_name: String) -> String:
 
 
 ## Builds every mesh in `meshes` whose source changed. Returns false on error.
-func build(meshes: Dictionary) -> bool:
+func build(meshes: Dictionary, bakes: Dictionary) -> bool:
+	_bakes = bakes
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(Common.LIBRARY_DIR.path_join("materials")))
 	var built := 0
 	for mesh_name: String in meshes:
@@ -26,6 +35,9 @@ func build(meshes: Dictionary) -> bool:
 		# Which package a mesh was read from differs between levels; the mesh does not.
 		var content := record.duplicate()
 		content.erase("source")
+		# Which UV set a surface uses comes from its material's bake.
+		content["uv_sets"] = record["surfaces"].map(func(s): return _uv_set(s))
+		content["library_format"] = LIBRARY_FORMAT
 		var hash := JSON.stringify(content, "", true).sha256_text()
 		var path := path_for(mesh_name)
 		if ResourceLoader.exists(path):
@@ -65,6 +77,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			# A modulate surface darkens what is behind it through its texture.
 			# Without the texture it is only a dark patch: collide, do not draw.
 			continue
+		var uvs := _uvs(record, _uv_set(surface), positions.size())
 		var arrays := []
 		if normals.is_empty():
 			# The original cooked this mesh without normals: shade it flat.
@@ -72,6 +85,8 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			st.begin(Mesh.PRIMITIVE_TRIANGLES)
 			st.set_smooth_group(-1)
 			for index in indices:
+				if not uvs.is_empty():
+					st.set_uv(uvs[index])
 				st.add_vertex(positions[index])
 			st.generate_normals()
 			arrays = st.commit_to_arrays()
@@ -80,10 +95,16 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			arrays[Mesh.ARRAY_VERTEX] = positions
 			arrays[Mesh.ARRAY_NORMAL] = normals
 			arrays[Mesh.ARRAY_INDEX] = indices
+			if not uvs.is_empty():
+				arrays[Mesh.ARRAY_TEX_UV] = uvs
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		var material_name: String = surface["material"] if surface["material"] != null else ""
-		mesh.surface_set_material(mesh.get_surface_count() - 1,
-				_material(Common.material_family(material_name, name), surface["blend"], surface["unlit"]))
+		var material: Material
+		if _bakes.has(material_name) and surface["blend"] != "additive":
+			material = _textured_material(material_name, surface["blend"], surface["unlit"])
+		else:
+			material = _material(Common.material_family(material_name, name), surface["blend"], surface["unlit"])
+		mesh.surface_set_material(mesh.get_surface_count() - 1, material)
 		mesh.surface_set_name(mesh.get_surface_count() - 1, material_name)
 	var simple: Array[Shape3D] = []
 	for shape: Dictionary in record["simple_shapes"]:
@@ -141,6 +162,65 @@ func _material(family: String, blend: String, unlit: bool) -> StandardMaterial3D
 		material = load(path)
 	_materials[key] = material
 	return material
+
+
+func _uv_set(surface: Dictionary) -> int:
+	var bake: Variant = _bakes.get(surface["material"] if surface["material"] != null else "")
+	return int(bake["uv_set"]) if bake is Dictionary else 0
+
+
+static func _uvs(record: Dictionary, uv_set: int, count: int) -> PackedVector2Array:
+	var sets: Array = record.get("uvs", [])
+	if sets.is_empty():
+		return PackedVector2Array()
+	var raw := Marshalls.base64_to_raw(sets[mini(uv_set, sets.size() - 1)]).to_float32_array()
+	var out := PackedVector2Array()
+	if raw.size() != count * 2:
+		return out
+	out.resize(count)
+	for i in count:
+		out[i] = Vector2(raw[i * 2], raw[i * 2 + 1])
+	return out
+
+
+## One material per original material and blend mode, carrying its baked
+## image. Rebuilt when the bake changes.
+func _textured_material(material_name: String, blend: String, unlit: bool) -> StandardMaterial3D:
+	var key := "%s_%s%s" % [material_name.validate_filename(), blend, "_unlit" if unlit else ""]
+	if _materials.has(key):
+		return _materials[key]
+	var bake: Dictionary = _bakes[material_name]
+	var hash := JSON.stringify([bake, blend, unlit, TEXTURE_ALBEDO]).sha256_text()
+	var dir := Common.LIBRARY_DIR.path_join("materials").path_join("textured")
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	var path := dir.path_join(key + ".res")
+	if ResourceLoader.exists(path):
+		var existing: StandardMaterial3D = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+		if existing != null and existing.get_meta("source_hash", "") == hash:
+			_materials[key] = load(path)
+			return _materials[key]
+	var image := Image.create_from_data(int(bake["width"]), int(bake["height"]), false,
+			Image.FORMAT_RGBA8, Marshalls.base64_to_raw(bake["rgba"]))
+	image.generate_mipmaps()
+	var material := StandardMaterial3D.new()
+	material.albedo_texture = ImageTexture.create_from_image(image)
+	material.albedo_color = TEXTURE_ALBEDO
+	material.uv1_scale = Vector3(bake["tiling"][0], bake["tiling"][1], 1.0)
+	material.roughness = 0.9
+	if unlit:
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	match blend:
+		"masked":
+			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+			material.alpha_scissor_threshold = 0.4
+			material.cull_mode = BaseMaterial3D.CULL_DISABLED
+		"translucent":
+			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.set_meta("source_hash", hash)
+	ResourceSaver.save(material, path, ResourceSaver.FLAG_COMPRESS)
+	_materials[key] = load(path)
+	return _materials[key]
 
 
 static func _vectors(encoded: String) -> PackedVector3Array:

@@ -21,9 +21,10 @@ from mapdump import MapReader
 #   interior        bool  false      first shell build: Sun off, SDFGI on
 #   initial_spawn   str   null       object name of the starting checkpoint/spawn
 #   outputs         dict  {}         {geometry: res path, shell: res path}
+#   texture_max_px  int   64         largest inline mip a material bake may use
 CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'anchor_filter': None,
-    'interior': False, 'initial_spawn': None, 'outputs': {},
+    'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 

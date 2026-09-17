@@ -31,7 +31,8 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 	var dir := Common.project_path(Common.EXTRACT_DIR).path_join(config["id"])
 	var manifest = Common.read_json(dir.path_join("manifest.json"))
 	var meshes = Common.read_json(dir.path_join("meshes.json"))
-	if manifest == null or meshes == null:
+	var bakes = Common.read_json(dir.path_join("materials.json"))
+	if manifest == null or meshes == null or bakes == null:
 		push_error("[me_level] run the extractor for %s first" % config["id"])
 		return false
 	# The manifest records the config it was extracted with; a stale extract
@@ -42,7 +43,7 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 		return false
 	var paths := Common.output_paths(config)
 
-	if not MeLibrary.new().build(meshes):
+	if not MeLibrary.new().build(meshes, bakes):
 		return false
 
 	var geometry: Node3D = GeometryBuilder.new().build(manifest, str(config["id"]).to_pascal_case() + "Geometry")

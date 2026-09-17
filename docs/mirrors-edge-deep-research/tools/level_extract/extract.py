@@ -19,6 +19,7 @@ from common import ExtractError, actor_scale, godot_basis, outer_class, point, r
 import annotations
 import lights
 import packages as pk
+import materials as material_bake
 import static_mesh
 
 # Safety rails, not tuning: a 16 km sky dome and light-shaft cards are not level.
@@ -42,8 +43,10 @@ def project_root():
 class MeshTable:
     """Every referenced StaticMesh, parsed once and checked for consistency by name."""
 
-    def __init__(self, packages, report):
+    def __init__(self, packages, report, baker):
         self.packages = packages
+        self.baker = baker
+        self.bakes = {}
         self.report = report
         self.records = {}
         self._soft = {}
@@ -66,7 +69,12 @@ class MeshTable:
         record['simple_shapes'] = shapes
         record['soft_landing'] = self._soft_landing(material)
         for surface in record['surfaces']:
-            surface.update(self._material(mr, surface.pop('material_ref')))
+            ref = surface.pop('material_ref')
+            surface.update(self._material(mr, ref))
+            material_name = surface['material']
+            if material_name and material_name not in self.bakes:
+                rr, ri = self.baker.resolve(mr, ref)
+                self.bakes[material_name] = self.baker.bake(rr, ri) if rr else None
         known = self.records.get(name)
         if known is None:
             self.records[name] = record
@@ -228,7 +236,7 @@ def main(config_path):
               'collision': {'none': 0, 'simple': 0, 'per_poly': 0},
               'counts': {'empty_actor': 0, 'excluded_by_config': 0, 'excluded_fx': 0,
                          'excluded_oversize': 0, 'excluded_by_anchor': 0}}
-    meshes = MeshTable(packages, report)
+    meshes = MeshTable(packages, report, material_bake.MaterialBaker(packages, int(config['texture_max_px']), report))
     defaults = annotations.blocking_defaults(packages)
     placements, found_lights, bsp = [], [], []
     notes = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
@@ -295,6 +303,9 @@ def main(config_path):
         json.dump(manifest, fh, ensure_ascii=False, separators=(',', ':'))
     with open(os.path.join(out_dir, 'meshes.json'), 'w', encoding='utf-8') as fh:
         json.dump(mesh_out, fh, ensure_ascii=False, separators=(',', ':'))
+    used_materials = {s['material'] for r in mesh_out.values() for s in r['surfaces']}
+    with open(os.path.join(out_dir, 'materials.json'), 'w', encoding='utf-8') as fh:
+        json.dump({n: b for n, b in meshes.bakes.items() if b and n in used_materials}, fh, separators=(',', ':'))
     print(json.dumps(report, ensure_ascii=False, indent=1))
     print('-> %s' % out_dir)
 

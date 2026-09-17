@@ -12,7 +12,7 @@ contain no original data.
 
 ```powershell
 # 1. Extract (Python via uv; writes _local/me-reference/level-extract/<id>/)
-uv run --no-project --python 3.12 --with lzallright `
+uv run --no-project --python 3.12 --with lzallright --with numpy `
     docs/mirrors-edge-deep-research/tools/level_extract/extract.py `
     .private/scenes/local_debug_levels/mirrors_edge/levels/sp02_stdp.json
 
@@ -100,3 +100,23 @@ neighbouring sections and `_Bac` is the skyline.
 **Blocking volume flags.** `bExludeHandMoves` / `bExludeFootMoves` (sic) default
 from `Engine.u`'s `Default__BlockingVolume`; the extractor refuses a volume whose
 archetype is outside its package and does not set both.
+
+**Textures are baked, not copied.** The original packs data into channels and
+tints with parameters: the skyscrapers' `_D` texture is R and G detail plus a
+B glass mask, averaged and multiplied by a `DiffuseColor` parameter, and drawn
+as-is it is a yellow and blue stripe. `materials.py` evaluates the part of each
+material's expression graph that reaches `DiffuseColor` and `Opacity`/`OpacityMask`
+per pixel (texture samples with channel masks, arithmetic, lerp, parameters with
+MaterialInstance overrides, static switches at their defaults). Cube maps,
+pixel depth and fresnel become 0.5. An `ExpressionInput` is itself a tagged
+struct: `Expression` plus `MaskR/G/B/A`.
+
+**Only inline mips, up to `texture_max_px`.** Small mips are stored in the
+cooked package, some LZO-chunked (tag `0x9E2A83C1`); the full-size mip lives in
+the texture's source package and is deliberately not read.
+
+**UV set and tiling come from the TextureCoordinate node** feeding the sample,
+sometimes through a static switch; facade materials sample set 1. When a graph
+samples several coordinates, the first sample with an explicit coordinate
+decides: an unconnected sample is usually a tiling-1 variation mask, and taking
+its tiling turned the chain-link fence into one knot per panel.

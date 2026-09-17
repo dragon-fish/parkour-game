@@ -78,6 +78,9 @@ def parse_render(mr, idx):
         raise ExtractError('%s: element triangles do not sum to the index buffer' % where)
 
     slack = max(1.0, 0.01 * max(ex, ey, ez))
+    uv_format = '<2f' if full_uvs else '<2e'
+    uv_size = 8 if full_uvs else 4
+    uvs = [[] for _ in range(min(tex_coords, 2))]
     vertices, normals = [], []
     zero_normals = False
     for k in range(vertex_count):
@@ -85,6 +88,8 @@ def parse_render(mr, idx):
         if abs(x - ox) > ex + slack or abs(y - oy) > ey + slack or abs(z - oz) > ez + slack:
             raise ExtractError('%s: vertex %d outside bounds' % (where, k))
         vertices.extend(to_godot(x, y, z))
+        for channel, out in enumerate(uvs):
+            out.extend(struct.unpack_from(uv_format, d, vertex_start + k * stride + 12 + channel * uv_size))
         packed = d[vertex_start + k * stride + 4:vertex_start + k * stride + 7]
         if packed == ZERO_NORMAL:
             zero_normals = True
@@ -108,6 +113,9 @@ def parse_render(mr, idx):
     return {
         'vertices': _b64('f', vertices),
         'normals': None if zero_normals else _b64('f', normals),
+        # Texture coordinates by set: 0 for textures, 1 is usually the lightmap
+        # set, which some facade materials also sample.
+        'uvs': [_b64('f', channel) for channel in uvs],
         'vertex_count': vertex_count,
         'triangle_count': index_count // 3,
         'kdop_triangles': kdop_triangles,
