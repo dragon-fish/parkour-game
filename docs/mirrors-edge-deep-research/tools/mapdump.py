@@ -42,9 +42,11 @@ class MapReader:
                 props.append((name, typ, extra, q, sz, arr)); p = q + sz
         return (False, props, p)
 
-    def props(self, idx):
-        """Self-calibrating property read of export #idx (1-based).
-        Returns (dict, native_start) or (None, None)."""
+    def chain_of(self, idx):
+        """Calibrated raw tag chain of export #idx (1-based):
+        [(name, type, struct_name, value_offset, size, array_index), ...].
+        The offsets let a caller decode payloads props() leaves as 'raw'
+        (arrays, nested structs) without re-deriving the calibration."""
         e = self.pkg.exports[idx - 1]
         base, end = e['offset'], e['offset'] + e['size']
         best = None
@@ -52,6 +54,13 @@ class MapReader:
             ok, pr, nat = self._chain(base + off, end)
             if ok and (best is None or len(pr) > len(best[0])):
                 best = (pr, nat)
+        return best or ([], None)
+
+    def props(self, idx):
+        """Self-calibrating property read of export #idx (1-based).
+        Returns (dict, native_start) or (None, None)."""
+        pr, nat = self.chain_of(idx)
+        best = (pr, nat) if pr or nat is not None else None
         if best is None:
             return (None, None)
         out = {}

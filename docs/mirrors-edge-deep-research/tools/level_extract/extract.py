@@ -1,0 +1,272 @@
+"""Extract one Mirror's Edge level (config-selected packages) into a manifest.
+
+    uv run --no-project --python 3.12 --with lzallright \\
+        docs/mirrors-edge-deep-research/tools/level_extract/extract.py <config.json>
+
+Writes _local/me-reference/level-extract/<id>/{manifest,meshes}.json. Both are
+regenerable and never committed. The Godot side (tools/me_level/) builds the
+mesh library, geometry scene and shell from them.
+"""
+import json
+import math
+import os
+import sys
+
+sys.stdout.reconfigure(encoding='utf-8')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from common import ExtractError, actor_scale, godot_basis, outer_class, point, ref_export, ref_import, import_root_package
+import annotations
+import lights
+import packages as pk
+import static_mesh
+
+# Safety rails, not tuning: a 16 km sky dome and light-shaft cards are not level.
+MAX_EXTENT_M = 250.0
+FX_MESH_MARKERS = ('_FX_', 'SkyDome', 'Sunflare', 'GodRay')
+# Checkpoints are taken from the persistent level when they fall inside the
+# section's own placements (background _Bac packages excluded), grown by this.
+SECTION_MARGIN_M = 2.0
+
+
+def project_root():
+    here = os.path.abspath(os.path.dirname(__file__))
+    while not os.path.exists(os.path.join(here, 'project.godot')):
+        parent = os.path.dirname(here)
+        if parent == here:
+            raise ExtractError('project.godot not found above %s' % __file__)
+        here = parent
+    return here
+
+
+class MeshTable:
+    """Every referenced StaticMesh, parsed once and checked for consistency by name."""
+
+    def __init__(self, packages, report):
+        self.packages = packages
+        self.report = report
+        self.records = {}
+        self._soft = {}
+        self._parsed = {}
+
+    def get(self, mr, export_idx):
+        key = (mr.label, export_idx)
+        if key in self._parsed:
+            return self._parsed[key]
+        self._parsed[key] = self._load(mr, export_idx)
+        return self._parsed[key]
+
+    def _load(self, mr, export_idx):
+        name = mr.pkg.exports[export_idx - 1]['name']
+        record = static_mesh.parse_render(mr, export_idx)
+        shapes, material = static_mesh.simple_collision(mr, record.pop('body_setup'))
+        record['name'] = name
+        record['source'] = mr.label
+        record['simple_shapes'] = shapes
+        record['soft_landing'] = self._soft_landing(material)
+        known = self.records.get(name)
+        if known is None:
+            self.records[name] = record
+            return record
+        for key in ('vertex_count', 'triangle_count'):
+            if known[key] != record[key]:
+                raise ExtractError('mesh %s differs between %s and %s (%s %s vs %s)'
+                                   % (name, known['source'], record['source'], key, known[key], record[key]))
+        for a, b in zip(known['bounds']['extent'], record['bounds']['extent']):
+            if abs(a - b) > 0.01:
+                raise ExtractError('mesh %s bounds differ between %s and %s'
+                                   % (name, known['source'], record['source']))
+        return known
+
+    def resolve(self, mr, reference):
+        """(record) for a StaticMesh object property, local or imported."""
+        if isinstance(reference, tuple) and len(reference) == 3 and reference[0] == 'ext':
+            mr, reference = reference[1], ('obj', reference[2])
+        local = ref_export(reference)
+        if local:
+            return self.get(mr, local)
+        imported = ref_import(reference)
+        if imported is None:
+            return None
+        name = mr.pkg.imports[imported]['name']
+        if name in self.records:
+            return self.records[name]
+        shared = self.packages.shared_reader(import_root_package(mr.pkg, imported))
+        if shared is None:
+            raise ExtractError('%s: mesh %s imports from a package that is not installed' % (mr.label, name))
+        idx = next((i for i, e in enumerate(shared.pkg.exports, 1)
+                    if e['name'] == name and shared.pkg.class_of(e) == 'StaticMesh'), None)
+        if idx is None:
+            raise ExtractError('%s: mesh %s not found in %s' % (mr.label, name, shared.label))
+        return self.get(shared, idx)
+
+    def _soft_landing(self, material):
+        if not material:
+            return False
+        if material not in self._soft:
+            library = self.packages.shared_reader('TDPhysicalMaterials')
+            idx = next((i for i, e in enumerate(library.pkg.exports, 1) if e['name'] == material), None)
+            soft = False
+            if idx is not None:
+                prop = ref_export((library.props(idx)[0] or {}).get('PhysicalMaterialProperty'))
+                soft = bool(prop and (library.props(prop)[0] or {}).get('bEnableSoftLanding'))
+            self._soft[material] = soft
+        return self._soft[material]
+
+
+def collision_class(actor, component, record):
+    if actor.get('bCollideActors') is False or component.get('CollideActors') is False \
+            or component.get('BlockActors') is False:
+        return 'none'
+    if record['simple_shapes'] and record['use_simple_box_collision'] is not False:
+        return 'simple'
+    if record['collide_triangles'] == 0:
+        return 'none'
+    return 'per_poly'
+
+
+def world_aabb(record, position, basis):
+    origin, extent = record['bounds']['origin'], record['bounds']['extent']
+    lo, hi = [math.inf] * 3, [-math.inf] * 3
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            for sz in (-1, 1):
+                local = [origin[0] + sx * extent[0], origin[1] + sy * extent[1], origin[2] + sz * extent[2]]
+                world = [position[k] + sum(basis[c][k] * local[c] for c in range(3)) for k in range(3)]
+                lo = [min(lo[k], world[k]) for k in range(3)]
+                hi = [max(hi[k], world[k]) for k in range(3)]
+    return lo, hi
+
+
+def component_props(packages, mr, reference):
+    if isinstance(reference, tuple) and len(reference) == 3 and reference[0] == 'ext':
+        return pk.resolved_props(packages, reference[1], reference[2])[0]
+    idx = ref_export(reference)
+    return pk.resolved_props(packages, mr, idx)[0] if idx else {}
+
+
+def collect_placements(mr, meshes, config, report):
+    pkg = mr.pkg
+    out = []
+    for i, e in enumerate(pkg.exports, 1):
+        if pkg.class_of(e) != 'StaticMeshActor' or outer_class(pkg, e) != 'Level':
+            continue
+        actor, _ = pk.resolved_props(meshes.packages, mr, i)
+        if 'Location' not in actor:
+            continue
+        component = component_props(meshes.packages, mr, actor.get('StaticMeshComponent'))
+        record = meshes.resolve(mr, component.get('StaticMesh'))
+        if record is None:
+            # No StaticMesh anywhere in the archetype chain: an empty actor that
+            # renders nothing in the original either. A reference that cannot be
+            # FOUND raises inside resolve().
+            report['counts']['empty_actor'] += 1
+            continue
+        name = record['name']
+        if name in config['exclude_meshes']:
+            report['counts']['excluded_by_config'] += 1
+            continue
+        if any(marker in name for marker in FX_MESH_MARKERS):
+            report['counts']['excluded_fx'] += 1
+            continue
+        position = point(actor['Location'])
+        basis = godot_basis(actor.get('Rotation') or (0, 0, 0), actor_scale(actor))
+        lo, hi = world_aabb(record, position, basis)
+        if max(hi[k] - lo[k] for k in range(3)) > MAX_EXTENT_M:
+            report['counts']['excluded_oversize'] += 1
+            continue
+        collision = collision_class(actor, component, record)
+        report['collision'][collision] += 1
+        out.append({'name': e['name'], 'package': mr.label, 'mesh': name, 'position': position,
+                    'basis': basis, 'collision': collision, 'soft_landing': record['soft_landing'],
+                    'aabb': {'min': lo, 'max': hi}})
+    return out
+
+
+def distance_to_box(p, lo, hi):
+    return math.sqrt(sum(max(lo[k] - p[k], 0.0, p[k] - hi[k]) ** 2 for k in range(3)))
+
+
+def main(config_path):
+    config = pk.load_config(config_path)
+    root = project_root()
+    out_dir = os.path.join(root, '_local', 'me-reference', 'level-extract', config['id'])
+    packages = pk.PackageSet(root, config, os.path.join(root, '_local', 'me-reference', 'level-extract', '_cache'))
+    report = {'packages': packages.names, 'unmapped': {},
+              'collision': {'none': 0, 'simple': 0, 'per_poly': 0},
+              'counts': {'empty_actor': 0, 'excluded_by_config': 0, 'excluded_fx': 0,
+                         'excluded_oversize': 0, 'excluded_by_anchor': 0}}
+    meshes = MeshTable(packages, report)
+    defaults = annotations.blocking_defaults(packages)
+    placements, found_lights, bsp = [], [], []
+    notes = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
+    for name in packages.names:
+        mr = packages.reader(name)
+        placements += collect_placements(mr, meshes, config, report)
+        for key, values in annotations.collect(mr, defaults, report).items():
+            notes[key] += values
+        found_lights += lights.collect_lights(mr)
+        bsp += lights.collect_bsp(mr)
+        print('%-36s placements so far %5d' % (name, len(placements)))
+
+    if config['sections']:
+        persistent = annotations.collect(packages.reader(packages.persistent), defaults, {'unmapped': {}})
+        section = [p for p in placements if '_bac' not in p['package'].lower()]
+        if not section:
+            raise ExtractError('no non-background placements to bound the section')
+        lo = [min(p['position'][k] for p in section) - SECTION_MARGIN_M for k in range(3)]
+        hi = [max(p['position'][k] for p in section) + SECTION_MARGIN_M for k in range(3)]
+        notes['checkpoints'] += [c for c in persistent['checkpoints']
+                                 if all(lo[k] <= c['position'][k] <= hi[k] for k in range(3))]
+
+    if config['anchor_filter']:
+        radius = float(config['anchor_filter']['radius_m'])
+        anchors = notes['anchors'] + [s['position'] for s in notes['spawns']] \
+            + [a['position'] for a in notes['annotations']] + [c['position'] for c in notes['checkpoints']]
+        kept = [p for p in placements
+                if min(distance_to_box(a, p['aabb']['min'], p['aabb']['max']) for a in anchors) <= radius]
+        report['counts']['excluded_by_anchor'] = len(placements) - len(kept)
+        placements = kept
+
+    if config['initial_spawn']:
+        names = [s['name'] for s in notes['spawns'] + notes['checkpoints']]
+        if config['initial_spawn'] not in names:
+            raise ExtractError('initial_spawn %r is not among %s' % (config['initial_spawn'], names))
+
+    used = {p['mesh'] for p in placements}
+    mesh_out = {n: r for n, r in meshes.records.items() if n in used}
+    report['meshes'] = len(mesh_out)
+    report['meshes_without_normals'] = sorted(n for n, r in mesh_out.items() if r['normals'] is None)
+    report['kdop_mismatch'] = sorted(n for n, r in mesh_out.items() if r['kdop_triangles'] != r['collide_triangles'])
+    report['lights'] = {}
+    for light in found_lights:
+        report['lights'][light['class']] = report['lights'].get(light['class'], 0) + 1
+    report['annotations'] = {}
+    for a in notes['annotations']:
+        report['annotations'][a['kind']] = report['annotations'].get(a['kind'], 0) + 1
+    report['spawns'] = len(notes['spawns'])
+    report['checkpoints'] = len(notes['checkpoints'])
+    report['placements'] = len(placements)
+    report['bsp_polygons'] = len(bsp)
+
+    os.makedirs(out_dir, exist_ok=True)
+    manifest = {'config': config, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
+                'annotations': notes['annotations'], 'spawns': notes['spawns'],
+                'checkpoints': notes['checkpoints'], 'report': report}
+    with open(os.path.join(out_dir, 'manifest.json'), 'w', encoding='utf-8') as fh:
+        json.dump(manifest, fh, ensure_ascii=False, separators=(',', ':'))
+    with open(os.path.join(out_dir, 'meshes.json'), 'w', encoding='utf-8') as fh:
+        json.dump(mesh_out, fh, ensure_ascii=False, separators=(',', ':'))
+    print(json.dumps(report, ensure_ascii=False, indent=1))
+    print('-> %s' % out_dir)
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print(__doc__)
+        sys.exit(2)
+    try:
+        main(sys.argv[1])
+    except ExtractError as error:
+        print('EXTRACT FAILED: %s' % error)
+        sys.exit(1)
