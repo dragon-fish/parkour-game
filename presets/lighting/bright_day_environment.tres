@@ -1,0 +1,24 @@
+[gd_resource type="Environment" format=3]
+
+[ext_resource type="Sky" path="res://presets/lighting/bright_day_sky.tres" id="1_yxns7"]
+
+[resource]
+background_mode = 2
+sky = ExtResource("1_yxns7")
+ambient_light_source = 3
+ambient_light_color = Color(0.22352941, 0.46666667, 0.7411765, 1)
+ambient_light_sky_contribution = 0.6
+ambient_light_energy = 0.6
+tonemap_mode = 2
+tonemap_exposure = 0.6
+ssr_enabled = true
+ssr_max_steps = 32
+ssao_enabled = true
+ssao_radius = 1.5
+sdfgi_enabled = true
+sdfgi_energy = 1.2
+glow_enabled = true
+glow_bloom = 0.05
+adjustment_enabled = true
+adjustment_contrast = 1.1
+adjustment_saturation = 0.9

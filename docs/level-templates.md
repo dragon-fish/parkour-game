@@ -191,6 +191,37 @@ Fog is **not** baked into either scene's `Environment` resource — not
 
 Press play to see the fog. F1 to tune it.
 
+## Lighting preset: bright day
+
+`presets/lighting/bright_day_*` is an opt-in look for an outdoor level: a pale
+blue sky, strong warm sun, cold blue shadows, a faint warm haze, and exposure
+that adapts when the camera moves between bright and dark areas. Its starting
+values were read from the Mirror's Edge tutorial level's own lights and
+post-process settings, then tuned by eye on captures.
+
+To use it in a level that inherits `base_level.tscn`:
+
+| Node | Property | Value |
+|---|---|---|
+| `WorldEnvironment` | `environment` | `bright_day_environment.tres` |
+| `WorldEnvironment` | `camera_attributes` | `bright_day_camera.tres` |
+| root (`Arena`) | `fog` | `bright_day_fog.tres` |
+| `Sun` | `rotation_degrees` | `(-53, 146, 0)` |
+| `Sun` | `light_color` | `(1.0, 0.96, 0.88)` |
+| `Sun` | `light_energy` | `1.4` |
+
+The sun is a node in the template, not a resource, so those three values are
+set on the level's own `Sun`.
+
+- **The cold ambient tint still works.** The environment takes 60 % of its
+  ambient light from the sky and 40 % from `ambient_light_color`, which `Arena`
+  drives from `ambient_cold_strength` every frame. Drag that dial to move the
+  shadows between neutral and blue.
+- **Exposure is automatic within 0.5x to 1.5x** (`auto_exposure_min/max_sensitivity`
+  50 / 150). Shared resources: editing a preset file changes every level that
+  uses it. To tune one level only, make the resource unique in that level.
+- **It costs more than the template default**: SDFGI, SSAO and glow are on.
+
 ## Traps
 
 ### `TuningPanel` is found by name, not by type or export

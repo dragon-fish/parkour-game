@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="FogConfig" format=3]
+
+[ext_resource type="Script" path="res://scripts/level/fog_config.gd" id="1_1nbew"]
+
+[resource]
+script = ExtResource("1_1nbew")
+fade_begin_distance = 120.0
+fade_end_distance = 900.0
+max_opacity = 0.35
+tint = Color(0.95, 0.92, 0.84, 1)
+sky_affect = 0.1
