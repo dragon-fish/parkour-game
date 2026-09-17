@@ -31,7 +31,8 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 	var pipe_line := _ladder_samples(manifest["annotations"])
 	var names := Common.NameAllocator.new()
 	var library := {}
-	var counts := {none = 0, simple = 0, per_poly = 0, grip = 0}
+	var counts := {none = 0, simple = 0, per_poly = 0, grip = 0, stretched = 0}
+	_stretched_shapes.clear()
 	for placement: Dictionary in manifest["placements"]:
 		var mesh_name: String = placement["mesh"]
 		if not library.has(mesh_name):
@@ -44,7 +45,6 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		counts[collision] += 1
 		var node: Node3D = Node3D.new() if collision == "none" else StaticBody3D.new()
 		node.name = names.take(mesh_name)
-		node.transform = Common.transform_of(placement)
 		node.set_meta("me_collision", collision)
 		if placement["soft_landing"]:
 			node.add_to_group("soft_landing", true)
@@ -52,17 +52,70 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		instance.name = "Mesh"
 		instance.mesh = mesh
 		node.add_child(instance)
+		var transform := Common.transform_of(placement)
+		var stretch := Basis()
+		if collision != "none" and not _is_uniform(transform.basis):
+			# Godot physics does not support non-uniform scale on a body or its
+			# shapes: the collision stops matching what is drawn. The body keeps
+			# rotation only; the mesh carries the stretch and the shapes bake it.
+			var rotation := transform.basis.orthonormalized()
+			if rotation.determinant() < 0.0:
+				rotation.x = -rotation.x
+			stretch = rotation.inverse() * transform.basis
+			transform.basis = rotation
+			instance.transform = Transform3D(stretch)
+			counts.stretched += 1
+		node.transform = transform
 		if collision == "simple":
 			var shape_names := Common.NameAllocator.new()
 			for shape: Shape3D in mesh.get_meta("simple_shapes"):
-				_add_shape(node, shape, shape_names.take("Collision"))
+				_add_shape(node, _stretched(shape, stretch), shape_names.take("Collision"))
 		elif collision == "per_poly":
-			_add_shape(node, mesh.get_meta("per_poly_shape"), "Collision")
+			_add_shape(node, _stretched(mesh.get_meta("per_poly_shape"), stretch), "Collision")
 		geometry.add_child(node)
 	print("[me_level] placements: ", counts)
 	root.add_child(_build_bsp(manifest["bsp"]))
 	root.add_child(_build_lights(manifest["lights"]))
 	return root
+
+
+var _stretched_shapes := {}
+
+
+static func _is_uniform(basis: Basis) -> bool:
+	var scale := basis.get_scale().abs()
+	return basis.determinant() > 0.0 and absf(scale.x - scale.y) < 0.001 and absf(scale.y - scale.z) < 0.001
+
+
+## A copy of a library shape with the placement's stretch baked in, shared by
+## every placement of the same shape and stretch.
+func _stretched(shape: Shape3D, stretch: Basis) -> Shape3D:
+	if stretch == Basis():
+		return shape
+	var key := [shape.get_instance_id(), stretch]
+	if _stretched_shapes.has(key):
+		return _stretched_shapes[key]
+	var copy: Shape3D
+	if shape is ConvexPolygonShape3D:
+		var points := PackedVector3Array()
+		for p in (shape as ConvexPolygonShape3D).points:
+			points.append(stretch * p)
+		copy = ConvexPolygonShape3D.new()
+		copy.points = points
+	else:
+		var faces := (shape as ConcavePolygonShape3D).get_faces()
+		var mirrored := stretch.determinant() < 0.0
+		var out := PackedVector3Array()
+		out.resize(faces.size())
+		for i in range(0, faces.size(), 3):
+			# A mirror flips winding; keep the faces' front where it was.
+			out[i] = stretch * faces[i]
+			out[i + 1] = stretch * faces[i + 2 if mirrored else i + 1]
+			out[i + 2] = stretch * faces[i + 1 if mirrored else i + 2]
+		copy = ConcavePolygonShape3D.new()
+		(copy as ConcavePolygonShape3D).set_faces(out)
+	_stretched_shapes[key] = copy
+	return copy
 
 
 func _add_shape(node: Node3D, shape: Shape3D, name: String) -> void:
