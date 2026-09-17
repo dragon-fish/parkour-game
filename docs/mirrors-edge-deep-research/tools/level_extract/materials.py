@@ -105,19 +105,31 @@ class MaterialBaker:
         if not root_reader:
             self.stats['no_root_material'] += 1
             return None
-        ev = Evaluator(self, root_reader, params)
-        ins = ev.inputs(root)
-        diffuse = ins.get('DiffuseColor') or ins.get('EmissiveColor')
-        if not diffuse or diffuse['expr'] <= 0:
-            self.stats['no_diffuse_input'] += 1
-            return None
-        try:
-            color = ev.value(diffuse, np.full(3, 0.5))
-            opacity = ins.get('OpacityMask') or ins.get('Opacity')
-            alpha = ev.value(opacity, np.ones(1)) if opacity else np.ones(1)
-        except (IndexError, ValueError) as error:
-            self.stats['evaluation_error ' + type(error).__name__] += 1
-            return None
+        # Two passes. The first finds which coordinate the image is baked in; the
+        # second evaluates again with every sample on another coordinate reduced
+        # to its average colour. Baking a whole-road dirt map (UV set 0, tiling
+        # 1) into asphalt space (UV set 1) repeated the map in every tile.
+        coord = None
+        for _ in range(2):
+            ev = Evaluator(self, root_reader, params, coord)
+            ins = ev.inputs(root)
+            diffuse = ins.get('DiffuseColor') or ins.get('EmissiveColor')
+            if not diffuse or diffuse['expr'] <= 0:
+                self.stats['no_diffuse_input'] += 1
+                return None
+            try:
+                color = ev.value(diffuse, np.full(3, 0.5))
+                opacity = ins.get('OpacityMask') or ins.get('Opacity')
+                alpha = ev.value(opacity, np.ones(1)) if opacity else np.ones(1)
+            except (IndexError, ValueError) as error:
+                self.stats['evaluation_error ' + type(error).__name__] += 1
+                return None
+            explicit = [c for has, c in ev.coords if has]
+            chosen = explicit[0] if explicit else (ev.coords[0][1] if ev.coords else PLAIN_COORDINATE)
+            if coord is not None or len({c for _, c in ev.coords}) <= 1:
+                break
+            coord = chosen
+            self.stats['mixed_coordinates'] += 1
         for cls, n in ev.unsupported.items():
             self.stats['unsupported ' + cls] += n
         shape = ev.shape or (4, 4)
@@ -126,10 +138,7 @@ class MaterialBaker:
         alpha = alpha[..., :1]
         alpha = np.broadcast_to(alpha, shape + (1,)) if alpha.ndim == 1 else resize(alpha, shape)
         rgba = np.clip(np.concatenate([color, alpha], -1), 0.0, 1.0)
-        explicit = [c for has, c in ev.coords if has]
-        coord = explicit[0] if explicit else (ev.coords[0][1] if ev.coords else PLAIN_COORDINATE)
-        if len({c for _, c in ev.coords}) > 1:
-            self.stats['mixed_coordinates'] += 1
+        coord = chosen
         if coord[0] == 'computed':
             self.stats['computed_coordinates'] += 1
             coord = PLAIN_COORDINATE
@@ -144,7 +153,7 @@ class MaterialBaker:
         pkg = mr.pkg
         if pkg.class_of(pkg.exports[idx - 1]) == 'Material':
             return mr, idx
-        for (n, _typ, _extra, q, sz, _arr) in mr.chain_of(idx)[0]:
+        for (n, _typ, _extra, q, sz, _arr) in expression_chain(mr, idx):
             if n not in ('VectorParameterValues', 'ScalarParameterValues', 'TextureParameterValues'):
                 continue
             count = struct.unpack_from('<i', mr.d, q)[0]
@@ -163,7 +172,7 @@ class MaterialBaker:
                 else:
                     value = (mr, struct.unpack_from('<i', mr.d, vq)[0])
                 params.setdefault(name, value)
-        parent = (mr.props(idx)[0] or {}).get('Parent')
+        parent = {n: mr._value(t, x, q, s) for (n, t, x, q, s, _a) in expression_chain(mr, idx)}.get('Parent')
         if not isinstance(parent, tuple) or depth > 8:
             return None, None
         pr, pi = self.resolve(mr, parent[1])
@@ -178,8 +187,9 @@ class Evaluator:
     image size; later samples are resampled onto it.
     """
 
-    def __init__(self, baker, mr, params):
+    def __init__(self, baker, mr, params, coordinate=None):
         self.baker = baker
+        self.coordinate_filter = coordinate
         self.mr = mr
         self.params = params
         self.shape = None
@@ -187,8 +197,11 @@ class Evaluator:
         self.unsupported = collections.Counter()
 
     def inputs(self, idx):
-        return {n: _link(self.mr, q, sz) for (n, _typ, extra, q, sz, _arr) in self.mr.chain_of(idx)[0]
+        return {n: _link(self.mr, q, sz) for (n, _typ, extra, q, sz, _arr) in expression_chain(self.mr, idx)
                 if extra and ('ExpressionInput' in extra or 'MaterialInput' in extra)}
+
+    def props(self, idx):
+        return {name: self.mr._value(typ, extra, q, sz) for (name, typ, extra, q, sz, _arr) in expression_chain(self.mr, idx)}
 
     def value(self, link, default):
         if not link or link['expr'] <= 0:
@@ -205,7 +218,7 @@ class Evaluator:
     def node(self, idx):
         mr = self.mr
         cls = mr.pkg.class_of(mr.pkg.exports[idx - 1])
-        props = mr.props(idx)[0] or {}
+        props = self.props(idx)
         ins = self.inputs(idx)
         one, zero = np.ones(1), np.zeros(1)
         name = props.get('ParameterName')
@@ -218,6 +231,8 @@ class Evaluator:
             pixels = self.baker.texture(reader, ref)
             if pixels is None:
                 return np.full(4, 0.5)
+            if self.coordinate_filter is not None and self.coords[-1][1] != self.coordinate_filter:
+                return pixels.mean(axis=(0, 1))
             if self.shape is None:
                 self.shape = pixels.shape[:2]
             return resize(pixels, self.shape)
@@ -297,7 +312,7 @@ class Evaluator:
         idx = link['expr']
         for _ in range(8):
             cls = self.mr.pkg.class_of(self.mr.pkg.exports[idx - 1])
-            props = self.mr.props(idx)[0] or {}
+            props = self.props(idx)
             if cls == 'MaterialExpressionTextureCoordinate':
                 return (props.get('CoordinateIndex', 0), props.get('UTiling', 1.0), props.get('VTiling', 1.0))
             if not cls.startswith('MaterialExpressionStaticSwitch'):
@@ -307,6 +322,20 @@ class Evaluator:
                 return PLAIN_COORDINATE
             idx = nxt['expr']
         return ('computed', 1.0, 1.0)
+
+
+def expression_chain(mr, idx):
+    """Tagged properties of a material or expression node, read from the start
+    of the object. DO NOT use MapReader.chain_of() here: it keeps the LONGEST
+    chain found at any offset, and a Multiply whose A input is a five-field
+    ExpressionInput struct then reads as that struct, losing A and B."""
+    export = mr.pkg.exports[idx - 1]
+    end = export['offset'] + export['size']
+    for offset in (4, 0):
+        ok, chain, _native = mr._chain(export['offset'] + offset, end)
+        if ok and chain:
+            return chain
+    return mr.chain_of(idx)[0]
 
 
 def _link(mr, q, sz):
@@ -325,7 +354,7 @@ def _link(mr, q, sz):
 
 
 def _linear_color(mr, idx, name):
-    for (n, _typ, extra, q, sz, _arr) in mr.chain_of(idx)[0]:
+    for (n, _typ, extra, q, sz, _arr) in expression_chain(mr, idx):
         if n == name and extra == 'LinearColor' and sz == 16:
             return np.array(struct.unpack_from('<4f', mr.d, q))
     return None
