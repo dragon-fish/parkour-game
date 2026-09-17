@@ -23,7 +23,10 @@ func build(meshes: Dictionary) -> bool:
 	var built := 0
 	for mesh_name: String in meshes:
 		var record: Dictionary = meshes[mesh_name]
-		var hash := JSON.stringify(record).sha256_text()
+		# Which package a mesh was read from differs between levels; the mesh does not.
+		var content := record.duplicate()
+		content.erase("source")
+		var hash := JSON.stringify(content, "", true).sha256_text()
 		var path := path_for(mesh_name)
 		if ResourceLoader.exists(path):
 			var existing: Resource = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
