@@ -34,6 +34,13 @@ extends Resource
 ## [ME:CONFIRMED 06 §6.2] bConstrainLook.
 @export var constrain_look: bool = false
 
+## Drops the PITCH half of the clamp while the camera is in third person; yaw
+## stays clamped. The original's pitch clamps are written for the first-person
+## eye, which some moves carry through its own sweep (the skill roll's pitch
+## runs to +180 because the eye rolls over with the body). Seen from outside
+## the eye does not travel, so that clamp only takes the mouse away.
+@export var third_person_frees_pitch: bool = false
+
 ## Whether the yaw half of the clamp is measured against a fixed world yaw
 ## captured on entering the move, rather than against the current facing.
 ## [ME:CONFIRMED 04 §4.1] bUseAbsoluteYawConstraint = True on WallRun.

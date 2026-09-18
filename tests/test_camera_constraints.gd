@@ -451,3 +451,26 @@ func test_leaving_the_beam_eases_the_roll_back_rather_than_cutting_it() -> void:
 	rig.get_parent().queue_free()
 	await step(1)
 
+
+func _rolling_rig(third_person: bool) -> CameraRig:
+	var rig := _rig()
+	await step(1)
+	rig.third_person = third_person
+	(rig.get_parent() as Player).move_manager.start(Move.SKILL_ROLL)
+	for i in 200:
+		rig.apply_look(Vector2(0.0, 100.0), rig.get_parent())
+	return rig
+
+func test_a_first_person_skill_roll_keeps_its_pitch_floor() -> void:
+	var rig: CameraRig = await _rolling_rig(false)
+	assert_true(rig.rotation.x >= -deg_to_rad(11.1),
+		"the first-person roll let the view below its -11 degree floor: %.1f" % rad_to_deg(rig.rotation.x))
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_a_third_person_skill_roll_frees_the_pitch() -> void:
+	var rig: CameraRig = await _rolling_rig(true)
+	assert_lt(rig.rotation.x, -deg_to_rad(30.0),
+		"the third-person roll still held the first-person pitch floor: %.1f" % rad_to_deg(rig.rotation.x))
+	rig.get_parent().queue_free()
+	await step(1)
