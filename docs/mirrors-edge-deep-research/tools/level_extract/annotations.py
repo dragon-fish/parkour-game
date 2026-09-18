@@ -30,6 +30,18 @@ def _raw_entry(mr, idx, name):
     return None
 
 
+def string_property(mr, idx, name):
+    """A StrProperty's text, or '' when absent. Negative length is UTF-16."""
+    entry = _raw_entry(mr, idx, name)
+    if not entry:
+        return ''
+    q = entry[2]
+    n = struct.unpack_from('<i', mr.d, q)[0]
+    if n > 0:
+        return mr.d[q + 4:q + 4 + n - 1].decode('latin-1')
+    return mr.d[q + 4:q + 4 - 2 * n - 2].decode('utf-16-le')
+
+
 def vector_array(mr, idx, name):
     entry = _raw_entry(mr, idx, name)
     if not entry:
@@ -149,6 +161,12 @@ def collect(mr, defaults, report):
         if cls in ('TdTutorialStart', 'TdCheckpoint', 'PlayerStart'):
             entry = {'name': e['name'], 'class': cls, 'package': mr.label,
                      'position': position, 'yaw_deg': round(-90.0 - rotation[1] * ROT, 3)}
+            if cls == 'TdCheckpoint':
+                # The level designer's own name, the chapter order (weight
+                # grows along the level) and the level-start flag.
+                entry['label'] = string_property(mr, i, 'CheckpointName')
+                entry['weight'] = props.get('CheckpointWeight', 0)
+                entry['default'] = bool(props.get('DefaultCheckpoint', False))
             (out['spawns'] if cls == 'TdTutorialStart' else out['checkpoints']).append(entry)
             continue
         annotation = {'kind': VOLUME_KINDS[cls], 'name': e['name'], 'package': mr.label,

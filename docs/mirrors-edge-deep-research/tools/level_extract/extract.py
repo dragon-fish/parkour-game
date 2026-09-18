@@ -267,6 +267,8 @@ def main(config_path):
         notes['checkpoints'] += [c for c in persistent['checkpoints']
                                  if all(lo[k] <= c['position'][k] <= hi[k] for k in range(3))]
 
+    notes['checkpoints'].sort(key=lambda c: c.get('weight', 0))
+
     if config['anchor_filter']:
         radius = float(config['anchor_filter']['radius_m'])
         anchors = notes['anchors'] + [s['position'] for s in notes['spawns']] \

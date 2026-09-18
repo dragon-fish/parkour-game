@@ -413,7 +413,7 @@ func _checkpoints(manifest: Dictionary) -> Node3D:
 			continue
 		var checkpoint := Area3D.new()
 		checkpoint.set_script(CHECKPOINT_SCRIPT)
-		checkpoint.name = names.take(c["name"])
+		checkpoint.name = names.take(c["label"] if c.get("label", "") != "" else c["name"])
 		checkpoint.transform = _spawn_transform(c)
 		var box := BoxShape3D.new()
 		box.size = Vector3.ONE * CHAPTER_CHECKPOINT_BOX_M
@@ -430,8 +430,14 @@ func _place_spawn(root: Node3D, manifest: Dictionary) -> void:
 	if candidates.is_empty():
 		push_error("[me_level] no spawn or checkpoint to start from")
 		return
+	# The configured start wins, then the original's own level start
+	# (DefaultCheckpoint), then whatever comes first.
 	var wanted = manifest["config"].get("initial_spawn")
 	var chosen: Dictionary = candidates[0]
+	for c: Dictionary in candidates:
+		if c.get("default", false):
+			chosen = c
+			break
 	for c: Dictionary in candidates:
 		if c["name"] == wanted:
 			chosen = c
