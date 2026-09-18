@@ -379,11 +379,11 @@ func _push_look_constraint() -> void:
 	if active == null or not active.constrain_look:
 		rig.clear_look_constraint()
 		return
+	if active.third_person_frees_look and rig.in_third_person():
+		rig.clear_look_constraint()
+		return
 	var low: Vector3 = active.min_look_constraint
 	var high: Vector3 = active.max_look_constraint
-	if active.third_person_frees_pitch and rig.in_third_person():
-		low.x = -PI
-		high.x = PI
 	# A one-sided yaw fan is declared for a wall on the LEFT and flipped for one
 	# on the right. See MoveConfig.mirror_yaw_by_wall_side: the original ships
 	# two moves whose only difference is this mirroring, and this project has

@@ -474,3 +474,42 @@ func test_a_third_person_skill_roll_frees_the_pitch() -> void:
 		"the third-person roll still held the first-person pitch floor: %.1f" % rad_to_deg(rig.rotation.x))
 	rig.get_parent().queue_free()
 	await step(1)
+
+func _roll_from(third_person: bool, pitch_deg: float) -> CameraRig:
+	var rig := _rig()
+	await step(1)
+	rig.third_person = third_person
+	rig.set_pitch(deg_to_rad(pitch_deg))
+	(rig.get_parent() as Player).move_manager.start(Move.SKILL_ROLL)
+	return rig
+
+func test_a_third_person_skill_roll_keeps_the_pitch_it_landed_with() -> void:
+	# The first-person roll pins the pitch level and carries it in the spin;
+	# the rig drops the spin in third person, so pinning there snapped the view.
+	var rig: CameraRig = await _roll_from(true, -40.0)
+	assert_almost_eq(float(rig.look_debug()["pitch"]), deg_to_rad(-40.0), 0.001,
+		"the third-person roll reset the pitch on entry")
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_a_third_person_skill_roll_lets_the_camera_orbit() -> void:
+	var rig: CameraRig = await _roll_from(true, 0.0)
+	var body := rig.get_parent() as Node3D
+	var yaw_before: float = body.rotation.y
+	for i in 200:
+		rig.apply_look(Vector2(40.0, 0.0), body)
+	assert_gt(absf(wrapf(body.rotation.y - yaw_before, -PI, PI)), deg_to_rad(60.0),
+		"the third-person roll still held the yaw fan")
+	rig.get_parent().queue_free()
+	await step(1)
+
+func test_a_first_person_skill_roll_keeps_its_yaw_fan() -> void:
+	var rig: CameraRig = await _roll_from(false, 0.0)
+	var body := rig.get_parent() as Node3D
+	var yaw_before: float = body.rotation.y
+	for i in 200:
+		rig.apply_look(Vector2(40.0, 0.0), body)
+	assert_true(absf(wrapf(body.rotation.y - yaw_before, -PI, PI)) <= deg_to_rad(27.6),
+		"the first-person roll let the view past its 27.5 degree fan")
+	rig.get_parent().queue_free()
+	await step(1)

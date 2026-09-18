@@ -130,8 +130,14 @@ func enter(_previous: StringName) -> void:
 	# the landing pitch because the spin begins at its negation, and releasing
 	# the spin at the end leaves the view where the roll put it rather than
 	# where it found it.
+	#
+	# FIRST PERSON ONLY. The rig drops the spin in third person, so pinning the
+	# pitch there is the half of this trade that still shows: the view snaps
+	# level on the first frame of the roll. From outside the pitch is left
+	# where it was, and a spin starting at zero still carries a full turn if
+	# the view is switched back mid-roll.
 	var pitch_at_start: float = 0.0
-	if player.camera_rig != null:
+	if player.camera_rig != null and not player.camera_rig.in_third_person():
 		pitch_at_start = float(player.camera_rig.look_debug()["pitch"])
 		player.camera_rig.set_pitch(0.0)
 	# rotation.x = pitch - spin, so a spin of -pitch_at_start reads as exactly

@@ -29,7 +29,7 @@ func _init() -> void:
 	constrain_look = true
 	min_look_constraint = Vector3(-deg_to_rad(11.0), -deg_to_rad(27.5), -PI)
 	max_look_constraint = Vector3(PI, deg_to_rad(27.5), PI)
-	third_person_frees_pitch = true
+	third_person_frees_look = true
 	# ⚠️ The CDO says bDisableFaceRotation, which this project does not
 	# implement yet (docs/feel-backlog.md 12). Absolute yaw is the closest
 	# available stand-in: with the body's facing pinned, the original's
