@@ -90,6 +90,40 @@ def blocking_defaults(packages):
     return {'exclude_hand': props['bExludeHandMoves'], 'exclude_foot': props['bExludeFootMoves']}
 
 
+## How far the cooked Start/End may sit outside the ladder's own steps. On a
+## sound ladder the first step is ~0.34 m above Start and the last ~0.96 m
+## below End (tutorial, Stormdrain StdP and StdE alike).
+LADDER_STEP_SLACK_UU = 200.0
+
+
+def _ladder_from_steps(mr, idx, props, annotation, report):
+    """Rebuild a ladder's line from PawnLadderLocations when the cooked
+    Start/End/SplineLocations are broken.
+
+    Measured, not hypothetical: in Stormdrain StdE several rotated ladder
+    volumes were cooked with Start/End thousands of kilometres apart
+    (SplineLength 3.8e9 uu) or NaN, while their per-step locations are sound.
+    A line that long became 20,000 runtime nodes per ladder and 8 GB of video
+    memory. [ME:INFERRED] the original climbs by the steps, not by the spline.
+    """
+    steps = vector_array(mr, idx, 'PawnLadderLocations')
+    if not steps or not all(finite(v) for v in steps):
+        return
+    # Every axis, not only height: some are off sideways instead, one end
+    # right and the other metres out across open air.
+    low = [min(v[k] for v in steps) - LADDER_STEP_SLACK_UU for k in range(3)]
+    high = [max(v[k] for v in steps) + LADDER_STEP_SLACK_UU for k in range(3)]
+    cooked = [props.get('Start'), props.get('End')] + list(vector_array(mr, idx, 'SplineLocations') or [])
+    sound = all(isinstance(v, tuple) and len(v) == 3 and finite(v)
+                and all(low[k] <= v[k] <= high[k] for k in range(3)) for v in cooked)
+    if sound:
+        return
+    annotation['start'] = point(steps[0])
+    annotation['end'] = point(steps[-1])
+    annotation['spline'] = [point(v) for v in steps]
+    report.setdefault('ladders_from_steps', []).append('%s.%s' % (mr.label, annotation['name']))
+
+
 def collect(mr, defaults, report):
     """Annotations, spawns, anchors and checkpoints of one package."""
     pkg = mr.pkg
@@ -131,6 +165,8 @@ def collect(mr, defaults, report):
         spline = vector_array(mr, i, 'SplineLocations')
         if spline and len(spline) > 2 and all(finite(v) for v in spline):
             annotation['spline'] = [point(v) for v in spline]
+        if cls == 'TdLadderVolume':
+            _ladder_from_steps(mr, i, props, annotation, report)
         component = ref_export(props.get('BrushComponent'))
         annotation['hull'] = brush_hulls(mr, component) if component else []
         if cls == 'BlockingVolume':
