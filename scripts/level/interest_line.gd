@@ -77,8 +77,10 @@ func _ready() -> void:
 func length() -> float:
 	return curve.get_baked_length() if curve != null else 0.0
 
-## The side a body climbs this line from: the node's own -Z, flattened.
-## Meaningful for LADDER (the authored front face); other kinds never ask.
+## The node's own -Z, flattened. Read by two kinds, which mean OPPOSITE things
+## by it: on a LADDER it is the side the body climbs from (out of the wall), on
+## a LEDGE_WALK it points AT the wall the body walks along. Other kinds never
+## ask.
 func front() -> Vector3:
 	var f: Vector3 = -global_transform.basis.z
 	f.y = 0.0

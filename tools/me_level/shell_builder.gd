@@ -198,8 +198,13 @@ func _interest_lines(annotations: Array, placements: Array) -> Node3D:
 	return group
 
 
-## Yaw-only basis with -Z along the volume's WallNormal, which in the original
-## points OUT of the wall toward the climber. InterestLine.front() is -Z.
+## Yaw-only basis whose -Z is InterestLine.front(). The original's WallNormal
+## points OUT of the wall on every kind (measured on every ledge walk in three
+## levels), but front() does not mean the same thing on every kind: a LADDER's
+## front is the side it is climbed from, which is WallNormal, while a LEDGE
+## WALK's front points AT the wall (LedgeWalkMove._yaw_offset(), and the
+## hand-built balance course). DO NOT hand WallNormal to a ledge walk as-is:
+## every extracted ledge walk comes out turned round.
 static func _front_basis(a: Dictionary) -> Basis:
 	if not a.has("wall"):
 		return Basis()
@@ -207,7 +212,8 @@ static func _front_basis(a: Dictionary) -> Basis:
 	wall.y = 0.0
 	if wall.length_squared() < 0.0001:
 		return Basis()
-	var z := -wall.normalized()
+	var front := -wall if a["kind"] == "ledgewalk" else wall
+	var z := -front.normalized()
 	return Basis(Vector3.UP.cross(z).normalized(), Vector3.UP, z)
 
 
