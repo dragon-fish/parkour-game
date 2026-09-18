@@ -17,6 +17,7 @@ const BARBED_WIRE_SCRIPT := preload("res://scripts/level/barbed_wire.gd")
 const MODIFIER_VOLUME_SCRIPT := preload("res://scripts/level/modifier_volume.gd")
 const DEATH_VOLUME_SCRIPT := preload("res://scripts/level/death_volume.gd")
 const MATINEE_SCRIPT := preload("res://scripts/level/matinee.gd")
+const USE_ZONE_SCRIPT := preload("res://scripts/level/use_zone.gd")
 
 const LINE_KINDS := {zipline = 0, swing = 1, balance = 2, ladder = 3, ledgewalk = 4}
 
@@ -93,8 +94,9 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	return root
 
 
-## The touch-played movement sequences whose movers stand in this manifest.
-## `movers` is the Movers group as seen from a Matinee node.
+## The movement sequences whose movers stand in this manifest, with their
+## touch and use triggers and their "Completed" chains. `movers` is the Movers
+## group as seen from a Matinee node.
 func _matinees(manifest: Dictionary, movers: NodePath) -> Node3D:
 	var group := _group("Matinees")
 	var present := {}
@@ -115,6 +117,7 @@ func _matinees(manifest: Dictionary, movers: NodePath) -> Node3D:
 			var track := {targets = targets}
 			_matinee_channel(track, "pos_", g["keys"]["position"])
 			_matinee_channel(track, "rot_", g["keys"]["euler"])
+			_matinee_channel(track, "scl_", g["keys"].get("scale", []))
 			tracks.append(track)
 		if tracks.is_empty():
 			continue
@@ -122,21 +125,47 @@ func _matinees(manifest: Dictionary, movers: NodePath) -> Node3D:
 		node.set_script(MATINEE_SCRIPT)
 		node.name = names.take(str(m["name"]).get_file().replace("#", "_"))
 		node.set("tracks", tracks)
-		node.set("length", float(m["length"]) if m["length"] != null else 0.0)
+		node.set("length", float(m["length"]))
 		node.set("play_rate", float(m.get("play_rate", 1.0)))
-		for t: Dictionary in m["triggers"]:
-			var area := _matinee_trigger(t)
-			if area != null:
-				node.add_child(area)
+		# One trigger node per originator: a lever reached through a Switch
+		# both plays and reverses, which is a toggle.
+		var triggers := {}
+		for start: Dictionary in m["starts"]:
+			if start["on"] == "after":
+				continue
+			var key := "%s:%s" % [start["on"], start["trigger"]["name"]]
+			if not triggers.has(key):
+				triggers[key] = {start = start, actions = {}}
+			triggers[key]["actions"][int(start["input"])] = true
+		var trigger_names := Common.NameAllocator.new()
+		for key: String in triggers:
+			var entry: Dictionary = triggers[key]
+			var start: Dictionary = entry["start"]
+			var area := _matinee_trigger(start["trigger"], start["on"] == "use")
+			if area == null:
+				continue
+			area.name = trigger_names.take(area.name)
+			var actions: Dictionary = entry["actions"]
+			area.set_meta("action", "toggle" if actions.size() > 1 else ("reverse" if actions.has(1) else "play"))
+			area.set_meta("delay", float(start["delay"]))
+			node.add_child(area)
 		group.add_child(node)
 		by_source[m["name"]] = node
-	# "Completed" chains: the earlier sequence plays the later one.
+	# "Completed" chains: the earlier sequence starts the later one.
 	for m: Dictionary in manifest.get("matinees", []):
-		if m["after"] != null and by_source.has(m["name"]) and by_source.has(m["after"]):
-			var earlier: Node = by_source[m["after"]]
-			var chained: Array[NodePath] = earlier.get("next")
-			chained.append(NodePath("../" + String(by_source[m["name"]].name)))
-			earlier.set("next", chained)
+		if not by_source.has(m["name"]):
+			continue
+		var later: Node = by_source[m["name"]]
+		for start: Dictionary in m["starts"]:
+			if start["on"] != "after" or not by_source.has(start["source"]):
+				continue
+			var earlier: Node = by_source[start["source"]]
+			var followers: Array[Dictionary] = earlier.get("followers")
+			var follower := {path = NodePath("../" + String(later.name)),
+				action = "reverse" if int(start["input"]) == 1 else "play", delay = float(start["delay"])}
+			if not followers.has(follower):
+				followers.append(follower)
+			earlier.set("followers", followers)
 	return group
 
 
@@ -162,8 +191,10 @@ static func _matinee_channel(track: Dictionary, prefix: String, keys: Array) -> 
 	track[prefix + "modes"] = modes
 
 
-func _matinee_trigger(t: Dictionary) -> Area3D:
+func _matinee_trigger(t: Dictionary, use: bool) -> Area3D:
 	var area := Area3D.new()
+	if use:
+		area.set_script(USE_ZONE_SCRIPT)
 	area.name = str(t["name"]).validate_node_name()
 	if t.has("hull"):
 		# Position only: the volume's rotation and (non-uniform) scale are

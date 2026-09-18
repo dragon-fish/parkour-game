@@ -1,10 +1,9 @@
-"""Matinee sequences a touch plays: SeqEvent_(Td)Touch -> SeqAct_Interp, and
-the SeqAct_Interps that follow on from one of those through "Completed".
+"""Matinee sequences a touch or a use plays, directly or through "Completed"
+of another one, traced back through Switch, Gate and Delay.
 
-Only that shape is read. Kismet is a whole scripting language -- gates,
-switches, remote events, sub-sequences, "used" buttons -- and replaying it is
-out of scope; a matinee reached any other way is counted in the report and
-skipped. See docs/superpowers/specs/2026-09-19-me-chapter-sections-design.md.
+Only that shape is read. Kismet is a whole scripting language -- remote
+events, sub-sequences, counters, conditions -- and replaying it is out of
+scope; a matinee reached any other way is counted in the report and skipped. See docs/superpowers/specs/2026-09-19-me-chapter-sections-design.md.
 
 Keys are RELATIVE to each driven actor's starting transform: position offsets
 in world axes, rotations applied in world axes about the actor's own origin.
@@ -18,6 +17,14 @@ from common import UU, godot_basis, point, ref_export
 import packages as pk
 
 TOUCH_EVENTS = ('SeqEvent_Touch', 'SeqEvent_TdTouch')
+# "Used": the player pressed the use key at the originator. This project has
+# no use key; the level plays these when the player stands in the trigger.
+USED_EVENTS = ('SeqEvent_Used', 'SeqEvent_TdUsed')
+# Nodes a start is traced back through. Switch hands each activation to its
+# next output, which is how a used lever alternates up and down.
+PASS_THROUGH = ('SeqAct_Switch', 'SeqAct_Gate', 'SeqAct_Delay')
+# InterpData.InterpLength's class default: omitted from the export when unchanged.
+DEFAULT_LENGTH = 5.0
 
 
 def _value(mr, tag):
@@ -155,20 +162,46 @@ def collect(packages, mr, report):
         # By export index: prefab copies share object names within a package.
         return '%s#%d' % (mr.label, i)
 
+    def starts_of(op, depth=0, seen=None):
+        """How `op` gets fired, walked up through the nodes that only pass a
+        signal on: Switch outputs, a Gate's In, a Delay (whose duration adds
+        up). Returns {on, trigger|source, delay, input} dicts, input being
+        the SeqAct_Interp input the path arrives at (0 play, 1 reverse)."""
+        # Per PATH, not shared: a lever's up and down both come through the
+        # same Gate, and a shared set drops whichever is walked second.
+        seen = seen if seen is not None else frozenset()
+        out = []
+        for source, desc, input_idx in fired_by.get(op, []):
+            cls = pkg.class_of(pkg.exports[source - 1])
+            # Only a pass-through node can close a loop; a matinee restarting
+            # itself through a Delay is a loop the level means (the subway).
+            if depth > 8 or (cls in PASS_THROUGH and source in seen):
+                continue
+            if cls in TOUCH_EVENTS or cls in USED_EVENTS:
+                originator = ref_export(_props(mr, source).get('Originator'))
+                if originator:
+                    out.append({'on': 'touch' if cls in TOUCH_EVENTS else 'use',
+                                'trigger': _trigger(packages, mr, originator), 'delay': 0.0, 'input': input_idx})
+            elif cls == 'SeqAct_Interp' and desc == 'Completed':
+                out.append({'on': 'after', 'source': name_of(source), 'delay': 0.0, 'input': input_idx})
+            elif cls in PASS_THROUGH:
+                delay = float(_props(mr, source).get('Duration', 1.0)) if cls == 'SeqAct_Delay' else 0.0
+                for up in starts_of(source, depth + 1, seen | {op}):
+                    if cls == 'SeqAct_Gate' and up.get('via_input', 0) != 0:
+                        continue
+                    out.append(dict(up, delay=up['delay'] + delay, input=input_idx))
+            else:
+                continue
+        # The input a path enters the NEXT node by, for a Gate's filter above.
+        return [dict(o, via_input=o['input']) for o in out]
+
     matinees = []
     for i, e in enumerate(pkg.exports, 1):
         if pkg.class_of(e) != 'SeqAct_Interp':
             continue
-        triggers, after = [], None
-        for source, desc, input_idx in fired_by.get(i, []):
-            cls = pkg.class_of(pkg.exports[source - 1])
-            if cls in TOUCH_EVENTS and input_idx == 0:
-                originator = ref_export(_props(mr, source).get('Originator'))
-                if originator:
-                    triggers.append(_trigger(packages, mr, originator))
-            elif cls == 'SeqAct_Interp' and desc == 'Completed' and input_idx == 0:
-                after = name_of(source)
-        if not triggers and after is None:
+        starts = [{k: v for k, v in s.items() if k != 'via_input'} for s in starts_of(i)
+                  if s['input'] in (0, 1)]
+        if not starts:
             report['matinee_skipped'] = report.get('matinee_skipped', 0) + 1
             continue
         groups, length = [], None
@@ -180,14 +213,26 @@ def collect(packages, mr, report):
                 cls = pkg.class_of(pkg.exports[var - 1])
                 if cls == 'InterpData':
                     data = _props(mr, var)
-                    length = data.get('InterpLength')
+                    # Absent means UE3's default: the lift and the StdE crane.
+                    length = data.get('InterpLength', DEFAULT_LENGTH)
                     for g in _int_array(mr, data.get('InterpGroups')):
                         gp = _props(mr, g)
+                        # An unnamed group is UE3's default name, which is what
+                        # the variable links then call it.
+                        keys = {'position': [], 'euler': [], 'scale': []}
                         for t in _int_array(mr, gp.get('InterpTracks')):
-                            if pkg.class_of(pkg.exports[t - 1]) == 'InterpTrackMove':
-                                # An unnamed group is UE3's default name, which is what
-                                # the variable links then call it.
-                                groups.append({'group': gp.get('GroupName') or 'InterpGroup', 'keys': _keys(mr, t)})
+                            track_class = pkg.class_of(pkg.exports[t - 1])
+                            if track_class == 'InterpTrackMove':
+                                keys.update(_keys(mr, t))
+                            elif track_class == 'InterpTrackVectorProp':
+                                tp = _props(mr, t)
+                                # DrawScale3D, absolute, in the actor's own UE axes:
+                                # the Std crane's cable is stretched to follow its
+                                # falling board this way.
+                                if tp.get('PropertyName') == 'DrawScale3D':
+                                    keys['scale'] = _channel(_curve_points(mr, tp.get('VectorTrack')),
+                                                             lambda v: [v[0], v[2], v[1]])
+                        groups.append({'group': gp.get('GroupName') or 'InterpGroup', 'keys': keys})
                 elif cls.startswith('SeqVar_Object'):
                     obj = ref_export(_props(mr, var).get('ObjValue'))
                     if obj:
@@ -196,7 +241,7 @@ def collect(packages, mr, report):
         for g in groups:
             g['actors'] = variables.get(g['group'], [])
         groups = [g for g in groups if g['actors']
-                  and max(len(g['keys']['position']), len(g['keys']['euler'])) >= 2]
+                  and max(len(channel) for channel in g['keys'].values()) >= 2]
         if not groups:
             report['matinee_without_movement'] = report.get('matinee_without_movement', 0) + 1
             continue
@@ -204,5 +249,5 @@ def collect(packages, mr, report):
         # keyed over 2 s and played at 0.2, ten seconds in the original.
         matinees.append({'name': name_of(i), 'package': mr.label, 'length': length,
                          'play_rate': float(_props(mr, i).get('PlayRate', 1.0)),
-                         'triggers': triggers, 'after': after, 'groups': groups})
+                         'starts': starts, 'groups': groups})
     return matinees

@@ -23,6 +23,9 @@ func _rig() -> Dictionary:
 		rot_times = PackedFloat32Array(), rot_values = PackedVector3Array(),
 		rot_arrive = PackedVector3Array(), rot_leave = PackedVector3Array(),
 		rot_modes = PackedByteArray(),
+		scl_times = PackedFloat32Array(), scl_values = PackedVector3Array(),
+		scl_arrive = PackedVector3Array(), scl_leave = PackedVector3Array(),
+		scl_modes = PackedByteArray(),
 	}]
 	root.add_child(matinee)
 	get_tree().root.add_child(root)
