@@ -200,6 +200,9 @@ def collect(packages, mr, report):
         if not groups:
             report['matinee_without_movement'] = report.get('matinee_without_movement', 0) + 1
             continue
+        # PlayRate is on the ACTION, not the data: the Std crane's swing is
+        # keyed over 2 s and played at 0.2, ten seconds in the original.
         matinees.append({'name': name_of(i), 'package': mr.label, 'length': length,
+                         'play_rate': float(_props(mr, i).get('PlayRate', 1.0)),
                          'triggers': triggers, 'after': after, 'groups': groups})
     return matinees

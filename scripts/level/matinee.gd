@@ -22,6 +22,8 @@ extends Node3D
 ## stored tangents).
 @export var tracks: Array[Dictionary] = []
 @export var length: float = 0.0
+## Seconds of the keys per second of play. The original sets it per action.
+@export var play_rate: float = 1.0
 ## Played when this one finishes -- the original's "Completed" output.
 @export var next: Array[NodePath] = []
 
@@ -80,7 +82,7 @@ func play() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	_time = minf(_time + delta, length)
+	_time = minf(_time + delta * play_rate, length)
 	for i in tracks.size():
 		var track: Dictionary = tracks[i]
 		var offset := sample(track["pos_times"], track["pos_values"], track["pos_arrive"],

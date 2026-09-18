@@ -123,6 +123,7 @@ func _matinees(manifest: Dictionary, movers: NodePath) -> Node3D:
 		node.name = names.take(str(m["name"]).get_file().replace("#", "_"))
 		node.set("tracks", tracks)
 		node.set("length", float(m["length"]) if m["length"] != null else 0.0)
+		node.set("play_rate", float(m.get("play_rate", 1.0)))
 		for t: Dictionary in m["triggers"]:
 			var area := _matinee_trigger(t)
 			if area != null:
