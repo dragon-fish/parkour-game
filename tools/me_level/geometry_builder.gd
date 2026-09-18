@@ -51,6 +51,9 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		var instance := MeshInstance3D.new()
 		instance.name = "Mesh"
 		instance.mesh = mesh
+		# Hidden in the original: collision without a picture. Kept as a node so
+		# the editor can still show it.
+		instance.visible = not placement["hidden"]
 		node.add_child(instance)
 		var transform := Common.transform_of(placement)
 		var stretch := Basis()

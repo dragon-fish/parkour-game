@@ -213,9 +213,13 @@ def collect_placements(mr, meshes, config, report):
         lo, hi = world_aabb(record, position, basis)
         collision = collision_class(actor, component, record)
         report['collision'][collision] += 1
+        # bHidden actors are designer-placed invisible collision (group
+        # Dummy_Collisions): they still block, they are just never drawn.
+        hidden = bool(actor.get('bHidden', False))
+        report['counts']['hidden'] += hidden
         out.append({'name': e['name'], 'package': mr.label, 'mesh': name, 'position': position,
                     'basis': basis, 'collision': collision, 'soft_landing': record['soft_landing'],
-                    'aabb': {'min': lo, 'max': hi}})
+                    'hidden': hidden, 'aabb': {'min': lo, 'max': hi}})
     return out
 
 
@@ -231,7 +235,7 @@ def main(config_path):
     report = {'packages': packages.names, 'unmapped': {},
               'collision': {'none': 0, 'simple': 0, 'per_poly': 0},
               'counts': {'empty_actor': 0, 'excluded_by_config': 0, 'excluded_fx': 0,
-                         'excluded_by_anchor': 0}}
+                         'excluded_by_anchor': 0, 'hidden': 0}}
     meshes = MeshTable(packages, report, material_bake.MaterialBaker(packages, int(config['texture_max_px']), report))
     defaults = annotations.blocking_defaults(packages)
     placements, found_lights, bsp = [], [], []
