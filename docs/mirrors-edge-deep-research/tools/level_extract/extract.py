@@ -22,8 +22,6 @@ import packages as pk
 import materials as material_bake
 import static_mesh
 
-# Safety rails, not tuning: a 16 km sky dome and light-shaft cards are not level.
-MAX_EXTENT_M = 250.0
 FX_MESH_MARKERS = ('_FX_', 'SkyDome', 'Sunflare', 'GodRay')
 # Checkpoints are taken from the persistent level when they fall inside the
 # section's own placements (no slices, no _Bac skyline), grown by this.
@@ -213,9 +211,6 @@ def collect_placements(mr, meshes, config, report):
         position = point(actor['Location'])
         basis = godot_basis(actor.get('Rotation') or (0, 0, 0), actor_scale(actor))
         lo, hi = world_aabb(record, position, basis)
-        if max(hi[k] - lo[k] for k in range(3)) > MAX_EXTENT_M:
-            report['counts']['excluded_oversize'] += 1
-            continue
         collision = collision_class(actor, component, record)
         report['collision'][collision] += 1
         out.append({'name': e['name'], 'package': mr.label, 'mesh': name, 'position': position,
@@ -236,7 +231,7 @@ def main(config_path):
     report = {'packages': packages.names, 'unmapped': {},
               'collision': {'none': 0, 'simple': 0, 'per_poly': 0},
               'counts': {'empty_actor': 0, 'excluded_by_config': 0, 'excluded_fx': 0,
-                         'excluded_oversize': 0, 'excluded_by_anchor': 0}}
+                         'excluded_by_anchor': 0}}
     meshes = MeshTable(packages, report, material_bake.MaterialBaker(packages, int(config['texture_max_px']), report))
     defaults = annotations.blocking_defaults(packages)
     placements, found_lights, bsp = [], [], []
