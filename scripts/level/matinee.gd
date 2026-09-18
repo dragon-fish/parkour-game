@@ -28,13 +28,34 @@ extends Node3D
 var _time: float = -1.0
 var _played := false
 var _starts: Array = []
+## Every target's transform as the level loaded, for reset_for_respawn().
+var _homes: Dictionary = {}
 
 
 func _ready() -> void:
 	set_physics_process(false)
+	add_to_group(Arena.RESET_ON_RESPAWN)
+	for track: Dictionary in tracks:
+		for path: NodePath in track["targets"]:
+			var target := get_node_or_null(path) as Node3D
+			if target != null:
+				_homes[path] = target.global_transform
 	for child in get_children():
 		if child is Area3D:
 			(child as Area3D).body_entered.connect(_on_body_entered)
+
+
+## Back to the level's opening state and playable again. Every Matinee that
+## drives a target puts it back to the same load-time transform, so chained
+## sequences sharing targets cannot disagree.
+func reset_for_respawn() -> void:
+	set_physics_process(false)
+	_time = -1.0
+	_played = false
+	for path: NodePath in _homes:
+		var target := get_node_or_null(path) as Node3D
+		if target != null:
+			target.global_transform = _homes[path]
 
 
 func _on_body_entered(body: Node3D) -> void:

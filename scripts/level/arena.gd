@@ -92,6 +92,10 @@ var rescued_count: int = 0
 
 ## Holding R this long before release clears the active checkpoint (debug).
 const CHECKPOINT_CLEAR_HOLD := 1.0
+
+## Group whose members get reset_for_respawn() on every respawn: level state a
+## life can use up (see Matinee).
+const RESET_ON_RESPAWN := &"reset_on_respawn"
 var _r_pressed_at_ms: int = -1
 
 ## Re-entrancy guard for reset_player(); see the comment above that function.
@@ -714,6 +718,10 @@ func reset_player() -> void:
 	# has added the sequence (a test driving this node by hand).
 	if _death_sequence != null:
 		_death_sequence.stop()
+	# THE LEVEL COMES BACK TOO. Anything a life can use up -- a platform that
+	# has already fallen, a sequence that has already played -- must be ready
+	# again, or the respawn lands in a level that can no longer be finished.
+	get_tree().call_group(RESET_ON_RESPAWN, "reset_for_respawn")
 	# THE BODY COMES BACK BEFORE THE PLAYER DOES: ragdoll.stop() must run
 	# before the teleport below, or the player gets launched the moment they
 	# respawn -- a ragdoll whose bones are still being solved, teleported
