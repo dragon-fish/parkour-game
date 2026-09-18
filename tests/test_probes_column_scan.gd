@@ -343,3 +343,19 @@ func test_an_uncapped_ledge_is_unaffected() -> void:
 	assert_almost_eq(float(hit["edge"].y), top, 0.1,
 		"the anchor landed at y %.2f rather than the top at %.2f"
 		% [hit["edge"].y, top])
+
+func test_a_shelf_on_a_taller_wall_is_held_by_its_own_face() -> void:
+	# A narrow ledge sticking out of a wall that carries on above it. The bands
+	# above the shelf hit the WALL, and a down-probe planted just past that wall
+	# still lands on the shelf's top wherever the shelf runs on behind the
+	# wall's surface -- so the wall above was reported as the ledge's face, and
+	# IntoGrab waited for a touch the shelf itself stands in the way of.
+	var player: Player = await _standing_player()
+	_slab(0.0, 6.0, 0.05, -2.025)
+	_slab(1.9, 2.3, 1.0, -2.1)
+	await step(1)
+	var hit: Dictionary = player.probes.ledge_query()
+	assert_true(hit["valid"], "a shelf on a wall was not seen at all")
+	assert_almost_eq(-float(hit["face_point"].z), 1.6, 0.05,
+		"the ledge's face was reported at z %.2f, not the shelf's own face at 1.6"
+		% -float(hit["face_point"].z))

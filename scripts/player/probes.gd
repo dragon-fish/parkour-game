@@ -587,6 +587,16 @@ func _ledge_from_face() -> Dictionary:
 	# correctly rejected there instead.
 	if normal != Vector3.ZERO and normal.y < _config.pawn.walkable_floor_z:
 		return _no_hit()
+	# THE FACE HAS TO BE UNDER THE LIP. A band that hit something ABOVE the top
+	# it found was looking at a different surface -- on a shelf sticking out of
+	# a wall that carries on above it, the upper bands hit that wall, and the
+	# down-probe planted just past it still lands on the shelf wherever the
+	# shelf runs on behind the wall's surface. Reporting the wall as the face
+	# sends IntoGrab waiting for a touch the shelf itself stands in the way of:
+	# the body stops against the shelf, stops closing, and falls. Refused here
+	# so the scan moves on to a lower band, which hits the shelf's own face.
+	if face_point.y > edge.y + MIN_HEIGHT_EPSILON:
+		return _no_hit()
 	var height := edge.y - feet_y()
 	# height <= MIN_HEIGHT_EPSILON, not just < min_wall_height: guards the
 	# same floor-noise case as vault_query() (see MIN_HEIGHT_EPSILON's
