@@ -22,9 +22,12 @@ from mapdump import MapReader
 #   initial_spawn   str   null       object name of the starting checkpoint/spawn
 #   outputs         dict  {}         {geometry: res path, shell: res path}
 #   texture_max_px  int   64         largest inline mip a material bake may use
+#   persistent      str   null       the chapter's *_p.me1; required only when the
+#                                    directory holds two maps (SP01: Edge_p, Escape_p)
 CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
+    'persistent': None,
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 
@@ -59,10 +62,14 @@ def find_install(project_root):
     return root
 
 
-def persistent_package(chapter_dir):
+def persistent_package(chapter_dir, named=None):
     """The chapter's persistent level, e.g. Stormdrain_p.me1."""
     found = [f for f in os.listdir(chapter_dir)
              if f.lower().endswith('_p.me1') and not f.startswith('TT_')]
+    if named is not None:
+        if named not in found:
+            raise ExtractError('persistent %r is not one of %s in %s' % (named, found, chapter_dir))
+        return named
     if len(found) != 1:
         raise ExtractError('expected one persistent *_p.me1 in %s, found %s' % (chapter_dir, found))
     return found[0]
@@ -99,7 +106,7 @@ class PackageSet:
             raise ExtractError('chapter directory not found: %s' % self.chapter_dir)
         self.cache_dir = cache_dir
         os.makedirs(cache_dir, exist_ok=True)
-        self.persistent = persistent_package(self.chapter_dir)
+        self.persistent = persistent_package(self.chapter_dir, config['persistent'])
         prefix = self.persistent[:-len('_p.me1')]
         names = []
         for section in config['sections']:
