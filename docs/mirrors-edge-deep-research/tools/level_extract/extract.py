@@ -246,7 +246,9 @@ def main(config_path):
         for key, values in annotations.collect(mr, defaults, report).items():
             notes[key] += values
         found_lights += lights.collect_lights(mr)
-        bsp += lights.collect_bsp(mr)
+        for face in lights.collect_bsp(mr):
+            face['package'] = name
+            bsp.append(face)
         print('%-36s placements so far %5d' % (name, len(placements)))
 
     if config['sections']:
@@ -278,6 +280,18 @@ def main(config_path):
         names = [s['name'] for s in notes['spawns'] + notes['checkpoints']]
         if config['initial_spawn'] not in names:
             raise ExtractError('initial_spawn %r is not among %s' % (config['initial_spawn'], names))
+
+    if config['split_sections']:
+        prefix = packages.persistent[:-len('p.me1')]
+        names = [s['name'] for s in config['sections']]
+        report['sections'] = {}
+        for record in placements + found_lights + notes['annotations'] + bsp:
+            record['section'] = pk.section_of(record['package'], prefix, names)
+            counts = report['sections'].setdefault(record['section'] or '(chapter)', {'packages': []})
+            if record['package'] not in counts['packages']:
+                counts['packages'].append(record['package'])
+        for record in placements:
+            report['sections'][record['section'] or '(chapter)']['placements'] =                 report['sections'][record['section'] or '(chapter)'].get('placements', 0) + 1
 
     used = {p['mesh'] for p in placements}
     mesh_out = {n: r for n, r in meshes.records.items() if n in used}

@@ -24,10 +24,12 @@ from mapdump import MapReader
 #   texture_max_px  int   64         largest inline mip a material bake may use
 #   persistent      str   null       the chapter's *_p.me1; required only when the
 #                                    directory holds two maps (SP01: Edge_p, Escape_p)
+#   split_sections  bool  false      tag everything with the section it belongs to;
+#                                    the builder then writes one scene per section
 CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
-    'persistent': None,
+    'persistent': None, 'split_sections': False,
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 
@@ -94,6 +96,22 @@ def infer_section_packages(chapter_dir, prefix, section):
     if not wanted:
         raise ExtractError('section %r matches no package under %s' % (section, chapter_dir))
     return wanted
+
+
+def section_of(package, prefix, sections):
+    """The one section a package belongs to, or '' for the chapter-wide layer.
+
+    A slice `A-B_Slc` belongs to A, the section it leads out of; anything else
+    to the section its name starts with. infer_section_packages() counts a
+    slice on both sides because both sides LOAD it; ownership is a separate
+    question with one answer, or the slice would be built twice.
+    """
+    stem = package[len(prefix):].rsplit('.', 1)[0]
+    head = stem.split('_', 1)[0].split('-', 1)[0].lower()
+    for name in sections:
+        if head == name.lower():
+            return name
+    return ''
 
 
 class PackageSet:

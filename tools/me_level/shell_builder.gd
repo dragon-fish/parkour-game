@@ -72,6 +72,24 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	return root
 
 
+## One section of a split chapter: its geometry plus the interactions standing
+## in it. A plain Node3D, not an Arena -- sections are opened to be edited and
+## played only through the chapter scene's SectionLoader.
+func build_section(manifest: Dictionary, geometry_path: String, section_name: String) -> Node:
+	var root := Node3D.new()
+	root.name = section_name.validate_node_name()
+	var geometry: Node = (load(geometry_path) as PackedScene).instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
+	geometry.name = "Geometry"
+	root.add_child(geometry)
+	geometry.owner = root
+	var annotations: Array = manifest["annotations"]
+	_own(root, _air_walls(annotations))
+	_own(root, _interest_lines(annotations, manifest["placements"]))
+	_own(root, _barbed_wire(annotations))
+	_own(root, _death_volumes(annotations))
+	return root
+
+
 ## Metres below the section's lowest geometry where falling out begins.
 const FALL_OUT_MARGIN := 10.0
 
