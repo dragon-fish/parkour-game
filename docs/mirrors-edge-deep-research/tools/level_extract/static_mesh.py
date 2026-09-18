@@ -13,7 +13,8 @@ BOX_TRIANGLES = [0, 2, 1, 1, 2, 3, 4, 5, 6, 5, 7, 6,
 
 # A packed normal of (128, 128, 128) is the zero vector: the mesh was cooked
 # without normals. Anything else that is not unit length is a parse error.
-ZERO_NORMAL = bytes((128, 128, 128))
+# A zero vector packs to 127 or 128 per byte depending on rounding.
+ZERO_NORMAL_BYTES = (127, 128)
 
 
 def _b64(fmt, values):
@@ -91,7 +92,7 @@ def parse_render(mr, idx):
         for channel, out in enumerate(uvs):
             out.extend(struct.unpack_from(uv_format, d, vertex_start + k * stride + 12 + channel * uv_size))
         packed = d[vertex_start + k * stride + 4:vertex_start + k * stride + 7]
-        if packed == ZERO_NORMAL:
+        if all(b in ZERO_NORMAL_BYTES for b in packed):
             zero_normals = True
             normals.extend((0.0, 0.0, 0.0))
             continue

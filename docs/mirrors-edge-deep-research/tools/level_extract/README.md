@@ -83,7 +83,8 @@ placement with a mirroring transform (negative DrawScale) gets Godot's
 `FRONT_FACING` inverted, so its outside renders black.
 
 **Normals.** The packed normal is at byte 4 of each vertex (TangentZ). A few
-meshes were cooked with none, `(128, 128, 128)`; those are shaded flat and
+meshes were cooked with none on some or all vertices, every byte 127 or 128
+(a zero vector, rounded either way); those are shaded flat and
 listed in the report. Any other non-unit normal is a parse error.
 
 **Lights are baked with Beast.** With `bUseBakerColorAndBrightness`, the
