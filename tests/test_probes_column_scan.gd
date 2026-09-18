@@ -359,3 +359,30 @@ func test_a_shelf_on_a_taller_wall_is_held_by_its_own_face() -> void:
 	assert_almost_eq(-float(hit["face_point"].z), 1.6, 0.05,
 		"the ledge's face was reported at z %.2f, not the shelf's own face at 1.6"
 		% -float(hit["face_point"].z))
+
+# --- a ceiling over the face ---------------------------------------------------
+
+func test_a_fence_under_a_thin_ceiling_is_held_by_its_own_top() -> void:
+	# The tutorial storeroom: a fence 0.76 m under a 16 cm ceiling slab. The
+	# downward anchor used to start above the slab and land on its UPPER face,
+	# so the grab took the roof, and the pull-up carried the body through it.
+	# 0.3 m deep, not the storeroom's 4 cm: a plate thinner than
+	# LEDGE_ANCHOR_MARGIN is missed by the anchor whatever the ceiling does.
+	var player: Player = await _standing_player()
+	_slab(0.0, 1.9, 0.3, -1.15)
+	_slab(2.5, 2.66, 6.0, -1.0)
+	await step(1)
+	var hit: Dictionary = player.probes.ledge_query()
+	assert_true(hit["valid"], "the fence under the ceiling was not seen")
+	assert_almost_eq(float(hit["edge"].y), 1.9, 0.05,
+		"the ledge was taken at y %.2f -- the roof above the ceiling, not the fence" % hit["edge"].y)
+
+func test_a_fitting_flush_with_the_ceiling_is_not_a_ledge() -> void:
+	# A ceiling light: its top is the ceiling's underside, nothing to hold.
+	var player: Player = await _standing_player()
+	_slab(2.4, 2.5, 0.3, -1.1)
+	_slab(2.5, 2.66, 6.0, -1.0)
+	await step(1)
+	var hit: Dictionary = player.probes.ledge_query()
+	assert_false(hit["valid"], "a light flush with the ceiling was taken as a ledge at y %.2f"
+		% float(hit.get("edge", Vector3.ZERO).y))

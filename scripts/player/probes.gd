@@ -46,6 +46,12 @@ const MAX_WALL_NORMAL_Y := 0.3
 ## it is supposed to find and hit_from_inside reports its own origin instead.
 const SURFACE_ORIGIN_MARGIN := 0.3
 
+## How far in front of the face (toward the body) the ceiling is looked for.
+const CEILING_PROBE_INSET := 0.05
+
+## How far under a ceiling found over the face SurfaceDown then starts.
+const CEILING_CLEARANCE := 0.02
+
 ## ...and it reaches this far BELOW the feet, so a surface at exactly foot level
 ## still registers (and is then rejected by MIN_HEIGHT_EPSILON, on its height,
 ## rather than by the ray silently not reaching it).
@@ -229,9 +235,12 @@ func _query_surface_above(reach: float, above: float) -> void:
 	_surface.target_position = Vector3(0.0, -length, 0.0)
 	_surface.force_raycast_update()
 
-func _query_surface(reach: float) -> void:
+## `ceiling_y` (world) caps the origin just below a ceiling ledge_query() found
+## over the face; INF leaves it where the config puts it.
+func _query_surface(reach: float, ceiling_y: float = INF) -> void:
 	var tallest_reachable: float = maxf(_config.grab.ledge_max_height, _config.speed_vault.table_ceiling())
 	var origin_y: float = tallest_reachable - _foot_offset + SURFACE_ORIGIN_MARGIN
+	origin_y = minf(origin_y, ceiling_y - CEILING_CLEARANCE - global_position.y)
 	_surface.position = Vector3(0.0, origin_y, -reach)
 	_surface.target_position = Vector3(0.0, -(origin_y + _foot_offset + SURFACE_UNDERSHOOT), 0.0)
 	_surface.force_raycast_update()
@@ -574,11 +583,33 @@ func _ledge_from_face() -> Dictionary:
 	var to_face := face_point - global_position
 	var face_distance: float = Vector2(to_face.x, to_face.z).length()
 
-	_query_surface(face_distance + LEDGE_ANCHOR_MARGIN)
+	# A CEILING OVER THE FACE CAPS THE SEARCH. SurfaceDown starts above the
+	# tallest reachable top, and indoors that is often ABOVE the ceiling: it
+	# then comes down onto the roof's upper face, a "ledge" with a slab
+	# between it and the hands, and the pull-up's headroom test -- asked
+	# about the roof -- passes and carries the body through the slab. A fence
+	# 0.76 m under a 16 cm ceiling did exactly that. So look straight up from
+	# just in front of the face first, and start the search under whatever is
+	# there.
+	var toward_body: Vector3 = _vault_high.get_collision_normal()
+	toward_body.y = 0.0
+	var ceiling_y := INF
+	if toward_body.length_squared() > 0.0001:
+		var below := face_point + toward_body.normalized() * CEILING_PROBE_INSET
+		var over: Dictionary = _cast(below, below + Vector3.UP * (feet_y() + _config.grab.ledge_max_height
+			+ SURFACE_ORIGIN_MARGIN - below.y + 0.01))
+		if not over.is_empty():
+			ceiling_y = (over["position"] as Vector3).y
+	_query_surface(face_distance + LEDGE_ANCHOR_MARGIN, ceiling_y)
 	if not _live(_surface):
 		return _no_hit()
 	var edge: Vector3 = _surface.get_collision_point()
 	var normal: Vector3 = _surface.get_collision_normal()
+	# Started inside something (hit_from_inside reports the origin with no
+	# normal). Under a ceiling the origin can sit inside a fitting flush with
+	# it -- a ceiling light -- and there is no lip there to hold.
+	if ceiling_y != INF and normal == Vector3.ZERO:
+		return _no_hit()
 	# See the matching comment in vault_query(): a zero-length normal means
 	# SurfaceDown started inside solid geometry (hit_from_inside), not that it
 	# found a steep, unwalkable slope. Let the height check below reject it --
