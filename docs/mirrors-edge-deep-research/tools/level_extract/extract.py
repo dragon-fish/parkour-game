@@ -21,7 +21,10 @@ import lights
 import packages as pk
 import materials as material_bake
 import static_mesh
+import matinee
 
+# InterpActors are movers: placed like any mesh, moved by matinee.py's data.
+PLACED_CLASSES = ('StaticMeshActor', 'InterpActor')
 FX_MESH_MARKERS = ('_FX_', 'SkyDome', 'Sunflare', 'GodRay')
 # Checkpoints are taken from the persistent level when they fall inside the
 # section's own placements (no slices, no _Bac skyline), grown by this.
@@ -188,7 +191,7 @@ def collect_placements(mr, meshes, config, report):
     pkg = mr.pkg
     out = []
     for i, e in enumerate(pkg.exports, 1):
-        if pkg.class_of(e) != 'StaticMeshActor' or outer_class(pkg, e) != 'Level':
+        if pkg.class_of(e) not in PLACED_CLASSES or outer_class(pkg, e) != 'Level':
             continue
         actor, _ = pk.resolved_props(meshes.packages, mr, i)
         if 'Location' not in actor:
@@ -219,7 +222,8 @@ def collect_placements(mr, meshes, config, report):
         report['counts']['hidden'] += hidden
         out.append({'name': e['name'], 'package': mr.label, 'mesh': name, 'position': position,
                     'basis': basis, 'collision': collision, 'soft_landing': record['soft_landing'],
-                    'hidden': hidden, 'aabb': {'min': lo, 'max': hi}})
+                    'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor',
+                    'aabb': {'min': lo, 'max': hi}})
     return out
 
 
@@ -238,7 +242,7 @@ def main(config_path):
                          'excluded_by_anchor': 0, 'hidden': 0}}
     meshes = MeshTable(packages, report, material_bake.MaterialBaker(packages, int(config['texture_max_px']), report))
     defaults = annotations.blocking_defaults(packages)
-    placements, found_lights, bsp = [], [], []
+    placements, found_lights, bsp, matinees = [], [], [], []
     notes = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
     for name in packages.names:
         mr = packages.reader(name)
@@ -246,6 +250,7 @@ def main(config_path):
         for key, values in annotations.collect(mr, defaults, report).items():
             notes[key] += values
         found_lights += lights.collect_lights(mr)
+        matinees += matinee.collect(packages, mr, report)
         for face in lights.collect_bsp(mr):
             face['package'] = name
             bsp.append(face)
@@ -287,7 +292,7 @@ def main(config_path):
         prefix = packages.persistent[:-len('p.me1')]
         names = [s['name'] for s in config['sections']]
         report['sections'] = {}
-        for record in placements + found_lights + notes['annotations'] + bsp:
+        for record in placements + found_lights + notes['annotations'] + bsp + matinees:
             record['section'] = pk.section_of(record['package'], prefix, names)
             counts = report['sections'].setdefault(record['section'] or '(chapter)', {'packages': []})
             if record['package'] not in counts['packages']:
@@ -314,7 +319,7 @@ def main(config_path):
     os.makedirs(out_dir, exist_ok=True)
     manifest = {'config': config, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
                 'annotations': notes['annotations'], 'spawns': notes['spawns'],
-                'checkpoints': notes['checkpoints'], 'report': report}
+                'checkpoints': notes['checkpoints'], 'matinees': matinees, 'report': report}
     with open(os.path.join(out_dir, 'manifest.json'), 'w', encoding='utf-8') as fh:
         json.dump(manifest, fh, ensure_ascii=False, separators=(',', ':'))
     with open(os.path.join(out_dir, 'meshes.json'), 'w', encoding='utf-8') as fh:

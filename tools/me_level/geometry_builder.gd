@@ -34,6 +34,11 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 	var geometry := Node3D.new()
 	geometry.name = "Geometry"
 	root.add_child(geometry)
+	# InterpActors: moved by the level's Matinee nodes, so kept apart under
+	# names those can address. AnimatableBody3D carries whoever stands on it.
+	# Added LAST: shells override Lights by index (see sp01_edge.tscn).
+	var movers := Node3D.new()
+	movers.name = "Movers"
 	var pipe_line := _ladder_samples(manifest["annotations"])
 	var names := Common.NameAllocator.new()
 	var library := {}
@@ -49,8 +54,14 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			collision = "none"
 			counts.grip += 1
 		counts[collision] += 1
-		var node: Node3D = Node3D.new() if collision == "none" else StaticBody3D.new()
-		node.name = names.take(mesh_name)
+		var mover: bool = placement.get("mover", false)
+		var node: Node3D
+		if mover:
+			node = AnimatableBody3D.new()
+			node.name = Common.mover_name(placement["package"], placement["name"])
+		else:
+			node = Node3D.new() if collision == "none" else StaticBody3D.new()
+			node.name = names.take(mesh_name)
 		node.set_meta("me_collision", collision)
 		if placement["soft_landing"]:
 			node.add_to_group("soft_landing", true)
@@ -81,10 +92,11 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 				_add_shape(node, _stretched(shape, stretch), shape_names.take("Collision"))
 		elif collision == "per_poly":
 			_add_shape(node, _stretched(mesh.get_meta("per_poly_shape"), stretch), "Collision")
-		geometry.add_child(node)
+		(movers if mover else geometry).add_child(node)
 	print("[me_level] placements: ", counts)
 	root.add_child(_build_bsp(manifest["bsp"]))
 	root.add_child(_build_lights(manifest["lights"]))
+	root.add_child(movers)
 	return root
 
 

@@ -16,6 +16,7 @@ const CHECKPOINT_SCRIPT := preload("res://scripts/level/checkpoint.gd")
 const BARBED_WIRE_SCRIPT := preload("res://scripts/level/barbed_wire.gd")
 const MODIFIER_VOLUME_SCRIPT := preload("res://scripts/level/modifier_volume.gd")
 const DEATH_VOLUME_SCRIPT := preload("res://scripts/level/death_volume.gd")
+const MATINEE_SCRIPT := preload("res://scripts/level/matinee.gd")
 
 const LINE_KINDS := {zipline = 0, swing = 1, balance = 2, ladder = 3, ledgewalk = 4}
 
@@ -53,6 +54,7 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	_own(root, _interest_lines(annotations, manifest["placements"]))
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
+	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers")))
 	_own(root, _checkpoints(manifest))
 	_place_spawn(root, manifest)
 	if config.get("interior", false):
@@ -87,7 +89,103 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	_own(root, _interest_lines(annotations, manifest["placements"]))
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
+	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers")))
 	return root
+
+
+## The touch-played movement sequences whose movers stand in this manifest.
+## `movers` is the Movers group as seen from a Matinee node.
+func _matinees(manifest: Dictionary, movers: NodePath) -> Node3D:
+	var group := _group("Matinees")
+	var present := {}
+	for p: Dictionary in manifest["placements"]:
+		if p.get("mover", false):
+			present["%s.%s" % [p["package"], p["name"]]] = Common.mover_name(p["package"], p["name"])
+	var names := Common.NameAllocator.new()
+	var by_source := {}
+	for m: Dictionary in manifest.get("matinees", []):
+		var tracks: Array[Dictionary] = []
+		for g: Dictionary in m["groups"]:
+			var targets: Array[NodePath] = []
+			for actor: String in g["actors"]:
+				if present.has(actor):
+					targets.append(NodePath(String(movers) + "/" + present[actor]))
+			if targets.is_empty():
+				continue
+			var track := {targets = targets}
+			_matinee_channel(track, "pos_", g["keys"]["position"])
+			_matinee_channel(track, "rot_", g["keys"]["euler"])
+			tracks.append(track)
+		if tracks.is_empty():
+			continue
+		var node := Node3D.new()
+		node.set_script(MATINEE_SCRIPT)
+		node.name = names.take(str(m["name"]).get_file().replace("#", "_"))
+		node.set("tracks", tracks)
+		node.set("length", float(m["length"]) if m["length"] != null else 0.0)
+		for t: Dictionary in m["triggers"]:
+			var area := _matinee_trigger(t)
+			if area != null:
+				node.add_child(area)
+		group.add_child(node)
+		by_source[m["name"]] = node
+	# "Completed" chains: the earlier sequence plays the later one.
+	for m: Dictionary in manifest.get("matinees", []):
+		if m["after"] != null and by_source.has(m["name"]) and by_source.has(m["after"]):
+			var earlier: Node = by_source[m["after"]]
+			var chained: Array[NodePath] = earlier.get("next")
+			chained.append(NodePath("../" + String(by_source[m["name"]].name)))
+			earlier.set("next", chained)
+	return group
+
+
+const MATINEE_MODES := {constant = 0, linear = 1, curve = 2}
+
+
+static func _matinee_channel(track: Dictionary, prefix: String, keys: Array) -> void:
+	var times := PackedFloat32Array()
+	var values := PackedVector3Array()
+	var arrive := PackedVector3Array()
+	var leave := PackedVector3Array()
+	var modes := PackedByteArray()
+	for key: Dictionary in keys:
+		times.append(float(key["time"]))
+		values.append(Common.v3(key["value"]))
+		arrive.append(Common.v3(key["arrive"]))
+		leave.append(Common.v3(key["leave"]))
+		modes.append(MATINEE_MODES[key["mode"]])
+	track[prefix + "times"] = times
+	track[prefix + "values"] = values
+	track[prefix + "arrive"] = arrive
+	track[prefix + "leave"] = leave
+	track[prefix + "modes"] = modes
+
+
+func _matinee_trigger(t: Dictionary) -> Area3D:
+	var area := Area3D.new()
+	area.name = str(t["name"]).validate_node_name()
+	if t.has("hull"):
+		# Position only: the volume's rotation and (non-uniform) scale are
+		# baked into the hull points, which physics requires.
+		area.position = Common.v3(t["position"])
+		if _hull_shapes(area, t, area.transform) == 0:
+			area.free()
+			return null
+		return area
+	if t.has("radius") and t.has("position"):
+		area.position = Common.v3(t["position"])
+		var cylinder := CylinderShape3D.new()
+		cylinder.radius = float(t["radius"])
+		# UE's CollisionHeight is the HALF height.
+		cylinder.height = 2.0 * float(t["height"])
+		var collision := CollisionShape3D.new()
+		collision.name = "CollisionShape3D"
+		collision.shape = cylinder
+		area.add_child(collision)
+		return area
+	area.free()
+	push_warning("[me_level] matinee trigger %s has no shape" % t["name"])
+	return null
 
 
 ## Metres below the section's lowest geometry where falling out begins.
@@ -415,6 +513,8 @@ func _checkpoints(manifest: Dictionary) -> Node3D:
 		checkpoint.set_script(CHECKPOINT_SCRIPT)
 		checkpoint.name = names.take(c["label"] if c.get("label", "") != "" else c["name"])
 		checkpoint.transform = _spawn_transform(c)
+		checkpoint.set("index", int(c.get("weight", 0)))
+		checkpoint.set("display_name", str(c.get("label", "")))
 		var box := BoxShape3D.new()
 		box.size = Vector3.ONE * CHAPTER_CHECKPOINT_BOX_M
 		var collision := CollisionShape3D.new()

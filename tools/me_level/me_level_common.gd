@@ -65,6 +65,12 @@ static func transform_of(entry: Dictionary) -> Transform3D:
 	return Transform3D(basis_of(entry["basis"]), v3(entry["position"]))
 
 
+## Node name of a mover (an InterpActor placement), from its package and
+## object name. Deterministic, so a Matinee can address it by path.
+static func mover_name(package: String, actor: String) -> String:
+	return ("%s_%s" % [package.get_basename(), actor]).validate_node_name()
+
+
 static func output_paths(config: Dictionary) -> Dictionary:
 	var outputs: Dictionary = config.get("outputs", {})
 	var id: String = config["id"]
