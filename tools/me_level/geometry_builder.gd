@@ -10,10 +10,16 @@ const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
 const LIGHTS_SCRIPT := preload("res://tools/me_level/me_lights.gd")
 
 ## Meshes a hand grips. InterestLine volumes drive those moves, so a solid mesh
-## only stops the capsule short of the line it is reaching for. The 5.6 m
-## S_ZipLineBase_01 post is deliberately absent: running through it reads wrong.
+## only stops the capsule short of the line it is reaching for.
+## ZipLineBase_01_Line is the cable itself; 01b/01c/01d are the brackets it
+## runs through. The 5.6 m S_ZipLineBase_01 post is deliberately absent:
+## running through it reads wrong. A geometric test (does a hand line run
+## along the mesh) was measured against this list and lost: it also freed
+## billboards and catwalk supports a ladder runs past, and missed every swing
+## pole, whose line is not in the manifest.
 const GRIP_MESH_MARKERS: Array[String] = ["LadderSystem", "SwingPole",
-		"ZipLineBase_01c", "ZipLineBase_01d", "S_Cable_01"]
+		"ZipLineBase_01_Line", "ZipLineBase_01b", "ZipLineBase_01c",
+		"ZipLineBase_01d", "S_Cable_01"]
 ## Climbable drainpipes use the same generic segments as the rooftop pipe runs
 ## a runner steps over, so a pipe is passable only where a ladder line runs
 ## along it. DO NOT match pipes by name alone.
