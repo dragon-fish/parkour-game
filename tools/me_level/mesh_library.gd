@@ -27,7 +27,7 @@ const SPECULAR_SCALE := 0.5
 const SHEEN_SCALE := 0.5
 ## Part of every mesh's source hash. Bump when what a library file contains or
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
-const LIBRARY_FORMAT := 7
+const LIBRARY_FORMAT := 8
 
 var _materials := {}
 var _bakes := {}
@@ -78,6 +78,11 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		return null
 	var mesh := ArrayMesh.new()
 	var collision_faces := PackedVector3Array()
+	# Faces of surfaces whose material the original marks
+	# bEnableUncontrolledSlide: a separate shape, so the placement can carry
+	# them on a body of their own in the uncontrolled_slide group. One mesh
+	# is both the chute and the wall beside it (S_Stdp_Stde_01).
+	var slide_faces := PackedVector3Array()
 	# The original's element index of every surface, in surface order: a
 	# placement's material overrides are per element, and a two-sided
 	# element becomes two surfaces while a modulate one becomes none.
@@ -88,8 +93,9 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		if indices.is_empty():
 			continue
 		if surface["collide"]:
+			var faces := slide_faces if surface.get("uncontrolled_slide", false) else collision_faces
 			for index in indices:
-				collision_faces.append(positions[index])
+				faces.append(positions[index])
 		if surface["blend"] == "modulate":
 			# A modulate surface darkens what is behind it through its texture.
 			# Without the texture it is only a dark patch: collide, do not draw.
@@ -137,6 +143,10 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		var concave := ConcavePolygonShape3D.new()
 		concave.set_faces(collision_faces)
 		mesh.set_meta("per_poly_shape", concave)
+	if not slide_faces.is_empty():
+		var slide := ConcavePolygonShape3D.new()
+		slide.set_faces(slide_faces)
+		mesh.set_meta("slide_shape", slide)
 	var bounds: Dictionary = record["bounds"]
 	var extent := Common.v3(bounds["extent"])
 	mesh.set_meta("bounds", AABB(Common.v3(bounds["origin"]) - extent, extent * 2.0))

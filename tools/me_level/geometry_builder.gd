@@ -57,7 +57,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 	var pipe_line := _ladder_samples(manifest["annotations"])
 	var names := Common.NameAllocator.new()
 	var library := {}
-	var counts := {none = 0, simple = 0, per_poly = 0, grip = 0, stretched = 0}
+	var counts := {none = 0, simple = 0, per_poly = 0, grip = 0, stretched = 0, slide = 0}
 	_stretched_shapes.clear()
 	for placement: Dictionary in manifest["placements"]:
 		var mesh_name: String = placement["mesh"]
@@ -124,7 +124,19 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			for shape: Shape3D in mesh.get_meta("simple_shapes"):
 				_add_shape(node, _stretched(shape, stretch), shape_names.take("Collision"), offset)
 		elif collision == "per_poly":
-			_add_shape(node, _stretched(mesh.get_meta("per_poly_shape"), stretch), "Collision", offset)
+			if mesh.has_meta("per_poly_shape"):
+				_add_shape(node, _stretched(mesh.get_meta("per_poly_shape"), stretch), "Collision", offset)
+			if mesh.has_meta("slide_shape"):
+				# [ME:CONFIRMED] the chute's material carries PM_ConcreteWetSlide,
+				# whose property sets bEnableUncontrolledSlide: standing on it
+				# is the RumpSlide. Its own body, so the group names exactly
+				# those faces and not the wall the same mesh also is.
+				var chute := StaticBody3D.new()
+				chute.name = "SlideSurface"
+				chute.add_to_group(Probes.UNCONTROLLED_SLIDE_GROUP, true)
+				_add_shape(chute, _stretched(mesh.get_meta("slide_shape"), stretch), "Collision", offset)
+				node.add_child(chute)
+				counts.slide += 1
 		(movers if mover else geometry).add_child(node)
 	print("[me_level] placements: ", counts)
 	var bsp := _build_bsp(manifest["bsp"])
