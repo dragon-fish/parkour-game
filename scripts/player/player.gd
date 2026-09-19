@@ -2094,6 +2094,13 @@ func _lower_body_twist() -> float:
 	var animator := get_node_or_null("BodyRoot/CharacterAnimator") as CharacterAnimator
 	return animator.lower_body_twist() if animator != null else 0.0
 
+## CameraConfig.third_person_body_scale while the third-person body is on
+## screen, 1 otherwise.
+func _third_person_scale() -> float:
+	if config != null and camera_rig != null and camera_rig.shows_third_person_body():
+		return config.camera.third_person_body_scale
+	return 1.0
+
 ## Places the body at the cached mount plus wherever the offset has eased to.
 ##
 ## The rotation goes OUTSIDE the mount basis and the position is added in
@@ -2120,7 +2127,8 @@ func _apply_clip_offset() -> void:
 	# does so for free -- the head bone moves with the model, and the head-follow
 	# reads the bone.
 	var lift: float = _cancelled_lift()
-	body.transform = Transform3D(extra * _body_mount.basis,
+	var size: float = _third_person_scale()
+	body.transform = Transform3D(extra * _body_mount.basis.scaled(Vector3.ONE * size),
 			_body_mount.origin + _clip_offset_position + curve_position
 			- Vector3(0.0, _fold_drop + lift, 0.0))
 
@@ -2336,7 +2344,14 @@ func set_clip_offset_immediately(position_offset: Vector3, rotation_offset: Vect
 ## so the amount is small, and unpicking it would mean re-deriving the bone's
 ## position from a pose it is not in.
 func _camera_head_offset() -> Vector3:
-	var raw: Vector3 = to_local(head_node.global_position) - head_rest_local
+	var head: Vector3 = to_local(head_node.global_position)
+	# The head where a full-size model would hold it: a small third-person
+	# body is shrunk about its feet and must not lower the camera with it.
+	var size: float = _third_person_scale()
+	if size != 1.0 and body != null:
+		var feet: Vector3 = to_local(body.global_position)
+		head = feet + (head - feet) / size
+	var raw: Vector3 = head - head_rest_local
 	# EXCEPT DURING A SCRIPTED MOVE, where the first-person camera must take the
 	# clip's own offset -- StepUp's -0.20 z otherwise leaves the camera inside
 	# the neck. A scripted move's path owns the eye's whole journey and its clip
