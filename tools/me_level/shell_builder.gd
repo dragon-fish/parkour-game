@@ -466,9 +466,10 @@ static func _front_basis(a: Dictionary) -> Basis:
 
 ## Swing volumes describe a vertical trigger, not the grip bar. The bar is
 ## whatever horizontal pole or pipe runs through the volume: the tutorial
-## hangs S_SwingPole_01c there, the Stormdrain hangs ceiling pipes. Take the
-## longest one, join the segments collinear with it, clip to the volume.
-const SWING_BAR_TOKENS: Array[String] = ["swingpole", "pipe"]
+## hangs S_SwingPole_01c there, the Stormdrain hangs ceiling pipes, and Escape
+## rotates a catwalk support into a horizontal bar. Candidates still have to
+## run horizontally through the volume. Join collinear segments and clip.
+const SWING_BAR_TOKENS: Array[String] = ["swingpole", "pipe", "catwalksystem_05_support"]
 const SWING_BAR_MIN_M := 0.5
 const SWING_COLLINEAR_M := 0.1
 

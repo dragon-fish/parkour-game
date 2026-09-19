@@ -42,9 +42,37 @@ func _run() -> void:
 		_finish(shell)
 		return
 
-	var placed: Array = geometry.get_node("Geometry").get_children()
+	var parts: Array[Node] = [shell]
+	var geometries: Array[Node] = [geometry]
+	var scene_paths: Array = [paths.shell, paths.geometry]
+	if config.get("split_sections", false):
+		var loader := shell.get_node_or_null("Sections")
+		check(loader != null, "split chapter lacks Sections")
+		if loader == null:
+			_finish(shell)
+			return
+		check(loader.get_child_count() == config["sections"].size(), "section count differs from config")
+		for entry: Dictionary in config["sections"]:
+			var section := loader.get_node_or_null(NodePath(entry["name"]))
+			check(section != null, "missing section " + str(entry["name"]))
+			if section == null:
+				continue
+			var section_geometry := section.get_node_or_null("Geometry")
+			check(section_geometry != null, "section lacks geometry: " + str(section.name))
+			if section_geometry == null:
+				continue
+			parts.append(section)
+			geometries.append(section_geometry)
+			scene_paths.append(section.scene_file_path)
+			scene_paths.append(section_geometry.scene_file_path)
+
+	var placed: Array = []
 	# Movers are placements too, grouped apart: always bodies, collision or not.
-	var movers: int = geometry.get_node("Movers").get_child_count() if geometry.has_node("Movers") else 0
+	var movers := 0
+	for part_geometry in geometries:
+		placed.append_array(part_geometry.get_node("Geometry").get_children())
+		if part_geometry.has_node("Movers"):
+			movers += part_geometry.get_node("Movers").get_child_count()
 	check(placed.size() + movers == manifest["placements"].size(),
 			"%d placement nodes and %d movers, manifest has %d"
 			% [placed.size(), movers, manifest["placements"].size()])
@@ -56,20 +84,31 @@ func _run() -> void:
 		else:
 			check(node is StaticBody3D and not shapes.is_empty(), "%s placement lacks collision: %s" % [collision, node.name])
 
-	_check_count(shell, "InterestLines", manifest, ["zipline", "swing", "balance", "ladder", "ledgewalk"])
-	_check_count(shell, "AirWalls", manifest, ["blocking"])
-	_check_count(shell, "DeathVolumes", manifest, ["kill"])
-	_check_count(shell, "BarbedWire", manifest, ["barbedwire"])
-	if shell.has_node("BarbedWire"):
-		for wire in shell.get_node("BarbedWire").get_children():
-			var hazard := wire.get_node_or_null("Hazard")
-			check(hazard is ModifierVolume and not hazard.apply.is_empty()
-					and not hazard.find_children("*", "CollisionShape3D", false, false).is_empty(),
-					"barbed wire does not hurt: " + wire.name)
+	_check_count(parts, "InterestLines", manifest, ["zipline", "swing", "balance", "ladder", "ledgewalk"])
+	_check_count(parts, "AirWalls", manifest, ["blocking"])
+	_check_count(parts, "DeathVolumes", manifest, ["kill"])
+	_check_count(parts, "BarbedWire", manifest, ["barbedwire"])
+	for part in parts:
+		if part.has_node("InterestLines"):
+			for line in part.get_node("InterestLines").get_children():
+				check(line.curve != null and line.curve.get_baked_length() > 0.001,
+						"zero-length interaction line: %s/%s" % [part.name, line.name])
+		if part.has_node("BarbedWire"):
+			for wire in part.get_node("BarbedWire").get_children():
+				var hazard := wire.get_node_or_null("Hazard")
+				check(hazard is ModifierVolume and not hazard.apply.is_empty()
+						and not hazard.find_children("*", "CollisionShape3D", false, false).is_empty(),
+						"barbed wire does not hurt: " + wire.name)
+		if part.has_node("Matinees"):
+			for sequence in part.get_node("Matinees").get_children():
+				for track: Dictionary in sequence.tracks:
+					for target: NodePath in track["targets"]:
+						check(sequence.get_node_or_null(target) != null,
+								"missing mover target: %s -> %s" % [sequence.name, target])
 
 	# Saved names only: scripts add runtime children (a line's rope, the HUD)
 	# that Godot names itself and that are never written to a file.
-	for path in [paths.shell, paths.geometry]:
+	for path in scene_paths:
 		var state := (load(path) as PackedScene).get_state()
 		for i in state.get_node_count():
 			check(not str(state.get_node_name(i)).contains("@"),
@@ -94,9 +133,12 @@ func _run() -> void:
 	_finish(shell)
 
 
-func _check_count(shell: Node, group: String, manifest: Dictionary, kinds: Array) -> void:
+func _check_count(parts: Array[Node], group: String, manifest: Dictionary, kinds: Array) -> void:
 	var expected: int = manifest["annotations"].filter(func(a): return a["kind"] in kinds).size()
-	var actual := shell.get_node(group).get_child_count() if shell.has_node(group) else 0
+	var actual := 0
+	for part in parts:
+		if part.has_node(group):
+			actual += part.get_node(group).get_child_count()
 	check(actual == expected, "%s has %d nodes, manifest has %d" % [group, actual, expected])
 
 

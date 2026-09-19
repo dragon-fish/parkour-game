@@ -128,7 +128,9 @@ def _ladder_from_steps(mr, idx, props, annotation, report):
     cooked = [props.get('Start'), props.get('End')] + list(vector_array(mr, idx, 'SplineLocations') or [])
     sound = all(isinstance(v, tuple) and len(v) == 3 and finite(v)
                 and all(low[k] <= v[k] <= high[k] for k in range(3)) for v in cooked)
-    if sound:
+    # Some cooked splines collapse to one point even though their steps span
+    # a real ladder; being inside the step bounds is not enough.
+    if sound and props['Start'] != props['End']:
         return
     annotation['start'] = point(steps[0])
     annotation['end'] = point(steps[-1])
