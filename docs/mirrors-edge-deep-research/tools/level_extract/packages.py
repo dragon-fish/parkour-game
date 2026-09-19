@@ -21,7 +21,9 @@ from mapdump import MapReader
 #   interior        bool  false      first shell build: Sun off, SDFGI on
 #   initial_spawn   str   null       object name of the starting checkpoint/spawn
 #   outputs         dict  {}         {geometry: res path, shell: res path}
-#   texture_max_px  int   64         largest inline mip a material bake may use
+#   texture_max_px  int   64         largest mip a material bake may use; the bake is
+#                                    stored as raw RGBA in materials.json, so 256 is
+#                                    16x the file of 64 (Stormdrain: 130 MB)
 #   persistent      str   null       the chapter's *_p.me1; required only when the
 #                                    directory holds two maps (SP01: Edge_p, Escape_p)
 #   split_sections  bool  false      tag everything with the section it belongs to;
@@ -146,6 +148,7 @@ class PackageSet:
                 raise ExtractError('package not found: %s' % name)
         self._readers = {}
         self._upk_index = None
+        self._texture_index = None
 
     def reader(self, name):
         """MapReader over a map package in this chapter, decompressing once."""
@@ -167,6 +170,30 @@ class PackageSet:
             path = self._upk_index.get(package_name.lower())
             self._readers[key] = _labelled(MapReader(self._decompressed(path)), package_name) if path else None
         return self._readers[key]
+
+    def texture_sources(self, texture_name):
+        """(reader, export index) of every Texture2D of that name in the shared
+        .upk packages under CookedPC, indexed once (about three seconds).
+
+        A map package carries copies of the textures its materials use with
+        only the mips up to 64 px inline; the larger mips are flagged as stored
+        elsewhere, and there is no .tfc in the install to hold them. The full
+        texture is in its own shared package (Buildings/B_R_05.upk holds
+        T_R_05_Facade_D at 2048), under the same name: every one of Stormdrain's
+        4139 stripped textures was found that way.
+        """
+        if self._texture_index is None:
+            self._texture_index = {}
+            for root, _dirs, files in os.walk(self.cooked):
+                for f in files:
+                    path = os.path.join(root, f)
+                    if not f.lower().endswith('.upk') or compression_flags(path) != 0:
+                        continue
+                    reader = _labelled(MapReader(path), os.path.splitext(f)[0])
+                    for ti, e in enumerate(reader.pkg.exports, 1):
+                        if reader.pkg.class_of(e) == 'Texture2D':
+                            self._texture_index.setdefault(e['name'], []).append((reader, ti))
+        return self._texture_index.get(texture_name, [])
 
     def cooked_reader(self, file_name):
         """MapReader over a top-level CookedPC file such as Engine.u."""

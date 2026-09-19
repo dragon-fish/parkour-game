@@ -7,8 +7,10 @@ detail plus a B glass mask, averaged and multiplied by a DiffuseColor parameter;
 drawn as-is it is a yellow and blue stripe. Nodes that cannot be evaluated here
 (cube maps, pixel depth, fresnel) contribute a neutral 0.5.
 
-Only mips stored inline in the cooked package are used, up to the configured
-size. The full-size mip lives in the texture's source package and is not read.
+Mips are read inline from the package up to the configured size. A map
+package's copy of a texture keeps only mips up to 64 px inline and flags the
+rest as stored elsewhere; there is no texture cache file in the install, and
+the full mips are in the shared .upk of the same name (packages.texture_sources).
 """
 import base64
 import collections
@@ -68,7 +70,7 @@ class MaterialBaker:
             self.stats['texture_ok' if self._pixels[key] is not None else 'texture_unusable'] += 1
         return self._pixels[key]
 
-    def _decode(self, tr, ti):
+    def _decode(self, tr, ti, follow=True):
         props, native = tr.props(ti)
         fmt = str((props or {}).get('Format'))
         if fmt not in ('PF_DXT1', 'PF_DXT3', 'PF_DXT5'):
@@ -79,6 +81,7 @@ class MaterialBaker:
         mips = struct.unpack_from('<i', d, p)[0]
         p += 4
         best = None
+        stripped = False
         for _ in range(mips):
             flags, count, disk, _offset = struct.unpack_from('<4i', d, p)
             p += 16
@@ -90,6 +93,16 @@ class MaterialBaker:
             p += 8
             if inline and disk > 0 and max(w, h) <= self.max_px and (best is None or w > best[0]):
                 best = (w, h, start, disk, flags, count)
+            elif not inline and max(w, h) <= self.max_px:
+                stripped = True
+        if stripped and follow:
+            # A map package's copy, its larger mips left out: the shared
+            # package of the same name has them (PackageSet.texture_sources).
+            for source, si in self.packages.texture_sources(tr.pkg.exports[ti - 1]['name']):
+                pixels = self._decode(source, si, follow=False)
+                if pixels is not None and (best is None or pixels.shape[0] > best[1] or pixels.shape[1] > best[0]):
+                    self.stats['texture_from_shared_package'] += 1
+                    return pixels
         if not best:
             return None
         w, h, start, disk, flags, count = best
