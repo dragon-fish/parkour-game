@@ -12,6 +12,7 @@ size. The full-size mip lives in the texture's source package and is not read.
 """
 import base64
 import collections
+import math
 import struct
 
 import numpy as np
@@ -24,6 +25,9 @@ CHUNK_TAG = 0x9E2A83C1
 # A parameter-driven coordinate that is not a TextureCoordinate node (panners,
 # math on UVs) cannot be baked; the bake uses UV set 0 at tiling 1 for it.
 PLAIN_COORDINATE = (0, 1.0, 1.0)
+# Past this mean share of its colour coming from a cube map, a surface is lit by
+# the cube (ambient), not reflecting it: see MaterialBaker._mirror().
+MIRROR_AMBIENT_SHARE = 0.9
 
 
 class MaterialBaker:
@@ -143,9 +147,78 @@ class MaterialBaker:
             self.stats['computed_coordinates'] += 1
             coord = PLAIN_COORDINATE
         self.stats['baked'] += 1
-        return {'width': shape[1], 'height': shape[0],
-                'rgba': base64.b64encode((rgba * 255 + 0.5).astype(np.uint8).tobytes()).decode('ascii'),
-                'uv_set': int(coord[0]), 'tiling': [float(coord[1]), float(coord[2])]}
+        out = {'width': shape[1], 'height': shape[0],
+               'rgba': base64.b64encode((rgba * 255 + 0.5).astype(np.uint8).tobytes()).decode('ascii'),
+               'uv_set': int(coord[0]), 'tiling': [float(coord[1]), float(coord[2])]}
+        # How the surface shines, for the builder. The original reflects the sky
+        # through a cube map sampled into one of the root inputs (a glass
+        # facade's EmissiveColor, typically); the bake above reads that sample
+        # as a flat 0.5, so which inputs reach one is recorded here instead.
+        reflection = sorted(n for n, link in ins.items() if link and link['expr'] > 0 and ev.reaches_cube(link['expr']))
+        if reflection:
+            out['reflection'] = reflection
+            self.stats['reflective'] += 1
+            mirror = self._mirror(root_reader, root, params, ev.coordinate_filter, shape)
+            if mirror is not None:
+                albedo, share = mirror
+                rgba = np.concatenate([albedo, rgba[..., 3:]], -1)
+                out['rgba'] = base64.b64encode((rgba * 255 + 0.5).astype(np.uint8).tobytes()).decode('ascii')
+                # The share every pixel has is a sheen laid over the whole
+                # surface (a rooftop's), what rises above it is a mirror in
+                # part of it (a facade's windows). One would cost the other
+                # its sunlit shading if both were drawn metallic.
+                floor = float(share.min())
+                out['sheen'] = round(floor, 4)
+                metallic = share - floor
+                if metallic.max() >= 0.05:
+                    out['metallic'] = base64.b64encode((metallic * 255 + 0.5).astype(np.uint8).tobytes()).decode('ascii')
+                self.stats['mirrored'] += 1
+        for key, name in (('specular', 'SpecularColor'), ('specular_power', 'SpecularPower')):
+            link = ins.get(name)
+            if link and link['expr'] > 0:
+                try:
+                    out[key] = round(float(np.mean(ev.value(link, np.ones(1))[..., :3])), 4)
+                except (IndexError, ValueError):
+                    pass
+        if 'specular_power' in out:
+            # Blinn-Phong exponent to GGX roughness, the usual sqrt(2 / (n + 2)).
+            out['roughness'] = round(math.sqrt(2.0 / (max(out['specular_power'], 0.0) + 2.0)), 4)
+        return out
+
+    def _mirror(self, mr, root, params, coordinate, shape):
+        """(albedo HxWx3, metallic HxW) where a cube map puts the sky into
+        part of the surface, or None.
+
+        Evaluated with the cube at 0 and at 1: what changes is the part of the
+        colour that comes from the sky, k. Drawn metallic by k's share of the
+        colour, a Godot surface reflects its real surroundings there instead
+        of a flat grey. A surface whose colour comes from the cube almost
+        everywhere is using it as ambient light, not as a mirror: left alone."""
+        colours = []
+        for cube in (0.0, 1.0):
+            ev = Evaluator(self, mr, params, coordinate)
+            ev.cube = cube
+            ins = ev.inputs(root)
+            total = np.zeros(shape + (3,))
+            for key in ('DiffuseColor', 'EmissiveColor'):
+                link = ins.get(key)
+                if not link or link['expr'] <= 0:
+                    continue
+                try:
+                    v = ev.value(link, np.zeros(3))
+                except (IndexError, ValueError):
+                    return None
+                v = v[..., :3] if v.shape[-1] >= 3 else np.repeat(v[..., :1], 3, -1)
+                v = np.broadcast_to(v, shape + (3,)) if v.ndim == 1 else resize(v, shape)
+                total = total + v
+            colours.append(total)
+        base, sky = colours[0], colours[1] - colours[0]
+        albedo = np.clip(base + sky, 0.0, 1.0)
+        share = np.abs(sky).mean(-1) / np.maximum(albedo.mean(-1), 1e-3)
+        metallic = np.clip(share, 0.0, 1.0)
+        if metallic.max() < 0.05 or metallic.mean() > MIRROR_AMBIENT_SHARE:
+            return None
+        return albedo, metallic
 
     def _collect_params(self, mr, idx, params, depth=0):
         """Walk MaterialInstanceConstant parents collecting overrides, nearest
@@ -195,10 +268,43 @@ class Evaluator:
         self.shape = None
         self.coords = []
         self.unsupported = collections.Counter()
+        # A cube map sample's value, or None to count it unsupported (0.5).
+        self.cube = None
 
     def inputs(self, idx):
         return {n: _link(self.mr, q, sz) for (n, _typ, extra, q, sz, _arr) in expression_chain(self.mr, idx)
                 if extra and ('ExpressionInput' in extra or 'MaterialInput' in extra)}
+
+    def reaches_cube(self, idx, depth=0, seen=None):
+        """Whether a cube map sample feeds expression `idx`."""
+        seen = set() if seen is None else seen
+        if idx in seen or depth > 32:
+            return False
+        seen.add(idx)
+        pkg = self.mr.pkg
+        cls = pkg.class_of(pkg.exports[idx - 1])
+        if 'Cube' in cls:
+            return True
+        if cls == 'MaterialExpressionTextureSample':
+            ref = (self.props(idx).get('Texture') or (None, 0))[1]
+            if ref and self.mr.pkg.resolve(ref) and 'Cube' in str(self._class_of_ref(ref)):
+                return True
+        return any(self.reaches_cube(link['expr'], depth + 1, seen)
+                   for link in self.inputs(idx).values() if link and link['expr'] > 0)
+
+    def _is_cube_sample(self, idx, cls, props):
+        if 'Cube' in cls:
+            return True
+        if cls == 'MaterialExpressionTextureSample':
+            ref = (props.get('Texture') or (None, 0))[1]
+            return bool(ref) and 'Cube' in str(self._class_of_ref(ref))
+        return False
+
+    def _class_of_ref(self, ref):
+        pkg = self.mr.pkg
+        if ref > 0:
+            return pkg.class_of(pkg.exports[ref - 1])
+        return pkg.imports[-ref - 1].get('class', '')
 
     def props(self, idx):
         return {name: self.mr._value(typ, extra, q, sz) for (name, typ, extra, q, sz, _arr) in expression_chain(self.mr, idx)}
@@ -222,6 +328,8 @@ class Evaluator:
         ins = self.inputs(idx)
         one, zero = np.ones(1), np.zeros(1)
         name = props.get('ParameterName')
+        if self.cube is not None and self._is_cube_sample(idx, cls, props):
+            return np.full(4, self.cube)
         if cls in ('MaterialExpressionTextureSample', 'MaterialExpressionTextureSampleParameter2D'):
             reader, ref = mr, (props.get('Texture') or (None, 0))[1]
             if isinstance(self.params.get(name), tuple):

@@ -13,9 +13,21 @@ const Common := preload("res://tools/me_level/me_level_common.gd")
 ## Multiplies every baked texture. The original's diffuse maps are near white
 ## and were lit by baked light; under a live sun they clip. A dial.
 const TEXTURE_ALBEDO := Color(0.85, 0.85, 0.85)
+## Roughness where a surface mirrors the sky (a facade's windows, a storefront):
+## the original's cube map is a sharp reflection. A dial.
+const MIRROR_ROUGHNESS := 0.05
+## Roughness of a material the original gave no SpecularPower. The bakes that
+## have one carry their own (materials.py: sqrt(2 / (n + 2))).
+const DEFAULT_ROUGHNESS := 0.9
+## The original's SpecularColor (0..several) onto Godot's specular (0..1,
+## 0.5 = the default dielectric). A dial.
+const SPECULAR_SCALE := 0.5
+## How strongly a surface's sheen (the cube map share over all of it) becomes
+## a clearcoat. A dial.
+const SHEEN_SCALE := 1.0
 ## Part of every mesh's source hash. Bump when what a library file contains or
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
-const LIBRARY_FORMAT := 4
+const LIBRARY_FORMAT := 5
 
 var _materials := {}
 var _bakes := {}
@@ -242,7 +254,32 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 	material.albedo_texture = ImageTexture.create_from_image(image)
 	material.albedo_color = TEXTURE_ALBEDO
 	material.uv1_scale = Vector3(bake["tiling"][0], bake["tiling"][1], 1.0)
-	material.roughness = 0.9
+	var roughness: float = float(bake.get("roughness", DEFAULT_ROUGHNESS))
+	material.roughness = roughness
+	if bake.has("specular"):
+		material.metallic_specular = clampf(float(bake["specular"]) * SPECULAR_SCALE, 0.0, 1.0)
+	if bake.has("metallic"):
+		# Mirror where the original put the sky into the colour through a cube
+		# map, and sharp there: metallic and roughness from one mask.
+		var mask := Image.create_from_data(int(bake["width"]), int(bake["height"]), false,
+				Image.FORMAT_L8, Marshalls.base64_to_raw(bake["metallic"]))
+		var rough := Image.create(mask.get_width(), mask.get_height(), false, Image.FORMAT_L8)
+		for y in mask.get_height():
+			for x in mask.get_width():
+				var m := mask.get_pixel(x, y).r
+				rough.set_pixel(x, y, Color.from_hsv(0.0, 0.0, lerpf(roughness, MIRROR_ROUGHNESS, m)))
+		mask.generate_mipmaps()
+		rough.generate_mipmaps()
+		material.metallic = 1.0
+		material.metallic_texture = ImageTexture.create_from_image(mask)
+		material.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+		material.roughness = 1.0
+		material.roughness_texture = ImageTexture.create_from_image(rough)
+		material.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	if float(bake.get("sheen", 0.0)) > 0.01:
+		material.clearcoat_enabled = true
+		material.clearcoat = clampf(float(bake["sheen"]) * SHEEN_SCALE, 0.0, 1.0)
+		material.clearcoat_roughness = roughness
 	if unlit:
 		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	match blend:
