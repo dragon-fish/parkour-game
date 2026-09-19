@@ -32,6 +32,11 @@ extends MoveConfig
 ## platform staggers the body instead of letting it run off the cliff. A
 ## jump off the chute clears the descent. Metres.
 @export var hard_landing_descent: float = 10.0
+## PROJECT-DEFINED. Seconds the body and the view take to swing round to face
+## down the chute after entering it from any other angle; Turn180's ground
+## turn_time is the precedent. Snapped, a backward entry cut the view round
+## in one frame.
+@export var turn_in_time: float = 0.3
 ## PROJECT-DEFINED. How long the body may lose contact with the chute before
 ## the slide is a fall: seams between chute meshes part the capsule from the
 ## surface for a tick or two. At the chute's end the contact stays lost and

@@ -194,8 +194,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	player.set_grounded(player.is_on_floor() or stepped_down)
 
 	# A marked chute takes the body whatever else this tick decided: the
-	# original's RumpSlide is not something the player can walk on.
-	if not player.touched_chute().is_empty():
+	# original's RumpSlide is not something the player can walk on. Not a
+	# dying body: the fatal landing hands here for the death sequence to
+	# collect it, and a chute under it must not slide it away first.
+	if not player.is_dying() and not player.touched_chute().is_empty():
 		return RAMP_SLIDE
 
 	if not player.grounded:

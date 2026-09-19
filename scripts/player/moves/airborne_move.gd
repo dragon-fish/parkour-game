@@ -297,12 +297,22 @@ func settle_landing(delta: float) -> StringName:
 	# A marked chute is a surface but not a floor: touching it, from any
 	# angle, is the start of the slide, not a landing. Checked before the
 	# floor test because a chute steeper than floor_max_angle never reads as
-	# a floor at all.
-	if not player.touched_chute().is_empty():
+	# a floor at all. [ME:COMMUNITY] A fall past hard_landing_height onto the
+	# chute costs the hard landing's health and its red, and slides on with
+	# no stagger; an UNCONTROLLED fall is not saved by the chute (takes_chute()
+	# below), it lands on it as on anything and dies.
+	var on_chute: bool = not player.touched_chute().is_empty()
+	if on_chute and takes_chute():
+		player.fall_tracker.update(delta, -impact_speed, player.global_position.y)
+		var chute_fall: float = player.fall_tracker.fall_height
+		if chute_fall >= config.pawn.hard_landing_height:
+			player.take_damage(config.landing.hard_landing_damage, Health.Cause.HARD_LANDING)
+			if player.screen_effects != null:
+				player.screen_effects.set_tint(config.landing.tint_color, 1.0)
 		player.set_grounded(true)
 		return RAMP_SLIDE
 
-	if not player.is_on_floor():
+	if not player.is_on_floor() and not on_chute:
 		player.set_grounded(false)
 		return KEEP
 
@@ -346,6 +356,12 @@ func settle_landing(delta: float) -> StringName:
 	if hurt > 0.0:
 		player.take_damage(hurt, Health.Cause.HARD_LANDING)
 	return landing_destination(fall_height, rolled)
+
+## Whether touching a marked chute starts the slide. Every controlled fall
+## says yes; the uncontrolled one overrides this to land on the chute as on
+## any surface, which is fatal.
+func takes_chute() -> bool:
+	return true
 
 ## What arriving costs the body, in health.
 ##
