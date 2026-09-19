@@ -62,7 +62,10 @@ func test_the_view_eases_in_whichever_way_it_is_going() -> void:
 	# fraction of the distance covered in the first quarter of the blend, which
 	# a slow start keeps well under a quarter in BOTH directions.
 	var p := _player()
-	await step(1)
+	# Seeded first: an unseeded rig snaps to whatever view it first sees, and
+	# a single tick is not enough to seed it.
+	await step(6)
+	assert_eq(p.camera_rig._eased_view_blend(), 0.0, "test setup: not seeded at the eye")
 	var quarter: int = maxi(int(p.config.camera.view_blend_time * 60.0 / 4.0), 1)
 	
 	# first -> third
