@@ -31,6 +31,14 @@ const BSP_MATERIAL_FAMILY := "roof"
 ## Metres from the camera past which an extracted light fades out, and over
 ## how far. Stormdrain's densest view (the pillar hall) keeps 336 lights
 ## within 80 m, under project.godot's max_clustered_elements. A dial.
+## A placement is not drawn past this many times its own size, within
+## [VISIBLE_RANGE_MIN, VISIBLE_RANGE_MAX] metres. A dial.
+const VISIBLE_RANGE_PER_METRE := 40.0
+const VISIBLE_RANGE_MIN := 30.0
+const VISIBLE_RANGE_MAX := 3000.0
+## Placements at least this many metres across go into the level's occluder.
+const OCCLUDER_MIN_EXTENT := 40.0
+
 const LIGHT_FADE_BEGIN := 60.0
 const LIGHT_FADE_LENGTH := 20.0
 
@@ -79,6 +87,10 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		# the editor can still show it.
 		instance.visible = not placement["hidden"]
 		_apply_overrides(instance, placement)
+		# Not drawn past VISIBLE_RANGE_PER_METRE its own size: 13,000 placements
+		# drew the whole chapter from inside a corridor.
+		var extent: float = (Common.transform_of(placement).basis * mesh.get_aabb().size).abs().length()
+		instance.visibility_range_end = clampf(extent * VISIBLE_RANGE_PER_METRE, VISIBLE_RANGE_MIN, VISIBLE_RANGE_MAX)
 		node.add_child(instance)
 		var transform := Common.transform_of(placement)
 		var stretch := Basis()
@@ -110,13 +122,69 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			_add_shape(node, _stretched(mesh.get_meta("per_poly_shape"), stretch), "Collision", offset)
 		(movers if mover else geometry).add_child(node)
 	print("[me_level] placements: ", counts)
-	root.add_child(_build_bsp(manifest["bsp"]))
+	var bsp := _build_bsp(manifest["bsp"])
+	root.add_child(bsp)
 	root.add_child(_build_lights(manifest["lights"]))
 	root.add_child(movers)
 	var look = manifest.get("environment")
 	if look is Dictionary:
 		root.add_child(_environment(look))
+	var occluder := _build_occluder(geometry, bsp)
+	if occluder != null:
+		root.add_child(occluder)
 	return root
+
+
+## One occluder of the level's large, still, solid surfaces and its BSP.
+## Measured in Stormdrain: 15 ms a frame in the lift corridor down to 6 with the
+## visibility ranges, the whole city behind the walls no longer drawn. Only
+## placements at least OCCLUDER_MIN_EXTENT across: the same result as taking
+## everything down to 8 m, at 520 thousand triangles instead of 1.3 million.
+## Movers move and hidden, masked or translucent surfaces do not hide what is
+## behind them: none of those.
+static func _build_occluder(geometry: Node3D, bsp: Node3D) -> OccluderInstance3D:
+	var vertices := PackedVector3Array()
+	var indices := PackedInt32Array()
+	for node: Node3D in geometry.get_children():
+		var instance := node.get_node_or_null("Mesh") as MeshInstance3D
+		if instance == null or not instance.visible or instance.mesh == null:
+			continue
+		var xform := node.transform * instance.transform
+		if (xform.basis * instance.mesh.get_aabb().size).abs().length() < OCCLUDER_MIN_EXTENT:
+			continue
+		_add_occluding(instance, xform, vertices, indices)
+	var bsp_mesh := bsp.get_node_or_null("Mesh") as MeshInstance3D
+	if bsp_mesh != null:
+		_add_occluding(bsp_mesh, bsp.transform * bsp_mesh.transform, vertices, indices)
+	if indices.is_empty():
+		return null
+	var shape := ArrayOccluder3D.new()
+	shape.set_arrays(vertices, indices)
+	var occluder := OccluderInstance3D.new()
+	occluder.name = "Occluder"
+	occluder.occluder = shape
+	return occluder
+
+
+static func _add_occluding(instance: MeshInstance3D, xform: Transform3D,
+		vertices: PackedVector3Array, indices: PackedInt32Array) -> void:
+	for surface in instance.mesh.get_surface_count():
+		var material := instance.get_surface_override_material(surface)
+		if material == null:
+			material = instance.mesh.surface_get_material(surface)
+		if material is BaseMaterial3D and (material as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+			continue
+		var arrays := instance.mesh.surface_get_arrays(surface)
+		var positions: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var base := vertices.size()
+		for p in positions:
+			vertices.append(xform * p)
+		if arrays[Mesh.ARRAY_INDEX] != null:
+			for i: int in arrays[Mesh.ARRAY_INDEX]:
+				indices.append(base + i)
+		else:
+			for i in positions.size():
+				indices.append(base + i)
 
 
 ## The level's own look, applied at runtime to its Arena (me_environment.gd).
