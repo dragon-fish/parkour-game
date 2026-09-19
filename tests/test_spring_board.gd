@@ -310,3 +310,14 @@ func test_the_rise_cannot_coil() -> void:
 	await step(3)
 	assert_ne(player.move_manager.current_name, Move.COIL,
 		"a spring board coiled: Coil belongs to Jump alone")
+
+func test_the_rise_catches_every_interest_line_a_jump_does() -> void:
+	# A spring board aimed at a pipe with a grabbable beam behind it: without
+	# the lines, the rise reached the beam's ledge first and the pipe was never
+	# asked.
+	var spring := SpringBoardConfig.new()
+	var jump := JumpConfig.new()
+	for flag in ["check_for_zipline", "check_for_swing", "check_for_ladder",
+			"check_for_ledge_walk", "check_for_balance"]:
+		assert_eq(spring.get(flag), jump.get(flag), "the spring board rise differs from a jump on " + flag)
+		assert_true(spring.get(flag), "a jump no longer asks " + flag + "; revisit this test")

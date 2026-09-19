@@ -106,6 +106,15 @@ func _init() -> void:
 	check_for_grab = true
 	check_for_vault_over = true
 	check_for_wall_climb = true
+	# The interest lines, the same set Jump catches. DO NOT leave them to the
+	# Falling hand-off at the apex: Stormdrain springs the player at a pipe
+	# with a grabbable beam behind it, and without these the rise reached the
+	# beam's ledge first and the pipe was never asked.
+	check_for_zipline = true
+	check_for_swing = true
+	check_for_ladder = true
+	check_for_ledge_walk = true
+	check_for_balance = true
 	# The steps are scripted: the model is pinned along the plants while the
 	# capsule and the view stay the player's. [ME:CONFIRMED] ControllerState =
 	# PlayerWalking and no bConstrainLook -- the view is free the whole time,
