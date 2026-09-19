@@ -66,6 +66,18 @@ func test_a_marked_chute_starts_the_ramp_slide_and_carries_the_body_down() -> vo
 	assert_true(player.global_position.z > -4.0, "the body did not travel along the chute (z %.2f)" % player.global_position.z)
 	await _finish(r)
 
+func test_a_chute_gentle_enough_to_stand_on_still_carries_the_body_down() -> void:
+	# 35 degrees is under Godot's floor_max_angle: a floor to move_and_slide(),
+	# which walked the slide's press into the surface UP the chute. Escape's
+	# slanted building is 38.
+	var r: Dictionary = await _ride(35.0, true, 90)
+	var seen: Array = r["seen"]
+	assert_true(seen.has(Move.RAMP_SLIDE), "landing on a gentle marked chute never entered RampSlide (saw %s)" % [seen])
+	# Placed at z -4.9; down the chute is +Z.
+	var player: Player = r["player"]
+	assert_true(player.global_position.z > -3.0, "the slide did not carry the body down a gentle chute (z %.2f)" % player.global_position.z)
+	await _finish(r)
+
 func test_the_same_slope_without_the_mark_is_not_a_ramp_slide() -> void:
 	var r: Dictionary = await _ride(50.0, false, 60)
 	var seen: Array = r["seen"]
