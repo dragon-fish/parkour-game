@@ -20,6 +20,7 @@ const MATINEE_SCRIPT := preload("res://scripts/level/matinee.gd")
 const USE_ZONE_SCRIPT := preload("res://scripts/level/use_zone.gd")
 const LIFT_SCRIPT := preload("res://scripts/level/lift.gd")
 const GLASS_SCRIPT := preload("res://scripts/level/breakable_glass.gd")
+const LEVEL_END_SCRIPT := preload("res://scripts/level/level_end.gd")
 ## How far out from a pane its Reach sees a body coming: a tick at a sprint
 ## and then some. A dial.
 const GLASS_REACH_M := 0.6
@@ -70,6 +71,7 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	_own(root, _death_volumes(annotations))
 	_own(root, _pain_volumes(annotations))
 	_own(root, _glass(manifest, NodePath("../../" + String(geometry.name) + "/Movers")))
+	_own(root, _level_ends(annotations))
 	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), {}))
 	_own(root, _checkpoints(manifest))
 	_place_spawn(root, manifest)
@@ -107,6 +109,7 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	_own(root, _death_volumes(annotations))
 	_own(root, _pain_volumes(annotations))
 	_own(root, _glass(manifest, NodePath("../../Geometry/Movers")))
+	_own(root, _level_ends(annotations))
 	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), _lift_actors(manifest)))
 	_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
 	return root
@@ -832,6 +835,23 @@ func _glass(manifest: Dictionary, movers: NodePath) -> Node3D:
 		reach.add_child(collision)
 		glass.add_child(reach)
 		group.add_child(glass)
+	return group
+
+
+## The touches that end the chapter (LevelEnd), in the shapes of the original's
+## triggers.
+func _level_ends(annotations: Array) -> Node3D:
+	var group := _group("LevelEnds")
+	var names := Common.NameAllocator.new()
+	for a: Dictionary in annotations:
+		if a["kind"] != "level_end":
+			continue
+		var area := _matinee_trigger(a["trigger"], false)
+		if area == null:
+			continue
+		area.set_script(LEVEL_END_SCRIPT)
+		area.name = names.take(area.name)
+		group.add_child(area)
 	return group
 
 

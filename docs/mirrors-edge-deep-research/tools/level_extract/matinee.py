@@ -350,3 +350,87 @@ def self_disabling(mr):
                         if var > 0 and ref_export(_props(mr, var).get('ObjValue')) == volume:
                             out.add(pkg.exports[volume - 1]['name'])
     return out
+
+
+# The chapter's end: [ME:CONFIRMED Escape, Cranes Kismet] SeqAct_TdLevelCompleted,
+# reached from a touch through whatever the level plays on the way (input off,
+# an outro matinee, a delay, a fade) and often through remote events sent from
+# another package. Only the touches are wanted; the path is replaced by a
+# white fade to the menu.
+LEVEL_END_WALK_DEPTH = 16
+
+
+def level_end_links(packages, mr):
+    """This package's part of the chain: the touches and remote event names
+    upstream of each SeqAct_TdLevelCompleted ('end'), and of each
+    SeqAct_ActivateRemoteEvent by the event it sends ('sends')."""
+    pkg = mr.pkg
+    fired_by = {}
+    for i, e in enumerate(pkg.exports, 1):
+        if not pkg.class_of(e).startswith(('Seq', 'TdSeq')):
+            continue
+        for out in _struct_array(mr, _props(mr, i).get('OutputLinks')):
+            for link in _struct_array(mr, out.get('Links')):
+                op = ref_export(link.get('LinkedOp'))
+                if op:
+                    fired_by.setdefault(op, []).append((i, link.get('InputLinkIdx', 0)))
+
+    def upstream(start):
+        triggers, names, seen, todo = [], set(), set(), [(start, 0)]
+        while todo:
+            op, depth = todo.pop()
+            if op in seen or depth > LEVEL_END_WALK_DEPTH:
+                continue
+            seen.add(op)
+            cls = pkg.class_of(pkg.exports[op - 1])
+            props = _props(mr, op)
+            if cls in TOUCH_EVENTS or cls in USED_EVENTS:
+                originator = ref_export(props.get('Originator'))
+                if originator and outer_class(pkg, pkg.exports[originator - 1]) == 'Level':
+                    triggers.append(_trigger(packages, mr, originator))
+                continue
+            if cls == 'SeqEvent_RemoteEvent':
+                if props.get('EventName'):
+                    names.add(str(props['EventName']))
+                continue
+            if cls.startswith(('SeqEvent', 'SeqEvt')):
+                continue
+            for up, input_idx in fired_by.get(op, []):
+                # Only what goes THROUGH a gate, not what opens it: Edge's roof
+                # end flies the helicopter in and opens the gate; grabbing the
+                # helicopter ends the level.
+                if cls == 'SeqAct_Gate' and input_idx != 0:
+                    continue
+                todo.append((up, depth + 1))
+        return triggers, names
+
+    out = {'end': [], 'sends': {}}
+    for i, e in enumerate(pkg.exports, 1):
+        cls = pkg.class_of(e)
+        if cls == 'SeqAct_TdLevelCompleted':
+            out['end'].append(upstream(i))
+        elif cls == 'SeqAct_ActivateRemoteEvent' and _props(mr, i).get('EventName'):
+            out['sends'].setdefault(str(_props(mr, i)['EventName']), []).append(upstream(i))
+    return out
+
+
+def level_ends(links):
+    """The touches that end the chapter, as [(package label, trigger)], from
+    every package's level_end_links(); remote events followed across them."""
+    found, names = [], set()
+    for label, part in links:
+        for triggers, sent in part['end']:
+            found += [(label, t) for t in triggers]
+            names |= sent
+    done = set()
+    while names - done:
+        name = (names - done).pop()
+        done.add(name)
+        for label, part in links:
+            for triggers, sent in part['sends'].get(name, []):
+                found += [(label, t) for t in triggers]
+                names |= sent
+    unique = {}
+    for label, t in found:
+        unique.setdefault((label, t['name']), (label, t))
+    return list(unique.values())

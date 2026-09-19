@@ -435,7 +435,7 @@ def main(config_path):
                          'excluded_by_anchor': 0, 'hidden': 0}}
     meshes = MeshTable(packages, report, material_bake.MaterialBaker(packages, int(config['texture_max_px']), report))
     defaults = annotations.blocking_defaults(packages)
-    placements, found_lights, bsp, matinees = [], [], [], []
+    placements, found_lights, bsp, matinees, end_links = [], [], [], [], []
     notes = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
     for name in packages.names:
         mr = packages.reader(name)
@@ -452,10 +452,18 @@ def main(config_path):
         found_lights += lights.collect_lights(mr)
         matinees += matinee.collect(packages, mr, report)
         notes['annotations'] += glass
+        end_links.append((name, matinee.level_end_links(packages, mr)))
         for face in lights.collect_bsp(mr):
             face['package'] = name
             bsp.append(face)
         print('%-36s placements so far %5d' % (name, len(placements)))
+
+    if packages.persistent:
+        end_links.append((packages.persistent, matinee.level_end_links(packages, packages.reader(packages.persistent))))
+    for label, trigger in matinee.level_ends(end_links):
+        notes['annotations'].append({'kind': 'level_end', 'name': trigger['name'], 'package': label,
+                                     'position': trigger.get('position', [0.0, 0.0, 0.0]), 'trigger': trigger})
+    report['level_ends'] = sum(1 for a in notes['annotations'] if a['kind'] == 'level_end')
 
     unused = set(config['collision_overrides']) - {p['mesh'] for p in placements}
     if unused:
