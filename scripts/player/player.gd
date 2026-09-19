@@ -1550,6 +1550,7 @@ func _build_moves() -> void:
 	move_manager.start(Move.WALKING)
 
 func _ready() -> void:
+	_standing_floor_angle = floor_max_angle
 	# BEFORE the attach, and before anything reads a body_* property: the whole
 	# point is that they hold the profile's values by the time they matter.
 	if body_profile != null:
@@ -4128,6 +4129,22 @@ const STEP_RAMP_TOLERANCE := 0.02
 ## this descent half. Only the descent half is taken here: this project's own
 ## step-up probe is measured and documented, and replacing it is a separate
 ## question (docs/feel-backlog.md).
+## floor_max_angle as the scene set it, put back when a chute lets go.
+var _standing_floor_angle: float = 0.0
+
+## Whether a marked chute is a WALL to Godot, however gentle: floor_max_angle
+## drops to RampSlideConfig.min_slide_floor_z. DO NOT let move_and_slide() see
+## a chute gentler than 45 degrees as a floor. On the tick a fall lands, it
+## zeroes the fall's speed down the slope; while sliding, it walks the slide's
+## press into the surface up it.
+func use_chute_floor(on: bool) -> void:
+	floor_max_angle = acos(config.ramp_slide.min_slide_floor_z) if on else _standing_floor_angle
+
+## Whether this tick's `motion` runs into a marked chute.
+func chute_ahead(motion: Vector3) -> bool:
+	var hit := KinematicCollision3D.new()
+	return test_move(global_transform, motion, hit) and Probes.is_uncontrolled_slide(hit.get_collider())
+
 ## The chute the last move_and_slide() touched, as {normal}, or empty. A
 ## chute is any collider in Probes.UNCONTROLLED_SLIDE_GROUP: the surface the
 ## original marks bEnableUncontrolledSlide, which RampSlideMove rides. Read

@@ -15,11 +15,8 @@ extends Move
 #
 # PHYS_Falling in the original, with the surface removing the component of
 # the velocity into it: done here by hand rather than through
-# move_and_slide()'s floor handling. For the move's length floor_max_angle
-# drops to min_slide_floor_z, so every chute is a WALL to Godot. DO NOT leave
-# a chute gentler than the default 45 degrees a floor: move_and_slide() walked
-# the press into it UP the slope, and Escape's 38-degree chute held the body
-# in place, creeping uphill.
+# move_and_slide()'s floor handling: for the move's length every chute is a
+# WALL to Godot (Player.use_chute_floor).
 
 var _normal: Vector3 = Vector3.UP
 var _lost_contact: float = 0.0
@@ -31,8 +28,6 @@ var _placed: float = 0.0
 ## The hard landing's red still to fade, 1 to 0; only after a hard fall onto
 ## the chute (Player.pending_chute_hurt).
 var _hurt_flash: float = 0.0
-## The body's own floor_max_angle, put back on exit.
-var _floor_angle: float = 0.0
 
 
 func enter(_previous: StringName) -> void:
@@ -41,8 +36,7 @@ func enter(_previous: StringName) -> void:
 	_lost_contact = 0.0
 	_start_y = player.global_position.y
 	_hurt_flash = 1.0 if player.pending_chute_hurt else 0.0
-	_floor_angle = player.floor_max_angle
-	player.floor_max_angle = acos(config.ramp_slide.min_slide_floor_z)
+	player.use_chute_floor(true)
 	player.pending_chute_hurt = false
 	# Sitting down costs most of the arriving speed; what is left runs down
 	# the chute, not into it.
@@ -60,7 +54,7 @@ func enter(_previous: StringName) -> void:
 
 
 func exit() -> void:
-	player.floor_max_angle = _floor_angle
+	player.use_chute_floor(false)
 	if _hurt_flash > 0.0 and player.screen_effects != null:
 		player.screen_effects.set_tint(config.landing.tint_color, 0.0)
 	_hurt_flash = 0.0

@@ -292,7 +292,15 @@ func probe_transition() -> StringName:
 func settle_landing(delta: float) -> StringName:
 	# Capture the impact speed before move_and_slide() zeroes it on contact.
 	var impact_speed := maxf(-player.velocity.y, 0.0)
+	# Asked BEFORE the move, like the soft landing's arc: landing on a chute as
+	# a floor loses the fall's speed down it, and the slide begins leaving
+	# the surface it just touched.
+	var chute_ahead: bool = takes_chute() and player.chute_ahead(player.velocity * delta)
+	if chute_ahead:
+		player.use_chute_floor(true)
 	player.move_and_slide()
+	if chute_ahead:
+		player.use_chute_floor(false)
 
 	# A marked chute is a surface but not a floor: touching it, from any
 	# angle, is the start of the slide, not a landing. Checked before the
