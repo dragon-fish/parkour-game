@@ -119,7 +119,12 @@ def _keys(mr, track):
     pr = _move_track_props(mr, track)
     return {'position': _channel(_curve_points(mr, pr.get('PosTrack')),
                                  lambda v: [v[0] / UU, v[2] / UU, v[1] / UU]),
-            'euler': _channel(_curve_points(mr, pr.get('EulerTrack')), list)}
+            'euler': _channel(_curve_points(mr, pr.get('EulerTrack')), list),
+            # IMF_RelativeToInitial: keys in the actor's OWN frame. The lift's
+            # two door leaves face opposite ways and share one "-76 along X",
+            # which opens them to opposite sides only read this way.
+            # UE3's class default is IMF_World.
+            'local': pr.get('MoveFrame') == 'IMF_RelativeToInitial'}
 
 
 def _trigger(packages, mr, idx):
@@ -219,7 +224,7 @@ def collect(packages, mr, report):
                         gp = _props(mr, g)
                         # An unnamed group is UE3's default name, which is what
                         # the variable links then call it.
-                        keys = {'position': [], 'euler': [], 'scale': []}
+                        keys = {'position': [], 'euler': [], 'scale': [], 'local': False}
                         for t in _int_array(mr, gp.get('InterpTracks')):
                             track_class = pkg.class_of(pkg.exports[t - 1])
                             if track_class == 'InterpTrackMove':
@@ -241,7 +246,7 @@ def collect(packages, mr, report):
         for g in groups:
             g['actors'] = variables.get(g['group'], [])
         groups = [g for g in groups if g['actors']
-                  and max(len(channel) for channel in g['keys'].values()) >= 2]
+                  and max(len(g['keys'][c]) for c in ('position', 'euler', 'scale')) >= 2]
         if not groups:
             report['matinee_without_movement'] = report.get('matinee_without_movement', 0) + 1
             continue

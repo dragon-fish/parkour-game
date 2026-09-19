@@ -190,7 +190,7 @@ func _matinees(manifest: Dictionary, movers: NodePath) -> Node3D:
 					targets.append(NodePath(String(movers) + "/" + present[actor]))
 			if targets.is_empty():
 				continue
-			var track := {targets = targets}
+			var track := {targets = targets, local = bool(g["keys"].get("local", false))}
 			_matinee_channel(track, "pos_", g["keys"]["position"])
 			_matinee_channel(track, "rot_", g["keys"]["euler"])
 			_matinee_channel(track, "scl_", g["keys"].get("scale", []))

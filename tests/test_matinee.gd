@@ -15,6 +15,7 @@ func _rig() -> Dictionary:
 	matinee.length = 0.1
 	matinee.tracks = [{
 		targets = [NodePath("../Target")],
+		local = false,
 		pos_times = PackedFloat32Array([0.0, 0.1]),
 		pos_values = PackedVector3Array([Vector3.ZERO, Vector3(0.0, -2.0, 0.0)]),
 		pos_arrive = PackedVector3Array([Vector3.ZERO, Vector3.ZERO]),

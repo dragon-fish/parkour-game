@@ -14,12 +14,14 @@ extends Node3D
 ## Only the shape the extractor reads is reproduced (see its matinee.py):
 ## touches, uses, "Completed" chains, through switches, gates and delays.
 
-## One entry per moving group: {targets: Array[NodePath], and per channel
-## (pos_, rot_, scl_) times, values, arrive, leave, modes}. Positions are
-## metres; rotations the original's (roll, pitch, yaw) in degrees, turned into
-## a basis after sampling; scales the original's absolute DrawScale3D, applied
-## to each target's Mesh as a ratio to the first key. modes: 0 constant,
-## 1 linear, 2 curve (Hermite on the stored tangents).
+## One entry per moving group: {targets: Array[NodePath], local: bool, and
+## per channel (pos_, rot_, scl_) times, values, arrive, leave, modes}.
+## Positions are metres; rotations the original's (roll, pitch, yaw) in
+## degrees, turned into a basis after sampling; scales the original's absolute
+## DrawScale3D, applied to each target's Mesh as a ratio to the first key.
+## `local`: keys are in each target's own frame (UE3 IMF_RelativeToInitial),
+## else in world axes. modes: 0 constant, 1 linear, 2 curve (Hermite on the
+## stored tangents).
 @export var tracks: Array[Dictionary] = []
 @export var length: float = 0.0
 ## Seconds of the keys per second of play. The original sets it per action.
@@ -197,7 +199,11 @@ func _apply() -> void:
 			if target == null:
 				continue
 			var start_transform: Transform3D = _starts[i][j]
-			target.global_transform = Transform3D(turn * start_transform.basis, start_transform.origin + offset)
+			if track["local"]:
+				var frame := start_transform.basis.orthonormalized()
+				target.global_transform = Transform3D(start_transform.basis * turn, start_transform.origin + frame * offset)
+			else:
+				target.global_transform = Transform3D(turn * start_transform.basis, start_transform.origin + offset)
 			if scaled:
 				var mesh := target.get_node_or_null("Mesh") as Node3D
 				if mesh != null:

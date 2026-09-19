@@ -19,9 +19,13 @@ extends Node3D
 ## Landing doors, one list per stop. Stop 0 is where the car stands at load;
 ## stop 1 is `travel` from there.
 @export var stop_doors: Array[Array] = []
+## In the car's own frame, like door_open_offset in each door's: the
+## original's lift tracks are IMF_RelativeToInitial.
 @export var travel: Vector3 = Vector3.ZERO
 @export var travel_time: float = 5.0
-## World offset from a door's closed transform (as the level stores it) to open.
+## Offset from a door's closed transform (as the level stores it) to open, in
+## THAT DOOR'S OWN FRAME: the two leaves of a pair face opposite ways, so one
+## offset opens them to opposite sides.
 @export var door_open_offset: Vector3 = Vector3.ZERO
 @export var door_time: float = 0.7
 
@@ -102,7 +106,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _place_car(along: float) -> void:
-	_car_offset = travel * along
+	_car_offset = _car_home.basis.orthonormalized() * travel * along
 	(get_node(car) as Node3D).global_transform = Transform3D(_car_home.basis, _car_home.origin + _car_offset)
 	_apply_doors()
 
@@ -114,15 +118,16 @@ func _set_doors(open: float) -> void:
 
 
 func _apply_doors() -> void:
-	var slide := door_open_offset * _door_open
 	for path: NodePath in car_doors:
 		var home: Transform3D = _door_homes[path]
+		var slide := home.basis.orthonormalized() * door_open_offset * _door_open
 		(get_node(path) as Node3D).global_transform = Transform3D(home.basis, home.origin + _car_offset + slide)
 	for i in stop_doors.size():
 		for path: NodePath in stop_doors[i]:
 			var home: Transform3D = _door_homes[path]
-			var here := slide if i == _stop else Vector3.ZERO
-			(get_node(path) as Node3D).global_transform = Transform3D(home.basis, home.origin + here)
+			var open := _door_open if i == _stop else 0.0
+			var slide := home.basis.orthonormalized() * door_open_offset * open
+			(get_node(path) as Node3D).global_transform = Transform3D(home.basis, home.origin + slide)
 
 
 func _carry_riders() -> void:
