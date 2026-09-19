@@ -8,14 +8,56 @@ extends Node3D
 # known mapping from its brightness to Godot energy; the default was picked by
 # eye in the Stormdrain pillar hall. Override it on the instanced geometry in
 # the level's shell, so rebuilding the geometry does not reset it.
+#
+# LIT A FEW AT A TIME. Measured on Stormdrain's 1146 lights: drawn all at once
+# they cost the first two frames 8.4 s and 4.0 s; switched on LIGHTS_PER_FRAME
+# at a time they cost 0.64 s in all, no frame over 25 ms. The node sits in
+# Arena.WARMING until its last light is on, which is what holds the loading
+# curtain.
+
+const LIGHTS_PER_FRAME := 32
 
 @export var energy_scale: float = 16.0:
 	set(value):
 		energy_scale = value
 		_apply()
 
+## Shared by every lights node: the budget is per frame, not per node, or a
+## chapter's seven sections would each spend it.
+static var _budget_frame := -1
+static var _budget_left := 0
+
+var _dark: Array[Light3D] = []
+
 func _ready() -> void:
 	_apply()
+	if Engine.is_editor_hint():
+		return
+	for light in get_children():
+		if light is Light3D and light.visible:
+			light.visible = false
+			_dark.append(light)
+	if _dark.is_empty():
+		return
+	add_to_group(Arena.WARMING)
+	set_process(true)
+
+func _process(_delta: float) -> void:
+	if Engine.is_editor_hint() or _dark.is_empty():
+		set_process(false)
+		return
+	var frame := Engine.get_process_frames()
+	if frame != _budget_frame:
+		_budget_frame = frame
+		_budget_left = LIGHTS_PER_FRAME
+	while _budget_left > 0 and not _dark.is_empty():
+		var light: Light3D = _dark.pop_back()
+		if is_instance_valid(light):
+			light.visible = true
+		_budget_left -= 1
+	if _dark.is_empty():
+		remove_from_group(Arena.WARMING)
+		set_process(false)
 
 func _apply() -> void:
 	if not is_inside_tree():

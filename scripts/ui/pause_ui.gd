@@ -411,9 +411,9 @@ func _clear_pending_scene_change() -> void:
 	_pending_scene_change = false
 
 ## The loading handoff: fade to pure white over `fade_in`, switch to
-## `packed` UNDER the white (the instantiate hitch hides there), hold a few
-## frames for the new scene's first paint, then lift. Runs on this autoload
-## so the cover outlives the caller.
+## `packed` UNDER the white (the instantiate hitch hides there), hold until
+## the new level reports Arena.level_ready and its first frames are drawn,
+## then lift. Runs on this autoload so the cover outlives the caller.
 func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
 	# The sheet lives on THIS CanvasLayer, and _set_shown(false) keeps the
 	# whole layer invisible while unpaused -- so the layer itself must wake
@@ -433,6 +433,12 @@ func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
 		await get_tree().process_frame
 	_pending_scene_change = false
 	print("[load] scene swap + every _ready(): %d ms" % (Time.get_ticks_msec() - swap_started))
+	# The swap is not the level being playable: an Arena may still be warming
+	# (lights switched on a few per frame). Hold the sheet until it says so.
+	var scene := get_tree().current_scene
+	if scene is Arena and not (scene as Arena).is_level_ready:
+		await (scene as Arena).level_ready
+		print("[load] level warmed: %d ms after the swap" % (Time.get_ticks_msec() - swap_started))
 
 	# THE ONE PART NO HEADLESS MEASUREMENT CAN SEE. Godot compiles a material
 	# pipeline the first time it is actually DRAWN, so the first few frames of

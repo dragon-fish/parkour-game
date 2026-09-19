@@ -96,6 +96,17 @@ const CHECKPOINT_CLEAR_HOLD := 1.0
 ## Group whose members get reset_for_respawn() on every respawn: level state a
 ## life can use up (see Matinee).
 const RESET_ON_RESPAWN := &"reset_on_respawn"
+
+## Group of nodes still preparing the level over several frames (see
+## me_lights.gd). The level is not ready while any is in it.
+const WARMING := &"warming"
+
+## The level can be played: _ready() has run AND nothing is still warming. A
+## loading curtain lifts on this, never on the scene swap -- see
+## docs/seamless-loading.md.
+signal level_ready
+var is_level_ready := false
+var _ready_done_ms := 0
 var _r_pressed_at_ms: int = -1
 
 ## Re-entrancy guard for reset_player(); see the comment above that function.
@@ -248,6 +259,7 @@ func _ready() -> void:
 
 	reset_player()
 	_mark.call("markers + reset_player")
+	_ready_done_ms = Time.get_ticks_msec()
 	_warn_about_unreadable_tags()
 	_warn_about_near_miss_tags()
 
@@ -540,6 +552,10 @@ func _debug_jump_checkpoint(step: int) -> void:
 ## dragging the F1 slider changes what is on screen immediately, not only
 ## after a reload.
 func _process(_delta: float) -> void:
+	if not is_level_ready and get_tree().get_nodes_in_group(WARMING).is_empty():
+		is_level_ready = true
+		print("[load] level ready %d ms after _ready()" % (Time.get_ticks_msec() - _ready_done_ms))
+		level_ready.emit()
 	if _world_environment == null or _world_environment.environment == null or config == null:
 		return
 	var strength: float = clampf(config.camera.ambient_cold_strength, 0.0, 1.0)
