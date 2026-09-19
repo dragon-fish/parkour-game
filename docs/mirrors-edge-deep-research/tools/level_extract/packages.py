@@ -21,13 +21,27 @@ from mapdump import MapReader
 #   interior        bool  false      first shell build: Sun off, SDFGI on
 #   initial_spawn   str   null       object name of the starting checkpoint/spawn
 #   outputs         dict  {}         {geometry: res path, shell: res path}
-#   texture_max_px  int   64         largest inline mip a material bake may use
+#   texture_max_px  int   64         largest mip a material bake may use; the bake is
+#                                    stored as raw RGBA in materials.json, so 256 is
+#                                    16x the file of 64 (Stormdrain: 130 MB)
 #   persistent      str   null       the chapter's *_p.me1; required only when the
 #                                    directory holds two maps (SP01: Edge_p, Escape_p)
+#   split_sections  bool  false      tag everything with the section it belongs to;
+#                                    the builder then writes one scene per section
+#   lifts           list  []         hand-configured lifts for the builder (Lift):
+#                                    {car, stop_doors, travel, travel_time, door_open_offset,
+#                                     door_time}; actors as package.name. The car's own
+#                                    doors are whatever is hard-attached to it.
+#   floating_checkpoints list []     checkpoint labels the original leaves in mid-air
+#                                    on purpose; verify_level does not ask for a floor
+#   look            dict  {}         dials of the level's look the builder sets on its
+#                                    Environment node (tools/me_level/me_environment.gd
+#                                    exports), by name; judged against the reference shots
 CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
-    'persistent': None,
+    'persistent': None, 'split_sections': False, 'lifts': [], 'floating_checkpoints': [],
+    'look': {},
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 
@@ -96,6 +110,22 @@ def infer_section_packages(chapter_dir, prefix, section):
     return wanted
 
 
+def section_of(package, prefix, sections):
+    """The one section a package belongs to, or '' for the chapter-wide layer.
+
+    A slice `A-B_Slc` belongs to A, the section it leads out of; anything else
+    to the section its name starts with. infer_section_packages() counts a
+    slice on both sides because both sides LOAD it; ownership is a separate
+    question with one answer, or the slice would be built twice.
+    """
+    stem = package[len(prefix):].rsplit('.', 1)[0]
+    head = stem.split('_', 1)[0].split('-', 1)[0].lower()
+    for name in sections:
+        if head == name.lower():
+            return name
+    return ''
+
+
 class PackageSet:
     """Decompressed map packages for one level, plus lazily indexed shared .upk files."""
 
@@ -118,6 +148,7 @@ class PackageSet:
                 raise ExtractError('package not found: %s' % name)
         self._readers = {}
         self._upk_index = None
+        self._texture_index = None
 
     def reader(self, name):
         """MapReader over a map package in this chapter, decompressing once."""
@@ -139,6 +170,30 @@ class PackageSet:
             path = self._upk_index.get(package_name.lower())
             self._readers[key] = _labelled(MapReader(self._decompressed(path)), package_name) if path else None
         return self._readers[key]
+
+    def texture_sources(self, texture_name):
+        """(reader, export index) of every Texture2D of that name in the shared
+        .upk packages under CookedPC, indexed once (about three seconds).
+
+        A map package carries copies of the textures its materials use with
+        only the mips up to 64 px inline; the larger mips are flagged as stored
+        elsewhere, and there is no .tfc in the install to hold them. The full
+        texture is in its own shared package (Buildings/B_R_05.upk holds
+        T_R_05_Facade_D at 2048), under the same name: every one of Stormdrain's
+        4139 stripped textures was found that way.
+        """
+        if self._texture_index is None:
+            self._texture_index = {}
+            for root, _dirs, files in os.walk(self.cooked):
+                for f in files:
+                    path = os.path.join(root, f)
+                    if not f.lower().endswith('.upk') or compression_flags(path) != 0:
+                        continue
+                    reader = _labelled(MapReader(path), os.path.splitext(f)[0])
+                    for ti, e in enumerate(reader.pkg.exports, 1):
+                        if reader.pkg.class_of(e) == 'Texture2D':
+                            self._texture_index.setdefault(e['name'], []).append((reader, ti))
+        return self._texture_index.get(texture_name, [])
 
     def cooked_reader(self, file_name):
         """MapReader over a top-level CookedPC file such as Engine.u."""

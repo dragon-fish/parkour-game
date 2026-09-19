@@ -16,6 +16,14 @@ const CHECKPOINT_SCRIPT := preload("res://scripts/level/checkpoint.gd")
 const BARBED_WIRE_SCRIPT := preload("res://scripts/level/barbed_wire.gd")
 const MODIFIER_VOLUME_SCRIPT := preload("res://scripts/level/modifier_volume.gd")
 const DEATH_VOLUME_SCRIPT := preload("res://scripts/level/death_volume.gd")
+const MATINEE_SCRIPT := preload("res://scripts/level/matinee.gd")
+const USE_ZONE_SCRIPT := preload("res://scripts/level/use_zone.gd")
+const LIFT_SCRIPT := preload("res://scripts/level/lift.gd")
+## [ME:CONFIRMED] no jump or crouch in a moving lift car, and the speed is
+## pinned to the base velocity: [ME:CONFIRMED 02 §2.3] 400 uu/s, 4.0 m/s,
+## 14.4 km/h. Absolute, not a share of the current cap. Lift turns the
+## volume on only while the car moves.
+const LIFT_SPEED_M_S := 4.0
 
 const LINE_KINDS := {zipline = 0, swing = 1, balance = 2, ladder = 3, ledgewalk = 4}
 
@@ -53,6 +61,7 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	_own(root, _interest_lines(annotations, manifest["placements"]))
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
+	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers")))
 	_own(root, _checkpoints(manifest))
 	_place_spawn(root, manifest)
 	if config.get("interior", false):
@@ -70,6 +79,244 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 		world.environment = environment
 		_own(root, world)
 	return root
+
+
+## One section of a split chapter: its geometry plus the interactions standing
+## in it. A plain Node3D, not an Arena -- sections are opened to be edited and
+## played only through the chapter scene's SectionLoader.
+func build_section(manifest: Dictionary, geometry_path: String, section_name: String) -> Node:
+	var root := Node3D.new()
+	root.name = section_name.validate_node_name()
+	var geometry: Node = (load(geometry_path) as PackedScene).instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
+	geometry.name = "Geometry"
+	root.add_child(geometry)
+	geometry.owner = root
+	var annotations: Array = manifest["annotations"]
+	_own(root, _air_walls(annotations))
+	_own(root, _interest_lines(annotations, manifest["placements"]))
+	_own(root, _barbed_wire(annotations))
+	_own(root, _death_volumes(annotations))
+	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers")))
+	_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
+	return root
+
+
+## The config's hand-described lifts whose car stands in this manifest.
+func _lifts(manifest: Dictionary, movers: NodePath) -> Node3D:
+	var group := _group("Lifts")
+	var present := {}
+	var cars := {}
+	for p: Dictionary in manifest["placements"]:
+		if p.get("mover", false):
+			var key := "%s.%s" % [p["package"], p["name"]]
+			present[key] = NodePath(String(movers) + "/" + Common.mover_name(p["package"], p["name"]))
+			cars[key] = p
+	var names := Common.NameAllocator.new()
+	for lift: Dictionary in manifest["config"].get("lifts", []):
+		if not present.has(lift["car"]):
+			continue
+		var node := Node3D.new()
+		node.set_script(LIFT_SCRIPT)
+		node.name = names.take("Lift_" + Common.mover_name("", lift["car"]))
+		node.set("car", present[lift["car"]])
+		# The car's own doors are the ones hard-attached to it: naming them by
+		# hand swapped a car pair with a landing pair that sits in the same
+		# place at the bottom stop.
+		var car_doors: Array[NodePath] = []
+		for p: Dictionary in manifest["placements"]:
+			if p.get("mover", false) and p.get("base") == lift["car"]:
+				car_doors.append(present["%s.%s" % [p["package"], p["name"]]])
+		node.set("car_doors", car_doors)
+		var stop_doors: Array[Array] = []
+		for doors: Array in lift["stop_doors"]:
+			var paths: Array[NodePath] = []
+			for actor: String in doors:
+				paths.append(present[actor])
+			stop_doors.append(paths)
+		node.set("stop_doors", stop_doors)
+		node.set("travel", Common.v3(lift["travel"]))
+		node.set("travel_time", float(lift["travel_time"]))
+		node.set("door_open_offset", Common.v3(lift["door_open_offset"]))
+		node.set("door_time", float(lift["door_time"]))
+		# Both volumes fill the car's bounds; the Lift carries them along.
+		var box: Dictionary = cars[lift["car"]]["aabb"]
+		var lo := Common.v3(box["min"])
+		var hi := Common.v3(box["max"])
+		var shape := BoxShape3D.new()
+		shape.size = hi - lo
+		var zone := Area3D.new()
+		zone.set_script(USE_ZONE_SCRIPT)
+		zone.name = "UseZone"
+		zone.set("require_whole_body", true)
+		zone.position = (lo + hi) * 0.5
+		var zone_shape := CollisionShape3D.new()
+		zone_shape.name = "CollisionShape3D"
+		zone_shape.shape = shape
+		zone.add_child(zone_shape)
+		node.add_child(zone)
+		var rules := Area3D.new()
+		rules.set_script(MODIFIER_VOLUME_SCRIPT)
+		rules.name = "CarRules"
+		rules.position = zone.position
+		var rules_shape := CollisionShape3D.new()
+		rules_shape.name = "CollisionShape3D"
+		rules_shape.shape = shape
+		rules.add_child(rules_shape)
+		var specs: Array[StatusSpec] = []
+		for effect in [Status.Effect.BLOCK_JUMP, Status.Effect.BLOCK_CROUCH, Status.Effect.SPEED_LIMIT]:
+			var spec := StatusSpec.new()
+			spec.effect = effect
+			spec.seconds = WIRE_STAGGER_S
+			if effect == Status.Effect.SPEED_LIMIT:
+				spec.amount = LIFT_SPEED_M_S
+			specs.append(spec)
+		rules.set("apply", specs)
+		rules.set("refresh_interval", WIRE_REFRESH_S)
+		node.add_child(rules)
+		group.add_child(node)
+	return group
+
+
+## The movement sequences whose movers stand in this manifest, with their
+## touch and use triggers and their "Completed" chains. `movers` is the Movers
+## group as seen from a Matinee node.
+func _matinees(manifest: Dictionary, movers: NodePath) -> Node3D:
+	var group := _group("Matinees")
+	var present := {}
+	var riders := {}
+	for p: Dictionary in manifest["placements"]:
+		if p.get("mover", false):
+			var id := "%s.%s" % [p["package"], p["name"]]
+			present[id] = Common.mover_name(p["package"], p["name"])
+			if p.get("base") != null:
+				if not riders.has(p["base"]):
+					riders[p["base"]] = []
+				riders[p["base"]].append(id)
+	var names := Common.NameAllocator.new()
+	var by_source := {}
+	for m: Dictionary in manifest.get("matinees", []):
+		var tracks: Array[Dictionary] = []
+		for g: Dictionary in m["groups"]:
+			var targets: Array[NodePath] = []
+			# Per target: null to move the target itself, or the transform of
+			# the actor it is hard-attached to, which is what the keys move.
+			var pivots: Array = []
+			for actor: String in g["actors"]:
+				if present.has(actor):
+					targets.append(NodePath(String(movers) + "/" + present[actor]))
+					pivots.append(null)
+				for rider: String in riders.get(actor, []):
+					var frame: Dictionary = m["frames"].get(actor, {})
+					if frame.is_empty():
+						continue
+					targets.append(NodePath(String(movers) + "/" + present[rider]))
+					pivots.append(Common.transform_of(frame))
+			if targets.is_empty():
+				continue
+			var track := {targets = targets, pivots = pivots, local = bool(g["keys"].get("local", false))}
+			_matinee_channel(track, "pos_", g["keys"]["position"])
+			_matinee_channel(track, "rot_", g["keys"]["euler"])
+			_matinee_channel(track, "scl_", g["keys"].get("scale", []))
+			tracks.append(track)
+		if tracks.is_empty():
+			continue
+		var node := Node3D.new()
+		node.set_script(MATINEE_SCRIPT)
+		node.name = names.take(str(m["name"]).get_file().replace("#", "_"))
+		node.set("tracks", tracks)
+		node.set("length", float(m["length"]))
+		node.set("play_rate", float(m.get("play_rate", 1.0)))
+		# One trigger node per originator: a lever reached through a Switch
+		# both plays and reverses, which is a toggle.
+		var triggers := {}
+		for start: Dictionary in m["starts"]:
+			if start["on"] == "after":
+				continue
+			var key := "%s:%s" % [start["on"], start["trigger"]["name"]]
+			if not triggers.has(key):
+				triggers[key] = {start = start, actions = {}}
+			triggers[key]["actions"][int(start["input"])] = true
+		var trigger_names := Common.NameAllocator.new()
+		for key: String in triggers:
+			var entry: Dictionary = triggers[key]
+			var start: Dictionary = entry["start"]
+			var area := _matinee_trigger(start["trigger"], start["on"] == "use")
+			if area == null:
+				continue
+			area.name = trigger_names.take(area.name)
+			var actions: Dictionary = entry["actions"]
+			area.set_meta("action", "toggle" if actions.size() > 1 else ("reverse" if actions.has(1) else "play"))
+			area.set_meta("delay", float(start["delay"]))
+			node.add_child(area)
+		group.add_child(node)
+		by_source[m["name"]] = node
+	# "Completed" chains: the earlier sequence starts the later one.
+	for m: Dictionary in manifest.get("matinees", []):
+		if not by_source.has(m["name"]):
+			continue
+		var later: Node = by_source[m["name"]]
+		for start: Dictionary in m["starts"]:
+			if start["on"] != "after" or not by_source.has(start["source"]):
+				continue
+			var earlier: Node = by_source[start["source"]]
+			var followers: Array[Dictionary] = earlier.get("followers")
+			var follower := {path = NodePath("../" + String(later.name)),
+				action = "reverse" if int(start["input"]) == 1 else "play", delay = float(start["delay"])}
+			if not followers.has(follower):
+				followers.append(follower)
+			earlier.set("followers", followers)
+	return group
+
+
+const MATINEE_MODES := {constant = 0, linear = 1, curve = 2}
+
+
+static func _matinee_channel(track: Dictionary, prefix: String, keys: Array) -> void:
+	var times := PackedFloat32Array()
+	var values := PackedVector3Array()
+	var arrive := PackedVector3Array()
+	var leave := PackedVector3Array()
+	var modes := PackedByteArray()
+	for key: Dictionary in keys:
+		times.append(float(key["time"]))
+		values.append(Common.v3(key["value"]))
+		arrive.append(Common.v3(key["arrive"]))
+		leave.append(Common.v3(key["leave"]))
+		modes.append(MATINEE_MODES[key["mode"]])
+	track[prefix + "times"] = times
+	track[prefix + "values"] = values
+	track[prefix + "arrive"] = arrive
+	track[prefix + "leave"] = leave
+	track[prefix + "modes"] = modes
+
+
+func _matinee_trigger(t: Dictionary, use: bool) -> Area3D:
+	var area := Area3D.new()
+	if use:
+		area.set_script(USE_ZONE_SCRIPT)
+	area.name = str(t["name"]).validate_node_name()
+	if t.has("hull"):
+		# Position only: the volume's rotation and (non-uniform) scale are
+		# baked into the hull points, which physics requires.
+		area.position = Common.v3(t["position"])
+		if _hull_shapes(area, t, area.transform) == 0:
+			area.free()
+			return null
+		return area
+	if t.has("radius") and t.has("position"):
+		area.position = Common.v3(t["position"])
+		var cylinder := CylinderShape3D.new()
+		cylinder.radius = float(t["radius"])
+		# UE's CollisionHeight is the HALF height.
+		cylinder.height = 2.0 * float(t["height"])
+		var collision := CollisionShape3D.new()
+		collision.name = "CollisionShape3D"
+		collision.shape = cylinder
+		area.add_child(collision)
+		return area
+	area.free()
+	push_warning("[me_level] matinee trigger %s has no shape" % t["name"])
+	return null
 
 
 ## Metres below the section's lowest geometry where falling out begins.
@@ -259,7 +506,15 @@ func _swing_points(a: Dictionary, placements: Array) -> Array[Vector3]:
 		bars.append([p0, p1])
 	if bars.is_empty():
 		return []
-	bars.sort_custom(func(x, y): return x[0].distance_to(x[1]) > y[0].distance_to(y[1]))
+	# The bar passes through the volume's middle; the ceiling pipes around it
+	# are often just as long. Nearest the middle first, longest on a tie.
+	var middle := volume.origin
+	bars.sort_custom(func(x, y):
+		var dx := _off_line(middle, x[0], x[1])
+		var dy := _off_line(middle, y[0], y[1])
+		if absf(dx - dy) > SWING_COLLINEAR_M:
+			return dx < dy
+		return x[0].distance_to(x[1]) > y[0].distance_to(y[1]))
 	var origin: Vector3 = bars[0][0]
 	var along: Vector3 = (bars[0][1] - bars[0][0]).normalized()
 	var lo := INF
@@ -278,6 +533,13 @@ func _swing_points(a: Dictionary, placements: Array) -> Array[Vector3]:
 	if clipped.is_empty():
 		return []
 	return [volume * clipped[0], volume * clipped[1]]
+
+
+## Distance from `p` to the infinite line through `a` and `b`.
+static func _off_line(p: Vector3, a: Vector3, b: Vector3) -> float:
+	var along := (b - a).normalized()
+	var offset := p - a
+	return (offset - along * offset.dot(along)).length()
 
 
 static func _clip_segment(a: Vector3, b: Vector3, box: AABB) -> Array[Vector3]:
@@ -395,8 +657,10 @@ func _checkpoints(manifest: Dictionary) -> Node3D:
 			continue
 		var checkpoint := Area3D.new()
 		checkpoint.set_script(CHECKPOINT_SCRIPT)
-		checkpoint.name = names.take(c["name"])
+		checkpoint.name = names.take(c["label"] if c.get("label", "") != "" else c["name"])
 		checkpoint.transform = _spawn_transform(c)
+		checkpoint.set("index", int(c.get("weight", 0)))
+		checkpoint.set("display_name", str(c.get("label", "")))
 		var box := BoxShape3D.new()
 		box.size = Vector3.ONE * CHAPTER_CHECKPOINT_BOX_M
 		var collision := CollisionShape3D.new()
@@ -412,8 +676,14 @@ func _place_spawn(root: Node3D, manifest: Dictionary) -> void:
 	if candidates.is_empty():
 		push_error("[me_level] no spawn or checkpoint to start from")
 		return
+	# The configured start wins, then the original's own level start
+	# (DefaultCheckpoint), then whatever comes first.
 	var wanted = manifest["config"].get("initial_spawn")
 	var chosen: Dictionary = candidates[0]
+	for c: Dictionary in candidates:
+		if c.get("default", false):
+			chosen = c
+			break
 	for c: Dictionary in candidates:
 		if c["name"] == wanted:
 			chosen = c

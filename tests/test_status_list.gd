@@ -28,6 +28,15 @@ func test_two_subjects_of_the_same_effect_coexist() -> void:
 	assert_true(list.has(Status.Effect.BLOCK_INTEREST_LINE, &"pipe1"), "pipe1 missing")
 	assert_true(list.has(Status.Effect.BLOCK_INTEREST_LINE, &"pipe2"), "pipe2 missing")
 
+func test_a_speed_limit_is_absolute_and_absent_by_default() -> void:
+	var list := StatusList.new()
+	var a := Node.new()
+	assert_true(list.speed_limit() == INF, "an empty list limits the speed")
+	list.apply(_spec(Status.Effect.SPEED_LIMIT, INF, 4.0), a, 0)
+	assert_true(is_equal_approx(list.speed_limit(), 4.0), "the limit is not the amount given")
+	assert_true(is_equal_approx(list.speed_scale(), 1.0), "a limit leaked into the cap's scale")
+	a.free()
+
 func test_the_same_key_never_stacks() -> void:
 	var list := StatusList.new()
 	var a := _source("a")

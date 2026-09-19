@@ -13,9 +13,21 @@ const Common := preload("res://tools/me_level/me_level_common.gd")
 ## Multiplies every baked texture. The original's diffuse maps are near white
 ## and were lit by baked light; under a live sun they clip. A dial.
 const TEXTURE_ALBEDO := Color(0.85, 0.85, 0.85)
+## Roughness where a surface mirrors the sky (a facade's windows, a storefront):
+## the original's cube map is a sharp reflection. A dial.
+const MIRROR_ROUGHNESS := 0.05
+## Roughness of a material the original gave no SpecularPower. The bakes that
+## have one carry their own (materials.py: sqrt(2 / (n + 2))).
+const DEFAULT_ROUGHNESS := 0.9
+## The original's SpecularColor (0..several) onto Godot's specular (0..1,
+## 0.5 = the default dielectric). A dial.
+const SPECULAR_SCALE := 0.5
+## How strongly a surface's sheen (the cube map share over all of it) becomes
+## a clearcoat. A dial.
+const SHEEN_SCALE := 0.5
 ## Part of every mesh's source hash. Bump when what a library file contains or
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
-const LIBRARY_FORMAT := 3
+const LIBRARY_FORMAT := 8
 
 var _materials := {}
 var _bakes := {}
@@ -66,16 +78,32 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		return null
 	var mesh := ArrayMesh.new()
 	var collision_faces := PackedVector3Array()
-	for surface: Dictionary in record["surfaces"]:
+	# Faces of surfaces whose material the original marks
+	# bEnableUncontrolledSlide: a separate shape, so the placement can carry
+	# them on a body of their own in the uncontrolled_slide group. One mesh
+	# is both the chute and the wall beside it (S_Stdp_Stde_01).
+	var slide_faces := PackedVector3Array()
+	# The original's element index of every surface, in surface order: a
+	# placement's material overrides are per element, and a two-sided
+	# element becomes two surfaces while a modulate one becomes none.
+	var elements := PackedInt32Array()
+	for element in record["surfaces"].size():
+		var surface: Dictionary = record["surfaces"][element]
 		var indices := _indices(surface["indices"])
 		if indices.is_empty():
 			continue
 		if surface["collide"]:
+			var faces := slide_faces if surface.get("uncontrolled_slide", false) else collision_faces
 			for index in indices:
-				collision_faces.append(positions[index])
+				faces.append(positions[index])
 		if surface["blend"] == "modulate":
 			# A modulate surface darkens what is behind it through its texture.
 			# Without the texture it is only a dark patch: collide, do not draw.
+			continue
+		if surface["blend"] == "additive":
+			# Light cones and glows drawn by their gradient texture. Without it
+			# they were flat translucent panes, dozens of them in the pillar
+			# hall, all glare: collide, do not draw.
 			continue
 		var uvs := _uvs(record, _uv_set(surface), positions.size())
 		var material_name: String = surface["material"] if surface["material"] != null else ""
@@ -85,6 +113,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		else:
 			material = _material(Common.material_family(material_name, name), surface["blend"], surface["unlit"])
 		_add_surface(mesh, positions, normals, uvs, indices, material, material_name)
+		elements.append(element)
 		if surface.get("two_sided", false) and surface["blend"] != "additive":
 			# DO NOT draw two-sided surfaces with CULL_DISABLED. A placement with a
 			# mirroring transform (negative scale) gets FRONT_FACING inverted,
@@ -99,6 +128,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			for i in normals.size():
 				back_normals[i] = -normals[i]
 			_add_surface(mesh, positions, back_normals, uvs, back_indices, material, material_name + "_back")
+			elements.append(element)
 	var simple: Array[Shape3D] = []
 	for shape: Dictionary in record["simple_shapes"]:
 		var convex := ConvexPolygonShape3D.new()
@@ -107,11 +137,16 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			points.append(Common.v3(v))
 		convex.points = points
 		simple.append(convex)
+	mesh.set_meta("surface_elements", elements)
 	mesh.set_meta("simple_shapes", simple)
 	if not collision_faces.is_empty():
 		var concave := ConcavePolygonShape3D.new()
 		concave.set_faces(collision_faces)
 		mesh.set_meta("per_poly_shape", concave)
+	if not slide_faces.is_empty():
+		var slide := ConcavePolygonShape3D.new()
+		slide.set_faces(slide_faces)
+		mesh.set_meta("slide_shape", slide)
 	var bounds: Dictionary = record["bounds"]
 	var extent := Common.v3(bounds["extent"])
 	mesh.set_meta("bounds", AABB(Common.v3(bounds["origin"]) - extent, extent * 2.0))
@@ -183,6 +218,15 @@ func _material(family: String, blend: String, unlit: bool) -> StandardMaterial3D
 	return material
 
 
+## The material a placement's override names, or null when it cannot be
+## drawn textured (no bake, or additive): the mesh's own material stays.
+func override_material(entry: Dictionary) -> Material:
+	var name: String = entry.get("material", "")
+	if not _bakes.has(name) or entry.get("blend", "opaque") == "additive":
+		return null
+	return _textured_material(name, entry.get("blend", "opaque"), entry.get("unlit", false))
+
+
 func _uv_set(surface: Dictionary) -> int:
 	var bake: Variant = _bakes.get(surface["material"] if surface["material"] != null else "")
 	return int(bake["uv_set"]) if bake is Dictionary else 0
@@ -218,14 +262,48 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 		if existing != null and existing.get_meta("source_hash", "") == hash:
 			_materials[key] = load(path)
 			return _materials[key]
-	var image := Image.create_from_data(int(bake["width"]), int(bake["height"]), false,
-			Image.FORMAT_RGBA8, Marshalls.base64_to_raw(bake["rgba"]))
+	var image := Image.new()
+	if image.load_png_from_buffer(Marshalls.base64_to_raw(bake["png"])) != OK:
+		push_error("[me_level] material %s: unreadable bake" % material_name)
+		return _material("default", blend, unlit)
+	image.convert(Image.FORMAT_RGBA8)
 	image.generate_mipmaps()
+	# Block-compressed in VRAM (BC7, one byte a pixel against four): the
+	# bakes are 256 px now and a chapter carries hundreds. The mips are what
+	# let a far wall sample a small level of it; no streaming in Godot 4.7,
+	# so the whole chain is resident and this is where the memory is saved.
+	image.compress(Image.COMPRESS_BPTC, Image.COMPRESS_SOURCE_SRGB)
 	var material := StandardMaterial3D.new()
 	material.albedo_texture = ImageTexture.create_from_image(image)
 	material.albedo_color = TEXTURE_ALBEDO
 	material.uv1_scale = Vector3(bake["tiling"][0], bake["tiling"][1], 1.0)
-	material.roughness = 0.9
+	var roughness: float = float(bake.get("roughness", DEFAULT_ROUGHNESS))
+	material.roughness = roughness
+	if bake.has("specular"):
+		material.metallic_specular = clampf(float(bake["specular"]) * SPECULAR_SCALE, 0.0, 1.0)
+	if bake.has("metallic_png"):
+		# Mirror where the original put the sky into the colour through a cube
+		# map, and sharp there: metallic and roughness from one mask.
+		var mask := Image.new()
+		mask.load_png_from_buffer(Marshalls.base64_to_raw(bake["metallic_png"]))
+		mask.convert(Image.FORMAT_L8)
+		var rough := Image.create(mask.get_width(), mask.get_height(), false, Image.FORMAT_L8)
+		for y in mask.get_height():
+			for x in mask.get_width():
+				var m := mask.get_pixel(x, y).r
+				rough.set_pixel(x, y, Color.from_hsv(0.0, 0.0, lerpf(roughness, MIRROR_ROUGHNESS, m)))
+		mask.generate_mipmaps()
+		rough.generate_mipmaps()
+		material.metallic = 1.0
+		material.metallic_texture = ImageTexture.create_from_image(mask)
+		material.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+		material.roughness = 1.0
+		material.roughness_texture = ImageTexture.create_from_image(rough)
+		material.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	if float(bake.get("sheen", 0.0)) > 0.01:
+		material.clearcoat_enabled = true
+		material.clearcoat = clampf(float(bake["sheen"]) * SHEEN_SCALE, 0.0, 1.0)
+		material.clearcoat_roughness = roughness
 	if unlit:
 		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	match blend:

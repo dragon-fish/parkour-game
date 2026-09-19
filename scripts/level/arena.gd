@@ -92,6 +92,31 @@ var rescued_count: int = 0
 
 ## Holding R this long before release clears the active checkpoint (debug).
 const CHECKPOINT_CLEAR_HOLD := 1.0
+
+## Group whose members get reset_for_respawn() on every respawn: level state a
+## life can use up (see Matinee).
+const RESET_ON_RESPAWN := &"reset_on_respawn"
+
+## Group of nodes still preparing the level over several frames (see
+## me_lights.gd). The level is not ready while any is in it.
+const WARMING := &"warming"
+
+## The level can be played: _ready() has run, nothing is still warming, and
+## the player has stood on the ground for SETTLE_TIME. A loading curtain lifts
+## on this, never on the scene swap -- see docs/seamless-loading.md. The settle
+## is what keeps the spawn's landing animation under the curtain.
+signal level_ready
+var is_level_ready := false
+var _ready_done_ms := 0
+var _settled_for := 0.0
+const SETTLE_TIME := 0.5
+## A spawn with no floor this far under the capsule can never land, and would
+## hold the curtain forever: it is reported at once and not waited for.
+const SPAWN_FLOOR_PROBE := 10.0
+## Any other way of never settling (a floor that keeps moving) is given up on
+## after this, with an error naming why.
+const SETTLE_GIVE_UP := 10.0
+var _spawn_has_floor := true
 var _r_pressed_at_ms: int = -1
 
 ## Re-entrancy guard for reset_player(); see the comment above that function.
@@ -244,6 +269,8 @@ func _ready() -> void:
 
 	reset_player()
 	_mark.call("markers + reset_player")
+	_ready_done_ms = Time.get_ticks_msec()
+	_spawn_has_floor = _floor_under_spawn()
 	_warn_about_unreadable_tags()
 	_warn_about_near_miss_tags()
 
@@ -497,6 +524,49 @@ func _unhandled_input(event: InputEvent) -> void:
 			# death here instead would test a route nothing else takes.
 			if player != null:
 				player.take_damage(DEBUG_BITE, Health.Cause.HAZARD)
+		elif event.physical_keycode == KEY_PAGEUP:
+			_debug_jump_checkpoint(-1)
+		elif event.physical_keycode == KEY_PAGEDOWN:
+			_debug_jump_checkpoint(1)
+
+## DEBUG. PgDn / PgUp: respawn at the next / previous checkpoint in the
+## level's own order (Checkpoint.index, then name), so testing a spot deep in
+## a chapter does not start with flying there. Goes through the ordinary
+## respawn -- curtain, level reset and all -- and sets the checkpoint directly,
+## past touch_checkpoint()'s no-going-back rule, which is the point.
+func _debug_jump_checkpoint(step: int) -> void:
+	if player == null:
+		return
+	var points := debug_checkpoints()
+	if points.is_empty():
+		return
+	var at: int = points.find(player.active_checkpoint)
+	var first: int = 0 if step > 0 else points.size() - 1
+	debug_jump_to(points[first if at < 0 else clampi(at + step, 0, points.size() - 1)])
+
+## DEBUG. Every checkpoint in the level's own order: Checkpoint.index, then
+## name. Shared by PgUp/PgDn and the F2 list (CheckpointPanel).
+func debug_checkpoints() -> Array[Checkpoint]:
+	var points: Array[Checkpoint] = []
+	for node in find_children("*", "Area3D", true, false):
+		if node is Checkpoint:
+			points.append(node)
+	points.sort_custom(func(a: Checkpoint, b: Checkpoint) -> bool:
+		return a.index < b.index if a.index != b.index else String(a.name) < String(b.name))
+	return points
+
+## DEBUG. Makes `chosen` the active checkpoint and respawns there.
+func debug_jump_to(chosen: Checkpoint) -> void:
+	if player == null:
+		return
+	player.active_checkpoint = chosen
+	if player.toast != null:
+		var points := debug_checkpoints()
+		player.toast.show_text("调试传送 %d/%d  %s" % [points.find(chosen) + 1, points.size(), checkpoint_label(chosen)])
+	respawn_at_checkpoint()
+
+static func checkpoint_label(checkpoint: Checkpoint) -> String:
+	return checkpoint.display_name if checkpoint.display_name != "" else String(checkpoint.name)
 
 ## Blends the WorldEnvironment's ambient light between neutral and the cold
 ## tint every frame, reading CameraConfig.ambient_cold_strength off `config`
@@ -505,13 +575,43 @@ func _unhandled_input(event: InputEvent) -> void:
 ## for the same reason CameraRig re-applies its own fields every frame: so
 ## dragging the F1 slider changes what is on screen immediately, not only
 ## after a reload.
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if not is_level_ready:
+		_await_ready(delta)
 	if _world_environment == null or _world_environment.environment == null or config == null:
 		return
 	var strength: float = clampf(config.camera.ambient_cold_strength, 0.0, 1.0)
 	_world_environment.environment.ambient_light_color = \
 			NEUTRAL_AMBIENT_TINT.lerp(COLD_AMBIENT_TINT, strength)
 	_apply_fog(_world_environment.environment)
+
+## Whether anything solid lies within SPAWN_FLOOR_PROBE under the player.
+## Physics has not stepped yet at _ready(), but static colliders are already
+## in the space. Reported as an error when not, naming the spawn.
+func _floor_under_spawn() -> bool:
+	if player == null:
+		return true
+	var from := player.global_position
+	var query := PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * SPAWN_FLOOR_PROBE)
+	query.exclude = [player.get_rid()]
+	if not get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+		return true
+	push_error("[load] no floor within %.0f m under the spawn at %s; not waiting for the player to land"
+			% [SPAWN_FLOOR_PROBE, from])
+	return false
+
+func _await_ready(delta: float) -> void:
+	if not get_tree().get_nodes_in_group(WARMING).is_empty():
+		return
+	var waited := (Time.get_ticks_msec() - _ready_done_ms) / 1000.0
+	_settled_for = _settled_for + delta if player == null or player.grounded else 0.0
+	if _spawn_has_floor and _settled_for < SETTLE_TIME and waited < SETTLE_GIVE_UP:
+		return
+	if _spawn_has_floor and _settled_for < SETTLE_TIME:
+		push_error("[load] the player never settled at the spawn within %.0f s; the level is declared ready anyway" % SETTLE_GIVE_UP)
+	is_level_ready = true
+	print("[load] level ready %d ms after _ready()" % (Time.get_ticks_msec() - _ready_done_ms))
+	level_ready.emit()
 
 ## Drives both of the Environment's fogs from this level's own FogConfig, every
 ## frame, for the same reason the ambient tint above is re-applied every frame:
@@ -714,6 +814,10 @@ func reset_player() -> void:
 	# has added the sequence (a test driving this node by hand).
 	if _death_sequence != null:
 		_death_sequence.stop()
+	# THE LEVEL COMES BACK TOO. Anything a life can use up -- a platform that
+	# has already fallen, a sequence that has already played -- must be ready
+	# again, or the respawn lands in a level that can no longer be finished.
+	get_tree().call_group(RESET_ON_RESPAWN, "reset_for_respawn")
 	# THE BODY COMES BACK BEFORE THE PLAYER DOES: ragdoll.stop() must run
 	# before the teleport below, or the player gets launched the moment they
 	# respawn -- a ragdoll whose bones are still being solved, teleported

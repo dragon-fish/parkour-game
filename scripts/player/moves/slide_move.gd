@@ -124,6 +124,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# is_on_floor(), so its own answer is what says the body was caught.
 	var stepped_down: bool = player.try_step_down()
 	player.set_grounded(player.is_on_floor() or stepped_down)
+	# The model lies along the floor it slides on: drawn upright on a
+	# downslope, the legs hung in the air past the lip.
+	if player.is_on_floor():
+		player.body_tilt_normal = player.get_floor_normal()
 
 	if not player.grounded:
 		# A step-up lifts the body in place and lets move_and_slide() carry it

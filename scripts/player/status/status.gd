@@ -57,4 +57,8 @@ enum Effect {
 	## crouch through -- otherwise SlideMove would have no exit under a low
 	## ceiling and the slide could neither end nor be steered out of.
 	BLOCK_CROUCH,
+	## amount = a ceiling in m/s, whatever the speed energy would allow. The
+	## lift car's: [ME:CONFIRMED 02 §2.3] base velocity, 400 uu/s, while it
+	## moves. SPEED_CAP scales the current cap; this pins it.
+	SPEED_LIMIT,
 }

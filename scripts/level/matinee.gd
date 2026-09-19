@@ -1,0 +1,264 @@
+class_name Matinee
+extends Node3D
+
+## One movement sequence from an extracted level. Played forward or in
+## reverse by its triggers -- Area3D children (a touch, once per life) and
+## UseZone children (a stand-still "use") -- or by another Matinee finishing.
+##
+## Keys are RELATIVE to each target's transform the FIRST time this sequence
+## is activated in a life, and stay relative to that: a lever that plays the
+## crane up and back down, or a train that restarts itself, must not drift by
+## one run's worth every time round. [ME:INFERRED] UE3 captures an interp
+## actor's initial transform once, the same way.
+##
+## Only the shape the extractor reads is reproduced (see its matinee.py):
+## touches, uses, "Completed" chains, through switches, gates and delays.
+
+## One entry per moving group: {targets: Array[NodePath], local: bool, and
+## per channel (pos_, rot_, scl_) times, values, arrive, leave, modes}.
+## Positions are metres; rotations the original's (roll, pitch, yaw) in
+## degrees, turned into a basis after sampling; scales the original's absolute
+## DrawScale3D, applied to each target's Mesh as a ratio to the first key.
+## `local`: keys are in each target's own frame (UE3 IMF_RelativeToInitial),
+## else in world axes. modes: 0 constant, 1 linear, 2 curve (Hermite on the
+## stored tangents).
+@export var tracks: Array[Dictionary] = []
+@export var length: float = 0.0
+## Seconds of the keys per second of play. The original sets it per action.
+@export var play_rate: float = 1.0
+## Sequences this one starts when it finishes: {path: NodePath, action:
+## "play" | "reverse", delay: float}. May name this node itself -- a loop.
+@export var followers: Array[Dictionary] = []
+
+## Keys time, 0 .. length.
+var _time: float = 0.0
+## +1 forward, -1 reverse, 0 still.
+var _direction: int = 0
+## A queued start waiting out its delay.
+var _pending_direction: int = 0
+var _pending_wait: float = 0.0
+var _captured := false
+## Per track, per target: the transform the keys are relative to.
+var _starts: Array = []
+## Per track, per target: the Mesh child's basis at capture (scale tracks).
+var _mesh_starts: Array = []
+## Every target's transform, and its Mesh's, as the level loaded.
+var _homes: Dictionary = {}
+var _mesh_homes: Dictionary = {}
+
+
+func _ready() -> void:
+	add_to_group(Arena.RESET_ON_RESPAWN)
+	for track: Dictionary in tracks:
+		for path: NodePath in track["targets"]:
+			var target := get_node_or_null(path) as Node3D
+			if target == null:
+				continue
+			_homes[path] = target.global_transform
+			var mesh := target.get_node_or_null("Mesh") as Node3D
+			if mesh != null:
+				_mesh_homes[path] = mesh.transform
+	for child in get_children():
+		if child is UseZone:
+			(child as UseZone).used.connect(_on_trigger.bind(child))
+		elif child is Area3D:
+			(child as Area3D).body_entered.connect(_on_touch.bind(child))
+	set_physics_process(false)
+
+
+## Back to the level's opening state and playable again. Every Matinee that
+## drives a target puts it back to the same load-time transform, so chained
+## sequences sharing targets cannot disagree.
+func reset_for_respawn() -> void:
+	set_physics_process(false)
+	_time = 0.0
+	_direction = 0
+	_pending_direction = 0
+	_captured = false
+	for path: NodePath in _homes:
+		var target := get_node_or_null(path) as Node3D
+		if target == null:
+			continue
+		target.global_transform = _homes[path]
+		var mesh := target.get_node_or_null("Mesh") as Node3D
+		if mesh != null and _mesh_homes.has(path):
+			mesh.transform = _mesh_homes[path]
+	for child in get_children():
+		if child is Area3D:
+			child.set_meta("spent", false)
+
+
+func _on_touch(body: Node3D, area: Area3D) -> void:
+	# Duck-typed like Checkpoint: whatever can touch a checkpoint is a player.
+	# A touch fires once per life, the original's default MaxTriggerCount.
+	if not body.has_method("touch_checkpoint") or area.get_meta("spent", false):
+		return
+	area.set_meta("spent", true)
+	_on_trigger(area)
+
+
+func _on_trigger(area: Node) -> void:
+	start(str(area.get_meta("action", "play")), float(area.get_meta("delay", 0.0)))
+
+
+## "play", "reverse" or "toggle" (reverse after a finished forward run,
+## forward otherwise) -- the original's lever through a Switch.
+func start(action: String, delay: float = 0.0) -> void:
+	var direction := 1
+	if action == "reverse" or (action == "toggle" and _direction == 0 and _time >= length):
+		direction = -1
+	if delay > 0.0:
+		_pending_direction = direction
+		_pending_wait = delay
+		set_physics_process(true)
+		return
+	_begin(direction)
+
+
+func play() -> void:
+	start("play")
+
+
+func is_running() -> bool:
+	return _direction != 0 or _pending_direction != 0
+
+
+func _begin(direction: int) -> void:
+	if not _captured:
+		_capture()
+	# A forward start from the end replays from the top; a reverse start from
+	# the top has nothing to undo.
+	if direction > 0 and _time >= length:
+		_time = 0.0
+	if direction < 0 and _time <= 0.0:
+		return
+	_direction = direction
+	set_physics_process(true)
+
+
+func _capture() -> void:
+	_captured = true
+	_starts.clear()
+	_mesh_starts.clear()
+	for track: Dictionary in tracks:
+		var starts: Array[Transform3D] = []
+		var meshes: Array[Basis] = []
+		for path: NodePath in track["targets"]:
+			var target := get_node_or_null(path) as Node3D
+			starts.append(target.global_transform if target != null else Transform3D())
+			var mesh := target.get_node_or_null("Mesh") as Node3D if target != null else null
+			meshes.append(mesh.transform.basis if mesh != null else Basis())
+		_starts.append(starts)
+		_mesh_starts.append(meshes)
+
+
+func _physics_process(delta: float) -> void:
+	if _pending_direction != 0:
+		_pending_wait -= delta
+		if _pending_wait > 0.0:
+			return
+		var queued := _pending_direction
+		_pending_direction = 0
+		_begin(queued)
+	if _direction == 0:
+		set_physics_process(false)
+		return
+	_time = clampf(_time + delta * play_rate * _direction, 0.0, length)
+	_apply()
+	var finished := _time >= length if _direction > 0 else _time <= 0.0
+	if not finished:
+		return
+	var went := _direction
+	_direction = 0
+	set_physics_process(false)
+	if went > 0:
+		for follower: Dictionary in followers:
+			var next := get_node_or_null(follower["path"]) as Matinee
+			if next != null:
+				next.start(str(follower["action"]), float(follower["delay"]))
+
+
+func _apply() -> void:
+	for i in tracks.size():
+		var track: Dictionary = tracks[i]
+		var offset := sample(track["pos_times"], track["pos_values"], track["pos_arrive"],
+			track["pos_leave"], track["pos_modes"], _time)
+		var turn := basis_from_euler(sample(track["rot_times"], track["rot_values"],
+			track["rot_arrive"], track["rot_leave"], track["rot_modes"], _time))
+		var scaled: bool = not (track["scl_times"] as PackedFloat32Array).is_empty()
+		var stretch := Vector3.ONE
+		if scaled:
+			var first: Vector3 = (track["scl_values"] as PackedVector3Array)[0]
+			var now := sample(track["scl_times"], track["scl_values"], track["scl_arrive"],
+				track["scl_leave"], track["scl_modes"], _time)
+			stretch = Vector3(now.x / maxf(first.x, 0.0001), now.y / maxf(first.y, 0.0001),
+				now.z / maxf(first.z, 0.0001))
+		var targets: Array = track["targets"]
+		for j in targets.size():
+			var target := get_node_or_null(targets[j]) as Node3D
+			if target == null:
+				continue
+			var start_transform: Transform3D = _starts[i][j]
+			var pivots: Array = track.get("pivots", [])
+			if j < pivots.size() and pivots[j] is Transform3D:
+				# Hard-attached: the keys move the actor it rides, and it keeps
+				# its place relative to that actor.
+				var pivot: Transform3D = pivots[j]
+				var carried := _moved(pivot, offset, turn, track["local"])
+				target.global_transform = carried * pivot.affine_inverse() * start_transform
+			else:
+				target.global_transform = _moved(start_transform, offset, turn, track["local"])
+			if scaled:
+				var mesh := target.get_node_or_null("Mesh") as Node3D
+				if mesh != null:
+					mesh.transform.basis = (_mesh_starts[i][j] as Basis) * Basis.from_scale(stretch)
+
+
+## Where `from` is carried by one sample of the keys.
+static func _moved(from: Transform3D, offset: Vector3, turn: Basis, local: bool) -> Transform3D:
+	if local:
+		return Transform3D(from.basis * turn, from.origin + from.basis.orthonormalized() * offset)
+	return Transform3D(turn * from.basis, from.origin + offset)
+
+
+## UE3 FInterpCurve::Eval: the leaving key's mode decides the segment.
+static func sample(times: PackedFloat32Array, values: PackedVector3Array, arrive: PackedVector3Array,
+		leave: PackedVector3Array, modes: PackedByteArray, t: float) -> Vector3:
+	if times.is_empty():
+		return Vector3.ZERO
+	if t <= times[0]:
+		return values[0]
+	for k in range(1, times.size()):
+		if t > times[k]:
+			continue
+		var span := maxf(times[k] - times[k - 1], 0.0001)
+		var a := (t - times[k - 1]) / span
+		match modes[k - 1]:
+			0:
+				return values[k - 1]
+			1:
+				return values[k - 1].lerp(values[k], a)
+		var a2 := a * a
+		var a3 := a2 * a
+		return values[k - 1] * (2.0 * a3 - 3.0 * a2 + 1.0) + leave[k - 1] * span * (a3 - 2.0 * a2 + a) \
+			+ arrive[k] * span * (a3 - a2) + values[k] * (-2.0 * a3 + 3.0 * a2)
+	return values[values.size() - 1]
+
+
+## (roll, pitch, yaw) degrees -> Godot basis. The same conjugation by the
+## Y/Z axis swap as the extractor's common.godot_basis(); DO NOT re-derive it
+## in Godot's own Euler conventions, that is how a mirrored level happened.
+static func basis_from_euler(euler: Vector3) -> Basis:
+	var r := deg_to_rad(euler.x)
+	var p := deg_to_rad(euler.y)
+	var y := deg_to_rad(euler.z)
+	var sp := sin(p)
+	var sy := sin(y)
+	var sr := sin(r)
+	var cp := cos(p)
+	var cy := cos(y)
+	var cr := cos(r)
+	var row0 := Vector3(cp * cy, cp * sy, sp)
+	var row1 := Vector3(sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, -sr * cp)
+	var row2 := Vector3(-(cr * sp * cy + sr * sy), cy * sr - cr * sp * sy, cr * cp)
+	return Basis(Vector3(row0.x, row0.z, row0.y), Vector3(row2.x, row2.z, row2.y), Vector3(row1.x, row1.z, row1.y))

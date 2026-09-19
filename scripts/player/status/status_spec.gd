@@ -51,6 +51,8 @@ func summary() -> String:
 	match effect:
 		Status.Effect.SPEED_CAP:
 			payload = " %.2f" % amount
+		Status.Effect.SPEED_LIMIT:
+			payload = " %.1f m/s" % amount
 		Status.Effect.STAGGER:
 			# Spelled out rather than left as a bare number: a stagger with no
 			# damage is a legitimate authoring choice -- a trip hazard -- and a
@@ -74,7 +76,7 @@ func _refresh_name() -> void:
 func _validate_property(property: Dictionary) -> void:
 	var used := ""
 	match effect:
-		Status.Effect.SPEED_CAP, Status.Effect.STAGGER:
+		Status.Effect.SPEED_CAP, Status.Effect.SPEED_LIMIT, Status.Effect.STAGGER:
 			used = "amount"
 		Status.Effect.FORCE_VIEW:
 			used = "view"

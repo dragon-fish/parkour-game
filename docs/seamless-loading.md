@@ -46,13 +46,24 @@ Measured end to end, from a click on 开始游戏:
 | --- | --- | --- |
 | Threaded load of the level and its dependency tree | **Yes** — `_poll_loading` holds the curtain until it finishes, and the run clip loops, so this scales with the level | ~80 ms |
 | `Arena._ready()` — body, animation graph, course, markers | **No** — runs after the scene swap, behind the curtain | 2489 ms → **255 ms** |
-| First frames actually drawn (pipeline compilation) | **No** | instrumented, not yet read |
+| First frames actually drawn | **No** — but the sheet now holds until `Arena.level_ready` | Stormdrain: 8.4 s + 4.0 s → **0.68 s**, then 1.5 s of short frames while its lights come on |
 
 The 2489 ms was never a cost of loading anything. `Player._ensure_clip_loops`
 deep-copied a 253-animation library once per clip name, forty-five times over,
 to set forty-five booleans. It survived a long time precisely because the white
 curtain made it look like loading — which is the failure mode this document
 exists to prevent, and an argument for stating the invariant in frames.
+
+The first-frame cost was not pipeline compilation. Stormdrain's 1146 lights,
+drawn for the first time in one frame, cost 12 s over two frames, linear in
+the number of lights and independent of their range or shadows; the same
+lights switched on 32 per frame cost 0.64 s in all with no frame over 25 ms.
+`me_lights.gd` does that, and holds the level in `Arena.WARMING` until done.
+`Arena.level_ready` also waits for the player to stand on the ground for
+0.5 s, so the spawn's landing plays under the curtain; a spawn with no floor
+within 10 m is reported at once instead of being waited on forever.
+What still freezes the sheet is `_ready()` itself (2.0 s on Stormdrain, most
+of it instancing the sections) and the first frame (0.68 s).
 
 ## The shape that makes it structurally true
 

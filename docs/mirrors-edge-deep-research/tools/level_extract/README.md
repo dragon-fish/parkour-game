@@ -119,9 +119,20 @@ MaterialInstance overrides, static switches at their defaults). Cube maps,
 pixel depth and fresnel become 0.5. An `ExpressionInput` is itself a tagged
 struct: `Expression` plus `MaskR/G/B/A`.
 
-**Only inline mips, up to `texture_max_px`.** Small mips are stored in the
-cooked package, some LZO-chunked (tag `0x9E2A83C1`); the full-size mip lives in
-the texture's source package and is deliberately not read.
+**A map package's texture keeps only mips up to 64 px.** The rest are flagged
+as stored elsewhere, and there is no `.tfc` in the install: the full texture is
+in the shared `.upk` of the same name under `CookedPC` (`packages.texture_sources`,
+indexed once). Mips are LZO-chunked (tag `0x9E2A83C1`); `texture_max_px` caps
+the mip taken. Bakes are stored as PNG in `materials.json`.
+
+**Surface behaviour is a PhysicalMaterial flag, not a volume.** Soft landing
+(`bEnableSoftLanding`) and the RumpSlide chute (`bEnableUncontrolledSlide`) are
+booleans of the `TdPhysicalMaterialProperty` behind a `PhysicalMaterial` in
+`TDPhysicalMaterials.upk`. The mesh's BodySetup names one; so does each surface
+material's `PhysMaterial`, and the two disagree: Stormdrain's chute is one
+surface of a mesh whose other surface is a wall. Surfaces carry
+`uncontrolled_slide`, and the Godot library splits their collision into a
+second shape the builder puts on its own body.
 
 **UV set and tiling come from the TextureCoordinate node** feeding the sample,
 sometimes through a static switch; facade materials sample set 1. When a graph

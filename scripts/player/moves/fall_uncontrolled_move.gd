@@ -243,6 +243,13 @@ func _settle_ragdoll(delta: float) -> StringName:
 ## which is earlier and covers the ragdoll branch that never lands at all --
 ## see landing_destination() below. Charging the ordinary fifteen on top would
 ## be billing the same fall twice.
+## [ME:COMMUNITY] A chute does not catch a body already past the point of no
+## return: a fall of falling_uncontrolled_height onto Stormdrain's waterfall
+## dies on it. So the chute is a surface to land on, and the landing is the
+## fatal one below.
+func takes_chute() -> bool:
+	return false
+
 func landing_damage(_fall_height: float, _rolled: bool) -> float:
 	return 0.0
 

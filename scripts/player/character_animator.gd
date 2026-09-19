@@ -1156,6 +1156,11 @@ func _target_animation() -> StringName:
 			if dir < 0:
 				return _first_available([&"Climb_Down", &"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 			return _first_available([&"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
+		Move.RAMP_SLIDE:
+			# The seated chute slide. The pack's Slide is a feet-first slide
+			# on the ground, which is the same shape from the hips down; no
+			# clip in it is a seated slide.
+			return _first_available([&"Slide", &"Crouch_Idle", &"idle"])
 		Move.SLIDE:
 			# A GENUINE MATCH: UAL2 ships Slide_Start / Slide / Slide_Exit. This
 			# case is the middle one only -- the two ends are one-shots, armed

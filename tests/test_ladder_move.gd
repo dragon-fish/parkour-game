@@ -89,6 +89,9 @@ func _ground_catch_attempt(front: bool) -> StringName:
 	var line := _vertical_ladder(Vector3.ZERO, 0.0)
 	await step(10)
 	var result: StringName = player.move_manager.current_name
+	# Freed HERE, not at test end: left standing, the next attempt's settle
+	# puts its player right on this line and catches it before the teleport.
+	line.free()
 	TestWorld.teardown(world)
 	await step(1)
 	return result
@@ -245,6 +248,19 @@ func test_wallrun_can_be_caught_by_a_ladder() -> void:
 	# ✅ THE OWNER: ME has a level built on wall-running straight into a
 	# pipe/ladder -- WallRunMove has to ask the same frontal gate the ground
 	# and the air do.
+	assert_true(await _wallrun_catches_pipe(0.8), \
+		"a wall run passing through a ladder's front volume was not caught")
+
+## A pipe standing further off its wall than the capsule radius: the runner
+## passes beside it, a little BEHIND its front plane (LadderConfig.back_slack).
+## Stormdrain's pipe on the ring wall sits 0.58 m off it.
+func test_wallrun_catches_a_pipe_standing_off_the_wall() -> void:
+	assert_true(await _wallrun_catches_pipe(0.45 - 0.58), \
+		"a wall run beside a pipe standing off its wall was not caught")
+
+## Wall-runs along a wall whose face is at x = 0.45, with a pipe at `pipe_x`
+## a little ahead along the run. Returns whether the pipe was caught.
+func _wallrun_catches_pipe(pipe_x: float) -> bool:
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	var wall := StaticBody3D.new()
 	var wall_shape := CollisionShape3D.new()
@@ -283,7 +299,7 @@ func test_wallrun_can_be_caught_by_a_ladder() -> void:
 	# -- the shape ME's wallrun-into-pipe level actually has. yaw 0 (front
 	# aligned WITH the travel) would put the runner behind the pipe's back
 	# and rightly never catch.
-	_line = _vertical_ladder(Vector3(0.8, player.global_position.y - 1.0, \
+	_line = _vertical_ladder(Vector3(pipe_x, player.global_position.y - 1.0, \
 		player.global_position.z - 1.5), 90.0)
 	var caught := false
 	for i in 30:
@@ -291,11 +307,12 @@ func test_wallrun_can_be_caught_by_a_ladder() -> void:
 		if player.move_manager.current_name == Move.LADDER:
 			caught = true
 			break
-	assert_true(caught, "a wall run passing through a ladder's front volume was not caught")
 
+	_line.free()
 	wall.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+	return caught
 
 # --- Catching a ladder out of a fall -------------------------------------------
 #
@@ -402,7 +419,9 @@ func test_a_turned_head_jumps_along_the_look() -> void:
 		"a 60 degree turned head did not jump off the ladder")
 	assert_gt(player.velocity.dot(look), 0.0, \
 		"the launch did not follow the turned-away look direction")
-	assert_gt(player.velocity.y, 0.0, "looking up did not send the launch up")
+	var incline := rad_to_deg(atan2(player.velocity.y, Vector2(player.velocity.x, player.velocity.z).length()))
+	assert_almost_eq(incline, player.config.ladder.jump_min_pitch_deg, 1.0,
+		"a view pitched up 30, under the floor, did not launch at the floor incline")
 
 func test_the_into_wall_component_survives() -> void:
 	# 🔒 PROTECTED TECHNIQUE -- spec invariant #1, mirroring GrabMove's own
@@ -693,6 +712,28 @@ func test_top_plus_w_carries_the_body_onto_the_deck() -> void:
 	assert_gt(player.global_position.z, 0.2, \
 		"the landing failed to make it past the lip at all")
 
+	deck.queue_free()
+
+func test_a_ladder_standing_proud_of_its_deck_still_lets_you_off() -> void:
+	# Many of the original's ladders run on past the deck they serve, rails
+	# and all, the way a real one does. The top of the line is then well above
+	# the deck, and a probe that only looked half a metre down refused them.
+	var player: Player = await _climbing_player()
+	await step(10)  # past the magnet fade
+	var deck := _top_deck(player, _line.length() - 1.2)
+	await step(1)
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2(0.0, 1.0)
+	var climb_ticks: int = int(4.0 / player.config.ladder.climb_speed * Engine.physics_ticks_per_second)
+	var carry_ticks: int = int(player.config.ladder.top_exit_time * Engine.physics_ticks_per_second)
+	var exited := false
+	for i in (climb_ticks + carry_ticks + 30):
+		await step(1)
+		if player.move_manager.current_name != Move.LADDER:
+			exited = true
+			input.state.move = Vector2.ZERO
+			break
+	assert_true(exited, "a ladder rising 1.2 m past its deck could not be left at the top")
 	deck.queue_free()
 
 func test_no_deck_means_no_exit() -> void:

@@ -69,6 +69,22 @@ func test_jumping_into_the_volume_catches_it() -> void:
 	var player: Player = await _swinging_player()
 	assert_false(player.grounded, "hanging from a bar is not standing")
 
+func test_a_fast_fall_onto_the_bar_still_catches_it() -> void:
+	# The Stormdrain rooftop drops the player 5 m onto a bar, arriving at
+	# about 13 m/s. A borrowed zipline fall limit (6 m/s) refused every one.
+	var player: Player = await _standing_player()
+	_line = _bar(2.7)
+	await step(1)
+	player.global_position = Vector3(0.0, 6.0, 0.0)
+	player.velocity = Vector3(0.0, -12.0, 0.3)
+	var caught := false
+	for i in 40:
+		await step(1)
+		if player.move_manager.current_name == Move.SWING:
+			caught = true
+			break
+	assert_true(caught, "falling onto the bar at 12 m/s went straight past it")
+
 func test_the_body_hangs_a_pendulum_below_the_pivot() -> void:
 	var player: Player = await _swinging_player()
 	await step(12)  # past the magnet fade

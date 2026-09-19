@@ -13,6 +13,7 @@ const Common := preload("res://tools/me_level/me_level_common.gd")
 const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
 const GeometryBuilder := preload("res://tools/me_level/geometry_builder.gd")
 const ShellBuilder := preload("res://tools/me_level/shell_builder.gd")
+const SectionLoaderScript := preload("res://scripts/level/section_loader.gd")
 
 
 func _initialize() -> void:
@@ -43,10 +44,15 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 		return false
 	var paths := Common.output_paths(config)
 
-	if not MeLibrary.new().build(meshes, bakes):
+	_library = MeLibrary.new()
+	if not _library.build(meshes, bakes):
 		return false
+	_look = config.get("look", {})
 
-	var geometry: Node3D = GeometryBuilder.new().build(manifest, str(config["id"]).to_pascal_case() + "Geometry")
+	if config.get("split_sections", false):
+		return _build_split(config, manifest, paths, rebuild_interactions)
+
+	var geometry: Node3D = _geometry_builder().build(manifest, str(config["id"]).to_pascal_case() + "Geometry")
 	if not _save(geometry, paths.geometry, ResourceSaver.FLAG_COMPRESS):
 		return false
 	print("[me_level] wrote geometry: ", paths.geometry)
@@ -55,20 +61,87 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 		print("[me_level] kept editable shell: ", paths.shell)
 		return true
 	var shell := ShellBuilder.new().build(manifest, paths.geometry)
+	return _write_shell(shell, paths.shell, ShellBuilder.fall_out_height(manifest))
+
+
+## A chapter too large to open whole: one geometry scene and one editable
+## section scene per section, and a chapter scene (the shell) holding spawn,
+## checkpoints, the chapter-wide layer and a SectionLoader over the sections.
+## See docs/superpowers/specs/2026-09-19-me-chapter-sections-design.md.
+var _library = null
+var _look := {}
+
+
+func _geometry_builder():
+	var builder := GeometryBuilder.new()
+	builder.library = _library
+	builder.look_dials = _look
+	return builder
+
+
+func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, rebuild: bool) -> bool:
+	var base: String = (paths.shell as String).get_basename()
+	var sections: Array[PackedScene] = []
+	for entry: Dictionary in config["sections"]:
+		var section: String = entry["name"]
+		var started := Time.get_ticks_msec()
+		var part := _section_of(manifest, section)
+		# The look is the chapter's: its geometry carries it, once.
+		part.erase("environment")
+		var geometry_path := "%s_%s_geometry.scn" % [base, section.to_lower()]
+		var geometry: Node3D = _geometry_builder().build(part, section.to_pascal_case() + "Geometry")
+		if not _save(geometry, geometry_path, ResourceSaver.FLAG_COMPRESS):
+			return false
+		var scene_path := "%s_%s.tscn" % [base, section.to_lower()]
+		if rebuild or not ResourceLoader.exists(scene_path):
+			if not _save(ShellBuilder.new().build_section(part, geometry_path, section), scene_path, 0):
+				return false
+		print("[me_level] section %s: %d placements, %d ms" % [section, part["placements"].size(), Time.get_ticks_msec() - started])
+		sections.append(load(scene_path))
+
+	var chapter := _section_of(manifest, "")
+	var chapter_geometry: Node3D = _geometry_builder().build(chapter, str(config["id"]).to_pascal_case() + "ChapterGeometry")
+	if not _save(chapter_geometry, paths.geometry, ResourceSaver.FLAG_COMPRESS):
+		return false
+	if ResourceLoader.exists(paths.shell) and not rebuild:
+		print("[me_level] kept editable shell: ", paths.shell)
+		return true
+	# Spawn and checkpoints come from the chapter's persistent package and
+	# stay whole; everything else is the chapter-wide layer only.
+	chapter["checkpoints"] = manifest["checkpoints"]
+	chapter["spawns"] = manifest["spawns"]
+	var shell := ShellBuilder.new().build(chapter, paths.geometry)
+	var loader: Node3D = SectionLoaderScript.new()
+	loader.name = "Sections"
+	loader.set("sections", sections)
+	shell.add_child(loader)
+	loader.owner = shell
+	return _write_shell(shell, paths.shell, ShellBuilder.fall_out_height(manifest))
+
+
+## The manifest restricted to one section; "" is the chapter-wide layer.
+static func _section_of(manifest: Dictionary, section: String) -> Dictionary:
+	var part := manifest.duplicate()
+	for key in ["placements", "lights", "annotations", "bsp"]:
+		part[key] = (manifest[key] as Array).filter(func(r: Dictionary) -> bool: return r.get("section", "") == section)
+	return part
+
+
+func _write_shell(shell: Node, path: String, fall_out: float) -> bool:
 	var staging := "user://me_level_shell_%d.tscn" % OS.get_process_id()
 	if not _save(shell, staging, 0):
 		return false
-	var text := ShellBuilder.compose(FileAccess.get_file_as_string(staging), ShellBuilder.fall_out_height(manifest))
+	var text := ShellBuilder.compose(FileAccess.get_file_as_string(staging), fall_out)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(staging))
 	if text.is_empty():
 		return false
-	var file := FileAccess.open(paths.shell, FileAccess.WRITE)
+	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
-		push_error("[me_level] cannot write %s" % paths.shell)
+		push_error("[me_level] cannot write %s" % path)
 		return false
 	file.store_string(text)
 	file.close()
-	print("[me_level] wrote shell: ", paths.shell)
+	print("[me_level] wrote shell: ", path)
 	return true
 
 

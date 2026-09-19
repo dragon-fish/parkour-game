@@ -936,6 +936,18 @@ var _visual_yaw: float = 0.0
 ## The swing's model lean (radians about the body's X), smoothed onto
 ## BodyRoot in _drive_body_yaw(). Set by SwingMove, zeroed on exit.
 var _swing_pitch_target: float = 0.0
+## The eased swing pitch, kept here rather than read back off BodyRoot, whose
+## basis is composed afresh every frame below.
+var _swing_pitch: float = 0.0
+
+## World normal the drawn body's UP is tilted toward: the floor under a slide,
+## the chute under a ramp slide, straight up for everything else. A move
+## WRITES it in physics_update() when it wants the model laid along the
+## surface; Player resets it to UP before every tick, so a move that says
+## nothing gets an upright body. Eased into _body_tilt_normal below, on the
+## clip blend time, so the tilt arrives with the pose and not before it.
+var body_tilt_normal: Vector3 = Vector3.UP
+var _body_tilt_normal: Vector3 = Vector3.UP
 var _visual_yaw_started: bool = false
 
 var _standing_height: float = 0.0
@@ -1301,7 +1313,26 @@ func end_direct_body_animation() -> void:
 	_direct_anim_tree = null
 	_direct_animator = null
 
-## Opens the stand-up window. Called by SlideMove.exit().
+## Armed by RampSlideMove when it lets go after a long descent: the next
+## landing is at least a hard landing, whatever the fall counter says, while
+## the fall's own height still decides the uncontrolled tier. Consumed by the
+## landing that reads it; a jump off the chute never arms it.
+var _forced_hard_landing: bool = false
+
+## One-shot, set by a hard fall onto a chute for RampSlideMove to read on
+## entry and clear: the slide flashes and fades the hard landing's red, since
+## no LandingMove runs to do it.
+var pending_chute_hurt: bool = false
+
+func arm_forced_hard_landing() -> void:
+	_forced_hard_landing = true
+
+func consume_forced_hard_landing() -> bool:
+	var armed := _forced_hard_landing
+	_forced_hard_landing = false
+	return armed
+
+## Opens the stand-up window. Called by SlideMove.exit() and RampSlideMove.exit().
 func begin_slide_recovery() -> void:
 	_slide_recovery_timer = config.slide.recovery_time
 
@@ -1489,6 +1520,7 @@ func _build_moves() -> void:
 		[Move.LANDING, LandingMove.new(), config.landing],
 		[Move.SKILL_ROLL, SkillRollMove.new(), config.skill_roll],
 		[Move.SLIDE, SlideMove.new(), config.slide],
+		[Move.RAMP_SLIDE, RampSlideMove.new(), config.ramp_slide],
 		[Move.CROUCH, CrouchMove.new(), config.crouch],
 		[Move.SPEED_VAULT, SpeedVaultMove.new(), config.speed_vault],
 		[Move.INTO_GRAB, IntoGrabMove.new(), config.into_grab],
@@ -2491,10 +2523,10 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# the omega cap, and it reads as visible lag. The ease is
 	# only for AFTER letting go, standing the body back up over a beat.
 	if move_manager != null and move_manager.current_name == Move.SWING:
-		body_root.rotation.x = _swing_pitch_target
+		_swing_pitch = _swing_pitch_target
 	else:
 		var ease: float = 1.0 - exp(-delta / 0.08)
-		body_root.rotation.x = lerpf(body_root.rotation.x, _swing_pitch_target, ease)
+		_swing_pitch = lerpf(_swing_pitch, _swing_pitch_target, ease)
 		# The swing's eye offsets ride the SAME ease home -- zeroed instantly
 		# while the chest was still leaning, the eye clipped through it for a
 		# few frames on every exit (the owner saw it).
@@ -2562,7 +2594,21 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 
 	# Counter-rotated, so the model's WORLD yaw is _visual_yaw whatever the body
 	# is doing. Wrapped, so a player who spins on the spot cannot wind this up.
-	body_root.rotation.y = wrapf(_visual_yaw - rotation.y, -PI, PI)
+	var yaw: float = wrapf(_visual_yaw - rotation.y, -PI, PI)
+	# Laid along the surface when a move asks for it (body_tilt_normal): a
+	# slide drawn upright on a slope leaves the legs in the air over the
+	# downhill side. The tilt is the rotation taking UP to the surface normal,
+	# about the axis across the two, applied OVER the yaw so the model still
+	# faces its heading; the swing's pitch rides inside it as before.
+	var tilt_ease: float = 1.0 - exp(-delta / maxf(body_animation_blend_time, 0.001))
+	var wanted_normal: Vector3 = body_tilt_normal.normalized() if body_tilt_normal.length_squared() > 0.0001 else Vector3.UP
+	_body_tilt_normal = _body_tilt_normal.slerp(wanted_normal, tilt_ease).normalized()
+	var local_up: Vector3 = (global_basis.inverse() * _body_tilt_normal).normalized()
+	var tilt := Basis()
+	var tilt_axis: Vector3 = Vector3.UP.cross(local_up)
+	if tilt_axis.length_squared() > 0.000001:
+		tilt = Basis(tilt_axis.normalized(), Vector3.UP.angle_to(local_up))
+	body_root.basis = tilt * Basis.from_euler(Vector3(_swing_pitch, yaw, 0.0))
 
 # --- the step round --------------------------------------------------------------
 #
@@ -3422,6 +3468,8 @@ func _physics_process(delta: float) -> void:
 	health.tick(delta)
 	_observe_death()
 
+	# Upright unless the move that runs next says otherwise.
+	body_tilt_normal = Vector3.UP
 	move_manager.physics_update(delta, input)
 
 	# After the moves run, so grounded and horizontal_speed() both read this
@@ -4077,6 +4125,18 @@ const STEP_RAMP_TOLERANCE := 0.02
 ## this descent half. Only the descent half is taken here: this project's own
 ## step-up probe is measured and documented, and replacing it is a separate
 ## question (docs/feel-backlog.md).
+## The chute the last move_and_slide() touched, as {normal}, or empty. A
+## chute is any collider in Probes.UNCONTROLLED_SLIDE_GROUP: the surface the
+## original marks bEnableUncontrolledSlide, which RampSlideMove rides. Read
+## off the slide collisions rather than the floor, because a chute steeper
+## than floor_max_angle is a wall to Godot and never a floor.
+func touched_chute() -> Dictionary:
+	for i in get_slide_collision_count():
+		var collision := get_slide_collision(i)
+		if Probes.is_uncontrolled_slide(collision.get_collider()):
+			return {"normal": collision.get_normal()}
+	return {}
+
 func try_step_down() -> bool:
 	if config == null or is_on_floor():
 		return false
@@ -4333,7 +4393,11 @@ func speed_cap() -> float:
 	#
 	# The scale is the EASED one, not statuses.speed_scale(). See
 	# _blend_speed_scale(): the ceiling slides, the body chases it.
-	return speed_energy.cap() * _speed_scale
+	# An absolute limit (a moving lift's base velocity) is not eased: it is
+	# a number the speed may not exceed, and the body's own acceleration is
+	# all the ramp it needs.
+	var limit: float = statuses.speed_limit() if statuses != null else INF
+	return minf(speed_energy.cap() * _speed_scale, limit)
 
 ## Slides the ceiling's scale toward whatever the status list currently says.
 ##

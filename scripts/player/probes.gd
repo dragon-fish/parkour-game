@@ -46,6 +46,12 @@ const MAX_WALL_NORMAL_Y := 0.3
 ## it is supposed to find and hit_from_inside reports its own origin instead.
 const SURFACE_ORIGIN_MARGIN := 0.3
 
+## How far in front of the face (toward the body) the ceiling is looked for.
+const CEILING_PROBE_INSET := 0.05
+
+## How far under a ceiling found over the face SurfaceDown then starts.
+const CEILING_CLEARANCE := 0.02
+
 ## ...and it reaches this far BELOW the feet, so a surface at exactly foot level
 ## still registers (and is then rejected by MIN_HEIGHT_EPSILON, on its height,
 ## rather than by the ray silently not reaching it).
@@ -185,7 +191,30 @@ func feet_y() -> float:
 ## this per-query aiming is what keeps the vault working at all.
 func _aim_forward(ray: RayCast3D, reach: float) -> void:
 	ray.target_position = Vector3(0.0, 0.0, -reach)
+	_fire(ray)
+
+
+## Fires a HAND-move ray, looking through air walls marked for no interaction.
+##
+## [ME:INFERRED] bExludeHandMoves means the hands' traces do not see that
+## volume: the body still collides with it, but a ledge right behind it can be
+## grabbed. A Stormdrain ring's rounded lip is wrapped in exactly such a
+## volume, and the original climbs it. Stopping at the wall hid every lip
+## wrapped this way. Kept to the hand rays: foot moves (the wall run's side
+## rays) are not this function's business.
+##
+## The price: a boundary air wall no longer hides a grabbable ledge behind
+## it. Watch for grabs that carry the body out of a level.
+const INERT_PASS_LIMIT := 4
+
+func _fire(ray: RayCast3D) -> void:
+	ray.clear_exceptions()
 	ray.force_raycast_update()
+	for i in INERT_PASS_LIMIT:
+		if not (ray.is_colliding() and is_inert(ray.get_collider())):
+			return
+		ray.add_exception(ray.get_collider() as CollisionObject3D)
+		ray.force_raycast_update()
 
 ## Points SurfaceDown at the given forward offset and fires it. Shared by both
 ## queries, which ask for that offset in DIFFERENT ways, and the difference is
@@ -227,14 +256,17 @@ func _query_surface_above(reach: float, above: float) -> void:
 	var stop_at: float = above - MIN_HEIGHT_EPSILON
 	var length: float = maxf((global_position.y + origin_y) - stop_at, 0.01)
 	_surface.target_position = Vector3(0.0, -length, 0.0)
-	_surface.force_raycast_update()
+	_fire(_surface)
 
-func _query_surface(reach: float) -> void:
+## `ceiling_y` (world) caps the origin just below a ceiling ledge_query() found
+## over the face; INF leaves it where the config puts it.
+func _query_surface(reach: float, ceiling_y: float = INF) -> void:
 	var tallest_reachable: float = maxf(_config.grab.ledge_max_height, _config.speed_vault.table_ceiling())
 	var origin_y: float = tallest_reachable - _foot_offset + SURFACE_ORIGIN_MARGIN
+	origin_y = minf(origin_y, ceiling_y - CEILING_CLEARANCE - global_position.y)
 	_surface.position = Vector3(0.0, origin_y, -reach)
 	_surface.target_position = Vector3(0.0, -(origin_y + _foot_offset + SURFACE_UNDERSHOOT), 0.0)
-	_surface.force_raycast_update()
+	_fire(_surface)
 
 ## An obstacle low enough to vault: blocked at shin height by a genuinely
 ## unwalkable face (not a slope the player would just walk up), clear at
@@ -468,7 +500,7 @@ func _query_vault_over(top: Vector3) -> bool:
 	# depend on where the body happened to be when it asked.
 	var depth: float = _config.speed_vault.table_ceiling() + SURFACE_ORIGIN_MARGIN
 	_vault_over.target_position = Vector3(0.0, -depth, 0.0)
-	_vault_over.force_raycast_update()
+	_fire(_vault_over)
 	if not _live(_vault_over):
 		# NOTHING WITHIN A VAULT'S REACH IS STILL AN OVER, with no landing.
 		#
@@ -574,11 +606,33 @@ func _ledge_from_face() -> Dictionary:
 	var to_face := face_point - global_position
 	var face_distance: float = Vector2(to_face.x, to_face.z).length()
 
-	_query_surface(face_distance + LEDGE_ANCHOR_MARGIN)
+	# A CEILING OVER THE FACE CAPS THE SEARCH. SurfaceDown starts above the
+	# tallest reachable top, and indoors that is often ABOVE the ceiling: it
+	# then comes down onto the roof's upper face, a "ledge" with a slab
+	# between it and the hands, and the pull-up's headroom test -- asked
+	# about the roof -- passes and carries the body through the slab. A fence
+	# 0.76 m under a 16 cm ceiling did exactly that. So look straight up from
+	# just in front of the face first, and start the search under whatever is
+	# there.
+	var toward_body: Vector3 = _vault_high.get_collision_normal()
+	toward_body.y = 0.0
+	var ceiling_y := INF
+	if toward_body.length_squared() > 0.0001:
+		var below := face_point + toward_body.normalized() * CEILING_PROBE_INSET
+		var over: Dictionary = _cast(below, below + Vector3.UP * (feet_y() + _config.grab.ledge_max_height
+			+ SURFACE_ORIGIN_MARGIN - below.y + 0.01))
+		if not over.is_empty():
+			ceiling_y = (over["position"] as Vector3).y
+	_query_surface(face_distance + LEDGE_ANCHOR_MARGIN, ceiling_y)
 	if not _live(_surface):
 		return _no_hit()
 	var edge: Vector3 = _surface.get_collision_point()
 	var normal: Vector3 = _surface.get_collision_normal()
+	# Started inside something (hit_from_inside reports the origin with no
+	# normal). Under a ceiling the origin can sit inside a fitting flush with
+	# it -- a ceiling light -- and there is no lip there to hold.
+	if ceiling_y != INF and normal == Vector3.ZERO:
+		return _no_hit()
 	# See the matching comment in vault_query(): a zero-length normal means
 	# SurfaceDown started inside solid geometry (hit_from_inside), not that it
 	# found a steep, unwalkable slope. Let the height check below reject it --
@@ -1025,6 +1079,16 @@ static func is_soft(collider: Object) -> bool:
 	var node := collider as Node
 	return node != null and node.is_in_group(SOFT_LANDING_GROUP)
 
+## A surface the body cannot stand on and slides down instead (RampSlideMove).
+## [ME:CONFIRMED] the original's chutes are ordinary geometry whose material's
+## PhysMaterial property sets bEnableUncontrolledSlide; the same shape of
+## marking as the soft-landing pad above, so the same shape of tag here.
+const UNCONTROLLED_SLIDE_GROUP := &"uncontrolled_slide"
+
+static func is_uncontrolled_slide(collider: Object) -> bool:
+	var node := collider as Node
+	return node != null and node.is_in_group(UNCONTROLLED_SLIDE_GROUP)
+
 ## Geometry the body may stand on and nothing else: an air wall, or a ramp laid
 ## over a lip the player kept catching on. Every affordance query in this file
 ## refuses a hit carrying the group, so nothing here is grabbable, vaultable,
@@ -1051,12 +1115,12 @@ static func is_inert(collider: Object) -> bool:
 
 ## Whether `ray` found something that offers an affordance at all.
 ##
-## DO NOT read is_colliding() directly in a query. An inert hit still STOPS the
-## ray, so whatever stands behind it stays unseen -- which is the point for an
-## air wall, and is why this answers "nothing here" rather than casting past
-## it. A query that wants the geometry regardless does not come through here:
-## predicted_landing() is the one that does not, because the top is walkable
-## and a fall onto it has to be predicted like any other.
+## DO NOT read is_colliding() directly in a query. The hand rays already look
+## through inert volumes (see _fire()); this still refuses an inert hit for
+## any ray that did not go through _fire(). A query that wants the geometry
+## regardless does not come through here: predicted_landing() is the one that
+## does not, because the top is walkable and a fall onto it has to be
+## predicted like any other.
 func _live(ray: RayCast3D) -> bool:
 	return ray.is_colliding() and not is_inert(ray.get_collider())
 

@@ -757,12 +757,15 @@ func _turned_from_wall() -> float:
 		return 0.0
 	return facing.normalized().angle_to(into_wall.normalized())
 
-## Where a jump off a hang launches: along the VIEW, wall included.
+## Where a jump off a hang launches: along the view, wall included, never
+## flatter than a floor incline.
 ##
-## The launch direction is the full 3D look direction, pitch included, not
-## its horizontal shadow -- looking up must send the jump up too.
+## [ME:INFERRED] from play: a turned head jumps out at about 45 degrees with a
+## level view, and higher when looking higher. Following the pitch alone
+## meant looking up for every jump; a fixed 45 left some jumps short. The
+## floor is GrabConfig.jump_min_pitch_deg.
 ##
-## DO NOT project the into-wall component out of the launch direction.
+## DO NOT project the into-wall component out of the heading.
 ## jump_angle_deg allows this jump from 45 degrees off the wall, where the
 ## view still points half INTO it, and removing that component looks like
 ## ordinary prudence. It is not:
@@ -786,13 +789,25 @@ func _launch_direction() -> Vector3:
 	var look := Vector3.ZERO
 	if player.camera_rig != null and player.camera_rig.camera != null:
 		look = -player.camera_rig.camera.global_transform.basis.z
-	if look.length_squared() < 0.0001:
-		# No rig to read: the body is squared to the wall, which is the best
-		# available answer. Tests with a stub player take this path.
-		look = -player.global_transform.basis.z
-	if look.length_squared() < 0.0001:
-		return _face_normal
-	return look.normalized()
+	# No rig (tests with a stub player): the body's facing, then the wall's.
+	return GrabMove.launch_along(look, [-player.global_transform.basis.z, _face_normal],
+		config.grab.jump_min_pitch_deg)
+
+## `look`'s heading, inclined at `look`'s own pitch or `min_pitch_deg`,
+## whichever is higher. A look with no heading (straight up or down, or none)
+## takes the first of `fallbacks` that has one.
+static func launch_along(look: Vector3, fallbacks: Array, min_pitch_deg: float) -> Vector3:
+	var pitch := 0.0
+	if look.length_squared() > 0.0001:
+		pitch = asin(clampf(look.normalized().y, -1.0, 1.0))
+	var heading := Vector3.ZERO
+	for candidate: Vector3 in [look] + fallbacks:
+		heading = Vector3(candidate.x, 0.0, candidate.z)
+		if heading.length_squared() > 0.0001:
+			break
+	heading = heading.normalized()
+	pitch = maxf(pitch, deg_to_rad(min_pitch_deg))
+	return heading * cos(pitch) + Vector3.UP * sin(pitch)
 
 ## Leaves the ledge.
 ##
@@ -800,9 +815,7 @@ func _launch_direction() -> Vector3:
 ## does not turn to follow the launch. You look back over your shoulder and
 ## go.
 func _push_off(_turned: float) -> void:
-	var launch: Vector3 = _launch_direction() * config.grab.jump_speed
-	launch.y += config.grab.jump_speed_up
-	player.velocity = launch
+	player.velocity = _launch_direction() * config.grab.jump_speed
 
 ## The ledge belonging to a wall the body has run into sideways, or a miss when
 ## that wall carries no ledge at this height.

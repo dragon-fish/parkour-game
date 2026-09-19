@@ -94,3 +94,14 @@ def import_root_package(pkg, index):
 def outer_class(pkg, export):
     outer = export['outer_idx']
     return pkg.class_of(pkg.exports[outer - 1]) if outer > 0 else None
+
+
+def pivot_offset(actor):
+    """R * PrePivot in Godot metres: how far an actor's drawn mesh sits from its
+    Location. Turned with the actor, NOT scaled: UE3 draws at
+    Location + R*(S*v - PrePivot)."""
+    if not actor.get('PrePivot'):
+        return [0.0, 0.0, 0.0]
+    rotation = godot_basis(actor.get('Rotation') or (0, 0, 0), (1.0, 1.0, 1.0))
+    local = point(actor['PrePivot'])
+    return [sum(rotation[c][k] * local[c] for c in range(3)) for k in range(3)]

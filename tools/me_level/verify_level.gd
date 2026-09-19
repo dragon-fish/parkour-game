@@ -43,8 +43,11 @@ func _run() -> void:
 		return
 
 	var placed: Array = geometry.get_node("Geometry").get_children()
-	check(placed.size() == manifest["placements"].size(),
-			"%d placement nodes, manifest has %d" % [placed.size(), manifest["placements"].size()])
+	# Movers are placements too, grouped apart: always bodies, collision or not.
+	var movers: int = geometry.get_node("Movers").get_child_count() if geometry.has_node("Movers") else 0
+	check(placed.size() + movers == manifest["placements"].size(),
+			"%d placement nodes and %d movers, manifest has %d"
+			% [placed.size(), movers, manifest["placements"].size()])
 	for node: Node in placed:
 		var shapes := node.find_children("*", "CollisionShape3D", false, false)
 		var collision: String = node.get_meta("me_collision", "")
@@ -79,7 +82,12 @@ func _run() -> void:
 	if shell.has_node("Checkpoints"):
 		for checkpoint in shell.get_node("Checkpoints").get_children():
 			starts.append(checkpoint)
+	# Some the original drops the player from on purpose: Edge's "Cops" falls
+	# into the police's arms.
+	var floating: Array = config.get("floating_checkpoints", [])
 	for start in starts:
+		if String(start.name) in floating:
+			continue
 		var from := start.global_position + Vector3.UP * 0.5
 		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 6.0))
 		check(not hit.is_empty(), "no floor under " + str(shell.get_path_to(start)))

@@ -168,33 +168,33 @@ func test_it_is_a_jump_rather_than_a_shove() -> void:
 	assert_gt(player.velocity.length(), _config().jump_speed - 0.5,
 		"launched at %.2f m/s, which is not a jump" % player.velocity.length())
 
-func test_looking_up_sends_you_up() -> void:
-	# Looking up must add upward force too. The pitch has to be in the launch
-	# direction, which is why it is the full 3D look vector rather than its
-	# horizontal shadow.
-	#
-	# Which way the pitch sign points is read off the CAMERA rather than assumed,
-	# so this pins the behaviour and not a convention.
-	var level: Player = await _hanging_player(180.0)
-	_grab(level).physics_update(1.0 / 60.0, _jump())
-	var flat_rise: float = level.velocity.y
-	after_each()
+func _incline_of(v: Vector3) -> float:
+	return rad_to_deg(atan2(v.y, Vector2(v.x, v.z).length()))
 
+## The launch off a hang with the view pitched `pitch_deg` (positive up).
+func _launch_pitched(pitch_deg: float) -> Vector3:
 	var player: Player = await _hanging_player(180.0)
-	var rig = player.camera_rig
-	assert_not_null(rig, "no camera rig to pitch")
-	rig.set_pitch(deg_to_rad(35.0))
+	player.camera_rig.set_pitch(deg_to_rad(pitch_deg))
 	await step(2)
-	var looked_up: bool = (-rig.camera.global_transform.basis.z).y > 0.0
 	_grab(player).physics_update(1.0 / 60.0, _jump())
-	if looked_up:
-		assert_gt(player.velocity.y, flat_rise + 1.0,
-			"pitching the view up added only %.2f m/s of rise"
-			% (player.velocity.y - flat_rise))
-	else:
-		assert_lt(player.velocity.y, flat_rise - 1.0,
-			"pitching the view down did not take rise away (%.2f vs %.2f)"
-			% [player.velocity.y, flat_rise])
+	var launch := player.velocity
+	after_each()
+	return launch
+
+func test_a_level_or_lowered_view_launches_at_the_floor_incline() -> void:
+	# Having to look up for every jump was the complaint: at or below the
+	# floor, the pitch changes nothing.
+	var floor_deg := _config().jump_min_pitch_deg
+	for pitch_deg in [0.0, -35.0]:
+		var launch: Vector3 = await _launch_pitched(pitch_deg)
+		assert_almost_eq(_incline_of(launch), floor_deg, 1.0,
+			"a view pitched %+.0f launched at %.1f degrees" % [pitch_deg, _incline_of(launch)])
+
+func test_looking_higher_than_the_floor_launches_higher() -> void:
+	# A fixed incline left some jumps short: above the floor, the view wins.
+	var launch: Vector3 = await _launch_pitched(60.0)
+	assert_almost_eq(_incline_of(launch), 60.0, 1.5,
+		"a view pitched up 60 launched at %.1f degrees" % _incline_of(launch))
 
 # --- and it lets go properly ---------------------------------------------------
 

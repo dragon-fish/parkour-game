@@ -220,9 +220,11 @@ func probe_transition() -> StringName:
 				and _zipline_approach_allowed(cable):
 			return ZIPLINE
 
-	# The bar, after the cable: same interest-point reasoning, same gates.
-	if c.check_for_swing and player.velocity.y > -config.swing.fall_limit \
-			and player.move_manager.can_enter(SWING):
+	# The bar, after the cable: same interest-point reasoning, but NO fall
+	# limit. [ME:CONFIRMED A1] TdMove_Swing carries no ZVelocityFallLimit --
+	# only the zipline's entry does -- and the Stormdrain rooftop is built on
+	# catching a bar 5 m down, at about 13 m/s.
+	if c.check_for_swing and player.move_manager.can_enter(SWING):
 		var bar: InterestLine = player.nearest_interest_line(InterestLine.Kind.SWING)
 		if bar != null and player.line_ready(bar):
 			return SWING
@@ -292,7 +294,26 @@ func settle_landing(delta: float) -> StringName:
 	var impact_speed := maxf(-player.velocity.y, 0.0)
 	player.move_and_slide()
 
-	if not player.is_on_floor():
+	# A marked chute is a surface but not a floor: touching it, from any
+	# angle, is the start of the slide, not a landing. Checked before the
+	# floor test because a chute steeper than floor_max_angle never reads as
+	# a floor at all. [ME:COMMUNITY] A fall past hard_landing_height onto the
+	# chute costs the hard landing's health and its red, and slides on with
+	# no stagger; an UNCONTROLLED fall is not saved by the chute (takes_chute()
+	# below), it lands on it as on anything and dies.
+	var on_chute: bool = not player.touched_chute().is_empty()
+	if on_chute and takes_chute():
+		player.fall_tracker.update(delta, -impact_speed, player.global_position.y)
+		var chute_fall: float = player.fall_tracker.fall_height
+		if chute_fall >= config.pawn.hard_landing_height:
+			player.take_damage(config.landing.hard_landing_damage, Health.Cause.HARD_LANDING)
+			# The red is the slide's to show and fade: a tint set here would
+			# outlive the landing, with no move left to take it down.
+			player.pending_chute_hurt = true
+		player.set_grounded(true)
+		return RAMP_SLIDE
+
+	if not player.is_on_floor() and not on_chute:
 		player.set_grounded(false)
 		return KEEP
 
@@ -309,6 +330,11 @@ func settle_landing(delta: float) -> StringName:
 	player.fall_tracker.update(delta, -impact_speed, player.global_position.y)
 	# Read BEFORE set_grounded(), which resets the counter.
 	var fall_height: float = player.fall_tracker.fall_height
+	# A long chute slide lands hard however short the drop after it (see
+	# RampSlideConfig.hard_landing_descent); the counter itself is left to
+	# the uncontrolled-fall check, which never sees this.
+	if player.consume_forced_hard_landing():
+		fall_height = maxf(fall_height, config.pawn.hard_landing_height)
 	# `and` short-circuits left-to-right, and the order of the three conjuncts
 	# below is load-bearing. The block comes first: refusing the SKILL_ROLL
 	# transition later would still let _apply_landing_cost() below charge
@@ -331,6 +357,12 @@ func settle_landing(delta: float) -> StringName:
 	if hurt > 0.0:
 		player.take_damage(hurt, Health.Cause.HARD_LANDING)
 	return landing_destination(fall_height, rolled)
+
+## Whether touching a marked chute starts the slide. Every controlled fall
+## says yes; the uncontrolled one overrides this to land on the chute as on
+## any surface, which is fatal.
+func takes_chute() -> bool:
+	return true
 
 ## What arriving costs the body, in health.
 ##

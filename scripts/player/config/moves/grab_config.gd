@@ -324,22 +324,12 @@ extends MoveConfig
 ## degrees, turn back under 90 without releasing, and the shimmy simply starts.
 @export var shimmy_assist_angle_deg: float = 90.0
 
-## Upward speed of a jump off a hang, in metres/second.
-##
-## ✅ `TdMove_GrabJump.GrabJumpOffZHeight = 160` uu.
-##
-## ⚠️ READ AS A SPEED, and the field name argues the other way -- "Height", not
-## the "Z" that every confirmed velocity in the family uses (`BaseJumpZ`,
-## `SpringBoardJumpZ`). Taken as a speed it is 1.6 m/s; taken as a rise it is
-## 1.6 m, and the two are nothing alike. Speed is the reading kept, because
-## `TdMove_WallClimb180TurnJump.JumpOffZHeight = 250` under the rise reading
-## would launch a turn-jump 2.5 m straight up, which the original plainly does
-## not do.
-##
-## 📌 Either way this is a SHOVE, not a boost. The owner expected it to feel
-## like the wall kick, and horizontally it does -- 2 to 4 m/s against the kick's
-## own 3.0 -- but the kick goes UP at 5.8. Letting go of a ledge drops you.
-@export var jump_speed_up: float = 1.6
+## 📌 TRANSCRIBED AND NOT USED: `TdMove_GrabJump.GrabJumpOffZHeight = 160` uu,
+## read as an upward speed of 1.6 m/s (a rise reading would make
+## `TdMove_WallClimb180TurnJump.JumpOffZHeight = 250` launch 2.5 m straight up,
+## which the original plainly does not do). It was added on top of the launch
+## while the launch followed the camera's pitch alone; with the floor of
+## jump_min_pitch_deg it would only steepen every jump past that floor.
 
 ## 📌 TRANSCRIBED AND NOT USED, kept because deleting a sourced number loses the
 ## record of having read it. `TdMove_GrabJump.GrabJumpPushAwayMinSpeed = 200`
@@ -370,6 +360,11 @@ extends MoveConfig
 ## 6.3 is base_jump_z: a jump is a jump. The wall kick's own magnitude (3.0 out
 ## and 5.8 up, so about 6.6) lands in the same place from the other direction.
 @export var jump_speed: float = 6.3
+
+## The lowest incline a jump off a hang launches at, degrees above the
+## horizontal; a view pitched higher launches higher. [ME:INFERRED] from play:
+## a level view jumps out at about 45 degrees in the original.
+@export var jump_min_pitch_deg: float = 45.0
 
 func _init() -> void:
 	# The mantle/corner-shimmy path is a scripted world-space curve. See

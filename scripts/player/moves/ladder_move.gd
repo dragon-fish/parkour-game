@@ -63,7 +63,7 @@ func enter(_previous: StringName) -> void:
 	# no enter-then-abort flutter in practice -- this only guards the line
 	# having moved (or the body having drifted) between that gate and this
 	# tick.
-	if not LadderMove.front_side_allows(_line, player.global_position):
+	if not LadderMove.front_side_allows(_line, player.global_position, cfg.back_slack):
 		_aborted = true
 		return
 	_arm_hard_catch()
@@ -95,7 +95,7 @@ func enter(_previous: StringName) -> void:
 static func catch_gate(player: Player, line: InterestLine) -> bool:
 	if not player.line_ready(line):
 		return false
-	if not front_side_allows(line, player.global_position):
+	if not front_side_allows(line, player.global_position, player.config.ladder.back_slack):
 		return false
 	if _faces_line(player, line):
 		return true
@@ -117,12 +117,13 @@ static func _faces_line(player: Player, line: InterestLine) -> bool:
 		return true
 	return look.normalized().dot(toward.normalized()) > 0.0
 
-## The ladder's own front half-space -- see the spec's front 180-degree fan.
-static func front_side_allows(line: InterestLine, body_pos: Vector3) -> bool:
+## The ladder's own front half-space -- see the spec's front 180-degree fan
+## -- moved `back_slack` metres behind the line (LadderConfig.back_slack).
+static func front_side_allows(line: InterestLine, body_pos: Vector3, back_slack: float) -> bool:
 	var at: Vector3 = line.sample(line.closest_offset(body_pos))["position"]
 	var to_body: Vector3 = body_pos - at
 	to_body.y = 0.0
-	return to_body.dot(line.front()) > 0.0
+	return to_body.dot(line.front()) > -back_slack
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted or not is_instance_valid(_line):
@@ -183,7 +184,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 				return _launch_at(target)
 		var turned: float = absf(wrapf(_camera_yaw() - _target_yaw, -PI, PI))
 		if turned > deg_to_rad(cfg.jump_angle_deg):
-			# GrabMove's shape verbatim: the full 3D look, nothing projected
+			# GrabMove's shape verbatim: the look, nothing projected
 			# out -- the into-wall component IS the vault tech (grab_move.gd
 			# _launch_direction's own warning applies here unchanged).
 			player.velocity = _look_direction() * cfg.jump_speed
@@ -396,31 +397,22 @@ func _camera_yaw() -> float:
 	# _target_yaw above is built with (see InterestLine.front()'s callers).
 	return atan2(-look.x, -look.z)
 
-## Where a jump off the ladder launches: along the VIEW, wall included.
-##
-## COPIES GrabMove._launch_direction() ON PURPOSE, into-wall component and
-## all -- see that function's own long comment for why nothing gets projected
-## out of it. The same speedrun glitch this move's jump_angle_deg threshold
-## opens the door to (turning just past 45 degrees throws the body at the
-## ladder's own geometry) depends on the component surviving here too.
+## Where a jump off the ladder launches: along the view, never flatter than
+## LadderConfig.jump_min_pitch_deg -- GrabMove._launch_direction() and its
+## reasons, into-wall component included. The same speedrun glitch this move's
+## jump_angle_deg threshold opens the door to (turning just past 45 degrees
+## throws the body at the ladder's own geometry) depends on it here too.
 func _look_direction() -> Vector3:
 	var look: Vector3 = Vector3.ZERO
 	if player.camera_rig != null and player.camera_rig.camera != null:
 		look = -player.camera_rig.camera.global_transform.basis.z
-	if look.length_squared() < 0.0001:
-		look = -player.global_transform.basis.z
-	if look.length_squared() < 0.0001:
-		return -_line.front()
-	return look.normalized()
+	return GrabMove.launch_along(look, [-player.global_transform.basis.z, -_line.front()],
+		cfg.jump_min_pitch_deg)
 
 # --- The top exit ----------------------------------------------------------
 
 ## How far above the candidate landing the deck probe starts, metres.
 const TOP_DECK_PROBE_LIFT := 0.5
-## How far below the candidate landing the probe still reaches, metres --
-## clears a deck sitting a little off the line's own top height without
-## reaching so far down it could find the ladder's own lower rungs instead.
-const TOP_DECK_PROBE_DEPTH := 0.5
 ## Largest tilt a hit surface may have and still count as a deck to stand on.
 ## Same shape as every other "is this walkable" gate in the project (see
 ## Probes.walkable_floor_z and friends) -- a knob of its own rather than a
@@ -461,7 +453,7 @@ func _probe_top_deck() -> Dictionary:
 
 func _standable_at(space: PhysicsDirectSpaceState3D, candidate: Vector3) -> Dictionary:
 	var from: Vector3 = candidate + Vector3.UP * TOP_DECK_PROBE_LIFT
-	var to: Vector3 = candidate - Vector3.UP * TOP_DECK_PROBE_DEPTH
+	var to: Vector3 = candidate - Vector3.UP * cfg.top_exit_max_drop
 	var query := PhysicsRayQueryParameters3D.create(from, to)
 	# Same idioms Probes._cast() uses (see probes.gd): a ray that starts
 	# inside a shape reports nothing at all without this, and the player's

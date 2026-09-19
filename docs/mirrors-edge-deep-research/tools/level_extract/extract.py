@@ -15,14 +15,28 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from common import ExtractError, actor_scale, godot_basis, outer_class, point, ref_export, ref_import, import_root_package
+from common import (ExtractError, actor_scale, godot_basis, import_root_package, outer_class, pivot_offset,
+                    point, ref_export, ref_import)
 import annotations
 import lights
 import packages as pk
 import materials as material_bake
 import static_mesh
+import matinee
+import environment
 
-FX_MESH_MARKERS = ('_FX_', 'SkyDome', 'Sunflare', 'GodRay')
+# InterpActors are movers: placed like any mesh, moved by matinee.py's data.
+PLACED_CLASSES = ('StaticMeshActor', 'InterpActor')
+# Matched case-insensitively: Stormdrain spells it S_Skydome_Sunrise_Steel,
+# and a dome that slipped through filled the sky with a flat pale shell, cut
+# into a circle by the camera's far plane.
+FX_MESH_MARKERS = ('_fx_', 'skydome', 'sunflare', 'godray')
+# [ME:INFERRED] a lightmap-bake occluder: S_LightSquare_01 planes in the _Lgts
+# packages, standing in doorways and over rooms to keep light out of them.
+# None shows in the original. Built as shadow casters only -- no picture, no
+# collision: drawn, they were black walls, several of them solid; left out,
+# the live sun came in where the bake had kept it out.
+BAKE_ONLY_MATERIAL = 'M_BakeBlack'
 # Checkpoints are taken from the persistent level when they fall inside the
 # section's own placements (no slices, no _Bac skyline), grown by this.
 SECTION_MARGIN_M = 2.0
@@ -87,6 +101,17 @@ class MeshTable:
                                    % (name, known['source'], record['source']))
         return known
 
+    def override(self, mr, reference):
+        """A component's per-placement material: its name and how it draws,
+        baked like any mesh material."""
+        name = mr.pkg.resolve(reference)
+        entry = {'material': name}
+        entry.update(self._material(mr, reference))
+        if name and name not in self.bakes:
+            rr, ri = self.baker.resolve(mr, reference)
+            self.bakes[name] = self.baker.bake(rr, ri) if rr else None
+        return entry
+
     def resolve(self, mr, reference):
         """(record) for a StaticMesh object property, local or imported."""
         if isinstance(reference, tuple) and len(reference) == 3 and reference[0] == 'ext':
@@ -114,10 +139,11 @@ class MeshTable:
         MaterialInstance parents to the root Material across packages. A light
         shaft is an additive unlit card; drawn opaque it becomes a grey slab."""
         if not reference:
-            return {'blend': 'opaque', 'unlit': False, 'two_sided': False}
+            return {'blend': 'opaque', 'unlit': False, 'two_sided': False, 'uncontrolled_slide': False}
         key = (mr.label, reference)
         if key not in self._materials:
             reader, idx = mr, reference
+            phys = None
             for _ in range(16):
                 if idx < 0:
                     root, path = pk.import_path(reader.pkg, -idx - 1)
@@ -127,35 +153,62 @@ class MeshTable:
                         raise ExtractError('%s: material %s not found' % (mr.label, '.'.join([root] + path)))
                     reader, idx = shared, target
                 props = reader.props(idx)[0] or {}
+                # The nearest PhysMaterial on the chain wins, as in the engine.
+                if phys is None and props.get('PhysMaterial'):
+                    phys = self._object_name(reader, props['PhysMaterial'])
                 parent = props.get('Parent')
                 if reader.pkg.class_of(reader.pkg.exports[idx - 1]) == 'Material' or not parent:
                     blend = str(props.get('BlendMode', 'BLEND_Opaque')).replace('BLEND_', '').lower()
                     unlit = props.get('LightingModel') == 'MLM_Unlit'
                     two_sided = props.get('TwoSided') is True
-                    self._materials[key] = {'blend': blend, 'unlit': unlit, 'two_sided': two_sided}
+                    self._materials[key] = {'blend': blend, 'unlit': unlit, 'two_sided': two_sided,
+                                            'uncontrolled_slide': self._phys_flag(phys, 'bEnableUncontrolledSlide')}
                     break
                 idx = parent[1]
             else:
                 raise ExtractError('%s: material parent chain too deep' % mr.label)
         return self._materials[key]
 
-    def _soft_landing(self, material):
+    @staticmethod
+    def _object_name(reader, ref):
+        """The bare name of an object reference, exported or imported."""
+        idx = ref[1] if isinstance(ref, tuple) else ref
+        if idx > 0:
+            return reader.pkg.exports[idx - 1]['name']
+        if idx < 0:
+            return reader.pkg.imports[-idx - 1]['name']
+        return None
+
+    def _phys_flag(self, material, flag):
+        """A boolean of the TdPhysicalMaterialProperty behind a PhysicalMaterial of
+        TDPhysicalMaterials, by name. This is how the original marks a surface's
+        behaviour: bEnableSoftLanding on a crash mat's material, and
+        bEnableUncontrolledSlide (PM_ConcreteWetSlide, PM_Metal_Slide, PM_Water,
+        ...) on the chutes the RumpSlide move runs down. Nothing on the level, the
+        mesh or its collision says so; only the material's PhysMaterial does."""
         if not material:
             return False
-        if material not in self._soft:
+        cache = self._soft.setdefault(flag, {})
+        if material not in cache:
             library = self.packages.shared_reader('TDPhysicalMaterials')
             idx = next((i for i, e in enumerate(library.pkg.exports, 1) if e['name'] == material), None)
-            soft = False
+            value = False
             if idx is not None:
                 prop = ref_export((library.props(idx)[0] or {}).get('PhysicalMaterialProperty'))
-                soft = bool(prop and (library.props(prop)[0] or {}).get('bEnableSoftLanding'))
-            self._soft[material] = soft
-        return self._soft[material]
+                value = bool(prop and (library.props(prop)[0] or {}).get(flag))
+            cache[material] = value
+        return cache[material]
+
+    def _soft_landing(self, material):
+        return self._phys_flag(material, 'bEnableSoftLanding')
 
 
 def collision_class(actor, component, record):
+    # BlockNonZeroExtent off: only zero-extent traces (weapons, a kick's hit
+    # test) stop here, never a capsule. Stormdrain's kick targets are hidden
+    # InterpActors like this, standing in front of the doors they open.
     if actor.get('bCollideActors') is False or component.get('CollideActors') is False \
-            or component.get('BlockActors') is False:
+            or component.get('BlockActors') is False or component.get('BlockNonZeroExtent') is False:
         return 'none'
     if record['simple_shapes'] and record['use_simple_box_collision'] is not False:
         return 'simple'
@@ -188,13 +241,23 @@ def collect_placements(mr, meshes, config, report):
     pkg = mr.pkg
     out = []
     for i, e in enumerate(pkg.exports, 1):
-        if pkg.class_of(e) != 'StaticMeshActor' or outer_class(pkg, e) != 'Level':
+        if pkg.class_of(e) not in PLACED_CLASSES or outer_class(pkg, e) != 'Level':
             continue
         actor, _ = pk.resolved_props(meshes.packages, mr, i)
         if 'Location' not in actor:
             continue
-        component = component_props(meshes.packages, mr, actor.get('StaticMeshComponent'))
-        record = meshes.resolve(mr, component.get('StaticMesh'))
+        component_ref = actor.get('StaticMeshComponent')
+        component = component_props(meshes.packages, mr, component_ref)
+        mesh_ref = component.get('StaticMesh')
+        # A component that lives in ANOTHER package (an InterpActor's class
+        # default in Engine.u) reports its references as indices into that
+        # package; read against this one they name an unrelated object -- a
+        # tutorial InterpActor resolved to a DecalComponent this way.
+        foreign = isinstance(component_ref, tuple) and len(component_ref) == 3 and component_ref[0] == 'ext'
+        plain = isinstance(mesh_ref, tuple) and len(mesh_ref) == 2 and mesh_ref[0] == 'obj'
+        if foreign and plain:
+            mesh_ref = ('ext', component_ref[1], mesh_ref[1])
+        record = meshes.resolve(mr, mesh_ref)
         if record is None:
             # No StaticMesh anywhere in the archetype chain: an empty actor that
             # renders nothing in the original either. A reference that cannot be
@@ -205,22 +268,110 @@ def collect_placements(mr, meshes, config, report):
         if name in config['exclude_meshes']:
             report['counts']['excluded_by_config'] += 1
             continue
-        if any(marker in name for marker in FX_MESH_MARKERS):
+        if any(marker in name.lower() for marker in FX_MESH_MARKERS):
             report['counts']['excluded_fx'] += 1
             continue
+        shadow_only = bool(record['surfaces']) and all(BAKE_ONLY_MATERIAL in (s['material'] or '') for s in record['surfaces'])
+        report['counts']['shadow_only'] = report['counts'].get('shadow_only', 0) + shadow_only
         position = point(actor['Location'])
         basis = godot_basis(actor.get('Rotation') or (0, 0, 0), actor_scale(actor))
-        lo, hi = world_aabb(record, position, basis)
-        collision = collision_class(actor, component, record)
+        # UE3 draws an actor at Location + R*(S*v - PrePivot): the mesh sits
+        # PrePivot off the actor's origin, turned with it but NOT scaled, and
+        # the origin stays the pivot a matinee turns it about. Stormdrain's
+        # and the Prologue's red doors stood 2.24 m in the air without it; the
+        # tutorial's kick target, stretched 28x on Z, went 71 m underground
+        # when the offset was scaled too.
+        pre_pivot = point(actor['PrePivot']) if actor.get('PrePivot') else [0.0, 0.0, 0.0]
+        turned = pivot_offset(actor)
+        lo, hi = world_aabb(record, [position[k] - turned[k] for k in range(3)], basis)
+        collision = 'none' if shadow_only else collision_class(actor, component, record)
         report['collision'][collision] += 1
         # bHidden actors are designer-placed invisible collision (group
         # Dummy_Collisions): they still block, they are just never drawn.
-        hidden = bool(actor.get('bHidden', False))
+        # A HiddenGame component is the same, set on the component instead.
+        hidden = bool(actor.get('bHidden', False) or component.get('HiddenGame', False))
+        # What this actor is hard-attached to: it moves with that actor. A
+        # Stormdrain gate rides a Trigger_Dynamic that its Matinee raises.
+        # The component's own Materials: one entry per mesh element, 0 where the
+        # mesh's material stands. A third of Stormdrain's placements carry one;
+        # its orange containers and green pipes are these on white meshes.
+        overrides = []
+        component_idx = None if foreign else ref_export(component_ref)
+        if component_idx:
+            for tag in mr.chain_of(component_idx)[0]:
+                if tag[0] == 'Materials':
+                    refs = matinee._int_array(mr, matinee._value(mr, tag))
+                    overrides = [meshes.override(mr, r) if r else None for r in refs]
+        base_idx = ref_export(actor.get('Base')) if actor.get('bHardAttach') else None
+        base = '%s.%s' % (mr.label, pkg.exports[base_idx - 1]['name']) if base_idx else None
         report['counts']['hidden'] += hidden
         out.append({'name': e['name'], 'package': mr.label, 'mesh': name, 'position': position,
                     'basis': basis, 'collision': collision, 'soft_landing': record['soft_landing'],
-                    'hidden': hidden, 'aabb': {'min': lo, 'max': hi}})
+                    'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor',
+                    'base': base, 'aabb': {'min': lo, 'max': hi}}
+                   | ({'pre_pivot': pre_pivot} if any(abs(c) > 1e-4 for c in pre_pivot) else {})
+                   | ({'materials': overrides} if any(overrides) else {})
+                   | ({'shadow_only': True} if shadow_only else {}))
     return out
+
+
+# A ladder line is moved onto the mesh it climbs only this far, at most.
+LADDER_SNAP_MAX_M = 0.5
+LADDER_SNAP_SEARCH_M = 1.0
+LADDER_MESH_TOKENS = ('ladder', 'pipe')
+
+
+def snap_ladders(placements, annotations, report):
+    """Move each ladder line, along its WallNormal only, onto the centre of
+    the ladder or pipe mesh it runs up.
+
+    Measured in four levels: the cooked Start/End sit 0.18-0.27 m BEHIND a
+    pipe's centre and up to 0.19 m behind a ladder's, toward the wall.
+    LadderMove hangs the body stand_off in FRONT of the line, so a line that
+    far back puts the climber into the wall. The mesh with the most height
+    in common with the line wins, not the nearest: a ladder's top piece
+    curves back over the lip and its bounds sit elsewhere.
+    """
+    report['ladders_snapped'] = []
+    for a in annotations:
+        if a['kind'] != 'ladder' or 'start' not in a or 'end' not in a or 'wall' not in a:
+            continue
+        low, high = sorted((a['start'][1], a['end'][1]))
+        mid = [(a['start'][k] + a['end'][k]) / 2 for k in range(3)]
+        normal = a['wall']
+        best = None
+        for p in placements:
+            name = p['mesh'].lower()
+            if not any(t in name for t in LADDER_MESH_TOKENS):
+                continue
+            lo, hi = p['aabb']['min'], p['aabb']['max']
+            # Upright pieces only. An elbow or a horizontal run of the same
+            # pipe system can share more height with the line than the
+            # straight it runs up, and its centre is nowhere near the grip:
+            # a tutorial pipe was pulled 0.31 m INTO its wall that way.
+            tall = hi[1] - lo[1]
+            if tall < 1.0 or tall < 2.0 * max(hi[0] - lo[0], hi[2] - lo[2]):
+                continue
+            overlap = min(high, hi[1]) - max(low, lo[1])
+            if overlap <= 0.0:
+                continue
+            centre = [(lo[k] + hi[k]) / 2 for k in range(3)]
+            if math.hypot(centre[0] - mid[0], centre[2] - mid[2]) > LADDER_SNAP_SEARCH_M:
+                continue
+            if best is None or overlap > best[0]:
+                best = (overlap, p['mesh'], centre)
+        if best is None:
+            continue
+        delta = (best[2][0] - mid[0]) * normal[0] + (best[2][2] - mid[2]) * normal[2]
+        if abs(delta) > LADDER_SNAP_MAX_M or abs(delta) < 0.01:
+            continue
+        shift = [normal[0] * delta, 0.0, normal[2] * delta]
+        for key in ('start', 'end', 'middle'):
+            if key in a:
+                a[key] = [round(a[key][k] + shift[k], 4) for k in range(3)]
+        if 'spline' in a:
+            a['spline'] = [[round(v[k] + shift[k], 4) for k in range(3)] for v in a['spline']]
+        report['ladders_snapped'].append('%s.%s onto %s by %+.2f m' % (a['package'], a['name'], best[1], delta))
 
 
 def distance_to_box(p, lo, hi):
@@ -238,7 +389,7 @@ def main(config_path):
                          'excluded_by_anchor': 0, 'hidden': 0}}
     meshes = MeshTable(packages, report, material_bake.MaterialBaker(packages, int(config['texture_max_px']), report))
     defaults = annotations.blocking_defaults(packages)
-    placements, found_lights, bsp = [], [], []
+    placements, found_lights, bsp, matinees = [], [], [], []
     notes = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
     for name in packages.names:
         mr = packages.reader(name)
@@ -246,7 +397,10 @@ def main(config_path):
         for key, values in annotations.collect(mr, defaults, report).items():
             notes[key] += values
         found_lights += lights.collect_lights(mr)
-        bsp += lights.collect_bsp(mr)
+        matinees += matinee.collect(packages, mr, report)
+        for face in lights.collect_bsp(mr):
+            face['package'] = name
+            bsp.append(face)
         print('%-36s placements so far %5d' % (name, len(placements)))
 
     if config['sections']:
@@ -265,6 +419,8 @@ def main(config_path):
         notes['checkpoints'] += [c for c in persistent['checkpoints']
                                  if all(lo[k] <= c['position'][k] <= hi[k] for k in range(3))]
 
+    notes['checkpoints'].sort(key=lambda c: c.get('weight', 0))
+
     if config['anchor_filter']:
         radius = float(config['anchor_filter']['radius_m'])
         anchors = notes['anchors'] + [s['position'] for s in notes['spawns']] \
@@ -278,6 +434,20 @@ def main(config_path):
         names = [s['name'] for s in notes['spawns'] + notes['checkpoints']]
         if config['initial_spawn'] not in names:
             raise ExtractError('initial_spawn %r is not among %s' % (config['initial_spawn'], names))
+
+    snap_ladders(placements, notes['annotations'], report)
+
+    if config['split_sections']:
+        prefix = packages.persistent[:-len('p.me1')]
+        names = [s['name'] for s in config['sections']]
+        report['sections'] = {}
+        for record in placements + found_lights + notes['annotations'] + bsp + matinees:
+            record['section'] = pk.section_of(record['package'], prefix, names)
+            counts = report['sections'].setdefault(record['section'] or '(chapter)', {'packages': []})
+            if record['package'] not in counts['packages']:
+                counts['packages'].append(record['package'])
+        for record in placements:
+            report['sections'][record['section'] or '(chapter)']['placements'] =                 report['sections'][record['section'] or '(chapter)'].get('placements', 0) + 1
 
     used = {p['mesh'] for p in placements}
     mesh_out = {n: r for n, r in meshes.records.items() if n in used}
@@ -295,15 +465,35 @@ def main(config_path):
     report['placements'] = len(placements)
     report['bsp_polygons'] = len(bsp)
 
+    # The persistent package's WorldInfo is the chapter's; a level without one
+    # (the tutorial lists its packages by hand) takes the first that has a sun.
+    look = None
+    for name in ([packages.persistent] if packages.persistent else []) + packages.names:
+        look = environment.collect(packages.reader(name))
+        if look and look.get('sun_direction'):
+            break
+    # The sun the lightmaps were baked from, wherever its _Lgts package is;
+    # its direction replaces the haze's approximation of it.
+    for name in packages.names:
+        sun = environment.baked_sun(packages.reader(name))
+        if sun:
+            look = look or {'package': None, 'post_process': {}, 'haze': {}}
+            look['sun'] = sun
+            look['sun_direction'] = sun['direction']
+            break
+    report['environment'] = look.get('package') if look else None
+    report['sun'] = '%s.%s' % (look['sun']['package'], look['sun']['name']) if look and look.get('sun') else None
+
     os.makedirs(out_dir, exist_ok=True)
-    manifest = {'config': config, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
+    manifest = {'config': config, 'environment': look, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
                 'annotations': notes['annotations'], 'spawns': notes['spawns'],
-                'checkpoints': notes['checkpoints'], 'report': report}
+                'checkpoints': notes['checkpoints'], 'matinees': matinees, 'report': report}
     with open(os.path.join(out_dir, 'manifest.json'), 'w', encoding='utf-8') as fh:
         json.dump(manifest, fh, ensure_ascii=False, separators=(',', ':'))
     with open(os.path.join(out_dir, 'meshes.json'), 'w', encoding='utf-8') as fh:
         json.dump(mesh_out, fh, ensure_ascii=False, separators=(',', ':'))
     used_materials = {s['material'] for r in mesh_out.values() for s in r['surfaces']}
+    used_materials |= {o['material'] for p in placements for o in p.get('materials', []) if o}
     with open(os.path.join(out_dir, 'materials.json'), 'w', encoding='utf-8') as fh:
         json.dump({n: b for n, b in meshes.bakes.items() if b and n in used_materials}, fh, separators=(',', ':'))
     print(json.dumps(report, ensure_ascii=False, indent=1))

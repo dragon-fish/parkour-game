@@ -53,8 +53,18 @@ func _init() -> void:
 ## own jump_speed as a starting point -- letting go of a ladder and letting
 ## go of a ledge are the same kind of shove.
 @export var jump_speed: float = 6.3
+## The lowest incline a jump off the ladder launches at, degrees. Same
+## reading as GrabConfig.jump_min_pitch_deg.
+@export var jump_min_pitch_deg: float = 45.0
 ## How close to the top (Task 7) counts as having reached it, metres.
 @export var top_exit_reach: float = 1.2
+## How far below the line's top the deck behind it may be, metres.
+## PROJECT-DEFINED. Many of the original's ladders run on past the deck they
+## serve, rails and all, so the deck can sit well under the top grip. The
+## probe fires BEHIND the ladder (toward the wall), never down its own rungs,
+## so reaching further only risks finding a floor far below a ladder with no
+## deck at all -- which is why this stays a limit rather than going unbounded.
+@export var top_exit_max_drop: float = 2.0
 ## [ME:CONFIRMED] the carry off the top of a ladder onto the deck behind it
 ## runs 1 s, not the 2 s first guessed here. Seconds. CharacterAnimator
 ## stretches ClimbUp_1m to match (see LadderMove.scripted_duration()), so this
@@ -85,3 +95,10 @@ func _init() -> void:
 ## How long the ladder just left refuses a re-catch, seconds. Per LINE, not
 ## per move name -- see LineMove.note_left().
 @export var same_line_redo_time: float = 0.6
+## Metres a body may sit BEHIND the line's front plane and still catch it. A
+## pipe standing further off its wall than the capsule radius puts a body
+## running along that wall beside the pipe, slightly behind its front plane
+## (Stormdrain: pipe 0.58 m off the ring wall, wall-run body 0.45 m off it).
+## DO NOT raise it to stand_off or past: a body standing off the back of a
+## free-standing ladder at climbing distance must still be refused.
+@export var back_slack: float = 0.25

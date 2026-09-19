@@ -2,6 +2,7 @@
 import struct
 
 from common import ExtractError, UU, actor_scale, godot_basis, outer_class, point, ref_export, to_godot
+import environment
 
 LIGHT_CLASSES = ('PointLight', 'SpotLight', 'SpotLightMovable', 'TdAreaLight')
 
@@ -38,6 +39,11 @@ def collect_lights(mr):
         component_idx = ref_export(props.get('LightComponent'))
         component = (mr.props_inherited(component_idx)[0] or {}) if component_idx else {}
         baker = props.get('bUseBakerColorAndBrightness', False)
+        tagged = environment._props(mr, component_idx) if component_idx else {}
+        channels = tagged.get('LightingChannels') if isinstance(tagged.get('LightingChannels'), dict) else {}
+        # Switched off in the original until its Kismet turns it on.
+        if tagged.get('bEnabled') is False:
+            continue
         lights.append({
             'name': e['name'], 'class': cls, 'package': mr.label, 'tag': props.get('Tag'),
             'position': point(props['Location']),
@@ -47,6 +53,15 @@ def collect_lights(mr):
             'radius_m': component.get('Radius', 1024.0) / UU,
             'outer_cone_deg': component.get('OuterConeAngle', 44.0),
             'inner_cone_deg': component.get('InnerConeAngle', 0.0),
+            # Lights only what moves: kept off the world's BSP and static
+            # meshes by its LightingChannels, there to light the character or
+            # a car. The tutorial hangs one of brightness 8 over a crash mat
+            # and one of 5 outside the tutorial's door; the Prologue's
+            # "CarLights" are 10. The channels decide, not bForceDynamicLight:
+            # the door lamp has no such flag and, built as a world light at
+            # the lamp scale, whited out the wall round the door.
+            'character_only': channels.get('BSP') is False and channels.get('Static') is False
+                              and channels.get('Dynamic') is not False,
         })
     return lights
 
