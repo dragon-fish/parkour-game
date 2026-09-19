@@ -1032,6 +1032,13 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 		_eye_ground_y = body_y
 		_has_eye_ground = true
 	else:
+		# A moving platform carries the eye 1:1. The lag below is for the
+		# body's OWN changes of height, a step up or a floor snap; a lift is
+		# something else moving the body (docs/camera-authority.md), and a
+		# lift at speed lagged by the whole step cap put the eye in the neck.
+		var body := get_parent() as CharacterBody3D
+		if body != null:
+			_eye_ground_y += body.get_platform_velocity().y * delta
 		_eye_ground_y = lerpf(_eye_ground_y, body_y,
 				clampf(_config.camera.step_smooth_speed * delta, 0.0, 1.0))
 	var cap: float = _config.pawn.max_step_height
