@@ -148,6 +148,16 @@ func test_apply_to_config_writes_camera_sensitivity_and_fov() -> void:
 	assert_eq(config.camera.mouse_sensitivity, 0.0099, "apply_to_config did not write mouse_sensitivity")
 	assert_eq(config.camera.fov_base, 77.0, "apply_to_config did not write fov_base")
 
+func test_the_small_third_person_body_is_opt_in() -> void:
+	var config := MovementConfig.new()
+	var s := SettingsStore.defaults()
+	assert_false(s.small_third_person_body, "the small third-person body is on by default")
+	SettingsStore.apply_to_config(s, config)
+	assert_eq(config.camera.third_person_body_scale, 1.0, "off did not leave the body full size")
+	s.small_third_person_body = true
+	SettingsStore.apply_to_config(s, config)
+	assert_lt(config.camera.third_person_body_scale, 1.0, "on did not shrink the third-person body")
+
 func test_apply_global_sets_master_bus_volume_and_restores_it() -> void:
 	var bus := AudioServer.get_bus_index("Master")
 	var original_db := AudioServer.get_bus_volume_db(bus)
@@ -445,7 +455,7 @@ func test_the_settings_page_still_builds_every_row() -> void:
 		if key in MeSettingsMenu._ACTION_KEYS:
 			assert_false(in_slider, "action row %s was ALSO built as a slider" % key)
 			assert_false(in_stepper, "action row %s was ALSO built as a stepper" % key)
-		elif key in ["window_mode", "window_size", "antialiasing"]:
+		elif key in ["window_mode", "window_size", "antialiasing"] or key in MeSettingsMenu._SWITCH_KEYS:
 			assert_true(in_stepper, "stepper row %s was not built as a stepper" % key)
 			assert_false(in_slider, "stepper row %s was ALSO built as a slider" % key)
 		else:

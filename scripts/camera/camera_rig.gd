@@ -1361,6 +1361,11 @@ func toggle_third_person() -> void:
 ## Only the two configured layers are ever touched. Everything else, layer 1
 ## included, is left alone -- so the world still draws, and a body with no layer
 ## split at all (every non-VRM model) is completely unaffected.
+## Whether the third-person body is the one on screen: the same point in the
+## view blend as the layer swap below, where the camera is furthest from both.
+func shows_third_person_body() -> bool:
+	return _eased_view_blend() >= _config.camera.view_blend_body_swap
+
 func _apply_body_layers() -> void:
 	if camera == null:
 		return

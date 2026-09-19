@@ -40,6 +40,9 @@ const ANTIALIASING_LABELS := {
 	"off": "关闭", "fxaa": "FXAA", "msaa_2x": "MSAA 2×", "msaa_4x": "MSAA 4×",
 }
 
+## Stepper rows that are an on/off switch.
+const _SWITCH_KEYS := ["small_third_person_body"]
+
 ## Rows that are a BUTTON rather than a value: they do something once and have
 ## nothing to save. THE THIRD ROW KIND -- before this there were only steppers
 ## and sliders, and the build loop below routes on this list.
@@ -53,6 +56,7 @@ const _ROWS := [
 	{"key": "sensitivity", "label": "鼠标灵敏度", "desc": "调整视角转动的鼠标灵敏度。"},
 	{"key": "fov", "label": "视野 FOV", "desc": "调整摄像机基准视野角度。"},
 	{"key": "volume", "label": "总音量", "desc": "调整主音量大小。"},
+	{"key": "small_third_person_body", "label": "第三人称小体型", "desc": "第三人称下把角色模型缩小到 85%，人物与场景的比例会更舒服。只影响观感，不改变碰撞与动作，因此部分手部动作可能碰不到或穿过物体。"},
 	{"key": "replay_tutorial", "label": "新手教程", "desc": "回到开场画面重玩一次新手教程。这不会清除任何已保存的进度。"},
 ]
 
@@ -170,7 +174,7 @@ func _build_ui() -> void:
 
 		if key in _ACTION_KEYS:
 			_build_action(line, key, desc)
-		elif key in ["window_mode", "window_size", "antialiasing"]:
+		elif key in ["window_mode", "window_size", "antialiasing"] or key in _SWITCH_KEYS:
 			_build_stepper(line, key, desc)
 		else:
 			_build_slider(line, key, desc)
@@ -331,6 +335,8 @@ func _on_stepper_step(key: String, delta: int) -> void:
 		if index < 0:
 			index = 0
 		_working.antialiasing = ANTIALIASING[wrapi(index + delta, 0, ANTIALIASING.size())]
+	elif key in _SWITCH_KEYS:
+		_working[key] = not bool(_working[key])
 	_refresh_controls()
 
 func _on_slider_changed(value: float, key: String) -> void:
@@ -500,6 +506,8 @@ func _window_size_index(size: Vector2i) -> int:
 func _refresh_controls() -> void:
 	_stepper_value_labels["window_mode"].text = WINDOW_MODE_LABELS.get(_working.window_mode, _working.window_mode)
 	_stepper_value_labels["window_size"].text = "%d×%d" % [_working.window_size.x, _working.window_size.y]
+	for key in _SWITCH_KEYS:
+		_stepper_value_labels[key].text = "开启" if bool(_working[key]) else "关闭"
 	_stepper_value_labels["antialiasing"].text = 			ANTIALIASING_LABELS.get(_working.antialiasing, _working.antialiasing)
 
 	for key in ["sensitivity", "fov", "volume"]:

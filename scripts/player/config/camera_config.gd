@@ -400,6 +400,14 @@ extends Resource
 
 @export var third_person_min_fraction: float = 0.15
 
+## The model's size while the THIRD-PERSON body is on screen, about its feet.
+## Nothing else follows it: not the capsule, not the moves, not the camera,
+## whose head-follow reads the head as if the model were full size. A level
+## built to first-person scale makes a full-size body loom in third person;
+## smaller reads better, at the price of hands that stop short of the ledges
+## the moves were measured against. A player setting (SettingsStore).
+@export var third_person_body_scale: float = 1.0
+
 ## Radius of the sphere the third-person probe sweeps, in metres. What it buys
 ## is CLEARANCE: the camera comes to rest at least this far off whatever it
 ## backed away from, instead of flat against it.

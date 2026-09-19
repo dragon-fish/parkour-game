@@ -32,6 +32,11 @@ const MSAA_MODES := {
 ## bus rejects it; -80 dB is inaudible and reversible.
 const MUTED_DB := -80.0
 
+## CameraConfig.third_person_body_scale with small_third_person_body on.
+## Judged by eye in sp01b's interiors: 0.75 read best but lost too many hands,
+## 0.85 kept most of both.
+const SMALL_THIRD_PERSON_BODY_SCALE := 0.85
+
 
 ## The full settings blob with every key at its shipped default.
 static func defaults() -> Dictionary:
@@ -50,6 +55,8 @@ static func defaults() -> Dictionary:
 		# inverted hull (shaders/matcap_outline.gdshader), which is a sub-pixel
 		# edge at any normal viewing distance and crawls without multisampling.
 		antialiasing = "msaa_2x",
+		# Off: the moves' hand positions are measured against a full-size body.
+		small_third_person_body = false,
 	}
 
 
@@ -143,3 +150,4 @@ static func apply_global(s: Dictionary) -> void:
 static func apply_to_config(s: Dictionary, config: MovementConfig) -> void:
 	config.camera.mouse_sensitivity = s.sensitivity
 	config.camera.fov_base = s.fov
+	config.camera.third_person_body_scale = SMALL_THIRD_PERSON_BODY_SCALE if s.small_third_person_body else 1.0
