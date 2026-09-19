@@ -279,3 +279,32 @@ def collect(packages, mr, report):
                          'play_rate': float(_props(mr, i).get('PlayRate', 1.0)),
                          'starts': starts, 'groups': groups, 'frames': frames})
     return matinees
+
+
+
+def self_disabling(mr):
+    """Names of the volumes a touch switches off: [ME:CONFIRMED Factory
+    Kismet] a pain volume standing in for a falling lift hurts once, because
+    its own Touch turns its collision off (SeqAct_ChangeCollision, NoCollision)."""
+    pkg = mr.pkg
+    out = set()
+    for i, e in enumerate(pkg.exports, 1):
+        if pkg.class_of(e) not in TOUCH_EVENTS:
+            continue
+        props = _props(mr, i)
+        volume = ref_export(props.get('Originator'))
+        if not volume:
+            continue
+        for out_link in _struct_array(mr, props.get('OutputLinks')):
+            for link in _struct_array(mr, out_link.get('Links')):
+                op = ref_export(link.get('LinkedOp'))
+                if not op or pkg.class_of(pkg.exports[op - 1]) != 'SeqAct_ChangeCollision':
+                    continue
+                action = _props(mr, op)
+                if action.get('CollisionType') != 'COLLIDE_NoCollision':
+                    continue
+                for var_link in _struct_array(mr, action.get('VariableLinks')):
+                    for var in _int_array(mr, var_link.get('LinkedVariables')):
+                        if var > 0 and ref_export(_props(mr, var).get('ObjValue')) == volume:
+                            out.add(pkg.exports[volume - 1]['name'])
+    return out

@@ -165,6 +165,31 @@ its two elevator slices twice, `_Slc` and `_Spt`, and streams only `_Spt`;
 extracted together, a second car stood in the shaft. Section inference drops
 unstreamed packages and lists them in the report as `unstreamed`.
 
+**A name is not a mesh.** Subway_Bac holds two different `Vista_Mountains`
+(`B_Vista.SP03` and `B_Vista.SP04`), Mall two `S_Policecar_01` from different
+packages. The mesh library is keyed by name, so a clash would have one level
+draw the other's mesh: both get their path as a suffix (`name@path`), and the
+report lists them as `mesh_variants`. Imports are matched by path for the same
+reason.
+
+**An import's outer can be an export.** A package cooked into a map (a forced
+export, class `Package`) holds imports of its own: Scraper's `M_FNMinimi`.
+The export chain spells the rest of the path.
+
+**A prefab's volume keeps its brush on the prefab.** Factory's server-rack
+BlockingVolumes carry a delta BrushComponent; the hull and the move flags are
+on the archetype in the prefab's package, read through the whole chain.
+
+**Pain volumes are PhysicsVolumes.** `bPainCausing`, `DamagePerSec` and a
+`DamageType` (the class default when unset, `None` when set to nothing) make
+Escape's electric fences. One whose own Touch switches its collision off
+(Factory's falling lift) hurts once per life.
+
+**A section's swing bar can be another section's placement.** Section shells
+search the whole chapter's placements for bars; a bar is any horizontal member
+passing through the volume, and a member is the whole mesh only when it is
+thin: Cranes hangs its bar on rods.
+
 **Everything loads at once here; the original streamed.** A section's coarse
 hull can stand where the neighbouring section's corridor is, because the
 original never had both loaded (Escape's St1 building box over R1's corridor

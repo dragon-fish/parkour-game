@@ -61,6 +61,8 @@ class MeshTable:
         self.bakes = {}
         self.report = report
         self.records = {}
+        # Meshes sharing a name with a different one already in `records`.
+        self.variants = []
         self._soft = {}
         self._parsed = {}
         self._materials = {}
@@ -78,6 +80,7 @@ class MeshTable:
         shapes, material = static_mesh.simple_collision(mr, record.pop('body_setup'))
         record['name'] = name
         record['source'] = mr.label
+        record['path'] = mr.pkg.full_name(export_idx)
         record['simple_shapes'] = shapes
         record['soft_landing'] = self._soft_landing(material)
         for surface in record['surfaces']:
@@ -91,15 +94,30 @@ class MeshTable:
         if known is None:
             self.records[name] = record
             return record
-        for key in ('vertex_count', 'triangle_count'):
-            if known[key] != record[key]:
-                raise ExtractError('mesh %s differs between %s and %s (%s %s vs %s)'
-                                   % (name, known['source'], record['source'], key, known[key], record[key]))
-        for a, b in zip(known['bounds']['extent'], record['bounds']['extent']):
-            if abs(a - b) > 0.01:
-                raise ExtractError('mesh %s bounds differ between %s and %s'
-                                   % (name, known['source'], record['source']))
-        return known
+        for other in [known] + [v for v in self.variants if v['name'] == name]:
+            if _same_mesh(other, record):
+                return other
+        # A DIFFERENT mesh under the same name: Subway_Bac holds B_Vista.SP03
+        # and B_Vista.SP04's Vista_Mountains, Mall two packages' S_Policecar_01.
+        # Both get their path as a suffix when the manifest is written
+        # (finish_names); the library is keyed by name, and one name for both
+        # would have one level drawing the other's mesh.
+        known['variant'] = True
+        record['variant'] = True
+        self.variants.append(record)
+        return record
+
+    def finish_names(self):
+        """Every mesh by its final name, variants suffixed with their path."""
+        out = {}
+        for record in list(self.records.values()) + self.variants:
+            # Popped, not kept: the library hashes the whole record, and a new
+            # key would rebuild every mesh of every level once for nothing.
+            path = record.pop('path')
+            if record.pop('variant', False):
+                record['name'] = '%s@%s' % (record['name'], path.rsplit('.', 1)[0] if '.' in path else record['source'])
+            out[record['name']] = record
+        return out
 
     def override(self, mr, reference):
         """A component's per-placement material: its name and how it draws,
@@ -123,8 +141,12 @@ class MeshTable:
         if imported is None:
             return None
         name = mr.pkg.imports[imported]['name']
-        if name in self.records:
-            return self.records[name]
+        root, path = pk.import_path(mr.pkg, imported)
+        full = '.'.join([root] + path)
+        # By path, not by name alone: two different meshes can share a name.
+        for known in [self.records.get(name)] + self.variants:
+            if known is not None and known['name'] == name                     and full in (known['path'], '%s.%s' % (known['source'], known['path'])):
+                return known
         shared = self.packages.shared_reader(import_root_package(mr.pkg, imported))
         if shared is None:
             raise ExtractError('%s: mesh %s imports from a package that is not installed' % (mr.label, name))
@@ -201,6 +223,10 @@ class MeshTable:
 
     def _soft_landing(self, material):
         return self._phys_flag(material, 'bEnableSoftLanding')
+
+
+def _same_mesh(a, b):
+    return all(a[k] == b[k] for k in ('vertex_count', 'triangle_count')) and         all(abs(x - y) <= 0.01 for x, y in zip(a['bounds']['extent'], b['bounds']['extent']))
 
 
 def collision_class(actor, component, record):
@@ -323,7 +349,7 @@ def collect_placements(mr, meshes, config, report):
         base_idx = ref_export(actor.get('Base')) if actor.get('bHardAttach') else None
         base = '%s.%s' % (mr.label, pkg.exports[base_idx - 1]['name']) if base_idx else None
         report['counts']['hidden'] += hidden
-        out.append({'name': e['name'], 'package': mr.label, 'mesh': name, 'position': position,
+        out.append({'name': e['name'], 'package': mr.label, 'mesh': name, '_record': record, 'position': position,
                     'basis': basis, 'collision': collision, 'soft_landing': record['soft_landing'],
                     'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor',
                     'base': base, 'aabb': {'min': lo, 'max': hi}}
@@ -412,7 +438,12 @@ def main(config_path):
     for name in packages.names:
         mr = packages.reader(name)
         placements += collect_placements(mr, meshes, config, report)
-        for key, values in annotations.collect(mr, defaults, report).items():
+        collected = annotations.collect(packages, mr, defaults, report)
+        once = matinee.self_disabling(mr)
+        for a in collected['annotations']:
+            if a['kind'] == 'pain' and a['name'] in once:
+                a['once'] = True
+        for key, values in collected.items():
             notes[key] += values
         found_lights += lights.collect_lights(mr)
         matinees += matinee.collect(packages, mr, report)
@@ -431,7 +462,7 @@ def main(config_path):
             a['soft_landing'] = meshes._phys_flag(a['physical_material'], 'bEnableSoftLanding')
 
     if config['sections']:
-        persistent = annotations.collect(packages.reader(packages.persistent), defaults, {'unmapped': {}})
+        persistent = annotations.collect(packages, packages.reader(packages.persistent), defaults, {'unmapped': {}})
         prefix = packages.persistent[:-len('_p.me1')].lower() + '_'
         own = tuple(prefix + s['name'].lower() for s in config['sections'])
         # The section's own packages only: slices reach deep into the
@@ -476,8 +507,12 @@ def main(config_path):
         for record in placements:
             report['sections'][record['section'] or '(chapter)']['placements'] =                 report['sections'][record['section'] or '(chapter)'].get('placements', 0) + 1
 
+    records = meshes.finish_names()
+    for p in placements:
+        p['mesh'] = p.pop('_record')['name']
+    report['mesh_variants'] = sorted(n for n in records if '@' in n)
     used = {p['mesh'] for p in placements}
-    mesh_out = {n: r for n, r in meshes.records.items() if n in used}
+    mesh_out = {n: r for n, r in records.items() if n in used}
     report['meshes'] = len(mesh_out)
     report['meshes_without_normals'] = sorted(n for n, r in mesh_out.items() if r['normals'] is None)
     report['kdop_mismatch'] = sorted(n for n, r in mesh_out.items() if r['kdop_triangles'] != r['collide_triangles'])

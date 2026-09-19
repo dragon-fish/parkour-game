@@ -124,6 +124,9 @@ static func _section_of(manifest: Dictionary, section: String) -> Dictionary:
 	var part := manifest.duplicate()
 	for key in ["placements", "lights", "annotations", "bsp"]:
 		part[key] = (manifest[key] as Array).filter(func(r: Dictionary) -> bool: return r.get("section", "") == section)
+	# A section's swing volume can hang on a bar placed from another section's
+	# package or the chapter's (Subway's Plat-Tunnel slice, Mall's MallExterior).
+	part["all_placements"] = manifest["placements"]
 	return part
 
 

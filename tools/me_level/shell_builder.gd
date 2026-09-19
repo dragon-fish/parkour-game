@@ -97,7 +97,7 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	geometry.owner = root
 	var annotations: Array = manifest["annotations"]
 	_own(root, _air_walls(annotations))
-	_own(root, _interest_lines(annotations, manifest["placements"]))
+	_own(root, _interest_lines(annotations, manifest.get("all_placements", manifest["placements"])))
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
 	_own(root, _pain_volumes(annotations))
@@ -521,12 +521,20 @@ static func _front_basis(a: Dictionary) -> Basis:
 
 ## Swing volumes describe a vertical trigger, not the grip bar. The bar is
 ## whatever horizontal pole or pipe runs through the volume: the tutorial
-## hangs S_SwingPole_01c there, the Stormdrain hangs ceiling pipes, and Escape
-## rotates a catwalk support into a horizontal bar. Candidates still have to
-## run horizontally through the volume. Join collinear segments and clip.
-const SWING_BAR_TOKENS: Array[String] = ["swingpole", "pipe", "catwalksystem_05_support"]
+## hangs S_SwingPole_01c there, the Stormdrain hangs ceiling pipes, Escape
+## rotates a catwalk support into a horizontal bar, Cranes hangs a bar on
+## rods under a bridge, Convoy uses a scaffold tube, and the Boat and the
+## Scraper swing on ceiling frames. Candidates still have to run horizontally
+## through the volume. Join collinear segments and clip.
+const SWING_BAR_TOKENS: Array[String] = ["swingpole", "swingbar", "pipe",
+		"catwalksystem_05_support", "scaffolding", "ceilingframe"]
 const SWING_BAR_MIN_M := 0.5
 const SWING_COLLINEAR_M := 0.1
+## Vertices this close across the long axis belong to one member of a mesh.
+const SWING_MEMBER_CELL_M := 0.1
+## Members closer than this are one: the rings of a pipe's round section each
+## run its whole length, and apart they would put the bar off the pipe's axis.
+const SWING_MEMBER_MERGE_M := 0.4
 
 func _swing_points(a: Dictionary, placements: Array) -> Array[Vector3]:
 	var volume := Common.transform_of(a)
@@ -548,18 +556,17 @@ func _swing_points(a: Dictionary, placements: Array) -> Array[Vector3]:
 		var mesh: ArrayMesh = load(preload("res://tools/me_level/mesh_library.gd").path_for(placement["mesh"]))
 		var local: AABB = mesh.get_meta("bounds")
 		var transform := Common.transform_of(placement)
-		var centre := transform * local.get_center()
-		if not local_bounds.grow(0.05).has_point(inverse * centre):
-			continue
-		var axis := local.size.max_axis_index()
-		var half := Vector3.ZERO
-		half[axis] = local.size[axis] * 0.5
-		var p0 := transform * (local.get_center() - half)
-		var p1 := transform * (local.get_center() + half)
-		var direction := p1 - p0
-		if direction.length() < SWING_BAR_MIN_M or absf(direction.normalized().y) > 0.1:
-			continue
-		bars.append([p0, p1])
+		for member: Array in _long_members(mesh, local):
+			var p0: Vector3 = transform * member[0]
+			var p1: Vector3 = transform * member[1]
+			# Through the volume, not centred in it: one 9.4 m frame on the
+			# Boat carries four swing volumes in a row.
+			if _clip_segment(inverse * p0, inverse * p1, local_bounds.grow(0.05)).is_empty():
+				continue
+			var direction := p1 - p0
+			if direction.length() < SWING_BAR_MIN_M or absf(direction.normalized().y) > 0.1:
+				continue
+			bars.append([p0, p1])
 	if bars.is_empty():
 		return []
 	# The bar passes through the volume's middle; the ceiling pipes around it
@@ -589,6 +596,68 @@ func _swing_points(a: Dictionary, placements: Array) -> Array[Vector3]:
 	if clipped.is_empty():
 		return []
 	return [volume * clipped[0], volume * clipped[1]]
+
+
+## The mesh's members that run its whole length, as [start, end] in its own
+## frame. A pole or pipe is one, its bounding box's centre line. Cranes' swing
+## bar hangs on rods from a rail, and that centre line runs through neither,
+## 0.85 m above the bar: a mesh wider across than SWING_MEMBER_MERGE_M is split
+## into the groups of vertices that reach both of its ends.
+##
+## DO NOT split the thin ones too. A pipe's flanges shift the averaged line by
+## a few centimetres, enough to stop it joining the next piece of the run, and
+## Stormdrain's bars came out up to 1.7 m short.
+static func _long_members(mesh: ArrayMesh, local: AABB) -> Array:
+	var axis := local.size.max_axis_index()
+	var span := local.size[axis]
+	var start := local.position[axis]
+	var across := local.size
+	across[axis] = 0.0
+	if across[across.max_axis_index()] < SWING_MEMBER_MERGE_M:
+		var half := Vector3.ZERO
+		half[axis] = span * 0.5
+		return [[local.get_center() - half, local.get_center() + half]]
+	var groups := {}
+	for surface in mesh.get_surface_count():
+		for v: Vector3 in mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX]:
+			var off := v
+			off[axis] = 0.0
+			var key := Vector3i((off / SWING_MEMBER_CELL_M).round())
+			if not groups.has(key):
+				groups[key] = [INF, -INF, Vector3.ZERO, 0]
+			var g: Array = groups[key]
+			g[0] = minf(g[0], v[axis])
+			g[1] = maxf(g[1], v[axis])
+			g[2] += off
+			g[3] += 1
+	# [sum of across-positions, vertex count] per merged member.
+	var merged := []
+	for g: Array in groups.values():
+		if g[1] - g[0] < span * 0.9:
+			continue
+		var centre: Vector3 = g[2] / float(g[3])
+		var home: Array = []
+		for m: Array in merged:
+			if (m[0] / float(m[1])).distance_to(centre) < SWING_MEMBER_MERGE_M:
+				home = m
+				break
+		if home.is_empty():
+			merged.append([g[2], g[3]])
+		else:
+			home[0] += g[2]
+			home[1] += g[3]
+	var members := []
+	for m: Array in merged:
+		var a: Vector3 = m[0] / float(m[1])
+		var b := a
+		a[axis] = start
+		b[axis] = start + span
+		members.append([a, b])
+	if members.is_empty():
+		var half := Vector3.ZERO
+		half[axis] = span * 0.5
+		members.append([local.get_center() - half, local.get_center() + half])
+	return members
 
 
 ## Distance from `p` to the infinite line through `a` and `b`.
@@ -711,7 +780,12 @@ func _pain_volumes(annotations: Array) -> Node3D:
 		volume.set_script(MODIFIER_VOLUME_SCRIPT)
 		volume.name = names.take(a["name"])
 		volume.set("apply", [spec] as Array[StatusSpec])
-		volume.set("refresh_interval", WIRE_REFRESH_S)
+		if a.get("once", false):
+			# [ME:CONFIRMED Factory Kismet] switched off by its own touch: one
+			# hit per life, not a volume to stand in.
+			volume.set("max_trigger_count", 1)
+		else:
+			volume.set("refresh_interval", WIRE_REFRESH_S)
 		if _hull_shapes(volume, a, Transform3D.IDENTITY) == 0:
 			push_error("[me_level] pain volume %s has no hull" % a["name"])
 			volume.free()

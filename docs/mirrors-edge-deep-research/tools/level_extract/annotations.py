@@ -1,6 +1,8 @@
 """Gameplay annotations: interaction volumes, air walls, hazards, spawns and checkpoints."""
 import struct
 
+import packages as pk
+
 from common import (ExtractError, UU, ROT, actor_scale, dir_godot, finite, godot_basis,
                     outer_class, point, ref_export)
 
@@ -95,15 +97,49 @@ def brush_hulls(mr, component_idx):
     return []
 
 
+def inherited_hulls(packages, mr, component_idx, depth=0):
+    """brush_hulls() of a BrushComponent, or of the first archetype up its
+    chain that has any, across packages. A volume placed from a prefab (Factory's
+    server racks) carries a delta component; the brush is on the prefab's."""
+    hulls = brush_hulls(mr, component_idx)
+    if hulls or depth > 8:
+        return hulls
+    archetype = mr.pkg.exports[component_idx - 1]['archetype']
+    if archetype > 0:
+        return inherited_hulls(packages, mr, archetype, depth + 1)
+    if archetype < 0:
+        root, path = pk.import_path(mr.pkg, -archetype - 1)
+        shared = packages.shared_reader(root)
+        target = pk.find_export(shared, path) if shared else None
+        if target is None:
+            raise ExtractError('%s: brush archetype %s not found' % (mr.label, '.'.join([root] + path)))
+        return inherited_hulls(packages, shared, target, depth + 1)
+    return []
+
+
 def blocking_defaults(packages):
-    """bExludeHandMoves / bExludeFootMoves as BlockingVolume's class defaults."""
+    """Class defaults the volumes fall back to: BlockingVolume's
+    bExludeHandMoves / bExludeFootMoves and PhysicsVolume's DamageType."""
     engine = packages.cooked_reader('Engine.u')
-    default = next((i for i, e in enumerate(engine.pkg.exports, 1)
-                    if e['name'] == 'Default__BlockingVolume'), None)
-    if default is None:
-        raise ExtractError('Engine.u has no Default__BlockingVolume')
-    props = engine.props(default)[0]
-    return {'exclude_hand': props['bExludeHandMoves'], 'exclude_foot': props['bExludeFootMoves']}
+
+    def default_of(name):
+        idx = next((i for i, e in enumerate(engine.pkg.exports, 1) if e['name'] == name), None)
+        if idx is None:
+            raise ExtractError('Engine.u has no %s' % name)
+        return engine.props(idx)[0]
+
+    blocking = default_of('Default__BlockingVolume')
+    physics = default_of('Default__PhysicsVolume')
+    return {'exclude_hand': blocking['bExludeHandMoves'], 'exclude_foot': blocking['bExludeFootMoves'],
+            'pain_damage_type': engine.pkg.resolve(physics['DamageType'][1])}
+
+
+def _object_name(value):
+    """The bare name of an object reference read through resolved_props(),
+    local or carried from the package that wrote it."""
+    if isinstance(value, tuple) and len(value) == 3 and value[0] == 'ext':
+        return value[1].pkg.resolve(value[2])
+    return None
 
 
 ## How far the cooked Start/End may sit outside the ladder's own steps. On a
@@ -142,7 +178,7 @@ def _ladder_from_steps(mr, idx, props, annotation, report):
     report.setdefault('ladders_from_steps', []).append('%s.%s' % (mr.label, annotation['name']))
 
 
-def collect(mr, defaults, report):
+def collect(packages, mr, defaults, report):
     """Annotations, spawns, anchors and checkpoints of one package."""
     pkg = mr.pkg
     out = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
@@ -203,13 +239,15 @@ def collect(mr, defaults, report):
         if cls == 'TdLadderVolume':
             _ladder_from_steps(mr, i, props, annotation, report)
         component = ref_export(props.get('BrushComponent'))
-        annotation['hull'] = brush_hulls(mr, component) if component else []
+        annotation['hull'] = inherited_hulls(packages, mr, component) if component else []
         if cls == 'BlockingVolume':
-            if e['archetype'] and not ('bExludeHandMoves' in props and 'bExludeFootMoves' in props):
-                raise ExtractError('%s.%s: archetype outside the package; class defaults may not apply'
-                                   % (mr.label, e['name']))
-            annotation['exclude_hand'] = props.get('bExludeHandMoves', defaults['exclude_hand'])
-            annotation['exclude_foot'] = props.get('bExludeFootMoves', defaults['exclude_foot'])
+            # The WHOLE archetype chain, across packages: a volume placed from a
+            # prefab (Factory's server racks) takes its flags from a template
+            # in the prefab's package, and only past its end do the class
+            # defaults apply.
+            chain, _ = pk.resolved_props(packages, mr, i)
+            annotation['exclude_hand'] = chain.get('bExludeHandMoves', defaults['exclude_hand'])
+            annotation['exclude_foot'] = chain.get('bExludeFootMoves', defaults['exclude_foot'])
             # What the volume's surface IS: Escape's slanted-building chute is
             # a BlockingVolume with PM_Glass_BulletproofSlide lying on a mesh
             # that has no slide flag of its own. extract.py reads its flags.
@@ -217,10 +255,21 @@ def collect(mr, defaults, report):
             if override:
                 annotation['physical_material'] = pkg.resolve(override[1] if isinstance(override, tuple) else override)
         if cls == 'PhysicsVolume':
-            damage_type = props.get('DamageType')
-            if not (isinstance(damage_type, tuple) and damage_type[0] == 'obj'):
-                raise ExtractError('%s.%s: pain volume without a local DamageType' % (mr.label, e['name']))
-            annotation['damage_per_sec'] = float(props.get('DamagePerSec', 0.0))
-            annotation['damage_type'] = pkg.resolve(damage_type[1])
+            chain, _ = pk.resolved_props(packages, mr, i)
+            damage_type = chain.get('DamageType')
+            if damage_type is None:
+                # Left at the class default: Subway's.
+                name = defaults['pain_damage_type']
+            elif damage_type == ('obj', 0):
+                # Set to None on purpose: pain with no damage type (Boat's).
+                name = 'None'
+            elif isinstance(damage_type, tuple) and damage_type[0] == 'obj':
+                name = pkg.resolve(damage_type[1])
+            else:
+                name = _object_name(damage_type)
+            if not name:
+                raise ExtractError('%s.%s: pain volume DamageType %r unreadable' % (mr.label, e['name'], damage_type))
+            annotation['damage_per_sec'] = float(chain.get('DamagePerSec', 0.0))
+            annotation['damage_type'] = name
         out['annotations'].append(annotation)
     return out

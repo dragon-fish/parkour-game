@@ -66,6 +66,9 @@ def collect_lights(mr):
     return lights
 
 
+BSP_PLANE_SLACK_UU = 0.5
+
+
 def collect_bsp(mr):
     """Polygons of the level's compiled world BSP. Brush actors are not
     triangulated separately: doing so would fill the CSG holes (doorways)."""
@@ -105,7 +108,9 @@ def collect_bsp(mr):
             polygon = []
             for vertex in verts[pool:pool + count]:
                 p = points[struct.unpack_from('<i', vertex)[0]]
-                if abs(sum(plane[k] * p[k] for k in range(3)) - plane[3]) > 0.05:
+                # A parse error puts a vertex metres off; float rounding at
+                # Mall's coordinates leaves one 0.19 uu off (2 mm).
+                if abs(sum(plane[k] * p[k] for k in range(3)) - plane[3]) > BSP_PLANE_SLACK_UU:
                     raise ExtractError('%s: BSP vertex off its plane' % mr.label)
                 polygon.append([round(c, 4) for c in to_godot(*p)])
             faces.append({'vertices': polygon, 'normal': [plane[0], plane[2], plane[1]]})
