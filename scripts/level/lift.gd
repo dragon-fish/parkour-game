@@ -43,6 +43,8 @@ var _riders: Dictionary = {}
 ## Where the car is from its load position, and how open the doors are.
 var _car_offset := Vector3.ZERO
 var _door_open: float = 1.0
+## The car's status volume (no jump, no crouch, base speed), or null.
+var _rules: ModifierVolume = null
 
 
 func _ready() -> void:
@@ -59,7 +61,10 @@ func _ready() -> void:
 			_riders[child] = _car_home.affine_inverse() * (child as Node3D).global_transform
 		if child is UseZone:
 			(child as UseZone).used.connect(_on_used)
+		elif child is ModifierVolume:
+			_rules = child
 	_set_doors(1.0)
+	_apply_rules()
 
 
 func reset_for_respawn() -> void:
@@ -101,8 +106,19 @@ func _physics_process(delta: float) -> void:
 			if _clock >= door_time:
 				_state = State.IDLE
 	_carry_riders()
+	_apply_rules()
 	if _state != State.IDLE:
 		_keep_player_inside()
+
+
+## [ME:CONFIRMED] The car's rules hold only while it MOVES: standing in a
+## car at rest, or riding it while the doors work, the body may jump, crouch
+## and run as anywhere. Monitoring off empties the volume's overlap list, so
+## its refresh applies nothing and the statuses run out within their own
+## seconds; on again, the area reports the bodies already inside.
+func _apply_rules() -> void:
+	if _rules != null:
+		_rules.monitoring = _state == State.MOVING
 
 
 func _place_car(along: float) -> void:

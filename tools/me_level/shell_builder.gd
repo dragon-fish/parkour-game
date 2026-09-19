@@ -19,9 +19,11 @@ const DEATH_VOLUME_SCRIPT := preload("res://scripts/level/death_volume.gd")
 const MATINEE_SCRIPT := preload("res://scripts/level/matinee.gd")
 const USE_ZONE_SCRIPT := preload("res://scripts/level/use_zone.gd")
 const LIFT_SCRIPT := preload("res://scripts/level/lift.gd")
-## [ME:CONFIRMED] no jump or crouch in a lift car, base walking speed only.
-## The speed as a fraction of the current cap is PROJECT-DEFINED; tune by eye.
-const LIFT_SPEED_CAP := 0.5
+## [ME:CONFIRMED] no jump or crouch in a moving lift car, and the speed is
+## pinned to the base velocity: [ME:CONFIRMED 02 §2.3] 400 uu/s, 4.0 m/s,
+## 14.4 km/h. Absolute, not a share of the current cap. Lift turns the
+## volume on only while the car moves.
+const LIFT_SPEED_M_S := 4.0
 
 const LINE_KINDS := {zipline = 0, swing = 1, balance = 2, ladder = 3, ledgewalk = 4}
 
@@ -161,12 +163,12 @@ func _lifts(manifest: Dictionary, movers: NodePath) -> Node3D:
 		rules_shape.shape = shape
 		rules.add_child(rules_shape)
 		var specs: Array[StatusSpec] = []
-		for effect in [Status.Effect.BLOCK_JUMP, Status.Effect.BLOCK_CROUCH, Status.Effect.SPEED_CAP]:
+		for effect in [Status.Effect.BLOCK_JUMP, Status.Effect.BLOCK_CROUCH, Status.Effect.SPEED_LIMIT]:
 			var spec := StatusSpec.new()
 			spec.effect = effect
 			spec.seconds = WIRE_STAGGER_S
-			if effect == Status.Effect.SPEED_CAP:
-				spec.amount = LIFT_SPEED_CAP
+			if effect == Status.Effect.SPEED_LIMIT:
+				spec.amount = LIFT_SPEED_M_S
 			specs.append(spec)
 		rules.set("apply", specs)
 		rules.set("refresh_interval", WIRE_REFRESH_S)

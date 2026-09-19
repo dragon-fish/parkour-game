@@ -162,6 +162,12 @@ func speed_scale() -> float:
 	var e: Dictionary = _entries.get(key, {})
 	return e.get("amount", 1.0) if not e.is_empty() else 1.0
 
+## The absolute ground speed ceiling in force, m/s, or INF.
+func speed_limit() -> float:
+	var key := _key(Status.Effect.SPEED_LIMIT, &"")
+	var e: Dictionary = _entries.get(key, {})
+	return e.get("amount", INF) if not e.is_empty() else INF
+
 func is_move_blocked(move_name: StringName) -> bool:
 	if not MOVE_EFFECTS.has(move_name):
 		return false
