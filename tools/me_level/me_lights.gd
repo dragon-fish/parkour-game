@@ -5,10 +5,11 @@ extends Node3D
 # brightness in meta "me_brightness"; its energy is that times energy_scale.
 #
 # A DIAL, NOT A CONVERSION. The original is baked with Beast and there is no
-# known mapping from its brightness to Godot energy. 12 was judged against the
-# owner's screenshots of the original under me_environment.gd's fixed
-# exposure: 16 matched Stormdrain's pillar hall and overexposed its lift
-# corridor, 8 left the hall too dark.
+# known mapping from its brightness to Godot energy. Judged against the
+# owner's screenshots of the original (.private/docs/me-reference-shots)
+# together with me_environment.gd's EXPOSURE: at exposure 1.0, 16 matched
+# Stormdrain's pillar hall and overexposed its lift corridor and 8 left the
+# hall too dark; 12 was right, and 17 at exposure 0.7 reads the same indoors.
 # JUDGE IT IN THE GAME, not in the editor: the editor's preview environment
 # auto-exposes, and a scale that looks right there (1) left every interior
 # near black in play. Override it on the instanced geometry in the level's
@@ -24,7 +25,7 @@ extends Node3D
 
 const LIGHTS_PER_FRAME := 32
 
-@export var energy_scale: float = 12.0:
+@export var energy_scale: float = 17.0:
 	set(value):
 		energy_scale = value
 		_apply()

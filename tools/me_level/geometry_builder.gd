@@ -28,9 +28,6 @@ const PIPE_GRIP_REACH_M := 0.6
 
 const BSP_MATERIAL_FAMILY := "roof"
 
-## Metres from the camera past which an extracted light fades out, and over
-## how far. Stormdrain's densest view (the pillar hall) keeps 336 lights
-## within 80 m, under project.godot's max_clustered_elements. A dial.
 ## A placement is not drawn past this many times its own size, within
 ## [VISIBLE_RANGE_MIN, VISIBLE_RANGE_MAX] metres. A dial.
 const VISIBLE_RANGE_PER_METRE := 40.0
@@ -39,6 +36,9 @@ const VISIBLE_RANGE_MAX := 3000.0
 ## Placements at least this many metres across go into the level's occluder.
 const OCCLUDER_MIN_EXTENT := 40.0
 
+## Metres from the camera past which an extracted light fades out, and over
+## how far. Stormdrain's densest view (the pillar hall) keeps 336 lights
+## within 80 m, under project.godot's max_clustered_elements. A dial.
 const LIGHT_FADE_BEGIN := 60.0
 const LIGHT_FADE_LENGTH := 20.0
 
@@ -393,6 +393,10 @@ func _build_lights(lights: Array) -> Node3D:
 		light.distance_fade_enabled = true
 		light.distance_fade_begin = LIGHT_FADE_BEGIN
 		light.distance_fade_length = LIGHT_FADE_LENGTH
+		if entry.get("character_only", false):
+			# Lights the character only, as in the original, never the level.
+			var camera := CameraConfig.new()
+			light.light_cull_mask = camera.first_person_body_layers | camera.third_person_body_layers
 		light.set_meta("me_brightness", float(entry["brightness"]))
 		light.light_energy = float(entry["brightness"]) * scale
 		parent.add_child(light)

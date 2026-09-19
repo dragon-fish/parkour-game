@@ -29,9 +29,11 @@ const Lut := preload("res://tools/me_level/me_tone_curve.gd")
 @export var curve_a := PackedVector2Array()
 @export var midtones := Vector3.ONE
 
-## Linear exposure ahead of the tone curves. A dial, judged against the owner's
-## screenshots of the original.
-const EXPOSURE := 1.0
+## Exposure ahead of the tone curves. A dial, judged against the owner's
+## screenshots of the original (.private/docs/me-reference-shots). Lowered
+## with me_lights.gd's energy_scale raised to match: sunlit open ground, lit
+## mostly by the sky, clips less, and lit interiors keep their brightness.
+const EXPOSURE := 0.7
 
 
 func _ready() -> void:
