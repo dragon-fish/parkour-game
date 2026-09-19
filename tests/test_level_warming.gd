@@ -16,12 +16,13 @@ func test_lights_come_on_a_few_per_frame_and_hold_the_level_until_lit() -> void:
 	var lit := func() -> int: return lights.get_children().filter(func(l): return l.visible).size()
 	assert_eq(lit.call(), 0, "lights were on before any frame was drawn")
 	assert_true(lights.is_in_group(Arena.WARMING), "a lights node still dark did not hold the level")
-	# process_frame is emitted before the frame's _process calls: the second
-	# await is the first point one frame of lighting has happened.
-	await get_tree().process_frame
-	await get_tree().process_frame
-	assert_between(lit.call(), 1, LIGHTS_SCRIPT.LIGHTS_PER_FRAME, "one frame lit more than its budget")
-	for i in 5:
+	var before: int = lit.call()
+	var most_in_a_frame := 0
+	for i in 8:
 		await get_tree().process_frame
+		var now: int = lit.call()
+		most_in_a_frame = maxi(most_in_a_frame, now - before)
+		before = now
+	assert_lte(most_in_a_frame, LIGHTS_SCRIPT.LIGHTS_PER_FRAME, "one frame lit more than its budget")
 	assert_eq(lit.call(), count, "not every light came on")
 	assert_false(lights.is_in_group(Arena.WARMING), "a fully lit node kept holding the level")

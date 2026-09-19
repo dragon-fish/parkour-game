@@ -59,6 +59,9 @@ drawn for the first time in one frame, cost 12 s over two frames, linear in
 the number of lights and independent of their range or shadows; the same
 lights switched on 32 per frame cost 0.64 s in all with no frame over 25 ms.
 `me_lights.gd` does that, and holds the level in `Arena.WARMING` until done.
+`Arena.level_ready` also waits for the player to stand on the ground for
+0.5 s, so the spawn's landing plays under the curtain; a spawn with no floor
+within 10 m is reported at once instead of being waited on forever.
 What still freezes the sheet is `_ready()` itself (2.0 s on Stormdrain, most
 of it instancing the sections) and the first frame (0.68 s).
 

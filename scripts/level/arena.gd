@@ -101,12 +101,22 @@ const RESET_ON_RESPAWN := &"reset_on_respawn"
 ## me_lights.gd). The level is not ready while any is in it.
 const WARMING := &"warming"
 
-## The level can be played: _ready() has run AND nothing is still warming. A
-## loading curtain lifts on this, never on the scene swap -- see
-## docs/seamless-loading.md.
+## The level can be played: _ready() has run, nothing is still warming, and
+## the player has stood on the ground for SETTLE_TIME. A loading curtain lifts
+## on this, never on the scene swap -- see docs/seamless-loading.md. The settle
+## is what keeps the spawn's landing animation under the curtain.
 signal level_ready
 var is_level_ready := false
 var _ready_done_ms := 0
+var _settled_for := 0.0
+const SETTLE_TIME := 0.5
+## A spawn with no floor this far under the capsule can never land, and would
+## hold the curtain forever: it is reported at once and not waited for.
+const SPAWN_FLOOR_PROBE := 10.0
+## Any other way of never settling (a floor that keeps moving) is given up on
+## after this, with an error naming why.
+const SETTLE_GIVE_UP := 10.0
+var _spawn_has_floor := true
 var _r_pressed_at_ms: int = -1
 
 ## Re-entrancy guard for reset_player(); see the comment above that function.
@@ -260,6 +270,7 @@ func _ready() -> void:
 	reset_player()
 	_mark.call("markers + reset_player")
 	_ready_done_ms = Time.get_ticks_msec()
+	_spawn_has_floor = _floor_under_spawn()
 	_warn_about_unreadable_tags()
 	_warn_about_near_miss_tags()
 
@@ -551,17 +562,43 @@ func _debug_jump_checkpoint(step: int) -> void:
 ## for the same reason CameraRig re-applies its own fields every frame: so
 ## dragging the F1 slider changes what is on screen immediately, not only
 ## after a reload.
-func _process(_delta: float) -> void:
-	if not is_level_ready and get_tree().get_nodes_in_group(WARMING).is_empty():
-		is_level_ready = true
-		print("[load] level ready %d ms after _ready()" % (Time.get_ticks_msec() - _ready_done_ms))
-		level_ready.emit()
+func _process(delta: float) -> void:
+	if not is_level_ready:
+		_await_ready(delta)
 	if _world_environment == null or _world_environment.environment == null or config == null:
 		return
 	var strength: float = clampf(config.camera.ambient_cold_strength, 0.0, 1.0)
 	_world_environment.environment.ambient_light_color = \
 			NEUTRAL_AMBIENT_TINT.lerp(COLD_AMBIENT_TINT, strength)
 	_apply_fog(_world_environment.environment)
+
+## Whether anything solid lies within SPAWN_FLOOR_PROBE under the player.
+## Physics has not stepped yet at _ready(), but static colliders are already
+## in the space. Reported as an error when not, naming the spawn.
+func _floor_under_spawn() -> bool:
+	if player == null:
+		return true
+	var from := player.global_position
+	var query := PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * SPAWN_FLOOR_PROBE)
+	query.exclude = [player.get_rid()]
+	if not get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+		return true
+	push_error("[load] no floor within %.0f m under the spawn at %s; not waiting for the player to land"
+			% [SPAWN_FLOOR_PROBE, from])
+	return false
+
+func _await_ready(delta: float) -> void:
+	if not get_tree().get_nodes_in_group(WARMING).is_empty():
+		return
+	var waited := (Time.get_ticks_msec() - _ready_done_ms) / 1000.0
+	_settled_for = _settled_for + delta if player == null or player.grounded else 0.0
+	if _spawn_has_floor and _settled_for < SETTLE_TIME and waited < SETTLE_GIVE_UP:
+		return
+	if _spawn_has_floor and _settled_for < SETTLE_TIME:
+		push_error("[load] the player never settled at the spawn within %.0f s; the level is declared ready anyway" % SETTLE_GIVE_UP)
+	is_level_ready = true
+	print("[load] level ready %d ms after _ready()" % (Time.get_ticks_msec() - _ready_done_ms))
+	level_ready.emit()
 
 ## Drives both of the Environment's fogs from this level's own FogConfig, every
 ## frame, for the same reason the ambient tint above is re-applied every frame:

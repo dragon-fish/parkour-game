@@ -433,12 +433,21 @@ func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
 		await get_tree().process_frame
 	_pending_scene_change = false
 	print("[load] scene swap + every _ready(): %d ms" % (Time.get_ticks_msec() - swap_started))
+	# THE LEVEL IS ALREADY LIVE UNDER THE SHEET, taking input while the screen
+	# is still solid white. DO NOT allow camera control or movement until the
+	# sheet is gone: the player could wave the mouse around and run off before
+	# loading has actually finished. lock_input() covers BOTH: Player feeds a
+	# blank MoveInput to the moves AND to camera_rig.apply_look.
+	var player := _player_in_the_new_scene()
+	if player != null:
+		player.lock_input()
 	# The swap is not the level being playable: an Arena may still be warming
-	# (lights switched on a few per frame). Hold the sheet until it says so.
+	# (lights switched on a few per frame) or its player still landing. Hold
+	# the sheet until it says so.
 	var scene := get_tree().current_scene
 	if scene is Arena and not (scene as Arena).is_level_ready:
 		await (scene as Arena).level_ready
-		print("[load] level warmed: %d ms after the swap" % (Time.get_ticks_msec() - swap_started))
+		print("[load] level ready: %d ms after the swap" % (Time.get_ticks_msec() - swap_started))
 
 	# THE ONE PART NO HEADLESS MEASUREMENT CAN SEE. Godot compiles a material
 	# pipeline the first time it is actually DRAWN, so the first few frames of
@@ -460,16 +469,6 @@ func run_white_transition(packed: PackedScene, fade_in: float = 0.7) -> void:
 		worst = maxi(worst, frame)
 	print("[load] first 20 frames drawn: worst %d ms, %d over 50 ms" % [worst, stalls])
 
-	# THE LEVEL IS ALREADY LIVE UNDER THE SHEET. change_scene_to_packed has
-	# returned, every _ready() has run and the player is standing in the world
-	# taking input -- while the screen is still solid white. DO NOT allow
-	# camera control or movement during the transition: the player could wave
-	# the mouse around and run off before loading has actually finished.
-	# lock_input() covers BOTH: Player feeds a blank MoveInput to the moves
-	# AND to camera_rig.apply_look, so the mouse is dead too.
-	var player := _player_in_the_new_scene()
-	if player != null:
-		player.lock_input()
 	var lift := create_tween()
 	lift.tween_property(_white, "modulate:a", 0.0, 0.6) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
