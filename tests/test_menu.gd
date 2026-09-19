@@ -510,11 +510,11 @@ func test_level_select_loads_the_chosen_level_and_returns() -> void:
 	menu._change_scene = func(path): requested[0] = path
 
 	var labels := func() -> Array: return menu._menu_list._labels.map(func(l): return l.text)
-	assert_eq(labels.call(), ["开始", "选择关卡", "角色", "设置", "退出"])
+	assert_eq(labels.call(), ["新游戏", "选择章节", "角色展台", "参数设置", "退出游戏"])
 	menu._on_chosen(1)
-	assert_eq(labels.call(), ["one", "two", "返回"], "选择关卡 did not list the levels")
+	assert_eq(labels.call(), ["one", "two", "返回"], "选择章节 did not list the levels")
 	menu._on_chosen(2)
-	assert_eq(labels.call()[1], "选择关卡", "返回 did not bring back the main entries")
+	assert_eq(labels.call()[1], "选择章节", "返回 did not bring back the main entries")
 	assert_eq(requested[0], "", "返回 requested a scene change")
 	menu._on_chosen(1)
 	menu._on_chosen(1)
