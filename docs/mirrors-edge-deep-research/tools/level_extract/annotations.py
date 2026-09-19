@@ -16,6 +16,10 @@ VOLUME_KINDS = {
     'BlockingVolume': 'blocking',
     'TdKillVolume': 'kill',
     'TdCheckpointVolume': 'checkpointvolume',
+    # Only the pain-causing ones: Escape's electric fences are PhysicsVolumes
+    # with bPainCausing, DamagePerSec and TdDmgType_ElectricShock. The rest
+    # (Plaza's ZoneVelocity water) are counted in the report.
+    'PhysicsVolume': 'pain',
 }
 
 # Found and counted, never mapped: meaning not verified against the original.
@@ -128,7 +132,9 @@ def _ladder_from_steps(mr, idx, props, annotation, report):
     cooked = [props.get('Start'), props.get('End')] + list(vector_array(mr, idx, 'SplineLocations') or [])
     sound = all(isinstance(v, tuple) and len(v) == 3 and finite(v)
                 and all(low[k] <= v[k] <= high[k] for k in range(3)) for v in cooked)
-    if sound:
+    # Some cooked splines collapse to one point even though their steps span
+    # a real ladder; being inside the step bounds is not enough.
+    if sound and props['Start'] != props['End']:
         return
     annotation['start'] = point(steps[0])
     annotation['end'] = point(steps[-1])
@@ -159,6 +165,10 @@ def collect(mr, defaults, report):
             # were solid walls and a floating shelf here.
             counts = report.setdefault('counts', {})
             counts['blocking_off'] = counts.get('blocking_off', 0) + 1
+            continue
+        if cls == 'PhysicsVolume' and not props.get('bPainCausing'):
+            counts = report.setdefault('counts', {})
+            counts['physics_volume_harmless'] = counts.get('physics_volume_harmless', 0) + 1
             continue
         position = point(props['Location'])
         rotation = props.get('Rotation') or (0, 0, 0)
@@ -200,5 +210,17 @@ def collect(mr, defaults, report):
                                    % (mr.label, e['name']))
             annotation['exclude_hand'] = props.get('bExludeHandMoves', defaults['exclude_hand'])
             annotation['exclude_foot'] = props.get('bExludeFootMoves', defaults['exclude_foot'])
+            # What the volume's surface IS: Escape's slanted-building chute is
+            # a BlockingVolume with PM_Glass_BulletproofSlide lying on a mesh
+            # that has no slide flag of its own. extract.py reads its flags.
+            override = (mr.props(component)[0] or {}).get('PhysMaterialOverride') if component else None
+            if override:
+                annotation['physical_material'] = pkg.resolve(override[1] if isinstance(override, tuple) else override)
+        if cls == 'PhysicsVolume':
+            damage_type = props.get('DamageType')
+            if not (isinstance(damage_type, tuple) and damage_type[0] == 'obj'):
+                raise ExtractError('%s.%s: pain volume without a local DamageType' % (mr.label, e['name']))
+            annotation['damage_per_sec'] = float(props.get('DamagePerSec', 0.0))
+            annotation['damage_type'] = pkg.resolve(damage_type[1])
         out['annotations'].append(annotation)
     return out

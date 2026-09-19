@@ -6,28 +6,33 @@
 
 [sub_resource type="Resource" id="level_0"]
 script = ExtResource("3_level_entry")
-title = "教程"
+title = "教学区域"
 scene = "res://scenes/local_debug_levels/mirrors_edge/sp00_tutorial.tscn"
 
 [sub_resource type="Resource" id="level_1"]
 script = ExtResource("3_level_entry")
 title = "序章 - 边缘"
-scene = "res://scenes/local_debug_levels/mirrors_edge/sp01_edge.tscn"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp01a_edge.tscn"
+
+[sub_resource type="Resource" id="level_flight"]
+script = ExtResource("3_level_entry")
+title = "第一章 - 飞翔"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp01b_escape.tscn"
 
 [sub_resource type="Resource" id="Resource_w8hyn"]
 script = ExtResource("3_level_entry")
-title = "第一章 - 暴风雨"
+title = "第二章 - 阿杰"
 scene = "res://scenes/local_debug_levels/mirrors_edge/sp02_stormdrain.tscn"
 metadata/_custom_type_script = "uid://b42v1cqju5oho"
 
 [sub_resource type="Resource" id="level_2"]
 script = ExtResource("3_level_entry")
-title = "训练场"
+title = "[DEBUG] main.tscn"
 scene = "res://scenes/main.tscn"
 
 [sub_resource type="Resource" id="level_3"]
 script = ExtResource("3_level_entry")
-title = "沙盒"
+title = "[DEBUG] sandbox.tscn"
 scene = "res://scenes/local_debug_levels/sandbox.tscn"
 
 [node name="MainMenu" type="Control" unique_id=10640388]
@@ -39,7 +44,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_menu")
 start_scene = "uid://p2s6xymtvb6j"
-levels = Array[ExtResource("3_level_entry")]([SubResource("level_0"), SubResource("level_1"), SubResource("Resource_w8hyn"), SubResource("level_2"), SubResource("level_3")])
+levels = Array[ExtResource("3_level_entry")]([SubResource("level_0"), SubResource("level_1"), SubResource("level_flight"), SubResource("Resource_w8hyn"), SubResource("level_2"), SubResource("level_3")])
 FLOOR_SCROLL_SPEED = 0.8
 FLOOR_RUN_SPEED = 6.0
 floor_spacing = 4.0

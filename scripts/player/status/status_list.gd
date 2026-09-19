@@ -62,6 +62,7 @@ func apply(spec: StatusSpec, source: Object, priority: int) -> bool:
 		effect = int(spec.effect),
 		subject = spec.subject,
 		amount = spec.amount,
+		tint = spec.tint,
 		view = int(spec.view),
 		seconds_left = spec.seconds,
 		source = source,
@@ -111,6 +112,11 @@ func has(effect: int, subject: StringName = &"") -> bool:
 func amount_of(effect: int, subject: StringName = &"") -> float:
 	var e: Dictionary = _entries.get(_key(effect, subject), {})
 	return e.get("amount", 0.0)
+
+## The tint of one entry, transparent when it is not present.
+func tint_of(effect: int, subject: StringName = &"") -> Color:
+	var e: Dictionary = _entries.get(_key(effect, subject), {})
+	return e.get("tint", Color(0.0, 0.0, 0.0, 0.0))
 
 func entry_count() -> int:
 	return _entries.size()

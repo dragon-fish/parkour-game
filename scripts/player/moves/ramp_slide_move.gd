@@ -15,9 +15,8 @@ extends Move
 #
 # PHYS_Falling in the original, with the surface removing the component of
 # the velocity into it: done here by hand rather than through
-# move_and_slide()'s floor handling, because a chute steeper than
-# floor_max_angle is a WALL to Godot and a gentler one is a floor that
-# floor_stop_on_slope would hold the body on.
+# move_and_slide()'s floor handling: for the move's length every chute is a
+# WALL to Godot (Player.use_chute_floor).
 
 var _normal: Vector3 = Vector3.UP
 var _lost_contact: float = 0.0
@@ -37,6 +36,7 @@ func enter(_previous: StringName) -> void:
 	_lost_contact = 0.0
 	_start_y = player.global_position.y
 	_hurt_flash = 1.0 if player.pending_chute_hurt else 0.0
+	player.use_chute_floor(true)
 	player.pending_chute_hurt = false
 	# Sitting down costs most of the arriving speed; what is left runs down
 	# the chute, not into it.
@@ -54,6 +54,7 @@ func enter(_previous: StringName) -> void:
 
 
 func exit() -> void:
+	player.use_chute_floor(false)
 	if _hurt_flash > 0.0 and player.screen_effects != null:
 		player.screen_effects.set_tint(config.landing.tint_color, 0.0)
 	_hurt_flash = 0.0

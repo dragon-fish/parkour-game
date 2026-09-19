@@ -126,6 +126,11 @@ func _physics_process(delta: float) -> void:
 	# life it exists to renew, and the status lapses one frame before every
 	# single refresh.
 	_refresh_owed += refresh_interval
+	# Switched off (a Lift's car at rest): nothing inside counts. DO NOT ask
+	# for the overlaps anyway -- with monitoring off Godot errors every call
+	# rather than answering empty.
+	if not monitoring:
+		return
 	for body in get_overlapping_bodies():
 		if body.has_method("apply_status"):
 			_push_apply(body, false)

@@ -47,6 +47,7 @@ void fragment() {
 		float edge = smoothstep(1.0 - vignette_width, 1.0, d);
 		col = mix(col, vignette_color.rgb, edge * vignette_amount);
 	}
-	col = mix(col, tint_color.rgb, tint_amount);
+	// Alpha is the tint's own strength: a translucent colour never covers.
+	col = mix(col, tint_color.rgb, tint_amount * tint_color.a);
 	COLOR = vec4(clamp(col, vec3(0.0), vec3(1.0)), 1.0);
 }

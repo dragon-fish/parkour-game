@@ -36,6 +36,22 @@ Config keys are documented at the top of `packages.py`. Chapter names and the
 original checkpoint descriptions are in the install's
 `TdGame/Localization/CHS/TdGame.chs` (UTF-16): look there, not in memory.
 
+The SP01 resource directory contains **two** story maps: SP01a (Prologue,
+`Edge_p.me1`) and SP01b (chapter 1, `Escape_p.me1`). Their private configs
+are `sp01a_edge.json` and `sp01b_escape.json`; both retain `chapter: SP01`
+and select the map with `persistent`. SP02 is chapter 2, not chapter 1.
+
+Both SP01 configs enable `split_sections`. The builder writes a chapter
+shell, one editable shell and geometry per section, and shared chapter
+geometry. Open an individual section to edit its blockout, or set the
+chapter's `Sections.editor_preview` to a section name. At runtime every
+section is instantiated; this improves generation/editor handling, not
+runtime streaming. `verify_level.gd` checks all sections together, including
+interaction counts, mover targets and floors under checkpoints.
+
+Asset-free ladder regression checks:
+`uv run --no-project --python 3.12 docs/mirrors-edge-deep-research/tools/level_extract/test_annotations.py`.
+
 ## Traps, each of which silently lost part of a level
 
 **Coordinates.** UE3 is left-handed. The axis map `(x, z, y) / 100` has
@@ -101,6 +117,11 @@ vertical triggers: the bar is the horizontal pole or pipe mesh inside (the
 Stormdrain swings on ceiling pipes). Ladder facing is the volume's WallNormal,
 which points out of the wall.
 
+Some ladders have identical cooked Start/End and spline points. As with
+out-of-bounds cooked splines, the extractor reconstructs these from the
+original `PawnLadderLocations`; the builder must not create a zero-length
+interaction line. Swing bars can also be horizontally rotated catwalk supports.
+
 **Section bounds.** Chapter checkpoints live in the persistent `*_p` package.
 Only those inside the section's own packages are kept: slices reach deep into
 neighbouring sections and `_Bac` is the skyline.
@@ -125,14 +146,31 @@ in the shared `.upk` of the same name under `CookedPC` (`packages.texture_source
 indexed once). Mips are LZO-chunked (tag `0x9E2A83C1`); `texture_max_px` caps
 the mip taken. Bakes are stored as PNG in `materials.json`.
 
-**Surface behaviour is a PhysicalMaterial flag, not a volume.** Soft landing
+**Surface behaviour is a PhysicalMaterial flag.** Soft landing
 (`bEnableSoftLanding`) and the RumpSlide chute (`bEnableUncontrolledSlide`) are
 booleans of the `TdPhysicalMaterialProperty` behind a `PhysicalMaterial` in
 `TDPhysicalMaterials.upk`. The mesh's BodySetup names one; so does each surface
 material's `PhysMaterial`, and the two disagree: Stormdrain's chute is one
 surface of a mesh whose other surface is a wall. Surfaces carry
 `uncontrolled_slide`, and the Godot library splits their collision into a
-second shape the builder puts on its own body.
+second shape the builder puts on its own body. A BlockingVolume's
+BrushComponent can carry one too, as `PhysMaterialOverride`: Escape's
+slanted-building chute is a volume with `PM_Glass_BulletproofSlide` lying a few
+centimetres over a mesh with no slide flag, and the capsule stands on the
+volume. Air walls carry the flags like surfaces do.
+
+**A package in the chapter directory is not necessarily in the game.** Only
+what the persistent level lists as `LevelStreaming*` ever loads. Escape ships
+its two elevator slices twice, `_Slc` and `_Spt`, and streams only `_Spt`;
+extracted together, a second car stood in the shaft. Section inference drops
+unstreamed packages and lists them in the report as `unstreamed`.
+
+**Everything loads at once here; the original streamed.** A section's coarse
+hull can stand where the neighbouring section's corridor is, because the
+original never had both loaded (Escape's St1 building box over R1's corridor
+to the elevator that streams St1 in). `collision_overrides` in the config
+sets a mesh's collision class by hand for such cases, and for collision that
+is faithful but unwanted (potted bushes that stop a climb).
 
 **UV set and tiling come from the TextureCoordinate node** feeding the sample,
 sometimes through a static switch; facade materials sample set 1. When a graph

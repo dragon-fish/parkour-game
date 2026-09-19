@@ -36,8 +36,9 @@ enabled=PackedStringArray("res://addons/Godot-MToon-Shader/plugin.cfg", "res://a
 
 [global_group]
 
-no_interaction="无法交互的空气墙，阻挡玩家前进"
-soft_landing=""
+no_interaction="无交互空气墙，阻挡玩家前进，玩家无法与之发生手部和腿部交互"
+soft_landing="软垫，玩家落到上面不会坠亡"
+uncontrolled_slide=""
 
 [gui]
 

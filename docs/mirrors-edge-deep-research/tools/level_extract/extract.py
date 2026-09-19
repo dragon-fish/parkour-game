@@ -217,6 +217,21 @@ def collision_class(actor, component, record):
     return 'per_poly'
 
 
+COLLISION_CLASSES = ('none', 'simple', 'per_poly')
+
+
+def override_collision(name, wanted, record):
+    """The config's collision class for a mesh, refused when the mesh has
+    nothing to build it from."""
+    if wanted not in COLLISION_CLASSES:
+        raise ExtractError('collision_overrides: %s -> %r is not one of %s' % (name, wanted, COLLISION_CLASSES))
+    if wanted == 'simple' and not record['simple_shapes']:
+        raise ExtractError('collision_overrides: %s has no simple collision' % name)
+    if wanted == 'per_poly' and record['collide_triangles'] == 0:
+        raise ExtractError('collision_overrides: %s has no colliding triangles' % name)
+    return wanted
+
+
 def world_aabb(record, position, basis):
     origin, extent = record['bounds']['origin'], record['bounds']['extent']
     lo, hi = [math.inf] * 3, [-math.inf] * 3
@@ -285,6 +300,9 @@ def collect_placements(mr, meshes, config, report):
         turned = pivot_offset(actor)
         lo, hi = world_aabb(record, [position[k] - turned[k] for k in range(3)], basis)
         collision = 'none' if shadow_only else collision_class(actor, component, record)
+        if name in config['collision_overrides']:
+            collision = override_collision(name, config['collision_overrides'][name], record)
+            report['counts']['collision_overridden'] = report['counts'].get('collision_overridden', 0) + 1
         report['collision'][collision] += 1
         # bHidden actors are designer-placed invisible collision (group
         # Dummy_Collisions): they still block, they are just never drawn.
@@ -383,7 +401,7 @@ def main(config_path):
     root = project_root()
     out_dir = os.path.join(root, '_local', 'me-reference', 'level-extract', config['id'])
     packages = pk.PackageSet(root, config, os.path.join(root, '_local', 'me-reference', 'level-extract', '_cache'))
-    report = {'packages': packages.names, 'unmapped': {},
+    report = {'packages': packages.names, 'unstreamed': packages.unstreamed, 'unmapped': {},
               'collision': {'none': 0, 'simple': 0, 'per_poly': 0},
               'counts': {'empty_actor': 0, 'excluded_by_config': 0, 'excluded_fx': 0,
                          'excluded_by_anchor': 0, 'hidden': 0}}
@@ -402,6 +420,15 @@ def main(config_path):
             face['package'] = name
             bsp.append(face)
         print('%-36s placements so far %5d' % (name, len(placements)))
+
+    unused = set(config['collision_overrides']) - {p['mesh'] for p in placements}
+    if unused:
+        raise ExtractError('collision_overrides name meshes placed nowhere: %s' % sorted(unused))
+
+    for a in notes['annotations']:
+        if a.get('physical_material'):
+            a['uncontrolled_slide'] = meshes._phys_flag(a['physical_material'], 'bEnableUncontrolledSlide')
+            a['soft_landing'] = meshes._phys_flag(a['physical_material'], 'bEnableSoftLanding')
 
     if config['sections']:
         persistent = annotations.collect(packages.reader(packages.persistent), defaults, {'unmapped': {}})

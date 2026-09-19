@@ -51,7 +51,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 	root.add_child(geometry)
 	# InterpActors: moved by the level's Matinee nodes, so kept apart under
 	# names those can address. AnimatableBody3D carries whoever stands on it.
-	# Added LAST: shells override Lights by index (see sp01_edge.tscn).
+	# Added LAST: shells can override Lights by index.
 	var movers := Node3D.new()
 	movers.name = "Movers"
 	var pipe_line := _ladder_samples(manifest["annotations"])

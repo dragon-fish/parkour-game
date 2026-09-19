@@ -17,6 +17,10 @@ from mapdump import MapReader
 #   sections        list  []         [{name: "StdP"}]; each infers its packages
 #   packages        list  []         extra package file names, loaded as-is
 #   exclude_meshes  list  []         mesh names never placed
+#   collision_overrides dict {}      {mesh name: "none" | "simple" | "per_poly"}: a dial over
+#                                    the original's collision class -- potted
+#                                    bushes that stop a climb, a coarse hull that stands in
+#                                    a corridor the original never loads it next to
 #   anchor_filter   dict  null       {radius_m: 20}: keep placements near anchors
 #   interior        bool  false      first shell build: Sun off, SDFGI on
 #   initial_spawn   str   null       object name of the starting checkpoint/spawn
@@ -30,15 +34,17 @@ from mapdump import MapReader
 #                                    the builder then writes one scene per section
 #   lifts           list  []         hand-configured lifts for the builder (Lift):
 #                                    {car, stop_doors, travel, travel_time, door_open_offset,
-#                                     door_time}; actors as package.name. The car's own
-#                                    doors are whatever is hard-attached to it.
+#                                     door_time, call?}; actors as package.name. The car's own
+#                                    doors are whatever is hard-attached to it. `call` names
+#                                    the landing's button trigger (package.name, as a matinee
+#                                    starts from it): the lift then waits closed until used.
 #   floating_checkpoints list []     checkpoint labels the original leaves in mid-air
 #                                    on purpose; verify_level does not ask for a floor
 #   look            dict  {}         dials of the level's look the builder sets on its
 #                                    Environment node (tools/me_level/me_environment.gd
 #                                    exports), by name; judged against the reference shots
 CONFIG_DEFAULTS = {
-    'sections': [], 'packages': [], 'exclude_meshes': [], 'anchor_filter': None,
+    'sections': [], 'packages': [], 'exclude_meshes': [], 'collision_overrides': {}, 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
     'persistent': None, 'split_sections': False, 'lifts': [], 'floating_checkpoints': [],
     'look': {},
@@ -138,17 +144,36 @@ class PackageSet:
         os.makedirs(cache_dir, exist_ok=True)
         self.persistent = persistent_package(self.chapter_dir, config['persistent'])
         prefix = self.persistent[:-len('_p.me1')]
+        self._readers = {}
+        self._upk_index = None
+        self._texture_index = None
         names = []
         for section in config['sections']:
             names += infer_section_packages(self.chapter_dir, prefix, section['name'])
-        names += config['packages']
+        # [ME:CONFIRMED] a package the persistent level never streams is never
+        # in the game. Escape ships two elevator slices twice, _Slc and _Spt,
+        # and streams only _Spt: with both, a second car stood in the shaft
+        # and crushed whoever rode the first.
+        streamed = self.streamed_packages() if names else set()
+        self.unstreamed = list(dict.fromkeys(n for n in names if n[:-len('.me1')].lower() not in streamed))
+        names = [n for n in names if n not in self.unstreamed] + config['packages']
         self.names = list(dict.fromkeys(names))
         for name in self.names:
             if not os.path.exists(os.path.join(self.chapter_dir, name)):
                 raise ExtractError('package not found: %s' % name)
-        self._readers = {}
-        self._upk_index = None
-        self._texture_index = None
+
+    def streamed_packages(self):
+        """Lower-case names of every package the persistent level streams."""
+        mr = self.reader(self.persistent)
+        out = set()
+        for i, e in enumerate(mr.pkg.exports, 1):
+            if mr.pkg.class_of(e).startswith('LevelStreaming'):
+                name = (mr.props(i)[0] or {}).get('PackageName')
+                if name:
+                    out.add(str(name).lower())
+        if not out:
+            raise ExtractError('%s streams no packages' % self.persistent)
+        return out
 
     def reader(self, name):
         """MapReader over a map package in this chapter, decompressing once."""

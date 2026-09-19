@@ -65,6 +65,22 @@ func test_a_stagger_puts_the_body_into_the_landing_lockout() -> void:
 	assert_eq(p.move_manager.current_name, Move.LANDING, \
 		"a stagger did not reach the lockout")
 
+func test_a_stagger_shows_its_own_tint_or_the_landing_red() -> void:
+	# An electric fence knocks down like wire but is drawn blue; a spec with no
+	# tint of its own keeps the hard landing's red.
+	var p := await _standing_player()
+	var shock := _spec(Status.Effect.STAGGER)
+	shock.tint = Color(0.3, 0.6, 1.0, 0.5)
+	p.statuses.apply(shock, p, 0)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.LANDING, "test setup: the stagger did not fire")
+	assert_eq(p.screen_effects.tint_color(), shock.tint, "the stagger's own tint was not shown")
+	var q := await _standing_player()
+	q.statuses.apply(_spec(Status.Effect.STAGGER), q, 0)
+	await step(2)
+	assert_eq(q.screen_effects.tint_color(), q.config.landing.tint_color, \
+		"a stagger without a tint lost the landing's red")
+
 func test_a_stagger_is_ignored_while_already_dying() -> void:
 	var p := _player()
 	await step(1)

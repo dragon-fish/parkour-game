@@ -66,6 +66,46 @@ func test_a_marked_chute_starts_the_ramp_slide_and_carries_the_body_down() -> vo
 	assert_true(player.global_position.z > -4.0, "the body did not travel along the chute (z %.2f)" % player.global_position.z)
 	await _finish(r)
 
+func test_a_chute_gentle_enough_to_stand_on_still_carries_the_body_down() -> void:
+	# 35 degrees is under Godot's floor_max_angle: a floor to move_and_slide(),
+	# which walked the slide's press into the surface UP the chute. Escape's
+	# slanted building is 38.
+	var r: Dictionary = await _ride(35.0, true, 90)
+	var seen: Array = r["seen"]
+	assert_true(seen.has(Move.RAMP_SLIDE), "landing on a gentle marked chute never entered RampSlide (saw %s)" % [seen])
+	# Placed at z -4.9; down the chute is +Z.
+	var player: Player = r["player"]
+	assert_true(player.global_position.z > -3.0, "the slide did not carry the body down a gentle chute (z %.2f)" % player.global_position.z)
+	await _finish(r)
+
+func test_a_fall_onto_a_gentle_chute_stays_on_it() -> void:
+	# A drop with some speed down the slope, onto a chute Godot would call a
+	# floor. The landing tick zeroed the fall's speed as a floor landing does,
+	# the slide started with a velocity leaving the surface, and 0.12 s later
+	# it let go to Falling.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	world["floor"].global_position.y = -30.0
+	var player: Player = world["player"]
+	var ramp := _add_ramp(35.0, true)
+	var a := deg_to_rad(35.0)
+	player.global_position = Vector3(0.0, 14.0 * sin(a) + 4.0, -14.0 * cos(a))
+	player.velocity = Vector3(0.0, 0.0, 5.0)
+	player.fall_tracker.reset(player.global_position.y)
+	var seen: Array[StringName] = []
+	for i in 60:
+		await step(1)
+		var now: StringName = player.move_manager.current_name
+		if seen.is_empty() or seen[seen.size() - 1] != now:
+			seen.append(now)
+	assert_true(seen.has(Move.RAMP_SLIDE), "the fall never reached the chute (saw %s)" % [seen])
+	assert_eq(seen.slice(seen.find(Move.RAMP_SLIDE)), [Move.RAMP_SLIDE] as Array[StringName], \
+		"the slide let go of a chute it had just landed on (saw %s)" % [seen])
+	ramp.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
 func test_the_same_slope_without_the_mark_is_not_a_ramp_slide() -> void:
 	var r: Dictionary = await _ride(50.0, false, 60)
 	var seen: Array = r["seen"]

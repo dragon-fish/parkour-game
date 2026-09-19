@@ -65,6 +65,10 @@ func test_the_confirmed_values_are_in_place() -> void:
 		"WallKickVelocity2D is not 300 uu/s")
 	assert_almost_eq(config.turn_180.wall_kick_speed_up, 5.8, 0.0001, \
 		"WallKickVelocityZ is not 580 uu/s")
+	assert_almost_eq(config.turn_180.climb_jump_push_away_speed, 4.0, 0.0001, \
+		"JumpPushAwaySpeed is not 400 uu/s")
+	assert_almost_eq(config.turn_180.climb_jump_off_z_height, 2.5, 0.0001, \
+		"JumpOffZHeight is not 250 uu")
 
 func test_the_view_is_clamped_to_the_confirmed_fan() -> void:
 	# MinLookConstraint = (-10000, -16384, 0): -16384 of 65536 is a quarter
@@ -149,8 +153,10 @@ func test_space_inside_the_window_kicks_off_the_wall() -> void:
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.JUMP, \
 		"space inside the window did not kick off the wall")
-	assert_almost_eq(player.velocity.y, player.config.turn_180.wall_kick_speed_up, 0.35, \
-		"the kick did not leave at WallKickVelocityZ")
+	# The wall was ahead: a climb's turn, so TdMove_WallClimb180TurnJump.
+	var cfg: Turn180Config = player.config.turn_180
+	assert_almost_eq(player.velocity.y, sqrt(2.0 * player.config.pawn.gravity * cfg.climb_jump_off_z_height), 0.35, \
+		"a climb's kick did not rise to JumpOffZHeight")
 
 func test_the_kick_throws_the_player_away_from_the_wall() -> void:
 	# The wall is at -Z and the player has turned to face +Z, so the kick has

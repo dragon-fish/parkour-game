@@ -9,7 +9,11 @@ extends Node3D
 ##
 ## Idle: the car's doors and the landing doors where it stands are OPEN.
 ## Stand in the car for UseZone.dwell: doors close, the car travels, the doors
-## at the other stop open. [ME:CONFIRMED] the original allows no jump or
+## at the other stop open.
+##
+## A lift with a call button idles CLOSED at stop 0 instead, until the button's
+## zone is used: the original's Escape lift opens on its exterior button and
+## nothing else. [ME:CONFIRMED] the original allows no jump or
 ## crouch in the car, and base walking speed only; the car's ModifierVolume
 ## says so.
 
@@ -28,6 +32,9 @@ extends Node3D
 ## offset opens them to opposite sides.
 @export var door_open_offset: Vector3 = Vector3.ZERO
 @export var door_time: float = 0.7
+## The landing's call button, a UseZone child that stays where it is when the
+## car moves. Empty: no button, and the doors stand open.
+@export var call_zone: NodePath
 
 enum State { IDLE, CLOSING, MOVING, OPENING }
 
@@ -56,15 +63,25 @@ func _ready() -> void:
 		_interior = mesh.transform * mesh.get_aabb()
 	for path: NodePath in _all_doors():
 		_door_homes[path] = (get_node(path) as Node3D).global_transform
+	var button := get_node_or_null(call_zone) if not call_zone.is_empty() else null
+	if button != null:
+		(button as UseZone).used.connect(_on_called)
 	for child in get_children():
+		if child == button:
+			continue
 		if child is Node3D:
 			_riders[child] = _car_home.affine_inverse() * (child as Node3D).global_transform
 		if child is UseZone:
 			(child as UseZone).used.connect(_on_used)
 		elif child is ModifierVolume:
 			_rules = child
-	_set_doors(1.0)
+	_set_doors(_idle_open())
 	_apply_rules()
+
+
+## How open the doors stand at stop 0 before anyone has done anything.
+func _idle_open() -> float:
+	return 0.0 if not call_zone.is_empty() else 1.0
 
 
 func reset_for_respawn() -> void:
@@ -72,13 +89,22 @@ func reset_for_respawn() -> void:
 	_stop = 0
 	_clock = 0.0
 	_place_car(0.0)
-	_set_doors(1.0)
+	_set_doors(_idle_open())
 
 
 func _on_used() -> void:
-	if _state != State.IDLE:
+	if _state != State.IDLE or _door_open < 1.0:
 		return
 	_state = State.CLOSING
+	_clock = 0.0
+
+
+## The call button only opens a car that waits closed at its landing: once
+## ridden, the car stays at the other stop, as in the original.
+func _on_called() -> void:
+	if _state != State.IDLE or _stop != 0 or _door_open > 0.0:
+		return
+	_state = State.OPENING
 	_clock = 0.0
 
 
