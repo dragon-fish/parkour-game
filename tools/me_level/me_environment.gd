@@ -15,8 +15,8 @@ extends Node3D
 #   - reflections from SDFGI alone: no screen-space reflection (its
 #     screen-edge fade drew an oval of city on every large facade) and no sky
 #     fallback (clouds on floors indoors).
-#   - fixed exposure: from inside a doorway the original's street is white and
-#     from the street its interior is black.
+#   - fixed exposure, AgX tone mapping: from inside a doorway the original's
+#     street is white and from the street its interior is black.
 
 const Lut := preload("res://tools/me_level/me_tone_curve.gd")
 
@@ -31,7 +31,7 @@ const Lut := preload("res://tools/me_level/me_tone_curve.gd")
 
 ## Linear exposure ahead of the tone curves. A dial, judged against the owner's
 ## screenshots of the original.
-const EXPOSURE := 0.75
+const EXPOSURE := 1.0
 
 
 func _ready() -> void:
@@ -56,7 +56,11 @@ func _ready() -> void:
 		# put clouds on every glossy floor and wall indoors (the airlock's).
 		# SDFGI covers the level and reflects the sky only where it is seen.
 		env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
-		env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+		# AgX, not linear: linear clipped a sunlit white rooftop flat, and the
+		# original's curves, which lift the highlights, then had nothing left
+		# to work with. Measured on Stormdrain's pit: 26% of the frame clipped
+		# under linear, 18% under AgX, interiors unchanged.
+		env.tonemap_mode = Environment.TONE_MAPPER_AGX
 		env.tonemap_exposure = EXPOSURE
 		env.adjustment_enabled = true
 		env.adjustment_brightness = 1.0
