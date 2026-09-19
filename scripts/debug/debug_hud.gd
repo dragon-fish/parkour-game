@@ -226,7 +226,7 @@ func _process(delta: float) -> void:
 		# F1 panel's Debug page grew checkboxes for every overlay -- F11 in
 		# particular collided with player.gd's own use of it for mouse
 		# recapture, which is the fix, not a coincidence.
-		"Tab HUD  F10 capsule  F12 path  R reset  K die  T noclip%s" 			% ("  [ON]" if player.noclip else ""),
+		"Tab HUD  F10 capsule  F12 path  R reset  K die  T noclip  PgUp/PgDn checkpoint%s" 			% ("  [ON]" if player.noclip else ""),
 		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
 	]
 	if _tier == Tier.COMPACT:

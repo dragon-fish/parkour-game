@@ -501,6 +501,36 @@ func _unhandled_input(event: InputEvent) -> void:
 			# death here instead would test a route nothing else takes.
 			if player != null:
 				player.take_damage(DEBUG_BITE, Health.Cause.HAZARD)
+		elif event.physical_keycode == KEY_PAGEUP:
+			_debug_jump_checkpoint(-1)
+		elif event.physical_keycode == KEY_PAGEDOWN:
+			_debug_jump_checkpoint(1)
+
+## DEBUG. PgDn / PgUp: respawn at the next / previous checkpoint in the
+## level's own order (Checkpoint.index, then name), so testing a spot deep in
+## a chapter does not start with flying there. Goes through the ordinary
+## respawn -- curtain, level reset and all -- and sets the checkpoint directly,
+## past touch_checkpoint()'s no-going-back rule, which is the point.
+func _debug_jump_checkpoint(step: int) -> void:
+	if player == null:
+		return
+	var points: Array[Checkpoint] = []
+	for node in find_children("*", "Area3D", true, false):
+		if node is Checkpoint:
+			points.append(node)
+	if points.is_empty():
+		return
+	points.sort_custom(func(a: Checkpoint, b: Checkpoint) -> bool:
+		return a.index < b.index if a.index != b.index else String(a.name) < String(b.name))
+	var at: int = points.find(player.active_checkpoint)
+	var first: int = 0 if step > 0 else points.size() - 1
+	var target: int = first if at < 0 else clampi(at + step, 0, points.size() - 1)
+	var chosen: Checkpoint = points[target]
+	player.active_checkpoint = chosen
+	if player.toast != null:
+		var label: String = chosen.display_name if chosen.display_name != "" else String(chosen.name)
+		player.toast.show_text("调试传送 %d/%d  %s" % [target + 1, points.size(), label])
+	respawn_at_checkpoint()
 
 ## Blends the WorldEnvironment's ambient light between neutral and the cold
 ## tint every frame, reading CameraConfig.ambient_cold_strength off `config`
