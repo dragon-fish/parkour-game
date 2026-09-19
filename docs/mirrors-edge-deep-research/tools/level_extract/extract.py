@@ -25,7 +25,10 @@ import matinee
 
 # InterpActors are movers: placed like any mesh, moved by matinee.py's data.
 PLACED_CLASSES = ('StaticMeshActor', 'InterpActor')
-FX_MESH_MARKERS = ('_FX_', 'SkyDome', 'Sunflare', 'GodRay')
+# Matched case-insensitively: Stormdrain spells it S_Skydome_Sunrise_Steel,
+# and a dome that slipped through filled the sky with a flat pale shell, cut
+# into a circle by the camera's far plane.
+FX_MESH_MARKERS = ('_fx_', 'skydome', 'sunflare', 'godray')
 # [ME:INFERRED] a lightmap-bake occluder: S_LightSquare_01 planes in the _Lgts
 # packages, standing in doorways to stop light leaking between rooms. Some
 # carry HiddenGame, most do not, and none shows in the original; built, they
@@ -226,7 +229,7 @@ def collect_placements(mr, meshes, config, report):
         if name in config['exclude_meshes']:
             report['counts']['excluded_by_config'] += 1
             continue
-        if any(marker in name for marker in FX_MESH_MARKERS):
+        if any(marker in name.lower() for marker in FX_MESH_MARKERS):
             report['counts']['excluded_fx'] += 1
             continue
         if record['surfaces'] and all(BAKE_ONLY_MATERIAL in (s['material'] or '') for s in record['surfaces']):
