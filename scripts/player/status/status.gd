@@ -29,6 +29,8 @@ enum View { NONE, FIRST, THIRD }
 ##   FORCE_VIEW             view     = View.FIRST / THIRD
 ##   BLOCK_INTEREST_LINE    subject  = InterestLine.tag
 ##   STAGGER                amount   = health taken, 0 for none
+##                          tint     = the knock-down's screen tint; alpha 0
+##                                     for the hard landing's own
 ##   everything else        nothing
 ##
 ## DO NOT put a second meaning into any payload field. A new meaning is a new

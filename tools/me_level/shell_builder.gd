@@ -33,6 +33,9 @@ const WIRE_DAMAGE := 35.0
 ## outlive at least two renewals (see ModifierVolume.refresh_interval).
 const WIRE_REFRESH_S := 0.05
 const WIRE_STAGGER_S := 0.1
+## The electric fence's knock-down tint. PROJECT-DEFINED: a translucent blue
+## for a shock, where the hard landing's own is red.
+const ELECTRIC_TINT := Color(0.35, 0.65, 1.0, 0.5)
 ## Chapter checkpoints come without a trigger shape (Kismet decides when they
 ## fire in the original). A starting size for a person to adjust.
 const CHAPTER_CHECKPOINT_BOX_M := 4.0
@@ -61,6 +64,7 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	_own(root, _interest_lines(annotations, manifest["placements"]))
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
+	_own(root, _pain_volumes(annotations))
 	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), {}))
 	_own(root, _checkpoints(manifest))
 	_place_spawn(root, manifest)
@@ -96,6 +100,7 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	_own(root, _interest_lines(annotations, manifest["placements"]))
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
+	_own(root, _pain_volumes(annotations))
 	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), _lift_actors(manifest)))
 	_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
 	return root
@@ -680,6 +685,35 @@ func _death_volumes(annotations: Array) -> Node3D:
 		volume.name = names.take(a["name"])
 		if _hull_shapes(volume, a, Transform3D.IDENTITY) == 0:
 			push_error("[me_level] kill volume %s has no hull" % a["name"])
+			volume.free()
+			continue
+		group.add_child(volume)
+	return group
+
+
+## PhysicsVolumes that hurt: Escape's electric fences. [ME:CONFIRMED] the
+## original drains DamagePerSec while the body touches the fence; here a touch
+## is a knock-down like the wire's, costing one second of it, so the fence
+## cannot be climbed.
+func _pain_volumes(annotations: Array) -> Node3D:
+	var group := _group("PainVolumes")
+	var names := Common.NameAllocator.new()
+	for a: Dictionary in annotations:
+		if a["kind"] != "pain":
+			continue
+		var spec := StatusSpec.new()
+		spec.effect = Status.Effect.STAGGER
+		spec.amount = float(a["damage_per_sec"])
+		spec.seconds = WIRE_STAGGER_S
+		if a["damage_type"] == "TdDmgType_ElectricShock":
+			spec.tint = ELECTRIC_TINT
+		var volume := Area3D.new()
+		volume.set_script(MODIFIER_VOLUME_SCRIPT)
+		volume.name = names.take(a["name"])
+		volume.set("apply", [spec] as Array[StatusSpec])
+		volume.set("refresh_interval", WIRE_REFRESH_S)
+		if _hull_shapes(volume, a, Transform3D.IDENTITY) == 0:
+			push_error("[me_level] pain volume %s has no hull" % a["name"])
 			volume.free()
 			continue
 		group.add_child(volume)

@@ -364,6 +364,9 @@ var _stagger_immunity: float = 0.0
 ## tell a wire cut from a hard landing and charge the momentum differently.
 ## One-shot: the reader clears it, same as pending_vault_variant.
 var pending_stagger: bool = false
+## One-shot, alongside pending_stagger: the stagger's own screen tint, or
+## transparent for the hard landing's. LandingMove reads and clears it.
+var pending_stagger_tint: Color = Color(0.0, 0.0, 0.0, 0.0)
 
 ## One-shot: which way a dodge was thrown, -1 for left and +1 for right. Set
 ## by WalkingMove as it launches, read and cleared by DodgeJumpMove.enter().

@@ -34,6 +34,9 @@ extends Resource
 	set(value):
 		view = value
 		_refresh_name()
+## STAGGER only: the screen tint of the knock-down, alpha its strength.
+## Transparent (the default) leaves the hard landing's own red.
+@export var tint: Color = Color(0.0, 0.0, 0.0, 0.0)
 ## How long this lasts. INF means "until something removes it".
 @export var seconds: float = INF:
 	set(value):
@@ -83,4 +86,6 @@ func _validate_property(property: Dictionary) -> void:
 		Status.Effect.BLOCK_INTEREST_LINE:
 			used = "subject"
 	if property.name in ["amount", "subject", "view"] and property.name != used:
+		property.usage &= ~PROPERTY_USAGE_EDITOR
+	if property.name == "tint" and effect != Status.Effect.STAGGER:
 		property.usage &= ~PROPERTY_USAGE_EDITOR

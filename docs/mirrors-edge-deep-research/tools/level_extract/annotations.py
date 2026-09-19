@@ -16,6 +16,10 @@ VOLUME_KINDS = {
     'BlockingVolume': 'blocking',
     'TdKillVolume': 'kill',
     'TdCheckpointVolume': 'checkpointvolume',
+    # Only the pain-causing ones: Escape's electric fences are PhysicsVolumes
+    # with bPainCausing, DamagePerSec and TdDmgType_ElectricShock. The rest
+    # (Plaza's ZoneVelocity water) are counted in the report.
+    'PhysicsVolume': 'pain',
 }
 
 # Found and counted, never mapped: meaning not verified against the original.
@@ -162,6 +166,10 @@ def collect(mr, defaults, report):
             counts = report.setdefault('counts', {})
             counts['blocking_off'] = counts.get('blocking_off', 0) + 1
             continue
+        if cls == 'PhysicsVolume' and not props.get('bPainCausing'):
+            counts = report.setdefault('counts', {})
+            counts['physics_volume_harmless'] = counts.get('physics_volume_harmless', 0) + 1
+            continue
         position = point(props['Location'])
         rotation = props.get('Rotation') or (0, 0, 0)
         if cls == 'TdTutorialCheckpoint':
@@ -208,5 +216,11 @@ def collect(mr, defaults, report):
             override = (mr.props(component)[0] or {}).get('PhysMaterialOverride') if component else None
             if override:
                 annotation['physical_material'] = pkg.resolve(override[1] if isinstance(override, tuple) else override)
+        if cls == 'PhysicsVolume':
+            damage_type = props.get('DamageType')
+            if not (isinstance(damage_type, tuple) and damage_type[0] == 'obj'):
+                raise ExtractError('%s.%s: pain volume without a local DamageType' % (mr.label, e['name']))
+            annotation['damage_per_sec'] = float(props.get('DamagePerSec', 0.0))
+            annotation['damage_type'] = pkg.resolve(damage_type[1])
         out['annotations'].append(annotation)
     return out

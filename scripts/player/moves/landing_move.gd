@@ -17,9 +17,16 @@ extends Move
 # fade curve and pushes a fresh number to each of them every tick.
 
 var _elapsed: float = 0.0
+## What the lockout tints the screen: the hazard's own colour for a stagger
+## that brought one (an electric fence's blue), the landing's red otherwise.
+var _tint: Color = Color.BLACK
 
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
+	_tint = config.landing.tint_color
+	if player.pending_stagger_tint.a > 0.0:
+		_tint = player.pending_stagger_tint
+	player.pending_stagger_tint = Color(0.0, 0.0, 0.0, 0.0)
 	# A WIRE CUT IS A KNOCK-DOWN, NOT A WALL. A hard landing arrives here
 	# already charged by Player.landing_keep_ratio(), so zeroing what is
 	# left costs nothing -- but a stagger is charged HERE, and taking
@@ -112,4 +119,4 @@ func _drive_effects(severity: float) -> void:
 		player.camera_rig.set_crouch_amount(severity)
 		player.camera_rig.set_landing_pitch_offset(config.landing.camera_pitch_offset * severity)
 	if player.screen_effects != null:
-		player.screen_effects.set_tint(config.landing.tint_color, severity)
+		player.screen_effects.set_tint(_tint, severity)
