@@ -12,9 +12,9 @@ extends Node3D
 # graded on those. What stands in for them here:
 #   - ambient from the sky through SDFGI, so an interior is dark and a sunlit
 #     street is not: a flat ambient lit the Stormdrain pillar hall grey.
-#   - no screen-space reflection: the original's glass reflects a fixed cube
-#     map, and SSR's screen-edge fade drew an oval patch of city on every
-#     large facade.
+#   - reflections from SDFGI alone: no screen-space reflection (its
+#     screen-edge fade drew an oval of city on every large facade) and no sky
+#     fallback (clouds on floors indoors).
 #   - fixed exposure: from inside a doorway the original's street is white and
 #     from the street its interior is black.
 
@@ -47,7 +47,15 @@ func _ready() -> void:
 		env.ambient_light_sky_contribution = 1.0
 		env.ambient_light_energy = 1.0
 		env.sdfgi_enabled = true
+		# Eight cascades, not four: the reflections SDFGI gives end where its
+		# cascades do, and at four that edge drew a sphere on every tower's
+		# glass, city inside it and bare sky beyond.
+		env.sdfgi_cascades = 8
 		env.ssr_enabled = false
+		# Reflections from SDFGI only, never the sky directly: a sky fallback
+		# put clouds on every glossy floor and wall indoors (the airlock's).
+		# SDFGI covers the level and reflects the sky only where it is seen.
+		env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 		env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 		env.tonemap_exposure = EXPOSURE
 		env.adjustment_enabled = true

@@ -24,10 +24,10 @@ const DEFAULT_ROUGHNESS := 0.9
 const SPECULAR_SCALE := 0.5
 ## How strongly a surface's sheen (the cube map share over all of it) becomes
 ## a clearcoat. A dial.
-const SHEEN_SCALE := 1.0
+const SHEEN_SCALE := 0.5
 ## Part of every mesh's source hash. Bump when what a library file contains or
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
-const LIBRARY_FORMAT := 5
+const LIBRARY_FORMAT := 6
 
 var _materials := {}
 var _bakes := {}
@@ -93,6 +93,11 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		if surface["blend"] == "modulate":
 			# A modulate surface darkens what is behind it through its texture.
 			# Without the texture it is only a dark patch: collide, do not draw.
+			continue
+		if surface["blend"] == "additive":
+			# Light cones and glows drawn by their gradient texture. Without it
+			# they were flat translucent panes, dozens of them in the pillar
+			# hall, all glare: collide, do not draw.
 			continue
 		var uvs := _uvs(record, _uv_set(surface), positions.size())
 		var material_name: String = surface["material"] if surface["material"] != null else ""

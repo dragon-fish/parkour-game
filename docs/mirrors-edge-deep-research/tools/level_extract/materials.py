@@ -160,15 +160,14 @@ class MaterialBaker:
             self.stats['reflective'] += 1
             mirror = self._mirror(root_reader, root, params, ev.coordinate_filter, shape)
             if mirror is not None:
-                albedo, share = mirror
+                albedo, share, emissive_sheen = mirror
                 rgba = np.concatenate([albedo, rgba[..., 3:]], -1)
                 out['rgba'] = base64.b64encode((rgba * 255 + 0.5).astype(np.uint8).tobytes()).decode('ascii')
-                # The share every pixel has is a sheen laid over the whole
-                # surface (a rooftop's), what rises above it is a mirror in
-                # part of it (a facade's windows). One would cost the other
-                # its sunlit shading if both were drawn metallic.
+                # The share every pixel has is a sheen over the whole surface,
+                # what rises above it is a mirror in part of it. One would cost
+                # the other its sunlit shading if both were drawn metallic.
                 floor = float(share.min())
-                out['sheen'] = round(floor, 4)
+                out['sheen'] = round(max(floor, emissive_sheen), 4)
                 metallic = share - floor
                 if metallic.max() >= 0.05:
                     out['metallic'] = base64.b64encode((metallic * 255 + 0.5).astype(np.uint8).tobytes()).decode('ascii')
@@ -186,39 +185,44 @@ class MaterialBaker:
         return out
 
     def _mirror(self, mr, root, params, coordinate, shape):
-        """(albedo HxWx3, metallic HxW) where a cube map puts the sky into
-        part of the surface, or None.
+        """(albedo HxWx3, mirror share HxW, sheen share) where a cube map puts
+        the sky into the surface, or None.
 
         Evaluated with the cube at 0 and at 1: what changes is the part of the
-        colour that comes from the sky, k. Drawn metallic by k's share of the
-        colour, a Godot surface reflects its real surroundings there instead
-        of a flat grey. A surface whose colour comes from the cube almost
-        everywhere is using it as ambient light, not as a mirror: left alone."""
-        colours = []
+        colour that comes from the sky. Through DiffuseColor that is a masked
+        mirror (a facade's windows) and becomes metallic per pixel; through
+        EmissiveColor it is a wet or polished sheen added over the whole
+        surface (a stormdrain floor, a pipe) and becomes a clearcoat only --
+        drawn metallic, the airlock floor was a mirror showing the sky indoors.
+        A surface whose diffuse comes from the cube almost everywhere is using
+        it as ambient light, not as a mirror: no mirror there."""
+        colours = {}
         for cube in (0.0, 1.0):
             ev = Evaluator(self, mr, params, coordinate)
             ev.cube = cube
             ins = ev.inputs(root)
-            total = np.zeros(shape + (3,))
             for key in ('DiffuseColor', 'EmissiveColor'):
                 link = ins.get(key)
-                if not link or link['expr'] <= 0:
-                    continue
-                try:
-                    v = ev.value(link, np.zeros(3))
-                except (IndexError, ValueError):
-                    return None
+                v = np.zeros(3)
+                if link and link['expr'] > 0:
+                    try:
+                        v = ev.value(link, np.zeros(3))
+                    except (IndexError, ValueError):
+                        return None
                 v = v[..., :3] if v.shape[-1] >= 3 else np.repeat(v[..., :1], 3, -1)
-                v = np.broadcast_to(v, shape + (3,)) if v.ndim == 1 else resize(v, shape)
-                total = total + v
-            colours.append(total)
-        base, sky = colours[0], colours[1] - colours[0]
-        albedo = np.clip(base + sky, 0.0, 1.0)
-        share = np.abs(sky).mean(-1) / np.maximum(albedo.mean(-1), 1e-3)
-        metallic = np.clip(share, 0.0, 1.0)
-        if metallic.max() < 0.05 or metallic.mean() > MIRROR_AMBIENT_SHARE:
+                colours[(key, cube)] = np.broadcast_to(v, shape + (3,)) if v.ndim == 1 else resize(v, shape)
+        diffuse = colours[('DiffuseColor', 0.0)]
+        mirror_sky = colours[('DiffuseColor', 1.0)] - diffuse
+        sheen_sky = colours[('EmissiveColor', 1.0)] - colours[('EmissiveColor', 0.0)]
+        albedo = np.clip(diffuse + mirror_sky, 0.0, 1.0)
+        brightness = np.maximum(albedo.mean(-1), 1e-3)
+        mirror = np.clip(np.abs(mirror_sky).mean(-1) / brightness, 0.0, 1.0)
+        if mirror.mean() > MIRROR_AMBIENT_SHARE:
+            mirror = np.zeros_like(mirror)
+        sheen = float(np.clip(np.abs(sheen_sky).mean(-1) / brightness, 0.0, 1.0).mean())
+        if mirror.max() < 0.05 and sheen < 0.01:
             return None
-        return albedo, metallic
+        return albedo, mirror, sheen
 
     def _collect_params(self, mr, idx, params, depth=0):
         """Walk MaterialInstanceConstant parents collecting overrides, nearest
