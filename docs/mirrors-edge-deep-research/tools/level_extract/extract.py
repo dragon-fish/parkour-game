@@ -196,8 +196,18 @@ def collect_placements(mr, meshes, config, report):
         actor, _ = pk.resolved_props(meshes.packages, mr, i)
         if 'Location' not in actor:
             continue
-        component = component_props(meshes.packages, mr, actor.get('StaticMeshComponent'))
-        record = meshes.resolve(mr, component.get('StaticMesh'))
+        component_ref = actor.get('StaticMeshComponent')
+        component = component_props(meshes.packages, mr, component_ref)
+        mesh_ref = component.get('StaticMesh')
+        # A component that lives in ANOTHER package (an InterpActor's class
+        # default in Engine.u) reports its references as indices into that
+        # package; read against this one they name an unrelated object -- a
+        # tutorial InterpActor resolved to a DecalComponent this way.
+        foreign = isinstance(component_ref, tuple) and len(component_ref) == 3 and component_ref[0] == 'ext'
+        plain = isinstance(mesh_ref, tuple) and len(mesh_ref) == 2 and mesh_ref[0] == 'obj'
+        if foreign and plain:
+            mesh_ref = ('ext', component_ref[1], mesh_ref[1])
+        record = meshes.resolve(mr, mesh_ref)
         if record is None:
             # No StaticMesh anywhere in the archetype chain: an empty actor that
             # renders nothing in the original either. A reference that cannot be
@@ -225,6 +235,65 @@ def collect_placements(mr, meshes, config, report):
                     'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor',
                     'aabb': {'min': lo, 'max': hi}})
     return out
+
+
+# A ladder line is moved onto the mesh it climbs only this far, at most.
+LADDER_SNAP_MAX_M = 0.5
+LADDER_SNAP_SEARCH_M = 1.0
+LADDER_MESH_TOKENS = ('ladder', 'pipe')
+
+
+def snap_ladders(placements, annotations, report):
+    """Move each ladder line, along its WallNormal only, onto the centre of
+    the ladder or pipe mesh it runs up.
+
+    Measured in four levels: the cooked Start/End sit 0.18-0.27 m BEHIND a
+    pipe's centre and up to 0.19 m behind a ladder's, toward the wall.
+    LadderMove hangs the body stand_off in FRONT of the line, so a line that
+    far back puts the climber into the wall. The mesh with the most height
+    in common with the line wins, not the nearest: a ladder's top piece
+    curves back over the lip and its bounds sit elsewhere.
+    """
+    report['ladders_snapped'] = []
+    for a in annotations:
+        if a['kind'] != 'ladder' or 'start' not in a or 'end' not in a or 'wall' not in a:
+            continue
+        low, high = sorted((a['start'][1], a['end'][1]))
+        mid = [(a['start'][k] + a['end'][k]) / 2 for k in range(3)]
+        normal = a['wall']
+        best = None
+        for p in placements:
+            name = p['mesh'].lower()
+            if not any(t in name for t in LADDER_MESH_TOKENS):
+                continue
+            lo, hi = p['aabb']['min'], p['aabb']['max']
+            # Upright pieces only. An elbow or a horizontal run of the same
+            # pipe system can share more height with the line than the
+            # straight it runs up, and its centre is nowhere near the grip:
+            # a tutorial pipe was pulled 0.31 m INTO its wall that way.
+            tall = hi[1] - lo[1]
+            if tall < 1.0 or tall < 2.0 * max(hi[0] - lo[0], hi[2] - lo[2]):
+                continue
+            overlap = min(high, hi[1]) - max(low, lo[1])
+            if overlap <= 0.0:
+                continue
+            centre = [(lo[k] + hi[k]) / 2 for k in range(3)]
+            if math.hypot(centre[0] - mid[0], centre[2] - mid[2]) > LADDER_SNAP_SEARCH_M:
+                continue
+            if best is None or overlap > best[0]:
+                best = (overlap, p['mesh'], centre)
+        if best is None:
+            continue
+        delta = (best[2][0] - mid[0]) * normal[0] + (best[2][2] - mid[2]) * normal[2]
+        if abs(delta) > LADDER_SNAP_MAX_M or abs(delta) < 0.01:
+            continue
+        shift = [normal[0] * delta, 0.0, normal[2] * delta]
+        for key in ('start', 'end', 'middle'):
+            if key in a:
+                a[key] = [round(a[key][k] + shift[k], 4) for k in range(3)]
+        if 'spline' in a:
+            a['spline'] = [[round(v[k] + shift[k], 4) for k in range(3)] for v in a['spline']]
+        report['ladders_snapped'].append('%s.%s onto %s by %+.2f m' % (a['package'], a['name'], best[1], delta))
 
 
 def distance_to_box(p, lo, hi):
@@ -287,6 +356,8 @@ def main(config_path):
         names = [s['name'] for s in notes['spawns'] + notes['checkpoints']]
         if config['initial_spawn'] not in names:
             raise ExtractError('initial_spawn %r is not among %s' % (config['initial_spawn'], names))
+
+    snap_ladders(placements, notes['annotations'], report)
 
     if config['split_sections']:
         prefix = packages.persistent[:-len('p.me1')]
