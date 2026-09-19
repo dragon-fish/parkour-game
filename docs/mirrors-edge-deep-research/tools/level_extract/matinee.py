@@ -1,4 +1,4 @@
-"""Matinee sequences a touch or a use plays, directly or through "Completed"
+"""Matinee sequences a touch, a use or a kick plays, directly or through "Completed"
 of another one, traced back through Switch, Gate and Delay.
 
 Only that shape is read. Kismet is a whole scripting language -- remote
@@ -13,10 +13,17 @@ keys); only yaw-dominant tracks were checked by eye.
 import struct
 
 from annotations import brush_hulls
-from common import UU, godot_basis, point, ref_export
+from common import UU, godot_basis, outer_class, point, ref_export
 import packages as pk
 
 TOUCH_EVENTS = ('SeqEvent_Touch', 'SeqEvent_TdTouch')
+# A kick: [ME:CONFIRMED Stormdrain Kismet] doors open on TakeDamage of a
+# hidden InterpActor in front of them. This project has no kick; the level
+# plays these when the player runs into that spot, a KICK_REACH_M cylinder
+# around the damaged actor's origin.
+DAMAGE_EVENTS = ('SeqEvent_TakeDamage',)
+KICK_REACH_M = 1.0
+KICK_HALF_HEIGHT_M = 1.5
 # "Used": the player pressed the use key at the originator. This project has
 # no use key; the level plays these when the player stands in the trigger.
 USED_EVENTS = ('SeqEvent_Used', 'SeqEvent_TdUsed')
@@ -182,11 +189,17 @@ def collect(packages, mr, report):
             # itself through a Delay is a loop the level means (the subway).
             if depth > 8 or (cls in PASS_THROUGH and source in seen):
                 continue
-            if cls in TOUCH_EVENTS or cls in USED_EVENTS:
+            if cls in TOUCH_EVENTS or cls in USED_EVENTS or cls in DAMAGE_EVENTS:
                 originator = ref_export(_props(mr, source).get('Originator'))
-                if originator:
-                    out.append({'on': 'touch' if cls in TOUCH_EVENTS else 'use',
-                                'trigger': _trigger(packages, mr, originator), 'delay': 0.0, 'input': input_idx})
+                # A prefab's own sequence names the prefab's TEMPLATE actors,
+                # which stand at the prefab's origin, not in the level.
+                if originator and outer_class(pkg, pkg.exports[originator - 1]) == 'Level':
+                    trigger = _trigger(packages, mr, originator)
+                    if cls in DAMAGE_EVENTS:
+                        trigger.pop('hull', None)
+                        trigger.update(radius=KICK_REACH_M, height=KICK_HALF_HEIGHT_M)
+                    out.append({'on': 'use' if cls in USED_EVENTS else 'touch',
+                                'trigger': trigger, 'delay': 0.0, 'input': input_idx})
             elif cls == 'SeqAct_Interp' and desc == 'Completed':
                 out.append({'on': 'after', 'source': name_of(source), 'delay': 0.0, 'input': input_idx})
             elif cls in PASS_THROUGH:
