@@ -27,7 +27,7 @@ const SPECULAR_SCALE := 0.5
 const SHEEN_SCALE := 0.5
 ## Part of every mesh's source hash. Bump when what a library file contains or
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
-const LIBRARY_FORMAT := 6
+const LIBRARY_FORMAT := 7
 
 var _materials := {}
 var _bakes := {}
@@ -255,6 +255,11 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 	var image := Image.create_from_data(int(bake["width"]), int(bake["height"]), false,
 			Image.FORMAT_RGBA8, Marshalls.base64_to_raw(bake["rgba"]))
 	image.generate_mipmaps()
+	# Block-compressed in VRAM (BC7, one byte a pixel against four): the
+	# bakes are 256 px now and a chapter carries hundreds. The mips are what
+	# let a far wall sample a small level of it; no streaming in Godot 4.7,
+	# so the whole chain is resident and this is where the memory is saved.
+	image.compress(Image.COMPRESS_BPTC, Image.COMPRESS_SOURCE_SRGB)
 	var material := StandardMaterial3D.new()
 	material.albedo_texture = ImageTexture.create_from_image(image)
 	material.albedo_color = TEXTURE_ALBEDO
