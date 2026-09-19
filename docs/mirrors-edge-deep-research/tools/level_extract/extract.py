@@ -98,6 +98,17 @@ class MeshTable:
                                    % (name, known['source'], record['source']))
         return known
 
+    def override(self, mr, reference):
+        """A component's per-placement material: its name and how it draws,
+        baked like any mesh material."""
+        name = mr.pkg.resolve(reference)
+        entry = {'material': name}
+        entry.update(self._material(mr, reference))
+        if name and name not in self.bakes:
+            rr, ri = self.baker.resolve(mr, reference)
+            self.bakes[name] = self.baker.bake(rr, ri) if rr else None
+        return entry
+
     def resolve(self, mr, reference):
         """(record) for a StaticMesh object property, local or imported."""
         if isinstance(reference, tuple) and len(reference) == 3 and reference[0] == 'ext':
@@ -252,6 +263,16 @@ def collect_placements(mr, meshes, config, report):
         hidden = bool(actor.get('bHidden', False) or component.get('HiddenGame', False))
         # What this actor is hard-attached to: it moves with that actor. A
         # Stormdrain gate rides a Trigger_Dynamic that its Matinee raises.
+        # The component's own Materials: one entry per mesh element, 0 where the
+        # mesh's material stands. A third of Stormdrain's placements carry one;
+        # its orange containers and green pipes are these on white meshes.
+        overrides = []
+        component_idx = None if foreign else ref_export(component_ref)
+        if component_idx:
+            for tag in mr.chain_of(component_idx)[0]:
+                if tag[0] == 'Materials':
+                    refs = matinee._int_array(mr, matinee._value(mr, tag))
+                    overrides = [meshes.override(mr, r) if r else None for r in refs]
         base_idx = ref_export(actor.get('Base')) if actor.get('bHardAttach') else None
         base = '%s.%s' % (mr.label, pkg.exports[base_idx - 1]['name']) if base_idx else None
         report['counts']['hidden'] += hidden
@@ -259,7 +280,8 @@ def collect_placements(mr, meshes, config, report):
                     'basis': basis, 'collision': collision, 'soft_landing': record['soft_landing'],
                     'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor',
                     'base': base, 'aabb': {'min': lo, 'max': hi}}
-                   | ({'pre_pivot': pre_pivot} if any(abs(c) > 1e-4 for c in pre_pivot) else {}))
+                   | ({'pre_pivot': pre_pivot} if any(abs(c) > 1e-4 for c in pre_pivot) else {})
+                   | ({'materials': overrides} if any(overrides) else {}))
     return out
 
 
@@ -422,6 +444,7 @@ def main(config_path):
     with open(os.path.join(out_dir, 'meshes.json'), 'w', encoding='utf-8') as fh:
         json.dump(mesh_out, fh, ensure_ascii=False, separators=(',', ':'))
     used_materials = {s['material'] for r in mesh_out.values() for s in r['surfaces']}
+    used_materials |= {o['material'] for p in placements for o in p.get('materials', []) if o}
     with open(os.path.join(out_dir, 'materials.json'), 'w', encoding='utf-8') as fh:
         json.dump({n: b for n, b in meshes.bakes.items() if b and n in used_materials}, fh, separators=(',', ':'))
     print(json.dumps(report, ensure_ascii=False, indent=1))

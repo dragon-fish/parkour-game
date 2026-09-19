@@ -15,7 +15,7 @@ const Common := preload("res://tools/me_level/me_level_common.gd")
 const TEXTURE_ALBEDO := Color(0.85, 0.85, 0.85)
 ## Part of every mesh's source hash. Bump when what a library file contains or
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
-const LIBRARY_FORMAT := 3
+const LIBRARY_FORMAT := 4
 
 var _materials := {}
 var _bakes := {}
@@ -66,7 +66,12 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		return null
 	var mesh := ArrayMesh.new()
 	var collision_faces := PackedVector3Array()
-	for surface: Dictionary in record["surfaces"]:
+	# The original's element index of every surface, in surface order: a
+	# placement's material overrides are per element, and a two-sided
+	# element becomes two surfaces while a modulate one becomes none.
+	var elements := PackedInt32Array()
+	for element in record["surfaces"].size():
+		var surface: Dictionary = record["surfaces"][element]
 		var indices := _indices(surface["indices"])
 		if indices.is_empty():
 			continue
@@ -85,6 +90,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		else:
 			material = _material(Common.material_family(material_name, name), surface["blend"], surface["unlit"])
 		_add_surface(mesh, positions, normals, uvs, indices, material, material_name)
+		elements.append(element)
 		if surface.get("two_sided", false) and surface["blend"] != "additive":
 			# DO NOT draw two-sided surfaces with CULL_DISABLED. A placement with a
 			# mirroring transform (negative scale) gets FRONT_FACING inverted,
@@ -99,6 +105,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			for i in normals.size():
 				back_normals[i] = -normals[i]
 			_add_surface(mesh, positions, back_normals, uvs, back_indices, material, material_name + "_back")
+			elements.append(element)
 	var simple: Array[Shape3D] = []
 	for shape: Dictionary in record["simple_shapes"]:
 		var convex := ConvexPolygonShape3D.new()
@@ -107,6 +114,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			points.append(Common.v3(v))
 		convex.points = points
 		simple.append(convex)
+	mesh.set_meta("surface_elements", elements)
 	mesh.set_meta("simple_shapes", simple)
 	if not collision_faces.is_empty():
 		var concave := ConcavePolygonShape3D.new()
@@ -181,6 +189,15 @@ func _material(family: String, blend: String, unlit: bool) -> StandardMaterial3D
 		material = load(path)
 	_materials[key] = material
 	return material
+
+
+## The material a placement's override names, or null when it cannot be
+## drawn textured (no bake, or additive): the mesh's own material stays.
+func override_material(entry: Dictionary) -> Material:
+	var name: String = entry.get("material", "")
+	if not _bakes.has(name) or entry.get("blend", "opaque") == "additive":
+		return null
+	return _textured_material(name, entry.get("blend", "opaque"), entry.get("unlit", false))
 
 
 func _uv_set(surface: Dictionary) -> int:

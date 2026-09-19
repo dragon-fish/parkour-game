@@ -71,6 +71,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		# Hidden in the original: collision without a picture. Kept as a node so
 		# the editor can still show it.
 		instance.visible = not placement["hidden"]
+		_apply_overrides(instance, placement)
 		node.add_child(instance)
 		var transform := Common.transform_of(placement)
 		var stretch := Basis()
@@ -105,6 +106,9 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 
 
 var _stretched_shapes := {}
+## The mesh library that built the meshes, for placement material overrides.
+## Null leaves every mesh on its own materials.
+var library = null
 
 
 static func _is_uniform(basis: Basis) -> bool:
@@ -141,6 +145,22 @@ func _stretched(shape: Shape3D, stretch: Basis) -> Shape3D:
 		(copy as ConcavePolygonShape3D).set_faces(out)
 	_stretched_shapes[key] = copy
 	return copy
+
+
+## The placement's own materials, per original element, onto every surface
+## built from that element.
+func _apply_overrides(instance: MeshInstance3D, placement: Dictionary) -> void:
+	var overrides: Array = placement.get("materials", [])
+	if overrides.is_empty() or library == null:
+		return
+	var elements: PackedInt32Array = instance.mesh.get_meta("surface_elements", PackedInt32Array())
+	for surface in elements.size():
+		var element: int = elements[surface]
+		if element >= overrides.size() or not overrides[element] is Dictionary:
+			continue
+		var material: Material = library.override_material(overrides[element])
+		if material != null:
+			instance.set_surface_override_material(surface, material)
 
 
 func _add_shape(node: Node3D, shape: Shape3D, name: String, offset := Vector3.ZERO) -> void:

@@ -44,13 +44,14 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 		return false
 	var paths := Common.output_paths(config)
 
-	if not MeLibrary.new().build(meshes, bakes):
+	_library = MeLibrary.new()
+	if not _library.build(meshes, bakes):
 		return false
 
 	if config.get("split_sections", false):
 		return _build_split(config, manifest, paths, rebuild_interactions)
 
-	var geometry: Node3D = GeometryBuilder.new().build(manifest, str(config["id"]).to_pascal_case() + "Geometry")
+	var geometry: Node3D = _geometry_builder().build(manifest, str(config["id"]).to_pascal_case() + "Geometry")
 	if not _save(geometry, paths.geometry, ResourceSaver.FLAG_COMPRESS):
 		return false
 	print("[me_level] wrote geometry: ", paths.geometry)
@@ -66,6 +67,15 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 ## section scene per section, and a chapter scene (the shell) holding spawn,
 ## checkpoints, the chapter-wide layer and a SectionLoader over the sections.
 ## See docs/superpowers/specs/2026-09-19-me-chapter-sections-design.md.
+var _library = null
+
+
+func _geometry_builder():
+	var builder := GeometryBuilder.new()
+	builder.library = _library
+	return builder
+
+
 func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, rebuild: bool) -> bool:
 	var base: String = (paths.shell as String).get_basename()
 	var sections: Array[PackedScene] = []
@@ -74,7 +84,7 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 		var started := Time.get_ticks_msec()
 		var part := _section_of(manifest, section)
 		var geometry_path := "%s_%s_geometry.scn" % [base, section.to_lower()]
-		var geometry: Node3D = GeometryBuilder.new().build(part, section.to_pascal_case() + "Geometry")
+		var geometry: Node3D = _geometry_builder().build(part, section.to_pascal_case() + "Geometry")
 		if not _save(geometry, geometry_path, ResourceSaver.FLAG_COMPRESS):
 			return false
 		var scene_path := "%s_%s.tscn" % [base, section.to_lower()]
@@ -85,7 +95,7 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 		sections.append(load(scene_path))
 
 	var chapter := _section_of(manifest, "")
-	var chapter_geometry: Node3D = GeometryBuilder.new().build(chapter, str(config["id"]).to_pascal_case() + "ChapterGeometry")
+	var chapter_geometry: Node3D = _geometry_builder().build(chapter, str(config["id"]).to_pascal_case() + "ChapterGeometry")
 	if not _save(chapter_geometry, paths.geometry, ResourceSaver.FLAG_COMPRESS):
 		return false
 	if ResourceLoader.exists(paths.shell) and not rebuild:
