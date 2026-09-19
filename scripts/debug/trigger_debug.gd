@@ -26,6 +26,9 @@ const MATINEE_TRIGGER := Color(0.95, 0.95, 0.95)
 const LEVEL_END := Color(1.0, 0.8, 0.2)
 const GLASS := Color(0.6, 0.85, 1.0)
 
+## Opacity of a shape's faces behind its lines.
+const FILL_ALPHA := 0.2
+
 const LABEL_SIZE := 48
 ## How far the direction and facing arrows reach, metres.
 const ARROW := 0.7
@@ -34,6 +37,7 @@ var _shown := false
 ## Everything built for the current showing, freed when it goes off.
 var _drawn: Array[Node] = []
 var _materials: Dictionary = {}
+var _fills: Dictionary = {}
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -109,6 +113,18 @@ func _material(colour: Color) -> StandardMaterial3D:
 	return _materials[colour]
 
 
+## The same colour, faint, for a shape's faces.
+func _fill(colour: Color) -> StandardMaterial3D:
+	if not _fills.has(colour):
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.albedo_color = Color(colour, FILL_ALPHA)
+		_fills[colour] = m
+	return _fills[colour]
+
+
 func _draw_shapes(body: CollisionObject3D, colour: Color) -> void:
 	var bounds := AABB()
 	var first := true
@@ -119,7 +135,11 @@ func _draw_shapes(body: CollisionObject3D, colour: Color) -> void:
 		var mesh := shape_node.shape.get_debug_mesh()
 		var drawn := MeshInstance3D.new()
 		drawn.mesh = mesh
-		drawn.material_override = _material(colour)
+		# The debug mesh is edges AND faces: one material for both drew every
+		# volume as a solid box.
+		for surface in mesh.get_surface_count():
+			var lines := mesh.surface_get_primitive_type(surface) == Mesh.PRIMITIVE_LINES
+			drawn.set_surface_override_material(surface, _material(colour) if lines else _fill(colour))
 		drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		shape_node.add_child(drawn, false, Node.INTERNAL_MODE_BACK)
 		_drawn.append(drawn)
