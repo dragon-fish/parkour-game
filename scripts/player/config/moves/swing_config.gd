@@ -48,9 +48,6 @@ func _init() -> void:
 ## The magnet: how long the catch takes to pull the body onto the chain. Same
 ## number and same feel as the zipline's own fade.
 @export var fade_in_time: float = 0.1
-## Falling faster than this the hands cannot hold on (no CDO field for swing;
-## borrowed from the zipline's confirmed one).
-@export var fall_limit: float = 6.0
 ## [ME:CONFIRMED 05 §5.5b.2] SwingExitGravityModifier = 0.75 for
 ## SwingExitGravityModifierTime = 0.70 s (TdMove_SwingJump repeats nearly the
 ## same pair). Fed to Player.apply_gravity_window() on BOTH exits.

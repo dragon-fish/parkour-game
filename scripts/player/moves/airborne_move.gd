@@ -220,9 +220,11 @@ func probe_transition() -> StringName:
 				and _zipline_approach_allowed(cable):
 			return ZIPLINE
 
-	# The bar, after the cable: same interest-point reasoning, same gates.
-	if c.check_for_swing and player.velocity.y > -config.swing.fall_limit \
-			and player.move_manager.can_enter(SWING):
+	# The bar, after the cable: same interest-point reasoning, but NO fall
+	# limit. [ME:CONFIRMED A1] TdMove_Swing carries no ZVelocityFallLimit --
+	# only the zipline's entry does -- and the Stormdrain rooftop is built on
+	# catching a bar 5 m down, at about 13 m/s.
+	if c.check_for_swing and player.move_manager.can_enter(SWING):
 		var bar: InterestLine = player.nearest_interest_line(InterestLine.Kind.SWING)
 		if bar != null and player.line_ready(bar):
 			return SWING
