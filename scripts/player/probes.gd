@@ -191,7 +191,30 @@ func feet_y() -> float:
 ## this per-query aiming is what keeps the vault working at all.
 func _aim_forward(ray: RayCast3D, reach: float) -> void:
 	ray.target_position = Vector3(0.0, 0.0, -reach)
+	_fire(ray)
+
+
+## Fires a HAND-move ray, looking through air walls marked for no interaction.
+##
+## [ME:INFERRED] bExludeHandMoves means the hands' traces do not see that
+## volume: the body still collides with it, but a ledge right behind it can be
+## grabbed. A Stormdrain ring's rounded lip is wrapped in exactly such a
+## volume, and the original climbs it. Stopping at the wall hid every lip
+## wrapped this way. Kept to the hand rays: foot moves (the wall run's side
+## rays) are not this function's business.
+##
+## The price: a boundary air wall no longer hides a grabbable ledge behind
+## it. Watch for grabs that carry the body out of a level.
+const INERT_PASS_LIMIT := 4
+
+func _fire(ray: RayCast3D) -> void:
+	ray.clear_exceptions()
 	ray.force_raycast_update()
+	for i in INERT_PASS_LIMIT:
+		if not (ray.is_colliding() and is_inert(ray.get_collider())):
+			return
+		ray.add_exception(ray.get_collider() as CollisionObject3D)
+		ray.force_raycast_update()
 
 ## Points SurfaceDown at the given forward offset and fires it. Shared by both
 ## queries, which ask for that offset in DIFFERENT ways, and the difference is
@@ -233,7 +256,7 @@ func _query_surface_above(reach: float, above: float) -> void:
 	var stop_at: float = above - MIN_HEIGHT_EPSILON
 	var length: float = maxf((global_position.y + origin_y) - stop_at, 0.01)
 	_surface.target_position = Vector3(0.0, -length, 0.0)
-	_surface.force_raycast_update()
+	_fire(_surface)
 
 ## `ceiling_y` (world) caps the origin just below a ceiling ledge_query() found
 ## over the face; INF leaves it where the config puts it.
@@ -243,7 +266,7 @@ func _query_surface(reach: float, ceiling_y: float = INF) -> void:
 	origin_y = minf(origin_y, ceiling_y - CEILING_CLEARANCE - global_position.y)
 	_surface.position = Vector3(0.0, origin_y, -reach)
 	_surface.target_position = Vector3(0.0, -(origin_y + _foot_offset + SURFACE_UNDERSHOOT), 0.0)
-	_surface.force_raycast_update()
+	_fire(_surface)
 
 ## An obstacle low enough to vault: blocked at shin height by a genuinely
 ## unwalkable face (not a slope the player would just walk up), clear at
@@ -477,7 +500,7 @@ func _query_vault_over(top: Vector3) -> bool:
 	# depend on where the body happened to be when it asked.
 	var depth: float = _config.speed_vault.table_ceiling() + SURFACE_ORIGIN_MARGIN
 	_vault_over.target_position = Vector3(0.0, -depth, 0.0)
-	_vault_over.force_raycast_update()
+	_fire(_vault_over)
 	if not _live(_vault_over):
 		# NOTHING WITHIN A VAULT'S REACH IS STILL AN OVER, with no landing.
 		#
@@ -1082,12 +1105,12 @@ static func is_inert(collider: Object) -> bool:
 
 ## Whether `ray` found something that offers an affordance at all.
 ##
-## DO NOT read is_colliding() directly in a query. An inert hit still STOPS the
-## ray, so whatever stands behind it stays unseen -- which is the point for an
-## air wall, and is why this answers "nothing here" rather than casting past
-## it. A query that wants the geometry regardless does not come through here:
-## predicted_landing() is the one that does not, because the top is walkable
-## and a fall onto it has to be predicted like any other.
+## DO NOT read is_colliding() directly in a query. The hand rays already look
+## through inert volumes (see _fire()); this still refuses an inert hit for
+## any ray that did not go through _fire(). A query that wants the geometry
+## regardless does not come through here: predicted_landing() is the one that
+## does not, because the top is walkable and a fall onto it has to be
+## predicted like any other.
 func _live(ray: RayCast3D) -> bool:
 	return ray.is_colliding() and not is_inert(ray.get_collider())
 

@@ -386,3 +386,17 @@ func test_a_fitting_flush_with_the_ceiling_is_not_a_ledge() -> void:
 	var hit: Dictionary = player.probes.ledge_query()
 	assert_false(hit["valid"], "a light flush with the ceiling was taken as a ledge at y %.2f"
 		% float(hit.get("edge", Vector3.ZERO).y))
+
+func test_a_ledge_wrapped_in_a_no_interaction_air_wall_is_still_seen() -> void:
+	# A Stormdrain ring's rounded lip sits behind an air wall flagged to
+	# exclude hand moves. The hands look through such a volume; the body does
+	# not pass it.
+	var player: Player = await _standing_player()
+	_slab(0.0, 2.0, 1.0, -1.6)
+	_slab(0.0, 1.98, 0.02, -1.08)
+	var wall := _props[_props.size() - 1]
+	wall.add_to_group(Probes.NO_INTERACTION_GROUP)
+	await step(1)
+	var hit: Dictionary = player.probes.ledge_query()
+	assert_true(hit["valid"], "the air wall hid the ledge it is wrapped around")
+	assert_almost_eq(float(hit["edge"].y), 2.0, 0.05, "the ledge was taken at y %.2f" % float(hit.get("edge", Vector3.ZERO).y))
