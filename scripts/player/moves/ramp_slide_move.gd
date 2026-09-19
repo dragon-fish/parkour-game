@@ -3,12 +3,15 @@ extends Move
 
 # The seated slide down a marked chute (TdMove_RumpSlide). The body is a
 # passenger: half gravity pulls it along the surface, A and D nudge it across,
-# nothing the player does stops it before the chute does.
+# a jump leaves it, nothing else the player does stops it before the chute
+# does.
 #
 # Entered by WalkingMove and by an airborne landing when the surface the body
 # just touched is in Probes.UNCONTROLLED_SLIDE_GROUP (Player.touched_chute()).
-# Exits to Falling when contact is lost for longer than contact_grace, or to
-# Walking when the surface under the body flattens past min_slide_floor_z.
+# Exits with its momentum: to Walking the tick the body is on a floor that is
+# not a chute, to Falling when it touches nothing for contact_grace, or to
+# Jump on the buffered press. A chute that flattens out under
+# min_slide_floor_z is a floor too.
 #
 # PHYS_Falling in the original, with the surface removing the component of
 # the velocity into it: done here by hand rather than through
@@ -32,17 +35,28 @@ func enter(_previous: StringName) -> void:
 	var down := _downhill()
 	if down.length_squared() > 0.0001:
 		player.rotation.y = atan2(-down.x, -down.z)
+	# The capsule shortens like the slide's; the model is NOT folded down to
+	# the shortened crown. [ME:CONFIRMED A1] RootOffset z = 20 uu: the seated
+	# body sits 0.2 m low, not 0.9, and the eye rides the head bone of a
+	# model lying along the chute, which is already as low as it should be.
+	# Folded as well, the eye was under the chute's surface.
 	player.set_capsule_height(config.ramp_slide.capsule_height)
-	player.set_body_folded(true)
 
 
 func exit() -> void:
-	player.set_body_folded(false)
 	player.request_standing_capsule()
 
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	var cfg_slide: RampSlideConfig = config.ramp_slide
+	# A jump leaves the chute: the same take-off as from the ground, from a
+	# body that is on a surface. The chute's own downhill speed rides along.
+	if player.consume_jump():
+		player.velocity.y = config.pawn.base_jump_z
+		player.velocity += player.jump_add_velocity(input)
+		player.set_grounded(false)
+		return JUMP
+
 	# Half gravity, then the surface takes the component into itself: what
 	# remains is the pull down the chute.
 	player.velocity.y -= player.effective_gravity() * cfg_slide.gravity_modifier * delta
@@ -57,13 +71,25 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# floor: a velocity exactly along the surface touches nothing, and a tick
 	# that touches nothing reads as the chute having ended. Measured on the
 	# Stormdrain chute: the slide let go every eight ticks and fell instead.
+	# ONLY WHILE IN CONTACT, and only by surface_press_speed: the press has a
+	# horizontal part, and once the body has run off the chute's foot onto the
+	# floor below, nothing cancels it. At floor_snap_speed it braked the body
+	# from 10 m/s to a standstill in four ticks, at the edge it should have
+	# flown off.
 	var along: Vector3 = player.velocity
-	player.velocity = along - _normal * config.pawn.floor_snap_speed
+	if _lost_contact == 0.0:
+		player.velocity = along - _normal * cfg_slide.surface_press_speed
 	player.move_and_slide()
 	player.velocity = _along_surface(player.velocity)
 
 	var chute: Dictionary = player.touched_chute()
 	if chute.is_empty():
+		# Run out onto a floor: the slide is over and the speed is the
+		# runner's. Off the end into the air: a fall, once the seams have had
+		# their chance.
+		if player.is_on_floor():
+			player.set_grounded(true)
+			return WALKING
 		_lost_contact += delta
 		player.set_grounded(false)
 		if _lost_contact >= cfg_slide.contact_grace:

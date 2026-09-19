@@ -30,6 +30,11 @@ extends MoveConfig
 ## surface for a tick or two. At the chute's end the contact stays lost and
 ## the body flies.
 @export var contact_grace: float = 0.12
+## PROJECT-DEFINED. How hard the body is pressed into the chute each tick so
+## the surface registers a touch; the chute cancels it, so it costs no
+## speed. The horizontal part survives ONE tick past the chute's foot, which
+## is why it is small and not floor_snap_speed.
+@export var surface_press_speed: float = 0.5
 ## PROJECT-DEFINED. [ME:CONFIRMED A1] RootOffset z = 20 uu lowers the model;
 ## the seated body is as tall as the crouch, so the same capsule height.
 @export var capsule_height: float = 0.9
