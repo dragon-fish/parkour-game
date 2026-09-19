@@ -30,10 +30,12 @@ from mapdump import MapReader
 #                                    {car, stop_doors, travel, travel_time, door_open_offset,
 #                                     door_time}; actors as package.name. The car's own
 #                                    doors are whatever is hard-attached to it.
+#   floating_checkpoints list []     checkpoint labels the original leaves in mid-air
+#                                    on purpose; verify_level does not ask for a floor
 CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
-    'persistent': None, 'split_sections': False, 'lifts': [],
+    'persistent': None, 'split_sections': False, 'lifts': [], 'floating_checkpoints': [],
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 

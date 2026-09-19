@@ -82,7 +82,12 @@ func _run() -> void:
 	if shell.has_node("Checkpoints"):
 		for checkpoint in shell.get_node("Checkpoints").get_children():
 			starts.append(checkpoint)
+	# Some the original drops the player from on purpose: Edge's "Cops" falls
+	# into the police's arms.
+	var floating: Array = config.get("floating_checkpoints", [])
 	for start in starts:
+		if String(start.name) in floating:
+			continue
 		var from := start.global_position + Vector3.UP * 0.5
 		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 6.0))
 		check(not hit.is_empty(), "no floor under " + str(shell.get_path_to(start)))
