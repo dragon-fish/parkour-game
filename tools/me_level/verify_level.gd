@@ -43,8 +43,11 @@ func _run() -> void:
 		return
 
 	var placed: Array = geometry.get_node("Geometry").get_children()
-	check(placed.size() == manifest["placements"].size(),
-			"%d placement nodes, manifest has %d" % [placed.size(), manifest["placements"].size()])
+	# Movers are placements too, grouped apart: always bodies, collision or not.
+	var movers: int = geometry.get_node("Movers").get_child_count() if geometry.has_node("Movers") else 0
+	check(placed.size() + movers == manifest["placements"].size(),
+			"%d placement nodes and %d movers, manifest has %d"
+			% [placed.size(), movers, manifest["placements"].size()])
 	for node: Node in placed:
 		var shapes := node.find_children("*", "CollisionShape3D", false, false)
 		var collision: String = node.get_meta("me_collision", "")
