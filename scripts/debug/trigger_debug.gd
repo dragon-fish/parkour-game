@@ -27,7 +27,7 @@ const LEVEL_END := Color(1.0, 0.8, 0.2)
 const GLASS := Color(0.6, 0.85, 1.0)
 
 ## Opacity of a shape's faces behind its lines.
-const FILL_ALPHA := 0.2
+const FILL_ALPHA := 0.1
 
 const LABEL_SIZE := 48
 ## How far the direction and facing arrows reach, metres.
