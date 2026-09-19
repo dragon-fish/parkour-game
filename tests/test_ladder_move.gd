@@ -420,8 +420,8 @@ func test_a_turned_head_jumps_along_the_look() -> void:
 	assert_gt(player.velocity.dot(look), 0.0, \
 		"the launch did not follow the turned-away look direction")
 	var incline := rad_to_deg(atan2(player.velocity.y, Vector2(player.velocity.x, player.velocity.z).length()))
-	assert_almost_eq(incline, player.config.ladder.jump_pitch_deg, 1.0,
-		"a view pitched up 30 degrees changed the launch incline")
+	assert_almost_eq(incline, player.config.ladder.jump_min_pitch_deg, 1.0,
+		"a view pitched up 30, under the floor, did not launch at the floor incline")
 
 func test_the_into_wall_component_survives() -> void:
 	# 🔒 PROTECTED TECHNIQUE -- spec invariant #1, mirroring GrabMove's own

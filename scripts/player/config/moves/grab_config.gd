@@ -328,8 +328,8 @@ extends MoveConfig
 ## read as an upward speed of 1.6 m/s (a rise reading would make
 ## `TdMove_WallClimb180TurnJump.JumpOffZHeight = 250` launch 2.5 m straight up,
 ## which the original plainly does not do). It was added on top of the launch
-## while the launch followed the camera's pitch; with the fixed incline of
-## jump_pitch_deg it would only steepen that incline off 45 degrees.
+## while the launch followed the camera's pitch alone; with the floor of
+## jump_min_pitch_deg it would only steepen every jump past that floor.
 
 ## 📌 TRANSCRIBED AND NOT USED, kept because deleting a sourced number loses the
 ## record of having read it. `TdMove_GrabJump.GrabJumpPushAwayMinSpeed = 200`
@@ -361,10 +361,10 @@ extends MoveConfig
 ## and 5.8 up, so about 6.6) lands in the same place from the other direction.
 @export var jump_speed: float = 6.3
 
-## Degrees above the horizontal a jump off a hang launches at, whatever the
-## camera's pitch. [ME:INFERRED] from play: a turned head jumps out at almost
-## exactly 45 degrees in the original, level view or not.
-@export var jump_pitch_deg: float = 45.0
+## The lowest incline a jump off a hang launches at, degrees above the
+## horizontal; a view pitched higher launches higher. [ME:INFERRED] from play:
+## a level view jumps out at about 45 degrees in the original.
+@export var jump_min_pitch_deg: float = 45.0
 
 func _init() -> void:
 	# The mantle/corner-shimmy path is a scripted world-space curve. See

@@ -184,7 +184,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 				return _launch_at(target)
 		var turned: float = absf(wrapf(_camera_yaw() - _target_yaw, -PI, PI))
 		if turned > deg_to_rad(cfg.jump_angle_deg):
-			# GrabMove's shape verbatim: the look's heading, nothing projected
+			# GrabMove's shape verbatim: the look, nothing projected
 			# out -- the into-wall component IS the vault tech (grab_move.gd
 			# _launch_direction's own warning applies here unchanged).
 			player.velocity = _look_direction() * cfg.jump_speed
@@ -397,22 +397,17 @@ func _camera_yaw() -> float:
 	# _target_yaw above is built with (see InterestLine.front()'s callers).
 	return atan2(-look.x, -look.z)
 
-## Where a jump off the ladder launches: the view's heading at a fixed
-## incline, the camera's pitch ignored -- GrabMove._launch_direction() and its
+## Where a jump off the ladder launches: along the view, never flatter than
+## LadderConfig.jump_min_pitch_deg -- GrabMove._launch_direction() and its
 ## reasons, into-wall component included. The same speedrun glitch this move's
 ## jump_angle_deg threshold opens the door to (turning just past 45 degrees
 ## throws the body at the ladder's own geometry) depends on it here too.
 func _look_direction() -> Vector3:
-	var heading: Vector3 = Vector3.ZERO
+	var look: Vector3 = Vector3.ZERO
 	if player.camera_rig != null and player.camera_rig.camera != null:
-		heading = -player.camera_rig.camera.global_transform.basis.z
-	heading.y = 0.0
-	if heading.length_squared() < 0.0001:
-		heading = -player.global_transform.basis.z
-		heading.y = 0.0
-	if heading.length_squared() < 0.0001:
-		heading = -_line.front()
-	return GrabMove.inclined(heading.normalized(), cfg.jump_pitch_deg)
+		look = -player.camera_rig.camera.global_transform.basis.z
+	return GrabMove.launch_along(look, [-player.global_transform.basis.z, -_line.front()],
+		cfg.jump_min_pitch_deg)
 
 # --- The top exit ----------------------------------------------------------
 

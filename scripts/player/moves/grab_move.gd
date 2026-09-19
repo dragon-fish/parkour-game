@@ -757,13 +757,13 @@ func _turned_from_wall() -> float:
 		return 0.0
 	return facing.normalized().angle_to(into_wall.normalized())
 
-## Where a jump off a hang launches: along the view's HEADING, wall included,
-## at a fixed incline.
+## Where a jump off a hang launches: along the view, wall included, never
+## flatter than a floor incline.
 ##
-## [ME:INFERRED] the original ignores the camera's pitch here: a turned head
-## jumps out at almost exactly 45 degrees whether the view is level or not.
-## Reading the pitch meant having to look up for every jump. The incline is
-## GrabConfig.jump_pitch_deg.
+## [ME:INFERRED] from play: a turned head jumps out at about 45 degrees with a
+## level view, and higher when looking higher. Following the pitch alone
+## meant looking up for every jump; a fixed 45 left some jumps short. The
+## floor is GrabConfig.jump_min_pitch_deg.
 ##
 ## DO NOT project the into-wall component out of the heading.
 ## jump_angle_deg allows this jump from 45 degrees off the wall, where the
@@ -786,23 +786,27 @@ func _turned_from_wall() -> float:
 ## while nothing told the two apart. A glitch that fires at 46 degrees off the
 ## WALL does.
 func _launch_direction() -> Vector3:
-	return GrabMove.inclined(_heading(), config.grab.jump_pitch_deg)
+	var look := Vector3.ZERO
+	if player.camera_rig != null and player.camera_rig.camera != null:
+		look = -player.camera_rig.camera.global_transform.basis.z
+	# No rig (tests with a stub player): the body's facing, then the wall's.
+	return GrabMove.launch_along(look, [-player.global_transform.basis.z, _face_normal],
+		config.grab.jump_min_pitch_deg)
 
-## The view's horizontal direction, or the body's when there is no rig (tests
-## with a stub player), or the wall's outward normal as the last resort.
-func _heading() -> Vector3:
-	for look: Vector3 in [
-			-player.camera_rig.camera.global_transform.basis.z
-				if player.camera_rig != null and player.camera_rig.camera != null else Vector3.ZERO,
-			-player.global_transform.basis.z]:
-		look.y = 0.0
-		if look.length_squared() > 0.0001:
-			return look.normalized()
-	return _face_normal
-
-## `heading` (horizontal, unit) tilted up by `pitch_deg`.
-static func inclined(heading: Vector3, pitch_deg: float) -> Vector3:
-	var pitch := deg_to_rad(pitch_deg)
+## `look`'s heading, inclined at `look`'s own pitch or `min_pitch_deg`,
+## whichever is higher. A look with no heading (straight up or down, or none)
+## takes the first of `fallbacks` that has one.
+static func launch_along(look: Vector3, fallbacks: Array, min_pitch_deg: float) -> Vector3:
+	var pitch := 0.0
+	if look.length_squared() > 0.0001:
+		pitch = asin(clampf(look.normalized().y, -1.0, 1.0))
+	var heading := Vector3.ZERO
+	for candidate: Vector3 in [look] + fallbacks:
+		heading = Vector3(candidate.x, 0.0, candidate.z)
+		if heading.length_squared() > 0.0001:
+			break
+	heading = heading.normalized()
+	pitch = maxf(pitch, deg_to_rad(min_pitch_deg))
 	return heading * cos(pitch) + Vector3.UP * sin(pitch)
 
 ## Leaves the ledge.

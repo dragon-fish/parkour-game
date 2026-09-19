@@ -792,11 +792,11 @@ standing body, which is what makes a grab a grab rather than a step.
 ### Why the shaft is 3.2 m across
 
 The ducts stand 1.0 m proud of each wall, leaving a 1.2 m gap. A hang jump
-leaves at `jump_speed` 6.3 m/s at a fixed 45° (`jump_pitch_deg`, the camera's
-pitch is ignored), so 4.45 m/s across and 4.45 m/s up: it rises 0.62 m and is
-back at its starting height about **2.5 m** out. The 1.2 m gap is well inside
-that; the shaft width was chosen when the jump left nearly flat and only
-reached 1.26 m.
+leaves at `jump_speed` 6.3 m/s, never flatter than 45° (`jump_min_pitch_deg`;
+looking higher launches higher). At the 45° floor that is 4.45 m/s across and
+4.45 m/s up: it rises 0.62 m and is back at its starting height about
+**2.5 m** out. The 1.2 m gap is well inside that; the shaft width was chosen
+when a level view launched nearly flat and only reached 1.26 m.
 
 ### Why the vent is 1.0 m tall
 
