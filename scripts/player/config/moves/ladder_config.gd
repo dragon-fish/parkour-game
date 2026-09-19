@@ -53,6 +53,9 @@ func _init() -> void:
 ## own jump_speed as a starting point -- letting go of a ladder and letting
 ## go of a ledge are the same kind of shove.
 @export var jump_speed: float = 6.3
+## Degrees above the horizontal a jump off the ladder launches at, whatever
+## the camera's pitch. Same reading as GrabConfig.jump_pitch_deg.
+@export var jump_pitch_deg: float = 45.0
 ## How close to the top (Task 7) counts as having reached it, metres.
 @export var top_exit_reach: float = 1.2
 ## How far below the line's top the deck behind it may be, metres.

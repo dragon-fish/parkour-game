@@ -168,33 +168,23 @@ func test_it_is_a_jump_rather_than_a_shove() -> void:
 	assert_gt(player.velocity.length(), _config().jump_speed - 0.5,
 		"launched at %.2f m/s, which is not a jump" % player.velocity.length())
 
-func test_looking_up_sends_you_up() -> void:
-	# Looking up must add upward force too. The pitch has to be in the launch
-	# direction, which is why it is the full 3D look vector rather than its
-	# horizontal shadow.
-	#
-	# Which way the pitch sign points is read off the CAMERA rather than assumed,
-	# so this pins the behaviour and not a convention.
-	var level: Player = await _hanging_player(180.0)
-	_grab(level).physics_update(1.0 / 60.0, _jump())
-	var flat_rise: float = level.velocity.y
-	after_each()
-
-	var player: Player = await _hanging_player(180.0)
-	var rig = player.camera_rig
-	assert_not_null(rig, "no camera rig to pitch")
-	rig.set_pitch(deg_to_rad(35.0))
-	await step(2)
-	var looked_up: bool = (-rig.camera.global_transform.basis.z).y > 0.0
-	_grab(player).physics_update(1.0 / 60.0, _jump())
-	if looked_up:
-		assert_gt(player.velocity.y, flat_rise + 1.0,
-			"pitching the view up added only %.2f m/s of rise"
-			% (player.velocity.y - flat_rise))
-	else:
-		assert_lt(player.velocity.y, flat_rise - 1.0,
-			"pitching the view down did not take rise away (%.2f vs %.2f)"
-			% [player.velocity.y, flat_rise])
+func test_the_pitch_does_not_change_the_launch() -> void:
+	# A turned head jumps out at the fixed incline whether the view is level,
+	# up or down -- having to look up for every jump was the complaint.
+	var launches: Array[Vector3] = []
+	for pitch_deg in [0.0, 35.0, -35.0]:
+		var player: Player = await _hanging_player(180.0)
+		player.camera_rig.set_pitch(deg_to_rad(pitch_deg))
+		await step(2)
+		_grab(player).physics_update(1.0 / 60.0, _jump())
+		launches.append(player.velocity)
+		after_each()
+	var level: Vector3 = launches[0]
+	var incline := rad_to_deg(atan2(level.y, Vector2(level.x, level.z).length()))
+	assert_almost_eq(incline, _config().jump_pitch_deg, 1.0, "a level view did not launch at the set incline")
+	for launch: Vector3 in launches:
+		assert_almost_eq(launch.distance_to(level), 0.0, 0.01,
+			"the camera's pitch changed the launch to (%.2f, %.2f, %.2f)" % [launch.x, launch.y, launch.z])
 
 # --- and it lets go properly ---------------------------------------------------
 

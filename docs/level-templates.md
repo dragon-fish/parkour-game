@@ -792,15 +792,11 @@ standing body, which is what makes a grab a grab rather than a step.
 ### Why the shaft is 3.2 m across
 
 The ducts stand 1.0 m proud of each wall, leaving a 1.2 m gap. A hang jump
-leaves at `jump_speed` 6.3 m/s with only `jump_speed_up` 1.6 m/s of lift, so it
-travels about **1.26 m** before it is back to the height it started at. A wider
-shaft cannot be crossed from a hang at all.
-
-⚠️ That 1.26 m is the FLAT case. `GrabMove._launch_direction()` uses the
-camera's full 3D forward, so looking up trades reach for height — 45° gives
-1.14 m of rise but only 4.45 m/s across, and straight up gives 1.95 m of rise
-and almost no travel. ✅ The owner: "Grab时回头往斜上方看，可以跳的比较高，但
-肯定没平视时远".
+leaves at `jump_speed` 6.3 m/s at a fixed 45° (`jump_pitch_deg`, the camera's
+pitch is ignored), so 4.45 m/s across and 4.45 m/s up: it rises 0.62 m and is
+back at its starting height about **2.5 m** out. The 1.2 m gap is well inside
+that; the shaft width was chosen when the jump left nearly flat and only
+reached 1.26 m.
 
 ### Why the vent is 1.0 m tall
 
