@@ -31,6 +31,12 @@ PLAIN_COORDINATE = (0, 1.0, 1.0)
 # Past this mean share of its colour coming from a cube map, a surface is lit by
 # the cube (ambient), not reflecting it: see MaterialBaker._mirror().
 MIRROR_AMBIENT_SHARE = 0.9
+# Brightest emissive value a lit surface must reach to get an emission map.
+EMISSION_MIN = 0.05
+# What a Fresnel term bakes to: see Evaluator.node().
+FRESNEL_FACING = 0.2
+# Size of a coordinate gradient baked on its own, with no texture to set one.
+COORDINATE_GRID = (64, 64)
 
 
 class MaterialBaker:
@@ -127,18 +133,30 @@ class MaterialBaker:
         # second evaluates again with every sample on another coordinate reduced
         # to its average colour. Baking a whole-road dirt map (UV set 0, tiling
         # 1) into asphalt space (UV set 1) repeated the map in every tile.
+        # An unlit surface shows its EmissiveColor and nothing else. Its
+        # DiffuseColor is usually a black constant: baked from that, the glass
+        # of every office, mall and walkway came out solid black.
+        root_props = root_reader.props(root)[0] or {}
+        unlit = root_props.get('LightingModel') == 'MLM_Unlit'
+        # A masked surface clips on OpacityMask, every other blend reads
+        # Opacity. An unconnected input still comes back as a link (expr 0),
+        # so `OpacityMask or Opacity` took the office glass's empty mask and
+        # baked it fully opaque.
+        opacity_input = 'OpacityMask' if root_props.get('BlendMode') == 'BLEND_Masked' else 'Opacity'
         coord = None
         for _ in range(2):
             ev = Evaluator(self, root_reader, params, coord)
             ins = ev.inputs(root)
-            diffuse = ins.get('DiffuseColor') or ins.get('EmissiveColor')
+            if unlit:
+                diffuse = ins.get('EmissiveColor') or ins.get('DiffuseColor')
+            else:
+                diffuse = ins.get('DiffuseColor') or ins.get('EmissiveColor')
             if not diffuse or diffuse['expr'] <= 0:
                 self.stats['no_diffuse_input'] += 1
                 return None
             try:
                 color = ev.value(diffuse, np.full(3, 0.5))
-                opacity = ins.get('OpacityMask') or ins.get('Opacity')
-                alpha = ev.value(opacity, np.ones(1)) if opacity else np.ones(1)
+                alpha = ev.value(ins.get(opacity_input), np.ones(1))
             except (IndexError, ValueError) as error:
                 self.stats['evaluation_error ' + type(error).__name__] += 1
                 return None
@@ -168,7 +186,12 @@ class MaterialBaker:
         # facade's EmissiveColor, typically); the bake above reads that sample
         # as a flat 0.5, so which inputs reach one is recorded here instead.
         reflection = sorted(n for n, link in ins.items() if link and link['expr'] > 0 and ev.reaches_cube(link['expr']))
-        if reflection:
+        if not unlit:
+            glow = self._emission(root_reader, root, params, ev.coordinate_filter, shape)
+            if glow is not None:
+                out['emissive_png'] = png_base64(glow)
+                self.stats['emissive'] += 1
+        if reflection and not unlit:
             out['reflection'] = reflection
             self.stats['reflective'] += 1
             mirror = self._mirror(root_reader, root, params, ev.coordinate_filter, shape)
@@ -196,6 +219,24 @@ class MaterialBaker:
             # Blinn-Phong exponent to GGX roughness, the usual sqrt(2 / (n + 2)).
             out['roughness'] = round(math.sqrt(2.0 / (max(out['specular_power'], 0.0) + 2.0)), 4)
         return out
+
+    def _emission(self, mr, root, params, coordinate, shape):
+        """HxWx3 of the light a lit surface gives off itself, the sky's share
+        left out, or None when it gives off none worth drawing: the ads and
+        the lamps whose DiffuseColor is black and whose picture is emissive."""
+        ev = Evaluator(self, mr, params, coordinate)
+        ev.cube = 0.0
+        link = ev.inputs(root).get('EmissiveColor')
+        if not link or link['expr'] <= 0:
+            return None
+        try:
+            v = ev.value(link, np.zeros(3))
+        except (IndexError, ValueError):
+            return None
+        v = v[..., :3] if v.shape[-1] >= 3 else np.repeat(v[..., :1], 3, -1)
+        v = np.broadcast_to(v, shape + (3,)) if v.ndim == 1 else resize(v, shape)
+        v = np.clip(v, 0.0, 1.0)
+        return v if float(v.max()) >= EMISSION_MIN else None
 
     def _mirror(self, mr, root, params, coordinate, shape):
         """(albedo HxWx3, mirror share HxW, sheen share) where a cube map puts
@@ -344,7 +385,11 @@ class Evaluator:
         props = self.props(idx)
         ins = self.inputs(idx)
         one, zero = np.ones(1), np.zeros(1)
-        name = props.get('ParameterName')
+        # A parameter whose name was never set is named 'None', and the
+        # instance overriding it stores that name literally: read as a missing
+        # name, every light card whose colour is one such parameter kept the
+        # root's black default instead of the instance's colour.
+        name = props.get('ParameterName', 'None')
         if self.cube is not None and self._is_cube_sample(idx, cls, props):
             return np.full(4, self.cube)
         if cls in ('MaterialExpressionTextureSample', 'MaterialExpressionTextureSampleParameter2D'):
@@ -361,13 +406,29 @@ class Evaluator:
             if self.shape is None:
                 self.shape = pixels.shape[:2]
             return resize(pixels, self.shape)
+        if cls == 'MaterialExpressionTextureCoordinate':
+            # A coordinate read as a VALUE, not as a sample's Coordinates: the
+            # gradient a train tunnel darkens along. Read flat it became one
+            # constant, and that constant through a pow() was black. The bake
+            # holds one tile of `coordinate_filter`, so the gradient spans that
+            # tile in proportion to their tilings, and repeats with it.
+            shape = self.shape or COORDINATE_GRID
+            tiling = (props.get('UTiling', 1.0), props.get('VTiling', 1.0))
+            base = self.coordinate_filter[1:] if self.coordinate_filter else (1.0, 1.0)
+            u = np.linspace(0.0, 1.0, shape[1], endpoint=False) * (tiling[0] / (base[0] or 1.0))
+            v = np.linspace(0.0, 1.0, shape[0], endpoint=False) * (tiling[1] / (base[1] or 1.0))
+            self.baker.stats['coordinate_as_value'] += 1
+            return np.stack(np.broadcast_arrays(u[None, :], v[:, None]), -1)
         if cls == 'MaterialExpressionConstant':
             return np.array([props.get('R', 0.0)])
         if cls == 'MaterialExpressionConstant2Vector':
             return np.array([props.get('R', 0.0), props.get('G', 0.0)])
         if cls in ('MaterialExpressionConstant3Vector', 'MaterialExpressionConstant4Vector'):
-            c = _linear_color(mr, idx, 'Constant')
-            c = c if c is not None else np.zeros(4)
+            # [ME:CONFIRMED] this engine stores the colour as R, G, B (, A)
+            # floats, a channel left at 0 not written at all; not as a
+            # LinearColor 'Constant'. Read as that, every constant colour came
+            # out black: the Mall's blue-white bridge was solid black.
+            c = np.array([props.get(k, 0.0) for k in 'RGBA'])
             return c[:3] if cls.endswith('3Vector') else c
         if cls == 'MaterialExpressionVectorParameter':
             v = self.params.get(name)
@@ -424,6 +485,33 @@ class Evaluator:
             base = np.clip(self.value(ins.get('Base'), one), 0, None)
             base, exponent = match(base, self.value(ins.get('Exponent'), one)[..., :1])
             return base ** exponent
+        if cls == 'MaterialExpressionStaticComponentMaskParameter':
+            # Its channels are DefaultR..DefaultA, not R..A, and a channel left
+            # off is not written at all. Static parameter overrides are not
+            # collected, so the root's defaults are what a bake gets.
+            v = self.value(ins.get('Input'), np.zeros(4))
+            keep = [k for k, c in enumerate('RGBA') if props.get('Default' + c) and k < v.shape[-1]]
+            return v[..., keep] if keep else v
+        if cls == 'MaterialExpressionIf':
+            a, b = match(self.value(ins.get('A'), zero), self.value(ins.get('B'), zero))
+            a, b = a[..., :1], b[..., :1]
+            greater = self.value(ins.get('AGreaterThanB'), zero)
+            less = self.value(ins.get('ALessThanB'), zero)
+            equal = self.value(ins.get('AEqualsB'), greater)
+            greater, less = match(greater, less)
+            greater, equal = match(greater, equal)
+            less, equal = match(less, equal)
+            cond_g, greater = match(a > b, greater)
+            cond_l, less = match(a < b, less)
+            return np.where(cond_g, greater, np.where(cond_l, less, equal))
+        if cls == 'MaterialExpressionCosine':
+            period = props.get('Period', 1.0) or 1.0
+            return np.cos(self.value(ins.get('Input'), zero) * (2.0 * math.pi / period))
+        if cls == 'MaterialExpressionFresnel':
+            # View-dependent: 0 head-on, 1 at a grazing angle. A bake has no
+            # camera, and most of a surface is seen closer to head-on than to
+            # its silhouette. A dial.
+            return np.array([FRESNEL_FACING])
         if cls in ('MaterialExpressionStaticSwitchParameter', 'MaterialExpressionStaticSwitch'):
             on = props.get('DefaultValue', False)
             return self.value(ins.get('A') if on else ins.get('B'), zero)
