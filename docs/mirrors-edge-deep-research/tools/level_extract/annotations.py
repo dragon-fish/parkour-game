@@ -153,6 +153,13 @@ def collect(mr, defaults, report):
         props, _ = mr.props_inherited(i)
         if not props or 'Location' not in props:
             continue
+        if cls == 'BlockingVolume' and props.get('bCollideActors') is False:
+            # Off until Kismet turns it on (SeqAct_ChangeCollision), which is
+            # not replayed: the boss lift's doorway and a Std slice floor
+            # were solid walls and a floating shelf here.
+            counts = report.setdefault('counts', {})
+            counts['blocking_off'] = counts.get('blocking_off', 0) + 1
+            continue
         position = point(props['Location'])
         rotation = props.get('Rotation') or (0, 0, 0)
         if cls == 'TdTutorialCheckpoint':

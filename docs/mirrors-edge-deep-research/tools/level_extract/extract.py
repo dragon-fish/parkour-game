@@ -26,6 +26,11 @@ import matinee
 # InterpActors are movers: placed like any mesh, moved by matinee.py's data.
 PLACED_CLASSES = ('StaticMeshActor', 'InterpActor')
 FX_MESH_MARKERS = ('_FX_', 'SkyDome', 'Sunflare', 'GodRay')
+# [ME:INFERRED] a lightmap-bake occluder: S_LightSquare_01 planes in the _Lgts
+# packages, standing in doorways to stop light leaking between rooms. Some
+# carry HiddenGame, most do not, and none shows in the original; built, they
+# were black walls, several of them solid.
+BAKE_ONLY_MATERIAL = 'M_BakeBlack'
 # Checkpoints are taken from the persistent level when they fall inside the
 # section's own placements (no slices, no _Bac skyline), grown by this.
 SECTION_MARGIN_M = 2.0
@@ -157,8 +162,11 @@ class MeshTable:
 
 
 def collision_class(actor, component, record):
+    # BlockNonZeroExtent off: only zero-extent traces (weapons, a kick's hit
+    # test) stop here, never a capsule. Stormdrain's kick targets are hidden
+    # InterpActors like this, standing in front of the doors they open.
     if actor.get('bCollideActors') is False or component.get('CollideActors') is False \
-            or component.get('BlockActors') is False:
+            or component.get('BlockActors') is False or component.get('BlockNonZeroExtent') is False:
         return 'none'
     if record['simple_shapes'] and record['use_simple_box_collision'] is not False:
         return 'simple'
@@ -221,6 +229,9 @@ def collect_placements(mr, meshes, config, report):
         if any(marker in name for marker in FX_MESH_MARKERS):
             report['counts']['excluded_fx'] += 1
             continue
+        if record['surfaces'] and all(BAKE_ONLY_MATERIAL in (s['material'] or '') for s in record['surfaces']):
+            report['counts']['bake_only'] = report['counts'].get('bake_only', 0) + 1
+            continue
         position = point(actor['Location'])
         basis = godot_basis(actor.get('Rotation') or (0, 0, 0), actor_scale(actor))
         lo, hi = world_aabb(record, position, basis)
@@ -228,7 +239,8 @@ def collect_placements(mr, meshes, config, report):
         report['collision'][collision] += 1
         # bHidden actors are designer-placed invisible collision (group
         # Dummy_Collisions): they still block, they are just never drawn.
-        hidden = bool(actor.get('bHidden', False))
+        # A HiddenGame component is the same, set on the component instead.
+        hidden = bool(actor.get('bHidden', False) or component.get('HiddenGame', False))
         # What this actor is hard-attached to: it moves with that actor. A
         # Stormdrain gate rides a Trigger_Dynamic that its Matinee raises.
         base_idx = ref_export(actor.get('Base')) if actor.get('bHardAttach') else None
