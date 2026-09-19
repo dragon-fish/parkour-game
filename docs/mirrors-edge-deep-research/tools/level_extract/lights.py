@@ -53,11 +53,15 @@ def collect_lights(mr):
             'radius_m': component.get('Radius', 1024.0) / UU,
             'outer_cone_deg': component.get('OuterConeAngle', 44.0),
             'inner_cone_deg': component.get('InnerConeAngle', 0.0),
-            # Lights only what moves: a dynamic light kept off the world's
-            # BSP and static meshes, there to light the character. The
-            # tutorial hangs one of brightness 8 over a crash mat.
-            'character_only': bool(tagged.get('bForceDynamicLight')) and channels.get('BSP') is False
-                              and channels.get('Static') is False and channels.get('Dynamic') is not False,
+            # Lights only what moves: kept off the world's BSP and static
+            # meshes by its LightingChannels, there to light the character or
+            # a car. The tutorial hangs one of brightness 8 over a crash mat
+            # and one of 5 outside the tutorial's door; the Prologue's
+            # "CarLights" are 10. The channels decide, not bForceDynamicLight:
+            # the door lamp has no such flag and, built as a world light at
+            # the lamp scale, whited out the wall round the door.
+            'character_only': channels.get('BSP') is False and channels.get('Static') is False
+                              and channels.get('Dynamic') is not False,
         })
     return lights
 

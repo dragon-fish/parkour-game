@@ -16,6 +16,7 @@ import base64
 import collections
 import math
 import struct
+import zlib
 
 import numpy as np
 from lzallright import LZOCompressor
@@ -116,7 +117,7 @@ class MaterialBaker:
     # ---------------------------------------------------------------- bake
 
     def bake(self, mr, idx):
-        """{'width', 'height', 'rgba' (base64 RGBA8), 'uv_set', 'tiling'} or None."""
+        """{'width', 'height', 'png' (base64 RGBA PNG), 'uv_set', 'tiling'} or None."""
         params = {}
         root_reader, root = self._collect_params(mr, idx, params)
         if not root_reader:
@@ -160,8 +161,7 @@ class MaterialBaker:
             self.stats['computed_coordinates'] += 1
             coord = PLAIN_COORDINATE
         self.stats['baked'] += 1
-        out = {'width': shape[1], 'height': shape[0],
-               'rgba': base64.b64encode((rgba * 255 + 0.5).astype(np.uint8).tobytes()).decode('ascii'),
+        out = {'width': shape[1], 'height': shape[0], 'png': png_base64(rgba),
                'uv_set': int(coord[0]), 'tiling': [float(coord[1]), float(coord[2])]}
         # How the surface shines, for the builder. The original reflects the sky
         # through a cube map sampled into one of the root inputs (a glass
@@ -175,7 +175,7 @@ class MaterialBaker:
             if mirror is not None:
                 albedo, share, emissive_sheen = mirror
                 rgba = np.concatenate([albedo, rgba[..., 3:]], -1)
-                out['rgba'] = base64.b64encode((rgba * 255 + 0.5).astype(np.uint8).tobytes()).decode('ascii')
+                out['png'] = png_base64(rgba)
                 # The share every pixel has is a sheen over the whole surface,
                 # what rises above it is a mirror in part of it. One would cost
                 # the other its sunlit shading if both were drawn metallic.
@@ -183,7 +183,7 @@ class MaterialBaker:
                 out['sheen'] = round(max(floor, emissive_sheen), 4)
                 metallic = share - floor
                 if metallic.max() >= 0.05:
-                    out['metallic'] = base64.b64encode((metallic * 255 + 0.5).astype(np.uint8).tobytes()).decode('ascii')
+                    out['metallic_png'] = png_base64(metallic[..., None])
                 self.stats['mirrored'] += 1
         for key, name in (('specular', 'SpecularColor'), ('specular_power', 'SpecularPower')):
             link = ins.get(name)
@@ -509,6 +509,28 @@ def broadcast_space(a, b):
     if a.ndim == 3:
         return a, np.broadcast_to(b, a.shape[:2] + b.shape[-1:])
     return np.broadcast_to(a, b.shape[:2] + a.shape[-1:]), b
+
+
+def png_base64(pixels):
+    """A float image (h, w, 1 | 3 | 4) in 0..1 as a base64 PNG string.
+
+    PNG, not raw bytes: a bake is mostly flat colour and compresses 5 to 20
+    times, which is what keeps materials.json readable by the Godot side once
+    the bakes are 256 or 512 px. Stdlib only: IHDR, one filter-0 IDAT, IEND.
+    """
+    h, w, channels = pixels.shape
+    colour_type = {1: 0, 3: 2, 4: 6}[channels]
+    rows = (pixels * 255 + 0.5).astype(np.uint8)
+    raw = b''.join(b'\x00' + rows[y].tobytes() for y in range(h))
+
+    def chunk(kind, body):
+        return struct.pack('>I', len(body)) + kind + body + struct.pack('>I', zlib.crc32(kind + body) & 0xFFFFFFFF)
+
+    png = (b'\x89PNG\r\n\x1a\n'
+           + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, colour_type, 0, 0, 0))
+           + chunk(b'IDAT', zlib.compress(raw, 9))
+           + chunk(b'IEND', b''))
+    return base64.b64encode(png).decode('ascii')
 
 
 def resize(img, shape):
