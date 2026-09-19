@@ -89,6 +89,15 @@ func _run() -> void:
 	_check_count(parts, "DeathVolumes", manifest, ["kill"])
 	_check_count(parts, "BarbedWire", manifest, ["barbedwire"])
 	_check_count(parts, "PainVolumes", manifest, ["pain"])
+	_check_count(parts, "Glass", manifest, ["glass"])
+	_check_count(parts, "LevelEnds", manifest, ["level_end"])
+	# A script that fails to compile under the builder (no autoloads there) is
+	# saved as NO script: the node is inert and every count above still holds.
+	for part in parts:
+		for group in ["Glass", "LevelEnds"]:
+			if part.has_node(group):
+				for node in part.get_node(group).get_children():
+					check(node.get_script() != null, "%s/%s/%s has no script" % [part.name, group, node.name])
 	for part in parts:
 		if part.has_node("InterestLines"):
 			for line in part.get_node("InterestLines").get_children():

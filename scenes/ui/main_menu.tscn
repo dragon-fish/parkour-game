@@ -25,6 +25,41 @@ title = "第二章 - 阿杰"
 scene = "res://scenes/local_debug_levels/mirrors_edge/sp02_stormdrain.tscn"
 metadata/_custom_type_script = "uid://b42v1cqju5oho"
 
+[sub_resource type="Resource" id="level_sp03"]
+script = ExtResource("3_level_entry")
+title = "第三章 - 炽热"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp03_cranes.tscn"
+
+[sub_resource type="Resource" id="level_sp04"]
+script = ExtResource("3_level_entry")
+title = "第四章 - 火绳"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp04_subway.tscn"
+
+[sub_resource type="Resource" id="level_sp05"]
+script = ExtResource("3_level_entry")
+title = "第五章 - 新伊甸"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp05_mall.tscn"
+
+[sub_resource type="Resource" id="level_sp06"]
+script = ExtResource("3_level_entry")
+title = "第六章 - 克虏格"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp06_factory.tscn"
+
+[sub_resource type="Resource" id="level_sp07"]
+script = ExtResource("3_level_entry")
+title = "第七章 - 船"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp07_boat.tscn"
+
+[sub_resource type="Resource" id="level_sp08"]
+script = ExtResource("3_level_entry")
+title = "第八章 - 凯特"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp08_convoy.tscn"
+
+[sub_resource type="Resource" id="level_sp09"]
+script = ExtResource("3_level_entry")
+title = "第九章 - 沙德"
+scene = "res://scenes/local_debug_levels/mirrors_edge/sp09_scraper.tscn"
+
 [sub_resource type="Resource" id="level_2"]
 script = ExtResource("3_level_entry")
 title = "[DEBUG] main.tscn"
@@ -44,7 +79,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_menu")
 start_scene = "uid://p2s6xymtvb6j"
-levels = Array[ExtResource("3_level_entry")]([SubResource("level_0"), SubResource("level_1"), SubResource("level_flight"), SubResource("Resource_w8hyn"), SubResource("level_2"), SubResource("level_3")])
+levels = Array[ExtResource("3_level_entry")]([SubResource("level_0"), SubResource("level_1"), SubResource("level_flight"), SubResource("Resource_w8hyn"), SubResource("level_sp03"), SubResource("level_sp04"), SubResource("level_sp05"), SubResource("level_sp06"), SubResource("level_sp07"), SubResource("level_sp08"), SubResource("level_sp09"), SubResource("level_2"), SubResource("level_3")])
 FLOOR_SCROLL_SPEED = 0.8
 FLOOR_RUN_SPEED = 6.0
 floor_spacing = 4.0

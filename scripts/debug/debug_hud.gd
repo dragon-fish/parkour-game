@@ -85,6 +85,11 @@ func _ready() -> void:
 	path.name = "ScriptedPathDebug"
 	path.player = player
 	get_parent().add_child.call_deferred(path)
+	# And the level's triggers, air walls and interest lines (F3): none of them
+	# has a picture of its own.
+	var triggers := TriggerDebug.new()
+	triggers.name = "TriggerDebug"
+	get_parent().add_child.call_deferred(triggers)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -108,7 +113,7 @@ func set_tier(tier: int) -> void:
 ## above cannot silently change which rows survive. The two key-legend lines
 ## are kept in both tiers: a readout that hides how to use the keys is not a
 ## smaller readout, it is a worse one.
-const COMPACT_ROWS := ["move ", "at ", "speed ", "grounded ", "health ",
+const COMPACT_ROWS := ["scene ", "move ", "at ", "speed ", "grounded ", "health ",
 	"energy ", "fps ", "Tab HUD", "Esc release"]
 
 func _worth_reading_while_playing(row: String) -> bool:
@@ -143,6 +148,9 @@ func _process(delta: float) -> void:
 	_watch(player.move_manager)
 	var pos := player.global_position
 	var rows: Array = [
+		# Which scene this is: a debug level and a chapter section look alike
+		# from inside, and the answer is the file.
+		"scene      %s" % _scene_name(),
 		# "move", not "state": this has shown the active MOVE's name since the
 		# Move/MoveManager rework -- MoveManager.current_name IS a move name
 		# (Walking / Falling / WallRun / Grab / SpeedVault / Slide), and there
@@ -226,13 +234,19 @@ func _process(delta: float) -> void:
 		# F1 panel's Debug page grew checkboxes for every overlay -- F11 in
 		# particular collided with player.gd's own use of it for mouse
 		# recapture, which is the fix, not a coincidence.
-		"Tab HUD  F10 capsule  F12 path  R reset  K die  T noclip  F2/PgUp/PgDn checkpoint%s" 			% ("  [ON]" if player.noclip else ""),
+		"Tab HUD  F3 triggers  F10 capsule  F12 path  R reset  K die  T noclip  F2/PgUp/PgDn checkpoint%s" 			% ("  [ON]" if player.noclip else ""),
 		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
 	]
 	if _tier == Tier.COMPACT:
 		rows = rows.filter(_worth_reading_while_playing)
 	_label.text = "
 ".join(rows)
+
+func _scene_name() -> String:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return "-"
+	return scene.scene_file_path.get_file() if scene.scene_file_path != "" else String(scene.name)
 
 ## What the forward wall probe sees, in the same words the markers use colour
 ## for: whether there is a wall, whether it is tall enough to kick up, how

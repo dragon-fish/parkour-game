@@ -269,7 +269,18 @@ def import_path(pkg, index):
             entry = pkg.imports[-outer - 1]
             continue
         if outer > 0:
-            raise ExtractError('import %s has an export as outer' % entry['name'])
+            # A forced export: the package or group the import lives in was
+            # cooked INTO this package, as a Package export (Scraper's
+            # M_FNMinimi). Its export chain spells the rest of the path.
+            while outer > 0:
+                export = pkg.exports[outer - 1]
+                if pkg.class_of(export) != 'Package':
+                    raise ExtractError('import %s has a %s export as outer' % (entry['name'], pkg.class_of(export)))
+                names.append(export['name'])
+                outer = export['outer_idx']
+            if outer < 0:
+                entry = pkg.imports[-outer - 1]
+                continue
         root = names.pop()
         return root, list(reversed(names))
 

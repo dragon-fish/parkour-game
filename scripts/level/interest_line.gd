@@ -54,9 +54,16 @@ const KIND_REACH := {
 ## Half the span the finite-difference tangent is taken over.
 const TANGENT_STEP := 0.05
 
-## The rope's own thickness, metres. Cosmetic only -- reach_radius, not this,
-## is what a body actually catches against.
-const ROPE_RADIUS := 0.02
+## One colour per kind: the editor gizmo's and the trigger overlay's (F3),
+## which draw nothing else of a line at runtime -- the level's own cables and
+## poles are what the player sees.
+const KIND_COLORS := {
+	Kind.ZIPLINE: Color(0.3, 0.8, 1.0),
+	Kind.SWING: Color(1.0, 0.6, 0.2),
+	Kind.BALANCE: Color(0.95, 0.85, 0.2),
+	Kind.LADDER: Color(0.95, 0.35, 0.35),
+	Kind.LEDGE_WALK: Color(0.7, 0.45, 1.0),
+}
 
 var _area: Area3D = null
 
@@ -73,7 +80,6 @@ func _ready() -> void:
 		return
 	add_to_group("interest_lines")
 	_build_area()
-	_build_rope()
 
 func length() -> float:
 	return curve.get_baked_length() if curve != null else 0.0
@@ -131,33 +137,6 @@ func _build_area() -> void:
 	_area.body_entered.connect(_on_body_entered)
 	_area.body_exited.connect(_on_body_exited)
 	add_child(_area)
-
-## A whitebox interactable must be visible -- the marker IS the rope. Built
-## the same way the reach volume above is, one CylinderMesh per baked segment,
-## sharing a single material. Runtime children only, exactly like the Area3D:
-## nothing here is packed, so the committed scenes this line might sit in are
-## untouched by it.
-func _build_rope() -> void:
-	if curve == null or curve.point_count < 2:
-		return
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.15, 0.15, 0.17)
-	var points: PackedVector3Array = curve.get_baked_points()
-	for i in range(points.size() - 1):
-		var a: Vector3 = points[i]
-		var b: Vector3 = points[i + 1]
-		var seg_length: float = (b - a).length()
-		if seg_length < 0.001:
-			continue
-		var cylinder := CylinderMesh.new()
-		cylinder.top_radius = ROPE_RADIUS
-		cylinder.bottom_radius = ROPE_RADIUS
-		cylinder.height = seg_length
-		cylinder.material = material
-		var mesh_instance := MeshInstance3D.new()
-		mesh_instance.mesh = cylinder
-		mesh_instance.transform = _segment_transform(a, b, seg_length)
-		add_child(mesh_instance)
 
 ## An orthonormal basis whose local Y runs along a..b, centred between them --
 ## what both a CapsuleShape3D and a CylinderMesh need, since both take their

@@ -43,18 +43,13 @@ func test_tangent_points_toward_increasing_offset() -> void:
 	assert_gt(t.x, 0.0, "the cable runs -x -> +x, so the tangent must point +x")
 	assert_lt(t.y, 0.0, "near the start the cable sags DOWN")
 
-func test_the_cable_draws_a_visible_rope() -> void:
-	# A whitebox interactable must be visible on its own, not just implied by
-	# the F12 debug hang-path line: without a real mesh there is nothing to
-	# look at. The marker IS the rope.
+func test_the_line_draws_nothing_of_its_own() -> void:
+	# The level's own cable or pole is what the player sees; the line is drawn
+	# only by the trigger overlay (F3, TriggerDebug).
 	_line = _sagging_line()
 	await step(1)
-	var found := false
 	for child in _line.get_children():
-		if child is MeshInstance3D:
-			found = true
-			break
-	assert_true(found, "the interest line built no visible rope mesh")
+		assert_false(child is MeshInstance3D, "the interest line drew a mesh of its own")
 
 func test_sample_respects_the_node_transform() -> void:
 	_line = _sagging_line()
