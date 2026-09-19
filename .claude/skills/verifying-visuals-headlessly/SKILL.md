@@ -35,6 +35,14 @@ Headless is right for logic and structure, and wrong for anything that has
 to be drawn — the renderer is a dummy, so spring simulation, draw order and
 materials all report as if fine.
 
+**`--quit-after` is not optional on a windowed run.** A `--script` SceneTree
+does NOT load the project's autoloads, so a script that touches anything
+depending on one (every UI class reaches `PauseUi`) dies at compile time and
+never reaches its own `quit()`. Without the backstop the window stays open on
+the user's desktop until someone kills it. For UI built in code, read the
+layout from a throwaway GUT test instead — the test runner has the autoloads —
+and print the controls' global rects.
+
 ## The capture path cannot see everything
 
 Antialiasing is the known blind spot. MSAA never reaches a `--script`
