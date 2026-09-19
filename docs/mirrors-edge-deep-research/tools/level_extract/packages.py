@@ -17,6 +17,9 @@ from mapdump import MapReader
 #   sections        list  []         [{name: "StdP"}]; each infers its packages
 #   packages        list  []         extra package file names, loaded as-is
 #   exclude_meshes  list  []         mesh names never placed
+#   exclude_actors  list  []         placements never made, as package.name: a twin the
+#                                    original parks where our own mover has to arrive (the
+#                                    Mall's second lift car stands in its shaft's top stop)
 #   collision_overrides dict {}      {mesh name: "none" | "simple" | "per_poly"}: a dial over
 #                                    the original's collision class -- potted
 #                                    bushes that stop a climb, a coarse hull that stands in
@@ -44,7 +47,7 @@ from mapdump import MapReader
 #                                    Environment node (tools/me_level/me_environment.gd
 #                                    exports), by name; judged against the reference shots
 CONFIG_DEFAULTS = {
-    'sections': [], 'packages': [], 'exclude_meshes': [], 'collision_overrides': {}, 'anchor_filter': None,
+    'sections': [], 'packages': [], 'exclude_meshes': [], 'exclude_actors': [], 'collision_overrides': {}, 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
     'persistent': None, 'split_sections': False, 'lifts': [], 'floating_checkpoints': [],
     'look': {},

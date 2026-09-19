@@ -306,7 +306,7 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
             report['counts']['empty_actor'] += 1
             continue
         name = record['name']
-        if name in config['exclude_meshes']:
+        if name in config['exclude_meshes'] or '%s.%s' % (mr.label, e['name']) in config['exclude_actors']:
             report['counts']['excluded_by_config'] += 1
             continue
         # A breakable pane is no effect, whatever its mesh is called: Factory's
