@@ -319,6 +319,11 @@ func settle_landing(delta: float) -> StringName:
 	player.fall_tracker.update(delta, -impact_speed, player.global_position.y)
 	# Read BEFORE set_grounded(), which resets the counter.
 	var fall_height: float = player.fall_tracker.fall_height
+	# A long chute slide lands hard however short the drop after it (see
+	# RampSlideConfig.hard_landing_descent); the counter itself is left to
+	# the uncontrolled-fall check, which never sees this.
+	if player.consume_forced_hard_landing():
+		fall_height = maxf(fall_height, config.pawn.hard_landing_height)
 	# `and` short-circuits left-to-right, and the order of the three conjuncts
 	# below is load-bearing. The block comes first: refusing the SKILL_ROLL
 	# transition later would still let _apply_landing_cost() below charge

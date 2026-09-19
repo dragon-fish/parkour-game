@@ -21,12 +21,15 @@ extends Move
 
 var _normal: Vector3 = Vector3.UP
 var _lost_contact: float = 0.0
+## Where the slide began, for the descent that decides how it lands.
+var _start_y: float = 0.0
 
 
 func enter(_previous: StringName) -> void:
 	var chute: Dictionary = player.touched_chute()
 	_normal = chute.get("normal", Vector3.UP)
 	_lost_contact = 0.0
+	_start_y = player.global_position.y
 	# Sitting down costs most of the arriving speed; what is left runs down
 	# the chute, not into it.
 	var kept: Vector3 = player.velocity * (1.0 - config.ramp_slide.initial_speed_loss)
@@ -45,6 +48,10 @@ func enter(_previous: StringName) -> void:
 
 func exit() -> void:
 	player.request_standing_capsule()
+	# The same stand-up as the slide's: for recovery_time the look clamp and
+	# the model's yaw freeze outlive the move, and the slide's own redo gate
+	# keeps a crouch press from buying another one at once.
+	player.begin_slide_recovery()
 
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
@@ -89,11 +96,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# their chance.
 		if player.is_on_floor():
 			player.set_grounded(true)
-			return WALKING
+			return _let_go()
 		_lost_contact += delta
 		player.set_grounded(false)
 		if _lost_contact >= cfg_slide.contact_grace:
-			return FALLING
+			return _let_go()
 		return KEEP
 	_lost_contact = 0.0
 	_normal = chute["normal"]
@@ -103,8 +110,20 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# fall begins, not its top.
 	player.set_grounded(true)
 	if _normal.y >= cfg_slide.min_slide_floor_z:
-		return WALKING
+		return _let_go()
 	return KEEP
+
+
+## The slide is over, other than by a jump. A long descent lands hard: the
+## body is handed to Falling with the hard landing armed, and the floor under
+## it, if it is already on one, is landed on next tick. A short one is simply
+## the runner's speed on whatever is there.
+func _let_go() -> StringName:
+	if _start_y - player.global_position.y >= config.ramp_slide.hard_landing_descent:
+		player.arm_forced_hard_landing()
+		player.set_grounded(false)
+		return FALLING
+	return WALKING if player.is_on_floor() else FALLING
 
 
 ## `v` with its component into the surface removed; a velocity leaving the

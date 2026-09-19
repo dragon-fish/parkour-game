@@ -1313,7 +1313,21 @@ func end_direct_body_animation() -> void:
 	_direct_anim_tree = null
 	_direct_animator = null
 
-## Opens the stand-up window. Called by SlideMove.exit().
+## Armed by RampSlideMove when it lets go after a long descent: the next
+## landing is at least a hard landing, whatever the fall counter says, while
+## the fall's own height still decides the uncontrolled tier. Consumed by the
+## landing that reads it; a jump off the chute never arms it.
+var _forced_hard_landing: bool = false
+
+func arm_forced_hard_landing() -> void:
+	_forced_hard_landing = true
+
+func consume_forced_hard_landing() -> bool:
+	var armed := _forced_hard_landing
+	_forced_hard_landing = false
+	return armed
+
+## Opens the stand-up window. Called by SlideMove.exit() and RampSlideMove.exit().
 func begin_slide_recovery() -> void:
 	_slide_recovery_timer = config.slide.recovery_time
 

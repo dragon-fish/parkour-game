@@ -25,6 +25,13 @@ extends MoveConfig
 ## normal at which the slide ends: a surface flatter than this (under 26
 ## degrees) is a floor to stand up on, whatever its material says.
 @export var min_slide_floor_z: float = 0.9
+## [ME:COMMUNITY] Descent down the chute past which leaving it ends in a HARD
+## LANDING whatever the fall after it measures: a roll takes the edge off, and
+## the fall after it is still counted on its own for the uncontrolled tier.
+## Observed on Stormdrain's waterfall, where a 30 m slide onto a small
+## platform staggers the body instead of letting it run off the cliff. A
+## jump off the chute clears the descent. Metres.
+@export var hard_landing_descent: float = 10.0
 ## PROJECT-DEFINED. How long the body may lose contact with the chute before
 ## the slide is a fall: seams between chute meshes part the capsule from the
 ## surface for a tick or two. At the chute's end the contact stays lost and
