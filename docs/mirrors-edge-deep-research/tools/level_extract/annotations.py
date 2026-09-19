@@ -202,5 +202,11 @@ def collect(mr, defaults, report):
                                    % (mr.label, e['name']))
             annotation['exclude_hand'] = props.get('bExludeHandMoves', defaults['exclude_hand'])
             annotation['exclude_foot'] = props.get('bExludeFootMoves', defaults['exclude_foot'])
+            # What the volume's surface IS: Escape's slanted-building chute is
+            # a BlockingVolume with PM_Glass_BulletproofSlide lying on a mesh
+            # that has no slide flag of its own. extract.py reads its flags.
+            override = (mr.props(component)[0] or {}).get('PhysMaterialOverride') if component else None
+            if override:
+                annotation['physical_material'] = pkg.resolve(override[1] if isinstance(override, tuple) else override)
         out['annotations'].append(annotation)
     return out

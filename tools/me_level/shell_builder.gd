@@ -61,7 +61,7 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	_own(root, _interest_lines(annotations, manifest["placements"]))
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
-	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers")))
+	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), {}))
 	_own(root, _checkpoints(manifest))
 	_place_spawn(root, manifest)
 	if config.get("interior", false):
@@ -96,7 +96,7 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	_own(root, _interest_lines(annotations, manifest["placements"]))
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
-	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers")))
+	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), _lift_actors(manifest)))
 	_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
 	return root
 
@@ -173,14 +173,54 @@ func _lifts(manifest: Dictionary, movers: NodePath) -> Node3D:
 		rules.set("apply", specs)
 		rules.set("refresh_interval", WIRE_REFRESH_S)
 		node.add_child(rules)
+		if lift.has("call"):
+			var button := _matinee_trigger(_trigger_named(manifest, lift["call"]), true)
+			if button == null:
+				push_error("[me_level] lift call button %s has no shape" % lift["call"])
+			else:
+				button.name = "CallZone"
+				node.add_child(button)
+				node.set("call_zone", NodePath("CallZone"))
 		group.add_child(node)
 	return group
 
 
+## A matinee trigger by "package.name", wherever a sequence starts from it.
+func _trigger_named(manifest: Dictionary, id: String) -> Dictionary:
+	for m: Dictionary in manifest.get("matinees", []):
+		for start: Dictionary in m["starts"]:
+			if start.has("trigger") and "%s.%s" % [m["package"], start["trigger"]["name"]] == id:
+				return start["trigger"]
+	push_error("[me_level] no matinee starts from %s" % id)
+	return {"name": id}
+
+
+## Every actor a configured Lift of this manifest drives: car, car doors and
+## landing doors. The Lift owns them; a matinee moving one too fights it.
+static func _lift_actors(manifest: Dictionary) -> Dictionary:
+	var out := {}
+	var present := {}
+	for p: Dictionary in manifest["placements"]:
+		if p.get("mover", false):
+			present["%s.%s" % [p["package"], p["name"]]] = p
+	for lift: Dictionary in manifest["config"].get("lifts", []):
+		if not present.has(lift["car"]):
+			continue
+		out[lift["car"]] = true
+		for doors: Array in lift["stop_doors"]:
+			for actor: String in doors:
+				out[actor] = true
+		for id: String in present:
+			if present[id].get("base") == lift["car"]:
+				out[id] = true
+	return out
+
+
 ## The movement sequences whose movers stand in this manifest, with their
 ## touch and use triggers and their "Completed" chains. `movers` is the Movers
-## group as seen from a Matinee node.
-func _matinees(manifest: Dictionary, movers: NodePath) -> Node3D:
+## group as seen from a Matinee node. Groups moving an actor in `lifted` are
+## left out: the Lift that owns it would be fought.
+func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary) -> Node3D:
 	var group := _group("Matinees")
 	var present := {}
 	var riders := {}
@@ -197,6 +237,8 @@ func _matinees(manifest: Dictionary, movers: NodePath) -> Node3D:
 	for m: Dictionary in manifest.get("matinees", []):
 		var tracks: Array[Dictionary] = []
 		for g: Dictionary in m["groups"]:
+			if g["actors"].any(func(actor: String) -> bool: return lifted.has(actor)):
+				continue
 			var targets: Array[NodePath] = []
 			# Per target: null to move the target itself, or the transform of
 			# the actor it is hard-attached to, which is what the keys move.
@@ -413,6 +455,14 @@ func _air_walls(annotations: Array) -> Node3D:
 		wall.set_meta("exclude_foot", a["exclude_foot"])
 		if a["exclude_hand"] and a["exclude_foot"]:
 			wall.add_to_group("no_interaction", true)
+		# [ME:CONFIRMED] the volume's PhysMaterialOverride decides what standing
+		# on it is. Escape's slanted-building chute is one of these, lying 0-10 cm
+		# over a mesh with no slide flag: without the group the capsule stood on
+		# the wall and never slid.
+		if a.get("uncontrolled_slide", false):
+			wall.add_to_group(Probes.UNCONTROLLED_SLIDE_GROUP, true)
+		if a.get("soft_landing", false):
+			wall.add_to_group(Probes.SOFT_LANDING_GROUP, true)
 		if _hull_shapes(wall, a, Transform3D.IDENTITY) == 0:
 			push_error("[me_level] air wall %s has no hull" % a["name"])
 			wall.free()

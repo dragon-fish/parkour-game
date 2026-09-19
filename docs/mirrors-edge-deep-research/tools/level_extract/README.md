@@ -146,14 +146,31 @@ in the shared `.upk` of the same name under `CookedPC` (`packages.texture_source
 indexed once). Mips are LZO-chunked (tag `0x9E2A83C1`); `texture_max_px` caps
 the mip taken. Bakes are stored as PNG in `materials.json`.
 
-**Surface behaviour is a PhysicalMaterial flag, not a volume.** Soft landing
+**Surface behaviour is a PhysicalMaterial flag.** Soft landing
 (`bEnableSoftLanding`) and the RumpSlide chute (`bEnableUncontrolledSlide`) are
 booleans of the `TdPhysicalMaterialProperty` behind a `PhysicalMaterial` in
 `TDPhysicalMaterials.upk`. The mesh's BodySetup names one; so does each surface
 material's `PhysMaterial`, and the two disagree: Stormdrain's chute is one
 surface of a mesh whose other surface is a wall. Surfaces carry
 `uncontrolled_slide`, and the Godot library splits their collision into a
-second shape the builder puts on its own body.
+second shape the builder puts on its own body. A BlockingVolume's
+BrushComponent can carry one too, as `PhysMaterialOverride`: Escape's
+slanted-building chute is a volume with `PM_Glass_BulletproofSlide` lying a few
+centimetres over a mesh with no slide flag, and the capsule stands on the
+volume. Air walls carry the flags like surfaces do.
+
+**A package in the chapter directory is not necessarily in the game.** Only
+what the persistent level lists as `LevelStreaming*` ever loads. Escape ships
+its two elevator slices twice, `_Slc` and `_Spt`, and streams only `_Spt`;
+extracted together, a second car stood in the shaft. Section inference drops
+unstreamed packages and lists them in the report as `unstreamed`.
+
+**Everything loads at once here; the original streamed.** A section's coarse
+hull can stand where the neighbouring section's corridor is, because the
+original never had both loaded (Escape's St1 building box over R1's corridor
+to the elevator that streams St1 in). `collision_overrides` in the config
+sets a mesh's collision class by hand for such cases, and for collision that
+is faithful but unwanted (potted bushes that stop a climb).
 
 **UV set and tiling come from the TextureCoordinate node** feeding the sample,
 sometimes through a static switch; facade materials sample set 1. When a graph
