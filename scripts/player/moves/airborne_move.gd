@@ -294,6 +294,14 @@ func settle_landing(delta: float) -> StringName:
 	var impact_speed := maxf(-player.velocity.y, 0.0)
 	player.move_and_slide()
 
+	# A marked chute is a surface but not a floor: touching it, from any
+	# angle, is the start of the slide, not a landing. Checked before the
+	# floor test because a chute steeper than floor_max_angle never reads as
+	# a floor at all.
+	if not player.touched_chute().is_empty():
+		player.set_grounded(true)
+		return RAMP_SLIDE
+
 	if not player.is_on_floor():
 		player.set_grounded(false)
 		return KEEP

@@ -1079,6 +1079,16 @@ static func is_soft(collider: Object) -> bool:
 	var node := collider as Node
 	return node != null and node.is_in_group(SOFT_LANDING_GROUP)
 
+## A surface the body cannot stand on and slides down instead (RampSlideMove).
+## [ME:CONFIRMED] the original's chutes are ordinary geometry whose material's
+## PhysMaterial property sets bEnableUncontrolledSlide; the same shape of
+## marking as the soft-landing pad above, so the same shape of tag here.
+const UNCONTROLLED_SLIDE_GROUP := &"uncontrolled_slide"
+
+static func is_uncontrolled_slide(collider: Object) -> bool:
+	var node := collider as Node
+	return node != null and node.is_in_group(UNCONTROLLED_SLIDE_GROUP)
+
 ## Geometry the body may stand on and nothing else: an air wall, or a ramp laid
 ## over a lip the player kept catching on. Every affordance query in this file
 ## refuses a hit carrying the group, so nothing here is grabbable, vaultable,

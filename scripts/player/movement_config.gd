@@ -30,6 +30,7 @@ extends Resource
 @export var landing: LandingConfig = LandingConfig.new()
 @export var skill_roll: SkillRollConfig = SkillRollConfig.new()
 @export var slide: SlideConfig = SlideConfig.new()
+@export var ramp_slide: RampSlideConfig = RampSlideConfig.new()
 @export var crouch: CrouchConfig = CrouchConfig.new()
 @export var speed_vault: SpeedVaultConfig = SpeedVaultConfig.new()
 @export var into_grab: IntoGrabConfig = IntoGrabConfig.new()
