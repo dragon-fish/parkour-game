@@ -7,6 +7,7 @@ extends RefCounted
 
 const Common := preload("res://tools/me_level/me_level_common.gd")
 const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
+const ENVIRONMENT_SCRIPT := preload("res://tools/me_level/me_environment.gd")
 const LIGHTS_SCRIPT := preload("res://tools/me_level/me_lights.gd")
 
 ## Meshes a hand grips. InterestLine volumes drive those moves, so a solid mesh
@@ -106,7 +107,28 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 	root.add_child(_build_bsp(manifest["bsp"]))
 	root.add_child(_build_lights(manifest["lights"]))
 	root.add_child(movers)
+	var look = manifest.get("environment")
+	if look is Dictionary:
+		root.add_child(_environment(look))
 	return root
+
+
+## The level's own look, applied at runtime to its Arena (me_environment.gd).
+static func _environment(look: Dictionary) -> Node3D:
+	var node := Node3D.new()
+	node.name = "Environment"
+	node.set_script(ENVIRONMENT_SCRIPT)
+	if look.has("sun_direction"):
+		node.set("sun_direction", Common.v3(look["sun_direction"]))
+	var post: Dictionary = look.get("post_process", {})
+	for channel in ["r", "g", "b", "a"]:
+		var points := PackedVector2Array()
+		for p: Array in post.get("curve_" + channel, []):
+			points.append(Vector2(p[0], p[1]))
+		node.set("curve_" + channel, points)
+	if post.has("midtones"):
+		node.set("midtones", Common.v3(post["midtones"]))
+	return node
 
 
 var _stretched_shapes := {}

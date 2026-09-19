@@ -83,6 +83,8 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 		var section: String = entry["name"]
 		var started := Time.get_ticks_msec()
 		var part := _section_of(manifest, section)
+		# The look is the chapter's: its geometry carries it, once.
+		part.erase("environment")
 		var geometry_path := "%s_%s_geometry.scn" % [base, section.to_lower()]
 		var geometry: Node3D = _geometry_builder().build(part, section.to_pascal_case() + "Geometry")
 		if not _save(geometry, geometry_path, ResourceSaver.FLAG_COMPRESS):
