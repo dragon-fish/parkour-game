@@ -112,14 +112,10 @@ class _Listener extends CharacterBody3D:
 		exited.append(line)
 
 func test_picking_a_kind_seeds_that_kinds_reach() -> void:
-	# A ledge reaches further than a cable -- see InterestLine.KIND_REACH for
-	# the run-in that a cable's reach let straight past a ledge.
 	var line := InterestLine.new()
-	line.kind = InterestLine.Kind.LEDGE_WALK
-	assert_eq(line.reach_radius, InterestLine.KIND_REACH[InterestLine.Kind.LEDGE_WALK],
-		"choosing LEDGE_WALK did not seed the ledge's own reach")
-	assert_gt(line.reach_radius, InterestLine.KIND_REACH[InterestLine.Kind.ZIPLINE],
-		"a ledge must reach further than a cable")
+	line.kind = InterestLine.Kind.SWING
+	assert_eq(line.reach_radius, InterestLine.KIND_REACH[InterestLine.Kind.SWING],
+		"choosing SWING did not seed the bar's own reach")
 	# Written after the kind, the way a scene file lists them, the author's
 	# own number wins.
 	line.reach_radius = 0.3

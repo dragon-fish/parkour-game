@@ -24,17 +24,18 @@ enum Kind { ZIPLINE, SWING, BALANCE, LADDER, LEDGE_WALK }
 ## stays editable after that -- the number a level author sees IS the number
 ## the volume is built from.
 ##
-## A LEDGE REACHES FURTHER. The ledge itself is 0.7 m wide and the walkway
-## feeding it is 3 m, so at 0.6 m only the strip nearest the wall was
-## caught: a body running in at speed anywhere else passed beside the volume
-## and, with nothing under the ledge mesh, straight into the drop. The owner
-## measured 1.0 as the point past which that stops happening.
+## A BAR REACHES FURTHER: at 0.6 m a jump at a swing bar had to be nearly
+## exact, and a fall past it was missed outright. 1.0 m was tried on the
+## Stormdrain boss bar and holds.
+## A ledge stays at 0.6 m so it does not catch a body that only passes near
+## it. DO NOT widen it back to cover a wide walkway feeding a narrow ledge:
+## that pulled bodies off climbs and wall runs onto ledges overhead.
 const KIND_REACH := {
 	Kind.ZIPLINE: 0.6,
-	Kind.SWING: 0.6,
+	Kind.SWING: 1.0,
 	Kind.BALANCE: 0.6,
 	Kind.LADDER: 0.6,
-	Kind.LEDGE_WALK: 1.0,
+	Kind.LEDGE_WALK: 0.6,
 }
 
 @export var kind: Kind = Kind.ZIPLINE:
