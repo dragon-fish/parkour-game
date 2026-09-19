@@ -307,8 +307,9 @@ func settle_landing(delta: float) -> StringName:
 		var chute_fall: float = player.fall_tracker.fall_height
 		if chute_fall >= config.pawn.hard_landing_height:
 			player.take_damage(config.landing.hard_landing_damage, Health.Cause.HARD_LANDING)
-			if player.screen_effects != null:
-				player.screen_effects.set_tint(config.landing.tint_color, 1.0)
+			# The red is the slide's to show and fade: a tint set here would
+			# outlive the landing, with no move left to take it down.
+			player.pending_chute_hurt = true
 		player.set_grounded(true)
 		return RAMP_SLIDE
 

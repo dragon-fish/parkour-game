@@ -32,6 +32,10 @@ extends MoveConfig
 ## platform staggers the body instead of letting it run off the cliff. A
 ## jump off the chute clears the descent. Metres.
 @export var hard_landing_descent: float = 10.0
+## PROJECT-DEFINED. Seconds the hard landing's red takes to fade after a fall
+## past hard_landing_height onto the chute, which slides on with no lockout
+## to carry the tint.
+@export var hurt_flash_time: float = 0.6
 ## PROJECT-DEFINED. Seconds the body and the view take to swing round to face
 ## down the chute after entering it from any other angle; Turn180's ground
 ## turn_time is the precedent. Snapped, a backward entry cut the view round

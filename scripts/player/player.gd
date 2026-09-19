@@ -1319,6 +1319,11 @@ func end_direct_body_animation() -> void:
 ## landing that reads it; a jump off the chute never arms it.
 var _forced_hard_landing: bool = false
 
+## One-shot, set by a hard fall onto a chute for RampSlideMove to read on
+## entry and clear: the slide flashes and fades the hard landing's red, since
+## no LandingMove runs to do it.
+var pending_chute_hurt: bool = false
+
 func arm_forced_hard_landing() -> void:
 	_forced_hard_landing = true
 
@@ -4388,7 +4393,11 @@ func speed_cap() -> float:
 	#
 	# The scale is the EASED one, not statuses.speed_scale(). See
 	# _blend_speed_scale(): the ceiling slides, the body chases it.
-	return speed_energy.cap() * _speed_scale
+	# An absolute limit (a moving lift's base velocity) is not eased: it is
+	# a number the speed may not exceed, and the body's own acceleration is
+	# all the ramp it needs.
+	var limit: float = statuses.speed_limit() if statuses != null else INF
+	return minf(speed_energy.cap() * _speed_scale, limit)
 
 ## Slides the ceiling's scale toward whatever the status list currently says.
 ##

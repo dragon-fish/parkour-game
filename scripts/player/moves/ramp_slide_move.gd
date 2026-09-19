@@ -26,6 +26,9 @@ var _start_y: float = 0.0
 ## Where the scripted turn toward the downhill has got the body to; the fan
 ## and the model follow it each tick.
 var _placed: float = 0.0
+## The hard landing's red still to fade, 1 to 0; only after a hard fall onto
+## the chute (Player.pending_chute_hurt).
+var _hurt_flash: float = 0.0
 
 
 func enter(_previous: StringName) -> void:
@@ -33,6 +36,8 @@ func enter(_previous: StringName) -> void:
 	_normal = chute.get("normal", Vector3.UP)
 	_lost_contact = 0.0
 	_start_y = player.global_position.y
+	_hurt_flash = 1.0 if player.pending_chute_hurt else 0.0
+	player.pending_chute_hurt = false
 	# Sitting down costs most of the arriving speed; what is left runs down
 	# the chute, not into it.
 	var kept: Vector3 = player.velocity * (1.0 - config.ramp_slide.initial_speed_loss)
@@ -49,6 +54,9 @@ func enter(_previous: StringName) -> void:
 
 
 func exit() -> void:
+	if _hurt_flash > 0.0 and player.screen_effects != null:
+		player.screen_effects.set_tint(config.landing.tint_color, 0.0)
+	_hurt_flash = 0.0
 	player.request_standing_capsule()
 	# The same stand-up as the slide's: for recovery_time the look clamp and
 	# the model's yaw freeze outlive the move, and the slide's own redo gate
@@ -59,6 +67,10 @@ func exit() -> void:
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	var cfg_slide: RampSlideConfig = config.ramp_slide
 	_advance_turn(delta)
+	if _hurt_flash > 0.0:
+		_hurt_flash = maxf(_hurt_flash - delta / maxf(cfg_slide.hurt_flash_time, 0.001), 0.0)
+		if player.screen_effects != null:
+			player.screen_effects.set_tint(config.landing.tint_color, _hurt_flash)
 	# A jump leaves the chute: the same take-off as from the ground, from a
 	# body that is on a surface. The chute's own downhill speed rides along.
 	if player.consume_jump():
