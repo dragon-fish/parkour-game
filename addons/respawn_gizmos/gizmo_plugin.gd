@@ -41,13 +41,8 @@ var _arrows: Dictionary = {}
 ## values. Empty except between the first _set_handle of a drag and its commit.
 var _mirror_drag: Dictionary = {}
 
-## Per-kind line colours: cyan cable, orange bar, yellow beam, red ladder.
-const KIND_COLORS := {
-	InterestLine.Kind.ZIPLINE: Color(0.3, 0.8, 1.0),
-	InterestLine.Kind.SWING: Color(1.0, 0.6, 0.2),
-	InterestLine.Kind.BALANCE: Color(0.95, 0.85, 0.2),
-	InterestLine.Kind.LADDER: Color(0.95, 0.35, 0.35),
-}
+## Per-kind line colours, shared with the runtime trigger overlay.
+const KIND_COLORS := InterestLine.KIND_COLORS
 
 func _init() -> void:
 	create_material("checkpoint", Color(0.2, 0.9, 0.4))
