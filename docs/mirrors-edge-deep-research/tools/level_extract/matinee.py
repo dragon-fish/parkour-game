@@ -286,6 +286,11 @@ def collect(packages, mr, report):
 # event spawns the shatter and deals bullet damage to a hidden "Broken" twin,
 # whose own event hides and destroys both. Only the pair is read; the chain
 # itself is the builder's BreakableGlass.
+#
+# THE TWIN IS WHAT MAKES IT GLASS. Barge damage alone also marks the doors the
+# original barges open (Subway's and Factory's maintenance doors) and
+# Subway's destroyable fences; taken for glass, a door vanished in a shower
+# of shards.
 BARGE_DAMAGE = 'TdDmgType_Barge'
 
 
@@ -316,6 +321,8 @@ def collect_glass(packages, mr, report):
                         target = ref_export(_props(mr, var).get('ObjValue')) if var > 0 else None
                         if target and target != pane:
                             broken = '%s.%s' % (mr.label, pkg.exports[target - 1]['name'])
+        if broken is None:
+            continue
         actor, _ = pk.resolved_props(packages, mr, pane)
         out.append({'kind': 'glass', 'name': pkg.exports[pane - 1]['name'], 'package': mr.label,
                     'position': point(actor['Location']),
