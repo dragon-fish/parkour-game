@@ -139,10 +139,11 @@ class MeshTable:
         MaterialInstance parents to the root Material across packages. A light
         shaft is an additive unlit card; drawn opaque it becomes a grey slab."""
         if not reference:
-            return {'blend': 'opaque', 'unlit': False, 'two_sided': False}
+            return {'blend': 'opaque', 'unlit': False, 'two_sided': False, 'uncontrolled_slide': False}
         key = (mr.label, reference)
         if key not in self._materials:
             reader, idx = mr, reference
+            phys = None
             for _ in range(16):
                 if idx < 0:
                     root, path = pk.import_path(reader.pkg, -idx - 1)
@@ -152,30 +153,54 @@ class MeshTable:
                         raise ExtractError('%s: material %s not found' % (mr.label, '.'.join([root] + path)))
                     reader, idx = shared, target
                 props = reader.props(idx)[0] or {}
+                # The nearest PhysMaterial on the chain wins, as in the engine.
+                if phys is None and props.get('PhysMaterial'):
+                    phys = self._object_name(reader, props['PhysMaterial'])
                 parent = props.get('Parent')
                 if reader.pkg.class_of(reader.pkg.exports[idx - 1]) == 'Material' or not parent:
                     blend = str(props.get('BlendMode', 'BLEND_Opaque')).replace('BLEND_', '').lower()
                     unlit = props.get('LightingModel') == 'MLM_Unlit'
                     two_sided = props.get('TwoSided') is True
-                    self._materials[key] = {'blend': blend, 'unlit': unlit, 'two_sided': two_sided}
+                    self._materials[key] = {'blend': blend, 'unlit': unlit, 'two_sided': two_sided,
+                                            'uncontrolled_slide': self._phys_flag(phys, 'bEnableUncontrolledSlide')}
                     break
                 idx = parent[1]
             else:
                 raise ExtractError('%s: material parent chain too deep' % mr.label)
         return self._materials[key]
 
-    def _soft_landing(self, material):
+    @staticmethod
+    def _object_name(reader, ref):
+        """The bare name of an object reference, exported or imported."""
+        idx = ref[1] if isinstance(ref, tuple) else ref
+        if idx > 0:
+            return reader.pkg.exports[idx - 1]['name']
+        if idx < 0:
+            return reader.pkg.imports[-idx - 1]['name']
+        return None
+
+    def _phys_flag(self, material, flag):
+        """A boolean of the TdPhysicalMaterialProperty behind a PhysicalMaterial of
+        TDPhysicalMaterials, by name. This is how the original marks a surface's
+        behaviour: bEnableSoftLanding on a crash mat's material, and
+        bEnableUncontrolledSlide (PM_ConcreteWetSlide, PM_Metal_Slide, PM_Water,
+        ...) on the chutes the RumpSlide move runs down. Nothing on the level, the
+        mesh or its collision says so; only the material's PhysMaterial does."""
         if not material:
             return False
-        if material not in self._soft:
+        cache = self._soft.setdefault(flag, {})
+        if material not in cache:
             library = self.packages.shared_reader('TDPhysicalMaterials')
             idx = next((i for i, e in enumerate(library.pkg.exports, 1) if e['name'] == material), None)
-            soft = False
+            value = False
             if idx is not None:
                 prop = ref_export((library.props(idx)[0] or {}).get('PhysicalMaterialProperty'))
-                soft = bool(prop and (library.props(prop)[0] or {}).get('bEnableSoftLanding'))
-            self._soft[material] = soft
-        return self._soft[material]
+                value = bool(prop and (library.props(prop)[0] or {}).get(flag))
+            cache[material] = value
+        return cache[material]
+
+    def _soft_landing(self, material):
+        return self._phys_flag(material, 'bEnableSoftLanding')
 
 
 def collision_class(actor, component, record):
