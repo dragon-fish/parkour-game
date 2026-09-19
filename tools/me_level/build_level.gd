@@ -47,6 +47,7 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 	_library = MeLibrary.new()
 	if not _library.build(meshes, bakes):
 		return false
+	_look = config.get("look", {})
 
 	if config.get("split_sections", false):
 		return _build_split(config, manifest, paths, rebuild_interactions)
@@ -68,11 +69,13 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 ## checkpoints, the chapter-wide layer and a SectionLoader over the sections.
 ## See docs/superpowers/specs/2026-09-19-me-chapter-sections-design.md.
 var _library = null
+var _look := {}
 
 
 func _geometry_builder():
 	var builder := GeometryBuilder.new()
 	builder.library = _library
+	builder.look_dials = _look
 	return builder
 
 

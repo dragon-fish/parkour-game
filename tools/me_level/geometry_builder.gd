@@ -133,7 +133,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 	root.add_child(movers)
 	var look = manifest.get("environment")
 	if look is Dictionary:
-		root.add_child(_environment(look))
+		root.add_child(_environment(look, look_dials))
 	var occluder := _build_occluder(geometry, bsp)
 	if occluder != null:
 		root.add_child(occluder)
@@ -195,12 +195,30 @@ static func _add_occluding(instance: MeshInstance3D, xform: Transform3D,
 
 
 ## The level's own look, applied at runtime to its Arena (me_environment.gd).
-static func _environment(look: Dictionary) -> Node3D:
+static func _environment(look: Dictionary, dials: Dictionary) -> Node3D:
 	var node := Node3D.new()
 	node.name = "Environment"
 	node.set_script(ENVIRONMENT_SCRIPT)
 	if look.has("sun_direction"):
 		node.set("sun_direction", Common.v3(look["sun_direction"]))
+	var sun: Dictionary = look.get("sun", {})
+	if sun.has("color"):
+		node.set("sun_color", _color(sun["color"]))
+	if sun.has("brightness"):
+		node.set("sun_brightness", float(sun["brightness"]))
+	if look.has("sky_color"):
+		node.set("sky_color", _color(look["sky_color"]))
+	var haze: Dictionary = look.get("haze", {})
+	if haze.has("color"):
+		node.set("haze_color", _color(haze["color"]))
+	if haze.has("distance_m"):
+		node.set("haze_distance_m", float(haze["distance_m"]))
+	if haze.has("distance_curve"):
+		node.set("haze_curve", float(haze["distance_curve"]))
+	if haze.has("multiplier"):
+		node.set("haze_multiplier", float(haze["multiplier"]))
+	if haze.get("enabled", true) == false:
+		node.set("haze_strength", 0.0)
 	var post: Dictionary = look.get("post_process", {})
 	for channel in ["r", "g", "b", "a"]:
 		var points := PackedVector2Array()
@@ -209,13 +227,38 @@ static func _environment(look: Dictionary) -> Node3D:
 		node.set("curve_" + channel, points)
 	if post.has("midtones"):
 		node.set("midtones", Common.v3(post["midtones"]))
+	# The config's dials, by export name. A name the node does not have is a
+	# typo that would otherwise do nothing, silently.
+	for key: String in dials:
+		if key == LAMP_DIAL:
+			continue
+		var value: Variant = dials[key]
+		var current: Variant = node.get(key)
+		if current == null or key in ["sun_direction", "curve_r", "curve_g", "curve_b", "curve_a"]:
+			push_error("[me_level] look.%s is not a dial of me_environment.gd" % key)
+			continue
+		if current is Color:
+			value = _color(value)
+		elif current is Vector3:
+			value = Common.v3(value)
+		node.set(key, value)
 	return node
+
+
+static func _color(rgb: Array) -> Color:
+	return Color(float(rgb[0]), float(rgb[1]), float(rgb[2]))
 
 
 var _stretched_shapes := {}
 ## The mesh library that built the meshes, for placement material overrides.
 ## Null leaves every mesh on its own materials.
 var library = null
+## The level config's "look" block: me_environment.gd dials by export name,
+## plus LAMP_DIAL for the lights' energy_scale. Read from the config file the
+## build was asked for, not from the manifest's copy of it, so a dial can be
+## turned without re-extracting.
+var look_dials := {}
+const LAMP_DIAL := "lamp_energy_scale"
 
 
 static func _is_uniform(basis: Basis) -> bool:
@@ -362,6 +405,8 @@ func _build_lights(lights: Array) -> Node3D:
 	var parent := Node3D.new()
 	parent.name = "Lights"
 	parent.set_script(LIGHTS_SCRIPT)
+	if look_dials.has(LAMP_DIAL):
+		parent.energy_scale = float(look_dials[LAMP_DIAL])
 	var scale: float = parent.energy_scale
 	var names := Common.NameAllocator.new()
 	for entry: Dictionary in lights:
