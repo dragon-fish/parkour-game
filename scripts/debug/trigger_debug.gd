@@ -65,43 +65,55 @@ func _clear() -> void:
 
 func _build() -> void:
 	for node in get_tree().root.find_children("*", "CollisionObject3D", true, false):
-		var colour: Variant = _colour_of(node)
-		if colour != null:
-			_draw_shapes(node as CollisionObject3D, colour)
+		var kind: Array = _kind_of(node)
+		if not kind.is_empty():
+			_draw_shapes(node as CollisionObject3D, kind[0], kind[1])
 	for line in get_tree().get_nodes_in_group("interest_lines"):
 		if line is InterestLine:
 			_draw_line(line)
 
 
-## The colour a body or area is drawn in, or null to leave it out.
-func _colour_of(node: Node) -> Variant:
+## [colour, type name] a body or area is drawn with, or empty to leave it out.
+func _kind_of(node: Node) -> Array:
 	var parent := node.get_parent()
 	if parent is InterestLine:
-		return null
+		return []
 	if parent is BreakableGlass:
-		return GLASS
+		return [GLASS, "玻璃"]
 	if node is LevelEnd:
-		return LEVEL_END
+		return [LEVEL_END, "通关"]
 	if node is DeathVolume:
-		return DEATH
+		return [DEATH, "死亡区"]
 	if node is Checkpoint or parent is Checkpoint:
-		return CHECKPOINT
+		return [CHECKPOINT, "检查点"]
 	if node is UseZone:
-		return USE_ZONE
+		return [USE_ZONE, "按钮"]
 	if node is ModifierVolume:
 		for spec in (node as ModifierVolume).apply:
 			if spec != null and spec.effect == Status.Effect.STAGGER:
-				return HAZARD
-		return MODIFIER
+				return [HAZARD, "伤害区"]
+		return [MODIFIER, "状态体积"]
 	if node is Area3D and parent is Matinee:
-		return MATINEE_TRIGGER
+		return [MATINEE_TRIGGER, "动画触发"]
 	if node.is_in_group(Probes.UNCONTROLLED_SLIDE_GROUP):
-		return SLIDE
+		return [SLIDE, "滑坡"]
 	if node.is_in_group(Probes.SOFT_LANDING_GROUP):
-		return SOFT_LANDING
+		return [SOFT_LANDING, "软着陆"]
 	if parent != null and parent.name == "AirWalls":
-		return AIR_WALL_NO_INTERACTION if node.is_in_group(Probes.NO_INTERACTION_GROUP) else AIR_WALL
-	return null
+		if node.is_in_group(Probes.NO_INTERACTION_GROUP):
+			return [AIR_WALL_NO_INTERACTION, "无交互空气墙"]
+		return [AIR_WALL, "空气墙"]
+	return []
+
+
+## Type names of the interest-line kinds, for the labels.
+const LINE_TYPES := {
+	InterestLine.Kind.ZIPLINE: "滑索",
+	InterestLine.Kind.SWING: "秋千",
+	InterestLine.Kind.BALANCE: "平衡木",
+	InterestLine.Kind.LADDER: "梯子",
+	InterestLine.Kind.LEDGE_WALK: "壁架",
+}
 
 
 func _material(colour: Color) -> StandardMaterial3D:
@@ -125,7 +137,7 @@ func _fill(colour: Color) -> StandardMaterial3D:
 	return _fills[colour]
 
 
-func _draw_shapes(body: CollisionObject3D, colour: Color) -> void:
+func _draw_shapes(body: CollisionObject3D, colour: Color, type: String) -> void:
 	var bounds := AABB()
 	var first := true
 	for child in body.get_children():
@@ -147,7 +159,7 @@ func _draw_shapes(body: CollisionObject3D, colour: Color) -> void:
 		bounds = box if first else bounds.merge(box)
 		first = false
 	if not first:
-		_label(body, body.name, bounds.get_center(), colour)
+		_label(body, "%s:%s" % [type, body.name], bounds.get_center(), colour)
 
 
 ## The editor gizmo's line, direction and facing: the axis in the kind's
@@ -201,7 +213,7 @@ func _draw_line(line: InterestLine) -> void:
 		end.position = at
 		line.add_child(end, false, Node.INTERNAL_MODE_BACK)
 		_drawn.append(end)
-	_label(line, line.name, mid + Vector3.UP * 0.3, colour)
+	_label(line, "%s:%s" % [LINE_TYPES.get(line.kind, "兴趣线"), line.name], mid + Vector3.UP * 0.3, colour)
 
 
 func _label(parent: Node3D, text: String, at: Vector3, colour: Color) -> void:

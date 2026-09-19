@@ -52,7 +52,7 @@ func test_f3_draws_walls_triggers_and_lines_and_takes_them_away() -> void:
 	assert_false(_drawn_under(death).is_empty(), "the death volume was not drawn")
 	assert_false(_drawn_under(line).is_empty(), "the interest line was not drawn")
 	assert_true(_drawn_under(floor).is_empty(), "plain level geometry was drawn")
-	var named := _drawn_under(wall).filter(func(n): return n is Label3D and n.text == wall.name)
+	var named := _drawn_under(wall).filter(func(n): return n is Label3D and n.text == "空气墙:" + wall.name)
 	assert_eq(named.size(), 1, "the air wall is not named at its centre")
 	overlay.set_shown(false)
 	await step(1)
