@@ -52,3 +52,4 @@ theme/custom_font="res://assets/fonts/noto_sans_sc.tres"
 rendering_device/driver.windows="d3d12"
 environment/volumetric_fog/volume_size=128
 environment/volumetric_fog/volume_depth=128
+limits/cluster_builder/max_clustered_elements=1024

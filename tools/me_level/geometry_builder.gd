@@ -28,6 +28,12 @@ const PIPE_GRIP_REACH_M := 0.6
 
 const BSP_MATERIAL_FAMILY := "roof"
 
+## Metres from the camera past which an extracted light fades out, and over
+## how far. Stormdrain's densest view (the pillar hall) keeps 336 lights
+## within 80 m, under project.godot's max_clustered_elements. A dial.
+const LIGHT_FADE_BEGIN := 60.0
+const LIGHT_FADE_LENGTH := 20.0
+
 
 func build(manifest: Dictionary, root_name: String) -> Node3D:
 	var root := Node3D.new()
@@ -305,6 +311,13 @@ func _build_lights(lights: Array) -> Node3D:
 		var up := Vector3.UP if absf(forward.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT
 		light.transform = Transform3D(Basis.looking_at(forward, up), Common.v3(entry["position"]))
 		light.light_color = Color(entry["color"][0], entry["color"][1], entry["color"][2])
+		# Faded out and culled past LIGHT_FADE_BEGIN. The original bakes its
+		# lights into lightmaps; here every one is live, Stormdrain has 1146,
+		# and past the renderer's per-view cluster budget it drops lights by
+		# view -- lamps came on only when looked at from close by.
+		light.distance_fade_enabled = true
+		light.distance_fade_begin = LIGHT_FADE_BEGIN
+		light.distance_fade_length = LIGHT_FADE_LENGTH
 		light.set_meta("me_brightness", float(entry["brightness"]))
 		light.light_energy = float(entry["brightness"]) * scale
 		parent.add_child(light)
