@@ -31,6 +31,7 @@ const LIBRARY_FORMAT := 8
 
 var _materials := {}
 var _bakes := {}
+var _bake_hashes := {}
 
 
 static func path_for(mesh_name: String) -> String:
@@ -40,6 +41,7 @@ static func path_for(mesh_name: String) -> String:
 ## Builds every mesh in `meshes` whose source changed. Returns false on error.
 func build(meshes: Dictionary, bakes: Dictionary) -> bool:
 	_bakes = bakes
+	_bake_hashes = {}
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(Common.LIBRARY_DIR.path_join("materials")))
 	var built := 0
 	for mesh_name: String in meshes:
@@ -49,6 +51,10 @@ func build(meshes: Dictionary, bakes: Dictionary) -> bool:
 		content.erase("source")
 		# Which UV set a surface uses comes from its material's bake.
 		content["uv_sets"] = record["surfaces"].map(func(s): return _uv_set(s))
+		# And what its materials look like: an unchanged mesh is skipped
+		# whole, so without this a re-baked material never reached its file
+		# (the Mall's bridge stayed black after its bake was fixed).
+		content["bakes"] = record["surfaces"].map(func(s): return _bake_hash(s))
 		content["library_format"] = LIBRARY_FORMAT
 		var hash := JSON.stringify(content, "", true).sha256_text()
 		var path := path_for(mesh_name)
@@ -225,6 +231,15 @@ func override_material(entry: Dictionary) -> Material:
 	if not _bakes.has(name) or entry.get("blend", "opaque") == "additive":
 		return null
 	return _textured_material(name, entry.get("blend", "opaque"), entry.get("unlit", false))
+
+
+func _bake_hash(surface: Dictionary) -> String:
+	var name: String = surface["material"] if surface["material"] != null else ""
+	if not _bakes.has(name):
+		return ""
+	if not _bake_hashes.has(name):
+		_bake_hashes[name] = JSON.stringify(_bakes[name], "", true).sha256_text()
+	return _bake_hashes[name]
 
 
 func _uv_set(surface: Dictionary) -> int:
