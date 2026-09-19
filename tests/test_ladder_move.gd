@@ -89,6 +89,9 @@ func _ground_catch_attempt(front: bool) -> StringName:
 	var line := _vertical_ladder(Vector3.ZERO, 0.0)
 	await step(10)
 	var result: StringName = player.move_manager.current_name
+	# Freed HERE, not at test end: left standing, the next attempt's settle
+	# puts its player right on this line and catches it before the teleport.
+	line.free()
 	TestWorld.teardown(world)
 	await step(1)
 	return result
@@ -245,6 +248,19 @@ func test_wallrun_can_be_caught_by_a_ladder() -> void:
 	# ✅ THE OWNER: ME has a level built on wall-running straight into a
 	# pipe/ladder -- WallRunMove has to ask the same frontal gate the ground
 	# and the air do.
+	assert_true(await _wallrun_catches_pipe(0.8), \
+		"a wall run passing through a ladder's front volume was not caught")
+
+## A pipe standing further off its wall than the capsule radius: the runner
+## passes beside it, a little BEHIND its front plane (LadderConfig.back_slack).
+## Stormdrain's pipe on the ring wall sits 0.58 m off it.
+func test_wallrun_catches_a_pipe_standing_off_the_wall() -> void:
+	assert_true(await _wallrun_catches_pipe(0.45 - 0.58), \
+		"a wall run beside a pipe standing off its wall was not caught")
+
+## Wall-runs along a wall whose face is at x = 0.45, with a pipe at `pipe_x`
+## a little ahead along the run. Returns whether the pipe was caught.
+func _wallrun_catches_pipe(pipe_x: float) -> bool:
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	var wall := StaticBody3D.new()
 	var wall_shape := CollisionShape3D.new()
@@ -283,7 +299,7 @@ func test_wallrun_can_be_caught_by_a_ladder() -> void:
 	# -- the shape ME's wallrun-into-pipe level actually has. yaw 0 (front
 	# aligned WITH the travel) would put the runner behind the pipe's back
 	# and rightly never catch.
-	_line = _vertical_ladder(Vector3(0.8, player.global_position.y - 1.0, \
+	_line = _vertical_ladder(Vector3(pipe_x, player.global_position.y - 1.0, \
 		player.global_position.z - 1.5), 90.0)
 	var caught := false
 	for i in 30:
@@ -291,11 +307,12 @@ func test_wallrun_can_be_caught_by_a_ladder() -> void:
 		if player.move_manager.current_name == Move.LADDER:
 			caught = true
 			break
-	assert_true(caught, "a wall run passing through a ladder's front volume was not caught")
 
+	_line.free()
 	wall.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+	return caught
 
 # --- Catching a ladder out of a fall -------------------------------------------
 #

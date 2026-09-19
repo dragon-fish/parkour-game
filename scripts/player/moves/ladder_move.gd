@@ -63,7 +63,7 @@ func enter(_previous: StringName) -> void:
 	# no enter-then-abort flutter in practice -- this only guards the line
 	# having moved (or the body having drifted) between that gate and this
 	# tick.
-	if not LadderMove.front_side_allows(_line, player.global_position):
+	if not LadderMove.front_side_allows(_line, player.global_position, cfg.back_slack):
 		_aborted = true
 		return
 	_arm_hard_catch()
@@ -95,7 +95,7 @@ func enter(_previous: StringName) -> void:
 static func catch_gate(player: Player, line: InterestLine) -> bool:
 	if not player.line_ready(line):
 		return false
-	if not front_side_allows(line, player.global_position):
+	if not front_side_allows(line, player.global_position, player.config.ladder.back_slack):
 		return false
 	if _faces_line(player, line):
 		return true
@@ -117,12 +117,13 @@ static func _faces_line(player: Player, line: InterestLine) -> bool:
 		return true
 	return look.normalized().dot(toward.normalized()) > 0.0
 
-## The ladder's own front half-space -- see the spec's front 180-degree fan.
-static func front_side_allows(line: InterestLine, body_pos: Vector3) -> bool:
+## The ladder's own front half-space -- see the spec's front 180-degree fan
+## -- moved `back_slack` metres behind the line (LadderConfig.back_slack).
+static func front_side_allows(line: InterestLine, body_pos: Vector3, back_slack: float) -> bool:
 	var at: Vector3 = line.sample(line.closest_offset(body_pos))["position"]
 	var to_body: Vector3 = body_pos - at
 	to_body.y = 0.0
-	return to_body.dot(line.front()) > 0.0
+	return to_body.dot(line.front()) > -back_slack
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted or not is_instance_valid(_line):
