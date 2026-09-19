@@ -55,6 +55,13 @@ func _init() -> void:
 @export var jump_speed: float = 6.3
 ## How close to the top (Task 7) counts as having reached it, metres.
 @export var top_exit_reach: float = 1.2
+## How far below the line's top the deck behind it may be, metres.
+## PROJECT-DEFINED. Many of the original's ladders run on past the deck they
+## serve, rails and all, so the deck can sit well under the top grip. The
+## probe fires BEHIND the ladder (toward the wall), never down its own rungs,
+## so reaching further only risks finding a floor far below a ladder with no
+## deck at all -- which is why this stays a limit rather than going unbounded.
+@export var top_exit_max_drop: float = 2.0
 ## [ME:CONFIRMED] the carry off the top of a ladder onto the deck behind it
 ## runs 1 s, not the 2 s first guessed here. Seconds. CharacterAnimator
 ## stretches ClimbUp_1m to match (see LadderMove.scripted_duration()), so this

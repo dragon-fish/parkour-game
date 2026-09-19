@@ -417,10 +417,6 @@ func _look_direction() -> Vector3:
 
 ## How far above the candidate landing the deck probe starts, metres.
 const TOP_DECK_PROBE_LIFT := 0.5
-## How far below the candidate landing the probe still reaches, metres --
-## clears a deck sitting a little off the line's own top height without
-## reaching so far down it could find the ladder's own lower rungs instead.
-const TOP_DECK_PROBE_DEPTH := 0.5
 ## Largest tilt a hit surface may have and still count as a deck to stand on.
 ## Same shape as every other "is this walkable" gate in the project (see
 ## Probes.walkable_floor_z and friends) -- a knob of its own rather than a
@@ -461,7 +457,7 @@ func _probe_top_deck() -> Dictionary:
 
 func _standable_at(space: PhysicsDirectSpaceState3D, candidate: Vector3) -> Dictionary:
 	var from: Vector3 = candidate + Vector3.UP * TOP_DECK_PROBE_LIFT
-	var to: Vector3 = candidate - Vector3.UP * TOP_DECK_PROBE_DEPTH
+	var to: Vector3 = candidate - Vector3.UP * cfg.top_exit_max_drop
 	var query := PhysicsRayQueryParameters3D.create(from, to)
 	# Same idioms Probes._cast() uses (see probes.gd): a ray that starts
 	# inside a shape reports nothing at all without this, and the player's

@@ -695,6 +695,28 @@ func test_top_plus_w_carries_the_body_onto_the_deck() -> void:
 
 	deck.queue_free()
 
+func test_a_ladder_standing_proud_of_its_deck_still_lets_you_off() -> void:
+	# Many of the original's ladders run on past the deck they serve, rails
+	# and all, the way a real one does. The top of the line is then well above
+	# the deck, and a probe that only looked half a metre down refused them.
+	var player: Player = await _climbing_player()
+	await step(10)  # past the magnet fade
+	var deck := _top_deck(player, _line.length() - 1.2)
+	await step(1)
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2(0.0, 1.0)
+	var climb_ticks: int = int(4.0 / player.config.ladder.climb_speed * Engine.physics_ticks_per_second)
+	var carry_ticks: int = int(player.config.ladder.top_exit_time * Engine.physics_ticks_per_second)
+	var exited := false
+	for i in (climb_ticks + carry_ticks + 30):
+		await step(1)
+		if player.move_manager.current_name != Move.LADDER:
+			exited = true
+			input.state.move = Vector2.ZERO
+			break
+	assert_true(exited, "a ladder rising 1.2 m past its deck could not be left at the top")
+	deck.queue_free()
+
 func test_no_deck_means_no_exit() -> void:
 	var player: Player = await _climbing_player()
 	await step(10)  # past the magnet fade
