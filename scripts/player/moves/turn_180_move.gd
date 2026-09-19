@@ -43,6 +43,9 @@ var _placed: float = 0.0
 ## and since the whole point of the turn is to choose a direction, that is
 ## the one outcome nobody wants.
 var _kick_armed: bool = false
+## The wall was AHEAD: this is a climb's turn, and it leaves by the
+## original's TdMove_WallClimb180TurnJump rather than its wall kick.
+var _from_climb: bool = false
 ## The horizontal velocity the turn began with. A ground turn bleeds this to
 ## nothing across slowdown_time rather than dropping it on the spot.
 var _entry_velocity: Vector3 = Vector3.ZERO
@@ -62,12 +65,14 @@ var _entry_velocity: Vector3 = Vector3.ZERO
 ## The rays do not need a heading anyway: they fire along the body's own facing.
 ## Only `incidence` is measured against a heading, and nothing here reads it.
 func _find_wall() -> Vector3:
+	_from_climb = false
 	if player.probes == null:
 		return Vector3.ZERO
 	var facing: Vector3 = -player.global_transform.basis.z
 	facing.y = 0.0
 	var ahead: Dictionary = player.probes.wall_ahead_query(facing.normalized())
 	if ahead["valid"]:
+		_from_climb = true
 		return ahead["normal"]
 	var beside: Dictionary = player.probes.wall_query(facing.normalized())
 	if beside["valid"]:
@@ -133,8 +138,12 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 		if player.consume_buffered_jump():
 			_kick_armed = true
 		if _kick_armed and _turn_finished():
-			player.velocity = _normal * cfg.wall_kick_speed_out
-			player.velocity.y = cfg.wall_kick_speed_up
+			if _from_climb:
+				player.velocity = _normal * cfg.climb_jump_push_away_speed
+				player.velocity.y = sqrt(2.0 * config.pawn.gravity * cfg.climb_jump_off_z_height)
+			else:
+				player.velocity = _normal * cfg.wall_kick_speed_out
+				player.velocity.y = cfg.wall_kick_speed_up
 			player.move_and_slide()
 			player.set_grounded(player.is_on_floor())
 			return JUMP

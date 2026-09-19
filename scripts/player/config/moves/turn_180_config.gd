@@ -101,8 +101,25 @@ func _init() -> void:
 ## a function call. The original's own `RedoMoveTime = 1.0` on the kick is the
 ## one thing lost by folding, and it has no consumer yet -- this move's own 0.5
 ## already prevents the obvious abuse, which is spinning repeatedly on one wall.
+##
+## A WALL RUN's turn only. A climb's turn leaves by the move below.
 @export var wall_kick_speed_out: float = 3.0
 @export var wall_kick_speed_up: float = 5.8
+
+## [ME:CONFIRMED A1] `TdMove_WallClimb180TurnJump`: `JumpPushAwaySpeed = 400`
+## uu/s away from the wall and `JumpOffZHeight = 250` uu. The kick off a wall
+## CLIMB is this move, not TdMove_WallKick; kicked at WallKick's 3.0 m/s it
+## fell well short of what the original's levels ask for.
+##
+## Folded in like the wall kick. The original's own RedoMoveTime = 1.0 and
+## ExitToFallingZSpeed = -800 are not reproduced: after the kick the body is an
+## ordinary Jump.
+@export var climb_jump_push_away_speed: float = 4.0
+## [ME:INFERRED] A HEIGHT, the rise of the kick, converted to a launch speed at
+## the point of use (sqrt(2 g h), 8.9 m/s) -- how this project reads every
+## other `*ZHeight` field. Read as a speed of 2.5 m/s it would barely leave
+## the wall.
+@export var climb_jump_off_z_height: float = 2.5
 
 @export_group("Ground turn")
 

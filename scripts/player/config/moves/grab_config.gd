@@ -325,9 +325,9 @@ extends MoveConfig
 @export var shimmy_assist_angle_deg: float = 90.0
 
 ## 📌 TRANSCRIBED AND NOT USED: `TdMove_GrabJump.GrabJumpOffZHeight = 160` uu,
-## read as an upward speed of 1.6 m/s (a rise reading would make
-## `TdMove_WallClimb180TurnJump.JumpOffZHeight = 250` launch 2.5 m straight up,
-## which the original plainly does not do). It was added on top of the launch
+## read as an upward speed of 1.6 m/s. Turn180Config reads the sibling
+## `TdMove_WallClimb180TurnJump.JumpOffZHeight = 250` as a 2.5 m rise instead;
+## neither reading is verified. It was added on top of the launch
 ## while the launch followed the camera's pitch alone; with the floor of
 ## jump_min_pitch_deg it would only steepen every jump past that floor.
 
