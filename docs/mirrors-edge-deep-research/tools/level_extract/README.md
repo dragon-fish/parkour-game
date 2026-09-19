@@ -195,7 +195,7 @@ is reached from a touch through the outro (input off, a matinee, a delay, a
 fade) and usually a remote event sent from another package. The extractor
 walks up through all of it, only through a Gate's In (Edge's roof end opens
 the gate; grabbing the helicopter goes through it), and records the touches
-as `level_end`. Stormdrain, the Mall and the Boat end on cutscenes and have
+as `level_end`. The tutorial, the Mall and the Boat reach it no other way and have
 none.
 
 **A builder script is loaded without the autoloads.** A level script that
