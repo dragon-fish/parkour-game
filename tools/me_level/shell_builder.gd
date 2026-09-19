@@ -18,6 +18,10 @@ const MODIFIER_VOLUME_SCRIPT := preload("res://scripts/level/modifier_volume.gd"
 const DEATH_VOLUME_SCRIPT := preload("res://scripts/level/death_volume.gd")
 const MATINEE_SCRIPT := preload("res://scripts/level/matinee.gd")
 const USE_ZONE_SCRIPT := preload("res://scripts/level/use_zone.gd")
+const LIFT_SCRIPT := preload("res://scripts/level/lift.gd")
+## [ME:CONFIRMED] no jump or crouch in a lift car, base walking speed only.
+## The speed as a fraction of the current cap is PROJECT-DEFINED; tune by eye.
+const LIFT_SPEED_CAP := 0.5
 
 const LINE_KINDS := {zipline = 0, swing = 1, balance = 2, ladder = 3, ledgewalk = 4}
 
@@ -91,7 +95,79 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
 	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers")))
+	_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
 	return root
+
+
+## The config's hand-described lifts whose car stands in this manifest.
+func _lifts(manifest: Dictionary, movers: NodePath) -> Node3D:
+	var group := _group("Lifts")
+	var present := {}
+	var cars := {}
+	for p: Dictionary in manifest["placements"]:
+		if p.get("mover", false):
+			var key := "%s.%s" % [p["package"], p["name"]]
+			present[key] = NodePath(String(movers) + "/" + Common.mover_name(p["package"], p["name"]))
+			cars[key] = p
+	var names := Common.NameAllocator.new()
+	for lift: Dictionary in manifest["config"].get("lifts", []):
+		if not present.has(lift["car"]):
+			continue
+		var node := Node3D.new()
+		node.set_script(LIFT_SCRIPT)
+		node.name = names.take("Lift_" + Common.mover_name("", lift["car"]))
+		node.set("car", present[lift["car"]])
+		var car_doors: Array[NodePath] = []
+		for actor: String in lift["car_doors"]:
+			car_doors.append(present[actor])
+		node.set("car_doors", car_doors)
+		var stop_doors: Array[Array] = []
+		for doors: Array in lift["stop_doors"]:
+			var paths: Array[NodePath] = []
+			for actor: String in doors:
+				paths.append(present[actor])
+			stop_doors.append(paths)
+		node.set("stop_doors", stop_doors)
+		node.set("travel", Common.v3(lift["travel"]))
+		node.set("travel_time", float(lift["travel_time"]))
+		node.set("door_open_offset", Common.v3(lift["door_open_offset"]))
+		node.set("door_time", float(lift["door_time"]))
+		# Both volumes fill the car's bounds; the Lift carries them along.
+		var box: Dictionary = cars[lift["car"]]["aabb"]
+		var lo := Common.v3(box["min"])
+		var hi := Common.v3(box["max"])
+		var shape := BoxShape3D.new()
+		shape.size = hi - lo
+		var zone := Area3D.new()
+		zone.set_script(USE_ZONE_SCRIPT)
+		zone.name = "UseZone"
+		zone.position = (lo + hi) * 0.5
+		var zone_shape := CollisionShape3D.new()
+		zone_shape.name = "CollisionShape3D"
+		zone_shape.shape = shape
+		zone.add_child(zone_shape)
+		node.add_child(zone)
+		var rules := Area3D.new()
+		rules.set_script(MODIFIER_VOLUME_SCRIPT)
+		rules.name = "CarRules"
+		rules.position = zone.position
+		var rules_shape := CollisionShape3D.new()
+		rules_shape.name = "CollisionShape3D"
+		rules_shape.shape = shape
+		rules.add_child(rules_shape)
+		var specs: Array[StatusSpec] = []
+		for effect in [Status.Effect.BLOCK_JUMP, Status.Effect.BLOCK_CROUCH, Status.Effect.SPEED_CAP]:
+			var spec := StatusSpec.new()
+			spec.effect = effect
+			spec.seconds = WIRE_STAGGER_S
+			if effect == Status.Effect.SPEED_CAP:
+				spec.amount = LIFT_SPEED_CAP
+			specs.append(spec)
+		rules.set("apply", specs)
+		rules.set("refresh_interval", WIRE_REFRESH_S)
+		node.add_child(rules)
+		group.add_child(node)
+	return group
 
 
 ## The movement sequences whose movers stand in this manifest, with their

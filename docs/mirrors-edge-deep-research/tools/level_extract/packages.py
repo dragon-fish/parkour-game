@@ -26,10 +26,13 @@ from mapdump import MapReader
 #                                    directory holds two maps (SP01: Edge_p, Escape_p)
 #   split_sections  bool  false      tag everything with the section it belongs to;
 #                                    the builder then writes one scene per section
+#   lifts           list  []         hand-configured lifts for the builder (Lift):
+#                                    {car, car_doors, stop_doors, travel, travel_time,
+#                                     door_open_offset, door_time}; actors as package.name
 CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
-    'persistent': None, 'split_sections': False,
+    'persistent': None, 'split_sections': False, 'lifts': [],
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 
