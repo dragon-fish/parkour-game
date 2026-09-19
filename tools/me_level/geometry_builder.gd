@@ -442,6 +442,11 @@ func _build_lights(lights: Array) -> Node3D:
 			# Lights the character only, as in the original, never the level.
 			var camera := CameraConfig.new()
 			light.light_cull_mask = camera.first_person_body_layers | camera.third_person_body_layers
+			# And never the GI: SDFGI injects a light whatever its cull mask,
+			# and in the far cascades a brightness-5 lamp at the tutorial's
+			# door lit a whole block from 60 m, then went dark as the player
+			# walked up and the fine cascades took over.
+			light.light_bake_mode = Light3D.BAKE_DISABLED
 		light.set_meta("me_brightness", float(entry["brightness"]))
 		light.light_energy = float(entry["brightness"]) * scale
 		parent.add_child(light)

@@ -85,7 +85,7 @@ const EXPOSURE_PER_SUN := 0.85
 ## How much of the baked sun's colour the live sun keeps, 0 white to 1 all
 ## of it. The bake mixed its warm sun with a blue sky light into whites that
 ## read neutral; the live sun alone reads yellow at 1.
-@export var sun_tint := 0.5
+@export var sun_tint := 0.2
 ## Soft edge of the sun's shadows, degrees of sun disc. [ME:CONFIRMED] the
 ## bake's SoftShadowAngle is 2.0, but DO NOT raise this above 0: Godot's
 ## soft directional shadows (PCSS) let the sun through a roof 80 m above the
@@ -130,7 +130,7 @@ const EXPOSURE_PER_SUN := 0.85
 @export var haze_ramp := 1.6
 ## The haze tint is the haze colour pulled toward the dome's horizon: the
 ## far city dissolves into the sky it stands against, not into yellow.
-@export var haze_sky_mix := 0.5
+@export var haze_sky_mix := 0.65
 ## The dome takes the same tint in a band above the horizon, so the sky the
 ## haze fades toward is a sky that has the haze in it.
 @export var sky_haze_band := 0.35
