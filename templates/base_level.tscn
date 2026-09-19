@@ -19,7 +19,7 @@ fade_begin_distance = 128.0
 [sub_resource type="Environment" id="Environment_eb6dy"]
 background_mode = 2
 sky = ExtResource("8_sky")
-ambient_light_source = 2
+ambient_light_source = 3
 ambient_light_color = Color(0.22352941, 0.46666667, 0.7411765, 1)
 ssr_enabled = true
 ssr_max_steps = 32

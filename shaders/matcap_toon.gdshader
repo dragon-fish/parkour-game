@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled, depth_prepass_alpha, ambient_light_disabled,
+render_mode cull_disabled, depth_prepass_alpha,
 		diffuse_lambert, specular_disabled;
 
 // lilToon's matcap compositing, ported from the shader the model was authored
@@ -62,31 +62,18 @@ uniform int emission_mode = 1;
 // _MonochromeLighting (0.2). That clamp is the whole reason an avatar keeps its
 // colours in a world it was never lit for.
 //
-// Godot 4 exposes NO writable AMBIENT_LIGHT in fragment() or light(), so the
-// clamp cannot be applied to the environment's ambient after the fact. The
-// environment's contribution is switched off for this material and its share of
-// the budget is supplied here instead: EMISSION carries the ambient half (the
-// only route to unlit brightness once ambient_light_disabled is set), and
-// light() may add at most the headroom left under the ceiling.
+// Godot 4 exposes NO writable AMBIENT_LIGHT in fragment() or light(), so only
+// the direct half of the clamp is reproduced: light() adds at most
+// light_max_limit. The ambient half is the level's own, so a dark interior
+// darkens the character with it and a sunlit street does not; EMISSION is only
+// lilToon's floor, light_min_limit, so a pitch-black corner still shows her.
 //
-// ambient_energy is NOT lilToon's 0.15 floor. That floor only ever mattered in
-// a dark world; a lit one hands lilToon an ambient near 1.0, which is what the
-// author's own renders show. Set this to what the character should read as with
-// no sun on it, and light_max_limit to what full sun may take it to.
-//
-// DO NOT drop ambient_light_disabled so the character "sits in the scene". The
-// level's ambient is a saturated cold blue on purpose; at full strength it dyes
-// the entire model, which is the failure this replaces. ambient_color is the
-// dial for letting the level's mood reach the skin: the model's own texture is
-// a warm white, which reads as yellow against a cold level until this cools it.
-//
-// LINEAR, like every other colour here, and for a second reason on top of the
-// one above: a shader's DEFAULT value is not gamma-decoded, while the same
-// numbers set on the material are. Leaving the hint on would make the default
-// and an override disagree. 0.477/0.692/1.0 is sRGB 0.72/0.85/1.0.
-uniform vec3 ambient_color = vec3(0.477, 0.692, 1.0);
-uniform float ambient_energy : hint_range(0.0, 2.0) = 0.90;
-uniform float light_max_limit : hint_range(0.0, 2.0) = 1.05;
+// DO NOT switch the environment's ambient off again and hand the model a fixed
+// one through EMISSION. That was done while the levels' ambient was a
+// saturated cold blue: it kept her colours, and made her glow the same grey in
+// sun and in a dark room alike.
+uniform float light_min_limit : hint_range(0.0, 1.0) = 0.05;
+uniform float light_max_limit : hint_range(0.0, 2.0) = 1.0;
 uniform float monochrome_lighting : hint_range(0.0, 1.0) = 0.2;
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -129,7 +116,7 @@ void fragment() {
 		emission_blend * em.a * texture(emission_blend_mask, UV).rgb, emission_mode);
 
 	ALBEDO = col;
-	EMISSION = col * ambient_color * ambient_energy;
+	EMISSION = col * light_min_limit;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 	ALPHA = alb.a;
@@ -140,6 +127,5 @@ void light() {
 	// LIGHT_COLOR already carries the light's energy times PI.
 	vec3 c = LIGHT_COLOR / PI * ATTENUATION * ndl;
 	c = mix(c, vec3(dot(c, LUMA)), monochrome_lighting);
-	vec3 headroom = vec3(max(light_max_limit - ambient_energy, 0.0));
-	DIFFUSE_LIGHT += ALBEDO * min(c, headroom);
+	DIFFUSE_LIGHT += ALBEDO * min(c, vec3(light_max_limit));
 }
