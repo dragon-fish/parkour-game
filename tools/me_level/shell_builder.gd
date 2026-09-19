@@ -145,6 +145,7 @@ func _lifts(manifest: Dictionary, movers: NodePath) -> Node3D:
 		var zone := Area3D.new()
 		zone.set_script(USE_ZONE_SCRIPT)
 		zone.name = "UseZone"
+		zone.set("require_whole_body", true)
 		zone.position = (lo + hi) * 0.5
 		var zone_shape := CollisionShape3D.new()
 		zone_shape.name = "CollisionShape3D"
@@ -503,7 +504,15 @@ func _swing_points(a: Dictionary, placements: Array) -> Array[Vector3]:
 		bars.append([p0, p1])
 	if bars.is_empty():
 		return []
-	bars.sort_custom(func(x, y): return x[0].distance_to(x[1]) > y[0].distance_to(y[1]))
+	# The bar passes through the volume's middle; the ceiling pipes around it
+	# are often just as long. Nearest the middle first, longest on a tie.
+	var middle := volume.origin
+	bars.sort_custom(func(x, y):
+		var dx := _off_line(middle, x[0], x[1])
+		var dy := _off_line(middle, y[0], y[1])
+		if absf(dx - dy) > SWING_COLLINEAR_M:
+			return dx < dy
+		return x[0].distance_to(x[1]) > y[0].distance_to(y[1]))
 	var origin: Vector3 = bars[0][0]
 	var along: Vector3 = (bars[0][1] - bars[0][0]).normalized()
 	var lo := INF
@@ -522,6 +531,13 @@ func _swing_points(a: Dictionary, placements: Array) -> Array[Vector3]:
 	if clipped.is_empty():
 		return []
 	return [volume * clipped[0], volume * clipped[1]]
+
+
+## Distance from `p` to the infinite line through `a` and `b`.
+static func _off_line(p: Vector3, a: Vector3, b: Vector3) -> float:
+	var along := (b - a).normalized()
+	var offset := p - a
+	return (offset - along * offset.dot(along)).length()
 
 
 static func _clip_segment(a: Vector3, b: Vector3, box: AABB) -> Array[Vector3]:

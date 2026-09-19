@@ -12,6 +12,10 @@ extends Area3D
 signal used
 
 @export var dwell: float = 1.0
+## The dwell only counts while the whole capsule is inside the zone's boxes.
+## A lift car: counting from the first touch at the door, the car left
+## before the player was in it.
+@export var require_whole_body: bool = false
 
 const WIRE_COLOR := Color(0.4, 0.85, 1.0, 0.35)
 
@@ -50,8 +54,12 @@ func _physics_process(delta: float) -> void:
 	if _inside == null or _fired:
 		set_physics_process(false)
 		return
-	_held += delta
 	var prompt := UsePrompt.shared(get_tree())
+	if require_whole_body and not _holds_whole(_inside):
+		_held = 0.0
+		prompt.fill(0.0)
+		return
+	_held += delta
 	if _held < dwell:
 		prompt.fill(_held / dwell)
 		return
@@ -59,6 +67,33 @@ func _physics_process(delta: float) -> void:
 	set_physics_process(false)
 	prompt.complete()
 	used.emit()
+
+
+## Whether every extreme of the body's capsule is inside one of this zone's
+## boxes. Other shapes never hold a whole body.
+func _holds_whole(body: Node3D) -> bool:
+	var capsule: CapsuleShape3D = null
+	var at := Transform3D()
+	for child in body.get_children():
+		if child is CollisionShape3D and (child as CollisionShape3D).shape is CapsuleShape3D:
+			capsule = (child as CollisionShape3D).shape
+			at = (child as CollisionShape3D).global_transform
+			break
+	if capsule == null:
+		return true
+	var r := capsule.radius
+	var h := capsule.height * 0.5
+	var extremes: Array[Vector3] = [Vector3(0, h, 0), Vector3(0, -h, 0)]
+	for side: Vector3 in [Vector3(r, 0, 0), Vector3(-r, 0, 0), Vector3(0, 0, r), Vector3(0, 0, -r)]:
+		extremes.append(side)
+	for child in get_children():
+		if not (child is CollisionShape3D and (child as CollisionShape3D).shape is BoxShape3D):
+			continue
+		var box := AABB(-(child.shape as BoxShape3D).size * 0.5, (child.shape as BoxShape3D).size)
+		var to_local: Transform3D = (child as CollisionShape3D).global_transform.affine_inverse()
+		if extremes.all(func(e: Vector3) -> bool: return box.grow(0.01).has_point(to_local * (at * e))):
+			return true
+	return false
 
 
 ## One line mesh per collision shape: the hull's edges, or a cylinder's rings.
