@@ -178,8 +178,9 @@ def collision_class(actor, component, record):
     return 'per_poly'
 
 
-def world_aabb(record, position, basis):
+def world_aabb(record, position, basis, pre_pivot=(0.0, 0.0, 0.0)):
     origin, extent = record['bounds']['origin'], record['bounds']['extent']
+    origin = [origin[k] - pre_pivot[k] for k in range(3)]
     lo, hi = [math.inf] * 3, [-math.inf] * 3
     for sx in (-1, 1):
         for sy in (-1, 1):
@@ -237,7 +238,12 @@ def collect_placements(mr, meshes, config, report):
             continue
         position = point(actor['Location'])
         basis = godot_basis(actor.get('Rotation') or (0, 0, 0), actor_scale(actor))
-        lo, hi = world_aabb(record, position, basis)
+        # UE3 draws an actor at Location + R*S*(v - PrePivot): the mesh sits
+        # PrePivot off the actor's origin, and the origin stays the pivot a
+        # matinee turns it about. Stormdrain's and the Prologue's red doors
+        # stood 2.24 m in the air without it.
+        pre_pivot = point(actor['PrePivot']) if actor.get('PrePivot') else [0.0, 0.0, 0.0]
+        lo, hi = world_aabb(record, position, basis, pre_pivot)
         collision = collision_class(actor, component, record)
         report['collision'][collision] += 1
         # bHidden actors are designer-placed invisible collision (group
@@ -252,7 +258,8 @@ def collect_placements(mr, meshes, config, report):
         out.append({'name': e['name'], 'package': mr.label, 'mesh': name, 'position': position,
                     'basis': basis, 'collision': collision, 'soft_landing': record['soft_landing'],
                     'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor',
-                    'base': base, 'aabb': {'min': lo, 'max': hi}})
+                    'base': base, 'aabb': {'min': lo, 'max': hi}}
+                   | ({'pre_pivot': pre_pivot} if any(abs(c) > 1e-4 for c in pre_pivot) else {}))
     return out
 
 

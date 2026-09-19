@@ -86,12 +86,16 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			instance.transform = Transform3D(stretch)
 			counts.stretched += 1
 		node.transform = transform
+		# PrePivot: the mesh and its shapes sit this far off the node, whose
+		# origin stays the actor's -- the pivot a matinee turns it about.
+		var offset := stretch * -Common.v3(placement.get("pre_pivot", [0.0, 0.0, 0.0]))
+		instance.transform.origin = offset
 		if collision == "simple":
 			var shape_names := Common.NameAllocator.new()
 			for shape: Shape3D in mesh.get_meta("simple_shapes"):
-				_add_shape(node, _stretched(shape, stretch), shape_names.take("Collision"))
+				_add_shape(node, _stretched(shape, stretch), shape_names.take("Collision"), offset)
 		elif collision == "per_poly":
-			_add_shape(node, _stretched(mesh.get_meta("per_poly_shape"), stretch), "Collision")
+			_add_shape(node, _stretched(mesh.get_meta("per_poly_shape"), stretch), "Collision", offset)
 		(movers if mover else geometry).add_child(node)
 	print("[me_level] placements: ", counts)
 	root.add_child(_build_bsp(manifest["bsp"]))
@@ -139,10 +143,11 @@ func _stretched(shape: Shape3D, stretch: Basis) -> Shape3D:
 	return copy
 
 
-func _add_shape(node: Node3D, shape: Shape3D, name: String) -> void:
+func _add_shape(node: Node3D, shape: Shape3D, name: String, offset := Vector3.ZERO) -> void:
 	var collision := CollisionShape3D.new()
 	collision.name = name
 	collision.shape = shape
+	collision.position = offset
 	node.add_child(collision)
 
 
