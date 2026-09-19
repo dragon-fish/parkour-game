@@ -241,6 +241,32 @@ func test_running_past_below_a_ledge_line_does_not_enter() -> void:
 	assert_eq(player.move_manager.current_name, Move.WALKING,
 		"a ledge 0.5 m overhead caught a body it should have refused")
 
+func test_rising_through_a_ledge_line_overhead_does_not_catch_it() -> void:
+	# [ME] climbing and jumping outrank the ledge walk: a body on its way UP
+	# past a ledge line is not pulled onto it. Only a body settling onto the
+	# line from above (or walking onto it) is caught.
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	var feet: Vector3 = player.global_position
+	feet.y = player.probes.feet_y()
+	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
+		feet + Vector3(-5.0, 0.8, 0.0),
+		feet + Vector3(5.0, 0.8, 0.0))
+	await step(5)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	await step(1)
+	input.release_jump()
+	for i in 40:
+		await step(1)
+		if player.velocity.y <= 0.0:
+			break
+		assert_ne(player.move_manager.current_name, Move.LEDGE_WALK,
+			"a ledge line was caught by a body still rising through it")
+
 # --- yaw sign: the "-Z points at the wall" convention must be what decides,
 # not the curve's own drawing direction. ------------------------------------
 
