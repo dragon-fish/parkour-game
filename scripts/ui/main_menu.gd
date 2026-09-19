@@ -779,12 +779,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _show_main_entries() -> void:
 	_selecting_level = false
-	var items: Array[String] = ["开始"]
+	var items: Array[String] = ["新游戏"]
 	_menu_actions = [_on_start_pressed]
 	if not levels.is_empty():
-		items.append("选择关卡")
+		items.append("选择章节")
 		_menu_actions.append(_show_level_select)
-	items.append_array(["角色", "设置", "退出"])
+	items.append_array(["角色展台", "参数设置", "退出游戏"])
 	_menu_actions.append_array([_open_showcase, _show_settings, _show_quit_confirm])
 	_menu_list.set_items(items)
 
