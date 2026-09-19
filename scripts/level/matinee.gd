@@ -199,15 +199,26 @@ func _apply() -> void:
 			if target == null:
 				continue
 			var start_transform: Transform3D = _starts[i][j]
-			if track["local"]:
-				var frame := start_transform.basis.orthonormalized()
-				target.global_transform = Transform3D(start_transform.basis * turn, start_transform.origin + frame * offset)
+			var pivots: Array = track.get("pivots", [])
+			if j < pivots.size() and pivots[j] is Transform3D:
+				# Hard-attached: the keys move the actor it rides, and it keeps
+				# its place relative to that actor.
+				var pivot: Transform3D = pivots[j]
+				var carried := _moved(pivot, offset, turn, track["local"])
+				target.global_transform = carried * pivot.affine_inverse() * start_transform
 			else:
-				target.global_transform = Transform3D(turn * start_transform.basis, start_transform.origin + offset)
+				target.global_transform = _moved(start_transform, offset, turn, track["local"])
 			if scaled:
 				var mesh := target.get_node_or_null("Mesh") as Node3D
 				if mesh != null:
 					mesh.transform.basis = (_mesh_starts[i][j] as Basis) * Basis.from_scale(stretch)
+
+
+## Where `from` is carried by one sample of the keys.
+static func _moved(from: Transform3D, offset: Vector3, turn: Basis, local: bool) -> Transform3D:
+	if local:
+		return Transform3D(from.basis * turn, from.origin + from.basis.orthonormalized() * offset)
+	return Transform3D(turn * from.basis, from.origin + offset)
 
 
 ## UE3 FInterpCurve::Eval: the leaving key's mode decides the segment.

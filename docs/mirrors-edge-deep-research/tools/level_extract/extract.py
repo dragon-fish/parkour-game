@@ -229,11 +229,15 @@ def collect_placements(mr, meshes, config, report):
         # bHidden actors are designer-placed invisible collision (group
         # Dummy_Collisions): they still block, they are just never drawn.
         hidden = bool(actor.get('bHidden', False))
+        # What this actor is hard-attached to: it moves with that actor. A
+        # Stormdrain gate rides a Trigger_Dynamic that its Matinee raises.
+        base_idx = ref_export(actor.get('Base')) if actor.get('bHardAttach') else None
+        base = '%s.%s' % (mr.label, pkg.exports[base_idx - 1]['name']) if base_idx else None
         report['counts']['hidden'] += hidden
         out.append({'name': e['name'], 'package': mr.label, 'mesh': name, 'position': position,
                     'basis': basis, 'collision': collision, 'soft_landing': record['soft_landing'],
                     'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor',
-                    'aabb': {'min': lo, 'max': hi}})
+                    'base': base, 'aabb': {'min': lo, 'max': hi}})
     return out
 
 

@@ -210,7 +210,7 @@ def collect(packages, mr, report):
             report['matinee_skipped'] = report.get('matinee_skipped', 0) + 1
             continue
         groups, length = [], None
-        variables = {}
+        variables, frames = {}, {}
         for link in _struct_array(mr, _props(mr, i).get('VariableLinks')):
             for var in _int_array(mr, link.get('LinkedVariables')):
                 if var <= 0:
@@ -241,8 +241,14 @@ def collect(packages, mr, report):
                 elif cls.startswith('SeqVar_Object'):
                     obj = ref_export(_props(mr, var).get('ObjValue'))
                     if obj:
-                        variables.setdefault(link.get('LinkDesc') or 'None', []).append(
-                            '%s.%s' % (mr.label, pkg.exports[obj - 1]['name']))
+                        actor_id = '%s.%s' % (mr.label, pkg.exports[obj - 1]['name'])
+                        variables.setdefault(link.get('LinkDesc') or 'None', []).append(actor_id)
+                        # Where every driven actor starts, meshless or not: the
+                        # builder pivots anything hard-attached to it about this.
+                        actor, _ = pk.resolved_props(packages, mr, obj)
+                        if 'Location' in actor:
+                            frames[actor_id] = {'position': point(actor['Location']),
+                                                'basis': godot_basis(actor.get('Rotation') or (0, 0, 0), (1.0, 1.0, 1.0))}
         for g in groups:
             g['actors'] = variables.get(g['group'], [])
         groups = [g for g in groups if g['actors']
@@ -254,5 +260,5 @@ def collect(packages, mr, report):
         # keyed over 2 s and played at 0.2, ten seconds in the original.
         matinees.append({'name': name_of(i), 'package': mr.label, 'length': length,
                          'play_rate': float(_props(mr, i).get('PlayRate', 1.0)),
-                         'starts': starts, 'groups': groups})
+                         'starts': starts, 'groups': groups, 'frames': frames})
     return matinees

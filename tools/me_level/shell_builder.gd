@@ -176,21 +176,37 @@ func _lifts(manifest: Dictionary, movers: NodePath) -> Node3D:
 func _matinees(manifest: Dictionary, movers: NodePath) -> Node3D:
 	var group := _group("Matinees")
 	var present := {}
+	var riders := {}
 	for p: Dictionary in manifest["placements"]:
 		if p.get("mover", false):
-			present["%s.%s" % [p["package"], p["name"]]] = Common.mover_name(p["package"], p["name"])
+			var id := "%s.%s" % [p["package"], p["name"]]
+			present[id] = Common.mover_name(p["package"], p["name"])
+			if p.get("base") != null:
+				if not riders.has(p["base"]):
+					riders[p["base"]] = []
+				riders[p["base"]].append(id)
 	var names := Common.NameAllocator.new()
 	var by_source := {}
 	for m: Dictionary in manifest.get("matinees", []):
 		var tracks: Array[Dictionary] = []
 		for g: Dictionary in m["groups"]:
 			var targets: Array[NodePath] = []
+			# Per target: null to move the target itself, or the transform of
+			# the actor it is hard-attached to, which is what the keys move.
+			var pivots: Array = []
 			for actor: String in g["actors"]:
 				if present.has(actor):
 					targets.append(NodePath(String(movers) + "/" + present[actor]))
+					pivots.append(null)
+				for rider: String in riders.get(actor, []):
+					var frame: Dictionary = m["frames"].get(actor, {})
+					if frame.is_empty():
+						continue
+					targets.append(NodePath(String(movers) + "/" + present[rider]))
+					pivots.append(Common.transform_of(frame))
 			if targets.is_empty():
 				continue
-			var track := {targets = targets, local = bool(g["keys"].get("local", false))}
+			var track := {targets = targets, pivots = pivots, local = bool(g["keys"].get("local", false))}
 			_matinee_channel(track, "pos_", g["keys"]["position"])
 			_matinee_channel(track, "rot_", g["keys"]["euler"])
 			_matinee_channel(track, "scl_", g["keys"].get("scale", []))
