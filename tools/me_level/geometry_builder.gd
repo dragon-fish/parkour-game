@@ -88,8 +88,12 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			counts.stretched += 1
 		node.transform = transform
 		# PrePivot: the mesh and its shapes sit this far off the node, whose
-		# origin stays the actor's -- the pivot a matinee turns it about.
-		var offset := stretch * -Common.v3(placement.get("pre_pivot", [0.0, 0.0, 0.0]))
+		# origin stays the actor's -- the pivot a matinee turns it about. Turned
+		# with the actor but NOT scaled (UE3: Location + R*(S*v - PrePivot)),
+		# then brought into the node's own frame, which may carry the scale.
+		var pre_pivot := Common.v3(placement.get("pre_pivot", [0.0, 0.0, 0.0]))
+		var turned := Common.transform_of(placement).basis.orthonormalized() * -pre_pivot
+		var offset := transform.basis.inverse() * turned
 		instance.transform.origin = offset
 		if collision == "simple":
 			var shape_names := Common.NameAllocator.new()

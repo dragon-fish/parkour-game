@@ -13,7 +13,7 @@ keys); only yaw-dominant tracks were checked by eye.
 import struct
 
 from annotations import brush_hulls
-from common import UU, godot_basis, outer_class, point, ref_export
+from common import UU, godot_basis, outer_class, pivot_offset, point, ref_export
 import packages as pk
 
 TOUCH_EVENTS = ('SeqEvent_Touch', 'SeqEvent_TdTouch')
@@ -140,14 +140,10 @@ def _trigger(packages, mr, idx):
     out = {'name': mr.pkg.exports[idx - 1]['name'], 'class': mr.pkg.class_of(mr.pkg.exports[idx - 1])}
     if 'Location' in actor:
         out['position'] = point(actor['Location'])
-        if actor.get('PrePivot'):
-            # Where the actor is drawn and collides: Location - R*S*PrePivot
-            # (see extract.py). A kicked door's hidden target sits 2.56 m
-            # below its Location this way.
-            basis = godot_basis(actor.get('Rotation') or (0, 0, 0), _scale(actor))
-            local = point(actor['PrePivot'])
-            out['position'] = [round(out['position'][k] - sum(basis[c][k] * local[c] for c in range(3)), 4)
-                               for k in range(3)]
+        # Where the actor is drawn and collides (see extract.pivot_offset): a
+        # kicked door's hidden target sits 2.56 m below its Location.
+        turned = pivot_offset(actor)
+        out['position'] = [round(out['position'][k] - turned[k], 4) for k in range(3)]
     component = ref_export(actor.get('BrushComponent'))
     if component:
         out['hull'] = brush_hulls(mr, component)

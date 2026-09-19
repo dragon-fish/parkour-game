@@ -15,13 +15,15 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from common import ExtractError, actor_scale, godot_basis, outer_class, point, ref_export, ref_import, import_root_package
+from common import (ExtractError, actor_scale, godot_basis, import_root_package, outer_class, pivot_offset,
+                    point, ref_export, ref_import)
 import annotations
 import lights
 import packages as pk
 import materials as material_bake
 import static_mesh
 import matinee
+import environment
 
 # InterpActors are movers: placed like any mesh, moved by matinee.py's data.
 PLACED_CLASSES = ('StaticMeshActor', 'InterpActor')
@@ -189,9 +191,8 @@ def collision_class(actor, component, record):
     return 'per_poly'
 
 
-def world_aabb(record, position, basis, pre_pivot=(0.0, 0.0, 0.0)):
+def world_aabb(record, position, basis):
     origin, extent = record['bounds']['origin'], record['bounds']['extent']
-    origin = [origin[k] - pre_pivot[k] for k in range(3)]
     lo, hi = [math.inf] * 3, [-math.inf] * 3
     for sx in (-1, 1):
         for sy in (-1, 1):
@@ -249,12 +250,15 @@ def collect_placements(mr, meshes, config, report):
             continue
         position = point(actor['Location'])
         basis = godot_basis(actor.get('Rotation') or (0, 0, 0), actor_scale(actor))
-        # UE3 draws an actor at Location + R*S*(v - PrePivot): the mesh sits
-        # PrePivot off the actor's origin, and the origin stays the pivot a
-        # matinee turns it about. Stormdrain's and the Prologue's red doors
-        # stood 2.24 m in the air without it.
+        # UE3 draws an actor at Location + R*(S*v - PrePivot): the mesh sits
+        # PrePivot off the actor's origin, turned with it but NOT scaled, and
+        # the origin stays the pivot a matinee turns it about. Stormdrain's
+        # and the Prologue's red doors stood 2.24 m in the air without it; the
+        # tutorial's kick target, stretched 28x on Z, went 71 m underground
+        # when the offset was scaled too.
         pre_pivot = point(actor['PrePivot']) if actor.get('PrePivot') else [0.0, 0.0, 0.0]
-        lo, hi = world_aabb(record, position, basis, pre_pivot)
+        turned = pivot_offset(actor)
+        lo, hi = world_aabb(record, [position[k] - turned[k] for k in range(3)], basis)
         collision = collision_class(actor, component, record)
         report['collision'][collision] += 1
         # bHidden actors are designer-placed invisible collision (group
@@ -435,8 +439,17 @@ def main(config_path):
     report['placements'] = len(placements)
     report['bsp_polygons'] = len(bsp)
 
+    # The persistent package's WorldInfo is the chapter's; a level without one
+    # (the tutorial lists its packages by hand) takes the first that has a sun.
+    look = None
+    for name in ([packages.persistent] if packages.persistent else []) + packages.names:
+        look = environment.collect(packages.reader(name))
+        if look and look.get('sun_direction'):
+            break
+    report['environment'] = look.get('package') if look else None
+
     os.makedirs(out_dir, exist_ok=True)
-    manifest = {'config': config, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
+    manifest = {'config': config, 'environment': look, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
                 'annotations': notes['annotations'], 'spawns': notes['spawns'],
                 'checkpoints': notes['checkpoints'], 'matinees': matinees, 'report': report}
     with open(os.path.join(out_dir, 'manifest.json'), 'w', encoding='utf-8') as fh:
