@@ -252,8 +252,11 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 		if existing != null and existing.get_meta("source_hash", "") == hash:
 			_materials[key] = load(path)
 			return _materials[key]
-	var image := Image.create_from_data(int(bake["width"]), int(bake["height"]), false,
-			Image.FORMAT_RGBA8, Marshalls.base64_to_raw(bake["rgba"]))
+	var image := Image.new()
+	if image.load_png_from_buffer(Marshalls.base64_to_raw(bake["png"])) != OK:
+		push_error("[me_level] material %s: unreadable bake" % material_name)
+		return _material("default", blend, unlit)
+	image.convert(Image.FORMAT_RGBA8)
 	image.generate_mipmaps()
 	# Block-compressed in VRAM (BC7, one byte a pixel against four): the
 	# bakes are 256 px now and a chapter carries hundreds. The mips are what
@@ -268,11 +271,12 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 	material.roughness = roughness
 	if bake.has("specular"):
 		material.metallic_specular = clampf(float(bake["specular"]) * SPECULAR_SCALE, 0.0, 1.0)
-	if bake.has("metallic"):
+	if bake.has("metallic_png"):
 		# Mirror where the original put the sky into the colour through a cube
 		# map, and sharp there: metallic and roughness from one mask.
-		var mask := Image.create_from_data(int(bake["width"]), int(bake["height"]), false,
-				Image.FORMAT_L8, Marshalls.base64_to_raw(bake["metallic"]))
+		var mask := Image.new()
+		mask.load_png_from_buffer(Marshalls.base64_to_raw(bake["metallic_png"]))
+		mask.convert(Image.FORMAT_L8)
 		var rough := Image.create(mask.get_width(), mask.get_height(), false, Image.FORMAT_L8)
 		for y in mask.get_height():
 			for x in mask.get_width():

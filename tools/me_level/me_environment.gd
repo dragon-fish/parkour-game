@@ -118,12 +118,22 @@ const EXPOSURE_PER_SUN := 0.85
 @export var cloud_amount := 1.0
 @export var cloud_yaw_deg := 0.0
 ## Bloom off the sunlit whites: the softness the original's screen has.
-@export var glow_intensity := 0.5
-@export var glow_bloom := 0.08
+@export var glow_intensity := 0.3
+@export var glow_bloom := 0.06
 ## Distance fog strength relative to the haze data; 0 turns the haze off.
 @export var haze_strength := 1.0
-## Where the haze starts, metres: nothing this close is tinted.
-@export var haze_start_m := 20.0
+## Where the haze starts, metres, and how it ramps toward the haze distance:
+## a ramp above 1 keeps the near blocks clear and thickens toward the far
+## city. [ME:UNKNOWN] how HazeDistanceCurve maps onto this; at 0.25 taken as
+## Godot's depth curve the haze stood on the street in front of the camera.
+@export var haze_start_m := 60.0
+@export var haze_ramp := 1.6
+## The haze tint is the haze colour pulled toward the dome's horizon: the
+## far city dissolves into the sky it stands against, not into yellow.
+@export var haze_sky_mix := 0.5
+## The dome takes the same tint in a band above the horizon, so the sky the
+## haze fades toward is a sky that has the haze in it.
+@export var sky_haze_band := 0.35
 ## Contact shadow in corners (SSAO). The bake has it everywhere.
 @export var ao_intensity := 1.5
 ## Volumetric fog density inside the volumetric range; 0 leaves it off.
@@ -173,6 +183,9 @@ func _sky_parameters(material: ShaderMaterial, energy: float) -> void:
 	material.set_shader_parameter("cloud_amount", cloud_amount)
 	material.set_shader_parameter("cloud_yaw", deg_to_rad(cloud_yaw_deg))
 	material.set_shader_parameter("sun_glow_color", Vector3(haze_color.r, haze_color.g, haze_color.b))
+	var haze := _haze_tint()
+	material.set_shader_parameter("haze_band_color", Vector3(haze.r, haze.g, haze.b))
+	material.set_shader_parameter("haze_band", 0.0)
 	var tint := _sun_color()
 	material.set_shader_parameter("sun_disc_color", Vector3(tint.r, tint.g, tint.b))
 
@@ -212,6 +225,7 @@ func _add_dome() -> void:
 	var material := ShaderMaterial.new()
 	material.shader = DOME_SHADER
 	_sky_parameters(material, sky_energy / _exposure())
+	material.set_shader_parameter("haze_band", sky_haze_band)
 	material.set_shader_parameter("sun_direction", sun_direction.normalized())
 	_dome = MeshInstance3D.new()
 	_dome.name = "SkyDome"
@@ -275,10 +289,10 @@ func _apply_haze(arena: Arena) -> void:
 	fog.fade_begin_distance = haze_start_m
 	fog.fade_end_distance = haze_distance_m
 	fog.max_opacity = clampf(haze_multiplier * haze_strength, 0.0, 1.0)
-	# The haze colour is laid over the sky's own; the far city dissolves into
-	# whatever sky stands behind it rather than into one flat tint.
-	fog.tint = haze_color
-	fog.sky_blend = 0.6
+	fog.tint = _haze_tint()
+	# No aerial perspective: the Environment's sky is the dim lighting sky,
+	# and blending toward it darkened the far city instead of lifting it.
+	fog.sky_blend = 0.0
 	fog.sky_affect = 0.0
 	fog.volumetric_enabled = volumetric_density > 0.0
 	fog.volumetric_density = volumetric_density
@@ -286,9 +300,12 @@ func _apply_haze(arena: Arena) -> void:
 	fog.volumetric_ambient_inject = 0.5
 	var world := arena.get_node_or_null("WorldEnvironment") as WorldEnvironment
 	if world != null and world.environment != null:
-		# Arena leaves the depth curve alone: the haze thickens fast then
-		# levels off, as the original's (distance / divider) ^ curve does.
-		world.environment.fog_depth_curve = maxf(haze_curve, 0.05)
+		# Arena leaves the depth curve alone.
+		world.environment.fog_depth_curve = maxf(haze_ramp, 0.05)
+
+
+func _haze_tint() -> Color:
+	return haze_color.lerp(sky_horizon, clampf(haze_sky_mix, 0.0, 1.0))
 
 
 func _apply_sun(arena: Arena) -> void:

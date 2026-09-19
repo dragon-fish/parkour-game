@@ -37,6 +37,12 @@ uniform float cloud_amount : hint_range(0.0, 1.0) = 1.0;
 // Clouds sink into the horizon haze instead of standing on it.
 uniform float cloud_horizon_fade = 0.08;
 
+// The level's haze, laid over the dome in a band above the horizon so the
+// far city and the sky it stands against carry the same tint.
+uniform vec3 haze_band_color = vec3(0.55, 0.56, 0.55);
+uniform float haze_band : hint_range(0.0, 1.0) = 0.0;
+uniform float haze_band_height = 0.18;
+
 uniform float sun_disc_size : hint_range(0.0, 0.1) = 0.012;
 uniform float sun_glow_power = 48.0;
 uniform float sun_glow_energy = 0.35;
@@ -65,6 +71,10 @@ vec3 me_sky_color(vec3 dir, vec3 sun_dir, bool with_disc) {
 		float shade = clamp(lum / cloud_white, 0.0, 1.0);
 		vec3 cloud = mix(mix(horizon_color, zenith_color, 0.3) * 1.4, vec3(1.0), shade);
 		col = mix(col, cloud, mask);
+	}
+	if (haze_band > 0.0) {
+		float band = 1.0 - smoothstep(0.0, haze_band_height, abs(up));
+		col = mix(col, haze_band_color, band * haze_band);
 	}
 	float cos_angle = dot(dir, sun_dir);
 	col += sun_glow_color * pow(clamp(cos_angle, 0.0, 1.0), sun_glow_power) * sun_glow_energy;
