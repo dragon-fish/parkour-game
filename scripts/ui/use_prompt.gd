@@ -1,17 +1,17 @@
 class_name UsePrompt
 extends Control
 
-## The ring beside the crosshair that fills while the player stands in a
+## The ring around the crosshair that fills while the player stands in a
 ## UseZone. One per game, found or made by shared(); UseZones only report
 ## progress to it.
 ##
 ## Filling: white. Done: green, two blinks, a short hold, then a slow fade.
 ## Abandoned before done: a quick fade.
 
-const RADIUS := 14.0
+const RADIUS := 18.0
 const WIDTH := 3.0
-## Right of the crosshair, so it never sits on what the player aims at.
-const OFFSET := Vector2(38.0, 0.0)
+## Around the crosshair: the ring is wide enough to leave the dot clear.
+const OFFSET := Vector2.ZERO
 const DONE_COLOR := Color(0.35, 1.0, 0.45)
 const BLINK_TIME := 0.12
 const HOLD_TIME := 0.35
