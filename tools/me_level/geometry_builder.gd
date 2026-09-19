@@ -159,6 +159,11 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 ## everything down to 8 m, at 520 thousand triangles instead of 1.3 million.
 ## Movers move and hidden, masked or translucent surfaces do not hide what is
 ## behind them: none of those.
+## Godot's occluders are double-sided, the original's culling was not: a
+## one-sided shell seen from behind (sp01b's office, inside the slanted
+## building's outer facade) is not drawn yet hides the whole city past the
+## window. Nearly every large mesh is open, so no filter here fixes that;
+## culling is the player's setting instead (SettingsStore.occlusion_culling).
 static func _build_occluder(geometry: Node3D, bsp: Node3D) -> OccluderInstance3D:
 	var vertices := PackedVector3Array()
 	var indices := PackedInt32Array()

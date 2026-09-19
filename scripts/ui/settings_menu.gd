@@ -41,7 +41,7 @@ const ANTIALIASING_LABELS := {
 }
 
 ## Stepper rows that are an on/off switch.
-const _SWITCH_KEYS := ["small_third_person_body"]
+const _SWITCH_KEYS := ["small_third_person_body", "occlusion_culling"]
 
 ## Rows that are a BUTTON rather than a value: they do something once and have
 ## nothing to save. THE THIRD ROW KIND -- before this there were only steppers
@@ -57,6 +57,7 @@ const _ROWS := [
 	{"key": "fov", "label": "视野 FOV", "desc": "调整摄像机基准视野角度。"},
 	{"key": "volume", "label": "总音量", "desc": "调整主音量大小。"},
 	{"key": "small_third_person_body", "label": "第三人称小体型", "desc": "第三人称下把角色模型缩小到 85%，人物与场景的比例会更舒服。只影响观感，不改变碰撞与动作，因此部分手部动作可能碰不到或穿过物体。"},
+	{"key": "occlusion_culling", "label": "遮挡剔除", "desc": "不绘制被大型墙体挡住的物体，在封闭场景里能提高一点帧数。开启后，透过玻璃看出去时远处的楼可能会消失。"},
 	{"key": "replay_tutorial", "label": "新手教程", "desc": "回到开场画面重玩一次新手教程。这不会清除任何已保存的进度。"},
 ]
 
@@ -125,8 +126,8 @@ func _build_ui() -> void:
 	panel.anchor_bottom = 0.5
 	panel.offset_left = -620.0
 	panel.offset_right = 620.0
-	panel.offset_top = -300.0
-	panel.offset_bottom = 300.0
+	panel.offset_top = -340.0
+	panel.offset_bottom = 340.0
 	add_child(panel)
 
 	var inner := Control.new()
