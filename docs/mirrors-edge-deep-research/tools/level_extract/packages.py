@@ -32,10 +32,14 @@ from mapdump import MapReader
 #                                    doors are whatever is hard-attached to it.
 #   floating_checkpoints list []     checkpoint labels the original leaves in mid-air
 #                                    on purpose; verify_level does not ask for a floor
+#   look            dict  {}         dials of the level's look the builder sets on its
+#                                    Environment node (tools/me_level/me_environment.gd
+#                                    exports), by name; judged against the reference shots
 CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
     'persistent': None, 'split_sections': False, 'lifts': [], 'floating_checkpoints': [],
+    'look': {},
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 

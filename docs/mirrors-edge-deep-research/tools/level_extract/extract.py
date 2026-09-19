@@ -447,7 +447,17 @@ def main(config_path):
         look = environment.collect(packages.reader(name))
         if look and look.get('sun_direction'):
             break
+    # The sun the lightmaps were baked from, wherever its _Lgts package is;
+    # its direction replaces the haze's approximation of it.
+    for name in packages.names:
+        sun = environment.baked_sun(packages.reader(name))
+        if sun:
+            look = look or {'package': None, 'post_process': {}, 'haze': {}}
+            look['sun'] = sun
+            look['sun_direction'] = sun['direction']
+            break
     report['environment'] = look.get('package') if look else None
+    report['sun'] = '%s.%s' % (look['sun']['package'], look['sun']['name']) if look and look.get('sun') else None
 
     os.makedirs(out_dir, exist_ok=True)
     manifest = {'config': config, 'environment': look, 'placements': placements, 'bsp': bsp, 'lights': found_lights,

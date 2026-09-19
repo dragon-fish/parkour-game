@@ -53,6 +53,25 @@ def post_process(settings):
     return out
 
 
+def haze(settings):
+    """The Mirror's Edge haze: a warm tint laid over distance, thickening by
+    (distance / divider) ** curve, scaled by the multiplier. Distances in
+    metres. Only the fields the builder reproduces."""
+    out = {}
+    color = settings.get('HazeColor')
+    if isinstance(color, (list, tuple)) and len(color) >= 3:
+        out['color'] = [round(float(c), 4) for c in color[:3]]
+    if 'HazeDistanceDivider' in settings:
+        out['distance_m'] = round(float(settings['HazeDistanceDivider']) / UU, 2)
+    if 'HazeDistanceCurve' in settings:
+        out['distance_curve'] = round(float(settings['HazeDistanceCurve']), 4)
+    if 'HazeMultiplier' in settings:
+        out['multiplier'] = round(float(settings['HazeMultiplier']), 4)
+    if settings.get('HazeEnabled') is False:
+        out['enabled'] = False
+    return out
+
+
 def collect(mr):
     """The look recorded on this package's WorldInfo, or None."""
     pkg = mr.pkg
@@ -61,7 +80,7 @@ def collect(mr):
             continue
         props = _props(mr, i)
         settings = props.get('DefaultPostProcessSettings') or {}
-        out = {'package': mr.label, 'post_process': post_process(settings)}
+        out = {'package': mr.label, 'post_process': post_process(settings), 'haze': haze(settings)}
         sky = props.get('SkyColor')
         if isinstance(sky, tuple) and len(sky) == 3:
             out['sky_color'] = [round(c, 4) for c in sky]
@@ -71,4 +90,37 @@ def collect(mr):
             length = sum(c * c for c in sun) ** 0.5
             out['sun_direction'] = [round(sun[0] / length, 5), round(sun[2] / length, 5), round(sun[1] / length, 5)]
         return out
+    return None
+
+
+def baked_sun(mr):
+    """The DirectionalLight the world was baked with, or None.
+
+    Beast reads its direction, colour and brightness off the actor's Baker*
+    fields (bUseBakerColorAndBrightness); the component's own Brightness and
+    LightingChannels belong to the dynamic light that only characters see.
+    Measured in the tutorial and Stormdrain it stands within 7 degrees of
+    HazeSunLocation, which the haze is drawn around; the light is the one the
+    shadows were baked from, so it wins.
+    """
+    from common import godot_basis, ref_export
+    pkg = mr.pkg
+    for i, e in enumerate(pkg.exports, 1):
+        if pkg.class_of(e) != 'DirectionalLight' or outer_class(pkg, e) != 'Level':
+            continue
+        props, _ = mr.props_inherited(i)
+        if not props or not props.get('bUseBakerColorAndBrightness'):
+            continue
+        component_idx = ref_export(props.get('LightComponent'))
+        if component_idx and _props(mr, component_idx).get('bEnabled') is False:
+            continue
+        # A UE light shines along its +X; the basis columns are Godot axes.
+        forward = godot_basis(props.get('Rotation') or (0, 0, 0), (1.0, 1.0, 1.0))[0]
+        color = props.get('BakerColor')
+        return {
+            'package': mr.label, 'name': e['name'],
+            'direction': [round(-c, 5) for c in forward],
+            'color': [round(c, 4) for c in color[1:4]] if isinstance(color, tuple) and color and color[0] == 'color' else [1.0, 1.0, 1.0],
+            'brightness': round(float(props.get('BakerBrightness', 1.0)), 4),
+        }
     return None
