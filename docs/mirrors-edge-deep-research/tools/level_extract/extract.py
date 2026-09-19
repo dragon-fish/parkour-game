@@ -32,9 +32,10 @@ PLACED_CLASSES = ('StaticMeshActor', 'InterpActor')
 # into a circle by the camera's far plane.
 FX_MESH_MARKERS = ('_fx_', 'skydome', 'sunflare', 'godray')
 # [ME:INFERRED] a lightmap-bake occluder: S_LightSquare_01 planes in the _Lgts
-# packages, standing in doorways to stop light leaking between rooms. Some
-# carry HiddenGame, most do not, and none shows in the original; built, they
-# were black walls, several of them solid.
+# packages, standing in doorways and over rooms to keep light out of them.
+# None shows in the original. Built as shadow casters only -- no picture, no
+# collision: drawn, they were black walls, several of them solid; left out,
+# the live sun came in where the bake had kept it out.
 BAKE_ONLY_MATERIAL = 'M_BakeBlack'
 # Checkpoints are taken from the persistent level when they fall inside the
 # section's own placements (no slices, no _Bac skyline), grown by this.
@@ -245,9 +246,8 @@ def collect_placements(mr, meshes, config, report):
         if any(marker in name.lower() for marker in FX_MESH_MARKERS):
             report['counts']['excluded_fx'] += 1
             continue
-        if record['surfaces'] and all(BAKE_ONLY_MATERIAL in (s['material'] or '') for s in record['surfaces']):
-            report['counts']['bake_only'] = report['counts'].get('bake_only', 0) + 1
-            continue
+        shadow_only = bool(record['surfaces']) and all(BAKE_ONLY_MATERIAL in (s['material'] or '') for s in record['surfaces'])
+        report['counts']['shadow_only'] = report['counts'].get('shadow_only', 0) + shadow_only
         position = point(actor['Location'])
         basis = godot_basis(actor.get('Rotation') or (0, 0, 0), actor_scale(actor))
         # UE3 draws an actor at Location + R*(S*v - PrePivot): the mesh sits
@@ -259,7 +259,7 @@ def collect_placements(mr, meshes, config, report):
         pre_pivot = point(actor['PrePivot']) if actor.get('PrePivot') else [0.0, 0.0, 0.0]
         turned = pivot_offset(actor)
         lo, hi = world_aabb(record, [position[k] - turned[k] for k in range(3)], basis)
-        collision = collision_class(actor, component, record)
+        collision = 'none' if shadow_only else collision_class(actor, component, record)
         report['collision'][collision] += 1
         # bHidden actors are designer-placed invisible collision (group
         # Dummy_Collisions): they still block, they are just never drawn.
@@ -285,7 +285,8 @@ def collect_placements(mr, meshes, config, report):
                     'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor',
                     'base': base, 'aabb': {'min': lo, 'max': hi}}
                    | ({'pre_pivot': pre_pivot} if any(abs(c) > 1e-4 for c in pre_pivot) else {})
-                   | ({'materials': overrides} if any(overrides) else {}))
+                   | ({'materials': overrides} if any(overrides) else {})
+                   | ({'shadow_only': True} if shadow_only else {}))
     return out
 
 

@@ -86,6 +86,11 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		# Hidden in the original: collision without a picture. Kept as a node so
 		# the editor can still show it.
 		instance.visible = not placement["hidden"]
+		if placement.get("shadow_only", false):
+			# The original's bake occluder: keeps the sun out, never seen. Visible
+			# whatever its HiddenGame, which would stop the shadow too.
+			instance.visible = true
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		_apply_overrides(instance, placement)
 		# Not drawn past VISIBLE_RANGE_PER_METRE its own size: 13,000 placements
 		# drew the whole chapter from inside a corridor.
@@ -148,6 +153,8 @@ static func _build_occluder(geometry: Node3D, bsp: Node3D) -> OccluderInstance3D
 	for node: Node3D in geometry.get_children():
 		var instance := node.get_node_or_null("Mesh") as MeshInstance3D
 		if instance == null or not instance.visible or instance.mesh == null:
+			continue
+		if instance.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
 			continue
 		var xform := node.transform * instance.transform
 		if (xform.basis * instance.mesh.get_aabb().size).abs().length() < OCCLUDER_MIN_EXTENT:
