@@ -281,6 +281,48 @@ def collect(packages, mr, report):
     return matinees
 
 
+# Breakable glass: [ME:CONFIRMED Cranes Kismet] a pane is an InterpActor whose
+# SeqEvent_TakeDamage takes TdDmgType_Barge -- the body crashing into it. The
+# event spawns the shatter and deals bullet damage to a hidden "Broken" twin,
+# whose own event hides and destroys both. Only the pair is read; the chain
+# itself is the builder's BreakableGlass.
+BARGE_DAMAGE = 'TdDmgType_Barge'
+
+
+def collect_glass(packages, mr, report):
+    pkg = mr.pkg
+    out = []
+    for i, e in enumerate(pkg.exports, 1):
+        if pkg.class_of(e) != 'SeqEvent_TakeDamage':
+            continue
+        props = _props(mr, i)
+        types = [pkg.resolve(t) for t in _int_array(mr, props.get('DamageTypes'))]
+        if BARGE_DAMAGE not in types:
+            continue
+        pane = ref_export(props.get('Originator'))
+        if not pane or pkg.class_of(pkg.exports[pane - 1]) != 'InterpActor' \
+                or outer_class(pkg, pkg.exports[pane - 1]) != 'Level':
+            continue
+        broken = None
+        for out_link in _struct_array(mr, props.get('OutputLinks')):
+            for link in _struct_array(mr, out_link.get('Links')):
+                op = ref_export(link.get('LinkedOp'))
+                if not op or pkg.class_of(pkg.exports[op - 1]) != 'SeqAct_CauseDamage':
+                    continue
+                for var_link in _struct_array(mr, _props(mr, op).get('VariableLinks')):
+                    if var_link.get('LinkDesc') != 'Target':
+                        continue
+                    for var in _int_array(mr, var_link.get('LinkedVariables')):
+                        target = ref_export(_props(mr, var).get('ObjValue')) if var > 0 else None
+                        if target and target != pane:
+                            broken = '%s.%s' % (mr.label, pkg.exports[target - 1]['name'])
+        actor, _ = pk.resolved_props(packages, mr, pane)
+        out.append({'kind': 'glass', 'name': pkg.exports[pane - 1]['name'], 'package': mr.label,
+                    'position': point(actor['Location']),
+                    'pane': '%s.%s' % (mr.label, pkg.exports[pane - 1]['name']), 'broken': broken})
+    report['glass'] = report.get('glass', 0) + len(out)
+    return out
+
 
 def self_disabling(mr):
     """Names of the volumes a touch switches off: [ME:CONFIRMED Factory

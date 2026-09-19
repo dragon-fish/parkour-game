@@ -19,6 +19,10 @@ const DEATH_VOLUME_SCRIPT := preload("res://scripts/level/death_volume.gd")
 const MATINEE_SCRIPT := preload("res://scripts/level/matinee.gd")
 const USE_ZONE_SCRIPT := preload("res://scripts/level/use_zone.gd")
 const LIFT_SCRIPT := preload("res://scripts/level/lift.gd")
+const GLASS_SCRIPT := preload("res://scripts/level/breakable_glass.gd")
+## How far out from a pane its Reach sees a body coming: a tick at a sprint
+## and then some. A dial.
+const GLASS_REACH_M := 0.6
 ## [ME:CONFIRMED] no jump or crouch in a moving lift car, and the speed is
 ## pinned to the base velocity: [ME:CONFIRMED 02 §2.3] 400 uu/s, 4.0 m/s,
 ## 14.4 km/h. Absolute, not a share of the current cap. Lift turns the
@@ -65,6 +69,7 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
 	_own(root, _pain_volumes(annotations))
+	_own(root, _glass(manifest, NodePath("../../" + String(geometry.name) + "/Movers")))
 	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), {}))
 	_own(root, _checkpoints(manifest))
 	_place_spawn(root, manifest)
@@ -101,6 +106,7 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	_own(root, _barbed_wire(annotations))
 	_own(root, _death_volumes(annotations))
 	_own(root, _pain_volumes(annotations))
+	_own(root, _glass(manifest, NodePath("../../Geometry/Movers")))
 	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), _lift_actors(manifest)))
 	_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
 	return root
@@ -791,6 +797,41 @@ func _pain_volumes(annotations: Array) -> Node3D:
 			volume.free()
 			continue
 		group.add_child(volume)
+	return group
+
+
+## Panes the body smashes by running into them (BreakableGlass). The pane is
+## the geometry's own mover; Reach is its bounds grown by GLASS_REACH_M.
+func _glass(manifest: Dictionary, movers: NodePath) -> Node3D:
+	var group := _group("Glass")
+	var placed := {}
+	for p: Dictionary in manifest["placements"]:
+		placed["%s.%s" % [p["package"], p["name"]]] = p
+	var names := Common.NameAllocator.new()
+	for a: Dictionary in manifest["annotations"]:
+		if a["kind"] != "glass":
+			continue
+		if not placed.has(a["pane"]):
+			push_error("[me_level] glass %s is not placed" % a["pane"])
+			continue
+		var pane: Dictionary = placed[a["pane"]]
+		var glass := Node3D.new()
+		glass.set_script(GLASS_SCRIPT)
+		glass.name = names.take(a["name"])
+		glass.set("pane", NodePath(String(movers) + "/" + Common.mover_name(pane["package"], pane["name"])))
+		var lo := Common.v3(pane["aabb"]["min"])
+		var hi := Common.v3(pane["aabb"]["max"])
+		var reach := Area3D.new()
+		reach.name = "Reach"
+		reach.position = (lo + hi) * 0.5
+		var shape := BoxShape3D.new()
+		shape.size = (hi - lo) + Vector3.ONE * GLASS_REACH_M * 2.0
+		var collision := CollisionShape3D.new()
+		collision.name = "CollisionShape3D"
+		collision.shape = shape
+		reach.add_child(collision)
+		glass.add_child(reach)
+		group.add_child(glass)
 	return group
 
 

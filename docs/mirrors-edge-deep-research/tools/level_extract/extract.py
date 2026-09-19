@@ -278,7 +278,7 @@ def component_props(packages, mr, reference):
     return pk.resolved_props(packages, mr, idx)[0] if idx else {}
 
 
-def collect_placements(mr, meshes, config, report):
+def collect_placements(mr, meshes, config, report, keep=frozenset()):
     pkg = mr.pkg
     out = []
     for i, e in enumerate(pkg.exports, 1):
@@ -309,7 +309,9 @@ def collect_placements(mr, meshes, config, report):
         if name in config['exclude_meshes']:
             report['counts']['excluded_by_config'] += 1
             continue
-        if any(marker in name.lower() for marker in FX_MESH_MARKERS):
+        # A breakable pane is no effect, whatever its mesh is called: Factory's
+        # outside glass is S_FX_OutsideGlassPlane_01.
+        if e['name'] not in keep and any(marker in name.lower() for marker in FX_MESH_MARKERS):
             report['counts']['excluded_fx'] += 1
             continue
         shadow_only = bool(record['surfaces']) and all(BAKE_ONLY_MATERIAL in (s['material'] or '') for s in record['surfaces'])
@@ -437,7 +439,9 @@ def main(config_path):
     notes = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
     for name in packages.names:
         mr = packages.reader(name)
-        placements += collect_placements(mr, meshes, config, report)
+        glass = matinee.collect_glass(packages, mr, report)
+        panes = frozenset(g['name'] for g in glass)
+        placements += collect_placements(mr, meshes, config, report, panes)
         collected = annotations.collect(packages, mr, defaults, report)
         once = matinee.self_disabling(mr)
         for a in collected['annotations']:
@@ -447,6 +451,7 @@ def main(config_path):
             notes[key] += values
         found_lights += lights.collect_lights(mr)
         matinees += matinee.collect(packages, mr, report)
+        notes['annotations'] += glass
         for face in lights.collect_bsp(mr):
             face['package'] = name
             bsp.append(face)

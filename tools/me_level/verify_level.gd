@@ -89,6 +89,7 @@ func _run() -> void:
 	_check_count(parts, "DeathVolumes", manifest, ["kill"])
 	_check_count(parts, "BarbedWire", manifest, ["barbedwire"])
 	_check_count(parts, "PainVolumes", manifest, ["pain"])
+	_check_count(parts, "Glass", manifest, ["glass"])
 	for part in parts:
 		if part.has_node("InterestLines"):
 			for line in part.get_node("InterestLines").get_children():
