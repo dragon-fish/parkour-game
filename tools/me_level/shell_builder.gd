@@ -117,9 +117,13 @@ func _lifts(manifest: Dictionary, movers: NodePath) -> Node3D:
 		node.set_script(LIFT_SCRIPT)
 		node.name = names.take("Lift_" + Common.mover_name("", lift["car"]))
 		node.set("car", present[lift["car"]])
+		# The car's own doors are the ones hard-attached to it: naming them by
+		# hand swapped a car pair with a landing pair that sits in the same
+		# place at the bottom stop.
 		var car_doors: Array[NodePath] = []
-		for actor: String in lift["car_doors"]:
-			car_doors.append(present[actor])
+		for p: Dictionary in manifest["placements"]:
+			if p.get("mover", false) and p.get("base") == lift["car"]:
+				car_doors.append(present["%s.%s" % [p["package"], p["name"]]])
 		node.set("car_doors", car_doors)
 		var stop_doors: Array[Array] = []
 		for doors: Array in lift["stop_doors"]:
