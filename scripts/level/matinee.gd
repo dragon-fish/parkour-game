@@ -303,7 +303,7 @@ func _sing() -> void:
 	if _sound_player == null:
 		_sound_player = AudioStreamPlayer3D.new()
 		_sound_player.name = "Sound"
-		_sound_player.stream = sound["stream"]
+		_sound_player.stream = _looped(sound["stream"])
 		# PHYSICS_STEP, not IDLE_STEP: the targets are moved from
 		# _physics_process, so an idle-sampled velocity reads whatever the
 		# frame happened to catch. The camera must have its own tracking on
@@ -316,6 +316,28 @@ func _sing() -> void:
 	if not _sound_player.playing:
 		_sound_player.play()
 	set_process(true)
+
+
+## A copy of `stream` that repeats. The run outlasts the recording -- a train
+## crosses for eleven seconds off a six-second loop -- so the engine has to own
+## the repeat, which is also the only gapless way to do it.
+##
+## THE FLAG GOES ON THE RESOURCE, not in the .import file: an import file is
+## regenerated, often untracked, and a first headless import can wipe it. The
+## same call MenuMusic makes, for the same reason -- see
+## .claude/skills/authoring-godot-scene-files. duplicate() so nothing else
+## loading the same path inherits it.
+static func _looped(stream: AudioStream) -> AudioStream:
+	if stream is AudioStreamOggVorbis:
+		var ogg := stream.duplicate() as AudioStreamOggVorbis
+		ogg.loop = true
+		return ogg
+	if stream is AudioStreamWAV:
+		var wav := stream.duplicate() as AudioStreamWAV
+		wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		wav.loop_end = wav.data.size() / (4 if wav.stereo else 2)
+		return wav
+	return stream
 
 
 ## Begins the fade out. The sound outlives the movement by fade_out seconds,

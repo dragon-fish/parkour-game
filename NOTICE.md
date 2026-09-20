@@ -41,6 +41,28 @@ old objection to CC BY-NC-SA was that ShareAlike conflicted with a permissive
 licence; under a copyleft licence that half no longer bites. **NonCommercial
 still does**, and it is the half that always mattered.
 
+## Sound effects
+
+`assets/audio/train_*.wav` and `assets/audio/train_rolling.ogg` are cut from
+CC0 1.0 recordings on Freesound — each source is named in
+`assets/audio/LICENSE.txt`, which is authoritative. CC0 is a public domain
+dedication, so these are tracked here without reservation and the credits in
+that file are courtesy, not obligation.
+
+**What may be added beside them.** CC0 first. CC BY is acceptable *provided*
+its attribution is recorded here and survives a commercial licence — that
+licence covers this project's own code, and cannot hand on a permission it was
+never given. **ShareAlike and NonCommercial are both refused**: SA would force
+its own terms onto a work distributed under the commercial licence, and NC
+fails for the reason set out under *Character models* above, which has nothing
+to do with which copyleft licence this project uses.
+
+⚠️ `assets/audio/menu_full.ogg` and `assets/audio/menu_loop.ogg` predate this
+section and **their licence was never recorded**. Neither the commits that
+added them nor `docs/music-transitions.md` says where they came from. Until
+that is established they should be treated as unlicensed for redistribution —
+the risk is not theoretical for a repository that grants commercial terms.
+
 ## Animation libraries
 
 `assets/animations/*_standard.glb` are the free tiers of Quaternius' Universal

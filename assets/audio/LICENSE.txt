@@ -1,0 +1,35 @@
+Sound effects in this directory, and where they came from.
+
+CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/
+
+CC0 asks for nothing in return. The sources are listed anyway, so that anyone
+who wants a cleaner cut, a longer take or a different horn can go back to the
+recording instead of starting over -- and so that the licence of every file
+here can be checked rather than taken on trust.
+
+-------------------------------------------------------------------------------
+train_horn_short.wav   1.10 s, mono
+train_horn_long.wav    3.00 s, mono
+    Cut from "Train horn" by L83, CC0.
+    https://freesound.org/people/L83/sounds/455157/
+
+train_impact.wav       0.75 s, mono
+    "Heavy Metal Thud on Ground" by 7of9Designs, CC0.
+    https://freesound.org/people/7of9Designs/sounds/640204/
+
+train_rolling.ogg      6.00 s, mono, seamless loop
+    Cut from the close section of "Train passing by" by Soundkrampf, CC0.
+    https://freesound.org/people/Soundkrampf/sounds/237327/
+    Taken from the middle of the pass, NOT from the approach: this loop is
+    attached to a moving emitter and the engine applies its own Doppler, so a
+    recording that already swept in pitch would sweep twice.
+-------------------------------------------------------------------------------
+
+All four were cut with ffmpeg from the Freesound preview transcodes, which are
+lossy. They are placeholders chosen to sound right, not to be authentic -- a
+better take can replace any of them without touching a line of code, because
+what a level plays is decided by a name-to-file map outside this repository.
+
+menu_full.ogg and menu_loop.ogg are NOT covered by this file. Their licence
+was never recorded; see NOTICE.md.

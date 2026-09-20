@@ -42,6 +42,13 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 			or JSON.stringify(manifest["config"]["packages"]) != JSON.stringify(config.get("packages", [])):
 		push_error("[me_level] manifest was extracted with a different config; re-run the extractor")
 		return false
+	# Taken LIVE from the config, overwriting the snapshot the extract was made
+	# with. Which file a cue name plays says nothing about what was read out of
+	# the original -- it is a build-time choice, and one that gets changed
+	# repeatedly while someone is auditioning sounds. Making that re-run a
+	# whole chapter's extraction would be a minute's wait for a one-line edit.
+	# `look` is read live for the same reason, a few lines below.
+	manifest["config"]["sounds"] = config.get("sounds", {})
 	var paths := Common.output_paths(config)
 
 	_library = MeLibrary.new()
