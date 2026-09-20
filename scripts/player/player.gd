@@ -3495,7 +3495,14 @@ func _physics_process(delta: float) -> void:
 	# tick's own result rather than last tick's.
 	_update_speed_energy(delta, input)
 
+	# Less what the FLOOR did. Displacement is measured because velocity lies
+	# through a scripted move; but a body standing still on the roof of a train
+	# is displaced sixty metres a second, and read as its own speed that maxed
+	# the FOV and ran the bob at a sprint nobody was making. What carries the
+	# body is not the body's speed.
 	var travelled := global_position - tick_start_position
+	if grounded and is_on_floor():
+		travelled -= get_platform_velocity() * delta
 	_travel_speed = Vector2(travelled.x, travelled.z).length() / maxf(delta, 0.0001)
 
 	# Always drained, camera_rig or not, so a landing can only ever be acted
@@ -3547,7 +3554,9 @@ func _physics_process(delta: float) -> void:
 			_head_follow_fallback()
 		# travel_speed(), NOT horizontal_speed() — see travel_speed()'s note on
 		# why velocity lies through a vault or a mantle.
-		camera_rig.update_effects(delta, travel_speed(), grounded)
+		var moving: MoveConfig = move_manager.current_config() if move_manager != null else null
+		var stride: float = travel_speed() if moving == null or moving.footfall_bob else 0.0
+		camera_rig.update_effects(delta, travel_speed(), grounded, stride)
 		_log_grab_camera()
 
 func _input(event: InputEvent) -> void:

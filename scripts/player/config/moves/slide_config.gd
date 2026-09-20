@@ -67,6 +67,8 @@ func _init() -> void:
 	# ✅ The owner: during a slide the legs must not swing round under the view.
 	# See MoveConfig.freeze_visual_yaw.
 	freeze_visual_yaw = true
+	# No steps are taken on the floor: see MoveConfig.footfall_bob.
+	footfall_bob = false
 	# ✅ THE YAW WAS NEVER ACTUALLY LIMITED, and the owner found it in play: "I
 	# forgot the slide's yaw clamp -- it can still turn freely." Both halves of
 	# the measured pair were here, and the yaw half did nothing, because a

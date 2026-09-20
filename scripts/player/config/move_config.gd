@@ -62,6 +62,16 @@ extends Resource
 ## and the visible body, so freezing the body IS what asks the head to turn.
 @export var freeze_visual_yaw: bool = false
 
+## Whether the camera bobs to the body's footfalls while this move runs.
+##
+## The bob is FEET: its rate is a stride and its size a pace. A move that
+## travels on something else -- the seat of the trousers, a slide's hip --
+## covers ground as fast as a sprint does and takes no steps at all, and bobbing
+## to it shook the camera down a chute at a sprinter's cadence. False says "no
+## footfalls here"; the speed still reaches the FOV, which is about how fast
+## the world goes by and not about how.
+@export var footfall_bob: bool = true
+
 ## Whether the third-person camera is pulled off the player's shoulder to
 ## the centre while this move runs. Pushed to CameraRig every tick by
 ## MoveManager alongside the look constraint, and eased there on

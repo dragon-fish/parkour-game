@@ -855,7 +855,11 @@ func _relaxed_pitch_floor() -> float:
 		return _look_min.x
 	return _look_pitch_min_turned
 
-func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> void:
+## `stride_speed` is how fast the body is WALKING, for the bob: the same as
+## `horizontal_speed` on its feet, 0 on a slide (MoveConfig.footfall_bob).
+## Negative means "the same", which is what every caller that knows nothing
+## of strides wants.
+func update_effects(delta: float, horizontal_speed: float, grounded: bool, stride_speed: float = -1.0) -> void:
 	if _config == null or camera == null:
 		return
 
@@ -930,12 +934,14 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 	var bob_target := 1.0 if grounded else 0.0
 	_bob_weight = move_toward(_bob_weight, bob_target, _config.camera.bob_fade_speed * delta)
 
+	var stride: float = horizontal_speed if stride_speed < 0.0 else stride_speed
+	var stride_ratio := clampf(stride / maxf(_config.camera.fov_speed_ref, 0.001), 0.0, 1.0)
 	if grounded:
-		_bob_phase += delta * _config.camera.bob_frequency * horizontal_speed
+		_bob_phase += delta * _config.camera.bob_frequency * stride
 	# The phase freezes while airborne, so the offset it produces here holds
 	# steady from the moment of leaving the ground; _bob_weight is what fades
 	# it toward zero instead of letting it vanish in a single frame.
-	var bob := sin(_bob_phase) * _config.camera.bob_amplitude * speed_ratio * _bob_weight
+	var bob := sin(_bob_phase) * _config.camera.bob_amplitude * stride_ratio * _bob_weight
 
 	_dip = move_toward(_dip, 0.0, _config.camera.land_dip_recover * delta)
 	# The third-person pull-back is applied to the camera CHILD, on top of the

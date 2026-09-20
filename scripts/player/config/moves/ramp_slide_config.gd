@@ -68,5 +68,7 @@ func _init() -> void:
 	constrain_look = true
 	absolute_yaw_constraint = true
 	freeze_visual_yaw = true
+	# No steps are taken on the floor: see MoveConfig.footfall_bob.
+	footfall_bob = false
 	min_look_constraint = Vector3(-deg_to_rad(27.5), -deg_to_rad(27.5), -PI)
 	max_look_constraint = Vector3(deg_to_rad(27.5), deg_to_rad(27.5), PI)
