@@ -18,9 +18,18 @@ const LIGHTS_SCRIPT := preload("res://tools/me_level/me_lights.gd")
 ## along the mesh) was measured against this list and lost: it also freed
 ## billboards and catwalk supports a ladder runs past, and missed every swing
 ## pole, whose line is not in the manifest.
+## MATCHED AS SUBSTRINGS, because the original names its parts by family and
+## spells a family more than one way: a zipline's cable is ZipLineBase_01_Line
+## in most chapters and ZipLinePiece01 in the Mall, and listing them one at a
+## time meant the Mall's cable kept its per-poly collision -- a body hanging
+## 0.9 m under it rode two metres before the cable it hung from threw it off.
 const GRIP_MESH_MARKERS: Array[String] = ["LadderSystem", "SwingPole",
-		"ZipLineBase_01_Line", "ZipLineBase_01b", "ZipLineBase_01c",
-		"ZipLineBase_01d", "S_Cable_01"]
+		"ZipLine", "S_Cable_01"]
+## Exceptions to the families above, matched whole. The 5.6 m S_ZipLineBase_01
+## post is the one part of a zipline a runner can collide with and should:
+## running through the post reads wrong, and only its brackets and its cable
+## are things a hand is meant to pass into.
+const GRIP_MESH_SOLID: Array[String] = ["S_ZipLineBase_01"]
 ## Climbable drainpipes use the same generic segments as the rooftop pipe runs
 ## a runner steps over, so a pipe is passable only where a ladder line runs
 ## along it. DO NOT match pipes by name alone.
@@ -360,6 +369,11 @@ func _add_shape(node: Node3D, shape: Shape3D, name: String, offset := Vector3.ZE
 
 
 func _is_grip(mesh_name: String, placement: Dictionary, pipe_line: PackedVector3Array) -> bool:
+	# A variant carries its package as a suffix (mesh@Package); the family is
+	# the part before it.
+	var family := mesh_name.split("@")[0]
+	if GRIP_MESH_SOLID.has(family):
+		return false
 	for marker in GRIP_MESH_MARKERS:
 		if mesh_name.contains(marker):
 			return true
