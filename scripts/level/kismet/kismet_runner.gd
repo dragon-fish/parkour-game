@@ -585,8 +585,7 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 				_tell("%s spawned %d x %s" % [id, int(_prop(node, "SpawnCount", 1)), String(node["mesh_path"]).get_file()])
 			else:
 				unknown[node["cls"]] = unknown.get(node["cls"], 0) + 1
-			_fire(id, 0)
-			_fire_named(id, ["Finished"])
+			_pass_on(id, node)
 		"SeqAct_TdPlayerFail":
 			# The original's "you did not make it": under a train, off the
 			# roof of one. The same death as any other here.
@@ -632,14 +631,18 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 		_:
 			if not node["cls"].begins_with("SeqEvent") and not node["cls"].begins_with("SeqEvt"):
 				unknown[node["cls"]] = unknown.get(node["cls"], 0) + 1
-				# Whatever it would have done is not done here, and the level
-				# goes on as though it had been: the first output, and the one
-				# a latent action would have fired when it was through.
-				_fire(id, 0)
-				var outs: Array = node["outs"]
-				for i in range(1, outs.size()):
-					if outs[i]["name"] in ["Finished", "Completed"]:
-						_fire(id, i)
+				_pass_on(id, node)
+
+
+## Whatever the node would have done is done or is not, and the level goes on:
+## the first output, and the one a latent action fires when it is through --
+## ONCE, where the two are the same output.
+func _pass_on(id: String, node: Dictionary) -> void:
+	_fire(id, 0)
+	var outs: Array = node["outs"]
+	for i in range(1, outs.size()):
+		if outs[i]["name"] in ["Finished", "Completed"]:
+			_fire(id, i)
 
 
 func _compare(id: String, a: float, b: float) -> void:
