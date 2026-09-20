@@ -508,6 +508,13 @@ func _interest_lines(annotations: Array, placements: Array) -> Node3D:
 			curve.add_point(inverse * p)
 		line.curve = curve
 		line.set("kind", LINE_KINDS[a["kind"]])
+		# AFTER the kind, which writes its own default over this. The original
+		# drew a box around each line and the boxes are far wider than the
+		# defaults guessed: its ziplines reach 2.2 to 4.1 m where this project
+		# used 0.6, and missing that is what made a cable hard to catch at
+		# speed. Ours is a capsule of the box's half-extent across the line.
+		if a.has("reach_radius"):
+			line.set("reach_radius", float(a["reach_radius"]))
 		group.add_child(line)
 	return group
 

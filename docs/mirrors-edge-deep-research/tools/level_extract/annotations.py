@@ -1,4 +1,5 @@
 """Gameplay annotations: interaction volumes, air walls, hazards, spawns and checkpoints."""
+import math
 import struct
 
 import packages as pk
@@ -26,6 +27,42 @@ VOLUME_KINDS = {
 
 # Found and counted, never mapped: meaning not verified against the original.
 REPORTED_ONLY = ('TdFallHeightVolume',)
+
+
+def _volume_reach(annotation):
+    """How far off its own line the original's volume still reaches, metres, or
+    None when the volume has no hull or no line to measure against.
+
+    The volumes are boxes and ours are capsules, so this is the box's own
+    half-extent across the line -- the widest a body can be off the line and
+    still stand inside what the level author drew. Measured, not guessed: the
+    Mall's ziplines reach 2.2 to 4.1 m where this project had been using 0.6.
+    """
+    hull = annotation.get('hull') or []
+    start, end = annotation.get('start'), annotation.get('end')
+    if not hull or start is None or end is None:
+        return None
+    axis = [end[k] - start[k] for k in range(3)]
+    length = math.sqrt(sum(c * c for c in axis))
+    if length < 0.01:
+        return None
+    axis = [c / length for c in axis]
+    basis = annotation['basis']
+    points = []
+    for shape in hull:
+        for v in shape['vertices']:
+            # basis is three column vectors; the hull is local and unscaled.
+            points.append([sum(basis[row][k] * v[row] for row in range(3)) for k in range(3)])
+    if not points:
+        return None
+    centre = [sum(p[k] for p in points) / len(points) for k in range(3)]
+    furthest = 0.0
+    for p in points:
+        rel = [p[k] - centre[k] for k in range(3)]
+        along = sum(rel[k] * axis[k] for k in range(3))
+        perp = [rel[k] - along * axis[k] for k in range(3)]
+        furthest = max(furthest, math.sqrt(sum(c * c for c in perp)))
+    return round(furthest, 3)
 
 
 def _raw_entry(mr, idx, name):
@@ -240,6 +277,9 @@ def collect(packages, mr, defaults, report):
             _ladder_from_steps(mr, i, props, annotation, report)
         component = ref_export(props.get('BrushComponent'))
         annotation['hull'] = inherited_hulls(packages, mr, component) if component else []
+        reach = _volume_reach(annotation)
+        if reach is not None:
+            annotation['reach_radius'] = reach
         if cls == 'BlockingVolume':
             # The WHOLE archetype chain, across packages: a volume placed from a
             # prefab (Factory's server racks) takes its flags from a template
