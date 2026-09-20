@@ -105,6 +105,8 @@ func _kind_of(node: Node) -> Array:
 		return [DEATH, "死亡区"]
 	if node is Checkpoint or parent is Checkpoint:
 		return [CHECKPOINT, "检查点"]
+	if node.name == &"KismetTouch":
+		return [HAZARD, "Kismet 触碰伤害"]
 	if parent is KismetRunner:
 		return [STREAMING, "Kismet 墙" if node is PhysicsBody3D else "Kismet 事件"]
 	if node is UseZone:
@@ -161,8 +163,10 @@ func _fill(colour: Color) -> StandardMaterial3D:
 func _draw_shapes(body: CollisionObject3D, colour: Color, type: String) -> void:
 	var first_drawn := _drawn.size()
 	_draw_shapes_of(body, colour, type)
-	if _drawn.size() > first_drawn:
-		_watched.append([body, _drawn.slice(first_drawn)])
+	# A touch area with no shapes YET is watched all the same: a clear tunnel
+	# piece has none until the lap that gives it a beam.
+	if _drawn.size() > first_drawn or body.name == &"KismetTouch":
+		_watched.append([body, _drawn.slice(first_drawn), colour, type, body.get_child_count()])
 		set_process(true)
 
 
@@ -173,6 +177,16 @@ func _process(_delta: float) -> void:
 		var body := entry[0] as CollisionObject3D
 		if not is_instance_valid(body):
 			continue
+		# Its shapes have been replaced -- the subway's tunnel pieces take a new
+		# obstacle every lap -- and what was drawn went with the old ones.
+		if body.get_child_count() != entry[4]:
+			for stale: Node in entry[1]:
+				if is_instance_valid(stale):
+					stale.queue_free()
+			var first_drawn := _drawn.size()
+			_draw_shapes_of(body, entry[2], entry[3])
+			entry[1] = _drawn.slice(first_drawn)
+			entry[4] = body.get_child_count()
 		var on: bool = body.collision_layer != 0 or body.collision_mask != 0
 		if on and camera != null and body.get_parent() is KismetRunner:
 			on = camera.global_position.distance_to(body.global_position) <= KISMET_ZONE_RANGE_M

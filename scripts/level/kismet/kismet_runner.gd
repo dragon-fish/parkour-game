@@ -64,6 +64,9 @@ const LEVEL_START := ["SeqEvent_LevelLoaded", "SeqEvent_LevelStartup", "SeqEvent
 ## the moves ask with none, and one filed under a name of its own was on the
 ## player the whole ride and restricted nothing.
 const LIFT_SPEED_M_S := 4.0
+## How long a blow's STAGGER status stands before the moves have taken it up;
+## the barbed wire's own figure.
+const HURT_STAGGER_S := 0.1
 
 ## The graph: a KismetGraph resource, kept out of the scene text.
 @export var graph: KismetGraph
@@ -72,6 +75,8 @@ const LIFT_SPEED_M_S := 4.0
 ## Every package something streams, geometry or not. A package not named here
 ## is the chapter's own and always loaded.
 @export var streamed: PackedStringArray = []
+## What the screen is washed with when the level's Kismet hurts the player.
+@export var hurt_tint: Color = Color(0.85, 0.08, 0.05, 0.5)
 ## Print every activation. Loud: a chapter fires hundreds on a button.
 @export var trace: bool = false
 ## Print what a person would call the events of the level: a press, a touch
@@ -545,9 +550,19 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 				hurts_player = hurts_player or _vars.get(resolved, {}).get("cls", "") in PLAYER_VARIABLES \
 						or _var_values.get(resolved) == THE_PLAYER
 			var player: Node = _player()
-			if hurts_player and player != null and player.has_method("take_damage"):
+			if hurts_player and player != null and player.has_method("apply_status"):
 				_tell("%s hurts the player for %s" % [id, _prop(node, "DamageAmount", 0.0)])
-				player.take_damage(float(_prop(node, "DamageAmount", 0.0)), Health.Cause.VOLUME)
+				# As a STAGGER, which is what a blow IS here -- the wire's and
+				# the pain volumes' are the same: the damage, the stumble and
+				# the screen's tint in one. take_damage() alone took the health
+				# and said nothing, and a beam that kills without a flinch reads
+				# as the game having decided to end.
+				var blow := StatusSpec.new()
+				blow.effect = Status.Effect.STAGGER
+				blow.amount = float(_prop(node, "DamageAmount", 0.0))
+				blow.seconds = HURT_STAGGER_S
+				blow.tint = hurt_tint
+				player.apply_status(blow, self, 0, true)
 			_fire(id, 0)
 		"SeqAct_TdPlayerFail":
 			# The original's "you did not make it": under a train, off the
