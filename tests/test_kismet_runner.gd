@@ -351,3 +351,16 @@ func test_a_press_fires_every_stage_the_original_gives_it() -> void:
 	assert_eq([_reached(rig.runner, "started"), _reached(rig.runner, "finished"), _reached(rig.runner, "aborted")], [1, 1, 0])
 	rig.runner._on_used("p.Valve")
 	assert_eq(_reached(rig.runner, "started"), 1, "and a press is ONE firing of the event, whatever its stages")
+
+
+func test_a_sub_sequence_can_be_entered_as_often_as_it_is_called() -> void:
+	# A lift's "open the car doors": once at the bottom, once at the top.
+	var rig := await _runner({
+		"call": _n("SeqEvent_RemoteEvent", [["Out", [["doors", 0]]]], {props = {MaxTriggerCount = 0}}),
+		"doors": {cls = "Sequence", package = "p", name = "Doors", ins = ["open"], ports = ["enter"], outs = []},
+		"enter": _n("SeqEvent_SequenceActivated", [["Out", [["opened", 0]]]]),
+		"opened": _probe("opened"),
+	})
+	_event(rig.runner, "call")
+	_event(rig.runner, "call")
+	assert_eq(_reached(rig.runner, "opened"), 2, "a sub-sequence is a subroutine, not a one-shot")

@@ -44,6 +44,13 @@ const MAX_ACTIVATIONS_PER_TICK := 20000
 const TOUCH := ["SeqEvent_Touch", "SeqEvent_TdTouch"]
 const USED := ["SeqEvent_Used", "SeqEvent_TdUsed"]
 const DAMAGED := ["SeqEvent_TakeDamage"]
+## Event classes whose MaxTriggerCount defaults to 0, unlimited, where every
+## other event's is 1. [ME:CONFIRMED Stormdrain] none of its ninety
+## SequenceActivated writes a count, while every other event meant to fire
+## twice writes its 0: a sub-sequence is a subroutine, entered as often as it
+## is called. Given the common default, a lift's "open the car doors" ran at
+## the bottom and never again, and the car arrived to doors that stayed shut.
+const UNLIMITED_BY_DEFAULT := {"SeqEvent_SequenceActivated": 0}
 ## Outputs of a Used event that say the press did NOT happen.
 const NOT_PRESSED := ["Unused", "Aborted"]
 const LEVEL_START := ["SeqEvent_LevelLoaded", "SeqEvent_LevelStartup", "SeqEvent_LevelBeginning"]
@@ -296,7 +303,7 @@ func _fire_event(id: String, names: Array, free: bool = false) -> void:
 	if not state.get("enabled", _prop(node, "bEnabled", true)):
 		return
 	if not free:
-		var limit: int = int(_prop(node, "MaxTriggerCount", 1))
+		var limit: int = int(_prop(node, "MaxTriggerCount", UNLIMITED_BY_DEFAULT.get(node["cls"], 1)))
 		if limit > 0 and state.get("count", 0) >= limit:
 			return
 		if _clock < state.get("again_at", 0.0):
