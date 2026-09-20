@@ -61,9 +61,14 @@ Both SP01 configs enable `split_sections`. The builder writes a chapter
 shell, one editable shell and geometry per section, and shared chapter
 geometry. Open an individual section to edit its blockout, or set the
 chapter's `Sections.editor_preview` to a section name. At runtime every
-section is instantiated; this improves generation/editor handling, not
-runtime streaming. `verify_level.gd` checks all sections together, including
-interaction counts, mover targets and floors under checkpoints.
+section is instantiated, and which of the original's PACKAGES are in the
+level at any moment is the original's own streaming, replayed (see "Two
+stretches in one place" below). `verify_level.gd` checks all sections
+together, including interaction counts, mover targets and floors under
+checkpoints.
+
+Asset-free checks of the streaming walk:
+`uv run --no-project --python 3.12 --with lzallright --with numpy docs/mirrors-edge-deep-research/tools/level_extract/test_streaming.py`.
 
 Asset-free ladder regression checks:
 `uv run --no-project --python 3.12 docs/mirrors-edge-deep-research/tools/level_extract/test_annotations.py`.
@@ -227,12 +232,30 @@ names one (`PauseUi`) fails to compile there and the shell saves the node
 with no script at all; `verify_level.gd` checks that the Glass and LevelEnds
 nodes have theirs. Grep a build log for `SCRIPT ERROR`, not only `ERROR`.
 
-**Everything loads at once here; the original streamed.** A section's coarse
-hull can stand where the neighbouring section's corridor is, because the
-original never had both loaded (Escape's St1 building box over R1's corridor
-to the elevator that streams St1 in). `collision_overrides` in the config
-sets a mesh's collision class by hand for such cases, and for collision that
-is faithful but unwanted (potted bushes that stop a climb).
+**Two stretches in one place.** The original streams some fifty packages a
+chapter and leans on two of them never being loaded together: a distant shell
+of a building stands where the next stretch's corridor is (Escape's St1 box
+over R1's corridor, a Boat container interior across the chase corridor), and
+shells stacked over a room keep the sun out of it. A split chapter therefore
+carries the original's streaming (`streaming.py`, design in
+`docs/superpowers/specs/2026-09-21-me-level-streaming-design.md`):
+
+- every TdCheckpoint's `StreamingLevels` is the level as a restore there loads
+  it, and `SeqAct_MultiLevelStreaming` is what changes it on the way, walked
+  up to the touch or the button that fires it;
+- the LevelStreamingVolumes are all `bDisabled` and NOTHING activates a
+  `SeqAct_StreamingZone`: neither drives anything, do not read them;
+- a remote event's sender can be in a package with no geometry (Convoy unloads
+  a corridor from a music package), so every streamed package's Kismet is
+  read, not only the configured ones';
+- Gates and Switches on the way are walked through, not simulated. The
+  report's `streaming.through` counts them, and each step names its own: a
+  stretch that loads wrongly is looked for there first.
+
+The builder puts a `Streaming` node (`PackagePresence`) and its triggers into
+the chapter GEOMETRY, which is rebuilt every time, so a hand-edited shell
+needs no rebuild to get them. `collision_overrides` remains for collision
+that is faithful but unwanted (potted bushes that stop a climb).
 
 **A moving hazard is not its mesh.** The Mall's train has `collision: none` and
 kills nothing; what kills is a `DynamicTriggerVolume` hard-attached to the head,
