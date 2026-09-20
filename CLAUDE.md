@@ -40,6 +40,10 @@ bun tools/link_private.ts --install-hooks   # once per machine; also builds the 
 # Play
 <engine> --path . res://scenes/ui/main_menu.tscn
 
+# In the editor: the "从这里试跑" toolbar button (addons/playtest_here) runs the
+# open scene from the viewport camera, in noclip. A scene with no player of its
+# own is instanced into base_level first, so a bare .scn is playable as it is.
+
 # Referential integrity: catches a .tres that silently lost an ext_resource
 <engine> --headless --script res://tools/check_references.gd
 
