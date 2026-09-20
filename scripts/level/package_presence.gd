@@ -49,6 +49,32 @@ signal restored(label: String)
 ## class: a build runs without the autoloads Arena needs.
 const PACKAGE_META := &"me_package"
 const GROUP := &"package_presence"
+## On a body or area: the layers it was BUILT on, [layer, mask], and what the
+## level's Kismet last made of its collision (KismetRunner.COLLIDE_*). Two
+## things decide whether it collides -- is its package in the level, and has
+## Kismet switched it off -- and both this node and the runner answer with
+## collides(). Each writing the layers on its own account, the last writer
+## won: a lift's doorway wall, which its package's LevelLoaded switches off,
+## was switched back on when the package's nodes were brought in a moment
+## later, and nobody could board.
+const BUILT_LAYERS_META := &"kismet_layers"
+const KISMET_MODE_META := &"kismet_mode"
+
+
+## Whether a body or area may collide as far as Kismet is concerned: an area
+## listens when it touches or blocks, a body is solid only when it blocks.
+static func kismet_allows(body: CollisionObject3D) -> bool:
+	var mode: int = body.get_meta(KISMET_MODE_META, 2)
+	return mode >= 1 if body is Area3D else mode == 2
+
+
+## Puts a body on its built layers or on none.
+static func set_colliding(body: CollisionObject3D, on: bool) -> void:
+	if not body.has_meta(BUILT_LAYERS_META):
+		body.set_meta(BUILT_LAYERS_META, [body.collision_layer, body.collision_mask])
+	var built: Array = body.get_meta(BUILT_LAYERS_META)
+	body.collision_layer = built[0] if on else 0
+	body.collision_mask = built[1] if on else 0
 
 ## Checkpoint label -> packages present after a restore there.
 @export var snapshots: Dictionary = {}
@@ -73,9 +99,10 @@ var _nodes_of: Dictionary = {}
 ## Where each indexed node stood when it was indexed, for the queue's order.
 ## Read once: four thousand global_position calls were most of a 30 ms sort.
 var _at: Dictionary = {}
-## Indexed node -> [[CollisionObject3D, layer, mask], ...] of it and below it,
-## with the layers they were built on.
+## Indexed node -> the bodies and areas that are it or below it.
 var _bodies_of: Dictionary = {}
+## Body or area -> the indexed node it belongs to, for is_body_present().
+var _owner_of: Dictionary = {}
 var _managed: Dictionary = {}
 var _applied := false
 var _restoring := false
@@ -104,15 +131,12 @@ func _begin() -> void:
 	# whatever stands beside this node.
 	var level: Node = _arena if _arena != null else get_parent()
 	_stamp_shells(level)
-	# Only now can an actor be found by name: the shells have their origins.
-	# BEFORE the index: the runner puts what starts off -- a door's crush
-	# volume, a corridor's end wall -- on no layer, and the layers read below
-	# are what a package coming back is given. Read first, every load turned
-	# them all on.
+	_index(level)
+	# Only now can an actor be found by name: the shells have their origins,
+	# and the bodies are known for is_body_present().
 	for child in get_children():
 		if child.has_method("bind"):
 			child.bind(level)
-	_index(level)
 	_begun = true
 	print("[presence] %d packages in the level, %d governed, %d snapshots" % [_nodes_of.size(), _managed.size(), snapshots.size()])
 	reset_for_respawn()
@@ -163,6 +187,12 @@ func unload_packages(keys: PackedStringArray, why: String) -> void:
 
 func is_present(key: String) -> bool:
 	return present.has(key) or not _managed.has(key)
+
+
+## Whether the package a body belongs to is in the level. A body that belongs
+## to none is.
+func is_body_present(body: CollisionObject3D) -> bool:
+	return not _owner_of.has(body) or is_present(_owner_of[body])
 
 
 func is_settled() -> bool:
@@ -274,11 +304,9 @@ func _set_node(node: Node, on: bool) -> void:
 	if node is Node3D:
 		(node as Node3D).visible = on
 	node.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
-	for entry: Array in _bodies_of.get(node, []):
-		var body: CollisionObject3D = entry[0]
+	for body: CollisionObject3D in _bodies_of.get(node, []):
 		if is_instance_valid(body):
-			body.collision_layer = entry[1] if on else 0
-			body.collision_mask = entry[2] if on else 0
+			set_colliding(body, on and kismet_allows(body))
 
 
 ## A shell is edited by hand and not rebuilt, so one written before its nodes
@@ -314,10 +342,12 @@ func _register(key: String, node: Node) -> void:
 		if at is CollisionObject3D:
 			var body := at as CollisionObject3D
 			body.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
-			bodies.append([body, body.collision_layer, body.collision_mask])
+			bodies.append(body)
 		todo.append_array(at.get_children())
 	if not bodies.is_empty():
 		_bodies_of[node] = bodies
+		for body: CollisionObject3D in bodies:
+			_owner_of[body] = key
 
 
 func _index(node: Node) -> void:

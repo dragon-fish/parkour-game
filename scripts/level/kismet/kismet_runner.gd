@@ -790,12 +790,10 @@ func _set_layers(node: Node, mode: int) -> void:
 		var at: Node = todo.pop_back()
 		if at is CollisionObject3D:
 			var body := at as CollisionObject3D
-			if not body.has_meta(&"kismet_layers"):
-				body.set_meta(&"kismet_layers", [body.collision_layer, body.collision_mask])
-			var layers: Array = body.get_meta(&"kismet_layers")
-			var on: bool = mode >= COLLIDE_TOUCH if body is Area3D else mode == COLLIDE_BLOCK
-			body.collision_layer = layers[0] if on else 0
-			body.collision_mask = layers[1] if on else 0
+			body.set_meta(PackagePresence.KISMET_MODE_META, mode)
+			# Its package has a say too: see PackagePresence.kismet_allows().
+			var present: bool = _presence == null or _presence.is_body_present(body)
+			PackagePresence.set_colliding(body, present and PackagePresence.kismet_allows(body))
 		todo.append_array(at.get_children())
 
 

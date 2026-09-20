@@ -364,3 +364,45 @@ func test_a_sub_sequence_can_be_entered_as_often_as_it_is_called() -> void:
 	_event(rig.runner, "call")
 	_event(rig.runner, "call")
 	assert_eq(_reached(rig.runner, "opened"), 2, "a sub-sequence is a subroutine, not a one-shot")
+
+
+func test_a_package_arriving_does_not_undo_what_its_own_kismet_switched_off() -> void:
+	# A lift's doorway wall: its package's LevelLoaded switches it off, and the
+	# package's nodes are brought in over the frames AFTER that.
+	var rig := await _runner({
+		"loaded": _n("SeqEvent_LevelLoaded", [["Loaded and Visible", [["open_up", 0]]]], {package = "b"}),
+		"open_up": _n("SeqAct_ChangeCollision", [["Out", []]], {package = "b",
+				props = {CollisionType = "COLLIDE_NoCollision"}, vars = {Target = ["wall"]}}),
+		"board": _n("SeqEvent_RemoteEvent", [["Out", [["shut_in", 0]]]], {package = "b"}),
+		"shut_in": _n("SeqAct_ChangeCollision", [["Out", []]], {package = "b",
+				props = {CollisionType = "COLLIDE_BlockAll"}, vars = {Target = ["wall"]}}),
+	}, {"wall": {cls = "SeqVar_Object", actor = "b.Wall"}}, true)
+	# Built before the level opens, as a level's walls are.
+	var graph: KismetGraph = rig.runner.graph
+	rig.root.queue_free()
+	await step(1)
+	var root := Node3D.new()
+	var wall := StaticBody3D.new()
+	wall.set_meta(KismetRunner.ACTOR_META, "b.Wall")
+	wall.set_meta(PackagePresence.PACKAGE_META, "b")
+	root.add_child(wall)
+	var presence := PackagePresence.new()
+	presence.snapshots = {"Start": PackedStringArray(["a"])}
+	presence.start = "Start"
+	presence.managed = PackedStringArray(["a", "b"])
+	var runner := KismetRunner.new()
+	runner.graph = graph
+	runner.streamed = PackedStringArray(["a", "b"])
+	presence.add_child(runner)
+	root.add_child(presence)
+	add_child_autofree(root)
+	await step(3)
+	assert_eq(wall.collision_layer, 0, "its package is not in the level")
+	presence.load_packages(PackedStringArray(["b"]), "test")
+	await step(3)
+	assert_eq(wall.collision_layer, 0, "in the level now, and switched off by its own LevelLoaded: NOT back on")
+	_event(runner, "board")
+	assert_ne(wall.collision_layer, 0, "solid once the button shuts the rider in")
+	presence.unload_packages(PackedStringArray(["b"]), "test")
+	await step(3)
+	assert_eq(wall.collision_layer, 0, "and gone with its package")
