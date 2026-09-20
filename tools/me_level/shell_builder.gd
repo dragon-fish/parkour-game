@@ -439,8 +439,7 @@ static func fall_out_height(manifest: Dictionary) -> float:
 
 ## Packed text of build()'s root -> a scene inheriting base_level.
 static func compose(text: String, fall_out: float) -> String:
-	var lines := text.split("
-")
+	var lines := text.split("\n")
 	var out := PackedStringArray()
 	var root_done := false
 	for line in lines:
@@ -460,10 +459,18 @@ static func compose(text: String, fall_out: float) -> String:
 				line = RegEx.create_from_string(' unique_id=[0-9]+').sub(line, "")
 		out.append(line)
 	if not root_done:
-		push_error("[me_level] packed shell has no Arena root")
+		# WHAT IT SAW, not just that it failed. The root line is the one thing
+		# this function needs and the one thing the old message never showed,
+		# which turned a one-line mismatch into an afternoon.
+		var first_node := "(no [node line at all)"
+		for line in lines:
+			if line.begins_with("[node "):
+				first_node = line
+				break
+		push_error("[me_level] packed shell has no Arena root: %d chars, %d lines, first node line %s\n---8<---\n%s\n---8<---"
+			% [text.length(), lines.size(), first_node, text.substr(0, 700)])
 		return ""
-	return "
-".join(out)
+	return "\n".join(out)
 
 
 static func _own(root: Node, group: Node) -> void:
