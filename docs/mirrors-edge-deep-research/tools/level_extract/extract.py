@@ -553,7 +553,10 @@ def main(config_path):
         placements = kept
 
     if config['initial_spawn']:
+        # Either identity: a checkpoint's own name is TdCheckpoint_15, its
+        # label is what the shell names the node and what a person reads.
         names = [s['name'] for s in notes['spawns'] + notes['checkpoints']]
+        names += [s['label'] for s in notes['checkpoints'] if s.get('label')]
         if config['initial_spawn'] not in names:
             raise ExtractError('initial_spawn %r is not among %s' % (config['initial_spawn'], names))
 

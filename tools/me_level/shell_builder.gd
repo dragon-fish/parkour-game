@@ -906,7 +906,8 @@ func _place_spawn(root: Node3D, manifest: Dictionary) -> void:
 			chosen = c
 			break
 	for c: Dictionary in candidates:
-		if c["name"] == wanted:
+		# By label too: that is the name the checkpoint's node carries.
+		if c["name"] == wanted or c.get("label", "") == wanted:
 			chosen = c
 	var spawn := Marker3D.new()
 	spawn.name = "SpawnPoint"
