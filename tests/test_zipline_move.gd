@@ -532,3 +532,46 @@ func test_dropping_from_one_cable_onto_another_catches_it() -> void:
 			caught = true
 			break
 	assert_true(caught, "dropping onto the cable at 8.6 m/s went straight past it")
+
+## The Mall's own cables reach 2.2 to 4.1 m, wide enough to hold a standing
+## body on the ground below them; the ground is what must refuse the catch.
+const WIDE_REACH := 4.0
+
+func test_standing_under_a_wide_cable_does_not_catch_it() -> void:
+	var player: Player = await _standing_player()
+	_line = _cable(Vector3(0.0, 4.0, -6.0), Vector3(0.0, 4.0, 6.0))
+	_line.reach_radius = WIDE_REACH
+	await step(20)
+	assert_true(player.grounded, "test setup: the body left the ground on its own")
+	assert_ne(player.move_manager.current_name, Move.ZIPLINE,
+		"standing on the ground inside the volume was hauled onto the cable")
+
+func test_walking_under_a_wide_cable_does_not_catch_it() -> void:
+	var player: Player = await _standing_player()
+	_line = _cable(Vector3(-6.0, 4.0, 0.0), Vector3(6.0, 4.0, 0.0))
+	_line.reach_radius = WIDE_REACH
+	var input: ScriptedInputSource = _world["input"]
+	input.hold_move(0.0, 1.0)
+	for i in 60:
+		await step(1)
+		assert_ne(player.move_manager.current_name, Move.ZIPLINE,
+			"walking through the volume was hauled onto the cable")
+	input.hold_move(0.0, 0.0)
+
+func test_jumping_under_a_wide_cable_does_catch_it() -> void:
+	# The other half of the rule: off the ground, the wide volume is exactly
+	# what makes the catch generous.
+	var player: Player = await _standing_player()
+	_line = _cable(Vector3(-6.0, 3.2, 0.0), Vector3(6.0, 3.2, 0.0))
+	_line.reach_radius = WIDE_REACH
+	await step(2)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_jump()
+	var caught := false
+	for i in 40:
+		await step(1)
+		if player.move_manager.current_name == Move.ZIPLINE:
+			caught = true
+			break
+	input.release_jump()
+	assert_true(caught, "jumping under the cable caught nothing")
