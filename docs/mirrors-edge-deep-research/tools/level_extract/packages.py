@@ -35,6 +35,10 @@ from mapdump import MapReader
 #                                    directory holds two maps (SP01: Edge_p, Escape_p)
 #   split_sections  bool  false      tag everything with the section it belongs to;
 #                                    the builder then writes one scene per section
+#   teleports       list  []         where the original cuts to a cutscene and the body
+#                                    wakes elsewhere (TeleportVolume): {at: [x,y,z],
+#                                    size: [x,y,z], to: checkpoint name or label}. SP07
+#                                    rides a truck from the harbour into the ship's hold.
 #   lifts           list  []         hand-configured lifts for the builder (Lift):
 #                                    {car, stop_doors, travel, travel_time, door_open_offset,
 #                                     door_time, call?}; actors as package.name. The car's own
@@ -49,7 +53,7 @@ from mapdump import MapReader
 CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'exclude_actors': [], 'collision_overrides': {}, 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
-    'persistent': None, 'split_sections': False, 'lifts': [], 'floating_checkpoints': [],
+    'persistent': None, 'split_sections': False, 'lifts': [], 'teleports': [], 'floating_checkpoints': [],
     'look': {},
 }
 CONFIG_REQUIRED = ('id', 'chapter')

@@ -19,6 +19,7 @@ const DEATH_VOLUME_SCRIPT := preload("res://scripts/level/death_volume.gd")
 const MATINEE_SCRIPT := preload("res://scripts/level/matinee.gd")
 const USE_ZONE_SCRIPT := preload("res://scripts/level/use_zone.gd")
 const LIFT_SCRIPT := preload("res://scripts/level/lift.gd")
+const TELEPORT_SCRIPT := preload("res://scripts/level/teleport_volume.gd")
 const GLASS_SCRIPT := preload("res://scripts/level/breakable_glass.gd")
 const LEVEL_END_SCRIPT := preload("res://scripts/level/level_end.gd")
 ## How far out from a pane its Reach sees a body coming: a tick at a sprint
@@ -74,6 +75,7 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	_own(root, _level_ends(annotations))
 	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), {}))
 	_own(root, _checkpoints(manifest))
+	_own(root, _teleports(manifest))
 	_place_spawn(root, manifest)
 	if config.get("interior", false):
 		var sun := DirectionalLight3D.new()
@@ -889,6 +891,28 @@ func _checkpoints(manifest: Dictionary) -> Node3D:
 		collision.shape = box
 		checkpoint.add_child(collision)
 		group.add_child(checkpoint)
+	return group
+
+
+## The config's cutscene cuts: a box where the original takes the body away,
+## and the checkpoint it wakes at. Chapter-wide, because a cut leads from one
+## section to another and belongs to neither.
+func _teleports(manifest: Dictionary) -> Node3D:
+	var group := _group("Teleports")
+	var names := Common.NameAllocator.new()
+	for spot: Dictionary in manifest["config"].get("teleports", []):
+		var volume := Area3D.new()
+		volume.set_script(TELEPORT_SCRIPT)
+		volume.name = names.take("TeleportTo" + str(spot["to"]).validate_node_name())
+		volume.position = Common.v3(spot["at"])
+		volume.set("checkpoint_name", str(spot["to"]))
+		var box := BoxShape3D.new()
+		box.size = Common.v3(spot["size"])
+		var collision := CollisionShape3D.new()
+		collision.name = "CollisionShape3D"
+		collision.shape = box
+		volume.add_child(collision)
+		group.add_child(volume)
 	return group
 
 

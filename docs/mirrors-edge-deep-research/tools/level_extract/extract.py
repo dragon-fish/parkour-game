@@ -418,6 +418,13 @@ def assign_checkpoint_sections(checkpoints, placements, bsp, report):
             '%s (%.2f m over %s)' % (c['section'], best[0], best[2]) if best else 'nothing under it'
 
 
+def names_of(records):
+    """Either identity of a checkpoint or spawn: its own name is
+    TdCheckpoint_15, its label is what the shell names the node and what a
+    person reads."""
+    return [r['name'] for r in records] + [r['label'] for r in records if r.get('label')]
+
+
 def snap_ladders(placements, annotations, report):
     """Move each ladder line, along its WallNormal only, onto the centre of
     the ladder or pipe mesh it runs up.
@@ -553,12 +560,14 @@ def main(config_path):
         placements = kept
 
     if config['initial_spawn']:
-        # Either identity: a checkpoint's own name is TdCheckpoint_15, its
-        # label is what the shell names the node and what a person reads.
-        names = [s['name'] for s in notes['spawns'] + notes['checkpoints']]
-        names += [s['label'] for s in notes['checkpoints'] if s.get('label')]
+        names = names_of(notes['spawns'] + notes['checkpoints'])
         if config['initial_spawn'] not in names:
             raise ExtractError('initial_spawn %r is not among %s' % (config['initial_spawn'], names))
+
+    for spot in config['teleports']:
+        if spot['to'] not in names_of(notes['checkpoints']):
+            raise ExtractError('teleport destination %r is not among %s'
+                               % (spot['to'], names_of(notes['checkpoints'])))
 
     snap_ladders(placements, notes['annotations'], report)
 
