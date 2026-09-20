@@ -521,6 +521,13 @@ def main(config_path):
         for a in collected['annotations']:
             if a['kind'] == 'pain' and a['name'] in once:
                 a['once'] = True
+        # What the volumes riding a mover do when touched. Read per package:
+        # a Base never crosses one, so neither does the sequence behind it.
+        effects = matinee.rider_effects(mr, {a['name'] for a in collected['annotations']
+                                             if a.get('base')}, report)
+        for a in collected['annotations']:
+            if a['name'] in effects:
+                a['effects'] = effects[a['name']]
         for key, values in collected.items():
             notes[key] += values
         found_lights += lights.collect_lights(mr)
@@ -538,6 +545,33 @@ def main(config_path):
         notes['annotations'].append({'kind': 'level_end', 'name': trigger['name'], 'package': label,
                                      'position': trigger.get('position', [0.0, 0.0, 0.0]), 'trigger': trigger})
     report['level_ends'] = sum(1 for a in notes['annotations'] if a['kind'] == 'level_end')
+
+    # A rider is only a rider if something actually moves what it rides. A
+    # Trigger bolted to a door frame nobody animates is an ordinary trigger,
+    # and an `effect` volume no sequence listens to is nothing at all: each
+    # Mall train hangs some forty 0.4 m Triggers of that kind.
+    driven = {actor for m in matinees for g in m['groups'] for actor in g['actors']}
+    kept, dropped = [], 0
+    for a in notes['annotations']:
+        base = a.get('base')
+        if base is None:
+            kept.append(a)
+        elif base not in driven:
+            if a['kind'] in annotations.RIDER_ONLY_KINDS.values():
+                dropped += 1
+                continue
+            # A volume that is what it is wherever it stands: it simply does
+            # not move, so the attachment is not worth carrying.
+            a.pop('base', None)
+            a.pop('hard', None)
+            kept.append(a)
+        elif a['kind'] == 'effect' and not a.get('effects'):
+            dropped += 1
+        else:
+            kept.append(a)
+    notes['annotations'] = kept
+    report['counts']['riders_dropped'] = dropped
+    report['counts']['riders'] = sum(1 for a in kept if a.get('base'))
 
     unused = set(config['collision_overrides']) - {p['mesh'] for p in placements}
     if unused:

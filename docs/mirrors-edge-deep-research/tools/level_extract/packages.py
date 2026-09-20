@@ -47,6 +47,12 @@ from mapdump import MapReader
 #                                    starts from it): the lift then waits closed until used.
 #   floating_checkpoints list []     checkpoint labels the original leaves in mid-air
 #                                    on purpose; verify_level does not ask for a floor
+#   sounds          dict  {}         {original cue name: "res://assets/audio/x.ogg"}. The
+#                                     original's audio is never extracted; the extractor
+#                                     records only the NAME a sequence plays, and this maps
+#                                     it onto a sound of our own. A name absent here makes
+#                                     no emitter and no error: the public repo has to build
+#                                     and run with no private config at all.
 #   look            dict  {}         dials of the level's look the builder sets on its
 #                                    Environment node (tools/me_level/me_environment.gd
 #                                    exports), by name; judged against the reference shots
@@ -54,7 +60,7 @@ CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'exclude_actors': [], 'collision_overrides': {}, 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
     'persistent': None, 'split_sections': False, 'lifts': [], 'teleports': [], 'floating_checkpoints': [],
-    'look': {},
+    'sounds': {}, 'look': {},
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 

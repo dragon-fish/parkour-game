@@ -226,6 +226,24 @@ to the elevator that streams St1 in). `collision_overrides` in the config
 sets a mesh's collision class by hand for such cases, and for collision that
 is faithful but unwanted (potted bushes that stop a climb).
 
+**A moving hazard is not its mesh.** The Mall's train has `collision: none` and
+kills nothing; what kills is a `DynamicTriggerVolume` hard-attached to the head,
+one box around all four cars. Two more ride with it — a box 48 m ahead that
+sounds the horn, a `Trigger` cylinder around the head that shakes the camera —
+plus two `LensFlareSource` headlights. `Base`/`bHardAttach` used to be read for
+mesh placements only, so every one of these was silently dropped and the train
+glided through the player. 40 `DynamicTriggerVolume`s and 265 `Trigger`s ride
+movers across nine chapters; `LensFlareSource` rides with `bHardAttach` unset,
+so the rider scan follows `Base` whether or not the attachment is hard.
+
+**A looping sequence has no start to find.** A matinee whose only path in is its
+own `Completed → Delay → itself` is started by nothing the extractor can see,
+and stood still. `autostart` marks exactly that shape and nothing looser: a
+sequence opened by a remote event from another package looks startless too, and
+starting everything untraceable would run a level's whole cast at once. The
+Delay's `Duration` can also come from a linked `SeqVar_RandomFloat` — reading
+only the literal gave every Mall train a 1 s gap instead of 5 to 10.
+
 **UV set and tiling come from the TextureCoordinate node** feeding the sample,
 sometimes through a static switch; facade materials sample set 1. When a graph
 samples several coordinates, the first sample with an explicit coordinate

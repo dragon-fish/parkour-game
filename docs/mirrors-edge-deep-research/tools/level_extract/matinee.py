@@ -32,6 +32,30 @@ USED_EVENTS = ('SeqEvent_Used', 'SeqEvent_TdUsed')
 PASS_THROUGH = ('SeqAct_Switch', 'SeqAct_Gate', 'SeqAct_Delay')
 # InterpData.InterpLength's class default: omitted from the export when unchanged.
 DEFAULT_LENGTH = 5.0
+# SeqAct_Delay.Duration's class default, for a Delay that omits it.
+DEFAULT_DELAY = 1.0
+
+
+def _delay_seconds(mr, idx):
+    """(seconds, low, high) of a SeqAct_Delay. low/high are None unless the
+    Duration comes from a linked SeqVar_RandomFloat.
+
+    A constant gap makes a metronome of a level. [ME:CONFIRMED Mall Kismet]
+    the trains re-run through a Delay whose Duration is a RandomFloat of
+    5 to 10 s, and reading only the literal gave every train a 1 s gap.
+    """
+    props = _props(mr, idx)
+    seconds = float(props.get('Duration', DEFAULT_DELAY))
+    for link in _struct_array(mr, props.get('VariableLinks')):
+        if link.get('LinkDesc') != 'Duration':
+            continue
+        for var in _int_array(mr, link.get('LinkedVariables')):
+            if var <= 0 or mr.pkg.class_of(mr.pkg.exports[var - 1]) != 'SeqVar_RandomFloat':
+                continue
+            v = _props(mr, var)
+            low, high = float(v.get('Min', seconds)), float(v.get('Max', seconds))
+            return (low + high) / 2.0, low, high
+    return seconds, None, None
 
 
 def _value(mr, tag):
@@ -207,11 +231,17 @@ def collect(packages, mr, report):
             elif cls == 'SeqAct_Interp' and desc == 'Completed':
                 out.append({'on': 'after', 'source': name_of(source), 'delay': 0.0, 'input': input_idx})
             elif cls in PASS_THROUGH:
-                delay = float(_props(mr, source).get('Duration', 1.0)) if cls == 'SeqAct_Delay' else 0.0
+                delay, low, high = _delay_seconds(mr, source) if cls == 'SeqAct_Delay' \
+                    else (0.0, None, None)
+                if low is None:
+                    low = high = delay
                 for up in starts_of(source, depth + 1, seen | {op}):
                     if cls == 'SeqAct_Gate' and up.get('via_input', 0) != 0:
                         continue
-                    out.append(dict(up, delay=up['delay'] + delay, input=input_idx))
+                    out.append(dict(up, delay=up['delay'] + delay,
+                                    delay_min=up.get('delay_min', up['delay']) + low,
+                                    delay_max=up.get('delay_max', up['delay']) + high,
+                                    input=input_idx))
             else:
                 continue
         # The input a path enters the NEXT node by, for a Gate's filter above.
@@ -273,12 +303,158 @@ def collect(packages, mr, report):
         if not groups:
             report['matinee_without_movement'] = report.get('matinee_without_movement', 0) + 1
             continue
-        # PlayRate is on the ACTION, not the data: the Std crane's swing is
-        # keyed over 2 s and played at 0.2, ten seconds in the original.
-        matinees.append({'name': name_of(i), 'package': mr.label, 'length': length,
-                         'play_rate': float(_props(mr, i).get('PlayRate', 1.0)),
-                         'starts': starts, 'groups': groups, 'frames': frames})
+        # A sequence whose ONLY way in is its own loop has to be started by the
+        # level itself, or it never runs: the Mall's trains are exactly this,
+        # and without it the tracks stay empty.
+        #
+        # The test is deliberately narrow -- only a pure self-loop. A sequence
+        # opened by a remote event from another package looks startless here
+        # too, but this module does not follow remote events, and starting
+        # everything it cannot trace would run the level's whole cast at once.
+        autostart = bool(starts) and all(
+            s['on'] == 'after' and s.get('source') == name_of(i) for s in starts)
+        entry = {'name': name_of(i), 'package': mr.label, 'length': length,
+                 # PlayRate is on the ACTION, not the data: the Std crane's
+                 # swing is keyed over 2 s and played at 0.2, ten seconds in
+                 # the original.
+                 'play_rate': float(_props(mr, i).get('PlayRate', 1.0)),
+                 'starts': starts, 'groups': groups, 'frames': frames}
+        if autostart:
+            entry['autostart'] = True
+        rolling = _running_sound(mr, i)
+        if rolling:
+            entry['sound'] = rolling
+        matinees.append(entry)
     return matinees
+
+
+def _running_sound(mr, idx):
+    """The sound a matinee holds WHILE it plays, from its own `soundon` output.
+
+    [ME:CONFIRMED Mall Kismet] the train's rolling noise is not a touch: the
+    sequence's soundon starts it and its soundoff stops it, so it lasts exactly
+    as long as the movement does.
+    """
+    pkg = mr.pkg
+    for out in _struct_array(mr, _props(mr, idx).get('OutputLinks')):
+        if out.get('LinkDesc') != 'soundon':
+            continue
+        for link in _struct_array(mr, out.get('Links')):
+            op = ref_export(link.get('LinkedOp'))
+            if not op or pkg.class_of(pkg.exports[op - 1]) != SOUND_ACTION:
+                continue
+            props = _props(mr, op)
+            cue = props.get('PlaySound')
+            if not (isinstance(cue, tuple) and cue[0] == 'obj' and cue[1]):
+                continue
+            name = pkg.resolve(cue[1]) if cue[1] < 0 else pkg.exports[cue[1] - 1]['name']
+            return {'name': name, 'fade_in': float(props.get('FadeInTime', 0.0)),
+                    'fade_out': float(props.get('FadeOutTime', 0.0))}
+    return None
+
+
+# What a volume riding a mover does when it is touched. FOUR outcomes are read
+# and nothing else; anything further is counted in the report, exactly as a
+# matinee reached by a shape this module does not read is.
+#
+# [ME:CONFIRMED Mall Kismet] the Mall's train is FOUR of these on one actor and
+# no collision of its own: a box around all four cars that fails the player, a
+# box 48 m ahead that sounds the horn, a cylinder around the head that shakes
+# the camera, and two flares for the headlights.
+FAIL_ACTIONS = ('SeqAct_TdPlayerFail', 'SeqAct_CauseDamage')
+SOUND_ACTION = 'SeqAct_TdPlaySound'
+SHAKE_ACTION = 'SeqAct_TdCameraShake'
+# Nodes a touch is followed THROUGH. RandomSwitch hands its activation to ONE
+# output at random, so what lies past it is an alternative rather than a
+# sequence -- the horn box reaches both Horn_Short and Horn_Long and sounds
+# one. That is why every sound found is collected into one list and the choice
+# is left to the game: modelling the switch itself would buy nothing.
+FOLLOW_THROUGH = ('SeqAct_Switch', 'SeqAct_Gate', 'SeqAct_Delay', 'SeqAct_RandomSwitch')
+RIDER_WALK_DEPTH = 6
+
+
+def rider_effects(mr, riders, report):
+    """{rider name: {kill, sounds, shake}} for the actor names in `riders`.
+
+    A rider with no readable outcome is absent from the result. The Mall hangs
+    some forty 0.4 m Triggers along each train that no sequence listens to;
+    built as empty volumes they would be pure cost.
+    """
+    pkg = mr.pkg
+    downstream = {}
+    for i, e in enumerate(pkg.exports, 1):
+        if not pkg.class_of(e).startswith(('Seq', 'TdSeq')):
+            continue
+        for out in _struct_array(mr, _props(mr, i).get('OutputLinks')):
+            for link in _struct_array(mr, out.get('Links')):
+                op = ref_export(link.get('LinkedOp'))
+                if op:
+                    downstream.setdefault(i, []).append((op, link.get('InputLinkIdx', 0)))
+
+    def sound_of(idx):
+        props = _props(mr, idx)
+        cue = props.get('PlaySound')
+        name = pkg.resolve(cue[1]) if isinstance(cue, tuple) and cue[0] == 'obj' and cue[1] < 0 \
+            else (pkg.exports[cue[1] - 1]['name'] if isinstance(cue, tuple) and cue[0] == 'obj' and cue[1] > 0 else None)
+        if not name:
+            return None
+        return {'name': name, 'fade_in': float(props.get('FadeInTime', 0.0)),
+                'fade_out': float(props.get('FadeOutTime', 0.0))}
+
+    out = {}
+    for i, e in enumerate(pkg.exports, 1):
+        if pkg.class_of(e) not in TOUCH_EVENTS:
+            continue
+        originator = ref_export(_props(mr, i).get('Originator'))
+        if not originator:
+            continue
+        rider = pkg.exports[originator - 1]['name']
+        if rider not in riders:
+            continue
+        # Walk the touch forward, remembering every Delay met so the one that
+        # STOPS a shake can be told from the rest.
+        found = out.setdefault(rider, {'kill': False, 'sounds': [], 'shake': None})
+        reached, delays, todo, seen = [], [], [(i, 0)], set()
+        while todo:
+            op, depth = todo.pop()
+            if op in seen or depth > RIDER_WALK_DEPTH:
+                continue
+            seen.add(op)
+            cls = pkg.class_of(pkg.exports[op - 1])
+            if cls == 'SeqAct_Delay':
+                delays.append(op)
+            if cls in FAIL_ACTIONS or cls == SOUND_ACTION or cls == SHAKE_ACTION:
+                reached.append(op)
+            elif not cls.startswith(('SeqEvent', 'SeqEvt')) and cls not in FOLLOW_THROUGH:
+                report['rider_effect_unread'] = report.get('rider_effect_unread', 0) + 1
+                continue
+            for nxt, _input in downstream.get(op, []):
+                todo.append((nxt, depth + 1))
+        for op in reached:
+            cls = pkg.class_of(pkg.exports[op - 1])
+            if cls in FAIL_ACTIONS:
+                found['kill'] = True
+            elif cls == SOUND_ACTION:
+                cue = sound_of(op)
+                if cue and cue not in found['sounds']:
+                    found['sounds'].append(cue)
+            elif cls == SHAKE_ACTION:
+                props = _props(mr, op)
+                # The shake runs until its second input is fired, which is what
+                # the Delay beside it is for. No such Delay: it has no end we
+                # can read, and the game decides when to stop it.
+                hold = 0.0
+                for d in delays:
+                    if any(target == op and idx == 1 for target, idx in downstream.get(d, [])):
+                        hold = max(hold, _delay_seconds(mr, d)[0])
+                found['shake'] = {'amplitude': float(props.get('Amplitude', 0.0)),
+                                  'frequency': float(props.get('Frequency', 0.0)),
+                                  'hold': hold}
+    empty = [name for name, f in out.items() if not f['kill'] and not f['sounds'] and f['shake'] is None]
+    for name in empty:
+        del out[name]
+    report['rider_effects'] = report.get('rider_effects', 0) + len(out)
+    return out
 
 
 # Breakable glass: [ME:CONFIRMED Cranes Kismet] a pane is an InterpActor whose

@@ -28,6 +28,61 @@ VOLUME_KINDS = {
 # Found and counted, never mapped: meaning not verified against the original.
 REPORTED_ONLY = ('TdFallHeightVolume',)
 
+# Actors collected ONLY when they ride something -- when Base names another
+# actor in the same package. The game places hundreds of loose Triggers and
+# flares that mean nothing here; attached to a mover they are the whole of how
+# a passing train kills, warns and lights the way, because the train's own mesh
+# has no collision at all.
+#
+# `effect` rather than a name per class: what one of these DOES is decided by
+# the Kismet its touch reaches (matinee.rider_effects), not by its class. The
+# Mall runs a lethal box and a horn box off the same DynamicTriggerVolume.
+RIDER_ONLY_KINDS = {
+    'DynamicTriggerVolume': 'effect',
+    'Trigger': 'effect',
+    'LensFlareSource': 'flare',
+}
+
+# How far up a Base chain a rider may sit. The Mall's kill box rides the
+# train's head directly; a box on a middle CAR would be one hop further.
+BASE_CHAIN_MAX = 4
+
+
+def _ridden_base(mr, idx, report):
+    """(`package.name` of the actor this one ultimately rides, bHardAttach), or
+    (None, False).
+
+    Follows Base to the end of the chain -- the actor that has none of its own,
+    which is the one a matinee drives. A base in ANOTHER package is counted and
+    dropped: an export index means nothing outside the package that wrote it.
+
+    bHardAttach is reported, not required. LensFlareSource leaves it unset and
+    still rides: it decides whether the attachment keeps a relative rotation,
+    not whether there is one.
+    """
+    pkg = mr.pkg
+    props, _ = mr.props_inherited(idx)
+    if not props or props.get('Base') is None:
+        return None, False
+    hard = bool(props.get('bHardAttach'))
+    seen, cur = {idx}, idx
+    for _ in range(BASE_CHAIN_MAX):
+        step, _ = mr.props_inherited(cur)
+        raw = (step or {}).get('Base')
+        if raw is None:
+            return '%s.%s' % (mr.label, pkg.exports[cur - 1]['name']), hard
+        nxt = ref_export(raw)
+        if nxt is None:
+            counts = report.setdefault('counts', {})
+            counts['base_outside_package'] = counts.get('base_outside_package', 0) + 1
+            return None, False
+        if nxt in seen:
+            raise ExtractError('%s.%s: Base chain loops' % (mr.label, pkg.exports[idx - 1]['name']))
+        seen.add(nxt)
+        cur = nxt
+    raise ExtractError('%s.%s: Base chain deeper than %d'
+                       % (mr.label, pkg.exports[idx - 1]['name'], BASE_CHAIN_MAX))
+
 
 def _volume_reach(annotation):
     """How far off its own line the original's volume still reaches, metres, or
@@ -224,8 +279,9 @@ def collect(packages, mr, defaults, report):
         if cls in REPORTED_ONLY:
             report['unmapped'][cls] = report['unmapped'].get(cls, 0) + 1
             continue
-        if cls not in VOLUME_KINDS and cls not in ('TdTutorialStart', 'TdTutorialCheckpoint',
-                                                    'TdCheckpoint', 'PlayerStart'):
+        if cls not in VOLUME_KINDS and cls not in RIDER_ONLY_KINDS \
+                and cls not in ('TdTutorialStart', 'TdTutorialCheckpoint',
+                                'TdCheckpoint', 'PlayerStart'):
             continue
         if outer_class(pkg, e) != 'Level':
             continue                      # prefab templates, not placed actors
@@ -259,8 +315,22 @@ def collect(packages, mr, defaults, report):
                 entry['default'] = bool(props.get('DefaultCheckpoint', False))
             (out['spawns'] if cls == 'TdTutorialStart' else out['checkpoints']).append(entry)
             continue
-        annotation = {'kind': VOLUME_KINDS[cls], 'name': e['name'], 'package': mr.label,
+        base, hard = _ridden_base(mr, i, report)
+        if cls in RIDER_ONLY_KINDS and base is None:
+            continue                      # a loose trigger or flare: not ours
+        annotation = {'kind': VOLUME_KINDS.get(cls) or RIDER_ONLY_KINDS[cls],
+                      'name': e['name'], 'package': mr.label,
                       'position': position, 'basis': godot_basis(rotation, actor_scale(props))}
+        if base is not None:
+            annotation['base'] = base
+            annotation['hard'] = hard
+        cylinder = ref_export(props.get('CylinderComponent'))
+        if cylinder:
+            # A Trigger is a cylinder, not a brush: the Mall's camera shake
+            # reaches 28.52 m around the train's head.
+            c, _ = pk.resolved_props(packages, mr, cylinder)
+            annotation['radius'] = float(c.get('CollisionRadius', 0.0)) / UU
+            annotation['height'] = float(c.get('CollisionHeight', 0.0)) / UU
         for source, key in (('Start', 'start'), ('End', 'end'), ('Middle', 'middle')):
             v = props.get(source)
             if isinstance(v, tuple) and len(v) == 3 and finite(v):
