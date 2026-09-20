@@ -53,6 +53,15 @@ extends MoveConfig
 ## line" family's own fade dial.
 @export var fade_in_time: float = 0.15
 
+## Metres per second the body is pulled onto the line, once the catch is made
+## from further out than fade_in_time's worth.
+##
+## fade_in_time above is the FLOOR and stays the original's: a catch from
+## within arm's reach still lands in exactly that. This is what stops a wider
+## reach turning into a harder yank -- reaching further takes longer instead.
+## A dial, judged by eye; nothing in the original names it.
+@export var catch_speed: float = 10.0
+
 ## How long the body takes to turn round on the spot when the view switches
 ## mid-ledge, seconds. The pack's Turn180 clip (1.67 s as authored) is fitted
 ## to this window by CharacterAnimator._scripted_fit(), and no travel happens

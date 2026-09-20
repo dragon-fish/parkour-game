@@ -76,7 +76,7 @@ func enter(_previous: StringName) -> void:
 	_target_yaw = atan2(f.x, f.z)
 	player.velocity = Vector3.ZERO
 	_fade = 0.0
-	_entry_pos = player.global_position
+	begin_approach()
 	_entry_yaw = player.rotation.y
 	_fan_centred = false
 
@@ -222,10 +222,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	var hang: Vector3 = s["position"] - Vector3.UP * cfg.hand_height \
 		+ _line.front() * cfg.stand_off
 	_fade += delta
-	if _fade < cfg.fade_in_time:
+	var _over := approach_seconds(hang)
+	if _fade < _over:
 		# The magnet's own pull stays a direct write, not collision-checked
 		# -- see this file's header note.
-		var t: float = _fade / cfg.fade_in_time
+		var t: float = _fade / _over
 		player.global_position = _entry_pos.lerp(hang, t)
 		_turn_body_to(lerp_angle(_entry_yaw, _target_yaw, t))
 	else:

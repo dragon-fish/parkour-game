@@ -122,7 +122,7 @@ func enter(_previous: StringName) -> void:
 	# carried in: arriving fast must not survive the step onto the line.
 	player.velocity = Vector3.ZERO
 	_fade = 0.0
-	_entry_pos = player.global_position
+	begin_approach()
 	_entry_yaw = player.rotation.y
 	_fan_centred = false
 
@@ -187,8 +187,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		+ Vector3.UP * (player.standing_height() * 0.5 - drop_offset()) \
 		+ lateral_offset() * _normal_at(_walk_yaw)
 	_fade += delta
-	if _fade < fade_in_time():
-		var t: float = _fade / fade_in_time()
+	var _over := approach_seconds(stand)
+	if _fade < _over:
+		var t: float = _fade / _over
 		player.global_position = _entry_pos.lerp(stand, t)
 		_turn_body_to(lerp_angle(_entry_yaw, _target_yaw, t))
 	else:

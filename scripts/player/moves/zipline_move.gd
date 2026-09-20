@@ -70,7 +70,7 @@ func enter(_previous: StringName) -> void:
 	_a = _acceleration_for(along)
 	player.velocity = Vector3.ZERO
 	_fade = 0.0
-	_entry_pos = player.global_position
+	begin_approach()
 	_entry_yaw = player.rotation.y
 	_fan_centred = false
 	_cable_yaw = _yaw_along(along)
@@ -108,7 +108,8 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	var hang: Vector3 = _hang_point()
 	_cable_yaw = _yaw_along(along)
 	_fade += delta
-	if _fade < cfg.fade_in_time:
+	var _over := approach_seconds(hang)
+	if _fade < _over:
 		# ✅ THE CONTROLLER'S RULING (fix round 1): the magnet's own pull stays
 		# a direct write, not collision-checked. Routing this through slide_to
 		# meant brushing any geometry during the 0.1 s fade aborted the catch
@@ -117,7 +118,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# they are actually RIDING (see the slide_to below); the owner's
 		# "滑到底忘记放手撞到墙被弹出去了" is about a rider who never lets go
 		# of a cable already being ridden, not a body still fading onto one.
-		var t: float = _fade / cfg.fade_in_time
+		var t: float = _fade / _over
 		player.global_position = _entry_pos.lerp(hang, t)
 		_turn_body_to(lerp_angle(_entry_yaw, _cable_yaw, t))
 	else:

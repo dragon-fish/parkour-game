@@ -61,7 +61,7 @@ func enter(_previous: StringName) -> void:
 	_omega = approach.dot(_forward) / cfg.pendulum_length * cfg.entry_omega_scale
 	player.velocity = Vector3.ZERO
 	_fade = 0.0
-	_entry_pos = player.global_position
+	begin_approach()
 	# Turned ACROSS the fade below, not here -- see _turn_body_to()/
 	# _centre_fan(). Snapping the yaw in this one tick was the review's
 	# second finding.
@@ -136,8 +136,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	var chain: Vector3 = _pivot \
 		+ (_forward * sin(_theta) - Vector3.UP * cos(_theta)) * cfg.pendulum_length
 	_fade += delta
-	if _fade < cfg.fade_in_time:
-		var t: float = _fade / cfg.fade_in_time
+	var _over := approach_seconds(chain)
+	if _fade < _over:
+		var t: float = _fade / _over
 		player.global_position = _entry_pos.lerp(chain, t)
 		_turn_body_to(lerp_angle(_entry_yaw, _target_yaw, t))
 	else:

@@ -33,6 +33,15 @@ func _init() -> void:
 ## How long the magnet catch takes to pull the body onto the ladder. Same
 ## shape as the rest of the family's own fade (see LineMove).
 @export var fade_in_time: float = 0.15
+
+## Metres per second the body is pulled onto the line, once the catch is made
+## from further out than fade_in_time's worth.
+##
+## fade_in_time above is the FLOOR and stays the original's: a catch from
+## within arm's reach still lands in exactly that. This is what stops a wider
+## reach turning into a harder yank -- reaching further takes longer instead.
+## A dial, judged by eye; nothing in the original names it.
+@export var catch_speed: float = 10.0
 ## How far the capsule's centre stands off the line, along its front, while
 ## climbing. NOT IN THE SPEC -- implementation-necessary: without a stand-off
 ## the capsule's centre rides ON the wall the ladder is mounted to and clips

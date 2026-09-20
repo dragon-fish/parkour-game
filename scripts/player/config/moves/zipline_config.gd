@@ -48,6 +48,15 @@ func _init() -> void:
 ## [ME:CONFIRMED 05 §5.5] ZipFadeInTime = 0.1 s: how long the body takes to
 ## reach the hang point from wherever it caught the cable.
 @export var fade_in_time: float = 0.1
+
+## Metres per second the body is pulled onto the line, once the catch is made
+## from further out than fade_in_time's worth.
+##
+## fade_in_time above is the FLOOR and stays the original's: a catch from
+## within arm's reach still lands in exactly that. This is what stops a wider
+## reach turning into a harder yank -- reaching further takes longer instead.
+## A dial, judged by eye; nothing in the original names it.
+@export var catch_speed: float = 10.0
 ## Falling faster than this (m/s, positive) the hands cannot hold on.
 ##
 ## [ME:CONFIRMED 05 §5.5] TdMove_IntoZipLine.ZVelocityFallLimit = -600, which

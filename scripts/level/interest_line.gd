@@ -36,13 +36,16 @@ enum Kind { ZIPLINE, SWING, BALANCE, LADDER, LEDGE_WALK }
 ## A BAR REACHES FURTHER: at 0.6 m a jump at a swing bar had to be nearly
 ## exact, and a fall past it was missed outright. 1.0 m was tried on the
 ## Stormdrain boss bar and holds.
-## A CABLE REACHES FURTHER TOO, and for the same reason: at 0.6 m one was hard
-## to catch at speed. 1.2 m is the value being tried.
+## A CABLE REACHES FURTHEST. At 0.6 m one was hard to catch at speed and 1.2 m
+## was still short. 2.5 m is the value being tried, and it is only safe at all
+## because the pull onto the line now runs at a fixed SPEED -- see
+## LineMove.approach_seconds(). Under the old fixed time, every metre added
+## here was a metre the body got yanked across in the same 0.1 s.
 ## A ledge stays at 0.6 m so it does not catch a body that only passes near
 ## it. DO NOT widen it back to cover a wide walkway feeding a narrow ledge:
 ## that pulled bodies off climbs and wall runs onto ledges overhead.
 const KIND_REACH := {
-	Kind.ZIPLINE: 1.2,
+	Kind.ZIPLINE: 2.5,
 	Kind.SWING: 1.0,
 	Kind.BALANCE: 0.6,
 	Kind.LADDER: 0.6,

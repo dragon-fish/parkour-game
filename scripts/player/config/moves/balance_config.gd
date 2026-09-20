@@ -18,6 +18,15 @@ extends MoveConfig
 ## line" family's own fade dial.
 @export var fade_in_time: float = 0.15
 
+## Metres per second the body is pulled onto the line, once the catch is made
+## from further out than fade_in_time's worth.
+##
+## fade_in_time above is the FLOOR and stays the original's: a catch from
+## within arm's reach still lands in exactly that. This is what stops a wider
+## reach turning into a harder yank -- reaching further takes longer instead.
+## A dial, judged by eye; nothing in the original names it.
+@export var catch_speed: float = 10.0
+
 ## Seconds for the lean to grow by a factor of e.
 ##
 ## [ME:CONFIRMED] TimeToCounter = 0.8 -- the NUMBER only. Reading it as a

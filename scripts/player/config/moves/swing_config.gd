@@ -48,6 +48,15 @@ func _init() -> void:
 ## The magnet: how long the catch takes to pull the body onto the chain. Same
 ## number and same feel as the zipline's own fade.
 @export var fade_in_time: float = 0.1
+
+## Metres per second the body is pulled onto the line, once the catch is made
+## from further out than fade_in_time's worth.
+##
+## fade_in_time above is the FLOOR and stays the original's: a catch from
+## within arm's reach still lands in exactly that. This is what stops a wider
+## reach turning into a harder yank -- reaching further takes longer instead.
+## A dial, judged by eye; nothing in the original names it.
+@export var catch_speed: float = 10.0
 ## [ME:CONFIRMED 05 §5.5b.2] SwingExitGravityModifier = 0.75 for
 ## SwingExitGravityModifierTime = 0.70 s (TdMove_SwingJump repeats nearly the
 ## same pair). Fed to Player.apply_gravity_window() on BOTH exits.

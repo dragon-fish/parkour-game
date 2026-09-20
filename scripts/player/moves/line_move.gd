@@ -15,6 +15,37 @@ var _target_yaw: float = 0.0
 ## call that MUST happen once; see _centre_fan().
 var _fan_centred: bool = false
 var _aborted: bool = false
+## Seconds this catch's approach should take, worked out once. -1 until then.
+var _approach_seconds: float = -1.0
+
+
+## Call from enter(): where the approach starts, and a fresh duration for it.
+func begin_approach() -> void:
+	_entry_pos = player.global_position
+	_approach_seconds = -1.0
+
+
+## How long the pull onto the line should last, in seconds.
+##
+## A FIXED SPEED, NOT A FIXED TIME. [ME:CONFIRMED 05 §5.5] ZipFadeInTime is
+## 0.1 s, and for a catch made from within arm's reach that is still exactly
+## what happens: fade_in_time is the FLOOR. It is not the whole answer once
+## the reach is wider than the original's, because a fixed time crosses
+## whatever distance it is given by yanking the body -- the further out the
+## catch, the harder the yank, which is backwards. Reaching further should
+## take longer.
+##
+## WORKED OUT ONCE, at the catch. The hang point travels while the body is
+## being pulled onto it, so a duration recomputed each tick grows as fast as
+## the body closes and the approach never finishes.
+func approach_seconds(target: Vector3) -> float:
+	if _approach_seconds >= 0.0:
+		return _approach_seconds
+	var floor_seconds: float = float(cfg.get("fade_in_time"))
+	var speed: float = float(cfg.get("catch_speed"))
+	_approach_seconds = floor_seconds if speed <= 0.0 \
+		else maxf(floor_seconds, _entry_pos.distance_to(target) / speed)
+	return _approach_seconds
 
 ## Finds the nearest line of `kind` and stores it in `_line`. On failure sets
 ## `_aborted` (the entry gate already checked reachability; this only guards

@@ -101,6 +101,11 @@ class _Listener extends CharacterBody3D:
 		var shape := CollisionShape3D.new()
 		shape.shape = SphereShape3D.new()
 		add_child(shape)
+		# A gameplay volume watches Arena.PLAYER_LAYER and nothing else, so a
+		# stand-in for the body has to be on it. The real one is put there by
+		# player_builder; on layer 1 alone this listener is invisible to the
+		# volume, exactly as a piece of the level is.
+		collision_layer = 1 | Arena.PLAYER_LAYER
 	func enter_interest_line(line: InterestLine) -> void:
 		entered.append(line)
 	func exit_interest_line(line: InterestLine) -> void:
