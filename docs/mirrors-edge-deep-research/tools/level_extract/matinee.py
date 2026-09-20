@@ -337,6 +337,12 @@ def collect(packages, mr, report, keep_driving=frozenset()):
                  'starts': starts, 'groups': groups, 'frames': frames}
         if autostart:
             entry['autostart'] = True
+        # Where a play begins. [ME:CONFIRMED Stormdrain Kismet] the sequence a
+        # respawn plays is forced part-way in -- the girder twin to 3.1 s of
+        # its 5 -- and without it the thing the point stands on is still at the
+        # bottom of its rise. The designer's comment on that action is "load".
+        if _props(mr, i).get('bForceStartPos'):
+            entry['start_position'] = float(_props(mr, i).get('ForceStartPosition', 0.0))
         rolling = _running_sound(mr, i)
         if rolling:
             entry['sound'] = rolling

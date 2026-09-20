@@ -309,6 +309,8 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
 		node.set("play_rate", float(m.get("play_rate", 1.0)))
 		if m.get("autostart", false):
 			node.set("autostart", true)
+		if m.has("start_position"):
+			node.set("start_position", float(m["start_position"]))
 		var rolling: Dictionary = m.get("sound") if m.get("sound") is Dictionary else {}
 		if not rolling.is_empty():
 			var streams := _streams_for([rolling], manifest["config"])

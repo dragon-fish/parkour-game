@@ -33,6 +33,19 @@ extends Node3D
 ## drawn afresh every time. A CONSTANT gap makes a metronome of a level: the
 ## original's trains come back after 5 to 10 seconds, never on the beat.
 @export var followers: Array[Dictionary] = []
+## Where a forward play STARTS, seconds into the keys. Negative -- the usual
+## case -- means the beginning.
+##
+## [ME:CONFIRMED Stormdrain Kismet] UE3's SeqAct_Interp carries bForceStartPos
+## and ForceStartPosition, and a sequence written for a respawn uses them: the
+## `construction` point's girder is forced to 3.1 s of its 5, which is what
+## puts the girder UNDER the point instead of 46 m below it. The designer's own
+## comment on that action is "load".
+##
+## This is an authored constant, not a saved position. Nothing records how far
+## a sequence had got when the player died; the level author decided once where
+## a respawn should pick it up, and that number rides on the action.
+@export var start_position: float = -1.0
 ## Plays itself as the level loads, and again after every respawn.
 ##
 ## Only for a sequence whose one way in is its own loop -- the extractor marks
@@ -159,7 +172,9 @@ func _begin(direction: int) -> void:
 		_capture()
 	# A forward start from the end replays from the top; a reverse start from
 	# the top has nothing to undo.
-	if direction > 0 and _time >= length:
+	if direction > 0 and start_position >= 0.0:
+		_time = clampf(start_position, 0.0, length)
+	elif direction > 0 and _time >= length:
 		_time = 0.0
 	if direction < 0 and _time <= 0.0:
 		return
