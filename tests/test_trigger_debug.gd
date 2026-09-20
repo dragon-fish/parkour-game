@@ -130,3 +130,32 @@ func test_the_rings_are_the_line_own_colour() -> void:
 			if material != null and material.albedo_color.is_equal_approx(wanted):
 				found = true
 	assert_true(found, "the rings were not drawn in the swing colour")
+
+
+func test_a_touch_area_whose_shapes_are_replaced_is_drawn_again_and_nothing_breaks() -> void:
+	# The subway's tunnel pieces: a new obstacle every lap, the old shapes
+	# freed and what was drawn under them freed with them -- once for the same
+	# number of shapes, once from none at all.
+	var holder := Node3D.new()
+	get_tree().root.add_child(holder)
+	_nodes.append(holder)
+	var touch := Area3D.new()
+	touch.name = "KismetTouch"
+	touch.collision_mask = 1
+	holder.add_child(touch)
+	var debug := TriggerDebug.new()
+	holder.add_child(debug)
+	debug.set_shown(true)
+	await step(2)
+	assert_eq(_drawn_under(touch).size(), 0, "a clear piece has nothing to draw, and is watched all the same")
+	for lap in 2:
+		for child in touch.get_children():
+			touch.remove_child(child)
+			child.queue_free()
+		var shape := CollisionShape3D.new()
+		shape.shape = BoxShape3D.new()
+		touch.add_child(shape)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		assert_gt(_drawn_under(touch).size(), 0, "lap %d: the beam it was given is drawn" % lap)
+	debug.set_shown(false)

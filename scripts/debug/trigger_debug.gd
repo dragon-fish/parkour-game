@@ -178,11 +178,21 @@ func _process(_delta: float) -> void:
 		if not is_instance_valid(body):
 			continue
 		# Its shapes have been replaced -- the subway's tunnel pieces take a new
-		# obstacle every lap -- and what was drawn went with the old ones.
-		if body.get_child_count() != entry[4]:
-			for stale: Node in entry[1]:
-				if is_instance_valid(stale):
-					stale.queue_free()
+		# obstacle every lap -- and what was drawn under the old ones went with
+		# them. Told by a drawing having been freed as well as by the count:
+		# two shapes swapped for two others is the same count.
+		# UNTYPED loops over what was drawn: a typed loop variable cannot even
+		# be handed a freed instance to ask whether it is one.
+		var stale: bool = body.get_child_count() != entry[4]
+		for drawn in entry[1]:
+			stale = stale or not is_instance_valid(drawn)
+		if stale:
+			for drawn in entry[1]:
+				if is_instance_valid(drawn):
+					drawn.queue_free()
+			# What is kept is what is still there: a lap a second would
+			# otherwise pile freed drawings up for as long as F3 stays on.
+			_drawn = _drawn.filter(func(node: Variant) -> bool: return is_instance_valid(node))
 			var first_drawn := _drawn.size()
 			_draw_shapes_of(body, entry[2], entry[3])
 			entry[1] = _drawn.slice(first_drawn)
@@ -190,9 +200,9 @@ func _process(_delta: float) -> void:
 		var on: bool = body.collision_layer != 0 or body.collision_mask != 0
 		if on and camera != null and body.get_parent() is KismetRunner:
 			on = camera.global_position.distance_to(body.global_position) <= KISMET_ZONE_RANGE_M
-		for drawn: Node3D in entry[1]:
+		for drawn in entry[1]:
 			if is_instance_valid(drawn):
-				drawn.visible = on
+				(drawn as Node3D).visible = on
 
 
 func _draw_shapes_of(body: CollisionObject3D, colour: Color, type: String) -> void:
