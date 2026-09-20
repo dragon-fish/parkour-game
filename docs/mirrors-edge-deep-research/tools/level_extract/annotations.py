@@ -152,9 +152,10 @@ def vector_array(mr, idx, name):
 
 
 def streamed_by(mr, idx):
-    """SPIKE. [ME:CONFIRMED] a TdCheckpoint lists the packages a restore there
-    loads, as references to the persistent level's LevelStreaming objects.
-    Lower-case, as PackageSet.streamed_packages() spells them."""
+    """[ME:CONFIRMED] a TdCheckpoint lists the packages a restore there loads,
+    as references to the persistent level's LevelStreaming objects: the world
+    as it stands at that checkpoint. Spelt as streaming.package_key() spells
+    a package (a PackageName carries no extension)."""
     entry = _raw_entry(mr, idx, 'StreamingLevels')
     if not entry:
         return []

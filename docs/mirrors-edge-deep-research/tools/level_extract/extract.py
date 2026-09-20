@@ -24,6 +24,7 @@ import materials as material_bake
 import static_mesh
 import matinee
 import environment
+import streaming
 
 # InterpActors are movers: placed like any mesh, moved by matinee.py's data.
 PLACED_CLASSES = ('StaticMeshActor', 'InterpActor')
@@ -690,8 +691,12 @@ def main(config_path):
     report['environment'] = look.get('package') if look else None
     report['sun'] = '%s.%s' % (look['sun']['package'], look['sun']['name']) if look and look.get('sun') else None
 
+    # Only a chapter built section by section is streamed: a single-scene level
+    # names the packages it wants and keeps them all.
+    flow = streaming.collect(packages, notes['checkpoints'], report) if config['split_sections'] else None
+
     os.makedirs(out_dir, exist_ok=True)
-    manifest = {'config': config, 'environment': look, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
+    manifest = {'config': config, 'streaming': flow, 'environment': look, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
                 'annotations': notes['annotations'], 'spawns': notes['spawns'],
                 'checkpoints': notes['checkpoints'], 'matinees': matinees, 'report': report}
     with open(os.path.join(out_dir, 'manifest.json'), 'w', encoding='utf-8') as fh:

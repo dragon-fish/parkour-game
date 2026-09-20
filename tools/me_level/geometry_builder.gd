@@ -88,7 +88,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			node = Node3D.new() if collision == "none" else StaticBody3D.new()
 			node.name = names.take(mesh_name)
 		node.set_meta("me_collision", collision)
-		node.set_meta(PACKAGE_META, package_key(placement["package"]))
+		node.set_meta(Common.PACKAGE_META, Common.package_key(placement["package"]))
 		if placement["soft_landing"]:
 			node.add_to_group("soft_landing", true)
 		var instance := MeshInstance3D.new()
@@ -152,16 +152,16 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 				counts.slide += 1
 		(movers if mover else geometry).add_child(node)
 	print("[me_level] placements: ", counts)
-	# SPIKE. One BSP body and one occluder per package: a package that is not
-	# present must neither block nor cull.
+	# One BSP body and one occluder per package: a package that is not in
+	# the level (PackagePresence) must neither block nor cull.
 	var faces_of := {}
 	for face: Dictionary in manifest["bsp"]:
-		faces_of.get_or_add(package_key(face["package"]), []).append(face)
+		faces_of.get_or_add(Common.package_key(face["package"]), []).append(face)
 	var bsp_of := {}
 	for key: String in faces_of:
 		var body := _build_bsp(faces_of[key])
 		body.name = "BSP" if bsp_of.is_empty() else "BSP%d" % (bsp_of.size() + 1)
-		body.set_meta(PACKAGE_META, key)
+		body.set_meta(Common.PACKAGE_META, key)
 		bsp_of[key] = body
 		root.add_child(body)
 	root.add_child(_build_lights(manifest["lights"]))
@@ -171,24 +171,16 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		root.add_child(_environment(look, look_dials))
 	var nodes_of := {}
 	for node: Node3D in geometry.get_children():
-		nodes_of.get_or_add(node.get_meta(PACKAGE_META), []).append(node)
+		nodes_of.get_or_add(node.get_meta(Common.PACKAGE_META), []).append(node)
 	for key: String in bsp_of:
 		nodes_of.get_or_add(key, [])
 	for key: String in nodes_of:
 		var occluder := _build_occluder(nodes_of[key], bsp_of.get(key))
 		if occluder != null:
 			occluder.name = "Occluder" if root.get_node_or_null("Occluder") == null else "Occluder_" + key.validate_node_name()
-			occluder.set_meta(PACKAGE_META, key)
+			occluder.set_meta(Common.PACKAGE_META, key)
 			root.add_child(occluder)
 	return root
-
-
-## SPIKE. The package a node came from, spelt as a checkpoint's streaming list
-## spells it: lower case, no extension.
-const PACKAGE_META := &"me_package"
-
-static func package_key(package: String) -> String:
-	return package.get_basename().to_lower() if package.to_lower().ends_with(".me1") else package.to_lower()
 
 
 ## What the original marks for Runner Vision, as the node a level of our own
@@ -527,7 +519,7 @@ func _build_lights(lights: Array) -> Node3D:
 			# walked up and the fine cascades took over.
 			light.light_bake_mode = Light3D.BAKE_DISABLED
 		light.set_meta("me_brightness", float(entry["brightness"]))
-		light.set_meta(PACKAGE_META, package_key(str(entry["package"])))
+		light.set_meta(Common.PACKAGE_META, Common.package_key(str(entry["package"])))
 		light.light_energy = float(entry["brightness"]) * scale
 		parent.add_child(light)
 	return parent

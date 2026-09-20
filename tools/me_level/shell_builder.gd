@@ -24,6 +24,8 @@ const LIFT_SCRIPT := preload("res://scripts/level/lift.gd")
 const TELEPORT_SCRIPT := preload("res://scripts/level/teleport_volume.gd")
 const GLASS_SCRIPT := preload("res://scripts/level/breakable_glass.gd")
 const LEVEL_END_SCRIPT := preload("res://scripts/level/level_end.gd")
+const PRESENCE_SCRIPT := preload("res://scripts/level/package_presence.gd")
+const STREAMING_TRIGGER_SCRIPT := preload("res://scripts/level/streaming_trigger.gd")
 ## How far out from a pane its Reach sees a body coming: a tick at a sprint
 ## and then some. A dial.
 const GLASS_REACH_M := 0.6
@@ -1055,6 +1057,63 @@ func _glass(manifest: Dictionary, movers: NodePath) -> Node3D:
 
 ## The touches that end the chapter (LevelEnd), in the shapes of the original's
 ## triggers.
+## The chapter's PackagePresence and its triggers, or null for a level the
+## extractor found no streaming in. It goes into the chapter GEOMETRY, which
+## is rebuilt every time, not into the shell, which is edited by hand.
+func build_streaming(manifest: Dictionary) -> Node3D:
+	var flow = manifest.get("streaming")
+	if not flow is Dictionary:
+		return null
+	var snapshots := {}
+	var start := ""
+	for c: Dictionary in manifest["checkpoints"]:
+		if (c.get("streaming", []) as Array).is_empty():
+			continue
+		var label := str(c["label"]) if str(c.get("label", "")) != "" else str(c["name"])
+		snapshots[label] = PackedStringArray(c["streaming"])
+		if c.get("default", false) and start == "":
+			start = label
+	if snapshots.is_empty():
+		return null
+	var spawn = manifest["config"].get("initial_spawn")
+	if spawn is String and snapshots.has(spawn):
+		start = spawn
+	var presence := Node3D.new()
+	presence.name = "Streaming"
+	presence.set_script(PRESENCE_SCRIPT)
+	presence.set("snapshots", snapshots)
+	presence.set("start", start)
+	presence.set("managed", PackedStringArray(flow["managed"]))
+	# One trigger per originator, its steps in the order they were flattened
+	# in: by delay, then unload before load.
+	var by_source := {}
+	for step: Dictionary in flow["steps"]:
+		var source: Dictionary = step["source"]
+		var id := "%s.%s" % [Common.package_key(source["package"]), source["trigger"]["name"]]
+		if not by_source.has(id):
+			by_source[id] = {source = source, steps = [] as Array[Dictionary]}
+		by_source[id].steps.append({op = step["op"], packages = PackedStringArray(step["packages"]),
+				delay = float(step["delay"]), order = int(step["order"])})
+	var names := Common.NameAllocator.new()
+	for id: String in by_source:
+		var source: Dictionary = by_source[id].source
+		var pressed: bool = source["kind"] != "touch"
+		var shape := _matinee_trigger(source["trigger"], pressed)
+		if shape == null:
+			continue
+		shape.name = "Zone"
+		var trigger := Node3D.new()
+		trigger.name = names.take(id.validate_node_name())
+		trigger.set_script(STREAMING_TRIGGER_SCRIPT)
+		trigger.set("source", id)
+		trigger.set("pressed", pressed)
+		trigger.set("steps", by_source[id].steps)
+		trigger.set_meta(Common.PACKAGE_META, Common.package_key(source["package"]))
+		trigger.add_child(shape)
+		presence.add_child(trigger)
+	return presence
+
+
 func _level_ends(annotations: Array) -> Node3D:
 	var group := _group("LevelEnds")
 	var names := Common.NameAllocator.new()

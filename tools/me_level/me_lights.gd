@@ -24,6 +24,8 @@ extends Node3D
 # curtain.
 
 const LIGHTS_PER_FRAME := 32
+# On a light whose package is not in the level: it stays dark whoever asks.
+const ABSENT_META := &"me_absent"
 
 @export var energy_scale: float = 17.0:
 	set(value):
@@ -61,11 +63,23 @@ func _process(_delta: float) -> void:
 	while _budget_left > 0 and not _dark.is_empty():
 		var light: Light3D = _dark.pop_back()
 		if is_instance_valid(light):
-			light.visible = true
+			light.visible = not light.get_meta(ABSENT_META, false)
 		_budget_left -= 1
 	if _dark.is_empty():
 		remove_from_group(Arena.WARMING)
 		set_process(false)
+
+# PackagePresence's way in: a package arriving mid-level brings its lights on
+# through the same budget as the load did, and one leaving takes them out at
+# once. Through here rather than `visible`, which _process() also writes.
+func set_present(light: Light3D, on: bool) -> void:
+	light.set_meta(ABSENT_META, not on)
+	if not on:
+		light.visible = false
+	elif not light.visible and not _dark.has(light):
+		_dark.append(light)
+		set_process(true)
+
 
 func _apply() -> void:
 	if not is_inside_tree():

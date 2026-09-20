@@ -67,6 +67,20 @@ static func transform_of(entry: Dictionary) -> Transform3D:
 
 ## Node name of a mover (an InterpActor placement), from its package and
 ## object name. Deterministic, so a Matinee can address it by path.
+## On every node built from a package, the package: what PackagePresence
+## (scripts/level/package_presence.gd, PACKAGE_META) shows and hides by. Not
+## named from there -- a build runs without the autoloads Arena needs.
+const PACKAGE_META := &"me_package"
+
+
+## A package as the streaming tables spell it: lower case, no extension. The
+## original's own spelling varies (Convoy_Roof-Conv_slc_lgts). The extractor's
+## streaming.package_key() is the same rule.
+static func package_key(package: String) -> String:
+	var lower := package.to_lower()
+	return lower.trim_suffix(".me1")
+
+
 static func mover_name(package: String, actor: String) -> String:
 	return ("%s_%s" % [package.get_basename(), actor]).validate_node_name()
 

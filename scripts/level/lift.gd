@@ -36,6 +36,12 @@ extends Node3D
 ## car moves. Empty: no button, and the doors stand open.
 @export var call_zone: NodePath
 
+## The doors have shut on a rider and the car is about to leave. What the
+## original hung on the car's button hangs on this: see StreamingTrigger.
+signal doors_closed
+
+const GROUP := &"lifts"
+
 enum State { IDLE, CLOSING, MOVING, OPENING }
 
 var _state: int = State.IDLE
@@ -56,6 +62,7 @@ var _rules: ModifierVolume = null
 
 func _ready() -> void:
 	add_to_group(Arena.RESET_ON_RESPAWN)
+	add_to_group(GROUP)
 	var body := get_node(car) as Node3D
 	_car_home = body.global_transform
 	var mesh := body.get_node_or_null("Mesh") as MeshInstance3D
@@ -99,6 +106,15 @@ func _on_used() -> void:
 	_clock = 0.0
 
 
+## Whether `point` (global) is a button of this lift: in the car where it
+## stands at load or within `reach` of it, or that near the call zone.
+func is_button(point: Vector3, reach: float) -> bool:
+	if _interior.grow(reach).has_point(_car_home.affine_inverse() * point):
+		return true
+	var zone := get_node_or_null(call_zone) as Node3D
+	return zone != null and zone.global_position.distance_to(point) <= reach
+
+
 ## The call button only opens a car that waits closed at its landing: once
 ## ridden, the car stays at the other stop, as in the original.
 func _on_called() -> void:
@@ -119,6 +135,7 @@ func _physics_process(delta: float) -> void:
 			if _clock >= door_time:
 				_state = State.MOVING
 				_clock = 0.0
+				doors_closed.emit()
 		State.MOVING:
 			var t := minf(_clock / travel_time, 1.0)
 			var eased := t * t * (3.0 - 2.0 * t)
