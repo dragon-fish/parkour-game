@@ -235,3 +235,105 @@ func test_a_respawn_forgets_what_the_last_life_did() -> void:
 	assert_false(rig.runner._state.has("gate"), "and is as the level was built again")
 	_event(rig.runner, "once")
 	assert_eq(_reached(rig.runner, "a"), 2, "as is the event's one firing")
+
+
+func test_a_collision_type_means_what_ue3_means_by_it() -> void:
+	# A wall is solid only when it BLOCKS; a volume that hurts listens when it
+	# blocks or touches. Steam is both, switched by one action.
+	var nodes := {}
+	for type: String in ["COLLIDE_NoCollision", "COLLIDE_TouchAll", "COLLIDE_BlockAll", "COLLIDE_BlockWeapons", ""]:
+		var props := {CollisionType = type, bCollideActors = true} if type != "" else {}
+		nodes["ev_" + type] = _n("SeqEvent_RemoteEvent", [["Out", [["set_" + type, 0]]]])
+		nodes["set_" + type] = _n("SeqAct_ChangeCollision", [["Out", []]], {props = props, vars = {Target = ["wall", "steam"]}})
+	var rig := await _runner(nodes, {"wall": {cls = "SeqVar_Object", actor = "p.Wall"}, "steam": {cls = "SeqVar_Object", actor = "p.Steam"}})
+	var wall := StaticBody3D.new()
+	wall.set_meta(KismetRunner.ACTOR_META, "p.Wall")
+	var steam := Area3D.new()
+	steam.set_meta(KismetRunner.ACTOR_META, "p.Steam")
+	rig.root.add_child(wall)
+	rig.root.add_child(steam)
+	rig.runner.bind(rig.root)
+	var expected := {"COLLIDE_NoCollision": [false, false], "COLLIDE_TouchAll": [false, true],
+		"COLLIDE_BlockAll": [true, true], "COLLIDE_BlockWeapons": [false, false], "": [true, true]}
+	for type: String in expected:
+		_event(rig.runner, "ev_" + type)
+		assert_eq([wall.collision_layer != 0, steam.collision_layer != 0], expected[type],
+				"%s: [wall solid, steam hurts]; the leftover bCollideActors beside it decides nothing" % (type if type != "" else "unwritten (CustomDefault)"))
+
+
+func test_what_starts_off_is_off_until_kismet_says_and_again_after_a_respawn() -> void:
+	var rig := await _runner({
+		"on": _n("SeqEvent_RemoteEvent", [["Out", [["set", 0]]]]),
+		"set": _n("SeqAct_ChangeCollision", [["Out", []]], {props = {CollisionType = "COLLIDE_TouchAll"}, vars = {Target = ["crush"]}}),
+	}, {"crush": {cls = "SeqVar_Object", actor = "p.Crush"}}, true)
+	rig.runner.graph.actors = {"p.Crush": {cls = "PhysicsVolume", package = "p", starts_off = true}}
+	var crush := Area3D.new()
+	crush.set_meta(KismetRunner.ACTOR_META, "p.Crush")
+	rig.root.add_child(crush)
+	rig.runner.bind(rig.root)
+	assert_eq(crush.collision_layer, 0, "a door's crush volume does not hurt an open doorway")
+	_event(rig.runner, "on")
+	assert_ne(crush.collision_layer, 0, "it hurts while the door comes down")
+	rig.presence.restore("Start")
+	assert_eq(crush.collision_layer, 0, "and a respawn finds the doorway safe again")
+
+
+func test_the_actions_on_an_actor_run_and_do_what_they_say() -> void:
+	var nodes := {
+		"hide": _n("SeqEvent_RemoteEvent", [["Out", [["hidden", 0]]]]),
+		"hidden": _n("SeqAct_ToggleHidden", [["Out", []]], {vars = {Target = ["thing"]}}),
+		"show": _n("SeqEvent_RemoteEvent", [["Out", [["hidden", 1]]]]),
+		"off": _n("SeqEvent_RemoteEvent", [["Out", [["toggle", 1]]]]),
+		"flip": _n("SeqEvent_RemoteEvent", [["Out", [["toggle", 2]]]]),
+		"toggle": _n("SeqAct_Toggle", [["Out", []]], {vars = {Target = ["thing"], Bool = ["flag"]}, events = ["deaf"]}),
+		"deaf": _n("SeqEvent_RemoteEvent", [["Out", [["heard", 0]]]], {props = {MaxTriggerCount = 0}}),
+		"heard": _probe("heard"),
+		"kill": _n("SeqEvent_RemoteEvent", [["Out", [["destroy", 0]]]]),
+		"destroy": _n("SeqAct_Destroy", [["Out", []]], {vars = {Target = ["thing"]}}),
+		"lift": _n("SeqEvent_RemoteEvent", [["Out", [["in_lift", 0]]]]),
+		"in_lift": _n("SeqAct_TdInElevator", [["Out", [["rode", 0]]]]),
+		"rode": _probe("rode"),
+		"dice": _n("SeqEvent_RemoteEvent", [["Out", [["random", 0]]]], {props = {MaxTriggerCount = 0}}),
+		"random": _n("SeqAct_RandomSwitch", [["Link 1", [["r", 0]]], ["Link 2", [["r", 0]]]], {props = {LinkCount = 2, bAutoDisableLinks = true}}),
+		"r": _probe("r"),
+		"ask": _n("SeqEvent_RemoteEvent", [["Out", [["compare", 0]]]]),
+		"compare": _n("SeqCond_CompareInt", [["A <= B", [["le", 0]]], ["A > B", [["gt", 0]]], ["A == B", [["eq", 0]]]],
+				{vars = {A = ["three"]}, props = {ValueB = 3}}),
+		"le": _probe("le"), "gt": _probe("gt"), "eq": _probe("eq"),
+	}
+	var rig := await _runner(nodes, {"thing": {cls = "SeqVar_Object", actor = "p.Thing"},
+		"flag": {cls = "SeqVar_Bool", value = {bValue = true}}, "three": {cls = "SeqVar_Int", value = {IntValue = 3}}})
+	var thing := StaticBody3D.new()
+	thing.set_meta(KismetRunner.ACTOR_META, "p.Thing")
+	var picture := MeshInstance3D.new()
+	picture.name = "Mesh"
+	picture.visible = false
+	thing.add_child(picture)
+	rig.root.add_child(thing)
+	rig.runner.bind(rig.root)
+	var runner: KismetRunner = rig.runner
+
+	_event(runner, "show")
+	assert_true(picture.visible, "a placement the original starts hidden has its MESH hidden: that is what is shown")
+	_event(runner, "hide")
+	assert_false(picture.visible)
+
+	_event(runner, "off")
+	assert_eq(thing.collision_layer, 0, "turned off")
+	assert_false(runner._value("flag", true), "and the linked Bool with it")
+	_event(runner, "deaf")
+	assert_eq(_reached(runner, "heard"), 0, "and the linked event no longer listens")
+	_event(runner, "flip")
+	assert_ne(thing.collision_layer, 0, "toggled back on")
+	_event(runner, "deaf")
+	assert_eq(_reached(runner, "heard"), 1)
+
+	_event(runner, "kill")
+	assert_eq(thing.collision_layer, 0, "destroyed: gone from the level, the node kept for the respawn")
+	_event(runner, "lift")
+	assert_eq(_reached(runner, "rode"), 1, "with no player to restrict it still passes on")
+	for i in 3:
+		_event(runner, "dice")
+	assert_eq(_reached(runner, "r"), 2, "each link once, then nothing: auto-disabled and not looping")
+	_event(runner, "ask")
+	assert_eq([_reached(runner, "le"), _reached(runner, "gt"), _reached(runner, "eq")], [1, 0, 1], "3 against 3")

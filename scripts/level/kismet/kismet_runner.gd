@@ -530,9 +530,11 @@ func _run_random_switch(id: String, node: Dictionary, state: Dictionary) -> void
 		for i in count:
 			free.append(i)
 	var pick: int = free[randi() % free.size()]
+	# Fired BEFORE it is disabled: _fire() honours off_outs, and the other way
+	# round the link's one firing was the one it lost.
+	_fire(id, pick)
 	if _prop(node, "bAutoDisableLinks", false):
 		off[pick] = true
-	_fire(id, pick)
 
 
 # ----------------------------------------------------------------- matinees
@@ -730,7 +732,7 @@ const COLLISION_MODES := {
 	"COLLIDE_CustomDefault": COLLIDE_BLOCK, "COLLIDE_NoCollision": COLLIDE_NONE,
 	"COLLIDE_BlockAll": COLLIDE_BLOCK, "COLLIDE_BlockAllButWeapons": COLLIDE_BLOCK,
 	"COLLIDE_BlockWeapons": COLLIDE_NONE, "COLLIDE_BlockWeaponsKickable": COLLIDE_NONE,
-	"COLLIDE_TouchAll": TOUCH, "COLLIDE_TouchAllButWeapons": TOUCH, "COLLIDE_TouchWeapons": COLLIDE_NONE,
+	"COLLIDE_TouchAll": COLLIDE_TOUCH, "COLLIDE_TouchAllButWeapons": COLLIDE_TOUCH, "COLLIDE_TouchWeapons": COLLIDE_NONE,
 }
 
 
