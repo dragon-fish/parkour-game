@@ -181,20 +181,37 @@ func _launch_pitched(pitch_deg: float) -> Vector3:
 	after_each()
 	return launch
 
-func test_a_level_or_lowered_view_launches_at_the_floor_incline() -> void:
+## What leaving at `aim_deg` comes to once jump_speed_up is added on top: the
+## aim is where the jump is pointed, the velocity leaves steeper than that.
+func _incline_after_the_lift(aim_deg: float) -> float:
+	var aim := deg_to_rad(aim_deg)
+	var speed: float = _config().jump_speed
+	return rad_to_deg(atan2(speed * sin(aim) + _config().jump_speed_up, speed * cos(aim)))
+
+func test_a_level_or_lowered_view_aims_at_the_floor_incline() -> void:
 	# Having to look up for every jump was the complaint: at or below the
 	# floor, the pitch changes nothing.
-	var floor_deg := _config().jump_min_pitch_deg
+	var expected := _incline_after_the_lift(_config().jump_min_pitch_deg)
 	for pitch_deg in [0.0, -35.0]:
 		var launch: Vector3 = await _launch_pitched(pitch_deg)
-		assert_almost_eq(_incline_of(launch), floor_deg, 1.0,
+		assert_almost_eq(_incline_of(launch), expected, 1.0,
 			"a view pitched %+.0f launched at %.1f degrees" % [pitch_deg, _incline_of(launch)])
 
 func test_looking_higher_than_the_floor_launches_higher() -> void:
 	# A fixed incline left some jumps short: above the floor, the view wins.
 	var launch: Vector3 = await _launch_pitched(60.0)
-	assert_almost_eq(_incline_of(launch), 60.0, 1.5,
+	assert_almost_eq(_incline_of(launch), _incline_after_the_lift(60.0), 1.5,
 		"a view pitched up 60 launched at %.1f degrees" % _incline_of(launch))
+
+func test_the_launch_is_lifted_above_the_aim() -> void:
+	# The reach of a hang jump comes from this lift, not from the aim: without
+	# it a level view leaves at the floor incline and lands short.
+	var launch: Vector3 = await _launch_pitched(0.0)
+	assert_gt(_incline_of(launch), _config().jump_min_pitch_deg + 5.0,
+		"launched at %.1f degrees, no steeper than the aim" % _incline_of(launch))
+	assert_almost_eq(launch.y, _config().jump_speed * sin(deg_to_rad(_config().jump_min_pitch_deg))
+		+ _config().jump_speed_up, 0.2,
+		"the upward speed is not the aim plus jump_speed_up")
 
 # --- and it lets go properly ---------------------------------------------------
 
