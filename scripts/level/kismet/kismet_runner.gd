@@ -44,6 +44,8 @@ const MAX_ACTIVATIONS_PER_TICK := 20000
 const TOUCH := ["SeqEvent_Touch", "SeqEvent_TdTouch"]
 const USED := ["SeqEvent_Used", "SeqEvent_TdUsed"]
 const DAMAGED := ["SeqEvent_TakeDamage"]
+## Outputs of a Used event that say the press did NOT happen.
+const NOT_PRESSED := ["Unused", "Aborted"]
 const LEVEL_START := ["SeqEvent_LevelLoaded", "SeqEvent_LevelStartup", "SeqEvent_LevelBeginning"]
 ## [ME:CONFIRMED] no jump, no crouch and walking pace in a lift car; the
 ## original says so with SeqAct_TdInElevator on the car's button.
@@ -250,9 +252,17 @@ func _on_used(actor: String) -> void:
 		return
 	for id: String in _events_of.get(actor, []):
 		if _nodes[id]["cls"] in USED:
-			# TdUsed is held: Started, then Finished. This project's press is
-			# the dwell in the zone, already over when it arrives here.
-			_fire_event(id, ["Used", "Started", "Finished"])
+			# The original's press has STAGES, one output each -- a valve is
+			# Start, Looping, Last turn, Finished; a button is Out or Used --
+			# and a level wires whichever it likes: Stormdrain's steam hangs
+			# on Finished and its water on Start. This project's press is the
+			# dwell in the zone, over by the time it arrives here, so every
+			# stage has happened; only the ones that mean "did not" are left.
+			var stages: Array = []
+			for out: Dictionary in _nodes[id]["outs"]:
+				if not out["name"] in NOT_PRESSED:
+					stages.append(out["name"])
+			_fire_event(id, stages)
 	_drain()
 
 

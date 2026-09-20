@@ -337,3 +337,17 @@ func test_the_actions_on_an_actor_run_and_do_what_they_say() -> void:
 	assert_eq(_reached(runner, "r"), 2, "each link once, then nothing: auto-disabled and not looping")
 	_event(runner, "ask")
 	assert_eq([_reached(runner, "le"), _reached(runner, "gt"), _reached(runner, "eq")], [1, 0, 1], "3 against 3")
+
+
+func test_a_press_fires_every_stage_the_original_gives_it() -> void:
+	# A valve's stages. One level hangs its effect on Finished, the next on
+	# Start; a press that named the stages it knew lost the water valve.
+	var rig := await _runner({
+		"valve": _n("SeqEvent_TdUsed", [["Start", [["started", 0]]], ["Looping", []], ["Last turn", []],
+				["Finished", [["finished", 0]]], ["Aborted", [["aborted", 0]]]], {originator = "p.Valve"}),
+		"started": _probe("started"), "finished": _probe("finished"), "aborted": _probe("aborted"),
+	})
+	rig.runner._on_used("p.Valve")
+	assert_eq([_reached(rig.runner, "started"), _reached(rig.runner, "finished"), _reached(rig.runner, "aborted")], [1, 1, 0])
+	rig.runner._on_used("p.Valve")
+	assert_eq(_reached(rig.runner, "started"), 1, "and a press is ONE firing of the event, whatever its stages")

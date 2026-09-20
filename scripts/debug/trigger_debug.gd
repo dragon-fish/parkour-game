@@ -41,7 +41,16 @@ const ARROW := 0.7
 const REACH_RING_SPACING_M := 1.0
 const REACH_RING_SEGMENTS := 16
 
+## How far from the camera a Kismet event zone is still drawn. A chapter has
+## two hundred of them, most in the persistent package and so always there:
+## drawn all at once the overlay was a wall of labels.
+const KISMET_ZONE_RANGE_M := 40.0
+
 var _shown := false
+## [body, [what was drawn for it]]: a body on no collision layer is not drawn.
+## An overlay that draws a wall Kismet has switched off exactly like one that
+## is on cannot answer the one question it is opened for.
+var _watched: Array[Array] = []
 ## Everything built for the current showing, freed when it goes off.
 var _drawn: Array[Node] = []
 var _materials: Dictionary = {}
@@ -69,6 +78,8 @@ func _clear() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	_drawn.clear()
+	_watched.clear()
+	set_process(false)
 
 
 func _build() -> void:
@@ -95,7 +106,7 @@ func _kind_of(node: Node) -> Array:
 	if node is Checkpoint or parent is Checkpoint:
 		return [CHECKPOINT, "检查点"]
 	if parent is KismetRunner:
-		return [STREAMING, "Kismet 事件"]
+		return [STREAMING, "Kismet 墙" if node is PhysicsBody3D else "Kismet 事件"]
 	if node is UseZone:
 		return [USE_ZONE, "按钮"]
 	if node is ModifierVolume:
@@ -148,6 +159,29 @@ func _fill(colour: Color) -> StandardMaterial3D:
 
 
 func _draw_shapes(body: CollisionObject3D, colour: Color, type: String) -> void:
+	var first_drawn := _drawn.size()
+	_draw_shapes_of(body, colour, type)
+	if _drawn.size() > first_drawn:
+		_watched.append([body, _drawn.slice(first_drawn)])
+		set_process(true)
+
+
+## Every frame: a few hundred comparisons, only while the overlay is up.
+func _process(_delta: float) -> void:
+	var camera := get_viewport().get_camera_3d()
+	for entry in _watched:
+		var body := entry[0] as CollisionObject3D
+		if not is_instance_valid(body):
+			continue
+		var on: bool = body.collision_layer != 0 or body.collision_mask != 0
+		if on and camera != null and body.get_parent() is KismetRunner:
+			on = camera.global_position.distance_to(body.global_position) <= KISMET_ZONE_RANGE_M
+		for drawn: Node3D in entry[1]:
+			if is_instance_valid(drawn):
+				drawn.visible = on
+
+
+func _draw_shapes_of(body: CollisionObject3D, colour: Color, type: String) -> void:
 	var bounds := AABB()
 	var first := true
 	for child in body.get_children():
