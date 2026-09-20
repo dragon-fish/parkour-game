@@ -240,7 +240,8 @@ def read_package(packages, mr, actors, variables, mesh_of=None):
 # AI being told where to walk, music -- changes nothing this project has.
 EFFECTS_ON_ACTORS = ('SeqAct_Toggle', 'SeqAct_ToggleHidden', 'SeqAct_ChangeCollision', 'SeqAct_Destroy',
                      'SeqAct_SetStaticMesh')
-EFFECTS = ('SeqAct_MultiLevelStreaming', 'SeqAct_LevelStreaming', 'SeqAct_TdInElevator', 'SeqAct_Teleport')
+EFFECTS = ('SeqAct_MultiLevelStreaming', 'SeqAct_LevelStreaming', 'SeqAct_TdInElevator', 'SeqAct_Teleport',
+           'SeqAct_TdPlayerFail')
 
 
 def mark_useful(graph, built_actors, built_matinees, handled_elsewhere=frozenset()):

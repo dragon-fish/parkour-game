@@ -549,6 +549,14 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 				_tell("%s hurts the player for %s" % [id, _prop(node, "DamageAmount", 0.0)])
 				player.take_damage(float(_prop(node, "DamageAmount", 0.0)), Health.Cause.VOLUME)
 			_fire(id, 0)
+		"SeqAct_TdPlayerFail":
+			# The original's "you did not make it": under a train, off the
+			# roof of one. The same death as any other here.
+			var arena := _arena()
+			if arena != null:
+				_tell("%s: the player fails" % id)
+				arena.kill_player()
+			_fire(id, 0)
 		"SeqAct_SetStaticMesh":
 			for actor: String in _targets(node, "Target"):
 				for placed: Node in _actors.get(actor, []):
@@ -975,11 +983,16 @@ func _set_lift_rules(on: bool) -> void:
 		player.apply_status(spec, self, 0)
 
 
-func _player() -> Node:
+func _arena() -> Arena:
 	var node := get_parent()
 	while node != null and not node is Arena:
 		node = node.get_parent()
-	return (node as Arena).player if node != null else null
+	return node as Arena
+
+
+func _player() -> Node:
+	var arena := _arena()
+	return arena.player if arena != null else null
 
 
 # ---------------------------------------------------------------- variables
