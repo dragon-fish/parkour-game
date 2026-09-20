@@ -42,18 +42,30 @@ class MapReader:
                 props.append((name, typ, extra, q, sz, arr)); p = q + sz
         return (False, props, p)
 
-    def chain_of(self, idx):
+    def chain_of(self, idx, widest=False):
         """Calibrated raw tag chain of export #idx (1-based):
         [(name, type, struct_name, value_offset, size, array_index), ...].
         The offsets let a caller decode payloads props() leaves as 'raw'
-        (arrays, nested structs) without re-deriving the calibration."""
+        (arrays, nested structs) without re-deriving the calibration.
+
+        The start is not fixed, so every candidate is tried and the chain with
+        the most tags wins. That loses when the object's own chain is SHORT
+        and its first property is an array of longer structs: a
+        SeqEvent_LevelLoaded has five tags of its own and an OutputLinks whose
+        elements have nine, and came back as one of its own output links, with
+        everything it was wired to gone. `widest` picks the chain that covers
+        the most bytes instead -- an inner chain is always inside the outer
+        one -- and is what a reader of Kismet wants."""
         e = self.pkg.exports[idx - 1]
         base, end = e['offset'], e['offset'] + e['size']
-        best = None
+        best, best_score = None, None
         for off in range(0, min(96, e['size']), 4):
             ok, pr, nat = self._chain(base + off, end)
-            if ok and (best is None or len(pr) > len(best[0])):
-                best = (pr, nat)
+            if not ok:
+                continue
+            score = ((nat or 0) - (base + off) if pr else 0, len(pr)) if widest else (len(pr),)
+            if best is None or score > best_score:
+                best, best_score = (pr, nat), score
         return best or ([], None)
 
     def props(self, idx):

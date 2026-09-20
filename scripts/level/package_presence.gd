@@ -104,11 +104,15 @@ func _begin() -> void:
 	# whatever stands beside this node.
 	var level: Node = _arena if _arena != null else get_parent()
 	_stamp_shells(level)
-	_index(level)
 	# Only now can an actor be found by name: the shells have their origins.
+	# BEFORE the index: the runner puts what starts off -- a door's crush
+	# volume, a corridor's end wall -- on no layer, and the layers read below
+	# are what a package coming back is given. Read first, every load turned
+	# them all on.
 	for child in get_children():
 		if child.has_method("bind"):
 			child.bind(level)
+	_index(level)
 	_begun = true
 	print("[presence] %d packages in the level, %d governed, %d snapshots" % [_nodes_of.size(), _managed.size(), snapshots.size()])
 	reset_for_respawn()

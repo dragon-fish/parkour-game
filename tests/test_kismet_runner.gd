@@ -167,12 +167,13 @@ func test_a_matinee_takes_its_time_and_fires_its_event_track_one_way() -> void:
 	var rig := await _runner({
 		"go": _n("SeqEvent_RemoteEvent", [["Out", [["door", 0]]]]),
 		"back": _n("SeqEvent_RemoteEvent", [["Out", [["door", 1]]]]),
-		"door": _n("SeqAct_Interp", [["Completed", [["completed", 0]]], ["Aborted", []],
+		"door": _n("SeqAct_Interp", [["Completed", [["completed", 0]]], ["Aborted", [["reversed", 0]]],
 				["Open", [["opened", 0]]], ["Close", [["closed", 0]]]],
 				{length = 0.2, events_at = [
 					{name = "Open", time = 0.0, forwards = true, backwards = false},
 					{name = "close", time = 0.1, forwards = false, backwards = true}]}),
-		"completed": _probe("completed"), "opened": _probe("opened"), "closed": _probe("closed"),
+		"completed": _probe("completed"), "reversed": _probe("reversed"),
+		"opened": _probe("opened"), "closed": _probe("closed"),
 	})
 	_event(rig.runner, "go")
 	assert_eq(_reached(rig.runner, "opened"), 1, "a key at the start fires on the start")
@@ -183,7 +184,8 @@ func test_a_matinee_takes_its_time_and_fires_its_event_track_one_way() -> void:
 	_event(rig.runner, "back")
 	await step(15)
 	assert_eq(_reached(rig.runner, "closed"), 1, "and fires on the way back, whatever its case")
-	assert_eq(_reached(rig.runner, "completed"), 2, "with no Reversed output the way back Completes too")
+	assert_eq(_reached(rig.runner, "completed"), 1, "the way back does NOT complete: a door wired Completed -> Reverse would never rest")
+	assert_eq(_reached(rig.runner, "reversed"), 1, "it ends on the second output, whatever this build labels it")
 
 
 func test_a_class_nobody_has_taught_it_is_passed_through_and_counted() -> void:

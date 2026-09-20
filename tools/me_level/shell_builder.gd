@@ -1198,8 +1198,6 @@ func build_streaming(manifest: Dictionary, kismet: Dictionary, graph_path: Strin
 			continue
 		wall.set_meta(Common.ACTOR_META, actor)
 		wall.set_meta(Common.PACKAGE_META, str(entry["package"]))
-		if entry.get("starts_off", false):
-			wall.set_meta(&"kismet_starts_off", true)
 		runner.add_child(wall)
 	return presence
 

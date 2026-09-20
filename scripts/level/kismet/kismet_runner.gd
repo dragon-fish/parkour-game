@@ -92,6 +92,7 @@ var _queue: Array[Array] = []
 var _clock: float = 0.0
 var _presence: PackagePresence = null
 var _running := false
+var _starts := 0
 var _activations := 0
 
 
@@ -144,9 +145,9 @@ func bind(level: Node) -> void:
 		for node: Node in _actors.get(actor, []):
 			_listen(actor, node)
 	for actor: String in _actors:
-		for node: Node in _actors[actor]:
-			if node.get_meta(&"kismet_starts_off", false):
-				_set_layers(node, false)
+		if graph.actors.get(actor, {}).get("starts_off", false):
+			for node: Node in _actors[actor]:
+				_set_layers(node, COLLIDE_NONE)
 	print("[kismet] %d nodes, %d actors found of %d named, %d matinees driven" % [
 		_nodes.size(), _actors.size(), graph.actors.size(), _matinees.size()])
 
@@ -185,8 +186,11 @@ func _forget_everything() -> void:
 
 func _start_level(label: String) -> void:
 	_running = true
+	_starts += 1
 	for id: String in _nodes:
-		if _nodes[id]["cls"] in LEVEL_START and _is_loaded(_nodes[id]["package"]):
+		var cls: String = _nodes[id]["cls"]
+		# LevelReset is the original's own word for a respawn.
+		if (cls in LEVEL_START or (cls == "SeqEvent_LevelReset" and _starts > 1)) and _is_loaded(_nodes[id]["package"]):
 			_fire_event(id, ["Loaded and Visible", "Out"])
 	var actor: String = checkpoint_actors.get(label, "")
 	for id: String in _events_of.get(actor, []):
@@ -411,7 +415,7 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 			# Turn On, Turn Off, Toggle.
 			for actor: String in _targets(node, "Target"):
 				var on: bool = input == 0 or (input == 2 and not _actor_on(actor))
-				_set_actor(actor, "on", on)
+				_set_actor(actor, "on", int(on))
 			for event: String in node.get("events", []):
 				var event_state: Dictionary = _state.get_or_add(event, {})
 				var enabled: bool = event_state.get("enabled", _prop(_nodes.get(event, {}), "bEnabled", true))
@@ -422,20 +426,24 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 		"SeqAct_ToggleHidden":
 			# Hide, UnHide, Toggle.
 			for actor: String in _targets(node, "Target"):
-				var shown: bool = input == 1 or (input == 2 and not _actor_flag(actor, "shown", true))
-				_set_actor(actor, "shown", shown)
+				var shown: bool = input == 1 or (input == 2 and not bool(_actor_flag(actor, "shown", 1)))
+				_set_actor(actor, "shown", int(shown))
 			_fire(id, 0)
 		"SeqAct_ChangeCollision":
-			var solid: bool = str(_prop(node, "CollisionType", "COLLIDE_NoCollision")) != "COLLIDE_NoCollision"
-			if node.get("props", {}).has("bCollideActors"):
-				solid = bool(node["props"]["bCollideActors"])
+			# CollisionType ALONE. The node also carries bCollideActors and
+			# bBlockActors, left over from before the enum and still written
+			# `true` beside COLLIDE_NoCollision: read, they turned the steam
+			# ON where the level turns it off. Unwritten, the type is
+			# COLLIDE_CustomDefault -- the actor's class default, which for
+			# every kind switched here is "blocks".
+			var mode: int = COLLISION_MODES.get(str(_prop(node, "CollisionType", "COLLIDE_CustomDefault")), COLLIDE_BLOCK)
 			for actor: String in _targets(node, "Target"):
-				_set_actor(actor, "solid", solid)
+				_set_actor(actor, "collision", mode)
 			_fire(id, 0)
 		"SeqAct_Destroy":
 			for actor: String in _targets(node, "Target"):
-				_set_actor(actor, "shown", false)
-				_set_actor(actor, "solid", false)
+				_set_actor(actor, "shown", 0)
+				_set_actor(actor, "collision", COLLIDE_NONE)
 			_fire(id, 0)
 		"SeqAct_TdInElevator":
 			# Enter, Exit.
@@ -529,7 +537,14 @@ func _run_random_switch(id: String, node: Dictionary, state: Dictionary) -> void
 
 # ----------------------------------------------------------------- matinees
 
-## Play, Reverse, Stop, Pause, Change Dir. The position is kept HERE, whether
+## Play, Reverse, Stop, Pause, Change Dir. Out: Completed, then the one a
+## REVERSE ends on -- labelled "Aborted" in this build of the engine and
+## "Reversed" in later ones, and the second output in both. [ME:CONFIRMED
+## Stormdrain] a steel door is `Completed -> Delay -> Switch -> Reverse`: with
+## the way back ending on Completed too, the door opened again the moment it
+## had shut, onto a hall that was still loading. Stop fires nothing.
+##
+## The position is kept HERE, whether
 ## or not a Matinee node shows it: a sequence with nothing to move (a lift this
 ## project runs by hand, a camera, a sound) still takes its time and still
 ## fires its event track, and the rest of the level waits on both.
@@ -544,7 +559,7 @@ func _run_interp(id: String, node: Dictionary, input: int, state: Dictionary) ->
 			_drive_matinee(id, "play")
 		1:
 			if at <= 0.0:
-				_fire_named(id, ["Reversed", "Completed"])
+				_fire(id, 1)
 				return
 			state["direction"] = -1
 			_drive_matinee(id, "reverse")
@@ -552,7 +567,6 @@ func _run_interp(id: String, node: Dictionary, input: int, state: Dictionary) ->
 			state["direction"] = 0
 			_playing.erase(id)
 			_drive_matinee(id, "stop")
-			_fire_named(id, ["Aborted"])
 			return
 		3:
 			state["direction"] = 0
@@ -590,7 +604,7 @@ func _advance_interp(id: String, delta: float) -> void:
 	elif direction < 0 and after <= 0.0:
 		state["direction"] = 0
 		_playing.erase(id)
-		_fire_named(id, ["Reversed", "Completed"])
+		_fire(id, 1)
 
 
 ## Event-track keys crossed going from `before` to `after`. A key AT the
@@ -651,43 +665,88 @@ func _on_settled() -> void:
 
 # ------------------------------------------------------------------- actors
 
-func _actor_flag(actor: String, flag: String, fallback: bool) -> bool:
+func _actor_flag(actor: String, flag: String, fallback: int) -> int:
 	return _touched_state.get(actor, {}).get(flag, fallback)
 
 
 func _actor_on(actor: String) -> bool:
-	return _actor_flag(actor, "on", true)
+	var starts_on: bool = not graph.actors.get(actor, {}).get("starts_off", false)
+	return bool(_actor_flag(actor, "on", int(starts_on)))
 
 
 ## `on` is a Toggle (a volume hurts or does not, a light shines or does not, a
-## trigger listens or does not), `shown` a ToggleHidden, `solid` a
-## ChangeCollision. Layers are remembered on the node the first time they are
-## taken away, so that PackagePresence and this agree on what "back" means.
-func _set_actor(actor: String, flag: String, value: bool) -> void:
+## trigger listens or does not), `shown` a ToggleHidden, `collision` a
+## ChangeCollision with one of COLLIDE_NONE, COLLIDE_TOUCH, COLLIDE_BLOCK.
+func _set_actor(actor: String, flag: String, value: int) -> void:
 	_touched_state.get_or_add(actor, {})[flag] = value
 	for node: Node in _actors.get(actor, []):
 		if not is_instance_valid(node):
 			continue
 		match flag:
 			"shown":
-				if node is Node3D:
-					(node as Node3D).visible = value
-			"solid":
+				_set_shown(node, bool(value))
+			"collision":
 				_set_layers(node, value)
 			"on":
 				if node is Light3D or node is GPUParticles3D or node is CPUParticles3D:
-					(node as Node3D).visible = value
+					(node as Node3D).visible = bool(value)
 				else:
-					_set_layers(node, value)
+					_set_layers(node, COLLIDE_BLOCK if value else COLLIDE_NONE)
 
 
 func _restore_actor(actor: String) -> void:
+	var starts_off: bool = graph.actors.get(actor, {}).get("starts_off", false)
 	for node: Node in _actors.get(actor, []):
 		if not is_instance_valid(node):
 			continue
-		if node is Node3D:
-			(node as Node3D).visible = true
-		_set_layers(node, not node.get_meta(&"kismet_starts_off", false))
+		_set_shown(node, true, true)
+		_set_layers(node, COLLIDE_NONE if starts_off else COLLIDE_BLOCK)
+
+
+## A placement's picture is its Mesh child, and one the original starts hidden
+## has the CHILD hidden, the node itself left visible for the editor: showing
+## the node showed nothing. What the child started as is kept on it, for the
+## respawn.
+func _set_shown(node: Node, shown: bool, restore: bool = false) -> void:
+	var picture := node.get_node_or_null("Mesh") as Node3D
+	if picture == null:
+		picture = node as Node3D
+	if picture == null:
+		return
+	if not picture.has_meta(&"kismet_shown"):
+		picture.set_meta(&"kismet_shown", picture.visible)
+	picture.visible = picture.get_meta(&"kismet_shown") if restore else shown
+
+
+## COLLIDE_NONE, COLLIDE_TOUCH or COLLIDE_BLOCK, as UE3's ECollisionType sorts them for a player: a
+## body is solid only when it BLOCKS, an area listens when it blocks or
+## touches. COLLIDE_BlockWeapons blocks bullets and lets the player through.
+## The layers a node was built on are kept on it the first time they change,
+## so that this and PackagePresence agree on what "back" means.
+const COLLIDE_NONE := 0
+const COLLIDE_TOUCH := 1
+const COLLIDE_BLOCK := 2
+const COLLISION_MODES := {
+	"COLLIDE_CustomDefault": COLLIDE_BLOCK, "COLLIDE_NoCollision": COLLIDE_NONE,
+	"COLLIDE_BlockAll": COLLIDE_BLOCK, "COLLIDE_BlockAllButWeapons": COLLIDE_BLOCK,
+	"COLLIDE_BlockWeapons": COLLIDE_NONE, "COLLIDE_BlockWeaponsKickable": COLLIDE_NONE,
+	"COLLIDE_TouchAll": TOUCH, "COLLIDE_TouchAllButWeapons": TOUCH, "COLLIDE_TouchWeapons": COLLIDE_NONE,
+}
+
+
+func _set_layers(node: Node, mode: int) -> void:
+	var todo: Array[Node] = [node]
+	while not todo.is_empty():
+		var at: Node = todo.pop_back()
+		if at is CollisionObject3D:
+			var body := at as CollisionObject3D
+			if not body.has_meta(&"kismet_layers"):
+				body.set_meta(&"kismet_layers", [body.collision_layer, body.collision_mask])
+			var layers: Array = body.get_meta(&"kismet_layers")
+			var on: bool = mode >= COLLIDE_TOUCH if body is Area3D else mode == COLLIDE_BLOCK
+			body.collision_layer = layers[0] if on else 0
+			body.collision_mask = layers[1] if on else 0
+		todo.append_array(at.get_children())
 
 
 func _set_lift_rules(on: bool) -> void:
@@ -711,20 +770,6 @@ func _player() -> Node:
 	while node != null and not node is Arena:
 		node = node.get_parent()
 	return (node as Arena).player if node != null else null
-
-
-func _set_layers(node: Node, on: bool) -> void:
-	var todo: Array[Node] = [node]
-	while not todo.is_empty():
-		var at: Node = todo.pop_back()
-		if at is CollisionObject3D:
-			var body := at as CollisionObject3D
-			if not body.has_meta(&"kismet_layers"):
-				body.set_meta(&"kismet_layers", [body.collision_layer, body.collision_mask])
-			var layers: Array = body.get_meta(&"kismet_layers")
-			body.collision_layer = layers[0] if on else 0
-			body.collision_mask = layers[1] if on else 0
-		todo.append_array(at.get_children())
 
 
 # ---------------------------------------------------------------- variables

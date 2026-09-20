@@ -29,7 +29,7 @@ import os
 
 from common import outer_class, ref_export
 from matinee import (DAMAGE_EVENTS, DEFAULT_LENGTH, KICK_HALF_HEIGHT_M, KICK_REACH_M,
-                     _int_array, _props, _struct_array, _trigger)
+                     _int_array, _struct_array, _trigger, _value)
 from streaming import package_key
 
 # The editor's own bookkeeping, and what is exported structurally instead.
@@ -44,6 +44,16 @@ SCALARS = (bool, int, float, str)
 # them -- a BlockingVolume is an annotation, these are not -- so they are
 # built with the graph that is their only reason to exist.
 SWITCHED_WALLS = ('DynamicBlockingVolume',)
+
+
+def _props(mr, idx):
+    """matinee._props() with the WIDEST chain (see MapReader.chain_of): read
+    the usual way, every SeqEvent_LevelLoaded and LevelReset -- 92 objects in
+    Stormdrain, and nothing else -- came back as one of its own output links.
+    With them went whatever a level sets up as it loads: the steam behind the
+    valve's entrance starts off only because a LevelLoaded turns it off."""
+    tags, _ = mr.chain_of(idx, widest=True)
+    return {t[0]: _value(mr, t) for t in tags}
 
 
 def node_id(package, index):
@@ -128,18 +138,19 @@ def read_package(packages, mr, actors, variables):
         if aid and aid not in actors:
             cls = pkg.class_of(pkg.exports[index - 1])
             actors[aid] = {'cls': cls, 'package': package_key(mr.label)}
-            if cls in SWITCHED_WALLS:
+            inherited, _ = mr.props_inherited(index)
+            # [ME:CONFIRMED] what Kismet switches usually starts OFF: the crush
+            # volume under a steel door (10000 damage a second) collides only
+            # while the door comes down, a corridor's end wall only while the
+            # next stretch loads. Built as though on, the first killed whoever
+            # walked through an open door.
+            if inherited and inherited.get('bCollideActors') is False:
+                actors[aid]['starts_off'] = True
+            # annotations.collect() leaves a BlockingVolume that starts off
+            # out altogether -- built solid it was a wall across the boss
+            # lift's doorway -- so it is built here, with what switches it.
+            if cls in SWITCHED_WALLS or (cls == 'BlockingVolume' and actors[aid].get('starts_off')):
                 actors[aid]['wall'] = _trigger(packages, mr, index)
-            elif cls == 'BlockingVolume':
-                # Off until Kismet turns it on: annotations.collect() leaves
-                # these out, because built solid they were a wall across the
-                # boss lift's doorway. The original puts them at the ends of
-                # a corridor and switches them with the streaming, so that
-                # nobody outruns a load or walks back into an unload.
-                inherited, _ = mr.props_inherited(index)
-                if inherited and inherited.get('bCollideActors') is False:
-                    actors[aid]['wall'] = _trigger(packages, mr, index)
-                    actors[aid]['starts_off'] = True
         return aid
 
     for i in indices:
@@ -225,6 +236,26 @@ def collect(packages, report):
         if name != packages.persistent and package_key(name) not in streamed:
             continue
         nodes.update(read_package(packages, packages.reader(name), actors, variables))
+    # A volume that starts off and that NOTHING in the graph names can never
+    # come on, but the shell has built it, hurting: it is listed all the same,
+    # so that the level turns it off with the rest.
+    idle = 0
+    for name in sorted(os.listdir(packages.chapter_dir)):
+        if not name.lower().endswith('.me1') or (name != packages.persistent and package_key(name) not in streamed):
+            continue
+        mr = packages.reader(name)
+        for i, e in enumerate(mr.pkg.exports, 1):
+            cls = mr.pkg.class_of(e)
+            if not cls.endswith('Volume') or outer_class(mr.pkg, e) != 'Level':
+                continue
+            aid = '%s.%s' % (package_key(name), e['name'])
+            if aid in actors:
+                continue
+            inherited, _ = mr.props_inherited(i)
+            if inherited and inherited.get('bCollideActors') is False:
+                actors[aid] = {'cls': cls, 'package': package_key(name), 'starts_off': True}
+                idle += 1
+    report.setdefault('kismet_idle_volumes', idle)
     classes = {}
     for node in nodes.values():
         classes[node['cls']] = classes.get(node['cls'], 0) + 1

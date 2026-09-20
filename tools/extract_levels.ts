@@ -115,7 +115,11 @@ if (build && failed.length === 0) {
     const run = spawnSync(godot, ["--headless", "--path", ROOT, "--script",
       "res://tools/me_level/build_level.gd", "--", scene, ...extra],
       { cwd: ROOT, encoding: "utf8" });
-    const errors = (run.stdout ?? "").split("\n").filter((l) => l.startsWith("ERROR"));
+    // stderr too, and SCRIPT ERROR: a script that fails to compile under the
+    // builder says so there, and the build carries on and saves a level whose
+    // nodes have no script -- reported as built, it was played as built.
+    const errors = `${run.stdout ?? ""}\n${run.stderr ?? ""}`.split("\n")
+      .filter((l) => l.startsWith("ERROR") || l.startsWith("SCRIPT ERROR"));
     console.log(`  built ${config.padEnd(24)}${errors.length > 0 ? ` ${errors.length} errors` : ""}`);
     for (const line of errors.slice(0, 3)) console.log(`      ${line}`);
   }
