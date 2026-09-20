@@ -35,6 +35,20 @@ func _ready() -> void:
 		if packed != null:
 			add_child(packed.instantiate())
 	print("[load]   SectionLoader instanced %d sections: %d ms" % [sections.size(), Time.get_ticks_msec() - started])
+	_start_presence()
+
+
+## SPIKE. The chapter geometry carries the checkpoints' streaming sets when the
+## build found any; see PackagePresence.
+func _start_presence() -> void:
+	for sibling in get_parent().get_children():
+		if sibling.has_meta(PackagePresence.TABLE_META):
+			var presence := PackagePresence.new()
+			presence.name = "PackagePresence"
+			presence.table = sibling.get_meta(PackagePresence.TABLE_META)
+			presence.start = sibling.get_meta(PackagePresence.START_META, "")
+			get_parent().add_child.call_deferred(presence)
+			return
 
 
 func _show_preview() -> void:

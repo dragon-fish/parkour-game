@@ -109,6 +109,7 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 
 	var chapter := _section_of(manifest, "")
 	var chapter_geometry: Node3D = _geometry_builder().build(chapter, str(config["id"]).to_pascal_case() + "ChapterGeometry")
+	_carry_streaming(chapter_geometry, config, manifest)
 	if not _save(chapter_geometry, paths.geometry, ResourceSaver.FLAG_COMPRESS):
 		return false
 	if ResourceLoader.exists(paths.shell) and not rebuild:
@@ -127,6 +128,27 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 	shell.add_child(loader)
 	loader.owner = shell
 	return _write_shell(shell, paths.shell, ShellBuilder.fall_out_height(manifest))
+
+
+## SPIKE. The checkpoints' streaming sets ride on the chapter geometry, which is
+## rebuilt every time, so the hand-edited shell need not be.
+static func _carry_streaming(geometry: Node3D, config: Dictionary, manifest: Dictionary) -> void:
+	var table := {}
+	var start := ""
+	for c: Dictionary in manifest["checkpoints"]:
+		if (c.get("streaming", []) as Array).is_empty():
+			continue
+		var label := str(c["label"]) if str(c.get("label", "")) != "" else str(c["name"])
+		table[label] = c["streaming"]
+		if c.get("default", false) and start == "":
+			start = label
+	if table.is_empty():
+		return
+	var spawn = config.get("initial_spawn")
+	if spawn is String and table.has(spawn):
+		start = spawn
+	geometry.set_meta(&"me_streaming", table)  # PackagePresence.TABLE_META: not named, it would pull Arena into a build without autoloads
+	geometry.set_meta(&"me_streaming_start", start)
 
 
 ## The manifest restricted to one section; "" is the chapter-wide layer.

@@ -151,6 +151,25 @@ def vector_array(mr, idx, name):
     return [struct.unpack_from('<3f', mr.d, q + 4 + i * 12) for i in range(count)]
 
 
+def streamed_by(mr, idx):
+    """SPIKE. [ME:CONFIRMED] a TdCheckpoint lists the packages a restore there
+    loads, as references to the persistent level's LevelStreaming objects.
+    Lower-case, as PackageSet.streamed_packages() spells them."""
+    entry = _raw_entry(mr, idx, 'StreamingLevels')
+    if not entry:
+        return []
+    _, _, q, sz = entry
+    count = struct.unpack_from('<i', mr.d, q)[0]
+    if count <= 0 or sz - 4 < count * 4:
+        return []
+    out = []
+    for ref in struct.unpack_from('<%di' % count, mr.d, q + 4):
+        name = (mr.props(ref)[0] or {}).get('PackageName') if ref > 0 else None
+        if name:
+            out.append(str(name).lower())
+    return out
+
+
 # UE's world is 524288 uu across, so 5242.88 m in Godot space. A brush that was
 # never built keeps the unbounded plane the editor starts it from, and cooking
 # writes that plane out as a four-point "hull" reaching the world's edge. Eight
@@ -327,6 +346,7 @@ def collect(packages, mr, defaults, report):
                 entry['label'] = string_property(mr, i, 'CheckpointName')
                 entry['weight'] = props.get('CheckpointWeight', 0)
                 entry['default'] = bool(props.get('DefaultCheckpoint', False))
+                entry['streaming'] = streamed_by(mr, i)
             (out['spawns'] if cls == 'TdTutorialStart' else out['checkpoints']).append(entry)
             continue
         base, hard = _ridden_base(mr, i, report)
