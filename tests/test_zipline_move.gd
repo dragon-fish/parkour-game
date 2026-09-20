@@ -513,3 +513,22 @@ func test_riding_into_a_wall_forces_the_release() -> void:
 	assert_true(left_zipline, "riding into the wall never forced a release")
 	assert_lt(player.global_position.z, 4.5, \
 		"the capsule ended up past the wall plane after leaving the cable")
+
+func test_dropping_from_one_cable_onto_another_catches_it() -> void:
+	# The Mall hands the player from one cable to the next: at the handover the
+	# two are 2.2 m apart vertically, and the cable being left already carries
+	# about 2 m/s downward along its own slope. That arrives at roughly 8.6 m/s,
+	# which is the speed the catch has to survive.
+	var player: Player = await _standing_player()
+	# Sloped, the way a cable a body rides down is, and approached along it.
+	_line = _cable(Vector3(-6.0, 5.0, 0.0), Vector3(6.0, 3.0, 0.0))
+	await step(1)
+	player.global_position = Vector3(0.0, 6.2, 0.0)
+	player.velocity = Vector3(3.0, -8.6, 0.0)
+	var caught := false
+	for i in 40:
+		await step(1)
+		if player.move_manager.current_name == Move.ZIPLINE:
+			caught = true
+			break
+	assert_true(caught, "dropping onto the cable at 8.6 m/s went straight past it")

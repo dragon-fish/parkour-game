@@ -48,9 +48,23 @@ func _init() -> void:
 ## [ME:CONFIRMED 05 §5.5] ZipFadeInTime = 0.1 s: how long the body takes to
 ## reach the hang point from wherever it caught the cable.
 @export var fade_in_time: float = 0.1
-## [ME:CONFIRMED 05 §5.5] TdMove_IntoZipLine.ZVelocityFallLimit = -600:
-## falling faster than this (m/s, positive) the hands cannot hold on.
-@export var fall_limit: float = 6.0
+## Falling faster than this (m/s, positive) the hands cannot hold on.
+##
+## [ME:CONFIRMED 05 §5.5] TdMove_IntoZipLine.ZVelocityFallLimit = -600, which
+## read as uu/s the way every other length is would be 6.0.
+##
+## [ME:DERIVED] TWICE THAT, on the same grounds gravity is twice its ini value
+## (PawnConfig.gravity: the doubling lives in native C++, 22 measured jumps
+## pin it). A threshold in the ini's own units has to be read in the ini's own
+## gravity, and the game does not run at that gravity.
+##
+## The Mall settles it: the chapter hands the player from one cable to the
+## next, and at the handover the two are 2.2 m apart with the cable being left
+## already carrying about 2 m/s down its slope -- roughly 8.6 m/s on arrival,
+## which 6.0 refuses outright. DO NOT put 6.0 back; the jump's own 6.3 m/s
+## launch means a body falling back to the height it jumped from is already
+## past it.
+@export var fall_limit: float = 12.0
 
 ## [ME:CONFIRMED 05 §5.5] SameZipLineRedoMoveTime = 3.0 -- and the owner's
 ## rope-chaining measurement confirms the SAME-line reading: this guards
