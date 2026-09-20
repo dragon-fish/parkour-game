@@ -818,6 +818,12 @@ func reset_player() -> void:
 	# has already fallen, a sequence that has already played -- must be ready
 	# again, or the respawn lands in a level that can no longer be finished.
 	get_tree().call_group(RESET_ON_RESPAWN, "reset_for_respawn")
+	# ...and then the one point being respawned INTO gets the last word. A
+	# point that stands on something mid-flight needs that thing put back
+	# under it, which the blanket reset above has just undone. BEFORE the
+	# teleport below: the floor has to exist before the body is set on it.
+	if player.active_checkpoint != null and is_instance_valid(player.active_checkpoint):
+		player.active_checkpoint.restore_level()
 	# THE BODY COMES BACK BEFORE THE PLAYER DOES: ragdoll.stop() must run
 	# before the teleport below, or the player gets launched the moment they
 	# respawn -- a ragdoll whose bones are still being solved, teleported
