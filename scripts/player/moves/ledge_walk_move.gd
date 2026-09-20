@@ -341,3 +341,8 @@ func head_pitch_override() -> float:
 	if _turning or player.camera_rig == null or not player.camera_rig.in_third_person():
 		return NAN
 	return deg_to_rad(cfg.get("head_pitch_deg"))
+
+## [ME:INFERRED] from play: the original uses a ledge to squeeze a runner
+## through a gap in a wall, which a capsule this wide cannot enter.
+func passes_through_geometry() -> bool:
+	return config.ledge_walk.pass_through_geometry

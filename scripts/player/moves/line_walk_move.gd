@@ -212,6 +212,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 ## of the remainder along the contact plane is what turns a wall the body is
 ## leaning on back into something it can walk beside.
 func _slide_along_geometry(stand: Vector3) -> void:
+	if passes_through_geometry():
+		# The LINE is the path, and the level author drew it: where it runs
+		# through a gap too narrow for the capsule, the body goes through
+		# anyway. The original squeezes a runner along a ledge and between two
+		# walls this way, and a capsule 0.8 m across cannot do it otherwise.
+		player.global_position = stand
+		return
 	var hit: KinematicCollision3D = slide_to(stand)
 	if hit == null:
 		return
@@ -269,6 +276,12 @@ func _adjust_along(along: float, _input: MoveInput) -> float:
 ## overrides this -- see its own note for which arrival signal it reads.
 func _pick_direction_sign(_tangent: Vector3) -> float:
 	return 1.0
+
+## Whether the body follows its line THROUGH whatever stands in the way.
+## A beam is walked in the open and has geometry to respect; a ledge is not
+## (LedgeWalkMove overrides this).
+func passes_through_geometry() -> bool:
+	return false
 
 ## How far off the line's centreline the body currently stands, metres.
 func lateral_offset() -> float:

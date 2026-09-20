@@ -25,6 +25,22 @@ extends MoveConfig
 ## LedgeWalkMove._yaw_offset()'s call, from the wall and the view.
 ## [ME:CONFIRMED] the first game's LedgeWalk always faces AWAY from the wall;
 ## only Catalyst added a facing-the-wall variant.
+## The body follows the ledge through whatever stands in its way.
+##
+## [ME:CONFIRMED A1] squeezing through a gap IS a ledge walk in the original,
+## and it knows it: ELedgeWalkType is {LWT_Ledge, LWT_NarrowSpace} and
+## TdMove_LedgeWalk picks between them with CheckLedgeWalkType(). Nothing in
+## its CDO shrinks the capsule or drops collision, so whatever the narrow-space
+## case does about the walls lives in native code and cannot be read.
+##
+## WE DO NOT SPLIT THE TYPES. The capsule is 0.8 m across and the gaps are
+## narrower, so a ledge that respects geometry cannot be walked there at all:
+## the body is pushed out of the wall every tick and the walk stalls. The line
+## is the path and the level author drew it; where it goes, the body goes. A
+## per-line narrow-space flag is what to add if a plain ledge ever needs its
+## collision back.
+@export var pass_through_geometry: bool = true
+
 @export var body_yaw_offset_deg: float = 90.0
 
 ## How close the feet must be to the line's own height for a catch, metres.
