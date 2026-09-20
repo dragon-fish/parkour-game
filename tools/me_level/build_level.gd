@@ -89,6 +89,7 @@ func _geometry_builder():
 func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, rebuild: bool) -> bool:
 	var base: String = (paths.shell as String).get_basename()
 	var sections: Array[PackedScene] = []
+	var shell_packages := {}
 	for entry: Dictionary in config["sections"]:
 		var section: String = entry["name"]
 		var started := Time.get_ticks_msec()
@@ -101,14 +102,21 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 		if not _save(geometry, geometry_path, ResourceSaver.FLAG_COMPRESS):
 			return false
 		var scene_path := "%s_%s.tscn" % [base, section.to_lower()]
+		# Built whether or not it is written: what it says about which node
+		# came from which package is wanted either way.
+		var fresh: Node = ShellBuilder.new().build_section(part, geometry_path, section)
+		shell_packages[String(fresh.name)] = ShellBuilder.package_paths(fresh)
 		if rebuild or not ResourceLoader.exists(scene_path):
-			if not _save(ShellBuilder.new().build_section(part, geometry_path, section), scene_path, 0):
+			if not _save(fresh, scene_path, 0):
 				return false
+		else:
+			fresh.free()
 		print("[me_level] section %s: %d placements, %d ms" % [section, part["placements"].size(), Time.get_ticks_msec() - started])
 		sections.append(load(scene_path))
 
 	var chapter := _section_of(manifest, "")
 	var chapter_geometry: Node3D = _geometry_builder().build(chapter, str(config["id"]).to_pascal_case() + "ChapterGeometry")
+	manifest["shell_packages"] = shell_packages
 	var streaming := ShellBuilder.new().build_streaming(manifest)
 	if streaming != null:
 		chapter_geometry.add_child(streaming)

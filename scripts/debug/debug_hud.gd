@@ -114,7 +114,7 @@ func set_tier(tier: int) -> void:
 ## are kept in both tiers: a readout that hides how to use the keys is not a
 ## smaller readout, it is a worse one.
 const COMPACT_ROWS := ["scene ", "move ", "at ", "speed ", "grounded ", "health ",
-	"energy ", "fps ", "Tab HUD", "Esc release"]
+	"energy ", "fps ", "packages ", "Tab HUD", "Esc release"]
 
 func _worth_reading_while_playing(row: String) -> bool:
 	for prefix in COMPACT_ROWS:
@@ -237,6 +237,14 @@ func _process(delta: float) -> void:
 		"Tab HUD  F3 triggers  F10 capsule  F12 path  R reset  K die  T noclip  F2/PgUp/PgDn checkpoint%s" 			% ("  [ON]" if player.noclip else ""),
 		"Esc release mouse  click to return" 			+ ("   noclip: WASD fly  Space up  Shift down" if player.noclip else ""),
 	]
+	# Only in a level that streams: which of the original's packages are in it,
+	# and what last changed that. A stretch that is missing or in the way is
+	# answered here before anywhere else.
+	var presence := get_tree().get_first_node_in_group(PackagePresence.GROUP) as PackagePresence
+	if presence != null:
+		rows.insert(rows.find("transitions"), "packages   %d / %d  last %s" % [
+			presence.present_count(), presence.managed.size(),
+			presence.last_source if presence.last_source != "" else "-"])
 	if _tier == Tier.COMPACT:
 		rows = rows.filter(_worth_reading_while_playing)
 	_label.text = "

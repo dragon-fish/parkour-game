@@ -487,6 +487,33 @@ static func _set_owner(node: Node, owner: Node) -> void:
 		_set_owner(child, owner)
 
 
+## The package an annotation's node came from, for PackagePresence: an air
+## wall of a package that is not in the level must not stand in the way.
+static func _stamp(node: Node, annotation: Dictionary) -> void:
+	if annotation.has("package"):
+		node.set_meta(Common.PACKAGE_META, Common.package_key(str(annotation["package"])))
+
+
+## {path from the shell's root: package} of every stamped node outside the
+## instanced geometry. How a shell that was built before the stamp existed, and
+## has been edited by hand since, still gets its volumes switched: the table
+## rides on the chapter geometry, and a node that was renamed or deleted simply
+## finds no entry.
+static func package_paths(shell: Node) -> Dictionary:
+	var out := {}
+	var todo: Array[Node] = []
+	for child in shell.get_children():
+		if child.scene_file_path.is_empty():
+			todo.append(child)
+	while not todo.is_empty():
+		var node: Node = todo.pop_back()
+		if node.has_meta(Common.PACKAGE_META):
+			out[String(shell.get_path_to(node))] = node.get_meta(Common.PACKAGE_META)
+			continue
+		todo.append_array(node.get_children())
+	return out
+
+
 func _group(name: String) -> Node3D:
 	var group := Node3D.new()
 	group.name = name
@@ -538,6 +565,7 @@ func _air_walls(annotations: Array) -> Node3D:
 			push_error("[me_level] air wall %s has no hull" % a["name"])
 			wall.free()
 			continue
+		_stamp(wall, a)
 		group.add_child(wall)
 	return group
 
@@ -569,6 +597,7 @@ func _interest_lines(annotations: Array, placements: Array) -> Node3D:
 		# and it is nothing like how far a hand stretches: read as a reach it
 		# gave the Subway's tunnel swings a 5.75 m capsule, catchable from the
 		# far rail. InterestLine.KIND_REACH owns this number; see its note.
+		_stamp(line, a)
 		group.add_child(line)
 	return group
 
@@ -791,6 +820,7 @@ func _barbed_wire(annotations: Array) -> Node3D:
 		hazard.set("refresh_interval", WIRE_REFRESH_S)
 		_hull_shapes(hazard, a, wire.transform)
 		wire.add_child(hazard)
+		_stamp(wire, a)
 		group.add_child(wire)
 	return group
 
@@ -835,6 +865,7 @@ func _death_volumes(annotations: Array, borne: Dictionary) -> Node3D:
 			push_error("[me_level] kill volume %s has no shape" % a["name"])
 			volume.free()
 			continue
+		_stamp(volume, a)
 		group.add_child(volume)
 		_record_rider(borne, a, "DeathVolumes", volume.name)
 	return group
@@ -917,6 +948,7 @@ func _effect_volumes(annotations: Array, config: Dictionary, borne: Dictionary) 
 		volume.set("shake_amplitude", float(shake.get("amplitude", 0.0)))
 		volume.set("shake_frequency", float(shake.get("frequency", 0.0)))
 		volume.set("shake_hold", float(shake.get("hold", 0.0)))
+		_stamp(volume, a)
 		group.add_child(volume)
 		_record_rider(borne, a, "EffectVolumes", volume.name)
 	return group
@@ -980,6 +1012,7 @@ func _headlights(annotations: Array, borne: Dictionary) -> Node3D:
 		glow.material_override = material
 		glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		lamp.add_child(glow)
+		_stamp(lamp, a)
 		group.add_child(lamp)
 		_record_rider(borne, a, "Headlights", lamp.name)
 	return group
@@ -1015,6 +1048,7 @@ func _pain_volumes(annotations: Array) -> Node3D:
 			push_error("[me_level] pain volume %s has no hull" % a["name"])
 			volume.free()
 			continue
+		_stamp(volume, a)
 		group.add_child(volume)
 	return group
 
@@ -1051,6 +1085,7 @@ func _glass(manifest: Dictionary, movers: NodePath) -> Node3D:
 		collision.shape = shape
 		reach.add_child(collision)
 		glass.add_child(reach)
+		_stamp(glass, a)
 		group.add_child(glass)
 	return group
 
@@ -1084,6 +1119,7 @@ func build_streaming(manifest: Dictionary) -> Node3D:
 	presence.set("snapshots", snapshots)
 	presence.set("start", start)
 	presence.set("managed", PackedStringArray(flow["managed"]))
+	presence.set("shell_packages", manifest.get("shell_packages", {}))
 	# One trigger per originator, its steps in the order they were flattened
 	# in: by delay, then unload before load.
 	var by_source := {}

@@ -26,6 +26,7 @@ extends Node3D
 ## Spelt the same in tools/me_level/me_level_common.gd, which cannot name this
 ## class: a build runs without the autoloads Arena needs.
 const PACKAGE_META := &"me_package"
+const GROUP := &"package_presence"
 
 ## Checkpoint label -> packages present after a restore there.
 @export var snapshots: Dictionary = {}
@@ -33,6 +34,10 @@ const PACKAGE_META := &"me_package"
 @export var start: String = ""
 ## Packages this node governs. Any other package is always present.
 @export var managed: PackedStringArray = []
+## Section shell root name -> {path from that root: package}, for the volumes
+## of shells built before nodes carried their package: see
+## ShellBuilder.package_paths().
+@export var shell_packages: Dictionary = {}
 ## A pressed trigger that is no configured lift's button waits at least this
 ## long. The original's button path often carries no delay of its own -- its
 ## unload took seconds and the doors shut meanwhile -- and hiding is instant.
@@ -53,13 +58,12 @@ var _arena: Arena = null
 
 func _ready() -> void:
 	add_to_group(Arena.RESET_ON_RESPAWN)
+	add_to_group(GROUP)
 	set_physics_process(false)
 	var node := get_parent()
 	while node != null and not node is Arena:
 		node = node.get_parent()
 	_arena = node as Arena
-	if _arena == null:
-		return
 	# Deferred: the sections are instanced by a sibling's _ready().
 	_begin.call_deferred()
 
@@ -67,7 +71,11 @@ func _ready() -> void:
 func _begin() -> void:
 	for key in managed:
 		_managed[key] = true
-	_index(_arena)
+	# The whole level; with no Arena above (a test, a scene opened on its own)
+	# whatever stands beside this node.
+	_index(_arena if _arena != null else get_parent())
+	if _arena != null:
+		_index_shells()
 	for trigger in get_tree().get_nodes_in_group(StreamingTrigger.GROUP):
 		if is_ancestor_of(trigger):
 			(trigger as StreamingTrigger).fired.connect(_on_fired)
@@ -76,14 +84,20 @@ func _begin() -> void:
 
 
 func reset_for_respawn() -> void:
-	if _arena == null or _nodes_of.is_empty():
+	if _nodes_of.is_empty():
 		return
-	_pending.clear()
-	set_physics_process(false)
 	var label := start
-	var checkpoint: Checkpoint = _arena.player.active_checkpoint if _arena.player != null else null
+	var checkpoint: Checkpoint = _arena.player.active_checkpoint if _arena != null and _arena.player != null else null
 	if checkpoint != null and is_instance_valid(checkpoint):
 		label = Arena.checkpoint_label(checkpoint)
+	restore(label)
+
+
+## The level as a restore at that checkpoint finds it. Steps still waiting out
+## a delay are dropped: they belong to the life that set them off.
+func restore(label: String) -> void:
+	_pending.clear()
+	set_physics_process(false)
 	if not snapshots.has(label):
 		push_warning("[presence] no snapshot for checkpoint '%s': the level stays as it is" % label)
 		return
@@ -95,6 +109,15 @@ func reset_for_respawn() -> void:
 
 func is_present(key: String) -> bool:
 	return present.has(key) or not _managed.has(key)
+
+
+## Governed packages that are in the level. `present` alone also counts the
+## audio and music packages a snapshot names, which govern nothing here.
+func present_count() -> int:
+	var count := 0
+	for key: String in present:
+		count += int(_managed.has(key))
+	return count
 
 
 func _on_fired(trigger: StreamingTrigger) -> void:
@@ -157,6 +180,8 @@ func _become(wanted: Dictionary, why: String) -> void:
 			if not wanted.has(key):
 				removed.append(key)
 	present = wanted
+	if why.begins_with("restore "):
+		last_source = why
 	for key in removed:
 		_show(key, false)
 	for key in added:
@@ -177,6 +202,22 @@ func _show(key: String, on: bool) -> void:
 		if node is Node3D:
 			(node as Node3D).visible = on
 		node.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
+
+
+func _index_shells() -> void:
+	for root_name: String in shell_packages:
+		var shell: Node = null
+		for loader in _arena.find_children("*", "Node3D", false, false):
+			if loader is SectionLoader and loader.has_node(NodePath(root_name)):
+				shell = loader.get_node(NodePath(root_name))
+		if shell == null:
+			continue
+		var paths: Dictionary = shell_packages[root_name]
+		for path: String in paths:
+			var node := shell.get_node_or_null(NodePath(path))
+			# A shell built since carries the stamp itself and is indexed by it.
+			if node != null and not node.has_meta(PACKAGE_META):
+				_nodes_of.get_or_add(String(paths[path]), []).append(node)
 
 
 func _index(node: Node) -> void:
