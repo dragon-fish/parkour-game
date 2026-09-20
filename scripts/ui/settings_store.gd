@@ -57,6 +57,11 @@ static func defaults() -> Dictionary:
 		antialiasing = "msaa_2x",
 		# Off: the moves' hand positions are measured against a full-size body.
 		small_third_person_body = false,
+		# Off: Godot's occluders are double-sided, so a one-sided facade seen
+		# from behind -- an office's outer shell, from inside the office --
+		# hides the whole city past the window. On buys back a few percent of
+		# frame time where the view is walled in.
+		occlusion_culling = false,
 	}
 
 
@@ -103,6 +108,8 @@ static func apply_global(s: Dictionary) -> void:
 	var viewport: Viewport = (Engine.get_main_loop() as SceneTree).root
 	viewport.msaa_3d = MSAA_MODES.get(s.antialiasing, Viewport.MSAA_DISABLED)
 	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA 			if s.antialiasing == "fxaa" else Viewport.SCREEN_SPACE_AA_DISABLED
+	# The project setting only makes occluders available; this is the switch.
+	viewport.use_occlusion_culling = s.occlusion_culling
 
 	# Headless has no window; the editor-embedded game has one it is not
 	# allowed to touch ("Embedded window can't be resized"). Same guard as

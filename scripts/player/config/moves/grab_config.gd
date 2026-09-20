@@ -324,12 +324,19 @@ extends MoveConfig
 ## degrees, turn back under 90 without releasing, and the shimmy simply starts.
 @export var shimmy_assist_angle_deg: float = 90.0
 
-## 📌 TRANSCRIBED AND NOT USED: `TdMove_GrabJump.GrabJumpOffZHeight = 160` uu,
-## read as an upward speed of 1.6 m/s. Turn180Config reads the sibling
-## `TdMove_WallClimb180TurnJump.JumpOffZHeight = 250` as a 2.5 m rise instead;
-## neither reading is verified. It was added on top of the launch
-## while the launch followed the camera's pitch alone; with the floor of
-## jump_min_pitch_deg it would only steepen every jump past that floor.
+## Upward speed added on top of the launch, in metres/second. A dial.
+##
+## [ME:CONFIRMED] `TdMove_GrabJump.GrabJumpOffZHeight = 160` uu, read as a
+## speed. [ME:UNKNOWN] whether the field is a speed at all: Turn180Config reads
+## the sibling `TdMove_WallClimb180TurnJump.JumpOffZHeight = 250` as a 2.5 m
+## rise, and neither reading is verified.
+##
+## IT STEEPENS THE LAUNCH rather than aiming it: at a level view the aim is
+## jump_min_pitch_deg off the horizontal and the velocity leaves about nine
+## degrees above that. What it buys is range -- a jump off a hang reaches about
+## a third further with it than without -- and some of the original's ledges
+## cannot be crossed without that reach.
+@export var jump_speed_up: float = 1.6
 
 ## 📌 TRANSCRIBED AND NOT USED, kept because deleting a sourced number loses the
 ## record of having read it. `TdMove_GrabJump.GrabJumpPushAwayMinSpeed = 200`

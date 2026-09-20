@@ -17,6 +17,9 @@ from mapdump import MapReader
 #   sections        list  []         [{name: "StdP"}]; each infers its packages
 #   packages        list  []         extra package file names, loaded as-is
 #   exclude_meshes  list  []         mesh names never placed
+#   exclude_actors  list  []         placements never made, as package.name: a twin the
+#                                    original parks where our own mover has to arrive (the
+#                                    Mall's second lift car stands in its shaft's top stop)
 #   collision_overrides dict {}      {mesh name: "none" | "simple" | "per_poly"}: a dial over
 #                                    the original's collision class -- potted
 #                                    bushes that stop a climb, a coarse hull that stands in
@@ -32,6 +35,10 @@ from mapdump import MapReader
 #                                    directory holds two maps (SP01: Edge_p, Escape_p)
 #   split_sections  bool  false      tag everything with the section it belongs to;
 #                                    the builder then writes one scene per section
+#   teleports       list  []         where the original cuts to a cutscene and the body
+#                                    wakes elsewhere (TeleportVolume): {at: [x,y,z],
+#                                    size: [x,y,z], to: checkpoint name or label}. SP07
+#                                    rides a truck from the harbour into the ship's hold.
 #   lifts           list  []         hand-configured lifts for the builder (Lift):
 #                                    {car, stop_doors, travel, travel_time, door_open_offset,
 #                                     door_time, call?}; actors as package.name. The car's own
@@ -44,9 +51,9 @@ from mapdump import MapReader
 #                                    Environment node (tools/me_level/me_environment.gd
 #                                    exports), by name; judged against the reference shots
 CONFIG_DEFAULTS = {
-    'sections': [], 'packages': [], 'exclude_meshes': [], 'collision_overrides': {}, 'anchor_filter': None,
+    'sections': [], 'packages': [], 'exclude_meshes': [], 'exclude_actors': [], 'collision_overrides': {}, 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
-    'persistent': None, 'split_sections': False, 'lifts': [], 'floating_checkpoints': [],
+    'persistent': None, 'split_sections': False, 'lifts': [], 'teleports': [], 'floating_checkpoints': [],
     'look': {},
 }
 CONFIG_REQUIRED = ('id', 'chapter')
@@ -318,11 +325,21 @@ def resolved_props(packages, mr, idx, depth=0):
 
 
 def find_export(mr, path):
-    """1-based export index whose outer chain spells `path`, or None."""
+    """1-based export index whose outer chain spells `path`, or None.
+
+    Indexed by leaf name on first use: a material's every texture is looked up
+    this way, and scanning tens of thousands of exports each time was an eighth
+    of a chapter's extraction.
+    """
     pkg = mr.pkg
-    for i, e in enumerate(pkg.exports, 1):
-        if e['name'] != path[-1]:
-            continue
+    by_name = getattr(pkg, '_exports_by_name', None)
+    if by_name is None:
+        by_name = {}
+        for i, e in enumerate(pkg.exports, 1):
+            by_name.setdefault(e['name'], []).append(i)
+        pkg._exports_by_name = by_name
+    for i in by_name.get(path[-1], ()):
+        e = pkg.exports[i - 1]
         names, outer = [e['name']], e['outer_idx']
         while outer > 0:
             names.append(pkg.exports[outer - 1]['name'])

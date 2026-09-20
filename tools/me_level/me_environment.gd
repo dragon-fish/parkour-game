@@ -80,6 +80,15 @@ const DOME_RADIUS_M := 2500.0
 ## then lands at the same value whatever the bake's units.
 const EXPOSURE_PER_SUN := 0.85
 @export var exposure_scale := 1.0
+## A sun this dim lit nothing in the bake -- the Boat's is 0.025, its decks and
+## holds lit by lamps alone -- and dividing by it exposed the level a hundred
+## times over, every interior white. Such a level is exposed for its lamps,
+## which are in the same units everywhere, so it takes the exposure of a
+## nominal sun instead. A dial.
+const SUNLESS_BRIGHTNESS := 0.25
+## Stands in for the sun of a level that has none. The chapters that are lit by
+## one bake between 1.15 and 2.5.
+const NOMINAL_SUN_BRIGHTNESS := 2.0
 ## Godot light energy per unit of BakerBrightness.
 @export var sun_energy_scale := 1.0
 ## How much of the baked sun's colour the live sun keeps, 0 white to 1 all
@@ -333,7 +342,8 @@ func _sun_color() -> Color:
 
 
 func _exposure() -> float:
-	return EXPOSURE_PER_SUN / maxf(sun_brightness, 0.01) * exposure_scale
+	var reference := sun_brightness if sun_brightness > SUNLESS_BRIGHTNESS else NOMINAL_SUN_BRIGHTNESS
+	return EXPOSURE_PER_SUN / reference * exposure_scale
 
 
 func _arena() -> Arena:

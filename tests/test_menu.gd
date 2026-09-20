@@ -158,6 +158,18 @@ func test_the_small_third_person_body_is_opt_in() -> void:
 	SettingsStore.apply_to_config(s, config)
 	assert_lt(config.camera.third_person_body_scale, 1.0, "on did not shrink the third-person body")
 
+func test_occlusion_culling_is_opt_in_and_reaches_the_root_viewport() -> void:
+	var root := get_tree().root
+	var original := root.use_occlusion_culling
+	var s := SettingsStore.defaults()
+	assert_false(s.occlusion_culling, "occlusion culling is on by default")
+	SettingsStore.apply_global(s)
+	assert_false(root.use_occlusion_culling, "off did not reach the root viewport")
+	s.occlusion_culling = true
+	SettingsStore.apply_global(s)
+	assert_true(root.use_occlusion_culling, "on did not reach the root viewport")
+	root.use_occlusion_culling = original
+
 func test_apply_global_sets_master_bus_volume_and_restores_it() -> void:
 	var bus := AudioServer.get_bus_index("Master")
 	var original_db := AudioServer.get_bus_volume_db(bus)

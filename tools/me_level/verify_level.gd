@@ -127,10 +127,12 @@ func _run() -> void:
 	for i in 3:
 		await physics_frame
 	var space: PhysicsDirectSpaceState3D = shell.get_world_3d().direct_space_state
+	# A checkpoint stands in the shell of the section whose floor it is on.
 	var starts: Array[Node3D] = [shell.get_node("SpawnPoint")]
-	if shell.has_node("Checkpoints"):
-		for checkpoint in shell.get_node("Checkpoints").get_children():
-			starts.append(checkpoint)
+	for part in parts:
+		if part.has_node("Checkpoints"):
+			for checkpoint in part.get_node("Checkpoints").get_children():
+				starts.append(checkpoint)
 	# Some the original drops the player from on purpose: Edge's "Cops" falls
 	# into the police's arms.
 	var floating: Array = config.get("floating_checkpoints", [])
@@ -140,7 +142,29 @@ func _run() -> void:
 		var from := start.global_position + Vector3.UP * 0.5
 		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 6.0))
 		check(not hit.is_empty(), "no floor under " + str(shell.get_path_to(start)))
+	_check_spawn_has_a_way_out(shell, space)
 	_finish(shell)
+
+
+## The original starts several chapters in a box it leaves by cutscene -- a
+## truck cab, a lift, a room with no door -- and dropped in one, the body has
+## nowhere to go. The chapter says which checkpoint is its playable start
+## (config initial_spawn); this is what tells you it needs to.
+const SPAWN_CLEARANCE_M := 4.0
+
+func _check_spawn_has_a_way_out(shell: Node, space: PhysicsDirectSpaceState3D) -> void:
+	var spawn := shell.get_node_or_null("SpawnPoint") as Node3D
+	if spawn == null:
+		return
+	var from := spawn.global_position + Vector3.UP * 0.5
+	var farthest := 0.0
+	for i in 16:
+		var angle := TAU * i / 16.0
+		var to := from + Vector3(cos(angle), 0.0, sin(angle)) * SPAWN_CLEARANCE_M
+		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to))
+		farthest = maxf(farthest, from.distance_to(hit["position"]) if hit else SPAWN_CLEARANCE_M)
+	check(farthest >= SPAWN_CLEARANCE_M,
+			"spawn is walled in on every side within %.1f m: name the chapter's playable start in initial_spawn" % SPAWN_CLEARANCE_M)
 
 
 func _check_count(parts: Array[Node], group: String, manifest: Dictionary, kinds: Array) -> void:

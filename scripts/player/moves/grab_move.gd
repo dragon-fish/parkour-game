@@ -814,8 +814,11 @@ static func launch_along(look: Vector3, fallbacks: Array, min_pitch_deg: float) 
 ## [ME:CONFIRMED] bDisableFaceRotation is True on TdMove_GrabJump: the body
 ## does not turn to follow the launch. You look back over your shoulder and
 ## go.
+## THE UPWARD SPEED IS ADDED ON TOP, not folded into the aim: the launch leaves
+## steeper than the view asked for, which is where the jump's reach comes from.
 func _push_off(_turned: float) -> void:
 	player.velocity = _launch_direction() * config.grab.jump_speed
+	player.velocity.y += config.grab.jump_speed_up
 
 ## The ledge belonging to a wall the body has run into sideways, or a miss when
 ## that wall carries no ledge at this height.

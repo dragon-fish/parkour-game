@@ -876,3 +876,62 @@ func test_a_key_held_through_leaving_one_catch_is_read_afresh_at_the_next() -> v
 		"the re-catch let go again: the held key was read with the previous ledge's sign")
 	assert_gt(ledge.line_offset(), offset_in + 0.05,
 		"W did not carry the body back in along the ledge after the re-catch")
+
+# --- the squeeze: a ledge goes where its line goes -------------------------
+#
+# [ME:INFERRED] from play: the original walks a runner along a ledge and
+# THROUGH a gap between two walls. The capsule is 0.8 m across and the gaps
+# are narrower, so a ledge that respects geometry stalls there -- the body is
+# pushed out of the wall every tick and never travels.
+
+## Two blocks with `gap` metres of air between them, straddling the line at x.
+func _pinch(at: Vector3, gap: float) -> Array[StaticBody3D]:
+	var made: Array[StaticBody3D] = []
+	for side in [-1.0, 1.0]:
+		var body := StaticBody3D.new()
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(1.0, 3.0, 3.0)
+		shape.shape = box
+		body.add_child(shape)
+		add_child_autofree(body)
+		body.global_position = at + Vector3(0.0, 0.0, side * (gap * 0.5 + 0.5))
+		made.append(body)
+	return made
+
+func _walk_a_ledge_through(gap: float, through: bool) -> float:
+	_world = TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(_world)
+	await step(20)
+	var player: Player = _world["player"]
+	player.config.ledge_walk.pass_through_geometry = through
+	_line = _make_line(InterestLine.Kind.LEDGE_WALK,
+		player.global_position - Vector3(5.0, 0.0, 0.0),
+		player.global_position + Vector3(5.0, 0.0, 0.0))
+	await step(5)
+	# Both ways along the line: which side D travels depends on the curve's
+	# point order, and the squeeze has to be in the way either way.
+	_pinch(player.global_position + Vector3(1.2, 0.0, 0.0), gap)
+	_pinch(player.global_position - Vector3(1.2, 0.0, 0.0), gap)
+	await step(2)
+	player.move_manager.start(Move.LEDGE_WALK)
+	await step(20)
+	var before: float = player.global_position.x
+	_world["input"].state.move = Vector2(1.0, 0.0)
+	# A ledge walks at a tenth of walking speed, so this is seconds of travel.
+	await step(300)
+	_world["input"].state.move = Vector2.ZERO
+	return absf(player.global_position.x - before)
+
+func test_a_ledge_squeezes_through_a_gap_narrower_than_the_body() -> void:
+	# 0.5 m of air against a 0.8 m capsule.
+	var travelled: float = await _walk_a_ledge_through(0.5, true)
+	assert_gt(travelled, 2.0,
+		"the body travelled %.2f m: it never got through the gap" % travelled)
+
+func test_without_the_pass_a_narrow_gap_stops_the_walk() -> void:
+	# The other half: the switch is what does it, not the geometry being thin.
+	var travelled: float = await _walk_a_ledge_through(0.5, false)
+	assert_lt(travelled, 2.0,
+		"respecting geometry, the body still crossed %.2f m of a 0.5 m gap" % travelled)

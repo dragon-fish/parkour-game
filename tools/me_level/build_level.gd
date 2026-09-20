@@ -86,6 +86,7 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 		var section: String = entry["name"]
 		var started := Time.get_ticks_msec()
 		var part := _section_of(manifest, section)
+		part["all_checkpoints"] = manifest["checkpoints"]
 		# The look is the chapter's: its geometry carries it, once.
 		part.erase("environment")
 		var geometry_path := "%s_%s_geometry.scn" % [base, section.to_lower()]
@@ -106,10 +107,12 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 	if ResourceLoader.exists(paths.shell) and not rebuild:
 		print("[me_level] kept editable shell: ", paths.shell)
 		return true
-	# Spawn and checkpoints come from the chapter's persistent package and
-	# stay whole; everything else is the chapter-wide layer only.
-	chapter["checkpoints"] = manifest["checkpoints"]
+	# A checkpoint belongs to the section whose floor it stands on, and is
+	# built into that section's shell, where it can be dragged against the
+	# geometry it sits on; the chapter shell keeps the ones standing over
+	# nothing. The spawn is chosen from all of them, whichever shell holds it.
 	chapter["spawns"] = manifest["spawns"]
+	chapter["all_checkpoints"] = manifest["checkpoints"]
 	var shell := ShellBuilder.new().build(chapter, paths.geometry)
 	var loader: Node3D = SectionLoaderScript.new()
 	loader.name = "Sections"
@@ -122,7 +125,7 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 ## The manifest restricted to one section; "" is the chapter-wide layer.
 static func _section_of(manifest: Dictionary, section: String) -> Dictionary:
 	var part := manifest.duplicate()
-	for key in ["placements", "lights", "annotations", "bsp"]:
+	for key in ["placements", "lights", "annotations", "bsp", "checkpoints"]:
 		part[key] = (manifest[key] as Array).filter(func(r: Dictionary) -> bool: return r.get("section", "") == section)
 	# A section's swing volume can hang on a bar placed from another section's
 	# package or the chapter's (Subway's Plat-Tunnel slice, Mall's MallExterior).

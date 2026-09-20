@@ -15,7 +15,7 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from common import (ExtractError, actor_scale, godot_basis, import_root_package, outer_class, pivot_offset,
+from common import (UU, ExtractError, actor_scale, godot_basis, import_root_package, outer_class, pivot_offset,
                     point, ref_export, ref_import)
 import annotations
 import lights
@@ -306,7 +306,7 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
             report['counts']['empty_actor'] += 1
             continue
         name = record['name']
-        if name in config['exclude_meshes']:
+        if name in config['exclude_meshes'] or '%s.%s' % (mr.label, e['name']) in config['exclude_actors']:
             report['counts']['excluded_by_config'] += 1
             continue
         # A breakable pane is no effect, whatever its mesh is called: Factory's
@@ -357,7 +357,8 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
                     'base': base, 'aabb': {'min': lo, 'max': hi}}
                    | ({'pre_pivot': pre_pivot} if any(abs(c) > 1e-4 for c in pre_pivot) else {})
                    | ({'materials': overrides} if any(overrides) else {})
-                   | ({'shadow_only': True} if shadow_only else {}))
+                   | ({'shadow_only': True} if shadow_only else {})
+                   | ({'runner_vision': runner_vision(actor)} if actor.get('bLOIObject') else {}))
     return out
 
 
@@ -365,6 +366,79 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
 LADDER_SNAP_MAX_M = 0.5
 LADDER_SNAP_SEARCH_M = 1.0
 LADDER_MESH_TOKENS = ('ladder', 'pipe')
+
+
+# A checkpoint belongs to the section of the floor under it, within this far
+# below. A checkpoint stands on the ground it respawns the body onto; one with
+# nothing under it (the Edge's "Cops", dropped on purpose) stays chapter-wide.
+CHECKPOINT_FLOOR_DROP_M = 12.0
+# A floor may also be this far ABOVE the checkpoint's own origin: the origin is
+# the body's centre, and a checkpoint sunk into a step reads as below it.
+CHECKPOINT_FLOOR_RISE_M = 1.0
+
+
+def assign_checkpoint_sections(checkpoints, placements, bsp, report):
+    """Give each checkpoint the section of the nearest surface straight below
+    it, so its shell is the one whose geometry it stands on and can be dragged
+    against. Vertical only: a section is a stretch of the route, and a
+    checkpoint's floor decides which stretch it is in.
+
+    Placements are tested by their bounds rather than their triangles. A floor
+    is thin and lies under the point; a building whose bounds also contain it
+    reaches far above it and is not a floor under anything.
+    """
+    report['checkpoint_sections'] = {}
+    for c in checkpoints:
+        x, y, z = c['position']
+        best = None
+        for p in placements:
+            if p['collision'] == 'none' or p.get('hidden'):
+                continue
+            lo, hi = p['aabb']['min'], p['aabb']['max']
+            if not (lo[0] <= x <= hi[0] and lo[2] <= z <= hi[2]):
+                continue
+            gap = y - hi[1]
+            if gap < -CHECKPOINT_FLOOR_RISE_M or gap > CHECKPOINT_FLOOR_DROP_M:
+                continue
+            if best is None or gap < best[0]:
+                best = (gap, p['section'], p['mesh'])
+        for face in bsp:
+            xs = [v[0] for v in face['vertices']]
+            zs = [v[2] for v in face['vertices']]
+            if not (min(xs) <= x <= max(xs) and min(zs) <= z <= max(zs)):
+                continue
+            gap = y - max(v[1] for v in face['vertices'])
+            if gap < -CHECKPOINT_FLOOR_RISE_M or gap > CHECKPOINT_FLOOR_DROP_M:
+                continue
+            if best is None or gap < best[0]:
+                best = (gap, face['section'], 'BSP')
+        # '' is the chapter-wide layer, as section_of() spells it: a checkpoint
+        # over nothing has no section's floor to be dragged against.
+        c['section'] = best[1] if best else ''
+        report['checkpoint_sections'][c.get('label') or c['name']] = \
+            '%s (%.2f m over %s)' % (c['section'], best[0], best[2]) if best else 'nothing under it'
+
+
+def names_of(records):
+    """Either identity of a checkpoint or spawn: its own name is
+    TdCheckpoint_15, its label is what the shell names the node and what a
+    person reads."""
+    return [r['name'] for r in records] + [r['label'] for r in records if r.get('label')]
+
+
+# [ME:CONFIRMED] LOIDistance's class default, in uu: a placement that leaves it
+# at 0 means this rather than "never".
+LOI_DEFAULT_DISTANCE_UU = 1500.0
+
+
+def runner_vision(actor):
+    """An actor's Runner Vision settings, as RunnerVisionTarget's fields.
+    See docs/mirrors-edge-deep-research/14-信使视觉LOI.md."""
+    distance = float(actor.get('LOIDistance') or LOI_DEFAULT_DISTANCE_UU)
+    return {'distance_m': round(distance / UU, 3),
+            'flat_distance': bool(actor.get('LOIUse2DDistance')),
+            'proximity_delay': round(float(actor.get('LOIProximityDelay') or 0.0), 3),
+            'min_duration': round(float(actor.get('LOIMinDuration', 1.5)), 3)}
 
 
 def snap_ladders(placements, annotations, report):
@@ -502,9 +576,14 @@ def main(config_path):
         placements = kept
 
     if config['initial_spawn']:
-        names = [s['name'] for s in notes['spawns'] + notes['checkpoints']]
+        names = names_of(notes['spawns'] + notes['checkpoints'])
         if config['initial_spawn'] not in names:
             raise ExtractError('initial_spawn %r is not among %s' % (config['initial_spawn'], names))
+
+    for spot in config['teleports']:
+        if spot['to'] not in names_of(notes['checkpoints']):
+            raise ExtractError('teleport destination %r is not among %s'
+                               % (spot['to'], names_of(notes['checkpoints'])))
 
     snap_ladders(placements, notes['annotations'], report)
 
@@ -517,8 +596,9 @@ def main(config_path):
             counts = report['sections'].setdefault(record['section'] or '(chapter)', {'packages': []})
             if record['package'] not in counts['packages']:
                 counts['packages'].append(record['package'])
+        assign_checkpoint_sections(notes['checkpoints'], placements, bsp, report)
         for record in placements:
-            report['sections'][record['section'] or '(chapter)']['placements'] =                 report['sections'][record['section'] or '(chapter)'].get('placements', 0) + 1
+            report['sections'][record['section'] or '(chapter)']['placements'] =                report['sections'][record['section'] or '(chapter)'].get('placements', 0) + 1
 
     records = meshes.finish_names()
     for p in placements:

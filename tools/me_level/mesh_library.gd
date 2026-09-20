@@ -31,6 +31,7 @@ const LIBRARY_FORMAT := 8
 
 var _materials := {}
 var _bakes := {}
+var _bake_hashes := {}
 
 
 static func path_for(mesh_name: String) -> String:
@@ -40,6 +41,7 @@ static func path_for(mesh_name: String) -> String:
 ## Builds every mesh in `meshes` whose source changed. Returns false on error.
 func build(meshes: Dictionary, bakes: Dictionary) -> bool:
 	_bakes = bakes
+	_bake_hashes = {}
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(Common.LIBRARY_DIR.path_join("materials")))
 	var built := 0
 	for mesh_name: String in meshes:
@@ -48,7 +50,11 @@ func build(meshes: Dictionary, bakes: Dictionary) -> bool:
 		var content := record.duplicate()
 		content.erase("source")
 		# Which UV set a surface uses comes from its material's bake.
-		content["uv_sets"] = record["surfaces"].map(func(s): return _uv_set(s))
+		content["uv_sets"] = record["surfaces"].map(func(s): return _uv_set(record, s))
+		# And what its materials look like: an unchanged mesh is skipped
+		# whole, so without this a re-baked material never reached its file
+		# (the Mall's bridge stayed black after its bake was fixed).
+		content["bakes"] = record["surfaces"].map(func(s): return _bake_hash(s))
 		content["library_format"] = LIBRARY_FORMAT
 		var hash := JSON.stringify(content, "", true).sha256_text()
 		var path := path_for(mesh_name)
@@ -77,6 +83,17 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		push_error("[me_level] %s: %d positions, expected %d" % [name, positions.size(), record["vertex_count"]])
 		return null
 	var mesh := ArrayMesh.new()
+	# The colour this mesh turns under Runner Vision, carried on the resource
+	# the way its collision is. [ME:CONFIRMED] every tagged material has its own
+	# LOI_Color and they differ -- a lift button is (0.7, 0, 0) where a pipe is
+	# (1.5, 0, 0) -- so the builder reads it here rather than repainting
+	# everything one red.
+	for surface: Dictionary in record["surfaces"]:
+		var bake: Variant = _bakes.get(surface["material"] if surface["material"] != null else "")
+		if bake is Dictionary and (bake as Dictionary).has("loi_color"):
+			var rgb: Array = bake["loi_color"]
+			mesh.set_meta("loi_color", Color(rgb[0], rgb[1], rgb[2]))
+			break
 	var collision_faces := PackedVector3Array()
 	# Faces of surfaces whose material the original marks
 	# bEnableUncontrolledSlide: a separate shape, so the placement can carry
@@ -105,7 +122,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			# they were flat translucent panes, dozens of them in the pillar
 			# hall, all glare: collide, do not draw.
 			continue
-		var uvs := _uvs(record, _uv_set(surface), positions.size())
+		var uvs := _uvs(record, _uv_set(record, surface), positions.size())
 		var material_name: String = surface["material"] if surface["material"] != null else ""
 		var material: Material
 		if _bakes.has(material_name) and surface["blend"] != "additive":
@@ -227,9 +244,47 @@ func override_material(entry: Dictionary) -> Material:
 	return _textured_material(name, entry.get("blend", "opaque"), entry.get("unlit", false))
 
 
-func _uv_set(surface: Dictionary) -> int:
+func _bake_hash(surface: Dictionary) -> String:
+	var name: String = surface["material"] if surface["material"] != null else ""
+	if not _bakes.has(name):
+		return ""
+	if not _bake_hashes.has(name):
+		_bake_hashes[name] = JSON.stringify(_bakes[name], "", true).sha256_text()
+	return _bake_hashes[name]
+
+
+## How far across a channel's coordinates spread before it counts as one the
+## mesh actually carries. A channel left at zero is not a coordinate set.
+const MIN_UV_SPAN := 0.05
+
+## Which of a mesh's coordinate sets a surface is drawn in: the one its
+## material samples, when the mesh has it and it holds a layout.
+##
+## A material names its set by index and is shared by meshes that do not all
+## carry it. The truck's M_Outside samples set 2; its rear doors carry three
+## sets whose third is all zeros, the forklift only two. Falling back to the
+## LAST set a mesh has draws it in the lightmap's atlas UVs -- stretched and
+## offset, which is how the doors and the forklift looked. Set 0 is where the
+## cooked meshes keep the picture.
+func _uv_set(record: Dictionary, surface: Dictionary) -> int:
 	var bake: Variant = _bakes.get(surface["material"] if surface["material"] != null else "")
-	return int(bake["uv_set"]) if bake is Dictionary else 0
+	var wanted: int = int(bake["uv_set"]) if bake is Dictionary else 0
+	var sets: Array = record.get("uvs", [])
+	if wanted < sets.size() and _uv_span(sets[wanted]) >= MIN_UV_SPAN:
+		return wanted
+	return 0
+
+
+static func _uv_span(encoded: String) -> float:
+	var raw := Marshalls.base64_to_raw(encoded).to_float32_array()
+	if raw.is_empty():
+		return 0.0
+	var low := Vector2(raw[0], raw[1])
+	var high := low
+	for i in range(0, raw.size(), 2):
+		low = low.min(Vector2(raw[i], raw[i + 1]))
+		high = high.max(Vector2(raw[i], raw[i + 1]))
+	return maxf(high.x - low.x, high.y - low.y)
 
 
 static func _uvs(record: Dictionary, uv_set: int, count: int) -> PackedVector2Array:

@@ -81,7 +81,13 @@ def parse_render(mr, idx):
     slack = max(1.0, 0.01 * max(ex, ey, ez))
     uv_format = '<2f' if full_uvs else '<2e'
     uv_size = 8 if full_uvs else 4
-    uvs = [[] for _ in range(min(tex_coords, 2))]
+    # EVERY channel the buffer carries, not the first two: a material names
+    # the one it samples by index (MaterialExpressionTextureCoordinate), and
+    # the truck's M_Outside names 2. Cut to two, the builder fell back to the
+    # last one it had -- the lightmap's atlas UVs -- and drew the doors
+    # stretched and offset. The Godot mesh still carries ONE set per surface,
+    # whichever the material asked for (mesh_library._uv_set).
+    uvs = [[] for _ in range(tex_coords)]
     vertices, normals = [], []
     zero_normals = False
     for k in range(vertex_count):

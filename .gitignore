@@ -82,3 +82,6 @@ scenes/player/player_vrm.tscn
 # rejected at the remote for it -- the pck alone is 129 MB. Named here for
 # the same reason as the two scenes above.
 .out/
+
+# The playtest shell the "play from here" plugin rebuilds on every run.
+addons/playtest_here/_scratch_playtest.tscn

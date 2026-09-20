@@ -18,9 +18,18 @@ const LIGHTS_SCRIPT := preload("res://tools/me_level/me_lights.gd")
 ## along the mesh) was measured against this list and lost: it also freed
 ## billboards and catwalk supports a ladder runs past, and missed every swing
 ## pole, whose line is not in the manifest.
+## MATCHED AS SUBSTRINGS, because the original names its parts by family and
+## spells a family more than one way: a zipline's cable is ZipLineBase_01_Line
+## in most chapters and ZipLinePiece01 in the Mall, and listing them one at a
+## time meant the Mall's cable kept its per-poly collision -- a body hanging
+## 0.9 m under it rode two metres before the cable it hung from threw it off.
 const GRIP_MESH_MARKERS: Array[String] = ["LadderSystem", "SwingPole",
-		"ZipLineBase_01_Line", "ZipLineBase_01b", "ZipLineBase_01c",
-		"ZipLineBase_01d", "S_Cable_01"]
+		"ZipLine", "S_Cable_01"]
+## Exceptions to the families above, matched whole. The 5.6 m S_ZipLineBase_01
+## post is the one part of a zipline a runner can collide with and should:
+## running through the post reads wrong, and only its brackets and its cable
+## are things a hand is meant to pass into.
+const GRIP_MESH_SOLID: Array[String] = ["S_ZipLineBase_01"]
 ## Climbable drainpipes use the same generic segments as the rooftop pipe runs
 ## a runner steps over, so a pipe is passable only where a ladder line runs
 ## along it. DO NOT match pipes by name alone.
@@ -35,6 +44,7 @@ const VISIBLE_RANGE_MIN := 30.0
 const VISIBLE_RANGE_MAX := 3000.0
 ## Placements at least this many metres across go into the level's occluder.
 const OCCLUDER_MIN_EXTENT := 40.0
+const RUNNER_VISION_SCRIPT := preload("res://scripts/level/runner_vision_target.gd")
 
 ## Metres from the camera past which an extracted light fades out, and over
 ## how far. Stormdrain's densest view (the pillar hall) keeps 336 lights
@@ -92,6 +102,8 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			instance.visible = true
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		_apply_overrides(instance, placement)
+		if placement.has("runner_vision"):
+			node.add_child(_runner_vision_target(placement, mesh))
 		# Not drawn past VISIBLE_RANGE_PER_METRE its own size: 13,000 placements
 		# drew the whole chapter from inside a corridor.
 		var extent: float = (Common.transform_of(placement).basis * mesh.get_aabb().size).abs().length()
@@ -152,6 +164,24 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 	return root
 
 
+## What the original marks for Runner Vision, as the node a level of our own
+## would place by hand (scripts/level/runner_vision_target.gd). Its distances
+## and delays are the level designer's, and so is the colour, which is the
+## material's own LOI_Color rather than one red for everything.
+func _runner_vision_target(placement: Dictionary, mesh: ArrayMesh) -> Node3D:
+	var settings: Dictionary = placement["runner_vision"]
+	var target := Node3D.new()
+	target.set_script(RUNNER_VISION_SCRIPT)
+	target.name = "RunnerVision"
+	target.set("distance_m", float(settings["distance_m"]))
+	target.set("flat_distance", bool(settings["flat_distance"]))
+	target.set("proximity_delay", float(settings["proximity_delay"]))
+	target.set("min_duration", float(settings["min_duration"]))
+	if mesh.has_meta("loi_color"):
+		target.set("paint", mesh.get_meta("loi_color"))
+	return target
+
+
 ## One occluder of the level's large, still, solid surfaces and its BSP.
 ## Measured in Stormdrain: 15 ms a frame in the lift corridor down to 6 with the
 ## visibility ranges, the whole city behind the walls no longer drawn. Only
@@ -159,6 +189,11 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 ## everything down to 8 m, at 520 thousand triangles instead of 1.3 million.
 ## Movers move and hidden, masked or translucent surfaces do not hide what is
 ## behind them: none of those.
+## Godot's occluders are double-sided, the original's culling was not: a
+## one-sided shell seen from behind (sp01b's office, inside the slanted
+## building's outer facade) is not drawn yet hides the whole city past the
+## window. Nearly every large mesh is open, so no filter here fixes that;
+## culling is the player's setting instead (SettingsStore.occlusion_culling).
 static func _build_occluder(geometry: Node3D, bsp: Node3D) -> OccluderInstance3D:
 	var vertices := PackedVector3Array()
 	var indices := PackedInt32Array()
@@ -334,6 +369,11 @@ func _add_shape(node: Node3D, shape: Shape3D, name: String, offset := Vector3.ZE
 
 
 func _is_grip(mesh_name: String, placement: Dictionary, pipe_line: PackedVector3Array) -> bool:
+	# A variant carries its package as a suffix (mesh@Package); the family is
+	# the part before it.
+	var family := mesh_name.split("@")[0]
+	if GRIP_MESH_SOLID.has(family):
+		return false
 	for marker in GRIP_MESH_MARKERS:
 		if mesh_name.contains(marker):
 			return true

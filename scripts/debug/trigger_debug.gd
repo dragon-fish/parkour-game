@@ -32,6 +32,13 @@ const FILL_ALPHA := 0.1
 const LABEL_SIZE := 48
 ## How far the direction and facing arrows reach, metres.
 const ARROW := 0.7
+## Rings drawn along a line to show how far from it a body still reaches: one
+## per this many metres, and never fewer than the two at its ends. A line's
+## volume is a capsule of reach_radius around it, and the radius is the number
+## a level author actually tunes -- without it the line says where the bar is
+## but not how near you have to be.
+const REACH_RING_SPACING_M := 1.0
+const REACH_RING_SEGMENTS := 16
 
 var _shown := false
 ## Everything built for the current showing, freed when it goes off.
@@ -165,6 +172,31 @@ func _draw_shapes(body: CollisionObject3D, colour: Color, type: String) -> void:
 ## The editor gizmo's line, direction and facing: the axis in the kind's
 ## colour, beads on its ends, an arrowhead down the line at its middle and an
 ## arrow out of its -Z (InterestLine.front()).
+## Rings of reach_radius about the line, upright to it, in the line's own
+## colour -- the kind is what the colour already says, and a second colour
+## here would only ask to be looked up.
+func _reach_rings(line: InterestLine, lines: PackedVector3Array) -> void:
+	var radius := line.reach_radius
+	var length := line.curve.get_baked_length()
+	if radius <= 0.0 or length <= 0.0:
+		return
+	var rings := maxi(2, int(ceil(length / REACH_RING_SPACING_M)) + 1)
+	for i in rings:
+		var at_length := length * float(i) / float(rings - 1)
+		var centre := line.curve.sample_baked(at_length)
+		var ahead := line.curve.sample_baked(minf(at_length + 0.05, length))
+		var behind := line.curve.sample_baked(maxf(at_length - 0.05, 0.0))
+		var along := ahead - behind
+		along = along.normalized() if along.length() > 0.0001 else Vector3.FORWARD
+		var u := along.cross(Vector3.UP if absf(along.y) < 0.9 else Vector3.RIGHT).normalized()
+		var v := along.cross(u).normalized()
+		for segment in REACH_RING_SEGMENTS:
+			var a := TAU * float(segment) / float(REACH_RING_SEGMENTS)
+			var b := TAU * float(segment + 1) / float(REACH_RING_SEGMENTS)
+			lines.append(centre + (u * cos(a) + v * sin(a)) * radius)
+			lines.append(centre + (u * cos(b) + v * sin(b)) * radius)
+
+
 func _draw_line(line: InterestLine) -> void:
 	if line.curve == null or line.curve.point_count < 2:
 		return
@@ -183,6 +215,7 @@ func _draw_line(line: InterestLine) -> void:
 	for wing in [side, -side]:
 		lines.append(tip)
 		lines.append(tip - along * 0.15 + wing * 0.1)
+	_reach_rings(line, lines)
 	var front := line.global_transform.basis.inverse() * line.front()
 	var out := mid + front * ARROW
 	lines.append(mid)

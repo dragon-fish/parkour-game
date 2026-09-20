@@ -10,6 +10,22 @@ contain no original data.
 
 ## Use
 
+Several chapters at once, extraction and build together:
+
+```powershell
+bun tools/extract_levels.ts                  # every chapter
+bun tools/extract_levels.ts sp05 sp07        # only those
+bun tools/extract_levels.ts --build          # extract, then build each
+```
+
+A full pass is about three minutes cold and half of one with the bake cache
+warm (`_local/me-reference/level-extract/_cache/bakes`, keyed by the baker's
+own source, so editing it invalidates every entry). Extraction runs six
+chapters at a time -- each peaks around 1.2 GB -- and the build stays serial,
+because every chapter writes the same mesh library.
+
+One chapter at a time, which is what the tool above runs:
+
 ```powershell
 # 1. Extract (Python via uv; writes _local/me-reference/level-extract/<id>/)
 uv run --no-project --python 3.12 --with lzallright --with numpy `
