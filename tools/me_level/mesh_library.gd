@@ -50,7 +50,7 @@ func build(meshes: Dictionary, bakes: Dictionary) -> bool:
 		var content := record.duplicate()
 		content.erase("source")
 		# Which UV set a surface uses comes from its material's bake.
-		content["uv_sets"] = record["surfaces"].map(func(s): return _uv_set(s))
+		content["uv_sets"] = record["surfaces"].map(func(s): return _uv_set(record, s))
 		# And what its materials look like: an unchanged mesh is skipped
 		# whole, so without this a re-baked material never reached its file
 		# (the Mall's bridge stayed black after its bake was fixed).
@@ -111,7 +111,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			# they were flat translucent panes, dozens of them in the pillar
 			# hall, all glare: collide, do not draw.
 			continue
-		var uvs := _uvs(record, _uv_set(surface), positions.size())
+		var uvs := _uvs(record, _uv_set(record, surface), positions.size())
 		var material_name: String = surface["material"] if surface["material"] != null else ""
 		var material: Material
 		if _bakes.has(material_name) and surface["blend"] != "additive":
@@ -242,9 +242,38 @@ func _bake_hash(surface: Dictionary) -> String:
 	return _bake_hashes[name]
 
 
-func _uv_set(surface: Dictionary) -> int:
+## How far across a channel's coordinates spread before it counts as one the
+## mesh actually carries. A channel left at zero is not a coordinate set.
+const MIN_UV_SPAN := 0.05
+
+## Which of a mesh's coordinate sets a surface is drawn in: the one its
+## material samples, when the mesh has it and it holds a layout.
+##
+## A material names its set by index and is shared by meshes that do not all
+## carry it. The truck's M_Outside samples set 2; its rear doors carry three
+## sets whose third is all zeros, the forklift only two. Falling back to the
+## LAST set a mesh has draws it in the lightmap's atlas UVs -- stretched and
+## offset, which is how the doors and the forklift looked. Set 0 is where the
+## cooked meshes keep the picture.
+func _uv_set(record: Dictionary, surface: Dictionary) -> int:
 	var bake: Variant = _bakes.get(surface["material"] if surface["material"] != null else "")
-	return int(bake["uv_set"]) if bake is Dictionary else 0
+	var wanted: int = int(bake["uv_set"]) if bake is Dictionary else 0
+	var sets: Array = record.get("uvs", [])
+	if wanted < sets.size() and _uv_span(sets[wanted]) >= MIN_UV_SPAN:
+		return wanted
+	return 0
+
+
+static func _uv_span(encoded: String) -> float:
+	var raw := Marshalls.base64_to_raw(encoded).to_float32_array()
+	if raw.is_empty():
+		return 0.0
+	var low := Vector2(raw[0], raw[1])
+	var high := low
+	for i in range(0, raw.size(), 2):
+		low = low.min(Vector2(raw[i], raw[i + 1]))
+		high = high.max(Vector2(raw[i], raw[i + 1]))
+	return maxf(high.x - low.x, high.y - low.y)
 
 
 static func _uvs(record: Dictionary, uv_set: int, count: int) -> PackedVector2Array:
