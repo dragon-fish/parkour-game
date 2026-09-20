@@ -476,3 +476,33 @@ func test_a_swapped_mesh_changes_what_is_touched_and_is_not_made_solid() -> void
 	await step(1)
 	assert_eq(touch.get_child_count(), 0)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(beam_path))
+
+
+func test_a_factory_of_scenery_puts_it_in_and_a_respawn_takes_it_out() -> void:
+	# The subway's ride ends by spawning four still tunnel pieces and only
+	# THEN hiding the four that rolled: with the factory waved through, the
+	# hide ran alone and the player arrived in a tunnel with no tunnel.
+	var mesh_path := "user://test_kismet_piece.res"
+	ResourceSaver.save(ArrayMesh.new(), mesh_path)
+	var identity := [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+	var rig := await _runner({
+		"end": _n("SeqEvent_RemoteEvent", [["Out", [["factory", 0]]]]),
+		"factory": _n("SeqAct_ActorFactory", [["Finished", [["then", 0]]], ["Aborted", []]], {mesh_path = mesh_path,
+				props = {SpawnCount = 2},
+				spawn_points = [{position = [0.0, 0.0, 10.0], basis = identity}, {position = [0.0, 0.0, 20.0], basis = identity}]}),
+		"then": _probe("then"),
+		"other": _n("SeqEvent_RemoteEvent", [["Out", [["rigid", 0]]]]),
+		"rigid": _n("SeqAct_ActorFactory", [["Finished", [["then", 0]]], ["Aborted", []]]),
+	})
+	rig.runner.bind(rig.root)
+	_event(rig.runner, "end")
+	var made: Array = rig.runner.find_children("*", "MeshInstance3D", false, false)
+	assert_eq(made.size(), 2, "one at each spawn point")
+	assert_eq(made.map(func(n: Node3D) -> float: return n.global_position.z), [10.0, 20.0])
+	assert_eq(_reached(rig.runner, "then"), 1, "and only then whatever waited on it")
+	_event(rig.runner, "other")
+	assert_eq(_reached(rig.runner, "then"), 2, "a factory of anything else makes nothing and passes the signal on")
+	rig.runner._forget_everything()
+	await step(1)
+	assert_eq(rig.runner.find_children("*", "MeshInstance3D", false, false).size(), 0, "what a life spawned goes with it")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(mesh_path))

@@ -27,7 +27,7 @@ See docs/kismet-runtime.md.
 """
 import os
 
-from common import outer_class, ref_export
+from common import actor_scale, godot_basis, outer_class, point, ref_export
 from matinee import (DAMAGE_EVENTS, DEFAULT_LENGTH, KICK_HALF_HEIGHT_M, KICK_REACH_M,
                      _int_array, _struct_array, _trigger, _value)
 from streaming import package_key
@@ -228,6 +228,30 @@ def read_package(packages, mr, actors, variables, mesh_of=None):
             record = mesh_of(mr, props.get('NewStaticMesh'))
             if record is not None:
                 node['_mesh_record'] = record
+        elif cls == 'SeqAct_ActorFactory' and mesh_of is not None:
+            # Only a factory of static meshes, which is how the original puts
+            # SCENERY in at run time: the subway's train ride ends by spawning
+            # four still tunnel pieces where its rolling four were, and only
+            # then hides those. Rigid bodies and emitters have nothing here.
+            factory = ref_export(props.get('Factory'))
+            if factory and pkg.class_of(pkg.exports[factory - 1]) == 'ActorFactoryStaticMesh':
+                made = _props(mr, factory)
+                record = mesh_of(mr, made.get('StaticMesh'))
+                spots = []
+                for link in _struct_array(mr, props.get('VariableLinks')):
+                    if str(link.get('LinkDesc')) != 'Spawn Point':
+                        continue
+                    for var in _int_array(mr, link.get('LinkedVariables')):
+                        spot = ref_export(_props(mr, var).get('ObjValue')) if var > 0 else None
+                        if not spot:
+                            continue
+                        placed, _ = mr.props_inherited(spot)
+                        if placed and 'Location' in placed:
+                            spots.append({'position': point(placed['Location']),
+                                          'basis': godot_basis(placed.get('Rotation') or (0, 0, 0), actor_scale(made))})
+                if record is not None and spots:
+                    node['_mesh_record'] = record
+                    node['spawn_points'] = spots
         elif cls in ('SeqAct_MultiLevelStreaming', 'SeqAct_LevelStreaming'):
             levels = [x.get('LevelName') for x in _struct_array(mr, props.get('Levels'))] or [props.get('LevelName')]
             node['levels'] = [package_key(n) for n in levels if n and str(n) != 'None']
@@ -238,6 +262,7 @@ def read_package(packages, mr, actors, variables, mesh_of=None):
 # What a node has to be for the level to be any different for its running.
 # Everything else -- a checkpoint being set, the look-at hint being moved, an
 # AI being told where to walk, music -- changes nothing this project has.
+SPAWNS_SCENERY = 'SeqAct_ActorFactory'
 EFFECTS_ON_ACTORS = ('SeqAct_Toggle', 'SeqAct_ToggleHidden', 'SeqAct_ChangeCollision', 'SeqAct_Destroy',
                      'SeqAct_SetStaticMesh')
 EFFECTS = ('SeqAct_MultiLevelStreaming', 'SeqAct_LevelStreaming', 'SeqAct_TdInElevator', 'SeqAct_Teleport',
@@ -302,6 +327,8 @@ def mark_useful(graph, built_actors, built_matinees, handled_elsewhere=frozenset
             return True
         if node['cls'] == 'SeqAct_Interp':
             return node.get('matinee') in built_matinees
+        if node['cls'] == SPAWNS_SCENERY:
+            return 'spawn_points' in node
         if node['cls'] == 'SeqAct_CauseDamage':
             # Only when it can be the PLAYER who is hurt: named as such, or an
             # object variable nothing fills but an event's Instigator.

@@ -111,6 +111,8 @@ var _touched_state: Dictionary = {}
 var _swapped: Dictionary = {}
 ## Path -> mesh, held so that a swap is a pointer and not a disk read.
 var _meshes: Dictionary = {}
+## Package -> what its factories have spawned in this life.
+var _spawned: Dictionary = {}
 ## Waiting: {at, node, output} fires an output, {at, node, input} activates.
 var _timers: Array[Dictionary] = []
 ## Interp ids in motion.
@@ -167,7 +169,7 @@ func bind(level: Node) -> void:
 			_matinees[String(node.get_meta(MATINEE_META))] = node
 		todo.append_array(node.get_children())
 	# Loaded now, behind the curtain, not on the lap that first wants them.
-	for id: String in _by_class.get("SeqAct_SetStaticMesh", []):
+	for id: String in _by_class.get("SeqAct_SetStaticMesh", []) + _by_class.get("SeqAct_ActorFactory", []):
 		var path: String = _nodes[id].get("mesh_path", "")
 		if not path.is_empty() and ResourceLoader.exists(path) and not _meshes.has(path):
 			_meshes[path] = load(path)
@@ -267,6 +269,7 @@ func _forget_everything() -> void:
 		_restore_actor(actor)
 	_touched_state.clear()
 	_restore_meshes()
+	_free_spawned()
 	_set_lift_rules(false)
 
 
@@ -298,6 +301,7 @@ func _on_packages_changed(loaded: Array[String], unloaded: Array[String]) -> voi
 
 
 func _forget_package(key: String) -> void:
+	_free_spawned(key)
 	for id: String in _state.keys():
 		if _nodes[id]["package"] == key:
 			_state.erase(id)
@@ -564,6 +568,25 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 				blow.tint = hurt_tint
 				player.apply_status(blow, self, 0, true)
 			_fire(id, 0)
+		"SeqAct_ActorFactory":
+			# Scenery put in at run time; any other factory (rigid bodies,
+			# emitters, AI) makes nothing here and passes the signal on.
+			if node.has("spawn_points") and _meshes.has(node.get("mesh_path", "")):
+				var made: Array = _spawned.get_or_add(node["package"], [])
+				var spots: Array = node["spawn_points"]
+				for i in maxi(int(_prop(node, "SpawnCount", 1)), 1):
+					var spot: Dictionary = spots[i % spots.size()]
+					var piece := MeshInstance3D.new()
+					piece.mesh = _meshes[node["mesh_path"]]
+					var columns: Array = spot["basis"]
+					piece.transform = Transform3D(Basis(_v3(columns[0]), _v3(columns[1]), _v3(columns[2])), _v3(spot["position"]))
+					add_child(piece)
+					made.append(piece)
+				_tell("%s spawned %d x %s" % [id, int(_prop(node, "SpawnCount", 1)), String(node["mesh_path"]).get_file()])
+			else:
+				unknown[node["cls"]] = unknown.get(node["cls"], 0) + 1
+			_fire(id, 0)
+			_fire_named(id, ["Finished"])
 		"SeqAct_TdPlayerFail":
 			# The original's "you did not make it": under a train, off the
 			# roof of one. The same death as any other here.
@@ -996,6 +1019,21 @@ func _set_lift_rules(on: bool) -> void:
 		if effect == Status.Effect.SPEED_LIMIT:
 			spec.amount = LIFT_SPEED_M_S
 		player.apply_status(spec, self, 0)
+
+
+static func _v3(values: Array) -> Vector3:
+	return Vector3(float(values[0]), float(values[1]), float(values[2]))
+
+
+## What a factory made belongs to the life and the package it was made in.
+func _free_spawned(package: String = "") -> void:
+	for key: String in _spawned.keys():
+		if package != "" and key != package:
+			continue
+		for piece: Node in _spawned[key]:
+			if is_instance_valid(piece):
+				piece.queue_free()
+		_spawned.erase(key)
 
 
 func _arena() -> Arena:
