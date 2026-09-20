@@ -179,6 +179,13 @@ static func place(target: Node3D, to: Transform3D) -> void:
 		return
 	animatable.sync_to_physics = false
 	animatable.global_transform = to
+	# AND the server's own copy, said outright. The write above reaches it only
+	# when the call happens to come at the right point of the frame: a respawn
+	# behind the death curtain does, one forced early with R does not, and then
+	# the NODE went home while the BODY stayed where the sequence had left it
+	# -- the subway's runaway train, gone from sight and still there to be
+	# walked on, 600 m from its own picture.
+	PhysicsServer3D.body_set_state(animatable.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, to)
 	animatable.sync_to_physics = true
 
 
