@@ -71,6 +71,16 @@ static func transform_of(entry: Dictionary) -> Transform3D:
 ## (scripts/level/package_presence.gd, PACKAGE_META) shows and hides by. Not
 ## named from there -- a build runs without the autoloads Arena needs.
 const PACKAGE_META := &"me_package"
+## ...and the actor it was, as "<package key>.<actor name>": how the level's
+## Kismet (scripts/level/kismet/kismet_runner.gd, ACTOR_META) finds what a
+## node of the original's script refers to.
+const ACTOR_META := &"me_actor"
+## On a Matinee node, the sequence it plays, as the extractor names it.
+const MATINEE_META := &"me_matinee"
+
+
+static func actor_id(package: String, actor: String) -> String:
+	return "%s.%s" % [package_key(package), actor]
 
 
 ## A package as the streaming tables spell it: lower case, no extension. The

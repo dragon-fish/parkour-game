@@ -65,6 +65,9 @@ var _sound_player: AudioStreamPlayer3D = null
 var _sound_fade: float = 0.0
 
 ## Keys time, 0 .. length.
+## Played by the level's Kismet and by nothing of its own: see take_over().
+var driven := false
+
 var _time: float = 0.0
 ## +1 forward, -1 reverse, 0 still.
 var _direction: int = 0
@@ -128,7 +131,7 @@ func reset_for_respawn() -> void:
 	_silence()
 	# A loop stopped by the reset would never run again: dying once beside the
 	# tracks would empty them for the rest of the chapter.
-	if autostart:
+	if autostart and not driven:
 		play()
 
 
@@ -160,6 +163,34 @@ static func place(target: Node3D, to: Transform3D) -> void:
 	animatable.sync_to_physics = false
 	animatable.global_transform = to
 	animatable.sync_to_physics = true
+
+
+## The level's Kismet plays this sequence from now on: KismetRunner. Its own
+## triggers, its followers and its autostart were all read OUT of that same
+## graph as though it held no state, and would now fire a second time beside
+## the real thing.
+func take_over() -> void:
+	driven = true
+	for child in get_children():
+		if child is Area3D:
+			child.process_mode = Node.PROCESS_MODE_DISABLED
+			(child as Area3D).set_deferred("monitoring", false)
+	reset_for_respawn()
+
+
+## "play", "reverse", "stop" (hold where it is) or "reset" (back to the start).
+func drive(action: String) -> void:
+	match action:
+		"play":
+			_begin(1)
+		"reverse":
+			_begin(-1)
+		"stop":
+			_direction = 0
+			_pending_direction = 0
+			_hush()
+		"reset":
+			reset_for_respawn()
 
 
 func _on_touch(body: Node3D, area: Area3D) -> void:
@@ -251,6 +282,8 @@ func _physics_process(delta: float) -> void:
 	set_physics_process(false)
 	if went > 0:
 		_hush()
+		if driven:
+			return
 		for follower: Dictionary in followers:
 			var next := get_node_or_null(follower["path"]) as Matinee
 			if next != null:

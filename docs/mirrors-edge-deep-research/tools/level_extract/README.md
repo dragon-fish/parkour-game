@@ -67,12 +67,6 @@ stretches in one place" below). `verify_level.gd` checks all sections
 together, including interaction counts, mover targets and floors under
 checkpoints.
 
-Asset-free checks of the streaming walk:
-`uv run --no-project --python 3.12 --with lzallright --with numpy docs/mirrors-edge-deep-research/tools/level_extract/test_streaming.py`.
-
-Asset-free ladder regression checks:
-`uv run --no-project --python 3.12 docs/mirrors-edge-deep-research/tools/level_extract/test_annotations.py`.
-
 ## Traps, each of which silently lost part of a level
 
 **Coordinates.** UE3 is left-handed. The axis map `(x, z, y) / 100` has
@@ -237,25 +231,27 @@ chapter and leans on two of them never being loaded together: a distant shell
 of a building stands where the next stretch's corridor is (Escape's St1 box
 over R1's corridor, a Boat container interior across the chase corridor), and
 shells stacked over a room keep the sun out of it. A split chapter therefore
-carries the original's streaming (`streaming.py`, design in
+runs the original's own Kismet, streaming included (`kismet.py`,
+`docs/kismet-runtime.md`; the presence half is designed in
 `docs/superpowers/specs/2026-09-21-me-level-streaming-design.md`):
 
 - every TdCheckpoint's `StreamingLevels` is the level as a restore there loads
-  it, and `SeqAct_MultiLevelStreaming` is what changes it on the way, walked
-  up to the touch or the button that fires it;
+  it, and `SeqAct_MultiLevelStreaming` is what changes it on the way;
 - the LevelStreamingVolumes are all `bDisabled` and NOTHING activates a
   `SeqAct_StreamingZone`: neither drives anything, do not read them;
+- DO NOT read a fact out of the graph by walking it. Which button unloads a
+  stretch was walked once, through Gates that start shut and Switches routed
+  by an Int, and the answer unloaded the floor under the player. The graph is
+  exported whole and the level runs it;
 - a remote event's sender can be in a package with no geometry (Convoy unloads
   a corridor from a music package), so every streamed package's Kismet is
-  read, not only the configured ones';
-- Gates and Switches on the way are walked through, not simulated. The
-  report's `streaming.through` counts them, and each step names its own: a
-  stretch that loads wrongly is looked for there first.
+  exported, not only the configured ones'.
 
-The builder puts a `Streaming` node (`PackagePresence`) and its triggers into
-the chapter GEOMETRY, which is rebuilt every time, so a hand-edited shell
-needs no rebuild to get them. `collision_overrides` remains for collision
-that is faithful but unwanted (potted bushes that stop a climb).
+The builder puts a `Streaming` node (`PackagePresence`) with the `Kismet`
+runner under it into the chapter GEOMETRY, which is rebuilt every time.
+A chapter with a graph builds no `Lift` and keeps every matinee: the first
+build after this needs `--rebuild-interactions`. `collision_overrides` remains
+for collision that is faithful but unwanted (potted bushes that stop a climb).
 
 **A moving hazard is not its mesh.** The Mall's train has `collision: none` and
 kills nothing; what kills is a `DynamicTriggerVolume` hard-attached to the head,

@@ -152,7 +152,7 @@ func _run() -> void:
 		if streaming != null and not hit.is_empty():
 			_check_floor_is_loaded(streaming, start, from, space)
 	if streaming != null:
-		_check_streaming(streaming, manifest, parts, geometries)
+		_check_streaming(streaming, parts, geometries)
 		streaming.free()
 	_check_spawn_has_a_way_out(shell, space)
 	_finish(shell)
@@ -189,7 +189,7 @@ func _check_floor_is_loaded(streaming: Node, start: Node, from: Vector3, space: 
 ## What cannot fail a build but says where to look when a stretch is wrong.
 ## NOTES, not checks: the original's data decides these, and some of it is
 ## simply so (a package the chapter streams and this project never builds).
-func _check_streaming(streaming: Node, manifest: Dictionary, parts: Array[Node], geometries: Array[Node]) -> void:
+func _check_streaming(streaming: Node, parts: Array[Node], geometries: Array[Node]) -> void:
 	var built := {}
 	var todo: Array[Node] = []
 	todo.append_array(parts)
@@ -206,32 +206,6 @@ func _check_streaming(streaming: Node, manifest: Dictionary, parts: Array[Node],
 			unbuilt.append(key)
 	if not unbuilt.is_empty():
 		print("[verify] note: streamed but nothing of them is built: ", unbuilt)
-
-	# Weak, because the manifest knows no route: what one snapshot has over the
-	# one before must be loaded by SOME step, what it lacks unloaded by some.
-	var loads := {}
-	var unloads := {}
-	for step: Dictionary in manifest["streaming"]["steps"]:
-		for key: String in step["packages"]:
-			(loads if step["op"] == "load" else unloads)[key] = true
-	var ordered: Array = (manifest["checkpoints"] as Array).filter(
-			func(c: Dictionary) -> bool: return not (c.get("streaming", []) as Array).is_empty())
-	ordered.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.get("weight", 0) < b.get("weight", 0))
-	var never_loaded := {}
-	var never_unloaded := {}
-	for i in range(1, ordered.size()):
-		var before: Array = ordered[i - 1]["streaming"]
-		var after: Array = ordered[i]["streaming"]
-		for key: String in after:
-			if built.has(key) and not before.has(key) and not loads.has(key):
-				never_loaded[key] = ordered[i].get("label", ordered[i]["name"])
-		for key: String in before:
-			if built.has(key) and not after.has(key) and not unloads.has(key):
-				never_unloaded[key] = ordered[i].get("label", ordered[i]["name"])
-	if not never_loaded.is_empty():
-		print("[verify] note: in a snapshot, loaded by no step (package: first checkpoint with it): ", never_loaded)
-	if not never_unloaded.is_empty():
-		print("[verify] note: gone from a snapshot, unloaded by no step: ", never_unloaded)
 
 
 ## The original starts several chapters in a box it leaves by cutscene -- a

@@ -24,6 +24,7 @@ import materials as material_bake
 import static_mesh
 import matinee
 import environment
+import kismet
 import streaming
 
 # InterpActors are movers: placed like any mesh, moved by matinee.py's data.
@@ -537,7 +538,7 @@ def main(config_path):
         for key, values in collected.items():
             notes[key] += values
         found_lights += lights.collect_lights(mr)
-        matinees += matinee.collect(packages, mr, report, wanted_sequences)
+        matinees += matinee.collect(packages, mr, report, wanted_sequences, keep_all=config['split_sections'])
         notes['annotations'] += glass
         end_links.append((name, matinee.level_end_links(packages, mr)))
         for face in lights.collect_bsp(mr):
@@ -691,9 +692,11 @@ def main(config_path):
     report['environment'] = look.get('package') if look else None
     report['sun'] = '%s.%s' % (look['sun']['package'], look['sun']['name']) if look and look.get('sun') else None
 
-    # Only a chapter built section by section is streamed: a single-scene level
-    # names the packages it wants and keeps them all.
-    flow = streaming.collect(packages, notes['checkpoints'], report) if config['split_sections'] else None
+    # Only a chapter built section by section runs the original's Kismet and
+    # streams: a single-scene level names the packages it wants, keeps them
+    # all, and is scripted by hand.
+    graph = kismet.collect(packages, report) if config['split_sections'] else None
+    flow = {'managed': streaming.managed(notes['checkpoints'], graph)} if graph else None
 
     os.makedirs(out_dir, exist_ok=True)
     manifest = {'config': config, 'streaming': flow, 'environment': look, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
@@ -701,6 +704,14 @@ def main(config_path):
                 'checkpoints': notes['checkpoints'], 'matinees': matinees, 'report': report}
     with open(os.path.join(out_dir, 'manifest.json'), 'w', encoding='utf-8') as fh:
         json.dump(manifest, fh, ensure_ascii=False, separators=(',', ':'))
+    # Its own file: a chapter's graph is thousands of nodes, and nothing that
+    # reads the manifest for geometry wants to parse them.
+    kismet_path = os.path.join(out_dir, 'kismet.json')
+    if graph:
+        with open(kismet_path, 'w', encoding='utf-8') as fh:
+            json.dump(graph, fh, ensure_ascii=False, separators=(',', ':'))
+    elif os.path.exists(kismet_path):
+        os.remove(kismet_path)
     with open(os.path.join(out_dir, 'meshes.json'), 'w', encoding='utf-8') as fh:
         json.dump(mesh_out, fh, ensure_ascii=False, separators=(',', ':'))
     used_materials = {s['material'] for r in mesh_out.values() for s in r['surfaces']}

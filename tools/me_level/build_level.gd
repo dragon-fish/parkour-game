@@ -89,7 +89,7 @@ func _geometry_builder():
 func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, rebuild: bool) -> bool:
 	var base: String = (paths.shell as String).get_basename()
 	var sections: Array[PackedScene] = []
-	var shell_packages := {}
+	var shell_origins := {}
 	for entry: Dictionary in config["sections"]:
 		var section: String = entry["name"]
 		var started := Time.get_ticks_msec()
@@ -105,7 +105,7 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 		# Built whether or not it is written: what it says about which node
 		# came from which package is wanted either way.
 		var fresh: Node = ShellBuilder.new().build_section(part, geometry_path, section)
-		shell_packages[String(fresh.name)] = ShellBuilder.package_paths(fresh)
+		shell_origins[String(fresh.name)] = ShellBuilder.origins(fresh)
 		if rebuild or not ResourceLoader.exists(scene_path):
 			if not _save(fresh, scene_path, 0):
 				return false
@@ -116,11 +116,14 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 
 	var chapter := _section_of(manifest, "")
 	var chapter_geometry: Node3D = _geometry_builder().build(chapter, str(config["id"]).to_pascal_case() + "ChapterGeometry")
-	manifest["shell_packages"] = shell_packages
-	var streaming := ShellBuilder.new().build_streaming(manifest)
+	manifest["shell_origins"] = shell_origins
+	var kismet_path := Common.project_path(Common.EXTRACT_DIR).path_join(config["id"]).path_join("kismet.json")
+	var kismet: Dictionary = Common.read_json(kismet_path) if FileAccess.file_exists(kismet_path) else {}
+	var streaming := ShellBuilder.new().build_streaming(manifest, kismet, base + "_kismet.res")
 	if streaming != null:
 		chapter_geometry.add_child(streaming)
-		print("[me_level] streaming: %d triggers" % streaming.get_child_count())
+		print("[me_level] kismet: %d nodes, %d event zones" % [
+			kismet["nodes"].size(), streaming.get_node("Kismet").get_child_count()])
 	if not _save(chapter_geometry, paths.geometry, ResourceSaver.FLAG_COMPRESS):
 		return false
 	if ResourceLoader.exists(paths.shell) and not rebuild:

@@ -94,8 +94,8 @@ func _kind_of(node: Node) -> Array:
 		return [DEATH, "死亡区"]
 	if node is Checkpoint or parent is Checkpoint:
 		return [CHECKPOINT, "检查点"]
-	if parent is StreamingTrigger:
-		return [STREAMING, "流式加载"]
+	if parent is KismetRunner:
+		return [STREAMING, "Kismet 事件"]
 	if node is UseZone:
 		return [USE_ZONE, "按钮"]
 	if node is ModifierVolume:

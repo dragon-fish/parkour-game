@@ -25,7 +25,8 @@ const TELEPORT_SCRIPT := preload("res://scripts/level/teleport_volume.gd")
 const GLASS_SCRIPT := preload("res://scripts/level/breakable_glass.gd")
 const LEVEL_END_SCRIPT := preload("res://scripts/level/level_end.gd")
 const PRESENCE_SCRIPT := preload("res://scripts/level/package_presence.gd")
-const STREAMING_TRIGGER_SCRIPT := preload("res://scripts/level/streaming_trigger.gd")
+const KISMET_RUNNER_SCRIPT := preload("res://scripts/level/kismet/kismet_runner.gd")
+const KISMET_GRAPH_SCRIPT := preload("res://scripts/level/kismet/kismet_graph.gd")
 ## How far out from a pane its Reach sees a body coming: a tick at a sprint
 ## and then some. A dial.
 const GLASS_REACH_M := 0.6
@@ -127,8 +128,13 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	_own(root, _pain_volumes(annotations))
 	_own(root, _glass(manifest, NodePath("../../Geometry/Movers")))
 	_own(root, _level_ends(annotations))
-	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), _lift_actors(manifest), borne, sequences))
-	_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
+	# A chapter that runs the original's Kismet (KismetRunner) has no use for
+	# the hand-written Lift: the lift's own sequence is built like any other
+	# and the graph plays it, doors, button, streaming and all.
+	var scripted: bool = manifest.get("streaming") is Dictionary
+	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), {} if scripted else _lift_actors(manifest), borne, sequences))
+	if not scripted:
+		_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
 	_own(root, _checkpoints(manifest, NodePath("../../Geometry/Movers"), sequences))
 	return root
 
@@ -342,6 +348,8 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
 			area.set_meta("action", "toggle" if actions.size() > 1 else ("reverse" if actions.has(1) else "play"))
 			area.set_meta("delay", float(start["delay"]))
 			node.add_child(area)
+		node.set_meta(Common.MATINEE_META, str(m["name"]))
+		node.set_meta(Common.PACKAGE_META, Common.package_key(str(m["package"])))
 		group.add_child(node)
 		by_source[m["name"]] = node
 		# By the ACTOR it drives, for whoever has to name a sequence later: a
@@ -492,14 +500,17 @@ static func _set_owner(node: Node, owner: Node) -> void:
 static func _stamp(node: Node, annotation: Dictionary) -> void:
 	if annotation.has("package"):
 		node.set_meta(Common.PACKAGE_META, Common.package_key(str(annotation["package"])))
+		if annotation.has("name"):
+			node.set_meta(Common.ACTOR_META, Common.actor_id(str(annotation["package"]), str(annotation["name"])))
 
 
-## {path from the shell's root: package} of every stamped node outside the
-## instanced geometry. How a shell that was built before the stamp existed, and
-## has been edited by hand since, still gets its volumes switched: the table
-## rides on the chapter geometry, and a node that was renamed or deleted simply
-## finds no entry.
-static func package_paths(shell: Node) -> Dictionary:
+## {path from the shell's root: {meta: value}} for every node that carries
+## where it came from, outside the instanced geometry. How a shell that was
+## built before the stamp existed, and has been edited by hand since, still
+## gets its nodes found: the table rides on the chapter geometry and
+## PackagePresence puts it on the real shell's nodes by path. A node renamed or
+## deleted since simply finds no entry.
+static func origins(shell: Node) -> Dictionary:
 	var out := {}
 	var todo: Array[Node] = []
 	for child in shell.get_children():
@@ -507,8 +518,12 @@ static func package_paths(shell: Node) -> Dictionary:
 			todo.append(child)
 	while not todo.is_empty():
 		var node: Node = todo.pop_back()
-		if node.has_meta(Common.PACKAGE_META):
-			out[String(shell.get_path_to(node))] = node.get_meta(Common.PACKAGE_META)
+		var found := {}
+		for meta in [Common.PACKAGE_META, Common.ACTOR_META, Common.MATINEE_META]:
+			if node.has_meta(meta):
+				found[String(meta)] = node.get_meta(meta)
+		if not found.is_empty():
+			out[String(shell.get_path_to(node))] = found
 			continue
 		todo.append_array(node.get_children())
 	return out
@@ -1092,20 +1107,27 @@ func _glass(manifest: Dictionary, movers: NodePath) -> Node3D:
 
 ## The touches that end the chapter (LevelEnd), in the shapes of the original's
 ## triggers.
-## The chapter's PackagePresence and its triggers, or null for a level the
-## extractor found no streaming in. It goes into the chapter GEOMETRY, which
-## is rebuilt every time, not into the shell, which is edited by hand.
-func build_streaming(manifest: Dictionary) -> Node3D:
+## The chapter's PackagePresence and the KismetRunner under it, or null for a
+## level the extractor wrote no graph for. They go into the chapter GEOMETRY,
+## which is rebuilt every time, not into the shell, which is edited by hand.
+## `graph_path` is where the graph itself is saved, as a resource of its own:
+## thousands of nodes have no business in a scene file.
+func build_streaming(manifest: Dictionary, kismet: Dictionary, graph_path: String) -> Node3D:
 	var flow = manifest.get("streaming")
-	if not flow is Dictionary:
+	if not flow is Dictionary or kismet.is_empty():
 		return null
 	var snapshots := {}
+	var checkpoint_actors := {}
+	var streamed := {}
 	var start := ""
 	for c: Dictionary in manifest["checkpoints"]:
 		if (c.get("streaming", []) as Array).is_empty():
 			continue
 		var label := str(c["label"]) if str(c.get("label", "")) != "" else str(c["name"])
 		snapshots[label] = PackedStringArray(c["streaming"])
+		checkpoint_actors[label] = Common.actor_id(str(c["package"]), str(c["name"]))
+		for key: String in c["streaming"]:
+			streamed[key] = true
 		if c.get("default", false) and start == "":
 			start = label
 	if snapshots.is_empty():
@@ -1119,34 +1141,66 @@ func build_streaming(manifest: Dictionary) -> Node3D:
 	presence.set("snapshots", snapshots)
 	presence.set("start", start)
 	presence.set("managed", PackedStringArray(flow["managed"]))
-	presence.set("shell_packages", manifest.get("shell_packages", {}))
-	# One trigger per originator, its steps in the order they were flattened
-	# in: by delay, then unload before load.
-	var by_source := {}
-	for step: Dictionary in flow["steps"]:
-		var source: Dictionary = step["source"]
-		var id := "%s.%s" % [Common.package_key(source["package"]), source["trigger"]["name"]]
-		if not by_source.has(id):
-			by_source[id] = {source = source, steps = [] as Array[Dictionary]}
-		by_source[id].steps.append({op = step["op"], packages = PackedStringArray(step["packages"]),
-				delay = float(step["delay"]), order = int(step["order"])})
+	presence.set("shell_origins", manifest.get("shell_origins", {}))
+
+	var graph: Resource = KISMET_GRAPH_SCRIPT.new()
+	graph.set("nodes", kismet["nodes"])
+	graph.set("variables", kismet["vars"])
+	graph.set("actors", kismet["actors"])
+	var error := ResourceSaver.save(graph, graph_path, ResourceSaver.FLAG_COMPRESS)
+	if error != OK:
+		push_error("[me_level] saving %s: %s" % [graph_path, error_string(error)])
+		presence.free()
+		return null
+	var pressed := {}
+	var originates := {}
+	for id: String in kismet["nodes"]:
+		var node: Dictionary = kismet["nodes"][id]
+		if node.has("levels"):
+			for key: String in node["levels"]:
+				streamed[key] = true
+		if node.has("originator"):
+			originates[node["originator"]] = true
+			if str(node["cls"]) in ["SeqEvent_Used", "SeqEvent_TdUsed"]:
+				pressed[node["originator"]] = true
+	var runner := Node3D.new()
+	runner.name = "Kismet"
+	runner.set_script(KISMET_RUNNER_SCRIPT)
+	runner.set("graph", load(graph_path))
+	runner.set("checkpoint_actors", checkpoint_actors)
+	runner.set("streamed", PackedStringArray(streamed.keys()))
+	presence.add_child(runner)
+	# What the original's events listen to: a trigger has no picture and no
+	# placement, so nothing else has built it. This project has no use key --
+	# standing in a UseZone for its dwell is the press, as it is for a lift.
 	var names := Common.NameAllocator.new()
-	for id: String in by_source:
-		var source: Dictionary = by_source[id].source
-		var pressed: bool = source["kind"] != "touch"
-		var shape := _matinee_trigger(source["trigger"], pressed)
-		if shape == null:
+	for actor: String in kismet["actors"]:
+		var entry: Dictionary = kismet["actors"][actor]
+		if not originates.has(actor) or not entry.has("trigger"):
 			continue
-		shape.name = "Zone"
-		var trigger := Node3D.new()
-		trigger.name = names.take(id.validate_node_name())
-		trigger.set_script(STREAMING_TRIGGER_SCRIPT)
-		trigger.set("source", id)
-		trigger.set("pressed", pressed)
-		trigger.set("steps", by_source[id].steps)
-		trigger.set_meta(Common.PACKAGE_META, Common.package_key(source["package"]))
-		trigger.add_child(shape)
-		presence.add_child(trigger)
+		var zone := _matinee_trigger(entry["trigger"], pressed.has(actor))
+		if zone == null:
+			continue
+		zone.name = names.take(actor.validate_node_name())
+		zone.set_meta(Common.ACTOR_META, actor)
+		zone.set_meta(Common.PACKAGE_META, str(entry["package"]))
+		runner.add_child(zone)
+	# ...and the walls that exist only to be switched by it.
+	for actor: String in kismet["actors"]:
+		var entry: Dictionary = kismet["actors"][actor]
+		if not entry.has("wall") or not (entry["wall"] as Dictionary).has("hull"):
+			continue
+		var wall := StaticBody3D.new()
+		wall.name = names.take(actor.validate_node_name())
+		wall.position = Common.v3(entry["wall"]["position"])
+		if _hull_shapes(wall, entry["wall"], wall.transform) == 0:
+			wall.free()
+			continue
+		wall.set_meta(Common.ACTOR_META, actor)
+		wall.set_meta(Common.PACKAGE_META, str(entry["package"]))
+		if entry.get("starts_off", false):
+			wall.set_meta(&"kismet_starts_off", true)
+		runner.add_child(wall)
 	return presence
 
 

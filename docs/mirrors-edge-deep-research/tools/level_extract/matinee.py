@@ -186,8 +186,12 @@ def _scale(actor):
     return (s * s3[0], s * s3[1], s * s3[2])
 
 
-def collect(packages, mr, report, keep_driving=frozenset()):
+def collect(packages, mr, report, keep_driving=frozenset(), keep_all=False):
     """Matinees of one package.
+
+    `keep_all` keeps a sequence whatever starts it: a chapter that runs its
+    Kismet (kismet.py) plays every one of them from the graph, and the starts
+    read here are not what plays it.
 
     `keep_driving` holds actor ids (`package.name`) whose sequence is wanted
     even though nothing this module can read ever starts it. A respawn twin is
@@ -264,7 +268,7 @@ def collect(packages, mr, report, keep_driving=frozenset()):
         # A startless sequence is dropped -- UNLESS the config asked for the
         # actor it drives. Which actor that is only becomes known once the
         # groups below are read, so the decision waits until then.
-        if not starts and not keep_driving:
+        if not starts and not keep_driving and not keep_all:
             report['matinee_skipped'] = report.get('matinee_skipped', 0) + 1
             continue
         groups, length = [], None
@@ -315,7 +319,7 @@ def collect(packages, mr, report, keep_driving=frozenset()):
             report['matinee_without_movement'] = report.get('matinee_without_movement', 0) + 1
             continue
         if not starts:
-            if not any(a in keep_driving for g in groups for a in g['actors']):
+            if not keep_all and not any(a in keep_driving for g in groups for a in g['actors']):
                 report['matinee_skipped'] = report.get('matinee_skipped', 0) + 1
                 continue
             report['matinee_kept_startless'] = report.get('matinee_kept_startless', 0) + 1

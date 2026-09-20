@@ -89,6 +89,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			node.name = names.take(mesh_name)
 		node.set_meta("me_collision", collision)
 		node.set_meta(Common.PACKAGE_META, Common.package_key(placement["package"]))
+		node.set_meta(Common.ACTOR_META, Common.actor_id(placement["package"], placement["name"]))
 		if placement["soft_landing"]:
 			node.add_to_group("soft_landing", true)
 		var instance := MeshInstance3D.new()
@@ -520,6 +521,7 @@ func _build_lights(lights: Array) -> Node3D:
 			light.light_bake_mode = Light3D.BAKE_DISABLED
 		light.set_meta("me_brightness", float(entry["brightness"]))
 		light.set_meta(Common.PACKAGE_META, Common.package_key(str(entry["package"])))
+		light.set_meta(Common.ACTOR_META, Common.actor_id(str(entry["package"]), str(entry["name"])))
 		light.light_energy = float(entry["brightness"]) * scale
 		parent.add_child(light)
 	return parent

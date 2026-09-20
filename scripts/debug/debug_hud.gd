@@ -114,7 +114,7 @@ func set_tier(tier: int) -> void:
 ## are kept in both tiers: a readout that hides how to use the keys is not a
 ## smaller readout, it is a worse one.
 const COMPACT_ROWS := ["scene ", "move ", "at ", "speed ", "grounded ", "health ",
-	"energy ", "fps ", "packages ", "Tab HUD", "Esc release"]
+	"energy ", "fps ", "packages ", "kismet ", "Tab HUD", "Esc release"]
 
 func _worth_reading_while_playing(row: String) -> bool:
 	for prefix in COMPACT_ROWS:
@@ -245,6 +245,11 @@ func _process(delta: float) -> void:
 		rows.insert(rows.find("transitions"), "packages   %d / %d  last %s" % [
 			presence.present_count(), presence.managed.size(),
 			presence.last_source if presence.last_source != "" else "-"])
+	# ...and the original's script running it: how much of it is waiting on
+	# something, and how many kinds of node it has had to wave through.
+	var kismet := get_tree().get_first_node_in_group(KismetRunner.GROUP) as KismetRunner
+	if kismet != null:
+		rows.insert(rows.find("transitions"), "kismet     %s" % kismet.status_line())
 	if _tier == Tier.COMPACT:
 		rows = rows.filter(_worth_reading_while_playing)
 	_label.text = "

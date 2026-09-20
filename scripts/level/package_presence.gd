@@ -11,10 +11,11 @@ extends Node3D
 ##
 ## [ME:CONFIRMED] two sources, both the original's own. A TdCheckpoint lists
 ## the packages a restore there loads: `snapshots`, taken on every respawn.
-## Between checkpoints Kismet loads and unloads as the player goes: the
-## StreamingTrigger children, flattened by the extractor's streaming.py.
-## Touching a checkpoint on foot takes NO snapshot -- by then the triggers
-## have already brought the level there, and the snapshot is what a restore
+## Between checkpoints the level's Kismet loads and unloads as the player
+## goes: KismetRunner calls load_packages() and unload_packages() when a
+## streaming action fires, and waits for `settled` before the action's
+## Finished. Touching a checkpoint on foot takes NO snapshot -- by then Kismet
+## has already brought the level there, and the snapshot is what a restore
 ## loads, not what the player is standing in.
 ##
 ## Everything stays instanced. A package that is not present is hidden, its
@@ -22,15 +23,27 @@ extends Node3D
 ## collision layer. NOT taken out of the physics space, which is what a
 ## disabled CollisionObject3D does by default: coming back in rebuilds every
 ## shape, and a level has hulls Jolt cannot build, each failing again for
-## 30-47 ms -- four in one frame was a 169 ms hitch. DO NOT free and re-instance here without
-## reading docs/seamless-loading.md: _set_node() is the one place that would
-## change, and the frame budget is why it has not.
+## 30-47 ms -- four in one frame was a 169 ms hitch. DO NOT free and
+## re-instance here without reading docs/seamless-loading.md: _set_node() is
+## the one place that would change, and the frame budget is why it has not.
 ##
 ## A FEW NODES PER FRAME, NEAREST FIRST. Stormdrain's first lift swaps some
 ## four thousand nodes; done in one go that was a 286 ms frame in the middle
 ## of a run. The queue is sorted by distance from the player, so what is
 ## underfoot and in reach is there on the first frame and the far end of the
 ## stretch fills in over the next second -- the original took longer to load.
+
+## What came and what went, as package keys. Emitted when the change is
+## DECIDED, before a node has been switched: a package's Kismet goes with it.
+signal changed(loaded: Array[String], unloaded: Array[String])
+## Every node of the last change has been switched.
+signal settled
+## A restore is about to replace the level, and has. KismetRunner hangs on
+## these two rather than on the respawn itself: the packages have to be
+## decided BETWEEN its forgetting the old life and its starting the new one,
+## and the order of a group call is nothing to build that on.
+signal restoring
+signal restored(label: String)
 
 ## Spelt the same in tools/me_level/me_level_common.gd, which cannot name this
 ## class: a build runs without the autoloads Arena needs.
@@ -43,21 +56,17 @@ const GROUP := &"package_presence"
 @export var start: String = ""
 ## Packages this node governs. Any other package is always present.
 @export var managed: PackedStringArray = []
-## Section shell root name -> {path from that root: package}, for the volumes
-## of shells built before nodes carried their package: see
-## ShellBuilder.package_paths().
-@export var shell_packages: Dictionary = {}
-## A pressed trigger that is no configured lift's button waits at least this
-## long. The original's button path often carries no delay of its own -- its
-## unload took seconds and the doors shut meanwhile -- and hiding is instant.
-@export var pressed_min_delay: float = 3.0
+## Section shell root name -> {path from that root: {meta name: value}}, for
+## shells built before their nodes carried what they came from. Stamped onto
+## the nodes when the level opens: see ShellBuilder.origins().
+@export var shell_origins: Dictionary = {}
 ## Nodes switched per frame while a change is under way. A COUNT, not a time:
 ## what a switch costs is not paid here but when the physics and render
 ## servers flush it, at about 0.1 ms a node -- 400 a frame measured 46 ms.
 @export var nodes_per_frame: int = 64
 
 var present: Dictionary = {}
-## For the HUD: what fired last.
+## For the HUD: what changed the level last.
 var last_source: String = ""
 
 var _nodes_of: Dictionary = {}
@@ -70,18 +79,15 @@ var _bodies_of: Dictionary = {}
 var _managed: Dictionary = {}
 var _applied := false
 var _restoring := false
-## Steps waiting out their delay: {at: seconds, order, op, packages, source}.
-var _pending: Array[Dictionary] = []
+var _begun := false
 ## Nodes still to be switched, as [node, on], in the order they will be.
 var _queue: Array[Array] = []
-var _clock: float = 0.0
 var _arena: Arena = null
 
 
 func _ready() -> void:
 	add_to_group(Arena.RESET_ON_RESPAWN)
 	add_to_group(GROUP)
-	set_physics_process(false)
 	set_process(false)
 	var node := get_parent()
 	while node != null and not node is Arena:
@@ -96,18 +102,24 @@ func _begin() -> void:
 		_managed[key] = true
 	# The whole level; with no Arena above (a test, a scene opened on its own)
 	# whatever stands beside this node.
-	_index(_arena if _arena != null else get_parent())
-	if _arena != null:
-		_index_shells()
-	for trigger in get_tree().get_nodes_in_group(StreamingTrigger.GROUP):
-		if is_ancestor_of(trigger):
-			(trigger as StreamingTrigger).fired.connect(_on_fired)
+	var level: Node = _arena if _arena != null else get_parent()
+	_stamp_shells(level)
+	_index(level)
+	# Only now can an actor be found by name: the shells have their origins.
+	for child in get_children():
+		if child.has_method("bind"):
+			child.bind(level)
+	_begun = true
 	print("[presence] %d packages in the level, %d governed, %d snapshots" % [_nodes_of.size(), _managed.size(), snapshots.size()])
 	reset_for_respawn()
 
 
+func has_begun() -> bool:
+	return _begun
+
+
 func reset_for_respawn() -> void:
-	if _nodes_of.is_empty():
+	if not _begun:
 		return
 	var label := start
 	var checkpoint: Checkpoint = _arena.player.active_checkpoint if _arena != null and _arena.player != null else null
@@ -116,28 +128,41 @@ func reset_for_respawn() -> void:
 	restore(label)
 
 
-## The level as a restore at that checkpoint finds it. Steps still waiting out
-## a delay are dropped: they belong to the life that set them off.
+## The level as a restore at that checkpoint finds it.
 func restore(label: String) -> void:
-	_restoring = true
-	_restore(label)
-	_restoring = false
-
-
-func _restore(label: String) -> void:
-	_pending.clear()
-	set_physics_process(false)
 	if not snapshots.has(label):
 		push_warning("[presence] no snapshot for checkpoint '%s': the level stays as it is" % label)
 		return
 	var wanted := {}
 	for key: String in snapshots[label]:
 		wanted[key] = true
+	_restoring = true
+	restoring.emit()
 	_become(wanted, "restore " + label)
+	_restoring = false
+	restored.emit(label)
+
+
+func load_packages(keys: PackedStringArray, why: String) -> void:
+	var wanted := present.duplicate()
+	for key in keys:
+		wanted[key] = true
+	_become(wanted, why)
+
+
+func unload_packages(keys: PackedStringArray, why: String) -> void:
+	var wanted := present.duplicate()
+	for key in keys:
+		wanted.erase(key)
+	_become(wanted, why)
 
 
 func is_present(key: String) -> bool:
 	return present.has(key) or not _managed.has(key)
+
+
+func is_settled() -> bool:
+	return _queue.is_empty()
 
 
 ## Governed packages that are in the level. `present` alone also counts the
@@ -147,48 +172,6 @@ func present_count() -> int:
 	for key: String in present:
 		count += int(_managed.has(key))
 	return count
-
-
-func _on_fired(trigger: StreamingTrigger) -> void:
-	for step: Dictionary in trigger.steps:
-		var delay: float = step.get("delay", 0.0)
-		if trigger.lift != null:
-			delay = 0.0
-		elif trigger.pressed:
-			delay = maxf(delay, pressed_min_delay)
-		_pending.append({at = _clock + delay, order = int(step.get("order", 0)), op = step["op"],
-				packages = step["packages"], source = trigger.source})
-	_run_due()
-	set_physics_process(not _pending.is_empty())
-
-
-func _physics_process(delta: float) -> void:
-	_clock += delta
-	_run_due()
-	set_physics_process(not _pending.is_empty())
-
-
-func _run_due() -> void:
-	var due: Array[Dictionary] = []
-	var later: Array[Dictionary] = []
-	for step in _pending:
-		(due if step.at <= _clock else later).append(step)
-	if due.is_empty():
-		return
-	_pending = later
-	# Unload before load, as the original chains them: `order` is the depth of
-	# the Finished chain.
-	due.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return a.at < b.at if a.at != b.at else a.order < b.order)
-	var wanted := present.duplicate()
-	for step in due:
-		for key: String in step.packages:
-			if step.op == "load":
-				wanted[key] = true
-			else:
-				wanted.erase(key)
-		last_source = step.source
-	_become(wanted, due[0].source)
 
 
 func _become(wanted: Dictionary, why: String) -> void:
@@ -209,8 +192,7 @@ func _become(wanted: Dictionary, why: String) -> void:
 			if not wanted.has(key):
 				removed.append(key)
 	present = wanted
-	if why.begins_with("restore "):
-		last_source = why
+	last_source = why
 	# Arrivals before departures: what is coming is what the player is
 	# running at, and a shell lingering a moment longer blocks nobody yet.
 	for key in added:
@@ -218,13 +200,16 @@ func _become(wanted: Dictionary, why: String) -> void:
 	for key in removed:
 		_enqueue(key, false)
 	_sort_queue()
-	if not _queue.is_empty():
-		# Holds the loading curtain while the level opens; harmless later.
-		add_to_group(Arena.WARMING)
-		set_process(true)
-		_process(0.0)
 	if not added.is_empty() or not removed.is_empty():
-		print("[presence] %s: +%s -%s, %d present" % [why, added, removed, present.size()])
+		print("[presence] %s: +%s -%s, %d present" % [why, added, removed, present_count()])
+		changed.emit(added, removed)
+	if _queue.is_empty():
+		settled.emit()
+		return
+	# Holds the loading curtain while the level opens; harmless later.
+	add_to_group(Arena.WARMING)
+	set_process(true)
+	_process(0.0)
 
 
 func _enqueue(key: String, on: bool) -> void:
@@ -234,8 +219,7 @@ func _enqueue(key: String, on: bool) -> void:
 		_queue.append([node, on])
 
 
-## Nearest the player first, arrivals before departures at equal distance.
-## A node switched twice keeps only its last word.
+## Nearest the player first. A node switched twice keeps only its last word.
 func _sort_queue() -> void:
 	var last := {}
 	for entry in _queue:
@@ -274,6 +258,7 @@ func _process(_delta: float) -> void:
 	if _queue.is_empty():
 		remove_from_group(Arena.WARMING)
 		set_process(false)
+		settled.emit()
 
 
 func _set_node(node: Node, on: bool) -> void:
@@ -292,30 +277,32 @@ func _set_node(node: Node, on: bool) -> void:
 			body.collision_mask = entry[2] if on else 0
 
 
-func _index_shells() -> void:
-	for root_name: String in shell_packages:
+## A shell is edited by hand and not rebuilt, so one written before its nodes
+## carried their origin never will by itself: the build reads the origins off
+## a shell made in memory, and they are put on the real one's nodes here, by
+## path. A node renamed or deleted since simply finds no entry.
+func _stamp_shells(level: Node) -> void:
+	for root_name: String in shell_origins:
 		var shell: Node = null
-		for loader in _arena.find_children("*", "Node3D", false, false):
+		for loader in level.find_children("*", "Node3D", false, false):
 			if loader is SectionLoader and loader.has_node(NodePath(root_name)):
 				shell = loader.get_node(NodePath(root_name))
 		if shell == null:
 			continue
-		var paths: Dictionary = shell_packages[root_name]
-		for path: String in paths:
+		var origins: Dictionary = shell_origins[root_name]
+		for path: String in origins:
 			var node := shell.get_node_or_null(NodePath(path))
-			# A shell built since carries the stamp itself and is indexed by it.
-			if node != null and not node.has_meta(PACKAGE_META):
-				_register(String(paths[path]), node)
+			if node == null:
+				continue
+			for meta: String in origins[path]:
+				if not node.has_meta(meta):
+					node.set_meta(meta, origins[path][meta])
 
 
 func _register(key: String, node: Node) -> void:
 	_nodes_of.get_or_add(key, []).append(node)
 	if node is Node3D:
-		# A trigger stands at the origin; its zone is where it is.
-		var placed := node as Node3D
-		if node is StreamingTrigger and node.get_child_count() > 0 and node.get_child(0) is Node3D:
-			placed = node.get_child(0)
-		_at[node] = placed.global_position
+		_at[node] = (node as Node3D).global_position
 	var bodies: Array = []
 	var todo: Array[Node] = [node]
 	while not todo.is_empty():
