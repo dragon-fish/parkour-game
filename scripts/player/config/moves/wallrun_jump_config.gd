@@ -34,10 +34,19 @@ extends MoveConfig
 ## fixed sideways shove that the player cannot aim, which is the opposite of
 ## how the technique reads in play.
 ##
-## 0.35 is roughly 20 degrees off the wall. Low enough that the view genuinely
-## steers the kick, high enough that looking straight into the wall still
-## leaves it.
-@export var wall_jump_min_away: float = 0.35
+## THE FLOOR IS FOR LOOKING INTO THE WALL, not for looking along it. At 0.35
+## (20 degrees) a kick taken while looking straight down the wall -- the view
+## almost parallel to it, which is how a run is normally jumped out of -- was
+## bent 20 degrees anyway, and both the turned speed and the push went that
+## way: at 8 m/s that is 0.7*8*sin20 + 5.2*sin20 = 3.5 m/s sideways, enough
+## that a landing straight ahead cannot be reached. Several of the original's
+## own wall runs ask for exactly that jump.
+##
+## 0.15 is about 8.6 degrees: still enough to clear a 0.4 m capsule off the
+## surface within a quarter second, and the same rotation still swings a view
+## aimed INTO the wall all the way out (looking at the wall gives away = -1,
+## which this rotates onto the normal whatever the floor is).
+@export var wall_jump_min_away: float = 0.15
 ## A HEIGHT (1.0 m), converted to a launch speed at the point of use --
 ## matching how this project reads every other `*ZHeight` field (spec §2.5).
 ## Source: 04 §4.4 `WallRunningJumpOffZHeightForward = 100` uu. ✅
