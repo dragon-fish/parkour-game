@@ -83,6 +83,17 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		push_error("[me_level] %s: %d positions, expected %d" % [name, positions.size(), record["vertex_count"]])
 		return null
 	var mesh := ArrayMesh.new()
+	# The colour this mesh turns under Runner Vision, carried on the resource
+	# the way its collision is. [ME:CONFIRMED] every tagged material has its own
+	# LOI_Color and they differ -- a lift button is (0.7, 0, 0) where a pipe is
+	# (1.5, 0, 0) -- so the builder reads it here rather than repainting
+	# everything one red.
+	for surface: Dictionary in record["surfaces"]:
+		var bake: Variant = _bakes.get(surface["material"] if surface["material"] != null else "")
+		if bake is Dictionary and (bake as Dictionary).has("loi_color"):
+			var rgb: Array = bake["loi_color"]
+			mesh.set_meta("loi_color", Color(rgb[0], rgb[1], rgb[2]))
+			break
 	var collision_faces := PackedVector3Array()
 	# Faces of surfaces whose material the original marks
 	# bEnableUncontrolledSlide: a separate shape, so the placement can carry

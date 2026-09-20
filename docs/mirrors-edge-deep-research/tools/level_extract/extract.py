@@ -15,7 +15,7 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from common import (ExtractError, actor_scale, godot_basis, import_root_package, outer_class, pivot_offset,
+from common import (UU, ExtractError, actor_scale, godot_basis, import_root_package, outer_class, pivot_offset,
                     point, ref_export, ref_import)
 import annotations
 import lights
@@ -357,7 +357,8 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
                     'base': base, 'aabb': {'min': lo, 'max': hi}}
                    | ({'pre_pivot': pre_pivot} if any(abs(c) > 1e-4 for c in pre_pivot) else {})
                    | ({'materials': overrides} if any(overrides) else {})
-                   | ({'shadow_only': True} if shadow_only else {}))
+                   | ({'shadow_only': True} if shadow_only else {})
+                   | ({'runner_vision': runner_vision(actor)} if actor.get('bLOIObject') else {}))
     return out
 
 
@@ -423,6 +424,21 @@ def names_of(records):
     TdCheckpoint_15, its label is what the shell names the node and what a
     person reads."""
     return [r['name'] for r in records] + [r['label'] for r in records if r.get('label')]
+
+
+# [ME:CONFIRMED] LOIDistance's class default, in uu: a placement that leaves it
+# at 0 means this rather than "never".
+LOI_DEFAULT_DISTANCE_UU = 1500.0
+
+
+def runner_vision(actor):
+    """An actor's Runner Vision settings, as RunnerVisionTarget's fields.
+    See docs/mirrors-edge-deep-research/14-信使视觉LOI.md."""
+    distance = float(actor.get('LOIDistance') or LOI_DEFAULT_DISTANCE_UU)
+    return {'distance_m': round(distance / UU, 3),
+            'flat_distance': bool(actor.get('LOIUse2DDistance')),
+            'proximity_delay': round(float(actor.get('LOIProximityDelay') or 0.0), 3),
+            'min_duration': round(float(actor.get('LOIMinDuration', 1.5)), 3)}
 
 
 def snap_ladders(placements, annotations, report):

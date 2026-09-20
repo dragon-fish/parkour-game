@@ -219,6 +219,14 @@ class MaterialBaker:
         # through a cube map sampled into one of the root inputs (a glass
         # facade's EmissiveColor, typically); the bake above reads that sample
         # as a flat 0.5, so which inputs reach one is recorded here instead.
+        loi = _loi_colour(ev, ins, params)
+        if loi is not None:
+            # What the surface turns when Runner Vision picks it out. The
+            # original fades LOI_Strength from 0 to 1 and this is the colour it
+            # fades towards, per material and tuned by hand
+            # (docs/mirrors-edge-deep-research/14-信使视觉LOI.md).
+            out['loi_color'] = [round(float(c), 4) for c in loi[:3]]
+            self.stats['loi_colour'] += 1
         reflection = sorted(n for n, link in ins.items() if link and link['expr'] > 0 and ev.reaches_cube(link['expr']))
         if not unlit:
             glow = self._emission(root_reader, root, params, ev.coordinate_filter, shape)
@@ -656,6 +664,31 @@ def png_base64(pixels):
            + chunk(b'IDAT', zlib.compress(raw, 1))
            + chunk(b'IEND', b''))
     return base64.b64encode(png).decode('ascii')
+
+
+def _loi_colour(ev, ins, params, depth=12):
+    """The LOI_Color a material fades towards, or None when it has no such
+    parameter. Walked from the root's inputs rather than scanned for over the
+    whole package: a material names the parameter once, in its own graph."""
+    if isinstance(params.get('LOI_Color'), np.ndarray):
+        return params['LOI_Color']
+    seen = set()
+    queue = [link['expr'] for link in ins.values() if link and link['expr'] > 0]
+    while queue and depth > 0:
+        nxt = []
+        for idx in queue:
+            if idx in seen:
+                continue
+            seen.add(idx)
+            props = ev.props(idx)
+            if props.get('ParameterName') == 'LOI_Color':
+                colour = _linear_color(ev.mr, idx, 'DefaultValue')
+                if colour is not None:
+                    return colour
+            nxt += [link['expr'] for link in ev.inputs(idx).values() if link and link['expr'] > 0]
+        queue = nxt
+        depth -= 1
+    return None
 
 
 def resize(img, shape):
