@@ -5,10 +5,15 @@ Only that shape is read. Kismet is a whole scripting language -- remote
 events, sub-sequences, counters, conditions -- and replaying it is out of
 scope; a matinee reached any other way is counted in the report and skipped. See docs/superpowers/specs/2026-09-19-me-chapter-sections-design.md.
 
-Keys are RELATIVE to each driven actor's starting transform: position offsets
-in world axes, rotations applied in world axes about the actor's own origin.
-[ME:INFERRED] UE3's InterpTrackMove default (MoveFrame IMF_World, relative
-keys); only yaw-dominant tracks were checked by eye.
+[ME:CONFIRMED] what a key is depends on the track's MoveFrame, and the two are
+not alike. IMF_RelativeToInitial keys are RELATIVE to each driven actor's
+starting transform, in the actor's own frame, and begin at zero: every one of
+Stormdrain's 87 and the Subway's 159 does. IMF_World keys are ABSOLUTE world
+positions: all 14 of the Subway's are its train-ride tunnel, and each piece
+stands where its key at the sequence's start position says (the four pieces
+of one 4 s loop stand a pitch apart and enter it at 0, 1, 2 and 3 s). Read as
+offsets -- which is what this module assumed of every track -- they threw the
+tunnel a kilometre down the line.
 """
 import struct
 
@@ -154,8 +159,10 @@ def _keys(mr, track):
             # IMF_RelativeToInitial: keys in the actor's OWN frame. The lift's
             # two door leaves face opposite ways and share one "-76 along X",
             # which opens them to opposite sides only read this way.
-            # UE3's class default is IMF_World.
-            'local': pr.get('MoveFrame') == 'IMF_RelativeToInitial'}
+            # UE3's class default is IMF_World, and a world track's keys are
+            # where the actor IS, not how far it has moved: see the top.
+            'local': pr.get('MoveFrame') == 'IMF_RelativeToInitial',
+            'absolute': pr.get('MoveFrame') != 'IMF_RelativeToInitial'}
 
 
 def _trigger(packages, mr, idx):

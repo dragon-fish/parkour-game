@@ -700,11 +700,28 @@ def main(config_path):
         for record in placements:
             report['sections'][record['section'] or '(chapter)']['placements'] =                report['sections'][record['section'] or '(chapter)'].get('placements', 0) + 1
 
+    # Only a chapter built section by section runs the original's Kismet and
+    # streams: a single-scene level names the packages it wants, keeps them
+    # all, and is scripted by hand.
+    built_actors = {'%s.%s' % (streaming.package_key(r['package']), r['name'])
+                    for r in placements + found_lights + notes['annotations']}
+    # Glass is BreakableGlass's, shatter and all: see kismet.mark_useful().
+    panes = {'%s.%s' % (streaming.package_key(a['package']), a['name'])
+             for a in notes['annotations'] if a['kind'] == 'glass'}
+    graph = kismet.collect(packages, report, built_actors, {m['name'] for m in matinees}, panes,
+                           meshes.resolve) \
+        if config['split_sections'] else None
     records = meshes.finish_names()
     for p in placements:
         p['mesh'] = p.pop('_record')['name']
     report['mesh_variants'] = sorted(n for n in records if '@' in n)
     used = {p['mesh'] for p in placements}
+    # What the level's Kismet swaps in is placed nowhere, and is used all the
+    # same: the subway's tunnel changes an obstacle every lap.
+    for node in (graph['nodes'].values() if graph else []):
+        if '_mesh_record' in node:
+            node['mesh'] = node.pop('_mesh_record')['name']
+            used.add(node['mesh'])
     mesh_out = {n: r for n, r in records.items() if n in used}
     report['meshes'] = len(mesh_out)
     report['meshes_without_normals'] = sorted(n for n, r in mesh_out.items() if r['normals'] is None)
@@ -739,16 +756,6 @@ def main(config_path):
     report['environment'] = look.get('package') if look else None
     report['sun'] = '%s.%s' % (look['sun']['package'], look['sun']['name']) if look and look.get('sun') else None
 
-    # Only a chapter built section by section runs the original's Kismet and
-    # streams: a single-scene level names the packages it wants, keeps them
-    # all, and is scripted by hand.
-    built_actors = {'%s.%s' % (streaming.package_key(r['package']), r['name'])
-                    for r in placements + found_lights + notes['annotations']}
-    # Glass is BreakableGlass's, shatter and all: see kismet.mark_useful().
-    panes = {'%s.%s' % (streaming.package_key(a['package']), a['name'])
-             for a in notes['annotations'] if a['kind'] == 'glass'}
-    graph = kismet.collect(packages, report, built_actors, {m['name'] for m in matinees}, panes) \
-        if config['split_sections'] else None
     flow = {'managed': streaming.managed(notes['checkpoints'], graph)} if graph else None
     switch_on_collision(placements, graph, report)
 

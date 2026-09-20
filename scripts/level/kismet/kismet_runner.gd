@@ -51,6 +51,10 @@ const DAMAGED := ["SeqEvent_TakeDamage"]
 ## is called. Given the common default, a lift's "open the car doors" ran at
 ## the bottom and never again, and the car arrived to doors that stayed shut.
 const UNLIMITED_BY_DEFAULT := {"SeqEvent_SequenceActivated": 0}
+## What an object variable holds when it holds the player. There is nobody
+## else to touch or press anything, so an event's Instigator is always this.
+const THE_PLAYER := &"the player"
+const PLAYER_VARIABLES := ["SeqVar_Player", "SeqVar_TdLocalPawn"]
 ## Outputs of a Used event that say the press did NOT happen.
 const NOT_PRESSED := ["Unused", "Aborted"]
 const LEVEL_START := ["SeqEvent_LevelLoaded", "SeqEvent_LevelStartup", "SeqEvent_LevelBeginning"]
@@ -98,6 +102,10 @@ var _streamed: Dictionary = {}
 ## Actor id -> {flag: value} for what Kismet has changed, so a respawn can put
 ## it back and a Toggle can know what it is toggling.
 var _touched_state: Dictionary = {}
+## Placement -> {mesh, shapes} as it was built, for one SetStaticMesh has changed.
+var _swapped: Dictionary = {}
+## Path -> mesh, held so that a swap is a pointer and not a disk read.
+var _meshes: Dictionary = {}
 ## Waiting: {at, node, output} fires an output, {at, node, input} activates.
 var _timers: Array[Dictionary] = []
 ## Interp ids in motion.
@@ -153,12 +161,23 @@ func bind(level: Node) -> void:
 		if node.has_meta(MATINEE_META) and node is Matinee:
 			_matinees[String(node.get_meta(MATINEE_META))] = node
 		todo.append_array(node.get_children())
+	# Loaded now, behind the curtain, not on the lap that first wants them.
+	for id: String in _by_class.get("SeqAct_SetStaticMesh", []):
+		var path: String = _nodes[id].get("mesh_path", "")
+		if not path.is_empty() and ResourceLoader.exists(path) and not _meshes.has(path):
+			_meshes[path] = load(path)
 	for id: String in _by_class.get("SeqAct_Interp", []):
 		var matinee: Matinee = _matinees.get(_nodes[id].get("matinee", ""))
 		if matinee != null:
 			matinee.take_over()
+			matinee.looping = bool(_prop(_nodes[id], "bLooping", false))
 	for actor: String in _events_of:
-		for node: Node in _actors.get(actor, []):
+		var touched := false
+		for id: String in _events_of[actor]:
+			touched = touched or _nodes[id]["cls"] in TOUCH
+		for node: Node in _actors.get(actor, []).duplicate():
+			if touched and not node is Area3D and node.get_node_or_null("Mesh") is MeshInstance3D:
+				node = _touch_area_of(node as Node3D)
 			_listen(actor, node)
 	for actor: String in _actors:
 		if graph.actors.get(actor, {}).get("starts_off", false):
@@ -166,6 +185,36 @@ func bind(level: Node) -> void:
 				_set_layers(node, COLLIDE_NONE)
 	print("[kismet] %d nodes, %d actors found of %d named, %d matinees driven" % [
 		_nodes.size(), _actors.size(), graph.actors.size(), _matinees.size()])
+
+
+## [ME:CONFIRMED] a mesh can be what is touched: the subway's tunnel pieces
+## collide without blocking (BlockActors off) and their Touch causes damage,
+## which is the whole of "the beam hit you". A body reports no touch here, so
+## the piece gets an area in the shape of its mesh, riding with it.
+func _touch_area_of(placed: Node3D) -> Area3D:
+	var area := Area3D.new()
+	area.name = "KismetTouch"
+	area.collision_layer = 0
+	area.collision_mask = Arena.PLAYER_LAYER
+	placed.add_child(area)
+	_shape_touch_area(area, placed.get_node("Mesh") as MeshInstance3D)
+	return area
+
+
+## Convex shapes only: an area does not work with a concave one. A mesh with
+## no simple collision -- the tunnel's clear pieces -- touches nothing, which
+## is what it should do.
+func _shape_touch_area(area: Area3D, picture: MeshInstance3D) -> void:
+	for child in area.get_children():
+		area.remove_child(child)
+		child.queue_free()
+	if picture.mesh == null:
+		return
+	for shape: Shape3D in picture.mesh.get_meta("simple_shapes", []):
+		var collision := CollisionShape3D.new()
+		collision.shape = shape
+		collision.transform = picture.transform
+		area.add_child(collision)
 
 
 func _listen(actor: String, node: Node) -> void:
@@ -212,6 +261,7 @@ func _forget_everything() -> void:
 	for actor: String in _touched_state:
 		_restore_actor(actor)
 	_touched_state.clear()
+	_restore_meshes()
 	_set_lift_rules(false)
 
 
@@ -313,6 +363,9 @@ func _fire_event(id: String, names: Array, free: bool = false) -> void:
 			return
 		state["count"] = state.get("count", 0) + 1
 		state["again_at"] = _clock + float(_prop(node, "ReTriggerDelay", 0.0))
+	# Whoever touched or pressed: read further on as "the one to hurt".
+	for variable: String in node.get("vars", {}).get("Instigator", []):
+		_set_value(variable, THE_PLAYER)
 	if trace:
 		print("[kismet] EVENT %s %s %s" % [id, node["cls"], node.get("originator", "")])
 	elif node.has("originator") and _leads_somewhere(node):
@@ -483,6 +536,24 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 			for actor: String in _targets(node, "Target"):
 				_set_actor(actor, "collision", mode)
 			_fire(id, 0)
+		"SeqAct_CauseDamage":
+			# Only the player has health here. [ME:CONFIRMED] the scale is the
+			# original's: 100 is a life, and the tunnel's beams deal 100.
+			var hurts_player := false
+			for variable: String in node.get("vars", {}).get("Target", []):
+				var resolved := _resolve(variable)
+				hurts_player = hurts_player or _vars.get(resolved, {}).get("cls", "") in PLAYER_VARIABLES \
+						or _var_values.get(resolved) == THE_PLAYER
+			var player: Node = _player()
+			if hurts_player and player != null and player.has_method("take_damage"):
+				_tell("%s hurts the player for %s" % [id, _prop(node, "DamageAmount", 0.0)])
+				player.take_damage(float(_prop(node, "DamageAmount", 0.0)), Health.Cause.VOLUME)
+			_fire(id, 0)
+		"SeqAct_SetStaticMesh":
+			for actor: String in _targets(node, "Target"):
+				for placed: Node in _actors.get(actor, []):
+					_swap_mesh(placed, node.get("mesh_path", ""))
+			_fire(id, 0)
 		"SeqAct_Destroy":
 			for actor: String in _targets(node, "Target"):
 				_set_actor(actor, "shown", 0)
@@ -601,6 +672,12 @@ func _run_interp(id: String, node: Dictionary, input: int, state: Dictionary) ->
 		0:
 			if at >= length or _prop(node, "bRewindOnPlay", false):
 				at = 0.0
+			# Where a PLAY begins, and only a play: the subway's four tunnel
+			# pieces are one 4 s loop entered at 0, 1, 2 and 3 s, and a wrap
+			# that went back to the entry point instead of to 0 ran each piece
+			# over a quarter of its track.
+			if _prop(node, "bForceStartPos", false):
+				at = clampf(float(_prop(node, "ForceStartPosition", 0.0)), 0.0, length)
 			state["direction"] = 1
 			_drive_matinee(id, "play")
 		1:
@@ -638,13 +715,29 @@ func _advance_interp(id: String, delta: float) -> void:
 		return
 	var length: float = float(node.get("length", 0.0))
 	var before: float = state.get("at", 0.0)
-	var after: float = clampf(before + delta * float(_prop(node, "PlayRate", 1.0)) * direction, 0.0, length)
+	# The rate is a VARIABLE wherever the level means to change it: the
+	# subway's tunnel rolls at a Float that starts at 0, is stepped up 0.05 at
+	# a time once the player is on the roof and back down before the end. Read
+	# as the constant beside it, the tunnel never moved. The Matinee node
+	# showing the sequence is kept at the same rate.
+	var rate: float = _number(node, "PlayRate", float(_prop(node, "PlayRate", 1.0)))
+	if node.get("vars", {}).has("PlayRate"):
+		var matinee: Matinee = _matinees.get(node.get("matinee", ""))
+		if matinee != null and is_instance_valid(matinee):
+			matinee.play_rate = rate
+	var after: float = clampf(before + delta * rate * direction, 0.0, length)
 	state["at"] = after
 	_interp_events(id, node, before, after, direction, false)
 	if direction > 0 and after >= length:
 		if _prop(node, "bLooping", false):
-			state["at"] = 0.0
-			_drive_matinee(id, "play")
+			# The Matinee node goes round by itself, keeping what ran over;
+			# this clock does the same, so the two stay on the same frame.
+			state["at"] = fmod(before + delta * rate, length) if length > 0.0 else 0.0
+			# A lap begins AT 0, and a key at 0 is on it: the subway's tunnel
+			# keys everything there -- "this piece is back at the far end,
+			# change its obstacle" -- and crossing alone (time > before) never
+			# sees 0 again after the first play.
+			_interp_events(id, node, 0.0, 0.0, 1, true)
 			return
 		state["direction"] = 0
 		_playing.erase(id)
@@ -798,6 +891,73 @@ func _set_layers(node: Node, mode: int) -> void:
 			var present: bool = _presence == null or _presence.is_body_present(body)
 			PackagePresence.set_colliding(body, present and PackagePresence.kismet_allows(body))
 		todo.append_array(at.get_children())
+
+
+## A placement's mesh AND what it collides with: the subway swaps a clear
+## tunnel piece for one with a beam to duck, and a beam that is only a picture
+## is no obstacle. The shapes are the new mesh's own, as the geometry builder
+## would have given it; what the node was built with is kept for the respawn.
+func _swap_mesh(placed: Node, path: String) -> void:
+	var picture := placed.get_node_or_null("Mesh") as MeshInstance3D
+	if picture == null or path.is_empty() or not ResourceLoader.exists(path):
+		return
+	var mesh := load(path) as ArrayMesh
+	if mesh == null or picture.mesh == mesh:
+		return
+	if not _swapped.has(placed):
+		var built: Array[Node] = []
+		for child in placed.get_children():
+			if child is CollisionShape3D:
+				built.append(child)
+		_swapped[placed] = {mesh = picture.mesh, shapes = built}
+	for child in placed.get_children():
+		if child is CollisionShape3D:
+			placed.remove_child(child)
+			if not (_swapped[placed].shapes as Array).has(child):
+				child.queue_free()
+	picture.mesh = mesh
+	var touch := placed.get_node_or_null("KismetTouch") as Area3D
+	if touch != null:
+		_shape_touch_area(touch, picture)
+	# Solid only if it was built solid: the tunnel's pieces never block, and a
+	# beam given shapes was a wall arriving at thirty metres a second.
+	if not placed is CollisionObject3D or placed.get_meta("me_collision", "none") == "none":
+		return
+	var shapes: Array = mesh.get_meta("simple_shapes", [])
+	if shapes.is_empty() and mesh.has_meta("per_poly_shape"):
+		shapes = [mesh.get_meta("per_poly_shape")]
+	for shape: Shape3D in shapes:
+		var collision := CollisionShape3D.new()
+		collision.shape = shape
+		collision.position = picture.position
+		placed.add_child(collision)
+
+
+func _restore_meshes() -> void:
+	for placed: Node in _swapped:
+		if not is_instance_valid(placed):
+			continue
+		for child in placed.get_children():
+			if child is CollisionShape3D:
+				placed.remove_child(child)
+				child.queue_free()
+		var built: Dictionary = _swapped[placed]
+		var picture := placed.get_node("Mesh") as MeshInstance3D
+		picture.mesh = built.mesh
+		for shape: Node in built.shapes:
+			placed.add_child(shape)
+		var touch := placed.get_node_or_null("KismetTouch") as Area3D
+		if touch != null:
+			_shape_touch_area(touch, picture)
+	_swapped.clear()
+
+
+func _exit_tree() -> void:
+	# The built shapes of a swapped node are out of the tree, and nobody's.
+	for placed: Node in _swapped:
+		for shape: Node in _swapped[placed].shapes:
+			if is_instance_valid(shape) and not shape.is_inside_tree():
+				shape.free()
 
 
 func _set_lift_rules(on: bool) -> void:

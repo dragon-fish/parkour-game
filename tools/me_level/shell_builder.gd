@@ -10,6 +10,7 @@ extends RefCounted
 
 const Common := preload("res://tools/me_level/me_level_common.gd")
 const GeometryBuilder := preload("res://tools/me_level/geometry_builder.gd")
+const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
 const BASE_LEVEL := "res://templates/base_level.tscn"
 const INTEREST_LINE_SCRIPT := preload("res://scripts/level/interest_line.gd")
 const CHECKPOINT_SCRIPT := preload("res://scripts/level/checkpoint.gd")
@@ -302,7 +303,8 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
 					pivots.append(Common.transform_of(frame))
 			if targets.is_empty():
 				continue
-			var track := {targets = targets, pivots = pivots, local = bool(g["keys"].get("local", false))}
+			var track := {targets = targets, pivots = pivots, local = bool(g["keys"].get("local", false)),
+					absolute = bool(g["keys"].get("absolute", false))}
 			_matinee_channel(track, "pos_", g["keys"]["position"])
 			_matinee_channel(track, "rot_", g["keys"]["euler"])
 			_matinee_channel(track, "scl_", g["keys"].get("scale", []))
@@ -1143,6 +1145,10 @@ func build_streaming(manifest: Dictionary, kismet: Dictionary, graph_path: Strin
 	presence.set("managed", PackedStringArray(flow["managed"]))
 	presence.set("shell_origins", manifest.get("shell_origins", {}))
 
+	# A mesh the graph swaps in, as the path the level loads it from.
+	for id: String in kismet["nodes"]:
+		if (kismet["nodes"][id] as Dictionary).has("mesh"):
+			kismet["nodes"][id]["mesh_path"] = MeLibrary.path_for(str(kismet["nodes"][id]["mesh"]))
 	var graph: Resource = KISMET_GRAPH_SCRIPT.new()
 	graph.set("nodes", kismet["nodes"])
 	graph.set("variables", kismet["vars"])

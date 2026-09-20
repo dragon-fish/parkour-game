@@ -406,3 +406,73 @@ func test_a_package_arriving_does_not_undo_what_its_own_kismet_switched_off() ->
 	presence.unload_packages(PackedStringArray(["b"]), "test")
 	await step(3)
 	assert_eq(wall.collision_layer, 0, "and gone with its package")
+
+
+func test_a_sequence_runs_at_the_rate_its_variable_holds_and_enters_where_it_is_told() -> void:
+	var rig := await _runner({
+		"go": _n("SeqEvent_RemoteEvent", [["Out", [["roll", 0]]]]),
+		"roll": _n("SeqAct_Interp", [["Completed", [["done", 0]]], ["Aborted", []]],
+				{length = 4.0, vars = {PlayRate = ["speed"]}, props = {bForceStartPos = true, ForceStartPosition = 3.0}}),
+		"done": _probe("done"),
+		"faster": _n("SeqEvent_RemoteEvent", [["Out", [["set", 0]]]]),
+		"set": _n("SeqAct_SetFloat", [["Out", []]], {vars = {Target = ["speed"], Value = ["half"]}}),
+	}, {"speed": {cls = "SeqVar_Float"}, "half": {cls = "SeqVar_Float", value = {FloatValue = 0.5}}})
+	_event(rig.runner, "go")
+	assert_almost_eq(float(rig.runner._state["roll"]["at"]), 3.0, 0.001, "entered where ForceStartPosition says")
+	await step(30)
+	assert_almost_eq(float(rig.runner._state["roll"]["at"]), 3.0, 0.001, "a rate of 0 -- the variable's start -- is standing still")
+	_event(rig.runner, "faster")
+	await step(60)
+	assert_almost_eq(float(rig.runner._state["roll"]["at"]), 3.5, 0.02, "half speed for a second")
+
+
+func test_a_looping_sequence_fires_its_key_at_zero_on_every_lap() -> void:
+	var rig := await _runner({
+		"go": _n("SeqEvent_RemoteEvent", [["Out", [["piece", 0]]]]),
+		"piece": _n("SeqAct_Interp", [["Completed", [["done", 0]]], ["Aborted", []], ["Swap", [["swapped", 0]]]],
+				{length = 0.2, props = {bLooping = true},
+				events_at = [{name = "swap", time = 0.0, forwards = true, backwards = true}]}),
+		"swapped": _probe("swapped"), "done": _probe("done"),
+	})
+	_event(rig.runner, "go")
+	await step(40)
+	assert_gt(_reached(rig.runner, "swapped"), 2, "once on the play and once for every lap after it")
+	assert_eq(_reached(rig.runner, "done"), 0, "a loop never completes")
+
+
+func test_a_swapped_mesh_changes_what_is_touched_and_is_not_made_solid() -> void:
+	# The subway's tunnel piece: it never blocks, it TOUCHES, and what it
+	# touches with is whatever mesh the last lap gave it.
+	var clear := ArrayMesh.new()
+	var beam := ArrayMesh.new()
+	beam.set_meta("simple_shapes", [BoxShape3D.new(), BoxShape3D.new()])
+	var beam_path := "user://test_kismet_beam.res"
+	ResourceSaver.save(beam, beam_path)
+	var rig := await _runner({
+		"hit": _n("SeqEvent_Touch", [["Touched", []], ["UnTouched", []]], {originator = "p.Piece"}),
+		"lap": _n("SeqEvent_RemoteEvent", [["Out", [["swap", 0]]]]),
+		"swap": _n("SeqAct_SetStaticMesh", [["Out", []]], {mesh_path = beam_path, vars = {Target = ["piece"]}}),
+	}, {"piece": {cls = "SeqVar_Object", actor = "p.Piece"}})
+	var piece := AnimatableBody3D.new()
+	piece.set_meta(KismetRunner.ACTOR_META, "p.Piece")
+	piece.set_meta("me_collision", "none")
+	var picture := MeshInstance3D.new()
+	picture.name = "Mesh"
+	picture.mesh = clear
+	piece.add_child(picture)
+	rig.root.add_child(piece)
+	rig.runner.bind(rig.root)
+	var touch := piece.get_node_or_null("KismetTouch") as Area3D
+	assert_not_null(touch, "a mesh that originates a Touch gets an area to be touched by")
+	assert_eq(touch.get_child_count(), 0, "a clear piece touches nothing")
+	_event(rig.runner, "lap")
+	assert_eq(picture.mesh.get_meta("simple_shapes", []).size(), 2, "the beam is in")
+	assert_eq(touch.get_child_count(), 2, "and is what touches now")
+	assert_eq(piece.find_children("*", "CollisionShape3D", false, false).size(), 0,
+			"built with no collision, it is not made a wall by being swapped")
+	rig.presence_free = true
+	rig.runner._forget_everything()
+	assert_eq(picture.mesh, clear, "a respawn gives the piece its own mesh back")
+	await step(1)
+	assert_eq(touch.get_child_count(), 0)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(beam_path))

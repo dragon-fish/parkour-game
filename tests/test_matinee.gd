@@ -75,3 +75,25 @@ func test_a_replay_from_the_end_still_starts_from_the_start() -> void:
 	assert_almost_eq(rig.target.global_position.y, 0.0, 0.01, "replayed from its end it must not take the end for its start")
 	rig.root.queue_free()
 	await step(1)
+
+
+func test_an_absolute_track_puts_its_target_where_the_key_says() -> void:
+	# UE3's IMF_World: a key is a place in the world. The subway's tunnel
+	# pieces stand a pitch apart and enter one loop a second apart; read as
+	# offsets from where each stood, every piece was thrown down the line by
+	# the whole of its own key.
+	var rig := _rig()
+	rig.matinee.length = 4.0
+	rig.matinee.start_position = 3.0
+	rig.matinee.tracks[0]["absolute"] = true
+	rig.matinee.tracks[0]["pos_times"] = PackedFloat32Array([0.0, 4.0])
+	rig.matinee.tracks[0]["pos_values"] = PackedVector3Array([Vector3(0.0, 0.0, 400.0), Vector3(0.0, 0.0, 0.0)])
+	rig.target.position = Vector3(0.0, 0.0, 100.0)   # where the key at 3 s is
+	await step(1)
+	rig.matinee.play()
+	await step(1)
+	assert_almost_eq(rig.target.global_position.z, 100.0 - 100.0 / 60.0, 0.5, "entered at 3 s it is where it stood, not 300 m from it")
+	await step(30)
+	assert_almost_eq(rig.target.global_position.z, 100.0 - 100.0 * 31.0 / 60.0, 1.0, "and moves along the keys from there")
+	rig.root.queue_free()
+	await step(1)

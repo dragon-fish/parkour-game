@@ -103,8 +103,11 @@ def _interp(mr, props):
     return round(length, 4), events
 
 
-def read_package(packages, mr, actors, variables):
-    """This package's nodes; fills `actors` and `variables` as it meets them."""
+def read_package(packages, mr, actors, variables, mesh_of=None):
+    """This package's nodes; fills `actors` and `variables` as it meets them.
+    `mesh_of(mr, reference)` gives the mesh record behind a StaticMesh
+    property, and by asking puts the mesh in the library: what a
+    SeqAct_SetStaticMesh swaps in is placed nowhere, so nothing else would."""
     pkg = mr.pkg
     nodes = {}
     indices = [i for i, e in enumerate(pkg.exports, 1)
@@ -219,6 +222,12 @@ def read_package(packages, mr, actors, variables):
             node['length'], node['events_at'] = _interp(mr, props)
             # The name matinee.collect() gives the same action.
             node['matinee'] = '%s#%d' % (mr.label, i)
+        elif cls == 'SeqAct_SetStaticMesh' and mesh_of is not None:
+            # The record, not its name: a name is only final once every mesh
+            # of the level is known (extract.py settles it after the fact).
+            record = mesh_of(mr, props.get('NewStaticMesh'))
+            if record is not None:
+                node['_mesh_record'] = record
         elif cls in ('SeqAct_MultiLevelStreaming', 'SeqAct_LevelStreaming'):
             levels = [x.get('LevelName') for x in _struct_array(mr, props.get('Levels'))] or [props.get('LevelName')]
             node['levels'] = [package_key(n) for n in levels if n and str(n) != 'None']
@@ -229,7 +238,8 @@ def read_package(packages, mr, actors, variables):
 # What a node has to be for the level to be any different for its running.
 # Everything else -- a checkpoint being set, the look-at hint being moved, an
 # AI being told where to walk, music -- changes nothing this project has.
-EFFECTS_ON_ACTORS = ('SeqAct_Toggle', 'SeqAct_ToggleHidden', 'SeqAct_ChangeCollision', 'SeqAct_Destroy')
+EFFECTS_ON_ACTORS = ('SeqAct_Toggle', 'SeqAct_ToggleHidden', 'SeqAct_ChangeCollision', 'SeqAct_Destroy',
+                     'SeqAct_SetStaticMesh')
 EFFECTS = ('SeqAct_MultiLevelStreaming', 'SeqAct_LevelStreaming', 'SeqAct_TdInElevator', 'SeqAct_Teleport')
 
 
@@ -291,6 +301,12 @@ def mark_useful(graph, built_actors, built_matinees, handled_elsewhere=frozenset
             return True
         if node['cls'] == 'SeqAct_Interp':
             return node.get('matinee') in built_matinees
+        if node['cls'] == 'SeqAct_CauseDamage':
+            # Only when it can be the PLAYER who is hurt: named as such, or an
+            # object variable nothing fills but an event's Instigator.
+            return any(variables.get(var, {}).get('cls') in ('SeqVar_Player', 'SeqVar_TdLocalPawn')
+                       or (variables.get(var, {}).get('cls') == 'SeqVar_Object' and not variables[var].get('actor'))
+                       for var in node.get('vars', {}).get('Target', []))
         if node['cls'] in EFFECTS_ON_ACTORS:
             for var in node.get('vars', {}).get('Target', []):
                 entry = variables.get(var, {})
@@ -330,7 +346,8 @@ def mark_useful(graph, built_actors, built_matinees, handled_elsewhere=frozenset
     return len(useful), len(events_of)
 
 
-def collect(packages, report, built_actors=frozenset(), built_matinees=frozenset(), handled_elsewhere=frozenset()):
+def collect(packages, report, built_actors=frozenset(), built_matinees=frozenset(), handled_elsewhere=frozenset(),
+            mesh_of=None):
     """manifest['kismet'] for a chapter. `built_actors` are the actors the
     level has nodes for, `built_matinees` the sequences it has Matinee nodes
     for, `handled_elsewhere` the actors whose events it answers some other
@@ -342,7 +359,7 @@ def collect(packages, report, built_actors=frozenset(), built_matinees=frozenset
             continue
         if name != packages.persistent and package_key(name) not in streamed:
             continue
-        nodes.update(read_package(packages, packages.reader(name), actors, variables))
+        nodes.update(read_package(packages, packages.reader(name), actors, variables, mesh_of))
     # A volume that starts off and that NOTHING in the graph names can never
     # come on, but the shell has built it, hurting: it is listed all the same,
     # so that the level turns it off with the rest.

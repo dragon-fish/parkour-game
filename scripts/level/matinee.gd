@@ -20,8 +20,10 @@ extends Node3D
 ## degrees, turned into a basis after sampling; scales the original's absolute
 ## DrawScale3D, applied to each target's Mesh as a ratio to the first key.
 ## `local`: keys are in each target's own frame (UE3 IMF_RelativeToInitial),
-## else in world axes. modes: 0 constant, 1 linear, 2 curve (Hermite on the
-## stored tangents).
+## else in world axes. `absolute` (UE3 IMF_World): a key is where the target
+## IS -- a world position, a world rotation -- and where it started has no say;
+## a channel with no keys leaves that much of the target alone. modes: 0
+## constant, 1 linear, 2 curve (Hermite on the stored tangents).
 @export var tracks: Array[Dictionary] = []
 @export var length: float = 0.0
 ## Seconds of the keys per second of play. The original sets it per action.
@@ -67,6 +69,9 @@ var _sound_fade: float = 0.0
 ## Keys time, 0 .. length.
 ## Played by the level's Kismet and by nothing of its own: see take_over().
 var driven := false
+## Goes round from its end to 0 by itself (UE3's bLooping), set by whoever
+## drives it.
+var looping := false
 
 var _time: float = 0.0
 ## +1 forward, -1 reverse, 0 still.
@@ -190,11 +195,17 @@ func take_over() -> void:
 	_reset()
 
 
-## "play", "reverse", "stop" (hold where it is) or "reset" (back to the start).
+## "play", "reverse", "loop" (round again from 0, NOT from start_position:
+## that is where a play begins, not where a lap does), "stop" (hold where it
+## is) or "reset" (back to the start).
 func drive(action: String) -> void:
 	match action:
 		"play":
 			_begin(1)
+		"loop":
+			_time = 0.0
+			_direction = 1
+			set_physics_process(true)
 		"reverse":
 			_begin(-1)
 		"stop":
@@ -290,7 +301,16 @@ func _physics_process(delta: float) -> void:
 	if _direction == 0:
 		set_physics_process(false)
 		return
-	_time = clampf(_time + delta * play_rate * _direction, 0.0, length)
+	var unclamped := _time + delta * play_rate * _direction
+	if looping and _direction > 0 and unclamped >= length and length > 0.0:
+		# Round again WITH what ran over. A lap that ended by stopping at the
+		# end and starting from 0 a frame later lost a metre or two each time
+		# at the subway tunnel's sixty metres a second, and the ring opened a
+		# seam at whichever piece had just wrapped.
+		_time = fmod(unclamped, length)
+		_apply()
+		return
+	_time = clampf(unclamped, 0.0, length)
 	_apply()
 	var finished := _time >= length if _direction > 0 else _time <= 0.0
 	if not finished:
@@ -345,14 +365,27 @@ func _apply() -> void:
 				# Hard-attached: the keys move the actor it rides, and it keeps
 				# its place relative to that actor.
 				var pivot: Transform3D = pivots[j]
-				var carried := _moved(pivot, offset, turn, track["local"])
+				var carried := _placed(pivot, offset, turn, track) if track.get("absolute", false) \
+						else _moved(pivot, offset, turn, track["local"])
 				target.global_transform = carried * pivot.affine_inverse() * start_transform
+			elif track.get("absolute", false):
+				target.global_transform = _placed(start_transform, offset, turn, track)
 			else:
 				target.global_transform = _moved(start_transform, offset, turn, track["local"])
 			if scaled:
 				var mesh := target.get_node_or_null("Mesh") as Node3D
 				if mesh != null:
 					mesh.transform.basis = (_mesh_starts[i][j] as Basis) * Basis.from_scale(stretch)
+
+
+## Where one sample of ABSOLUTE keys puts `from`: at the key, keeping its own
+## scale, and keeping whatever a channel with no keys says nothing about.
+static func _placed(from: Transform3D, position: Vector3, turn: Basis, track: Dictionary) -> Transform3D:
+	var origin: Vector3 = from.origin if (track["pos_times"] as PackedFloat32Array).is_empty() else position
+	var basis: Basis = from.basis
+	if not (track["rot_times"] as PackedFloat32Array).is_empty():
+		basis = turn * Basis.from_scale(from.basis.get_scale())
+	return Transform3D(basis, origin)
 
 
 ## Where `from` is carried by one sample of the keys.
