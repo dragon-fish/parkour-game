@@ -112,6 +112,7 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	_own(root, _level_ends(annotations))
 	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), _lift_actors(manifest)))
 	_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
+	_own(root, _checkpoints(manifest))
 	return root
 
 
@@ -892,7 +893,7 @@ func _checkpoints(manifest: Dictionary) -> Node3D:
 
 
 func _place_spawn(root: Node3D, manifest: Dictionary) -> void:
-	var candidates: Array = manifest["spawns"] + manifest["checkpoints"]
+	var candidates: Array = manifest["spawns"] + manifest.get("all_checkpoints", manifest["checkpoints"])
 	if candidates.is_empty():
 		push_error("[me_level] no spawn or checkpoint to start from")
 		return

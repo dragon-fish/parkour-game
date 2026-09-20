@@ -127,10 +127,12 @@ func _run() -> void:
 	for i in 3:
 		await physics_frame
 	var space: PhysicsDirectSpaceState3D = shell.get_world_3d().direct_space_state
+	# A checkpoint stands in the shell of the section whose floor it is on.
 	var starts: Array[Node3D] = [shell.get_node("SpawnPoint")]
-	if shell.has_node("Checkpoints"):
-		for checkpoint in shell.get_node("Checkpoints").get_children():
-			starts.append(checkpoint)
+	for part in parts:
+		if part.has_node("Checkpoints"):
+			for checkpoint in part.get_node("Checkpoints").get_children():
+				starts.append(checkpoint)
 	# Some the original drops the player from on purpose: Edge's "Cops" falls
 	# into the police's arms.
 	var floating: Array = config.get("floating_checkpoints", [])
