@@ -138,6 +138,14 @@ out-of-bounds cooked splines, the extractor reconstructs these from the
 original `PawnLadderLocations`; the builder must not create a zero-length
 interaction line. Swing bars can also be horizontally rotated catwalk supports.
 
+**A brush that was never built cooks down to a plane.** Its `BrushAggGeom`
+holds one four-point "hull" spanning UE's whole world, 524288 uu, so the
+volume covers the level. Eight across the corpus are like this, and sp02's
+`PhysicsVolume_5` came out 5243 x 5243 x 0 m: a pain volume with no thickness
+standing across the Storm Drain, which cost health wherever the player crossed
+z = -374. `annotations.built()` drops them, and an annotation left with no
+shape at all is dropped with it.
+
 **Section bounds.** Chapter checkpoints live in the persistent `*_p` package.
 Only those inside the section's own packages are kept: slices reach deep into
 neighbouring sections and `_Bac` is the skyline.

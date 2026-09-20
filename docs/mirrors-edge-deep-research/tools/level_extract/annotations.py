@@ -151,6 +151,20 @@ def vector_array(mr, idx, name):
     return [struct.unpack_from('<3f', mr.d, q + 4 + i * 12) for i in range(count)]
 
 
+# UE's world is 524288 uu across, so 5242.88 m in Godot space. A brush that was
+# never built keeps the unbounded plane the editor starts it from, and cooking
+# writes that plane out as a four-point "hull" reaching the world's edge. Eight
+# across the corpus are like this; sp02's PhysicsVolume_5 came out
+# 5243 x 5243 x 0 m and painted the whole Storm Drain as a pain volume.
+WORLD_EDGE = 5000.0
+
+
+def built(hull):
+    """False for the unbounded plane an unbuilt brush cooks down to."""
+    v = hull['vertices']
+    return max(max(p[k] for p in v) - min(p[k] for p in v) for k in range(3)) < WORLD_EDGE
+
+
 def brush_hulls(mr, component_idx):
     """KConvexElem hulls of a BrushComponent's BrushAggGeom (the same
     FKAggregateGeom hulls.py reads). Local, unscaled: the basis carries both."""
@@ -346,7 +360,13 @@ def collect(packages, mr, defaults, report):
         if cls == 'TdLadderVolume':
             _ladder_from_steps(mr, i, props, annotation, report)
         component = ref_export(props.get('BrushComponent'))
-        annotation['hull'] = inherited_hulls(packages, mr, component) if component else []
+        hulls = inherited_hulls(packages, mr, component) if component else []
+        annotation['hull'] = [h for h in hulls if built(h)]
+        if hulls and not annotation['hull'] and 'radius' not in annotation:
+            counts = report.setdefault('counts', {})
+            counts['brush_unbuilt'] = counts.get('brush_unbuilt', 0) + 1
+            report.setdefault('brushes_unbuilt', []).append('%s.%s' % (mr.label, e['name']))
+            continue
         reach = _volume_reach(annotation)
         if reach is not None:
             annotation['reach_radius'] = reach
