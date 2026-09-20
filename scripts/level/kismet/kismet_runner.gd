@@ -49,7 +49,9 @@ const NOT_PRESSED := ["Unused", "Aborted"]
 const LEVEL_START := ["SeqEvent_LevelLoaded", "SeqEvent_LevelStartup", "SeqEvent_LevelBeginning"]
 ## [ME:CONFIRMED] no jump, no crouch and walking pace in a lift car; the
 ## original says so with SeqAct_TdInElevator on the car's button.
-const LIFT_SUBJECT := &"kismet_lift"
+## NO SUBJECT on these statuses: a status is looked up by effect AND subject,
+## the moves ask with none, and one filed under a name of its own was on the
+## player the whole ride and restricted nothing.
 const LIFT_SPEED_M_S := 4.0
 
 ## The graph: a KismetGraph resource, kept out of the scene text.
@@ -61,6 +63,11 @@ const LIFT_SPEED_M_S := 4.0
 @export var streamed: PackedStringArray = []
 ## Print every activation. Loud: a chapter fires hundreds on a button.
 @export var trace: bool = false
+## Print what a person would call the events of the level: a press, a touch
+## that leads somewhere, a sequence starting and ending, a load and its
+## Finished, the lift's restrictions. A few lines a minute, and what to paste
+## when something does not happen.
+@export var story: bool = true
 
 ## Class -> how often a class with no meaning here was passed through.
 var unknown: Dictionary = {}
@@ -160,6 +167,18 @@ func _listen(actor: String, node: Node) -> void:
 	if node is Area3D:
 		(node as Area3D).body_entered.connect(_on_touch.bind(actor, true))
 		(node as Area3D).body_exited.connect(_on_touch.bind(actor, false))
+
+
+func _tell(text: String) -> void:
+	if story and not trace:
+		print("[kismet] %6.1fs  %s" % [_clock, text])
+
+
+func _leads_somewhere(node: Dictionary) -> bool:
+	for out: Dictionary in node["outs"]:
+		if not (out["to"] as Array).is_empty():
+			return true
+	return false
 
 
 ## For the debug HUD.
@@ -286,6 +305,8 @@ func _fire_event(id: String, names: Array, free: bool = false) -> void:
 		state["again_at"] = _clock + float(_prop(node, "ReTriggerDelay", 0.0))
 	if trace:
 		print("[kismet] EVENT %s %s %s" % [id, node["cls"], node.get("originator", "")])
+	elif node.has("originator") and _leads_somewhere(node):
+		_tell("%s %s %s" % [node["cls"].trim_prefix("SeqEvent_").trim_prefix("SeqEvt_"), node["originator"], names])
 	var fired := false
 	for i in (node["outs"] as Array).size():
 		if names.is_empty() or names.has(node["outs"][i]["name"]):
@@ -404,7 +425,9 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 					state["waiting"] = false
 					_fire(id, 0)
 		"SeqAct_ActivateRemoteEvent":
-			for listener: String in _listeners.get(str(_prop(node, "EventName", "")).to_lower(), []):
+			var heard: Array = _listeners.get(str(_prop(node, "EventName", "")).to_lower(), [])
+			_tell("remote event '%s' -> %d listening" % [_prop(node, "EventName", ""), heard.size()])
+			for listener: String in heard:
 				_fire_event(listener, [])
 			_fire(id, 0)
 		"Sequence":
@@ -457,6 +480,7 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 			_fire(id, 0)
 		"SeqAct_TdInElevator":
 			# Enter, Exit.
+			_tell("lift rules %s (no jump, no crouch, walking pace)" % ("ON" if input == 0 else "off"))
 			_set_lift_rules(input == 0)
 			_fire(id, 0)
 		"SeqAct_SetBool", "SeqAct_SetInt", "SeqAct_SetFloat", "SeqAct_SetString":
@@ -590,6 +614,8 @@ func _run_interp(id: String, node: Dictionary, input: int, state: Dictionary) ->
 			_drive_matinee(id, "play" if state["direction"] > 0 else "reverse")
 	state["at"] = at
 	_playing[id] = true
+	_tell("sequence %s %s from %.2f of %.2f s%s  %s" % [id, "plays" if int(state["direction"]) > 0 else "reverses", at, length,
+			"" if _matinees.has(node.get("matinee", "")) else " (nothing of it is built)", node.get("comment", "")])
 	_interp_events(id, node, at, at, int(state["direction"]), true)
 
 
@@ -612,10 +638,12 @@ func _advance_interp(id: String, delta: float) -> void:
 			return
 		state["direction"] = 0
 		_playing.erase(id)
+		_tell("sequence %s completed" % id)
 		_fire_named(id, ["Completed"])
 	elif direction < 0 and after <= 0.0:
 		state["direction"] = 0
 		_playing.erase(id)
+		_tell("sequence %s back at its start" % id)
 		_fire(id, 1)
 
 
@@ -659,7 +687,9 @@ func _run_streaming(id: String, node: Dictionary, input: int) -> void:
 			_presence.load_packages(keys, id)
 		else:
 			_presence.unload_packages(keys, id)
+	_tell("%s %s %s" % [id, "loads" if input == 0 else "unloads", keys])
 	if _presence == null or _presence.is_settled():
+		_tell("%s finished at once" % id)
 		_fire_named(id, ["Finished"])
 	else:
 		_loading.append(id)
@@ -671,6 +701,7 @@ func _on_settled() -> void:
 	var done := _loading.duplicate()
 	_loading.clear()
 	for id in done:
+		_tell("%s finished: the level has settled" % id)
 		_fire_named(id, ["Finished"])
 	_drain()
 
@@ -767,11 +798,10 @@ func _set_lift_rules(on: bool) -> void:
 		return
 	for effect in [Status.Effect.BLOCK_JUMP, Status.Effect.BLOCK_CROUCH, Status.Effect.SPEED_LIMIT]:
 		if not on:
-			player.remove_status(effect, LIFT_SUBJECT)
+			player.remove_status(effect, &"")
 			continue
 		var spec := StatusSpec.new()
 		spec.effect = effect
-		spec.subject = LIFT_SUBJECT
 		if effect == Status.Effect.SPEED_LIMIT:
 			spec.amount = LIFT_SPEED_M_S
 		player.apply_status(spec, self, 0)

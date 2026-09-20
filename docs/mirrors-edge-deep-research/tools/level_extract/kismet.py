@@ -226,8 +226,105 @@ def read_package(packages, mr, actors, variables):
     return nodes
 
 
-def collect(packages, report):
-    """manifest['kismet'] for a chapter."""
+# What a node has to be for the level to be any different for its running.
+# Everything else -- a checkpoint being set, the look-at hint being moved, an
+# AI being told where to walk, music -- changes nothing this project has.
+EFFECTS_ON_ACTORS = ('SeqAct_Toggle', 'SeqAct_ToggleHidden', 'SeqAct_ChangeCollision', 'SeqAct_Destroy')
+EFFECTS = ('SeqAct_MultiLevelStreaming', 'SeqAct_LevelStreaming', 'SeqAct_TdInElevator', 'SeqAct_Teleport')
+
+
+def mark_useful(graph, built_actors, built_matinees):
+    """Sets `useful` on every actor whose events can lead to something that
+    has an effect here; the builder makes a zone for those and no others.
+
+    A chapter has some two hundred and thirty actors that originate events and
+    most lead only to a checkpoint, a look-at point or an AI: built, they were
+    a wall of zones in the debug overlay and a touch event fired for nothing.
+
+    REACHABILITY, generously: from an event, along every output of every node
+    met, across remote events by name, in and out of sub-sequences, and from a
+    node that writes a variable to every node that reads it. Arriving at a
+    Gate's Open counts as reaching what the Gate leads to -- Stormdrain's
+    Trigger_14 does nothing but open one, and the unload behind it is the
+    point of the corridor. Too generous keeps a zone that does nothing; too
+    strict loses a door, so it errs the first way."""
+    nodes, variables, actors = graph['nodes'], graph['vars'], graph['actors']
+    listeners, readers, finishes = {}, {}, {}
+    for nid, node in nodes.items():
+        if node['cls'] == 'SeqEvent_RemoteEvent':
+            listeners.setdefault(str(node.get('props', {}).get('EventName', '')).lower(), []).append(nid)
+        for linked in node.get('vars', {}).values():
+            for var in linked:
+                readers.setdefault(var, []).append(nid)
+        if node['cls'] == 'Sequence':
+            for out in node['outs']:
+                if out.get('from'):
+                    finishes.setdefault(out['from'], []).extend(t[0] for t in out['to'])
+
+    def following(nid):
+        node = nodes[nid]
+        out = [t[0] for o in node['outs'] for t in o['to']]
+        if node['cls'] == 'SeqAct_ActivateRemoteEvent':
+            out += listeners.get(str(node.get('props', {}).get('EventName', '')).lower(), [])
+        if node['cls'] == 'Sequence':
+            out += [port for port in node.get('ports', []) if port]
+        out += finishes.get(nid, [])
+        # From a node that WRITES a value to the nodes that read it. Only
+        # values: an object variable is shared by everything that names the
+        # player, and followed it joins the whole chapter into one.
+        for linked in node.get('vars', {}).values():
+            for var in linked:
+                if variables.get(var, {}).get('cls') in ('SeqVar_Bool', 'SeqVar_Int', 'SeqVar_Float', 'SeqVar_String', 'SeqVar_Named'):
+                    out += [r for r in readers.get(var, []) if r != nid]
+        out += node.get('events', [])
+        return [n for n in out if n in nodes]
+
+    def has_effect(node, useful):
+        if node['cls'] in EFFECTS:
+            return True
+        if node['cls'] == 'SeqAct_Interp':
+            return node.get('matinee') in built_matinees
+        if node['cls'] in EFFECTS_ON_ACTORS:
+            for var in node.get('vars', {}).get('Target', []):
+                entry = variables.get(var, {})
+                for actor in [entry.get('actor')] + list(entry.get('actors', [])):
+                    if actor and (actor in built_actors or actor in useful or 'wall' in actors.get(actor, {})):
+                        return True
+            # Switching an EVENT on or off matters when that event does.
+            return any(nodes[e].get('originator') in useful for e in node.get('events', []) if e in nodes)
+        return False
+
+    events_of = {}
+    for nid, node in nodes.items():
+        if node.get('originator'):
+            events_of.setdefault(node['originator'], []).append(nid)
+    reach = {}
+    for actor, events in events_of.items():
+        seen, todo = set(events), list(events)
+        while todo:
+            for nxt in following(todo.pop()):
+                if nxt not in seen:
+                    seen.add(nxt)
+                    todo.append(nxt)
+        reach[actor] = seen
+    # To a fixpoint: a zone that only switches another zone on is useful when
+    # that one is.
+    useful = set()
+    while True:
+        found = {actor for actor, seen in reach.items()
+                 if actor not in useful and any(has_effect(nodes[n], useful) for n in seen)}
+        if not found:
+            break
+        useful |= found
+    for actor in useful:
+        actors[actor]['useful'] = True
+    return len(useful), len(events_of)
+
+
+def collect(packages, report, built_actors=frozenset(), built_matinees=frozenset()):
+    """manifest['kismet'] for a chapter. `built_actors` are the actors the
+    level has nodes for, `built_matinees` the sequences it has Matinee nodes
+    for, both as this module spells them: see mark_useful()."""
     streamed = packages.streamed_packages()
     nodes, actors, variables = {}, {}, {}
     for name in sorted(os.listdir(packages.chapter_dir)):
@@ -261,4 +358,7 @@ def collect(packages, report):
         classes[node['cls']] = classes.get(node['cls'], 0) + 1
     report['kismet'] = {'nodes': len(nodes), 'variables': len(variables), 'actors': len(actors),
                         'classes': dict(sorted(classes.items(), key=lambda kv: -kv[1]))}
-    return {'persistent': package_key(packages.persistent), 'nodes': nodes, 'vars': variables, 'actors': actors}
+    graph = {'persistent': package_key(packages.persistent), 'nodes': nodes, 'vars': variables, 'actors': actors}
+    kept, originating = mark_useful(graph, built_actors, built_matinees)
+    report['kismet']['event_zones'] = {'useful': kept, 'of': originating}
+    return graph

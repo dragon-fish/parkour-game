@@ -1176,7 +1176,10 @@ func build_streaming(manifest: Dictionary, kismet: Dictionary, graph_path: Strin
 	var names := Common.NameAllocator.new()
 	for actor: String in kismet["actors"]:
 		var entry: Dictionary = kismet["actors"][actor]
-		if not originates.has(actor) or not entry.has("trigger"):
+		# Only where a touch or a press can lead to something that has an
+		# effect here (kismet.py, mark_useful): the rest set checkpoints, move
+		# the look-at hint and steer AI, and were two hundred zones of nothing.
+		if not originates.has(actor) or not entry.has("trigger") or not entry.get("useful", false):
 			continue
 		var zone := _matinee_trigger(entry["trigger"], pressed.has(actor))
 		if zone == null:

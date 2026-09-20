@@ -231,12 +231,17 @@ def _same_mesh(a, b):
     return all(a[k] == b[k] for k in ('vertex_count', 'triangle_count')) and         all(abs(x - y) <= 0.01 for x, y in zip(a['bounds']['extent'], b['bounds']['extent']))
 
 
-def collision_class(actor, component, record):
+def collision_class(actor, component, record, switched_on=False):
     # BlockNonZeroExtent off: only zero-extent traces (weapons, a kick's hit
     # test) stop here, never a capsule. Stormdrain's kick targets are hidden
     # InterpActors like this, standing in front of the doors they open.
-    if actor.get('bCollideActors') is False or component.get('CollideActors') is False \
-            or component.get('BlockActors') is False or component.get('BlockNonZeroExtent') is False:
+    if component.get('BlockNonZeroExtent') is False:
+        return 'none'
+    # The rest are the switches SeqAct_ChangeCollision throws, on the actor and
+    # its component both. `switched_on` asks what the thing is once it has.
+    switched_off = (actor.get('bCollideActors') is False or component.get('CollideActors') is False
+                    or component.get('BlockActors') is False)
+    if switched_off and not switched_on:
         return 'none'
     if record['simple_shapes'] and record['use_simple_box_collision'] is not False:
         return 'simple'
@@ -333,6 +338,11 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
         if name in config['collision_overrides']:
             collision = override_collision(name, config['collision_overrides'][name], record)
             report['counts']['collision_overridden'] = report['counts'].get('collision_overridden', 0) + 1
+        # What it would be with its collision switched on, for the actors
+        # Kismet switches: see switch_on_collision().
+        if_on = 'none'
+        if collision == 'none' and not shadow_only and name not in config['collision_overrides']:
+            if_on = collision_class(actor, component, record, switched_on=True)
         report['collision'][collision] += 1
         # bHidden actors are designer-placed invisible collision (group
         # Dummy_Collisions): they still block, they are just never drawn.
@@ -358,6 +368,7 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
                     'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor',
                     'base': base, 'aabb': {'min': lo, 'max': hi}}
                    | ({'pre_pivot': pre_pivot} if any(abs(c) > 1e-4 for c in pre_pivot) else {})
+                   | ({'collision_if_on': if_on} if if_on != 'none' else {})
                    | ({'materials': overrides} if any(overrides) else {})
                    | ({'shadow_only': True} if shadow_only else {})
                    | ({'runner_vision': runner_vision(actor)} if actor.get('bLOIObject') else {}))
@@ -419,6 +430,42 @@ def assign_checkpoint_sections(checkpoints, placements, bsp, report):
         c['section'] = best[1] if best else ''
         report['checkpoint_sections'][c.get('label') or c['name']] = \
             '%s (%.2f m over %s)' % (c['section'], best[0], best[2]) if best else 'nothing under it'
+
+
+# ECollisionType values that stop a player; kismet_runner.gd's COLLISION_MODES
+# is the same table.
+BLOCKING_TYPES = ('COLLIDE_CustomDefault', 'COLLIDE_BlockAll', 'COLLIDE_BlockAllButWeapons')
+
+
+def switch_on_collision(placements, graph, report):
+    """A placement with no collision ONLY because its collision starts switched
+    off gets its shapes after all when the chapter's Kismet switches it on:
+    [ME:CONFIRMED] Stormdrain's `construction` respawn un-hides the girder's
+    twin and sets it COLLIDE_BlockAll, and with no shapes to turn on the twin
+    was a picture of a girder the player fell through. It starts off, as the
+    original's does; the graph's actor says so for the level."""
+    switched = set()
+    if graph:
+        for node in graph['nodes'].values():
+            if node['cls'] != 'SeqAct_ChangeCollision':
+                continue
+            if node.get('props', {}).get('CollisionType', 'COLLIDE_CustomDefault') not in BLOCKING_TYPES:
+                continue
+            for var in node.get('vars', {}).get('Target', []):
+                actor = graph['vars'].get(var, {}).get('actor')
+                if actor:
+                    switched.add(actor)
+    count = 0
+    for p in placements:
+        if_on = p.pop('collision_if_on', None)
+        actor = '%s.%s' % (streaming.package_key(p['package']), p['name'])
+        if if_on and actor in switched:
+            report['collision'][p['collision']] -= 1
+            report['collision'][if_on] += 1
+            p['collision'] = if_on
+            graph['actors'][actor]['starts_off'] = True
+            count += 1
+    report['counts']['collision_switched_on_by_kismet'] = count
 
 
 def names_of(records):
@@ -695,8 +742,12 @@ def main(config_path):
     # Only a chapter built section by section runs the original's Kismet and
     # streams: a single-scene level names the packages it wants, keeps them
     # all, and is scripted by hand.
-    graph = kismet.collect(packages, report) if config['split_sections'] else None
+    built_actors = {'%s.%s' % (streaming.package_key(r['package']), r['name'])
+                    for r in placements + found_lights + notes['annotations']}
+    graph = kismet.collect(packages, report, built_actors, {m['name'] for m in matinees}) \
+        if config['split_sections'] else None
     flow = {'managed': streaming.managed(notes['checkpoints'], graph)} if graph else None
+    switch_on_collision(placements, graph, report)
 
     os.makedirs(out_dir, exist_ok=True)
     manifest = {'config': config, 'streaming': flow, 'environment': look, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
