@@ -53,7 +53,7 @@ func _rig(triggers: Dictionary = {}) -> Dictionary:
 
 
 func _in_level(body: StaticBody3D) -> bool:
-	return body.visible and body.can_process()
+	return body.visible and body.can_process() and body.collision_layer != 0
 
 
 func test_the_level_opens_on_the_start_snapshot() -> void:
@@ -63,7 +63,8 @@ func test_the_level_opens_on_the_start_snapshot() -> void:
 	assert_true(_in_level(rig.shell), "and its shell")
 	assert_false(_in_level(rig.hall), "the hall is not loaded at the start")
 	assert_false(rig.hall.visible, "a package that is not in the level is not drawn")
-	assert_false(rig.hall.can_process(), "nor solid: a disabled body leaves the physics space")
+	assert_eq(rig.hall.collision_layer, 0, "nor solid")
+	assert_false(rig.hall.can_process(), "and whatever scripts it carries are stopped")
 	assert_true(_in_level(rig.sky), "a package nobody streams is always there")
 	assert_eq(rig.presence.present_count(), 2, "audio packages in a snapshot govern nothing")
 
