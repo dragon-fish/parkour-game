@@ -27,7 +27,7 @@ See docs/kismet-runtime.md.
 """
 import os
 
-from common import actor_scale, godot_basis, outer_class, point, ref_export
+from common import ExtractError, actor_scale, godot_basis, outer_class, point, ref_export
 from matinee import (DAMAGE_EVENTS, DEFAULT_LENGTH, KICK_HALF_HEIGHT_M, KICK_REACH_M,
                      _int_array, _struct_array, _trigger, _value)
 from streaming import package_key
@@ -375,7 +375,7 @@ def mark_useful(graph, built_actors, built_matinees, handled_elsewhere=frozenset
 
 
 def collect(packages, report, built_actors=frozenset(), built_matinees=frozenset(), handled_elsewhere=frozenset(),
-            mesh_of=None):
+            mesh_of=None, overrides=None):
     """manifest['kismet'] for a chapter. `built_actors` are the actors the
     level has nodes for, `built_matinees` the sequences it has Matinee nodes
     for, `handled_elsewhere` the actors whose events it answers some other
@@ -413,6 +413,13 @@ def collect(packages, report, built_actors=frozenset(), built_matinees=frozenset
         classes[node['cls']] = classes.get(node['cls'], 0) + 1
     report['kismet'] = {'nodes': len(nodes), 'variables': len(variables), 'actors': len(actors),
                         'classes': dict(sorted(classes.items(), key=lambda kv: -kv[1]))}
+    for node_id, patch in (overrides or {}).items():
+        if node_id not in nodes:
+            raise ExtractError('kismet_overrides names no such node: %s' % node_id)
+        patch = dict(patch)
+        nodes[node_id].setdefault('props', {}).update(patch.pop('props', {}))
+        nodes[node_id].update(patch)
+    report['kismet']['overridden'] = sorted((overrides or {}).keys())
     graph = {'persistent': package_key(packages.persistent), 'nodes': nodes, 'vars': variables, 'actors': actors}
     kept, originating = mark_useful(graph, built_actors, built_matinees, handled_elsewhere)
     report['kismet']['event_zones'] = {'useful': kept, 'of': originating}

@@ -579,7 +579,11 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 					var piece := MeshInstance3D.new()
 					piece.mesh = _meshes[node["mesh_path"]]
 					var columns: Array = spot["basis"]
-					piece.transform = Transform3D(Basis(_v3(columns[0]), _v3(columns[1]), _v3(columns[2])), _v3(spot["position"]))
+					# `spawn_yaw_deg`: a config override (kismet_overrides), for a
+					# spawn point that does not say which way round.
+					var turned := Basis(Vector3.UP, deg_to_rad(float(node.get("spawn_yaw_deg", 0.0)))) \
+							* Basis(_v3(columns[0]), _v3(columns[1]), _v3(columns[2]))
+					piece.transform = Transform3D(turned, _v3(spot["position"]))
 					add_child(piece)
 					made.append(piece)
 				_tell("%s spawned %d x %s" % [id, int(_prop(node, "SpawnCount", 1)), String(node["mesh_path"]).get_file()])
@@ -739,11 +743,13 @@ func _run_interp(id: String, node: Dictionary, input: int, state: Dictionary) ->
 			state["direction"] = 0
 			_playing.erase(id)
 			_drive_matinee(id, "stop")
+			_seek_matinee(id, at)
 			return
 		3:
 			state["direction"] = 0
 			_playing.erase(id)
 			_drive_matinee(id, "stop")
+			_seek_matinee(id, at)
 			return
 		4:
 			state["direction"] = -int(state.get("direction", 1))
@@ -818,6 +824,12 @@ func _interp_events(id: String, node: Dictionary, before: float, after: float, d
 			for i in outs.size():
 				if str(outs[i]["name"]).to_lower() == str(key["name"]).to_lower():
 					_fire(id, i)
+
+
+func _seek_matinee(id: String, at: float) -> void:
+	var matinee: Matinee = _matinees.get(_nodes[id].get("matinee", ""))
+	if matinee != null and is_instance_valid(matinee):
+		matinee.seek(at)
 
 
 func _drive_matinee(id: String, action: String) -> void:

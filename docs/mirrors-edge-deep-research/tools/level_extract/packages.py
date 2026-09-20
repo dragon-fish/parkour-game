@@ -64,6 +64,14 @@ from mapdump import MapReader
 #                                     it onto a sound of our own. A name absent here makes
 #                                     no emitter and no error: the public repo has to build
 #                                     and run with no private config at all.
+#   kismet_overrides dict {}         {node id: {key: value}}: patches to the chapter's Kismet
+#                                    (kismet.py), laid over the exported node. For what the
+#                                    original's data does not say, or says for a game with
+#                                    AI in it: `spawn_yaw_deg` turns what an ActorFactory
+#                                    spawns (the Subway's spawn points carry no rotation and
+#                                    its tunnel pieces only tile one way round); `props`
+#                                    merges into the node's own, so {"props": {"bOpen": true}}
+#                                    opens a Gate that waits on enemies nobody spawns.
 #   look            dict  {}         dials of the level's look the builder sets on its
 #                                    Environment node (tools/me_level/me_environment.gd
 #                                    exports), by name; judged against the reference shots
@@ -71,7 +79,7 @@ CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'exclude_actors': [], 'collision_overrides': {}, 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
     'persistent': None, 'split_sections': False, 'lifts': [], 'teleports': [], 'floating_checkpoints': [],
-    'sounds': {}, 'look': {}, 'checkpoint_restores': {},
+    'sounds': {}, 'look': {}, 'checkpoint_restores': {}, 'kismet_overrides': {},
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 

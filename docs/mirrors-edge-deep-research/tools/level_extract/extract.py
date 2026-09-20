@@ -709,7 +709,7 @@ def main(config_path):
     panes = {'%s.%s' % (streaming.package_key(a['package']), a['name'])
              for a in notes['annotations'] if a['kind'] == 'glass'}
     graph = kismet.collect(packages, report, built_actors, {m['name'] for m in matinees}, panes,
-                           meshes.resolve) \
+                           meshes.resolve, config['kismet_overrides']) \
         if config['split_sections'] else None
     records = meshes.finish_names()
     for p in placements:

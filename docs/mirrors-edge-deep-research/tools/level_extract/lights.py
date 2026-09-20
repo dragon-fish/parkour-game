@@ -4,7 +4,12 @@ import struct
 from common import ExtractError, UU, actor_scale, godot_basis, outer_class, point, ref_export, to_godot
 import environment
 
-LIGHT_CLASSES = ('PointLight', 'SpotLight', 'SpotLightMovable', 'TdAreaLight')
+# PointLightMovable: [ME:CONFIRMED] the Subway's train-ride tunnel is lit by six
+# of these and by nothing else, each hard-attached to one of the four rolling
+# tunnel pieces. (Its 124 TdAreaLights are in Subway_TrainRide_Render, a bake
+# scene 50 m to the side that the game never streams.) Unread, the ride was
+# run in the dark.
+LIGHT_CLASSES = ('PointLight', 'PointLightMovable', 'SpotLight', 'SpotLightMovable', 'TdAreaLight')
 
 
 def _color(value, default=(1.0, 1.0, 1.0)):
@@ -44,8 +49,12 @@ def collect_lights(mr):
         # Switched off in the original until its Kismet turns it on.
         if tagged.get('bEnabled') is False:
             continue
+        # What it rides, as a placement says it: the builder makes it a target
+        # of whatever sequence moves that actor.
+        base_idx = ref_export(props.get('Base'))
+        base = '%s.%s' % (mr.label, pkg.exports[base_idx - 1]['name']) if base_idx else None
         lights.append({
-            'name': e['name'], 'class': cls, 'package': mr.label, 'tag': props.get('Tag'),
+            'name': e['name'], 'class': cls, 'package': mr.label, 'tag': props.get('Tag'), 'base': base,
             'position': point(props['Location']),
             'basis': godot_basis(props.get('Rotation') or (0, 0, 0), (1.0, 1.0, 1.0)),
             'brightness': props.get('BakerBrightness', 1.0) if baker else component.get('Brightness', 1.0),

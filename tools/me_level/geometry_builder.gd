@@ -484,7 +484,7 @@ func _build_lights(lights: Array) -> Node3D:
 	for entry: Dictionary in lights:
 		var light: Light3D
 		match str(entry["class"]):
-			"PointLight", "TdAreaLight":
+			"PointLight", "PointLightMovable", "TdAreaLight":
 				# TdAreaLight carries a PointLightComponent; its baked area shape is not used.
 				var omni := OmniLight3D.new()
 				omni.omni_range = float(entry["radius_m"])

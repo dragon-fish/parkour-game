@@ -202,6 +202,17 @@ func take_over() -> void:
 	_reset()
 
 
+## Where the sequence is, said by whoever drives it, and shown at once. The
+## runner's clock and this node's run side by side and may be a frame apart:
+## stopped on its own frame, the subway's ring froze a whole lap out of place
+## -- the runner had wrapped to 0, this node was still at the end.
+func seek(time: float) -> void:
+	if not _captured:
+		_capture()
+	_time = clampf(time, 0.0, length)
+	_apply()
+
+
 ## "play", "reverse", "loop" (round again from 0, NOT from start_position:
 ## that is where a play begins, not where a lap does), "stop" (hold where it
 ## is) or "reset" (back to the start).

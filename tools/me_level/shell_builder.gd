@@ -272,6 +272,14 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
 				if not riders.has(p["base"]):
 					riders[p["base"]] = []
 				riders[p["base"]].append(id)
+	# Lights that ride a mover, by the name the geometry builder gives them:
+	# the same allocator over the same list in the same order.
+	var lamp_names := Common.NameAllocator.new()
+	var lamps := {}
+	for light: Dictionary in manifest["lights"]:
+		var lamp := lamp_names.take(str(light["name"]))
+		if light.get("base") != null:
+			lamps.get_or_add(light["base"], []).append(NodePath(String(movers).get_base_dir() + "/Lights/" + lamp))
 	var names := Common.NameAllocator.new()
 	var by_source := {}
 	for m: Dictionary in manifest.get("matinees", []):
@@ -292,6 +300,13 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
 					if frame.is_empty():
 						continue
 					targets.append(NodePath(String(movers) + "/" + present[rider]))
+					pivots.append(Common.transform_of(frame))
+				# [ME:CONFIRMED] the Subway's tunnel is lit by lights bolted
+				# to its rolling pieces, and they roll with them.
+				for path: NodePath in lamps.get(actor, []):
+					if frame.is_empty():
+						continue
+					targets.append(path)
 					pivots.append(Common.transform_of(frame))
 				# The volumes and lamps standing in this shell that ride the
 				# same actor. They pivot about it exactly as a hard-attached
