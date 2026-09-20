@@ -744,7 +744,10 @@ def main(config_path):
     # all, and is scripted by hand.
     built_actors = {'%s.%s' % (streaming.package_key(r['package']), r['name'])
                     for r in placements + found_lights + notes['annotations']}
-    graph = kismet.collect(packages, report, built_actors, {m['name'] for m in matinees}) \
+    # Glass is BreakableGlass's, shatter and all: see kismet.mark_useful().
+    panes = {'%s.%s' % (streaming.package_key(a['package']), a['name'])
+             for a in notes['annotations'] if a['kind'] == 'glass'}
+    graph = kismet.collect(packages, report, built_actors, {m['name'] for m in matinees}, panes) \
         if config['split_sections'] else None
     flow = {'managed': streaming.managed(notes['checkpoints'], graph)} if graph else None
     switch_on_collision(placements, graph, report)

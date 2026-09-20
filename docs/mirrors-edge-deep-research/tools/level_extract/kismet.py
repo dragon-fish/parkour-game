@@ -233,7 +233,7 @@ EFFECTS_ON_ACTORS = ('SeqAct_Toggle', 'SeqAct_ToggleHidden', 'SeqAct_ChangeColli
 EFFECTS = ('SeqAct_MultiLevelStreaming', 'SeqAct_LevelStreaming', 'SeqAct_TdInElevator', 'SeqAct_Teleport')
 
 
-def mark_useful(graph, built_actors, built_matinees):
+def mark_useful(graph, built_actors, built_matinees, handled_elsewhere=frozenset()):
     """Sets `useful` on every actor whose events can lead to something that
     has an effect here; the builder makes a zone for those and no others.
 
@@ -247,7 +247,14 @@ def mark_useful(graph, built_actors, built_matinees):
     Gate's Open counts as reaching what the Gate leads to -- Stormdrain's
     Trigger_14 does nothing but open one, and the unload behind it is the
     point of the corridor. Too generous keeps a zone that does nothing; too
-    strict loses a door, so it errs the first way."""
+    strict loses a door, so it errs the first way.
+
+    `handled_elsewhere` are actors whose events this project answers with
+    something of its own, and whose zone would answer them a second time:
+    [ME:CONFIRMED] a pane of glass is a TakeDamage that hides the pane and
+    hurts the fracture mesh behind it, and BreakableGlass is that, with the
+    shatter. Left in, the graph took the pane away on the touch and there was
+    nothing left to break."""
     nodes, variables, actors = graph['nodes'], graph['vars'], graph['actors']
     listeners, readers, finishes = {}, {}, {}
     for nid, node in nodes.items():
@@ -300,6 +307,8 @@ def mark_useful(graph, built_actors, built_matinees):
             events_of.setdefault(node['originator'], []).append(nid)
     reach = {}
     for actor, events in events_of.items():
+        if actor in handled_elsewhere:
+            continue
         seen, todo = set(events), list(events)
         while todo:
             for nxt in following(todo.pop()):
@@ -321,10 +330,11 @@ def mark_useful(graph, built_actors, built_matinees):
     return len(useful), len(events_of)
 
 
-def collect(packages, report, built_actors=frozenset(), built_matinees=frozenset()):
+def collect(packages, report, built_actors=frozenset(), built_matinees=frozenset(), handled_elsewhere=frozenset()):
     """manifest['kismet'] for a chapter. `built_actors` are the actors the
     level has nodes for, `built_matinees` the sequences it has Matinee nodes
-    for, both as this module spells them: see mark_useful()."""
+    for, `handled_elsewhere` the actors whose events it answers some other
+    way, all as this module spells them: see mark_useful()."""
     streamed = packages.streamed_packages()
     nodes, actors, variables = {}, {}, {}
     for name in sorted(os.listdir(packages.chapter_dir)):
@@ -359,6 +369,6 @@ def collect(packages, report, built_actors=frozenset(), built_matinees=frozenset
     report['kismet'] = {'nodes': len(nodes), 'variables': len(variables), 'actors': len(actors),
                         'classes': dict(sorted(classes.items(), key=lambda kv: -kv[1]))}
     graph = {'persistent': package_key(packages.persistent), 'nodes': nodes, 'vars': variables, 'actors': actors}
-    kept, originating = mark_useful(graph, built_actors, built_matinees)
+    kept, originating = mark_useful(graph, built_actors, built_matinees, handled_elsewhere)
     report['kismet']['event_zones'] = {'useful': kept, 'of': originating}
     return graph
