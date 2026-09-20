@@ -203,8 +203,11 @@ func _forget_everything() -> void:
 	_timers.clear()
 	_queue.clear()
 	_loading.clear()
-	for id: String in _playing:
-		_drive_matinee(id, "reset")
+	# EVERY sequence, not only the ones in motion: a train that has run to the
+	# end of its track is as much the old life's as one half way along.
+	for matinee: Matinee in _matinees.values():
+		if is_instance_valid(matinee):
+			matinee.drive("reset")
 	_playing.clear()
 	for actor: String in _touched_state:
 		_restore_actor(actor)

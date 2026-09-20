@@ -112,6 +112,18 @@ func _ready() -> void:
 ## drives a target puts it back to the same load-time transform, so chained
 ## sequences sharing targets cannot disagree.
 func reset_for_respawn() -> void:
+	# A sequence the level's Kismet plays is put back BY the Kismet, at the
+	# moment it forgets the old life -- see KismetRunner._forget_everything().
+	# This call comes from the respawn's group sweep, in tree order, and for a
+	# chapter that is AFTER the runner has already started the new life: it
+	# stopped the trains the level had just set running again, and left the
+	# runner's clock and this node's apart for good.
+	if driven:
+		return
+	_reset()
+
+
+func _reset() -> void:
 	set_physics_process(false)
 	_time = 0.0
 	_direction = 0
@@ -175,7 +187,7 @@ func take_over() -> void:
 		if child is Area3D:
 			child.process_mode = Node.PROCESS_MODE_DISABLED
 			(child as Area3D).set_deferred("monitoring", false)
-	reset_for_respawn()
+	_reset()
 
 
 ## "play", "reverse", "stop" (hold where it is) or "reset" (back to the start).
@@ -190,7 +202,7 @@ func drive(action: String) -> void:
 			_pending_direction = 0
 			_hush()
 		"reset":
-			reset_for_respawn()
+			_reset()
 
 
 func _on_touch(body: Node3D, area: Area3D) -> void:
