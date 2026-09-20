@@ -24,14 +24,25 @@ enum Kind { ZIPLINE, SWING, BALANCE, LADDER, LEDGE_WALK }
 ## stays editable after that -- the number a level author sees IS the number
 ## the volume is built from.
 ##
+## ONE NUMBER, NOT THE ORIGINAL'S VOLUME. An extracted level used to take this
+## from the box the original draws around each line, which reads 2.2 to 6.2 m.
+## That box is not a reach: a TdSwingVolume says WHERE the move is allowed and
+## which bar it is about -- the builder already uses it for that, clipping bars
+## against the hull -- while how far a hand stretches is a matter of feel. Run
+## as a reach it put a capsule across the whole width of the Subway's tunnel,
+## so the bar was catchable from the far rail, and 182 such volumes tracking
+## the geometry they now covered took the chapter to 4 fps.
+##
 ## A BAR REACHES FURTHER: at 0.6 m a jump at a swing bar had to be nearly
 ## exact, and a fall past it was missed outright. 1.0 m was tried on the
 ## Stormdrain boss bar and holds.
+## A CABLE REACHES FURTHER TOO, and for the same reason: at 0.6 m one was hard
+## to catch at speed. 1.2 m is the value being tried.
 ## A ledge stays at 0.6 m so it does not catch a body that only passes near
 ## it. DO NOT widen it back to cover a wide walkway feeding a narrow ledge:
 ## that pulled bodies off climbs and wall runs onto ledges overhead.
 const KIND_REACH := {
-	Kind.ZIPLINE: 0.6,
+	Kind.ZIPLINE: 1.2,
 	Kind.SWING: 1.0,
 	Kind.BALANCE: 0.6,
 	Kind.LADDER: 0.6,
@@ -120,6 +131,10 @@ func _build_area() -> void:
 		return
 	_area = Area3D.new()
 	_area.name = "Volume"
+	# Only the body, never the level it runs through -- see
+	# Arena.PLAYER_LAYER. A swing volume in a tunnel otherwise tracks
+	# the tunnel, one capsule at a time.
+	_area.collision_mask = Arena.PLAYER_LAYER
 	var points: PackedVector3Array = curve.get_baked_points()
 	for i in range(points.size() - 1):
 		var a: Vector3 = points[i]

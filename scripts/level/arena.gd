@@ -97,6 +97,21 @@ const CHECKPOINT_CLEAR_HOLD := 1.0
 ## life can use up (see Matinee).
 const RESET_ON_RESPAWN := &"reset_on_respawn"
 
+## The physics layer the BODY is on, on top of layer 1. Every volume that
+## exists to notice the player watches this layer and nothing else.
+##
+## WITHOUT IT A VOLUME WATCHES THE WHOLE LEVEL. An Area3D reports every body
+## its mask lets through, and the duck-typed `has_method` check each of these
+## volumes makes runs AFTER the engine has already found and tracked the
+## overlap. Left on the default mask, one swing volume in the Subway's tunnel
+## tracked 80 pieces of tunnel, a camera-shake cylinder riding a train tracked
+## 942, and the chapter's 182 volumes between them held 3045 overlaps that were
+## re-evaluated every physics tick: 260 ms a frame, against 3.9 ms once the
+## volumes stopped looking at geometry they can do nothing with.
+##
+## DO NOT widen this to include layer 1 for convenience. That is the bug.
+const PLAYER_LAYER := 2
+
 ## Group of nodes still preparing the level over several frames (see
 ## me_lights.gd). The level is not ready while any is in it.
 const WARMING := &"warming"

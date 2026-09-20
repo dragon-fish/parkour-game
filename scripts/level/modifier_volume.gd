@@ -96,6 +96,8 @@ var _refresh_owed: float = 0.0
 const REFRESH_BEFORE_PLAYER := -1
 
 func _ready() -> void:
+	# Only the body, never the level it stands in -- see Arena.PLAYER_LAYER.
+	collision_mask = Arena.PLAYER_LAYER
 	if Engine.is_editor_hint():
 		return
 	add_to_group("modifier_volumes")

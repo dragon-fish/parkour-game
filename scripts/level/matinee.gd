@@ -118,7 +118,7 @@ func reset_for_respawn() -> void:
 		var target := get_node_or_null(path) as Node3D
 		if target == null:
 			continue
-		target.global_transform = _homes[path]
+		place(target, _homes[path])
 		var mesh := target.get_node_or_null("Mesh") as Node3D
 		if mesh != null and _mesh_homes.has(path):
 			mesh.transform = _mesh_homes[path]
@@ -130,6 +130,36 @@ func reset_for_respawn() -> void:
 	# tracks would empty them for the rest of the chapter.
 	if autostart:
 		play()
+
+
+## Puts a driven target somewhere, from ANY frame.
+##
+## AN AnimatableBody3D DISCARDS A TRANSFORM WRITTEN OUTSIDE THE PHYSICS STEP.
+## A mover is one of those so that whoever stands on it is carried, and the
+## same sync_to_physics that carries them threw away the respawn's write, which
+## arrives on an idle frame: the cars carried on from wherever they had reached,
+## every respawn captured a start further down the track, and within a few
+## deaths the train had walked away from its own kill box -- the box being an
+## Area3D, which reset perfectly. Two trains running side by side with their
+## bodies somewhere else is the same fault seen from the other end.
+##
+## _apply() does not come through here. It runs from _physics_process, ahead of
+## the server's own integration, where the write lands like any other.
+##
+## DO NOT GUARD THIS WITH Engine.is_in_physics_frame(). Being inside the
+## physics step is not the same as being ahead of the body's sync, and a guard
+## on that flag put the drift straight back: the reset arrives inside the step
+## but after the body has already been read, so the write is still thrown away.
+## Taking the body off sync is what makes it land, and a respawn is rare enough
+## that the property write costs nothing worth saving.
+static func place(target: Node3D, to: Transform3D) -> void:
+	var animatable := target as AnimatableBody3D
+	if animatable == null or not animatable.sync_to_physics:
+		target.global_transform = to
+		return
+	animatable.sync_to_physics = false
+	animatable.global_transform = to
+	animatable.sync_to_physics = true
 
 
 func _on_touch(body: Node3D, area: Area3D) -> void:

@@ -58,6 +58,8 @@ extends Area3D
 @export var restores: Dictionary = {}
 
 func _ready() -> void:
+	# Only the body, never the level it stands in -- see Arena.PLAYER_LAYER.
+	collision_mask = Arena.PLAYER_LAYER
 	if Engine.is_editor_hint():
 		set_notify_local_transform(true)
 		return

@@ -9,6 +9,8 @@ var _done := false
 
 
 func _ready() -> void:
+	# Only the body, never the level it stands in -- see Arena.PLAYER_LAYER.
+	collision_mask = Arena.PLAYER_LAYER
 	body_entered.connect(_on_body_entered)
 
 

@@ -33,6 +33,10 @@ func build() -> CharacterBody3D:
 	shape.shape = capsule
 	player.add_child(shape)
 	shape.owner = player
+	# On layer 1 like the world, AND on the layer every gameplay volume
+	# watches. Those volumes exist to notice the body and nothing else;
+	# see Arena.PLAYER_LAYER for what it cost when they watched the world.
+	player.collision_layer = 1 | Arena.PLAYER_LAYER
 
 	var rig := Node3D.new()
 	rig.name = "CameraRig"

@@ -395,6 +395,7 @@ static func _matinee_channel(track: Dictionary, prefix: String, keys: Array) -> 
 
 func _matinee_trigger(t: Dictionary, use: bool) -> Area3D:
 	var area := Area3D.new()
+	area.collision_mask = Arena.PLAYER_LAYER
 	if use:
 		area.set_script(USE_ZONE_SCRIPT)
 	area.name = str(t["name"]).validate_node_name()
@@ -552,13 +553,13 @@ func _interest_lines(annotations: Array, placements: Array) -> Node3D:
 			curve.add_point(inverse * p)
 		line.curve = curve
 		line.set("kind", LINE_KINDS[a["kind"]])
-		# AFTER the kind, which writes its own default over this. The original
-		# drew a box around each line and the boxes are far wider than the
-		# defaults guessed: its ziplines reach 2.2 to 4.1 m where this project
-		# used 0.6, and missing that is what made a cable hard to catch at
-		# speed. Ours is a capsule of the box's half-extent across the line.
-		if a.has("reach_radius"):
-			line.set("reach_radius", float(a["reach_radius"]))
+		# THE REACH IS NOT TAKEN FROM THE ORIGINAL'S BOX, though the manifest
+		# still measures it (annotations._volume_reach) and it is worth having
+		# on record. The box says where the move is allowed and which bar it is
+		# about -- _swing_points() above already uses it for exactly that --
+		# and it is nothing like how far a hand stretches: read as a reach it
+		# gave the Subway's tunnel swings a 5.75 m capsule, catchable from the
+		# far rail. InterestLine.KIND_REACH owns this number; see its note.
 		group.add_child(line)
 	return group
 
@@ -1032,6 +1033,7 @@ func _glass(manifest: Dictionary, movers: NodePath) -> Node3D:
 		var hi := Common.v3(pane["aabb"]["max"])
 		var reach := Area3D.new()
 		reach.name = "Reach"
+		reach.collision_mask = Arena.PLAYER_LAYER
 		reach.position = (lo + hi) * 0.5
 		var shape := BoxShape3D.new()
 		shape.size = (hi - lo) + Vector3.ONE * GLASS_REACH_M * 2.0
