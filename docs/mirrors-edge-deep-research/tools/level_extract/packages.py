@@ -47,6 +47,17 @@ from mapdump import MapReader
 #                                    starts from it): the lift then waits closed until used.
 #   floating_checkpoints list []     checkpoint labels the original leaves in mid-air
 #                                    on purpose; verify_level does not ask for a floor
+#   checkpoint_restores dict {}      what a respawn onto a checkpoint must put the level
+#                                    into, keyed by its CheckpointName. Each value takes
+#                                    `hide`, `show` and `play`, all lists of actors as
+#                                    package.name (the same spelling `lifts` uses). The
+#                                    original stages a respawn onto something mid-flight by
+#                                    hiding the ordinary actor and un-hiding a twin that
+#                                    stood there all along, then playing the TWIN's own
+#                                    animation -- so `play` names the driven ACTOR, and the
+#                                    sequence that drives it is kept even though nothing
+#                                    this module can read ever starts it (a remote event
+#                                    does). Stormdrain's `construction` is the worked case.
 #   sounds          dict  {}         {original cue name: "res://assets/audio/x.ogg"}. The
 #                                     original's audio is never extracted; the extractor
 #                                     records only the NAME a sequence plays, and this maps
@@ -60,7 +71,7 @@ CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'exclude_actors': [], 'collision_overrides': {}, 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
     'persistent': None, 'split_sections': False, 'lifts': [], 'teleports': [], 'floating_checkpoints': [],
-    'sounds': {}, 'look': {},
+    'sounds': {}, 'look': {}, 'checkpoint_restores': {},
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 

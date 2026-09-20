@@ -186,7 +186,15 @@ def _scale(actor):
     return (s * s3[0], s * s3[1], s * s3[2])
 
 
-def collect(packages, mr, report):
+def collect(packages, mr, report, keep_driving=frozenset()):
+    """Matinees of one package.
+
+    `keep_driving` holds actor ids (`package.name`) whose sequence is wanted
+    even though nothing this module can read ever starts it. A respawn twin is
+    the case: the only thing that plays it is a remote event sent by the
+    checkpoint being loaded, and remote events are out of scope here. Such a
+    matinee comes out with an empty `starts`, for whoever named it to play.
+    """
     pkg = mr.pkg
     fired_by = {}
     for i, e in enumerate(pkg.exports, 1):
@@ -253,7 +261,10 @@ def collect(packages, mr, report):
             continue
         starts = [{k: v for k, v in s.items() if k != 'via_input'} for s in starts_of(i)
                   if s['input'] in (0, 1)]
-        if not starts:
+        # A startless sequence is dropped -- UNLESS the config asked for the
+        # actor it drives. Which actor that is only becomes known once the
+        # groups below are read, so the decision waits until then.
+        if not starts and not keep_driving:
             report['matinee_skipped'] = report.get('matinee_skipped', 0) + 1
             continue
         groups, length = [], None
@@ -303,6 +314,11 @@ def collect(packages, mr, report):
         if not groups:
             report['matinee_without_movement'] = report.get('matinee_without_movement', 0) + 1
             continue
+        if not starts:
+            if not any(a in keep_driving for g in groups for a in g['actors']):
+                report['matinee_skipped'] = report.get('matinee_skipped', 0) + 1
+                continue
+            report['matinee_kept_startless'] = report.get('matinee_kept_startless', 0) + 1
         # A sequence whose ONLY way in is its own loop has to be started by the
         # level itself, or it never runs: the Mall's trains are exactly this,
         # and without it the tracks stay empty.

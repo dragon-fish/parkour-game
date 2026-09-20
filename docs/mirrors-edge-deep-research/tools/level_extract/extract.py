@@ -511,6 +511,11 @@ def main(config_path):
     defaults = annotations.blocking_defaults(packages)
     placements, found_lights, bsp, matinees, end_links = [], [], [], [], []
     notes = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
+    # Actors named by a checkpoint's `play`: their sequence is kept even with
+    # no start this module can read, because a remote event is what plays it.
+    wanted_sequences = frozenset(
+        actor for entry in config['checkpoint_restores'].values()
+        for actor in entry.get('play', []))
     for name in packages.names:
         mr = packages.reader(name)
         glass = matinee.collect_glass(packages, mr, report)
@@ -531,7 +536,7 @@ def main(config_path):
         for key, values in collected.items():
             notes[key] += values
         found_lights += lights.collect_lights(mr)
-        matinees += matinee.collect(packages, mr, report)
+        matinees += matinee.collect(packages, mr, report, wanted_sequences)
         notes['annotations'] += glass
         end_links.append((name, matinee.level_end_links(packages, mr)))
         for face in lights.collect_bsp(mr):
@@ -597,6 +602,18 @@ def main(config_path):
         hi = [max(p['position'][k] for p in section) + SECTION_MARGIN_M for k in range(3)]
         notes['checkpoints'] += [c for c in persistent['checkpoints']
                                  if all(lo[k] <= c['position'][k] <= hi[k] for k in range(3))]
+
+    # What a respawn onto each named checkpoint has to put the level into.
+    # Carried on the checkpoint rather than kept as a side table: the builder
+    # already walks these, and a name that matches nothing is a typo worth
+    # hearing about now instead of as a silent no-op in the shell.
+    restores = dict(config['checkpoint_restores'])
+    for c in notes['checkpoints']:
+        entry = restores.pop(c.get('label', ''), None)
+        if entry:
+            c['restores'] = {key: list(entry.get(key, [])) for key in ('hide', 'show', 'play')}
+    if restores:
+        raise ExtractError('checkpoint_restores names no such checkpoint: %s' % sorted(restores))
 
     notes['checkpoints'].sort(key=lambda c: c.get('weight', 0))
 

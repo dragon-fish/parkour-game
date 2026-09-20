@@ -72,6 +72,7 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	# so the sequence carries it. Volumes first, matinees after: a Matinee
 	# addresses its riders by path, so they have to exist and be named.
 	var borne := {}
+	var sequences := {}
 	_own(root, _air_walls(annotations))
 	_own(root, _interest_lines(annotations, manifest["placements"]))
 	_own(root, _barbed_wire(annotations))
@@ -81,8 +82,8 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	_own(root, _pain_volumes(annotations))
 	_own(root, _glass(manifest, NodePath("../../" + String(geometry.name) + "/Movers")))
 	_own(root, _level_ends(annotations))
-	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), {}, borne))
-	_own(root, _checkpoints(manifest))
+	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), {}, borne, sequences))
+	_own(root, _checkpoints(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), sequences))
 	_own(root, _teleports(manifest))
 	_place_spawn(root, manifest)
 	if config.get("interior", false):
@@ -114,6 +115,7 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	geometry.owner = root
 	var annotations: Array = manifest["annotations"]
 	var borne := {}
+	var sequences := {}
 	_own(root, _air_walls(annotations))
 	_own(root, _interest_lines(annotations, manifest.get("all_placements", manifest["placements"])))
 	_own(root, _barbed_wire(annotations))
@@ -123,9 +125,9 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	_own(root, _pain_volumes(annotations))
 	_own(root, _glass(manifest, NodePath("../../Geometry/Movers")))
 	_own(root, _level_ends(annotations))
-	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), _lift_actors(manifest), borne))
+	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), _lift_actors(manifest), borne, sequences))
 	_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
-	_own(root, _checkpoints(manifest))
+	_own(root, _checkpoints(manifest, NodePath("../../Geometry/Movers"), sequences))
 	return root
 
 
@@ -249,7 +251,7 @@ static func _lift_actors(manifest: Dictionary) -> Dictionary:
 ## group as seen from a Matinee node. Groups moving an actor in `lifted` are
 ## left out: the Lift that owns it would be fought.
 func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
-		borne: Dictionary = {}) -> Node3D:
+		borne: Dictionary = {}, sequences: Dictionary = {}) -> Node3D:
 	var group := _group("Matinees")
 	var present := {}
 	var riders := {}
@@ -338,6 +340,12 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
 			node.add_child(area)
 		group.add_child(node)
 		by_source[m["name"]] = node
+		# By the ACTOR it drives, for whoever has to name a sequence later: a
+		# sequence has no name of its own worth carrying, and reproducing this
+		# node's name elsewhere is how the two would drift apart.
+		for g: Dictionary in m["groups"]:
+			for actor: String in g["actors"]:
+				sequences[actor] = String(node.name)
 	# "Completed" chains: the earlier sequence starts the later one.
 	for m: Dictionary in manifest.get("matinees", []):
 		if not by_source.has(m["name"]):
@@ -1051,7 +1059,7 @@ func _level_ends(annotations: Array) -> Node3D:
 	return group
 
 
-func _checkpoints(manifest: Dictionary) -> Node3D:
+func _checkpoints(manifest: Dictionary, movers: NodePath = NodePath(), sequences: Dictionary = {}) -> Node3D:
 	var group := _group("Checkpoints")
 	var names := Common.NameAllocator.new()
 	var spawns: Array = manifest["spawns"]
@@ -1077,6 +1085,9 @@ func _checkpoints(manifest: Dictionary) -> Node3D:
 		checkpoint.transform = _spawn_transform(c)
 		checkpoint.set("index", int(c.get("weight", 0)))
 		checkpoint.set("display_name", str(c.get("label", "")))
+		var restores := _checkpoint_restores(c, manifest, movers, sequences)
+		if not restores.is_empty():
+			checkpoint.set("restores", restores)
 		var box := BoxShape3D.new()
 		box.size = Vector3.ONE * CHAPTER_CHECKPOINT_BOX_M
 		var collision := CollisionShape3D.new()
@@ -1085,6 +1096,44 @@ func _checkpoints(manifest: Dictionary) -> Node3D:
 		checkpoint.add_child(collision)
 		group.add_child(checkpoint)
 	return group
+
+
+## What a respawn onto this checkpoint has to put the level into, as node paths
+## seen from the checkpoint. The manifest names ACTORS (package.name); this
+## turns them into the mover nodes they became, and -- for `play` -- into the
+## Matinee that drives the named actor.
+##
+## `play` names the driven actor rather than the sequence because a sequence
+## has no name of its own worth carrying: the original identifies it only by
+## export index, which means nothing to a person editing the config.
+func _checkpoint_restores(c: Dictionary, manifest: Dictionary, movers: NodePath, sequences: Dictionary) -> Dictionary:
+	var wanted: Dictionary = c.get("restores", {})
+	if wanted.is_empty() or String(movers).is_empty():
+		return {}
+	var present := {}
+	for p: Dictionary in manifest.get("all_placements", manifest["placements"]):
+		if p.get("mover", false):
+			present["%s.%s" % [p["package"], p["name"]]] = Common.mover_name(p["package"], p["name"])
+	var out := {}
+	for key: String in ["hide", "show"]:
+		var paths: Array[NodePath] = []
+		for actor: String in wanted.get(key, []):
+			if present.has(actor):
+				paths.append(NodePath(String(movers) + "/" + present[actor]))
+			else:
+				push_warning("[me_level] checkpoint %s: %s names no mover" % [c.get("label", ""), actor])
+		if not paths.is_empty():
+			out[key] = paths
+	var played: Array[NodePath] = []
+	for actor: String in wanted.get("play", []):
+		if not sequences.has(actor):
+			push_warning("[me_level] checkpoint %s: nothing drives %s" % [c.get("label", ""), actor])
+			continue
+		# A Matinee sits in its own group beside the Checkpoints group.
+		played.append(NodePath("../../Matinees/" + sequences[actor]))
+	if not played.is_empty():
+		out["play"] = played
+	return out
 
 
 ## The config's cutscene cuts: a box where the original takes the body away,
