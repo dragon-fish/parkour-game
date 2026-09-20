@@ -45,3 +45,33 @@ func test_a_played_sequence_moves_its_target_and_a_respawn_puts_it_back() -> voi
 	assert_almost_eq(rig.target.global_position.y, 0.0, 0.01, "the sequence could not be played again after a respawn")
 	rig.root.queue_free()
 	await step(1)
+
+
+func test_a_target_carried_off_between_two_plays_is_played_where_it_now_stands() -> void:
+	# A lift's doors: opened and shut at the bottom, carried up by the car,
+	# opened again at the top.
+	var rig := _rig()
+	await step(1)
+	rig.matinee.play()
+	await step(12)
+	rig.matinee.drive("reverse")
+	await step(12)
+	assert_almost_eq(rig.target.global_position.y, 2.0, 0.01, "shut again, where it began")
+	rig.target.global_position += Vector3(0.0, 40.0, 0.0)
+	rig.matinee.play()
+	await step(12)
+	assert_almost_eq(rig.target.global_position.y, 40.0, 0.01, "it was played where the car had left it, not hauled back down")
+	rig.root.queue_free()
+	await step(1)
+
+
+func test_a_replay_from_the_end_still_starts_from_the_start() -> void:
+	var rig := _rig()
+	await step(1)
+	rig.matinee.play()
+	await step(12)
+	rig.matinee.play()
+	await step(12)
+	assert_almost_eq(rig.target.global_position.y, 0.0, 0.01, "replayed from its end it must not take the end for its start")
+	rig.root.queue_free()
+	await step(1)

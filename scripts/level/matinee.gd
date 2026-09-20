@@ -229,7 +229,13 @@ func is_running() -> bool:
 
 
 func _begin(direction: int) -> void:
-	if not _captured:
+	# Keys are relative to where the targets START, and a target can be taken
+	# somewhere between two plays: a lift's doors ride up with the car. At rest
+	# at the start it IS at its start, wherever that now is, so that is read
+	# again. Read once, the doors were hauled back down to the landing they
+	# first opened on, and the car arrived to doors that never opened.
+	# NOT when replaying from the end: there the target stands at its END.
+	if not _captured or (direction > 0 and _time <= 0.0):
 		_capture()
 	# A forward start from the end replays from the top; a reverse start from
 	# the top has nothing to undo.
