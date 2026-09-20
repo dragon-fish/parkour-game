@@ -28,7 +28,28 @@ extends Node3D
 @export var play_rate: float = 1.0
 ## Sequences this one starts when it finishes: {path: NodePath, action:
 ## "play" | "reverse", delay: float}. May name this node itself -- a loop.
+##
+## A follower may also carry `delay_min` and `delay_max`, and then the gap is
+## drawn afresh every time. A CONSTANT gap makes a metronome of a level: the
+## original's trains come back after 5 to 10 seconds, never on the beat.
 @export var followers: Array[Dictionary] = []
+## Plays itself as the level loads, and again after every respawn.
+##
+## Only for a sequence whose one way in is its own loop -- the extractor marks
+## exactly that shape. Nothing else in the level ever starts such a sequence,
+## so without this the Mall's tracks stay empty for the whole chapter.
+@export var autostart: bool = false
+## Held for as long as the movement lasts: {stream: AudioStream, fade_in: float,
+## fade_out: float}. The original runs the train's rolling noise off the
+## sequence's own soundon/soundoff, not off any trigger, so it begins and ends
+## with the motion rather than with the player being somewhere.
+@export var sound: Dictionary = {}
+
+## The rolling sound's player, built on demand and parented to the first
+## target, so the sound travels with what moves. Doppler is on: a body passing
+## at 50 m/s that does not change pitch reads as a painted backdrop.
+var _sound_player: AudioStreamPlayer3D = null
+var _sound_fade: float = 0.0
 
 ## Keys time, 0 .. length.
 var _time: float = 0.0
@@ -64,6 +85,11 @@ func _ready() -> void:
 		elif child is Area3D:
 			(child as Area3D).body_entered.connect(_on_touch.bind(child))
 	set_physics_process(false)
+	# _process exists only to fade the rolling sound, and most sequences have
+	# none; it turns itself on when there is something to fade.
+	set_process(false)
+	if autostart:
+		play()
 
 
 ## Back to the level's opening state and playable again. Every Matinee that
@@ -86,6 +112,11 @@ func reset_for_respawn() -> void:
 	for child in get_children():
 		if child is Area3D:
 			child.set_meta("spent", false)
+	_silence()
+	# A loop stopped by the reset would never run again: dying once beside the
+	# tracks would empty them for the rest of the chapter.
+	if autostart:
+		play()
 
 
 func _on_touch(body: Node3D, area: Area3D) -> void:
@@ -134,6 +165,8 @@ func _begin(direction: int) -> void:
 		return
 	_direction = direction
 	set_physics_process(true)
+	if direction > 0:
+		_sing()
 
 
 func _capture() -> void:
@@ -172,10 +205,22 @@ func _physics_process(delta: float) -> void:
 	_direction = 0
 	set_physics_process(false)
 	if went > 0:
+		_hush()
 		for follower: Dictionary in followers:
 			var next := get_node_or_null(follower["path"]) as Matinee
 			if next != null:
-				next.start(str(follower["action"]), float(follower["delay"]))
+				next.start(str(follower["action"]), gap_of(follower))
+
+
+## How long before a follower starts. A follower carrying delay_min/delay_max
+## draws a fresh gap every time; one carrying neither uses its fixed delay.
+static func gap_of(follower: Dictionary) -> float:
+	var fixed := float(follower.get("delay", 0.0))
+	var low := float(follower.get("delay_min", fixed))
+	var high := float(follower.get("delay_max", fixed))
+	if high <= low:
+		return fixed
+	return randf_range(low, high)
 
 
 func _apply() -> void:
@@ -243,6 +288,78 @@ static func sample(times: PackedFloat32Array, values: PackedVector3Array, arrive
 		return values[k - 1] * (2.0 * a3 - 3.0 * a2 + 1.0) + leave[k - 1] * span * (a3 - 2.0 * a2 + a) \
 			+ arrive[k] * span * (a3 - a2) + values[k] * (-2.0 * a3 + 3.0 * a2)
 	return values[values.size() - 1]
+
+
+## Quietest audible gain: below this the player is stopped rather than left
+## running inaudibly, because an AudioStreamPlayer3D costs whether or not
+## anyone can hear it and a level holds dozens of these.
+const SOUND_FLOOR := 0.002
+
+
+## Starts the rolling sound, or fades it back in mid-fade-out.
+func _sing() -> void:
+	if not sound.has("stream") or sound["stream"] == null:
+		return
+	if _sound_player == null:
+		_sound_player = AudioStreamPlayer3D.new()
+		_sound_player.name = "Sound"
+		_sound_player.stream = sound["stream"]
+		# PHYSICS_STEP, not IDLE_STEP: the targets are moved from
+		# _physics_process, so an idle-sampled velocity reads whatever the
+		# frame happened to catch. The camera must have its own tracking on
+		# too -- Godot needs BOTH ends, and one alone is the half-built state
+		# where a passing train shifts pitch but running at a standing one
+		# does not.
+		_sound_player.doppler_tracking = AudioStreamPlayer3D.DOPPLER_TRACKING_PHYSICS_STEP
+		_sound_player.volume_db = -80.0
+		_carrier().add_child(_sound_player)
+	if not _sound_player.playing:
+		_sound_player.play()
+	set_process(true)
+
+
+## Begins the fade out. The sound outlives the movement by fade_out seconds,
+## which is what makes a train recede instead of switching off.
+func _hush() -> void:
+	set_process(_sound_player != null)
+
+
+## Stops it where it stands, for a respawn: nothing should be heard rolling
+## away from a place the player is no longer in.
+func _silence() -> void:
+	_sound_fade = 0.0
+	if _sound_player != null and _sound_player.playing:
+		_sound_player.stop()
+
+
+## Where the rolling sound sits: whatever the first track moves, so it travels
+## with the thing making it. Falls back to this node when no target resolves.
+func _carrier() -> Node3D:
+	if tracks.is_empty():
+		return self
+	var targets: Array = tracks[0]["targets"]
+	for path: NodePath in targets:
+		var target := get_node_or_null(path) as Node3D
+		if target != null:
+			return target
+	return self
+
+
+func _process(delta: float) -> void:
+	if _sound_player == null:
+		set_process(false)
+		return
+	var rising := _direction > 0
+	var seconds := float(sound.get("fade_in", 0.0)) if rising else float(sound.get("fade_out", 0.0))
+	var step := 1.0 if seconds <= 0.0 else delta / seconds
+	_sound_fade = clampf(_sound_fade + (step if rising else -step), 0.0, 1.0)
+	if _sound_fade <= SOUND_FLOOR:
+		_silence()
+		set_process(false)
+		return
+	_sound_player.volume_db = linear_to_db(_sound_fade)
+	if _sound_fade >= 1.0 and rising:
+		set_process(false)
 
 
 ## (roll, pitch, yaw) degrees -> Godot basis. The same conjugation by the

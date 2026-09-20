@@ -17,7 +17,7 @@ height = 1.8
 radius = 0.4
 height = 1.8
 
-[node name="Player" type="CharacterBody3D" unique_id=1639581019 node_paths=PackedStringArray("camera_rig", "probes", "screen_effects", "subtitle", "toast")]
+[node name="Player" type="CharacterBody3D" unique_id=806103557 node_paths=PackedStringArray("camera_rig", "probes", "screen_effects", "subtitle", "toast")]
 script = ExtResource("1_qek5x")
 camera_rig = NodePath("CameraRig")
 probes = NodePath("Probes")
@@ -25,65 +25,66 @@ screen_effects = NodePath("CameraRig/ScreenEffects")
 subtitle = NodePath("CameraRig/Subtitle")
 toast = NodePath("CameraRig/Toast")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1174072581]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1258576072]
 shape = SubResource("CapsuleShape3D_myrg7")
 
-[node name="CameraRig" type="Node3D" parent="." unique_id=2108144803]
+[node name="CameraRig" type="Node3D" parent="." unique_id=1941829101]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.76, 0)
 script = ExtResource("2_5gtgg")
 
-[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=752876960]
+[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=170089333]
+doppler_tracking = 2
 
-[node name="ScreenEffects" type="CanvasLayer" parent="CameraRig" unique_id=1367471315]
+[node name="ScreenEffects" type="CanvasLayer" parent="CameraRig" unique_id=1850116766]
 script = ExtResource("3_h17s1")
 
-[node name="Crosshair" type="CanvasLayer" parent="CameraRig" unique_id=289697100 node_paths=PackedStringArray("player")]
+[node name="Crosshair" type="CanvasLayer" parent="CameraRig" unique_id=1812962772 node_paths=PackedStringArray("player")]
 script = ExtResource("4_je7p5")
 player = NodePath("../..")
 
-[node name="Subtitle" type="CanvasLayer" parent="CameraRig" unique_id=926045438]
+[node name="Subtitle" type="CanvasLayer" parent="CameraRig" unique_id=857087325]
 script = ExtResource("5_fm80t")
 
-[node name="Toast" type="CanvasLayer" parent="CameraRig" unique_id=1419139059]
+[node name="Toast" type="CanvasLayer" parent="CameraRig" unique_id=2002650759]
 script = ExtResource("6_gx1jg")
 
-[node name="BodyRoot" type="Node3D" parent="." unique_id=966248829]
+[node name="BodyRoot" type="Node3D" parent="." unique_id=2032420652]
 script = ExtResource("7_ugbui")
 
-[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=183262287]
+[node name="StandClearance" type="ShapeCast3D" parent="." unique_id=2094937538]
 shape = SubResource("CapsuleShape3D_kvlxm")
 target_position = Vector3(0, 0, 0)
 
-[node name="Probes" type="Node3D" parent="." unique_id=450357526]
+[node name="Probes" type="Node3D" parent="." unique_id=187569349]
 script = ExtResource("8_fcs02")
 
-[node name="VaultLow" type="RayCast3D" parent="Probes" unique_id=1030459600]
+[node name="VaultLow" type="RayCast3D" parent="Probes" unique_id=179204956]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.55, 0)
 target_position = Vector3(0, 0, -1.4)
 
-[node name="VaultHigh" type="RayCast3D" parent="Probes" unique_id=1829307903]
+[node name="VaultHigh" type="RayCast3D" parent="Probes" unique_id=2016832721]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
 target_position = Vector3(0, 0, -1.4)
 
-[node name="SurfaceDown" type="RayCast3D" parent="Probes" unique_id=1045073789]
+[node name="SurfaceDown" type="RayCast3D" parent="Probes" unique_id=1518346471]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, -1)
 target_position = Vector3(0, -3.2, 0)
 hit_from_inside = true
 
-[node name="VaultOverDown" type="RayCast3D" parent="Probes" unique_id=1538550090]
+[node name="VaultOverDown" type="RayCast3D" parent="Probes" unique_id=886689650]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, -1.9)
 target_position = Vector3(0, -1.7, 0)
 
-[node name="WallLeft" type="RayCast3D" parent="Probes" unique_id=554319782]
+[node name="WallLeft" type="RayCast3D" parent="Probes" unique_id=104418463]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
 target_position = Vector3(-0.75, 0, 0)
 
-[node name="WallRight" type="RayCast3D" parent="Probes" unique_id=694827460]
+[node name="WallRight" type="RayCast3D" parent="Probes" unique_id=1400122188]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
 target_position = Vector3(0.75, 0, 0)
 
-[node name="WallAheadLow" type="RayCast3D" parent="Probes" unique_id=1839806795]
+[node name="WallAheadLow" type="RayCast3D" parent="Probes" unique_id=1606757369]
 target_position = Vector3(0, 0, -0.6)
 
-[node name="WallAheadHigh" type="RayCast3D" parent="Probes" unique_id=1385246707]
+[node name="WallAheadHigh" type="RayCast3D" parent="Probes" unique_id=1084633803]
 target_position = Vector3(0, 0, -0.6)

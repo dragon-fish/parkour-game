@@ -16,6 +16,8 @@ const CHECKPOINT_SCRIPT := preload("res://scripts/level/checkpoint.gd")
 const BARBED_WIRE_SCRIPT := preload("res://scripts/level/barbed_wire.gd")
 const MODIFIER_VOLUME_SCRIPT := preload("res://scripts/level/modifier_volume.gd")
 const DEATH_VOLUME_SCRIPT := preload("res://scripts/level/death_volume.gd")
+const EFFECT_VOLUME_SCRIPT := preload("res://scripts/level/effect_volume.gd")
+const HEADLIGHT_SCRIPT := preload("res://scripts/level/headlight.gd")
 const MATINEE_SCRIPT := preload("res://scripts/level/matinee.gd")
 const USE_ZONE_SCRIPT := preload("res://scripts/level/use_zone.gd")
 const LIFT_SCRIPT := preload("res://scripts/level/lift.gd")
@@ -66,14 +68,20 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	geometry.owner = root
 
 	var annotations: Array = manifest["annotations"]
+	# Whatever rides a mover, gathered as it is built and handed to _matinees()
+	# so the sequence carries it. Volumes first, matinees after: a Matinee
+	# addresses its riders by path, so they have to exist and be named.
+	var borne := {}
 	_own(root, _air_walls(annotations))
 	_own(root, _interest_lines(annotations, manifest["placements"]))
 	_own(root, _barbed_wire(annotations))
-	_own(root, _death_volumes(annotations))
+	_own(root, _death_volumes(annotations, borne))
+	_own(root, _effect_volumes(annotations, config, borne))
+	_own(root, _headlights(annotations, borne))
 	_own(root, _pain_volumes(annotations))
 	_own(root, _glass(manifest, NodePath("../../" + String(geometry.name) + "/Movers")))
 	_own(root, _level_ends(annotations))
-	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), {}))
+	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), {}, borne))
 	_own(root, _checkpoints(manifest))
 	_own(root, _teleports(manifest))
 	_place_spawn(root, manifest)
@@ -105,14 +113,17 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	root.add_child(geometry)
 	geometry.owner = root
 	var annotations: Array = manifest["annotations"]
+	var borne := {}
 	_own(root, _air_walls(annotations))
 	_own(root, _interest_lines(annotations, manifest.get("all_placements", manifest["placements"])))
 	_own(root, _barbed_wire(annotations))
-	_own(root, _death_volumes(annotations))
+	_own(root, _death_volumes(annotations, borne))
+	_own(root, _effect_volumes(annotations, manifest["config"], borne))
+	_own(root, _headlights(annotations, borne))
 	_own(root, _pain_volumes(annotations))
 	_own(root, _glass(manifest, NodePath("../../Geometry/Movers")))
 	_own(root, _level_ends(annotations))
-	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), _lift_actors(manifest)))
+	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), _lift_actors(manifest), borne))
 	_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
 	_own(root, _checkpoints(manifest))
 	return root
@@ -237,7 +248,8 @@ static func _lift_actors(manifest: Dictionary) -> Dictionary:
 ## touch and use triggers and their "Completed" chains. `movers` is the Movers
 ## group as seen from a Matinee node. Groups moving an actor in `lifted` are
 ## left out: the Lift that owns it would be fought.
-func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary) -> Node3D:
+func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
+		borne: Dictionary = {}) -> Node3D:
 	var group := _group("Matinees")
 	var present := {}
 	var riders := {}
@@ -264,11 +276,19 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary) -> No
 				if present.has(actor):
 					targets.append(NodePath(String(movers) + "/" + present[actor]))
 					pivots.append(null)
+				var frame: Dictionary = m["frames"].get(actor, {})
 				for rider: String in riders.get(actor, []):
-					var frame: Dictionary = m["frames"].get(actor, {})
 					if frame.is_empty():
 						continue
 					targets.append(NodePath(String(movers) + "/" + present[rider]))
+					pivots.append(Common.transform_of(frame))
+				# The volumes and lamps standing in this shell that ride the
+				# same actor. They pivot about it exactly as a hard-attached
+				# mesh does -- a kill box is no different from a carriage.
+				for path: NodePath in borne.get(actor, [] as Array[NodePath]):
+					if frame.is_empty():
+						continue
+					targets.append(path)
 					pivots.append(Common.transform_of(frame))
 			if targets.is_empty():
 				continue
@@ -285,6 +305,15 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary) -> No
 		node.set("tracks", tracks)
 		node.set("length", float(m["length"]))
 		node.set("play_rate", float(m.get("play_rate", 1.0)))
+		if m.get("autostart", false):
+			node.set("autostart", true)
+		var rolling: Dictionary = m.get("sound") if m.get("sound") is Dictionary else {}
+		if not rolling.is_empty():
+			var streams := _streams_for([rolling], manifest["config"])
+			if not streams.is_empty():
+				node.set("sound", {stream = streams[0],
+					fade_in = float(rolling.get("fade_in", 0.0)),
+					fade_out = float(rolling.get("fade_out", 0.0))})
 		# One trigger node per originator: a lever reached through a Switch
 		# both plays and reverses, which is a toggle.
 		var triggers := {}
@@ -321,6 +350,11 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary) -> No
 			var followers: Array[Dictionary] = earlier.get("followers")
 			var follower := {path = NodePath("../" + String(later.name)),
 				action = "reverse" if int(start["input"]) == 1 else "play", delay = float(start["delay"])}
+			# A gap the original draws fresh every time. Carried as the range,
+			# not as its middle: the point of it is that it varies.
+			if start.has("delay_min") and float(start["delay_max"]) > float(start["delay_min"]):
+				follower["delay_min"] = float(start["delay_min"])
+				follower["delay_max"] = float(start["delay_max"])
 			if not followers.has(follower):
 				followers.append(follower)
 			earlier.set("followers", followers)
@@ -762,20 +796,172 @@ func _wire_points(a: Dictionary) -> Array[Vector3]:
 	return [transform * start, transform * end]
 
 
-func _death_volumes(annotations: Array) -> Node3D:
+## Lethal volumes: the level's own TdKillVolumes, plus any volume riding a
+## mover whose touch reaches the original's player-fail. A Mall train kills
+## with one of these and with nothing else -- its cars have no collision.
+##
+## `borne` collects, per ridden actor, the path of every node built here that
+## has to travel with it. _matinees() turns those into Matinee targets.
+func _death_volumes(annotations: Array, borne: Dictionary) -> Node3D:
 	var group := _group("DeathVolumes")
 	var names := Common.NameAllocator.new()
 	for a: Dictionary in annotations:
-		if a["kind"] != "kill":
+		if a["kind"] != "kill" and not _effect_of(a).get("kill", false):
 			continue
 		var volume := Area3D.new()
 		volume.set_script(DEATH_VOLUME_SCRIPT)
 		volume.name = names.take(a["name"])
-		if _hull_shapes(volume, a, Transform3D.IDENTITY) == 0:
-			push_error("[me_level] kill volume %s has no hull" % a["name"])
+		if _shapes_on(volume, a) == 0:
+			push_error("[me_level] kill volume %s has no shape" % a["name"])
 			volume.free()
 			continue
 		group.add_child(volume)
+		_record_rider(borne, a, "DeathVolumes", volume.name)
+	return group
+
+
+## What the original's Kismet does when this volume is touched, or {}.
+static func _effect_of(a: Dictionary) -> Dictionary:
+	var effects: Variant = a.get("effects")
+	return effects if effects is Dictionary else {}
+
+
+## Notes that `node` rides whatever `a` is attached to, as a Matinee sees it:
+## a Matinee sits in its own group beside this one, so two levels up and back
+## down. Silently does nothing for an annotation that rides nothing.
+static func _record_rider(borne: Dictionary, a: Dictionary, group: String, node: StringName) -> void:
+	var base: Variant = a.get("base")
+	if base == null:
+		return
+	if not borne.has(base):
+		borne[base] = [] as Array[NodePath]
+	(borne[base] as Array[NodePath]).append(NodePath("../../%s/%s" % [group, node]))
+
+
+## Shapes for a volume, IN THE NODE'S OWN FRAME, with the node standing where
+## the volume stands.
+##
+## The older volumes here are built the other way round -- node at the origin,
+## shapes carrying the world transform -- which is equivalent for anything that
+## never moves. It is NOT equivalent for a rider: a Matinee moves the NODE, so
+## a node sitting at the world origin has its sound come from the world origin
+## however far away its shapes are. Positioning the node is also what lets a
+## person find it in the editor.
+func _shapes_on(node: Node3D, a: Dictionary) -> int:
+	var frame := Common.transform_of(a)
+	node.transform = frame
+	var made := _hull_shapes(node, a, frame)
+	if made > 0 or not a.has("radius"):
+		return made
+	# A Trigger is a cylinder, not a brush: the original's CollisionHeight is a
+	# HALF-height, Godot's is the whole of it.
+	var shape := CylinderShape3D.new()
+	shape.radius = float(a["radius"])
+	shape.height = float(a.get("height", 0.0)) * 2.0
+	if shape.radius <= 0.0 or shape.height <= 0.0:
+		return 0
+	var collision := CollisionShape3D.new()
+	collision.name = "CollisionShape3D"
+	# The node carries the volume's basis, which for a Trigger is the actor's
+	# rotation; the cylinder stands along the node's own Y.
+	node.add_child(collision)
+	collision.shape = shape
+	return 1
+
+
+## Volumes that are heard and felt rather than survived: the horn box ahead of
+## a train, the shake cylinder around its head. A volume that also kills has a
+## DeathVolume of its own built beside this one -- see DeathVolume's own note
+## on why it carries no settings.
+func _effect_volumes(annotations: Array, config: Dictionary, borne: Dictionary) -> Node3D:
+	var group := _group("EffectVolumes")
+	var names := Common.NameAllocator.new()
+	for a: Dictionary in annotations:
+		var effect := _effect_of(a)
+		if effect.is_empty():
+			continue
+		var streams := _streams_for(effect.get("sounds", []), config)
+		var shake: Dictionary = effect.get("shake") if effect.get("shake") is Dictionary else {}
+		if streams.is_empty() and shake.is_empty():
+			# Its only outcome was the kill, which the DeathVolume carries; or
+			# its sounds are ones this project has no file for yet.
+			continue
+		var volume := Area3D.new()
+		volume.set_script(EFFECT_VOLUME_SCRIPT)
+		volume.name = names.take(a["name"])
+		if _shapes_on(volume, a) == 0:
+			push_error("[me_level] effect volume %s has no shape" % a["name"])
+			volume.free()
+			continue
+		volume.set("sounds", streams)
+		volume.set("shake_amplitude", float(shake.get("amplitude", 0.0)))
+		volume.set("shake_frequency", float(shake.get("frequency", 0.0)))
+		volume.set("shake_hold", float(shake.get("hold", 0.0)))
+		group.add_child(volume)
+		_record_rider(borne, a, "EffectVolumes", volume.name)
+	return group
+
+
+## The streams behind a list of the original's cue names.
+##
+## A name the config does not map makes NO stream and NO error. The original's
+## audio is never extracted and the map lives outside this repository, so a
+## build with no map at all has to produce a level that runs -- silent, not
+## broken. A path that IS mapped but does not load is a mistake worth saying.
+static func _streams_for(cues: Array, config: Dictionary) -> Array[AudioStream]:
+	var sounds: Dictionary = config.get("sounds", {})
+	var out: Array[AudioStream] = []
+	for cue: Dictionary in cues:
+		var path: String = str(sounds.get(cue["name"], ""))
+		if path.is_empty():
+			continue
+		var stream := load(path) as AudioStream
+		if stream == null:
+			push_error("[me_level] sound %s: %s is not an AudioStream" % [cue["name"], path])
+			continue
+		out.append(stream)
+	return out
+
+
+## The original's LensFlareSources, as lamps with a glow card. It places them
+## on the front of the things that move: a train's pair sits 11.52 m ahead of
+## the head and 1.28 m either side.
+##
+## A flare has no Kismet and no shape -- there is nothing to read about it
+## beyond where it is -- so unlike an effect volume it is built from its
+## position alone.
+func _headlights(annotations: Array, borne: Dictionary) -> Node3D:
+	var group := _group("Headlights")
+	var names := Common.NameAllocator.new()
+	for a: Dictionary in annotations:
+		if a["kind"] != "flare":
+			continue
+		var lamp := Node3D.new()
+		lamp.set_script(HEADLIGHT_SCRIPT)
+		lamp.name = names.take(a["name"])
+		lamp.transform = Common.transform_of(a)
+		var light := OmniLight3D.new()
+		light.name = "Light"
+		# Shadows off: a train carries four of these through a tunnel full of
+		# geometry, and none of them is there to shape the scene.
+		light.shadow_enabled = false
+		lamp.add_child(light)
+		var glow := MeshInstance3D.new()
+		glow.name = "Glow"
+		glow.mesh = QuadMesh.new()
+		var material := StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		# A glow that hides what is behind it stops being a glow. Depth write
+		# off, depth TEST on: it is still occluded by the tunnel wall.
+		material.no_depth_test = false
+		glow.material_override = material
+		glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		lamp.add_child(glow)
+		group.add_child(lamp)
+		_record_rider(borne, a, "Headlights", lamp.name)
 	return group
 
 

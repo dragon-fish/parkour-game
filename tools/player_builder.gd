@@ -48,6 +48,12 @@ func build() -> CharacterBody3D:
 
 	var cam := Camera3D.new()
 	cam.name = "Camera3D"
+	# The LISTENING half of the Doppler shift. Godot needs both ends: an
+	# emitter tracks its own velocity, the camera tracks the listener's, and
+	# with only the emitter set a train screaming past shifts pitch but
+	# sprinting at a standing one does not. PHYSICS_STEP because everything
+	# that moves here moves from _physics_process.
+	cam.doppler_tracking = Camera3D.DOPPLER_TRACKING_PHYSICS_STEP
 	rig.add_child(cam)
 	cam.owner = player
 

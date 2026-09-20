@@ -132,6 +132,30 @@ extends Resource
 @export var land_dip_recover: float = 2.2
 ## Fall speed that produces a full-strength landing dip.
 @export var land_dip_speed_ref: float = 18.0
+
+# --- shake, driven by the level -----------------------------------------------
+#
+# Something heavy passing close enough to be felt. The level asks for one in
+# the ORIGINAL's own numbers (a Mall train: Amplitude 1500, Frequency 0.003 for
+# one train and 0.005 for the other) and these two turn them into metres and
+# hertz.
+#
+# [ME:UNKNOWN] what unit either of the original's numbers is in. Nothing found
+# says, so they are not converted, they are SCALED, and these are dials to be
+# turned by eye. What survives the scaling is the RATIO -- the second train
+# shakes 1.67 times faster than the first -- and that ratio is the part worth
+# being faithful to. DO NOT replace these with a derivation; there is nothing
+# to derive from.
+
+## Metres of eye displacement per unit of the original's Amplitude.
+@export var shake_amplitude_scale: float = 0.00002
+## Hertz per unit of the original's Frequency.
+@export var shake_frequency_scale: float = 2000.0
+## How long the shake takes to reach full strength, and to die away once its
+## hold has run out, in seconds. EASED at both ends: a shake that switches on
+## reads as a dropped frame rather than as something passing.
+@export var shake_attack: float = 0.15
+@export var shake_release: float = 0.45
 ## How far the camera drops while sliding, in metres. Must keep the sliding
 ## eye at or below the top of the CROUCHED capsule (which sits at the body
 ## origin, i.e. 0m above it — see Player.set_capsule_height()), or the camera

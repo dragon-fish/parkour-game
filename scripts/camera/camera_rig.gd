@@ -36,6 +36,14 @@ var _roll: float = 0.0
 var _vault_roll: float = 0.0
 ## Additive lift while dying -- see set_death_lift().
 var _death_lift: float = 0.0
+## A shake the LEVEL asked for -- see add_shake(). Amplitude and frequency are
+## the original's raw numbers; CameraConfig scales them.
+var _shake_amplitude: float = 0.0
+var _shake_frequency: float = 0.0
+## Seconds it still has to run at full, and how far in or out it currently is.
+var _shake_hold: float = 0.0
+var _shake_strength: float = 0.0
+var _shake_phase: float = 0.0
 ## An additive downward pitch owned by LandingMove. Separate from _dip because
 ## dip is a spring driven by impact speed and recovers on its own schedule;
 ## this one is driven explicitly by a state that knows how long it has left.
@@ -688,6 +696,7 @@ func reset_state() -> void:
 	_death_lift = 0.0
 	_landing_pitch = 0.0
 	_roll_spin = 0.0
+	clear_shake()
 	_has_head = false
 	_has_look_constraint = false
 	_look_relative_yaw = 0.0
@@ -1079,6 +1088,10 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool) -> vo
 		position = base_position + _head_local_offset * strength
 	else:
 		position = base_position
+	# LAST, and added to whatever the rest of this function settled on: a shake
+	# is a displacement of the finished eye, not one more thing for the head
+	# follow and the step smoothing to chase.
+	position += _shake_offset(delta)
 
 	# rotation.z, unlike position.y above, is never hard-reset elsewhere in
 	# this function, so a plain move_toward accumulates correctly frame to
@@ -1153,6 +1166,57 @@ func punch_landing(speed: float) -> void:
 		return
 	var strength := clampf(speed / maxf(_config.camera.land_dip_speed_ref, 0.001), 0.0, 1.0)
 	_dip = maxf(_dip, strength * _config.camera.land_dip_max)
+
+
+## The level asking the eye to shake: something heavy is passing close.
+##
+## `amplitude` and `frequency` are the ORIGINAL's own numbers, unconverted --
+## CameraConfig.shake_amplitude_scale and shake_frequency_scale turn them into
+## metres and hertz. `hold` is how long it runs at full before dying away.
+##
+## THE LEVEL IS MOVING THE EYE, not the player, so it eases in and out rather
+## than switching (docs/camera-authority.md). A louder shake arriving mid-shake
+## takes over; a quieter one does not cut the first one short.
+func add_shake(amplitude: float, frequency: float, hold: float) -> void:
+	if amplitude <= 0.0 or frequency <= 0.0:
+		return
+	if amplitude >= _shake_amplitude:
+		_shake_amplitude = amplitude
+		_shake_frequency = frequency
+	_shake_hold = maxf(_shake_hold, hold)
+
+
+## Kills the shake without easing. For a respawn, where the eye is elsewhere
+## and nothing that was passing is passing any more.
+func clear_shake() -> void:
+	_shake_hold = 0.0
+	_shake_strength = 0.0
+	_shake_amplitude = 0.0
+	_shake_frequency = 0.0
+	_shake_phase = 0.0
+
+
+## The eye's displacement from the shake this tick, in the camera's own frame,
+## advanced by `delta`. Zero and free when nothing is shaking.
+func _shake_offset(delta: float) -> Vector3:
+	if _shake_hold <= 0.0 and _shake_strength <= 0.0:
+		return Vector3.ZERO
+	var rising := _shake_hold > 0.0
+	_shake_hold = maxf(_shake_hold - delta, 0.0)
+	var seconds: float = _config.camera.shake_attack if rising else _config.camera.shake_release
+	var step := 1.0 if seconds <= 0.0 else delta / seconds
+	_shake_strength = clampf(_shake_strength + (step if rising else -step), 0.0, 1.0)
+	if _shake_strength <= 0.0:
+		clear_shake()
+		return Vector3.ZERO
+	var hz: float = _shake_frequency * _config.camera.shake_frequency_scale
+	_shake_phase += delta * hz
+	var metres: float = _shake_amplitude * _config.camera.shake_amplitude_scale * _shake_strength
+	# Two axes at rates that do not divide into each other, so the eye traces a
+	# wandering figure rather than a line: a single sine reads as the camera
+	# being dragged, not as the ground shaking.
+	return Vector3(sin(_shake_phase * TAU) * metres,
+		sin(_shake_phase * TAU * 1.37 + 1.1) * metres, 0.0)
 
 # --- scripted look sweep ------------------------------------------------------
 #

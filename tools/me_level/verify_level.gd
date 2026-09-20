@@ -86,7 +86,9 @@ func _run() -> void:
 
 	_check_count(parts, "InterestLines", manifest, ["zipline", "swing", "balance", "ladder", "ledgewalk"])
 	_check_count(parts, "AirWalls", manifest, ["blocking"])
-	_check_count(parts, "DeathVolumes", manifest, ["kill"])
+	_check_deaths(parts, manifest)
+	_check_count(parts, "Headlights", manifest, ["flare"])
+	_check_riders_ride(parts, manifest)
 	_check_count(parts, "BarbedWire", manifest, ["barbedwire"])
 	_check_count(parts, "PainVolumes", manifest, ["pain"])
 	_check_count(parts, "Glass", manifest, ["glass"])
@@ -165,6 +167,55 @@ func _check_spawn_has_a_way_out(shell: Node, space: PhysicsDirectSpaceState3D) -
 		farthest = maxf(farthest, from.distance_to(hit["position"]) if hit else SPAWN_CLEARANCE_M)
 	check(farthest >= SPAWN_CLEARANCE_M,
 			"spawn is walled in on every side within %.1f m: name the chapter's playable start in initial_spawn" % SPAWN_CLEARANCE_M)
+
+
+## Lethal volumes are the level's own kill volumes PLUS every volume riding a
+## mover whose touch reaches the original's player-fail: a train has no lethal
+## collision of its own, only a box that travels with it.
+func _check_deaths(parts: Array[Node], manifest: Dictionary) -> void:
+	var expected := 0
+	for a: Dictionary in manifest["annotations"]:
+		var effects: Variant = a.get("effects")
+		if a["kind"] == "kill" or (effects is Dictionary and effects.get("kill", false)):
+			expected += 1
+	var actual := 0
+	for part in parts:
+		if part.has_node("DeathVolumes"):
+			actual += part.get_node("DeathVolumes").get_child_count()
+	check(actual == expected, "DeathVolumes has %d nodes, manifest has %d" % [actual, expected])
+
+
+## THE GATE THIS WHOLE FEATURE EXISTS BEHIND. A volume the original bolted to a
+## moving actor is lethal, or heard, only where that actor is. Built but never
+## handed to the Matinee that drives it, it becomes a kill box standing still
+## on an empty track -- which is not a missing feature but a new hazard in a
+## place the original has none, and it looks entirely correct in the editor.
+func _check_riders_ride(parts: Array[Node], manifest: Dictionary) -> void:
+	var ridden := {}
+	for a: Dictionary in manifest["annotations"]:
+		if a.get("base") != null:
+			ridden[str(a["name"])] = true
+	if ridden.is_empty():
+		return
+	var carried := {}
+	for part in parts:
+		if not part.has_node("Matinees"):
+			continue
+		for matinee in part.get_node("Matinees").get_children():
+			for track: Dictionary in matinee.get("tracks"):
+				for path: NodePath in track["targets"]:
+					var target := matinee.get_node_or_null(path)
+					if target != null:
+						carried[target.get_instance_id()] = true
+	for part in parts:
+		for group in ["DeathVolumes", "EffectVolumes", "Headlights"]:
+			if not part.has_node(group):
+				continue
+			for node in part.get_node(group).get_children():
+				if not ridden.has(str(node.name)):
+					continue
+				check(carried.has(node.get_instance_id()),
+						"%s/%s/%s rides a mover but no Matinee moves it" % [part.name, group, node.name])
 
 
 func _check_count(parts: Array[Node], group: String, manifest: Dictionary, kinds: Array) -> void:

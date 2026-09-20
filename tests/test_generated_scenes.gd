@@ -103,6 +103,12 @@ func _signature(node: Node, root: Node) -> String:
 		parts.append(_material((node as MeshInstance3D).get_active_material(0)))
 	if node is CollisionShape3D:
 		parts.append(_shape((node as CollisionShape3D).shape))
+	if node is Camera3D:
+		# The LISTENING half of the Doppler shift, and silent when it is
+		# missing: a train screaming past would still shift pitch (the emitter
+		# carries its own half), but sprinting at a standing source would not,
+		# and nothing about the scene would look wrong.
+		parts.append("doppler=%d" % (node as Camera3D).doppler_tracking)
 	if node is ShapeCast3D:
 		var cast := node as ShapeCast3D
 		parts.append(_shape(cast.shape))
