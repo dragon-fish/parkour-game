@@ -32,6 +32,11 @@ func _run() -> void:
 		check(ResourceLoader.exists(MeLibrary.path_for(mesh_name)), "library lacks " + mesh_name)
 
 	var shell: Node = (load(paths.shell) as PackedScene).instantiate()
+	# Taken out before the level enters the tree: everything below looks at the
+	# WHOLE chapter, and left in it would hide all but the first stretch.
+	var streaming := shell.find_child("Streaming", true, false)
+	if streaming != null:
+		streaming.get_parent().remove_child(streaming)
 	root.add_child(shell)
 	var geometry: Node = null
 	for child in shell.get_children():
@@ -144,8 +149,89 @@ func _run() -> void:
 		var from := start.global_position + Vector3.UP * 0.5
 		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 6.0))
 		check(not hit.is_empty(), "no floor under " + str(shell.get_path_to(start)))
+		if streaming != null and not hit.is_empty():
+			_check_floor_is_loaded(streaming, start, from, space)
+	if streaming != null:
+		_check_streaming(streaming, manifest, parts, geometries)
+		streaming.free()
 	_check_spawn_has_a_way_out(shell, space)
 	_finish(shell)
+
+
+## A restore loads the checkpoint's snapshot and sets the body down: the floor
+## it is set on has to be in that snapshot.
+func _check_floor_is_loaded(streaming: Node, start: Node, from: Vector3, space: PhysicsDirectSpaceState3D) -> void:
+	var label: String = start.get("display_name") if start.get("display_name") else String(start.name)
+	var snapshots: Dictionary = streaming.get("snapshots")
+	if not snapshots.has(label):
+		return
+	var loaded: PackedStringArray = snapshots[label]
+	var managed: PackedStringArray = streaming.get("managed")
+	# The whole chapter is in the tree here, so the first thing under the point
+	# may belong to a stretch that is never loaded with it: look past those.
+	var query := PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 6.0)
+	var skipped: Array[String] = []
+	for attempt in 16:
+		var hit := space.intersect_ray(query)
+		if hit.is_empty():
+			break
+		var node := hit["collider"] as Node
+		while node != null and not node.has_meta(Common.PACKAGE_META):
+			node = node.get_parent()
+		var key: String = node.get_meta(Common.PACKAGE_META) if node != null else ""
+		if key == "" or not managed.has(key) or loaded.has(key):
+			return
+		skipped.append(key)
+		query.exclude = query.exclude + [hit["rid"]]
+	check(false, "checkpoint %s: nothing its snapshot loads is under it (only %s)" % [label, skipped])
+
+
+## What cannot fail a build but says where to look when a stretch is wrong.
+## NOTES, not checks: the original's data decides these, and some of it is
+## simply so (a package the chapter streams and this project never builds).
+func _check_streaming(streaming: Node, manifest: Dictionary, parts: Array[Node], geometries: Array[Node]) -> void:
+	var built := {}
+	var todo: Array[Node] = []
+	todo.append_array(parts)
+	todo.append_array(geometries)
+	while not todo.is_empty():
+		var node: Node = todo.pop_back()
+		if node.has_meta(Common.PACKAGE_META):
+			built[node.get_meta(Common.PACKAGE_META)] = true
+			continue
+		todo.append_array(node.get_children())
+	var unbuilt: Array = []
+	for key: String in streaming.get("managed"):
+		if not built.has(key):
+			unbuilt.append(key)
+	if not unbuilt.is_empty():
+		print("[verify] note: streamed but nothing of them is built: ", unbuilt)
+
+	# Weak, because the manifest knows no route: what one snapshot has over the
+	# one before must be loaded by SOME step, what it lacks unloaded by some.
+	var loads := {}
+	var unloads := {}
+	for step: Dictionary in manifest["streaming"]["steps"]:
+		for key: String in step["packages"]:
+			(loads if step["op"] == "load" else unloads)[key] = true
+	var ordered: Array = (manifest["checkpoints"] as Array).filter(
+			func(c: Dictionary) -> bool: return not (c.get("streaming", []) as Array).is_empty())
+	ordered.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.get("weight", 0) < b.get("weight", 0))
+	var never_loaded := {}
+	var never_unloaded := {}
+	for i in range(1, ordered.size()):
+		var before: Array = ordered[i - 1]["streaming"]
+		var after: Array = ordered[i]["streaming"]
+		for key: String in after:
+			if built.has(key) and not before.has(key) and not loads.has(key):
+				never_loaded[key] = ordered[i].get("label", ordered[i]["name"])
+		for key: String in before:
+			if built.has(key) and not after.has(key) and not unloads.has(key):
+				never_unloaded[key] = ordered[i].get("label", ordered[i]["name"])
+	if not never_loaded.is_empty():
+		print("[verify] note: in a snapshot, loaded by no step (package: first checkpoint with it): ", never_loaded)
+	if not never_unloaded.is_empty():
+		print("[verify] note: gone from a snapshot, unloaded by no step: ", never_unloaded)
 
 
 ## The original starts several chapters in a box it leaves by cutscene -- a
