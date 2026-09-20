@@ -325,11 +325,21 @@ def resolved_props(packages, mr, idx, depth=0):
 
 
 def find_export(mr, path):
-    """1-based export index whose outer chain spells `path`, or None."""
+    """1-based export index whose outer chain spells `path`, or None.
+
+    Indexed by leaf name on first use: a material's every texture is looked up
+    this way, and scanning tens of thousands of exports each time was an eighth
+    of a chapter's extraction.
+    """
     pkg = mr.pkg
-    for i, e in enumerate(pkg.exports, 1):
-        if e['name'] != path[-1]:
-            continue
+    by_name = getattr(pkg, '_exports_by_name', None)
+    if by_name is None:
+        by_name = {}
+        for i, e in enumerate(pkg.exports, 1):
+            by_name.setdefault(e['name'], []).append(i)
+        pkg._exports_by_name = by_name
+    for i in by_name.get(path[-1], ()):
+        e = pkg.exports[i - 1]
         names, outer = [e['name']], e['outer_idx']
         while outer > 0:
             names.append(pkg.exports[outer - 1]['name'])

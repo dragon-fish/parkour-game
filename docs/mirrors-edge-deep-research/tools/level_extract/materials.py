@@ -14,7 +14,10 @@ the full mips are in the shared .upk of the same name (packages.texture_sources)
 """
 import base64
 import collections
+import hashlib
+import json
 import math
+import os
 import struct
 import zlib
 
@@ -39,6 +42,14 @@ FRESNEL_FACING = 0.2
 COORDINATE_GRID = (64, 64)
 
 
+# Every chapter bakes the materials of the packages it loads, and the shared
+# packages are loaded by all of them: of 6537 bakes across the game, 2291 are
+# distinct. The cache is keyed by this file's own source as well as the
+# material, so editing the baker invalidates every entry without anyone having
+# to remember a version number.
+_SOURCE_HASH = hashlib.sha1(open(__file__, 'rb').read()).hexdigest()[:12]
+
+
 class MaterialBaker:
     def __init__(self, packages, max_px, report):
         self.packages = packages
@@ -46,6 +57,12 @@ class MaterialBaker:
         self.stats = collections.Counter()
         report['materials'] = self.stats
         self._pixels = {}
+        self._cache_dir = os.path.join(packages.cache_dir, 'bakes')
+        os.makedirs(self._cache_dir, exist_ok=True)
+
+    def _cache_path(self, mr, idx):
+        key = '%s:%s:%s:%d' % (_SOURCE_HASH, mr.label, mr.pkg.full_name(idx), self.max_px)
+        return os.path.join(self._cache_dir, hashlib.sha1(key.encode('utf-8')).hexdigest() + '.json')
 
     # -------------------------------------------------------------- lookup
 
@@ -124,6 +141,23 @@ class MaterialBaker:
 
     def bake(self, mr, idx):
         """{'width', 'height', 'png' (base64 RGBA PNG), 'uv_set', 'tiling'} or None."""
+        path = self._cache_path(mr, idx)
+        try:
+            with open(path, encoding='utf-8') as fh:
+                self.stats['cached'] += 1
+                return json.load(fh)['bake']
+        except (OSError, ValueError, KeyError):
+            pass
+        baked = self._bake(mr, idx)
+        # Written whole and moved into place: chapters extract in parallel and
+        # two of them reaching the same shared material is the common case.
+        temporary = '%s.%d' % (path, os.getpid())
+        with open(temporary, 'w', encoding='utf-8') as fh:
+            json.dump({'bake': baked}, fh)
+        os.replace(temporary, path)
+        return baked
+
+    def _bake(self, mr, idx):
         params = {}
         root_reader, root = self._collect_params(mr, idx, params)
         if not root_reader:
@@ -616,7 +650,10 @@ def png_base64(pixels):
 
     png = (b'\x89PNG\r\n\x1a\n'
            + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, colour_type, 0, 0, 0))
-           + chunk(b'IDAT', zlib.compress(raw, 9))
+           # LEVEL 1, not 9. A bake is a regenerable intermediate and the
+           # compression was 44% of a chapter's extraction; level 1 is four
+           # times faster and a fifth larger.
+           + chunk(b'IDAT', zlib.compress(raw, 1))
            + chunk(b'IEND', b''))
     return base64.b64encode(png).decode('ascii')
 
