@@ -97,6 +97,12 @@ func rest() -> void:
 			(viewer.camera_rig.camera as Camera3D).make_current()
 		if viewer.has_method("unlock_input"):
 			viewer.unlock_input()
+		# Handed back together with the view: whatever the scene left the body
+		# doing, it does it from here. NOT reached when another puppet holds
+		# the view (the early return above) -- the body stays held until the
+		# LAST scene lets go, rather than being dropped by whichever of two
+		# overlapping scenes happens to end first.
+		viewer.set_physics_process(true)
 
 
 ## Whether any puppet is lending its view: a first-person cutscene is playing.
@@ -178,6 +184,14 @@ func _take_the_view() -> void:
 	_camera.make_current()
 	if viewer.has_method("lock_input"):
 		viewer.lock_input()
+	# AND ITS PHYSICS, for as long as the scene has the view. The body stands
+	# wherever the level left it, which in the Scraper is in mid-air with the
+	# jump for the helicopter already made -- and that scene runs for forty
+	# seconds, every one of them spent falling. Nothing is lost by holding it:
+	# it cannot be seen (the view is on THIS body) and cannot be steered (the
+	# input is locked just above), and where it should end up is decided when
+	# the scene lets go -- see KismetRunner._stand_where_the_view_ended().
+	viewer.set_physics_process(false)
 
 
 func _find_viewer() -> Node:
