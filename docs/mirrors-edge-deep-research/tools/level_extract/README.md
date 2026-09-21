@@ -276,3 +276,20 @@ sometimes through a static switch; facade materials sample set 1. When a graph
 samples several coordinates, the first sample with an explicit coordinate
 decides: an unconnected sample is usually a tiling-1 variation mask, and taking
 its tiling turned the chain-link fence into one knot per panel.
+
+## Skinned scenery: the helicopters
+
+Two chapters end on a helicopter, and neither is a static mesh or flies on a
+move track. `skeletal_mesh.py` reads a SkeletalMesh's LOD0 at its reference
+pose into the same record a StaticMesh gives, for the meshes `extract.py`
+names in `SKELETAL_SCENERY` and no others (the rest of the game's skinned
+actors are people, animals, flags and cloth). `skeletal_anim.py` reads the
+AnimSequences their Matinee groups play -- the flight IS the animation of the
+root and `VH_Main` bones -- and writes the path of the bone the hull is skinned
+to as ABSOLUTE move-track keys, ten a second. Rotors stand still; the
+Blackhawk's cabin, a second actor hung on a bone, is left out.
+
+The Edge's helicopter is two actors at the world's origin: `_0` is animated
+and never shown, `_1` is based on it and is what Kismet unhides. A skinned
+actor's `Base` therefore counts without `bHardAttach`, and rides as any
+hard-attached mover does.

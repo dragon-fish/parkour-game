@@ -301,7 +301,16 @@ func _capture() -> void:
 		var meshes: Array[Basis] = []
 		for path: NodePath in track["targets"]:
 			var target := get_node_or_null(path) as Node3D
-			starts.append(target.global_transform if target != null else Transform3D())
+			# ABSOLUTE keys are places, and what rides them keeps the place it
+			# was BUILT in relative to what it rides -- not wherever an earlier
+			# sequence has since carried it. The Edge's helicopter is flown in
+			# by one sequence and hovered by the next: captured where the first
+			# left it, the second carried it the whole way again from there and
+			# hovered it twice as far from the origin as the roof is.
+			if track.get("absolute", false) and _homes.has(path):
+				starts.append(_homes[path])
+			else:
+				starts.append(target.global_transform if target != null else Transform3D())
 			var mesh := target.get_node_or_null("Mesh") as Node3D if target != null else null
 			meshes.append(mesh.transform.basis if mesh != null else Basis())
 		_starts.append(starts)

@@ -97,3 +97,32 @@ func test_an_absolute_track_puts_its_target_where_the_key_says() -> void:
 	assert_almost_eq(rig.target.global_position.z, 100.0 - 100.0 * 31.0 / 60.0, 1.0, "and moves along the keys from there")
 	rig.root.queue_free()
 	await step(1)
+
+
+func test_what_rides_an_absolute_track_is_not_carried_twice_by_the_next_sequence() -> void:
+	# The Edge's helicopter: one sequence flies it in, the next hovers it, both
+	# keyed in the world, and what is SEEN is a second actor riding the first.
+	# Captured where the fly-in had left it, the hover carried it the whole way
+	# again and held it twice as far from the origin as the roof is.
+	var rig := _rig()
+	var track: Dictionary = rig.matinee.tracks[0]
+	track["absolute"] = true
+	# What it rides stands at the origin; it stands where the rig built it.
+	track["pivots"] = [Transform3D.IDENTITY]
+	track["pos_values"] = PackedVector3Array([Vector3(90.0, 0.0, 0.0), Vector3(100.0, 0.0, 0.0)])
+	var hover := Matinee.new()
+	hover.length = 0.1
+	hover.tracks = [track.duplicate(true)]
+	hover.tracks[0]["pos_values"] = PackedVector3Array([Vector3(100.0, 0.0, 0.0), Vector3(100.0, 1.0, 0.0)])
+	rig.root.add_child(hover)
+	await step(1)
+	var built: Vector3 = rig.target.global_position
+	rig.matinee.play()
+	await step(12)
+	assert_almost_eq(rig.target.global_position.x, built.x + 100.0, 0.01, "test setup: the fly-in arrived")
+	hover.play()
+	await step(12)
+	assert_almost_eq(rig.target.global_position.x, built.x + 100.0, 0.01, "the hover holds it where the keys say, not 100 m further on")
+	assert_almost_eq(rig.target.global_position.y, built.y + 1.0, 0.01)
+	rig.root.queue_free()
+	await step(1)

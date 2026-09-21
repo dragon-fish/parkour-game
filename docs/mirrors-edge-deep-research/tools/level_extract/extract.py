@@ -21,6 +21,8 @@ import annotations
 import lights
 import packages as pk
 import materials as material_bake
+import skeletal_anim
+import skeletal_mesh
 import static_mesh
 import matinee
 import environment
@@ -29,6 +31,17 @@ import streaming
 
 # InterpActors are movers: placed like any mesh, moved by matinee.py's data.
 PLACED_CLASSES = ('StaticMeshActor', 'InterpActor')
+# A SkeletalMeshActor is placed only when its mesh is SCENERY that happens to
+# be skinned, by these name prefixes: the news helicopter the Edge ends on and
+# the Blackhawk the Scraper does, each hidden until its Matinee flies it in.
+# The rest of the game's 700-odd are people, pigeons, rats, flags and cloth,
+# and a person in a reference pose is a worse sight than no person.
+SKELETAL_SCENERY = ('SK_VH_', 'SK_SWAT_Blackhawk')
+# The Blackhawk's cabin is a second actor, hung on the first one's VH_Main bone
+# by a SeqAct_AttachToActor. Nothing here follows a bone, so it would stay on
+# the pad while the hull it belongs to flew off.
+SKELETAL_SCENERY_LEFT_OUT = ('_interior',)
+MESH_CLASSES = ('StaticMesh', 'SkeletalMesh')
 # Matched case-insensitively: Stormdrain spells it S_Skydome_Sunrise_Steel,
 # and a dome that slipped through filled the sky with a flat pale shell, cut
 # into a circle by the camera's far plane.
@@ -68,6 +81,8 @@ class MeshTable:
         self._soft = {}
         self._parsed = {}
         self._materials = {}
+        # (package, mesh name) -> skeleton of a skinned mesh: skeletal_anim's.
+        self.skeletons = {}
 
     def get(self, mr, export_idx):
         key = (mr.label, export_idx)
@@ -78,7 +93,10 @@ class MeshTable:
 
     def _load(self, mr, export_idx):
         name = mr.pkg.exports[export_idx - 1]['name']
-        record = static_mesh.parse_render(mr, export_idx)
+        skinned = mr.pkg.class_of(mr.pkg.exports[export_idx - 1]) == 'SkeletalMesh'
+        record = (skeletal_mesh if skinned else static_mesh).parse_render(mr, export_idx)
+        if skinned:
+            self.skeletons[(mr.label, name)] = record.pop('skeleton')
         shapes, material = static_mesh.simple_collision(mr, record.pop('body_setup'))
         record['name'] = name
         record['source'] = mr.label
@@ -153,7 +171,7 @@ class MeshTable:
         if shared is None:
             raise ExtractError('%s: mesh %s imports from a package that is not installed' % (mr.label, name))
         idx = next((i for i, e in enumerate(shared.pkg.exports, 1)
-                    if e['name'] == name and shared.pkg.class_of(e) == 'StaticMesh'), None)
+                    if e['name'] == name and shared.pkg.class_of(e) in MESH_CLASSES), None)
         if idx is None:
             raise ExtractError('%s: mesh %s not found in %s' % (mr.label, name, shared.label))
         return self.get(shared, idx)
@@ -285,18 +303,51 @@ def component_props(packages, mr, reference):
     return pk.resolved_props(packages, mr, idx)[0] if idx else {}
 
 
+def flight_of(meshes, mr, actor_idx, group_idx, track_idx, length):
+    """matinee.collect()'s `flight_of`: keys for skinned SCENERY an animation
+    flies, None for anything else -- the people a cutscene animates are not
+    built, and their keys would move nothing."""
+    pkg = mr.pkg
+    if pkg.class_of(pkg.exports[actor_idx - 1]) != 'SkeletalMeshActor':
+        return None
+    actor, _ = pk.resolved_props(meshes.packages, mr, actor_idx)
+    mesh_ref = component_props(meshes.packages, mr, actor.get('SkeletalMeshComponent')).get('SkeletalMesh')
+    if not (isinstance(mesh_ref, tuple) and len(mesh_ref) == 2 and mesh_ref[0] == 'obj' and mesh_ref[1]):
+        return None
+    name = str(pkg.resolve(mesh_ref[1]))
+    if not name.startswith(SKELETAL_SCENERY):
+        return None
+    record = meshes.resolve(mr, mesh_ref)
+    skeleton = meshes.skeletons.get((record['source'], record['name'].split('@')[0])) if record else None
+    if not skeleton:
+        return None
+    return skeletal_anim.flight_keys(mr, group_idx, track_idx, skeleton, length,
+                                     actor.get('Location') or (0.0, 0.0, 0.0), actor.get('Rotation') or (0, 0, 0))
+
+
 def collect_placements(mr, meshes, config, report, keep=frozenset()):
     pkg = mr.pkg
     out = []
     for i, e in enumerate(pkg.exports, 1):
-        if pkg.class_of(e) not in PLACED_CLASSES or outer_class(pkg, e) != 'Level':
+        skinned = pkg.class_of(e) == 'SkeletalMeshActor'
+        if (pkg.class_of(e) not in PLACED_CLASSES and not skinned) or outer_class(pkg, e) != 'Level':
             continue
         actor, _ = pk.resolved_props(meshes.packages, mr, i)
+        if skinned:
+            # Unwritten is the class default, the world's origin, and that is
+            # where the Edge's helicopter stands: its animation is in world
+            # coordinates and flies it in from there.
+            actor.setdefault('Location', (0.0, 0.0, 0.0))
         if 'Location' not in actor:
             continue
-        component_ref = actor.get('StaticMeshComponent')
+        component_ref = actor.get('SkeletalMeshComponent' if skinned else 'StaticMeshComponent')
         component = component_props(meshes.packages, mr, component_ref)
-        mesh_ref = component.get('StaticMesh')
+        mesh_ref = component.get('SkeletalMesh' if skinned else 'StaticMesh')
+        if skinned and not str(pkg.resolve(mesh_ref[1]) if isinstance(mesh_ref, tuple) and len(mesh_ref) == 2
+                               and mesh_ref[0] == 'obj' and mesh_ref[1] else '').startswith(SKELETAL_SCENERY):
+            continue
+        if skinned and str(pkg.resolve(mesh_ref[1])).endswith(SKELETAL_SCENERY_LEFT_OUT):
+            continue
         # A component that lives in ANOTHER package (an InterpActor's class
         # default in Engine.u) reports its references as indices into that
         # package; read against this one they name an unrelated object -- a
@@ -360,12 +411,16 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
                 if tag[0] == 'Materials':
                     refs = matinee._int_array(mr, matinee._value(mr, tag))
                     overrides = [meshes.override(mr, r) if r else None for r in refs]
-        base_idx = ref_export(actor.get('Base')) if actor.get('bHardAttach') else None
+        # A skinned actor's Base counts without bHardAttach. [ME:CONFIRMED] the
+        # Edge's helicopter is TWO actors on one spot: SkeletalMeshActor_0,
+        # which the sequences animate and which is never shown, and _1, based
+        # on it, which is what "End of Roof" unhides.
+        base_idx = ref_export(actor.get('Base')) if actor.get('bHardAttach') or skinned else None
         base = '%s.%s' % (mr.label, pkg.exports[base_idx - 1]['name']) if base_idx else None
         report['counts']['hidden'] += hidden
         out.append({'name': e['name'], 'package': mr.label, 'mesh': name, '_record': record, 'position': position,
                     'basis': basis, 'collision': collision, 'soft_landing': record['soft_landing'],
-                    'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor',
+                    'hidden': hidden, 'mover': pkg.class_of(e) == 'InterpActor' or skinned,
                     'base': base, 'aabb': {'min': lo, 'max': hi}}
                    | ({'pre_pivot': pre_pivot} if any(abs(c) > 1e-4 for c in pre_pivot) else {})
                    | ({'collision_if_on': if_on} if if_on != 'none' else {})
@@ -585,7 +640,8 @@ def main(config_path):
         for key, values in collected.items():
             notes[key] += values
         found_lights += lights.collect_lights(mr)
-        matinees += matinee.collect(packages, mr, report, wanted_sequences, keep_all=config['split_sections'])
+        matinees += matinee.collect(packages, mr, report, wanted_sequences, keep_all=config['split_sections'],
+                                    flight_of=lambda *where: flight_of(meshes, *where))
         notes['annotations'] += glass
         end_links.append((name, matinee.level_end_links(packages, mr)))
         for face in lights.collect_bsp(mr):

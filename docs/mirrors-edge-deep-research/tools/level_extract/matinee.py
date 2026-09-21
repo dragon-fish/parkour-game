@@ -193,8 +193,12 @@ def _scale(actor):
     return (s * s3[0], s * s3[1], s * s3[2])
 
 
-def collect(packages, mr, report, keep_driving=frozenset(), keep_all=False):
+def collect(packages, mr, report, keep_driving=frozenset(), keep_all=False, flight_of=None):
     """Matinees of one package.
+
+    `flight_of(mr, actor export, group export, track export, length)` gives
+    move-track keys for a group that moves its actor by ANIMATING it, or None:
+    see skeletal_anim. A group with a move track of its own is never asked.
 
     `keep_all` keeps a sequence whatever starts it: a chapter that runs its
     Kismet (kismet.py) plays every one of them from the graph, and the starts
@@ -279,7 +283,7 @@ def collect(packages, mr, report, keep_driving=frozenset(), keep_all=False):
             report['matinee_skipped'] = report.get('matinee_skipped', 0) + 1
             continue
         groups, length = [], None
-        variables, frames = {}, {}
+        variables, frames, exports = {}, {}, {}
         for link in _struct_array(mr, _props(mr, i).get('VariableLinks')):
             for var in _int_array(mr, link.get('LinkedVariables')):
                 if var <= 0:
@@ -294,10 +298,13 @@ def collect(packages, mr, report, keep_driving=frozenset(), keep_all=False):
                         # An unnamed group is UE3's default name, which is what
                         # the variable links then call it.
                         keys = {'position': [], 'euler': [], 'scale': [], 'local': False}
+                        animated = None
                         for t in _int_array(mr, gp.get('InterpTracks')):
                             track_class = pkg.class_of(pkg.exports[t - 1])
                             if track_class == 'InterpTrackMove':
                                 keys.update(_keys(mr, t))
+                            elif track_class == 'InterpTrackAnimControl':
+                                animated = (g, t)
                             elif track_class == 'InterpTrackVectorProp':
                                 tp = _props(mr, t)
                                 # DrawScale3D, absolute, in the actor's own UE axes:
@@ -306,20 +313,32 @@ def collect(packages, mr, report, keep_driving=frozenset(), keep_all=False):
                                 if tp.get('PropertyName') == 'DrawScale3D':
                                     keys['scale'] = _channel(_curve_points(mr, tp.get('VectorTrack')),
                                                              lambda v: [v[0], v[2], v[1]])
-                        groups.append({'group': gp.get('GroupName') or 'InterpGroup', 'keys': keys})
+                        groups.append({'group': gp.get('GroupName') or 'InterpGroup', 'keys': keys, '_animated': animated})
                 elif cls.startswith('SeqVar_Object'):
                     obj = ref_export(_props(mr, var).get('ObjValue'))
                     if obj:
                         actor_id = '%s.%s' % (mr.label, pkg.exports[obj - 1]['name'])
                         variables.setdefault(link.get('LinkDesc') or 'None', []).append(actor_id)
+                        exports[actor_id] = obj
                         # Where every driven actor starts, meshless or not: the
                         # builder pivots anything hard-attached to it about this.
                         actor, _ = pk.resolved_props(packages, mr, obj)
+                        # Unwritten is the origin, and a skinned actor may well
+                        # stand there: see extract.collect_placements().
+                        if pkg.class_of(pkg.exports[obj - 1]) == 'SkeletalMeshActor':
+                            actor.setdefault('Location', (0.0, 0.0, 0.0))
                         if 'Location' in actor:
                             frames[actor_id] = {'position': point(actor['Location']),
                                                 'basis': godot_basis(actor.get('Rotation') or (0, 0, 0), (1.0, 1.0, 1.0))}
         for g in groups:
             g['actors'] = variables.get(g['group'], [])
+            animated = g.pop('_animated')
+            if animated and flight_of and g['actors'] and len(g['keys']['position']) < 2 and len(g['keys']['euler']) < 2:
+                flown = flight_of(mr, exports[g['actors'][0]], animated[0], animated[1],
+                                  float(length if length is not None else DEFAULT_LENGTH))
+                if flown:
+                    g['keys'].update(flown)
+                    report['matinee_flown_by_animation'] = report.get('matinee_flown_by_animation', 0) + 1
         groups = [g for g in groups if g['actors']
                   and max(len(g['keys'][c]) for c in ('position', 'euler', 'scale')) >= 2]
         if not groups:
