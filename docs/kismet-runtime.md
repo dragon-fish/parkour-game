@@ -121,6 +121,12 @@ played through in one frame, its keys in time order, with a toast saying so.
 stand-in body with the view on one of its bones, and 11 have a director
 track: there is no camera work apart from the skeletal animation, and none of
 that is extracted;
+within a cutscene the teleport INTO it (onto the `SkeletalMeshActor` stand-in,
+where the animation begins -- the Boat's is wedged between boxes) is skipped,
+the teleport out of it kept; `TdCheckpoint` -> the named checkpoint is reached,
+and when that is a consequence of a cutscene's end the player is put there
+too, which is where the animation would have carried them (the Boat's intro
+ends outside a container whose door has shut for good);
 `Teleport` -> the player only, stood on the floor under the destination -- an
 actor the level has built is asked where it is, any other is where the export
 says (moved to where a sequence that drives it has put it by then).

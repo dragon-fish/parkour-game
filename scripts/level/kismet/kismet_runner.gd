@@ -90,6 +90,8 @@ const KNOCKDOWN_STANDS_S := 0.1
 
 ## Class -> how often a class with no meaning here was passed through.
 var unknown: Dictionary = {}
+## True while the consequences of a cutscene's END are run: see TdCheckpoint.
+var _carried: bool = false
 ## Seconds of a scripted hit's wash still to show.
 var _flinch_left: float = 0.0
 
@@ -613,7 +615,10 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 			# is asked where it IS; the rest travel with the node.
 			var spots: Array = node.get("destinations", [])
 			var arena := _arena()
-			if _names_the_player(node, "Target") and not spots.is_empty() and arena != null:
+			if node.get("onto_stand_in", false):
+				# Into a cutscene that is not shown: kismet.py, mark_cutscenes.
+				_tell("%s would put the player on a cutscene's stand-in body: left where they are" % id)
+			elif _names_the_player(node, "Target") and not spots.is_empty() and arena != null:
 				var spot: Dictionary = spots[0]
 				var columns: Array = spot["basis"]
 				var to := Transform3D(Basis(_v3(columns[0]), _v3(columns[1]), _v3(columns[2])), _v3(spot["position"]))
@@ -677,6 +682,23 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 			var rider: Node = _player()
 			if input == 0 and rider != null and rider.has_method("stand_as_walking"):
 				rider.stand_as_walking()
+			_fire(id, 0)
+		"SeqAct_TdCheckpoint":
+			# The original's checkpoints are reached HERE and nowhere else: a
+			# TdCheckpoint has no shape, the level says when. The boxes this
+			# project hangs on them stay -- this is as well, not instead.
+			#
+			# AT THE END OF A CUTSCENE IT IS ALSO WHERE THE PLAYER IS. The
+			# Boat's intro carries the body out of a container whose door then
+			# swings shut for good, and ends by reaching the checkpoint outside
+			# it; played through in a frame, the body is still inside.
+			var reached := _checkpoint_named(node)
+			var walker: Node = _player()
+			if reached != null and walker != null and walker.has_method("touch_checkpoint"):
+				_tell("%s reaches checkpoint %s%s" % [id, reached.name, " and the cutscene leaves the player there" if _carried else ""])
+				walker.touch_checkpoint(reached)
+				if _carried and _arena() != null:
+					_arena().teleport_player.call_deferred(reached.global_transform)
 			_fire(id, 0)
 		"SeqAct_TdFallOnBack":
 			# [ME:CONFIRMED] no properties at all: the Subway's falling lift
@@ -896,6 +918,13 @@ func _advance_interp(id: String, delta: float) -> void:
 		_playing.erase(id)
 		_tell("sequence %s completed" % id)
 		_fire_named(id, ["Completed"])
+		if node.get("cutscene", false):
+			# What its end reaches, it reaches with the player in tow: drained
+			# here so that "in tow" covers this sequence's consequences and
+			# nobody else's.
+			_carried = true
+			_drain()
+			_carried = false
 	elif direction < 0 and after <= 0.0:
 		state["direction"] = 0
 		_playing.erase(id)
@@ -1169,6 +1198,21 @@ func _show_flinch(delta: float) -> void:
 	if player.move_manager.current_name in [Move.LANDING, Move.LAY_ON_GROUND, Move.FALL_UNCONTROLLED]:
 		return
 	player.screen_effects.set_tint(hurt_tint, _flinch_left / FLINCH_S)
+
+
+## The Checkpoint node a TdCheckpoint action names, or null. The shell names
+## each after its label, and `checkpoint_actors` is label -> actor.
+func _checkpoint_named(node: Dictionary) -> Checkpoint:
+	var arena := _arena()
+	if arena == null:
+		return null
+	for actor: String in _targets(node, "Checkpoint"):
+		var label: Variant = checkpoint_actors.find_key(actor)
+		if label != null:
+			var found := arena.find_child(str(label), true, false) as Checkpoint
+			if found != null:
+				return found
+	return null
 
 
 ## Whether a variable link of `node` holds the player: a player variable, or

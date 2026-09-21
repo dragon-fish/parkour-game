@@ -40,7 +40,8 @@ class CutsceneTests(unittest.TestCase):
     def graph(self, **interp):
         node = {'cls': 'SeqAct_Interp', '_animated': True, 'outs': [{'name': 'Completed', 'to': [['p#2', 0]]}]}
         node.update(interp)
-        return {'vars': {'v#1': {'cls': 'SeqVar_Player'}, 'v#2': {'cls': 'SeqVar_Object', 'actor': 'p.Cop'}},
+        return {'actors': {'p.Body': {'cls': 'SkeletalMeshActor'}, 'p.Mark': {'cls': 'TdMarker'}},
+                'vars': {'v#1': {'cls': 'SeqVar_Player'}, 'v#2': {'cls': 'SeqVar_Object', 'actor': 'p.Cop'}},
                 'nodes': {'p#1': node,
                           'p#2': {'cls': 'SeqAct_Teleport', 'outs': [], 'vars': {'Target': ['v#1']}},
                           'p#3': {'cls': 'SeqAct_TdDisablePlayerInput', 'outs': [{'name': 'Out', 'to': [['p#4', 0]]}]},
@@ -56,6 +57,16 @@ class CutsceneTests(unittest.TestCase):
         self.assertTrue(nodes['p#4'].get('cutscene'), 'it is entered with the input taken away')
         self.assertFalse(nodes['p#5'].get('cutscene'), 'it moves somebody else')
         self.assertNotIn('_animated', nodes['p#5'], 'the working key does not reach the export')
+
+    def test_the_teleport_into_a_cutscene_is_told_from_the_one_out_of_it(self):
+        graph = self.graph()
+        graph['nodes']['p#1']['outs'].append({'name': 'tele', 'to': [['p#7', 0]]})
+        graph['nodes']['p#2']['destinations'] = [{'actor': 'p.Mark'}]
+        graph['nodes']['p#7'] = {'cls': 'SeqAct_Teleport', 'outs': [], 'vars': {'Target': ['v#1']},
+                                 'destinations': [{'actor': 'p.Body'}]}
+        kismet.mark_cutscenes(graph)
+        self.assertTrue(graph['nodes']['p#7'].get('onto_stand_in'))
+        self.assertFalse(graph['nodes']['p#2'].get('onto_stand_in'))
 
     def test_a_looping_sequence_is_never_played_through(self):
         graph = self.graph(props={'bLooping': True})

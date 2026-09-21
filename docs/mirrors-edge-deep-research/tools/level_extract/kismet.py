@@ -367,6 +367,18 @@ def mark_cutscenes(graph):
         if any(nodes[up]['cls'] == 'SeqAct_TdDisablePlayerInput' for up in fed_by.get(nid, [])) \
                 or any(moves_the_player(target) for out in node['outs'] for target, _ in out['to']):
             node['cutscene'] = True
+            # The teleport that puts the player INTO the cutscene: onto the
+            # stand-in body, wherever the animation begins -- the Boat's is
+            # wedged between a cart and a stack of boxes that the animation
+            # then climbs out of. With no animation there is no climbing out,
+            # and the player is better left where the checkpoint stood them.
+            # The teleport OUT of one names a marker and is kept.
+            for out in node['outs']:
+                for target, _ in out['to']:
+                    if moves_the_player(target) and any(
+                            graph['actors'].get(spot['actor'], {}).get('cls') == 'SkeletalMeshActor'
+                            for spot in nodes[target].get('destinations', [])):
+                        nodes[target]['onto_stand_in'] = True
 
 
 def settle_teleports(graph, matinees):
