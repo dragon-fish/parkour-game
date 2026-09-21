@@ -49,6 +49,42 @@ def _point(v):
     return np.array([v[0], v[2], v[1]]) / UU
 
 
+# A quarter turn about Y, the direction measured rather than reasoned out: it
+# puts the rig's LEFT on +X, where SkeletonProfileHumanoid expects it. Turned
+# the other way the axis is right and the side is not, and the retarget mirrors
+# the body.
+#
+# WHY ONLY THE HUMANS GET IT. common.to_godot swaps Y and Z, which puts the
+# original's forward on +X and its right on +Z. Every level, every actor and
+# every direction goes through that same map, so the world is self-consistent
+# and a quarter turn off Godot's own convention is invisible -- there is no
+# outside reference to be wrong against. DO NOT "fix" it globally: ten
+# chapters' geometry, collision and spawn facings all rest on it.
+#
+# A humanoid rig is the one thing that DOES have an outside reference.
+# SkeletonProfileHumanoid says a body faces -Z with its left hand toward +X, and
+# retargeting a clip onto anything else (this project's own character, the CC0
+# mannequin) goes through that profile. Left on +Z, a rig's left-right axis
+# lands on the profile's front-back one: both legs receive the same rotation
+# and the driven body comes out with one leg, its chest ninety degrees off and
+# its ankles wrung round. The importer's rest fixer cannot repair it either --
+# it corrects orientations, not positions, so it straightens the arms (hiding
+# the fault) and leaves the legs where they are.
+#
+# The mesh turns with the skeleton, so an original body still matches its own
+# bones. Whatever mounts one of these turns the node back, and its place in the
+# world is unchanged.
+UPRIGHT = np.array([[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]])
+
+## The bones every human rig in the original carries; a pigeon or a rat has none
+## of them and is left exactly as it was.
+HUMANOID_BONES = frozenset(['Hips', 'Spine', 'Head', 'LeftHand', 'RightHand', 'LeftFoot', 'RightFoot'])
+
+
+def _is_humanoid(bones):
+    return HUMANOID_BONES <= {b['name'] for b in bones}
+
+
 def _quat(m):
     """(x, y, z, w) of rotation matrix `m`."""
     trace = m[0, 0] + m[1, 1] + m[2, 2]
@@ -129,8 +165,12 @@ def build(mr, mesh_idx, sequence_indices, out_path, sequence_reader=None, more_m
     # placed that much higher to make up for it, so without it he rode the
     # Blackhawk a metre above its cabin floor beside a Kate who stood on it.
     turn = _matrix(sa._from_rotator(*record['skeleton']['rot_origin']))
+    origin = turn @ _point(record['skeleton']['origin'])
+    if _is_humanoid(bones):
+        turn = UPRIGHT @ turn
+        origin = UPRIGHT @ origin
     nodes.append({'name': mr.pkg.exports[mesh_idx - 1]['name'], 'children': [], 'rotation': _quat(turn),
-                  'translation': [float(c) for c in turn @ _point(record['skeleton']['origin'])]})
+                  'translation': [float(c) for c in origin]})
     world = []
     for k, bone in enumerate(bones):
         local = np.eye(4)
