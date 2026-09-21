@@ -208,5 +208,6 @@ def parse_render(mr, idx, with_skin=False):
         # For skeletal_anim, and popped by whoever asked before the record is
         # stored: what an animation has to move to move this mesh as one
         # piece is the bone most of it is skinned to.
-        'skeleton': {'bones': bones, 'bound_to': bound.index(max(bound)), 'rot_origin': [pitch, yaw, roll]},
+        'skeleton': {'bones': bones, 'bound_to': bound.index(max(bound)), 'rot_origin': [pitch, yaw, roll],
+                     'origin': list(origin)},
     } | ({'skin': skin} if skin else {})

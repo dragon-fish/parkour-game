@@ -18,8 +18,9 @@ Conventions, each checked against the data rather than assumed:
   * UE is left-handed and Z-up in centimetres, glTF right-handed and Y-up in
     metres. Positions swap Y and Z (common.to_godot); a rotation R becomes
     M R M with M that same swap; triangles turn over.
-  * The mesh's RotOrigin is the transform of the node the skeleton hangs from,
-    so a scene places the .glb with the ACTOR's transform and nothing else.
+  * The mesh's Origin and RotOrigin are the transform of the node the skeleton
+    hangs from, so a scene places the .glb with the ACTOR's transform and
+    nothing else.
 """
 import json
 import math
@@ -113,8 +114,14 @@ def build(mr, mesh_idx, sequence_indices, out_path, sequence_reader=None):
 
     # Node 0 carries RotOrigin; the bones follow in the mesh's own order, so
     # bone k is node k + 1.
-    nodes.append({'name': mr.pkg.exports[mesh_idx - 1]['name'], 'children': [],
-                  'rotation': _quat(_matrix(sa._from_rotator(*record['skeleton']['rot_origin'])))})
+    # ... and Origin, which is added to a mesh-space point BEFORE that turn.
+    # [ME:CONFIRMED] SK_TKY_Crim_Jacknife's is (0, 94, 0) where Kate's mesh has
+    # none, and mesh space has -Y for up: it sets him 94 uu DOWN. His actor is
+    # placed that much higher to make up for it, so without it he rode the
+    # Blackhawk a metre above its cabin floor beside a Kate who stood on it.
+    turn = _matrix(sa._from_rotator(*record['skeleton']['rot_origin']))
+    nodes.append({'name': mr.pkg.exports[mesh_idx - 1]['name'], 'children': [], 'rotation': _quat(turn),
+                  'translation': [float(c) for c in turn @ _point(record['skeleton']['origin'])]})
     world = []
     for k, bone in enumerate(bones):
         local = np.eye(4)
