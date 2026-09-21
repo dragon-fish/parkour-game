@@ -533,3 +533,21 @@ func test_a_fight_nobody_turns_up_to_is_over_as_it_begins() -> void:
 	assert_eq(_reached(runner, "spawned"), 1, "what the spawning sets going still goes")
 	assert_eq(_reached(runner, "done"), 1)
 	assert_eq(_reached(runner, "aborted"), 0)
+
+
+func test_a_cutscene_is_played_through_in_a_frame_and_its_keys_fire_in_order() -> void:
+	var made := await _runner({
+		"e": _n("SeqEvent_LevelBeginning", [["Out", [["cs", 0]]]]),
+		"cs": _n("SeqAct_Interp", [["Completed", [["end", 0]]], ["Aborted", []], ["late", [["gate", 0]]], ["early", [["gate", 1]]]],
+			{length = 18.0, cutscene = true, events_at = [
+				{name = "late", time = 12.0, forwards = true, backwards = true},
+				{name = "early", time = 3.0, forwards = true, backwards = true}]}),
+		# Shut until `early` opens it; `late` is what asks to go through.
+		"gate": _n("SeqAct_Gate", [["Out", [["through", 0]]]], {props = {bOpen = false}}),
+		"end": _probe("end"), "through": _probe("through"),
+	})
+	var runner: KismetRunner = made["runner"]
+	_event(runner, "e")
+	await step(3)
+	assert_eq(_reached(runner, "end"), 1, "eighteen seconds of nothing are not sat through")
+	assert_eq(_reached(runner, "through"), 1, "and the key at 3 s came before the key at 12 s, whatever order they are listed in")

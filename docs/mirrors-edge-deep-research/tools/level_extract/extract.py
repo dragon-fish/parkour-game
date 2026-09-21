@@ -713,6 +713,8 @@ def main(config_path):
         if config['split_sections'] else None
     if graph:
         kismet.settle_teleports(graph, matinees)
+        kismet.mark_cutscenes(graph)
+        report['kismet']['cutscenes'] = sorted(k for k, n in graph['nodes'].items() if n.get('cutscene'))
     records = meshes.finish_names()
     for p in placements:
         p['mesh'] = p.pop('_record')['name']

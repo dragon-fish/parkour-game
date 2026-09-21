@@ -834,7 +834,20 @@ func _run_interp(id: String, node: Dictionary, input: int, state: Dictionary) ->
 	_playing[id] = true
 	_tell("sequence %s %s from %.2f of %.2f s%s  %s" % [id, "plays" if int(state["direction"]) > 0 else "reverses", at, length,
 			"" if _matinees.has(node.get("matinee", "")) else " (nothing of it is built)", node.get("comment", "")])
+	if node.get("cutscene", false) and int(state["direction"]) > 0:
+		_say_cutscene(id, node, length)
 	_interp_events(id, node, at, at, int(state["direction"]), true)
+
+
+## Tells the player a cutscene went by, since nothing else will.
+func _say_cutscene(id: String, node: Dictionary, length: float) -> void:
+	var player: Node = _player()
+	if player == null or player.get("toast") == null:
+		return
+	var title: String = str(node.get("comment", ""))
+	if title.is_empty():
+		title = id
+	player.toast.show_text("已跳过过场动画 %s（%.0f 秒）" % [title, length])
 
 
 func _advance_interp(id: String, delta: float) -> void:
@@ -857,6 +870,15 @@ func _advance_interp(id: String, delta: float) -> void:
 		if matinee != null and is_instance_valid(matinee):
 			matinee.play_rate = rate
 	var after: float = clampf(before + delta * rate * direction, 0.0, length)
+	# A CUTSCENE IS PLAYED THROUGH IN A FRAME. What it shows is a skeleton's
+	# animation with the view on one of its bones (kismet.py, mark_cutscenes),
+	# none of which exists here; what it DOES is its event track and its end,
+	# and sitting out eighteen seconds of nothing for those is the whole of
+	# what was left. One tick after its start, so a teleport keyed at 0 and
+	# one on Completed land in that order.
+	if node.get("cutscene", false) and direction > 0:
+		after = length
+		_seek_matinee(id, length)
 	state["at"] = after
 	_interp_events(id, node, before, after, direction, false)
 	if direction > 0 and after >= length:
@@ -883,8 +905,15 @@ func _advance_interp(id: String, delta: float) -> void:
 
 ## Event-track keys crossed going from `before` to `after`. A key AT the
 ## starting position fires on the start itself (`starting`), and not again.
+##
+## IN THE ORDER THE SEQUENCE REACHES THEM. One tick can cross several -- a
+## cutscene crosses all of them -- and a door kicked open before the line that
+## calls for it is a different level.
 func _interp_events(id: String, node: Dictionary, before: float, after: float, direction: int, starting: bool) -> void:
-	for key: Dictionary in node.get("events_at", []):
+	var keys: Array = (node.get("events_at", []) as Array).duplicate()
+	keys.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return a["time"] < b["time"] if direction > 0 else a["time"] > b["time"])
+	for key: Dictionary in keys:
 		if not key["forwards" if direction > 0 else "backwards"]:
 			continue
 		var time: float = key["time"]

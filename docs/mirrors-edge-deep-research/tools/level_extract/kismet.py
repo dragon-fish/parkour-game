@@ -84,8 +84,9 @@ def _actor_id(mr, index):
 
 
 def _interp(mr, props):
-    """A matinee's length and what its event tracks fire, and when."""
-    length, events = DEFAULT_LENGTH, []
+    """A matinee's length, what its event tracks fire and when, and whether
+    it ANIMATES a skeleton (an InterpTrackAnimControl)."""
+    length, events, animated = DEFAULT_LENGTH, [], False
     for link in _struct_array(mr, props.get('VariableLinks')):
         for var in _int_array(mr, link.get('LinkedVariables')):
             if var <= 0 or mr.pkg.class_of(mr.pkg.exports[var - 1]) != 'InterpData':
@@ -94,6 +95,8 @@ def _interp(mr, props):
             length = float(data.get('InterpLength', DEFAULT_LENGTH))
             for group in _int_array(mr, data.get('InterpGroups')):
                 for track in _int_array(mr, _props(mr, group).get('InterpTracks')):
+                    if track > 0 and mr.pkg.class_of(mr.pkg.exports[track - 1]) == 'InterpTrackAnimControl':
+                        animated = True
                     if track <= 0 or mr.pkg.class_of(mr.pkg.exports[track - 1]) != 'InterpTrackEvent':
                         continue
                     tp = _props(mr, track)
@@ -102,7 +105,7 @@ def _interp(mr, props):
                                        # Both default to true and are written only when false.
                                        'forwards': bool(tp.get('bFireEventsWhenForwards', True)),
                                        'backwards': bool(tp.get('bFireEventsWhenBackwards', True))})
-    return round(length, 4), events
+    return round(length, 4), events, animated
 
 
 def _places(packages, mr, props, link_name):
@@ -239,7 +242,9 @@ def read_package(packages, mr, actors, variables, mesh_of=None):
                         trigger.update(radius=KICK_REACH_M, height=KICK_HALF_HEIGHT_M)
                     actors[aid]['trigger'] = trigger
         if cls == 'SeqAct_Interp':
-            node['length'], node['events_at'] = _interp(mr, props)
+            node['length'], node['events_at'], animated = _interp(mr, props)
+            if animated:
+                node['_animated'] = True
             # The name matinee.collect() gives the same action.
             node['matinee'] = '%s#%d' % (mr.label, i)
         elif cls == 'SeqAct_SetStaticMesh' and mesh_of is not None:
@@ -327,6 +332,41 @@ def _track_position(keys, frame, time):
         return [round(v, 4) for v in value]
     columns = frame['basis']
     return [round(frame['position'][i] + sum(columns[c][i] * value[c] for c in range(3)), 4) for i in range(3)]
+
+
+PLAYER_VARIABLES = ('SeqVar_Player', 'SeqVar_TdLocalPawn')
+
+
+def mark_cutscenes(graph):
+    """Sets `cutscene` on the sequences that are the PLAYER's cutscenes.
+
+    [ME:CONFIRMED] 547 of the game's 553 cutscene-like sequences are an
+    InterpTrackAnimControl on a skeleton and 11 have a director track: a
+    first-person cutscene has no camera of its own, the view rides a bone of
+    the "Faith 1p" body, so its camera work IS its skeletal animation and
+    nothing of it is built here. The runner plays these through in a frame.
+
+    Which of the 547: one that takes the player's input away going in, or
+    teleports the player from one of its own outputs. The rest are bystanders
+    idling, and many of those loop."""
+    nodes, variables = graph['nodes'], graph['vars']
+    fed_by = {}
+    for nid, node in nodes.items():
+        for out in node['outs']:
+            for target, _ in out['to']:
+                fed_by.setdefault(target, []).append(nid)
+
+    def moves_the_player(nid):
+        node = nodes.get(nid, {})
+        return node.get('cls') == 'SeqAct_Teleport' and any(
+            variables.get(var, {}).get('cls') in PLAYER_VARIABLES for var in node.get('vars', {}).get('Target', []))
+
+    for nid, node in nodes.items():
+        if not node.pop('_animated', False) or (node.get('props') or {}).get('bLooping'):
+            continue
+        if any(nodes[up]['cls'] == 'SeqAct_TdDisablePlayerInput' for up in fed_by.get(nid, [])) \
+                or any(moves_the_player(target) for out in node['outs'] for target, _ in out['to']):
+            node['cutscene'] = True
 
 
 def settle_teleports(graph, matinees):

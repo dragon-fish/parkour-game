@@ -36,5 +36,32 @@ class TeleportTests(unittest.TestCase):
         self.assertEqual(graph['nodes']['p#2']['destinations'][0]['position'], [10.0, 0.0, 0.0])
 
 
+class CutsceneTests(unittest.TestCase):
+    def graph(self, **interp):
+        node = {'cls': 'SeqAct_Interp', '_animated': True, 'outs': [{'name': 'Completed', 'to': [['p#2', 0]]}]}
+        node.update(interp)
+        return {'vars': {'v#1': {'cls': 'SeqVar_Player'}, 'v#2': {'cls': 'SeqVar_Object', 'actor': 'p.Cop'}},
+                'nodes': {'p#1': node,
+                          'p#2': {'cls': 'SeqAct_Teleport', 'outs': [], 'vars': {'Target': ['v#1']}},
+                          'p#3': {'cls': 'SeqAct_TdDisablePlayerInput', 'outs': [{'name': 'Out', 'to': [['p#4', 0]]}]},
+                          'p#4': {'cls': 'SeqAct_Interp', '_animated': True, 'outs': []},
+                          'p#5': {'cls': 'SeqAct_Interp', '_animated': True, 'outs': [{'name': 'Completed', 'to': [['p#6', 0]]}]},
+                          'p#6': {'cls': 'SeqAct_Teleport', 'outs': [], 'vars': {'Target': ['v#2']}}}}
+
+    def test_the_players_cutscenes_are_marked_and_a_bystanders_is_not(self):
+        graph = self.graph()
+        kismet.mark_cutscenes(graph)
+        nodes = graph['nodes']
+        self.assertTrue(nodes['p#1'].get('cutscene'), 'it teleports the player from its own output')
+        self.assertTrue(nodes['p#4'].get('cutscene'), 'it is entered with the input taken away')
+        self.assertFalse(nodes['p#5'].get('cutscene'), 'it moves somebody else')
+        self.assertNotIn('_animated', nodes['p#5'], 'the working key does not reach the export')
+
+    def test_a_looping_sequence_is_never_played_through(self):
+        graph = self.graph(props={'bLooping': True})
+        kismet.mark_cutscenes(graph)
+        self.assertFalse(graph['nodes']['p#1'].get('cutscene'))
+
+
 if __name__ == '__main__':
     unittest.main()
