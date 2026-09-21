@@ -105,6 +105,14 @@ takes its time); `Toggle`, `ToggleHidden`, `ChangeCollision`, `Destroy` -> the
 actor's nodes; `TdInElevator` -> no jump, no crouch, walking pace, and the body stood up as
 an ordinary walking one whatever it was doing when the ride began;
 `TdFallOnBack` -> `Status.Effect.KNOCKDOWN`, which is `LayOnGroundMove`;
+`CauseDamage` / `CauseDamageRadial` -> health and a 0.4 s wash of the screen,
+NOT a lockout: no `TdDmgType_*` in TdGame.u carries a stumble (the base
+class's whole reaction is `bCausePhysicalHitReaction`, a physics flinch), and
+the knock-downs are classes of their own (`TdBarbedWireVolume`,
+`TdFallOnBack`). A blast falls off linearly to `DamageRadius` from the actor
+it names. `TdActorFactory` -> spawns nobody, so its fight is over at once:
+`Finished`, every `Spawned N`, then `All Dead` (what 25 ways on across the
+game wait for);
 `Teleport` -> the player only, stood on the floor under the destination -- an
 actor the level has built is asked where it is, any other is where the export
 says (moved to where a sequence that drives it has put it by then).

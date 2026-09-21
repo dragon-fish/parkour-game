@@ -64,9 +64,10 @@ const LEVEL_START := ["SeqEvent_LevelLoaded", "SeqEvent_LevelStartup", "SeqEvent
 ## the moves ask with none, and one filed under a name of its own was on the
 ## player the whole ride and restricted nothing.
 const LIFT_SPEED_M_S := 4.0
-## How long a blow's STAGGER status stands before the moves have taken it up;
-## the barbed wire's own figure.
-const HURT_STAGGER_S := 0.1
+## How long the screen shows a scripted hit. [ME:CONFIRMED TdGame.u]
+## TdDamageType.PhysicsHitReactionDuration, the original's flinch.
+const FLINCH_S := 0.4
+const UU_TO_M := 0.01
 ## The same for a knock-down.
 const KNOCKDOWN_STANDS_S := 0.1
 
@@ -89,6 +90,8 @@ const KNOCKDOWN_STANDS_S := 0.1
 
 ## Class -> how often a class with no meaning here was passed through.
 var unknown: Dictionary = {}
+## Seconds of a scripted hit's wash still to show.
+var _flinch_left: float = 0.0
 
 var _nodes: Dictionary = {}
 var _vars: Dictionary = {}
@@ -393,6 +396,7 @@ func _fire_event(id: String, names: Array, free: bool = false) -> void:
 # ---------------------------------------------------------------- the engine
 
 func _physics_process(delta: float) -> void:
+	_show_flinch(delta)
 	if not _running:
 		return
 	_clock += delta
@@ -553,19 +557,56 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 			var hurts_player := _names_the_player(node, "Target")
 			var player: Node = _player()
 			if hurts_player and player != null and player.has_method("apply_status"):
-				_tell("%s hurts the player for %s" % [id, _prop(node, "DamageAmount", 0.0)])
-				# As a STAGGER, which is what a blow IS here -- the wire's and
-				# the pain volumes' are the same: the damage, the stumble and
-				# the screen's tint in one. take_damage() alone took the health
-				# and said nothing, and a beam that kills without a flinch reads
-				# as the game having decided to end.
-				var blow := StatusSpec.new()
-				blow.effect = Status.Effect.STAGGER
-				blow.amount = float(_prop(node, "DamageAmount", 0.0))
-				blow.seconds = HURT_STAGGER_S
-				blow.tint = hurt_tint
-				player.apply_status(blow, self, 0, true)
+				_tell("%s hurts the player for %s (%s)" % [id, _prop(node, "DamageAmount", 0.0), node.get("damage_type", "no type")])
+				# HEALTH AND A FLINCH, NOT A LOCKOUT. [ME:CONFIRMED TdGame.u] no
+				# damage type carries a stumble: TdDamageType's whole reaction
+				# is bCausePhysicalHitReaction, a 0.4 s physics flinch of the
+				# skeleton, and the types a level deals (Bullet, Explosion,
+				# Fell, Shove) leave it at that. The knock-downs are their OWN
+				# classes -- TdBarbedWireVolume, SeqAct_TdFallOnBack -- so a
+				# level that wants one says so beside the damage. Dealt as a
+				# STAGGER, every scripted hit cost two seconds on the floor.
+				player.take_damage(float(_prop(node, "DamageAmount", 0.0)), Health.Cause.HAZARD)
+				_flinch_left = FLINCH_S
 			_fire(id, 0)
+		"SeqAct_CauseDamageRadial":
+			# A blast: whoever is within DamageRadius of what it names. Most
+			# of the original's hang off a barrel being shot apart and never
+			# fire here; the scripted ones -- the Boat's deck, the Scraper's
+			# shaft -- do. [ME:INFERRED] falling off linearly to the edge, as
+			# UE3's HurtRadius does by default; the node has no flag for it.
+			var victim: Node3D = _player() as Node3D
+			var reach: float = float(_prop(node, "DamageRadius", 0.0)) * UU_TO_M
+			if victim != null and reach > 0.0 and victim.has_method("take_damage"):
+				for centre: Dictionary in node.get("centres", []):
+					var at: Vector3 = _v3(centre["position"])
+					var standing: Node3D = _actors.get(centre["actor"]) as Node3D
+					if standing != null and is_instance_valid(standing):
+						at = standing.global_position
+					var away: float = victim.global_position.distance_to(at)
+					if away >= reach:
+						continue
+					var hurt: float = float(_prop(node, "DamageAmount", 0.0)) * (1.0 - away / reach)
+					_tell("%s blasts the player for %.0f from %.1f m (%s)" % [id, hurt, away, node.get("damage_type", "no type")])
+					victim.take_damage(hurt, Health.Cause.HAZARD)
+					_flinch_left = FLINCH_S
+			_fire(id, 0)
+		"SeqAct_TdActorFactory":
+			# THE ORIGINAL'S ENEMIES, and there are none here. A fight nobody
+			# turns up to is over as it begins: everything the spawning would
+			# have set going still goes (a door the police come through still
+			# bursts open), and then "All Dead" -- which is what the level
+			# waits on to open the way on, 25 times across the game. Left as a
+			# class to pass through, only Finished fired and those ways stayed
+			# shut for good.
+			if input == 0:
+				_tell("%s spawns nobody: its fight is over" % id)
+				unknown[node["cls"]] = unknown.get(node["cls"], 0) + 1
+				var outs: Array = node["outs"]
+				for i in outs.size():
+					if outs[i]["name"] == "Finished" or str(outs[i]["name"]).begins_with("Spawned"):
+						_fire(id, i)
+				_fire_named(id, ["All Dead"])
 		"SeqAct_Teleport":
 			# Only the player is anybody here; the original's other targets
 			# are its AI. A destination the level has built and may have moved
@@ -1084,6 +1125,21 @@ func _free_spawned(package: String = "") -> void:
 			if is_instance_valid(piece):
 				piece.queue_free()
 		_spawned.erase(key)
+
+
+## The wash of a scripted hit, fading. The tint channel has other owners -- the
+## landing's lockout, a knock-down's blow -- and while one of them has the
+## body this stands aside: they write every tick and two writers would flicker.
+func _show_flinch(delta: float) -> void:
+	if _flinch_left <= 0.0:
+		return
+	_flinch_left = maxf(_flinch_left - delta, 0.0)
+	var player: Node = _player()
+	if player == null or player.get("screen_effects") == null or player.get("move_manager") == null:
+		return
+	if player.move_manager.current_name in [Move.LANDING, Move.LAY_ON_GROUND, Move.FALL_UNCONTROLLED]:
+		return
+	player.screen_effects.set_tint(hurt_tint, _flinch_left / FLINCH_S)
 
 
 ## Whether a variable link of `node` holds the player: a player variable, or

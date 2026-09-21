@@ -518,3 +518,18 @@ func test_a_fall_on_back_is_known_and_passes_its_signal_on() -> void:
 	_event(runner, "e")
 	assert_eq(_reached(runner, "after"), 1, "what follows the knock-down still runs")
 	assert_false(runner.unknown.has("SeqAct_TdFallOnBack"), "and the knock-down itself is not an unknown any more")
+
+
+func test_a_fight_nobody_turns_up_to_is_over_as_it_begins() -> void:
+	var made := await _runner({
+		"e": _n("SeqEvent_LevelBeginning", [["Out", [["spawn", 0], ["spawn", 2]]]]),
+		"spawn": _n("SeqAct_TdActorFactory", [["Finished", [["done", 0]]], ["Aborted", [["aborted", 0]]],
+			["All Dead", [["dead", 0]]], ["Spawned 1", [["spawned", 0]]]]),
+		"done": _probe("done"), "aborted": _probe("aborted"), "dead": _probe("dead"), "spawned": _probe("spawned"),
+	})
+	var runner: KismetRunner = made["runner"]
+	_event(runner, "e")
+	assert_eq(_reached(runner, "dead"), 1, "what waits for the fight to end does not wait for ever; and Disable is no fight")
+	assert_eq(_reached(runner, "spawned"), 1, "what the spawning sets going still goes")
+	assert_eq(_reached(runner, "done"), 1)
+	assert_eq(_reached(runner, "aborted"), 0)

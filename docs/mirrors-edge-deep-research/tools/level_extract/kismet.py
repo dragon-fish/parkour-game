@@ -105,6 +105,24 @@ def _interp(mr, props):
     return round(length, 4), events
 
 
+def _places(packages, mr, props, link_name):
+    """[{actor, position, basis}] for the level's actors on one variable link."""
+    out = []
+    for link in _struct_array(mr, props.get('VariableLinks')):
+        if str(link.get('LinkDesc')) != link_name:
+            continue
+        for var in _int_array(mr, link.get('LinkedVariables')):
+            index = ref_export(_props(mr, var).get('ObjValue')) if var > 0 else None
+            aid = _actor_id(mr, index)
+            if not aid:
+                continue
+            placed, _ = pk.resolved_props(packages, mr, index)
+            if placed and 'Location' in placed:
+                out.append({'actor': aid, 'position': point(placed['Location']),
+                            'basis': godot_basis(placed.get('Rotation') or (0, 0, 0), (1.0, 1.0, 1.0))})
+    return out
+
+
 def read_package(packages, mr, actors, variables, mesh_of=None):
     """This package's nodes; fills `actors` and `variables` as it meets them.
     `mesh_of(mr, reference)` gives the mesh record behind a StaticMesh
@@ -230,23 +248,24 @@ def read_package(packages, mr, actors, variables, mesh_of=None):
             record = mesh_of(mr, props.get('NewStaticMesh'))
             if record is not None:
                 node['_mesh_record'] = record
+        elif cls in ('SeqAct_CauseDamage', 'SeqAct_CauseDamageRadial'):
+            # A class reference, so _scalar_props() drops it. What a hit DOES
+            # beyond its number is its type's to say (TdDmgType_Bullet,
+            # _Explosion, _Fell, _Shove ...), and the runner reports it.
+            kind = props.get('DamageType')
+            if isinstance(kind, tuple) and kind[0] == 'obj' and kind[1]:
+                node['damage_type'] = str(pkg.resolve(kind[1]))
+            # A blast is centred on its Target -- a light, a trigger, a barrel:
+            # mostly things the level builds nothing for.
+            if cls == 'SeqAct_CauseDamageRadial':
+                centres = _places(packages, mr, props, 'Target')
+                if centres:
+                    node['centres'] = centres
         elif cls == 'SeqAct_Teleport':
             # Where each destination STANDS. Most are markers and triggers the
             # level builds nothing for, so the place travels with the node;
             # settle_teleports() moves it for one a sequence has carried off.
-            spots = []
-            for link in _struct_array(mr, props.get('VariableLinks')):
-                if str(link.get('LinkDesc')) != 'Destination':
-                    continue
-                for var in _int_array(mr, link.get('LinkedVariables')):
-                    spot = ref_export(_props(mr, var).get('ObjValue')) if var > 0 else None
-                    aid = _actor_id(mr, spot)
-                    if not aid:
-                        continue
-                    placed, _ = pk.resolved_props(packages, mr, spot)
-                    if placed and 'Location' in placed:
-                        spots.append({'actor': aid, 'position': point(placed['Location']),
-                                      'basis': godot_basis(placed.get('Rotation') or (0, 0, 0), (1.0, 1.0, 1.0))})
+            spots = _places(packages, mr, props, 'Destination')
             if spots:
                 node['destinations'] = spots
         elif cls == 'SeqAct_ActorFactory' and mesh_of is not None:
@@ -398,6 +417,8 @@ def mark_useful(graph, built_actors, built_matinees, handled_elsewhere=frozenset
             return node.get('matinee') in built_matinees
         if node['cls'] == SPAWNS_SCENERY:
             return 'spawn_points' in node
+        if node['cls'] == 'SeqAct_CauseDamageRadial':
+            return 'centres' in node
         if node['cls'] == 'SeqAct_CauseDamage':
             # Only when it can be the PLAYER who is hurt: named as such, or an
             # object variable nothing fills but an event's Instigator.
