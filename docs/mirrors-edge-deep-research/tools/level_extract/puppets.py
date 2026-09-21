@@ -16,7 +16,7 @@ import os
 import packages as pk
 import skeletal_anim
 import skeletal_glb
-from common import ExtractError, actor_scale, godot_basis, import_root_package, point
+from common import ExtractError, actor_scale, godot_basis, import_root_package, point, ref_export
 from streaming import package_key
 from matinee import _int_array, _props, _struct_array, _value
 
@@ -97,7 +97,15 @@ def collect(packages, mr, report, left_out=()):
                 if not played:
                     continue
                 actor_id = '%s.%s' % (mr.label, pkg.exports[obj - 1]['name'])
+                # What it stands ON. [ME:CONFIRMED] the Scraper's Jacknife and
+                # Kate are hard-attached to the Blackhawk's VH_Main bone, which
+                # is the bone that helicopter is flown by here: they ride it as
+                # a carriage rides its train, and their own animation -- the
+                # walk across the cabin -- goes on top.
+                based = ref_export(actor.get('Base')) if actor.get('bHardAttach') else None
+                base = '%s.%s' % (mr.label, pkg.exports[based - 1]['name']) if based else None
                 puppet = puppets.setdefault(actor_id, {
+                    'base': base,
                     'name': pkg.exports[obj - 1]['name'], 'package': mr.label,
                     'position': point(actor.get('Location') or (0.0, 0.0, 0.0)),
                     'basis': godot_basis(actor.get('Rotation') or (0, 0, 0), actor_scale(actor)),

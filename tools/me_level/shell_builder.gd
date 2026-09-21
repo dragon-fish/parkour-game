@@ -66,6 +66,8 @@ const OVERRIDDEN := ["SpawnPoint", "Sun", "WorldEnvironment"]
 ## Actor id -> path of its Puppet as a Matinee of the same shell sees it.
 ## Filled by _puppets(), read by _matinees(): per shell built.
 var _puppet_paths: Dictionary = {}
+## Actor id -> the puppets hard-attached to it, which ride whatever moves it.
+var _puppet_riders: Dictionary = {}
 
 
 func build(manifest: Dictionary, geometry_path: String) -> Node:
@@ -172,6 +174,8 @@ func _puppets(root: Node, manifest: Dictionary) -> void:
 		puppet.add_child(body)
 		body.owner = root
 		_puppet_paths[str(p["id"])] = NodePath("../../Puppets/" + puppet.name)
+		if p.get("base") != null:
+			(_puppet_riders.get_or_add(str(p["base"]), []) as Array).append(_puppet_paths[str(p["id"])])
 
 
 ## The config's hand-described lifts whose car stands in this manifest.
@@ -337,6 +341,11 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
 					if frame.is_empty():
 						continue
 					targets.append(NodePath(String(movers) + "/" + present[rider]))
+					pivots.append(Common.transform_of(frame))
+				for path: NodePath in _puppet_riders.get(actor, []):
+					if frame.is_empty():
+						continue
+					targets.append(path)
 					pivots.append(Common.transform_of(frame))
 				# [ME:CONFIRMED] the Subway's tunnel is lit by lights bolted
 				# to its rolling pieces, and they roll with them.
