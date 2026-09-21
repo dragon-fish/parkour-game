@@ -346,9 +346,15 @@ def mark_cutscenes(graph):
     the "Faith 1p" body, so its camera work IS its skeletal animation and
     nothing of it is built here. The runner plays these through in a frame.
 
-    Which of the 547: one that takes the player's input away going in, or
-    teleports the player from one of its own outputs. The rest are bystanders
-    idling, and many of those loop."""
+    Which: [ME:CONFIRMED] the original says so itself. A cutscene can be
+    skipped with the jump key, and SeqAct_Interp.bIsSkippable is what allows
+    it -- 44 sequences across the game, and skipping one is this same thing,
+    the sequence taken to its end. To those are added the animated ones that
+    take the player's input away going in or teleport the player from one of
+    their own outputs: four the original does not let the player skip (the
+    Factory's pursuit, the Scraper's helicopter) and that are still nothing
+    but a wait here. Never one that loops: two of the 44 do, and played
+    through in a frame a loop never ends."""
     nodes, variables = graph['nodes'], graph['vars']
     fed_by = {}
     for nid, node in nodes.items():
@@ -362,10 +368,13 @@ def mark_cutscenes(graph):
             variables.get(var, {}).get('cls') in PLAYER_VARIABLES for var in node.get('vars', {}).get('Target', []))
 
     for nid, node in nodes.items():
-        if not node.pop('_animated', False) or (node.get('props') or {}).get('bLooping'):
+        animated = node.pop('_animated', False)
+        props = node.get('props') or {}
+        if node['cls'] != 'SeqAct_Interp' or props.get('bLooping'):
             continue
-        if any(nodes[up]['cls'] == 'SeqAct_TdDisablePlayerInput' for up in fed_by.get(nid, [])) \
-                or any(moves_the_player(target) for out in node['outs'] for target, _ in out['to']):
+        if props.get('bIsSkippable') or animated and (
+                any(nodes[up]['cls'] == 'SeqAct_TdDisablePlayerInput' for up in fed_by.get(nid, []))
+                or any(moves_the_player(target) for out in node['outs'] for target, _ in out['to'])):
             node['cutscene'] = True
             # The teleport that puts the player INTO the cutscene: onto the
             # stand-in body, wherever the animation begins -- the Boat's is

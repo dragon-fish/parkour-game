@@ -113,9 +113,11 @@ the knock-downs are classes of their own (`TdBarbedWireVolume`,
 it names. `TdActorFactory` -> spawns nobody, so its fight is over at once:
 `Finished`, every `Spawned N`, then `All Dead` (what 25 ways on across the
 game wait for);
-a CUTSCENE (an `Interp` the exporter marks `cutscene`: it animates a skeleton,
-does not loop, and either is entered through `TdDisablePlayerInput` or
-teleports the player from one of its own outputs -- 25 across the game) is
+a CUTSCENE (an `Interp` the exporter marks `cutscene`: the original's own
+`bIsSkippable` -- its cutscenes are skipped with the jump key, and a skip IS
+the sequence taken to its end -- or one that animates a skeleton and either
+is entered through `TdDisablePlayerInput` or teleports the player from one of
+its own outputs; never one that loops) is
 played through in one frame, its keys in time order, with a toast saying so.
 547 of the game's 553 cutscene-like sequences are an AnimControl track on a
 stand-in body with the view on one of its bones, and 11 have a director

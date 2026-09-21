@@ -68,6 +68,14 @@ class CutsceneTests(unittest.TestCase):
         self.assertTrue(graph['nodes']['p#7'].get('onto_stand_in'))
         self.assertFalse(graph['nodes']['p#2'].get('onto_stand_in'))
 
+    def test_what_the_original_lets_the_player_skip_is_a_cutscene_whatever_it_shows(self):
+        graph = self.graph()
+        graph['nodes']['p#8'] = {'cls': 'SeqAct_Interp', 'outs': [], 'props': {'bIsSkippable': True}}
+        graph['nodes']['p#9'] = {'cls': 'SeqAct_Interp', 'outs': [], 'props': {'bIsSkippable': True, 'bLooping': True}}
+        kismet.mark_cutscenes(graph)
+        self.assertTrue(graph['nodes']['p#8'].get('cutscene'))
+        self.assertFalse(graph['nodes']['p#9'].get('cutscene'), 'a loop played through in a frame never ends')
+
     def test_a_looping_sequence_is_never_played_through(self):
         graph = self.graph(props={'bLooping': True})
         kismet.mark_cutscenes(graph)
