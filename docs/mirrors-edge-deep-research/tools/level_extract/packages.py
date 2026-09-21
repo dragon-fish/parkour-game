@@ -116,11 +116,15 @@ def find_install(project_root):
 
 def persistent_package(chapter_dir, named=None):
     """The chapter's persistent level, e.g. Stormdrain_p.me1."""
-    found = [f for f in os.listdir(chapter_dir)
-             if f.lower().endswith('_p.me1') and not f.startswith('TT_')]
+    every = [f for f in os.listdir(chapter_dir) if f.lower().endswith('_p.me1')]
+    # TT_ is the time-trial cut of a chapter and is not what "the chapter"
+    # means, so it is never INFERRED. It can still be NAMED: SP00's guided
+    # tutorials are TT_TutorialA01_p and its two siblings, which is the only
+    # place in the game where a TT package is the level someone wants.
+    found = [f for f in every if not f.startswith('TT_')]
     if named is not None:
-        if named not in found:
-            raise ExtractError('persistent %r is not one of %s in %s' % (named, found, chapter_dir))
+        if named not in every:
+            raise ExtractError('persistent %r is not one of %s in %s' % (named, every, chapter_dir))
         return named
     if len(found) != 1:
         raise ExtractError('expected one persistent *_p.me1 in %s, found %s' % (chapter_dir, found))
