@@ -118,8 +118,11 @@ func _puppet_bodies(manifest: Dictionary, from_dir: String, to_dir: String) -> D
 		# convention. A scene body is placed BY THE LEVEL, and a first-person
 		# cutscene has the view riding one of its bones, so leaving it turned
 		# swings every such scene ninety degrees.
+		# +90, the inverse of skeletal_glb.py's UPRIGHT -- worked out against
+		# that matrix rather than guessed at, because guessing it turns the
+		# body another quarter instead of back.
 		if _is_humanoid(scene):
-			(scene as Node3D).rotation = Vector3(0.0, -PI * 0.5, 0.0)
+			(scene as Node3D).rotation = Vector3(0.0, PI * 0.5, 0.0)
 		for node: Node in scene.find_children("*", "", true, false):
 			node.owner = scene
 		var path := to_dir.path_join(body.get_basename() + ".scn")
