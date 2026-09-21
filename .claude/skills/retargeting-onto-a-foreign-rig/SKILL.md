@@ -118,3 +118,27 @@ running while the numbers were right there. Render the pair from ONE camera
 with the driven rig stood on the source's hips (retargeting does not carry
 the clip's displacement, so it stays at the origin and falls outside a frame
 aimed at the source), show one mesh at a time, and let a person look.
+
+## Verify against what the level actually loads
+
+The `.import` route works and the one beside it does not, and only one of
+them is what a chapter loads. `build_level.gd` reads a puppet's `.glb` with
+`GLTFDocument` directly -- the extract directory is outside anything Godot
+imports, and a level is built headless, where nothing is imported at all.
+A body read that way carries the ORIGINAL's bone names (`Spine1`,
+`LeftUpLeg`, `LeftToeBase`) and its own rest, so `RetargetModifier3D`
+matches nothing and silently does nothing. No error, no warning, no change
+on screen.
+
+A retarget was implemented against a hand-configured copy of the same `.glb`
+sitting under `assets/`, confirmed working, and shipped -- and did nothing
+in the game, because the chapter loads the other one. **Load the asset the
+way the level loads it before believing a retarget works**: print the first
+few bone names and check one profile name (`Chest`, `LeftUpperArm`) is
+among them.
+
+Giving the levels that pipeline is real work: the humanoid rigs have to be
+written somewhere stable rather than into the regenerable extract cache,
+each needs an `.import` beside it, `--headless --import` has to run before
+the build, and `_puppet_bodies()` has to `load()` the imported resource
+instead of parsing the file.
