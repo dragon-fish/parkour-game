@@ -159,6 +159,13 @@ def build(mr, mesh_idx, sequence_indices, out_path, sequence_reader=None, more_m
             indices = np.frombuffer(__import__('base64').b64decode(surface['indices']), dtype=np.uint16)
             if not len(indices):
                 continue
+            # BACK TO glTF's OWN WINDING. skeletal_mesh.py already turned every
+            # triangle over for the axis swap, which is what an ArrayMesh built
+            # in code wants; a .glb is read by GLTFDocument, which turns them
+            # over again on import. Written as they arrive, the bodies import
+            # inside out -- front faces culled, the inside of the head visible
+            # through the face.
+            indices = indices.reshape(-1, 3)[:, ::-1].ravel()
             materials.append({'name': surface['material'] or 'none',
                               'pbrMetallicRoughness': {'baseColorFactor': [0.8, 0.8, 0.8, 1.0], 'metallicFactor': 0.0}})
             primitives.append({'attributes': attributes,
