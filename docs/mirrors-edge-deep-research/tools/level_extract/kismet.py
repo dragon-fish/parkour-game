@@ -27,6 +27,8 @@ See docs/kismet-runtime.md.
 """
 import os
 
+import packages as pk
+
 from common import ExtractError, actor_scale, godot_basis, outer_class, point, ref_export
 from matinee import (DAMAGE_EVENTS, DEFAULT_LENGTH, KICK_HALF_HEIGHT_M, KICK_REACH_M,
                      _int_array, _struct_array, _trigger, _value)
@@ -228,6 +230,25 @@ def read_package(packages, mr, actors, variables, mesh_of=None):
             record = mesh_of(mr, props.get('NewStaticMesh'))
             if record is not None:
                 node['_mesh_record'] = record
+        elif cls == 'SeqAct_Teleport':
+            # Where each destination STANDS. Most are markers and triggers the
+            # level builds nothing for, so the place travels with the node;
+            # settle_teleports() moves it for one a sequence has carried off.
+            spots = []
+            for link in _struct_array(mr, props.get('VariableLinks')):
+                if str(link.get('LinkDesc')) != 'Destination':
+                    continue
+                for var in _int_array(mr, link.get('LinkedVariables')):
+                    spot = ref_export(_props(mr, var).get('ObjValue')) if var > 0 else None
+                    aid = _actor_id(mr, spot)
+                    if not aid:
+                        continue
+                    placed, _ = pk.resolved_props(packages, mr, spot)
+                    if placed and 'Location' in placed:
+                        spots.append({'actor': aid, 'position': point(placed['Location']),
+                                      'basis': godot_basis(placed.get('Rotation') or (0, 0, 0), (1.0, 1.0, 1.0))})
+            if spots:
+                node['destinations'] = spots
         elif cls == 'SeqAct_ActorFactory' and mesh_of is not None:
             # Only a factory of static meshes, which is how the original puts
             # SCENERY in at run time: the subway's train ride ends by spawning
@@ -267,6 +288,54 @@ EFFECTS_ON_ACTORS = ('SeqAct_Toggle', 'SeqAct_ToggleHidden', 'SeqAct_ChangeColli
                      'SeqAct_SetStaticMesh')
 EFFECTS = ('SeqAct_MultiLevelStreaming', 'SeqAct_LevelStreaming', 'SeqAct_TdInElevator', 'SeqAct_Teleport',
            'SeqAct_TdPlayerFail', 'SeqAct_TdFallOnBack')
+
+
+def _track_position(keys, frame, time):
+    """Where a move track has its actor at `time`: LINEAR between keys, which
+    is exact at a key -- and a teleport is fired from one (an event at 0, or
+    the sequence's end)."""
+    points = keys.get('position') or []
+    if not points:
+        return None
+    time = min(max(time, points[0]['time']), points[-1]['time'])
+    value = points[-1]['value']
+    for a, b in zip(points, points[1:]):
+        if a['time'] <= time <= b['time']:
+            f = 0.0 if b['time'] == a['time'] else (time - a['time']) / (b['time'] - a['time'])
+            value = [a['value'][i] + (b['value'][i] - a['value'][i]) * f for i in range(3)]
+            break
+    if keys.get('absolute'):
+        return [round(v, 4) for v in value]
+    columns = frame['basis']
+    return [round(frame['position'][i] + sum(columns[c][i] * value[c] for c in range(3)), 4) for i in range(3)]
+
+
+def settle_teleports(graph, matinees):
+    """A destination a sequence moves is where the sequence has PUT it by the
+    time the teleport fires. [ME:CONFIRMED Boat] a first-person cutscene is a
+    SkeletalMeshActor on a move track whose event track teleports the player
+    onto it; nothing is built for that actor, so nothing at run time could
+    say where it has got to."""
+    by_name = {m['name']: m for m in matinees}
+    for node in graph['nodes'].values():
+        played = by_name.get(node.get('matinee')) if node['cls'] == 'SeqAct_Interp' else None
+        if not played:
+            continue
+        times = {e['name']: e['time'] for e in node.get('events_at', [])}
+        times['Completed'] = node.get('length', 0.0)
+        for out in node['outs']:
+            if out['name'] not in times:
+                continue
+            for target, _ in out['to']:
+                for spot in graph['nodes'].get(target, {}).get('destinations', []):
+                    for group in played['groups']:
+                        for driven in group['actors']:
+                            label, _, name = driven.partition('.me1.')
+                            if '%s.%s' % (package_key(label), name) != spot['actor'] or driven not in played['frames']:
+                                continue
+                            moved = _track_position(group['keys'], played['frames'][driven], times[out['name']])
+                            if moved:
+                                spot['position'] = moved
 
 
 def mark_useful(graph, built_actors, built_matinees, handled_elsewhere=frozenset()):

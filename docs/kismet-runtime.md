@@ -104,7 +104,10 @@ fired from the runner's own clock (so a sequence with nothing to move still
 takes its time); `Toggle`, `ToggleHidden`, `ChangeCollision`, `Destroy` -> the
 actor's nodes; `TdInElevator` -> no jump, no crouch, walking pace, and the body stood up as
 an ordinary walking one whatever it was doing when the ride began;
-`TdFallOnBack` -> `Status.Effect.KNOCKDOWN`, which is `LayOnGroundMove`.
+`TdFallOnBack` -> `Status.Effect.KNOCKDOWN`, which is `LayOnGroundMove`;
+`Teleport` -> the player only, stood on the floor under the destination -- an
+actor the level has built is asked where it is, any other is where the export
+says (moved to where a sequence that drives it has put it by then).
 
 **Everything else passes the signal straight on** -- its first output, and any
 `Finished` -- which is right for the hundred kinds with nothing to act on here

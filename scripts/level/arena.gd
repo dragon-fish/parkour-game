@@ -817,6 +817,40 @@ func restart_from_spawn() -> void:
 ## the player is already at spawn immediately after calling this, and a caller
 ## that reads status state must await both ticks: after only one, the statuses
 ## of the new life have not been put on yet.
+## How far below a teleport's destination a floor is looked for, and how far
+## above it the body is set down.
+const TELEPORT_FLOOR_REACH_M := 1.5
+const TELEPORT_CLEARANCE_M := 0.05
+
+## Puts the living player somewhere else, as the level's own script does (the
+## original's SeqAct_Teleport): the same body, the same life, on its feet.
+## `to` is the BODY CENTRE, the convention the spawn point and the checkpoints
+## share. NOT a respawn -- nothing of the level or the life is reset.
+func teleport_player(to: Transform3D) -> void:
+	if player == null:
+		return
+	# STOOD ON THE FLOOR THAT IS THERE. The original hands any actor as a
+	# destination -- a marker at chest height, a cutscene body whose origin is
+	# between its feet -- and its engine pushes the pawn out of whatever it
+	# lands in. Centred on a pair of feet, this body starts half inside the
+	# floor and drops through it.
+	var half: float = player.standing_height() * 0.5
+	var query := PhysicsRayQueryParameters3D.create(to.origin + Vector3.UP * half, to.origin + Vector3.DOWN * (half + TELEPORT_FLOOR_REACH_M))
+	query.collision_mask = player.collision_mask
+	query.exclude = [player.get_rid()]
+	var floor_hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
+	if not floor_hit.is_empty():
+		to.origin.y = (floor_hit["position"] as Vector3).y + half + TELEPORT_CLEARANCE_M
+	player.global_position = to.origin
+	player.rotation = Vector3(0.0, to.basis.get_euler().y, 0.0)
+	player.velocity = Vector3.ZERO
+	# Or the distance teleported DOWN is scored as a fall.
+	if player.fall_tracker != null:
+		player.fall_tracker.reset(to.origin.y)
+	if player.move_manager != null:
+		player.move_manager.start(Move.WALKING)
+
+
 func reset_player() -> void:
 	# FIRST, before anything else here. Every route into this function is a
 	# respawn happening NOW -- the R key, falling out of the level, and the

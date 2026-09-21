@@ -550,11 +550,7 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 		"SeqAct_CauseDamage":
 			# Only the player has health here. [ME:CONFIRMED] the scale is the
 			# original's: 100 is a life, and the tunnel's beams deal 100.
-			var hurts_player := false
-			for variable: String in node.get("vars", {}).get("Target", []):
-				var resolved := _resolve(variable)
-				hurts_player = hurts_player or _vars.get(resolved, {}).get("cls", "") in PLAYER_VARIABLES \
-						or _var_values.get(resolved) == THE_PLAYER
+			var hurts_player := _names_the_player(node, "Target")
 			var player: Node = _player()
 			if hurts_player and player != null and player.has_method("apply_status"):
 				_tell("%s hurts the player for %s" % [id, _prop(node, "DamageAmount", 0.0)])
@@ -569,6 +565,27 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 				blow.seconds = HURT_STAGGER_S
 				blow.tint = hurt_tint
 				player.apply_status(blow, self, 0, true)
+			_fire(id, 0)
+		"SeqAct_Teleport":
+			# Only the player is anybody here; the original's other targets
+			# are its AI. A destination the level has built and may have moved
+			# is asked where it IS; the rest travel with the node.
+			var spots: Array = node.get("destinations", [])
+			var arena := _arena()
+			if _names_the_player(node, "Target") and not spots.is_empty() and arena != null:
+				var spot: Dictionary = spots[0]
+				var columns: Array = spot["basis"]
+				var to := Transform3D(Basis(_v3(columns[0]), _v3(columns[1]), _v3(columns[2])), _v3(spot["position"]))
+				var standing: Node3D = _actors.get(spot["actor"]) as Node3D
+				if standing != null and is_instance_valid(standing):
+					to = standing.global_transform
+				_tell("%s teleports the player to %s %s" % [id, spot["actor"], to.origin])
+				# DEFERRED. A checkpoint's own sequence teleports -- the Boat's
+				# intro puts the player in the container at time 0 -- and it
+				# runs from INSIDE the respawn, which sets the body on the
+				# checkpoint only after the level has been restored: done at
+				# once, the teleport was overwritten on the same frame.
+				arena.teleport_player.call_deferred(to)
 			_fire(id, 0)
 		"SeqAct_ActorFactory":
 			# Scenery put in at run time; any other factory (rigid bodies,
@@ -1067,6 +1084,16 @@ func _free_spawned(package: String = "") -> void:
 			if is_instance_valid(piece):
 				piece.queue_free()
 		_spawned.erase(key)
+
+
+## Whether a variable link of `node` holds the player: a player variable, or
+## an object variable an event has written its instigator into.
+func _names_the_player(node: Dictionary, link: String) -> bool:
+	for variable: String in node.get("vars", {}).get(link, []):
+		var resolved := _resolve(variable)
+		if _vars.get(resolved, {}).get("cls", "") in PLAYER_VARIABLES or _var_values.get(resolved) == THE_PLAYER:
+			return true
+	return false
 
 
 func _arena() -> Arena:

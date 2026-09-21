@@ -711,6 +711,8 @@ def main(config_path):
     graph = kismet.collect(packages, report, built_actors, {m['name'] for m in matinees}, panes,
                            meshes.resolve, config['kismet_overrides']) \
         if config['split_sections'] else None
+    if graph:
+        kismet.settle_teleports(graph, matinees)
     records = meshes.finish_names()
     for p in placements:
         p['mesh'] = p.pop('_record')['name']
