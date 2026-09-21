@@ -21,8 +21,11 @@ The compressed data, package version 536, walked on AS_SP01_Helicopter01:
         rotation, ONE key       3 floats, W rebuilt (ACF_Float96NoW whatever
                                 the sequence's format says)
         rotation, more          24 bytes of mins and ranges that only the
-                                interval formats read, then 3 WORDs each:
-                                (u - 32767) / 32767, W rebuilt (ACF_Fixed48NoW)
+                                interval formats read, then per key, W rebuilt:
+                                ACF_Fixed48NoW  3 WORDs, (u - 32767) / 32767
+                                ACF_Fixed32NoW  one DWORD of 11, 11 and 10 bits [ME:INFERRED:
+                                                UE3's layout, no sequence checked yet]
+                                ACF_Float96NoW  3 floats
 
 Keys are evenly spaced over SequenceLength. Tracks are in the order of the
 AnimSet's TrackBoneNames.
@@ -37,7 +40,8 @@ ROTATION_RANGE_BYTES = 24
 # Seconds between the keys written out. The flight is smooth and the builder's
 # Matinee goes linearly between keys; ten a second is under a centimetre off.
 SAMPLE_STEP_S = 0.1
-SUPPORTED_ROTATION = 'ACF_Fixed48NoW'
+# Bytes a rotation key takes, per format, when a track has more than one.
+ROTATION_KEY_BYTES = {'ACF_Fixed48NoW': 6, 'ACF_Fixed32NoW': 4, 'ACF_Float96NoW': 12}
 
 
 # ---- 3x3 matrices as three COLUMNS, quaternions as (x, y, z, w), UE space
@@ -95,7 +99,7 @@ def bone_tracks(mr, sequence_idx):
     if 'CompressedTrackOffsets' not in props or native is None:
         raise ExtractError('%s: no compressed tracks' % where)
     rotation = _value(mr, props['RotationCompressionFormat']) if 'RotationCompressionFormat' in props else 'ACF_None'
-    if rotation != SUPPORTED_ROTATION or 'TranslationCompressionFormat' in props:
+    if rotation not in ROTATION_KEY_BYTES or 'TranslationCompressionFormat' in props:
         raise ExtractError('%s: compression %s is not read' % (where, rotation))
     length = float(_value(mr, props['SequenceLength']))
     at = props['CompressedTrackOffsets'][3]
@@ -121,9 +125,18 @@ def bone_tracks(mr, sequence_idx):
             quats = [_rebuild_w(*struct.unpack_from('<3f', d, stream + r_at))]
         else:
             quats = []
+            first = stream + r_at + ROTATION_RANGE_BYTES
             for i in range(r_keys):
-                u = struct.unpack_from('<3H', d, stream + r_at + ROTATION_RANGE_BYTES + 6 * i)
-                quats.append(_rebuild_w(*[(c - 32767) / 32767.0 for c in u]))
+                if rotation == 'ACF_Fixed48NoW':
+                    u = struct.unpack_from('<3H', d, first + 6 * i)
+                    quats.append(_rebuild_w(*[(c - 32767) / 32767.0 for c in u]))
+                elif rotation == 'ACF_Fixed32NoW':
+                    # 11, 11 and 10 bits, X in the high ones.
+                    packed = struct.unpack_from('<I', d, first + 4 * i)[0]
+                    quats.append(_rebuild_w(((packed >> 21) - 1023) / 1023.0, (((packed >> 10) & 0x7FF) - 1023) / 1023.0,
+                                            ((packed & 0x3FF) - 511) / 511.0))
+                else:
+                    quats.append(_rebuild_w(*struct.unpack_from('<3f', d, first + 12 * i)))
         # [ME:INFERRED] UE3's AnimSequence hands every bone but the root back
         # with W negated -- its reference poses are stored the other way
         # round. Here it only decides which way a hovering body sways.

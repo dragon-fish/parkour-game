@@ -293,3 +293,18 @@ The Edge's helicopter is two actors at the world's origin: `_0` is animated
 and never shown, `_1` is based on it and is what Kismet unhides. A skinned
 actor's `Base` therefore counts without `bHardAttach`, and rides as any
 hard-attached mover does.
+
+## Puppets: the people a cutscene animates
+
+`puppets.py` finds every SkeletalMeshActor an InterpTrackAnimControl plays on
+(sp09: 25 -- Jacknife, Kate, SWAT, their guns and handcuffs, rats, pigeons) and
+`skeletal_glb.py` writes one `.glb` per package and mesh into `<chapter>/puppets/`:
+the original's mesh with its skin weights, its skeleton under its own bone
+names, and each AnimSequence played on it. A Matinee that animates one carries
+`puppets`: per actor, which animation begins when, from what offset, at what
+rate, looping or not. Such a sequence is kept though it moves nothing.
+
+The builder turns each `.glb` into a scene with GLTFDocument (the extract
+directory is outside anything Godot imports, and a level is built headless),
+stands a `Puppet` where each actor stands, and hands each Matinee its cast; the
+Matinee poses them from its own clock. Nothing is textured yet.

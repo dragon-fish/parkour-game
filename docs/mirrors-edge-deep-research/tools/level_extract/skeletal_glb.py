@@ -102,7 +102,10 @@ class Glb:
             out.write(struct.pack('<I4s', len(self.blob), b'BIN\x00') + bytes(self.blob))
 
 
-def build(mr, mesh_idx, sequence_indices, out_path):
+def build(mr, mesh_idx, sequence_indices, out_path, sequence_reader=None):
+    """`sequence_reader` is where the AnimSequences are, when that is not the
+    mesh's own package: a level's cutscene on a character from a shared one."""
+    sequence_reader = sequence_reader or mr
     record = skeletal_mesh.parse_render(mr, mesh_idx, with_skin=True)
     bones, skin = record['skeleton']['bones'], record['skin']
     glb = Glb()
@@ -154,9 +157,9 @@ def build(mr, mesh_idx, sequence_indices, out_path):
     by_name = {bone['name']: k for k, bone in enumerate(bones)}
     glb.doc['animations'] = []
     for sequence in sequence_indices:
-        tags = {tag[0]: tag for tag in mr.chain_of(sequence, widest=True)[0]}
-        tracks, length = sa.bone_tracks(mr, sequence)
-        animation = {'name': str(_value(mr, tags['SequenceName'])), 'channels': [], 'samplers': []}
+        tags = {tag[0]: tag for tag in sequence_reader.chain_of(sequence, widest=True)[0]}
+        tracks, length = sa.bone_tracks(sequence_reader, sequence)
+        animation = {'name': str(_value(sequence_reader, tags['SequenceName'])), 'channels': [], 'samplers': []}
         for bone_name, (translations, rotations) in tracks.items():
             if bone_name not in by_name:
                 continue

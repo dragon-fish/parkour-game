@@ -856,9 +856,16 @@ func _run_interp(id: String, node: Dictionary, input: int, state: Dictionary) ->
 	_playing[id] = true
 	_tell("sequence %s %s from %.2f of %.2f s%s  %s" % [id, "plays" if int(state["direction"]) > 0 else "reverses", at, length,
 			"" if _matinees.has(node.get("matinee", "")) else " (nothing of it is built)", node.get("comment", "")])
-	if node.get("cutscene", false) and int(state["direction"]) > 0:
+	if node.get("cutscene", false) and int(state["direction"]) > 0 and not _has_a_cast(node):
 		_say_cutscene(id, node, length)
 	_interp_events(id, node, at, at, int(state["direction"]), true)
+
+
+## Whether there is anything of this sequence to WATCH: a cutscene whose
+## characters are built is played out, one with nobody in it is played through.
+func _has_a_cast(node: Dictionary) -> bool:
+	var matinee: Matinee = _matinees.get(node.get("matinee", ""))
+	return matinee != null and is_instance_valid(matinee) and not matinee.puppets.is_empty()
 
 
 ## Tells the player a cutscene went by, since nothing else will.
@@ -898,7 +905,7 @@ func _advance_interp(id: String, delta: float) -> void:
 	# and sitting out eighteen seconds of nothing for those is the whole of
 	# what was left. One tick after its start, so a teleport keyed at 0 and
 	# one on Completed land in that order.
-	if node.get("cutscene", false) and direction > 0:
+	if node.get("cutscene", false) and direction > 0 and not _has_a_cast(node):
 		after = length
 		_seek_matinee(id, length)
 	state["at"] = after

@@ -54,6 +54,7 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 	_library = MeLibrary.new()
 	if not _library.build(meshes, bakes):
 		return false
+	manifest["puppet_bodies"] = _puppet_bodies(manifest, dir.path_join("puppets"), (paths.shell as String).get_basename() + "_puppets")
 	_look = config.get("look", {})
 
 	if config.get("split_sections", false):
@@ -84,6 +85,39 @@ func _geometry_builder():
 	builder.library = _library
 	builder.look_dials = _look
 	return builder
+
+
+## Each body the extractor wrote (skeletal_glb.py) as a scene of its own, and
+## {glb name: scene path}. Read with GLTFDocument HERE rather than left to the
+## importer: the .glb is in the extract directory, outside anything Godot
+## imports, and a level is built headless, where nothing is imported at all.
+func _puppet_bodies(manifest: Dictionary, from_dir: String, to_dir: String) -> Dictionary:
+	var out := {}
+	var wanted := {}
+	for puppet: Dictionary in manifest.get("puppets", []):
+		wanted[str(puppet["body"])] = true
+	if wanted.is_empty():
+		return out
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(to_dir))
+	for body: String in wanted:
+		var document := GLTFDocument.new()
+		var state := GLTFState.new()
+		if document.append_from_file(from_dir.path_join(body), state) != OK:
+			push_error("[me_level] puppet body %s does not load" % body)
+			continue
+		var scene := document.generate_scene(state)
+		if scene == null:
+			push_error("[me_level] puppet body %s makes no scene" % body)
+			continue
+		scene.name = "Body"
+		for node: Node in scene.find_children("*", "", true, false):
+			node.owner = scene
+		var path := to_dir.path_join(body.get_basename() + ".scn")
+		# _save() frees what it saves.
+		if _save(scene, path, ResourceSaver.FLAG_COMPRESS):
+			out[body] = path
+	print("[me_level] puppet bodies: %d" % out.size())
+	return out
 
 
 func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, rebuild: bool) -> bool:
@@ -147,7 +181,9 @@ func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, r
 ## The manifest restricted to one section; "" is the chapter-wide layer.
 static func _section_of(manifest: Dictionary, section: String) -> Dictionary:
 	var part := manifest.duplicate()
-	for key in ["placements", "lights", "annotations", "bsp", "checkpoints"]:
+	for key in ["placements", "lights", "annotations", "bsp", "checkpoints", "puppets"]:
+		if not manifest.has(key):
+			continue
 		part[key] = (manifest[key] as Array).filter(func(r: Dictionary) -> bool: return r.get("section", "") == section)
 	# A section's swing volume can hang on a bar placed from another section's
 	# package or the chapter's (Subway's Plat-Tunnel slice, Mall's MallExterior).

@@ -26,6 +26,7 @@ const TELEPORT_SCRIPT := preload("res://scripts/level/teleport_volume.gd")
 const GLASS_SCRIPT := preload("res://scripts/level/breakable_glass.gd")
 const LEVEL_END_SCRIPT := preload("res://scripts/level/level_end.gd")
 const PRESENCE_SCRIPT := preload("res://scripts/level/package_presence.gd")
+const PUPPET_SCRIPT := preload("res://scripts/level/puppet.gd")
 const KISMET_RUNNER_SCRIPT := preload("res://scripts/level/kismet/kismet_runner.gd")
 const KISMET_GRAPH_SCRIPT := preload("res://scripts/level/kismet/kismet_graph.gd")
 ## How far out from a pane its Reach sees a body coming: a tick at a sprint
@@ -62,6 +63,11 @@ const OVERRIDDEN := ["SpawnPoint", "Sun", "WorldEnvironment"]
 ## The shell's own nodes under a stand-in root. Pack it, then pass the text
 ## through compose(): Godot cannot pack an inherited scene from a script
 ## without the editor, so the inheritance is written into the text.
+## Actor id -> path of its Puppet as a Matinee of the same shell sees it.
+## Filled by _puppets(), read by _matinees(): per shell built.
+var _puppet_paths: Dictionary = {}
+
+
 func build(manifest: Dictionary, geometry_path: String) -> Node:
 	var config: Dictionary = manifest["config"]
 	var root := Node3D.new()
@@ -133,11 +139,39 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	# the hand-written Lift: the lift's own sequence is built like any other
 	# and the graph plays it, doors, button, streaming and all.
 	var scripted: bool = manifest.get("streaming") is Dictionary
+	_puppets(root, manifest)
 	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), {} if scripted else _lift_actors(manifest), borne, sequences))
 	if not scripted:
 		_own(root, _lifts(manifest, NodePath("../../Geometry/Movers")))
 	_own(root, _checkpoints(manifest, NodePath("../../Geometry/Movers"), sequences))
 	return root
+
+
+## The characters the original's cutscenes animate, stood where its actors
+## stand: a Puppet each, with the body build_level.gd made of its mesh
+## INSTANCED under it -- owned as an instance, so the shell's text holds a
+## reference and not ten thousand vertices.
+func _puppets(root: Node, manifest: Dictionary) -> void:
+	var bodies: Dictionary = manifest.get("puppet_bodies", {})
+	var group := _group("Puppets")
+	root.add_child(group)
+	group.owner = root
+	var names := Common.NameAllocator.new()
+	for p: Dictionary in manifest.get("puppets", []):
+		if not bodies.has(p["body"]):
+			continue
+		var puppet := Node3D.new()
+		puppet.set_script(PUPPET_SCRIPT)
+		puppet.name = names.take(Common.mover_name(p["package"], p["name"]))
+		puppet.transform = Common.transform_of(p)
+		puppet.visible = not bool(p.get("hidden", false))
+		_stamp(puppet, p)
+		group.add_child(puppet)
+		puppet.owner = root
+		var body: Node = (load(bodies[p["body"]]) as PackedScene).instantiate()
+		puppet.add_child(body)
+		body.owner = root
+		_puppet_paths[str(p["id"])] = NodePath("../../Puppets/" + puppet.name)
 
 
 ## The config's hand-described lifts whose car stands in this manifest.
@@ -295,6 +329,9 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
 				if present.has(actor):
 					targets.append(NodePath(String(movers) + "/" + present[actor]))
 					pivots.append(null)
+				elif _puppet_paths.has(actor):
+					targets.append(_puppet_paths[actor])
+					pivots.append(null)
 				var frame: Dictionary = m["frames"].get(actor, {})
 				for rider: String in riders.get(actor, []):
 					if frame.is_empty():
@@ -324,12 +361,17 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
 			_matinee_channel(track, "rot_", g["keys"]["euler"])
 			_matinee_channel(track, "scl_", g["keys"].get("scale", []))
 			tracks.append(track)
-		if tracks.is_empty():
+		var cast: Array[Dictionary] = []
+		for actor: String in (m.get("puppets", {}) as Dictionary):
+			if _puppet_paths.has(actor):
+				cast.append({path = _puppet_paths[actor], plays = m["puppets"][actor]})
+		if tracks.is_empty() and cast.is_empty():
 			continue
 		var node := Node3D.new()
 		node.set_script(MATINEE_SCRIPT)
 		node.name = names.take(str(m["name"]).get_file().replace("#", "_"))
 		node.set("tracks", tracks)
+		node.set("puppets", cast)
 		node.set("length", float(m["length"]))
 		node.set("play_rate", float(m.get("play_rate", 1.0)))
 		if m.get("autostart", false):

@@ -118,7 +118,9 @@ a CUTSCENE (an `Interp` the exporter marks `cutscene`: the original's own
 the sequence taken to its end -- or one that animates a skeleton and either
 is entered through `TdDisablePlayerInput` or teleports the player from one of
 its own outputs; never one that loops) is
-played through in one frame, its keys in time order, with a toast saying so.
+played through in one frame, its keys in time order, with a toast saying so
+-- UNLESS its Matinee has a cast (`Matinee.puppets`, the original's characters
+built as `Puppet`s): then there is something to watch, and it plays out.
 547 of the game's 553 cutscene-like sequences are an AnimControl track on a
 stand-in body with the view on one of its bones, and 11 have a director
 track: there is no camera work apart from the skeletal animation, and none of

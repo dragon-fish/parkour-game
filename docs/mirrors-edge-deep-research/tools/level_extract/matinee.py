@@ -193,8 +193,12 @@ def _scale(actor):
     return (s * s3[0], s * s3[1], s * s3[2])
 
 
-def collect(packages, mr, report, keep_driving=frozenset(), keep_all=False, flight_of=None):
+def collect(packages, mr, report, keep_driving=frozenset(), keep_all=False, flight_of=None, puppet_plays=None):
     """Matinees of one package.
+
+    `puppet_plays` is puppets.collect()'s {matinee name: {actor: plays}}: a
+    sequence that animates a puppet is kept though it MOVES nothing, and says
+    what it plays on whom (`puppets`). Most cutscenes are only that.
 
     `flight_of(mr, actor export, group export, track export, length)` gives
     move-track keys for a group that moves its actor by ANIMATING it, or None:
@@ -341,7 +345,8 @@ def collect(packages, mr, report, keep_driving=frozenset(), keep_all=False, flig
                     report['matinee_flown_by_animation'] = report.get('matinee_flown_by_animation', 0) + 1
         groups = [g for g in groups if g['actors']
                   and max(len(g['keys'][c]) for c in ('position', 'euler', 'scale')) >= 2]
-        if not groups:
+        animates = (puppet_plays or {}).get(name_of(i), {})
+        if not groups and not animates:
             report['matinee_without_movement'] = report.get('matinee_without_movement', 0) + 1
             continue
         if not starts:
@@ -367,6 +372,8 @@ def collect(packages, mr, report, keep_driving=frozenset(), keep_all=False, flig
                  'starts': starts, 'groups': groups, 'frames': frames}
         if autostart:
             entry['autostart'] = True
+        if animates:
+            entry['puppets'] = animates
         # Where a play begins. [ME:CONFIRMED Stormdrain Kismet] the sequence a
         # respawn plays is forced part-way in -- the girder twin to 3.1 s of
         # its 5 -- and without it the thing the point stands on is still at the

@@ -25,6 +25,10 @@ extends Node3D
 ## a channel with no keys leaves that much of the target alone. modes: 0
 ## constant, 1 linear, 2 curve (Hermite on the stored tangents).
 @export var tracks: Array[Dictionary] = []
+## The characters this sequence ANIMATES: {path: NodePath to a Puppet, plays:
+## [{animation, start, offset, rate, loops}]}. Most of the original's
+## cutscenes are only this and move nothing.
+@export var puppets: Array[Dictionary] = []
 @export var length: float = 0.0
 ## Seconds of the keys per second of play. The original sets it per action.
 @export var play_rate: float = 1.0
@@ -367,6 +371,12 @@ static func gap_of(follower: Dictionary) -> float:
 
 
 func _apply() -> void:
+	for cast: Dictionary in puppets:
+		# By what it can do, not by class: a class_name is only known once the
+		# editor has scanned it, and a level is built headless before that.
+		var puppet := get_node_or_null(cast["path"])
+		if puppet != null and puppet.has_method("pose"):
+			puppet.call("pose", cast["plays"], _time)
 	for i in tracks.size():
 		var track: Dictionary = tracks[i]
 		var offset := sample(track["pos_times"], track["pos_values"], track["pos_arrive"],

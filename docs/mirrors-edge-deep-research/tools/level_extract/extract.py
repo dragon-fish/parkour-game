@@ -21,6 +21,7 @@ import annotations
 import lights
 import packages as pk
 import materials as material_bake
+import puppets as puppet_show
 import skeletal_anim
 import skeletal_mesh
 import static_mesh
@@ -614,6 +615,7 @@ def main(config_path):
     meshes = MeshTable(packages, report, material_bake.MaterialBaker(packages, int(config['texture_max_px']), report))
     defaults = annotations.blocking_defaults(packages)
     placements, found_lights, bsp, matinees, end_links = [], [], [], [], []
+    puppets, readers = {}, {}
     notes = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
     # Actors named by a checkpoint's `play`: their sequence is kept even with
     # no start this module can read, because a remote event is what plays it.
@@ -640,8 +642,12 @@ def main(config_path):
         for key, values in collected.items():
             notes[key] += values
         found_lights += lights.collect_lights(mr)
+        # Only a chapter that runs its Kismet has anything to play a cutscene.
+        cast, plays = puppet_show.collect(packages, mr, report, SKELETAL_SCENERY) if config['split_sections'] else ({}, {})
+        puppets.update(cast)
+        readers[mr.label] = mr
         matinees += matinee.collect(packages, mr, report, wanted_sequences, keep_all=config['split_sections'],
-                                    flight_of=lambda *where: flight_of(meshes, *where))
+                                    flight_of=lambda *where: flight_of(meshes, *where), puppet_plays=plays)
         notes['annotations'] += glass
         end_links.append((name, matinee.level_end_links(packages, mr)))
         for face in lights.collect_bsp(mr):
@@ -747,7 +753,7 @@ def main(config_path):
         prefix = packages.persistent[:-len('p.me1')]
         names = [s['name'] for s in config['sections']]
         report['sections'] = {}
-        for record in placements + found_lights + notes['annotations'] + bsp + matinees:
+        for record in placements + found_lights + notes['annotations'] + bsp + matinees + list(puppets.values()):
             record['section'] = pk.section_of(record['package'], prefix, names)
             counts = report['sections'].setdefault(record['section'] or '(chapter)', {'packages': []})
             if record['package'] not in counts['packages']:
@@ -820,7 +826,8 @@ def main(config_path):
     switch_on_collision(placements, graph, report)
 
     os.makedirs(out_dir, exist_ok=True)
-    manifest = {'config': config, 'streaming': flow, 'environment': look, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
+    cast = puppet_show.write_bodies(puppets, readers, os.path.join(out_dir, 'puppets'), report)
+    manifest = {'puppets': cast, 'config': config, 'streaming': flow, 'environment': look, 'placements': placements, 'bsp': bsp, 'lights': found_lights,
                 'annotations': notes['annotations'], 'spawns': notes['spawns'],
                 'checkpoints': notes['checkpoints'], 'matinees': matinees, 'report': report}
     with open(os.path.join(out_dir, 'manifest.json'), 'w', encoding='utf-8') as fh:
