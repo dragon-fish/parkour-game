@@ -44,7 +44,11 @@ from static_mesh import _b64, pkg_name, ref_name
 UV_SLOTS = 3
 
 
-def parse_render(mr, idx):
+def parse_render(mr, idx, with_skin=False):
+    """`with_skin` adds `skin`: per vertex, four bone indices (into the
+    skeleton) and four weights summing to 1, and `raw_vertices`, the positions
+    as the file has them (UE axes and units, RotOrigin NOT applied) -- what
+    something that means to POSE the mesh needs, and nothing else does."""
     pkg, d = mr.pkg, mr.d
     e = pkg.exports[idx - 1]
     where = '%s.%s' % (pkg_name(mr), e['name'])
@@ -110,6 +114,7 @@ def parse_render(mr, idx):
     rigid_bytes = 24 + 8 * UV_SLOTS + 1
     soft_bytes = 24 + 8 * UV_SLOTS + 8
     placed = {}
+    influences = {}
     bound = [0] * len(bones)
     for _ in range(count(64, 'chunks')):
         at = take('<I')[0]
@@ -119,12 +124,19 @@ def parse_render(mr, idx):
                 if p + size > end:
                     raise ExtractError('%s: chunk vertices run off the export' % where)
                 placed[at] = p
+                # Rigid: one bone, the whole weight. Soft: four bone bytes
+                # then four weight bytes, of 255.
+                tail = p + 24 + 8 * UV_SLOTS
+                influences[at] = ([d[tail]], [255]) if size == rigid_bytes else (list(d[tail:tail + 4]), list(d[tail + 4:tail + 8]))
                 # A rigid vertex's one bone, a soft vertex's first: an index
                 # into the chunk's bone map, which follows the vertices.
                 first_bones.append(d[p + 24 + 8 * UV_SLOTS])
                 at += 1
                 p += size
         bone_map = take('<%dH' % count(512, 'bone map'))
+        for vertex in range(at - len(first_bones), at):
+            local, weights = influences[vertex]
+            influences[vertex] = ([bone_map[b] if w and b < len(bone_map) else 0 for b, w in zip(local, weights)], weights)
         for local in first_bones:
             if local >= len(bone_map) or bone_map[local] >= len(bones):
                 raise ExtractError('%s: a vertex names bone %d of a map of %d' % (where, local, len(bone_map)))
@@ -158,6 +170,16 @@ def parse_render(mr, idx):
         for channel, out in enumerate(uvs):
             out.extend(struct.unpack_from('<2f', d, q + 24 + 8 * channel))
 
+    skin = None
+    if with_skin:
+        skin = {'joints': [], 'weights': [], 'raw_vertices': []}
+        for k in range(len(placed)):
+            joints, weights = influences[k]
+            total = float(sum(weights)) or 1.0
+            skin['joints'].append((joints + [0, 0, 0])[:4])
+            skin['weights'].append(([w / total for w in weights] + [0.0, 0.0, 0.0])[:4])
+            skin['raw_vertices'].append(struct.unpack_from('<3f', d, placed[k]))
+
     surfaces = []
     for material, _chunk, first, triangles in sections:
         if material >= len(materials):
@@ -187,4 +209,4 @@ def parse_render(mr, idx):
         # stored: what an animation has to move to move this mesh as one
         # piece is the bone most of it is skinned to.
         'skeleton': {'bones': bones, 'bound_to': bound.index(max(bound)), 'rot_origin': [pitch, yaw, roll]},
-    }
+    } | ({'skin': skin} if skin else {})
