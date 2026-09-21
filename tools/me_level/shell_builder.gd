@@ -93,7 +93,10 @@ func build(manifest: Dictionary, geometry_path: String) -> Node:
 	_own(root, _headlights(annotations, borne))
 	_own(root, _pain_volumes(annotations))
 	_own(root, _glass(manifest, NodePath("../../" + String(geometry.name) + "/Movers")))
-	_own(root, _level_ends(annotations))
+	# See build_section(): a chapter that runs its own Kismet ends by REACHING
+	# SeqAct_TdLevelCompleted, and a touch area would cut the outro off.
+	if not (manifest.get("streaming") is Dictionary):
+		_own(root, _level_ends(annotations))
 	_own(root, _matinees(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), {}, borne, sequences))
 	_own(root, _checkpoints(manifest, NodePath("../../" + String(geometry.name) + "/Movers"), sequences))
 	_own(root, _teleports(manifest))
@@ -136,11 +139,15 @@ func build_section(manifest: Dictionary, geometry_path: String, section_name: St
 	_own(root, _headlights(annotations, borne))
 	_own(root, _pain_volumes(annotations))
 	_own(root, _glass(manifest, NodePath("../../Geometry/Movers")))
-	_own(root, _level_ends(annotations))
 	# A chapter that runs the original's Kismet (KismetRunner) has no use for
 	# the hand-written Lift: the lift's own sequence is built like any other
-	# and the graph plays it, doors, button, streaming and all.
+	# and the graph plays it, doors, button, streaming and all. Nor for an
+	# area that ends the chapter on a touch: the original reaches
+	# SeqAct_TdLevelCompleted through an outro it wrote -- a delay, a matinee,
+	# a cutscene -- and the touch would end the chapter before any of it plays.
 	var scripted: bool = manifest.get("streaming") is Dictionary
+	if not scripted:
+		_own(root, _level_ends(annotations))
 	_puppets(root, manifest)
 	_own(root, _matinees(manifest, NodePath("../../Geometry/Movers"), {} if scripted else _lift_actors(manifest), borne, sequences))
 	if not scripted:

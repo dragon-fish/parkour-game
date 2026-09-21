@@ -27,6 +27,9 @@ func _run() -> void:
 	var manifest: Dictionary = Common.read_json(
 			Common.project_path(Common.EXTRACT_DIR).path_join(config["id"]).path_join("manifest.json"))
 	var paths := Common.output_paths(config)
+	# The same test the builder makes: a chapter whose Kismet is exported and
+	# RUN, rather than walked for single facts.
+	var scripted: bool = manifest.get("streaming") is Dictionary
 
 	for mesh_name in _unique(manifest["placements"].map(func(p): return p["mesh"])):
 		check(ResourceLoader.exists(MeLibrary.path_for(mesh_name)), "library lacks " + mesh_name)
@@ -97,7 +100,16 @@ func _run() -> void:
 	_check_count(parts, "BarbedWire", manifest, ["barbedwire"])
 	_check_count(parts, "PainVolumes", manifest, ["pain"])
 	_check_count(parts, "Glass", manifest, ["glass"])
-	_check_count(parts, "LevelEnds", manifest, ["level_end"])
+	# A scripted chapter ends by REACHING SeqAct_TdLevelCompleted, so it has no
+	# LevelEnds group at all -- what must exist is the node itself.
+	if scripted:
+		check(_kismet_has(streaming, "SeqAct_TdLevelCompleted"),
+				"a scripted chapter with no SeqAct_TdLevelCompleted can never be finished")
+		for part in parts:
+			check(not part.has_node("LevelEnds") or part.get_node("LevelEnds").get_child_count() == 0,
+					"scripted chapter still builds a touch that ends it: " + part.name)
+	else:
+		_check_count(parts, "LevelEnds", manifest, ["level_end"])
 	# A script that fails to compile under the builder (no autoloads there) is
 	# saved as NO script: the node is inert and every count above still holds.
 	for part in parts:
@@ -154,7 +166,7 @@ func _run() -> void:
 	if streaming != null:
 		_check_streaming(streaming, parts, geometries)
 		streaming.free()
-	_check_spawn_has_a_way_out(shell, space)
+	_check_spawn_has_a_way_out(shell, space, scripted)
 	_finish(shell)
 
 
@@ -209,12 +221,29 @@ func _check_streaming(streaming: Node, parts: Array[Node], geometries: Array[Nod
 
 
 ## The original starts several chapters in a box it leaves by cutscene -- a
-## truck cab, a lift, a room with no door -- and dropped in one, the body has
-## nowhere to go. The chapter says which checkpoint is its playable start
-## (config initial_spawn); this is what tells you it needs to.
+## truck cab, a lift, a room with no door. In a SCRIPTED chapter that is where
+## the chapter is meant to begin: the cutscene carries the body out, so being
+## walled in is a note, not a failure. Elsewhere there is nothing to carry it
+## and the chapter must name a playable start (config initial_spawn).
 const SPAWN_CLEARANCE_M := 4.0
 
-func _check_spawn_has_a_way_out(shell: Node, space: PhysicsDirectSpaceState3D) -> void:
+## Whether the chapter's graph holds a node of this class at all. Read off the
+## runner's own resource, so it is the graph the level will actually run.
+func _kismet_has(streaming: Node, cls: String) -> bool:
+	var runner: Node = streaming.get_node_or_null("Kismet") if streaming != null else null
+	if runner == null:
+		return false
+	var graph: Resource = runner.get("graph")
+	if graph == null:
+		return false
+	var nodes: Dictionary = graph.get("nodes")
+	for id: String in nodes:
+		if str((nodes[id] as Dictionary).get("cls", "")) == cls:
+			return true
+	return false
+
+
+func _check_spawn_has_a_way_out(shell: Node, space: PhysicsDirectSpaceState3D, scripted: bool) -> void:
 	var spawn := shell.get_node_or_null("SpawnPoint") as Node3D
 	if spawn == null:
 		return
@@ -225,8 +254,12 @@ func _check_spawn_has_a_way_out(shell: Node, space: PhysicsDirectSpaceState3D) -
 		var to := from + Vector3(cos(angle), 0.0, sin(angle)) * SPAWN_CLEARANCE_M
 		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(from, to))
 		farthest = maxf(farthest, from.distance_to(hit["position"]) if hit else SPAWN_CLEARANCE_M)
-	check(farthest >= SPAWN_CLEARANCE_M,
-			"spawn is walled in on every side within %.1f m: name the chapter's playable start in initial_spawn" % SPAWN_CLEARANCE_M)
+	if farthest >= SPAWN_CLEARANCE_M:
+		return
+	if scripted:
+		print("[verify] note: the spawn is walled in within %.1f m -- the chapter's own cutscene has to carry the body out" % SPAWN_CLEARANCE_M)
+	else:
+		check(false, "spawn is walled in on every side within %.1f m: name the chapter's playable start in initial_spawn" % SPAWN_CLEARANCE_M)
 
 
 ## Lethal volumes are the level's own kill volumes PLUS every volume riding a

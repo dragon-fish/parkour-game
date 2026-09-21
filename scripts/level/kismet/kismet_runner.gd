@@ -657,6 +657,17 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 			else:
 				unknown[node["cls"]] = unknown.get(node["cls"], 0) + 1
 			_pass_on(id, node)
+		"SeqAct_TdLevelCompleted":
+			# The chapter's end, REACHED rather than walked out of the graph:
+			# the original puts an outro between the last touch and this node
+			# -- a delay, a matinee, a cutscene -- and ending on the touch
+			# would cut the outro off. NextLevelName is not followed; one
+			# chapter is all this project loads.
+			_tell("%s: the chapter is over" % id)
+			var done := get_tree().root.get_node_or_null("PauseUi")
+			if done != null:
+				done.go_to_main_menu()
+			_fire(id, 0)
 		"SeqAct_TdPlayerFail":
 			# The original's "you did not make it": under a train, off the
 			# roof of one. The same death as any other here.
