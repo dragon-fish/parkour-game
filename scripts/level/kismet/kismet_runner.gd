@@ -67,6 +67,8 @@ const LIFT_SPEED_M_S := 4.0
 ## How long the screen shows a scripted hit. [ME:CONFIRMED TdGame.u]
 ## TdDamageType.PhysicsHitReactionDuration, the original's flinch.
 const FLINCH_S := 0.4
+## The original's own: jump skips a cutscene.
+const SKIP_KEY := KEY_SPACE
 const UU_TO_M := 0.01
 ## The same for a knock-down.
 const KNOCKDOWN_STANDS_S := 0.1
@@ -582,8 +584,8 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 			if victim != null and reach > 0.0 and victim.has_method("take_damage"):
 				for centre: Dictionary in node.get("centres", []):
 					var at: Vector3 = _v3(centre["position"])
-					var standing: Node3D = _actors.get(centre["actor"]) as Node3D
-					if standing != null and is_instance_valid(standing):
+					var standing := _standing(centre["actor"])
+					if standing != null:
 						at = standing.global_position
 					var away: float = victim.global_position.distance_to(at)
 					if away >= reach:
@@ -622,8 +624,8 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 				var spot: Dictionary = spots[0]
 				var columns: Array = spot["basis"]
 				var to := Transform3D(Basis(_v3(columns[0]), _v3(columns[1]), _v3(columns[2])), _v3(spot["position"]))
-				var standing: Node3D = _actors.get(spot["actor"]) as Node3D
-				if standing != null and is_instance_valid(standing):
+				var standing := _standing(spot["actor"])
+				if standing != null:
 					to = standing.global_transform
 				_tell("%s teleports the player to %s %s" % [id, spot["actor"], to.origin])
 				# DEFERRED. A checkpoint's own sequence teleports -- the Boat's
@@ -905,7 +907,11 @@ func _advance_interp(id: String, delta: float) -> void:
 	# and sitting out eighteen seconds of nothing for those is the whole of
 	# what was left. One tick after its start, so a teleport keyed at 0 and
 	# one on Completed land in that order.
-	if node.get("cutscene", false) and direction > 0 and not _has_a_cast(node):
+	# ... or the player has had enough of one that IS played out: the
+	# original's cutscenes are skipped with the jump key, and a skip is the
+	# sequence taken to its end (kismet.py, mark_cutscenes).
+	var skipped: bool = node.get("cutscene", false) and _has_a_cast(node) and Input.is_physical_key_pressed(SKIP_KEY)
+	if node.get("cutscene", false) and direction > 0 and (skipped or not _has_a_cast(node)):
 		after = length
 		_seek_matinee(id, length)
 	state["at"] = after
@@ -924,6 +930,12 @@ func _advance_interp(id: String, delta: float) -> void:
 		state["direction"] = 0
 		_playing.erase(id)
 		_tell("sequence %s completed" % id)
+		# The node showing it is told, not left to get there: its clock runs a
+		# tick behind this one, and what Completed sets off may unload its
+		# package on that very tick -- the Escape's office scene froze one
+		# frame short of its end, still holding the player's view and input.
+		_seek_matinee(id, length)
+		_drive_matinee(id, "stop")
 		_fire_named(id, ["Completed"])
 		if node.get("cutscene", false):
 			# What its end reaches, it reaches with the player in tow: drained
@@ -1219,6 +1231,15 @@ func _checkpoint_named(node: Dictionary) -> Checkpoint:
 			var found := arena.find_child(str(label), true, false) as Checkpoint
 			if found != null:
 				return found
+	return null
+
+
+## The node an actor was built as, where it now is, or null. `_actors` holds a
+## LIST per actor -- a placement and the touch area made for it share an id.
+func _standing(actor: String) -> Node3D:
+	for node: Node in _actors.get(actor, []):
+		if is_instance_valid(node) and node is Node3D:
+			return node
 	return null
 
 

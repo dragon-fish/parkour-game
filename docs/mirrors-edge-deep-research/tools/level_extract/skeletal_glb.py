@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import packages  # noqa: E402
 import skeletal_anim as sa  # noqa: E402
 import skeletal_mesh  # noqa: E402
-from common import UU  # noqa: E402
+from common import UU, ExtractError  # noqa: E402
 from matinee import _value  # noqa: E402
 
 SWAP = np.array([[1.0, 0, 0], [0, 0, 1.0], [0, 1.0, 0]])
@@ -103,12 +103,21 @@ class Glb:
             out.write(struct.pack('<I4s', len(self.blob), b'BIN\x00') + bytes(self.blob))
 
 
-def build(mr, mesh_idx, sequence_indices, out_path, sequence_reader=None):
+def build(mr, mesh_idx, sequence_indices, out_path, sequence_reader=None, more_meshes=()):
     """`sequence_reader` is where the AnimSequences are, when that is not the
-    mesh's own package: a level's cutscene on a character from a shared one."""
+    mesh's own package: a level's cutscene on a character from a shared one.
+    `more_meshes` are export indices of `mr` skinned to the SAME skeleton:
+    Faith's first-person body is an upper and a lower half."""
     sequence_reader = sequence_reader or mr
     record = skeletal_mesh.parse_render(mr, mesh_idx, with_skin=True)
     bones, skin = record['skeleton']['bones'], record['skin']
+    parts = [(record, skin)]
+    for other in more_meshes:
+        more = skeletal_mesh.parse_render(mr, other, with_skin=True)
+        if [b['name'] for b in more['skeleton']['bones']] != [b['name'] for b in bones]:
+            raise ExtractError('%s is not on the skeleton of %s' % (mr.pkg.exports[other - 1]['name'],
+                                                                    mr.pkg.exports[mesh_idx - 1]['name']))
+        parts.append((more, more['skin']))
     glb = Glb()
     nodes = glb.doc['nodes']
 
@@ -133,32 +142,36 @@ def build(mr, mesh_idx, sequence_indices, out_path, sequence_reader=None):
                       'rotation': _quat(local[:3, :3])})
         nodes[0 if is_root else bone['parent'] + 1].setdefault('children', []).append(k + 1)
 
-    positions = np.array([_point(v) for v in skin['raw_vertices']], dtype=np.float32)
-    normals = np.frombuffer(__import__('base64').b64decode(record['normals']), dtype=np.float32).reshape(-1, 3)
     # parse_render() turned the normals by RotOrigin; the node does that here.
     unturn = _matrix(sa._from_rotator(*record['skeleton']['rot_origin'])).T
-    normals = (normals @ unturn.T).astype(np.float32)
-    primitives = []
-    attributes = {'POSITION': glb.accessor(positions, 'VEC3', 5126, 34962, bounds=True),
-                  'NORMAL': glb.accessor(normals, 'VEC3', 5126, 34962),
-                  'JOINTS_0': glb.accessor(np.array(skin['joints'], dtype=np.uint16), 'VEC4', 5123, 34962),
-                  'WEIGHTS_0': glb.accessor(np.array(skin['weights'], dtype=np.float32), 'VEC4', 5126, 34962)}
     materials = []
-    for surface in record['surfaces']:
-        indices = np.frombuffer(__import__('base64').b64decode(surface['indices']), dtype=np.uint16)
-        if not len(indices):
-            continue
-        materials.append({'name': surface['material'] or 'none',
-                          'pbrMetallicRoughness': {'baseColorFactor': [0.8, 0.8, 0.8, 1.0], 'metallicFactor': 0.0}})
-        primitives.append({'attributes': attributes, 'indices': glb.accessor(indices.astype(np.uint32), 'SCALAR', 5125, 34963),
-                           'material': len(materials) - 1})
+    glb.doc['meshes'] = []
+    for part, part_skin in parts:
+        positions = np.array([_point(v) for v in part_skin['raw_vertices']], dtype=np.float32)
+        normals = np.frombuffer(__import__('base64').b64decode(part['normals']), dtype=np.float32).reshape(-1, 3)
+        normals = (normals @ unturn.T).astype(np.float32)
+        attributes = {'POSITION': glb.accessor(positions, 'VEC3', 5126, 34962, bounds=True),
+                      'NORMAL': glb.accessor(normals, 'VEC3', 5126, 34962),
+                      'JOINTS_0': glb.accessor(np.array(part_skin['joints'], dtype=np.uint16), 'VEC4', 5123, 34962),
+                      'WEIGHTS_0': glb.accessor(np.array(part_skin['weights'], dtype=np.float32), 'VEC4', 5126, 34962)}
+        primitives = []
+        for surface in part['surfaces']:
+            indices = np.frombuffer(__import__('base64').b64decode(surface['indices']), dtype=np.uint16)
+            if not len(indices):
+                continue
+            materials.append({'name': surface['material'] or 'none',
+                              'pbrMetallicRoughness': {'baseColorFactor': [0.8, 0.8, 0.8, 1.0], 'metallicFactor': 0.0}})
+            primitives.append({'attributes': attributes,
+                               'indices': glb.accessor(indices.astype(np.uint32), 'SCALAR', 5125, 34963),
+                               'material': len(materials) - 1})
+        glb.doc['meshes'].append({'name': '%s_%d' % (nodes[0]['name'], len(glb.doc['meshes'])), 'primitives': primitives})
     inverse_bind = np.array([np.linalg.inv(w).T for w in world], dtype=np.float32)
     glb.doc['materials'] = materials
-    glb.doc['meshes'] = [{'name': nodes[0]['name'], 'primitives': primitives}]
     glb.doc['skins'] = [{'joints': list(range(1, len(bones) + 1)), 'skeleton': 1,
                          'inverseBindMatrices': glb.accessor(inverse_bind.reshape(-1, 16), 'MAT4', 5126)}]
-    nodes.append({'name': nodes[0]['name'] + '_mesh', 'mesh': 0, 'skin': 0})
-    nodes[0]['children'].append(len(nodes) - 1)
+    for k in range(len(glb.doc['meshes'])):
+        nodes.append({'name': '%s_mesh%d' % (nodes[0]['name'], k), 'mesh': k, 'skin': 0})
+        nodes[0]['children'].append(len(nodes) - 1)
     glb.doc['scenes'][0]['nodes'] = [0]
 
     by_name = {bone['name']: k for k, bone in enumerate(bones)}

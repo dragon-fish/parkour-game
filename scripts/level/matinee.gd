@@ -132,7 +132,17 @@ func reset_for_respawn() -> void:
 	_reset()
 
 
+## Tells the puppets this sequence animates that it has let go of them: one
+## that is a first-person body hands the view and the input back.
+func _rest_the_cast() -> void:
+	for cast: Dictionary in puppets:
+		var puppet := get_node_or_null(cast["path"])
+		if puppet != null and puppet.has_method("rest"):
+			puppet.call("rest")
+
+
 func _reset() -> void:
+	_rest_the_cast()
 	set_physics_process(false)
 	_time = 0.0
 	_direction = 0
@@ -234,6 +244,7 @@ func drive(action: String) -> void:
 			_direction = 0
 			_pending_direction = 0
 			_hush()
+			_rest_the_cast()
 		"reset":
 			_reset()
 
@@ -349,6 +360,7 @@ func _physics_process(delta: float) -> void:
 	var went := _direction
 	_direction = 0
 	set_physics_process(false)
+	_rest_the_cast()
 	if went > 0:
 		_hush()
 		if driven:

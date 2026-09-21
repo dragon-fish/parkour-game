@@ -308,3 +308,17 @@ The builder turns each `.glb` into a scene with GLTFDocument (the extract
 directory is outside anything Godot imports, and a level is built headless),
 stands a `Puppet` where each actor stands, and hands each Matinee its cast; the
 Matinee poses them from its own clock. Nothing is textured yet.
+
+### The first-person body
+
+A cutscene seen through Faith's eyes names a one-bone placeholder
+(`CINE_Female1p`, a SkeletalMeshActorMAT) AND the player in the same group: the
+animation is played on the pawn. That puppet is built from the pawn's own
+first-person body instead -- `SK_UpperBody` + `SK_LowerBody` of
+`CH_TKY_Crim_Fixer_1P`, one 74-bone skeleton ending Head -> EyeJoint ->
+CameraJoint -- stood 94 uu higher than the placeholder (a pawn's origin is the
+middle of its capsule), and marked `first_person`. While its sequence plays the
+view is that bone's (looking along the bone's +Y, -Z up), the player's input is
+silenced and their own body hidden; the jump key skips, as in the original.
+Where two AnimSets of a group have a sequence of one name (`cs3_r1_faith` in
+both the 1P and the 3P set) the one whose tracks fit the skeleton is taken.

@@ -167,6 +167,13 @@ func _puppets(root: Node, manifest: Dictionary) -> void:
 		puppet.name = names.take(Common.mover_name(p["package"], p["name"]))
 		puppet.transform = Common.transform_of(p)
 		puppet.visible = not bool(p.get("hidden", false))
+		if p.get("first_person", false):
+			puppet.set("first_person", true)
+		for m: Dictionary in manifest.get("matinees", []):
+			var plays: Array = (m.get("puppets", {}) as Dictionary).get(p["id"], [])
+			if not plays.is_empty():
+				puppet.set("rest_animation", StringName(str(plays[0]["animation"])))
+				break
 		_stamp(puppet, p)
 		group.add_child(puppet)
 		puppet.owner = root
