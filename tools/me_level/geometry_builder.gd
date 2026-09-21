@@ -66,6 +66,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 	movers.name = "Movers"
 	var pipe_line := _ladder_samples(manifest["annotations"])
 	var names := Common.NameAllocator.new()
+	var mover_nodes := {}
 	var library := {}
 	var counts := {none = 0, simple = 0, per_poly = 0, grip = 0, stretched = 0, slide = 0}
 	_stretched_shapes.clear()
@@ -84,6 +85,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		if mover:
 			node = AnimatableBody3D.new()
 			node.name = Common.mover_name(placement["package"], placement["name"])
+			mover_nodes[Common.actor_id(placement["package"], placement["name"])] = node
 		else:
 			node = Node3D.new() if collision == "none" else StaticBody3D.new()
 			node.name = names.take(mesh_name)
@@ -152,6 +154,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 				node.add_child(chute)
 				counts.slide += 1
 		(movers if mover else geometry).add_child(node)
+	_nest_movers(mover_nodes, manifest["placements"])
 	print("[me_level] placements: ", counts)
 	# One BSP body and one occluder per package: a package that is not in
 	# the level (PackagePresence) must neither block nor cull.
@@ -207,6 +210,45 @@ func _runner_vision_target(placement: Dictionary, mesh: ArrayMesh) -> Node3D:
 ## visibility ranges, the whole city behind the walls no longer drawn. Only
 ## placements at least OCCLUDER_MIN_EXTENT across: the same result as taking
 ## everything down to 8 m, at 520 thousand triangles instead of 1.3 million.
+## Hangs each mover under the one it is hard-attached to. A lift's door then
+## rides the car because it IS under it, rather than because a second sequence
+## drives it to follow -- two sequences writing one node fight, and the door
+## stays behind for as long as the shorter one runs (measured on the Escape's
+## office lift: a metre of daylight for 0.7 s of a 5 s ride).
+##
+## Everything is built in world space under Movers, which sits at the origin,
+## so a node's own transform IS its world transform here -- the local one is
+## taken against that, not against a tree that does not exist yet.
+static func _nest_movers(nodes: Dictionary, placements: Array) -> void:
+	var tree := Common.mover_tree(placements)
+	var world := {}
+	for id: String in nodes:
+		world[id] = (nodes[id] as Node3D).transform
+	# Shallowest first, so a chain three deep (the Scraper has one) still ends
+	# up nested rather than half-flattened.
+	var order: Array = nodes.keys()
+	order.sort_custom(func(a: String, b: String) -> bool:
+		return Common.mover_path(a, tree).count("/") < Common.mover_path(b, tree).count("/"))
+	var nested := 0
+	for id: String in order:
+		var base: String = str((tree.get(id, {}) as Dictionary).get("base", ""))
+		if base == "" or not nodes.has(base):
+			continue
+		var child: Node3D = nodes[id]
+		child.get_parent().remove_child(child)
+		(nodes[base] as Node3D).add_child(child)
+		child.transform = (world[base] as Transform3D).affine_inverse() * (world[id] as Transform3D)
+		# CARRIED BY THE PARENT, so it must not also hold its own place in the
+		# physics server: an AnimatableBody3D syncs to physics by default, and
+		# a synced body ignores the node tree above it -- the car went up and
+		# the door stayed, its local transform quietly counter-rotated to
+		# whatever kept it where physics had it.
+		(child as AnimatableBody3D).sync_to_physics = false
+		nested += 1
+	if nested > 0:
+		print("[me_level] movers hung off what carries them: ", nested)
+
+
 ## Movers move and hidden, masked or translucent surfaces do not hide what is
 ## behind them: none of those.
 ## Godot's occluders are double-sided, the original's culling was not: a

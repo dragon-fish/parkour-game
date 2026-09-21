@@ -100,7 +100,10 @@ func _ready() -> void:
 			var target := get_node_or_null(path) as Node3D
 			if target == null:
 				continue
-			_homes[path] = target.global_transform
+			# Local for anything hung off another mover, so putting it back
+			# does not fight the parent being put back in the same breath --
+			# there is no order between two sequences' resets.
+			_homes[path] = target.transform if _hangs_off_a_mover(target) else target.global_transform
 			var mesh := target.get_node_or_null("Mesh") as Node3D
 			if mesh != null:
 				_mesh_homes[path] = mesh.transform
@@ -189,7 +192,10 @@ func _reset() -> void:
 static func place(target: Node3D, to: Transform3D) -> void:
 	var animatable := target as AnimatableBody3D
 	if animatable == null or not animatable.sync_to_physics:
-		target.global_transform = to
+		if _hangs_off_a_mover(target):
+			target.transform = to
+		else:
+			target.global_transform = to
 		return
 	animatable.sync_to_physics = false
 	animatable.global_transform = to
@@ -307,6 +313,13 @@ func _begin(direction: int) -> void:
 		_sing()
 
 
+## Whether this target is hung under another mover, in which case it is moved
+## in ITS OWN parent's frame. A flat mover's parent is the plain Movers node;
+## a hung one's is the AnimatableBody3D it rides.
+static func _hangs_off_a_mover(target: Node3D) -> bool:
+	return target.get_parent() is AnimatableBody3D
+
+
 func _capture() -> void:
 	_captured = true
 	_starts.clear()
@@ -322,7 +335,13 @@ func _capture() -> void:
 			# by one sequence and hovered by the next: captured where the first
 			# left it, the second carried it the whole way again from there and
 			# hovered it twice as far from the origin as the roof is.
-			if track.get("absolute", false) and _homes.has(path):
+			if target != null and _hangs_off_a_mover(target):
+				# LOCAL, because _apply() writes this one locally -- see there.
+				# Taken now rather than derived each frame: the parent is what
+				# carries it, so a capture against the parent's CURRENT place
+				# would drift along with it.
+				starts.append(target.transform)
+			elif track.get("absolute", false) and _homes.has(path):
 				starts.append(_homes[path])
 			else:
 				starts.append(target.global_transform if target != null else Transform3D())
@@ -417,6 +436,17 @@ func _apply() -> void:
 				var carried := _placed(pivot, offset, turn, track) if track.get("absolute", false) \
 						else _moved(pivot, offset, turn, track["local"])
 				target.global_transform = carried * pivot.affine_inverse() * start_transform
+			elif _hangs_off_a_mover(target):
+				# UNDER SOMETHING THAT MOVES. Its parent is another mover, so
+				# writing a world transform would cancel out whatever carries
+				# it: the Escape's lift door opens and closes against the car,
+				# and a world write pinned it in the shaft while the car went
+				# up without it. The keys are a displacement either way, so
+				# they apply to the local transform unchanged.
+				if track.get("absolute", false):
+					push_warning("[matinee] %s: absolute keys on %s, which hangs off a mover"
+							% [name, target.name])
+				target.transform = _moved(start_transform, offset, turn, track["local"])
 			elif track.get("absolute", false):
 				target.global_transform = _placed(start_transform, offset, turn, track)
 			else:

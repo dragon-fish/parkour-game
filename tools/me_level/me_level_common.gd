@@ -95,6 +95,50 @@ static func mover_name(package: String, actor: String) -> String:
 	return ("%s_%s" % [package.get_basename(), actor]).validate_node_name()
 
 
+## Where every mover hangs, as {actor id: {name, base}}. A mover whose base is
+## ALSO a mover hangs UNDER it, so the base moving carries it -- which is what
+## the original means by hard attachment, and is why a lift's door must not
+## ALSO be driven as a passenger of the lift: two sequences writing one node
+## fight, and the door is left behind for as long as the shorter one runs.
+##
+## A base that is not itself a mover -- the Stormdrain hangs a piece off a
+## Trigger_Dynamic -- has no node to hang under, so it is left flat and
+## whatever drives the base carries it as a passenger, as before.
+static func mover_tree(placements: Array) -> Dictionary:
+	var out := {}
+	for p: Dictionary in placements:
+		if p.get("mover", false):
+			out[actor_id(str(p["package"]), str(p["name"]))] = {
+				name = mover_name(str(p["package"]), str(p["name"])), base = "",
+			}
+	for p: Dictionary in placements:
+		var base = p.get("base")
+		if not p.get("mover", false) or base == null:
+			continue
+		var split := str(base).rsplit(".", true, 1)
+		if split.size() < 2:
+			continue
+		var base_id := actor_id(split[0], split[1])
+		if out.has(base_id):
+			out[actor_id(str(p["package"]), str(p["name"]))]["base"] = base_id
+	return out
+
+
+## That mover's path under Movers: its own name, or its base's path then its
+## own. Chains nest as deep as they go -- the Scraper has three.
+static func mover_path(id: String, tree: Dictionary) -> String:
+	if not tree.has(id):
+		return ""
+	var parts := PackedStringArray()
+	var seen := {}
+	var at := id
+	while tree.has(at) and not seen.has(at):
+		seen[at] = true
+		parts.insert(0, str(tree[at]["name"]))
+		at = str(tree[at]["base"])
+	return "/".join(parts)
+
+
 static func output_paths(config: Dictionary) -> Dictionary:
 	var outputs: Dictionary = config.get("outputs", {})
 	var id: String = config["id"]

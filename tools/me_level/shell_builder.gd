@@ -197,10 +197,12 @@ func _lifts(manifest: Dictionary, movers: NodePath) -> Node3D:
 	var group := _group("Lifts")
 	var present := {}
 	var cars := {}
+	var lift_tree := Common.mover_tree(manifest["placements"])
 	for p: Dictionary in manifest["placements"]:
 		if p.get("mover", false):
 			var key := "%s.%s" % [p["package"], p["name"]]
-			present[key] = NodePath(String(movers) + "/" + Common.mover_name(p["package"], p["name"]))
+			present[key] = NodePath(String(movers) + "/" + Common.mover_path(
+					Common.actor_id(p["package"], p["name"]), lift_tree))
 			cars[key] = p
 	var names := Common.NameAllocator.new()
 	for lift: Dictionary in manifest["config"].get("lifts", []):
@@ -316,11 +318,20 @@ func _matinees(manifest: Dictionary, movers: NodePath, lifted: Dictionary,
 	var group := _group("Matinees")
 	var present := {}
 	var riders := {}
+	var tree := Common.mover_tree(manifest["placements"])
 	for p: Dictionary in manifest["placements"]:
 		if p.get("mover", false):
 			var id := "%s.%s" % [p["package"], p["name"]]
-			present[id] = Common.mover_name(p["package"], p["name"])
-			if p.get("base") != null:
+			present[id] = Common.mover_path(Common.actor_id(p["package"], p["name"]), tree)
+			# A MOVER THAT HANGS OFF ITS BASE NEEDS NO PASSENGER TRACK: its
+			# node is under the base and goes where the base goes. Given one
+			# anyway, two sequences write the same node -- the lift's ride and
+			# the door's own open/close -- and the later write wins, which
+			# leaves the door standing in the shaft for as long as the shorter
+			# sequence runs. Only a mover that could NOT be hung (a base that
+			# is not itself a mover) still rides as a passenger.
+			var hung: String = str((tree.get(Common.actor_id(p["package"], p["name"]), {}) as Dictionary).get("base", ""))
+			if p.get("base") != null and hung == "":
 				if not riders.has(p["base"]):
 					riders[p["base"]] = []
 				riders[p["base"]].append(id)
@@ -1168,7 +1179,8 @@ func _glass(manifest: Dictionary, movers: NodePath) -> Node3D:
 		var glass := Node3D.new()
 		glass.set_script(GLASS_SCRIPT)
 		glass.name = names.take(a["name"])
-		glass.set("pane", NodePath(String(movers) + "/" + Common.mover_name(pane["package"], pane["name"])))
+		glass.set("pane", NodePath(String(movers) + "/" + Common.mover_path(
+				Common.actor_id(pane["package"], pane["name"]), Common.mover_tree(manifest["placements"]))))
 		var lo := Common.v3(pane["aabb"]["min"])
 		var hi := Common.v3(pane["aabb"]["max"])
 		var reach := Area3D.new()
@@ -1358,9 +1370,11 @@ func _checkpoint_restores(c: Dictionary, manifest: Dictionary, movers: NodePath,
 	if wanted.is_empty() or String(movers).is_empty():
 		return {}
 	var present := {}
+	var restore_tree := Common.mover_tree(manifest.get("all_placements", manifest["placements"]))
 	for p: Dictionary in manifest.get("all_placements", manifest["placements"]):
 		if p.get("mover", false):
-			present["%s.%s" % [p["package"], p["name"]]] = Common.mover_name(p["package"], p["name"])
+			present["%s.%s" % [p["package"], p["name"]]] = Common.mover_path(
+					Common.actor_id(p["package"], p["name"]), restore_tree)
 	var out := {}
 	for key: String in ["hide", "show"]:
 		var paths: Array[NodePath] = []
