@@ -110,6 +110,16 @@ func _puppet_bodies(manifest: Dictionary, from_dir: String, to_dir: String) -> D
 			push_error("[me_level] puppet body %s makes no scene" % body)
 			continue
 		scene.name = "Body"
+		# TURNED BACK. skeletal_glb.py stands a HUMANOID rig the way
+		# SkeletonProfileHumanoid wants it -- facing -Z, left hand toward +X --
+		# because retargeting a clip onto another body goes through that
+		# profile. The level does not: its actors are placed in the world the
+		# extractor's own axis map made, a quarter turn from Godot's
+		# convention. A scene body is placed BY THE LEVEL, and a first-person
+		# cutscene has the view riding one of its bones, so leaving it turned
+		# swings every such scene ninety degrees.
+		if _is_humanoid(scene):
+			(scene as Node3D).rotation = Vector3(0.0, -PI * 0.5, 0.0)
 		for node: Node in scene.find_children("*", "", true, false):
 			node.owner = scene
 		var path := to_dir.path_join(body.get_basename() + ".scn")
@@ -118,6 +128,21 @@ func _puppet_bodies(manifest: Dictionary, from_dir: String, to_dir: String) -> D
 			out[body] = path
 	print("[me_level] puppet bodies: %d" % out.size())
 	return out
+
+
+## The same test skeletal_glb.py makes when it decides to stand a rig up:
+## every human rig in the original carries these, a pigeon or a rat none.
+const HUMANOID_BONES := ["Hips", "Spine", "Head", "LeftHand", "RightHand", "LeftFoot", "RightFoot"]
+
+
+static func _is_humanoid(scene: Node) -> bool:
+	for node in scene.find_children("*", "Skeleton3D", true, false):
+		var skeleton := node as Skeleton3D
+		for bone in HUMANOID_BONES:
+			if skeleton.find_bone(bone) < 0:
+				return false
+		return true
+	return false
 
 
 func _build_split(config: Dictionary, manifest: Dictionary, paths: Dictionary, rebuild: bool) -> bool:
