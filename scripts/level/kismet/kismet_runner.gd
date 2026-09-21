@@ -881,6 +881,27 @@ func _has_a_cast(node: Dictionary) -> bool:
 	return matinee != null and is_instance_valid(matinee) and not matinee.puppets.is_empty()
 
 
+## Puts the body where the first-person stand-in's head finished. Does nothing
+## for a cutscene played through in a frame (nobody to follow) or one watched
+## from outside (the view never left the body).
+func _stand_where_the_view_ended(node: Dictionary) -> bool:
+	var matinee: Matinee = _matinees.get(node.get("matinee", ""))
+	var arena := _arena()
+	if matinee == null or not is_instance_valid(matinee) or arena == null:
+		return false
+	for cast: Dictionary in matinee.puppets:
+		var puppet: Node = matinee.get_node_or_null(cast["path"])
+		if puppet == null or not puppet.get("first_person"):
+			continue
+		var to = puppet.call("view_transform")
+		if not (to is Transform3D):
+			return false
+		_tell("the scene leaves the player where its view ended, %s" % (to as Transform3D).origin)
+		arena.teleport_player(to)
+		return true
+	return false
+
+
 ## Tells the player a cutscene went by, since nothing else will.
 func _say_cutscene(id: String, node: Dictionary, length: float) -> void:
 	var player: Node = _player()
@@ -949,10 +970,22 @@ func _advance_interp(id: String, delta: float) -> void:
 		_drive_matinee(id, "stop")
 		_fire_named(id, ["Completed"])
 		if node.get("cutscene", false):
+			# THE BODY FOLLOWS THE VIEW OUT. A first-person cutscene's only
+			# player teleport is keyed at 0 -- it puts the body ON the stand-in
+			# -- and the scene then walks the stand-in its whole length. The
+			# Escape's opening ends in the street; without this the view goes
+			# there and the body is still at the desk it started at.
+			# Before the end's own consequences, so a TdCheckpoint or a
+			# teleport of its own still has the last word.
+			# EITHER the scene carried the body OR what its end reaches does,
+			# never both: the Escape's opening ends by reaching the checkpoint
+			# it STARTED at, and standing the body there after the scene walked
+			# it into the street puts it back at the desk.
+			var walked: bool = _stand_where_the_view_ended(node)
 			# What its end reaches, it reaches with the player in tow: drained
 			# here so that "in tow" covers this sequence's consequences and
 			# nobody else's.
-			_carried = true
+			_carried = not walked
 			_drain()
 			_carried = false
 	elif direction < 0 and after <= 0.0:

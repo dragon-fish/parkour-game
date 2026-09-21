@@ -99,6 +99,27 @@ func rest() -> void:
 			viewer.unlock_input()
 
 
+## Where the view this puppet lent ended up, as somewhere to stand, or null
+## while it lent none. The camera bone carries the scene's whole displacement:
+## the puppet node itself never moves, the walking is in the animation.
+func view_transform() -> Variant:
+	if _camera == null or not is_instance_valid(_camera):
+		return null
+	# FROM THE POSE, NOT FROM THE ATTACHMENT. A BoneAttachment3D catches up
+	# with its skeleton on the skeleton's own update, which a seek made in the
+	# same frame has not reached yet -- and a SKIP is exactly that seek, the
+	# whole scene at once. Read off the node, skipping the Edge's opening put
+	# the body 130 m back, where the view had got to the frame before.
+	var mount := _camera.get_parent() as BoneAttachment3D
+	var skeleton := mount.get_parent() as Skeleton3D if mount != null else null
+	if skeleton == null:
+		return _camera.global_transform
+	var bone := skeleton.find_bone(mount.bone_name)
+	if bone < 0:
+		return _camera.global_transform
+	return skeleton.global_transform * skeleton.get_bone_global_pose(bone) 			* Transform3D(CAMERA_IN_BONE, Vector3.ZERO)
+
+
 func _exit_tree() -> void:
 	# A section unloaded mid-scene must not keep the player's input.
 	rest()
