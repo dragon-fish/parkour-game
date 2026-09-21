@@ -159,7 +159,7 @@ func _ready() -> void:
 		_presence = get_tree().get_first_node_in_group(PackagePresence.GROUP) as PackagePresence
 	if _presence != null:
 		_presence.restoring.connect(_forget_everything)
-		_presence.restored.connect(_start_level)
+		_presence.restored.connect(_level_restored)
 		_presence.changed.connect(_on_packages_changed)
 		_presence.settled.connect(_on_settled)
 
@@ -280,6 +280,22 @@ func _forget_everything() -> void:
 	_restore_meshes()
 	_free_spawned()
 	_set_lift_rules(false)
+
+
+## A snapshot whose start is still waiting for the switch to finish, or "".
+var _start_pending: String = ""
+
+
+## PackagePresence says `restored` having switched only one frame's worth of
+## nodes; the rest follow a few per frame, and the loading curtain waits for
+## all of them. A chapter's opening cutscene started here would play out behind
+## that curtain -- several seconds of it gone before the screen comes up. So
+## the level starts when the level is THERE.
+func _level_restored(label: String) -> void:
+	if _presence != null and not _presence.is_settled():
+		_start_pending = label
+		return
+	_start_level(label)
 
 
 func _start_level(label: String) -> void:
@@ -1057,6 +1073,10 @@ func _run_streaming(id: String, node: Dictionary, input: int) -> void:
 
 
 func _on_settled() -> void:
+	if _start_pending != "":
+		var waiting := _start_pending
+		_start_pending = ""
+		_start_level(waiting)
 	if not _running or _loading.is_empty():
 		return
 	var done := _loading.duplicate()

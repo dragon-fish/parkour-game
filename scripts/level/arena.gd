@@ -631,9 +631,16 @@ func _await_ready(delta: float) -> void:
 		return
 	var waited := (Time.get_ticks_msec() - _ready_done_ms) / 1000.0
 	_settled_for = _settled_for + delta if player == null or player.grounded else 0.0
-	if _spawn_has_floor and _settled_for < SETTLE_TIME and waited < SETTLE_GIVE_UP:
+	# A CUTSCENE IS WHAT THERE IS TO SEE. Its view is on a scene's own body and
+	# the player's stands wherever the level put it: whether that one has
+	# landed says nothing about whether there is anything to show, and a
+	# chapter's opening runs for seconds -- all of it behind the curtain if
+	# this waits. The scene itself waits for the switch to finish
+	# (KismetRunner._level_restored), so the curtain lifts on its first frame.
+	var scene_on := Puppet.showing_a_scene()
+	if not scene_on and _spawn_has_floor and _settled_for < SETTLE_TIME and waited < SETTLE_GIVE_UP:
 		return
-	if _spawn_has_floor and _settled_for < SETTLE_TIME:
+	if not scene_on and _spawn_has_floor and _settled_for < SETTLE_TIME:
 		push_error("[load] the player never settled at the spawn within %.0f s; the level is declared ready anyway" % SETTLE_GIVE_UP)
 	is_level_ready = true
 	print("[load] level ready %d ms after _ready()" % (Time.get_ticks_msec() - _ready_done_ms))

@@ -99,6 +99,14 @@ func rest() -> void:
 			viewer.unlock_input()
 
 
+## Whether any puppet is lending its view: a first-person cutscene is playing.
+## The level's opening curtain asks -- with the view on a scene's own body,
+## waiting for the PLAYER's body to land is waiting for nothing, and the
+## chapter's opening is seconds long with all of it behind the curtain.
+static func showing_a_scene() -> bool:
+	return _holding != null and is_instance_valid(_holding)
+
+
 ## Where the view this puppet lent ended up, as somewhere to stand, or null
 ## while it lent none. The camera bone carries the scene's whole displacement:
 ## the puppet node itself never moves, the walking is in the animation.
