@@ -231,7 +231,11 @@ func test_a_walking_turn_bleeds_its_speed_away_rather_than_stopping_dead() -> vo
 	await step(1)
 	TestWorld.place(world)
 	var player: Player = world["player"]
-	await step(2)
+	# SETTLED, or this is not a walking turn: two ticks after place() the body
+	# is still FALLING onto the slab, and a forward fall turned round in the
+	# air lands on its back (LayOnGroundMove), which brakes by its own rule.
+	await step(30)
+	assert_true(player.grounded, "test setup: the body never settled onto the floor")
 	player.velocity = Vector3(0.0, 0.0, -5.0)
 	(world["input"] as ScriptedInputSource).press_turn()
 	# A third of the way through slowdown_time: most of the speed is still there.

@@ -368,6 +368,16 @@ var pending_stagger: bool = false
 ## transparent for the hard landing's. LandingMove reads and clears it.
 var pending_stagger_tint: Color = Color(0.0, 0.0, 0.0, 0.0)
 
+## This flight was turned round in the air while it was going FORWARD, so it
+## ends on the body's back: LayOnGroundMove. Set by Turn180Move; read and
+## cleared by whichever landing comes first, and dropped by MoveManager the
+## moment the flight ends any other way (a wall, a ledge, a cable).
+##
+## [ME:COMMUNITY] forward is the whole condition and its size is not: a
+## standing jump turned round lands on its feet, and so does a jump backwards,
+## at any speed.
+var pending_back_landing: bool = false
+
 ## One-shot: which way a dodge was thrown, -1 for left and +1 for right. Set
 ## by WalkingMove as it launches, read and cleared by DodgeJumpMove.enter().
 ##
@@ -1330,6 +1340,23 @@ var pending_chute_hurt: bool = false
 func arm_forced_hard_landing() -> void:
 	_forced_hard_landing = true
 
+func consume_back_landing() -> bool:
+	var armed := pending_back_landing
+	pending_back_landing = false
+	return armed
+
+## Back on its feet as an ordinary walking body, whatever it was doing.
+##
+## [ME:COMMUNITY] the original does this to a body whose lift starts moving:
+## lying, crouched or mid-jump when the button went in, it is standing the
+## next frame. It is what keeps a lift ride from being started in a pose the
+## ride's own rules (no jump, no crouch) could never have let it reach.
+func stand_as_walking() -> void:
+	if move_manager == null or move_manager.current_name == Move.WALKING:
+		return
+	velocity = Vector3.ZERO
+	move_manager.start(Move.WALKING)
+
 func consume_forced_hard_landing() -> bool:
 	var armed := _forced_hard_landing
 	_forced_hard_landing = false
@@ -1521,6 +1548,7 @@ func _build_moves() -> void:
 		[Move.FALL_UNCONTROLLED, FallUncontrolledMove.new(), config.fall_uncontrolled],
 		[Move.SOFT_LANDING, SoftLandingMove.new(), config.soft_landing],
 		[Move.LANDING, LandingMove.new(), config.landing],
+		[Move.LAY_ON_GROUND, LayOnGroundMove.new(), config.lay_on_ground],
 		[Move.SKILL_ROLL, SkillRollMove.new(), config.skill_roll],
 		[Move.SLIDE, SlideMove.new(), config.slide],
 		[Move.RAMP_SLIDE, RampSlideMove.new(), config.ramp_slide],
@@ -1709,6 +1737,9 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	&"Death01", &"Death02",
 	# The uncontrolled fall and its arrival.
 	&"LiftAir_Fall", &"LiftAir_Fall_Air", &"LiftAir_Fall_Impact",
+	# Getting up off the back: LayOnGroundMove's second half. Going down is
+	# LiftAir_Fall, above.
+	&"KipUp",
 	# The coil's tuck. ⚠️ THE NAME IS NOT THE POSE: GroundSit_Idle is the
 	# knees-hugged sit, and that is what a mid-air coil looks like -- ✅ the
 	# owner found it, "虽然听上去很怪但动作好像是抱膝". Caught by the owner
@@ -3533,7 +3564,7 @@ func _physics_process(delta: float) -> void:
 		# this exclusion that call would be silently overwritten back to
 		# 0.0 immediately after, every tick, and the camera would never
 		# visibly sink at all.
-		if move_manager.current_name != Move.LANDING:
+		if move_manager.current_name != Move.LANDING and move_manager.current_name != Move.LAY_ON_GROUND:
 			var crouched := current_capsule_height() < standing_height() - 0.01
 			# The capsule stands up the instant the slide ends, but the EYE
 			# rises over the stand-up window -- otherwise the view snaps a

@@ -237,12 +237,30 @@ func physics_update(delta: float, input: MoveInput) -> void:
 		# is the chain the window exists to break.
 		if player.is_stagger_immune():
 			player.statuses.remove(Status.Effect.STAGGER)
+		elif current_name == Move.LAY_ON_GROUND:
+			# ALREADY DOWN. It costs what it costs and changes nothing else:
+			# a lockout on the feet means nothing to a body on its back.
+			var cost: float = player.statuses.amount_of(Status.Effect.STAGGER)
+			player.statuses.remove(Status.Effect.STAGGER)
+			if cost > 0.0:
+				player.take_damage(cost, Health.Cause.HAZARD)
 		else:
 			staggering = true
 			stagger_damage = player.statuses.amount_of(Status.Effect.STAGGER)
 			player.pending_stagger = true
 			player.pending_stagger_tint = player.statuses.tint_of(Status.Effect.STAGGER)
 			next = Move.LANDING
+	# A KNOCK-DOWN OUTRANKS A STAGGER. Both at once is one body going down --
+	# the original's falling lift pairs a CauseDamage with its TdFallOnBack --
+	# so the stagger is still spent and still charged, below, and only where
+	# the body ends up changes. Its tint stays pending for LayOnGroundMove.
+	var knocked_down := false
+	if player != null and player.statuses.has(Status.Effect.KNOCKDOWN) \
+			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LAY_ON_GROUND \
+			and _moves.has(Move.LAY_ON_GROUND):
+		knocked_down = true
+		player.pending_stagger = false
+		next = Move.LAY_ON_GROUND
 	if next == Move.KEEP:
 		next = _turn_requested(input)
 	if next == Move.KEEP:
@@ -278,6 +296,12 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	# stagger was chosen would let a redo cooldown on LANDING refuse the
 	# transition after the status had already been consumed, so the stagger
 	# would vanish without ever having staggered anyone.
+	if knocked_down:
+		player.statuses.remove(Status.Effect.KNOCKDOWN)
+	# The flight a back landing was armed for ended some other way.
+	if player != null and player.pending_back_landing \
+			and not (_current is AirborneMove) and next != Move.TURN_180 and next != Move.LAY_ON_GROUND:
+		player.pending_back_landing = false
 	if staggering:
 		player.statuses.remove(Status.Effect.STAGGER)
 		# Charged with the same commitment as the status is spent: a stagger

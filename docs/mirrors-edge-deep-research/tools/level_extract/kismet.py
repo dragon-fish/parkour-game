@@ -266,7 +266,7 @@ SPAWNS_SCENERY = 'SeqAct_ActorFactory'
 EFFECTS_ON_ACTORS = ('SeqAct_Toggle', 'SeqAct_ToggleHidden', 'SeqAct_ChangeCollision', 'SeqAct_Destroy',
                      'SeqAct_SetStaticMesh')
 EFFECTS = ('SeqAct_MultiLevelStreaming', 'SeqAct_LevelStreaming', 'SeqAct_TdInElevator', 'SeqAct_Teleport',
-           'SeqAct_TdPlayerFail')
+           'SeqAct_TdPlayerFail', 'SeqAct_TdFallOnBack')
 
 
 def mark_useful(graph, built_actors, built_matinees, handled_elsewhere=frozenset()):

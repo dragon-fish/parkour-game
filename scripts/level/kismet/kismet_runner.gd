@@ -67,6 +67,8 @@ const LIFT_SPEED_M_S := 4.0
 ## How long a blow's STAGGER status stands before the moves have taken it up;
 ## the barbed wire's own figure.
 const HURT_STAGGER_S := 0.1
+## The same for a knock-down.
+const KNOCKDOWN_STANDS_S := 0.1
 
 ## The graph: a KismetGraph resource, kept out of the scene text.
 @export var graph: KismetGraph
@@ -612,6 +614,22 @@ func _run(id: String, node: Dictionary, input: int, state: Dictionary) -> void:
 			# Enter, Exit.
 			_tell("lift rules %s (no jump, no crouch, walking pace)" % ("ON" if input == 0 else "off"))
 			_set_lift_rules(input == 0)
+			# [ME:COMMUNITY] and on its feet: a ride begun lying down, crouched
+			# or in the air is standing the next frame.
+			var rider: Node = _player()
+			if input == 0 and rider != null and rider.has_method("stand_as_walking"):
+				rider.stand_as_walking()
+			_fire(id, 0)
+		"SeqAct_TdFallOnBack":
+			# [ME:CONFIRMED] no properties at all: the Subway's falling lift
+			# and its train ride's end each pair one with a CauseDamage.
+			var fallen: Node = _player()
+			if fallen != null and fallen.has_method("apply_status"):
+				_tell("%s puts the player on their back" % id)
+				var down := StatusSpec.new()
+				down.effect = Status.Effect.KNOCKDOWN
+				down.seconds = KNOCKDOWN_STANDS_S
+				fallen.apply_status(down, self, 0, true)
 			_fire(id, 0)
 		"SeqAct_SetBool", "SeqAct_SetInt", "SeqAct_SetFloat", "SeqAct_SetString":
 			var source: Array = node.get("vars", {}).get("Value", [])

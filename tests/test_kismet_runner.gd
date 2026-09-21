@@ -506,3 +506,15 @@ func test_a_factory_of_scenery_puts_it_in_and_a_respawn_takes_it_out() -> void:
 	await step(1)
 	assert_eq(rig.runner.find_children("*", "MeshInstance3D", false, false).size(), 0, "what a life spawned goes with it")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(mesh_path))
+
+
+func test_a_fall_on_back_is_known_and_passes_its_signal_on() -> void:
+	var made := await _runner({
+		"e": _n("SeqEvent_LevelBeginning", [["Out", [["fall", 0]]]]),
+		"fall": _n("SeqAct_TdFallOnBack", [["Out", [["after", 0]]]]),
+		"after": _probe("after"),
+	})
+	var runner: KismetRunner = made["runner"]
+	_event(runner, "e")
+	assert_eq(_reached(runner, "after"), 1, "what follows the knock-down still runs")
+	assert_false(runner.unknown.has("SeqAct_TdFallOnBack"), "and the knock-down itself is not an unknown any more")

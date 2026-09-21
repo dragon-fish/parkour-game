@@ -353,7 +353,11 @@ func settle_landing(delta: float) -> StringName:
 	# eating a crouch meant for the slide-entry check in walking_move.gd on
 	# the very next tick. Keeping both ahead of consume_roll() means an
 	# ordinary landing, and a blocked one, both leave the buffer untouched.
-	var rolled: bool = not player.statuses.is_move_blocked(SKILL_ROLL) \
+	# Asked FIRST, for the same short-circuit reason: a body coming down on its
+	# back does not roll, and must not spend the roll's press finding that out.
+	var on_back: bool = player.consume_back_landing()
+	var rolled: bool = not on_back \
+		and not player.statuses.is_move_blocked(SKILL_ROLL) \
 		and fall_height >= config.pawn.skill_roll_landing_height \
 		and player.consume_roll()
 	player.last_landing_rolled = rolled
@@ -364,6 +368,9 @@ func settle_landing(delta: float) -> StringName:
 	var hurt: float = landing_damage(fall_height, rolled)
 	if hurt > 0.0:
 		player.take_damage(hurt, Health.Cause.HARD_LANDING)
+	# The height still costs what it costs; only where the body ends up differs.
+	if on_back:
+		return LAY_ON_GROUND
 	return landing_destination(fall_height, rolled)
 
 ## Whether touching a marked chute starts the slide. Every controlled fall

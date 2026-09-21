@@ -63,4 +63,12 @@ enum Effect {
 	## lift car's: [ME:CONFIRMED 02 §2.3] base velocity, 400 uu/s, while it
 	## moves. SPEED_CAP scales the current cap; this pins it.
 	SPEED_LIMIT,
+	## Puts the body on its back: LayOnGroundMove. Reads no payload -- what a
+	## knock-down COSTS is its author's to say beside it (the original's
+	## SeqAct_TdFallOnBack carries no number either; a CauseDamage next to it
+	## does the hurting).
+	##
+	## NOT A STAGGER. That one is a lockout on the feet that ends by the
+	## clock; this one ends when the player gets up.
+	KNOCKDOWN,
 }

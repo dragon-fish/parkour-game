@@ -1378,6 +1378,16 @@ func _target_animation() -> StringName:
 			# crouch-still pose stands in for the rest, since the body is down
 			# and not going anywhere. What this really wants is a stagger.
 			return _first_available([&"Jump_Land", &"NinjaJump_Land", &"Crouch_Idle", &"sneaking", &"idle"])
+		Move.LAY_ON_GROUND:
+			# LiftAir_Fall is a KNOCK-DOWN, whatever its name: hips 0.96 ->
+			# 0.04, ending on the floor (measured under FALL_UNCONTROLLED,
+			# above, where it was the wrong clip for exactly that reason).
+			# Neither clip loops, so each holds its last frame for as long as
+			# its phase lasts.
+			var lying: Move = player.move_manager.move_for(Move.LAY_ON_GROUND)
+			if lying != null and lying.is_rising():
+				return _first_available([&"KipUp", &"Crouch_Idle", &"sneaking", &"idle"])
+			return _first_available([&"LiftAir_Fall", &"Death02", &"Crouch_Idle", &"sneaking", &"idle"])
 		Move.COIL:
 			# ✅ GroundSit_Idle, AND THE NAME IS A RED HERRING -- the owner
 			# found it: "虽然听上去很怪但动作好像是抱膝". A coil is the legs

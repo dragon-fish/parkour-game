@@ -24,6 +24,11 @@ extends Move
 # ground there is nothing to kick off and nothing to decide, so a ground turn
 # simply carries its momentum through the spin.
 
+## Below this a body is not "going forward", it is drifting: a standing jump
+## has a few centimetres a second of its own. Not a speed gate -- any real
+## forward jump clears it many times over.
+const FORWARD_TRAVEL_M_S := 0.5
+
 var _elapsed: float = 0.0
 var _turn_from: float = 0.0
 var _turn_to: float = 0.0
@@ -122,6 +127,16 @@ func enter(_previous: StringName) -> void:
 		var ceiling: float = SpeedEnergy.energy_for_speed(config.pawn, cfg.speed_keep_ceiling)
 		player.speed_energy.energy = minf(player.speed_energy.energy, ceiling)
 		player.set_grounded(player.is_on_floor())
+		# Turned round in the air while travelling the way it WAS facing: the
+		# flight ends on the body's back. See Player.pending_back_landing.
+		#
+		# "In the air" is the MOVE it came from, not this tick's floor test: a
+		# walking body is off the floor for a tick at every kerb and stair
+		# nosing, and a Q pressed on one of those put it on its back.
+		var was_facing := Vector3(-sin(_turn_from), 0.0, -cos(_turn_from))
+		var flying: bool = player.move_manager != null and player.move_manager.move_for(_previous) is AirborneMove
+		if flying and not player.grounded and _entry_velocity.dot(was_facing) > FORWARD_TRAVEL_M_S:
+			player.pending_back_landing = true
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	_elapsed += delta
@@ -186,6 +201,8 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	player.velocity.y -= config.pawn.gravity * delta
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
+	if player.grounded and player.consume_back_landing():
+		return LAY_ON_GROUND
 	if not _turn_finished():
 		return KEEP
 	return WALKING if player.grounded else FALLING
