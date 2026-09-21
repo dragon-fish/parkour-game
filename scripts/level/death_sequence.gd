@@ -109,6 +109,14 @@ var _on_black: Callable = Callable()
 ## path always covers in black; the manual R-hold respawn (cover_respawn)
 ## is a normal transition and covers in white.
 var _cover_color: Color = Color.BLACK
+## Asked every frame while the curtain is at full black, if the level set it:
+## false holds the cover there. A respawn across a stretch of level the
+## original streams puts hundreds of nodes back a few per frame, which takes
+## longer than RESPAWN_COVER -- lifting on the timer shows the world arriving
+## around a body that is standing in it. NOT a way to load under a white
+## rectangle: the body is held still too (Arena), so nothing is being hidden,
+## and the frames themselves stay inside budget. See docs/seamless-loading.md.
+var world_ready: Callable = Callable()
 
 func total_duration() -> float:
 	return DROP_TIME + HOLD_TIME + TOPPLE_TIME + REST_TIME
@@ -203,6 +211,10 @@ func _physics_process(delta: float) -> void:
 					_player.screen_effects.set_tint(_cover_color, 1.0)
 		return
 	if _cover_left > 0.0:
+		if _cover_left <= RESPAWN_COVER and world_ready.is_valid() and not world_ready.call():
+			# Full black already, and staying there. Tested below the hold so
+			# the cover cannot be held open longer than it was going to last.
+			return
 		_cover_left -= delta
 		if _player != null and _player.screen_effects != null:
 			_player.screen_effects.set_tint(_cover_color,

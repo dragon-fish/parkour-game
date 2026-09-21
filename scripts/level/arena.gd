@@ -224,6 +224,9 @@ func _ready() -> void:
 
 	add_child(_death_sequence)
 	_death_sequence.finished.connect(reset_player)
+	# The cover lifts on the world being there, not on a timer -- see
+	# DeathSequence.world_ready and docs/seamless-loading.md.
+	_death_sequence.world_ready = func() -> bool: return not is_warming()
 	_load_calibration_course()
 	_mark.call("_load_calibration_course")
 	# Debug visualisation of what the ledge probe sees. Created here rather
@@ -615,8 +618,16 @@ func _floor_under_spawn() -> bool:
 			% [SPAWN_FLOOR_PROBE, from])
 	return false
 
+## Whether anything is still warming up. A PackagePresence puts a snapshot's
+## hundreds of nodes back a few per frame and joins WARMING while it does, so
+## this is also what a respawn waits on: hand the body to physics over a floor
+## that has not arrived yet and it falls through the level.
+func is_warming() -> bool:
+	return not get_tree().get_nodes_in_group(WARMING).is_empty()
+
+
 func _await_ready(delta: float) -> void:
-	if not get_tree().get_nodes_in_group(WARMING).is_empty():
+	if is_warming():
 		return
 	var waited := (Time.get_ticks_msec() - _ready_done_ms) / 1000.0
 	_settled_for = _settled_for + delta if player == null or player.grounded else 0.0
@@ -964,6 +975,13 @@ func reset_player() -> void:
 	_resetting_physics = true
 	player.set_physics_process(false)
 	await get_tree().physics_frame
+	# ...AND FOR THE WORLD, when the respawn crossed into a stretch the
+	# original streams. PackagePresence switches a snapshot's nodes a few per
+	# frame, which outlasts the cover several times over; a body handed back to
+	# physics before its floor is switched on falls through the level. The
+	# curtain is held at full black for exactly as long (Arena._ready).
+	while is_warming() and is_instance_valid(player) and is_inside_tree():
+		await get_tree().physics_frame
 	_resetting_physics = false
 	# player (or the whole arena) may have been freed while this coroutine
 	# was suspended — e.g. queue_free() called shortly after a reset — so
