@@ -36,6 +36,8 @@ const GRIP_MESH_SOLID: Array[String] = ["S_ZipLineBase_01"]
 const PIPE_GRIP_REACH_M := 0.6
 
 const BSP_MATERIAL_FAMILY := "roof"
+## What the original names a BSP surface it compiles but never draws.
+const BSP_UNDRAWN_MATERIAL := "RemoveSurfaceMaterial"
 
 ## A placement is not drawn past this many times its own size, within
 ## [VISIBLE_RANGE_MIN, VISIBLE_RANGE_MAX] metres. A dial.
@@ -406,18 +408,20 @@ func _stretched(shape: Shape3D, stretch: Basis) -> Shape3D:
 	return copy
 
 
-## The placement's own materials, per original element, onto every surface
-## built from that element.
+## The placement's own materials onto every surface that draws from the slot
+## each one names. An element's slot is its MaterialIndex, which is NOT its
+## position among the elements: S_RooftopStructure_06 lists slots 0, 3, 1, 2,
+## and indexing by position put the side band's blue on the roof deck.
 func _apply_overrides(instance: MeshInstance3D, placement: Dictionary) -> void:
 	var overrides: Array = placement.get("materials", [])
 	if overrides.is_empty() or library == null:
 		return
-	var elements: PackedInt32Array = instance.mesh.get_meta("surface_elements", PackedInt32Array())
-	for surface in elements.size():
-		var element: int = elements[surface]
-		if element >= overrides.size() or not overrides[element] is Dictionary:
+	var slots: PackedInt32Array = instance.mesh.get_meta("surface_slots", PackedInt32Array())
+	for surface in slots.size():
+		var slot: int = slots[surface]
+		if slot >= overrides.size() or not overrides[slot] is Dictionary:
 			continue
-		var material: Material = library.override_material(overrides[element])
+		var material: Material = library.override_material(overrides[slot])
 		if material != null:
 			instance.set_surface_override_material(surface, material)
 
@@ -477,38 +481,70 @@ static func line_points(annotation: Dictionary) -> Array[Vector3]:
 func _build_bsp(faces: Array) -> StaticBody3D:
 	# Final BSP nodes preserve subtractive openings. Raw additive brush bounds
 	# would fill doorways and miss sloping walkways.
+	#
+	# One surface per material the original's BSP surfaces name. An interior is
+	# mostly BSP, and one flat colour over all of it drew every office wall,
+	# ceiling and air duct the same grey.
 	var body := StaticBody3D.new()
 	body.name = "BSP"
 	var triangles := PackedVector3Array()
-	var surface := SurfaceTool.new()
-	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var tools := {}
+	var entries := {}
+	var order: Array[String] = []
 	for face: Dictionary in faces:
 		var points: Array[Vector3] = []
 		for raw: Array in face["vertices"]:
 			points.append(Common.v3(raw))
+		var uvs: Array[Vector2] = []
+		for raw: Array in face.get("uvs", []):
+			uvs.append(Vector2(raw[0], raw[1]))
 		var normal := Common.v3(face["normal"]).normalized()
+		var material_name: String = str(face.get("material", ""))
+		# The original's mark for a face it never draws. It still blocks, so it
+		# joins the collision and not the mesh.
+		var tool: SurfaceTool = null
+		if material_name != BSP_UNDRAWN_MATERIAL:
+			if not tools.has(material_name):
+				var made := SurfaceTool.new()
+				made.begin(Mesh.PRIMITIVE_TRIANGLES)
+				tools[material_name] = made
+				entries[material_name] = face
+				order.append(material_name)
+			tool = tools[material_name]
 		for i in range(1, points.size() - 1):
-			var a := points[0]
-			var b := points[i]
-			var c := points[i + 1]
-			if (b - a).cross(c - a).dot(normal) > 0.0:
-				var swap := b
-				b = c
-				c = swap
-			for p in [a, b, c]:
-				surface.set_normal(normal)
-				surface.add_vertex(p)
-				triangles.append(p)
+			var wound := [0, i, i + 1]
+			if (points[i] - points[0]).cross(points[i + 1] - points[0]).dot(normal) > 0.0:
+				wound = [0, i + 1, i]
+			for k: int in wound:
+				triangles.append(points[k])
+				if tool != null:
+					tool.set_normal(normal)
+					if k < uvs.size():
+						tool.set_uv(uvs[k])
+					tool.add_vertex(points[k])
 	if triangles.is_empty():
 		return body
-	var instance := MeshInstance3D.new()
-	instance.name = "Mesh"
-	instance.mesh = surface.commit()
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Common.MATERIAL_PALETTE[BSP_MATERIAL_FAMILY]
-	material.roughness = 0.95
-	instance.material_override = material
-	body.add_child(instance)
+	var mesh: ArrayMesh = null
+	for material_name in order:
+		mesh = (tools[material_name] as SurfaceTool).commit(mesh)
+	if mesh != null:
+		for i in order.size():
+			var material: Material = null
+			if library != null:
+				material = library.override_material(entries[order[i]])
+			if material == null:
+				# DefaultMaterial and anything whose bake failed: the family
+				# colour, as the whole BSP used to be drawn.
+				var flat := StandardMaterial3D.new()
+				flat.albedo_color = Common.MATERIAL_PALETTE[BSP_MATERIAL_FAMILY]
+				flat.roughness = 0.95
+				material = flat
+			mesh.surface_set_material(i, material)
+			mesh.surface_set_name(i, order[i])
+		var instance := MeshInstance3D.new()
+		instance.name = "Mesh"
+		instance.mesh = mesh
+		body.add_child(instance)
 	var shape := ConcavePolygonShape3D.new()
 	shape.set_faces(triangles)
 	_add_shape(body, shape, "Collision")

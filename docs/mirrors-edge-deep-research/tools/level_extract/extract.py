@@ -652,6 +652,11 @@ def main(config_path):
         end_links.append((name, matinee.level_end_links(packages, mr)))
         for face in lights.collect_bsp(mr):
             face['package'] = name
+            # Baked and described like any placement's material, so the builder
+            # reads a BSP face and a per-placement override the same way.
+            ref = face.pop('material_ref')
+            if ref:
+                face.update(meshes.override(mr, ref))
             bsp.append(face)
         print('%-36s placements so far %5d' % (name, len(placements)))
 
@@ -789,6 +794,7 @@ def main(config_path):
             node['mesh'] = node.pop('_mesh_record')['name']
             used.add(node['mesh'])
     mesh_out = {n: r for n, r in records.items() if n in used}
+    _override_uv_sets(placements, mesh_out, meshes.bakes, report)
     report['meshes'] = len(mesh_out)
     report['meshes_without_normals'] = sorted(n for n, r in mesh_out.items() if r['normals'] is None)
     report['kdop_mismatch'] = sorted(n for n, r in mesh_out.items() if r['kdop_triangles'] != r['collide_triangles'])
@@ -844,10 +850,47 @@ def main(config_path):
         json.dump(mesh_out, fh, ensure_ascii=False, separators=(',', ':'))
     used_materials = {s['material'] for r in mesh_out.values() for s in r['surfaces']}
     used_materials |= {o['material'] for p in placements for o in p.get('materials', []) if o}
+    used_materials |= {f['material'] for f in bsp if f.get('material')}
     with open(os.path.join(out_dir, 'materials.json'), 'w', encoding='utf-8') as fh:
         json.dump({n: b for n, b in meshes.bakes.items() if b and n in used_materials}, fh, separators=(',', ':'))
     print(json.dumps(report, ensure_ascii=False, indent=1))
     print('-> %s' % out_dir)
+
+
+def _override_uv_sets(placements, mesh_out, bakes, report):
+    """The UV set each surface needs once the level's material overrides are
+    taken into account.
+
+    A surface's set comes from the material that DRAWS it, which on an
+    overridden slot is the override, not the element's own material. The
+    billboards' ad elements carry M_TestAd_01, a 4x4 placeholder sampling set
+    0, while every ad painted over it wants set 1. Built on the placeholder's
+    set, an ad reads the lightmap patch and shows one stretched corner of
+    itself.
+
+    One mesh in the library serves every placement of it, so a slot that two
+    overrides want on different sets cannot be satisfied; it keeps the
+    element's own set and is reported.
+    """
+    wanted = {}
+    for placement in placements:
+        record = mesh_out.get(placement['mesh'])
+        if record is None:
+            continue
+        for slot, override in enumerate(placement.get('materials') or []):
+            bake = bakes.get(override['material']) if override else None
+            if not bake:
+                continue
+            for i, surface in enumerate(record['surfaces']):
+                if surface['slot'] == slot:
+                    wanted.setdefault((placement['mesh'], i), set()).add(bake['uv_set'])
+    clash = []
+    for (name, i), sets in sorted(wanted.items()):
+        if len(sets) == 1:
+            mesh_out[name]['surfaces'][i]['override_uv_set'] = sets.pop()
+        else:
+            clash.append('%s surface %d: %s' % (name, i, sorted(sets)))
+    report['uv_set_clashes'] = clash
 
 
 if __name__ == '__main__':

@@ -188,8 +188,11 @@ def parse_render(mr, idx, with_skin=False):
         flipped = []
         for t in range(0, len(tri), 3):
             flipped.extend((tri[t], tri[t + 2], tri[t + 1]))
+        # A section already names its material by index, so that index is the
+        # slot a placement's Materials array overrides. Static meshes keep the
+        # same field under their element's MaterialIndex.
         surfaces.append({'material': ref_name(pkg, materials[material]), 'material_ref': materials[material],
-                         'collide': False, 'indices': _b64('H', flipped)})
+                         'collide': False, 'slot': material, 'indices': _b64('H', flipped)})
     return {
         'vertices': _b64('f', vertices),
         'normals': _b64('f', normals),

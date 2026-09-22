@@ -40,6 +40,47 @@ EMISSION_MIN = 0.05
 FRESNEL_FACING = 0.2
 # Size of a coordinate gradient baked on its own, with no texture to set one.
 COORDINATE_GRID = (64, 64)
+# A tangent-space normal points mostly out of the surface, so its blue mean is
+# near 1. Below this the evaluation did not produce a normal map: see
+# MaterialBaker._normal().
+NORMAL_MIN_BLUE = 0.6
+# Below this much colour of its own, a diffuse counts as taking none, and the
+# baker's colour is carried instead: see baker_tint in MaterialBaker._bake().
+BAKER_TINT_MAX_SATURATION = 0.06
+# And below this much colour in the baker's own, there is nothing to carry.
+BAKER_TINT_MIN_SATURATION = 0.1
+# A baker colour dimmer than this carries no hue worth dividing out: a
+# corrugated wall's (0.0078, 0, 0) is black, and normalised it reads as pure
+# red. The colours that matter here all reach 1.0 in some channel.
+BAKER_TINT_MIN_LEVEL = 0.25
+
+
+def _colourless(rgba):
+    """Is this bake grey, over the pixels it actually draws?"""
+    alpha = rgba[..., 3:4]
+    weight = float(alpha.sum())
+    if weight < 1.0:
+        return False
+    mean = (rgba[..., :3] * alpha).reshape(-1, 3).sum(0) / weight
+    top = float(mean.max())
+    return top > 1e-6 and float(top - mean.min()) / top < BAKER_TINT_MAX_SATURATION
+
+
+def _baker_tint(baker):
+    """The baker's colour with its level divided out, or None.
+
+    DO NOT carry the colour as stored. It is an albedo, and the bake already
+    says how bright the surface is: multiplied by a grey (0.5, 0.5, 0.5) a
+    plain wall came out half as bright for no reason. Only the colour in it is
+    missing from the bake, so only the colour is carried.
+    """
+    colour = baker.get('color')
+    if not baker.get('override') or not colour:
+        return None
+    top = max(colour)
+    if top < BAKER_TINT_MIN_LEVEL or (top - min(colour)) / top < BAKER_TINT_MIN_SATURATION:
+        return None
+    return [c / top for c in colour]
 
 
 # Every chapter bakes the materials of the packages it loads, and the shared
@@ -159,7 +200,8 @@ class MaterialBaker:
 
     def _bake(self, mr, idx):
         params = {}
-        root_reader, root = self._collect_params(mr, idx, params)
+        baker = {}
+        root_reader, root = self._collect_params(mr, idx, params, baker)
         if not root_reader:
             self.stats['no_root_material'] += 1
             return None
@@ -215,6 +257,21 @@ class MaterialBaker:
         self.stats['baked'] += 1
         out = {'width': shape[1], 'height': shape[0], 'png': png_base64(rgba),
                'uv_set': int(coord[0]), 'tiling': [float(coord[1]), float(coord[2])]}
+        # [ME:INFERRED] A facade's colour is often not in its diffuse at all.
+        # MI_C_04_Facade_Color_Yellow overrides NO parameter of its parent: it
+        # differs only in the Beast baker's colour, which reached the player
+        # through the lightmap. With no lightmap the surface bakes as white as
+        # its parent, so the colour is carried here for the builder to tint by.
+        # Only where the diffuse takes no colour of its own -- a material that
+        # already tints itself, MI_Trashbin_02_Blue, would be tinted twice.
+        tint = _baker_tint(baker)
+        if tint is not None and _colourless(rgba):
+            out['baker_tint'] = [round(c, 4) for c in tint]
+            self.stats['baker_tint'] += 1
+        normal = self._normal(ev, ins, shape)
+        if normal is not None:
+            out['normal_png'] = png_base64(normal)
+            self.stats['normal_map'] += 1
         # How the surface shines, for the builder. The original reflects the sky
         # through a cube map sampled into one of the root inputs (a glass
         # facade's EmissiveColor, typically); the bake above reads that sample
@@ -280,6 +337,35 @@ class MaterialBaker:
         v = np.clip(v, 0.0, 1.0)
         return v if float(v.max()) >= EMISSION_MIN else None
 
+    def _normal(self, ev, ins, shape):
+        """The root's Normal input as a tangent-space map, or None.
+
+        Evaluated like the diffuse, so a sample arrives in the 0..1 the texture
+        stores and needs no decoding. Two things are not maps and must not
+        become one: a Normal that evaluates to a constant, and a Normal whose
+        graph this baker cannot follow -- an unsupported node contributes a
+        flat 0.5, which read as a normal tilts every pixel of the surface
+        sideways.
+
+        GREEN IS FLIPPED. The original's maps are DirectX-handed (+Y down) and
+        Godot samples OpenGL-handed (+Y up); left alone, every bevel lights
+        from the wrong side.
+        """
+        link = ins.get('Normal')
+        if not link or link['expr'] <= 0:
+            return None
+        try:
+            value = ev.value(link, np.zeros(3))
+        except (IndexError, ValueError):
+            return None
+        if value.ndim < 2 or value.shape[-1] < 3:
+            return None
+        rgb = np.clip(resize(value[..., :3], shape), 0.0, 1.0)
+        if float(rgb[..., 2].mean()) < NORMAL_MIN_BLUE:
+            return None
+        rgb[..., 1] = 1.0 - rgb[..., 1]
+        return np.concatenate([rgb, np.ones(shape + (1,))], -1)
+
     def _mirror(self, mr, root, params, coordinate, shape):
         """(albedo HxWx3, mirror share HxW, sheen share) where a cube map puts
         the sky into the surface, or None.
@@ -320,13 +406,15 @@ class MaterialBaker:
             return None
         return albedo, mirror, sheen
 
-    def _collect_params(self, mr, idx, params, depth=0):
+    def _collect_params(self, mr, idx, params, baker=None, depth=0):
         """Walk MaterialInstanceConstant parents collecting overrides, nearest
-        first; returns the root Material."""
+        first; returns the root Material. `baker`, if given, collects the Beast
+        baker's colour the same way -- see baker_tint in _bake()."""
         pkg = mr.pkg
         if pkg.class_of(pkg.exports[idx - 1]) == 'Material':
             return mr, idx
-        for (n, _typ, _extra, q, sz, _arr) in expression_chain(mr, idx):
+        chain = expression_chain(mr, idx)
+        for (n, _typ, _extra, q, sz, _arr) in chain:
             if n not in ('VectorParameterValues', 'ScalarParameterValues', 'TextureParameterValues'):
                 continue
             count = struct.unpack_from('<i', mr.d, q)[0]
@@ -345,11 +433,18 @@ class MaterialBaker:
                 else:
                     value = (mr, struct.unpack_from('<i', mr.d, vq)[0])
                 params.setdefault(name, value)
-        parent = {n: mr._value(t, x, q, s) for (n, t, x, q, s, _a) in expression_chain(mr, idx)}.get('Parent')
+        values = {n: mr._value(t, x, q, s) for (n, t, x, q, s, _a) in chain}
+        if baker is not None:
+            if 'override' not in baker and 'BakerColorOverride' in values:
+                baker['override'] = values['BakerColorOverride'] is True
+            colour = values.get('BakerColor')
+            if 'color' not in baker and isinstance(colour, tuple) and colour[0] == 'color':
+                baker['color'] = [float(c) for c in colour[1:4]]
+        parent = values.get('Parent')
         if not isinstance(parent, tuple) or depth > 8:
             return None, None
         pr, pi = self.resolve(mr, parent[1])
-        return self._collect_params(pr, pi, params, depth + 1) if pr else (None, None)
+        return self._collect_params(pr, pi, params, baker, depth + 1) if pr else (None, None)
 
 
 class Evaluator:
