@@ -348,6 +348,16 @@ Godot 侧结论，本机实测而非查文档：
   `collision_mask`，等于撞一切；对着帘子测，全层探针在 fraction 0.450 停下，把镜头拉进来
   又放开，每 tick 反复一次。旋钮是 `CameraConfig.third_person_probe_mask`，默认 1（只看
   世界那一层）。
+- **原作的布料不是撞在移动用的圆柱上的。** ✅ 角色另有一套 `PhysicsAsset`：`Faith3p_Physics`
+  有 **21 个刚体、22 个形状**（11 Box + 11 Sphyl 胶囊），一根骨头一个，绑在 Hips / Spine1 /
+  Spine2 / Neck / Head / 左右 Arm・ForeArm・Hand・UpLeg・Leg・Foot 上，外加 4 个
+  `RagdollJoint0X`；警察是 `Male3p_Physics`，结构相同。UE3 里这套同时服务 per-bone 命中
+  判定、布娃娃和布料碰撞——**移动的圆柱和布料撞的这一套是两回事**。
+
+  我们的布料撞的是玩家唯一那个 `CapsuleShape3D`（r=0.4 h=1.8），所以帘子是绕着"一根柱子"
+  分开的，不会像原作那样绕着手臂和腿各自兜住。要还原得给玩家骨架挂 per-bone 碰撞体，且只有
+  挂了 `body_scene` 时才有意义。**目前没做，也没有计划**；记在这里是因为"帘子分得太整齐"
+  将来若被当成 bug 排查，根因在这。
 - 帘子是单面片，需要双面材质，否则从一侧看不见（提取器已有 `two_sided` 通路）。
 - 物理插值不作用于软体。本项目没开插值，所以这条目前无影响。
 
