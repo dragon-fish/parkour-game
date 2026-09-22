@@ -278,6 +278,45 @@ if hit:
 | **移动求解** | UE3 有自己的 `PHYS_Walking`；Godot 是 `CharacterBody3D.move_and_slide()` | 台阶/斜坡行为不同。ME 的 `MaxStepHeight = 35` → 0.35 m，对应 Godot 的 `floor_max_angle` / 手动台阶探测 |
 | **可行走坡度** | `WalkableFloorZ = 0.71` → acos = **44.7°** | ✅ Godot 默认 `floor_max_angle = 45°`，基本一致 |
 | **PhysX** | ME 用 PhysX 2.8 **只做碎片/布料特效**，角色移动是引擎自研的 character movement | 复刻**不需要**碰刚体物理，`CharacterBody3D` 就是对的选择 |
+| **两套帧率** | ✅ PhysX 模拟跑 **50 Hz**，画面 **62 FPS**，两者不同步 | 原作的布料参数是在 50 Hz 下调出来的。Godot 只有一个全局 tick（见 9.2.1） |
+
+### 9.2.1 布料：原作靠 PhysX，我们靠 SoftBody3D
+
+原作把塑料帘子**故意放在必经之路上**让玩家撞——2008 年是招牌特效，也是当年低端显卡的杀手。
+资产以 `PX_` 前缀标记（PhysX + SkeletalMesh），布料由 PhysX 在运行时驱动骨骼：
+
+| 资产 | 位置 |
+|---|---|
+| `PX_SK_PlasticDividerFactory_01` | SP06 工厂的塑料隔帘 |
+| `PX_SK_WarningStripeCloth_01` | SP06 警示条纹布 |
+| `SK_Flag_01` / `SK_Flag_02`（含 `_45` `_90` 旋转变体） | 各章旗帜 |
+
+Godot 侧结论，本机实测而非查文档：
+
+- `SoftBody3D` **会被 `CharacterBody3D` 推动**。同一片钉住上边的布，胶囊停在一旁时顶点位移
+  0.0000 m，穿过去时最远顶点动了 2.23 m。默认参数（`total_mass = 1`）太轻，等于被甩飞，
+  需要调。
+- 物理开销可以忽略。无头、稳态、每 tick 墙钟：
+
+  | 帘子数 | 每片顶点 | ms/tick |
+  |---|---|---|
+  | 4 | 100 | 0.094 |
+  | 16 | 100 | 0.126 |
+  | 64 | 100 | 0.166 |
+  | 16 | 324 | 0.326 |
+  | 64 | 324 | 0.545 |
+
+  60 Hz 的预算是 16.7 ms，所以 64 片高细分帘子只占 3%。**这些是下界**——稳态、无碰撞；
+  正在被玩家推的那一片更贵。
+- **DO NOT** 为了对齐原作的 50 Hz 去改 `physics_ticks_per_second`。Godot 的 tick 是全局的，
+  动它会连带动摇所有已调好的移动数值。要补偿节拍差异用每个软体自己的
+  `simulation_precision`（每 tick 迭代次数），那才是对应的旋钮。
+- 帘子是单面片，需要双面材质，否则从一侧看不见（提取器已有 `two_sided` 通路）。
+- 物理插值不作用于软体。本项目没开插值，所以这条目前无影响。
+
+前提是**先把 `PX_SK_*` 导出来**：`extract.py` 的 `SKELETAL_SCENERY` 白名单排除了布料和旗帜，
+且这些 actor 的组件上没有 `SkeletalMesh` 标签——网格挂在 archetype 上，读取器要先会跟
+`ObjectArchetype`。
 
 ---
 
