@@ -56,6 +56,8 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 	_library = MeLibrary.new()
 	if _look.has(BAKER_TINT_DIAL):
 		_library.baker_tint_strength = float(_look[BAKER_TINT_DIAL])
+	if _look.has(NORMAL_SCALE_DIAL):
+		_library.normal_scale = float(_look[NORMAL_SCALE_DIAL])
 	if not _library.build(meshes, bakes):
 		return false
 	manifest["puppet_bodies"] = _puppet_bodies(manifest, dir.path_join("puppets"), (paths.shell as String).get_basename() + "_puppets")
@@ -84,6 +86,8 @@ var _look := {}
 var _cloth: Array = []
 ## `look` key for MeshLibrary.baker_tint_strength.
 const BAKER_TINT_DIAL := "baker_tint_strength"
+## `look` key for MeshLibrary.normal_scale.
+const NORMAL_SCALE_DIAL := "normal_scale"
 
 
 func _geometry_builder():

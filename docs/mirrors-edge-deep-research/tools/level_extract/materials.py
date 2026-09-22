@@ -51,6 +51,13 @@ NORMAL_MIN_BLUE = 0.6
 # OpenGL-style (Y-)" sits beside a manual calling OpenGL Y+ -- so the question
 # was put to the surfaces instead: relief read inside-out with the flip on.
 NORMAL_FLIP_GREEN = False
+# How far a tangent channel's MEAN may sit from flat and still be a normal map.
+# A real one averages 0.5 in red and green -- the original's are (0.498, 0.498,
+# 0.98) and their relief is only a couple of percent, which is the art and not
+# a loss. M_ChipBoardStack_01 reaches the Normal input with something that
+# averages 0.93 across all three: not a normal map, and read as one it tilted
+# every pixel of the stack the same way.
+NORMAL_MAX_TANGENT_BIAS = 0.1
 # Below this much colour of its own, a diffuse counts as taking none, and the
 # baker's colour is carried instead: see baker_tint in MaterialBaker._bake().
 BAKER_TINT_MAX_SATURATION = 0.06
@@ -369,6 +376,8 @@ class MaterialBaker:
             return None
         rgb = np.clip(resize(value[..., :3], shape), 0.0, 1.0)
         if float(rgb[..., 2].mean()) < NORMAL_MIN_BLUE:
+            return None
+        if max(abs(float(rgb[..., c].mean()) - 0.5) for c in (0, 1)) > NORMAL_MAX_TANGENT_BIAS:
             return None
         if NORMAL_FLIP_GREEN:
             rgb[..., 1] = 1.0 - rgb[..., 1]

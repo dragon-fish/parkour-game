@@ -29,6 +29,13 @@ const SHEEN_SCALE := 0.5
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
 const LIBRARY_FORMAT := 9
 
+## How strongly the baked normal maps read. The original's are genuinely
+## subtle -- its tangent channels sit within a couple of percent of flat, which
+## is the art rather than a loss -- so 1.0 is faithful and anything above it is
+## a deliberate exaggeration. Useful above all for JUDGING one: at 1.0 a brick
+## wall's relief is too slight to tell which way it faces. A dial.
+var normal_scale := 1.0
+
 ## How much of a material's baker_tint reaches its albedo. The original's
 ## facades take their colour from the lightmap, not the diffuse; this is how
 ## far that colour is put back. 0 leaves every bake as it was evaluated. A dial.
@@ -61,6 +68,12 @@ func build(meshes: Dictionary, bakes: Dictionary) -> bool:
 		# (the Mall's bridge stayed black after its bake was fixed).
 		content["bakes"] = record["surfaces"].map(func(s): return _bake_hash(s))
 		content["library_format"] = LIBRARY_FORMAT
+		# The look dials belong in the MESH's hash, not only in the material's.
+		# A mesh that is up to date is skipped whole, and its materials are built
+		# from inside that build -- so a dial left out here is a dial that does
+		# nothing until something else happens to invalidate the mesh.
+		content["normal_scale"] = normal_scale
+		content["baker_tint_strength"] = baker_tint_strength
 		var hash := JSON.stringify(content, "", true).sha256_text()
 		var path := path_for(mesh_name)
 		if ResourceLoader.exists(path):
@@ -325,7 +338,8 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 	if _materials.has(key):
 		return _materials[key]
 	var bake: Dictionary = _bakes[material_name]
-	var hash := JSON.stringify([bake, blend, unlit, TEXTURE_ALBEDO, baker_tint_strength, LIBRARY_FORMAT]).sha256_text()
+	var hash := JSON.stringify([bake, blend, unlit, TEXTURE_ALBEDO, baker_tint_strength,
+			normal_scale, LIBRARY_FORMAT]).sha256_text()
 	var dir := Common.LIBRARY_DIR.path_join("materials").path_join("textured")
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 	var path := dir.path_join(key + ".res")
@@ -363,6 +377,7 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 			normal.compress(Image.COMPRESS_BPTC, Image.COMPRESS_SOURCE_NORMAL)
 			material.normal_enabled = true
 			material.normal_texture = ImageTexture.create_from_image(normal)
+			material.normal_scale = normal_scale
 	var roughness: float = float(bake.get("roughness", DEFAULT_ROUGHNESS))
 	material.roughness = roughness
 	if bake.has("specular"):
