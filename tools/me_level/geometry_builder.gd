@@ -39,6 +39,12 @@ const BSP_MATERIAL_FAMILY := "roof"
 ## What the original names a BSP surface it compiles but never draws.
 const BSP_UNDRAWN_MATERIAL := "RemoveSurfaceMaterial"
 
+## The layer hanging cloth lives on, alone, so a query can leave it out by mask
+## -- see CameraConfig.third_person_probe_mask.
+const CLOTH_LAYER := 4
+## How far below the highest vertex a point still counts as on the top edge.
+const CLOTH_PIN_BAND_M := 0.02
+
 ## A placement is not drawn past this many times its own size, within
 ## [VISIBLE_RANGE_MIN, VISIBLE_RANGE_MAX] metres. A dial.
 const VISIBLE_RANGE_PER_METRE := 40.0
@@ -96,9 +102,14 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		node.set_meta(Common.ACTOR_META, Common.actor_id(placement["package"], placement["name"]))
 		if placement["soft_landing"]:
 			node.add_to_group("soft_landing", true)
-		var instance := MeshInstance3D.new()
+		var cloth := _is_cloth(mesh_name)
+		var instance := SoftBody3D.new() if cloth else MeshInstance3D.new()
 		instance.name = "Mesh"
-		instance.mesh = mesh
+		# A soft body deforms the mesh it is given, so it cannot share the
+		# library's copy with the other placements of the same curtain.
+		instance.mesh = mesh.duplicate() if cloth else mesh
+		if cloth:
+			_hang_cloth(instance as SoftBody3D, Common.transform_of(placement))
 		# Hidden in the original: collision without a picture. Kept as a node so
 		# the editor can still show it.
 		instance.visible = not placement["hidden"]
@@ -364,6 +375,10 @@ var _stretched_shapes := {}
 ## The mesh library that built the meshes, for placement material overrides.
 ## Null leaves every mesh on its own materials.
 var library = null
+## Mesh-name prefixes whose placements hang as simulated cloth instead of being
+## drawn flat, from the level config's "cloth" list. Empty draws every one of
+## them as it was authored, which is a rigid sheet.
+var cloth_meshes: Array = []
 ## The level config's "look" block: me_environment.gd dials by export name,
 ## plus LAMP_DIAL for the lights' energy_scale. Read from the config file the
 ## build was asked for, not from the manifest's copy of it, so a dial can be
@@ -406,6 +421,45 @@ func _stretched(shape: Shape3D, stretch: Basis) -> Shape3D:
 		(copy as ConcavePolygonShape3D).set_faces(out)
 	_stretched_shapes[key] = copy
 	return copy
+
+
+func _is_cloth(mesh_name: String) -> bool:
+	for prefix: String in cloth_meshes:
+		if mesh_name.begins_with(prefix):
+			return true
+	return false
+
+
+## Nails a curtain up along its top edge.
+##
+## The edge is found in WORLD space, after the placement's transform. A cloth
+## mesh's own axes do not say which way is up -- PX_SK_PlasticDividerEdge_01 is
+## 3.28 m tall along its local Z and 2 cm thick along its local Y, so pinning
+## by local height nails two thirds of the sheet to nothing.
+##
+## Its own collision layer keeps it out of queries that must ignore it, the
+## third-person camera probe above all. The mask still sees layer 1, which is
+## all soft-body pairing needs: the player pushes it, and is never stopped by
+## it -- a curtain is walked through.
+func _hang_cloth(cloth: SoftBody3D, placement: Transform3D) -> void:
+	cloth.collision_layer = CLOTH_LAYER
+	cloth.collision_mask = 1
+	var mesh: ArrayMesh = cloth.mesh
+	if mesh.get_surface_count() != 1:
+		push_warning("[me_level] cloth %s has %d surfaces; only the first is pinned"
+				% [cloth.name, mesh.get_surface_count()])
+	var vertices: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var top := -INF
+	for vertex in vertices:
+		top = maxf(top, (placement * vertex).y)
+	var pinned := PackedInt32Array()
+	for i in vertices.size():
+		if absf((placement * vertices[i]).y - top) <= CLOTH_PIN_BAND_M:
+			pinned.append(i)
+	if pinned.is_empty() or pinned.size() == vertices.size():
+		push_warning("[me_level] cloth %s pinned %d of %d points: the top edge did not read"
+				% [cloth.name, pinned.size(), vertices.size()])
+	cloth.set("pinned_points", pinned)
 
 
 ## The placement's own materials onto every surface that draws from the slot
