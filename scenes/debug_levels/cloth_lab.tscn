@@ -58,7 +58,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 12)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 8)
 material_override = SubResource("Mat_s2")
 mesh = SubResource("Plane_s2")
-collision_layer = 1
+collision_layer = 4
 collision_mask = 1
 pinned_points = PackedInt32Array(12, 13, 14, 15)
 
@@ -66,7 +66,7 @@ pinned_points = PackedInt32Array(12, 13, 14, 15)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 4)
 material_override = SubResource("Mat_s4")
 mesh = SubResource("Plane_s4")
-collision_layer = 1
+collision_layer = 4
 collision_mask = 1
 pinned_points = PackedInt32Array(30, 31, 32, 33, 34, 35)
 
@@ -74,7 +74,7 @@ pinned_points = PackedInt32Array(30, 31, 32, 33, 34, 35)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
 material_override = SubResource("Mat_s8")
 mesh = SubResource("Plane_s8")
-collision_layer = 1
+collision_layer = 4
 collision_mask = 1
 pinned_points = PackedInt32Array(90, 91, 92, 93, 94, 95, 96, 97, 98, 99)
 
@@ -82,6 +82,6 @@ pinned_points = PackedInt32Array(90, 91, 92, 93, 94, 95, 96, 97, 98, 99)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -4)
 material_override = SubResource("Mat_s16")
 mesh = SubResource("Plane_s16")
-collision_layer = 1
+collision_layer = 4
 collision_mask = 1
 pinned_points = PackedInt32Array(306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323)

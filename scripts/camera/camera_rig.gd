@@ -1388,6 +1388,7 @@ func _third_person_position() -> Vector3:
 	query.shape = sphere
 	query.transform = Transform3D(Basis.IDENTITY, global_position)
 	query.motion = to_global(wanted) - global_position
+	query.collision_mask = _config.camera.third_person_probe_mask
 	var body := get_parent()
 	if body is CollisionObject3D:
 		query.exclude = [(body as CollisionObject3D).get_rid()]
