@@ -44,13 +44,19 @@ COORDINATE_GRID = (64, 64)
 # near 1. Below this the evaluation did not produce a normal map: see
 # MaterialBaker._normal().
 NORMAL_MIN_BLUE = 0.6
-# Whether the baked normal's green channel is inverted on the way out.
+# The baked normal's green channel is inverted on the way out: the original's
+# maps are DirectX-handed (+Y down) and Godot samples the other way.
 #
-# SETTLED BY EYE, not by documentation. Which handedness Godot samples is
-# written down both ways in its own sources -- a proposal to "switch from
-# OpenGL-style (Y-)" sits beside a manual calling OpenGL Y+ -- so the question
-# was put to the surfaces instead: relief read inside-out with the flip on.
-NORMAL_FLIP_GREEN = False
+# SETTLED BY EYE, and it took two passes to settle. Which handedness Godot
+# samples is written down both ways in its own sources -- a proposal to "switch
+# from OpenGL-style (Y-)" sits beside a manual calling OpenGL Y+ -- so the
+# question went to the surfaces. The first look said inside-out and this was
+# turned off; the second, with mesh_library.normal_scale turned up so the
+# relief could actually be seen, said the flip was right after all.
+#
+# DO NOT try to judge this at normal_scale 1.0. The original's maps sit two
+# percent from flat, which is too little to tell which way a face points.
+NORMAL_FLIP_GREEN = True
 # How far a tangent channel's MEAN may sit from flat and still be a normal map.
 # A real one averages 0.5 in red and green -- the original's are (0.498, 0.498,
 # 0.98) and their relief is only a couple of percent, which is the art and not
