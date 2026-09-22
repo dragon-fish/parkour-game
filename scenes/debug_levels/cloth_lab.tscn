@@ -1,0 +1,87 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" uid="uid://lq3dqgc2iapg" path="res://templates/base_level.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://templates/acrylic_floor.tscn" id="2_ground"]
+
+[sub_resource type="PlaneMesh" id="Plane_s2"]
+size = Vector2(3, 2.2)
+subdivide_width = 2
+subdivide_depth = 2
+orientation = 2
+
+[sub_resource type="PlaneMesh" id="Plane_s4"]
+size = Vector2(3, 2.2)
+subdivide_width = 4
+subdivide_depth = 4
+orientation = 2
+
+[sub_resource type="PlaneMesh" id="Plane_s8"]
+size = Vector2(3, 2.2)
+subdivide_width = 8
+subdivide_depth = 8
+orientation = 2
+
+[sub_resource type="PlaneMesh" id="Plane_s16"]
+size = Vector2(3, 2.2)
+subdivide_width = 16
+subdivide_depth = 16
+orientation = 2
+
+[sub_resource type="StandardMaterial3D" id="Mat_s2"]
+cull_mode = 2
+albedo_color = Color(1, 0.49, 0.1, 1)
+roughness = 0.65
+
+[sub_resource type="StandardMaterial3D" id="Mat_s4"]
+cull_mode = 2
+albedo_color = Color(1, 0.84, 0.15, 1)
+roughness = 0.65
+
+[sub_resource type="StandardMaterial3D" id="Mat_s8"]
+cull_mode = 2
+albedo_color = Color(0.2, 0.6, 1, 1)
+roughness = 0.65
+
+[sub_resource type="StandardMaterial3D" id="Mat_s16"]
+cull_mode = 2
+albedo_color = Color(0.92, 0.94, 0.95, 1)
+roughness = 0.65
+
+[node name="Arena" instance=ExtResource("1_base")]
+
+[node name="SpawnPoint" parent="." index="2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 12)
+
+[node name="Ground" parent="." index="9" instance=ExtResource("2_ground")]
+
+[node name="Curtain_sub2" type="SoftBody3D" parent="." index="10"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 8)
+material_override = SubResource("Mat_s2")
+mesh = SubResource("Plane_s2")
+collision_layer = 1
+collision_mask = 1
+pinned_points = PackedInt32Array(12, 13, 14, 15)
+
+[node name="Curtain_sub4" type="SoftBody3D" parent="." index="11"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 4)
+material_override = SubResource("Mat_s4")
+mesh = SubResource("Plane_s4")
+collision_layer = 1
+collision_mask = 1
+pinned_points = PackedInt32Array(30, 31, 32, 33, 34, 35)
+
+[node name="Curtain_sub8" type="SoftBody3D" parent="." index="12"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+material_override = SubResource("Mat_s8")
+mesh = SubResource("Plane_s8")
+collision_layer = 1
+collision_mask = 1
+pinned_points = PackedInt32Array(90, 91, 92, 93, 94, 95, 96, 97, 98, 99)
+
+[node name="Curtain_sub16" type="SoftBody3D" parent="." index="13"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -4)
+material_override = SubResource("Mat_s16")
+mesh = SubResource("Plane_s16")
+collision_layer = 1
+collision_mask = 1
+pinned_points = PackedInt32Array(306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323)
