@@ -34,10 +34,15 @@ import streaming
 PLACED_CLASSES = ('StaticMeshActor', 'InterpActor')
 # A SkeletalMeshActor is placed only when its mesh is SCENERY that happens to
 # be skinned, by these name prefixes: the news helicopter the Edge ends on and
-# the Blackhawk the Scraper does, each hidden until its Matinee flies it in.
-# The rest of the game's 700-odd are people, pigeons, rats, flags and cloth,
-# and a person in a reference pose is a worse sight than no person.
-SKELETAL_SCENERY = ('SK_VH_', 'SK_SWAT_Blackhawk')
+# the Blackhawk the Scraper does, each hidden until its Matinee flies it in,
+# and PX_SK_, the original's PhysX cloth -- plastic dividers, awnings, banners,
+# 147 of them across the game. The rest of the 700-odd are people, pigeons,
+# rats and flags, and a person in a reference pose is a worse sight than no
+# person.
+#
+# Cloth arrives in its REST pose, which is a flat sheet: these are drawn, not
+# simulated. Giving them motion is the builder's job, not this one's.
+SKELETAL_SCENERY = ('SK_VH_', 'SK_SWAT_Blackhawk', 'PX_SK_')
 # The Blackhawk's cabin is a second actor, hung on the first one's VH_Main bone
 # by a SeqAct_AttachToActor. Nothing here follows a bone, so it would stay on
 # the pad while the hull it belongs to flew off.
