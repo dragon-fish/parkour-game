@@ -44,6 +44,13 @@ COORDINATE_GRID = (64, 64)
 # near 1. Below this the evaluation did not produce a normal map: see
 # MaterialBaker._normal().
 NORMAL_MIN_BLUE = 0.6
+# Whether the baked normal's green channel is inverted on the way out.
+#
+# SETTLED BY EYE, not by documentation. Which handedness Godot samples is
+# written down both ways in its own sources -- a proposal to "switch from
+# OpenGL-style (Y-)" sits beside a manual calling OpenGL Y+ -- so the question
+# was put to the surfaces instead: relief read inside-out with the flip on.
+NORMAL_FLIP_GREEN = False
 # Below this much colour of its own, a diffuse counts as taking none, and the
 # baker's colour is carried instead: see baker_tint in MaterialBaker._bake().
 BAKER_TINT_MAX_SATURATION = 0.06
@@ -347,9 +354,9 @@ class MaterialBaker:
         flat 0.5, which read as a normal tilts every pixel of the surface
         sideways.
 
-        GREEN IS FLIPPED. The original's maps are DirectX-handed (+Y down) and
-        Godot samples OpenGL-handed (+Y up); left alone, every bevel lights
-        from the wrong side.
+        Green is left as the original stores it, NORMAL_FLIP_GREEN off: the
+        two engines turn out to agree, and inverting it lit every bevel from
+        the wrong side.
         """
         link = ins.get('Normal')
         if not link or link['expr'] <= 0:
@@ -363,7 +370,8 @@ class MaterialBaker:
         rgb = np.clip(resize(value[..., :3], shape), 0.0, 1.0)
         if float(rgb[..., 2].mean()) < NORMAL_MIN_BLUE:
             return None
-        rgb[..., 1] = 1.0 - rgb[..., 1]
+        if NORMAL_FLIP_GREEN:
+            rgb[..., 1] = 1.0 - rgb[..., 1]
         return np.concatenate([rgb, np.ones(shape + (1,))], -1)
 
     def _mirror(self, mr, root, params, coordinate, shape):

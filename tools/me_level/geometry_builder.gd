@@ -109,7 +109,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		instance.name = "Mesh"
 		# A soft body deforms the mesh it is given, so it cannot share the
 		# library's copy with the other placements of the same curtain.
-		instance.mesh = mesh.duplicate() if cloth else mesh
+		instance.mesh = _cloth_mesh(mesh) if cloth else mesh
 		if cloth:
 			_hang_cloth(instance as SoftBody3D, Common.transform_of(placement))
 		# Hidden in the original: collision without a picture. Kept as a node so
@@ -434,6 +434,26 @@ func _is_cloth(mesh_name: String) -> bool:
 	return false
 
 
+## A cloth's own copy of a library mesh, ONE SURFACE.
+##
+## The library gives a two-sided material a second, reversed surface, and a
+## soft body simulates only its first: the reversed copy hung there rigid while
+## the cloth moved through it, and it fired a warning a frame. Cloth is drawn
+## from both sides by its material instead -- _cloth_draws_both_sides().
+static func _cloth_mesh(source: ArrayMesh) -> ArrayMesh:
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, source.surface_get_arrays(0))
+	out.surface_set_material(0, source.surface_get_material(0))
+	out.surface_set_name(0, source.surface_get_name(0))
+	for key: String in source.get_meta_list():
+		out.set_meta(key, source.get_meta(key))
+	# The slot table is per surface, and _apply_overrides() indexes surfaces by
+	# it: left at the source's length it would address a surface that is gone.
+	var slots: PackedInt32Array = source.get_meta("surface_slots", PackedInt32Array())
+	out.set_meta("surface_slots", slots.slice(0, 1) if not slots.is_empty() else slots)
+	return out
+
+
 ## Nails a curtain up along its top edge.
 ##
 ## The edge is found in WORLD space, after the placement's transform. A cloth
@@ -449,9 +469,6 @@ func _hang_cloth(cloth: SoftBody3D, placement: Transform3D) -> void:
 	cloth.collision_layer = CLOTH_LAYER
 	cloth.collision_mask = 1
 	var mesh: ArrayMesh = cloth.mesh
-	if mesh.get_surface_count() != 1:
-		push_warning("[me_level] cloth %s has %d surfaces; only the first is pinned"
-				% [cloth.name, mesh.get_surface_count()])
 	var arrays := mesh.surface_get_arrays(0)
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var top := -INF
