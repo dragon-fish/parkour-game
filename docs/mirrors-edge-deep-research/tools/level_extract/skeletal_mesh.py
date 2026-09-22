@@ -57,9 +57,23 @@ def parse_render(mr, idx, with_skin=False):
     if p is None:
         raise ExtractError('%s: no tagged properties' % where)
     uv_sets = 1
+    # What the original's PhysX cloth was given, for a mesh that is cloth. The
+    # density is per unit area, so the total mass is the builder's to work out
+    # from the geometry; damping only counts when its flag is set.
+    cloth = {}
     for tag in chain:
         if tag[0] == 'NumUVSets':
             uv_sets = struct.unpack_from('<i', d, tag[3])[0]
+        elif tag[0] == 'ClothDensity':
+            cloth['density'] = struct.unpack_from('<f', d, tag[3])[0]
+        elif tag[0] == 'ClothDamping':
+            cloth['damping'] = struct.unpack_from('<f', d, tag[3])[0]
+        elif tag[0] == 'bEnableClothDamping':
+            cloth['damped'] = bool(struct.unpack_from('<i', d, tag[3])[0]) if tag[4] >= 4 else True
+        elif tag[0] == 'NumFreeClothVerts':
+            cloth['free_verts'] = struct.unpack_from('<i', d, tag[3])[0]
+        elif tag[0] == 'ClothWeldingDomain':
+            cloth['verts'] = struct.unpack_from('<i', d, tag[3])[0]
     if not 1 <= uv_sets <= UV_SLOTS:
         raise ExtractError('%s: %d UV sets' % (where, uv_sets))
     p += 4
@@ -208,6 +222,7 @@ def parse_render(mr, idx, with_skin=False):
         'surfaces': surfaces,
         'body_setup': 0,
         'use_simple_box_collision': False,
+        'cloth': cloth,
         # For skeletal_anim, and popped by whoever asked before the record is
         # stored: what an animation has to move to move this mesh as one
         # piece is the bone most of it is skinned to.

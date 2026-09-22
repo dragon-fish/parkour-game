@@ -174,6 +174,11 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 	var bounds: Dictionary = record["bounds"]
 	var extent := Common.v3(bounds["extent"])
 	mesh.set_meta("bounds", AABB(Common.v3(bounds["origin"]) - extent, extent * 2.0))
+	# What the original's PhysX cloth was given, for the placements the level
+	# hangs rather than draws. Empty on everything else.
+	var cloth: Dictionary = record.get("cloth", {})
+	if not cloth.is_empty():
+		mesh.set_meta("cloth", cloth)
 	return mesh
 
 

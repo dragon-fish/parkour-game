@@ -44,6 +44,8 @@ const BSP_UNDRAWN_MATERIAL := "RemoveSurfaceMaterial"
 const CLOTH_LAYER := 4
 ## How far below the highest vertex a point still counts as on the top edge.
 const CLOTH_PIN_BAND_M := 0.02
+## A cloth never weighs less than this, whatever its density says.
+const CLOTH_MIN_MASS_KG := 0.05
 
 ## A placement is not drawn past this many times its own size, within
 ## [VISIBLE_RANGE_MIN, VISIBLE_RANGE_MAX] metres. A dial.
@@ -119,6 +121,8 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			instance.visible = true
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		_apply_overrides(instance, placement)
+		if cloth:
+			_cloth_draws_both_sides(instance as SoftBody3D)
 		if placement.has("runner_vision"):
 			node.add_child(_runner_vision_target(placement, mesh))
 		# Not drawn past VISIBLE_RANGE_PER_METRE its own size: 13,000 placements
@@ -448,7 +452,8 @@ func _hang_cloth(cloth: SoftBody3D, placement: Transform3D) -> void:
 	if mesh.get_surface_count() != 1:
 		push_warning("[me_level] cloth %s has %d surfaces; only the first is pinned"
 				% [cloth.name, mesh.get_surface_count()])
-	var vertices: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var arrays := mesh.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var top := -INF
 	for vertex in vertices:
 		top = maxf(top, (placement * vertex).y)
@@ -460,6 +465,48 @@ func _hang_cloth(cloth: SoftBody3D, placement: Transform3D) -> void:
 		push_warning("[me_level] cloth %s pinned %d of %d points: the top edge did not read"
 				% [cloth.name, pinned.size(), vertices.size()])
 	cloth.set("pinned_points", pinned)
+	# [ME:CONFIRMED] the original's own numbers, off the SkeletalMesh:
+	# ClothDensity is per unit area, so the mass is the density over the sheet
+	# the placement actually hangs. Left at the engine's 1 kg a curtain of 4.3
+	# square metres weighed less than a tea towel and flew like one.
+	var parameters: Dictionary = mesh.get_meta("cloth", {})
+	var density := float(parameters.get("density", 0.0))
+	if density > 0.0:
+		cloth.total_mass = maxf(density * _sheet_area(arrays, placement), CLOTH_MIN_MASS_KG)
+	if parameters.get("damped", false):
+		cloth.damping_coefficient = clampf(float(parameters.get("damping", 0.0)), 0.0, 1.0)
+
+
+## A sheet has no inside: cloth is drawn from both sides.
+##
+## RUN THIS AFTER _apply_overrides(). These curtains carry a placement material
+## of their own, so a two-sided copy made before the override is put back to
+## one side by it, and the curtain disappears from behind.
+##
+## Not the reversed-surface trick the mesh library uses for a two-sided element:
+## that adds a second SURFACE, and a soft body simulates only its first.
+static func _cloth_draws_both_sides(cloth: SoftBody3D) -> void:
+	var material: Material = cloth.get_surface_override_material(0)
+	if material == null:
+		material = (cloth.mesh as ArrayMesh).surface_get_material(0)
+	if material is BaseMaterial3D:
+		var both := (material as BaseMaterial3D).duplicate() as BaseMaterial3D
+		both.resource_path = ""
+		both.cull_mode = BaseMaterial3D.CULL_DISABLED
+		cloth.set_surface_override_material(0, both)
+
+
+## Area of the sheet as the placement hangs it, for a density to be a mass.
+static func _sheet_area(arrays: Array, placement: Transform3D) -> float:
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var area := 0.0
+	for i in range(0, indices.size(), 3):
+		var a := placement * vertices[indices[i]]
+		var b := placement * vertices[indices[i + 1]]
+		var c := placement * vertices[indices[i + 2]]
+		area += 0.5 * (b - a).cross(c - a).length()
+	return area
 
 
 ## The placement's own materials onto every surface that draws from the slot
