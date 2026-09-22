@@ -1027,6 +1027,15 @@ var wall_side: int = 0
 func standing_height() -> float:
 	return _standing_height
 
+## A CAPSULE, where [ME:CONFIRMED] the original collides as a CYLINDER: UE3
+## Pawns use a CylinderComponent, and the original's debug collision view shows
+## it. DO NOT "correct" the rounded bottom. The difference is real and known --
+## a flat-bottomed cylinder perches on ledges a hemisphere slides off, and the
+## speedrun community has routes that stand on slivers only a cylinder holds --
+## and it is a deliberately accepted deviation, not an oversight. Changing it
+## means re-judging every edge, landing and vault, so it is a decision to take
+## on its own: docs/mirrors-edge-deep-research/09-Godot移植指南.md, 9.2.2.
+##
 ## Live height of the collision capsule right now — shrunk while Slide or
 ## Crouch (or any future state that calls set_capsule_height()) is active,
 ## the standing height otherwise. Read fresh via $CollisionShape3D rather
