@@ -214,10 +214,24 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	player.velocity.x = _entry_velocity.x * remaining
 	player.velocity.z = _entry_velocity.z * remaining
 	player.velocity.y -= config.pawn.gravity * delta
+	var arriving: Vector3 = player.velocity
 	player.move_and_slide()
+	# A TURN IN THE AIR THAT TOUCHES DOWN MID-SPIN IS STILL A LANDING, and
+	# FallingMove is what settles one -- the fall's height, its damage, the
+	# back landing. Handled here instead it skipped all of it: a drop past
+	# hard_landing_height, turned late, cost nothing.
+	#
+	# The spin is finished on the spot rather than cut, and the body is NOT
+	# declared grounded: that would re-base the fall counter before the landing
+	# reads it. The velocity the floor took is handed back so the landing
+	# still sees what it arrived with.
+	if _in_air and player.is_on_floor():
+		_elapsed = maxf(_elapsed, _duration())
+		_advance_turn(0.0)
+		player.velocity = arriving
+		player.set_grounded(false)
+		return FALLING
 	player.set_grounded(player.is_on_floor())
-	if player.grounded and player.consume_back_landing():
-		return LAY_ON_GROUND
 	if not _turn_finished():
 		return KEEP
 	return WALKING if player.grounded else FALLING

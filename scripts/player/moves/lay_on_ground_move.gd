@@ -15,7 +15,8 @@ extends Move
 var _elapsed: float = 0.0
 var _rising: bool = false
 ## The blow's own tint when a blow put the body here (MoveManager leaves the
-## stagger's pending for this move), transparent otherwise.
+## stagger's pending for this move) or a hard landing did (AirborneMove.
+## settle_landing()), transparent otherwise.
 var _tint: Color = Color(0.0, 0.0, 0.0, 0.0)
 
 ## Read by CharacterAnimator: the get-up is a different clip from going down.

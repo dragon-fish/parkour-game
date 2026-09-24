@@ -369,7 +369,13 @@ func settle_landing(delta: float) -> StringName:
 	if hurt > 0.0:
 		player.take_damage(hurt, Health.Cause.HARD_LANDING)
 	# The height still costs what it costs; only where the body ends up differs.
+	# [ME:INFERRED] from play: a hard landing on the back hurts and flashes
+	# red like any other, and costs no lockout -- the body gets up when asked,
+	# which is what makes it a way round the hard landing's stun. The red rides
+	# LayOnGroundMove's own blow tint.
 	if on_back:
+		if hurt > 0.0:
+			player.pending_stagger_tint = config.landing.tint_color
 		return LAY_ON_GROUND
 	return landing_destination(fall_height, rolled)
 

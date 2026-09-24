@@ -365,7 +365,9 @@ var _stagger_immunity: float = 0.0
 ## One-shot: the reader clears it, same as pending_vault_variant.
 var pending_stagger: bool = false
 ## One-shot, alongside pending_stagger: the stagger's own screen tint, or
-## transparent for the hard landing's. LandingMove reads and clears it.
+## transparent for the hard landing's. LandingMove reads and clears it, and so
+## does LayOnGroundMove -- which is also handed the hard landing's red when that
+## landing is on the back (AirborneMove.settle_landing()).
 var pending_stagger_tint: Color = Color(0.0, 0.0, 0.0, 0.0)
 
 ## This flight was turned round in the air while it was going FORWARD, so it

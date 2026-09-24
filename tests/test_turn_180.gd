@@ -432,3 +432,37 @@ func test_the_model_comes_round_with_a_turn_in_the_air() -> void:
 	await step(20)
 	assert_almost_eq(wrapf(player.visual_yaw() - player.rotation.y, -PI, PI), 0.0, 0.05,
 		"the model was left behind by a turn in the air")
+
+## A drop past hard_landing_height, turned in the air at `turn_at` ticks after
+## the take-off. Returns the player once it has come to rest on its back.
+func _turned_drop(turn_at: int) -> Player:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	await step(30)
+	var input := world["input"] as ScriptedInputSource
+	player.global_position = Vector3(0.0, 8.0, 0.0)
+	player.fall_tracker.reset(player.global_position.y)
+	player.velocity = Vector3(0.0, 6.3, -6.0)
+	player.move_manager.start(Move.JUMP)
+	for i in 150:
+		if i == turn_at:
+			input.press_turn()
+		await step(1)
+		if player.move_manager.current_name == Move.LAY_ON_GROUND:
+			break
+	assert_eq(player.move_manager.current_name, Move.LAY_ON_GROUND, "test setup: did not land on the back")
+	return player
+
+func test_a_turn_still_spinning_at_touchdown_pays_the_landing() -> void:
+	# Turned late enough that the spin is not over when the feet arrive.
+	var player: Player = await _turned_drop(70)
+	assert_almost_eq(player.health.hp, 100.0 - player.config.landing.hard_landing_damage, 0.01,
+		"a hard landing taken mid-turn cost nothing")
+
+func test_a_hard_landing_on_the_back_flashes_red() -> void:
+	var player: Player = await _turned_drop(10)
+	var lying := player.move_manager.move_for(Move.LAY_ON_GROUND) as LayOnGroundMove
+	assert_gt(lying._tint.a, 0.0, "a hard landing on the back showed no red")
