@@ -40,9 +40,10 @@ func _init() -> void:
 	# facing a relative clamp is a rate limit and no clamp at all.
 	absolute_yaw_constraint = true
 	# [ME:CONFIRMED A1 TdMove_LayOnGround] Min/MaxLookConstraint yaw is
-	# +-5000 of 65536, 27.5 degrees. Its pitch floor (-2000, 11 degrees below
-	# level) is NOT carried over: pitch clamps here are absolute and unheased,
-	# so a view looking down at the landing would snap up on the frame the
-	# body hits the floor. See LandingConfig.
-	min_look_constraint = Vector3(-PI, -0.479, -PI)
+	# +-5000 of 65536, 27.5 degrees, and the pitch floor -2000, 11 degrees
+	# below level: looking further down from a body on its back is looking
+	# into it. A view that arrives already lower is eased up to the floor by
+	# CameraRig.apply_look(), not snapped. In first person only -- see
+	# LayOnGroundMove.third_person_frees_pitch().
+	min_look_constraint = Vector3(-deg_to_rad(11.0), -0.479, -PI)
 	max_look_constraint = Vector3(PI, 0.479, PI)

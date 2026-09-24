@@ -87,9 +87,22 @@ func exit() -> void:
 ## The eye goes down with the body and comes back up across the get-up.
 ## Written every tick for LandingMove's reason: Player.update_effects() leaves
 ## the crouch amount alone while this move is current.
+##
+## LIFTED CLEAR OF THE HEAD IN FIRST PERSON, as the death's eye is: the eye
+## rides the head bone, and a body on its back has its head on the floor.
+## Faded out across a view change, for DeathSequence's reason -- from outside
+## there is no head to be inside. See CameraConfig.lay_on_ground_eye_lift.
 func _drive_camera(down: float) -> void:
-	if player.camera_rig != null:
-		player.camera_rig.set_crouch_amount(down)
+	if player.camera_rig == null:
+		return
+	player.camera_rig.set_crouch_amount(down)
+	var inside: float = 1.0 - player.camera_rig.view_blend()
+	player.camera_rig.set_death_lift(config.camera.lay_on_ground_eye_lift * down * inside)
+
+## The pitch floor is the first-person eye's: from outside, it would only pin
+## the orbit below a body that is lying down to be looked at.
+func third_person_frees_pitch() -> bool:
+	return true
 
 ## Fades across the time the body may not yet get up: by then the blow is over.
 func _drive_tint(severity: float) -> void:

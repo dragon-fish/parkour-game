@@ -258,6 +258,9 @@ extends Resource
 ## whatever the body passes. A smaller number than death_eye_lift for the
 ## same reason, scaled to that smaller offset.
 @export var fall_uncontrolled_eye_lift: float = 0.15
+## The same, lying on the back (LayOnGroundMove), in metres. The death's own
+## figure: the body lies the same way, head on the floor.
+@export var lay_on_ground_eye_lift: float = 0.4
 ## How fast the eye catches up after the body was lifted over a low obstacle
 ## (see Player.try_step_up). Exponential, so this is a rate, not a duration:
 ## ~12 settles a 0.35 m step in roughly 0.15 s, which reads as a stride. Lower

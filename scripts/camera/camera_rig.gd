@@ -820,15 +820,16 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 	#
 	# Only that case. A player actively dragging the view down against a floor
 	# that has not moved is clamped hard, as always. What is being softened is
-	# the floor RISING out from under them, which happens when they look down
-	# from a one-handed hang and then turn back toward the wall; clamping there
-	# puts the view at level in a single frame.
+	# the floor RISING out from under them -- a one-handed hang turned back to
+	# the wall, or a move with a pitch floor taking over from one without (a
+	# back landing on a view that was looking down); clamping there puts the
+	# view at the floor in a single frame.
 	#
 	# Told apart by the PREVIOUS pitch rather than the requested one: if _pitch
 	# was already below the floor then the floor moved, whereas if only
 	# `wanted` is below it then the player is pulling.
 	var effective_floor: float = pitch_min
-	if _has_look_constraint and _look_pitch_relaxes and _pitch < floor_pitch and delta > 0.0:
+	if _has_look_constraint and _pitch < floor_pitch and delta > 0.0:
 		effective_floor = lerpf(_pitch, floor_pitch, \
 			clampf(_look_pitch_recover_speed * delta, 0.0, 1.0))
 	_pitch = clampf(wanted, effective_floor, pitch_max)
