@@ -15,7 +15,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# Same nudge as the two grounded take-off sites: a coyote jump is
 		# structurally the same take-off, just consumed a tick or two late,
 		# and a player cannot tell the two paths apart.
-		player.velocity += player.jump_add_velocity(input)
+		player.add_jump_nudge(input)
 		player.set_grounded(false)
 		return JUMP
 

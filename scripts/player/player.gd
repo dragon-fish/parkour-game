@@ -414,6 +414,9 @@ var speed_energy: SpeedEnergy
 ## input last tick", which is deliberately NOT a heading -- see
 ## _charge_turn().
 var _last_facing: Vector3 = Vector3.ZERO
+
+## The take-off nudge still being carried, or ZERO. See return_jump_nudge().
+var _carried_jump_nudge: Vector3 = Vector3.ZERO
 ## Whether last tick's move had MoveConfig.energy_decays, so the drain starts
 ## afresh on the tick one begins.
 var _energy_was_decaying: bool = false
@@ -1513,6 +1516,7 @@ func reset_state() -> void:
 	_speed_scale = statuses.speed_scale() if statuses != null else 1.0
 	_stagger_immunity = 0.0
 	_last_facing = Vector3.ZERO
+	_carried_jump_nudge = Vector3.ZERO
 	_energy_was_decaying = false
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
@@ -3551,6 +3555,14 @@ func _physics_process(delta: float) -> void:
 	body_tilt_normal = Vector3.UP
 	move_manager.physics_update(delta, input)
 
+	# A nudge belongs to the jump's own arc. Anything that takes the body off
+	# that arc -- a wall run, a grab -- lands later on a velocity of its own,
+	# and handing the old nudge back out of THAT would be taking what was
+	# never given. Only moves that settle a landing carry it.
+	var carrying = move_manager.move_for(move_manager.current_name)
+	if carrying == null or not carrying.has_method("settle_landing"):
+		_carried_jump_nudge = Vector3.ZERO
+
 	# After the moves run, so grounded and horizontal_speed() both read this
 	# tick's own result rather than last tick's.
 	_update_speed_energy(delta, input)
@@ -4461,6 +4473,30 @@ func travel_speed() -> float:
 ## original appears to ask is whether the player is asking to travel, and
 ## speed alone cannot distinguish a standing start from a body still sliding
 ## to a halt.
+## Adds the take-off nudge to the velocity and remembers it, so the landing can
+## hand it back -- see return_jump_nudge(). Every take-off site goes through
+## this rather than adding jump_add_velocity() itself, or that one's nudge is
+## never returned.
+func add_jump_nudge(input: MoveInput) -> void:
+	var nudge: Vector3 = jump_add_velocity(input)
+	velocity += nudge
+	_carried_jump_nudge = nudge
+
+## Takes the take-off nudge back out of the velocity on landing. [ME:INFERRED]
+## from play: a jump from 4 m/s travels at 5 and lands back at 4, with the
+## budget at 4 -- the nudge is the air's, never the run's. Without this a chain
+## of jumps banked a metre a second per hop and out-ran the ground curve.
+##
+## ALONG ITS OWN LINE AND NEVER PAST ZERO: air control may have spent some of
+## it already, and handing back more than is left would turn the body round.
+func return_jump_nudge() -> void:
+	if _carried_jump_nudge == Vector3.ZERO:
+		return
+	var line: Vector3 = _carried_jump_nudge.normalized()
+	var carried: float = Vector3(velocity.x, 0.0, velocity.z).dot(line)
+	velocity -= line * clampf(carried, 0.0, _carried_jump_nudge.length())
+	_carried_jump_nudge = Vector3.ZERO
+
 func jump_add_velocity(input: MoveInput) -> Vector3:
 	if input.move == Vector2.ZERO:
 		return Vector3.ZERO

@@ -77,7 +77,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		var next: StringName = JUMP
 		if dodge == Vector3.ZERO:
 			player.velocity.y = config.pawn.base_jump_z
-			player.velocity += player.jump_add_velocity(input)
+			player.add_jump_nudge(input)
 		else:
 			# The launch itself -- what it costs and why it costs that -- is
 			# Player.dodge_launch()'s.

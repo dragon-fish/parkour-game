@@ -89,7 +89,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# rather than being silently eaten.
 	if not blocked and player.consume_jump():
 		player.velocity.y = config.pawn.base_jump_z
-		player.velocity += player.jump_add_velocity(input)
+		player.add_jump_nudge(input)
 		player.move_and_slide()
 		player.set_grounded(player.is_on_floor())
 		# JUMP, not FALLING -- the same hand-off WalkingMove's own jump branch

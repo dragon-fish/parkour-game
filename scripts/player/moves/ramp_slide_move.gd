@@ -76,7 +76,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# body that is on a surface. The chute's own downhill speed rides along.
 	if player.consume_jump():
 		player.velocity.y = config.pawn.base_jump_z
-		player.velocity += player.jump_add_velocity(input)
+		player.add_jump_nudge(input)
 		player.set_grounded(false)
 		return JUMP
 

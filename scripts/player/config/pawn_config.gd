@@ -143,8 +143,8 @@ extends Resource
 ## the direction of travel -- whether the original adds or floors is not
 ## verified. Along the facing it was worse than unverified: a backward jump
 ## came out at 3 m/s with this subtracted, and a sideways one at 4.12 aimed
-## diagonally forwards, because the nudge pointed wherever the camera did. Wired into WalkingMove's and
-## SlideMove's jump branches via Player.jump_add_velocity().
+## diagonally forwards, because the nudge pointed wherever the camera did.
+## Handed back on landing -- see Player.return_jump_nudge().
 @export var jump_add_xy: float = 1.0
 ## No confirmed counterpart in the original (02 §2.4 searched and found
 ## none). Kept as a modern quality-of-life affordance.

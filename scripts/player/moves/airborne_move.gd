@@ -482,6 +482,9 @@ func landing_destination(fall_height: float, rolled: bool) -> StringName:
 ## tiers the ACCUMULATED FALL HEIGHT falls into -- never according to this
 ## frame's vertical speed. See Player.landing_keep_ratio().
 func _apply_landing_cost(fall_height: float, rolled: bool) -> void:
+	# Before anything reads the landing speed: the take-off nudge is not
+	# speed the body has earned.
+	player.return_jump_nudge()
 	var keep: float = player.landing_keep_ratio(fall_height, rolled)
 	player.velocity.x *= keep
 	player.velocity.z *= keep

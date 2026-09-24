@@ -285,3 +285,30 @@ func test_running_into_a_wall_empties_the_budget() -> void:
 	wall.queue_free()
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_a_jump_hands_its_nudge_back_on_landing() -> void:
+	# Jump from 4, travel at 5, land at 4 with a budget for 4: the take-off
+	# nudge is the air's. Kept, a chain of hops banked a metre a second each.
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(30)
+	var player: Player = world["player"]
+	world["input"].state.move = Vector2(0.0, 1.0)
+	for i in 30:
+		await step(1)
+	var speed_before: float = player.horizontal_speed()
+	var energy_before: float = player.speed_energy.energy
+	world["input"].press_jump()
+	await step(3)
+	assert_gt(player.horizontal_speed(), speed_before + 0.5, "test setup: the take-off added no nudge")
+	for i in 120:
+		await step(1)
+		if player.move_manager.current_name == Move.WALKING:
+			break
+	assert_eq(player.move_manager.current_name, Move.WALKING, "test setup: never landed")
+	# The touchdown tick is already running, and banks its own sixtieth.
+	assert_lt(player.speed_energy.energy, energy_before + 0.05, "the landing banked the take-off nudge")
+	assert_lt(player.horizontal_speed(), speed_before + 0.2, "the landing kept the take-off nudge")
+	TestWorld.teardown(world)
+	await step(1)
