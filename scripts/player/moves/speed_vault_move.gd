@@ -248,24 +248,14 @@ func enter(_previous: StringName) -> void:
 	_planned_apex_over_top = config.speed_vault.vault_onto_apex_above_top if is_onto 		else config.speed_vault.vault_over_apex_above_top
 	_landing = landing
 
-	# A VAULT MUST NOT BE SLOWER THAN JUST RUNNING THERE.
+	# THE VARIANT'S OWN TIME. [ME:CONFIRMED] each variant's duration is fixed
+	# (VaultTimeUp + Over + Down), and a vault shortened to the time the ground
+	# takes at a sprint read as the manoeuvre at double speed.
 	#
-	# [ME:CONFIRMED] The variant's own duration is confirmed (VaultTimeUp +
-	# Over + Down), but it is a fixed TIME, and it is paired in the original
-	# with the original's own fixed geometry. Applied to whatever distance
-	# this obstacle happens to need, it drags: cross 3 m in 0.65 s and a
-	# player who arrived at 7 m/s is visibly held back for the whole vault and
-	# then handed their speed back at the end -- worse once a vault OVER lands
-	# on the far side, since the distance grows while the fixed time does not.
-	#
-	# Same lesson IntoGrabMove learned: a manoeuvre that covers ground should
-	# take the time the ground takes, and the duration falls out of the geometry
-	# rather than being declared.
-	#
-	# The confirmed figure stays the CEILING, so a slow approach still gets the
-	# original's own timing. Floored at half of it so a fast one is brisk rather
-	# than instantaneous -- there is a manoeuvre happening, and it has to be
-	# visible.
+	# The shortening is kept as a dial, SpeedVaultConfig.duration_floor_pct,
+	# off at 1: the time the ground takes, never above the variant's time nor
+	# below that share of it. What it was for -- a vault landing far off, held
+	# at a fixed time, drags the run -- is real, and is the dial to reach for.
 	var carried: float = maxf(horizontal.length(), 0.5)
 	var by_travel: float = player.global_position.distance_to(landing) / carried
 	_arc_duration = clampf(by_travel,

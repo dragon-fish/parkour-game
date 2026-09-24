@@ -398,4 +398,11 @@ func should_commit(distance: float, speed_xy: float, variant: Dictionary) -> boo
 ## GrabConfig.mantle_path_ease.
 @export var vault_path_ease: float = 1.0
 
-@export var duration_floor_pct: float = 0.7
+## How far a fast approach may shorten a vault, as a share of the variant's
+## own duration: 1 keeps every vault at its confirmed time, 0.7 lets one taken
+## at a sprint finish in 70% of it. See SpeedVaultMove.enter().
+##
+## 1, and the original is why. [ME:CONFIRMED 05 §5.7] each variant's duration
+## is a fixed time. At 0.7 a sprinting vault_over took 0.455 s against the
+## original's 0.65 and read as the whole manoeuvre played at double speed.
+@export var duration_floor_pct: float = 1.0

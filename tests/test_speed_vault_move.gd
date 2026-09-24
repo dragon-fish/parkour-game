@@ -106,11 +106,11 @@ func test_the_bonus_evaporates_at_the_speed_cap() -> void:
 
 # --- the duration comes from the geometry ------------------------------------
 
-func test_a_vault_never_takes_longer_than_running_the_same_distance() -> void:
-	# [ME:CONFIRMED] The variant's duration is a fixed TIME, paired in the
-	# original with the original's own fixed geometry. Applied to whatever
-	# distance an obstacle happens to need, it drags -- landing a vault OVER on
-	# the far side makes the distance longer without touching the time.
+func test_the_duration_dial_lets_a_fast_vault_take_the_time_the_ground_takes() -> void:
+	# SpeedVaultConfig.duration_floor_pct ships at 1 -- every vault at its
+	# confirmed time -- and this is the dial it leaves. Turned down, a vault
+	# landing far off takes the time the ground takes instead of dragging the
+	# run through a fixed one.
 	#
 	# MEASURED AS A RATE RATHER THAN A DURATION, because rate is what reads as
 	# slow: the body visibly held back and then handed its speed back.
@@ -121,6 +121,7 @@ func test_a_vault_never_takes_longer_than_running_the_same_distance() -> void:
 	await step(30)
 
 	var player: Player = world["player"]
+	player.config.speed_vault.duration_floor_pct = 0.5
 	const ENTRY := 6.0
 	player.velocity = Vector3(0.0, 0.0, -ENTRY)
 	var hit: Dictionary = player.probes.vault_query()
