@@ -149,47 +149,23 @@ func test_the_dodge_carries_the_view_swing_rather_than_following_it() -> void:
 
 # --- the cost ------------------------------------------------------------------
 
-func test_a_dodge_drops_the_budget_to_base_velocity() -> void:
+func test_a_dodge_does_not_spend_speed_energy() -> void:
+	# The banked energy is what the run rebuilds against, and billing it here
+	# would drag the landing back down to base velocity -- which is precisely
+	# the speed the side-jump boost exists to keep. The sag a run-entered dodge
+	# really does show belongs to the velocity being turned, not to a ceiling
+	# this move lowered.
 	var player: Player = await _running()
-	assert_gt(player.speed_energy.energy, player.speed_energy.base_floor() + 1.0,
+	var banked: float = player.speed_energy.energy
+	assert_gt(banked, player.speed_energy.base_floor(),
 		"test setup: the run banked no energy to spend")
+
 	_world["input"].hold_move(1.0, 1.0)
 	_world["input"].press_jump()
 	await step(2)
 	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
-	assert_almost_eq(player.speed_energy.energy, player.speed_energy.base_floor(), 0.001,
-		"the dodge left the banked budget above base velocity")
-
-## Dodges right out of a run and lands; `face_the_dodge` swings the view onto
-## the dodge's line in mid-air first. Returns the budget on touchdown.
-func _dodge_and_land(face_the_dodge: bool) -> float:
-	var player: Player = await _running()
-	_world["input"].hold_move(1.0, 1.0)
-	_world["input"].press_jump()
-	await step(2)
-	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
-	if face_the_dodge:
-		player.rotation.y -= PI * 0.5  # right is +basis.x; facing it is a quarter turn clockwise
-	_world["input"].hold_move(0.0, 1.0)
-	for i in 120:
-		await step(1)
-		if player.move_manager.current_name == Move.WALKING:
-			break
-	assert_eq(player.move_manager.current_name, Move.WALKING, "test setup: never landed")
-	return player.speed_energy.energy
-
-func test_a_dodge_landed_sideways_keeps_nothing_of_the_boost() -> void:
-	var energy: float = await _dodge_and_land(false)
-	# The touchdown tick is already running, and banks its own sixtieth.
-	assert_lt(energy, _world["player"].speed_energy.base_floor() + 0.1,
-		"a dodge landed across the facing credited its sideways speed to the run")
-
-func test_the_dodge_glitch_keeps_the_boost() -> void:
-	# The pair with the test above: the same dodge, the view swung onto its
-	# line before touchdown, lands INSIDE the forward arc and is credited.
-	var energy: float = await _dodge_and_land(true)
-	assert_gt(energy, _world["player"].speed_energy.base_floor() + 1.0,
-		"a dodge landed facing its own line did not keep the boost")
+	assert_almost_eq(player.speed_energy.energy, banked, 0.001,
+		"the dodge billed the banked speed energy")
 
 func test_a_dodge_from_a_standstill_leaves_at_the_impulse() -> void:
 	# With nothing to conserve, inertia_conservation has nothing to scale and

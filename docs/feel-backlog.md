@@ -2635,11 +2635,8 @@ var spine_pitch := _pitch / pitch_limit * share_at_limit
 1. `StrafeThreshold = 0.99` 量的是**未归一化的输入轴**，所以斜向的 W+A 也触发，不是只有纯 A/D。
 2. 水平动量**不是清零**，而是按 `InertiaConservation = 0.3` 保留——站定 dodge 恰好等于
    冲量本身，是唯一分辨不出这两种读法的入场条件，也正是它骗过人的地方。
-3. dodge **起跳时把能量压到 base velocity**，落地只把**前方弧内**的速度记回预算
-   （`Player.dodge_launch()`、`AirborneMove._apply_landing_cost()`）。按住 W 的普通 dodge
-   落地时速度在弧外，从约 15 km/h 重新加速；转头对准再落地（dodge glitch）在弧内，落地即回升。
-   这推翻了此前"dodge 不扣速度能量"的读法——那四次 glitch 实测正是弧内落地的情况。
-   ⚠️ 未对上：04 §4.5 实测普通 dodge 后 16.04 → 25.58 km/h 约 2 s，本项目从 base 爬回要约 6 s。
+3. dodge **不扣速度能量**。全速 dodge 之后掉到 16 km/h 是速度矢量被 W 掰回来的损失，
+   不是天花板被压低；转头对准再落地的四次全部落地即回升。
 
 ### SpringBoard（踩踏跳）→ [05 §5.3](mirrors-edge-deep-research/05-动作库总览.md#53-springboard踩踏跳)
 
