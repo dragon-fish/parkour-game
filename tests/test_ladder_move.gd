@@ -922,3 +922,14 @@ func test_a_ladder_spends_the_run() -> void:
 	player.speed_energy.energy = 7.0
 	await step(90)  # the bleed's ten half-lives
 	assert_lt(player.speed_energy.energy, 0.05, "the run's budget survived the ladder")
+
+func test_q_on_the_rungs_flicks_the_view_round() -> void:
+	# Q where the body cannot turn is a flick of the mouse: half a turn
+	# clockwise in CameraConfig.q_flick_time, stopped by the fan's edge.
+	var player: Player = await _climbing_player()
+	await step(40)  # past the catch
+	(_world["input"] as ScriptedInputSource).press_turn()
+	await step(int(player.config.camera.q_flick_time * 60.0) + 4)
+	assert_eq(player.move_manager.current_name, Move.LADDER, "Q let go of the ladder")
+	assert_almost_eq(float(player.camera_rig.look_debug()["relative_yaw"]),
+		player.config.ladder.min_look_constraint.y, 0.05, "Q did not flick the view round to the fan's edge")

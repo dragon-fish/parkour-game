@@ -285,6 +285,11 @@ func look_yaw_half_span() -> float:
 		return deg_to_rad(cfg.climb_look_yaw_deg)
 	return NAN
 
+## Q flicks the view only once on the rungs and in charge: not during the
+## catch's pull-in, a hard catch's lockout, or the carry off the top.
+func can_flick_view() -> bool:
+	return super.can_flick_view() and _fan_centred and not _top_exiting and _catch.left <= 0.0
+
 ## How far the view has turned off the rungs, radians: 0 facing them, PI with
 ## the back to them. The body's yaw IS the view's here -- the absolute-yaw
 ## clamp rebuilds it every tick from the fan -- and _target_yaw is the facing

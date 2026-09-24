@@ -226,6 +226,12 @@ func redo_cooldown() -> float:
 func look_yaw_half_span() -> float:
 	return NAN
 
+## Whether Q swings the view half a turn this tick. See
+## MoveConfig.q_flicks_view; a move overrides this to refuse it while a script
+## owns the body.
+func can_flick_view() -> bool:
+	return cfg != null and cfg.q_flicks_view
+
 ## Whether the PITCH half of the look clamp is dropped this tick while the
 ## camera is in third person; the yaw half still applies. Asked beside
 ## look_yaw_half_span(), for a phase whose pitch limit is about the

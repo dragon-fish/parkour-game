@@ -382,6 +382,9 @@ func _init() -> void:
 	fall_counts_from_exit = true
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: hanging. Which way you face is the wall's business.
+	# But the look is nearly free, so Q flicks it round. See
+	# MoveConfig.q_flicks_view.
+	q_flicks_view = true
 	# ✅ HangFreeMinLookContraint / HangFreeMaxLookContraint, at 65536 units =
 	# 360 degrees:
 	#

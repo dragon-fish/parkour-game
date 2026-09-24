@@ -147,6 +147,11 @@ func look_yaw_half_span() -> float:
 func third_person_frees_pitch() -> bool:
 	return _mantling
 
+## Q flicks the view only while hanging still: the pull-up, a corner and a
+## hard catch's lockout are the script's.
+func can_flick_view() -> bool:
+	return super.can_flick_view() and not _mantling and not _cornering and _catch.left <= 0.0
+
 ## Whether the pull-up under way ends somewhere too low to stand. Read from
 ## outside by CharacterAnimator, the same way is_mantling() is.
 func is_climbing_low() -> bool:

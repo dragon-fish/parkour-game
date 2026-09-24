@@ -246,6 +246,13 @@ extends Resource
 ## single consumer would be a mechanism rather than a fact.
 @export var allows_turn: bool = true
 
+## Whether Q, refused as a turn here (allows_turn false), swings the VIEW half
+## a turn instead -- a flick of the mouse, the fan still in force. For a move
+## whose body cannot turn but whose look is nearly free: hanging from a ledge,
+## on a ladder. Asked through Move.can_flick_view(), which a move overrides to
+## refuse it while a script owns the body.
+@export var q_flicks_view: bool = false
+
 ## Whether the yaw fan above is stated for a wall on the LEFT and should be
 ## mirrored when the wall is on the right.
 ##

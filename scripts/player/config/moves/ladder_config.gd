@@ -27,6 +27,9 @@ func _init() -> void:
 	redo_move_time = 0.0
 	# BOTH HANDS ON THE RUNGS, same as the cable and the bar.
 	allows_turn = false
+	# The look is nearly free, so Q flicks it round. See
+	# MoveConfig.q_flicks_view.
+	q_flicks_view = true
 	# The hang's yaw fence: +-170 off the rungs, never a full circle either
 	# way. Absolute, so it is measured against the ladder rather than the
 	# facing -- LineMove._centre_fan() centres it once the catch lands. Pitch

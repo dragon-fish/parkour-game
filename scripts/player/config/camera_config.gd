@@ -351,6 +351,14 @@ extends Resource
 ## stopwatch again -- a felt guess consistently undershoots the timed one.
 @export var look_sweep_speed: float = 7.85
 
+## How long Q takes to swing the view half a turn where Q is simply a flick of
+## the mouse, seconds -- see CameraRig.flick_half_turn(). Clockwise, as every
+## Q turn is.
+##
+## [ME:INFERRED] from play: Q wherever the yaw is free and nothing scripted
+## owns the body is the same as flicking the mouse 180 degrees in about this.
+@export var q_flick_time: float = 0.3
+
 ## How fast the yaw fan's edge is eased in to meet a view that is already
 ## outside it, in radians per second.
 ##

@@ -25,6 +25,10 @@ var _omega: float = 0.0
 var _last_pump: float = 0.0
 ## Seconds of exit-jump grace left after the window was last properly open.
 var _window_grace: float = 0.0
+## Q's turn round on the bar -- see _begin_turn().
+var _turn: HalfTurn = HalfTurn.new()
+var _turning: bool = false
+var _turn_elapsed: float = 0.0
 
 func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
@@ -69,6 +73,7 @@ func enter(_previous: StringName) -> void:
 	_target_yaw = atan2(-_forward.x, -_forward.z)
 	_fan_centred = false
 	_window_grace = 0.0
+	_turning = false
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted or not is_instance_valid(_line):
@@ -78,6 +83,15 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# landing charges for starts where the hands let go (same rule the
 	# zipline settled).
 	player.fall_tracker.reset(player.global_position.y)
+
+	# Q TURNS THE BODY ROUND ON THE BAR -- a slow, committed manoeuvre, so the
+	# jump and the pump wait for it. Letting go (crouch) does not.
+	if _turning:
+		_advance_turn(delta)
+		input = _without_swing_keys(input)
+	elif input.turn_pressed and _fan_centred and swing_bottom_speed() < cfg.turn_max_swing_speed:
+		_begin_turn()
+		input = _without_swing_keys(input)
 
 	# THE EXIT JUMP -- lenient and fixed-angle, ✅ the owner's ME measurement:
 	# "只要摇晃的角速度超过一定值（很宽松）并且身体是往前摆时，就能跳出去并且
@@ -160,7 +174,38 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.camera_rig.extra_eye_lift = lean * cfg.eye_lift_lean
 	return KEEP
 
+## Q on the bar. [ME:INFERRED] from play: allowed only once the swing has all
+## but stopped (SwingConfig.turn_max_swing_speed), and slow (turn_time). Clockwise,
+## half a turn, like every Q -- see HalfTurn.
+func _begin_turn() -> void:
+	_turning = true
+	_turn_elapsed = 0.0
+	_turn.begin(player.rotation.y)
+
+func _advance_turn(delta: float) -> void:
+	_turn_elapsed += delta
+	_turn.advance(player, _turn_elapsed / maxf(cfg.turn_time, 0.001))
+	if _turn_elapsed < cfg.turn_time:
+		return
+	_turning = false
+	# THE SWING PLANE TURNS WITH THE BODY. Forward, angle and angular velocity
+	# all change sign together, which describes the very same position and
+	# motion in the flipped frame -- so nothing jumps, and from here W pumps,
+	# and the exit jump leaves, the way the body now faces.
+	_forward = -_forward
+	_theta = -_theta
+	_omega = -_omega
+
+## The keys a turn on the bar holds off: the pump and the exit jump. The rest
+## (crouch, to let go) passes through.
+func _without_swing_keys(input: MoveInput) -> MoveInput:
+	var held := input.copy()
+	held.move = Vector2.ZERO
+	held.jump_pressed = false
+	return held
+
 func exit() -> void:
+	_turning = false
 	player.set_swing_pitch_target(0.0)
 	# The eye offsets are NOT zeroed here: the body stands back up on an
 	# ease after letting go, and an eye snapped home while the chest is
@@ -178,6 +223,14 @@ func swing_omega() -> float:
 
 func tangential_speed() -> float:
 	return _omega * cfg.pendulum_length
+
+## How fast this swing would pass the bottom of its arc, m/s: its speed now
+## plus what the height it has climbed gives back, by energy. Unlike the
+## angular velocity it holds steady across a swing.
+func swing_bottom_speed() -> float:
+	var v: float = tangential_speed()
+	var rise: float = cfg.pendulum_length * (1.0 - cos(_theta))
+	return sqrt(v * v + 2.0 * config.pawn.gravity * rise)
 
 func swing_forward() -> Vector3:
 	return _forward

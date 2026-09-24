@@ -18,6 +18,20 @@ func _init() -> void:
 	# decision the zipline's own measurement forced.
 	redo_move_time = 0.0
 
+## Q turns the body round on the bar, but only once the swing has all but
+## stopped: while the speed it would pass the bottom at is below this, m/s. See
+## SwingMove.swing_bottom_speed().
+##
+## THE SWING'S WHOLE ENERGY, NOT THIS TICK'S ANGULAR VELOCITY. That one passes
+## through zero at every apex, so a gate on it opened for a moment at the top
+## of every swing, however big.
+##
+## [ME:INFERRED] from play that the gate exists; the value is a guess to tune.
+@export var turn_max_swing_speed: float = 0.6
+## How long the turn round on the bar takes, seconds.
+## [ME:INFERRED] from play: about two seconds.
+@export var turn_time: float = 2.0
+
 ## [ME:CONFIRMED 05 §5.4, §5.5b.1] SwingPendulumLength = 120 uu.
 ## [ME:DERIVED] quarter-period = (2*PI*sqrt(pendulum_length / gravity)) / 4 =
 ## 0.43 s at gravity 16.0 -- why a first forward swing already reaches full

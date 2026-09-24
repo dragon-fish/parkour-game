@@ -333,3 +333,32 @@ func test_the_apex_grace_lets_a_zero_speed_jump_out() -> void:
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.FALLING,
 		"the apex-grace jump never fired")
+
+# --- Q on the bar -------------------------------------------------------------
+
+func test_q_on_a_settled_swing_turns_the_body_and_the_swing_round() -> void:
+	var player: Player = await _swinging_player()
+	var move := player.move_manager.move_for(Move.SWING) as SwingMove
+	# Let it settle below the turn's gate.
+	for i in 600:
+		await step(1)
+		if move.swing_bottom_speed() < player.config.swing.turn_max_swing_speed * 0.5:
+			break
+	var facing: float = player.rotation.y
+	var forward: Vector3 = move.swing_forward()
+	(_world["input"] as ScriptedInputSource).press_turn()
+	await step(int(player.config.swing.turn_time * 60.0) + 5)
+	assert_eq(player.move_manager.current_name, Move.SWING, "the turn let go of the bar")
+	assert_almost_eq(absf(wrapf(player.rotation.y - facing, -PI, PI)), PI, 0.05, "the body did not come round")
+	assert_almost_eq(move.swing_forward().dot(forward), -1.0, 0.001, "the swing did not turn with the body")
+
+func test_q_on_a_moving_swing_does_nothing() -> void:
+	var player: Player = await _swinging_player()
+	var move := player.move_manager.move_for(Move.SWING) as SwingMove
+	await step(30)  # past the catch's own turn onto the bar
+	await _pump_until_window(player, move)
+	assert_gt(move.swing_bottom_speed(), player.config.swing.turn_max_swing_speed, "test setup: the swing is not moving")
+	var facing: float = player.rotation.y
+	(_world["input"] as ScriptedInputSource).press_turn()
+	await step(30)
+	assert_almost_eq(wrapf(player.rotation.y - facing, -PI, PI), 0.0, 0.05, "Q turned a swing still moving")

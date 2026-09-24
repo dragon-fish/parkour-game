@@ -335,3 +335,18 @@ func test_a_second_crouch_press_after_the_drop_still_buys_a_roll() -> void:
 			saw_roll = true
 			break
 	assert_true(saw_roll, "a second, later press did not buy a roll")
+
+func test_q_on_a_hang_flicks_the_view_round_and_space_leaves() -> void:
+	# Q where the body cannot turn is a flick of the mouse: half a turn
+	# clockwise, stopped by the fan's edge -- which turns the view far enough
+	# for space to be the jump off rather than the pull-up.
+	var player: Player = await _hanging_player(0.0)
+	var input: ScriptedInputSource = _world["input"]
+	input.press_turn()
+	await step(int(player.config.camera.q_flick_time * 60.0) + 4)
+	assert_eq(player.move_manager.current_name, Move.GRAB, "Q let go of the ledge")
+	assert_almost_eq(float(player.camera_rig.look_debug()["relative_yaw"]),
+		player.config.grab.min_look_constraint.y, 0.05, "Q did not flick the view round to the fan's edge")
+	input.press_jump()
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.FALLING, "space after Q did not jump off the ledge")

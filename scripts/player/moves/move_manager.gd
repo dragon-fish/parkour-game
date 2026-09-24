@@ -445,14 +445,20 @@ func _push_look_constraint() -> void:
 func _turn_requested(input: MoveInput) -> StringName:
 	if not input.turn_pressed or current_name == Move.TURN_180 or current_name == Move.TURN_180_IN_AIR:
 		return Move.KEEP
+	var active: MoveConfig = _current.current_config()
+	if active == null or not active.allows_turn:
+		# Where the body cannot turn, Q may still swing the view -- see
+		# MoveConfig.q_flicks_view. No transition either way, and so no turn's
+		# cooldown to wait out.
+		if _current.can_flick_view() and player != null and player.camera_rig != null:
+			player.camera_rig.flick_half_turn()
+		return Move.KEEP
 	# A flight off no wall turns as a passenger -- see Turn180InAirMove. With
 	# a wall to turn on, a climb's or a jump's alike, it is Turn180's wall turn.
 	var turn: StringName = Move.TURN_180
-	if _current is AirborneMove and player != null and not player.grounded 			and Turn180Move.find_wall(player)["normal"] == Vector3.ZERO:
+	var flying: bool = _current is AirborneMove and player != null and not player.grounded
+	if flying and Turn180Move.find_wall(player)["normal"] == Vector3.ZERO:
 		turn = Move.TURN_180_IN_AIR
 	if not _moves.has(turn) or not can_enter(turn):
-		return Move.KEEP
-	var active: MoveConfig = _current.current_config()
-	if active == null or not active.allows_turn:
 		return Move.KEEP
 	return turn

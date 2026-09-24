@@ -1235,17 +1235,30 @@ func _shake_offset(delta: float) -> Vector3:
 ## Target for _look_relative_yaw while a sweep is running, and whether one is.
 var _sweep_to: float = 0.0
 var _sweeping: bool = false
+## Radians per second this sweep crosses at. See sweep_look_to().
+var _sweep_speed: float = 0.0
 
 ## Starts carrying the view to `relative_yaw`, measured in the same frame as
 ## _look_relative_yaw: radians from the fan's own centre.
 ##
 ## Silently does nothing with no constraint in force. A sweep is expressed in a
 ## fan's coordinates, and without a fan there is no target to name.
-func sweep_look_to(relative_yaw: float) -> void:
+##
+## `speed` in radians per second; CameraConfig.look_sweep_speed when not given.
+func sweep_look_to(relative_yaw: float, speed: float = -1.0) -> void:
 	if not _has_look_constraint:
 		return
 	_sweep_to = clampf(relative_yaw, _look_min.y, _look_max.y)
+	_sweep_speed = speed if speed > 0.0 else _config.camera.look_sweep_speed
 	_sweeping = true
+
+## Q where Q is a mouse flick: the view carried half a turn clockwise at
+## CameraConfig.q_flick_time's pace, stopping at the fan's edge as a hand
+## would. Asked by MoveManager for a move that says so (Move.can_flick_view()).
+func flick_half_turn() -> void:
+	if not _has_look_constraint or _config == null:
+		return
+	sweep_look_to(_look_relative_yaw - PI, PI / maxf(_config.camera.q_flick_time, 0.001))
 
 func is_sweeping() -> bool:
 	return _sweeping
@@ -1272,7 +1285,7 @@ func _advance_look_sweep(mouse_yaw_delta: float, delta: float) -> float:
 		_sweeping = false
 		return 0.0
 	var remaining: float = _sweep_to - _look_relative_yaw
-	var step: float = _config.camera.look_sweep_speed * delta
+	var step: float = _sweep_speed * delta
 	if absf(remaining) <= step or delta <= 0.0:
 		_sweeping = false
 		return remaining
