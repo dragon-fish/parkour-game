@@ -377,6 +377,9 @@ func _init() -> void:
 	# The mantle/corner-shimmy path is a scripted world-space curve. See
 	# MoveConfig.holds_world_path.
 	holds_world_path = true
+	# Climbed over or let go, the fall counts from here. See
+	# MoveConfig.fall_counts_from_exit.
+	fall_counts_from_exit = true
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: hanging. Which way you face is the wall's business.
 	# ✅ HangFreeMinLookContraint / HangFreeMaxLookContraint, at 65536 units =

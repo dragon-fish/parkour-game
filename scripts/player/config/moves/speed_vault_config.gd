@@ -9,6 +9,9 @@ func _init() -> void:
 	# A clean vault costs next to nothing, a slow one a lot. See
 	# MoveConfig.energy_decays.
 	energy_decays = true
+	# The drop behind the obstacle counts from its top. See
+	# MoveConfig.fall_counts_from_exit.
+	fall_counts_from_exit = true
 
 # The Godot counterpart of the original's TdMove_SpeedVault.
 

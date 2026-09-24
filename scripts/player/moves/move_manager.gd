@@ -286,8 +286,12 @@ func physics_update(delta: float, input: MoveInput) -> void:
 		_push_look_constraint()
 		return
 	var from := current_name
+	var leaving: MoveConfig = _current.current_config()
 	_current.exit()
 	_arm_cooldown(from, _current)
+	# See MoveConfig.fall_counts_from_exit.
+	if player != null and leaving != null and leaving.fall_counts_from_exit:
+		player.fall_tracker.reset(player.global_position.y)
 	_current = _moves[next]
 	current_name = next
 	_arm_declaration_check()

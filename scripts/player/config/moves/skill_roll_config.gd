@@ -22,6 +22,8 @@ extends MoveConfig
 func _init() -> void:
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: mid-roll.
+	# A roll spends the fall it landed. See MoveConfig.fall_counts_from_exit.
+	fall_counts_from_exit = true
 	# ✅ MinLookConstraint / MaxLookConstraint, at 65536 units = 360 degrees:
 	# pitch -11.0 .. +180, yaw +-27.5, roll unconstrained. The lopsided pitch
 	# is the roll itself -- the view is allowed to sweep all the way up and

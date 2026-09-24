@@ -294,15 +294,16 @@ func test_forward_and_jump_together_jumps_rather_than_climbs() -> void:
 
 func test_the_drop_press_does_not_also_buy_a_roll_at_the_landing() -> void:
 	var player: Player = await _hanging_player(0.0)
-	# Same synthetic-launch trick test_skill_roll.gd's _land_from() uses: the
-	# fixture's flat floor otherwise lands the body back at the exact height
-	# FallTracker last zeroed at, which never clears the roll threshold and
-	# would hide the bug regardless of whether it is fixed.
-	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
 	var input: ScriptedInputSource = _world["input"]
 	input.press_crouch()  # the one press: drops off the ledge
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.FALLING, "test setup: crouch did not drop from the hang")
+	# Same synthetic-launch trick test_skill_roll.gd's _land_from() uses: the
+	# fixture's floor is too close to clear the roll threshold, which would
+	# hide the bug regardless of whether it is fixed. Set AFTER the drop: the
+	# hang hands the counter a fresh start on the way out
+	# (MoveConfig.fall_counts_from_exit).
+	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
 	input.release_crouch()
 	var saw_roll := false
 	for i in 120:
@@ -319,12 +320,12 @@ func test_a_second_crouch_press_after_the_drop_still_buys_a_roll() -> void:
 	# falling, is its own action and must still buy one. Mirrors
 	# test_zipline_move.gd's test_a_second_later_press_still_buys_a_roll.
 	var player: Player = await _hanging_player(0.0)
-	# Same synthetic-launch trick as the test above.
-	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
 	var input: ScriptedInputSource = _world["input"]
 	input.press_crouch()  # press #1: drops off the ledge
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.FALLING, "test setup: crouch did not drop from the hang")
+	# Same synthetic-launch trick as the test above, and after the drop too.
+	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
 	input.release_crouch()
 	input.press_crouch()  # press #2: a new press, while already airborne
 	var saw_roll := false

@@ -156,6 +156,9 @@ func _init() -> void:
 	# bounded by JumpOffZHeight.
 	redo_move_time = 0.15
 	friction_modifier = 0.05
+	# A kick off the wall counts its fall from where it left the wall. See
+	# MoveConfig.fall_counts_from_exit.
+	fall_counts_from_exit = true
 	# Source: 04 §4.1 `MinLookConstraint = (-13000, -16384, -32768)` /
 	# `MaxLookConstraint` mirrored, at 65536 = 360 degrees -> pitch +-71.4,
 	# yaw +-90. ✅ With bUseAbsoluteYawConstraint = True. This is where "the

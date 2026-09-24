@@ -38,6 +38,9 @@ func _init() -> void:
 	# The longer the kick up the wall, the more pace it costs. See
 	# MoveConfig.energy_decays.
 	energy_decays = true
+	# A kick or a fall off the wall counts from where it left. See
+	# MoveConfig.fall_counts_from_exit.
+	fall_counts_from_exit = true
 
 @export_group("Entry")
 

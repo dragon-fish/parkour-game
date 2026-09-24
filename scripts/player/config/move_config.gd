@@ -72,6 +72,22 @@ extends Resource
 ## the world goes by and not about how.
 @export var footfall_bob: bool = true
 
+## Whether the fall-height counter (FallTracker) starts afresh where this move
+## leaves the body. Applied by MoveManager on the way out, so no move can
+## forget it.
+##
+## [ME:INFERRED] from play: a pull-up, a vault or a wall climb ends with the
+## body somewhere the take-off never was, and a kick off a wall counts its fall
+## from the wall. Left counting from the take-off, a climb out of a long drop
+## charged that drop again at the next touchdown, and a vault taken off low
+## ground under-counted the drop behind it.
+##
+## ON EXIT, NOT ON ENTRY: arriving still reads the whole fall -- a hard catch
+## and an uncontrolled reach both judge it. DO NOT set it on IntoGrab, whose
+## failed reach is still the same fall, nor on Turn180, whose mid-air turn
+## would wipe a fall with a key press.
+@export var fall_counts_from_exit: bool = false
+
 ## Whether the speed budget falls with the body's actual speed while this move
 ## runs. A released key brakes the budget down with the body, a wall run into
 ## empties it: speed lost to a mistake is run for again from wherever it fell
