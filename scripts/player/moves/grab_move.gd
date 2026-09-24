@@ -139,6 +139,12 @@ func look_yaw_half_span() -> float:
 		return deg_to_rad(config.grab.pull_up_angle_deg)
 	return NAN
 
+## The pull-up's pitch floor is the hang's: a first-person eye has nothing to
+## look at below the lip. Seen from outside it only pins the orbit below the
+## body, so the camera cannot rise to watch the climb from above.
+func third_person_frees_pitch() -> bool:
+	return _mantling
+
 ## Whether the pull-up under way ends somewhere too low to stand. Read from
 ## outside by CharacterAnimator, the same way is_mantling() is.
 func is_climbing_low() -> bool:

@@ -224,3 +224,11 @@ func redo_cooldown() -> float:
 ## not the one being looked through.
 func look_yaw_half_span() -> float:
 	return NAN
+
+## Whether the PITCH half of the look clamp is dropped this tick while the
+## camera is in third person; the yaw half still applies. Asked beside
+## look_yaw_half_span(), for a phase whose pitch limit is about the
+## first-person eye and would only stop the orbit rising over the body.
+## MoveConfig.third_person_frees_look is the whole-move, both-halves version.
+func third_person_frees_pitch() -> bool:
+	return false
