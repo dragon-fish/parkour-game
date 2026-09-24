@@ -1465,7 +1465,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	# snap shorter than the step cannot catch it -- which is Walking/Falling
 	# flickering the whole way down a staircase. Anything taller than a step is
 	# a real drop and must be allowed to fall.
-	floor_snap_length = config.pawn.max_step_height
+	floor_snap_length = config.pawn.max_step_down_height
 
 	_build_moves()
 
@@ -4281,7 +4281,7 @@ func try_step_down() -> bool:
 	# move reads, and it is a DECLARATION rather than a query for exactly this
 	# kind of reason.
 	var landing := KinematicCollision3D.new()
-	if not test_move(global_transform, Vector3.DOWN * config.pawn.max_step_height, landing):
+	if not test_move(global_transform, Vector3.DOWN * config.pawn.max_step_down_height, landing):
 		return false                      # nothing within a step below: a real fall
 	global_position += landing.get_travel()
 	return true

@@ -96,13 +96,26 @@ extends Resource
 ## [ME:CONFIRMED 02 §2.3] CrouchedPct = 0.4. Also lives as CrouchConfig's own
 ## speed_modifier; kept here too because the original declares it Pawn-wide.
 @export var crouched_pct: float = 0.4
-## [ME:CONFIRMED 02 §2.3] MaxStepHeight = 35 uu. Read by Player.try_step_up().
+## The tallest rise the body walks straight up without a vault, metres. Read by
+## Player.try_step_up(), and by Probes.vault_query() as the floor under which
+## nothing is vaulted.
+##
+## [ME:CONFIRMED] measured in the original at 0.4 m, which is NOT the CDO's
+## MaxStepHeight = 35 uu [02 §2.3] -- that one is the way DOWN, see
+## max_step_down_height. DO NOT fold the two back into one number.
 ##
 ## Godot's move_and_slide() does not provide step-up on its own --
 ## floor_snap_length only keeps a body attached on the way DOWN -- so this is
 ## read explicitly. Skipping that read left ankle-high clutter (a 5 cm plank)
 ## stopping a run dead.
-@export var max_step_height: float = 0.35
+@export var max_step_height: float = 0.4
+## The deepest drop the body stays on its feet over rather than falling,
+## metres. Read by Player.try_step_down() and as CharacterBody3D's
+## floor_snap_length.
+##
+## [ME:CONFIRMED 02 §2.3] MaxStepHeight = 35 uu, and measured in the original
+## at 0.35 m on the way down.
+@export var max_step_down_height: float = 0.35
 ## PROJECT-ADDED, no counterpart in the original -- it exists because
 ## try_step_up() is this project's own answer to Godot having no built-in
 ## step-up. The probe raises the body IN PLACE and leaves move_and_slide() to
