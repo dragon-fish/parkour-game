@@ -132,6 +132,10 @@ static func front_side_allows(line: InterestLine, body_pos: Vector3, back_slack:
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted or not is_instance_valid(_line):
 		return FALLING
+	# [ME:INFERRED] from play: a ladder counts as the run stopping dead. The
+	# budget bleeds to nothing on the same curve every other loss uses, so a
+	# catch let go of at once keeps a little and a climb keeps none.
+	player.follow_speed(0.0, delta)
 	if _top_exiting:
 		if _top_exit.advance(delta):
 			_top_exiting = false

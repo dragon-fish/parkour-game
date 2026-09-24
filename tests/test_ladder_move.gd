@@ -916,3 +916,9 @@ func test_a_climb_inside_the_assist_angle_walks_the_view_back() -> void:
 	var turned: float = absf(float(player.camera_rig.look_debug()["relative_yaw"]))
 	assert_lte(turned, deg_to_rad(player.config.ladder.climb_look_yaw_deg) + 0.01, \
 		"a held climb left the view outside the climb fan")
+
+func test_a_ladder_spends_the_run() -> void:
+	var player: Player = await _climbing_player()
+	player.speed_energy.energy = 7.0
+	await step(90)  # the bleed's ten half-lives
+	assert_lt(player.speed_energy.energy, 0.05, "the run's budget survived the ladder")
