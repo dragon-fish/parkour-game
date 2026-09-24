@@ -52,8 +52,11 @@ var _kick_armed: bool = false
 ## original's TdMove_WallClimb180TurnJump rather than its wall kick.
 var _from_climb: bool = false
 ## The horizontal velocity the turn began with. A ground turn bleeds this to
-## nothing across slowdown_time rather than dropping it on the spot.
+## nothing across slowdown_time rather than dropping it on the spot; a turn in
+## mid-air keeps it.
 var _entry_velocity: Vector3 = Vector3.ZERO
+## Whether this turn was taken in mid-air, off no wall.
+var _in_air: bool = false
 
 ## Whichever wall the body is on, checked on the entry tick while the body is
 ## still facing the way it was -- a moment later it has come round and neither
@@ -90,6 +93,7 @@ func on_a_wall() -> bool:
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	_kick_armed = false
+	_in_air = false
 	_entry_velocity = Vector3(player.velocity.x, 0.0, player.velocity.z)
 	_normal = _find_wall()
 	_normal.y = 0.0
@@ -135,8 +139,14 @@ func enter(_previous: StringName) -> void:
 		# nosing, and a Q pressed on one of those put it on its back.
 		var was_facing := Vector3(-sin(_turn_from), 0.0, -cos(_turn_from))
 		var flying: bool = player.move_manager != null and player.move_manager.move_for(_previous) is AirborneMove
-		if flying and not player.grounded and _entry_velocity.dot(was_facing) > FORWARD_TRAVEL_M_S:
+		_in_air = flying and not player.grounded
+		if _in_air and _entry_velocity.dot(was_facing) > FORWARD_TRAVEL_M_S:
 			player.pending_back_landing = true
+		# [ME:INFERRED] from play: after a turn in mid-air the keys do nothing
+		# until touchdown, as in an uncontrolled fall or a soft landing. The
+		# flight keeps what it had. See Player.air_turn_locked.
+		if _in_air:
+			player.air_turn_locked = true
 
 func physics_update(delta: float, _input: MoveInput) -> StringName:
 	_elapsed += delta
@@ -195,7 +205,12 @@ func physics_update(delta: float, _input: MoveInput) -> StringName:
 	# you come round, matching how the original feels. DO NOT keep the
 	# momentum outright instead of bleeding it -- what makes Q pressable is
 	# that the stop is GRADUAL, not that there is none.
-	var remaining: float = 1.0 - clampf(_elapsed / maxf(cfg.slowdown_time, 0.001), 0.0, 1.0)
+	#
+	# IN THE AIR THERE IS NOTHING TO BLEED IT INTO. The bleed is feet on the
+	# floor; a turn in mid-air keeps its flight whole, which is what makes a
+	# jump-and-turn a way to land facing back the way you came.
+	var remaining: float = 1.0 if _in_air \
+		else 1.0 - clampf(_elapsed / maxf(cfg.slowdown_time, 0.001), 0.0, 1.0)
 	player.velocity.x = _entry_velocity.x * remaining
 	player.velocity.z = _entry_velocity.z * remaining
 	player.velocity.y -= config.pawn.gravity * delta
@@ -262,6 +277,10 @@ func _advance_turn(_delta: float) -> void:
 		# No rig to place the body: drive it directly. Tests with a stub player
 		# take this path.
 		player.rotation.y = wanted
+	# THE MODEL TURNS WITH THE BODY. It otherwise chases the body only while a
+	# key asks it to move, and not at all in third person with none held -- a
+	# turn in mid-air with the keys let go left it facing the old way.
+	player.pin_visual_yaw(wanted)
 	# The turn is SCRIPTED, so it is not a mouse swing and must not be billed
 	# as one. Without this, spinning while holding W flips the wish direction
 	# through half a circle and the turn tax charges for the whole thing --

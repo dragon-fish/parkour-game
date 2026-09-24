@@ -306,6 +306,10 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	if player != null and player.pending_back_landing \
 			and not (_current is AirborneMove) and next != Move.TURN_180 and next != Move.LAY_ON_GROUND:
 		player.pending_back_landing = false
+	# The same for the lock a turn in mid-air leaves on the flight.
+	if player != null and player.air_turn_locked \
+			and not (_current is AirborneMove) and next != Move.TURN_180:
+		player.air_turn_locked = false
 	if staggering:
 		player.statuses.remove(Status.Effect.STAGGER)
 		# Charged with the same commitment as the status is spent: a stagger

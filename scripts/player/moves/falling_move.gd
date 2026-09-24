@@ -19,7 +19,8 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.set_grounded(false)
 		return JUMP
 
-	apply_air_physics(delta, player.wish_direction(input))
+	# See Player.air_turn_locked.
+	apply_air_physics(delta, Vector3.ZERO if player.air_turn_locked else player.wish_direction(input))
 
 	# [ME:CONFIRMED 11 §11.2] Only Falling may hand off here: six states hold
 	# bCheckExitToUncontrolledFalling and not one of them is a launch (I2).

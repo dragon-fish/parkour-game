@@ -379,3 +379,56 @@ func test_the_two_turns_take_their_two_measured_times() -> void:
 	# pre-buffered press could never be spent at all.
 	assert_lt(config.turn_180.wall_turn_time, config.turn_180.kick_window, \
 		"the wall turn outlasts the chance to kick off the wall")
+
+## Running, then jumping, then Q at the top of the jump: returns the player the
+## tick the turn is pressed.
+func _turning_in_the_air(hold_forward: bool) -> Player:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	await step(30)
+	var input := world["input"] as ScriptedInputSource
+	input.state.move = Vector2(0.0, 1.0)
+	await step(60)
+	input.press_jump()
+	await step(6)
+	assert_eq(player.move_manager.current_name, Move.JUMP, "test setup: never took off")
+	if not hold_forward:
+		input.state.move = Vector2.ZERO
+	input.press_turn()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.TURN_180, "test setup: Q in the air did not turn")
+	return player
+
+func test_a_turn_in_the_air_keeps_the_flight() -> void:
+	var player: Player = await _turning_in_the_air(true)
+	var travel := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	await step(20)  # through the 0.3 s turn
+	var after := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	assert_almost_eq(after.length(), travel.length(), 0.05, "the turn bled the flight away in mid-air")
+
+func test_the_keys_do_nothing_after_a_turn_in_the_air() -> void:
+	# W is held throughout, and after the turn it points back the way the
+	# flight came: unlocked, it would brake the flight until touchdown.
+	var player: Player = await _turning_in_the_air(true)
+	var travel := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	for i in 120:
+		await step(1)
+		if player.grounded:
+			break
+		var now := Vector3(player.velocity.x, 0.0, player.velocity.z)
+		assert_almost_eq(now.length(), travel.length(), 0.05,
+			"a key steered the flight after a turn in the air (%s)" % player.move_manager.current_name)
+		if absf(now.length() - travel.length()) > 0.05:
+			return
+	assert_true(player.grounded, "test setup: never landed")
+	assert_false(player.air_turn_locked, "the lock outlived the landing")
+
+func test_the_model_comes_round_with_a_turn_in_the_air() -> void:
+	# Keys let go: nothing asks the model to follow the body except the turn.
+	var player: Player = await _turning_in_the_air(false)
+	await step(20)
+	assert_almost_eq(wrapf(player.visual_yaw() - player.rotation.y, -PI, PI), 0.0, 0.05,
+		"the model was left behind by a turn in the air")
