@@ -133,7 +133,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# backwards. Judged on the SAME arc the ground speed limit uses, so
 		# there is one answer to "is this forwards" rather than two that drift
 		# apart -- and on travel rather than input, so coasting still slides.
-		var slide_blocked: bool = player.statuses.is_move_blocked(SLIDE)
+		# A slide still cooling down (SlideConfig.redo_move_time) is refused
+		# here, before the press is spent, so it lands on the crouch row below
+		# rather than being eaten by MoveManager's own refusal.
+		var slide_blocked: bool = not player.move_manager.can_enter(SLIDE)
 		var wants_slide: bool = not slide_blocked \
 			and player.in_forward_arc(player.wish_direction(input) \
 				if player.wish_direction(input) != Vector3.ZERO \

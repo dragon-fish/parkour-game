@@ -237,3 +237,43 @@ func test_a_slide_jump_takes_off_into_jump_not_falling() -> void:
 		"test setup is wrong: the slide jump did not actually leave the ground")
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_a_tapped_slide_still_runs_its_minimum() -> void:
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	await _run_up(world, 430)
+	world["input"].press_crouch()
+	await step(2)
+	world["input"].release_crouch()
+	await step(15)  # a quarter second, inside min_duration
+	assert_eq(world["player"].move_manager.current_name, Move.SLIDE, \
+		"letting go of the key ended the slide before its minimum")
+	await step(30)
+	assert_ne(world["player"].move_manager.current_name, Move.SLIDE, \
+		"a released slide ran on past its minimum")
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_a_crouch_pressed_just_after_a_slide_crouches() -> void:
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	await _run_up(world, 430)
+	world["input"].press_crouch()
+	await step(2)
+	world["input"].release_crouch()
+	for i in 60:
+		await step(1)
+		if world["player"].move_manager.current_name == Move.WALKING:
+			break
+	assert_eq(world["player"].move_manager.current_name, Move.WALKING, "test setup: the slide never ended")
+	world["input"].press_crouch()
+	await step(2)
+	assert_eq(world["player"].move_manager.current_name, Move.CROUCH, \
+		"a press inside the slide's cooldown did not crouch (got %s)" \
+		% world["player"].move_manager.current_name)
+	TestWorld.teardown(world)
+	await step(1)

@@ -166,7 +166,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Releasing the key still asks for the full standing capsule, exactly as
 	# before.
 	var spent := post_move_speed <= config.slide.slide_abort_speed or _elapsed >= config.slide.slide_abort_time
-	var wants_to_exit := (not input.crouch_held) or spent
+	# A tap still buys SlideConfig.min_duration; only speed or time ends one
+	# sooner.
+	var released: bool = not input.crouch_held and _elapsed >= config.slide.min_duration
+	var wants_to_exit := released or spent
 	if wants_to_exit:
 		# ✅ THE OWNER: "滑铲结束如果头顶空间不够应该转下蹲而不是滑铲，
 		# 否则玩家的左右会一直被牽制，可能卡住出不来."
