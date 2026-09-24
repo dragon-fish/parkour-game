@@ -2,6 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://lq3dqgc2iapg" path="res://templates/base_level.tscn" id="1_base"]
 [ext_resource type="PackedScene" path="res://templates/acrylic_floor.tscn" id="2_ground"]
+[ext_resource type="Script" path="res://scripts/level/simulated_cloth.gd" id="3_cloth"]
 
 [sub_resource type="PlaneMesh" id="Plane_s2"]
 size = Vector2(3, 2.2)
@@ -47,6 +48,24 @@ cull_mode = 2
 albedo_color = Color(0.92, 0.94, 0.95, 1)
 roughness = 0.65
 
+[sub_resource type="PlaneMesh" id="Plane_strip"]
+size = Vector2(0.08, 0.5)
+subdivide_depth = 3
+orientation = 2
+
+[sub_resource type="StandardMaterial3D" id="Mat_strip_blend"]
+cull_mode = 2
+albedo_color = Color(1, 0.49, 0.1, 1)
+roughness = 0.8
+
+[sub_resource type="StandardMaterial3D" id="Mat_strip_full"]
+cull_mode = 2
+albedo_color = Color(0.92, 0.94, 0.95, 1)
+roughness = 0.8
+
+[sub_resource type="BoxMesh" id="Box_vent"]
+size = Vector3(2.6, 0.12, 0.3)
+
 [node name="Arena" instance=ExtResource("1_base")]
 
 [node name="SpawnPoint" parent="." index="2"]
@@ -85,3 +104,127 @@ mesh = SubResource("Plane_s16")
 collision_layer = 4
 collision_mask = 1
 pinned_points = PackedInt32Array(306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323)
+
+[node name="Vent" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 2.26, 10)
+mesh = SubResource("Box_vent")
+
+[node name="Strip_blend02_0" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.90, 1.95, 10)
+material_override = SubResource("Mat_strip_blend")
+mesh = SubResource("Plane_strip")
+collision_layer = 4
+collision_mask = 1
+total_mass = 0.05
+pinned_points = PackedInt32Array(8, 9)
+script = ExtResource("3_cloth")
+wind = Vector3(0, 0, 1.8)
+blend_weight = 0.2
+
+[node name="Strip_blend02_1" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.15, 1.95, 10)
+material_override = SubResource("Mat_strip_blend")
+mesh = SubResource("Plane_strip")
+collision_layer = 4
+collision_mask = 1
+total_mass = 0.05
+pinned_points = PackedInt32Array(8, 9)
+script = ExtResource("3_cloth")
+wind = Vector3(0, 0, 1.8)
+blend_weight = 0.2
+
+[node name="Strip_blend02_2" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.40, 1.95, 10)
+material_override = SubResource("Mat_strip_blend")
+mesh = SubResource("Plane_strip")
+collision_layer = 4
+collision_mask = 1
+total_mass = 0.05
+pinned_points = PackedInt32Array(8, 9)
+script = ExtResource("3_cloth")
+wind = Vector3(0, 0, 1.8)
+blend_weight = 0.2
+
+[node name="Strip_blend02_3" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.65, 1.95, 10)
+material_override = SubResource("Mat_strip_blend")
+mesh = SubResource("Plane_strip")
+collision_layer = 4
+collision_mask = 1
+total_mass = 0.05
+pinned_points = PackedInt32Array(8, 9)
+script = ExtResource("3_cloth")
+wind = Vector3(0, 0, 1.8)
+blend_weight = 0.2
+
+[node name="Strip_blend02_4" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.90, 1.95, 10)
+material_override = SubResource("Mat_strip_blend")
+mesh = SubResource("Plane_strip")
+collision_layer = 4
+collision_mask = 1
+total_mass = 0.05
+pinned_points = PackedInt32Array(8, 9)
+script = ExtResource("3_cloth")
+wind = Vector3(0, 0, 1.8)
+blend_weight = 0.2
+
+[node name="Strip_blend10_0" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.10, 1.95, 10)
+material_override = SubResource("Mat_strip_full")
+mesh = SubResource("Plane_strip")
+collision_layer = 4
+collision_mask = 1
+total_mass = 0.05
+pinned_points = PackedInt32Array(8, 9)
+script = ExtResource("3_cloth")
+wind = Vector3(0, 0, 1.8)
+blend_weight = 1.0
+
+[node name="Strip_blend10_1" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.35, 1.95, 10)
+material_override = SubResource("Mat_strip_full")
+mesh = SubResource("Plane_strip")
+collision_layer = 4
+collision_mask = 1
+total_mass = 0.05
+pinned_points = PackedInt32Array(8, 9)
+script = ExtResource("3_cloth")
+wind = Vector3(0, 0, 1.8)
+blend_weight = 1.0
+
+[node name="Strip_blend10_2" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.60, 1.95, 10)
+material_override = SubResource("Mat_strip_full")
+mesh = SubResource("Plane_strip")
+collision_layer = 4
+collision_mask = 1
+total_mass = 0.05
+pinned_points = PackedInt32Array(8, 9)
+script = ExtResource("3_cloth")
+wind = Vector3(0, 0, 1.8)
+blend_weight = 1.0
+
+[node name="Strip_blend10_3" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.85, 1.95, 10)
+material_override = SubResource("Mat_strip_full")
+mesh = SubResource("Plane_strip")
+collision_layer = 4
+collision_mask = 1
+total_mass = 0.05
+pinned_points = PackedInt32Array(8, 9)
+script = ExtResource("3_cloth")
+wind = Vector3(0, 0, 1.8)
+blend_weight = 1.0
+
+[node name="Strip_blend10_4" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.10, 1.95, 10)
+material_override = SubResource("Mat_strip_full")
+mesh = SubResource("Plane_strip")
+collision_layer = 4
+collision_mask = 1
+total_mass = 0.05
+pinned_points = PackedInt32Array(8, 9)
+script = ExtResource("3_cloth")
+wind = Vector3(0, 0, 1.8)
+blend_weight = 1.0

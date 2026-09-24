@@ -374,6 +374,21 @@ Godot 侧结论，本机实测而非查文档：
 - 软体只模拟**第一个 surface**。第二个材质的部分（`PX_SK_WarningStripeCloth_01` 上 13 个
   顶点的系带，其中 12 个是钉点）按静态网格画在旁边；软体会丢弃没有被任何三角形引用的顶点，
   在这种顶点上加钉点，引擎每个 tick 报一次错。
+- ✅ **风是每个摆放自己的**，写在 `SkeletalMeshComponent.ClothWind` 上，恒定不变，没有全局风场，
+  也没有运行时改风的脚本（SP01a 的 `start_wind` / `Break_Wind` 事件开关的是粒子发射器）。UDK 的
+  `SkeletalMeshComponent.uc`：每个顶点受的力取决于风向量和表面法线的点积，所以侧对风的布不动。
+  ⚠️ 按世界坐标解读（雨水渠的纸条是 -Z，正下方）；单位和原作布料所受的重力都没量过，所以
+  `SimulatedCloth.wind_scale` 是凭眼睛调的旋钮。空调口纸条的风比别的布大一个数量级（180~240 uu），
+  同时 `ClothBlendWeight` 只有 0.1~0.3：被猛吹、只画出一小部分，所以是细碎的颤动而不是甩动。
+  `ClothForceScale` 是力场（force field）的缩放，和风无关。
+- ✅ 每个布料组件都开着 `bAutoFreezeClothWhenNotRendered`。本项目用相机视锥体在 CPU 上判定，
+  不在视野里就停掉风和混合绘制——它们是 GDScript 每 tick 遍历每个点，是主要开销。
+- **Godot 4.7 的 Jolt 在 `SoftBody3D.apply_force()` 上有 bug**：它把网格顶点正确地换算成模拟点，
+  却拿**模拟点的编号**去查**钉住的网格顶点**集合。模拟点按顶点在索引缓冲里首次出现的顺序编号、
+  同位置合并，所以顶点顺序不是面顺序的网格上，自由点会被误判为钉住（每 tick 一条错误），
+  钉住的点反而不拦。`PX_SK_PaperStrip_01` 实测：顶点 2、3、4、6 是模拟点 5、7、10、11，
+  恰好是它钉点的编号。PlaneMesh 两种编号相同，所以 cloth_lab 里看不出来。
+  `SimulatedCloth` 按同样的规则算出编号，避开会撞上的点。
 
 ---
 

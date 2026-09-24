@@ -421,6 +421,18 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
         # Edge's helicopter is TWO actors on one spot: SkeletalMeshActor_0,
         # which the sequences animate and which is never shown, and _1, based
         # on it, which is what "End of Roof" unhides.
+        # A cloth's wind and how much of its simulation is drawn belong to the
+        # placement, not the mesh: every vent's strips carry their own. UDK's
+        # SkeletalMeshComponent.uc: ClothWind pushes each vertex by the dot of
+        # the wind and its normal; ClothBlendWeight blends the simulation over
+        # the skinned pose, class default 1.0. [ME:INFERRED] the wind is in
+        # world space: Stormdrain's strips blow along -Z, straight down.
+        cloth = {}
+        if skinned and 'pinned' in record.get('cloth', {}):
+            if any(component.get('ClothWind') or ()):
+                cloth['wind'] = point(component['ClothWind'])
+            if component.get('ClothBlendWeight', 1.0) != 1.0:
+                cloth['blend'] = round(component['ClothBlendWeight'], 4)
         base_idx = ref_export(actor.get('Base')) if actor.get('bHardAttach') or skinned else None
         base = '%s.%s' % (mr.label, pkg.exports[base_idx - 1]['name']) if base_idx else None
         report['counts']['hidden'] += hidden
@@ -432,6 +444,7 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
                    | ({'collision_if_on': if_on} if if_on != 'none' else {})
                    | ({'materials': overrides} if any(overrides) else {})
                    | ({'shadow_only': True} if shadow_only else {})
+                   | ({'cloth': cloth} if cloth else {})
                    | ({'runner_vision': runner_vision(actor)} if actor.get('bLOIObject') else {}))
     return out
 

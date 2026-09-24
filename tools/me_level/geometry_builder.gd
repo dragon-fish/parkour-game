@@ -53,6 +53,7 @@ const VISIBLE_RANGE_MAX := 3000.0
 ## Placements at least this many metres across go into the level's occluder.
 const OCCLUDER_MIN_EXTENT := 40.0
 const RUNNER_VISION_SCRIPT := preload("res://scripts/level/runner_vision_target.gd")
+const CLOTH_SCRIPT := preload("res://scripts/level/simulated_cloth.gd")
 
 ## Metres from the camera past which an extracted light fades out, and over
 ## how far. Stormdrain's densest view (the pillar hall) keeps 336 lights
@@ -103,13 +104,16 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		if placement["soft_landing"]:
 			node.add_to_group("soft_landing", true)
 		var cloth := _is_cloth(mesh)
-		var instance := SoftBody3D.new() if cloth else MeshInstance3D.new()
+		var instance: MeshInstance3D = CLOTH_SCRIPT.new() if cloth else MeshInstance3D.new()
 		instance.name = "Mesh"
 		# A soft body deforms the mesh it is given, so it cannot share the
 		# library's copy with the other placements of the same curtain.
 		instance.mesh = _cloth_mesh(mesh) if cloth else mesh
 		if cloth:
 			_hang_cloth(instance as SoftBody3D, Common.transform_of(placement))
+			var drive: Dictionary = placement.get("cloth", {})
+			instance.set("wind", Common.v3(drive.get("wind", [0.0, 0.0, 0.0])))
+			instance.set("blend_weight", float(drive.get("blend", 1.0)))
 		# Hidden in the original: collision without a picture. Kept as a node so
 		# the editor can still show it.
 		instance.visible = not placement["hidden"]
