@@ -4,6 +4,10 @@ extends AirborneMove
 # The original's TdMove_180TurnInAir: Q in mid-air, off no wall. A state of
 # its own because it is a passenger's state, not a turn tacked onto a fall.
 #
+# ONLY FROM A JUMP. [ME:INFERRED] from play: once the body is falling, Q does
+# nothing -- the airborne moves other than JumpMove refuse it through their
+# own MoveConfig.allows_turn.
+#
 # [ME:INFERRED] from play: after the turn the keys do nothing until the feet
 # arrive, as in an uncontrolled fall or a soft landing, and the flight keeps
 # the speed it had. [ME:CONFIRMED 11 §11.2] it can lose control into

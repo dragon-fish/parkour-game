@@ -458,8 +458,25 @@ func _turned_drop(turn_at: int) -> Player:
 	return player
 
 func test_a_turn_still_spinning_at_touchdown_pays_the_landing() -> void:
-	# Turned late enough that the spin is not over when the feet arrive.
-	var player: Player = await _turned_drop(70)
+	# Started straight into the turn a moment above the floor, carrying a
+	# long drop: the spin is nowhere near done when the feet arrive, and the
+	# landing still charges the drop.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	await step(30)
+	player.global_position = Vector3(0.0, 2.0, 0.0)
+	player.fall_tracker.reset(player.global_position.y + 7.0)
+	player.fall_tracker.update(0.0, 0.0, player.global_position.y)
+	player.velocity = Vector3(0.0, -10.0, -4.0)
+	player.move_manager.start(Move.TURN_180_IN_AIR)
+	for i in 30:
+		await step(1)
+		if player.move_manager.current_name != Move.TURN_180_IN_AIR:
+			break
+	assert_eq(player.move_manager.current_name, Move.LAY_ON_GROUND, "test setup: did not land on the back")
 	assert_almost_eq(player.health.hp, 100.0 - player.config.landing.hard_landing_damage, 0.01,
 		"a hard landing taken mid-turn cost nothing")
 
@@ -499,3 +516,22 @@ func test_an_uncontrolled_fall_is_not_saved_by_the_turn_before_it() -> void:
 			break
 	assert_true(lost_control, "test setup: the fall never went uncontrolled")
 	assert_true(player.health.is_dead(), "a turn at the top of a 40 m fall survived it")
+
+func test_q_while_falling_does_nothing() -> void:
+	# A turn in the air is a jump's. Past the jump, falling, Q is refused.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	await step(30)
+	player.global_position = Vector3(0.0, 8.0, 0.0)
+	player.fall_tracker.reset(player.global_position.y)
+	player.velocity = Vector3(0.0, 0.0, -4.0)
+	player.move_manager.start(Move.FALLING)
+	await step(3)
+	var facing: float = player.rotation.y
+	(world["input"] as ScriptedInputSource).press_turn()
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.FALLING, "Q turned a falling body")
+	assert_almost_eq(wrapf(player.rotation.y - facing, -PI, PI), 0.0, 0.01, "Q turned a falling body")

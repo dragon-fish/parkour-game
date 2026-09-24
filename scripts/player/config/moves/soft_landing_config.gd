@@ -15,3 +15,7 @@ extends MoveConfig
 # NO FIELDS, deliberately. A soft landing is not a variation on the fall, it
 # is the same fall with a different ending, and the ending is LandingMove's to
 # describe -- so every dial this move could carry already lives there.
+
+func _init() -> void:
+	# No turn: the body has no say in the matter. See FallingConfig's.
+	allows_turn = false

@@ -24,6 +24,8 @@ extends MoveConfig
 @export var blur_scale: float = 0.6
 
 func _init() -> void:
+	# No turn: control is gone. See also FallingConfig's.
+	allows_turn = false
 	check_for_grab = false
 	check_for_vault_over = false
 	check_for_wall_climb = false

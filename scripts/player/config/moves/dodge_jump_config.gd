@@ -40,6 +40,9 @@ func _init() -> void:
 	# speed nothing else reaches. Pressed again inside this, A or D plus space
 	# is an ordinary jump that way -- see WalkingMove's jump branch.
 	redo_move_time = 0.5
+	# [ME:INFERRED] from play: the only turn in the air is a jump's -- see
+	# Turn180InAirMove.
+	allows_turn = false
 
 ## [ME:CONFIRMED 04 §4.5] BaseJumpZ = 300 uu/s. Half of an ordinary jump's
 ## 630: a dodge hops, it does not launch.

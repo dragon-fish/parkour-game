@@ -17,6 +17,9 @@ func _init() -> void:
 	# SpeedVaultConfig.variants' own note on that row, and
 	# AirborneMove.probe_transition()'s own comment on why the vault check
 	# runs before the ledge grab it falls back to.
+	# [ME:INFERRED] from play: a turn in the air is taken on the way up, from
+	# a jump, and not once the body is falling -- see Turn180InAirMove.
+	allows_turn = false
 	check_for_grab = true
 	check_for_vault_over = true
 	check_for_zipline = true
