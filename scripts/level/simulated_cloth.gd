@@ -59,38 +59,22 @@ func _ready() -> void:
 	var used := {}
 	for index in _indices:
 		used[index] = true
-	# DO NOT push a vertex Jolt's pin guard would refuse -- an engine error a
-	# tick for each. The guard is wrong in Godot 4.7: apply_force() maps the
-	# mesh vertex to its simulated point correctly, then looks that POINT's
-	# number up among the pinned MESH vertices. Points are numbered by first
-	# appearance in the index buffer, one per position, so on a strip whose
-	# vertices are not in face order a free vertex reads as pinned and a pinned
-	# one does not. Measured on PX_SK_PaperStrip_01: vertices 2, 3, 4 and 6 are
-	# points 5, 7, 10 and 11, which are its pinned vertices' numbers.
+	# The builder puts a cloth's vertices in the order the soft body numbers its
+	# points (GeometryBuilder._cloth_mesh), which is what keeps Jolt's pin guard
+	# from refusing free ones. A mesh laid out any other way -- a PlaneMesh is
+	# fine, it already is in that order -- gets an engine error a tick for every
+	# vertex the guard misreads, and no wind on it.
 	var pinned := {}
 	for i: int in get("pinned_points"):
-		pinned[i] = true
-	var point_of := {}
-	var points_by_position := {}
-	for index in _indices:
-		if point_of.has(index):
-			continue
-		if not points_by_position.has(vertices[index]):
-			points_by_position[vertices[index]] = points_by_position.size()
-		point_of[index] = points_by_position[vertices[index]]
-	# A free copy of a pinned vertex is the same point, and pinned.
+		pinned[vertices[i]] = true
 	var seen := {}
-	for i: int in pinned:
-		if point_of.has(i):
-			seen[point_of[i]] = true
 	for i in vertices.size():
 		if not used.has(i):
 			continue
 		_used.append(i)
-		var point: int = point_of[i]
-		if pinned.has(i) or pinned.has(point) or seen.has(point):
+		if pinned.has(vertices[i]) or seen.has(vertices[i]):
 			continue
-		seen[point] = true
+		seen[vertices[i]] = true
 		_pushed.append(i)
 	if blend_weight < 1.0:
 		_start_drawing(arrays, frame)

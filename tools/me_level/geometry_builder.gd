@@ -453,17 +453,76 @@ static func _is_cloth(mesh: ArrayMesh) -> bool:
 ## soft body simulates only its first: the reversed copy hung there rigid while
 ## the cloth moved through it, and it fired a warning a frame. Cloth is drawn
 ## from both sides by its material instead -- _cloth_draws_both_sides().
+##
+## Its vertices are put in the order the soft body numbers its points: each
+## position's first appearance in the index buffer, then the copies. DO NOT
+## skip this. Godot 4.7's Jolt checks apply_force()'s pin guard with the POINT's
+## number against the pinned MESH vertices, so wherever the two numberings part
+## a free vertex reads as pinned -- an error a tick, and no wind on it. On
+## SP01a's paper strips half the free vertices were refused.
 static func _cloth_mesh(source: ArrayMesh) -> ArrayMesh:
+	var arrays := source.surface_get_arrays(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var order := PackedInt32Array()
+	var copies := PackedInt32Array()
+	var first_at := {}
+	var placed := {}
+	for index in indices:
+		if placed.has(index):
+			continue
+		placed[index] = true
+		if first_at.has(vertices[index]):
+			copies.append(index)
+		else:
+			first_at[vertices[index]] = index
+			order.append(index)
+	order.append_array(copies)
+	for i in vertices.size():
+		if not placed.has(i):
+			order.append(i)
+	var new_of := {}
+	for i in order.size():
+		new_of[order[i]] = i
+	for kind in Mesh.ARRAY_MAX:
+		if kind != Mesh.ARRAY_INDEX and arrays[kind] != null:
+			arrays[kind] = _reordered(arrays[kind], order, vertices.size())
+	for t in indices.size():
+		indices[t] = new_of[indices[t]]
+	arrays[Mesh.ARRAY_INDEX] = indices
 	var out := ArrayMesh.new()
-	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, source.surface_get_arrays(0))
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	out.surface_set_material(0, source.surface_get_material(0))
 	out.surface_set_name(0, source.surface_get_name(0))
 	for key: String in source.get_meta_list():
 		out.set_meta(key, source.get_meta(key))
+	# The pins in the new order, and every copy of a pinned position with them:
+	# the copies are one simulated point, and it is pinned.
+	var cloth: Dictionary = (source.get_meta("cloth") as Dictionary).duplicate()
+	var pinned_at := {}
+	for index: int in cloth["pinned"]:
+		pinned_at[vertices[index]] = true
+	var pinned := []
+	for i in vertices.size():
+		if pinned_at.has(vertices[i]):
+			pinned.append(new_of[i])
+	pinned.sort()
+	cloth["pinned"] = pinned
+	out.set_meta("cloth", cloth)
 	# The slot table is per surface, and _apply_overrides() indexes surfaces by
 	# it: left at the source's length it would address a surface that is gone.
 	var slots: PackedInt32Array = source.get_meta("surface_slots", PackedInt32Array())
 	out.set_meta("surface_slots", slots.slice(0, 1) if not slots.is_empty() else slots)
+	return out
+
+
+## A per-vertex array in `order`, however many values each vertex holds.
+static func _reordered(values: Variant, order: PackedInt32Array, count: int) -> Variant:
+	var stride: int = values.size() / count
+	var out: Variant = values.duplicate()
+	for i in order.size():
+		for k in stride:
+			out[i * stride + k] = values[order[i] * stride + k]
 	return out
 
 
