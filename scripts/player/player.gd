@@ -4381,15 +4381,16 @@ func dodge_direction(input: MoveInput) -> Vector3:
 ## exactly and nothing else -- see DodgeJumpConfig.inertia_conservation for the
 ## measurements that separate the two readings.
 ##
-## THE DODGE COSTS NO SPEED ENERGY. It is tempting to bill it down to base
-## velocity, because a dodge out of a sprint does bottom out near there
-## afterwards. That floor is the VELOCITY being turned back under the held
-## input on touchdown, not a ceiling the dodge lowered: swing the view into the
-## dodge before landing and the speed does not sag at all -- measured, four
-## runs, the ground speed climbs from the moment the feet land. A ceiling
-## dropped to base velocity would drag those back down instead, and it is the
-## same drag that would quietly kill the side-jump boost this move exists for.
+## THE BUDGET DROPS TO BASE VELOCITY ON LAUNCH. [ME:INFERRED] from play: a
+## dodge thrown out of a 25.8 km/h run with W held has the run rebuilt from
+## about 15 km/h afterwards. What survives is only what the landing credits
+## back -- AirborneMove._apply_landing_cost() counts landing speed inside the
+## forward arc and nothing outside it, so the side-jump boost is kept by a body
+## that swung its view into the dodge before touching down (the dodge glitch,
+## measured four times to climb from the moment the feet land) and by nobody
+## else.
 func dodge_launch(direction: Vector3) -> void:
+	speed_energy.match_speed(config.pawn.speed_max_base_velocity)
 	var kept: float = config.dodge_jump.inertia_conservation
 	velocity.x *= kept
 	velocity.z *= kept

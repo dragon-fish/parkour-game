@@ -498,7 +498,14 @@ func _apply_landing_cost(fall_height: float, rolled: bool) -> void:
 		# re-derives the ground budget from the speed the body actually lands
 		# with, so a fast zipline exit grounds into a full sprint rather than
 		# decaying back to the pre-ride pace.
-		player.speed_energy.restore_for_landing(player.horizontal_speed())
+		#
+		# ONLY SPEED INSIDE THE FORWARD ARC COUNTS. The budget buys running
+		# forwards; a body landing sideways to its own facing is moving at a
+		# pace nothing on the ground sustains. This is what separates a dodge
+		# from the dodge glitch -- see Player.dodge_launch().
+		var travel := Vector3(player.velocity.x, 0.0, player.velocity.z)
+		if player.in_forward_arc(travel):
+			player.speed_energy.restore_for_landing(player.horizontal_speed())
 
 ## The vertical speed the vault table is asked about, which is the REAL one
 ## except inside the shin-catch window below.
