@@ -301,8 +301,8 @@ static func _nest_movers(nodes: Dictionary, placements: Array) -> void:
 ## Godot's occluders are double-sided, the original's culling was not: a
 ## one-sided shell seen from behind (sp01b's office, inside the slanted
 ## building's outer facade) is not drawn yet hides the whole city past the
-## window. Nearly every large mesh is open, so no filter here fixes that;
-## culling is the player's setting instead (SettingsStore.occlusion_culling).
+## window. Nearly every large mesh is open, so no filter here fixes that, and
+## culling is switched off instead (SettingsStore.apply_global).
 static func _build_occluder(nodes: Array, bsp: Node3D) -> OccluderInstance3D:
 	var vertices := PackedVector3Array()
 	var indices := PackedInt32Array()

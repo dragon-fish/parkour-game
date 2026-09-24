@@ -65,11 +65,6 @@ static func defaults() -> Dictionary:
 		antialiasing = "msaa_2x",
 		# Off: the moves' hand positions are measured against a full-size body.
 		small_third_person_body = false,
-		# Off: Godot's occluders are double-sided, so a one-sided facade seen
-		# from behind -- an office's outer shell, from inside the office --
-		# hides the whole city past the window. On buys back a few percent of
-		# frame time where the view is walled in.
-		occlusion_culling = false,
 		# On: it is the original's look. Off takes every cloth and loose box
 		# out of the physics server, which is most of what they cost.
 		physics_props = true,
@@ -119,8 +114,12 @@ static func apply_global(s: Dictionary) -> void:
 	var viewport: Viewport = (Engine.get_main_loop() as SceneTree).root
 	viewport.msaa_3d = MSAA_MODES.get(s.antialiasing, Viewport.MSAA_DISABLED)
 	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA 			if s.antialiasing == "fxaa" else Viewport.SCREEN_SPACE_AA_DISABLED
-	# The project setting only makes occluders available; this is the switch.
-	viewport.use_occlusion_culling = s.occlusion_culling
+	# Always off, whatever an older settings file says. Godot's occluders are
+	# double-sided, so a one-sided facade seen from behind -- an office's outer
+	# shell, from inside the office -- hid the whole city past the window, and
+	# a see-through window hid what stood behind it. Streaming the chapter by
+	# section does most of what culling bought.
+	viewport.use_occlusion_culling = false
 	physics_props_on = s.physics_props
 	(Engine.get_main_loop() as SceneTree).call_group(PHYSICS_PROPS_GROUP, "simulate", physics_props_on)
 
