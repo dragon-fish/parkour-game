@@ -474,3 +474,28 @@ func test_a_turn_in_the_air_reaches_for_nothing() -> void:
 	var c: MoveConfig = MovementConfig.new().turn_180_in_air
 	assert_false(c.check_for_grab or c.check_for_vault_over or c.check_for_wall_climb,
 		"a turn in the air reaches for geometry")
+
+func test_an_uncontrolled_fall_is_not_saved_by_the_turn_before_it() -> void:
+	# A turn in the air arms a back landing; a fall that goes on past
+	# falling_uncontrolled_height is terminal, and lands as one.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_world = world
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	await step(30)
+	player.global_position = Vector3(0.0, 40.0, 0.0)
+	player.fall_tracker.reset(player.global_position.y)
+	player.velocity = Vector3(0.0, 6.3, -6.0)
+	player.move_manager.start(Move.JUMP)
+	var lost_control := false
+	for i in 400:
+		if i == 5:
+			(world["input"] as ScriptedInputSource).press_turn()
+		await step(1)
+		if player.move_manager.current_name == Move.FALL_UNCONTROLLED:
+			lost_control = true
+		elif lost_control:
+			break
+	assert_true(lost_control, "test setup: the fall never went uncontrolled")
+	assert_true(player.health.is_dead(), "a turn at the top of a 40 m fall survived it")

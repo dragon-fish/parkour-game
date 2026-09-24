@@ -21,6 +21,12 @@ extends AirborneMove
 ## still spin the view all the way down.
 func enter(_previous: StringName) -> void:
 	player.lock_input()
+	# A TERMINAL STATE: nothing that was armed for the flight before control
+	# was lost survives into it. A back landing armed by a turn in the air
+	# (Turn180InAirMove) is checked FIRST at touchdown, ahead of this move's own
+	# landing -- left armed, a 39 m fall turned at the top came down lying on
+	# its back, unhurt.
+	player.pending_back_landing = false
 	# FIRST PERSON ONLY, exactly as the death's own lift is: the eye is riding
 	# the head bone, and LiftAir_Fall_Air holds the body horizontal with its
 	# hips near the floor. From outside there is no such problem -- the camera
