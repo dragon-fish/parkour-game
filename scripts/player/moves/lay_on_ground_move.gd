@@ -99,10 +99,11 @@ func _drive_camera(down: float) -> void:
 	var inside: float = 1.0 - player.camera_rig.view_blend()
 	player.camera_rig.set_death_lift(config.camera.lay_on_ground_eye_lift * down * inside)
 
-## The pitch floor is the first-person eye's: from outside, it would only pin
-## the orbit below a body that is lying down to be looked at.
-func third_person_frees_pitch() -> bool:
-	return true
+## From outside the band flips: the camera hangs behind the rig, so the view
+## that would sink the orbit into the floor is looking UP. Capped at
+## LayOnGroundConfig.third_person_pitch_max_deg instead of floored.
+func third_person_pitch_limits() -> Vector2:
+	return Vector2(-PI, deg_to_rad(cfg.third_person_pitch_max_deg))
 
 ## Fades across the time the body may not yet get up: by then the blow is over.
 func _drive_tint(severity: float) -> void:

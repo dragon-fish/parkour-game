@@ -429,13 +429,15 @@ func _push_look_constraint() -> void:
 	if not is_nan(half_span):
 		low.y = -absf(half_span)
 		high.y = absf(half_span)
-	# See Move.third_person_frees_pitch(). The relaxing floor is pitch too, so
+	# See Move.third_person_pitch_limits(). The relaxing floor is pitch too, so
 	# it goes with the band.
 	var pitch_relaxes: bool = active.pitch_relaxes_with_yaw
-	if rig.in_third_person() and _current.third_person_frees_pitch():
-		low.x = -PI
-		high.x = PI
-		pitch_relaxes = false
+	if rig.in_third_person():
+		var band: Vector2 = _current.third_person_pitch_limits()
+		if not is_nan(band.x):
+			low.x = band.x
+			high.x = band.y
+			pitch_relaxes = false
 	rig.set_look_constraint(low, high, \
 		active.absolute_yaw_constraint, pitch_relaxes, \
 		active.pitch_min_turned_away, active.pitch_relax_yaw_threshold, \

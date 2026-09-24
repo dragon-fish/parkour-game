@@ -143,9 +143,10 @@ func look_yaw_half_span() -> float:
 
 ## The pull-up's pitch floor is the hang's: a first-person eye has nothing to
 ## look at below the lip. Seen from outside it only pins the orbit below the
-## body, so the camera cannot rise to watch the climb from above.
-func third_person_frees_pitch() -> bool:
-	return _mantling
+## body, so the camera cannot rise to watch the climb from above -- the pull-up
+## goes free in third person.
+func third_person_pitch_limits() -> Vector2:
+	return Vector2(-PI, PI) if _mantling else Vector2(NAN, NAN)
 
 ## Q flicks the view only while hanging still: the pull-up, a corner and a
 ## hard catch's lockout are the script's.

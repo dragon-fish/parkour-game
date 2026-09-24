@@ -833,10 +833,16 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 	# was already below the floor then the floor moved, whereas if only
 	# `wanted` is below it then the player is pulling.
 	var effective_floor: float = pitch_min
+	var recover: float = clampf(_look_pitch_recover_speed * delta, 0.0, 1.0)
 	if _has_look_constraint and _pitch < floor_pitch and delta > 0.0:
-		effective_floor = lerpf(_pitch, floor_pitch, \
-			clampf(_look_pitch_recover_speed * delta, 0.0, 1.0))
-	_pitch = clampf(wanted, effective_floor, pitch_max)
+		effective_floor = lerpf(_pitch, floor_pitch, recover)
+	# THE CEILING, THE SAME WAY ROUND: lowered onto a view already above it --
+	# lying down in third person, or switching view while lying -- it is eased
+	# down to meet the view rather than cutting it there in one frame.
+	var effective_ceiling: float = pitch_max
+	if _has_look_constraint and _pitch > pitch_max and delta > 0.0:
+		effective_ceiling = lerpf(_pitch, pitch_max, recover)
+	_pitch = clampf(wanted, effective_floor, effective_ceiling)
 	rotation.x = _pitch
 
 ## The pitch floor for a constraint that relaxes as the view turns away.
