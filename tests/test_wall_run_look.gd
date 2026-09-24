@@ -156,20 +156,19 @@ func test_q_carries_the_view_to_the_far_edge_of_the_fan() -> void:
 		"the sweep did not reach the fan's away edge (%.1f degrees)" \
 		% rad_to_deg(float(fan["relative_yaw"])))
 
-func test_the_mouse_takes_the_sweep_back() -> void:
-	# A convenience that resists being overridden is worse than none.
+func test_the_mouse_cannot_cut_the_sweep_short() -> void:
+	# Pressed by mistake, a Q turn is paid for: a flick the other way while it
+	# runs changes nothing.
 	var player: Player = await _running_the_wall()
 	var input: ScriptedInputSource = _world["input"]
 	input.press_turn()
 	await step(3)
-	var caught: float = float(player.camera_rig.look_debug()["relative_yaw"])
-	input.state.look = Vector2(-60.0, 0.0)  # past look_sweep_hand_deg
-	await step(1)
+	input.state.look = Vector2(-120.0, 0.0)
+	await step(3)
 	input.state.look = Vector2.ZERO
-	assert_false(player.camera_rig.is_sweeping(), "the mouse did not cancel the sweep")
 	await step(20)
-	assert_lt(absf(float(player.camera_rig.look_debug()["relative_yaw"]) - caught), 0.3, \
-		"the sweep carried on after the player took the mouse back")
+	assert_almost_eq(float(player.camera_rig.look_debug()["relative_yaw"]), deg_to_rad(90.0), 0.08, \
+		"the mouse cut the sweep short")
 
 # --- the fan belongs to the wall ---------------------------------------------
 

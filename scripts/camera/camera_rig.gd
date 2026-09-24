@@ -740,12 +740,16 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 	if _config == null:
 		return
 	var yaw_delta := -look_delta.x * _config.camera.mouse_sensitivity
-	# A scripted sweep is added to the same channel the mouse drives, so the
-	# body ends up facing exactly where the same flick by hand would have put
-	# it. The owner's test for this feature is that Q and space should feel like
-	# turning by hand and pressing space, which only holds if the two paths are
-	# literally the same one.
-	yaw_delta += _advance_look_sweep(yaw_delta, delta)
+	# A scripted sweep drives the same channel the mouse drives, so the body
+	# ends up facing exactly where the same flick by hand would have put it --
+	# Q and space should feel like turning by hand and pressing space, which
+	# only holds if the two paths are literally the same one.
+	#
+	# AND WHILE IT RUNS THE MOUSE'S YAW IS NOT HEARD. [ME:INFERRED] from play:
+	# the original does not let a moving mouse cut a Q turn short -- press it
+	# by mistake and you pay for it. Pitch stays the player's.
+	if _sweeping:
+		yaw_delta = _advance_look_sweep(delta)
 	if _has_look_constraint:
 		# Absolute yaw: measured against the facing captured when the move
 		# began, so the fan stays pinned to the wall rather than drifting with
@@ -1238,9 +1242,6 @@ var _sweep_to: float = 0.0
 var _sweeping: bool = false
 ## Radians per second this sweep crosses at. See sweep_look_to().
 var _sweep_speed: float = 0.0
-## How far the mouse has turned the view since this sweep began, radians,
-## either way. See _advance_look_sweep().
-var _sweep_hand: float = 0.0
 
 ## Starts carrying the view to `relative_yaw`, measured in the same frame as
 ## _look_relative_yaw: radians from the fan's own centre.
@@ -1254,7 +1255,6 @@ func sweep_look_to(relative_yaw: float, speed: float = -1.0) -> void:
 		return
 	_sweep_to = clampf(relative_yaw, _look_min.y, _look_max.y)
 	_sweep_speed = speed if speed > 0.0 else _config.camera.look_sweep_speed
-	_sweep_hand = 0.0
 	_sweeping = true
 
 ## Q where Q is a mouse flick: the view carried half a turn clockwise at
@@ -1273,26 +1273,15 @@ func cancel_look_sweep() -> void:
 
 ## Advances a running sweep. Returns the yaw delta to apply this tick, or 0.
 ##
-## THE PLAYER'S OWN HAND WINS, once it means it. A deliberate movement -- more
-## than CameraConfig.look_sweep_hand_deg since the sweep began -- cancels it on
-## the spot rather than fighting it: this is a convenience for a flick the
-## player could have done themselves, and a convenience that resists being
-## overridden is worse than none. Less than that rides along on top of it.
-##
-## DO NOT go back to cancelling on any movement at all. A hand on a mouse is
-## never perfectly still: one count of drift, 0.13 degrees, stopped a wall
-## run's quarter-turn sweep at 14 degrees, nearly every time.
-func _advance_look_sweep(mouse_yaw_delta: float, delta: float) -> float:
+## UNINTERRUPTIBLE by the mouse -- see apply_look(). Only the move ending (and
+## with it the fan) stops one early.
+func _advance_look_sweep(delta: float) -> float:
 	if not _sweeping:
 		return 0.0
 	# Belt and braces against the same thing clear_look_constraint() guards: a
 	# sweep is only meaningful while there is a fan to sweep across, and any
 	# other route to losing one must not leave this running either.
 	if not _has_look_constraint:
-		_sweeping = false
-		return 0.0
-	_sweep_hand += absf(mouse_yaw_delta)
-	if _sweep_hand > deg_to_rad(_config.camera.look_sweep_hand_deg):
 		_sweeping = false
 		return 0.0
 	var remaining: float = _sweep_to - _look_relative_yaw

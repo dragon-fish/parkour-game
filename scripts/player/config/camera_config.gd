@@ -354,12 +354,6 @@ extends Resource
 ## stopwatch again -- a felt guess consistently undershoots the timed one.
 @export var look_sweep_speed: float = 7.85
 
-## How far the mouse must turn the view, degrees, before it takes a scripted
-## sweep back -- see CameraRig._advance_look_sweep(). Below it the hand is
-## resting on the mouse, not using it. At the default sensitivity 5 degrees is
-## about forty counts: a small movement, but a deliberate one.
-@export var look_sweep_hand_deg: float = 5.0
-
 ## How long Q takes to swing the view half a turn where Q is simply a flick of
 ## the mouse, seconds -- see CameraRig.flick_half_turn(). Clockwise, as every
 ## Q turn is.

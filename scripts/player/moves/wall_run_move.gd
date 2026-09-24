@@ -332,10 +332,10 @@ func _away_edge() -> float:
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Q HERE MOVES THE VIEW, NOT THE BODY. Everywhere else it starts a turn; on
 	# a wall the body is already committed to the wall's own curve and nothing
-	# about it should change. What Q saves is the mouse flick: it must drive
-	# exactly the value the mouse drives, and the mouse takes it back the
-	# instant the player touches it -- turning 90 degrees right by hand and
-	# pressing space has to feel the same as pressing Q and space.
+	# about it should change. What Q saves is the mouse flick: it drives
+	# exactly the value the mouse drives, so turning 90 degrees right by hand
+	# and pressing space feels the same as pressing Q and space. Once pressed
+	# the mouse cannot cut it short -- see CameraRig.apply_look().
 	#
 	# Swept to the fan's far edge, which the wall's side already decides: the
 	# fan runs from straight-ahead to a quarter turn AWAY from the wall, so its
