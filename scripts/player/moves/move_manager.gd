@@ -304,12 +304,8 @@ func physics_update(delta: float, input: MoveInput) -> void:
 		player.statuses.remove(Status.Effect.KNOCKDOWN)
 	# The flight a back landing was armed for ended some other way.
 	if player != null and player.pending_back_landing \
-			and not (_current is AirborneMove) and next != Move.TURN_180 and next != Move.LAY_ON_GROUND:
+			and not (_current is AirborneMove) and next != Move.LAY_ON_GROUND:
 		player.pending_back_landing = false
-	# The same for the lock a turn in mid-air leaves on the flight.
-	if player != null and player.air_turn_locked \
-			and not (_current is AirborneMove) and next != Move.TURN_180:
-		player.air_turn_locked = false
 	if staggering:
 		player.statuses.remove(Status.Effect.STAGGER)
 		# Charged with the same commitment as the status is spent: a stagger
@@ -447,11 +443,16 @@ func _push_look_constraint() -> void:
 
 ## TURN_180 if Q was pressed and the active move will allow it, KEEP otherwise.
 func _turn_requested(input: MoveInput) -> StringName:
-	if not input.turn_pressed or current_name == Move.TURN_180:
+	if not input.turn_pressed or current_name == Move.TURN_180 or current_name == Move.TURN_180_IN_AIR:
 		return Move.KEEP
-	if not _moves.has(Move.TURN_180) or not can_enter(Move.TURN_180):
+	# A flight off no wall turns as a passenger -- see Turn180InAirMove. With
+	# a wall to turn on, a climb's or a jump's alike, it is Turn180's wall turn.
+	var turn: StringName = Move.TURN_180
+	if _current is AirborneMove and player != null and not player.grounded 			and Turn180Move.find_wall(player)["normal"] == Vector3.ZERO:
+		turn = Move.TURN_180_IN_AIR
+	if not _moves.has(turn) or not can_enter(turn):
 		return Move.KEEP
 	var active: MoveConfig = _current.current_config()
 	if active == null or not active.allows_turn:
 		return Move.KEEP
-	return Move.TURN_180
+	return turn

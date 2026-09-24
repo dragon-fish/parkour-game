@@ -379,6 +379,28 @@ func settle_landing(delta: float) -> StringName:
 		return LAY_ON_GROUND
 	return landing_destination(fall_height, rolled)
 
+## Where a fall past falling_uncontrolled_height loses control to, or KEEP
+## short of it. For the states holding both bCheckExitToUncontrolledFalling and
+## bCheckForSoftLanding [ME:CONFIRMED 11 §11.2] -- Falling and 180TurnInAir.
+##
+## [ME:CONFIRMED 12 §12.5] ONE CHECK, AT THE MOMENT CONTROL IS LOST, and never
+## again. The original asks whether the arc ends on something soft exactly
+## here; what it buys is which state the body loses control INTO, not whether
+## it loses control at all. A pad does not hand the fall back -- the player is
+## a passenger either way, and the difference shows up on impact.
+##
+## Asked before the death rather than from inside it, unlike the original,
+## because FallUncontrolledMove.enter() starts a ragdoll and stops the capsule
+## on its first tick and pulling a body back out of that is far harder than
+## never putting it in.
+func lose_control() -> StringName:
+	if player.fall_tracker.fall_height < config.pawn.falling_uncontrolled_height:
+		return KEEP
+	var arc: Dictionary = player.probes.predicted_landing(player.velocity)
+	if not arc.is_empty() and Probes.is_soft(arc.get("collider")):
+		return SOFT_LANDING
+	return FALL_UNCONTROLLED
+
 ## Whether touching a marked chute starts the slide. Every controlled fall
 ## says yes; the uncontrolled one overrides this to land on the chute as on
 ## any surface, which is fatal.

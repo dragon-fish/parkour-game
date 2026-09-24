@@ -535,6 +535,7 @@ func _run_band_speed() -> float:
 ## its two-second lockout.
 const _AIRBORNE_MOVES: Array[StringName] = [
 	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED, Move.COIL, Move.DODGE_JUMP,
+	Move.TURN_180_IN_AIR,
 ]
 
 ## Decides whether the move that just started owes a one-shot -- a clip played
@@ -1370,6 +1371,11 @@ func _target_animation() -> StringName:
 			# by a loop of nothing -- it is a knockdown clip, not an entry.
 			return _first_available([&"LiftAir_Fall_Air", &"Jump",
 				&"NinjaJump_Idle", &"jump", &"idle"])
+		Move.TURN_180_IN_AIR:
+			# A passenger's descent, like the uncontrolled fall above: the keys
+			# do nothing until the feet arrive. Same clip, same reasons.
+			return _first_available([&"LiftAir_Fall_Air", &"Jump",
+				&"NinjaJump_Idle", &"jump", &"idle"])
 		Move.LANDING:
 			# The hard landing nobody rolled out of: a two-second lockout spent
 			# absorbing the impact low to the ground. Jump_Land is the impact
@@ -1439,7 +1445,7 @@ func _target_animation() -> StringName:
 			# same speed split WALKING uses rather than claiming a clip of its
 			# own.
 			# ALWAYS THE RIGHT-HAND CLIP, because the move only ever turns one
-			# way: Turn180Move sets _turn_to = _turn_from - PI unconditionally.
+			# way: HalfTurn always turns clockwise.
 			# [ME:CONFIRMED] Faith only ever turns right in the original,
 			# measured directly. Godot's yaw grows counter-clockwise, so that
 			# subtraction is clockwise, which is rightward. Turn180_L is wired

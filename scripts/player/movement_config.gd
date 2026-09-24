@@ -39,6 +39,7 @@ extends Resource
 @export var wall_run: WallRunConfig = WallRunConfig.new()
 @export var wall_climb: WallClimbConfig = WallClimbConfig.new()
 @export var turn_180: Turn180Config = Turn180Config.new()
+@export var turn_180_in_air: Turn180InAirConfig = Turn180InAirConfig.new()
 @export var wallrun_jump: WallrunJumpConfig = WallrunJumpConfig.new()
 @export var zipline: ZiplineConfig = ZiplineConfig.new()
 @export var swing: SwingConfig = SwingConfig.new()

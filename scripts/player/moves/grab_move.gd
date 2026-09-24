@@ -68,7 +68,7 @@ var _corner_to_yaw: float = 0.0
 var _corner_edge: Vector3 = Vector3.ZERO
 var _corner_normal: Vector3 = Vector3.BACK
 ## The yaw already handed to the camera, so each tick reports only its own
-## slice. Mirrors Turn180Move._placed, whose handshake this copies.
+## slice. Mirrors HalfTurn._placed, whose handshake this copies.
 var _corner_placed: float = 0.0
 ## The MODEL's own sweep, kept separately from the body's because they do not
 ## start in the same place: the body is wherever the player was looking, the

@@ -379,11 +379,6 @@ var pending_stagger_tint: Color = Color(0.0, 0.0, 0.0, 0.0)
 ## standing jump turned round lands on its feet, and so does a jump backwards,
 ## at any speed.
 var pending_back_landing: bool = false
-## Set by Turn180Move for a turn taken in mid-air: until the body lands, the
-## flight steers with no input at all -- FallingMove hands apply_air_physics a
-## zero wish, the way FallUncontrolledMove does. Cleared by MoveManager when
-## the flight ends, however it ends.
-var air_turn_locked: bool = false
 
 ## One-shot: which way a dodge was thrown, -1 for left and +1 for right. Set
 ## by WalkingMove as it launches, read and cleared by DodgeJumpMove.enter().
@@ -1528,7 +1523,6 @@ func reset_state() -> void:
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
 	_line_cooldowns.clear()
-	air_turn_locked = false
 	_gravity_window_left = 0.0
 	_airborne_time = 0.0
 	_slide_recovery_timer = 0.0
@@ -1590,6 +1584,7 @@ func _build_moves() -> void:
 		[Move.WALL_RUN, WallRunMove.new(), config.wall_run],
 		[Move.WALL_CLIMB, WallClimbMove.new(), config.wall_climb],
 		[Move.TURN_180, Turn180Move.new(), config.turn_180],
+		[Move.TURN_180_IN_AIR, Turn180InAirMove.new(), config.turn_180_in_air],
 		[Move.ZIPLINE, ZiplineMove.new(), config.zipline],
 		[Move.SWING, SwingMove.new(), config.swing],
 		[Move.LADDER, LadderMove.new(), config.ladder],

@@ -19,27 +19,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.set_grounded(false)
 		return JUMP
 
-	# See Player.air_turn_locked.
-	apply_air_physics(delta, Vector3.ZERO if player.air_turn_locked else player.wish_direction(input))
+	apply_air_physics(delta, player.wish_direction(input))
 
-	# [ME:CONFIRMED 11 §11.2] Only Falling may hand off here: six states hold
-	# bCheckExitToUncontrolledFalling and not one of them is a launch (I2).
-	if player.fall_tracker.fall_height >= config.pawn.falling_uncontrolled_height:
-		# [ME:CONFIRMED 12 §12.5] ONE CHECK, AT THE MOMENT CONTROL IS LOST, and
-		# never again. The original asks whether the arc ends on something soft
-		# exactly here; what it buys is which state the body loses control INTO,
-		# not whether it loses control at all. A pad does not hand the fall back
-		# -- the player is a passenger either way, and the difference shows up on
-		# impact.
-		#
-		# Asked before the death rather than from inside it, unlike the original,
-		# because FallUncontrolledMove.enter() starts a ragdoll and stops the
-		# capsule on its first tick and pulling a body back out of that is far
-		# harder than never putting it in.
-		var arc: Dictionary = player.probes.predicted_landing(player.velocity)
-		if not arc.is_empty() and Probes.is_soft(arc.get("collider")):
-			return advance_and_hand_off(SOFT_LANDING)
-		return advance_and_hand_off(FALL_UNCONTROLLED)
+	# [ME:CONFIRMED 11 §11.2] six states hold bCheckExitToUncontrolledFalling
+	# and not one of them is a launch (I2). See lose_control().
+	var lost: StringName = lose_control()
+	if lost != KEEP:
+		return advance_and_hand_off(lost)
 
 	var probed := probe_transition()
 	if probed != KEEP:

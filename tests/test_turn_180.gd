@@ -207,7 +207,9 @@ func test_q_while_walking_turns_the_body_right_round() -> void:
 	await step(1)
 	TestWorld.place(world)
 	var player: Player = world["player"]
-	await step(2)
+	# SETTLED: two ticks after place() the body is still falling onto the
+	# slab, and a Q there is a turn in the air.
+	await step(30)
 	var facing_before := player.rotation.y
 	(world["input"] as ScriptedInputSource).press_turn()
 	await step(1)
@@ -399,7 +401,7 @@ func _turning_in_the_air(hold_forward: bool) -> Player:
 		input.state.move = Vector2.ZERO
 	input.press_turn()
 	await step(1)
-	assert_eq(player.move_manager.current_name, Move.TURN_180, "test setup: Q in the air did not turn")
+	assert_eq(player.move_manager.current_name, Move.TURN_180_IN_AIR, "test setup: Q in the air did not turn")
 	return player
 
 func test_a_turn_in_the_air_keeps_the_flight() -> void:
@@ -424,7 +426,6 @@ func test_the_keys_do_nothing_after_a_turn_in_the_air() -> void:
 		if absf(now.length() - travel.length()) > 0.05:
 			return
 	assert_true(player.grounded, "test setup: never landed")
-	assert_false(player.air_turn_locked, "the lock outlived the landing")
 
 func test_the_model_comes_round_with_a_turn_in_the_air() -> void:
 	# Keys let go: nothing asks the model to follow the body except the turn.
@@ -466,3 +467,10 @@ func test_a_hard_landing_on_the_back_flashes_red() -> void:
 	var player: Player = await _turned_drop(10)
 	var lying := player.move_manager.move_for(Move.LAY_ON_GROUND) as LayOnGroundMove
 	assert_gt(lying._tint.a, 0.0, "a hard landing on the back showed no red")
+
+func test_a_turn_in_the_air_reaches_for_nothing() -> void:
+	# [ME:CONFIRMED 11 §11.2] 180TurnInAir holds no ledge, vault or wall
+	# capability: the flight is a passenger's until it lands.
+	var c: MoveConfig = MovementConfig.new().turn_180_in_air
+	assert_false(c.check_for_grab or c.check_for_vault_over or c.check_for_wall_climb,
+		"a turn in the air reaches for geometry")
