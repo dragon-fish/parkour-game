@@ -12,6 +12,14 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 var _world: Dictionary = {}
 var _line: InterestLine = null
 
+## Turns the view `degrees` off the rungs. Both halves are needed: LadderConfig
+## sets absolute_yaw_constraint, so apply_look() rebuilds the body's yaw every
+## tick from the rig's reference plus its running total, and a test that writes
+## only rotation.y has it overwritten on the next frame.
+func _turn_view(player: Player, degrees: float) -> void:
+	player.camera_rig._look_relative_yaw = deg_to_rad(degrees)
+	player.rotation.y = player.visual_yaw() + deg_to_rad(degrees)
+
 func after_each() -> void:
 	if _line != null and is_instance_valid(_line):
 		_line.queue_free()
@@ -407,8 +415,7 @@ func test_a_turned_head_jumps_along_the_look() -> void:
 	# reading it too early would measure that trailing lag as if it were a
 	# player-driven turn.
 	await step(40)
-	var facing_yaw: float = player.rotation.y
-	player.rotation.y = facing_yaw + deg_to_rad(60.0)
+	_turn_view(player, 60.0)
 	player.camera_rig.set_pitch(deg_to_rad(30.0))
 	await step(1)  # let the pitch reach the camera transform
 	var look: Vector3 = -player.camera_rig.camera.global_transform.basis.z
@@ -434,8 +441,7 @@ func test_the_into_wall_component_survives() -> void:
 	# technique.
 	var player: Player = await _climbing_player()
 	await step(40)  # past the magnet fade AND the eye's scripted-turn catch-up
-	var facing_yaw: float = player.rotation.y
-	player.rotation.y = facing_yaw + deg_to_rad(47.0)  # just past the 45 degree gate
+	_turn_view(player, 47.0)  # just past the 45 degree gate
 	await step(1)
 	var input: ScriptedInputSource = _world["input"]
 	input.press_jump()
@@ -471,10 +477,8 @@ func test_a_lip_at_the_top_catches_the_into_wall_jump() -> void:
 		"test setup: left the ladder before reaching the fixture height")
 	assert_gt(ladder_move.climbing_offset(), 2.0, "test setup: never got near the top")
 
-	var facing_yaw: float = player.rotation.y
-	var turn: float = deg_to_rad(50.0)  # past jump_angle_deg (45)
-	var new_yaw: float = facing_yaw + turn
-	player.rotation.y = new_yaw
+	_turn_view(player, 50.0)  # past jump_angle_deg (45)
+	var new_yaw: float = player.rotation.y
 	await step(1)  # let the turn reach the camera transform
 
 	# A WALL, not a thin lip: tall enough that its face still blocks
@@ -795,8 +799,7 @@ func test_space_beats_the_top_exit() -> void:
 
 	# NOW: at the very top, a valid deck in reach, camera turned past
 	# jump_angle_deg, W and jump pressed together on the same tick.
-	var facing_yaw: float = player.rotation.y
-	player.rotation.y = facing_yaw + deg_to_rad(50.0)
+	_turn_view(player, 50.0)
 	await step(1)
 	input.state.move = Vector2(0.0, 1.0)  # W held again
 	input.press_jump()
@@ -880,3 +883,36 @@ func test_backing_in_spends_the_chance_and_turning_does_not_refund_it() -> void:
 			break
 	input.state.move = Vector2.ZERO
 	assert_true(caught, "walking toward the latched ladder never re-armed the catch")
+
+# --- the climb's look assist ------------------------------------------------
+
+func test_a_view_turned_past_the_assist_angle_refuses_the_climb() -> void:
+	# The pair with the test below: past climb_assist_angle_deg a held W is
+	# read as lining up a jump off, and the body stays where it is.
+	var player: Player = await _climbing_player()
+	await step(40)  # past the magnet fade and the eye's catch-up
+	var ladder_move := player.move_manager.move_for(Move.LADDER) as LadderMove
+	_turn_view(player, player.config.ladder.climb_assist_angle_deg + 20.0)
+	await step(1)
+	var before: float = ladder_move.climbing_offset()
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2(0.0, 1.0)  # W
+	await step(20)
+	assert_almost_eq(ladder_move.climbing_offset(), before, 0.001, \
+		"W climbed with the view turned past the assist angle")
+
+func test_a_climb_inside_the_assist_angle_walks_the_view_back() -> void:
+	var player: Player = await _climbing_player()
+	await step(40)
+	var ladder_move := player.move_manager.move_for(Move.LADDER) as LadderMove
+	_turn_view(player, player.config.ladder.climb_assist_angle_deg - 10.0)
+	await step(1)
+	var before: float = ladder_move.climbing_offset()
+	var input: ScriptedInputSource = _world["input"]
+	input.state.move = Vector2(0.0, 1.0)  # W
+	await step(60)
+	assert_gt(ladder_move.climbing_offset(), before, \
+		"W inside the assist angle did not climb")
+	var turned: float = absf(float(player.camera_rig.look_debug()["relative_yaw"]))
+	assert_lte(turned, deg_to_rad(player.config.ladder.climb_look_yaw_deg) + 0.01, \
+		"a held climb left the view outside the climb fan")

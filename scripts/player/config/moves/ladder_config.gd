@@ -27,6 +27,17 @@ func _init() -> void:
 	redo_move_time = 0.0
 	# BOTH HANDS ON THE RUNGS, same as the cable and the bar.
 	allows_turn = false
+	# The hang's yaw fence: +-170 off the rungs, never a full circle either
+	# way. Absolute, so it is measured against the ladder rather than the
+	# facing -- LineMove._centre_fan() centres it once the catch lands. Pitch
+	# is left to CameraConfig.pitch_limit_deg: a climber looks straight up
+	# the rungs and straight down them.
+	# ⚠️ PROJECT-DEFINED, borrowed from GrabConfig's owner-reported 170. The
+	# climb narrows it further while W/S is held; see climb_look_yaw_deg.
+	constrain_look = true
+	absolute_yaw_constraint = true
+	min_look_constraint = Vector3(-PI, -deg_to_rad(170.0), -PI)
+	max_look_constraint = Vector3(PI, deg_to_rad(170.0), PI)
 
 ## Metres/second the body travels along the line for a held W/S.
 @export var climb_speed: float = 1.8
@@ -58,6 +69,17 @@ func _init() -> void:
 ## off (Task 5) rather than being refused. Mirrors GrabConfig's own pairing
 ## of jump_angle_deg against "looking at it" vs. "looking away".
 @export var jump_angle_deg: float = 45.0
+## Half-width of the yaw fan while W/S is climbing, degrees either side of the
+## rungs. The climb's counterpart of GrabConfig.pull_up_angle_deg narrowing a
+## shimmy: CameraRig eases a fan edge in to meet a view outside it, so a climb
+## started with the head turned walks the view back to the rungs.
+@export var climb_look_yaw_deg: float = 45.0
+## How far the view may be turned off the rungs and still climb, degrees.
+## Past it W/S is refused and the fan left alone -- a climber looking back
+## over their shoulder is lining up a jump off, the same reading as
+## GrabConfig.shimmy_assist_angle_deg. Re-read every tick: turn back inside
+## with the key still held and the climb starts.
+@export var climb_assist_angle_deg: float = 90.0
 ## Launch speed of a jump off the ladder (Task 5). Copied from GrabConfig's
 ## own jump_speed as a starting point -- letting go of a ladder and letting
 ## go of a ledge are the same kind of shove.

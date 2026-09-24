@@ -37,6 +37,10 @@ var _top_exiting: bool = false
 ## Seconds of hard-catch lockout still owed, 0 when there is none. Armed in
 ## enter() by _arm_hard_catch() from the fall the hands just stopped.
 var _stun: float = 0.0
+## Whether this tick's W/S is a climb the view is allowed to make -- held, and
+## turned no further off the rungs than LadderConfig.climb_assist_angle_deg.
+## Read by look_yaw_half_span(), which runs outside physics_update().
+var _climb_wanted: bool = false
 
 ## PARENTED, not left loose: Move.gd's own _ready() sets _tick_travel (unused
 ## here, but calling super keeps this move honest about the base contract),
@@ -54,6 +58,7 @@ func enter(_previous: StringName) -> void:
 	# so nothing today re-enters LADDER with it still true, but a fresh catch
 	# has no business starting mid-carry either way.
 	_top_exiting = false
+	_climb_wanted = false
 	_aborted = not acquire_line(InterestLine.Kind.LADDER)
 	if _aborted:
 		return
@@ -194,13 +199,22 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# A/D + space does not trigger a jump when there is no other ladder
 		# to snap to).
 
+	# W/S from here down is the CLIMB, and a view turned past the assist
+	# angle refuses it -- top exit and bottom release included, since both are
+	# the climb running out of rungs. The jump-off scan above reads the raw
+	# keys on purpose: S+space aims straight back, which is exactly where a
+	# refused climb is looking.
+	_climb_wanted = absf(input.move.y) > 0.1 \
+		and _turned_from_rungs() <= deg_to_rad(cfg.climb_assist_angle_deg)
+	var climb: float = input.move.y if _climb_wanted else 0.0
+
 	# The top exit MUST sit AFTER the jump chain above and BEFORE
 	# the ordinary climb below -- PROTECTED INVARIANT #3: space
 	# at the very top (a turned camera or a snap target) still beats the
 	# scripted exit, exactly the way it does at every other height on the
 	# line. Reaching here at all already means jump_pressed either was not
 	# held or refused to fire above.
-	if _offset >= _line.length() - 0.01 and input.move.y > 0.0:
+	if _offset >= _line.length() - 0.01 and climb > 0.0:
 		var deck: Dictionary = _probe_top_deck()
 		if deck.get("valid", false):
 			return _begin_top_exit(deck["position"])
@@ -213,11 +227,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# consume_roll() here, unlike the crouch-release above -- this is a held
 	# key crossing the bottom, not a discrete press, so there is no buffered
 	# roll press to guard against re-firing.
-	if _offset <= 0.01 and input.move.y < 0.0:
+	if _offset <= 0.01 and climb < 0.0:
 		return FALLING
 
-	_climb_dir = int(signf(input.move.y)) if absf(input.move.y) > 0.1 else 0
-	_offset = clampf(_offset + input.move.y * cfg.climb_speed * delta, 0.0, _line.length())
+	_climb_dir = int(signf(climb))
+	_offset = clampf(_offset + climb * cfg.climb_speed * delta, 0.0, _line.length())
 	var s: Dictionary = _line.sample(_offset)
 	var hang: Vector3 = s["position"] - Vector3.UP * cfg.hand_height \
 		+ _line.front() * cfg.stand_off
@@ -234,7 +248,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		if hit != null:
 			# Descending into the floor IS the bottom -- the next tick lands
 			# and grounds normally.
-			if input.move.y < 0.0 and hit.get_normal().y > 0.5:
+			if climb < 0.0 and hit.get_normal().y > 0.5:
 				return FALLING
 			# A ceiling (or anything else in the way): stay on the ladder
 			# rather than fight the geometry. Re-derive _offset from where
@@ -261,6 +275,23 @@ func exit() -> void:
 	_stun = 0.0
 	if player.screen_effects != null:
 		player.screen_effects.set_tint(config.landing.tint_color, 0.0)
+
+## THE CLIMB ASSIST, and narrowing the fan is the whole of it -- GrabMove's
+## shimmy assist, for the same reason: CameraRig eases a fan edge in to meet a
+## view outside it, so the view walks back to the rungs at the camera's own
+## rate. Let go and the wide fan returns with the view left where it was
+## brought. The top exit's carry keeps whatever the W that started it asked.
+func look_yaw_half_span() -> float:
+	if _climb_wanted:
+		return deg_to_rad(cfg.climb_look_yaw_deg)
+	return NAN
+
+## How far the view has turned off the rungs, radians: 0 facing them, PI with
+## the back to them. The body's yaw IS the view's here -- the absolute-yaw
+## clamp rebuilds it every tick from the fan -- and _target_yaw is the facing
+## squared to the ladder.
+func _turned_from_rungs() -> float:
+	return absf(wrapf(player.rotation.y - _target_yaw, -PI, PI))
 
 ## Arc length along the line, metres. Read by the HUD and by tests.
 func climbing_offset() -> float:
