@@ -42,6 +42,10 @@ from static_mesh import _b64, pkg_name, ref_name
 # A chunk vertex has room for this many UV sets whatever NumUVSets says; the
 # property is how many of them mean anything (the Edge's helicopter: 1).
 UV_SLOTS = 3
+# [ME:CONFIRMED] Engine.u's Default__SkeletalMesh: a cloth that does not
+# write its ClothDensity has this one. Most of them do not -- the paper strips,
+# plastic sheets and EdgeCloth -- and left out they hung at the engine's 1 kg.
+CLOTH_DENSITY_DEFAULT = 1.0
 
 
 def parse_render(mr, idx, with_skin=False):
@@ -57,9 +61,31 @@ def parse_render(mr, idx, with_skin=False):
     if p is None:
         raise ExtractError('%s: no tagged properties' % where)
     uv_sets = 1
+    # What the original's PhysX cloth was given, for a mesh that is cloth. The
+    # density is per unit area, so the total mass is the builder's to work out
+    # from the geometry; damping only counts when its flag is set.
+    cloth = {}
+    # [ME:CONFIRMED] which vertices PhysX moves is stored per vertex, not left
+    # to the engine: ClothToGraphicsVertMap lists the simulated vertices by
+    # render index, free ones first, and NumFreeClothVerts says where the free
+    # ones end. The rest of the map, and every render vertex the map leaves
+    # out, is skinned to the non-cloth bone and stays put. Checked on all eleven
+    # PX_SK_ meshes of SP01a and SP06: the split falls exactly on the bone.
+    cloth_map, free_count = None, None
     for tag in chain:
         if tag[0] == 'NumUVSets':
             uv_sets = struct.unpack_from('<i', d, tag[3])[0]
+        elif tag[0] == 'ClothDensity':
+            cloth['density'] = struct.unpack_from('<f', d, tag[3])[0]
+        elif tag[0] == 'ClothDamping':
+            cloth['damping'] = struct.unpack_from('<f', d, tag[3])[0]
+        elif tag[0] == 'bEnableClothDamping':
+            cloth['damped'] = bool(struct.unpack_from('<i', d, tag[3])[0]) if tag[4] >= 4 else True
+        elif tag[0] == 'NumFreeClothVerts':
+            free_count = struct.unpack_from('<i', d, tag[3])[0]
+        elif tag[0] == 'ClothToGraphicsVertMap':
+            n = struct.unpack_from('<i', d, tag[3])[0]
+            cloth_map = struct.unpack_from('<%di' % n, d, tag[3] + 4)
     if not 1 <= uv_sets <= UV_SLOTS:
         raise ExtractError('%s: %d UV sets' % (where, uv_sets))
     p += 4
@@ -145,6 +171,14 @@ def parse_render(mr, idx, with_skin=False):
     if not placed or max(indices) >= len(placed) or set(placed) != set(range(len(placed))):
         raise ExtractError('%s: %d vertices do not cover the index buffer' % (where, len(placed)))
 
+    if cloth_map:
+        if free_count is None or not 0 < free_count <= len(cloth_map) or max(cloth_map) >= len(placed):
+            raise ExtractError('%s: cloth map of %d, %s free, over %d vertices'
+                               % (where, len(cloth_map), free_count, len(placed)))
+        free = set(cloth_map[:free_count])
+        cloth['pinned'] = [k for k in range(len(placed)) if k not in free]
+        cloth.setdefault('density', CLOTH_DENSITY_DEFAULT)
+
     # The mesh stands as RotOrigin turns it: the Blackhawk is modelled nose-up
     # and lies down only through this. Baked in, so a placement is the actor's
     # own transform and nothing else.
@@ -188,8 +222,11 @@ def parse_render(mr, idx, with_skin=False):
         flipped = []
         for t in range(0, len(tri), 3):
             flipped.extend((tri[t], tri[t + 2], tri[t + 1]))
+        # A section already names its material by index, so that index is the
+        # slot a placement's Materials array overrides. Static meshes keep the
+        # same field under their element's MaterialIndex.
         surfaces.append({'material': ref_name(pkg, materials[material]), 'material_ref': materials[material],
-                         'collide': False, 'indices': _b64('H', flipped)})
+                         'collide': False, 'slot': material, 'indices': _b64('H', flipped)})
     return {
         'vertices': _b64('f', vertices),
         'normals': _b64('f', normals),
@@ -205,6 +242,7 @@ def parse_render(mr, idx, with_skin=False):
         'surfaces': surfaces,
         'body_setup': 0,
         'use_simple_box_collision': False,
+        'cloth': cloth,
         # For skeletal_anim, and popped by whoever asked before the record is
         # stored: what an animation has to move to move this mesh as one
         # piece is the bone most of it is skinned to.

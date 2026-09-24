@@ -510,6 +510,18 @@ extends Resource
 ## the dial stops being honest there, and it does so silently.
 @export var third_person_probe_radius: float = 0.2
 
+## Which physics layers the third-person probe treats as something to keep the
+## camera out of. Layer 1 is the world, and the world is the only thing the
+## shot has to stay clear of.
+##
+## DO NOT leave this at every layer, which is what an unset query mask means.
+## A hanging cloth is a physics body the player is meant to walk straight
+## through; probed against, it pulled the camera in and let go once a tick and
+## the shot convulsed. Anything else that is solid to the simulation but not to
+## the shot -- a pushable prop, a character -- has the same problem, so it is a
+## mask rather than a soft-body special case.
+@export_flags_3d_physics var third_person_probe_mask: int = 1
+
 ## The render layer carrying the body's FIRST-PERSON meshes, as a mask.
 ##
 ## VRM has a mechanism for this in the spec, and godot-vrm implements it: with

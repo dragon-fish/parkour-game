@@ -37,6 +37,14 @@ const MUTED_DB := -80.0
 ## 0.85 kept most of both.
 const SMALL_THIRD_PERSON_BODY_SCALE := 0.85
 
+## The level's simulated props -- hanging cloth and loose boxes -- which the
+## physics_props setting switches. Each joins it itself: see follow_physics_props().
+const PHYSICS_PROPS_GROUP := "physics_props"
+
+## physics_props as last applied, for a prop that enters the tree afterwards:
+## a section streams in long after the settings were.
+static var physics_props_on := true
+
 
 ## The full settings blob with every key at its shipped default.
 static func defaults() -> Dictionary:
@@ -57,11 +65,9 @@ static func defaults() -> Dictionary:
 		antialiasing = "msaa_2x",
 		# Off: the moves' hand positions are measured against a full-size body.
 		small_third_person_body = false,
-		# Off: Godot's occluders are double-sided, so a one-sided facade seen
-		# from behind -- an office's outer shell, from inside the office --
-		# hides the whole city past the window. On buys back a few percent of
-		# frame time where the view is walled in.
-		occlusion_culling = false,
+		# On: it is the original's look. Off takes every cloth and loose box
+		# out of the physics server, which is most of what they cost.
+		physics_props = true,
 	}
 
 
@@ -108,8 +114,14 @@ static func apply_global(s: Dictionary) -> void:
 	var viewport: Viewport = (Engine.get_main_loop() as SceneTree).root
 	viewport.msaa_3d = MSAA_MODES.get(s.antialiasing, Viewport.MSAA_DISABLED)
 	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA 			if s.antialiasing == "fxaa" else Viewport.SCREEN_SPACE_AA_DISABLED
-	# The project setting only makes occluders available; this is the switch.
-	viewport.use_occlusion_culling = s.occlusion_culling
+	# Always off, whatever an older settings file says. Godot's occluders are
+	# double-sided, so a one-sided facade seen from behind -- an office's outer
+	# shell, from inside the office -- hid the whole city past the window, and
+	# a see-through window hid what stood behind it. Streaming the chapter by
+	# section does most of what culling bought.
+	viewport.use_occlusion_culling = false
+	physics_props_on = s.physics_props
+	(Engine.get_main_loop() as SceneTree).call_group(PHYSICS_PROPS_GROUP, "simulate", physics_props_on)
 
 	# Headless has no window; the editor-embedded game has one it is not
 	# allowed to touch ("Embedded window can't be resized"). Same guard as
@@ -150,6 +162,15 @@ static func apply_global(s: Dictionary) -> void:
 	# to it on the next boot.
 	if mode == DisplayServer.WINDOW_MODE_WINDOWED and not FileAccess.file_exists(WindowMemory.PATH):
 		DisplayServer.window_set_size(s.window_size)
+
+
+## Puts a simulated prop under the physics_props setting, as it stands now and
+## whenever it changes. Called from the prop's own _ready(); the prop answers
+## simulate(on: bool), because how a prop stops depends on what it is --
+## see PhysicsProp.simulate() and SimulatedCloth.simulate().
+static func follow_physics_props(prop: Node) -> void:
+	prop.add_to_group(PHYSICS_PROPS_GROUP)
+	prop.call("simulate", physics_props_on)
 
 
 ## Applies the per-player half of the settings: camera sensitivity and FOV

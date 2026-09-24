@@ -31,13 +31,27 @@ import kismet
 import streaming
 
 # InterpActors are movers: placed like any mesh, moved by matinee.py's data.
-PLACED_CLASSES = ('StaticMeshActor', 'InterpActor')
+# A KActor is a rigid body, placed only when nothing but physics moves it:
+# see free_rigid_body().
+PLACED_CLASSES = ('StaticMeshActor', 'InterpActor', 'KActor')
+# [ME:INFERRED] UE3's PhysX scale, 50 uu to a PhysX unit (U2PScale 0.02). A
+# rigid body's mass is its PhysicalMaterial's Density over its collision's
+# volume in those units, times the BodySetup's MassScale.
+PHYSX_UNIT_M = 0.5
+# [ME:CONFIRMED] Engine.u's Default__PhysicalMaterial: what a body without a
+# PhysMaterial of its own is made of.
+PHYS_MATERIAL_DEFAULTS = {'Density': 1.0, 'Friction': 0.7, 'Restitution': 0.3, 'LinearDamping': 0.01}
 # A SkeletalMeshActor is placed only when its mesh is SCENERY that happens to
 # be skinned, by these name prefixes: the news helicopter the Edge ends on and
-# the Blackhawk the Scraper does, each hidden until its Matinee flies it in.
-# The rest of the game's 700-odd are people, pigeons, rats, flags and cloth,
-# and a person in a reference pose is a worse sight than no person.
-SKELETAL_SCENERY = ('SK_VH_', 'SK_SWAT_Blackhawk')
+# the Blackhawk the Scraper does, each hidden until its Matinee flies it in,
+# and PX_SK_, the original's PhysX cloth -- plastic dividers, awnings, banners,
+# 147 of them across the game. The rest of the 700-odd are people, pigeons,
+# rats and flags, and a person in a reference pose is a worse sight than no
+# person.
+#
+# Cloth arrives in its REST pose, which is a flat sheet: these are drawn, not
+# simulated. Giving them motion is the builder's job, not this one's.
+SKELETAL_SCENERY = ('SK_VH_', 'SK_SWAT_Blackhawk', 'PX_SK_')
 # The Blackhawk's cabin is a second actor, hung on the first one's VH_Main bone
 # by a SeqAct_AttachToActor. Nothing here follows a bone, so it would stay on
 # the pad while the hull it belongs to flew off.
@@ -84,6 +98,9 @@ class MeshTable:
         self._materials = {}
         # (package, mesh name) -> skeleton of a skinned mesh: skeletal_anim's.
         self.skeletons = {}
+        # id(record) -> its BodySetup's PhysMaterial and MassScale.
+        self.bodies = {}
+        self._phys_values = {}
 
     def get(self, mr, export_idx):
         key = (mr.label, export_idx)
@@ -98,7 +115,12 @@ class MeshTable:
         record = (skeletal_mesh if skinned else static_mesh).parse_render(mr, export_idx)
         if skinned:
             self.skeletons[(mr.label, name)] = record.pop('skeleton')
-        shapes, material = static_mesh.simple_collision(mr, record.pop('body_setup'))
+        body = record.pop('body_setup')
+        shapes, material = static_mesh.simple_collision(mr, body)
+        # What a rigid body needs of the BodySetup, kept out of the record: the
+        # record is the library's hash, and every mesh would rebuild.
+        self.bodies[id(record)] = {'material': material,
+                                   'mass_scale': (mr.props(body)[0] or {}).get('MassScale', 1.0) if body > 0 else 1.0}
         record['name'] = name
         record['source'] = mr.label
         record['path'] = mr.pkg.full_name(export_idx)
@@ -245,6 +267,20 @@ class MeshTable:
     def _soft_landing(self, material):
         return self._phys_flag(material, 'bEnableSoftLanding')
 
+    def phys_values(self, material):
+        """Density, Friction, Restitution and LinearDamping of a PhysicalMaterial
+        in TDPhysicalMaterials by name, each at the engine default where it
+        writes none or where there is no material at all."""
+        if material not in self._phys_values:
+            values = dict(PHYS_MATERIAL_DEFAULTS)
+            library = self.packages.shared_reader('TDPhysicalMaterials') if material else None
+            idx = next((i for i, e in enumerate(library.pkg.exports, 1) if e['name'] == material), None) if library else None
+            if idx is not None:
+                props = library.props(idx)[0] or {}
+                values.update({k: props[k] for k in values if isinstance(props.get(k), float)})
+            self._phys_values[material] = values
+        return self._phys_values[material]
+
 
 def _same_mesh(a, b):
     return all(a[k] == b[k] for k in ('vertex_count', 'triangle_count')) and         all(abs(x - y) <= 0.01 for x, y in zip(a['bounds']['extent'], b['bounds']['extent']))
@@ -326,9 +362,79 @@ def flight_of(meshes, mr, actor_idx, group_idx, track_idx, length):
                                      actor.get('Location') or (0.0, 0.0, 0.0), actor.get('Rotation') or (0, 0, 0))
 
 
+def kismet_held(mr):
+    """Export indices some Kismet variable in this package names: the actors
+    the level's script drives."""
+    held = set()
+    for i, e in enumerate(mr.pkg.exports, 1):
+        if mr.pkg.class_of(e).startswith(('SeqVar', 'TdSeqVar')):
+            props = kismet._props(mr, i)
+            held.add(ref_export(props.get('ObjValue')))
+            held.update(matinee._int_array(mr, props.get('ObjList')))
+    held.discard(None)
+    held.discard(0)
+    return held
+
+
+def free_rigid_body(actor, component, hidden):
+    """A KActor that nothing but physics moves and that physics can reach.
+
+    Left out: PHYS_None (Stormdrain's concrete blocks, which Kismet drops), a
+    hidden one (Subway's and the Scraper's cover plates), and one that neither
+    collides with actors nor blocks rigid bodies -- Subway's pipes and button
+    boxes, which nothing ever wakes, and the Cranes hook, which blocks nothing
+    and would fall through the world. What Kismet drives (the Mall sculpture's
+    68 pieces, Escape's door) is left out by the caller."""
+    return (actor.get('Physics', 'PHYS_RigidBody') == 'PHYS_RigidBody' and not hidden
+            and actor.get('bCollideActors', True) is not False
+            and component.get('CollideActors', True) is not False
+            and component.get('BlockRigidBody', True) is not False)
+
+
+def rigid_body(meshes, mr, actor, component, record, basis):
+    """What a free KActor's RigidBody3D needs."""
+    body = meshes.bodies[id(record)]
+    override = component.get('PhysMaterialOverride')
+    material = MeshTable._object_name(mr, override) if override else body['material']
+    phys = meshes.phys_values(material)
+    volume = sum(_hull_volume(shape) for shape in record['simple_shapes']) * abs(_det(basis))
+    return {
+        'mass': round(phys['Density'] * volume / PHYSX_UNIT_M ** 3 * body['mass_scale'], 3),
+        'friction': phys['Friction'], 'restitution': phys['Restitution'], 'linear_damping': phys['LinearDamping'],
+        # [ME:CONFIRMED] Default__KActor wakes nothing: a KActor sleeps until
+        # touched unless it says bWakeOnLevelStart. SP01a's boxes do, Cranes'
+        # do not.
+        'awake': bool(actor.get('bWakeOnLevelStart', False)),
+        # BlockNonZeroExtent is what the pawn's cylinder sweeps against. SP01a's
+        # boxes clear it: the player runs through them and shoves them aside.
+        'blocks_player': component.get('BlockNonZeroExtent', True) is not False,
+    }
+
+
+def _hull_volume(shape):
+    """Volume of a convex hull, whatever way its triangles wind."""
+    v = shape['vertices']
+    c = [sum(p[k] for p in v) / len(v) for k in range(3)]
+    total = 0.0
+    t = shape['triangles']
+    for a, b, d in zip(t[0::3], t[1::3], t[2::3]):
+        u = [v[a][k] - c[k] for k in range(3)]
+        w = [v[b][k] - c[k] for k in range(3)]
+        x = [v[d][k] - c[k] for k in range(3)]
+        total += abs(u[0] * (w[1] * x[2] - w[2] * x[1]) - u[1] * (w[0] * x[2] - w[2] * x[0])
+                     + u[2] * (w[0] * x[1] - w[1] * x[0])) / 6.0
+    return total
+
+
+def _det(b):
+    return (b[0][0] * (b[1][1] * b[2][2] - b[1][2] * b[2][1]) - b[1][0] * (b[0][1] * b[2][2] - b[0][2] * b[2][1])
+            + b[2][0] * (b[0][1] * b[1][2] - b[0][2] * b[1][1]))
+
+
 def collect_placements(mr, meshes, config, report, keep=frozenset()):
     pkg = mr.pkg
     out = []
+    held = kismet_held(mr)
     for i, e in enumerate(pkg.exports, 1):
         skinned = pkg.class_of(e) == 'SkeletalMeshActor'
         if (pkg.class_of(e) not in PLACED_CLASSES and not skinned) or outer_class(pkg, e) != 'Level':
@@ -343,6 +449,11 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
             continue
         component_ref = actor.get('SkeletalMeshComponent' if skinned else 'StaticMeshComponent')
         component = component_props(meshes.packages, mr, component_ref)
+        kactor = pkg.class_of(e) == 'KActor'
+        if kactor and (i in held or not free_rigid_body(
+                actor, component, bool(actor.get('bHidden', False) or component.get('HiddenGame', False)))):
+            report['counts']['kactor_left_out'] = report['counts'].get('kactor_left_out', 0) + 1
+            continue
         mesh_ref = component.get('SkeletalMesh' if skinned else 'StaticMesh')
         if skinned and not str(pkg.resolve(mesh_ref[1]) if isinstance(mesh_ref, tuple) and len(mesh_ref) == 2
                                and mesh_ref[0] == 'obj' and mesh_ref[1] else '').startswith(SKELETAL_SCENERY):
@@ -387,6 +498,13 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
         turned = pivot_offset(actor)
         lo, hi = world_aabb(record, [position[k] - turned[k] for k in range(3)], basis)
         collision = 'none' if shadow_only else collision_class(actor, component, record)
+        rigid = None
+        if kactor:
+            if not record['simple_shapes']:
+                raise ExtractError('%s.%s: a rigid body with no simple collision' % (mr.label, e['name']))
+            # A rigid body collides by its hulls, whatever its component asks for.
+            collision = 'simple'
+            rigid = rigid_body(meshes, mr, actor, component, record, basis)
         if name in config['collision_overrides']:
             collision = override_collision(name, config['collision_overrides'][name], record)
             report['counts']['collision_overridden'] = report['counts'].get('collision_overridden', 0) + 1
@@ -416,6 +534,20 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
         # Edge's helicopter is TWO actors on one spot: SkeletalMeshActor_0,
         # which the sequences animate and which is never shown, and _1, based
         # on it, which is what "End of Roof" unhides.
+        # A cloth's wind and how much of its simulation is drawn belong to the
+        # placement, not the mesh: every vent's strips carry their own. UDK's
+        # SkeletalMeshComponent.uc: ClothWind pushes each vertex by the dot of
+        # the wind and its normal; ClothBlendWeight blends the simulation over
+        # the skinned pose, class default 1.0. The wind is in the COMPONENT's
+        # space and is written here as it stands: [ME:CONFIRMED] seen in the
+        # original, SP01a's vent strips stand out into the duct and flap. Read
+        # as world space the same wind blows them back into the grille.
+        cloth = {}
+        if skinned and 'pinned' in record.get('cloth', {}):
+            if any(component.get('ClothWind') or ()):
+                cloth['wind'] = point(component['ClothWind'])
+            if component.get('ClothBlendWeight', 1.0) != 1.0:
+                cloth['blend'] = round(component['ClothBlendWeight'], 4)
         base_idx = ref_export(actor.get('Base')) if actor.get('bHardAttach') or skinned else None
         base = '%s.%s' % (mr.label, pkg.exports[base_idx - 1]['name']) if base_idx else None
         report['counts']['hidden'] += hidden
@@ -427,6 +559,8 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
                    | ({'collision_if_on': if_on} if if_on != 'none' else {})
                    | ({'materials': overrides} if any(overrides) else {})
                    | ({'shadow_only': True} if shadow_only else {})
+                   | ({'cloth': cloth} if cloth else {})
+                   | ({'rigid': rigid} if rigid else {})
                    | ({'runner_vision': runner_vision(actor)} if actor.get('bLOIObject') else {}))
     return out
 
@@ -652,6 +786,11 @@ def main(config_path):
         end_links.append((name, matinee.level_end_links(packages, mr)))
         for face in lights.collect_bsp(mr):
             face['package'] = name
+            # Baked and described like any placement's material, so the builder
+            # reads a BSP face and a per-placement override the same way.
+            ref = face.pop('material_ref')
+            if ref:
+                face.update(meshes.override(mr, ref))
             bsp.append(face)
         print('%-36s placements so far %5d' % (name, len(placements)))
 
@@ -789,6 +928,7 @@ def main(config_path):
             node['mesh'] = node.pop('_mesh_record')['name']
             used.add(node['mesh'])
     mesh_out = {n: r for n, r in records.items() if n in used}
+    _override_uv_sets(placements, mesh_out, meshes.bakes, report)
     report['meshes'] = len(mesh_out)
     report['meshes_without_normals'] = sorted(n for n, r in mesh_out.items() if r['normals'] is None)
     report['kdop_mismatch'] = sorted(n for n, r in mesh_out.items() if r['kdop_triangles'] != r['collide_triangles'])
@@ -844,10 +984,47 @@ def main(config_path):
         json.dump(mesh_out, fh, ensure_ascii=False, separators=(',', ':'))
     used_materials = {s['material'] for r in mesh_out.values() for s in r['surfaces']}
     used_materials |= {o['material'] for p in placements for o in p.get('materials', []) if o}
+    used_materials |= {f['material'] for f in bsp if f.get('material')}
     with open(os.path.join(out_dir, 'materials.json'), 'w', encoding='utf-8') as fh:
         json.dump({n: b for n, b in meshes.bakes.items() if b and n in used_materials}, fh, separators=(',', ':'))
     print(json.dumps(report, ensure_ascii=False, indent=1))
     print('-> %s' % out_dir)
+
+
+def _override_uv_sets(placements, mesh_out, bakes, report):
+    """The UV set each surface needs once the level's material overrides are
+    taken into account.
+
+    A surface's set comes from the material that DRAWS it, which on an
+    overridden slot is the override, not the element's own material. The
+    billboards' ad elements carry M_TestAd_01, a 4x4 placeholder sampling set
+    0, while every ad painted over it wants set 1. Built on the placeholder's
+    set, an ad reads the lightmap patch and shows one stretched corner of
+    itself.
+
+    One mesh in the library serves every placement of it, so a slot that two
+    overrides want on different sets cannot be satisfied; it keeps the
+    element's own set and is reported.
+    """
+    wanted = {}
+    for placement in placements:
+        record = mesh_out.get(placement['mesh'])
+        if record is None:
+            continue
+        for slot, override in enumerate(placement.get('materials') or []):
+            bake = bakes.get(override['material']) if override else None
+            if not bake:
+                continue
+            for i, surface in enumerate(record['surfaces']):
+                if surface['slot'] == slot:
+                    wanted.setdefault((placement['mesh'], i), set()).add(bake['uv_set'])
+    clash = []
+    for (name, i), sets in sorted(wanted.items()):
+        if len(sets) == 1:
+            mesh_out[name]['surfaces'][i]['override_uv_set'] = sets.pop()
+        else:
+            clash.append('%s surface %d: %s' % (name, i, sorted(sets)))
+    report['uv_set_clashes'] = clash
 
 
 if __name__ == '__main__':

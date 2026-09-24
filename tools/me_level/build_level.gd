@@ -51,11 +51,15 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 	manifest["config"]["sounds"] = config.get("sounds", {})
 	var paths := Common.output_paths(config)
 
+	_look = config.get("look", {})
 	_library = MeLibrary.new()
+	if _look.has(BAKER_TINT_DIAL):
+		_library.baker_tint_strength = float(_look[BAKER_TINT_DIAL])
+	if _look.has(NORMAL_SCALE_DIAL):
+		_library.normal_scale = float(_look[NORMAL_SCALE_DIAL])
 	if not _library.build(meshes, bakes):
 		return false
 	manifest["puppet_bodies"] = _puppet_bodies(manifest, dir.path_join("puppets"), (paths.shell as String).get_basename() + "_puppets")
-	_look = config.get("look", {})
 
 	if config.get("split_sections", false):
 		return _build_split(config, manifest, paths, rebuild_interactions)
@@ -78,6 +82,10 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 ## See docs/superpowers/specs/2026-09-19-me-chapter-sections-design.md.
 var _library = null
 var _look := {}
+## `look` key for MeshLibrary.baker_tint_strength.
+const BAKER_TINT_DIAL := "baker_tint_strength"
+## `look` key for MeshLibrary.normal_scale.
+const NORMAL_SCALE_DIAL := "normal_scale"
 
 
 func _geometry_builder():

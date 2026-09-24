@@ -158,17 +158,45 @@ func test_the_small_third_person_body_is_opt_in() -> void:
 	SettingsStore.apply_to_config(s, config)
 	assert_lt(config.camera.third_person_body_scale, 1.0, "on did not shrink the third-person body")
 
-func test_occlusion_culling_is_opt_in_and_reaches_the_root_viewport() -> void:
+func test_occlusion_culling_stays_off_whatever_an_old_settings_file_says() -> void:
 	var root := get_tree().root
 	var original := root.use_occlusion_culling
+	root.use_occlusion_culling = true
 	var s := SettingsStore.defaults()
-	assert_false(s.occlusion_culling, "occlusion culling is on by default")
+	assert_false(s.has("occlusion_culling"), "occlusion culling is a setting again")
+	s["occlusion_culling"] = true
 	SettingsStore.apply_global(s)
-	assert_false(root.use_occlusion_culling, "off did not reach the root viewport")
-	s.occlusion_culling = true
-	SettingsStore.apply_global(s)
-	assert_true(root.use_occlusion_culling, "on did not reach the root viewport")
+	assert_false(root.use_occlusion_culling, "an old file's occlusion_culling = true turned culling on")
 	root.use_occlusion_culling = original
+
+func test_physics_props_are_on_by_default_and_the_switch_reaches_them() -> void:
+	var s := SettingsStore.defaults()
+	assert_true(s.physics_props, "physics props are off by default")
+	SettingsStore.apply_global(s)
+	var prop := PhysicsProp.new()
+	add_child_autofree(prop)
+	assert_false(prop.freeze, "on left the prop frozen")
+	s.physics_props = false
+	SettingsStore.apply_global(s)
+	assert_true(prop.freeze, "off did not reach a prop already in the tree")
+	var late := PhysicsProp.new()
+	add_child_autofree(late)
+	assert_true(late.freeze, "off did not reach a prop that entered afterwards")
+	SettingsStore.apply_global(SettingsStore.defaults())
+
+## PackagePresence switches a package's placement nodes with process_mode and
+## keeps its bodies active while disabled. A loose box IS its placement node, so
+## a setting that rode on process_mode was undone the moment its package came in.
+func test_a_package_coming_in_does_not_wake_a_prop_the_setting_stopped() -> void:
+	var s := SettingsStore.defaults()
+	s.physics_props = false
+	SettingsStore.apply_global(s)
+	var prop := PhysicsProp.new()
+	add_child_autofree(prop)
+	prop.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
+	prop.process_mode = Node.PROCESS_MODE_INHERIT
+	assert_true(prop.freeze, "a package coming in set the prop simulating again")
+	SettingsStore.apply_global(SettingsStore.defaults())
 
 func test_apply_global_sets_master_bus_volume_and_restores_it() -> void:
 	var bus := AudioServer.get_bus_index("Master")

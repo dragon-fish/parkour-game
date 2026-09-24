@@ -54,11 +54,11 @@ def parse_render(mr, idx):
         raise ExtractError('%s: %d elements' % (where, element_count))
     elements = []
     for _ in range(element_count):
-        material, collide, _old, _shadow, first, triangles, _vmin, _vmax, _mi, fragments = \
+        material, collide, _old, _shadow, first, triangles, _vmin, _vmax, slot, fragments = \
             struct.unpack_from('<10i', d, p)
         p += 40 + 8 * fragments
         elements.append({'material': ref_name(pkg, material), 'material_ref': material, 'collide': bool(collide),
-                         'first': first, 'triangles': triangles})
+                         'first': first, 'triangles': triangles, 'slot': slot})
     p += 8                                     # PositionVertexBuffer stride, count
     _, position_count, position_start = bulk(12)
     tex_coords, vertex_stride, _vn, full_uvs = struct.unpack_from('<4i', d, p); p += 16
@@ -115,8 +115,13 @@ def parse_render(mr, idx):
         flipped = []
         for t in range(0, len(tri), 3):
             flipped.extend((tri[t], tri[t + 2], tri[t + 1]))
+        # An element's OWN MaterialIndex, not its position in the array, is what
+        # a placement's Materials array indexes. They differ: S_RooftopStructure_06
+        # lists its elements 0, 3, 1, 2, so the override meant for the side band
+        # lands on the roof deck if the ordinal is used.
         surfaces.append({'material': el['material'], 'material_ref': el['material_ref'],
-                         'collide': el['collide'], 'indices': _b64('H', flipped)})
+                         'collide': el['collide'], 'slot': el['slot'],
+                         'indices': _b64('H', flipped)})
     return {
         'vertices': _b64('f', vertices),
         'normals': None if zero_normals else _b64('f', normals),

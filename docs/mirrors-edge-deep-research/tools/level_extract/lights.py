@@ -76,11 +76,26 @@ def collect_lights(mr):
 
 
 BSP_PLANE_SLACK_UU = 0.5
+# FBspSurf: material, flags, base point, normal, the two texture vectors,
+# brush poly, actor, plane, shadow map scale, lighting channels.
+BSP_SURF_SIZE = 56
+# Units a BSP texture spans per tile, the original's own constant. Read off
+# the result: at this scale an office wall's plaster tiles as it does in the
+# game, and the Plaza's paving slabs come out slab-sized.
+BSP_TEXEL_SCALE = 128.0
 
 
 def collect_bsp(mr):
-    """Polygons of the level's compiled world BSP. Brush actors are not
-    triangulated separately: doing so would fill the CSG holes (doorways)."""
+    """Polygons of the level's compiled world BSP, each with the material its
+    surface names and the texture coordinates that surface maps. Brush actors
+    are not triangulated separately: doing so would fill the CSG holes
+    (doorways).
+
+    A node names a surface (FBspNode.iSurf at +20) and the surface carries the
+    material plus the base point and two vectors that project a point into UV,
+    exactly as the original maps a texture onto a wall. Skipped, every
+    interior wall, ceiling and air duct in the game drew one flat grey.
+    """
     pkg, data = mr.pkg, mr.d
     faces = []
     for index, model in enumerate(pkg.exports, 1):
@@ -102,19 +117,30 @@ def collect_bsp(mr):
                 raise ExtractError('%s.%s: BSP overruns export' % (mr.label, model['name']))
             return [data[start + i * stride:start + (i + 1) * stride] for i in range(count)]
 
-        bulk(12)                                            # vectors
+        vectors = [struct.unpack('<3f', raw) for raw in bulk(12)]
         points = [struct.unpack('<3f', raw) for raw in bulk(12)]
         nodes = bulk(64)
         _owner, surface_count = struct.unpack_from('<2i', data, cursor)
-        cursor += 8 + surface_count * 56
+        cursor += 8
+        surfs = [data[cursor + i * BSP_SURF_SIZE:cursor + (i + 1) * BSP_SURF_SIZE] for i in range(surface_count)]
+        cursor += surface_count * BSP_SURF_SIZE
         verts = bulk(24)
         for node in nodes:
             plane = struct.unpack_from('<4f', node)
             pool = struct.unpack_from('<i', node, 16)[0]
+            surf_index = struct.unpack_from('<i', node, 20)[0]
             count = node[54]
             if count < 3:
                 continue
-            polygon = []
+            if not 0 <= surf_index < len(surfs):
+                raise ExtractError('%s: BSP node names surface %d of %d'
+                                   % (mr.label, surf_index, len(surfs)))
+            surf = surfs[surf_index]
+            material_ref, base_index, u_index, v_index = (
+                struct.unpack_from('<i', surf, offset)[0] for offset in (0, 8, 16, 20))
+            base = points[base_index]
+            texture_u, texture_v = vectors[u_index], vectors[v_index]
+            polygon, uvs = [], []
             for vertex in verts[pool:pool + count]:
                 p = points[struct.unpack_from('<i', vertex)[0]]
                 # A parse error puts a vertex metres off; float rounding at
@@ -122,5 +148,9 @@ def collect_bsp(mr):
                 if abs(sum(plane[k] * p[k] for k in range(3)) - plane[3]) > BSP_PLANE_SLACK_UU:
                     raise ExtractError('%s: BSP vertex off its plane' % mr.label)
                 polygon.append([round(c, 4) for c in to_godot(*p)])
-            faces.append({'vertices': polygon, 'normal': [plane[0], plane[2], plane[1]]})
+                offset = [p[k] - base[k] for k in range(3)]
+                uvs.append([round(sum(offset[k] * texture_u[k] for k in range(3)) / BSP_TEXEL_SCALE, 5),
+                            round(sum(offset[k] * texture_v[k] for k in range(3)) / BSP_TEXEL_SCALE, 5)])
+            faces.append({'vertices': polygon, 'normal': [plane[0], plane[2], plane[1]],
+                          'uvs': uvs, 'material_ref': material_ref})
     return faces

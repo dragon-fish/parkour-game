@@ -27,7 +27,19 @@ const SPECULAR_SCALE := 0.5
 const SHEEN_SCALE := 0.5
 ## Part of every mesh's source hash. Bump when what a library file contains or
 ## references changes shape, so no mesh keeps pointing at a file that is gone.
-const LIBRARY_FORMAT := 8
+const LIBRARY_FORMAT := 9
+
+## How strongly the baked normal maps read. The original's are genuinely
+## subtle -- its tangent channels sit within a couple of percent of flat, which
+## is the art rather than a loss -- so 1.0 is faithful and anything above it is
+## a deliberate exaggeration. Useful above all for JUDGING one: at 1.0 a brick
+## wall's relief is too slight to tell which way it faces. A dial.
+var normal_scale := 1.0
+
+## How much of a material's baker_tint reaches its albedo. The original's
+## facades take their colour from the lightmap, not the diffuse; this is how
+## far that colour is put back. 0 leaves every bake as it was evaluated. A dial.
+var baker_tint_strength := 1.0
 
 var _materials := {}
 var _bakes := {}
@@ -56,6 +68,12 @@ func build(meshes: Dictionary, bakes: Dictionary) -> bool:
 		# (the Mall's bridge stayed black after its bake was fixed).
 		content["bakes"] = record["surfaces"].map(func(s): return _bake_hash(s))
 		content["library_format"] = LIBRARY_FORMAT
+		# The look dials belong in the MESH's hash, not only in the material's.
+		# A mesh that is up to date is skipped whole, and its materials are built
+		# from inside that build -- so a dial left out here is a dial that does
+		# nothing until something else happens to invalidate the mesh.
+		content["normal_scale"] = normal_scale
+		content["baker_tint_strength"] = baker_tint_strength
 		var hash := JSON.stringify(content, "", true).sha256_text()
 		var path := path_for(mesh_name)
 		if ResourceLoader.exists(path):
@@ -100,10 +118,12 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 	# them on a body of their own in the uncontrolled_slide group. One mesh
 	# is both the chute and the wall beside it (S_Stdp_Stde_01).
 	var slide_faces := PackedVector3Array()
-	# The original's element index of every surface, in surface order: a
-	# placement's material overrides are per element, and a two-sided
-	# element becomes two surfaces while a modulate one becomes none.
-	var elements := PackedInt32Array()
+	# The material slot every surface draws from, in surface order: what a
+	# placement's Materials array indexes. NOT the element's position -- an
+	# element carries its own MaterialIndex and the two orders differ. A
+	# two-sided element becomes two surfaces while a modulate one becomes none,
+	# so this cannot be recovered from the surface index either.
+	var slots := PackedInt32Array()
 	for element in record["surfaces"].size():
 		var surface: Dictionary = record["surfaces"][element]
 		var indices := _indices(surface["indices"])
@@ -130,7 +150,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 		else:
 			material = _material(Common.material_family(material_name, name), surface["blend"], surface["unlit"])
 		_add_surface(mesh, positions, normals, uvs, indices, material, material_name)
-		elements.append(element)
+		slots.append(surface["slot"])
 		if surface.get("two_sided", false) and surface["blend"] != "additive":
 			# DO NOT draw two-sided surfaces with CULL_DISABLED. A placement with a
 			# mirroring transform (negative scale) gets FRONT_FACING inverted,
@@ -145,7 +165,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			for i in normals.size():
 				back_normals[i] = -normals[i]
 			_add_surface(mesh, positions, back_normals, uvs, back_indices, material, material_name + "_back")
-			elements.append(element)
+			slots.append(surface["slot"])
 	var simple: Array[Shape3D] = []
 	for shape: Dictionary in record["simple_shapes"]:
 		var convex := ConvexPolygonShape3D.new()
@@ -154,7 +174,7 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 			points.append(Common.v3(v))
 		convex.points = points
 		simple.append(convex)
-	mesh.set_meta("surface_elements", elements)
+	mesh.set_meta("surface_slots", slots)
 	mesh.set_meta("simple_shapes", simple)
 	if not collision_faces.is_empty():
 		var concave := ConcavePolygonShape3D.new()
@@ -167,6 +187,11 @@ func _build_mesh(record: Dictionary) -> ArrayMesh:
 	var bounds: Dictionary = record["bounds"]
 	var extent := Common.v3(bounds["extent"])
 	mesh.set_meta("bounds", AABB(Common.v3(bounds["origin"]) - extent, extent * 2.0))
+	# What the original's PhysX cloth was given, for the placements the level
+	# hangs rather than draws. Empty on everything else.
+	var cloth: Dictionary = record.get("cloth", {})
+	if not cloth.is_empty():
+		mesh.set_meta("cloth", cloth)
 	return mesh
 
 
@@ -269,6 +294,11 @@ const MIN_UV_SPAN := 0.05
 func _uv_set(record: Dictionary, surface: Dictionary) -> int:
 	var bake: Variant = _bakes.get(surface["material"] if surface["material"] != null else "")
 	var wanted: int = int(bake["uv_set"]) if bake is Dictionary else 0
+	# Where a placement overrides this slot, the override is what draws the
+	# surface, so its set is the one that matters. The element's own material
+	# can be a placeholder that samples something else entirely.
+	if surface.has("override_uv_set"):
+		wanted = int(surface["override_uv_set"])
 	var sets: Array = record.get("uvs", [])
 	if wanted < sets.size() and _uv_span(sets[wanted]) >= MIN_UV_SPAN:
 		return wanted
@@ -308,7 +338,8 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 	if _materials.has(key):
 		return _materials[key]
 	var bake: Dictionary = _bakes[material_name]
-	var hash := JSON.stringify([bake, blend, unlit, TEXTURE_ALBEDO, LIBRARY_FORMAT]).sha256_text()
+	var hash := JSON.stringify([bake, blend, unlit, TEXTURE_ALBEDO, baker_tint_strength,
+			normal_scale, LIBRARY_FORMAT]).sha256_text()
 	var dir := Common.LIBRARY_DIR.path_join("materials").path_join("textured")
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 	var path := dir.path_join(key + ".res")
@@ -331,7 +362,22 @@ func _textured_material(material_name: String, blend: String, unlit: bool) -> St
 	var material := StandardMaterial3D.new()
 	material.albedo_texture = ImageTexture.create_from_image(image)
 	material.albedo_color = TEXTURE_ALBEDO
+	if bake.has("baker_tint"):
+		# The colour the original's lightmap carried and the diffuse does not
+		# (materials.py, baker_tint). Off at strength 0, the bake as it is.
+		var tint: Array = bake["baker_tint"]
+		material.albedo_color *= Color(1.0, 1.0, 1.0).lerp(
+				Color(tint[0], tint[1], tint[2]), clampf(baker_tint_strength, 0.0, 1.0))
 	material.uv1_scale = Vector3(bake["tiling"][0], bake["tiling"][1], 1.0)
+	if bake.has("normal_png"):
+		var normal := Image.new()
+		if normal.load_png_from_buffer(Marshalls.base64_to_raw(bake["normal_png"])) == OK:
+			normal.convert(Image.FORMAT_RGBA8)
+			normal.generate_mipmaps()
+			normal.compress(Image.COMPRESS_BPTC, Image.COMPRESS_SOURCE_NORMAL)
+			material.normal_enabled = true
+			material.normal_texture = ImageTexture.create_from_image(normal)
+			material.normal_scale = normal_scale
 	var roughness: float = float(bake.get("roughness", DEFAULT_ROUGHNESS))
 	material.roughness = roughness
 	if bake.has("specular"):

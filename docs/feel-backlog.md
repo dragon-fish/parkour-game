@@ -2923,6 +2923,13 @@ capsule.radius = clampf(length * RADIUS_RATIO, RADIUS_MIN, RADIUS_MAX)
 
 ⚠️ **但关节角度限制原作没有，也不可能有。** 28 个 VRCPhysBone 全挂在头发、翅膀、裙摆、耳朵、脸颊上，身体主骨骼一根都没有 —— VRChat 没有布娃娃系统，作者没有理由配。锥角/摆幅那部分仍然只能自己调。
 
+✅ **镜之边缘那边是同一个答案，且更进一步。** `Faith3p_Physics` 有 **21 个刚体、22 个形状**，一根骨头一个，绑在 Hips / Spine1 / Spine2 / Neck / Head / 左右 Arm・ForeArm・Hand・UpLeg・Leg・Foot 上，外加 4 个 `RagdollJoint0X`（警察的 `Male3p_Physics` 结构相同）。两点值得注意：
+
+- 尺寸是**逐骨量好的**，没有任何比例公式 —— 和上面的结论一致，这类体积本来就该是每个模型自带的数据。
+- 形状是 **11 个 Box + 11 个 Sphyl（胶囊）混着用**，不是清一色胶囊。前臂、脚、Spine1、一侧大腿和全部 RagdollJoint 用的是盒。一只脚用盒显然比用胶囊贴合。
+
+所以 `ragdoll.gd` 将来要改的不只是「半径从哪来」，还有「形状是不是只能是胶囊」 —— 现在 `SEGMENTS` 表把两者都写死了。
+
 （布娃娃代码已在 `master`，`scripts/player/ragdoll.gd`，由一个默认关闭的开关控制。）
 
 ### ② 地板远处的点阵走样，抗锯齿救不了

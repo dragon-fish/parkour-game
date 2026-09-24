@@ -277,7 +277,146 @@ if hit:
 | **角度单位** | UE3 用 65536 = 360° 的整数角 | `MinLookConstraint = 13000` → 13000/65536×360 = **71.4°** |
 | **移动求解** | UE3 有自己的 `PHYS_Walking`；Godot 是 `CharacterBody3D.move_and_slide()` | 台阶/斜坡行为不同。ME 的 `MaxStepHeight = 35` → 0.35 m，对应 Godot 的 `floor_max_angle` / 手动台阶探测 |
 | **可行走坡度** | `WalkableFloorZ = 0.71` → acos = **44.7°** | ✅ Godot 默认 `floor_max_angle = 45°`，基本一致 |
+| **碰撞形状** | ✅ 原作是**圆柱**（UE3 `Pawn` 用 `CylinderComponent`，owner 开 debug 视图实见）；我们是 `CapsuleShape3D` r=0.4 h=1.8 | **刻意不还原**，见下 |
+
+### 9.2.2 圆柱底 vs 胶囊底：已知差异，刻意保留
+
+✅ owner 在原作开 debug 碰撞视图确认玩家是圆柱。圆柱底面是平的、边缘是直角，所以能稳稳
+架在极窄的凸沿上——📣 速通社区有关卡靠踩"指甲盖宽的缝隙"走捷径，那条路线的存在依赖的
+正是这个平底。胶囊的半球底碰到同样的沿会滑下去。
+
+**这是接受的偏差，不是待办。** 决定的理由：那些缝隙路线是原作碰撞形状的副产物而不是设计
+意图，复刻它要把整个角色换成 `CylinderShape3D` 并重新验证每一个贴边、落地、翻越的手感，
+代价远大于收益。
+
+DO NOT 把胶囊底是圆的当成 bug 去"修正"。如果将来"站边沿"的手感确实对不上原作，这里是
+根因之一，但那要作为一项独立决定重新提出，不是顺手改掉。
+
+⚠️ 原作的 `CollisionRadius` / `CollisionHeight` 目前**没有实测值**——CDO 里其他一大堆参数
+都挖到了，唯独这两个没有。真要动这一块，先把它们挖出来。
 | **PhysX** | ME 用 PhysX 2.8 **只做碎片/布料特效**，角色移动是引擎自研的 character movement | 复刻**不需要**碰刚体物理，`CharacterBody3D` 就是对的选择 |
+| **两套帧率** | ✅ PhysX 模拟跑 **50 Hz**，画面 **62 FPS**，两者不同步 | 原作的布料参数是在 50 Hz 下调出来的。Godot 只有一个全局 tick（见 9.2.1） |
+
+### 9.2.1 布料：原作靠 PhysX，我们靠 SoftBody3D
+
+原作把塑料帘子**故意放在必经之路上**让玩家撞——2008 年是招牌特效，也是当年低端显卡的杀手。
+资产以 `PX_` 前缀标记（PhysX + SkeletalMesh），布料由 PhysX 在运行时驱动骨骼：
+
+| 资产 | 位置 |
+|---|---|
+| `PX_SK_PlasticDividerFactory_01` | SP06 工厂的塑料隔帘 |
+| `PX_SK_WarningStripeCloth_01` | SP06 警示条纹布 |
+| `SK_Flag_01` / `SK_Flag_02`（含 `_45` `_90` 旋转变体） | 各章旗帜 |
+
+Godot 侧结论，本机实测而非查文档：
+
+- `SoftBody3D` **会被 `CharacterBody3D` 推动**。同一片钉住上边的布，胶囊停在一旁时顶点位移
+  0.0000 m，穿过去时最远顶点动了 2.23 m。默认参数（`total_mass = 1`）太轻，等于被甩飞，
+  需要调。
+- 物理开销可以忽略。无头、稳态、每 tick 墙钟：
+
+  | 帘子数 | 每片顶点 | ms/tick |
+  |---|---|---|
+  | 4 | 100 | 0.094 |
+  | 16 | 100 | 0.126 |
+  | 64 | 100 | 0.166 |
+  | 16 | 324 | 0.326 |
+  | 64 | 324 | 0.545 |
+
+  60 Hz 的预算是 16.7 ms，所以 64 片高细分帘子只占 3%。**这些是下界**——稳态、无碰撞；
+  正在被玩家推的那一片更贵。
+- **细分 8（100 点）就够了，16（324 点）反而会抽搐。** 实际跑过四片 3 m × 2.2 m 的帘子
+  （`scenes/debug_levels/cloth_lab.tscn`，细分 2/4/8/16，其余参数全同）判定的。更密不等于
+  更好：点越多，默认求解迭代次数下的每点约束误差越容易在相邻点之间来回弹。
+- **DO NOT** 为了对齐原作的 50 Hz 去改 `physics_ticks_per_second`。Godot 的 tick 是全局的，
+  动它会连带动摇所有已调好的移动数值。要补偿节拍差异用每个软体自己的
+  `simulation_precision`（每 tick 迭代次数），那才是对应的旋钮。
+- **软体的碰撞配对是单向的**：只要**布料自己的** `collision_mask` 看得见对方的层就成立，
+  对方的 mask 不需要看得见布料。实测四种组合：
+
+  | 布料 层/掩码 | 角色 层/掩码 | 顶点位移 |
+  |---|---|---|
+  | 1 / 1 | 3 / 1 | 2.80 m |
+  | 4 / 1 | 3 / 1 | 2.82 m |
+  | 4 / 1 | 3 / 5 | 2.82 m |
+  | 4 / 4 | 3 / 5 | 0.15 m |
+
+  所以布料可以待在一个**专用层**上——本项目用 bit 3（`collision_layer = 4`，
+  `collision_mask = 1`）——既照样被玩家推动，又能被别的查询按层遮蔽掉。四种组合下角色
+  都走到同一个终点，**布料从不挡人**，和原作一样是穿过去。
+- **第三人称相机必须把布料排除在探针之外**，否则镜头抽搐。相机的 `cast_motion` 原先没设
+  `collision_mask`，等于撞一切；对着帘子测，全层探针在 fraction 0.450 停下，把镜头拉进来
+  又放开，每 tick 反复一次。旋钮是 `CameraConfig.third_person_probe_mask`，默认 1（只看
+  世界那一层）。
+- **原作的布料不是撞在移动用的圆柱上的。** ✅ 角色另有一套 `PhysicsAsset`：`Faith3p_Physics`
+  有 **21 个刚体、22 个形状**（11 Box + 11 Sphyl 胶囊），一根骨头一个，绑在 Hips / Spine1 /
+  Spine2 / Neck / Head / 左右 Arm・ForeArm・Hand・UpLeg・Leg・Foot 上，外加 4 个
+  `RagdollJoint0X`；警察是 `Male3p_Physics`，结构相同。UE3 里这套同时服务 per-bone 命中
+  判定、布娃娃和布料碰撞——**移动的圆柱和布料撞的这一套是两回事**。
+
+  我们的布料撞的是玩家唯一那个 `CapsuleShape3D`（r=0.4 h=1.8），所以帘子是绕着"一根柱子"
+  分开的，不会像原作那样绕着手臂和腿各自兜住。要还原得给玩家骨架挂 per-bone 碰撞体，且只有
+  挂了 `body_scene` 时才有意义。**目前没做，也没有计划**；记在这里是因为"帘子分得太整齐"
+  将来若被当成 bug 排查，根因在这。
+- 帘子是单面片，需要双面材质，否则从一侧看不见（提取器已有 `two_sided` 通路）。
+- 物理插值不作用于软体。本项目没开插值，所以这条目前无影响。
+- ✅ **钉哪些点，原作逐顶点存着**，不必按形状去猜。每个 `PX_SK_*` 的 SkeletalMesh 上：
+  `ClothBones = ['joint2']`，蒙在这根骨上的顶点交给 PhysX；`ClothToGraphicsVertMap` 按渲染
+  顶点号列出模拟点，**自由点在前**，`NumFreeClothVerts` 标出自由点到哪为止；表的其余部分、
+  以及表里根本没有的渲染顶点，都蒙在 `joint1` 上，是固定的。SP01a、SP06 的 11 种布料逐个核对，
+  分界线与骨骼完全吻合。"找世界空间最高的一条边"只对帘子成立：`PX_SK_PlasticSheet_*` 是平铺的，
+  没有上边；`PX_SK_EdgeCloth_01` 的 22 个钉点散在不同高度。
+- ✅ 没写 `ClothDensity` 的布料用类默认值 **1.0**（`Engine.u` 的 `Default__SkeletalMesh`；
+  同一处还有 `ClothDamping 0.5`、`ClothThickness 0.5`、`ClothIterations 5`）。大多数布料都没写。
+- **`SoftBody3D` 无视节点的缩放**，均匀缩放也不例外。本机实测：1×1 的布挂在 scale 2 的节点下，
+  物理跨度仍是 1.0。原作的摆放常带缩放（纸条是 1.2、1.5），所以要把缩放烘焙进布料自己那份
+  网格，节点只留旋转。
+- 软体只模拟**第一个 surface**。第二个材质的部分（`PX_SK_WarningStripeCloth_01` 上 13 个
+  顶点的系带，其中 12 个是钉点）按静态网格画在旁边；软体会丢弃没有被任何三角形引用的顶点，
+  在这种顶点上加钉点，引擎每个 tick 报一次错。
+- ✅ **风是每个摆放自己的**，写在 `SkeletalMeshComponent.ClothWind` 上，恒定不变，没有全局风场，
+  也没有运行时改风的脚本（SP01a 的 `start_wind` / `Break_Wind` 事件开关的是粒子发射器）。UDK 的
+  `SkeletalMeshComponent.uc`：每个顶点受的力取决于风向量和表面法线的点积，所以侧对风的布不动。
+  ✅ 风在**组件自己的坐标系**里：原作 SP01a 的空调口纸条朝管道里水平伸出、上下拍动，按世界坐标
+  读同一个风是往格栅里吹。拍动就出在这个模型上——顺风伸出的纸条侧对着风、不受力，一下垂迎风面
+  转过来就被托回去。单位和原作布料所受的重力都没量过，所以 `SimulatedCloth.wind_scale` 是凭眼睛
+  调的旋钮：1 时纸条托不住、垂着；5 左右开始拍；10 时绕水平线每秒拍一次左右，取 10。空调口纸条的风比别的布大一个数量级（180~240 uu），
+  同时 `ClothBlendWeight` 只有 0.1~0.3：被猛吹、只画出一小部分，所以是细碎的颤动而不是甩动。
+  `ClothForceScale` 是力场（force field）的缩放，和风无关。
+- ✅ 每个布料组件都开着 `bAutoFreezeClothWhenNotRendered`。本项目用相机视锥体在 CPU 上判定，
+  不在视野里就停掉风和混合绘制——它们是 GDScript 每 tick 遍历每个点，是主要开销。
+- **Godot 4.7 的 Jolt 在 `SoftBody3D.apply_force()` 上有 bug**：它把网格顶点正确地换算成模拟点，
+  却拿**模拟点的编号**去查**钉住的网格顶点**集合。模拟点按顶点在索引缓冲里首次出现的顺序编号、
+  同位置合并，所以顶点顺序不是面顺序的网格上，自由点会被误判为钉住（每 tick 一条错误），
+  钉住的点反而不拦。`PX_SK_PaperStrip_01` 实测：顶点 2、3、4、6 是模拟点 5、7、10、11，
+  恰好是它钉点的编号。PlaneMesh 两种编号相同，所以 cloth_lab 里看不出来。
+  `SimulatedCloth` 按同样的规则算出编号，避开会撞上的点。
+
+
+### 9.2.2 散落的刚体：KActor
+
+✅ 可以推动的纸箱是 `KActor`，全作 101 个，但**大多数不是自由刚体**：Mall 雕像的 68 块碎片、
+Escape 的门、Stormdrain 的混凝土块都被 Kismet 驱动；Subway 和 Scraper 的盖板是隐藏的；Subway 的
+管道和按钮盒既不和 Actor 碰撞也不挡刚体，没有东西会唤醒它们；Cranes 的吊钩不挡刚体，放出来会
+穿过地面。按数据筛下来（物理不是 `PHYS_None`、不隐藏、不被 Kismet 变量引用、参与碰撞）只剩
+10 个：SP01a 6 个纸箱、Cranes 3 个纸箱、Stormdrain boss 区一根散落的荡杆。
+
+| 字段 | 含义 | Godot 侧 |
+|---|---|---|
+| `bWakeOnLevelStart` | ✅ `Default__KActor` 不开：没写的就睡着，被碰才动。SP01a 的纸箱开着，Cranes 的没开 | `RigidBody3D.sleeping` |
+| 组件 `BlockNonZeroExtent` | Pawn 的圆柱扫的是它。纸箱全都关着：**玩家穿过去，顺手铲开** | 关着的只在第 4 层（值 8），不在玩家掩码里；自身掩码看得见第 1 层（玩家也在那层） |
+| `bExludeHandMoves` / `bExludeFootMoves` | 不能攀、不能踩着做动作 | 同上，探针只查第 1 层 |
+| `RB_BodySetup.MassScale` | SP01a 的纸箱是 50 | 质量 = 密度 × 体积（PhysX 单位）× `MassScale` |
+| `PhysicalMaterial` | ✅ `Default__PhysicalMaterial`：Density 1.0、Friction 0.7、Restitution 0.3、LinearDamping 0.01 | `PhysicsMaterial`、`linear_damp`（REPLACE） |
+
+- ⚠️ 质量公式里的 PhysX 单位按 UE3 的 `U2PScale 0.02`（50 uu 为 1）换算，没在本作里核实过。
+  纸箱之间、纸箱和地面之间才用得上；玩家推它时角色体相当于无穷重，质量不起作用。
+- ✅ `Default__Pawn` 的 `bPushesRigidBodies` 没开（`RBPushRadius 10`、`RBPushStrength 50` 在但不生效）：
+  原作不是按半径给冲量，而是 Pawn 的物理代理直接把箱子挤开。Jolt 下实测：角色体穿过一个箱子，
+  走的距离和没有箱子时一样，箱子被一路铲着走，2 kg 和 100 kg 结果相同。
+- 刚体和软体一样会丢节点缩放（模拟一写回变换就没了），所以缩放烘焙进网格和形状，节点只留旋转。
+- 这些纸箱的碰撞体（`*_TightCol`）比网格略矮，落地后网格底边会陷进地面 2~9 cm。原作里的纸箱
+  开局同样会落下来，这是数据本身的样子。
 
 ---
 

@@ -961,6 +961,12 @@ var _swing_pitch: float = 0.0
 ## clip blend time, so the tilt arrives with the pose and not before it.
 var body_tilt_normal: Vector3 = Vector3.UP
 var _body_tilt_normal: Vector3 = Vector3.UP
+## Below this squared cross product the two normals are the same normal, and
+## the ease takes the target outright rather than through Vector3.slerp -- see
+## _drive_body_yaw(). 1e-12 is a millionth of a radian apart: far below
+## anything the eye or the animation can hold, and far above where the cross
+## product's own components go denormal.
+const TILT_EASE_MIN_CROSS_SQ := 1e-12
 var _visual_yaw_started: bool = false
 
 var _standing_height: float = 0.0
@@ -1027,6 +1033,15 @@ var wall_side: int = 0
 func standing_height() -> float:
 	return _standing_height
 
+## A CAPSULE, where [ME:CONFIRMED] the original collides as a CYLINDER: UE3
+## Pawns use a CylinderComponent, and the original's debug collision view shows
+## it. DO NOT "correct" the rounded bottom. The difference is real and known --
+## a flat-bottomed cylinder perches on ledges a hemisphere slides off, and the
+## speedrun community has routes that stand on slivers only a cylinder holds --
+## and it is a deliberately accepted deviation, not an oversight. Changing it
+## means re-judging every edge, landing and vault, so it is a decision to take
+## on its own: docs/mirrors-edge-deep-research/09-Godot移植指南.md, 9.2.2.
+##
 ## Live height of the collision capsule right now — shrunk while Slide or
 ## Crouch (or any future state that calls set_capsule_height()) is active,
 ## the standing height otherwise. Read fresh via $CollisionShape3D rather
@@ -2652,7 +2667,17 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# faces its heading; the swing's pitch rides inside it as before.
 	var tilt_ease: float = 1.0 - exp(-delta / maxf(body_animation_blend_time, 0.001))
 	var wanted_normal: Vector3 = body_tilt_normal.normalized() if body_tilt_normal.length_squared() > 0.0001 else Vector3.UP
-	_body_tilt_normal = _body_tilt_normal.slerp(wanted_normal, tilt_ease).normalized()
+	# NOT an unconditional slerp. Vector3.slerp normalises the cross product of
+	# its two arguments and rotates about it, and once the ease has converged
+	# that cross is denormal: the axis comes back 0.9994 long, Basis rejects it,
+	# and the error repeats every frame forever because the SETTLED state is the
+	# failing one. Anti-parallel normals reach the same floor from the other
+	# end, and there the snap is also the right answer -- opposite vectors have
+	# no shortest arc between them.
+	if _body_tilt_normal.cross(wanted_normal).length_squared() > TILT_EASE_MIN_CROSS_SQ:
+		_body_tilt_normal = _body_tilt_normal.slerp(wanted_normal, tilt_ease).normalized()
+	else:
+		_body_tilt_normal = wanted_normal
 	var local_up: Vector3 = (global_basis.inverse() * _body_tilt_normal).normalized()
 	var tilt := Basis()
 	var tilt_axis: Vector3 = Vector3.UP.cross(local_up)
