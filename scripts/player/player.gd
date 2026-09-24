@@ -3566,7 +3566,7 @@ func _physics_process(delta: float) -> void:
 	# After the moves run, so grounded and horizontal_speed() both read this
 	# tick's own result rather than last tick's.
 	_update_speed_energy(delta, input)
-	_cap_energy_at_limit(input)
+	_cap_energy_at_limit(input, delta)
 
 	# Less what the FLOOR did. Displacement is measured because velocity lies
 	# through a scripted move; but a body standing still on the roof of a train
@@ -4651,7 +4651,7 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	_charge_turn(facing, delta)
 	var follows: bool = active != null and active.energy_follows_speed
 	if follows:
-		_energy_follows_speed(input)
+		_energy_follows_speed(input, delta)
 	if wish == Vector3.ZERO:
 		if not follows:
 			speed_energy.decay(delta)
@@ -4701,9 +4701,14 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	# at whatever the slide left it at, so a slide preserves the speed it was
 	# entered with but cannot be used to keep climbing.
 	var reachable: float = ground_ceiling(input)
+	# Nothing banks past what a crouch or an eased stick lets the body use.
+	# _cap_energy_at_limit() bleeds that excess on a curve, and banking into it
+	# every tick holds the budget a fixed step above the limit for good.
+	var limit_energy: float = SpeedEnergy.energy_for_speed(config.pawn, ground_speed_limit(input))
 	if _slide_recovery_timer > 0.0:
 		pass
-	elif horizontal_speed() >= reachable * config.pawn.energy_accumulate_speed_ratio:
+	elif horizontal_speed() >= reachable * config.pawn.energy_accumulate_speed_ratio \
+			and speed_energy.energy < limit_energy:
 		speed_energy.accumulate(delta, _energy_mode(input))
 	else:
 		# Asking to move but not actually getting anywhere -- shoved into
@@ -4725,28 +4730,30 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 ##
 ## The same energy_accumulate_speed_ratio slack the banking side uses, so a
 ## body grazing a wall at pace follows nothing.
-func _energy_follows_speed(input: MoveInput) -> void:
+func _energy_follows_speed(input: MoveInput, delta: float) -> void:
 	if wish_direction(input) != Vector3.ZERO and not is_on_wall():
 		return
 	var speed: float = horizontal_speed()
 	if speed >= ground_ceiling(input) * config.pawn.energy_accumulate_speed_ratio:
 		return
-	follow_speed(speed)
+	follow_speed(speed, delta)
 
-## Lowers the budget to what buys `speed`, read in the budget's own units: a
-## status scaling the ceiling scales the body with it, and is not a loss the
-## budget should pay for. Never raises it.
-func follow_speed(speed: float) -> void:
+## Bleeds the budget toward what buys `speed`, read in the budget's own units:
+## a status scaling the ceiling scales the body with it, and is not a loss the
+## budget should pay for. Never raises it. On a curve rather than at once --
+## see SpeedEnergy.bleed_toward_speed().
+func follow_speed(speed: float, delta: float) -> void:
 	var ceiling: float = speed_cap()
 	if ceiling <= 0.0:
 		return
-	speed_energy.match_speed(speed * speed_energy.cap() / ceiling)
+	speed_energy.bleed_toward_speed(speed * speed_energy.cap() / ceiling, delta)
 
-## A budget above what ground_speed_limit() lets the body use is dropped to
-## it, the moment the limit applies: crouch out of a sprint, or ease off the
-## stick, and the run is rebuilt from the slower pace. Only on the moves the
-## budget follows -- see MoveConfig.energy_follows_speed.
-func _cap_energy_at_limit(input: MoveInput) -> void:
+## A budget above what ground_speed_limit() lets the body use bleeds down to
+## it while the limit applies: crouch out of a sprint, or ease off the stick,
+## and the run is rebuilt from the slower pace -- unless the limit is let go
+## of first. Only on the moves the budget follows -- see
+## MoveConfig.energy_follows_speed.
+func _cap_energy_at_limit(input: MoveInput, delta: float) -> void:
 	if not grounded:
 		return
 	var active: MoveConfig = move_manager.current_config()
@@ -4754,7 +4761,7 @@ func _cap_energy_at_limit(input: MoveInput) -> void:
 		return
 	var limit: float = ground_speed_limit(input)
 	if limit < INF:
-		speed_energy.match_speed(limit)
+		speed_energy.bleed_toward_speed(limit, delta)
 
 ## Resynchronises the turn tax to wherever the body is facing NOW, so the swing
 ## that just happened costs nothing.

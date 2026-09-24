@@ -66,7 +66,7 @@ func test_easing_off_the_stick_caps_speed_and_drops_the_budget() -> void:
 	for i in 430:
 		await step(1)
 	world["input"].state.walk_held = true
-	for i in 30:
+	for i in 90:  # the bleed's ten half-lives
 		await step(1)
 	var limit: float = player.config.pawn.ground_speed * player.config.pawn.walk_stick_amount
 	assert_almost_eq(player.horizontal_speed(), limit, 0.05, "the walk key did not cap speed at its stick share")
@@ -89,7 +89,7 @@ func test_a_crouch_drops_the_budget_to_the_crouched_pace() -> void:
 	assert_eq(player.move_manager.current_name, Move.CROUCH, "test setup: not crouching")
 	player.speed_energy.energy = 7.0
 	world["input"].state.move = Vector2(0.0, 1.0)
-	await step(2)
+	await step(90)  # the bleed's ten half-lives
 	var limit: float = player.config.pawn.ground_speed * player.config.crouch.speed_modifier
 	assert_lt(player.speed_energy.energy, SpeedEnergy.energy_for_speed(player.config.pawn, limit) + 0.02,
 		"a crouch kept a budget above the crouched pace")
@@ -105,13 +105,14 @@ func test_a_slide_bleeds_the_budget_with_its_speed() -> void:
 	world["input"].state.move = Vector2(0.0, 1.0)
 	for i in 430:
 		await step(1)
+	var banked: float = player.speed_energy.energy
 	world["input"].press_crouch()
 	for i in 45:
 		await step(1)
 	assert_eq(player.move_manager.current_name, Move.SLIDE, "test setup: not sliding")
-	var paid_for: float = SpeedEnergy.energy_for_speed(player.config.pawn, player.horizontal_speed())
-	assert_lt(player.speed_energy.energy, paid_for + 0.05,
-		"the budget stayed above what a slowing slide is doing")
+	# Trailing the slide by the bleed's curve, but well on its way down.
+	assert_lt(player.speed_energy.energy, banked * 0.6,
+		"the budget stayed with the run the slide came out of")
 	TestWorld.teardown(world)
 	await step(1)
 
@@ -252,7 +253,7 @@ func test_letting_go_brakes_the_budget_down_with_the_body() -> void:
 	for i in 300:
 		await step(1)
 	world["input"].state.move = Vector2.ZERO
-	for i in 40:
+	for i in 90:  # the stop, then the bleed's ten half-lives
 		await step(1)
 	assert_almost_eq(world["player"].horizontal_speed(), 0.0, 0.01, "test setup: never stopped")
 	assert_lt(world["player"].speed_energy.energy, 0.05, "the budget outlived the stop")
@@ -279,7 +280,7 @@ func test_running_into_a_wall_empties_the_budget() -> void:
 	var ahead: Vector3 = -player.global_transform.basis.z
 	wall.global_position = player.global_position + ahead * 1.5
 	wall.look_at(player.global_position, Vector3.UP)
-	for i in 30:
+	for i in 90:  # the bleed's ten half-lives
 		await step(1)
 	assert_lt(player.speed_energy.energy, 0.5, "the budget survived running into a wall")
 	wall.queue_free()
@@ -310,5 +311,25 @@ func test_a_jump_hands_its_nudge_back_on_landing() -> void:
 	# The touchdown tick is already running, and banks its own sixtieth.
 	assert_lt(player.speed_energy.energy, energy_before + 0.05, "the landing banked the take-off nudge")
 	assert_lt(player.horizontal_speed(), speed_before + 0.2, "the landing kept the take-off nudge")
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_a_release_caught_quickly_keeps_most_of_the_budget() -> void:
+	# The bleed is a curve so a mistake can be caught: let go of W for a tenth
+	# of a second and the run is still mostly there.
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	var player: Player = world["player"]
+	world["input"].state.move = Vector2(0.0, 1.0)
+	for i in 430:
+		await step(1)
+	var banked: float = player.speed_energy.energy
+	world["input"].state.move = Vector2.ZERO
+	await step(6)
+	world["input"].state.move = Vector2(0.0, 1.0)
+	await step(30)
+	assert_gt(player.speed_energy.energy, banked * 0.5, "a tenth of a second's release emptied the budget")
 	TestWorld.teardown(world)
 	await step(1)

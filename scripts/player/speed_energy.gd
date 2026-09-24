@@ -200,8 +200,24 @@ func turn_rate_multiplier(rate_deg: float) -> float:
 			return lerpf(knots[i - 1].y, knots[i].y, t)
 	return knots[knots.size() - 1].y
 
-## Lowers the budget to what buys `speed`, never raises it. See
+## Draws the budget down toward what buys `speed`, never raises it: the
+## excess halves every PawnConfig.energy_loss_half_life seconds. See
 ## Player.follow_speed().
+##
+## A CURVE, NOT A CUT. A mistake caught quickly -- W pressed again a moment
+## after letting go, a wall glanced off rather than run into -- keeps what
+## has not bled yet, because whatever asked for the bleed stops asking.
+func bleed_toward_speed(speed: float, delta: float) -> void:
+	var bought: float = energy_for_speed(_pawn, speed)
+	if bought >= energy:
+		return
+	var half: float = _pawn.energy_loss_half_life
+	var kept: float = 0.0 if half <= 0.0 else pow(0.5, delta / half)
+	energy = bought + (energy - bought) * kept
+	_rebase_decay()
+
+## Lowers the budget to what buys `speed` at once, never raises it -- for a
+## loss the original takes in one go (Player.dodge_launch()).
 ##
 ## REBASES ONLY WHEN IT LOWERS. The decay curve is steepest at its start, so a
 ## caller asking every tick -- a slide following its own bleed, a stick held

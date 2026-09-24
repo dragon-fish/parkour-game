@@ -262,6 +262,16 @@ extends Resource
 ## hand over a 7.2 ceiling the instant the obstruction clears, contradicting
 ## the premise that speed is an asset that has to be run for.
 @export var energy_accumulate_speed_ratio: float = 0.9
+## How fast a lost budget bleeds away, as the seconds it takes the excess over
+## what the body is doing to halve. Read by SpeedEnergy.bleed_toward_speed(),
+## for every loss the budget follows the body down (MoveConfig.
+## energy_follows_speed, the crouch and stick limits, a slide) -- not the
+## dodge, which drops at once.
+##
+## [ME:INFERRED] from play: a loss in the original is a very fast curve rather
+## than a cut, leaving a moment to catch part of it back. The number is a
+## guess to tune by eye; 0 makes every loss instant.
+@export var energy_loss_half_life: float = 0.15
 
 @export_group("Landing")
 ## [ME:CONFIRMED 03 §3.1] TdMove_Landing CDO, as fall HEIGHTS (not impact
