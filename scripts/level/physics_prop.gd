@@ -16,14 +16,25 @@ func _ready() -> void:
 	add_to_group(Arena.RESET_ON_RESPAWN)
 
 
+## The physics_props setting, by freezing the body where it stands.
+##
+## DO NOT switch this with process_mode. PackagePresence keeps every body in a
+## level active while disabled (DISABLE_MODE_KEEP_ACTIVE, so a package coming
+## back does not rebuild its hulls), and writes the placement node's
+## process_mode itself whenever its package comes or goes -- and a loose box IS
+## its placement node. Both ways the box went on being shoved about with the
+## setting off.
+func simulate(on: bool) -> void:
+	freeze = not on
+
+
 func reset_for_respawn() -> void:
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
 	# Through the server as well as the node: a body mid-flight has its node
 	# written back from the server on the next tick, which would undo a node
-	# move alone. With physics props off there is no body in the server, and
-	# the node is all there is.
-	if can_process():
+	# move alone.
+	if PhysicsServer3D.body_get_space(get_rid()).is_valid():
 		PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM, _placed)
 		PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, Vector3.ZERO)
 		PhysicsServer3D.body_set_state(get_rid(), PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY, Vector3.ZERO)

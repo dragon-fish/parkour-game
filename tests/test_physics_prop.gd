@@ -47,9 +47,10 @@ func test_a_respawn_puts_it_back_with_physics_props_off_too() -> void:
 	await step(2)
 	box.linear_velocity = Vector3(8.0, 3.0, 0.0)
 	await step(40)
-	box.process_mode = Node.PROCESS_MODE_DISABLED
+	box.simulate(false)
 	box.reset_for_respawn()
+	await step(2)
 	assert_lt(box.global_position.distance_to(Vector3(0.0, 0.2, 0.0)), 0.05, "a respawn with props off left the box out of place")
-	box.process_mode = Node.PROCESS_MODE_INHERIT
+	box.simulate(true)
 	await step(10)
 	assert_lt(box.global_position.distance_to(Vector3(0.0, 0.2, 0.0)), 0.05, "turning props back on threw the box out of place again")

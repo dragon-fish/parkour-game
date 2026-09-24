@@ -122,8 +122,7 @@ static func apply_global(s: Dictionary) -> void:
 	# The project setting only makes occluders available; this is the switch.
 	viewport.use_occlusion_culling = s.occlusion_culling
 	physics_props_on = s.physics_props
-	for prop in (Engine.get_main_loop() as SceneTree).get_nodes_in_group(PHYSICS_PROPS_GROUP):
-		prop.process_mode = _physics_props_mode()
+	(Engine.get_main_loop() as SceneTree).call_group(PHYSICS_PROPS_GROUP, "simulate", physics_props_on)
 
 	# Headless has no window; the editor-embedded game has one it is not
 	# allowed to touch ("Embedded window can't be resized"). Same guard as
@@ -167,19 +166,12 @@ static func apply_global(s: Dictionary) -> void:
 
 
 ## Puts a simulated prop under the physics_props setting, as it stands now and
-## whenever it changes. Called from the prop's own _ready().
-##
-## PROCESS_MODE_DISABLED takes a physics body out of the server (its
-## disable_mode is REMOVE), soft bodies included, and putting it back resumes
-## the simulation where it left off. DO NOT query a disabled soft body's points:
-## under Jolt that is an error with no physics space to ask.
+## whenever it changes. Called from the prop's own _ready(); the prop answers
+## simulate(on: bool), because how a prop stops depends on what it is --
+## see PhysicsProp.simulate() and SimulatedCloth.simulate().
 static func follow_physics_props(prop: Node) -> void:
 	prop.add_to_group(PHYSICS_PROPS_GROUP)
-	prop.process_mode = _physics_props_mode()
-
-
-static func _physics_props_mode() -> Node.ProcessMode:
-	return Node.PROCESS_MODE_INHERIT if physics_props_on else Node.PROCESS_MODE_DISABLED
+	prop.call("simulate", physics_props_on)
 
 
 ## Applies the per-player half of the settings: camera sensitivity and FOV

@@ -171,20 +171,32 @@ func test_occlusion_culling_is_opt_in_and_reaches_the_root_viewport() -> void:
 	root.use_occlusion_culling = original
 
 func test_physics_props_are_on_by_default_and_the_switch_reaches_them() -> void:
-	var prop := Node3D.new()
-	add_child_autofree(prop)
 	var s := SettingsStore.defaults()
 	assert_true(s.physics_props, "physics props are off by default")
 	SettingsStore.apply_global(s)
-	SettingsStore.follow_physics_props(prop)
-	assert_eq(prop.process_mode, Node.PROCESS_MODE_INHERIT, "on left the prop disabled")
+	var prop := PhysicsProp.new()
+	add_child_autofree(prop)
+	assert_false(prop.freeze, "on left the prop frozen")
 	s.physics_props = false
 	SettingsStore.apply_global(s)
-	assert_eq(prop.process_mode, Node.PROCESS_MODE_DISABLED, "off did not reach a prop already in the tree")
-	var late := Node3D.new()
+	assert_true(prop.freeze, "off did not reach a prop already in the tree")
+	var late := PhysicsProp.new()
 	add_child_autofree(late)
-	SettingsStore.follow_physics_props(late)
-	assert_eq(late.process_mode, Node.PROCESS_MODE_DISABLED, "off did not reach a prop that entered afterwards")
+	assert_true(late.freeze, "off did not reach a prop that entered afterwards")
+	SettingsStore.apply_global(SettingsStore.defaults())
+
+## PackagePresence switches a package's placement nodes with process_mode and
+## keeps its bodies active while disabled. A loose box IS its placement node, so
+## a setting that rode on process_mode was undone the moment its package came in.
+func test_a_package_coming_in_does_not_wake_a_prop_the_setting_stopped() -> void:
+	var s := SettingsStore.defaults()
+	s.physics_props = false
+	SettingsStore.apply_global(s)
+	var prop := PhysicsProp.new()
+	add_child_autofree(prop)
+	prop.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
+	prop.process_mode = Node.PROCESS_MODE_INHERIT
+	assert_true(prop.freeze, "a package coming in set the prop simulating again")
 	SettingsStore.apply_global(SettingsStore.defaults())
 
 func test_apply_global_sets_master_bus_volume_and_restores_it() -> void:

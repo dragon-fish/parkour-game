@@ -104,6 +104,15 @@ func _physics_process(_delta: float) -> void:
 		_draw(points, normals)
 
 
+## The physics_props setting. PROCESS_MODE_DISABLED takes a soft body out of
+## the server and putting it back resumes the simulation where it left off;
+## PackagePresence switches the placement node above this one, never this.
+## DO NOT query a disabled soft body's points: under Jolt that is an error with
+## no physics space to ask -- which is why this script stops with it.
+func simulate(on: bool) -> void:
+	process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
+
+
 ## [ME:CONFIRMED] every cloth component in the game sets
 ## bAutoFreezeClothWhenNotRendered. Here the wind and the blend stop, which are
 ## what this script costs: a GDScript pass over every point, every tick.
