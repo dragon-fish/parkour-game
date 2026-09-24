@@ -170,6 +170,23 @@ func test_occlusion_culling_is_opt_in_and_reaches_the_root_viewport() -> void:
 	assert_true(root.use_occlusion_culling, "on did not reach the root viewport")
 	root.use_occlusion_culling = original
 
+func test_physics_props_are_on_by_default_and_the_switch_reaches_them() -> void:
+	var prop := Node3D.new()
+	add_child_autofree(prop)
+	var s := SettingsStore.defaults()
+	assert_true(s.physics_props, "physics props are off by default")
+	SettingsStore.apply_global(s)
+	SettingsStore.follow_physics_props(prop)
+	assert_eq(prop.process_mode, Node.PROCESS_MODE_INHERIT, "on left the prop disabled")
+	s.physics_props = false
+	SettingsStore.apply_global(s)
+	assert_eq(prop.process_mode, Node.PROCESS_MODE_DISABLED, "off did not reach a prop already in the tree")
+	var late := Node3D.new()
+	add_child_autofree(late)
+	SettingsStore.follow_physics_props(late)
+	assert_eq(late.process_mode, Node.PROCESS_MODE_DISABLED, "off did not reach a prop that entered afterwards")
+	SettingsStore.apply_global(SettingsStore.defaults())
+
 func test_apply_global_sets_master_bus_volume_and_restores_it() -> void:
 	var bus := AudioServer.get_bus_index("Master")
 	var original_db := AudioServer.get_bus_volume_db(bus)

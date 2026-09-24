@@ -58,6 +58,7 @@ const VISIBLE_RANGE_MAX := 3000.0
 const OCCLUDER_MIN_EXTENT := 40.0
 const RUNNER_VISION_SCRIPT := preload("res://scripts/level/runner_vision_target.gd")
 const CLOTH_SCRIPT := preload("res://scripts/level/simulated_cloth.gd")
+const PROP_SCRIPT := preload("res://scripts/level/physics_prop.gd")
 
 ## Metres from the camera past which an extracted light fades out, and over
 ## how far. Stormdrain's densest view (the pillar hall) keeps 336 lights
@@ -467,7 +468,7 @@ static func _is_cloth(mesh: ArrayMesh) -> bool:
 ## the player walks the same distance with the box in the way, and the box
 ## goes with it.
 static func _rigid_body(rigid: Dictionary) -> RigidBody3D:
-	var body := RigidBody3D.new()
+	var body: RigidBody3D = PROP_SCRIPT.new()
 	body.mass = maxf(float(rigid["mass"]), 0.01)
 	body.collision_layer = PROP_LAYER | (1 if rigid["blocks_player"] else 0)
 	body.collision_mask = 1 | PROP_LAYER

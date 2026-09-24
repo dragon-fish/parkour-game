@@ -44,6 +44,7 @@ var _winding := 1.0
 
 
 func _ready() -> void:
+	SettingsStore.follow_physics_props(self)
 	if wind == Vector3.ZERO and blend_weight >= 1.0:
 		set_physics_process(false)
 		return
@@ -167,6 +168,9 @@ func _start_drawing(arrays: Array, frame: Transform3D) -> void:
 	add_child(_drawn)
 	_drawn.global_transform = Transform3D.IDENTITY
 	layers = 0
+	# The rest pose, until the first tick draws over it -- and for good, with
+	# physics props off, when no tick ever does.
+	_draw(_rest, _normals(_rest))
 
 
 func _draw(points: PackedVector3Array, normals: PackedVector3Array) -> void:
