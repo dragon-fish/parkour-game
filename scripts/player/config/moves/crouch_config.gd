@@ -15,3 +15,6 @@ func _init() -> void:
 	# confirmed and explained in two separate sections, while 0.2 appears
 	# once in a bare parameter dump with no narrative.
 	speed_modifier = 0.4
+	# Still the player steering on foot, only lower. See
+	# MoveConfig.energy_follows_speed.
+	energy_follows_speed = true

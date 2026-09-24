@@ -192,3 +192,48 @@ func test_energy_survives_a_coyote_jump_intact() -> void:
 	assert_almost_eq(last_airborne_energy, banked, 0.0001, "energy was not held intact across a coyote-jump flight")
 	TestWorld.teardown(world)
 	await step(1)
+
+func test_letting_go_brakes_the_budget_down_with_the_body() -> void:
+	# A stop is a mistake paid for in full: once the body has braked to a
+	# halt there is nothing left to tap W back into.
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	world["input"].state.move = Vector2(0.0, 1.0)
+	for i in 300:
+		await step(1)
+	world["input"].state.move = Vector2.ZERO
+	for i in 40:
+		await step(1)
+	assert_almost_eq(world["player"].horizontal_speed(), 0.0, 0.01, "test setup: never stopped")
+	assert_lt(world["player"].speed_energy.energy, 0.05, "the budget outlived the stop")
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_running_into_a_wall_empties_the_budget() -> void:
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	var player: Player = world["player"]
+	world["input"].state.move = Vector2(0.0, 1.0)
+	for i in 300:
+		await step(1)
+	assert_gt(player.speed_energy.energy, 3.0, "test setup: never banked")
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(10.0, 4.0, 1.0)
+	shape.shape = box
+	wall.add_child(shape)
+	get_tree().root.add_child(wall)
+	var ahead: Vector3 = -player.global_transform.basis.z
+	wall.global_position = player.global_position + ahead * 1.5
+	wall.look_at(player.global_position, Vector3.UP)
+	for i in 30:
+		await step(1)
+	assert_lt(player.speed_energy.energy, 0.5, "the budget survived running into a wall")
+	wall.queue_free()
+	TestWorld.teardown(world)
+	await step(1)

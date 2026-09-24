@@ -414,6 +414,9 @@ var speed_energy: SpeedEnergy
 ## input last tick", which is deliberately NOT a heading -- see
 ## _charge_turn().
 var _last_facing: Vector3 = Vector3.ZERO
+## Whether last tick's move had MoveConfig.energy_decays, so the drain starts
+## afresh on the tick one begins.
+var _energy_was_decaying: bool = false
 
 ## Time left in the stand-up after a slide.
 ##
@@ -1510,6 +1513,7 @@ func reset_state() -> void:
 	_speed_scale = statuses.speed_scale() if statuses != null else 1.0
 	_stagger_immunity = 0.0
 	_last_facing = Vector3.ZERO
+	_energy_was_decaying = false
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
 	_line_cooldowns.clear()
@@ -4527,7 +4531,8 @@ func _energy_mode(input: MoveInput) -> int:
 
 ## Energy accrues only while GROUNDED, actually asking to move, and actually
 ## travelling near the ceiling that energy has already bought. Held (neither
-## banked, bled, nor charged for turning) while airborne: 10.1 mechanic 2 is
+## banked, bled, nor charged for turning) while airborne, unless the move in
+## the air is a manoeuvre that decays it (MoveConfig.energy_decays): 10.1 mechanic 2 is
 ## explicit that speed earned before take-off is carried across the jump
 ## intact, and bleeding the energy that BOUGHT that speed mid-flight would
 ## contradict it. Turning while airborne is likewise free -- air_control is
@@ -4535,6 +4540,17 @@ func _energy_mode(input: MoveInput) -> int:
 ## would double-punish a jump the player is already committed to.
 func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	var wish := wish_direction(input)
+	var active: MoveConfig = move_manager.current_config()
+	# A manoeuvre the player cannot steer is paid for by the second -- see
+	# MoveConfig.energy_decays. Not an early return: the take-off bookkeeping
+	# below still owes the landing its turn bill, and the moves that set this
+	# are airborne, so nothing below banks meanwhile.
+	var decaying: bool = active != null and active.energy_decays
+	if decaying:
+		if not _energy_was_decaying:
+			speed_energy.restart_decay()
+		speed_energy.decay(delta)
+	_energy_was_decaying = decaying
 	var facing: Vector3 = -global_transform.basis.z
 	facing.y = 0.0
 	facing = facing.normalized() if facing.length_squared() > 0.0001 else Vector3.ZERO
@@ -4566,8 +4582,12 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 		_takeoff_dir = Vector3.ZERO
 		_airborne_time = 0.0
 	_charge_turn(facing, delta)
+	var follows: bool = active != null and active.energy_follows_speed
+	if follows:
+		_energy_follows_speed(wish == Vector3.ZERO)
 	if wish == Vector3.ZERO:
-		speed_energy.decay(delta)
+		if not follows:
+			speed_energy.decay(delta)
 		return
 	# TRAVELLING OUTSIDE THE ARC BLEEDS THE CEILING. This is where the
 	# sideways limit actually comes from: not a cap on the speed, but energy
@@ -4625,6 +4645,31 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 		# geometry, or still climbing toward a ceiling already paid for.
 		# Neither banks anything; neither is a reason to bleed, either.
 		pass
+
+## Brings the budget down to what the body is actually doing, when a mistake
+## has left it well under what the budget buys. See
+## MoveConfig.energy_follows_speed.
+##
+## A MISTAKE IS A RELEASED KEY OR A WALL, and asked as exactly that. DO NOT
+## reduce it to "the speed fell": changing direction on the keys dips the
+## speed too, through the chord layer 1 cuts between the old heading and the
+## new, and the original climbs straight back out of that dip -- measured,
+## see PawnConfig.speed_max_base_velocity. Nor to "the speed is low": a
+## pull-up sets the body down at rest, and following that would spend the
+## budget the manoeuvre carried through on the first stride.
+##
+## The same energy_accumulate_speed_ratio slack the banking side uses, so a
+## body grazing a wall at pace follows nothing.
+func _energy_follows_speed(idle: bool) -> void:
+	if not idle and not is_on_wall():
+		return
+	var speed: float = horizontal_speed()
+	var reachable: float = speed_cap() * move_manager.current_move_speed_modifier()
+	if reachable <= 0.0 or speed >= reachable * config.pawn.energy_accumulate_speed_ratio:
+		return
+	# Measured against the ceiling the budget buys BEFORE a crouch or a status
+	# scales it, so a crouched body at its own full pace follows nothing.
+	speed_energy.match_speed(speed_energy.cap() * speed / reachable)
 
 ## Resynchronises the turn tax to wherever the body is facing NOW, so the swing
 ## that just happened costs nothing.

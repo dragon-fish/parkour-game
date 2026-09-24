@@ -6,6 +6,9 @@ func _init() -> void:
 	holds_world_path = true
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: hands and feet are both on the obstacle.
+	# A clean vault costs next to nothing, a slow one a lot. See
+	# MoveConfig.energy_decays.
+	energy_decays = true
 
 # The Godot counterpart of the original's TdMove_SpeedVault.
 

@@ -72,6 +72,31 @@ extends Resource
 ## the world goes by and not about how.
 @export var footfall_bob: bool = true
 
+## Whether the speed budget falls with the body's actual speed while this move
+## runs. A released key brakes the budget down with the body, a wall run into
+## empties it: speed lost to a mistake is run for again from wherever it fell
+## to, not handed back by a budget that outlived it. See
+## Player._energy_follows_speed() for when a fall counts.
+##
+## [ME:INFERRED] from play in the original; no field names it.
+##
+## ON THE MOVES THE PLAYER STEERS ON FOOT, and only those. A move that carries
+## the body at a pace of its own -- a roll's fixed 3 m, a slide bleeding off on
+## low friction -- is not the player failing to keep up, and following its
+## speed would empty a budget that move exists to carry through.
+@export var energy_follows_speed: bool = false
+
+## Whether the speed budget decays while this move runs, on the
+## PawnConfig.speed_energy_deceleration_time curve, from wherever it stood on
+## entry. The price of a manoeuvre the player cannot steer, paid by the second:
+## a clean vault costs next to nothing and a slow one costs a lot. The curve is
+## steepest at the start in ENERGY, but the speed curve is flattest at the top,
+## so at full pace the first fraction of a second barely shows in the speed.
+##
+## [ME:INFERRED] from play. The curve's two numbers are confirmed; this use of
+## them is not.
+@export var energy_decays: bool = false
+
 ## Whether the third-person camera is pulled off the player's shoulder to
 ## the centre while this move runs. Pushed to CameraRig every tick by
 ## MoveManager alongside the look constraint, and eased there on

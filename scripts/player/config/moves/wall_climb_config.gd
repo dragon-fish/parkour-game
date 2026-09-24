@@ -35,6 +35,9 @@ func _init() -> void:
 	check_for_vault_over = true
 	# ✅ FrictionModifier = 0.3.
 	friction_modifier = 0.3
+	# The longer the kick up the wall, the more pace it costs. See
+	# MoveConfig.energy_decays.
+	energy_decays = true
 
 @export_group("Entry")
 

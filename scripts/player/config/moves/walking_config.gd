@@ -24,3 +24,6 @@ func _init() -> void:
 	# vaults the player automatically while simply running past a crate. In
 	# the original, nothing goes upward unless the player asks for it.
 	check_for_vault_over = false
+	# Speed lost on foot is lost from the budget too. See
+	# MoveConfig.energy_follows_speed.
+	energy_follows_speed = true

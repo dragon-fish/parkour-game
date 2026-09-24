@@ -99,11 +99,11 @@ func accumulate(delta: float, mode: int) -> void:
 	energy = minf(energy + delta * (factor / sprint), _energy_ceiling())
 	_rebase_decay()
 
-## dE/dt = -k * E^exponent, with k solved so a FULL budget empties in exactly
-## speed_energy_deceleration_time. Explicit Euler at the physics tick rate,
-## which runs slightly ahead of the closed form because the rate shrinks
-## within each step -- pinned by the measured values in the tests rather than
-## by the analytic solution.
+## The budget draining over speed_energy_deceleration_time, from wherever it
+## stood when the drain began. What it prices: a manoeuvre the player cannot
+## steer (MoveConfig.energy_decays) and running across the facing. NOT a body
+## that stopped -- a stop brakes the budget down with the speed, see
+## MoveConfig.energy_follows_speed.
 func decay(delta: float) -> void:
 	if energy <= 0.0:
 		energy = 0.0
@@ -119,16 +119,13 @@ func decay(delta: float) -> void:
 	var exponent: float = _pawn.speed_energy_deceleration_exponent
 	# E = E0 * (1 - (t/T)^p), with the exponent on TIME.
 	#
-	# The research recorded both readings of these two confirmed numbers and
-	# could not choose between them (02 §2.5: "or the reverse, depending on how
-	# the formula is written"). This project shipped the other one first --
-	# (d/dt)E = -k*E^p, which solves to E0 * (1 - t/T)^2 -- and play-testing
-	# ruled it out: pausing for half a second left 69% of the budget intact, so
-	# tapping W again returned the player straight to 6.7 m/s, while the
-	# original makes them build speed up from nothing after any real pause.
-	#
-	# This reading is steepest the instant the player stops, which is what that
-	# describes. Same T, same exponent, opposite ends of the curve.
+	# [ME:UNKNOWN 02 §2.5] the research recorded both readings of these two
+	# confirmed numbers and could not choose ("or the reverse, depending on how
+	# the formula is written"). The other is (d/dt)E = -k*E^p, which solves to
+	# E0 * (1 - t/T)^2. This one was picked back when decay also ran on a
+	# pause, a job it no longer has, so the choice is open again: against a
+	# vault, this reading costs a 0.3 s one about 0.4 m/s from full pace and a
+	# 1 s one about 1.0, the other about 0.3 and 0.9.
 	var spent: float = clampf(pow(_decay_time / time, exponent), 0.0, 1.0)
 	energy = maxf(_decay_from * (1.0 - spent), 0.0)
 
@@ -202,6 +199,18 @@ func turn_rate_multiplier(rate_deg: float) -> float:
 			var t: float = inverse_lerp(knots[i - 1].x, knots[i].x, rate_deg)
 			return lerpf(knots[i - 1].y, knots[i].y, t)
 	return knots[knots.size() - 1].y
+
+## Lowers the budget to what buys `speed`, never raises it. See
+## Player._energy_follows_speed().
+func match_speed(speed: float) -> void:
+	energy = minf(energy, energy_for_speed(_pawn, speed))
+	_rebase_decay()
+
+## Starts a fresh decay from wherever the budget stands, for a caller about to
+## run decay() for a reason of its own -- a curve left running by an earlier
+## drain must not be continued toward a number that no longer applies.
+func restart_decay() -> void:
+	_rebase_decay()
 
 func drain(amount: float) -> void:
 	energy = maxf(energy - absf(amount), 0.0)
