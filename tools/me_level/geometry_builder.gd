@@ -112,7 +112,9 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		if cloth:
 			_hang_cloth(instance as SoftBody3D, Common.transform_of(placement))
 			var drive: Dictionary = placement.get("cloth", {})
-			instance.set("wind", Common.v3(drive.get("wind", [0.0, 0.0, 0.0])))
+			# ClothWind is in the placement's own space; turned, not scaled.
+			var wind := Common.v3(drive.get("wind", [0.0, 0.0, 0.0]))
+			instance.set("wind", Common.transform_of(placement).basis.orthonormalized() * wind)
 			instance.set("blend_weight", float(drive.get("blend", 1.0)))
 		# Hidden in the original: collision without a picture. Kept as a node so
 		# the editor can still show it.

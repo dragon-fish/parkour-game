@@ -6,9 +6,10 @@ extends SoftBody3D
 ## Both are per placement in the original, on the SkeletalMeshComponent, and
 ## the level builder writes them here. Nothing runs for a cloth with neither.
 
-## [ME:INFERRED] ClothWind in world space, uu / 100. UDK's declaration: the
-## force on each vertex is "based on the dot product between the wind vector and
-## the surface normal", so a sheet edge-on to the wind does not move.
+## ClothWind turned into world space, uu / 100. UDK's declaration: the force on
+## each vertex is "based on the dot product between the wind vector and the
+## surface normal". A strip lying along the wind takes none; let it droop and
+## its face turns into the wind and is lifted back -- which is the flapping.
 @export var wind := Vector3.ZERO
 ## [ME:CONFIRMED] ClothBlendWeight: how much of the simulation is drawn over the
 ## rest pose. The vent strips carry 0.1 to 0.3 -- blown hard and drawn at a
@@ -16,8 +17,10 @@ extends SoftBody3D
 @export_range(0.0, 1.0) var blend_weight := 1.0
 ## Acceleration per unit of `wind`, in m/s^2. A dial: the original's unit for
 ## ClothWind and the gravity its cloth fell under are both unmeasured, so what
-## one metre of wind is worth is judged by eye.
-@export var wind_scale := 1.0
+## one metre of wind is worth is judged by eye. The original's SP01a vent strips
+## stand out into the duct and flap: at 1 they hang limp, from about 5 they
+## flap, at 10 they beat about the horizontal every second or so.
+@export var wind_scale := 10.0
 
 ## How far past its rest pose a cloth may reach and still count as in view.
 const SWING_M := 0.5

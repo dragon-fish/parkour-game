@@ -425,8 +425,10 @@ def collect_placements(mr, meshes, config, report, keep=frozenset()):
         # placement, not the mesh: every vent's strips carry their own. UDK's
         # SkeletalMeshComponent.uc: ClothWind pushes each vertex by the dot of
         # the wind and its normal; ClothBlendWeight blends the simulation over
-        # the skinned pose, class default 1.0. [ME:INFERRED] the wind is in
-        # world space: Stormdrain's strips blow along -Z, straight down.
+        # the skinned pose, class default 1.0. The wind is in the COMPONENT's
+        # space and is written here as it stands: [ME:CONFIRMED] seen in the
+        # original, SP01a's vent strips stand out into the duct and flap. Read
+        # as world space the same wind blows them back into the grille.
         cloth = {}
         if skinned and 'pinned' in record.get('cloth', {}):
             if any(component.get('ClothWind') or ()):
