@@ -34,9 +34,8 @@ var _top_exit: ScriptedMove = ScriptedMove.new()
 ## has begun, nothing below it -- crouch, jump, the ordinary climb -- may run
 ## until it completes. Input is committed the instant the carry starts.
 var _top_exiting: bool = false
-## Seconds of hard-catch lockout still owed, 0 when there is none. Armed in
-## enter() by _arm_hard_catch() from the fall the hands just stopped.
-var _stun: float = 0.0
+## A fall stopped past hard_landing_height -- see HardCatch.
+var _catch: HardCatch = HardCatch.new()
 ## Whether this tick's W/S is a climb the view is allowed to make -- held, and
 ## turned no further off the rungs than LadderConfig.climb_assist_angle_deg.
 ## Read by look_yaw_half_span(), which runs outside physics_update().
@@ -71,7 +70,7 @@ func enter(_previous: StringName) -> void:
 	if not LadderMove.front_side_allows(_line, player.global_position, cfg.back_slack):
 		_aborted = true
 		return
-	_arm_hard_catch()
+	_catch.arm(player)
 	# _offset tracks the HANDS' grip on the line, not the capsule centre --
 	# see LadderConfig.hand_height.
 	_offset = _line.closest_offset(player.global_position + Vector3.UP * cfg.hand_height)
@@ -159,9 +158,7 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# without any of them growing a gate of their own. The magnet fade and
 	# slide_to() below still run, so the body finishes arriving at the hang
 	# pose and then stays glued to it.
-	if _stun > 0.0:
-		_stun = maxf(0.0, _stun - delta)
-		_drive_stun_effects()
+	if _catch.tick(player, delta):
 		input = MoveInput.new()
 	if input.crouch_pressed:
 		# [ME:INFERRED] one press of a key corresponds to exactly one action
@@ -272,9 +269,7 @@ func exit() -> void:
 	# nothing, and a carry cut short by something else grabbing the body
 	# still needs the gate released.
 	player.set_clip_lift_cancelled(false)
-	_stun = 0.0
-	if player.screen_effects != null:
-		player.screen_effects.set_tint(config.landing.tint_color, 0.0)
+	_catch.clear(player)
 
 ## THE CLIMB ASSIST, and narrowing the fan is the whole of it -- GrabMove's
 ## shimmy assist, for the same reason: CameraRig eases a fan edge in to meet a
@@ -296,42 +291,6 @@ func _turned_from_rungs() -> float:
 ## Arc length along the line, metres. Read by the HUD and by tests.
 func climbing_offset() -> float:
 	return _offset
-
-## A catch that stops a fall past hard_landing_height costs the same lockout a
-## hard landing does. [ME:CONFIRMED] a ladder can be caught mid-fall, and past
-## 5.3 m the catch flashes the screen red and holds the body still instead of
-## being refused.
-##
-## [ME:UNKNOWN] whether the lockout can be released early -- nothing about the
-## way OUT of it was read off the original. The body is pinned outright,
-## matching LandingMove, which refuses every input for its whole span. If a
-## crouch turns out to let go of the rungs early, the gate in physics_update()
-## is the one place to change.
-##
-## Reads config.landing rather than owning dials of its own: this IS the hard
-## landing's own stun, so one number drives both and the two cannot drift
-## apart.
-func _arm_hard_catch() -> void:
-	if player.fall_tracker.fall_height < config.pawn.hard_landing_height:
-		_stun = 0.0
-		return
-	_stun = config.landing.lockout_time
-	# THE SINK BELONGS TO THE CATCH FRAME, for the same reason LandingMove
-	# drives its own effects from enter(): MoveManager calls enter() mid-tick
-	# and does not run this move's physics_update() on that tick, so leaving
-	# the tint to the loop below puts it a frame late -- on the one frame of a
-	# hard catch anyone actually looks at.
-	_drive_stun_effects()
-
-## The red tint at the severity the remaining lockout implies: 1 at the catch,
-## 0 as it lets go. Same colour and same curve as LandingMove._drive_effects().
-## The camera dip is deliberately NOT copied: the hands are on the rungs, so
-## there are no knees to buckle.
-func _drive_stun_effects() -> void:
-	if player.screen_effects == null:
-		return
-	var severity: float = _stun / maxf(config.landing.lockout_time, 0.0001)
-	player.screen_effects.set_tint(config.landing.tint_color, clampf(severity, 0.0, 1.0))
 
 ## Whether the top-exit scripted carry is under way. Exposed for the
 ## same reason GrabMove.is_mantling() is: CharacterAnimator asks from outside

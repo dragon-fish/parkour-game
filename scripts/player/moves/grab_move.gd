@@ -107,6 +107,8 @@ var _probe_trace: Array[Dictionary] = []
 ## climb-trigger branch for the full reasoning.
 var _exit_direction: Vector3 = Vector3.ZERO
 var _mantling: bool = false
+## A fall stopped past hard_landing_height -- see HardCatch.
+var _catch: HardCatch = HardCatch.new()
 
 ## Whether the CURRENT ledge stint is mantling (the scripted climb onto the
 ## top) rather than hanging (frozen, waiting on input). Exposed the same way
@@ -203,6 +205,9 @@ func enter(_previous: StringName) -> void:
 	# It is also what satisfies MoveManager's declaration invariant for this
 	# move, which never calls set_grounded() again after this line.
 	player.set_grounded(false)
+	# Read before anything re-bases the fall: the drop the hands just stopped
+	# is what a hard catch charges for.
+	_catch.arm(player)
 
 	_aborted = false
 	_mantling = false
@@ -295,6 +300,7 @@ func enter(_previous: StringName) -> void:
 ## Safe on the hang-and-drop path too, where nothing was ever shrunk: asking for
 ## a standing capsule you already have costs nothing.
 func exit() -> void:
+	_catch.clear(player)
 	_low_ceiling = false
 	player.request_standing_capsule()
 	player.set_body_folded(false)
@@ -303,6 +309,10 @@ func exit() -> void:
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted:
 		return FALLING
+	# A HARD CATCH HANGS WITH NO INPUT: no pull-up, no shimmy, no drop, no
+	# jump, until the lockout lets go. See HardCatch.
+	if _catch.tick(player, delta):
+		input = MoveInput.new()
 
 	# BEFORE EVERYTHING, mantle included. A corner is a scripted passage that
 	# owns the body; a pull-up or a jump started halfway through one would
