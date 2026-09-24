@@ -285,6 +285,15 @@ extends Resource
 ## than a cut, leaving a moment to catch part of it back. The number is a
 ## guess to tune by eye; 0 makes every loss instant.
 @export var energy_loss_half_life: float = 0.15
+## How steep an incline has to be, degrees, before running up it bleeds the
+## budget down to speed_max_base_velocity -- the same decay, to the same floor,
+## as running across the facing (Player._update_speed_energy()).
+##
+## [ME:INFERRED] from play: climbing stairs in the original brings the flat
+## speed down to 14.4 km/h. Its stairs are slopes to the capsule. The angle is
+## a guess to tune by eye: steep enough that a gentle ramp is still run at full
+## pace.
+@export var uphill_bleed_angle_deg: float = 20.0
 
 @export_group("Landing")
 ## [ME:CONFIRMED 03 §3.1] TdMove_Landing CDO, as fall HEIGHTS (not impact

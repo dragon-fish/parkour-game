@@ -116,7 +116,13 @@ func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
 
 	var losses := {}
 	for uphill in [true, false]:
-		var world := TestWorld.build_on_slope(get_tree(), MovementConfig.new(), INCLINE)
+		# The RUN up to the slide is not what this measures: an uphill run
+		# bleeds to base speed (PawnConfig.uphill_bleed_angle_deg), and a slide
+		# entered that slow aborts uphill before the sample. Switched off so
+		# both runs arrive at the slide at pace.
+		var cfg := MovementConfig.new()
+		cfg.pawn.uphill_bleed_angle_deg = 90.0
+		var world := TestWorld.build_on_slope(get_tree(), cfg, INCLINE)
 		await step(1)
 		await step(SETTLE_TICKS)
 		assert_true(world["player"].grounded, "player did not settle onto the slope -- test setup is wrong")

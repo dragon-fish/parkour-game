@@ -186,10 +186,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	if rise > 0.0 and player.camera_rig != null:
 		player.camera_rig.add_step_offset(rise)
 
-	# A small downward bias keeps the body glued to the floor across seams and
-	# gentle slopes; without it is_on_floor() flickers while running.
-	player.velocity.y = -config.pawn.floor_snap_speed
-	player.move_and_slide()
+	# Along the floor, keeping the horizontal speed, pressed into it so the
+	# body stays glued across seams. See Player.move_on_floor().
+	player.move_on_floor()
 	# Geometry can throw the body clear of the floor for a tick -- riding up and
 	# off a small sloped obstacle does exactly that -- and without this the tick
 	# reads as a ledge exit and cancels the move. See Player.try_step_down().

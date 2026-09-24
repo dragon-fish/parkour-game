@@ -41,8 +41,8 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 
 	# Same floor-snap bias as Walking/Slide, so a crouched walk does not
 	# flicker off gentle slopes or floor seams.
-	player.velocity.y = -config.pawn.floor_snap_speed
-	player.move_and_slide()
+	# See Player.move_on_floor().
+	player.move_on_floor()
 	# Geometry can throw the body clear of the floor for a tick -- riding up and
 	# off a small sloped obstacle does exactly that -- and without this the tick
 	# reads as a ledge exit and cancels the move. See Player.try_step_down().

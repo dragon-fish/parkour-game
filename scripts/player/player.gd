@@ -4674,7 +4674,9 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	# an ordinary turn twice, once through spend_turn() above and again here
 	# -- which is exactly what test_turn_deceleration and test_turn_180
 	# caught when this read travel.
-	if not in_forward_arc(wish):
+	# UPHILL BLEEDS THE SAME WAY, down to the same floor: see
+	# PawnConfig.uphill_bleed_angle_deg.
+	if not in_forward_arc(wish) or climbing_uphill():
 		# DOWN TO BASE SPEED AND NO FURTHER. speed_max_base_velocity is 4.0 m/s
 		# -- 14.4 km/h, exactly the sideways speed measured in the original --
 		# and spend_turn() already treats it as the floor no amount of turning
@@ -4820,6 +4822,40 @@ func _charge_turn(facing: Vector3, delta: float) -> void:
 ## callers pass the residual horizontal velocity, which is what a braking
 ## ground_accelerate() call is actually decelerating. 0 with no floor or no
 ## direction, so an airborne or motionless call resolves cleanly.
+## move_and_slide() for a body on its feet: the velocity aimed along the floor
+## so the horizontal speed is the one travelled -- the original measures ground
+## speed flat, whatever the slope, and SlideMove drives its slide along the
+## slope the same way -- plus floor_snap_speed's bias INTO the floor, which
+## keeps is_on_floor() from flickering across seams.
+##
+## DO NOT go back to a flat -floor_snap_speed on a slope. move_and_slide() then
+## slides the horizontal motion along the incline and throws most of it away:
+## measured on 35 degrees, 7.2 m/s in the velocity and 3.9 m/s of actual
+## travel. The bias goes along the NORMAL for the same reason: straight down,
+## a share of it points down the slope and drags the climb back by 14%.
+##
+## THE BIAS IS FOR THIS MOVE ONLY, and its horizontal share is handed back
+## afterwards. A floor contact does not take it out of the velocity, so left
+## in, a slope's bias is added to the run every tick -- measured climbing a
+## 35-degree slab from 7 m/s to 30 in four seconds. On flat ground the normal
+## is straight up and there is nothing to hand back.
+func move_on_floor() -> void:
+	var normal: Vector3 = get_floor_normal() if is_on_floor() else Vector3.UP
+	if normal.y < 0.0001:
+		normal = Vector3.UP
+	velocity.y = -(normal.x * velocity.x + normal.z * velocity.z) / normal.y
+	var bias: Vector3 = normal * config.pawn.floor_snap_speed
+	velocity -= bias
+	move_and_slide()
+	velocity.x += bias.x
+	velocity.z += bias.z
+
+## Whether the body is running up an incline steep enough to bleed its budget
+## to base speed. See PawnConfig.uphill_bleed_angle_deg.
+func climbing_uphill() -> bool:
+	var travel := Vector3(velocity.x, 0.0, velocity.z)
+	return ground_grade(travel) < -sin(deg_to_rad(config.pawn.uphill_bleed_angle_deg))
+
 func ground_grade(direction: Vector3) -> float:
 	if not grounded or direction == Vector3.ZERO:
 		return 0.0
