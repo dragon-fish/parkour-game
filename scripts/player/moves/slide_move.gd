@@ -148,6 +148,11 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# slide "stuck" in place until slide_abort_time expires instead of
 	# ending promptly.
 	var post_move_speed := Vector2(player.velocity.x, player.velocity.z).length()
+	# EVERY LOSS, not only the released key or the wall Player asks about on
+	# foot. Those two are singled out there because steering dips the speed
+	# too; a slide holds its line, so friction and slope are all that can slow
+	# it, and a slide that ends slow ends with a slow budget.
+	player.follow_speed(post_move_speed)
 
 	# Every exit passes the same headroom gate: crouch-release, speed decay and
 	# timeout alike. Stand up into a ceiling once and the body clips through

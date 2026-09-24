@@ -1046,11 +1046,10 @@ func _target_animation() -> StringName:
 			# CTRL IS THE WALK, and it is the reason this case is not a plain
 			# speed split: the Ctrl walk modifier already IS the walk, so
 			# holding it should route straight to a walk clip rather than
-			# through the speed thresholds below. Without this case it played
-			# a STANDING IDLE: the modifier caps the body at walk_velocity,
-			# 0.5 m/s, and the idle-versus-moving threshold sits at 1.0, so a
-			# creep never reached the moving branch at all. Feet still, body
-			# drifting.
+			# through the speed thresholds below. Without this case a slow
+			# creep under the idle-versus-moving threshold (1.0) never reached
+			# the moving branch at all and played a STANDING IDLE. Feet still,
+			# body drifting.
 			#
 			# Asked of the INPUT rather than the speed, so there is no second
 			# epsilon to keep in step with the first: Ctrl held with a direction

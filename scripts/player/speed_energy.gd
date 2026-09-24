@@ -201,9 +201,17 @@ func turn_rate_multiplier(rate_deg: float) -> float:
 	return knots[knots.size() - 1].y
 
 ## Lowers the budget to what buys `speed`, never raises it. See
-## Player._energy_follows_speed().
+## Player.follow_speed().
+##
+## REBASES ONLY WHEN IT LOWERS. The decay curve is steepest at its start, so a
+## caller asking every tick -- a slide following its own bleed, a stick held
+## under its limit -- would otherwise restart that steepest stretch sixty
+## times a second under whatever decay is also running.
 func match_speed(speed: float) -> void:
-	energy = minf(energy, energy_for_speed(_pawn, speed))
+	var bought: float = energy_for_speed(_pawn, speed)
+	if bought >= energy:
+		return
+	energy = bought
 	_rebase_decay()
 
 ## Starts a fresh decay from wherever the budget stands, for a caller about to

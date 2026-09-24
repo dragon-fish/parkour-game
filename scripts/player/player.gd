@@ -3554,6 +3554,7 @@ func _physics_process(delta: float) -> void:
 	# After the moves run, so grounded and horizontal_speed() both read this
 	# tick's own result rather than last tick's.
 	_update_speed_energy(delta, input)
+	_cap_energy_at_limit(input)
 
 	# Less what the FLOOR did. Displacement is measured because velocity lies
 	# through a scripted move; but a body standing still on the roof of a train
@@ -4490,6 +4491,35 @@ func is_stagger_immune() -> bool:
 func arm_stagger_immunity() -> void:
 	_stagger_immunity = config.pawn.stagger_immunity_time
 
+## How far the stick is pushed, 0 to 1. The keyboard has no stick, so Ctrl
+## stands in for one pushed gently -- PawnConfig.walk_stick_amount.
+func stick_amount(input: MoveInput) -> float:
+	var amount: float = minf(input.move.length(), 1.0)
+	if input.walk_held:
+		amount = minf(amount, config.pawn.walk_stick_amount)
+	return amount
+
+## The fastest the active move lets the body go on the ground this tick,
+## whatever the budget: ground_speed times the move's speed_modifier times how
+## far the stick is pushed. INF when neither holds anything back.
+##
+## AN ABSOLUTE LIMIT, NOT A SCALE ON speed_cap(). A crouch at 40% OF THE
+## CEILING, with the budget following the body's speed down, is a ratchet: the
+## budget follows the crouched pace, the ceiling drops, 40% of it is slower
+## still, and the body ends at a crawl. 40% of ground_speed is a number the
+## budget can settle on.
+func ground_speed_limit(input: MoveInput) -> float:
+	var fraction: float = move_manager.current_move_speed_modifier() * stick_amount(input)
+	if fraction <= 0.0 or fraction >= 1.0:
+		return INF
+	return config.pawn.ground_speed * fraction
+
+## What a ground move steers the body toward: the budget's ceiling, held under
+## ground_speed_limit(). The limit is scaled by the same status scale as the
+## ceiling, so a region that slows running slows a crouch alike.
+func ground_ceiling(input: MoveInput) -> float:
+	return minf(speed_cap(), ground_speed_limit(input) * _speed_scale)
+
 func speed_cap() -> float:
 	# Scaled HERE rather than at each caller: this is the one function every
 	# move asks "how fast may I go", so a status applied to it reaches all of
@@ -4585,7 +4615,7 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	_charge_turn(facing, delta)
 	var follows: bool = active != null and active.energy_follows_speed
 	if follows:
-		_energy_follows_speed(wish == Vector3.ZERO)
+		_energy_follows_speed(input)
 	if wish == Vector3.ZERO:
 		if not follows:
 			speed_energy.decay(delta)
@@ -4627,16 +4657,14 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 			# speed_min_base_velocity (0.1 m/s) and sideways is a crawl.
 			speed_energy.energy = floor_energy
 		return
-	# Scaled by the active move's own ceiling. Without this the threshold is
-	# measured against the STANDING cap while a crouch is held to 40% of it,
-	# so crouching can never bank -- and since turning still charges, a
-	# crouched turn drains energy on a one-way ratchet that only standing up
-	# releases. That bottomed out at speed_min_base_velocity * crouched_pct =
-	# 0.04 m/s, with no way back up.
+	# Against the ceiling the move actually steers toward. Measured against
+	# the STANDING cap instead, a crouch held under it could never bank -- and
+	# since turning still charges, a crouched turn drained energy on a one-way
+	# ratchet that bottomed out at 0.04 m/s.
 	# Nothing banks during the stand-up after a slide: the ceiling stays pinned
 	# at whatever the slide left it at, so a slide preserves the speed it was
 	# entered with but cannot be used to keep climbing.
-	var reachable: float = speed_cap() * move_manager.current_move_speed_modifier()
+	var reachable: float = ground_ceiling(input)
 	if _slide_recovery_timer > 0.0:
 		pass
 	elif horizontal_speed() >= reachable * config.pawn.energy_accumulate_speed_ratio:
@@ -4661,16 +4689,36 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 ##
 ## The same energy_accumulate_speed_ratio slack the banking side uses, so a
 ## body grazing a wall at pace follows nothing.
-func _energy_follows_speed(idle: bool) -> void:
-	if not idle and not is_on_wall():
+func _energy_follows_speed(input: MoveInput) -> void:
+	if wish_direction(input) != Vector3.ZERO and not is_on_wall():
 		return
 	var speed: float = horizontal_speed()
-	var reachable: float = speed_cap() * move_manager.current_move_speed_modifier()
-	if reachable <= 0.0 or speed >= reachable * config.pawn.energy_accumulate_speed_ratio:
+	if speed >= ground_ceiling(input) * config.pawn.energy_accumulate_speed_ratio:
 		return
-	# Measured against the ceiling the budget buys BEFORE a crouch or a status
-	# scales it, so a crouched body at its own full pace follows nothing.
-	speed_energy.match_speed(speed_energy.cap() * speed / reachable)
+	follow_speed(speed)
+
+## Lowers the budget to what buys `speed`, read in the budget's own units: a
+## status scaling the ceiling scales the body with it, and is not a loss the
+## budget should pay for. Never raises it.
+func follow_speed(speed: float) -> void:
+	var ceiling: float = speed_cap()
+	if ceiling <= 0.0:
+		return
+	speed_energy.match_speed(speed * speed_energy.cap() / ceiling)
+
+## A budget above what ground_speed_limit() lets the body use is dropped to
+## it, the moment the limit applies: crouch out of a sprint, or ease off the
+## stick, and the run is rebuilt from the slower pace. Only on the moves the
+## budget follows -- see MoveConfig.energy_follows_speed.
+func _cap_energy_at_limit(input: MoveInput) -> void:
+	if not grounded:
+		return
+	var active: MoveConfig = move_manager.current_config()
+	if active == null or not active.energy_follows_speed:
+		return
+	var limit: float = ground_speed_limit(input)
+	if limit < INF:
+		speed_energy.match_speed(limit)
 
 ## Resynchronises the turn tax to wherever the body is facing NOW, so the swing
 ## that just happened costs nothing.

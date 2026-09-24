@@ -72,6 +72,12 @@ Task 12 的实时回归测试因此只能断言 quality ≈ 0.5，而非端点�
   7.2 掉到 4 就从 4 重新加速，停下就从 0 起步。见 `MoveConfig.energy_follows_speed`
   和 `Player._energy_follows_speed()`。判据是"没有输入或碰到墙"，**不是**"速度变小"——
   按键换方向时速度也会凹一下，原版实测会立刻爬回去。
+- **滑铲掉速同时掉能量**：滑铲不能转向，掉速只能来自摩擦和坡度，所以每 tick 都跟
+  （`SlideMove` 里调 `Player.follow_speed()`）。
+- **蹲伏和慢走是绝对上限**：`ground_speed × speed_modifier × 摇杆幅度`
+  （`Player.ground_speed_limit()`），能量立即压到这个上限对应的值。Ctrl 等同于缓推摇杆
+  （`PawnConfig.walk_stick_amount`，推断，未实测）。**不是**"能量上限 × 系数"——那样能量
+  跟着速度走会形成棘轮，一路蹲到爬行。
 - **衰减曲线是脚本动作期间的代价**：翻越、爬墙这类玩家不能操控的动作按秒付费，
   快的几乎不掉，慢的掉得多。见 `MoveConfig.energy_decays`。翻滚沿用自己的
   `energy_keep = 0.75`，不走衰减。

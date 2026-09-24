@@ -54,16 +54,64 @@ func test_stopping_bleeds_the_energy_back_off() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
-func test_the_walk_modifier_caps_speed_and_banks_almost_nothing() -> void:
+func test_easing_off_the_stick_caps_speed_and_drops_the_budget() -> void:
+	# Ctrl is a stick pushed gently: the body tops out at that share of
+	# ground_speed, and a budget banked above it does not survive the easing.
 	var world := _world()
 	await step(1)
 	TestWorld.place(world)
 	await step(2)
+	var player: Player = world["player"]
 	world["input"].state.move = Vector2(0.0, 1.0)
-	world["input"].state.walk_held = true
-	for i in 180:
+	for i in 430:
 		await step(1)
-	assert_true(world["player"].horizontal_speed() < 0.8, "the walk modifier did not cap speed")
+	world["input"].state.walk_held = true
+	for i in 30:
+		await step(1)
+	var limit: float = player.config.pawn.ground_speed * player.config.pawn.walk_stick_amount
+	assert_almost_eq(player.horizontal_speed(), limit, 0.05, "the walk key did not cap speed at its stick share")
+	assert_almost_eq(player.speed_energy.energy, SpeedEnergy.energy_for_speed(player.config.pawn, limit), 0.02,
+		"the budget outlived easing off the stick")
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_a_crouch_drops_the_budget_to_the_crouched_pace() -> void:
+	# A sprint's crouch press is a slide, so the budget is handed over
+	# directly: the crouch alone has to be what drops it.
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	await step(30)  # settled on the floor
+	var player: Player = world["player"]
+	world["input"].press_crouch()
+	await step(3)
+	assert_eq(player.move_manager.current_name, Move.CROUCH, "test setup: not crouching")
+	player.speed_energy.energy = 7.0
+	world["input"].state.move = Vector2(0.0, 1.0)
+	await step(2)
+	var limit: float = player.config.pawn.ground_speed * player.config.crouch.speed_modifier
+	assert_lt(player.speed_energy.energy, SpeedEnergy.energy_for_speed(player.config.pawn, limit) + 0.02,
+		"a crouch kept a budget above the crouched pace")
+	TestWorld.teardown(world)
+	await step(1)
+
+func test_a_slide_bleeds_the_budget_with_its_speed() -> void:
+	var world := _world()
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	var player: Player = world["player"]
+	world["input"].state.move = Vector2(0.0, 1.0)
+	for i in 430:
+		await step(1)
+	world["input"].press_crouch()
+	for i in 45:
+		await step(1)
+	assert_eq(player.move_manager.current_name, Move.SLIDE, "test setup: not sliding")
+	var paid_for: float = SpeedEnergy.energy_for_speed(player.config.pawn, player.horizontal_speed())
+	assert_lt(player.speed_energy.energy, paid_for + 0.05,
+		"the budget stayed above what a slowing slide is doing")
 	TestWorld.teardown(world)
 	await step(1)
 

@@ -33,11 +33,9 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 			return BALANCE
 
 	var wish_dir: Vector3 = player.wish_direction(input)
-	# [ME:CONFIRMED 02 §2.1] No sprint key: the curve IS the sprint. The walk
-	# modifier is the one thing that overrides it, with its own confirmed hard
-	# cap.
-	var target_speed: float = config.pawn.walk_velocity if input.walk_held \
-		else player.speed_cap() * cfg.speed_modifier
+	# [ME:CONFIRMED 02 §2.1] No sprint key: the curve IS the sprint. What holds
+	# it back is how far the stick is pushed -- see Player.ground_speed_limit().
+	var target_speed: float = player.ground_ceiling(input)
 	var grade: float = player.ground_grade(Vector3(player.velocity.x, 0.0, player.velocity.z))
 	player.ground_accelerate(wish_dir, target_speed, delta, grade)
 

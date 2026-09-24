@@ -65,6 +65,10 @@ func _init() -> void:
 	# no acceleration term anywhere in TdMove_Slide, which is why the
 	# community calls it the slowest move in the game.
 	friction_modifier = 0.1
+	# [ME:INFERRED] from play: the budget bleeds with the slide rather than
+	# waiting it out. SlideMove follows every loss itself; this flag is what
+	# spares a slide with no key held the decay curve on top of that.
+	energy_follows_speed = true
 	# Source: 05 §5.1 `MinLookConstraint = (-10000, -10000, 0)`, UE3 integer
 	# angles at 65536 = 360 degrees -> +-54.9 degrees on pitch and yaw. ✅
 	constrain_look = true

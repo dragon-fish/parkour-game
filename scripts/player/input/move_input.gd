@@ -24,9 +24,8 @@ var look := Vector2.ZERO
 ## True only on the tick the jump key transitioned from up to down.
 var jump_pressed := false
 var jump_held := false
-## True while the walk modifier is held. Slows ground movement to
-## PawnConfig.walk_velocity; there is no sprint key -- ground speed is a
-## single top speed (PawnConfig.ground_speed) by default.
+## True while the walk modifier is held: the keyboard's stand-in for a stick
+## pushed gently, read through Player.stick_amount(). There is no sprint key.
 var walk_held := false
 var crouch_held := false
 ## True only on the tick the crouch key transitioned from up to down.

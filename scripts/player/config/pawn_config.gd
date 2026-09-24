@@ -82,13 +82,17 @@ extends Resource
 ## [ME:CONFIRMED 02 §2.2] WalkVelocity = 50 uu/s -> 0.5 m/s as a VALUE.
 ## [ME:INFERRED] as a ROLE: the same section flags this discrete tier (and
 ## its four siblings) as more likely an animation-blend threshold than a true
-## speed clamp, since the real ground ceiling is the speed curve
-## (GroundSpeed) -- so the role recorded here, a hard cap on speed while the
-## walk modifier / Ctrl is held, is unverified. Used anyway, per the owner's
-## own direction that Ctrl should move the player very slowly -- 0.5 m/s (7%
-## of ground_speed) reads as exactly that, not as an implausible number, so
-## there was no reason to substitute a different one.
+## speed clamp. Read only by CharacterAnimator, as the slowest a walk clip is
+## scaled down to; Ctrl no longer caps the body here -- see walk_stick_amount.
 @export var walk_velocity: float = 0.5
+## How far a gamepad stick the walk modifier (Ctrl) stands in for, 0 to 1. The
+## body's top speed on the ground is ground_speed times this -- see
+## Player.ground_speed_limit() -- and the budget above it is dropped.
+##
+## [ME:INFERRED] the stick's travel limits the top speed in the original, and
+## a keyboard's walk key is a stick pushed gently; not measured. The amount is
+## a guess to tune by eye.
+@export var walk_stick_amount: float = 0.3
 ## [ME:CONFIRMED 02 §2.3] CrouchedPct = 0.4. Also lives as CrouchConfig's own
 ## speed_modifier; kept here too because the original declares it Pawn-wide.
 @export var crouched_pct: float = 0.4

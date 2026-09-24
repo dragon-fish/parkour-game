@@ -97,10 +97,8 @@ func test_a_body_with_no_clips_at_all_asks_for_nothing() -> void:
 		"a body with none of the known clips was still asked for one")
 
 func test_the_ctrl_creep_moves_its_feet() -> void:
-	# ✅ THE OWNER: "we already have the Ctrl walk -- that IS the walk." It was
-	# playing a STANDING IDLE. The modifier caps the body at walk_velocity,
-	# 0.5 m/s, and the idle-versus-moving threshold sits at 1.0, so a creep
-	# never reached the moving branch at all: feet still, body drifting.
+	# The Ctrl walk IS the walk. A creep under the idle-versus-moving threshold
+	# (1.0) once played a STANDING IDLE: feet still, body drifting.
 	var animator: CharacterAnimator = await _animator_with([&"Idle", &"Walk", &"Sprint"])
 	var player: Player = _world["player"]
 	player.move_manager.start(Move.WALKING)

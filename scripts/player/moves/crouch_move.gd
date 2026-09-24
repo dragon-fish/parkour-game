@@ -23,7 +23,7 @@ func exit() -> void:
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	var wish_dir: Vector3 = player.wish_direction(input)
-	var target_speed: float = player.speed_cap() * cfg.speed_modifier
+	var target_speed: float = player.ground_ceiling(input)
 	var grade: float = player.ground_grade(Vector3(player.velocity.x, 0.0, player.velocity.z))
 	player.ground_accelerate(wish_dir, target_speed, delta, grade)
 
