@@ -35,7 +35,11 @@ func _init() -> void:
 	# the same reason CoilConfig assigns nothing: MoveConfig's defaults are
 	# already neutral, and declaring a value is how a move opts into being
 	# different.
-	pass
+	#
+	# [ME:INFERRED] from play: a dodge cannot be chained to hold a sideways
+	# speed nothing else reaches. Pressed again inside this, A or D plus space
+	# is an ordinary jump that way -- see WalkingMove's jump branch.
+	redo_move_time = 0.5
 
 ## [ME:CONFIRMED 04 §4.5] BaseJumpZ = 300 uu/s. Half of an ordinary jump's
 ## 630: a dodge hops, it does not launch.

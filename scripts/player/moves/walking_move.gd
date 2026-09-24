@@ -72,6 +72,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		# own jump block are all decided in there, and a dodge is a jump for
 		# every one of those purposes.
 		var dodge: Vector3 = player.dodge_direction(input)
+		# Asked before the launch, which commits: a dodge still cooling down
+		# (DodgeJumpConfig.redo_move_time) leaves as a plain jump instead.
+		if dodge != Vector3.ZERO and not player.move_manager.can_enter(DODGE_JUMP):
+			dodge = Vector3.ZERO
 		var next: StringName = JUMP
 		if dodge == Vector3.ZERO:
 			player.velocity.y = config.pawn.base_jump_z

@@ -227,3 +227,22 @@ func test_a_dodge_reaches_for_nothing() -> void:
 	assert_false(cfg.dodge_jump.check_for_grab, "DodgeJump must not check for a grab")
 	assert_false(cfg.dodge_jump.check_for_vault_over, "DodgeJump must not check for a vault")
 	assert_false(cfg.dodge_jump.check_for_wall_climb, "DodgeJump must not check for a wall")
+
+# --- cooldown -----------------------------------------------------------------
+
+func test_a_dodge_inside_its_cooldown_is_an_ordinary_jump() -> void:
+	var player: Player = await _standing()
+	_world["input"].hold_move(1.0, 0.0)
+	await step(10)
+	_world["input"].press_jump()
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: no first dodge")
+	for i in 120:
+		await step(1)
+		if player.move_manager.current_name == Move.WALKING:
+			break
+	assert_eq(player.move_manager.current_name, Move.WALKING, "test setup: never landed")
+	_world["input"].press_jump()
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.JUMP,
+		"a second dodge fired inside the cooldown (got %s)" % player.move_manager.current_name)
