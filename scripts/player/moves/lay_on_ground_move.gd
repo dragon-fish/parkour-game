@@ -53,6 +53,13 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 		player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
 	player.move_and_slide()
 	player.set_grounded(player.is_on_floor())
+	# THE BODY LIES ALONG THE FLOOR, whichever way it faces: drawn upright on a
+	# slope, a body on its back has half of it in the air. Player tilts the
+	# model's UP onto the normal about whatever axis joins the two, over the
+	# yaw, so no facing is special. Not while getting up -- left upright then,
+	# it eases back onto its feet with the get-up clip.
+	if player.is_on_floor() and not _rising:
+		player.body_tilt_normal = player.get_floor_normal()
 
 	if _rising:
 		var t: float = clampf(_elapsed / maxf(config.lay_on_ground.get_up_time, 0.0001), 0.0, 1.0)

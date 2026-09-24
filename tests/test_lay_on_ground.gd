@@ -147,3 +147,18 @@ func test_lying_down_in_third_person_eases_the_view_down_to_its_ceiling() -> voi
 	assert_gt(float(p.camera_rig.look_debug()["pitch"]), ceiling + 0.01, "the view was cut to the ceiling in one frame")
 	await step(30)
 	assert_lt(float(p.camera_rig.look_debug()["pitch"]), ceiling + 0.01, "the view never came down to the ceiling")
+
+
+func test_a_body_on_its_back_lies_along_a_slope_whichever_way_it_faces() -> void:
+	# Turned across the fall line on purpose: the tilt must not assume the body
+	# faces down the slope the way a chute's does.
+	var world := TestWorld.build_on_slope(get_tree(), MovementConfig.new(), deg_to_rad(20.0))
+	_worlds.append(world)
+	await step(30)
+	var p: Player = world["player"]
+	p.rotation.y = deg_to_rad(70.0)
+	_knock_down(p)
+	await step(5)
+	assert_eq(p.move_manager.current_name, Move.LAY_ON_GROUND, "test setup: not lying down")
+	assert_almost_eq(p.body_tilt_normal.angle_to(p.get_floor_normal()), 0.0, 0.01,
+		"the body on its back was not laid along the slope")
