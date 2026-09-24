@@ -42,8 +42,6 @@ const BSP_UNDRAWN_MATERIAL := "RemoveSurfaceMaterial"
 ## The layer hanging cloth lives on, alone, so a query can leave it out by mask
 ## -- see CameraConfig.third_person_probe_mask.
 const CLOTH_LAYER := 4
-## How far below the highest vertex a point still counts as on the top edge.
-const CLOTH_PIN_BAND_M := 0.02
 ## A cloth never weighs less than this, whatever its density says.
 const CLOTH_MIN_MASS_KG := 0.05
 
@@ -104,7 +102,7 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		node.set_meta(Common.ACTOR_META, Common.actor_id(placement["package"], placement["name"]))
 		if placement["soft_landing"]:
 			node.add_to_group("soft_landing", true)
-		var cloth := _is_cloth(mesh_name)
+		var cloth := _is_cloth(mesh)
 		var instance := SoftBody3D.new() if cloth else MeshInstance3D.new()
 		instance.name = "Mesh"
 		# A soft body deforms the mesh it is given, so it cannot share the
@@ -123,6 +121,10 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		_apply_overrides(instance, placement)
 		if cloth:
 			_cloth_draws_both_sides(instance as SoftBody3D)
+		var rest: MeshInstance3D = _cloth_rest(mesh) if cloth else null
+		if rest != null:
+			rest.visible = instance.visible
+			_apply_overrides(rest, placement)
 		if placement.has("runner_vision"):
 			node.add_child(_runner_vision_target(placement, mesh))
 		# Not drawn past VISIBLE_RANGE_PER_METRE its own size: 13,000 placements
@@ -130,18 +132,27 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		var extent: float = (Common.transform_of(placement).basis * mesh.get_aabb().size).abs().length()
 		instance.visibility_range_end = clampf(extent * VISIBLE_RANGE_PER_METRE, VISIBLE_RANGE_MIN, VISIBLE_RANGE_MAX)
 		node.add_child(instance)
+		if rest != null:
+			rest.visibility_range_end = instance.visibility_range_end
+			node.add_child(rest)
 		var transform := Common.transform_of(placement)
 		var stretch := Basis()
-		if collision != "none" and not _is_uniform(transform.basis):
+		if (collision != "none" and not _is_uniform(transform.basis)) 				or (cloth and not transform.basis.is_equal_approx(transform.basis.orthonormalized())):
 			# Godot physics does not support non-uniform scale on a body or its
 			# shapes: the collision stops matching what is drawn. The body keeps
 			# rotation only; the mesh carries the stretch and the shapes bake it.
+			# A soft body drops its node's scale altogether, uniform or not, so a
+			# cloth hung at 1.5 simulated -- and drew -- at 1.0: its stretch goes
+			# into its own copy of the mesh instead.
 			var rotation := transform.basis.orthonormalized()
 			if rotation.determinant() < 0.0:
 				rotation.x = -rotation.x
 			stretch = rotation.inverse() * transform.basis
 			transform.basis = rotation
-			instance.transform = Transform3D(stretch)
+			if cloth:
+				_bake_stretch(instance.mesh, stretch)
+			else:
+				instance.transform = Transform3D(stretch)
 			counts.stretched += 1
 		node.transform = transform
 		# PrePivot: the mesh and its shapes sit this far off the node, whose
@@ -152,6 +163,8 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 		var turned := Common.transform_of(placement).basis.orthonormalized() * -pre_pivot
 		var offset := transform.basis.inverse() * turned
 		instance.transform.origin = offset
+		if rest != null:
+			rest.transform = Transform3D(stretch, offset)
 		if collision == "simple":
 			var shape_names := Common.NameAllocator.new()
 			for shape: Shape3D in mesh.get_meta("simple_shapes"):
@@ -379,10 +392,6 @@ var _stretched_shapes := {}
 ## The mesh library that built the meshes, for placement material overrides.
 ## Null leaves every mesh on its own materials.
 var library = null
-## Mesh-name prefixes whose placements hang as simulated cloth instead of being
-## drawn flat, from the level config's "cloth" list. Empty draws every one of
-## them as it was authored, which is a rigid sheet.
-var cloth_meshes: Array = []
 ## The level config's "look" block: me_environment.gd dials by export name,
 ## plus LAMP_DIAL for the lights' energy_scale. Read from the config file the
 ## build was asked for, not from the manifest's copy of it, so a dial can be
@@ -427,11 +436,11 @@ func _stretched(shape: Shape3D, stretch: Basis) -> Shape3D:
 	return copy
 
 
-func _is_cloth(mesh_name: String) -> bool:
-	for prefix: String in cloth_meshes:
-		if mesh_name.begins_with(prefix):
-			return true
-	return false
+## Every mesh the original simulates hangs, and nothing else: the extractor
+## records the pinned vertices only for a SkeletalMesh that carries a PhysX
+## cloth map.
+static func _is_cloth(mesh: ArrayMesh) -> bool:
+	return (mesh.get_meta("cloth", {}) as Dictionary).has("pinned")
 
 
 ## A cloth's own copy of a library mesh, ONE SURFACE.
@@ -454,12 +463,66 @@ static func _cloth_mesh(source: ArrayMesh) -> ArrayMesh:
 	return out
 
 
-## Nails a curtain up along its top edge.
+## The surfaces of a cloth mesh its soft body does not simulate, drawn rigid
+## beside it, or null when there are none.
 ##
-## The edge is found in WORLD space, after the placement's transform. A cloth
-## mesh's own axes do not say which way is up -- PX_SK_PlasticDividerEdge_01 is
-## 3.28 m tall along its local Z and 2 cm thick along its local Y, so pinning
-## by local height nails two thirds of the sheet to nothing.
+## A soft body simulates only its first surface, so a cloth with a second
+## material lost it: PX_SK_WarningStripeCloth_01's second element is a tie of
+## 13 vertices, 12 of them pinned, and it vanished. Drawn still, it stays where
+## the original held it.
+static func _cloth_rest(source: ArrayMesh) -> MeshInstance3D:
+	var simulated := source.surface_get_name(0)
+	var slots: PackedInt32Array = source.get_meta("surface_slots", PackedInt32Array())
+	var out := ArrayMesh.new()
+	var out_slots := PackedInt32Array()
+	for surface in range(1, source.get_surface_count()):
+		var surface_name := source.surface_get_name(surface)
+		if surface_name == simulated + "_back":
+			continue
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, source.surface_get_arrays(surface))
+		out.surface_set_material(out.get_surface_count() - 1, source.surface_get_material(surface))
+		out.surface_set_name(out.get_surface_count() - 1, surface_name)
+		if surface < slots.size():
+			out_slots.append(slots[surface])
+	if out.get_surface_count() == 0:
+		return null
+	out.set_meta("surface_slots", out_slots)
+	var rest := MeshInstance3D.new()
+	rest.name = "Rest"
+	rest.mesh = out
+	return rest
+
+
+## A placement's stretch baked into a cloth's own one-surface mesh, which a
+## soft body needs because it ignores its node's scale.
+static func _bake_stretch(mesh: ArrayMesh, stretch: Basis) -> void:
+	var arrays := mesh.surface_get_arrays(0)
+	var material := mesh.surface_get_material(0)
+	var surface_name := mesh.surface_get_name(0)
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	for i in vertices.size():
+		vertices[i] = stretch * vertices[i]
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	if arrays[Mesh.ARRAY_NORMAL] != null:
+		var normal_basis := stretch.inverse().transposed()
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		for i in normals.size():
+			normals[i] = (normal_basis * normals[i]).normalized()
+		arrays[Mesh.ARRAY_NORMAL] = normals
+	mesh.clear_surfaces()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.surface_set_material(0, material)
+	mesh.surface_set_name(0, surface_name)
+
+
+## Pins a cloth where the original pinned it.
+##
+## [ME:CONFIRMED] the pinned vertices are the original's own, per vertex, off
+## the SkeletalMesh (see the extractor's skeletal_mesh.py). DO NOT go back to
+## working the pins out from the shape: "the top edge in world space" holds for
+## a curtain and for nothing else -- PX_SK_PlasticSheet_* lie flat with no top
+## edge at all, and PX_SK_EdgeCloth_01 is held at 22 points scattered across
+## its height. Guessing made every kind of cloth a separate case to judge.
 ##
 ## Its own collision layer keeps it out of queries that must ignore it, the
 ## third-person camera probe above all. The mask still sees layer 1, which is
@@ -470,23 +533,22 @@ func _hang_cloth(cloth: SoftBody3D, placement: Transform3D) -> void:
 	cloth.collision_mask = 1
 	var mesh: ArrayMesh = cloth.mesh
 	var arrays := mesh.surface_get_arrays(0)
-	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var top := -INF
-	for vertex in vertices:
-		top = maxf(top, (placement * vertex).y)
+	var parameters: Dictionary = mesh.get_meta("cloth", {})
+	# Only what the simulated surface's faces use. A soft body drops every
+	# other vertex, and a pin on a dropped one is an engine error a tick: the
+	# original pins a cloth's rigid parts too, which _cloth_rest() draws.
+	var used := {}
+	for index in (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array):
+		used[index] = true
 	var pinned := PackedInt32Array()
-	for i in vertices.size():
-		if absf((placement * vertices[i]).y - top) <= CLOTH_PIN_BAND_M:
-			pinned.append(i)
-	if pinned.is_empty() or pinned.size() == vertices.size():
-		push_warning("[me_level] cloth %s pinned %d of %d points: the top edge did not read"
-				% [cloth.name, pinned.size(), vertices.size()])
+	for index: int in parameters["pinned"]:
+		if used.has(index):
+			pinned.append(index)
 	cloth.set("pinned_points", pinned)
 	# [ME:CONFIRMED] the original's own numbers, off the SkeletalMesh:
 	# ClothDensity is per unit area, so the mass is the density over the sheet
 	# the placement actually hangs. Left at the engine's 1 kg a curtain of 4.3
 	# square metres weighed less than a tea towel and flew like one.
-	var parameters: Dictionary = mesh.get_meta("cloth", {})
 	var density := float(parameters.get("density", 0.0))
 	if density > 0.0:
 		cloth.total_mass = maxf(density * _sheet_area(arrays, placement), CLOTH_MIN_MASS_KG)

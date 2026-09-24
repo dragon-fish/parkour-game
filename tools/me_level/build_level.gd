@@ -52,7 +52,6 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 	var paths := Common.output_paths(config)
 
 	_look = config.get("look", {})
-	_cloth = config.get("cloth", [])
 	_library = MeLibrary.new()
 	if _look.has(BAKER_TINT_DIAL):
 		_library.baker_tint_strength = float(_look[BAKER_TINT_DIAL])
@@ -83,7 +82,6 @@ func _build(config_path: String, rebuild_interactions: bool) -> bool:
 ## See docs/superpowers/specs/2026-09-19-me-chapter-sections-design.md.
 var _library = null
 var _look := {}
-var _cloth: Array = []
 ## `look` key for MeshLibrary.baker_tint_strength.
 const BAKER_TINT_DIAL := "baker_tint_strength"
 ## `look` key for MeshLibrary.normal_scale.
@@ -94,7 +92,6 @@ func _geometry_builder():
 	var builder := GeometryBuilder.new()
 	builder.library = _library
 	builder.look_dials = _look
-	builder.cloth_meshes = _cloth
 	return builder
 
 

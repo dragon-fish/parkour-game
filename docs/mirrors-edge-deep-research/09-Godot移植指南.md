@@ -360,10 +360,20 @@ Godot 侧结论，本机实测而非查文档：
   将来若被当成 bug 排查，根因在这。
 - 帘子是单面片，需要双面材质，否则从一侧看不见（提取器已有 `two_sided` 通路）。
 - 物理插值不作用于软体。本项目没开插值，所以这条目前无影响。
-
-前提是**先把 `PX_SK_*` 导出来**：`extract.py` 的 `SKELETAL_SCENERY` 白名单排除了布料和旗帜，
-且这些 actor 的组件上没有 `SkeletalMesh` 标签——网格挂在 archetype 上，读取器要先会跟
-`ObjectArchetype`。
+- ✅ **钉哪些点，原作逐顶点存着**，不必按形状去猜。每个 `PX_SK_*` 的 SkeletalMesh 上：
+  `ClothBones = ['joint2']`，蒙在这根骨上的顶点交给 PhysX；`ClothToGraphicsVertMap` 按渲染
+  顶点号列出模拟点，**自由点在前**，`NumFreeClothVerts` 标出自由点到哪为止；表的其余部分、
+  以及表里根本没有的渲染顶点，都蒙在 `joint1` 上，是固定的。SP01a、SP06 的 11 种布料逐个核对，
+  分界线与骨骼完全吻合。"找世界空间最高的一条边"只对帘子成立：`PX_SK_PlasticSheet_*` 是平铺的，
+  没有上边；`PX_SK_EdgeCloth_01` 的 22 个钉点散在不同高度。
+- ✅ 没写 `ClothDensity` 的布料用类默认值 **1.0**（`Engine.u` 的 `Default__SkeletalMesh`；
+  同一处还有 `ClothDamping 0.5`、`ClothThickness 0.5`、`ClothIterations 5`）。大多数布料都没写。
+- **`SoftBody3D` 无视节点的缩放**，均匀缩放也不例外。本机实测：1×1 的布挂在 scale 2 的节点下，
+  物理跨度仍是 1.0。原作的摆放常带缩放（纸条是 1.2、1.5），所以要把缩放烘焙进布料自己那份
+  网格，节点只留旋转。
+- 软体只模拟**第一个 surface**。第二个材质的部分（`PX_SK_WarningStripeCloth_01` 上 13 个
+  顶点的系带，其中 12 个是钉点）按静态网格画在旁边；软体会丢弃没有被任何三角形引用的顶点，
+  在这种顶点上加钉点，引擎每个 tick 报一次错。
 
 ---
 

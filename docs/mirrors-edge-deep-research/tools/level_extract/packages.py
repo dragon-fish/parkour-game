@@ -75,15 +75,11 @@ from mapdump import MapReader
 #   look            dict  {}         dials of the level's look the builder sets on its
 #                                    Environment node (tools/me_level/me_environment.gd
 #                                    exports), by name; judged against the reference shots
-#   cloth           list  []         mesh-name prefixes whose placements the builder hangs
-#                                    as simulated cloth instead of drawing them flat. Named
-#                                    one at a time: the pin is the TOP EDGE, which is right
-#                                    for a curtain and wrong for an awning
 CONFIG_DEFAULTS = {
     'sections': [], 'packages': [], 'exclude_meshes': [], 'exclude_actors': [], 'collision_overrides': {}, 'anchor_filter': None,
     'interior': False, 'initial_spawn': None, 'outputs': {}, 'texture_max_px': 64,
     'persistent': None, 'split_sections': False, 'lifts': [], 'teleports': [], 'floating_checkpoints': [],
-    'sounds': {}, 'look': {}, 'cloth': [], 'checkpoint_restores': {}, 'kismet_overrides': {},
+    'sounds': {}, 'look': {}, 'checkpoint_restores': {}, 'kismet_overrides': {},
 }
 CONFIG_REQUIRED = ('id', 'chapter')
 
