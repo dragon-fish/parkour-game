@@ -40,3 +40,16 @@ func test_running_uphill_bleeds_to_base_speed_and_no_further() -> void:
 	await step(240)  # past the 3 s decay
 	assert_almost_eq(player.speed_cap(), player.config.pawn.speed_max_base_velocity, 0.15,
 		"the climb did not settle the ceiling at base speed")
+
+func test_running_downhill_banks_faster_than_the_flat() -> void:
+	_world = TestWorld.build_on_slope(get_tree(), MovementConfig.new(), deg_to_rad(INCLINE_DEG))
+	await step(30)
+	var player: Player = _world["player"]
+	player.rotation.y += PI  # facing down the slope
+	await step(1)
+	player.speed_energy.energy = player.speed_energy.base_floor()
+	_world["input"].state.move = Vector2(0.0, 1.0)
+	await step(60)
+	# On the flat, a second of running banks about one second of energy.
+	assert_gt(player.speed_energy.energy, player.speed_energy.base_floor() + 2.0,
+		"a second down a %.0f-degree slope banked no faster than the flat" % INCLINE_DEG)

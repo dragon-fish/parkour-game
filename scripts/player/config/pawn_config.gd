@@ -294,6 +294,13 @@ extends Resource
 ## a guess to tune by eye: steep enough that a gentle ramp is still run at full
 ## pace.
 @export var uphill_bleed_angle_deg: float = 20.0
+## How many times faster the budget banks running DOWN a 45-degree incline;
+## 1 at uphill_bleed_angle_deg and shallower, in a straight line with the angle
+## between. See Player.downhill_bank_rate().
+##
+## [ME:INFERRED] from play: down a flight of stairs the original reaches top
+## speed in a very short time. The rate is a guess to tune by eye.
+@export var downhill_bank_rate_45: float = 6.0
 
 @export_group("Landing")
 ## [ME:CONFIRMED 03 §3.1] TdMove_Landing CDO, as fall HEIGHTS (not impact

@@ -4714,7 +4714,8 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 		pass
 	elif horizontal_speed() >= reachable * config.pawn.energy_accumulate_speed_ratio \
 			and speed_energy.energy < limit_energy:
-		speed_energy.accumulate(delta, _energy_mode(input))
+		# Faster downhill -- see downhill_bank_rate().
+		speed_energy.accumulate(delta * downhill_bank_rate(), _energy_mode(input))
 	else:
 		# Asking to move but not actually getting anywhere -- shoved into
 		# geometry, or still climbing toward a ceiling already paid for.
@@ -4858,6 +4859,19 @@ func move_on_floor() -> void:
 func climbing_uphill() -> bool:
 	var travel := Vector3(velocity.x, 0.0, velocity.z)
 	return ground_grade(travel) < -sin(deg_to_rad(config.pawn.uphill_bleed_angle_deg))
+
+## How many times faster running banks the budget down this incline: 1 on the
+## flat and on anything shallower than uphill_bleed_angle_deg, rising in a
+## straight line with the angle to PawnConfig.downhill_bank_rate_45 at 45
+## degrees. The downhill half of climbing_uphill().
+func downhill_bank_rate() -> float:
+	var travel := Vector3(velocity.x, 0.0, velocity.z)
+	var angle: float = rad_to_deg(asin(clampf(ground_grade(travel), -1.0, 1.0)))
+	var start: float = config.pawn.uphill_bleed_angle_deg
+	if angle <= start:
+		return 1.0
+	var t: float = clampf((angle - start) / maxf(45.0 - start, 0.001), 0.0, 1.0)
+	return lerpf(1.0, config.pawn.downhill_bank_rate_45, t)
 
 func ground_grade(direction: Vector3) -> float:
 	if not grounded or direction == Vector3.ZERO:
