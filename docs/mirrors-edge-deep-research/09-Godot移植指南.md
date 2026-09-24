@@ -392,6 +392,32 @@ Godot 侧结论，本机实测而非查文档：
   恰好是它钉点的编号。PlaneMesh 两种编号相同，所以 cloth_lab 里看不出来。
   `SimulatedCloth` 按同样的规则算出编号，避开会撞上的点。
 
+
+### 9.2.2 散落的刚体：KActor
+
+✅ 可以推动的纸箱是 `KActor`，全作 101 个，但**大多数不是自由刚体**：Mall 雕像的 68 块碎片、
+Escape 的门、Stormdrain 的混凝土块都被 Kismet 驱动；Subway 和 Scraper 的盖板是隐藏的；Subway 的
+管道和按钮盒既不和 Actor 碰撞也不挡刚体，没有东西会唤醒它们；Cranes 的吊钩不挡刚体，放出来会
+穿过地面。按数据筛下来（物理不是 `PHYS_None`、不隐藏、不被 Kismet 变量引用、参与碰撞）只剩
+10 个：SP01a 6 个纸箱、Cranes 3 个纸箱、Stormdrain boss 区一根散落的荡杆。
+
+| 字段 | 含义 | Godot 侧 |
+|---|---|---|
+| `bWakeOnLevelStart` | ✅ `Default__KActor` 不开：没写的就睡着，被碰才动。SP01a 的纸箱开着，Cranes 的没开 | `RigidBody3D.sleeping` |
+| 组件 `BlockNonZeroExtent` | Pawn 的圆柱扫的是它。纸箱全都关着：**玩家穿过去，顺手铲开** | 关着的只在第 4 层（值 8），不在玩家掩码里；自身掩码看得见第 1 层（玩家也在那层） |
+| `bExludeHandMoves` / `bExludeFootMoves` | 不能攀、不能踩着做动作 | 同上，探针只查第 1 层 |
+| `RB_BodySetup.MassScale` | SP01a 的纸箱是 50 | 质量 = 密度 × 体积（PhysX 单位）× `MassScale` |
+| `PhysicalMaterial` | ✅ `Default__PhysicalMaterial`：Density 1.0、Friction 0.7、Restitution 0.3、LinearDamping 0.01 | `PhysicsMaterial`、`linear_damp`（REPLACE） |
+
+- ⚠️ 质量公式里的 PhysX 单位按 UE3 的 `U2PScale 0.02`（50 uu 为 1）换算，没在本作里核实过。
+  纸箱之间、纸箱和地面之间才用得上；玩家推它时角色体相当于无穷重，质量不起作用。
+- ✅ `Default__Pawn` 的 `bPushesRigidBodies` 没开（`RBPushRadius 10`、`RBPushStrength 50` 在但不生效）：
+  原作不是按半径给冲量，而是 Pawn 的物理代理直接把箱子挤开。Jolt 下实测：角色体穿过一个箱子，
+  走的距离和没有箱子时一样，箱子被一路铲着走，2 kg 和 100 kg 结果相同。
+- 刚体和软体一样会丢节点缩放（模拟一写回变换就没了），所以缩放烘焙进网格和形状，节点只留旋转。
+- 这些纸箱的碰撞体（`*_TightCol`）比网格略矮，落地后网格底边会陷进地面 2~9 cm。原作里的纸箱
+  开局同样会落下来，这是数据本身的样子。
+
 ---
 
 ## 9.3 建议的实施顺序

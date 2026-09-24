@@ -42,6 +42,10 @@ const BSP_UNDRAWN_MATERIAL := "RemoveSurfaceMaterial"
 ## The layer hanging cloth lives on, alone, so a query can leave it out by mask
 ## -- see CameraConfig.third_person_probe_mask.
 const CLOTH_LAYER := 4
+## The layer a free rigid body lives on, so a body that must not stop the
+## player can be left out of the player's mask while its own mask still sees
+## the player -- and is shoved aside by it.
+const PROP_LAYER := 8
 ## A cloth never weighs less than this, whatever its density says.
 const CLOTH_MIN_MASS_KG := 0.05
 
@@ -85,7 +89,8 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			library[mesh_name] = load(MeLibrary.path_for(mesh_name))
 		var mesh: ArrayMesh = library[mesh_name]
 		var collision: String = placement["collision"]
-		if collision != "none" and _is_grip(mesh_name, placement, pipe_line):
+		var rigid: Dictionary = placement.get("rigid", {})
+		if collision != "none" and rigid.is_empty() and _is_grip(mesh_name, placement, pipe_line):
 			collision = "none"
 			counts.grip += 1
 		counts[collision] += 1
@@ -95,6 +100,9 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			node = AnimatableBody3D.new()
 			node.name = Common.mover_name(placement["package"], placement["name"])
 			mover_nodes[Common.actor_id(placement["package"], placement["name"])] = node
+		elif not rigid.is_empty():
+			node = _rigid_body(rigid)
+			node.name = names.take(mesh_name)
 		else:
 			node = Node3D.new() if collision == "none" else StaticBody3D.new()
 			node.name = names.take(mesh_name)
@@ -143,13 +151,15 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			node.add_child(rest)
 		var transform := Common.transform_of(placement)
 		var stretch := Basis()
-		if (collision != "none" and not _is_uniform(transform.basis)) 				or (cloth and not transform.basis.is_equal_approx(transform.basis.orthonormalized())):
+		var scaled := not transform.basis.is_equal_approx(transform.basis.orthonormalized())
+		if (collision != "none" and not _is_uniform(transform.basis)) or ((cloth or not rigid.is_empty()) and scaled):
 			# Godot physics does not support non-uniform scale on a body or its
 			# shapes: the collision stops matching what is drawn. The body keeps
 			# rotation only; the mesh carries the stretch and the shapes bake it.
 			# A soft body drops its node's scale altogether, uniform or not, so a
 			# cloth hung at 1.5 simulated -- and drew -- at 1.0: its stretch goes
-			# into its own copy of the mesh instead.
+			# into its own copy of the mesh instead. A rigid body loses it the
+			# first time the simulation writes its transform back.
 			var rotation := transform.basis.orthonormalized()
 			if rotation.determinant() < 0.0:
 				rotation.x = -rotation.x
@@ -447,6 +457,28 @@ func _stretched(shape: Shape3D, stretch: Basis) -> Shape3D:
 ## cloth map.
 static func _is_cloth(mesh: ArrayMesh) -> bool:
 	return (mesh.get_meta("cloth", {}) as Dictionary).has("pinned")
+
+
+## A free KActor as the original simulates it.
+##
+## One that clears BlockNonZeroExtent is left off layer 1, which is all the
+## player's mask sees, so the player runs through it; its own mask sees layer
+## 1, where the player also lives, so it is shoved aside. Measured under Jolt:
+## the player walks the same distance with the box in the way, and the box
+## goes with it.
+static func _rigid_body(rigid: Dictionary) -> RigidBody3D:
+	var body := RigidBody3D.new()
+	body.mass = maxf(float(rigid["mass"]), 0.01)
+	body.collision_layer = PROP_LAYER | (1 if rigid["blocks_player"] else 0)
+	body.collision_mask = 1 | PROP_LAYER
+	var material := PhysicsMaterial.new()
+	material.friction = float(rigid["friction"])
+	material.bounce = float(rigid["restitution"])
+	body.physics_material_override = material
+	body.linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	body.linear_damp = float(rigid["linear_damping"])
+	body.sleeping = not rigid["awake"]
+	return body
 
 
 ## A cloth's own copy of a library mesh, ONE SURFACE.
