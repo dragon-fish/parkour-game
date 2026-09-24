@@ -1237,6 +1237,9 @@ var _sweep_to: float = 0.0
 var _sweeping: bool = false
 ## Radians per second this sweep crosses at. See sweep_look_to().
 var _sweep_speed: float = 0.0
+## How far the mouse has turned the view since this sweep began, radians,
+## either way. See _advance_look_sweep().
+var _sweep_hand: float = 0.0
 
 ## Starts carrying the view to `relative_yaw`, measured in the same frame as
 ## _look_relative_yaw: radians from the fan's own centre.
@@ -1250,6 +1253,7 @@ func sweep_look_to(relative_yaw: float, speed: float = -1.0) -> void:
 		return
 	_sweep_to = clampf(relative_yaw, _look_min.y, _look_max.y)
 	_sweep_speed = speed if speed > 0.0 else _config.camera.look_sweep_speed
+	_sweep_hand = 0.0
 	_sweeping = true
 
 ## Q where Q is a mouse flick: the view carried half a turn clockwise at
@@ -1268,10 +1272,15 @@ func cancel_look_sweep() -> void:
 
 ## Advances a running sweep. Returns the yaw delta to apply this tick, or 0.
 ##
-## THE PLAYER'S OWN HAND WINS. Any real mouse movement cancels the sweep on the
-## spot rather than fighting it: this is a convenience for a flick the player
-## could have done themselves, and a convenience that resists being overridden
-## is worse than none.
+## THE PLAYER'S OWN HAND WINS, once it means it. A deliberate movement -- more
+## than CameraConfig.look_sweep_hand_deg since the sweep began -- cancels it on
+## the spot rather than fighting it: this is a convenience for a flick the
+## player could have done themselves, and a convenience that resists being
+## overridden is worse than none. Less than that rides along on top of it.
+##
+## DO NOT go back to cancelling on any movement at all. A hand on a mouse is
+## never perfectly still: one count of drift, 0.13 degrees, stopped a wall
+## run's quarter-turn sweep at 14 degrees, nearly every time.
 func _advance_look_sweep(mouse_yaw_delta: float, delta: float) -> float:
 	if not _sweeping:
 		return 0.0
@@ -1281,7 +1290,8 @@ func _advance_look_sweep(mouse_yaw_delta: float, delta: float) -> float:
 	if not _has_look_constraint:
 		_sweeping = false
 		return 0.0
-	if absf(mouse_yaw_delta) > 0.0001:
+	_sweep_hand += absf(mouse_yaw_delta)
+	if _sweep_hand > deg_to_rad(_config.camera.look_sweep_hand_deg):
 		_sweeping = false
 		return 0.0
 	var remaining: float = _sweep_to - _look_relative_yaw

@@ -163,7 +163,7 @@ func test_the_mouse_takes_the_sweep_back() -> void:
 	input.press_turn()
 	await step(3)
 	var caught: float = float(player.camera_rig.look_debug()["relative_yaw"])
-	input.state.look = Vector2(-5.0, 0.0)
+	input.state.look = Vector2(-60.0, 0.0)  # past look_sweep_hand_deg
 	await step(1)
 	input.state.look = Vector2.ZERO
 	assert_false(player.camera_rig.is_sweeping(), "the mouse did not cancel the sweep")
@@ -594,3 +594,17 @@ func test_every_attach_rises_by_the_same_confirmed_amount() -> void:
 	assert_almost_eq(peaks[0], peaks[1], 0.15, \
 		"the peak depends on how fast you were going up when you touched (%.2f vs %.2f)" \
 		% [peaks[0], peaks[1]])
+
+func test_a_resting_hand_does_not_stop_the_sweep() -> void:
+	# A hand on a mouse is never perfectly still. One count of drift every few
+	# ticks is not the player taking the view back.
+	var player: Player = await _running_the_wall()
+	var input: ScriptedInputSource = _world["input"]
+	input.press_turn()
+	for i in 25:
+		input.state.look = Vector2(1.0, 0.0) if i % 4 == 0 else Vector2.ZERO
+		await step(1)
+	input.state.look = Vector2.ZERO
+	var fan: Dictionary = player.camera_rig.look_debug()
+	assert_almost_eq(float(fan["relative_yaw"]), deg_to_rad(90.0), 0.08, \
+		"a resting hand stopped the sweep at %.1f degrees" % rad_to_deg(float(fan["relative_yaw"])))
