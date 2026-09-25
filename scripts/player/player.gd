@@ -364,6 +364,10 @@ var _stagger_immunity: float = 0.0
 ## tell a wire cut from a hard landing and charge the momentum differently.
 ## One-shot: the reader clears it, same as pending_vault_variant.
 var pending_stagger: bool = false
+## A hazard's hit: see take_hazard_hit().
+var _hurt_skips_landing_credit: bool = false
+var _hurt_flash: float = 0.0
+var _hurt_tint: Color = Color(1.0, 0.0, 0.0, 1.0)
 ## One-shot, alongside pending_stagger: the stagger's own screen tint, or
 ## transparent for the hard landing's. LandingMove reads and clears it, and so
 ## does LayOnGroundMove -- which is also handed the hard landing's red when that
@@ -1523,6 +1527,8 @@ func reset_state() -> void:
 	# life's statuses put it, with no slide inherited from the old one.
 	_speed_scale = statuses.speed_scale() if statuses != null else 1.0
 	_stagger_immunity = 0.0
+	_hurt_skips_landing_credit = false
+	_hurt_flash = 0.0
 	_last_facing = Vector3.ZERO
 	_carried_jump_nudge = Vector3.ZERO
 	_dodge_heading = Vector3.ZERO
@@ -3952,6 +3958,7 @@ func _tick_line_cooldowns(delta: float) -> void:
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	_tick_gravity_window(delta)
 	_stagger_immunity = maxf(_stagger_immunity - delta, 0.0)
+	_drive_hurt_flash(delta)
 	_tick_line_cooldowns(delta)
 	if grounded:
 		_coyote_timer = config.pawn.coyote_time
@@ -4540,6 +4547,46 @@ func is_stagger_immune() -> bool:
 ## itself up off the floor is exactly as unable to absorb another stumble.
 func arm_stagger_immunity() -> void:
 	_stagger_immunity = config.pawn.stagger_immunity_time
+
+## A hazard's hit -- barbed wire, an electric fence. It hurts, flashes the
+## screen and takes the whole speed budget, and that is all: the body keeps its
+## feet and the player keeps the keys.
+##
+## [ME:CONFIRMED] unpacked: the original forces no lockout on a cut, only the
+## slowdown. An emptied budget IS that slowdown -- on the ground the ceiling
+## drops to nothing at once, and in the air the landing starts the run from a
+## standstill (_hurt_skips_landing_credit), which reads as a stumble without
+## being one.
+##
+## `tint` is the hazard's own, alpha its strength; transparent means the
+## ordinary red (LandingConfig.tint_color). Arms the immunity window, so a
+## volume that keeps renewing its STAGGER hurts once per window, not per tick.
+func take_hazard_hit(damage: float, tint: Color) -> void:
+	if damage > 0.0:
+		take_damage(damage, Health.Cause.HAZARD)
+	speed_energy.reset()
+	if not grounded:
+		_hurt_skips_landing_credit = true
+	arm_stagger_immunity()
+	_hurt_tint = tint if tint.a > 0.0 else config.landing.tint_color
+	_hurt_flash = 1.0
+
+## Whether the landing coming up must not credit the budget from its speed:
+## the flight carries a hazard's hit. See take_hazard_hit(). One-shot.
+func consume_hurt_landing() -> bool:
+	var armed := _hurt_skips_landing_credit
+	_hurt_skips_landing_credit = false
+	return armed
+
+## The hit's flash, fading over PawnConfig.hurt_flash_time. Writes the tint
+## only while it runs, and once at nothing when it ends, so the moves that
+## drive a tint of their own are left alone the rest of the time.
+func _drive_hurt_flash(delta: float) -> void:
+	if _hurt_flash <= 0.0:
+		return
+	_hurt_flash = maxf(_hurt_flash - delta / maxf(config.pawn.hurt_flash_time, 0.001), 0.0)
+	if screen_effects != null:
+		screen_effects.set_tint(_hurt_tint, _hurt_flash)
 
 ## How far the stick is pushed, 0 to 1. The keyboard has no stick, so Ctrl
 ## stands in for one pushed gently -- PawnConfig.walk_stick_amount.

@@ -229,6 +229,9 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	# READ HERE, not after the transition: the status is removed once the
 	# transition commits, and by then there is nothing left to ask.
 	var stagger_damage: float = 0.0
+	var knocking_down: bool = player != null and player.statuses.has(Status.Effect.KNOCKDOWN) \
+			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LAY_ON_GROUND \
+			and _moves.has(Move.LAY_ON_GROUND)
 	if player != null and player.statuses.has(Status.Effect.STAGGER) \
 			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LANDING:
 		# EATEN, NOT QUEUED, while immune. Spending it here is what the
@@ -244,22 +247,26 @@ func physics_update(delta: float, input: MoveInput) -> void:
 			player.statuses.remove(Status.Effect.STAGGER)
 			if cost > 0.0:
 				player.take_damage(cost, Health.Cause.HAZARD)
-		else:
+		elif knocking_down:
+			# Going down with it: the knock-down below takes the body, and the
+			# hit's tint rides LayOnGroundMove's. Charged once that commits.
 			staggering = true
 			stagger_damage = player.statuses.amount_of(Status.Effect.STAGGER)
-			player.pending_stagger = true
 			player.pending_stagger_tint = player.statuses.tint_of(Status.Effect.STAGGER)
-			next = Move.LANDING
+		else:
+			# NO LOCKOUT. [ME:CONFIRMED] unpacked, the original forces none on a
+			# cut: the hit hurts, flashes and empties the speed budget, and the
+			# body keeps its feet. See Player.take_hazard_hit().
+			player.take_hazard_hit(player.statuses.amount_of(Status.Effect.STAGGER),
+				player.statuses.tint_of(Status.Effect.STAGGER))
+			player.statuses.remove(Status.Effect.STAGGER)
 	# A KNOCK-DOWN OUTRANKS A STAGGER. Both at once is one body going down --
 	# the original's falling lift pairs a CauseDamage with its TdFallOnBack --
 	# so the stagger is still spent and still charged, below, and only where
 	# the body ends up changes. Its tint stays pending for LayOnGroundMove.
 	var knocked_down := false
-	if player != null and player.statuses.has(Status.Effect.KNOCKDOWN) \
-			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LAY_ON_GROUND \
-			and _moves.has(Move.LAY_ON_GROUND):
+	if knocking_down:
 		knocked_down = true
-		player.pending_stagger = false
 		next = Move.LAY_ON_GROUND
 	if next == Move.KEEP:
 		next = _turn_requested(input)

@@ -548,7 +548,10 @@ func _apply_landing_cost(fall_height: float, rolled: bool) -> void:
 		# re-derives the ground budget from the speed the body actually lands
 		# with, so a fast zipline exit grounds into a full sprint rather than
 		# decaying back to the pre-ride pace.
-		player.speed_energy.restore_for_landing(player.horizontal_speed())
+		# Not after a hazard's hit in the air: it took the budget, and the
+		# landing starts the run from a standstill. See Player.take_hazard_hit().
+		if not player.consume_hurt_landing():
+			player.speed_energy.restore_for_landing(player.horizontal_speed())
 
 ## The vertical speed the vault table is asked about, which is the REAL one
 ## except inside the shin-catch window below.
