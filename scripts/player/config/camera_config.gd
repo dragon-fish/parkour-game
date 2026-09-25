@@ -156,8 +156,8 @@ extends Resource
 ## faded with the view: a nod that is the landing from inside is the whole
 ## world lurching from behind.
 @export var third_person_pitch_kick_scale: float = 0.3
-@export var jump_pitch_kick_min_deg: float = -2.0
-@export var jump_pitch_kick_deg: float = 5.0
+@export var jump_pitch_kick_min_deg: float = -1.0
+@export var jump_pitch_kick_deg: float = 2.5
 @export var jump_pitch_kick_speed_ref: float = 2.0
 @export var jump_pitch_kick_rise_time: float = 0.25
 @export var jump_pitch_kick_recover_time: float = 0.55
@@ -166,10 +166,10 @@ extends Resource
 @export var jump_pitch_kick_recover_trans: Tween.TransitionType = Tween.TRANS_CUBIC
 @export var jump_pitch_kick_recover_ease: Tween.EaseType = Tween.EASE_OUT
 @export var land_pitch_kick_deg: float = 1.5
-@export var coil_land_pitch_kick_deg: float = 15.0
+@export var coil_land_pitch_kick_deg: float = 7.5
 @export var coil_land_pitch_kick_rise_time: float = 0.2
 @export var coil_land_pitch_kick_recover_time: float = 0.3
-@export var coil_land_pitch_kick_bounce_deg: float = 2.0
+@export var coil_land_pitch_kick_bounce_deg: float = 1.0
 @export var land_pitch_kick_rise_time: float = 0.1
 @export var land_pitch_kick_recover_time: float = 0.1
 
