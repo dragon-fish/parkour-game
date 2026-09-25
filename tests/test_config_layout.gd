@@ -89,4 +89,4 @@ func test_spring_board_is_on_the_aggregate() -> void:
 	# The throw's own numbers, straight off the CDO. Declared, not defaulted.
 	assert_almost_eq(config.spring_board.jump_z, 9.5, 0.001)
 	assert_true(config.spring_board.check_for_grab, "the rise must keep the original's grab check")
-	assert_false(config.spring_board.check_for_coil, "a spring board cannot coil: Coil is Jump's alone")
+	assert_true(config.spring_board.check_for_coil, "the throw's rise offers a coil, as a jump's does")
