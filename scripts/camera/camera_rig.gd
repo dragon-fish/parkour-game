@@ -1196,12 +1196,22 @@ func kick_pitch(radians: float) -> void:
 	_kick_peak = radians
 	_kick_time = 0.0
 
-## The touchdown half of kick_pitch(), scaled by how far the body fell.
-func kick_landing(fall_height: float) -> void:
+## The take-off half of kick_pitch(), scaled by the horizontal speed the
+## body leaves the ground with.
+func kick_takeoff(horizontal_speed: float) -> void:
 	if _config == null:
 		return
 	var camera_config: CameraConfig = _config.camera
-	var strength := clampf(fall_height / maxf(camera_config.land_pitch_kick_height_ref, 0.001), 0.0, 1.0)
+	var strength := clampf(horizontal_speed / maxf(camera_config.jump_pitch_kick_speed_ref, 0.001), 0.0, 1.0)
+	kick_pitch(deg_to_rad(camera_config.jump_pitch_kick_deg) * strength)
+
+## The touchdown half of kick_pitch(), scaled by the downward speed of the
+## impact.
+func kick_landing(impact_speed: float) -> void:
+	if _config == null:
+		return
+	var camera_config: CameraConfig = _config.camera
+	var strength := clampf(impact_speed / maxf(camera_config.land_pitch_kick_speed_ref, 0.001), 0.0, 1.0)
 	kick_pitch(-deg_to_rad(camera_config.land_pitch_kick_max_deg) * strength)
 
 func _advance_kick(delta: float) -> void:

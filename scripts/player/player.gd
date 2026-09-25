@@ -3618,7 +3618,7 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		if landing_impact >= 0.0:
 			camera_rig.punch_landing(landing_impact)
-			camera_rig.kick_landing(last_landing_fall_height)
+			camera_rig.kick_landing(landing_impact)
 		# Read from the CAPSULE, not the state name: naming SLIDE and CROUCH
 		# here explicitly used to work only as long as those were the only two
 		# states that ever crouched the body, and silently stopped covering the
