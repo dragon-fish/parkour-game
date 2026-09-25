@@ -55,6 +55,8 @@ var _landing_pitch: float = 0.0
 var _kick: float = 0.0
 var _kick_from: float = 0.0
 var _kick_peak: float = 0.0
+## _kick as drawn: scaled down in third person. What aim_forward() takes out.
+var _kick_shown: float = 0.0
 ## Seconds into the current kick, or negative when none is running.
 var _kick_time: float = -1.0
 var _kick_rise: float = 0.0
@@ -1184,7 +1186,8 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool, strid
 	# twice, once by each.
 	var spin: float = 0.0 if in_third_person() else _roll_spin
 	_advance_kick(delta)
-	rotation.x = clampf(_pitch - _landing_pitch + _kick, -pitch_limit, pitch_limit) - spin
+	_kick_shown = _kick * lerpf(1.0, _config.camera.third_person_pitch_kick_scale, _eased_view_blend())
+	rotation.x = clampf(_pitch - _landing_pitch + _kick_shown, -pitch_limit, pitch_limit) - spin
 
 ## Drops the landing dip on the floor, unrecovered.
 ##
@@ -1275,11 +1278,11 @@ func kick_landing(coiled: bool) -> void:
 ## aim a launch off camera.global_transform directly.
 func aim_forward() -> Vector3:
 	var forward := -camera.global_transform.basis.z
-	if is_zero_approx(_kick):
+	if is_zero_approx(_kick_shown):
 		return forward
 	var parent := get_parent_node_3d()
 	var yawed := (parent.global_basis if parent != null else Basis()) * Basis(Vector3.UP, rotation.y)
-	return forward.rotated((yawed * Vector3.RIGHT).normalized(), -_kick)
+	return forward.rotated((yawed * Vector3.RIGHT).normalized(), -_kick_shown)
 
 func _advance_kick(delta: float) -> void:
 	if _kick_time < 0.0:
@@ -1302,6 +1305,7 @@ func _advance_kick(delta: float) -> void:
 
 func _clear_kick() -> void:
 	_kick = 0.0
+	_kick_shown = 0.0
 	_kick_from = 0.0
 	_kick_peak = 0.0
 	_kick_time = -1.0

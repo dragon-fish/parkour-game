@@ -219,6 +219,9 @@ var _turn_serial_seen: int = 0
 ## one-shot is never in SPEED_MATCHED_CLIPS: the graph time scale is pinned to
 ## 1.0 while one plays, so the clock here and the clip agree.
 var _oneshot_left: float = 0.0
+## Whether the one-shot on screen is the coil's landing hold, which the
+## crouch-then-walk a landing hands through must not cut. See _arm_oneshot().
+var _coil_landing_hold: bool = false
 
 ## The clip travel()ed to on the most recent tick, or KEEP if none was. Read by
 ## Player._drive_clip_offset() and by the debug tuner: a per-clip offset needs
@@ -562,8 +565,24 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 	# scripted_duration(), so _drive_speed() leaves it at 1.0x either way.
 	if from == Move.DODGE_JUMP and to == Move.FALLING:
 		return
+	# NOR IS A COIL'S LANDING. It hands the body to CROUCH and, in the open,
+	# straight on to WALKING the next tick; the tuck is held through both.
+	if _coil_landing_hold and _oneshot != Move.KEEP \
+			and (to == Move.CROUCH or to == Move.WALKING):
+		return
 	_oneshot = Move.KEEP
 	_oneshot_left = 0.0
+	_coil_landing_hold = false
+	if _AIRBORNE_MOVES.has(from) and (to == Move.CROUCH or to == Move.WALKING) \
+			and player.last_landing_coiled:
+		# THE TUCK IS HELD THROUGH THE LANDING, not cut: a coil landing swaps
+		# a tucked body for a standing one, and the camera's landing throw
+		# (CameraConfig.coil_land_pitch_kick_deg) is there to cover exactly
+		# that. Held for CoilConfig.landing_hold_time, then faded out over
+		# pose_exit_blend_time like any other exit from the tuck.
+		_start_oneshot(_coil_clip(), player.config.coil.landing_hold_time)
+		_coil_landing_hold = _oneshot != Move.KEEP
+		return
 	if from == Move.COIL and to == Move.FALLING:
 		# The tuck outlasts the capsule: see CoilConfig.pose_linger_time. A
 		# landing re-arms through this function, which clears it.
@@ -658,6 +677,7 @@ func _oneshot_target(delta: float) -> StringName:
 	if _oneshot_left <= 0.0:
 		_oneshot = Move.KEEP
 		_oneshot_left = 0.0
+		_coil_landing_hold = false
 		return Move.KEEP
 	return _oneshot
 

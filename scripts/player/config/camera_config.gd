@@ -152,6 +152,10 @@ extends Resource
 ## ease-out-back that swings coil_land_pitch_kick_bounce_deg past level before
 ## it settles, all inside the recover time. [ME:CONFIRMED by play] the coil's
 ## landing springs back a little. See Player.last_landing_coiled.
+## The nods seen from outside are scaled by third_person_pitch_kick_scale,
+## faded with the view: a nod that is the landing from inside is the whole
+## world lurching from behind.
+@export var third_person_pitch_kick_scale: float = 0.5
 @export var jump_pitch_kick_min_deg: float = -2.0
 @export var jump_pitch_kick_deg: float = 5.0
 @export var jump_pitch_kick_speed_ref: float = 2.0

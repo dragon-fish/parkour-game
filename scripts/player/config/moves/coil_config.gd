@@ -82,6 +82,11 @@ func _init() -> void:
 ## Seconds the tuck stays on screen after the coil hands over to a fall, so
 ## the pose outlasts the capsule. PROJECT-DEFINED. A landing ends it early.
 @export var pose_linger_time: float = 0.2
+## Seconds the tuck is held on screen after a coil's landing before it fades
+## out, so the change of pose happens under the camera's landing throw rather
+## than as a cut. PROJECT-DEFINED; the throw's own way down
+## (CameraConfig.coil_land_pitch_kick_rise_time) is the natural match.
+@export var landing_hold_time: float = 0.2
 
 ## ✅ HeightBoostDuration. How long the capsule takes to reach capsule_height.
 ##
