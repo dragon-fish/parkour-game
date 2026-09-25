@@ -262,7 +262,7 @@ extends Resource
 ## with the body propped up on its hands (the body scene's LyingPose): the head
 ## is clear of the floor then, but the eye riding it looks down along the body
 ## into its own clothes, and the lift is what puts the view over them.
-@export var lay_on_ground_eye_lift: float = 0.4
+@export var lay_on_ground_eye_lift: float = 0.2
 ## How fast the eye catches up after the body was lifted over a low obstacle
 ## (see Player.try_step_up). Exponential, so this is a rate, not a duration:
 ## ~12 settles a 0.35 m step in roughly 0.15 s, which reads as a stride. Lower
