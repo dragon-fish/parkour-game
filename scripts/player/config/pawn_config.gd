@@ -455,13 +455,15 @@ extends Resource
 ## coming back.
 ##
 ## THE DELAY IS WHAT MAKES THE WOUNDED PICTURE VISIBLE. The climb back is only
-## two seconds wide; shortening this does not make recovery snappier, it
+## a few seconds wide; shortening this does not make recovery snappier, it
 ## deletes the feedback that the player was hurt at all.
 @export var health_regen_delay: float = 5.0
 
-## [ME:CONFIRMED 13.1] Health per second once the delay is up. Flat, not a
-## curve.
-@export var health_regen_rate: float = 35.0
+## Health per second once the delay is up. Flat, not a curve.
+##
+## [ME:CONFIRMED] measured by the owner in the original: 20. 13.1 gives 35;
+## the measurement wins, DO NOT put 35 back.
+@export var health_regen_rate: float = 20.0
 
 ## [ME:CONFIRMED 13.1] What a fatal fall costs, which is exactly a full bar.
 @export var fatal_fall_damage: float = 100.0
