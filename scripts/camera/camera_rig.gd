@@ -1212,9 +1212,12 @@ func kick_landing(fall_height: float) -> void:
 	if _config == null:
 		return
 	var camera_config: CameraConfig = _config.camera
+	if fall_height < camera_config.land_pitch_kick_min_height:
+		return
 	var strength := clampf(fall_height / maxf(camera_config.land_pitch_kick_height_ref, 0.001), 0.0, 1.0)
 	strength = pow(strength, maxf(camera_config.land_pitch_kick_exponent, 0.01))
-	kick_pitch(-deg_to_rad(camera_config.land_pitch_kick_max_deg) * strength)
+	kick_pitch(-deg_to_rad(lerpf(camera_config.land_pitch_kick_min_deg,
+		camera_config.land_pitch_kick_max_deg, strength)))
 
 ## Where the player is aiming: the camera's forward with the take-off and
 ## landing nod (kick_pitch()) taken back out. The nod runs while the player can
