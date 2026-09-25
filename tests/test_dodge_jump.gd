@@ -246,3 +246,50 @@ func test_a_dodge_inside_its_cooldown_is_an_ordinary_jump() -> void:
 	await step(2)
 	assert_eq(player.move_manager.current_name, Move.JUMP,
 		"a second dodge fired inside the cooldown (got %s)" % player.move_manager.current_name)
+
+# --- the dodge turns the body -------------------------------------------------
+
+## Out of a run: W and A held, a dodge thrown, then `after` held on landing.
+## `face_the_dodge` swings the view onto the dodge's line in mid-air (the
+## glitch). Returns the budget two thirds of a second after the throw, and the
+## budget the run had banked.
+func _run_dodge_then(after: Vector2, face_the_dodge: bool) -> Array:
+	var player: Player = await _standing()
+	player.speed_energy.energy = 7.0
+	_world["input"].hold_move(0.0, 1.0)
+	await step(30)
+	var banked: float = player.speed_energy.energy
+	_world["input"].hold_move(-1.0, 1.0)
+	_world["input"].press_jump()
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
+	_world["input"].hold_move(after.x, after.y)
+	if face_the_dodge:
+		player.rotation.y += PI * 0.5  # a left dodge; left is a quarter turn anticlockwise
+	await step(40)
+	return [player.speed_energy.energy, banked]
+
+func test_hauling_a_dodge_back_onto_the_view_is_billed_as_a_turn() -> void:
+	var result: Array = await _run_dodge_then(Vector2(0.0, 1.0), false)
+	assert_lt(result[0], result[1] - 1.0, "W after a dodge billed no turn")
+
+func test_the_dodge_glitch_is_billed_nothing() -> void:
+	var result: Array = await _run_dodge_then(Vector2(0.0, 1.0), true)
+	assert_gt(result[0], result[1] - 0.2, "a dodge landed facing its own line was billed a turn")
+
+func test_a_dodge_held_on_its_line_bleeds_rather_than_drops() -> void:
+	# From a standstill, A held throughout: the run keeps the dodge's line, so
+	# nothing turns and nothing is billed; running across the view only bleeds
+	# it, over seconds. Billing the dodge's turn on landing instead dropped it
+	# to base speed at once.
+	var player: Player = await _standing()
+	_world["input"].hold_move(-1.0, 0.0)
+	await step(2)
+	_world["input"].press_jump()
+	for i in 90:
+		await step(1)
+		if i > 10 and player.grounded:
+			break
+	assert_true(player.grounded, "test setup: never landed")
+	await step(30)
+	assert_gt(player.horizontal_speed(), 5.0, "the dodge dropped to %.2f m/s half a second after landing" % player.horizontal_speed())

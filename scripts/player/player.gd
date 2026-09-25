@@ -419,6 +419,12 @@ var _last_facing: Vector3 = Vector3.ZERO
 
 ## The take-off nudge still being carried, or ZERO. See return_jump_nudge().
 var _carried_jump_nudge: Vector3 = Vector3.ZERO
+## Which way the BODY faces after a dodge, or ZERO once it faces the view
+## again. See _charge_dodge_heading().
+var _dodge_heading: Vector3 = Vector3.ZERO
+## How close the run must come back to the view, degrees, before the body is
+## facing it again and turns are billed on the view as usual.
+const DODGE_HEADING_HOME_DEG := 10.0
 ## Whether last tick's move had MoveConfig.energy_decays, so the drain starts
 ## afresh on the tick one begins.
 var _energy_was_decaying: bool = false
@@ -1519,6 +1525,7 @@ func reset_state() -> void:
 	_stagger_immunity = 0.0
 	_last_facing = Vector3.ZERO
 	_carried_jump_nudge = Vector3.ZERO
+	_dodge_heading = Vector3.ZERO
 	_energy_was_decaying = false
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
@@ -4406,6 +4413,7 @@ func dodge_direction(input: MoveInput) -> Vector3:
 ## dropped to base velocity would drag those back down instead, and it is the
 ## same drag that would quietly kill the side-jump boost this move exists for.
 func dodge_launch(direction: Vector3) -> void:
+	_takeoff_ground_speed = horizontal_speed()
 	var kept: float = config.dodge_jump.inertia_conservation
 	velocity.x *= kept
 	velocity.z *= kept
@@ -4413,6 +4421,8 @@ func dodge_launch(direction: Vector3) -> void:
 	# SPENT ONCE, AS A WORLD VECTOR -- see DodgeJumpMove on why it must never
 	# be recomputed against the facing afterwards.
 	velocity += direction * config.dodge_jump.jump_add_xy
+	# AND THE BODY TURNS WITH IT. See _charge_dodge_heading().
+	_dodge_heading = Vector3(velocity.x, 0.0, velocity.z).normalized()
 
 ## Which way the body is going AT something, as a unit vector, or ZERO if it is
 ## going nowhere and asking for nothing.
@@ -4480,6 +4490,8 @@ func travel_speed() -> float:
 ## this rather than adding jump_add_velocity() itself, or that one's nudge is
 ## never returned.
 func add_jump_nudge(input: MoveInput) -> void:
+	# A fresh take-off: its flight is billed on the view, the ordinary way.
+	_dodge_heading = Vector3.ZERO
 	var nudge: Vector3 = jump_add_velocity(input)
 	velocity += nudge
 	_carried_jump_nudge = nudge
@@ -4623,16 +4635,18 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	var facing: Vector3 = -global_transform.basis.z
 	facing.y = 0.0
 	facing = facing.normalized() if facing.length_squared() > 0.0001 else Vector3.ZERO
+	var dodging: bool = _charge_dodge_heading(facing, delta)
 	if not grounded:
 		# Nothing is banked or bled in mid-air, and turning is not billed tick
 		# by tick either -- there is no traction to lose speed through. The
 		# heading at take-off is remembered instead, and the whole rotation is
 		# settled on landing.
-		if _takeoff_dir == Vector3.ZERO:
-			_takeoff_dir = facing
-			_takeoff_ground_speed = horizontal_speed()
-			_airborne_time = 0.0
-		_airborne_time += delta
+		if not dodging:
+			if _takeoff_dir == Vector3.ZERO:
+				_takeoff_dir = facing
+				_takeoff_ground_speed = horizontal_speed()
+				_airborne_time = 0.0
+			_airborne_time += delta
 		_last_facing = facing
 		return
 	# Just landed with a heading owed. Billed as ONE turn through the angle
@@ -4640,17 +4654,18 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 	# (the airborne time), so a lazy mid-air adjustment costs little and a
 	# hard 180 costs what a hard 180 costs. Without this a player could turn
 	# the corner in the air and arrive owing nothing at all.
-	if _takeoff_dir != Vector3.ZERO:
-		if facing != Vector3.ZERO:
-			var swung: float = absf(_takeoff_dir.signed_angle_to(facing, Vector3.UP))
-			# Guarded against float noise, not against small turns: a body that
-			# took off and landed on the same heading still differs in the last
-			# few bits, and billing that charged a hop for turning.
-			if swung > 0.001:
-				speed_energy.spend_turn(swung, maxf(_airborne_time, delta))
-		_takeoff_dir = Vector3.ZERO
-		_airborne_time = 0.0
-	_charge_turn(facing, delta)
+	if not dodging:
+		if _takeoff_dir != Vector3.ZERO:
+			if facing != Vector3.ZERO:
+				var swung: float = absf(_takeoff_dir.signed_angle_to(facing, Vector3.UP))
+				# Guarded against float noise, not against small turns: a body
+				# that took off and landed on the same heading still differs in
+				# the last few bits, and billing that charged a hop for turning.
+				if swung > 0.001:
+					speed_energy.spend_turn(swung, maxf(_airborne_time, delta))
+			_takeoff_dir = Vector3.ZERO
+			_airborne_time = 0.0
+		_charge_turn(facing, delta)
 	var follows: bool = active != null and active.energy_follows_speed
 	if follows:
 		_energy_follows_speed(input, delta)
@@ -4767,6 +4782,44 @@ func _cap_energy_at_limit(input: MoveInput, delta: float) -> void:
 	var limit: float = ground_speed_limit(input)
 	if limit < INF:
 		speed_energy.bleed_toward_speed(limit, delta)
+
+## A DODGE TURNS THE BODY, not only the velocity: for as long as the run is off
+## the view afterwards, the body faces the way it is going, and turns are billed
+## on THAT heading rather than on the view. Returns whether this is in force,
+## so the ordinary billing on the view stands aside.
+##
+## [ME:INFERRED] from play, and it accounts for three things at once:
+##   * dodge, then W: the run is hauled back onto the view in a fraction of a
+##     second -- a hard quarter turn, billed as one.
+##   * dodge, then A held: the run keeps its line, nothing turns, nothing is
+##     billed; only running across the view bleeds it.
+##   * the dodge glitch: the view swung onto the dodge in mid-air is the view
+##     catching up with a body already facing that way. Nothing to bill, and
+##     the run lands whole.
+##
+## Ends once the run is back within DODGE_HEADING_HOME_DEG of the view, and
+## hands the billing back to the view from where it now points.
+func _charge_dodge_heading(facing: Vector3, delta: float) -> bool:
+	if _dodge_heading == Vector3.ZERO:
+		return false
+	# The view's own swings are not the body's while this lasts.
+	_takeoff_dir = Vector3.ZERO
+	_airborne_time = 0.0
+	_last_facing = facing
+	if not grounded:
+		return true
+	var travel := Vector3(velocity.x, 0.0, velocity.z)
+	if travel.length_squared() < 0.01 or facing == Vector3.ZERO:
+		_dodge_heading = Vector3.ZERO
+		return true
+	travel = travel.normalized()
+	var turned: float = absf(_dodge_heading.signed_angle_to(travel, Vector3.UP))
+	if turned > 0.001:
+		speed_energy.spend_turn(turned, delta)
+	_dodge_heading = travel
+	if absf(travel.signed_angle_to(facing, Vector3.UP)) <= deg_to_rad(DODGE_HEADING_HOME_DEG):
+		_dodge_heading = Vector3.ZERO
+	return true
 
 ## Resynchronises the turn tax to wherever the body is facing NOW, so the swing
 ## that just happened costs nothing.
