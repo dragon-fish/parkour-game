@@ -3658,7 +3658,10 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		if landing_impact >= 0.0:
 			camera_rig.punch_landing(landing_impact)
-			camera_rig.kick_landing(last_landing_coiled)
+			# NOT ON A HARD LANDING: LandingMove's forced look down IS that
+			# landing's nod, and the two stacked tip the view twice.
+			if move_manager.current_name != Move.LANDING:
+				camera_rig.kick_landing(last_landing_coiled)
 		# Read from the CAPSULE, not the state name: naming SLIDE and CROUCH
 		# here explicitly used to work only as long as those were the only two
 		# states that ever crouched the body, and silently stopped covering the
