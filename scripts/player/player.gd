@@ -828,8 +828,9 @@ var active_obstacle: Vector2 = Vector2(-1.0, 0.0)
 ## is the only move here whose recovery outlasts an ordinary transition.
 const _SLOW_EXIT_CLIPS: Array[StringName] = [&"Slide", &"Slide_Exit", &"sneak"]
 
-## The clips the coil plays. Fading INTO one takes the whole coil (see
-## _exit_blend_time()), so none of them may be a clip anything else plays.
+## The clips the coil plays. Fades into and out of them take the coil's own
+## times (see _exit_blend_time()), so none of them may be a clip anything else
+## plays.
 const _COIL_CLIPS: Array[StringName] = [&"Coil_Tuck", &"GroundSit_Idle"]
 
 ## Clips in which the body is already LOW. Leaving a slide for one of these is
@@ -3204,13 +3205,15 @@ func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		an
 ## stand-up's half second, but at the ordinary 0.15 s a change of pose that
 ## large reads as a cut.
 func _exit_blend_time(from_name: StringName, to_name: StringName) -> float:
-	# INTO THE TUCK, THE FADE IS THE WHOLE COIL: the legs arrive exactly as
-	# CoilConfig.duration runs out, and CoilConfig.pose_linger_time holds
-	# them there after. Read once, when the graph is built -- a duration
-	# changed later leaves this fade at the old length until the body is
+	# THE TUCK FADES AT ITS OWN PACE: CoilConfig.pose_enter_blend_time in,
+	# pose_exit_blend_time out. Read once, when the graph is built -- a value
+	# changed later leaves the fade at the old length until the body is
 	# re-attached.
-	if _COIL_CLIPS.has(to_name) and config != null:
-		return config.coil.duration
+	if config != null:
+		if _COIL_CLIPS.has(to_name):
+			return config.coil.pose_enter_blend_time
+		if _COIL_CLIPS.has(from_name):
+			return config.coil.pose_exit_blend_time
 	if not _SLOW_EXIT_CLIPS.has(from_name):
 		return body_animation_blend_time
 	if _CROUCHED_CLIPS.has(to_name):
