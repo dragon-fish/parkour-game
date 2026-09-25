@@ -32,6 +32,10 @@ var last_landing_fall_height: float = 0.0
 ## Whether the last landing ended an airborne stretch with a coil in it.
 ## Read by the camera's landing nod.
 var last_landing_coiled: bool = false
+## Whether the capsule is still the coil's: centre-shrunk, and kept that way
+## through the fall after the tuck ends, until MoveManager hands the body to a
+## move that is not airborne. See CoilMove.exit() and release_coil_capsule().
+var coil_capsule_held: bool = false
 ## Whether a coil has been taken since the body last touched down. Set by
 ## CoilMove.enter(), read into last_landing_coiled by the landing, cleared by
 ## any ground (set_grounded()).
@@ -1289,6 +1293,29 @@ func set_centred_capsule_height(height: float) -> void:
 	# whose own resize left this negative.
 	shape_node.position.y = 0.0
 
+## Gives the coil's capsule back, when a move that is not airborne takes the
+## body. Called by MoveManager; a no-op unless coil_capsule_held.
+##
+## GIVE THE BODY BACK IN THE SHAPE THE REST OF THE PROJECT EXPECTS, which is
+## feet-anchored. Everything downstream -- has_headroom(), the deferred
+## restore, CrouchMove -- assumes the capsule's floor is one standing
+## half-height below the origin, and a centred shrink breaks that assumption
+## for as long as it lasts.
+##
+## Re-anchoring at the SAME height is the legs coming down: set_capsule_height()
+## puts the offset back where those callers expect it, which drops the
+## capsule's floor by half the shrink. On the ground that means the feet end
+## the tick slightly inside it, and the next move_and_slide() depenetrates it.
+## THEN full height is asked for through the deferred path, which now gets a
+## body it can reason about: granted immediately in the open, owed under a
+## duct roof. Same call SlideMove and CrouchMove end on.
+func release_coil_capsule() -> void:
+	if not coil_capsule_held:
+		return
+	coil_capsule_held = false
+	set_capsule_height(current_capsule_height())
+	request_standing_capsule()
+
 ## Asks for the standing capsule back, honouring the roof. Restores it at once
 ## when there is room, otherwise records that a restore is OWED and performs it
 ## on the first tick headroom permits.
@@ -1572,6 +1599,7 @@ func reset_state() -> void:
 	last_landing_fall_height = 0.0
 	last_landing_coiled = false
 	coiled_since_ground = false
+	coil_capsule_held = false
 	grounded = false
 	# Set directly rather than through set_grounded(true) (which would also
 	# flip `grounded` back on, contradicting the line above): global_position

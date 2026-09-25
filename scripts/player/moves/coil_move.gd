@@ -16,6 +16,7 @@ var _elapsed: float = 0.0
 
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
+	player.coil_capsule_held = true
 	# The landing that ends this airborne stretch is a coil's landing, however
 	# long after the tuck it comes. See Player.last_landing_coiled.
 	player.coiled_since_ground = true
@@ -101,24 +102,14 @@ func landing_destination(fall_height: float, rolled: bool) -> StringName:
 	var destination := super(fall_height, rolled)
 	return CROUCH if destination == WALKING else destination
 
+## THE CAPSULE IS NOT GIVEN BACK HERE. The tuck is over; the shrink is not.
+## [ME:CONFIRMED by the collision-box visualiser] the capsule stays half height
+## from the coil until the landing -- CoilTime ends the pose, not the shape.
+## It is what lets a coil after a springboard make a duct mouth the whole
+## flight away; given back at CoilTime, the body is full height again long
+## before it arrives. See Player.coil_capsule_held and release_coil_capsule().
 func exit() -> void:
-	# GIVE THE BODY BACK IN THE SHAPE THE REST OF THE PROJECT EXPECTS, which is
-	# feet-anchored. Everything downstream -- has_headroom(), the deferred
-	# restore, CrouchMove -- assumes the capsule's floor is one standing
-	# half-height below the origin, and a centred shrink breaks that assumption
-	# for as long as it lasts.
-	#
-	# Re-anchoring at the SAME height is the legs coming down: set_capsule_height()
-	# puts the offset back where those callers expect it, which drops the
-	# capsule's floor by half the shrink. On the ground that means the feet end
-	# the tick slightly inside it, and ✅ the owner is right that this needs no
-	# handling of its own -- "我觉得物理引擎会把角色推出来的" -- the next
-	# move_and_slide() depenetrates it.
-	player.set_capsule_height(player.current_capsule_height())
-	# THEN ask for full height, through the deferred path, which now gets a
-	# body it can reason about: granted immediately in the open, owed under a
-	# duct roof. Same call SlideMove and CrouchMove end on.
-	player.request_standing_capsule()
+	pass
 
 ## Eases the capsule down to CoilConfig.capsule_height across boost_duration,
 ## then holds it there for the rest of `duration`.

@@ -524,6 +524,11 @@ func landing_destination(fall_height: float, rolled: bool) -> StringName:
 		return SKILL_ROLL
 	if fall_height >= config.pawn.hard_landing_height:
 		return LANDING
+	# Still in the coil's capsule: CROUCH decides when to stand, for the reason
+	# CoilMove.landing_destination() gives -- a coil lands where a standing
+	# body may not fit, a duct above all.
+	if player.coil_capsule_held:
+		return CROUCH
 	return WALKING
 
 ## [ME:CONFIRMED] Landing bleeds horizontal speed according to which of four
