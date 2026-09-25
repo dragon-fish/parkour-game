@@ -59,9 +59,14 @@ var _kick_peak: float = 0.0
 var _kick_time: float = -1.0
 var _kick_rise: float = 0.0
 var _kick_recover: float = 0.0
-## The ease-out-back constant the way home uses, or 0 for a plain ease. See
-## _back_constant().
+## The ease-out-back constant the way home uses, or 0 for the recover curve
+## below. See _back_constant().
 var _kick_back: float = 0.0
+## The two halves' curves, Godot's standard easings.
+var _kick_rise_trans: Tween.TransitionType = Tween.TRANS_SINE
+var _kick_rise_ease: Tween.EaseType = Tween.EASE_IN_OUT
+var _kick_recover_trans: Tween.TransitionType = Tween.TRANS_SINE
+var _kick_recover_ease: Tween.EaseType = Tween.EASE_IN_OUT
 
 ## A full rotation about the pitch axis, owned by SkillRollMove. Applied
 ## OUTSIDE the pitch clamp, unlike _landing_pitch: the clamp exists to stop the
@@ -1195,14 +1200,23 @@ func clear_landing_dip() -> void:
 	_clear_kick()
 
 ## Nods the view by `radians` (positive up) and lets it back: to the peak over
-## `rise` seconds, home over `recover`. With a `bounce` (radians, a magnitude)
-## the way home is an ease-out-back that swings exactly that far past level.
-func kick_pitch(radians: float, rise: float, recover: float, bounce: float = 0.0) -> void:
+## `rise` seconds, home over `recover`, each along its curve (sine in-out
+## unless given). With a `bounce` (radians, a magnitude) the way home is instead
+## an ease-out-back that swings exactly that far past level.
+func kick_pitch(radians: float, rise: float, recover: float, bounce: float = 0.0,
+		rise_trans: Tween.TransitionType = Tween.TRANS_SINE,
+		rise_ease: Tween.EaseType = Tween.EASE_IN_OUT,
+		recover_trans: Tween.TransitionType = Tween.TRANS_SINE,
+		recover_ease: Tween.EaseType = Tween.EASE_IN_OUT) -> void:
 	_kick_from = _kick
 	_kick_peak = radians
 	_kick_rise = maxf(rise, 0.001)
 	_kick_recover = maxf(recover, 0.001)
 	_kick_back = _back_constant(absf(bounce) / maxf(absf(radians), 0.0001)) if bounce != 0.0 else 0.0
+	_kick_rise_trans = rise_trans
+	_kick_rise_ease = rise_ease
+	_kick_recover_trans = recover_trans
+	_kick_recover_ease = recover_ease
 	_kick_time = 0.0
 
 ## The ease-out-back constant s whose curve, 1 + (s+1)(u-1)^3 + s(u-1)^2,
@@ -1233,7 +1247,9 @@ func kick_takeoff(horizontal_speed: float) -> void:
 	var strength := clampf(horizontal_speed / maxf(camera_config.jump_pitch_kick_speed_ref, 0.001), 0.0, 1.0)
 	kick_pitch(deg_to_rad(lerpf(camera_config.jump_pitch_kick_min_deg,
 		camera_config.jump_pitch_kick_deg, strength)),
-		camera_config.jump_pitch_kick_rise_time, camera_config.jump_pitch_kick_recover_time)
+		camera_config.jump_pitch_kick_rise_time, camera_config.jump_pitch_kick_recover_time, 0.0,
+		camera_config.jump_pitch_kick_rise_trans, camera_config.jump_pitch_kick_rise_ease,
+		camera_config.jump_pitch_kick_recover_trans, camera_config.jump_pitch_kick_recover_ease)
 
 ## The touchdown half of kick_pitch(): the same small dip every landing, a
 ## much deeper one when the airborne stretch had a coil in it. See
@@ -1270,10 +1286,16 @@ func _advance_kick(delta: float) -> void:
 		return
 	_kick_time += delta
 	if _kick_time < _kick_rise:
-		_kick = lerpf(_kick_from, _kick_peak, smoothstep(0.0, 1.0, _kick_time / _kick_rise))
+		var out: float = Tween.interpolate_value(0.0, 1.0, _kick_time, _kick_rise,
+			_kick_rise_trans, _kick_rise_ease)
+		_kick = lerpf(_kick_from, _kick_peak, out)
 	elif _kick_time < _kick_rise + _kick_recover:
 		var u := (_kick_time - _kick_rise) / _kick_recover
-		var home := _ease_out_back(u, _kick_back) if _kick_back > 0.0 else smoothstep(0.0, 1.0, u)
+		var home: float
+		if _kick_back > 0.0:
+			home = _ease_out_back(u, _kick_back)
+		else:
+			home = Tween.interpolate_value(0.0, 1.0, u, 1.0, _kick_recover_trans, _kick_recover_ease)
 		_kick = _kick_peak * (1.0 - home)
 	else:
 		_clear_kick()

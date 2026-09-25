@@ -139,7 +139,8 @@ extends Resource
 ## jump_pitch_kick_deg at jump_pitch_kick_speed_ref (horizontal). Negative is
 ## down: a standing jump dips the view slightly and a running one lifts it.
 ## Peaks over jump_pitch_kick_rise_time, eases back over
-## jump_pitch_kick_recover_time.
+## jump_pitch_kick_recover_time, each along its own curve (the _trans/_ease
+## pairs, Godot's standard easings).
 ##
 ## Touchdown: always down by land_pitch_kick_deg, whatever the speed or the
 ## fall, and quick both ways (land_pitch_kick_rise_time, _recover_time).
@@ -156,6 +157,10 @@ extends Resource
 @export var jump_pitch_kick_speed_ref: float = 2.0
 @export var jump_pitch_kick_rise_time: float = 0.1
 @export var jump_pitch_kick_recover_time: float = 0.5
+@export var jump_pitch_kick_rise_trans: Tween.TransitionType = Tween.TRANS_CUBIC
+@export var jump_pitch_kick_rise_ease: Tween.EaseType = Tween.EASE_OUT
+@export var jump_pitch_kick_recover_trans: Tween.TransitionType = Tween.TRANS_CUBIC
+@export var jump_pitch_kick_recover_ease: Tween.EaseType = Tween.EASE_OUT
 @export var land_pitch_kick_deg: float = 1.5
 @export var coil_land_pitch_kick_deg: float = 15.0
 @export var coil_land_pitch_kick_rise_time: float = 0.2
