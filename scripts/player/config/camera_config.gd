@@ -140,24 +140,23 @@ extends Resource
 ## jump_pitch_kick_deg at jump_pitch_kick_speed_ref (horizontal). Negative is
 ## down: a standing jump dips the view slightly and a running one lifts it.
 ##
-## Touchdown: nothing for a fall under land_pitch_kick_min_height -- a hop
-## back onto the floor it left does not nod -- and from there down by
-## land_pitch_kick_min_deg, rising to land_pitch_kick_max_deg at
-## land_pitch_kick_height_ref along (fall / ref) ^ exponent. The fall is the
-## height below the launch (FallTracker, the HUD's SZD). [ME:CONFIRMED by
-## play] a level landing does not nod and a 0.5 m drop already does, plainly:
-## a step, not a ramp from zero. 5.3 m is where a hard landing starts.
+## Touchdown: down by land_pitch_kick_min_deg for a level landing, rising to
+## land_pitch_kick_max_deg at land_pitch_kick_height_ref along
+## (fall / ref) ^ exponent. The fall is the height below the launch
+## (FallTracker, the HUD's SZD). [ME:CONFIRMED by play] a level landing nods
+## faintly -- hard to see once running -- and a 0.5 m drop already plainly: the
+## curve climbs fast at the start, hence an exponent under 1. 5.3 m is where a
+## hard landing starts.
 ##
 ## Each kick reaches its peak over pitch_kick_rise_time and eases back over
 ## pitch_kick_recover_time.
 @export var jump_pitch_kick_min_deg: float = -1.0
 @export var jump_pitch_kick_deg: float = 4.0
 @export var jump_pitch_kick_speed_ref: float = 7.2
-@export var land_pitch_kick_min_height: float = 0.1
-@export var land_pitch_kick_min_deg: float = 3.0
+@export var land_pitch_kick_min_deg: float = 1.0
 @export var land_pitch_kick_max_deg: float = 10.0
 @export var land_pitch_kick_height_ref: float = 5.3
-@export var land_pitch_kick_exponent: float = 1.0
+@export var land_pitch_kick_exponent: float = 0.5
 @export var pitch_kick_rise_time: float = 0.15
 @export var pitch_kick_recover_time: float = 0.5
 
