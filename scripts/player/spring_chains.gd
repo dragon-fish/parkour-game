@@ -36,6 +36,10 @@ extends SpringBoneSimulator3D
 ## real weight, not as loose hair.
 @export_range(0.0, 1.0) var weight: float = 0.0
 
+## The center bone's index once built, or -1 when the chains simulate in the
+## skeleton's own space. See _process().
+var _center_bone: int = -1
+
 ## Iron's numbers, the weight = 1 end of the blend.
 const HEAVY_STIFFNESS := 0.1
 const HEAVY_DRAG := 0.95
@@ -96,6 +100,35 @@ func _build() -> void:
 		if center_bone_name != "" and skeleton.find_bone(center_bone_name) >= 0:
 			set_center_from(idx, SpringBoneSimulator3D.CENTER_FROM_BONE)
 			set_center_bone_name(idx, center_bone_name)
+			_center_bone = skeleton.find_bone(center_bone_name)
+
+## Keeps gravity pointing at the floor while the chains simulate relative to
+## the center bone.
+##
+## WITH A CENTER BONE, THE ENGINE TURNS GRAVITY BY THAT BONE'S INVERSE
+## ROTATION. Read in 4.7.1's SpringBoneSimulator3D::_process_joints(): the
+## force is carried into the center's frame with the inverted center
+## rotation and never carried back, so the pull the chain feels, in the
+## skeleton's space, is inverse(center) * gravity_direction. Upright the hips
+## are unturned and nobody can tell. On her back they have turned through
+## ninety degrees and "down" becomes "towards the head": the more gravity a
+## chain had, the harder it was thrown up over the body -- the skirt flipped
+## onto the belly.
+##
+## So the direction is handed over pre-turned by the center's rotation, which
+## the engine then undoes, leaving the skeleton's down. DO NOT use the
+## inverse here: that turns it the same way twice, and every accessory with
+## any gravity flies about. Set a frame late, which nothing can see.
+func _process(_delta: float) -> void:
+	if _center_bone < 0:
+		return
+	var skeleton := get_skeleton()
+	if skeleton == null:
+		return
+	var center := skeleton.get_bone_global_pose(_center_bone).basis.get_rotation_quaternion()
+	var down := skeleton.global_basis.get_rotation_quaternion().inverse() * Vector3.DOWN
+	for idx in setting_count:
+		set_gravity_direction(idx, center * down)
 
 func _matches(bone_name: String) -> bool:
 	for prefix in chain_prefixes:
