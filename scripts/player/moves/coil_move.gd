@@ -116,6 +116,9 @@ func exit() -> void:
 	# body it can reason about: granted immediately in the open, owed under a
 	# duct roof. Same call SlideMove and CrouchMove end on.
 	player.request_standing_capsule()
+	# The legs coming down strike any floor within reach on the next tick or
+	# two, and that landing is still the coil's. See Player.last_landing_coiled.
+	player.coil_legs_down_left = cfg.legs_down_time
 
 ## Eases the capsule down to CoilConfig.capsule_height across boost_duration,
 ## then holds it there for the rest of `duration`.

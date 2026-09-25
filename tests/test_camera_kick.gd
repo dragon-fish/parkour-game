@@ -10,7 +10,7 @@ func test_the_nod_does_not_move_the_aim() -> void:
 	await step(1)
 	var rig: CameraRig = world["player"].camera_rig
 	rig.set_pitch(0.0)
-	rig.kick_pitch(deg_to_rad(10.0))
+	rig.kick_pitch(deg_to_rad(10.0), 0.15, 0.5)
 	await step(9)
 	var shown := -rig.camera.global_transform.basis.z
 	assert_gt(shown.y, 0.05, "test setup: the nod never tipped the view")

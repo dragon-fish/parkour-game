@@ -29,6 +29,13 @@ var last_landing_rolled: bool = false
 ## physics tick: the counter is gone by the time anything else runs. Set by
 ## FallingMove alongside last_landing_rolled.
 var last_landing_fall_height: float = 0.0
+## Whether the last landing caught the coil unfinished: settled by CoilMove
+## itself, or inside CoilConfig.legs_down_time of it ending (see
+## coil_legs_down_left). Read by the camera's landing nod.
+var last_landing_coiled: bool = false
+## Seconds left in which a landing still counts as coming out of a coil. Set
+## by CoilMove.exit().
+var coil_legs_down_left: float = 0.0
 ## Last polled input, exposed for the debug HUD.
 var last_input: MoveInput = MoveInput.new()
 
@@ -1560,6 +1567,8 @@ func reset_state() -> void:
 	_travel_speed = 0.0
 	last_landing_speed = 0.0
 	last_landing_fall_height = 0.0
+	last_landing_coiled = false
+	coil_legs_down_left = 0.0
 	grounded = false
 	# Set directly rather than through set_grounded(true) (which would also
 	# flip `grounded` back on, contradicting the line above): global_position
@@ -3618,7 +3627,7 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		if landing_impact >= 0.0:
 			camera_rig.punch_landing(landing_impact)
-			camera_rig.kick_landing(last_landing_fall_height)
+			camera_rig.kick_landing(last_landing_coiled)
 		# Read from the CAPSULE, not the state name: naming SLIDE and CROUCH
 		# here explicitly used to work only as long as those were the only two
 		# states that ever crouched the body, and silently stopped covering the
@@ -3977,6 +3986,7 @@ func _tick_line_cooldowns(delta: float) -> void:
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	_tick_gravity_window(delta)
 	_stagger_immunity = maxf(_stagger_immunity - delta, 0.0)
+	coil_legs_down_left = maxf(coil_legs_down_left - delta, 0.0)
 	_drive_hurt_flash(delta)
 	_tick_line_cooldowns(delta)
 	if grounded:

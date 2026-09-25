@@ -362,6 +362,7 @@ func settle_landing(delta: float) -> StringName:
 		and player.consume_roll()
 	player.last_landing_rolled = rolled
 	player.last_landing_fall_height = fall_height
+	player.last_landing_coiled = self is CoilMove or player.coil_legs_down_left > 0.0
 	player.set_grounded(true)
 	player.notify_landed(impact_speed)
 	_apply_landing_cost(fall_height, rolled)

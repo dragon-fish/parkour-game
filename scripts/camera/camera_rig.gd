@@ -57,6 +57,8 @@ var _kick_from: float = 0.0
 var _kick_peak: float = 0.0
 ## Seconds into the current kick, or negative when none is running.
 var _kick_time: float = -1.0
+var _kick_rise: float = 0.0
+var _kick_recover: float = 0.0
 
 ## A full rotation about the pitch axis, owned by SkillRollMove. Applied
 ## OUTSIDE the pitch clamp, unlike _landing_pitch: the clamp exists to stop the
@@ -1190,10 +1192,12 @@ func clear_landing_dip() -> void:
 	_clear_kick()
 
 ## Nods the view by `radians` (positive up) and lets it back: to the peak over
-## CameraConfig.pitch_kick_rise_time, home over pitch_kick_recover_time.
-func kick_pitch(radians: float) -> void:
+## `rise` seconds, home over `recover`.
+func kick_pitch(radians: float, rise: float, recover: float) -> void:
 	_kick_from = _kick
 	_kick_peak = radians
+	_kick_rise = maxf(rise, 0.001)
+	_kick_recover = maxf(recover, 0.001)
 	_kick_time = 0.0
 
 ## The take-off half of kick_pitch(), growing with the horizontal speed the
@@ -1204,23 +1208,25 @@ func kick_takeoff(horizontal_speed: float) -> void:
 	var camera_config: CameraConfig = _config.camera
 	var strength := clampf(horizontal_speed / maxf(camera_config.jump_pitch_kick_speed_ref, 0.001), 0.0, 1.0)
 	kick_pitch(deg_to_rad(lerpf(camera_config.jump_pitch_kick_min_deg,
-		camera_config.jump_pitch_kick_deg, strength)))
+		camera_config.jump_pitch_kick_deg, strength)),
+		camera_config.jump_pitch_kick_rise_time, camera_config.jump_pitch_kick_recover_time)
 
-## The touchdown half of kick_pitch(), growing with how far below the launch
-## the body came down. See CameraConfig.land_pitch_kick_max_deg.
-func kick_landing(fall_height: float) -> void:
+## The touchdown half of kick_pitch(): the same small dip every landing, a
+## deeper one for a landing that caught the coil unfinished. See
+## CameraConfig.land_pitch_kick_deg.
+func kick_landing(coiled: bool) -> void:
 	if _config == null:
 		return
 	var camera_config: CameraConfig = _config.camera
-	var strength := clampf(fall_height / maxf(camera_config.land_pitch_kick_height_ref, 0.001), 0.0, 1.0)
-	strength = pow(strength, maxf(camera_config.land_pitch_kick_exponent, 0.01))
-	kick_pitch(-deg_to_rad(lerpf(camera_config.land_pitch_kick_min_deg,
-		camera_config.land_pitch_kick_max_deg, strength)))
+	var degrees: float = camera_config.coil_land_pitch_kick_deg if coiled \
+		else camera_config.land_pitch_kick_deg
+	kick_pitch(-deg_to_rad(degrees), camera_config.land_pitch_kick_rise_time,
+		camera_config.land_pitch_kick_recover_time)
 
 ## Where the player is aiming: the camera's forward with the take-off and
 ## landing nod (kick_pitch()) taken back out. The nod runs while the player can
-## act, so a launch aimed off the rendered view would leave up to
-## land_pitch_kick_max_deg low for half a second after every landing. DO NOT
+## act, so a launch aimed off the rendered view would leave off by however far
+## the view happened to be nodding. DO NOT
 ## aim a launch off camera.global_transform directly.
 func aim_forward() -> Vector3:
 	var forward := -camera.global_transform.basis.z
@@ -1234,12 +1240,10 @@ func _advance_kick(delta: float) -> void:
 	if _kick_time < 0.0:
 		return
 	_kick_time += delta
-	var rise: float = maxf(_config.camera.pitch_kick_rise_time, 0.001)
-	var recover: float = maxf(_config.camera.pitch_kick_recover_time, 0.001)
-	if _kick_time < rise:
-		_kick = lerpf(_kick_from, _kick_peak, smoothstep(0.0, 1.0, _kick_time / rise))
-	elif _kick_time < rise + recover:
-		_kick = _kick_peak * (1.0 - smoothstep(0.0, 1.0, (_kick_time - rise) / recover))
+	if _kick_time < _kick_rise:
+		_kick = lerpf(_kick_from, _kick_peak, smoothstep(0.0, 1.0, _kick_time / _kick_rise))
+	elif _kick_time < _kick_rise + _kick_recover:
+		_kick = _kick_peak * (1.0 - smoothstep(0.0, 1.0, (_kick_time - _kick_rise) / _kick_recover))
 	else:
 		_clear_kick()
 
