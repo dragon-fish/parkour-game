@@ -147,7 +147,10 @@ extends Resource
 ## faint enough to lose once running -- EXCEPT the landing that ends an
 ## airborne stretch with a coil in it, which throws the head by
 ## coil_land_pitch_kick_deg at its own, slower pace (coil_land_pitch_kick_rise_time,
-## _recover_time). See Player.last_landing_coiled.
+## _recover_time), and comes back like a spring: the way home is an
+## ease-out-back that swings coil_land_pitch_kick_bounce_deg past level before
+## it settles, all inside the recover time. [ME:CONFIRMED by play] the coil's
+## landing springs back a little. See Player.last_landing_coiled.
 @export var jump_pitch_kick_min_deg: float = -2.0
 @export var jump_pitch_kick_deg: float = 5.0
 @export var jump_pitch_kick_speed_ref: float = 2.0
@@ -157,6 +160,7 @@ extends Resource
 @export var coil_land_pitch_kick_deg: float = 15.0
 @export var coil_land_pitch_kick_rise_time: float = 0.2
 @export var coil_land_pitch_kick_recover_time: float = 0.3
+@export var coil_land_pitch_kick_bounce_deg: float = 2.0
 @export var land_pitch_kick_rise_time: float = 0.1
 @export var land_pitch_kick_recover_time: float = 0.1
 

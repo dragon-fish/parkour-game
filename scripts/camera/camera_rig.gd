@@ -59,6 +59,9 @@ var _kick_peak: float = 0.0
 var _kick_time: float = -1.0
 var _kick_rise: float = 0.0
 var _kick_recover: float = 0.0
+## The ease-out-back constant the way home uses, or 0 for a plain ease. See
+## _back_constant().
+var _kick_back: float = 0.0
 
 ## A full rotation about the pitch axis, owned by SkillRollMove. Applied
 ## OUTSIDE the pitch clamp, unlike _landing_pitch: the clamp exists to stop the
@@ -1192,13 +1195,34 @@ func clear_landing_dip() -> void:
 	_clear_kick()
 
 ## Nods the view by `radians` (positive up) and lets it back: to the peak over
-## `rise` seconds, home over `recover`.
-func kick_pitch(radians: float, rise: float, recover: float) -> void:
+## `rise` seconds, home over `recover`. With a `bounce` (radians, a magnitude)
+## the way home is an ease-out-back that swings exactly that far past level.
+func kick_pitch(radians: float, rise: float, recover: float, bounce: float = 0.0) -> void:
 	_kick_from = _kick
 	_kick_peak = radians
 	_kick_rise = maxf(rise, 0.001)
 	_kick_recover = maxf(recover, 0.001)
+	_kick_back = _back_constant(absf(bounce) / maxf(absf(radians), 0.0001)) if bounce != 0.0 else 0.0
 	_kick_time = 0.0
+
+## The ease-out-back constant s whose curve, 1 + (s+1)(u-1)^3 + s(u-1)^2,
+## overshoots its end by `fraction`. The overshoot is 4 s^3 / (27 (s+1)^2) --
+## s = 1.70158, the usual constant, is 10 % -- which grows with s, so it is
+## bisected rather than asked of a formula nobody can read back.
+static func _back_constant(fraction: float) -> float:
+	var low := 0.0
+	var high := 20.0
+	for i in 40:
+		var s := (low + high) * 0.5
+		if 4.0 * s * s * s / (27.0 * (s + 1.0) * (s + 1.0)) < fraction:
+			low = s
+		else:
+			high = s
+	return (low + high) * 0.5
+
+static func _ease_out_back(u: float, s: float) -> float:
+	var x := u - 1.0
+	return 1.0 + (s + 1.0) * x * x * x + s * x * x
 
 ## The take-off half of kick_pitch(), growing with the horizontal speed the
 ## body leaves the ground with. See CameraConfig.jump_pitch_kick_deg.
@@ -1221,7 +1245,8 @@ func kick_landing(coiled: bool) -> void:
 	if coiled:
 		kick_pitch(-deg_to_rad(camera_config.coil_land_pitch_kick_deg),
 			camera_config.coil_land_pitch_kick_rise_time,
-			camera_config.coil_land_pitch_kick_recover_time)
+			camera_config.coil_land_pitch_kick_recover_time,
+			deg_to_rad(camera_config.coil_land_pitch_kick_bounce_deg))
 	else:
 		kick_pitch(-deg_to_rad(camera_config.land_pitch_kick_deg),
 			camera_config.land_pitch_kick_rise_time,
@@ -1247,7 +1272,9 @@ func _advance_kick(delta: float) -> void:
 	if _kick_time < _kick_rise:
 		_kick = lerpf(_kick_from, _kick_peak, smoothstep(0.0, 1.0, _kick_time / _kick_rise))
 	elif _kick_time < _kick_rise + _kick_recover:
-		_kick = _kick_peak * (1.0 - smoothstep(0.0, 1.0, (_kick_time - _kick_rise) / _kick_recover))
+		var u := (_kick_time - _kick_rise) / _kick_recover
+		var home := _ease_out_back(u, _kick_back) if _kick_back > 0.0 else smoothstep(0.0, 1.0, u)
+		_kick = _kick_peak * (1.0 - home)
 	else:
 		_clear_kick()
 
@@ -1256,6 +1283,7 @@ func _clear_kick() -> void:
 	_kick_from = 0.0
 	_kick_peak = 0.0
 	_kick_time = -1.0
+	_kick_back = 0.0
 
 ## Called on landing. `speed` is the downward speed at the moment of impact.
 func punch_landing(speed: float) -> void:
