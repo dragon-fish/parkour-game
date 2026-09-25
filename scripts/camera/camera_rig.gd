@@ -523,6 +523,14 @@ func set_eye_lateral(target: float) -> void:
 func set_head_follow_scale(target: float) -> void:
 	_head_follow_scale_target = clampf(target, 0.0, 1.0)
 
+## The body was lifted by `metres` in a way that is not a step -- the coil's
+## capsule given back on the ground -- so the eye goes up with it this tick
+## instead of being eased up after it. See the step smoothing in
+## update_effects().
+func carry_eye_ground(metres: float) -> void:
+	if _has_eye_ground:
+		_eye_ground_y += metres
+
 func set_head_offset(local_offset: Vector3) -> void:
 	_head_local_offset = local_offset
 	_has_head = true

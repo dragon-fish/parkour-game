@@ -1304,8 +1304,13 @@ func set_centred_capsule_height(height: float) -> void:
 ##
 ## Re-anchoring at the SAME height is the legs coming down: set_capsule_height()
 ## puts the offset back where those callers expect it, which drops the
-## capsule's floor by half the shrink. On the ground that means the feet end
-## the tick slightly inside it, and the next move_and_slide() depenetrates it.
+## capsule's floor by half the shrink. In the air that is all. On the ground
+## the feet would end up inside the floor, so the body is lifted by the same
+## half shrink here, onto it -- and the eye is carried up with it in the same
+## tick. DO NOT leave the lift to move_and_slide()'s depenetration: the camera
+## reads a rise it was not told about as a step and eases the eye up after the
+## body (CameraRig.carry_eye_ground()), and for a quarter of a second the eye
+## sat 26 cm under a head that was already standing -- inside the neck.
 ## THEN full height is asked for through the deferred path, which now gets a
 ## body it can reason about: granted immediately in the open, owed under a
 ## duct roof. Same call SlideMove and CrouchMove end on.
@@ -1313,7 +1318,12 @@ func release_coil_capsule() -> void:
 	if not coil_capsule_held:
 		return
 	coil_capsule_held = false
+	var lift: float = (standing_height() - current_capsule_height()) * 0.5 if grounded else 0.0
 	set_capsule_height(current_capsule_height())
+	if lift > 0.0:
+		global_position.y += lift
+		if camera_rig != null:
+			camera_rig.carry_eye_ground(lift)
 	request_standing_capsule()
 
 ## Asks for the standing capsule back, honouring the roof. Restores it at once
