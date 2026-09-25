@@ -1206,13 +1206,13 @@ func kick_takeoff(horizontal_speed: float) -> void:
 	kick_pitch(deg_to_rad(lerpf(camera_config.jump_pitch_kick_min_deg,
 		camera_config.jump_pitch_kick_deg, strength)))
 
-## The touchdown half of kick_pitch(), growing with the downward speed of the
-## impact. See CameraConfig.land_pitch_kick_max_deg.
-func kick_landing(impact_speed: float) -> void:
+## The touchdown half of kick_pitch(), growing with how far below the launch
+## the body came down. See CameraConfig.land_pitch_kick_max_deg.
+func kick_landing(fall_height: float) -> void:
 	if _config == null:
 		return
 	var camera_config: CameraConfig = _config.camera
-	var strength := clampf(impact_speed / maxf(camera_config.land_pitch_kick_speed_ref, 0.001), 0.0, 1.0)
+	var strength := clampf(fall_height / maxf(camera_config.land_pitch_kick_height_ref, 0.001), 0.0, 1.0)
 	strength = pow(strength, maxf(camera_config.land_pitch_kick_exponent, 0.01))
 	kick_pitch(-deg_to_rad(camera_config.land_pitch_kick_max_deg) * strength)
 

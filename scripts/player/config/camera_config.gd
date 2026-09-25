@@ -136,24 +136,24 @@ extends Resource
 ## The view's nod on take-off and touchdown, each growing with a speed and
 ## full at its reference. PROJECT-DEFINED, all of them.
 ##
-## Take-off: up by jump_pitch_kick_min_deg from a standstill, rising linearly
-## to jump_pitch_kick_deg at jump_pitch_kick_speed_ref (horizontal).
+## Take-off: jump_pitch_kick_min_deg from a standstill, linear to
+## jump_pitch_kick_deg at jump_pitch_kick_speed_ref (horizontal). Negative is
+## down: a standing jump dips the view slightly and a running one lifts it.
 ##
-## Touchdown: down by land_pitch_kick_max_deg x (impact / ref) ^ exponent,
-## capped at the reference (vertical). An exponent above 1 keeps an ordinary
-## hop's landing light and saves the nod for real drops; below 1 does the
-## opposite. 13 m/s is the impact of a 5.3 m drop under this project's
-## gravity, sqrt(2 x 16 x 5.3), so the nod tops out where a hard landing
-## starts.
+## Touchdown: down by land_pitch_kick_max_deg x (fall / ref) ^ exponent, the
+## fall being the height below the launch (FallTracker, the HUD's SZD) and
+## capped at the reference -- a hop back onto the floor it left does not nod.
+## 5.3 m is where a hard landing starts. An exponent above 1 saves the nod for
+## real drops, below 1 spends it early.
 ##
 ## Each kick reaches its peak over pitch_kick_rise_time and eases back over
 ## pitch_kick_recover_time.
-@export var jump_pitch_kick_min_deg: float = 1.5
+@export var jump_pitch_kick_min_deg: float = -1.0
 @export var jump_pitch_kick_deg: float = 4.0
 @export var jump_pitch_kick_speed_ref: float = 7.2
 @export var land_pitch_kick_max_deg: float = 10.0
-@export var land_pitch_kick_speed_ref: float = 13.0
-@export var land_pitch_kick_exponent: float = 2.0
+@export var land_pitch_kick_height_ref: float = 5.3
+@export var land_pitch_kick_exponent: float = 1.0
 @export var pitch_kick_rise_time: float = 0.15
 @export var pitch_kick_recover_time: float = 0.5
 
