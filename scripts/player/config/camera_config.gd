@@ -133,19 +133,27 @@ extends Resource
 ## Fall speed that produces a full-strength landing dip.
 @export var land_dip_speed_ref: float = 18.0
 
-## The view's nod on take-off and touchdown, each linear in a speed and full
-## at its reference: up by jump_pitch_kick_deg for a take-off at
-## jump_pitch_kick_speed_ref (horizontal), down by land_pitch_kick_max_deg for
-## a touchdown at land_pitch_kick_speed_ref (vertical). Each kick reaches its
-## peak over pitch_kick_rise_time and eases back over pitch_kick_recover_time.
-## PROJECT-DEFINED, all six.
+## The view's nod on take-off and touchdown, each growing with a speed and
+## full at its reference. PROJECT-DEFINED, all of them.
 ##
-## 13 m/s is the impact of a 5.3 m drop under this project's gravity,
-## sqrt(2 x 16 x 5.3), so the landing nod tops out where a hard landing starts.
+## Take-off: up by jump_pitch_kick_min_deg from a standstill, rising linearly
+## to jump_pitch_kick_deg at jump_pitch_kick_speed_ref (horizontal).
+##
+## Touchdown: down by land_pitch_kick_max_deg x (impact / ref) ^ exponent,
+## capped at the reference (vertical). An exponent above 1 keeps an ordinary
+## hop's landing light and saves the nod for real drops; below 1 does the
+## opposite. 13 m/s is the impact of a 5.3 m drop under this project's
+## gravity, sqrt(2 x 16 x 5.3), so the nod tops out where a hard landing
+## starts.
+##
+## Each kick reaches its peak over pitch_kick_rise_time and eases back over
+## pitch_kick_recover_time.
+@export var jump_pitch_kick_min_deg: float = 1.5
 @export var jump_pitch_kick_deg: float = 4.0
 @export var jump_pitch_kick_speed_ref: float = 7.2
 @export var land_pitch_kick_max_deg: float = 10.0
 @export var land_pitch_kick_speed_ref: float = 13.0
+@export var land_pitch_kick_exponent: float = 2.0
 @export var pitch_kick_rise_time: float = 0.15
 @export var pitch_kick_recover_time: float = 0.5
 

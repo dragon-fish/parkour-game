@@ -1196,22 +1196,24 @@ func kick_pitch(radians: float) -> void:
 	_kick_peak = radians
 	_kick_time = 0.0
 
-## The take-off half of kick_pitch(), scaled by the horizontal speed the
-## body leaves the ground with.
+## The take-off half of kick_pitch(), growing with the horizontal speed the
+## body leaves the ground with. See CameraConfig.jump_pitch_kick_deg.
 func kick_takeoff(horizontal_speed: float) -> void:
 	if _config == null:
 		return
 	var camera_config: CameraConfig = _config.camera
 	var strength := clampf(horizontal_speed / maxf(camera_config.jump_pitch_kick_speed_ref, 0.001), 0.0, 1.0)
-	kick_pitch(deg_to_rad(camera_config.jump_pitch_kick_deg) * strength)
+	kick_pitch(deg_to_rad(lerpf(camera_config.jump_pitch_kick_min_deg,
+		camera_config.jump_pitch_kick_deg, strength)))
 
-## The touchdown half of kick_pitch(), scaled by the downward speed of the
-## impact.
+## The touchdown half of kick_pitch(), growing with the downward speed of the
+## impact. See CameraConfig.land_pitch_kick_max_deg.
 func kick_landing(impact_speed: float) -> void:
 	if _config == null:
 		return
 	var camera_config: CameraConfig = _config.camera
 	var strength := clampf(impact_speed / maxf(camera_config.land_pitch_kick_speed_ref, 0.001), 0.0, 1.0)
+	strength = pow(strength, maxf(camera_config.land_pitch_kick_exponent, 0.01))
 	kick_pitch(-deg_to_rad(camera_config.land_pitch_kick_max_deg) * strength)
 
 ## Where the player is aiming: the camera's forward with the take-off and
