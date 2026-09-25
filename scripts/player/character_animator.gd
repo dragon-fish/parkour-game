@@ -575,11 +575,10 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 	_coil_landing_hold = false
 	if _AIRBORNE_MOVES.has(from) and (to == Move.CROUCH or to == Move.WALKING) \
 			and player.last_landing_coiled:
-		# THE TUCK IS HELD THROUGH THE LANDING, not cut: a coil landing swaps
-		# a tucked body for a standing one, and the camera's landing throw
-		# (CameraConfig.coil_land_pitch_kick_deg) is there to cover exactly
-		# that. Held for CoilConfig.landing_hold_time, then faded out over
-		# pose_exit_blend_time like any other exit from the tuck.
+		# THE TUCK FADES STRAIGHT INTO WHAT FOLLOWS, not through a crouch-walk
+		# for the one tick of CROUCH the landing passes through. See
+		# CoilConfig.landing_hold_time. The fade itself is pose_exit_blend_time,
+		# under the camera's landing throw.
 		_start_oneshot(_coil_clip(), player.config.coil.landing_hold_time)
 		_coil_landing_hold = _oneshot != Move.KEEP
 		return

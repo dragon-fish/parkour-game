@@ -82,11 +82,14 @@ func _init() -> void:
 ## Seconds the tuck stays on screen after the coil hands over to a fall, so
 ## the pose outlasts the capsule. PROJECT-DEFINED. A landing ends it early.
 @export var pose_linger_time: float = 0.2
-## Seconds the tuck is held on screen after a coil's landing before it fades
-## out, so the change of pose happens under the camera's landing throw rather
-## than as a cut. PROJECT-DEFINED; the throw's own way down
-## (CameraConfig.coil_land_pitch_kick_rise_time) is the natural match.
-@export var landing_hold_time: float = 0.2
+## Seconds the tuck is kept as the animation's target after a coil's landing.
+## Long enough to swallow the one tick of CROUCH a landing in the open passes
+## through on its way to WALKING, and no longer: without it the graph starts
+## fading into a crouch-walk it then has to finish before it may go anywhere
+## else -- a pose nobody asked for, flashed at the landing. Held any longer,
+## the tuck visibly plays on after the feet are down. A body that lands in a
+## duct stays in CROUCH and gets its crouch-walk after this.
+@export var landing_hold_time: float = 0.05
 
 ## ✅ HeightBoostDuration. How long the capsule takes to reach capsule_height.
 ##
