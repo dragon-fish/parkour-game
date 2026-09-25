@@ -1218,10 +1218,14 @@ func kick_landing(coiled: bool) -> void:
 	if _config == null:
 		return
 	var camera_config: CameraConfig = _config.camera
-	var degrees: float = camera_config.coil_land_pitch_kick_deg if coiled \
-		else camera_config.land_pitch_kick_deg
-	kick_pitch(-deg_to_rad(degrees), camera_config.land_pitch_kick_rise_time,
-		camera_config.land_pitch_kick_recover_time)
+	if coiled:
+		kick_pitch(-deg_to_rad(camera_config.coil_land_pitch_kick_deg),
+			camera_config.coil_land_pitch_kick_rise_time,
+			camera_config.coil_land_pitch_kick_recover_time)
+	else:
+		kick_pitch(-deg_to_rad(camera_config.land_pitch_kick_deg),
+			camera_config.land_pitch_kick_rise_time,
+			camera_config.land_pitch_kick_recover_time)
 
 ## Where the player is aiming: the camera's forward with the take-off and
 ## landing nod (kick_pitch()) taken back out. The nod runs while the player can
