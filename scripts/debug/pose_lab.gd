@@ -8,6 +8,11 @@ extends Node3D
 # The dropdown picks the target (TARGETS); switching reloads the scene. Right
 # mouse drag orbits, wheel zooms, middle drag pans.
 #
+# "第一人称" looks through the game's own first-person eye instead: placed and
+# clamped as CameraRig does it, head hidden the way HeadlessVariant hides it.
+# For a pose whose point is what the player sees of themself -- a coil is knees
+# and the hands round them, from above -- that view is the one to pose in.
+#
 # Two kinds of target, told apart by which key they carry:
 #   modifier -- the correction lives in the body scene as a BonePoseOffset
 #               scoped to the clip; "保存" writes its `rotations` back there.
@@ -22,12 +27,18 @@ const LOCAL_PROFILE_CONFIG := "res://scenes/player/local/profiles/local.cfg"
 ## What can be posed: the clip held, the frame held (`time`, seconds; a
 ## negative value is the last frame), and where the result goes (`modifier`
 ## or `bake`, see the note at the top).
+##
+## `move` names the MovementConfig field whose look constraint clamps the
+## first-person view, so the preview can look only where the game lets it.
 const TARGETS: Array[Dictionary] = [
-	{label = "躺地", clip = &"LiftAir_Fall", time = -1.0, modifier = "LyingPose"},
-	{label = "屈膝跳·抱膝坐", clip = &"GroundSit_Idle", time = 0.0, modifier = "CoilPose"},
-	{label = "屈膝跳·空翻", clip = &"JogToFlip", time = 0.7, bake = &"Coil_Tuck"},
-	{label = "屈膝跳·翻滚", clip = &"Roll", time = 0.62, bake = &"Coil_Tuck"},
+	{label = "躺地", clip = &"LiftAir_Fall", time = -1.0, modifier = "LyingPose", move = "lay_on_ground"},
+	{label = "屈膝跳·抱膝坐", clip = &"GroundSit_Idle", time = 0.0, modifier = "CoilPose", move = "coil"},
+	{label = "屈膝跳·空翻", clip = &"JogToFlip", time = 0.7, bake = &"Coil_Tuck", move = "coil"},
+	{label = "屈膝跳·翻滚", clip = &"Roll", time = 0.62, bake = &"Coil_Tuck", move = "coil"},
 ]
+## The standing capsule's height, scenes/player/player.tscn's. The eye rests
+## half of it plus CameraConfig.eye_height above the feet.
+const STANDING_CAPSULE := 1.8
 ## Where baked poses go: a scene holding an AnimationPlayer, the shape
 ## BodyProfile.animation_libraries takes. Private, next to the packs it was
 ## cut from.
@@ -76,6 +87,14 @@ var _syncing := false
 
 var _pivot: Node3D
 var _camera: Camera3D
+## The first-person eye. See _place_eye().
+var _eye: Camera3D
+var _eye_rest: Vector3
+var _head_rest: Vector3
+var _eye_yaw := 0.0
+var _eye_pitch := 0.0
+var _look_min: Vector3
+var _look_max: Vector3
 var _yaw := 0.9
 var _pitch := -0.35
 var _distance := 3.2
@@ -120,6 +139,9 @@ func _build_world() -> void:
 	_pivot.add_child(_camera)
 	_camera.current = true
 	_place_camera()
+	_eye = Camera3D.new()
+	_eye.fov = CameraConfig.new().fov_base
+	add_child(_eye)
 
 ## Mounted the way Player mounts a body, feet at the floor, plus the clip's
 ## own offset -- the same placement LayOnGroundMove shows on flat ground.
@@ -143,6 +165,9 @@ func _build_body() -> bool:
 	_body.transform = Transform3D(mount.basis, mount.origin + offset)
 	add_child(_body)
 	_skeleton = _find(_body, "Skeleton3D") as Skeleton3D
+	if _skeleton != null:
+		_split_head()
+		_rest_eye(profile.eye_forward)
 	_anim = _find(_body, "AnimationPlayer") as AnimationPlayer
 	if _skeleton == null or _anim == null:
 		push_error("pose lab: body has no skeleton or player")
@@ -169,6 +194,49 @@ func _build_body() -> bool:
 	_anim.speed_scale = 0.0
 	_anim.seek(_clip_at, true)
 	return true
+
+## HeadlessVariant only splits a body under a Player, so it is run by hand.
+## The orbit camera then leaves out the headless twins and the eye leaves out
+## the head, exactly as CameraRig._apply_body_layers() does.
+func _split_head() -> void:
+	var variant := _skeleton.get_node_or_null("HeadlessVariant")
+	if variant == null or not variant.has_method("_run_split"):
+		return
+	var layers := CameraConfig.new()
+	variant._run_split(_skeleton, variant._head_bone_set(_skeleton),
+		layers.first_person_body_layers, layers.third_person_body_layers)
+	for node in _skeleton.get_children():
+		for suffix in ["Headless", "Shadow"]:
+			if node is MeshInstance3D and String(node.name).ends_with(suffix):
+				var original := _skeleton.get_node_or_null(String(node.name).trim_suffix(suffix))
+				if original is MeshInstance3D and not (original as MeshInstance3D).visible:
+					node.visible = false
+	_camera.cull_mask &= ~layers.first_person_body_layers
+	_eye.cull_mask &= ~layers.third_person_body_layers
+
+## Where the eye and the head sit in the rest pose. The game measures the
+## head's rest at attach (Player.head_rest_local) and moves the eye by however
+## far the head has moved since (camera_head_follow_strength 1.0); the clip
+## offset both carry cancels out of that difference, as it does in game for a
+## move that is not scripted.
+func _rest_eye(eye_forward: float) -> void:
+	var cfg := MovementConfig.new()
+	_eye_rest = Vector3(0.0, STANDING_CAPSULE * 0.5 + cfg.camera.eye_height, -eye_forward)
+	var head := _skeleton.find_bone("Head")
+	if head >= 0:
+		_head_rest = _skeleton.global_transform * _skeleton.get_bone_global_rest(head).origin
+	var move: MoveConfig = cfg.get(TARGETS[_target_index].move)
+	_look_min = move.min_look_constraint if move.constrain_look else Vector3(-PI, -PI, -PI)
+	_look_max = move.max_look_constraint if move.constrain_look else Vector3(PI, PI, PI)
+	_eye_pitch = clampf(-PI / 2.0, _look_min.x, _look_max.x)
+
+func _place_eye() -> void:
+	var head := _skeleton.find_bone("Head")
+	if head < 0:
+		return
+	var now := _skeleton.global_transform * _skeleton.get_bone_global_pose(head).origin
+	_eye.position = _eye_rest + (now - _head_rest)
+	_eye.rotation = Vector3(_eye_pitch, _eye_yaw, 0.0)
 
 func _clip() -> StringName:
 	return TARGETS[_target_index].clip
@@ -257,6 +325,14 @@ func _build_ui() -> void:
 		_target_index = index
 		get_tree().reload_current_scene())
 	top.add_child(target)
+	var first_person := CheckBox.new()
+	first_person.text = "第一人称"
+	first_person.toggled.connect(func(on: bool) -> void:
+		if on:
+			_eye.make_current()
+		else:
+			_camera.make_current())
+	top.add_child(first_person)
 	_mirror = CheckBox.new()
 	_mirror.text = "左右联动"
 	_mirror.button_pressed = true
@@ -291,12 +367,23 @@ func _build_ui() -> void:
 	for node in _skeleton.get_children():
 		if not node is MeshInstance3D or not (node as MeshInstance3D).visible:
 			continue
-		var mesh := node as MeshInstance3D
+		var mesh_name := String(node.name)
+		if mesh_name.ends_with("Headless") or mesh_name.ends_with("Shadow"):
+			continue
+		# The mesh and whatever HeadlessVariant split off it, as one.
+		var group: Array[Node] = [node]
+		for suffix in ["Headless", "Shadow"]:
+			var twin := _skeleton.get_node_or_null(mesh_name + suffix)
+			if twin != null:
+				group.append(twin)
 		var toggle := CheckBox.new()
-		toggle.text = mesh.name
-		toggle.button_pressed = not HIDDEN_AT_START.has(String(mesh.name))
-		mesh.visible = toggle.button_pressed
-		toggle.toggled.connect(func(on: bool) -> void: mesh.visible = on)
+		toggle.text = mesh_name
+		toggle.button_pressed = not HIDDEN_AT_START.has(mesh_name)
+		for member in group:
+			member.visible = toggle.button_pressed
+		toggle.toggled.connect(func(on: bool) -> void:
+			for member in group:
+				member.visible = on)
 		meshes.add_child(toggle)
 
 	_readout = Label.new()
@@ -538,6 +625,7 @@ func _on_skeleton_updated() -> void:
 	if _bake_requested:
 		_bake_requested = false
 		_bake()
+	_place_eye()
 	if not _framed:
 		_framed = true
 		var hips := _skeleton.find_bone("Hips")
@@ -569,7 +657,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_place_camera()
 	elif event is InputEventMouseMotion:
 		var motion := event as InputEventMouseMotion
-		if _orbiting:
+		if _orbiting and _eye.current:
+			_eye_yaw = clampf(_eye_yaw - motion.relative.x * 0.004, _look_min.y, _look_max.y)
+			_eye_pitch = clampf(_eye_pitch - motion.relative.y * 0.004, _look_min.x, _look_max.x)
+		elif _orbiting:
 			_yaw -= motion.relative.x * 0.008
 			_pitch = clampf(_pitch - motion.relative.y * 0.008, -1.5, 0.4)
 			_place_camera()
