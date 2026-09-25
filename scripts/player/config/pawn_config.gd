@@ -258,11 +258,13 @@ extends Resource
 ## it, it banks in proportion to what is left, so the top is approached rather
 ## than arrived at. See SpeedEnergy.accumulate().
 ##
-## [ME:CONFIRMED] measured by the owner, from a standstill at yaw 0 (the
-## original's HUD speed wanders with the yaw, float precision, and can stick at
-## 25.90-25.91 off it): 25.78 km/h at about 7 s, very slow past 25.82, 25.92 at
-## about 12 s. [ME:DERIVED] 0.9 is what puts 25.78 at 7 s on the SMOOTH curve;
-## it then gives 25.82 at about 7.3 s and 25.92 within 0.01 by 12 s.
+## [ME:CONFIRMED] measured by the owner from a standstill, within 100 m of the
+## world origin: 25.78 km/h at about 7 s, very slow past 25.82, 25.92 on the
+## HUD at 10-12 s. Measure the original's speed near the origin only: its HUD
+## speed comes off 32-bit positions, and far out the quantised coordinates hold
+## the reading at 25.90-25.91 however long the run. [ME:DERIVED] 0.9 is what
+## puts 25.78 at 7 s on the SMOOTH curve; it then gives 25.82 at about 7.3 s
+## and a HUD 25.92 (rounded to 0.01) at about 10.5 s.
 @export var energy_tail: float = 0.9
 ## [ME:CONFIRMED 02 §2.1] SpeedEnergyDecelerationExponent = 0.5 as a VALUE.
 ## [ME:INFERRED] as a FORMULA: taken literally as the exponent in
