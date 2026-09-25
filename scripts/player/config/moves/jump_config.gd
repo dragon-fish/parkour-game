@@ -22,7 +22,6 @@ func _init() -> void:
 	check_for_ladder = true
 	check_for_ledge_walk = true
 	check_for_balance = true
-	# ✅ The one state that offers a coil -- the owner measured "实测只能 Jump
-	# 进入", and MoveConfig.check_for_coil's own note covers why the narrowness
-	# is load-bearing rather than incidental.
+	# A rise offers a coil. MoveConfig.check_for_coil's own note covers why the
+	# narrowness -- rises only, never a fall -- is load-bearing.
 	check_for_coil = true

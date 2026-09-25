@@ -217,10 +217,12 @@ extends Resource
 @export var check_for_ledge_walk: bool = false
 
 ## Whether a crouch pressed in mid-air out of this move tucks the legs up.
+## Read through AirborneMove.coil_transition().
 ##
-## ⚠️ TRUE ON EXACTLY ONE MOVE, and that narrowness is the point. ✅ The owner,
-## measured in the original: "实测只能 Jump 进入" -- 11.3's chart draws
-## `Jump --> Coil` and no other edge into it, and this is that edge.
+## TRUE ONLY ON A RISE: a jump's, and a spring board's throw. The narrowness is
+## the point. [ME:INFERRED] from play: the coil is taken on the way up -- a
+## spring board's rise offers it the same as a jump's, and nothing descending
+## does. 11.3's chart draws only `Jump --> Coil`.
 ##
 ## 🎯 IT IS ALSO WHAT KEEPS A COIL FROM EATING THE LANDING ROLL. Both read the
 ## same buffered press through Player.consume_roll(), so a flag set on Falling

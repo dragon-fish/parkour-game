@@ -296,20 +296,27 @@ func test_the_throw_goes_where_the_camera_looks_at_that_instant() -> void:
 	assert_gt(player.velocity.z, 0.0,
 		"thrown along the plants (-Z) instead of the way the camera looks (+Z)")
 
-func test_the_rise_cannot_coil() -> void:
+func test_the_rise_can_coil() -> void:
+	# A rise offers a coil, a jump's or a throw's alike.
 	var player: Player = await _press_jump_at_a_spring_board()
 	var board := player.move_manager.move_for(Move.SPRING_BOARD) as SpringBoardMove
 	var ticks: int = 0
 	while not board.has_launched() and ticks < 120:
 		await step(1)
 		ticks += 1
-	assert_true(board.has_launched(),
-		"the throw never came, so the coil assertion below would pass vacuously")
-	_world["input"].state.crouch_pressed = true
-	_world["input"].state.crouch_held = true
+	assert_true(board.has_launched(), "test setup: the throw never came")
+	_world["input"].press_crouch()
 	await step(3)
-	assert_ne(player.move_manager.current_name, Move.COIL,
-		"a spring board coiled: Coil belongs to Jump alone")
+	assert_eq(player.move_manager.current_name, Move.COIL, "a crouch on the throw's rise did not coil")
+
+func test_the_steps_cannot_coil() -> void:
+	# The steps are the board's own: a crouch there is not a tuck.
+	var player: Player = await _press_jump_at_a_spring_board()
+	var board := player.move_manager.move_for(Move.SPRING_BOARD) as SpringBoardMove
+	assert_false(board.has_launched(), "test setup: thrown before the steps")
+	_world["input"].press_crouch()
+	await step(2)
+	assert_ne(player.move_manager.current_name, Move.COIL, "a crouch during the steps coiled")
 
 func test_the_rise_catches_every_interest_line_a_jump_does() -> void:
 	# A spring board aimed at a pipe with a grabbable beam behind it: without

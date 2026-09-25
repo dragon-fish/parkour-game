@@ -379,6 +379,25 @@ func settle_landing(delta: float) -> StringName:
 		return LAY_ON_GROUND
 	return landing_destination(fall_height, rolled)
 
+## COIL when a crouch pressed now tucks the legs up, KEEP otherwise. For a rise
+## whose config offers it (MoveConfig.check_for_coil), asked BEFORE the probes:
+## a coil is the player asking NOT to interact with what is coming -- the
+## owner's own use for it, "跳过更宽的沟而不触发 StepUp 减速" -- so a vault or a
+## grab that fired first would take away the exact thing the key was pressed
+## for.
+##
+## consume_roll() LAST in the chain, because it has a side effect: `and`
+## short-circuits left to right, so any order that spends the buffered press
+## before the speed gate has decided would eat a crouch meant for the landing
+## roll on every rise too slow to coil. Same trap, and the same fix, as
+## settle_landing()'s own note.
+func coil_transition() -> StringName:
+	var c := current_config()
+	if c != null and c.check_for_coil and player.horizontal_speed() >= config.coil.min_trigger_speed \
+			and player.move_manager.can_enter(COIL) and player.consume_roll():
+		return COIL
+	return KEEP
+
 ## Where a fall past falling_uncontrolled_height loses control to, or KEEP
 ## short of it. For the states holding both bCheckExitToUncontrolledFalling and
 ## bCheckForSoftLanding [ME:CONFIRMED 11 §11.2] -- Falling and 180TurnInAir.

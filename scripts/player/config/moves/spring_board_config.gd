@@ -121,3 +121,6 @@ func _init() -> void:
 	# which is what lets a fast mouse throw the body backwards.
 	freeze_visual_yaw = true
 	allows_turn = false
+	# [ME:INFERRED] from play: the throw's rise offers a coil the same as a
+	# jump's. Read only once thrown -- the steps are the move's own.
+	check_for_coil = true

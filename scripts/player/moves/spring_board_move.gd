@@ -12,9 +12,10 @@ extends AirborneMove
 # [ME:CONFIRMED] a recording of the original holds SpringBoarding from the
 # jump press, through 0.1-0.2 s of ordinary walking up to the first face,
 # through the 0.4 s climb, and on through the whole 0.6 s rise -- Falling only
-# takes over at the apex. Handing the rise to JumpMove instead would let it
-# coil, which the original cannot (Coil enters from Jump alone), and would
-# run Jump's probes rather than the three the CDO gives this move.
+# takes over at the apex. Kept here rather than handed to JumpMove so the rise
+# runs the three probes the CDO gives this move, not Jump's. It still offers a
+# coil, as a jump's rise does: [ME:INFERRED] from play -- see
+# SpringBoardConfig.check_for_coil.
 #
 # Extends AirborneMove for the rise's air physics and probes, and COMPOSES a
 # ScriptedMove for the two steps -- the same shape LadderMove gives its top
@@ -202,12 +203,15 @@ func _launch() -> void:
 	_launched = true
 	_phase = Phase.RISE
 
-## The rise, kept here until the apex. Air physics and the config's own
-## probes (grab, vault over, wall climb -- [ME:CONFIRMED] the three
-## bCheckFor* on the CDO), and Falling the tick the vertical speed is gone
-## ([ME:CONFIRMED] bCheckExitToFalling). No coil: that is Jump's alone.
+## The rise, kept here until the apex. Air physics, a coil on a crouch (see
+## SpringBoardConfig.check_for_coil), the config's own probes (grab, vault
+## over, wall climb -- [ME:CONFIRMED] the three bCheckFor* on the CDO), and
+## Falling the tick the vertical speed is gone ([ME:CONFIRMED]
+## bCheckExitToFalling).
 func _rise(delta: float, input: MoveInput) -> StringName:
 	apply_air_physics(delta, player.wish_direction(input))
+	if coil_transition() == COIL:
+		return advance_and_hand_off(COIL)
 	var probed := probe_transition()
 	if probed != KEEP:
 		player.set_grounded(false)
