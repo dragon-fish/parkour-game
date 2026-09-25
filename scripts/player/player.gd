@@ -828,6 +828,10 @@ var active_obstacle: Vector2 = Vector2(-1.0, 0.0)
 ## is the only move here whose recovery outlasts an ordinary transition.
 const _SLOW_EXIT_CLIPS: Array[StringName] = [&"Slide", &"Slide_Exit", &"sneak"]
 
+## The clips the coil plays. Fading INTO one takes the whole coil (see
+## _exit_blend_time()), so none of them may be a clip anything else plays.
+const _COIL_CLIPS: Array[StringName] = [&"Coil_Tuck", &"GroundSit_Idle"]
+
 ## Clips in which the body is already LOW. Leaving a slide for one of these is
 ## not a stand-up, so it does not get the long fade: the owner's point is that
 ## a slide into a crouch is continuous -- the body simply stays down -- while a
@@ -1786,6 +1790,10 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# bodies never resolve it and keep Crouch_Idle, exactly as the paragraph
 	# at the top of this block describes.
 	&"GroundSit_Idle",
+	# The coil's tuck as a pose of its own: one frame baked by
+	# scripts/debug/pose_lab.gd into a body's private pose pack. Ahead of
+	# GroundSit_Idle in the coil's list, absent on every body without the pack.
+	&"Coil_Tuck",
 	# THE EIGHT-WAY SETS, and the whole reason the reversed-twin hack below can
 	# stop being the answer for a body that has them. Listed out rather than
 	# generated from CharacterAnimator.DIRECTION_SETS because this list is also
@@ -3196,6 +3204,13 @@ func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		an
 ## stand-up's half second, but at the ordinary 0.15 s a change of pose that
 ## large reads as a cut.
 func _exit_blend_time(from_name: StringName, to_name: StringName) -> float:
+	# INTO THE TUCK, THE FADE IS THE WHOLE COIL: the legs arrive exactly as
+	# CoilConfig.duration runs out, and CoilConfig.pose_linger_time holds
+	# them there after. Read once, when the graph is built -- a duration
+	# changed later leaves this fade at the old length until the body is
+	# re-attached.
+	if _COIL_CLIPS.has(to_name) and config != null:
+		return config.coil.duration
 	if not _SLOW_EXIT_CLIPS.has(from_name):
 		return body_animation_blend_time
 	if _CROUCHED_CLIPS.has(to_name):

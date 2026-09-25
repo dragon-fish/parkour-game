@@ -73,6 +73,12 @@ func _init() -> void:
 ## until the clock runs out.
 @export var duration: float = 0.5
 
+## Seconds the tuck stays on screen after the coil hands over to a fall.
+## PROJECT-DEFINED. The fade into the tuck takes the whole of `duration` (see
+## Player._exit_blend_time()), so without this the pose would be reached on
+## the tick the capsule lets go and left at once. A landing ends it early.
+@export var pose_linger_time: float = 0.2
+
 ## ✅ HeightBoostDuration. How long the capsule takes to reach capsule_height.
 ##
 ## The EASE, not the hold. Read together with the owner's note above, the two

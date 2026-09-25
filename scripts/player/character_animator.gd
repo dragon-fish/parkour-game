@@ -564,6 +564,11 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 		return
 	_oneshot = Move.KEEP
 	_oneshot_left = 0.0
+	if from == Move.COIL and to == Move.FALLING:
+		# The tuck outlasts the capsule: see CoilConfig.pose_linger_time. A
+		# landing re-arms through this function, which clears it.
+		_start_oneshot(_coil_clip(), player.config.coil.pose_linger_time)
+		return
 	if to == Move.DODGE_JUMP:
 		# Its own authored length, like every other one-shot. The landing
 		# clears it through the ordinary path above, so what it actually owns
@@ -601,6 +606,13 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 		if player.wish_direction(player.last_input).length_squared() < 0.0001:
 			_start_oneshot(&"Jump_Land")
 
+## The coil's tuck. Coil_Tuck is a pose baked for the body (see
+## Player._KNOWN_ANIMATION_CLIPS); a body without it keeps GroundSit_Idle.
+## Shared with the linger in _arm_oneshot(), which must hold the same clip.
+func _coil_clip() -> StringName:
+	return _first_available([&"Coil_Tuck", &"GroundSit_Idle", &"Crouch_Idle",
+		&"sneaking", &"Jump", &"NinjaJump_Idle", &"jump", &"idle"])
+
 ## Which of the dodge pair the live dodge wants, named for the side the body
 ## goes. Read off the move rather than off velocity, which air control has
 ## already had a tick at by the time anything asks -- the same job
@@ -618,10 +630,12 @@ func active_oneshot() -> StringName:
 	return _oneshot
 
 ## Arms `clip` for its own natural length, if the attached body has it at all.
-func _start_oneshot(clip: StringName) -> void:
-	if not _has_clip(clip):
+## Arms `clip` for `seconds`, or for its own authored length when none is
+## given.
+func _start_oneshot(clip: StringName, seconds: float = -1.0) -> void:
+	if clip == Move.KEEP or not _has_clip(clip):
 		return
-	var length := _clip_length(clip)
+	var length := seconds if seconds >= 0.0 else _clip_length(clip)
 	if length <= 0.0:
 		return
 	_oneshot = clip
@@ -1424,8 +1438,7 @@ func _target_animation() -> StringName:
 			# Crouch_Idle stays in the chain behind it: GroundSit_Idle is in
 			# UAL1's FULL tier only, and the tracked free packs must still
 			# produce something (see FULL-LIBRARY.md).
-			return _first_available([&"GroundSit_Idle", &"Crouch_Idle",
-				&"sneaking", &"Jump", &"NinjaJump_Idle", &"jump", &"idle"])
+			return _coil_clip()
 		Move.SKILL_ROLL:
 			# A GENUINE MATCH: UAL1 ships a Roll.
 			return _first_available([&"Roll", &"Jump_Start", &"jump", &"idle"])
