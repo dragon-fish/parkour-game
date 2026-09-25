@@ -1269,7 +1269,11 @@ func kick_landing(coiled: bool) -> void:
 	if _config == null:
 		return
 	var camera_config: CameraConfig = _config.camera
-	if coiled:
+	# FIRST PERSON ONLY. The throw is there to hide the eye jumping half a
+	# metre as the capsule comes back; from behind there is no eye in the head
+	# to hide, only a camera flung about, so the outside view takes the
+	# ordinary landing's nod.
+	if coiled and not in_third_person():
 		kick_pitch(-deg_to_rad(camera_config.coil_land_pitch_kick_deg),
 			camera_config.coil_land_pitch_kick_rise_time,
 			camera_config.coil_land_pitch_kick_recover_time,
