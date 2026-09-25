@@ -163,14 +163,21 @@ func base_floor() -> float:
 	return energy_for_speed(_pawn, _pawn.speed_max_base_velocity)
 
 ## The energy at which the speed curve first reaches `speed` -- the inverse of
-## curve_at(). Linear search over the same knots, so the two cannot disagree.
+## curve_at(), in whichever mode it reads, so the two cannot disagree.
 ##
-## Used for the turning floor above. Returns 0 for a speed at or below the
-## curve's start, and the last knot's energy for anything past its end.
+## Used for every floor, limit and follow in terms of speed. Returns 0 for a
+## speed at or below the curve's start, and the last knot's energy for
+## anything past its end.
+##
+## DO NOT invert the knots when the curve reads SMOOTH: everything that sets
+## the budget from a speed would land a little off the curve that reads it
+## back, and the difference shows up as a floor that is not quite the floor.
 static func energy_for_speed(pawn: PawnConfig, speed: float) -> float:
 	var knots := pawn.speed_curve
 	if knots.is_empty():
 		return 0.0
+	if pawn.speed_curve_interp_mode == 1:
+		return _smooth_energy_for_speed(pawn, speed)
 	if speed <= knots[0].y:
 		return knots[0].x
 	for i in range(1, knots.size()):
@@ -182,6 +189,25 @@ static func energy_for_speed(pawn: PawnConfig, speed: float) -> float:
 				return b.x
 			return a.x + (b.x - a.x) * ((speed - a.y) / span)
 	return knots[knots.size() - 1].x
+
+## energy_for_speed() for the SMOOTH curve: bisected, since the fitted form has
+## no closed inverse. It rises monotonically, so the bisection is exact to its
+## tolerance; 40 halvings of a 7-second span is far below a tick's banking.
+static func _smooth_energy_for_speed(pawn: PawnConfig, speed: float) -> float:
+	var top: float = pawn.speed_curve[pawn.speed_curve.size() - 1].x
+	if speed <= curve_at(pawn, 0.0):
+		return 0.0
+	if speed >= curve_at(pawn, top):
+		return top
+	var low: float = 0.0
+	var high: float = top
+	for i in 40:
+		var mid: float = (low + high) * 0.5
+		if curve_at(pawn, mid) < speed:
+			low = mid
+		else:
+			high = mid
+	return high
 
 ## Linear interpolation over pawn.turn_rate_cost_curve, clamped at both ends.
 ## Clamping rather than extrapolating on purpose: beyond the measured band the

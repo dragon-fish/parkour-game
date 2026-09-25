@@ -8,6 +8,7 @@ func _pawn() -> PawnConfig:
 
 func test_the_curve_passes_through_every_confirmed_knot() -> void:
 	var pawn := _pawn()
+	pawn.speed_curve_interp_mode = 0
 	for knot in pawn.speed_curve:
 		assert_almost_eq(SpeedEnergy.curve_at(pawn, knot.x), knot.y, 0.0001, \
 			"LINEAR curve misses the confirmed knot at E=%f" % knot.x)
@@ -21,8 +22,19 @@ func test_the_smooth_curve_also_passes_through_every_confirmed_knot() -> void:
 		assert_almost_eq(SpeedEnergy.curve_at(pawn, knot.x), knot.y, 0.001, \
 			"SMOOTH curve misses the confirmed knot at E=%f" % knot.x)
 
+func test_the_smooth_curve_reads_back_the_energy_it_was_asked_for() -> void:
+	# Every floor, limit and follow sets the budget from a speed, and the cap
+	# reads it back: in SMOOTH the two must be the same curve.
+	var pawn := _pawn()
+	pawn.speed_curve_interp_mode = 1
+	for speed in [0.5, 4.0, 4.44, 5.7, 6.9]:
+		var e: float = SpeedEnergy.energy_for_speed(pawn, speed)
+		assert_almost_eq(SpeedEnergy.curve_at(pawn, e), speed, 0.001,
+			"SMOOTH energy_for_speed(%.2f) does not read back" % speed)
+
 func test_the_curve_is_flat_past_its_last_knot() -> void:
 	var pawn := _pawn()
+	pawn.speed_curve_interp_mode = 0
 	assert_almost_eq(SpeedEnergy.curve_at(pawn, 20.0), 7.2, 0.0001, "curve kept climbing past E=7")
 
 func test_the_cap_never_exceeds_ground_speed_in_either_mode() -> void:

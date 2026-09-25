@@ -188,16 +188,19 @@ extends Resource
 @export var floor_snap_speed: float = 2.0
 
 @export_group("Speed energy")
-## [ME:CONFIRMED 02 §2.1] LINEAR reproduces the original exactly: its
-## InterpCurveFloat carries an interpolation mode alongside its knots, and
-## CIM_Linear is the value actually set on SpeedCurve_LightWeapon.
-## SMOOTH (see speed_curve_smooth_fit) is a project-added opt-in feel
-## variant, not from the original: since accel_rate is far larger than any
-## segment's slope, the curve's slope IS the felt acceleration, so the
+## How the speed curve is read between its knots -- 0 = LINEAR, 1 = SMOOTH
+## (see speed_curve_smooth_fit).
+##
+## SMOOTH, and the original's play is why. Since accel_rate is far larger than
+## any segment's slope, the curve's slope IS the felt acceleration, so the
 ## piecewise LINEAR form steps it 10.0 -> 2.0 -> 0.52 -> 0.20 m/s^2 at three
-## instants. Whether that reads as a gear change is an empirical question, so
-## it is a switch, not an argument -- 0 = LINEAR, 1 = SMOOTH.
-@export_enum("LINEAR", "SMOOTH") var speed_curve_interp_mode: int = 0
+## instants: four straight lines, where the original accelerates along one
+## curve. Each kink is small; stacked, they read as a different game.
+##
+## [ME:CONFIRMED 02 §2.1] the CDO's InterpCurveFloat declares CIM_Linear on
+## SpeedCurve_LightWeapon. Kept on record and deliberately not followed: the
+## play does not read as linear, and SMOOTH passes through every knot.
+@export_enum("LINEAR", "SMOOTH") var speed_curve_interp_mode: int = 1
 ## (A, a, B, b) of v(E) = A*(1 - e^(-E/a)) + B*(1 - e^(-E/b)), the SMOOTH
 ## mode's curve. Project-added, not from the original -- no evidence tag
 ## applies to a value with no source uu. Fitted OFFLINE to the five confirmed
