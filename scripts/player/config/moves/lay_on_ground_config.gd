@@ -48,11 +48,12 @@ func _init() -> void:
 	# [ME:CONFIRMED A1 TdMove_LayOnGround] Min/MaxLookConstraint yaw is
 	# +-5000 of 65536, 27.5 degrees.
 	#
-	# The pitch floor is 10 degrees below level, a degree short of the CDO's
-	# -2000. The body props itself up on its hands (the body scene's LyingPose),
-	# so a little below level looks along it; lying flat it would look into
-	# it, and a body posed flat wants this back above level. A view that
-	# arrives lower is eased up to the floor by CameraRig.apply_look(), not
-	# snapped. First person only -- see third_person_pitch_max_deg.
-	min_look_constraint = Vector3(deg_to_rad(-10.0), -0.479, -PI)
+	# The pitch floor is 30 degrees below level, lower than the CDO's -2000
+	# (11 degrees). The body props itself up on its hands (the body scene's
+	# LyingPose) and the eye is lifted over it (lay_on_ground_eye_lift), so
+	# looking down looks along the body; lying flat it would look into it, and
+	# a body posed flat wants this back above level. A view that arrives lower
+	# is eased up to the floor by CameraRig.apply_look(), not snapped. First
+	# person only -- see third_person_pitch_max_deg.
+	min_look_constraint = Vector3(deg_to_rad(-30.0), -0.479, -PI)
 	max_look_constraint = Vector3(PI, 0.479, PI)
