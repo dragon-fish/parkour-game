@@ -73,6 +73,22 @@ func _init() -> void:
 ## until the clock runs out.
 @export var duration: float = 0.5
 
+## Seconds the fade into the tuck takes, and out of it. PROJECT-DEFINED. The
+## capsule shrinks at once (boost_duration eases it); the legs are allowed
+## longer to arrive, so the tuck reads as drawn up rather than snapped. Read
+## when the body's animation graph is built -- see Player._exit_blend_time().
+@export var pose_enter_blend_time: float = 0.32
+@export var pose_exit_blend_time: float = 0.18
+## Seconds a coil's landing keeps the clip already on screen as the
+## animation's target -- the tuck, or the fall it was fading into. Long enough
+## to swallow the one tick of CROUCH a landing in the open passes through on
+## its way to WALKING, and no longer: without it the graph starts fading into
+## a crouch-walk it then has to finish before it may go anywhere else -- a
+## pose nobody asked for, flashed at the landing. Held any longer, the pose
+## visibly plays on after the feet are down. A body that lands in a duct stays
+## in CROUCH and gets its crouch-walk after this.
+@export var landing_hold_time: float = 0.05
+
 ## ✅ HeightBoostDuration. How long the capsule takes to reach capsule_height.
 ##
 ## The EASE, not the hold. Read together with the owner's note above, the two

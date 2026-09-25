@@ -433,12 +433,16 @@ extends Resource
 ## original's barbed wire hurts on contact and keeps hurting while you are in
 ## it, but does not chain-lock you, which is what a window like this buys.
 ##
-## THE POINT IS THE ESCAPE. A wire volume that renews its STAGGER would
-## otherwise re-stagger the player on the tick the lockout ends, forever: the
-## lockout refuses movement input, so without a window in which the hits are
-## eaten there is no tick in which they can walk out. It has to outlast the
-## time it takes to cross the wire, not the time it takes to react.
+## THE POINT IS THE ESCAPE. A wire volume renews its STAGGER every tick the
+## body is in it, and without a window each of those would hurt again and
+## empty the budget again, so the body could never pick up the speed to get
+## out. Armed at the hit (Player.take_hazard_hit()) and when a lockout that
+## began as one ends. It has to outlast the time it takes to cross the wire,
+## not the time it takes to react.
 @export var stagger_immunity_time: float = 1.0
+## Seconds a hazard's hit takes to fade from the screen. PROJECT-DEFINED; the
+## same figure RampSlideConfig.hurt_flash_time gives the chute's own hurt.
+@export var hurt_flash_time: float = 0.6
 
 ## [ME:CONFIRMED 13.1] Measured off the HUD. A hard landing costs 15 of these
 ## whatever the height, a fatal fall costs exactly all of them -- so a full
@@ -451,13 +455,15 @@ extends Resource
 ## coming back.
 ##
 ## THE DELAY IS WHAT MAKES THE WOUNDED PICTURE VISIBLE. The climb back is only
-## two seconds wide; shortening this does not make recovery snappier, it
+## a few seconds wide; shortening this does not make recovery snappier, it
 ## deletes the feedback that the player was hurt at all.
 @export var health_regen_delay: float = 5.0
 
-## [ME:CONFIRMED 13.1] Health per second once the delay is up. Flat, not a
-## curve.
-@export var health_regen_rate: float = 35.0
+## Health per second once the delay is up. Flat, not a curve.
+##
+## [ME:CONFIRMED] measured by the owner in the original: 20. 13.1 gives 35;
+## the measurement wins, DO NOT put 35 back.
+@export var health_regen_rate: float = 20.0
 
 ## [ME:CONFIRMED 13.1] What a fatal fall costs, which is exactly a full bar.
 @export var fatal_fall_damage: float = 100.0

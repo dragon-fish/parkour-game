@@ -219,6 +219,9 @@ var _turn_serial_seen: int = 0
 ## one-shot is never in SPEED_MATCHED_CLIPS: the graph time scale is pinned to
 ## 1.0 while one plays, so the clock here and the clip agree.
 var _oneshot_left: float = 0.0
+## Whether the one-shot on screen is the coil's landing hold, which the
+## crouch-then-walk a landing hands through must not cut. See _arm_oneshot().
+var _coil_landing_hold: bool = false
 
 ## The clip travel()ed to on the most recent tick, or KEEP if none was. Read by
 ## Player._drive_clip_offset() and by the debug tuner: a per-clip offset needs
@@ -562,8 +565,27 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 	# scripted_duration(), so _drive_speed() leaves it at 1.0x either way.
 	if from == Move.DODGE_JUMP and to == Move.FALLING:
 		return
+	# NOR IS A COIL'S LANDING. It hands the body to CROUCH and, in the open,
+	# straight on to WALKING the next tick; the tuck is held through both.
+	if _coil_landing_hold and _oneshot != Move.KEEP \
+			and (to == Move.CROUCH or to == Move.WALKING):
+		return
 	_oneshot = Move.KEEP
 	_oneshot_left = 0.0
+	_coil_landing_hold = false
+	if _AIRBORNE_MOVES.has(from) and (to == Move.CROUCH or to == Move.WALKING) \
+			and player.last_landing_coiled:
+		# A COIL'S LANDING KEEPS WHATEVER IS ON SCREEN for the one tick of
+		# CROUCH it passes through, so the body fades straight into what
+		# follows rather than through a crouch-walk. See
+		# CoilConfig.landing_hold_time.
+		#
+		# WHATEVER IS ON SCREEN, NOT THE TUCK: after a grab or a wall the
+		# airborne stretch can end with something else showing, and asking
+		# for the tuck here would drag it back.
+		_start_oneshot(current_clip, player.config.coil.landing_hold_time)
+		_coil_landing_hold = _oneshot != Move.KEEP
+		return
 	if to == Move.DODGE_JUMP:
 		# Its own authored length, like every other one-shot. The landing
 		# clears it through the ordinary path above, so what it actually owns
@@ -601,6 +623,13 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 		if player.wish_direction(player.last_input).length_squared() < 0.0001:
 			_start_oneshot(&"Jump_Land")
 
+## The coil's tuck. Coil_Tuck is a pose baked for the body (see
+## Player._KNOWN_ANIMATION_CLIPS); a body without it keeps GroundSit_Idle.
+## Shared with the linger in _arm_oneshot(), which must hold the same clip.
+func _coil_clip() -> StringName:
+	return _first_available([&"Coil_Tuck", &"GroundSit_Idle", &"Crouch_Idle",
+		&"sneaking", &"Jump", &"NinjaJump_Idle", &"jump", &"idle"])
+
 ## Which of the dodge pair the live dodge wants, named for the side the body
 ## goes. Read off the move rather than off velocity, which air control has
 ## already had a tick at by the time anything asks -- the same job
@@ -618,10 +647,12 @@ func active_oneshot() -> StringName:
 	return _oneshot
 
 ## Arms `clip` for its own natural length, if the attached body has it at all.
-func _start_oneshot(clip: StringName) -> void:
-	if not _has_clip(clip):
+## Arms `clip` for `seconds`, or for its own authored length when none is
+## given.
+func _start_oneshot(clip: StringName, seconds: float = -1.0) -> void:
+	if clip == Move.KEEP or not _has_clip(clip):
 		return
-	var length := _clip_length(clip)
+	var length := seconds if seconds >= 0.0 else _clip_length(clip)
 	if length <= 0.0:
 		return
 	_oneshot = clip
@@ -644,6 +675,7 @@ func _oneshot_target(delta: float) -> StringName:
 	if _oneshot_left <= 0.0:
 		_oneshot = Move.KEEP
 		_oneshot_left = 0.0
+		_coil_landing_hold = false
 		return Move.KEEP
 	return _oneshot
 
@@ -1111,6 +1143,14 @@ func _target_animation() -> StringName:
 				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			return _first_available([&"Idle", &"Idle_FoldArms", &"idle", &"Walk"])
 		Move.FALLING:
+			# STILL TUCKED while the coil's capsule is: the legs stay up for as
+			# long as the body is half height (Player.coil_capsule_held), which
+			# is to the landing. Fading to the airborne loop in the air instead
+			# left the landing to arrive mid-fade, and the state machine
+			# finishes a fade before it takes the next one -- the arms flew
+			# open on the ground.
+			if player.coil_capsule_held:
+				return _coil_clip()
 			return _first_available(AIRBORNE_LOOP)
 		Move.SOFT_LANDING:
 			# A RESCUED FALL LOOKS LIKE AN ORDINARY ONE. LiftAir is the dying clip
@@ -1424,8 +1464,7 @@ func _target_animation() -> StringName:
 			# Crouch_Idle stays in the chain behind it: GroundSit_Idle is in
 			# UAL1's FULL tier only, and the tracked free packs must still
 			# produce something (see FULL-LIBRARY.md).
-			return _first_available([&"GroundSit_Idle", &"Crouch_Idle",
-				&"sneaking", &"Jump", &"NinjaJump_Idle", &"jump", &"idle"])
+			return _coil_clip()
 		Move.SKILL_ROLL:
 			# A GENUINE MATCH: UAL1 ships a Roll.
 			return _first_available([&"Roll", &"Jump_Start", &"jump", &"idle"])

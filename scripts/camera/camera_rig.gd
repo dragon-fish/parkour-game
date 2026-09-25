@@ -34,6 +34,11 @@ var _roll: float = 0.0
 ## the obstacle." A vault is a scripted motion, so the eye is entitled to be
 ## moved by it -- see docs/camera-authority.md.
 var _vault_roll: float = 0.0
+## The bank into a turn made on the move, radians. See
+## CameraConfig.turn_roll_max_deg. _turn_yaw is last tick's body yaw, NAN
+## until there is one.
+var _turn_roll: float = 0.0
+var _turn_yaw: float = NAN
 ## Additive lift while dying -- see set_death_lift().
 var _death_lift: float = 0.0
 ## A shake the LEVEL asked for -- see add_shake(). Amplitude and frequency are
@@ -48,6 +53,27 @@ var _shake_phase: float = 0.0
 ## dip is a spring driven by impact speed and recovers on its own schedule;
 ## this one is driven explicitly by a state that knows how long it has left.
 var _landing_pitch: float = 0.0
+
+## The take-off/touchdown nod, radians, positive up. See kick_pitch(). A new
+## kick starts from wherever the last one had got to, so a landing that cuts
+## a take-off short does not snap.
+var _kick: float = 0.0
+var _kick_from: float = 0.0
+var _kick_peak: float = 0.0
+## _kick as drawn: scaled down in third person. What aim_forward() takes out.
+var _kick_shown: float = 0.0
+## Seconds into the current kick, or negative when none is running.
+var _kick_time: float = -1.0
+var _kick_rise: float = 0.0
+var _kick_recover: float = 0.0
+## The ease-out-back constant the way home uses, or 0 for the recover curve
+## below. See _back_constant().
+var _kick_back: float = 0.0
+## The two halves' curves, Godot's standard easings.
+var _kick_rise_trans: Tween.TransitionType = Tween.TRANS_SINE
+var _kick_rise_ease: Tween.EaseType = Tween.EASE_IN_OUT
+var _kick_recover_trans: Tween.TransitionType = Tween.TRANS_SINE
+var _kick_recover_ease: Tween.EaseType = Tween.EASE_IN_OUT
 
 ## A full rotation about the pitch axis, owned by SkillRollMove. Applied
 ## OUTSIDE the pitch clamp, unlike _landing_pitch: the clamp exists to stop the
@@ -502,6 +528,14 @@ func set_eye_lateral(target: float) -> void:
 func set_head_follow_scale(target: float) -> void:
 	_head_follow_scale_target = clampf(target, 0.0, 1.0)
 
+## The body was lifted by `metres` in a way that is not a step -- the coil's
+## capsule given back on the ground -- so the eye goes up with it this tick
+## instead of being eased up after it. See the step smoothing in
+## update_effects().
+func carry_eye_ground(metres: float) -> void:
+	if _has_eye_ground:
+		_eye_ground_y += metres
+
 func set_head_offset(local_offset: Vector3) -> void:
 	_head_local_offset = local_offset
 	_has_head = true
@@ -695,7 +729,10 @@ func reset_state() -> void:
 		_speed_fov = _config.camera.fov_base
 	_death_lift = 0.0
 	_landing_pitch = 0.0
+	_clear_kick()
 	_roll_spin = 0.0
+	_turn_roll = 0.0
+	_turn_yaw = NAN
 	clear_shake()
 	_has_head = false
 	_has_look_constraint = false
@@ -1140,7 +1177,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool, strid
 	var balance_roll: float = _balance_roll
 	if in_third_person():
 		balance_roll *= _config.camera.third_person_balance_roll_scale
-	rotation.z = _roll + _vault_roll + balance_roll
+	rotation.z = _roll + _vault_roll + balance_roll + _advance_turn_roll(delta, horizontal_speed)
 
 	# Layered on top of the ordinary look pitch, same relationship _dip has to
 	# bob above: apply_look() already wrote rotation.x = _pitch for this tick's
@@ -1163,7 +1200,9 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool, strid
 	# whole show; the camera tumbling as well is the same event performed
 	# twice, once by each.
 	var spin: float = 0.0 if in_third_person() else _roll_spin
-	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit) - spin
+	_advance_kick(delta)
+	_kick_shown = _kick * lerpf(1.0, _config.camera.third_person_pitch_kick_scale, _eased_view_blend())
+	rotation.x = clampf(_pitch - _landing_pitch + _kick_shown, -pitch_limit, pitch_limit) - spin
 
 ## Drops the landing dip on the floor, unrecovered.
 ##
@@ -1176,6 +1215,138 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool, strid
 func clear_landing_dip() -> void:
 	_dip = 0.0
 	_landing_pitch = 0.0
+	_clear_kick()
+
+## Nods the view by `radians` (positive up) and lets it back: to the peak over
+## `rise` seconds, home over `recover`, each along its curve (sine in-out
+## unless given). With a `bounce` (radians, a magnitude) the way home is instead
+## an ease-out-back that swings exactly that far past level.
+func kick_pitch(radians: float, rise: float, recover: float, bounce: float = 0.0,
+		rise_trans: Tween.TransitionType = Tween.TRANS_SINE,
+		rise_ease: Tween.EaseType = Tween.EASE_IN_OUT,
+		recover_trans: Tween.TransitionType = Tween.TRANS_SINE,
+		recover_ease: Tween.EaseType = Tween.EASE_IN_OUT) -> void:
+	_kick_from = _kick
+	_kick_peak = radians
+	_kick_rise = maxf(rise, 0.001)
+	_kick_recover = maxf(recover, 0.001)
+	_kick_back = _back_constant(absf(bounce) / maxf(absf(radians), 0.0001)) if bounce != 0.0 else 0.0
+	_kick_rise_trans = rise_trans
+	_kick_rise_ease = rise_ease
+	_kick_recover_trans = recover_trans
+	_kick_recover_ease = recover_ease
+	_kick_time = 0.0
+
+## The ease-out-back constant s whose curve, 1 + (s+1)(u-1)^3 + s(u-1)^2,
+## overshoots its end by `fraction`. The overshoot is 4 s^3 / (27 (s+1)^2) --
+## s = 1.70158, the usual constant, is 10 % -- which grows with s, so it is
+## bisected rather than asked of a formula nobody can read back.
+static func _back_constant(fraction: float) -> float:
+	var low := 0.0
+	var high := 20.0
+	for i in 40:
+		var s := (low + high) * 0.5
+		if 4.0 * s * s * s / (27.0 * (s + 1.0) * (s + 1.0)) < fraction:
+			low = s
+		else:
+			high = s
+	return (low + high) * 0.5
+
+static func _ease_out_back(u: float, s: float) -> float:
+	var x := u - 1.0
+	return 1.0 + (s + 1.0) * x * x * x + s * x * x
+
+## The take-off half of kick_pitch(), growing with the horizontal speed the
+## body leaves the ground with. See CameraConfig.jump_pitch_kick_deg.
+func kick_takeoff(horizontal_speed: float) -> void:
+	if _config == null:
+		return
+	var camera_config: CameraConfig = _config.camera
+	var strength := clampf(horizontal_speed / maxf(camera_config.jump_pitch_kick_speed_ref, 0.001), 0.0, 1.0)
+	kick_pitch(deg_to_rad(lerpf(camera_config.jump_pitch_kick_min_deg,
+		camera_config.jump_pitch_kick_deg, strength)),
+		camera_config.jump_pitch_kick_rise_time, camera_config.jump_pitch_kick_recover_time, 0.0,
+		camera_config.jump_pitch_kick_rise_trans, camera_config.jump_pitch_kick_rise_ease,
+		camera_config.jump_pitch_kick_recover_trans, camera_config.jump_pitch_kick_recover_ease)
+
+## The touchdown half of kick_pitch(): the same small dip every landing, a
+## much deeper one when the airborne stretch had a coil in it. See
+## CameraConfig.land_pitch_kick_deg.
+func kick_landing(coiled: bool) -> void:
+	if _config == null:
+		return
+	var camera_config: CameraConfig = _config.camera
+	# FIRST PERSON ONLY. The throw is there to hide the eye jumping half a
+	# metre as the capsule comes back; from behind there is no eye in the head
+	# to hide, only a camera flung about, so the outside view takes the
+	# ordinary landing's nod.
+	if coiled and not in_third_person():
+		kick_pitch(-deg_to_rad(camera_config.coil_land_pitch_kick_deg),
+			camera_config.coil_land_pitch_kick_rise_time,
+			camera_config.coil_land_pitch_kick_recover_time,
+			deg_to_rad(camera_config.coil_land_pitch_kick_bounce_deg))
+	else:
+		kick_pitch(-deg_to_rad(camera_config.land_pitch_kick_deg),
+			camera_config.land_pitch_kick_rise_time,
+			camera_config.land_pitch_kick_recover_time)
+
+## Where the player is aiming: the camera's forward with the take-off and
+## landing nod (kick_pitch()) taken back out. The nod runs while the player can
+## act, so a launch aimed off the rendered view would leave off by however far
+## the view happened to be nodding. DO NOT
+## aim a launch off camera.global_transform directly.
+func aim_forward() -> Vector3:
+	var forward := -camera.global_transform.basis.z
+	if is_zero_approx(_kick_shown):
+		return forward
+	var parent := get_parent_node_3d()
+	var yawed := (parent.global_basis if parent != null else Basis()) * Basis(Vector3.UP, rotation.y)
+	return forward.rotated((yawed * Vector3.RIGHT).normalized(), -_kick_shown)
+
+func _advance_kick(delta: float) -> void:
+	if _kick_time < 0.0:
+		return
+	_kick_time += delta
+	if _kick_time < _kick_rise:
+		var out: float = Tween.interpolate_value(0.0, 1.0, _kick_time, _kick_rise,
+			_kick_rise_trans, _kick_rise_ease)
+		_kick = lerpf(_kick_from, _kick_peak, out)
+	elif _kick_time < _kick_rise + _kick_recover:
+		var u := (_kick_time - _kick_rise) / _kick_recover
+		var home: float
+		if _kick_back > 0.0:
+			home = _ease_out_back(u, _kick_back)
+		else:
+			home = Tween.interpolate_value(0.0, 1.0, u, 1.0, _kick_recover_trans, _kick_recover_ease)
+		_kick = _kick_peak * (1.0 - home)
+	else:
+		_clear_kick()
+
+## The bank into a turn, eased, from how fast the body's yaw is changing and
+## how fast it is moving. Scaled down from outside like the nods.
+func _advance_turn_roll(delta: float, horizontal_speed: float) -> float:
+	var body := get_parent_node_3d()
+	if body == null or delta <= 0.0:
+		return 0.0
+	var yaw: float = body.global_rotation.y
+	var rate: float = 0.0
+	if not is_nan(_turn_yaw):
+		rate = rad_to_deg(wrapf(yaw - _turn_yaw, -PI, PI)) / delta
+	_turn_yaw = yaw
+	var camera_config: CameraConfig = _config.camera
+	var turn: float = clampf(rate / maxf(camera_config.turn_roll_rate_ref, 0.001), -1.0, 1.0)
+	var moving: float = clampf(horizontal_speed / maxf(camera_config.turn_roll_speed_ref, 0.001), 0.0, 1.0)
+	var target: float = deg_to_rad(camera_config.turn_roll_max_deg) * turn * moving
+	_turn_roll = lerpf(_turn_roll, target, clampf(camera_config.turn_roll_smooth_speed * delta, 0.0, 1.0))
+	return _turn_roll * lerpf(1.0, camera_config.third_person_pitch_kick_scale, _eased_view_blend())
+
+func _clear_kick() -> void:
+	_kick = 0.0
+	_kick_shown = 0.0
+	_kick_from = 0.0
+	_kick_peak = 0.0
+	_kick_time = -1.0
+	_kick_back = 0.0
 
 ## Called on landing. `speed` is the downward speed at the moment of impact.
 func punch_landing(speed: float) -> void:

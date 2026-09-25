@@ -233,6 +233,16 @@ extends Resource
 ## settle_landing()'s own consume_roll() untouched.
 @export var check_for_coil: bool = false
 
+## Whether a hazard's hit knocks the body out of this move and into a fall.
+## The hit itself is Player.take_hazard_hit(); this is only where the body goes.
+##
+## [ME:INFERRED] from play: wire cannot be pushed through by a body hanging,
+## climbing or running a wall -- the hit brings it down. Set on every move
+## where hands or feet are holding on to something (a ledge, a wall, a rung, a
+## cable, a bar, a beam); left clear on the ground and in the air, where the
+## body has nothing to be knocked off.
+@export var hit_knocks_off: bool = false
+
 ## Whether Q may start a turn out of this move.
 ##
 ## DEFAULT TRUE, and the exceptions are what carry the meaning. The rule is

@@ -95,6 +95,8 @@ extends MoveConfig
 @export var plant_arc_bias: float = 0.6
 
 func _init() -> void:
+	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
+	hit_knocks_off = true
 	# STEP_1/STEP_2 compose a ScriptedMove that writes global_position from a
 	# world-space plant target, the same as Grab and SpeedVault. The gate is
 	# coarse (the whole move, not just the two step phases) -- see

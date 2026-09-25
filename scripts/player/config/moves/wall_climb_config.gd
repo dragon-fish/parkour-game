@@ -24,6 +24,8 @@ extends MoveConfig
 # attached.
 
 func _init() -> void:
+	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
+	hit_knocks_off = true
 	# The drift check compares the current position against a world-space
 	# anchor captured on entry. See MoveConfig.holds_world_path.
 	holds_world_path = true

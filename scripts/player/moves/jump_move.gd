@@ -22,6 +22,8 @@ func kick_side() -> int:
 ## recent_wall_side is the one kept for exactly this kind of question.
 func enter(previous: StringName) -> void:
 	_kick_side = player.recent_wall_side if previous == WALL_RUN else 0
+	if player.camera_rig != null:
+		player.camera_rig.kick_takeoff(player.horizontal_speed())
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	apply_air_physics(delta, player.wish_direction(input))

@@ -133,6 +133,46 @@ extends Resource
 ## Fall speed that produces a full-strength landing dip.
 @export var land_dip_speed_ref: float = 18.0
 
+## The view's nod on take-off and touchdown. PROJECT-DEFINED, all of them.
+##
+## Take-off: jump_pitch_kick_min_deg from a standstill, linear to
+## jump_pitch_kick_deg at jump_pitch_kick_speed_ref (horizontal). Negative is
+## down: a standing jump dips the view slightly and a running one lifts it.
+## Peaks over jump_pitch_kick_rise_time, eases back over
+## jump_pitch_kick_recover_time, each along its own curve (the _trans/_ease
+## pairs, Godot's standard easings).
+##
+## Touchdown: always down by land_pitch_kick_deg, whatever the speed or the
+## fall, and quick both ways (land_pitch_kick_rise_time, _recover_time).
+## [ME:CONFIRMED by play] the landing nod is the same small dip every time --
+## faint enough to lose once running -- EXCEPT the landing that ends an
+## airborne stretch with a coil in it, which throws the head by
+## coil_land_pitch_kick_deg at its own, slower pace (coil_land_pitch_kick_rise_time,
+## _recover_time), and comes back like a spring: the way home is an
+## ease-out-back that swings coil_land_pitch_kick_bounce_deg past level before
+## it settles, all inside the recover time. [ME:CONFIRMED by play] the coil's
+## landing springs back a little. See Player.last_landing_coiled.
+## The nods seen from outside are scaled by third_person_pitch_kick_scale,
+## faded with the view: a nod that is the landing from inside is the whole
+## world lurching from behind.
+@export var third_person_pitch_kick_scale: float = 0.3
+@export var jump_pitch_kick_min_deg: float = -1.0
+@export var jump_pitch_kick_deg: float = 2.5
+@export var jump_pitch_kick_speed_ref: float = 2.0
+@export var jump_pitch_kick_rise_time: float = 0.25
+@export var jump_pitch_kick_recover_time: float = 0.55
+@export var jump_pitch_kick_rise_trans: Tween.TransitionType = Tween.TRANS_CUBIC
+@export var jump_pitch_kick_rise_ease: Tween.EaseType = Tween.EASE_OUT
+@export var jump_pitch_kick_recover_trans: Tween.TransitionType = Tween.TRANS_CUBIC
+@export var jump_pitch_kick_recover_ease: Tween.EaseType = Tween.EASE_OUT
+@export var land_pitch_kick_deg: float = 1.5
+@export var coil_land_pitch_kick_deg: float = 7.5
+@export var coil_land_pitch_kick_rise_time: float = 0.2
+@export var coil_land_pitch_kick_recover_time: float = 0.3
+@export var coil_land_pitch_kick_bounce_deg: float = 1.0
+@export var land_pitch_kick_rise_time: float = 0.1
+@export var land_pitch_kick_recover_time: float = 0.1
+
 # --- shake, driven by the level -----------------------------------------------
 #
 # Something heavy passing close enough to be felt. The level asks for one in
@@ -258,9 +298,11 @@ extends Resource
 ## whatever the body passes. A smaller number than death_eye_lift for the
 ## same reason, scaled to that smaller offset.
 @export var fall_uncontrolled_eye_lift: float = 0.15
-## The same, lying on the back (LayOnGroundMove), in metres. The death's own
-## figure: the body lies the same way, head on the floor.
-@export var lay_on_ground_eye_lift: float = 0.4
+## The same, lying on the back (LayOnGroundMove), in metres. Still wanted
+## with the body propped up on its hands (the body scene's LyingPose): the head
+## is clear of the floor then, but the eye riding it looks down along the body
+## into its own clothes, and the lift is what puts the view over them.
+@export var lay_on_ground_eye_lift: float = 0.2
 ## How fast the eye catches up after the body was lifted over a low obstacle
 ## (see Player.try_step_up). Exponential, so this is a rate, not a duration:
 ## ~12 settles a 0.35 m step in roughly 0.15 s, which reads as a stride. Lower
@@ -373,6 +415,19 @@ extends Resource
 ## Exponential, so a rate: ~8 carries a 57 degree correction -- the widest a
 ## wall-run attach can produce -- in about a third of a second.
 @export var look_settle_speed: float = 8.0
+
+## The bank into a turn made on the move. [ME:CONFIRMED by play] turning the
+## view while moving rolls it slightly into the turn -- left for a left turn --
+## by more the faster the view turns. turn_roll_max_deg at a turn of
+## turn_roll_rate_ref degrees a second, linear below and capped above; opened
+## up by the body's speed from nothing at a standstill to all of it at
+## turn_roll_speed_ref, so looking round on the spot does not bank. Eased at
+## turn_roll_smooth_speed (a rate, per second). Negative max banks the other
+## way. PROJECT-DEFINED numbers.
+@export var turn_roll_max_deg: float = 2.0
+@export var turn_roll_rate_ref: float = 180.0
+@export var turn_roll_speed_ref: float = 2.0
+@export var turn_roll_smooth_speed: float = 8.0
 
 ## How far the eye banks through a vault, at the middle of the arc.
 ##

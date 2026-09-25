@@ -165,20 +165,34 @@ func test_a_crouch_shrinks_the_same_capsule_from_the_feet() -> void:
 		"the crouch moved the feet, which is the coil's job and not its own")
 	assert_lt(crouched.y, standing.y - 0.01, "the crouch did not lower the head")
 
-func test_the_coil_gives_the_capsule_back() -> void:
+func test_the_coil_keeps_the_capsule_until_the_landing() -> void:
+	# [ME:CONFIRMED by the collision-box visualiser] the tuck ends at CoilTime,
+	# the shrink does not: the rest of the flight is made half height.
 	var player: Player = await _jumping()
 	var standing := _capsule_span(player)
 
 	_world["input"].press_crouch()
 	await step(2)
 	assert_eq(player.move_manager.current_name, Move.COIL, "test setup: not coiled")
+	# Let go, or the landing's crouch holds the body down for the key.
+	_world["input"].release_crouch()
 
 	for i in 200:
 		await step(1)
 		if player.move_manager.current_name != Move.COIL:
 			break
 	assert_ne(player.move_manager.current_name, Move.COIL, "the coil never ended")
-	await step(3)
+	await step(1)
+	assert_false(player.grounded, "test setup: the coil ended on the ground")
+	assert_lt(_capsule_span(player).y - _capsule_span(player).x, standing.y - standing.x - 0.1,
+		"the capsule was given back in the air")
+
+	for i in 200:
+		await step(1)
+		if player.grounded:
+			break
+	assert_true(player.grounded, "the body never landed")
+	await step(5)
 
 	var after := _capsule_span(player)
 	assert_almost_eq(after.x, standing.x, 0.001,

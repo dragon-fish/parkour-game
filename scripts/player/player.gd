@@ -29,6 +29,17 @@ var last_landing_rolled: bool = false
 ## physics tick: the counter is gone by the time anything else runs. Set by
 ## FallingMove alongside last_landing_rolled.
 var last_landing_fall_height: float = 0.0
+## Whether the last landing ended an airborne stretch with a coil in it.
+## Read by the camera's landing nod.
+var last_landing_coiled: bool = false
+## Whether the capsule is still the coil's: centre-shrunk, and kept that way
+## through the fall after the tuck ends, until MoveManager hands the body to a
+## move that is not airborne. See CoilMove.exit() and release_coil_capsule().
+var coil_capsule_held: bool = false
+## Whether a coil has been taken since the body last touched down. Set by
+## CoilMove.enter(), read into last_landing_coiled by the landing, cleared by
+## any ground (set_grounded()).
+var coiled_since_ground: bool = false
 ## Last polled input, exposed for the debug HUD.
 var last_input: MoveInput = MoveInput.new()
 
@@ -310,6 +321,9 @@ func set_grounded(value: bool) -> void:
 		# down, and the accumulated height is gone before stepping off again.
 		if fall_tracker != null:
 			fall_tracker.reset(global_position.y)
+		# Any ground ends the airborne stretch a coil marks, a ledge pulled up
+		# onto as much as a landing.
+		coiled_since_ground = false
 
 ## Clears `grounded` WITHOUT counting as a declaration. Called only by
 ## MoveManager, as the fail-safe half of the invariant above: a move that
@@ -364,6 +378,10 @@ var _stagger_immunity: float = 0.0
 ## tell a wire cut from a hard landing and charge the momentum differently.
 ## One-shot: the reader clears it, same as pending_vault_variant.
 var pending_stagger: bool = false
+## A hazard's hit: see take_hazard_hit().
+var _hurt_skips_landing_credit: bool = false
+var _hurt_flash: float = 0.0
+var _hurt_tint: Color = Color(1.0, 0.0, 0.0, 1.0)
 ## One-shot, alongside pending_stagger: the stagger's own screen tint, or
 ## transparent for the hard landing's. LandingMove reads and clears it, and so
 ## does LayOnGroundMove -- which is also handed the hard landing's red when that
@@ -824,6 +842,11 @@ var active_obstacle: Vector2 = Vector2(-1.0, 0.0)
 ## is the only move here whose recovery outlasts an ordinary transition.
 const _SLOW_EXIT_CLIPS: Array[StringName] = [&"Slide", &"Slide_Exit", &"sneak"]
 
+## The clips the coil plays. Fades into and out of them take the coil's own
+## times (see _exit_blend_time()), so none of them may be a clip anything else
+## plays.
+const _COIL_CLIPS: Array[StringName] = [&"Coil_Tuck", &"GroundSit_Idle"]
+
 ## Clips in which the body is already LOW. Leaving a slide for one of these is
 ## not a stand-up, so it does not get the long fade: the owner's point is that
 ## a slide into a crouch is continuous -- the body simply stays down -- while a
@@ -1270,6 +1293,39 @@ func set_centred_capsule_height(height: float) -> void:
 	# whose own resize left this negative.
 	shape_node.position.y = 0.0
 
+## Gives the coil's capsule back, when a move that is not airborne takes the
+## body. Called by MoveManager; a no-op unless coil_capsule_held.
+##
+## GIVE THE BODY BACK IN THE SHAPE THE REST OF THE PROJECT EXPECTS, which is
+## feet-anchored. Everything downstream -- has_headroom(), the deferred
+## restore, CrouchMove -- assumes the capsule's floor is one standing
+## half-height below the origin, and a centred shrink breaks that assumption
+## for as long as it lasts.
+##
+## Re-anchoring at the SAME height is the legs coming down: set_capsule_height()
+## puts the offset back where those callers expect it, which drops the
+## capsule's floor by half the shrink. In the air that is all. On the ground
+## the feet would end up inside the floor, so the body is lifted by the same
+## half shrink here, onto it -- and the eye is carried up with it in the same
+## tick. DO NOT leave the lift to move_and_slide()'s depenetration: the camera
+## reads a rise it was not told about as a step and eases the eye up after the
+## body (CameraRig.carry_eye_ground()), and for a quarter of a second the eye
+## sat 26 cm under a head that was already standing -- inside the neck.
+## THEN full height is asked for through the deferred path, which now gets a
+## body it can reason about: granted immediately in the open, owed under a
+## duct roof. Same call SlideMove and CrouchMove end on.
+func release_coil_capsule() -> void:
+	if not coil_capsule_held:
+		return
+	coil_capsule_held = false
+	var lift: float = (standing_height() - current_capsule_height()) * 0.5 if grounded else 0.0
+	set_capsule_height(current_capsule_height())
+	if lift > 0.0:
+		global_position.y += lift
+		if camera_rig != null:
+			camera_rig.carry_eye_ground(lift)
+	request_standing_capsule()
+
 ## Asks for the standing capsule back, honouring the roof. Restores it at once
 ## when there is room, otherwise records that a restore is OWED and performs it
 ## on the first tick headroom permits.
@@ -1523,6 +1579,8 @@ func reset_state() -> void:
 	# life's statuses put it, with no slide inherited from the old one.
 	_speed_scale = statuses.speed_scale() if statuses != null else 1.0
 	_stagger_immunity = 0.0
+	_hurt_skips_landing_credit = false
+	_hurt_flash = 0.0
 	_last_facing = Vector3.ZERO
 	_carried_jump_nudge = Vector3.ZERO
 	_dodge_heading = Vector3.ZERO
@@ -1549,6 +1607,9 @@ func reset_state() -> void:
 	_travel_speed = 0.0
 	last_landing_speed = 0.0
 	last_landing_fall_height = 0.0
+	last_landing_coiled = false
+	coiled_since_ground = false
+	coil_capsule_held = false
 	grounded = false
 	# Set directly rather than through set_grounded(true) (which would also
 	# flip `grounded` back on, contradicting the line above): global_position
@@ -1780,6 +1841,10 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# bodies never resolve it and keep Crouch_Idle, exactly as the paragraph
 	# at the top of this block describes.
 	&"GroundSit_Idle",
+	# The coil's tuck as a pose of its own: one frame baked by
+	# scripts/debug/pose_lab.gd into a body's private pose pack. Ahead of
+	# GroundSit_Idle in the coil's list, absent on every body without the pack.
+	&"Coil_Tuck",
 	# THE EIGHT-WAY SETS, and the whole reason the reversed-twin hack below can
 	# stop being the answer for a body that has them. Listed out rather than
 	# generated from CharacterAnimator.DIRECTION_SETS because this list is also
@@ -3190,6 +3255,15 @@ func apply_clip_timing(node: AnimationNodeAnimation, clip_name: StringName, 		an
 ## stand-up's half second, but at the ordinary 0.15 s a change of pose that
 ## large reads as a cut.
 func _exit_blend_time(from_name: StringName, to_name: StringName) -> float:
+	# THE TUCK FADES AT ITS OWN PACE: CoilConfig.pose_enter_blend_time in,
+	# pose_exit_blend_time out. Read once, when the graph is built -- a value
+	# changed later leaves the fade at the old length until the body is
+	# re-attached.
+	if config != null:
+		if _COIL_CLIPS.has(to_name):
+			return config.coil.pose_enter_blend_time
+		if _COIL_CLIPS.has(from_name):
+			return config.coil.pose_exit_blend_time
 	if not _SLOW_EXIT_CLIPS.has(from_name):
 		return body_animation_blend_time
 	if _CROUCHED_CLIPS.has(to_name):
@@ -3594,6 +3668,10 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		if landing_impact >= 0.0:
 			camera_rig.punch_landing(landing_impact)
+			# NOT ON A HARD LANDING: LandingMove's forced look down IS that
+			# landing's nod, and the two stacked tip the view twice.
+			if move_manager.current_name != Move.LANDING:
+				camera_rig.kick_landing(last_landing_coiled)
 		# Read from the CAPSULE, not the state name: naming SLIDE and CROUCH
 		# here explicitly used to work only as long as those were the only two
 		# states that ever crouched the body, and silently stopped covering the
@@ -3952,6 +4030,7 @@ func _tick_line_cooldowns(delta: float) -> void:
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	_tick_gravity_window(delta)
 	_stagger_immunity = maxf(_stagger_immunity - delta, 0.0)
+	_drive_hurt_flash(delta)
 	_tick_line_cooldowns(delta)
 	if grounded:
 		_coyote_timer = config.pawn.coyote_time
@@ -4540,6 +4619,46 @@ func is_stagger_immune() -> bool:
 ## itself up off the floor is exactly as unable to absorb another stumble.
 func arm_stagger_immunity() -> void:
 	_stagger_immunity = config.pawn.stagger_immunity_time
+
+## A hazard's hit -- barbed wire, an electric fence. It hurts, flashes the
+## screen and takes the whole speed budget, and that is all: the body keeps its
+## feet and the player keeps the keys.
+##
+## [ME:CONFIRMED] unpacked: the original forces no lockout on a cut, only the
+## slowdown. An emptied budget IS that slowdown -- on the ground the ceiling
+## drops to nothing at once, and in the air the landing starts the run from a
+## standstill (_hurt_skips_landing_credit), which reads as a stumble without
+## being one.
+##
+## `tint` is the hazard's own, alpha its strength; transparent means the
+## ordinary red (LandingConfig.tint_color). Arms the immunity window, so a
+## volume that keeps renewing its STAGGER hurts once per window, not per tick.
+func take_hazard_hit(damage: float, tint: Color) -> void:
+	if damage > 0.0:
+		take_damage(damage, Health.Cause.HAZARD)
+	speed_energy.reset()
+	if not grounded:
+		_hurt_skips_landing_credit = true
+	arm_stagger_immunity()
+	_hurt_tint = tint if tint.a > 0.0 else config.landing.tint_color
+	_hurt_flash = 1.0
+
+## Whether the landing coming up must not credit the budget from its speed:
+## the flight carries a hazard's hit. See take_hazard_hit(). One-shot.
+func consume_hurt_landing() -> bool:
+	var armed := _hurt_skips_landing_credit
+	_hurt_skips_landing_credit = false
+	return armed
+
+## The hit's flash, fading over PawnConfig.hurt_flash_time. Writes the tint
+## only while it runs, and once at nothing when it ends, so the moves that
+## drive a tint of their own are left alone the rest of the time.
+func _drive_hurt_flash(delta: float) -> void:
+	if _hurt_flash <= 0.0:
+		return
+	_hurt_flash = maxf(_hurt_flash - delta / maxf(config.pawn.hurt_flash_time, 0.001), 0.0)
+	if screen_effects != null:
+		screen_effects.set_tint(_hurt_tint, _hurt_flash)
 
 ## How far the stick is pushed, 0 to 1. The keyboard has no stick, so Ctrl
 ## stands in for one pushed gently -- PawnConfig.walk_stick_amount.

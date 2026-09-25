@@ -124,11 +124,11 @@ func test_no_room_to_stand_gets_up_into_a_crouch() -> void:
 func test_lying_down_eases_the_first_person_view_up_to_its_floor() -> void:
 	var world := await _standing_world()
 	var p: Player = world["player"]
-	p.camera_rig.set_pitch(0.0)
+	var floor_pitch: float = p.config.lay_on_ground.min_look_constraint.x
+	p.camera_rig.set_pitch(floor_pitch - 0.4)
 	_knock_down(p)
 	await step(2)
 	assert_eq(p.move_manager.current_name, Move.LAY_ON_GROUND, "test setup: not lying down")
-	var floor_pitch: float = p.config.lay_on_ground.min_look_constraint.x
 	assert_lt(float(p.camera_rig.look_debug()["pitch"]), floor_pitch - 0.01, "the view was cut to the floor in one frame")
 	await step(30)
 	assert_gt(float(p.camera_rig.look_debug()["pitch"]), floor_pitch - 0.01, "the view never came up to the floor")

@@ -55,31 +55,39 @@ func _standing_player() -> Player:
 	await step(30)
 	return world["player"]
 
-func test_a_stagger_puts_the_body_into_the_landing_lockout() -> void:
-	# STAGGER says "go there"; the red tint, the camera dip and the 2 s lockout
-	# all belong to LandingMove and come along for free.
+## A STAGGER carrying `damage` health, lasting until removed.
+func _hit(damage: float = 35.0) -> StatusSpec:
+	var s := _spec(Status.Effect.STAGGER)
+	s.amount = damage
+	return s
+
+func test_a_stagger_hurts_and_empties_the_budget_without_a_lockout() -> void:
+	# [ME:CONFIRMED] unpacked: a cut forces no lockout, only the slowdown --
+	# and an emptied budget is that slowdown. See Player.take_hazard_hit().
 	var p := await _standing_player()
 	assert_true(p.grounded, "test setup: the body never settled onto the floor")
-	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	p.speed_energy.energy = 7.0
+	var hp: float = p.health.hp
+	p.statuses.apply(_hit(35.0), p, 0)
 	await step(2)
-	assert_eq(p.move_manager.current_name, Move.LANDING, \
-		"a stagger did not reach the lockout")
+	assert_almost_eq(p.health.hp, hp - 35.0, 0.01, "the hit did not hurt")
+	assert_lt(p.speed_energy.energy, 0.1, "the hit did not empty the speed budget")
+	assert_ne(p.move_manager.current_name, Move.LANDING, "the hit locked the body out")
 
 func test_a_stagger_shows_its_own_tint_or_the_landing_red() -> void:
-	# An electric fence knocks down like wire but is drawn blue; a spec with no
-	# tint of its own keeps the hard landing's red.
+	# An electric fence is drawn blue; a spec with no tint of its own keeps
+	# the ordinary red.
 	var p := await _standing_player()
-	var shock := _spec(Status.Effect.STAGGER)
+	var shock := _hit()
 	shock.tint = Color(0.3, 0.6, 1.0, 0.5)
 	p.statuses.apply(shock, p, 0)
 	await step(2)
-	assert_eq(p.move_manager.current_name, Move.LANDING, "test setup: the stagger did not fire")
-	assert_eq(p.screen_effects.tint_color(), shock.tint, "the stagger's own tint was not shown")
+	assert_eq(p.screen_effects.tint_color(), shock.tint, "the hit's own tint was not shown")
 	var q := await _standing_player()
-	q.statuses.apply(_spec(Status.Effect.STAGGER), q, 0)
+	q.statuses.apply(_hit(), q, 0)
 	await step(2)
 	assert_eq(q.screen_effects.tint_color(), q.config.landing.tint_color, \
-		"a stagger without a tint lost the landing's red")
+		"a hit without a tint lost the ordinary red")
 
 func test_a_stagger_is_ignored_while_already_dying() -> void:
 	var p := _player()
@@ -119,133 +127,66 @@ func test_a_stagger_fires_in_mid_air_rather_than_waiting_for_the_ground() -> voi
 	# fence charges the vault at the moment it is taken, not on the far side.
 	var p := await _falling_player()
 	assert_false(p.grounded, "test setup: the body is not actually airborne")
-	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	var hp: float = p.health.hp
+	p.statuses.apply(_hit(), p, 0)
 	await step(2)
-	assert_eq(p.move_manager.current_name, Move.LANDING, \
-		"a stagger taken in the air did not fire")
+	assert_lt(p.health.hp, hp, "a hit taken in the air did not fire")
 	assert_false(p.grounded, "test setup: the body reached the floor too soon")
 
-func test_a_body_staggered_in_the_air_keeps_falling() -> void:
-	# THE REASON THE AIRBORNE CASE WAS ONCE REFUSED. LandingMove pins
-	# velocity.y to the floor-snap speed while grounded; off the floor the
-	# same line lowers the body at a constant crawl with no gravity, hanging
-	# it in the sky for the whole lockout.
-	#
-	# ASSERTED AS ACCELERATION, not as distance. Over a short window the snap
-	# crawl and real gravity from a standing start cover about the same ground,
-	# so a distance threshold cannot tell them apart -- but a constant speed
-	# covers equal distances in equal windows and gravity does not.
+func test_a_hit_in_the_air_lands_from_a_standstill() -> void:
+	# The budget the hit took is not handed back by the landing: the run
+	# starts again from nothing, which reads as a stumble without being one.
 	var p := await _falling_player()
-	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	p.speed_energy.energy = 7.0
+	p.velocity = Vector3(6.0, 0.0, 0.0)
+	p.statuses.apply(_hit(), p, 0)
+	for i in 90:
+		await step(1)
+		if p.grounded:
+			break
+	assert_true(p.grounded, "test setup: the body never reached the floor")
 	await step(2)
-	assert_eq(p.move_manager.current_name, Move.LANDING, "test setup: no stagger")
-	var top: float = p.global_position.y
-	await step(5)
-	var first: float = top - p.global_position.y
-	var mid: float = p.global_position.y
-	await step(5)
-	var second: float = mid - p.global_position.y
-	assert_false(p.grounded, "test setup: the body reached the floor mid-measurement")
-	assert_gt(second, first * 1.5, \
-		"the staggered body descended at a constant crawl instead of falling")
+	assert_lt(p.speed_energy.energy, 0.2, \
+		"the landing handed back the budget the hit took")
 
 func test_a_second_stagger_is_eaten_by_the_immunity_window() -> void:
-	# The escape. The lockout refuses movement input, so a volume renewing its
-	# STAGGER would re-fire on the tick the lockout ends and there would be no
-	# tick in which to walk out of the wire.
+	# A volume renews its STAGGER every tick the body is in it; without the
+	# window each renewal would hurt again and empty the budget again.
 	var p := await _standing_player()
-	p.move_manager.start(Move.WALKING)
-	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	p.statuses.apply(_hit(), p, 0)
 	await step(2)
-	assert_eq(p.move_manager.current_name, Move.LANDING, "test setup: no first stagger")
-	# Past the lockout, into the window it arms on the way out.
-	await step(int(ceil(p.config.landing.lockout_time * 60.0)) + 4)
-	assert_ne(p.move_manager.current_name, Move.LANDING, "test setup: still locked out")
-	assert_true(p.is_stagger_immune(), "the lockout did not arm the window")
-	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	var hp: float = p.health.hp
+	assert_true(p.is_stagger_immune(), "the hit did not arm the window")
+	p.statuses.apply(_hit(), p, 0)
 	await step(2)
-	assert_ne(p.move_manager.current_name, Move.LANDING, \
-		"a stagger landed inside the immunity window")
+	assert_almost_eq(p.health.hp, hp, 0.01, "a hit landed inside the immunity window")
 	assert_false(p.statuses.has(Status.Effect.STAGGER), \
 		"the eaten stagger was left in the list to fire when the window closed")
 
-func test_a_staggered_body_stops_the_moment_it_lands() -> void:
-	# The knock-down keeps speed so a wired fence stays passable, but that
-	# inertia is for the ARC. Carried past touchdown it slides the body across
-	# the floor through a lockout that refuses every input, which reads as the
-	# character walking off by itself.
-	var p := await _falling_player()
-	p.velocity = Vector3(6.0, 0.0, 0.0)
-	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
-	await step(2)
-	assert_eq(p.move_manager.current_name, Move.LANDING, "test setup: no stagger")
-	assert_gt(absf(p.velocity.x), 0.5, \
-		"test setup: the knock-down kept no inertia to carry into the fall")
-	await step(60)
-	assert_true(p.grounded, "test setup: the body never reached the floor")
-	assert_almost_eq(Vector2(p.velocity.x, p.velocity.z).length(), 0.0, 0.001, \
-		"the staggered body kept sliding after it landed")
-
 func test_standing_in_the_wire_costs_again_once_the_window_closes() -> void:
 	# A hazard the player can stand in has to keep charging, or they walk the
-	# whole length of it having paid once. The cadence is not a third number:
-	# it falls out of lockout_time (locked, cannot move) plus
-	# stagger_immunity_time (free, and the only chance to leave).
+	# whole length of it having paid once. The cadence is stagger_immunity_time.
 	var p := await _standing_player()
-	p.move_manager.start(Move.WALKING)
-	var lockout: float = p.config.landing.lockout_time
 	var immunity: float = p.config.pawn.stagger_immunity_time
-	
-	# A volume renewing the status is what standing in wire looks like.
-	var renew := func() -> void: p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
-	renew.call()
-	await step(2)
-	assert_eq(p.move_manager.current_name, Move.LANDING, "the first hit missed")
-	
-	# Through the lockout and into the window: renewing here must be eaten.
-	for i in int((lockout + immunity * 0.5) * 60.0):
-		renew.call()
+	var hp: float = p.health.hp
+	for i in int(immunity * 60.0) + 10:
+		p.statuses.apply(_hit(10.0), p, 0)
 		await step(1)
-	assert_ne(p.move_manager.current_name, Move.LANDING, \
-		"the window never opened, so there is no tick in which to walk out")
-	
-	# Past the window it has to bite again.
-	for i in int(immunity * 60.0) + 8:
-		renew.call()
-		await step(1)
-		if p.move_manager.current_name == Move.LANDING:
-			break
-	assert_eq(p.move_manager.current_name, Move.LANDING, \
-		"staying in the wire stopped costing anything after the first hit")
+	assert_almost_eq(p.health.hp, hp - 20.0, 0.01, \
+		"standing in the wire did not cost again once the window closed")
 
 func test_stepping_back_into_the_wire_costs_immediately() -> void:
-	# The immunity window exists so the player can walk OUT. It must not also
-	# be a window in which they can hop off the wire and back on for free --
-	# wire you can bounce along is a platform, not a hazard.
-	#
-	# Only the volume can tell walking in from a renewal (nothing tracks
-	# membership, so a body that left and returned looks identical from the
-	# inside), which is why the distinction arrives as an argument.
+	# The window exists so the player can walk OUT. It must not also be one in
+	# which they can hop off the wire and back on for free -- wire you can
+	# bounce along is a platform, not a hazard. Only the volume can tell
+	# walking in from a renewal, which is why it arrives as an argument.
 	var p := await _standing_player()
-	p.move_manager.start(Move.WALKING)
-	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	p.statuses.apply(_hit(10.0), p, 0)
 	await step(2)
-	assert_eq(p.move_manager.current_name, Move.LANDING, "test setup: the first hit missed")
-
-	for i in int(p.config.landing.lockout_time * 60.0) + 4:
-		await step(1)
-	assert_true(p.is_stagger_immune(), "test setup: the escape window never opened")
-
-	# A renewal inside the window is eaten -- this is the escape, and it stays.
-	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
+	var hp: float = p.health.hp
+	p.apply_status(_hit(10.0), p, 0, true)
 	await step(2)
-	assert_ne(p.move_manager.current_name, Move.LANDING, \
-		"the renewal was not eaten, so there is no tick in which to walk out")
-
-	# Walking back in is not a renewal.
-	p.apply_status(_spec(Status.Effect.STAGGER), p, 0, true)
-	await step(2)
-	assert_eq(p.move_manager.current_name, Move.LANDING, \
+	assert_almost_eq(p.health.hp, hp - 10.0, 0.01, \
 		"the wire could be hopped off and back onto for free")
 
 func test_a_crouch_block_forbids_the_choice_but_not_the_ceiling() -> void:
@@ -282,3 +223,41 @@ func test_a_crouch_block_forbids_the_choice_but_not_the_ceiling() -> void:
 	assert_false(p.has_headroom(), "test setup: the lid left room to stand")
 	assert_true(p.move_manager.can_enter(Move.CROUCH), \
 		"a crouch the body cannot avoid was refused, so a slide here could not end")
+
+# --- a hit knocks the body off what it holds ----------------------------------
+
+func test_a_hit_knocks_a_hanging_body_off_the_ledge() -> void:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_worlds.append(world)
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var p: Player = world["player"]
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(6.0, 2.0, 3.0)
+	shape.shape = box
+	body.add_child(shape)
+	p.get_parent().add_child(body)
+	body.global_position = Vector3(0.0, 1.0, -3.0)
+	var edge := Vector3(0.0, 2.0, -1.6)
+	var query := {"valid": true, "edge": edge, "top": edge,
+			"normal": Vector3.UP, "face_normal": Vector3(0, 0, 1)}
+	p.global_position = IntoGrabMove.hanging_pose(p, p.config, query)
+	p.pending_ledge = query
+	p.move_manager.start(Move.GRAB)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.GRAB, "test setup: not hanging")
+	p.statuses.apply(_hit(), p, 0)
+	await step(2)
+	body.queue_free()
+	assert_ne(p.move_manager.current_name, Move.GRAB, "a hit left the body hanging on")
+
+func test_a_hit_on_the_ground_keeps_the_body_on_its_feet() -> void:
+	var p := await _standing_player()
+	p.move_manager.start(Move.WALKING)
+	await step(1)
+	p.statuses.apply(_hit(), p, 0)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.WALKING, "a hit on the ground knocked the body out of its walk")

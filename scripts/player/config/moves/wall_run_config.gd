@@ -149,6 +149,8 @@ extends MoveConfig
 @export var wall_stick_force: float = 0.5
 
 func _init() -> void:
+	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
+	hit_knocks_off = true
 	# Source: 04 §4.1 `RedoMoveTime = 0.15`. ✅ Far shorter than the 0.5 s
 	# same-wall cooldown this project invented, because the original does not
 	# need a cooldown to stop an endless climb -- a wall run does not lift you

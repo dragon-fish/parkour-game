@@ -95,10 +95,10 @@ func exit() -> void:
 ## Written every tick for LandingMove's reason: Player.update_effects() leaves
 ## the crouch amount alone while this move is current.
 ##
-## LIFTED CLEAR OF THE HEAD IN FIRST PERSON, as the death's eye is: the eye
-## rides the head bone, and a body on its back has its head on the floor.
-## Faded out across a view change, for DeathSequence's reason -- from outside
-## there is no head to be inside. See CameraConfig.lay_on_ground_eye_lift.
+## The first-person eye rides the head bone, so a pose with the head on the
+## floor needs it lifted clear, as the death's eye is; the dial for that is
+## CameraConfig.lay_on_ground_eye_lift. Faded out across a view change, for
+## DeathSequence's reason -- from outside there is no head to be inside.
 func _drive_camera(down: float) -> void:
 	if player.camera_rig == null:
 		return

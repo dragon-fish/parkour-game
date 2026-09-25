@@ -229,6 +229,9 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	# READ HERE, not after the transition: the status is removed once the
 	# transition commits, and by then there is nothing left to ask.
 	var stagger_damage: float = 0.0
+	var knocking_down: bool = player != null and player.statuses.has(Status.Effect.KNOCKDOWN) \
+			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LAY_ON_GROUND \
+			and _moves.has(Move.LAY_ON_GROUND)
 	if player != null and player.statuses.has(Status.Effect.STAGGER) \
 			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LANDING:
 		# EATEN, NOT QUEUED, while immune. Spending it here is what the
@@ -244,22 +247,30 @@ func physics_update(delta: float, input: MoveInput) -> void:
 			player.statuses.remove(Status.Effect.STAGGER)
 			if cost > 0.0:
 				player.take_damage(cost, Health.Cause.HAZARD)
-		else:
+		elif knocking_down:
+			# Going down with it: the knock-down below takes the body, and the
+			# hit's tint rides LayOnGroundMove's. Charged once that commits.
 			staggering = true
 			stagger_damage = player.statuses.amount_of(Status.Effect.STAGGER)
-			player.pending_stagger = true
 			player.pending_stagger_tint = player.statuses.tint_of(Status.Effect.STAGGER)
-			next = Move.LANDING
+		else:
+			# NO LOCKOUT. [ME:CONFIRMED] unpacked, the original forces none on a
+			# cut: the hit hurts, flashes and empties the speed budget, and the
+			# body keeps its feet. See Player.take_hazard_hit().
+			player.take_hazard_hit(player.statuses.amount_of(Status.Effect.STAGGER),
+				player.statuses.tint_of(Status.Effect.STAGGER))
+			player.statuses.remove(Status.Effect.STAGGER)
+			# Holding on to something, it lets go. See MoveConfig.hit_knocks_off.
+			var holding: MoveConfig = _current.current_config()
+			if holding != null and holding.hit_knocks_off:
+				next = Move.FALLING
 	# A KNOCK-DOWN OUTRANKS A STAGGER. Both at once is one body going down --
 	# the original's falling lift pairs a CauseDamage with its TdFallOnBack --
 	# so the stagger is still spent and still charged, below, and only where
 	# the body ends up changes. Its tint stays pending for LayOnGroundMove.
 	var knocked_down := false
-	if player != null and player.statuses.has(Status.Effect.KNOCKDOWN) \
-			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LAY_ON_GROUND \
-			and _moves.has(Move.LAY_ON_GROUND):
+	if knocking_down:
 		knocked_down = true
-		player.pending_stagger = false
 		next = Move.LAY_ON_GROUND
 	if next == Move.KEEP:
 		next = _turn_requested(input)
@@ -292,6 +303,10 @@ func physics_update(delta: float, input: MoveInput) -> void:
 	# See MoveConfig.fall_counts_from_exit.
 	if player != null and leaving != null and leaving.fall_counts_from_exit:
 		player.fall_tracker.reset(player.global_position.y)
+	# The coil's capsule rides the fall after the tuck and is given back to
+	# the first move that is not a fall. See Player.coil_capsule_held.
+	if player != null and not _COIL_CAPSULE_MOVES.has(next):
+		player.release_coil_capsule()
 	_current = _moves[next]
 	current_name = next
 	_arm_declaration_check()
@@ -314,6 +329,10 @@ func physics_update(delta: float, input: MoveInput) -> void:
 			player.take_damage(stagger_damage, Health.Cause.HAZARD)
 	move_changed.emit(from, next)
 	_push_look_constraint()
+
+## The moves the coil's shrunk capsule is kept through: the coil itself and
+## the falls that can follow it. Anything else gets it back on entry.
+const _COIL_CAPSULE_MOVES: Array[StringName] = [Move.COIL, Move.FALLING, Move.FALL_UNCONTROLLED]
 
 ## Fail-safe half only, no reporting: start() can be the FIRST tick of a
 ## move's life, so its own first physics_update() has not run yet -- a move
