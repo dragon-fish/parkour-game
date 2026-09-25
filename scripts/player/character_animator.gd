@@ -580,16 +580,11 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 		# follows rather than through a crouch-walk. See
 		# CoilConfig.landing_hold_time.
 		#
-		# WHATEVER IS ON SCREEN, NOT THE TUCK: a coil that ended in the air
-		# may already be fading out of it, and asking for the tuck again here
-		# drags it back to full and fades it out a second time.
+		# WHATEVER IS ON SCREEN, NOT THE TUCK: after a grab or a wall the
+		# airborne stretch can end with something else showing, and asking
+		# for the tuck here would drag it back.
 		_start_oneshot(current_clip, player.config.coil.landing_hold_time)
 		_coil_landing_hold = _oneshot != Move.KEEP
-		return
-	if from == Move.COIL and to == Move.FALLING:
-		# The tuck outlasts the capsule: see CoilConfig.pose_linger_time. A
-		# landing re-arms through this function, which clears it.
-		_start_oneshot(_coil_clip(), player.config.coil.pose_linger_time)
 		return
 	if to == Move.DODGE_JUMP:
 		# Its own authored length, like every other one-shot. The landing
@@ -1148,6 +1143,14 @@ func _target_animation() -> StringName:
 				return _first_available_directional([&"Walk", &"Walk_Carry", &"Sprint", &"run", &"idle"])
 			return _first_available([&"Idle", &"Idle_FoldArms", &"idle", &"Walk"])
 		Move.FALLING:
+			# STILL TUCKED while the coil's capsule is: the legs stay up for as
+			# long as the body is half height (Player.coil_capsule_held), which
+			# is to the landing. Fading to the airborne loop in the air instead
+			# left the landing to arrive mid-fade, and the state machine
+			# finishes a fade before it takes the next one -- the arms flew
+			# open on the ground.
+			if player.coil_capsule_held:
+				return _coil_clip()
 			return _first_available(AIRBORNE_LOOP)
 		Move.SOFT_LANDING:
 			# A RESCUED FALL LOOKS LIKE AN ORDINARY ONE. LiftAir is the dying clip

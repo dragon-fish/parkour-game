@@ -79,9 +79,6 @@ func _init() -> void:
 ## when the body's animation graph is built -- see Player._exit_blend_time().
 @export var pose_enter_blend_time: float = 0.32
 @export var pose_exit_blend_time: float = 0.18
-## Seconds the tuck stays on screen after the coil hands over to a fall, so
-## the pose outlasts the capsule. PROJECT-DEFINED. A landing ends it early.
-@export var pose_linger_time: float = 0.2
 ## Seconds a coil's landing keeps the clip already on screen as the
 ## animation's target -- the tuck, or the fall it was fading into. Long enough
 ## to swallow the one tick of CROUCH a landing in the open passes through on
