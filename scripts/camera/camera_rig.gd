@@ -34,6 +34,11 @@ var _roll: float = 0.0
 ## the obstacle." A vault is a scripted motion, so the eye is entitled to be
 ## moved by it -- see docs/camera-authority.md.
 var _vault_roll: float = 0.0
+## The bank into a turn made on the move, radians. See
+## CameraConfig.turn_roll_max_deg. _turn_yaw is last tick's body yaw, NAN
+## until there is one.
+var _turn_roll: float = 0.0
+var _turn_yaw: float = NAN
 ## Additive lift while dying -- see set_death_lift().
 var _death_lift: float = 0.0
 ## A shake the LEVEL asked for -- see add_shake(). Amplitude and frequency are
@@ -726,6 +731,8 @@ func reset_state() -> void:
 	_landing_pitch = 0.0
 	_clear_kick()
 	_roll_spin = 0.0
+	_turn_roll = 0.0
+	_turn_yaw = NAN
 	clear_shake()
 	_has_head = false
 	_has_look_constraint = false
@@ -1170,7 +1177,7 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool, strid
 	var balance_roll: float = _balance_roll
 	if in_third_person():
 		balance_roll *= _config.camera.third_person_balance_roll_scale
-	rotation.z = _roll + _vault_roll + balance_roll
+	rotation.z = _roll + _vault_roll + balance_roll + _advance_turn_roll(delta, horizontal_speed)
 
 	# Layered on top of the ordinary look pitch, same relationship _dip has to
 	# bob above: apply_look() already wrote rotation.x = _pitch for this tick's
@@ -1314,6 +1321,24 @@ func _advance_kick(delta: float) -> void:
 		_kick = _kick_peak * (1.0 - home)
 	else:
 		_clear_kick()
+
+## The bank into a turn, eased, from how fast the body's yaw is changing and
+## how fast it is moving. Scaled down from outside like the nods.
+func _advance_turn_roll(delta: float, horizontal_speed: float) -> float:
+	var body := get_parent_node_3d()
+	if body == null or delta <= 0.0:
+		return 0.0
+	var yaw: float = body.global_rotation.y
+	var rate: float = 0.0
+	if not is_nan(_turn_yaw):
+		rate = rad_to_deg(wrapf(yaw - _turn_yaw, -PI, PI)) / delta
+	_turn_yaw = yaw
+	var camera_config: CameraConfig = _config.camera
+	var turn: float = clampf(rate / maxf(camera_config.turn_roll_rate_ref, 0.001), -1.0, 1.0)
+	var moving: float = clampf(horizontal_speed / maxf(camera_config.turn_roll_speed_ref, 0.001), 0.0, 1.0)
+	var target: float = deg_to_rad(camera_config.turn_roll_max_deg) * turn * moving
+	_turn_roll = lerpf(_turn_roll, target, clampf(camera_config.turn_roll_smooth_speed * delta, 0.0, 1.0))
+	return _turn_roll * lerpf(1.0, camera_config.third_person_pitch_kick_scale, _eased_view_blend())
 
 func _clear_kick() -> void:
 	_kick = 0.0

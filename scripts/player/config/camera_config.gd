@@ -416,6 +416,19 @@ extends Resource
 ## wall-run attach can produce -- in about a third of a second.
 @export var look_settle_speed: float = 8.0
 
+## The bank into a turn made on the move. [ME:CONFIRMED by play] turning the
+## view while moving rolls it slightly into the turn -- left for a left turn --
+## by more the faster the view turns. turn_roll_max_deg at a turn of
+## turn_roll_rate_ref degrees a second, linear below and capped above; opened
+## up by the body's speed from nothing at a standstill to all of it at
+## turn_roll_speed_ref, so looking round on the spot does not bank. Eased at
+## turn_roll_smooth_speed (a rate, per second). Negative max banks the other
+## way. PROJECT-DEFINED numbers.
+@export var turn_roll_max_deg: float = 2.0
+@export var turn_roll_rate_ref: float = 180.0
+@export var turn_roll_speed_ref: float = 2.0
+@export var turn_roll_smooth_speed: float = 8.0
+
 ## How far the eye banks through a vault, at the middle of the arc.
 ##
 ## [ME:INFERRED] as a MAGNITUDE: the original's account of this is
