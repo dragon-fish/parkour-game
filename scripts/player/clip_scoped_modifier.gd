@@ -10,6 +10,13 @@ extends SkeletonModifier3D
 @export var clips: Array[String] = []
 ## Seconds to fade in or out as clips change.
 @export var blend_time: float = 0.2
+## Whether the correction fades out while the body is dying. A clip name
+## cannot tell a death from a move that plays the same clip -- LiftAir_Fall is
+## both the fall death and the lying-down -- and a death is meant to go down
+## as the clip has it, uncorrected. The body's owner can tell: whichever
+## ancestor answers is_dying(), the Player in game. Nothing answers in the
+## showcase or the viewers, so there it never fades.
+@export var off_while_dying: bool = false
 
 ## How much of the correction is on right now, 0 to 1, chasing 1 inside a
 ## listed clip and 0 outside one.
@@ -26,12 +33,15 @@ var _weight: float = 0.0
 ## showcase, where no AnimationTree exists at all, so the wrong answer happens
 ## to be the right one there.
 var _driver: Node = null
+## Whoever answers is_dying(); see off_while_dying. Searched until found, for
+## _driver's reason: the body is mounted at runtime.
+var _pawn: Node = null
 
 func _process_modification_with_delta(delta: float) -> void:
 	var skeleton := get_skeleton()
 	if skeleton == null:
 		return
-	var wanted: float = 1.0 if _clip_is_listed() else 0.0
+	var wanted: float = 1.0 if _clip_is_listed() and not _stepping_aside() else 0.0
 	if blend_time > 0.0:
 		_weight = move_toward(_weight, wanted, delta / blend_time)
 	else:
@@ -66,6 +76,19 @@ func _clip_is_listed() -> bool:
 	if _driver is AnimationPlayer:
 		return clips.has(String((_driver as AnimationPlayer).current_animation))
 	return false
+
+func _stepping_aside() -> bool:
+	if not off_while_dying:
+		return false
+	if not is_instance_valid(_pawn):
+		_pawn = null
+		var walker: Node = get_parent()
+		while walker != null:
+			if walker.has_method("is_dying"):
+				_pawn = walker
+				break
+			walker = walker.get_parent()
+	return _pawn != null and _pawn.is_dying()
 
 ## Walks up from the skeleton looking for whoever drives it. An AnimationTree
 ## outranks an AnimationPlayer: where both exist (in the game) the tree is
