@@ -405,7 +405,7 @@ func _camera_yaw() -> float:
 func _look_direction() -> Vector3:
 	var look: Vector3 = Vector3.ZERO
 	if player.camera_rig != null and player.camera_rig.camera != null:
-		look = -player.camera_rig.camera.global_transform.basis.z
+		look = player.camera_rig.aim_forward()
 	return GrabMove.launch_along(look, [-player.global_transform.basis.z, -_line.front()],
 		cfg.jump_min_pitch_deg)
 

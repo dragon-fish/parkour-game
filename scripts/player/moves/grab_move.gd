@@ -810,7 +810,7 @@ func _turned_from_wall() -> float:
 func _launch_direction() -> Vector3:
 	var look := Vector3.ZERO
 	if player.camera_rig != null and player.camera_rig.camera != null:
-		look = -player.camera_rig.camera.global_transform.basis.z
+		look = player.camera_rig.aim_forward()
 	# No rig (tests with a stub player): the body's facing, then the wall's.
 	return GrabMove.launch_along(look, [-player.global_transform.basis.z, _face_normal],
 		config.grab.jump_min_pitch_deg)

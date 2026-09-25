@@ -1214,6 +1214,19 @@ func kick_landing(impact_speed: float) -> void:
 	var strength := clampf(impact_speed / maxf(camera_config.land_pitch_kick_speed_ref, 0.001), 0.0, 1.0)
 	kick_pitch(-deg_to_rad(camera_config.land_pitch_kick_max_deg) * strength)
 
+## Where the player is aiming: the camera's forward with the take-off and
+## landing nod (kick_pitch()) taken back out. The nod runs while the player can
+## act, so a launch aimed off the rendered view would leave up to
+## land_pitch_kick_max_deg low for half a second after every landing. DO NOT
+## aim a launch off camera.global_transform directly.
+func aim_forward() -> Vector3:
+	var forward := -camera.global_transform.basis.z
+	if is_zero_approx(_kick):
+		return forward
+	var parent := get_parent_node_3d()
+	var yawed := (parent.global_basis if parent != null else Basis()) * Basis(Vector3.UP, rotation.y)
+	return forward.rotated((yawed * Vector3.RIGHT).normalized(), -_kick)
+
 func _advance_kick(delta: float) -> void:
 	if _kick_time < 0.0:
 		return
