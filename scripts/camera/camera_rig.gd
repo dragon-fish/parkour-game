@@ -49,6 +49,15 @@ var _shake_phase: float = 0.0
 ## this one is driven explicitly by a state that knows how long it has left.
 var _landing_pitch: float = 0.0
 
+## The take-off/touchdown nod, radians, positive up. See kick_pitch(). A new
+## kick starts from wherever the last one had got to, so a landing that cuts
+## a take-off short does not snap.
+var _kick: float = 0.0
+var _kick_from: float = 0.0
+var _kick_peak: float = 0.0
+## Seconds into the current kick, or negative when none is running.
+var _kick_time: float = -1.0
+
 ## A full rotation about the pitch axis, owned by SkillRollMove. Applied
 ## OUTSIDE the pitch clamp, unlike _landing_pitch: the clamp exists to stop the
 ## landing sink pushing the view past vertical, but a roll is SUPPOSED to go
@@ -695,6 +704,7 @@ func reset_state() -> void:
 		_speed_fov = _config.camera.fov_base
 	_death_lift = 0.0
 	_landing_pitch = 0.0
+	_clear_kick()
 	_roll_spin = 0.0
 	clear_shake()
 	_has_head = false
@@ -1163,7 +1173,8 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool, strid
 	# whole show; the camera tumbling as well is the same event performed
 	# twice, once by each.
 	var spin: float = 0.0 if in_third_person() else _roll_spin
-	rotation.x = clampf(_pitch - _landing_pitch, -pitch_limit, pitch_limit) - spin
+	_advance_kick(delta)
+	rotation.x = clampf(_pitch - _landing_pitch + _kick, -pitch_limit, pitch_limit) - spin
 
 ## Drops the landing dip on the floor, unrecovered.
 ##
@@ -1176,6 +1187,41 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool, strid
 func clear_landing_dip() -> void:
 	_dip = 0.0
 	_landing_pitch = 0.0
+	_clear_kick()
+
+## Nods the view by `radians` (positive up) and lets it back: to the peak over
+## CameraConfig.pitch_kick_rise_time, home over pitch_kick_recover_time.
+func kick_pitch(radians: float) -> void:
+	_kick_from = _kick
+	_kick_peak = radians
+	_kick_time = 0.0
+
+## The touchdown half of kick_pitch(), scaled by how far the body fell.
+func kick_landing(fall_height: float) -> void:
+	if _config == null:
+		return
+	var camera_config: CameraConfig = _config.camera
+	var strength := clampf(fall_height / maxf(camera_config.land_pitch_kick_height_ref, 0.001), 0.0, 1.0)
+	kick_pitch(-deg_to_rad(camera_config.land_pitch_kick_max_deg) * strength)
+
+func _advance_kick(delta: float) -> void:
+	if _kick_time < 0.0:
+		return
+	_kick_time += delta
+	var rise: float = maxf(_config.camera.pitch_kick_rise_time, 0.001)
+	var recover: float = maxf(_config.camera.pitch_kick_recover_time, 0.001)
+	if _kick_time < rise:
+		_kick = lerpf(_kick_from, _kick_peak, smoothstep(0.0, 1.0, _kick_time / rise))
+	elif _kick_time < rise + recover:
+		_kick = _kick_peak * (1.0 - smoothstep(0.0, 1.0, (_kick_time - rise) / recover))
+	else:
+		_clear_kick()
+
+func _clear_kick() -> void:
+	_kick = 0.0
+	_kick_from = 0.0
+	_kick_peak = 0.0
+	_kick_time = -1.0
 
 ## Called on landing. `speed` is the downward speed at the moment of impact.
 func punch_landing(speed: float) -> void:

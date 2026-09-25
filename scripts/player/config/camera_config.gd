@@ -133,6 +133,17 @@ extends Resource
 ## Fall speed that produces a full-strength landing dip.
 @export var land_dip_speed_ref: float = 18.0
 
+## The view's nod on take-off and touchdown: up by jump_pitch_kick_deg as the
+## body leaves the ground, down on landing by an amount that grows with the
+## fall (land_pitch_kick_max_deg at land_pitch_kick_height_ref metres and
+## beyond, linear below). Each kick reaches its peak over pitch_kick_rise_time
+## and eases back over pitch_kick_recover_time. PROJECT-DEFINED, all five.
+@export var jump_pitch_kick_deg: float = 2.0
+@export var land_pitch_kick_max_deg: float = 6.0
+@export var land_pitch_kick_height_ref: float = 5.3
+@export var pitch_kick_rise_time: float = 0.15
+@export var pitch_kick_recover_time: float = 0.3
+
 # --- shake, driven by the level -----------------------------------------------
 #
 # Something heavy passing close enough to be felt. The level asks for one in
