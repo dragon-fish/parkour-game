@@ -8,9 +8,8 @@ func _init() -> void:
 	holds_world_path = true
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # legs busy: hands and feet are both on the obstacle.
-	# A clean vault costs next to nothing, a slow one a lot. See
+	# NO energy_decays: a vault costs the time it takes and nothing else. See
 	# MoveConfig.energy_decays.
-	energy_decays = true
 	# The drop behind the obstacle counts from its top. See
 	# MoveConfig.fall_counts_from_exit.
 	fall_counts_from_exit = true
