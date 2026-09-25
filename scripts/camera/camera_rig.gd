@@ -1212,7 +1212,7 @@ func kick_takeoff(horizontal_speed: float) -> void:
 		camera_config.jump_pitch_kick_rise_time, camera_config.jump_pitch_kick_recover_time)
 
 ## The touchdown half of kick_pitch(): the same small dip every landing, a
-## deeper one for a landing that caught the coil unfinished. See
+## much deeper one when the airborne stretch had a coil in it. See
 ## CameraConfig.land_pitch_kick_deg.
 func kick_landing(coiled: bool) -> void:
 	if _config == null:

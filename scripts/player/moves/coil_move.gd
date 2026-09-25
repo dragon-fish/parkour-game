@@ -16,6 +16,9 @@ var _elapsed: float = 0.0
 
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
+	# The landing that ends this airborne stretch is a coil's landing, however
+	# long after the tuck it comes. See Player.last_landing_coiled.
+	player.coiled_since_ground = true
 	player.set_grounded(false)
 	# Shrunk on the entry tick rather than waiting for the first
 	# physics_update(): a coil taken to clear something is being asked for
@@ -116,9 +119,6 @@ func exit() -> void:
 	# body it can reason about: granted immediately in the open, owed under a
 	# duct roof. Same call SlideMove and CrouchMove end on.
 	player.request_standing_capsule()
-	# The legs coming down strike any floor within reach on the next tick or
-	# two, and that landing is still the coil's. See Player.last_landing_coiled.
-	player.coil_legs_down_left = cfg.legs_down_time
 
 ## Eases the capsule down to CoilConfig.capsule_height across boost_duration,
 ## then holds it there for the rest of `duration`.

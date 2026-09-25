@@ -29,13 +29,13 @@ var last_landing_rolled: bool = false
 ## physics tick: the counter is gone by the time anything else runs. Set by
 ## FallingMove alongside last_landing_rolled.
 var last_landing_fall_height: float = 0.0
-## Whether the last landing caught the coil unfinished: settled by CoilMove
-## itself, or inside CoilConfig.legs_down_time of it ending (see
-## coil_legs_down_left). Read by the camera's landing nod.
+## Whether the last landing ended an airborne stretch with a coil in it.
+## Read by the camera's landing nod.
 var last_landing_coiled: bool = false
-## Seconds left in which a landing still counts as coming out of a coil. Set
-## by CoilMove.exit().
-var coil_legs_down_left: float = 0.0
+## Whether a coil has been taken since the body last touched down. Set by
+## CoilMove.enter(), read into last_landing_coiled by the landing, cleared by
+## any ground (set_grounded()).
+var coiled_since_ground: bool = false
 ## Last polled input, exposed for the debug HUD.
 var last_input: MoveInput = MoveInput.new()
 
@@ -317,6 +317,9 @@ func set_grounded(value: bool) -> void:
 		# down, and the accumulated height is gone before stepping off again.
 		if fall_tracker != null:
 			fall_tracker.reset(global_position.y)
+		# Any ground ends the airborne stretch a coil marks, a ledge pulled up
+		# onto as much as a landing.
+		coiled_since_ground = false
 
 ## Clears `grounded` WITHOUT counting as a declaration. Called only by
 ## MoveManager, as the fail-safe half of the invariant above: a move that
@@ -1568,7 +1571,7 @@ func reset_state() -> void:
 	last_landing_speed = 0.0
 	last_landing_fall_height = 0.0
 	last_landing_coiled = false
-	coil_legs_down_left = 0.0
+	coiled_since_ground = false
 	grounded = false
 	# Set directly rather than through set_grounded(true) (which would also
 	# flip `grounded` back on, contradicting the line above): global_position
@@ -3986,7 +3989,6 @@ func _tick_line_cooldowns(delta: float) -> void:
 func _tick_timers(delta: float, input: MoveInput) -> void:
 	_tick_gravity_window(delta)
 	_stagger_immunity = maxf(_stagger_immunity - delta, 0.0)
-	coil_legs_down_left = maxf(coil_legs_down_left - delta, 0.0)
 	_drive_hurt_flash(delta)
 	_tick_line_cooldowns(delta)
 	if grounded:

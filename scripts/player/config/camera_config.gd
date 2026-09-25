@@ -144,16 +144,16 @@ extends Resource
 ## Touchdown: always down by land_pitch_kick_deg, whatever the speed or the
 ## fall, and quick both ways (land_pitch_kick_rise_time, _recover_time).
 ## [ME:CONFIRMED by play] the landing nod is the same small dip every time --
-## faint enough to lose once running -- EXCEPT a landing that catches the coil
-## unfinished, which dips by coil_land_pitch_kick_deg. See
-## Player.last_landing_coiled for what counts.
-@export var jump_pitch_kick_min_deg: float = -1.0
-@export var jump_pitch_kick_deg: float = 4.0
-@export var jump_pitch_kick_speed_ref: float = 7.2
-@export var jump_pitch_kick_rise_time: float = 0.15
+## faint enough to lose once running -- EXCEPT the landing that ends an
+## airborne stretch with a coil in it, which throws the head by
+## coil_land_pitch_kick_deg. See Player.last_landing_coiled.
+@export var jump_pitch_kick_min_deg: float = -2.0
+@export var jump_pitch_kick_deg: float = 5.0
+@export var jump_pitch_kick_speed_ref: float = 2.0
+@export var jump_pitch_kick_rise_time: float = 0.1
 @export var jump_pitch_kick_recover_time: float = 0.5
 @export var land_pitch_kick_deg: float = 1.5
-@export var coil_land_pitch_kick_deg: float = 4.0
+@export var coil_land_pitch_kick_deg: float = 15.0
 @export var land_pitch_kick_rise_time: float = 0.1
 @export var land_pitch_kick_recover_time: float = 0.1
 
