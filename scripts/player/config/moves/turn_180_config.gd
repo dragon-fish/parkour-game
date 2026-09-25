@@ -11,6 +11,8 @@ extends MoveConfig
 # you fall." Every clause of that has a field.
 
 func _init() -> void:
+	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
+	hit_knocks_off = true
 	# LEGS BUSY: no spare limbs to spin on. See MoveConfig.allows_turn.
 	allows_turn = false  # already turning. Q again mid-turn is nothing.
 	# ✅ RedoMoveTime = 0.5.

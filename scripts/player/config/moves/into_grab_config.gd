@@ -14,6 +14,8 @@ extends MoveConfig
 # duration is a consequence, not a setting.
 
 func _init() -> void:
+	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
+	hit_knocks_off = true
 	# The reach steers straight at a world-space target pose. See
 	# MoveConfig.holds_world_path.
 	holds_world_path = true

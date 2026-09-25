@@ -6,6 +6,8 @@ extends MoveConfig
 # attachment, and a lenient fixed-angle exit jump.
 
 func _init() -> void:
+	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
+	hit_knocks_off = true
 	# Rides a world-space InterestLine target. See MoveConfig.holds_world_path.
 	holds_world_path = true
 	allows_turn = false  # both hands on the bar (MG_TwoHandsBusy)

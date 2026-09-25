@@ -374,6 +374,8 @@ extends MoveConfig
 @export var jump_min_pitch_deg: float = 45.0
 
 func _init() -> void:
+	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
+	hit_knocks_off = true
 	# The mantle/corner-shimmy path is a scripted world-space curve. See
 	# MoveConfig.holds_world_path.
 	holds_world_path = true

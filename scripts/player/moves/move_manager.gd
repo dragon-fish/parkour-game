@@ -260,6 +260,10 @@ func physics_update(delta: float, input: MoveInput) -> void:
 			player.take_hazard_hit(player.statuses.amount_of(Status.Effect.STAGGER),
 				player.statuses.tint_of(Status.Effect.STAGGER))
 			player.statuses.remove(Status.Effect.STAGGER)
+			# Holding on to something, it lets go. See MoveConfig.hit_knocks_off.
+			var holding: MoveConfig = _current.current_config()
+			if holding != null and holding.hit_knocks_off:
+				next = Move.FALLING
 	# A KNOCK-DOWN OUTRANKS A STAGGER. Both at once is one body going down --
 	# the original's falling lift pairs a CauseDamage with its TdFallOnBack --
 	# so the stagger is still spent and still charged, below, and only where

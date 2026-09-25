@@ -223,3 +223,41 @@ func test_a_crouch_block_forbids_the_choice_but_not_the_ceiling() -> void:
 	assert_false(p.has_headroom(), "test setup: the lid left room to stand")
 	assert_true(p.move_manager.can_enter(Move.CROUCH), \
 		"a crouch the body cannot avoid was refused, so a slide here could not end")
+
+# --- a hit knocks the body off what it holds ----------------------------------
+
+func test_a_hit_knocks_a_hanging_body_off_the_ledge() -> void:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_worlds.append(world)
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var p: Player = world["player"]
+	var body := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(6.0, 2.0, 3.0)
+	shape.shape = box
+	body.add_child(shape)
+	p.get_parent().add_child(body)
+	body.global_position = Vector3(0.0, 1.0, -3.0)
+	var edge := Vector3(0.0, 2.0, -1.6)
+	var query := {"valid": true, "edge": edge, "top": edge,
+			"normal": Vector3.UP, "face_normal": Vector3(0, 0, 1)}
+	p.global_position = IntoGrabMove.hanging_pose(p, p.config, query)
+	p.pending_ledge = query
+	p.move_manager.start(Move.GRAB)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.GRAB, "test setup: not hanging")
+	p.statuses.apply(_hit(), p, 0)
+	await step(2)
+	body.queue_free()
+	assert_ne(p.move_manager.current_name, Move.GRAB, "a hit left the body hanging on")
+
+func test_a_hit_on_the_ground_keeps_the_body_on_its_feet() -> void:
+	var p := await _standing_player()
+	p.move_manager.start(Move.WALKING)
+	await step(1)
+	p.statuses.apply(_hit(), p, 0)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.WALKING, "a hit on the ground knocked the body out of its walk")
