@@ -244,8 +244,9 @@ extends Resource
 @export var speed_max_base_velocity: float = 4.0
 ## [ME:CONFIRMED 02 §2.1] the three factors below as VALUES. [ME:INFERRED] as
 ## a FORMULA: energy accrues at (active factor / sprint factor) per second,
-## so ordinary running is 30/30 = 1.0 and the curve's 7.0 s X-axis endpoint is
-## reached in exactly 7 s -- not verified against bytecode.
+## so ordinary running is 30/30 = 1.0 -- not verified against bytecode. The
+## curve's 7.0 X-axis endpoint is approached, not reached at 7 s: see
+## energy_tail.
 ## [ME:COMMUNITY] independently reports 7-10 seconds from a standstill to
 ## full sprint, which corroborates the reading above.
 @export var speed_walk_velocity_acceleration_factor: float = 7.0
@@ -253,6 +254,16 @@ extends Resource
 @export var speed_sprint_velocity_acceleration_factor: float = 30.0
 ## [ME:CONFIRMED 02 §2.1] SpeedEnergyDecelerationTime = 3.
 @export var speed_energy_deceleration_time: float = 3.0
+## How close to the top of the curve, in energy, banking starts to slow: within
+## it, it banks in proportion to what is left, so the top is approached rather
+## than arrived at. See SpeedEnergy.accumulate().
+##
+## [ME:CONFIRMED] measured by the owner, from a standstill at yaw 0 (the
+## original's HUD speed wanders with the yaw, float precision, and can stick at
+## 25.90-25.91 off it): 25.78 km/h at about 7 s, very slow past 25.82, 25.92 at
+## about 12 s. [ME:DERIVED] 0.9 is what puts 25.78 at 7 s on the SMOOTH curve;
+## it then gives 25.82 at about 7.3 s and 25.92 within 0.01 by 12 s.
+@export var energy_tail: float = 0.9
 ## [ME:CONFIRMED 02 §2.1] SpeedEnergyDecelerationExponent = 0.5 as a VALUE.
 ## [ME:INFERRED] as a FORMULA: taken literally as the exponent in
 ## dE/dt = -k * E^0.5, with k solved from speed_energy_deceleration_time

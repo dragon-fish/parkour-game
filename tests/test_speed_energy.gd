@@ -53,16 +53,15 @@ func test_the_cap_never_drops_below_the_base_velocity_floor() -> void:
 	energy.energy = 0.0
 	assert_almost_eq(energy.cap(), pawn.speed_min_base_velocity, 0.0001, "no floor under the cap")
 
-func test_ordinary_running_reaches_the_top_of_the_curve_in_seven_seconds() -> void:
-	# The single most-cited property of the original's speed system: 7 seconds
-	# from a standstill to full speed. Sprint factor / sprint factor = 1.0, so
-	# one second of running is one unit of energy, and the curve's X axis is
-	# in seconds by construction.
+func test_seven_seconds_of_running_is_just_short_of_the_top() -> void:
+	# [ME:CONFIRMED] measured at yaw 0: 25.78 km/h after about 7 s from a
+	# standstill, and the top only approached after that -- see
+	# PawnConfig.energy_tail.
 	var pawn := _pawn()
 	var energy := SpeedEnergy.new(pawn)
 	for i in 420:
 		energy.accumulate(1.0 / 60.0, SpeedEnergy.SPRINT)
-	assert_almost_eq(energy.cap(), 7.2, 0.01, "seven seconds of running did not reach top speed")
+	assert_almost_eq(energy.cap() * 3.6, 25.78, 0.05, "seven seconds of running is not where the original is")
 
 func test_energy_is_more_than_half_spent_in_the_first_four_tenths_of_a_second() -> void:
 	# The curve's shape, stated as behaviour: 55% of the final speed arrives
@@ -187,3 +186,19 @@ func test_restore_for_landing_never_lowers_an_already_fuller_budget() -> void:
 	energy.restore_for_landing(pawn.speed_min_base_velocity)
 	assert_almost_eq(energy.energy, before, 0.0001, \
 		"a slow landing lowered an already-fuller energy bank")
+
+func test_the_top_of_the_curve_is_approached_not_reached_on_the_clock() -> void:
+	# Banking slows over the last energy_tail: seven seconds of running does
+	# not fill the budget, and the last tenth takes longer than the first whole
+	# second did.
+	var pawn := _pawn()
+	var energy := SpeedEnergy.new(pawn)
+	var ticks := 0
+	while energy.energy < 6.9 and ticks < 60 * 60:
+		energy.accumulate(1.0 / 60.0, SpeedEnergy.SPRINT)
+		ticks += 1
+	var at_6_9 := ticks
+	while energy.energy < 6.99 and ticks < 60 * 60:
+		energy.accumulate(1.0 / 60.0, SpeedEnergy.SPRINT)
+		ticks += 1
+	assert_gt(ticks - at_6_9, 60, "the last stretch of the budget banked as fast as the first")

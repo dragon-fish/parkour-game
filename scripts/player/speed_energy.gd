@@ -84,10 +84,11 @@ static func curve_at(pawn: PawnConfig, e: float) -> float:
 	return knots[knots.size() - 1].y
 
 ## One tick of running banks (active factor / sprint factor) seconds of
-## energy, so ordinary running is 1.0 and the curve's X axis is literally
-## seconds-of-running. Callers are responsible for the
-## energy_accumulate_speed_ratio gate -- see Player, which owns the speed
-## reading this class deliberately does not.
+## energy, so ordinary running is 1.0 and the curve's X axis is
+## seconds-of-running -- until the last PawnConfig.energy_tail of it, where
+## banking slows in proportion to what is left and the top is only approached.
+## Callers are responsible for the energy_accumulate_speed_ratio gate -- see
+## Player, which owns the speed reading this class deliberately does not.
 func accumulate(delta: float, mode: int) -> void:
 	var sprint: float = maxf(_pawn.speed_sprint_velocity_acceleration_factor, 0.001)
 	var factor: float = sprint
@@ -96,7 +97,12 @@ func accumulate(delta: float, mode: int) -> void:
 			factor = _pawn.speed_walk_velocity_acceleration_factor
 		STRAFE:
 			factor = _pawn.speed_strafe_velocity_acceleration_factor
-	energy = minf(energy + delta * (factor / sprint), _energy_ceiling())
+	var rate: float = factor / sprint
+	var left: float = _energy_ceiling() - energy
+	var tail: float = _pawn.energy_tail
+	if tail > 0.0 and left < tail:
+		rate *= maxf(left, 0.0) / tail
+	energy = minf(energy + delta * rate, _energy_ceiling())
 	_rebase_decay()
 
 ## The budget draining over speed_energy_deceleration_time, from wherever it

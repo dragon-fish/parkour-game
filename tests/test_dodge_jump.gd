@@ -265,7 +265,9 @@ func _run_dodge_then(after: Vector2, face_the_dodge: bool) -> Array:
 	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
 	_world["input"].hold_move(after.x, after.y)
 	if face_the_dodge:
-		player.rotation.y += PI * 0.5  # a left dodge; left is a quarter turn anticlockwise
+		# Onto the dodge's own line, which a run's kept inertia bends off square.
+		var line := Vector3(player.velocity.x, 0.0, player.velocity.z)
+		player.rotation.y = atan2(-line.x, -line.z)
 	await step(40)
 	return [player.speed_energy.energy, banked]
 
