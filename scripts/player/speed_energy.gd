@@ -146,7 +146,7 @@ func decay(delta: float) -> void:
 ## line worthless.
 func spend_turn(radians: float, delta: float) -> void:
 	var rate_deg: float = rad_to_deg(absf(radians)) / maxf(delta, 0.0001)
-	var cost: float = _pawn.speed_turn_deceleration_factor 		* turn_rate_multiplier(rate_deg) * absf(radians)
+	var cost: float = _pawn.legacy_turn_energy_per_radian 		* turn_rate_multiplier(rate_deg) * absf(radians)
 	# THE FLOOR. Turning bills against banked energy, but never below the
 	# energy that buys speed_max_base_velocity. Above that line speed is
 	# something the player EARNED by running, and turning gives it back; below

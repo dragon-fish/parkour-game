@@ -228,7 +228,8 @@ extends Resource
 ## consumer, sits at 4.0 m/s. Close enough that giving it this job explains
 ## both the observation and the field's existence.
 ##
-## Read by SpeedEnergy.spend_turn(), via energy_for_speed().
+## Read by the ported acceleration (PawnAcceleration) in the original's own
+## role, and by the legacy SpeedEnergy.spend_turn(), via energy_for_speed().
 @export var speed_max_base_velocity: float = 4.0
 ## [ME:CONFIRMED 02 §2.1] the three factors below as VALUES. [ME:INFERRED] as
 ## a FORMULA: energy accrues at (active factor / sprint factor) per second,
@@ -259,19 +260,26 @@ extends Resource
 ## dE/dt = -k * E^0.5, with k solved from speed_energy_deceleration_time
 ## above.
 @export var speed_energy_deceleration_exponent: float = 0.5
-## [ME:UNKNOWN 03 §3.2] SpeedTurnDecelerationFactor = 10 in the original, but
-## its UNIT is not recoverable from the binary. DO NOT use that number
-## directly. Instead this project calibrates the knob to a stated behaviour:
-## a full 180 degree reversal (pi radians) spends the entire 7.0 energy
-## budget, so cost per radian = energy ceiling / PI = 7.0 / pi = 2.2282 --
-## exact, rather than the earlier 2.23 rounding.
+## SpeedTurnDecelerationFactor: [ME:CONFIRMED decompile, ini] 10, TdPawn's CDO
+## and DefaultGame.ini [TdGame.TdPawn]. [ME:CONFIRMED emulated 15 §15.2] read
+## by GetSprintAcceleration as Velocity * 10 * |aTurn| / 32768, aTurn in
+## rotator units per frame (PawnAcceleration.sprint()). DO NOT recalibrate it.
+@export var speed_turn_deceleration_factor: float = 10.0
+## PROJECT-ADDED, for the legacy SpeedEnergy model that the moves not yet
+## ported still read (SpeedEnergy.spend_turn()); not the original's turn
+## penalty, which is speed_turn_deceleration_factor above. Calibrated to a
+## stated behaviour: a full 180 degree reversal (pi radians) spends the whole
+## 7.0 energy budget, so cost per radian = 7.0 / pi = 2.2282. Goes with the
+## legacy model when the last of those moves is ported.
+@export var legacy_turn_energy_per_radian: float = 2.2282
+## PROJECT-ADDED, the legacy SpeedEnergy model's turn cost per degree-per-
+## second (SpeedEnergy.turn_rate_multiplier()). Goes with that model.
 @export var turn_rate_cost_curve: PackedVector2Array = PackedVector2Array([
 	Vector2(95.0, 0.239),
 	Vector2(225.0, 0.585),
 	Vector2(450.0, 1.0),
 	Vector2(1050.0, 1.327),
 ])
-@export var speed_turn_deceleration_factor: float = 2.2282
 ## PROJECT-ADDED GUARD, no counterpart in the original. Energy only accrues
 ## while actually travelling at this fraction of the current cap. DO NOT
 ## remove or zero this: holding the walk modifier for 7 seconds -- or

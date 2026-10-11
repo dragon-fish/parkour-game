@@ -4333,6 +4333,8 @@ func _acceleration(sprint: bool, forward_in: float, strafe_in: float, delta: flo
 
 var _accel_params: PawnAcceleration.Params = null
 
+## Every field from PawnConfig's copy of the original's TdPawn CDO. DO NOT
+## feed it the legacy SpeedEnergy's calibrated knobs.
 func _acceleration_params() -> PawnAcceleration.Params:
 	if _accel_params == null:
 		var pawn_cfg: PawnConfig = config.pawn
