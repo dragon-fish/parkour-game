@@ -19,7 +19,8 @@ func _init() -> void:
 	check_for_ladder = true
 	check_for_ledge_walk = true
 	check_for_balance = true
-	# [ME:CONFIRMED ini] RedoMoveTime = 1.0 under [TdGame.TdMove_Jump]: a new
-	# jump waits a second from the moment the last one STOPPED (it stops when
-	# the fall passes -400 uu/s or it lands), not from its take-off.
-	redo_move_time = 1.0
+	# [ME:CONFIRMED decompile, ini] RedoMoveTime = 0: neither
+	# [TdGame.TdMove_Jump] nor TdMove_Jump's defaultproperties set it, so Jump
+	# keeps [TdGame.TdMove]'s 0 and a second jump is allowed the moment the
+	# body is back on its feet. DO NOT put a cooldown here.
+	redo_move_time = 0.0

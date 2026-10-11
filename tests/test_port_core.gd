@@ -126,6 +126,24 @@ func test_an_ordinary_landing_passes_through_landing_into_walking_on_one_frame()
 	assert_eq(into_landing[0][0], into_walking[0][0], "Landing outlived its frame")
 	assert_eq(player.physics, Move.PHYS_WALKING)
 
+## [ME:CONFIRMED decompile, ini] Jump has no RedoMoveTime of its own: it keeps
+## TdMove's 0, so the frame after a landing can jump again.
+func test_a_second_jump_is_allowed_right_after_landing() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	input.press_jump()
+	await step(1)
+	input.release_jump()
+	for i in 90:
+		await step(1)
+		if player.move_manager.current_name == Move.WALKING:
+			break
+	assert_eq(player.move_manager.current_name, Move.WALKING, "test setup: the first jump never landed")
+	input.press_jump()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.JUMP, "the jump was refused after landing")
+
 ## [ME:CONFIRMED decompile 15.4] The forced Walking frame runs
 ## Walking.StartMove, which clears the wall-run jump's ledge ban.
 func test_walking_start_clears_the_illegal_ledge_timer() -> void:
