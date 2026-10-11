@@ -92,6 +92,9 @@ func test_a_stagger_shows_its_own_tint_or_the_landing_red() -> void:
 func test_a_stagger_is_ignored_while_already_dying() -> void:
 	var p := _player()
 	await step(1)
+	# High enough that the death is still falling when the stagger arrives:
+	# the fixture's floor would otherwise end it on its first tick.
+	p.global_position = Vector3(0.0, 30.0, 0.0)
 	p.move_manager.start(Move.FALL_UNCONTROLLED)
 	p.statuses.apply(_spec(Status.Effect.STAGGER), p, 0)
 	await step(2)

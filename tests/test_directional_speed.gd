@@ -1,8 +1,9 @@
 extends ParkourTest
 
 # The arc: the original runs at full speed only within 90 degrees of straight
-# ahead, and at 14.4 km/h outside it. What these pin is the SHAPE of that rule,
-# not the numbers -- the numbers are dials on PawnConfig and expected to move.
+# ahead, and at 14.4 km/h outside it. [ME:CONFIRMED decompile 15.2] It is
+# PlayerWalking's sprint test, aForward > 0.7: straight ahead and both
+# diagonals sprint, a sideways run walks and settles at SpeedMaxBaseVelocity.
 
 func _world() -> Dictionary:
 	return TestWorld.build(get_tree(), MovementConfig.new())
@@ -38,36 +39,6 @@ func test_running_sideways_settles_at_base_speed() -> void:
 	var player: Player = world["player"]
 	assert_almost_eq(player.horizontal_speed(), player.config.pawn.speed_max_base_velocity, 0.2, \
 		"sideways was not held to the lateral speed")
-	TestWorld.teardown(world)
-	await step(1)
-
-func test_leaving_the_arc_lowers_the_ceiling_over_seconds_not_frames() -> void:
-	# THE SHAPE, WHICH IS THE HALF THAT IS EASY TO LOSE. Nothing caps sideways
-	# speed: the CEILING decays to base speed and the body follows it down. In
-	# the original a body already running dead sideways is still ACCELERATING
-	# a quarter second in, and only settles about 2.6 s later -- see
-	# PawnConfig.speed_max_base_velocity for the capture.
-	#
-	# This failed for as long as _charge_turn() billed the wish direction:
-	# pressing A swung that vector 90 degrees in one tick and emptied the
-	# budget to the floor immediately. Billing the facing is what lets a
-	# keypress be a change of direction rather than a turn.
-	var world := _world()
-	await _settle(world)
-	world["input"].state.move = Vector2(0.0, 1.0)
-	for i in 300:
-		await step(1)
-	var player: Player = world["player"]
-	var base_speed: float = player.config.pawn.speed_max_base_velocity
-	world["input"].state.move = Vector2(-1.0, 0.0)
-	for i in 30:
-		await step(1)
-	assert_gt(player.speed_cap(), base_speed + 0.5, \
-		"the ceiling was dumped to base speed within half a second")
-	for i in 300:
-		await step(1)
-	assert_almost_eq(player.speed_cap(), base_speed, 0.3, \
-		"the ceiling never came down to base speed")
 	TestWorld.teardown(world)
 	await step(1)
 

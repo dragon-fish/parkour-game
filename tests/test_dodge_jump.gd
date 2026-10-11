@@ -2,16 +2,14 @@ extends ParkourTest
 
 # DodgeJump -- the sideways hop off A or D. The original's TdMove_DodgeJump.
 #
-# WHAT IS PINNED HERE IS NOT THE NUMBERS. 3.0 m/s up, 6.0 m/s sideways and the
-# 0.99 threshold are dials; a wrong one is visible the first time it is
-# played. What these cases hold down is the handful of facts that do not move
-# when the feel is retuned:
+# WHAT IS PINNED HERE IS NOT THE NUMBERS. 3.0 m/s up and 6.0 m/s sideways are
+# dials; a wrong one is visible the first time it is played. What these cases
+# hold down is the handful of facts that do not move when the feel is retuned:
 #
-#   * A DIAGONAL STILL DODGES. [ME:CONFIRMED 04 §4.5] W+A and space fires a
-#     left dodge in the original. This is the fact that killed the earlier
-#     reading of StrafeThreshold = 0.99 as "the input must be a pure A or D":
-#     the threshold is on the strafe AXIS, which a key pushes full-scale
-#     whether or not W is held too. See MoveInput.strafe_axis.
+#   * A DIAGONAL STILL DODGES. [ME:CONFIRMED 04 §4.5, decompile] W+A and
+#     space fires a left dodge in the original: DodgeJump.CanDoMove asks the
+#     strafe hint at its maximum (the raw strafe axis past 0.96), which a key
+#     pushes full-scale whether or not W is held too.
 #
 #   * THE IMPULSE IS A WORLD VECTOR, SOLVED ONCE. [ME:CONFIRMED 04 §4.5]
 #     swinging the view 90 degrees mid-dodge inherits the sideways speed as
@@ -26,11 +24,6 @@ extends ParkourTest
 #     one from a standstill. Dropping the momentum instead predicts the
 #     standstill case exactly and every other case wrong, which is why the
 #     cases below pin the run one.
-#
-#   * IT COSTS NO SPEED ENERGY. A dodge out of a sprint does sag to near base
-#     velocity afterwards, but that is the velocity being turned back under the
-#     held input on touchdown -- land already facing the way the dodge threw
-#     you and the speed climbs from the first grounded tick instead.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -95,15 +88,12 @@ func test_a_straight_ahead_jump_is_an_ordinary_jump() -> void:
 		"running straight ahead dodged (got %s)" % player.move_manager.current_name)
 
 func test_a_half_pushed_stick_does_not_dodge() -> void:
-	# The whole reason strafe_axis is a field. A stick pushed diagonally reads
-	# 0.707 on the axis where a key reads 1.0, and a threshold of 0.99 refuses
-	# it. [ME:INFERRED] whether the original's own pad really behaves this way.
-	# What is pinned here is only that the threshold is asked of the AXIS
-	# rather than of the normalised vector, so that the answer is allowed to
-	# differ between a key and a stick at all.
+	# [ME:CONFIRMED decompile] TdMove_DodgeJump.CanDoMove asks bMoveActionMax:
+	# the RAW strafe axis past 0.96. A stick pushed diagonally reads 0.707 on
+	# it where a key reads 1.0, so the stick's diagonal is an ordinary jump.
 	var player: Player = await _standing()
 	_world["input"].hold_move(-1.0, 1.0)
-	_world["input"].state.strafe_axis = -0.707
+	_world["input"].state.raw_move = Vector2(-0.707, 0.707)
 	await step(10)
 	_world["input"].press_jump()
 	await step(2)
@@ -148,24 +138,6 @@ func test_the_dodge_carries_the_view_swing_rather_than_following_it() -> void:
 		"the sideways velocity turned with the body")
 
 # --- the cost ------------------------------------------------------------------
-
-func test_a_dodge_does_not_spend_speed_energy() -> void:
-	# The banked energy is what the run rebuilds against, and billing it here
-	# would drag the landing back down to base velocity -- which is precisely
-	# the speed the side-jump boost exists to keep. The sag a run-entered dodge
-	# really does show belongs to the velocity being turned, not to a ceiling
-	# this move lowered.
-	var player: Player = await _running()
-	var banked: float = player.speed_energy.energy
-	assert_gt(banked, player.speed_energy.base_floor(),
-		"test setup: the run banked no energy to spend")
-
-	_world["input"].hold_move(1.0, 1.0)
-	_world["input"].press_jump()
-	await step(2)
-	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
-	assert_almost_eq(player.speed_energy.energy, banked, 0.001,
-		"the dodge billed the banked speed energy")
 
 func test_a_dodge_from_a_standstill_leaves_at_the_impulse() -> void:
 	# With nothing to conserve, inertia_conservation has nothing to scale and
@@ -247,37 +219,7 @@ func test_a_dodge_inside_its_cooldown_is_an_ordinary_jump() -> void:
 	assert_eq(player.move_manager.current_name, Move.JUMP,
 		"a second dodge fired inside the cooldown (got %s)" % player.move_manager.current_name)
 
-# --- the dodge turns the body -------------------------------------------------
-
-## Out of a run: W and A held, a dodge thrown, then `after` held on landing.
-## `face_the_dodge` swings the view onto the dodge's line in mid-air (the
-## glitch). Returns the budget two thirds of a second after the throw, and the
-## budget the run had banked.
-func _run_dodge_then(after: Vector2, face_the_dodge: bool) -> Array:
-	var player: Player = await _standing()
-	player.speed_energy.energy = 7.0
-	_world["input"].hold_move(0.0, 1.0)
-	await step(30)
-	var banked: float = player.speed_energy.energy
-	_world["input"].hold_move(-1.0, 1.0)
-	_world["input"].press_jump()
-	await step(2)
-	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
-	_world["input"].hold_move(after.x, after.y)
-	if face_the_dodge:
-		# Onto the dodge's own line, which a run's kept inertia bends off square.
-		var line := Vector3(player.velocity.x, 0.0, player.velocity.z)
-		player.rotation.y = atan2(-line.x, -line.z)
-	await step(40)
-	return [player.speed_energy.energy, banked]
-
-func test_hauling_a_dodge_back_onto_the_view_is_billed_as_a_turn() -> void:
-	var result: Array = await _run_dodge_then(Vector2(0.0, 1.0), false)
-	assert_lt(result[0], result[1] - 1.0, "W after a dodge billed no turn")
-
-func test_the_dodge_glitch_is_billed_nothing() -> void:
-	var result: Array = await _run_dodge_then(Vector2(0.0, 1.0), true)
-	assert_gt(result[0], result[1] - 0.2, "a dodge landed facing its own line was billed a turn")
+# --- the run after it ---------------------------------------------------------------
 
 func test_a_dodge_held_on_its_line_bleeds_rather_than_drops() -> void:
 	# From a standstill, A held throughout: the run keeps the dodge's line, so

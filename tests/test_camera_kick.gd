@@ -8,6 +8,10 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 func test_the_nod_does_not_move_the_aim() -> void:
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
+	# Settled first: a body spawned inside the fixture's floor falls out of it
+	# and lands, and the landing's own nod would be measured instead.
+	TestWorld.place(world)
+	await step(30)
 	var rig: CameraRig = world["player"].camera_rig
 	rig.set_pitch(0.0)
 	rig.kick_pitch(deg_to_rad(10.0), 0.15, 0.5)

@@ -97,22 +97,27 @@ func _settled() -> Dictionary:
 	return world
 
 func test_a_roll_pays_nothing_and_a_missed_roll_pays_the_flat_fee() -> void:
-	# [ME:CONFIRMED 03 §3.1] The fee does not scale with height, so the player
-	# never has to estimate how bad a landing was. Asserted through the move's
-	# own accessor rather than by dropping a body, because what is being
+	# [ME:CONFIRMED 03 §3.1, decompile N2 §4] TdPlayerPawn.TakeFallingDamage:
+	# the fee does not scale with height, a skill roll in reach pays nothing,
+	# a fall short of HardLandingHeight pays nothing. Asserted through the
+	# pawn's own call rather than by dropping a body, because what is being
 	# checked is the rule, not the physics that reaches it.
 	var world := await _settled()
 	var player: Player = world["player"]
-	var falling: FallingMove = player.move_manager.move_for(Move.FALLING)
 	var cfg := player.config
-	var deep: float = cfg.pawn.hard_landing_height + 4.0
-	assert_eq(falling.landing_damage(deep, false), cfg.landing.hard_landing_damage, \
-		"a missed roll cost nothing")
-	assert_eq(falling.landing_damage(deep * 2.0, false), cfg.landing.hard_landing_damage, \
-		"the fee scaled with height")
-	assert_eq(falling.landing_damage(deep, true), 0.0, "a roll was charged anyway")
-	assert_eq(falling.landing_damage(cfg.pawn.hard_landing_height - 0.1, false), 0.0, \
-		"a landing short of the threshold was charged")
+	var cases := [
+		[cfg.pawn.hard_landing_height + 1.0, false, cfg.landing.hard_landing_damage, "a missed roll cost nothing"],
+		[cfg.pawn.hard_landing_height + 4.0, false, cfg.landing.hard_landing_damage, "the fee scaled with height"],
+		[cfg.pawn.hard_landing_height + 1.0, true, 0.0, "a roll was charged anyway"],
+		[cfg.pawn.hard_landing_height - 0.1, false, 0.0, "a landing short of the threshold was charged"],
+	]
+	for c in cases:
+		player.health.hp = cfg.pawn.max_health
+		player.enter_falling_height = player.global_position.y + float(c[0])
+		player.roll_trigger_time = player.world_time if c[1] else -10.0
+		player.take_falling_damage()
+		assert_almost_eq(cfg.pawn.max_health - player.health.hp, float(c[2]), 0.001, c[3])
+	player.enter_falling_height = player.global_position.y
 
 func test_a_pad_charges_nothing_though_the_lockout_still_runs() -> void:
 	var world := await _settled()

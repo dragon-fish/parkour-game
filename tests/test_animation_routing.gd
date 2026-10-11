@@ -56,7 +56,12 @@ func test_every_move_has_its_own_case() -> void:
 	# promised did not exist, and Move.COIL was added without this test
 	# noticing. Adding a Move now genuinely is what makes this fail.
 	var missing: Array[String] = []
+	var values: Dictionary = (Move as Script).get_script_constant_map()
 	for name in _move_constant_names():
+		# Only the moves the body has: the original's action table names moves
+		# this project has not got yet, and they are never current.
+		if player.move_manager.move_for(values[name]) == null:
+			continue
 		if not source.contains("Move.%s:" % name):
 			missing.append(name)
 	assert_eq(missing, [] as Array[String], \

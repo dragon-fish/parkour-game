@@ -37,8 +37,10 @@ func _slab(bottom: float, top: float, depth: float, at_z: float) -> void:
 	box.size = Vector3(6.0, top - bottom, depth)
 	shape.shape = box
 	body.add_child(shape)
+	# Placed before it enters the tree: added at the origin it overlaps the
+	# standing body for a tick, which pushes it out of the floor.
+	body.position = Vector3(0.0, (bottom + top) * 0.5, at_z)
 	get_tree().root.add_child(body)
-	body.global_position = Vector3(0.0, (bottom + top) * 0.5, at_z)
 	_props.append(body)
 
 func _standing_player() -> Player:
@@ -243,8 +245,8 @@ func test_the_clearance_probe_gets_its_height_back_too() -> void:
 	# who stands up into a ceiling, and no error anywhere.
 	var player: Player = await _standing_player()
 	var probe: ShapeCast3D = player.get_node("StandClearance")
-	var capsule := probe.shape as CapsuleShape3D
-	# SET, not read. player.tscn's CapsuleShape3D is not resource_local_to_scene,
+	var capsule := probe.shape as CylinderShape3D
+	# SET, not read. player.tscn's CylinderShape3D is not resource_local_to_scene,
 	# so every Player built in this run shares one -- reading a baseline off it
 	# gets whatever the previous test left there, and the assertion then compares
 	# a polluted value with itself and passes no matter what.

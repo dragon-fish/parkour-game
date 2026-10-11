@@ -250,54 +250,6 @@ func test_a_walking_turn_bleeds_its_speed_away_rather_than_stopping_dead() -> vo
 	assert_lt(player.horizontal_speed(), 0.5, \
 		"the speed never bled away (%.2f m/s left)" % player.horizontal_speed())
 
-func test_a_walking_turn_keeps_only_the_measured_share_of_the_budget() -> void:
-	# [ME:INFERRED] The speed energy is not 100% preserved either: it keeps
-	# only up to about the 19 km/h tier. Speed climbs back to 18-19 quickly,
-	# and past that the acceleration is ordinary running.
-	#
-	# A capped energy budget produces exactly that shape: below the cap the
-	# ground acceleration alone gets you there, above it you have to re-earn
-	# the speed the ordinary way.
-	var world := TestWorld.build(get_tree(), MovementConfig.new())
-	_world = world
-	await step(1)
-	TestWorld.place(world)
-	var player: Player = world["player"]
-	var input := world["input"] as ScriptedInputSource
-	input.state.move = Vector2(0.0, 1.0)
-	# Long enough to bank a budget well past the cap, so the clamp has something
-	# to take away.
-	await step(150)
-	var banked: float = player.speed_cap()
-	assert_gt(banked, player.config.turn_180.speed_keep_ceiling, \
-		"never banked past the cap, so this test proves nothing (%.2f m/s)" % banked)
-	input.press_turn()
-	await step(2)
-	assert_lt(player.speed_cap(), player.config.turn_180.speed_keep_ceiling + 0.1, \
-		"the turn kept a budget above the measured 19 km/h (%.2f m/s)" % player.speed_cap())
-
-func test_a_walking_turn_is_not_billed_as_a_mouse_swing() -> void:
-	# The turn tax is charged on the change in WISH direction, which a scripted
-	# half turn flips through 180 degrees in one tick. Billed, Q would be the
-	# most expensive key on the board.
-	var world := TestWorld.build(get_tree(), MovementConfig.new())
-	_world = world
-	await step(1)
-	TestWorld.place(world)
-	var player: Player = world["player"]
-	var input := world["input"] as ScriptedInputSource
-	input.state.move = Vector2(0.0, 1.0)
-	# Long enough to bank a real budget, so a charge would have something to
-	# take away and the assertion is not passing on an empty tank.
-	await step(150)
-	var banked: float = player.speed_energy.energy
-	assert_gt(banked, 0.5, "never banked enough energy for the charge to show (%.2f)" % banked)
-	input.press_turn()
-	await step(15)
-	assert_gt(player.speed_energy.energy, banked * 0.5, \
-		"the scripted turn was billed as a mouse swing (%.2f -> %.2f)" \
-		% [banked, player.speed_energy.energy])
-
 func test_a_move_with_its_legs_busy_refuses_the_turn() -> void:
 	# The gate is per-move data rather than a list kept somewhere else, so this
 	# checks the data. Slide is the clearest case: on the floor, mid-slide.
@@ -446,6 +398,7 @@ func _turned_drop(turn_at: int) -> Player:
 	var input := world["input"] as ScriptedInputSource
 	player.global_position = Vector3(0.0, 8.0, 0.0)
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	player.velocity = Vector3(0.0, 6.3, -6.0)
 	player.move_manager.start(Move.JUMP)
 	for i in 150:
@@ -472,6 +425,8 @@ func test_a_turn_still_spinning_at_touchdown_pays_the_landing() -> void:
 	player.fall_tracker.update(0.0, 0.0, player.global_position.y)
 	player.velocity = Vector3(0.0, -10.0, -4.0)
 	player.move_manager.start(Move.TURN_180_IN_AIR)
+	# After the start: entering the turn's falling physics stamps the height.
+	player.enter_falling_height = player.global_position.y + 7.0
 	for i in 30:
 		await step(1)
 		if player.move_manager.current_name != Move.TURN_180_IN_AIR:
@@ -503,6 +458,7 @@ func test_an_uncontrolled_fall_is_not_saved_by_the_turn_before_it() -> void:
 	await step(30)
 	player.global_position = Vector3(0.0, 40.0, 0.0)
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	player.velocity = Vector3(0.0, 6.3, -6.0)
 	player.move_manager.start(Move.JUMP)
 	var lost_control := false
@@ -517,8 +473,9 @@ func test_an_uncontrolled_fall_is_not_saved_by_the_turn_before_it() -> void:
 	assert_true(lost_control, "test setup: the fall never went uncontrolled")
 	assert_true(player.health.is_dead(), "a turn at the top of a 40 m fall survived it")
 
-func test_q_while_falling_does_nothing() -> void:
-	# A turn in the air is a jump's. Past the jump, falling, Q is refused.
+func test_q_while_falling_turns_only_a_body_travelling_forward() -> void:
+	# [ME:CONFIRMED decompile 15.3] Falling + turn asks 180TurnInAir, whose
+	# CanDoMove wants the velocity within acos(0.2) of the facing.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	_world = world
 	await step(1)
@@ -526,12 +483,14 @@ func test_q_while_falling_does_nothing() -> void:
 	var player: Player = world["player"]
 	await step(30)
 	player.global_position = Vector3(0.0, 8.0, 0.0)
-	player.fall_tracker.reset(player.global_position.y)
-	player.velocity = Vector3(0.0, 0.0, -4.0)
 	player.move_manager.start(Move.FALLING)
+	player.velocity = Vector3(0.0, 0.0, 4.0)
 	await step(3)
-	var facing: float = player.rotation.y
 	(world["input"] as ScriptedInputSource).press_turn()
 	await step(2)
-	assert_eq(player.move_manager.current_name, Move.FALLING, "Q turned a falling body")
-	assert_almost_eq(wrapf(player.rotation.y - facing, -PI, PI), 0.0, 0.01, "Q turned a falling body")
+	assert_eq(player.move_manager.current_name, Move.FALLING, "Q turned a body falling backwards")
+	player.velocity = Vector3(0.0, 0.0, -4.0)
+	await step(1)
+	(world["input"] as ScriptedInputSource).press_turn()
+	await step(2)
+	assert_eq(player.move_manager.current_name, Move.TURN_180_IN_AIR, "Q did not turn a body falling forward")

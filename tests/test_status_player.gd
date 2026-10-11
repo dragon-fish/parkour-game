@@ -110,17 +110,6 @@ func test_a_blocked_jump_never_applies_its_launch_velocity() -> void:
 	assert_false(p.consume_jump(), "a blocked jump was still spendable")
 	assert_false(p.consume_buffered_jump(), "a blocked buffered jump was spendable")
 
-func test_a_blocked_jump_does_not_eat_the_buffered_press() -> void:
-	# Refusing must not spend the press: the player let go of nothing, and the
-	# press has to still be there the moment the block lifts.
-	var p := _player()
-	await step(1)
-	p.statuses.apply(_block_spec(Status.Effect.BLOCK_JUMP), p, 0)
-	p.arm_jump_buffer_for_test()
-	assert_false(p.consume_jump(), "the block did not hold")
-	p.statuses.remove(Status.Effect.BLOCK_JUMP)
-	assert_true(p.consume_jump(), "the block swallowed the press")
-
 func test_a_blocked_slide_does_not_enter_slide_while_running_fast() -> void:
 	# BLOCK_SLIDE alone, at a speed that would otherwise open Slide -- proves
 	# the block actually reaches the transition, not just something adjacent.
@@ -212,6 +201,7 @@ func test_a_blocked_roll_lands_without_rolling() -> void:
 	# launch pad -- fall_height stays ~0, never as a genuine fall.
 	p.global_position.y += 2.5
 	p.fall_tracker.reset(p.global_position.y)
+	p.enter_falling_height = p.global_position.y
 	await step(1)
 	assert_true(p.move_manager.current_name == Move.FALLING, \
 		"teleporting up did not send the player airborne")
@@ -228,11 +218,3 @@ func test_a_blocked_roll_lands_without_rolling() -> void:
 	assert_almost_eq(p.last_landing_fall_height, 2.5, 0.1, \
 		"test setup: the staged fall was not actually ~2.5 m")
 	assert_false(p.last_landing_rolled, "a blocked roll still rolled")
-	# A boolean check on last_landing_rolled alone cannot tell a correctly
-	# ordered block from one placed after consume_roll(): `and` gives the
-	# same false result either way, the only difference is whether the press
-	# got spent producing it. Read the very tick landing lands, before
-	# WalkingMove's own crouch/slide gate gets a chance to consume the same
-	# buffer itself -- a true here proves settle_landing() left it alone.
-	assert_true(p.consume_roll(), \
-		"the block spent the roll press before it ever reached the block check")

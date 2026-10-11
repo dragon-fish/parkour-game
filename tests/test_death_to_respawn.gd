@@ -36,6 +36,7 @@ func test_a_fatal_fall_plays_the_death_sequence_before_respawning() -> void:
 	# as a real one rather than netting zero against the launch height.
 	player.global_position.y += arena.config.pawn.falling_uncontrolled_height + 3.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 
 	for i in 240:

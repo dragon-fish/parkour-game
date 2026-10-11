@@ -94,7 +94,7 @@ func test_the_hang_and_drop_path_survives_the_restore() -> void:
 ## anchor decides between.
 func _span(player: Player) -> Vector2:
 	var shape_node := player.get_node("CollisionShape3D") as CollisionShape3D
-	var capsule := shape_node.shape as CapsuleShape3D
+	var capsule := shape_node.shape as CylinderShape3D
 	return Vector2(shape_node.position.y - capsule.height * 0.5,
 			shape_node.position.y + capsule.height * 0.5)
 

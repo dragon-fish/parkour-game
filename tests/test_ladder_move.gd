@@ -243,6 +243,7 @@ func test_crouch_lets_go_and_spends_the_roll() -> void:
 	# short trip back to the floor reads as a real fall, done AFTER the
 	# release since LadderMove re-baselines it every tick while still active.
 	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
+	player.enter_falling_height = player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5
 	var saw_roll := false
 	for i in 120:
 		await step(1)
@@ -353,6 +354,7 @@ func _fall_onto_ladder(fake_fall_height: float) -> Player:
 		# buys height it never fell — the same idiom
 		# test_crouch_lets_go_and_spends_the_roll() uses.
 		player.fall_tracker.reset(player.global_position.y + fake_fall_height)
+		player.enter_falling_height = player.global_position.y + fake_fall_height
 	for i in 10:
 		await step(1)
 		if player.move_manager.current_name == Move.LADDER:
@@ -839,6 +841,9 @@ func test_pushing_at_the_latched_ladder_takes_it_back() -> void:
 	var input: ScriptedInputSource = _world["input"]
 	input.press_crouch()
 	await step(3)
+	# Let go of the key too: a held crouch is MA_Crouch every tick, which on
+	# the ground is a crouch. [ME:CONFIRMED decompile 15.8]
+	input.release_crouch()
 	assert_ne(player.move_manager.current_name, Move.LADDER,
 		"test setup: crouch did not release")
 	await step(int(player.config.ladder.same_line_redo_time * 60.0) + 10)

@@ -77,7 +77,7 @@ func test_a_body_at_a_standstill_against_a_face_does_not_vault() -> void:
 	player.velocity = Vector3.ZERO
 	player.move_manager.start(Move.FALLING)
 	var falling := player.move_manager.move_for(Move.FALLING)
-	var probed: StringName = falling.probe_transition()
+	var probed: StringName = falling.legacy_probe_transition()
 	assert_ne(probed, Move.SPEED_VAULT,
 		"a motionless body vaulted, which is the loop the owner filmed")
 
@@ -92,7 +92,7 @@ func test_a_rising_body_against_a_face_still_vaults() -> void:
 	player.velocity = Vector3(0.0, 2.0, 0.0)
 	player.move_manager.start(Move.FALLING)
 	var falling := player.move_manager.move_for(Move.FALLING)
-	var probed: StringName = falling.probe_transition()
+	var probed: StringName = falling.legacy_probe_transition()
 	assert_eq(probed, Move.SPEED_VAULT,
 		"a body climbing a face was refused the vault at the top")
 

@@ -17,10 +17,12 @@ func _add_ramp(angle_deg: float, chute: bool) -> StaticBody3D:
 	body.add_child(shape)
 	if chute:
 		body.add_to_group(Probes.UNCONTROLLED_SLIDE_GROUP, true)
-	get_tree().root.add_child(body)
 	var a := deg_to_rad(angle_deg)
+	# Placed before it enters the tree: added at the origin it overlaps the
+	# body for a tick, and that tick's push out of it moves the body.
 	body.rotation.x = a
-	body.global_position = Vector3(0.0, 10.0 * sin(a) - 0.25, -10.0 * cos(a))
+	body.position = Vector3(0.0, 10.0 * sin(a) - 0.25, -10.0 * cos(a))
+	get_tree().root.add_child(body)
 	return body
 
 ## Drops the player onto the ramp `s` metres up its face and returns the
@@ -40,6 +42,7 @@ func _ride(angle_deg: float, chute: bool, ticks: int, s: float = 6.0, floor_y: f
 	# Teleported up: the fall counter still holds the fixture floor as its
 	# launch height, and would count nothing until the body fell below it.
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	var seen: Array[StringName] = []
 	var lowest := player.global_position.y
 	for i in ticks:
@@ -93,6 +96,7 @@ func test_a_fall_onto_a_gentle_chute_stays_on_it() -> void:
 	player.global_position = Vector3(0.0, 14.0 * sin(a) + 4.0, -14.0 * cos(a))
 	player.velocity = Vector3(0.0, 0.0, 5.0)
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	var seen: Array[StringName] = []
 	for i in 60:
 		await step(1)
@@ -145,6 +149,7 @@ func _drop_onto(drop: float, ticks: int) -> Dictionary:
 	player.global_position = Vector3(0.0, s * sin(a) + 1.3 + drop, -s * cos(a))
 	player.velocity = Vector3.ZERO
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	var seen: Array[StringName] = []
 	for i in ticks:
 		await step(1)
@@ -191,6 +196,7 @@ func test_the_body_and_the_model_come_round_to_face_down_the_chute() -> void:
 	player.rotation.y = 0.0
 	player.velocity = Vector3.ZERO
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	var entered_at := -1
 	var yaw_one_tick_in := 0.0
 	for i in 90:

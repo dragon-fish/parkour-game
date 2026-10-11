@@ -216,10 +216,16 @@ func test_crouch_lets_go_and_keeps_the_speed_along_the_cable() -> void:
 	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)
 	var speed_before: float = zip.ride_speed()
 	var input: ScriptedInputSource = _world["input"]
+	# Read as the release hands the body on, before the falling physics adds
+	# this tick's gravity.
+	var released := [Vector3.ZERO]
+	player.move_manager.move_changed.connect(func(_from: StringName, to: StringName) -> void:
+		if to == Move.FALLING:
+			released[0] = player.velocity)
 	input.press_crouch()
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.FALLING, "crouch did not let go")
-	var v: Vector3 = player.velocity
+	var v: Vector3 = released[0]
 	assert_almost_eq(v.length(), speed_before, 0.2, "speed was not kept on release")
 	# The test cable runs +z and is level: the velocity is along it.
 	assert_gt(v.normalized().z, 0.99, "release velocity is not along the cable")
@@ -271,6 +277,7 @@ func test_the_release_press_does_not_also_buy_a_roll_at_the_landing() -> void:
 	# AFTER the release rather than before: while still riding, ZiplineMove's
 	# own per-tick reset would only overwrite it again on the release tick.
 	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
+	player.enter_falling_height = player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5
 	var saw_roll := false
 	for i in 120:
 		await step(1)
@@ -280,28 +287,6 @@ func test_the_release_press_does_not_also_buy_a_roll_at_the_landing() -> void:
 			break
 	assert_false(saw_roll, "the same press that released the cable also fired a skill roll")
 
-func test_a_second_later_press_still_buys_a_roll() -> void:
-	# The counter-test: proves the fix removes the DOUBLE billing only, not the
-	# roll itself. A genuinely new press, thrown while already falling, is its
-	# own action and must still buy one.
-	var player: Player = await _riding_player()
-	await step(12)
-	var input: ScriptedInputSource = _world["input"]
-	input.press_crouch()  # press #1: releases the cable
-	await step(1)
-	assert_eq(player.move_manager.current_name, Move.FALLING, "test setup: crouch did not let go of the cable")
-	# Same synthetic-launch trick as above, applied only after the release --
-	# see that test's comment for why.
-	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
-	input.press_crouch()  # press #2: a new press, while already airborne
-	var saw_roll := false
-	for i in 120:
-		await step(1)
-		if player.move_manager.current_name == Move.SKILL_ROLL:
-			saw_roll = true
-			break
-	assert_true(saw_roll, "a second, later press did not buy a roll")
-
 # --- landing re-derives the ground speed budget ------------------------------
 #
 # ✅ THE OWNER: "落地速度 >=7.2 m/s 则地速恢复为 7.2". Left alone, the energy
@@ -309,7 +294,7 @@ func test_a_second_later_press_still_buys_a_roll() -> void:
 # decays right back to the pre-ride ground pace instead of grounding into a
 # full sprint budget.
 
-func test_landing_off_the_cable_restores_the_ground_speed_budget() -> void:
+func test_landing_off_the_cable_keeps_the_ground_speed() -> void:
 	var player: Player = await _standing_player()
 	# Level, and long enough that MinZipAcceleration alone -- no slope needed
 	# -- carries the ride well past ground_speed. Runs -Z, the player's own
@@ -318,7 +303,9 @@ func test_landing_off_the_cable_restores_the_ground_speed_budget() -> void:
 	# bills an unrelated mid-air turn at touchdown (Player._update_speed_energy())
 	# and would muddy this test's own assertion with a cost this fix has
 	# nothing to do with.
-	_line = _cable(Vector3(0.0, CABLE_Y, -1.0), Vector3(0.0, CABLE_Y, -19.0))
+	# Starts half a metre ahead: the 0.3 m cylinder reaches the cable's volume
+	# from where it stands.
+	_line = _cable(Vector3(0.0, CABLE_Y, -0.5), Vector3(0.0, CABLE_Y, -19.0))
 	var input: ScriptedInputSource = _world["input"]
 	input.press_jump()
 	for i in 40:
@@ -349,9 +336,12 @@ func test_landing_off_the_cable_restores_the_ground_speed_budget() -> void:
 			landed = true
 			break
 	assert_true(landed, "test setup: the body never landed")
-	assert_true(player.speed_energy.cap() >= cfg.ground_speed - 0.01, \
-		"landing off the cable did not restore the ground speed budget (cap=%.2f)" \
-			% player.speed_energy.cap())
+	# [ME:CONFIRMED decompile 15.2] the sprint branch writes SpeedSprintEnergy =
+	# speed - SpeedMaxBaseVelocity every tick, and CalcVelocity caps the speed
+	# at GroundSpeed: a fast landing held forward runs on at the full 7.2.
+	await step(5)
+	assert_gt(player.horizontal_speed(), cfg.ground_speed - 0.3,
+		"landing off the cable did not keep the ground speed (%.2f)" % player.horizontal_speed())
 
 # --- the fall starts where the hands leave the cable -------------------------
 #

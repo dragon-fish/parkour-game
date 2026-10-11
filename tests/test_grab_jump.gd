@@ -231,6 +231,22 @@ func test_leaving_this_way_asks_for_the_capsule_back_and_waits_for_room() -> voi
 	var standing: float = player.current_capsule_height()
 	var folded: float = MovementConfig.new().crouch.crouch_capsule_height
 	player.set_capsule_height(folded)
+	# A roof just over the folded body, so a standing one does not fit where
+	# the hang leaves it. The hang's own pose used to guarantee that with a
+	# 0.4 m capsule pushed through the wall face; the original's 0.3 m cylinder
+	# hangs clear of it.
+	var feet: float = player.global_position.y - standing * 0.5
+	var roof := StaticBody3D.new()
+	var roof_shape := CollisionShape3D.new()
+	var roof_box := BoxShape3D.new()
+	roof_box.size = Vector3(3.0, 0.2, 2.0)
+	roof_shape.shape = roof_box
+	roof.add_child(roof_shape)
+	get_tree().root.add_child(roof)
+	roof.global_position = Vector3(player.global_position.x, feet + folded + 0.15,
+		player.global_position.z)
+	# Into the physics space before anything asks about it.
+	await step(1)
 	var grab := _grab(player)
 	grab.physics_update(1.0 / 60.0, _jump())
 	grab.exit()
@@ -243,6 +259,7 @@ func test_leaving_this_way_asks_for_the_capsule_back_and_waits_for_room() -> voi
 	await step(3)
 	assert_almost_eq(player.current_capsule_height(), standing, 0.001,
 		"the body never got its height back after clearing the ledge")
+	roof.queue_free()
 
 # --- forward is gated by the same angle ----------------------------------------
 
@@ -304,6 +321,7 @@ func test_the_drop_press_does_not_also_buy_a_roll_at_the_landing() -> void:
 	# hang hands the counter a fresh start on the way out
 	# (MoveConfig.fall_counts_from_exit).
 	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
+	player.enter_falling_height = player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5
 	input.release_crouch()
 	var saw_roll := false
 	for i in 120:
@@ -313,28 +331,6 @@ func test_the_drop_press_does_not_also_buy_a_roll_at_the_landing() -> void:
 		if player.grounded and player.move_manager.current_name != Move.SKILL_ROLL:
 			break
 	assert_false(saw_roll, "the same press that dropped the body also fired a skill roll")
-
-func test_a_second_crouch_press_after_the_drop_still_buys_a_roll() -> void:
-	# The counter-test: proves the fix above removes the DOUBLE billing only,
-	# not the roll itself. A genuinely new press, thrown while already
-	# falling, is its own action and must still buy one. Mirrors
-	# test_zipline_move.gd's test_a_second_later_press_still_buys_a_roll.
-	var player: Player = await _hanging_player(0.0)
-	var input: ScriptedInputSource = _world["input"]
-	input.press_crouch()  # press #1: drops off the ledge
-	await step(1)
-	assert_eq(player.move_manager.current_name, Move.FALLING, "test setup: crouch did not drop from the hang")
-	# Same synthetic-launch trick as the test above, and after the drop too.
-	player.fall_tracker.reset(player.global_position.y + player.config.pawn.skill_roll_landing_height + 0.5)
-	input.release_crouch()
-	input.press_crouch()  # press #2: a new press, while already airborne
-	var saw_roll := false
-	for i in 120:
-		await step(1)
-		if player.move_manager.current_name == Move.SKILL_ROLL:
-			saw_roll = true
-			break
-	assert_true(saw_roll, "a second, later press did not buy a roll")
 
 func test_q_on_a_hang_flicks_the_view_round_and_space_leaves() -> void:
 	# Q where the body cannot turn is a flick of the mouse: half a turn

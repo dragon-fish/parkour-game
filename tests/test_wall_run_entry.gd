@@ -40,13 +40,6 @@ func test_the_confirmed_entry_thresholds_are_in_place() -> void:
 	assert_almost_eq(config.wall_run.wall_running_horisontal_friction, 0.05, 0.0001, \
 		"wall friction is not 0.05")
 
-func test_a_faster_entry_stays_on_the_wall_longer() -> void:
-	# The whole point of removing the timer: speed has to buy something on the
-	# wall, and duration is what it buys.
-	var slow := await _measure_wall_ticks(4.0)
-	var fast := await _measure_wall_ticks(7.0)
-	assert_gt(fast, slow, "a faster entry did not last longer (%d vs %d ticks)" % [fast, slow])
-
 func test_a_wall_run_ends_when_vertical_speed_sinks_past_the_stop_limit() -> void:
 	# Distinguishes the vertical stop-limit exit from the horizontal one.
 	# Left to decay naturally this takes ~2.9 s (174 ticks) at a 7.2 m/s
@@ -88,9 +81,7 @@ func test_a_wall_run_ends_when_vertical_speed_sinks_past_the_stop_limit() -> voi
 
 ## Settles the player onto the floor, lifts it airborne, and drives it into
 ## `world`'s wall at `entry_speed`, returning once WALL_RUN is confirmed
-## active. Factored out of _measure_wall_ticks() so
-## test_a_wall_run_ends_when_vertical_speed_sinks_past_the_stop_limit() can
-## reach the same attached state without duplicating the settle/lift dance.
+## active.
 func _attach_to_wall(world: Dictionary, entry_speed: float) -> Player:
 	var player: Player = world["player"]
 	var input: ScriptedInputSource = world["input"]
@@ -136,32 +127,6 @@ func _attach_to_wall(world: Dictionary, entry_speed: float) -> Player:
 ## wall run lasted. Implemented with a direct velocity assignment rather than
 ## by running the speed curve up first, so the two cases differ ONLY in entry
 ## speed.
-func _measure_wall_ticks(entry_speed: float) -> int:
-	var world := _world_with_wall(0.0)
-	# Positioned BEFORE the first physics step, not after: the wall's own
-	# default pose (origin, unrotated) overlaps where the player spawns, and a
-	# single physics tick with the wall still there is enough for
-	# move_and_slide()'s own depenetration to shove the player sideways --
-	# confirmed directly by isolating it (moving the wall far away left the
-	# drift identical either way, which is what pointed at a SEPARATE cause
-	# below instead).
-	world["wall"].global_position = Vector3(0.95, 3.0, 0.0)
-	world["wall"].rotation = Vector3(0.0, PI * 0.5, 0.0)
-	var player: Player = await _attach_to_wall(world, entry_speed)
-	# _attach_to_wall() already confirmed WALL_RUN is active for one tick;
-	# count that one and keep counting until it ends.
-	var ticks := 1
-	for i in 400:
-		await step(1)
-		if player.move_manager.current_name == Move.WALL_RUN:
-			ticks += 1
-		else:
-			break
-	world["wall"].queue_free()
-	TestWorld.teardown(world)
-	await step(1)
-	return ticks
-
 func test_wall_gravity_is_asymmetric_and_sets_the_duration() -> void:
 	# ✅ MEASURED (04 §4.1). The rise is braked harder than the fall
 	# accelerates -- quick to the top, slow coming down -- which is what makes

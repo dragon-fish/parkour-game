@@ -20,6 +20,7 @@ func test_a_deep_fall_enters_the_uncontrolled_state() -> void:
 	var player: Player = world["player"]
 	player.global_position.y += cfg.pawn.falling_uncontrolled_height + 3.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 	for i in 240:
 		await step(1)
@@ -49,6 +50,7 @@ func test_it_is_a_one_way_door() -> void:
 	var player: Player = world["player"]
 	player.global_position.y += cfg.pawn.falling_uncontrolled_height + 3.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 	for i in 240:
 		await step(1)
@@ -89,6 +91,7 @@ func test_the_screen_shows_the_fall_and_shows_how_bad_it_is() -> void:
 	# taken with plenty of fall still left rather than racing the ground.
 	player.global_position.y += cfg.pawn.falling_uncontrolled_height + 60.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 	for i in 240:
 		await step(1)
@@ -149,6 +152,7 @@ func test_the_view_stops_responding_the_moment_control_is_lost() -> void:
 	# the free view of the tick AFTER the fall, not the locked view during it.
 	player.global_position.y += cfg.pawn.falling_uncontrolled_height + 40.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 	for i in 240:
 		await step(1)

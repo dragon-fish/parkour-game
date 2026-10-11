@@ -21,6 +21,7 @@ func test_a_hard_unrolled_landing_enters_landing() -> void:
 	# Above hard_landing_height, below the death threshold, no roll input.
 	player.global_position.y += cfg.pawn.hard_landing_height + 1.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 	for i in 240:
 		await step(1)
@@ -42,6 +43,7 @@ func test_a_soft_landing_skips_it_entirely() -> void:
 	var player: Player = world["player"]
 	player.global_position.y += cfg.pawn.hard_landing_height - 2.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 	for i in 240:
 		await step(1)
@@ -71,6 +73,7 @@ func test_the_lockout_actually_pins_the_yaw() -> void:
 	var player: Player = world["player"]
 	player.global_position.y += cfg.pawn.hard_landing_height + 1.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 	for i in 240:
 		await step(1)
@@ -125,6 +128,7 @@ func test_the_sink_is_there_on_the_frame_the_landing_begins() -> void:
 	var player: Player = world["player"]
 	player.global_position.y += cfg.pawn.hard_landing_height + 1.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 	for i in 240:
 		await step(1)

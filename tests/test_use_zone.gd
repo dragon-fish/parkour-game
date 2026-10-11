@@ -30,7 +30,7 @@ func _used_standing_at(x: float, whole: bool) -> bool:
 	return fired[0]
 
 func test_a_body_half_inside_does_not_count_when_the_whole_body_is_required() -> void:
-	# Capsule radius 0.4 at x = 1.0 reaches 1.4, past the box's 1.2.
+	# A 0.3 m cylinder at x = 1.0 reaches 1.3, past the box's 1.2.
 	assert_false(await _used_standing_at(1.0, true), "a body half out of the car was counted")
 	assert_true(await _used_standing_at(0.0, true), "a body wholly inside the car was never counted")
 

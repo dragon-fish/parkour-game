@@ -92,8 +92,8 @@ func _standing_height() -> float:
 	var player: Node = load("res://scenes/player/player.tscn").instantiate()
 	var tallest := 0.0
 	for shape in player.find_children("*", "CollisionShape3D", true, false):
-		if shape.shape is CapsuleShape3D:
-			tallest = maxf(tallest, (shape.shape as CapsuleShape3D).height)
+		if shape.shape is CapsuleShape3D or shape.shape is CylinderShape3D:
+			tallest = maxf(tallest, float(shape.shape.get("height")))
 	player.free()
 	return tallest
 

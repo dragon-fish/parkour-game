@@ -71,7 +71,7 @@ func _jumping() -> Player:
 ## shape sits relative to the origin is the entire subject of these tests.
 func _capsule_span(player: Player) -> Vector2:
 	var shape_node := player.get_node("CollisionShape3D") as CollisionShape3D
-	var capsule := shape_node.shape as CapsuleShape3D
+	var capsule := shape_node.shape as CylinderShape3D
 	var centre: float = shape_node.position.y
 	return Vector2(centre - capsule.height * 0.5, centre + capsule.height * 0.5)
 
@@ -260,13 +260,18 @@ func test_a_coil_runs_no_probes() -> void:
 	assert_false(cfg.coil.check_for_vault_over, "Coil must not check for a vault")
 	assert_false(cfg.coil.check_for_wall_climb, "Coil must not check for a wall")
 
-func test_only_jump_offers_a_coil() -> void:
-	# The entry lives in MoveConfig.check_for_coil rather than in JumpMove's
-	# body, so this is where "which states may coil" is actually readable.
-	var cfg := MovementConfig.new()
-	assert_true(cfg.jump.check_for_coil, "Jump is the one state that may coil")
-	assert_false(cfg.falling.check_for_coil, "Falling may not coil")
-	assert_false(cfg.coil.check_for_coil, "a coil may not coil again")
+func test_only_a_rise_offers_a_coil() -> void:
+	# [ME:CONFIRMED decompile] TdMove_Coil.CanDoMove refuses Falling outright;
+	# the action table offers it from Jump (and the other rises) on a crouch.
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	var player: Player = world["player"]
+	player.global_position = Vector3(0.0, 20.0, 0.0)
+	player.move_manager.start(Move.FALLING)
+	player.velocity = Vector3(0.0, -2.0, -6.0)
+	assert_false(player.move_manager.can_do(Move.COIL), "Falling may coil")
+	TestWorld.teardown(world)
+	await step(1)
 
 # --- what the tuck is FOR ---------------------------------------------------------
 

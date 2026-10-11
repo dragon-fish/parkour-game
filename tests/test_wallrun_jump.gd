@@ -188,16 +188,12 @@ func test_a_live_wall_jump_matches_the_gradient_functions_under_real_gravity() -
 		apex_y = maxf(apex_y, player.global_position.y)
 		if player.velocity.y < 0.0:
 			break
-	# Tolerance covers the integrator's own bias, not sloppiness. Semi-implicit
-	# Euler applies a full tick of gravity before the position update, so a
-	# discretely integrated arc overshoots the closed-form apex by roughly
-	# v0 * dt / 2. At the measured gravity that is 6.45 / 120 = 0.054 m, which is
-	# why 0.05 stopped passing the moment gravity was corrected from 8.0: launch
-	# speed grows as sqrt(gravity), and so does this bias. 0.08 keeps ~50% headroom
-	# over the computed bias without hiding a regression.
-	var integrator_bias: float = expected_launch / (2.0 * Engine.physics_ticks_per_second)
-	assert_gt(0.08, integrator_bias, "integrator bias outgrew the tolerance")
-	assert_almost_eq(apex_y - jump_y, expected_height, 0.08, \
+	# The arc after the launch tick is the falling physics' own, an exact
+	# parabola (the integrator rebuilds V = 2 dLoc / dt - V0, PawnPhysics), so
+	# the only bias left is the launch tick itself: the wall run moves the body
+	# one tick at the launch speed before Jump takes it over.
+	var launch_tick: float = expected_launch / Engine.physics_ticks_per_second
+	assert_almost_eq(apex_y - jump_y, expected_height + launch_tick, 0.03, \
 		"the live wall jump's measured apex does not match the predicted %f m rise" % expected_height)
 
 	wall.queue_free()

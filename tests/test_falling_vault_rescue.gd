@@ -33,7 +33,7 @@ func _reported_speed_z(fallen: float, holding: Vector2, rising: bool = false) ->
 	TestWorld.place(_world)
 	await step(20)
 	var player: Player = _world["player"]
-	var move: AirborneMove = player.move_manager.move_for(Move.FALLING)
+	var move: Move = player.move_manager.move_for(Move.FALLING)
 	player.velocity.y = 4.0 if rising else -8.0
 	# Faces -Z at rest, so a forward hold is a hold toward whatever the probe
 	# is looking at.
@@ -44,6 +44,7 @@ func _reported_speed_z(fallen: float, holding: Vector2, rising: bool = false) ->
 	# fall_height is launch_y - world_y, and reset() re-baselines to a ground
 	# height -- so a launch this far above the body is a fall of that depth.
 	player.fall_tracker.reset(player.global_position.y + fallen)
+	player.enter_falling_height = player.global_position.y + fallen
 	player.fall_tracker.update(0.0, player.velocity.y, player.global_position.y)
 	return move._vault_speed_z()
 

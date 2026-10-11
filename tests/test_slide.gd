@@ -109,7 +109,11 @@ func test_uphill_slides_decay_harder_than_downhill_through_slide_move() -> void:
 	# here) to abort a slide entered too slowly within just a few ticks, which
 	# would make the SLIDE-still-current check below fail for an unrelated
 	# reason.
-	const INCLINE := deg_to_rad(30.0)
+	#
+	# 20 DEGREES, NOT 30: [ME:CONFIRMED decompile] TdMove_Slide.CanDoMove
+	# refuses a floor rising more than MaxFloorInclineZ (0.5, i.e. 30 degrees)
+	# along the velocity, so a 30 degree uphill slide cannot be started.
+	const INCLINE := deg_to_rad(20.0)
 	const SETTLE_TICKS := 60
 	const RUN_TICKS := 200
 	const SLIDE_TICKS := 10

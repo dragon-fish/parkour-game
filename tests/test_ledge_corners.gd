@@ -322,9 +322,9 @@ func test_the_shimmy_is_refused_for_a_moment_after_a_corner() -> void:
 ## so the ledge can be hung from and not pulled up onto.
 func _capped_square(player: Player) -> void:
 	_square(player)
-	# 3 m cap on a 4 m block leaves a 0.5 m rim -- narrower than the body, which
-	# is 0.8 m across.
-	_block(player, Vector3(0.0, TOP + 0.75, -2.0), Vector3(3.0, 1.5, 3.0))
+	# 3.4 m cap on a 4 m block leaves a 0.3 m rim -- half the body, which is
+	# 0.6 m across.
+	_block(player, Vector3(0.0, TOP + 0.75, -2.0), Vector3(3.4, 1.5, 3.4))
 
 func test_the_rim_really_is_too_narrow_to_pull_up_onto() -> void:
 	# Without this the corner test below passes on geometry that was never

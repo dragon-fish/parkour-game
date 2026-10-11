@@ -26,6 +26,7 @@ func _land_from(height: float, roll: bool) -> Dictionary:
 
 	player.global_position.y += height
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(2)
 
 	var seen: Array[StringName] = []

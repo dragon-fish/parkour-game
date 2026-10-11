@@ -37,12 +37,15 @@ func _world_with_sweet_spot_box() -> Dictionary:
 	# reads a hair under it and the fixture resolves to step_up_right_leg_88,
 	# which pays no bonus. This test is about the bonus ARITHMETIC, so the
 	# fixture only has to be unambiguously in the band that pays it.
-	box.size = Vector3(2.0, 1.2, 0.4)
+	# 1.1, NOT 1.2: the vault probe samples the face in steps from the feet, and
+	# a top at 1.2 sits within its epsilon of one of those samples once the feet
+	# hover at the walking physics' 2.15 uu.
+	box.size = Vector3(2.0, 1.1, 0.4)
 	shape.shape = box
 	body.add_child(shape)
 	get_tree().root.add_child(body)
 	world["box"] = body
-	world["box_at"] = Vector3(0.0, 0.6, -1.4)
+	world["box_at"] = Vector3(0.0, 0.55, -1.4)
 	return world
 
 ## Sets player.velocity to `entry_speed` along -Z, resolves the real variant

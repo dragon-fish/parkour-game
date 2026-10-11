@@ -49,6 +49,7 @@ func test_a_fatal_fall_survives_its_own_respawn() -> void:
 	# not a bug to work around.
 	player.global_position.y += cfg.pawn.falling_uncontrolled_height + 3.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 	assert_true(player.move_manager.current_name == Move.FALLING, \
 		"test setup is wrong: the teleport did not send the player airborne")

@@ -43,6 +43,7 @@ func _slab_under(player: Player, drop: float) -> StaticBody3D:
 func _drop_from_lethal(player: Player) -> void:
 	player.global_position.y += player.config.pawn.falling_uncontrolled_height + 6.0
 	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
 	await step(1)
 
 ## Runs the fall out, stopping early if it turns fatal.
