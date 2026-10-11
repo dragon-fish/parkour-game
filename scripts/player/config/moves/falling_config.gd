@@ -1,27 +1,16 @@
 class_name FallingConfig
 extends MoveConfig
 
-# The Godot counterpart of the original's TdMove_Falling. No fields of its
-# own yet -- air control still reads straight off PawnConfig -- so this class
-# exists purely to give Falling a slot in MovementConfig that matches every
-# other move's own layering.
+# The original's TdMove_Falling defaults (CDO and DefaultPawnMovement.ini).
 
 func _init() -> void:
-	# [ME:CONFIRMED 05 §5.7 ③, 11 §11.2] TdMove_Falling (descending) has
-	# bCheckForGrab / bCheckForVaultOver set but bCheckForWallClimb clear.
-	# That single absence is the whole rule against a long drop converting
-	# into a wall run -- it is enforced here, not by a speed guard.
-	#
-	# This is also where autostepuprightleg's falling-only band
-	# (MinSpeedZ/MaxSpeedZ -6.0..0.0) actually becomes reachable -- see
-	# SpeedVaultConfig.variants' own note on that row, and
-	# AirborneMove.probe_transition()'s own comment on why the vault check
-	# runs before the ledge grab it falls back to.
-	# [ME:INFERRED] from play: a turn in the air is taken on the way up, from
-	# a jump, and not once the body is falling -- see Turn180InAirMove.
-	allows_turn = false
+	# [ME:CONFIRMED decompile, ini] bCheckForGrab and bCheckForVaultOver set,
+	# bCheckForWallClimb clear. That single absence is the whole rule against
+	# a long drop converting into a wall run.
 	check_for_grab = true
 	check_for_vault_over = true
+	# The level's interest points, asked with the switches above (see
+	# PhysicsMove.check_auto_moves()).
 	check_for_zipline = true
 	check_for_swing = true
 	check_for_ladder = true

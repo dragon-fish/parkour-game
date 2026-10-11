@@ -1,122 +1,205 @@
 class_name LandingMove
 extends Move
 
-# [ME:CONFIRMED] TdMove_Landing's Godot counterpart: a 2 s lockout after a
-# hard landing taken without a roll (see LandingConfig.lockout_time for the
-# measurement). MOVEMENT input is refused for the
-# whole duration -- that is the entire point: this move never reads its
-# MoveInput at all, and LandingConfig.constrain_look pins the yaw to a +-0.2
-# rad fan around the facing the landing began with on top of that. LOOK PITCH
-# is deliberately still the player's (see LandingConfig's own note on why
-# clamping it here as well fought set_landing_pitch_offset below). The camera
-# and the red tint recover across the lockout so the player can see the
-# penalty draining rather than merely waiting it out.
+# The original's TdMove_Landing, ported. [ME:CONFIRMED decompile 15.6, 15.7]
 #
-# ScreenEffects and CameraRig are both plain-number sinks with no time logic
-# of their own (see their own header comments); this move owns the whole
-# fade curve and pushes a fresh number to each of them every tick.
+# EVERY landing comes through here, not only the hard one: TdMove.Landed sets
+# Landing, and Landing.StartMove decides on the spot -- a skill roll, a
+# landing on the back, a soft object, a hard landing, or an ordinary one. The
+# ordinary one caps the horizontal speed (SubtractLandingSpeed) and sets
+# Walking (or Crouch, without room to stand) from inside StartMove, so it
+# lasts no time at all; only the hard landing and the soft object hold the
+# body, with move and look input ignored, until the landing animation ends.
+#
+# It is a plain TdMove: no physics of its own. The body keeps the falling
+# physics until processLanded hands it to walking.
+#
+# A level's stagger (MoveManager) is this project's own and still lands here
+# for its lockout.
+
+## TdMove_Landing.bForceLandBack, set by a stumble.
+var force_land_back: bool = false
+## TdMove_Landing.bLastLandingWasOnSoftObject: IsLandingOnSoftObject() sets it
+## from the falling damage check, before the move's own Landed runs.
+var last_landing_was_on_soft_object: bool = false
+
+## Which branch this landing took, for the presentation and the tests.
+enum Kind { NONE, NORMAL, HARD, SOFT_OBJECT, BACKWARDS, SKILL_ROLL, STAGGER }
+var kind: int = Kind.NONE
 
 var _elapsed: float = 0.0
-## What the lockout tints the screen: the hazard's own colour for a stagger
-## that brought one (an electric fence's blue), the landing's red otherwise.
+## How long the body is held, for the landings that hold it. The original's
+## is the landing animation's length; this project's is LandingConfig's.
+var _hold: float = 0.0
+## What the lockout tints the screen.
 var _tint: Color = Color.BLACK
 
-func enter(_previous: StringName) -> void:
+func is_ported() -> bool:
+	return true
+
+## TdMove_Landing.CanDoMove: not from Balance or a SkillRoll.
+func can_do_move() -> bool:
+	var state: StringName = player.move_manager.current_name
+	if state == BALANCE or state == SKILL_ROLL:
+		return false
+	return td_can_do_move()
+
+## TdMove_Landing.StartMove.
+func enter(previous: StringName) -> void:
 	_elapsed = 0.0
-	_tint = config.landing.tint_color
+	_hold = 0.0
+	kind = Kind.NONE
+	_tint = cfg.tint_color
+	if player.pending_stagger:
+		_stagger()
+		return
+	var came_from_180_in_air: bool = previous == TURN_180_IN_AIR
+	var falling_height: float = player.enter_falling_height - player.global_position.y
+	# A long chute slide arms a hard landing however short the drop after it
+	# -- this project's stand-in for the TdFallHeightVolume the original
+	# puts on its chutes (RampSlideMove).
+	var hard: bool = falling_height >= config.pawn.hard_landing_height \
+		or player.consume_forced_hard_landing()
+	var soft_surface: bool = hard and last_landing_was_on_soft_object
+	var v_dir: Vector3 = player.velocity.normalized() if player.velocity.length_squared() > 0.0 else Vector3.ZERO
+	var heading_dot_velocity: float = player.facing().dot(v_dir)
+	var skill_roll: bool = not soft_surface and falling_height >= config.pawn.skill_roll_landing_height \
+		and player.can_skill_roll() and player.move_manager.can_do(SKILL_ROLL)
+	var soft_landing: Move = player.move_manager.move_for(SOFT_LANDING)
+	var moving_backwards: bool = (heading_dot_velocity < -0.3 \
+			and PawnPhysics.walking_state(player.horizontal_speed()) >= PawnPhysics.WAS_RUN) \
+		or came_from_180_in_air \
+		or (previous == SOFT_LANDING and soft_landing != null and soft_landing.has_method("is_moving_backwards") \
+			and soft_landing.is_moving_backwards())
+	player.last_landing_rolled = skill_roll and not moving_backwards
+	if skill_roll and not moving_backwards:
+		kind = Kind.SKILL_ROLL
+		player.move_manager.set_move(SKILL_ROLL)
+	elif came_from_180_in_air or previous == LAY_ON_GROUND or (hard and moving_backwards) \
+			or (last_landing_was_on_soft_object and moving_backwards) or force_land_back:
+		_land_backwards(hard)
+	elif soft_surface:
+		_land_on_soft_object()
+	elif hard and (not player.uncontrolled_slide or previous == RAMP_SLIDE):
+		_land_hard()
+	else:
+		_land_normal()
+		_end_landing()
+	force_land_back = false
+	last_landing_was_on_soft_object = false
+
+## TdMove_Landing.SubtractLandingSpeed. [ME:CONFIRMED decompile 15.6] After a
+## jump's fall (or a coil, or an air kick), the horizontal speed is capped at
+## PreJumpMomentum - LandingSpeedReduction. Kept as the original has it: a
+## take-off slower than LandingSpeedReduction makes the cap negative, which
+## turns the landing velocity round.
+func subtract_landing_speed() -> void:
+	var falling: Move = player.move_manager.move_for(FALLING)
+	var old: StringName = player.old_movement_state
+	var from_jump_fall: bool = old == FALLING and falling != null \
+		and (falling.previous_move == JUMP or falling.previous_move == MELEE_AIR)
+	if not (from_jump_fall or old == COIL or old == MELEE_AIR):
+		return
+	var jump: Move = player.move_manager.move_for(JUMP)
+	if jump == null:
+		return
+	var cap: float = jump.pre_jump_momentum - cfg.landing_speed_reduction
+	if cap < player.horizontal_speed():
+		var flat := Vector3(player.velocity.x, 0.0, player.velocity.z)
+		flat = flat.normalized() * cap if flat.length_squared() > 0.0 else Vector3.ZERO
+		player.velocity = Vector3(flat.x, player.velocity.y, flat.z)
+
+## TdMove_Landing.LandNormal: holding forward on a human-controlled landing
+## forces the walking acceleration to its maximum for one frame; every
+## landing but a vault's caps the speed.
+func _land_normal() -> void:
+	kind = Kind.NORMAL
+	if player.move_action_hint == MAH_UP:
+		player.force_max_accel_one_frame = true
+	if player.old_movement_state != SPEED_VAULT:
+		subtract_landing_speed()
+
+## TdMove_Landing.EndLanding: Walking when a standing body fits, Crouch
+## otherwise.
+func _end_landing() -> void:
+	if player.can_stand(player.collision_center()):
+		player.move_manager.set_move(WALKING)
+	else:
+		player.move_manager.set_move(CROUCH)
+
+## TdMove_Landing.LandHard: no input at all, no speed, until the animation
+## ends.
+func _land_hard() -> void:
+	kind = Kind.HARD
+	_hold_body(cfg.lockout_time)
+
+## TdMove_Landing.LandOnSoftObject: the same hold, on a soft-landing surface.
+func _land_on_soft_object() -> void:
+	kind = Kind.SOFT_OBJECT
+	_hold_body(cfg.lockout_time)
+
+## TdMove_Landing.LandBackwards: onto the back.
+func _land_backwards(hard: bool) -> void:
+	kind = Kind.BACKWARDS
+	# The hard landing's red, carried by LayOnGround: this project's
+	# presentation of the damage TakeFallingDamage has just taken.
+	if hard:
+		player.pending_stagger_tint = cfg.tint_color
+	player.velocity = Vector3.ZERO
+	player.acceleration = Vector3.ZERO
+	player.move_manager.set_move(LAY_ON_GROUND)
+
+func _hold_body(seconds: float) -> void:
+	_hold = seconds
+	player.set_ignore_move_input(-1.0)
+	player.set_ignore_look_input(-1.0)
+	player.velocity = Vector3.ZERO
+	player.acceleration = Vector3.ZERO
+	player.request_standing_capsule()
+	_drive_effects(1.0)
+
+## A level's stagger: a knock-down that keeps part of the speed, and the same
+## lockout as a hard landing. This project's own.
+func _stagger() -> void:
+	kind = Kind.STAGGER
+	player.pending_stagger = false
 	if player.pending_stagger_tint.a > 0.0:
 		_tint = player.pending_stagger_tint
 	player.pending_stagger_tint = Color(0.0, 0.0, 0.0, 0.0)
-	# A WIRE CUT IS A KNOCK-DOWN, NOT A WALL. A hard landing arrives here
-	# already charged by Player.landing_keep_ratio(), so zeroing what is
-	# left costs nothing -- but a stagger is charged HERE, and taking
-	# everything would make a wired fence impassable instead of merely
-	# expensive. Upward travel is what the wire actually stops: the arc is
-	# cut at the moment of contact and the body carries on forward and down.
-	if player.pending_stagger:
-		player.pending_stagger = false
-		player.velocity.x *= config.landing.stagger_keep_ratio
-		player.velocity.z *= config.landing.stagger_keep_ratio
-		player.velocity.y = minf(player.velocity.y, 0.0)
-	else:
-		player.velocity = Vector3.ZERO
-	# DECLARED FROM THE ENGINE, not assumed. This move never calls
-	# move_and_slide() on its own first tick, so the declaration has to be
-	# made here -- but it is not always true. A hard landing arrives with
-	# settle_landing() having just found the floor; a stagger taken off
-	# barbed wire arrives in mid-air, and claiming the ground there refills
-	# coyote time every tick of the lockout.
-	player.set_grounded(player.is_on_floor())
-	# Same reasoning as SlideMove.exit()/CrouchMove.exit(): the capsule may
-	# still be sitting at a shrunk height coming in here. The ordinary path is
-	# a jump or a fall, where the capsule was never touched and this is a
-	# no-op -- but a hard landing straight out of a Slide/Crouch that never
-	# got its standing capsule back (still pinned under a low ceiling right up
-	# to the moment of impact) must not carry that shrink silently into a
-	# 2 s lockout this move never inspects again. request_standing_capsule()
-	# is itself deferred (not forced) when there is still no headroom, so this
-	# is always safe to call unconditionally.
-	player.request_standing_capsule()
+	player.velocity.x *= cfg.stagger_keep_ratio
+	player.velocity.z *= cfg.stagger_keep_ratio
+	player.velocity.y = minf(player.velocity.y, 0.0)
+	_hold_body(cfg.lockout_time)
 
-	# THE SINK BELONGS TO THE IMPACT FRAME. MoveManager calls enter() mid-tick
-	# and does not run this move's own physics_update() on that tick, so driving
-	# the camera only from there put the sink a frame late -- and
-	# Player.update_effects() deliberately skips writing the crouch while this
-	# move is current, so the entry frame kept showing the airborne view.
-	#
-	# The same one-logic-frame gap as SkillRollMove.enter(); milder here, since
-	# it delays an effect rather than flashing a wrong value. It still lands on
-	# the one frame of a hard landing anyone actually looks at.
-	_drive_effects(1.0)
-
-func physics_update(delta: float, _input: MoveInput) -> StringName:
+## The hold's end stands in for the landing animation's OnCustomAnimEnd, which
+## sets Walking.
+func tick_move(delta: float) -> void:
+	super.tick_move(delta)
+	if _hold <= 0.0:
+		return
 	_elapsed += delta
-	var t: float = clampf(_elapsed / maxf(config.landing.lockout_time, 0.0001), 0.0, 1.0)
-
-	# Recovering, not holding: 1 at touchdown falling to 0 at release.
+	var t: float = clampf(_elapsed / maxf(_hold, 0.0001), 0.0, 1.0)
 	_drive_effects(1.0 - t)
-
-	# GLUE ON THE FLOOR, GRAVITY OFF IT. Pinning velocity.y to the snap
-	# speed is what keeps a landed body from bouncing off its own slope --
-	# but a stagger can start this move in mid-air, and the same line there
-	# lowers the body at a constant crawl with no gravity at all, hanging it
-	# in the sky for the whole lockout.
-	if player.grounded:
-		player.velocity.y = -config.pawn.floor_snap_speed
-		# THE INERTIA A STAGGER KEEPS BELONGS TO THE FALL, NOT TO THE FLOOR.
-		# Carrying it past touchdown slides the body across the ground at
-		# speed through a lockout that refuses every input, which reads as
-		# the character drifting off on its own. Dropped on contact rather
-		# than braked: there is nothing here for friction to model, the
-		# player is simply down.
-		player.velocity.x = 0.0
-		player.velocity.z = 0.0
-	else:
-		player.velocity.y -= player.effective_gravity() * delta
-		player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
-	player.move_and_slide()
-	player.set_grounded(player.is_on_floor())
-
 	if t >= 1.0:
-		return WALKING
-	return KEEP
+		player.move_manager.set_move(WALKING)
 
 func exit() -> void:
-	_drive_effects(0.0)
-	# The lockout is the thing that knows when it is over, so the stagger
-	# immunity starts here rather than where the stagger was chosen -- a
-	# window measured from the hit would have to be longer than this move
-	# just to reach past it, coupling two dials that have no reason to know
-	# about each other.
-	player.arm_stagger_immunity()
+	if _hold > 0.0:
+		_drive_effects(0.0)
+		# The lockout is the thing that knows when it is over, so the stagger
+		# immunity starts here rather than where the stagger was chosen.
+		player.arm_stagger_immunity()
 
-## The whole visible weight of the lockout, at `severity`: 1 at the impact and 0
-## by the time it lets go. One place, because it is driven from three -- entry,
-## every tick, and the hand-off -- and a channel written in only two of them is
-## exactly the gap this move already had.
+## Whether this landing holds the body (a hard landing, a soft object, a
+## stagger) rather than handing it straight on.
+func is_holding() -> bool:
+	return _hold > 0.0
+
+## The lockout's presentation, at `severity`: 1 at the impact and 0 by the
+## time it lets go. This project's; the original's is the animation.
 func _drive_effects(severity: float) -> void:
 	if player.camera_rig != null:
 		player.camera_rig.set_crouch_amount(severity)
-		player.camera_rig.set_landing_pitch_offset(config.landing.camera_pitch_offset * severity)
+		player.camera_rig.set_landing_pitch_offset(cfg.camera_pitch_offset * severity)
 	if player.screen_effects != null:
 		player.screen_effects.set_tint(_tint, severity)

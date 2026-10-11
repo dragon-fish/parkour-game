@@ -1,27 +1,25 @@
 class_name JumpConfig
 extends MoveConfig
 
-# The Godot counterpart of the original's TdMove_Jump. No fields of its own
-# yet -- jump take-off still reads straight off PawnConfig's base_jump_z/
-# jump_add_xy -- so this class exists purely to give Jump a slot in
-# MovementConfig that matches every other move's own layering.
+# The original's TdMove_Jump defaults (CDO and DefaultPawnMovement.ini). The
+# take-off numbers, BaseJumpZ and JumpAddXY, are PawnConfig's.
 
 func _init() -> void:
-	# [ME:CONFIRMED 05 §5.7 ③] TdMove_Jump (rising) has bCheckForGrab /
-	# bCheckForVaultOver / bCheckForWallClimb all set. JumpMove is a real
-	# state now (AirborneMove's own subclass), and
-	# AirborneMove.probe_transition() reads check_for_wall_climb directly to
-	# gate WALL_RUN entry -- this is the ONLY thing that distinguishes
-	# JumpConfig from FallingConfig (see FallingConfig's own note on that
-	# absence).
+	# [ME:CONFIRMED decompile, ini] bCheckForGrab, bCheckForVaultOver and
+	# bCheckForWallClimb all set: the only airborne move without the last one
+	# is Falling, which is the whole rule against a long drop turning into a
+	# wall run.
 	check_for_grab = true
 	check_for_vault_over = true
 	check_for_wall_climb = true
+	# The level's interest points, asked with the switches above (see
+	# PhysicsMove.check_auto_moves()).
 	check_for_zipline = true
 	check_for_swing = true
 	check_for_ladder = true
 	check_for_ledge_walk = true
 	check_for_balance = true
-	# A rise offers a coil. MoveConfig.check_for_coil's own note covers why the
-	# narrowness -- rises only, never a fall -- is load-bearing.
-	check_for_coil = true
+	# [ME:CONFIRMED ini] RedoMoveTime = 1.0 under [TdGame.TdMove_Jump]: a new
+	# jump waits a second from the moment the last one STOPPED (it stops when
+	# the fall passes -400 uu/s or it lands), not from its take-off.
+	redo_move_time = 1.0
