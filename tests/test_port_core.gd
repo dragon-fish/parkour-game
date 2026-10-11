@@ -336,6 +336,23 @@ func test_a_stick_pushed_from_the_start_gives_its_hint() -> void:
 	await step(1)
 	assert_eq(player.move_action_hint, Move.MAH_UP)
 
+## [ME:CONFIRMED decompile 15.2] The turn penalty's aTurn is the frame's raw
+## yaw input in rotator units, nothing the view did with it -- and zero while
+## look input is ignored.
+func test_the_turn_penalty_reads_the_raw_yaw_input() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	input.state.look = Vector2(40.0, 0.0)
+	await step(1)
+	assert_eq(player.turn_units,
+		PawnAcceleration.turn_units(-40.0 * player.config.camera.mouse_sensitivity))
+	player.set_ignore_look_input(-1.0)
+	await step(1)
+	assert_eq(player.turn_units, 0, "an ignored look still billed a turn")
+	player.stop_ignore_look_input()
+	input.state.look = Vector2.ZERO
+
 ## [ME:CONFIRMED decompile 15.4] The forced Walking frame runs
 ## Walking.StartMove, which clears the wall-run jump's ledge ban.
 func test_walking_start_clears_the_illegal_ledge_timer() -> void:

@@ -3714,13 +3714,16 @@ func _physics_process(delta: float) -> void:
 		_drive_balance_lean()
 
 	# The controller reads its axes off the facing BEFORE this tick's look
-	# input, and bills the turn penalty on the look itself: the yaw this tick's
-	# input turned, in rotator units. [ME:CONFIRMED decompile 15.2]
+	# input, and bills the turn penalty on the look input itself.
+	# [ME:CONFIRMED decompile 15.2] PlayerMove passes int(PlayerInput.aTurn):
+	# this tick's raw yaw input in rotator units -- zero while look input is
+	# ignored, and taken before UpdateRotation scales it by RotSpeedMod and the
+	# move's look constraint clamps it. DO NOT measure it off the turned view.
 	_pre_look_basis = global_transform.basis
-	var yaw_before: float = rotation.y
+	var look: Vector2 = Vector2.ZERO if ignore_look_input else input.look
 	if camera_rig != null:
-		camera_rig.apply_look(Vector2.ZERO if ignore_look_input else input.look, self, delta)
-	turn_units = PawnAcceleration.turn_units(wrapf(rotation.y - yaw_before, -PI, PI))
+		camera_rig.apply_look(look, self, delta)
+	turn_units = PawnAcceleration.turn_units(-look.x * config.camera.mouse_sensitivity)
 	# Whatever turned the body since the last tick -- the look above, a
 	# respawn, a scripted move -- the collider stays square to the world.
 	align_collider()
