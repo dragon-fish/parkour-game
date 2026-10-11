@@ -245,14 +245,14 @@ func test_the_clearance_probe_gets_its_height_back_too() -> void:
 	# who stands up into a ceiling, and no error anywhere.
 	var player: Player = await _standing_player()
 	var probe: ShapeCast3D = player.get_node("StandClearance")
-	var capsule := probe.shape as CylinderShape3D
-	# SET, not read. player.tscn's CylinderShape3D is not resource_local_to_scene,
+	var capsule := probe.shape as BoxShape3D
+	# SET, not read. player.tscn's BoxShape3D is not resource_local_to_scene,
 	# so every Player built in this run shares one -- reading a baseline off it
 	# gets whatever the previous test left there, and the assertion then compares
 	# a polluted value with itself and passes no matter what.
-	capsule.height = player.standing_height()
+	capsule.size.y = player.standing_height()
 	player.fits_at(Vector3(0.0, 12.0, -30.0), 0.9)
-	assert_almost_eq(capsule.height, player.standing_height(), 0.0001, \
+	assert_almost_eq(capsule.size.y, player.standing_height(), 0.0001, \
 		"the clearance probe was left at the height of the last question")
 
 func test_the_clearance_probe_goes_back_where_it_belongs() -> void:

@@ -255,6 +255,7 @@ func move_actor(delta: Vector3) -> Dictionary:
 	if not pawn.collide_world:
 		pawn.global_position += delta
 		return _miss()
+	pawn.align_collider()
 	var before: Vector3 = pawn.global_position
 	var collision: KinematicCollision3D = pawn.move_and_collide(delta)
 	var length: float = delta.length()
@@ -282,9 +283,10 @@ func _note_recovery(moved: Vector3, asked: Vector3) -> void:
 	if (moved - asked).length() > RECOVERY_TOLERANCE:
 		_recovered = true
 
-## SingleLineCheck with the pawn's own cylinder as the extent: where the body
+## SingleLineCheck with the pawn's own box as the extent: where the body
 ## would stop if moved by `motion`, without moving it.
 func sweep(motion: Vector3, from: Transform3D = Transform3D()) -> Dictionary:
+	pawn.align_collider()
 	var start: Transform3D = pawn.global_transform if from == Transform3D() else from
 	var collision := KinematicCollision3D.new()
 	if motion == Vector3.ZERO or not pawn.test_move(start, motion, collision):

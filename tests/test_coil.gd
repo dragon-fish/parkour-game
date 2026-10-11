@@ -71,9 +71,9 @@ func _jumping() -> Player:
 ## shape sits relative to the origin is the entire subject of these tests.
 func _capsule_span(player: Player) -> Vector2:
 	var shape_node := player.get_node("CollisionShape3D") as CollisionShape3D
-	var capsule := shape_node.shape as CylinderShape3D
+	var capsule := shape_node.shape as BoxShape3D
 	var centre: float = shape_node.position.y
-	return Vector2(centre - capsule.height * 0.5, centre + capsule.height * 0.5)
+	return Vector2(centre - capsule.size.y * 0.5, centre + capsule.size.y * 0.5)
 
 # --- entry --------------------------------------------------------------------
 

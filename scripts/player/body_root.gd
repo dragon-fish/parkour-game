@@ -113,7 +113,7 @@ func _rebuild_preview() -> void:
 	var shape_node: CollisionShape3D = player.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node == null:
 		return
-	var capsule: CylinderShape3D = shape_node.shape as CylinderShape3D
+	var capsule: BoxShape3D = shape_node.shape as BoxShape3D
 	if capsule == null:
 		return
 
@@ -124,7 +124,7 @@ func _rebuild_preview() -> void:
 	_previewed_rotation = wanted["rotation"]
 	_previewed_scale = wanted["scale"]
 
-	_rebuild_markers(capsule.height)
+	_rebuild_markers(capsule.size.y)
 
 	if wanted["scene"] == null:
 		return

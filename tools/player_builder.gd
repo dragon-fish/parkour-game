@@ -27,12 +27,11 @@ func build() -> CharacterBody3D:
 
 	var shape := CollisionShape3D.new()
 	shape.name = "CollisionShape3D"
-	# [ME:CONFIRMED decompile] TdPawn's CDO: CylinderComponent radius 30 uu,
-	# half-height 90 uu. A cylinder, not a capsule -- see
-	# Player.current_capsule_height().
-	var capsule := CylinderShape3D.new()
-	capsule.height = 1.8
-	capsule.radius = 0.3
+	# [ME:CONFIRMED decompile] TdPawn's CDO: CollisionRadius 30 uu,
+	# CollisionHeight 90 uu (a half-height), swept as the axis-aligned box
+	# (R, R, H) -- see Player.align_collider().
+	var capsule := BoxShape3D.new()
+	capsule.size = Vector3(0.6, 1.8, 0.6)
 	shape.shape = capsule
 	player.add_child(shape)
 	shape.owner = player
@@ -131,9 +130,9 @@ func build() -> CharacterBody3D:
 	player.add_child(body_root)
 	body_root.owner = player
 
-	# Standing-clearance probe: a cylinder the size of the STANDING body, tested
-	# in place. A ray would miss geometry the capsule's radius would hit.
-	# Duplicated from the body's shape (not a separate 1.8/0.3 literal) so the
+	# Standing-clearance probe: a box the size of the STANDING body, tested
+	# in place. A ray would miss geometry the body's width would hit.
+	# Duplicated from the body's shape (not a separate 0.6/1.8 literal) so the
 	# probe can never silently drift out of sync with the actual body size.
 	var clearance := ShapeCast3D.new()
 	clearance.name = "StandClearance"

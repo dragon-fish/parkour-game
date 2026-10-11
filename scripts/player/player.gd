@@ -1132,12 +1132,13 @@ var wall_side: int = 0
 func standing_height() -> float:
 	return _standing_height
 
-## A CYLINDER, radius 0.30 m and height 1.80 m: [ME:CONFIRMED decompile] UE3
-## pawns collide as a CylinderComponent, and TdPawn's CDO sets CollisionRadius
-## 30 and CollisionHeight 90 (a half-height). DO NOT round its bottom into a
-## capsule: a flat-bottomed cylinder perches on ledges a hemisphere slides off,
-## and the walking physics' 2 uu hover above the floor (PawnPhysics) assumes a
-## flat bottom.
+## An AXIS-ALIGNED BOX, 0.60 x 1.80 x 0.60 m: [ME:CONFIRMED decompile] TdPawn's
+## CDO sets CollisionRadius 30 and CollisionHeight 90 (a half-height), and
+## every UE3 extent trace the pawn moves by sweeps the box (R, R, H) square to
+## the world axes, never turned with the pawn -- CalculateRelativeExtent, the
+## ledge assist's R / max(|n.x|, |n.y|) and the ceiling nudge's corner probes
+## at +-(R + 1) all assume it. DO NOT round it into a capsule or a cylinder,
+## and DO NOT let it turn with the body's yaw (align_collider()).
 ##
 ## The names still say "capsule" -- the moves not yet ported resize it through
 ## these -- and mean the body's collider, whatever its shape.
@@ -1148,23 +1149,34 @@ func standing_height() -> float:
 ## than cached: this can run before setup() has duplicated the shape into a
 ## per-instance copy.
 func current_capsule_height() -> float:
-	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
-	if shape_node == null:
-		return 0.0
-	var capsule := shape_node.shape as CylinderShape3D
-	if capsule == null:
-		return 0.0
-	return capsule.height
+	var box := _collider_box()
+	return box.size.y if box != null else 0.0
 
-## Live radius of the collision capsule. Read by try_step_up(), which has to
-## know how far forward its landing probe must reach before the capsule's own
-## centre clears an obstacle's face -- see its own comment.
+## Live CollisionRadius: half the box's width. Read by try_step_up(), which
+## has to know how far forward its landing probe must reach before the body's
+## own centre clears an obstacle's face -- see its own comment.
 func current_capsule_radius() -> float:
+	var box := _collider_box()
+	return box.size.x * 0.5 if box != null else 0.0
+
+func _collider_box() -> BoxShape3D:
 	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
-	if shape_node == null:
-		return 0.0
-	var capsule := shape_node.shape as CylinderShape3D
-	return capsule.radius if capsule != null else 0.0
+	return shape_node.shape as BoxShape3D if shape_node != null else null
+
+## Turns the collider and the standing-clearance probe back square to the
+## world axes, whatever the body's yaw. The CharacterBody3D itself carries the
+## yaw (rotation.y), so its children turn with it unless undone here. Called
+## before every sweep the ported physics makes (PawnPhysics), once a tick
+## after the look, and before every clearance query. A move not yet ported
+## that turns the body mid-tick collides with the box turned by that tick's
+## change until the next call.
+func align_collider() -> void:
+	var square: Basis = global_basis.orthonormalized().inverse()
+	var shape_node := get_node_or_null("CollisionShape3D") as Node3D
+	if shape_node != null and not shape_node.basis.is_equal_approx(square):
+		shape_node.basis = square
+	if _stand_clearance != null and not _stand_clearance.basis.is_equal_approx(square):
+		_stand_clearance.basis = square
 
 ## Pure placement arithmetic -- the ONE formula both the runtime attach path
 ## and BodyRoot's editor-only preview (see body_root.gd) use, and the ONLY
@@ -1225,7 +1237,7 @@ func body_mount_transform() -> Transform3D:
 ## from an edge threads between two slabs that a body could never fit through,
 ## and it misses a cap it grazes.
 ##
-## Resizing is safe because StandClearance owns a CylinderShape3D of its own --
+## Resizing is safe because StandClearance owns a BoxShape3D of its own --
 ## player.tscn gives it a sub-resource of its own, apart from the body's. DO
 ## NOT point the two at one resource: this would then resize the body itself,
 ## mid-query, every time anything asked.
@@ -1243,11 +1255,12 @@ func body_mount_transform() -> Transform3D:
 func fits_at(feet_point: Vector3, height: float) -> bool:
 	if _stand_clearance == null:
 		return true
-	var capsule := _stand_clearance.shape as CylinderShape3D
+	align_collider()
+	var capsule := _stand_clearance.shape as BoxShape3D
 	var resting_position: Vector3 = _stand_clearance.global_position
-	var resting_height: float = capsule.height if capsule != null else 0.0
+	var resting_height: float = capsule.size.y if capsule != null else 0.0
 	if capsule != null:
-		capsule.height = height
+		capsule.size.y = height
 	# Lifted a hair clear of the surface being stood ON. A shapecast resting
 	# exactly on a face reports a collision with it, so testing "would a body
 	# fit with its feet here" against the very ledge those feet are on comes
@@ -1259,7 +1272,7 @@ func fits_at(feet_point: Vector3, height: float) -> bool:
 	var blocked: bool = _stand_clearance.is_colliding()
 	_stand_clearance.global_position = resting_position
 	if capsule != null:
-		capsule.height = resting_height
+		capsule.size.y = resting_height
 	return not blocked
 
 ## True when a STANDING body would fit with its feet at `feet_point`. For moves
@@ -1272,6 +1285,7 @@ func fits_standing_at(feet_point: Vector3) -> bool:
 func has_headroom() -> bool:
 	if _stand_clearance == null:
 		return true
+	align_collider()
 	_stand_clearance.force_shapecast_update()
 	return not _stand_clearance.is_colliding()
 
@@ -1292,12 +1306,12 @@ func set_capsule_height(height: float) -> void:
 	# later have the player stood up mid-slide by the deferred restore.
 	_standing_restore_pending = false
 	var shape_node := $CollisionShape3D as CollisionShape3D
-	var capsule := shape_node.shape as CylinderShape3D
+	var capsule := shape_node.shape as BoxShape3D
 	if capsule == null:
 		return
 	if _standing_height <= 0.0:
-		_standing_height = capsule.height
-	capsule.height = height
+		_standing_height = capsule.size.y
+	capsule.size.y = height
 	# THE FEET STAY PUT, ALWAYS.
 	#
 	# DO NOT ANCHOR THE CAPSULE AT THE CROWN so a vault can hold the head level
@@ -1337,12 +1351,12 @@ func set_centred_capsule_height(height: float) -> void:
 	# the same reason.
 	_standing_restore_pending = false
 	var shape_node := $CollisionShape3D as CollisionShape3D
-	var capsule := shape_node.shape as CylinderShape3D
+	var capsule := shape_node.shape as BoxShape3D
 	if capsule == null:
 		return
 	if _standing_height <= 0.0:
-		_standing_height = capsule.height
-	capsule.height = height
+		_standing_height = capsule.size.y
+	capsule.size.y = height
 	# THE CENTRE STAYS PUT. The shape's origin IS the body's origin (the
 	# capsule sits at position zero in player.tscn), so centring the shrink is
 	# simply leaving the offset alone -- and setting it explicitly rather than
@@ -1575,11 +1589,11 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	# resizing it in place would let one player's slide shrink every other
 	# player in the scene — including, in tests, worlds from previous cases.
 	var shape_node := $CollisionShape3D as CollisionShape3D
-	var capsule := shape_node.shape as CylinderShape3D
+	var capsule := shape_node.shape as BoxShape3D
 	if capsule != null:
-		var owned := capsule.duplicate() as CylinderShape3D
+		var owned := capsule.duplicate() as BoxShape3D
 		shape_node.shape = owned
-		_standing_height = owned.height
+		_standing_height = owned.size.y
 
 	# Godot's own floor snap, sized to a step rather than left at its 0.1 m
 	# default. Walking DOWN a stair leaves the body briefly unsupported, and a
@@ -3704,6 +3718,9 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		camera_rig.apply_look(Vector2.ZERO if ignore_look_input else input.look, self, delta)
 	turn_units = PawnAcceleration.turn_units(wrapf(rotation.y - yaw_before, -PI, PI))
+	# Whatever turned the body since the last tick -- the look above, a
+	# respawn, a scripted move -- the collider stays square to the world.
+	align_collider()
 
 	if noclip:
 		_fly_noclip(delta, input)
@@ -4412,8 +4429,8 @@ func walking_hover() -> float:
 	return 0.0
 
 ## Pawn.Location as the original means it: the centre of the collision
-## cylinder. The same as global_position while standing; a crouch shortens
-## the cylinder from the top and moves its centre down, where the original
+## box. The same as global_position while standing; a crouch shortens
+## the box from the top and moves its centre down, where the original
 ## moves the whole pawn.
 func collision_center() -> Vector3:
 	var shape_node := get_node_or_null("CollisionShape3D") as Node3D
@@ -4747,7 +4764,7 @@ func try_step_up(delta: float) -> float:
 	var rise: float = near
 	if rise <= 0.01:
 		return _step_log(what, "落差过小 %.3f m" % rise, 0.0)
-	# A hair above the step's top: a flat-bottomed cylinder set down exactly on
+	# A hair above the step's top: a flat-bottomed box set down exactly on
 	# the top plane catches its edge on the way forward, where a capsule's
 	# rounded bottom rode over it. The floor snap sets it down.
 	global_position.y += rise + STEP_UP_CLEARANCE

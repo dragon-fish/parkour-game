@@ -15,7 +15,7 @@ func is_ported() -> bool:
 	return true
 
 ## TdMove_Walking.CanDoMove: from a crouch or a slide, only with room to stand
-## -- a box the default cylinder's size swept up by 2 H - 122 uu.
+## -- a box the default collider's size swept up by 2 H - 122 uu.
 func can_do_move() -> bool:
 	if not td_can_do_move():
 		return false

@@ -144,6 +144,22 @@ func test_a_second_jump_is_allowed_right_after_landing() -> void:
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.JUMP, "the jump was refused after landing")
 
+## [ME:CONFIRMED decompile] The pawn sweeps the box (R, R, H) square to the
+## world axes: turning the body does not turn its collider.
+func test_the_collider_is_a_world_aligned_box() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var shape_node := player.get_node("CollisionShape3D") as CollisionShape3D
+	assert_true(shape_node.shape is BoxShape3D, "the collider is not a box")
+	assert_almost_eq((shape_node.shape as BoxShape3D).size, Vector3(0.6, 1.8, 0.6), Vector3.ONE * 0.0001)
+	player.rotation.y = 0.7
+	await step(1)
+	assert_true(shape_node.global_basis.is_equal_approx(Basis.IDENTITY),
+		"the collider turned with the body: %s" % shape_node.global_basis)
+	var clearance := player.get_node("StandClearance") as Node3D
+	assert_true(clearance.global_basis.is_equal_approx(Basis.IDENTITY),
+		"the clearance probe turned with the body")
+
 ## [ME:CONFIRMED decompile 15.4] The forced Walking frame runs
 ## Walking.StartMove, which clears the wall-run jump's ledge ban.
 func test_walking_start_clears_the_illegal_ledge_timer() -> void:

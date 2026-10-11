@@ -27,7 +27,7 @@ extends Node3D
 @export var player: Player
 
 @export_group("Capsule")
-## Rings around the barrel, plus one at each cap.
+## Outlines up the box, the bottom and top included.
 @export var rings: int = 5
 @export var segments: int = 24
 @export var capsule_colour := Color(0.2, 1.0, 0.4)
@@ -116,10 +116,10 @@ func _process(_delta: float) -> void:
 	var shape_node := player.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node == null:
 		return
-	var capsule := shape_node.shape as CylinderShape3D
+	var capsule := shape_node.shape as BoxShape3D
 	if capsule == null:
 		return
-	_last_height = capsule.height
+	_last_height = capsule.size.y
 	_mesh.clear_surfaces()
 	var at: Transform3D = shape_node.global_transform
 	# DO NOT read the sole position off the folded capsule's own bottom
@@ -130,39 +130,31 @@ func _process(_delta: float) -> void:
 	# catch it. Deriving the sole independently from standing_height() keeps
 	# this debug view honest even if that guarantee ever changes again.
 	var sole: float = player.global_position.y - player.standing_height() * 0.5
-	_draw_capsule(at, capsule.radius, capsule.height)
+	_draw_box(at, capsule.size * 0.5)
 	# ONLY IN THIRD PERSON. From inside the head the eye marker is in your face
 	# and the frustum is the thing you are looking through, so neither says
 	# anything. The rig is the authority on which view is running.
 	var rig = player.camera_rig
 	if rig != null and rig.in_third_person():
-		_draw_fills(capsule.radius, sole, rig)
+		_draw_fills(capsule.size.x * 0.5, sole, rig)
 
 # --- the capsule ----------------------------------------------------------------
 
-## A capsule is a cylinder with two hemispherical caps, and its `height` is the
-## WHOLE thing -- so the cylinder is height - 2 * radius tall. Getting this
-## wrong draws a capsule that is right in the middle and wrong at both ends,
-## which is where the interesting part is.
-func _draw_capsule(at: Transform3D, radius: float, total: float) -> void:
+## The body's collider is a box square to the world axes (Player.align_collider()):
+## its outline at `rings` heights, and the four vertical edges, which is what
+## makes the height readable at a glance.
+func _draw_box(at: Transform3D, half: Vector3) -> void:
 	_mesh.surface_begin(Mesh.PRIMITIVE_LINES, _lines)
 	_mesh.surface_set_color(capsule_colour)
-	var barrel: float = maxf(total - radius * 2.0, 0.0)
-	var top: float = barrel * 0.5
-	var bottom: float = -barrel * 0.5
+	var corners: Array[Vector3] = [Vector3(half.x, 0.0, half.z), Vector3(-half.x, 0.0, half.z),
+		Vector3(-half.x, 0.0, -half.z), Vector3(half.x, 0.0, -half.z)]
 	for i in rings:
 		var t: float = float(i) / float(maxi(rings - 1, 1))
-		_ring(at, radius, lerpf(bottom, top, t))
-	_arc(at, radius, top, 1.0, Vector3.RIGHT)
-	_arc(at, radius, top, 1.0, Vector3.FORWARD)
-	_arc(at, radius, bottom, -1.0, Vector3.RIGHT)
-	_arc(at, radius, bottom, -1.0, Vector3.FORWARD)
-	# Verticals down the barrel, which is what makes the height readable at a
-	# glance.
-	for i in 4:
-		var angle: float = TAU * float(i) / 4.0
-		var offset := Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
-		_line(at * (offset + Vector3.UP * bottom), at * (offset + Vector3.UP * top))
+		var y: float = lerpf(-half.y, half.y, t)
+		for k in 4:
+			_line(at * (corners[k] + Vector3.UP * y), at * (corners[(k + 1) % 4] + Vector3.UP * y))
+	for corner in corners:
+		_line(at * (corner - Vector3.UP * half.y), at * (corner + Vector3.UP * half.y))
 	_mesh.surface_end()
 
 # --- what the head cannot see ----------------------------------------------------
@@ -231,15 +223,6 @@ func _ring(at: Transform3D, radius: float, y: float) -> void:
 		var b: float = TAU * float(i + 1) / float(segments)
 		_line(at * Vector3(cos(a) * radius, y, sin(a) * radius),
 				at * Vector3(cos(b) * radius, y, sin(b) * radius))
-
-## Half a ring in the vertical plane containing `axis`, bulging by `sign_y`.
-func _arc(at: Transform3D, radius: float, y: float, sign_y: float, axis: Vector3) -> void:
-	var steps: int = segments / 2
-	for i in steps:
-		var a: float = PI * float(i) / float(steps)
-		var b: float = PI * float(i + 1) / float(steps)
-		_line(at * (axis * (cos(a) * radius) + Vector3.UP * (y + sin(a) * radius * sign_y)),
-				at * (axis * (cos(b) * radius) + Vector3.UP * (y + sin(b) * radius * sign_y)))
 
 func _line(a: Vector3, b: Vector3) -> void:
 	_mesh.surface_add_vertex(a)

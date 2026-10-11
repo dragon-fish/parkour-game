@@ -71,24 +71,33 @@ func _physics_process(delta: float) -> void:
 	used.emit()
 
 
-## Whether every extreme of the body's collider (a cylinder or a capsule) is
-## inside one of this zone's boxes. Other shapes never hold a whole body.
+## Whether every extreme of the body's collider (a box, a cylinder or a
+## capsule) is inside one of this zone's boxes. Other shapes never hold a whole
+## body.
 func _holds_whole(body: Node3D) -> bool:
 	var shape: Shape3D = null
 	var at := Transform3D()
 	for child in body.get_children():
-		if child is CollisionShape3D and ((child as CollisionShape3D).shape is CapsuleShape3D \
+		if child is CollisionShape3D and ((child as CollisionShape3D).shape is BoxShape3D \
+				or (child as CollisionShape3D).shape is CapsuleShape3D \
 				or (child as CollisionShape3D).shape is CylinderShape3D):
 			shape = (child as CollisionShape3D).shape
 			at = (child as CollisionShape3D).global_transform
 			break
 	if shape == null:
 		return true
-	var r: float = shape.get("radius")
-	var h: float = float(shape.get("height")) * 0.5
-	var extremes: Array[Vector3] = [Vector3(0, h, 0), Vector3(0, -h, 0)]
-	for side: Vector3 in [Vector3(r, 0, 0), Vector3(-r, 0, 0), Vector3(0, 0, r), Vector3(0, 0, -r)]:
-		extremes.append(side)
+	var extremes: Array[Vector3] = []
+	if shape is BoxShape3D:
+		var half: Vector3 = (shape as BoxShape3D).size * 0.5
+		for corner: Vector3 in [Vector3(1, 1, 1), Vector3(1, 1, -1), Vector3(1, -1, 1), Vector3(1, -1, -1),
+				Vector3(-1, 1, 1), Vector3(-1, 1, -1), Vector3(-1, -1, 1), Vector3(-1, -1, -1)]:
+			extremes.append(half * corner)
+	else:
+		var r: float = shape.get("radius")
+		var h: float = float(shape.get("height")) * 0.5
+		extremes.append_array([Vector3(0, h, 0), Vector3(0, -h, 0)])
+		for side: Vector3 in [Vector3(r, 0, 0), Vector3(-r, 0, 0), Vector3(0, 0, r), Vector3(0, 0, -r)]:
+			extremes.append(side)
 	for child in get_children():
 		if not (child is CollisionShape3D and (child as CollisionShape3D).shape is BoxShape3D):
 			continue

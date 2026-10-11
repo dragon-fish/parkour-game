@@ -75,7 +75,8 @@ through the same manager until each is rewritten from the original.
   `phys_walking` (CalcVelocity, sub-steps, step-up, floor snap at 2.15 uu,
   walk-off), `phys_falling` (the integrator that doubles gravity), landing,
   slide vector. Built on `move_and_collide()`; the collider is the original's
-  cylinder (r 0.30, h 1.80).
+  extent, an axis-aligned box 0.60 x 1.80 x 0.60 that never turns with the
+  body's yaw (`Player.align_collider()`).
 - Transitions come from three places, as in the original: **actions**
   (`MoveManager.handle_move_action()`: the current move first, then
   TdPlayerMoveManager's table, first `can_do_move()` wins), **automatic

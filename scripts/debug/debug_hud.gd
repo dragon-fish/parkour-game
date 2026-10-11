@@ -317,12 +317,12 @@ func _capsule_span() -> Vector2:
 	var shape_node := player.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node == null:
 		return Vector2.ZERO
-	var capsule := shape_node.shape as CylinderShape3D
+	var capsule := shape_node.shape as BoxShape3D
 	if capsule == null:
 		return Vector2.ZERO
 	var soles: float = player.global_position.y - player.standing_height() * 0.5
 	var centre: float = shape_node.global_position.y - soles
-	return Vector2(centre - capsule.height * 0.5, centre + capsule.height * 0.5)
+	return Vector2(centre - capsule.size.y * 0.5, centre + capsule.size.y * 0.5)
 
 func _wall_side_text() -> String:
 	match player.wall_side:

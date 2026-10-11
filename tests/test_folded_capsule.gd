@@ -94,9 +94,9 @@ func test_the_hang_and_drop_path_survives_the_restore() -> void:
 ## anchor decides between.
 func _span(player: Player) -> Vector2:
 	var shape_node := player.get_node("CollisionShape3D") as CollisionShape3D
-	var capsule := shape_node.shape as CylinderShape3D
-	return Vector2(shape_node.position.y - capsule.height * 0.5,
-			shape_node.position.y + capsule.height * 0.5)
+	var capsule := shape_node.shape as BoxShape3D
+	return Vector2(shape_node.position.y - capsule.size.y * 0.5,
+			shape_node.position.y + capsule.size.y * 0.5)
 
 func test_a_crouch_holds_the_feet_and_lowers_the_head() -> void:
 	# The soles are the fixed end -- you are standing on the same floor, so
