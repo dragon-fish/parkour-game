@@ -33,6 +33,12 @@ var _touched: bool = false
 ## Where the wall's face was when the reach was committed. See Move.touching().
 var _face_point: Vector3 = Vector3.ZERO
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_IntoGrab's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FALLING
+
 func enter(_previous: StringName) -> void:
 	# Declared, not read: this move drives the body directly and never calls
 	# move_and_slide(), so is_on_floor() would report whatever the previous

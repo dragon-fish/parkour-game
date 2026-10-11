@@ -50,6 +50,12 @@ func _ready() -> void:
 	super._ready()
 	add_child(_top_exit)
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_Climb's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FLYING
+
 func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
 	# Defensive, mirroring GrabMove's own `_mantling = false` reset in its

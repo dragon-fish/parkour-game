@@ -38,6 +38,19 @@ var _spin_total: float = 0.0
 ## frame of the roll reads as exactly that pitch. See enter().
 var _spin_from: float = 0.0
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_SkillRoll's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_WALKING
+
+## [ME:CONFIRMED decompile] TdMove_SkillRoll.CanDoMove: from Landing only --
+## Landing.StartMove is where a roll is decided.
+func can_do_move() -> bool:
+	if player.move_manager.current_name != LANDING:
+		return false
+	return super.can_do_move()
+
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	_airborne = false

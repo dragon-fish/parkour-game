@@ -14,10 +14,15 @@ const JUMP_KEY := KEY_SPACE
 const CROUCH_KEY := KEY_SHIFT
 const WALK_KEY := KEY_CTRL
 const TURN_KEY := KEY_Q
+## The original binds its attack to the left mouse button. While the cursor
+## is free that button clicks back into the game instead (Player), and this
+## source reads nothing at all then.
+const MELEE_BUTTON := MOUSE_BUTTON_LEFT
 
 var _jump_was_held := false
 var _crouch_was_held := false
 var _turn_was_held := false
+var _melee_was_held := false
 var _look_accumulator := Vector2.ZERO
 
 ## Called from the player's _input() with the raw mouse relative motion.
@@ -37,6 +42,7 @@ func poll() -> MoveInput:
 		_jump_was_held = Input.is_physical_key_pressed(JUMP_KEY)
 		_crouch_was_held = Input.is_physical_key_pressed(CROUCH_KEY)
 		_turn_was_held = Input.is_physical_key_pressed(TURN_KEY)
+		_melee_was_held = Input.is_mouse_button_pressed(MELEE_BUTTON)
 		return MoveInput.new()
 
 	var out := MoveInput.new()
@@ -61,6 +67,7 @@ func poll() -> MoveInput:
 	# MoveInput.strafe_axis, and DodgeJumpConfig.strafe_threshold for the one
 	# move that reads it.
 	out.strafe_axis = strafe
+	out.raw_move = Vector2(strafe, forward)
 
 	out.look = _look_accumulator
 	_look_accumulator = Vector2.ZERO
@@ -80,4 +87,8 @@ func poll() -> MoveInput:
 	var turn_held := Input.is_physical_key_pressed(TURN_KEY)
 	out.turn_pressed = turn_held and not _turn_was_held
 	_turn_was_held = turn_held
+
+	var melee_held := Input.is_mouse_button_pressed(MELEE_BUTTON)
+	out.melee_pressed = melee_held and not _melee_was_held
+	_melee_was_held = melee_held
 	return out

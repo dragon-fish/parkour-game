@@ -87,6 +87,12 @@ static func find_wall(player) -> Dictionary:
 func on_a_wall() -> bool:
 	return _normal != Vector3.ZERO
 
+## [ME:CONFIRMED decompile] TdMove_180Turn.CanDoMove: from Walking only.
+func can_do_move() -> bool:
+	if player.move_manager.current_name != WALKING:
+		return false
+	return super.can_do_move()
+
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	_kick_armed = false

@@ -14,6 +14,27 @@ extends AirborneMove
 ## Seconds since the tuck began. Drives both the ease and the timeout.
 var _elapsed: float = 0.0
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_Coil's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FALLING
+
+## [ME:CONFIRMED decompile] TdMove_Coil.CanDoMove: never from Falling, never
+## from a reach already dropping, only in the falling physics, and only at
+## CoilMinTriggerSpeed along the facing.
+func can_do_move() -> bool:
+	var state: StringName = player.move_manager.current_name
+	if state == FALLING:
+		return false
+	if state == INTO_GRAB and player.velocity.y < 0.0:
+		return false
+	if player.physics != PHYS_FALLING:
+		return false
+	if player.facing().dot(player.velocity) < config.coil.min_trigger_speed:
+		return false
+	return super.can_do_move()
+
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	player.coil_capsule_held = true

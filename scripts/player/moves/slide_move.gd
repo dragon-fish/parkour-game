@@ -36,6 +36,29 @@ var _direction: Vector3 = Vector3.ZERO
 ## in. Cleared the moment headroom returns. See _crawl().
 var _crawling: bool = false
 
+## [ME:CONFIRMED decompile] TdMove_Slide.CanDoMove: not out of a skill roll,
+## only at 350 uu/s along the facing or more, and not up a floor rising more
+## than MaxFloorInclineZ (0.5) along the velocity.
+const SLIDE_MIN_FORWARD_SPEED := 3.5
+const SLIDE_MAX_FLOOR_INCLINE_Z := 0.5
+func can_do_move() -> bool:
+	if player.move_manager.current_name == SKILL_ROLL:
+		return false
+	if player.velocity.dot(player.facing()) < SLIDE_MIN_FORWARD_SPEED:
+		return false
+	var vel_dir: Vector3 = PawnPhysics.safe_normal_2d(player.velocity)
+	var uphill: Vector3 = PawnPhysics.safe_normal_2d(-player.floor_normal)
+	var incline: float = sqrt(1.0 - clampf(player.floor_normal.y * player.floor_normal.y, 0.0, 1.0)) \
+		* vel_dir.dot(uphill)
+	if incline > SLIDE_MAX_FLOOR_INCLINE_Z:
+		return false
+	return super.can_do_move()
+
+## TdMove_Slide.CanStopMove: not while the slide is still going in. This
+## move's going-in is SlideConfig.min_duration.
+func can_stop_move() -> bool:
+	return _elapsed >= config.slide.min_duration
+
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	_crawling = false

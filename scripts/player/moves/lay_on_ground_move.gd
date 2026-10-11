@@ -23,6 +23,12 @@ var _tint: Color = Color(0.0, 0.0, 0.0, 0.0)
 func is_rising() -> bool:
 	return _rising
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_LayOnGround's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FALLING
+
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	_rising = false

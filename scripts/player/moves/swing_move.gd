@@ -30,6 +30,12 @@ var _turn: HalfTurn = HalfTurn.new()
 var _turning: bool = false
 var _turn_elapsed: float = 0.0
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_Swing's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FLYING
+
 func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
 	if not acquire_line(InterestLine.Kind.SWING):

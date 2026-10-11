@@ -1,11 +1,10 @@
 class_name DodgeJumpMove
 extends AirborneMove
 
-# The original's TdMove_DodgeJump: the sideways hop thrown off a strafe key.
-# The launch itself belongs to WalkingMove, the same way an ordinary jump's
-# does -- by the time this state starts, the body is already off the floor
-# carrying the impulse. What is left here is the airborne stretch and the one
-# thing that separates it from an ordinary Jump: it reaches for nothing.
+# The original's TdMove_DodgeJump: the sideways hop thrown off a strafe key,
+# reached through the action table (Walking + jump, before SpringBoard and
+# Jump). The launch happens on entry; what is left is the airborne stretch and
+# the one thing that separates it from an ordinary Jump: it reaches for nothing.
 #
 # THE IMPULSE IS NEVER RECOMPUTED. It went into velocity as a world vector on
 # the tick the move started and this state does not know which way it pointed.
@@ -26,9 +25,31 @@ var _side: int = 0
 func side() -> int:
 	return _side
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_DodgeJump's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FALLING
+
+## TdMove_DodgeJump.CanDoMove. [ME:CONFIRMED decompile] The strafe hint, held
+## to its maximum (bMoveActionMax: past 0.96 on the raw axis, which a key
+## always is), and no uncontrolled slide.
+func can_do_move() -> bool:
+	if not player.move_action_max or player.uncontrolled_slide:
+		return false
+	if player.move_action_hint != MAH_LEFT and player.move_action_hint != MAH_RIGHT:
+		return false
+	return super.can_do_move()
+
+## The launch, square sideways along the hint. Player.dodge_launch() is this
+## project's reading of it.
 func enter(_previous: StringName) -> void:
-	_side = player.pending_dodge_side
+	_side = 1 if player.move_action_hint == MAH_RIGHT else -1
 	player.pending_dodge_side = 0
+	var right: Vector3 = player.global_transform.basis.x
+	right.y = 0.0
+	player.dodge_launch(right.normalized() * float(_side))
+	player.set_grounded(false)
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	apply_air_physics(delta, player.wish_direction(input))

@@ -52,6 +52,12 @@ static func climb_height_for(run_speed: float, cfg: WallClimbConfig) -> float:
 	var earned: float = clampf(run_speed / maxf(cfg.run_speed_limit, 0.001), 0.0, 1.0)
 	return lerpf(cfg.climb_height, cfg.climb_height_running, earned)
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_WallClimb's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_WALL_CLIMBING
+
 func enter(_previous: StringName) -> void:
 	_aborted = false
 	player.set_grounded(false)

@@ -14,6 +14,12 @@ extends AirborneMove
 # Nothing here desaturates or blurs the screen. That is FallUncontrolledMove's
 # and it says "you are dying"; a body about to be caught is not.
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_SoftLanding's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FALLING
+
 func enter(_previous: StringName) -> void:
 	# The gate, not a look constraint. See FallUncontrolledMove's own note:
 	# the camera is driven from Player._physics_process(), so ignoring the

@@ -13,9 +13,9 @@ extends AirborneMove
 # jump press, through 0.1-0.2 s of ordinary walking up to the first face,
 # through the 0.4 s climb, and on through the whole 0.6 s rise -- Falling only
 # takes over at the apex. Kept here rather than handed to JumpMove so the rise
-# runs the three probes the CDO gives this move, not Jump's. It still offers a
-# coil, as a jump's rise does: [ME:INFERRED] from play -- see
-# SpringBoardConfig.check_for_coil.
+# runs the three probes the CDO gives this move, not Jump's. A crouch on it
+# is a coil: [ME:CONFIRMED decompile 15.3] SpringBoard + crouch asks Coil in
+# the action table.
 #
 # Extends AirborneMove for the rise's air physics and probes, and COMPOSES a
 # ScriptedMove for the two steps -- the same shape LadderMove gives its top
@@ -40,6 +40,25 @@ var _aborted: bool = false
 func _ready() -> void:
 	super._ready()
 	add_child(_hop)
+
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_SpringBoard's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FLYING
+
+## TdMove_SpringBoard.CanDoMove, through this project's own foot-plant probe
+## until the original's (FindLedge on the found ledge, then a second plant) is
+## ported. Like the original's, it records the plants it accepted.
+func can_do_move() -> bool:
+	if not super.can_do_move() or player.probes == null:
+		return false
+	var board: Dictionary = player.probes.springboard_query()
+	if not board["valid"] or not player.fits_standing_at(board["plant_1"]) \
+			or not player.fits_standing_at(board["plant_2"]):
+		return false
+	player.pending_spring_board = board
+	return true
 
 func enter(_previous: StringName) -> void:
 	var board: Dictionary = player.pending_spring_board
@@ -198,20 +217,21 @@ func _launch() -> void:
 	# The fall is measured from the launch, not from the ground the walk
 	# began on: a spring board is not a 1.2 m drop before it has even risen.
 	player.fall_tracker.reset(player.global_position.y)
+	# [ME:CONFIRMED decompile] TdMove_SpringBoard sets PHYS_Falling with the
+	# throw, which stamps EnterFallingHeight here.
+	player.set_physics(PHYS_FALLING)
 	player.set_grounded(false)
 	player.set_clip_lift_cancelled(false)
 	_launched = true
 	_phase = Phase.RISE
 
-## The rise, kept here until the apex. Air physics, a coil on a crouch (see
-## SpringBoardConfig.check_for_coil), the config's own probes (grab, vault
+## The rise, kept here until the apex. Air physics (a coil is the action
+## table's, MoveManager), the config's own probes (grab, vault
 ## over, wall climb -- [ME:CONFIRMED] the three bCheckFor* on the CDO), and
 ## Falling the tick the vertical speed is gone ([ME:CONFIRMED]
 ## bCheckExitToFalling).
 func _rise(delta: float, input: MoveInput) -> StringName:
 	apply_air_physics(delta, player.wish_direction(input))
-	if coil_transition() == COIL:
-		return advance_and_hand_off(COIL)
 	var probed := probe_transition()
 	if probed != KEEP:
 		player.set_grounded(false)

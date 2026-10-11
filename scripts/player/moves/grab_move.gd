@@ -194,6 +194,12 @@ func probe_trace() -> Array[Dictionary]:
 func is_cornering() -> bool:
 	return _cornering
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_Grab's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_NONE
+
 func enter(_previous: StringName) -> void:
 	# grounded is DECLARED, not read from is_on_floor(): like SpeedVault, this
 	# move drives the body directly and never calls move_and_slide() --

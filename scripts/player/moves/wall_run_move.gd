@@ -137,6 +137,12 @@ func _track_fan_to_wall(delta: float) -> void:
 	_fan_yaw += difference * clampf(config.wall_run.fan_track_speed * delta, 0.0, 1.0)
 	player.camera_rig.shift_yaw_reference(_fan_yaw, config.wall_run.view_assist)
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_WallRun's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_WALL_RUNNING
+
 func enter(_previous: StringName) -> void:
 	_time_on_wall = 0.0
 	_aborted = false

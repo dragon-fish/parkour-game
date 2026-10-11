@@ -19,6 +19,17 @@ extends AirborneMove
 ## camera is driven from Player._physics_process(), not from here, so DO NOT
 ## remove the lock_input() call below -- without the gate the player could
 ## still spin the view all the way down.
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_FallingUncontrolled's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FALLING
+
+## The original replaces Landed in its UncontrolledFall state; this move keeps
+## its own landing until that is ported.
+func uses_original_landing() -> bool:
+	return false
+
 func enter(_previous: StringName) -> void:
 	player.lock_input()
 	# A TERMINAL STATE: nothing that was armed for the flight before control

@@ -17,6 +17,7 @@ func hold_move(strafe: float, forward: float) -> void:
 	if state.move.length_squared() > 1.0:
 		state.move = state.move.normalized()
 	state.strafe_axis = strafe
+	state.raw_move = Vector2(strafe, forward)
 
 func press_jump() -> void:
 	state.jump_pressed = true
@@ -37,6 +38,9 @@ func release_crouch() -> void:
 func press_turn() -> void:
 	state.turn_pressed = true
 
+func press_melee() -> void:
+	state.melee_pressed = true
+
 func poll() -> MoveInput:
 	var snapshot := state.copy()
 	state.jump_pressed = false
@@ -44,4 +48,5 @@ func poll() -> MoveInput:
 	# No held counterpart, unlike jump and crouch: Q is a one-shot. There is
 	# nothing a held Q could mean -- the turn either started or it did not.
 	state.turn_pressed = false
+	state.melee_pressed = false
 	return snapshot

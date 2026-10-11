@@ -26,6 +26,23 @@ const FORWARD_TRAVEL_M_S := 0.5
 var _turn: HalfTurn = HalfTurn.new()
 var _elapsed: float = 0.0
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_180TurnInAir's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FALLING
+
+## [ME:CONFIRMED decompile] TdMove_180TurnInAir.CanDoMove: not from a soft
+## landing, and only while travelling roughly the way the body faces
+## (Normal(facing) . Normal(Velocity) >= 0.2).
+func can_do_move() -> bool:
+	if player.move_manager.current_name == SOFT_LANDING:
+		return false
+	var v_dir: Vector3 = player.velocity.normalized() if player.velocity.length_squared() > 0.0 else Vector3.ZERO
+	if player.facing().dot(v_dir) < 0.2:
+		return false
+	return super.can_do_move()
+
 func enter(_previous: StringName) -> void:
 	_elapsed = 0.0
 	_turn.begin(player.rotation.y)

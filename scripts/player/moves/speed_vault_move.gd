@@ -50,6 +50,12 @@ var _rescued: bool = false
 func is_scramble() -> bool:
 	return _rescued or _variant_name.begins_with("step_up")  or _variant_name.begins_with("auto_step_up")
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_SpeedVault's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FLYING
+
 func enter(_previous: StringName) -> void:
 	# grounded is DECLARED, not read from is_on_floor(): this move never calls
 	# move_and_slide(), so is_on_floor() would keep reporting whatever WalkingMove

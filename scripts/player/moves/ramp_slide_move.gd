@@ -30,12 +30,35 @@ var _placed: float = 0.0
 var _hurt_flash: float = 0.0
 
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_RumpSlide's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FALLING
+
+## [ME:CONFIRMED decompile] TdMove_RumpSlide.CanDoMove: the chute found by the
+## physics must be steeper than MinSlideFloorZ and no steeper than normal z
+## 0.6.
+func can_do_move() -> bool:
+	var n: Vector3 = player.uncontrolled_slide_normal
+	if n.y >= config.ramp_slide.min_slide_floor_z or n.y < 0.6:
+		return false
+	return super.can_do_move()
+
 func enter(_previous: StringName) -> void:
 	var chute: Dictionary = player.touched_chute()
 	_normal = chute.get("normal", Vector3.UP)
 	_lost_contact = 0.0
 	_start_y = player.global_position.y
 	_hurt_flash = 1.0 if player.pending_chute_hurt else 0.0
+	# [ME:COMMUNITY] A fall past hard_landing_height onto the chute costs the
+	# hard landing's health and its red, and slides on with no stagger. The
+	# walking and falling physics never LAND on a chute -- it is too steep to
+	# be a floor -- so the cost is taken here, on the fall the physics measured.
+	var fall: float = player.enter_falling_height - player.global_position.y
+	if not player.pending_chute_hurt and fall >= config.pawn.hard_landing_height:
+		player.take_damage(config.landing.hard_landing_damage, Health.Cause.HARD_LANDING)
+		_hurt_flash = 1.0
 	player.use_chute_floor(true)
 	player.pending_chute_hurt = false
 	# Sitting down costs most of the arriving speed; what is left runs down
@@ -123,8 +146,10 @@ func physics_update(delta: float, input: MoveInput) -> StringName:
 	# Seated on the chute, the model lies along it.
 	player.body_tilt_normal = _normal
 	# A surface, so the fall counter resets: the chute's end is where the
-	# fall begins, not its top.
+	# fall begins, not its top. The original places a TdFallHeightVolume on
+	# its chutes for the same job (it sets EnterFallingHeight on touch).
 	player.set_grounded(true)
+	player.enter_falling_height = player.global_position.y
 	if _normal.y >= cfg_slide.min_slide_floor_z:
 		return _let_go()
 	return KEEP

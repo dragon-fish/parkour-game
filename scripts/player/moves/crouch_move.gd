@@ -4,11 +4,16 @@ extends Move
 # [ME:CONFIRMED 05 §5.2] CrouchMove is the standing-crouch half of
 # GBA_Crouch's downward branch: slow, low-profile movement.
 #
-# Reached today only from a Slide that decayed or timed out while the key was
-# still held (see SlideMove's own comment on that hand-off). Capsule is the
-# same compressed height a slide already uses, so the hand-off never pops the
-# collider and never reopens a headroom problem the slide had already solved
-# for this exact spot.
+# Reached through the action table: a held crouch key is MA_Crouch every
+# tick, and from Walking that asks Slide first and Crouch second. Capsule is
+# the same compressed height a slide already uses, so a slide decaying into a
+# crouch never pops the collider.
+
+## [ME:CONFIRMED decompile] TdMove_Crouch.CanDoMove: anything but a crouch.
+func can_do_move() -> bool:
+	if player.move_manager.current_name == CROUCH:
+		return false
+	return super.can_do_move()
 
 func enter(_previous: StringName) -> void:
 	player.set_capsule_height(config.crouch.crouch_capsule_height)

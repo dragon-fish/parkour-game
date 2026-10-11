@@ -54,6 +54,12 @@ static func travel_direction(line: InterestLine, world_pos: Vector3) -> Vector3:
 	var s: float = line.closest_offset(world_pos)
 	return line.sample(s)["tangent"] * travel_sign(line, s)
 
+func _init() -> void:
+	# [ME:CONFIRMED decompile] TdMove_ZipLine's PawnPhysics. This move still drives the
+	# body itself; the mode is what the original's checks and the fall height
+	# read while it runs.
+	pawn_physics = PHYS_FLYING
+
 func enter(_previous: StringName) -> void:
 	# Declared, not read: this move never calls move_and_slide().
 	player.set_grounded(false)
@@ -75,6 +81,15 @@ func enter(_previous: StringName) -> void:
 	_fan_centred = false
 	_cable_yaw = _yaw_along(along)
 	_target_yaw = _cable_yaw
+
+## [ME:CONFIRMED decompile 15.3] ZipLine + crouch is a drop to Falling in the
+## action table. The release itself -- the speed carried off along the cable
+## -- is this move's own, so it answers the action before the table does.
+func handle_move_action(action: int) -> void:
+	if action == MA_CROUCH and not _aborted and is_instance_valid(_line):
+		player.move_manager.set_move(_release())
+		return
+	super.handle_move_action(action)
 
 func physics_update(delta: float, input: MoveInput) -> StringName:
 	if _aborted or not is_instance_valid(_line):
