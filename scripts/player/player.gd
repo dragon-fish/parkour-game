@@ -4421,11 +4421,13 @@ func facing() -> Vector3:
 
 ## How far the walking physics holds the feet above the floor, or 0 when it
 ## is not the one holding them. For the presentation and this project's own
-## probes, which measure from the floor.
+## probes, which measure from the floor. Measured (PawnPhysics.floor_gap()),
+## not assumed to be the 2.15 uu the walk aims for: a still body reuses its
+## floor and stays wherever its landing put it.
 func walking_hover() -> float:
 	var move: Move = move_manager.current_move() if move_manager != null else null
 	if move != null and move.is_ported() and physics == Move.PHYS_WALKING and grounded:
-		return PawnPhysics.FLOOR_DIST
+		return phys.floor_gap()
 	return 0.0
 
 ## Pawn.Location as the original means it: the centre of the collision

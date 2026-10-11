@@ -64,6 +64,29 @@ func test_a_flat_jump_peaks_at_1_24_m_and_lands_after_0_7875_s() -> void:
 	# 0.7875 s lies between frames 47 and 48.
 	assert_true(frames == 48, "landed after %d frames, not the 48th" % frames)
 
+## The same jump from where a straight-down landing left the body: standing
+## still, the walk reuses its floor and never lifts it to its hover, so it
+## rests closer to the floor than Godot's safe margin. The depenetration
+## MoveActor does not have must not be read as part of the take-off.
+func test_a_jump_from_a_landing_at_rest_peaks_at_1_24_m() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	player.move_manager.start(Move.FALLING)
+	player.global_position.y += 1.0
+	for i in 60:
+		await step(1)
+		if player.physics == Move.PHYS_WALKING:
+			break
+	await step(10)
+	var y0: float = player.global_position.y
+	var top: float = y0
+	input.press_jump()
+	for i in 30:
+		await step(1)
+		top = maxf(top, player.global_position.y)
+	assert_almost_eq(top - y0, 1.24, 0.005, "the jump's apex from a landing at rest")
+
 ## [ME:CONFIRMED decompile N2 §6] Jump keeps PHYS_Walking until StartJump,
 ## which sets Falling -- and setting Falling stamps EnterFallingHeight.
 func test_the_jump_switches_to_falling_physics_and_stamps_the_take_off_height() -> void:
@@ -255,6 +278,35 @@ func test_the_corner_slip_rewrites_delta_and_hit_as_the_original() -> void:
 	assert_false(phys._just_teleported, "bJustTeleported was not assigned")
 	collider.free()
 	wall.queue_free()
+
+## [ME:CONFIRMED decompile N1 §2.1] Standing still on world geometry the walk
+## reuses the floor it has instead of tracing for it -- unless the body was
+## put somewhere else (RelativeLocation no longer matches) or the base stopped
+## colliding (bForceFloorCheck).
+func test_standing_still_reuses_the_floor_until_disturbed() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var kept := Vector3(0.1, 1.0, 0.0).normalized()
+	player.floor_normal = kept
+	await step(3)
+	assert_eq(player.floor_normal, kept, "a still body traced for its floor")
+	assert_eq(player.physics, Move.PHYS_WALKING)
+
+	player.global_position.y += 0.5
+	await step(1)
+	assert_eq(player.physics, Move.PHYS_FALLING, "a body lifted off its floor kept standing on it")
+	for i in 60:
+		await step(1)
+		if player.physics == Move.PHYS_WALKING:
+			break
+	await step(3)
+	assert_eq(player.physics, Move.PHYS_WALKING, "test setup: the body never landed again")
+
+	var floor_shape := (world["floor"] as Node).get_child(0) as CollisionShape3D
+	floor_shape.disabled = true
+	await step(2)
+	assert_eq(player.physics, Move.PHYS_FALLING, "a body kept standing on a floor that stopped colliding")
+	floor_shape.disabled = false
 
 ## [ME:CONFIRMED decompile 15.4] The forced Walking frame runs
 ## Walking.StartMove, which clears the wall-run jump's ledge ban.

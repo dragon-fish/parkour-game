@@ -79,6 +79,15 @@ var pawn
 ## finishes a landing frame rebuilds its velocity whatever the fall set.
 var _just_teleported: bool = false
 
+## Pawn.bForceFloorCheck: the next walking floor test traces, whatever it
+## could reuse. Raised when the base stops colliding, cleared by the trace.
+var _force_floor_check: bool = false
+## Actor.RelativeLocation while based: where the body stands from its base,
+## as the last MoveActor or SetBase left it. A body put somewhere by anything
+## else (a respawn, a teleport) no longer matches it, and the standing-still
+## floor reuse traces instead.
+var _relative_location := Vector3.ZERO
+
 func _init(owner_pawn) -> void:
 	pawn = owner_pawn
 
@@ -261,6 +270,7 @@ func move_actor(delta: Vector3) -> Dictionary:
 		return _miss()
 	if not pawn.collide_world:
 		pawn.global_position += delta
+		_note_relative_location()
 		return _miss()
 	pawn.align_collider()
 	var before: Vector3 = pawn.global_position
@@ -271,24 +281,39 @@ func move_actor(delta: Vector3) -> Dictionary:
 		# Along the asked motion only: the travel also carries whatever the
 		# recovery below pushed.
 		time = clampf(collision.get_travel().dot(delta) / (length * length), 0.0, 1.0)
-	_note_recovery(pawn.global_position - before, delta * time)
+	_note_recovery(before, delta * time)
+	_note_relative_location()
 	if collision == null:
 		return _miss()
 	return {"time": time, "normal": collision.get_normal(),
 		"collider": collision.get_collider(), "position": collision.get_position()}
 
-## Godot's move_and_collide() first pushes a body out of anything it overlaps;
-## UE3's MoveActor never moves a body it did not ask to. A push like that is
-## not the body's own motion, and the velocity rebuilt from displacement (both
-## physics modes do it) must not read it as such -- a body spawned inside a
-## floor would otherwise leave it at tens of metres a second. Treated like the
-## original's bJustTeleported: the step that saw it keeps its velocity.
+## Godot's move_and_collide() first pushes a body out of anything it overlaps
+## or sits within its safe margin of; UE3's MoveActor never moves a body it did
+## not ask to. A push like that is not the body's own motion, and the velocity
+## rebuilt from displacement (both physics modes do it) must not read it as
+## such. A small one -- a body resting inside the margin, as a straight-down
+## landing leaves it while the still walk reuses its floor -- is undone, so the
+## body ends exactly where MoveActor would put it; left in, the next take-off
+## gains its depenetration twice over in the falling rebuild. A large one (a
+## body spawned inside a floor, which would otherwise leave at tens of metres a
+## second) is kept and treated like the original's bJustTeleported: the step
+## that saw it keeps its velocity.
 const RECOVERY_TOLERANCE := 0.5 * UU
 var _recovered: bool = false
+## Set with a large push and kept until the start of the next walk: the world
+## has just changed around the body (a floor moved through it, say), so that
+## walk traces for its floor rather than reusing the one it had. By then the
+## physics server has geometry moved this frame where its node is.
+var _pushed_out: bool = false
 
-func _note_recovery(moved: Vector3, asked: Vector3) -> void:
-	if (moved - asked).length() > RECOVERY_TOLERANCE:
+func _note_recovery(before: Vector3, asked: Vector3) -> void:
+	var pushed: Vector3 = pawn.global_position - before - asked
+	if pushed.length() > RECOVERY_TOLERANCE:
 		_recovered = true
+		_pushed_out = true
+	elif pushed != Vector3.ZERO:
+		pawn.global_position = before + asked
 
 ## SingleLineCheck with the pawn's own box as the extent: where the body
 ## would stop if moved by `motion`, without moving it.
@@ -401,6 +426,12 @@ func set_physics(mode: int) -> void:
 ## ATdPawn::physWalking. [ME:CONFIRMED decompile N1 §2]
 func phys_walking(dt: float, iterations: int) -> void:
 	var p: PawnConfig = pawn.config.pawn
+	# Read before the base carry below re-measures it: anything but the
+	# physics that moved the body, or a base that moved, fails it.
+	var undisturbed: bool = _relative_location_holds()
+	if _pushed_out:
+		_force_floor_check = true
+		_pushed_out = false
 	_carry_on_base(dt)
 	var move = pawn.move_manager.current_move()
 	var move_cfg: MoveConfig = move.current_config() if move != null else null
@@ -466,12 +497,23 @@ func phys_walking(dt: float, iterations: int) -> void:
 					floor_normal_from_step = hit["normal"]
 					floor_from_step = hit["collider"]
 
+		if pawn.base != null and not _base_collides(pawn.base):
+			_force_floor_check = true
 		var floor_dist: float
 		if floor_from_step != null:
 			hit = {"time": 0.1, "normal": floor_normal_from_step, "collider": floor_from_step,
 				"position": pawn.global_position}
 			floor_dist = MAX_FLOOR_DIST
+		elif zero_move and _is_world_geometry(pawn.base) and undisturbed \
+				and _relative_location_holds() and not _force_floor_check:
+			# [ME:CONFIRMED decompile N1 §2.1] Standing still on world
+			# geometry: the floor is the one already under the feet, no trace
+			# is made, and the body is not lifted to its hover.
+			hit = {"time": 0.1, "normal": pawn.floor_normal, "collider": pawn.base,
+				"position": pawn.global_position}
+			floor_dist = MAX_FLOOR_DIST
 		else:
+			_force_floor_check = false
 			hit = sweep(down)
 			floor_dist = (step + STEP_FUDGE) * float(hit["time"])
 		var floor_normal: Vector3 = hit["normal"]
@@ -525,6 +567,22 @@ func phys_walking(dt: float, iterations: int) -> void:
 			pawn.velocity = (pawn.global_position - old_location) / dt
 		pawn.velocity.y = 0.0
 	pawn.set_grounded(pawn.physics == Move.PHYS_WALKING)
+
+## How far the feet are above the floor right now, for this project's own
+## probes. Usually FLOOR_DIST, but a body standing still reuses its floor
+## (phys_walking) and keeps whatever gap its landing left. Measured with a
+## short sweep and kept until the body moves.
+func floor_gap() -> float:
+	if pawn.global_position != _gap_measured_at:
+		_gap_measured_at = pawn.global_position
+		var reach: float = MAX_FLOOR_DIST * 2.0
+		var below: Dictionary = sweep(Vector3.DOWN * reach)
+		_gap = minf(reach * float(below["time"]) + pawn.safe_margin, FLOOR_DIST) \
+			if float(below["time"]) < 1.0 else FLOOR_DIST
+	return _gap
+
+var _gap := FLOOR_DIST
+var _gap_measured_at := Vector3.INF
 
 ## ATdPlayerPawn::CheckForLedges. [ME:CONFIRMED decompile N1 §4.2] Only Crouch
 ## is actually held back at an edge; for every other move the edge clamp is a
@@ -703,6 +761,47 @@ func _set_base(collider: Object) -> void:
 	pawn.base = collider
 	if collider is Node3D:
 		pawn.base_transform = (collider as Node3D).global_transform
+	_note_relative_location()
+
+## What MoveActor and SetBase do to RelativeLocation: re-measured from the base.
+func _note_relative_location() -> void:
+	var base = pawn.base
+	if base != null and is_instance_valid(base) and base is Node3D:
+		_relative_location = pawn.global_position - (base as Node3D).global_position
+
+## RelativeLocation == Location - Base.Location: nothing but the physics has
+## moved the body since it was last measured.
+func _relative_location_holds() -> bool:
+	var base = pawn.base
+	return base != null and is_instance_valid(base) and base is Node3D \
+		and pawn.global_position - (base as Node3D).global_position == _relative_location
+
+## Base.bWorldGeometry: the level's own static collision, not a mover or a
+## body.
+static func _is_world_geometry(base) -> bool:
+	if base == null or not is_instance_valid(base):
+		return false
+	return (base is StaticBody3D and not (base is AnimatableBody3D)) or base is CSGShape3D
+
+## Base.bCollideActors: false once the base has stopped colliding -- freed,
+## out of the tree, on no layer, or with every shape disabled (a pane that
+## broke under the feet).
+static func _base_collides(base) -> bool:
+	if not is_instance_valid(base):
+		return false
+	if base is Node and not (base as Node).is_inside_tree():
+		return false
+	if base is CSGShape3D:
+		return (base as CSGShape3D).use_collision
+	if base is CollisionObject3D:
+		var body := base as CollisionObject3D
+		if body.collision_layer == 0:
+			return false
+		for owner_id in body.get_shape_owners():
+			if not body.is_shape_owner_disabled(owner_id):
+				return true
+		return false
+	return true
 
 func _carry_on_base(dt: float) -> void:
 	pawn.base_velocity = Vector3.ZERO
@@ -889,7 +988,8 @@ static func _merge_push(current: float, wanted: float) -> float:
 ## input's.
 ##
 ## Not ported: the stuck-landing FindSpot jiggle for a body standing on
-## nothing.
+## nothing, and SetPostLandedPhysics' SetBase(HitActor) -- the first walking
+## sub-step sets the base from its own floor trace instead.
 func process_landed(normal: Vector3, remaining: float, iterations: int) -> void:
 	pawn.floor_normal = normal
 	# What the presentation reads about this landing (the camera's dip).
