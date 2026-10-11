@@ -56,24 +56,48 @@ bun tools/link_private.ts --install-hooks   # once per machine; also builds the 
 
 ## Architecture
 
-### Movement: Player owns data, moves own transitions
+### Movement: the original's structure, ported
 
-- `scripts/player/player.gd` (`Player`, `CharacterBody3D`) holds the shared
-  state and the movement *primitives* (accelerate, step-up, capsule resize,
-  timers, body/animation mounting). It contains **no transition logic**.
-- `scripts/player/moves/*_move.gd` each own one action. Every "can I go from X
-  to Y" has exactly one answer and it lives in **X's** `physics_update`, which
-  returns the next move's name or `Move.KEEP`.
+The movement layer is being rebuilt as a port of the original's own logic
+(`docs/superpowers/specs/2026-10-12-me-faithful-port-design.md`,
+`docs/mirrors-edge-deep-research/15-原版逻辑反编译.md`). Walking, Jump,
+Falling and Landing are ported; the other moves still run their own physics
+through the same manager until each is rewritten from the original.
+
+- `scripts/player/player.gd` (`Player`, `CharacterBody3D`) holds the
+  original's pawn state under its own names (`physics`, `acceleration`,
+  `enter_falling_height`, `movement_state` / `old_movement_state` /
+  `pending_movement_state`, `move_action_hint`, `sprint_energy`, …) and the
+  controller (`_controller_tick()`: raw-axis input hint, PlayerWalking's
+  acceleration through `PawnAcceleration`, CheckCrouch / CheckJumpPressed /
+  LookBehind / AttackPress as `MA_*` actions).
+- `scripts/player/pawn_physics.gd` (`PawnPhysics`) is the native physics:
+  `phys_walking` (CalcVelocity, sub-steps, step-up, floor snap at 2.15 uu,
+  walk-off), `phys_falling` (the integrator that doubles gravity), landing,
+  slide vector. Built on `move_and_collide()`; the collider is the original's
+  cylinder (r 0.30, h 1.80).
+- Transitions come from three places, as in the original: **actions**
+  (`MoveManager.handle_move_action()`: the current move first, then
+  TdPlayerMoveManager's table, first `can_do_move()` wins), **automatic
+  transitions** (`check_auto_moves()` then `pre_physics()`, before the
+  physics; `PhysicsMove` is TdPhysicsMove) and **physics events**
+  (`landed()`, `hit_wall()`, `reached_precise_location()`).
+- `MoveManager.set_move()` is TdPawn.SetMove: Pending written first, old
+  move's `exit()`, Old/MovementState updated, `post_exit()`, new move's
+  `enter()`. Re-entrant (Landing sets Walking from its own `enter()`), and
+  `move_changed` is emitted in switch order once the chain has finished.
+- The frame (`Player._physics_process`): controller, Actor timers
+  (`tick_timers`), `perform_physics` (ported move: auto moves, PrePhysics,
+  `PawnPhysics.perform`; move not yet ported: its `physics_update()`), then
+  `tick_special` (TickSpecial: timers, the uncontrolled slide, `tick_move`).
 - Move name constants live on `Move`, not on `Player`. GDScript resolves
   `class_name` globals at parse time, so `Player -> moves -> Move` must stay
   one-directional; `Move.player` is untyped for the same reason.
-- `MoveManager` registers instances, runs the active one, and owns
-  `redo_move_time` cooldowns. It also enforces the **grounded-declaration
-  invariant**: `Player.grounded` is *declared* by the active state, never
-  inferred from `is_on_floor()` (scripted moves never call `move_and_slide()`).
-  A state that forgets gets a `push_error`.
+- The **grounded-declaration invariant** still holds: `Player.grounded` is
+  *declared*, never inferred from `is_on_floor()`; the ported moves' physics
+  declares it for them. A state that forgets gets a `push_error`.
 - Cross-move data travels on one-shot fields on `Player` (`pending_vault_variant`,
-  `pending_ledge`, …) — the manager has no other channel. The reader clears them.
+  `pending_ledge`, …). The reader clears them.
 
 ### Config: one aggregate, one resource per move
 
