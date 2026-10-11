@@ -188,6 +188,32 @@ func test_the_walk_clears_just_teleported_on_entry() -> void:
 	assert_lt(absf(moved.z), 0.06, "test setup: the wall did not stop the body")
 	wall.queue_free()
 
+## [ME:CONFIRMED decompile N2 §2a] Rising with the head's edge under a ceiling
+## whose edge the centre is already past: the corner probes shove the body out
+## from under it, and the jump carries on up past the ceiling.
+func test_a_jump_under_a_ceiling_edge_is_nudged_out_from_under_it() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	var slab := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(5.0, 0.5, 4.0)
+	shape.shape = box
+	slab.add_child(shape)
+	slab.position = Vector3(-2.5, 2.2 + 0.25, 0.0)
+	get_tree().root.add_child(slab)
+	player.global_position.x = 0.2
+	await step(2)
+	input.press_jump()
+	var top := -INF
+	for i in 40:
+		await step(1)
+		top = maxf(top, player.global_position.y + player.collision_half_height())
+	assert_gt(player.global_position.x, 0.3, "the body was not shoved out from under the edge")
+	assert_gt(top, 2.3, "the jump stopped at the ceiling")
+	slab.queue_free()
+
 ## [ME:CONFIRMED decompile 15.4] The forced Walking frame runs
 ## Walking.StartMove, which clears the wall-run jump's ledge ban.
 func test_walking_start_clears_the_illegal_ledge_timer() -> void:

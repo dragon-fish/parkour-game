@@ -670,9 +670,8 @@ func _carry_on_base(dt: float) -> void:
 
 ## ATdPlayerPawn::physFalling. [ME:CONFIRMED emulated N2 §2]
 ##
-## Not ported: root motion, water, the ceiling-corner nudge (2a) and the
-## landing edge check (2c, whose EdgeCheck is only partly read) -- every floor
-## hit lands.
+## Not ported: root motion, water and the landing edge check (2c, whose
+## EdgeCheck is only partly read) -- every floor hit lands.
 func phys_falling(dt: float, iterations: int) -> void:
 	var p: PawnConfig = pawn.config.pawn
 	var old_accel: Vector3 = pawn.acceleration
@@ -698,6 +697,13 @@ func phys_falling(dt: float, iterations: int) -> void:
 					_process_hit_wall(hit)
 					if pawn.physics != Move.PHYS_FALLING:
 						return
+					if normal.y <= -p.walkable_floor_z and pawn.velocity.y > 0.0:
+						# Everything below reads the nudge's own last hit, as the
+						# original's one FCheckResult does.
+						var nudged: Dictionary = _ceiling_corner_nudge()
+						if not nudged.is_empty():
+							hit = nudged
+							normal = hit["normal"]
 					# TdPawn's ComputeSlideVector tests the surface for the uncontrolled
 					# slide first. [ME:CONFIRMED decompile N2 §2b]
 					_check_uncontrolled_slide(hit)
@@ -761,6 +767,69 @@ func phys_falling(dt: float, iterations: int) -> void:
 				break
 	pawn.acceleration = old_accel
 	pawn.set_grounded(false)
+
+## The ceiling-corner nudge in ATdPlayerPawn::physFalling (0x012c0980), with
+## its probe 0x012b74e0. [ME:CONFIRMED decompile N2 §2a] Rising into a ceiling,
+## four level lines run from the top of the head out to the corners at
+## +-(R + 1) uu; none hitting, the four again 4 uu higher. Each line that ends
+## inside a face that is not walkable (|n.y| < WalkableFloorZ) asks for the
+## horizontal push that takes its corner back out along the face's normal;
+## per axis the largest push wins, and a push of the other sign is ignored.
+## A push within R + 1 is lengthened by min(5, R + 1 - |push|) and made: if
+## nothing stopped it the body counts as teleported, otherwise it is undone by
+## the fraction it got. Returns the hit of the last move, or {} when nothing
+## was moved. The probes and the box are square to the world axes, UE's X and
+## Y as Godot's x and z.
+func _ceiling_corner_nudge() -> Dictionary:
+	var reach: float = pawn.collision_radius() + 1.0 * UU
+	var start: Vector3 = pawn.collision_center() + Vector3.UP * (pawn.collision_half_height() + 1.0 * UU)
+	var corners: Array[float] = [-reach, reach]
+	var push := Vector3.ZERO
+	var hits := 0
+	for level in 2:
+		if hits != 0:
+			break
+		for k in 4:
+			var corner := Vector3(corners[k & 1], 0.0, corners[k >> 1])
+			var probed: Array = _ceiling_corner_probe(start, corner, push)
+			hits += int(probed[0])
+			push = probed[1]
+		start.y += 4.0 * UU
+	if hits == 0 or push.length_squared() > reach * reach:
+		return {}
+	var length: float = push.length()
+	if length > 0.0:
+		push += push * (minf(5.0 * UU, reach - length) / length)
+	var nudge: Dictionary = move_actor(push)
+	var time: float = nudge["time"]
+	if time >= 1.0 or time < 0.0:
+		_just_teleported = true
+		return nudge
+	return move_actor(-push * time)
+
+## 0x012b74e0: one corner line of the nudge. Returns [counted, push]: counted
+## is 1 when the line ended inside a non-walkable face, and push is the running
+## push with this corner's merged in.
+func _ceiling_corner_probe(start: Vector3, corner: Vector3, push: Vector3) -> Array:
+	var end: Vector3 = start + corner
+	var hit: Dictionary = line_trace(start, end)
+	if hit.is_empty():
+		return [0, push]
+	var time: float = hit["time"]
+	var normal: Vector3 = hit["normal"]
+	if time >= 1.0 or time <= 0.0 or absf(normal.y) >= pawn.config.pawn.walkable_floor_z:
+		return [0, push]
+	var n: Vector3 = safe_normal_2d(normal)
+	var hit_position: Vector3 = hit["position"]
+	var wanted: Vector3 = n * n.dot(hit_position - end)
+	return [1, Vector3(_merge_push(push.x, wanted.x), 0.0, _merge_push(push.z, wanted.z))]
+
+## One axis of the nudge's push: a push already made in the other direction
+## keeps it; otherwise the larger of the two.
+static func _merge_push(current: float, wanted: float) -> float:
+	if current != 0.0 and signf(current) != signf(wanted):
+		return current
+	return wanted if absf(current) < absf(wanted) else current
 
 ## APawn::processLanded. [ME:CONFIRMED decompile N2 §3] The floor normal, the
 ## landing event, the post-landing physics, and the rest of the frame walked
