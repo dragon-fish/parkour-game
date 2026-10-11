@@ -115,7 +115,9 @@ var _stopping_velocity: float = 2.0
 var _is_stopping: bool = false
 var _is_walking: bool = false
 var _play_stop_timer: float = 0.0
-var _stick_passed_dead_zone: bool = false
+## TdPlayerController.bLeftThumbStickPassedDeadZone: [ME:CONFIRMED decompile]
+## true by default, so a stick already pushed on the first frame gives its hint.
+var _stick_passed_dead_zone: bool = true
 var _jump_was_held: bool = false
 ## The pawn's facing BEFORE this tick's look input, which is what the
 ## original's PlayerMove reads its axes from.
@@ -1649,6 +1651,7 @@ func reset_state() -> void:
 	_is_stopping = false
 	_is_walking = false
 	_play_stop_timer = 0.0
+	_stick_passed_dead_zone = true
 	_jump_press_available = false
 	_turn_press_available = false
 	# Mirrors CameraRig.reset_state()'s own end_cinematic() call. A manual

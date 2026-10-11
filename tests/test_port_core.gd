@@ -325,6 +325,17 @@ func test_an_input_ignore_holds_the_frame_it_runs_out_in() -> void:
 	await step(1)
 	assert_gt(player.a_forward, 0.0, "the ignore outlived its time")
 
+## [ME:CONFIRMED decompile] bLeftThumbStickPassedDeadZone starts true: a
+## stick already pushed on the first frame gives its hint without first going
+## back through the dead zone.
+func test_a_stick_pushed_from_the_start_gives_its_hint() -> void:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	_worlds.append(world)
+	var player: Player = world["player"]
+	(world["input"] as ScriptedInputSource).hold_move(0.0, 1.0)
+	await step(1)
+	assert_eq(player.move_action_hint, Move.MAH_UP)
+
 ## [ME:CONFIRMED decompile 15.4] The forced Walking frame runs
 ## Walking.StartMove, which clears the wall-run jump's ledge ban.
 func test_walking_start_clears_the_illegal_ledge_timer() -> void:
