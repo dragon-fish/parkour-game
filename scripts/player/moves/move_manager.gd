@@ -350,7 +350,9 @@ func tick_timers(delta: float) -> void:
 ## ATdPawn::performPhysics. [ME:CONFIRMED decompile N4 §1.1] A ported move
 ## gets CheckAutoMoves, then -- the current move read again, since that may
 ## have switched -- PrePhysics, then the physics. A move not yet ported runs
-## its own physics_update() instead.
+## its own physics_update() instead, and so does one the automatic
+## transitions just handed the body to: the original runs the physics after
+## them whatever they chose, so the frame of the hand-over still moves.
 func perform_physics(delta: float, input: MoveInput) -> void:
 	if _current == null:
 		return
@@ -360,15 +362,10 @@ func perform_physics(delta: float, input: MoveInput) -> void:
 	if _current.is_ported():
 		_current.check_auto_moves()
 		_current.pre_physics(delta)
-		if not _current.is_ported():
-			# Handed to a move not yet ported: it runs its own physics from the
-			# next tick, and has had no chance to declare anything on this one.
-			_restarted_this_tick = true
+		if _current.is_ported():
+			player.phys.perform(delta)
 			_check_declared_grounded()
 			return
-		player.phys.perform(delta)
-		_check_declared_grounded()
-		return
 	# bUncontrolledSlide is the walking and falling physics' finding, and
 	# they do not run under a move not yet ported: that move finds its own
 	# chutes.

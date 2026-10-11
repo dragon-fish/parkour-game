@@ -333,7 +333,9 @@ func test_a_stick_pushed_from_the_start_gives_its_hint() -> void:
 	_worlds.append(world)
 	var player: Player = world["player"]
 	(world["input"] as ScriptedInputSource).hold_move(0.0, 1.0)
-	await step(1)
+	# A few frames: the stick never goes back through the dead zone, so a
+	# flag that started false would still be withholding the hint.
+	await step(3)
 	assert_eq(player.move_action_hint, Move.MAH_UP)
 
 ## [ME:CONFIRMED decompile 15.2] The turn penalty's aTurn is the frame's raw
@@ -352,6 +354,42 @@ func test_the_turn_penalty_reads_the_raw_yaw_input() -> void:
 	assert_eq(player.turn_units, 0, "an ignored look still billed a turn")
 	player.stop_ignore_look_input()
 	input.state.look = Vector2.ZERO
+
+## A ported move whose automatic transitions hand the body to a move not yet
+## ported, and that move, counting its physics updates.
+class HandsOver extends WalkingMove:
+	func check_auto_moves() -> void:
+		player.move_manager.set_move(&"TestUnported")
+
+class Unported extends Move:
+	var updates := 0
+	func physics_update(_delta: float, _input: MoveInput) -> StringName:
+		updates += 1
+		player.set_grounded(true)
+		return KEEP
+
+## [ME:CONFIRMED decompile N4 §1.1] The physics runs after the automatic
+## transitions whatever they chose: a hand-over from CheckAutoMoves to a move
+## not yet ported still moves the body that frame, through that move's own
+## physics.
+func test_an_automatic_hand_over_still_runs_the_frames_physics() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var manager: MoveManager = player.move_manager
+	var unported := Unported.new()
+	var hands_over := HandsOver.new()
+	for entry in [[&"TestUnported", unported], [&"TestHandsOver", hands_over]]:
+		var move: Move = entry[1]
+		move.player = player
+		move.config = player.config
+		move.cfg = player.config.walking
+		manager.add_child(move)
+		manager.register(entry[0], move)
+	manager.start(&"TestHandsOver")
+	await step(1)
+	assert_eq(manager.current_name, &"TestUnported", "test setup: the hand-over did not happen")
+	assert_eq(unported.updates, 1, "the frame of the hand-over ran no physics")
+	manager.start(Move.WALKING)
 
 ## [ME:CONFIRMED decompile 15.4] The forced Walking frame runs
 ## Walking.StartMove, which clears the wall-run jump's ledge ban.
