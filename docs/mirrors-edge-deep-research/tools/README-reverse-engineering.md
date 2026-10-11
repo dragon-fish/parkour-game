@@ -11,7 +11,8 @@
 2. 反编译：`uedump/`（.NET 10，Eliot.UELib 1.13.7）。
    `dotnet uedump.dll [--raw] <out> Core.u Engine.u GameFramework.u TdGame.u`。
    所有包一起加载，原生运算符的名字才能解析出来。
-   **美化输出会丢括号**：`a && b || c` 的真实结构要用 `--raw` 输出（运算符保留为 `__NFUN_n__` 调用）核对。
+   **美化输出会丢括号**：`a && (b || c)` 会被印成 `a && b || c`。用 `--raw` 输出（运算符保留为 `__NFUN_n__` 调用），
+   再用 `paren_operators.py <raw_root> <out_root>` 改写成**每个运算符都带括号**的中缀形式。读脚本时只读这一份。
 
 ## 原生层：MirrorsEdge.exe
 
