@@ -46,6 +46,9 @@ const MIN_STEP_SIZE_SQUARED := 144.0 * UU * UU
 ## The corner slip's sideways reach and its look-ahead.
 const CORNER_SLIP_REACH := 32.0 * UU
 const CORNER_SLIP_PROBE := 34.0 * UU
+## A corner slip's forward move that got no further than this fraction counts
+## as blocked, for its step-down.
+const CORNER_SLIP_BLOCKED := 0.05
 ## The original's IsNearlyZero(1e-4) on a uu vector.
 const NEARLY_ZERO := 1e-4 * UU
 ## CalcVelocity's braking slices, and the speed under which braking stops the
@@ -565,12 +568,15 @@ func _step_up(desired_dir: Vector3, delta: Vector3, hit_in: Dictionary) -> Dicti
 		var handled: bool = false
 		if step_ok and normal.y < p.walkable_floor_z and not (hit["collider"] is CharacterBody3D):
 			var along: Vector3 = safe_normal_2d(delta - normal * delta.dot(normal))
-			handled = _corner_slip(along, false, delta, hit)
+			# The slip scales a copy of Delta here: New below is taken from
+			# stepUp's own, unscaled. Hit is whatever the slip left in it.
+			handled = _corner_slip(along, _uses_custom_collision(), false, delta, hit)[0]
 		if not handled:
 			_process_hit_wall(hit)
 			if pawn.physics == Move.PHYS_FALLING:
 				return hit
-			var n: Vector3 = safe_normal(Vector3(normal.x, 0.0, normal.z))
+			var wall_normal: Vector3 = hit["normal"]
+			var n: Vector3 = safe_normal(Vector3(wall_normal.x, 0.0, wall_normal.z))
 			var new_delta: Vector3 = (delta - n * delta.dot(n)) * (1.0 - float(hit["time"]))
 			if safe_normal(new_delta).dot(safe_normal(delta)) > 0.707:
 				# Deflected by less than 45 degrees: the whole remaining length
@@ -579,13 +585,19 @@ func _step_up(desired_dir: Vector3, delta: Vector3, hit_in: Dictionary) -> Dicti
 			if new_delta.dot(delta) >= 0.0:
 				hit = move_actor(new_delta)
 				if step_ok and float(hit["time"]) < 1.0:
-					var n2: Vector3 = safe_normal_2d(hit["normal"])
+					var hit_normal: Vector3 = hit["normal"]
+					var n2: Vector3 = safe_normal_2d(hit_normal)
 					var try_slip: bool = n2.dot(safe_normal_2d(new_delta)) < -0.707 \
 						and not (hit["collider"] is CharacterBody3D)
 					var slipped: bool = false
 					if try_slip:
-						slipped = _corner_slip(-safe_normal_2d(new_delta - n2 * n2.dot(new_delta)),
-							true, new_delta, hit)
+						# Along the wall as the 3D normal has it; New comes back
+						# scaled, and the wall adjust below works on that.
+						var slip: Array = _corner_slip(
+							-safe_normal_2d(new_delta - hit_normal * hit_normal.dot(new_delta)),
+							false, true, new_delta, hit)
+						slipped = slip[0]
+						new_delta = slip[1]
 					if not slipped:
 						_process_hit_wall(hit)
 						if pawn.physics == Move.PHYS_FALLING:
@@ -599,31 +611,71 @@ func _step_up(desired_dir: Vector3, delta: Vector3, hit_in: Dictionary) -> Dicti
 
 ## The corner slip (0x012b0ec0). [ME:CONFIRMED decompile N1 §4.3] Lets the
 ## body slip past a wall corner within 32 uu of its line of travel instead of
-## stopping on it. Returns whether it carried the move.
-func _corner_slip(along: Vector3, probe_ahead: bool, delta: Vector3, orig_hit: Dictionary) -> bool:
+## stopping on it: 32 uu sideways (undone by what it got if that was blocked),
+## then -- unless `probe_ahead` finds the way 34 uu ahead blocked -- Delta,
+## scaled in place by (1 - Hit.Time), forward from there; blocked at once with
+## `step_down_too`, a MaxStepHeight step down and Delta again (the step taken
+## back if that is blocked too); then the 32 uu back.
+##
+## Returns [handled, delta]: handled when the last forward move went all the
+## way, and the caller's Delta as the slip left it. `hit` is the caller's Hit,
+## rewritten as the original rewrites its one FCheckResult: back to what it
+## came in with, unless the slip moved forward -- then the last forward or
+## step-down move's. bJustTeleported is ASSIGNED, so a slip can clear it:
+## set when the body ended further from where it started, flat, than Delta
+## reaches. The mesh offset it hides that with (OffsetMeshXY) is not ported.
+func _corner_slip(along: Vector3, step_down_too: bool, probe_ahead: bool, delta: Vector3,
+		hit: Dictionary) -> Array:
 	if along == Vector3.ZERO:
-		return false
-	var orig_normal: Vector3 = orig_hit["normal"]
-	if -orig_normal.dot(safe_normal(delta)) < 0.707:
-		return false
+		return [false, delta]
+	var kept_normal: Vector3 = hit["normal"]
+	var kept_time: float = hit["time"]
+	var kept_collider = hit["collider"]
+	if -kept_normal.dot(safe_normal(delta)) < 0.707:
+		return [false, delta]
 	var start: Vector3 = pawn.global_position
 	var handled: bool = false
+	var back: Vector3 = -along * CORNER_SLIP_REACH
 	var side: Dictionary = move_actor(along * CORNER_SLIP_REACH)
 	var side_time: float = side["time"]
-	if side_time >= 0.0 and side_time < 1.0:
-		move_actor(-along * CORNER_SLIP_REACH * side_time)
-	else:
-		var blocked_ahead: bool = probe_ahead \
-			and float(sweep(safe_normal_2d(delta) * CORNER_SLIP_PROBE)["time"]) < 1.0
-		if not blocked_ahead:
-			var rest: Dictionary = move_actor(delta * (1.0 - float(orig_hit["time"])))
-			handled = float(rest["time"]) >= 1.0
-		move_actor(-along * CORNER_SLIP_REACH)
+	if side_time < 1.0 and side_time >= 0.0:
+		back *= side_time
+	elif not (probe_ahead and float(sweep(safe_normal_2d(delta) * CORNER_SLIP_PROBE)["time"]) < 1.0):
+		var drop := Vector3(0.0, -pawn.config.pawn.max_step_down_height, 0.0)
+		delta *= 1.0 - kept_time
+		var last: Dictionary = move_actor(delta)
+		var forward_time: float = last["time"]
+		var down_time: float = 0.0
+		var blocked_again: bool = false
+		if forward_time <= CORNER_SLIP_BLOCKED and step_down_too:
+			last = move_actor(drop)
+			down_time = last["time"]
+			if down_time > CORNER_SLIP_BLOCKED:
+				last = move_actor(delta)
+				forward_time = last["time"]
+				blocked_again = forward_time <= CORNER_SLIP_BLOCKED
+		handled = forward_time >= 1.0
+		kept_normal = last["normal"]
+		kept_time = last["time"]
+		kept_collider = last["collider"]
+		if blocked_again:
+			move_actor(-drop * down_time)
+	var final: Dictionary = move_actor(back)
 	var moved: Vector3 = pawn.global_position - start
-	if Vector2(moved.x, moved.z).length_squared() > Vector2(delta.x, delta.z).length_squared():
-		_just_teleported = true
+	_just_teleported = Vector2(delta.x, delta.z).length_squared() < Vector2(moved.x, moved.z).length_squared()
+	if _just_teleported:
 		pawn.evade_timer = 0.2
-	return handled
+	hit["normal"] = kept_normal
+	hit["time"] = kept_time
+	hit["collider"] = kept_collider
+	hit["position"] = final["position"]
+	return [handled, delta]
+
+## The current move's bUseCustomCollision, the corner slip's step-down switch.
+## False for every move ported so far; read off the move when it declares one.
+func _uses_custom_collision() -> bool:
+	var move = pawn.move_manager.current_move()
+	return move != null and move.get(&"use_custom_collision") == true
 
 ## APawn::processHitWall for a pawn with bDirectHitWall: the current move's
 ## HitWall, and only when something was hit. [ME:CONFIRMED decompile N2 §5]

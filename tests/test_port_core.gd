@@ -214,6 +214,48 @@ func test_a_jump_under_a_ceiling_edge_is_nudged_out_from_under_it() -> void:
 	assert_gt(top, 2.3, "the jump stopped at the ceiling")
 	slab.queue_free()
 
+## [ME:CONFIRMED decompile N1 §4.3] The corner slip that gets as far as its
+## forward move scales the caller's Delta by (1 - Hit.Time) and leaves that
+## move's hit in Hit; one stopped sideways puts Hit back as it came. Either way
+## bJustTeleported is assigned, so a slip that does not overshoot clears it.
+func test_the_corner_slip_rewrites_delta_and_hit_as_the_original() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var phys: PawnPhysics = player.phys
+	var start: Vector3 = player.global_position
+	var delta := Vector3(0.0, 0.0, -0.1)
+	var collider := Node.new()
+	var hit := {"time": 0.5, "normal": Vector3(0.0, 0.0, 1.0), "collider": collider, "position": start}
+	phys._just_teleported = true
+	var slip: Array = phys._corner_slip(Vector3.RIGHT, false, false, delta, hit)
+	assert_true(slip[0], "an open slip did not carry the move")
+	assert_almost_eq(slip[1], delta * 0.5, Vector3.ONE * 0.0001, "Delta was not scaled by 1 - Hit.Time")
+	assert_almost_eq(float(hit["time"]), 1.0, 0.0001, "Hit is not the forward move's")
+	assert_null(hit["collider"], "Hit is not the forward move's")
+	assert_false(phys._just_teleported, "bJustTeleported was not assigned")
+
+	player.global_position = start
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(1.0, 3.0, 4.0)
+	shape.shape = box
+	wall.add_child(shape)
+	wall.position = Vector3(start.x + 0.31 + 0.5, 1.5, start.z)
+	get_tree().root.add_child(wall)
+	await step(1)
+	player.global_position = start
+	hit = {"time": 0.5, "normal": Vector3(0.0, 0.0, 1.0), "collider": collider, "position": start}
+	phys._just_teleported = true
+	slip = phys._corner_slip(Vector3.RIGHT, false, false, delta, hit)
+	assert_false(slip[0], "a slip stopped sideways carried the move")
+	assert_almost_eq(slip[1], delta, Vector3.ONE * 0.0001, "a slip stopped sideways scaled Delta")
+	assert_almost_eq(float(hit["time"]), 0.5, 0.0001, "Hit was not put back")
+	assert_eq(hit["collider"], collider, "Hit was not put back")
+	assert_false(phys._just_teleported, "bJustTeleported was not assigned")
+	collider.free()
+	wall.queue_free()
+
 ## [ME:CONFIRMED decompile 15.4] The forced Walking frame runs
 ## Walking.StartMove, which clears the wall-run jump's ledge ban.
 func test_walking_start_clears_the_illegal_ledge_timer() -> void:
