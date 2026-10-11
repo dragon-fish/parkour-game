@@ -4506,7 +4506,12 @@ func pawn_landed(normal: Vector3) -> void:
 func take_falling_damage() -> void:
 	var fall_height: float = enter_falling_height - global_position.y
 	var soft: bool = is_landing_on_soft_object()
-	var death_fall: bool = move_manager.current_name == Move.FALL_UNCONTROLLED \
+	# bDeathFall = (MovementState == FallingUncontrolled && IsInState(
+	# 'UncontrolledFall')) || FallHeight >= FallingUncontrolledHeight.
+	# TdPlayerPawn enters that state from FallingUncontrolled's StartMove, and
+	# its BeginState ignores all input; FallUncontrolledMove stands in for both
+	# by locking the input on entry, so the lock is the state here.
+	var death_fall: bool = (move_manager.current_name == Move.FALL_UNCONTROLLED and is_input_locked()) \
 		or fall_height >= config.pawn.falling_uncontrolled_height
 	if soft or (not death_fall and fall_height < config.pawn.hard_landing_height) or can_skill_roll():
 		return
