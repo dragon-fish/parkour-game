@@ -156,6 +156,9 @@ func _shape(shape: Shape3D) -> String:
 	if shape is CapsuleShape3D:
 		var capsule := shape as CapsuleShape3D
 		return "CapsuleShape(h=%s r=%s)" % [_f(capsule.height), _f(capsule.radius)]
+	if shape is CylinderShape3D:
+		var cylinder := shape as CylinderShape3D
+		return "CylinderShape(h=%s r=%s)" % [_f(cylinder.height), _f(cylinder.radius)]
 	if shape == null:
 		return "shape=none"
 	return "shape=%s" % shape.get_class()

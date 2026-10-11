@@ -317,7 +317,7 @@ func _capsule_span() -> Vector2:
 	var shape_node := player.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node == null:
 		return Vector2.ZERO
-	var capsule := shape_node.shape as CapsuleShape3D
+	var capsule := shape_node.shape as CylinderShape3D
 	if capsule == null:
 		return Vector2.ZERO
 	var soles: float = player.global_position.y - player.standing_height() * 0.5

@@ -9,13 +9,13 @@
 [ext_resource type="Script" path="res://scripts/player/body_root.gd" id="7_ugbui"]
 [ext_resource type="Script" path="res://scripts/player/probes.gd" id="8_fcs02"]
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_myrg7"]
-radius = 0.4
+[sub_resource type="CylinderShape3D" id="CapsuleShape3D_myrg7"]
 height = 1.8
+radius = 0.3
 
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_kvlxm"]
-radius = 0.4
+[sub_resource type="CylinderShape3D" id="CapsuleShape3D_kvlxm"]
 height = 1.8
+radius = 0.3
 
 [node name="Player" type="CharacterBody3D" unique_id=1552152316 node_paths=PackedStringArray("camera_rig", "probes", "screen_effects", "subtitle", "toast")]
 collision_layer = 3

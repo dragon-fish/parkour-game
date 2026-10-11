@@ -113,7 +113,7 @@ func _rebuild_preview() -> void:
 	var shape_node: CollisionShape3D = player.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node == null:
 		return
-	var capsule: CapsuleShape3D = shape_node.shape as CapsuleShape3D
+	var capsule: CylinderShape3D = shape_node.shape as CylinderShape3D
 	if capsule == null:
 		return
 

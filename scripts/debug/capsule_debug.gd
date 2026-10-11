@@ -116,7 +116,7 @@ func _process(_delta: float) -> void:
 	var shape_node := player.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node == null:
 		return
-	var capsule := shape_node.shape as CapsuleShape3D
+	var capsule := shape_node.shape as CylinderShape3D
 	if capsule == null:
 		return
 	_last_height = capsule.height
