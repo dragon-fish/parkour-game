@@ -3736,9 +3736,11 @@ func _physics_process(delta: float) -> void:
 	# Upright unless the move that runs next says otherwise.
 	body_tilt_normal = Vector3.UP
 	# The original's frame, in its order [ME:CONFIRMED decompile N4 §1.1]: the
-	# controller (input, acceleration, actions), the Actor timers, the physics
-	# (automatic transitions, PrePhysics, the move itself), TickSpecial.
+	# controller (input, acceleration, actions, then its own Actor timers),
+	# the pawn's Tick and Actor timers, the physics (automatic transitions,
+	# PrePhysics, the move itself), TickSpecial.
 	_controller_tick(delta, input)
+	_pawn_tick(delta, input)
 	move_manager.tick_timers(delta)
 	move_manager.perform_physics(delta, input)
 	move_manager.tick_special(delta)
@@ -4157,13 +4159,6 @@ const STOP_TAP_VELOCITY := 35.0 * PawnPhysics.UU
 const STOPPING_VELOCITY := 200.0 * PawnPhysics.UU
 
 func _controller_tick(delta: float, input: MoveInput) -> void:
-	# The controller's own Actor timers: PlayStop, and the input ignores.
-	if _play_stop_timer > 0.0:
-		_play_stop_timer -= delta
-		if _play_stop_timer <= 0.0:
-			_is_stopping = false
-	_tick_ignore_timers(delta)
-
 	# PlayerInput: the hint on the RAW axes, before anything scales or zeroes
 	# them; then the normalisation, the walk button and the mobility handicap;
 	# then the ignore.
@@ -4191,16 +4186,6 @@ func _controller_tick(delta: float, input: MoveInput) -> void:
 	a_forward = f
 	a_strafe = s
 
-	# TdPlayerPawn.Tick: the roll trigger is the crouch key going down, at most
-	# once per 0.6 s.
-	if move_manager.current_name != Move.FALL_UNCONTROLLED and not _dying:
-		if not _roll_trigger_pressed and input.crouch_held:
-			if roll_trigger_time + 0.6 < world_time:
-				roll_trigger_time = world_time
-			_roll_trigger_pressed = true
-		elif not input.crouch_held:
-			_roll_trigger_pressed = false
-
 	# The keys bound to exec functions: LookBehind and AttackPress.
 	_turn_press_available = false
 	if input.turn_pressed:
@@ -4218,6 +4203,29 @@ func _controller_tick(delta: float, input: MoveInput) -> void:
 	_check_crouch(input)
 	_check_jump_pressed(input)
 	_check_jump_released(input)
+
+	# The controller's own Actor timers, after its PlayerTick: PlayStop.
+	if _play_stop_timer > 0.0:
+		_play_stop_timer -= delta
+		if _play_stop_timer <= 0.0:
+			_is_stopping = false
+
+## The pawn's half of the frame before its physics [ME:CONFIRMED decompile N4
+## §1.1]: TdPlayerPawn.Tick, then the pawn's Actor timers -- the input
+## ignores SetIgnoreMoveInput / SetIgnoreLookInput armed. Both after the
+## controller, so an ignore that runs out this frame still held this frame's
+## input.
+func _pawn_tick(delta: float, input: MoveInput) -> void:
+	# TdPlayerPawn.Tick: the roll trigger is the crouch key going down, at most
+	# once per 0.6 s.
+	if move_manager.current_name != Move.FALL_UNCONTROLLED and not _dying:
+		if not _roll_trigger_pressed and input.crouch_held:
+			if roll_trigger_time + 0.6 < world_time:
+				roll_trigger_time = world_time
+			_roll_trigger_pressed = true
+		elif not input.crouch_held:
+			_roll_trigger_pressed = false
+	_tick_ignore_timers(delta)
 
 ## TdPlayerController.SetInputHint, on the raw axes. [ME:CONFIRMED decompile
 ## N4 §5] Forward or back past 0.8, strafe past 0.3 (strafe wins), bMax past

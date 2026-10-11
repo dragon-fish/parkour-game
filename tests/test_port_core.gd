@@ -308,6 +308,23 @@ func test_standing_still_reuses_the_floor_until_disturbed() -> void:
 	assert_eq(player.physics, Move.PHYS_FALLING, "a body kept standing on a floor that stopped colliding")
 	floor_shape.disabled = false
 
+## [ME:CONFIRMED decompile N4 §1.1] The input ignores are the pawn's Actor
+## timers, counted after the controller has read the frame's input: an ignore
+## that runs out in a frame still held that frame.
+func test_an_input_ignore_holds_the_frame_it_runs_out_in() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	input.hold_move(0.0, 1.0)
+	await step(2)
+	player.set_ignore_move_input(1.5 / 60.0)
+	await step(1)
+	assert_eq(player.a_forward, 0.0, "the ignored frame read the input")
+	await step(1)
+	assert_eq(player.a_forward, 0.0, "the frame the ignore ran out in read the input")
+	await step(1)
+	assert_gt(player.a_forward, 0.0, "the ignore outlived its time")
+
 ## [ME:CONFIRMED decompile 15.4] The forced Walking frame runs
 ## Walking.StartMove, which clears the wall-run jump's ledge ban.
 func test_walking_start_clears_the_illegal_ledge_timer() -> void:
