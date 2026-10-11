@@ -72,6 +72,28 @@
 - move 上提供 `old_movement_state` 语义，以及"强制一帧 Walking"的语义。
 - `CLAUDE.md` 的 Architecture 一节随之改写。
 
+## 3.1 Godot 侧的移植架构
+
+**只替换模拟层，表现层原样保留。** 镜头（`CameraRig`）、动画（`CharacterAnimator`）、身体朝向、
+关卡标注（InterestLine、状态效果、踉跄/击倒）继续消费模拟层给出的速度、状态名和事件；
+它们不是原版逻辑的移植对象。
+
+模拟层按原版的分层重组：
+
+| 原版 | 本项目 |
+| --- | --- |
+| `TdPawn` 的移动字段（`MovementState`/`OldMovementState`/`PendingMovementState`、`MoveActionHint`、`SpeedSprintEnergy`、`EnterFallingHeight`、`LastJumpLocation`、`bIllegalLedgeTimer`、`MoveNormal`、`Floor`……） | `Player` 上同名（snake_case）字段 |
+| `TdPawn.SetMove`（Pending → 旧 move `StopMove` → Old = 旧 → 切换 → 旧 move `PostStopMove` → 新 move `StartMove`，可在 `StartMove` 里重入） | `MoveManager.set_move()`，与现有"`physics_update` 返回下一个状态名"并存：返回值等价于一次 `set_move` |
+| `TdMove.CanDoMove`（`RedoMoveTime` 从 `LastStopMoveTime` 起算）及各子类覆盖 | `Move.can_do_move()` |
+| `TdPlayerMoveManager.HandleMoveAction` | `MoveManager.handle_move_action(action)`，整张表照搬（15.3） |
+| `TdPlayerController` 的按键函数（`CheckJumpPressed`、`CheckJumpReleased`、`CheckCrouch`、`LookBehind`、`AttackPress`） | `Player` 每帧把按键翻译成 `MA_*` 动作；新增近战键 |
+| 控制器状态里的 `PlayerMove`（`PlayerWalking`、`PlayerWallWalking`、`PlayerGrabbing`……） | 按 move 的 `controller_state` 选择的加速度计算，地面/空中用 `PawnAcceleration` |
+| 原生物理模式（walking / falling / 墙跑 / 蹬墙 / 无物理的精确定位） | `Player` 上的物理推进函数，按 move 的 `pawn_physics` 分派，建在 `move_and_collide` 之上 |
+| `TdMove.ConstrainAxis` | `CameraRig` 的视角约束，按原版 0.2 s 指数回拉改写 |
+
+本项目自创、原版没有的机制（土狼时间、跳跃缓冲、`look_redirect`、拟合出来的能量曲线等）
+在对应部分移植完成时一并删除。删除前确认它不是表现层的东西。
+
 ## 4. 阶段与清单
 
 ### Phase 0 — 原生层逆向（关键路径）
