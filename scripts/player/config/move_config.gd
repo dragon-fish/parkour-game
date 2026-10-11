@@ -220,23 +220,6 @@ extends Resource
 ## Whether this move may hand off to LedgeWalk. Same shape as check_for_balance.
 @export var check_for_ledge_walk: bool = false
 
-## Whether a crouch pressed in mid-air out of this move tucks the legs up.
-## Read through AirborneMove.coil_transition().
-##
-## TRUE ONLY ON A RISE: a jump's, and a spring board's throw. The narrowness is
-## the point. [ME:INFERRED] from play: the coil is taken on the way up -- a
-## spring board's rise offers it the same as a jump's, and nothing descending
-## does. 11.3's chart draws only `Jump --> Coil`.
-##
-## 🎯 IT IS ALSO WHAT KEEPS A COIL FROM EATING THE LANDING ROLL. Both read the
-## same buffered press through Player.consume_roll(), so a flag set on Falling
-## as well would spend, in mid-air, the crouch a player pressed on the way down
-## meaning to roll. Falling is where a body preparing to land actually is --
-## enter_to_falling_z_speed is only -2 m/s -- so leaving this false there is
-## not a restriction the roll has to work around, it is what hands the press to
-## settle_landing()'s own consume_roll() untouched.
-@export var check_for_coil: bool = false
-
 ## Whether a hazard's hit knocks the body out of this move and into a fall.
 ## The hit itself is Player.take_hazard_hit(); this is only where the body goes.
 ##

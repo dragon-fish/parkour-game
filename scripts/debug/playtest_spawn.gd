@@ -60,6 +60,7 @@ func _place(position: Vector3, yaw: float) -> void:
 		player.toggle_noclip()
 	if player.fall_tracker != null:
 		player.fall_tracker.reset(position.y)
+		player.enter_falling_height = position.y
 
 
 static func _player_in(scene: Node) -> Player:

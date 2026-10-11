@@ -134,7 +134,8 @@ func _init() -> void:
 ## Metres a body may sit BEHIND the line's front plane and still catch it. A
 ## pipe standing further off its wall than the capsule radius puts a body
 ## running along that wall beside the pipe, slightly behind its front plane
-## (Stormdrain: pipe 0.58 m off the ring wall, wall-run body 0.45 m off it).
+## (Stormdrain: pipe 0.58 m off the ring wall; the wall-running body, a 0.30 m
+## cylinder, about 0.30 m off it -- 0.28 m behind the pipe).
 ## DO NOT raise it to stand_off or past: a body standing off the back of a
 ## free-standing ladder at climbing distance must still be refused.
-@export var back_slack: float = 0.25
+@export var back_slack: float = 0.32

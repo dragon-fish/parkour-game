@@ -175,7 +175,12 @@ func setup(cfg: MovementConfig, foot_offset: float) -> void:
 ## resizes about its own feet (`set_capsule_height()`), so this stays correct
 ## through every crouch/stand transition without re-deriving it.
 func feet_y() -> float:
-	return global_position.y - _foot_offset
+	# From the floor the feet stand on: the ported walking physics holds the
+	# body 2.15 uu above it (PawnPhysics.FLOOR_DIST), and every height these
+	# probes report is an obstacle's height above the floor.
+	var body = get_parent()
+	var hover: float = body.walking_hover() if body != null and body.has_method(&"walking_hover") else 0.0
+	return global_position.y - _foot_offset - hover
 
 ## Points a forward ray at the given reach and fires it. Rays point along -Z,
 ## which is the body's forward.

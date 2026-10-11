@@ -19,6 +19,113 @@ var input_source: InputSource
 var owns_mouse := true
 var move_manager: MoveManager
 
+# --- the original's pawn state (TdPawn), ported -----------------------------------
+#
+# Field for field the original's, snake_case, metric. [ME:CONFIRMED decompile
+# 15, N1, N2, N4] What moves the body lives in PawnPhysics; what turns input
+# into Acceleration and actions is the controller section further down.
+
+## The native physics: walking, falling, flying (Move.PHYS_*). Only the ported
+## moves are moved by it; for the others it is bookkeeping, kept because the
+## original's checks read it (Coil.CanDoMove, CheckCrouch, Landing's height).
+var physics: int = Move.PHYS_WALKING
+## The physics itself. Built in setup().
+var phys: PawnPhysics
+## Pawn.Acceleration, m/s^2: set by the controller every tick, read by the
+## physics.
+var acceleration: Vector3 = Vector3.ZERO
+## Pawn.Floor: the normal the walking physics last stood on.
+var floor_normal: Vector3 = Vector3.UP
+## TdPawn.EnterFallingHeight: the body centre's height when the physics last
+## went to Falling. Landing measures the fall from it.
+var enter_falling_height: float = 0.0
+## TdPawn.LastJumpLocation.
+var last_jump_location: Vector3 = Vector3.ZERO
+## TdPawn.bIllegalLedgeTimer and IllegalLedgeNormal: after a wall-run jump,
+## the wall left behind refuses hands and wall runs. Cleared by Walking.
+var illegal_ledge_timer: float = 0.0
+var illegal_ledge_normal: Vector3 = Vector3.ZERO
+## TdPawn.EvadeTimer.
+var evade_timer: float = 0.0
+## TdPawn.MoveNormal / MoveLedgeLocation / MoveLedgeNormal / MoveLedgeResult /
+## bFoundLedge: what the last ledge search found.
+var move_normal: Vector3 = Vector3.ZERO
+var move_ledge_location: Vector3 = Vector3.ZERO
+var move_ledge_normal: Vector3 = Vector3.ZERO
+var move_ledge_result: int = 0
+var found_ledge: bool = false
+## TdPawn.GravityModifier and GravityModifierTimer.
+var gravity_modifier: float = 1.0
+var gravity_modifier_timer: float = 0.0
+## TdPawn.MovementState / OldMovementState / PendingMovementState, as move
+## names. Written by MoveManager.
+var movement_state: StringName = &""
+var old_movement_state: StringName = &""
+var pending_movement_state: StringName = &""
+## TdPawn.MoveActionHint and bMoveActionMax (Move.MAH_*).
+var move_action_hint: int = Move.MAH_NONE
+var move_action_max: bool = false
+## TdPawn.SpeedSprintEnergy, m/s: written by the two acceleration functions.
+var sprint_energy: float = 0.0
+## Actor.bCollideWorld. Off only for a precise-location flight.
+var collide_world: bool = true
+## TdPawn.bUncontrolledSlide / UncontrolledSlideNormal: the physics found a
+## chute under the body this tick.
+var uncontrolled_slide: bool = false
+var uncontrolled_slide_normal: Vector3 = Vector3.UP
+## Pawn.Base: what the walking body stands on, and its transform when last
+## seen, so a moving base carries the body. base_velocity is that carry.
+var base: Object = null
+var base_transform: Transform3D = Transform3D.IDENTITY
+var base_velocity: Vector3 = Vector3.ZERO
+## TdPawn.bForceMaxAccelOneFrame: CalcVelocity's next acceleration is the
+## maximum. Set by a landing taken holding forward.
+var force_max_accel_one_frame: bool = false
+## WorldInfo.TimeSeconds for this body: the clock RedoMoveTime and the roll
+## window are measured on.
+var world_time: float = 0.0
+## TdPawn.RollTriggerTime: when the crouch key last went down, at most once
+## per 0.6 s. CanSkillRoll is the 0.2 s after it.
+var roll_trigger_time: float = -10.0
+var _roll_trigger_pressed: bool = false
+## Set by MoveManager when a move not yet ported hands to Jump having launched
+## the body itself; JumpMove reads and clears it.
+var pending_legacy_launch: StringName = &""
+
+# --- the original's controller state (TdPlayerController, TdPlayerInput) ----------
+
+## The move's ControllerState. Only PlayerWalking computes an acceleration.
+var controller_state: StringName = Move.CS_PLAYER_WALKING
+## PlayerInput.aForward / aStrafe after normalisation, the walk button,
+## mobility and ignored input; InputSize before any of them.
+var a_forward: float = 0.0
+var a_strafe: float = 0.0
+var input_size: float = 0.0
+## int(PlayerInput.aTurn): this tick's yaw change in rotator units.
+var turn_units: int = 0
+## IsMoveInputIgnored / IsLookInputIgnored, with the timers that end them.
+var ignore_move_input: bool = false
+var ignore_look_input: bool = false
+var _ignore_move_timer: float = 0.0
+var _ignore_look_timer: float = 0.0
+## PlayerWalking's stop logic: AccelerationTime, StoppingVelocity, bIsStopping,
+## bIsWalking and the PlayStop timer.
+var _acceleration_time: float = 0.0
+var _stopping_velocity: float = 2.0
+var _is_stopping: bool = false
+var _is_walking: bool = false
+var _play_stop_timer: float = 0.0
+var _stick_passed_dead_zone: bool = false
+var _jump_was_held: bool = false
+## The pawn's facing BEFORE this tick's look input, which is what the
+## original's PlayerMove reads its axes from.
+var _pre_look_basis: Basis = Basis.IDENTITY
+## Whether this tick's jump / turn press is still unspent: no action table
+## entry took it. The moves not yet ported read their presses through
+## consume_jump() / consume_buffered_turn().
+var _jump_press_available: bool = false
+var _turn_press_available: bool = false
+
 ## Downward speed at the moment of the most recent landing. Read by CameraRig.
 var last_landing_speed: float = 0.0
 ## True when the most recent landing was a roll. Read by the camera and HUD.
@@ -328,8 +435,8 @@ func set_grounded(value: bool) -> void:
 ## Clears `grounded` WITHOUT counting as a declaration. Called only by
 ## MoveManager, as the fail-safe half of the invariant above: a move that
 ## never declared must not go on inheriting the previous move's value — a
-## WallRun that forgot the call would inherit Walking's `true` and refill coyote
-## time every tick, i.e. infinite jumps. Deliberately not routed through
+## WallRun that forgot the call would inherit Walking's `true` and pass every
+## grounded gate a move not yet ported asks. Deliberately not routed through
 ## set_grounded(), or the fail-safe would satisfy the very check it exists to
 ## keep reporting.
 func clear_grounded_undeclared() -> void:
@@ -435,8 +542,6 @@ var speed_energy: SpeedEnergy
 ## _charge_turn().
 var _last_facing: Vector3 = Vector3.ZERO
 
-## The take-off nudge still being carried, or ZERO. See return_jump_nudge().
-var _carried_jump_nudge: Vector3 = Vector3.ZERO
 ## Which way the BODY faces after a dodge, or ZERO once it faces the view
 ## again. See _charge_dodge_heading().
 var _dodge_heading: Vector3 = Vector3.ZERO
@@ -478,26 +583,23 @@ var _takeoff_ground_speed: float = 0.0
 ## cooldown forbids. SameZipLineRedoMoveTime only ever guarded the SAME line.
 var _line_cooldowns: Dictionary = {}
 var _airborne_time: float = 0.0
-## Temporary gravity multiplier for FREE FLIGHT -- [ME:INFERRED 05 §5.4] the
-## original leans on exactly this: local gravity modification recurs across
-## swing, barge and coil, and is a major source of its "floaty but
-## controllable" feel. Lives on Player once rather than growing a copy per
-## move. Consumed by Move.carry_ballistically() and
-## AirborneMove.apply_air_physics(); the wall moves keep their own scalings.
-var _gravity_multiplier: float = 1.0
-var _gravity_window_left: float = 0.0
-
+## TdPawn.GravityModifier for a while: [ME:CONFIRMED decompile N2 §1] the
+## modifier holds until the timer runs out, then returns to 1. GrabTransfer,
+## RumpSlide, Swing and SwingJump write it in the original.
 func apply_gravity_window(multiplier: float, seconds: float) -> void:
-	_gravity_multiplier = multiplier
-	_gravity_window_left = maxf(seconds, 0.0)
+	gravity_modifier = multiplier
+	gravity_modifier_timer = maxf(seconds, 0.0)
 
+## The gravity the moves not yet ported integrate themselves: the felt one,
+## PawnConfig.gravity, times the modifier.
 func effective_gravity() -> float:
-	return config.pawn.gravity \
-		* (_gravity_multiplier if _gravity_window_left > 0.0 else 1.0)
+	return config.pawn.gravity * gravity_modifier
 
-func _tick_gravity_window(delta: float) -> void:
-	if _gravity_window_left > 0.0:
-		_gravity_window_left = maxf(_gravity_window_left - delta, 0.0)
+## TdPawn::GetGravityZ: the world's gravity times GravityModifier, m/s^2,
+## negative. HALF what a falling body feels -- the falling integrator doubles
+## it (PawnPhysics.phys_falling) -- and what the script layer reads.
+func gravity_z() -> float:
+	return config.pawn.world_gravity_z * gravity_modifier
 
 func landing_tier(fall_height: float) -> int:
 	var pawn := config.pawn
@@ -508,26 +610,6 @@ func landing_tier(fall_height: float) -> int:
 	if fall_height < pawn.hard_landing_height:
 		return TIER_ROLLABLE
 	return TIER_HARD
-
-## Fraction of horizontal speed a landing from `fall_height` keeps.
-##
-## BINARY, not a ramp. [ME:CONFIRMED 03 §3.1] a 4.95 m drop taken WITHOUT
-## rolling costs nothing at all -- speed keeps climbing after touchdown --
-## while ~7 m unrolled zeroes it outright and plays the knee-clutch animation.
-## There is no partial band anywhere in between.
-##
-## DO NOT model this as a ramp with a roll acting as a partial discount (e.g.
-## charging a little at 2.5 m, more at 4.0 m, a 35% roll discount above the
-## soft band): below the threshold nothing is charged, and at or above it a
-## roll is not a discount but a full cancellation.
-##
-## `skill_roll_landing_height` and `soft_landing_height` therefore take no part
-## in this calculation -- they gate animation and whether a roll may trigger at
-## all. landing_tier() still reports them for those consumers.
-func landing_keep_ratio(fall_height: float, rolled: bool) -> float:
-	if fall_height < config.pawn.hard_landing_height:
-		return 1.0
-	return 1.0 if rolled else 0.0
 
 ## Assigned in player.tscn. Optional so headless tests can run without one.
 @export var camera_rig: CameraRig
@@ -1011,8 +1093,6 @@ var _standing_height: float = 0.0
 ## Backing store for travel_speed(); see its doc comment.
 var _travel_speed: float = 0.0
 
-var _coyote_timer: float = 0.0
-
 ## Time left in the window that follows a step-up, during which leaving the
 ## floor is NOT a ledge exit. try_step_up() raises the body IN PLACE and lets
 ## move_and_slide() carry it forward onto the step over the next tick or two,
@@ -1039,24 +1119,6 @@ var noclip: bool = false
 ## DEBUG. Fast enough to cross the arena without waiting, slow enough to
 ## stop where you meant to.
 const NOCLIP_SPEED := 21.0
-var _jump_buffer_timer: float = 0.0
-## Buffers a crouch-key press for roll_trigger_time (05 §5.2's confirmed
-## TdPawn.RollTriggerTime, extremely forgiving next to the genre's usual
-## 0.1-0.2 s). Renamed from _crouch_buffer_timer: GBA_Crouch is one key with
-## five outlets and only three discriminators -- airborne/grounded, speed,
-## accumulated fall height -- so the buffer itself is not "about crouching",
-## it is the single press every one of those outlets reads. See
-## walking_move.gd's own table comment for the full resolution.
-var _roll_buffer_timer: float = 0.0
-
-## Seconds a Q press stays alive waiting for a move that can use it.
-##
-## EXISTS BECAUSE A Q PRESS AT THE START OF A WALL RUN WAS BEING DROPPED: the
-## press arrives before the run has a fan to sweep across, and without a
-## buffer it is simply lost. Same shape as the jump buffer above, and the
-## same reason: the player pressed at the moment that FELT right, and the
-## game was a few frames from being able to honour it.
-var _turn_buffer_timer: float = 0.0
 ## True when a state has asked for the standing capsule back but a ceiling was
 ## in the way. See request_standing_capsule().
 var _standing_restore_pending: bool = false
@@ -1070,31 +1132,26 @@ var wall_side: int = 0
 func standing_height() -> float:
 	return _standing_height
 
-## A CAPSULE, where [ME:CONFIRMED] the original collides as a CYLINDER: UE3
-## Pawns use a CylinderComponent, and the original's debug collision view shows
-## it. DO NOT "correct" the rounded bottom. The difference is real and known --
-## a flat-bottomed cylinder perches on ledges a hemisphere slides off, and the
-## speedrun community has routes that stand on slivers only a cylinder holds --
-## and it is a deliberately accepted deviation, not an oversight. Changing it
-## means re-judging every edge, landing and vault, so it is a decision to take
-## on its own: docs/mirrors-edge-deep-research/09-Godot移植指南.md, 9.2.2.
+## A CYLINDER, radius 0.30 m and height 1.80 m: [ME:CONFIRMED decompile] UE3
+## pawns collide as a CylinderComponent, and TdPawn's CDO sets CollisionRadius
+## 30 and CollisionHeight 90 (a half-height). DO NOT round its bottom into a
+## capsule: a flat-bottomed cylinder perches on ledges a hemisphere slides off,
+## and the walking physics' 2 uu hover above the floor (PawnPhysics) assumes a
+## flat bottom.
 ##
-## Live height of the collision capsule right now — shrunk while Slide or
+## The names still say "capsule" -- the moves not yet ported resize it through
+## these -- and mean the body's collider, whatever its shape.
+##
+## Live height of the collision body right now -- shrunk while Slide or
 ## Crouch (or any future state that calls set_capsule_height()) is active,
 ## the standing height otherwise. Read fresh via $CollisionShape3D rather
-## than cached, mirroring set_capsule_height()'s own reasoning below: this
-## can run before setup() has necessarily duplicated the capsule into a
-## per-instance copy. The single source of truth both body_mount_transform()
-## (the body's feet-alignment, read once at attach time before any resize
-## has happened) and _physics_process()'s camera crouch cue (read every
-## tick) share, so a future low state needs nothing more than calling
-## set_capsule_height() to get both right for free — see
-## _physics_process()'s own comment on the camera cue.
+## than cached: this can run before setup() has duplicated the shape into a
+## per-instance copy.
 func current_capsule_height() -> float:
 	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node == null:
 		return 0.0
-	var capsule := shape_node.shape as CapsuleShape3D
+	var capsule := shape_node.shape as CylinderShape3D
 	if capsule == null:
 		return 0.0
 	return capsule.height
@@ -1106,7 +1163,7 @@ func current_capsule_radius() -> float:
 	var shape_node := get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if shape_node == null:
 		return 0.0
-	var capsule := shape_node.shape as CapsuleShape3D
+	var capsule := shape_node.shape as CylinderShape3D
 	return capsule.radius if capsule != null else 0.0
 
 ## Pure placement arithmetic -- the ONE formula both the runtime attach path
@@ -1168,8 +1225,8 @@ func body_mount_transform() -> Transform3D:
 ## from an edge threads between two slabs that a body could never fit through,
 ## and it misses a cap it grazes.
 ##
-## Resizing is safe because StandClearance owns a CapsuleShape3D of its own --
-## player.tscn gives it CapsuleShape3D_fcs02 while the body holds _ugbui. DO
+## Resizing is safe because StandClearance owns a CylinderShape3D of its own --
+## player.tscn gives it a sub-resource of its own, apart from the body's. DO
 ## NOT point the two at one resource: this would then resize the body itself,
 ## mid-query, every time anything asked.
 ##
@@ -1186,7 +1243,7 @@ func body_mount_transform() -> Transform3D:
 func fits_at(feet_point: Vector3, height: float) -> bool:
 	if _stand_clearance == null:
 		return true
-	var capsule := _stand_clearance.shape as CapsuleShape3D
+	var capsule := _stand_clearance.shape as CylinderShape3D
 	var resting_position: Vector3 = _stand_clearance.global_position
 	var resting_height: float = capsule.height if capsule != null else 0.0
 	if capsule != null:
@@ -1235,7 +1292,7 @@ func set_capsule_height(height: float) -> void:
 	# later have the player stood up mid-slide by the deferred restore.
 	_standing_restore_pending = false
 	var shape_node := $CollisionShape3D as CollisionShape3D
-	var capsule := shape_node.shape as CapsuleShape3D
+	var capsule := shape_node.shape as CylinderShape3D
 	if capsule == null:
 		return
 	if _standing_height <= 0.0:
@@ -1280,7 +1337,7 @@ func set_centred_capsule_height(height: float) -> void:
 	# the same reason.
 	_standing_restore_pending = false
 	var shape_node := $CollisionShape3D as CollisionShape3D
-	var capsule := shape_node.shape as CapsuleShape3D
+	var capsule := shape_node.shape as CylinderShape3D
 	if capsule == null:
 		return
 	if _standing_height <= 0.0:
@@ -1518,9 +1575,9 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	# resizing it in place would let one player's slide shrink every other
 	# player in the scene — including, in tests, worlds from previous cases.
 	var shape_node := $CollisionShape3D as CollisionShape3D
-	var capsule := shape_node.shape as CapsuleShape3D
+	var capsule := shape_node.shape as CylinderShape3D
 	if capsule != null:
-		var owned := capsule.duplicate() as CapsuleShape3D
+		var owned := capsule.duplicate() as CylinderShape3D
 		shape_node.shape = owned
 		_standing_height = owned.height
 
@@ -1531,36 +1588,55 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	# a real drop and must be allowed to fall.
 	floor_snap_length = config.pawn.max_step_down_height
 
+	phys = PawnPhysics.new(self)
+	enter_falling_height = global_position.y
 	_build_moves()
 
 	if probes != null:
 		probes.setup(config, _standing_height * 0.5)
 
-## Clears per-life transient state that outlives a single frame: the coyote,
-## jump-buffer and roll-buffer timers, and the last landing speed CameraRig
-## reads for its dip. Called on a manual reset (Arena's R key) so a leftover
-## buffered jump from just before the reset cannot fire the instant the player
-## respawns grounded, and so a landing dip from the old life cannot appear
-## after a fresh spawn. Does not touch the move manager itself — callers
-## restart that separately, and MoveManager.start() clears its own
-## redo_move_time cooldowns (including the ledge re-grab one this function
-## used to carry by hand) for exactly the same reason.
+## Clears per-life transient state that outlives a single frame: the pawn and
+## controller state of the original's port, and the last landing speed
+## CameraRig reads for its dip. Called on a manual reset (Arena's R key) and
+## on a respawn. Does not touch the move manager itself -- callers restart
+## that separately, and MoveManager.start() clears its own cooldowns.
 ##
 ## grounded is also cleared here rather than left to whatever the previous
 ## life last declared: Arena.reset_player() teleports to spawn and then skips
-## exactly one physics tick before the move manager resumes (see its own
-## comment), and _tick_timers() runs on the very first re-enabled tick —
-## before WalkingMove has had a chance to declare anything. Without this, that
-## one tick reads last life's grounded value and can wrongly refill coyote
-## time (if the old life ended airborne, a resting spawn would start with
-## none) or wrongly withhold it (the reverse).
+## exactly one physics tick before the move manager resumes.
 func reset_state() -> void:
-	_coyote_timer = 0.0
 	_step_grace_timer = 0.0
 	_was_grounded = false
-	_jump_buffer_timer = 0.0
-	_roll_buffer_timer = 0.0
-	_turn_buffer_timer = 0.0
+	velocity = Vector3.ZERO
+	acceleration = Vector3.ZERO
+	floor_normal = Vector3.UP
+	enter_falling_height = global_position.y
+	illegal_ledge_timer = 0.0
+	evade_timer = 0.0
+	found_ledge = false
+	move_ledge_result = 0
+	gravity_modifier = 1.0
+	gravity_modifier_timer = 0.0
+	sprint_energy = 0.0
+	collide_world = true
+	uncontrolled_slide = false
+	base = null
+	base_velocity = Vector3.ZERO
+	force_max_accel_one_frame = false
+	roll_trigger_time = -10.0
+	_roll_trigger_pressed = false
+	pending_legacy_launch = &""
+	ignore_move_input = false
+	ignore_look_input = false
+	_ignore_move_timer = 0.0
+	_ignore_look_timer = 0.0
+	_acceleration_time = 0.0
+	_stopping_velocity = 2.0
+	_is_stopping = false
+	_is_walking = false
+	_play_stop_timer = 0.0
+	_jump_press_available = false
+	_turn_press_available = false
 	# Mirrors CameraRig.reset_state()'s own end_cinematic() call. A manual
 	# reset (Arena's R key) can land mid-death-cutscene, and it bypasses
 	# DeathSequence entirely -- so the unlock that sequence would eventually
@@ -1582,13 +1658,11 @@ func reset_state() -> void:
 	_hurt_skips_landing_credit = false
 	_hurt_flash = 0.0
 	_last_facing = Vector3.ZERO
-	_carried_jump_nudge = Vector3.ZERO
 	_dodge_heading = Vector3.ZERO
 	_energy_was_decaying = false
 	_takeoff_dir = Vector3.ZERO
 	_takeoff_ground_speed = 0.0
 	_line_cooldowns.clear()
-	_gravity_window_left = 0.0
 	_airborne_time = 0.0
 	_slide_recovery_timer = 0.0
 	wall_side = 0
@@ -3622,13 +3696,20 @@ func _physics_process(delta: float) -> void:
 		_drive_head_look()
 		_drive_balance_lean()
 
+	# The controller reads its axes off the facing BEFORE this tick's look
+	# input, and bills the turn penalty on the look itself: the yaw this tick's
+	# input turned, in rotator units. [ME:CONFIRMED decompile 15.2]
+	_pre_look_basis = global_transform.basis
+	var yaw_before: float = rotation.y
 	if camera_rig != null:
-		camera_rig.apply_look(input.look, self, delta)
+		camera_rig.apply_look(Vector2.ZERO if ignore_look_input else input.look, self, delta)
+	turn_units = PawnAcceleration.turn_units(wrapf(rotation.y - yaw_before, -PI, PI))
 
 	if noclip:
 		_fly_noclip(delta, input)
 		return
 
+	world_time += delta
 	# Before the moves run, so a move that lands this tick reads a counter
 	# that already includes this tick's descent.
 	fall_tracker.update(delta, velocity.y, global_position.y)
@@ -3637,20 +3718,19 @@ func _physics_process(delta: float) -> void:
 
 	# Upright unless the move that runs next says otherwise.
 	body_tilt_normal = Vector3.UP
-	move_manager.physics_update(delta, input)
+	# The original's frame, in its order [ME:CONFIRMED decompile N4 §1.1]: the
+	# controller (input, acceleration, actions), the Actor timers, the physics
+	# (automatic transitions, PrePhysics, the move itself), TickSpecial.
+	_controller_tick(delta, input)
+	move_manager.tick_timers(delta)
+	move_manager.perform_physics(delta, input)
+	move_manager.tick_special(delta)
+	tick_gravity_modifier(delta)
 
-	# A nudge belongs to the jump's own arc. Anything that takes the body off
-	# that arc -- a wall run, a grab -- lands later on a velocity of its own,
-	# and handing the old nudge back out of THAT would be taking what was
-	# never given. Only moves that settle a landing carry it.
-	var carrying = move_manager.move_for(move_manager.current_name)
-	if carrying == null or not carrying.has_method("settle_landing"):
-		_carried_jump_nudge = Vector3.ZERO
-
-	# After the moves run, so grounded and horizontal_speed() both read this
-	# tick's own result rather than last tick's.
-	_update_speed_energy(delta, input)
-	_cap_energy_at_limit(input, delta)
+	# The old speed budget, for the moves not yet ported that still read it.
+	if not move_manager.current_move().is_ported():
+		_update_speed_energy(delta, input)
+		_cap_energy_at_limit(input, delta)
 
 	# Less what the FLOOR did. Displacement is measured because velocity lies
 	# through a scripted move; but a body standing still on the roof of a train
@@ -3658,8 +3738,8 @@ func _physics_process(delta: float) -> void:
 	# the FOV and ran the bob at a sprint nobody was making. What carries the
 	# body is not the body's speed.
 	var travelled := global_position - tick_start_position
-	if grounded and is_on_floor():
-		travelled -= get_platform_velocity() * delta
+	if grounded:
+		travelled -= floor_velocity() * delta
 	_travel_speed = Vector2(travelled.x, travelled.z).length() / maxf(delta, 0.0001)
 
 	# Always drained, camera_rig or not, so a landing can only ever be acted
@@ -3688,9 +3768,9 @@ func _physics_process(delta: float) -> void:
 		# (there is nothing to crouch INTO -- the body just holds its
 		# standing height through the lockout) and drives the camera's own
 		# sink continuously from lockout severity instead of this binary
-		# in/out read -- see LandingMove.physics_update(), which already
-		# called set_crouch_amount() a few lines up this same tick
-		# (move_manager.physics_update() runs before this block). Without
+		# in/out read -- see LandingMove.tick_move(), which already called
+		# set_crouch_amount() this same tick (the move manager runs before
+		# this block). Without
 		# this exclusion that call would be silently overwritten back to
 		# 0.0 immediately after, every tick, and the camera would never
 		# visibly sink at all.
@@ -3939,6 +4019,12 @@ func recent_wall_refuses_climb_onto(point: Vector3) -> bool:
 func takeoff_ground_speed() -> float:
 	return _takeoff_ground_speed
 
+## Records the ground speed a take-off left with. The ported Jump and Falling
+## do it as the body leaves the ground; the moves not yet ported through the
+## old speed budget's bookkeeping.
+func note_takeoff_ground_speed(speed: float) -> void:
+	_takeoff_ground_speed = speed
+
 ## Lines released while the body was still INSIDE their volume: they stay
 ## unready until the body actually leaves and comes back, however long that
 ## takes. DO NOT re-catch on a timer alone: dismounting at the foot of a ladder
@@ -4027,91 +4113,504 @@ func _tick_line_cooldowns(delta: float) -> void:
 		else:
 			_line_cooldowns[key] = remaining
 
-func _tick_timers(delta: float, input: MoveInput) -> void:
-	_tick_gravity_window(delta)
+func _tick_timers(delta: float, _input: MoveInput) -> void:
 	_stagger_immunity = maxf(_stagger_immunity - delta, 0.0)
 	_drive_hurt_flash(delta)
 	_tick_line_cooldowns(delta)
-	if grounded:
-		_coyote_timer = config.pawn.coyote_time
-	else:
-		_coyote_timer = maxf(_coyote_timer - delta, 0.0)
-
 	_step_grace_timer = maxf(_step_grace_timer - delta, 0.0)
 	_slide_recovery_timer = maxf(_slide_recovery_timer - delta, 0.0)
 	_recent_wall_timer = maxf(_recent_wall_timer - delta, 0.0)
 	_was_grounded = grounded
 
-	if input.jump_pressed:
-		_jump_buffer_timer = config.pawn.jump_buffer_time
-	else:
-		_jump_buffer_timer = maxf(_jump_buffer_timer - delta, 0.0)
+# --- the controller (TdPlayerController PlayerWalking, TdPlayerInput) ------------
+#
+# [ME:CONFIRMED decompile 15.2, 15.8] Every tick, before the pawn: the input's
+# hint from the raw axes, the axes scaled and possibly ignored, the turn and
+# attack keys, the controller state's PlayerMove (the acceleration), then
+# CheckCrouch, CheckJumpPressed and CheckJumpReleased, each of which may set a
+# move on the spot through the action table.
 
+## TdPlayerController.InputMaxSprintHeightLimit / InputMaxSprintRaduisLimit.
+const INPUT_MAX_SPRINT_LIMIT := 0.7
+## PlayerWalking's tap-to-stop: a press released inside this many seconds
+## stops the body at STOP_TAP_VELOCITY for STOP_TAP_TIME.
+const STOP_TAP_WINDOW := 0.15
+const STOP_TAP_TIME := 0.25
+const STOP_TAP_VELOCITY := 35.0 * PawnPhysics.UU
+const STOPPING_VELOCITY := 200.0 * PawnPhysics.UU
+
+func _controller_tick(delta: float, input: MoveInput) -> void:
+	# The controller's own Actor timers: PlayStop, and the input ignores.
+	if _play_stop_timer > 0.0:
+		_play_stop_timer -= delta
+		if _play_stop_timer <= 0.0:
+			_is_stopping = false
+	_tick_ignore_timers(delta)
+
+	# PlayerInput: the hint on the RAW axes, before anything scales or zeroes
+	# them; then the normalisation, the walk button and the mobility handicap;
+	# then the ignore.
+	var raw: Vector2 = input.raw_move
+	# A source that only fills the normalised axes (a test writing
+	# MoveInput.move) is read as giving those raw.
+	if raw == Vector2.ZERO:
+		raw = input.move
+	set_input_hint(raw.y, raw.x)
+	input_size = raw.length()
+	var f: float = raw.y
+	var s: float = raw.x
+	if input_size > 1.0:
+		f /= input_size
+		s /= input_size
+	var handicap: float = mobility_multiplier()
+	if input.walk_held:
+		handicap *= config.pawn.walk_button_multiplier
+	if ignore_move_input:
+		f = 0.0
+		s = 0.0
+	else:
+		f *= handicap
+		s *= handicap
+	a_forward = f
+	a_strafe = s
+
+	# TdPlayerPawn.Tick: the roll trigger is the crouch key going down, at most
+	# once per 0.6 s.
+	if move_manager.current_name != Move.FALL_UNCONTROLLED and not _dying:
+		if not _roll_trigger_pressed and input.crouch_held:
+			if roll_trigger_time + 0.6 < world_time:
+				roll_trigger_time = world_time
+			_roll_trigger_pressed = true
+		elif not input.crouch_held:
+			_roll_trigger_pressed = false
+
+	# The keys bound to exec functions: LookBehind and AttackPress.
+	_turn_press_available = false
 	if input.turn_pressed:
-		_turn_buffer_timer = config.pawn.jump_buffer_time
-	else:
-		_turn_buffer_timer = maxf(_turn_buffer_timer - delta, 0.0)
+		_turn_press_available = not _look_behind()
+	if input.melee_pressed:
+		move_manager.handle_move_action(Move.MA_MELEE)
 
-	# Deliberately keyed on crouch_PRESSED, not crouch_held: this buffer stores
-	# presses, so holding the key down refills it exactly once. A held-state
-	# version would re-arm every tick and let a slide re-enter the instant the
-	# previous one ended, which is the strobing this gate exists to prevent.
-	if input.crouch_pressed:
-		_roll_buffer_timer = config.pawn.roll_trigger_time
+	# PlayerMove: only PlayerWalking computes an acceleration in this port.
+	if controller_state == Move.CS_PLAYER_WALKING:
+		acceleration = _player_walking_move(delta)
 	else:
-		_roll_buffer_timer = maxf(_roll_buffer_timer - delta, 0.0)
+		acceleration = Vector3.ZERO
 
-## Spends a buffered jump if one is pending and the player is still within
-## coyote time. Returns true at most once per press.
+	# ProcessMove.
+	_check_crouch(input)
+	_check_jump_pressed(input)
+	_check_jump_released(input)
+
+## TdPlayerController.SetInputHint, on the raw axes. [ME:CONFIRMED decompile
+## N4 §5] Forward or back past 0.8, strafe past 0.3 (strafe wins), bMax past
+## 0.96; only once the stick has been back inside the 0.3 dead zone.
+func set_input_hint(base_y: float, strafe: float) -> void:
+	var hint: int = Move.MAH_NONE
+	var is_max: bool = false
+	if _stick_passed_dead_zone:
+		if base_y > 0.8:
+			hint = Move.MAH_UP
+			is_max = base_y > 0.96
+		elif base_y < -0.8:
+			hint = Move.MAH_DOWN
+			is_max = base_y < -0.96
+		if strafe > 0.3:
+			hint = Move.MAH_RIGHT
+			is_max = strafe > 0.96
+		elif strafe < -0.3:
+			hint = Move.MAH_LEFT
+			is_max = strafe < -0.96
+	move_action_hint = hint
+	move_action_max = is_max
+	if absf(base_y) < 0.3 and absf(strafe) < 0.3:
+		_stick_passed_dead_zone = true
+
+## TdPlayerController.LookBehind.
+func _look_behind() -> bool:
+	return move_manager.handle_move_action(Move.MA_TURN)
+
+## TdPlayerController.CheckCrouch: a held crouch key is MA_Crouch EVERY tick
+## (not while sliding); a crouch or a slide without the key, or crouching in
+## the air, is MA_StopCrouch.
+func _check_crouch(input: MoveInput) -> void:
+	var state: StringName = move_manager.current_name
+	var crouching: bool = state == Move.CROUCH or state == Move.SLIDE
+	if crouching and (not input.crouch_held or physics == Move.PHYS_FALLING):
+		move_manager.handle_move_action(Move.MA_STOP_CROUCH)
+	elif input.crouch_held and state != Move.SLIDE:
+		move_manager.handle_move_action(Move.MA_CROUCH)
+
+## TdPlayerController.CheckJumpPressed. A press the action table did not
+## spend is left for the moves not yet ported (consume_jump()).
+func _check_jump_pressed(input: MoveInput) -> void:
+	_jump_press_available = false
+	if input.jump_pressed:
+		var changed: bool = move_manager.handle_move_action(Move.MA_JUMP)
+		_jump_press_available = not changed
+
+## TdPlayerController.CheckJumpReleased.
+func _check_jump_released(input: MoveInput) -> void:
+	var released: bool = _jump_was_held and not input.jump_held
+	_jump_was_held = input.jump_held
+	if released:
+		move_manager.handle_move_action(Move.MA_STOP_JUMP)
+
+## TdPlayerController.PlayerWalking.PlayerMove. [ME:CONFIRMED emulated 15.2]
+## Returns the acceleration. Axes are the pawn's facing BEFORE this tick's look
+## input; the turn penalty's aTurn is this tick's look.
+func _player_walking_move(delta: float) -> Vector3:
+	var x: Vector3 = -_pre_look_basis.z
+	x.y = 0.0
+	x = x.normalized() if x.length_squared() > 0.0 else Vector3.FORWARD
+	var y: Vector3 = _pre_look_basis.x
+	y.y = 0.0
+	y = y.normalized() if y.length_squared() > 0.0 else Vector3.RIGHT
+	_check_trigger_stop_anim()
+	var new_accel := Vector3.ZERO
+	if _is_stopping:
+		if movement_state == Move.WALKING:
+			velocity = PawnPhysics.safe_normal(velocity) * _stopping_velocity
+			new_accel = PawnPhysics.safe_normal(velocity) * _stopping_velocity
+		return new_accel
+	var walk_direction: Vector3 = PawnPhysics.safe_normal(x * a_forward + y * a_strafe)
+	if physics == Move.PHYS_FALLING:
+		_is_stopping = false
+		return _acceleration(true, a_forward, a_strafe, delta, x, y)
+	if Vector2(walk_direction.x, walk_direction.z).length() > 0.0:
+		_acceleration_time += delta
+		_stopping_velocity = STOPPING_VELOCITY
+		var sprint_requested: bool = a_forward > INPUT_MAX_SPRINT_LIMIT \
+			and input_size > INPUT_MAX_SPRINT_LIMIT and velocity.dot(walk_direction) > 0.0
+		if sprint_requested:
+			return _acceleration(true, a_forward, a_strafe, delta, x, y)
+		if Vector2(walk_direction.x, walk_direction.z).length() > 0.5:
+			return _acceleration(false, a_forward, a_strafe, delta, x, y)
+		a_forward = 0.1 * signf(a_forward)
+		a_strafe = 0.1 * signf(a_strafe)
+		return _acceleration(false, a_forward, a_strafe, delta, x, y)
+	new_accel = _acceleration(false, a_forward, a_strafe, delta, x, y)
+	if _acceleration_time > 0.0 and _acceleration_time < STOP_TAP_WINDOW:
+		_is_stopping = true
+		_play_stop_timer = STOP_TAP_TIME
+		_stopping_velocity = STOP_TAP_VELOCITY
+		velocity = PawnPhysics.safe_normal(velocity) * _stopping_velocity
+	_acceleration_time = 0.0
+	return new_accel
+
+## PlayerWalking.CheckTriggerStopAnim's bookkeeping: letting go after walking
+## ends any stop in progress; starting to walk again marks the body walking.
+## The stop animations it plays are not ported; their side effect on
+## bIsStopping is.
+func _check_trigger_stop_anim() -> void:
+	if movement_state != Move.WALKING:
+		return
+	if absf(a_forward) <= 0.01 and absf(a_strafe) <= 0.01:
+		if _is_walking:
+			_is_stopping = false
+			_is_walking = false
+	elif not _is_walking and not _is_stopping \
+			and PawnPhysics.walking_state(horizontal_speed()) >= PawnPhysics.WAS_WALK:
+		_is_walking = true
+		_is_stopping = false
+
+## GetSprintAcceleration (`sprint`) or GetWalkAcceleration, through
+## PawnAcceleration, writing SpeedSprintEnergy back.
+func _acceleration(sprint: bool, forward_in: float, strafe_in: float, delta: float,
+		x: Vector3, y: Vector3) -> Vector3:
+	var s := PawnAcceleration.State.new()
+	s.velocity = velocity
+	s.forward = x
+	s.right = y
+	s.falling = physics == Move.PHYS_FALLING
+	s.ground_friction = config.pawn.ground_friction
+	s.sprint_energy = sprint_energy
+	var p: PawnAcceleration.Params = _acceleration_params()
+	var a: Vector3 = PawnAcceleration.sprint(s, p, forward_in, strafe_in, turn_units, delta) if sprint \
+		else PawnAcceleration.walk(s, p, forward_in, strafe_in, turn_units, delta)
+	sprint_energy = s.sprint_energy
+	return a
+
+var _accel_params: PawnAcceleration.Params = null
+
+func _acceleration_params() -> PawnAcceleration.Params:
+	if _accel_params == null:
+		var pawn_cfg: PawnConfig = config.pawn
+		var p := PawnAcceleration.Params.new()
+		p.ground_speed = pawn_cfg.ground_speed
+		p.speed_max_base_velocity = pawn_cfg.speed_max_base_velocity
+		p.speed_min_base_velocity = pawn_cfg.speed_min_base_velocity
+		p.speed_walk_velocity_acceleration_factor = pawn_cfg.speed_walk_velocity_acceleration_factor
+		p.speed_strafe_velocity_acceleration_factor = pawn_cfg.speed_strafe_velocity_acceleration_factor
+		p.speed_sprint_velocity_acceleration_factor = pawn_cfg.speed_sprint_velocity_acceleration_factor
+		p.speed_energy_deceleration_time = pawn_cfg.speed_energy_deceleration_time
+		p.speed_energy_deceleration_exponent = pawn_cfg.speed_energy_deceleration_exponent
+		p.speed_turn_deceleration_factor = pawn_cfg.speed_turn_deceleration_factor
+		p.accel_curve = PawnAcceleration.build_accel_curve(pawn_cfg.speed_curve)
+		_accel_params = p
+	return _accel_params
+
+## TdPawn.SetIgnoreMoveInput / SetIgnoreLookInput: 0 nothing, < 0 until
+## StopIgnore*, > 0 that many seconds (the timer only armed when input is not
+## already ignored).
+func set_ignore_move_input(seconds: float) -> void:
+	if seconds == 0.0:
+		return
+	_ignore_move_timer = 0.0
+	if seconds > 0.0 and not ignore_move_input:
+		_ignore_move_timer = seconds
+	ignore_move_input = true
+
+func stop_ignore_move_input() -> void:
+	ignore_move_input = false
+	_ignore_move_timer = 0.0
+
+func set_ignore_look_input(seconds: float) -> void:
+	if seconds == 0.0:
+		return
+	_ignore_look_timer = 0.0
+	if seconds > 0.0 and not ignore_look_input:
+		_ignore_look_timer = seconds
+	ignore_look_input = true
+
+func stop_ignore_look_input() -> void:
+	ignore_look_input = false
+	_ignore_look_timer = 0.0
+
+func _tick_ignore_timers(delta: float) -> void:
+	if _ignore_move_timer > 0.0:
+		_ignore_move_timer -= delta
+		if _ignore_move_timer <= 0.0:
+			stop_ignore_move_input()
+	if _ignore_look_timer > 0.0:
+		_ignore_look_timer -= delta
+		if _ignore_look_timer <= 0.0:
+			stop_ignore_look_input()
+
+# --- the pawn's own queries and events, ported ------------------------------------
+
+## TdPawn::GetMobilityMultiplier: clamp(1 - TaserDamageLevel / 100, 0, 1).
+## [ME:CONFIRMED emulated N1 §5.1] This project has no taser, so it is 1.
+func mobility_multiplier() -> float:
+	return 1.0
+
+## Vector(Pawn.Rotation), flat: the pawn never pitches.
+func facing() -> Vector3:
+	var f: Vector3 = -global_transform.basis.z
+	f.y = 0.0
+	return f.normalized() if f.length_squared() > 0.0 else Vector3.FORWARD
+
+## How far the walking physics holds the feet above the floor, or 0 when it
+## is not the one holding them. For the presentation and this project's own
+## probes, which measure from the floor.
+func walking_hover() -> float:
+	var move: Move = move_manager.current_move() if move_manager != null else null
+	if move != null and move.is_ported() and physics == Move.PHYS_WALKING and grounded:
+		return PawnPhysics.FLOOR_DIST
+	return 0.0
+
+## Pawn.Location as the original means it: the centre of the collision
+## cylinder. The same as global_position while standing; a crouch shortens
+## the cylinder from the top and moves its centre down, where the original
+## moves the whole pawn.
+func collision_center() -> Vector3:
+	var shape_node := get_node_or_null("CollisionShape3D") as Node3D
+	return shape_node.global_position if shape_node != null else global_position
+
+## CylinderComponent.CollisionHeight (a HALF height) and CollisionRadius, live.
+func collision_half_height() -> float:
+	return current_capsule_height() * 0.5
+
+func collision_radius() -> float:
+	return current_capsule_radius()
+
+## The same for the class default (TdPawn CDO: 90 and 30 uu).
+func default_collision_half_height() -> float:
+	return standing_height() * 0.5
+
+## GetCollisionExtent(): (R, R, H) as a Godot half-extent.
+func collision_extent() -> Vector3:
+	var r: float = collision_radius()
+	return Vector3(r, collision_half_height(), r)
+
+func set_physics(mode: int) -> void:
+	phys.set_physics(mode)
+
+## TdMove.CanStand: room for the default body at `location` -- an 8 uu thick
+## box of the default radius swept through the body's height, up by default,
+## down with `from_above`.
+func can_stand(location: Vector3, from_above: bool = false) -> bool:
+	var r: float = current_capsule_radius()
+	var extent := Vector3(r, 8.0 * PawnPhysics.UU, r)
+	var h: float = default_collision_half_height()
+	var start: Vector3 = location - Vector3.UP * (h - extent.y)
+	var end: Vector3 = location + Vector3.UP * (h - extent.y)
+	if from_above:
+		return not phys.trace_blocked(start, end, extent)
+	return not phys.trace_blocked(end, start, extent)
+
+## TdPawn.CanSkillRoll. [ME:CONFIRMED decompile] Not from a turn in the air,
+## an uncontrolled fall, an air kick; otherwise within 0.2 s of the crouch key
+## going down.
+func can_skill_roll() -> bool:
+	var state: StringName = move_manager.current_name
+	if state == Move.TURN_180_IN_AIR or state == Move.FALL_UNCONTROLLED or state == Move.MELEE_AIR:
+		return false
+	return roll_trigger_time + 0.2 > world_time
+
+## TdPlayerPawn.Landed: falling damage, the current move's Landed, then the
+## fall height starts afresh. [ME:CONFIRMED decompile N2 §4]
+func pawn_landed(normal: Vector3) -> void:
+	take_falling_damage()
+	var move: Move = move_manager.current_move()
+	if move != null:
+		move.landed(normal)
+	enter_falling_height = global_position.y
+
+## TdPlayerPawn.TakeFallingDamage. [ME:CONFIRMED decompile N2 §4] Nothing on a
+## soft object, short of a hard landing, or when a skill roll will take it;
+## otherwise the hard landing's damage, or all of it past the uncontrolled
+## height.
+func take_falling_damage() -> void:
+	var fall_height: float = enter_falling_height - global_position.y
+	var soft: bool = is_landing_on_soft_object()
+	var death_fall: bool = move_manager.current_name == Move.FALL_UNCONTROLLED \
+		or fall_height >= config.pawn.falling_uncontrolled_height
+	if soft or (not death_fall and fall_height < config.pawn.hard_landing_height) or can_skill_roll():
+		return
+	if death_fall:
+		take_damage(config.pawn.fatal_fall_damage, Health.Cause.FALL)
+	else:
+		take_damage(config.landing.hard_landing_damage, Health.Cause.HARD_LANDING)
+
+## TdMove_Landing::IsLandingOnSoftObject: a short probe under the feet onto an
+## upward face (z > 0.9) of a soft-landing surface. Records the answer on
+## Landing, where the original keeps it. [ME:CONFIRMED decompile N4 §2.3]
+func is_landing_on_soft_object() -> bool:
+	var feet: Vector3 = global_position - Vector3.UP * collision_half_height()
+	var extent := Vector3(collision_radius(), 5.0 * PawnPhysics.UU, collision_radius())
+	var hit: Dictionary = phys.box_trace(feet - Vector3.UP * 20.0 * PawnPhysics.UU, global_position, extent)
+	var normal: Vector3 = hit["normal"]
+	var soft: bool = hit["collider"] != null and normal.y > 0.9 and Probes.is_soft(hit["collider"])
+	var landing: Move = move_manager.move_for(Move.LANDING)
+	if soft and landing != null:
+		landing.last_landing_was_on_soft_object = true
+	return soft
+
+## TdMove.FindLedgeInFrontOfPlayer: FindLedge along the flat facing, out to
+## LedgeFindDistance (350 uu) with LedgeFindExtent (10, 10, 86). Writes the
+## ledge into MoveLedgeLocation / MoveLedgeNormal / MoveNormal and returns
+## bFoundLedge. [ME:CONFIRMED emulated N4 §3.1, §3.3]
+func find_ledge_in_front_of_player() -> bool:
+	var start: Vector3 = global_position
+	var end: Vector3 = start + facing() * 350.0 * PawnPhysics.UU
+	var extent := Vector3(10.0, 86.0, 10.0) * PawnPhysics.UU
+	var hit: Dictionary = find_ledge(start, end, extent)
+	found_ledge = not hit.is_empty()
+	if found_ledge:
+		move_ledge_location = hit["ledge_location"]
+		move_ledge_normal = hit["ledge_normal"]
+		move_normal = hit["move_normal"]
+	return found_ledge
+
+## TdMove::FindLedge. [ME:CONFIRMED emulated N4 §3.3] Sweeps the box forward;
+## from the wall it meets, looks down onto a top within the box's height,
+## LedgeFindDepth (4 uu) past the face. Empty when there is no such top.
+func find_ledge(start: Vector3, end: Vector3, extent: Vector3) -> Dictionary:
+	var d2: Vector3 = PawnPhysics.safe_normal_2d(PawnPhysics.safe_normal(end - start))
+	var wall: Dictionary = phys.box_trace(end, start, extent)
+	if wall["collider"] == null or float(wall["time"]) <= 0.0:
+		return {}
+	var wall_normal: Vector3 = wall["normal"]
+	var n: Vector3 = PawnPhysics.safe_normal_2d(wall_normal)
+	var m: float = maxf(absf(n.x), absf(n.z))
+	var reach: float = (1.0 + 0.828427 * m * sqrt(1.0 - minf(m * m, 1.0))) * extent.x
+	var c: float = absf(n.dot(d2))
+	if c > 0.0:
+		reach /= c
+	var wall_position: Vector3 = wall["position"]
+	var p: Vector3 = wall_position + d2 * reach
+	var depth: float = 4.0 * PawnPhysics.UU
+	var s3 := Vector3(p.x - n.x * depth, p.y + extent.y, p.z - n.z * depth)
+	var e3: Vector3 = s3 - Vector3.UP * (2.0 * extent.y)
+	var top: Dictionary = phys.line_trace(s3, e3)
+	if top.is_empty() or float(top["time"]) <= 0.0:
+		return {}
+	var top_position: Vector3 = top["position"]
+	return {"ledge_location": Vector3(p.x, top_position.y, p.z), "ledge_normal": top["normal"],
+		"move_normal": wall_normal}
+
+## ATdPawn::TickSpecial's timers. [ME:CONFIRMED decompile N4 §1.1] Both land
+## exactly on 0.
+func tick_special_timers(delta: float) -> void:
+	if evade_timer > 0.0:
+		evade_timer -= minf(delta, evade_timer)
+	if illegal_ledge_timer > 0.0:
+		illegal_ledge_timer -= minf(delta, illegal_ledge_timer)
+
+## ATdPlayerPawn::TickSpecial's GravityModifierTimer, after the move's
+## TickMove.
+func tick_gravity_modifier(delta: float) -> void:
+	if gravity_modifier_timer > 0.0:
+		gravity_modifier_timer -= delta
+		if gravity_modifier_timer < 0.0:
+			gravity_modifier = 1.0
+
+## A walking step the physics climbed or dropped by 4 uu up to MaxStepHeight.
+## The original hides it on the mesh (OffsetMeshZ); this project eases the
+## camera over it.
+func on_walking_step(rise: float) -> void:
+	if rise > 0.0 and camera_rig != null:
+		camera_rig.add_step_offset(rise)
+
+## What carried the body this tick that was not the body's own speed: the base
+## the walking physics stands on, or the platform move_and_slide() rode.
+func floor_velocity() -> Vector3:
+	var move: Move = move_manager.current_move() if move_manager != null else null
+	if move != null and move.is_ported():
+		return base_velocity
+	return get_platform_velocity() if is_on_floor() else Vector3.ZERO
+
+## The speed budget the moves not yet ported read (speed_cap()), re-derived
+## from the speed the body hands over with.
+func seed_legacy_energy() -> void:
+	if speed_energy != null:
+		speed_energy.restore_for_landing(horizontal_speed())
+	forgive_turn()
+	# The moves not yet ported read the floor through move_and_slide()'s own
+	# contact (is_on_floor(), get_floor_normal()), which the walking physics
+	# never fills in -- it hovers 2.15 uu above its floor. Set down onto it,
+	# so that contact describes the floor the body is on.
+	if grounded:
+		apply_floor_snap()
+
+## The jump press, for a move not yet ported: true on the tick it went down
+## and no action took it, and only from the ground. Spent once.
 func consume_jump() -> bool:
-	# REFUSED HERE, not in MoveManager.can_enter(). WalkingMove writes the
-	# launch velocity and calls move_and_slide() BEFORE it returns JUMP, so a
-	# refusal at the transition would leave the body in the air and the state
-	# on the ground. Refusing the spend keeps the whole branch unentered.
-	#
-	# Returns false WITHOUT clearing the buffer: the player pressed, and the
-	# press must still be there the moment the block lifts.
 	if statuses.is_move_blocked(Move.JUMP):
 		return false
-	if _jump_buffer_timer > 0.0 and _coyote_timer > 0.0:
-		_jump_buffer_timer = 0.0
-		_coyote_timer = 0.0
+	if _jump_press_available and grounded:
+		_jump_press_available = false
 		return true
 	return false
 
-## Spends a buffered jump if one is pending, WITHOUT requiring coyote time.
-## For moves that are legitimately, truthfully airborne the whole time they
-## run -- a wall run declares grounded=false every tick (see WallRunMove),
-## so the coyote timer consume_jump() requires never refills there, and
-## consume_jump() would be permanently dead on the wall. But a press is not
-## only relevant on the exact tick a move starts reading it: FallingMove hands
-## off to WallRunMove the moment it detects a wall, before WallRunMove's
-## own first physics_update() ever runs, so a press made on the attach tick
-## itself -- or up to jump_buffer_time earlier, same as any other buffered
-## jump -- must not be silently dropped on what is otherwise the most
-## timing-sensitive move in the game. Still spends (clears) the buffer, same
-## as consume_jump(), so a consumed press cannot also fire a second jump
-## later.
+## The same without the ground: for the moves that are airborne the whole
+## time they run (a wall run).
 func consume_buffered_jump() -> bool:
 	if statuses.is_move_blocked(Move.JUMP):
 		return false
-	if _jump_buffer_timer > 0.0:
-		_jump_buffer_timer = 0.0
+	if _jump_press_available:
+		_jump_press_available = false
 		return true
 	return false
 
-## Arms the jump buffer directly. FOR TESTS: the keyboard path fills this from
-## a press edge, which a headless test has no way to produce.
-func arm_jump_buffer_for_test() -> void:
-	_jump_buffer_timer = config.pawn.jump_buffer_time
-	_coyote_timer = config.pawn.coyote_time
-
-## The same, for Q. See _turn_buffer_timer.
+## The turn press, for a move not yet ported. Spent once.
 func consume_buffered_turn() -> bool:
-	if _turn_buffer_timer > 0.0:
-		_turn_buffer_timer = 0.0
+	if _turn_press_available:
+		_turn_press_available = false
 		return true
 	return false
+
 
 ## Lifts the body over an obstacle no taller than `max_step_height`, so the
 ## ankle-high clutter a rooftop is covered in -- planks, bricks, litter -- does
@@ -4246,7 +4745,10 @@ func try_step_up(delta: float) -> float:
 	var rise: float = near
 	if rise <= 0.01:
 		return _step_log(what, "落差过小 %.3f m" % rise, 0.0)
-	global_position.y += rise
+	# A hair above the step's top: a flat-bottomed cylinder set down exactly on
+	# the top plane catches its edge on the way forward, where a capsule's
+	# rounded bottom rode over it. The floor snap sets it down.
+	global_position.y += rise + STEP_UP_CLEARANCE
 	# Opens the window described on _step_grace_timer. Armed here rather than
 	# by each caller so no move can forget it, and so the two ticks the
 	# manoeuvre actually takes are covered rather than only the first.
@@ -4293,6 +4795,9 @@ func _probe_landing(lifted: Transform3D, direction: Vector3, distance: float, \
 ## the moment the player stopped moving.
 const STEP_RAMP_TOLERANCE := 0.02
 
+## How far above a step's top try_step_up() lifts the body. See there.
+const STEP_UP_CLEARANCE := 0.01
+
 ## Sets the body back down when travelling has lifted it clear of the floor by
 ## less than one step, and snaps it there. Called AFTER move_and_slide().
 ##
@@ -4337,6 +4842,10 @@ func chute_ahead(motion: Vector3) -> bool:
 ## off the slide collisions rather than the floor, because a chute steeper
 ## than floor_max_angle is a wall to Godot and never a floor.
 func touched_chute() -> Dictionary:
+	# The walking and falling physics do not slide the body; what they found
+	# under it this tick is bUncontrolledSlide.
+	if uncontrolled_slide:
+		return {"normal": uncontrolled_slide_normal}
 	for i in get_slide_collision_count():
 		var collision := get_slide_collision(i)
 		if Probes.is_uncontrolled_slide(collision.get_collider()):
@@ -4432,15 +4941,11 @@ func _step_log(what: String, outcome: String, value: float) -> float:
 	return value
 
 
-## Spends a buffered crouch press if one is pending. Returns true at most once
-## per press — this is what keeps the roll-into-slide chain reachable without
-## reopening the held-key strobe. Renamed from consume_crouch(): the single
-## buffered press resolves into Roll, Slide or Crouch by CONTEXT (touchdown
-## and fall height, or grounded speed) -- see walking_move.gd's table comment
-## and falling_move.gd's landing branch, the two places that read it.
+## The skill-roll window, for a move not yet ported that decides a roll
+## itself: CanSkillRoll(), spent so one press rolls once.
 func consume_roll() -> bool:
-	if _roll_buffer_timer > 0.0:
-		_roll_buffer_timer = 0.0
+	if roll_trigger_time + 0.2 > world_time:
+		roll_trigger_time = -10.0
 		return true
 	return false
 
@@ -4549,46 +5054,12 @@ func horizontal_speed() -> float:
 func travel_speed() -> float:
 	return _travel_speed
 
-## The current ground speed ceiling. Every move that wants "top speed" asks
-## here rather than reading pawn.ground_speed, which is now only the curve's
-## own upper bound rather than a target anything reaches directly.
-## The small forward nudge a take-off adds, or zero for a standing jump.
-##
-## [ME:CONFIRMED 02 §2.4] JumpAddXY = 100 uu/s as a value, and the CONDITION is
-## measured in the original too: a jump taken while running picks up about
-## 4 km/h, and a jump from a standstill picks up nothing at all. DO NOT add it
-## unconditionally -- that gives a standing jump 1 m/s of drift the original
-## never has.
-##
-## Gated on the movement KEYS rather than on current speed: the question the
-## original appears to ask is whether the player is asking to travel, and
-## speed alone cannot distinguish a standing start from a body still sliding
-## to a halt.
-## Adds the take-off nudge to the velocity and remembers it, so the landing can
-## hand it back -- see return_jump_nudge(). Every take-off site goes through
-## this rather than adding jump_add_velocity() itself, or that one's nudge is
-## never returned.
+## The take-off nudge of the jumps the moves not yet ported launch themselves
+## (a slide's): JumpAddXY along the direction being asked for, nothing for a
+## standing jump. The original's own take-off is JumpMove's.
 func add_jump_nudge(input: MoveInput) -> void:
-	# A fresh take-off: its flight is billed on the view, the ordinary way.
 	_dodge_heading = Vector3.ZERO
-	var nudge: Vector3 = jump_add_velocity(input)
-	velocity += nudge
-	_carried_jump_nudge = nudge
-
-## Takes the take-off nudge back out of the velocity on landing. [ME:INFERRED]
-## from play: a jump from 4 m/s travels at 5 and lands back at 4, with the
-## budget at 4 -- the nudge is the air's, never the run's. Without this a chain
-## of jumps banked a metre a second per hop and out-ran the ground curve.
-##
-## ALONG ITS OWN LINE AND NEVER PAST ZERO: air control may have spent some of
-## it already, and handing back more than is left would turn the body round.
-func return_jump_nudge() -> void:
-	if _carried_jump_nudge == Vector3.ZERO:
-		return
-	var line: Vector3 = _carried_jump_nudge.normalized()
-	var carried: float = Vector3(velocity.x, 0.0, velocity.z).dot(line)
-	velocity -= line * clampf(carried, 0.0, _carried_jump_nudge.length())
-	_carried_jump_nudge = Vector3.ZERO
+	velocity += jump_add_velocity(input)
 
 func jump_add_velocity(input: MoveInput) -> Vector3:
 	if input.move == Vector2.ZERO:
@@ -4763,7 +5234,6 @@ func _update_speed_energy(delta: float, input: MoveInput) -> void:
 		if not dodging:
 			if _takeoff_dir == Vector3.ZERO:
 				_takeoff_dir = facing
-				_takeoff_ground_speed = horizontal_speed()
 				_airborne_time = 0.0
 			_airborne_time += delta
 		_last_facing = facing

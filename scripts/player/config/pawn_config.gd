@@ -53,32 +53,27 @@ extends Resource
 @export var forward_arc_deg: float = 45.0
 
 ## [ME:CONFIRMED 02 §2.3] AirControl = 0.025. Engine default is 0.05; DICE
-## halved it. Used as a multiplier on accel_rate (09 §9.1):
-## air_accel = accel_rate * air_control = 61.44 * 0.025 = 1.536 m/s^2,
-## derived inline in Player.air_accelerate() rather than stored as its own
-## field -- see that function's own comment for why a full hang time can
-## shed at most ~2.1 m/s even against continuous opposite input.
+## halved it. [ME:CONFIRMED emulated N2 §2] the falling acceleration bound is
+## accel_rate * air_control = 1.536 m/s^2, which the falling integrator doubles;
+## at ground_speed and above it is 0.01 m/s^2 (PawnPhysics.falling_accel_bound).
+## Player.air_accelerate() is the moves not yet ported's own reading of it.
 @export var air_control: float = 0.025
-## [ME:CONFIRMED 02 §2.4] gravity is 16.0, MEASURED and not the configured
-## value. `DefaultGravityZ` reads 800 uu/s^2 in DefaultGame.ini, but the
-## effective gravity in game is twice that. 22 jumps read frame-by-frame off
-## the debug HUD give apex 1.24 m and 0.775 s of airtime; those two numbers
-## pin gravity and base_jump_z simultaneously, and only (16.0, 6.3) satisfies
-## both. No scaling factor exists in any ini -- the doubling lives in native
-## C++, like the speed-energy formula.
-##
-## Corroborated twice over: DICE's own comment above FallingUncontrolledHeight,
-## that 1600 is the downward speed after falling 780 cm, resolves to within
-## 1.3% under 1600 versus 30% off under 800; and SpringBoardJumpZ = 950
-## predicts a 2.82 m springboard under 1600, which matches the owner's own
-## measured "just over 2 m" where 800 would have predicted 5.64 m.
-##
-## Part of the gravity/base_jump_z/ground_speed trio: 09 §9.1 is explicit
-## that retuning any one of the three alone makes the feel worse, not
-## better, so they are calibrated as a group rather than independently. DO
-## NOT put the ini's 800 back.
+## The world's gravity as the original configures it: DefaultGravityZ = -800
+## uu/s^2. [ME:CONFIRMED emulated N2 §1] TdPawn::GetGravityZ returns this
+## times GravityModifier and nothing else -- no hidden factor. What a falling
+## body FEELS is twice it, because physFalling integrates
+## V1 = V0 + a dt, moves by V1 dt and rebuilds V = 2 dLoc / dt - V0: a
+## parabola with acceleration 2a, independent of the step. PawnPhysics
+## integrates exactly that; DO NOT double this number.
+@export var world_gravity_z: float = -8.0
+## The gravity a falling body feels, 2 x |world_gravity_z|, for the moves not
+## yet ported, which integrate their own falls. [ME:CONFIRMED 02 §2.4]
+## measured (apex 1.24 m, airtime ~0.78 s from BaseJumpZ 630) and
+## [ME:DERIVED] from the integrator above.
 @export var gravity: float = 16.0
-@export var terminal_velocity: float = 60.0
+## PhysicsVolume.TerminalVelocity: [ME:CONFIRMED emulated N2 §2] the CDO's
+## 3500 uu/s, clamping the whole velocity after the falling rebuild.
+@export var terminal_velocity: float = 35.0
 ## [ME:CONFIRMED 02 §2.2] WalkVelocity = 50 uu/s -> 0.5 m/s as a VALUE.
 ## [ME:INFERRED] as a ROLE: the same section flags this discrete tier (and
 ## its four siblings) as more likely an animation-blend threshold than a true
@@ -93,6 +88,10 @@ extends Resource
 ## a keyboard's walk key is a stick pushed gently; not measured. The amount is
 ## a guess to tune by eye.
 @export var walk_stick_amount: float = 0.3
+## TdPlayerInput.WalkButtonMultiplier: [ME:CONFIRMED decompile] the walk key
+## scales aForward and aStrafe by this, after InputSize is taken -- so a walk
+## never asks for a sprint (aForward 0.3 < 0.7).
+@export var walk_button_multiplier: float = 0.3
 ## [ME:CONFIRMED 02 §2.3] CrouchedPct = 0.4. Also lives as CrouchConfig's own
 ## speed_modifier; kept here too because the original declares it Pawn-wide.
 @export var crouched_pct: float = 0.4
@@ -100,21 +99,21 @@ extends Resource
 ## Player.try_step_up(), and by Probes.vault_query() as the floor under which
 ## nothing is vaulted.
 ##
-## [ME:CONFIRMED] measured in the original at 0.4 m, which is NOT the CDO's
-## MaxStepHeight = 35 uu [02 §2.3] -- that one is the way DOWN, see
-## max_step_down_height. DO NOT fold the two back into one number.
+## [ME:CONFIRMED] measured in the original at 0.4 m. [ME:DERIVED] that is the
+## walking physics' own step, not a second constant: it climbs
+## MaxStepHeight + 2 uu (max_step_down_height + 0.02) from a body that hovers
+## 2.15 uu above its floor, about 0.39 m. The ported walking physics does not
+## read this field.
 ##
 ## Godot's move_and_slide() does not provide step-up on its own --
 ## floor_snap_length only keeps a body attached on the way DOWN -- so this is
 ## read explicitly. Skipping that read left ankle-high clutter (a 5 cm plank)
 ## stopping a run dead.
 @export var max_step_height: float = 0.4
-## The deepest drop the body stays on its feet over rather than falling,
-## metres. Read by Player.try_step_down() and as CharacterBody3D's
-## floor_snap_length.
-##
-## [ME:CONFIRMED 02 §2.3] MaxStepHeight = 35 uu, and measured in the original
-## at 0.35 m on the way down.
+## [ME:CONFIRMED 02 §2.3] Pawn.MaxStepHeight = 35 uu. The walking physics
+## (PawnPhysics) reaches MaxStepHeight + 2 uu both ways: up in its step-up and
+## down in its floor test. Also the deepest drop the moves not yet ported stay
+## on their feet over (Player.try_step_down(), floor_snap_length).
 @export var max_step_down_height: float = 0.35
 ## PROJECT-ADDED, no counterpart in the original -- it exists because
 ## try_step_up() is this project's own answer to Godot having no built-in
@@ -136,33 +135,18 @@ extends Resource
 @export var walkable_floor_z: float = 0.71
 
 @export_group("Jump")
-## [ME:CONFIRMED 02 §2.4] measured base_jump_z = 630 uu/s (TdMove_Jump.BaseJumpZ,
-## 6.3 m/s here), from the same 22-jump frame data as gravity above (apex
-## 1.24 m, airtime 0.775 s) -- no other pairing with gravity 16.0 satisfies
-## both. TdPawn also declares BaseJumpZ = 560; that number only ever bounded
-## the value from above via an inequality and is NOT a competing
-## measurement -- do not read it as one.
-##
-## Calibrated together with gravity and the landing thresholds below, not
-## independently -- 09 §9.1 is explicit that retuning any one of
-## jump/gravity/landing alone makes the feel worse, not better. At this
-## apex (1.24 m) an ordinary flat jump's fall distance stays 0.76 m under
-## skill_roll_landing_height (2.0 m), so it never rises above TIER_FREE --
-## see Player.landing_tier() and landing_keep_ratio().
+## TdMove_Jump.BaseJumpZ = 630 uu/s. [ME:CONFIRMED decompile 15.7] The jump
+## REPLACES the vertical speed with this (times the mobility multiplier);
+## Pawn.JumpZ is never read. With the falling integrator's doubled gravity the
+## flat jump peaks at 630^2 / 3200 = 1.24 m after 0.394 s and lands after
+## 0.7875 s -- what the corpus measured (02 §2.4).
 @export var base_jump_z: float = 6.3
-## [ME:CONFIRMED 02 §2.4] JumpAddXY = 100 uu/s as a VALUE. [ME:INFERRED] as a
-## ROLE: read as an ADDITION along the direction being ASKED FOR at take-off
-## rather than a minimum, since taking off is itself a small commitment in
-## the direction of travel -- whether the original adds or floors is not
-## verified. Along the facing it was worse than unverified: a backward jump
-## came out at 3 m/s with this subtracted, and a sideways one at 4.12 aimed
-## diagonally forwards, because the nudge pointed wherever the camera did.
-## Handed back on landing -- see Player.return_jump_nudge().
+## TdMove_Jump.JumpAddXY = 100 uu/s. [ME:CONFIRMED decompile 15.7] Added along
+## the FACING, and only when the body is already moving forward faster than
+## 10 uu/s -- a standing jump gets nothing, a backward jump gets nothing.
+## Nothing hands it back on landing; Landing caps the landing speed against
+## the take-off speed instead (LandingConfig.landing_speed_reduction).
 @export var jump_add_xy: float = 1.0
-## No confirmed counterpart in the original (02 §2.4 searched and found
-## none). Kept as a modern quality-of-life affordance.
-@export var coyote_time: float = 0.12
-@export var jump_buffer_time: float = 0.12
 
 @export_group("Friction")
 ## No confirmed value in the original -- the research did not extract
@@ -182,6 +166,10 @@ extends Resource
 ## [ME:CONFIRMED 03 §3.3] TdPawn declares 1.0; TdPlayerPawn overrides to 0.5 --
 ## the player is deliberately harder to bring to a stop than the AI.
 @export var braking_friction_strength: float = 0.5
+## PhysicsVolume.GroundFriction: [ME:CONFIRMED decompile 15.2] the UE3 default
+## 8, which the acceleration functions add back as Velocity * GroundFriction *
+## 0.1 and the walking physics takes off as drag.
+@export var ground_friction: float = 8.0
 ## Godot-specific: the downward bias every grounded move writes each tick so
 ## is_on_floor() does not flicker across seams. The original's PHYS_Walking
 ## has no equivalent because it does not need one.
@@ -317,42 +305,19 @@ extends Resource
 ## [ME:INFERRED] from play: down a flight of stairs the original reaches top
 ## speed in a very short time. The rate is a guess to tune by eye.
 @export var downhill_bank_rate_45: float = 6.0
-
 @export_group("Landing")
 ## [ME:CONFIRMED 03 §3.1] TdMove_Landing CDO, as fall HEIGHTS (not impact
-## speeds): 200 / 300 / 530 uu.
+## speeds): 200 / 300 / 530 uu. LandingMove measures them from
+## Player.enter_falling_height.
 @export var skill_roll_landing_height: float = 2.0
 @export var soft_landing_height: float = 3.0
 @export var hard_landing_height: float = 5.3
-## [ME:CONFIRMED 03 §3.1] TdMove_Falling.EnterToFallingZSpeed = -200 uu/s.
-##
-## The boundary between the two airborne states that own a descent: Jump
-## hands off to Falling on the first tick velocity.y drops to or below this
-## (see JumpMove.physics_update()). Jump carries check_for_wall_climb and
-## Falling does not, so this is the speed at which a launch stops being one
-## and a wall stops being reachable; and only Falling may hand off to
-## FallingUncontrolled, so it is also where a descent first becomes able to
-## turn fatal (invariant I2).
-##
-## DO NOT read this as a fall-counter arming threshold: FallTracker measures
-## from where the feet LEFT THE GROUND and arms on nothing at all -- see its
-## own header for the measurement that rules the armed-then-track-the-apex
-## model out.
-##
-## [ME:CONFIRMED 03 §3.1] landing speed loss is BINARY, not a ratio -- all
-## three readings of the original's LandingSpeedReduction = 65 are excluded
-## by measurement: a 4.95 m unrolled drop costs nothing (ruling out "subtract
-## 65 uu/s"), and a hard landing costs everything (ruling out both "lose 65%"
-## and "keep 65%"). DO NOT add a landing-speed-reduction ratio knob -- the
-## real behaviour needs no ratio, and the original's own meaning for that
-## field is [ME:UNKNOWN].
+## [ME:CONFIRMED 03 §3.1] DefaultPawnMovement.ini sets EnterToFallingZSpeed =
+## -200 uu/s under TdMove_Falling, but [ME:CONFIRMED decompile] the class
+## declares no such field, so nothing reads it: the exit from Jump to Falling
+## is TdPhysicsMove.ExitToFallingZSpeed, -400.
+## Kept for the moves not yet ported that hand to Falling on it (DodgeJump).
 @export var enter_to_falling_z_speed: float = -2.0
-## [ME:CONFIRMED 03 §3.1] TdPawn.RollTriggerTime = 1.0 as a VALUE.
-## [ME:INFERRED] as a ROLE: read as the roll input pre-buffer window.
-## [ME:COMMUNITY] extremely forgiving next to the 0.1-0.2 s typical of the
-## genre, matching the community's own "skill roll timing is very lenient"
-## consensus.
-@export var roll_trigger_time: float = 1.0
 ## [ME:CONFIRMED 03 §3.1] TdMove_Falling.MaximumSpeedForRollLanding = -5000.
 @export var maximum_speed_for_roll_landing: float = -50.0
 

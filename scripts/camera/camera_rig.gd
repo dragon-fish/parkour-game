@@ -1101,7 +1101,9 @@ func update_effects(delta: float, horizontal_speed: float, grounded: bool, strid
 		# lift at speed lagged by the whole step cap put the eye in the neck.
 		var body := get_parent() as CharacterBody3D
 		if body != null:
-			_eye_ground_y += body.get_platform_velocity().y * delta
+			var carried: Vector3 = body.call(&"floor_velocity") if body.has_method(&"floor_velocity") \
+				else body.get_platform_velocity()
+			_eye_ground_y += carried.y * delta
 		_eye_ground_y = lerpf(_eye_ground_y, body_y,
 				clampf(_config.camera.step_smooth_speed * delta, 0.0, 1.0))
 	var cap: float = _config.pawn.max_step_height
