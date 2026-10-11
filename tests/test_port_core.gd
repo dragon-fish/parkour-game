@@ -160,6 +160,34 @@ func test_the_collider_is_a_world_aligned_box() -> void:
 	assert_true(clearance.global_basis.is_equal_approx(Basis.IDENTITY),
 		"the clearance probe turned with the body")
 
+## [ME:CONFIRMED decompile N1 §2.1] physWalking clears bJustTeleported on
+## entry: whatever the fall before it in the same frame set, the walk rebuilds
+## its velocity from the displacement -- here a wall the body ran into.
+func test_the_walk_clears_just_teleported_on_entry() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(4.0, 3.0, 1.0)
+	shape.shape = box
+	wall.add_child(shape)
+	# Placed before it enters the tree: a body added at the origin and moved
+	# after overlaps the player for the frame its move takes to reach the server.
+	wall.position = Vector3(player.global_position.x, 1.5, player.global_position.z - (0.3 + 0.05 + 0.5))
+	get_tree().root.add_child(wall)
+	await step(1)
+	var dt := 1.0 / 60.0
+	player.velocity = Vector3(0.0, 0.0, -5.0)
+	player.acceleration = Vector3(0.0, 0.0, -61.44)
+	var before: Vector3 = player.global_position
+	player.phys._just_teleported = true
+	player.phys.phys_walking(dt, 0)
+	var moved: Vector3 = player.global_position - before
+	assert_almost_eq(player.velocity.z, moved.z / dt, 0.001, "the walk kept the velocity it did not travel")
+	assert_lt(absf(moved.z), 0.06, "test setup: the wall did not stop the body")
+	wall.queue_free()
+
 ## [ME:CONFIRMED decompile 15.4] The forced Walking frame runs
 ## Walking.StartMove, which clears the wall-run jump's ledge ban.
 func test_walking_start_clears_the_illegal_ledge_timer() -> void:

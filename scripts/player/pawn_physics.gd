@@ -68,8 +68,12 @@ const SLIDE_PUSH_FRACTION := 0.01
 ## The Player. Untyped for the same reason Move.player is.
 var pawn
 
-## Set inside a frame when a move teleported the body (the corner slip) or the
-## physics must not rebuild the velocity from displacement.
+## bJustTeleported: the body was put somewhere its velocity did not take it
+## (the corner slip, the ceiling nudge), so the physics must not rebuild the
+## velocity from the displacement. [ME:CONFIRMED decompile N1 §2.1, N2 §2]
+## Cleared where the original clears it: once at the top of every physWalking
+## call, and at the top of every physFalling sub-step -- so the walk that
+## finishes a landing frame rebuilds its velocity whatever the fall set.
 var _just_teleported: bool = false
 
 func _init(owner_pawn) -> void:
@@ -356,6 +360,8 @@ static func _miss() -> Dictionary:
 ## APawn::performPhysics as far as the pawn's own motion goes: the frame's
 ## physics, from iteration 0.
 func perform(dt: float) -> void:
+	# The walking and falling physics clear both again on their own entry, as
+	# the original does; this covers phys_flying, which does not.
 	_just_teleported = false
 	_recovered = false
 	start_new_physics(dt, 0)
@@ -421,6 +427,8 @@ func phys_walking(dt: float, iterations: int) -> void:
 	var step: float = p.max_step_down_height
 	var down := Vector3(0.0, -(step + STEP_FUDGE), 0.0)
 	var hit: Dictionary = _miss()
+	_just_teleported = false
+	_recovered = false
 	var remaining: float = dt
 	while remaining > 0.0 and iterations < MAX_ITERATIONS:
 		iterations += 1
@@ -678,7 +686,7 @@ func phys_falling(dt: float, iterations: int) -> void:
 			remaining -= tick
 			var old_location: Vector3 = pawn.global_position
 			var old_velocity: Vector3 = pawn.velocity
-			var teleported: bool = false
+			_just_teleported = false
 			_recovered = false
 			pawn.velocity = old_velocity + (a + Vector3(0.0, pawn.gravity_z(), 0.0)) * tick
 			var adjusted: Vector3 = pawn.velocity * tick
@@ -735,7 +743,7 @@ func phys_falling(dt: float, iterations: int) -> void:
 				else:
 					# A floor.
 					remaining += (1.0 - float(hit["time"])) * tick
-					if not teleported and float(hit["time"]) > LANDING_REBUILD_TIME \
+					if not _just_teleported and float(hit["time"]) > LANDING_REBUILD_TIME \
 							and float(hit["time"]) * tick > LANDING_REBUILD_SECONDS:
 						pawn.velocity = (pawn.global_position - old_location) / (tick * float(hit["time"]))
 					_check_uncontrolled_slide(hit)
@@ -743,7 +751,7 @@ func phys_falling(dt: float, iterations: int) -> void:
 					return
 			# The velocity rebuilt from the displacement: V = 2 dLoc/dt - V0, which
 			# doubles every acceleration integrated above, gravity included.
-			if not teleported and not _recovered and pawn.physics != Move.PHYS_NONE:
+			if not _just_teleported and not _recovered and pawn.physics != Move.PHYS_NONE:
 				pawn.velocity = (pawn.global_position - old_location) / tick
 				if pawn.velocity.y < old_velocity.y or old_velocity.y >= 0.0:
 					pawn.velocity = pawn.velocity * 2.0 - old_velocity
