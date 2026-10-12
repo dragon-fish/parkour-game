@@ -492,3 +492,22 @@ func test_the_flying_kick_breaks_a_pane_it_bumps() -> void:
 		if glass.is_broken():
 			break
 	assert_true(glass.is_broken(), "the flying kick did not break the pane it hit")
+
+## [ME:CONFIRMED decompile TdMove_ZipLine.HitWall] A floor-ish face met on the
+## ride is a stumble struck from 10 uu back along the ride.
+func test_the_ride_meeting_a_floor_stumbles_from_behind_the_ride() -> void:
+	var player: Player = await _start()
+	var cable: InterestLine = _cable()
+	await step(1)
+	var along: Vector3 = (Vector3(20.0, 8.0, -30.0) - Vector3(20.0, 12.0, 0.0)).normalized()
+	var ride: ZiplineMove = _ride(player, cable, Vector3(20.0, 12.0, 0.0) + along * 5.0)
+	player.velocity = along * 6.0
+	var at: Vector3 = player.global_position
+	ride.hit_wall(Vector3.UP, null)
+	# With no damage type recorded the stumble has no animation and hands
+	# straight on to Walking, as the original's does; what it was told stays.
+	assert_ne(player.move_manager.current_name, Move.ZIPLINE, "test setup: the ride went on")
+	var stumble: StumbleMove = player.move_manager.move_for(Move.STUMBLE)
+	var back: Vector3 = stumble.instigator_location - at
+	assert_almost_eq(back.length(), 0.1, 0.001, "the instigator is not 10 uu off")
+	assert_gt(back.normalized().dot(-along), 0.999, "the instigator is not behind the ride")

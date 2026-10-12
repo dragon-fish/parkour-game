@@ -195,10 +195,16 @@ func play_forward_impact() -> void:
 func on_timer() -> void:
 	player.move_manager.set_move(FALLING)
 
-## HitWall: a floor-ish face is a stumble; otherwise, at speed, the ride stops
-## dead against it.
+## HitWall: a floor-ish face is a stumble, struck from 10 uu back along the
+## ride; otherwise, at speed, the ride stops dead against it. Only the
+## instigator's location is written: the damage type and location are left as
+## the last hit had them, as the original leaves them (damageMomentum, the
+## velocity's direction, is read by nothing but a debug draw).
 func hit_wall(normal: Vector3, _collider: Object) -> void:
 	if normal.y > 0.1 and player.move_manager.can_do(STUMBLE):
+		var stumble: StumbleMove = player.move_manager.move_for(STUMBLE)
+		stumble.instigator_location = player.global_position \
+			- 10.0 * UU * PawnPhysics.safe_normal(player.velocity)
 		player.move_manager.set_move(STUMBLE)
 	elif Vector2(player.velocity.x, player.velocity.z).length() > 100.0 * UU:
 		player.velocity = Vector3.ZERO
