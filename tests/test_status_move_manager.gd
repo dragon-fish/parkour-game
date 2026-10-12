@@ -5,7 +5,7 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 var _worlds: Array = []
 
 # A Player does NOT configure itself: setup(config, input) has to be called
-# after it enters the tree, or config, fall_tracker, speed_energy and statuses
+# after it enters the tree, or config, fall_tracker and statuses
 # are all null. TestWorld.build() does that, and gives a floor to stand on.
 func _player() -> Player:
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
@@ -69,12 +69,10 @@ func test_the_wire_hurts_and_stumbles_the_body_with_its_input_ignored() -> void:
 	assert_true(p.grounded, "test setup: the body never settled onto the floor")
 	p.move_manager.start(Move.WALKING)
 	await step(1)
-	p.speed_energy.energy = 7.0
 	var hp: float = p.health.hp
 	p.apply_status(_hit(35.0), p, 0, true)
 	await step(2)
 	assert_almost_eq(p.health.hp, hp - 35.0, 0.01, "the hit did not hurt")
-	assert_lt(p.speed_energy.energy, 0.1, "the hit did not empty the speed budget")
 	assert_eq(p.move_manager.current_name, Move.STUMBLE, "the wire did not stumble the body")
 	assert_true(p.ignore_move_input, "the stumble left the move input live")
 	assert_true(p.ignore_look_input, "the stumble left the look input live")
@@ -140,22 +138,6 @@ func test_a_stagger_fires_in_mid_air_rather_than_waiting_for_the_ground() -> voi
 	await step(2)
 	assert_lt(p.health.hp, hp, "a hit taken in the air did not fire")
 	assert_false(p.grounded, "test setup: the body reached the floor too soon")
-
-func test_a_hit_in_the_air_lands_from_a_standstill() -> void:
-	# The budget the hit took is not handed back by the landing: the run
-	# starts again from nothing, which reads as a stumble without being one.
-	var p := await _falling_player()
-	p.speed_energy.energy = 7.0
-	p.velocity = Vector3(6.0, 0.0, 0.0)
-	p.statuses.apply(_hit(), p, 0)
-	for i in 90:
-		await step(1)
-		if p.grounded:
-			break
-	assert_true(p.grounded, "test setup: the body never reached the floor")
-	await step(2)
-	assert_lt(p.speed_energy.energy, 0.2, \
-		"the landing handed back the budget the hit took")
 
 func test_a_second_stagger_is_eaten_by_the_immunity_window() -> void:
 	# A volume renews its STAGGER every tick the body is in it; without the

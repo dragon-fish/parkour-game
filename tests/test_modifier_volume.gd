@@ -5,7 +5,7 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 var _worlds: Array = []
 
 # A Player does NOT configure itself: setup(config, input) has to be called
-# after it enters the tree, or config, fall_tracker, speed_energy and statuses
+# after it enters the tree, or config, fall_tracker and statuses
 # are all null. TestWorld.build() does that. Settled on the floor before
 # returning, not just spawned there -- TestWorld.build() leaves the capsule
 # interpenetrating the floor slab, and how far the solver's depenetration

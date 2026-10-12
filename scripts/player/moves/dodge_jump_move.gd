@@ -59,6 +59,5 @@ func enter(_previous: StringName) -> void:
 		v.y += player.base_velocity.y
 	player.velocity = v
 	player.acceleration = PawnPhysics.safe_normal(v)
-	player.note_dodge_launch()
 	if player.camera_rig != null:
 		player.camera_rig.kick_takeoff(player.horizontal_speed())

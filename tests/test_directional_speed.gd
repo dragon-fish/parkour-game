@@ -21,8 +21,7 @@ func test_running_straight_ahead_is_not_held_to_base_speed() -> void:
 		await step(1)
 	var player: Player = world["player"]
 	# Compared against the LATERAL cap, not against ground_speed: how close a
-	# straight run gets to 7.2 is SpeedEnergy's business and takes longer than
-	# this test runs. What is pinned here is that the arc does not bind.
+	# straight run gets to 7.2 takes longer than this test runs. What is pinned here is that the arc does not bind.
 	assert_gt(player.horizontal_speed(), player.config.pawn.speed_max_base_velocity + 1.0, \
 		"forward was held down as though it were outside the arc")
 	TestWorld.teardown(world)
@@ -45,8 +44,8 @@ func test_running_sideways_settles_at_base_speed() -> void:
 func test_the_air_is_not_held_to_the_arc() -> void:
 	# THE INVARIANT THIS FILE EXISTS FOR. The original limits the ground and
 	# leaves the air alone -- backwards with S and space passes 18 km/h there.
-	# Folding the arc into Player.speed_cap() would look like a tidy-up and
-	# would silently take that away, because every airborne state reads it.
+	# Applying the arc to the air as well would look like a tidy-up and would
+	# silently take that away.
 	var world := _world()
 	await _settle(world)
 	var player: Player = world["player"]

@@ -169,13 +169,9 @@ func _switch(next: StringName, arm_cooldown: bool) -> void:
 	_current.enter(from)
 	if player != null:
 		# The flight a back landing was armed for ended some other way.
-		if player.pending_back_landing and not (_current is AirborneMove) \
+		if player.pending_back_landing \
 				and next != Move.LAY_ON_GROUND and next != Move.LANDING:
 			player.pending_back_landing = false
-		# The moves not yet ported still read the old speed budget. Handing
-		# one the body re-derives that budget from the speed it arrives with.
-		if leaving != null and leaving.is_ported() and not _current.is_ported():
-			player.seed_legacy_energy()
 	_switch_depth -= 1
 	if _switch_depth == 0:
 		var changes: Array = _queued_changes
@@ -657,7 +653,7 @@ func legacy_turn() -> void:
 	# from Walking, 180TurnInAir in the air. The turns a wall takes belong to
 	# the wall moves themselves (WallRun's HandleMoveAction,
 	# WallClimb180TurnJump), not to either of these.
-	var flying: bool = _current is AirborneMove and player != null and not player.grounded
+	var flying: bool = player != null and not player.grounded
 	var turn: StringName = Move.TURN_180_IN_AIR if flying else Move.TURN_180
 	if not can_do(turn):
 		return

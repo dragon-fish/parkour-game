@@ -5,7 +5,7 @@ const TestWorld = preload("res://tests/world_fixture.gd")
 var _worlds: Array = []
 
 # A Player does NOT configure itself: setup(config, input) has to be called
-# after it enters the tree, or config, fall_tracker, speed_energy and statuses
+# after it enters the tree, or config, fall_tracker and statuses
 # are all null. TestWorld.build() does that, and gives a floor to stand on.
 func _player() -> Player:
 	var world := TestWorld.build(get_tree(), MovementConfig.new())

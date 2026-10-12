@@ -5,7 +5,7 @@ extends RefCounted
 #
 # Deliberately RefCounted and fed plain values: it owns no node and does no
 # queries, so the whole layer can be tested without a physics world -- the
-# same stance as FallTracker and SpeedEnergy.
+# same stance as FallTracker.
 #
 # KEYED BY (effect, subject), at most one entry per key. `subject` is part of
 # the key because BLOCK_INTEREST_LINE must be able to forbid several ropes at

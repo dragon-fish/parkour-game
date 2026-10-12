@@ -502,12 +502,6 @@ var fall_tracker: FallTracker
 ## outside StatusList interprets an entry.
 var statuses: StatusList
 
-## Where speed_cap()'s scale has actually got to, as opposed to where the
-## status list says it should be. Eased over pawn.speed_cap_blend_time so a
-## level's speed change reads as a slow-down rather than a cut -- see
-## _blend_speed_scale().
-var _speed_scale: float = 1.0
-
 ## Seconds of stagger immunity still owed. Armed when a landing lockout lets
 ## go, so a level that keeps re-applying STAGGER cannot chain them.
 var _stagger_immunity: float = 0.0
@@ -527,14 +521,12 @@ var last_reset_time: float = -INF
 ## tell a wire cut from a hard landing and charge the momentum differently.
 ## One-shot: the reader clears it.
 var pending_stagger: bool = false
-## A hazard's hit: see take_hazard_hit().
-var _hurt_skips_landing_credit: bool = false
 var _hurt_flash: float = 0.0
 var _hurt_tint: Color = Color(1.0, 0.0, 0.0, 1.0)
 ## One-shot, alongside pending_stagger: the stagger's own screen tint, or
 ## transparent for the hard landing's. LandingMove reads and clears it, and so
 ## does LayOnGroundMove -- which is also handed the hard landing's red when that
-## landing is on the back (AirborneMove.settle_landing()).
+## landing is on the back.
 var pending_stagger_tint: Color = Color(0.0, 0.0, 0.0, 0.0)
 
 ## This flight was turned round in the air while it was going FORWARD, so it
@@ -565,53 +557,23 @@ signal died
 ## much it takes off.
 var health: Health
 
-## The ground-speed curve (02 §2.1/02 §2.5): layer 2 of the two-layer speed
-## model, see SpeedEnergy's own header comment. Built in setup(), driven every
-## tick by _update_speed_energy(). Every move that wants "top speed" reads
-## speed_cap() below rather than config.pawn.ground_speed directly -- that
-## field is now only the curve's own upper bound.
-var speed_energy: SpeedEnergy
-
-## Last tick's wish direction, for charging heading changes. Zero means "no
-## input last tick", which is deliberately NOT a heading -- see
-## _charge_turn().
-var _last_facing: Vector3 = Vector3.ZERO
-
-## Which way the BODY faces after a dodge, or ZERO once it faces the view
-## again. See _charge_dodge_heading().
-var _dodge_heading: Vector3 = Vector3.ZERO
-## How close the run must come back to the view, degrees, before the body is
-## facing it again and turns are billed on the view as usual.
-const DODGE_HEADING_HOME_DEG := 10.0
-## Whether last tick's move had MoveConfig.energy_decays, so the drain starts
-## afresh on the tick one begins.
-var _energy_was_decaying: bool = false
-
 ## Time left in the stand-up after a slide.
 ##
 ## PROJECT-DEFINED FROM PLAY: a slide that ends with the player instantly
 ## back at full running speed makes sliding free, and the original visibly
-## spends a moment getting back up. Two things happen while it runs -- the
-## speed budget stops growing, so the ceiling is pinned at whatever the slide
-## left it at, and the eye rises from crouch height over the whole window
-## rather than snapping up with the capsule.
+## spends a moment getting back up. While it runs the eye rises from crouch height over the whole window
+## rather than snapping up
+## with the capsule.
 ##
 ## Re-entering the slide is blocked over the same window, but by
 ## SlideConfig.redo_move_time through MoveManager's own gate rather than here.
 var _slide_recovery_timer: float = 0.0
 
-## The heading the body left the ground with, and how long it has been away.
-## Turning is not billed in mid-air -- there is no traction to lose it
-## through -- but a body that takes off facing one way and lands facing
-## another HAS turned, and used to arrive owing nothing. Settled once, on
-## touchdown.
-var _takeoff_dir: Vector3 = Vector3.ZERO
 ## Per-LINE cooldowns (zipline, swing, ...): InterestLine instance id -> seconds left.
 ## Per CABLE, not per move: the owner measured rope-to-rope chaining in the
 ## original (release one rope, catch the next at once), which a move-name
 ## cooldown forbids. SameZipLineRedoMoveTime only ever guarded the SAME line.
 var _line_cooldowns: Dictionary = {}
-var _airborne_time: float = 0.0
 ## TdPawn.GravityModifier for a while: [ME:CONFIRMED decompile N2 §1] the
 ## modifier holds until the timer runs out, then returns to 1. GrabTransfer,
 ## RumpSlide, Swing and SwingJump write it in the original.
@@ -1464,8 +1426,7 @@ func begin_slide_recovery() -> void:
 	_slide_recovery_timer = config.slide.recovery_time
 
 ## How far through the stand-up the body is, 1 at the instant the slide ended
-## and 0 once it is over. Read by the camera to raise the eye, and by the speed
-## budget to know it must not grow.
+## and 0 once it is over. Read by the camera to raise the eye.
 func slide_recovery_fraction() -> float:
 	if config == null or config.slide.recovery_time <= 0.0:
 		return 0.0
@@ -1482,7 +1443,6 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	SettingsStore.apply_to_config(SettingsStore.load_settings(), config)
 	input_source = src
 	fall_tracker = FallTracker.new()
-	speed_energy = SpeedEnergy.new(config.pawn)
 	statuses = StatusList.new()
 	health = Health.new(config.pawn)
 
@@ -1591,20 +1551,9 @@ func reset_state() -> void:
 		# to wherever the body now stands, or the first tick after the teleport
 		# scores the whole teleport distance as a fall.
 		fall_tracker.reset(global_position.y)
-	if speed_energy != null:
-		speed_energy.reset()
-	# A respawn is not a transition to watch: the ceiling starts where the new
-	# life's statuses put it, with no slide inherited from the old one.
-	_speed_scale = statuses.speed_scale() if statuses != null else 1.0
 	_stagger_immunity = 0.0
-	_hurt_skips_landing_credit = false
 	_hurt_flash = 0.0
-	_last_facing = Vector3.ZERO
-	_dodge_heading = Vector3.ZERO
-	_energy_was_decaying = false
-	_takeoff_dir = Vector3.ZERO
 	_line_cooldowns.clear()
-	_airborne_time = 0.0
 	_slide_recovery_timer = 0.0
 	wall_side = 0
 	# A respawn teleports out of any volume without the area ever reporting
@@ -3713,7 +3662,6 @@ func _physics_process(delta: float) -> void:
 	# Aged alongside the other timers and BEFORE the moves run, so a status
 	# that expires this tick is already gone by the time anything reads it.
 	statuses.tick(delta)
-	_blend_speed_scale(delta)
 	# AHEAD OF EVERY READER OF in_third_person(), and immediately after the
 	# ageing above so it answers for this tick rather than the last one. Both
 	# _drive_body_yaw() below and the moves consult the rig for which view is
@@ -3784,11 +3732,6 @@ func _physics_process(delta: float) -> void:
 	move_manager.perform_physics(delta, input)
 	move_manager.tick_special(delta)
 	tick_gravity_modifier(delta)
-
-	# The old speed budget, for the moves not yet ported that still read it.
-	if not move_manager.current_move().is_ported():
-		_update_speed_energy(delta, input)
-		_cap_energy_at_limit(input, delta)
 
 	# Less what the FLOOR did. Displacement is measured because velocity lies
 	# through a scripted move; but a body standing still on the roof of a train
@@ -4644,7 +4587,7 @@ func _acceleration(sprint: bool, forward_in: float, strafe_in: float, delta: flo
 var _accel_params: PawnAcceleration.Params = null
 
 ## Every field from PawnConfig's copy of the original's TdPawn CDO. DO NOT
-## feed it the legacy SpeedEnergy's calibrated knobs.
+## replace one with a value fitted to play.
 func _acceleration_params() -> PawnAcceleration.Params:
 	if _accel_params == null:
 		var pawn_cfg: PawnConfig = config.pawn
@@ -5149,19 +5092,6 @@ func floor_velocity() -> Vector3:
 		return base_velocity
 	return get_platform_velocity() if is_on_floor() else Vector3.ZERO
 
-## The speed budget the moves not yet ported read (speed_cap()), re-derived
-## from the speed the body hands over with.
-func seed_legacy_energy() -> void:
-	if speed_energy != null:
-		speed_energy.restore_for_landing(horizontal_speed())
-	forgive_turn()
-	# The moves not yet ported read the floor through move_and_slide()'s own
-	# contact (is_on_floor(), get_floor_normal()), which the walking physics
-	# never fills in -- it hovers 2.15 uu above its floor. Set down onto it,
-	# so that contact describes the floor the body is on.
-	if grounded:
-		apply_floor_snap()
-
 ## The jump press, for a move not yet ported: true on the tick it went down
 ## and no action took it, and only from the ground. Spent once.
 func consume_jump() -> bool:
@@ -5535,11 +5465,6 @@ func wish_direction(input: MoveInput) -> Vector3:
 		return Vector3.ZERO
 	return dir.normalized()
 
-## The presentation's half of a dodge launch: the model swings round to the
-## throw (_charge_dodge_heading()). Called by DodgeJumpMove.enter().
-func note_dodge_launch() -> void:
-	_dodge_heading = Vector3(velocity.x, 0.0, velocity.z).normalized()
-
 ## Which way the body is going AT something, as a unit vector, or ZERO if it is
 ## going nowhere and asking for nothing.
 ##
@@ -5590,7 +5515,6 @@ func travel_speed() -> float:
 ## (a slide's): JumpAddXY along the direction being asked for, nothing for a
 ## standing jump. The original's own take-off is JumpMove's.
 func add_jump_nudge(input: MoveInput) -> void:
-	_dodge_heading = Vector3.ZERO
 	velocity += jump_add_velocity(input)
 
 func jump_add_velocity(input: MoveInput) -> Vector3:
@@ -5623,8 +5547,8 @@ func is_stagger_immune() -> bool:
 func arm_stagger_immunity() -> void:
 	_stagger_immunity = config.pawn.stagger_immunity_time
 
-## A hazard's hit -- barbed wire, an electric fence: the damage, a flash of
-## the screen and the whole speed budget. What the body DOES about it is not
+## A hazard's hit -- barbed wire, an electric fence: the damage and a flash of
+## the screen. What the body DOES about it is not
 ## decided here: the wire's touch is touch_barbed_wire().
 ##
 ## `tint` is the hazard's own, alpha its strength; transparent means the
@@ -5633,19 +5557,9 @@ func arm_stagger_immunity() -> void:
 func take_hazard_hit(damage: float, tint: Color) -> void:
 	if damage > 0.0:
 		take_damage(damage, Health.Cause.HAZARD)
-	speed_energy.reset()
-	if not grounded:
-		_hurt_skips_landing_credit = true
 	arm_stagger_immunity()
 	_hurt_tint = tint if tint.a > 0.0 else config.landing.tint_color
 	_hurt_flash = 1.0
-
-## Whether the landing coming up must not credit the budget from its speed:
-## the flight carries a hazard's hit. See take_hazard_hit(). One-shot.
-func consume_hurt_landing() -> bool:
-	var armed := _hurt_skips_landing_credit
-	_hurt_skips_landing_credit = false
-	return armed
 
 ## The hit's flash, fading over PawnConfig.hurt_flash_time. Writes the tint
 ## only while it runs, and once at nothing when it ends, so the moves that
@@ -5657,342 +5571,6 @@ func _drive_hurt_flash(delta: float) -> void:
 	if screen_effects != null:
 		screen_effects.set_tint(_hurt_tint, _hurt_flash)
 
-## How far the stick is pushed, 0 to 1. The keyboard has no stick, so Ctrl
-## stands in for one pushed gently -- PawnConfig.walk_stick_amount.
-func stick_amount(input: MoveInput) -> float:
-	var amount: float = minf(input.move.length(), 1.0)
-	if input.walk_held:
-		amount = minf(amount, config.pawn.walk_stick_amount)
-	return amount
-
-## The fastest the active move lets the body go on the ground this tick,
-## whatever the budget: ground_speed times the move's speed_modifier times how
-## far the stick is pushed. INF when neither holds anything back.
-##
-## AN ABSOLUTE LIMIT, NOT A SCALE ON speed_cap(). A crouch at 40% OF THE
-## CEILING, with the budget following the body's speed down, is a ratchet: the
-## budget follows the crouched pace, the ceiling drops, 40% of it is slower
-## still, and the body ends at a crawl. 40% of ground_speed is a number the
-## budget can settle on.
-func ground_speed_limit(input: MoveInput) -> float:
-	var fraction: float = move_manager.current_move_speed_modifier() * stick_amount(input)
-	if fraction <= 0.0 or fraction >= 1.0:
-		return INF
-	return config.pawn.ground_speed * fraction
-
-## What a ground move steers the body toward: the budget's ceiling, held under
-## ground_speed_limit(). The limit is scaled by the same status scale as the
-## ceiling, so a region that slows running slows a crouch alike.
-func ground_ceiling(input: MoveInput) -> float:
-	return minf(speed_cap(), ground_speed_limit(input) * _speed_scale)
-
-func speed_cap() -> float:
-	# Scaled HERE rather than at each caller: this is the one function every
-	# move asks "how fast may I go", so a status applied to it reaches all of
-	# them and none of them needs to know statuses exist. Same shape as
-	# MoveConfig.speed_modifier, which the crouch already rides.
-	#
-	# The scale is the EASED one, not statuses.speed_scale(). See
-	# _blend_speed_scale(): the ceiling slides, the body chases it.
-	# An absolute limit (a moving lift's base velocity) is not eased: it is
-	# a number the speed may not exceed, and the body's own acceleration is
-	# all the ramp it needs.
-	var limit: float = statuses.speed_limit() if statuses != null else INF
-	return minf(speed_energy.cap() * _speed_scale, limit)
-
-## Slides the ceiling's scale toward whatever the status list currently says.
-##
-## DO NOT ease this by lowering accel_rate instead: that is the body's own
-## responsiveness and it belongs to every move, not to the one region that
-## happens to be capping the player.
-##
-## move_toward on a 0..1 scale, so the dial is a time for the full range and a
-## half-range change takes half of it -- which is what "a cap change should
-## feel proportional to how big it is" wants.
-func _blend_speed_scale(delta: float) -> void:
-	var wanted: float = statuses.speed_scale()
-	var seconds: float = maxf(config.pawn.speed_cap_blend_time, 0.001)
-	_speed_scale = move_toward(_speed_scale, wanted, delta / seconds)
-
-## Which accumulation factor this tick's input asks for. The original
-## declares three (02 §2.1) and this is the reading that makes all three
-## usable: ordinary running is the sprint factor (there is no sprint key --
-## the curve IS the sprint), the walk modifier drops to the walk factor, and
-## a mostly-lateral input takes the strafe factor.
-func _energy_mode(input: MoveInput) -> int:
-	if input.walk_held:
-		return SpeedEnergy.WALK
-	if absf(input.move.x) > absf(input.move.y):
-		return SpeedEnergy.STRAFE
-	return SpeedEnergy.SPRINT
-
-## Energy accrues only while GROUNDED, actually asking to move, and actually
-## travelling near the ceiling that energy has already bought. Held (neither
-## banked, bled, nor charged for turning) while airborne, unless the move in
-## the air is a manoeuvre that decays it (MoveConfig.energy_decays): 10.1 mechanic 2 is
-## explicit that speed earned before take-off is carried across the jump
-## intact, and bleeding the energy that BOUGHT that speed mid-flight would
-## contradict it. Turning while airborne is likewise free -- air_control is
-## 0.025, so there is barely any turning to charge for, and charging for it
-## would double-punish a jump the player is already committed to.
-func _update_speed_energy(delta: float, input: MoveInput) -> void:
-	var wish := wish_direction(input)
-	var active: MoveConfig = move_manager.current_config()
-	# A manoeuvre the player cannot steer is paid for by the second -- see
-	# MoveConfig.energy_decays. Not an early return: the take-off bookkeeping
-	# below still owes the landing its turn bill, and the moves that set this
-	# are airborne, so nothing below banks meanwhile.
-	var decaying: bool = active != null and active.energy_decays
-	if decaying:
-		if not _energy_was_decaying:
-			speed_energy.restart_decay()
-		speed_energy.decay(delta)
-	_energy_was_decaying = decaying
-	var facing: Vector3 = -global_transform.basis.z
-	facing.y = 0.0
-	facing = facing.normalized() if facing.length_squared() > 0.0001 else Vector3.ZERO
-	var dodging: bool = _charge_dodge_heading(facing, delta)
-	if not grounded:
-		# Nothing is banked or bled in mid-air, and turning is not billed tick
-		# by tick either -- there is no traction to lose speed through. The
-		# heading at take-off is remembered instead, and the whole rotation is
-		# settled on landing.
-		if not dodging:
-			if _takeoff_dir == Vector3.ZERO:
-				_takeoff_dir = facing
-				_airborne_time = 0.0
-			_airborne_time += delta
-		_last_facing = facing
-		return
-	# Just landed with a heading owed. Billed as ONE turn through the angle
-	# between take-off and touchdown, at the rate it was actually swung
-	# (the airborne time), so a lazy mid-air adjustment costs little and a
-	# hard 180 costs what a hard 180 costs. Without this a player could turn
-	# the corner in the air and arrive owing nothing at all.
-	if not dodging:
-		if _takeoff_dir != Vector3.ZERO:
-			if facing != Vector3.ZERO:
-				var swung: float = absf(_takeoff_dir.signed_angle_to(facing, Vector3.UP))
-				# Guarded against float noise, not against small turns: a body
-				# that took off and landed on the same heading still differs in
-				# the last few bits, and billing that charged a hop for turning.
-				if swung > 0.001:
-					speed_energy.spend_turn(swung, maxf(_airborne_time, delta))
-			_takeoff_dir = Vector3.ZERO
-			_airborne_time = 0.0
-		_charge_turn(facing, delta)
-	var follows: bool = active != null and active.energy_follows_speed
-	if follows:
-		_energy_follows_speed(input, delta)
-	if wish == Vector3.ZERO:
-		if not follows:
-			speed_energy.decay(delta)
-		return
-	# TRAVELLING OUTSIDE THE ARC BLEEDS THE CEILING. This is where the
-	# sideways limit actually comes from: not a cap on the speed, but energy
-	# draining while the body runs across its own facing, so the ceiling
-	# slides from a full sprint down to base speed over about three seconds.
-	# Measured that way in the original -- see PawnConfig.speed_max_base_velocity
-	# for the capture, and note speed_energy_deceleration_time is 3.0.
-	#
-	# READ OFF THE KEY HERE, unlike ground_accelerate() which reads travel,
-	# and the two answer different questions. This one asks whether the
-	# player is ASKING to run across their own facing; that one asks where
-	# the body has actually got to so far.
-	#
-	# Travel is wrong for this because a turn puts it outside the arc all by
-	# itself: swing the view and the heading lags behind the facing for a few
-	# frames while W is still held. Billing that as sideways running charges
-	# an ordinary turn twice, once through spend_turn() above and again here
-	# -- which is exactly what test_turn_deceleration and test_turn_180
-	# caught when this read travel.
-	# UPHILL BLEEDS THE SAME WAY, down to the same floor: see
-	# PawnConfig.uphill_bleed_angle_deg.
-	if not in_forward_arc(wish) or climbing_uphill():
-		# DOWN TO BASE SPEED AND NO FURTHER. speed_max_base_velocity is 4.0 m/s
-		# -- 14.4 km/h, exactly the sideways speed measured in the original --
-		# and spend_turn() already treats it as the floor no amount of turning
-		# can bill past. Running across your own facing lands on the same
-		# floor, which is why no separate sideways limit is declared anywhere:
-		# the number was never a limit on sideways running, it is what a body
-		# moves at with no speed banked at all.
-		var floor_energy: float = speed_energy.base_floor()
-		if speed_energy.energy > floor_energy:
-			speed_energy.decay(delta)
-			speed_energy.energy = maxf(speed_energy.energy, floor_energy)
-		else:
-			# A FLOOR, NOT A TARGET TO DECAY TOWARD. Base speed is what a body
-			# moves at with nothing banked, so stepping sideways from a standstill
-			# has it at once -- without this the ceiling sits at
-			# speed_min_base_velocity (0.1 m/s) and sideways is a crawl.
-			speed_energy.energy = floor_energy
-		return
-	# Against the ceiling the move actually steers toward. Measured against
-	# the STANDING cap instead, a crouch held under it could never bank -- and
-	# since turning still charges, a crouched turn drained energy on a one-way
-	# ratchet that bottomed out at 0.04 m/s.
-	# Nothing banks during the stand-up after a slide: the ceiling stays pinned
-	# at whatever the slide left it at, so a slide preserves the speed it was
-	# entered with but cannot be used to keep climbing.
-	var reachable: float = ground_ceiling(input)
-	# Nothing banks past what a crouch or an eased stick lets the body use.
-	# _cap_energy_at_limit() bleeds that excess on a curve, and banking into it
-	# every tick holds the budget a fixed step above the limit for good.
-	var limit_energy: float = SpeedEnergy.energy_for_speed(config.pawn, ground_speed_limit(input))
-	if _slide_recovery_timer > 0.0:
-		pass
-	elif horizontal_speed() >= reachable * config.pawn.energy_accumulate_speed_ratio \
-			and speed_energy.energy < limit_energy:
-		# Faster downhill -- see downhill_bank_rate().
-		speed_energy.accumulate(delta * downhill_bank_rate(), _energy_mode(input))
-	else:
-		# Asking to move but not actually getting anywhere -- shoved into
-		# geometry, or still climbing toward a ceiling already paid for.
-		# Neither banks anything; neither is a reason to bleed, either.
-		pass
-
-## Brings the budget down to what the body is actually doing, when a mistake
-## has left it well under what the budget buys. See
-## MoveConfig.energy_follows_speed.
-##
-## A MISTAKE IS A RELEASED KEY OR A WALL, and asked as exactly that. DO NOT
-## reduce it to "the speed fell": changing direction on the keys dips the
-## speed too, through the chord layer 1 cuts between the old heading and the
-## new, and the original climbs straight back out of that dip -- measured,
-## see PawnConfig.speed_max_base_velocity. Nor to "the speed is low": a
-## pull-up sets the body down at rest, and following that would spend the
-## budget the manoeuvre carried through on the first stride.
-##
-## The same energy_accumulate_speed_ratio slack the banking side uses, so a
-## body grazing a wall at pace follows nothing.
-func _energy_follows_speed(input: MoveInput, delta: float) -> void:
-	if wish_direction(input) != Vector3.ZERO and not is_on_wall():
-		return
-	var speed: float = horizontal_speed()
-	if speed >= ground_ceiling(input) * config.pawn.energy_accumulate_speed_ratio:
-		return
-	follow_speed(speed, delta)
-
-## Bleeds the budget toward what buys `speed`, read in the budget's own units:
-## a status scaling the ceiling scales the body with it, and is not a loss the
-## budget should pay for. Never raises it. On a curve rather than at once --
-## see SpeedEnergy.bleed_toward_speed().
-func follow_speed(speed: float, delta: float) -> void:
-	var ceiling: float = speed_cap()
-	if ceiling <= 0.0:
-		return
-	speed_energy.bleed_toward_speed(speed * speed_energy.cap() / ceiling, delta)
-
-## A budget above what ground_speed_limit() lets the body use bleeds down to
-## it while the limit applies: crouch out of a sprint, or ease off the stick,
-## and the run is rebuilt from the slower pace -- unless the limit is let go
-## of first. Only on the moves the budget follows -- see
-## MoveConfig.energy_follows_speed.
-func _cap_energy_at_limit(input: MoveInput, delta: float) -> void:
-	if not grounded:
-		return
-	var active: MoveConfig = move_manager.current_config()
-	if active == null or not active.energy_follows_speed:
-		return
-	var limit: float = ground_speed_limit(input)
-	if limit < INF:
-		speed_energy.bleed_toward_speed(limit, delta)
-
-## A DODGE TURNS THE BODY, not only the velocity: for as long as the run is off
-## the view afterwards, the body faces the way it is going, and turns are billed
-## on THAT heading rather than on the view. Returns whether this is in force,
-## so the ordinary billing on the view stands aside.
-##
-## [ME:INFERRED] from play, and it accounts for three things at once:
-##   * dodge, then W: the run is hauled back onto the view in a fraction of a
-##     second -- a hard quarter turn, billed as one.
-##   * dodge, then A held: the run keeps its line, nothing turns, nothing is
-##     billed; only running across the view bleeds it.
-##   * the dodge glitch: the view swung onto the dodge in mid-air is the view
-##     catching up with a body already facing that way. Nothing to bill, and
-##     the run lands whole.
-##
-## Ends once the run is back within DODGE_HEADING_HOME_DEG of the view, and
-## hands the billing back to the view from where it now points.
-func _charge_dodge_heading(facing: Vector3, delta: float) -> bool:
-	if _dodge_heading == Vector3.ZERO:
-		return false
-	# The view's own swings are not the body's while this lasts.
-	_takeoff_dir = Vector3.ZERO
-	_airborne_time = 0.0
-	_last_facing = facing
-	if not grounded:
-		return true
-	var travel := Vector3(velocity.x, 0.0, velocity.z)
-	if travel.length_squared() < 0.01 or facing == Vector3.ZERO:
-		_dodge_heading = Vector3.ZERO
-		return true
-	travel = travel.normalized()
-	var turned: float = absf(_dodge_heading.signed_angle_to(travel, Vector3.UP))
-	if turned > 0.001:
-		speed_energy.spend_turn(turned, delta)
-	_dodge_heading = travel
-	if absf(travel.signed_angle_to(facing, Vector3.UP)) <= deg_to_rad(DODGE_HEADING_HOME_DEG):
-		_dodge_heading = Vector3.ZERO
-	return true
-
-## Resynchronises the turn tax to wherever the body is facing NOW, so the swing
-## that just happened costs nothing.
-##
-## For SCRIPTED turns only. The tax is charged on the change in wish direction
-## (see _charge_turn below), which models a player swinging the view and the
-## body fighting to follow. A move that rotates the body itself is not that: it
-## is an animation the player asked for by name. Without this, pressing Q while
-## holding W flips the wish direction through half a circle in one tick and the
-## tax bills the whole thing -- which would make Q the most expensive key on
-## the board and the turn a move nobody would ever use.
-##
-## Deliberately a RESYNC and not a suppression flag: whatever the player does
-## on the tick after the turn is charged normally, measured from the facing the
-## turn actually left them with.
-func forgive_turn() -> void:
-	_last_facing = -global_transform.basis.z * Vector3(1.0, 0.0, 1.0)
-
-## Turning is a continuous tax with no free allowance (10.1 mechanic 3): the
-## research searched for a "costs nothing below N degrees" parameter and
-## found none anywhere in the game, which is what forces players to plan a
-## line instead of improvising one.
-##
-## Charged on the WISH direction, not the camera yaw and not the velocity
-## direction. Not the camera, because turning your head to read the route
-## ahead should be free -- it is turning the RUN that costs. Not the velocity
-## either, because accel_rate 61.44 makes the velocity lag the intent, which
-## would smear the charge across the frames after the decision instead of
-## billing the decision itself.
-## BILLED ON THE FACING, NOT ON THE WISH DIRECTION, and the difference is a
-## keypress against a mouse movement. Both swing the wish vector 90 degrees
-## in the world: turning the view does it because wish is expressed relative
-## to the view, and pressing A does it because the key changed. Only one of
-## them is a turn. Billing wish charged a body that pressed A the same as one
-## that whipped the mouse 90 degrees, which emptied the whole budget in a
-## single tick -- in the original the same press leaves the view untouched
-## (yaw is constant across the capture) and the speed climbs afterwards.
-##
-## The airborne path above already billed the facing (_takeoff_dir), so this
-## also ends a split where the ground and the air taxed different things.
-func _charge_turn(facing: Vector3, delta: float) -> void:
-	if facing == Vector3.ZERO or _last_facing == Vector3.ZERO:
-		# Nothing to compare against. A momentary key release passes through
-		# zero, and billing that transition would charge for letting go.
-		_last_facing = facing
-		return
-	var radians: float = absf(_last_facing.signed_angle_to(facing, Vector3.UP))
-	if radians > 0.0:
-		speed_energy.spend_turn(radians, delta)
-	_last_facing = facing
-
-## The downhill component of `direction`, projected onto the current floor,
-## in Friction's convention (+1 straight down the fall line, -1 straight up,
-## 0 flat). Same projection SlideMove._slope_direction() uses, generalised to
-## an arbitrary direction since Player has no persisted heading of its own --
-## callers pass the residual horizontal velocity, which is what a braking
-## ground_accelerate() call is actually decelerating. 0 with no floor or no
-## direction, so an airborne or motionless call resolves cleanly.
 ## move_and_slide() for a body on its feet: the velocity aimed along the floor
 ## so the horizontal speed is the one travelled -- the original measures ground
 ## speed flat, whatever the slope, and SlideMove drives its slide along the
@@ -6021,25 +5599,12 @@ func move_on_floor() -> void:
 	velocity.x += bias.x
 	velocity.z += bias.z
 
-## Whether the body is running up an incline steep enough to bleed its budget
-## to base speed. See PawnConfig.uphill_bleed_angle_deg.
-func climbing_uphill() -> bool:
-	var travel := Vector3(velocity.x, 0.0, velocity.z)
-	return ground_grade(travel) < -sin(deg_to_rad(config.pawn.uphill_bleed_angle_deg))
-
-## How many times faster running banks the budget down this incline: 1 on the
-## flat and on anything shallower than uphill_bleed_angle_deg, rising in a
-## straight line with the angle to PawnConfig.downhill_bank_rate_45 at 45
-## degrees. The downhill half of climbing_uphill().
-func downhill_bank_rate() -> float:
-	var travel := Vector3(velocity.x, 0.0, velocity.z)
-	var angle: float = rad_to_deg(asin(clampf(ground_grade(travel), -1.0, 1.0)))
-	var start: float = config.pawn.uphill_bleed_angle_deg
-	if angle <= start:
-		return 1.0
-	var t: float = clampf((angle - start) / maxf(45.0 - start, 0.001), 0.0, 1.0)
-	return lerpf(1.0, config.pawn.downhill_bank_rate_45, t)
-
+## The downhill component of `direction`, projected onto the current floor,
+## in Friction's convention (+1 straight down the fall line, -1 straight up,
+## 0 flat). Same projection SlideMove._slope_direction() uses, generalised to
+## an arbitrary direction since Player has no persisted heading of its own --
+## callers pass the horizontal velocity. 0 with no floor or no direction, so
+## an airborne or motionless call resolves cleanly.
 func ground_grade(direction: Vector3) -> float:
 	if not grounded or direction == Vector3.ZERO:
 		return 0.0
@@ -6051,9 +5616,6 @@ func ground_grade(direction: Vector3) -> float:
 		return 0.0
 	return -projected.normalized().y
 
-## Ground movement: converge on the target velocity, and brake when idle.
-## `grade` is the downhill component of the current heading (+1 straight
-## down the fall line, -1 straight up, 0 flat); see Friction.
 ## Whether a direction of travel counts as forwards, and so earns the full
 ## ground speed.
 ##
@@ -6075,69 +5637,6 @@ func in_forward_arc(direction: Vector3) -> bool:
 	# 4 and 7.2 at random.
 	return flat.normalized().dot(facing.normalized()) \
 		>= cos(deg_to_rad(config.pawn.forward_arc_deg)) - 0.01
-
-## GROUND SPEED ONLY. DO NOT fold the arc limit below into speed_cap(): the
-## original limits the ground and leaves the air alone -- backwards with S and
-## space passes 18 km/h up there and finds no ceiling -- and speed_cap() is
-## what every airborne state reads.
-func ground_accelerate(wish_dir: Vector3, target_speed: float, delta: float, grade: float = 0.0) -> void:
-	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
-	if wish_dir == Vector3.ZERO:
-		var braking: float = Friction.walk_friction(config.pawn, \
-			move_manager.current_move_friction_modifier(), grade)
-		horizontal = horizontal.move_toward(Vector3.ZERO, braking * delta)
-	else:
-		horizontal = horizontal.move_toward(wish_dir * target_speed,
-			config.pawn.accel_rate * delta)
-	velocity.x = horizontal.x
-	velocity.z = horizontal.z
-
-## Air movement, the original's way: a Quake-style projection scaled by
-## air_control.
-##
-## An earlier version of this project forbade the projection from ever
-## reducing horizontal speed, so holding the opposite key in mid-air did
-## nothing at all. That guard is gone: the original uses ordinary low air
-## control, and "commit to the jump you made" comes from air_control being
-## 0.025 -- half the engine's own default -- not from a special rule. At
-## 1.536 m/s^2 a full 1.40 s hang time can shed at most ~2.1 m/s even if the
-## player holds backward the whole way, which is a correction, not a brake.
-##
-## Only ever adds speed along wish_dir, and only up to a ceiling measured
-## along that direction. The ceiling is NOT a flat air_speed: it is
-## min(air_speed, max(speed_cap(), speed_along_wish)). air_speed
-## itself (see its own comment in pawn_config.gd -- ME's AirSpeed,
-## essentially uncapped) is deliberately too high to ever bind in practice;
-## it exists so momentum carried in from elsewhere (a wall-run or slide boost
-## exceeding speed_cap()) is never reduced by air control. speed_cap() is the
-## floor UNDER that: with air_accel tiny (see above), a long fall or a chain
-## of jumps has plenty of TIME to slowly climb toward air_speed even without
-## any exploit-like input, which would let mere airtime manufacture speed no
-## ground state could reach on its own -- exactly the invariant
-## tests/legacy/test_landing.gd's test_a_landing_can_never_add_speed_however_the_
-## keep_ratio_is_tuned and tests/legacy/test_slide_state.gd's
-## test_chained_slide_then_jump_cannot_stack_the_entry_boost used to pin --
-## both ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces
-## this today; restore the pins when the behavioural suite is rewritten. Taking
-## the max with the CURRENT speed_along_wish (not a flat speed_cap()) is what
-## keeps carried-in momentum from being reduced here: a player already faster
-## than the cap gets zero headroom (the ceiling sits at their own current
-## speed), never a forced slowdown.
-func air_accelerate(wish_dir: Vector3, delta: float) -> void:
-	if wish_dir == Vector3.ZERO:
-		return
-	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
-	var speed_along_wish := horizontal.dot(wish_dir)
-	var ceiling := minf(config.pawn.air_speed, maxf(speed_cap(), speed_along_wish))
-	var headroom := ceiling - speed_along_wish
-	if headroom <= 0.0:
-		return
-	# AirControl is a MULTIPLIER on ground acceleration (09 §9.1), not an
-	# acceleration in its own right: 61.44 * 0.025 = 1.536 m/s^2.
-	var air_accel: float = config.pawn.accel_rate * config.pawn.air_control
-	var candidate := horizontal + wish_dir * minf(air_accel * delta, headroom)
-	velocity.x = candidate.x
-	velocity.z = candidate.z
 
 ## DEBUG. Reports the EYE's real pose in the world, and how far it moved since
 ## the previous frame, for every frame of a reach or a hang IN WHICH IT MOVED.

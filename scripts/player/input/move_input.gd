@@ -29,7 +29,7 @@ var look := Vector2.ZERO
 var jump_pressed := false
 var jump_held := false
 ## True while the walk modifier is held: the keyboard's stand-in for a stick
-## pushed gently, read through Player.stick_amount(). There is no sprint key.
+## pushed gently (PawnConfig.walk_button_multiplier). There is no sprint key.
 var walk_held := false
 var crouch_held := false
 ## True only on the tick the crouch key transitioned from up to down.

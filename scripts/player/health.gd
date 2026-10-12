@@ -7,7 +7,7 @@ extends RefCounted
 #
 # Deliberately RefCounted, not a Node: nothing here touches the scene tree,
 # which is what lets it be tested without a physics world. Same stance as
-# FallTracker and SpeedEnergy, which it sits beside on Player.
+# FallTracker, which it sits beside on Player.
 
 ## Why the last damage was taken. Read to choose what a death looks like, so
 ## it survives on Player past the blow that ended things.

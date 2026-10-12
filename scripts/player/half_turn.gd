@@ -76,8 +76,3 @@ func advance(player, progress: float) -> void:
 	# key asks it to move, and not at all in third person with none held -- a
 	# turn in mid-air with the keys let go left it facing the old way.
 	player.pin_visual_yaw(wanted)
-	# The turn is SCRIPTED, so it is not a mouse swing and must not be billed
-	# as one. Without this, spinning while holding W flips the wish direction
-	# through half a circle and the turn tax charges for the whole thing --
-	# which would make Q the most expensive key on the board.
-	player.forgive_turn()

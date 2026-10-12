@@ -80,10 +80,8 @@ extends Resource
 ## Horizontal speed at which FOV reaches fov_max -- i.e. "top speed" in the
 ## fov_base/fov_max comment above. Defaults to ground_speed's OWN value,
 ## kept independently rather than reading PawnConfig.ground_speed directly:
-## wall running's own along-wall acceleration is capped by the energy-curve
-## speed_cap() (see WallRunMove's own maintenance step), which itself never
-## exceeds ground_speed, so foot speed alone already IS the practical top
-## speed a player can sustain. KEEP THIS IN SYNC WITH ground_speed -- a stale
+## foot speed under the AccelCurve tops out at ground_speed, so it already IS
+## the practical top speed a player can sustain. KEEP THIS IN SYNC WITH ground_speed -- a stale
 ## value here means FOV never actually reaches fov_max under ordinary
 ## running, silently breaking the "105 at top speed" claim above.
 @export var fov_speed_ref: float = 7.2

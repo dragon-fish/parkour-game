@@ -3,25 +3,10 @@ extends ParkourTest
 # The research's own checklist (10 §10.4), reduced to what a headless test can
 # actually decide. Whether it FEELS right is not in here and cannot be.
 
-func test_1_top_speed_needs_more_than_five_seconds_of_running() -> void:
-	var pawn := PawnConfig.new()
-	var energy := SpeedEnergy.new(pawn)
-	for i in 300:
-		energy.accumulate(1.0 / 60.0, SpeedEnergy.SPRINT)
-	assert_true(energy.cap() < pawn.ground_speed - 0.05, \
-		"five seconds of running already reached top speed")
-
 func test_2_air_speed_is_effectively_uncapped_and_air_control_is_tiny() -> void:
 	var pawn := PawnConfig.new()
 	assert_gt(pawn.air_speed, pawn.ground_speed * 3.0, "air speed is capped near ground speed")
 	assert_true(pawn.accel_rate * pawn.air_control < 2.0, "air control is not almost nothing")
-
-func test_3_turning_has_a_continuous_cost() -> void:
-	var pawn := PawnConfig.new()
-	var energy := SpeedEnergy.new(pawn)
-	energy.energy = 7.0
-	energy.spend_turn(deg_to_rad(5.0), 1.0 / 60.0)
-	assert_true(energy.energy < 7.0, "a small turn was free")
 
 func test_5_a_key_move_spans_at_least_three_times() -> void:
 	var cfg := MovementConfig.new().wallrun_jump

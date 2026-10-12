@@ -8,9 +8,8 @@ extends Resource
 
 @export_group("Locomotion")
 ## [ME:CONFIRMED 02 §2.3] GroundSpeed = 720 uu/s.
-## This is the CEILING of the speed-energy curve (02 §2.1), not a direct
-## target speed. Read only by SpeedEnergy.cap() -- every move asks
-## Player.speed_cap() instead of this field directly.
+## This is the CEILING of the speed curve (02 §2.1), not a direct target
+## speed: the ported acceleration reads it (PawnAcceleration.Params).
 @export var ground_speed: float = 7.2
 ## [ME:CONFIRMED 02 §2.3] AirSpeed = 2400 uu/s. Essentially uncapped (3.3x
 ## GroundSpeed) -- the defence against an air-control exploit is air_control
@@ -39,11 +38,12 @@ extends Resource
 ## Nothing limits the speed; the CEILING slides down, over about 2.6 s
 ## against speed_energy_deceleration_time's 3.0, and stops where every other
 ## drain stops -- at the energy that buys speed_max_base_velocity, 4.0 m/s,
-## which is 14.4 km/h. See Player._update_speed_energy().
+## which is 14.4 km/h. In the port that is GetWalkAcceleration's decay of
+## SpeedSprintEnergy while the input points across the facing.
 ##
-## An earlier version of this file declared a lateral_speed of 4.0 and
-## clamped the speed to it. It produced the right endpoint and the wrong
-## curve, and it hid the fact that 14.4 was a number the model already had.
+## DO NOT declare a lateral_speed of 4.0 and clamp the speed to it: it gives
+## the right endpoint and the wrong curve, and 14.4 is a number the model
+## already has.
 
 ## Half-angle of the arc, in degrees, inside which the full ground speed is
 ## available. 45 makes the arc 90 degrees wide: straight ahead and both
@@ -56,7 +56,6 @@ extends Resource
 ## halved it. [ME:CONFIRMED emulated N2 §2] the falling acceleration bound is
 ## accel_rate * air_control = 1.536 m/s^2, which the falling integrator doubles;
 ## at ground_speed and above it is 0.01 m/s^2 (PawnPhysics.falling_accel_bound).
-## Player.air_accelerate() is the moves not yet ported's own reading of it.
 @export var air_control: float = 0.025
 ## The world's gravity as the original configures it: DefaultGravityZ = -800
 ## uu/s^2. [ME:CONFIRMED emulated N2 §1] TdPawn::GetGravityZ returns this
@@ -78,16 +77,8 @@ extends Resource
 ## [ME:INFERRED] as a ROLE: the same section flags this discrete tier (and
 ## its four siblings) as more likely an animation-blend threshold than a true
 ## speed clamp. Read only by CharacterAnimator, as the slowest a walk clip is
-## scaled down to; Ctrl no longer caps the body here -- see walk_stick_amount.
+## scaled down to; the walk key scales the input by walk_button_multiplier.
 @export var walk_velocity: float = 0.5
-## How far a gamepad stick the walk modifier (Ctrl) stands in for, 0 to 1. The
-## body's top speed on the ground is ground_speed times this -- see
-## Player.ground_speed_limit() -- and the budget above it is dropped.
-##
-## [ME:INFERRED] the stick's travel limits the top speed in the original, and
-## a keyboard's walk key is a stick pushed gently; not measured. The amount is
-## a guess to tune by eye.
-@export var walk_stick_amount: float = 0.3
 ## TdPlayerInput.WalkButtonMultiplier: [ME:CONFIRMED decompile] the walk key
 ## scales aForward and aStrafe by this, after InputSize is taken -- so a walk
 ## never asks for a sprint (aForward 0.3 < 0.7).
@@ -181,36 +172,6 @@ extends Resource
 @export var floor_snap_speed: float = 2.0
 
 @export_group("Speed energy")
-## How the speed curve is read between its knots -- 0 = LINEAR, 1 = SMOOTH
-## (see speed_curve_smooth_fit).
-##
-## SMOOTH, and the original's play is why. Since accel_rate is far larger than
-## any segment's slope, the curve's slope IS the felt acceleration, so the
-## piecewise LINEAR form steps it 10.0 -> 2.0 -> 0.52 -> 0.20 m/s^2 at three
-## instants: four straight lines, where the original accelerates along one
-## curve. Each kink is small; stacked, they read as a different game.
-##
-## [ME:CONFIRMED 02 §2.1] the CDO's InterpCurveFloat declares CIM_Linear on
-## SpeedCurve_LightWeapon. Kept on record and deliberately not followed: the
-## play does not read as linear, and SMOOTH passes through every knot.
-@export_enum("LINEAR", "SMOOTH") var speed_curve_interp_mode: int = 1
-## (A, a, B, b) of v(E) = A*(1 - e^(-E/a)) + B*(1 - e^(-E/b)), the SMOOTH
-## mode's curve. Project-added, not from the original -- no evidence tag
-## applies to a value with no source uu. Fitted OFFLINE to the five confirmed
-## knots above with scipy.optimize.curve_fit; measured residual at every knot
-## is under 1e-4, i.e. this passes through all five confirmed points and only
-## differs BETWEEN them -- exactly the region the source data never
-## constrained. Peak divergence from LINEAR is +0.76 m/s at E = 0.17 (the
-## opening 0.4 s is noticeably punchier); the sum A + B = 7.556 overshoots
-## ground_speed, so SpeedEnergy.cap() clamps.
-##
-## IF THE KNOTS ABOVE ARE EVER EDITED, THESE MUST BE REFITTED:
-##   import numpy as np; from scipy.optimize import curve_fit
-##   t = np.array([0,.4,1,3.5,7.]); v = np.array([0,4.,5.2,6.5,7.2])
-##   f = lambda t,A,a,B,b: A*(1-np.exp(-t/a)) + B*(1-np.exp(-t/b))
-##   print(curve_fit(f, t, v, p0=[4,.3,3,3.], maxfev=200000)[0])
-## tests/test_speed_energy.gd's knot test is the guard against forgetting.
-@export var speed_curve_smooth_fit: Vector4 = Vector4(4.4222, 0.23199, 3.1335, 3.2169)
 ## [ME:CONFIRMED 02 §2.1] SpeedCurve_LightWeapon, an InterpCurveFloat with
 ## interpolation mode CIM_Linear. X is speed energy in seconds, Y is the
 ## ground speed ceiling. Held as the five confirmed knots rather than a
@@ -234,13 +195,11 @@ extends Resource
 ## both the observation and the field's existence.
 ##
 ## Read by the ported acceleration (PawnAcceleration) in the original's own
-## role, and by the legacy SpeedEnergy.spend_turn(), via energy_for_speed().
+## role.
 @export var speed_max_base_velocity: float = 4.0
 ## [ME:CONFIRMED 02 §2.1] the three factors below as VALUES. [ME:INFERRED] as
 ## a FORMULA: energy accrues at (active factor / sprint factor) per second,
-## so ordinary running is 30/30 = 1.0 -- not verified against bytecode. The
-## curve's 7.0 X-axis endpoint is approached, not reached at 7 s: see
-## energy_tail.
+## so ordinary running is 30/30 = 1.0 -- not verified against bytecode.
 ## [ME:COMMUNITY] independently reports 7-10 seconds from a standstill to
 ## full sprint, which corroborates the reading above.
 @export var speed_walk_velocity_acceleration_factor: float = 7.0
@@ -248,18 +207,6 @@ extends Resource
 @export var speed_sprint_velocity_acceleration_factor: float = 30.0
 ## [ME:CONFIRMED 02 §2.1] SpeedEnergyDecelerationTime = 3.
 @export var speed_energy_deceleration_time: float = 3.0
-## How close to the top of the curve, in energy, banking starts to slow: within
-## it, it banks in proportion to what is left, so the top is approached rather
-## than arrived at. See SpeedEnergy.accumulate().
-##
-## [ME:CONFIRMED] measured by the owner from a standstill, within 100 m of the
-## world origin: 25.78 km/h at about 7 s, very slow past 25.82, 25.92 on the
-## HUD at 10-12 s. Measure the original's speed near the origin only: its HUD
-## speed comes off 32-bit positions, and far out the quantised coordinates hold
-## the reading at 25.90-25.91 however long the run. [ME:DERIVED] 0.9 is what
-## puts 25.78 at 7 s on the SMOOTH curve; it then gives 25.82 at about 7.3 s
-## and a HUD 25.92 (rounded to 0.01) at about 10.5 s.
-@export var energy_tail: float = 0.9
 ## [ME:CONFIRMED 02 §2.1] SpeedEnergyDecelerationExponent = 0.5 as a VALUE.
 ## [ME:INFERRED] as a FORMULA: taken literally as the exponent in
 ## dE/dt = -k * E^0.5, with k solved from speed_energy_deceleration_time
@@ -270,54 +217,7 @@ extends Resource
 ## by GetSprintAcceleration as Velocity * 10 * |aTurn| / 32768, aTurn in
 ## rotator units per frame (PawnAcceleration.sprint()). DO NOT recalibrate it.
 @export var speed_turn_deceleration_factor: float = 10.0
-## PROJECT-ADDED, for the legacy SpeedEnergy model that the moves not yet
-## ported still read (SpeedEnergy.spend_turn()); not the original's turn
-## penalty, which is speed_turn_deceleration_factor above. Calibrated to a
-## stated behaviour: a full 180 degree reversal (pi radians) spends the whole
-## 7.0 energy budget, so cost per radian = 7.0 / pi = 2.2282. Goes with the
-## legacy model when the last of those moves is ported.
-@export var legacy_turn_energy_per_radian: float = 2.2282
-## PROJECT-ADDED, the legacy SpeedEnergy model's turn cost per degree-per-
-## second (SpeedEnergy.turn_rate_multiplier()). Goes with that model.
-@export var turn_rate_cost_curve: PackedVector2Array = PackedVector2Array([
-	Vector2(95.0, 0.239),
-	Vector2(225.0, 0.585),
-	Vector2(450.0, 1.0),
-	Vector2(1050.0, 1.327),
-])
-## PROJECT-ADDED GUARD, no counterpart in the original. Energy only accrues
-## while actually travelling at this fraction of the current cap. DO NOT
-## remove or zero this: holding the walk modifier for 7 seconds -- or
-## shoving into a wall for 7 seconds -- would bank a full energy budget and
-## hand over a 7.2 ceiling the instant the obstruction clears, contradicting
-## the premise that speed is an asset that has to be run for.
-@export var energy_accumulate_speed_ratio: float = 0.9
-## How fast a lost budget bleeds away, as the seconds it takes the excess over
-## what the body is doing to halve. Read by SpeedEnergy.bleed_toward_speed(),
-## for every loss the budget follows the body down (MoveConfig.
-## energy_follows_speed, the crouch and stick limits, a slide) -- not the
-## dodge, which drops at once.
-##
-## [ME:INFERRED] from play: a loss in the original is a very fast curve rather
-## than a cut, leaving a moment to catch part of it back. The number is a
-## guess to tune by eye; 0 makes every loss instant.
-@export var energy_loss_half_life: float = 0.15
-## How steep an incline has to be, degrees, before running up it bleeds the
-## budget down to speed_max_base_velocity -- the same decay, to the same floor,
-## as running across the facing (Player._update_speed_energy()).
-##
-## [ME:INFERRED] from play: climbing stairs in the original brings the flat
-## speed down to 14.4 km/h. Its stairs are slopes to the capsule. The angle is
-## a guess to tune by eye: steep enough that a gentle ramp is still run at full
-## pace.
-@export var uphill_bleed_angle_deg: float = 20.0
-## How many times faster the budget banks running DOWN a 45-degree incline;
-## 1 at uphill_bleed_angle_deg and shallower, in a straight line with the angle
-## between. See Player.downhill_bank_rate().
-##
-## [ME:INFERRED] from play: down a flight of stairs the original reaches top
-## speed in a very short time. The rate is a guess to tune by eye.
-@export var downhill_bank_rate_45: float = 6.0
+
 @export_group("Landing")
 ## [ME:CONFIRMED 03 §3.1] TdMove_Landing CDO, as fall HEIGHTS (not impact
 ## speeds): 200 / 300 / 530 uu. LandingMove measures them from
@@ -393,18 +293,6 @@ extends Resource
 ## past it drags the legs round at once, and the step above turns the rest.
 ## The owner: a little clipping beats seeing your own back. Third person is
 ## the opposite call and is not clamped -- see _drive_body_yaw().
-
-## How long Player.speed_cap() takes to slide to a new ceiling when a level
-## puts a SPEED_CAP status on, or lifts one. PROJECT-DEFINED: the original has
-## no counterpart, because it has no such status.
-##
-## The acceleration curve alone does NOT hide the change. accel_rate is 61.44,
-## so the body covers the 3.6 m/s from full sprint to a half cap in 0.06 s --
-## about three frames, which the eye reads as a cut rather than a slow-down.
-## What is eased here is the CEILING; the body then chases it with the same
-## ground_accelerate() it always uses, so nothing about ordinary acceleration
-## changes and both endpoints are exactly what they were.
-@export var speed_cap_blend_time: float = 0.3
 
 ## How long after a hazard's hit, or after a landing lockout releases, the
 ## player cannot be staggered again. PROJECT-DEFINED: the original's wire

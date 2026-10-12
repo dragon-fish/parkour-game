@@ -1,7 +1,7 @@
 extends ParkourTest
 
 # Pure logic, no physics world -- StatusList owns no node and does no queries,
-# the same stance as FallTracker and SpeedEnergy.
+# the same stance as FallTracker.
 
 func _spec(effect: int, seconds: float = INF, amount: float = 0.0, \
 		subject: StringName = &"") -> StatusSpec:

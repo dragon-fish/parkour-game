@@ -199,10 +199,14 @@ func _process(delta: float) -> void:
 			"  FOLDED" if player.current_capsule_height() < player.standing_height() - 0.01 else ""],
 		"last land  %.2f m/s" % player.last_landing_speed,
 		"health     %s" % _health_line(),
-		# The two speed layers, side by side. A cap far below the curve's own
-		# ceiling means the turn tax has been eating energy; a speed far below
-		# the cap means something else is holding the body back.
-		"energy     %.2f  -> cap %.2f m/s" % [player.speed_energy.energy, player.speed_cap()],
+		# The ported acceleration's own state: SpeedSprintEnergy (speed above
+		# the base velocity, rewritten every sprint tick) and what the AccelCurve
+		# pushes with at the current speed. A speed far below what the curve
+		# allows means a turn penalty or the physics, not the curve, is holding
+		# the body back.
+		"energy     %.2f  -> accel %.2f m/s^2" % [player.sprint_energy,
+			PawnAcceleration.eval_linear(player._acceleration_params().accel_curve,
+				player.horizontal_speed())],
 		"wall side  %s" % _wall_side_text(),
 		"wall ahead %s" % _wall_ahead_text(),
 		"look       %s" % _look_text(),
