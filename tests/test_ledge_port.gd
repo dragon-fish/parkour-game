@@ -398,6 +398,107 @@ func test_the_beam_forces_first_person_until_the_balance_is_lost() -> void:
 		_extra.clear()
 		await step(1)
 
+# --- the ledge walk's presentation (this project's) -----------------------------------
+
+## A ledge along X with the wall at -Z (front() faces -Z, so WallNormal is +Z):
+## the pawn backs onto it facing +Z, Godot yaw PI. The body walks up to it
+## facing the wall, yaw 0.
+func _ledge_walk(player: Player, third: bool) -> LedgeWalkMove:
+	player.camera_rig.third_person = third
+	var y: float = player.global_position.y
+	var line: InterestLine = _line(InterestLine.Kind.LEDGE_WALK, Vector3(-5.0, y, 0.0), Vector3(5.0, y, 0.0))
+	await step(1)
+	_face(player, 0.0)
+	var ledge: LedgeWalkMove = player.move_manager.move_for(Move.LEDGE_WALK)
+	ledge.volume = line
+	player.move_manager.set_move(Move.LEDGE_WALK)
+	await step(60)
+	assert_eq(player.move_manager.current_name, Move.LEDGE_WALK, "test setup: not on the ledge")
+	return ledge
+
+func _yaw_off(a: float, b: float) -> float:
+	return absf(rad_to_deg(wrapf(a - b, -PI, PI)))
+
+func _clear_world() -> void:
+	TestWorld.teardown(_world)
+	_world = {}
+	for node in _extra:
+		node.queue_free()
+	_extra.clear()
+	await step(1)
+
+## The pawn backs onto the wall in both views (the original's); the MODEL and
+## the camera face the wall in third person, and the view is held round the
+## wall there rather than pulled off it.
+func test_the_third_person_ledge_walk_faces_the_wall() -> void:
+	for third in [false, true]:
+		var player: Player = await _player()
+		await _ledge_walk(player, third)
+		assert_lt(_yaw_off(player.pawn_yaw, PI), 2.0, "the pawn does not back onto the wall")
+		var model_wanted: float = 0.0 if third else PI
+		assert_lt(_yaw_off(player.visual_yaw(), model_wanted), 5.0,
+			"the model faces %.0f, not %.0f (third person %s)"
+				% [rad_to_deg(player.visual_yaw()), rad_to_deg(model_wanted), third])
+		assert_lt(_yaw_off(player.rotation.y, model_wanted), 60.0,
+			"the view was not held round the model's facing (third person %s)" % third)
+		await _clear_world()
+
+## D goes to the screen's right in both views: the model's own right, which is
+## the pawn's left while the model faces the wall.
+func test_d_shuffles_to_the_models_right_in_both_views() -> void:
+	for third in [false, true]:
+		var player: Player = await _player()
+		await _ledge_walk(player, third)
+		var model_right: Vector3 = Basis(Vector3.UP, player.visual_yaw()) * Vector3.RIGHT
+		var before: Vector3 = player.global_position
+		var input: ScriptedInputSource = _world["input"]
+		input.hold_move(1.0, 0.0)
+		await step(30)
+		input.hold_move(0.0, 0.0)
+		var moved: Vector3 = player.global_position - before
+		assert_gt(moved.dot(model_right), 0.05,
+			"D did not move the body to the model's right (third person %s, %.2f m)" % [third, moved.dot(model_right)])
+		await _clear_world()
+
+## Switching views mid-ledge turns the model round in place over turn_time,
+## with no travel meanwhile.
+func test_switching_views_mid_ledge_turns_the_model_round() -> void:
+	var player: Player = await _player()
+	var ledge: LedgeWalkMove = await _ledge_walk(player, true)
+	assert_lt(_yaw_off(player.visual_yaw(), 0.0), 5.0, "test setup: the model does not face the wall")
+	player.camera_rig.third_person = false
+	await step(2)
+	assert_true(ledge.is_turning(), "the view change did not start a turn")
+	var before: Vector3 = player.global_position
+	var input: ScriptedInputSource = _world["input"]
+	input.hold_move(1.0, 0.0)
+	await step(10)
+	assert_lt(player.global_position.distance_to(before), 0.01, "the body travelled while turning round")
+	input.hold_move(0.0, 0.0)
+	await step(int(ledge._ledge_cfg().turn_time * 60.0) + 10)
+	assert_false(ledge.is_turning(), "the turn never ended")
+	assert_lt(_yaw_off(player.visual_yaw(), PI), 5.0, "the model did not turn round to back onto the wall")
+
+## Third person: the head watches the way the body last shuffled, and the
+## ledge's own pitch; first person leaves the head to the view.
+func test_the_third_person_head_watches_the_shuffle() -> void:
+	for third in [false, true]:
+		var player: Player = await _player()
+		var ledge: LedgeWalkMove = await _ledge_walk(player, third)
+		var input: ScriptedInputSource = _world["input"]
+		input.hold_move(1.0, 0.0)
+		await step(10)
+		input.hold_move(0.0, 0.0)
+		await step(10)
+		if third:
+			assert_false(is_nan(ledge.head_yaw_override()), "the head lost the shuffle once the key was let go")
+			assert_lt(ledge.head_yaw_override(), 0.0, "the head does not look to the model's right")
+			assert_false(is_nan(ledge.head_pitch_override()), "the head pitch is not the ledge's")
+		else:
+			assert_true(is_nan(ledge.head_yaw_override()), "the first-person head was turned off the view")
+			assert_true(is_nan(ledge.head_pitch_override()), "the first-person head was pitched off the view")
+		await _clear_world()
+
 # --- the movement-volume spline ------------------------------------------------------
 
 ## [ME:CONFIRMED decompile 0x012a9490 / 0x012a9580] The spline is a quadratic
@@ -658,9 +759,6 @@ func test_a_grab_type_change_keeps_the_strafe_where_it_was() -> void:
 	assert_almost_eq(now.sequence_time(), 0.4, 0.001, "the new strafe started over")
 
 # --- the model follows the pawn (this project's presentation) -------------------------
-
-func _yaw_off(a: float, b: float) -> float:
-	return absf(rad_to_deg(wrapf(a - b, -PI, PI)))
 
 ## A hang reached with no key held squares the MODEL to the wall, not only the
 ## pawn: "not following the camera" is the rule for a body standing about,

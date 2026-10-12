@@ -4197,9 +4197,16 @@ func _controller_tick(delta: float, input: MoveInput) -> void:
 		acceleration = _player_balance_walk_move(delta)
 	elif state == Move.CS_PLAYER_LEDGE_WALKING:
 		# PlayerLedgeWalking.ProcessMove: a strafe past 0.6 is a shimmy action,
-		# no acceleration, the jump keys and no crouch.
+		# no acceleration, the jump keys and no crouch. The strafe is the one
+		# the ledge walk's presentation reads into the pawn's frame
+		# (LedgeWalkMove.presented_strafe(): mirrored while the model faces the
+		# wall, the third-person W/S assist).
 		if not root_motion_active:
-			var strafe: float = a_strafe * 10.0
+			var pawn_strafe: float = a_strafe
+			var ledge = move_manager.current_move()
+			if ledge != null and ledge.has_method(&"presented_strafe"):
+				pawn_strafe = ledge.presented_strafe(a_strafe, a_forward)
+			var strafe: float = pawn_strafe * 10.0
 			var action: int = Move.MA_NONE
 			if strafe > 6.0:
 				action = Move.MA_SHIMMY_RIGHT

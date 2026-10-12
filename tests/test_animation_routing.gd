@@ -499,6 +499,32 @@ func test_the_ledge_shuffles_sideways() -> void:
 	assert_eq(String(animator._target_animation()), "Idle",
 		"standing still on a ledge asked for '%s'" % String(animator._target_animation()))
 
+func test_a_ledge_turning_round_plays_the_packs_half_turn() -> void:
+	# The turn's own state is poked, the way the shuffle is above.
+	var animator: CharacterAnimator = await _animator_with(
+		[&"Turn180_L", &"Turn180_R", &"Walk_L", &"Walk_R", &"Idle"])
+	var player: Player = _world["player"]
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	ledge.volume = _line_under(player, InterestLine.Kind.LEDGE_WALK)
+	player.move_manager.start(Move.LEDGE_WALK)
+	ledge._turning = true
+	ledge._turn_sign = -1.0
+	assert_eq(String(animator._target_animation()), "Turn180_R",
+		"turning right on a ledge asked for '%s'" % String(animator._target_animation()))
+	ledge._turn_sign = 1.0
+	assert_eq(String(animator._target_animation()), "Turn180_L",
+		"turning left on a ledge asked for '%s'" % String(animator._target_animation()))
+	assert_true(Player.SCRIPTED_MOVE_CLIPS.has(&"Turn180_L") and Player.SCRIPTED_MOVE_CLIPS.has(&"Turn180_R"),
+		"the turn clips are not routed onto a scripted slot")
+	ledge._turning = false
+	ledge.strafe_factor = 1.0
+	assert_eq(String(animator._target_animation()), "Walk_R",
+		"the shuffle did not come back once the turn was over")
+	# Facing the wall, the pawn's right is the model's left.
+	ledge._faces_wall = true
+	assert_eq(String(animator._target_animation()), "Walk_L",
+		"a model facing the wall shuffled in the pawn's frame ('%s')" % String(animator._target_animation()))
+
 func test_both_fall_back_when_the_pack_is_absent() -> void:
 	# The chain still degrades: a body with only the fox's six clips uses
 	# `idle` rather than standing on the default pose.

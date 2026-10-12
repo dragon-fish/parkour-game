@@ -1585,6 +1585,15 @@ func _target_animation() -> StringName:
 			# sidestep, which is what shuffling a ledge with the back to the
 			# wall is.
 			var ledge = player.move_manager.move_for(Move.LEDGE_WALK)
+			# TURNING ROUND on a view change: the pack's own half turn, on the
+			# side the model pivots to, fitted to LedgeWalkConfig.turn_time
+			# through scripted_duration(). Both turn clips are in
+			# Player.SCRIPTED_MOVE_CLIPS, so _route() puts them on a scripted
+			# slot like any other one-shot.
+			if ledge != null and ledge.is_turning():
+				var wanted: StringName = ledge.turn_clip()
+				var other: StringName = &"Turn180_L" if wanted == &"Turn180_R" else &"Turn180_R"
+				return _first_available([wanted, other, &"Idle", &"idle"])
 			var dir: int = ledge.shuffle_direction() if ledge != null else 0
 			if dir < 0:
 				return _first_available([&"Walk_L", &"Walk", &"idle"])
