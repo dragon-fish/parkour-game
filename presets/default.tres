@@ -182,14 +182,12 @@ check_for_vault_over = true
 
 [sub_resource type="Resource" id="Resource_ieasd"]
 script = ExtResource("21_t30b4")
-friction_modifier = 0.05
 redo_move_time = 0.15
 min_look_constraint = Vector3(-1.246165, -1.5707964, -3.1415927)
-max_look_constraint = Vector3(1.246165, 0, 3.1415927)
+max_look_constraint = Vector3(1.246165, 1.5707964, 3.1415927)
 constrain_look = true
 absolute_yaw_constraint = true
 allows_turn = false
-mirror_yaw_by_wall_side = true
 
 [sub_resource type="Resource" id="Resource_ix5t5"]
 script = ExtResource("22_ebalx")

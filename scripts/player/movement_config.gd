@@ -48,3 +48,7 @@ extends Resource
 @export var ledge_walk: LedgeWalkConfig = LedgeWalkConfig.new()
 @export var spring_board: SpringBoardConfig = SpringBoardConfig.new()
 @export var dodge_jump: DodgeJumpConfig = DodgeJumpConfig.new()
+@export var wallrun_dodge_jump: WallrunDodgeJumpConfig = WallrunDodgeJumpConfig.new()
+@export var wall_climb_dodge_jump: WallClimbDodgeJumpConfig = WallClimbDodgeJumpConfig.new()
+@export var wall_climb_180_turn_jump: WallClimb180TurnJumpConfig = WallClimb180TurnJumpConfig.new()
+@export var melee_wallrun: MeleeWallrunConfig = MeleeWallrunConfig.new()

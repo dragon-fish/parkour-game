@@ -410,10 +410,14 @@ func start_new_physics(dt: float, iterations: int) -> void:
 			phys_falling(dt, iterations)
 		Move.PHYS_FLYING:
 			phys_flying(dt, iterations)
+		Move.PHYS_WALL_RUNNING:
+			phys_wall_running(dt, iterations)
+		Move.PHYS_WALL_CLIMBING:
+			phys_wall_climbing(dt, iterations)
 
 ## ATdPawn::setPhysics. [ME:CONFIRMED decompile N2 §4] Entering Falling stamps
-## EnterFallingHeight with the body's centre height. Leaving Walking clears the
-## ledge timer.
+## EnterFallingHeight with the body's centre height. Leaving the wall modes
+## ends the wall contact (bIsWallWalking).
 func set_physics(mode: int) -> void:
 	if mode == pawn.physics:
 		return
@@ -421,6 +425,8 @@ func set_physics(mode: int) -> void:
 		pawn.enter_falling_height = pawn.global_position.y
 	if mode != Move.PHYS_WALKING:
 		pawn.base = null
+	if pawn.physics == Move.PHYS_WALL_RUNNING or pawn.physics == Move.PHYS_WALL_CLIMBING:
+		pawn.is_wall_walking = false
 	pawn.physics = mode
 
 ## ATdPawn::physWalking. [ME:CONFIRMED decompile N1 §2]
@@ -1017,6 +1023,271 @@ func phys_flying(dt: float, _iterations: int) -> void:
 	if dt > 0.0 and not _just_teleported and not _recovered and pawn.collide_world:
 		pawn.velocity = (pawn.global_position - old_location) / dt
 	pawn.set_grounded(false)
+
+# --- the wall modes -------------------------------------------------------------
+#
+# [ME:CONFIRMED emulated N3 §1, §2.6, §2.7, §3.4] physWallRunning (12) and
+# physWallClimbing (13), with their blocked-move responses. Floor holds the
+# wall's normal in both. The order of every event against every physics change
+# is the original's, and so are the quirks: the loop runs on after a response
+# changed the physics, the Floor read back after the stick move is that move's
+# own hit (a stick that touches nothing leaves Floor zero and the next frame
+# falls), a fall re-simulates the WHOLE frame in the falling physics, and the
+# climb ends on V = 2 Vnew - V0, which doubles every velocity change.
+
+## TdPawn.MaxWallStepHeight: how far the wall physics steps over things and
+## pushes into the wall. 35 uu.
+const MAX_WALL_STEP_HEIGHT := 35.0 * UU
+## How far ahead along the velocity the wall run looks for its wall.
+const WALL_RUN_PROBE_AHEAD := 35.0 * UU
+
+## The CalcVelocity both wall modes start with: no friction on the vertical,
+## a speed bound of GroundSpeed x 4 that never binds, and the move's LIVE
+## FrictionModifier as the friction itself.
+func _wall_calc_velocity(dt: float) -> void:
+	var p: PawnConfig = pawn.config.pawn
+	var move = pawn.move_manager.current_move()
+	var friction: float = move.live_friction_modifier() if move != null else 1.0
+	var speed_modifier: float = move.current_config().speed_modifier \
+		if move != null and move.current_config() != null else 1.0
+	var accel_dir: Vector3 = safe_normal(pawn.acceleration)
+	var r: Array = calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt, p.ground_speed * 4.0,
+		friction, false, pawn.mobility_multiplier() * speed_modifier, p.accel_rate,
+		p.braking_friction_strength, true, false, false, pawn.facing())
+	pawn.velocity = r[0]
+	pawn.acceleration = r[1]
+
+static func _wall_sub_tick(remaining: float) -> float:
+	return minf(remaining * 0.5, MAX_SUB_STEP) if remaining > MAX_SUB_STEP else remaining
+
+static func _normalised(v: Vector3) -> Vector3:
+	var sq: float = v.length_squared()
+	return v / sqrt(sq) if sq > 1e-8 else v
+
+## ATdPawn::physWallRunning (0x012bba30).
+func phys_wall_running(dt: float, iterations: int) -> void:
+	var p: PawnConfig = pawn.config.pawn
+	var walkable: float = p.walkable_floor_z
+	var start_yaw: int = UE.dir_yaw(pawn.floor_normal)
+	if is_nearly_zero(pawn.floor_normal, 1e-4):
+		pawn.falling_off_wall()
+		if pawn.physics == Move.PHYS_WALL_RUNNING:
+			set_physics(Move.PHYS_FALLING)
+		start_new_physics(dt, iterations)
+		return
+	_wall_calc_velocity(dt)
+	iterations += 1
+	_just_teleported = false
+	_recovered = false
+	var vm: Vector3 = pawn.velocity
+	var old_location: Vector3 = pawn.global_position
+	var remaining: float = dt
+	var step := Vector3.UP * MAX_WALL_STEP_HEIGHT
+	var stick: float = MAX_WALL_STEP_HEIGHT + STEP_FUDGE
+	var move = pawn.move_manager.current_move()
+	var r: float = pawn.collision_radius()
+	var h: float = pawn.collision_half_height()
+	while remaining > 0.0 and iterations < MAX_ITERATIONS:
+		iterations += 1
+		var tick: float = _wall_sub_tick(remaining)
+		remaining -= tick
+		var delta: Vector3 = vm * tick
+		var hit: Dictionary = move_actor(delta)
+		if float(hit["time"]) < 1.0:
+			if not pawn.is_wall_walking:
+				var n: Vector3 = hit["normal"]
+				if n.y > walkable:
+					# A slope or a step in the way: up, the rest, down.
+					move_actor(step)
+					var over: Dictionary = move_actor(delta * (1.0 - float(hit["time"])))
+					if (over["normal"] as Vector3).y < walkable and float(over["time"]) < 1.0:
+						n = over["normal"]
+					hit = move_actor(-step)
+				if n.y < walkable:
+					move_actor(step)
+					var along: Dictionary = move_actor(delta * (1.0 - float(hit["time"])))
+					if (along["normal"] as Vector3).y < walkable and float(along["time"]) < 1.0:
+						# First contact: the velocity loses its component into
+						# the wall, horizontally only.
+						var wall: Vector3 = along["normal"]
+						var into: float = pawn.velocity.dot(wall)
+						pawn.velocity.x -= into * wall.x
+						pawn.velocity.z -= into * wall.z
+						pawn.is_wall_walking = true
+						vm = pawn.velocity
+						pawn.reached_wall()
+						_just_teleported = true
+					move_actor(-step)
+			else:
+				_wall_run_blocked(delta * (1.0 - float(hit["time"])), hit)
+		if pawn.is_wall_walking or (move != null and move.move_active_time > 0.2):
+			var floor: Vector3 = pawn.floor_normal
+			var probe_start: Vector3 = pawn.global_position + safe_normal_2d(pawn.velocity) * WALL_RUN_PROBE_AHEAD
+			var probe_end: Vector3 = probe_start - floor * stick
+			var extent := Vector3(r * 0.25, h * 0.25, r * 0.25)
+			probe_start.y -= extent.y * 0.75
+			probe_end.y -= extent.y * 0.75
+			var line: Dictionary = box_trace(probe_end, probe_start, extent)
+			var found: bool = float(line["time"]) < 1.0
+			if not pawn.is_wall_walking:
+				if not found and pawn.physics == Move.PHYS_WALL_RUNNING:
+					_wall_run_fall(dt, iterations)
+					return
+			elif found:
+				var bend: Vector3 = line["normal"]
+				if floor.dot(bend) < 0.96 and bend.dot(delta) > 0.0:
+					_wall_run_fall(dt, iterations)
+					return
+				var held: Dictionary = move_actor(-floor * stick)
+				pawn.floor_normal = held["normal"]
+				if held["collider"] != null and held["collider"] != pawn.base:
+					_set_base(held["collider"])
+			elif pawn.physics == Move.PHYS_WALL_RUNNING:
+				_wall_run_fall(dt, iterations)
+				return
+	if pawn.physics != Move.PHYS_WALL_RUNNING:
+		return
+	# The pawn turns with a wall that curves.
+	var turn: int = UE.normalize_axis(UE.dir_yaw(pawn.floor_normal) - start_yaw)
+	pawn.pawn_yaw = UE.godot_yaw(UE.yaw_units(pawn.pawn_yaw) + turn)
+	var rebuilt: Vector3 = (pawn.global_position - old_location) / dt
+	if rebuilt.length_squared() < pawn.velocity.length_squared() and not _just_teleported \
+			and not _recovered and pawn.physics == Move.PHYS_WALL_RUNNING:
+		pawn.velocity = rebuilt
+
+## The wall run's way off its wall inside the physics: Falling, the event, and
+## the whole frame again in the falling physics.
+func _wall_run_fall(dt: float, iterations: int) -> void:
+	set_physics(Move.PHYS_FALLING)
+	pawn.falling_off_wall()
+	start_new_physics(dt, iterations)
+
+## The wall run's blocked move (0x012b3e50): a floor lands, a ceiling ends the
+## run, a face square to the wall is stepped round, a corner sharper than
+## about 66 degrees ends the run, a gentler inside corner turns the run onto
+## the new wall.
+func _wall_run_blocked(rest: Vector3, hit: Dictionary) -> void:
+	var floor: Vector3 = pawn.floor_normal
+	var into: Vector3 = -floor * MAX_WALL_STEP_HEIGHT
+	var n: Vector3 = hit["normal"]
+	if n.y > 0.707 and pawn.physics == Move.PHYS_WALL_RUNNING:
+		process_landed(n, 0.0, MAX_ITERATIONS)
+		set_physics(Move.PHYS_WALKING)
+		return
+	if n.y < -0.707 and pawn.physics == Move.PHYS_WALL_RUNNING:
+		_process_hit_wall(hit)
+		pawn.falling_off_wall()
+		set_physics(Move.PHYS_FALLING)
+		return
+	if floor.dot(n) < 0.1:
+		move_actor(-into)
+		hit = move_actor(rest)
+	if float(hit["time"]) < 1.0:
+		n = hit["normal"]
+		if n.dot(floor) < 0.4:
+			move_actor(into)
+			pawn.falling_off_wall()
+			set_physics(Move.PHYS_FALLING)
+			return
+		# An inside corner: the rest of the move turned into the new wall's
+		# frame.
+		var old: Vector3 = floor
+		pawn.floor_normal = n
+		var a: Vector3 = _normalised(UE.cross(n, old))
+		var b: Vector3 = _normalised(UE.cross(a, old))
+		var out: Vector3 = UE.cross(a, n) * rest.dot(b) + a * rest.dot(a) + n * rest.dot(old)
+		if rest.dot(out) >= 0.0:
+			_just_teleported = true
+			move_actor(out)
+	move_actor(into)
+
+## ATdPawn::physWallClimbing (0x012bcc00).
+func phys_wall_climbing(dt: float, iterations: int) -> void:
+	if is_nearly_zero(pawn.floor_normal, 1e-4) or pawn.velocity.y < 0.0:
+		_wall_climb_fall(dt, iterations)
+		return
+	var v0: Vector3 = pawn.velocity
+	_wall_calc_velocity(dt)
+	var vm: Vector3 = pawn.velocity
+	_just_teleported = false
+	_recovered = false
+	var old_location: Vector3 = pawn.global_position
+	var remaining: float = dt
+	var stick: float = MAX_WALL_STEP_HEIGHT + STEP_FUDGE
+	while remaining > 0.0 and iterations < MAX_ITERATIONS:
+		iterations += 1
+		var tick: float = _wall_sub_tick(remaining)
+		remaining -= tick
+		var delta: Vector3 = vm * tick
+		var hit: Dictionary = move_actor(delta)
+		if float(hit["time"]) < 1.0:
+			var n: Vector3 = hit["normal"]
+			if pawn.is_wall_walking:
+				_wall_climb_blocked(delta * (1.0 - float(hit["time"])), hit)
+			elif absf(n.y) < 0.2:
+				# First contact: the velocity projected onto the wall, keeping
+				# its vertical.
+				var projected: Vector3 = pawn.velocity - n * pawn.velocity.dot(n)
+				pawn.velocity.x = projected.x
+				pawn.velocity.z = projected.z
+				vm = pawn.velocity
+				_just_teleported = true
+				pawn.is_wall_walking = true
+				pawn.reached_wall()
+			else:
+				_wall_climb_fall(dt, iterations)
+				return
+		if pawn.is_wall_walking:
+			var floor: Vector3 = pawn.floor_normal
+			var line: Dictionary = box_trace(pawn.global_position - floor * stick, pawn.global_position,
+				pawn.collision_extent())
+			if float(line["time"]) >= 1.0:
+				_wall_climb_fall(dt, iterations)
+				return
+			if absf((line["normal"] as Vector3).y) > 0.2:
+				move_actor(-floor * stick)
+				if pawn.physics == Move.PHYS_WALL_CLIMBING:
+					set_physics(Move.PHYS_FALLING)
+				pawn.falling_off_wall()
+				start_new_physics(dt, iterations)
+				return
+			var held: Dictionary = move_actor(-floor * stick)
+			pawn.floor_normal = held["normal"]
+	if _just_teleported or _recovered or pawn.physics != Move.PHYS_WALL_CLIMBING:
+		return
+	var rebuilt: Vector3 = (pawn.global_position - old_location) / dt
+	pawn.velocity = rebuilt
+	if v0.y > rebuilt.y or v0.y >= 0.0:
+		pawn.velocity = rebuilt * 2.0 - v0
+
+func _wall_climb_fall(dt: float, iterations: int) -> void:
+	pawn.falling_off_wall()
+	if pawn.physics == Move.PHYS_WALL_CLIMBING:
+		set_physics(Move.PHYS_FALLING)
+	start_new_physics(dt, iterations)
+
+## The wall climb's blocked move (0x012b4550): something off the wall plane is
+## stepped round, away from the wall; if that is blocked too the climb is
+## over and the rise is gone. Otherwise the wall turns under the body.
+func _wall_climb_blocked(rest: Vector3, hit: Dictionary) -> void:
+	var floor: Vector3 = pawn.floor_normal
+	var away: Vector3 = floor * MAX_WALL_STEP_HEIGHT
+	if floor.dot(hit["normal"]) < 0.95:
+		move_actor(away)
+		var again: Dictionary = move_actor(rest)
+		if float(again["time"]) < 1.0 and floor.dot(again["normal"]) < 0.95:
+			move_actor(-rest * (1.0 - float(again["time"])))
+			move_actor(-away)
+			if pawn.physics == Move.PHYS_WALL_CLIMBING:
+				pawn.falling_off_wall()
+				set_physics(Move.PHYS_FALLING)
+			pawn.velocity.y = 0.0
+			return
+		hit = again
+	if float(hit["time"]) < 1.0 and floor.dot(hit["normal"]) < 0.95:
+		pawn.floor_normal = hit["normal"]
+		var turned: Vector3 = pawn.floor_normal
+		move_actor(rest - turned * turned.dot(rest))
 
 static func _flat_distance(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x - b.x, a.z - b.z).length()

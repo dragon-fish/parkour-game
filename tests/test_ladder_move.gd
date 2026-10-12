@@ -291,13 +291,12 @@ func _wallrun_catches_pipe(pipe_x: float) -> bool:
 	assert_eq(player.move_manager.current_name, Move.WALKING, \
 		"test setup: player did not settle onto the floor before the wall attach")
 
+	# Facing 30 degrees into the wall on the right and running, which is what
+	# the original's FindWallForward takes on a jump.
+	player.rotation.y = deg_to_rad(-30.0)
+	player.pawn_yaw = player.rotation.y
+	player.velocity = player.facing() * 6.0
 	input.press_jump()
-	await step(1)
-	assert_eq(player.move_manager.current_name, Move.JUMP, \
-		"test setup: the jump never sent the player airborne")
-	# Strafe-style approach along -Z, parallel to the wall's face -- same
-	# entry technique test_wall_run_entry.gd's own _attach_to_wall() uses.
-	player.velocity = Vector3(0.0, player.velocity.y, -7.0)
 	await step(1)
 	assert_eq(player.move_manager.current_name, Move.WALL_RUN, \
 		"test setup: the player never attached to the wall")

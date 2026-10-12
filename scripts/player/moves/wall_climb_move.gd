@@ -1,171 +1,206 @@
 class_name WallClimbMove
-extends AirborneMove
+extends PhysicsMove
 
-# Running straight at a wall and kicking vertically up it.
+# The original's TdMove_WallClimb, ported. [ME:CONFIRMED decompile N3 §3; the
+# native gate, the per-tick half and CheckDoubleJump ME:CONFIRMED emulated]
 #
-# Extends AirborneMove rather than Move, unlike its sibling WallRunMove, and
-# that is not stylistic: [ME:CONFIRMED 11 §11.2] TdMove_WallClimb sets
-# bCheckForGrab AND bCheckForVaultOver, so a climb has to keep probing for a
-# lip to catch or an obstacle to clear. probe_transition() already is that
-# probing, and inheriting it is how "kick up, catch the lip" stays one
-# continuous motion instead of two moves the player has to aim separately.
+# Entered only from CheckAutoMoves, after the hand-plant search found a wall
+# (or a ledge) ahead: the native gate wants the Up hint (forward held past
+# 0.8), the body rising and within 120 uu of the plant, and the CAMERA within
+# 33 degrees of straight into the wall. Not RedoMoveTime -- the script's
+# CanDoMove is never asked.
+#
+# The climb: the world's gravity until the wall is touched; then a launch of
+# sqrt(4 h g) for AddOnHeight h (approach speed and vertical speed buy it)
+# against WallClimbingGravity, the velocity kept on the wall plane and the
+# horizontal braked by 6 /s. The physics doubles every velocity change
+# (V = 2 Vnew - V0), so the climb rises exactly h and ends when the rise
+# stops. With a ledge found up the wall, a second kick (CheckDoubleJump)
+# carries the hands to it once the rise has slowed below 100 uu/s.
 
-## The wall's outward normal, refreshed every tick from the probe -- a climb
-## that loses its wall ends, so this is never stale.
-var _normal: Vector3 = Vector3.ZERO
-var _aborted: bool = false
-## Where the climb started, horizontally. Only max_drift consumes it.
-var _anchor: Vector2 = Vector2.ZERO
-## The height this climb ends at, fixed on entry. A climb travels a SET
-## DISTANCE; what a run-up buys is arriving sooner, not arriving higher.
-var _ceiling: float = 0.0
-
-func _query() -> Dictionary:
-	if player.probes == null:
-		return Probes.NO_WALL_AHEAD.duplicate()
-	return player.probes.wall_ahead_query(player.approach_direction())
-
-## How fast this climb goes up, given the run-up it started with.
-##
-## THE BASE IS DERIVED, NOT CHOSEN: it is exactly the speed at which a body
-## decelerating under the climb's own half gravity arrives at climb_height with
-## nothing left. A standing kick therefore always just makes it, whatever
-## climb_height and gravity_scale are later retuned to, and only the BONUS is a
-## knob anyone has to think about.
-##
-## Static and taking its inputs plainly, so the debug markers and the HUD can
-## show what a run-up is currently worth before the player commits to it.
-static func rise_speed(run_speed: float, cfg: WallClimbConfig, pawn: PawnConfig) -> float:
-	var climb_gravity: float = maxf(pawn.gravity * cfg.gravity_scale, 0.001)
-	var base: float = sqrt(2.0 * climb_gravity * maxf(climb_height_for(run_speed, cfg), 0.0))
-	var earned: float = clampf(run_speed / maxf(cfg.run_speed_limit, 0.001), 0.0, 1.0)
-	return base + cfg.rise_speed_bonus * earned
-
-## How high THIS climb goes, given the run-up it started with.
-##
-## ✅ Both ends measured in the original (see WallClimbConfig.climb_height and
-## climb_height_running); ⚠️ the line between them is assumed. Static and taking
-## its inputs plainly, for the same reason rise_speed() is: the debug markers
-## and the HUD show what a run-up is worth before the player commits to it, and
-## they must show the number the move will actually use.
-static func climb_height_for(run_speed: float, cfg: WallClimbConfig) -> float:
-	var earned: float = clampf(run_speed / maxf(cfg.run_speed_limit, 0.001), 0.0, 1.0)
-	return lerpf(cfg.climb_height, cfg.climb_height_running, earned)
+var has_reached_wall: bool = false
+var found_possible_hand_plant_flag: bool = false
+var performed_double_jump: bool = false
+var possible_edge_destination: Vector3 = Vector3.ZERO
+## The approach speed the climb was bought with: |V.xy| - JumpAddXY.
+var into_wall_climb_speed: float = 0.0
+## The take-off's feet height: the double jump reaches no more than 480 uu
+## above it.
+var ground_z_loc: float = 0.0
+## WallClimbingGravity as this climb has it: the world's until ReachedWall.
+var wall_climbing_gravity: float = 0.0
+## FrictionModifier, rewritten every tick: 0 until the wall is reached, then
+## WallClimbingVerticalFriction.
+var friction_modifier: float = 1.0
 
 func _init() -> void:
-	# [ME:CONFIRMED decompile] TdMove_WallClimb's PawnPhysics. This move still drives the
-	# body itself; the mode is what the original's checks and the fall height
-	# read while it runs.
+	super._init()
 	pawn_physics = PHYS_WALL_CLIMBING
+	controller_state = CS_PLAYER_WALL_WALKING
+	check_for_edge_in_vel_dir = true
 
+func is_ported() -> bool:
+	return true
+
+func uses_view_rotation() -> bool:
+	return true
+
+func live_friction_modifier() -> float:
+	return friction_modifier
+
+func _climb_cfg() -> WallClimbConfig:
+	return cfg as WallClimbConfig
+
+## The climb's rise for an approach at `into_speed` (|V.xy| - JumpAddXY) and a
+## vertical speed `vz` at contact: AddOnHeight, ReachedWall's formula. The
+## approach term is truncated to whole uu first, as the original's int is.
+static func add_on_height(into_speed: float, vz: float, c: WallClimbConfig, p: PawnConfig) -> float:
+	var over: float = maxi(int((into_speed - p.speed_max_base_velocity) / UU), 0) * UU
+	var by_speed: float = clampf(over / (c.add_on_speed_2d_max_limit - p.speed_max_base_velocity), 0.0, 1.0)
+	var by_rise: float = clampf(vz / c.add_on_speed_z_max_limit, 0.0, 1.0)
+	return c.add_on_speed_2d_height * by_speed + c.add_on_speed_z_height * by_rise
+
+## UTdMove_WallClimb's native gate (vt 0x128, 0x011f5000). [ME:CONFIRMED
+## emulated N3 §3.1] A level's block on the move is this project's addition.
+func can_do_move_native() -> bool:
+	var c: WallClimbConfig = _climb_cfg()
+	if player.statuses != null and player.statuses.is_move_blocked(WALL_CLIMB):
+		return false
+	if player.move_action_hint != MAH_UP:
+		return false
+	var l: Vector3 = player.global_position
+	var ledge: Vector3 = player.move_ledge_location
+	if Vector2(l.x - ledge.x, l.z - ledge.z).length_squared() \
+			> c.wall_climbing_max_distance_2d * c.wall_climbing_max_distance_2d:
+		return false
+	var h: float = player.collision_half_height()
+	if player.move_ledge_result == MoveTraces.LEDGE_TOP:
+		if (ledge.y - l.y) + h < c.min_wall_height:
+			return false
+		# A wall in front of the head: the top is not a ledge at hand height.
+		var start := Vector3(l.x, l.y + h - 64.0 * UU, l.z)
+		var forward: Vector3 = PawnPhysics.safe_normal_2d(player.facing())
+		var reach: float = MoveTraces.box_reach(player.move_normal, player.collision_radius()) + 8.0 * UU
+		var head: Dictionary = player.traces.trace(start + forward * reach, start)
+		if not head["hit"] or MoveTraces.excludes_foot_moves(head["actor"]):
+			return false
+	var v: Vector3 = player.velocity
+	if Vector2(v.x, v.z).length_squared() < c.wall_climbing_velocity_start_limit * c.wall_climbing_velocity_start_limit:
+		return false
+	if v.y <= 0.0:
+		return false
+	var view: Vector3 = Vector3(-sin(player.rotation.y), 0.0, -cos(player.rotation.y))
+	if PawnPhysics.safe_normal_2d(v).dot(view) < 0.0:
+		return false
+	if absf(PawnPhysics.safe_normal_2d(player.move_normal).dot(-view)) < cos(c.wall_climbing_vertical_start_angle):
+		return false
+	return true
+
+## TdMove.CanDoMove, which the way in never asks.
+func can_do_move() -> bool:
+	return td_can_do_move()
+
+## TdMove_WallClimb.StartMove.
 func enter(_previous: StringName) -> void:
-	_aborted = false
-	player.set_grounded(false)
-	_anchor = Vector2(player.global_position.x, player.global_position.z)
-	var wall: Dictionary = _query()
-	if not wall["valid"]:
-		_aborted = true
+	has_reached_wall = false
+	found_possible_hand_plant_flag = false
+	performed_double_jump = false
+	into_wall_climb_speed = player.horizontal_speed() - config.pawn.jump_add_xy
+	wall_climbing_gravity = absf(player.gravity_z())
+	# SetBase(MovementActor, MoveNormal): Floor is the wall's normal.
+	player.floor_normal = player.move_normal
+	if detect_possible_hand_plant():
+		found_possible_hand_plant()
+	ground_z_loc = player.last_jump_location.y - player.collision_half_height()
+	if into_wall_climb_speed < 100.0 * UU:
+		# Too slow to have reached the wall: drawn into it.
+		var suck: Vector3 = -player.move_normal * 400.0 * UU
+		player.velocity.x = suck.x
+		player.velocity.z = suck.z
+
+## TdMove_WallClimb.ReachedWall: the launch.
+func reached_wall() -> void:
+	var c: WallClimbConfig = _climb_cfg()
+	var height: float = add_on_height(into_wall_climb_speed, player.velocity.y, c, config.pawn)
+	wall_climbing_gravity = c.wall_climbing_gravity
+	player.velocity.y = sqrt(maxf(4.0 * height * wall_climbing_gravity, 0.01 * UU * UU))
+	has_reached_wall = true
+
+## UTdMove_WallClimb::DetectPossibleHandPlant (vt 0x12c). [ME:CONFIRMED
+## decompile N3 §3.3] The hand-plant search again from 215 uu up the wall;
+## MoveLedgeResult takes its answer every call.
+func detect_possible_hand_plant() -> bool:
+	var start: Vector3 = player.move_ledge_location + player.move_normal * player.collision_radius() \
+		+ Vector3.UP * 215.0 * UU
+	var hit: Dictionary = player.traces.find_auto_move_ledge(start, player.facing(),
+		MoveTraces.HAND_PLANT_CHECK_DISTANCE, true, edge_in_vel_dir())
+	player.move_ledge_result = hit["result"]
+	if hit["result"] == MoveTraces.LEDGE_TOP:
+		possible_edge_destination = hit["ledge_location"]
+		return true
+	return false
+
+## TdMove_WallClimb.FoundPossibleHandPlant.
+func found_possible_hand_plant() -> void:
+	look_at_ledge(possible_edge_destination)
+	found_possible_hand_plant_flag = true
+
+## UTdMove_WallClimb::CheckDoubleJump (vt 0x130). [ME:CONFIRMED emulated N3
+## §3.3] Once, with a ledge found within 480 uu of the take-off's feet and the
+## rise slowed below MinUpwardsVelocityToDoubleJump: the speed that carries
+## the head 4 uu past the ledge.
+func check_double_jump() -> void:
+	if performed_double_jump or not found_possible_hand_plant_flag:
 		return
-	_normal = wall["normal"]
+	if player.velocity.y >= _climb_cfg().min_upwards_velocity_to_double_jump:
+		return
+	if possible_edge_destination.y - ground_z_loc >= 480.0 * UU:
+		return
+	var head: float = player.global_position.y + player.collision_half_height()
+	var x: float = (possible_edge_destination.y - head + 4.0 * UU) * wall_climbing_gravity * 4.0
+	player.velocity.y = sqrt(maxf(x, 0.01 * UU * UU))
+	player.acceleration = PawnPhysics.safe_normal(player.velocity)
+	performed_double_jump = true
 
-	# Priced BEFORE the run-up is spent: the friction below is about to take it
-	# away, and pricing afterwards would read every climb as a standing one.
-	#
-	# maxf, not assignment: a player already rising faster than the kick is
-	# worth keeps what they had. Taking the larger of the two is what stops a
-	# well-timed early kick from being PUNISHED by touching the wall.
-	var run_up: float = player.horizontal_speed()
-	player.velocity.y = maxf(player.velocity.y,
-		rise_speed(run_up, cfg, config.pawn))
-	# Priced off the SAME run-up rise_speed() was priced off, two lines up --
-	# read before the friction below spends it, or a climb would be given the
-	# ascent rate of a running kick and the ceiling of a standing one.
-	#
-	# FROM WHERE CONTACT HAPPENS, NOT FROM THE GROUND, and DO NOT "fix" this.
-	# It means the budget is a fixed increment above wherever the wall was
-	# touched, so touching it later reaches higher: pressed against a wall,
-	# W and space together lifts about 1.3 m, while jumping first and pressing
-	# W near the apex lands the same increment on top of the jump arc and
-	# reaches about 2.5 m. Keystroke order changes the result, which reads
-	# exactly like a bug.
-	#
-	# [ME:CONFIRMED] The original does this too -- both halves measured by the
-	# owner: a standing climb finishes about 1 m below a running one, and
-	# jump-then-W goes higher there as well. Shot side by side against one wall
-	# in the original, the two finishes are a full air-conditioning unit apart,
-	# which is the cheapest way to re-check this: same wall, same unit, press
-	# the two orders. The split this project derived
-	# (SZD's 2.71 minus the 1.24 m of jump arc under the contact point, leaving
-	# 1.47 m of climb -- see WallClimbConfig) turns out to describe the
-	# original's actual mechanism, glitch included, rather than merely fitting
-	# its numbers.
-	#
-	# So a ceiling measured from the takeoff instead would be more consistent
-	# AND less faithful. That trade is already decided: this project rebuilds
-	# what was measured, not what would be tidier.
-	_ceiling = player.global_position.y + climb_height_for(run_up, cfg)
+## The wall climb's per-tick native (vt 0x118, 0x012071f0). [ME:CONFIRMED
+## emulated N3 §3.3]
+func pre_physics(delta: float) -> void:
+	friction_modifier = 0.0
+	super.pre_physics(delta)
+	if player.physics == PHYS_FALLING:
+		player.move_manager.set_move(FALLING)
+		return
+	if not found_possible_hand_plant_flag and detect_possible_hand_plant():
+		found_possible_hand_plant()
+	check_double_jump()
+	if has_reached_wall:
+		var floor: Vector3 = player.floor_normal
+		player.velocity -= floor * player.velocity.dot(floor)
+		friction_modifier = _climb_cfg().wall_climbing_vertical_friction
+	player.acceleration = Vector3(0.0, -wall_climbing_gravity, 0.0)
 
-	# The run-up's forward momentum is spent on the wall, not carried through
-	# it. Without this the body keeps pressing into the surface and the slide
-	# resolution converts the leftover into a shove along the wall.
-	var into: float = player.velocity.dot(_normal)
-	if into < 0.0:
-		player.velocity -= _normal * into
+## TdMove_WallClimb.UpdateViewRotation: the base, then the view drawn up to
+## the ledge found up the wall, or to a point 100 uu over the eyes at the wall.
+func update_view_rotation(view: Vector2i, dt: float, delta_rot: Vector2i, now: float) -> Array:
+	var result: Array = super.update_view_rotation(view, dt, delta_rot, now)
+	if found_possible_hand_plant_flag:
+		look_at_ledge(possible_edge_destination)
+	else:
+		var target: Vector3 = player.global_position - player.move_normal * player.collision_radius()
+		target.y += Player.BASE_EYE_HEIGHT + 100.0 * UU
+		look_at_ledge(target)
+	return result
 
-func physics_update(delta: float, _input: MoveInput) -> StringName:
-	if _aborted:
-		return FALLING
-
-	var wall: Dictionary = _query()
-	if not wall["valid"]:
-		return FALLING
-	_normal = wall["normal"]
-
-	# A lip to catch or an obstacle to clear beats carrying on up a blank wall.
-	# [ME:CONFIRMED] bCheckForGrab / bCheckForVaultOver, see WallClimbConfig's
-	# _init().
-	var probed := probe_transition()
-	if probed != KEEP:
-		return advance_and_hand_off(probed)
-
-	# [ME:CONFIRMED] WallClimbingVerticalFriction. Applied to the horizontal
-	# plane only: the whole move is about converting that horizontal run into
-	# height, and the vertical component is gravity's business two lines down.
-	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	horizontal = horizontal.move_toward(Vector3.ZERO, cfg.horizontal_friction * delta)
-	player.velocity.x = horizontal.x
-	player.velocity.z = horizontal.z
-
-	player.velocity.y -= config.pawn.gravity * cfg.gravity_scale * delta
-	player.velocity -= _normal * cfg.wall_stick_force
-
-	player.move_and_slide()
-	player.set_grounded(player.is_on_floor())
-	if player.grounded:
-		return WALKING
-	# The climb is over the moment it stops going up. There is no downward
-	# phase: sliding back down a wall is not a thing the original does, and
-	# half-gravity on the way down would read as floating.
-	if player.velocity.y <= 0.0:
-		return FALLING
-	# ...or the moment it has gone as far as a climb goes, WITH NOTHING LEFT
-	# OVER.
-	#
-	# DO NOT hand the residual on past the top: a standing climb rises 1.30 m
-	# and so does a running one, off a higher contact point -- carrying a fast
-	# kick's leftover speed past that would read as "speed buys height", and
-	# the measurement rules that out. Arithmetic agrees -- preserved through
-	# the ceiling, the jump's own 6.3 m/s would still be doing 4.35 m/s there
-	# and coast another 0.59 m, which is half again as much climb as the
-	# measurement allows.
-	#
-	# So the climb ends at its apex, which is what "the height does not depend
-	# on speed" has to mean if speed is also to raise the rate of ascent. Speed
-	# still gets you there sooner; it does not get you further.
-	if player.global_position.y >= _ceiling:
-		player.velocity.y = 0.0
-		return FALLING
-	var drift: float = Vector2(player.global_position.x, player.global_position.z).distance_to(_anchor)
-	if drift > cfg.max_drift:
-		return FALLING
-	return KEEP
+## TdMove_WallClimb.LookAtLedge: a ledge above the eyes is looked up at, in 0.2
+## s; the yaw goes square to the wall only when the pawn is already within
+## 4096 units of it. Anything lower ends the look.
+func look_at_ledge(ledge_location: Vector3) -> void:
+	var eye: Vector3 = player.global_position + Vector3.UP * Player.BASE_EYE_HEIGHT
+	if ledge_location.y <= eye.y:
+		abort_look_at_target()
+		return
+	var wall_yaw: int = UE.dir_yaw(-player.move_normal)
+	var pawn_yaw: int = UE.yaw_units(player.pawn_yaw)
+	var pitch: int = UE.dir_pitch(PawnPhysics.safe_normal(ledge_location - eye))
+	var yaw: int = pawn_yaw if absi(wall_yaw - pawn_yaw) > 4096 else wall_yaw
+	set_look_at_target_angle(UE.normalize_axis(pitch), UE.normalize_axis(yaw), 0.2)

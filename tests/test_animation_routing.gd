@@ -151,9 +151,8 @@ func test_the_paid_packs_replace_their_placeholders() -> void:
 		assert_eq(String(animator._target_animation()), row[1], 			"%s asked for '%s'" % [row[0], String(animator._target_animation())])
 
 func test_a_wall_run_picks_the_side_it_is_running_on() -> void:
-	# wall_side > 0 is a RIGHT-hand wall -- WallRunMove's own look-fan code says
-	# so, at the line that reads `span if wall_side > 0`. Set AFTER start(),
-	# because entering the move is what normally writes it.
+	# wall_side > 0 is a RIGHT-hand wall (WallRunMove.SIDE_RIGHT). Set AFTER
+	# start(), because entering the move is what normally writes it.
 	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
 	var player: Player = _world["player"]
 	player.move_manager.start(Move.WALL_RUN)
@@ -251,43 +250,38 @@ func test_a_body_with_no_death_clip_is_not_left_asking_for_one() -> void:
 ##
 ## ⚠️ start() does NOT. It passes an empty name, because a restart from outside
 ## is not a transition from anything -- so a test that starts one move and then
-## another never exercises a `previous` at all, and the first draft of these
-## duly reported a wall kick playing an ordinary jump against working code.
+## another never exercises a `previous` at all.
 func _hand_off(player: Player, from: StringName, to: StringName) -> void:
 	player.move_manager.start(to)
 	player.move_manager.move_for(to).enter(from)
 
-func test_a_wall_kick_is_not_an_ordinary_jump() -> void:
-	# ✅ THE OWNER: "the packs have a WallRunJump and it is not wired up -- a
-	# wall kick still plays the ordinary jump." The MECHANISM has been complete
-	# for a while -- WallRunMove.wall_jump_launch and the whole Noob/ProAdd
-	# skill gradient behind it -- and it hands off to JUMP, so the animator had
-	# no way to tell that jump from stepping off a kerb.
+## [ME:CONFIRMED decompile] WallrunJump plays WallrunJumpLeft/Right when the
+## jump pushed well off the wall (p > 0.6), named for the wall left behind.
+func test_a_wall_run_jump_off_the_wall_plays_the_wall_kick() -> void:
 	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
 	var player: Player = _world["player"]
-	# recent_wall_side, not wall_side: WallRunMove.exit() clears the live one
-	# before JumpMove.enter() ever runs, which is the whole reason JumpMove
-	# reads the remembered one.
-	player.recent_wall_side = 1
-	_hand_off(player, Move.WALL_RUN, Move.JUMP)
+	player.move_manager.start(Move.WALLRUN_JUMP)
+	var jump = player.move_manager.move_for(Move.WALLRUN_JUMP)
+	jump.push_speed = 1.0
+	jump.from_left_wall = false
 	assert_eq(String(animator._target_animation()), "WallRun_Jump_R",
 		"a kick off a right-hand wall asked for '%s'" % String(animator._target_animation()))
-
-func test_the_other_wall_kicks_the_other_way() -> void:
-	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
-	var player: Player = _world["player"]
-	player.recent_wall_side = -1
-	_hand_off(player, Move.WALL_RUN, Move.JUMP)
+	jump.from_left_wall = true
 	assert_eq(String(animator._target_animation()), "WallRun_Jump_L",
 		"a kick off a left-hand wall asked for '%s'" % String(animator._target_animation()))
 
-func test_an_ordinary_jump_is_still_an_ordinary_jump() -> void:
-	# The pair, and the one that stops the kick clip leaking onto every jump.
-	# A jump that did not come from a wall run has no side, whatever the
-	# player last ran along.
+## ... and JumpSlow -- a plain take-off here -- when it did not.
+func test_a_wall_run_jump_along_the_wall_is_a_plain_take_off() -> void:
 	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
 	var player: Player = _world["player"]
-	player.recent_wall_side = 1
+	player.move_manager.start(Move.WALLRUN_JUMP)
+	player.move_manager.move_for(Move.WALLRUN_JUMP).push_speed = 0.2
+	assert_eq(String(animator._target_animation()), "Jump_Start",
+		"a jump along the wall asked for '%s'" % String(animator._target_animation()))
+
+func test_an_ordinary_jump_is_still_an_ordinary_jump() -> void:
+	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
+	var player: Player = _world["player"]
 	_hand_off(player, Move.WALKING, Move.JUMP)
 	assert_eq(String(animator._target_animation()), "Jump_Start",
 		"a jump off the floor asked for '%s'" % String(animator._target_animation()))
