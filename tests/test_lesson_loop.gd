@@ -87,5 +87,13 @@ func test_a_crossing_does_not_move_the_lesson_relative_to_the_player() -> void:
 	await step(3)
 
 	var after: Vector3 = obstacle.anchor - player.global_position
-	assert_almost_eq(after.distance_to(before), 0.0, 0.01,
+	# Across the ground, exactly; up, within the walk's MAXFLOORDIST (2.4 uu).
+	# [ME:CONFIRMED decompile N1 §2, N2 §3] a body that landed straight down
+	# keeps its floor and rests where the landing put it, touching the floor,
+	# for as long as it stands still; a teleport breaks RelativeLocation, so
+	# the next walk traces its floor and seats it at the 2.15 uu hover. The
+	# crossing is a teleport, and may lift the body by that much.
+	assert_almost_eq(Vector2(after.x, after.z).distance_to(Vector2(before.x, before.z)), 0.0, 0.01,
+		"the crossing moved the lesson relative to the player: %s -> %s" % [before, after])
+	assert_almost_eq(after.y, before.y, 0.024,
 		"the crossing moved the lesson relative to the player: %s -> %s" % [before, after])

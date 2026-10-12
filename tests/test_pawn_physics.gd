@@ -135,3 +135,31 @@ func test_the_falling_depth_is_released_by_every_exit() -> void:
 		assert_eq(player.phys._falling_depth, 0, "a falling move left its depth held")
 	assert_eq(player.move_manager.current_name, Move.WALKING, "test setup: the fall never landed")
 	TestWorld.teardown(world)
+
+## [ME:CONFIRMED decompile N1 §2, N2 §3] SetPostLandedPhysics bases the body
+## on what it landed on, and a still body on a world-geometry base reuses its
+## floor without a trace: after a straight-down landing it rests where the
+## landing put it, touching the floor, and stays there. A teleport breaks
+## RelativeLocation, so the next walk traces and seats it at the 2.15 uu hover.
+func test_a_still_landing_keeps_its_contact_until_a_teleport() -> void:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	await step(30)
+	# A drop of its own onto a floor that has stopped moving.
+	player.global_position.y += 0.3
+	player.move_manager.start(Move.FALLING)
+	for i in 30:
+		await step(1)
+	assert_eq(player.move_manager.current_name, Move.WALKING, "test setup: the drop never landed")
+	var rest: float = player.phys.sweep(Vector3.DOWN * 0.1)["time"] * 10.0
+	assert_lt(rest, 0.2, "the landed body was lifted off its floor (%.2f uu)" % rest)
+	var y: float = player.global_position.y
+	await step(10)
+	assert_eq(player.global_position.y, y, "the still body moved")
+	player.global_position = Vector3(5.0, y, 0.0)
+	await step(2)
+	var hover: float = player.phys.sweep(Vector3.DOWN * 0.1)["time"] * 10.0
+	assert_almost_eq(hover, 2.15, 0.2, "the teleported body was not seated at the hover")
+	TestWorld.teardown(world)
