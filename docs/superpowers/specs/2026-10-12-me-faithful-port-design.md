@@ -166,6 +166,12 @@
       LayOnGround、180Turn、180TurnInAir、DodgeJump、SpringBoard、Vertigo（47）、Stumble（35）、
       StumbleHard（55）、FallingUncontrolled；失控滑行材质；CheckForLedges / EdgeCheck / SlideOffLedge /
       CheckValidFloor 与落地边缘检查。StumbleFalling（77）玩家的 MoveClasses 里是 none，不移植
+- [x] W2b 边缘家族：AutoStepUp（81，`CanDoMove` 恒为 false）、StepUp（37，原版无人触发）、VaultOver（9）、
+      SpeedVault、IntoGrab（`CanDoMoveNative`）、Grab（悬挂、横移、转角、松手）、GrabPullUp（10）、
+      GrabJump（13）、GrabTransfer（31）、IntoClimb / Climb（梯子）、LedgeWalk、Balance；
+      精确定位 PLM_FALL 与 reached / failed 事件；1P 根骨轨迹（`tools/gen_root_motion.ts`，
+      只取轨迹、长度与 notify 时间）；PlayerBalanceWalk / PlayerLedgeWalking。
+      JumpIntoGrab（67）只给 bot 用，不注册
 
 ### Phase 6 — 动画
 
@@ -211,6 +217,12 @@
 - [ ] 铁丝网：触碰点假定为身体位置；原版重生后 0.1 s 的豁免没移植；命中后仍清空旧速度预算；伤害节奏仍是本项目的免疫窗口
 - [ ] `move.gd` 头部注释仍说 Barge 和近战"尚无对应"
 - [ ] `test_probes_vault` 的顺序相关失败：`ladder_move` 之后玩家悬空 0.49 m 仍判定着地（疑似 floor reuse 或测试残留）
+- [ ] 梯子的逐级原生函数（`ClimbStep` 一类）没读到，32 uu 步距与 50/62 uu 贴墙距离是推断值
+- [ ] 平衡木 / 窄边的样条原生函数没读到，用 InterestLine 的最近点与单位切线代替
+- [ ] `APawn::CalcVelocity` 的根运动分支没读：根运动按混合权重折成下一帧速度；下落中只取水平分量
+- [ ] GrabTransfer 的 `LadderTransfer` 在按上时方向未定义（零向量），本项目不转到梯子
+- [ ] 两套动画槽并存：W2b 的 `CustomAnimSlot`（Pawn 级，管 OnCustomAnimEnd / OnCeaseRelevantRootMotion）
+      与 W2d 每个 move 自带的 MoveAnim，应合成一套
 - [ ] 旧速度预算（`SpeedEnergy`、`seed_legacy_energy`、`legacy_turn_energy_per_radian`）在所有 move 移植完成后删除
 - [ ] 镜头输入管线：`TdPlayerInput`（灵敏度 28 × 倍率、FOV 系数、视角加速度、鼠标平滑）与 `UpdateRotation` 的 `RotSpeedMod`
 - [ ] 原版第一人称镜头动画（1P 骨架的 `CameraJoint` / `EyeJoint` 轨道）：是否引入、如何与本项目的头部晃动并存，需要先评估
