@@ -214,12 +214,12 @@
 
 
 - [ ] `face_rotation()` 缺原版下落中 5/s 的缓动
-- [ ] Barge、MeleeVault、Interact 没有设置原版的 `bDisableFaceRotation`
+- [x] Barge、MeleeVault、Interact 没有设置原版的 `bDisableFaceRotation`（W3：连同 ZipLine 一并补上）
 - [ ] Swing、IntoZipLine、Interact 有几处直接写视角偏航，Pawn 偏航晚一帧才跟上
 - [ ] Swing 的 180° 转身直接写视角，没有设根旋转标记
 - [ ] 地面家族的 180Turn / 180TurnInAir 仍通过镜头的旧视角扇区转视角，不走原版的 `update_view_rotation`；原版视角是否跟随根旋转，证据里没有
-- [ ] 铁丝网：触碰点假定为身体位置；原版重生后 0.1 s 的豁免没移植；命中后仍清空旧速度预算；伤害节奏仍是本项目的免疫窗口
-- [ ] `move.gd` 头部注释仍说 Barge 和近战"尚无对应"
+- [ ] 铁丝网：触碰点假定为身体位置；原版重生后 0.1 s 的豁免没移植；命中后仍清空旧速度预算；伤害节奏仍是本项目的免疫窗口（W3：触碰点改为扫掠接触位置、0.1 s 豁免已移植、只在进入时踉跄；剩下旧速度预算的清空与每秒伤害的相位）
+- [x] `move.gd` 头部注释仍说 Barge 和近战"尚无对应"
 - [ ] `test_probes_vault` 的顺序相关失败：`ladder_move` 之后玩家悬空 0.49 m 仍判定着地（疑似 floor reuse 或测试残留）
 - [ ] 梯子的逐级原生函数（`ClimbStep` 一类）没读到，32 uu 步距与 50/62 uu 贴墙距离是推断值
 - [ ] 平衡木 / 窄边的样条原生函数没读到，用 InterestLine 的最近点与单位切线代替
@@ -231,9 +231,11 @@
 - [ ] `docs/feel-backlog.md` 对照移植结果逐条更新（标注被原版逻辑取代的条目）
 - [ ] 语料各章里被 15 章推翻的结论加上指向 15 章的更正
 - [ ] 合并前跑一次全量测试
+- [ ] 死代码待所有者定：`AirborneMove`（无子类）、`HardCatch`（无调用者）、`LineMove`（无子类）、`Player.pending_stagger`（无人置位）；`FallTracker` 现在只剩这些死代码在读
+- [ ] 已生成的关卡里玻璃仍带着不再使用的 `Reach` 区域，下次重建关卡时消失
 - [ ] 其余章节（sp02_stdp、sp04、sp05、sp06、sp08、sp09）重建关卡以带上落差高度体积
 - [ ] 约 100 个带 PrePivot 偏移的体积（如 Boat 的 50 个 BlockingVolume、Escape 的 21 个）构建时未应用偏移，核实是否错位
 - [ ] **推送前**：提交 f94eba9、60e14df、15f1629、9a7a463 的历史里含原版动画的逐帧根运动数据（当前文件已移入 `.private`）。第一次推送 `feat/feel-pass` 前要改写这几笔提交或压缩分支——改写历史前先征得所有者同意
 - [x] 排查全量套件里 `head_follow`、`lesson_loop` 的失败是否由移植引入：head_follow 前后都通过；lesson_loop 的失败由移植引入
-- [ ] `test_lesson_loop` 传送后静止高度差 2.15 uu：复用地面（落地处）与重新探测（悬停 2.15 uu）两条路径的结果不同。对照 N1 的地面复用与 bForceFloorCheck，判断是原版行为（放宽测试容差）还是移植偏差
+- [x] `test_lesson_loop` 传送后静止高度差 2.15 uu：复用地面（落地处）与重新探测（悬停 2.15 uu）两条路径的结果不同。对照 N1 的地面复用与 bForceFloorCheck，判断是原版行为（放宽测试容差）还是移植偏差（W3：原版行为——SetPostLandedPhysics 把落地物设为 Base，静止时复用地面不追踪，身体停在落地接触处；传送打破 RelativeLocation 后才重新探测并抬到 2.15 uu。测试的竖直容差放宽到 2.4 uu）
 - [x] `tools/link_private.ts` 在 Windows 上用反斜杠路径比对 `links.txt` 的正斜杠条目，每次运行都删掉全部链接再重建
