@@ -346,6 +346,7 @@ func handle_move_action(action: int) -> void:
 		var yaw: int = UE.yaw_units(player.pawn_yaw) + (max_look.y if is_turned_right else min_look.y)
 		abort_look_at_target()
 		set_look_at_target_angle(0, UE.normalize_axis(yaw), 0.2)
+		look_at_from_input = true
 	if (move_left or move_right) and player.world_time - last_shimmy_time_seconds > 0.5:
 		if can_shimmy(action):
 			start_shimmy(action)

@@ -324,6 +324,33 @@ func test_the_wall_run_kick_turns_off_the_wall() -> void:
 	assert_almost_eq(player.velocity.x, 6.0 * 1.2 * sin(angle), 0.001, "not turned away from the left wall")
 	assert_almost_eq(player.velocity.z, -6.0 * 1.2 * cos(angle), 0.001)
 
+## Q on a wall run turns the view off the wall (MA_Turn's look-at). That turn
+## is the whole of what the key does, so it turns the third-person camera too;
+## a move's own scripted look-ats stay first person only.
+func test_q_on_a_wall_run_turns_the_third_person_camera() -> void:
+	for third in [false, true]:
+		var player: Player = await _wall_run_course()
+		player.camera_rig.third_person = third
+		var jump: JumpMove = player.move_manager.move_for(Move.JUMP)
+		jump.delay_time_check_auto_moves = 100.0
+		var input: ScriptedInputSource = _world["input"]
+		_run_up(player)
+		input.press_jump()
+		await step(10)
+		assert_eq(player.move_manager.current_name, Move.WALL_RUN, "test setup: no run")
+		input.press_turn()
+		await step(30)
+		# The wall is on the left (normal +X): off the wall is Godot yaw -90.
+		var off_wall: float = rad_to_deg(wrapf(player.rotation.y + PI / 2.0, -PI, PI))
+		assert_almost_eq(off_wall, 0.0, 10.0,
+			"Q left the view %.0f degrees from off the wall (third person %s)" % [off_wall, third])
+		TestWorld.teardown(_world)
+		_world = {}
+		for node in _extra:
+			node.queue_free()
+		_extra.clear()
+		await step(1)
+
 # --- the wall climb -------------------------------------------------------------------
 
 ## A tall wall straight ahead (face at z = -1.5, normal +Z).

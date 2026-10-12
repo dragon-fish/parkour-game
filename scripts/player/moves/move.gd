@@ -254,6 +254,12 @@ var look_at_target_pitch: int = 0
 var look_at_target_yaw: int = 0
 var look_at_target_interpolation_time: float = 0.0
 var look_at_target_duration: float = -1.0
+## Whether the look-at in force was asked for by the player's own Q (the
+## MA_Turn of a wall run, a hang, a ladder) rather than by the move's script.
+## This project's: such a look-at turns the camera in third person too
+## (update_view_rotation()), because there the turn of the view IS what the
+## key does. Cleared by every new look-at and by the abort.
+var look_at_from_input: bool = false
 ## TdMove.bResetCameraLook: the view eased back to the pawn's yaw, level.
 var reset_camera_look_active: bool = false
 var cancel_reset_camera_look_time: float = 0.0
@@ -657,6 +663,7 @@ func uses_view_rotation() -> bool:
 func set_look_at_target_location(target: Vector3, interpolation_time: float,
 		duration: float = -1.0) -> void:
 	look_at_target_location_active = true
+	look_at_from_input = false
 	look_at_target_interpolation_time = interpolation_time
 	look_at_target_duration = duration if duration == -1.0 else move_active_time + duration
 	look_at_target_location = target
@@ -665,6 +672,7 @@ func set_look_at_target_location(target: Vector3, interpolation_time: float,
 func set_look_at_target_angle(pitch_units: int, yaw_units: int, interpolation_time: float,
 		duration: float = -1.0) -> void:
 	look_at_target_angle_active = true
+	look_at_from_input = false
 	look_at_target_interpolation_time = interpolation_time
 	look_at_target_duration = duration if duration == -1.0 else move_active_time + duration
 	look_at_target_pitch = pitch_units
@@ -675,6 +683,7 @@ func abort_look_at_target() -> void:
 	look_at_target_location_active = false
 	look_at_target_angle_active = false
 	look_at_target_duration = -1.0
+	look_at_from_input = false
 
 ## TdMove.ResetCameraLook.
 func reset_camera_look(interpolation_time: float) -> void:
@@ -730,7 +739,10 @@ func update_view_rotation(view: Vector2i, dt: float, delta_rot: Vector2i, now: f
 	var out: Vector2i = view
 	# The look-at and the reset pull the view only where they were written for
 	# it: CameraRig.takes_forced_view(). Their own bookkeeping runs either way.
+	# A look-at the player's Q asked for (look_at_from_input) is the key's
+	# whole effect, so it turns the third-person camera as well.
 	var forced: bool = player.camera_rig == null or player.camera_rig.takes_forced_view()
+	var look_at_turns_view: bool = forced or look_at_from_input
 	if look_at_target_location_active or look_at_target_angle_active:
 		if look_at_target_duration == -1.0 or look_at_target_duration >= move_active_time:
 			var wanted := Vector2i(look_at_target_pitch, look_at_target_yaw)
@@ -739,7 +751,7 @@ func update_view_rotation(view: Vector2i, dt: float, delta_rot: Vector2i, now: f
 				var dir: Vector3 = look_at_target_location - eye
 				wanted = Vector2i(UE.dir_pitch(dir), UE.dir_yaw(dir))
 			var head := Vector2i(UE.normalize_axis(out.x), UE.normalize_axis(out.y))
-			if forced:
+			if look_at_turns_view:
 				out += _look_at_pull(head, wanted, dt)
 		else:
 			abort_look_at_target()

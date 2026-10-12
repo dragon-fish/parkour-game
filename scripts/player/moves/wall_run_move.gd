@@ -430,6 +430,7 @@ func handle_move_action(action: int) -> void:
 	if action != MA_TURN:
 		return
 	set_look_at_target_angle(player.controller_pitch_units(), UE.dir_yaw(player.floor_normal), 0.15, 1.5)
+	look_at_from_input = true
 	turned_90_from_wall = true
 
 ## TdMove_WallRun.StopMove: unless the view was turned off the wall, the pawn

@@ -103,6 +103,7 @@ func handle_move_action(action: int) -> void:
 		var yaw: int = UE.yaw_units(player.pawn_yaw) + (32768 if raw > 0 else -32768)
 		abort_look_at_target()
 		set_look_at_target_angle(0, UE.normalize_axis(yaw), 0.2, 1.0)
+		look_at_from_input = true
 	wanted_action = action
 	if is_playing_animation or use_precise_location:
 		abort_look_at_target()
