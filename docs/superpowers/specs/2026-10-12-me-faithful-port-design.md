@@ -125,7 +125,7 @@
       `StoppingVelocity`）+ `GetWalk/SprintAcceleration` + `physWalking`
 - [ ] 空中：`PHYS_Falling` 的加速度来源与原生空中操控
 - [ ] 速度能量、转向惩罚：用原版公式替换 `SpeedEnergy` 中推理出来的部分
-- [ ] 视角约束：`ConstrainAxis` 的 0.2 s 指数回拉
+- [x] 视角约束：`ConstrainAxis` 的 0.2 s 指数回拉（已移植的墙面家族走原版 `UpdateViewRotation`）
 
 ### Phase 2 — 仲裁与状态语义
 
@@ -136,12 +136,15 @@
 
 ### Phase 3 — 墙面家族
 
-- [ ] WallRun（左/右，`FindWallSide` / `FindWallForward`，连续滑墙计数，`ReachedWall`）
-- [ ] WallRunJump（独立状态 12；`p` 不钳制）
-- [ ] WallRunDodgeJump（34）
-- [ ] WallClimb（6）与 WallClimbDodgeJump（49，含 51/52）
-- [ ] WallClimb180TurnJump（50）
-- [ ] MeleeWallrun（62：速度旋转 ±6000、×1.2，结束时强制 Walking）
+- [x] WallRun（左/右，`FindWallSide` / `FindWallForward`，连续滑墙计数，`ReachedWall`）
+- [x] WallRunJump（独立状态 12；`p` 不钳制）
+- [x] WallRunDodgeJump（34）
+- [x] WallClimb（6）与 WallClimbDodgeJump（49；51/52 无人设置，不注册）
+- [x] WallClimb180TurnJump（50）
+- [x] MeleeWallrun（62：速度旋转 ±6000、×1.2，结束时强制 Walking）
+- [x] 墙面物理 `physWallRunning` / `physWallClimbing`、原生探测（`FindLedgeEx` / `FindLedge` /
+      `FindAutoMoveLedge` / `CalculateRelativeExtent` / `MovementTrace*`）、完整的 `CheckAutoMoves` 顺序、
+      `bIllegalLedgeTimer` 的三个消费者、`PlayerWallWalking`、`ConstrainAxis`（W2a）
 
 ### Phase 4 — 踢腿类（无攻击判定）
 

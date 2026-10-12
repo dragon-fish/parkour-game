@@ -115,6 +115,8 @@ func _run_at_the_wall() -> Player:
 	var player: Player = _world["player"]
 	player.global_position = Vector3(0.0, 1.5, -1.55)
 	player.velocity = Vector3(0.0, 2.0, -6.0)
+	# Forward held: the climb's native gate wants the Up hint.
+	(_world["input"] as ScriptedInputSource).hold_move(0.0, 1.0)
 	player.move_manager.start(Move.JUMP)
 	return player
 
