@@ -35,6 +35,10 @@ func advance(player, progress: float) -> void:
 	var wanted: float = lerpf(from, to, progress)
 	var moved: float = wanted - _placed
 	_placed = wanted
+	# The root rotation turns the PAWN (Pawn.Rotation); face_rotation() leaves
+	# it alone while bIsUsingRootRotation is up. Below, the view is carried with
+	# it, which is how this project presents a root rotation in first person.
+	player.pawn_yaw = wanted
 	if player.camera_rig != null:
 		# THE FAN TRAVELS WITH THE TURN, and the body is left to apply_look to
 		# place. DO NOT also write player.rotation.y here -- both turning moves

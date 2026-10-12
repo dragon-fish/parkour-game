@@ -47,8 +47,6 @@ extends MoveConfig
 @export var check_distance: float = 0.6
 
 func _init() -> void:
-	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
-	hit_knocks_off = true
 	check_for_grab = true
 	check_for_vault_over = true
 	friction_modifier = 0.3

@@ -59,8 +59,6 @@ extends MoveConfig
 @export var wall_running_rotate_pawn_along_wall_time: float = 0.4
 
 func _init() -> void:
-	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
-	hit_knocks_off = true
 	redo_move_time = 0.15
 	# A kick off the wall counts its fall from where it left the wall. See
 	# MoveConfig.fall_counts_from_exit.

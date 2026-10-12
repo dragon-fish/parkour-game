@@ -1561,6 +1561,19 @@ func _target_animation() -> StringName:
 			if turn_speed > player.config.pawn.run_animation_speed_threshold:
 				return _first_available([&"Walk", &"Sprint", &"run", &"idle"])
 			return _first_available([&"Idle", &"idle", &"Walk", &"run"])
+		Move.VERTIGO:
+			# The original's edgedetection is a full-body lean over the edge;
+			# the packs have none. Standing still is the nearest honest pose --
+			# the look down itself is the camera's.
+			return _first_available([&"Idle", &"Idle_FoldArms", &"idle"])
+		Move.STUMBLE:
+			# StumbleFwd / GetHitStumbleBwd: no hit reaction in the packs this
+			# body is built from. The absorb of a landing is the nearest pose
+			# to a body thrown off balance; the root motion carries the body.
+			return _first_available([&"Jump_Land", &"NinjaJump_Land", &"Crouch_Idle", &"idle"])
+		Move.STUMBLE_HARD:
+			# GetHitStumbleBwdFar2: the same stand-in as the stumble's.
+			return _first_available([&"Jump_Land", &"NinjaJump_Land", &"Crouch_Idle", &"idle"])
 		Move.BALANCE:
 			# The wobble is carried entirely by the camera roll and the
 			# skeleton lean (BalanceLean) -- the body itself is just walking.

@@ -116,16 +116,6 @@ func test_the_same_slope_without_the_mark_is_not_a_ramp_slide() -> void:
 	assert_false(seen.has(Move.RAMP_SLIDE), "an unmarked 50 degree slope started RampSlide (saw %s)" % [seen])
 	await _finish(r)
 
-func test_a_long_descent_lands_hard_on_the_floor_at_the_foot() -> void:
-	# From 18 m up a 50 degree ramp the body drops 13.8 m along it, past
-	# hard_landing_descent, onto a floor just under the foot: the landing is
-	# the hard one, though the fall after the chute is a few centimetres.
-	var r: Dictionary = await _ride(50.0, true, 240, 18.0, -0.5)
-	var seen: Array = r["seen"]
-	assert_true(seen.has(Move.RAMP_SLIDE), "never on the chute (saw %s)" % [seen])
-	assert_true(seen.has(Move.LANDING), "a 13 m chute slide onto the floor did not land hard (saw %s)" % [seen])
-	await _finish(r)
-
 func test_a_short_descent_runs_off_the_foot() -> void:
 	# From 6 m up the same ramp the descent is 4.6 m: the runner keeps going.
 	var r: Dictionary = await _ride(50.0, true, 240, 6.0, -0.5)
@@ -157,17 +147,6 @@ func _drop_onto(drop: float, ticks: int) -> Dictionary:
 		if seen.is_empty() or seen[seen.size() - 1] != now:
 			seen.append(now)
 	return {"world": world, "ramp": ramp, "seen": seen, "player": player}
-
-func test_a_hard_fall_onto_the_chute_costs_health_but_slides_on() -> void:
-	# 7 m: past hard_landing_height (5.3), short of the uncontrolled tier.
-	var r: Dictionary = await _drop_onto(7.0, 150)
-	var seen: Array = r["seen"]
-	var player: Player = r["player"]
-	assert_true(seen.has(Move.RAMP_SLIDE), "a 7 m fall onto the chute did not slide (saw %s)" % [seen])
-	assert_false(seen.has(Move.LANDING), "a fall onto the chute staggered instead of sliding (saw %s)" % [seen])
-	assert_true(player.health.hp < player.config.pawn.max_health,
-		"a 7 m fall onto the chute cost no health (hp %.0f)" % player.health.hp)
-	await _finish(r)
 
 func test_an_uncontrolled_fall_is_not_saved_by_the_chute() -> void:
 	# 14 m: past falling_uncontrolled_height. The chute is a surface like any

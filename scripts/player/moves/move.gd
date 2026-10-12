@@ -58,13 +58,15 @@ const BALANCE: StringName = &"Balance"
 const LEDGE_WALK: StringName = &"LedgeWalk"
 const SPRING_BOARD: StringName = &"SpringBoard"
 const DODGE_JUMP: StringName = &"DodgeJump"
+const VERTIGO: StringName = &"Vertigo"
+const STUMBLE: StringName = &"Stumble"
+const STUMBLE_HARD: StringName = &"StumbleHard"
 
 # The original's moves this project has no counterpart for yet. The action
 # table names them, so they have names; nothing registers them, so
 # MoveManager.can_do() is false for every one of them and the table falls
 # through to the next candidate exactly as the original does when CanDoMove()
 # says no.
-const VERTIGO: StringName = &"Vertigo"
 const BARGE: StringName = &"Barge"
 const AIR_BARGE: StringName = &"AirBarge"
 const MELEE: StringName = &"Melee"
@@ -73,8 +75,6 @@ const MELEE_SLIDE: StringName = &"MeleeSlide"
 const MELEE_CROUCH: StringName = &"MeleeCrouch"
 const MELEE_WALLRUN: StringName = &"MeleeWallrun"
 const SNATCH: StringName = &"Snatch"
-const STUMBLE: StringName = &"Stumble"
-const STUMBLE_HARD: StringName = &"StumbleHard"
 ## [ME:CONFIRMED decompile] TdMove_WallKick.CanDoMove() returns false
 ## unconditionally: unreachable in the shipped game, and left unregistered.
 const WALL_KICK: StringName = &"WallKick"
@@ -171,6 +171,11 @@ var disable_movement_time: float = 0.0
 var disable_look_time: float = 0.0
 ## TdMove.bAvoidLedges, read by the walking physics' ledge check.
 var avoid_ledges: bool = true
+## TdMove.bUseCustomCollision: [ME:CONFIRMED decompile N5 §0.2] StartMove
+## shrinks the collision to the crouched height (unless the move before also
+## used it), StopMove gives the standing height back (unless the move after
+## uses it too). The feet stay where they are both ways.
+var use_custom_collision: bool = false
 
 ## Seconds since StartMove. [ME:CONFIRMED decompile 15.8] advanced in
 ## tick_move(), after the physics, so a move started this frame reads 0 in its
@@ -276,10 +281,14 @@ func begin_move() -> void:
 		return
 	player.set_ignore_move_input(disable_movement_time)
 	player.set_ignore_look_input(disable_look_time)
+	if use_custom_collision:
+		var old: Move = player.move_manager.move_for(player.old_movement_state)
+		if old == null or not old.use_custom_collision:
+			player.shrink_collision()
 	if pawn_physics != PHYS_KEEP and player.physics != pawn_physics:
 		player.set_physics(pawn_physics)
 	if controller_state != CS_NONE:
-		player.controller_state = controller_state
+		player.set_controller_state(controller_state)
 
 ## The common half of TdMove.StopMove and TdPhysicsMove.StopMove. Run by the
 ## manager after exit(), for every move.
@@ -295,10 +304,17 @@ func end_move() -> void:
 		return
 	player.stop_ignore_move_input()
 	player.stop_ignore_look_input()
-	player.using_root_rotation = false
+	if use_custom_collision:
+		var pending: Move = player.move_manager.move_for(player.pending_movement_state)
+		if pending == null or not pending.use_custom_collision:
+			player.enlarge_collision()
+	# TdMove.StopMove: root motion and root rotation off, whatever the move
+	# turned on.
+	player.use_root_motion(false)
+	player.use_root_rotation(false)
 	last_stop_move_time = player.world_time
 	if controller_state != CS_NONE:
-		player.controller_state = CS_PLAYER_WALKING
+		player.set_controller_state(CS_PLAYER_WALKING)
 
 ## TdMove.StartMove's own part: what the move does on entry. `previous` is the
 ## move that was current, which is also player.old_movement_state.
@@ -352,6 +368,11 @@ func reached_wall() -> void:
 ## field, which a wall move rewrites every tick. The config's value elsewhere.
 func live_friction_modifier() -> float:
 	return cfg.friction_modifier if cfg != null else 1.0
+
+## TdMove.TouchedFallHeightVolume, raised by Player.touch_fall_height_volume().
+## Empty in the original's base; RumpSlide records it.
+func touched_fall_height_volume() -> void:
+	pass
 
 ## Native slot 0x124. Empty for TdMove; PhysicsMove overrides it.
 func check_auto_moves() -> void:
@@ -445,13 +466,13 @@ func _precise_rotation_step(delta: float) -> void:
 	if precise_rotation_time <= delta:
 		player.pawn_yaw = UE.godot_yaw(precise_rotation_yaw)
 		if not disable_controller_facing_pawn_yaw_rotation:
-			player.rotation.y = UE.godot_yaw(precise_rotation_yaw)
+			player.set_controller_yaw(UE.godot_yaw(precise_rotation_yaw))
 		reached_precise_rotation_flag = true
 		return
 	var step: int = int(UE.normalize_axis(precise_rotation_yaw - pawn_units) * (delta / precise_rotation_time))
 	player.pawn_yaw = UE.godot_yaw(UE.normalize_axis(pawn_units + step))
 	if not disable_controller_facing_pawn_yaw_rotation:
-		player.rotation.y = UE.godot_yaw(UE.yaw_units(player.rotation.y) + step)
+		player.set_controller_yaw(UE.godot_yaw(UE.yaw_units(player.rotation.y) + step))
 	precise_rotation_time -= delta
 
 ## The reached events, in the native's order: each half that has arrived is
@@ -493,8 +514,8 @@ func _precise_events() -> void:
 ## TdMove.SetPreciseLocation. `speed` < 0 takes GroundSpeed.
 func set_precise_location(location: Vector3, speed: float = -1.0, mode: int = PLM_FLY) -> void:
 	precise_location_speed = config.pawn.ground_speed if speed < 0.0 else speed
-	precise_location_mode = mode
 	precise_location = location
+	precise_location_mode = mode
 	use_precise_location = true
 	reached_precise_location_flag = false
 

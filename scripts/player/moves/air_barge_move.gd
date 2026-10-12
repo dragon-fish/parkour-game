@@ -32,6 +32,8 @@ var _root_applied: float = 0.0
 
 func _init() -> void:
 	super._init()
+	# [ME:CONFIRMED decompile] bUseCustomCollision (Move.begin_move / end_move).
+	use_custom_collision = true
 	pawn_physics = PHYS_FALLING
 	controller_state = CS_PLAYER_WALKING
 	check_exit_to_uncontrolled_falling = true
@@ -39,12 +41,7 @@ func _init() -> void:
 
 func enter(previous: StringName) -> void:
 	player.set_grounded(false)
-	CustomCollision.shrink(player)
 	super.enter(previous)
-
-func exit() -> void:
-	super.exit()
-	CustomCollision.enlarge(player)
 
 ## TdMove_AirBarge.StartBargin. The surface flag that picks AirBargeIdle
 ## (TdPhysicalMaterialProperty.bShouldAirBarge) has no counterpart here, so it
@@ -76,19 +73,18 @@ func pre_physics(delta: float) -> void:
 	if is_landing:
 		_apply_root_motion(delta)
 
-## AirBargeLand's root motion. [ME:INFERRED] the original turns it into the
-## velocity (RMM_Accel); the root-motion layer is not ported yet, so the body
-## is carried along it directly and keeps no speed from it.
+## AirBargeLand's root motion, handed to the physics as this frame's root
+## velocity (Player.use_root_motion(), PlayLanded's UseRootMotion(true)).
 func _apply_root_motion(delta: float) -> void:
+	if not player.root_motion_active or delta <= 0.0:
+		return
 	var t: float = minf(_anim.elapsed + delta, AIR_BARGE_LAND_LENGTH)
 	var x: float = t / 0.05
 	var i: int = mini(int(x), AIR_BARGE_LAND_ROOT.size() - 2)
 	var cm: float = lerpf(AIR_BARGE_LAND_ROOT[i], AIR_BARGE_LAND_ROOT[i + 1], x - float(i))
 	var step: float = (cm - _root_applied) * UU
 	_root_applied = cm
-	player.velocity.x = 0.0
-	player.velocity.z = 0.0
-	player.phys.move_actor(player.facing() * step)
+	player.root_motion_velocity = player.facing() * (step / delta)
 
 ## TryGiveBargeDamage, without the damage: the first thing hit halves the
 ## velocity on the next frame.
@@ -108,6 +104,7 @@ func landed(_normal: Vector3) -> void:
 func play_landed() -> void:
 	is_landing = true
 	_root_applied = 0.0
+	player.use_root_motion(true)
 	_anim.play(&"AirBargeLand", AIR_BARGE_LAND_LENGTH)
 
 func on_custom_anim_end(anim_name: StringName) -> void:

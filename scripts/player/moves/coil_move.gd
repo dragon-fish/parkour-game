@@ -1,29 +1,37 @@
 class_name CoilMove
-extends AirborneMove
+extends PhysicsMove
 
-# The original's TdMove_Coil: the legs come up under the chin for half a
-# second. GBA_Crouch's fifth outlet (05 §5.2), and the last row of
-# walking_move.gd's table to get any code behind it.
+# The original's TdMove_Coil, the tuck jump, ported. [ME:CONFIRMED decompile
+# N5 §3, emulated]
 #
-# AN AirborneMove SUBCLASS AND NOT A SCRIPTED ONE. A coil does not drive the
-# body anywhere -- the jump's own arc carries on underneath it, unchanged. What
-# the move owns is the CAPSULE and the PROBE SET, and both of those are
-# expressed as data (CoilConfig), so what is left here is a clock and one piece
-# of care about landing.
+# PHYS_Falling under the PlayerWalking controller, with the crouched
+# collision (the feet stay put and the head comes down 58 uu) and one
+# automatic transition: the uncontrolled fall. No grab, no vault, no wall --
+# a coil that meets an edge it misjudged does not catch it. Before the physics
+# every tick the body is lifted by TotalHeightBoost / HeightBoostDuration x dt
+# (240 uu/s) until TotalHeightBoost is used up: a displacement, not a speed,
+# so the apex rises 60 uu and the fall is unchanged. CoilTime is never read:
+# the coil lasts until it lands (Landing) or falls too far.
 
-## Seconds since the tuck began. Drives both the ease and the timeout.
-var _elapsed: float = 0.0
+## TdMove_Coil.HeightBoostLeft, metres.
+var height_boost_left: float = 0.0
 
 func _init() -> void:
-	# [ME:CONFIRMED decompile] TdMove_Coil's PawnPhysics. This move still drives the
-	# body itself; the mode is what the original's checks and the fall height
-	# read while it runs.
+	super._init()
 	pawn_physics = PHYS_FALLING
+	controller_state = CS_PLAYER_WALKING
+	check_exit_to_uncontrolled_falling = true
+	use_custom_collision = true
 
-## [ME:CONFIRMED decompile] TdMove_Coil.CanDoMove: never from Falling, never
-## from a reach already dropping, only in the falling physics, and only at
-## CoilMinTriggerSpeed along the facing.
+func is_ported() -> bool:
+	return true
+
+## TdMove_Coil.CanDoMove: never out of Falling, never from a reach already
+## dropping, only in the falling physics, at CoilMinTriggerSpeed along the
+## pawn's facing (a 3D dot), and the base's RedoMoveTime.
 func can_do_move() -> bool:
+	if player.using_root_rotation:
+		return false
 	var state: StringName = player.move_manager.current_name
 	if state == FALLING:
 		return false
@@ -31,116 +39,25 @@ func can_do_move() -> bool:
 		return false
 	if player.physics != PHYS_FALLING:
 		return false
-	if player.facing().dot(player.velocity) < config.coil.min_trigger_speed:
+	if player.facing().dot(player.velocity) < cfg.min_trigger_speed:
 		return false
-	return super.can_do_move()
+	return td_can_do_move()
 
 func enter(_previous: StringName) -> void:
-	_elapsed = 0.0
+	height_boost_left = cfg.total_height_boost
 	player.coil_capsule_held = true
-	# The landing that ends this airborne stretch is a coil's landing, however
-	# long after the tuck it comes. See Player.last_landing_coiled.
+	# What the landing's camera nod reads (Player.last_landing_coiled).
 	player.coiled_since_ground = true
-	player.set_grounded(false)
-	# Shrunk on the entry tick rather than waiting for the first
-	# physics_update(): a coil taken to clear something is being asked for
-	# BECAUSE of what is coming, and a tick of full-height capsule is a tick of
-	# exactly the collision the player pressed the key to avoid.
-	_apply_capsule()
 
-func physics_update(delta: float, input: MoveInput) -> StringName:
-	_elapsed += delta
-	_apply_capsule()
-	apply_air_physics(delta, player.wish_direction(input))
-
-	# Coil is one of the six states holding bCheckExitToUncontrolledFalling
-	# (11 §11.2), and the only one of them that is not simply a fall: tucking
-	# up does not save a player who has already dropped too far.
-	if player.fall_tracker.fall_height >= config.pawn.falling_uncontrolled_height:
-		return advance_and_hand_off(FALL_UNCONTROLLED)
-
-	# ✅ CoilTime. The legs stay tucked for all of it -- the owner's "后摇" --
-	# so there is nothing to unwind here; the clock simply runs out.
-	#
-	# 📌 LANDING IS settle_landing()'s JOB, UNCHANGED AND UNHELPED. It reads
-	# is_on_floor() off the SHRUNKEN capsule, whose floor sits half a shrink
-	# above where the feet really are -- so a tucked body touches down later
-	# than an upright one. That is not an error to correct: it is what "the
-	# legs are up" MEANS, and it is the same half-shrink that carries the body
-	# over a gap's far lip instead of catching on it.
-	if _elapsed >= cfg.duration:
-		return advance_and_hand_off(FALLING)
-
-	# No probe_transition() call, and its absence is the move. CoilConfig
-	# leaves all three probe flags false, so routing through it would do
-	# nothing -- but calling it anyway would read as "coil probes like every
-	# other airborne state, it just happens to find nothing". It does not
-	# probe. See CoilConfig's own note, and tests/test_coil.gd.
-	return settle_landing(delta)
-
-## Where a landing out of a coil leads: CROUCH, and let the crouch decide when
-## to stand.
-##
-## ⚠️ THE MOVE DOES NOT ASK WHETHER IT CAN STAND UP, AND MUST NOT.
-##
-## An earlier version watched the ground every tick and ended the tuck as soon
-## as a standing capsule would no longer fit. ✅ THE OWNER KILLED IT, and the
-## reason is the whole purpose of the move: "你不要自作主张检测胶囊下方有没有
-## 地面并提前站起来，这样违背动作的设计了，它就是用来通过不蜷缩无法通过的地方，
-## 比如越过会受伤的铁丝网...还有个速通技巧就是使用这个技巧直接精准跳进通风管道，
-## 你随手加的检测会让角色无法跳进去".
-##
-## "A standing capsule does not fit here" is TRUE of every place a coil is for.
-## Razor wire, a duct mouth, any gap only a tucked body clears -- the check
-## fired hardest exactly where putting the legs down is worst.
-##
-## ✅ THE OWNER'S OWN ANSWER, and it needs no detection at all: "不能恢复站立，
-## 和翻滚和滑铲一样，如果当时无法站立就转蹲下；比如缩腿跳进通风管道". Both of
-## those moves already end this way (SkillRollMove and SlideMove each hand to
-## CROUCH when the head is blocked), and CrouchMove already knows how to wait:
-## it stands only once the key is released AND has_headroom() agrees, and stays
-## down indefinitely otherwise.
-##
-## 📌 HANDED OVER UNCONDITIONALLY rather than gated on has_headroom() here,
-## which would be the obvious way to copy the two precedents. It cannot work
-## from this side: the capsule is still centre-anchored at this instant, so its
-## floor is half a shrink above the real feet and a standing overlap test
-## reads the ground it is resting on as a blocked head -- false everywhere,
-## including open sky. Crouch is free to enter (crouch_capsule_height and
-## CoilConfig.capsule_height are the same number), it re-anchors the capsule on
-## the way in, and on open ground it hands straight back to Walking on the very
-## next tick. So the cost of not asking is one frame of Crouch, and the benefit
-## is that the question gets asked by the code that can answer it.
-##
-## 📌 WHAT THE HAND-OFF BUYS IS NOT THE CAPSULE. Measured by removing this line
-## and landing in a duct: the body stays compressed anyway, because
-## request_standing_capsule() correctly refuses to grow into the roof. What it
-## became instead was WALKING at a standing speed cap inside a crouched
-## capsule -- a body shuffling through a duct at running pace. The capsule was
-## never the part that needed handing over; the speed modifier and the stand-up
-## rule were.
-func landing_destination(fall_height: float, rolled: bool) -> StringName:
-	var destination := super(fall_height, rolled)
-	return CROUCH if destination == WALKING else destination
-
-## THE CAPSULE IS NOT GIVEN BACK HERE. The tuck is over; the shrink is not.
-## [ME:CONFIRMED by the collision-box visualiser] the capsule stays half height
-## from the coil until the landing -- CoilTime ends the pose, not the shape.
-## It is what lets a coil after a springboard make a duct mouth the whole
-## flight away; given back at CoilTime, the body is full height again long
-## before it arrives. See Player.coil_capsule_held and release_coil_capsule().
 func exit() -> void:
-	pass
+	player.coil_capsule_held = false
 
-## Eases the capsule down to CoilConfig.capsule_height across boost_duration,
-## then holds it there for the rest of `duration`.
-##
-## ✅ HeightBoostDuration is the EASE and CoilTime is the HOLD -- the reading
-## that makes the original's two durations stop looking redundant. See
-## CoilConfig.boost_duration.
-func _apply_capsule() -> void:
-	var eased: float = 1.0
-	if cfg.boost_duration > 0.0:
-		eased = minf(_elapsed / cfg.boost_duration, 1.0)
-	player.set_centred_capsule_height(
-		lerpf(player.standing_height(), cfg.capsule_height, eased))
+## TdMove_Coil PrePhysics (0x0120bf70): the TdPhysicsMove exits, then the
+## lift. Moved through the world, so a ceiling stops it; the last step is not
+## trimmed, so the total is a whole number of frames' worth.
+func pre_physics(delta: float) -> void:
+	super.pre_physics(delta)
+	if height_boost_left > 0.0:
+		var d: float = (cfg.total_height_boost / cfg.height_boost_duration) * delta
+		height_boost_left -= d
+		player.phys.move_actor(Vector3.UP * d)

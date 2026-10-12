@@ -14,8 +14,6 @@ func _init() -> void:
 	check_for_wall_climb = true
 	# MG_TwoHandsBusy: both hands on the bar.
 	allows_turn = false
-	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
-	hit_knocks_off = true
 	holds_world_path = true
 
 ## [ME:CONFIRMED ini] SwingPendulumLength = 120 uu: the pawn's centre hangs

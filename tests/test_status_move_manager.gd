@@ -61,18 +61,23 @@ func _hit(damage: float = 35.0) -> StatusSpec:
 	s.amount = damage
 	return s
 
-func test_a_stagger_hurts_and_empties_the_budget_without_a_lockout() -> void:
-	# [ME:CONFIRMED] unpacked: a cut forces no lockout, only the slowdown --
-	# and an emptied budget is that slowdown. See Player.take_hazard_hit().
+func test_the_wire_hurts_and_stumbles_the_body_with_its_input_ignored() -> void:
+	# [ME:CONFIRMED decompile] TdBarbedWireVolume.Touch hands MA_Stumble to a
+	# body TdPawn.CanDoMove(MOVE_Stumble) lets through; the stumble ignores
+	# move and look input. The damage is this project's STAGGER amount.
 	var p := await _standing_player()
 	assert_true(p.grounded, "test setup: the body never settled onto the floor")
+	p.move_manager.start(Move.WALKING)
+	await step(1)
 	p.speed_energy.energy = 7.0
 	var hp: float = p.health.hp
 	p.statuses.apply(_hit(35.0), p, 0)
 	await step(2)
 	assert_almost_eq(p.health.hp, hp - 35.0, 0.01, "the hit did not hurt")
 	assert_lt(p.speed_energy.energy, 0.1, "the hit did not empty the speed budget")
-	assert_ne(p.move_manager.current_name, Move.LANDING, "the hit locked the body out")
+	assert_eq(p.move_manager.current_name, Move.STUMBLE, "the wire did not stumble the body")
+	assert_true(p.ignore_move_input, "the stumble left the move input live")
+	assert_true(p.ignore_look_input, "the stumble left the look input live")
 
 func test_a_stagger_shows_its_own_tint_or_the_landing_red() -> void:
 	# An electric fence is drawn blue; a spec with no tint of its own keeps
@@ -226,41 +231,3 @@ func test_a_crouch_block_forbids_the_choice_but_not_the_ceiling() -> void:
 	assert_false(p.has_headroom(), "test setup: the lid left room to stand")
 	assert_true(p.move_manager.can_enter(Move.CROUCH), \
 		"a crouch the body cannot avoid was refused, so a slide here could not end")
-
-# --- a hit knocks the body off what it holds ----------------------------------
-
-func test_a_hit_knocks_a_hanging_body_off_the_ledge() -> void:
-	var world := TestWorld.build(get_tree(), MovementConfig.new())
-	_worlds.append(world)
-	await step(1)
-	TestWorld.place(world)
-	await step(20)
-	var p: Player = world["player"]
-	var body := StaticBody3D.new()
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(6.0, 2.0, 3.0)
-	shape.shape = box
-	body.add_child(shape)
-	p.get_parent().add_child(body)
-	body.global_position = Vector3(0.0, 1.0, -3.0)
-	var edge := Vector3(0.0, 2.0, -1.6)
-	var query := {"valid": true, "edge": edge, "top": edge,
-			"normal": Vector3.UP, "face_normal": Vector3(0, 0, 1)}
-	p.global_position = IntoGrabMove.hanging_pose(p, p.config, query)
-	p.pending_ledge = query
-	p.move_manager.start(Move.GRAB)
-	await step(2)
-	assert_eq(p.move_manager.current_name, Move.GRAB, "test setup: not hanging")
-	p.statuses.apply(_hit(), p, 0)
-	await step(2)
-	body.queue_free()
-	assert_ne(p.move_manager.current_name, Move.GRAB, "a hit left the body hanging on")
-
-func test_a_hit_on_the_ground_keeps_the_body_on_its_feet() -> void:
-	var p := await _standing_player()
-	p.move_manager.start(Move.WALKING)
-	await step(1)
-	p.statuses.apply(_hit(), p, 0)
-	await step(2)
-	assert_eq(p.move_manager.current_name, Move.WALKING, "a hit on the ground knocked the body out of its walk")

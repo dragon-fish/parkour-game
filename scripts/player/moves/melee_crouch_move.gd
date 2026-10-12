@@ -19,6 +19,11 @@ const START_UPPERCUT_LENGTH := 0.2
 const HIT_LENGTH := 0.467
 const HIT_UPPERCUT_LENGTH := 1.033
 
+func _init() -> void:
+	super._init()
+	# [ME:CONFIRMED decompile] bUseCustomCollision (Move.begin_move / end_move).
+	use_custom_collision = true
+
 func can_do_move() -> bool:
 	if not super.can_do_move():
 		return false
@@ -29,13 +34,8 @@ func can_do_move() -> bool:
 
 func enter(previous: StringName) -> void:
 	super.enter(previous)
-	CustomCollision.shrink(player)
 	hit_detection = false
 	_trigger_move()
-
-func exit() -> void:
-	super.exit()
-	CustomCollision.enlarge(player)
 
 func _trigger_move() -> void:
 	if melee_state == MS_ATTACK_FINISHING:

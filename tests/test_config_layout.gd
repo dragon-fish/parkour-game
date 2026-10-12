@@ -52,8 +52,6 @@ func test_migrated_values_are_unchanged() -> void:
 	# poke the camera through the low tunnels sliding exists to fit under.
 	assert_gt(config.camera.slide_camera_drop, config.camera.eye_height, \
 		"slide_camera_drop no longer covers eye_height -- the sliding eye now sits above the crouched capsule")
-	assert_almost_eq(config.slide.slide_capsule_height, 0.9, 0.0001, "slide capsule moved but changed")
-	assert_almost_eq(config.crouch.speed_modifier, 0.4, 0.0001, "crouch pct moved but changed")
 
 func test_move_config_defaults_are_neutral() -> void:
 	# A Move that declares nothing must behave exactly as it did before this

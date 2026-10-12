@@ -116,15 +116,16 @@ func test_the_screen_shows_the_fall_and_shows_how_bad_it_is() -> void:
 	assert_gt(player.screen_effects.blur, near_the_line_blur, \
 		"a much faster fall did not blur any harder")
 
-	# Ride it into the ground. Nothing here listens for died_from_fall (that is
-	# Arena's job, and there is no Arena in this world), so whatever the state
-	# leaves behind on its way out is what stays on screen.
+	# Ride it into the ground. A fatal landing leaves the dead body in the
+	# state (Landing does not take a dead body); the respawn is what takes it
+	# out, and whatever the state leaves behind on its way out is what stays
+	# on screen. Nothing here listens for died_from_fall (that is Arena's job).
 	for i in 600:
 		await step(1)
-		if player.move_manager.current_name != Move.FALL_UNCONTROLLED:
+		if player.is_dying():
 			break
-	assert_true(player.move_manager.current_name != Move.FALL_UNCONTROLLED, \
-		"test setup is wrong: the fall never reached the ground")
+	assert_true(player.is_dying(), "test setup is wrong: the fall never reached the ground")
+	player.move_manager.start(Move.WALKING)
 	assert_almost_eq(player.screen_effects.desaturation, 0.0, 0.0001, \
 		"the fall left the screen desaturated after it ended")
 	assert_almost_eq(player.screen_effects.blur, 0.0, 0.0001, \

@@ -22,12 +22,13 @@ var in_move: bool = false
 
 func _init() -> void:
 	super._init()
+	# [ME:CONFIRMED decompile] bUseCustomCollision (Move.begin_move / end_move).
+	use_custom_collision = true
 	disable_movement_time = -1.0
 	disable_look_time = -1.0
 
 func enter(previous: StringName) -> void:
 	super.enter(previous)
-	CustomCollision.shrink(player)
 	hit_detection = false
 	in_move = false
 	timer = 0.0
@@ -36,10 +37,6 @@ func enter(previous: StringName) -> void:
 		melee_state = MS_PENDING
 	else:
 		_trigger_move()
-
-func exit() -> void:
-	super.exit()
-	CustomCollision.enlarge(player)
 
 func _trigger_move() -> void:
 	if melee_state == MS_ATTACK_FINISHING:

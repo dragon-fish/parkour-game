@@ -7,7 +7,6 @@ extends MoveConfig
 func _init() -> void:
 	# MG_TwoHandsBusy: both hands on the cable.
 	allows_turn = false
-	hit_knocks_off = true
 	holds_world_path = true
 	# [ME:CONFIRMED decompile] bConstrainLook: pitch -3200 .. 32768, yaw
 	# -7000 .. 7000 about the pawn, which bDisableFaceRotation holds at the

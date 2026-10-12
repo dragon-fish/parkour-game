@@ -1,206 +1,127 @@
 class_name RampSlideMove
-extends Move
+extends PhysicsMove
 
-# The seated slide down a marked chute (TdMove_RumpSlide). The body is a
-# passenger: half gravity pulls it along the surface, A and D nudge it across,
-# a jump leaves it, nothing else the player does stops it before the chute
-# does.
+# The original's TdMove_RumpSlide, the seated slide down a marked chute,
+# ported. [ME:CONFIRMED decompile N5 §4, PrePhysics emulated]
 #
-# Entered by WalkingMove and by an airborne landing when the surface the body
-# just touched is in Probes.UNCONTROLLED_SLIDE_GROUP (Player.touched_chute()).
-# Exits with its momentum: to Walking the tick the body is on a floor that is
-# not a chute, to Falling when it touches nothing for contact_grace, or to
-# Jump on the buffered press. A chute that flattens out under
-# min_slide_floor_z is a floor too.
+# Entered only by the physics: a walking or falling tick whose floor or wall
+# carries the uncontrolled-slide mark (the original's PhysMaterial property,
+# this project's Probes.UNCONTROLLED_SLIDE_GROUP) raises bUncontrolledSlide,
+# and TickSpecial sets this move with the CanDoMove check (MoveManager).
 #
-# PHYS_Falling in the original, with the surface removing the component of
-# the velocity into it: done here by hand rather than through
-# move_and_slide()'s floor handling: for the move's length every chute is a
-# WALL to Godot (Player.use_chute_floor).
+# PHYS_Falling at half gravity, with WalkableFloorZ raised to MinSlideFloorZ
+# for the slide's length so the chute -- normal z 0.6 .. 0.9 -- is a wall to
+# the falling physics, which slides the body down along it. On the frames the
+# physics touched the chute, PrePhysics steers: a strafe hint pushes the
+# velocity across the fall line by SideControl x sin(slope), and the speed is
+# kept and capped at MaxSlideSpeed. Off the chute for 0.1 s with nothing
+# within 150 uu below, it is a fall; a floor under 0.9 lands; a jump leaves.
 
-var _normal: Vector3 = Vector3.UP
-var _lost_contact: float = 0.0
-## Where the slide began, for the descent that decides how it lands.
-var _start_y: float = 0.0
-## Where the scripted turn toward the downhill has got the body to; the fan
-## and the model follow it each tick.
-var _placed: float = 0.0
-## The hard landing's red still to fade, 1 to 0; only after a hard fall onto
-## the chute (Player.pending_chute_hurt).
-var _hurt_flash: float = 0.0
-
+## TdMove_RumpSlide.TimeFalling: how long the physics has not touched the
+## chute.
+var time_falling: float = 0.0
+## TdMove_RumpSlide.bTouchedFallHeightVolume: a TdFallHeightVolume was
+## touched during the slide. Landing reads it: only then does a hard landing
+## out of the slide count as hard.
+var touched_fall_height: bool = false
+## TdMove_RumpSlide.OldFloorZ.
+var _old_floor_z: float = 0.71
 
 func _init() -> void:
-	# [ME:CONFIRMED decompile] TdMove_RumpSlide's PawnPhysics. This move still drives the
-	# body itself; the mode is what the original's checks and the fall height
-	# read while it runs.
+	super._init()
 	pawn_physics = PHYS_FALLING
+	disable_movement_time = -1.0
+	# [ME:CONFIRMED decompile] bDisableFaceRotation: the pawn holds its yaw
+	# while the view turns (Player.face_rotation()).
+	disable_face_rotation = true
 
-## [ME:CONFIRMED decompile] TdMove_RumpSlide.CanDoMove: the chute found by the
-## physics must be steeper than MinSlideFloorZ and no steeper than normal z
-## 0.6.
+func is_ported() -> bool:
+	return true
+
+## TdMove_RumpSlide.CanDoMove: the chute the physics found must be no flatter
+## than MinSlideFloorZ and no steeper than normal z 0.6, then the base's
+## RedoMoveTime.
 func can_do_move() -> bool:
 	var n: Vector3 = player.uncontrolled_slide_normal
-	if n.y >= config.ramp_slide.min_slide_floor_z or n.y < 0.6:
+	if n.y >= cfg.min_slide_floor_z:
 		return false
-	return super.can_do_move()
+	if n.y < 0.6:
+		return false
+	return td_can_do_move()
 
+## TdMove_RumpSlide.StartMove: half gravity; the velocity down the fall line
+## at InitialSpeedLoss of the arriving speed; the chute made unwalkable; and
+## SetTimer(0), which runs OnTimer at once (the turn to face down the chute).
 func enter(_previous: StringName) -> void:
-	var chute: Dictionary = player.touched_chute()
-	_normal = chute.get("normal", Vector3.UP)
-	_lost_contact = 0.0
-	_start_y = player.global_position.y
-	_hurt_flash = 1.0 if player.pending_chute_hurt else 0.0
-	# [ME:COMMUNITY] A fall past hard_landing_height onto the chute costs the
-	# hard landing's health and its red, and slides on with no stagger. The
-	# walking and falling physics never LAND on a chute -- it is too steep to
-	# be a floor -- so the cost is taken here, on the fall the physics measured.
-	var fall: float = player.enter_falling_height - player.global_position.y
-	if not player.pending_chute_hurt and fall >= config.pawn.hard_landing_height:
-		player.take_damage(config.landing.hard_landing_damage, Health.Cause.HARD_LANDING)
-		_hurt_flash = 1.0
-	player.use_chute_floor(true)
-	player.pending_chute_hurt = false
-	# Sitting down costs most of the arriving speed; what is left runs down
-	# the chute, not into it.
-	var kept: Vector3 = player.velocity * (1.0 - config.ramp_slide.initial_speed_loss)
-	player.velocity = _along_surface(kept)
-	# The body comes round to face down the chute over turn_in_time (see
-	# _advance_turn), and the look fan travels with it.
-	_placed = player.rotation.y
-	# The capsule shortens like the slide's; the model is NOT folded down to
-	# the shortened crown. [ME:CONFIRMED A1] RootOffset z = 20 uu: the seated
-	# body sits 0.2 m low, not 0.9, and the eye rides the head bone of a
-	# model lying along the chute, which is already as low as it should be.
-	# Folded as well, the eye was under the chute's surface.
-	player.set_capsule_height(config.ramp_slide.capsule_height)
-
+	time_falling = 0.0
+	player.gravity_modifier = cfg.gravity_modifier
+	var n: Vector3 = player.uncontrolled_slide_normal
+	# (N x down) x N: the fall line, |sin(slope)| long. Two cross products,
+	# so the handedness of the axes does not change it.
+	player.velocity = (n.cross(Vector3.DOWN)).cross(n) * player.velocity.length() * cfg.initial_speed_loss
+	_old_floor_z = player.walkable_floor_z
+	player.walkable_floor_z = cfg.min_slide_floor_z
+	touched_fall_height = false
+	set_timer(0.0)
 
 func exit() -> void:
-	player.use_chute_floor(false)
-	if _hurt_flash > 0.0 and player.screen_effects != null:
-		player.screen_effects.set_tint(config.landing.tint_color, 0.0)
-	_hurt_flash = 0.0
-	player.request_standing_capsule()
-	# The same stand-up as the slide's: for recovery_time the look clamp and
-	# the model's yaw freeze outlive the move, and the slide's own redo gate
-	# keeps a crouch press from buying another one at once.
+	player.walkable_floor_z = _old_floor_z
+	player.gravity_modifier = 1.0
+	# The stand-up window the presentation reads (Player.begin_slide_recovery()).
 	player.begin_slide_recovery()
 
+func touched_fall_height_volume() -> void:
+	touched_fall_height = true
 
-func physics_update(delta: float, input: MoveInput) -> StringName:
-	var cfg_slide: RampSlideConfig = config.ramp_slide
-	_advance_turn(delta)
-	if _hurt_flash > 0.0:
-		_hurt_flash = maxf(_hurt_flash - delta / maxf(cfg_slide.hurt_flash_time, 0.001), 0.0)
-		if player.screen_effects != null:
-			player.screen_effects.set_tint(config.landing.tint_color, _hurt_flash)
-	# A jump leaves the chute: the same take-off as from the ground, from a
-	# body that is on a surface. The chute's own downhill speed rides along.
-	if player.consume_jump():
-		player.velocity.y = config.pawn.base_jump_z
-		player.add_jump_nudge(input)
-		player.set_grounded(false)
-		return JUMP
-
-	# Half gravity, then the surface takes the component into itself: what
-	# remains is the pull down the chute.
-	player.velocity.y -= player.effective_gravity() * cfg_slide.gravity_modifier * delta
-	player.velocity = _along_surface(player.velocity)
-	# A nudge across the slide. Right of the downhill line, on the surface.
-	var down := _downhill()
-	var across := down.cross(_normal).normalized() if down.length_squared() > 0.0001 else Vector3.ZERO
-	player.velocity += across * input.move.x * cfg_slide.side_control * delta
-	if player.velocity.length() > cfg_slide.max_slide_speed:
-		player.velocity = player.velocity.normalized() * cfg_slide.max_slide_speed
-	# Pressed INTO the chute for the move, the way Walking presses into the
-	# floor: a velocity exactly along the surface touches nothing, and a tick
-	# that touches nothing reads as the chute having ended. Measured on the
-	# Stormdrain chute: the slide let go every eight ticks and fell instead.
-	# ONLY WHILE IN CONTACT, and only by surface_press_speed: the press has a
-	# horizontal part, and once the body has run off the chute's foot onto the
-	# floor below, nothing cancels it. At floor_snap_speed it braked the body
-	# from 10 m/s to a standstill in four ticks, at the edge it should have
-	# flown off.
-	var along: Vector3 = player.velocity
-	if _lost_contact == 0.0:
-		player.velocity = along - _normal * cfg_slide.surface_press_speed
-	player.move_and_slide()
-	player.velocity = _along_surface(player.velocity)
-
-	var chute: Dictionary = player.touched_chute()
-	if chute.is_empty():
-		# Run out onto a floor: the slide is over and the speed is the
-		# runner's. Off the end into the air: a fall, once the seams have had
-		# their chance.
-		if player.is_on_floor():
-			player.set_grounded(true)
-			return _let_go()
-		_lost_contact += delta
-		player.set_grounded(false)
-		if _lost_contact >= cfg_slide.contact_grace:
-			return _let_go()
-		return KEEP
-	_lost_contact = 0.0
-	_normal = chute["normal"]
-	# Seated on the chute, the model lies along it.
-	player.body_tilt_normal = _normal
-	# A surface, so the fall counter resets: the chute's end is where the
-	# fall begins, not its top. The original places a TdFallHeightVolume on
-	# its chutes for the same job (it sets EnterFallingHeight on touch).
-	player.set_grounded(true)
-	player.enter_falling_height = player.global_position.y
-	if _normal.y >= cfg_slide.min_slide_floor_z:
-		return _let_go()
-	return KEEP
-
-
-## The slide is over, other than by a jump. A long descent lands hard: the
-## body is handed to Falling with the hard landing armed, and the floor under
-## it, if it is already on one, is landed on next tick. A short one is simply
-## the runner's speed on whatever is there.
-func _let_go() -> StringName:
-	if _start_y - player.global_position.y >= config.ramp_slide.hard_landing_descent:
-		player.arm_forced_hard_landing()
-		player.set_grounded(false)
-		return FALLING
-	return WALKING if player.is_on_floor() else FALLING
-
-
-## Swings the body, the look fan and the drawn model toward the downhill, at
-## a rate that covers a half turn in turn_in_time. THE FAN MOVES, NOT THE
-## BODY DIRECTLY: this move has an absolute yaw clamp, so apply_look rebuilds
-## the body's yaw from reference plus the player's own offset every tick;
-## a second writer here is what made the 180 turn twitch (Turn180Move).
-## Recomputed every tick rather than captured once, because a chute bends.
-func _advance_turn(delta: float) -> void:
-	var down := _downhill()
-	if down.length_squared() < 0.0001:
+## TdMove_RumpSlide.StartSliding: SetPreciseRotation(Rotator(N x (N x Z)),
+## AnimBlendTime) -- turn to face down the chute over 0.5 s.
+func on_timer() -> void:
+	var n: Vector3 = player.uncontrolled_slide_normal
+	# N x (N x Z): downhill along the surface.
+	var down: Vector3 = n.cross(n.cross(Vector3.UP))
+	if Vector2(down.x, down.z).length_squared() < 1e-8:
 		return
-	var target: float = atan2(-down.x, -down.z)
-	var remaining: float = wrapf(target - _placed, -PI, PI)
-	var step: float = PI / maxf(config.ramp_slide.turn_in_time, 0.001) * delta
-	var wanted: float = wrapf(_placed + clampf(remaining, -step, step), -PI, PI)
-	var moved: float = wrapf(wanted - _placed, -PI, PI)
-	_placed = wanted
-	if player.camera_rig != null:
-		player.camera_rig.shift_yaw_reference(wanted, 1.0)
-		player.camera_rig.absorb_body_yaw(moved)
-	else:
-		player.rotation.y = wanted
-	# The model faces the chute's foot, not the way it arrived: the yaw
-	# freeze holds whatever is pinned here.
-	player.pin_visual_yaw(wanted)
+	set_precise_rotation(UE.dir_yaw(down), PRECISE_ROTATION_TIME)
 
+## TdMove_RumpSlide.AnimBlendTime, the precise rotation's time.
+const PRECISE_ROTATION_TIME := 0.5
 
-## `v` with its component into the surface removed; a velocity leaving the
-## surface is left alone.
-func _along_surface(v: Vector3) -> Vector3:
-	var into: float = v.dot(_normal)
-	return v - _normal * into if into < 0.0 else v
+## TdMove_RumpSlide PrePhysics (0x01208d70). [ME:CONFIRMED emulated] Only on
+## the frames the physics touched the chute.
+func pre_physics(delta: float) -> void:
+	super.pre_physics(delta)
+	# The model is the pawn, and freeze_visual_yaw holds it: it turns with the
+	# precise rotation and nothing else.
+	player.pin_visual_yaw(player.pawn_yaw)
+	if not player.uncontrolled_slide:
+		return
+	var v: Vector3 = player.velocity
+	var speed: float = v.length()
+	var n: Vector3 = player.uncontrolled_slide_normal
+	# N x (0,0,1) in the original's axes: across the slope, sin(slope) long,
+	# and to the LEFT of the fall line.
+	var side: Vector3 = Vector3.UP.cross(n)
+	var ctrl := Vector3.ZERO
+	if player.move_action_hint == MAH_LEFT:
+		ctrl = side
+	elif player.move_action_hint == MAH_RIGHT:
+		ctrl = -side
+	# The third case reads the PS3's tilt, 0 on a PC. [ME:INFERRED N5 §25.2]
+	var steered: Vector3 = v + ctrl * (cfg.side_control * delta)
+	player.velocity = PawnPhysics.safe_normal(steered) * minf(cfg.max_slide_speed, speed)
+	# A slide is not a fall: the fall height is measured from here.
+	if not touched_fall_height:
+		player.enter_falling_height = player.global_position.y
 
-
-## Unit vector down the surface, in the plane of it.
-func _downhill() -> Vector3:
-	var down: Vector3 = Vector3.DOWN - _normal * Vector3.DOWN.dot(_normal)
-	return down.normalized() if down.length_squared() > 0.0001 else Vector3.ZERO
+## TdMove_RumpSlide TickMove (0x011fa1c0): off the chute for more than 0.1 s
+## with nothing in a 2 uu box 150 uu below, a fall.
+func tick_move(delta: float) -> void:
+	time_falling = 0.0 if player.uncontrolled_slide else time_falling + delta
+	if time_falling > 0.1:
+		var loc: Vector3 = player.collision_center()
+		var probe := Vector3(2.0, 2.0, 2.0) * UU
+		if not player.phys.trace_blocked(loc - Vector3.UP * 150.0 * UU, loc, probe):
+			player.move_manager.set_move(FALLING)
+		else:
+			time_falling = 0.0
+	super.tick_move(delta)

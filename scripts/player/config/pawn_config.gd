@@ -133,6 +133,11 @@ extends Resource
 ## default (45 degrees), so the probe gates and CharacterBody3D's own floor
 ## test agree about what a floor is.
 @export var walkable_floor_z: float = 0.71
+## [ME:CONFIRMED decompile N5 §0.2] TdMove.ShrinkCollision: the collision of a
+## move with bUseCustomCollision (Crouch, Slide, Coil, 180TurnInAir,
+## LayOnGround, AirBarge, MeleeCrouch, MeleeSlide; Move.use_custom_collision)
+## is CollisionHeight 61 uu, a half height, so 1.22 m tall.
+@export var custom_collision_height: float = 1.22
 
 @export_group("Jump")
 ## TdMove_Jump.BaseJumpZ = 630 uu/s. [ME:CONFIRMED decompile 15.7] The jump
@@ -401,20 +406,17 @@ extends Resource
 ## changes and both endpoints are exactly what they were.
 @export var speed_cap_blend_time: float = 0.3
 
-## How long after a landing lockout releases the player cannot be staggered
-## again. PROJECT-DEFINED as a value; [ME:COMMUNITY] as a mechanic -- the
-## original's barbed wire hurts on contact and keeps hurting while you are in
-## it, but does not chain-lock you, which is what a window like this buys.
+## How long after a hazard's hit, or after a landing lockout releases, the
+## player cannot be staggered again. PROJECT-DEFINED: the original's wire
+## hurts by DamagePerSec and stumbles on its touch (Player.touch_barbed_wire());
+## this window is the cadence this project's STAGGER damage is dealt at.
 ##
-## THE POINT IS THE ESCAPE. A wire volume renews its STAGGER every tick the
-## body is in it, and without a window each of those would hurt again and
-## empty the budget again, so the body could never pick up the speed to get
-## out. Armed at the hit (Player.take_hazard_hit()) and when a lockout that
-## began as one ends. It has to outlast the time it takes to cross the wire,
-## not the time it takes to react.
+## A wire volume renews its STAGGER every tick the body is in it, and without
+## a window each of those would hurt again and empty the budget again. Armed at
+## the hit (Player.take_hazard_hit()) and when a lockout that began as one
+## ends.
 @export var stagger_immunity_time: float = 1.0
-## Seconds a hazard's hit takes to fade from the screen. PROJECT-DEFINED; the
-## same figure RampSlideConfig.hurt_flash_time gives the chute's own hurt.
+## Seconds a hazard's hit takes to fade from the screen. PROJECT-DEFINED.
 @export var hurt_flash_time: float = 0.6
 
 ## [ME:CONFIRMED 13.1] Measured off the HUD. A hard landing costs 15 of these

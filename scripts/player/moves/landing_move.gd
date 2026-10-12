@@ -55,11 +55,7 @@ func enter(previous: StringName) -> void:
 		return
 	var came_from_180_in_air: bool = previous == TURN_180_IN_AIR
 	var falling_height: float = player.enter_falling_height - player.global_position.y
-	# A long chute slide arms a hard landing however short the drop after it
-	# -- this project's stand-in for the TdFallHeightVolume the original
-	# puts on its chutes (RampSlideMove).
-	var hard: bool = falling_height >= config.pawn.hard_landing_height \
-		or player.consume_forced_hard_landing()
+	var hard: bool = falling_height >= config.pawn.hard_landing_height
 	var soft_surface: bool = hard and last_landing_was_on_soft_object
 	var v_dir: Vector3 = player.velocity.normalized() if player.velocity.length_squared() > 0.0 else Vector3.ZERO
 	var heading_dot_velocity: float = player.facing().dot(v_dir)
@@ -82,13 +78,20 @@ func enter(previous: StringName) -> void:
 		_land_backwards(hard)
 	elif soft_surface:
 		_land_on_soft_object()
-	elif hard and (not player.uncontrolled_slide or previous == RAMP_SLIDE):
+	elif hard and (not player.uncontrolled_slide or (previous == RAMP_SLIDE and _rump_slide_touched_fall_height())):
 		_land_hard()
 	else:
 		_land_normal()
 		_end_landing()
 	force_land_back = false
 	last_landing_was_on_soft_object = false
+
+## RumpSlide.bTouchedFallHeightVolume: a hard landing out of a rump slide is
+## hard only after the slide touched a fall-height volume.
+## [ME:CONFIRMED decompile N2 §4]
+func _rump_slide_touched_fall_height() -> bool:
+	var rump = player.move_manager.move_for(RAMP_SLIDE)
+	return rump != null and rump.touched_fall_height
 
 ## TdMove_Landing.SubtractLandingSpeed. [ME:CONFIRMED decompile 15.6] After a
 ## jump's fall (or a coil, or an air kick), the horizontal speed is capped at

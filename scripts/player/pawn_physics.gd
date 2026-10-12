@@ -422,8 +422,9 @@ func start_new_physics(dt: float, iterations: int) -> void:
 			phys_wall_climbing(dt, iterations)
 
 ## ATdPawn::setPhysics. [ME:CONFIRMED decompile N2 §4] Entering Falling stamps
-## EnterFallingHeight with the body's centre height. Leaving the wall modes
-## ends the wall contact (bIsWallWalking).
+## EnterFallingHeight with the body's centre height. Any physics but walking
+## clears the SlideOffLedge timer; leaving the wall modes ends the wall contact
+## (bIsWallWalking).
 func set_physics(mode: int) -> void:
 	if mode == pawn.physics:
 		return
@@ -431,6 +432,7 @@ func set_physics(mode: int) -> void:
 		pawn.enter_falling_height = pawn.global_position.y
 	if mode != Move.PHYS_WALKING:
 		pawn.base = null
+		pawn.clear_slide_off_ledge()
 	if pawn.physics == Move.PHYS_WALL_RUNNING or pawn.physics == Move.PHYS_WALL_CLIMBING:
 		pawn.is_wall_walking = false
 	pawn.physics = mode
@@ -460,12 +462,20 @@ func phys_walking(dt: float, iterations: int) -> void:
 		else safe_normal(pawn.acceleration)
 	var force: bool = pawn.force_max_accel_one_frame
 	pawn.force_max_accel_one_frame = false
-	var r: Array = calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt, p.ground_speed,
-		p.ground_friction * walk_fric, true, pawn.mobility_multiplier() * speed_modifier,
-		p.accel_rate, p.braking_friction_strength, false,
-		move != null and move.use_precise_location, force, pawn.facing())
-	pawn.velocity = r[0]
-	pawn.acceleration = r[1]
+	if pawn.root_motion_active:
+		# CalcVelocity's root-motion path hands over to the engine's own
+		# APawn::CalcVelocity and scales the result by the move's
+		# RootMotionScale. [ME:UNKNOWN] that engine path was not read (N1
+		# open question 7); the animation's own velocity is taken as it is.
+		pawn.velocity.x = pawn.root_motion_velocity.x
+		pawn.velocity.z = pawn.root_motion_velocity.z
+	else:
+		var r: Array = calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt, p.ground_speed,
+			p.ground_friction * walk_fric, true, pawn.mobility_multiplier() * speed_modifier,
+			p.accel_rate, p.braking_friction_strength, false,
+			move != null and move.use_precise_location, force, pawn.facing())
+		pawn.velocity = r[0]
+		pawn.acceleration = r[1]
 
 	var desired := Vector3(pawn.velocity.x, 0.0, pawn.velocity.z)
 	var old_location: Vector3 = pawn.global_position
@@ -532,7 +542,7 @@ func phys_walking(dt: float, iterations: int) -> void:
 		pawn.floor_normal = floor_normal
 		_check_uncontrolled_slide(hit)
 
-		if floor_normal.y < p.walkable_floor_z and not is_nearly_zero(delta) \
+		if floor_normal.y < pawn.walkable_floor_z and not is_nearly_zero(delta) \
 				and floor_normal.dot(delta) < 0.0:
 			# Walked into a surface too steep to stand on: pushed down along it.
 			var d: float = step * floor_normal.y
@@ -551,7 +561,7 @@ func phys_walking(dt: float, iterations: int) -> void:
 			hit["time"] = 0.0
 
 		var good_floor: Vector3 = hit["normal"]
-		if float(hit["time"]) < 1.0 and good_floor.y >= p.walkable_floor_z:
+		if float(hit["time"]) < 1.0 and good_floor.y >= pawn.walkable_floor_z:
 			continue
 
 		# No walkable floor: [ME:CONFIRMED decompile N1 §2.1] the player can
@@ -596,12 +606,323 @@ func floor_gap() -> float:
 var _gap := FLOOR_DIST
 var _gap_measured_at := Vector3.INF
 
-## ATdPlayerPawn::CheckForLedges. [ME:CONFIRMED decompile N1 §4.2] Only Crouch
-## is actually held back at an edge; for every other move the edge clamp is a
-## detector (Vertigo, the SlideOffLedge timer), and neither of those exists
-## here yet. Crouch is not ported, so nothing is clamped.
+## TdPlayerPawn's edge constants. [ME:CONFIRMED decompile, TdPlayerPawn CDO]
+const EDGE_CHECK_MAX_SPEED := 300.0 * UU
+const EDGE_CHECK_DISTANCE := 20.0 * UU
+const EDGE_STOP_MIN_HEIGHT := 36.0 * UU
+const VERTIGO_EDGE_PROBING_DISTANCE := 70.0 * UU
+const VERTIGO_EDGE_PROBING_HEIGHT := 1000.0 * UU
+const VERTIGO_EFFECT_THRESHOLD := 0.9
+## The edge traces run this far under the feet, and the edge found is
+## reported this far above where they hit. [ME:CONFIRMED decompile, 8.0]
+const EDGE_FOOT_DROP := 8.0 * UU
+## The 45-degree probes reach |Delta| / sqrt(2) + EdgeCheckDistance along an
+## unnormalised diagonal. [ME:CONFIRMED decompile, 0.70710677]
+const DIAGONAL_SCALE := 0.70710677
+## CheckValidFloor's probe: how far past its offset it reaches, the most an
+## edge may lie off the travel line, and how far behind the centre an edge
+## must be before it counts. [ME:CONFIRMED decompile, 10 / 20 / 10]
+const VALID_FLOOR_REACH := 10.0 * UU
+const VALID_FLOOR_CREASE := 20.0 * UU
+const VALID_FLOOR_MIN_OVERHANG := 10.0 * UU
+## The extra reach of a square box past its half-width, 2 (sqrt(2) - 1).
+const BOX_CORNER := 0.828427
+
+## ATdPlayerPawn::CheckForLedges (0x012be0f0). [ME:CONFIRMED decompile N1
+## §4.2, listing read] Only Crouch is held back at an edge. For every other
+## move the clamp EdgeCheck computes is thrown away: it is a detector -- of
+## Vertigo here, and of the SlideOffLedge timer inside EdgeCheck itself -- and
+## the body walks straight off.
 func _check_for_ledges(delta: Vector3) -> Vector3:
+	var manager = pawn.move_manager
+	var move: Move = manager.current_move()
+	if pawn.avoid_ledges and move != null and move.avoid_ledges:
+		var checked: Dictionary = edge_check(delta)
+		var clamped: Vector3 = checked["delta"]
+		if clamped != delta:
+			if manager.current_name == Move.CROUCH:
+				return clamped
+			var dir: Vector3 = safe_normal(delta - clamped)
+			var loc: Vector3 = pawn.collision_center()
+			var probe: Vector3 = loc + dir * VERTIGO_EDGE_PROBING_DISTANCE
+			var below: Dictionary = line_trace(probe, probe - Vector3.UP * VERTIGO_EDGE_PROBING_HEIGHT)
+			if below.is_empty():
+				_maybe_vertigo(probe - loc, checked["edge"], probe)
+				if manager.current_name == Move.VERTIGO:
+					return Vector3.ZERO
+				return delta
+	if manager.current_name == Move.VERTIGO:
+		manager.set_move(Move.WALKING)
 	return delta
+
+## The Vertigo trigger inside CheckForLedges: facing the drop, walking, slower
+## than a run, at an edge at least 2 uu from the last one it fired on, and
+## TdPawn.CanDoMove(MOVE_Vertigo). Vertigo's own RedoMoveTime is never asked:
+## its CanDoMove does not call the base, so only the edge distance keeps it
+## from firing again. CanDoMove is asked BEFORE the new edge is stored, so
+## the "edge in front" it checks is the one stored last time -- the zero
+## vector, for the first vertigo of a life. Kept.
+func _maybe_vertigo(to_probe: Vector3, edge: Vector3, probe: Vector3) -> void:
+	var manager = pawn.move_manager
+	var vertigo = manager.move_for(Move.VERTIGO)
+	if vertigo == null:
+		return
+	var d: Vector3 = to_probe.normalized() if to_probe.length_squared() > 1e-8 * UU * UU else to_probe
+	if absf(d.dot(pawn.facing())) <= VERTIGO_EFFECT_THRESHOLD:
+		return
+	if manager.current_name != Move.WALKING:
+		return
+	if walking_state(pawn.horizontal_speed()) >= WAS_RUN:
+		return
+	if edge.distance_to(vertigo.last_actual_edge_position) < 2.0 * UU:
+		return
+	if not manager.pawn_can_do(Move.VERTIGO):
+		return
+	vertigo.last_edge_position = probe
+	vertigo.last_actual_edge_position = edge
+	manager.set_move(Move.VERTIGO)
+
+## ATdPawn::EdgeCheck (0x012b8a30). [ME:CONFIRMED decompile, read by W2c:
+## constants resolved from the binary] Returns {delta, edge}: the walking
+## sub-step's delta, clamped against the edge it is about to cross, and the
+## edge point found (ZERO when none).
+##
+## Three line traces straight down, from the body's centre height to
+## EdgeStopMinHeight + 4 uu under the feet: one EdgeCheckDistance past the end
+## of the delta, two along the forward diagonals. A probe that lands more than
+## MaxStepHeight under the feet, or on an unwalkable face, has no floor.
+## Two of the three without floor arm the 0.2 s SlideOffLedge timer. Faster
+## than EdgeCheckMaxSpeed, or with the hint forward or back, the delta comes
+## back unchanged. Otherwise a horizontal trace just under the feet finds the
+## edge's face and the delta loses its component into that face's normal --
+## or, at an outside corner, both faces are found and the delta is cut against
+## one, the other, or stopped outright.
+func edge_check(delta: Vector3) -> Dictionary:
+	var p: PawnConfig = pawn.config.pawn
+	var loc: Vector3 = pawn.collision_center()
+	var h: float = pawn.collision_half_height()
+	var r: float = pawn.collision_radius()
+	var walkable: float = pawn.walkable_floor_z
+	var edge := Vector3.ZERO
+	var d: Vector3 = safe_normal_2d(delta)
+	var right: Vector3 = d.cross(Vector3.UP)
+	var diag_right: Vector3 = d + right
+	var diag_left: Vector3 = d - right
+	var depth: float = h + EDGE_STOP_MIN_HEIGHT + 4.0 * UU
+	var floor_fraction: float = (h + p.max_step_down_height) / depth
+	var diagonal_reach: float = Vector2(delta.x, delta.z).length() * DIAGONAL_SCALE + EDGE_CHECK_DISTANCE
+	var centre: Dictionary = _edge_probe(loc + delta + d * EDGE_CHECK_DISTANCE, depth)
+	var first: Dictionary = _edge_probe(loc + diag_right * diagonal_reach, depth)
+	var second: Dictionary = _edge_probe(loc + diag_left * diagonal_reach, depth)
+	var gap_centre: int = 1 if _no_floor(centre, floor_fraction, walkable) else 0
+	var gap_first: int = 1 if _no_floor(first, floor_fraction, walkable) else 0
+	var gap_second: int = 1 if _no_floor(second, floor_fraction, walkable) else 0
+	if (gap_centre + gap_first == 2) or (gap_centre + gap_first + gap_second == 2):
+		pawn.arm_slide_off_ledge()
+	var speed2d_sq: float = pawn.velocity.x * pawn.velocity.x + pawn.velocity.z * pawn.velocity.z
+	if speed2d_sq > EDGE_CHECK_MAX_SPEED * EDGE_CHECK_MAX_SPEED \
+			or pawn.move_action_hint == Move.MAH_UP or pawn.move_action_hint == Move.MAH_DOWN:
+		return {"delta": delta, "edge": edge}
+	# For the clamp an edge is a probe that hit nothing at all or hit an
+	# unwalkable face -- not the depth threshold above.
+	var bad_centre: bool = _missed_or_steep(centre, walkable)
+	var bad_first: bool = _missed_or_steep(first, walkable)
+	var bad_second: bool = _missed_or_steep(second, walkable)
+	if not bad_centre and not bad_first and not bad_second:
+		return {"delta": delta, "edge": edge}
+	var foot_y: float = loc.y - h - EDGE_FOOT_DROP
+	var reach: float = r - 4.0 * UU
+	var limit_sq: float = EDGE_CHECK_DISTANCE * EDGE_CHECK_DISTANCE
+	if not (bad_second and bad_first):
+		var f: Vector3 = d if bad_centre else (diag_left if bad_second else diag_right)
+		var face: Dictionary = _edge_face(loc, f, reach, foot_y, walkable)
+		if face.is_empty():
+			return {"delta": delta, "edge": edge}
+		var n: Vector3 = safe_normal_2d(face["normal"])
+		var to_face: Vector3 = face["position"] - loc
+		var along: float = (to_face.x * n.x + to_face.z * n.z) / maxf(n.length_squared(), 1e-12)
+		var plane := Vector2(n.x * along, n.z * along)
+		var out: Vector3 = delta
+		if plane.length_squared() - (delta.x * delta.x + delta.z * delta.z) <= limit_sq:
+			out = delta - n * delta.dot(n)
+		edge = face["position"] + Vector3.UP * EDGE_FOOT_DROP
+		return {"delta": out, "edge": edge}
+	# An outside corner: both diagonals fell away.
+	var face_a: Dictionary = _edge_face(loc, diag_left, reach, foot_y, walkable)
+	if not face_a.is_empty():
+		edge = face_a["position"] + Vector3.UP * EDGE_FOOT_DROP
+	var face_b: Dictionary = _edge_face(loc, diag_right, reach, foot_y, walkable)
+	if not face_b.is_empty():
+		edge = face_b["position"] + Vector3.UP * EDGE_FOOT_DROP
+	var raw_a: Vector3 = face_a.get("raw_normal", Vector3.ZERO)
+	var raw_b: Vector3 = face_b.get("raw_normal", Vector3.ZERO)
+	var clamp_a: Vector3 = delta - raw_a * delta.dot(raw_a)
+	var clamp_b: Vector3 = delta - raw_b * delta.dot(raw_b)
+	var dist_a: float = _corner_distance(face_a, loc, clamp_a)
+	var dist_b: float = _corner_distance(face_b, loc, clamp_b)
+	var has_a: bool = not face_a.is_empty()
+	var has_b: bool = not face_b.is_empty()
+	var out_corner: Vector3 = delta
+	if dist_b > limit_sq:
+		if dist_a <= limit_sq and has_a:
+			out_corner = clamp_a
+	elif dist_a <= limit_sq:
+		if has_a or has_b:
+			out_corner = Vector3.ZERO
+	elif has_b:
+		out_corner = clamp_b
+	return {"delta": out_corner, "edge": edge}
+
+## One of EdgeCheck's downward probes: {time, normal}, time 1 on a miss.
+func _edge_probe(from: Vector3, depth: float) -> Dictionary:
+	var hit: Dictionary = line_trace(from, from - Vector3.UP * depth)
+	if hit.is_empty():
+		return {"time": 1.0, "normal": Vector3.ZERO}
+	return {"time": float(hit["time"]), "normal": hit["normal"]}
+
+static func _no_floor(probe: Dictionary, floor_fraction: float, walkable: float) -> bool:
+	var normal: Vector3 = probe["normal"]
+	return floor_fraction < float(probe["time"]) or normal.y < walkable
+
+static func _missed_or_steep(probe: Dictionary, walkable: float) -> bool:
+	var normal: Vector3 = probe["normal"]
+	return float(probe["time"]) >= 1.0 or normal.y < walkable
+
+## The horizontal trace under the feet that finds an edge's face: from `reach`
+## beyond the centre along `f`, back toward the body. Empty unless it hit, did
+## not start inside anything, and hit a face too steep to stand on.
+func _edge_face(loc: Vector3, f: Vector3, reach: float, foot_y: float, walkable: float) -> Dictionary:
+	var start := Vector3(loc.x + f.x * reach, foot_y + f.y * reach, loc.z + f.z * reach)
+	var end := Vector3(loc.x - f.x * reach, foot_y - f.y * reach, loc.z - f.z * reach)
+	var hit: Dictionary = line_trace(start, end)
+	if hit.is_empty():
+		return {}
+	var t: float = hit["time"]
+	var normal: Vector3 = hit["normal"]
+	if t >= 1.0 or t <= 0.0 or normal.y >= walkable:
+		return {}
+	return {"position": hit["position"], "normal": normal, "raw_normal": normal}
+
+## At an outside corner: how far the clamped delta leaves the body from the
+## face's plane, squared and horizontal. 0 for a face that was not found.
+static func _corner_distance(face: Dictionary, loc: Vector3, clamped: Vector3) -> float:
+	if face.is_empty():
+		return 0.0
+	var n: Vector3 = safe_normal_2d(face["normal"])
+	var to_face: Vector3 = face["position"] - loc
+	var along: float = (to_face.x * n.x + to_face.z * n.z) / maxf(n.length_squared(), 1e-12)
+	var dx: float = along * n.x - clamped.x
+	var dz: float = along * n.z - clamped.z
+	return dx * dx + dz * dz
+
+## ATdPlayerPawn::CheckValidFloor (0x012b6ac0, with its probe 0x012b5eb0).
+## [ME:CONFIRMED decompile, read by W2c] Whether the footing under a body
+## arriving along `current_delta` on a floor `check_floor` is real. Two
+## horizontal probes just under the feet, ahead along the delta and across
+## it, both projected onto the floor's plane, look for an edge face the centre
+## has already passed by more than 10 uu. None: valid. One: the body is pushed
+## back on to the floor's side of it far enough for the box to clear, and a
+## downward sweep MaxStepHeight + 2 uu from there decides. With `slide_off`, a
+## body found unsupported is moved by that push for real and its evade timer
+## set; the push is undone if blocked.
+##
+## The original also offsets the drawn mesh back by the push (vt 0x424);
+## that is the presentation's and not ported.
+func check_valid_floor(current_delta: Vector3, check_floor: Vector3, slide_off: bool) -> bool:
+	var p: PawnConfig = pawn.config.pawn
+	var loc: Vector3 = pawn.collision_center()
+	var h: float = pawn.collision_half_height()
+	var r: float = pawn.collision_radius()
+	var feet := Vector3(loc.x, loc.y - h, loc.z)
+	var flat_sq: float = current_delta.x * current_delta.x + current_delta.z * current_delta.z
+	var d: Vector3 = pawn.facing() if flat_sq <= 0.0 else safe_normal_2d(current_delta)
+	var m: float = maxf(absf(d.z), absf(d.x))
+	if m <= 0.0:
+		return true
+	var f: Vector3 = check_floor
+	var ahead: Vector3 = safe_normal(d - f * f.dot(d)) / m
+	var left: Vector3 = Vector3.UP.cross(Vector3(d.x, 0.0, d.z)) + Vector3(0.0, d.y, 0.0)
+	var across: Vector3 = safe_normal(left - f * f.dot(left)) / m
+	var floor_flat_sq: float = f.x * f.x + f.z * f.z
+	var box: float = 1.0
+	if floor_flat_sq >= 1e-8:
+		var fn: Vector3 = safe_normal_2d(f)
+		box = maxf(absf(fn.z), absf(fn.x))
+	if f.y != 0.0:
+		feet.y -= ((1.0 / box) / f.y) * r * sqrt(floor_flat_sq)
+	var push: Variant = _valid_floor_probe(feet, ahead * r, loc, r)
+	if push == null:
+		push = _valid_floor_probe(feet, across * r, loc, r)
+		if push == null:
+			return true
+	var out: Vector3 = push
+	var start: Vector3 = loc + out
+	var end: Vector3 = start - Vector3.UP * (p.max_step_down_height + STEP_FUDGE)
+	var below: Dictionary = box_trace(end, start, Vector3(r, h, r))
+	var below_normal: Vector3 = below["normal"]
+	if float(below["time"]) < 1.0 and (float(below["time"]) <= 0.0 or below_normal.y >= pawn.walkable_floor_z):
+		return true
+	if slide_off:
+		var moved: Dictionary = move_actor(out)
+		if float(moved["time"]) != 1.0:
+			move_actor(-out * float(moved["time"]))
+			return true
+		pawn.evade_timer = 0.2
+	return false
+
+## CheckValidFloor's probe (0x012b5eb0): the push that clears the box of an
+## edge face found under the feet along `offset`, or null when there is none.
+func _valid_floor_probe(feet: Vector3, offset: Vector3, loc: Vector3, r: float) -> Variant:
+	var on: Vector3 = safe_normal(offset)
+	var ext: Vector3 = offset + on * VALID_FLOOR_REACH
+	var base := Vector3(feet.x, feet.y - 4.0 * UU, feet.z)
+	var a: Vector3 = base + ext
+	var b: Vector3 = base - ext
+	var hit_1: Dictionary = _face_hit(line_trace(a, b))
+	var hit_2: Dictionary = _face_hit(line_trace(b, a))
+	var pick: Dictionary
+	if not hit_1.is_empty():
+		if not hit_2.is_empty() and (hit_1["normal"] as Vector3).dot(hit_2["normal"]) < 0.0:
+			# A crease: two faces looking at each other.
+			var crease: Vector3 = safe_normal_2d(hit_1["normal"] - hit_2["normal"])
+			if (hit_1["position"] - hit_2["position"]).dot(crease) >= VALID_FLOOR_CREASE:
+				return null
+			var d1: float = Vector2(loc.x - hit_1["position"].x, loc.z - hit_1["position"].z).length()
+			var d2: float = Vector2(loc.x - hit_2["position"].x, loc.z - hit_2["position"].z).length()
+			pick = hit_2 if d2 <= d1 else hit_1
+			var nn: Vector3 = safe_normal_2d(pick["normal"])
+			var o2: Vector3 = safe_normal_2d(offset)
+			var sign: float = -1.0 if (pick["position"] - loc).dot(nn) > 0.0 else 1.0
+			var push: float = _box_reach(nn, r) + 2.0 * UU - sign * absf(minf(d1, d2) * o2.dot(nn))
+			return nn * maxf(push, 0.0)
+		pick = hit_1
+	else:
+		if hit_2.is_empty():
+			return null
+		pick = hit_2
+	var n: Vector3 = safe_normal_2d(pick["normal"])
+	var overhang: float = -((pick["position"] - loc).dot(n))
+	if overhang <= VALID_FLOOR_MIN_OVERHANG:
+		return null
+	return n * maxf(_box_reach(n, r) + 2.0 * UU - overhang, 0.0)
+
+## A line trace's hit as CheckValidFloor counts it: started outside, stopped
+## short, on a face too steep to stand on.
+func _face_hit(hit: Dictionary) -> Dictionary:
+	if hit.is_empty():
+		return {}
+	var t: float = hit["time"]
+	var normal: Vector3 = hit["normal"]
+	if t >= 1.0 or t <= 0.0 or normal.y >= pawn.walkable_floor_z:
+		return {}
+	return hit
+
+## How far a square box of half-width `r` reaches along the flat direction
+## `n`: (1 + 0.828427 m sqrt(1 - m^2)) r with m its larger component.
+static func _box_reach(n: Vector3, r: float) -> float:
+	var m: float = maxf(absf(n.z), absf(n.x))
+	var c: float = minf(m * m, 1.0)
+	return (sqrt(1.0 - c) * m * BOX_CORNER + 1.0) * r
 
 ## ATdPawn::stepUp. [ME:CONFIRMED decompile N1 §4.1] Returns the final hit.
 func _step_up(desired_dir: Vector3, delta: Vector3, hit_in: Dictionary) -> Dictionary:
@@ -613,15 +934,15 @@ func _step_up(desired_dir: Vector3, delta: Vector3, hit_in: Dictionary) -> Dicti
 	var hit: Dictionary = hit_in
 	var in_normal: Vector3 = hit_in["normal"]
 	# No Abs here, unlike stock UE3: a ceiling counts as a wall.
-	if in_normal.y < MAX_STEP_SIDE_Z or in_normal.y >= p.walkable_floor_z:
+	if in_normal.y < MAX_STEP_SIDE_Z or in_normal.y >= pawn.walkable_floor_z:
 		move_actor(-down + in_normal * (0.1 * UU))
 		var step_location: Vector3 = pawn.global_position
 		hit = move_actor(delta)
 		var landed_normal: Vector3 = hit["normal"]
-		if float(hit["time"]) >= 1.0 or landed_normal.y < p.walkable_floor_z:
+		if float(hit["time"]) >= 1.0 or landed_normal.y < pawn.walkable_floor_z:
 			var below: Dictionary = sweep(down)
 			var below_normal: Vector3 = below["normal"]
-			if float(below["time"]) < 1.0 and below_normal.y < p.walkable_floor_z:
+			if float(below["time"]) < 1.0 and below_normal.y < pawn.walkable_floor_z:
 				hit = orig_hit.duplicate()
 				move_actor(step_location - pawn.global_position)
 				step_ok = false
@@ -636,7 +957,7 @@ func _step_up(desired_dir: Vector3, delta: Vector3, hit_in: Dictionary) -> Dicti
 				move_actor(down)
 			return _step_up(desired_dir, delta * (1.0 - float(hit["time"])), hit)
 		var handled: bool = false
-		if step_ok and normal.y < p.walkable_floor_z and not (hit["collider"] is CharacterBody3D):
+		if step_ok and normal.y < pawn.walkable_floor_z and not (hit["collider"] is CharacterBody3D):
 			var along: Vector3 = safe_normal_2d(delta - normal * delta.dot(normal))
 			# The slip scales a copy of Delta here: New below is taken from
 			# stepUp's own, unscaled. Hit is whatever the slip left in it.
@@ -741,10 +1062,10 @@ func _corner_slip(along: Vector3, step_down_too: bool, probe_ahead: bool, delta:
 	hit["position"] = final["position"]
 	return [handled, delta]
 
-## The current move's bUseCustomCollision, the corner slip's step-down switch:
-## the moves CustomCollision lists.
+## The current move's bUseCustomCollision, the corner slip's step-down switch.
 func _uses_custom_collision() -> bool:
-	return CustomCollision.MOVES.has(pawn.move_manager.current_name)
+	var move: Move = pawn.move_manager.current_move()
+	return move != null and move.use_custom_collision
 
 ## APawn::processHitWall for a pawn with bDirectHitWall: the current move's
 ## HitWall, and only when something was hit. [ME:CONFIRMED decompile N2 §5]
@@ -832,13 +1153,20 @@ func _carry_on_base(dt: float) -> void:
 
 ## ATdPlayerPawn::physFalling. [ME:CONFIRMED emulated N2 §2]
 ##
-## Not ported: root motion, water and the landing edge check (2c, whose
-## EdgeCheck is only partly read) -- every floor hit lands.
+## Not ported: water. Root motion is taken as the move hands it over
+## (Player.root_motion_velocity), not read off a mesh.
 func phys_falling(dt: float, iterations: int) -> void:
 	var p: PawnConfig = pawn.config.pawn
+	var root_motion: bool = pawn.root_motion_active
+	if root_motion:
+		# RMM_Accel: the horizontal velocity is the animation's, the
+		# acceleration is dropped, and no bound applies to it.
+		pawn.velocity.x = pawn.root_motion_velocity.x
+		pawn.velocity.z = pawn.root_motion_velocity.z
+		pawn.acceleration = Vector3.ZERO
 	var old_accel: Vector3 = pawn.acceleration
-	var a: Vector3 = falling_accel_bound(pawn.velocity, pawn.acceleration, dt, p.accel_rate,
-		p.air_control, p.ground_speed)
+	var a: Vector3 = Vector3.ZERO if root_motion else falling_accel_bound(pawn.velocity,
+		pawn.acceleration, dt, p.accel_rate, p.air_control, p.ground_speed)
 	var remaining: float = dt
 	if dt > 0.0:
 		while iterations < MAX_ITERATIONS:
@@ -851,75 +1179,97 @@ func phys_falling(dt: float, iterations: int) -> void:
 			_recovered = false
 			pawn.velocity = old_velocity + (a + Vector3(0.0, pawn.gravity_z(), 0.0)) * tick
 			var adjusted: Vector3 = pawn.velocity * tick
-			var hit: Dictionary = move_actor(adjusted)
-			if float(hit["time"]) < 1.0:
-				var normal: Vector3 = hit["normal"]
-				if normal.y < p.walkable_floor_z:
-					# A wall or a ceiling.
-					_process_hit_wall(hit)
-					if pawn.physics != Move.PHYS_FALLING:
-						return
-					if normal.y <= -p.walkable_floor_z and pawn.velocity.y > 0.0:
-						# Everything below reads the nudge's own last hit, as the
-						# original's one FCheckResult does.
-						var nudged: Dictionary = _ceiling_corner_nudge()
-						if not nudged.is_empty():
-							hit = nudged
-							normal = hit["normal"]
-					# TdPawn's ComputeSlideVector tests the surface for the uncontrolled
-					# slide first. [ME:CONFIRMED decompile N2 §2b]
-					_check_uncontrolled_slide(hit)
-					var slide: Vector3 = compute_slide_vector(adjusted, normal, float(hit["time"]))
-					if slide.dot(adjusted) >= 0.0:
-						var target: Vector3 = pawn.global_position + slide
-						var hit2: Dictionary = move_actor(slide)
-						var stepped: bool = false
-						var resolved: bool = false
-						if safe_normal(slide).y < p.walkable_floor_z - 1.0:
-							if float(hit2["time"]) >= 1.0:
-								resolved = true
-							else:
-								hit2 = move_actor(target + Vector3(0.0, 1.9 * UU, 0.0) - pawn.global_position)
-								stepped = true
-						if not resolved:
-							if float(hit2["time"]) < 1.0:
-								var normal2: Vector3 = hit2["normal"]
-								if normal2.y < p.walkable_floor_z:
-									_process_hit_wall(hit2)
-									if pawn.physics != Move.PHYS_FALLING:
-										return
-									var twin: Vector3 = two_wall_adjust(safe_normal(adjusted), slide,
-										normal2, normal, float(hit2["time"]))
-									var ditch: bool = normal.y > 0.0 and normal2.y > 0.0 \
-										and twin.y == 0.0 and normal.dot(normal2) < 0.0
-									var hit3: Dictionary = move_actor(twin)
-									var normal3: Vector3 = hit3["normal"]
-									if ditch or (float(hit3["time"]) < 1.0 and normal3.y >= p.walkable_floor_z):
-										process_landed(normal3 if float(hit3["time"]) < 1.0 else normal2,
-											0.0, iterations)
-										return
+			# The landing edge test can send the move round again. [ME:CONFIRMED
+			# emulated N2 §2c] Its flag is never cleared inside the loop, so a
+			# second pass that meets a floor does not land at all.
+			var retry: bool = false
+			var retry_count: int = 0
+			while true:
+				var hit: Dictionary = move_actor(adjusted)
+				if float(hit["time"]) < 1.0:
+					var normal: Vector3 = hit["normal"]
+					if normal.y < pawn.walkable_floor_z:
+						# A wall or a ceiling.
+						_process_hit_wall(hit)
+						if pawn.physics != Move.PHYS_FALLING:
+							return
+						if normal.y <= -pawn.walkable_floor_z and pawn.velocity.y > 0.0:
+							# Everything below reads the nudge's own last hit, as the
+							# original's one FCheckResult does.
+							var nudged: Dictionary = _ceiling_corner_nudge()
+							if not nudged.is_empty():
+								hit = nudged
+								normal = hit["normal"]
+						# TdPawn's ComputeSlideVector tests the surface for the uncontrolled
+						# slide first. [ME:CONFIRMED decompile N2 §2b]
+						_check_uncontrolled_slide(hit)
+						var slide: Vector3 = compute_slide_vector(adjusted, normal, float(hit["time"]))
+						if slide.dot(adjusted) >= 0.0:
+							var target: Vector3 = pawn.global_position + slide
+							var hit2: Dictionary = move_actor(slide)
+							var stepped: bool = false
+							var resolved: bool = false
+							if safe_normal(slide).y < pawn.walkable_floor_z - 1.0:
+								if float(hit2["time"]) >= 1.0:
+									resolved = true
 								else:
-									_check_uncontrolled_slide(hit2)
-									process_landed(normal2, 0.0, iterations)
-									return
-							elif stepped:
-								move_actor(Vector3(0.0, -1.9 * UU, 0.0))
-					# The blocked fraction of the step is lost; what remains is
-					# the displacement the slide actually made.
-					old_velocity.x = (pawn.global_position.x - old_location.x) / tick
-					old_velocity.z = (pawn.global_position.z - old_location.z) / tick
-				else:
-					# A floor.
-					remaining += (1.0 - float(hit["time"])) * tick
-					if not _just_teleported and float(hit["time"]) > LANDING_REBUILD_TIME \
-							and float(hit["time"]) * tick > LANDING_REBUILD_SECONDS:
-						pawn.velocity = (pawn.global_position - old_location) / (tick * float(hit["time"]))
-					_check_uncontrolled_slide(hit)
-					process_landed(normal, remaining, iterations)
-					return
+									hit2 = move_actor(target + Vector3(0.0, 1.9 * UU, 0.0) - pawn.global_position)
+									stepped = true
+							if not resolved:
+								if float(hit2["time"]) < 1.0:
+									var normal2: Vector3 = hit2["normal"]
+									if normal2.y < pawn.walkable_floor_z:
+										_process_hit_wall(hit2)
+										if pawn.physics != Move.PHYS_FALLING:
+											return
+										var twin: Vector3 = two_wall_adjust(safe_normal(adjusted), slide,
+											normal2, normal, float(hit2["time"]))
+										var ditch: bool = normal.y > 0.0 and normal2.y > 0.0 \
+											and twin.y == 0.0 and normal.dot(normal2) < 0.0
+										var hit3: Dictionary = move_actor(twin)
+										var normal3: Vector3 = hit3["normal"]
+										if ditch or (float(hit3["time"]) < 1.0 and normal3.y >= pawn.walkable_floor_z):
+											process_landed(normal3 if float(hit3["time"]) < 1.0 else normal2,
+												0.0, iterations)
+											return
+									else:
+										# A floor found by the slide: the same edge test,
+										# on the slide's own delta. [ME:INFERRED] the
+										# listing for this path was not read past the
+										# call; a re-move it asks for is not made here,
+										# the sub-step simply does not land.
+										if _landing_edge_retry(slide, hit2):
+											retry = true
+										if not retry:
+											_check_uncontrolled_slide(hit2)
+											process_landed(normal2, 0.0, iterations)
+											return
+								elif stepped:
+									move_actor(Vector3(0.0, -1.9 * UU, 0.0))
+						# The blocked fraction of the step is lost; what remains is
+						# the displacement the slide actually made.
+						old_velocity.x = (pawn.global_position.x - old_location.x) / tick
+						old_velocity.z = (pawn.global_position.z - old_location.z) / tick
+					else:
+						# A floor.
+						if _landing_edge_retry(adjusted, hit):
+							retry = true
+							adjusted *= 1.0 - float(hit["time"])
+						if not retry:
+							remaining += (1.0 - float(hit["time"])) * tick
+							if not _just_teleported and float(hit["time"]) > LANDING_REBUILD_TIME \
+									and float(hit["time"]) * tick > LANDING_REBUILD_SECONDS:
+								pawn.velocity = (pawn.global_position - old_location) / (tick * float(hit["time"]))
+							_check_uncontrolled_slide(hit)
+							process_landed(normal, remaining, iterations)
+							return
+				retry_count += 1
+				if not (retry and retry_count < 2):
+					break
 			# The velocity rebuilt from the displacement: V = 2 dLoc/dt - V0, which
 			# doubles every acceleration integrated above, gravity included.
-			if not _just_teleported and not _recovered and pawn.physics != Move.PHYS_NONE:
+			if not root_motion and not _just_teleported and not _recovered \
+					and pawn.physics != Move.PHYS_NONE:
 				pawn.velocity = (pawn.global_position - old_location) / tick
 				if pawn.velocity.y < old_velocity.y or old_velocity.y >= 0.0:
 					pawn.velocity = pawn.velocity * 2.0 - old_velocity
@@ -979,7 +1329,7 @@ func _ceiling_corner_probe(start: Vector3, corner: Vector3, push: Vector3) -> Ar
 		return [0, push]
 	var time: float = hit["time"]
 	var normal: Vector3 = hit["normal"]
-	if time >= 1.0 or time <= 0.0 or absf(normal.y) >= pawn.config.pawn.walkable_floor_z:
+	if time >= 1.0 or time <= 0.0 or absf(normal.y) >= pawn.walkable_floor_z:
 		return [0, push]
 	var n: Vector3 = safe_normal_2d(normal)
 	var hit_position: Vector3 = hit["position"]
@@ -992,6 +1342,38 @@ static func _merge_push(current: float, wanted: float) -> float:
 	if current != 0.0 and signf(current) != signf(wanted):
 		return current
 	return wanted if absf(current) < absf(wanted) else current
+
+## The landing edge test (TdPlayerPawn, N2 §2c). [ME:CONFIRMED emulated N2 §2c]
+## Returns true when the move must be made again instead of landing.
+##
+## Not in an uncontrolled fall. A landing that is hard -- fallen further than
+## the hard landing height, onto a surface excluded from hand and foot moves,
+## or out of a turn in the air -- asks CheckValidFloor to push the body off an
+## edge it is not really standing on, and if it did, arms SlideOffLedge and
+## makes the rest of the move again from where the push left it. Any other
+## landing only arms SlideOffLedge when the footing is bad, and lands anyway.
+##
+## "Excluded for hand and foot moves" is MoveTraces' reading of the hit's
+## bits. [ME:INFERRED] the original reads two actor bits and two component bits.
+func _landing_edge_retry(adjusted: Vector3, hit: Dictionary) -> bool:
+	var manager = pawn.move_manager
+	if manager.current_name == Move.FALL_UNCONTROLLED:
+		return false
+	if adjusted.y == 0.0:
+		return false
+	var fall: float = pawn.enter_falling_height - pawn.global_position.y
+	var hard: bool = pawn.config.pawn.hard_landing_height < fall \
+		or (MoveTraces.excludes_hand_moves(hit["collider"]) and MoveTraces.excludes_foot_moves(hit["collider"])) \
+		or manager.current_name == Move.TURN_180_IN_AIR
+	if hard:
+		if not check_valid_floor(adjusted, hit["normal"], true):
+			pawn.arm_slide_off_ledge(true)
+			_just_teleported = true
+			return true
+		return false
+	if not check_valid_floor(adjusted, hit["normal"], false):
+		pawn.arm_slide_off_ledge(true)
+	return false
 
 ## APawn::processLanded. [ME:CONFIRMED decompile N2 §3] The floor normal, the
 ## landing event, the post-landing physics, and the rest of the frame walked
@@ -1119,7 +1501,7 @@ static func _normalised(v: Vector3) -> Vector3:
 ## ATdPawn::physWallRunning (0x012bba30).
 func phys_wall_running(dt: float, iterations: int) -> void:
 	var p: PawnConfig = pawn.config.pawn
-	var walkable: float = p.walkable_floor_z
+	var walkable: float = pawn.walkable_floor_z
 	var start_yaw: int = UE.dir_yaw(pawn.floor_normal)
 	if is_nearly_zero(pawn.floor_normal, 1e-4):
 		pawn.falling_off_wall()

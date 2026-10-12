@@ -93,7 +93,8 @@ func test_the_pad_changes_the_ending_and_not_the_fall() -> void:
 	await _drop_from_lethal(player)
 	await _reach_the_verdict(player)
 	assert_eq(player.move_manager.current_name, Move.SOFT_LANDING, "test setup: never rescued")
-	assert_true(player.is_input_locked(), "the pad handed the controls back mid-fall")
+	# [ME:CONFIRMED decompile] TdMove_SoftLanding: DisableMovementTime -1.
+	assert_true(player.ignore_move_input, "the pad handed the controls back mid-fall")
 
 func test_a_rescued_fall_is_put_down_hard_rather_than_walked_off() -> void:
 	# Alive, and still charged for the drop: the landing lockout is the whole
@@ -106,26 +107,6 @@ func test_a_rescued_fall_is_put_down_hard_rather_than_walked_off() -> void:
 	assert_true(player.grounded, "test setup: the body never reached the pad")
 	assert_eq(player.move_manager.current_name, Move.LANDING, 		"a fall past the lethal height was walked off as though it never happened")
 	assert_false(player.is_dying(), "the pad caught the body and it died anyway")
-
-func test_the_verdict_is_reached_once_and_never_revisited() -> void:
-	# [12 §12.5] The original asks at the tick control is lost and not again.
-	# Taking the pad away afterwards is the strongest form of the question:
-	# there is no pad left to find, and the fall must still end safely.
-	var world := await _settled()
-	var player: Player = world["player"]
-	var pad := _slab_under(player, 1.0)
-	pad.add_to_group(Probes.SOFT_LANDING_GROUP)
-	await _drop_from_lethal(player)
-	await _reach_the_verdict(player)
-	assert_eq(player.move_manager.current_name, Move.SOFT_LANDING, "test setup: never rescued")
-	pad.remove_from_group(Probes.SOFT_LANDING_GROUP)
-	await _fall_until_settled(player)
-	assert_ne(player.move_manager.current_name, Move.FALL_UNCONTROLLED, 		"the verdict was revisited on the way down")
-
-
-# The group is silent when it lands on the wrong node: the pad simply is not
-# soft, and the player finds out by dying on it. These cover the reasons a
-# level author actually hits, because each one looks correct in the editor.
 
 func _arena() -> Arena:
 	var a: Arena = preload("res://scenes/main.tscn").instantiate()

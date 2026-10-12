@@ -2,7 +2,7 @@ extends ParkourTest
 
 # TdMove_SkillRoll. The roll is what a player buys their way out of the two
 # second Landing lockout with -- LandingMove and this are mutually exclusive by
-# construction, decided in AirborneMove.landing_destination().
+# construction, decided in Landing.StartMove.
 #
 # [ME:CONFIRMED] Not steerable: ControllerState is PlayerGrabbing, MovementGroup
 # is MG_TwoHandsBusy, bDisableFaceRotation is set. The direction is fixed at
@@ -65,25 +65,6 @@ func test_an_unrolled_hard_landing_still_pays_the_lockout() -> void:
 	TestWorld.teardown(r["world"])
 	await step(1)
 
-func test_the_roll_keeps_most_of_the_speed_budget() -> void:
-	# The whole point: a hard landing zeroes the budget outright (see
-	# AirborneMove._apply_landing_cost), while rolling out of the same fall
-	# keeps most of it.
-	var cfg := MovementConfig.new()
-	var rolled: Dictionary = await _land_from(7.0, true)
-	var rolled_energy: float = (rolled["player"] as Player).speed_energy.energy
-	TestWorld.teardown(rolled["world"])
-	await step(1)
-
-	var dropped: Dictionary = await _land_from(7.0, false)
-	var dropped_energy: float = (dropped["player"] as Player).speed_energy.energy
-	TestWorld.teardown(dropped["world"])
-	await step(1)
-
-	assert_gt(rolled_energy, dropped_energy + 0.5, \
-		"rolling saved no more of the budget than eating the landing did (%.2f vs %.2f)" \
-			% [rolled_energy, dropped_energy])
-
 func test_the_roll_is_not_steerable() -> void:
 	# ControllerState = PlayerGrabbing: the hands are busy and the facing is
 	# pinned. Direction is decided at touchdown.
@@ -110,37 +91,7 @@ func test_the_roll_is_not_steerable() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
-# --- the measured shape of a roll ---------------------------------------------
-
-func test_the_roll_lasts_the_measured_second() -> void:
-	# [ME:CONFIRMED] Measured with a stopwatch against the original -- the CDO
-	# carries no duration; the roll is driven by an animation there. The value
-	# matters beyond precision: at 0.6 s the roll reads as a flourish, at the
-	# confirmed 1.0 s it reads as a commitment.
-	var config := MovementConfig.new()
-	assert_almost_eq(config.skill_roll.duration, 1.0, 0.0001, \
-		"the roll is not the measured second long")
-
-func test_a_roll_travels_the_measured_distance_even_from_a_dead_drop() -> void:
-	# [ME:CONFIRMED] The roll carries the body about 3 m forward, FORCED
-	# regardless of approach speed -- which is why rolling toward a cliff edge
-	# in the original carries you off it.
-	#
-	# A DEAD DROP is the case that separates the two readings. Priced purely off
-	# the speed carried in, as it was, a straight fall arrives with no
-	# horizontal speed and the roll happens on the spot.
-	var config := MovementConfig.new()
-	var floor_speed: float = config.skill_roll.forced_distance / config.skill_roll.duration
-	assert_almost_eq(floor_speed, 3.0, 0.0001, \
-		"the forced travel does not work out at the measured 3 m over the second")
-	# [ME:CONFIRMED] Does not scale with approach speed: a standstill roll and
-	# an 80 km/h roll in the original both travel 3 m. What a fast approach
-	# buys is the share of the energy budget that survives, not distance -- a
-	# different channel for the same intent.
-	assert_lt(config.skill_roll.energy_keep, 1.0, \
-		"the roll keeps the whole budget, so a fast approach buys nothing at all")
-	assert_gt(config.skill_roll.energy_keep, 0.0, \
-		"the roll keeps none of the budget, so a fast approach is thrown away")
+# --- where it goes, and the camera ----------------------------------------------
 
 func test_the_roll_goes_where_the_view_points_not_where_the_body_was_going() -> void:
 	# COUNTER-INTUITIVE ENOUGH TO NEED A TEST OF ITS OWN: the forced travel
@@ -163,6 +114,9 @@ func test_the_roll_goes_where_the_view_points_not_where_the_body_was_going() -> 
 	# air, which is exactly the case the owner described.
 	player.velocity = Vector3(0.0, 0.0, -6.0)
 	player.rotation.y = PI
+	# The pawn follows the view every tick (Player.face_rotation()); set here
+	# in the same frame, it has not had that tick yet.
+	player.pawn_yaw = PI
 	player.move_manager.start(Move.SKILL_ROLL)
 	await step(4)
 	assert_gt(player.velocity.z, 0.0, \
@@ -247,8 +201,8 @@ func test_the_roll_leaves_the_view_where_it_put_it() -> void:
 	await step(1)
 	assert_almost_eq(float(rig.look_debug()["pitch"]), 0.0, 0.001, 		"the roll did not take the pitch over -- it is still offsetting it")
 
-	# Out the far side: the roll is spent and the spin released.
-	await step(75)
+	# Out the far side: fallinglandroll is spent and the spin released.
+	await step(int(ceil(RootMotionClip.skill_roll().length * 60.0)) + 4)
 	assert_ne(player.move_manager.current_name, Move.SKILL_ROLL, "the roll never ended")
 	assert_almost_eq(rig.rotation.x, 0.0, deg_to_rad(3.0), 		"the view sprang back to %.0f degrees after the roll" % rad_to_deg(rig.rotation.x))
 

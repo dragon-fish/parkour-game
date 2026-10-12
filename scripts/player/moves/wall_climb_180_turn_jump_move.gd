@@ -58,7 +58,7 @@ func enter(_previous: StringName) -> void:
 	var c: WallClimb180TurnJumpConfig = cfg as WallClimb180TurnJumpConfig
 	wanted_jump_dir = Vector3(player.floor_normal.x, 0.0, player.floor_normal.z).normalized()
 	jumping_from_wall = false
-	player.using_root_rotation = true
+	player.use_root_rotation(true)
 	_root_start_yaw = UE.yaw_units(player.pawn_yaw)
 	reset_camera_look(0.2)
 	auto_checks_cleared = true
@@ -95,7 +95,7 @@ func jump_from_wall() -> void:
 ## The window has closed: the root rotation stops, the view and then the pawn
 ## face off the wall.
 func on_timer() -> void:
-	player.using_root_rotation = false
+	player.use_root_rotation(false)
 	var yaw: int = UE.dir_yaw(wanted_jump_dir)
 	set_look_at_target_angle(player.controller_pitch_units(), yaw, 0.2)
 	set_precise_rotation(yaw, 0.1)

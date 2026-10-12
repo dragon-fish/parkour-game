@@ -367,7 +367,7 @@ func build() -> Node3D:
 	# along-slope pull (at the DownRamp's own grade) over the DownRamp, then
 	# friction over the flat run-in. That gives the speed AT THE TUNNEL'S OWN
 	# MOUTH, from which the longest tunnel that still clears with real
-	# headroom over slide_crawl_speed follows from plain kinematics
+	# headroom over TUNNEL_EXIT_REFERENCE_SPEED follows from plain kinematics
 	# (v^2 = u^2 - 2*a*d, solved for d). This is what keeps "the tunnel is
 	# clearable on slide momentum alone" true across a future retune of
 	# ground_speed, friction_modifier, gravity, PawnConfig's own friction
@@ -400,11 +400,11 @@ func build() -> Node3D:
 	const DOWNRAMP_FAR_Z := -7.0    # where DownRamp meets the floor again
 	const RUN_IN_LENGTH := 2.0      # flat floor between DownRamp and the tunnel
 	const TUNNEL_NEAR_Z := DOWNRAMP_FAR_Z - RUN_IN_LENGTH
-	const TUNNEL_CLEARANCE := 1.3  # > slide_capsule_height 0.9, < standing 1.8
-	# How far above slide_crawl_speed the tunnel must still be moving at the
-	# far mouth -- a MULTIPLE of it, not a bare number, so this margin scales
-	# with any future retune of slide_crawl_speed itself rather than needing
-	# its own separate adjustment.
+	const TUNNEL_CLEARANCE := 1.3  # > the crouched collision 1.22, < standing 1.8
+	# The speed the tunnel's far mouth is sized against, m/s, times the margin
+	# below. It was the old slide's crawl speed; kept as a number here so the
+	# committed course does not move.
+	const TUNNEL_EXIT_REFERENCE_SPEED := 2.5
 	const TUNNEL_EXIT_SPEED_MARGIN := 1.5
 
 	_attach(slide_area, _ramp("UpRamp", COURSE_WIDTH, 1.0,
@@ -447,7 +447,7 @@ func build() -> Node3D:
 	var speed_after_ramp: float = _speed_after(speed_after_platform, down_ramp_net_accel, down_ramp_length)
 	var speed_at_tunnel_mouth: float = _speed_after(speed_after_ramp, -flat_decel, RUN_IN_LENGTH)
 
-	var tunnel_exit_target_speed: float = config.slide.slide_crawl_speed * TUNNEL_EXIT_SPEED_MARGIN
+	var tunnel_exit_target_speed: float = TUNNEL_EXIT_REFERENCE_SPEED * TUNNEL_EXIT_SPEED_MARGIN
 	var tunnel_length: float = maxf((speed_at_tunnel_mouth * speed_at_tunnel_mouth \
 		- tunnel_exit_target_speed * tunnel_exit_target_speed) / (2.0 * flat_decel), 1.0)
 	var tunnel_far_z: float = TUNNEL_NEAR_Z - tunnel_length

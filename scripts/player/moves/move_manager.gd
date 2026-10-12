@@ -63,7 +63,8 @@ func can_do(move_name: StringName) -> bool:
 ## -- [ME:CONFIRMED decompile N4 §1.2] that refuses every move until the next
 ## successful SetMove. The action table asks Moves[n].CanDoMove() directly
 ## (can_do()); on the player's side the original asks this only for a level's
-## knock-down (TdPlayerPawn.OnTdFallOnBack) and its barbed wire's stumble.
+## knock-down (TdPlayerPawn.OnTdFallOnBack) and its barbed wire's stumble
+## (Player.touch_barbed_wire()).
 func pawn_can_do(move_name: StringName) -> bool:
 	if not allow_move_change:
 		return false
@@ -132,6 +133,11 @@ func set_move(move_name: StringName, check_can_do: bool = false) -> bool:
 		return false
 	if not _moves.has(move_name):
 		return false
+	# TdPlayerPawn's UncontrolledFall state overrides SetMove: only Landing and
+	# SoftLanding get through. [ME:CONFIRMED decompile N5 §7]
+	if player != null and player.uncontrolled_fall \
+			and move_name != Move.LANDING and move_name != Move.SOFT_LANDING:
+		return false
 	if player != null:
 		player.pending_movement_state = move_name
 	if check_can_do and not _moves[move_name].can_do_move():
@@ -151,10 +157,6 @@ func _switch(next: StringName, arm_cooldown: bool) -> void:
 		# See MoveConfig.fall_counts_from_exit.
 		if player != null and leaving_cfg != null and leaving_cfg.fall_counts_from_exit:
 			player.fall_tracker.reset(player.global_position.y)
-	# The coil's capsule rides the fall after the tuck and is given back to
-	# the first move that is not a fall. See Player.coil_capsule_held.
-	if player != null and not _COIL_CAPSULE_MOVES.has(next):
-		player.release_coil_capsule()
 	if player != null:
 		player.old_movement_state = from
 		player.movement_state = next
@@ -186,10 +188,6 @@ func _switch(next: StringName, arm_cooldown: bool) -> void:
 			move_changed.emit(change[0], change[1])
 		_push_look_constraint()
 
-## The moves the coil's shrunk capsule is kept through: the coil itself and
-## the falls that can follow it. Anything else gets it back on entry.
-const _COIL_CAPSULE_MOVES: Array[StringName] = [Move.COIL, Move.FALLING, Move.FALL_UNCONTROLLED]
-
 ## Puts the body into `move_name` from outside the move layer: a respawn, a
 ## reset, the noclip toggle. The outgoing move is stopped (no cooldown -- it is
 ## being interrupted, not leaving), every cooldown is cleared, and the new move
@@ -200,6 +198,10 @@ func start(move_name: StringName) -> void:
 		push_error("MoveManager.start: unknown state: %s" % move_name)
 		return
 	allow_move_change = true
+	if player != null:
+		player.uncontrolled_fall = false
+		# What the outgoing move's StopMove reads as the move to come.
+		player.pending_movement_state = move_name
 	if _current != null:
 		_current.exit()
 		_current.end_move()
@@ -234,14 +236,31 @@ func handle_move_action(action: int) -> bool:
 	if _current == null:
 		return false
 	var serial: int = change_serial
+	var before: StringName = current_name
 	_current.handle_move_action(action)
 	if change_serial != serial:
 		return true
+	# A stumble hit again stumbles again: the row for Stumble starts the move
+	# over without a SetMove. [ME:CONFIRMED decompile 15.3]
+	if before == Move.STUMBLE and action == Move.MA_STUMBLE:
+		if can_do(Move.STUMBLE):
+			_current.begin_move()
+			_current.enter(current_name)
+		return false
+	_stumble_in_air = false
 	for candidate in _candidates(current_name, action):
 		if can_do(candidate):
+			# The air rows mark the stumble as taken in the air before setting it.
+			if candidate == Move.STUMBLE and _stumble_in_air:
+				var stumble = _moves.get(Move.STUMBLE)
+				if stumble != null:
+					stumble.in_air = true
 			set_move(candidate)
 			return change_serial != serial
 	return false
+
+## Set by _candidates() for the rows that take a stumble in the air.
+var _stumble_in_air: bool = false
 
 ## The action table, one row per case of the original's switch. Moves the
 ## project does not have are named anyway and simply fail can_do().
@@ -284,7 +303,15 @@ func _candidates(state: StringName, action: int) -> Array:
 				Move.MA_TURN:
 					return [Move.TURN_180_IN_AIR]
 				Move.MA_STUMBLE, Move.MA_STUMBLE_HARD:
+					_stumble_in_air = true
 					return [Move.STUMBLE]
+		Move.STUMBLE:
+			if action == Move.MA_STUMBLE_HARD:
+				return [Move.STUMBLE_HARD]
+		Move.DODGE_JUMP:
+			if action == Move.MA_STUMBLE:
+				_stumble_in_air = true
+				return [Move.STUMBLE]
 		Move.SLIDE:
 			match action:
 				Move.MA_STOP_CROUCH:
@@ -374,7 +401,9 @@ func tick_timers(delta: float) -> void:
 func perform_physics(delta: float, input: MoveInput) -> void:
 	if _current == null:
 		return
-	if _apply_level_hazards():
+	# A hazard that hands the body to a ported move (the wire's stumble) lets
+	# that move's frame run as any other's.
+	if _apply_level_hazards() and not _current.is_ported():
 		_check_declared_grounded()
 		return
 	if _current.is_ported():
@@ -455,14 +484,16 @@ func _apply_level_hazards() -> bool:
 			stagger_damage = player.statuses.amount_of(Status.Effect.STAGGER)
 			player.pending_stagger_tint = player.statuses.tint_of(Status.Effect.STAGGER)
 		else:
-			# [ME:CONFIRMED] no lockout on a cut: it hurts, flashes and empties
-			# the speed budget, and the body keeps its feet.
+			# The wire's touch: it hurts (this project's damage), and
+			# TdBarbedWireVolume.Touch hands the body a stumble, which ignores
+			# move and look input (Player.touch_barbed_wire()).
 			player.take_hazard_hit(player.statuses.amount_of(Status.Effect.STAGGER),
 				player.statuses.tint_of(Status.Effect.STAGGER))
 			player.statuses.remove(Status.Effect.STAGGER)
-			var holding: MoveConfig = current_config()
-			if holding != null and holding.hit_knocks_off:
-				next = Move.FALLING
+			var before: int = change_serial
+			player.touch_barbed_wire(player.global_position)
+			if change_serial != before:
+				return true
 	if knocking_down:
 		next = Move.LAY_ON_GROUND
 	if next == Move.KEEP:
@@ -597,12 +628,12 @@ func legacy_turn() -> void:
 		if _current.can_flick_view() and player != null and player.camera_rig != null:
 			player.camera_rig.flick_half_turn()
 		return
-	# A flight off no wall turns as a passenger -- see Turn180InAirMove. With
-	# a wall to turn on, a climb's or a jump's alike, it is Turn180's wall turn.
-	var turn: StringName = Move.TURN_180
+	# The original's two turns, each behind its own CanDoMove: 180Turn only
+	# from Walking, 180TurnInAir in the air. The turns a wall takes belong to
+	# the wall moves themselves (WallRun's HandleMoveAction,
+	# WallClimb180TurnJump), not to either of these.
 	var flying: bool = _current is AirborneMove and player != null and not player.grounded
-	if flying and Turn180Move.find_wall(player)["normal"] == Vector3.ZERO:
-		turn = Move.TURN_180_IN_AIR
-	if not _moves.has(turn) or not can_enter(turn):
+	var turn: StringName = Move.TURN_180_IN_AIR if flying else Move.TURN_180
+	if not can_do(turn):
 		return
 	set_move(turn)

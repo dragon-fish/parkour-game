@@ -63,3 +63,6 @@ extends Resource
 @export var wall_climb_dodge_jump: WallClimbDodgeJumpConfig = WallClimbDodgeJumpConfig.new()
 @export var wall_climb_180_turn_jump: WallClimb180TurnJumpConfig = WallClimb180TurnJumpConfig.new()
 @export var melee_wallrun: MeleeWallrunConfig = MeleeWallrunConfig.new()
+@export var vertigo: VertigoConfig = VertigoConfig.new()
+@export var stumble: StumbleConfig = StumbleConfig.new()
+@export var stumble_hard: StumbleConfig = StumbleConfig.new()
