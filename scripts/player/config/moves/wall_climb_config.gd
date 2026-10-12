@@ -42,8 +42,8 @@ extends MoveConfig
 
 @export_group("Probes")
 ## How far ahead Probes.wall_ahead_query() looks for a wall to kick up, metres.
-## This project's probe, read by the debug overlay and Turn180's wall test --
-## not by WallClimb, whose entry is the original's hand-plant search.
+## This project's probe, read by the debug overlays only -- not by WallClimb,
+## whose entry is the original's hand-plant search.
 @export var check_distance: float = 0.6
 
 func _init() -> void:

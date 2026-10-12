@@ -70,11 +70,10 @@ const VERTIGO: StringName = &"Vertigo"
 const STUMBLE: StringName = &"Stumble"
 const STUMBLE_HARD: StringName = &"StumbleHard"
 
-# The original's moves this project has no counterpart for yet. The action
-# table names them, so they have names; nothing registers them, so
-# MoveManager.can_do() is false for every one of them and the table falls
-# through to the next candidate exactly as the original does when CanDoMove()
-# says no.
+# The rest of the moves the action table names. A name this project does not
+# register -- Snatch, which needs a bot to disarm, and WallKick below -- makes
+# MoveManager.can_do() false, and the table falls through to the next
+# candidate exactly as the original does when CanDoMove() says no.
 const BARGE: StringName = &"Barge"
 const AIR_BARGE: StringName = &"AirBarge"
 const MELEE: StringName = &"Melee"

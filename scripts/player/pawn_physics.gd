@@ -1462,9 +1462,10 @@ const FLYING_STEP_NORMAL_Z := 0.2
 const FLYING_STEP_UP_DOWN_MAX := 0.5
 const FLYING_STEP_UP_DOWN_MIN := -0.2
 
-## APawn::physFlying. [ME:CONFIRMED decompile N5 §0.1, 0x00f00c30] One move,
-## no sub-steps: CalcVelocity with bFluid (MaxSpeed AirSpeed, Friction half
-## the volume's FluidFriction, no braking), a sweep along Velocity * dt, a
+## APawn::physFlying. [ME:CONFIRMED decompile N5 §0.1] its CalcVelocity:
+## bFluid (MaxSpeed AirSpeed, Friction half the volume's FluidFriction, no
+## braking). [ME:CONFIRMED decompile 0x00f00c30, past what N5 §0.1 reads] the
+## move after it: one move, no sub-steps, a sweep along Velocity * dt, a
 ## step-up or a slide along what blocked it, and the velocity rebuilt from the
 ## displacement. The moves that fly either set Velocity every frame (ZipLine,
 ## a precise location) or keep it at zero and place the body themselves
