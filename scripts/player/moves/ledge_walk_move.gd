@@ -16,9 +16,9 @@ extends PhysicsMove
 #
 # The volume is a LEDGE_WALK InterestLine: front() points AT the wall, so the
 # original's WallNormal is -front(); its FloorNormal is taken as straight up.
-# [ME:INFERRED] The spline natives (FindClosestPointOnDSpline,
-# GetSlopeOnSpline) were not decompiled; the line's own closest point and unit
-# tangent stand in for them.
+# Its spline is the original's (MovementSpline), searched every frame from the
+# segment the body was on -- a parameter StartMove never resets, so the next
+# ledge walk starts its search where the last one left off.
 
 var volume: InterestLine = null
 var current_param_on_curve: float = 0.0
@@ -139,11 +139,12 @@ func pre_physics(delta: float) -> void:
 	if player.move_manager.current_move() != self or volume == null or not is_instance_valid(volume):
 		return
 	var here: Vector3 = player.global_position
-	current_param_on_curve = volume.closest_offset(here)
-	var sample: Dictionary = volume.sample(current_param_on_curve)
-	var c: Vector3 = sample["position"]
+	var spline := MovementSpline.of(volume)
+	var found: Array = spline.find_closest(here, int(current_param_on_curve))
+	current_param_on_curve = found[1]
+	var c: Vector3 = found[0]
 	c.y = here.y
-	var t: Vector3 = sample["tangent"]
+	var t: Vector3 = spline.slope_at(current_param_on_curve / float(spline.num_segments))
 	var a: Vector3 = UE.cross(t, Vector3.UP)
 	var face: Vector3 = PawnPhysics.safe_normal_2d(a * (wall_normal().dot(a) / a.length_squared()))
 	var v: Vector3 = PawnPhysics.safe_normal_2d(t) * strafe_speed

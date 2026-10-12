@@ -18,10 +18,9 @@ extends PhysicsMove
 # TimeToCounter, 0.8 s, to get back inside 0.9 or it falls off: the fall's
 # root motion carries it off the side, and Falling follows 0.1 s after.
 #
-# The volume is a BALANCE InterestLine. [ME:INFERRED] The spline natives were
-# not decompiled: the line's closest point and UNIT tangent stand in for
-# FindClosestPointOnDSpline and GetSlopeOnSpline; the tangent's length enters
-# the starting BalanceFactor, so a unit one is what keeps it small.
+# The volume is a BALANCE InterestLine, its spline the original's
+# (MovementSpline): StartMove searches the whole spline for the closest point,
+# TickMove from the segment it was on last.
 
 var volume: InterestLine = null
 var current_param_on_curve: float = 0.0
@@ -56,13 +55,11 @@ func can_do_move() -> bool:
 		return false
 	return td_can_do_move()
 
-func _spline_at(location: Vector3) -> Dictionary:
-	current_param_on_curve = volume.closest_offset(location)
-	return volume.sample(current_param_on_curve)
-
 ## TdMove_Balance.StartMove.
 func enter(_previous: StringName) -> void:
-	var spline_direction: Vector3 = _spline_at(player.global_position)["tangent"]
+	var spline := MovementSpline.of(volume)
+	current_param_on_curve = spline.find_closest(player.global_position)[1]
+	var spline_direction: Vector3 = spline.slope_at(current_param_on_curve / float(spline.num_segments))
 	is_facing_forward = player.facing().dot(PawnPhysics.safe_normal(spline_direction)) > 0.0
 	var along: Vector3 = spline_direction * (1.0 if is_facing_forward else -1.0)
 	set_precise_rotation(UE.dir_yaw(along), 0.2)
@@ -136,10 +133,12 @@ func tick_move(delta: float) -> void:
 			or not is_instance_valid(volume):
 		return
 	var here: Vector3 = player.global_position
-	var sample: Dictionary = _spline_at(here)
-	var closest: Vector3 = sample["position"]
+	var spline := MovementSpline.of(volume)
+	var found: Array = spline.find_closest(here, int(current_param_on_curve))
+	current_param_on_curve = found[1]
+	var closest: Vector3 = found[0]
 	closest.y = here.y
-	var t: Vector3 = sample["tangent"]
+	var t: Vector3 = spline.slope_at(current_param_on_curve / float(spline.num_segments))
 	if not is_facing_forward:
 		t = -t
 	t.y = 0.0

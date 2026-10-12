@@ -368,6 +368,40 @@ func test_balance_factor_runs_away_from_level() -> void:
 	assert_almost_eq(balance.balance_factor, 0.5 + 0.3 * sin(0.25 * PI) * DT, 1e-5,
 		"the balance factor does not follow 0.3 sin(BF pi / 2)")
 
+# --- the movement-volume spline ------------------------------------------------------
+
+## [ME:CONFIRMED decompile 0x012a9490 / 0x012a9580] The spline is a quadratic
+## Bezier whose samples are the line's points: the control point recovered
+## from them puts every sample back where it was, and the slope is the
+## Bezier's direction, not a segment's.
+func test_the_spline_is_the_bezier_its_points_were_sampled_from() -> void:
+	var s := MovementSpline.new()
+	var a := Vector3(0.0, 4.0, 0.0)
+	var m := Vector3(5.0, 0.0, 0.0)
+	var b := Vector3(10.0, 4.0, 0.0)
+	for i in 11:
+		var t: float = i / 10.0
+		s.locations.append(a * (1.0 - t) * (1.0 - t) + m * 2.0 * t * (1.0 - t) + b * t * t)
+	s._fit()
+	assert_almost_eq(s.middle, m, Vector3.ONE * 1e-4, "the control point is not the samples' own")
+	assert_almost_eq(s.location_at(0.3), s.locations[3], Vector3.ONE * 1e-4, "GetLocationOnSpline is off its samples")
+	assert_almost_eq(s.slope_at(0.5), Vector3.RIGHT, Vector3.ONE * 1e-4, "the slope at the bottom is not level")
+	assert_almost_eq(s.slope_at(2.0), s.slope_at(1.0), Vector3.ONE * 1e-6, "the parameter is not clamped")
+
+## [ME:CONFIRMED decompile 0x012a9740] The closest point is projected on its
+## segment WITHOUT a clamp, and its parameter is the segment plus |s|: past
+## the end it runs on along the line, behind the start it counts forward.
+func test_the_closest_point_is_unclamped_and_its_parameter_is_absolute() -> void:
+	var s := MovementSpline.new()
+	s.locations = PackedVector3Array([Vector3.ZERO, Vector3(1.0, 0.0, 0.0), Vector3(2.0, 0.0, 0.0)])
+	s._fit()
+	var past: Array = s.find_closest(Vector3(3.0, 1.0, 0.0))
+	assert_almost_eq(past[0], Vector3(3.0, 0.0, 0.0), Vector3.ONE * 1e-5, "the point past the end was clamped")
+	assert_almost_eq(past[1], 2.0, 1e-5, "the parameter past the end is not the last segment's full length")
+	var behind: Array = s.find_closest(Vector3(-0.25, 0.0, 0.0))
+	assert_almost_eq(behind[0], Vector3(-0.25, 0.0, 0.0), Vector3.ONE * 1e-5, "the point behind the start was clamped")
+	assert_almost_eq(behind[1], 0.25, 1e-5, "a point behind the start does not count forward")
+
 # --- end to end ------------------------------------------------------------------
 
 ## Runs the body toward -Z for `seconds`, the stick fully forward.

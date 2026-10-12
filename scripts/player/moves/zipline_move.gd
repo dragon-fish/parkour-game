@@ -14,9 +14,9 @@ extends PhysicsMove
 # is capped at AirSpeed. Running off the last point is a fall; a wall within
 # 600 uu ahead, then within 20, is the impact.
 #
-# The cable is this project's ZIPLINE InterestLine, its baked points standing
-# in for the original's SplineLocations. The ride runs in the curve's own
-# point order, as the original's runs in its spline's.
+# The cable is this project's ZIPLINE InterestLine, its points the original's
+# SplineLocations (MovementSpline). The ride runs in the curve's own point
+# order, as the original's runs in its spline's.
 
 ## The original's 1P sequence lengths. [ME:CONFIRMED anims]
 const ZIPLINE_HIT_WALL_LENGTH := 1.167
@@ -39,7 +39,7 @@ var zip_line_status: int = Status.MOVING
 var current_look_at_point: Vector3 = Vector3.ZERO
 var zip_line_look_assist: bool = false
 
-var _points: PackedVector3Array = PackedVector3Array()
+var _spline: MovementSpline = MovementSpline.new()
 var _anim := MoveAnim.new()
 
 func _init() -> void:
@@ -61,61 +61,30 @@ func handle_death(damage: float) -> float:
 func can_do_move() -> bool:
 	return td_can_do_move()
 
-# --- the spline (TdMovementVolume natives, stood in for) -------------------------
+# --- the spline (TdMovementVolume) ----------------------------------------------
 
-## The cable's points in world space, in its own order.
-static func spline_points(line: InterestLine) -> PackedVector3Array:
-	var out := PackedVector3Array()
-	if line == null or line.curve == null:
-		return out
-	for p in line.curve.get_baked_points():
-		out.append(line.to_global(p))
-	return out
+## GetSlopeOnSpline at a parameter in segments, as the zipline moves ask it:
+## divided by SplineLocations.Length - 1.
+static func slope_at(spline: MovementSpline, param: float) -> Vector3:
+	return spline.slope_at(param / float(maxi(spline.locations.size() - 1, 1)))
 
-## FindClosestPointOnDSpline: [closest point, parameter in segments], searching
-## from segment `lowest_index`. [ME:UNKNOWN N5 §25.6] the native was stubbed,
-## not read; this is the nearest point on the polyline.
-static func closest_on_spline(points: PackedVector3Array, at: Vector3, lowest_index: int = 0) -> Array:
-	var best := Vector3.ZERO
-	var best_param: float = 0.0
-	var best_distance: float = INF
-	for i in range(clampi(lowest_index, 0, maxi(points.size() - 2, 0)), points.size() - 1):
-		var a: Vector3 = points[i]
-		var seg: Vector3 = points[i + 1] - a
-		var t: float = 0.0
-		if seg.length_squared() > 0.0:
-			t = clampf((at - a).dot(seg) / seg.length_squared(), 0.0, 1.0)
-		var on: Vector3 = a + seg * t
-		var d: float = on.distance_squared_to(at)
-		if d < best_distance:
-			best_distance = d
-			best = on
-			best_param = float(i) + t
-	return [best, best_param]
-
-## GetSlopeOnSpline, at a parameter in segments: the direction of that segment.
-static func slope_at(points: PackedVector3Array, param: float) -> Vector3:
-	if points.size() < 2:
-		return Vector3.FORWARD
-	var i: int = clampi(int(param), 0, points.size() - 2)
-	return PawnPhysics.safe_normal(points[i + 1] - points[i])
-
-## TdMovementVolume.MoveDirection for a cable: first point to last.
-## [ME:INFERRED] the native that sets it was not read.
+## TdMovementVolume.MoveDirection for a cable. [ME:INFERRED N7 §2] a zipline
+## volume's MoveDirection is its own X axis, which an InterestLine does not
+## carry; the cable's first point to its last stands in.
 static func move_direction(line: InterestLine) -> Vector3:
-	var points: PackedVector3Array = spline_points(line)
-	if points.size() < 2:
+	var spline := MovementSpline.of(line)
+	if spline.locations.size() < 2:
 		return Vector3.FORWARD
-	return PawnPhysics.safe_normal(points[points.size() - 1] - points[0])
+	return PawnPhysics.safe_normal(spline.end - spline.start)
 
 # --- StartMove / StopMove --------------------------------------------------------
 
 func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
 	zip_line_status = Status.MOVING
-	_points = spline_points(zip_line)
+	_spline = MovementSpline.of(zip_line)
 	var start: Vector3 = player.global_position + Vector3.UP * cfg.hang_offset
-	current_param_on_curve = closest_on_spline(_points, start)[1]
+	current_param_on_curve = _spline.find_closest(start)[1]
 	zip_line_look_assist = true
 	# The fan centres on the heading the reach turned the pawn to.
 	if player.camera_rig != null:
@@ -136,23 +105,24 @@ func exit() -> void:
 ## Native PrePhysics. The base TdPhysicsMove PrePhysics is NOT run for the
 ## player.
 func pre_physics(delta: float) -> void:
-	if zip_line == null or not is_instance_valid(zip_line) or _points.size() < 2:
+	if zip_line == null or not is_instance_valid(zip_line) or _spline.locations.size() < 2:
 		return
+	var points: PackedVector3Array = _spline.locations
 	var nz: float = PawnPhysics.safe_normal(player.velocity).y
 	player.velocity.y += absf(nz) * player.gravity_z() * delta
 	var hand: Vector3 = player.global_position + Vector3.UP * cfg.hang_offset
-	current_param_on_curve = closest_on_spline(_points, hand, int(current_param_on_curve))[1]
+	current_param_on_curve = _spline.find_closest(hand, int(current_param_on_curve))[1]
 	var index: int = int(current_param_on_curve)
 	var step: float = maxf(player.velocity.length(), cfg.min_zip_velocity) * delta
 	while true:
 		index += 1
-		if index >= _points.size():
+		if index >= points.size():
 			player.move_manager.set_move(FALLING)
 			return
-		if (_points[index] - hand).length() >= step:
+		if (points[index] - hand).length() >= step:
 			break
-	var a: Vector3 = _points[index - 1]
-	var b: Vector3 = _points[index]
+	var a: Vector3 = points[index - 1]
+	var b: Vector3 = points[index]
 	var seg: Vector3 = b - a
 	var to_b: Vector3 = b - hand
 	var perp: Vector3 = to_b - seg * (to_b.dot(seg) / seg.length_squared())

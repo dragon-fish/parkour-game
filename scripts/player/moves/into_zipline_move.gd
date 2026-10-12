@@ -19,7 +19,7 @@ var saved_initial_2d_velocity: Vector3 = Vector3.ZERO
 ## LastZipLineVolumeName: the cable last reached for.
 var last_zip_line: InterestLine = null
 
-var _points: PackedVector3Array = PackedVector3Array()
+var _spline: MovementSpline = MovementSpline.new()
 
 func _init() -> void:
 	super._init()
@@ -57,7 +57,7 @@ func can_do_move() -> bool:
 		return false
 	if state == WALKING or state == CROUCH or state == SLIDE:
 		return false
-	var points: PackedVector3Array = ZiplineMove.spline_points(zip_line)
+	var points: PackedVector3Array = MovementSpline.of(zip_line).locations
 	if points.is_empty():
 		return false
 	var to_end: Vector3 = player.global_position - points[points.size() - 1]
@@ -71,16 +71,15 @@ func can_do_move() -> bool:
 
 func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
-	_points = ZiplineMove.spline_points(zip_line)
-	var destination: Vector3 = ZiplineMove.closest_on_spline(_points, player.global_position)[0]
-	var ahead: Array = ZiplineMove.closest_on_spline(_points,
-		destination + ZiplineMove.move_direction(zip_line) * cfg.reach_ahead)
+	_spline = MovementSpline.of(zip_line)
+	var destination: Vector3 = _spline.find_closest(player.global_position)[0]
+	var ahead: Array = _spline.find_closest(destination + ZiplineMove.move_direction(zip_line) * cfg.reach_ahead)
 	destination = ahead[0]
 	enter_zip_line_param = ahead[1]
 	destination.y -= cfg.hang_offset
 	last_zip_line = zip_line
 	var speed: float = maxf(Vector2(player.velocity.x, player.velocity.z).length(), cfg.min_reach_speed)
-	var wanted: Vector3 = ZiplineMove.slope_at(_points, enter_zip_line_param)
+	var wanted: Vector3 = ZiplineMove.slope_at(_spline, enter_zip_line_param)
 	var time_to_destination: float = (destination - player.global_position).length() / speed
 	set_precise_rotation(UE.dir_yaw(wanted), time_to_destination)
 	saved_initial_2d_velocity = Vector3(player.velocity.x, 0.0, player.velocity.z)
@@ -104,7 +103,7 @@ func reached_precise_location() -> void:
 		player.move_manager.set_move(FALLING)
 		return
 	ride.zip_line = zip_line
-	var dir: Vector3 = ZiplineMove.slope_at(_points, enter_zip_line_param)
+	var dir: Vector3 = ZiplineMove.slope_at(_spline, enter_zip_line_param)
 	# PawnOwner.SetRotation: the pawn turns along the cable; the view is left
 	# where it is.
 	player.pawn_yaw = atan2(-dir.x, -dir.z)
