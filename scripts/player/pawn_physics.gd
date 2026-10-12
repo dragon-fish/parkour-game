@@ -131,10 +131,14 @@ static func walk_friction_modifier(velocity: Vector3, floor_normal: Vector3, sli
 ## There is NO directional (turning) friction here: ATdPawn drops the term
 ## UE3's APawn::CalcVelocity has. All turning comes from the acceleration
 ## functions.
+##
+## `fluid` is bFluid: the flying physics passes it, and it scales the whole
+## velocity by (1 - dt * Friction) after the drag, precise location or not.
 static func calc_velocity(velocity: Vector3, acceleration: Vector3, accel_dir: Vector3,
 		dt: float, max_speed: float, friction: float, brake: bool, mobility: float,
 		accel_rate: float, braking_friction_strength: float, wall_physics: bool,
-		precise_location: bool, force_max_accel: bool, facing: Vector3) -> Array:
+		precise_location: bool, force_max_accel: bool, facing: Vector3,
+		fluid: bool = false) -> Array:
 	var v: Vector3 = velocity
 	var a: Vector3 = acceleration
 	var max_accel: float = accel_rate * mobility
@@ -170,6 +174,8 @@ static func calc_velocity(velocity: Vector3, acceleration: Vector3, accel_dir: V
 			v = total
 			if v.dot(old) < 0.0 or v.length_squared() < BRAKING_STOP_SPEED_SQUARED:
 				v = Vector3.ZERO
+	if fluid:
+		v = v * (1.0 - dt * friction)
 	v = v + a * dt
 	if v.length_squared() > max_spd * max_spd:
 		v = safe_normal(v) * max_spd
@@ -774,16 +780,63 @@ func process_landed(normal: Vector3, remaining: float, iterations: int) -> void:
 		pawn.acceleration = safe_normal(pawn.acceleration) * UU
 	start_new_physics(remaining, iterations)
 
-## APawn::physFlying, for the precise-location flights (Jump's ledge assist):
-## the velocity the move set, moved through the world without colliding when
-## collision is off.
+## PhysicsVolume.FluidFriction of the default volume. [ME:CONFIRMED decompile
+## N5 §0.1] physFlying passes half of it to CalcVelocity: 0.15.
+const DEFAULT_FLUID_FRICTION := 0.3
+## physFlying steps up a blocking face whose normal is within this of
+## horizontal, while the travel is within -0.2 .. 0.5 of straight down.
+## [ME:CONFIRMED decompile 0x00f00c30]
+const FLYING_STEP_NORMAL_Z := 0.2
+const FLYING_STEP_UP_DOWN_MAX := 0.5
+const FLYING_STEP_UP_DOWN_MIN := -0.2
+
+## APawn::physFlying. [ME:CONFIRMED decompile N5 §0.1, 0x00f00c30] One move,
+## no sub-steps: CalcVelocity with bFluid (MaxSpeed AirSpeed, Friction half
+## the volume's FluidFriction, no braking), a sweep along Velocity * dt, a
+## step-up or a slide along what blocked it, and the velocity rebuilt from the
+## displacement. The moves that fly either set Velocity every frame (ZipLine,
+## a precise location) or keep it at zero and place the body themselves
+## (Swing), so the decay and the AirSpeed clamp act on what they chose.
 func phys_flying(dt: float, _iterations: int) -> void:
+	var p: PawnConfig = pawn.config.pawn
+	var move = pawn.move_manager.current_move()
+	var move_cfg: MoveConfig = move.current_config() if move != null else null
+	var speed_modifier: float = move_cfg.speed_modifier if move_cfg != null else 1.0
+	var accel_dir: Vector3 = Vector3.ZERO if pawn.acceleration == Vector3.ZERO \
+		else safe_normal(pawn.acceleration)
+	var force: bool = pawn.force_max_accel_one_frame
+	pawn.force_max_accel_one_frame = false
+	var r: Array = calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt, p.air_speed,
+		DEFAULT_FLUID_FRICTION * 0.5, false, pawn.mobility_multiplier() * speed_modifier,
+		p.accel_rate, p.braking_friction_strength, false,
+		move != null and move.use_precise_location, force, pawn.facing(), true)
+	pawn.velocity = r[0]
+	pawn.acceleration = r[1]
+	_just_teleported = false
 	var old_location: Vector3 = pawn.global_position
-	var hit: Dictionary = move_actor(pawn.velocity * dt)
+	var adjusted: Vector3 = pawn.velocity * dt
+	var hit: Dictionary = move_actor(adjusted)
 	if float(hit["time"]) < 1.0:
-		_process_hit_wall(hit)
-		move_actor(compute_slide_vector(pawn.velocity * dt, hit["normal"], float(hit["time"])))
-	if dt > 0.0 and not _just_teleported and not _recovered and pawn.collide_world:
+		var normal: Vector3 = hit["normal"]
+		var up_down: float = -safe_normal(pawn.velocity).y
+		if absf(normal.y) < FLYING_STEP_NORMAL_Z and up_down < FLYING_STEP_UP_DOWN_MAX \
+				and up_down > FLYING_STEP_UP_DOWN_MIN:
+			# What the step lifts the body by is not travel: the old location
+			# is lifted with it before the velocity is rebuilt.
+			var before_y: float = pawn.global_position.y
+			_step_up(safe_normal(adjusted), adjusted * (1.0 - float(hit["time"])), hit)
+			old_location.y += pawn.global_position.y - before_y
+		else:
+			_process_hit_wall(hit)
+			var slide: Vector3 = (adjusted - normal * adjusted.dot(normal)) * (1.0 - float(hit["time"]))
+			if slide.dot(adjusted) >= 0.0:
+				var hit2: Dictionary = move_actor(slide)
+				if float(hit2["time"]) < 1.0:
+					_process_hit_wall(hit2)
+					slide = two_wall_adjust(safe_normal(adjusted), slide, hit2["normal"], normal,
+						float(hit2["time"]))
+					move_actor(slide)
+	if dt > 0.0 and not _just_teleported and not _recovered:
 		pawn.velocity = (pawn.global_position - old_location) / dt
 	pawn.set_grounded(false)
 

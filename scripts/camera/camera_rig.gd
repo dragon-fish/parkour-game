@@ -481,6 +481,22 @@ var _shoulder_centred_by_move: bool = false
 func set_pitch(radians: float) -> void:
 	_pitch = radians
 
+## The look pitch, radians, up positive.
+func view_pitch() -> float:
+	return _pitch
+
+## Turns the view by a move's script rather than by the mouse: the original's
+## TdMove.UpdateViewRotation adding to the view rotation (a look-at, a camera
+## reset). The same channels the mouse turns, undamped; the move's clamp
+## catches up on the next apply_look().
+func steer_view(yaw_delta: float, pitch_delta: float, body: Node3D) -> void:
+	if yaw_delta != 0.0 and body != null:
+		body.rotate_y(yaw_delta)
+		if _has_look_constraint and _look_absolute_yaw:
+			_look_relative_yaw += yaw_delta
+	_pitch += pitch_delta
+	rotation.x = _pitch
+
 func set_roll_spin(radians: float) -> void:
 	_roll_spin = radians
 
