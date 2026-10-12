@@ -170,9 +170,14 @@ func ladder_transfer() -> bool:
 		Hint.LEFT:
 			d = -PawnPhysics.safe_normal_2d(UE.cross(Vector3.UP, player.facing()))
 		Hint.NONE:
-			d = PawnPhysics.safe_normal_2d(player.facing())
+			# The CONTROLLER's Rotation.Vector(), not the pawn's: where the
+			# view looks. [ME:CONFIRMED decompile 0x01208520]
+			d = PawnPhysics.safe_normal_2d(UE.rot_dir(player.controller_pitch_units(),
+				UE.yaw_units(player.rotation.y)))
 		_:
-			# Up: the original reads an unset vector here.
+			# Up: the original never writes the direction, and what its stack
+			# slot holds then is whatever the script machine left there
+			# [ME:UNKNOWN N7 §4]. Nothing deterministic to port: no ladder.
 			d = Vector3.ZERO
 	var r: float = player.collision_radius()
 	var extent := Vector3(r, MoveTraces.HAND_PLANT_EXTENT_CHECK_HEIGHT, r)

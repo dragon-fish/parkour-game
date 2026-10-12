@@ -57,7 +57,7 @@ func can_do_move() -> bool:
 	var to_ladder: Vector3 = ladder.location() - player.global_position
 	to_ladder.y = 0.0
 	var behind: bool = to_ladder.dot(ladder.rotation_dir()) < 0.0
-	if player.global_position.y > ladder.get_ladder_location(ladder.get_last_step()).y:
+	if player.global_position.y > ladder.get_ladder_location(ladder.top_index()).y:
 		if angle > -0.85 or ladder.is_pipe():
 			return false
 	elif angle < -0.1 or behind:
@@ -76,7 +76,7 @@ func enter(_previous: StringName) -> void:
 	var angle: float = player.facing().dot(ladder.rotation_dir())
 	player.collide_world = false
 	player.move_normal = ladder.wall_normal()
-	var top: Vector3 = ladder.get_ladder_location(ladder.get_last_step())
+	var top: Vector3 = ladder.get_ladder_location(ladder.top_index())
 	if not ladder.is_pipe() and angle < -0.85 and top.y < player.global_position.y:
 		climb_state = EnterState.AT_TOP
 		set_precise_location(top - ladder.wall_normal() * 93.5 * UU + ladder.move_direction() * 90.0 * UU,

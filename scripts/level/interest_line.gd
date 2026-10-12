@@ -63,7 +63,9 @@ const KIND_REACH := {
 @export var reach_radius: float = 0.6
 ## The original's volume properties a kind reads. A LADDER: TdLadderVolume's
 ## LadderType (a pipe climbs in 64 uu steps, two at a time, and has no way on
-## from the top) and bCanExitAtTop. A LEDGE_WALK: TdLedgeWalkVolume's
+## from the top) and bCanExitAtTop. A LADDER's line is the volume's Start..End,
+## its bottom face to its top face: the steps are built from those ends
+## (LadderVolume), the top one 96 uu under the top. A LEDGE_WALK: TdLedgeWalkVolume's
 ## LedgeWalkType (a narrow space, walked with a 10 uu radius, no jump off).
 @export var pipe: bool = false
 @export var can_exit_at_top: bool = true

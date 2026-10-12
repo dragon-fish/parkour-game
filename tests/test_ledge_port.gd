@@ -310,7 +310,8 @@ func test_the_ladder_floor_test_never_finds_a_floor() -> void:
 	player.global_position = climb.ladder.get_ladder_location(0)
 	assert_false(climb.has_floor_below(), "the floor test found the floor")
 
-## Steps are StepHeight (32 uu) apart, out from the ladder by 50 uu.
+## Steps are StepHeight (32 uu) apart, the body held 50 uu out from a step
+## that sits 1 uu out from the line.
 func test_ladder_steps_are_step_height_apart() -> void:
 	var player: Player = await _player()
 	var line: InterestLine = _line(InterestLine.Kind.LADDER, Vector3(0.0, 0.0, -1.0), Vector3(0.0, 4.0, -1.0))
@@ -319,9 +320,31 @@ func test_ladder_steps_are_step_height_apart() -> void:
 	var a: Vector3 = ladder.get_ladder_location(2)
 	var b: Vector3 = ladder.get_ladder_location(3)
 	assert_almost_eq(b.y - a.y, 0.32, 0.0001, "steps are not 32 uu apart")
-	assert_eq(ladder.get_closest_step(b.y + 0.1), 3, "the closest step does not round")
-	assert_almost_eq(Vector2(a.x, a.z).distance_to(Vector2(0.0, -1.0)), 0.5, 0.0001,
-		"the body is not held 50 uu out")
+	assert_eq(ladder.get_closest_step(b.y + 0.1), 3, "the closest step is not the nearest by height")
+	assert_almost_eq(Vector2(a.x, a.z).distance_to(Vector2(0.0, -1.0)), 0.51, 0.0001,
+		"the body is not held 50 uu out from the step")
+	assert_true(player != null)
+
+## [ME:CONFIRMED decompile 0x012ab620] The builder hangs the steps from the
+## top: the top step 96 uu under the top end, the rest every 32 uu down to
+## a TRUNCATED count above one step over the bottom end. 400 uu: top step at
+## 304, trunc((304 - 32) / 32) = 8 steps under it, the lowest at 48.
+func test_ladder_steps_hang_from_the_top_by_a_truncated_count() -> void:
+	var player: Player = await _player()
+	var line: InterestLine = _line(InterestLine.Kind.LADDER, Vector3(0.0, 0.0, -1.0), Vector3(0.0, 4.0, -1.0))
+	await step(1)
+	var ladder := LadderVolume.new(line)
+	assert_eq(ladder.steps.size(), 9, "not trunc(range / 32) + 1 steps")
+	assert_almost_eq(ladder.steps[ladder.steps.size() - 1].y, 3.04, 0.0001, "the top step is not 96 uu under the top")
+	assert_almost_eq(ladder.steps[0].y, 0.48, 0.0001, "the lowest step is not where the truncation leaves it")
+	assert_eq(ladder.get_last_step(), 8, "a ladder's last step is not its top one")
+	assert_eq(ladder.get_ladder_location(99), ladder.get_ladder_location(8), "a location past the top is not clamped")
+	line.pipe = true
+	var pipe := LadderVolume.new(line)
+	assert_eq(pipe.get_last_step(), 5, "a pipe's last step is not three under its top")
+	assert_eq(pipe.top_index(), 8, "IntoClimb's topmost step is not the last of the steps")
+	assert_eq(pipe.get_closest_step(5.0), 8, "the closest step left out a pipe's top three")
+	assert_almost_eq(pipe.get_ladder_location(0).y, 0.43, 0.0001, "a pipe's body is not held 5 uu lower")
 	assert_true(player != null)
 
 # --- balance ------------------------------------------------------------------------------
