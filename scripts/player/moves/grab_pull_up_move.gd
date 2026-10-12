@@ -49,7 +49,10 @@ func can_do_move() -> bool:
 	floor_over_ledge_location = player.global_position - Vector3.UP * player.collision_half_height()
 	var max_ledge_thickness: float = 5.0 * UU
 	var depth: float = 64.0 * UU + max_ledge_thickness
-	var step: float = config.pawn.max_step_height
+	# Pawn.MaxStepHeight, 35 uu. DO NOT read max_step_height here: that is
+	# this project's measured 0.4 m walking reach, and a floor 35 .. 40 uu
+	# below the ledge would be pulled up onto instead of heaved over.
+	var step: float = config.pawn.max_step_down_height
 	floor_over_ledge_location = find_floor_over_ledge(depth, floor_over_ledge_location, step + 4.0 * UU)
 	var delta_height: float = floor_over_ledge_location.y - player.move_ledge_location.y
 	if delta_height > -step:
@@ -71,7 +74,7 @@ func can_pull_up(check_depth: float) -> bool:
 	if grab.current_folded_type != GrabMove.FoldedType.START \
 			and can_heave_over_ledge_crouched(check_depth, floor_over_ledge_location, highest):
 		grab_pull_up_type = PullUpType.INTO_CROUCH
-		if floor_over_ledge_location.y < player.move_ledge_location.y - config.pawn.max_step_height:
+		if floor_over_ledge_location.y < player.move_ledge_location.y - config.pawn.max_step_down_height:
 			return false
 		return true
 	return false
@@ -80,7 +83,7 @@ func can_pull_up(check_depth: float) -> bool:
 func enter(_previous: StringName) -> void:
 	var grab: GrabMove = _grab()
 	var heave_over: bool = floor_over_ledge_location.y \
-		< player.move_ledge_location.y - config.pawn.max_step_height
+		< player.move_ledge_location.y - config.pawn.max_step_down_height
 	var hanging_free: bool = grab.is_hanging_free()
 	var release_camera: float
 	var enable_collision: float

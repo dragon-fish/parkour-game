@@ -233,6 +233,22 @@ func test_a_ceiling_over_the_ledge_refuses_the_pull_up() -> void:
 	assert_true(player.move_manager.handle_move_action(Move.MA_JUMP), "jump did not leave the hang")
 	assert_eq(player.move_manager.current_name, Move.GRAB_JUMP, "the refused pull-up did not fall through to GrabJump")
 
+## [ME:CONFIRMED decompile script TdMove_GrabPullUp] A floor more than
+## Pawn.MaxStepHeight (35 uu) under the ledge is a heave OVER the wall, not a
+## pull-up onto it: 37 uu down behind a 10 cm wall plays the heave over.
+func test_a_floor_37_uu_below_the_ledge_is_heaved_over() -> void:
+	var player: Player = await _player()
+	_one_body([[Vector3(4.0, 3.0, 0.1), Vector3(0.0, 1.5, -0.05)],
+		[Vector3(4.0, 2.63, 3.0), Vector3(0.0, 1.315, -1.6)]])
+	await step(1)
+	_hang(player, 3.0, 0.0)
+	await step(70)
+	assert_true(player.move_manager.can_do(Move.GRAB_PULL_UP), "no room to go over a thin wall")
+	var pull: GrabPullUpMove = player.move_manager.move_for(Move.GRAB_PULL_UP)
+	assert_almost_eq(pull.floor_over_ledge_location.y, 2.63, 0.01, "the floor behind the wall was not found")
+	player.move_manager.set_move(Move.GRAB_PULL_UP)
+	assert_eq(player.anim_slot.current_name(), &"HangHeaveOver", "37 uu down was not heaved over")
+
 # --- ladders -----------------------------------------------------------------------------
 
 ## [ME:CONFIRMED decompile TdMove_Climb.HasFloorBelow] THE QUIRK: the floor

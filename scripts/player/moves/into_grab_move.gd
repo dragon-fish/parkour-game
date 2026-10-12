@@ -187,7 +187,7 @@ func check_for_folded_hang() -> void:
 		return
 	var floor_location: Vector3 = here - Vector3.UP * player.collision_half_height()
 	floor_location = find_floor_over_ledge(98.0 * UU, floor_location,
-		config.pawn.max_step_height + 4.0 * UU)
+		config.pawn.max_step_down_height + 4.0 * UU)
 	if floor_location.y < ledge.y - 4.0 * UU:
 		return
 	floor_location.y = ledge.y + 4.0 * UU
