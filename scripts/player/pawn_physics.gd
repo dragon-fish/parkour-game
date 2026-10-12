@@ -1125,6 +1125,11 @@ func _check_uncontrolled_slide(hit: Dictionary) -> void:
 
 ## The UE3 base: a body standing on something that moves is moved with it.
 ## The carry is the base's own transform change since the last tick.
+## Actor.SetBase for a move (the wall moves' SetBase(MovementActor, ...)).
+## The floor normal is the move's to set.
+func set_base(collider: Object) -> void:
+	_set_base(collider)
+
 func _set_base(collider: Object) -> void:
 	pawn.base = collider
 	if collider is Node3D:
@@ -1552,6 +1557,8 @@ func phys_wall_running(dt: float, iterations: int) -> void:
 			set_physics(Move.PHYS_FALLING)
 		start_new_physics(dt, iterations)
 		return
+	# A based pawn moves with its base, a wall that moves among them.
+	_carry_on_base(dt)
 	_wall_calc_velocity(dt)
 	iterations += 1
 	_just_teleported = false
@@ -1684,6 +1691,8 @@ func phys_wall_climbing(dt: float, iterations: int) -> void:
 		_wall_climb_fall(dt, iterations)
 		return
 	var v0: Vector3 = pawn.velocity
+	# A based pawn moves with its base, a wall that moves among them.
+	_carry_on_base(dt)
 	_wall_calc_velocity(dt)
 	var vm: Vector3 = pawn.velocity
 	_just_teleported = false

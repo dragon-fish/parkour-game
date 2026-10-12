@@ -32,8 +32,11 @@ func can_do_move() -> bool:
 	var hint: int = player.move_action_hint
 	return player.move_manager.current_name == WALL_CLIMB and (hint == MAH_RIGHT or hint == MAH_LEFT)
 
-## TdMove_WallClimbDodgeJump.StartMove. A rising base would add its own
-## vertical speed; this project's wall physics carries no base velocity.
+## TdMove_WallClimbDodgeJump.StartMove. Its script adds a rising non-world
+## base's Velocity.Z, but asks after super.StartMove has set PHYS_Falling,
+## and setPhysics into Falling has already cleared the base. [ME:INFERRED]
+## UE3's AActor::setPhysics, not decompiled here; the port's set_physics()
+## does the same, so the addition is not carried.
 func enter(_previous: StringName) -> void:
 	var c: WallClimbDodgeJumpConfig = cfg as WallClimbDodgeJumpConfig
 	_side = -1 if player.move_action_hint == MAH_LEFT else 1

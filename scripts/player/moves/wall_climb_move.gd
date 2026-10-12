@@ -107,7 +107,9 @@ func enter(_previous: StringName) -> void:
 	performed_double_jump = false
 	into_wall_climb_speed = player.horizontal_speed() - config.pawn.jump_add_xy
 	wall_climbing_gravity = absf(player.gravity_z())
-	# SetBase(MovementActor, MoveNormal): Floor is the wall's normal.
+	# SetBase(MovementActor, MoveNormal): the wall is the base, its normal
+	# the Floor.
+	player.phys.set_base(player.movement_actor)
 	player.floor_normal = player.move_normal
 	if detect_possible_hand_plant():
 		found_possible_hand_plant()

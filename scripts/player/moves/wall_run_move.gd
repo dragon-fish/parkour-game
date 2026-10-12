@@ -348,7 +348,9 @@ func enter(_previous: StringName) -> void:
 	var speed: float = sqrt(2.0 * height * horisontal_acceleration)
 	if player.velocity.y > 0.0 and player.old_movement_state != WALLRUN_JUMP:
 		player.velocity.y = speed
-	# SetBase(MovementActor, WallNormal): Floor is the wall's normal.
+	# SetBase(MovementActor, WallNormal): the wall is the base, its normal
+	# the Floor.
+	player.phys.set_base(player.movement_actor)
 	player.floor_normal = wall_normal
 	set_timer(c.wall_running_delay_pawn_rotation_time)
 	var yaw: int = UE.dir_yaw(wall_normal)

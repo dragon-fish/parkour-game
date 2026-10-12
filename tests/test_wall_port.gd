@@ -515,3 +515,29 @@ func test_the_ledge_actor_is_the_last_traces() -> void:
 		start + Vector3(6.0, 0.0, -2.0), extent)
 	assert_eq(thin["result"], MoveTraces.LEDGE_WALL, "test setup: the thin fence is not a wall")
 	assert_null(thin["move_actor"], "a wall with nothing found above names an actor")
+
+## [ME:CONFIRMED decompile TdMove_WallClimb.StartMove] SetBase(MovementActor,
+## MoveNormal): the wall climbed is the base, so a wall that moves carries
+## the body with it.
+func test_a_climb_is_based_on_its_wall_and_rides_it() -> void:
+	var player: Player = await _player()
+	var wall := AnimatableBody3D.new()
+	# As the level's movers are built: moved by their matinee, not synced.
+	wall.sync_to_physics = false
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(6.0, 8.0, 1.0)
+	shape.shape = box
+	wall.add_child(shape)
+	get_tree().root.add_child(wall)
+	_extra.append(wall)
+	wall.global_position = Vector3(0.0, 4.0, -2.0)
+	_face(player, 0.0)
+	await step(2)
+	await _start_climb(player)
+	assert_eq(player.move_manager.current_name, Move.WALL_CLIMB, "test setup: no climb")
+	assert_eq(player.base, wall, "the climb is not based on its wall")
+	var x0: float = player.global_position.x
+	wall.global_position.x += 0.1
+	await step(1)
+	assert_almost_eq(player.global_position.x - x0, 0.1, 0.01, "the wall moved without its climber")
