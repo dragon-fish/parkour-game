@@ -755,9 +755,12 @@ func found_reachable_hand_plant() -> void:
 ##
 ## Steps 5 and 6 belong to the ledge family, which is not ported yet. Until it
 ## is, the moves this project has for them answer: SpeedVault's variant table
-## (which carries AutoStepUp's rows) for both vaults, and the grab's own probe
-## for IntoGrab -- each asked only where the original would ask its own, after
-## the ported search has found a top. STAND-INS, to be replaced by
+## (which carries AutoStepUp's rows) for both vaults, asked where the original
+## asks its own, after the ported search has found a top; and the grab's own
+## probe for IntoGrab, asked once the search has run whatever it found --
+## FORCED: that probe wants the ledge at a hanging height the search's hand
+## window (the top within -58 .. +102 uu of the centre) never contains, so
+## gated on a top it would refuse every grab. STAND-INS, to be replaced by
 ## AutoStepUp / VaultOver.CanDoMove and IntoGrab.CanDoMoveNative.
 func auto_move_target() -> StringName:
 	var v: Vector3 = player.velocity
@@ -769,7 +772,9 @@ func auto_move_target() -> StringName:
 	if wall_climb_on and manager.can_do(WALL_RUN):
 		return WALL_RUN
 	player.move_ledge_result = MoveTraces.LEDGE_NONE
-	if move_active_time > auto_move_delay() and (checks_grab() or checks_vault_over() or wall_climb_on):
+	var searched: bool = move_active_time > auto_move_delay() \
+		and (checks_grab() or checks_vault_over() or wall_climb_on)
+	if searched:
 		var hit: Dictionary = player.traces.find_auto_move_ledge(player.global_position, player.facing(),
 			MoveTraces.HAND_PLANT_CHECK_DISTANCE, true, edge_in_vel_dir())
 		player.move_ledge_result = hit["result"]
@@ -778,13 +783,13 @@ func auto_move_target() -> StringName:
 			player.move_ledge_normal = hit["ledge_normal"]
 			player.move_normal = hit["move_normal"]
 	if player.move_ledge_result <= MoveTraces.LEDGE_NONE:
-		return KEEP
+		return _grab_stand_in() if searched and checks_grab() and player.probes != null else KEEP
 	if wall_climb_on:
 		var climb: Move = manager.move_for(WALL_CLIMB)
 		if climb != null and climb.can_do_move_native():
 			return WALL_CLIMB
 	if player.move_ledge_result != MoveTraces.LEDGE_TOP:
-		return KEEP
+		return _grab_stand_in() if checks_grab() and player.probes != null else KEEP
 	found_reachable_hand_plant()
 	player.found_ledge = true
 	if checks_vault_over() and player.probes != null:
