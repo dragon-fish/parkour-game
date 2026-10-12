@@ -324,3 +324,20 @@ func test_the_slide_hands_the_facing_back_over_0_4_s() -> void:
 	player.face_rotation_time_left = 0.0
 	player.move_manager.set_move(Move.CROUCH)
 	assert_almost_eq(player.face_rotation_time_left, 0.4, 0.0001, "the slide's stop set no facing ease")
+
+## [ME:CONFIRMED anims root_motion/JumpTurnFly] The turn in the air is done
+## 0.283 s in -- seventeen frames -- at an even rate.
+func test_the_turn_in_the_air_is_done_in_17_frames() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	player.global_position.y += 10.0
+	player.move_manager.start(Move.FALLING)
+	await step(2)
+	var from: float = player.pawn_yaw
+	player.move_manager.start(Move.TURN_180_IN_AIR)
+	await step(16)
+	var sixteen: float = absf(wrapf(player.pawn_yaw - from, -PI, PI))
+	await step(1)
+	var seventeen: float = absf(wrapf(player.pawn_yaw - from, -PI, PI))
+	assert_lt(sixteen, PI - 0.1, "the turn was done before its seventeenth frame")
+	assert_almost_eq(seventeen, PI, 0.001, "the turn was not done on its seventeenth frame")

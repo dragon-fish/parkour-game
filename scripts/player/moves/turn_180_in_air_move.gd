@@ -7,7 +7,7 @@ extends PhysicsMove
 # input ignored, the crouched collision, and two automatic transitions -- the
 # uncontrolled fall and the soft landing (the latter not while the root
 # rotation is turning the pawn). JumpTurnFly's root rotation turns the pawn
-# half a turn clockwise over 0.3 s. Stuck in mid-air against something for
+# half a turn clockwise in 0.283 s. Stuck in mid-air against something for
 # longer than 0.3 s, it lands where it is. Its landing is Landing's backwards
 # one: Old == 180TurnInAir puts the body on its back.
 

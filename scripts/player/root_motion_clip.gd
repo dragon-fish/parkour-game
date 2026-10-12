@@ -164,6 +164,9 @@ static func stand_turn_180() -> RootMotionClip:
 	return make(0.8, [], [[0.0, 0.0], [0.1, deg_to_rad(92.0)], [0.2, deg_to_rad(169.0)],
 		[0.25, PI]])
 
-## JumpTurnFly: half a turn clockwise at an even rate over 0.3 s.
+## JumpTurnFly: half a turn clockwise at an even rate, 10.6 degrees a frame,
+## done 0.283 s in; the sequence runs 0.6 s. [ME:CONFIRMED anims
+## root_motion/JumpTurnFly, 1P] The track ends at 180.9 degrees; HalfTurn
+## lands on exactly half a turn.
 static func jump_turn_fly() -> RootMotionClip:
-	return make(0.6, [], [[0.0, 0.0], [0.3, PI]])
+	return make(0.6, [], [[0.0, 0.0], [0.28333, PI]])
