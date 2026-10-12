@@ -1136,7 +1136,21 @@ func _set_base(collider: Object) -> void:
 	pawn.base = collider
 	if collider is Node3D:
 		pawn.base_transform = (collider as Node3D).global_transform
+		# The trace that found this base ran against the physics server's copy of
+		# it. A node moved since (this frame, before the server caught up) is
+		# not where the trace saw it, so the floor it reported may not be under
+		# the body: the base stopped being what the trace hit, bForceFloorCheck.
+		# DO NOT drop this: the base's own transform is re-read from the node
+		# just above, so the carry can never see the move, and a still body
+		# would reuse a floor that is not there.
+		if collider is CollisionObject3D and not _server_agrees_with_node(collider as CollisionObject3D):
+			_force_floor_check = true
 	_note_relative_location()
+
+static func _server_agrees_with_node(body: CollisionObject3D) -> bool:
+	var server: Transform3D = PhysicsServer3D.body_get_state(body.get_rid(),
+		PhysicsServer3D.BODY_STATE_TRANSFORM)
+	return server.is_equal_approx(body.global_transform)
 
 ## What MoveActor and SetBase do to RelativeLocation: re-measured from the base.
 func _note_relative_location() -> void:

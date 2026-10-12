@@ -380,6 +380,42 @@ func test_standing_still_reuses_the_floor_until_disturbed() -> void:
 	assert_eq(player.physics, Move.PHYS_FALLING, "a body kept standing on a floor that stopped colliding")
 	floor_shape.disabled = false
 
+## bForceFloorCheck also covers the base going away: a floor freed under a
+## still body is no floor.
+func test_standing_still_on_a_floor_that_is_freed_falls() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	assert_eq(player.physics, Move.PHYS_WALKING, "test setup: the body is not standing")
+	var floor_body: Node = world["floor"]
+	world.erase("floor")
+	floor_body.free()
+	await step(2)
+	assert_eq(player.physics, Move.PHYS_FALLING, "a body kept standing on a floor that was freed")
+	world["floor"] = Node3D.new()
+
+## A body that lands on geometry the physics server still has where a node
+## has just left must not keep standing on it: the node's new position cannot
+## show the carry what the trace saw, so the landing itself raises the
+## floor check.
+func test_a_landing_on_geometry_moved_this_frame_does_not_keep_the_floor() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var pad := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(4.0, 1.0, 4.0)
+	shape.shape = box
+	pad.add_child(shape)
+	get_tree().root.add_child(pad)
+	pad.global_position = Vector3(20.0, 1.5, 0.0)
+	await step(3)
+	player.global_position = Vector3(20.0, 3.0, 0.0)
+	pad.global_position = Vector3(20.0, 100.0, 0.0)
+	await step(90)
+	assert_eq(player.physics, Move.PHYS_WALKING, "the body never came to rest")
+	assert_lt(player.global_position.y, 1.2, "the body stands in the air on a floor that left")
+	pad.free()
+
 ## [ME:CONFIRMED decompile N4 §1.1] The input ignores are the pawn's Actor
 ## timers, counted after the controller has read the frame's input: an ignore
 ## that runs out in a frame still held that frame.
