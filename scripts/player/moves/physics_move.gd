@@ -79,7 +79,7 @@ func pre_physics(delta: float) -> void:
 		manager.set_move(FALLING)
 		return
 	if check_exit_to_uncontrolled_falling \
-			and player.enter_falling_height - player.global_position.y \
+			and player.enter_falling_height - player.collision_center().y \
 				> config.pawn.falling_uncontrolled_height:
 		manager.set_move(FALL_UNCONTROLLED)
 
@@ -89,7 +89,7 @@ func pre_physics(delta: float) -> void:
 ## hitting an upward face (normal z > 0.9) of a soft-landing surface more than
 ## two collision heights below the body's centre.
 func _soft_landing_ahead() -> bool:
-	var feet: Vector3 = player.global_position - Vector3.UP * player.collision_half_height()
+	var feet: Vector3 = player.collision_center() - Vector3.UP * player.collision_half_height()
 	var a := Vector3(player.acceleration.x, player.gravity_z(), player.acceleration.z)
 	var to: Vector3 = feet + player.velocity * 2.0 + a * 2.0
 	var hit: Dictionary = player.phys.line_trace(feet, to)
@@ -99,7 +99,7 @@ func _soft_landing_ahead() -> bool:
 	if normal.y <= 0.9 or not Probes.is_soft(hit["collider"]):
 		return false
 	var position: Vector3 = hit["position"]
-	return absf(position.y - player.global_position.y) > 2.0 * player.collision_half_height()
+	return absf(position.y - player.collision_center().y) > 2.0 * player.collision_half_height()
 
 # --- the heave-over tests (TdPhysicsMove script) -----------------------------------
 #

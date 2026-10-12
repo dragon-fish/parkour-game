@@ -280,3 +280,16 @@ func test_the_rolls_and_turns_reset_the_view_as_the_original_does() -> void:
 	var turn: Move = manager.current_move()
 	assert_true(turn.look_at_target_location_active, "the turn in the air does not look back")
 	assert_almost_eq(turn.look_at_target_location, player.last_jump_location + Vector3(0.0, 0.9, 0.0), Vector3.ONE * 0.001)
+
+## [ME:CONFIRMED decompile TdMove.ShrinkCollision] The crouched collision
+## moves Location down 29 uu with it: every height the original measures off
+## Location -- EnterFallingHeight first -- is the crouched centre's.
+func test_a_crouched_body_measures_its_fall_from_the_crouched_centre() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	player.move_manager.start(Move.CROUCH)
+	assert_almost_eq(player.collision_center().y, player.global_position.y - 0.29, 0.001,
+		"test setup: the crouch did not shrink the collision 29 uu")
+	player.set_physics(Move.PHYS_FALLING)
+	assert_almost_eq(player.enter_falling_height, player.collision_center().y, 0.0001,
+		"EnterFallingHeight is not the crouched Location")

@@ -54,7 +54,7 @@ func enter(previous: StringName) -> void:
 		_stagger()
 		return
 	var came_from_180_in_air: bool = previous == TURN_180_IN_AIR
-	var falling_height: float = player.enter_falling_height - player.global_position.y
+	var falling_height: float = player.enter_falling_height - player.collision_center().y
 	var hard: bool = falling_height >= config.pawn.hard_landing_height
 	var soft_surface: bool = hard and last_landing_was_on_soft_object
 	var v_dir: Vector3 = player.velocity.normalized() if player.velocity.length_squared() > 0.0 else Vector3.ZERO

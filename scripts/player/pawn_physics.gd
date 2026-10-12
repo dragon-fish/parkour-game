@@ -465,7 +465,7 @@ func set_physics(mode: int) -> void:
 	if mode == pawn.physics:
 		return
 	if mode == Move.PHYS_FALLING:
-		pawn.enter_falling_height = pawn.global_position.y
+		pawn.enter_falling_height = pawn.collision_center().y
 	if mode != Move.PHYS_WALKING:
 		pawn.base = null
 		pawn.clear_slide_off_ledge()
@@ -1397,7 +1397,7 @@ func _landing_edge_retry(adjusted: Vector3, hit: Dictionary) -> bool:
 		return false
 	if adjusted.y == 0.0:
 		return false
-	var fall: float = pawn.enter_falling_height - pawn.global_position.y
+	var fall: float = pawn.enter_falling_height - pawn.collision_center().y
 	var hard: bool = pawn.config.pawn.hard_landing_height < fall \
 		or (MoveTraces.excludes_hand_moves(hit["collider"]) and MoveTraces.excludes_foot_moves(hit["collider"])) \
 		or manager.current_name == Move.TURN_180_IN_AIR
@@ -1422,7 +1422,7 @@ func _landing_edge_retry(adjusted: Vector3, hit: Dictionary) -> bool:
 func process_landed(normal: Vector3, remaining: float, iterations: int) -> void:
 	pawn.floor_normal = normal
 	# What the presentation reads about this landing (the camera's dip).
-	pawn.last_landing_fall_height = pawn.enter_falling_height - pawn.global_position.y
+	pawn.last_landing_fall_height = pawn.enter_falling_height - pawn.collision_center().y
 	pawn.last_landing_coiled = pawn.coiled_since_ground
 	pawn.last_landing_rolled = false
 	pawn.notify_landed(maxf(-pawn.velocity.y, 0.0))

@@ -166,7 +166,7 @@ func enter(_previous: StringName) -> void:
 	# bTakeFallDamage is the pawn's default: a catch after a long fall hurts
 	# as a landing would, and the fall counts again from the hands.
 	player.take_falling_damage()
-	player.enter_falling_height = player.global_position.y
+	player.enter_falling_height = player.collision_center().y
 
 ## TdMove_Grab.StopMove.
 func exit() -> void:

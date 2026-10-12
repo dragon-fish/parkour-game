@@ -1499,7 +1499,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	traces = MoveTraces.new(self)
 	pawn_yaw = rotation.y
 	walkable_floor_z = config.pawn.walkable_floor_z
-	enter_falling_height = global_position.y
+	enter_falling_height = collision_center().y
 	_build_moves()
 
 	if probes != null:
@@ -1524,7 +1524,7 @@ func reset_state() -> void:
 	acceleration = Vector3.ZERO
 	anim_slot.clear()
 	floor_normal = Vector3.UP
-	enter_falling_height = global_position.y
+	enter_falling_height = collision_center().y
 	illegal_ledge_timer = 0.0
 	evade_timer = 0.0
 	found_ledge = false
@@ -4766,7 +4766,7 @@ func pawn_landed(normal: Vector3) -> void:
 	var move: Move = move_manager.current_move()
 	if move != null:
 		move.landed(normal)
-	enter_falling_height = global_position.y
+	enter_falling_height = collision_center().y
 
 ## Controller.Rotation.Pitch in rotator units: the view's pitch.
 func controller_pitch_units() -> int:
@@ -4791,7 +4791,7 @@ func reached_wall() -> void:
 ## otherwise the hard landing's damage, or all of it past the uncontrolled
 ## height.
 func take_falling_damage() -> void:
-	var fall_height: float = enter_falling_height - global_position.y
+	var fall_height: float = enter_falling_height - collision_center().y
 	var soft: bool = is_landing_on_soft_object()
 	# bDeathFall = (MovementState == FallingUncontrolled && IsInState(
 	# 'UncontrolledFall')) || FallHeight >= FallingUncontrolledHeight.
@@ -4810,9 +4810,9 @@ func take_falling_damage() -> void:
 ## upward face (z > 0.9) of a soft-landing surface. Records the answer on
 ## Landing, where the original keeps it. [ME:CONFIRMED decompile N4 §2.3]
 func is_landing_on_soft_object() -> bool:
-	var feet: Vector3 = global_position - Vector3.UP * collision_half_height()
+	var feet: Vector3 = collision_center() - Vector3.UP * collision_half_height()
 	var extent := Vector3(collision_radius(), 5.0 * PawnPhysics.UU, collision_radius())
-	var hit: Dictionary = phys.box_trace(feet - Vector3.UP * 20.0 * PawnPhysics.UU, global_position, extent)
+	var hit: Dictionary = phys.box_trace(feet - Vector3.UP * 20.0 * PawnPhysics.UU, collision_center(), extent)
 	var normal: Vector3 = hit["normal"]
 	var soft: bool = hit["collider"] != null and normal.y > 0.9 and Probes.is_soft(hit["collider"])
 	var landing: Move = move_manager.move_for(Move.LANDING)

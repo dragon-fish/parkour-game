@@ -77,7 +77,7 @@ func tick_move(delta: float) -> void:
 		return
 	if Vector2(player.velocity.x, player.velocity.z).length() <= 10.0 * UU:
 		return
-	var feet: Vector3 = player.global_position - Vector3.UP * player.collision_half_height()
+	var feet: Vector3 = player.collision_center() - Vector3.UP * player.collision_half_height()
 	if not player.phys.line_trace(feet, feet + player.velocity * 0.4).is_empty():
 		close_to_ground = true
 

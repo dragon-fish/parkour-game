@@ -70,7 +70,7 @@ func settle_landing(delta: float) -> StringName:
 		return KEEP
 
 	player.fall_tracker.update(delta, -impact_speed, player.global_position.y)
-	player.last_landing_fall_height = player.enter_falling_height - player.global_position.y
+	player.last_landing_fall_height = player.enter_falling_height - player.collision_center().y
 	player.last_landing_coiled = player.coiled_since_ground
 	player.set_grounded(true)
 	player.notify_landed(impact_speed)
@@ -103,7 +103,7 @@ func _legacy_landing(_delta: float) -> StringName:
 		and fall_height >= config.pawn.skill_roll_landing_height \
 		and player.consume_roll()
 	player.last_landing_rolled = rolled
-	player.enter_falling_height = player.global_position.y
+	player.enter_falling_height = player.collision_center().y
 	if player.physics == PHYS_FALLING:
 		player.set_physics(PHYS_WALKING)
 	var hurt: float = landing_damage(fall_height, rolled)

@@ -92,7 +92,7 @@ func landed(normal: Vector3) -> void:
 	if melee_type != MAT_FROM_JUMP:
 		return
 	var manager = player.move_manager
-	var fall_height: float = player.enter_falling_height - player.global_position.y
+	var fall_height: float = player.enter_falling_height - player.collision_center().y
 	var walking: Move = manager.move_for(WALKING)
 	if hit_detection and fall_height < config.pawn.hard_landing_height:
 		super.landed(normal)

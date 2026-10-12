@@ -111,7 +111,7 @@ func pre_physics(delta: float) -> void:
 	player.velocity = PawnPhysics.safe_normal(steered) * minf(cfg.max_slide_speed, speed)
 	# A slide is not a fall: the fall height is measured from here.
 	if not touched_fall_height:
-		player.enter_falling_height = player.global_position.y
+		player.enter_falling_height = player.collision_center().y
 
 ## TdMove_RumpSlide TickMove (0x011fa1c0): off the chute for more than 0.1 s
 ## with nothing in a 2 uu box 150 uu below, a fall.
