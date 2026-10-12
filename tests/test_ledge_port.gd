@@ -563,6 +563,36 @@ func test_a_jump_at_a_waist_high_box_vaults_it() -> void:
 	assert_true(seen.has(Move.VAULT_OVER), "no vault in %s" % [seen])
 	assert_lt(player.global_position.z, -8.2, "the body did not end beyond the box")
 
+## This project's presentation of a vault: the camera banks through it and is
+## level again once it is over, and the clip's own hip lift is cancelled while
+## the legs carry the body (Player.set_clip_lift_cancelled()).
+func test_a_vault_banks_the_camera_and_cancels_the_clip_lift() -> void:
+	var player: Player = await _player()
+	_box(Vector3(4.0, 1.0, 0.4), Vector3(0.0, 0.5, -8.0))
+	await step(1)
+	await _run(player, 1.0)
+	var input: ScriptedInputSource = _world["input"]
+	var banked := 0.0
+	var lift_kept := 1.0
+	var vaulted := false
+	for i in 120:
+		if player.global_position.z < -6.6 and not vaulted:
+			input.press_jump()
+		await step(1)
+		if player.move_manager.current_name == Move.VAULT_OVER:
+			vaulted = true
+			banked = maxf(banked, absf(player.camera_rig._vault_roll))
+			lift_kept = minf(lift_kept, player.debug_clip_lift_kept())
+		elif vaulted:
+			break
+	assert_true(vaulted, "test setup: no vault")
+	var vault: SpeedVaultMove = player.move_manager.move_for(Move.VAULT_OVER)
+	if not vault.is_step_up():
+		assert_gt(banked, deg_to_rad(1.0), "the camera did not bank through the vault")
+	assert_eq(lift_kept, 0.0, "the clip's hip lift was not cancelled during the vault")
+	assert_eq(player.camera_rig._vault_roll, 0.0, "the bank outlived the vault")
+	assert_eq(player.debug_clip_lift_kept(), 1.0, "the clip lift was not handed back")
+
 ## A jump at a wall with its top at hand height from the jump's apex: the
 ## hand-plant search finds the top, IntoGrab reaches for it, and the body
 ## hangs.

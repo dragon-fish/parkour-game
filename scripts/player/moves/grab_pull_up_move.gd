@@ -118,6 +118,10 @@ func enter(_previous: StringName) -> void:
 		enable_collision = 0.6
 	disable_face_rotation = true
 	player.use_root_motion(true)
+	# This project's presentation: the root motion carries the body up, so the
+	# pack's climb clip must not add its own hip lift on top
+	# (Player.set_clip_lift_cancelled()).
+	player.set_clip_lift_cancelled(true)
 	reset_camera_look(disable_look_time)
 	set_move_timer(release_camera, false, _release_camera)
 	set_move_timer(enable_collision, false, _enable_collision)
@@ -134,6 +138,7 @@ func _enable_collision() -> void:
 ## TdMove_GrabPullUp.StopMove.
 func exit() -> void:
 	_enable_collision()
+	player.set_clip_lift_cancelled(false)
 
 func on_cease_relevant_root_motion() -> void:
 	player.use_root_motion(false)

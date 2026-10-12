@@ -282,10 +282,48 @@ func enter(_previous: StringName) -> void:
 	vault_state = 0 if t["vault_time_up"] > 0.0 else 1
 	target_location = player.global_position
 	play_slot_anim(t["anim"], 1.0, 0.15, 0.2)
+	# This project's presentation: the legs carry the body, so the clip on
+	# the model must not add its own hip lift on top (Player.set_clip_lift_cancelled()).
+	player.set_clip_lift_cancelled(true)
 	update_vault_movement()
+
+## TdMove_SpeedVault.StopMove has nothing of the original's to undo; the
+## presentation hands back what it borrowed.
+func exit() -> void:
+	player.set_clip_lift_cancelled(false)
+	if player.camera_rig != null:
+		player.camera_rig.set_vault_roll(0.0)
 
 func on_timer() -> void:
 	update_vault_movement()
+
+## After the physics: the camera's bank through the vault. This project's
+## presentation. A slight bank, peaking in the middle and gone by the end --
+## sin() rather than a ramp, so a vault never hands a tilted horizon to what
+## comes next. LEANS ONE WAY, ALWAYS: a vault is a one-handed plant, the same
+## hand every time. NOT FOR A STEP-UP, which has no hand in it (the same reason
+## it plays StepUp rather than SafetyVault).
+func tick_move(delta: float) -> void:
+	super.tick_move(delta)
+	if player.camera_rig == null or player.move_manager.current_move() != self:
+		return
+	var roll: float = 0.0
+	if not is_step_up():
+		roll = sin(PI * vault_progress()) * deg_to_rad(config.camera.vault_roll_deg)
+	player.camera_rig.set_vault_roll(roll)
+
+## How far through its legs the vault is, 0 .. 1, on the row's own times.
+func vault_progress() -> float:
+	var t: Dictionary = vault_type()
+	if t.is_empty():
+		return 0.0
+	var total: float = float(t["vault_time_up"]) + float(t["vault_time_over"]) + float(t["vault_time_down"])
+	return clampf(move_active_time / maxf(total, 0.001), 0.0, 1.0)
+
+## The scripted-path hook Player.scripted_progress() reads: the clip offsets'
+## eye follow and the hand-keyed clip curves run on it.
+func path_debug() -> Dictionary:
+	return {"progress": vault_progress()}
 
 ## TdMove_SpeedVault.UpdateVaultMovement: one leg per call.
 func update_vault_movement() -> void:

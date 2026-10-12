@@ -67,6 +67,7 @@ func enter(_previous: StringName) -> void:
 
 ## TdMove_Climb.StopMove.
 func exit() -> void:
+	player.set_clip_lift_cancelled(false)
 	_reset()
 	ladder = null
 	player.use_root_motion(false)
@@ -200,6 +201,10 @@ func exit_at_top(index: int) -> void:
 	player.use_root_motion(true)
 	climb_state = State.EXIT_AT_TOP
 	player.collide_world = false
+	# This project's presentation: the root motion carries the body over the
+	# top, so the pack's climb clip must not add its own hip lift on top
+	# (Player.set_clip_lift_cancelled()). Released in exit().
+	player.set_clip_lift_cancelled(true)
 
 func reached_precise_location() -> void:
 	player.velocity = Vector3.ZERO
