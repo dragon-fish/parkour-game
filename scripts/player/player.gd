@@ -363,19 +363,25 @@ func exit_interest_line(line: InterestLine) -> void:
 ## the Player's business, and for one effect it means a great deal.
 func apply_status(spec: StatusSpec, source: Object, priority: int,
 		fresh_contact: bool = false) -> void:
-	# TOUCHING THE WIRE AGAIN IS A NEW CUT. The stagger immunity exists so a
-	# volume renewing four times a second cannot re-stagger the player on the
-	# tick the lockout ends, leaving no tick in which to walk out. It was never
-	# meant to make wire free to stand on: without this, the escape window is
-	# also a window in which the player can hop off and back on unharmed, and
-	# the wire becomes a platform to bounce along.
-	#
-	# The escape is untouched, because leaving is not entering. A player who
-	# walks out during the window stays out; only one who chooses to come back
-	# pays again, which is the whole point.
+	# WALKING INTO A STAGGER IS THE WIRE'S Touch, and only that: the volume
+	# renewing it is the body staying inside, which the original answers with
+	# pain alone (MoveManager._apply_level_hazards()). Recorded here and played
+	# before the next tick's physics, where the move manager runs it.
 	if fresh_contact and spec != null and spec.effect == Status.Effect.STAGGER:
-		_stagger_immunity = 0.0
+		_hazard_touch_pending = true
+		# The volume reports the overlap after the step that made it, so the
+		# last tick's start is where the body was before it moved in -- a
+		# point behind the body along its travel, as the touch's HitLocation
+		# (the swept position at contact) is.
+		hazard_touch_location = _last_tick_start_position
 	statuses.apply(spec, source, priority)
+
+## Takes the wire's touch recorded by apply_status(), once. True when the body
+## walked into a STAGGER since the last call.
+func consume_hazard_touch() -> bool:
+	var touched := _hazard_touch_pending
+	_hazard_touch_pending = false
+	return touched
 
 func remove_status(effect: int, subject: StringName) -> void:
 	statuses.remove(effect, subject)
@@ -497,6 +503,17 @@ var _speed_scale: float = 1.0
 ## Seconds of stagger immunity still owed. Armed when a landing lockout lets
 ## go, so a level that keeps re-applying STAGGER cannot chain them.
 var _stagger_immunity: float = 0.0
+
+## A walk into a STAGGER volume not yet played: see apply_status().
+var _hazard_touch_pending: bool = false
+## Where that touch happened: TdBarbedWireVolume.Touch's HitLocation, which
+## the stumble takes as both the damage's and the instigator's location.
+var hazard_touch_location: Vector3 = Vector3.ZERO
+## The body's position at the start of the last tick.
+var _last_tick_start_position: Vector3 = Vector3.ZERO
+## TdPlayerPawn.LastResetTimeStamp, on world_time: when the body was last put
+## back at a checkpoint.
+var last_reset_time: float = -INF
 
 ## Set by MoveManager on the tick it commits a stagger, so LandingMove can
 ## tell a wire cut from a hard landing and charge the momentum differently.
@@ -1499,6 +1516,9 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 ## exactly one physics tick before the move manager resumes.
 func reset_state() -> void:
 	_step_grace_timer = 0.0
+	last_reset_time = world_time
+	_hazard_touch_pending = false
+	_last_tick_start_position = global_position
 	_was_grounded = false
 	velocity = Vector3.ZERO
 	acceleration = Vector3.ZERO
@@ -3594,6 +3614,7 @@ func _physics_process(delta: float) -> void:
 	# previous one, so a teleport made from outside this function (the arena's
 	# respawn, a test placing the body) is never measured as travel.
 	var tick_start_position := global_position
+	_last_tick_start_position = tick_start_position
 	# Poll unconditionally even when locked: KeyboardInputSource tracks
 	# press-edges across ticks, and skipping the poll would make a key held
 	# through the lock read as freshly pressed on the tick input resumes.
@@ -4921,19 +4942,26 @@ func touch_fall_height_volume(fall_height_y: float) -> void:
 		move.touched_fall_height_volume()
 
 ## TdBarbedWireVolume.Touch. [ME:CONFIRMED decompile] A living body that is
-## not already stumbling, and that TdPawn.CanDoMove(MOVE_Stumble) lets through,
-## has the touch recorded on the stumble as a barbed-wire hit -- the touch's
-## location as both the damage's and the instigator's -- and is handed
-## MA_Stumble. The stumble ignores move and look input until it ends. The
-## wire's pain (DamagePerSec) is the level's STAGGER damage, not dealt here.
-## [ME:INFERRED] the touch location is taken as the body's own; the volume's
-## 0.1 s grace after a respawn is not ported.
-func touch_barbed_wire(hit_location: Vector3) -> void:
+## not already stumbling, that TdPawn.CanDoMove(MOVE_Stumble) lets through and
+## that was not put back at a checkpoint in the last 0.1 s
+## (LastResetTimeStamp), has the touch recorded on the stumble as a
+## barbed-wire hit -- the touch's location as both the damage's and the
+## instigator's -- and is handed MA_Stumble, which the action table may still
+## drop (a Landing has no row for it). The stumble ignores move and look input
+## until it ends.
+##
+## Returns whether the touch got past those gates. Only then does the
+## original go on to PhysicsVolume.Touch and its CausePainTo: a touch refused
+## here costs nothing, and is lost -- Touch fires once per entry.
+func touch_barbed_wire(hit_location: Vector3) -> bool:
 	if is_dying() or (health != null and health.is_dead()):
-		return
+		return false
 	if move_manager.current_name == Move.STUMBLE or not move_manager.pawn_can_do(Move.STUMBLE):
-		return
+		return false
+	if world_time - last_reset_time < 0.1:
+		return false
 	stumble_damage(StumbleMove.DamageType.BARBED_WIRE, hit_location, hit_location)
+	return true
 
 ## TdPawn.StumbleDamage: the hit is recorded on the stumble that will play it,
 ## then handed to the action table as MA_Stumble, or MA_StumbleHard for the

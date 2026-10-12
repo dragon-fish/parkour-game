@@ -474,6 +474,15 @@ func tick_special(delta: float) -> void:
 ## original applies through damage types this port does not have. Applied
 ## before the physics to every move alike. Returns true when a hazard took the
 ## body this tick.
+##
+## A STAGGER is the original's TdBarbedWireVolume: the body inside it holds
+## the status, renewed by the volume. [ME:CONFIRMED decompile] Walking in is
+## Touch -- the stumble, and with it PhysicsVolume.Touch's CausePainTo -- once
+## per entry, and lost when its gates refuse it (Player.touch_barbed_wire()).
+## Staying in is the volume's 1 s pain timer: TdPawn.TakeDamage hands the
+## barbed-wire type to an empty BulletDamage, so it hurts and never stumbles.
+## The pain's cadence here is the stagger immunity counted from the last hit;
+## the original's VolumeTimer runs on the volume's own clock.
 func _apply_level_hazards() -> bool:
 	if player == null:
 		return false
@@ -483,32 +492,40 @@ func _apply_level_hazards() -> bool:
 	var knocking_down: bool = player.statuses.has(Status.Effect.KNOCKDOWN) \
 			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LAY_ON_GROUND \
 			and _moves.has(Move.LAY_ON_GROUND)
-	if player.statuses.has(Status.Effect.STAGGER) \
-			and current_name != Move.FALL_UNCONTROLLED and current_name != Move.LANDING:
-		# EATEN, NOT QUEUED, while immune: the hit landed and the body shrugged
-		# it off. Left in the list it would fire the instant the window closed.
-		if player.is_stagger_immune():
-			player.statuses.remove(Status.Effect.STAGGER)
-		elif current_name == Move.LAY_ON_GROUND:
-			var cost: float = player.statuses.amount_of(Status.Effect.STAGGER)
-			player.statuses.remove(Status.Effect.STAGGER)
-			if cost > 0.0:
-				player.take_damage(cost, Health.Cause.HAZARD)
-		elif knocking_down:
+	var touched: bool = player.consume_hazard_touch()
+	if player.statuses.has(Status.Effect.STAGGER) and current_name != Move.FALL_UNCONTROLLED:
+		var amount: float = player.statuses.amount_of(Status.Effect.STAGGER)
+		var tint: Color = player.statuses.tint_of(Status.Effect.STAGGER)
+		if knocking_down:
+			# The blow that comes with a knock-down is the knock-down's.
 			staggering = true
-			stagger_damage = player.statuses.amount_of(Status.Effect.STAGGER)
-			player.pending_stagger_tint = player.statuses.tint_of(Status.Effect.STAGGER)
+			stagger_damage = amount
+			player.pending_stagger_tint = tint
 		else:
-			# The wire's touch: it hurts (this project's damage), and
-			# TdBarbedWireVolume.Touch hands the body a stumble, which ignores
-			# move and look input (Player.touch_barbed_wire()).
-			player.take_hazard_hit(player.statuses.amount_of(Status.Effect.STAGGER),
-				player.statuses.tint_of(Status.Effect.STAGGER))
-			player.statuses.remove(Status.Effect.STAGGER)
 			var before: int = change_serial
-			player.touch_barbed_wire(player.global_position)
-			if change_serial != before:
-				return true
+			if touched and player.touch_barbed_wire(player.hazard_touch_location):
+				player.take_hazard_hit(amount, tint)
+				player.statuses.remove(Status.Effect.STAGGER)
+				if change_serial != before:
+					return true
+			elif player.is_stagger_immune():
+				# EATEN, NOT QUEUED, while immune: the pain timer has not come
+				# round yet. Left in the list it would fire the instant the
+				# window closed whether or not the body was still inside.
+				player.statuses.remove(Status.Effect.STAGGER)
+			elif touched:
+				# A refused touch costs nothing; the body inside is left to
+				# the pain timer, which starts counting here.
+				player.arm_stagger_immunity()
+				player.statuses.remove(Status.Effect.STAGGER)
+			elif current_name == Move.LAY_ON_GROUND:
+				player.statuses.remove(Status.Effect.STAGGER)
+				if amount > 0.0:
+					player.take_damage(amount, Health.Cause.HAZARD)
+				player.arm_stagger_immunity()
+			else:
+				player.take_hazard_hit(amount, tint)
+				player.statuses.remove(Status.Effect.STAGGER)
 	if knocking_down:
 		next = Move.LAY_ON_GROUND
 	if next == Move.KEEP:

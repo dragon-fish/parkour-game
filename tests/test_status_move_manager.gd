@@ -71,7 +71,7 @@ func test_the_wire_hurts_and_stumbles_the_body_with_its_input_ignored() -> void:
 	await step(1)
 	p.speed_energy.energy = 7.0
 	var hp: float = p.health.hp
-	p.statuses.apply(_hit(35.0), p, 0)
+	p.apply_status(_hit(35.0), p, 0, true)
 	await step(2)
 	assert_almost_eq(p.health.hp, hp - 35.0, 0.01, "the hit did not hurt")
 	assert_lt(p.speed_energy.energy, 0.1, "the hit did not empty the speed budget")
@@ -184,18 +184,93 @@ func test_standing_in_the_wire_costs_again_once_the_window_closes() -> void:
 		"standing in the wire did not cost again once the window closed")
 
 func test_stepping_back_into_the_wire_costs_immediately() -> void:
-	# The window exists so the player can walk OUT. It must not also be one in
-	# which they can hop off the wire and back on for free -- wire you can
-	# bounce along is a platform, not a hazard. Only the volume can tell
-	# walking in from a renewal, which is why it arrives as an argument.
+	# Each entry is a Touch of its own, and Touch's CausePainTo does not wait
+	# for the volume's pain timer. Only the volume can tell walking in from a
+	# renewal, which is why it arrives as an argument.
 	var p := await _standing_player()
-	p.statuses.apply(_hit(10.0), p, 0)
-	await step(2)
+	p.apply_status(_hit(10.0), p, 0, true)
+	await _until_walking(p)
+	assert_true(p.is_stagger_immune(), "test setup: the stumble outlasted the pain window")
 	var hp: float = p.health.hp
 	p.apply_status(_hit(10.0), p, 0, true)
 	await step(2)
 	assert_almost_eq(p.health.hp, hp - 10.0, 0.01, \
 		"the wire could be hopped off and back onto for free")
+	assert_eq(p.move_manager.current_name, Move.STUMBLE, "the second entry did not stumble")
+
+## Steps until the stumble the wire handed out is over.
+func _until_walking(p: Player) -> void:
+	for i in 120:
+		await step(1)
+		if p.move_manager.current_name == Move.WALKING:
+			return
+	assert_eq(p.move_manager.current_name, Move.WALKING, "test setup: the stumble never ended")
+
+func test_staying_in_the_wire_hurts_on_its_timer_but_never_stumbles_again() -> void:
+	# [ME:CONFIRMED decompile] Touch is once per entry. The volume's 1 s pain
+	# goes through TdPawn.TakeDamage to an empty BulletDamage: no stumble.
+	var p := await _standing_player()
+	p.apply_status(_hit(10.0), p, 0, true)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.STUMBLE, "test setup: the touch did not stumble")
+	await _until_walking(p)
+	var hp: float = p.health.hp
+	var stumbled := false
+	for i in int(p.config.pawn.stagger_immunity_time * 60.0) + 10:
+		p.statuses.apply(_hit(10.0), p, 0)
+		await step(1)
+		stumbled = stumbled or p.move_manager.current_name == Move.STUMBLE
+	assert_false(stumbled, "a body standing in the wire stumbled again without a new touch")
+	assert_almost_eq(p.health.hp, hp - 10.0, 0.01, "the wire's pain timer did not hurt")
+
+func test_a_touch_while_stumbling_costs_nothing_and_is_lost() -> void:
+	# Touch returns before its CausePainTo for a body already stumbling, and
+	# fires once: there is nothing left to play when the stumble ends.
+	var p := await _standing_player()
+	p.apply_status(_hit(10.0), p, 0, true)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.STUMBLE, "test setup: the touch did not stumble")
+	var hp: float = p.health.hp
+	p.apply_status(_hit(10.0), p, 0, true)
+	await step(2)
+	assert_almost_eq(p.health.hp, hp, 0.01, "a refused touch still hurt")
+	await _until_walking(p)
+	await step(2)
+	assert_eq(p.move_manager.current_name, Move.WALKING, "a refused touch was kept and played later")
+
+func test_a_touch_just_after_a_respawn_is_lost() -> void:
+	# TdBarbedWireVolume.Touch: nothing within 0.1 s of LastResetTimeStamp.
+	var p := await _standing_player()
+	p.move_manager.start(Move.WALKING)
+	p.reset_state()
+	var hp: float = p.health.hp
+	p.apply_status(_hit(10.0), p, 0, true)
+	await step(2)
+	assert_ne(p.move_manager.current_name, Move.STUMBLE, "the wire stumbled a body just put back")
+	assert_almost_eq(p.health.hp, hp, 0.01, "the refused touch still hurt")
+
+## Walks the standing body along `stick` for a while, then touches the wire.
+func _stumble_walking(stick: Vector2) -> int:
+	var p := await _standing_player()
+	p.move_manager.start(Move.WALKING)
+	var input = _worlds.back()["input"]
+	input.state.move = stick
+	await step(30)
+	p.apply_status(_hit(0.0), p, 0, true)
+	await step(1)
+	input.state.move = Vector2.ZERO
+	assert_eq(p.move_manager.current_name, Move.STUMBLE, "test setup: the touch did not stumble")
+	var stumble: StumbleMove = p.move_manager.move_for(Move.STUMBLE)
+	return stumble.stumble_state
+
+func test_the_touch_is_behind_the_body_along_its_travel() -> void:
+	# The touch's HitLocation is where the swept body met the volume, so
+	# GetStumbleState reads the instigator behind the travel: walked into
+	# forwards it is the front stumble, backed into it is struck from behind.
+	assert_eq(await _stumble_walking(Vector2(0.0, 1.0)), StumbleMove.StumbleState.HIT_BARBED_WIRE_FRONT,
+		"walking into the wire did not take the front stumble")
+	assert_eq(await _stumble_walking(Vector2(0.0, -1.0)), StumbleMove.StumbleState.HIT_MELEE_BACK,
+		"backing into the wire did not take the stumble from behind")
 
 func test_a_crouch_block_forbids_the_choice_but_not_the_ceiling() -> void:
 	# What a level forbids is the player CHOOSING to duck. A body that cannot
