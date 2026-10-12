@@ -494,3 +494,24 @@ func test_a_climb_does_not_turn_the_third_person_camera() -> void:
 	player.camera_rig.third_person = true
 	var top: float = await _climb_to_the_fall(player)
 	assert_almost_eq(top, 0.0, 0.01, "the climb turned the third-person camera")
+
+## [ME:CONFIRMED decompile N4 §3.2, FillLedgeHit] The ledge's actor is the
+## LAST trace's: a top's is the body the top belongs to, not the wall's, and a
+## wall too thin for the down trace to find (it looks LedgeFindDepth past the
+## face) names no actor at all.
+func test_the_ledge_actor_is_the_last_traces() -> void:
+	var player: Player = await _player()
+	var wall := _box(Vector3(4.0, 1.4, 1.0), Vector3(0.0, 0.7, -2.0))
+	var cap := _box(Vector3(4.0, 0.1, 1.0), Vector3(0.0, 1.45, -2.0))
+	_box(Vector3(4.0, 1.4, 0.02), Vector3(6.0, 0.7, -2.0))
+	await step(1)
+	var extent := Vector3(0.05, 0.8, 0.05)
+	var start := Vector3(0.0, 1.0, 0.0)
+	var top: Dictionary = player.traces.find_ledge_ex(start, start + Vector3(0.0, 0.0, -2.0), extent)
+	assert_eq(top["result"], MoveTraces.LEDGE_TOP, "test setup: no ledge on the capped wall")
+	assert_eq(top["move_actor"], cap, "the top's actor is not the cap it lies on")
+	assert_ne(top["move_actor"], wall)
+	var thin: Dictionary = player.traces.find_ledge_ex(start + Vector3.RIGHT * 6.0,
+		start + Vector3(6.0, 0.0, -2.0), extent)
+	assert_eq(thin["result"], MoveTraces.LEDGE_WALL, "test setup: the thin fence is not a wall")
+	assert_null(thin["move_actor"], "a wall with nothing found above names an actor")

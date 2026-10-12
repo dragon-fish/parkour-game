@@ -130,8 +130,13 @@ static func _no_ledge() -> Dictionary:
 		"move_normal": Vector3.ZERO, "move_actor": null, "feet_excluded": false,
 		"hands_excluded": false}
 
-func _ledge_hit(result: int, location: Vector3, ledge_normal: Vector3, wall: Dictionary) -> Dictionary:
-	var actor: Object = wall["actor"]
+## FillLedgeHit. The actor and its exclusion bits are those of `last`, the
+## LAST trace made: the natives share one FCheckResult, which a miss leaves
+## naming no actor. So a top's actor is the top's, and a wall whose down trace
+## found nothing has none. MoveNormal is the wall sweep's.
+func _ledge_hit(result: int, location: Vector3, ledge_normal: Vector3, wall: Dictionary,
+		last: Dictionary) -> Dictionary:
+	var actor: Object = last["actor"] if last["hit"] else null
 	return {"result": result, "ledge_location": location, "ledge_normal": ledge_normal,
 		"move_normal": wall["normal"], "move_actor": actor,
 		"feet_excluded": excludes_foot_moves(actor), "hands_excluded": excludes_hand_moves(actor)}
@@ -173,15 +178,15 @@ func find_ledge_ex(start: Vector3, end: Vector3, extent: Vector3) -> Dictionary:
 	if top["hit"]:
 		last_y = (top["location"] as Vector3).y
 		if float(top["time"]) > 0.0:
-			return _ledge_hit(LEDGE_TOP, Vector3(p.x, last_y, p.z), top["normal"], wall)
+			return _ledge_hit(LEDGE_TOP, Vector3(p.x, last_y, p.z), top["normal"], wall, top)
 		# Started inside: once more from halfway down.
 		top = trace(e3, Vector3(s3.x, p.y, s3.z))
 		if not top["hit"]:
 			return _no_ledge()
 		last_y = (top["location"] as Vector3).y
 		if float(top["time"]) > 0.0:
-			return _ledge_hit(LEDGE_TOP, Vector3(p.x, last_y, p.z), top["normal"], wall)
-	return _ledge_hit(LEDGE_WALL, Vector3(p.x, last_y, p.z), wall["normal"], wall)
+			return _ledge_hit(LEDGE_TOP, Vector3(p.x, last_y, p.z), top["normal"], wall, top)
+	return _ledge_hit(LEDGE_WALL, Vector3(p.x, last_y, p.z), wall["normal"], wall, top)
 
 ## UTdMove::FindLedge. [ME:CONFIRMED emulated N4 §3.3] FindLedgeEx without the
 ## start check and with a single down trace: a top or nothing.
@@ -194,7 +199,7 @@ func find_ledge(start: Vector3, end: Vector3, extent: Vector3) -> Dictionary:
 	var top: Dictionary = trace(points[2], points[1])
 	if top["hit"] and float(top["time"]) > 0.0:
 		return _ledge_hit(LEDGE_WALL, Vector3(p.x, (top["location"] as Vector3).y, p.z),
-			top["normal"], wall)
+			top["normal"], wall, top)
 	return _no_ledge()
 
 ## UTdPhysicsMove's hand-plant search (FUN_012053a0). [ME:CONFIRMED emulated
