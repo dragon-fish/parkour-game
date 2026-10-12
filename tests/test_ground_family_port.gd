@@ -176,6 +176,23 @@ func test_the_ground_turn_turns_half_a_turn_and_returns_to_walking() -> void:
 	assert_eq(player.move_manager.current_name, Move.WALKING,
 		"the standing turn did not end with its 0.8 s animation")
 
+## LookBehind is an exec binding: it runs before PlayerInput, so the turn's
+## DisableMovementTime already zeroes the axes of the frame it starts on, and
+## that frame brakes instead of sprinting. [ME:CONFIRMED 15 §15.13] every
+## recorded Q turn shows its first frame already slower.
+func test_a_running_turn_brakes_on_the_frame_it_starts() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	input.hold_move(0.0, 1.0)
+	await step(120)
+	var before: float = player.horizontal_speed()
+	input.press_turn()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.TURN_180, "test setup: Q did not turn")
+	assert_lt(player.horizontal_speed(), before - 0.1,
+		"the turn's first frame still ran on the sprint's axes")
+
 ## The UncontrolledFall state refuses every move but Landing and SoftLanding.
 func test_the_uncontrolled_fall_refuses_every_move_but_the_landings() -> void:
 	var world: Dictionary = await _world()

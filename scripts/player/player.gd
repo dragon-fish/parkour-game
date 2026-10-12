@@ -4082,6 +4082,20 @@ const STOP_TAP_VELOCITY := 35.0 * PawnPhysics.UU
 const STOPPING_VELOCITY := 200.0 * PawnPhysics.UU
 
 func _controller_tick(delta: float, input: MoveInput) -> void:
+	# The keys bound to exec functions, LookBehind and AttackPress, BEFORE
+	# PlayerInput: UE3 runs an exec binding as its key event is dispatched,
+	# ahead of the world tick [ME:INFERRED engine], so PlayerInput already sees
+	# what the exec did -- a turn's DisableMovementTime zeroes this tick's axes.
+	# [ME:CONFIRMED 15 §15.13] in all four recorded Q turns the first 180Turn
+	# frame is already a braking frame. Run after PlayerInput, that frame still
+	# sprinted and the whole turn ran a frame late. The hint such an exec reads
+	# is the previous tick's.
+	_turn_press_available = false
+	if input.turn_pressed:
+		_turn_press_available = not _look_behind()
+	if input.melee_pressed:
+		_attack_press()
+
 	# PlayerInput: the hint on the RAW axes, before anything scales or zeroes
 	# them; then the normalisation, the walk button and the mobility handicap;
 	# then the ignore.
@@ -4110,13 +4124,6 @@ func _controller_tick(delta: float, input: MoveInput) -> void:
 		s *= handicap
 	a_forward = f
 	a_strafe = s
-
-	# The keys bound to exec functions: LookBehind and AttackPress.
-	_turn_press_available = false
-	if input.turn_pressed:
-		_turn_press_available = not _look_behind()
-	if input.melee_pressed:
-		_attack_press()
 
 	# PlayerMove, then ProcessMove's key checks. PlayerWalking's ProcessMove
 	# runs the crouch first; PlayerGrabbing's and PlayerWallWalking's run the
