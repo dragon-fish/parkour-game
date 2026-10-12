@@ -510,6 +510,26 @@ func test_the_instant_wall_jumps_gain_what_the_originals_did() -> void:
 		assert_almost_eq(float(r[1]), c[2], 0.8, "the jump off a wall run %.2f degrees into the wall" % c[0])
 		await _clear()
 
+## [ME:DERIVED 连续瞬间蹬墙跳 2258, 2892] Two more instant wall jumps, whose
+## HUD speed (38.98 / 38.70 km/h) the body does not travel at. Off the wall
+## it moves 32.90 / 32.77 km/h by the recorded X and Y over 12 frames, where
+## the other jumps of the recording travel at a median 0.968 of their HUD
+## speed (the recording's time base; the Falling stretch 2102-2114 gives the
+## same): 33.99 / 33.85 km/h. physFalling rebuilds Velocity from the
+## displacement every frame unless root motion or bJustTeleported skips it,
+## so the HUD's extra 5 km/h is a velocity the rebuild never saw
+## [ME:UNKNOWN which]; jump 2154 shows the same for three frames (38.58)
+## before reading its travel (33.57). The view angle is the HUD's: the body
+## drifts off the wall at 0.3 / 0.4 m/s, the normal term 120 + 400 p of
+## p = -0.22 / -0.20 (13 / 11 degrees), where the 25 degrees the HUD speed
+## would need pushes into the wall. [view angle, walk speed, travel off the
+## wall]; 0.8 km/h as above.
+func test_the_instant_wall_jumps_whose_hud_overstates_travel_the_originals_speed() -> void:
+	for c in [[14.46, 24.64, 33.99], [12.30, 25.67, 33.85]]:
+		var r: Array = await _pressed_wall_jump(c[0], c[1])
+		assert_almost_eq(float(r[1]), c[2], 0.8, "the jump off a wall run %.2f degrees into the wall" % c[0])
+		await _clear()
+
 ## [ME:CONFIRMED 04 §4.4] The late wall jumps of 蹬墙跳_入墙后不转动方向 and
 ## 墙跑接近末端面视前方蹬墙: on the wall `frames` frames, then jump; the
 ## gain is small because ConstrainAxis has pulled the view back to the wall
@@ -552,15 +572,38 @@ func test_the_late_wall_jumps_gain_what_the_originals_did() -> void:
 
 # --- obstacles ---------------------------------------------------------------
 
+## How deep the air conditioner's lowered rim is, m. [ME:CONFIRMED
+## 测试高墙VaultOver-GrabUp 548-564] walking off the unit the body reads 4.00
+## until its centre is 0.14 m short of the face and 3.89 from there to the
+## edge: a rim 0.11 m below the top, its inner edge 0.31-0.44 m from the face.
+const AC_RIM_DEPTH := 0.35
+
+## The HUD's SZD: Location.Z - LastJumpLocation.Z, Location being the centre
+## of the collision [ME:CONFIRMED decompile MirrorsEdgeTrainerSPHUD
+## .DrawTrainerItems]. Every recorded take-off here left the course floor, so
+## LastJumpLocation is `stand`, the centre standing on it -- which hovers
+## above the floor as the walking physics holds it. DO NOT compare a feet
+## height over the floor with SZD: it reads that hover (2 cm) high.
+func _szd(player: Player, stand: float) -> float:
+	return player.collision_center().y - stand
+
 ## A box `top` m tall and `depth` m deep across the course, its near face at
-## z = 0; the body comes from +z facing -z. With `kmh` > 0 it runs up at that
-## speed and jumps `jump_at` m before the face; else it stands 2 cm off the
-## face and jumps at once. W held throughout; from a hang, jump to pull up.
-## Returns the state chain: for each state its first frame's feet height over
-## the floor, distance to the face and speed.
-func _obstacle(top: float, depth: float, kmh: float, jump_at: float) -> Array:
+## z = 0; the body comes from +z facing -z. A `rim` below `top` lowers the
+## top's first AC_RIM_DEPTH to it. With `kmh` > 0 it runs up at that speed and
+## jumps so that the jump's first frame has the body's centre `jump_from` m
+## off the face (the frame is put there: the run-up's last frame would miss
+## it by up to a frame's travel); else it stands 2 cm off the face and jumps
+## at once. W held throughout; from a hang, jump to pull up. Returns the state
+## chain: for each state its first frame's SZD, centre to the face and speed,
+## and the highest SZD in it.
+func _obstacle(top: float, depth: float, kmh: float, jump_from: float, rim: float = 0.0) -> Array:
 	var player: Player = await _player(Vector3(0.0, 0.0, 60.0))
-	_box(Vector3(4.0, top, depth), Vector3(0.0, top * 0.5, -depth * 0.5))
+	if rim > 0.0:
+		_box(Vector3(4.0, rim, AC_RIM_DEPTH), Vector3(0.0, rim * 0.5, -AC_RIM_DEPTH * 0.5))
+		_box(Vector3(4.0, top, depth - AC_RIM_DEPTH),
+			Vector3(0.0, top * 0.5, -AC_RIM_DEPTH - (depth - AC_RIM_DEPTH) * 0.5))
+	else:
+		_box(Vector3(4.0, top, depth), Vector3(0.0, top * 0.5, -depth * 0.5))
 	var r: float = player.default_collision_radius()
 	if kmh <= 0.0:
 		player.global_position = Vector3(0.0, 0.95, r + 0.02)
@@ -568,21 +611,28 @@ func _obstacle(top: float, depth: float, kmh: float, jump_at: float) -> Array:
 	_in().hold_move(0.0, 1.0)
 	if kmh > 0.0:
 		await _run_to(player, kmh)
-		while player.global_position.z - r > jump_at:
+		while player.global_position.z - player.velocity.length() * FRAME > jump_from:
 			if _kmh(player) > kmh:
 				player.velocity *= kmh / _kmh(player)
 			await step(1)
+	# LastJumpLocation: the centre the take-off leaves from.
+	var stand: float = player.collision_center().y
 	_in().press_jump()
 	await step(1)
 	_in().release_jump()
+	if kmh > 0.0:
+		var shift: float = jump_from - player.global_position.z
+		player.global_position.z += shift
+		player.last_jump_location.z += shift
 	var chain := []
 	var hang := 0
 	for i in 400:
 		var name: StringName = player.move_manager.current_name
+		var szd: float = _szd(player, stand)
 		if chain.is_empty() or chain[-1]["state"] != name:
-			chain.append({"state": name, "feet": _feet(player), "to_face": player.global_position.z - r,
-				"kmh": _kmh(player), "peak": _feet(player)})
-		chain[-1]["peak"] = maxf(chain[-1]["peak"], _feet(player))
+			chain.append({"state": name, "szd": szd, "to_face": player.global_position.z,
+				"kmh": _kmh(player), "peak": szd})
+		chain[-1]["peak"] = maxf(chain[-1]["peak"], szd)
 		if name == Move.GRAB:
 			hang += 1
 			if hang == 70:
@@ -595,41 +645,96 @@ func _obstacle(top: float, depth: float, kmh: float, jump_at: float) -> Array:
 	return chain
 
 ## [ME:CONFIRMED feel-backlog §26-§27] The barbed-wire fence, 2.64 m and very
-## narrow, at a run (Jump first frame 24.50 km/h, 1.93 m off): VaultOver
-## commits after 0.95 m of flight with the feet 0.76 m up, the feet top out
-## 1.77 m up, and Falling takes over on the far side 0.61 m up at 9.99 km/h.
-## The HUD's 0.01 m, and a frame (8 cm at that speed) on the distance.
+## narrow, at a run. The fence is at X 8.74, not the 9.40 §26 used: the
+## vault's over leg ends exactly on the ledge (LedgeOffset Y 0), and that is
+## the frame reading V 0.00 at X 8.74 -- the Falling first frame lands 1.73 m
+## past it in the original and in the port alike. So the jump's first frame
+## (X 11.33, SZD 0.10) is 2.59 m off. VaultOver commits after 0.95 m of flight
+## with SZD 0.76, at 16.83 km/h: on its first frame the body flies (PLM_Fly)
+## at the distance to the hand plant (40 uu short of the ledge) over
+## VaultTimeUp 0.28 s, 1.32 m / 0.28 s here. SZD tops out at 1.77, and Falling
+## takes over 1.73 m past the face with SZD 0.61 at 9.99 km/h. The HUD's
+## 0.01 m and about a frame (11 cm of flight) on the distance; the commit is a
+## frame of flight too, which on the vault's speed is 0.41 m/s.
 func test_the_fence_is_vaulted_as_in_the_original() -> void:
-	var chain: Array = await _obstacle(2.64, 0.1, 20.9, 1.93)
+	var chain: Array = await _obstacle(2.64, 0.1, 20.9, 2.59)
 	assert_eq(_states(chain).slice(0, 3), [Move.JUMP, Move.VAULT_OVER, Move.FALLING], "the chain: %s" % [_states(chain)])
 	var jump: Dictionary = chain[0]
 	var vault: Dictionary = chain[1]
 	var fall: Dictionary = chain[2]
 	assert_almost_eq(float(jump["to_face"]) - float(vault["to_face"]), 0.95, 0.1, "the flight before the vault")
-	assert_almost_eq(float(vault["feet"]), 0.76, 0.06, "the feet when the vault commits")
-	assert_almost_eq(float(vault["peak"]), 1.77, 0.05, "the vault's highest feet")
-	assert_almost_eq(float(fall["feet"]), 0.61, 0.06, "the feet when the fall takes over")
+	assert_almost_eq(float(vault["szd"]), 0.76, 0.06, "SZD when the vault commits")
+	assert_almost_eq(float(vault["kmh"]), 16.83, 0.41 * KMH, "the vault's first frame")
+	assert_almost_eq(float(vault["peak"]), 1.77, 0.05, "the vault's highest SZD")
+	assert_almost_eq(float(fall["to_face"]), -1.73, 0.06, "where the fall takes over")
+	assert_almost_eq(float(fall["szd"]), 0.61, 0.06, "SZD when the fall takes over")
 	assert_almost_eq(float(fall["kmh"]), 9.99, 0.5, "the speed the vault leaves at")
 
-## [ME:CONFIRMED feel-backlog §29] The tall air conditioner, 3.96 m and deep,
-## at a run (16.4 km/h, jump 1.36 m off): Jump -> WallClimb -> VaultOver ->
-## Walking on top, the vault committed with the feet 2.06 m up.
+## [ME:CONFIRMED feel-backlog §29] The tall air conditioner (rim 3.89, top
+## 4.00) at a run, 16.4 km/h: Jump -> WallClimb -> VaultOver -> Walking on
+## top. The climb starts 1.03 m off with SZD 0.53 and the vault commits with
+## SZD 2.06 (2.02 and 2.05 in 测试高墙VaultOver-GrabUp 256, 1110). §29's
+## "Jump first frame" reads SZD 0.19, the second jump frame (the first reads
+## 0.10 in every recorded jump): the jump's first frame is a frame of travel
+## before X 16.92, 1.48 m off the face the climb presses against (X 18.31).
+## Standing on top it reads 3.96-3.98 on the first frame and settles to 4.00.
 func test_the_tall_box_at_a_run_is_climbed_and_vaulted_as_in_the_original() -> void:
-	var chain: Array = await _obstacle(3.96, 1.5, 16.4, 1.36)
+	var chain: Array = await _obstacle(4.0, 1.5, 16.4, 1.48, 3.89)
 	assert_eq(_states(chain), [Move.JUMP, Move.WALL_CLIMB, Move.VAULT_OVER, Move.WALKING], "the chain")
-	assert_almost_eq(float(chain[1]["feet"]), 0.53, 0.08, "the feet when the climb starts")
-	assert_almost_eq(float(chain[2]["feet"]), 2.06, 0.08, "the feet when the vault commits")
-	assert_almost_eq(float(chain[3]["feet"]), 3.96, 0.03, "standing on top")
+	assert_almost_eq(float(chain[1]["to_face"]), 1.03, 0.1, "where the climb starts")
+	assert_almost_eq(float(chain[1]["szd"]), 0.53, 0.08, "SZD when the climb starts")
+	assert_almost_eq(float(chain[2]["szd"]), 2.06, 0.08, "SZD when the vault commits")
+	assert_almost_eq(float(chain[3]["szd"]), 3.98, 0.03, "standing on top")
 
-## [ME:CONFIRMED feel-backlog §31-§32] The same box from a standstill is
-## climbed into a hang and pulled up onto; the 2.54 m box from a standstill
-## pressed against it is climbed and vaulted onto.
+## [ME:CONFIRMED feel-backlog §31-§32] The same air conditioner from a
+## standstill is climbed into a hang and pulled up onto; the 2.54 m box from
+## a standstill pressed against it is climbed and vaulted onto. The hang is
+## held at MoveLedgeLocation - 92.8 uu, the ledge being the rim: SZD 2.04 =
+## 3.89 - (92.8 + 90 + 2.15 hover) uu, as in §31 and 测试高墙VaultOver-GrabUp
+## 2742-2852 -- static, so the HUD's 0.01 m. IntoGrab's first frame reads
+## 2.09 in §31; the low box's VaultOver commits with SZD 0.68 (§32). A frame
+## of the climb, 7 cm at those heights, on each.
 func test_the_boxes_from_a_standstill_end_as_in_the_original() -> void:
-	var tall: Array = await _obstacle(3.97, 1.5, 0.0, -1.0)
+	var tall: Array = await _obstacle(4.0, 1.5, 0.0, 0.0, 3.89)
 	assert_eq(_states(tall), [Move.WALL_CLIMB, Move.INTO_GRAB, Move.GRAB, Move.GRAB_PULL_UP, Move.WALKING],
 		"the tall box: %s" % [_states(tall)])
-	assert_almost_eq(float(tall[-1]["feet"]), 3.97, 0.03, "standing on the tall box")
+	assert_almost_eq(float(tall[1]["szd"]), 2.09, 0.07, "SZD when the grab starts")
+	assert_almost_eq(float(tall[2]["szd"]), 2.04, 0.01, "SZD hanging")
+	assert_almost_eq(float(tall[-1]["szd"]), 3.98, 0.03, "standing on the tall box")
 	await _clear()
-	var low: Array = await _obstacle(2.54, 1.5, 0.0, -1.0)
+	var low: Array = await _obstacle(2.54, 1.5, 0.0, 0.0)
 	assert_eq(_states(low), [Move.WALL_CLIMB, Move.VAULT_OVER, Move.WALKING], "the low box: %s" % [_states(low)])
-	assert_almost_eq(float(low[-1]["feet"]), 2.54, 0.03, "standing on the low box")
+	assert_almost_eq(float(low[1]["szd"]), 0.68, 0.07, "SZD when the vault commits")
+	assert_almost_eq(float(low[-1]["szd"]), 2.54, 0.03, "standing on the low box")
+
+## [ME:CONFIRMED 04 §4.6] Shimmying along a ledge, D held, the HUD reads
+## 2.15 km/h. The HUD shows the frame's |Velocity.xy| (decompile
+## MirrorsEdgeTrainerSPHUD.DrawTrainerItems), not distance over time: this
+## is the speed with the strafe animation at full weight, 60 uu/s less
+## physFlying's fluid friction (0.15 /s x dt), 59.85 uu/s = 2.1546 km/h.
+## DO NOT compare a shimmy's average with it: each strafe blends in over
+## 0.2 s and travels 58 uu in its 1.067 s, as the clip's own root does. The
+## HUD's rounding to 0.01.
+func test_a_shimmy_moves_at_the_originals_speed() -> void:
+	var player: Player = await _player(Vector3(0.0, 0.0, 60.0))
+	_box(Vector3(4.0, 3.89, 1.5), Vector3(0.0, 3.89 * 0.5, -0.75))
+	player.global_position = Vector3(0.0, 0.95, player.default_collision_radius() + 0.02)
+	await step(10)
+	_in().hold_move(0.0, 1.0)
+	_in().press_jump()
+	await step(1)
+	_in().release_jump()
+	for i in 200:
+		if player.move_manager.current_name == Move.GRAB:
+			break
+		await step(1)
+	assert_eq(player.move_manager.current_name, Move.GRAB, "test setup: no hang")
+	_in().hold_move(0.0, 0.0)
+	await step(60)
+	_in().hold_move(1.0, 0.0)
+	var vmax := 0.0
+	for i in 90:
+		await step(1)
+		vmax = maxf(vmax, _kmh(player))
+	assert_eq(player.move_manager.current_name, Move.GRAB, "the shimmy left the hang")
+	assert_almost_eq(vmax, 2.15, 0.005, "the shimmy's speed")
