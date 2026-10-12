@@ -358,6 +358,12 @@ func test_the_turn_in_the_air_is_done_in_17_frames() -> void:
 	var seventeen: float = absf(wrapf(player.pawn_yaw - from, -PI, PI))
 	assert_lt(sixteen, PI - 0.1, "the turn was done before its seventeenth frame")
 	assert_almost_eq(seventeen, PI, 0.001, "the turn was not done on its seventeenth frame")
+	# This project's presentation: the model comes round with the turn, in
+	# third person as well, rather than flying on backwards.
+	player.camera_rig.third_person = true
+	await step(5)
+	assert_almost_eq(wrapf(player.visual_yaw() - player.pawn_yaw, -PI, PI), 0.0, deg_to_rad(2.0),
+		"the model did not come round with the turn")
 
 ## [ME:CONFIRMED decompile 0x00efc460 / 0x00d235c0] Root motion is taken from
 ## the frame AFTER UseRootMotion(true) (PreviousRMM), and an anim update with
