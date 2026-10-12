@@ -213,20 +213,20 @@
 仍然移植的只有会改变移动结果的那部分：视角约束 `ConstrainAxis`（墙跑跳的推离方向、垂直蹬墙的入射判定都读镜头朝向）。
 
 
-- [ ] `face_rotation()` 缺原版下落中 5/s 的缓动
+- [x] `face_rotation()` 缺原版下落中 5/s 的缓动（N7：原版 `FaceRotation` 算出的缓动写进一个之后不用的变量，是死代码；现有的直接对齐就是原版行为）
 - [x] Barge、MeleeVault、Interact 没有设置原版的 `bDisableFaceRotation`（W3：连同 ZipLine 一并补上）
-- [ ] Swing、IntoZipLine、Interact 有几处直接写视角偏航，Pawn 偏航晚一帧才跟上
-- [ ] Swing 的 180° 转身直接写视角，没有设根旋转标记
-- [ ] 地面家族的 180Turn / 180TurnInAir 仍通过镜头的旧视角扇区转视角，不走原版的 `update_view_rotation`；原版视角是否跟随根旋转，证据里没有
-- [ ] 铁丝网：触碰点假定为身体位置；原版重生后 0.1 s 的豁免没移植；命中后仍清空旧速度预算；伤害节奏仍是本项目的免疫窗口（W3：触碰点改为扫掠接触位置、0.1 s 豁免已移植、只在进入时踉跄；剩下旧速度预算的清空与每秒伤害的相位）
+- [x] Swing、IntoZipLine、Interact 有几处直接写视角偏航，Pawn 偏航晚一帧才跟上（IntoZipLine、Interact 已在 b58f451；Swing 的 180° 改为设 Pawn 旋转，结束时连同控制器一起设）
+- [x] Swing 的 180° 转身直接写视角，没有设根旋转标记（N7：经共用动画槽以根旋转播放 Swing180，`UseRootRotation` 开 / 关）
+- [x] 地面家族的 180Turn / 180TurnInAir 仍通过镜头的旧视角扇区转视角，不走原版的 `update_view_rotation`；原版视角是否跟随根旋转，证据里没有（N7：`UpdateSkelPose` 在根旋转转动 Pawn 的每一帧把控制器偏航设成 Pawn 的偏航——跟随，逐帧对齐。两个动作改走 `update_view_rotation`，约束相对 Pawn；这一对齐对所有根旋转生效。第三人称也照做：它决定转身结束后 `FaceRotation` 把 Pawn 转到哪里，不做的话 Q 转身会被转回去）
+- [x] 铁丝网：触碰点假定为身体位置；原版重生后 0.1 s 的豁免没移植；命中后仍清空旧速度预算；伤害节奏仍是本项目的免疫窗口（W3：触碰点改为扫掠接触位置、0.1 s 豁免已移植、只在进入时踉跄；N7：旧速度预算已随旧模型删除，只剩一条过时注释；停留伤害改为体积自己的 1 s 计时器——`PhysicsVolume` 的 `VolumeTimer` 从体积生成起计时）
 - [x] `move.gd` 头部注释仍说 Barge 和近战"尚无对应"
 - [x] `test_probes_vault` 的顺序相关失败：`ladder_move` 之后玩家悬空 0.49 m 仍判定着地（疑似 floor reuse 或测试残留）
-- [ ] 梯子的逐级原生函数（`ClimbStep` 一类）没读到，32 uu 步距与 50/62 uu 贴墙距离是推断值
-- [ ] 平衡木 / 窄边的样条原生函数没读到，用 InterestLine 的最近点与单位切线代替
-- [ ] `APawn::CalcVelocity` 的根运动分支没读：根运动按混合权重折成下一帧速度；下落中只取水平分量
-- [ ] GrabTransfer 的 `LadderTransfer` 在按上时方向未定义（零向量），本项目不转到梯子
-- [ ] 两套动画槽并存：W2b 的 `CustomAnimSlot`（Pawn 级，管 OnCustomAnimEnd / OnCeaseRelevantRootMotion）
-      与 W2d 每个 move 自带的 MoveAnim，应合成一套
+- [x] 梯子的逐级原生函数（`ClimbStep` 一类）没读到，32 uu 步距与 50/62 uu 贴墙距离是推断值（N7：步位生成器与五个步位原生函数已读并移植，公式在 123 个原版梯子中复现 88 个的烘焙步位）
+- [x] 平衡木 / 窄边的样条原生函数没读到，用 InterestLine 的最近点与单位切线代替（N7：二次 Bezier 与 `FindClosestPointOnDSpline` 已移植为 `MovementSpline`，Balance、LedgeWalk、ZipLine、IntoZipLine 共用）
+- [x] `APawn::CalcVelocity` 的根运动分支没读：根运动按混合权重折成下一帧速度；下落中只取水平分量（N7：动画更新累加、物理取用并清空；开启那一帧走引擎常规速度；walking / flying 取三维 `Delta/dt`）
+- [x] GrabTransfer 的 `LadderTransfer` 在按上时方向未定义（零向量），本项目不转到梯子（N7：该栈槽在 CheckContextMove 内没有任何调用写到，内容来自脚本虚拟机先前的栈帧，无法确定；保持不转。无提示时的方向改为控制器朝向）
+- [x] 两套动画槽并存：W2b 的 `CustomAnimSlot`（Pawn 级，管 OnCustomAnimEnd / OnCeaseRelevantRootMotion）
+      与 W2d 每个 move 自带的 MoveAnim，应合成一套（N7：MoveAnim 已删；`CustomAnimSlot` 按 CustomNodeType 分道。SkillRoll、LayOnGround、Stumble 与两个 180 转身仍自己推进各自的根运动片段，经 `Player.add_root_motion()` / `turn_by_root_rotation()` 接入同一套根运动）
 - [x] 旧速度预算（`SpeedEnergy`、`seed_legacy_energy`、`legacy_turn_energy_per_radian`）在所有 move 移植完成后删除
 - [x] `docs/feel-backlog.md` 对照移植结果逐条更新（标注被原版逻辑取代的条目）
 - [x] 语料各章里被 15 章推翻的结论加上指向 15 章的更正
@@ -242,4 +242,5 @@
 - [x] PrePivot：提取器已对所有带刷子的体积应用 PrePivot（按 DrawScale3D 缩放），见 2596f62
 - [ ] **由所有者决定**：隐形墙、铁丝网、伤害体积、沿墙走体积构建在可编辑的关卡外壳里，要 `--rebuild-interactions` 才会用上修正后的位置，而这会抹掉外壳里的手工修改。涉及 sp01b、sp02_stdp、sp02_stormdrain、sp03、sp04、sp05、sp06、sp07、sp09
 - [x] SPEED_CAP / SPEED_LIMIT 叠加在原版的地面速度上限之上（5ff366d），无状态时原版物理不变
+- [ ] **由所有者决定**：烘焙 Start/End 损坏、由 `annotations._ladder_from_steps` 用烘焙步位重建线的梯子（Stormdrain StdE 等），线本身就是步位，按原版生成器会少最低一步、少最高三步。要么让提取器把这类线写成等效的 Start..End，要么接受；改提取器要重建关卡
 - [ ] **由所有者决定**：死代码 `HardCatch`、`LineMove`、`ScriptedMove`、`Player.pending_stagger`、`pending_back_landing`、`FallTracker`、`Friction`、`legacy_turn`、`legacy_probe_transition`
