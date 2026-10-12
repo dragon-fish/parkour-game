@@ -21,6 +21,13 @@ func after_each() -> void:
 func _player() -> Player:
 	_world = TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
+	# The floor moves a frame before the body does. Both in one frame can land
+	# the body on the floor's old place, which the physics server still holds,
+	# and the half-metre drop that follows leaves the eye easing for longer
+	# than the settle below, so "where it was placed" would be measured
+	# mid-ease. Whether the server is stale depends on what ran before.
+	_world["floor"].global_position = Vector3(0.0, -0.5, 0.0)
+	await step(1)
 	TestWorld.place(_world)
 	await step(20)
 	return _world["player"]
