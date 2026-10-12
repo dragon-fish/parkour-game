@@ -87,6 +87,10 @@ const GRAB_TRANSFER: StringName = &"GrabTransfer"
 const GRAB_PULL_UP: StringName = &"GrabPullUp"
 const SWING_JUMP: StringName = &"SwingJump"
 const CLIMB: StringName = &"Climb"
+const INTO_ZIPLINE: StringName = &"IntoZipLine"
+const MELEE_VAULT: StringName = &"MeleeVault"
+const MELEE_AIR_ABOVE: StringName = &"MeleeAirAbove"
+const INTERACT: StringName = &"Interact"
 
 # --- the original's enums ------------------------------------------------------
 
@@ -114,6 +118,10 @@ const MA_CLIMB_DOWN := 8
 const MA_CLIMB_UP_LONG := 9
 const MA_CLIMB_DOWN_LONG := 10
 const MA_ABORT := 11
+const MA_SHIMMY_LEFT := 12
+const MA_SHIMMY_LEFT_LONG := 13
+const MA_SHIMMY_RIGHT := 14
+const MA_SHIMMY_RIGHT_LONG := 15
 const MA_TURN := 16
 const MA_STUMBLE := 17
 const MA_STUMBLE_HARD := 18
@@ -178,11 +186,13 @@ var timer: float = 0.0
 ## [seconds left, interval or 0, callable].
 var _move_timers: Array = []
 
-## TdMove precise location (PLM_Fly is the only mode ported).
+## TdMove precise location: bUsePreciseLocation, bReachedPreciseLocation, the
+## EPreciseLocationMode, the target and the speed.
 var use_precise_location: bool = false
 var reached_precise_location_flag: bool = false
 var precise_location: Vector3 = Vector3.ZERO
 var precise_location_speed: float = 4.0
+var precise_location_mode: int = 0
 
 ## TdMove precise rotation: the pawn's yaw stepped toward a target, linearly,
 ## over PreciseRotationInterpolationTime. Rotator units.
@@ -190,6 +200,10 @@ var use_precise_rotation: bool = false
 var reached_precise_rotation_flag: bool = false
 var precise_rotation_yaw: int = 0
 var precise_rotation_time: float = 0.0
+## TdMove.bDelayRotationAndLocationCallback: one half has arrived while the
+## other is still under way, and ReachedPreciseLocationAndRotation waits for
+## both. Transient; StopMove does not clear it, and neither does this port.
+var delay_rotation_and_location_callback: bool = false
 
 ## TdMove.bDisableFaceRotation: the pawn does not follow the controller while
 ## this move runs. Instance state, as in the original: a move may set it at
@@ -200,7 +214,11 @@ var disable_face_rotation: bool = false
 var disable_controller_facing_pawn_yaw_rotation: bool = false
 
 ## TdMove's look-at state, applied by update_view_rotation(). Rotator units.
-var look_at_target_angle: bool = false
+## bLookAtTargetLocation and bLookAtTargetAngle: the location wins when both
+## are set.
+var look_at_target_location_active: bool = false
+var look_at_target_location: Vector3 = Vector3.ZERO
+var look_at_target_angle_active: bool = false
 var look_at_target_pitch: int = 0
 var look_at_target_yaw: int = 0
 var look_at_target_interpolation_time: float = 0.0
@@ -270,7 +288,7 @@ func end_move() -> void:
 	_move_timers.clear()
 	use_precise_location = false
 	use_precise_rotation = false
-	if look_at_target_angle:
+	if look_at_target_angle_active or look_at_target_location_active:
 		abort_look_at_target()
 	reset_camera_look_active = false
 	if player == null:
@@ -339,42 +357,96 @@ func live_friction_modifier() -> float:
 func check_auto_moves() -> void:
 	pass
 
-## Native slot 0x118, TdMove's version: precise-location interpolation.
-## [ME:CONFIRMED decompile N4 §2.7] PLM_Fly only: within 2 uu the location is
-## reached, otherwise Velocity points at it at min(distance / dt, speed).
+## Native slot 0x118, TdMove's version: the precise location, the precise
+## rotation, then the events they raise. [ME:CONFIRMED decompile N4 §2.7,
+## 0x011fce10]
 func pre_physics(delta: float) -> void:
-	_precise_location(delta)
-	_precise_rotation(delta)
+	if use_precise_location and not reached_precise_location_flag:
+		_precise_location_step(delta)
+	if use_precise_rotation and not reached_precise_rotation_flag:
+		_precise_rotation_step(delta)
+	_precise_events()
 
-func _precise_location(delta: float) -> void:
-	if not use_precise_location or reached_precise_location_flag:
-		return
+## TdMove.EPreciseLocationMode.
+const PLM_FLY := 0
+const PLM_WALK := 1
+const PLM_JUMP := 2
+const PLM_SIM_JUMP := 3
+const PLM_FALL := 4
+
+## PLM_Jump's rise cap when the target is straight overhead: 640 uu/s.
+const PLM_JUMP_OVERHEAD_SPEED := 640.0 * UU
+
+## One frame of the precise location. Within 2 uu (2D for PLM_Walk) the
+## location is reached and the velocity is left as it is; otherwise the
+## velocity is aimed at it and the acceleration zeroed. Fly is 3D at
+## min(distance / dt, speed); the others are horizontal at that speed, Walk
+## with no vertical speed, Jump and SimJump with a vertical speed solved from
+## the height left and the SCRIPT gravity. PLM_Fall is not ported: nothing
+## here uses it.
+func _precise_location_step(delta: float) -> void:
 	var to: Vector3 = precise_location - player.global_position
-	var dist: float = to.length()
+	var dist3: float = to.length()
+	var dist2: float = Vector2(to.x, to.z).length()
+	var dist: float = dist2 if precise_location_mode == PLM_WALK else dist3
 	if dist <= 2.0 * UU:
 		reached_precise_location_flag = true
-		reached_precise_location()
 		return
-	player.velocity = to / dist * minf(dist / maxf(delta, 1e-6), precise_location_speed)
+	var dt: float = maxf(delta, 1e-6)
+	match precise_location_mode:
+		PLM_FLY:
+			player.velocity = PawnPhysics.safe_normal(to) * minf(dist3 / dt, precise_location_speed)
+		PLM_WALK:
+			var h: float = minf(dist2 / dt, precise_location_speed)
+			var dir: Vector3 = PawnPhysics.safe_normal_2d(to)
+			player.velocity = Vector3(dir.x * h, 0.0, dir.z * h)
+		PLM_JUMP:
+			var h: float = minf(dist2 / dt, precise_location_speed)
+			var dir: Vector3 = PawnPhysics.safe_normal_2d(to)
+			var vz: float = player.velocity.y
+			var dz: float = to.y
+			var g: float = absf(player.gravity_z())
+			if dz < 0.0:
+				var a: float = -g
+				if dist2 > 0.0:
+					var t: float = dist2 / h
+					a = (dz - t * vz) * 2.0 / (t * t)
+				vz = maxf(dz / dt, a * dt + vz)
+			else:
+				var cap: float = PLM_JUMP_OVERHEAD_SPEED
+				if dist2 > 0.0:
+					cap = h / dist2 * dz * 2.0
+				vz = minf(dz / dt, cap)
+			player.velocity = Vector3(dir.x * h, vz, dir.z * h)
+		PLM_SIM_JUMP:
+			var h: float = minf(dist2 / dt, precise_location_speed)
+			var dir: Vector3 = PawnPhysics.safe_normal_2d(to)
+			var vz: float = player.velocity.y
+			var dz: float = to.y
+			var g: float = absf(player.gravity_z())
+			var t: float = dist2 / h if h > 0.0 else 0.0
+			if t <= delta:
+				if dz <= 0.0:
+					vz = maxf(dz / dt, vz - g * delta)
+				else:
+					vz = minf(dz / dt, 2.0 * sqrt(dz / g) * g)
+			else:
+				vz = dz / t + t * g * 0.5
+			player.velocity = Vector3(dir.x * h, vz, dir.z * h)
 	player.acceleration = Vector3.ZERO
 
-## The precise rotation half of the same native. [ME:CONFIRMED decompile
-## 0x011fce10] Once the time left is no more than this frame, the yaw is the
-## target and ReachedPreciseRotation fires; until then the yaw steps by the
-## remaining difference times dt / time left, truncated, and the time left
-## shrinks by dt. The controller (the view) takes the same step unless
-## bDisableControllerFacingPawnYawRotation.
-func _precise_rotation(delta: float) -> void:
-	if not use_precise_rotation or reached_precise_rotation_flag:
-		return
+## One frame of the precise rotation. Once the time left is no more than this
+## frame, the yaw is the target and the rotation is reached; until then the
+## yaw steps by the remaining difference times dt / time left, truncated, and
+## the time left shrinks by dt. The controller (the view) takes the same step
+## unless bDisableControllerFacingPawnYawRotation.
+func _precise_rotation_step(delta: float) -> void:
 	var pawn_units: int = UE.yaw_units(player.pawn_yaw)
 	if precise_rotation_time <= delta:
 		player.pawn_yaw = UE.godot_yaw(precise_rotation_yaw)
 		if not disable_controller_facing_pawn_yaw_rotation:
 			player.rotation.y = UE.godot_yaw(precise_rotation_yaw)
-		use_precise_rotation = false
-		reached_precise_rotation_flag = false
-		reached_precise_rotation()
+		reached_precise_rotation_flag = true
 		return
 	var step: int = int(UE.normalize_axis(precise_rotation_yaw - pawn_units) * (delta / precise_rotation_time))
 	player.pawn_yaw = UE.godot_yaw(UE.normalize_axis(pawn_units + step))
@@ -382,14 +454,68 @@ func _precise_rotation(delta: float) -> void:
 		player.rotation.y = UE.godot_yaw(UE.yaw_units(player.rotation.y) + step)
 	precise_rotation_time -= delta
 
-## TdMove.SetPreciseRotation, yaw only (the pawn never pitches).
+## The reached events, in the native's order: each half that has arrived is
+## switched off and raises its own event, then ReachedPreciseLocationAndRotation
+## -- at once when the other half is not in use or has arrived too, else once
+## that half arrives (bDelayRotationAndLocationCallback). When both arrive on
+## one frame the pair event fires TWICE, once from each half. The original's,
+## kept.
+func _precise_events() -> void:
+	var both: bool = false
+	if reached_precise_location_flag:
+		use_precise_location = false
+		reached_precise_location_flag = false
+		reached_precise_location()
+		if not use_precise_rotation or reached_precise_rotation_flag:
+			both = true
+			if not delay_rotation_and_location_callback:
+				reached_precise_location_and_rotation()
+		else:
+			delay_rotation_and_location_callback = true
+	if reached_precise_rotation_flag:
+		use_precise_rotation = false
+		reached_precise_rotation_flag = false
+		reached_precise_rotation()
+		if not use_precise_location or reached_precise_location_flag:
+			both = true
+			if not delay_rotation_and_location_callback:
+				reached_precise_location_and_rotation()
+		else:
+			delay_rotation_and_location_callback = true
+	if delay_rotation_and_location_callback and both:
+		delay_rotation_and_location_callback = false
+		use_precise_location = false
+		reached_precise_location_flag = false
+		use_precise_rotation = false
+		reached_precise_rotation_flag = false
+		reached_precise_location_and_rotation()
+
+## TdMove.SetPreciseLocation. `speed` < 0 takes GroundSpeed.
+func set_precise_location(location: Vector3, speed: float = -1.0, mode: int = PLM_FLY) -> void:
+	precise_location_speed = config.pawn.ground_speed if speed < 0.0 else speed
+	precise_location_mode = mode
+	precise_location = location
+	use_precise_location = true
+	reached_precise_location_flag = false
+
+## TdMove.SetPreciseRotation, yaw only (the pawn never pitches). Rotator units.
 func set_precise_rotation(yaw_units: int, seconds: float) -> void:
 	precise_rotation_yaw = yaw_units
 	precise_rotation_time = seconds
 	use_precise_rotation = true
 	reached_precise_rotation_flag = false
 
+## TdMove.ReachedPreciseLocationAndRotation. Empty in the original's base.
+func reached_precise_location_and_rotation() -> void:
+	pass
+
 # --- the view (TdMove.UpdateViewRotation) ---------------------------------------
+#
+# CameraRig asks the current move's update_view_rotation() every frame. A move
+# that answers uses_view_rotation() has the view turned the original's way
+# through it -- input, look-at, ConstrainAxis, reset. Any other keeps the
+# rig's own look clamp for the input, and the rig takes only the look-at and
+# the reset from it.
 
 ## Whether the camera turns the view through update_view_rotation() -- the
 ## original's look-at targets and ConstrainAxis -- while this move runs. The
@@ -397,10 +523,18 @@ func set_precise_rotation(yaw_units: int, seconds: float) -> void:
 func uses_view_rotation() -> bool:
 	return false
 
+## TdMove.SetLookAtTargetLocation. `duration` -1 holds it until aborted.
+func set_look_at_target_location(target: Vector3, interpolation_time: float,
+		duration: float = -1.0) -> void:
+	look_at_target_location_active = true
+	look_at_target_interpolation_time = interpolation_time
+	look_at_target_duration = duration if duration == -1.0 else move_active_time + duration
+	look_at_target_location = target
+
 ## TdMove.SetLookAtTargetAngle. `duration` -1 holds it until aborted.
 func set_look_at_target_angle(pitch_units: int, yaw_units: int, interpolation_time: float,
 		duration: float = -1.0) -> void:
-	look_at_target_angle = true
+	look_at_target_angle_active = true
 	look_at_target_interpolation_time = interpolation_time
 	look_at_target_duration = duration if duration == -1.0 else move_active_time + duration
 	look_at_target_pitch = pitch_units
@@ -408,7 +542,8 @@ func set_look_at_target_angle(pitch_units: int, yaw_units: int, interpolation_ti
 
 ## TdMove.AbortLookAtTarget.
 func abort_look_at_target() -> void:
-	look_at_target_angle = false
+	look_at_target_location_active = false
+	look_at_target_angle_active = false
 	look_at_target_duration = -1.0
 
 ## TdMove.ResetCameraLook.
@@ -432,24 +567,35 @@ func get_min_look_constrain_pitch() -> int:
 func get_max_look_constrain_pitch() -> int:
 	return int(round(cfg.max_look_constraint.x * UE.UNITS_PER_RADIAN))
 
+## The look-at's pull on `head`: Normalize(wanted - head) times
+## min(1, dt / interpolation time), each axis truncated.
+func _look_at_pull(head: Vector2i, wanted: Vector2i, dt: float) -> Vector2i:
+	var d := Vector2i(UE.normalize_axis(wanted.x - head.x), UE.normalize_axis(wanted.y - head.y))
+	var k: float = minf(1.0, dt / look_at_target_interpolation_time)
+	return Vector2i(int(d.x * k), int(d.y * k))
+
 ## TdMove.UpdateViewRotation. [ME:CONFIRMED decompile TdMove.uc] All in rotator
 ## units: `view` is the controller's (pitch, yaw), `delta_rot` this frame's
 ## input (pitch, yaw). Returns [view, delta_rot]; the caller then adds the
 ## delta to the view (ProcessViewRotation). `now` is WorldInfo.TimeSeconds.
 ##
-## The look-at target pulls the view by dt / interpolation time of what is
-## left; then the constraint, measured against the PAWN's rotation (absolute
-## windows are taken relative to it first), through CameraRig.constrain_axis
-## with an interpolation of dt / 0.2; then the reset toward the pawn's yaw.
+## The look-at target -- a location seen from the eyes (Location + 76 uu,
+## GetActorEyesViewPoint), else an angle -- pulls the view by
+## dt / interpolation time of what is left; then the constraint, measured
+## against the PAWN's rotation (absolute windows are taken relative to it
+## first), through CameraRig.constrain_axis with an interpolation of dt / 0.2;
+## then the reset toward the pawn's yaw.
 func update_view_rotation(view: Vector2i, dt: float, delta_rot: Vector2i, now: float) -> Array:
 	var out: Vector2i = view
-	if look_at_target_angle:
+	if look_at_target_location_active or look_at_target_angle_active:
 		if look_at_target_duration == -1.0 or look_at_target_duration >= move_active_time:
+			var wanted := Vector2i(look_at_target_pitch, look_at_target_yaw)
+			if look_at_target_location_active:
+				var eye: Vector3 = player.global_position + Vector3.UP * player.BASE_EYE_HEIGHT
+				var dir: Vector3 = look_at_target_location - eye
+				wanted = Vector2i(UE.dir_pitch(dir), UE.dir_yaw(dir))
 			var head := Vector2i(UE.normalize_axis(out.x), UE.normalize_axis(out.y))
-			var d := Vector2i(UE.normalize_axis(look_at_target_pitch - head.x),
-				UE.normalize_axis(look_at_target_yaw - head.y))
-			var k: float = minf(1.0, dt / look_at_target_interpolation_time)
-			out += Vector2i(int(d.x * k), int(d.y * k))
+			out += _look_at_pull(head, wanted, dt)
 		else:
 			abort_look_at_target()
 	var pawn_yaw_units: int = UE.yaw_units(player.pawn_yaw)
@@ -481,13 +627,6 @@ func update_view_rotation(view: Vector2i, dt: float, delta_rot: Vector2i, now: f
 			out.x = 0
 			reset_camera_look_active = false
 	return [out, delta_rot]
-
-## TdMove.SetPreciseLocation for PLM_Fly. `speed` < 0 takes GroundSpeed.
-func set_precise_location(location: Vector3, speed: float = -1.0) -> void:
-	precise_location_speed = config.pawn.ground_speed if speed < 0.0 else speed
-	precise_location = location
-	use_precise_location = true
-	reached_precise_location_flag = false
 
 ## Native slot 0x11c: TdMove.TickMove. After the physics.
 func tick_move(delta: float) -> void:
@@ -844,28 +983,17 @@ func _grab_stand_in() -> StringName:
 		return INTO_GRAB
 	return KEEP
 
-## The level's interest points: cables, bars, ladders, ledges and beams. The
-## original catches these through its levels' own volumes, not through
-## CheckAutoMoves; this project's InterestLines stand in for them, asked after
-## the original's automatic transitions found nothing.
+## The level's interest points: ladders, ledges and beams. The original
+## catches these through its levels' own volumes, not through CheckAutoMoves;
+## this project's InterestLines stand in for them, asked after the original's
+## automatic transitions found nothing. The cable and the bar are not caught
+## here: their volumes ask every tick (Player._update_movement_volume,
+## TdSwingVolume / TdZiplineVolume PawnUpdate).
 func interest_line_transition() -> StringName:
 	var c := current_config()
 	if c == null:
 		return KEEP
 	var manager = player.move_manager
-	# [ME:CONFIRMED 05 §5.6.5] The cable is caught before the bar. Falling
-	# faster than fall_limit the hands cannot hold on (ZVelocityFallLimit).
-	if c.check_for_zipline and player.velocity.y > -config.zipline.fall_limit \
-			and manager.can_enter(ZIPLINE):
-		var cable: InterestLine = player.nearest_interest_line(InterestLine.Kind.ZIPLINE)
-		if cable != null and player.line_ready(cable) and _zipline_approach_allowed(cable):
-			return ZIPLINE
-	# [ME:CONFIRMED A1] No fall limit on the bar: TdMove_Swing carries no
-	# ZVelocityFallLimit.
-	if c.check_for_swing and manager.can_enter(SWING):
-		var bar: InterestLine = player.nearest_interest_line(InterestLine.Kind.SWING)
-		if bar != null and player.line_ready(bar):
-			return SWING
 	# [ME:CONFIRMED] A ladder catches mid-fall too; DO NOT add a speed gate --
 	# an uncontrolled fall already leaves check_for_ladder clear.
 	if c.check_for_ladder and manager.can_enter(LADDER):
@@ -934,26 +1062,6 @@ func _within_reach(ledge: Dictionary) -> bool:
 	# depth it sits well behind the surface the body would touch -- 1.78 m for
 	# a 1 m deep block whose face was only 0.9 m away.
 	return float(ledge.get("face_distance", INF)) <= config.into_grab.max_reach_distance
-
-## Whether the body's approach is compatible with the direction this cable
-## would carry it. DO NOT let a jump against the cable's travel direction
-## catch it.
-##
-## Vertical-jump carve-out first: below a stillness threshold the approach
-## HAS no direction, and boarding from directly underneath stays legal. The
-## angle cap itself is ZiplineConfig.catch_max_approach_angle -- see its own
-## note on why 100 degrees and why it is a dial.
-func _zipline_approach_allowed(cable: InterestLine) -> bool:
-	var h_vel := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	# Below this the jump is vertical and has no meaningful approach direction.
-	if h_vel.length() <= 0.5:
-		return true
-	var travel: Vector3 = ZiplineMove.travel_direction(cable, player.global_position)
-	travel.y = 0.0
-	if travel.length_squared() < 0.0001:
-		# A near-vertical cable has no horizontal travel to oppose.
-		return true
-	return rad_to_deg(h_vel.angle_to(travel)) <= config.zipline.catch_max_approach_angle
 
 ## The vertical speed the vault table is asked about, which is the REAL one
 ## except inside the shin-catch window below.

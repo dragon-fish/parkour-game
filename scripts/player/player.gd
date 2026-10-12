@@ -221,6 +221,11 @@ var pending_ledge: Dictionary = {}
 ## not.
 var interest_lines: Array[InterestLine] = []
 
+## TdPawn.ActiveMovementVolume: the swing bar or cable whose volume the body
+## last entered, asked every tick (TdPawn.Tick -> PawnUpdate) until it takes
+## the body -- which clears it until the body enters a volume again.
+var _active_movement_volume: InterestLine = null
+
 ## The checkpoint the next respawn happens at, or null for the level's own
 ## spawn point. LAST TOUCHED WINS -- [ME:CONFIRMED] noclipping the original
 ## and flying back to suicide still respawns at the last checkpoint touched,
@@ -358,9 +363,15 @@ func touch_checkpoint(checkpoint: Checkpoint) -> void:
 func enter_interest_line(line: InterestLine) -> void:
 	if not interest_lines.has(line):
 		interest_lines.append(line)
+	# TdMovementVolume.PawnEnteredVolume: a latent volume becomes the active
+	# one. The swing's and the cable's are the latent ones ported here.
+	if line.kind == InterestLine.Kind.SWING or line.kind == InterestLine.Kind.ZIPLINE:
+		_active_movement_volume = line
 
 func exit_interest_line(line: InterestLine) -> void:
 	interest_lines.erase(line)
+	if _active_movement_volume == line:
+		_active_movement_volume = null
 	# Leaving the volume is what re-arms the line -- see note_line_left().
 	_lines_awaiting_exit.erase(line.get_instance_id())
 
@@ -598,12 +609,6 @@ var _slide_recovery_timer: float = 0.0
 ## another HAS turned, and used to arrive owing nothing. Settled once, on
 ## touchdown.
 var _takeoff_dir: Vector3 = Vector3.ZERO
-## Ground speed at the last take-off. [ME:CONFIRMED] measured in the
-## original: catching a rope resets the ride's entry speed to the ground
-## speed at the moment of the last take-off -- wall-jumps in between change
-## nothing, and a second rope resets to the same figure. Captured beside
-## _takeoff_dir, read by ZiplineMove.enter().
-var _takeoff_ground_speed: float = 0.0
 ## Per-LINE cooldowns (zipline, swing, ...): InterestLine instance id -> seconds left.
 ## Per CABLE, not per move: the owner measured rope-to-rope chaining in the
 ## original (release one rope, catch the next at once), which a move-name
@@ -1713,7 +1718,6 @@ func reset_state() -> void:
 	_dodge_heading = Vector3.ZERO
 	_energy_was_decaying = false
 	_takeoff_dir = Vector3.ZERO
-	_takeoff_ground_speed = 0.0
 	_line_cooldowns.clear()
 	_airborne_time = 0.0
 	_slide_recovery_timer = 0.0
@@ -1721,6 +1725,7 @@ func reset_state() -> void:
 	# A respawn teleports out of any volume without the area ever reporting
 	# the exit, so the list is cleared here rather than trusted.
 	interest_lines.clear()
+	_active_movement_volume = null
 	_visual_yaw_started = false
 	_turn_heading_active = false
 	_turn_clip_left = 0.0
@@ -1779,8 +1784,19 @@ func _build_moves() -> void:
 		[Move.WALL_CLIMB, WallClimbMove.new(), config.wall_climb],
 		[Move.TURN_180, Turn180Move.new(), config.turn_180],
 		[Move.TURN_180_IN_AIR, Turn180InAirMove.new(), config.turn_180_in_air],
+		[Move.INTO_ZIPLINE, IntoZiplineMove.new(), config.into_zipline],
 		[Move.ZIPLINE, ZiplineMove.new(), config.zipline],
 		[Move.SWING, SwingMove.new(), config.swing],
+		[Move.SWING_JUMP, SwingJumpMove.new(), config.swing_jump],
+		[Move.BARGE, BargeMove.new(), config.barge],
+		[Move.AIR_BARGE, AirBargeMove.new(), config.air_barge],
+		[Move.MELEE, MeleeMove.new(), config.melee],
+		[Move.MELEE_AIR, MeleeAirMove.new(), config.melee_air],
+		[Move.MELEE_SLIDE, MeleeSlideMove.new(), config.melee_slide],
+		[Move.MELEE_CROUCH, MeleeCrouchMove.new(), config.melee_crouch],
+		[Move.MELEE_VAULT, MeleeVaultMove.new(), config.melee_vault],
+		[Move.MELEE_AIR_ABOVE, MeleeAirAboveMove.new(), config.melee_air_above],
+		[Move.INTERACT, InteractMove.new(), config.interact],
 		[Move.LADDER, LadderMove.new(), config.ladder],
 		[Move.LEDGE_WALK, LedgeWalkMove.new(), config.ledge_walk],
 		[Move.BALANCE, BalanceMove.new(), config.balance],
@@ -1976,6 +1992,10 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# scripts/debug/pose_lab.gd into a body's private pose pack. Ahead of
 	# GroundSit_Idle in the coil's list, absent on every body without the pack.
 	&"Coil_Tuck",
+	# The kicks, punches and barges (CharacterAnimator's melee cases), and the
+	# button press.
+	&"Kick", &"Punch_Jab", &"Punch_Cross", &"Melee_Hook", &"Melee_Uppercut",
+	&"Shield_Dash", &"Interact",
 	# THE EIGHT-WAY SETS, and the whole reason the reversed-twin hack below can
 	# stop being the answer for a body that has them. Listed out rather than
 	# generated from CharacterAnimator.DIRECTION_SETS because this list is also
@@ -3774,7 +3794,6 @@ func _physics_process(delta: float) -> void:
 	if noclip:
 		_fly_noclip(delta, input)
 		return
-
 	world_time += delta
 	# Before the moves run, so a move that lands this tick reads a counter
 	# that already includes this tick's descent.
@@ -4012,15 +4031,6 @@ func toggle_noclip() -> void:
 		screen_effects.set_desaturation(0.0)
 		screen_effects.set_blur(0.0)
 
-func takeoff_ground_speed() -> float:
-	return _takeoff_ground_speed
-
-## Records the ground speed a take-off left with. The ported Jump and Falling
-## do it as the body leaves the ground; the moves not yet ported through the
-## old speed budget's bookkeeping.
-func note_takeoff_ground_speed(speed: float) -> void:
-	_takeoff_ground_speed = speed
-
 ## Lines released while the body was still INSIDE their volume: they stay
 ## unready until the body actually leaves and comes back, however long that
 ## takes. DO NOT re-catch on a timer alone: dismounting at the foot of a ladder
@@ -4169,36 +4179,41 @@ func _controller_tick(delta: float, input: MoveInput) -> void:
 	if input.turn_pressed:
 		_turn_press_available = not _look_behind()
 	if input.melee_pressed:
-		move_manager.handle_move_action(Move.MA_MELEE)
+		_attack_press()
 
-	# PlayerMove: only PlayerWalking computes an acceleration in this port.
-	if controller_state == Move.CS_PLAYER_WALKING:
+	# PlayerMove, then ProcessMove's key checks. PlayerWalking's ProcessMove
+	# runs the crouch first; PlayerGrabbing's and PlayerWallWalking's run the
+	# jump first and the crouch last. The state the tick started in decides,
+	# though an action may change it.
+	var state: StringName = controller_state
+	if state == Move.CS_PLAYER_WALKING:
 		acceleration = _player_walking_move(delta)
+	elif state == Move.CS_PLAYER_GRABBING:
+		_player_grabbing_move()
+		acceleration = Vector3.ZERO
 	else:
 		acceleration = Vector3.ZERO
-
-	# ProcessMove. PlayerWallWalking's runs the jump first and the crouch last;
-	# the state it started in decides, though an action may change it.
-	if controller_state == Move.CS_PLAYER_WALL_WALKING:
+	if state == Move.CS_PLAYER_WALL_WALKING or state == Move.CS_PLAYER_GRABBING:
 		_check_jump_pressed(input)
 		_check_jump_released(input)
 		_check_crouch(input)
-		return
-	_check_crouch(input)
-	_check_jump_pressed(input)
-	_check_jump_released(input)
+	else:
+		_check_crouch(input)
+		_check_jump_pressed(input)
+		_check_jump_released(input)
 
-	# The controller's own Actor timers, after its PlayerTick: PlayStop.
+	# The controller's own Actor timers, after its PlayerTick, whatever its
+	# state: PlayStop.
 	if _play_stop_timer > 0.0:
 		_play_stop_timer -= delta
 		if _play_stop_timer <= 0.0:
 			_is_stopping = false
 
 ## The pawn's half of the frame before its physics [ME:CONFIRMED decompile N4
-## §1.1]: TdPlayerPawn.Tick, then the pawn's Actor timers -- the input
-## ignores SetIgnoreMoveInput / SetIgnoreLookInput armed. Both after the
-## controller, so an ignore that runs out this frame still held this frame's
-## input.
+## §1.1]: TdPlayerPawn.Tick (which ends in TdPawn.Tick), then the pawn's Actor
+## timers -- the input ignores SetIgnoreMoveInput / SetIgnoreLookInput armed.
+## Both after the controller, so an ignore that runs out this frame still held
+## this frame's input.
 func _pawn_tick(delta: float, input: MoveInput) -> void:
 	# TdPlayerPawn.Tick: the roll trigger is the crouch key going down, at most
 	# once per 0.6 s.
@@ -4209,7 +4224,112 @@ func _pawn_tick(delta: float, input: MoveInput) -> void:
 			_roll_trigger_pressed = true
 		elif not input.crouch_held:
 			_roll_trigger_pressed = false
+	# TdPawn.Tick, from TdPlayerPawn.Tick's super call.
+	_update_movement_volume()
 	_tick_ignore_timers(delta)
+
+## TdPlayerController.AttackPress. [ME:CONFIRMED decompile] Without a weapon
+## -- always, here -- the press is MA_Melee; with one it would fire unless
+## walking at something to barge.
+func _attack_press() -> void:
+	move_manager.handle_move_action(Move.MA_MELEE)
+
+## TdPlayerController.PlayerGrabbing's PlayerMove / ProcessMove: the scaled
+## axes (x10) become ONE action a tick -- strafe past 8 a long shimmy, past 3 a
+## shimmy; forward past 8 with the hint Up a long climb, back past 8 with the
+## hint Down a long drop, past 3 a climb or a drop; otherwise MA_None.
+## [ME:CONFIRMED decompile]
+func _player_grabbing_move() -> void:
+	var x: float = a_forward * 10.0
+	var y: float = a_strafe * 10.0
+	var action: int = Move.MA_NONE
+	if y > 8.0:
+		action = Move.MA_SHIMMY_RIGHT_LONG
+	elif y < -8.0:
+		action = Move.MA_SHIMMY_LEFT_LONG
+	elif y > 3.0:
+		action = Move.MA_SHIMMY_RIGHT
+	elif y < -3.0:
+		action = Move.MA_SHIMMY_LEFT
+	elif x > 8.0 and move_action_hint == Move.MAH_UP:
+		action = Move.MA_CLIMB_UP_LONG
+	elif x < -8.0 and move_action_hint == Move.MAH_DOWN:
+		action = Move.MA_CLIMB_DOWN_LONG
+	elif x > 3.0:
+		action = Move.MA_CLIMB_UP
+	elif x < -3.0:
+		action = Move.MA_CLIMB_DOWN
+	move_manager.handle_move_action(action)
+
+## TdPawn.Tick's ActiveMovementVolume.PawnUpdate, for the swing bars and the
+## cables: before the pawn's physics, every tick the body is inside one.
+func _update_movement_volume() -> void:
+	var line: InterestLine = _active_movement_volume
+	if line == null:
+		return
+	if not is_instance_valid(line) or statuses.is_line_blocked(line.tag):
+		return
+	var taken: bool = false
+	if line.kind == InterestLine.Kind.SWING:
+		var swing = move_manager.move_for(Move.SWING)
+		taken = swing != null and swing.volume_pawn_update(line)
+	elif line.kind == InterestLine.Kind.ZIPLINE:
+		var reach = move_manager.move_for(Move.INTO_ZIPLINE)
+		taken = reach != null and reach.volume_pawn_update(line)
+	if taken:
+		_active_movement_volume = null
+
+## TdPawn's use of a TdTrigger, which a UseZone stands in for: the Interact
+## move takes it if it can. Duck-typed for UseZone.
+func use_trigger(zone: UseZone) -> bool:
+	var interact = move_manager.move_for(Move.INTERACT)
+	return interact != null and interact.use_trigger(zone)
+
+## TdPawn.EAgainstWallState.
+const AW_NONE := 0
+const AW_AGAINST_WALL := 1
+const AW_AGAINST_WALL_LEFT := 2
+const AW_AGAINST_WALL_RIGHT := 3
+
+## ATdPlayerPawn::CheckAgainstWall. [ME:CONFIRMED decompile N3 §6] Two hand
+## traces from 14 uu either side of the centre, 68 uu up (26 crouched), out
+## along the facing for max(40, 0.28 * forward speed) uu with a (2, 2, 5) box;
+## a hand counts on a face turned more than 60 degrees toward it.
+func check_against_wall() -> int:
+	if is_dying():
+		return AW_NONE
+	var x: Vector3 = facing()
+	var right := Vector3(-x.z, 0.0, x.x)
+	var up: float = (26.0 if move_manager.current_name == Move.CROUCH else 68.0) * PawnPhysics.UU
+	var reach: float = maxf(40.0, velocity.dot(x) / PawnPhysics.UU * 0.28) * PawnPhysics.UU
+	var extent := Vector3(2.0, 5.0, 2.0) * PawnPhysics.UU
+	var hands: Array[bool] = []
+	for side in [1.0, -1.0]:
+		var start: Vector3 = global_position + right * (14.0 * PawnPhysics.UU * side) + Vector3.UP * up
+		var hit: Dictionary = phys.box_trace(start + x * reach, start, extent)
+		var normal: Vector3 = hit["normal"]
+		hands.append(hit["collider"] != null and normal.dot(x) < -0.5)
+	if hands[0] and hands[1]:
+		return AW_AGAINST_WALL
+	if hands[1]:
+		return AW_AGAINST_WALL_LEFT
+	if hands[0]:
+		return AW_AGAINST_WALL_RIGHT
+	return AW_NONE
+
+## TdPawn.AgainstWallState, as the melee moves read it. The original keeps it
+## from TdPlayerPawn.Tick -- only in Walking, Crouch and LedgeWalk
+## (bEnableAgainstWall), and not while falling faster than 400 uu/s across the
+## ground -- and lets it go 0.15 s after the hands leave the wall; here it is
+## asked when it is read, without that tail. The look constraint it also sets
+## is not ported.
+func against_wall_state() -> int:
+	var state: StringName = move_manager.current_name
+	if state != Move.WALKING and state != Move.CROUCH and state != Move.LEDGE_WALK:
+		return AW_NONE
+	if physics == Move.PHYS_FALLING and horizontal_speed() > 400.0 * PawnPhysics.UU:
+		return AW_NONE
+	return check_against_wall()
 
 ## TdPlayerController.SetInputHint, on the raw axes. [ME:CONFIRMED decompile
 ## N4 §5] Forward or back past 0.8, strafe past 0.3 (strafe wins), bMax past
@@ -5060,7 +5180,6 @@ func dodge_direction(input: MoveInput) -> Vector3:
 ## dropped to base velocity would drag those back down instead, and it is the
 ## same drag that would quietly kill the side-jump boost this move exists for.
 func dodge_launch(direction: Vector3) -> void:
-	_takeoff_ground_speed = horizontal_speed()
 	var kept: float = config.dodge_jump.inertia_conservation
 	velocity.x *= kept
 	velocity.z *= kept

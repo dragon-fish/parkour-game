@@ -54,7 +54,6 @@ func enter(_previous: StringName) -> void:
 		if jump != null and jump.legacy_launch_from != &"":
 			previous_move = jump.legacy_launch_from
 	if previous_move == WALKING:
-		player.note_takeoff_ground_speed(player.horizontal_speed())
 		# Backing off an edge drops straight down: when the body moves
 		# backwards and there is a body height of room below, the horizontal
 		# speed is cleared. [ME:CONFIRMED decompile 15.4]

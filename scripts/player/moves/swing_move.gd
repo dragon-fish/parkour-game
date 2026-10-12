@@ -1,251 +1,389 @@
 class_name SwingMove
-extends LineMove
+extends PhysicsMove
 
-# The original's TdMove_Swing (05 §5.5b): a 1.2 m pendulum the player pumps
-# with W/S and leaves at any phase. NOT a ScriptedMove -- the angle is
-# integrated, not keyed -- and, like the zipline, the body is placed directly
-# every tick (PHYS_Flying).
+# The original's TdMove_Swing, ported. [ME:CONFIRMED decompile N5 §16; script
+# TdMove_Swing, TdSwingVolume; natives GetPawnLocation / GetPawnAngle /
+# PrePhysics / UpdateShimmy emulated]
 #
-# ✅ THE OWNER's two ME-measured noob compensations shape both ends of it:
-#   attach  "快要碰到横杆的时候，会帮你吸附上去" -- the volume catch plus a
-#           short pull onto the chain (enter()).
-#   exit    "只要摇晃的角速度超过一定值（很宽松）并且身体是往前摆时，就能跳出
-#           去并且飞出去的角度每次都一样" -- Task 4's fixed-angle launch.
+# A pendulum in angle only: the pawn is TELEPORTED onto the arc every frame
+# (FarMoveActor) while Velocity stays zero, so the flying physics moves
+# nothing and CheckAutoMoves sees a body at rest. The angular acceleration is
+# a fixed 10 sin(a) rad/s^2 -- not g / L -- with 0.8/s damping and a
+# cos(a) * MaxSwingVelocity cap that makes |a| = pi/2 a hard ceiling.
+#
+# The bar is this project's SWING InterestLine; its volume asks for the swing
+# every tick the body is inside it (volume_pawn_update(), from Player). The
+# original's TdSwingVolume.Location is the bar's middle here, its Y axis the
+# bar, its X axis horizontal and square to the bar.
 
-## The fixed point on the bar the pendulum hangs from (world). Chosen at the
-## catch and never slid: a swing is planar.
-var _pivot: Vector3 = Vector3.ZERO
-## The swing plane's horizontal "forward" (unit, perpendicular to the bar).
-var _forward: Vector3 = Vector3.FORWARD
-## Pendulum angle: 0 hangs straight down, positive swings toward _forward.
-var _theta: float = 0.0
-## Angular velocity, rad/s, positive toward _forward.
-var _omega: float = 0.0
-## Last tick's applied pump, for the HUD's pump field.
-var _last_pump: float = 0.0
-## Seconds of exit-jump grace left after the window was last properly open.
-var _window_grace: float = 0.0
-## Q's turn round on the bar -- see _begin_turn().
-var _turn: HalfTurn = HalfTurn.new()
-var _turning: bool = false
-var _turn_elapsed: float = 0.0
+## TdSwingVolume.bSnapToCenter has no counterpart on an InterestLine: every
+## bar here behaves as the default, false.
+
+## The original's integrator constants. [ME:CONFIRMED emulated N5 §16]
+const ANGULAR_ACCELERATION := 10.0
+const DAMPING := 0.8
+const PUMP := 3.0
+## ShimmyVelocity: 35 uu/s along the bar.
+const SHIMMY_SPEED := 35.0 * UU
+## The pull onto the arc ends within 2 uu.
+const INTERPOLATION_DONE := 2.0 * UU
+## SwingStrafe's blend-in: the shimmy step is scaled by the strafe node's
+## weight. [ME:INFERRED N5 §25.1] read as NodeTotalWeight, ramping over the
+## 0.2 s blend-in.
+const SHIMMY_BLEND_IN := 0.2
+
+## The original's 1P sequence lengths, seconds. [ME:CONFIRMED anims]
+const SWING_HARD_START_LENGTH := 0.467
+const SWING_STRAFE_LENGTH := 1.233
+const SWING_180_LENGTH := 2.033
+const SWING_JUMP_OFF_LENGTH := 0.833
+const SWING_END_LENGTH := 0.3
+## Swing180's root yaw, degrees, every 0.1 s and at its end (2.033 s): a wind-up
+## to the left, then half a turn to the right. [ME:CONFIRMED anims
+## root_motion/Swing180, 1P] UE yaw grows clockwise.
+const SWING_180_YAW := [-0.0, -1.5, -3.8, -6.2, -8.2, -9.0, -8.2, -4.4, 12.9, 43.6, 81.4,
+	120.2, 153.6, 175.4, 181.8, 182.2, 181.3, 180.5, 179.5, 179.5, 179.6, 180.5]
+
+## TdMove_Swing.Volume: the bar, set by the volume that asked.
+var volume: InterestLine = null
+var swing_velocity: float = 0.0
+var swing_angle: float = 0.0
+var swing_direction: Vector3 = Vector3.FORWARD
+var bar_direction: Vector3 = Vector3.RIGHT
+var swing_location: Vector3 = Vector3.ZERO
+var is_interpolating_into: bool = false
+var is_shimmying: bool = false
+var is_turning: bool = false
+var shimmy_velocity: float = 0.0
+var shimmy_time: float = 0.0
+
+var _anim := MoveAnim.new()
+## Swing180's root rotation, while it plays: the yaw it has turned the body by.
+var _root_rotation: bool = false
+var _root_yaw_applied: float = 0.0
 
 func _init() -> void:
-	# [ME:CONFIRMED decompile] TdMove_Swing's PawnPhysics. This move still drives the
-	# body itself; the mode is what the original's checks and the fall height
-	# read while it runs.
+	super._init()
 	pawn_physics = PHYS_FLYING
+	controller_state = CS_PLAYER_GRABBING
+	# [ME:CONFIRMED decompile] DisableLookTime = -1: no look input for the
+	# whole swing.
+	disable_look_time = -1.0
+
+func is_ported() -> bool:
+	return true
+
+# --- the volume ------------------------------------------------------------------
+
+## Volume.Location: the bar's middle.
+static func volume_location(line: InterestLine) -> Vector3:
+	return line.sample(line.length() * 0.5)["position"]
+
+## The volume's Y axis: the bar, flat.
+static func volume_y(line: InterestLine) -> Vector3:
+	var t: Vector3 = line.sample(line.length() * 0.5)["tangent"]
+	t.y = 0.0
+	return t.normalized() if t.length_squared() > 1e-8 else Vector3.RIGHT
+
+## The volume's X axis, Vector(Volume.Rotation): horizontal and square to the
+## bar, with Y on its right as in the original's axes.
+static func volume_x(line: InterestLine) -> Vector3:
+	return Vector3.UP.cross(volume_y(line)).normalized()
+
+## TdSwingVolume.PawnUpdate: offers the swing every tick the body is inside
+## the bar's volume. Returns whether the swing took the body.
+func volume_pawn_update(line: InterestLine) -> bool:
+	if player.move_manager.current_name == SWING:
+		return false
+	volume = line
+	if can_do_move():
+		player.move_manager.set_move(SWING)
+		return true
+	volume = null
+	return false
+
+## TdMove_Swing.CanDoMove: facing the bar (cos < -0.3 between the facing and
+## bar-to-pawn), moving toward it, and no more than 30 degrees above it.
+func can_do_move() -> bool:
+	if volume == null or not is_instance_valid(volume):
+		return false
+	var grip_to_pawn: Vector3 = PawnPhysics.safe_normal(player.global_position - volume_location(volume))
+	if grip_to_pawn.dot(player.facing()) >= -0.3:
+		return false
+	if grip_to_pawn.dot(PawnPhysics.safe_normal(player.velocity)) >= 0.0:
+		return false
+	if grip_to_pawn.dot(Vector3.DOWN) < -0.5:
+		return false
+	return td_can_do_move()
+
+# --- the pendulum (natives) ------------------------------------------------------
+
+## GetPawnLocation: SwingLocation + L (sin a SwingDirection - cos a Up).
+func get_pawn_location(angle: float) -> Vector3:
+	return swing_location + cfg.pendulum_length * (sin(angle) * swing_direction - cos(angle) * Vector3.UP)
+
+## GetPawnAngle: the exact inverse of get_pawn_location() over -pi .. pi.
+func get_pawn_angle(location: Vector3) -> float:
+	var d: Vector3 = location - swing_location
+	var x: float = d.dot(swing_direction)
+	var z: float = d.y
+	var length: float = sqrt(x * x + z * z)
+	if length > 0.0:
+		x /= length
+		z /= length
+	var a: float = asin(clampf(x, -1.0, 1.0))
+	if z > 0.0:
+		a = PI - a
+	if a > PI:
+		a -= TAU
+	return a
+
+# --- StartMove / StopMove --------------------------------------------------------
 
 func enter(_previous: StringName) -> void:
 	player.set_grounded(false)
-	if not acquire_line(InterestLine.Kind.SWING):
-		return
-	var s: float = _line.closest_offset(player.global_position)
-	_pivot = _line.sample(s)["position"]
-	var axis: Vector3 = _line.sample(s)["tangent"]
-	axis.y = 0.0
-	if axis.length_squared() < 0.0001:
-		# A vertical bar is not a swing bar.
-		_aborted = true
-		return
-	axis = axis.normalized()
-	# The swing plane's forward: the horizontal entry velocity's component
-	# perpendicular to the bar, or the visible facing when arriving straight
-	# down. Which way you were going is which way you swing.
-	var approach := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	var perp: Vector3 = approach - axis * approach.dot(axis)
-	if perp.length_squared() < 0.01:
-		var facing: Vector3 = -player.global_transform.basis.z
-		perp = facing - axis * facing.dot(axis)
-	if perp.length_squared() < 0.0001:
-		perp = axis.cross(Vector3.UP)
-	_forward = perp.normalized()
-	# Initial state read off the arrival: angle from where the body actually
-	# is (clamped -- the magnet does the rest), angular velocity from the
-	# tangential share of the arrival speed.
-	var offset: Vector3 = player.global_position - _pivot
-	# TIGHT residual angle and absorbed momentum -- ✅ the owner, on the first
-	# cut's 25-degree clamp and full carry-over: "原地起跳上杆都能晃老高."
-	var max_theta: float = deg_to_rad(cfg.entry_max_theta_deg)
-	_theta = clampf(atan2(offset.dot(_forward), -offset.y), -max_theta, max_theta)
-	_omega = approach.dot(_forward) / cfg.pendulum_length * cfg.entry_omega_scale
+	var origin: Vector3 = volume_location(volume)
+	var vy: Vector3 = volume_y(volume)
+	var vx: Vector3 = volume_x(volume)
+	# PointDistToLine: the grip is the point of the bar's line nearest the pawn.
+	swing_location = origin + vy * (player.global_position - origin).dot(vy)
+	var to_grip: Vector3 = PawnPhysics.safe_normal(origin - player.global_position)
+	if to_grip.dot(vx) >= 0.0:
+		bar_direction = vy
+		swing_direction = vx
+	else:
+		bar_direction = -vy
+		swing_direction = -vx
+	swing_angle = get_pawn_angle(player.global_position)
+	# [ME:CONFIRMED decompile N5 §25.8] an INTEGER Clamp(int(a), int(-1.2),
+	# int(-0.7)) = Clamp(trunc(a), -1, 0): the start angle is 0 or -1 rad,
+	# never anything between. The 0.15 s pull onto the arc hides the jump.
+	swing_angle = float(clampi(int(swing_angle), int(-1.2), int(-0.7)))
+	swing_velocity = cfg.max_swing_velocity * minf(1.0, Vector2(player.velocity.x, player.velocity.z).length() / (500.0 * UU))
+	set_precise_rotation(UE.dir_yaw(swing_direction), cfg.anim_blend_time)
+	is_interpolating_into = true
+	_set_pawn_rotation(swing_angle)
+	reset_camera_look(cfg.anim_blend_time)
 	player.velocity = Vector3.ZERO
-	_fade = 0.0
-	begin_approach()
-	# Turned ACROSS the fade below, not here -- see _turn_body_to()/
-	# _centre_fan(). Snapping the yaw in this one tick was the review's
-	# second finding.
-	_entry_yaw = player.rotation.y
-	_target_yaw = atan2(-_forward.x, -_forward.z)
-	_fan_centred = false
-	_window_grace = 0.0
-	_turning = false
-
-func physics_update(delta: float, input: MoveInput) -> StringName:
-	if _aborted or not is_instance_valid(_line):
-		return FALLING
-	player.set_grounded(false)
-	# The bar supports the body the way the ground does -- the fall the
-	# landing charges for starts where the hands let go (same rule the
-	# zipline settled).
-	player.fall_tracker.reset(player.global_position.y)
-
-	# Q TURNS THE BODY ROUND ON THE BAR -- a slow, committed manoeuvre, so the
-	# jump and the pump wait for it. Letting go (crouch) does not.
-	if _turning:
-		_advance_turn(delta)
-		input = _without_swing_keys(input)
-	elif input.turn_pressed and _fan_centred and swing_bottom_speed() < cfg.turn_max_swing_speed:
-		_begin_turn()
-		input = _without_swing_keys(input)
-
-	# THE EXIT JUMP -- lenient and fixed-angle, ✅ the owner's ME measurement:
-	# "只要摇晃的角速度超过一定值（很宽松）并且身体是往前摆时，就能跳出去并且
-	# 飞出去的角度每次都一样." An out-of-window press is IGNORED, not spent.
-	if input.jump_pressed and jump_window_open():
-		var launch := (_forward * cos(deg_to_rad(cfg.exit_angle_deg))
-			+ Vector3.UP * sin(deg_to_rad(cfg.exit_angle_deg)))
-		player.velocity = launch * cfg.exit_speed
-		player.apply_gravity_window(cfg.exit_gravity_multiplier, cfg.exit_gravity_time)
-		return FALLING
-	if input.crouch_pressed:
-		# The drop keeps the swing's own velocity, under the same soft-landing
-		# gravity window (both CDO pairs carry it).
-		player.velocity = (_forward * cos(_theta) + Vector3.UP * sin(_theta)) \
-			* tangential_speed()
-		player.apply_gravity_window(cfg.exit_gravity_multiplier, cfg.exit_gravity_time)
-		# One press, one action -- the same rule the zipline settled.
-		player.consume_roll()
-		return FALLING
-
-	# THE PENDULUM. Gravity torque plus the pump: W adds angular acceleration
-	# only when pushed WITH the current motion (pumping against the swing
-	# would be free braking nobody asked for), S the mirror.
-	var pump: float = 0.0
-	var wish: float = input.move.y
-	if absf(wish) > 0.1:
-		if absf(_omega) <= 0.01:
-			# PUMPING FROM REST IS ALLOWED. A straight-up catch with no
-			# drift lands exactly on theta=0, omega=0 -- gravity torque
-			# (sin(0)) is zero there too, so without this branch the guard
-			# below turned the most ordinary approach into a dead fixed
-			# point, escapable only by letting go. The guard's job was only
-			# to stop counter-motion input from braking an EXISTING swing;
-			# from rest there is no motion to counter.
-			pump = cfg.pump_accel * signf(wish)
-		elif signf(wish) == signf(_omega):
-			pump = cfg.pump_accel * signf(_omega)
-	_last_pump = pump
-	_omega += (-config.pawn.gravity / cfg.pendulum_length) * sin(_theta) * delta \
-		+ pump * delta
-	# Light damping: an un-pumped swing settles instead of ringing forever --
-	# keeping the amplitude is what the W/S pump is FOR.
-	_omega -= _omega * cfg.damping * delta
-	# The apex grace: the window stays open a beat after omega falls off it,
-	# so the "top of the swing, about to come back" jump still fires -- the
-	# owner's feel call, and the stand-in for SwingAngleTimingOffset.
-	if _omega > cfg.jump_min_omega:
-		_window_grace = cfg.jump_grace_time
-	else:
-		_window_grace = maxf(_window_grace - delta, 0.0)
-	# ✅ MaxSwingVelocity caps the TANGENTIAL speed.
-	var omega_cap: float = cfg.max_swing_velocity / cfg.pendulum_length
-	_omega = clampf(_omega, -omega_cap, omega_cap)
-	_theta += _omega * delta
-
-	var chain: Vector3 = _pivot \
-		+ (_forward * sin(_theta) - Vector3.UP * cos(_theta)) * cfg.pendulum_length
-	_fade += delta
-	var _over := approach_seconds(chain)
-	if _fade < _over:
-		var t: float = _fade / _over
-		player.global_position = _entry_pos.lerp(chain, t)
-		_turn_body_to(lerp_angle(_entry_yaw, _target_yaw, t))
-	else:
-		player.global_position = chain
-		if not _fan_centred:
-			_centre_fan()
-	# The model leans along the chain -- ✅ the owner, on how ME reads
-	# amplitude: "主要是靠镜头里可以看到自己身体来判断." The camera is NOT
-	# pitched (ME does not sync the view to the swing); Player smooths the
-	# lean on and off. Sign fixed by the owner's eyes ("pitch写反了") -- the
-	# first guess had the legs trailing.
-	player.set_swing_pitch_target(_theta * cfg.model_pitch_follow)
-	if player.camera_rig != null:
-		# Forward swings only: the lean sweeps the chest through the fixed
-		# eye, so the eye slides up and ahead of it (two dials -- the owner:
-		# "先试试两个方向都给点"). Backswings tip the chest away.
-		var lean: float = maxf(sin(_theta), 0.0)
-		player.camera_rig.extra_eye_forward = lean * cfg.eye_forward_lean
-		player.camera_rig.extra_eye_lift = lean * cfg.eye_lift_lean
-	return KEEP
-
-## Q on the bar. [ME:INFERRED] from play: allowed only once the swing has all
-## but stopped (SwingConfig.turn_max_swing_speed), and slow (turn_time). Clockwise,
-## half a turn, like every Q -- see HalfTurn.
-func _begin_turn() -> void:
-	_turning = true
-	_turn_elapsed = 0.0
-	_turn.begin(player.rotation.y)
-
-func _advance_turn(delta: float) -> void:
-	_turn_elapsed += delta
-	_turn.advance(player, _turn_elapsed / maxf(cfg.turn_time, 0.001))
-	if _turn_elapsed < cfg.turn_time:
-		return
-	_turning = false
-	# THE SWING PLANE TURNS WITH THE BODY. Forward, angle and angular velocity
-	# all change sign together, which describes the very same position and
-	# motion in the flipped frame -- so nothing jumps, and from here W pumps,
-	# and the exit jump leaves, the way the body now faces.
-	_forward = -_forward
-	_theta = -_theta
-	_omega = -_omega
-
-## The keys a turn on the bar holds off: the pump and the exit jump. The rest
-## (crouch, to let go) passes through.
-func _without_swing_keys(input: MoveInput) -> MoveInput:
-	var held := input.copy()
-	held.move = Vector2.ZERO
-	held.jump_pressed = false
-	return held
+	player.acceleration = Vector3.ZERO
+	_anim.play(&"SwingHardStart", SWING_HARD_START_LENGTH)
+	set_move_timer(cfg.anim_blend_time, false, _stop_interpolating)
 
 func exit() -> void:
-	_turning = false
+	_anim.stop()
+	_root_rotation = false
+	is_shimmying = false
+	is_turning = false
 	player.set_swing_pitch_target(0.0)
-	# The eye offsets are NOT zeroed here: the body stands back up on an
-	# ease after letting go, and an eye snapped home while the chest is
-	# still leaning clips straight through it -- ✅ the owner: "瞬间丢掉会有
-	# 几帧穿模". Player decays them on the lean's own ease instead.
-	note_left(cfg.same_line_redo_time)
 
-# --- read by the HUD, Task 4 and the tests ---------------------------------
+func _stop_interpolating() -> void:
+	is_interpolating_into = false
 
-func swing_theta() -> float:
-	return _theta
+# --- the frame -------------------------------------------------------------------
 
-func swing_omega() -> float:
-	return _omega
+## Native PrePhysics. The base TdPhysicsMove PrePhysics runs at the END.
+func pre_physics(delta: float) -> void:
+	if not is_interpolating_into:
+		swing_velocity -= sin(swing_angle) * delta * ANGULAR_ACCELERATION
+		swing_velocity -= swing_velocity * delta * DAMPING
+		# Pumping: only in the direction the swing is already going.
+		if not is_shimmying and not is_turning:
+			if player.move_action_hint == MAH_UP and swing_velocity >= 0.0:
+				swing_velocity += delta * PUMP
+			if player.move_action_hint == MAH_DOWN and swing_velocity <= 0.0:
+				swing_velocity -= delta * PUMP
+	var a: float = swing_angle
+	if a > 0.0:
+		swing_velocity = minf(swing_velocity, cos(a) * cfg.max_swing_velocity)
+	if a < 0.0:
+		swing_velocity = maxf(swing_velocity, -cos(a) * cfg.max_swing_velocity)
+	if not is_interpolating_into:
+		swing_angle = clampf(swing_velocity * delta + a, -PI, PI)
+	if is_turning and signf(a) != signf(swing_angle):
+		on_timer()
+	_update_shimmy(delta)
+	var p: Vector3 = get_pawn_location(swing_angle)
+	if is_interpolating_into:
+		var d: Vector3 = p - player.global_position
+		if d.length_squared() < INTERPOLATION_DONE * INTERPOLATION_DONE:
+			is_interpolating_into = false
+		else:
+			# MoveActiveTime / AnimBlendTime of what is LEFT, every frame: faster
+			# than linear.
+			p = player.global_position + d * (move_active_time / cfg.anim_blend_time)
+	player.global_position = p
+	super.pre_physics(delta)
 
-func tangential_speed() -> float:
-	return _omega * cfg.pendulum_length
+## Native UpdateShimmy.
+func _update_shimmy(delta: float) -> void:
+	if not is_shimmying:
+		return
+	var weight: float = minf(1.0, _anim.elapsed / SHIMMY_BLEND_IN) if _anim.is_playing(&"SwingStrafe") else 1.0
+	var step: float = weight * shimmy_velocity * delta
+	if not can_shimmy(step):
+		abort_shimmy()
+		return
+	swing_location += bar_direction * step
+	shimmy_time -= delta
+	if shimmy_time < 0.0:
+		abort_shimmy()
 
-## How fast this swing would pass the bottom of its arc, m/s: its speed now
-## plus what the height it has climbed gives back, by energy. Unlike the
-## angular velocity it holds steady across a swing.
-func swing_bottom_speed() -> float:
-	var v: float = tangential_speed()
-	var rise: float = cfg.pendulum_length * (1.0 - cos(_theta))
-	return sqrt(v * v + 2.0 * config.pawn.gravity * rise)
+## CanShimmy: the grip moved by `step` along the bar stays inside the volume.
+func can_shimmy(step: float) -> bool:
+	if volume == null or not is_instance_valid(volume):
+		return false
+	var at: Vector3 = swing_location + bar_direction * step
+	var on_line: Vector3 = volume.sample(volume.closest_offset(at))["position"]
+	return on_line.distance_to(at) <= volume.reach_radius
 
-func swing_forward() -> Vector3:
-	return _forward
+func abort_shimmy() -> void:
+	is_shimmying = false
 
-## Task 4 fills this with the lenient forward-swing window; declared here so
-## the HUD line (Task 5) has one source.
-func jump_window_open() -> bool:
-	return _omega > cfg.jump_min_omega or _window_grace > 0.0
+## TickMove: the base, then SetPawnRotation; then the anim layer.
+func tick_move(delta: float) -> void:
+	super.tick_move(delta)
+	_set_pawn_rotation(swing_angle)
+	if _root_rotation:
+		var yaw_deg: float = _swing_180_yaw(_anim.elapsed + delta)
+		# UE's yaw grows clockwise, Godot's counter-clockwise.
+		var turn: float = -deg_to_rad(yaw_deg - _root_yaw_applied)
+		_root_yaw_applied = yaw_deg
+		player.rotation.y += turn
+	var ended: StringName = _anim.advance(delta)
+	if ended == &"Swing180":
+		on_cease_relevant_root_motion()
 
-## -1 (S), 0, or +1 (W): the pump the last tick actually applied.
-func pump_direction() -> int:
-	return int(signf(_last_pump))
+static func _swing_180_yaw(t: float) -> float:
+	var last: int = SWING_180_YAW.size() - 1
+	if t >= SWING_180_LENGTH:
+		return SWING_180_YAW[last]
+	var x: float = t / 0.1
+	var i: int = int(x)
+	if i >= last - 1:
+		var span: float = SWING_180_LENGTH - 0.1 * float(last - 1)
+		return lerpf(SWING_180_YAW[last - 1], SWING_180_YAW[last], (t - 0.1 * float(last - 1)) / span)
+	return lerpf(SWING_180_YAW[i], SWING_180_YAW[i + 1], x - float(i))
+
+## SetPawnRotation: the original rolls a SwingControl bone by the angle. Here
+## the model leans by it, and the eye slides with a forward lean.
+func _set_pawn_rotation(angle: float) -> void:
+	player.set_swing_pitch_target(angle * cfg.model_pitch_follow)
+	if player.camera_rig != null:
+		var lean: float = maxf(sin(angle), 0.0)
+		player.camera_rig.extra_eye_forward = lean * cfg.eye_forward_lean
+		player.camera_rig.extra_eye_lift = lean * cfg.eye_lift_lean
+
+# --- actions ---------------------------------------------------------------------
+
+func handle_move_action(action: int) -> void:
+	var move_left: bool = action == MA_SHIMMY_LEFT or action == MA_SHIMMY_LEFT_LONG
+	var move_right: bool = action == MA_SHIMMY_RIGHT or action == MA_SHIMMY_RIGHT_LONG
+	if action == MA_JUMP:
+		var jump_angle: float = minf(PI / 2.0, swing_angle - cfg.swing_angle_timing_offset)
+		if jump_angle > -PI / 4.0:
+			_jump_off(jump_angle)
+	elif not is_interpolating_into and action == MA_CROUCH:
+		_let_go()
+	elif not is_interpolating_into and not is_turning and not is_shimmying and action == MA_TURN:
+		is_turning = true
+	elif action == MA_MELEE:
+		var jump_angle: float = minf(PI / 2.0, swing_angle - cfg.swing_angle_timing_offset)
+		if jump_angle > -PI / 4.0:
+			# [ME:CONFIRMED decompile] SetMove(MeleeAir, bCheckCanDo): MeleeAir
+			# refuses every state but IntoGrab, Jump, Falling, WallRunJump and
+			# GrabJump, so this never kicks -- and the refused check leaves
+			# PendingMovementState behind (MoveManager.pawn_can_do()).
+			player.move_manager.set_move(MELEE_AIR, true)
+	elif not is_turning and not is_shimmying and (move_left or move_right):
+		if absf(swing_velocity) < 1.0 and absf(swing_angle) < PI / 8.0:
+			var dir: float = 1.0 if move_right else -1.0
+			if can_shimmy(dir * UU):
+				is_shimmying = true
+				shimmy_velocity = SHIMMY_SPEED * dir
+				_anim.play(&"SwingStrafe", SWING_STRAFE_LENGTH, dir)
+				shimmy_time = SWING_STRAFE_LENGTH
+
+## OnTimer, raised natively at the zero crossing of a turn: Swing180 with root
+## rotation, the pawn squared to the swing, the pendulum stopped.
+func on_timer() -> void:
+	_root_rotation = true
+	_root_yaw_applied = 0.0
+	_anim.play(&"Swing180", SWING_180_LENGTH)
+	player.rotation.y = _yaw_of(swing_direction)
+	swing_velocity = 0.0
+	swing_angle = 0.0
+	_set_pawn_rotation(swing_angle)
+
+## OnCeaseRelevantRootMotion: the turn is over; the swing's frame flips and
+## the view is squared to it, level.
+func on_cease_relevant_root_motion() -> void:
+	if not is_turning:
+		return
+	is_turning = false
+	_root_rotation = false
+	swing_direction = -swing_direction
+	bar_direction = -bar_direction
+	player.rotation.y = _yaw_of(swing_direction)
+	if player.camera_rig != null:
+		player.camera_rig.set_pitch(0.0)
+	swing_velocity = 0.25
+
+## JumpOff: to the next bar ahead if there is one, otherwise off the tangent of
+## the arc at 600 cos(JumpAngle).
+func _jump_off(jump_angle: float) -> void:
+	var swing_jump = player.move_manager.move_for(SWING_JUMP)
+	var target: InterestLine = check_for_target_volume()
+	if swing_jump != null:
+		swing_jump.target_volume = target
+	if target == null:
+		# BarDirection x Normal(SwingLocation - Location) in the original's
+		# left-handed axes is the operands swapped in Godot's right-handed
+		# ones: the tangent of the arc, forward and up on a forward swing.
+		var n: Vector3 = PawnPhysics.safe_normal(swing_location - player.global_position)
+		var velocity_direction: Vector3 = n.cross(bar_direction)
+		player.velocity = velocity_direction * cos(jump_angle) * cfg.exit_velocity_modifier
+		player.acceleration = player.velocity
+		player.gravity_modifier = cfg.exit_gravity_modifier
+		player.gravity_modifier_timer = cfg.exit_gravity_modifier_time
+	player.move_manager.set_move(SWING_JUMP)
+
+## LetGo: Falling, with the zero velocity the swing holds -- straight down.
+func _let_go() -> void:
+	player.move_manager.set_move(FALLING)
+
+## CheckForTargetVolume: another bar ahead, within
+## 100 + max(0, 500 / 4.25 * SwingVelocity) uu of the volume centre along the
+## swing direction, the trace starting 100 uu out. The first one met wins.
+func check_for_target_volume() -> InterestLine:
+	if volume == null or not is_instance_valid(volume):
+		return null
+	var reach: float = (maxf(0.0, 500.0 / 4.25 * swing_velocity) + 100.0) * UU
+	var origin: Vector3 = volume_location(volume)
+	var from: Vector3 = origin + swing_direction * (100.0 * UU)
+	var to: Vector3 = origin + swing_direction * reach
+	var best: InterestLine = null
+	var best_t: float = INF
+	for node in player.get_tree().get_nodes_in_group("interest_lines"):
+		var line := node as InterestLine
+		if line == null or line == volume or line.kind != InterestLine.Kind.SWING:
+			continue
+		var t: float = _segment_entry(line, from, to)
+		if t < best_t:
+			best_t = t
+			best = line
+	return best
+
+## Where along from..to (0..1) the segment first enters `line`'s volume, or INF.
+static func _segment_entry(line: InterestLine, from: Vector3, to: Vector3) -> float:
+	var length: float = from.distance_to(to)
+	var steps: int = maxi(1, ceili(length / 0.05))
+	for i in steps + 1:
+		var t: float = float(i) / float(steps)
+		var at: Vector3 = from.lerp(to, t)
+		var on_line: Vector3 = line.sample(line.closest_offset(at))["position"]
+		if on_line.distance_to(at) <= line.reach_radius:
+			return t
+	return INF
+
+static func _yaw_of(direction: Vector3) -> float:
+	return atan2(-direction.x, -direction.z)

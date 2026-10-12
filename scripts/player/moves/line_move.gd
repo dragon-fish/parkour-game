@@ -1,7 +1,7 @@
 class_name LineMove
 extends Move
 
-# Shared skeleton of the "along a line" family (zipline / swing / ladder):
+# Shared skeleton of the "along a line" moves not yet ported (the ladder):
 # line acquisition, magnet fade bookkeeping, the turn-across-the-fade pair,
 # per-line cooldown on the way out, and collision-checked placement for the
 # members that ride NEAR level geometry. Subclasses own their physics.
@@ -69,7 +69,7 @@ func _turn_body_to(yaw: float) -> void:
 	player.rotation.y = yaw
 	if player.camera_rig != null:
 		player.camera_rig.absorb_body_yaw(wrapf(yaw - before, -PI, PI))
-	# ZiplineConfig freezes the visual yaw -- both hands are on the cable, so
+	# A config that freezes the visual yaw -- both hands on the line, so
 	# the model must not swivel to follow the view -- and that freeze cancels
 	# this turn degree for degree unless the model is told where to face. Same
 	# arrangement GrabMove makes at a ledge corner; see Player.pin_visual_yaw().

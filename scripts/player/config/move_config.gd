@@ -192,16 +192,6 @@ extends Resource
 @export var check_for_vault_over: bool = false
 @export var check_for_wall_climb: bool = false
 
-## Whether this move may hand off to Zipline when the body is inside a
-## zipline InterestLine's volume. Set on the airborne moves only:
-## [ME:CONFIRMED 05 §5.5] a cable is caught from a jump, never walked into
-## (TdMove_IntoZipLine).
-@export var check_for_zipline: bool = false
-
-## Whether this move may hand off to Swing inside a SWING InterestLine's
-## volume. Airborne moves only, same reasoning as check_for_zipline.
-@export var check_for_swing: bool = false
-
 ## Whether this move may hand off to Ladder inside a LADDER InterestLine's
 ## FRONT volume. The airborne moves and the wall run set it: [ME:CONFIRMED 05]
 ## a ladder is catchable while wall-running unconditionally (the frontal fan

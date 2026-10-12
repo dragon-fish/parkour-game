@@ -3,8 +3,9 @@ extends Node3D
 
 ## A pane the body smashes by running into it. [ME:CONFIRMED Cranes Kismet]
 ## the original breaks it on TdDmgType_Barge, the damage of crashing into it;
-## this project has no barge move, so the speed at which the original would
-## barge rather than kick decides.
+## this project's Barge moves the body but deals no damage, so the speed at
+## which the original would barge rather than kick decides. The pane is
+## interactable, so Melee in front of it barges (BargeMove).
 ##
 ## The pane is a mover of the level's geometry, pointed at by `pane`. Breaking
 ## hides it and takes its collision away BEFORE the body moves this tick, so
@@ -40,6 +41,9 @@ var _material: StandardMaterial3D = null
 
 func _ready() -> void:
 	add_to_group(Arena.RESET_ON_RESPAWN)
+	var body := get_node_or_null(pane) if not pane.is_empty() else null
+	if body != null:
+		body.add_to_group(BargeMove.INTERACTABLE_GROUP)
 	# Before the Player's own physics tick, so the pane is gone by the time the
 	# body moves into it.
 	process_physics_priority = -10

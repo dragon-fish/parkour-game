@@ -481,6 +481,18 @@ var _shoulder_centred_by_move: bool = false
 func set_pitch(radians: float) -> void:
 	_pitch = radians
 
+## Turns the view by a move's script rather than by the mouse: the look-at and
+## the reset of TdMove.UpdateViewRotation, for a move that leaves the input to
+## this rig's own clamp. The same channels the mouse turns, undamped; the
+## clamp catches up on the next apply_look().
+func _steer_view(yaw_delta: float, pitch_delta: float, body: Node3D) -> void:
+	if yaw_delta != 0.0 and body != null:
+		body.rotate_y(yaw_delta)
+		if _has_look_constraint and _look_absolute_yaw:
+			_look_relative_yaw += yaw_delta
+	_pitch += pitch_delta
+	rotation.x = _pitch
+
 func set_roll_spin(radians: float) -> void:
 	_roll_spin = radians
 
@@ -776,7 +788,7 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 		return
 	if _config == null:
 		return
-	if _view_rotation_move != null:
+	if _view_rotation_move != null and _view_rotation_owned:
 		_apply_move_view_rotation(look_delta, body, delta)
 		return
 	var yaw_delta := -look_delta.x * _config.camera.mouse_sensitivity
@@ -884,6 +896,7 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 		effective_ceiling = lerpf(_pitch, pitch_max, recover)
 	_pitch = clampf(wanted, effective_floor, effective_ceiling)
 	rotation.x = _pitch
+	_apply_move_view_targets(look_delta, body, delta)
 
 # --- the original's view rotation -------------------------------------------------
 #
@@ -895,19 +908,22 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 # (ProcessViewRotation), the pitch kept inside this rig's own limit. The rig's
 # own clamp, damping and settle easing are not used on this path.
 
-## The current move when it turns the view itself, else null. Pushed every
-## tick by MoveManager. Untyped: the rig knows nothing of moves beyond the one
-## call it makes.
+## The current move, pushed every tick by MoveManager, and whether it turns
+## the view itself (Move.uses_view_rotation()). One that does not still has
+## its look-at and camera reset applied after this rig's own clamp. Untyped:
+## the rig knows nothing of moves beyond the one call it makes.
 var _view_rotation_move = null
+var _view_rotation_owned: bool = false
 
 ## The view's pitch, radians, positive up: Controller.Rotation.Pitch.
 func view_pitch() -> float:
 	return _pitch
 
-func set_view_rotation_move(move) -> void:
-	if move != null and _view_rotation_move == null:
+func set_view_rotation_move(move, owns_view: bool) -> void:
+	if owns_view and not _view_rotation_owned:
 		clear_look_constraint()
 	_view_rotation_move = move
+	_view_rotation_owned = owns_view and move != null
 
 ## TdMove.ConstrainAxis. [ME:CONFIRMED decompile TdMove.uc] In rotator units:
 ## `angle` is where the view is relative to the pawn, `delta_angle` this
@@ -941,14 +957,39 @@ static func constrain_axis(angle: int, min_angle: int, max_angle: int, interpola
 		delta_angle = mini(delta_angle, int(delta_angle * dampening))
 	return delta_angle
 
-func _apply_move_view_rotation(look_delta: Vector2, body: Node3D, delta: float) -> void:
+## This frame's look input as the original's integer rotator delta (aTurn /
+## aLookUp truncated), (pitch, yaw).
+func _rotator_input(look_delta: Vector2) -> Vector2i:
 	var sensitivity: float = _config.camera.mouse_sensitivity
 	# The original's yaw grows clockwise; this rig's grows the other way.
-	var delta_rot := Vector2i(
+	return Vector2i(
 		int(-look_delta.y * sensitivity * UE.UNITS_PER_RADIAN),
 		int(look_delta.x * sensitivity * UE.UNITS_PER_RADIAN))
+
+static func _view_now(body: Node3D, delta: float) -> float:
+	return (body.get("world_time") as float) + delta if body.get("world_time") != null else 0.0
+
+## For a move that leaves the input to this rig: its UpdateViewRotation run on
+## the view the clamp has just produced, with the frame's input for it to read
+## (ZipLine's look assist ends on a yaw input), and only what it did to the
+## view kept -- the look-at and the reset. The delta it returns was already
+## applied, through the rig's clamp.
+func _apply_move_view_targets(look_delta: Vector2, body: Node3D, delta: float) -> void:
+	if _view_rotation_move == null or body == null:
+		return
 	var view := Vector2i(UE.pitch_units(_pitch), UE.yaw_units(body.rotation.y))
-	var now: float = (body.get("world_time") as float) + delta if body.get("world_time") != null else 0.0
+	var result: Array = _view_rotation_move.update_view_rotation(view, maxf(delta, 1e-6),
+		_rotator_input(look_delta), _view_now(body, delta))
+	var out: Vector2i = result[0]
+	if out == view:
+		return
+	_steer_view(wrapf(UE.godot_yaw(out.y) - body.rotation.y, -PI, PI),
+		UE.pitch_radians(UE.normalize_axis(out.x)) - _pitch, body)
+
+func _apply_move_view_rotation(look_delta: Vector2, body: Node3D, delta: float) -> void:
+	var delta_rot: Vector2i = _rotator_input(look_delta)
+	var view := Vector2i(UE.pitch_units(_pitch), UE.yaw_units(body.rotation.y))
+	var now: float = _view_now(body, delta)
 	var result: Array = _view_rotation_move.update_view_rotation(view, maxf(delta, 1e-6), delta_rot, now)
 	var out: Vector2i = result[0]
 	var through: Vector2i = result[1]

@@ -63,14 +63,11 @@ func enter(_previous: StringName) -> void:
 		player.camera_rig.kick_takeoff(player.horizontal_speed())
 	if legacy_launch_from != &"":
 		# The launch already happened, in the move that handed over.
-		if legacy_launch_from != TURN_180:
-			player.note_takeoff_ground_speed(player.horizontal_speed())
 		player.set_physics(PHYS_FALLING)
 		return
 	player.last_jump_location = player.global_position
 	wanted_jump_velocity = player.velocity
 	pre_jump_momentum = Vector2(wanted_jump_velocity.x, wanted_jump_velocity.z).length()
-	player.note_takeoff_ground_speed(pre_jump_momentum)
 	var forward: Vector3 = player.facing()
 	if forward.dot(player.velocity) > 10.0 * UU:
 		wanted_jump_velocity += config.pawn.jump_add_xy * forward

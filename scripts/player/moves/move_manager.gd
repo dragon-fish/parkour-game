@@ -309,8 +309,24 @@ func _candidates(state: StringName, action: int) -> Array:
 				Move.MA_STUMBLE_HARD:
 					return [Move.STUMBLE_HARD]
 		Move.MELEE_CROUCH:
+			# Listed twice in the original's switch; the first case wins, and it
+			# has only the stumble.
 			if action == Move.MA_STUMBLE:
 				return [Move.STUMBLE]
+		Move.MELEE:
+			match action:
+				Move.MA_SNATCH:
+					return [Move.SNATCH]
+				Move.MA_STUMBLE:
+					return [Move.STUMBLE]
+				Move.MA_STUMBLE_HARD:
+					return [Move.STUMBLE_HARD]
+		Move.MELEE_AIR:
+			match action:
+				Move.MA_STUMBLE:
+					return [Move.STUMBLE]
+				Move.MA_STUMBLE_HARD:
+					return [Move.STUMBLE_HARD]
 		Move.GRAB:
 			match action:
 				Move.MA_JUMP:
@@ -537,11 +553,12 @@ func _push_look_constraint() -> void:
 	if residual != null:
 		active = residual
 	rig.set_shoulder_centred(active != null and active.centre_shoulder)
-	# A ported move that turns the view the original's way owns it outright.
-	if residual == null and _current.uses_view_rotation():
-		rig.set_view_rotation_move(_current)
+	# A ported move that turns the view the original's way owns it outright;
+	# any other still has its look-at and camera reset applied.
+	var owns_view: bool = residual == null and _current.uses_view_rotation()
+	rig.set_view_rotation_move(_current, owns_view)
+	if owns_view:
 		return
-	rig.set_view_rotation_move(null)
 	if active == null or not active.constrain_look:
 		rig.clear_look_constraint()
 		return
