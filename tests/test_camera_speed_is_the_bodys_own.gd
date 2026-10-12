@@ -39,6 +39,10 @@ func test_what_carries_the_body_is_not_the_bodys_speed() -> void:
 	get_tree().root.add_child(platform)
 	_extra.append(platform)
 	platform.global_position = Vector3(0.0, -0.5, 0.0)
+	# A frame for the moves to reach the physics server. A body placed in the
+	# same frame can still find the floor where it was, stand on it, and keep
+	# reusing that floor after it has gone.
+	await step(1)
 	var player: Player = _world["player"]
 	player.global_position = Vector3(0.0, 0.95, 0.0)
 	await step(30)
