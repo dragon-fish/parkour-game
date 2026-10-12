@@ -4924,11 +4924,24 @@ func _slide_off_ledge() -> void:
 func shrink_collision() -> void:
 	set_capsule_height(config.pawn.custom_collision_height)
 
-## TdMove.EnlargeCollision: the standing height back, the feet where they were.
-## Deferred while there is no room overhead (request_standing_capsule()); the
-## original moves the pawn up regardless and teleports it if that is blocked.
+## TdMove.EnlargeCollision. [ME:CONFIRMED decompile] The standing size back
+## at once, and Location up the 29 uu with it -- moved, or put there with
+## SetLocation where the move is blocked, so the growth itself is never
+## refused (here the feet hold and the box grows up). Off the falling physics
+## the rise is 2 uu more, then the body steps down Pawn.MaxStepHeight along
+## -Floor. DO NOT defer it for headroom: the original does not.
+##
+## Grown into a ceiling, the two moves are not made. The original's
+## SetLocation leaves the pawn where it was, overlapping; Godot's
+## move_and_collide would first push the body out of the ceiling, down into
+## the floor, and the step down would carry it through.
 func enlarge_collision() -> void:
-	request_standing_capsule()
+	var on_ground: bool = physics != Move.PHYS_FALLING
+	var room: bool = has_headroom()
+	set_capsule_height(_standing_height)
+	if on_ground and room:
+		phys.move_actor(Vector3.UP * 2.0 * PawnPhysics.UU)
+		phys.move_actor(-floor_normal * config.pawn.max_step_down_height)
 
 ## TdMove.TestCanUnCrouch. [ME:CONFIRMED decompile N4 §3.1] The class
 ## default's whole standing box swept up 2 H - 122 uu from the centre: twice

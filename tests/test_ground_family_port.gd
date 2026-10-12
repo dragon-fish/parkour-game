@@ -293,3 +293,24 @@ func test_a_crouched_body_measures_its_fall_from_the_crouched_centre() -> void:
 	player.set_physics(Move.PHYS_FALLING)
 	assert_almost_eq(player.enter_falling_height, player.collision_center().y, 0.0001,
 		"EnterFallingHeight is not the crouched Location")
+
+## [ME:CONFIRMED decompile TdMove.EnlargeCollision] The standing size comes
+## back the moment the crouched move stops, room overhead or not, and a body
+## on the ground is stepped back down onto its floor.
+func test_the_standing_size_comes_back_at_once_and_on_the_floor() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var feet: float = player.global_position.y - player.standing_height() * 0.5
+	player.move_manager.start(Move.CROUCH)
+	player.move_manager.start(Move.WALKING)
+	# Within the walk's 2.15 uu hover of where it stood: the step down ends
+	# touching the floor.
+	assert_almost_eq(player.global_position.y - player.standing_height() * 0.5, feet, 0.025,
+		"the body was not stepped back down onto its floor")
+	player.move_manager.start(Move.CROUCH)
+	_box(Vector3(4.0, 0.2, 4.0), Vector2(player.global_position.x, player.global_position.z),
+		feet + 1.2 + 0.2)
+	await step(1)
+	player.move_manager.start(Move.WALKING)
+	assert_almost_eq(player.current_capsule_height(), player.standing_height(), 0.0001,
+		"the standing size was held back for headroom")
