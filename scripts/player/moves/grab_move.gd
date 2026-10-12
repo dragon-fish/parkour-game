@@ -495,10 +495,16 @@ func on_custom_anim_end(anim: StringName) -> void:
 		_drop_down()
 
 ## TdMove_Grab.UpdateGrabType, raised by the per-tick native when the legs
-## change between the wall and free: the strafe animation of the new kind.
+## change between the wall and free: the strafe animation of the new kind,
+## picked up where the last one was -- its normalized position times the
+## LAST animation's playback length, as the original computes it.
 func update_grab_type(moving_left: bool) -> void:
 	update_view_constraints()
+	var slot: CustomAnimSlot = player.anim_slot
+	var prev_position: float = slot.current_normalized_position()
+	var prev_length: float = slot.current_playback_length()
 	play_slot_anim(_strafe_anim(moving_left), 1.0, 0.2, 0.0)
+	slot.set_position(prev_position * prev_length)
 
 ## UTdMove_Grab's native PrePhysics. [ME:CONFIRMED decompile 0x01207a70]
 func pre_physics(delta: float) -> void:

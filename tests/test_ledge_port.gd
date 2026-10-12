@@ -521,3 +521,19 @@ func test_into_grab_refuses_a_ledge_in_any_movement_volume() -> void:
 	assert_true(player.in_movement_volume(Vector3(-5.0, 1.0, 0.0)), "the barbed wire was not found")
 	assert_false(player.in_movement_volume(Vector3(0.0, 1.0, 5.0)), "a modifier volume counted")
 	assert_false(player.in_movement_volume(Vector3(0.0, 1.0, -5.0)), "empty space counted")
+
+## [ME:CONFIRMED decompile TdMove_Grab.UpdateGrabType] The legs changing
+## between wall and free swap the strafe animation without restarting it: the
+## new one starts where the last had got to.
+func test_a_grab_type_change_keeps_the_strafe_where_it_was() -> void:
+	var player: Player = await _player()
+	_box(Vector3(4.0, 3.0, 2.0), Vector3(0.0, 1.5, -1.0))
+	await step(1)
+	var grab: GrabMove = _hang(player, 3.0, 0.0)
+	await step(70)
+	grab.play_slot_anim(&"HangStrafeRight", 1.0, 0.0, 0.0)
+	player.anim_slot.set_position(0.4)
+	grab.update_grab_type(true)
+	var now: CustomAnimSlot.Channel = player.anim_slot.current()
+	assert_ne(now.name, &"HangStrafeRight", "test setup: the strafe did not change")
+	assert_almost_eq(now.sequence_time(), 0.4, 0.001, "the new strafe started over")

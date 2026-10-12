@@ -108,6 +108,23 @@ func _find(anim: StringName) -> Channel:
 			return channels[i]
 	return null
 
+## AnimNodeSequence.SetPosition of the current animation: `seconds` into its
+## sequence, at rate 1.
+func set_position(seconds: float) -> void:
+	var c: Channel = current()
+	if c != null:
+		c.elapsed = seconds / maxf(absf(c.rate), 1e-6)
+
+## GetAnimPlaybackLength of the current animation: its length at its rate.
+func current_playback_length() -> float:
+	var c: Channel = current()
+	return c.length if c != null else 0.0
+
+## GetNormalizedPosition of the current animation, or 0.
+func current_normalized_position() -> float:
+	var c: Channel = current()
+	return clampf(c.elapsed / c.length, 0.0, 1.0) if c != null and c.length > 0.0 else 0.0
+
 ## AnimNodeSequence.GetNormalizedPosition of `anim`, or 0.
 func normalized_position(anim: StringName) -> float:
 	var c: Channel = _find(anim)
