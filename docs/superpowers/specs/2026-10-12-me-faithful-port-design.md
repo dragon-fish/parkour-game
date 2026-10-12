@@ -209,6 +209,10 @@
 
 ## 6. 收尾清单（合并 W2a / W2d / W2c 时积累的遗留项）
 
+镜头（视点位置、FOV、头部晃动、落地镜头效果、视角灵敏度管线）是本项目自己的设计，不属于操作手感，**不移植**。
+仍然移植的只有会改变移动结果的那部分：视角约束 `ConstrainAxis`（墙跑跳的推离方向、垂直蹬墙的入射判定都读镜头朝向）。
+
+
 - [ ] `face_rotation()` 缺原版下落中 5/s 的缓动
 - [ ] Barge、MeleeVault、Interact 没有设置原版的 `bDisableFaceRotation`
 - [ ] Swing、IntoZipLine、Interact 有几处直接写视角偏航，Pawn 偏航晚一帧才跟上
@@ -224,8 +228,6 @@
 - [ ] 两套动画槽并存：W2b 的 `CustomAnimSlot`（Pawn 级，管 OnCustomAnimEnd / OnCeaseRelevantRootMotion）
       与 W2d 每个 move 自带的 MoveAnim，应合成一套
 - [ ] 旧速度预算（`SpeedEnergy`、`seed_legacy_energy`、`legacy_turn_energy_per_radian`）在所有 move 移植完成后删除
-- [ ] 镜头输入管线：`TdPlayerInput`（灵敏度 28 × 倍率、FOV 系数、视角加速度、鼠标平滑）与 `UpdateRotation` 的 `RotSpeedMod`
-- [ ] 原版第一人称镜头动画（1P 骨架的 `CameraJoint` / `EyeJoint` 轨道）：是否引入、如何与本项目的头部晃动并存，需要先评估
 - [ ] `docs/feel-backlog.md` 对照移植结果逐条更新（标注被原版逻辑取代的条目）
 - [ ] 语料各章里被 15 章推翻的结论加上指向 15 章的更正
 - [ ] 合并前跑一次全量测试
