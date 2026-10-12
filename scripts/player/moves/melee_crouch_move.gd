@@ -46,7 +46,9 @@ func _trigger_move() -> void:
 func on_custom_anim_end(_anim_name: StringName) -> void:
 	match melee_state:
 		MS_ATTACK_FINISHING, MS_ATTACK_NORMAL:
-			# TestHit: no target, a miss.
+			# TestHit: no target, so whatever interactable is 120 uu ahead
+			# takes the barge, and it is a miss.
+			BargeMove.hit_all(player, BargeMove.find_barge_targets(player, cfg.barge_trace_distance))
 			_trigger_miss()
 		MS_HIT_FINISHING, MS_MISS_FINISHING, MS_MISS_NORMAL, MS_HIT_NORMAL:
 			if player.can_stand(player.collision_center() + Vector3.UP * 30.0 * UU):

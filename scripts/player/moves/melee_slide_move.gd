@@ -17,6 +17,8 @@ extends MeleeBaseMove
 const CROUCH_SLIDE_TO_CROUCH_LENGTH := 0.5
 const MELEE_SLIDE_LENGTH := 0.667
 const MELEE_SLIDE_HARD_LENGTH := 0.733
+## BargeTraceDistance. [ME:CONFIRMED decompile] 90 uu, a const of the class.
+const BARGE_TRACE_DISTANCE := 90.0 * UU
 
 var in_move: bool = false
 
@@ -45,6 +47,12 @@ func _trigger_move() -> void:
 		play_move_anim(&"MeleeSlide", MELEE_SLIDE_LENGTH)
 	in_move = true
 	set_timer(0.2542)
+	set_move_timer(0.33, false, _on_find_barge_target_timer)
+
+## OnFindBargeTargetTimer: with no pawn to kick (never one here), whatever
+## interactable is 90 uu ahead takes the barge.
+func _on_find_barge_target_timer() -> void:
+	BargeMove.hit_all(player, BargeMove.find_barge_targets(player, BARGE_TRACE_DISTANCE))
 
 func on_timer() -> void:
 	hit_detection = true

@@ -404,3 +404,91 @@ func test_a_button_behind_the_body_is_not_pressed() -> void:
 	await step(1)
 	assert_false(player.use_trigger(zone))
 	assert_eq(player.move_manager.current_name, Move.WALKING)
+
+## A BreakableGlass pane, an AnimatableBody3D across -Z at z = `z`.
+func _glass(z: float) -> BreakableGlass:
+	var holder := Node3D.new()
+	get_tree().root.add_child(holder)
+	_extra.append(holder)
+	var pane := AnimatableBody3D.new()
+	pane.name = "Pane"
+	pane.position = Vector3(0.0, 1.0, z)
+	var mesh := MeshInstance3D.new()
+	mesh.name = "Mesh"
+	var box := BoxMesh.new()
+	box.size = Vector3(2.0, 2.0, 0.05)
+	mesh.mesh = box
+	pane.add_child(mesh)
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = box.size
+	collision.shape = shape
+	pane.add_child(collision)
+	holder.add_child(pane)
+	var glass := BreakableGlass.new()
+	glass.pane = NodePath("../Pane")
+	holder.add_child(glass)
+	return glass
+
+## [ME:CONFIRMED decompile TdMove_Barge] The standing kick deals the barge on
+## MeleeKickObject's BargeHitNotify, 0.33 s in, and not before.
+func test_the_kick_breaks_a_pane_on_its_notify() -> void:
+	var player: Player = await _start()
+	var glass := _glass(-0.9)
+	await step(15)
+	assert_eq(player.move_manager.current_name, Move.WALKING, "test setup: not standing")
+	var input: ScriptedInputSource = _world["input"]
+	input.press_melee()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.BARGE, "test setup: no kick")
+	await step(15)
+	assert_false(glass.is_broken(), "the pane broke before the kick's notify")
+	await step(10)
+	assert_true(glass.is_broken(), "the kick did not break the pane")
+
+## [ME:CONFIRMED decompile TdMove_Barge] The shoulder at a run deals the barge
+## on the first thing it meets; running into a pane without one is stopped.
+func test_the_shoulder_breaks_a_pane_and_a_run_does_not() -> void:
+	var player: Player = await _start()
+	var glass := _glass(-6.0)
+	await step(15)
+	var input: ScriptedInputSource = _world["input"]
+	input.hold_move(0.0, 1.0)
+	for i in 120:
+		await step(1)
+		if player.global_position.z < -5.0:
+			break
+	await step(30)
+	assert_false(glass.is_broken(), "a run broke the pane")
+	assert_gt(player.global_position.z, -6.0, "the run went through the pane")
+	input.hold_move(0.0, 0.0)
+	await step(20)
+	player.global_position.z = -3.5
+	input.hold_move(0.0, 1.0)
+	var barged := false
+	for i in 120:
+		if not barged and player.global_position.z < -4.8:
+			input.press_melee()
+			barged = true
+		await step(1)
+		if glass.is_broken():
+			break
+	assert_true(glass.is_broken(), "the shoulder did not break the pane")
+
+## [ME:CONFIRMED decompile TdMove_MeleeAir.Bump] The flying kick breaks what
+## it runs into: Bump, which MoveActor raises on anything but the level's own
+## geometry.
+func test_the_flying_kick_breaks_a_pane_it_bumps() -> void:
+	var player: Player = await _start()
+	var glass := _glass(-0.8)
+	await step(15)
+	player.global_position.y += 0.3
+	player.velocity = Vector3(0.0, 0.0, -5.0)
+	var kick: MeleeAirMove = player.move_manager.move_for(Move.MELEE_AIR)
+	kick.melee_type = MeleeAirMove.MAT_FROM_JUMP
+	player.move_manager.start(Move.MELEE_AIR)
+	for i in 30:
+		await step(1)
+		if glass.is_broken():
+			break
+	assert_true(glass.is_broken(), "the flying kick did not break the pane it hit")

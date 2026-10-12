@@ -291,8 +291,16 @@ func move_actor(delta: Vector3) -> Dictionary:
 	_note_relative_location()
 	if collision == null:
 		return _miss()
+	var collider: Object = collision.get_collider()
+	# UWorld::MoveActor's bump: a blocking hit on anything but the level's own
+	# geometry, or the base the pawn stands on, is NotifyBump -- TdPawn.Bump,
+	# handed to the current move. HitWall, from the physics, comes as well.
+	if collider != null and not _is_world_geometry(collider) and collider != pawn.base:
+		var move = pawn.move_manager.current_move()
+		if move != null:
+			move.bump(collision.get_normal(), collider)
 	return {"time": time, "normal": collision.get_normal(),
-		"collider": collision.get_collider(), "position": collision.get_position()}
+		"collider": collider, "position": collision.get_position()}
 
 ## Godot's move_and_collide() first pushes a body out of anything it overlaps
 ## or sits within its safe margin of; UE3's MoveActor never moves a body it did

@@ -1,8 +1,8 @@
 class_name AirBargeMove
 extends BargeMove
 
-# The original's TdMove_AirBarge, ported without damage. [ME:CONFIRMED
-# decompile script TdMove_AirBarge, N5 §20]
+# The original's TdMove_AirBarge, ported. [ME:CONFIRMED decompile script
+# TdMove_AirBarge, N5 §20]
 #
 # Melee in the air asks this before the flying kick: an interactable within
 # 300 uu ahead (or half a second at the barge speed). Falling physics, the
@@ -84,14 +84,17 @@ func _apply_root_motion(delta: float) -> void:
 	_root_applied = forward
 	player.root_motion_velocity = player.facing() * (step / delta)
 
-## TryGiveBargeDamage, without the damage: the first thing hit halves the
-## velocity on the next frame.
-func try_give_barge_damage(_normal: Vector3, _collider: Object) -> void:
+## TryGiveBargeDamage: the first thing hit (HitWall or Bump) deals the barge
+## to every interactable the trace found -- at the location of what was hit,
+## not their own -- and halves the velocity on the next frame.
+func try_give_barge_damage(normal: Vector3, collider: Object) -> void:
 	if is_landing or has_dealt_damage:
 		return
 	has_dealt_damage = true
+	var at: Vector3 = (collider as Node3D).global_position if collider is Node3D else player.global_position
 	for entry in barge_actor_list:
 		if is_interactable(entry["collider"]):
+			hit_object(player, entry["collider"], at, normal)
 			pre_collision_velocity = player.velocity
 	if use_air_barge_anim:
 		_anim.play(&"AirBargeImpact", AIR_BARGE_IMPACT_LENGTH)

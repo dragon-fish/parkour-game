@@ -1,8 +1,7 @@
 extends ParkourTest
 
-# A pane stops a body that walks into it and breaks for one that runs into it,
-# letting the run carry through; a respawn puts it back.
-
+# A pane breaks on the barge and on nothing else: walked or run into, it
+# stops the body like any wall. A respawn puts it back.
 const RUNNER := """
 extends CharacterBody3D
 var speed := 0.0
@@ -46,15 +45,6 @@ func _scene(speed: float) -> Array:
 	var glass := BreakableGlass.new()
 	glass.name = "Glass"
 	glass.pane = NodePath("../Pane")
-	var reach := Area3D.new()
-	reach.name = "Reach"
-	reach.position = pane.position
-	var reach_shape := CollisionShape3D.new()
-	var reach_box := BoxShape3D.new()
-	reach_box.size = box.size + Vector3.ONE * 1.2
-	reach_shape.shape = reach_box
-	reach.add_child(reach_shape)
-	glass.add_child(reach)
 	holder.add_child(glass)
 	var script := GDScript.new()
 	script.source_code = RUNNER
@@ -80,13 +70,24 @@ func test_a_walk_into_the_pane_is_stopped() -> void:
 	assert_false(glass.is_broken(), "a walking pace broke the pane")
 	assert_gt(body.position.z, -2.0, "the walking body passed through an unbroken pane")
 
-func test_a_run_into_the_pane_breaks_it_and_carries_through() -> void:
+func test_a_run_into_the_pane_is_stopped_too() -> void:
+	# [ME:CONFIRMED Cranes Kismet] only TdDmgType_Barge breaks it; running into
+	# it deals none.
 	var parts := _scene(6.0)
 	await step(60)
 	var glass: BreakableGlass = parts[0]
 	var body: CharacterBody3D = parts[1]
-	assert_true(glass.is_broken(), "a run did not break the pane")
-	assert_lt(body.position.z, -3.0, "the run stopped at the pane instead of carrying through")
+	assert_false(glass.is_broken(), "a run broke the pane without a barge")
+	assert_gt(body.position.z, -2.0, "the run passed through an unbroken pane")
+
+func test_the_barge_breaks_the_pane() -> void:
+	var parts := _scene(0.0)
+	await step(2)
+	var glass: BreakableGlass = parts[0]
+	var pane: Node = glass.get_node(glass.pane)
+	assert_true(BargeMove.is_interactable(pane), "the pane is not interactable")
+	BargeMove.hit_object({"velocity": Vector3(0.0, 0.0, -5.0)}, pane, Vector3.ZERO, Vector3.BACK)
+	assert_true(glass.is_broken(), "the barge did not break the pane")
 
 func test_a_respawn_puts_the_pane_back() -> void:
 	var parts := _scene(6.0)

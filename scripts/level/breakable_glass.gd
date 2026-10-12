@@ -1,25 +1,20 @@
 class_name BreakableGlass
 extends Node3D
 
-## A pane the body smashes by running into it. [ME:CONFIRMED Cranes Kismet]
-## the original breaks it on TdDmgType_Barge, the damage of crashing into it;
-## this project's Barge moves the body but deals no damage, so the speed at
-## which the original would barge rather than kick decides. The pane is
-## interactable, so Melee in front of it barges (BargeMove).
+## A pane that breaks when barged. [ME:CONFIRMED Cranes Kismet] the original
+## breaks it on TdDmgType_Barge and on nothing else: a shoulder or a kick
+## (BargeMove), a flying kick (AirBargeMove, MeleeAirMove's Bump), a slide or
+## crouch kick (MeleeSlideMove, MeleeCrouchMove). Running into it is stopped
+## by it like any wall. The pane is interactable, so Melee in front of it
+## barges.
 ##
-## The pane is a mover of the level's geometry, pointed at by `pane`. Breaking
-## hides it and takes its collision away BEFORE the body moves this tick, so
-## the run carries straight through at full speed; the shards are thrown from
-## where it stood and fade away on their own.
-##
-## Reach is the Area3D child: the pane's bounds grown by enough to see a body
-## coming a tick before it arrives.
+## The pane is a mover of the level's geometry, pointed at by `pane`, and
+## carries BargeMove.BARGE_DAMAGE_META naming this node. Breaking hides it and
+## takes its collision away; the shards are thrown from where it stood and
+## fade away on their own.
 
 ## The pane's body, whose Mesh and CollisionShape3D children break.
 @export var pane: NodePath
-## [ME:CONFIRMED A1] TdMove_Barge.BargeKickThresholdSpeed = 250 uu/s: slower,
-## the original kicks instead. Speed TOWARD the pane, not the body's speed.
-@export var barge_speed: float = 2.5
 ## Roughly how big a shard is, in metres. A dial.
 @export var shard_size: float = 0.45
 ## How much of the body's velocity the shards take with them. A dial.
@@ -44,35 +39,17 @@ func _ready() -> void:
 	var body := get_node_or_null(pane) if not pane.is_empty() else null
 	if body != null:
 		body.add_to_group(BargeMove.INTERACTABLE_GROUP)
-	# Before the Player's own physics tick, so the pane is gone by the time the
-	# body moves into it.
-	process_physics_priority = -10
+		body.set_meta(BargeMove.BARGE_DAMAGE_META, self)
 
 
 func _physics_process(delta: float) -> void:
 	if _broken:
 		_age_shards(delta)
-		return
-	var reach := get_node_or_null("Reach") as Area3D
-	if reach == null:
-		return
-	for body in reach.get_overlapping_bodies():
-		if body is CharacterBody3D and body.has_method("touch_checkpoint") \
-				and approach_speed(body.global_position, (body as CharacterBody3D).velocity) >= barge_speed:
-			shatter((body as CharacterBody3D).velocity)
-			return
 
 
-## How fast something at `at` moving at `velocity` closes on the pane's plane.
-func approach_speed(at: Vector3, velocity: Vector3) -> float:
-	var frame := _pane_frame()
-	if frame.is_empty():
-		return 0.0
-	var normal: Vector3 = frame["normal"]
-	var side := signf((at - (frame["centre"] as Vector3)).dot(normal))
-	if side == 0.0:
-		side = 1.0
-	return -velocity.dot(normal * side)
+## TdDmgType_Barge dealt to the pane by a body moving at `velocity`.
+func take_barge_damage(velocity: Vector3) -> void:
+	shatter(velocity)
 
 
 ## Breaks the pane now, throwing the shards along `velocity`.

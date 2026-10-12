@@ -74,6 +74,13 @@ func _trigger_move() -> void:
 func on_timer() -> void:
 	hit_detection = true
 
+## TdMove_MeleeAir.Bump: an interactable bumped into takes the barge.
+func bump(normal: Vector3, collider: Object) -> void:
+	if not BargeMove.is_interactable(collider):
+		return
+	BargeMove.hit_object(player, collider, (collider as Node3D).global_position, -normal)
+	hit_detection = false
+
 func on_custom_anim_end(_anim_name: StringName) -> void:
 	player.move_manager.set_move(FALLING)
 	var falling: Move = player.move_manager.move_for(FALLING)

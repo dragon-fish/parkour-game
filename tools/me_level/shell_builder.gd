@@ -29,9 +29,6 @@ const PRESENCE_SCRIPT := preload("res://scripts/level/package_presence.gd")
 const PUPPET_SCRIPT := preload("res://scripts/level/puppet.gd")
 const KISMET_RUNNER_SCRIPT := preload("res://scripts/level/kismet/kismet_runner.gd")
 const KISMET_GRAPH_SCRIPT := preload("res://scripts/level/kismet/kismet_graph.gd")
-## How far out from a pane its Reach sees a body coming: a tick at a sprint
-## and then some. A dial.
-const GLASS_REACH_M := 0.6
 ## [ME:CONFIRMED] no jump or crouch in a moving lift car, and the speed is
 ## pinned to the base velocity: [ME:CONFIRMED 02 §2.3] 400 uu/s, 4.0 m/s,
 ## 14.4 km/h. Absolute, not a share of the current cap. Lift turns the
@@ -1161,8 +1158,8 @@ func _pain_volumes(annotations: Array) -> Node3D:
 	return group
 
 
-## Panes the body smashes by running into them (BreakableGlass). The pane is
-## the geometry's own mover; Reach is its bounds grown by GLASS_REACH_M.
+## Panes that break when barged (BreakableGlass). The pane is the geometry's
+## own mover.
 func _glass(manifest: Dictionary, movers: NodePath) -> Node3D:
 	var group := _group("Glass")
 	var placed := {}
@@ -1181,19 +1178,6 @@ func _glass(manifest: Dictionary, movers: NodePath) -> Node3D:
 		glass.name = names.take(a["name"])
 		glass.set("pane", NodePath(String(movers) + "/" + Common.mover_path(
 				Common.actor_id(pane["package"], pane["name"]), Common.mover_tree(manifest["placements"]))))
-		var lo := Common.v3(pane["aabb"]["min"])
-		var hi := Common.v3(pane["aabb"]["max"])
-		var reach := Area3D.new()
-		reach.name = "Reach"
-		reach.collision_mask = Arena.PLAYER_LAYER
-		reach.position = (lo + hi) * 0.5
-		var shape := BoxShape3D.new()
-		shape.size = (hi - lo) + Vector3.ONE * GLASS_REACH_M * 2.0
-		var collision := CollisionShape3D.new()
-		collision.name = "CollisionShape3D"
-		collision.shape = shape
-		reach.add_child(collision)
-		glass.add_child(reach)
 		_stamp(glass, a)
 		group.add_child(glass)
 	return group

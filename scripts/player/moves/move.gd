@@ -383,6 +383,12 @@ func landed(_normal: Vector3) -> void:
 func hit_wall(_normal: Vector3, _collider: Object) -> void:
 	pass
 
+## TdMove.Bump, through TdPawn.Bump: the pawn's own move ran into something
+## that is not the level's geometry (PawnPhysics.move_actor()). Empty in the
+## original's base.
+func bump(_normal: Vector3, _collider: Object) -> void:
+	pass
+
 ## TdMove.ReachedPreciseLocation. Empty in the original's base.
 func reached_precise_location() -> void:
 	pass

@@ -1,8 +1,8 @@
 class_name BargeMove
 extends PhysicsMove
 
-# The original's TdMove_Barge, ported without damage. [ME:CONFIRMED decompile
-# script TdMove_Barge, N5 §20]
+# The original's TdMove_Barge, ported. [ME:CONFIRMED decompile script
+# TdMove_Barge, N5 §20]
 #
 # Melee on the ground asks this before the punch: an interactable straight
 # ahead -- within BargeMinTraceDistance, or half a second at the barge speed
@@ -13,10 +13,16 @@ extends PhysicsMove
 # a standing kick with the move input off for 0.6 s. Either way the animation's
 # end is Walking.
 #
-# What counts as interactable (the original's bInteractable) is a collider in
-# INTERACTABLE_GROUP. The damage it would take is not ported.
+# The shoulder deals its damage on the first thing it meets (HitWall or Bump),
+# the kick on its animation's BargeHitNotify, 0.33 s in; both to everything the
+# trace found. What counts as interactable (the original's bInteractable) is a
+# collider in INTERACTABLE_GROUP.
 
 const INTERACTABLE_GROUP := &"interactable"
+## On a collider: the node that takes TdDmgType_Barge for it (hit_object()).
+const BARGE_DAMAGE_META := &"barge_damage"
+## MeleeKickObject's BargeHitNotify, seconds in. [ME:CONFIRMED anims]
+const KICK_HIT_NOTIFY_TIME := 0.33
 
 ## The original's 1P sequence lengths, seconds. [ME:CONFIRMED anims]
 const BARGE_IN_LENGTH := 0.6
@@ -39,6 +45,23 @@ func is_ported() -> bool:
 
 static func is_interactable(collider: Object) -> bool:
 	return collider is Node and (collider as Node).is_in_group(INTERACTABLE_GROUP)
+
+## HitObject: 100 of TdDmgType_Barge to `victim`, which in this project only a
+## BreakableGlass's pane can take, through BARGE_DAMAGE_META. A KActor would
+## also be pushed (ApplyImpulse); this project has no interactable KActors.
+static func hit_object(player, victim: Object, _location: Vector3, _normal: Vector3) -> void:
+	if not is_instance_valid(victim) or not (victim is Node) or not victim.has_meta(BARGE_DAMAGE_META):
+		return
+	var receiver = victim.get_meta(BARGE_DAMAGE_META)
+	if is_instance_valid(receiver):
+		receiver.take_barge_damage(player.velocity)
+
+## Every interactable the trace found, as TdMove_Barge and the slide and
+## crouch kicks deliver it: at its own hit location and normal.
+static func hit_all(player, list: Array) -> void:
+	for entry in list:
+		if is_interactable(entry["collider"]):
+			hit_object(player, entry["collider"], entry["position"], entry["normal"])
 
 ## CalcBargeDamage's trace: the first thing on the line from `start` to `end`,
 ## kept when it is interactable. A trigger that does not block is passed
@@ -116,8 +139,11 @@ func abort_barge() -> void:
 func hit_wall(normal: Vector3, collider: Object) -> void:
 	try_give_barge_damage(normal, collider)
 
-## TryGiveBargeDamage, without the damage: the shoulder meets something and
-## stops where it is.
+func bump(normal: Vector3, collider: Object) -> void:
+	try_give_barge_damage(normal, collider)
+
+## TryGiveBargeDamage: the shoulder meets something, stops where it is, and
+## deals the barge to what the trace found.
 func try_give_barge_damage(_normal: Vector3, collider: Object) -> void:
 	if not barge_with_hands:
 		return
@@ -125,13 +151,24 @@ func try_give_barge_damage(_normal: Vector3, collider: Object) -> void:
 		return
 	has_dealt_damage = true
 	set_precise_location(player.global_position, Vector2(player.velocity.x, player.velocity.z).length(), PLM_WALK)
+	hit_all(player, barge_actor_list)
 	_anim.play(&"BargeOutLeft", BARGE_OUT_LENGTH)
+
+## BargeHitNotify, the kick's: once.
+func barge_hit_notify() -> void:
+	if has_dealt_damage:
+		return
+	has_dealt_damage = true
+	hit_all(player, barge_actor_list)
 
 func on_custom_anim_end(_anim_name: StringName) -> void:
 	player.move_manager.set_move(WALKING)
 
 func tick_move(delta: float) -> void:
 	super.tick_move(delta)
+	if _anim.name == &"MeleeKickObject" and _anim.elapsed < KICK_HIT_NOTIFY_TIME \
+			and _anim.elapsed + delta >= KICK_HIT_NOTIFY_TIME:
+		barge_hit_notify()
 	var ended: StringName = _anim.advance(delta)
 	if ended != &"":
 		on_custom_anim_end(ended)
