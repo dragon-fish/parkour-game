@@ -50,6 +50,3 @@ func _init() -> void:
 	check_for_grab = true
 	check_for_vault_over = true
 	friction_modifier = 0.3
-	# A kick or a fall off the wall counts from where it left. See
-	# MoveConfig.fall_counts_from_exit.
-	fall_counts_from_exit = true

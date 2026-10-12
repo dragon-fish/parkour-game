@@ -60,9 +60,6 @@ extends MoveConfig
 
 func _init() -> void:
 	redo_move_time = 0.15
-	# A kick off the wall counts its fall from where it left the wall. See
-	# MoveConfig.fall_counts_from_exit.
-	fall_counts_from_exit = true
 	# bConstrainLook with bUseAbsoluteYawConstraint: the yaw window is the
 	# world one WallRunMove builds from the wall; the pitch is +-13000.
 	# Original's sense (yaw positive turning right), radians.

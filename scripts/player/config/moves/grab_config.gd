@@ -38,8 +38,6 @@ func _init() -> void:
 	# This project's hook: the torus wrap waits while the move holds a world
 	# position.
 	holds_world_path = true
-	# The drop off a hang counts from the hands.
-	fall_counts_from_exit = true
 	# The model holds its heading while the view turns; the spine does not twist.
 	freeze_visual_yaw = true
 	allows_spine_twist = false

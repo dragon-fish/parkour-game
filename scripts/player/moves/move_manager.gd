@@ -149,14 +149,10 @@ func _switch(next: StringName, arm_cooldown: bool) -> void:
 	var from: StringName = current_name
 	var leaving: Move = _current
 	if leaving != null:
-		var leaving_cfg: MoveConfig = leaving.current_config()
 		leaving.exit()
 		leaving.end_move()
 		if arm_cooldown and not leaving.is_ported():
 			_arm_cooldown(from, leaving)
-		# See MoveConfig.fall_counts_from_exit.
-		if player != null and leaving_cfg != null and leaving_cfg.fall_counts_from_exit:
-			player.fall_tracker.reset(player.global_position.y)
 	if player != null:
 		player.old_movement_state = from
 		player.movement_state = next

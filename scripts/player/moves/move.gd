@@ -292,6 +292,8 @@ func td_can_do_move() -> bool:
 		return false
 	if player.is_dying():
 		return false
+	# NOT THE ORIGINAL'S: a level's block on the move (Status BLOCK_*), this
+	# project's own level feature, refused here so every move inherits it.
 	if player.statuses != null and player.statuses.is_move_blocked(move_name):
 		return false
 	return true
@@ -742,6 +744,11 @@ func update_view_rotation(view: Vector2i, dt: float, delta_rot: Vector2i, now: f
 		else:
 			abort_look_at_target()
 	var pawn_yaw_units: int = UE.yaw_units(player.pawn_yaw)
+	# The original asks bConstrainLook || PawnOwner.bConstrainLook. The pawn's
+	# is only ever raised by UpdateAgainstWall, whose constraint half is not
+	# resolved (N3 §6: what it copies, and into which object); with TdMove's
+	# zero Min/MaxLookConstraint it would pin the view, which the game does
+	# not do. Not carried until that is read.
 	if cfg != null and constrains_look():
 		var before: Vector2i = delta_rot
 		var controller_delta := Vector2i(UE.normalize_axis(UE.normalize_axis(out.x)),

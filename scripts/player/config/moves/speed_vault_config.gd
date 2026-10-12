@@ -85,6 +85,3 @@ func _init() -> void:
 	constrain_look = true
 	min_look_constraint = Vector3(-3000.0, -8000.0, -32768.0) / UE.UNITS_PER_RADIAN
 	max_look_constraint = Vector3(6000.0, 8000.0, 32768.0) / UE.UNITS_PER_RADIAN
-	# A drop behind the obstacle counts from its top. See
-	# MoveConfig.fall_counts_from_exit.
-	fall_counts_from_exit = true
