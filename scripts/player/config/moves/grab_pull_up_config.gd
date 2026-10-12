@@ -13,6 +13,10 @@ func _init() -> void:
 	# This project's hook: the torus wrap waits while the move holds a world
 	# position.
 	holds_world_path = true
+	# This project's presentation, as on the hang: the hands are still on the
+	# ledge for the climb, so a chest that twisted with the head would take the
+	# arms off it (MoveConfig.allows_spine_twist).
+	allows_spine_twist = false
 	# bConstrainLook, relative to the pawn: pitch 0 .. 16384, yaw +-10000.
 	constrain_look = true
 	min_look_constraint = Vector3(0.0, -10000.0, 0.0) / UE.UNITS_PER_RADIAN
