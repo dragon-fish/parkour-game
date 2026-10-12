@@ -249,7 +249,7 @@ func bleed_toward_speed(speed: float, delta: float) -> void:
 	_rebase_decay()
 
 ## Lowers the budget to what buys `speed` at once, never raises it -- for a
-## loss the original takes in one go (Player.dodge_launch()).
+## loss taken in one go.
 ##
 ## REBASES ONLY WHEN IT LOWERS. The decay curve is steepest at its start, so a
 ## caller asking every tick -- a slide following its own bleed, a stick held

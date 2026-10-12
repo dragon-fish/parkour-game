@@ -61,6 +61,8 @@ func settle_landing(delta: float) -> StringName:
 			# outlive the landing, with no move left to take it down.
 			player.pending_chute_hurt = true
 		player.set_grounded(true)
+		# The slide reads the chute it starts on from the physics' finding.
+		player.uncontrolled_slide_normal = player.touched_chute().get("normal", Vector3.UP)
 		return RAMP_SLIDE
 
 	if not player.is_on_floor() and not on_chute:
@@ -95,8 +97,6 @@ func uses_original_landing() -> bool:
 ## of the original's.
 func _legacy_landing(_delta: float) -> StringName:
 	var fall_height: float = player.last_landing_fall_height
-	if player.consume_forced_hard_landing():
-		fall_height = maxf(fall_height, config.pawn.hard_landing_height)
 	var on_back: bool = player.consume_back_landing()
 	var rolled: bool = not on_back \
 		and not player.statuses.is_move_blocked(SKILL_ROLL) \

@@ -10,8 +10,8 @@ var move := Vector2.ZERO
 ## How far the strafe AXIS ITSELF is pushed, BEFORE the normalisation above,
 ## in -1..1. Not derivable from `move.x`: normalising throws away the
 ## difference between a key (which is always full-scale) and a stick held
-## halfway, and those are the two cases DodgeJumpConfig.strafe_threshold has
-## to tell apart.
+## halfway. The original's dodge gate is the hint's bMoveActionMax, which is
+## taken from the raw axes (Player.set_input_hint()).
 ##
 ## [ME:CONFIRMED 04 §4.5] the original fires a dodge from W+A, whose strafe
 ## axis reads 1.0 on a keyboard where a stick would read 0.707. Every OTHER consumer of

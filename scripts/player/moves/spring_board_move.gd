@@ -1,262 +1,145 @@
 class_name SpringBoardMove
-extends AirborneMove
+extends PhysicsMove
 
-# The original's TdMove_SpringBoard, faithful to the first game: two foot
-# plants the terrain provides, a walk up to the first, two scripted steps with
-# no gravity, a throw at the biggest vertical impulse in the game, and the
-# rise kept by this move until the apex. See
-# docs/superpowers/specs/2026-08-31-spring-board-design.md for the
-# measurements every number here comes from.
+# The original's TdMove_SpringBoard, ported. [ME:CONFIRMED decompile]
 #
-# FOUR PHASES IN ONE MOVE, and the first and last are the reason it is one:
-# [ME:CONFIRMED] a recording of the original holds SpringBoarding from the
-# jump press, through 0.1-0.2 s of ordinary walking up to the first face,
-# through the 0.4 s climb, and on through the whole 0.6 s rise -- Falling only
-# takes over at the apex. Kept here rather than handed to JumpMove so the rise
-# runs the three probes the CDO gives this move, not Jump's. A crouch on it
-# is a coil: [ME:CONFIRMED decompile 15.3] SpringBoard + crouch asks Coil in
-# the action table.
+# The action table asks it on a ground jump after DodgeJump and before Jump,
+# once FindLedgeInFrontOfPlayer has run. CanDoMove looks for the two plants:
+# the found ledge, 64 uu (+-20) above the feet and reachable within
+# CheckDistanceTime at the average speed of the last quarter second; and a
+# second ledge found by a box sweep from over the first, 112 uu (+-20) beyond
+# it along its own face normal, standable, flat enough.
 #
-# Extends AirborneMove for the rise's air physics and probes, and COMPOSES a
-# ScriptedMove for the two steps -- the same shape LadderMove gives its top
-# exit, because GDScript has no second base class.
+# Then PHYS_Flying with collision off, move input ignored, and three precise
+# locations: a walk (PLM_Walk) to within 120 uu of the first plant at 1.2x the
+# arrival speed, a flight to 65 uu over the first plant and one to 92 uu over
+# the second, 0.2 s each by their horizontal distance. Reaching the last one
+# throws the body along the pawn's facing at max(400, arrival - 100) uu/s and
+# 950 uu/s up, gives collision back and sets PHYS_Falling. The move stays on
+# for the rise, with its grab / vault / wall checks held off until 0.7 s after
+# it started and its exit to Falling below -400 uu/s.
 
-enum Phase { APPROACH, STEP_1, STEP_2, RISE }
-
-## The step being walked, and the arc it is on. A child so its lifetime is
-## this move's; see LadderMove._top_exit.
-var _hop: ScriptedMove = ScriptedMove.new()
-var _phase: Phase = Phase.APPROACH
-var _plant_1: Vector3 = Vector3.ZERO
-var _plant_2: Vector3 = Vector3.ZERO
-## Horizontal speed at entry -- what the throw is priced against. Read
-## BEFORE anything zeroes velocity (the steps do), the same trap
-## BalanceMove.enter() documents.
-var _entry_speed: float = 0.0
-var _approach_time: float = 0.0
-var _launched: bool = false
-var _aborted: bool = false
-
-func _ready() -> void:
-	super._ready()
-	add_child(_hop)
+## TdMove_SpringBoard.SpringBoardState: 0 the walk-up, 1 and 2 the two plants,
+## 3 thrown (this project's, for the presentation).
+var spring_board_state: int = 0
+## TdMove_SpringBoard.SavedInitialSpeed, uu/s as the original keeps it.
+var saved_initial_speed: int = 200
+var intermediate_foot_plant: Vector3 = Vector3.ZERO
+var spring_board_foot_plant: Vector3 = Vector3.ZERO
 
 func _init() -> void:
-	# [ME:CONFIRMED decompile] TdMove_SpringBoard's PawnPhysics. This move still drives the
-	# body itself; the mode is what the original's checks and the fall height
-	# read while it runs.
+	super._init()
 	pawn_physics = PHYS_FLYING
+	controller_state = CS_PLAYER_WALKING
+	check_exit_to_falling = true
+	delay_time_check_auto_moves = 0.7
+	disable_movement_time = -1.0
 
-## TdMove_SpringBoard.CanDoMove, through this project's own foot-plant probe
-## until the original's (FindLedge on the found ledge, then a second plant) is
-## ported. Like the original's, it records the plants it accepted.
-func can_do_move() -> bool:
-	if not super.can_do_move() or player.probes == null:
-		return false
-	var board: Dictionary = player.probes.springboard_query()
-	if not board["valid"] or not player.fits_standing_at(board["plant_1"]) \
-			or not player.fits_standing_at(board["plant_2"]):
-		return false
-	player.pending_spring_board = board
+func is_ported() -> bool:
 	return true
 
+## TdMove_SpringBoard.CanDoMove.
+func can_do_move() -> bool:
+	if not td_can_do_move() or not player.found_ledge:
+		return false
+	var loc: Vector3 = player.global_position
+	var feet_y: float = loc.y - player.collision_half_height()
+	var ledge: Vector3 = player.move_ledge_location
+	var ledge_height: float = ledge.y - feet_y
+	var distance_to_step: float = Vector2(ledge.x - loc.x, ledge.z - loc.z).length()
+	if distance_to_step < 20.0 * UU:
+		return false
+	# Max(1, int(GetAverageSpeed(0.25))), in uu/s as the original divides.
+	var average_uu: int = maxi(1, int(player.get_average_speed(0.25) / UU))
+	var time_to_ledge: float = (distance_to_step / UU) / float(average_uu)
+	if time_to_ledge > cfg.check_distance_time:
+		return false
+	if absf(ledge_height - cfg.plant_1_height) >= 20.0 * UU:
+		return false
+	var extent := Vector3(4.0 * UU, (cfg.plant_2_max_height - cfg.plant_2_min_height) * 0.5, 4.0 * UU)
+	var start := Vector3(ledge.x, feet_y + cfg.plant_2_min_height + extent.y, ledge.z)
+	var end: Vector3 = start + player.pawn_facing() * cfg.plant_spacing * 1.414
+	var foot: Dictionary = player.find_ledge(start, end, extent)
+	if foot.is_empty():
+		return false
+	var foot_ledge: Vector3 = foot["ledge_location"]
+	if not player.can_stand(foot_ledge + Vector3.UP * (player.default_collision_half_height() + 4.0 * UU)):
+		return false
+	var foot_normal: Vector3 = foot["ledge_normal"]
+	if foot_normal.y < 0.8:
+		return false
+	# FeetExcluded: the level's no-interaction mark (Probes.is_inert()).
+	# [ME:INFERRED] the original reads the hit actor's and component's foot bits.
+	if Probes.is_inert(foot.get("collider")):
+		return false
+	var plant_normal: Vector3 = PawnPhysics.safe_normal_2d(foot["move_normal"])
+	var between: Vector3 = foot_ledge - ledge
+	var along: Vector3 = plant_normal * between.dot(plant_normal)
+	if absf(Vector2(along.x, along.z).length() - cfg.plant_spacing) >= 20.0 * UU:
+		return false
+	intermediate_foot_plant = ledge + Vector3.UP * 65.0 * UU
+	spring_board_foot_plant = foot_ledge + Vector3.UP * 92.0 * UU
+	return true
+
+## TdMove_SpringBoard.StartMove.
 func enter(_previous: StringName) -> void:
-	var board: Dictionary = player.pending_spring_board
-	player.pending_spring_board = {}
-	_aborted = board.is_empty() or not bool(board.get("valid", false))
-	_launched = false
-	# ABOVE THE ABORT, the way LadderMove resets _top_exiting above its own:
-	# an interrupted move left mid-step keeps whatever phase it died in, and
-	# is_stepping()/scripted_duration() would then answer for a move that is
-	# not running -- which is exactly what CharacterAnimator routes on.
-	_phase = Phase.APPROACH
-	if _aborted:
-		return
-	_plant_1 = board["plant_1"]
-	_plant_2 = board["plant_2"]
-	_entry_speed = player.horizontal_speed()
-	_approach_time = 0.0
-	_hop.player = player
-	# The feet are on things for the whole of the walk and the steps:
-	# declared, never inferred, and set again every tick below.
-	player.set_grounded(true)
-	# NO INPUT LOCK. [ME:CONFIRMED] ControllerState = PlayerWalking and no
-	# bConstrainLook: the view stays live for the whole climb, which is what
-	# lets a fast mouse throw the body backwards. A lock would substitute an
-	# empty MoveInput and freeze the look with it, putting that behaviour out
-	# of reach. Movement keys are ignored by construction instead -- the
-	# approach and the steps never read input.move.
-	# The model faces along the plants for the steps; the capsule keeps
-	# following the view, which is what the throw reads.
-	var along: Vector3 = _plant_2 - _plant_1
-	along.y = 0.0
-	if along.length_squared() > 0.0001:
-		along = along.normalized()
-		player.pin_visual_yaw(atan2(-along.x, -along.z))
-	# The arcs carry the whole climb; a clip lifting its own hips on top
-	# would double it -- the gate every scripted carry arms.
-	player.set_clip_lift_cancelled(true)
+	saved_initial_speed = maxi(200, int(player.horizontal_speed() / UU))
+	spring_board_state = 0
+	var to_ledge: Vector3 = intermediate_foot_plant - player.global_position
+	to_ledge.y = 0.0
+	if to_ledge.length() > 120.0 * UU:
+		set_precise_location(player.global_position + to_ledge.normalized() * (to_ledge.length() - 120.0 * UU),
+			float(saved_initial_speed) * 1.2 * UU, PLM_WALK)
+	else:
+		reached_precise_location()
+	player.collide_world = false
 
+## TdMove_SpringBoard.ReachedPreciseLocation: the next plant, or the throw.
+func reached_precise_location() -> void:
+	match spring_board_state:
+		0:
+			set_precise_location(intermediate_foot_plant,
+				_flat_distance(intermediate_foot_plant) / cfg.step_time_1, PLM_FLY)
+			spring_board_state = 1
+		1:
+			set_precise_location(spring_board_foot_plant,
+				_flat_distance(spring_board_foot_plant) / cfg.step_time_2, PLM_FLY)
+			spring_board_state = 2
+		2:
+			var xy: float = maxf(cfg.xy_min, float(saved_initial_speed) * UU + cfg.xy_add)
+			var v: Vector3 = player.pawn_facing() * xy
+			v.y = cfg.jump_z
+			if player.base_velocity.y > 0.0:
+				v.y += player.base_velocity.y
+			player.velocity = v
+			player.last_jump_location = player.global_position
+			player.collide_world = true
+			player.set_physics(PHYS_FALLING)
+			player.stop_ignore_move_input()
+			use_precise_location = false
+			spring_board_state = 3
+
+func _flat_distance(to: Vector3) -> float:
+	return Vector2(to.x - player.global_position.x, to.z - player.global_position.z).length()
+
+## TdMove_SpringBoard.StopMove: collision back.
 func exit() -> void:
-	player.set_clip_lift_cancelled(false)
+	player.collide_world = true
 
-func physics_update(delta: float, input: MoveInput) -> StringName:
-	if _aborted:
-		player.set_grounded(player.is_on_floor())
-		return WALKING
-	match _phase:
-		Phase.APPROACH:
-			return _approach(delta)
-		Phase.STEP_1, Phase.STEP_2:
-			return _step(delta)
-		Phase.RISE:
-			return _rise(delta, input)
-	return KEEP
-
-## Walking on to the first plant until the feet are within plant_reach of it.
-## [ME:CONFIRMED] the recording: 0.1-0.2 s of ordinary travel between the
-## press and the climb. Timed out rather than waited on forever: a body that
-## never gets there -- the press was taken from further out than the walk can
-## cover -- is handed back to walk.
-##
-## DRIVEN, NOT COASTED. Movement input is ignored by construction -- neither
-## this phase nor the steps read input.move -- so nothing else is pushing the
-## body: a press taken from a standstill would coast nowhere and time out,
-## which would make a spring board something only a run can have.
-##
-## AT NO LESS THAN THE THROW'S OWN FLOOR SPEED, xy_min, and never below the
-## speed the body arrived with -- a run must not be braked on its way in. The
-## band this phase has to cover is trigger_distance minus plant_reach, 1.6 m,
-## which at that speed is 0.4 s.
-##
-## ENDS BY REACH ALONE, and plant_reach is sized for the tightest shape there
-## is: a plant on a box sits INSIDE the face (springboard_query walks each
-## plant off the lip it was found on, so 0.1-0.2 m in) while the capsule's own
-## radius holds the feet 0.4 m short of that face, so the gap floors out
-## around 0.5 m and plant_reach has to cover the sum.
-##
-## A STALL DETECTOR WAS TRIED HERE AND REMOVED -- ending the walk-up on "the
-## drive stopped carrying the body" instead of on reach. DO NOT re-add it
-## without first bounding the gap to the PLANT: it fires on whatever blocks
-## the body, which need not be the plant at all, so a wall standing between
-## the feet and a plant found past it starts the climb and arcs the body
-## through the wall. The symptom it was written for -- the move entered, then
-## abandoned to walking, the ordinary step-up lifting the body onto the first
-## tier, which reads in play as sticking on the first step -- never reproduced
-## on committed code: measured on the debug gallery, the gap settles at
-## 0.4-0.5 m, inside plant_reach with room to spare.
-func _approach(delta: float) -> StringName:
-	_approach_time += delta
-	var feet := Vector3(player.global_position.x, player.probes.feet_y(), player.global_position.z)
-	var gap := Vector3(_plant_1.x - feet.x, 0.0, _plant_1.z - feet.z)
-	if gap.length() <= cfg.plant_reach:
-		_begin_step(_plant_1, cfg.step_time_1)
-		_phase = Phase.STEP_1
-		return KEEP
-	if _approach_time >= cfg.approach_timeout:
-		player.set_grounded(player.is_on_floor())
-		return WALKING
-	var toward: Vector3 = gap.normalized()
-	player.ground_accelerate(toward, maxf(_entry_speed, cfg.xy_min), delta,
-		player.ground_grade(toward))
-	# The same downward bias WalkingMove keeps: without it is_on_floor()
-	# flickers across a seam and the walk-up leaves the ground for a tick.
-	player.velocity.y = -config.pawn.floor_snap_speed
-	player.move_and_slide()
-	player.set_grounded(true)
-	return KEEP
-
-## One step: a small arc from where the body is to `plant`, the capsule's
-## centre a half height above the plant, peaking plant_arc_height above the
-## higher end. ScriptedMove's one bezier, the shape every scripted carry
-## shares (see its sample()).
-func _begin_step(plant: Vector3, duration: float) -> void:
-	var from: Vector3 = player.global_position
-	var to: Vector3 = plant + Vector3.UP * (player.standing_height() * 0.5)
-	var apex: float = maxf(from.y, to.y) + cfg.plant_arc_height
-	_hop.begin(from, to, duration, apex, cfg.plant_arc_bias)
-	# NO GRAVITY THROUGH THE STEPS. [ME:CONFIRMED] PawnPhysics = PHYS_Flying:
-	# the arc owns the body outright and velocity means nothing until the
-	# throw writes it.
-	player.velocity = Vector3.ZERO
-
-func _step(delta: float) -> StringName:
-	player.set_grounded(true)
-	if not _hop.advance(delta):
-		return KEEP
-	if _phase == Phase.STEP_1:
-		_begin_step(_plant_2, cfg.step_time_2)
-		_phase = Phase.STEP_2
-		return KEEP
-	_launch()
-	return KEEP
-
-## The throw, the tick the second step lands.
-##
-## THE CAMERA'S WAY, READ NOW. [ME:CONFIRMED] the owner, twice in the
-## original: in at an angle, out at that angle; turn the view right round
-## during the steps and the body is thrown backwards. The capsule's yaw IS the
-## view's, in both of this project's views, so it is read off the capsule.
-## Priced against the speed the body ARRIVED with: [ME:CONFIRMED] a 5.75 m/s
-## walk left at 4.5, and a standing start left at 4.0 -- xy_add and xy_min.
-func _launch() -> void:
-	var dir: Vector3 = -player.global_transform.basis.z
-	dir.y = 0.0
-	if dir.length_squared() < 0.0001:
-		dir = _plant_2 - _plant_1
-		dir.y = 0.0
-	dir = dir.normalized()
-	var xy: float = maxf(_entry_speed + cfg.xy_add, cfg.xy_min)
-	player.velocity = dir * xy + Vector3.UP * cfg.jump_z
-	# REPINNED TO THE THROW, because freeze_visual_yaw holds this move's pin
-	# for the whole rise: left facing along the plants the model flies 0.6 s
-	# sideways and snaps round the moment Falling takes over. The model
-	# follows displacement, and from this tick the displacement is the
-	# throw's.
-	player.pin_visual_yaw(atan2(-dir.x, -dir.z))
-	# The fall is measured from the launch, not from the ground the walk
-	# began on: a spring board is not a 1.2 m drop before it has even risen.
-	player.fall_tracker.reset(player.global_position.y)
-	# [ME:CONFIRMED decompile] TdMove_SpringBoard sets PHYS_Falling with the
-	# throw, which stamps EnterFallingHeight here.
-	player.set_physics(PHYS_FALLING)
-	player.set_grounded(false)
-	player.set_clip_lift_cancelled(false)
-	_launched = true
-	_phase = Phase.RISE
-
-## The rise, kept here until the apex. Air physics (a coil is the action
-## table's, MoveManager), the config's own probes (grab, vault
-## over, wall climb -- [ME:CONFIRMED] the three bCheckFor* on the CDO), and
-## Falling the tick the vertical speed is gone ([ME:CONFIRMED]
-## bCheckExitToFalling).
-func _rise(delta: float, input: MoveInput) -> StringName:
-	apply_air_physics(delta, player.wish_direction(input))
-	var probed := probe_transition()
-	if probed != KEEP:
-		player.set_grounded(false)
-		return probed
-	if player.velocity.y <= 0.0:
-		return advance_and_hand_off(FALLING)
-	return settle_landing(delta)
-
-## True through the two scripted steps. Read by CharacterAnimator and tests.
+## True through the two flights onto the plants. Read by CharacterAnimator.
 func is_stepping() -> bool:
-	return _phase == Phase.STEP_1 or _phase == Phase.STEP_2
+	return spring_board_state == 1 or spring_board_state == 2
 
-## True once the throw has been written. Read by tests.
+## True once the throw has been made. Read by CharacterAnimator.
 func has_launched() -> bool:
-	return _launched
+	return spring_board_state == 3
 
-## The scripted-fit hook (CharacterAnimator._scripted_fit): the whole climb,
-## both steps, is one window for the clip; 0 outside the steps.
+## The scripted-fit hook (CharacterAnimator._scripted_fit): the two flights,
+## one window for the clip; 0 outside them.
 func scripted_duration() -> float:
 	return cfg.step_time_1 + cfg.step_time_2 if is_stepping() else 0.0
 
-## For the debug HUD's scripted row and the animation lab, which draw the
-## real curve rather than a picture of a second implementation.
+## The debug views draw a scripted path when a move has one; the plants'
+## flights are precise locations, not a curve.
 func path_debug() -> Dictionary:
-	return _hop.path_debug() if is_stepping() else {}
-
-func sample(t: float) -> Vector3:
-	return _hop.sample(t)
+	return {}

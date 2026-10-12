@@ -139,9 +139,8 @@ var last_landing_fall_height: float = 0.0
 ## Whether the last landing ended an airborne stretch with a coil in it.
 ## Read by the camera's landing nod.
 var last_landing_coiled: bool = false
-## Whether the capsule is still the coil's: centre-shrunk, and kept that way
-## through the fall after the tuck ends, until MoveManager hands the body to a
-## move that is not airborne. See CoilMove.exit() and release_coil_capsule().
+## Whether the body is coiled: set by CoilMove for as long as it runs, for the
+## presentation's tuck.
 var coil_capsule_held: bool = false
 ## Whether a coil has been taken since the body last touched down. Set by
 ## CoilMove.enter(), read into last_landing_coiled by the landing, cleared by
@@ -151,12 +150,6 @@ var coiled_since_ground: bool = false
 var last_input: MoveInput = MoveInput.new()
 
 var _input_locked: bool = false
-
-## The two foot plants the spring board about to start was admitted on --
-## WalkingMove's own springboard_query() result -- so SpringBoardMove.enter()
-## does not probe again from a body that has moved a tick since. One-shot:
-## SpringBoardMove.enter() reads it and clears it.
-var pending_spring_board: Dictionary = {}
 
 ## Set by WalkingMove/FallingMove the instant SpeedVaultConfig.should_commit()
 ## fires, immediately before returning SPEED_VAULT -- the committed variant a
@@ -505,13 +498,6 @@ var pending_stagger_tint: Color = Color(0.0, 0.0, 0.0, 0.0)
 ## at any speed.
 var pending_back_landing: bool = false
 
-## One-shot: which way a dodge was thrown, -1 for left and +1 for right. Set
-## by WalkingMove as it launches, read and cleared by DodgeJumpMove.enter().
-##
-## The DIRECTION is not carried with it -- the impulse has already been spent
-## into velocity by the time the move starts, which is the point of the move.
-## This is only what the animator needs to pick a clip.
-var pending_dodge_side: int = 0
 
 ## Emitted on the touchdown that ends an uncontrolled fall. The fall itself is
 ## already lost by then -- this only tells whoever owns respawning that the
@@ -1309,80 +1295,6 @@ func set_capsule_height(height: float) -> void:
 	# shortened capsule's top; see body_fold_drop().
 	shape_node.position.y = -(_standing_height - height) * 0.5
 
-## Resizes the capsule about its own CENTRE: the feet rise by exactly as much
-## as the headroom grows. Coil's, and nothing else's.
-##
-## ✅ MEASURED, not inferred. The owner read it straight off ME Tweaks'
-## collision-box visualiser in the original: "胶囊缩放不是以头为准！是以中心
-## 为准！也就是说同时会增加头顶的空间". A coil and a crouch shrink the SAME
-## capsule to the SAME height (CoilConfig.capsule_height); the anchor is the
-## entire difference between them.
-##
-## ⚠️ WHY THIS IS A SECOND FUNCTION AND NOT A PARAMETER ON THE ONE ABOVE.
-## An anchor parameter lived on set_capsule_height() for one commit and was
-## removed -- see its own note: a crown-anchored vault left a body resting its
-## WAIST on the ground, and the deferred restore then grew the capsule 0.9 m
-## downward, putting half the character underground. The owner caught it in
-## play.
-##
-## That failure is still reachable from here, and CoilMove is what closes it:
-## a centred capsule grown back to standing drops its floor by half the shrink,
-## so the coil ends itself the moment the STANDING feet would reach a surface
-## (fits_standing_at(), which the move asks every tick) rather than when the
-## shrunken ones do. Kept apart from set_capsule_height() so that obligation
-## travels with the one move that has taken it on, instead of being an argument
-## any caller can pass.
-func set_centred_capsule_height(height: float) -> void:
-	# Same supersede-a-pending-restore rule as set_capsule_height(), and for
-	# the same reason.
-	_standing_restore_pending = false
-	var shape_node := $CollisionShape3D as CollisionShape3D
-	var capsule := shape_node.shape as CylinderShape3D
-	if capsule == null:
-		return
-	if _standing_height <= 0.0:
-		_standing_height = capsule.height
-	capsule.height = height
-	# THE CENTRE STAYS PUT. The shape's origin IS the body's origin (the
-	# capsule sits at position zero in player.tscn), so centring the shrink is
-	# simply leaving the offset alone -- and setting it explicitly rather than
-	# leaving it untouched is what returns the body from a crouch or a slide,
-	# whose own resize left this negative.
-	shape_node.position.y = 0.0
-
-## Gives the coil's capsule back, when a move that is not airborne takes the
-## body. Called by MoveManager; a no-op unless coil_capsule_held.
-##
-## GIVE THE BODY BACK IN THE SHAPE THE REST OF THE PROJECT EXPECTS, which is
-## feet-anchored. Everything downstream -- has_headroom(), the deferred
-## restore, CrouchMove -- assumes the capsule's floor is one standing
-## half-height below the origin, and a centred shrink breaks that assumption
-## for as long as it lasts.
-##
-## Re-anchoring at the SAME height is the legs coming down: set_capsule_height()
-## puts the offset back where those callers expect it, which drops the
-## capsule's floor by half the shrink. In the air that is all. On the ground
-## the feet would end up inside the floor, so the body is lifted by the same
-## half shrink here, onto it -- and the eye is carried up with it in the same
-## tick. DO NOT leave the lift to move_and_slide()'s depenetration: the camera
-## reads a rise it was not told about as a step and eases the eye up after the
-## body (CameraRig.carry_eye_ground()), and for a quarter of a second the eye
-## sat 26 cm under a head that was already standing -- inside the neck.
-## THEN full height is asked for through the deferred path, which now gets a
-## body it can reason about: granted immediately in the open, owed under a
-## duct roof. Same call SlideMove and CrouchMove end on.
-func release_coil_capsule() -> void:
-	if not coil_capsule_held:
-		return
-	coil_capsule_held = false
-	var lift: float = (standing_height() - current_capsule_height()) * 0.5 if grounded else 0.0
-	set_capsule_height(current_capsule_height())
-	if lift > 0.0:
-		global_position.y += lift
-		if camera_rig != null:
-			camera_rig.carry_eye_ground(lift)
-	request_standing_capsule()
-
 ## Asks for the standing capsule back, honouring the roof. Restores it at once
 ## when there is room, otherwise records that a restore is OWED and performs it
 ## on the first tick headroom permits.
@@ -1468,19 +1380,10 @@ func end_direct_body_animation() -> void:
 	_direct_anim_tree = null
 	_direct_animator = null
 
-## Armed by RampSlideMove when it lets go after a long descent: the next
-## landing is at least a hard landing, whatever the fall counter says, while
-## the fall's own height still decides the uncontrolled tier. Consumed by the
-## landing that reads it; a jump off the chute never arms it.
-var _forced_hard_landing: bool = false
-
 ## One-shot, set by a hard fall onto a chute for RampSlideMove to read on
 ## entry and clear: the slide flashes and fades the hard landing's red, since
 ## no LandingMove runs to do it.
 var pending_chute_hurt: bool = false
-
-func arm_forced_hard_landing() -> void:
-	_forced_hard_landing = true
 
 func consume_back_landing() -> bool:
 	var armed := pending_back_landing
@@ -1498,11 +1401,6 @@ func stand_as_walking() -> void:
 		return
 	velocity = Vector3.ZERO
 	move_manager.start(Move.WALKING)
-
-func consume_forced_hard_landing() -> bool:
-	var armed := _forced_hard_landing
-	_forced_hard_landing = false
-	return armed
 
 ## Opens the stand-up window. Called by SlideMove.exit() and RampSlideMove.exit().
 func begin_slide_recovery() -> void:
@@ -1589,6 +1487,7 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	floor_snap_length = config.pawn.max_step_down_height
 
 	phys = PawnPhysics.new(self)
+	walkable_floor_z = config.pawn.walkable_floor_z
 	enter_falling_height = global_position.y
 	_build_moves()
 
@@ -1623,6 +1522,16 @@ func reset_state() -> void:
 	base = null
 	base_velocity = Vector3.ZERO
 	force_max_accel_one_frame = false
+	avoid_ledges = true
+	can_uncrouch = true
+	if config != null:
+		walkable_floor_z = config.pawn.walkable_floor_z
+	_slide_off_ledge_timer = -1.0
+	root_motion_active = false
+	root_motion_velocity = Vector3.ZERO
+	root_rotation_active = false
+	uncontrolled_fall = false
+	_speed_samples.clear()
 	roll_trigger_time = -10.0
 	_roll_trigger_pressed = false
 	pending_legacy_launch = &""
@@ -1734,6 +1643,9 @@ func _build_moves() -> void:
 		[Move.BALANCE, BalanceMove.new(), config.balance],
 		[Move.SPRING_BOARD, SpringBoardMove.new(), config.spring_board],
 		[Move.DODGE_JUMP, DodgeJumpMove.new(), config.dodge_jump],
+		[Move.VERTIGO, VertigoMove.new(), config.vertigo],
+		[Move.STUMBLE, StumbleMove.new(), config.stumble],
+		[Move.STUMBLE_HARD, StumbleHardMove.new(), config.stumble_hard],
 	]
 	for row in table:
 		var move: Move = row[1]
@@ -3722,6 +3634,7 @@ func _physics_process(delta: float) -> void:
 	# controller (input, acceleration, actions), the Actor timers, the physics
 	# (automatic transitions, PrePhysics, the move itself), TickSpecial.
 	_controller_tick(delta, input)
+	tick_actor_timers(delta)
 	move_manager.tick_timers(delta)
 	move_manager.perform_physics(delta, input)
 	move_manager.tick_special(delta)
@@ -3774,7 +3687,8 @@ func _physics_process(delta: float) -> void:
 		# this exclusion that call would be silently overwritten back to
 		# 0.0 immediately after, every tick, and the camera would never
 		# visibly sink at all.
-		if move_manager.current_name != Move.LANDING and move_manager.current_name != Move.LAY_ON_GROUND:
+		if move_manager.current_name != Move.LANDING and move_manager.current_name != Move.LAY_ON_GROUND \
+				and move_manager.current_name != Move.SKILL_ROLL:
 			var crouched := current_capsule_height() < standing_height() - 0.01
 			# The capsule stands up the instant the slide ends, but the EYE
 			# rises over the stand-up window -- otherwise the view snaps a
@@ -4194,6 +4108,9 @@ func _controller_tick(delta: float, input: MoveInput) -> void:
 	# PlayerMove: only PlayerWalking computes an acceleration in this port.
 	if controller_state == Move.CS_PLAYER_WALKING:
 		acceleration = _player_walking_move(delta)
+	elif controller_state == Move.CS_PLAYER_GRABBING:
+		_player_grabbing_move(input)
+		return
 	else:
 		acceleration = Vector3.ZERO
 
@@ -4201,6 +4118,50 @@ func _controller_tick(delta: float, input: MoveInput) -> void:
 	_check_crouch(input)
 	_check_jump_pressed(input)
 	_check_jump_released(input)
+
+## TdPlayerController.PlayerGrabbing.ProcessMove. [ME:CONFIRMED decompile]
+## The stick, scaled by 10, becomes an action every tick -- shimmy, climb, or
+## MA_None -- unless root motion is carrying the pawn; the acceleration is
+## zero; then the jump press, its release, and the crouch, in that order.
+func _player_grabbing_move(input: MoveInput) -> void:
+	if not root_motion_active:
+		var x: float = a_forward * 10.0
+		var y: float = a_strafe * 10.0
+		var action: int = Move.MA_NONE
+		if y > 8.0:
+			action = Move.MA_SHIMMY_RIGHT_LONG
+		elif y < -8.0:
+			action = Move.MA_SHIMMY_LEFT_LONG
+		elif y > 3.0:
+			action = Move.MA_SHIMMY_RIGHT
+		elif y < -3.0:
+			action = Move.MA_SHIMMY_LEFT
+		elif x > 8.0 and move_action_hint == Move.MAH_UP:
+			action = Move.MA_CLIMB_UP_LONG
+		elif x < -8.0 and move_action_hint == Move.MAH_DOWN:
+			action = Move.MA_CLIMB_DOWN_LONG
+		elif x > 3.0:
+			action = Move.MA_CLIMB_UP
+		elif x < -3.0:
+			action = Move.MA_CLIMB_DOWN
+		move_manager.handle_move_action(action)
+	acceleration = Vector3.ZERO
+	_check_jump_pressed(input)
+	_check_jump_released(input)
+	_check_crouch(input)
+
+## TdPlayerController's state change for a move's ControllerState, with
+## PlayerGrabbing's BeginState and EndState: entering it, the stick has to come
+## back to its dead zone before it gives a hint again (not when entering from
+## Climb); leaving it, it does not.
+func set_controller_state(state: StringName) -> void:
+	if state == controller_state:
+		return
+	if controller_state == Move.CS_PLAYER_GRABBING:
+		_stick_passed_dead_zone = true
+	controller_state = state
+	if state == Move.CS_PLAYER_GRABBING:
+		_stick_passed_dead_zone = move_manager != null and move_manager.current_name == Move.CLIMB
 
 ## TdPlayerController.SetInputHint, on the raw axes. [ME:CONFIRMED decompile
 ## N4 §5] Forward or back past 0.8, strafe past 0.3 (strafe wins), bMax past
@@ -4461,6 +4422,9 @@ func can_skill_roll() -> bool:
 ## TdPlayerPawn.Landed: falling damage, the current move's Landed, then the
 ## fall height starts afresh. [ME:CONFIRMED decompile N2 §4]
 func pawn_landed(normal: Vector3) -> void:
+	if uncontrolled_fall:
+		_uncontrolled_fall_landed()
+		return
 	take_falling_damage()
 	var move: Move = move_manager.current_move()
 	if move != null:
@@ -4538,7 +4502,7 @@ func find_ledge(start: Vector3, end: Vector3, extent: Vector3) -> Dictionary:
 		return {}
 	var top_position: Vector3 = top["position"]
 	return {"ledge_location": Vector3(p.x, top_position.y, p.z), "ledge_normal": top["normal"],
-		"move_normal": wall_normal}
+		"move_normal": wall_normal, "collider": wall["collider"]}
 
 ## ATdPawn::TickSpecial's timers. [ME:CONFIRMED decompile N4 §1.1] Both land
 ## exactly on 0.
@@ -4547,6 +4511,196 @@ func tick_special_timers(delta: float) -> void:
 		evade_timer -= minf(delta, evade_timer)
 	if illegal_ledge_timer > 0.0:
 		illegal_ledge_timer -= minf(delta, illegal_ledge_timer)
+	_sample_average_speed()
+
+# --- the ground family's pawn state (TdPawn / TdPlayerPawn) ----------------------
+
+## Pawn.bAvoidLedges. [ME:CONFIRMED decompile] TdPlayerPawn's default is true;
+## Crouch rewrites it on every action it is handed and puts it back on stop.
+## The walking physics clamps at an edge only while both this and the move's
+## own avoid_ledges hold (PawnPhysics._check_for_ledges()).
+var avoid_ledges: bool = true
+## Pawn.bCanUnCrouch, written by Slide and Crouch every tick
+## (TestCanUnCrouch). [ME:CONFIRMED decompile N4 §3.1] Only the original's AI
+## reads it; the player's stand-up is never refused by it.
+var can_uncrouch: bool = true
+## Pawn.WalkableFloorZ, live: RumpSlide raises it for as long as it runs, so
+## the chute it rides is a wall to the physics.
+var walkable_floor_z: float = 0.71
+## The pawn's 'SlideOffLedge' Actor timer, seconds left, or < 0 when it is not
+## set. Counted with the Actor timers, before the physics.
+var _slide_off_ledge_timer: float = -1.0
+## UseRootMotion: while set, the walking and falling physics take the
+## horizontal velocity from root_motion_velocity instead of computing it.
+var root_motion_active: bool = false
+## The root motion's velocity this tick, world space, m/s. Written by the move
+## that plays the animation.
+var root_motion_velocity: Vector3 = Vector3.ZERO
+## [world_time, |Velocity.xy|] pairs for get_average_speed().
+var _speed_samples: Array = []
+
+## The Actor timers of the pawn itself. [ME:CONFIRMED decompile N4 §1.1] They
+## run before the physics.
+func tick_actor_timers(delta: float) -> void:
+	if _slide_off_ledge_timer >= 0.0:
+		_slide_off_ledge_timer -= delta
+		if _slide_off_ledge_timer <= 0.0:
+			_slide_off_ledge_timer = -1.0
+			_slide_off_ledge()
+
+## SetTimer(0.2, false, 'SlideOffLedge'). [ME:CONFIRMED decompile N1 §4.2.1,
+## N2 §2c] EdgeCheck only sets it when it is not already running; the landing
+## edge test sets it outright (`restart`).
+func arm_slide_off_ledge(restart: bool = false) -> void:
+	if restart or _slide_off_ledge_timer < 0.0:
+		_slide_off_ledge_timer = 0.2
+
+## IsTimerActive('SlideOffLedge').
+func slide_off_ledge_armed() -> bool:
+	return _slide_off_ledge_timer >= 0.0
+
+## setPhysics clears the timer whenever the new physics is not walking.
+func clear_slide_off_ledge() -> void:
+	_slide_off_ledge_timer = -1.0
+
+## TdPlayerPawn.SlideOffLedge. [ME:CONFIRMED decompile N2 §2c] A body still
+## avoiding ledges, on a walkable floor, whose footing CheckValidFloor rejects,
+## is pushed off the edge and falls.
+func _slide_off_ledge() -> void:
+	var move: Move = move_manager.current_move()
+	if move == null or not avoid_ledges or not move.avoid_ledges:
+		return
+	if floor_normal.y <= walkable_floor_z:
+		return
+	if not phys.check_valid_floor(PawnPhysics.safe_normal(velocity), floor_normal, true):
+		set_physics(Move.PHYS_FALLING)
+		move_manager.set_move(Move.FALLING, true)
+
+## TdMove.ShrinkCollision: the collision drops to the crouched height with the
+## feet where they were.
+func shrink_collision() -> void:
+	set_capsule_height(config.pawn.custom_collision_height)
+
+## TdMove.EnlargeCollision: the standing height back, the feet where they were.
+## Deferred while there is no room overhead (request_standing_capsule()); the
+## original moves the pawn up regardless and teleports it if that is blocked.
+func enlarge_collision() -> void:
+	request_standing_capsule()
+
+## TdMove.TestCanUnCrouch. [ME:CONFIRMED decompile N4 §3.1] The class
+## default's whole standing box swept up 2 H - 122 uu from the centre: twice
+## the 29 uu the centre actually rises, kept.
+func test_can_uncrouch() -> bool:
+	var start: Vector3 = collision_center()
+	var end: Vector3 = start + Vector3.UP * (2.0 * default_collision_half_height() - 122.0 * PawnPhysics.UU)
+	var r: float = collision_radius()
+	return not phys.trace_blocked(end, start, Vector3(r, default_collision_half_height(), r))
+
+## TdPlayerPawn state 'UncontrolledFall'. [ME:CONFIRMED decompile N5 §7]
+## Entered by FallingUncontrolled (GoIntoUncontrolledFall): move and look
+## input ignored, and the pawn's SetMove refuses every move but Landing and
+## SoftLanding (MoveManager.set_move()). Left only by a landing the body
+## survives -- or a new life.
+var uncontrolled_fall: bool = false
+
+## TdPlayerPawn.GoIntoUncontrolledFall.
+func go_into_uncontrolled_fall() -> void:
+	if uncontrolled_fall:
+		return
+	uncontrolled_fall = true
+	set_ignore_move_input(-1.0)
+	set_ignore_look_input(-1.0)
+
+## UncontrolledFall.Landed, which replaces TdPlayerPawn.Landed: the falling
+## damage (unless a soft landing is what landed), then Landing if it will take
+## the body -- it will not take a dead one -- and the state is left only if
+## the body is still alive. EnterFallingHeight is not reset here.
+func _uncontrolled_fall_landed() -> void:
+	var move = move_manager.current_move()
+	if move_manager.current_name != Move.SOFT_LANDING or TAKE_FALL_DAMAGE:
+		take_falling_damage()
+	if move != null and move.has_method("landed_uncontrolled"):
+		move.landed_uncontrolled()
+	if move_manager.can_do(Move.LANDING):
+		move_manager.set_move(Move.LANDING)
+	if health == null or not health.is_dead():
+		uncontrolled_fall = false
+
+## Pawn.bTakeFallDamage. [ME:INFERRED] true for the player: falling damage is
+## always taken.
+const TAKE_FALL_DAMAGE := true
+
+## TdPawn.UseRootMotion. Off clears the velocity it carried.
+func use_root_motion(on: bool) -> void:
+	root_motion_active = on
+	if not on:
+		root_motion_velocity = Vector3.ZERO
+
+## Pawn.bIsUsingRootRotation: an animation is turning the pawn. The turn
+## itself is the move's to make (HalfTurn); this is what the original's
+## checks read -- the soft-landing probe and Coil refuse to run under it.
+var root_rotation_active: bool = false
+
+## TdPawn.UseRootRotation.
+func use_root_rotation(on: bool) -> void:
+	root_rotation_active = on
+
+## TdPawn.GetAverageSpeed(Time). [ME:UNKNOWN] the native was not read; this is
+## the mean of |Velocity.xy| over the samples TickSpecial took in the last
+## `seconds`, and the current speed when there are none.
+func get_average_speed(seconds: float) -> float:
+	var total: float = 0.0
+	var count: int = 0
+	for sample in _speed_samples:
+		if world_time - float(sample[0]) <= seconds:
+			total += float(sample[1])
+			count += 1
+	return total / count if count > 0 else horizontal_speed()
+
+func _sample_average_speed() -> void:
+	_speed_samples.append([world_time, Vector2(velocity.x, velocity.z).length()])
+	while not _speed_samples.is_empty() and world_time - float(_speed_samples[0][0]) > 1.0:
+		_speed_samples.pop_front()
+
+## Pawn.Rotation.Yaw, radians in Godot's sense. While the active move holds an
+## absolute yaw fan, the pawn keeps the fan's centre and the view -- the
+## controller's rotation -- turns inside it; otherwise the two are one.
+func pawn_yaw() -> float:
+	if camera_rig != null and camera_rig.has_absolute_yaw_constraint():
+		return camera_rig.yaw_reference()
+	return rotation.y
+
+## Vector(Pawn.Rotation), flat.
+func pawn_facing() -> Vector3:
+	var yaw: float = pawn_yaw()
+	return Vector3(-sin(yaw), 0.0, -cos(yaw))
+
+## Turns the pawn by `radians` and leaves the view where it was looking: the
+## fan's centre moves under it.
+func turn_pawn_yaw(radians: float) -> void:
+	if camera_rig != null and camera_rig.has_absolute_yaw_constraint():
+		camera_rig.shift_yaw_reference(camera_rig.yaw_reference() + radians, 0.0)
+	else:
+		rotation.y += radians
+
+## TdFallHeightVolume.Touch: the fall is measured from the volume's height
+## from here on, and the current move is told. A level volume calls this.
+func touch_fall_height_volume(fall_height_y: float) -> void:
+	enter_falling_height = fall_height_y
+	var move: Move = move_manager.current_move()
+	if move != null:
+		move.touched_fall_height_volume()
+
+## TdPawn.StumbleDamage: the hit is recorded on the stumble that will play it,
+## then handed to the action table as MA_Stumble, or MA_StumbleHard for the
+## second swing of a melee combo. [ME:CONFIRMED decompile] `damage_type` is
+## one of StumbleMove.DamageType.
+func stumble_damage(damage_type: int, hit_location: Vector3, instigator_location: Vector3,
+		hard: bool = false) -> void:
+	var move = move_manager.move_for(Move.STUMBLE_HARD if hard else Move.STUMBLE)
+	if move != null:
+		move.record_hit(damage_type, hit_location, instigator_location)
+	move_manager.handle_move_action(Move.MA_STUMBLE_HARD if hard else Move.MA_STUMBLE)
 
 ## ATdPlayerPawn::TickSpecial's GravityModifierTimer, after the move's
 ## TickMove.
@@ -4957,55 +5111,9 @@ func wish_direction(input: MoveInput) -> Vector3:
 		return Vector3.ZERO
 	return dir.normalized()
 
-## World-space direction a dodge would be thrown in, or ZERO when this input
-## is not asking for one.
-##
-## SQUARE SIDEWAYS, NOT THE DIAGONAL THE INPUT ASKS FOR. A dodge out of W+A
-## travels left and keeps whatever forward speed the body already had; it does
-## not aim itself up the diagonal. Reading it off wish_direction() instead
-## would turn every diagonal dodge into a forward-left leap and quietly change
-## what the move is for.
-##
-## The gate is on the raw strafe AXIS rather than on move.x -- see
-## DodgeJumpConfig.strafe_threshold, which is where the whole subtlety lives.
-func dodge_direction(input: MoveInput) -> Vector3:
-	if absf(input.strafe_axis) < config.dodge_jump.strafe_threshold:
-		return Vector3.ZERO
-	var dir: Vector3 = global_transform.basis.x * signf(input.strafe_axis)
-	dir.y = 0.0
-	if dir.length_squared() < 0.0001:
-		return Vector3.ZERO
-	return dir.normalized()
-
-## Throws a dodge along `direction`, which must already be the square-sideways
-## world vector dodge_direction() returns.
-##
-## THE HORIZONTAL MOMENTUM IS SCALED, NOT DROPPED. [ME:CONFIRMED 04 §4.5] the
-## body carries DodgeJumpInertiaConservation of what it had into the launch and
-## the impulse is added on top, so a dodge out of a run leaves faster than one
-## from a standstill and slightly faster than the run itself. Zeroing here
-## makes every dodge leave at jump_add_xy, which matches a standstill dodge
-## exactly and nothing else -- see DodgeJumpConfig.inertia_conservation for the
-## measurements that separate the two readings.
-##
-## THE DODGE COSTS NO SPEED ENERGY. It is tempting to bill it down to base
-## velocity, because a dodge out of a sprint does bottom out near there
-## afterwards. That floor is the VELOCITY being turned back under the held
-## input on touchdown, not a ceiling the dodge lowered: swing the view into the
-## dodge before landing and the speed does not sag at all -- measured, four
-## runs, the ground speed climbs from the moment the feet land. A ceiling
-## dropped to base velocity would drag those back down instead, and it is the
-## same drag that would quietly kill the side-jump boost this move exists for.
-func dodge_launch(direction: Vector3) -> void:
-	_takeoff_ground_speed = horizontal_speed()
-	var kept: float = config.dodge_jump.inertia_conservation
-	velocity.x *= kept
-	velocity.z *= kept
-	velocity.y = config.dodge_jump.base_jump_z
-	# SPENT ONCE, AS A WORLD VECTOR -- see DodgeJumpMove on why it must never
-	# be recomputed against the facing afterwards.
-	velocity += direction * config.dodge_jump.jump_add_xy
-	# AND THE BODY TURNS WITH IT. See _charge_dodge_heading().
+## The presentation's half of a dodge launch: the model swings round to the
+## throw (_charge_dodge_heading()). Called by DodgeJumpMove.enter().
+func note_dodge_launch() -> void:
 	_dodge_heading = Vector3(velocity.x, 0.0, velocity.z).normalized()
 
 ## Which way the body is going AT something, as a unit vector, or ZERO if it is

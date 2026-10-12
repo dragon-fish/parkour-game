@@ -644,6 +644,14 @@ func look_debug() -> Dictionary:
 		"roll_spin": _roll_spin,
 	}
 
+## Whether an absolute yaw fan is in force, and its centre: the pawn's own
+## facing while the view turns inside the fan (Player.pawn_yaw()).
+func has_absolute_yaw_constraint() -> bool:
+	return _has_look_constraint and _look_absolute_yaw
+
+func yaw_reference() -> float:
+	return _yaw_reference
+
 func clear_look_constraint() -> void:
 	# A SWEEP CANNOT OUTLIVE THE FAN IT WAS AIMED AT. Left running, it keeps
 	# asking for the same step forever: a sweep is expressed in the fan's own

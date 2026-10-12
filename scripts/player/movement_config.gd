@@ -48,3 +48,6 @@ extends Resource
 @export var ledge_walk: LedgeWalkConfig = LedgeWalkConfig.new()
 @export var spring_board: SpringBoardConfig = SpringBoardConfig.new()
 @export var dodge_jump: DodgeJumpConfig = DodgeJumpConfig.new()
+@export var vertigo: VertigoConfig = VertigoConfig.new()
+@export var stumble: StumbleConfig = StumbleConfig.new()
+@export var stumble_hard: StumbleConfig = StumbleConfig.new()

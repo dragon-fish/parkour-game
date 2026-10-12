@@ -1,301 +1,125 @@
 class_name SlideMove
 extends Move
 
-# A slide is a commitment: it only PRESERVES the speed you already had (there
-# is no acceleration term anywhere in it), steers poorly, and ends on its own
-# terms. Everything about it is tuned to make the player choose WHERE to slide
-# rather than sliding constantly -- the original's own lesson, not this
-# project's former "slide adds a burst" one.
+# The original's TdMove_Slide, ported. [ME:CONFIRMED decompile N5 §1, emulated]
 #
-# Deliberately absent: Slide never transitions into a wall run. The spec
-# forbids it -- chaining a slide straight into a wall run lets the player
-# build speed in a loop that never has to give any back. Reaching a wall from
-# a slide has to go through Walking or Jump first.
+# A plain TdMove: it keeps whatever physics it finds, which is the walking
+# physics, and move input is ignored for the whole slide (DisableMovementTime
+# -1). So the controller's acceleration is exactly zero, CalcVelocity takes its
+# BRAKING path, and the slide friction (FrictionModifier 0.1, the slide scales
+# unclamped -- PawnPhysics.walk_friction_modifier()) is all that slows it:
+# 0.8/s on the flat, harder uphill, and down a steep enough fall line the
+# friction turns negative and the slide speeds up. Nothing in the move adds or
+# takes speed except StopMove, which HALVES the velocity on every way out.
 #
-# NOTE that Jump is not a toll the way Walking is: a slide jump keeps its
-# horizontal speed all the way to the wall, so a downhill slide into a wall
-# kick is now a lossless chain. That follows from the original -- Jump is a
-# launch state and every launch state holds bCheckForWallClimb -- and is the
-# price of the fidelity, not an oversight. Recorded in docs/feel-backlog.md
-# in case play-testing says the loop needs a brake after all. Was pinned by
-# tests/legacy/test_slide_state.gd's
-# test_slide_can_only_reach_ground_air_or_crouch and
-# test_slide_returns_only_ground_air_or_keep -- do not add a return into that
-# move here regardless. (Deliberately not spelling the move's own constant
-# name in this comment: the first of those two tests greps this file's
-# former path (res://scripts/player/states/slide_state.gd) for PlayerState's
-# constant names verbatim, precisely so that even NAMING the forbidden target
-# here -- not just returning it -- trips the tripwire.) Both tests are
-# ARCHIVED by Task 1 and NOT in the running suite, so nothing enforces this
-# today; restore the pins -- and their now-stale source path -- when the
-# behavioural suite is rewritten.
+# Every tick before the physics it re-aims the velocity: the pawn and the
+# velocity turn together by a fifth of the view's yaw error per second plus
+# 2000 rotation units a second for a held strafe hint, truncated to whole
+# units each frame. It aborts to Crouch when the hint is back or the speed
+# falls under SlideAbortSpeed -- and, as the original does, carries on running
+# the rest of that PrePhysics on the move it has just left.
+#
+# There is no time limit: SlideAbortTime is never read. No jump out of a slide
+# either: the action table has no MA_Jump row for it.
 
-var _elapsed: float = 0.0
-var _direction: Vector3 = Vector3.ZERO
-## Latched once a slide has spent itself under something too low to stand up
-## in. Cleared the moment headroom returns. See _crawl().
-var _crawling: bool = false
+## [ME:CONFIRMED decompile] TdMove_Slide.CanDoMove's 350 uu/s along the facing.
+const MIN_FORWARD_SPEED := 350.0 * UU
+## UE3 rotation units per radian, 65536 to a turn.
+const ROT_UNITS := 65536.0 / TAU
 
-## [ME:CONFIRMED decompile] TdMove_Slide.CanDoMove: not out of a skill roll,
-## only at 350 uu/s along the facing or more, and not up a floor rising more
-## than MaxFloorInclineZ (0.5) along the velocity.
-const SLIDE_MIN_FORWARD_SPEED := 3.5
-const SLIDE_MAX_FLOOR_INCLINE_Z := 0.5
+## TdMove_Slide.bGoingInto: the first 0.5 s, during which a stop is deferred.
+var going_into: bool = false
+## TdMove_Slide.bRequestUncrouch.
+var request_uncrouch: bool = false
+
+func _init() -> void:
+	avoid_ledges = false
+	use_custom_collision = true
+	disable_movement_time = -1.0
+
+func is_ported() -> bool:
+	return true
+
+## TdMove_Slide.CanDoMove: not out of a skill roll; at 350 uu/s or more along
+## the pawn's facing (a 3D dot); not up a floor rising more than
+## MaxFloorInclineZ along the velocity -- downhill is unlimited. It does not
+## ask the base, so no RedoMoveTime. A level's slide block is this project's.
 func can_do_move() -> bool:
 	if player.move_manager.current_name == SKILL_ROLL:
 		return false
-	if player.velocity.dot(player.facing()) < SLIDE_MIN_FORWARD_SPEED:
+	if player.velocity.dot(player.pawn_facing()) < MIN_FORWARD_SPEED:
 		return false
 	var vel_dir: Vector3 = PawnPhysics.safe_normal_2d(player.velocity)
-	var uphill: Vector3 = PawnPhysics.safe_normal_2d(-player.floor_normal)
+	var slope_dir: Vector3 = PawnPhysics.safe_normal_2d(-player.floor_normal)
 	var incline: float = sqrt(1.0 - clampf(player.floor_normal.y * player.floor_normal.y, 0.0, 1.0)) \
-		* vel_dir.dot(uphill)
-	if incline > SLIDE_MAX_FLOOR_INCLINE_Z:
+		* vel_dir.dot(slope_dir)
+	if incline > cfg.max_floor_incline_z:
 		return false
-	return super.can_do_move()
+	if player.statuses != null and player.statuses.is_move_blocked(SLIDE):
+		return false
+	return true
 
-## TdMove_Slide.CanStopMove: not while the slide is still going in. This
-## move's going-in is SlideConfig.min_duration.
+## TdMove_Slide.CanStopMove: the stop is remembered, and refused while the
+## slide is still going in.
 func can_stop_move() -> bool:
-	return _elapsed >= config.slide.min_duration
+	request_uncrouch = true
+	return not going_into
 
 func enter(_previous: StringName) -> void:
-	_elapsed = 0.0
-	_crawling = false
-	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	_direction = horizontal.normalized() if horizontal.length_squared() > 0.0001 else Vector3.ZERO
+	going_into = true
+	request_uncrouch = false
+	set_timer(0.5)
 
-	player.set_capsule_height(config.slide.slide_capsule_height)
-
-## Deliberately a REQUEST, not an unconditional restore. The off-edge exit
-## below returns FALLING whether or not there is headroom — a player who walks off
-## a ledge must fall, ceiling or not, so that path cannot be headroom-gated the
-## way the jump path is — and _crawl() shuffling off a ledge reaches it too.
-## Restoring the 1.8 m capsule here regardless would spawn it inside the roof.
-## Player owes the restore and performs it the moment there is room.
+## TdMove_Slide.StopMove: Velocity / 2, every time. The stand-up window the
+## presentation reads opens here too.
 func exit() -> void:
-	player.request_standing_capsule()
+	player.velocity = player.velocity / 2.0
 	player.begin_slide_recovery()
 
-## True while a spent slide is shuffling out from under a ceiling rather than
-## sliding. Both are move Slide, so nothing else can tell them apart — the
-## arena's traversability test reads this to prove the tunnel is cleared on
-## momentum rather than rescued by the safety net.
-func is_crawling() -> bool:
-	return _crawling
+func on_timer() -> void:
+	going_into = false
+	if request_uncrouch:
+		abort_move()
 
-func physics_update(delta: float, input: MoveInput) -> StringName:
-	_elapsed += delta
+## TdMove_Slide.AbortMove: SetMove(Crouch).
+func abort_move() -> void:
+	player.move_manager.set_move(CROUCH)
 
-	# Asked once per tick and reused by the crawl latch and the jump gate, so
-	# the two cannot disagree within a single frame.
-	# `player` is deliberately untyped (see Move), so its return values
-	# arrive as Variant and need an explicit type here.
-	var blocked: bool = not player.has_headroom()
-	var speed := Vector2(player.velocity.x, player.velocity.z).length()
+## TdMove_Slide.ShouldAbort (0x011f8640): the hint back, or under
+## SlideAbortSpeed (3D).
+func should_abort() -> bool:
+	return player.move_action_hint == MAH_DOWN \
+		or player.velocity.length_squared() < cfg.slide_abort_speed * cfg.slide_abort_speed
 
-	if not blocked:
-		_crawling = false
-	elif speed <= config.slide.slide_abort_speed:
-		_crawling = true
+## TdMove_Slide PrePhysics (0x011fdde0). [ME:CONFIRMED emulated]
+func pre_physics(delta: float) -> void:
+	super.pre_physics(delta)
+	if player.is_dying():
+		return
+	if should_abort():
+		# The abort happens and this function carries on: the velocity re-aim
+		# below runs on the move that has just stopped, after its StopMove
+		# halved the speed.
+		abort_move()
+	var error_units: float = -wrapf(player.rotation.y - player.pawn_yaw(), -PI, PI) * ROT_UNITS
+	var turn_units: int = int(float(delta * 0.2) * float(_normalize16(int(error_units))))
+	if player.move_action_hint == MAH_LEFT:
+		turn_units += int(delta * -2000.0)
+	elif player.move_action_hint == MAH_RIGHT:
+		turn_units += int(delta * 2000.0)
+	# UE yaw grows clockwise, Godot's counter-clockwise.
+	var turn: float = -float(turn_units) / ROT_UNITS
+	var v: Vector3 = player.velocity
+	var speed2d: float = Vector2(v.x, v.z).length()
+	# Rotator(Velocity) keeps the velocity's pitch; |V| becomes the old
+	# horizontal speed.
+	var pitch: float = atan2(v.y, speed2d)
+	var yaw: float = atan2(-v.x, -v.z) + turn
+	player.turn_pawn_yaw(turn)
+	player.velocity = Vector3(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch)) * speed2d
+	player.can_uncrouch = player.test_can_uncrouch()
 
-	if _crawling:
-		_crawl(input)
-	else:
-		_slide(delta, input, speed)
-
-	# A jump out of a slide is refused under a roof on its own merits, quite
-	# apart from the capsule: you cannot jump into a ceiling. (The capsule is
-	# separately safe either way — see exit().) has_headroom() is checked BEFORE
-	# consume_jump() so the short-circuit leaves the buffered press unspent:
-	# press jump inside the tunnel and it fires the moment you clear the roof,
-	# rather than being silently eaten.
-	if not blocked and player.consume_jump():
-		player.velocity.y = config.pawn.base_jump_z
-		player.add_jump_nudge(input)
-		player.move_and_slide()
-		player.set_grounded(player.is_on_floor())
-		# JUMP, not FALLING -- the same hand-off WalkingMove's own jump branch
-		# makes. This IS a take-off (velocity.y was just set to base_jump_z),
-		# and "is this a launch" is expressed by WHICH STATE owns the tick,
-		# never by a speed guard: only Jump carries check_for_wall_climb, and
-		# only Falling may hand off to FallingUncontrolled (invariant I2).
-		# Returning Falling here left a slide jump unable to reach a wall AND
-		# immediately eligible for the uncontrolled-fall height check, neither
-		# of which a rising take-off should ever be.
-		return JUMP
-
-	# Same ankle-high clutter allowance WalkingMove gets. Without it a slide is
-	# stopped dead by a kerb the same body walks over for free, which reads as
-	# the geometry being sticky rather than as a rule. Applies to the crawl
-	# too: shuffling out from under a roof has the same problem.
-	var rise: float = player.try_step_up(delta)
-	# ANY rise, however small. A threshold here was tried and made things worse:
-	# a step often arrives over two or three ticks (0.299, then 0.077, 0.037,
-	# 0.012 as the body creeps onto it), and the ones below the threshold moved
-	# the body without compensating the camera -- which is a hard jump, exactly
-	# the flicker the offset exists to prevent. Ramps are refused inside
-	# try_step_up() now, so anything that still produces a rise is a real step.
-	if rise > 0.0 and player.camera_rig != null:
-		player.camera_rig.add_step_offset(rise)
-
-	player.move_and_slide()
-	# Geometry can throw the body clear of the floor for a tick -- riding up and
-	# off a small sloped obstacle does exactly that -- and without this the tick
-	# reads as a ledge exit and cancels the move. See Player.try_step_down().
-	# `or` the step-down: moving the body directly does not refresh
-	# is_on_floor(), so its own answer is what says the body was caught.
-	var stepped_down: bool = player.try_step_down()
-	player.set_grounded(player.is_on_floor() or stepped_down)
-	# The model lies along the floor it slides on: drawn upright on a
-	# downslope, the legs hung in the air past the lip.
-	if player.is_on_floor():
-		player.body_tilt_normal = player.get_floor_normal()
-
-	if not player.grounded:
-		# A step-up lifts the body in place and lets move_and_slide() carry it
-		# forward onto the step, so the tick it fires ALWAYS ends airborne --
-		# by construction, not by accident. Reading that tick as "walked off a
-		# ledge" is what turned riding a 0.30 m kerb into
-		# Slide -> Falling -> Grab -> Falling -> Walking: the slide was
-		# cancelled by clutter it had successfully ridden over, and the same
-		# airborne tick handed the kerb to the ledge probe.
-		if player.in_step_grace():
-			return KEEP
-		player.velocity.y = 0.0
-		return FALLING
-
-	# Read speed back AFTER move_and_slide(): a collision (e.g. sliding into a
-	# wall) can shave it down well below the friction-only decay computed
-	# above. Using the pre-move value here would let a wall impact leave the
-	# slide "stuck" in place until slide_abort_time expires instead of
-	# ending promptly.
-	var post_move_speed := Vector2(player.velocity.x, player.velocity.z).length()
-	# EVERY LOSS, not only the released key or the wall Player asks about on
-	# foot. Those two are singled out there because steering dips the speed
-	# too; a slide holds its line, so friction and slope are all that can slow
-	# it, and a slide that ends slow ends with a slow budget.
-	player.follow_speed(post_move_speed, delta)
-
-	# Every exit passes the same headroom gate: crouch-release, speed decay and
-	# timeout alike. Stand up into a ceiling once and the body clips through
-	# it, so a blocked slide simply continues — crawling, by then.
-	# has_headroom() is re-asked here rather than reusing `blocked`, because
-	# the move_and_slide() above may have carried the body clear of the roof
-	# on this very tick.
-	#
-	# A slide that ran itself out (speed decay or timeout, NOT the key being
-	# released) settles into CROUCH when the key is still held, rather than
-	# snapping the player upright the instant speed runs out -- the owner's
-	# direction on GBA_Crouch's downward branch. No separate headroom check is
-	# needed for the Crouch hand-off: crouch_capsule_height defaults to the
-	# same number as slide_capsule_height (see CrouchConfig's own comment),
-	# so anywhere the slide capsule already fits, the crouch capsule fits too.
-	# Releasing the key still asks for the full standing capsule, exactly as
-	# before.
-	var spent := post_move_speed <= config.slide.slide_abort_speed or _elapsed >= config.slide.slide_abort_time
-	# A tap still buys SlideConfig.min_duration; only speed or time ends one
-	# sooner.
-	var released: bool = not input.crouch_held and _elapsed >= config.slide.min_duration
-	var wants_to_exit := released or spent
-	if wants_to_exit:
-		# ✅ THE OWNER: "滑铲结束如果头顶空间不够应该转下蹲而不是滑铲，
-		# 否则玩家的左右会一直被牽制，可能卡住出不来."
-		#
-		# A blocked slide used to simply CONTINUE -- see the note above, which
-		# called it "crawling, by then". It is not crawling: a slide commits you
-		# to a line (steering is deliberately slow, see _slide()), so a slide
-		# that cannot end is a slide you cannot steer out of. Under a long low
-		# ceiling that is a trap with no input that escapes it.
-		#
-		# Crouch is ALWAYS available here and costs no headroom check of its own:
-		# crouch_capsule_height and slide_capsule_height are the same number by
-		# construction (see CrouchConfig's own comment), so anywhere this slide
-		# already fits, the crouch fits too -- which is exactly why the branch
-		# below could already hand a key-held exit straight to CROUCH without
-		# asking. The only thing that ever needed headroom was standing up.
-		if input.crouch_held or not player.has_headroom():
-			return CROUCH
-		return WALKING
-	return KEEP
-
-## The slide proper: committed steering, friction, and slope.
-func _slide(delta: float, input: MoveInput, speed: float) -> void:
-	# Steering is deliberately slow: a slide commits you to a line.
-	var wish_dir: Vector3 = player.wish_direction(input)
-	if wish_dir != Vector3.ZERO and _direction != Vector3.ZERO:
-		var max_turn := config.slide.slide_steer_rate * delta
-		var angle := _direction.signed_angle_to(wish_dir, Vector3.UP)
-		_direction = _direction.rotated(Vector3.UP, clampf(angle, -max_turn, max_turn))
-
-	# Slope drives FRICTION, not a made-up acceleration bonus (03 §3.3).
-	# Uphill multiplies friction by 5.0 -- an uphill slide stops almost
-	# immediately -- while downhill drops it to 1.8x. `grade` is +1 straight
-	# down the fall line, matching Friction's own convention.
-	var slope_dir := _slope_direction()
-	var grade := -slope_dir.y
-	var decel: float = Friction.slide_friction(config.pawn, cfg.friction_modifier, grade)
-
-	# ORDINARY GRAVITY, not a reinstated slide_slope_accel: the deleted field
-	# was an invented bonus layered ON TOP of friction; this is the plain
-	# along-slope component of the SAME gravity every other move already
-	# falls under, g * sin(angle) = gravity * grade. Without it the scalar
-	# speed above can only ever decay, on every grade, at every angle -- a
-	# descent would merely be SLOWER to stop than a climb, never faster,
-	# which is not what 05 §5.1 describes. Past the break-even grade (where
-	# this exceeds decel -- ~18.2 degrees at this project's current
-	# constants; see test_slide.gd's BREAK_EVEN_GRADE for the derivation) a
-	# downhill slide genuinely nets speed; below it, friction still wins and
-	# the slide simply carries further before stopping. Below the break-even
-	# grade this differs from pure-friction decay in RATE, not sign; only
-	# past it does the sign flip.
-	var gravity_along: float = config.pawn.gravity * grade
-	speed = maxf(speed + (gravity_along - decel) * delta, 0.0)
-
-	# Drive along the SLOPE, scaled so the horizontal magnitude is still
-	# `speed`. Steering the body horizontally instead would leave a descent to
-	# floor_snap_speed alone, which is not enough to hold the body on a steep
-	# ramp at slide speeds — it would part company with the floor and drop the
-	# slide into Falling partway down.
-	var horizontal_len := Vector2(slope_dir.x, slope_dir.z).length()
-	if horizontal_len > 0.001:
-		var velocity := slope_dir * (speed / horizontal_len)
-		player.velocity.x = velocity.x
-		player.velocity.z = velocity.z
-		player.velocity.y = velocity.y - config.pawn.floor_snap_speed
-	else:
-		player.velocity.x = 0.0
-		player.velocity.z = 0.0
-		player.velocity.y = -config.pawn.floor_snap_speed
-
-## The slide is spent but there is a roof directly overhead, so standing up is
-## impossible and the exit to Walking is gated shut. Rather than sit at zero
-## speed forever with no transition available and no way in this move to
-## generate any, let the player shuffle out under their own input. Steering is
-## immediate here, not the slide's committed line: this is no longer a slide,
-## it is someone getting out from under something.
-func _crawl(input: MoveInput) -> void:
-	var wish_dir: Vector3 = player.wish_direction(input)
-	if wish_dir == Vector3.ZERO:
-		player.velocity.x = 0.0
-		player.velocity.z = 0.0
-	else:
-		_direction = wish_dir
-		player.velocity.x = wish_dir.x * config.slide.slide_crawl_speed
-		player.velocity.z = wish_dir.z * config.slide.slide_crawl_speed
-	player.velocity.y = -config.pawn.floor_snap_speed
-
-## The slide line projected onto the floor plane, as a unit vector. Falls back
-## to the horizontal line whenever there is no usable floor normal to project
-## against, which makes every caller behave exactly as it did before slopes
-## existed.
-func _slope_direction() -> Vector3:
-	if _direction == Vector3.ZERO or not player.grounded:
-		return _direction
-	var normal: Vector3 = player.get_floor_normal()
-	if normal.length_squared() < 0.0001:
-		return _direction
-	var projected := _direction - normal * _direction.dot(normal)
-	if projected.length_squared() < 0.0001:
-		return _direction
-	return projected.normalized()
+## Normalize to the signed 16-bit range, as FRotator::NormalizeAxis does.
+static func _normalize16(units: int) -> int:
+	var u: int = units & 0xFFFF
+	return u - 0x10000 if u > 0x7FFF else u

@@ -133,6 +133,10 @@ extends Resource
 ## default (45 degrees), so the probe gates and CharacterBody3D's own floor
 ## test agree about what a floor is.
 @export var walkable_floor_z: float = 0.71
+## [ME:CONFIRMED decompile N5 §0.2] TdMove.ShrinkCollision: the collision of a
+## move with bUseCustomCollision (Crouch, Slide, Coil, 180TurnInAir,
+## LayOnGround) is CollisionHeight 61 uu, a half height, so 1.22 m tall.
+@export var custom_collision_height: float = 1.22
 
 @export_group("Jump")
 ## TdMove_Jump.BaseJumpZ = 630 uu/s. [ME:CONFIRMED decompile 15.7] The jump
@@ -405,8 +409,7 @@ extends Resource
 ## began as one ends. It has to outlast the time it takes to cross the wire,
 ## not the time it takes to react.
 @export var stagger_immunity_time: float = 1.0
-## Seconds a hazard's hit takes to fade from the screen. PROJECT-DEFINED; the
-## same figure RampSlideConfig.hurt_flash_time gives the chute's own hurt.
+## Seconds a hazard's hit takes to fade from the screen. PROJECT-DEFINED.
 @export var hurt_flash_time: float = 0.6
 
 ## [ME:CONFIRMED 13.1] Measured off the HUD. A hard landing costs 15 of these

@@ -58,13 +58,15 @@ const BALANCE: StringName = &"Balance"
 const LEDGE_WALK: StringName = &"LedgeWalk"
 const SPRING_BOARD: StringName = &"SpringBoard"
 const DODGE_JUMP: StringName = &"DodgeJump"
+const VERTIGO: StringName = &"Vertigo"
+const STUMBLE: StringName = &"Stumble"
+const STUMBLE_HARD: StringName = &"StumbleHard"
 
 # The original's moves this project has no counterpart for yet. The action
 # table names them, so they have names; nothing registers them, so
 # MoveManager.can_do() is false for every one of them and the table falls
 # through to the next candidate exactly as the original does when CanDoMove()
 # says no.
-const VERTIGO: StringName = &"Vertigo"
 const BARGE: StringName = &"Barge"
 const AIR_BARGE: StringName = &"AirBarge"
 const MELEE: StringName = &"Melee"
@@ -73,8 +75,6 @@ const MELEE_SLIDE: StringName = &"MeleeSlide"
 const MELEE_CROUCH: StringName = &"MeleeCrouch"
 const MELEE_WALLRUN: StringName = &"MeleeWallrun"
 const SNATCH: StringName = &"Snatch"
-const STUMBLE: StringName = &"Stumble"
-const STUMBLE_HARD: StringName = &"StumbleHard"
 ## [ME:CONFIRMED decompile] TdMove_WallKick.CanDoMove() returns false
 ## unconditionally: unreachable in the shipped game, and left unregistered.
 const WALL_KICK: StringName = &"WallKick"
@@ -114,6 +114,10 @@ const MA_CLIMB_DOWN := 8
 const MA_CLIMB_UP_LONG := 9
 const MA_CLIMB_DOWN_LONG := 10
 const MA_ABORT := 11
+const MA_SHIMMY_LEFT := 12
+const MA_SHIMMY_LEFT_LONG := 13
+const MA_SHIMMY_RIGHT := 14
+const MA_SHIMMY_RIGHT_LONG := 15
 const MA_TURN := 16
 const MA_STUMBLE := 17
 const MA_STUMBLE_HARD := 18
@@ -163,6 +167,11 @@ var disable_movement_time: float = 0.0
 var disable_look_time: float = 0.0
 ## TdMove.bAvoidLedges, read by the walking physics' ledge check.
 var avoid_ledges: bool = true
+## TdMove.bUseCustomCollision: [ME:CONFIRMED decompile N5 §0.2] StartMove
+## shrinks the collision to the crouched height (unless the move before also
+## used it), StopMove gives the standing height back (unless the move after
+## uses it too). The feet stay where they are both ways.
+var use_custom_collision: bool = false
 
 ## Seconds since StartMove. [ME:CONFIRMED decompile 15.8] advanced in
 ## tick_move(), after the physics, so a move started this frame reads 0 in its
@@ -233,10 +242,14 @@ func begin_move() -> void:
 		return
 	player.set_ignore_move_input(disable_movement_time)
 	player.set_ignore_look_input(disable_look_time)
+	if use_custom_collision:
+		var old: Move = player.move_manager.move_for(player.old_movement_state)
+		if old == null or not old.use_custom_collision:
+			player.shrink_collision()
 	if pawn_physics != PHYS_KEEP and player.physics != pawn_physics:
 		player.set_physics(pawn_physics)
 	if controller_state != CS_NONE:
-		player.controller_state = controller_state
+		player.set_controller_state(controller_state)
 
 ## The common half of TdMove.StopMove and TdPhysicsMove.StopMove. Run by the
 ## manager after exit(), for every move.
@@ -248,9 +261,17 @@ func end_move() -> void:
 		return
 	player.stop_ignore_move_input()
 	player.stop_ignore_look_input()
+	if use_custom_collision:
+		var pending: Move = player.move_manager.move_for(player.pending_movement_state)
+		if pending == null or not pending.use_custom_collision:
+			player.enlarge_collision()
+	# TdMove.StopMove: root motion and root rotation off, whatever the move
+	# turned on.
+	player.use_root_motion(false)
+	player.use_root_rotation(false)
 	last_stop_move_time = player.world_time
 	if controller_state != CS_NONE:
-		player.controller_state = CS_PLAYER_WALKING
+		player.set_controller_state(CS_PLAYER_WALKING)
 
 ## TdMove.StartMove's own part: what the move does on entry. `previous` is the
 ## move that was current, which is also player.old_movement_state.
@@ -291,6 +312,11 @@ func hit_wall(_normal: Vector3, _collider: Object) -> void:
 func reached_precise_location() -> void:
 	pass
 
+## TdMove.TouchedFallHeightVolume, raised by Player.touch_fall_height_volume().
+## Empty in the original's base; RumpSlide records it.
+func touched_fall_height_volume() -> void:
+	pass
+
 ## Native slot 0x124. Empty for TdMove; PhysicsMove overrides it.
 func check_auto_moves() -> void:
 	pass
@@ -302,18 +328,33 @@ func pre_physics(delta: float) -> void:
 	if not use_precise_location or reached_precise_location_flag:
 		return
 	var to: Vector3 = precise_location - player.global_position
+	# PLM_Walk measures and moves in the horizontal plane only and leaves the
+	# vertical speed to the physics. [ME:CONFIRMED decompile N4 §2.7]
+	if precise_location_mode == PLM_WALK:
+		to.y = 0.0
 	var dist: float = to.length()
 	if dist <= 2.0 * UU:
 		reached_precise_location_flag = true
 		reached_precise_location()
 		return
-	player.velocity = to / dist * minf(dist / maxf(delta, 1e-6), precise_location_speed)
+	var v: Vector3 = to / dist * minf(dist / maxf(delta, 1e-6), precise_location_speed)
+	if precise_location_mode == PLM_WALK:
+		player.velocity.x = v.x
+		player.velocity.z = v.z
+	else:
+		player.velocity = v
 	player.acceleration = Vector3.ZERO
 
-## TdMove.SetPreciseLocation for PLM_Fly. `speed` < 0 takes GroundSpeed.
-func set_precise_location(location: Vector3, speed: float = -1.0) -> void:
+## TdMove.EPreciseLocationMode, the two modes ported.
+const PLM_FLY := 0
+const PLM_WALK := 1
+var precise_location_mode: int = PLM_FLY
+
+## TdMove.SetPreciseLocation. `speed` < 0 takes GroundSpeed.
+func set_precise_location(location: Vector3, speed: float = -1.0, mode: int = PLM_FLY) -> void:
 	precise_location_speed = config.pawn.ground_speed if speed < 0.0 else speed
 	precise_location = location
+	precise_location_mode = mode
 	use_precise_location = true
 	reached_precise_location_flag = false
 

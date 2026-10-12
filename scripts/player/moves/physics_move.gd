@@ -68,10 +68,14 @@ func check_auto_moves() -> void:
 func pre_physics(delta: float) -> void:
 	super.pre_physics(delta)
 	var manager = player.move_manager
+	# Not while root rotation turns the pawn. The SetMove is made and the tick
+	# ends here whether or not it changed anything: in SoftLanding itself it
+	# changes nothing, and that is what keeps the exit below from running
+	# while the pad is still ahead. [ME:CONFIRMED decompile N4 §2.3, N5 §5]
 	if check_for_soft_landing and player.velocity.y < soft_landing_z_speed_threshold \
-			and _soft_landing_ahead():
-		if manager.set_move(SOFT_LANDING):
-			return
+			and not player.root_rotation_active and _soft_landing_ahead():
+		manager.set_move(SOFT_LANDING)
+		return
 	if check_exit_to_falling and player.velocity.y < exit_to_falling_z_speed:
 		manager.set_move(FALLING)
 		return

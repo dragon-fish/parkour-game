@@ -1,24 +1,16 @@
 class_name Turn180InAirConfig
 extends MoveConfig
 
-# The original's TdMove_180TurnInAir: Q in mid-air, off no wall.
-#
-# [ME:CONFIRMED 11 §11.2] its whole capability list is ExitToUncontrolledFalling
-# and ForSoftLanding. Nothing reaches for a ledge, a vault or a wall, so the
-# three probe flags stay at MoveConfig's neutral false.
+# The original's TdMove_180TurnInAir defaults. [ME:CONFIRMED decompile N5 §8]
+# No grab, vault or wall switch; the falling exits are on the move.
 
 func _init() -> void:
-	# Already turning, and in the air: Q again is nothing.
 	allows_turn = false
-	# The same fan as the ground turn, and needed for the same reason: HalfTurn
-	# carries the body round by moving an ABSOLUTE yaw fan's reference. Without
-	# a fan there is nothing to move and the body does not turn.
+	# [ME:CONFIRMED decompile] bConstrainLook, Pitch 0..32768 and Yaw
+	# -5000..5000 about the root-rotating pawn; bDisableFaceRotation. The fan
+	# is absolute so it carries the turn round (HalfTurn).
 	constrain_look = true
 	absolute_yaw_constraint = true
-	min_look_constraint = Vector3(-deg_to_rad(55.0), -deg_to_rad(90.0), -PI)
-	max_look_constraint = Vector3(deg_to_rad(55.0), deg_to_rad(90.0), PI)
-
-## How long the body takes to come round, seconds.
-## [ME:UNKNOWN] not measured in the air; borrowed from the ground turn's
-## confirmed 0.3 (Turn180Config.turn_time).
-@export var turn_time: float = 0.3
+	freeze_visual_yaw = true
+	min_look_constraint = Vector3(0.0, -deg_to_rad(27.47), -PI)
+	max_look_constraint = Vector3(PI, deg_to_rad(27.47), PI)

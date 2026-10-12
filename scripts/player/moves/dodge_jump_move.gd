@@ -1,70 +1,64 @@
 class_name DodgeJumpMove
-extends AirborneMove
+extends PhysicsMove
 
-# The original's TdMove_DodgeJump: the sideways hop thrown off a strafe key,
-# reached through the action table (Walking + jump, before SpringBoard and
-# Jump). The launch happens on entry; what is left is the airborne stretch and
-# the one thing that separates it from an ordinary Jump: it reaches for nothing.
+# The original's TdMove_DodgeJump, the side jump, ported. [ME:CONFIRMED
+# decompile N5 §9]
 #
-# THE IMPULSE IS NEVER RECOMPUTED. It went into velocity as a world vector on
-# the tick the move started and this state does not know which way it pointed.
-# DO NOT add a per-tick push along the body's own right to "keep the dodge
-# going": that turns a carried speed into a growing one, and it destroys the
-# behaviour the move exists for -- [ME:CONFIRMED 04 §4.5] swinging the view 90
-# degrees mid-dodge inherits the sideways speed as forward speed, which is how
-# the side-jump boost bypasses the acceleration curve. That is a bug in the
-# original, and copying it is the port.
+# The action table asks it BEFORE SpringBoard and Jump on every ground jump,
+# and it takes any jump made with the strafe hint held to its maximum -- a
+# strafe key is always at its maximum, so a jump with A or D held is always a
+# dodge jump. The launch is made once, in StartMove: JumpAddXY along the
+# pawn's right (or left), plus 0.3 of the velocity it had, and BaseJumpZ
+# straight up. Then PHYS_Falling under the PlayerGrabbing controller (no air
+# control), and nothing it reaches for; below -190 uu/s of vertical speed it
+# hands to Falling, or it lands first.
+#
+# The launch is a world vector and is never recomputed: turning the view
+# mid-dodge turns the sideways speed into forward speed.
 
-## Which way this dodge was thrown, -1 for left and +1 for right.
-##
-## For CharacterAnimator, which has a Dodge_Left and a Dodge_Right and no way
-## to tell them apart from velocity once air control has had a tick at it --
-## the same job JumpMove.kick_side() does for the wall-kick clips.
+## Which way this dodge was thrown, -1 left and +1 right. For
+## CharacterAnimator's pair of dodge clips.
 var _side: int = 0
 
 func side() -> int:
 	return _side
 
 func _init() -> void:
-	# [ME:CONFIRMED decompile] TdMove_DodgeJump's PawnPhysics. This move still drives the
-	# body itself; the mode is what the original's checks and the fall height
-	# read while it runs.
+	super._init()
 	pawn_physics = PHYS_FALLING
+	controller_state = CS_PLAYER_GRABBING
+	check_exit_to_falling = true
+	# [ME:CONFIRMED decompile] ExitToFallingZSpeed = -190.
+	exit_to_falling_z_speed = -1.9
+	disable_movement_time = -1.0
 
-## TdMove_DodgeJump.CanDoMove. [ME:CONFIRMED decompile] The strafe hint, held
-## to its maximum (bMoveActionMax: past 0.96 on the raw axis, which a key
-## always is), and no uncontrolled slide.
+func is_ported() -> bool:
+	return true
+
+## TdMove_DodgeJump.CanDoMove: the hint at its maximum, no uncontrolled slide,
+## the hint left or right, then the base's RedoMoveTime.
 func can_do_move() -> bool:
-	if not player.move_action_max or player.uncontrolled_slide:
+	if not player.move_action_max:
+		return false
+	if player.uncontrolled_slide:
 		return false
 	if player.move_action_hint != MAH_LEFT and player.move_action_hint != MAH_RIGHT:
 		return false
-	return super.can_do_move()
+	return td_can_do_move()
 
-## The launch, square sideways along the hint. Player.dodge_launch() is this
-## project's reading of it.
+## TdMove_DodgeJump.StartMove.
 func enter(_previous: StringName) -> void:
-	_side = 1 if player.move_action_hint == MAH_RIGHT else -1
-	player.pending_dodge_side = 0
-	var right: Vector3 = player.global_transform.basis.x
-	right.y = 0.0
-	player.dodge_launch(right.normalized() * float(_side))
-	player.set_grounded(false)
-
-func physics_update(delta: float, input: MoveInput) -> StringName:
-	apply_air_physics(delta, player.wish_direction(input))
-
-	# Runs the probe set the config declares, which for this move is none of
-	# them (see DodgeJumpConfig). Called anyway rather than skipped, so the
-	# capability set stays a property of the config the way every other
-	# airborne state's is, instead of being half in data and half in an
-	# omission here.
-	var probed := probe_transition()
-	if probed != KEEP:
-		player.set_grounded(false)
-		return probed
-
-	if player.velocity.y <= config.pawn.enter_to_falling_z_speed:
-		return advance_and_hand_off(FALLING)
-
-	return settle_landing(delta)
+	_side = -1 if player.move_action_hint == MAH_LEFT else 1
+	# Normal(Z x Vector(Rotation)): the pawn's right.
+	var right: Vector3 = player.pawn_facing().cross(Vector3.UP).normalized()
+	var dodge: Vector3 = right * (cfg.jump_add_xy * float(_side))
+	player.last_jump_location = player.global_position
+	var v: Vector3 = dodge + player.velocity * cfg.inertia_conservation
+	v.y = cfg.base_jump_z
+	if player.base_velocity.y > 0.0:
+		v.y += player.base_velocity.y
+	player.velocity = v
+	player.acceleration = PawnPhysics.safe_normal(v)
+	player.note_dodge_launch()
+	if player.camera_rig != null:
+		player.camera_rig.kick_takeoff(player.horizontal_speed())

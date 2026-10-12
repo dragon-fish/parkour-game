@@ -1,58 +1,36 @@
 class_name SoftLandingMove
-extends AirborneMove
+extends PhysicsMove
 
-# [ME:CONFIRMED 12 §12.5] The fall that was going to be fatal and lands on
-# something soft instead. FallingMove decides between this and
-# FallUncontrolledMove once, at the tick the lethal height is crossed.
+# The original's TdMove_SoftLanding, ported. [ME:CONFIRMED decompile N5 §5]
 #
-# THE PAD DOES NOT HAND CONTROL BACK. It changes the ENDING, not the fall:
-# input is gone here exactly as it is in an uncontrolled fall, the body is a
-# passenger the whole way down, and what the pad buys is arriving alive. A
-# rescue that also returned the controls would make the lethal height mean
-# nothing wherever a pad was in reach -- the player would simply fly on.
+# Entered only by the TdPhysicsMove PrePhysics of a move with
+# bCheckForSoftLanding (Falling, 180TurnInAir, FallingUncontrolled, this one):
+# falling faster than 400 uu/s with the arc two seconds ahead ending on a
+# soft-landing surface more than two collision heights down. PHYS_Falling,
+# PlayerWalking, no air control (move input ignored).
 #
-# Nothing here desaturates or blurs the screen. That is FallUncontrolledMove's
-# and it says "you are dying"; a body about to be caught is not.
+# While it runs its own soft-landing test runs first: as long as the pad is
+# still ahead it sets SoftLanding again -- nothing, the same move -- and stops
+# there, so the exit to Falling below -400 uu/s is only reached on a frame the
+# probe fails: the pad closer than two heights, or out of the two-second
+# window. It ends on Landed, through Landing, which reads bMovingBackwards.
+
+## TdMove_SoftLanding.bMovingBackwards: entered out of a turn in the air.
+var moving_backwards: bool = false
 
 func _init() -> void:
-	# [ME:CONFIRMED decompile] TdMove_SoftLanding's PawnPhysics. This move still drives the
-	# body itself; the mode is what the original's checks and the fall height
-	# read while it runs.
+	super._init()
 	pawn_physics = PHYS_FALLING
+	controller_state = CS_PLAYER_WALKING
+	check_exit_to_falling = true
+	check_for_soft_landing = true
+	disable_movement_time = -1.0
+
+func is_ported() -> bool:
+	return true
 
 func enter(_previous: StringName) -> void:
-	# The gate, not a look constraint. See FallUncontrolledMove's own note:
-	# the camera is driven from Player._physics_process(), so ignoring the
-	# input argument below is not on its own enough to stop the view spinning
-	# all the way down.
-	player.lock_input()
+	moving_backwards = player.old_movement_state == TURN_180_IN_AIR
 
-func physics_update(delta: float, _input: MoveInput) -> StringName:
-	# Vector3.ZERO, not the wish direction: there is no steering out of this.
-	apply_air_physics(delta, Vector3.ZERO)
-	return settle_landing(delta)
-
-## Always the hard landing, never the roll.
-##
-## The default would reach the same answer by arithmetic -- this fall is past
-## the lethal height, which is well past hard_landing_height -- but it would
-## reach it via `rolled`, and a roll consumed from a buffer filled before
-## control was lost would silently discount a landing the player had no hand
-## in. Said outright instead: you are put down hard, and getting up takes the
-## moment it takes.
-func landing_destination(_fall_height: float, _rolled: bool) -> StringName:
-	return LANDING
-
-func exit() -> void:
-	# Released by the state that closed it, the same discipline
-	# FallUncontrolledMove keeps: LandingMove closes it again for its own
-	# lockout on the very next tick.
-	player.unlock_input()
-
-## Nothing. The pad is what the fall cost.
-##
-## The lockout still runs -- being caught is not being let off -- but the bar
-## is untouched, which is the whole difference between landing on a pad and
-## landing on the floor beside it.
-func landing_damage(_fall_height: float, _rolled: bool) -> float:
-	return 0.0
+func is_moving_backwards() -> bool:
+	return moving_backwards
