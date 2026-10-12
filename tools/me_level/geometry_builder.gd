@@ -2,8 +2,9 @@
 extends RefCounted
 
 # Geometry scene of one extracted level: placements referencing the mesh
-# library, the compiled BSP, and the original's lights. Nothing editable lives
-# here -- the shell holds interactions, and the scene is regenerated freely.
+# library, the compiled BSP, the original's lights and its fall-height volumes.
+# Nothing editable lives here -- the shell holds interactions, and the scene is
+# regenerated freely.
 
 const Common := preload("res://tools/me_level/me_level_common.gd")
 const MeLibrary := preload("res://tools/me_level/mesh_library.gd")
@@ -59,6 +60,7 @@ const OCCLUDER_MIN_EXTENT := 40.0
 const RUNNER_VISION_SCRIPT := preload("res://scripts/level/runner_vision_target.gd")
 const CLOTH_SCRIPT := preload("res://scripts/level/simulated_cloth.gd")
 const PROP_SCRIPT := preload("res://scripts/level/physics_prop.gd")
+const FALL_HEIGHT_SCRIPT := preload("res://scripts/level/fall_height_volume.gd")
 
 ## Metres from the camera past which an extracted light fades out, and over
 ## how far. Stormdrain's densest view (the pillar hall) keeps 336 lights
@@ -231,7 +233,63 @@ func build(manifest: Dictionary, root_name: String) -> Node3D:
 			occluder.name = "Occluder" if root.get_node_or_null("Occluder") == null else "Occluder_" + key.validate_node_name()
 			occluder.set_meta(Common.PACKAGE_META, key)
 			root.add_child(occluder)
+	var fall_heights := _fall_height_volumes(manifest)
+	if fall_heights.get_child_count() > 0:
+		root.add_child(fall_heights)
+	else:
+		fall_heights.free()
 	return root
+
+
+## The original's TdFallHeightVolumes (FallHeightVolume). Here and not in the
+## shell: they are the original's data with nothing in them to tune, and the
+## shell is rebuilt only by replacing every hand edit in it.
+##
+## One that starts with no collision is built only where the chapter runs its
+## Kismet, which is what turns it on (KismetRunner switches it off at bind, by
+## its me_actor). Elsewhere nothing would: Stormdrain StdP's adds 1000 m to
+## every fall, and built live it would count each landing after it from a
+## kilometre up.
+func _fall_height_volumes(manifest: Dictionary) -> Node3D:
+	var group := Node3D.new()
+	group.name = "FallHeightVolumes"
+	var scripted: bool = manifest.get("streaming") is Dictionary
+	var names := Common.NameAllocator.new()
+	var skipped := 0
+	for a: Dictionary in manifest["annotations"]:
+		if a["kind"] != "fallheight":
+			continue
+		if a.get("starts_off", false) and not scripted:
+			skipped += 1
+			continue
+		var volume := Area3D.new()
+		volume.set_script(FALL_HEIGHT_SCRIPT)
+		volume.name = names.take(a["name"])
+		# Rotation and scale go into the points, not the node: Godot physics
+		# does not support a non-uniformly scaled shape.
+		volume.position = Common.v3(a["position"])
+		var basis := Common.basis_of(a["basis"])
+		var shape_names := Common.NameAllocator.new()
+		for hull: Dictionary in a["hull"]:
+			if hull["vertices"].size() < 4:
+				continue
+			var points := PackedVector3Array()
+			for v: Array in hull["vertices"]:
+				points.append(basis * Common.v3(v))
+			var shape := ConvexPolygonShape3D.new()
+			shape.points = points
+			_add_shape(volume, shape, shape_names.take("CollisionShape3D"))
+		if volume.get_child_count() == 0:
+			push_error("[me_level] fall-height volume %s has no hull" % a["name"])
+			volume.free()
+			continue
+		volume.set("center_y", float(a["center"][1]))
+		volume.set("fall_height_offset", float(a["fall_height_offset"]))
+		volume.set_meta(Common.PACKAGE_META, Common.package_key(a["package"]))
+		volume.set_meta(Common.ACTOR_META, Common.actor_id(a["package"], a["name"]))
+		group.add_child(volume)
+	print("[me_level] fall-height volumes: %d built, %d left out (start off, no Kismet)" % [group.get_child_count(), skipped])
+	return group
 
 
 ## What the original marks for Runner Vision, as the node a level of our own

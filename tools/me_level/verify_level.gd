@@ -100,6 +100,7 @@ func _run() -> void:
 	_check_count(parts, "BarbedWire", manifest, ["barbedwire"])
 	_check_count(parts, "PainVolumes", manifest, ["pain"])
 	_check_count(parts, "Glass", manifest, ["glass"])
+	_check_fall_heights(geometries, manifest, scripted)
 	# A scripted chapter ends by REACHING SeqAct_TdLevelCompleted, so it has no
 	# LevelEnds group at all -- what must exist is the node itself.
 	if scripted:
@@ -309,6 +310,53 @@ func _check_riders_ride(parts: Array[Node], manifest: Dictionary) -> void:
 					continue
 				check(carried.has(node.get_instance_id()),
 						"%s/%s/%s rides a mover but no Matinee moves it" % [part.name, group, node.name])
+
+
+## How far outside its shapes a fall-height volume's Center may sit: rounding.
+const FALL_HEIGHT_SLACK_M := 0.05
+
+## Every TdFallHeightVolume the level should have is built once, from its own
+## actor, with the touch's height the original's Center.Z + FallHeightOffset,
+## and with its shapes standing where that Center is: the cooked Center is
+## the original's, the shapes are the brush as placed here, so the two
+## agreeing is the placement checked against the original.
+func _check_fall_heights(geometries: Array[Node], manifest: Dictionary, scripted: bool) -> void:
+	var expected := {}
+	for a: Dictionary in manifest["annotations"]:
+		if a["kind"] == "fallheight" and (scripted or not a.get("starts_off", false)):
+			expected[Common.actor_id(str(a["package"]), str(a["name"]))] = a
+	var built := 0
+	var seen := {}
+	for part_geometry in geometries:
+		var group := part_geometry.get_node_or_null("FallHeightVolumes")
+		if group == null:
+			continue
+		for volume: Node in group.get_children():
+			built += 1
+			var actor := String(volume.get_meta(Common.ACTOR_META, ""))
+			var a: Dictionary = expected.get(actor, {})
+			check(not a.is_empty(), "fall-height volume from no expected actor: %s (%s)" % [volume.name, actor])
+			check(not seen.has(actor), "fall-height volume built twice: " + actor)
+			seen[actor] = true
+			check(volume is FallHeightVolume, "fall-height volume has no script: " + volume.name)
+			if a.is_empty() or not volume is FallHeightVolume:
+				continue
+			var fh := volume as FallHeightVolume
+			check(is_equal_approx(fh.fall_height_y(), float(a["center"][1]) + float(a["fall_height_offset"])),
+					"%s touches at %.3f, the original at Center.Z + FallHeightOffset = %.3f"
+					% [actor, fh.fall_height_y(), float(a["center"][1]) + float(a["fall_height_offset"])])
+			var bounds := AABB()
+			var first := true
+			for shape_node in fh.find_children("*", "CollisionShape3D", false, false):
+				for p: Vector3 in ((shape_node as CollisionShape3D).shape as ConvexPolygonShape3D).points:
+					var world: Vector3 = fh.global_transform * ((shape_node as CollisionShape3D).transform * p)
+					bounds = AABB(world, Vector3.ZERO) if first else bounds.expand(world)
+					first = false
+			var center := Common.v3(a["center"])
+			check(not first and bounds.grow(FALL_HEIGHT_SLACK_M).has_point(center),
+					"%s: the original's Center %s is outside its shapes %s" % [actor, center, bounds])
+	check(built == expected.size(), "FallHeightVolumes has %d nodes, manifest has %d" % [built, expected.size()])
+	print("[verify] fall-height volumes: %d" % built)
 
 
 func _check_count(parts: Array[Node], group: String, manifest: Dictionary, kinds: Array) -> void:
