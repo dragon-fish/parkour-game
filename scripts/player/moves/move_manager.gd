@@ -592,16 +592,13 @@ func _push_look_constraint() -> void:
 	var rig = _current.player.camera_rig
 	if rig == null:
 		return
+	# The active move's clamp and nothing else: TdMove.StopMove ends a move's
+	# constraint with the move, and the next one's governs from that frame on.
 	var active: MoveConfig = _current.current_config()
-	# A slide's stand-up keeps the slide's clamp after SlideMove has gone --
-	# see Player.residual_look_config().
-	var residual: MoveConfig = _current.player.residual_look_config()
-	if residual != null:
-		active = residual
 	rig.set_shoulder_centred(active != null and active.centre_shoulder)
 	# A ported move that turns the view the original's way owns it outright;
 	# any other still has its look-at and camera reset applied.
-	var owns_view: bool = residual == null and _current.uses_view_rotation()
+	var owns_view: bool = _current.uses_view_rotation()
 	rig.set_view_rotation_move(_current, owns_view)
 	if owns_view:
 		return

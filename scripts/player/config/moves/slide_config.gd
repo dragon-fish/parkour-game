@@ -12,9 +12,10 @@ extends MoveConfig
 ## SlideAbortTime = 2.0 is in the CDO and the ini and is read by nothing,
 ## script or native: a slide has no time limit. Not carried.
 
-## The stand-up after a slide, seconds: the eye rising and the slide's look
-## clamp still holding (Player.begin_slide_recovery()). PROJECT-DEFINED
-## presentation; the original's is the CrouchSlideToCrouch animation.
+## The stand-up after a slide, seconds: the eye rising
+## (Player.begin_slide_recovery()). PROJECT-DEFINED presentation; the
+## original's is the CrouchSlideToCrouch animation. DO NOT hold the slide's
+## look clamp over it: TdMove.StopMove ends the clamp with the move.
 @export var recovery_time: float = 1.0
 
 func _init() -> void:
