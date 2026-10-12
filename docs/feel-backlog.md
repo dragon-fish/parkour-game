@@ -1,343 +1,200 @@
 # 手感 backlog
 
-试玩中发现、但**不在当前批次修复**的问题。所有者的决定：先把 16 个任务的动作全部实现完，手感与数值问题之后统一处理。
+试玩中发现的手感与实现问题，附根因与已验证的数值。
 
-每条都记录了根因、已验证的数值、以及可选修法——目的是之后动手时不必重新推导。
+2026-10-12 起，移动层按反编译出的原版逻辑重做（[语料 15](mirrors-edge-deep-research/15-原版逻辑反编译.md)、
+[spec](superpowers/specs/2026-10-12-me-faithful-port-design.md)）。此前条目里凡是"从外部行为推断原版机制，
+再据此调参"的部分，已按原版证据改写。带状态行的条目说明它与移植的关系：
 
----
+- **已被取代**：它讨论的推理机制已被原版逻辑替换。条目里只留原版实际怎么做（指向语料 15.x）和仍然有用的实测。
+- **仍未解决**：移植没有触及这个问题。
+- **已解决**：已有结论并落实。
+- 没有状态行的条目（动画、相机表现、模型管线）不受移植影响。
 
-## 0. 【最高优先】墙跳技巧梯度在实际游戏里够不到两端
-
-**这条排在最前面，因为它让整个重做里杠杆最大的机制失效了大半。**
-
-Task 12 实现了原版的 `Noob 1.2 → Pro 5.2` 墙跳推离梯度（4.3 倍区间）。梯度本身正确、连续、单调，符号也对。但实现过程中发现：**两端在实际操作中够不到。**
-
-**机制链条**（已逐环核实）：
-
-1. `Probes._aim_side()` 把侧向探测射线设为 `Vector3(±reach, 0, 0)` —— **身体的局部坐标**；
-2. `CameraRig.apply_look()` 的 yaw 是 `body.rotate_y()` —— **视角转动直接转身体**；
-3. 于是视角转向墙面时，探测射线**同步转开**，墙面丢失、掉出墙跑。
-
-**数值后果**：沿墙跑、视线朝前时 `dot(look, normal) = 0`，`quality = (1-0)/2 = **0.5**` —— 自然状态恰好落在梯度正中。要拿到 `quality = 1`（正对墙）或 `0`（背对墙）各需转 90°，而转 90° 就会失去墙面探测。所以实际可用区间只是 0.5 附近的一小段，而不是 [0, 1]。
-
-Task 12 的实时回归测试因此只能断言 quality ≈ 0.5，而非端点值——实现者如实报告了这一点，没有为了让测试好看而绕过。
-
-**根因：身体朝向与视角朝向没有分离。** 原版用 `bDisableFaceRotation` + `RotatePawnAlongWallTime = 0.4` 让**身体贴合墙面**，视角在 `bUseAbsoluteYawConstraint` 的 ±90° 扇形内独立转动，而墙面探测跟随**身体**。我们这边两者是同一个旋转，所以视角一动探测就跟着歪。
-
-**修法方向**：墙跑期间把身体朝向锁到墙面切向（原版的 `RotatePawnAlongWallTime` 就是这个渐变时长），让 `apply_look()` 的 yaw 只转相机而不转身体。这样探测射线稳定指向墙面，视角可以自由扫过 ±90° 扇形，梯度两端才真正可达。
-
-⚠️ 注意这**不只是 Task 15 的镜头约束**。Task 15 只做「钳制视角范围」，而这里需要的是「身体与视角解耦」——是更深一层的改动，且会影响所有依赖 `global_transform.basis` 判定方向的代码（`wish_direction()`、`jump_add_xy` 的朝向、入射角计算本身）。
-
----
-## 1. 空中转向免费，跳跃可以完全绕开转向损速
-
-**现象（所有者试玩，2026-08-18）**：地面转向很容易把速度掉到 0；但跳起来在空中转向、甚至空中 180° 回头，落地后**完全不损速**，可以原速继续跑。
-
-**根因（我的设计错误，不是实现 bug）**：Task 8 的 `Player._charge_turn()` 只在 grounded 分支调用，**但 `_last_wish_dir` 在空中仍然每 tick 更新**（`player.gd` 的 `_update_speed_energy()`）。于是落地那一 tick 比对的是「上一个空中 tick 的朝向」，而不是「起跳时的朝向」——空中转的 180° 被逐 tick 摊成了无数个接近零的差值。
-
-我当初是**刻意**这么写的，理由写在 Task 8 的裁定里：「落地不该把整段飞行的转向一次性算账」。这个理由是错的。玩家确实转了自己的跑动方向，只是在空中转的；付费的对象应该是「转向」这件事本身，而不是「在哪里转」。
-
-**为什么这比"免费"更严重**：它把整条机制废掉了。既然跳一下就能免费掉头，理性玩家永远不会在地面转向——而「转向要花钱，所以必须规划路线」正是这条机制存在的全部意义。
-
-**当前还有一个测试在钉住这个错误行为**：`tests/test_turn_deceleration.gd` 的
-`test_landing_after_an_airborne_turn_only_bills_the_landing_ticks_own_turn`。修复时要一并推翻它。
-
-### 修法 A：空中冻结基准（低风险，约两行）
-
-空中完全不更新 `_last_wish_dir`，落地时按「起跳朝向 → 落地朝向」计费。
-
-⚠️ 有一个洞必须一起堵：空中松开方向键会让 `wish_direction()` 返回零向量，若那时写入 `_last_wish_dir`，基准就被免费重置了。所以冻结必须是**完全冻结**，连零向量也不写。
-
-### 修法 B：改按速度方向计费（更根本，风险更大）
-
-把计费对象从「意图方向的变化」改成「**速度方向**的变化」。这条机制的本质是「重定向动量要花钱」，而不是「改主意要花钱」。
-
-- 空中几乎无法重定向（`air_accel` 只有 1.536 m/s²），所以空中本就收不到多少费；
-- 落地时速度仍指着旧方向，`ground_accelerate()` 把它掰过来的那段时间**才是真正的转向**，计费自然落在那里；
-- 跳跃躲不掉，因为动量重定向被**推迟**了而不是被免除了；
-- 总代价不变：转 90° 仍然要扫过 90° 的速度方向。
-
-⚠️ 需要排除两类非玩家意图的速度方向变化：**墙跑**（本来就在大幅重定向速度）和**碰撞**（撞墙也会改变速度方向）。这是它风险更高的原因。
+DO NOT 为了"修"这里的任何一条去加原版没有的规则；先对照第 15 章。
 
 ---
 
-## 2. 速度能量"残留"：短暂停顿后几乎瞬间恢复高速 —— 已解决
+## 0. 墙跳推离梯度 —— 已被 语料 15.5 取代
 
-**已解决**，方式是改变了对衰减曲线用途的理解，而不是调它的数值。
+**状态：已被取代。** 本条原先记录"梯度的两端在实际游戏里够不到"，根因被判为身体朝向与视角朝向没有分离。原版的结构本来就把两者分开，梯度的自变量也和当时实现的不同。
 
-原先松开 W 走的是 `decay()`（3 s 曲线），停 0.5 s 仍保留 69% 能量，再按 W 直接回到 6.8 m/s；
-撞墙则完全不扣。所有者按原版手感给出的模型（推断，非确证）：
+原版 `TdMove_WallrunJump.StartMove`（[15 §15.5](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：
 
-- **失误掉速会掉能量**：松开方向键、撞墙导致的掉速，能量向当前速度对应的值衰减，
-  7.2 掉到 4 就从 4 重新加速，停下就从 0 起步。见 `MoveConfig.energy_follows_speed`
-  和 `Player._energy_follows_speed()`。判据是"没有输入或碰到墙"，**不是**"速度变小"——
-  按键换方向时速度也会凹一下，原版实测会立刻爬回去。
-- **滑铲掉速同时掉能量**：滑铲不能转向，掉速只能来自摩擦和坡度，所以每 tick 都跟
-  （`SlideMove` 里调 `Player.follow_speed()`）。
-- **蹲伏和慢走是绝对上限**：`ground_speed × speed_modifier × 摇杆幅度`
-  （`Player.ground_speed_limit()`），能量衰减到这个上限对应的值，且不会再往上攒。Ctrl 等同于缓推摇杆
-  （`PawnConfig.walk_stick_amount`，推断，未实测）。**不是**"能量上限 × 系数"——那样能量
-  跟着速度走会形成棘轮，一路蹲到爬行。
-- **衰减曲线是脚本动作期间的代价**：翻越、爬墙这类玩家不能操控的动作按秒付费，
-  快的几乎不掉，慢的掉得多。见 `MoveConfig.energy_decays`。翻滚沿用自己的
-  `energy_keep = 0.75`，不走衰减。
-- **梯子算速度清零**：挂在梯子上期间能量衰减到 0（推断，所有者观察）。
+```
+p = 墙法线2D · 镜头朝向2D        // bTurned90FromWall（按过 Q）时镜头取墙法线，p = 1
+Vxy = 墙法线 · (120 + 400·p) + 沿墙速度 · (0.1 + 0.9·(1 − p))
+h = 100 + 60·p,  Vz = g·2·sqrt(h/g) / (1 + ConsequtiveWallruns)
+```
 
-以上"衰减到"都不是一步到位，而是按 `PawnConfig.energy_loss_half_life`（多出的能量每 0.15 s
-减半，猜测值）的快速曲线：失误后很快补救（重新按 W、蹭墙而过）能保住一部分。dodge 例外，
-起跳即压到 base velocity。
+- 自变量是**镜头朝向与墙法线的点积**，不是时机。`FMax(0, p)` 的结果被丢弃，p 不被钳制（原样移植，不要"修"）。
+- 墙跑期间的视角约束相对墙法线定义（右墙 `[法线, 法线 + 90°]`，左墙镜像），所以 p 落在 [0, 1]：沿墙看 p = 0（推离 120，沿墙速度几乎全保留），朝离墙方向看 p 趋近 1（推离 520，沿墙速度只剩 10%），按 Q 直接给 p = 1。
+- 墙面探测（`FindWallForward` / `FindWallSide`）读的是身体朝向，身体朝向跟随墙法线；视角由 `ConstrainAxis` 单独约束。旧实现里"视角一动、探测射线跟着歪"的问题不属于原版结构。
 
-`SpeedEnergyDecelerationTime` / `Exponent` 两个确证值没动；两种公式读法的取舍重新变成开放问题，
-见 `SpeedEnergy.decay()` 里的注释。
+仍要做：在重写后的实现上试玩确认两端可达（沿墙看 → 推离 120，扭向离墙方向或按 Q → 520）。若不可达，是新实现的缺陷，另开条目。
+
+---
+## 1. 空中转向免费，跳跃绕开转向损速 —— 已被 语料 15.2 / 语料 15.6 / 语料 15.7 取代
+
+**状态：已被取代。** 原条目认为转向应当"收费"，并且应在落地时按"起跳朝向 → 落地朝向"或速度方向变化结算（修法 A、B）。这是本项目推出来的机制，原版没有任何一种。
+
+原版：
+
+- 转向惩罚是**加速度**里的一项：`A −= Velocity · SpeedTurnDecelerationFactor · |aTurn| / 32768`，`aTurn` 是本帧的鼠标偏航输入量。它在 `GetSprintAcceleration` 里，而空中（`PHYS_Falling`）同样走这个函数，所以空中转向也会有这一项；没有落地结算。
+- 空中的加速度矢量整体被钳制：水平速度 < 720 uu/s 时上限 `AccelRate × AirControl = 153.6`（翻倍积分后等效 307.2），≥ 720 时只有 **1.0**。冲刺起跳约 820 uu/s，所以高速跳跃时速度矢量几乎转不动，转向惩罚也几乎为零（[15 §15.7](mirrors-edge-deep-research/15-原版逻辑反编译.md)）。
+- 跳跃落地的代价是另一条规则：从 Jump / MeleeAir 来的落地，水平速度压到 `PreJumpMomentum − 65`（`PreJumpMomentum` 是起跳时的水平速度，[15 §15.6](mirrors-edge-deep-research/15-原版逻辑反编译.md)）。
+
+所以"空中转向免费"在原版里不是漏洞，而是空中本来就转不了多少。旧的 `_last_wish_dir` / `_charge_turn()` 机制随旧速度预算一并删除（spec §6）。
 
 ---
 
-## 3. 生成物与生成器之间没有漂移校验
+## 2. 速度能量"残留" —— 已被 语料 15.2 取代
 
-Task 11 的审查发现：入库的 `scenes/main.tscn` 一度**与它自己的生成器脚本不同步**——场景里是改造前的 zig 走廊半宽 0.7，而 `arena_builder.gd` 里已经是 0.45。任何在那期间的试玩跑的都是旧几何。
+**状态：已被取代。** 原先的解法（失误掉速时能量向速度对应值衰减、`energy_follows_speed`、`energy_decays`、`energy_loss_half_life` 等）是为复现下面的实测观察而设计的推断模型。原版没有"能量 = 秒数"这个状态量，机制简单得多（[15 §15.2](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：
 
-**根因**：归档掉的 `tests/legacy/test_arena.gd` 里原本有一个「重新生成快照比对」的测试，专门抓这类漂移。Task 1 把它连同其余 19 个一起归档，这个信号就消失了。
+- 速度不是曲线查出来的上限。`SpeedCurve_LightWeapon`（时间 → 速度）只在初始化时用来生成**速度 → 加速度**曲线，运行时每帧按当前速度取加速度：0–288 uu/s 为 1000，360 为 675，432–504 为 200，576 为 52，648 为 45，720 为 0。"7 秒爬满"是这条曲线积分的结果。
+- 唯一的"能量"是 `SpeedSprintEnergy = max(speed − SpeedMaxBaseVelocity(400), 0)`：冲刺分支每帧由当前速度直接算出；行走分支让它按 `(GroundSpeed − 400)·(1 − f)/3·dt` 衰减，行走的目标速度是 `390 + 能量`。
+- **没有输入时**，两个加速度函数都把 `SpeedSprintEnergy` 置 0 并返回零加速度，速度只由 `CalcVelocity` 的刹车摩擦衰减；起步不足 0.15 s 就松手的点按急停，速度直接设成 35 uu/s。再按 W 时从低速重新沿曲线加速。所以"停下就从 0 起步"自然成立，没有残留能量。
+- 蹲伏、慢走的上限是 `CalcVelocity` 里的 `|V| ≤ GroundSpeed × 机动性 × move.SpeedModifier`（Crouch 0.2、Balance 0.34、LedgeWalk 0.1），不是"能量上限 × 系数"。
+- 滑铲掉速来自刹车摩擦（`V −= V·2·slice·Friction·0.5`，Friction = GroundFriction 8 × 0.1，即 0.8/s）与坡度。
+- 撞墙掉速是 `physWalking` 帧末 `Velocity = 实际位移 / dt` 的结果（夹角小于 45° 的擦墙不损速）。
 
-同一类问题在本批次已经咬过两次（`arena_builder.gd` 与移动代码失步）。Task 16 的收尾清单里已记入「恢复一个漂移守卫」。
+下面这些所有者观察仍是有效的验收对照，只是现在由 15.2 的公式解释：松开方向键短暂停顿再按 W，不会瞬间回到高速；撞墙或换向掉速后从当前速度重新爬；按键换方向时速度凹一下，随后被曲线加速度爬回来。
+
+代码里的旧模型（`SpeedEnergy`、`seed_legacy_energy`、`energy_follows_speed`、`follow_speed`）在所有 move 移植完成后删除（spec §6）。
+
+---
+
+## 3. 生成物与生成器之间的漂移校验 —— 已解决
+
+`tests/test_generated_scenes.gd` 现在在内存里重跑 builder，与入库的 `scenes/main.tscn`、`scenes/player/player.tscn` 逐节点比对（见 `CLAUDE.md` 的 Generated vs. hand-authored scenes）。这恢复了归档的 `tests/legacy/test_arena.gd` 里那个"重新生成快照比对"的守卫，且在运行的套件内。
 
 ---
 
 ## 4. 竞技场 zig-zag 走廊的设计前提可能是错的
 
+**状态：仍未解决（关卡设计决定）。**
+
 当前走廊要求玩家**同时够得着两面墙**，因此半宽被锁死在 0.45 m，每侧只有 0.05 m 净空（探针触及 0.5 − 胶囊半径 0.4 = 全系统仅有 0.1 m 松弛）。玩家实际是「卡」在缝里的。
 
 而原版的 zig-zag 爬升是**飞过去**的：沿一面墙跑、蹬开、空中越过间隙、贴上对面。飞行途中不需要够着任何一面墙。按那个模型，走廊宽度应由**墙跳推离距离**决定。
 
-Task 12 会给出两端梯度下的实际横越距离，据此可以重新设计。**这是关卡设计决定，留给所有者。**
+墙跳的推离速度现在由 [15 §15.5](mirrors-edge-deep-research/15-原版逻辑反编译.md) 的公式给出（推离 120–520 uu/s，滞空 `2·Vz/1600`），据此可以重新设计。**这是关卡设计决定，留给所有者。**
 
 ---
 
 ## 5. 其他延后项（来自各任务审查）
 
-- `PLAYER_CAPSULE_RADIUS = 0.4` 在 `arena_builder.gd` 与 `build_player_scene.gd` 里各写了一份，没有共享来源（胶囊半径没有暴露到 `MovementConfig`）。
-- `tools/build_main_scene.gd:5` 引用已归档的 `tests/test_arena.gd`。
-- `debug_hud.gd` 的行标签仍写作 `state`，实际显示的是 move 名。
+- `tools/arena_builder.gd` 里的 `PLAYER_CAPSULE_RADIUS = 0.4` 与玩家碰撞体不再一致：玩家现在是 0.6 × 1.8 × 0.6 m 的盒（对应原版 `CollisionRadius 30`、`CollisionHeight 90`，I1 §5）。重新设计 §4 的走廊时，尺寸应当来自玩家碰撞体，而不是另写一份。
 - `SlideMove._slope_direction()` 与 `Player.ground_grade()` 各算一份同样的投影，没有复用。
 - `tools/arena_builder.gd` 里若干处注释仍引用重命名前的旧类名。
+- 已处理：`tools/build_main_scene.gd` 的头注释不再指向已归档的测试，而是指向 `tests/test_generated_scenes.gd`；`debug_hud.gd` 的行标签已改成 move。
 
 ---
 
-## 6. 抓边冷却 0.45 s，原版是 0.15 s（Task 16 发现）
+## 6. 抓边冷却 —— 已解决
 
-`GrabConfig.redo_move_time = 0.45` 是从项目自创的 `ledge_regrab_cooldown` 直接继承下来的值。附录 A1:534 记有 `TdMove_Grab.RedoMoveTime = **0.15**` ——差三倍。
+**状态：已解决。** `GrabConfig.redo_move_time` 现在是 0.15，等于原版 `TdMove_Grab.RedoMoveTime`。原先"合并后的 Grab 该继承哪一端"的取舍不存在了：悬挂、翻上、转移已按原版拆成 Grab / GrabPullUp / GrabTransfer 三个 move（spec W2b）。
 
-**为什么没有直接对齐**：原版把「悬挂」和「翻上去」拆成三个 Move（`TdMove_Grab` 0.15 / `TdMove_GrabPullUp` / `TdMove_GrabTransfer` 0.5），本项目的 Grab 一个 Move 全包。0.45 恰好落在 0.15 与 0.5 之间，所以**不存在一个可以照抄的 1:1 答案**——合并后的 Move 该继承哪一端的语义，是手感问题而不是转写问题。
-
-**试玩时留意**：抓一次边掉下来之后，再次贴上同一个边缘要等多久才抓得住。若觉得「明明够得着却抓不上」，就往 0.15 调；若觉得反复黏在边上甩不掉，就维持或调高。
+另外，`RedoMoveTime` 在原版里只被脚本的 `CanDoMove` 检查，原生的抓边、蹬墙检查都不看它（[15 §15.8](mirrors-edge-deep-research/15-原版逻辑反编译.md)）；冷却挡得住按键与脚本发起的转移，挡不住 `CheckAutoMoves` 的自动抓边。
 
 ---
 
-## 7. `min_ledge_z_normal` 目前没有消费者（Task 16 发现）
+## 7. `min_ledge_z_normal` —— 已被 语料 15.8 取代
 
-按 spec 落地的确证值 `0.707`（45°）没有任何代码读取——`Probes.ledge_query()` 判断边缘顶面能否站立时用的是 `pawn.walkable_floor_z`（0.71），两者相差不到三分之一度。
-
-实现者拒绝为了「让字段用上」而制造第二个含义相同的阈值，这是对的。真要处理，正确的方向是**二选一**：要么让 `ledge_query()` 改读 `min_ledge_z_normal`（承认抓边与走路的可站立判据在原版里本就是两个字段），要么删掉它并在 spec 里注明其含义已被 `walkable_floor_z` 吸收。不要两个都留着各管一半。
+**状态：已被取代。** 这个字段已从代码里删除。0.707（45°）在原版里的消费者是 `IntoGrab` 的原生检查：顶面法线 Z ≥ 0.707，且在 70° 以内、够取距离 200 × 接近速度系数（[15 §15.8](mirrors-edge-deep-research/15-原版逻辑反编译.md) `CheckAutoMoves` 第 7 步）。走路的可行走判据是另一个独立的东西（`FloorDeclineTooSteep`，即 `Floor.Z < 0.72`），原版里两者并存；移植时各在自己的消费者里读，不要合并。
 
 ---
 
-## 8. 空中状态链留下的三处押后（最终评审发现）
+## 8. 空中状态链留下的押后项
 
-**10 m 死亡线有约 0.23 m 的软边。** `settle_landing()` 会多跑一次 `fall_tracker.update()`，
-让**硬着陆**阈值量在真正的触地位置上；失控判定没享受到这份修正，读的是 tick 起始位置。
-于是一次 10.00–10.23 m、且越线与触地发生在同一 tick 的坠落，会被判成硬着陆而不是摔死。
-真要抹平，就在 `settle_landing()` 里 `move_and_slide()` 之后、选目的地之前再测一次高度。
+**状态：前两处已被取代，第三处仍在。**
 
-**抓边会保留累计落差。** `GrabMove.enter()` 声明 `grounded == false` 且不重设计数器，
-所以在下坠 9 m 处抓住边缘、再掉 1.2 m，就跨过 10 m 线摔死。这与原作的
-`SZ = 上一次起跳高度` 模型一致，且改动前就是这样；只是现在后果更硬——控制权在半空就被剥夺，
-而不只是落地时结算。想让"抓一把"算作自救，就在 `GrabMove.enter()` 里重设 `fall_tracker`。
+**10 m 死亡线的软边、抓边保留累计落差。** 这两处是本项目自制的 `FallTracker` 模型（tick 起始位置、`settle_landing()` 补测）的产物，已被原版的做法取代（[15 §15.6–15.8](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：物理进入 Falling 时 `EnterFallingHeight` 记下碰撞体中心的 Z（`TdFallHeightVolume` 被碰到时也会改写它），`PrePhysics` 每帧检查 `bCheckExitToUncontrolledFalling`（已下落超过 `FallingUncontrolledHeight` 即转 FallingUncontrolled），Landing 在 `Landed` 之后才重置它。Grab 是无物理的 move，抓住后再掉落是重新进入 Falling 物理，起点随之重置 [ME:DERIVED 15 §15.7 + I1 §5]，"抓一把算不算自救"不再是需要选的设计。`FallTracker` 现在只剩 `HardCatch` 等死代码在读，待所有者决定（spec §6）。
 
-**`test_death_to_respawn.gd` 依赖 `Arena._resetting_physics` 私有字段做探针。**
-`Arena` 目前没有任何"重生完成"的公开信号可用，所以这是当下唯一可行的写法。
-加一个 `signal respawned` 就能换掉它。不紧急——GDScript 的成员检查会让重构时报错，不会静默失效。
+**`test_death_to_respawn.gd` 依赖 `Arena._resetting_physics` 私有字段做探针**（仍在）。`Arena` 目前没有任何"重生完成"的公开信号可用，所以这是当下唯一可行的写法。加一个 `signal respawned` 就能换掉它。不紧急——GDScript 的成员检查会让重构时报错，不会静默失效。
 
-## 9. 更贴近原作的土狼时间写法（不变量 I3 的例外）
+## 9. 土狼时间 —— 已被取代
 
-`coyote_time` 的实现是 `FallingMove` 开头的 `consume_jump()`，即一条真实的 `Falling → Jump` 边。
-spec 已把 I3 改写成带例外的表述。更贴近原作的做法是让 `WalkingMove` 自己持有土狼窗口、
-直接返回 `Jump`，这样 `FallingMove` 身上完全没有起跳代码。代价是转移的可观测时刻挪动一两 tick，
-且下坡上的土狼跳会从 `Walking → Falling → Jump` 变成 `Walking → Jump`。
+**状态：已被取代。** 原版没有土狼时间：土狼与跳跃缓冲是本项目自创的机制，随移植删除（spec §3.1，`coyote_time` 已不在代码里）。走出边缘时的 Walking → Falling 是 `physWalking` 找不到可站地面后的 `setPhysics(Falling)` + `SetMove(Falling)`；Falling 里按跳没有 Falling → Jump 这条边，仲裁表里 Falling 的 Jump 动作只会询问恒为 false 的 WallKick（[15 §15.3](mirrors-edge-deep-research/15-原版逻辑反编译.md)）。本条比较的两种写法都不再需要。
 
-## 10. 下坡滑铲 → 跳 → 蹬墙现在是无损链路
+## 10. 下坡滑铲 → 跳 → 蹬墙的增速循环 —— 原版如此，已定
 
-滑铲跳落到 `Jump`（起跳类，持有 `ForWallClimb`），而 `Jump` 一路不掉水平速度。
-`slide_move.gd` 文件头原先的论证——"从滑铲够到墙必须先经过 Walking 或 Falling，
-沿途会被摩擦收走滑铲攒下的速度"——因此不再成立。
+**状态：已按原版结论处理。** 这条链路在原版里就是这么连的（持有 `bCheckForWallClimb` 的 move 全是起跳类），移植照抄。原版给这个循环的"刹车"是已经存在的两条，不是需要新加的规则：
 
-这是照抄原作的结果而不是疏漏（原作里七个持有 `bCheckForWallClimb` 的状态全是起跳类），
-但下坡滑铲本身是净加速的，所以理论上存在一个不需要还债的增速循环。
-试玩时留意：下坡滑铲 → 跳 → 蹬墙 → 落地 → 再滑，速度是不是单调涨。
-若确实失衡，最小的刹车是给 `JumpConfig` 加水平阻力，或让滑铲跳保留一部分摩擦结算。
+- 落地时，从 Jump / MeleeAir / Coil 来的水平速度压到 `PreJumpMomentum − 65`（[15 §15.6](mirrors-edge-deep-research/15-原版逻辑反编译.md)），每次循环落地都扣一次；
+- 地面速度上限 `GroundSpeed × 机动性 × move.SpeedModifier`（[15 §15.9](mirrors-edge-deep-research/15-原版逻辑反编译.md)）。
 
-## 11. `JumpConfig.redo_move_time` 是一颗静默地雷
+陡坡（> 33.7°）直冲下行时滑铲摩擦为负、速度逐帧增长到上限，同样是原版行为。DO NOT 给 `JumpConfig` 加水平阻力，或让滑铲跳"保留一部分摩擦结算"——那是原版没有的规则。试玩时若仍觉得失衡，先对照 15.6 / 15.9 核对实现是否漏了上面两条。
 
-`MoveManager.physics_update()` 有 `if not can_enter(next): return`——转移会被**静默拒绝**。
-墙跳与滑铲跳现在都交棒给 `Jump`，而 `Jump` 的 `redo_move_time` 走默认 0.0，所以当前安全。
-将来谁给 `JumpConfig` 加一个非零的 `redo_move_time`，连续蹬墙会以"按了跳但什么都没发生"
-的形式炸掉，而且不会有任何报错。全仓目前只有 `Grab`(0.45) 与 `WallRun`(0.15) 是非零。
+## 11. `redo_move_time` 的静默拒绝 —— 范围已缩小
+
+**状态：已大体被取代。** 原版 `RedoMoveTime` 只在脚本 `CanDoMove` 里检查（[15 §15.8](mirrors-edge-deep-research/15-原版逻辑反编译.md)）。已移植的 move 在 `Move.td_can_do_move()` 里做这件事，转移经 `MoveManager.set_move(name, check_can_do)` 显式选择是否检查，不存在"转移被静默吞掉"。
+
+残留：`MoveManager.can_enter()` 的冷却闸仍服务于尚未移植、仍靠 `physics_update()` 返回值转移的 move（`move_manager.gd` 里的注释写明）。给这类 move 的 config 加非零 `redo_move_time`，仍会以"按了跳但什么都没发生"的形式失效；这些 move 全部移植完之后，这颗地雷随之消失。
 
 ---
 
-## 12. `bDisableFaceRotation` 尚未实现 —— 滑铲手感的根
+## 12. `bDisableFaceRotation` —— 已实现；滑铲后摇仍未解释
 
-`TdMove_Slide` 的 CDO 有 **`bDisableFaceRotation = True`**，全库共 19 个 Move 带这个标志。
-它锁死身体朝向：滑铲期间转鼠标只转视角，不转身体，所以**行进方向不可改**。
+**状态：前半已解决，后半仍未解决。**
 
-这同时解释了滑铲视角钳制为什么没效果。原作 Slide **没有** `bUseAbsoluteYawConstraint`
-（全库只有两处有，都不是 Slide），我们照抄 `false` 是对的——但在原作里那不重要，因为
-`bDisableFaceRotation` 已经让身体朝向固定，相对钳制的参考随之固定，效果**等同**绝对钳制。
-我们没实现前者，身体照转，参考跟着动，±54.9° 就退化成了每 tick 的速率限制（≈688°/s，
-等于没锁）。
+`TdMove_Slide` 的 `bDisableFaceRotation = True` 锁死身体朝向，滑铲期间转鼠标只转视角，行进方向不可改。全库 19 个 move 带这个标志，移植（W2/W3）已按原版设置，补齐了 Barge、MeleeVault、Interact、ZipLine；Slide 的视角约束（±10000，即 ±54.9°）由 `TdMove.StopMove` 立即解除，`Slide.StopMove` 里的 `FaceRotationTimeLeft = 0.4` 也已补上。这一个字段同时给出了滑铲方向锁定和视角钳制，与本条原先的分析一致。
 
-**所以这一个字段同时修好两件事**：滑铲方向锁定，和滑铲视角真正被限制在 ±54.9° 的扇形里。
+**滑铲结束后约 1 秒的起身后摇（所有者实测）仍未解释。** [15 §15.11](mirrors-edge-deep-research/15-原版逻辑反编译.md) 的 Slide 描述里没有时间上限，也没有后摇：结束条件是输入提示 Down 或速度 < 250（转 Crouch），`StopMove` 把速度**减半**。`SlideConfig.recovery_time = 1.0`（期间不提速、不能跳、不能再滑铲）是本项目为复现这个实测加的，没有原版证据；减半之后的重新加速是一个候选解释，未验证。
 
-实现要点：yaw 目前完全挂在 `body.rotation.y` 上（`CameraRig.apply_look()`），
-禁用朝向旋转就得让 rig 自己承载一份 yaw 偏移，并在退出该 Move 时把偏移**合并回身体**，
-否则身体与视角会永久错开。`Player.wish_direction()` 读身体朝向，所以方向锁定是免费的副产品。
+## 13. 矮墙的 Grab / Vault 分派 —— 已被 语料 15.8 取代
 
-同批应当一并处理的还有：**滑铲结束到 Walking 之间约 1 秒的起身后摇**（实测），
-期间不提速、不能跳、不能再滑铲。目前完全没有。
+**状态：已被取代。** 原先的诊断（`ledge_query()` 缺高度下限、`wall_query()` 与 `ledge_query()` 的朝向依据不一致）针对的是本项目自制的探针分派。原版的分派是 `CheckAutoMoves` 里一个固定顺序（[15 §15.8](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：
 
-## 13. 矮墙的 Grab / Vault 分派是错的
+1. 墙跑（`bCheckForWallClimb`，不受延迟限制）；
+2. 找手撑点（任一开关开着，且 `MoveActiveTime > bDelayTimeCheckAutoMoves`）；
+3. 垂直蹬墙；
+4. AutoStepUp（`CanDoMove` 恒 false）→ VaultOver（`bCheckForVaultOver`）；
+5. IntoGrab（`bCheckForGrab`）：原生检查，够取距离 200 × 接近速度系数、顶面法线 Z ≥ 0.707、70° 以内。
 
-实测转移链：`Walking → Jump → Grab` 与 `Jump → WallRun → Falling → Grab`——两次都是
-矮墙被当成可抓边缘爬了上去。所有者实测原作：接触高度 0.53–0.75 m 走 Vault，
-1.94–1.98 m 才走 Grab。`Probes.ledge_query()` 目前没有任何高度下限，只要前向射线打到
-可站立顶面就报 valid，所以矮墙先被 Grab 抢走。
+VaultOver 排在 IntoGrab 之前，"矮障碍走 Vault、高的才 Grab"是顺序加各自的条件的结果，不是一张高度表。所有者实测的 0.53–0.75 m 走 Vault、1.94–1.98 m 走 Grab 是移植后的验收对照；`Probes` 里的列扫描只剩调试叠加层和尚未移植的 move 在用。
 
-`AirborneMove.probe_transition()` 的顺序（WallRun → Vault → Grab）本身是对的，
-问题在 `ledge_query()` 缺一个"太矮就不是可抓边缘"的判据。
+## 14. 转向损速的地板 —— 已被 语料 15.2 取代
 
-同一条线索的另一半：所有者报告"几乎平行于墙面按空格仍会爬上木板"，而原作那种矮墙是要
-滑墙跑的。`wall_query()` 用的是**速度方向**，`ledge_query()` 用的是**视线方向**——
-沿墙平行跑时前者可能探不到墙而后者能，于是 WallRun 让位给 Grab。这两个探测的朝向依据
-不一致，需要一起看。
+**状态：已被取代。** "转向扣费永不低于 `speed_max_base_velocity` 对应的能量"是对所有者观察（低于约 4.6 m/s 怎么甩都不再损速）的拟合。原版没有这条地板，`SpeedMaxBaseVelocity` 的用途也不是它：它是 `SpeedSprintEnergy = max(speed − 400, 0)` 的零点。
 
-## 14. 转向损速：已加地板（原 §14 的猜测被采纳）
+原版的转向惩罚在 `GetSprintAcceleration`（[15 §15.2](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：`A −= Velocity · 10 · |aTurn| / 32768`，`aTurn` 是本帧鼠标偏航输入量。它是与同一帧曲线加速度相加的一项：低速时曲线加速度很大（< 288 uu/s 时为 1000 uu/s²），盖过转向项；高速时曲线加速度小（≥ 432 uu/s 时 ≤ 200），转向项占主导。观察到的"低速甩不掉速"因此由公式自然带出，不需要另设地板 [ME:DERIVED 15 §15.2]。
 
-**已解决**。所有者试玩反馈"甩个鼠标速度随便被惩罚到 0，太恶心了"，并判断原作存在一条底线：
-速度低于约 4.6 m/s 之后无论怎么甩都不再损速。
+- 行走分支（`GetWalkAcceleration`）没有转向惩罚；冲刺分支要求 `aForward > 0.7 && InputSize > 0.7 && Velocity·WalkDirection > 0`。
+- 空中同样有这一项，但空中加速度整体被钳到 153.6（≥ 720 uu/s 时 1.0）。
+- 惩罚正比于每帧的转动量，不是转过的总角度；积分后总损失近似正比于总转角，慢转时曲线加速度有时间补回，这与实测里"每度损速随角速度上升"相容 [ME:INFERRED]。
 
-采纳的实现：转向扣费**永不把能量扣到 `speed_max_base_velocity`（4.0 m/s）对应的能量以下**。
-这同时给了那个字段一个用途——逆向文档对它的标注一直是"✅ 数值确凿、❓ 作用不明、
-目前没有任何代码读它"，而它的值（4.0 m/s = 14.4 km/h）与所有者实测的地板
-（约 16 km/h ≈ 4.44 m/s）非常接近。角色定位为**推断**而非确证，注释里写明了。
+## 15. 台阶抬升 `try_step_up()` —— 已被 语料 15.9 取代
 
-只有转向受地板保护；停下不动时能量随速度一起刹到零（§2），
-否则站着不动会永久保留起跑加成。
+**状态：已被取代。** 本条论证的"三段式扫掠"正是原版 `physWalking` 的做法，由移植后的 `phys_walking` 提供（[15 §15.9](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：子步里先前进；上坡超过 11.5° 时跳过普通前进，直接 stepUp（上 37 uu、前进、下 37 uu）；向下 37 uu 扫地面，贴地到地面上方 2.15 uu；找不到可走地面才走出边缘进入 Falling。身体不再产生悬空帧。
 
-原先记录的那批实测数据（满速 25.9 km/h，90° 快甩掉到 21.5，最低 20.5，4 秒回到 25.7；
-成本对角度线性且无下限，约 135° 花光全部 7.0 预算）保留在 git 历史里，作为定标依据。
+本条原先测到的"间隙 ≥ 0.08 m 时探针完全放弃"、锚点实验等，都属于旧的 `try_step_up()` 探针，不再适用；旧函数若仍有调用者，按旧实现看待。验收标准仍可用来核对移植后的台阶行为：0.30 m 台阶全部抬起；滑铲全程不进 Falling；`MaxStepHeight`（35 uu）以上仍然正确拒绝。
 
-## 15. `try_step_up()` 应当换成 Godot 社区的标准三段式扫掠
+## 16. `try_step_up()` 的斜坡早退 —— 已被 语料 15.9 取代
 
-**症状**（所有者实测）：低于约 5.6 m/s 能完美滑过一块矮板，再快就大概率卡脚。
-HUD 转移日志：`Walking → Slide → Falling → Grab → Falling → Walking`。
+**状态：已被取代。** 这是旧 `try_step_up()` 探针内部的判据问题（用胶囊圆底的接触法线判断斜坡）。玩家碰撞体现已改为锐边的盒，台阶与坡度由 `phys_walking` 按原版处理（[15 §15.9](mirrors-edge-deep-research/15-原版逻辑反编译.md)），本条的症状和修法都不再适用。
 
-**已量到的数据**。把身体停在距台阶面若干间隙处直接调 `try_step_up()`（台阶 0.30 m）：
+## 17. 窄脊拒绝分支的测试覆盖 —— 已被 语料 15.9 取代
 
-| 身体与台阶面的间隙 | 探针给出的抬升 |
-|---|---|
-| 0.00 m | 0.169（本该 0.30，已经低估） |
-| 0.04 m | 0.169 |
-| **0.08 m** | **0.000 —— 完全放弃** |
-| 0.11 m | 0.000 |
+**状态：已被取代。** 这条分支属于旧 `try_step_up()`，随它一起退出主路径（[15 §15.9](mirrors-edge-deep-research/15-原版逻辑反编译.md)）。
 
-那个间隙正是 `test_move()` 留下的：它在"这一 tick 的位移**将会**触及障碍"时就报碰撞，
-所以速度越快，报碰撞时身体离障碍越远。0.08 m/帧 = 4.8 m/s，与所有者观测的坎吻合。
-注意即使间隙为 0，探针也只给出 0.169——胶囊圆底先碰到台阶**棱角**而不是顶面，
-这是既有注释早就记下的现象，只是没被当作缺陷处理。
+## 18. 垂直踢墙 WallClimb —— 已按原版重写（语料 15.5 / 语料 15.8 / 语料 15.10）
 
-**试过但无效**：把落点探针锚定到 `blocker.get_position()` 找到的那个面（而不是从身体位置
-往前推固定距离）。概念上更正确，也和抓边探针的既有修复同类，但四个读数**一个都没变**——
-问题比一个锚点更深，所以那次改动已经撤回，没有留在代码里。
+**状态：已被取代。** 原先的实现建立在两个不成立的读法上：`WallClimbingGravity = 800` 是"重力的一半"，以及在探针层按入射角分派 WallRun / WallClimb。原版：
 
-**行业方案**。Godot 社区对这个问题有成熟做法，核心是同一帧内的**三段扫掠**：
-向上 `max_step_height` → 沿速度向前 → 向下回落，每段都用上一段的 `get_travel()` 修正下一段
-的原点，落地后 `apply_floor_snap()` 保持接地。关键收益是**身体从不产生悬空帧**，
-于是 §12 那个宽限窗口从主要机制降级成纯保险，`Falling → Grab` 的误抓也一并消失。
-博客把两个坑写得很清楚：重力带来的垂直速度会让检测失效（需把水平/垂直 `move_and_slide()`
-分开），以及天花板/墙的碰撞要靠沿法线滑动来迭代。同一套做法还顺带给出**下台阶**吸附。
+- **进入**（`CheckAutoMoves`）：墙跑先问（第 1 步，`FindWallForward` 要求身体朝向与墙法线成 33°–90°）；垂直蹬墙是第 3 步，要求输入提示 Up、**镜头**朝向与墙法线 33° 以内、正在上升、2D 距离 ≤ 120、顶高至少高出脚底 180。两者的边界都落在到墙法线 33°（到墙面 57°）上，一个读身体朝向，一个读镜头朝向。
+- **运动**（`physWallClimbing`）：`ReachedWall` 里 `AddOnHeight = 60·clamp((入墙速度 − 400)/250) + 130·clamp(Vz/320)`，`Vz = sqrt(4·AddOnHeight·800)`；每帧把 V 投影到墙面，XY 摩擦 6，加速度 `(0, 0, −g)`，**帧末 `V = 2·Vnew − V0`**，所以有效重力是 1600（不是 800），水平摩擦约 12/s，正好上升 `AddOnHeight`（最多 190 uu）。Vz < 0 或墙消失时结束。
+- `CheckDoubleJump`：找到手撑点、Vz < 100、顶面低于 `GroundZLoc + 480` 时 `Vz = sqrt(4g·(EdgeZ − 头顶Z + 4))`。
+- 正面探测不再需要本项目的 `WallAheadLow` / `WallAheadHigh` 射线（`Probes.wall_ahead_query()` 只剩调试叠加层）。
 
-参考实现（择一移植即可，注意许可证）：
-- https://dresswithpockets.github.io/2025/03/19/godot-stair-stepping.html （原理讲解最清楚）
-- https://github.com/Andicraft/stairs-character
-- https://github.com/JheKWall/Godot-Stair-Step-Demo
-- Asset Library: `StairsCharacter3D` / `Character Step`（后者用 `PhysicsServer3D.body_test_motion`，
-  与碰撞形状无关）
-
-**验收标准**：把上表那四个间隙全部测到 rise ≈ 0.30；滑铲全程不进 `Falling`；
-`max_step_height`(0.35) 以上仍然正确拒绝。
-
-## 16. `try_step_up()` 的斜坡早退读的是"要站上去的面"，不是"挡住你的面"
-
-**证据**（HUD 实测，`S_LitterSmall_01c` —— 一块贴地的薄板，顶面是平的）：
+CDO 里和所有者手感对得上的字段（数据本身不变）：
 
 ```
-9.80  是斜坡 n.y=0.890，交给 move_and_slide
-9.89  是斜坡 n.y=0.972
-9.90  是斜坡 n.y=0.978
-9.92  是斜坡 n.y=0.992
-```
-
-这块板**不是斜坡**。胶囊的圆底在碰到板的垂直边缘之前，先够到了板的**顶面**，
-所以 `blocker.get_normal()` 描述的是"身体即将站上去的那个面"，而不是"挡住身体的那个面"。
-0.890 → 0.992 这串递增，正是接触点随着间隙缩小从棱边滑到顶面的过程。
-
-这与 `Probes.ledge_query()` 曾经踩过的是同一类错误（棱边法线实测 0.36 / 0.57，
-而那道女儿墙人明明站得上去）。
-
-**试过并撤回的修法**：把判据从接触法线改成事后实测的 rise（"板一次交出整个厚度，
-坡每帧只交出一点点"）。不成立——可行走坡最陡 45°，跑速下每帧 rise 可达
-`motion × tan45° = 0.12 m`，与薄板厚度区间**完全重叠**，两者不可能靠大小分开。
-`test_slide.gd::test_uphill_slides_decay_harder_than_downhill_through_slide_move` 当场变红。
-
-**还没试的方向**：真正的区别不是尺寸而是**形状延续性**——板的顶面之后是平的，
-坡之后继续升。可以在落点再往前探一次，比较两处高度；或者改用侧向射线找垂直面，
-不依赖胶囊圆底的接触点。任何修法都必须同时通过"薄板要能上"和"斜坡不许抖屏"两组用例。
-
-## 17. 窄脊拒绝这条分支没有自动化覆盖
-
-`try_step_up()` 里"远探针探空 ⇒ 顶面太窄，站不住"这条分支只有实测证据，没有测试。
-
-**它修的是什么**：所有者实测，角色会沿一根**倾斜的管子**每帧爬升几厘米
-（日志：`S_Pipes_01_1023 抬升 0.269 → 0.067 → 0.026`）。斜坡判据靠比较相距 0.2 m 的
-两个落点探针，而远探针从管子旁边掠了过去、探到空——没有可比对象，斜坡判据就从未运行，
-于是每一帧都报告出一小级"台阶"。
-
-**为什么没有测试**：合成一个能精确命中这条分支的几何体反复失败——摆出来的窄方块要么先被
-"太高，是墙不是台阶"拒绝，要么 `test_move()` 根本不报碰撞（探针日志为空）。真实场景是一根
-斜置圆柱，它同时具备"够矮能被当台阶"和"顶面窄到远探针够不着"两个条件，用轴对齐的盒子拼不出来。
-
-补的话，正确做法是直接构造一个倾斜的 `CylinderShape3D` 而不是继续摆方块，
-并断言 `step_decisions` 里出现的是"顶面太窄"这一条——只断言 rise 为 0 没有意义，
-好几条分支都返回 0。
-
-## 18. 垂直踢墙 WallClimb —— 已实现
-
-> **已实现**（`WallClimbMove` / `WallClimbConfig` / `Probes.wall_ahead_query()`）。
->
-> 动手时才发现根因比"没写状态"更靠下：`wall_query()` **只朝左右两侧发射线**，
-> 正面直冲一堵墙时两条射线平行于墙面，什么也打不到。所以这个状态不是没实现，
-> 是**探针层面不可达**。新增了 `WallAheadLow` / `WallAheadHigh` 两条正面射线。
->
-> 分支仲裁：原作 `bCheckForWallClimb` 是**一个** flag，三个角度阈值把 0–90° 正好
-> 分完且不重叠（33 / 57 / 60），所以由**入射角**选分支。头对头那一段（0–33°）是
-> 滑墙前向段（0–57°）的子集，因此必须先问踢墙——见 `AirborneMove.probe_transition()`。
-
-所有者反馈"我们只有滑墙，没有垂直踢墙"。`TdMove_WallClimb` 的 CDO 相当完整，
-而且**所有者凭手感说的每一条都能对上一个字段**：
-
-```
-WallClimbingVerticalStartAngle          33.0     入射角门槛
+WallClimbingVerticalStartAngle          33.0     到墙法线的角度门槛
 WallClimbingVerticalFriction            6.0
 WallClimbingMaxDistance2D               120.0    (1.2 m) 能蹬多远
-WallClimbingGravity                     800.0    (8 m/s²) 正常重力的一半
+WallClimbingGravity                     800.0    脚本重力；有效重力因帧末重建翻倍为 1600
 MinWallHeight                           180.0    (1.8 m)
 AddOnSpeed2DHeight / MaxLimit           60 / 650
 AddOnSpeedZHeight / MaxLimit            130 / 320
@@ -345,62 +202,50 @@ MinUpwardsVelocityToDoubleJump          100.0    (1 m/s)
 MaxIntoWallClimbVelocityToDoubleJump    100.0
 PawnPhysics                             PHYS_WallClimbing
 ControllerState                         PlayerWallWalking
-bCheckForGrab                           True     ← 期间可抓边
-bCheckForVaultOver                      True     ← 期间可翻越
-bCheckForEdgeInVelDir                   True
+bCheckForGrab                           True     期间可抓边
+bCheckForVaultOver                      True     期间可翻越
+bCheckForEdgeInVelDir                   True     只是把速度方向的竖直分量加进手撑点探测方向
 FrictionModifier                        0.3
 ```
 
-- **"像被吸在墙上一样"** → `WallClimbingGravity = 800`，正好是本项目重力（1600）的一半。
-- **"期间可进入 VaultOver 或 Grab"** → `bCheckForGrab` / `bCheckForVaultOver` 都是 True，确证。
-- **入射角**：所有者记作"大于 53°"，spec §2 记的是 57°–123° 走 WallClimb。
-  CDO 的 `WallClimbingVerticalStartAngle = 33` 大概率是"距墙面法线 33°"即距墙面 57°，两者自洽。
+"像被吸在墙上一样"（所有者）是 `WallClimbingGravity` 与帧末重建共同的结果；"期间可进入 VaultOver 或 Grab"由两个开关确证。
 
-## 19. 180Turn —— 已实现
+## 19. 垂直蹬墙里的 Q 与 180Turn —— 部分被取代
 
-> **已实现**（`Turn180Move` / `Turn180Config`）。所有者的描述逐条落到了字段上。
->
-> `TdMove_WallKick` **折进了本状态的出口**，没有单开状态：从外部看就是一记冲量
-> 然后进 Jump。代价是丢掉了它自己的 `RedoMoveTime = 1.0`，目前没有消费者——
-> 本状态自己的 0.5 已经挡住了"在同一堵墙上反复转"这个显然的滥用。
+**状态：部分被取代。** 原条目把 `TdMove_WallKick` "折进"了本状态的出口，并用它的 `WallKickVelocity2D = 300` / `WallKickVelocityZ = 580` 解释"蹬墙跳出去"。**WallKick 在发售版里不可达**：`CanDoMove()` 恒为 false，仲裁表里 Jump → WallKick 一行永远不成立（[15 §15.3](mirrors-edge-deep-research/15-原版逻辑反编译.md)）。这些数、`RedoMoveTime = 1.0` 都没有消费者。
 
-所有者描述：垂直踢墙期间按 Q 进入，有"很短的补偿时间"，期间不受重力；
-此时按空格可蹬墙跳出去，否则速度归零后落下。
+垂直蹬墙中按 Q 对应的是 `WallClimb.HandleMoveAction(Turn)` → **WallClimb180TurnJump**，按跳则是 WallClimbDodgeJump（[15 §15.3、§15.5](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：转身动画之后 0.6 s 窗口内按跳，`Velocity = 墙法线2D · 400`，跳高 250（`JumpPushAwaySpeed 400`、`JumpOffZHeight 250`、`JumpTimeWindow 0.6`）。
+
+所有者描述：垂直踢墙期间按 Q 进入，有"很短的补偿时间"，期间不受重力；此时按空格可蹬墙跳出去，否则速度归零后落下。这对应 WallClimb180TurnJump 的转身动画与 0.6 s 窗口，而不是下面这组字段：下面是 `TdMove_180Turn`（地面 Q 转身，[03 §3.2](mirrors-edge-deep-research/03-损速机制.md)）的 CDO，原条目把两者对在了一起。其中 `DisableMovementTime = 0.3` 是地面转身时禁用移动的时长（该字段在库里普遍存在，`TdMove_Slide` 是 −1.0 即不启用）：
 
 ```
 FrictionModifier      0.3
 bConstrainLook        True
 MovementGroup         MG_TwoHandsBusy
-DisableMovementTime   0.3      ← "很短的补偿时间"
+DisableMovementTime   0.3
 RedoMoveTime          0.5
 MinLookConstraint     (-10000, -16384, 0)   pitch ±55°, yaw ±90°
 MaxLookConstraint     ( 10000,  16384, 0)
 ```
 
-**`DisableMovementTime = 0.3` 就是所有者说的补偿窗口**——这个字段在库里普遍存在
-（`TdMove_Slide` 是 -1.0 即不启用），本项目尚未实现该机制。
 另有 `TdMove_180TurnInAir`，是空中版本。
 
-蹬墙跳出去对应 `TdMove_WallKick`：`WallKickVelocity2D = 300` (3 m/s)、
-`WallKickVelocityZ = 580` (5.8 m/s)、`RedoMoveTime = 1.0`，同样带
-`bCheckForGrab` / `bCheckForVaultOver`。
+## 20. 交互物的优先级仲裁 —— 已由 语料 15.8 回答
 
-## 20. 交互物的优先级仲裁
+**状态：已解决。** 原版的仲裁顺序已从原生 `CheckAutoMoves` 读出（[15 §15.8](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：
 
-所有者提议："在 Jump 期间判定眼前是否有手和脚能交互的东西，它们之间肯定有个优先级。"
+1. `bCheckForWallClimb`：`WallRun.CanDoMove()`（不受延迟限制）→ 墙跑；
+2. 任一开关开着且 `MoveActiveTime > bDelayTimeCheckAutoMoves`：找手撑点（0 无 / 1 只有墙 / 2 有可抓的顶）；
+3. `bCheckForWallClimb` 且结果 ≥ 1：垂直蹬墙；
+4. 结果 = 2：`FoundReachableHandPlant`；
+5. `bCheckForVaultOver`：AutoStepUp → VaultOver；
+6. `bCheckForGrab`：IntoGrab（原生检查）。
 
-这与 CDO 的结构一致：`bCheckForGrab` / `bCheckForVaultOver` / `bCheckForWallClimb` /
-`bCheckForEdgeInVelDir` 是**并列的四个开关**，同一个状态可以同时持有多个
-（WallClimb 就同时有 Grab + VaultOver + EdgeInVelDir），所以原作必然存在一个仲裁顺序。
-
-本项目目前的顺序写死在 `AirborneMove.probe_transition()` 里：WallRun → Vault → Grab，
-理由记在 05 §5.7（"翻越先于抓边，抓边是最慢的兜底"）。这个顺序是从文档读出来的，
-不是从代码里逆向出来的，属于 ⚠️。真要确证需要反编译，而速度公式那次已经证明这类逻辑在 native C++ 里。
-
-**可做的**：把顺序从散落的 if 提到一张显式的优先级表，让它可读、可测、可调——
-即便顺序本身仍是推断，至少不再隐含在控制流里。
+`bCheckForGrab` / `bCheckForVaultOver` / `bCheckForWallClimb` 是并列的独立开关，同一个 move 可以同时持有多个；顺序在原生函数里，不在开关本身。`AirborneMove.probe_transition()` 的写死顺序（WallRun → Vault → Grab）是推断，已由 `CheckAutoMoves` 取代。`bCheckForEdgeInVelDir` 不是独立的检测，只是把速度方向的竖直分量加进手撑点探测方向。
 
 ## 21. Vault 的三种变体需要按所有者的分类核对
+
+**状态：仍未解决（待试玩核对）。** SpeedVault / VaultOver 已在 W2b 按原版脚本移植；`VaultTypes` 逐条数据与变体选择顺序在 [15](mirrors-edge-deep-research/15-原版逻辑反编译.md) 里没有展开。下面三类分类是所有者给出的验收对照，不是实现依据。
 
 所有者按几何把翻越分成三类（`SpeedVaultConfig.variants` 已有六个变体，需要对照）：
 
@@ -412,50 +257,23 @@ MaxLookConstraint     ( 10000,  16384, 0)
 所以变体表的具体门槛目前是本项目按 05 §5.7 推断的。核对时需要所有者按上述三类各找一个
 实际障碍物试，对照 `pick_variant()` 选中了哪一个。
 
-## 22. 抓边的"够取距离"判据缺少自动化验证
+## 22. 抓边的"够取距离"判据 —— 已被 语料 15.8 取代
 
-所有者反馈原作是**先碰到墙再挂边**，而本项目从 `ledge_find_distance`（3.5 m，确证）探到就开始
-线性对齐，观感像"被磁铁吸过去"。现已加上 `IntoGrabConfig.max_reach_distance`（⚠️ 0.8 m），
-在 `AirborneMove.probe_transition()` 里把关——放在转移**之前**，因为放在 `IntoGrabMove.enter()`
-里会导致"太远 → abort → Falling → 又探到 → IntoGrab"的无限抖动。
+**状态：已被取代。** 原版 IntoGrab 的够取判据是原生检查（[15 §15.8](mirrors-edge-deep-research/15-原版逻辑反编译.md) 第 6 步）：够取距离 200 × 接近速度系数、顶面法线 Z ≥ 0.707、70° 以内。"磁铁感"来自旧实现把 `ledge_find_distance`（3.5 m）当作对齐起点；`IntoGrabConfig.max_reach_distance`（0.8 m，当时是拍的）随旧探针一并作废。`Probes.ledge_query()` 返回的 `face_distance` 语义不清的问题，也随它退出主路径而失去意义。
 
-**没有测试**。`Probes.ledge_query()` 返回的 `face_distance` 语义与预期不符：合成场景里墙面
-实际在 0.70 m 处，该字段读出 **1.484**。可能是射线起点偏移、也可能命中的是远面，未查明。
-在弄清它到底量的是什么之前，围绕这个数写的测试只会把误解固化下来。
+## 23. 滑墙的 Q + 踢墙跳比原版短 24% —— 旋钮已不存在，改用公式对照
 
-**补的话**：先单独测 `face_distance` 本身——摆一面已知距离的墙，断言读数等于那个距离——
-弄清语义再回来写够取距离的测试。数值本身（0.8）是拍的，需要试玩调。
+**状态：已被取代。** `look_redirect`（"携带速度有多少被转向视角方向"的插值旋钮）是本项目的发明，已删除。原版是 [15 §15.5](mirrors-edge-deep-research/15-原版逻辑反编译.md) 的公式：按 Q 后 `bTurned90FromWall`、p = 1，`Vxy = 墙法线·520 + 沿墙速度·0.1`，`h = 160`，`Vz = 2·sqrt(800·160)/(1+n)`（有效重力 1600 下顶点 1.60 m，平地滞空约 0.89 s）[ME:DERIVED 15 §15.5、§15.7]。
 
-## 23. 滑墙的 Q + 踢墙跳比原版短 24%（实测对照）
+所有者的原版实测（滑墙高点按 Q 再踢墙跳，X 从 208.2 到 214.7，6.5 m）是验收对照，不再有旋钮可调：移植后的实现应当直接给出公式的结果。对不上 6.5 m 时，先核对 n、入墙速度与落差；这个数的起止点是否含墙跑段没有记录，不能逐项对。
 
-所有者在原版实测：滑墙高点按 Q 再踢墙跳，X 从 208.2 到 214.7，**横向 6.5 m**。
+## 24. 滑墙攻顶后来不及完成 Q 的横扫 —— 已被 语料 15.10 取代
 
-本项目当前是 **4.96 m**（`test_q_then_space_carries_the_measured_distance` 会把这个数打印出来）。
-同一量级，但短 24%。测试的容许带是 4–10 m，钉的是**量级不是小数**——原版那个数字取自
-某关的具体一处，而夹具是平地上一堵光墙，落差不同。
-
-**主旋钮**：`WallrunJumpConfig.look_redirect`（⚠️ 0.7）。它决定踢墙时有多少携带速度被
-**转向**视角方向。插值实现意味着转得越急速度损失越大：
-
-| look_redirect | 7 m/s 转 90° 后剩余 |
-| --- | --- |
-| 0.7（当前） | 5.33 m/s |
-| 0.85 | 6.04 m/s |
-| 1.0 | 7.00 m/s |
-
-没有直接调到对上 6.5 m，因为原版那个数字的落差、初速都未知，照着凑等于把未知条件
-烧进旋钮。要动就动这一个数。
-
-## 24. 滑墙攻顶后来不及完成 Q 的横扫
-
-写 §23 的测试时发现的：等竖直速度归零（约 40 tick）再横扫 0.3 s（18 tick），
-一共 58 tick，而 7 m/s 入墙的滑墙大约只有 62 tick 命——经常在踢出去之前就掉下来了。
-
-所有者描述原版是"在几乎完美的高点按 Q 然后踢”，说明原版要么滑墙更持久，要么攻顶更早。
-两个候选：`wall_running_horisontal_deceleration`（5.0）让速度掉得太快，或
-`wall_running_horisontal_initial_z_height`（1.7 m ✅）给的初速让攻顶太晚。前者是 ⚠️。
+**状态：已被取代。** 原条目的两个候选（`wall_running_horisontal_deceleration`、`wall_running_horisontal_initial_z_height`）都读错了字段（[15 §15.10](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：`HorisontalAcceleration` / `Deceleration` 的 820 / 500 是墙上的**竖直重力**（上升 / 下落，乘 `1+n`），`InitialZHeight` 170 是相对起跳点的墙跑顶点高度。原版墙跑按 60 Hz 仿真：0.64 s 到顶，1.65 s 脱离（Vz < −500），与实测一致；没有水平最低速度，也没有时间上限。顶点之后还有约 1 s，足够完成 Q 的 0.15 s 转向（[15 §15.5](mirrors-edge-deep-research/15-原版逻辑反编译.md)）加踢墙。本条原先测到的"约 62 tick 命"是旧常数的结果。
 
 ## 25. 障碍交互的分类规则（所有者实测，含第三人称调试数据）
+
+> **状态说明（适用于 §25–§33）：** 这一组记录的是对原版行为的实测，以及据此反推分类规则的过程。**实测数据仍是有效的验收对照；反推出来的规则和阈值不是实现依据。** 原版的分派是 [15 §15.8](mirrors-edge-deep-research/15-原版逻辑反编译.md) 的 `CheckAutoMoves` 固定顺序（墙跑 → 垂直蹬墙 → AutoStepUp → VaultOver → IntoGrab），结果取决于各自的 `CanDoMove` / 原生检查的条件，而不是一张"障碍高度表"。
 
 所有者开了原版的第三人称调试模式，逐个障碍记录状态链与高度。**地面 SZ = 43.17**，
 `SZD` 是相对起跳地面的高度，`Z` 是角色**脚底/基座**（站立时 Z = 43.17 = 地面）。
@@ -497,7 +315,7 @@ MaxLookConstraint     ( 10000,  16384, 0)
 但这仍然只是**推断**：那张 `Grabbing` 截图未必是完全静止的挂边姿势，而且两边角色身高
 可能不同。要用这个数，得请所有者**专门在挂稳之后读一次 Z，再爬上去读一次 Z**。
 
-### 待办：探针重写
+### 待办：探针重写（已被取代：分派顺序见 15 §15.8，列扫描探针不再是主路径）
 
 现在 `vault_query()` 内建的模型是"**实心方块，膝盖高度碰到面，顶上站得住**"，三条硬门：
 
@@ -555,6 +373,8 @@ if normal.y < walkable_floor_z: return _no_hit()            # 顶面站不住就
 但这是**用口述凑出来的**，需要确认后才能当依据。
 
 ## 27. 分类规则收敛：分界线在身体坐标系里，不在障碍物高度上
+
+> 本节的结论（接触时 `边缘 − 脚 ≤ 眼高` → Vault）已被 §29、§31、§32 依次修正，最终状态见 §32。
 
 §26 缺的那个数补上了：所有者站到旁边等高的电箱顶上，读到 **Z = 45.81，SZD = 2.64**。
 所以铁丝网/电箱的顶面在**离地 2.64 m**。
@@ -673,6 +493,8 @@ if normal.y < walkable_floor_z: return _no_hit()            # 顶面站不住就
 
 ## 30. 顶面探针找到的不是障碍物的最高点（列扫描重写后发现）
 
+**状态：已被取代。** `Probes.vault_query()` 的列扫描与顶面重试已退出主路径，由 `move_traces.gd` 里原版探测（`MovementTrace*`、`FindLedgeEx`）的移植取代；`vault_query()` 只剩调试叠加层和未移植的 move 在用。
+
 `vault_query()` 改成脚到眼列扫描之后，中空管道**能被看见了**（§25 报告的 bug 前半截解决），
 但它报回的顶面高度偏低：测试夹具里管道跨 0.7–1.2 m，探针报 **0.98**。
 
@@ -775,6 +597,10 @@ HUD 的 `V` / `VT` 都是水平量，所以这件事在数字上根本看不见�
 ⚠️ **分界的竖直速度未测**，而且 HUD 不显示它。可行的间接测法：同一个障碍，**改变蹬墙起始
 高度**（站在不同高度的东西上起跳），找到结果翻转的那一次，用"爬了多少"当代理量。
 
+### 与原版逻辑的对照
+
+[15 §15.8](mirrors-edge-deep-research/15-原版逻辑反编译.md) 读出 `CheckAutoMoves` 里 VaultOver（`bCheckForVaultOver`）的检查先于 IntoGrab（`bCheckForGrab`）。上面的结论——同一高度上"够取高度来得早、蹬墙还在上升 → Vault；来得晚、已耗尽 → Grab"——与此相容：VaultOver 的高档变体要求 `MinSpeedZ ≥ 50`，即必须仍在上升（[05 §5.7](mirrors-edge-deep-research/05-动作库总览.md)），不满足时落到顺序里的下一个 IntoGrab。这是用已知数据对上的解释 [ME:INFERRED]，不是读自 `VaultOver.CanDoMove` 的函数体（15 未展开）。分界的竖直速度仍可作为移植后实现的验收实测。
+
 ### 教训
 
 ⚠️ 本节与 §29、§31 是同一个错误犯了两次：**拿两三个数据点就宣布规律**。
@@ -782,6 +608,8 @@ HUD 的 `V` / `VT` 都是水平量，所以这件事在数字上根本看不见�
 一律标 ⚠️ 而不是 ✅。
 
 ## 33. 女儿墙顶端的死区（部分修复，端到端用例待建）
+
+> **状态：旧机制已被取代。** `should_commit()` 的提前量门与 `AirborneMove` 的翻越分支已由 `CheckAutoMoves`（[15 §15.8](mirrors-edge-deep-research/15-原版逻辑反编译.md)）取代。女儿墙夹具（窄压顶 + 后方更低的屋面）作为移植后实现的端到端验收用例仍然有价值：3.5 m 墙蹬墙到顶应当能走 Climb / VaultOver（原版参考图）。
 
 所有者报告：3.5 m 高墙，蹬墙到顶后**既不触发 Grab 也不触发 Vault**，直接滑回去。
 参考图显示原版这里是 `Climb → VaultOver`。后续补充：那个边缘是**女儿墙**——
@@ -863,6 +691,8 @@ HUD 的 `V` / `VT` 都是水平量，所以这件事在数字上根本看不见�
 
 ## 35. 探测层：共用扫描（**已推迟**）与"先查引擎"（**立即生效**）
 
+> **状态：第一部分已被取代，第二部分（先查引擎）仍是规矩。** 共用扫描要优化的是旧 `Probes.vault_query()` / `ledge_query()` 的 30 条射线 / 帧；这些已退出主路径，原版探测的移植（`move_traces.gd`）由各 move 的 `CheckAutoMoves` 按需调用。
+
 所有者提了两点，我一开始当成了一件事。**它们的成本时机不同，要分开：**
 
 > "MVP 阶段确实以先实现功能为准，性能优化都是后期的工作。现在优化万一后面改设计了呢，
@@ -931,6 +761,8 @@ Probes.scan()          每物理帧最多跑一次（Engine.get_physics_frames()
 
 ## 36. 落地翻滚的方向：2008 跟视角，Catalyst 跟惯性
 
+> **状态：已被取代。** SkillRoll 已在 W2c 按原版脚本移植；`SkillRollConfig.aim_with_view` 开关随旧实现删除，翻滚方向以移植后的 `TdMove_SkillRoll` 逻辑为准（未写入语料 15）。下面的 2008 / Catalyst 对比仍是有效的设计背景。
+
 所有者实测 2008：**强制位移跟随开滚那一瞬间的镜头方向**，即使玩家在半空转了 180°。
 
 > "虽然违反物理定律，但是会让玩家更有控制感，避免翻滚带来不可避免的失控，
@@ -947,6 +779,8 @@ Probes.scan()          每物理帧最多跑一次（Engine.get_physics_frames()
 ⚠️ 若将来要做 Catalyst 那套，还需要四向变体动画与选择逻辑，不只是翻转这个开关。
 
 ## 37. SpringBoarding 由**地形形状**触发，不是触发器 —— 兼架构确认
+
+> **状态：观察仍成立，实现已被取代。** "SpringBoarding 由地形形状认出、没有触发器"的观察没变。SpringBoard 已在 W2c 按原版脚本移植（`SpringBoardJumpZ 950` 等 CDO 数据，[05 §5.3](mirrors-edge-deep-research/05-动作库总览.md)）；仲裁顺序是 DodgeJump → SpringBoard → Jump（[15 §15.3](mirrors-edge-deep-research/15-原版逻辑反编译.md)）。下面"检测怎么写"和"未测"项以移植为准。
 
 所有者在从 ME 导出的教程关模型里逐处检查了能触发 SpringBoarding 的位置，
 **没有任何一处有触发器**。全部是同一个几何形状：
@@ -989,6 +823,8 @@ Probes.scan()          每物理帧最多跑一次（Engine.get_physics_frames()
 
 ## 38. 翻滚距离是**写死**的 3 m，不是下限（我擅自加了动量项）
 
+> **状态：部分被取代。** SkillRoll 已重写（W2c）；`energy_keep`、`speed_scale` 已不存在。原版没有可以"留存"的独立能量量（[15 §15.2](mirrors-edge-deep-research/15-原版逻辑反编译.md)：`SpeedSprintEnergy` 每帧由速度重算）。"翻滚距离写死 3 m、与入场速度无关"是所有者在原版的实测，仍是验收对照。
+
 所有者在原版直接测了：**0 速起滚和 80 km/h 起滚，都是 3 m。**
 
 > "只是保持了一定百分比的能量以便起身后更快起步。"
@@ -1006,27 +842,13 @@ Probes.scan()          每物理帧最多跑一次（Engine.get_physics_frames()
 
 `speed_scale` 保留但标注**已无消费者**，不删除（测出来的值即使暂时用不上也值得留着）。
 
-## 39. 滑墙刚开始按 Q 只转一点点 —— 顺序问题 + 缺预输入
+## 39. 滑墙刚开始按 Q 只转一点点 —— 已被 语料 15.5 取代
 
-所有者报告：**滑墙前十帧左右按 Q，视角只旋转一个很小的角度。**
-
-### 两个成因，都关于顺序
-
-1. **扇形还没定心。** 扇形要到本动作的**第一个物理帧**才被重设到墙面上
-   （`_recentre_on_wall()`），而重设会**写 `_look_relative_yaw`**——
-   在那之前armed 的横扫，剩余距离被从底下改掉，于是几乎立刻就"到达"了
-2. **更早的按键根本无处可去。** 还在进入滑墙的过程中按下的 Q 被直接丢弃
-
-### 改法：跟跳跃缓冲同一套
-
-所有者自己提出的："**即将进入或刚刚进入墙跑时按下 Q，则在允许时帮助玩家执行**"。
-
-新增 `Player._turn_buffer_timer` / `consume_buffered_turn()`，与跳跃缓冲同构、同时长。
-`WallRunMove` 把按键**存起来**，在**第一个有"墙面定心扇形"可扫的帧**花掉。
-
-理由和跳跃缓冲一模一样：**玩家在感觉对的那一刻按了键，而游戏离能响应它只差几帧。**
+**状态：已被取代。** 原版的 Q 由 `WallRun.HandleMoveAction(Turn)` 立即处理：镜头在 0.15 s 内转到墙法线并置 `bTurned90FromWall`（[15 §15.5](mirrors-edge-deep-research/15-原版逻辑反编译.md)），没有预输入缓冲，也没有"扇形还没定心"的时序问题——约束扇形相对墙法线定义，进入墙跑时就已就位。本项目自创的转身缓冲（`_turn_buffer_timer` / `consume_buffered_turn()`）已随旧实现删除。
 
 ## 40. 翻滚入镜的一帧闪烁 —— 竞态，以及两条**测了但故意不复刻**的原版数据
+
+> **状态提示：** 本节涉及的 SkillRoll、相机通道已随移植重写（`MoveManager.set_move()` 可重入，`enter()` 内可立即写入）。"权威值与表现补偿须在同一逻辑帧写完"的原则仍有效；具体的竞态是否还在，以新实现为准。
 
 上一条修复（权威 pitch 归零、落地俯仰改由 spin 承载）之后，玩家报告：
 
@@ -1071,6 +893,8 @@ Probes.scan()          每物理帧最多跑一次（Engine.get_physics_frames()
 **原版是参照，不是标准答案**，遇到实现路径不同的地方要判断它在解什么问题。
 
 ## 41. 同类排查：还有哪些"表现通道在帧内脱节"
+
+> **状态提示：** 同 §40。SpeedVault、Landing 已按原版重写，下面查出的两处是否仍然存在，以新实现为准；排查方法（逐通道核对"权威值与补偿是否同帧写完"）仍可复用。
 
 §40 修完之后按同一个模式把相机的**全部表现通道**过了一遍。判据是：
 **权威值和它的表现补偿是不是在同一个逻辑帧里写完的。**
@@ -2626,6 +2450,8 @@ var spine_pitch := _pitch / pitch_limit * share_at_limit
 
 ## 69. 两条动作的机制资料（**均已实现**）
 
+> **移植后补充：** DodgeJump 在原版里是横移键按满时每次地面起跳都触发的侧闪跳：`±600 侧向 + 0.3·V`、`Vz = 300`、`Vz < −190` 转 Falling；仲裁顺序 DodgeJump → SpringBoard → Jump（[15 §15.3、§15.11](mirrors-edge-deep-research/15-原版逻辑反编译.md)）。上面三条实测与此一致；`StrafeThreshold` 作用于未归一化的原始轴，与 `MoveActionHint` 用屏蔽输入之前的原始轴计算相容。
+
 两个动作的参数和触发条件都已落进 `docs/mirrors-edge-deep-research/`，**两个都已经
 实现**（`SpringBoardMove` / `DodgeJumpMove`）。本节保留的是资料本身，不再是待办。
 
@@ -2798,6 +2624,8 @@ MetalSprings      ["Chain.", "Shackles."]
 
 ## 72. Coil 已实现，以及从中挖出的一条通用教训
 
+> **更正（见 [15 §15.11](mirrors-edge-deep-research/15-原版逻辑反编译.md)）：** 下面测试里"真实的 coil 是 0.5 s"的前提不成立。Coil 以 240 uu/s 抬升身体直到用掉 60 uu（`HeightBoostDuration 0.25 s`），然后持续到落地，没有 `CoilTime`；它也不只能从 Jump 发起（仲裁表里 Falling、Jump、WallRunJump、GrabJump、IntoGrab、SwingJump、WallClimb180TurnJump 按 Crouch 都先问 Coil）。"覆盖落地分支的测试在默认参数下是死的"这条教训不变，只是触发条件不同。
+
 Coil（空中收腿）已经做完了，四条实测确证都记在
 [05 §5.2](mirrors-edge-deep-research/05-动作库总览.md#52-coil空中收腿)，
 状态表也更新了（[11 §11.7](mirrors-edge-deep-research/11-状态机全图.md#117-本项目的实现状态)）。
@@ -2874,6 +2702,8 @@ owner 一眼否掉，理由是这个动作存在的全部意义：
 
 ## 73. 两条留档资料（owner 实测，**不打算复刻**）
 
+> **移植后补充：** 原版脚本化动作的位置由"精确定位"插值驱动，轨迹取自动画根骨（spec W2b、[15 §15.11](mirrors-edge-deep-research/15-原版逻辑反编译.md)：GrabTransfer 速度 `max(距离/0.55, 200)`，Climb 每步 96 / 64 uu），实现里用 `tools/gen_root_motion.ts` 生成的根骨轨迹。①里"胶囊走贝塞尔"是所有者对外观的描述，实现以根骨轨迹为准。
+
 都是 owner 在做 coil 期间顺手测的，与当时的任务无关。记下来免得将来重查，
 **但都不构成待办**。
 
@@ -2946,14 +2776,9 @@ capsule.radius = clampf(length * RADIUS_RATIO, RADIUS_MIN, RADIUS_MAX)
 
 ⚠️ 「开 MSAA 之后才变糊」这一点**未经验证**：MSAA 进不了无头截图那条路径（见 `.claude/skills/verifying-visuals-headlessly` 的「截图路径的盲区」），所以无法从这边分辨是 MSAA 真的改变了什么，还是本来就有的走样被注意到了。要确认只需在游戏里把抗锯齿切到「关闭」看同一处地板。
 
-## 75. 弯曲的线上，磁吸淡入结束后身体朝向不再跟着线转
+## 75. 弯曲的线上，身体朝向不再跟着线转 —— 已被 W2b 重写取代
 
-`LineWalkMove`（`BalanceMove` / `LedgeWalkMove`）沿用 `LineMove` 家族的既有形状：`_turn_body_to()` 只在磁吸淡入期间写身体 yaw（`scripts/player/moves/line_move.gd:34-35`），淡入结束后 `_centre_fan()` 把视角扇形定死在入线那一刻的切线上，此后身体朝向交给 `apply_look()`（鼠标视角），不再读线的当前切线。
-
-`_offset_along` 沿曲线推进会跟着线弯，但身体朝向不会——只有沿线的位移跟着曲线走，朝向仍锚在入线时的那个切线上。梁上问题不大（身体本就顺着线走，弯曲只让走向偏几度，玩家自己也能用鼠标转回来）；檐上更明显：`LedgeWalkConfig.body_yaw_offset_deg = 90`，玩家背对墙站，线一弯，背就不再对着墙了，且视角扇形也是照入线时的墙面定的。
-
-不是本分支引入的缺陷，是继承自 `LineMove` 家族（滑索/单杠/梯子）本来就有的既有惯例。当前没有弯曲的 Balance/LedgeWalk 线在关卡里，所以从未暴露；但设计文档明确预告了多段管子拼接的场景
-（`docs/superpowers/specs/2026-08-30-balance-and-ledge-walk-design.md`），届时这条会变得可见。
+**状态：已被取代。** 本条引用的 `LineWalkMove` / `LineMove` 家族已不再是 Balance 与 LedgeWalk 的基类：二者现在是继承 `PhysicsMove` 的独立 move，按原版 `TdMove_Balance` / `TdMove_LedgeWalk` 移植（spec W2b；LedgeWalk 沿样条切线移动并以 10/s 拉回样条，[15 §15.11](mirrors-edge-deep-research/15-原版逻辑反编译.md)），`LineMove` 在 spec 里列为无子类的死代码。弯曲线上的身体朝向是否正确，以新实现为准；关卡里仍没有弯曲的 Balance / LedgeWalk 线，设计文档预告的多段管子拼接场景出现时再验证。
 
 
 ## 钻进低矮空间：动画包缺一个 clip（**未修复，等素材**）
