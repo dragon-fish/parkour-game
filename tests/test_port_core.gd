@@ -183,6 +183,43 @@ func test_the_collider_is_a_world_aligned_box() -> void:
 	assert_true(clearance.global_basis.is_equal_approx(Basis.IDENTITY),
 		"the clearance probe turned with the body")
 
+## [ME:CONFIRMED decompile N1 §4.1] stepUp lifts the body MaxStepHeight + 2 uu
+## over anything whose face it walks into, from its 2.15 uu hover: a lip that
+## only just clears the hover is climbed like any other, one past the reach
+## stops the body. The low lip is the case a rounded box gets wrong -- its
+## edge meets the lip at a normal that is neither wall nor floor.
+func test_a_walk_steps_up_any_lip_within_the_step_and_stops_at_a_taller_one() -> void:
+	for lip in [[0.03, true], [0.37, true], [0.40, false]]:
+		var world: Dictionary = await _world()
+		var player: Player = world["player"]
+		var body := StaticBody3D.new()
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(6.0, lip[0], 0.5)
+		shape.shape = box
+		body.add_child(shape)
+		get_tree().root.add_child(body)
+		body.global_position = Vector3(0.0, lip[0] * 0.5, -2.0)
+		world["ledge"] = body
+		await step(2)
+		# Swept into the lip's face from the hover, the box meets a wall.
+		var hover := player.global_transform
+		hover.origin.y = player.collision_half_height() + PawnPhysics.FLOOR_DIST
+		var hit: Dictionary = player.phys.sweep(Vector3(0.0, 0.0, -2.0), hover)
+		assert_lt(absf((hit["normal"] as Vector3).y), PawnPhysics.MAX_STEP_SIDE_Z,
+			"a %.0f cm lip's face is not a wall to the box: %s" % [lip[0] * 100.0, hit["normal"]])
+		var input: ScriptedInputSource = world["input"]
+		input.hold_move(0.0, 0.5)
+		await step(150)
+		var past: bool = player.global_position.z < -2.0
+		assert_eq(past, lip[1], "a %.0f cm lip: the walk ended at z %.2f" % [lip[0] * 100.0,
+			player.global_position.z])
+		input.hold_move(0.0, 0.0)
+		_free_ledge(world)
+		TestWorld.teardown(world)
+		_worlds.erase(world)
+		await step(1)
+
 ## [ME:CONFIRMED decompile N1 §2.1] physWalking clears bJustTeleported on
 ## entry: whatever the fall before it in the same frame set, the walk rebuilds
 ## its velocity from the displacement -- here a wall the body ran into.

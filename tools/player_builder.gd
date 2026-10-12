@@ -32,6 +32,12 @@ func build() -> CharacterBody3D:
 	# (R, R, H) -- see Player.align_collider().
 	var capsule := BoxShape3D.new()
 	capsule.size = Vector3(0.6, 1.8, 0.6)
+	# A SHARP box, as UE3's extent box is. DO NOT leave Jolt its default
+	# margin: Jolt rounds a box's edges by it (about 2.4 cm here), and a lip
+	# just above the 2.15 uu hover then meets the rounded bottom edge and
+	# reports a normal between MAXSTEPSIDEZ 0.08 and WalkableFloorZ -- neither
+	# wall nor floor, so stepUp does nothing and a 3 cm plank stops a walk dead.
+	capsule.margin = 0.0
 	shape.shape = capsule
 	player.add_child(shape)
 	shape.owner = player

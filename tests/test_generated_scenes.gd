@@ -152,7 +152,8 @@ func _mesh(mesh: Mesh) -> String:
 
 func _shape(shape: Shape3D) -> String:
 	if shape is BoxShape3D:
-		return "BoxShape%s" % _v((shape as BoxShape3D).size)
+		# The margin too: Jolt rounds a box by it, and the pawn's box must stay sharp.
+		return "BoxShape%s margin=%s" % [_v((shape as BoxShape3D).size), _f(shape.margin)]
 	if shape is CapsuleShape3D:
 		var capsule := shape as CapsuleShape3D
 		return "CapsuleShape(h=%s r=%s)" % [_f(capsule.height), _f(capsule.radius)]

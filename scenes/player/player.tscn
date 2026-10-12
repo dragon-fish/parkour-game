@@ -10,9 +10,11 @@
 [ext_resource type="Script" uid="uid://xxe8ugqxn4aq" path="res://scripts/player/probes.gd" id="8_fcs02"]
 
 [sub_resource type="BoxShape3D" id="CapsuleShape3D_myrg7"]
+margin = 0.0
 size = Vector3(0.6, 1.8, 0.6)
 
 [sub_resource type="BoxShape3D" id="CapsuleShape3D_kvlxm"]
+margin = 0.0
 size = Vector3(0.6, 1.8, 0.6)
 
 [node name="Player" type="CharacterBody3D" unique_id=1552152316 node_paths=PackedStringArray("camera_rig", "probes", "screen_effects", "subtitle", "toast")]
