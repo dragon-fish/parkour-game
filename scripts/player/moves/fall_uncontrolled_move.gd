@@ -90,11 +90,13 @@ func pre_physics(delta: float) -> void:
 		player.velocity = Vector3.ZERO
 		if player.physics != PHYS_NONE:
 			player.set_physics(PHYS_NONE)
-	_drive_screen_effects()
 
-## The ragdoll's own arrival, for a body the capsule no longer carries.
+## The ragdoll's own arrival, for a body the capsule no longer carries, and
+## the screen -- driven from here, not PrePhysics, which stops running once
+## the ragdoll leaves the body without physics.
 func tick_move(delta: float) -> void:
 	super.tick_move(delta)
+	_drive_screen_effects()
 	if player.ragdoll == null or not player.ragdoll.is_simulating() or _declared:
 		return
 	_ragdoll_elapsed += delta

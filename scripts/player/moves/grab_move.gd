@@ -9,19 +9,19 @@ extends PhysicsMove
 # the stick into one action a tick (shimmy, climb, drop). The pull-up, the jump
 # off and the transfer are their own moves, asked by the action table.
 #
-# The native per-tick half runs EVERY frame, shimmying or not:
+# The native per-tick half (PrePhysics) runs only while the body has physics,
+# which while hanging means while a shimmy flies it (PHYS_Flying) -- the actor
+# tick skips performPhysics under PHYS_None, so an idle hang probes nothing:
 #   * the legs: a 10 uu box swept from 52 uu above the feet, from either foot,
 #     up to 32 uu past the box's reach in front -- wall or free hang;
-#   * the ledge: the hand-plant search from 5 uu to the side the shimmy goes
-#     (right when standing still), 30 uu deep, single pair. A top on the same
-#     wall refreshes the ledge; a turned wall stops the shimmy; no top asks
-#     CanShimmyAroundCorner, and a free corner with a ledge round it starts the
-#     corner shimmy.
-# Kept as the original has them: an idle hang probes to the right every frame,
-# so next to an outside corner the corner shimmy can start with no input at
-# all; the shimmy's time-out compares the SIGNED velocity, so only a left
-# shimmy (-60) times out -- a right one runs to its animation's end; a timed
-# out left shimmy keeps drifting while its animation blends out.
+#   * the ledge: the hand-plant search from 5 uu to the side the shimmy goes,
+#     30 uu deep, single pair. A top on the same wall refreshes the ledge; a
+#     turned wall stops the shimmy; no top asks CanShimmyAroundCorner, and a
+#     free corner with a ledge round it starts the corner shimmy.
+# Kept as the original has it: the shimmy's time-out compares the SIGNED
+# velocity, so only a left shimmy (-60) times out -- a right one runs to its
+# animation's end; a timed out left shimmy keeps drifting while its animation
+# blends out.
 
 enum GrabType { LEGS_ON_WALL, LEGS_FREE }
 enum ShimmyType { SHIMMY, SHIMMY_LONG, AROUND_CORNER, NO_SHIMMY }

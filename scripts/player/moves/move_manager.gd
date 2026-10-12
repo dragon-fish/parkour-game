@@ -403,6 +403,13 @@ func tick_timers(delta: float) -> void:
 ## its own physics_update() instead, and so does one the automatic
 ## transitions just handed the body to: the original runs the physics after
 ## them whatever they chose, so the frame of the hand-over still moves.
+##
+## Only with physics: the actor tick calls performPhysics when Physics !=
+## PHYS_None, so a body without physics -- an idle hang -- gets neither
+## CheckAutoMoves nor PrePhysics. DO NOT run them anyway: Grab's PrePhysics
+## probes the ledge to its right, and an idle hang near a ledge's end then
+## starts the corner shimmy by itself, its root motion shutting out the stick
+## that would climb. A shimmy is PHYS_Flying, so that is when it probes.
 func perform_physics(delta: float, input: MoveInput) -> void:
 	if _current == null:
 		return
@@ -412,8 +419,9 @@ func perform_physics(delta: float, input: MoveInput) -> void:
 		_check_declared_grounded()
 		return
 	if _current.is_ported():
-		_current.check_auto_moves()
-		_current.pre_physics(delta)
+		if player.physics != Move.PHYS_NONE:
+			_current.check_auto_moves()
+			_current.pre_physics(delta)
 		if _current.is_ported():
 			player.phys.perform(delta)
 			_check_declared_grounded()

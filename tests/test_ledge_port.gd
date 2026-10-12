@@ -138,19 +138,29 @@ func test_a_catch_hangs_still_at_the_hang_point() -> void:
 
 # --- the hang ----------------------------------------------------------------------------
 
-## [ME:CONFIRMED decompile 0x01207a70] THE QUIRK: an idle hang probes the
-## ledge 5 uu to its right every frame, and where that finds no top it asks
-## for the corner round to the right -- so next to an outside corner the
-## corner shimmy starts with no input at all.
-func test_an_idle_hang_at_an_outside_corner_starts_round_it() -> void:
+## [ME:CONFIRMED decompile N4 §1.1, 0x01207a70] Grab's PrePhysics -- the
+## ledge probe 5 uu to the side that finds the corner -- runs only under
+## physics: performPhysics is skipped under PHYS_None. An idle hang next to an
+## outside corner stays put; a shimmy (PHYS_Flying) toward it goes round.
+func test_only_a_shimmy_finds_the_corner_round_a_ledge_end() -> void:
 	var player: Player = await _player()
 	# A block whose right end is 3 cm right of the hands.
 	_box(Vector3(2.0, 3.0, 2.0), Vector3(-0.97, 1.5, -1.0))
 	await step(1)
 	var grab: GrabMove = _hang(player, 3.0, 0.0)
-	await step(2)
+	var at: Vector3 = player.global_position
+	await step(45)
+	assert_eq(grab.current_shimmy_move, GrabMove.ShimmyType.NO_SHIMMY,
+		"an idle hang at a corner set off by itself")
+	assert_almost_eq(player.global_position.distance_to(at), 0.0, 0.001, "the idle hang moved")
+	var input: ScriptedInputSource = _world["input"]
+	input.hold_move(1.0, 0.0)
+	for i in 30:
+		await step(1)
+		if grab.current_shimmy_move == GrabMove.ShimmyType.AROUND_CORNER:
+			break
 	assert_eq(grab.current_shimmy_move, GrabMove.ShimmyType.AROUND_CORNER,
-		"an idle hang at a corner did not go round it")
+		"a shimmy to the corner did not go round it")
 
 ## [ME:CONFIRMED decompile 0x011f7d60] THE QUIRK: the shimmy's time-out
 ## compares the SIGNED speed, so only a left shimmy times out on ShimmyTime;
