@@ -145,6 +145,16 @@ standing across the Storm Drain, which cost health wherever the player crossed
 z = -374. `annotations.built()` drops them, and an annotation left with no
 shape at all is dropped with it.
 
+**A volume's brush can sit off its Location.** UE3 places a brush at
+`Location + R*(S*v - PrePivot)`, and `annotations.collect()` builds every
+volume at its Location. Only `TdFallHeightVolume` subtracts the pivot
+(`annotations.fall_height()`), checked against the volume's own cooked
+`Center`, which the extraction stops on if it falls outside the brush:
+Stormdrain's chute volume sits 255 m from its Location. About a hundred other
+volumes in the corpus carry a PrePivot too -- 50 BlockingVolumes on the Boat,
+21 in Escape -- and are built without it; whether that misplaces them has
+not been checked.
+
 **Section bounds.** Chapter checkpoints live in the persistent `*_p` package.
 Only those inside the section's own packages are kept: slices reach deep into
 neighbouring sections and `_Bac` is the skyline.

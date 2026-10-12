@@ -48,5 +48,44 @@ class UnbuiltBrushTests(unittest.TestCase):
         self.assertFalse(annotations.built(self.hull(1.3, 0.9, 5242.9)))
 
 
+class FallHeightTests(unittest.TestCase):
+    # A 2 x 2 x 2 m brush, local and unscaled, as BrushAggGeom gives it.
+    HULL = [{'vertices': [[x, y, z] for x in (-1.0, 1.0) for y in (-1.0, 1.0) for z in (-1.0, 1.0)]}]
+
+    def volume(self, props):
+        location = props['Location']
+        annotation = {'position': annotations.point(location),
+                      'basis': annotations.godot_basis(props.get('Rotation') or (0, 0, 0), (1.0, 1.0, 1.0)),
+                      'hull': self.HULL}
+        annotations.fall_height(props, annotation, 'test.TdFallHeightVolume_0')
+        return annotation
+
+    def test_center_and_offset_are_carried_in_metres(self):
+        a = self.volume({'Location': (100.0, 200.0, 300.0), 'Center': (100.0, 200.0, 300.0),
+                         'FallHeightOffset': 150.0})
+        self.assertEqual(a['center'], [1.0, 3.0, 2.0])
+        self.assertAlmostEqual(a['fall_height_offset'], 1.5)
+        self.assertNotIn('starts_off', a)
+
+    def test_an_unset_offset_is_zero(self):
+        a = self.volume({'Location': (0.0, 0.0, 0.0), 'Center': (0.0, 0.0, 0.0)})
+        self.assertEqual(a['fall_height_offset'], 0.0)
+
+    def test_pre_pivot_moves_the_brush_off_the_location(self):
+        # UE3: Location + R*(S*v - PrePivot). Unrotated, the brush's origin is
+        # Location - PrePivot, and the cooked Center lies there.
+        a = self.volume({'Location': (1000.0, 0.0, 0.0), 'PrePivot': (1000.0, 0.0, 0.0),
+                         'Center': (0.0, 0.0, 0.0)})
+        self.assertEqual(a['position'], [0.0, 0.0, 0.0])
+
+    def test_a_center_outside_the_placed_brush_stops_the_extraction(self):
+        with self.assertRaises(annotations.ExtractError):
+            self.volume({'Location': (1000.0, 0.0, 0.0), 'Center': (0.0, 0.0, 0.0)})
+
+    def test_a_volume_without_collision_starts_off(self):
+        a = self.volume({'Location': (0.0, 0.0, 0.0), 'Center': (0.0, 0.0, 0.0), 'bCollideActors': False})
+        self.assertTrue(a['starts_off'])
+
+
 if __name__ == '__main__':
     unittest.main()

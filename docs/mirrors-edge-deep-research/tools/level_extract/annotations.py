@@ -5,7 +5,7 @@ import struct
 import packages as pk
 
 from common import (ExtractError, UU, ROT, actor_scale, dir_godot, finite, godot_basis,
-                    outer_class, point, ref_export)
+                    outer_class, pivot_offset, point, ref_export)
 
 # Volume class -> manifest kind. InterestLine kinds, wire, walls and lethal
 # volumes; the three checkpoint classes are handled apart below.
@@ -23,10 +23,11 @@ VOLUME_KINDS = {
     # with bPainCausing, DamagePerSec and TdDmgType_ElectricShock. The rest
     # (Plaza's ZoneVelocity water) are counted in the report.
     'PhysicsVolume': 'pain',
+    'TdFallHeightVolume': 'fallheight',
 }
 
 # Found and counted, never mapped: meaning not verified against the original.
-REPORTED_ONLY = ('TdFallHeightVolume',)
+REPORTED_ONLY = ()
 
 # Actors collected ONLY when they ride something -- when Base names another
 # actor in the same package. The game places hundreds of loose Triggers and
@@ -304,6 +305,49 @@ def _ladder_from_steps(mr, idx, props, annotation, report):
     report.setdefault('ladders_from_steps', []).append('%s.%s' % (mr.label, annotation['name']))
 
 
+## How far outside its own brush a fall-height volume's cooked Center may sit,
+## metres: rounding, nothing more. Every volume of the corpus is inside.
+CENTER_SLACK_M = 0.05
+
+
+def fall_height(props, annotation, label):
+    """What TdFallHeightVolume.Touch reads, on its annotation.
+
+    [ME:CONFIRMED decompile TdFallHeightVolume.Touch] a TdPawn touching the
+    volume has EnterFallingHeight set to Center.Z + FallHeightOffset and its
+    current move's TouchedFallHeightVolume() called. Center is TdMovementVolume's
+    and is cooked into the map: the brush's own centre in world space, PrePivot
+    included. FallHeightOffset has no class default, so an unset one is 0.
+
+    The volume is the only kind here placed through PrePivot: a brush with one
+    sits R*PrePivot away from Location (Stormdrain's chute volume by 255 m), so
+    `position` becomes the brush's origin. A cooked Center outside the brush so
+    placed means the placement, not the Center, is wrong: stop.
+    """
+    center = props.get('Center')
+    if not (isinstance(center, tuple) and len(center) == 3 and finite(center)):
+        raise ExtractError('%s: fall-height volume has no Center' % label)
+    annotation['center'] = point(center)
+    annotation['fall_height_offset'] = float(props.get('FallHeightOffset', 0.0)) / UU
+    pivot = pivot_offset(props)
+    annotation['position'] = [round(annotation['position'][k] - pivot[k], 4) for k in range(3)]
+    # Off until Kismet's SeqAct_ChangeCollision turns it on (Escape's R1 and
+    # Stormdrain's StdP ones): kismet.py marks the actor, and a level that does
+    # not run its Kismet must not build it live.
+    if props.get('bCollideActors') is False:
+        annotation['starts_off'] = True
+    basis = annotation['basis']
+    world = [[annotation['position'][k] + sum(basis[c][k] * v[c] for c in range(3)) for k in range(3)]
+             for hull in annotation['hull'] for v in hull['vertices']]
+    if not world:
+        raise ExtractError('%s: fall-height volume has no brush' % label)
+    for k in range(3):
+        lo, hi = min(p[k] for p in world), max(p[k] for p in world)
+        if not lo - CENTER_SLACK_M <= annotation['center'][k] <= hi + CENTER_SLACK_M:
+            raise ExtractError('%s: Center %s lies outside the placed brush on axis %d (%.2f..%.2f)'
+                               % (label, annotation['center'], k, lo, hi))
+
+
 def collect(packages, mr, defaults, report):
     """Annotations, spawns, anchors and checkpoints of one package."""
     pkg = mr.pkg
@@ -422,5 +466,7 @@ def collect(packages, mr, defaults, report):
                 raise ExtractError('%s.%s: pain volume DamageType %r unreadable' % (mr.label, e['name'], damage_type))
             annotation['damage_per_sec'] = float(chain.get('DamagePerSec', 0.0))
             annotation['damage_type'] = name
+        if cls == 'TdFallHeightVolume':
+            fall_height(pk.resolved_props(packages, mr, i)[0], annotation, '%s.%s' % (mr.label, e['name']))
         out['annotations'].append(annotation)
     return out
