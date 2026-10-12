@@ -103,36 +103,36 @@
 - [x] 定位 `ATdPawn` 的注册（对象大小 0x8f8）、构造器、虚表 0x01d05268
 - [x] 反编译 `GetSprintAcceleration`、`GetWalkAcceleration`、`GetMobilityMultiplier`、
       `UpdateWalkingState`、`UpdateVelocityVariables` 的实现
-- [ ] **布局计算器**：从反编译出的 `.uc` 变量声明，按 UE3 链接规则算出
+- [x] **布局计算器**：从反编译出的 `.uc` 变量声明，按 UE3 链接规则算出
       Object → Actor → Pawn → GamePawn → TdPawn（以及 TdMove 家族）的字段偏移。
       用已知偏移校验：`Actor.Physics = 0x68`、`Actor.Velocity = 0x100`、`sizeof(ATdPawn) = 0x8f8`
-- [ ] 读出原生常数（`DAT_*` 浮点数）
-- [ ] 改写成可读的公式：加速度、转向惩罚、能量曲线的用法、`UpdateWalkingState`、
+- [x] 读出原生常数（`DAT_*` 浮点数）
+- [x] 改写成可读的公式：加速度、转向惩罚、能量曲线的用法、`UpdateWalkingState`、
       `UpdateVelocityVariables`
-- [ ] 找到原生物理：`physWalking`（UE3 标准 + DICE 改动）、`physFalling`（空中操控）、
+- [x] 找到原生物理：`physWalking`（UE3 标准 + DICE 改动）、`physFalling`（空中操控）、
       `PHYS_WallRunning`（12）、`PHYS_WallClimbing`，以及重力倍率
-- [ ] 找到自动转移的仲裁顺序（`bCheckFor*` 的消费点）
-- [ ] 原生探测函数：`FindWallSide`、`FindWallForward`、`FindLedge(Ex)`、
+- [x] 找到自动转移的仲裁顺序（`bCheckFor*` 的消费点）
+- [x] 原生探测函数：`FindWallSide`、`FindWallForward`、`FindLedge(Ex)`、
       `FindLedgeInFrontOfPlayer`、`MovementTrace*`、`IsOkToJump`、`IsLandingOnSoftObject`、
       `FloorDeclineTooSteep`、`CheckDoubleJump`、`DetectPossibleHandPlant`、`IsHangingFree`、
       `CheckWallLegPlacement`、`CheckValidFloor`、`CheckAgainstWall`
-- [ ] `bIllegalLedgeTimer` 的消费者
-- [ ] 结论写入 `docs/mirrors-edge-deep-research/15-原版逻辑反编译.md`（只写公式与行为）
+- [x] `bIllegalLedgeTimer` 的消费者
+- [x] 结论写入 `docs/mirrors-edge-deep-research/15-原版逻辑反编译.md`（只写公式与行为）
 
 ### Phase 1 — 移动内核
 
-- [ ] 地面：`PlayerWalking.PlayerMove`（冲刺判定 0.7/0.7、点按急停 35 uu/s、
+- [x] 地面：`PlayerWalking.PlayerMove`（冲刺判定 0.7/0.7、点按急停 35 uu/s、
       `StoppingVelocity`）+ `GetWalk/SprintAcceleration` + `physWalking`
-- [ ] 空中：`PHYS_Falling` 的加速度来源与原生空中操控
-- [ ] 速度能量、转向惩罚：用原版公式替换 `SpeedEnergy` 中推理出来的部分
+- [x] 空中：`PHYS_Falling` 的加速度来源与原生空中操控
+- [x] 速度能量、转向惩罚：用原版公式替换 `SpeedEnergy` 中推理出来的部分
 - [x] 视角约束：`ConstrainAxis` 的 0.2 s 指数回拉（已移植的墙面家族走原版 `UpdateViewRotation`）
 
 ### Phase 2 — 仲裁与状态语义
 
-- [ ] `MoveManager` 动作仲裁表（`TdPlayerMoveManager` 全表）
-- [ ] 每个 move 的 `can_do_move()` 按原版 `CanDoMove` 改写
-- [ ] `old_movement_state`、"强制一帧 Walking"、`RedoMoveTime`、`DisableMovementTime`
-- [ ] 自动转移开关与仲裁顺序（来自 Phase 0）
+- [x] `MoveManager` 动作仲裁表（`TdPlayerMoveManager` 全表）
+- [x] 每个 move 的 `can_do_move()` 按原版 `CanDoMove` 改写
+- [x] `old_movement_state`、"强制一帧 Walking"、`RedoMoveTime`、`DisableMovementTime`
+- [x] 自动转移开关与仲裁顺序（来自 Phase 0）
 
 ### Phase 3 — 墙面家族
 
@@ -154,14 +154,14 @@
 
 ### Phase 5 — 其余跑酷动作
 
-- [ ] 逐项对照原版重写现有动作：Walking、Falling、Jump、Landing、SoftLanding、
+- [x] 逐项对照原版重写现有动作：Walking、Falling、Jump、Landing、SoftLanding、
       SkillRoll、Coil、Slide、Crouch、SpeedVault、VaultOver（9）、IntoGrab、Grab、
       GrabPullUp（10）、180Turn、180TurnInAir、ZipLine（含 IntoZipLine，W2d 已完成）、Swing（W2d 已完成）、Ladder（IntoClimb/Climb）、
       Balance、LedgeWalk、SpringBoard、DodgeJump、FallingUncontrolled、LayOnGround
-- [ ] 新增：GrabJump（13）、GrabTransfer（31）、JumpIntoGrab（67）、SwingJump（73）、
+- [x] 新增：GrabJump（13）、GrabTransfer（31）、JumpIntoGrab（67）、SwingJump（73）、
       StepUp（37）、AutoStepUp（81）、RumpSlide（38）、Stumble（35）、StumbleHard（55）、
       StumbleFalling（77）、Vertigo（47）、Interact（39）（SwingJump、Interact：W2d 已完成；Interact 只有按钮）
-- [ ] WallKick（23）：原版 `CanDoMove()` 恒为 false，是死代码。保留同样的结论，不实现
+- [x] WallKick（23）：原版 `CanDoMove()` 恒为 false，是死代码。保留同样的结论，不实现
 - [x] W2c 地面家族：Crouch、Slide、RumpSlide（38，本项目名 RampSlide）、Coil、SoftLanding、SkillRoll、
       LayOnGround、180Turn、180TurnInAir、DodgeJump、SpringBoard、Vertigo（47）、Stumble（35）、
       StumbleHard（55）、FallingUncontrolled；失控滑行材质；CheckForLedges / EdgeCheck / SlideOffLedge /
@@ -175,15 +175,15 @@
 
 ### Phase 6 — 动画
 
-- [ ] 为新增动作在 UAL 1/2 中挑 clip，接入 `CharacterAnimator` 的 priority list
+- [x] 为新增动作在 UAL 1/2 中挑 clip，接入 `CharacterAnimator` 的 priority list
       （body 可选，任何 clip 都不能假定存在）
 
 ### Phase 7 — 收尾
 
-- [ ] 结构性测试（不变量，不测调参值）：仲裁表顺序、强制 Walking 帧、
+- [x] 结构性测试（不变量，不测调参值）：仲裁表顺序、强制 Walking 帧、
       `OldMovementState` 分支
-- [ ] 更新 `CLAUDE.md`、`docs/feel-backlog.md`（标注被原版逻辑取代的条目）、语料各章的"未确证"项
-- [ ] 合并前跑一次全量测试（已知有 4 条常驻失败）
+- [x] 更新 `CLAUDE.md`、`docs/feel-backlog.md`（标注被原版逻辑取代的条目）、语料各章的"未确证"项
+- [x] 合并前跑一次全量测试（已知有 4 条常驻失败）
 
 ## 5. 已从脚本层读出的关键事实（Phase 0 之前的发现）
 
@@ -220,21 +220,21 @@
 - [ ] 地面家族的 180Turn / 180TurnInAir 仍通过镜头的旧视角扇区转视角，不走原版的 `update_view_rotation`；原版视角是否跟随根旋转，证据里没有
 - [ ] 铁丝网：触碰点假定为身体位置；原版重生后 0.1 s 的豁免没移植；命中后仍清空旧速度预算；伤害节奏仍是本项目的免疫窗口（W3：触碰点改为扫掠接触位置、0.1 s 豁免已移植、只在进入时踉跄；剩下旧速度预算的清空与每秒伤害的相位）
 - [x] `move.gd` 头部注释仍说 Barge 和近战"尚无对应"
-- [ ] `test_probes_vault` 的顺序相关失败：`ladder_move` 之后玩家悬空 0.49 m 仍判定着地（疑似 floor reuse 或测试残留）
+- [x] `test_probes_vault` 的顺序相关失败：`ladder_move` 之后玩家悬空 0.49 m 仍判定着地（疑似 floor reuse 或测试残留）
 - [ ] 梯子的逐级原生函数（`ClimbStep` 一类）没读到，32 uu 步距与 50/62 uu 贴墙距离是推断值
 - [ ] 平衡木 / 窄边的样条原生函数没读到，用 InterestLine 的最近点与单位切线代替
 - [ ] `APawn::CalcVelocity` 的根运动分支没读：根运动按混合权重折成下一帧速度；下落中只取水平分量
 - [ ] GrabTransfer 的 `LadderTransfer` 在按上时方向未定义（零向量），本项目不转到梯子
 - [ ] 两套动画槽并存：W2b 的 `CustomAnimSlot`（Pawn 级，管 OnCustomAnimEnd / OnCeaseRelevantRootMotion）
       与 W2d 每个 move 自带的 MoveAnim，应合成一套
-- [ ] 旧速度预算（`SpeedEnergy`、`seed_legacy_energy`、`legacy_turn_energy_per_radian`）在所有 move 移植完成后删除
-- [ ] `docs/feel-backlog.md` 对照移植结果逐条更新（标注被原版逻辑取代的条目）
-- [ ] 语料各章里被 15 章推翻的结论加上指向 15 章的更正
-- [ ] 合并前跑一次全量测试
-- [ ] 死代码待所有者定：`AirborneMove`（无子类）、`HardCatch`（无调用者）、`LineMove`（无子类）、`Player.pending_stagger`（无人置位）；`FallTracker` 现在只剩这些死代码在读
+- [x] 旧速度预算（`SpeedEnergy`、`seed_legacy_energy`、`legacy_turn_energy_per_radian`）在所有 move 移植完成后删除
+- [x] `docs/feel-backlog.md` 对照移植结果逐条更新（标注被原版逻辑取代的条目）
+- [x] 语料各章里被 15 章推翻的结论加上指向 15 章的更正
+- [x] 合并前跑一次全量测试
+- [ ] 死代码待所有者定（`AirborneMove` 已随旧速度模型删除）：`HardCatch`（无调用者）、`LineMove`（无子类）、`Player.pending_stagger`（无人置位）；`FallTracker` 现在只剩这些死代码在读
 - [ ] 已生成的关卡里玻璃仍带着不再使用的 `Reach` 区域，下次重建关卡时消失
-- [ ] 其余章节（sp02_stdp、sp04、sp05、sp06、sp08、sp09）重建关卡以带上落差高度体积
-- [ ] 约 100 个带 PrePivot 偏移的体积（如 Boat 的 50 个 BlockingVolume、Escape 的 21 个）构建时未应用偏移，核实是否错位
+- [x] 其余章节（sp02_stdp、sp04、sp05、sp06、sp08、sp09）重建关卡以带上落差高度体积
+- [x] 约 100 个带 PrePivot 偏移的体积（如 Boat 的 50 个 BlockingVolume、Escape 的 21 个）构建时未应用偏移，核实是否错位
 - [ ] **推送前**：提交 f94eba9、60e14df、15f1629、9a7a463 的历史里含原版动画的逐帧根运动数据（当前文件已移入 `.private`）。第一次推送 `feat/feel-pass` 前要改写这几笔提交或压缩分支——改写历史前先征得所有者同意
 - [x] 排查全量套件里 `head_follow`、`lesson_loop` 的失败是否由移植引入：head_follow 前后都通过；lesson_loop 的失败由移植引入
 - [x] `test_lesson_loop` 传送后静止高度差 2.15 uu：复用地面（落地处）与重新探测（悬停 2.15 uu）两条路径的结果不同。对照 N1 的地面复用与 bForceFloorCheck，判断是原版行为（放宽测试容差）还是移植偏差（W3：原版行为——SetPostLandedPhysics 把落地物设为 Base，静止时复用地面不追踪，身体停在落地接触处；传送打破 RelativeLocation 后才重新探测并抬到 2.15 uu。测试的竖直容差放宽到 2.4 uu）
