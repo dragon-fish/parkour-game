@@ -1,13 +1,13 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://bgpmwpvpxx6ob"]
 
-[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_qek5x"]
-[ext_resource type="Script" path="res://scripts/camera/camera_rig.gd" id="2_5gtgg"]
-[ext_resource type="Script" path="res://scripts/camera/screen_effects.gd" id="3_h17s1"]
-[ext_resource type="Script" path="res://scripts/ui/crosshair.gd" id="4_je7p5"]
-[ext_resource type="Script" path="res://scripts/ui/subtitle.gd" id="5_fm80t"]
-[ext_resource type="Script" path="res://scripts/ui/toast.gd" id="6_gx1jg"]
-[ext_resource type="Script" path="res://scripts/player/body_root.gd" id="7_ugbui"]
-[ext_resource type="Script" path="res://scripts/player/probes.gd" id="8_fcs02"]
+[ext_resource type="Script" uid="uid://cmqbgjn62uomr" path="res://scripts/player/player.gd" id="1_qek5x"]
+[ext_resource type="Script" uid="uid://cltohrdf7ymkj" path="res://scripts/camera/camera_rig.gd" id="2_5gtgg"]
+[ext_resource type="Script" uid="uid://cqi6j3knb3lka" path="res://scripts/camera/screen_effects.gd" id="3_h17s1"]
+[ext_resource type="Script" uid="uid://dhnol20cpoynt" path="res://scripts/ui/crosshair.gd" id="4_je7p5"]
+[ext_resource type="Script" uid="uid://cohtixswfk7mp" path="res://scripts/ui/subtitle.gd" id="5_fm80t"]
+[ext_resource type="Script" uid="uid://bbmf6n8w1llx1" path="res://scripts/ui/toast.gd" id="6_gx1jg"]
+[ext_resource type="Script" uid="uid://iho63s538v5j" path="res://scripts/player/body_root.gd" id="7_ugbui"]
+[ext_resource type="Script" uid="uid://xxe8ugqxn4aq" path="res://scripts/player/probes.gd" id="8_fcs02"]
 
 [sub_resource type="BoxShape3D" id="CapsuleShape3D_myrg7"]
 size = Vector3(0.6, 1.8, 0.6)
