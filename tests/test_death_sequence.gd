@@ -355,7 +355,7 @@ func test_a_bodiless_death_still_falls_over_on_its_own() -> void:
 
 func test_a_fatal_fall_is_dying_before_it_can_strike_a_landing_pose() -> void:
 	# died_from_fall must be declared on the tick the fall is known to be
-	# fatal, inside landing_destination() itself, rather than deferred to the
+	# fatal, by the landing that finds it, rather than deferred to the
 	# next frame. A deferred declaration lets the body spend one frame
 	# landing like anyone else first, so a third-person death would visibly
 	# strike a landing pose (Jump_Land) before playing Death2.
@@ -364,10 +364,13 @@ func test_a_fatal_fall_is_dying_before_it_can_strike_a_landing_pose() -> void:
 	TestWorld.place(world)
 	await step(20)
 	var player: Player = world["player"]
-	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as AirborneMove
 	assert_false(player.is_dying(), "the fixture started out dying")
-	# The same call MoveManager makes when the body touches down.
-	move.landing_destination(20.0, false)
+	# Started on the floor: the death fall lands within a few ticks.
+	player.move_manager.start(Move.FALL_UNCONTROLLED)
+	for i in 10:
+		await step(1)
+		if player.physics != Move.PHYS_FALLING:
+			break
 	assert_true(player.is_dying(),
 		"the body was not dying on the tick its fall turned out to be fatal")
 	TestWorld.teardown(world)

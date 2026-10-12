@@ -176,7 +176,7 @@ func test_the_capsule_stops_dead_while_the_ragdoll_runs() -> void:
 	TestWorld.place(world)
 	await step(20)
 	var player: Player = world["player"]
-	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as AirborneMove
+	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as FallUncontrolledMove
 	# A ragdoll this fixture's bodiless player cannot actually build, so stand
 	# one in: what is under test is the gate, not the solver.
 	player.ragdoll_enabled = true
@@ -421,15 +421,15 @@ func test_the_switch_is_off_and_a_death_plays_out_by_animation() -> void:
 	# animation death and put the ragdoll behind a flag."
 	#
 	# With the flag off nothing is built at all, and the death takes the path it
-	# always took: the capsule falls, settle_landing() sees it land, and
-	# landing_destination() declares the death.
+	# always took: the capsule falls, lands, and the landing declares the
+	# death.
 	var world := TestWorld.build(get_tree(), MovementConfig.new())
 	await step(1)
 	TestWorld.place(world)
 	await step(20)
 	var player: Player = world["player"]
 	assert_false(player.ragdoll_enabled, "the ragdoll is on by default")
-	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as AirborneMove
+	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as FallUncontrolledMove
 	var deaths := [0]
 	player.died_from_fall.connect(func(): deaths[0] += 1)
 	# The capsule must still be the thing that falls.
@@ -441,7 +441,10 @@ func test_the_switch_is_off_and_a_death_plays_out_by_animation() -> void:
 	assert_gt(before.y - player.global_position.y, 0.05,
 		"the capsule did not fall, so something is still holding it")
 	# And the ordinary landing path still declares the death.
-	move.landing_destination(20.0, false)
+	for i in 60:
+		await step(1)
+		if deaths[0] > 0:
+			break
 	assert_eq(deaths[0], 1, "the animation death stopped declaring itself")
 	TestWorld.teardown(world)
 
@@ -530,10 +533,12 @@ func test_a_fatal_landing_keeps_its_death_flag_through_the_hand_off() -> void:
 	TestWorld.place(world)
 	await step(20)
 	var player: Player = world["player"]
-	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as AirborneMove
+	var move := player.move_manager.move_for(Move.FALL_UNCONTROLLED) as FallUncontrolledMove
 	player.move_manager.start(Move.FALL_UNCONTROLLED)
-	move.landing_destination(20.0, false)
-	# The hand-off the manager performs on that return value.
+	# On the floor: the fall lands at once and declares the death.
+	await step(5)
+	assert_true(player.is_dying(), "test setup: the landing did not declare the death")
+	# The respawn's hand-off out of the state.
 	player.move_manager.start(Move.WALKING)
 	assert_true(player.is_dying(),
 		"the death flag was cleared on the way out of the fall that declared it")

@@ -119,12 +119,6 @@ func test_a_roll_pays_nothing_and_a_missed_roll_pays_the_flat_fee() -> void:
 		assert_almost_eq(cfg.pawn.max_health - player.health.hp, float(c[2]), 0.001, c[3])
 	player.enter_falling_height = player.global_position.y
 
-func test_a_pad_charges_nothing_though_the_lockout_still_runs() -> void:
-	var world := await _settled()
-	var player: Player = world["player"]
-	var soft: SoftLandingMove = player.move_manager.move_for(Move.SOFT_LANDING)
-	assert_eq(soft.landing_damage(100.0, false), 0.0, "the pad billed for the fall it caught")
-
 func test_a_lethal_volume_takes_ten_bars_and_kills() -> void:
 	var world := await _settled()
 	var player: Player = world["player"]

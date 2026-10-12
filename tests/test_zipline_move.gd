@@ -332,6 +332,10 @@ func test_landing_off_the_cable_keeps_the_ground_speed() -> void:
 	var landed := false
 	for i in 200:
 		await step(1)
+		# Let go once off the cable: a crouch still held at touchdown is a
+		# slide out of the landing, which brakes.
+		if player.move_manager.current_name != Move.ZIPLINE:
+			input.release_crouch()
 		if player.grounded and player.move_manager.current_name == Move.WALKING:
 			landed = true
 			break
