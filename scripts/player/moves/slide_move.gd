@@ -81,6 +81,14 @@ func exit() -> void:
 	player.face_rotation_time_left = 0.4
 	player.begin_slide_recovery()
 
+## After the physics. The model lies along the floor it slides on: drawn
+## upright on a slope, the legs hang in the air past the lip. This project's
+## presentation.
+func tick_move(delta: float) -> void:
+	super.tick_move(delta)
+	if player.grounded:
+		player.body_tilt_normal = player.floor_normal
+
 func on_timer() -> void:
 	going_into = false
 	if request_uncrouch:

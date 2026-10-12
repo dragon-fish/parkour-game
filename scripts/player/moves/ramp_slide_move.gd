@@ -116,6 +116,10 @@ func pre_physics(delta: float) -> void:
 ## TdMove_RumpSlide TickMove (0x011fa1c0): off the chute for more than 0.1 s
 ## with nothing in a 2 uu box 150 uu below, a fall.
 func tick_move(delta: float) -> void:
+	# Seated on the chute, the model lies along it. This project's
+	# presentation.
+	if player.uncontrolled_slide:
+		player.body_tilt_normal = player.uncontrolled_slide_normal
 	time_falling = 0.0 if player.uncontrolled_slide else time_falling + delta
 	if time_falling > 0.1:
 		var loc: Vector3 = player.collision_center()

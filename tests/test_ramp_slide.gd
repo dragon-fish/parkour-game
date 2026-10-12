@@ -195,6 +195,21 @@ func test_the_body_and_the_model_come_round_to_face_down_the_chute() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
+## Seated on the chute, the model lies along it (Player.body_tilt_normal),
+## not upright with its legs in the air over the downhill side.
+func test_the_model_lies_along_the_chute() -> void:
+	var r: Dictionary = await _ride(50.0, true, 1)
+	var player: Player = r["player"]
+	var tilted := false
+	for i in 90:
+		await step(1)
+		if player.move_manager.current_name == Move.RAMP_SLIDE \
+				and player.body_tilt_normal.angle_to(Vector3.UP) > deg_to_rad(30.0):
+			tilted = true
+			break
+	assert_true(tilted, "the model was never laid along the chute")
+	await _finish(r)
+
 func test_the_slide_declares_its_grounding_every_tick() -> void:
 	# MoveManager enforces the declaration on the first tick; this pins that
 	# the fall counter is reset while on the chute, so the chute's end and
