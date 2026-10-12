@@ -200,3 +200,20 @@
 - `GetSprintAcceleration`（原生）：按当前水平速度对 `FInterpCurveFloat` 求值；
   转向惩罚是 `− Velocity × F[0x6d0] × |aTurn| × 常数`，最后 `floor(x + 0.5)` 取整。
   字段名待布局计算器确认。
+
+## 6. 收尾清单（合并 W2a / W2d / W2c 时积累的遗留项）
+
+- [ ] `face_rotation()` 缺原版下落中 5/s 的缓动
+- [ ] Barge、MeleeVault、Interact 没有设置原版的 `bDisableFaceRotation`
+- [ ] Swing、IntoZipLine、Interact 有几处直接写视角偏航，Pawn 偏航晚一帧才跟上
+- [ ] Swing 的 180° 转身直接写视角，没有设根旋转标记
+- [ ] 地面家族的 180Turn / 180TurnInAir 仍通过镜头的旧视角扇区转视角，不走原版的 `update_view_rotation`；原版视角是否跟随根旋转，证据里没有
+- [ ] 铁丝网：触碰点假定为身体位置；原版重生后 0.1 s 的豁免没移植；命中后仍清空旧速度预算；伤害节奏仍是本项目的免疫窗口
+- [ ] `move.gd` 头部注释仍说 Barge 和近战"尚无对应"
+- [ ] `test_probes_vault` 的顺序相关失败：`ladder_move` 之后玩家悬空 0.49 m 仍判定着地（疑似 floor reuse 或测试残留）
+- [ ] 旧速度预算（`SpeedEnergy`、`seed_legacy_energy`、`legacy_turn_energy_per_radian`）在所有 move 移植完成后删除
+- [ ] 镜头输入管线：`TdPlayerInput`（灵敏度 28 × 倍率、FOV 系数、视角加速度、鼠标平滑）与 `UpdateRotation` 的 `RotSpeedMod`
+- [ ] 原版第一人称镜头动画（1P 骨架的 `CameraJoint` / `EyeJoint` 轨道）：是否引入、如何与本项目的头部晃动并存，需要先评估
+- [ ] `docs/feel-backlog.md` 对照移植结果逐条更新（标注被原版逻辑取代的条目）
+- [ ] 语料各章里被 15 章推翻的结论加上指向 15 章的更正
+- [ ] 合并前跑一次全量测试
