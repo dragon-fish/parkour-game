@@ -134,6 +134,12 @@ const MA_TURN := 16
 const MA_STUMBLE := 17
 const MA_STUMBLE_HARD := 18
 
+## TdMove.EMovementGroup. [ME:CONFIRMED decompile]
+const MG_FREE := 0
+const MG_ONE_HAND_BUSY := 1
+const MG_TWO_HANDS_BUSY := 2
+const MG_NON_INTERACTIVE := 3
+
 ## TdPawn.EMoveActionHint. [ME:CONFIRMED decompile 15.8]
 const MAH_NONE := 0
 const MAH_LEFT := 1
@@ -224,6 +230,12 @@ var disable_collision: bool = false
 ## TdMove.CurrentCustomAnimName: the animation this move last played. Its end
 ## and its root motion ceasing reach the move only while it is this one.
 var current_custom_anim_name: StringName = &""
+
+## TdMove.MovementGroup. The player's side reads it once: LookBehind ignores
+## Q in a move at MG_NON_INTERACTIVE. Only those moves declare it, plus
+## MeleeVault, which drops back from its base's; the lower groups gate the
+## weapon, which this project has none of.
+var movement_group: int = MG_FREE
 
 ## TdMove.bDisableFaceRotation: the pawn does not follow the controller while
 ## this move runs. Instance state, as in the original: a move may set it at

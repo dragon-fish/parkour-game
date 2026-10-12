@@ -23,6 +23,7 @@ var playing_impact: bool = false
 
 func _init() -> void:
 	super._init()
+	movement_group = MG_NON_INTERACTIVE
 	pawn_physics = PHYS_FLYING
 	controller_state = CS_PLAYER_WALKING
 	disable_movement_time = -1.0

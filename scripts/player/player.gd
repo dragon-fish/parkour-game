@@ -4410,8 +4410,15 @@ func _wall_walking_input_hint(strafe: float) -> void:
 		move_action_hint = Move.MAH_NONE
 		move_action_max = false
 
-## TdPlayerController.LookBehind.
+## TdPlayerController.LookBehind. Returns whether the press was spent.
+## [ME:CONFIRMED decompile] Ignored while buttons are (IsButtonInputIgnored,
+## here a locked input, which reads no press at all) and in a move at
+## MG_NON_INTERACTIVE: such a press does nothing, and is not left over for a
+## move not yet ported either.
 func _look_behind() -> bool:
+	var current: Move = move_manager.current_move()
+	if current != null and current.movement_group >= Move.MG_NON_INTERACTIVE:
+		return true
 	return move_manager.handle_move_action(Move.MA_TURN)
 
 ## TdPlayerController.CheckCrouch: a held crouch key is MA_Crouch EVERY tick

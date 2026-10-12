@@ -19,6 +19,7 @@ var saved_velocity: Vector3 = Vector3.ZERO
 
 func _init() -> void:
 	super._init()
+	movement_group = MG_ONE_HAND_BUSY
 	pawn_physics = PHYS_FLYING
 	disable_look_time = -1.0
 

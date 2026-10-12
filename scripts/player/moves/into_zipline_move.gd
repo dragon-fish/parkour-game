@@ -23,6 +23,7 @@ var _points: PackedVector3Array = PackedVector3Array()
 
 func _init() -> void:
 	super._init()
+	movement_group = MG_NON_INTERACTIVE
 	pawn_physics = PHYS_FLYING
 	controller_state = CS_PLAYER_WALKING
 

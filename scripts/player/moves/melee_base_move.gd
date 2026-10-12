@@ -30,6 +30,10 @@ var hit_detection: bool = false
 
 var _anim := MoveAnim.new()
 
+func _init() -> void:
+	super._init()
+	movement_group = MG_NON_INTERACTIVE
+
 func is_ported() -> bool:
 	return true
 

@@ -664,3 +664,21 @@ func test_a_sprint_from_rest_follows_the_speed_curve() -> void:
 	assert_almost_eq(player.horizontal_speed(), 5.2, 0.15, "speed after 1 s of sprinting")
 	await step(360)
 	assert_almost_eq(player.horizontal_speed(), 7.2, 0.15, "speed after 7 s of sprinting")
+
+## [ME:CONFIRMED decompile] TdPlayerController.LookBehind returns before
+## HandleMoveAction(MA_Turn) in a move at MG_NonInteractive.
+func test_q_does_nothing_in_a_non_interactive_move() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	for name in [Move.BARGE, Move.AIR_BARGE, Move.MELEE, Move.MELEE_AIR, Move.MELEE_SLIDE,
+			Move.MELEE_CROUCH, Move.MELEE_WALLRUN, Move.GRAB_PULL_UP, Move.INTERACT,
+			Move.INTO_CLIMB, Move.INTO_GRAB, Move.INTO_ZIPLINE]:
+		var move: Move = player.move_manager.move_for(name)
+		if move != null:
+			assert_eq(move.movement_group, Move.MG_NON_INTERACTIVE, "%s is not MG_NonInteractive" % name)
+	assert_eq(player.move_manager.move_for(Move.MELEE_VAULT).movement_group, Move.MG_ONE_HAND_BUSY,
+		"MeleeVault kept its base's group")
+	player.move_manager.start(Move.MELEE)
+	var serial: int = player.move_manager.change_serial
+	assert_true(player._look_behind(), "a refused Q was left over for a move not yet ported")
+	assert_eq(player.move_manager.change_serial, serial, "Q changed a non-interactive move")

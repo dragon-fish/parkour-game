@@ -26,6 +26,7 @@ var wallrun_normal: Vector3 = Vector3.ZERO
 
 func _init() -> void:
 	super._init()
+	movement_group = MG_NON_INTERACTIVE
 	pawn_physics = PHYS_FALLING
 
 func is_ported() -> bool:

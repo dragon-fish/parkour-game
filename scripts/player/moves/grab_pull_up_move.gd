@@ -19,6 +19,7 @@ var floor_over_ledge_location: Vector3 = Vector3.ZERO
 
 func _init() -> void:
 	super._init()
+	movement_group = MG_NON_INTERACTIVE
 	pawn_physics = PHYS_FLYING
 	controller_state = CS_PLAYER_WALKING
 	disable_collision = true

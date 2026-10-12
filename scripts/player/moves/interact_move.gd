@@ -38,6 +38,7 @@ var _anim := MoveAnim.new()
 
 func _init() -> void:
 	super._init()
+	movement_group = MG_NON_INTERACTIVE
 	controller_state = CS_PLAYER_WALKING
 	disable_movement_time = -1.0
 	disable_look_time = -1.0

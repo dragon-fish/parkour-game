@@ -28,6 +28,7 @@ var sloped_ledge: bool = false
 
 func _init() -> void:
 	super._init()
+	movement_group = MG_NON_INTERACTIVE
 	pawn_physics = PHYS_FALLING
 	controller_state = CS_PLAYER_WALKING
 	check_exit_to_uncontrolled_falling = true
