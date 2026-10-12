@@ -368,6 +368,36 @@ func test_balance_factor_runs_away_from_level() -> void:
 	assert_almost_eq(balance.balance_factor, 0.5 + 0.3 * sin(0.25 * PI) * DT, 1e-5,
 		"the balance factor does not follow 0.3 sin(BF pi / 2)")
 
+## The beam forces first person for the ride (this project's presentation):
+## over a saved third-person preference, which survives; handed back the
+## moment the balance is lost, and on any other way off.
+func test_the_beam_forces_first_person_until_the_balance_is_lost() -> void:
+	for lose_balance in [false, true]:
+		var player: Player = await _player()
+		player.camera_rig.third_person = true
+		var beam: InterestLine = _line(InterestLine.Kind.BALANCE, Vector3(0.0, 0.0, 2.0), Vector3(0.0, 0.0, -8.0))
+		await step(1)
+		var balance: BalanceMove = player.move_manager.move_for(Move.BALANCE)
+		_face(player, 0.0)
+		balance.volume = beam
+		player.move_manager.set_move(Move.BALANCE)
+		await step(2)
+		assert_false(player.camera_rig.in_third_person(), "the beam did not force first person")
+		assert_true(player.camera_rig.third_person, "forcing the view overwrote the saved preference")
+		if lose_balance:
+			balance.falloff()
+		else:
+			player.move_manager.set_move(Move.WALKING)
+		await step(2)
+		assert_true(player.camera_rig.in_third_person(),
+			"the view was not handed back (balance lost: %s)" % lose_balance)
+		TestWorld.teardown(_world)
+		_world = {}
+		for node in _extra:
+			node.queue_free()
+		_extra.clear()
+		await step(1)
+
 # --- the movement-volume spline ------------------------------------------------------
 
 ## [ME:CONFIRMED decompile 0x012a9490 / 0x012a9580] The spline is a quadratic

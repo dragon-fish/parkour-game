@@ -32,6 +32,18 @@ var counter_timer: float = 0.0
 ## Nothing in the game writes it.
 var external_force: float = 0.0
 
+## THIRD PERSON READS BADLY ON A BEAM, so the beam forces first person for the
+## ride -- this project's presentation, not the original's (which has no
+## third person). Beam only: LedgeWalk keeps the player's own view. Through the
+## status system's FORCE_VIEW, the mechanism a level volume or a death uses,
+## so every reader of the view already understands it. Above a level's own
+## FORCE_VIEW volumes, which author at the default layer_priority (0): the
+## beam is not meant to be outranked by sharing that default.
+const FORCE_VIEW_PRIORITY: int = 10
+## Whether THIS instance pushed the forced view, so the release never strips a
+## FORCE_VIEW it did not apply (a level's own).
+var _forced_first_person: bool = false
+
 func _init() -> void:
 	super._init()
 	controller_state = CS_PLAYER_BALANCE_WALK
@@ -67,9 +79,23 @@ func enter(_previous: StringName) -> void:
 	external_force = 0.0
 	has_fallen = false
 	is_in_danger_mode = false
+	var spec := StatusSpec.new()
+	spec.effect = Status.Effect.FORCE_VIEW
+	spec.view = Status.View.FIRST
+	player.apply_status(spec, self, FORCE_VIEW_PRIORITY)
+	_forced_first_person = true
+
+## Gives the view back: when the balance is lost (the fall is watched from
+## wherever the player had chosen to watch from) and on every way off. The
+## flag makes the second call a no-op.
+func _release_forced_view() -> void:
+	if _forced_first_person:
+		player.remove_status(Status.Effect.FORCE_VIEW, &"")
+		_forced_first_person = false
 
 ## TdMove_Balance.StopMove.
 func exit() -> void:
+	_release_forced_view()
 	player.use_root_motion(false)
 	player.face_rotation_time_left = 0.4
 	if player.camera_rig != null:
@@ -108,6 +134,7 @@ func pre_physics(delta: float) -> void:
 ## motion.
 func falloff() -> void:
 	has_fallen = true
+	_release_forced_view()
 	player.set_physics(PHYS_FALLING)
 	if balance_factor < 0.0:
 		play_slot_anim(&"walkbalancefalloffleft", 1.0, 0.3, 0.3, true)
