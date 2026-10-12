@@ -105,7 +105,9 @@ func reached_precise_location() -> void:
 		return
 	ride.zip_line = zip_line
 	var dir: Vector3 = ZiplineMove.slope_at(_points, enter_zip_line_param)
-	player.rotation.y = atan2(-dir.x, -dir.z)
+	# PawnOwner.SetRotation: the pawn turns along the cable; the view is left
+	# where it is.
+	player.pawn_yaw = atan2(-dir.x, -dir.z)
 	if player.velocity.y < cfg.z_velocity_fall_limit:
 		saved_initial_2d_velocity = Vector3.ZERO
 	var saved_speed: float = saved_initial_2d_velocity.length()

@@ -22,6 +22,8 @@ func _init() -> void:
 	movement_group = MG_ONE_HAND_BUSY
 	pawn_physics = PHYS_FLYING
 	disable_look_time = -1.0
+	# [ME:CONFIRMED decompile] bDisableFaceRotation.
+	disable_face_rotation = true
 
 func set_vault_properties(end_position: Vector3, time_down: float, velocity: Vector3) -> void:
 	vault_end_position = end_position

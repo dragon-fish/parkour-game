@@ -40,6 +40,8 @@ func _init() -> void:
 	super._init()
 	movement_group = MG_NON_INTERACTIVE
 	controller_state = CS_PLAYER_WALKING
+	# [ME:CONFIRMED decompile] bDisableFaceRotation.
+	disable_face_rotation = true
 	disable_movement_time = -1.0
 	disable_look_time = -1.0
 
@@ -110,9 +112,15 @@ func reached_precise_location_and_rotation() -> void:
 	reset_camera_look(0.0)
 	player.velocity = Vector3.ZERO
 	player.acceleration = Vector3.ZERO
+	# SetPhysics(PHYS_Flying) for the placement, then PHYS_Walking again: the
+	# round trip drops the base and the SlideOffLedge timer.
+	player.set_physics(PHYS_FLYING)
 	player.global_position = move_location
+	# The pawn faces the button, and the controller's yaw is set to the pawn's.
 	var face: Vector3 = -normal_from_trigger_2d
-	player.rotation.y = atan2(-face.x, -face.z)
+	player.pawn_yaw = atan2(-face.x, -face.z)
+	player.rotation.y = player.pawn_yaw
+	player.set_physics(PHYS_WALKING)
 	_anim.play(&"interactbuttonhigh" if current_trigger.interact_type == UseZone.InteractType.BUTTON_HIGH \
 		else &"interactbutton", INTERACT_BUTTON_LENGTH)
 	player.set_ignore_look_input(-1.0)

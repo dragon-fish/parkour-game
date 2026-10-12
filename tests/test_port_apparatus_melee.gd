@@ -511,3 +511,11 @@ func test_the_ride_meeting_a_floor_stumbles_from_behind_the_ride() -> void:
 	var back: Vector3 = stumble.instigator_location - at
 	assert_almost_eq(back.length(), 0.1, 0.001, "the instigator is not 10 uu off")
 	assert_gt(back.normalized().dot(-along), 0.999, "the instigator is not behind the ride")
+
+## [ME:CONFIRMED decompile] bDisableFaceRotation on ZipLine, Interact, Barge
+## (AirBarge inherits it) and MeleeVault: the pawn does not follow the view.
+func test_the_moves_that_hold_the_pawns_facing_say_so() -> void:
+	var player: Player = await _start()
+	for name in [Move.ZIPLINE, Move.INTERACT, Move.BARGE, Move.AIR_BARGE, Move.MELEE_VAULT]:
+		assert_true(player.move_manager.move_for(name).disable_face_rotation,
+			"%s lets the pawn follow the view" % name)

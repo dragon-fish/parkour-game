@@ -47,6 +47,8 @@ func _init() -> void:
 	pawn_physics = PHYS_FLYING
 	controller_state = CS_PLAYER_GRABBING
 	disable_movement_time = -1.0
+	# [ME:CONFIRMED decompile] bDisableFaceRotation.
+	disable_face_rotation = true
 
 func is_ported() -> bool:
 	return true
@@ -117,7 +119,7 @@ func enter(_previous: StringName) -> void:
 	zip_line_look_assist = true
 	# The fan centres on the heading the reach turned the pawn to.
 	if player.camera_rig != null:
-		player.camera_rig.recentre_yaw_reference(player.rotation.y)
+		player.camera_rig.recentre_yaw_reference(player.pawn_yaw)
 
 func exit() -> void:
 	_anim.stop()
