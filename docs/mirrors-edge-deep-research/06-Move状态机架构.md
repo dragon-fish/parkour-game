@@ -35,6 +35,8 @@ Object
 
 驱动它的是 `TdPawn.MoveManagerClass = TdPlayerMoveManager`，可用动作注册在 `TdPawn.MoveClasses` 数组里。
 
+> 更正（见 [15 §15.8](15-原版逻辑反编译.md)）：`TdMove_Walking` 继承自 `TdPhysicsMove`，不是 `TdMove`；Walking、Crouch、Slide、Landing 同属该系，但不设任何原生自动转移开关。树里其余挂在 `TdMove` 下的类（`180Turn`、`Falling`、`Balance`）的归属第 15 章没有逐一核对；`Falling` 的 CDO 带 `bCheckForGrab` 等开关，按字段声明位置看更可能同样在 `TdPhysicsMove` 之下 [ME:INFERRED]。按键动作的仲裁表见 [15 §15.3](15-原版逻辑反编译.md)。
+
 **第一个关键架构决策**：每个动作是一个**独立的类**，不是 `_physics_process` 里的一个 `elif` 分支。动作自带参数、自带进入/退出条件、自带对角色状态的声明。
 
 **第二个关键架构决策**：**AI 和玩家共用同一套 Move 框架**（`TdMove_Bot*` 与玩家 move 并列在同一继承树下）。追击你的警察用的是同一个跑酷系统。
@@ -60,10 +62,12 @@ Object
 |---|---|
 | `bCheckForGrab` | 该状态下是否检测可抓边缘 |
 | `bCheckForVaultOver` | 是否检测可翻越物 |
-| `bCheckForWallClimb` | 是否检测可爬墙面 |
-| `bCheckForEdgeInVelDir` | 是否沿速度方向检测边缘 |
+| `bCheckForWallClimb` | 是否检测可爬墙面（实际同时控制墙跑与垂直蹬墙两种自动转移，见 15 §15.8） |
+| `bCheckForEdgeInVelDir` | 是否沿速度方向检测边缘（更正，见 15 §15.8：只是把速度方向的竖直分量加进手撑点的探测方向，不是独立的检测） |
 | `HandPlantCheckDistance/Height` | 手撑点探测（200 / 112 uu） |
 | `ContextMoveDistanceMultiplier` | 1.8 — 上下文动作的探测距离放大系数 |
+
+> 补充（见 [15 §15.1](15-原版逻辑反编译.md)、[§15.8](15-原版逻辑反编译.md)）：`bCheck*` 开关在脚本里只声明、赋值，没有读取，由原生 `CheckAutoMoves` 消费，顺序是墙跑 → 找手撑点 → 垂直蹬墙 → AutoStepUp → VaultOver → IntoGrab。手撑点在脚底上方 112 的手高处向前扫两个相距 50 的 10×10×160 盒子，两次结果一致才算数。`RedoMoveTime` 只在脚本 `CanDoMove` 里检查，原生的自动转移不看它。
 
 具体 Move 还会声明：
 

@@ -217,6 +217,8 @@ MaxLookConstraint      ( 16384,  5000, 0)
 能正常翻滚（从未进入失控，机制根本没启动，垫子此时就是一块普通地板）；`bCheckForSoftLanding`
 出现在 `FallingUncontrolled` 上（那就是「我预测的落点是不是软的」这个检查本身）。
 
+> 更正（见 [15 §15.8](15-原版逻辑反编译.md)）：`bCheckForSoftLanding` 由 `PrePhysics` 每帧检查，条件是 `Vz < −400` 且 **2 s 后的落点**是软着陆材质，则进 SoftLanding（`IsLandingOnSoftObject` 是向下的短探测，要求法线 Z > 0.9 且为软着陆材质）。持有该开关的是 180TurnInAir / Falling / FallingUncontrolled / SoftLanding，检查本身不依赖"跨过 10 m 线"。因此"低处落垫能翻滚，是因为从未进入失控、机制没启动"的第三条解释与此不符——Falling 下只要 Vz < −400 就会做这个预测；预测与翻滚的关系（owner 实测的低处落垫可翻滚）第 15 章没有展开，待核。下面"判定窗口只有跨线那一 tick"是本项目的设计，原版是每帧检查。
+
 ❓ 那片贴着垫面的薄触发器是做什么的，仍然未知。曾假设它清除翻滚预输入，已被上述实测
 推翻。
 
