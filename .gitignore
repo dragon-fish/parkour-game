@@ -85,3 +85,4 @@ scenes/player/player_vrm.tscn
 
 # The playtest shell the "play from here" plugin rebuilds on every run.
 addons/playtest_here/_scratch_playtest.tscn
+.claude/worktrees/
