@@ -74,10 +74,10 @@ func test_preset_round_trip_preserves_a_value_equal_to_a_different_declared_defa
 	# ResourceSaver.save(config, path) omits any property whose CURRENT value
 	# equals its DECLARED default. speed_modifier is declared on the
 	# MoveConfig base with default 1.0, but CrouchConfig's _init() sets it to
-	# 0.4. Tuning crouch's speed_modifier back to exactly 1.0 (the base's
+	# 0.2. Tuning crouch's speed_modifier back to exactly 1.0 (the base's
 	# default, not crouch's own) makes ResourceSaver treat the property as
 	# "unchanged" and omit it from a serialized MovementConfig .tres;
-	# reloading then re-runs _init() and silently restores 0.4, losing the
+	# reloading then re-runs _init() and silently restores 0.2, losing the
 	# tuned value with no error. TuningPreset stores an explicit
 	# path->value mapping instead of a serialized MovementConfig for exactly
 	# this reason -- this assertion is what would catch a regression back to

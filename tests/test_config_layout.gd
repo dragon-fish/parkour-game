@@ -82,3 +82,14 @@ func test_spring_board_is_on_the_aggregate() -> void:
 	# The throw's own numbers, straight off the CDO. Declared, not defaulted.
 	assert_almost_eq(config.spring_board.jump_z, 9.5, 0.001)
 	assert_true(config.spring_board.check_for_grab, "the rise must keep the original's grab check")
+
+func test_the_default_preset_keeps_the_ported_ini_values_of_crouch_and_slide() -> void:
+	# The preset is what Arena loads, so a value it declares overrides the
+	# ported one silently. These two had drifted from the original's ini
+	# ([TdMove_Crouch] SpeedModifier = 0.2; Slide sets no RedoMoveTime, so the
+	# [TdMove] 0 holds): the preset must say nothing different from the class.
+	var preset := load("res://presets/default.tres") as MovementConfig
+	assert_almost_eq(preset.crouch.speed_modifier, CrouchConfig.new().speed_modifier, 0.0001,
+		"the default preset overrides Crouch's SpeedModifier")
+	assert_almost_eq(preset.slide.redo_move_time, SlideConfig.new().redo_move_time, 0.0001,
+		"the default preset gives Slide a RedoMoveTime the original does not have")
