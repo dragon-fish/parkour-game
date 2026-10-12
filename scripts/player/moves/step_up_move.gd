@@ -88,7 +88,8 @@ func reached_precise_location() -> void:
 func exit() -> void:
 	if step_up_type == Type.LONG:
 		player.velocity = saved_velocity
-		player.acceleration = PawnPhysics.safe_normal(saved_velocity)
+		# Normal(V) is 1 uu/s^2 long in the original: UU here, not 1 m/s^2.
+		player.acceleration = PawnPhysics.safe_normal(saved_velocity) * UU
 	else:
 		player.velocity = Vector3.ZERO
 	player.face_rotation_time_left = 0.3

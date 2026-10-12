@@ -166,7 +166,8 @@ func check_double_jump() -> void:
 	var head: float = player.global_position.y + player.collision_half_height()
 	var x: float = (possible_edge_destination.y - head + 4.0 * UU) * wall_climbing_gravity * 4.0
 	player.velocity.y = sqrt(maxf(x, 0.01 * UU * UU))
-	player.acceleration = PawnPhysics.safe_normal(player.velocity)
+	# Normal(V) is 1 uu/s^2 long in the original: UU here, not 1 m/s^2.
+	player.acceleration = PawnPhysics.safe_normal(player.velocity) * UU
 	performed_double_jump = true
 
 ## The wall climb's per-tick native (vt 0x118, 0x012071f0). [ME:CONFIRMED

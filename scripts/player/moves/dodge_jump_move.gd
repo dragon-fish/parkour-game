@@ -58,6 +58,7 @@ func enter(_previous: StringName) -> void:
 	if player.base_velocity.y > 0.0:
 		v.y += player.base_velocity.y
 	player.velocity = v
-	player.acceleration = PawnPhysics.safe_normal(v)
+	# Normal(V) is 1 uu/s^2 long in the original: UU here, not 1 m/s^2.
+	player.acceleration = PawnPhysics.safe_normal(v) * UU
 	if player.camera_rig != null:
 		player.camera_rig.kick_takeoff(player.horizontal_speed())

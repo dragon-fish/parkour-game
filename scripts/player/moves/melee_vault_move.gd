@@ -48,7 +48,8 @@ func _set_stored_velocity() -> void:
 	player.set_physics(PHYS_WALKING)
 	saved_velocity.y = maxf(0.0, player.velocity.y)
 	player.velocity = saved_velocity
-	player.acceleration = PawnPhysics.safe_normal(saved_velocity)
+	# Normal(V) is 1 uu/s^2 long in the original: UU here, not 1 m/s^2.
+	player.acceleration = PawnPhysics.safe_normal(saved_velocity) * UU
 
 func on_timer() -> void:
 	play_move_anim(&"MeleeVaultOver", 1.0, 0.1, 0.1)

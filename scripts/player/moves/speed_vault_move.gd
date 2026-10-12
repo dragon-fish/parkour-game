@@ -329,12 +329,14 @@ func update_vault_movement() -> void:
 				player.move_manager.set_move(WALKING if vault_onto else LANDING)
 				saved_velocity.y = maxf(0.0, player.velocity.y)
 				player.velocity = saved_velocity
-				player.acceleration = PawnPhysics.safe_normal(saved_velocity)
+				# Normal(V) is 1 uu/s^2 long in the original: UU here, not 1 m/s^2.
+				player.acceleration = PawnPhysics.safe_normal(saved_velocity) * UU
 				player.set_acceleration_time(0.2)
 			else:
 				player.velocity = PawnPhysics.safe_normal(player.velocity) \
 					* Vector2(saved_velocity.x, saved_velocity.z).length()
-				player.acceleration = PawnPhysics.safe_normal(saved_velocity)
+				# Normal(V) is 1 uu/s^2 long in the original: UU here, not 1 m/s^2.
+				player.acceleration = PawnPhysics.safe_normal(saved_velocity) * UU
 				player.set_acceleration_time(0.2)
 				player.move_manager.set_move(FALLING)
 

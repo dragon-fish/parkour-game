@@ -88,7 +88,8 @@ func tick_move(delta: float) -> void:
 func _animation_ended() -> void:
 	player.stop_ignore_look_input()
 	player.stop_ignore_move_input()
-	player.acceleration = PawnPhysics.safe_normal(player.velocity)
+	# Normal(V) is 1 uu/s^2 long in the original: UU here, not 1 m/s^2.
+	player.acceleration = PawnPhysics.safe_normal(player.velocity) * UU
 	player.use_root_motion(false)
 	player.move_manager.set_move(WALKING)
 

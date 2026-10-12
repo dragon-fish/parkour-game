@@ -152,7 +152,10 @@ func test_a_dodge_from_a_standstill_leaves_at_the_impulse() -> void:
 	_world["input"].press_jump()
 	await step(2)
 	assert_eq(player.move_manager.current_name, Move.DODGE_JUMP, "test setup: not dodging")
-	assert_almost_eq(_horizontal(player).length(), player.config.dodge_jump.jump_add_xy, 0.3,
+	# [ME:CONFIRMED 04 §4.5] exactly 21.60 km/h, and held. StartMove sets
+	# Acceleration = Normal(Velocity), 1 uu/s^2: read as 1 m/s^2 the doubled
+	# falling integrator adds 3 uu/s on the first frame.
+	assert_almost_eq(_horizontal(player).length(), player.config.dodge_jump.jump_add_xy, 0.002,
 		"a standing dodge did not leave at the impulse")
 
 func test_a_dodge_out_of_a_run_leaves_faster_than_the_impulse_alone() -> void:

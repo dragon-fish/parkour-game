@@ -137,7 +137,8 @@ func on_cease_relevant_root_motion() -> void:
 	if climb_state == State.EXIT_AT_TOP or climb_state == State.EXIT_AT_BOTTOM:
 		if player.move_action_hint == MAH_UP:
 			player.velocity = player.facing() * 300.0 * UU
-			player.acceleration = PawnPhysics.safe_normal(player.velocity)
+			# Normal(V) is 1 uu/s^2 long in the original: UU here, not 1 m/s^2.
+			player.acceleration = PawnPhysics.safe_normal(player.velocity) * UU
 			player.set_acceleration_time(0.2)
 		player.move_manager.set_move(WALKING)
 

@@ -134,7 +134,8 @@ func on_cease_relevant_root_motion() -> void:
 ## The animation's end: walking (or crouching) from where it left the body.
 func on_custom_anim_end(_anim: StringName) -> void:
 	player.use_root_motion(false)
-	player.acceleration = PawnPhysics.safe_normal(player.velocity)
+	# Normal(V) is 1 uu/s^2 long in the original: UU here, not 1 m/s^2.
+	player.acceleration = PawnPhysics.safe_normal(player.velocity) * UU
 	player.set_physics(PHYS_WALKING)
 	player.move_manager.set_move(CROUCH if grab_pull_up_type == PullUpType.INTO_CROUCH else WALKING)
 
