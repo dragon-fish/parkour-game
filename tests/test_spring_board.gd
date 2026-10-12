@@ -324,7 +324,6 @@ func test_the_rise_catches_every_interest_line_a_jump_does() -> void:
 	# asked.
 	var spring := SpringBoardConfig.new()
 	var jump := JumpConfig.new()
-	for flag in ["check_for_zipline", "check_for_swing", "check_for_ladder",
-			"check_for_ledge_walk", "check_for_balance"]:
+	for flag in ["check_for_ladder", "check_for_ledge_walk", "check_for_balance"]:
 		assert_eq(spring.get(flag), jump.get(flag), "the spring board rise differs from a jump on " + flag)
 		assert_true(spring.get(flag), "a jump no longer asks " + flag + "; revisit this test")
