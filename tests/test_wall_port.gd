@@ -351,6 +351,27 @@ func test_q_on_a_wall_run_turns_the_third_person_camera() -> void:
 		_extra.clear()
 		await step(1)
 
+## The model runs along the wall with the pawn, wherever the view looks and
+## whatever the stick says: the wall run holds the pawn apart from the view
+## (PlayerWallWalking), and the model follows the pawn.
+func test_the_model_runs_along_the_wall_with_the_pawn() -> void:
+	var player: Player = await _wall_run_course()
+	player.camera_rig.third_person = true
+	var jump: JumpMove = player.move_manager.move_for(Move.JUMP)
+	jump.delay_time_check_auto_moves = 100.0
+	var input: ScriptedInputSource = _world["input"]
+	_run_up(player)
+	input.press_jump()
+	input.hold_move(0.0, 1.0)
+	await step(10)
+	assert_eq(player.move_manager.current_name, Move.WALL_RUN, "test setup: no run")
+	input.press_turn()
+	await step(30)
+	assert_gt(absf(wrapf(player.rotation.y - player.pawn_yaw, -PI, PI)), deg_to_rad(45.0),
+		"test setup: Q did not turn the view off the run")
+	assert_almost_eq(wrapf(player.visual_yaw() - player.pawn_yaw, -PI, PI), 0.0, deg_to_rad(3.0),
+		"the model followed the view off the wall instead of running along it")
+
 # --- the wall climb -------------------------------------------------------------------
 
 ## A tall wall straight ahead (face at z = -1.5, normal +Z).

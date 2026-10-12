@@ -2705,6 +2705,8 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# there, holding the body still is a stylistic choice about watching a
 	# character, while here it is a body that physically cannot turn. Legs
 	# swinging round under a slide look ridiculous from inside the head too.
+	# Frozen means "not turned by the VIEW": the model follows the pawn's own
+	# facing (_held_model_yaw()).
 	var active: MoveConfig = move_manager.current_config() if move_manager != null else null
 	var frozen: bool = active != null and active.freeze_visual_yaw
 	# BOTH VIEWS, on the owner's call. First person used to weld the model to
@@ -2721,12 +2723,21 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	# Any deliberate movement is a decision to face that way. Read from the
 	# INPUT rather than from velocity: a body still sliding to a halt has not
 	# asked to turn, and one just starting to move has.
-	# A frozen move holds the model where the move began, whatever the input
-	# says: the point is that the body CANNOT turn, so asking it to is not a
-	# reason for it to.
+	# A frozen move follows the pawn whatever the input says: the point is
+	# that the body CANNOT turn with the view, so asking it to is not a reason
+	# for it to.
 	var first_person: bool = camera_rig == null or not camera_rig.in_third_person()
 	var angle: float = deg_to_rad(config.pawn.turn_in_place_angle_deg)
-	if not frozen and moving:
+	var held: float = _held_model_yaw(frozen)
+	if not is_nan(held):
+		# The move has chosen a facing: the model turns to it at the body's own
+		# rate, never snapped (half a turn in a frame reads as the model being
+		# swapped). A root rotation pins it exactly (turn_by_root_rotation()).
+		_turn_heading_active = false
+		_turn_clip_left = 0.0
+		var swing: float = deg_to_rad(config.pawn.body_turn_speed_deg) * delta
+		_visual_yaw = wrapf(_visual_yaw + clampf(wrapf(held - _visual_yaw, -PI, PI), -swing, swing), -PI, PI)
+	elif moving:
 		# Movement outranks a step round in progress: the run's own catch-up
 		# takes over from wherever the step had got to.
 		_turn_heading_active = false
@@ -2738,7 +2749,7 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 		# FIRST PERSON ONLY, the owner's call: watched from outside, a body
 		# that keeps its heading however far the camera goes round is the
 		# point -- it is how you get to see the character's face.
-		if not frozen and first_person:
+		if first_person:
 			# THE HARD LINE FIRST: a flick past the angle drags the heading to
 			# it at once, whatever step is or is not under way. A little
 			# clipping beats the player seeing their own back.
@@ -2780,6 +2791,53 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 	if tilt_axis.length_squared() > 0.000001:
 		tilt = Basis(tilt_axis.normalized(), Vector3.UP.angle_to(local_up))
 	body_root.basis = tilt * Basis.from_euler(Vector3(_swing_pitch, yaw, 0.0))
+
+## The facing the MODEL is held to this tick, world radians, or NAN when the
+## view decides (the rules in _drive_body_yaw()).
+##
+## THE MODEL FOLLOWS THE PAWN WHEREVER A MOVE HOLDS THE PAWN APART FROM THE
+## VIEW. "Not following the camera" is the rule for a body standing about, so
+## it does not spin on the spot while the player looks round; a move that turns
+## the body by contact -- a foot, a hand, a hand on a wall -- chose a facing,
+## and the model owes it one (docs/capsule-leads-presentation.md). The pawn's
+## yaw IS that facing in the original's terms: a precise rotation onto a
+## ledge, a beam's spline, a wall run along its wall, a roll's heading. Left to
+## the view instead, a reach with no key held hangs sideways on the wall and a
+## roll after a look round rolls backwards.
+##   * a move may name the facing outright (model_yaw(): LedgeWalk's
+##     third-person facing of the wall and its turn round);
+##   * a frozen move (MoveConfig.freeze_visual_yaw) follows the pawn, which the
+##     move alone turns;
+##   * so does any move while the pawn is held apart from the view -- a wall
+##     run, a swing, the pawn easing back onto the view after a slide;
+##   * the slide's stand-up holds the model while Slide_Exit plays: the legs do
+##     not swing round under a body still getting up.
+func _held_model_yaw(frozen: bool) -> float:
+	var move: Move = move_manager.current_move() if move_manager != null else null
+	if move != null and move.has_method(&"model_yaw"):
+		var named: float = move.model_yaw()
+		if not is_nan(named):
+			return named
+	if grounded:
+		var body_animator := get_node_or_null(^"BodyRoot/CharacterAnimator") as CharacterAnimator
+		if body_animator != null and body_animator.active_oneshot() == &"Slide_Exit":
+			return _visual_yaw
+	if frozen or pawn_held_apart_from_view():
+		return pawn_yaw
+	return NAN
+
+## Whether something other than the view is turning the pawn this tick: the
+## cases face_rotation() leaves the pawn's yaw alone (a root rotation, a move
+## with bDisableFaceRotation, the wall-walking controller), the pawn easing
+## back onto the view (FaceRotationTimeLeft) and a move's precise rotation.
+## Read off the state rather than off the two yaws, which walking writes one
+## into the other only once the view has turned this tick.
+func pawn_held_apart_from_view() -> bool:
+	if using_root_rotation or face_rotation_time_left > 0.0 \
+			or controller_state == Move.CS_PLAYER_WALL_WALKING:
+		return true
+	var move: Move = move_manager.current_move() if move_manager != null else null
+	return move != null and (move.disable_face_rotation or move.use_precise_rotation)
 
 # --- the step round --------------------------------------------------------------
 #

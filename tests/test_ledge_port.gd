@@ -656,3 +656,24 @@ func test_a_grab_type_change_keeps_the_strafe_where_it_was() -> void:
 	var now: CustomAnimSlot.Channel = player.anim_slot.current()
 	assert_ne(now.name, &"HangStrafeRight", "test setup: the strafe did not change")
 	assert_almost_eq(now.sequence_time(), 0.4, 0.001, "the new strafe started over")
+
+# --- the model follows the pawn (this project's presentation) -------------------------
+
+func _yaw_off(a: float, b: float) -> float:
+	return absf(rad_to_deg(wrapf(a - b, -PI, PI)))
+
+## A hang reached with no key held squares the MODEL to the wall, not only the
+## pawn: "not following the camera" is the rule for a body standing about,
+## and a move that turns the body by a hand on the wall owes the model that
+## facing. Eased, not snapped.
+func test_a_hang_squares_the_model_to_the_wall() -> void:
+	var player: Player = await _player()
+	_box(Vector3(4.0, 3.0, 2.0), Vector3(0.0, 1.5, -1.0))
+	await step(1)
+	player.pin_visual_yaw(deg_to_rad(90.0))
+	_hang(player, 3.0, 0.0)
+	await step(1)
+	assert_gt(_yaw_off(player.visual_yaw(), player.pawn_yaw), 30.0, "the model was snapped round in one tick")
+	await step(30)
+	assert_lt(_yaw_off(player.visual_yaw(), player.pawn_yaw), 2.0,
+		"the model hangs %.0f degrees off the wall" % _yaw_off(player.visual_yaw(), player.pawn_yaw))
