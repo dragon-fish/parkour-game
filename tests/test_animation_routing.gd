@@ -16,6 +16,8 @@ var _world: Dictionary = {}
 func after_each() -> void:
 	if _world.is_empty():
 		return
+	if _world.has("line") and is_instance_valid(_world["line"]):
+		_world["line"].queue_free()
 	TestWorld.teardown(_world)
 	_world = {}
 
@@ -145,6 +147,8 @@ func test_the_paid_packs_replace_their_placeholders() -> void:
 	# is the same class of defect as one with no case at all.
 	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
 	var player: Player = _world["player"]
+	# The vault row CanDoMove would have planned: vaultOver.
+	(player.move_manager.move_for(Move.SPEED_VAULT) as SpeedVaultMove).active_vault_type = 3
 	for row in [[Move.SPEED_VAULT, "SafetyVault"], [Move.WALL_CLIMB, "ClimbUp_2m"],
 			[Move.INTO_GRAB, "Climb_Enter"], [Move.TURN_180, "Turn180_R"]]:
 		player.move_manager.start(row[0])
@@ -162,58 +166,34 @@ func test_a_wall_run_picks_the_side_it_is_running_on() -> void:
 	assert_eq(String(animator._target_animation()), "WallRun_L", 		"a left-hand wall asked for '%s'" % String(animator._target_animation()))
 
 func test_a_ledge_hang_hangs_rather_than_jumps() -> void:
-	# GRAB has two phases behind one move. This is the resting one -- the
-	# mantle is told apart by GrabMove.is_mantling(), which a move entered from
-	# nowhere reports false for.
+	# The hang, still: the hang clip, not a jump.
 	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
 	var player: Player = _world["player"]
 	player.move_manager.start(Move.GRAB)
 	assert_eq(String(animator._target_animation()), "Climb_Idle", 		"a ledge hang asked for '%s'" % String(animator._target_animation()))
 
-func test_a_scrambled_vault_steps_up_instead_of_planting_a_hand() -> void:
-	# ✅ THE OWNER: the compensating vault and the one where the shin catches
-	# the edge should both play StepUp. They are the vaults that were never set
-	# up -- no run-up, no plant, the player simply arrived. The original agrees
-	# from the other direction: its two step-up rows are precisely the two with
-	# no hand IK at all (05 §5.7), because there is no hand in them.
+func test_a_step_up_row_steps_up_instead_of_planting_a_hand() -> void:
+	# [ME:CONFIRMED 05 §5.7] The original's two step-up rows
+	# (autostepuprightleg, stepuprightleg88) are the two with no hand IK: there
+	# is no hand on the top in them, so they play the pack's StepUp.
 	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
 	var player: Player = _world["player"]
-	# The step-up row, resolved through the real table rather than named here,
-	# so a renamed variant fails this instead of silently routing to a plant.
-	player.pending_vault_variant = player.config.speed_vault.pick_variant(
-		0.3, true, -2.0, 2.0)
-	assert_false(player.pending_vault_variant.is_empty(),
-		"the table no longer has a descending step-up row to test with")
-	player.move_manager.start(Move.SPEED_VAULT)
+	var vault := player.move_manager.move_for(Move.VAULT_OVER) as SpeedVaultMove
+	vault.active_vault_type = 0
+	player.move_manager.start(Move.VAULT_OVER)
 	assert_eq(String(animator._target_animation()), "StepUp",
-		"a shin-catch vault asked for '%s'" % String(animator._target_animation()))
+		"a step-up row asked for '%s'" % String(animator._target_animation()))
 
-func test_a_vault_that_was_set_up_still_plants_a_hand() -> void:
+func test_a_vault_row_plants_a_hand() -> void:
 	# The pair. Without it the test above passes on a routing that sends EVERY
-	# vault to a step-up, which would quietly delete the plant.
+	# vault to a step-up.
 	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
 	var player: Player = _world["player"]
-	player.pending_vault_variant = player.config.speed_vault.pick_variant(
-		1.0, false, 1.0, 6.0)
-	assert_false(player.pending_vault_variant.is_empty(),
-		"the table no longer has a set-up vault row to test with")
-	player.pending_vault_rescue = false
-	player.move_manager.start(Move.SPEED_VAULT)
+	var vault := player.move_manager.move_for(Move.VAULT_OVER) as SpeedVaultMove
+	vault.active_vault_type = 3
+	player.move_manager.start(Move.VAULT_OVER)
 	assert_eq(String(animator._target_animation()), "SafetyVault",
-		"a committed vault asked for '%s'" % String(animator._target_animation()))
-
-func test_a_rescued_vault_scrambles_even_on_a_plant_variant() -> void:
-	# The rescue resolves to the MIDDLE tier -- the same row a run-up would --
-	# so the variant name alone cannot tell them apart. The flag can.
-	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
-	var player: Player = _world["player"]
-	player.pending_vault_variant = player.config.speed_vault.pick_variant(
-		1.0, false, 0.0, 6.0)
-	assert_false(player.pending_vault_variant.is_empty(), "no middle-tier row")
-	player.pending_vault_rescue = true
-	player.move_manager.start(Move.SPEED_VAULT)
-	assert_eq(String(animator._target_animation()), "StepUp",
-		"a rescued vault asked for '%s'" % String(animator._target_animation()))
+		"a vault row asked for '%s'" % String(animator._target_animation()))
 
 func test_a_dying_body_falls_over_rather_than_carrying_on() -> void:
 	# ✅ THE OWNER: "do not play the first-person screen rotation when dying in
@@ -308,84 +288,47 @@ func test_an_uncontrolled_fall_is_not_an_ordinary_one() -> void:
 # --- a clip the graph never heard of is a clip the body does not have ---------
 
 func test_a_shimmy_plays_the_travel_clips() -> void:
-	# ⚠️ THE ROUTING FOR THESE WAS DEAD CODE FROM THE DAY IT WAS WRITTEN, and
-	# nothing said so. _has_clip() asks the GRAPH, and only names listed in
+	# _has_clip() asks the GRAPH, and only names listed in
 	# Player._KNOWN_ANIMATION_CLIPS become nodes in it -- so a clip the body
 	# ships and that list omits reads exactly like a clip the body does not
-	# have, and the fallback chain quietly takes the next candidate. The shimmy
-	# played Climb_Idle throughout while working perfectly otherwise, which is
-	# why the owner kept reporting "我还是没观察到左爬和右爬的动画".
-	#
-	# Asked end to end -- stub body, real graph, real routing -- because the
-	# failure lived in the gap between two lists that each looked right alone.
+	# have. Asked end to end, stub body, real graph, real routing.
 	var animator: CharacterAnimator = await _animator_with(
 		[&"idle", &"Climb_Idle", &"Climb_Left", &"Climb_Right"])
 	var player: Player = _world["player"]
-	player.pending_ledge = {"valid": true,
-		"edge": player.global_position + Vector3(0.0, 2.0, -1.0),
-		"face_normal": Vector3(0.0, 0.0, 1.0)}
 	player.move_manager.start(Move.GRAB)
 	var grab := player.move_manager.move_for(Move.GRAB) as GrabMove
 	assert_not_null(grab, "no GrabMove to drive")
-
-	grab._shimmy = 0.0
 	assert_eq(animator._target_animation(), &"Climb_Idle",
 		"a still hang did not play the hang clip")
-	grab._shimmy = -1.0
+	grab.current_shimmy_move = GrabMove.ShimmyType.SHIMMY
+	grab.shimmy_velocity = -0.6
 	assert_eq(animator._target_animation(), &"Climb_Left",
 		"travelling left did not play Climb_Left")
-	grab._shimmy = 1.0
+	grab.shimmy_velocity = 0.6
 	assert_eq(animator._target_animation(), &"Climb_Right",
 		"travelling right did not play Climb_Right")
 
 func test_a_body_without_the_travel_clips_keeps_hanging() -> void:
-	# The fallback the chain is written for, and the reason the bug above was
-	# invisible: degrading to the hang clip is CORRECT for a body that lacks
-	# these, and indistinguishable from the failure when the graph is what is
-	# missing them.
+	# Degrading to the hang clip is right for a body that lacks the travel
+	# clips.
 	var animator: CharacterAnimator = await _animator_with([&"idle", &"Climb_Idle"])
 	var player: Player = _world["player"]
-	player.pending_ledge = {"valid": true,
-		"edge": player.global_position + Vector3(0.0, 2.0, -1.0),
-		"face_normal": Vector3(0.0, 0.0, 1.0)}
 	player.move_manager.start(Move.GRAB)
 	var grab := player.move_manager.move_for(Move.GRAB) as GrabMove
-	grab._shimmy = 1.0
+	grab.current_shimmy_move = GrabMove.ShimmyType.SHIMMY
+	grab.shimmy_velocity = 0.6
 	assert_eq(animator._target_animation(), &"Climb_Idle",
 		"a body with no travel clips did not fall back to the hang")
 
 # --- a pull-up is a slow haul ------------------------------------------------
 
-## THE PULL-UP TAKES THE SHORT CLIP, and this assertion has now been written
-## twice in opposite directions -- which is why the reasoning is here rather
-## than the verdict alone.
-##
-## ✅ FIRST: "GrabPullUp 还是太快了...ME 里体感将近 2s 呢，这个动画也得换成
-## ClimbUp_2m." ClimbUp_2m is 1.300 s, ClimbUp_1m 0.667, ClimbLedge 0.633, and
-## at that time the CLIP had to supply the whole climb: the capsule travelled
-## in a straight line and the hips did the lifting, so a short clip meant a
-## short climb.
-##
-## ✅ THEN, once the scripted path carried the rise itself: "Grab动画改成1m的
-## 版本." The ground under the first argument had moved. The pelvis is pinned
-## to the capsule and a bezier lifts it, so what the clip owes is the POSE --
-## and the long one spends most of its length hauling a body that is already
-## being carried. The duration does not follow the clip either:
-## CharacterAnimator._scripted_fit() stretches whatever is kept into
-## GrabConfig.mantle_duration, and 0.667 into 1.3 is 0.51x, well inside the
-## clamp, so the short clip simply plays slower.
+## The pull-up plays ClimbUp_1m for the pose; the original's sequence length
+## is the duration, and CharacterAnimator._scripted_fit() fits the clip to it.
 func test_a_pull_up_takes_the_short_climb() -> void:
 	var animator: CharacterAnimator = await _animator_with(
 		[&"idle", &"Climb_Idle", &"ClimbLedge", &"ClimbUp_1m", &"ClimbUp_2m"])
 	var player: Player = _world["player"]
-	player.pending_ledge = {"valid": true,
-		"edge": player.global_position + Vector3(0.0, 2.0, -1.0),
-		"face_normal": Vector3(0.0, 0.0, 1.0)}
-	player.move_manager.start(Move.GRAB)
-	var grab := player.move_manager.move_for(Move.GRAB) as GrabMove
-	assert_eq(animator._target_animation(), &"Climb_Idle",
-		"a still hang stopped playing the hang clip")
-	grab._mantling = true
+	player.move_manager.start(Move.GRAB_PULL_UP)
 	assert_eq(animator._target_animation(), &"ClimbUp_1m",
 		"a pull-up played '%s'" % String(animator._target_animation()))
 
@@ -395,35 +338,23 @@ func test_a_body_without_it_falls_back_down_the_list() -> void:
 	var animator: CharacterAnimator = await _animator_with(
 		[&"idle", &"Climb_Idle", &"ClimbLedge"])
 	var player: Player = _world["player"]
-	player.pending_ledge = {"valid": true,
-		"edge": player.global_position + Vector3(0.0, 2.0, -1.0),
-		"face_normal": Vector3(0.0, 0.0, 1.0)}
-	player.move_manager.start(Move.GRAB)
-	var grab := player.move_manager.move_for(Move.GRAB) as GrabMove
-	grab._mantling = true
+	player.move_manager.start(Move.GRAB_PULL_UP)
 	assert_eq(animator._target_animation(), &"ClimbLedge",
-		"a body with no ClimbUp_2m played '%s'" % String(animator._target_animation()))
+		"a body with no ClimbUp clip played '%s'" % String(animator._target_animation()))
 
-# --- the ladder's top exit is a mantle in every way that matters here -------
+# --- the ladder's top exit is a climb over in every way that matters here -------
 
-func test_a_top_exit_carry_plays_climb_up_instead_of_the_hang() -> void:
-	# ✅ THE SPEC (2026-08-25-ladder-design.md §攀爬): the top-exit carry
-	# (LadderMove._begin_top_exit) plays "ClimbUp_1m 同款" -- told apart from
-	# the ordinary climb by LadderMove.is_top_exiting(), the exact pattern
-	# test_a_pull_up_prefers_the_long_climb() above exercises for GRAB's
-	# is_mantling(). No real InterestLine needed: entering with nothing to
-	# catch leaves the move aborted, but the animation arm only asks
-	# is_top_exiting(), which the abort does not touch.
+func test_a_top_exit_plays_climb_up_instead_of_the_hang() -> void:
 	var animator: CharacterAnimator = await _animator_with(FULL_CLIPS)
 	var player: Player = _world["player"]
-	player.move_manager.start(Move.LADDER)
-	var ladder := player.move_manager.move_for(Move.LADDER) as LadderMove
-	assert_not_null(ladder, "no LadderMove to drive")
+	player.move_manager.start(Move.CLIMB)
+	var ladder := player.move_manager.move_for(Move.CLIMB) as ClimbMove
+	assert_not_null(ladder, "no ClimbMove to drive")
 	assert_eq(animator._target_animation(), &"Climb_Idle",
 		"an ordinary climb stopped playing the hang placeholder")
-	ladder._top_exiting = true
+	ladder.climb_state = ClimbMove.State.EXIT_AT_TOP
 	assert_eq(animator._target_animation(), &"ClimbUp_1m",
-		"a top-exit carry played '%s'" % String(animator._target_animation()))
+		"a top exit played '%s'" % String(animator._target_animation()))
 
 # --- the two lists that have to agree -------------------------------------------
 
@@ -525,44 +456,46 @@ func test_each_death_picks_its_own_clip_rather_than_the_first_one_ever() -> void
 
 # --- the balance beam is a walk, the ledge shuffle is direction-aware --------
 
+## A line of `kind` under the body, for the moves that need their volume.
+func _line_under(player: Player, kind: InterestLine.Kind) -> InterestLine:
+	var line := InterestLine.new()
+	line.kind = kind
+	line.curve = Curve3D.new()
+	line.curve.add_point(Vector3(0.0, 0.0, 2.0))
+	line.curve.add_point(Vector3(0.0, 0.0, -8.0))
+	_world["player"].get_parent().add_child(line)
+	_world["line"] = line
+	return line
+
 func test_the_beam_walks_rather_than_leans() -> void:
-	# The wobble is carried entirely by the camera roll and the skeleton lean
-	# (BalanceLean) -- the body itself is just walking at 8.81 km/h, so a
-	# genuine Walk is the honest clip and no lean variant is ever reached for.
+	# The lean is carried by the camera roll and the skeleton lean
+	# (BalanceLean); the body itself is walking, so Walk is the honest clip.
 	var animator: CharacterAnimator = await _animator_with([&"Walk", &"Idle"])
 	var player: Player = _world["player"]
-	player.move_manager.start(Move.BALANCE)
 	var beam := player.move_manager.move_for(Move.BALANCE) as BalanceMove
-	# A body actually walking the beam. Standing still on one is Idle -- the
-	# wind keeps the lean alive either way, so the move being active is not on
-	# its own a reason to play a walk cycle.
-	beam.note_travel_for_test(1.0)
+	beam.volume = _line_under(player, InterestLine.Kind.BALANCE)
+	player.move_manager.start(Move.BALANCE)
+	player.velocity = Vector3(0.0, 0.0, -1.0)
 	assert_eq(String(animator._target_animation()), "Walk",
 		"a beam being walked asked for '%s'" % String(animator._target_animation()))
-	beam.note_travel_for_test(0.0)
+	player.velocity = Vector3.ZERO
 	assert_eq(String(animator._target_animation()), "Idle",
 		"a beam being stood on asked for '%s'" % String(animator._target_animation()))
 
 func test_the_ledge_shuffles_sideways() -> void:
-	# LedgeWalkMove.note_travel() is driven directly, the same way
-	# test_a_shimmy_plays_the_travel_clips() pokes GrabMove._shimmy: entering
-	# with no InterestLine registered aborts the move's own physics, but the
-	# routing under test only reads move_manager.current_name and the move
-	# instance, neither of which the abort touches.
 	var animator: CharacterAnimator = await _animator_with(
 		[&"Walk_L", &"Walk_R", &"Walk", &"Idle"])
 	var player: Player = _world["player"]
-	player.move_manager.start(Move.LEDGE_WALK)
 	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
-	assert_not_null(ledge, "no LedgeWalkMove to drive")
-
-	ledge.note_travel(-1.0)
+	ledge.volume = _line_under(player, InterestLine.Kind.LEDGE_WALK)
+	player.move_manager.start(Move.LEDGE_WALK)
+	ledge.strafe_factor = -1.0
 	assert_eq(String(animator._target_animation()), "Walk_L",
-		"shuffling toward the line's start asked for '%s'" % String(animator._target_animation()))
-	ledge.note_travel(1.0)
+		"shuffling left asked for '%s'" % String(animator._target_animation()))
+	ledge.strafe_factor = 1.0
 	assert_eq(String(animator._target_animation()), "Walk_R",
-		"shuffling toward the line's end asked for '%s'" % String(animator._target_animation()))
-	ledge.note_travel(0.0)
+		"shuffling right asked for '%s'" % String(animator._target_animation()))
+	ledge.strafe_factor = 0.0
 	assert_eq(String(animator._target_animation()), "Idle",
 		"standing still on a ledge asked for '%s'" % String(animator._target_animation()))
 
@@ -571,36 +504,16 @@ func test_both_fall_back_when_the_pack_is_absent() -> void:
 	# `idle` rather than standing on the default pose.
 	var animator: CharacterAnimator = await _animator_with([&"idle"])
 	var player: Player = _world["player"]
+	var beam := player.move_manager.move_for(Move.BALANCE) as BalanceMove
+	beam.volume = _line_under(player, InterestLine.Kind.BALANCE)
 	player.move_manager.start(Move.BALANCE)
 	assert_eq(String(animator._target_animation()), "idle",
 		"a balance beam with no Walk clip asked for '%s'" % String(animator._target_animation()))
+	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
+	ledge.volume = beam.volume
 	player.move_manager.start(Move.LEDGE_WALK)
 	assert_eq(String(animator._target_animation()), "idle",
 		"a ledge with no Walk clips asked for '%s'" % String(animator._target_animation()))
-
-func test_a_ledge_turning_round_plays_the_packs_half_turn() -> void:
-	# Driven the same way test_the_ledge_shuffles_sideways() drives the
-	# shuffle: the turn's own state is poked, since with no InterestLine the
-	# move's physics never runs.
-	var animator: CharacterAnimator = await _animator_with(
-		[&"Turn180_L", &"Turn180_R", &"Walk_L", &"Walk_R", &"Idle"])
-	var player: Player = _world["player"]
-	player.move_manager.start(Move.LEDGE_WALK)
-	var ledge := player.move_manager.move_for(Move.LEDGE_WALK) as LedgeWalkMove
-	assert_not_null(ledge, "no LedgeWalkMove to drive")
-	ledge._turning = true
-	ledge._turn_sign = -1.0
-	assert_eq(String(animator._target_animation()), "Turn180_R",
-		"turning right on a ledge asked for '%s'" % String(animator._target_animation()))
-	ledge._turn_sign = 1.0
-	assert_eq(String(animator._target_animation()), "Turn180_L",
-		"turning left on a ledge asked for '%s'" % String(animator._target_animation()))
-	assert_true(Player.SCRIPTED_MOVE_CLIPS.has(&"Turn180_L") and Player.SCRIPTED_MOVE_CLIPS.has(&"Turn180_R"),
-		"the turn clips are not routed onto a scripted slot")
-	ledge._turning = false
-	ledge.note_travel(1.0)
-	assert_eq(String(animator._target_animation()), "Walk_R",
-		"the shuffle did not come back once the turn was over")
 
 func test_a_body_stepping_round_plays_the_packs_quarter_turn() -> void:
 	# The step's own state is poked, the way the ledge's turn is above.

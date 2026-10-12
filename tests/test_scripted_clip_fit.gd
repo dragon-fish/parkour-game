@@ -1,14 +1,11 @@
 extends ParkourTest
 
-# A scripted move fits its CLIP to its own clock.
+# A move on its own clock fits its CLIP to it.
 #
 # THE CLIP MUST BE TIME-FITTED TO THE MOVE'S OWN DURATION, not played at its
 # authored length -- otherwise the apparent playback speed doubles or halves
 # depending on which side of the mismatch the move falls on. SafetyVault is
-# 0.733 s; a vault_over runs for its variant's 0.650 s at walking pace, and
-# SpeedVaultMove floors a fast approach at HALF that -- 0.325 s -- so under
-# half the clip was ever seen before the move handed off when unfitted. The
-# mantle is worse in the other direction: ClimbUp_2m is 1.300 s.
+# 0.733 s; the original's vaultOver row takes 0.65 s.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -44,26 +41,27 @@ func _animator_with(clip: StringName, length: float) -> CharacterAnimator:
 	return player.get_node("BodyRoot").get_node("CharacterAnimator")
 
 func test_a_clip_is_stretched_to_end_when_the_move_does() -> void:
-	# The reported case: a 0.733 s clip in a 0.325 s window has to run at 2.26x
-	# to finish with the move, and finishing with the move is the only cadence
+	# A 0.733 s clip in a 0.65 s vault has to run at 1.13x to finish with the
+	# move, and finishing with the move is the only cadence
 	# that can look right when the body is on a path the move owns.
 	var animator: CharacterAnimator = await _animator_with(&"SafetyVault", 0.733)
 	var player: Player = _world["player"]
-	var move := player.move_manager.move_for(Move.SPEED_VAULT) as ScriptedMove
-	move.begin(player.global_position, player.global_position + Vector3(0.0, 0.0, -1.0), 0.325)
+	var move := player.move_manager.move_for(Move.SPEED_VAULT) as SpeedVaultMove
+	# Row 3, vaultOver: its legs take 0 + 0.35 + 0.3 = 0.65 s.
+	move.active_vault_type = 3
 	player.move_manager.start(Move.SPEED_VAULT)
-	assert_almost_eq(animator._scripted_fit(&"SafetyVault"), 0.733 / 0.325, 0.01,
+	assert_almost_eq(animator._scripted_fit(&"SafetyVault"), 0.733 / 0.65, 0.01,
 		"the clip was fitted at %.2f" % animator._scripted_fit(&"SafetyVault"))
 
 func test_a_long_clip_in_a_short_window_slows_down_instead() -> void:
-	# ClimbUp_2m is 1.300 s. The fit works in both directions or it is not a
-	# fit.
+	# The fit works in both directions or it is not a fit.
 	var animator: CharacterAnimator = await _animator_with(&"SafetyVault", 0.4)
 	var player: Player = _world["player"]
-	var move := player.move_manager.move_for(Move.SPEED_VAULT) as ScriptedMove
-	move.begin(player.global_position, player.global_position + Vector3(0.0, 0.0, -1.0), 0.8)
+	var move := player.move_manager.move_for(Move.SPEED_VAULT) as SpeedVaultMove
+	# Row 3, vaultOver: its legs take 0 + 0.35 + 0.3 = 0.65 s.
+	move.active_vault_type = 3
 	player.move_manager.start(Move.SPEED_VAULT)
-	assert_almost_eq(animator._scripted_fit(&"SafetyVault"), 0.5, 0.01,
+	assert_almost_eq(animator._scripted_fit(&"SafetyVault"), 0.4 / 0.65, 0.01,
 		"the clip was fitted at %.2f" % animator._scripted_fit(&"SafetyVault"))
 
 func test_an_unscripted_move_is_not_fitted_at_all() -> void:
@@ -75,14 +73,13 @@ func test_an_unscripted_move_is_not_fitted_at_all() -> void:
 	assert_almost_eq(animator._scripted_fit(&"Sprint"), 0.0, 0.0001,
 		"an ordinary walk was fitted to something")
 
-func test_a_scripted_move_that_has_not_begun_is_not_fitted() -> void:
-	# scripted_duration() is zero before begin() and once the travel is spent,
-	# so the fit cannot divide by it.
-	var animator: CharacterAnimator = await _animator_with(&"SafetyVault", 0.733)
+func test_a_vault_with_no_row_has_no_duration() -> void:
+	# scripted_duration() is zero with no row planned, so the fit cannot divide
+	# by it.
+	await _animator_with(&"SafetyVault", 0.733)
 	var player: Player = _world["player"]
-	player.move_manager.start(Move.SPEED_VAULT)
-	assert_almost_eq(animator._scripted_fit(&"SafetyVault"), 0.0, 0.0001,
-		"a move with no travel set was fitted anyway")
+	var move := player.move_manager.move_for(Move.SPEED_VAULT) as SpeedVaultMove
+	assert_almost_eq(move.scripted_duration(), 0.0, 0.0001, "a vault with no row has a duration")
 
 # --- and it actually reaches the graph -----------------------------------------------
 
@@ -93,14 +90,15 @@ func test_the_fit_is_written_onto_the_animation_tree() -> void:
 	# reads the graph.
 	var animator: CharacterAnimator = await _animator_with(&"SafetyVault", 0.733)
 	var player: Player = _world["player"]
-	var move := player.move_manager.move_for(Move.SPEED_VAULT) as ScriptedMove
-	move.begin(player.global_position, player.global_position + Vector3(0.0, 0.0, -1.0), 0.325)
+	var move := player.move_manager.move_for(Move.SPEED_VAULT) as SpeedVaultMove
+	# Row 3, vaultOver: its legs take 0 + 0.35 + 0.3 = 0.65 s.
+	move.active_vault_type = 3
 	player.move_manager.start(Move.SPEED_VAULT)
 	# The animator drives the graph on its own physics tick.
 	animator._drive_speed(&"SafetyVault")
 	var scale: float = animator.anim_tree.get(
 		"parameters/%s/scale" % CharacterAnimator.GRAPH_TIME_SCALE)
-	assert_almost_eq(scale, 0.733 / 0.325, 0.01,
+	assert_almost_eq(scale, 0.733 / 0.65, 0.01,
 		"the graph is running at %.2f, not the fitted rate" % scale)
 
 func test_an_ordinary_clip_still_gets_its_speed_match() -> void:

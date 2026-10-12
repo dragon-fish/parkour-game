@@ -25,9 +25,7 @@ func test_balance_and_ledge_walk_groups_are_reached() -> void:
 	# needing a hand-added group the next time a move's config changes shape.
 	var config := MovementConfig.new()
 	var paths := _paths(TuningPanel.collect_tunables(config))
-	assert_true(paths.has("balance.divergence_time"), "balance's pendulum dials not reached")
-	assert_true(paths.has("balance.beam_half_width"), "balance's fall threshold not reached")
-	assert_true(paths.has("ledge_walk.body_yaw_offset_deg"), "ledge_walk's own dials not reached")
+	assert_true(paths.has("balance.time_to_counter"), "balance's own dials not reached")
 	assert_true(paths.has("ledge_walk.speed_modifier"),
 		"ledge_walk's inherited MoveConfig fields not reached")
 
