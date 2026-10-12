@@ -222,7 +222,9 @@ func find_auto_move_ledge(location: Vector3, facing: Vector3, distance: float, m
 		HAND_PLANT_EXTENT_CHECK_WIDTH * 0.5)
 	# Facing x Z in the original: the pawn's left.
 	var side: Vector3 = UE.cross(d2, Vector3.UP)
-	var off: float = pawn.collision_radius() - extent.x
+	# The class default's radius (R_def), not the body's own: the pair stands
+	# where it would for a standing pawn whatever the collision is now.
+	var off: float = pawn.default_collision_radius() - extent.x
 	var hand_height: float = HAND_PLANT_CHECK_HEIGHT - pawn.default_collision_half_height()
 	for i in (3 if multi else 1):
 		var base: Vector3 = location

@@ -116,7 +116,7 @@ func test_the_side_pairs_of_the_hand_plant_search_never_pass() -> void:
 	var side := Vector3(-1.0, 0.0, 0.0)
 	var extent := Vector3(0.05, 0.8, 0.05)
 	var hand: float = MoveTraces.HAND_PLANT_CHECK_HEIGHT - player.default_collision_half_height()
-	var off: float = player.collision_radius() - 0.05
+	var off: float = player.default_collision_radius() - 0.05
 	var base: Vector3 = l + side * MoveTraces.HAND_PLANT_SIDE_OFFSET
 	var a: Vector3 = base - side * off
 	a.y = l.y + hand
@@ -541,3 +541,18 @@ func test_a_climb_is_based_on_its_wall_and_rides_it() -> void:
 	wall.global_position.x += 0.1
 	await step(1)
 	assert_almost_eq(player.global_position.x - x0, 0.1, 0.01, "the wall moved without its climber")
+
+## [ME:CONFIRMED emulated N4 §3.4] The hand-plant pair stands R_def - W/2 out
+## either side: the CLASS DEFAULT radius, whatever the body's is now. A
+## 36 cm post falls between the two boxes of a 25 uu offset however the
+## collision has been narrowed.
+func test_the_hand_plant_pair_stands_off_by_the_default_radius() -> void:
+	var player: Player = await _player()
+	_face(player, 0.0)
+	_box(Vector3(0.36, 1.5, 0.36), Vector3(0.0, 0.75, -1.0))
+	await step(1)
+	player.set_collision_radius(0.2)
+	var found: Dictionary = player.traces.find_auto_move_ledge(player.global_position, player.facing(),
+		MoveTraces.HAND_PLANT_CHECK_DISTANCE, false, false)
+	player.set_collision_radius(player.default_collision_radius())
+	assert_eq(found["result"], MoveTraces.LEDGE_NONE, "the pair moved in with the narrowed body")
