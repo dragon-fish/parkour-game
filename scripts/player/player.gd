@@ -1558,6 +1558,8 @@ func reset_state() -> void:
 	if config != null:
 		walkable_floor_z = config.pawn.walkable_floor_z
 	_slide_off_ledge_timer = -1.0
+	_against_wall_state = AW_NONE
+	_stop_against_wall_timer = -1.0
 	root_motion_active = false
 	root_motion_velocity = Vector3.ZERO
 	uncontrolled_fall = false
@@ -4211,6 +4213,7 @@ func _pawn_tick(delta: float, input: MoveInput) -> void:
 			_roll_trigger_pressed = true
 		elif not input.crouch_held:
 			_roll_trigger_pressed = false
+	_update_against_wall()
 	# TdPawn.Tick, from TdPlayerPawn.Tick's super call.
 	_update_movement_volume()
 	_tick_ignore_timers(delta)
@@ -4427,19 +4430,44 @@ func check_against_wall() -> int:
 		return AW_AGAINST_WALL_RIGHT
 	return AW_NONE
 
-## TdPawn.AgainstWallState, as the melee moves read it. The original keeps it
-## from TdPlayerPawn.Tick -- only in Walking, Crouch and LedgeWalk
-## (bEnableAgainstWall), and not while falling faster than 400 uu/s across the
-## ground -- and lets it go 0.15 s after the hands leave the wall; here it is
-## asked when it is read, without that tail. The look constraint it also sets
-## is not ported.
+## TdPawn.AgainstWallState, as the melee moves read it: kept by
+## _update_against_wall() and the StopAgainstWall timer.
 func against_wall_state() -> int:
+	return _against_wall_state
+
+var _against_wall_state: int = AW_NONE
+## SetTimer(0.15, false, 'StopAgainstWall'): seconds left, below 0 when not
+## armed.
+var _stop_against_wall_timer: float = -1.0
+
+## TdPlayerPawn.Tick's against-wall half and ATdPlayerPawn::UpdateAgainstWall.
+## [ME:CONFIRMED decompile N3 §6] Only in Walking, Crouch and LedgeWalk
+## (bEnableAgainstWall), not in the uncontrolled fall or dying, and not while
+## falling faster than 400 uu/s across the ground -- otherwise the state is
+## cleared at once. A hand on the wall stores the state and re-arms the 0.15 s
+## StopAgainstWall; nothing there leaves the state as it was, so it outlives
+## the wall by that tail. The look constraint it also sets is not ported.
+func _update_against_wall() -> void:
 	var state: StringName = move_manager.current_name
-	if state != Move.WALKING and state != Move.CROUCH and state != Move.LEDGE_WALK:
-		return AW_NONE
+	var allowed: bool = (state == Move.WALKING or state == Move.CROUCH or state == Move.LEDGE_WALK) \
+		and not uncontrolled_fall and not is_dying()
 	if physics == Move.PHYS_FALLING and horizontal_speed() > 400.0 * PawnPhysics.UU:
-		return AW_NONE
-	return check_against_wall()
+		allowed = false
+	if not allowed:
+		_against_wall_state = AW_NONE
+		return
+	var wall: int = check_against_wall()
+	if wall != AW_NONE:
+		_against_wall_state = wall
+		_stop_against_wall_timer = 0.15
+
+## TdPlayerPawn.StopAgainstWall: off the wall, the state ends; still on it,
+## the timer goes round again.
+func _stop_against_wall() -> void:
+	if check_against_wall() == AW_NONE:
+		_against_wall_state = AW_NONE
+	else:
+		_stop_against_wall_timer = 0.15
 
 ## TdPlayerController's state change for a move's ControllerState, with
 ## PlayerGrabbing's BeginState and EndState: entering it, the stick has to come
@@ -4901,6 +4929,11 @@ var _speed_samples: Array = []
 ## The Actor timers of the pawn itself. [ME:CONFIRMED decompile N4 §1.1] They
 ## run before the physics.
 func tick_actor_timers(delta: float) -> void:
+	if _stop_against_wall_timer >= 0.0:
+		_stop_against_wall_timer -= delta
+		if _stop_against_wall_timer <= 0.0:
+			_stop_against_wall_timer = -1.0
+			_stop_against_wall()
 	if _slide_off_ledge_timer >= 0.0:
 		_slide_off_ledge_timer -= delta
 		if _slide_off_ledge_timer <= 0.0:

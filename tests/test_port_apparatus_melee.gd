@@ -519,3 +519,16 @@ func test_the_moves_that_hold_the_pawns_facing_say_so() -> void:
 	for name in [Move.ZIPLINE, Move.INTERACT, Move.BARGE, Move.AIR_BARGE, Move.MELEE_VAULT]:
 		assert_true(player.move_manager.move_for(name).disable_face_rotation,
 			"%s lets the pawn follow the view" % name)
+
+## [ME:CONFIRMED decompile N3 §6, TdPlayerPawn.StopAgainstWall] The hands on
+## a wall hold AgainstWallState for 0.15 s after they leave it.
+func test_the_against_wall_state_outlives_the_wall_by_0_15_s() -> void:
+	var player: Player = await _start()
+	_box(Vector3(2.0, 2.0, 0.5), Vector3(0.0, 1.0, -0.65))
+	await step(15)
+	assert_ne(player.against_wall_state(), Player.AW_NONE, "test setup: not against the wall")
+	player.global_position.z += 1.5
+	await step(3)
+	assert_ne(player.against_wall_state(), Player.AW_NONE, "the state ended with the contact")
+	await step(12)
+	assert_eq(player.against_wall_state(), Player.AW_NONE, "the state outlived its 0.15 s")
