@@ -239,3 +239,7 @@
 - [x] 排查全量套件里 `head_follow`、`lesson_loop` 的失败是否由移植引入：head_follow 前后都通过；lesson_loop 的失败由移植引入
 - [x] `test_lesson_loop` 传送后静止高度差 2.15 uu：复用地面（落地处）与重新探测（悬停 2.15 uu）两条路径的结果不同。对照 N1 的地面复用与 bForceFloorCheck，判断是原版行为（放宽测试容差）还是移植偏差（W3：原版行为——SetPostLandedPhysics 把落地物设为 Base，静止时复用地面不追踪，身体停在落地接触处；传送打破 RelativeLocation 后才重新探测并抬到 2.15 uu。测试的竖直容差放宽到 2.4 uu）
 - [x] `tools/link_private.ts` 在 Windows 上用反斜杠路径比对 `links.txt` 的正斜杠条目，每次运行都删掉全部链接再重建
+- [x] PrePivot：提取器已对所有带刷子的体积应用 PrePivot（按 DrawScale3D 缩放），见 2596f62
+- [ ] **由所有者决定**：隐形墙、铁丝网、伤害体积、沿墙走体积构建在可编辑的关卡外壳里，要 `--rebuild-interactions` 才会用上修正后的位置，而这会抹掉外壳里的手工修改。涉及 sp01b、sp02_stdp、sp02_stormdrain、sp03、sp04、sp05、sp06、sp07、sp09
+- [x] SPEED_CAP / SPEED_LIMIT 叠加在原版的地面速度上限之上（5ff366d），无状态时原版物理不变
+- [ ] **由所有者决定**：死代码 `HardCatch`、`LineMove`、`ScriptedMove`、`Player.pending_stagger`、`pending_back_landing`、`FallTracker`、`Friction`、`legacy_turn`、`legacy_probe_transition`
