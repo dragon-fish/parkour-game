@@ -238,3 +238,26 @@ func test_the_roll_is_camera_consistent_the_instant_it_begins() -> void:
 
 	TestWorld.teardown(world)
 	await step(1)
+
+## [ME:CONFIRMED decompile TdPawn.CanSkillRoll, TdPlayerPawn 'UncontrolledFall']
+## A landing out of a melee move cannot roll, nor can a body in the
+## uncontrolled fall; an ordinary landing can, inside the 0.2 s window.
+func test_no_roll_out_of_a_melee_move_or_an_uncontrolled_fall() -> void:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	var player: Player = world["player"]
+	# A hard landing, so the Landing holds and stays the current move.
+	player.enter_falling_height = player.collision_center().y + 10.0
+	player.move_manager.start(Move.LANDING)
+	assert_eq(player.move_manager.current_name, Move.LANDING, "test setup: the landing did not hold")
+	player.roll_trigger_time = player.world_time
+	player.old_movement_state = Move.FALLING
+	assert_true(player.can_skill_roll(), "test setup: an ordinary landing cannot roll")
+	for melee in [Move.MELEE_SLIDE, Move.MELEE_WALLRUN, Move.MELEE_VAULT]:
+		player.old_movement_state = melee
+		assert_false(player.can_skill_roll(), "a landing out of %s rolled" % melee)
+	player.old_movement_state = Move.FALLING
+	player.uncontrolled_fall = true
+	assert_false(player.can_skill_roll(), "the uncontrolled fall rolled")
+	player.uncontrolled_fall = false
+	TestWorld.teardown(world)

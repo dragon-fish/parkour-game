@@ -4748,12 +4748,20 @@ func can_stand(location: Vector3, from_above: bool = false) -> bool:
 	return not phys.trace_blocked(end, start, extent)
 
 ## TdPawn.CanSkillRoll. [ME:CONFIRMED decompile] Not from a turn in the air,
-## an uncontrolled fall, an air kick; otherwise within 0.2 s of the crouch key
-## going down.
+## an uncontrolled fall, an air kick, nor a Landing whose move before was a
+## TdMove_MeleeBase (MeleeWallrun among them); never in TdPlayerPawn's
+## 'UncontrolledFall' state, whose override answers false; otherwise within
+## 0.2 s of the crouch key going down.
 func can_skill_roll() -> bool:
+	if uncontrolled_fall:
+		return false
 	var state: StringName = move_manager.current_name
 	if state == Move.TURN_180_IN_AIR or state == Move.FALL_UNCONTROLLED or state == Move.MELEE_AIR:
 		return false
+	if state == Move.LANDING:
+		var old: Move = move_manager.move_for(old_movement_state)
+		if old is MeleeBaseMove or old is MeleeWallrunMove:
+			return false
 	return roll_trigger_time + 0.2 > world_time
 
 ## TdPlayerPawn.Landed: falling damage, the current move's Landed, then the
