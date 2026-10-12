@@ -57,6 +57,7 @@ class FallHeightTests(unittest.TestCase):
         annotation = {'position': annotations.point(location),
                       'basis': annotations.godot_basis(props.get('Rotation') or (0, 0, 0), (1.0, 1.0, 1.0)),
                       'hull': self.HULL}
+        annotations.place_brush(props, annotation, 'test.TdFallHeightVolume_0')
         annotations.fall_height(props, annotation, 'test.TdFallHeightVolume_0')
         return annotation
 
@@ -85,6 +86,43 @@ class FallHeightTests(unittest.TestCase):
     def test_a_volume_without_collision_starts_off(self):
         a = self.volume({'Location': (0.0, 0.0, 0.0), 'Center': (0.0, 0.0, 0.0), 'bCollideActors': False})
         self.assertTrue(a['starts_off'])
+
+
+class PlaceBrushTests(unittest.TestCase):
+    HULL = FallHeightTests.HULL
+
+    def place(self, props, scale=(1.0, 1.0, 1.0)):
+        annotation = {'position': annotations.point(props['Location']),
+                      'basis': annotations.godot_basis(props.get('Rotation') or (0, 0, 0), scale),
+                      'hull': self.HULL}
+        annotations.place_brush(props, annotation, 'test.BlockingVolume_0')
+        return annotation
+
+    def test_pre_pivot_moves_a_volume_that_has_no_center(self):
+        a = self.place({'Location': (1000.0, 0.0, 0.0), 'PrePivot': (1000.0, 0.0, 0.0)})
+        self.assertEqual(a['position'], [0.0, 0.0, 0.0])
+        self.assertNotIn('center', a)
+
+    def test_pre_pivot_is_turned_with_the_actor(self):
+        # Yaw 90 deg (16384 rotator units) turns a +X pivot onto the Y axis.
+        a = self.place({'Location': (0.0, 0.0, 0.0), 'Rotation': (0, 16384, 0),
+                        'PrePivot': (100.0, 0.0, 0.0)})
+        self.assertAlmostEqual(abs(a['position'][2]), 1.0, places=3)
+        self.assertAlmostEqual(a['position'][0], 0.0, places=3)
+
+    def test_a_brush_pre_pivot_is_scaled_by_the_draw_scale(self):
+        # Location - S*PrePivot on X: 2000 + 10 * 100 = 3000, where the Center is.
+        a = self.place({'Location': (2000.0, 0.0, 0.0), 'PrePivot': (-100.0, 0.0, 0.0),
+                        'Center': (3000.0, 0.0, 0.0)}, scale=(10.0, 1.0, 1.0))
+        self.assertEqual(a['position'], [30.0, 0.0, 0.0])
+
+    def test_no_pre_pivot_leaves_the_location(self):
+        a = self.place({'Location': (100.0, 200.0, 300.0)})
+        self.assertEqual(a['position'], [1.0, 3.0, 2.0])
+
+    def test_a_center_is_checked_for_every_class(self):
+        with self.assertRaises(annotations.ExtractError):
+            self.place({'Location': (1000.0, 0.0, 0.0), 'Center': (0.0, 0.0, 0.0)})
 
 
 if __name__ == '__main__':

@@ -5,7 +5,7 @@ import struct
 import packages as pk
 
 from common import (ExtractError, UU, ROT, actor_scale, dir_godot, finite, godot_basis,
-                    outer_class, pivot_offset, point, ref_export)
+                    outer_class, point, ref_export)
 
 # Volume class -> manifest kind. InterestLine kinds, wire, walls and lethal
 # volumes; the three checkpoint classes are handled apart below.
@@ -25,9 +25,6 @@ VOLUME_KINDS = {
     'PhysicsVolume': 'pain',
     'TdFallHeightVolume': 'fallheight',
 }
-
-# Found and counted, never mapped: meaning not verified against the original.
-REPORTED_ONLY = ()
 
 # Actors collected ONLY when they ride something -- when Base names another
 # actor in the same package. The game places hundreds of loose Triggers and
@@ -316,31 +313,50 @@ def fall_height(props, annotation, label):
     [ME:CONFIRMED decompile TdFallHeightVolume.Touch] a TdPawn touching the
     volume has EnterFallingHeight set to Center.Z + FallHeightOffset and its
     current move's TouchedFallHeightVolume() called. Center is TdMovementVolume's
-    and is cooked into the map: the brush's own centre in world space, PrePivot
-    included. FallHeightOffset has no class default, so an unset one is 0.
-
-    The volume is the only kind here placed through PrePivot: a brush with one
-    sits R*PrePivot away from Location (Stormdrain's chute volume by 255 m), so
-    `position` becomes the brush's origin. A cooked Center outside the brush so
-    placed means the placement, not the Center, is wrong: stop.
+    and is cooked into the map. FallHeightOffset has no class default, so an
+    unset one is 0. The placement itself (PrePivot included) is place_brush's.
     """
     center = props.get('Center')
     if not (isinstance(center, tuple) and len(center) == 3 and finite(center)):
         raise ExtractError('%s: fall-height volume has no Center' % label)
-    annotation['center'] = point(center)
     annotation['fall_height_offset'] = float(props.get('FallHeightOffset', 0.0)) / UU
-    pivot = pivot_offset(props)
-    annotation['position'] = [round(annotation['position'][k] - pivot[k], 4) for k in range(3)]
     # Off until Kismet's SeqAct_ChangeCollision turns it on (Escape's R1 and
     # Stormdrain's StdP ones): kismet.py marks the actor, and a level that does
     # not run its Kismet must not build it live.
     if props.get('bCollideActors') is False:
         annotation['starts_off'] = True
+
+
+def place_brush(props, annotation, label):
+    """Move a brush-placed volume from its Location to where its brush IS.
+
+    UE3 places a brush at Location + R*S*(v - PrePivot): a volume with a
+    PrePivot sits R*S*PrePivot away from Location (Stormdrain's chute volume by
+    255 m, Boat's railings by up to 449 m), so `position` becomes the brush's
+    origin. A brush's PrePivot IS scaled by DrawScale3D, unlike a static mesh's
+    (common.pivot_offset): the Stormdrain roof's zipline volume, scale 13.4 on
+    X, only agrees with its cooked Center when it is. DO NOT place a brush at
+    Location; 88 of 97 BlockingVolumes
+    overlap their railing geometry only with the pivot applied.
+
+    A volume that carries a cooked Center (TdMovementVolume's: the brush's own
+    centre in world space, PrePivot included) is checked against the placed
+    brush. A Center outside it means the placement, not the Center, is wrong:
+    stop.
+    """
+    basis = annotation['basis']
+    local = point(props['PrePivot']) if props.get('PrePivot') else [0.0, 0.0, 0.0]
+    pivot = [sum(basis[c][k] * local[c] for c in range(3)) for k in range(3)]
+    annotation['position'] = [round(annotation['position'][k] - pivot[k], 4) for k in range(3)]
+    center = props.get('Center')
+    if not (isinstance(center, tuple) and len(center) == 3 and finite(center)):
+        return
+    annotation['center'] = point(center)
     basis = annotation['basis']
     world = [[annotation['position'][k] + sum(basis[c][k] * v[c] for c in range(3)) for k in range(3)]
              for hull in annotation['hull'] for v in hull['vertices']]
     if not world:
-        raise ExtractError('%s: fall-height volume has no brush' % label)
+        raise ExtractError('%s: volume with a Center has no brush' % label)
     for k in range(3):
         lo, hi = min(p[k] for p in world), max(p[k] for p in world)
         if not lo - CENTER_SLACK_M <= annotation['center'][k] <= hi + CENTER_SLACK_M:
@@ -354,9 +370,6 @@ def collect(packages, mr, defaults, report):
     out = {'annotations': [], 'spawns': [], 'anchors': [], 'checkpoints': []}
     for i, e in enumerate(pkg.exports, 1):
         cls = pkg.class_of(e)
-        if cls in REPORTED_ONLY:
-            report['unmapped'][cls] = report['unmapped'].get(cls, 0) + 1
-            continue
         if cls not in VOLUME_KINDS and cls not in RIDER_ONLY_KINDS \
                 and cls not in ('TdTutorialStart', 'TdTutorialCheckpoint',
                                 'TdCheckpoint', 'PlayerStart'):
@@ -432,6 +445,17 @@ def collect(packages, mr, defaults, report):
             counts['brush_unbuilt'] = counts.get('brush_unbuilt', 0) + 1
             report.setdefault('brushes_unbuilt', []).append('%s.%s' % (mr.label, e['name']))
             continue
+        if component:
+            chain_props = pk.resolved_props(packages, mr, i)[0]
+            label = '%s.%s' % (mr.label, e['name'])
+            if 'PrePivot' in chain_props and 'PrePivot' not in props:
+                raise ExtractError('%s: PrePivot only on the archetype chain' % label)
+            place_brush(props, annotation, label)
+            if props.get('PrePivot'):
+                counts = report.setdefault('counts', {})
+                counts['pivoted_' + cls] = counts.get('pivoted_' + cls, 0) + 1
+            if base is not None and props.get('PrePivot'):
+                report.setdefault('pivoted_riders', []).append(label)
         reach = _volume_reach(annotation)
         if reach is not None:
             annotation['reach_radius'] = reach
@@ -467,6 +491,6 @@ def collect(packages, mr, defaults, report):
             annotation['damage_per_sec'] = float(chain.get('DamagePerSec', 0.0))
             annotation['damage_type'] = name
         if cls == 'TdFallHeightVolume':
-            fall_height(pk.resolved_props(packages, mr, i)[0], annotation, '%s.%s' % (mr.label, e['name']))
+            fall_height(props, annotation, '%s.%s' % (mr.label, e['name']))
         out['annotations'].append(annotation)
     return out
