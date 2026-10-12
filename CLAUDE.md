@@ -58,11 +58,13 @@ bun tools/link_private.ts --install-hooks   # once per machine; also builds the 
 
 ### Movement: the original's structure, ported
 
-The movement layer is being rebuilt as a port of the original's own logic
-(`docs/superpowers/specs/2026-10-12-me-faithful-port-design.md`,
-`docs/mirrors-edge-deep-research/15-原版逻辑反编译.md`). Walking, Jump,
-Falling and Landing are ported; the other moves still run their own physics
-through the same manager until each is rewritten from the original.
+The movement layer is a port of the original's own logic, read out of the
+shipped binaries (`docs/superpowers/specs/2026-10-12-me-faithful-port-design.md`,
+`docs/mirrors-edge-deep-research/15-原版逻辑反编译.md`). Every player move is
+ported, including the original's quirks; the speedrun glitches are meant to
+emerge from that logic, never to be written as rules. The camera (eye, FOV,
+bob, sensitivity, anything in third person) is this project's own design and
+not part of the port; only look constraints that change a movement result are.
 
 - `scripts/player/player.gd` (`Player`, `CharacterBody3D`) holds the
   original's pawn state under its own names (`physics`, `acceleration`,
@@ -88,8 +90,8 @@ through the same manager until each is rewritten from the original.
   `enter()`. Re-entrant (Landing sets Walking from its own `enter()`), and
   `move_changed` is emitted in switch order once the chain has finished.
 - The frame (`Player._physics_process`): controller, Actor timers
-  (`tick_timers`), `perform_physics` (ported move: auto moves, PrePhysics,
-  `PawnPhysics.perform`; move not yet ported: its `physics_update()`), then
+  (`tick_timers`), `perform_physics` (auto moves and PrePhysics only while
+  the pawn has a physics mode, as the original; then `PawnPhysics.perform`), then
   `tick_special` (TickSpecial: timers, the uncontrolled slide, `tick_move`).
 - Move name constants live on `Move`, not on `Player`. GDScript resolves
   `class_name` globals at parse time, so `Player -> moves -> Move` must stay
