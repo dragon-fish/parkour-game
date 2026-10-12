@@ -761,21 +761,37 @@ func update_view_rotation(view: Vector2i, dt: float, delta_rot: Vector2i, now: f
 	# resolved (N3 §6: what it copies, and into which object); with TdMove's
 	# zero Min/MaxLookConstraint it would pin the view, which the game does
 	# not do. Not carried until that is read.
-	if cfg != null and constrains_look():
+	# This project's third-person hooks, the same ones the camera rig's own
+	# clamp honours for a move that does not own the view: a move may free the
+	# look outright, widen or narrow the yaw, turn the window's centre off the
+	# pawn and replace the pitch band. In first person they answer nothing and
+	# the window is the original's.
+	var third: bool = player.camera_rig != null and player.camera_rig.in_third_person()
+	if cfg != null and constrains_look() and not (third and cfg.third_person_frees_look):
 		var before: Vector2i = delta_rot
+		var centre_units: int = pawn_yaw_units - int(round(look_yaw_centre_offset() * UE.UNITS_PER_RADIAN))
 		var controller_delta := Vector2i(UE.normalize_axis(UE.normalize_axis(out.x)),
-			UE.normalize_axis(UE.normalize_axis(out.y) - pawn_yaw_units))
+			UE.normalize_axis(UE.normalize_axis(out.y) - centre_units))
 		var min_yaw: int
 		var max_yaw: int
-		if cfg.absolute_yaw_constraint:
-			min_yaw = UE.normalize_axis(get_min_look_constrain_yaw() - pawn_yaw_units)
-			max_yaw = UE.normalize_axis(get_max_look_constrain_yaw() - pawn_yaw_units)
+		var half_span: float = look_yaw_half_span()
+		if not is_nan(half_span):
+			max_yaw = mini(int(round(absf(half_span) * UE.UNITS_PER_RADIAN)), 32768)
+			min_yaw = -max_yaw
+		elif cfg.absolute_yaw_constraint:
+			min_yaw = UE.normalize_axis(get_min_look_constrain_yaw() - centre_units)
+			max_yaw = UE.normalize_axis(get_max_look_constrain_yaw() - centre_units)
 		else:
 			# Against the pawn's own MinLookConstraint, (-32768, 32768) here.
 			min_yaw = maxi(get_min_look_constrain_yaw(), -32768)
 			max_yaw = mini(get_max_look_constrain_yaw(), 32768)
 		var min_pitch: int = maxi(get_min_look_constrain_pitch(), -32768)
 		var max_pitch: int = mini(get_max_look_constrain_pitch(), 32768)
+		if third:
+			var band: Vector2 = third_person_pitch_limits()
+			if not is_nan(band.x):
+				min_pitch = maxi(int(round(band.x * UE.UNITS_PER_RADIAN)), -32768)
+				max_pitch = mini(int(round(band.y * UE.UNITS_PER_RADIAN)), 32768)
 		var speed: float = dt / 0.2
 		var yaw: int = CameraRig.constrain_axis(controller_delta.y, min_yaw, max_yaw, speed, delta_rot.y)
 		var pitch: int = CameraRig.constrain_axis(controller_delta.x, min_pitch, max_pitch, speed, delta_rot.x)
@@ -874,12 +890,21 @@ func redo_cooldown() -> float:
 
 ## Half-width of the look fan's YAW, radians, when the move wants something
 ## other than its config's min/max_look_constraint.y this tick, or NAN to
-## take the config's. Asked by MoveManager._push_look_constraint() every tick,
-## so a move may answer differently as its own state changes -- LedgeWalkMove
-## widens the fan in third person, where the confirmed first-person number is
-## not the one being looked through.
+## take the config's. Asked every tick -- by MoveManager._push_look_constraint()
+## for a move on the rig's clamp, by update_view_rotation() for one that owns
+## the view -- so a move may answer differently as its own state changes:
+## LedgeWalkMove widens the fan in third person, where the confirmed
+## first-person number is not the one being looked through. Symmetric about
+## look_yaw_centre_offset().
 func look_yaw_half_span() -> float:
 	return NAN
+
+## Where the yaw window is centred, Godot radians off the pawn's facing, for a
+## move that owns the view. 0 is the original's (the window is measured
+## against the pawn). LedgeWalkMove answers PI in third person, where the body
+## and the camera face the wall the pawn has its back to.
+func look_yaw_centre_offset() -> float:
+	return 0.0
 
 ## Whether Q swings the view half a turn this tick. See
 ## MoveConfig.q_flicks_view; a move overrides this to refuse it while a script
@@ -892,6 +917,7 @@ func can_flick_view() -> bool:
 ## untouched. Asked beside look_yaw_half_span(), for a move whose pitch limit
 ## is about the first-person eye -- which from outside may be the wrong limit,
 ## or none. MoveConfig.third_person_frees_look drops both halves outright.
+## Honoured on both paths: the rig's clamp and update_view_rotation().
 func third_person_pitch_limits() -> Vector2:
 	return Vector2(NAN, NAN)
 

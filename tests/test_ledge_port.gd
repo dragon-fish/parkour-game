@@ -519,6 +519,38 @@ func test_a_pull_up_brings_the_view_level() -> void:
 	await step(8)
 	assert_almost_eq(player.camera_rig.view_pitch(), 0.0, 0.01, "the pull-up left the view pitched")
 
+## The pull-up's pitch floor is the first-person eye's (the original's 0 ..
+## 16384); in third person the pitch is free, so the camera can rise over the
+## body to watch the climb (GrabPullUpMove.third_person_pitch_limits()).
+func test_the_pull_up_frees_the_third_person_pitch() -> void:
+	for third in [false, true]:
+		var player: Player = await _player()
+		player.camera_rig.third_person = third
+		_box(Vector3(4.0, 3.0, 2.0), Vector3(0.0, 1.5, -1.0))
+		await step(1)
+		_hang(player, 3.0, 0.0)
+		await step(70)
+		assert_true(player.move_manager.handle_move_action(Move.MA_JUMP), "jump did not leave the hang")
+		assert_eq(player.move_manager.current_name, Move.GRAB_PULL_UP, "the jump was not a pull-up")
+		await step(20)
+		var input: ScriptedInputSource = _world["input"]
+		var lowest := 0.0
+		for i in 20:
+			input.state.look = Vector2(0.0, 40.0)
+			await step(1)
+			lowest = minf(lowest, rad_to_deg(player.camera_rig.view_pitch()))
+		input.state.look = Vector2.ZERO
+		if third:
+			assert_lt(lowest, -10.0, "the third-person pull-up still held the pitch at level")
+		else:
+			assert_gt(lowest, -1.0, "the first-person pull-up looked down (%.1f)" % lowest)
+		TestWorld.teardown(_world)
+		_world = {}
+		for node in _extra:
+			node.queue_free()
+		_extra.clear()
+		await step(1)
+
 ## A railing of ordinary thickness at chest height is vaulted, not climbed:
 ## the hand-plant search finds its top (result 2) under MinWallHeight, so
 ## WallClimb refuses it and nothing draws the view up.

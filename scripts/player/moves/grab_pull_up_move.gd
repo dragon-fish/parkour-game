@@ -37,6 +37,13 @@ func handle_death(_damage: float) -> float:
 func uses_view_rotation() -> bool:
 	return true
 
+## The pull-up's pitch floor (level) is the first-person eye's: there is
+## nothing to look at below the lip. Seen from outside it only pins the orbit
+## below the body, so the camera cannot rise to watch the climb from above --
+## the pull-up's pitch goes free in third person. PROJECT-DEFINED presentation.
+func third_person_pitch_limits() -> Vector2:
+	return Vector2(-PI, PI)
+
 func _grab() -> GrabMove:
 	return player.move_manager.move_for(GRAB) as GrabMove
 
