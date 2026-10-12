@@ -120,3 +120,18 @@ func test_two_wall_adjust_follows_the_crease() -> void:
 	var crease: Vector3 = PawnPhysics.two_wall_adjust(desired, Vector3(0.0, 0.0, -1.0),
 		Vector3(0.7071, 0.0, 0.7071), Vector3(-0.7071, 0.0, 0.7071), 0.5)
 	assert_almost_eq(crease.length(), 0.0, 1e-6, "walls meeting head on left motion along a horizontal crease")
+
+## [ME:CONFIRMED decompile N2 §2, 0x0205684c] GPhysFallingDepth is held only
+## while a falling move is under way: a frame of falling leaves it at rest.
+func test_the_falling_depth_is_released_by_every_exit() -> void:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	var player: Player = world["player"]
+	player.global_position.y += 1.0
+	player.move_manager.start(Move.FALLING)
+	for i in 60:
+		await step(1)
+		assert_eq(player.phys._falling_depth, 0, "a falling move left its depth held")
+	assert_eq(player.move_manager.current_name, Move.WALKING, "test setup: the fall never landed")
+	TestWorld.teardown(world)

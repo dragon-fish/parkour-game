@@ -1196,6 +1196,9 @@ func _carry_on_base(dt: float) -> void:
 ##
 ## Not ported: water. Root motion is taken as the move hands it over
 ## (Player.root_motion_velocity), not read off a mesh.
+## GPhysFallingDepth (0x0205684c): how many physFalling moves are under way.
+var _falling_depth: int = 0
+
 func phys_falling(dt: float, iterations: int) -> void:
 	var p: PawnConfig = pawn.config.pawn
 	var root_motion: bool = pawn.root_motion_active
@@ -1225,6 +1228,10 @@ func phys_falling(dt: float, iterations: int) -> void:
 			# second pass that meets a floor does not land at all.
 			var retry: bool = false
 			var retry_count: int = 0
+			# GPhysFallingDepth: held for the move below, so a physFalling
+			# started from inside it (a landing that walks off again) gets no
+			# retry of its own.
+			_falling_depth += 1
 			while true:
 				var hit: Dictionary = move_actor(adjusted)
 				if float(hit["time"]) < 1.0:
@@ -1233,6 +1240,7 @@ func phys_falling(dt: float, iterations: int) -> void:
 						# A wall or a ceiling.
 						_process_hit_wall(hit)
 						if pawn.physics != Move.PHYS_FALLING:
+							_falling_depth -= 1
 							return
 						if normal.y <= -pawn.walkable_floor_z and pawn.velocity.y > 0.0:
 							# Everything below reads the nudge's own last hit, as the
@@ -1262,6 +1270,7 @@ func phys_falling(dt: float, iterations: int) -> void:
 									if normal2.y < pawn.walkable_floor_z:
 										_process_hit_wall(hit2)
 										if pawn.physics != Move.PHYS_FALLING:
+											_falling_depth -= 1
 											return
 										var twin: Vector3 = two_wall_adjust(safe_normal(adjusted), slide,
 											normal2, normal, float(hit2["time"]))
@@ -1272,6 +1281,7 @@ func phys_falling(dt: float, iterations: int) -> void:
 										if ditch or (float(hit3["time"]) < 1.0 and normal3.y >= pawn.walkable_floor_z):
 											process_landed(normal3 if float(hit3["time"]) < 1.0 else normal2,
 												0.0, iterations)
+											_falling_depth -= 1
 											return
 									else:
 										# A floor found by the slide: the same edge test,
@@ -1284,6 +1294,7 @@ func phys_falling(dt: float, iterations: int) -> void:
 										if not retry:
 											_check_uncontrolled_slide(hit2)
 											process_landed(normal2, 0.0, iterations)
+											_falling_depth -= 1
 											return
 								elif stepped:
 									move_actor(Vector3(0.0, -1.9 * UU, 0.0))
@@ -1303,10 +1314,12 @@ func phys_falling(dt: float, iterations: int) -> void:
 								pawn.velocity = (pawn.global_position - old_location) / (tick * float(hit["time"]))
 							_check_uncontrolled_slide(hit)
 							process_landed(normal, remaining, iterations)
+							_falling_depth -= 1
 							return
 				retry_count += 1
-				if not (retry and retry_count < 2):
+				if not (retry and retry_count < 2 and _falling_depth < 2):
 					break
+			_falling_depth -= 1
 			# The velocity rebuilt from the displacement: V = 2 dLoc/dt - V0, which
 			# doubles every acceleration integrated above, gravity included.
 			if not root_motion and not _just_teleported and not _recovered \
