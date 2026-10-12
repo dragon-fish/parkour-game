@@ -201,6 +201,27 @@ func test_the_turn_on_the_bar_is_a_root_rotation_that_flips_the_swing() -> void:
 	assert_almost_eq(wrapf(player.pawn_yaw - SwingMove._yaw_of(swing.swing_direction), -PI, PI), 0.0, 1e-5,
 		"the pawn does not face the flipped swing")
 
+## This project's presentation: the model hangs square to the swing in third
+## person, where the orbit stays the player's, however the camera goes round
+## and whatever the stick does (SwingMove.model_yaw()).
+func test_the_model_hangs_square_to_the_swing_in_third_person() -> void:
+	var player: Player = await _start()
+	player.camera_rig.third_person = true
+	var swing: SwingMove = _hang(player, _far_bar(), -0.5)
+	await step(12)
+	var input: ScriptedInputSource = _world["input"]
+	input.hold_move(1.0, 0.0)
+	for i in 30:
+		input.state.look = Vector2(-30.0, 0.0)
+		await step(1)
+	input.state.look = Vector2.ZERO
+	input.hold_move(0.0, 0.0)
+	assert_eq(player.move_manager.current_name, Move.SWING, "test setup: off the bar")
+	assert_gt(absf(wrapf(player.rotation.y - SwingMove._yaw_of(swing.swing_direction), -PI, PI)), deg_to_rad(30.0),
+		"test setup: the camera did not go round")
+	assert_almost_eq(wrapf(player.visual_yaw() - SwingMove._yaw_of(swing.swing_direction), -PI, PI), 0.0,
+		deg_to_rad(3.0), "the model followed the camera off the swing")
+
 ## [ME:CONFIRMED decompile TdSwingVolume] The volume offers the swing to a
 ## body moving toward the bar and facing it; once it takes the body the
 ## volume is spent until the body enters it again.

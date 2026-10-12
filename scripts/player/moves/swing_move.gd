@@ -353,3 +353,12 @@ static func _segment_entry(line: InterestLine, from: Vector3, to: Vector3) -> fl
 
 static func _yaw_of(direction: Vector3) -> float:
 	return atan2(-direction.x, -direction.z)
+
+## This project's presentation: the model hangs square to the swing, whatever
+## the view does (Player._drive_body_yaw()). The pawn is not held apart from
+## the view between turns, so the move names the facing; not while Swing180's
+## root rotation turns the pawn, which pins the model itself.
+func model_yaw() -> float:
+	if is_turning:
+		return NAN
+	return _yaw_of(swing_direction)
