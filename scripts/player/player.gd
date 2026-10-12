@@ -5193,12 +5193,17 @@ func turn_pawn_yaw(radians: float) -> void:
 ## Controller.SetRotation's yaw: the view turned to `yaw`. Under the camera
 ## rig's absolute yaw fan the rig rebuilds the view from the fan's centre every
 ## tick, so the centre is carried through the same turn (and the view with it);
-## otherwise the view is set outright.
+## otherwise the view is set outright. A script is turning the view here (a
+## precise rotation), so the eye trails it a little, as it trails a root
+## rotation (CameraRig.absorb_body_yaw(), presentation; see
+## docs/camera-authority.md).
 func set_controller_yaw(yaw: float) -> void:
+	var moved: float = wrapf(yaw - rotation.y, -PI, PI)
 	if camera_rig != null and camera_rig.has_absolute_yaw_constraint():
-		var moved: float = wrapf(yaw - rotation.y, -PI, PI)
 		camera_rig.shift_yaw_reference(camera_rig.yaw_reference() + moved, 1.0)
 	rotation.y = yaw
+	if camera_rig != null:
+		camera_rig.absorb_body_yaw(moved)
 
 ## TdFallHeightVolume.Touch: the fall is measured from the volume's height
 ## from here on, and the current move is told. A level volume calls this.

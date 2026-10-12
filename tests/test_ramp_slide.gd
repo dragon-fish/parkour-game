@@ -195,6 +195,34 @@ func test_the_body_and_the_model_come_round_to_face_down_the_chute() -> void:
 	TestWorld.teardown(world)
 	await step(1)
 
+## The chute turns the view round with a precise rotation, a script's turn:
+## the eye trails it a little (CameraRig.absorb_body_yaw()) and catches up.
+func test_the_eye_trails_the_chutes_turn() -> void:
+	var world := TestWorld.build(get_tree(), MovementConfig.new())
+	await step(1)
+	TestWorld.place(world)
+	world["floor"].global_position.y = -30.0
+	var player: Player = world["player"]
+	var ramp := _add_ramp(50.0, true)
+	var a := deg_to_rad(50.0)
+	player.global_position = Vector3(0.0, 8.0 * sin(a) + 1.3, -8.0 * cos(a))
+	player.rotation.y = 0.0
+	player.velocity = Vector3.ZERO
+	player.fall_tracker.reset(player.global_position.y)
+	player.enter_falling_height = player.global_position.y
+	var trailed := false
+	for i in 60:
+		await step(1)
+		if player.move_manager.current_name == Move.RAMP_SLIDE \
+				and absf(player.camera_rig.rotation.y) > deg_to_rad(1.0):
+			trailed = true
+	assert_true(trailed, "the eye was carried round the chute's turn with no trail")
+	await step(60)
+	assert_almost_eq(player.camera_rig.rotation.y, 0.0, deg_to_rad(0.5), "the eye never caught up")
+	ramp.queue_free()
+	TestWorld.teardown(world)
+	await step(1)
+
 ## Seated on the chute, the model lies along it (Player.body_tilt_normal),
 ## not upright with its legs in the air over the downhill side.
 func test_the_model_lies_along_the_chute() -> void:
