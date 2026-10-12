@@ -264,3 +264,26 @@ func test_a_volume_says_whether_it_was_entered_or_is_renewing() -> void:
 	assert_gt(log.fresh.size(), 1, "test setup: the volume never applied anything")
 	assert_true(log.fresh[0], "walking in was reported as a renewal")
 	assert_false(log.fresh[log.fresh.size() - 1], "a refresh was reported as walking in")
+
+## [ME:CONFIRMED decompile PhysicsVolume.uc / VolumeTimer.uc] A pain-causing
+## volume hurts whoever stays inside on ITS OWN 1 s clock, counted from the
+## volume's start: walked into half a second after it began, the body takes
+## the touch's pain, then the next half a second later, not a second later.
+func test_a_pain_volume_hurts_on_its_own_clock() -> void:
+	var p := await _player()
+	var wire := StatusSpec.new()
+	wire.effect = Status.Effect.STAGGER
+	wire.amount = 35.0
+	wire.seconds = 0.1
+	var v := _volume(p.global_position + Vector3(50.0, 0.0, 0.0))
+	v.apply = [wire]
+	v.refresh_interval = 0.05
+	await step(30)
+	var full: float = p.health.hp
+	v.global_position = p.global_position
+	await step(6)
+	assert_almost_eq(p.health.hp, full - 35.0, 0.001, "walking in did not take the touch's pain")
+	await step(18)
+	assert_almost_eq(p.health.hp, full - 35.0, 0.001, "the pain came before the volume's clock")
+	await step(12)
+	assert_almost_eq(p.health.hp, full - 70.0, 0.001, "the volume's clock did not hurt the body inside")

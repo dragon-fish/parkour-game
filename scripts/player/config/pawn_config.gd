@@ -301,13 +301,14 @@ extends Resource
 
 ## How long after a hazard's hit, or after a landing lockout releases, the
 ## player cannot be staggered again. PROJECT-DEFINED: the original's wire
-## hurts by DamagePerSec and stumbles on its touch (Player.touch_barbed_wire());
-## this window is the cadence this project's STAGGER damage is dealt at.
+## hurts by DamagePerSec and stumbles on its touch (Player.touch_barbed_wire()),
+## and keeps hurting on the volume's own 1 s clock (ModifierVolume's pain
+## timer); this window is the cadence of a STAGGER that comes from anything
+## else, and what keeps a landing lockout from being chained.
 ##
-## A wire volume renews its STAGGER every tick the body is in it, and without
-## a window each of those would hurt again and empty the budget again. Armed at
-## the hit (Player.take_hazard_hit()) and when a lockout that began as one
-## ends.
+## Something that renews its STAGGER every tick would, without a window, hurt
+## on every one of them. Armed at the hit (Player.take_hazard_hit()) and when a
+## lockout that began as one ends.
 @export var stagger_immunity_time: float = 1.0
 ## Seconds a hazard's hit takes to fade from the screen. PROJECT-DEFINED.
 @export var hurt_flash_time: float = 0.6

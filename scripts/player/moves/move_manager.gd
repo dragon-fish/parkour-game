@@ -473,8 +473,11 @@ func tick_special(delta: float) -> void:
 ## per entry, and lost when its gates refuse it (Player.touch_barbed_wire()).
 ## Staying in is the volume's 1 s pain timer: TdPawn.TakeDamage hands the
 ## barbed-wire type to an empty BulletDamage, so it hurts and never stumbles.
-## The pain's cadence here is the stagger immunity counted from the last hit;
-## the original's VolumeTimer runs on the volume's own clock.
+## [ME:CONFIRMED decompile] That timer runs on the VOLUME's clock, popping
+## every second from the volume's start for whoever is inside then
+## (ModifierVolume.PAIN_INTERVAL); a STAGGER from anything else -- a test, a
+## script -- keeps this project's cadence, the stagger immunity counted from
+## the last hit.
 func _apply_level_hazards() -> bool:
 	if player == null:
 		return false
@@ -488,6 +491,9 @@ func _apply_level_hazards() -> bool:
 	if player.statuses.has(Status.Effect.STAGGER) and current_name != Move.FALL_UNCONTROLLED:
 		var amount: float = player.statuses.amount_of(Status.Effect.STAGGER)
 		var tint: Color = player.statuses.tint_of(Status.Effect.STAGGER)
+		var source: Object = player.statuses.source_of(Status.Effect.STAGGER)
+		var on_volume_clock: bool = source != null and is_instance_valid(source) \
+			and source.has_method("runs_pain_timer") and source.runs_pain_timer()
 		if knocking_down:
 			# The blow that comes with a knock-down is the knock-down's.
 			staggering = true
@@ -500,6 +506,14 @@ func _apply_level_hazards() -> bool:
 				player.statuses.remove(Status.Effect.STAGGER)
 				if change_serial != before:
 					return true
+			elif on_volume_clock:
+				# Inside, between touches: only the volume's pop hurts.
+				if player.consume_pain_pop(source) and amount > 0.0:
+					if current_name == Move.LAY_ON_GROUND:
+						player.take_damage(amount, Health.Cause.HAZARD)
+					else:
+						player.take_hazard_hit(amount, tint)
+				player.statuses.remove(Status.Effect.STAGGER)
 			elif player.is_stagger_immune():
 				# EATEN, NOT QUEUED, while immune: the pain timer has not come
 				# round yet. Left in the list it would fire the instant the

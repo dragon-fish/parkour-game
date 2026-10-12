@@ -17,6 +17,9 @@ extends Area3D
 	set(value):
 		apply = value
 		update_configuration_warnings()
+		# A STAGGER brings the pain timer, which needs the frame callback.
+		if is_inside_tree():
+			set_physics_process(refresh_interval > 0.0 or runs_pain_timer())
 ## Take these off whoever enters. Only `effect` and `subject` are read;
 ## `amount`, `view` and `seconds` are ignored. An empty `subject` takes every
 ## subject of that effect.
@@ -59,7 +62,7 @@ extends Area3D
 		# _ready() during scene instantiation, and _ready() applies the settled
 		# value for that case.
 		if is_inside_tree():
-			set_physics_process(refresh_interval > 0.0)
+			set_physics_process(refresh_interval > 0.0 or runs_pain_timer())
 
 ## Which layer this volume speaks on. When two volumes claim the same status,
 ## the higher layer wins; equal layers keep the incumbent and report once.
@@ -82,6 +85,14 @@ extends Area3D
 
 var _entries_used: int = 0
 var _refresh_owed: float = 0.0
+## PhysicsVolume's PainTimer, a VolumeTimer: SetTimer(1.0, true) from the
+## volume's PostBeginPlay. [ME:CONFIRMED decompile script PhysicsVolume.uc,
+## VolumeTimer.uc] A volume that puts a STAGGER on whoever enters is a
+## pain-causing one (barbed wire, an electric fence): its clock pops every
+## second from its own start, and every body inside then takes its pain --
+## not counted from the body's entry, and with no other gate.
+const PAIN_INTERVAL := 1.0
+var _pain_clock: float = 0.0
 
 ## Runs the refresh BEFORE the Player ages its status list. Godot orders
 ## _physics_process by this number ascending, and Player leaves it at the
@@ -109,12 +120,22 @@ func _ready() -> void:
 	process_physics_priority = mini(process_physics_priority, REFRESH_BEFORE_PLAYER)
 	body_entered.connect(_on_body_entered)
 	# The setter could not apply this before the node was in the tree.
-	set_physics_process(refresh_interval > 0.0)
+	set_physics_process(refresh_interval > 0.0 or runs_pain_timer())
+
+## Whether this volume causes pain on its own clock: it applies a STAGGER.
+func runs_pain_timer() -> bool:
+	for spec in apply:
+		if spec != null and spec.effect == Status.Effect.STAGGER:
+			return true
+	return false
 
 func _physics_process(delta: float) -> void:
 	# Belt to the setter's brace. Load-bearing in the editor, where _ready()
 	# returns before the gate and physics processing is on from tree entry.
-	if Engine.is_editor_hint() or refresh_interval <= 0.0:
+	if Engine.is_editor_hint():
+		return
+	_tick_pain_timer(delta)
+	if refresh_interval <= 0.0:
 		return
 	_refresh_owed -= delta
 	if _refresh_owed > 0.0:
@@ -136,6 +157,22 @@ func _physics_process(delta: float) -> void:
 	for body in get_overlapping_bodies():
 		if body.has_method("apply_status"):
 			_push_apply(body, false)
+
+## The VolumeTimer: an Actor timer, its overshoot carried. TimerPop hurts
+## every body inside (Player.pain_pop()); switched off, the volume touches
+## nothing and hurts nothing.
+func _tick_pain_timer(delta: float) -> void:
+	if not runs_pain_timer():
+		return
+	_pain_clock += delta
+	if _pain_clock < PAIN_INTERVAL:
+		return
+	_pain_clock -= PAIN_INTERVAL
+	if not monitoring:
+		return
+	for body in get_overlapping_bodies():
+		if body.has_method("pain_pop"):
+			body.pain_pop(self)
 
 func _on_body_entered(body: Node3D) -> void:
 	# Duck-typed, the same stance as Checkpoint's volume: the volume tells

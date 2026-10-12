@@ -113,6 +113,11 @@ func amount_of(effect: int, subject: StringName = &"") -> float:
 	var e: Dictionary = _entries.get(_key(effect, subject), {})
 	return e.get("amount", 0.0)
 
+## The volume (or whatever applied it) behind one entry, or null.
+func source_of(effect: int, subject: StringName = &"") -> Object:
+	var e: Dictionary = _entries.get(_key(effect, subject), {})
+	return e.get("source", null)
+
 ## The tint of one entry, transparent when it is not present.
 func tint_of(effect: int, subject: StringName = &"") -> Color:
 	var e: Dictionary = _entries.get(_key(effect, subject), {})

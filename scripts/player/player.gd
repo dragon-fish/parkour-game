@@ -384,6 +384,17 @@ func apply_status(spec: StatusSpec, source: Object, priority: int,
 		hazard_touch_location = _last_tick_start_position
 	statuses.apply(spec, source, priority)
 
+## A pain-causing volume's timer popping with the body inside
+## (ModifierVolume._tick_pain_timer()), held for the move manager to play.
+func pain_pop(source: Object) -> void:
+	_pain_pops[source.get_instance_id()] = true
+
+## Takes a pop of `source`'s pain timer, once.
+func consume_pain_pop(source: Object) -> bool:
+	if source == null:
+		return false
+	return _pain_pops.erase(source.get_instance_id())
+
 ## Takes the wire's touch recorded by apply_status(), once. True when the body
 ## walked into a STAGGER since the last call.
 func consume_hazard_touch() -> bool:
@@ -512,6 +523,8 @@ var _stagger_immunity: float = 0.0
 
 ## A walk into a STAGGER volume not yet played: see apply_status().
 var _hazard_touch_pending: bool = false
+## Pain timers that popped with the body inside, by source: see pain_pop().
+var _pain_pops: Dictionary = {}
 ## Where that touch happened: TdBarbedWireVolume.Touch's HitLocation, which
 ## the stumble takes as both the damage's and the instigator's location.
 var hazard_touch_location: Vector3 = Vector3.ZERO
