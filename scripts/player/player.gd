@@ -91,6 +91,31 @@ var _roll_trigger_pressed: bool = false
 ## Set by MoveManager when a move not yet ported hands to Jump having launched
 ## the body itself; JumpMove reads and clears it.
 var pending_legacy_launch: StringName = &""
+## The TdMove trace and ledge natives (FindLedgeEx, the hand-plant search...).
+## Built in setup().
+var traces: MoveTraces
+## TdPawn.MovementActor / MovementExclusionVolume /
+## bFoundLedgeExcludesHandMoves / bFoundLedgeExcludesFootMoves: what the last
+## ledge or wall finder that succeeded found.
+var movement_actor: Object = null
+var movement_exclusion_volume: Object = null
+var found_ledge_excludes_hand_moves: bool = false
+var found_ledge_excludes_foot_moves: bool = false
+## Pawn.bIsWallWalking: the wall physics has made contact with its wall.
+## Cleared whenever the physics leaves the wall modes.
+var is_wall_walking: bool = false
+## Pawn.Rotation.Yaw, as a Godot yaw (radians, like rotation.y). The view is
+## the CONTROLLER's rotation (rotation.y); the pawn follows it through
+## face_rotation() except where a move or a controller state holds it -- a
+## wall run faces along its wall whatever the view does. Vector(Pawn.Rotation)
+## is facing().
+var pawn_yaw: float = 0.0
+## TdPawn.FaceRotationTimeLeft: while above zero the pawn eases toward the
+## controller instead of snapping to it.
+var face_rotation_time_left: float = 0.0
+## Pawn.bIsUsingRootRotation: an animation's root turns the pawn, and
+## face_rotation() leaves it alone.
+var using_root_rotation: bool = false
 
 # --- the original's controller state (TdPlayerController, TdPlayerInput) ----------
 
@@ -1589,6 +1614,8 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 	floor_snap_length = config.pawn.max_step_down_height
 
 	phys = PawnPhysics.new(self)
+	traces = MoveTraces.new(self)
+	pawn_yaw = rotation.y
 	enter_falling_height = global_position.y
 	_build_moves()
 
@@ -1614,6 +1641,14 @@ func reset_state() -> void:
 	illegal_ledge_timer = 0.0
 	evade_timer = 0.0
 	found_ledge = false
+	movement_actor = null
+	movement_exclusion_volume = null
+	found_ledge_excludes_hand_moves = false
+	found_ledge_excludes_foot_moves = false
+	is_wall_walking = false
+	pawn_yaw = rotation.y
+	face_rotation_time_left = 0.0
+	using_root_rotation = false
 	move_ledge_result = 0
 	gravity_modifier = 1.0
 	gravity_modifier_timer = 0.0
@@ -1734,6 +1769,11 @@ func _build_moves() -> void:
 		[Move.BALANCE, BalanceMove.new(), config.balance],
 		[Move.SPRING_BOARD, SpringBoardMove.new(), config.spring_board],
 		[Move.DODGE_JUMP, DodgeJumpMove.new(), config.dodge_jump],
+		[Move.WALLRUN_JUMP, WallrunJumpMove.new(), config.wallrun_jump],
+		[Move.WALLRUN_DODGE_JUMP, WallrunDodgeJumpMove.new(), config.wallrun_dodge_jump],
+		[Move.WALLCLIMB_DODGE_JUMP, WallClimbDodgeJumpMove.new(), config.wall_climb_dodge_jump],
+		[Move.WALLCLIMB_180_TURN_JUMP, WallClimb180TurnJumpMove.new(), config.wall_climb_180_turn_jump],
+		[Move.MELEE_WALLRUN, MeleeWallrunMove.new(), config.melee_wallrun],
 	]
 	for row in table:
 		var move: Move = row[1]
@@ -3704,6 +3744,7 @@ func _physics_process(delta: float) -> void:
 	if camera_rig != null:
 		camera_rig.apply_look(Vector2.ZERO if ignore_look_input else input.look, self, delta)
 	turn_units = PawnAcceleration.turn_units(wrapf(rotation.y - yaw_before, -PI, PI))
+	face_rotation(delta)
 
 	if noclip:
 		_fly_noclip(delta, input)
@@ -3944,78 +3985,6 @@ func toggle_noclip() -> void:
 		screen_effects.set_desaturation(0.0)
 		screen_effects.set_blur(0.0)
 
-# --- what the wall you just left will not let you do -------------------------
-#
-# A wall run leaves the body travelling AWAY from the wall, because that is what
-# kicking off a wall means. For roughly a second afterwards, everything that
-# would require moving back TOWARD that wall is impossible -- not as a rule
-# imposed on the player, but as arithmetic. The owner put it plainly: "your legs
-# are pushing off the wall, you cannot send your body to the same side."
-#
-# Two consequences, both reported from play:
-#
-#   * you cannot immediately start another run on the SAME side of a wall
-#     facing the same way -- chaining up a single flat wall, which the owner
-#     drew a cross through. Two walls facing EACH OTHER are a different matter
-#     and stay legal, which is the zig-zag corridor; so is a wall angled away
-#     from the one just left.
-#
-#   * you cannot mantle or vault onto the top of the wall you are running on.
-#     Same reasoning, and it explains a long-standing complaint about a wall
-#     run ending in a grab onto the very wall it just left.
-#
-# Held on Player rather than inside WallRunMove because the moves that have to
-# consult it -- the grab and vault probes in AirborneMove -- run AFTER the run
-# has ended and the move instance has been left behind.
-
-## The outward normal of the wall most recently run on, and which side of the
-## body it was on (-1 left, +1 right). Meaningless once recent_wall_timer
-## reaches zero.
-var recent_wall_normal: Vector3 = Vector3.ZERO
-var recent_wall_side: int = 0
-var _recent_wall_timer: float = 0.0
-
-## Called every tick of a wall run. Refreshing rather than stamping once means
-## the lockout is measured from when the wall was LEFT, which is what the rule
-## is about, without WallRunMove having to notice its own ending.
-func note_wall_contact(normal: Vector3, side: int) -> void:
-	recent_wall_normal = normal
-	recent_wall_side = side
-	_recent_wall_timer = config.wall_run.same_wall_lockout
-
-func has_recent_wall() -> bool:
-	return _recent_wall_timer > 0.0 and recent_wall_normal != Vector3.ZERO
-
-## True if starting a wall run on `normal`/`side` would mean going back to the
-## wall just left.
-##
-## ONLY THE SAME SIDE IS CONSTRAINED. A wall on the other side is one you are
-## travelling toward, which is exactly the facing-walls corridor.
-##
-## And on the same side, only a wall FACING THE SAME WAY is refused. The owner
-## reasoned about this with a sign -- a left-hand run cannot pick up a wall
-## angled one way, a right-hand run cannot pick up the other -- and the
-## magnitude test below is equivalent in practice for a reason worth writing
-## down: the wall angled the OTHER way recedes from a body already travelling
-## away, so no probe of any reach ever finds it. Only the near-parallel case
-## needs refusing, and refusing it by angle rather than by sign means not having
-## to guess a convention.
-func recent_wall_refuses_run(normal: Vector3, side: int) -> bool:
-	if not has_recent_wall() or side != recent_wall_side:
-		return false
-	var facing_alike: float = normal.normalized().dot(recent_wall_normal.normalized())
-	return facing_alike > cos(config.wall_run.same_wall_angle)
-
-## True if `point` sits beyond the wall just left -- i.e. on the far side of its
-## face, which is where its own top is.
-##
-## The normal points back toward the body, so anything on the wall's side of the
-## body has a negative component along it.
-func recent_wall_refuses_climb_onto(point: Vector3) -> bool:
-	if not has_recent_wall():
-		return false
-	return (point - global_position).dot(recent_wall_normal) < 0.0
-
 func takeoff_ground_speed() -> float:
 	return _takeoff_ground_speed
 
@@ -4119,7 +4088,6 @@ func _tick_timers(delta: float, _input: MoveInput) -> void:
 	_tick_line_cooldowns(delta)
 	_step_grace_timer = maxf(_step_grace_timer - delta, 0.0)
 	_slide_recovery_timer = maxf(_slide_recovery_timer - delta, 0.0)
-	_recent_wall_timer = maxf(_recent_wall_timer - delta, 0.0)
 	_was_grounded = grounded
 
 # --- the controller (TdPlayerController PlayerWalking, TdPlayerInput) ------------
@@ -4156,6 +4124,8 @@ func _controller_tick(delta: float, input: MoveInput) -> void:
 	if raw == Vector2.ZERO:
 		raw = input.move
 	set_input_hint(raw.y, raw.x)
+	if controller_state == Move.CS_PLAYER_WALL_WALKING:
+		_wall_walking_input_hint(raw.x)
 	input_size = raw.length()
 	var f: float = raw.y
 	var s: float = raw.x
@@ -4197,7 +4167,13 @@ func _controller_tick(delta: float, input: MoveInput) -> void:
 	else:
 		acceleration = Vector3.ZERO
 
-	# ProcessMove.
+	# ProcessMove. PlayerWallWalking's runs the jump first and the crouch last;
+	# the state it started in decides, though an action may change it.
+	if controller_state == Move.CS_PLAYER_WALL_WALKING:
+		_check_jump_pressed(input)
+		_check_jump_released(input)
+		_check_crouch(input)
+		return
 	_check_crouch(input)
 	_check_jump_pressed(input)
 	_check_jump_released(input)
@@ -4225,6 +4201,29 @@ func set_input_hint(base_y: float, strafe: float) -> void:
 	move_action_max = is_max
 	if absf(base_y) < 0.3 and absf(strafe) < 0.3:
 		_stick_passed_dead_zone = true
+
+## TdPlayerController.WallRunningDodgeJumpThreshold /
+## WallClimbingDodgeJumpThreshold. [ME:CONFIRMED decompile] Both 0.8.
+const WALL_RUNNING_DODGE_JUMP_THRESHOLD := 0.8
+const WALL_CLIMBING_DODGE_JUMP_THRESHOLD := 0.8
+
+## PlayerWallWalking.SetInputHint, after the base one. [ME:CONFIRMED decompile
+## N4 §5] On a wall the sideways hint needs the stick past 0.8 rather than 0.3,
+## and any hint that is neither that nor Up is cleared.
+func _wall_walking_input_hint(strafe: float) -> void:
+	if not _stick_passed_dead_zone:
+		return
+	var threshold: float = WALL_CLIMBING_DODGE_JUMP_THRESHOLD \
+		if move_manager.current_name == Move.WALL_CLIMB else WALL_RUNNING_DODGE_JUMP_THRESHOLD
+	if strafe > threshold:
+		move_action_hint = Move.MAH_RIGHT
+		move_action_max = strafe > 0.96
+	elif strafe < -threshold:
+		move_action_hint = Move.MAH_LEFT
+		move_action_max = strafe < -0.96
+	elif move_action_hint != Move.MAH_UP:
+		move_action_hint = Move.MAH_NONE
+		move_action_max = false
 
 ## TdPlayerController.LookBehind.
 func _look_behind() -> bool:
@@ -4394,11 +4393,31 @@ func _tick_ignore_timers(delta: float) -> void:
 func mobility_multiplier() -> float:
 	return 1.0
 
-## Vector(Pawn.Rotation), flat: the pawn never pitches.
+## Vector(Pawn.Rotation), flat: the pawn never pitches. The PAWN's yaw, which
+## is the view's except where something holds it (see pawn_yaw).
 func facing() -> Vector3:
-	var f: Vector3 = -global_transform.basis.z
-	f.y = 0.0
-	return f.normalized() if f.length_squared() > 0.0 else Vector3.FORWARD
+	return Vector3(-sin(pawn_yaw), 0.0, -cos(pawn_yaw))
+
+## TdPawn.FaceRotation, as the controller calls it after turning the view.
+## [ME:CONFIRMED decompile] Nothing while an animation's root turns the pawn or
+## the move sets bDisableFaceRotation; with FaceRotationTimeLeft running, an
+## ease toward the target by dt / time left; otherwise the pawn takes the
+## target's yaw outright. PlayerWallWalking asks the pawn to face its OWN
+## rotation, so on a wall the view turns and the pawn does not.
+func face_rotation(delta: float) -> void:
+	if using_root_rotation:
+		return
+	var move: Move = move_manager.current_move() if move_manager != null else null
+	if move != null and move.disable_face_rotation:
+		return
+	var target: float = pawn_yaw if controller_state == Move.CS_PLAYER_WALL_WALKING else rotation.y
+	if face_rotation_time_left > 0.0:
+		var step: int = UE.normalize_axis(UE.yaw_units(target) - UE.yaw_units(pawn_yaw))
+		var eased: int = int(step * minf(1.0, delta / face_rotation_time_left))
+		pawn_yaw = UE.godot_yaw(UE.yaw_units(pawn_yaw) + eased)
+		face_rotation_time_left -= delta
+		return
+	pawn_yaw = target
 
 ## How far the walking physics holds the feet above the floor, or 0 when it
 ## is not the one holding them. For the presentation and this project's own
@@ -4467,6 +4486,24 @@ func pawn_landed(normal: Vector3) -> void:
 		move.landed(normal)
 	enter_falling_height = global_position.y
 
+## Controller.Rotation.Pitch in rotator units: the view's pitch.
+func controller_pitch_units() -> int:
+	return UE.pitch_units(camera_rig.view_pitch()) if camera_rig != null else 0
+
+## TdPawn.BaseEyeHeight, 76 uu above Location.
+const BASE_EYE_HEIGHT := 76.0 * PawnPhysics.UU
+
+## TdPawn.FallingOffWall, raised by the wall physics: [ME:CONFIRMED
+## decompile] SetMove(MOVE_Falling).
+func falling_off_wall() -> void:
+	move_manager.set_move(Move.FALLING)
+
+## TdPawn.ReachedWall: the current move's ReachedWall.
+func reached_wall() -> void:
+	var move: Move = move_manager.current_move()
+	if move != null:
+		move.reached_wall()
+
 ## TdPlayerPawn.TakeFallingDamage. [ME:CONFIRMED decompile N2 §4] Nothing on a
 ## soft object, short of a hard landing, or when a skill roll will take it;
 ## otherwise the hard landing's damage, or all of it past the uncontrolled
@@ -4511,34 +4548,18 @@ func find_ledge_in_front_of_player() -> bool:
 		move_ledge_location = hit["ledge_location"]
 		move_ledge_normal = hit["ledge_normal"]
 		move_normal = hit["move_normal"]
+		movement_actor = hit["move_actor"]
+		movement_exclusion_volume = traces.get_movement_exclusion_volume(move_ledge_location)
+		found_ledge_excludes_hand_moves = hit["hands_excluded"]
+		found_ledge_excludes_foot_moves = hit["feet_excluded"]
 	return found_ledge
 
 ## TdMove::FindLedge. [ME:CONFIRMED emulated N4 §3.3] Sweeps the box forward;
 ## from the wall it meets, looks down onto a top within the box's height,
 ## LedgeFindDepth (4 uu) past the face. Empty when there is no such top.
 func find_ledge(start: Vector3, end: Vector3, extent: Vector3) -> Dictionary:
-	var d2: Vector3 = PawnPhysics.safe_normal_2d(PawnPhysics.safe_normal(end - start))
-	var wall: Dictionary = phys.box_trace(end, start, extent)
-	if wall["collider"] == null or float(wall["time"]) <= 0.0:
-		return {}
-	var wall_normal: Vector3 = wall["normal"]
-	var n: Vector3 = PawnPhysics.safe_normal_2d(wall_normal)
-	var m: float = maxf(absf(n.x), absf(n.z))
-	var reach: float = (1.0 + 0.828427 * m * sqrt(1.0 - minf(m * m, 1.0))) * extent.x
-	var c: float = absf(n.dot(d2))
-	if c > 0.0:
-		reach /= c
-	var wall_position: Vector3 = wall["position"]
-	var p: Vector3 = wall_position + d2 * reach
-	var depth: float = 4.0 * PawnPhysics.UU
-	var s3 := Vector3(p.x - n.x * depth, p.y + extent.y, p.z - n.z * depth)
-	var e3: Vector3 = s3 - Vector3.UP * (2.0 * extent.y)
-	var top: Dictionary = phys.line_trace(s3, e3)
-	if top.is_empty() or float(top["time"]) <= 0.0:
-		return {}
-	var top_position: Vector3 = top["position"]
-	return {"ledge_location": Vector3(p.x, top_position.y, p.z), "ledge_normal": top["normal"],
-		"move_normal": wall_normal}
+	var hit: Dictionary = traces.find_ledge(start, end, extent)
+	return {} if hit["result"] == MoveTraces.LEDGE_NONE else hit
 
 ## ATdPawn::TickSpecial's timers. [ME:CONFIRMED decompile N4 §1.1] Both land
 ## exactly on 0.

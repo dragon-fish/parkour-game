@@ -138,7 +138,7 @@ func _process(_delta: float) -> void:
 		return
 
 	var cfg: WallClimbConfig = player.config.wall_climb
-	var square_enough: bool = float(hit["incidence"]) <= cfg.vertical_start_angle
+	var square_enough: bool = float(hit["incidence"]) <= cfg.wall_climbing_vertical_start_angle
 	var tall_enough: bool = bool(hit["tall_enough"])
 	var verdict: Color = TOO_SHORT
 	if tall_enough:
@@ -153,7 +153,8 @@ func _process(_delta: float) -> void:
 	_tint(_contact, verdict)
 	_contact.visible = true
 
-	var height: float = cfg.climb_height
+	var height: float = WallClimbMove.add_on_height(player.horizontal_speed() - player.config.pawn.jump_add_xy,
+		player.velocity.y, cfg, player.config.pawn)
 	if height <= 0.01 or not tall_enough or not square_enough:
 		_reach.visible = false
 		return

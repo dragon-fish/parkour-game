@@ -203,12 +203,10 @@ extends Resource
 @export var check_for_swing: bool = false
 
 ## Whether this move may hand off to Ladder inside a LADDER InterestLine's
-## FRONT volume. Airborne moves only -- see check_for_zipline for why. The
-## ground and wall-run entries do not read this flag at all: [ME:CONFIRMED 05]
-## a ladder is catchable while walking or wall-running unconditionally (the
-## frontal fan is the only gate there), so those two moves ask
-## LadderMove.front_side_allows() directly rather than through a switch that
-## would always be true for them.
+## FRONT volume. The airborne moves and the wall run set it: [ME:CONFIRMED 05]
+## a ladder is catchable while wall-running unconditionally (the frontal fan
+## is the only gate there). The ground entry does not read this flag; Walking
+## asks LadderMove.catch_gate() directly.
 @export var check_for_ladder: bool = false
 
 ## Whether this move may hand off to Balance when the body is standing on a
@@ -251,18 +249,6 @@ extends Resource
 ## on a ladder. Asked through Move.can_flick_view(), which a move overrides to
 ## refuse it while a script owns the body.
 @export var q_flicks_view: bool = false
-
-## Whether the yaw fan above is stated for a wall on the LEFT and should be
-## mirrored when the wall is on the right.
-##
-## Only wall running sets it, and only because its fan is one-sided: the view
-## may swing away from the wall and not into it, so which sign is legal depends
-## on which side the wall is. The original expresses this by having a
-## WallRunLeft and a WallRunRight whose only difference is the mirrored fan;
-## this project has one move, so the mirroring lives here.
-##
-## The MECHANISM is project-defined. The values it mirrors are not.
-@export var mirror_yaw_by_wall_side: bool = false
 
 ## Whether this move is steering the body toward a position it computed in
 ## WORLD SPACE -- a scripted arc's endpoint, a ledge's aligned pose, a point

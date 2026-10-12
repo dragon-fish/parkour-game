@@ -538,7 +538,8 @@ func _run_band_speed() -> float:
 ## its two-second lockout.
 const _AIRBORNE_MOVES: Array[StringName] = [
 	Move.FALLING, Move.JUMP, Move.FALL_UNCONTROLLED, Move.COIL, Move.DODGE_JUMP,
-	Move.TURN_180_IN_AIR,
+	Move.TURN_180_IN_AIR, Move.WALLRUN_JUMP, Move.WALLRUN_DODGE_JUMP, Move.WALLCLIMB_DODGE_JUMP,
+	Move.WALLCLIMB_180_TURN_JUMP, Move.MELEE_WALLRUN,
 ]
 
 ## Decides whether the move that just started owes a one-shot -- a clip played
@@ -563,7 +564,8 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 	# not the clip's own pacing. Nothing here changes how FAST it plays: the
 	# dodge is in neither SPEED_MATCHED_CLIPS nor DIRECTION_SETS and exposes no
 	# scripted_duration(), so _drive_speed() leaves it at 1.0x either way.
-	if from == Move.DODGE_JUMP and to == Move.FALLING:
+	if (from == Move.DODGE_JUMP or from == Move.WALLRUN_DODGE_JUMP or from == Move.WALLCLIMB_DODGE_JUMP) \
+			and to == Move.FALLING:
 		return
 	# NOR IS A COIL'S LANDING. It hands the body to CROUCH and, in the open,
 	# straight on to WALKING the next tick; the tuck is held through both.
@@ -586,7 +588,7 @@ func _arm_oneshot(from: StringName, to: StringName) -> void:
 		_start_oneshot(current_clip, player.config.coil.landing_hold_time)
 		_coil_landing_hold = _oneshot != Move.KEEP
 		return
-	if to == Move.DODGE_JUMP:
+	if to == Move.DODGE_JUMP or to == Move.WALLRUN_DODGE_JUMP or to == Move.WALLCLIMB_DODGE_JUMP:
 		# Its own authored length, like every other one-shot. The landing
 		# clears it through the ordinary path above, so what it actually owns
 		# is the airborne arc rather than the whole 1.3 s -- a dodge clip still
@@ -632,10 +634,16 @@ func _coil_clip() -> StringName:
 
 ## Which of the dodge pair the live dodge wants, named for the side the body
 ## goes. Read off the move rather than off velocity, which air control has
-## already had a tick at by the time anything asks -- the same job
-## JumpMove.kick_side() does for the wall-kick clips.
+## already had a tick at by the time anything asks. The wall dodges answer
+## dodge_side() for the same reason.
 func _dodge_clip() -> StringName:
-	var move = player.move_manager.move_for(Move.DODGE_JUMP) 		if player != null and player.move_manager != null else null
+	if player == null or player.move_manager == null:
+		return &"Dodge_Left"
+	var current: StringName = player.move_manager.current_name
+	if current == Move.WALLRUN_DODGE_JUMP or current == Move.WALLCLIMB_DODGE_JUMP:
+		var wall_dodge = player.move_manager.move_for(current)
+		return &"Dodge_Right" if wall_dodge != null and wall_dodge.dodge_side() > 0 else &"Dodge_Left"
+	var move = player.move_manager.move_for(Move.DODGE_JUMP)
 	var side: int = move.side() if move != null and move.has_method("side") else 0
 	return &"Dodge_Right" if side > 0 else &"Dodge_Left"
 
@@ -1333,12 +1341,8 @@ func _target_animation() -> StringName:
 				return _first_available([&"Climb_Right", &"Climb_Idle", &"ladder_stillness"])
 			return _first_available([&"Climb_Idle", &"ladder_stillness", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
 		Move.WALL_RUN:
-			# THE DAY HAS ARRIVED. WallRun_L/R are the real thing, and Player
-			# has been tracking wall_side for the torso twist all along, so
-			# picking between them costs nothing new.
-			#
-			# wall_side > 0 is a RIGHT-hand wall -- WallRunMove's own look-fan
-			# code says so at the line that reads `span if wall_side > 0`.
+			# WallRun_L/R are the real thing. wall_side > 0 is a RIGHT-hand
+			# wall (WallRunMove.SIDE_RIGHT).
 			#
 			# WHICH WAY ROUND THE CLIPS ARE NAMED IS A GUESS: _L could mean
 			# the wall is on the left or that the body travels leftward. Taken
@@ -1356,24 +1360,43 @@ func _target_animation() -> StringName:
 			if player.horizontal_speed() > player.config.pawn.run_animation_speed_threshold:
 				return _first_available_directional([&"Crouch", &"sneak", &"Walk", &"idle"])
 			return _first_available([&"Crouch_Idle", &"sneaking", &"Idle", &"idle"])
-		Move.JUMP:
-			# A WALL KICK IS A JUMP, but not this one. The packs have a
-			# WallRunJump clip and it was never wired up before this case
-			# existed. The mechanism has been complete for a while --
-			# WallRunMove.wall_jump_launch and the whole Noob/ProAdd skill
-			# gradient -- and it hands off to JUMP, so the animator had no way
-			# to tell it from stepping off a kerb.
-			#
-			# wall_side > 0 is a RIGHT-hand wall, so _R is the clip for pushing
-			# off one on the right. Same naming guess as WallRun_L/R: taken
-			# as the side of the WALL. If a kick reads mirrored, both lines flip
-			# together.
-			var jump_move = player.move_manager.move_for(Move.JUMP)
-			var kick: int = jump_move.kick_side() if jump_move != null else 0
-			if kick != 0:
-				var kick_clip: StringName = &"WallRun_Jump_R" if kick > 0 else &"WallRun_Jump_L"
+		Move.WALLRUN_JUMP:
+			# The original plays WallrunJumpLeft/Right when the jump pushed
+			# well off the wall (p > 0.6) and JumpSlow otherwise. _R is the
+			# clip for pushing off a wall on the right -- taken as the side of
+			# the WALL, the same naming guess as WallRun_L/R; if a kick reads
+			# mirrored, both lines flip together.
+			var wall_jump = player.move_manager.move_for(Move.WALLRUN_JUMP)
+			if wall_jump != null and wall_jump.push_speed > 0.6:
+				var kick_clip: StringName = &"WallRun_Jump_L" if wall_jump.from_left_wall else &"WallRun_Jump_R"
 				return _first_available([kick_clip, &"WallRun_Jump_L", &"WallRun_Jump_R",
 					&"Jump_Start", &"jump", &"idle"])
+			return _first_available([&"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
+		Move.WALLRUN_DODGE_JUMP:
+			# The original's dodgejumpleft / dodgejumpright.
+			return _first_available([_dodge_clip(), &"Dodge_Left", &"Dodge_Right",
+				&"Jump_Start", &"jump", &"idle"])
+		Move.WALLCLIMB_DODGE_JUMP:
+			# JumpSlow in the original; the packs' dodge pair reads closer to a
+			# sideways push off a wall than their slow jump does.
+			return _first_available([_dodge_clip(), &"Dodge_Left", &"Dodge_Right",
+				&"Jump_Start", &"jump", &"idle"])
+		Move.WALLCLIMB_180_TURN_JUMP:
+			# wallrunvertical180turn has no counterpart in the packs: the
+			# right-hand half turn while the window is open, the wall kick once
+			# the push off the wall is taken.
+			var turn_jump = player.move_manager.move_for(Move.WALLCLIMB_180_TURN_JUMP)
+			if turn_jump != null and turn_jump.jumped():
+				return _first_available([&"WallRun_Jump_L", &"Jump_Start", &"jump", &"idle"])
+			return _first_available([&"Turn180_R", &"ClimbUp_2m", &"Jump", &"jump", &"idle"])
+		Move.MELEE_WALLRUN:
+			# MeleeWallRunLeft/Right: the packs have no wall kick, so the wall
+			# jump of the same side stands in.
+			var melee = player.move_manager.move_for(Move.MELEE_WALLRUN)
+			var melee_clip: StringName = &"WallRun_Jump_L" if melee != null and melee.left else &"WallRun_Jump_R"
+			return _first_available([melee_clip, &"WallRun_Jump_L", &"WallRun_Jump_R",
+				&"Jump_Start", &"jump", &"idle"])
+		Move.JUMP:
 			# The TAKE-OFF, as against FALLING's airborne loop. This case
 			# existing at all was a fix: without it a jump fell through to the
 			# default below, whose list is idle-first, so a body with an idle
@@ -1474,9 +1497,8 @@ func _target_animation() -> StringName:
 			# PLACEHOLDER reasoning: airborne and committed, so a take-off.
 			return _first_available([&"Climb_Enter", &"Jump_Start", &"jump", &"idle"])
 		Move.WALL_CLIMB:
-			# ClimbUp_2m, on the measurement: this project's wall climb rises
-			# 1.69 m, which is most of the way to the 2 m clip and half again
-			# the 1 m one. ClimbUp_1m stays as the fallback it always was.
+			# ClimbUp_2m: the original's climb rises up to 1.9 m (AddOnHeight),
+			# most of the way to the 2 m clip. ClimbUp_1m is the fallback.
 			return _first_available([&"ClimbUp_2m", &"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
 		Move.TURN_180:
 			# Not really a body move -- the view swings and the facing follows,

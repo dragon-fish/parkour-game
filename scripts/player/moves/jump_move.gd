@@ -27,14 +27,10 @@ var wanted_jump_velocity: Vector3 = Vector3.ZERO
 const CAN_DO_MOVE_TASER_LIMIT := 0.5
 
 ## The move not yet ported that launched this jump itself, or empty for a jump
-## the original's take-off made. Such a move (a wall kick, a slide jump) sets
-## the velocity and hands to Jump; the original has a separate move for each
-## of those launches, so Falling records it in Jump's place.
+## the original's take-off made. Such a move (a slide jump) sets the velocity
+## and hands to Jump; the original has a separate move for each of those
+## launches, so Falling records it in Jump's place.
 var legacy_launch_from: StringName = &""
-
-## Which wall a legacy wall kick left, or 0. Read by CharacterAnimator to pick
-## the wall-kick clip.
-var _kick_side: int = 0
 
 func _init() -> void:
 	super._init()
@@ -46,9 +42,6 @@ func _init() -> void:
 
 func is_ported() -> bool:
 	return true
-
-func kick_side() -> int:
-	return _kick_side
 
 ## TdMove_Jump.CanDoMove. [ME:CONFIRMED decompile] RedoMoveTime 1.0 s from
 ## DefaultPawnMovement.ini; refused on an uncontrolled slide unless that is
@@ -63,16 +56,14 @@ func can_do_move() -> bool:
 	return true
 
 ## TdMove_Jump.StartMove.
-func enter(previous: StringName) -> void:
+func enter(_previous: StringName) -> void:
 	legacy_launch_from = player.pending_legacy_launch
 	player.pending_legacy_launch = &""
-	_kick_side = player.recent_wall_side if previous == WALL_RUN else 0
 	if player.camera_rig != null:
 		player.camera_rig.kick_takeoff(player.horizontal_speed())
 	if legacy_launch_from != &"":
-		# The launch already happened, in the move that handed over. A kick off
-		# a wall is not a take-off from the ground.
-		if legacy_launch_from != WALL_RUN and legacy_launch_from != TURN_180:
+		# The launch already happened, in the move that handed over.
+		if legacy_launch_from != TURN_180:
 			player.note_takeoff_ground_speed(player.horizontal_speed())
 		player.set_physics(PHYS_FALLING)
 		return

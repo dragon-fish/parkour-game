@@ -18,8 +18,7 @@ extends AirborneMove
 ## Which way this dodge was thrown, -1 for left and +1 for right.
 ##
 ## For CharacterAnimator, which has a Dodge_Left and a Dodge_Right and no way
-## to tell them apart from velocity once air control has had a tick at it --
-## the same job JumpMove.kick_side() does for the wall-kick clips.
+## to tell them apart from velocity once air control has had a tick at it.
 var _side: int = 0
 
 func side() -> int:
