@@ -12,7 +12,7 @@ extends RefCounted
 # step 96 uu under the top face; the steps every StepHeight DOWN from it, as
 # many as trunc((TopZ - S.z) / StepHeight) (a TRUNCATION: the remainder is left
 # at the bottom, so the lowest step sits 32 .. 64 uu over Start).
-# [ME:CONFIRMED decompile 0x012ab3b0 .. 0x012aa0e0] GetLadderLocation holds
+# [ME:CONFIRMED emulated 0x012ab3b0 .. 0x012aa0e0] GetLadderLocation holds
 # the body 50 uu (pipe 62) out along WallNormal from the step, a pipe's 5 uu
 # lower; GetClosestStep is the nearest of ALL the steps by height, the lowest
 # on a tie; GetLastStep is the top one, three below it on a pipe.

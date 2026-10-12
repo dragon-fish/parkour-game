@@ -2,7 +2,7 @@ class_name MovementSpline
 extends RefCounted
 
 # The original's TdMovementVolume spline natives, evaluated over an
-# InterestLine. [ME:CONFIRMED decompile 0x012a9490 / 0x012a9580 / 0x012a9740,
+# InterestLine. [ME:CONFIRMED emulated 0x012a9490 / 0x012a9580 / 0x012a9740,
 # N7 §2]
 #
 # The original's spline is a QUADRATIC BEZIER, Start .. End with Middle as its
