@@ -372,6 +372,40 @@ func test_the_model_runs_along_the_wall_with_the_pawn() -> void:
 	assert_almost_eq(wrapf(player.visual_yaw() - player.pawn_yaw, -PI, PI), 0.0, deg_to_rad(3.0),
 		"the model followed the view off the wall instead of running along it")
 
+## The third-person camera borrows the shoulder AWAY from the wall for the run
+## (CameraRig._wanted_shoulder_across(), fed Player.wall_side), whichever
+## shoulder the player prefers: on the open side of the body, never in the
+## wall. Both sides, through the ported entry.
+func test_the_third_person_camera_runs_on_the_open_side_of_the_body() -> void:
+	for side in [-1.0, 1.0]:
+		var player: Player = await _player()
+		player.camera_rig.third_person = true
+		# side -1: the wall on the left (at -x), +1 on the right (at +x).
+		_box(Vector3(1.0, 1.0, 2.0), Vector3(0.05 * side, 2.5, 0.0))
+		_box(Vector3(1.0, 8.0, 60.0), Vector3(1.1 * side, 4.0, -28.0))
+		player.global_position = Vector3(0.0, 3.05 + player.collision_half_height(), 0.0)
+		_face(player, deg_to_rad(30.0) * -side)
+		await step(10)
+		var jump: JumpMove = player.move_manager.move_for(Move.JUMP)
+		jump.delay_time_check_auto_moves = 100.0
+		var input: ScriptedInputSource = _world["input"]
+		_run_up(player)
+		input.press_jump()
+		await step(40)
+		assert_eq(player.move_manager.current_name, Move.WALL_RUN, "test setup: no run")
+		assert_eq(player.wall_side, int(side), "wall_side does not name the wall's side")
+		var camera_x: float = player.camera_rig.camera.global_position.x
+		var body_x: float = player.global_position.x
+		assert_lt((camera_x - body_x) * side, -0.2,
+			"the camera is not on the open side of the body (wall side %d, camera %.2f, body %.2f)"
+				% [int(side), camera_x, body_x])
+		TestWorld.teardown(_world)
+		_world = {}
+		for node in _extra:
+			node.queue_free()
+		_extra.clear()
+		await step(1)
+
 ## A wall on the right of a run along -Z, its face at x = 0.6 where the run
 ## starts, curving away to the right ahead: `count` segments of `segment`
 ## metres on `radius`.
