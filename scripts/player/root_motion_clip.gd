@@ -1,11 +1,12 @@
 class_name RootMotionClip
 extends RefCounted
 
-# A coarse, piecewise-linear summary of one of the original's first-person
-# root tracks: where the root has moved (forward, right, metres) and turned
-# (yaw, radians clockwise) at a handful of times through the sequence.
-# [ME:DERIVED] read off the decompiled AS_C1P_Unarmed tracks (60 Hz) at their
-# turning points; the end values and the sequence lengths are the tracks' own.
+# One of the original's first-person root tracks, piecewise-linear: where the
+# root has moved (forward, right, metres) and turned (yaw, radians clockwise)
+# at times through the sequence. The clips at the bottom are coarse summaries
+# at a handful of times, [ME:DERIVED] read off the decompiled AS_C1P_Unarmed
+# tracks (60 Hz) at their turning points; the end values and the sequence
+# lengths are the tracks' own. from_track() is the generated table's.
 #
 # The moves that play these turn the clip into the pawn's root motion
 # (Player.root_motion_velocity) or root rotation (HalfTurn) themselves. The
@@ -55,25 +56,47 @@ func rise(t: float) -> float:
 ## not have.
 var _rises: Array = []
 
-## A track of the generated table (RootMotionTracks, every key of the
-## original's sequence at 1/30 s) as a clip: `key` is the lowercased sequence
-## name. Null when the table has no track for it.
+## A root track of the original's (RootMotionTracks) as a clip: `key` is the
+## lowercased sequence name. Null when there is no track for it.
+##
+## Every key of the track when the private submodule's dense file is there,
+## the public summary when it is not. DO NOT write a move or a test that
+## needs more than the summary keeps -- the length, both ends and the furthest
+## bends -- or it breaks for everyone without the submodule.
 static func from_track(key: StringName) -> RootMotionClip:
-	var track: Array = RootMotionTracks.TRACKS.get(key, [])
+	var track: Array = _dense_tracks().get(String(key), [])
+	if track.is_empty():
+		track = RootMotionTracks.SUMMARIES.get(key, [])
 	if track.is_empty():
 		return null
 	var moves: Array = []
 	var turns: Array = []
 	var rises: Array = []
-	var keys: int = track.size() / 4
-	for i in keys:
-		var t: float = minf(i * RootMotionTracks.KEY_STEP, float(RootMotionTracks.LENGTHS.get(key, 0.0)))
-		moves.append([t, track[i * 4] * 0.01, track[i * 4 + 1] * 0.01])
-		rises.append([t, track[i * 4 + 2] * 0.01])
-		turns.append([t, deg_to_rad(track[i * 4 + 3])])
+	for row in track:
+		var t: float = float(row[0])
+		moves.append([t, float(row[1]) * 0.01, float(row[2]) * 0.01])
+		rises.append([t, float(row[3]) * 0.01])
+		turns.append([t, deg_to_rad(float(row[4]))])
 	var clip := make(float(RootMotionTracks.LENGTHS.get(key, 0.0)), moves, turns)
 	clip._rises = rises
 	return clip
+
+## The dense tracks, read once; empty without the private submodule.
+static var _dense: Dictionary = {}
+static var _dense_read: bool = false
+
+static func _dense_tracks() -> Dictionary:
+	if not _dense_read:
+		_dense_read = true
+		if FileAccess.file_exists(RootMotionTracks.DENSE_PATH):
+			var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(RootMotionTracks.DENSE_PATH))
+			# A file that is there but unreadable is a broken checkout, not
+			# a missing submodule: say so rather than fall back quietly.
+			if parsed is Dictionary and parsed.get("tracks") is Dictionary:
+				_dense = parsed["tracks"]
+			else:
+				push_error("RootMotionClip: %s is not a track table" % RootMotionTracks.DENSE_PATH)
+	return _dense
 
 ## The same, turned into world space against the pawn's facing at the start.
 func world_velocity(t: float, dt: float, facing: Vector3) -> Vector3:
