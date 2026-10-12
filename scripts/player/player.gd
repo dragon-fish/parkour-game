@@ -2806,12 +2806,14 @@ func _drive_body_yaw(delta: float, input: MoveInput) -> void:
 ## roll after a look round rolls backwards.
 ##   * a move may name the facing outright (model_yaw(): LedgeWalk's
 ##     third-person facing of the wall and its turn round);
-##   * a frozen move (MoveConfig.freeze_visual_yaw) follows the pawn, which the
-##     move alone turns;
-##   * so does any move while the pawn is held apart from the view -- a wall
-##     run, a swing, the pawn easing back onto the view after a slide;
 ##   * the slide's stand-up holds the model while Slide_Exit plays: the legs do
-##     not swing round under a body still getting up.
+##     not swing round under a body still getting up;
+##   * any move while the pawn is held apart from the view follows the pawn --
+##     a hang, a roll, a wall run, a swing, the pawn easing back onto the view
+##     after a slide;
+##   * a frozen move (MoveConfig.freeze_visual_yaw) whose pawn the view does
+##     turn holds the model where it is: frozen means the VIEW does not turn
+##     the model.
 func _held_model_yaw(frozen: bool) -> float:
 	var move: Move = move_manager.current_move() if move_manager != null else null
 	if move != null and move.has_method(&"model_yaw"):
@@ -2822,8 +2824,10 @@ func _held_model_yaw(frozen: bool) -> float:
 		var body_animator := get_node_or_null(^"BodyRoot/CharacterAnimator") as CharacterAnimator
 		if body_animator != null and body_animator.active_oneshot() == &"Slide_Exit":
 			return _visual_yaw
-	if frozen or pawn_held_apart_from_view():
+	if pawn_held_apart_from_view():
 		return pawn_yaw
+	if frozen:
+		return _visual_yaw
 	return NAN
 
 ## Whether something other than the view is turning the pawn this tick: the

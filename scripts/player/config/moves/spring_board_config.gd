@@ -38,3 +38,6 @@ func _init() -> void:
 	# [ME:CONFIRMED decompile] PlayerWalking and no bConstrainLook: the view is
 	# free throughout, and the throw goes the way the pawn faces at launch.
 	allows_turn = false
+	# This project's presentation: the view does not turn the model; the move
+	# says where it faces (SpringBoardMove.model_yaw()).
+	freeze_visual_yaw = true

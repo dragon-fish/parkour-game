@@ -91,6 +91,7 @@ func can_do_move() -> bool:
 func enter(_previous: StringName) -> void:
 	saved_initial_speed = maxi(200, int(player.horizontal_speed() / UU))
 	spring_board_state = 0
+	_throw_yaw = NAN
 	var to_ledge: Vector3 = intermediate_foot_plant - player.global_position
 	to_ledge.y = 0.0
 	if to_ledge.length() > 120.0 * UU:
@@ -118,6 +119,7 @@ func reached_precise_location() -> void:
 			if player.base_velocity.y > 0.0:
 				v.y += player.base_velocity.y
 			player.velocity = v
+			_throw_yaw = atan2(-v.x, -v.z)
 			player.last_jump_location = player.global_position
 			player.collide_world = true
 			player.set_physics(PHYS_FALLING)
@@ -131,6 +133,22 @@ func _flat_distance(to: Vector3) -> float:
 ## TdMove_SpringBoard.StopMove: collision back.
 func exit() -> void:
 	player.collide_world = true
+
+## This project's presentation: where the model faces (Player._drive_body_yaw()).
+## The pawn follows the view throughout (PlayerWalking), so the model is told:
+## along the plants for the walk-up and the steps, then the throw's own
+## direction for the rise -- left facing along the plants it would fly the
+## rise sideways and swing round the moment Falling took over.
+var _throw_yaw: float = NAN
+
+func model_yaw() -> float:
+	if spring_board_state == 3:
+		return _throw_yaw
+	var along: Vector3 = spring_board_foot_plant - intermediate_foot_plant
+	along.y = 0.0
+	if along.length_squared() < 0.0001:
+		return NAN
+	return atan2(-along.x, -along.z)
 
 ## True through the two flights onto the plants. Read by CharacterAnimator.
 func is_stepping() -> bool:

@@ -384,3 +384,26 @@ func test_a_root_rotation_brings_the_view_yaw_onto_the_pawn() -> void:
 	player.turn_by_root_rotation(UE.yaw_units(player.pawn_yaw) + 4096)
 	assert_almost_eq(wrapf(player.rotation.y - player.pawn_yaw, -PI, PI), 0.0, 1e-6,
 		"the view's yaw kept its offset from the turned pawn")
+
+## This project's presentation of the spring board: the pawn follows the view
+## throughout, but the model faces along the plants for the steps and then
+## the throw, whatever the view does (SpringBoardMove.model_yaw()).
+func test_the_spring_boards_model_faces_the_plants_then_the_throw() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var board: SpringBoardMove = player.move_manager.move_for(Move.SPRING_BOARD)
+	var here: Vector3 = player.global_position
+	board.intermediate_foot_plant = here + Vector3(0.0, 0.65, -0.5)
+	board.spring_board_foot_plant = here + Vector3(0.0, 1.5, -1.6)
+	player.rotation.y = deg_to_rad(80.0)
+	player.pawn_yaw = player.rotation.y
+	player.pin_visual_yaw(deg_to_rad(80.0))
+	player.move_manager.set_move(Move.SPRING_BOARD)
+	await step(12)
+	assert_almost_eq(wrapf(player.visual_yaw(), -PI, PI), 0.0, deg_to_rad(5.0),
+		"the model did not face along the plants (%.0f)" % rad_to_deg(player.visual_yaw()))
+	board.spring_board_state = 3
+	board._throw_yaw = deg_to_rad(-60.0)
+	await step(12)
+	assert_almost_eq(wrapf(player.visual_yaw() + deg_to_rad(60.0), -PI, PI), 0.0, deg_to_rad(5.0),
+		"the model did not face the throw (%.0f)" % rad_to_deg(player.visual_yaw()))
