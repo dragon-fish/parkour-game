@@ -533,6 +533,11 @@ func _push_look_constraint() -> void:
 	if residual != null:
 		active = residual
 	rig.set_shoulder_centred(active != null and active.centre_shoulder)
+	# A ported move that turns the view the original's way owns it outright.
+	if residual == null and _current.uses_view_rotation():
+		rig.set_view_rotation_move(_current)
+		return
+	rig.set_view_rotation_move(null)
 	if active == null or not active.constrain_look:
 		rig.clear_look_constraint()
 		return
@@ -541,13 +546,6 @@ func _push_look_constraint() -> void:
 		return
 	var low: Vector3 = active.min_look_constraint
 	var high: Vector3 = active.max_look_constraint
-	# A one-sided yaw fan is declared for a wall on the LEFT and flipped for one
-	# on the right. See MoveConfig.mirror_yaw_by_wall_side.
-	if active.mirror_yaw_by_wall_side and _current.player.wall_side > 0:
-		var flipped_low: float = -high.y
-		var flipped_high: float = -low.y
-		low.y = flipped_low
-		high.y = flipped_high
 	var half_span: float = _current.look_yaw_half_span()
 	if not is_nan(half_span):
 		low.y = -absf(half_span)

@@ -11,7 +11,8 @@ extends Move
 
 ## TdPhysicsMove.bCheckForGrab / bCheckForVaultOver / bCheckForWallClimb are
 ## the MoveConfig's check_for_grab / check_for_vault_over /
-## check_for_wall_climb (config, as in the original).
+## check_for_wall_climb (config, as in the original), read through
+## Move.checks_grab() and its siblings.
 
 ## bCheckForEdgeInVelDir: adds the velocity's vertical direction to the hand
 ## plant search. Only WallClimb sets it.
@@ -25,8 +26,9 @@ var check_exit_to_uncontrolled_falling: bool = false
 ## bCheckForSoftLanding: pre_physics() hands to SoftLanding when the arc two
 ## seconds ahead ends on a soft-landing surface.
 var check_for_soft_landing: bool = false
-## bDelayTimeCheckAutoMoves: the ledge search runs only once MoveActiveTime is
-## past this. -1 means from the first tick.
+## bDelayTimeCheckAutoMoves: the hand-plant search runs only once
+## MoveActiveTime is past this. -1 means from the first tick. It gates the
+## search alone, never the wall run in front of it.
 var delay_time_check_auto_moves: float = -1.0
 ## [ME:CONFIRMED decompile] ExitToFallingZSpeed = -400 uu/s,
 ## SoftLandingZSpeedThreshold = -400 uu/s.
@@ -37,41 +39,39 @@ func _init() -> void:
 	# [ME:CONFIRMED decompile] TdPhysicsMove's CDO: PawnPhysics = PHYS_Walking.
 	pawn_physics = PHYS_WALKING
 
+func edge_in_vel_dir() -> bool:
+	return check_for_edge_in_vel_dir
+
+func auto_move_delay() -> float:
+	return delay_time_check_auto_moves
+
 ## Native slot 0x124, TdPhysicsMove::CheckAutoMoves. [ME:CONFIRMED decompile
-## N4 §2.2] The order is the original's -- nothing while the body is still;
-## then the wall run, the hand-plant search, the wall climb, the vault and the
-## grab -- but every test in it is still this project's own probe, because
-## WallRun.CanDoMove, FindAutoMoveLedge and the IntoGrab / WallClimb native
-## gates have not been ported. Move.legacy_probe_transition() asks them, in
-## its own order, and the level's interest points (cables, bars, ladders,
-## beams, ledges) with them.
+## N4 §2.2] Move.auto_move_target() is the original's order; the level's
+## interest points are asked after it, when it found nothing.
 func check_auto_moves() -> void:
-	var v: Vector3 = player.velocity
-	if absf(v.x) < 1e-6 and absf(v.y) < 1e-6 and absf(v.z) < 1e-6:
+	var manager = player.move_manager
+	var next: StringName = auto_move_target()
+	if next == KEEP:
+		next = interest_line_transition()
+	if next == KEEP:
 		return
-	var c: MoveConfig = current_config()
-	if c == null:
+	# A target not yet ported keeps its own cooldown, as it does when its own
+	# physics_update() names the next move.
+	var target: Move = manager.move_for(next)
+	if target != null and not target.is_ported() and not manager.can_enter(next):
 		return
-	var probes_anything: bool = c.check_for_grab or c.check_for_vault_over or c.check_for_wall_climb \
-		or c.check_for_zipline or c.check_for_swing or c.check_for_ladder \
-		or c.check_for_ledge_walk or c.check_for_balance
-	if not probes_anything:
-		return
-	if move_active_time <= delay_time_check_auto_moves:
-		return
-	var next: StringName = legacy_probe_transition()
-	if next != KEEP:
-		player.move_manager.set_move(next)
+	manager.set_move(next)
 
 ## Native slot 0x118, TdPhysicsMove::PrePhysics. [ME:CONFIRMED decompile N4
 ## §2.3] Precise location first, then the three falling exits in this order.
+## The soft-landing branch returns whether or not SetMove took it.
 func pre_physics(delta: float) -> void:
 	super.pre_physics(delta)
 	var manager = player.move_manager
 	if check_for_soft_landing and player.velocity.y < soft_landing_z_speed_threshold \
-			and _soft_landing_ahead():
-		if manager.set_move(SOFT_LANDING):
-			return
+			and not player.using_root_rotation and _soft_landing_ahead():
+		manager.set_move(SOFT_LANDING)
+		return
 	if check_exit_to_falling and player.velocity.y < exit_to_falling_z_speed:
 		manager.set_move(FALLING)
 		return

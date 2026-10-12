@@ -776,6 +776,9 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 		return
 	if _config == null:
 		return
+	if _view_rotation_move != null:
+		_apply_move_view_rotation(look_delta, body, delta)
+		return
 	var yaw_delta := -look_delta.x * _config.camera.mouse_sensitivity
 	# A scripted sweep drives the same channel the mouse drives, so the body
 	# ends up facing exactly where the same flick by hand would have put it --
@@ -880,6 +883,79 @@ func apply_look(look_delta: Vector2, body: Node3D, delta: float = 0.0) -> void:
 	if _has_look_constraint and _pitch > pitch_max and delta > 0.0:
 		effective_ceiling = lerpf(_pitch, pitch_max, recover)
 	_pitch = clampf(wanted, effective_floor, effective_ceiling)
+	rotation.x = _pitch
+
+# --- the original's view rotation -------------------------------------------------
+#
+# For a ported move that asks for it (Move.uses_view_rotation()), the view
+# turns the way the original's controller turns it: this frame's input as an
+# integer rotator delta (aTurn / aLookUp truncated), the move's
+# UpdateViewRotation -- look-at targets, ConstrainAxis against the PAWN's
+# rotation, the camera reset -- and then the delta added to the view
+# (ProcessViewRotation), the pitch kept inside this rig's own limit. The rig's
+# own clamp, damping and settle easing are not used on this path.
+
+## The current move when it turns the view itself, else null. Pushed every
+## tick by MoveManager. Untyped: the rig knows nothing of moves beyond the one
+## call it makes.
+var _view_rotation_move = null
+
+## The view's pitch, radians, positive up: Controller.Rotation.Pitch.
+func view_pitch() -> float:
+	return _pitch
+
+func set_view_rotation_move(move) -> void:
+	if move != null and _view_rotation_move == null:
+		clear_look_constraint()
+	_view_rotation_move = move
+
+## TdMove.ConstrainAxis. [ME:CONFIRMED decompile TdMove.uc] In rotator units:
+## `angle` is where the view is relative to the pawn, `delta_angle` this
+## frame's input, and the result is the input that is let through.
+##
+## Outside the window the view is pulled back by the excess times
+## `interpolate_speed` (dt / 0.2): an input coming back in faster than that
+## pull is let through, anything else -- an input outward, or none -- is
+## replaced by the pull. Inside it, the input is cut at the edge, and once
+## the view is past 60 % of an edge the input is scaled down by how much of
+## the last 40 % is left -- but never below what it was (Max / Min with the
+## damped value, which for an input heading AWAY from that edge keeps the
+## input whole).
+static func constrain_axis(angle: int, min_angle: int, max_angle: int, interpolate_speed: float,
+		delta_angle: int) -> int:
+	var target: int = angle + delta_angle
+	if angle < min_angle:
+		return maxi(int((min_angle - angle) * interpolate_speed), delta_angle)
+	if angle > max_angle:
+		return mini(int((max_angle - angle) * interpolate_speed), delta_angle)
+	if target < min_angle:
+		delta_angle -= target - min_angle
+	elif target > max_angle:
+		delta_angle -= target - max_angle
+	target = angle + delta_angle
+	if target < min_angle * 0.6:
+		var dampening: float = absf(float(min_angle - angle) / (min_angle * 0.4))
+		delta_angle = maxi(delta_angle, int(delta_angle * dampening))
+	elif target > max_angle * 0.6:
+		var dampening: float = absf(float(max_angle - angle) / (max_angle * 0.4))
+		delta_angle = mini(delta_angle, int(delta_angle * dampening))
+	return delta_angle
+
+func _apply_move_view_rotation(look_delta: Vector2, body: Node3D, delta: float) -> void:
+	var sensitivity: float = _config.camera.mouse_sensitivity
+	# The original's yaw grows clockwise; this rig's grows the other way.
+	var delta_rot := Vector2i(
+		int(-look_delta.y * sensitivity * UE.UNITS_PER_RADIAN),
+		int(look_delta.x * sensitivity * UE.UNITS_PER_RADIAN))
+	var view := Vector2i(UE.pitch_units(_pitch), UE.yaw_units(body.rotation.y))
+	var now: float = (body.get("world_time") as float) + delta if body.get("world_time") != null else 0.0
+	var result: Array = _view_rotation_move.update_view_rotation(view, maxf(delta, 1e-6), delta_rot, now)
+	var out: Vector2i = result[0]
+	var through: Vector2i = result[1]
+	out += through
+	body.rotation.y = UE.godot_yaw(out.y)
+	var limit: float = deg_to_rad(_config.camera.pitch_limit_deg)
+	_pitch = clampf(UE.pitch_radians(UE.normalize_axis(out.x)), -limit, limit)
 	rotation.x = _pitch
 
 ## The pitch floor for a constraint that relaxes as the view turns away.
