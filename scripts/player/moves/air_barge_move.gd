@@ -18,9 +18,8 @@ const AIR_BARGE_IDLE_LENGTH := 1.0
 const MELEE_IN_AIR_LENGTH := 0.567
 const AIR_BARGE_IMPACT_LENGTH := 1.0
 const AIR_BARGE_LAND_LENGTH := 0.5
-## AirBargeLand's root, cm forward, every 0.05 s. [ME:CONFIRMED anims
-## root_motion/AirBargeLand, 1P]
-const AIR_BARGE_LAND_ROOT := [0.0, 17.6, 38.1, 51.6, 62.6, 72.4, 81.5, 90.4, 98.8, 106.9, 115.4]
+## AirBargeLand's root, forward. [ME:CONFIRMED anims root_motion/AirBargeLand, 1P]
+static var _land_root: RootMotionClip = RootMotionClip.from_track(&"airbargeland")
 ## The free-space test for the lift is made 30 uu above the centre.
 const LIFT_TEST_RAISE := 30.0 * UU
 
@@ -28,6 +27,7 @@ var height_boost_left: float = 0.0
 var pre_collision_velocity: Vector3 = Vector3.ZERO
 var use_air_barge_anim: bool = false
 var is_landing: bool = false
+## Metres of AirBargeLand's root already handed to the physics.
 var _root_applied: float = 0.0
 
 func _init() -> void:
@@ -79,11 +79,9 @@ func _apply_root_motion(delta: float) -> void:
 	if not player.root_motion_active or delta <= 0.0:
 		return
 	var t: float = minf(_anim.elapsed + delta, AIR_BARGE_LAND_LENGTH)
-	var x: float = t / 0.05
-	var i: int = mini(int(x), AIR_BARGE_LAND_ROOT.size() - 2)
-	var cm: float = lerpf(AIR_BARGE_LAND_ROOT[i], AIR_BARGE_LAND_ROOT[i + 1], x - float(i))
-	var step: float = (cm - _root_applied) * UU
-	_root_applied = cm
+	var forward: float = _land_root.displacement(t).x
+	var step: float = forward - _root_applied
+	_root_applied = forward
 	player.root_motion_velocity = player.facing() * (step / delta)
 
 ## TryGiveBargeDamage, without the damage: the first thing hit halves the

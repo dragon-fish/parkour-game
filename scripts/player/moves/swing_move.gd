@@ -38,11 +38,10 @@ const SWING_STRAFE_LENGTH := 1.233
 const SWING_180_LENGTH := 2.033
 const SWING_JUMP_OFF_LENGTH := 0.833
 const SWING_END_LENGTH := 0.3
-## Swing180's root yaw, degrees, every 0.1 s and at its end (2.033 s): a wind-up
-## to the left, then half a turn to the right. [ME:CONFIRMED anims
-## root_motion/Swing180, 1P] UE yaw grows clockwise.
-const SWING_180_YAW := [-0.0, -1.5, -3.8, -6.2, -8.2, -9.0, -8.2, -4.4, 12.9, 43.6, 81.4,
-	120.2, 153.6, 175.4, 181.8, 182.2, 181.3, 180.5, 179.5, 179.5, 179.6, 180.5]
+## Swing180's root yaw: a wind-up to the left, then half a turn to the right.
+## [ME:CONFIRMED anims root_motion/Swing180, 1P] RootMotionClip.turn() grows
+## clockwise, as UE's yaw does.
+static var _swing_180: RootMotionClip = RootMotionClip.from_track(&"swing180")
 
 ## TdMove_Swing.Volume: the bar, set by the volume that asked.
 var volume: InterestLine = null
@@ -254,15 +253,7 @@ func tick_move(delta: float) -> void:
 		on_cease_relevant_root_motion()
 
 static func _swing_180_yaw(t: float) -> float:
-	var last: int = SWING_180_YAW.size() - 1
-	if t >= SWING_180_LENGTH:
-		return SWING_180_YAW[last]
-	var x: float = t / 0.1
-	var i: int = int(x)
-	if i >= last - 1:
-		var span: float = SWING_180_LENGTH - 0.1 * float(last - 1)
-		return lerpf(SWING_180_YAW[last - 1], SWING_180_YAW[last], (t - 0.1 * float(last - 1)) / span)
-	return lerpf(SWING_180_YAW[i], SWING_180_YAW[i + 1], x - float(i))
+	return rad_to_deg(_swing_180.turn(minf(t, SWING_180_LENGTH)))
 
 ## SetPawnRotation: the original rolls a SwingControl bone by the angle. Here
 ## the model leans by it, and the eye slides with a forward lean.

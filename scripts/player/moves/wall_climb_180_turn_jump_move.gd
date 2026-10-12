@@ -13,13 +13,8 @@ extends PhysicsMove
 # a jump taken in the window gives them back, on the move's last frame.
 
 ## The 1P root rotation of `wallrunvertical180turn` [ME:CONFIRMED anims
-## root_motion]: degrees turned (rightward, the original's sense) at 60 Hz
-## over its 0.633 s.
-const ROOT_YAW_DEGREES: PackedFloat32Array = [0.0, 0.639, 1.279, 2.956, 4.762, 7.35, 10.163,
-	13.532, 17.183, 21.208, 25.538, 30.092, 34.934, 39.887, 45.077, 50.303, 55.679, 61.053,
-	66.447, 71.84, 77.093, 82.347, 87.323, 92.267, 97.28, 102.319, 107.687, 113.23, 118.97,
-	124.882, 130.887, 137.03, 143.195, 149.432, 155.65, 161.837, 167.951, 173.529, 179.105]
-const ROOT_SAMPLE_RATE := 60.0
+## root_motion]: turned rightward, the original's sense, over its 0.633 s.
+static var _root_clip: RootMotionClip = RootMotionClip.from_track(&"wallrunvertical180turn")
 
 var jumping_from_wall: bool = false
 ## The wall's flat normal at the start: where the jump goes.
@@ -47,11 +42,7 @@ func can_do_move() -> bool:
 
 ## The root rotation's yaw, in rotator units, `seconds` into the animation.
 static func root_yaw_units(seconds: float) -> int:
-	var at: float = clampf(seconds * ROOT_SAMPLE_RATE, 0.0, ROOT_YAW_DEGREES.size() - 1.0)
-	var i: int = int(at)
-	var j: int = mini(i + 1, ROOT_YAW_DEGREES.size() - 1)
-	var degrees: float = lerpf(ROOT_YAW_DEGREES[i], ROOT_YAW_DEGREES[j], at - i)
-	return int(round(degrees * UE.UNITS_PER_TURN / 360.0))
+	return int(round(_root_clip.turn(maxf(seconds, 0.0)) * UE.UNITS_PER_RADIAN))
 
 ## TdMove_WallClimb180TurnJump.StartMove.
 func enter(_previous: StringName) -> void:
