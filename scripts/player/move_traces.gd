@@ -35,6 +35,9 @@ const LEDGE_FIND_DEPTH := 4.0 * UU
 ## along a diagonal. Shared by every finder (DAT_01cf47f8).
 const CORNER := 0.8284270167350769
 
+## The thinnest box half-extent a sweep is given, 0.05 uu.
+const MIN_EXTENT := 0.05 * UU
+
 ## LedgeHitInfo's result values.
 const LEDGE_NONE := 0
 const LEDGE_WALL := 1
@@ -54,7 +57,10 @@ func _init(owner_pawn) -> void:
 func trace(end: Vector3, start: Vector3, extent: Vector3 = Vector3.ZERO) -> Dictionary:
 	if extent == Vector3.ZERO:
 		return _line(end, start)
-	var hit: Dictionary = pawn.phys.box_trace(end, start, extent)
+	# A flat box (one zero axis) is a sheet the engine sweeps; a shape needs
+	# some thickness.
+	var sweep_extent: Vector3 = extent.max(Vector3.ONE * MIN_EXTENT)
+	var hit: Dictionary = pawn.phys.box_trace(end, start, sweep_extent)
 	# A blocked sweep whose rest query names nothing (a start inside geometry
 	# among them) is still a hit.
 	return {"hit": hit["collider"] != null or float(hit["time"]) < 1.0, "time": hit["time"],

@@ -66,7 +66,7 @@ func _ready() -> void:
 	_instance = MeshInstance3D.new()
 	_instance.mesh = _mesh
 	# Described in WORLD space every frame, so the instance must add no
-	# transform of its own. Same arrangement CapsuleDebug and ShimmyDebug use.
+	# transform of its own. Same arrangement CapsuleDebug uses.
 	_instance.top_level = true
 	_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_lines = StandardMaterial3D.new()

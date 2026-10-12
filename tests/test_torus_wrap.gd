@@ -6,10 +6,8 @@ extends ParkourTest
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
-## A made-up hanging ledge, reused from test_grab_jump.gd's fixture: GrabMove
-## never aborts on this query, unlike an ungrounded start() call with no
-## pending_ledge handed over, so it is what lets the scripted-move test below
-## hold the state it means to forbid a wrap during.
+## A made-up hanging ledge: the body is caught on it the way IntoGrab catches,
+## so the hang holds while the scripted-move test below forbids a wrap.
 const LEDGE_TOP := 2.0
 const LEDGE_FACE_Z := -1.5
 const EDGE := Vector3(0.0, LEDGE_TOP, -1.6)
@@ -64,11 +62,16 @@ func _hanging_player(period: float) -> Player:
 	player.get_parent().add_child(body)
 	body.global_position = Vector3(0.0, LEDGE_TOP * 0.5, LEDGE_FACE_Z - 0.5)
 	_extra.append(body)
-	var query := {"valid": true, "edge": EDGE, "top": EDGE,
-			"normal": TOP_NORMAL, "face_normal": FACE_NORMAL}
-	player.global_position = IntoGrabMove.hanging_pose(player, player.config, query)
-	player.pending_ledge = query
-	player.move_manager.start(Move.GRAB)
+	# Caught the way IntoGrab catches: the hand-plant data, then the catch.
+	player.rotation.y = 0.0
+	player.pawn_yaw = 0.0
+	player.move_ledge_location = EDGE
+	player.move_ledge_normal = TOP_NORMAL
+	player.move_normal = FACE_NORMAL
+	var into: IntoGrabMove = player.move_manager.move_for(Move.INTO_GRAB)
+	player.global_position = into._hang_point()
+	player.move_manager.set_move(Move.INTO_GRAB)
+	into.reached_precise_location()
 	return player
 
 func test_crossing_the_east_edge_lands_you_in_the_west() -> void:
@@ -118,15 +121,9 @@ func test_a_scripted_move_forbids_the_wrap() -> void:
 	assert_almost_eq(player.global_position.x, 51.0, 0.01,
 		"the body was teleported while a scripted move was driving it")
 
-## A player climbing a 3 m vertical ladder at the world origin -- the same
-## catch mechanics as test_ladder_move.gd's _climbing_player(), reused here to
-## exercise the LineMove family: it is NOT a ScriptedMove, so this is the
-## regression test for the bug the config-driven gate replaced -- a manager
-## predicate keyed on `is ScriptedMove` let a ladder through untouched.
-##
-## Caught AT THE ORIGIN, well inside the period, so the catch itself cannot
-## be disturbed by the wrap; the body is pushed past the edge by the test
-## afterward, the same way _hanging_player's caller does it.
+## A player on a 3 m vertical ladder at the world origin, put on its foot
+## step -- a ladder holds a world position just as a hang does, and the wrap
+## must wait for it too.
 func _laddered_player(period: float) -> Player:
 	var player: Player = await _wrapped_world(period)
 	var line := InterestLine.new()
@@ -136,27 +133,17 @@ func _laddered_player(period: float) -> Player:
 	line.curve.add_point(Vector3(0.0, 3.0, 0.0))
 	get_tree().root.add_child(line)
 	_extra.append(line)
-	var stand_off: float = player.config.ladder.stand_off
-	player.global_position = Vector3(0.0, player.global_position.y, -stand_off)
-	player.rotation.y = PI
-	for i in 10:
-		await step(1)
-		if player.move_manager.current_name == Move.LADDER:
-			break
-	assert_eq(player.move_manager.current_name, Move.LADDER,
-		"test setup: never caught the ladder")
+	await step(1)
+	var climb: ClimbMove = player.move_manager.move_for(Move.CLIMB)
+	climb.ladder = LadderVolume.new(line)
+	player.global_position = climb.ladder.get_ladder_location(0)
+	player.move_manager.set_move(Move.CLIMB)
+	assert_eq(player.move_manager.current_name, Move.CLIMB, "test setup: not on the ladder")
 	return player
 
 ## Checked through the `wrapped` SIGNAL via a DIRECT call to
-## _physics_process(), not the usual await step(): every tick LadderMove
-## re-derives the body's position from the line's own world-space sample
-## (`_line.sample(_offset)`) and TorusWrap runs after Player in tree order, so
-## by the time a stepped frame's wrap check would run, a ladder that was
-## never gated has often already slid the body back near the line on its
-## own -- an unrelated correction that would hide the very bug this test
-## exists to catch. Calling _physics_process() directly observes the gate's
-## own decision on the tick the edge is crossed, before anything else can
-## paper over it.
+## _physics_process(), so the gate's own decision is observed on the tick the
+## edge is crossed, before the climb can move the body back to its step.
 func test_a_line_move_forbids_the_wrap() -> void:
 	var player: Player = await _laddered_player(100.0)
 	assert_true(player.move_manager.current_holds_world_path(),

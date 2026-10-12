@@ -45,6 +45,13 @@ const SLIDE: StringName = &"Slide"
 const RAMP_SLIDE: StringName = &"RampSlide"
 const CROUCH: StringName = &"Crouch"
 const SPEED_VAULT: StringName = &"SpeedVault"
+## TdMove_VaultOver, the vault CheckAutoMoves sets: TdMove_SpeedVault's logic
+## under its own state.
+const VAULT_OVER: StringName = &"VaultOver"
+## TdMove_AutoStepUp (dead: its CanDoMove always refuses) and TdMove_StepUp
+## (nothing sets it).
+const AUTO_STEP_UP: StringName = &"AutoStepUp"
+const STEP_UP: StringName = &"StepUp"
 const INTO_GRAB: StringName = &"IntoGrab"
 const GRAB: StringName = &"Grab"
 const WALL_RUN: StringName = &"WallRun"
@@ -53,7 +60,8 @@ const TURN_180: StringName = &"Turn180"
 const TURN_180_IN_AIR: StringName = &"Turn180InAir"
 const ZIPLINE: StringName = &"Zipline"
 const SWING: StringName = &"Swing"
-const LADDER: StringName = &"Ladder"
+## TdMove_IntoClimb: getting onto a ladder or a pipe; Climb is on it.
+const INTO_CLIMB: StringName = &"IntoClimb"
 const BALANCE: StringName = &"Balance"
 const LEDGE_WALK: StringName = &"LedgeWalk"
 const SPRING_BOARD: StringName = &"SpringBoard"
@@ -210,6 +218,13 @@ var precise_rotation_time: float = 0.0
 ## both. Transient; StopMove does not clear it, and neither does this port.
 var delay_rotation_and_location_callback: bool = false
 
+## TdMove.bDisableCollision: no world collision while this move runs
+## (Actor.bCollideWorld off from StartMove to StopMove).
+var disable_collision: bool = false
+## TdMove.CurrentCustomAnimName: the animation this move last played. Its end
+## and its root motion ceasing reach the move only while it is this one.
+var current_custom_anim_name: StringName = &""
+
 ## TdMove.bDisableFaceRotation: the pawn does not follow the controller while
 ## this move runs. Instance state, as in the original: a move may set it at
 ## runtime and nothing resets it on StopMove.
@@ -281,6 +296,8 @@ func begin_move() -> void:
 		return
 	player.set_ignore_move_input(disable_movement_time)
 	player.set_ignore_look_input(disable_look_time)
+	if disable_collision:
+		player.collide_world = false
 	if use_custom_collision:
 		var old: Move = player.move_manager.move_for(player.old_movement_state)
 		if old == null or not old.use_custom_collision:
@@ -304,6 +321,9 @@ func end_move() -> void:
 		return
 	player.stop_ignore_move_input()
 	player.stop_ignore_look_input()
+	if disable_collision:
+		player.collide_world = true
+	current_custom_anim_name = &""
 	if use_custom_collision:
 		var pending: Move = player.move_manager.move_for(player.pending_movement_state)
 		if pending == null or not pending.use_custom_collision:
@@ -364,6 +384,33 @@ func reached_precise_rotation() -> void:
 func reached_wall() -> void:
 	pass
 
+## TdMove.FailedToReachPreciseLocation: a PLM_Fall flight that fell past its
+## target. Empty in the original's base.
+func failed_to_reach_precise_location() -> void:
+	pass
+
+## TdMove.PlayMoveAnim, into the pawn's full-body slot (Player.anim_slot): the
+## original's first-person timing and, with `root_motion` / `root_rotation`,
+## its root motion -- which moves the body only while the pawn uses root
+## motion (UseRootMotion) or root rotation. A name the original's player sets
+## do not have plays nothing.
+func play_slot_anim(anim: StringName, rate: float, blend_in: float, blend_out: float,
+		root_motion: bool = false, root_rotation: bool = false) -> void:
+	current_custom_anim_name = anim
+	player.anim_slot.play(anim, rate, blend_in, blend_out, root_motion, root_rotation, player.pawn_yaw)
+
+## Whether `anim` is this move's CurrentCustomAnimName (names compare without
+## case, as the original's do).
+func is_current_custom_anim(anim: StringName) -> bool:
+	return String(anim).to_lower() == String(current_custom_anim_name).to_lower() and anim != &""
+
+## TdMove.OnCustomAnimEnd / OnCeaseRelevantRootMotion. Empty in the base.
+func on_custom_anim_end(_anim: StringName) -> void:
+	pass
+
+func on_cease_relevant_root_motion() -> void:
+	pass
+
 ## Moves[MovementState].FrictionModifier as the wall physics reads it: the
 ## field, which a wall move rewrites every tick. The config's value elsewhere.
 func live_friction_modifier() -> float:
@@ -403,8 +450,8 @@ const PLM_JUMP_OVERHEAD_SPEED := 640.0 * UU
 ## velocity is aimed at it and the acceleration zeroed. Fly is 3D at
 ## min(distance / dt, speed); the others are horizontal at that speed, Walk
 ## with no vertical speed, Jump and SimJump with a vertical speed solved from
-## the height left and the SCRIPT gravity. PLM_Fall is not ported: nothing
-## here uses it.
+## the height left and the SCRIPT gravity; Fall leaves the vertical to the
+## falling physics (_precise_fall_step()).
 func _precise_location_step(delta: float) -> void:
 	var to: Vector3 = precise_location - player.global_position
 	var dist3: float = to.length()
@@ -454,7 +501,42 @@ func _precise_location_step(delta: float) -> void:
 			else:
 				vz = dz / t + t * g * 0.5
 			player.velocity = Vector3(dir.x * h, vz, dir.z * h)
+		PLM_FALL:
+			_precise_fall_step(delta, to, dist2)
+			return
 	player.acceleration = Vector3.ZERO
+
+## PLM_Fall. [ME:CONFIRMED decompile 0x011fce10] The horizontal as Jump's,
+## the horizontal acceleration zeroed and the vertical left to the falling
+## physics. Once falling with the target below and within a frame's horizontal
+## reach, the vertical speed is set to land on it (gravity's frame added back)
+## if the body's box can get there; falling with the target above, or blocked
+## on the way, fails: bUsePreciseLocation off and FailedToReachPreciseLocation.
+func _precise_fall_step(delta: float, to: Vector3, dist2: float) -> void:
+	var dt: float = maxf(delta, 1e-6)
+	var h: float = minf(dist2 / dt, precise_location_speed)
+	var dir: Vector3 = PawnPhysics.safe_normal_2d(to)
+	player.velocity.x = dir.x * h
+	player.velocity.z = dir.z * h
+	player.acceleration.x = 0.0
+	player.acceleration.z = 0.0
+	var vz: float = player.velocity.y
+	if not vz < 0.0:
+		return
+	var here: Vector3 = player.global_position
+	if precise_location.y <= here.y:
+		if delta * precise_location_speed <= dist2:
+			return
+		var landing_vz: float = maxf(to.y / dt, vz)
+		var next := Vector3(here.x + player.velocity.x * delta, here.y + landing_vz * delta,
+			here.z + player.velocity.z * delta)
+		if not player.traces.movement_trace_for_blocking(next, here, player.collision_extent()):
+			player.velocity.y = landing_vz - player.gravity_z() * delta
+			return
+	use_precise_location = false
+	reached_precise_location_flag = false
+	delay_rotation_and_location_callback = false
+	failed_to_reach_precise_location()
 
 ## One frame of the precise rotation. Once the time left is no more than this
 ## frame, the yaw is the target and the rotation is reached; until then the
@@ -588,6 +670,17 @@ func get_min_look_constrain_pitch() -> int:
 func get_max_look_constrain_pitch() -> int:
 	return int(round(cfg.max_look_constraint.x * UE.UNITS_PER_RADIAN))
 
+## bConstrainLook as this move has it now: the config's, unless a move turns
+## it off and on at runtime (Grab).
+func constrains_look() -> bool:
+	return cfg != null and cfg.constrain_look
+
+## TdMove.PostConstrainCamera: `constrain_amount` is what the constraint took
+## off this frame's input, (pitch, yaw); returns the input to use. Empty in the
+## base.
+func post_constrain_camera(_constrain_amount: Vector2i, delta_rot: Vector2i) -> Vector2i:
+	return delta_rot
+
 ## The look-at's pull on `head`: Normalize(wanted - head) times
 ## min(1, dt / interpolation time), each axis truncated.
 func _look_at_pull(head: Vector2i, wanted: Vector2i, dt: float) -> Vector2i:
@@ -620,7 +713,8 @@ func update_view_rotation(view: Vector2i, dt: float, delta_rot: Vector2i, now: f
 		else:
 			abort_look_at_target()
 	var pawn_yaw_units: int = UE.yaw_units(player.pawn_yaw)
-	if cfg != null and cfg.constrain_look:
+	if cfg != null and constrains_look():
+		var before: Vector2i = delta_rot
 		var controller_delta := Vector2i(UE.normalize_axis(UE.normalize_axis(out.x)),
 			UE.normalize_axis(UE.normalize_axis(out.y) - pawn_yaw_units))
 		var min_yaw: int
@@ -637,7 +731,8 @@ func update_view_rotation(view: Vector2i, dt: float, delta_rot: Vector2i, now: f
 		var speed: float = dt / 0.2
 		var yaw: int = CameraRig.constrain_axis(controller_delta.y, min_yaw, max_yaw, speed, delta_rot.y)
 		var pitch: int = CameraRig.constrain_axis(controller_delta.x, min_pitch, max_pitch, speed, delta_rot.x)
-		delta_rot = Vector2i(UE.normalize_axis(pitch), UE.normalize_axis(yaw))
+		delta_rot = post_constrain_camera(before - Vector2i(pitch, yaw), Vector2i(pitch, yaw))
+		delta_rot = Vector2i(UE.normalize_axis(delta_rot.x), UE.normalize_axis(delta_rot.y))
 	if reset_camera_look_active:
 		if cancel_reset_camera_look_time > now:
 			var head := Vector2i(UE.normalize_axis(out.x), UE.normalize_axis(out.y))
@@ -702,120 +797,6 @@ func tick_move_timers(delta: float) -> void:
 
 # --- helpers the moves not yet ported still use ---------------------------------
 
-# --- contact drives movement --------------------------------------------------
-#
-# See docs/contact-drives-movement.md. The body keeps its own ballistic motion
-# until a hand or a foot actually reaches the obstacle; only then does a
-# scripted interaction start moving it, and only from where the body has
-# actually got to.
-#
-# Shared here rather than written twice because the two moves that need it --
-# the reach onto a ledge and the vault -- got it wrong in exactly the same way,
-# and a third will be written eventually.
-
-## Whether the obstacle a query found is close enough to be TOUCHED.
-##
-## DERIVED FROM THE CAPSULE, not a tunable. `face_distance` is measured from the
-## body's centre, so contact is one radius away, plus a margin small enough to
-## be a rounding error and large enough that a body pressed against a surface
-## does not flicker in and out of touching it.
-##
-## A reach_distance knob can never be tuned right, because what it is trying to
-## express is "how long are the arms", and that is a function of the body's own
-## size. See IntoGrabConfig.arrive_distance.
-const CONTACT_MARGIN := 0.08
-
-## One physics tick, for the predictive part of touching(). Read from the engine
-## rather than assumed, so a project that changes its tick rate does not
-## silently change how early a vault commits.
-var _tick_travel: float = 1.0 / 60.0
-
-func _ready() -> void:
-	_tick_travel = 1.0 / maxf(float(Engine.physics_ticks_per_second), 1.0)
-
-## AGAINST A POINT CAPTURED AT COMMIT, not against a live query.
-##
-## The probes are built to see an interaction COMING, and stop reporting one
-## from close up: vault_query() goes invalid at about a metre out, because the
-## downward anchor it plants a fixed distance ahead sails past the obstacle once
-## the body is nearly on it. A move that waits for contact by asking again
-## simply watches the obstacle vanish and times out. Measured directly.
-##
-## So the commit captures where the face IS, and the approach watches the body
-## reach it. Both probes return `face_point` for this.
-##
-## Horizontal only: the body's own arc is still carrying it up or down, and a
-## vault taken at the top of a jump is touching the face just as much as one
-## taken level with it.
-func touching(face_point: Vector3) -> bool:
-	if face_point == Vector3.ZERO:
-		return false
-	# Annotated, not inferred: `player` is deliberately untyped (see above), so
-	# anything read through it arrives as Variant.
-	var here: Vector3 = player.global_position
-	# PREDICTIVE, by one tick's travel. move_and_slide() stops the capsule at
-	# exactly one radius from the face, so a test that only fires AT that radius
-	# is a tick too late: at 7 m/s the body covers 0.117 m in a tick and can go
-	# from clear to already-stopped between two checks, so the foot visibly
-	# catches before the body is lifted -- two motions instead of one.
-	#
-	# Adding the distance this tick will cover means the scripted motion always
-	# takes over before the collision resolves, which is what makes the vault
-	# read as one continuous movement rather than a stumble and a recovery.
-	return Vector2(face_point.x - here.x, face_point.z - here.z).length() <= contact_reach()
-
-## How close the body's centre has to get to a face before the hands count as
-## on it. Shared with whoever has to decide whether contact is REACHABLE at
-## all, so the question "have the hands arrived" and the question "can they
-## ever" cannot end up asking different distances -- which is exactly how a
-## reach came to be committed at up to 0.8 m while contact needed 0.48.
-func contact_reach() -> float:
-	return player.current_capsule_radius() + CONTACT_MARGIN 		+ player.horizontal_speed() * _tick_travel
-
-## Whether the hands can still arrive at `face_point`: either they are already
-## within contact_reach() of it, or the body is travelling that way.
-##
-## ASKED TWICE, and it has to be. Before a reach is committed, because the
-## approach phase moves the body not at all (docs/contact-drives-movement.md)
-## and a body going nowhere near the face keeps its gap forever -- burning the
-## whole max_duration, handing back, and committing again on a ledge that has
-## not moved, which is a soft lock and not a flutter. And DURING the approach,
-## because closing at the moment of commit does not mean still closing: a tap
-## of the stick toward the wall passes the first test and has decayed to
-## nothing by the next tick, which is exactly how the first version of this
-## guard was got round.
-func closing_on(face_point: Vector3) -> bool:
-	if face_point == Vector3.ZERO:
-		# touching() refuses a zero face outright, so nothing could arrive.
-		return false
-	var here: Vector3 = player.global_position
-	var gap := Vector2(face_point.x - here.x, face_point.z - here.z)
-	if gap.length() <= contact_reach():
-		return true
-	# Closing, however slowly. A body creeping in too slowly to arrive inside
-	# max_duration still gets its one wasted reach; what this stops is the body
-	# that is not approaching at all, which is the one that never stops.
-	return Vector2(player.velocity.x, player.velocity.z).dot(gap) > 0.0
-
-## Carries the body through one tick of its own ballistic motion: full gravity,
-## real collisions, no scripted displacement at all.
-##
-## What the APPROACH phase runs. The commit has already been made and the
-## animation is winding up, but nothing has been touched yet, so nothing may
-## move the body except the body's own momentum. Anything else reads as the
-## body being dragged through open air toward the obstacle instead of falling
-## under it.
-func carry_ballistically(delta: float) -> void:
-	# effective_gravity(): free flight honours the player's gravity window.
-	player.velocity.y -= player.effective_gravity() * delta
-	player.velocity.y = maxf(player.velocity.y, -config.pawn.terminal_velocity)
-	player.move_and_slide()
-	player.set_grounded(player.is_on_floor())
-
-## ON Move RATHER THAN AirborneMove, though every other caller is one: a
-## reach is a plain Move and is airborne for the whole of its approach
-## phase, so it needs the same hand-off and there is nothing airborne-
-## specific in here to justify a second copy.
 ## Carries the body through THIS tick and hands off, for the transitions that
 ## leave one airborne state for another. Without it the hand-off tick covers
 ## zero distance -- the move returns before settle_landing()'s own
@@ -835,10 +816,9 @@ func advance_and_hand_off(destination: StringName) -> StringName:
 	return destination
 
 ## How long MoveManager refuses re-entry to this move after it leaves,
-## seconds. The config's redo_move_time by default; a move overrides this
-## when it can tell that THIS exit is not the kind the cooldown guards --
-## LineWalkMove arms it for a fall off the line and not for a walk off its
-## end (see there). Asked by MoveManager._arm_cooldown() after exit().
+## seconds. The config's redo_move_time by default; a move not yet ported may
+## override it when it can tell that THIS exit is not the kind the cooldown
+## guards. Asked by MoveManager._arm_cooldown() after exit().
 func redo_cooldown() -> float:
 	return cfg.redo_move_time if cfg != null else 0.0
 
@@ -910,18 +890,10 @@ func found_reachable_hand_plant() -> void:
 ##      and any switch is on: MoveLedgeResult 0 / 1 (wall) / 2 (a top)
 ##   3. bCheckForWallClimb and a result: WallClimb's native gate
 ##   4. a top: FoundReachableHandPlant, bFoundLedge
-##   5. bCheckForVaultOver: AutoStepUp, then VaultOver
+##   5. bCheckForVaultOver: AutoStepUp's CanDoMove (always false), then
+##      VaultOver's, which plans the vault
 ##   6. bCheckForGrab: IntoGrab's native gate
-##
-## Steps 5 and 6 belong to the ledge family, which is not ported yet. Until it
-## is, the moves this project has for them answer: SpeedVault's variant table
-## (which carries AutoStepUp's rows) for both vaults, asked where the original
-## asks its own, after the ported search has found a top; and the grab's own
-## probe for IntoGrab, asked once the search has run whatever it found --
-## FORCED: that probe wants the ledge at a hanging height the search's hand
-## window (the top within -58 .. +102 uu of the centre) never contains, so
-## gated on a top it would refuse every grab. STAND-INS, to be replaced by
-## AutoStepUp / VaultOver.CanDoMove and IntoGrab.CanDoMoveNative.
+## The two native gates skip the script's CanDoMove, RedoMoveTime included.
 func auto_move_target() -> StringName:
 	var v: Vector3 = player.velocity
 	var still: float = 1e-4 * UU
@@ -932,9 +904,7 @@ func auto_move_target() -> StringName:
 	if wall_climb_on and manager.can_do(WALL_RUN):
 		return WALL_RUN
 	player.move_ledge_result = MoveTraces.LEDGE_NONE
-	var searched: bool = move_active_time > auto_move_delay() \
-		and (checks_grab() or checks_vault_over() or wall_climb_on)
-	if searched:
+	if move_active_time > auto_move_delay() and (checks_grab() or checks_vault_over() or wall_climb_on):
 		var hit: Dictionary = player.traces.find_auto_move_ledge(player.global_position, player.facing(),
 			MoveTraces.HAND_PLANT_CHECK_DISTANCE, true, edge_in_vel_dir())
 		player.move_ledge_result = hit["result"]
@@ -943,21 +913,24 @@ func auto_move_target() -> StringName:
 			player.move_ledge_normal = hit["ledge_normal"]
 			player.move_normal = hit["move_normal"]
 	if player.move_ledge_result <= MoveTraces.LEDGE_NONE:
-		return _grab_stand_in() if searched and checks_grab() and player.probes != null else KEEP
+		return KEEP
 	if wall_climb_on:
 		var climb: Move = manager.move_for(WALL_CLIMB)
 		if climb != null and climb.can_do_move_native():
 			return WALL_CLIMB
 	if player.move_ledge_result != MoveTraces.LEDGE_TOP:
-		return _grab_stand_in() if checks_grab() and player.probes != null else KEEP
+		return KEEP
 	found_reachable_hand_plant()
 	player.found_ledge = true
-	if checks_vault_over() and player.probes != null:
-		var vault: StringName = _vault_stand_in()
-		if vault != KEEP:
-			return vault
-	if checks_grab() and player.probes != null:
-		return _grab_stand_in()
+	if checks_vault_over():
+		if manager.can_do(AUTO_STEP_UP):
+			return AUTO_STEP_UP
+		if manager.can_do(VAULT_OVER):
+			return VAULT_OVER
+	if checks_grab():
+		var reach: Move = manager.move_for(INTO_GRAB)
+		if reach != null and reach.can_do_move_native():
+			return INTO_GRAB
 	return KEEP
 
 ## A native CanDoMove the automatic transitions ask directly, bypassing the
@@ -966,177 +939,7 @@ func auto_move_target() -> StringName:
 func can_do_move_native() -> bool:
 	return false
 
-## SpeedVault's entry gate, standing in for AutoStepUp and VaultOver.
-func _vault_stand_in() -> StringName:
-	# Cleared before the question is asked: _vault_speed_z() only ever sets
-	# it, so a stale true from a tick that did not go on to vault would
-	# otherwise make the next vault look like a scramble.
-	player.pending_vault_rescue = false
-	var hit: Dictionary = player.probes.vault_query()
-	if not hit["valid"]:
-		return KEEP
-	var variant: Dictionary = config.speed_vault.pick_variant(
-		hit["height"], hit["vault_over"], _vault_speed_z(), player.horizontal_speed())
-	# ALREADY TOUCHING NEEDS NO LEAD TIME, but only while the body is still
-	# rising: should_commit() divides by horizontal speed and refuses a body
-	# going straight up a wall, while a body merely RESTING against a face
-	# satisfies touching() and goes nowhere -- dropping the rising check loops
-	# Walking -> Falling -> SpeedVault forty times a second.
-	var rising: bool = player.velocity.y > 0.0
-	var closing: bool = config.speed_vault.should_commit(hit["distance"], player.horizontal_speed(), variant)
-	# A vault carries the body through the space above the obstacle: DO NOT
-	# vault into a slab over the top.
-	var room: bool = player.fits_standing_at(hit["top"])
-	if room and (closing or (rising and touching(hit.get("face_point", Vector3.ZERO)))):
-		player.pending_vault_variant = variant
-		return SPEED_VAULT
-	return KEEP
-
-## The grab's own probe, standing in for IntoGrab.CanDoMoveNative. The reach's
-## and the hang's cooldowns both apply: a reach that gave up hands back to a
-## fall whose automatic transitions run before its physics.
-func _grab_stand_in() -> StringName:
-	var manager = player.move_manager
-	if not manager.can_enter(GRAB) or not manager.can_enter(INTO_GRAB):
-		return KEEP
-	var ledge: Dictionary = player.probes.ledge_query()
-	if ledge["valid"] and _within_reach(ledge) and _can_close_the_gap(ledge):
-		return INTO_GRAB
-	return KEEP
-
-## The level's interest points: ladders, ledges and beams. The original
-## catches these through its levels' own volumes, not through CheckAutoMoves;
-## this project's InterestLines stand in for them, asked after the original's
-## automatic transitions found nothing. The cable and the bar are not caught
-## here: their volumes ask every tick (Player._update_movement_volume,
-## TdSwingVolume / TdZiplineVolume PawnUpdate).
-func interest_line_transition() -> StringName:
-	var c := current_config()
-	if c == null:
-		return KEEP
-	var manager = player.move_manager
-	# [ME:CONFIRMED] A ladder catches mid-fall too; DO NOT add a speed gate --
-	# an uncontrolled fall already leaves check_for_ladder clear.
-	if c.check_for_ladder and manager.can_enter(LADDER):
-		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
-		if rail != null and LadderMove.catch_gate(player, rail):
-			return LADDER
-	if c.check_for_ledge_walk and manager.can_enter(LEDGE_WALK):
-		var ledge: InterestLine = player.nearest_interest_line(InterestLine.Kind.LEDGE_WALK)
-		if ledge != null and LedgeWalkMove.catch_gate(player, ledge, config.ledge_walk.foot_snap_height):
-			return LEDGE_WALK
-	if c.check_for_balance and manager.can_enter(BALANCE):
-		var beam: InterestLine = player.nearest_interest_line(InterestLine.Kind.BALANCE)
-		if beam != null and BalanceMove.catch_gate(player, beam, config.balance.foot_snap_height):
-			return BALANCE
-	return KEEP
-
 ## What the moves not yet ported ask from their own physics_update(): the
-## original's automatic transitions, then the interest points.
+## original's automatic transitions.
 func legacy_probe_transition() -> StringName:
-	var next: StringName = auto_move_target()
-	if next != KEEP:
-		return next
-	return interest_line_transition()
-
-## Whether a ledge is close enough to reach for, horizontally.
-##
-## [ME:CONFIRMED] ledge_find_distance is 3.5 m -- how far the probe may LOOK,
-## not how far the body may be hauled. Reaching from that range reads as a
-## magnet -- jump vaguely wallward and get pulled in across open air -- so
-## DO NOT widen the reach to match it; the reach is held to its own, much
-## shorter range. See IntoGrabConfig.max_reach_distance.
-## Whether a reach at this ledge could ever make CONTACT, which is a different
-## question from _within_reach() above and the one that was missing.
-##
-## The approach phase moves the body not at all -- it flies its own arc and the
-## reach waits to see whether the hands arrive (docs/contact-drives-movement.md).
-## So a body with no horizontal travel toward the face keeps exactly the gap it
-## started with, and if that gap is wider than contact_reach() the hands never
-## arrive: the reach burns its whole max_duration, hands back to Falling, waits
-## out redo_move_time, and commits again on a ledge that has not moved. Nothing
-## about the situation changes, so the loop does not end -- and the player has
-## no control for the 1.5 s of each pass, which is a soft lock rather than a
-## flutter.
-##
-## Reported at 0.8 m of commit range against 0.48 m of contact range, so any
-## ledge in that band locked the player up. Standing 0.8 m out and jumping
-## straight up did it; so did standing flush and looking 34 degrees off square,
-## because the probe measures along the LOOK direction and turning the view
-## lengthens the same gap.
-##
-## DO NOT fix this by shrinking max_reach_distance to the contact range. The
-## wider commit is right for the case it was written for: a body flying AT a
-## wall closes the gap on its own within a tick or two, and refusing it at
-## 0.8 m would take away the ordinary running grab. What is wrong is committing
-## when nothing will close the gap.
-##
-## Asked every tick rather than once at take-off, so a jump straight up
-## followed by air control toward the wall still commits the moment the body
-## starts going there.
-func _can_close_the_gap(ledge: Dictionary) -> bool:
-	return closing_on(ledge.get("face_point", Vector3.ZERO))
-
-func _within_reach(ledge: Dictionary) -> bool:
-	# Measured to the WALL, not to the edge point. `edge` is on the ledge's
-	# top, found by dropping a probe past the face, so against anything with
-	# depth it sits well behind the surface the body would touch -- 1.78 m for
-	# a 1 m deep block whose face was only 0.9 m away.
-	return float(ledge.get("face_distance", INF)) <= config.into_grab.max_reach_distance
-
-## The vertical speed the vault table is asked about, which is the REAL one
-## except inside the shin-catch window below.
-##
-## A DELIBERATE DIVERGENCE FROM THE ORIGINAL. [ME:CONFIRMED] Five of the six
-## rows in SpeedVaultConfig.variants require MinSpeedZ >= 0 -- they only
-## match while RISING -- and the sixth, auto_step_up_right_leg, is the
-## descending one but tops out at 0.48 m and 3 m/s. So falling onto a
-## metre-high ledge at running pace matches NOTHING in the original, and the
-## only way to vault it is to catch the rising half of a jump, which leaves
-## too narrow a window to use in practice.
-##
-## [ME:INFERRED 05 §5.7] autostepuprightleg is a RESCUE in the original, not
-## a move: the player jumps a gap and falls short, their shin catches the far
-## edge, and the game kicks them up in the last 0.2 s. This function widens
-## that rescue rather than reproducing it, and it is worth knowing which is
-## which if the two are ever compared.
-##
-## Three gates, so it stays a rescue rather than becoming a second way to play:
-##
-##   * FALLING, not rising. A rising body is already covered by the real rows.
-##   * SHORT OF A HARD LANDING. hard_landing_height is the same 5.3 m that
-##     decides whether a landing costs two seconds, reused rather than given a
-##     knob of its own: a fall that is about to hurt is not one to rescue.
-##   * ASKING FOR IT. The player has to be pushing INTO the obstacle. Falling
-##     past a ledge with no input is a fall, and turning it into a vault would
-##     be the game playing itself.
-##
-## Reported as a level speed rather than as a flag, which keeps
-## SpeedVaultConfig.variants a pure transcription of the original's table: the
-## high tiers ask for MinSpeedZ 0.5 and still refuse, so a genuinely high vault
-## still costs a jump. Only the middle tier is rescued.
-func _vault_speed_z() -> float:
-	var speed_z: float = player.velocity.y
-	if speed_z >= 0.0:
-		return speed_z
-	if player.fall_tracker == null:
-		return speed_z
-	if player.fall_tracker.fall_height >= config.pawn.hard_landing_height:
-		return speed_z
-	# player.last_input rather than a parameter: probe_transition() takes none,
-	# and this is the same field CharacterAnimator reads for the same reason.
-	if player.last_input == null:
-		return speed_z
-	var wish: Vector3 = player.wish_direction(player.last_input)
-	var facing: Vector3 = -player.global_transform.basis.z
-	facing.y = 0.0
-	if wish.length_squared() < 0.0001 or facing.length_squared() < 0.0001:
-		return speed_z
-	if wish.normalized().dot(facing.normalized()) <= 0.0:
-		return speed_z
-	# Recorded, because it changes what the vault LOOKS like. A rescued vault
-	# was not set up -- there was no run-up and no plant, the player simply
-	# arrived -- so CharacterAnimator plays a step-up rather than the
-	# hand-planted SafetyVault. See SpeedVaultMove.is_scramble().
-	player.pending_vault_rescue = true
-	return 0.0
+	return auto_move_target()

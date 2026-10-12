@@ -72,11 +72,6 @@ func _init() -> void:
 	max_look_constraint = Vector3(13000.0, 16384.0, 32768.0) / UE.UNITS_PER_RADIAN
 	# Q is the move's own (HandleMoveAction(MA_Turn)), never a turn move.
 	allows_turn = false
-	# A run along a wall into a pipe or a ladder catches it, as a level built
-	# on exactly that requires. The level's interest point, not a switch of
-	# the original's.
-	check_for_ladder = true
-
 @export_group("Presentation")
 
 ## How much of the model head's own offset the first-person eye follows

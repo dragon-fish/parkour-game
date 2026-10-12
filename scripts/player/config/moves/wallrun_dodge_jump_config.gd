@@ -14,7 +14,4 @@ extends MoveConfig
 
 func _init() -> void:
 	# bCheckForGrab and bCheckForVaultOver cleared by the ini; no wall climb.
-	# The level's interest points, as Jump has them.
-	check_for_ladder = true
-	check_for_ledge_walk = true
-	check_for_balance = true
+	pass

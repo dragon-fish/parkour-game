@@ -33,29 +33,6 @@ func can_do_move() -> bool:
 func enter(_previous: StringName) -> void:
 	player.illegal_ledge_timer = 0.0
 
-## The level's interest points a walking body steps onto: a ladder's front, a
-## ledge, a beam. The original enters these through the levels' own volumes;
-## this project's InterestLines stand in for them and are asked here, before
-## the physics, the slot the original's automatic transitions use.
-func check_auto_moves() -> void:
-	if not player.grounded:
-		return
-	var manager = player.move_manager
-	if manager.can_enter(LADDER):
-		var rail: InterestLine = player.nearest_interest_line(InterestLine.Kind.LADDER)
-		if rail != null and LadderMove.catch_gate(player, rail):
-			manager.set_move(LADDER)
-			return
-	if manager.can_enter(LEDGE_WALK):
-		var ledge: InterestLine = player.nearest_interest_line(InterestLine.Kind.LEDGE_WALK)
-		if ledge != null and LedgeWalkMove.catch_gate(player, ledge, config.ledge_walk.foot_snap_height):
-			manager.set_move(LEDGE_WALK)
-			return
-	if manager.can_enter(BALANCE):
-		var beam: InterestLine = player.nearest_interest_line(InterestLine.Kind.BALANCE)
-		if beam != null and BalanceMove.catch_gate(player, beam, config.balance.foot_snap_height):
-			manager.set_move(BALANCE)
-
 ## The playback-rate hook (CharacterAnimator._drive_speed): while the body is
 ## stepping round on the spot, the Turn90 clip plays at
 ## PawnConfig.turn_in_place_clip_scale; 0 otherwise leaves the speed match

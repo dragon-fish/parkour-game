@@ -46,13 +46,12 @@ func auto_move_delay() -> float:
 	return delay_time_check_auto_moves
 
 ## Native slot 0x124, TdPhysicsMove::CheckAutoMoves. [ME:CONFIRMED decompile
-## N4 §2.2] Move.auto_move_target() is the original's order; the level's
-## interest points are asked after it, when it found nothing.
+## N4 §2.2] Move.auto_move_target() is the original's order. The level's
+## interest points are not asked here: their volumes ask every tick
+## (Player._update_movement_volume).
 func check_auto_moves() -> void:
 	var manager = player.move_manager
 	var next: StringName = auto_move_target()
-	if next == KEEP:
-		next = interest_line_transition()
 	if next == KEEP:
 		return
 	# A target not yet ported keeps its own cooldown, as it does when its own
@@ -101,3 +100,60 @@ func _soft_landing_ahead() -> bool:
 		return false
 	var position: Vector3 = hit["position"]
 	return absf(position.y - player.global_position.y) > 2.0 * player.collision_half_height()
+
+# --- the heave-over tests (TdPhysicsMove script) -----------------------------------
+#
+# [ME:CONFIRMED decompile script TdPhysicsMove.uc] Asked by IntoGrab's folded
+# hang and by GrabPullUp.
+
+## CanHeaveOverLedgeFullyExtented: room for the standing body.
+func can_heave_over_ledge_fully_extended(forward_check_depth: float, destination_floor: Vector3,
+		highest_ledge_location: float) -> bool:
+	return _can_heave_over_ledge(forward_check_depth, destination_floor, player.collision_half_height(),
+		highest_ledge_location)
+
+## CanHeaveOverLedgeCrouched: room for the crouched body, 61 uu half height.
+func can_heave_over_ledge_crouched(forward_check_depth: float, destination_floor: Vector3,
+		highest_ledge_location: float) -> bool:
+	return _can_heave_over_ledge(forward_check_depth, destination_floor, 61.0 * UU, highest_ledge_location)
+
+## CanHeaveOverLedge: the body's box raised from where it hangs to the ledge
+## plus its height, then swept over the top, from the higher of the floor and
+## the ledge -- compared as whole uu -- plus its height and 2 uu.
+func _can_heave_over_ledge(forward_check_depth: float, destination_floor: Vector3, height: float,
+		highest_ledge_location: float) -> bool:
+	var start: Vector3 = player.global_position
+	var end: Vector3 = start
+	end.y = player.move_ledge_location.y + height
+	var extent: Vector3 = player.collision_extent()
+	extent.y = height
+	if player.traces.movement_trace_for_blocking(end, start, extent):
+		return false
+	start = player.global_position
+	var top_uu: int = maxi(int(destination_floor.y / UU), int(highest_ledge_location / UU))
+	start.y = float(top_uu) * UU + height + 2.0 * UU
+	end = start - player.move_normal * forward_check_depth
+	extent = player.collision_extent()
+	extent.y = height - 2.0 * UU
+	return not player.traces.movement_trace_for_blocking(end, start, extent)
+
+## FindFloorOverLedge: a flat box of the body's width less 5 uu dropped
+## `forward_check_depth` past the wall, from 1.414 R (plus 4 uu) above the ledge
+## to 1.414 R plus twice `collision_height` below it. Returns where it hit, or
+## `floor_position` unchanged when it hit nothing.
+func find_floor_over_ledge(forward_check_depth: float, floor_position: Vector3,
+		collision_height: float) -> Vector3:
+	var r_default: float = player.default_collision_radius()
+	var ledge_y: float = player.move_ledge_location.y
+	var start: Vector3 = player.global_position - player.move_normal * forward_check_depth
+	start.y = ledge_y + r_default * 1.414 + 4.0 * UU
+	var end: Vector3 = player.global_position - player.move_normal * forward_check_depth
+	end.y = ledge_y - r_default * 1.414 - collision_height * 2.0
+	var extent: Vector3 = player.collision_extent()
+	extent.x -= 5.0 * UU
+	extent.z -= 5.0 * UU
+	extent.y = 0.0
+	var hit: Dictionary = player.traces.movement_trace(end, start, extent)
+	if hit["hit"]:
+		return hit["location"]
+	return floor_position

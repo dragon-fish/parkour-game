@@ -178,34 +178,6 @@ var last_input: MoveInput = MoveInput.new()
 
 var _input_locked: bool = false
 
-## Set by WalkingMove/FallingMove the instant SpeedVaultConfig.should_commit()
-## fires, immediately before returning SPEED_VAULT -- the committed variant a
-## same-tick pick_variant() already matched, carried across the state
-## transition since MoveManager.physics_update() has no other channel to pass
-## data between two Move instances. Read once, by SpeedVaultMove.enter(),
-## which clears it back to {} after reading. Empty is the normal REST value
-## between vaults, not a pending one -- see SpeedVaultMove.enter()'s own
-## "invent nothing" guard for what an empty dictionary at read time means.
-var pending_vault_variant: Dictionary = {}
-## True when the vault about to start was only admissible because
-## AirborneMove._vault_speed_z() opened the falling-rescue window. Travels the
-## same one-shot channel as pending_vault_variant above, and for the same
-## reason: it is a fact about the ENTRY, and the move that reads it clears it.
-var pending_vault_rescue: bool = false
-
-## The ledge IntoGrabMove locked onto, handed across to GrabMove, on the same
-## channel and for the same reason as pending_vault_variant above.
-##
-## GrabMove used to re-query on entry, which stopped working the moment
-## IntoGrab started MOVING the body: by the time the reach finishes, the body
-## sits 0.45 m back and most of a body-length below the lip, and the probe can
-## no longer see the edge it was just carried to. The grab aborted on its first
-## tick and dropped the player -- measured in play as IntoGrab -> Grab ->
-## Falling across two frames.
-##
-## The reach already decided which edge this is. Deciding again from a worse
-## vantage point can only disagree.
-var pending_ledge: Dictionary = {}
 
 ## The InterestLines whose volumes the body is currently inside. Maintained by
 ## the lines themselves (InterestLine calls the two hooks below), never by a
@@ -357,14 +329,28 @@ func enter_interest_line(line: InterestLine) -> void:
 	if not interest_lines.has(line):
 		interest_lines.append(line)
 	# TdMovementVolume.PawnEnteredVolume: a latent volume becomes the active
-	# one. The swing's and the cable's are the latent ones ported here.
-	if line.kind == InterestLine.Kind.SWING or line.kind == InterestLine.Kind.ZIPLINE:
-		_active_movement_volume = line
+	# one -- every kind here is one of the original's latent volumes. A ledge
+	# walk's also asks LedgeWalk on the spot.
+	_active_movement_volume = line
+	if line.kind == InterestLine.Kind.LEDGE_WALK and not statuses.is_line_blocked(line.tag):
+		var ledge = move_manager.move_for(Move.LEDGE_WALK)
+		if ledge != null:
+			ledge.volume_entered(line)
 
 func exit_interest_line(line: InterestLine) -> void:
 	interest_lines.erase(line)
 	if _active_movement_volume == line:
 		_active_movement_volume = null
+	# PawnLeavingVolume: a ledge walk ends 0.2 s later, a balance at once
+	# unless the body has fallen.
+	if line.kind == InterestLine.Kind.LEDGE_WALK:
+		var ledge = move_manager.move_for(Move.LEDGE_WALK)
+		if ledge != null:
+			ledge.volume_leaving(line)
+	elif line.kind == InterestLine.Kind.BALANCE:
+		var beam = move_manager.move_for(Move.BALANCE)
+		if beam != null:
+			beam.volume_leaving(line)
 	# Leaving the volume is what re-arms the line -- see note_line_left().
 	_lines_awaiting_exit.erase(line.get_instance_id())
 
@@ -514,7 +500,7 @@ var _stagger_immunity: float = 0.0
 
 ## Set by MoveManager on the tick it commits a stagger, so LandingMove can
 ## tell a wire cut from a hard landing and charge the momentum differently.
-## One-shot: the reader clears it, same as pending_vault_variant.
+## One-shot: the reader clears it.
 var pending_stagger: bool = false
 ## A hazard's hit: see take_hazard_hit().
 var _hurt_skips_landing_credit: bool = false
@@ -1556,6 +1542,7 @@ func reset_state() -> void:
 	_was_grounded = false
 	velocity = Vector3.ZERO
 	acceleration = Vector3.ZERO
+	anim_slot.clear()
 	floor_normal = Vector3.UP
 	enter_falling_height = global_position.y
 	illegal_ledge_timer = 0.0
@@ -1686,8 +1673,18 @@ func _build_moves() -> void:
 		[Move.RAMP_SLIDE, RampSlideMove.new(), config.ramp_slide],
 		[Move.CROUCH, CrouchMove.new(), config.crouch],
 		[Move.SPEED_VAULT, SpeedVaultMove.new(), config.speed_vault],
+		# TdMove_VaultOver is TdMove_SpeedVault under its own state, with the
+		# same config (its ini section is empty).
+		[Move.VAULT_OVER, SpeedVaultMove.new(), config.speed_vault],
+		[Move.AUTO_STEP_UP, AutoStepUpMove.new(), config.auto_step_up],
+		[Move.STEP_UP, StepUpMove.new(), config.step_up],
 		[Move.INTO_GRAB, IntoGrabMove.new(), config.into_grab],
 		[Move.GRAB, GrabMove.new(), config.grab],
+		[Move.GRAB_PULL_UP, GrabPullUpMove.new(), config.grab_pull_up],
+		[Move.GRAB_JUMP, GrabJumpMove.new(), config.grab_jump],
+		[Move.GRAB_TRANSFER, GrabTransferMove.new(), config.grab_transfer],
+		[Move.INTO_CLIMB, IntoClimbMove.new(), config.into_climb],
+		[Move.CLIMB, ClimbMove.new(), config.climb],
 		[Move.WALL_RUN, WallRunMove.new(), config.wall_run],
 		[Move.WALL_CLIMB, WallClimbMove.new(), config.wall_climb],
 		[Move.TURN_180, Turn180Move.new(), config.turn_180],
@@ -1705,7 +1702,6 @@ func _build_moves() -> void:
 		[Move.MELEE_VAULT, MeleeVaultMove.new(), config.melee_vault],
 		[Move.MELEE_AIR_ABOVE, MeleeAirAboveMove.new(), config.melee_air_above],
 		[Move.INTERACT, InteractMove.new(), config.interact],
-		[Move.LADDER, LadderMove.new(), config.ladder],
 		[Move.LEDGE_WALK, LedgeWalkMove.new(), config.ledge_walk],
 		[Move.BALANCE, BalanceMove.new(), config.balance],
 		[Move.SPRING_BOARD, SpringBoardMove.new(), config.spring_board],
@@ -1860,7 +1856,7 @@ const _KNOWN_ANIMATION_CLIPS: Array[StringName] = [
 	# name means adding it here in the same breath.
 	&"SafetyVault",
 	# The two vaults with no hand in them -- see CharacterAnimator's
-	# Move.SPEED_VAULT case, and SpeedVaultMove.is_scramble().
+	# Move.SPEED_VAULT case, and SpeedVaultMove.is_step_up().
 	&"StepUp",
 	&"WallRun_L", &"WallRun_R", &"WallRun_Jump_L", &"WallRun_Jump_R",
 	# The dodge's pair, named for the side the body goes -- see
@@ -4103,9 +4099,26 @@ func _controller_tick(delta: float, input: MoveInput) -> void:
 	elif state == Move.CS_PLAYER_GRABBING:
 		_player_grabbing_move()
 		acceleration = Vector3.ZERO
+	elif state == Move.CS_PLAYER_BALANCE_WALK:
+		acceleration = _player_balance_walk_move(delta)
+	elif state == Move.CS_PLAYER_LEDGE_WALKING:
+		# PlayerLedgeWalking.ProcessMove: a strafe past 0.6 is a shimmy action,
+		# no acceleration, the jump keys and no crouch.
+		if not root_motion_active:
+			var strafe: float = a_strafe * 10.0
+			var action: int = Move.MA_NONE
+			if strafe > 6.0:
+				action = Move.MA_SHIMMY_RIGHT
+			elif strafe < -6.0:
+				action = Move.MA_SHIMMY_LEFT
+			move_manager.handle_move_action(action)
+		acceleration = Vector3.ZERO
 	else:
 		acceleration = Vector3.ZERO
-	if state == Move.CS_PLAYER_WALL_WALKING or state == Move.CS_PLAYER_GRABBING:
+	if state == Move.CS_PLAYER_LEDGE_WALKING:
+		_check_jump_pressed(input)
+		_check_jump_released(input)
+	elif state == Move.CS_PLAYER_WALL_WALKING or state == Move.CS_PLAYER_GRABBING:
 		_check_jump_pressed(input)
 		_check_jump_released(input)
 		_check_crouch(input)
@@ -4176,8 +4189,106 @@ func _player_grabbing_move() -> void:
 		action = Move.MA_CLIMB_DOWN
 	move_manager.handle_move_action(action)
 
-## TdPawn.Tick's ActiveMovementVolume.PawnUpdate, for the swing bars and the
-## cables: before the pawn's physics, every tick the body is inside one.
+# --- the ledge family's pawn state (TdPawn) -------------------------------------------
+
+## TdPawn.MoveLocation: where a hang (or a transfer) puts the body.
+var move_location: Vector3 = Vector3.ZERO
+## The full-body custom animation slot the moves play into: its timing, its
+## end and cease-relevant events and its root motion. See CustomAnimSlot.
+var anim_slot: CustomAnimSlot = CustomAnimSlot.new()
+
+## TdPawn's CDO CollisionRadius, 30 uu.
+const DEFAULT_COLLISION_RADIUS := 30.0 * PawnPhysics.UU
+
+func default_collision_radius() -> float:
+	return DEFAULT_COLLISION_RADIUS
+
+## TdMove.SetCustomCollisionSize's radius: the box's width (Climb's 25 uu, a
+## narrow ledge walk's 10).
+func set_collision_radius(radius: float) -> void:
+	var box := _collider_box()
+	if box == null:
+		return
+	box.size.x = radius * 2.0
+	box.size.z = radius * 2.0
+
+## TdPlayerController.AccelerationTime, which several moves set to 0.2 on the
+## way out so the hand-off is not read as a tap to stop.
+func set_acceleration_time(seconds: float) -> void:
+	_acceleration_time = seconds
+
+## The anim slot's frame: root rotation turns the pawn at once; the root
+## motion of an animation played with it becomes next frame's velocity
+## (root_motion_velocity, which the physics takes while root_motion_active);
+## the ends and cease-relevant events go to the current move when the
+## animation is the one it last played (TdPawn.OnAnimEnd /
+## OnCeaseRelevantRootMotion).
+func tick_anim_slot(delta: float) -> void:
+	var r: Dictionary = anim_slot.advance(delta)
+	if using_root_rotation:
+		pawn_yaw = UE.godot_yaw(UE.yaw_units(pawn_yaw) + int(r["yaw"]))
+	if r["rooted"]:
+		root_motion_velocity = r["delta"] / delta if delta > 0.0 else Vector3.ZERO
+	for anim in r["ended"]:
+		var move: Move = move_manager.current_move()
+		if move != null and move.is_current_custom_anim(anim):
+			move.on_custom_anim_end(anim)
+	for anim in r["ceased"]:
+		var move: Move = move_manager.current_move()
+		if move != null and move.is_current_custom_anim(anim):
+			move.on_cease_relevant_root_motion()
+
+## TdMove's movement-volume point test (FUN_011f9ba0): the first
+## TdMovementVolume -- here, any InterestLine's area -- containing `point`.
+func movement_volume_at(point: Vector3) -> InterestLine:
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var query := PhysicsPointQueryParameters3D.new()
+	query.position = point
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
+	for hit in space.intersect_point(query):
+		var area: Object = hit["collider"]
+		if area is Area3D and area.get_parent() is InterestLine:
+			return area.get_parent()
+	return null
+
+## The volumes of `kind` a box of half-extent `extent` swept from `start` to
+## `end` passes through, in the order met (GrabTransfer's ladder search).
+func movement_volumes_along(start: Vector3, end: Vector3, extent: Vector3,
+		kind: InterestLine.Kind) -> Array[InterestLine]:
+	var found: Array[InterestLine] = []
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var box := BoxShape3D.new()
+	box.size = extent * 2.0
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = box
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
+	var steps: int = maxi(1, int(ceil((end - start).length() / maxf(extent.x, 0.05))))
+	for i in steps + 1:
+		query.transform = Transform3D(Basis.IDENTITY, start.lerp(end, float(i) / float(steps)))
+		for hit in space.intersect_shape(query):
+			var area: Object = hit["collider"]
+			if area is Area3D and area.get_parent() is InterestLine:
+				var line: InterestLine = area.get_parent()
+				if line.kind == kind and not found.has(line):
+					found.append(line)
+	return found
+
+## TdPlayerController.PlayerBalanceWalk.PlayerMove. [ME:CONFIRMED decompile]
+## Only the part of the walking acceleration along the pawn's facing, plus the
+## strafe -- ONE uu/s^2 per unit of stick, along f x Z (the pawn's left), a
+## signal the balance reads rather than a push.
+func _player_balance_walk_move(delta: float) -> Vector3:
+	var f: Vector3 = facing()
+	var right: Vector3 = UE.cross(Vector3.UP, f)
+	var walk: Vector3 = _acceleration(false, a_forward, 0.0, delta, f, right)
+	return f * walk.dot(f) + UE.cross(f, Vector3.UP) * a_strafe * PawnPhysics.UU
+
+## TdPawn.Tick's ActiveMovementVolume.PawnUpdate: before the pawn's physics,
+## every tick the body is inside one. The swing, the cable and the ladder let
+## go of the volume once they take the body (ActiveMovementVolume = none); the
+## balance beam and the ledge walk keep asking.
 func _update_movement_volume() -> void:
 	var line: InterestLine = _active_movement_volume
 	if line == null:
@@ -4185,14 +4296,31 @@ func _update_movement_volume() -> void:
 	if not is_instance_valid(line) or statuses.is_line_blocked(line.tag):
 		return
 	var taken: bool = false
-	if line.kind == InterestLine.Kind.SWING:
-		var swing = move_manager.move_for(Move.SWING)
-		taken = swing != null and swing.volume_pawn_update(line)
-	elif line.kind == InterestLine.Kind.ZIPLINE:
-		var reach = move_manager.move_for(Move.INTO_ZIPLINE)
-		taken = reach != null and reach.volume_pawn_update(line)
+	match line.kind:
+		InterestLine.Kind.SWING:
+			var swing = move_manager.move_for(Move.SWING)
+			taken = swing != null and swing.volume_pawn_update(line)
+		InterestLine.Kind.ZIPLINE:
+			var reach = move_manager.move_for(Move.INTO_ZIPLINE)
+			taken = reach != null and reach.volume_pawn_update(line)
+		InterestLine.Kind.LADDER:
+			var into = move_manager.move_for(Move.INTO_CLIMB)
+			taken = into != null and into.volume_pawn_update(line)
+		InterestLine.Kind.BALANCE:
+			var beam = move_manager.move_for(Move.BALANCE)
+			if beam != null:
+				beam.volume_pawn_update(line)
+		InterestLine.Kind.LEDGE_WALK:
+			var ledge = move_manager.move_for(Move.LEDGE_WALK)
+			if ledge != null:
+				ledge.volume_pawn_update(line)
 	if taken:
 		_active_movement_volume = null
+
+## ActiveMovementVolume = none, from a move that took the body through a volume
+## by another way (GrabTransfer onto a ladder).
+func clear_active_movement_volume() -> void:
+	_active_movement_volume = null
 
 ## TdPawn's use of a TdTrigger, which a UseZone stands in for: the Interact
 ## move takes it if it can. Duck-typed for UseZone.

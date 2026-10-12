@@ -71,13 +71,6 @@ func _ready() -> void:
 	capsule.name = "CapsuleDebug"
 	capsule.player = player
 	get_parent().add_child.call_deferred(capsule)
-	# And the shimmy's probes, on the same terms again: four different refusals
-	# look like one identical nothing happening, and the line this HUD prints
-	# names the branch without showing where it looked.
-	var shimmy := ShimmyDebug.new()
-	shimmy.name = "ShimmyDebug"
-	shimmy.player = player
-	get_parent().add_child.call_deferred(shimmy)
 	# And the path a scripted move is following, against the one the body took
 	# -- see ScriptedPathDebug's own header for why a curve has to be drawn
 	# rather than described.
@@ -424,10 +417,8 @@ func _swing_line() -> String:
 		rad_to_deg(move.swing_angle), move.swing_velocity,
 		"JUMP OPEN" if jump_angle > -PI / 4.0 else "closed"]
 
-## The inverted pendulum, or "-" when not on the beam. THE ONLY WINDOW into
-## an otherwise invisible number -- lean and its rate never touch a probe or
-## a marker, so tuning divergence_time/correction_gain/base_wobble without
-## this line is reading tea leaves off how the camera rolls.
+## The balance factor and the time spent at the stop, or "-" when not on the
+## beam: the numbers the camera roll only hints at.
 func _balance_line() -> String:
 	if player == null or player.move_manager == null \
 			or player.move_manager.current_name != Move.BALANCE:
@@ -435,5 +426,5 @@ func _balance_line() -> String:
 	var move: BalanceMove = player.move_manager.move_for(Move.BALANCE)
 	if move == null:
 		return "-"
-	return "lean %.3f  rate %+.3f  severity %.2f" % [
-		move.lean(), move.lean_rate(), move.lean_severity()]
+	return "factor %+.3f  danger %s  counter %.2f" % [
+		move.balance_factor, "yes" if move.is_in_danger_mode else "no", move.counter_timer]

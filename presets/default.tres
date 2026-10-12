@@ -8,7 +8,6 @@
 [ext_resource type="Script" uid="uid://k52f4jfio1hf" path="res://scripts/player/config/moves/grab_config.gd" id="6_dsx81"]
 [ext_resource type="Script" uid="uid://cgk6xv5n04ccf" path="res://scripts/player/config/moves/into_grab_config.gd" id="7_4fpyq"]
 [ext_resource type="Script" uid="uid://bhq1wx7a5tqbh" path="res://scripts/player/config/moves/jump_config.gd" id="8_owtfl"]
-[ext_resource type="Script" uid="uid://cuc8typ3wjxfd" path="res://scripts/player/config/moves/ladder_config.gd" id="9_bxvyj"]
 [ext_resource type="Script" uid="uid://h7m1vdelryy3" path="res://scripts/player/config/moves/landing_config.gd" id="10_46hy1"]
 [ext_resource type="Script" uid="uid://cja5xx71s83ot" path="res://scripts/player/config/pawn_config.gd" id="11_obve7"]
 [ext_resource type="Script" uid="uid://w4i1e0876xri" path="res://scripts/player/movement_config.gd" id="12_jo6uy"]
@@ -29,11 +28,6 @@
 
 [sub_resource type="Resource" id="Resource_b1a4c"]
 script = ExtResource("24_b1a4c")
-speed_modifier = 0.34
-redo_move_time = 0.5
-min_look_constraint = Vector3(-1.246165, -0.5752605, -3.1415927)
-max_look_constraint = Vector3(1.5707964, 0.5752605, 3.1415927)
-constrain_look = true
 freeze_visual_yaw = true
 allows_turn = false
 
@@ -57,26 +51,15 @@ script = ExtResource("4_4fn2b")
 script = ExtResource("5_igrgn")
 check_for_grab = true
 check_for_vault_over = true
-check_for_ladder = true
 
 [sub_resource type="Resource" id="Resource_hac3t"]
 script = ExtResource("6_dsx81")
-redo_move_time = 0.45
-min_look_constraint = Vector3(0, -2.9670596, -3.1415927)
-max_look_constraint = Vector3(1.5341444, 2.9670596, 3.1415927)
-constrain_look = true
 freeze_visual_yaw = true
 allows_spine_twist = false
-absolute_yaw_constraint = true
-pitch_relaxes_with_yaw = true
-pitch_min_turned_away = -1.2217304763960306
-pitch_relax_yaw_threshold = 0.9250245035569946
 allows_turn = false
 
 [sub_resource type="Resource" id="Resource_4mpbc"]
 script = ExtResource("7_4fpyq")
-redo_move_time = 0.3
-check_for_vault_over = true
 allows_turn = false
 
 [sub_resource type="Resource" id="Resource_klb5t"]
@@ -84,13 +67,7 @@ script = ExtResource("8_owtfl")
 check_for_grab = true
 check_for_vault_over = true
 check_for_wall_climb = true
-check_for_ladder = true
 check_for_coil = true
-
-[sub_resource type="Resource" id="Resource_c2853"]
-script = ExtResource("9_bxvyj")
-freeze_visual_yaw = true
-allows_turn = false
 
 [sub_resource type="Resource" id="Resource_y0evl"]
 script = ExtResource("10_46hy1")
@@ -102,10 +79,6 @@ allows_turn = false
 
 [sub_resource type="Resource" id="Resource_lw81h"]
 script = ExtResource("25_lw81h")
-speed_modifier = 0.1
-min_look_constraint = Vector3(-1.3421582, -0.95870936, -3.1415927)
-max_look_constraint = Vector3(1.5707964, 0.95870936, 3.1415927)
-constrain_look = true
 freeze_visual_yaw = true
 allows_turn = false
 
@@ -208,7 +181,6 @@ turn_180 = SubResource("Resource_uqmby")
 wallrun_jump = SubResource("Resource_ix5t5")
 zipline = SubResource("Resource_8h1kf")
 swing = SubResource("Resource_6r03e")
-ladder = SubResource("Resource_c2853")
 balance = SubResource("Resource_b1a4c")
 ledge_walk = SubResource("Resource_lw81h")
 spring_board = SubResource("Resource_sprbd")

@@ -117,10 +117,10 @@ func _process(_delta: float) -> void:
 	_edge.global_position = edge
 	_edge.visible = true
 
-	# The same pose the reach would aim for, computed by the reach's own code
-	# rather than a copy of it -- a marker that drifts from the behaviour it
-	# illustrates is worse than no marker.
-	_hang.global_position = IntoGrabMove.hanging_pose(player, player.config, hit)
+	# The hang point the reach would aim for at this edge, by the reach's own
+	# formula.
+	_hang.global_position = IntoGrabMove.hang_point_for(edge, hit.get("face_normal", Vector3.ZERO),
+		player.collision_radius(), player.config.into_grab.grab_desired_ledge_offset_z)
 	_hang.visible = true
 
 	var face_normal: Vector3 = hit.get("face_normal", Vector3.ZERO)

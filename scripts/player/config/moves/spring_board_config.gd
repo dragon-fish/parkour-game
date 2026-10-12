@@ -35,10 +35,6 @@ func _init() -> void:
 	check_for_grab = true
 	check_for_vault_over = true
 	check_for_wall_climb = true
-	# The level's interest points, asked with the switches above.
-	check_for_ladder = true
-	check_for_ledge_walk = true
-	check_for_balance = true
 	# [ME:CONFIRMED decompile] PlayerWalking and no bConstrainLook: the view is
 	# free throughout, and the throw goes the way the pawn faces at launch.
 	allows_turn = false

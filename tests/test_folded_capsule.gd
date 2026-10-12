@@ -1,18 +1,7 @@
 extends ParkourTest
 
-# A vault and a pull-up FOLD the body, and then give it back.
-#
-# The arithmetic is the convincing part: per-clip offsets were independently
-# hand-tuned to roughly 0.8 m, and 1.8 minus 1.0 is 0.8. A rigid upright
-# capsule has to be lifted clear of anything it crosses, and lifting the FEET
-# above an obstacle puts the EYE a further 1.66 m up -- exactly wall-top plus
-# a whole capsule.
-#
-# What is tested here is not the height. It is that the fold is GIVEN BACK. A
-# state that shrinks the body and does not restore it leaves the player
-# permanently crouched -- exactly the shape of leak GrabMove would have
-# without an exit(), and the same shape of leak SpeedVaultMove once had with
-# its camera roll.
+# A folded body, and a crouch: which end of the shortened capsule stays put,
+# and that the model follows the fold but not the crouch.
 
 const TestWorld = preload("res://tests/world_fixture.gd")
 
@@ -30,63 +19,6 @@ func _player() -> Player:
 	TestWorld.place(_world)
 	await step(30)
 	return _world["player"]
-
-# --- the vault ------------------------------------------------------------------
-
-func test_a_vault_folds_the_body_and_stands_it_back_up() -> void:
-	var player: Player = await _player()
-	var standing: float = player.current_capsule_height()
-	assert_almost_eq(standing, player.standing_height(), 0.001,
-		"the fixture did not start standing")
-
-	# The middle tier, resolved through the real table rather than named here.
-	player.pending_vault_variant = player.config.speed_vault.pick_variant(
-		1.0, false, 1.0, 6.0)
-	assert_false(player.pending_vault_variant.is_empty(), "no middle-tier row")
-	player.move_manager.start(Move.SPEED_VAULT)
-	assert_almost_eq(player.current_capsule_height(),
-		player.config.crouch.crouch_capsule_height, 0.001,
-		"the vault did not fold the body (capsule is %.2f m)"
-		% player.current_capsule_height())
-
-	# Open sky above the fixture, so the restore is not deferred.
-	player.move_manager.start(Move.WALKING)
-	await step(3)
-	assert_almost_eq(player.current_capsule_height(), standing, 0.001,
-		"the body was left folded at %.2f m after the vault"
-		% player.current_capsule_height())
-
-# --- the pull-up ------------------------------------------------------------------
-
-func test_a_grab_gives_the_capsule_back_on_the_way_out() -> void:
-	# GrabMove's exit() must restore the fold. A grab that folds the capsule
-	# (the mantle) and then exits without restoring it leaves the player
-	# permanently crouched.
-	var player: Player = await _player()
-	var standing: float = player.current_capsule_height()
-	var grab := player.move_manager.move_for(Move.GRAB)
-	assert_not_null(grab, "there is no GrabMove to ask")
-
-	# Folded by hand rather than by driving a real mantle, which needs geometry
-	# this fixture has none of. What is under test is the restore.
-	player.set_capsule_height(player.config.crouch.crouch_capsule_height)
-	grab.exit()
-	await step(3)
-	assert_almost_eq(player.current_capsule_height(), standing, 0.001,
-		"leaving a grab left the body folded at %.2f m"
-		% player.current_capsule_height())
-
-func test_the_hang_and_drop_path_survives_the_restore() -> void:
-	# exit() runs on every way out of GRAB, including the one that never
-	# mantled and never folded anything. Asking for a standing capsule you
-	# already have has to cost nothing.
-	var player: Player = await _player()
-	var standing: float = player.current_capsule_height()
-	var grab := player.move_manager.move_for(Move.GRAB)
-	grab.exit()
-	await step(3)
-	assert_almost_eq(player.current_capsule_height(), standing, 0.001,
-		"a grab that never folded anything changed the capsule anyway")
 
 # --- which end stays put ----------------------------------------------------------
 
@@ -185,44 +117,3 @@ func _player_with_body() -> Player:
 	root.free()
 	player._attach_body(packed)
 	return player
-
-# --- a step-up is not a vault ------------------------------------------------------
-
-func test_a_step_up_does_not_fold_the_body() -> void:
-	# A step-up must not fold or drop the model -- lifting a leg a little and
-	# lowering the body just makes it clip through the step. [ME:CONFIRMED 05
-	# §5.7] The two step-up rows are the two of six with NO hand IK: there is
-	# no hand because there is no plant, and the body stays upright.
-	var player: Player = await _player()
-	var standing: float = player.current_capsule_height()
-	player.pending_vault_variant = player.config.speed_vault.pick_variant(
-		0.3, true, -2.0, 2.0)
-	assert_false(player.pending_vault_variant.is_empty(),
-		"the table no longer has a descending step-up row to test with")
-	player.move_manager.start(Move.SPEED_VAULT)
-	assert_false(player.body_folded(), "a step-up declared the fold")
-	assert_almost_eq(player.current_capsule_height(), standing, 0.001,
-		"a step-up shortened the capsule to %.2f" % player.current_capsule_height())
-
-func test_a_real_vault_still_folds() -> void:
-	# The pair, without which the test above passes on a build that folds
-	# nothing at all.
-	var player: Player = await _player()
-	player.pending_vault_variant = player.config.speed_vault.pick_variant(
-		1.0, false, 1.0, 6.0)
-	assert_false(player.pending_vault_variant.is_empty(), "no middle-tier row")
-	player.pending_vault_rescue = false
-	player.move_manager.start(Move.SPEED_VAULT)
-	assert_true(player.body_folded(), "a hand-planted vault did not fold")
-
-func test_a_rescued_vault_does_not_fold_either() -> void:
-	# A rescue resolves to the MIDDLE tier, so the variant cannot tell them
-	# apart -- but it plays StepUp, and the capsule follows the CLIP. Both
-	# questions are is_scramble(), which is what keeps them from drifting.
-	var player: Player = await _player()
-	player.pending_vault_variant = player.config.speed_vault.pick_variant(
-		1.0, false, 0.0, 6.0)
-	assert_false(player.pending_vault_variant.is_empty(), "no middle-tier row")
-	player.pending_vault_rescue = true
-	player.move_manager.start(Move.SPEED_VAULT)
-	assert_false(player.body_folded(), "a scrambled vault folded like a planted one")

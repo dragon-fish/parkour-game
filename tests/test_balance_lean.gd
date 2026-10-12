@@ -165,9 +165,8 @@ func test_a_missing_bone_is_skipped_rather_than_fatal() -> void:
 		"the remaining bones, not shrink it")
 
 ## Pins the SIGN, not just the split. Positive lean must tip the torso toward
-## the body's own right -- BalanceMove's own convention that positive lean is
-## toward the line's right-hand normal (see LineWalkMove.project_input()'s
-## "normal" comment). Getting _lean_axis() backwards is invisible everywhere
+## the body's own right -- BalanceMove's balance factor leans right when
+## positive. Getting _lean_axis() backwards is invisible everywhere
 ## except in play: a check written against the same wrong axis agrees with
 ## itself.
 ##
@@ -199,7 +198,7 @@ func test_positive_lean_tips_the_torso_toward_the_bodys_right() -> void:
 func test_balance_lean_signed_follows_the_move_while_active() -> void:
 	var move := BalanceMove.new()
 	move.cfg = BalanceConfig.new()
-	move.seed_lean(0.05, 0.0)
+	move.balance_factor = 0.5
 	assert_almost_eq(Player.balance_lean_signed(true, move), move.signed_severity(), 0.0001,
 		"active must pass the move's own signed_severity() through unchanged")
 	move.free()
@@ -207,7 +206,7 @@ func test_balance_lean_signed_follows_the_move_while_active() -> void:
 func test_balance_lean_signed_is_exactly_zero_when_inactive() -> void:
 	var move := BalanceMove.new()
 	move.cfg = BalanceConfig.new()
-	move.seed_lean(0.05, 0.0)
+	move.balance_factor = 0.5
 	assert_ne(move.signed_severity(), 0.0,
 		"the move must actually have a nonzero lean, or this test cannot tell " + \
 		"zeroing from doing nothing")

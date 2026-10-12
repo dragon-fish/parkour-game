@@ -1,365 +1,358 @@
 class_name SpeedVaultMove
-extends ScriptedMove
+extends PhysicsMove
 
-# Vaulting DRIVES the body over an obstacle along a computed path instead of
-# letting physics push it through — see the note on ScriptedMove above. The
-# destination comes from Probes.vault_query()'s "top" hit, so it is known
-# clear; nothing along the path itself is checked.
+# The original's TdMove_SpeedVault, ported -- and TdMove_VaultOver, which
+# derives from it without a line of its own: the player registers this class
+# twice, as SpeedVault (8) and VaultOver (9). [ME:CONFIRMED decompile script
+# TdMove_SpeedVault.uc]
+#
+# Only VaultOver is reachable: CheckAutoMoves asks it once the hand-plant
+# search has found a top (after AutoStepUp, which always refuses), and
+# GrabTransfer asks it for a transfer Up. Nothing sets MOVE_SpeedVaulting.
+#
+# CanDoMove does the whole planning: where the vault ends (onto the top, over
+# it, or over it into a fall), which VaultTypes row the approach matches, and
+# the speed it leaves with. The move itself is up to four timed legs, each a
+# precise location, with collision off and no root motion:
+#   0 (VaultTimeUp > 0 only): fly to the hand plant at |d| / VaultTimeUp
+#   1: the body is put on its target, then a jump arc to the ledge's offset
+#      point at |d|2D / VaultTimeOver
+#   2: put on it again, then the arc (or, ending in a fall, PLM_Fall) to the
+#      end at |d|2D / VaultTimeDown
+#   3: onto -> Walking, over -> Landing, either with the saved speed (its
+#      vertical part never negative); falling over -> Falling, the velocity
+#      kept in direction and given the saved speed.
+#
+# Quirks kept: the row loop lets row 0 (autostepuprightleg) through whatever
+# the onto/over plan; integer truncation of every speed and distance the script
+# casts to int; a transfer from a hang (MovementState Grab) always takes row 3,
+# vaultOver, and skips the vertical speed test.
 
-var _exit_speed: float = 0.0
-var _exit_direction: Vector3 = Vector3.ZERO
-## Set in enter() when the vault query comes back invalid: there is no probed
-## top to land on, so physics_update() hands straight back to Walking without
-## ever moving the body. See enter()'s note for what the old fallback did.
-var _aborted: bool = false
-## Where the arc will land, and how long it takes. Worked out at COMMIT, from
-## the obstacle the probe found; spent at CONTACT, from wherever the body has
-## actually got to by then. See docs/contact-drives-movement.md.
-var _landing: Vector3 = Vector3.ZERO
-var _arc_duration: float = 0.0
-## How far this vault's bezier control point sits back over the start -- the only
-## dial the shape has. See SpeedVaultConfig.vault_over_control_bias.
-var _planned_bias: float = 0.0
-## How far over that top the peak should go. See
-## SpeedVaultConfig.vault_over_apex_above_top.
-var _planned_apex_over_top: float = 0.0
-## The obstacle's top, kept from the commit. The apex is worked out from it at
-## CONTACT, because that is when the clip is settled -- see physics_update().
-var _planned_top_y: float = 0.0
-## How high the scripted arc bulges. A vault OVER rises far less than one ONTO,
-## because it never gets on top of anything.
-## The camera's fallback rise for this vault. Derived from the obstacle and
-## aimed at the eye -- and since it only ever moves the eye now, that derivation
-## is the whole of what it is. See ScriptedMove.camera_lift().
-var _touched: bool = false
-## Where the obstacle's face was when the commit was made. See Move.touching().
-var _face_point: Vector3 = Vector3.ZERO
-var _approach_time: float = 0.0
-## The variant this vault resolved to, kept after enter() consumes the handoff.
-## Read by CharacterAnimator, the same way it reads GrabMove.is_mantling().
-var _variant_name: String = ""
-## True when the entry only happened because the falling-rescue window was
-## open. See AirborneMove._vault_speed_z().
-var _rescued: bool = false
-
-## True when this vault was SCRAMBLED rather than set up: either it resolved to
-## one of the step-up rows, or it only happened because the falling rescue let
-## it. Both are meant to look the same. [ME:CONFIRMED 05 §5.7] The original
-## agrees from the other direction: its two step-up rows are the two with no
-## hand IK at all. Nothing was planted because nothing had time to be.
-func is_scramble() -> bool:
-	return _rescued or _variant_name.begins_with("step_up")  or _variant_name.begins_with("auto_step_up")
+## The planning's results, as the original's fields.
+var active_vault_type: int = -1
+var vault_end_position: Vector3 = Vector3.ZERO
+var over_end_location: Vector3 = Vector3.ZERO
+var onto_end_location: Vector3 = Vector3.ZERO
+var saved_velocity: Vector3 = Vector3.ZERO
+var start_to_handplant: Vector3 = Vector3.ZERO
+var vault_state: int = 0
+var move_direction: Vector3 = Vector3.ZERO
+var hand_location: Vector3 = Vector3.ZERO
+var target_location: Vector3 = Vector3.ZERO
+var vault_onto: bool = false
+var end_move_falling: bool = false
+var end_move_in_melee: bool = false
+var vault_speed: float = 0.0
+var handplant_height: float = 0.0
 
 func _init() -> void:
-	# [ME:CONFIRMED decompile] TdMove_SpeedVault's PawnPhysics. This move still drives the
-	# body itself; the mode is what the original's checks and the fall height
-	# read while it runs.
+	super._init()
 	pawn_physics = PHYS_FLYING
+	disable_collision = true
+	disable_face_rotation = true
+	disable_movement_time = -1.0
+	disable_look_time = -1.0
 
+func is_ported() -> bool:
+	return true
+
+func uses_view_rotation() -> bool:
+	return true
+
+func _vault_cfg() -> SpeedVaultConfig:
+	return cfg as SpeedVaultConfig
+
+## The active VaultTypes row.
+func vault_type() -> Dictionary:
+	var types: Array[Dictionary] = _vault_cfg().vault_types
+	return types[active_vault_type] if active_vault_type >= 0 and active_vault_type < types.size() else {}
+
+## int(x) on a value in uu: truncation toward zero, in metres.
+static func uu_int(x: float) -> float:
+	return float(int(x / UU)) * UU
+
+## TdMove_SpeedVault.UpdateActiveVaultType.
+func update_active_vault_type(time_to_hand_plant: float) -> int:
+	var momentum: float = player.horizontal_speed()
+	if player.movement_state == GRAB:
+		return 3
+	var types: Array[Dictionary] = _vault_cfg().vault_types
+	var vz: float = player.velocity.y
+	var unchecked: float = SpeedVaultConfig.UNCHECKED
+	for idx in types.size():
+		var t: Dictionary = types[idx]
+		if handplant_height < t["min_height"] or handplant_height > t["max_height"]:
+			continue
+		if t["vault_onto"] != vault_onto and idx != 0:
+			continue
+		if t["min_momentum"] != unchecked and momentum < t["min_momentum"]:
+			continue
+		if t["max_momentum"] != unchecked and momentum > t["max_momentum"]:
+			continue
+		if t["min_speed_z"] != unchecked and vz < t["min_speed_z"]:
+			continue
+		if t["max_speed_z"] != unchecked and vz > t["max_speed_z"]:
+			continue
+		if time_to_hand_plant > t["max_distance_time"]:
+			continue
+		return idx
+	return -1
+
+## TdMove_SpeedVault.CanDoMove: the plan.
+func can_do_move() -> bool:
+	vault_onto = false
+	end_move_falling = false
+	if not td_can_do_move() or not player.found_ledge:
+		return false
+	var state: StringName = player.movement_state
+	if state == VAULT_OVER or state == SPEED_VAULT:
+		return false
+	if state == WALL_CLIMB:
+		var climb = player.move_manager.move_for(WALL_CLIMB)
+		if climb != null and climb.performed_double_jump:
+			return false
+	var ref: Vector3 = player.global_position
+	if state == GRAB:
+		var transfer = player.move_manager.move_for(GRAB_TRANSFER)
+		if transfer != null:
+			ref = transfer.transfer_location
+	if player.found_ledge_excludes_hand_moves or MoveTraces.excludes_hand_moves(player.movement_actor):
+		return false
+	if player.move_action_hint != MAH_UP and state != GRAB:
+		return false
+	if player.move_ledge_normal.y < 0.3:
+		return false
+	var view: Vector3 = UE.rot_dir(player.controller_pitch_units(), UE.yaw_units(player.rotation.y))
+	if view.dot(player.move_normal) > -0.2:
+		return false
+	var ledge: Vector3 = player.move_ledge_location
+	start_to_handplant = ledge - ref
+	handplant_height = ledge.y - ref.y + player.collision_half_height()
+	saved_velocity = Vector3(player.velocity.x, 0.0, player.velocity.z)
+	var floor_velocity: float = Vector2(saved_velocity.x, saved_velocity.z).length()
+	var time_to_hand_plant: float = Vector2(start_to_handplant.x, start_to_handplant.z).length() \
+		/ maxf(uu_int(floor_velocity), 300.0 * UU)
+	if time_to_hand_plant > _vault_cfg().max_time_to_ledge:
+		return false
+	hand_location = ledge - UE.cross(player.move_normal, player.move_ledge_normal) * 20.0 * UU
+	move_direction = PawnPhysics.safe_normal(Vector3(start_to_handplant.x, 0.0, start_to_handplant.z))
+	vault_end_position = ledge + move_direction * maxf(48.0 * UU, uu_int(floor_velocity * 0.3))
+	vault_end_position.y = ref.y
+	if not check_collision(ledge, ref, floor_velocity):
+		return false
+	active_vault_type = update_active_vault_type(time_to_hand_plant)
+	if active_vault_type == -1:
+		return false
+	var t: Dictionary = vault_type()
+	if not vault_onto and t["vault_onto"]:
+		vault_end_position = onto_end_location
+		vault_onto = t["vault_onto"]
+	floor_velocity = clampf(uu_int(floor_velocity + t["speed_addition"]),
+		uu_int(t["clamp_speed_min"]), uu_int(t["clamp_speed_max"]))
+	saved_velocity = PawnPhysics.safe_normal(saved_velocity) * floor_velocity
+	if vault_onto:
+		var end_z: float = vault_end_position.y
+		var reach: float = Vector2(vault_end_position.x - ledge.x, vault_end_position.z - ledge.z).length()
+		vault_end_position = ledge + move_direction * minf(uu_int(reach),
+			maxf(48.0 * UU, uu_int(floor_velocity * t["vault_time_down"])))
+		vault_end_position.y = end_z
+	if state != GRAB and (player.velocity.y < t["min_speed_z"] or player.velocity.y > t["max_speed_z"]):
+		return false
+	return true
+
+## TdMove_SpeedVault.FindValidOntoEndLocation: a box 1.4 R wide and H tall,
+## VaultClearObjectHeight over the ledge, swept toward the planned end; what
+## it hits is the top's far side, which must leave 32 uu (64 above 48 uu of
+## hand plant) of top to stand on.
+func find_valid_onto_end_location(ledge: Vector3) -> bool:
+	var r: float = player.collision_radius()
+	var h: float = player.collision_half_height()
+	var extent := Vector3(r * 1.4, h * 0.5, r * 1.4)
+	var start: Vector3 = ledge
+	start.y = ledge.y + _vault_cfg().vault_clear_object_height + extent.y
+	var end: Vector3 = vault_end_position
+	end.y = start.y
+	onto_end_location = end
+	var hit: Dictionary = player.traces.movement_trace(end, start, extent)
+	if hit["hit"]:
+		var at: Vector3 = hit["location"] + move_direction * extent.x
+		var ledge_width: float = (at - ledge).dot(move_direction)
+		if ledge_width <= extent.x + 1.0 * UU:
+			var small: Dictionary = player.traces.movement_trace(end, start, Vector3.ONE * 10.0 * UU)
+			at = small["location"] + move_direction * 10.0 * UU
+			ledge_width = (at - ledge).dot(move_direction)
+		var needed: float = (32.0 if handplant_height <= 48.0 * UU else 64.0) * UU
+		if ledge_width < needed:
+			return false
+		onto_end_location = at - move_direction * r
+	onto_end_location.y = ledge.y + h
+	return true
+
+## TdMove_SpeedVault.FindValidOverEndLocation: 0 a vault over, 1 nothing to
+## vault over, 2 the far side too deep. Swept from the far end BACK toward the
+## ledge, 48 uu below it.
+func find_valid_over_end_location(ledge: Vector3, max_ledge_width: float) -> int:
+	var extent: Vector3 = player.collision_extent()
+	extent.y = 48.0 * UU
+	var start: Vector3 = vault_end_position
+	start.y = ledge.y - extent.y
+	var end: Vector3 = ledge
+	end.y = start.y
+	over_end_location = start
+	var hit: Dictionary = player.traces.movement_trace(end, start, extent)
+	if not hit["hit"]:
+		return 1
+	var at: Vector3 = hit["location"]
+	if Vector2(at.x - ledge.x, at.z - ledge.z).length() < max_ledge_width:
+		over_end_location = vault_end_position
+		return 0
+	over_end_location = at
+	if max_ledge_width < 80.0 * UU:
+		return 2
+	# The box's reach along the wall normal, against the WORLD's X axis -- the
+	# box is axis-aligned.
+	var axis_align: float = acos(absf(player.move_normal.dot(Vector3(1.0, 0.0, 0.0)))) * 4.0 / PI
+	axis_align = 1.0 + axis_align * 0.414
+	start = at - (axis_align * extent.x + 48.0 * UU) * move_direction
+	hit = player.traces.movement_trace(end, start, extent)
+	if not hit["hit"]:
+		return 2
+	end = vault_end_position
+	start = hit["location"]
+	end.y = start.y
+	hit = player.traces.movement_trace(end, start, extent)
+	if not hit["hit"]:
+		return 2
+	over_end_location = hit["location"] - move_direction * 16.0 * UU
+	return 0
+
+## TdMove_SpeedVault.FindVaultFloor: an 8 uu thick body box dropped at the
+## end, from 32 uu over the ledge to 32 uu below it (onto) or 240 (over).
+## Returns the floor's height, or NAN.
+func find_vault_floor(ledge: Vector3, wanted_end: Vector3) -> float:
+	var extent: Vector3 = player.collision_extent()
+	extent.y = 8.0 * UU
+	var start: Vector3 = wanted_end
+	start.y = ledge.y + 32.0 * UU
+	var end: Vector3 = wanted_end
+	end.y = ledge.y - (32.0 if vault_onto else 240.0) * UU
+	var hit: Dictionary = player.traces.movement_trace(end, start, extent)
+	if not hit["hit"]:
+		return NAN
+	return (hit["location"] as Vector3).y - extent.y
+
+## TdMove_SpeedVault.CheckCollision.
+func check_collision(ledge: Vector3, _ref: Vector3, floor_velocity: float) -> bool:
+	if not find_valid_onto_end_location(ledge):
+		return false
+	var temp_z: float = vault_end_position.y
+	vault_end_position = onto_end_location
+	vault_end_position.y = temp_z
+	temp_z = onto_end_location.y
+	var reach: float = Vector2(onto_end_location.x - ledge.x, onto_end_location.z - ledge.z).length()
+	onto_end_location = ledge + move_direction * minf(uu_int(reach), 160.0 * UU)
+	onto_end_location.y = temp_z
+	var max_ledge_width: float = clampf(floor_velocity * 0.2, 60.0 * UU, 180.0 * UU)
+	if find_valid_over_end_location(ledge, max_ledge_width) != 0:
+		vault_onto = true
+	vault_end_position = onto_end_location if vault_onto else over_end_location
+	var floor_z: float = find_vault_floor(ledge, vault_end_position)
+	if not is_nan(floor_z):
+		vault_onto = floor_z > ledge.y - 64.0 * UU
+		vault_end_position.y = floor_z + player.collision_half_height()
+	else:
+		end_move_falling = not vault_onto
+	return player.can_stand(vault_end_position)
+
+## TdMove_SpeedVault.StartMove.
 func enter(_previous: StringName) -> void:
-	# grounded is DECLARED, not read from is_on_floor(): this move never calls
-	# move_and_slide(), so is_on_floor() would keep reporting whatever WalkingMove
-	# left behind for the whole vault — stale coyote time, head bob, etc.
-	player.set_grounded(false)
-	_aborted = false
-	# THE CODE OWNS THE HEIGHT HERE, so the clip must not add its own. Every
-	# variant, step-ups included -- the arc carries the body in all six cases,
-	# and SafetyVault alone lifts the hips 0.825 m on top of it. See
-	# Player.set_clip_lift_cancelled().
-	player.set_clip_lift_cancelled(true)
+	disable_face_rotation = true
+	end_move_in_melee = false
+	player.velocity = Vector3.ZERO
+	var t: Dictionary = vault_type()
+	if t["reset_camera"]:
+		reset_camera_look(0.2)
+	vault_state = 0 if t["vault_time_up"] > 0.0 else 1
+	target_location = player.global_position
+	play_slot_anim(t["anim"], 1.0, 0.15, 0.2)
+	update_vault_movement()
 
+func on_timer() -> void:
+	update_vault_movement()
 
-	# THE HANDOFF IS CONSUMED FIRST, before any of the abort paths below.
-	# DO NOT read it further down, past the probe guard -- that leaves
-	# _variant_name unset on every abort, including a test with no obstacle in
-	# the world. Both fields are one-shot channels: leaving them set would hand
-	# this vault's identity to the next one.
-	var variant: Dictionary = player.pending_vault_variant
-	player.pending_vault_variant = {}
-	_variant_name = String(variant.get("name", ""))
-	_rescued = player.pending_vault_rescue
-	player.pending_vault_rescue = false
-
-	# ONLY A REAL VAULT FOLDS. DO NOT let the step-up variants fold/drop the
-	# model -- a step-up only lifts a leg a little, so lowering the body just
-	# makes it clip.
-	#
-	# [ME:CONFIRMED 05 §5.7] The original says the same thing from the other
-	# side: autostepuprightleg and stepuprightleg88 are the two rows of six
-	# with NO hand IK. There is no hand because there is no plant; the body
-	# stays upright and steps. A body-over-the-hands vault folds, a step does
-	# not.
-	#
-	# Gated on is_scramble(), which is the same question CharacterAnimator asks
-	# to pick StepUp over SafetyVault -- so the capsule and the clip agree by
-	# construction rather than by two lists being kept in step.
-	#
-	# DO NOT split StepUp into its own move state: [ME:CONFIRMED] the original
-	# keeps all six variants in ONE move (TdMove_SpeedVault, six VaultTypes),
-	# and SpeedVaultConfig.variants is a transcription of that table. The
-	# behaviour that differs is per-variant, so it is expressed per-variant. A
-	# separate state would only be justified by something beyond this -- its
-	# own camera, its own transitions -- which is a bigger, separate change.
-	if not is_scramble():
-		# THE LEGS TUCK, so the body rides at the shortened capsule's TOP.
-		#
-		# DO NOT shrink the capsule while leaving the model anchored at the
-		# soles -- that reads as the capsule getting shorter while the body
-		# keeps standing inside it. The COLLISION shortens from the top with
-		# the feet on the floor, exactly as it always has, and the MODEL AND
-		# EYE drop by what the capsule lost. The head then sits on the new
-		# crown, which is where a vaulting body's head actually is.
-		#
-		# crouch_capsule_height rather than a knob of its own: it is the height
-		# this project already folds to for a slide and a roll, and one number
-		# is one number to keep honest.
-		player.set_capsule_height(config.crouch.crouch_capsule_height)
-		player.set_body_folded(true)
-
-	# WalkingMove already null-checks player.probes AND requires a valid
-	# vault_query() before ever transitioning here, so neither branch below is
-	# reachable in normal play. They are kept as a guard for a future caller
-	# that skips that gate -- but as a GENUINELY safe one. DO NOT fall back to
-	# `top = player.global_position` as a synthetic "nowhere to land" value:
-	# the landing is built as `top + forward * vault_exit_forward` with
-	# `landing.y = top.y + standing_height/2`, so that fallback drives the body
-	# 0.9 m up and 0.6 m forward, through whatever is there. There is no safe
-	# destination to invent when the probe found nothing, so invent none: abort
-	# the vault and hand back to Walking with the body untouched and its
-	# velocity intact.
-	var query: Dictionary = player.probes.vault_query() if player.probes != null else Probes.NO_HIT.duplicate()
-	if not query["valid"]:
-		_aborted = true
-		return
-
-	# WalkingMove/FallingMove only ever return SPEED_VAULT immediately after
-	# populating this with a real match from SpeedVaultConfig.pick_variant()
-	# (see their own lookahead check) -- so this should always be populated on
-	# a legitimate entry. Same "invent nothing" reasoning as the invalid-probe
-	# branch above: a caller that reached this move without going through
-	# should_commit() has no variant to fall back to, only an abort.
-	if variant.is_empty():
-		_aborted = true
-		return
-
-	var horizontal := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	# [ME:CONFIRMED 05 §5.7] The sweet spot PAYS (+0.8 m/s); the high variants
-	# are clamped DOWN -- which is why the original's obstacles read as
-	# opportunities rather than as taxes. See SpeedVaultConfig.variants' own
-	# per-field sourcing on speed_addition/clamp_speed_min/clamp_speed_max.
-	#
-	# [ME:CONFIRMED] clamp_speed_max for the two sweet-spot rows is 7.2 --
-	# exactly PawnConfig.ground_speed, the player's own hard ceiling
-	# (ClampSpeedMax = 720 = GroundSpeed in the source too, so this is not a
-	# retuning target). That means the bonus is invisible for any
-	# entry at or above ground_speed: there is no "faster than your own top
-	# speed" to grant. What it DOES give back is speed already LOST to a turn,
-	# a rough landing, or friction since the last time the player was at cap --
-	# the vault tops up a player who has bled speed, it does not create speed
-	# that was never there. See tests/test_speed_vault_move.gd for both cases
-	# (a mid-range entry that keeps the full bonus, and an at-cap entry where
-	# the net gain is exactly zero) exercised through this exact formula.
-	_exit_speed = clampf(horizontal.length() + variant["speed_addition"], \
-		variant["clamp_speed_min"], variant["clamp_speed_max"])
-	_exit_direction = horizontal.normalized() if horizontal.length_squared() > 0.0001 else -player.global_transform.basis.z
-
-	var top: Vector3 = query["top"]
-	var landing := top + _exit_direction * config.speed_vault.vault_exit_forward
-	# Feet flush on the probed top -- NOT offset by variant.ledge_offset_z. DO
-	# NOT add ledge_offset_z here as extra height above this placement on the
-	# assumption that WalkingMove's next move_and_slide() floor-snaps the body
-	# regardless: WalkingMove's floor-snap is a small downward bias
-	# (-floor_snap_speed) meant to keep contact across seams and gentle slopes,
-	# not to recover from being unsupported by any real distance --
-	# PawnConfig.max_step_height's own comment is explicit that Godot's
-	# floor_snap_length only holds a body down over gaps small enough that a
-	# 5 cm plank once broke it (the reason try_step_up() exists at all). A
-	# body left ledge_offset_z above a real surface -- 0.6-0.9 m for two of the
-	# six variants -- does not snap back down; WalkingMove's own grounded
-	# check fails and hands off to a visible multi-tick FALLING. See
-	# SpeedVaultConfig.variants' own note on ledge_offset_z for why the field
-	# is still recorded but left unread.
-	landing.y = top.y + player.standing_height() * 0.5
-
-	# A VAULT *OVER* LANDS ON THE FAR SIDE, NOT ON THE OBSTACLE.
-	#
-	# DO NOT build a vault over the same way as an onto (feet flush on the
-	# probed top): that hauls the body up to the obstacle's own top edge
-	# instead of carrying it past. [ME:CONFIRMED docs/feel-backlog.md 27]
-	# MEASURED: a VaultOver's peak sits 0.87 m BELOW the obstacle's top and the
-	# feet never clear it at all -- it is a hands-on-top move that carries the
-	# body PAST the obstacle, not over it.
-	#
-	# `vault_over` PICKS THE LANDING, not `standable`. Those are different
-	# questions: `standable` asks whether the top is FLAT, which is true for
-	# every box in the calibration course, so gating on it lands every vault
-	# on the obstacle regardless. The question that matters is whether the top
-	# is WIDE, and `vault_over` is already it -- the probe looks a body's reach
-	# past the top and asks whether the ground there is LOWER. Lower means the
-	# obstacle is thin enough to be carried past; level means it is a surface
-	# to land on.
-	#
-	# This also fixes the duration complaint without touching the timing: an
-	# arc that ends on the far side spans the descent as well, so it covers the
-	# whole manoeuvre instead of stopping at the top and dropping.
-	var far_point: Vector3 = query.get("far_point", Vector3.ZERO)
-	var is_onto: bool = not bool(query.get("vault_over", false))
-	if not is_onto:
-		if far_point == Vector3.ZERO:
-			# AN OVER WITH NOWHERE TO LAND: a thin obstacle with a drop beyond
-			# deeper than a vault reaches. See Probes._query_vault_over().
-			#
-			# Carried PAST the far face at the top's own height and released.
-			# There is no landing to aim at, so none is invented -- the move
-			# ends airborne, physics_update() returns FALLING because the body
-			# is not grounded, and gravity does the rest. Which is what happens
-			# to a person who vaults a fence over a stairwell.
-			landing = top + _exit_direction * (config.speed_vault.vault_over_probe_distance
-					+ config.speed_vault.vault_exit_forward)
-			landing.y = top.y + player.standing_height() * 0.5
-		else:
-			landing = far_point + _exit_direction * config.speed_vault.vault_exit_forward
-			landing.y = far_point.y + player.standing_height() * 0.5
-	# WORKED OUT NOW, SPENT AT CONTACT.
-	#
-	# [ME:CONFIRMED] MaxDistanceTime is a confirmed field, so the original does
-	# commit before touching anything -- but a commit is the animation winding
-	# up, not the body being moved. begin()ing here would interpolate from
-	# wherever the commit happened, which at 7 m/s and MaxDistanceTime 0.2 s is
-	# 1.4 m short of the obstacle: a metre and a half of being dragged through
-	# open air.
-	#
-	# [ME:CONFIRMED] The vault visibly starts a little LATER than the press,
-	# with the hands and feet still meeting the geometry and a fraction of a
-	# second of IK-ish blending covering the difference -- you can see Faith's
-	# own limbs in the original, so anything else reads as floating. See
-	# docs/contact-drives-movement.md.
-	#
-	# ONE SHAPE, ONE DIAL: the pull-up's bezier is the only curve now, reused
-	# directly from GrabMove's own rule rather than a separate one; all a
-	# variant chooses is how far its control point sits back over the start.
-	_planned_bias = config.speed_vault.vault_onto_control_bias if is_onto 		else config.speed_vault.vault_over_control_bias
-	# WHERE THE PELVIS SHOULD PASS cannot be read off the two ends alone: the
-	# game needs a different height every time, but the animator made one
-	# animation for one height, so the height difference between the arc's
-	# peak and the obstacle must track whatever that clip's own pelvis lift is.
-	#
-	# SO THE NUMBER COMES FROM THE CLIP, not from a knob. Player.
-	# body_clip_hip_peaks measures how far each clip lifts its own hips above
-	# rest -- SafetyVault 0.732 m, StepUp 0.226, ClimbUp_1m 0.193 -- which IS the
-	# animator's own answer to "how far over the obstacle does the body go". Held
-	# over the top, it scales to every obstacle height without anyone tuning it,
-	# and it follows the animation pack rather than this project's taste.
-	_planned_top_y = top.y
-	_planned_apex_over_top = config.speed_vault.vault_onto_apex_above_top if is_onto 		else config.speed_vault.vault_over_apex_above_top
-	_landing = landing
-
-	# THE VARIANT'S OWN TIME. [ME:CONFIRMED] each variant's duration is fixed
-	# (VaultTimeUp + Over + Down), and a vault shortened to the time the ground
-	# takes at a sprint read as the manoeuvre at double speed.
-	#
-	# The shortening is kept as a dial, SpeedVaultConfig.duration_floor_pct,
-	# off at 1: the time the ground takes, never above the variant's time nor
-	# below that share of it. What it was for -- a vault landing far off, held
-	# at a fixed time, drags the run -- is real, and is the dial to reach for.
-	var carried: float = maxf(horizontal.length(), 0.5)
-	var by_travel: float = player.global_position.distance_to(landing) / carried
-	_arc_duration = clampf(by_travel,
-			variant["duration"] * config.speed_vault.duration_floor_pct,
-			variant["duration"])
-	_face_point = query.get("face_point", Vector3.ZERO)
-	_touched = false
-	_approach_time = 0.0
-
-## HANDS THE BANK BACK. The rig decays nothing on its own, and this move writes
-## its roll from sin(PI * progress()) BEFORE advance() moves the clock -- so the
-## last value it ever writes is taken a tick short of the end, around
-## sin(0.95 PI) rather than sin(PI). Without this the residual stayed on the rig
-## for good: every vault left the horizon banked a fraction of a degree until
-## some later vault happened to overwrite it.
-##
-## Same class as the roll's entry flicker, at the other end of a move: a
-## presentational channel borrowed and not returned. SkillRollMove.exit() does
-## the same for its own two.
-func exit() -> void:
-	# The same REQUEST, not an unconditional restore, that Slide, Crouch and
-	# SkillRoll use: a vault can end under something low, and standing up into
-	# it would put the capsule inside it. Player owes the restore and performs
-	# it on the first tick there is room.
-	player.request_standing_capsule()
-	player.set_body_folded(false)
-	player.set_clip_lift_cancelled(false)
-	if player.camera_rig != null:
-		player.camera_rig.set_vault_roll(0.0)
-
-func physics_update(delta: float, _input: MoveInput) -> StringName:
-	if _aborted:
-		return WALKING
-
-	# THE APPROACH. Committed, winding up, and not yet touching anything -- so
-	# nothing moves the body but the body's own momentum.
-	if not _touched:
-		_approach_time += delta
-		if touching(_face_point):
-			_touched = true
-			# From where the body ACTUALLY IS, which is the whole point.
-			# THE HIPS GIVE UP THEIR OWN LIFT, ALWAYS: there is one shape now
-			# and it is the path's, so a clip that also lifted would double-
-			# count the height.
-			player.set_clip_lift_kept(0.0)
-			# DO NOT ask for the clip at the commit -- it lands on whatever was
-			# playing a moment before the vault (Jump_Start, most of the time),
-			# which is not in the table, so the apex degrades to the obstacle's
-			# top exactly and the pelvis grazes it.
-			#
-			# THE ARC'S PEAK MUST ALWAYS CLEAR THE OBSTACLE. The clip's own hip
-			# peak is what makes it so, and it is measured per clip at attach:
-			# SafetyVault 0.732 m, StepUp 0.226, ClimbUp_1m 0.193.
-			var apex_y: float = _planned_top_y + _planned_apex_over_top
-			begin(player.global_position, _landing, _arc_duration,
-					apex_y, _planned_bias,
-					config.speed_vault.vault_path_ease)
+## TdMove_SpeedVault.UpdateVaultMovement: one leg per call.
+func update_vault_movement() -> void:
+	var t: Dictionary = vault_type()
+	var ledge: Vector3 = player.move_ledge_location
+	match vault_state:
+		0:
+			var offset: Vector2 = t["handplant_offset"]
+			target_location = ledge + Vector3.UP * offset.y + move_direction * offset.x
+			vault_speed = (target_location - player.global_position).length() / t["vault_time_up"]
+			set_precise_location(target_location, vault_speed, PLM_FLY)
+			set_timer(t["vault_time_up"])
+			vault_state = 1
+		1:
+			player.global_position = target_location
 			player.velocity = Vector3.ZERO
-		elif _approach_time >= config.speed_vault.approach_timeout:
-			# The contact the commit predicted never arrived -- jumped short, or
-			# the obstacle turned out to be somewhere else. Handing back is
-			# honest; waiting in the air is not.
-			player.set_grounded(player.is_on_floor())
-			return WALKING if player.grounded else FALLING
-		else:
-			carry_ballistically(delta)
-			return KEEP
+			var offset: Vector2 = t["ledge_offset"]
+			target_location = ledge + Vector3.UP * offset.y + move_direction * offset.x
+			var d: Vector3 = target_location - player.global_position
+			vault_speed = Vector2(d.x, d.z).length() / t["vault_time_over"]
+			set_precise_location(target_location, vault_speed, PLM_JUMP)
+			player.stop_ignore_look_input()
+			set_timer(t["vault_time_over"])
+			vault_state = 2
+		2:
+			player.global_position = target_location
+			player.velocity = Vector3.ZERO
+			if end_move_falling:
+				player.set_physics(PHYS_FALLING)
+			var d: Vector3 = vault_end_position - player.global_position
+			var speed: float = Vector2(d.x, d.z).length() / t["vault_time_down"]
+			set_precise_location(vault_end_position, speed, PLM_FALL if end_move_falling else PLM_JUMP)
+			vault_state = 3
+			saved_velocity = move_direction * speed
+			disable_face_rotation = false
+			player.face_rotation_time_left = 0.4
+			set_timer(t["vault_time_down"])
+		_:
+			use_precise_location = false
+			if vault_onto or not end_move_falling:
+				player.move_manager.set_move(WALKING if vault_onto else LANDING)
+				saved_velocity.y = maxf(0.0, player.velocity.y)
+				player.velocity = saved_velocity
+				player.acceleration = PawnPhysics.safe_normal(saved_velocity)
+				player.set_acceleration_time(0.2)
+			else:
+				player.velocity = PawnPhysics.safe_normal(player.velocity) \
+					* Vector2(saved_velocity.x, saved_velocity.z).length()
+				player.acceleration = PawnPhysics.safe_normal(saved_velocity)
+				player.set_acceleration_time(0.2)
+				player.move_manager.set_move(FALLING)
 
-	# A slight bank through the arc, peaking in the middle and gone by the end.
-	# sin() rather than a ramp: a vault that ended still leaning would hand a
-	# tilted horizon to whatever came next.
-	# NOT FOR A STEP-UP: the bank is the camera's half of a one-handed plant,
-	# and a step-up has no hand in it -- the same reason it plays StepUp
-	# rather than SafetyVault, and the same reason it does not fold. All three
-	# questions are is_scramble().
-	if player.camera_rig != null and not is_scramble():
-		# LEANS ONE WAY, ALWAYS. A vault is a one-handed move -- the same hand
-		# every time in the original -- so the bank has a side rather than being
-		# derived from the geometry. Positive is a lean to the right.
-		player.camera_rig.set_vault_roll(
-			sin(PI * progress()) * deg_to_rad(config.camera.vault_roll_deg))
+func failed_to_reach_precise_location() -> void:
+	if vault_state == 3:
+		update_vault_movement()
 
-	if advance(delta):
-		player.velocity = _exit_direction * _exit_speed
-		# Deliberately NOT declared grounded here. landing.y is pinned to the
-		# probed obstacle TOP plus vault_exit_forward's un-probed horizontal
-		# push -- past a thin obstacle that push can overshoot the obstacle's
-		# own footprint into open air over the real floor, which the body has
-		# never actually touched. DO NOT assert grounded=true at that point:
-		# it silently re-arms coyote time (a jump buffered mid-vault would
-		# fire from mid-air) before WalkingMove's OWN move_and_slide() gets a
-		# chance to check anything. Leaving it false (unchanged from enter())
-		# means WalkingMove's very next floor-snap tick is what first calls
-		# set_grounded() for real, exactly
-		# like every other transition into Walking (Falling, Slide) already
-		# requires of itself. The cost is at most one tick of WalkingMove
-		# running before grounded is confirmed -- harmless, since WalkingMove
-		# always drives with ground_accelerate() regardless of this flag, so
-		# no air control leaks in during that tick.
-		return WALKING
-	return KEEP
+## TdMove_SpeedVault.HandleMoveAction: a melee press is remembered (every row
+## has bMeleePossible). Nothing in the player's moves reads it.
+func handle_move_action(action: int) -> void:
+	if action == MA_MELEE:
+		end_move_in_melee = true
+
+## For the animation: the row's sequence, the vault-onto plan and whether the
+## row is one of the two step-ups (no hand on the top).
+func vault_anim() -> StringName:
+	var t: Dictionary = vault_type()
+	return t["anim"] if not t.is_empty() else &""
+
+func is_step_up() -> bool:
+	return active_vault_type == 0 or active_vault_type == 1
+
+## For the animation: the vault's legs, which the pack's clip is fitted to.
+func scripted_duration() -> float:
+	var t: Dictionary = vault_type()
+	if t.is_empty():
+		return 0.0
+	return t["vault_time_up"] + t["vault_time_over"] + t["vault_time_down"]

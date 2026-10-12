@@ -24,10 +24,6 @@ func _init() -> void:
 	check_for_grab = true
 	check_for_vault_over = true
 	check_for_wall_climb = true
-	# The level's interest points, as Jump has them.
-	check_for_ladder = true
-	check_for_ledge_walk = true
-	check_for_balance = true
 	# bUseAbsoluteYawConstraint with a window StartMove builds; bConstrainLook
 	# is NOT set, so the window is never applied. Kept as the original has it.
 	absolute_yaw_constraint = true

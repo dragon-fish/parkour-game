@@ -75,11 +75,6 @@ func test_the_two_line_walks_declare_the_original_speed_modifiers() -> void:
 	assert_almost_eq(config.balance.speed_modifier, 0.34, 0.001)
 	assert_almost_eq(config.ledge_walk.speed_modifier, 0.10, 0.001)
 
-func test_the_beam_faces_along_the_line_and_the_ledge_across_it() -> void:
-	var config := MovementConfig.new()
-	assert_almost_eq(config.balance.body_yaw_offset_deg, 0.0, 0.001)
-	assert_almost_eq(config.ledge_walk.body_yaw_offset_deg, 90.0, 0.001)
-
 func test_spring_board_is_on_the_aggregate() -> void:
 	var config := MovementConfig.new()
 	assert_not_null(config.spring_board, "MovementConfig must carry a SpringBoardConfig")
