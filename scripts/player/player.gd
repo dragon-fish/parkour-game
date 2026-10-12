@@ -3108,7 +3108,22 @@ func _wire_body_animation(body_node: Node3D) -> void:
 		CharacterAnimator.GRAPH_ARM_OVERLAY_SEEK)
 	blend_tree.connect_node(CharacterAnimator.GRAPH_TIME_SCALE, 0,
 		CharacterAnimator.GRAPH_ARM_OVERLAY)
-	blend_tree.connect_node(&"output", 0, CharacterAnimator.GRAPH_TIME_SCALE)
+	# THE UPPER-BODY OVERLAY sits AFTER the time scale, unlike the arm overlay.
+	# It is scrubbed against its move's own clock (see _drive_upper_overlay), so
+	# the crouch speed match scaling the base must not also scale the punch.
+	blend_tree.add_node(CharacterAnimator.GRAPH_UPPER_OVERLAY_CLIP,
+		_upper_overlay_clip(anim_player))
+	blend_tree.add_node(CharacterAnimator.GRAPH_UPPER_OVERLAY,
+		_upper_overlay(anim_player))
+	blend_tree.connect_node(CharacterAnimator.GRAPH_UPPER_OVERLAY, 0,
+		CharacterAnimator.GRAPH_TIME_SCALE)
+	blend_tree.add_node(CharacterAnimator.GRAPH_UPPER_OVERLAY_SEEK,
+		AnimationNodeTimeSeek.new())
+	blend_tree.connect_node(CharacterAnimator.GRAPH_UPPER_OVERLAY_SEEK, 0,
+		CharacterAnimator.GRAPH_UPPER_OVERLAY_CLIP)
+	blend_tree.connect_node(CharacterAnimator.GRAPH_UPPER_OVERLAY, 1,
+		CharacterAnimator.GRAPH_UPPER_OVERLAY_SEEK)
+	blend_tree.connect_node(&"output", 0, CharacterAnimator.GRAPH_UPPER_OVERLAY)
 
 	_wm.call("every ordered-pair transition")
 	var anim_tree := AnimationTree.new()
@@ -3394,6 +3409,69 @@ func _arm_overlay(anim_player: AnimationPlayer) -> AnimationNodeBlend2:
 			if bone.ends_with(part):
 				overlay.set_filter_path(NodePath(path), true)
 				break
+	return overlay
+
+## Bone-name fragments of the chain the upper-body overlay takes from its own
+## clip: spine up through the head, both shoulders, arms and hands. NOT the hips
+## or the legs -- those stay on the base pose. Torso bones match by exact name,
+## the limb parts by suffix so Left/Right both match; the fingers by fragment.
+const UPPER_OVERLAY_TORSO: Array[String] = ["Spine", "Chest", "UpperChest", "Neck", "Head"]
+const UPPER_OVERLAY_LIMB: Array[String] = ["Shoulder", "UpperArm", "LowerArm", "Hand"]
+const UPPER_OVERLAY_FINGERS: Array[String] = ["Thumb", "Index", "Middle", "Ring", "Little"]
+
+## Which clip the upper-body overlay wears, in preference order. The original's
+## crouch punch rises into UAL2's uppercut; the plain punches follow it.
+const UPPER_OVERLAY_CLIPS: Array[StringName] = [&"Melee_Uppercut", &"Punch_Jab",
+	&"Punch_Cross", &"Melee_Hook"]
+
+## Which of UPPER_OVERLAY_CLIPS this body actually had, resolved once at wiring.
+## Empty on a body with none, and then the crouch punch plays its clip full-body.
+var upper_overlay_clip: StringName = &""
+
+func _upper_overlay_clip_name(anim_player: AnimationPlayer) -> StringName:
+	for clip in UPPER_OVERLAY_CLIPS:
+		if _body_has_clip(anim_player, clip):
+			return clip
+	return &""
+
+func _upper_overlay_clip(anim_player: AnimationPlayer) -> AnimationNodeAnimation:
+	var node := AnimationNodeAnimation.new()
+	var clip: StringName = _upper_overlay_clip_name(anim_player)
+	upper_overlay_clip = clip
+	if clip != &"":
+		node.animation = clip
+	return node
+
+static func _is_upper_body_bone(bone: String) -> bool:
+	if UPPER_OVERLAY_TORSO.has(bone):
+		return true
+	for part in UPPER_OVERLAY_LIMB:
+		if bone.ends_with(part):
+			return true
+	for part in UPPER_OVERLAY_FINGERS:
+		if bone.contains(part):
+			return true
+	return false
+
+## A Blend2 filtered to the spine-and-above chain, built like _arm_overlay() and
+## with the same filter sense: filtered paths are where input 1 shows through, so
+## the legs and hips keep the base. The paths are read off the clip's own tracks
+## for the same reason as there. IF THE LEGS TAKE THE PUNCH AND THE ARMS DO NOT,
+## the sense is inverted: filter every track EXCEPT this set.
+func _upper_overlay(anim_player: AnimationPlayer) -> AnimationNodeBlend2:
+	var overlay := AnimationNodeBlend2.new()
+	overlay.filter_enabled = true
+	overlay.sync = true
+	var clip: StringName = _upper_overlay_clip_name(anim_player)
+	if clip == &"":
+		return overlay
+	var anim: Animation = anim_player.get_animation(clip)
+	if anim == null:
+		return overlay
+	for index in anim.get_track_count():
+		var path: String = String(anim.track_get_path(index))
+		if _is_upper_body_bone(path.get_slice(":", 1)):
+			overlay.set_filter_path(NodePath(path), true)
 	return overlay
 
 func _scripted_gate(seconds: float) -> AnimationNodeTransition:

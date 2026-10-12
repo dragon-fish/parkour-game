@@ -58,6 +58,12 @@ const GRAPH_ARM_OVERLAY_CLIP := &"arm_overlay_clip"
 ## climb's own progress instead of running a loop of their own.
 const GRAPH_ARM_OVERLAY_SEEK := &"arm_overlay_seek"
 
+## The upper-body overlay: a filtered Blend2 AFTER the time scale, wearing a
+## punch clip on the spine-and-above chain while the base keeps the crouch.
+const GRAPH_UPPER_OVERLAY := &"upper_overlay"
+const GRAPH_UPPER_OVERLAY_CLIP := &"upper_overlay_clip"
+const GRAPH_UPPER_OVERLAY_SEEK := &"upper_overlay_seek"
+
 ## The two bare AnimationNodeAnimation slots the scripted clips play on, in
 ## ping-pong order. See _route().
 const GRAPH_SCRIPTED_SLOTS: Array[StringName] = [GRAPH_SCRIPTED_A, GRAPH_SCRIPTED_B]
@@ -398,6 +404,48 @@ func _drive_arm_overlay(delta: float) -> void:
 	anim_tree.set("parameters/%s/seek_request" % GRAPH_ARM_OVERLAY_SEEK,
 		clampf(progress, 0.0, 1.0) * length)
 
+## Seconds spent in MeleeCrouch, and how far through the punch that is, 0..1.
+var _upper_elapsed: float = 0.0
+var _upper_progress: float = 0.0
+
+## How much of the upper-body overlay is showing, 0..1, eased so it cannot pop.
+##
+## ONLY THE CROUCH PUNCH ASKS FOR IT. The base keeps the crouch clip (see the
+## MELEE_CROUCH case in _target_animation) and the punch is laid over the spine
+## and up, so the legs never stand for it.
+##
+## SCRUBBED, NOT PLAYED, against the move's own sequence lengths: the original's
+## punch is 0.567 s or 1.233 s depending on the chain, and the clip fits
+## whichever it is. Held at its last frame while the weight fades out, so a
+## looping clip cannot wrap back to its first frame under the fade.
+func _drive_upper_overlay(delta: float) -> void:
+	if anim_tree == null or player == null or player.move_manager == null:
+		return
+	var melee = player.move_manager.move_for(Move.MELEE_CROUCH)
+	var wanted: float = 1.0 if melee != null and player.upper_overlay_clip != &"" \
+		and player.move_manager.current_name == Move.MELEE_CROUCH else 0.0
+	var path := "parameters/%s/blend_amount" % GRAPH_UPPER_OVERLAY
+	var current: float = float(anim_tree.get(path))
+	if wanted > 0.0:
+		var total: float = MeleeCrouchMove.START_LENGTH + MeleeCrouchMove.HIT_LENGTH
+		if melee.melee_state == MeleeBaseMove.MS_ATTACK_FINISHING \
+				or melee.melee_state == MeleeBaseMove.MS_MISS_FINISHING:
+			total = MeleeCrouchMove.START_UPPERCUT_LENGTH + MeleeCrouchMove.HIT_UPPERCUT_LENGTH
+		_upper_elapsed += delta
+		_upper_progress = clampf(_upper_elapsed / total, 0.0, 0.999)
+	else:
+		_upper_elapsed = 0.0
+	var rate: float = 1.0 - exp(-delta / maxf(_blend_time(), 0.001))
+	anim_tree.set(path, lerpf(current, wanted, rate))
+	if wanted <= 0.0 and current < 0.001:
+		_upper_progress = 0.0
+		return
+	var length: float = _clip_length(player.upper_overlay_clip)
+	if length <= 0.0:
+		return
+	anim_tree.set("parameters/%s/seek_request" % GRAPH_UPPER_OVERLAY_SEEK,
+		_upper_progress * length)
+
 ## The vaults and the step-ups.
 func _vault_clip() -> StringName:
 	# The original's two step-up rows (autostepuprightleg,
@@ -412,6 +460,7 @@ func _vault_clip() -> StringName:
 
 func _route(target: StringName, delta: float) -> void:
 	_drive_arm_overlay(delta)
+	_drive_upper_overlay(delta)
 	if Player.SCRIPTED_MOVE_CLIPS.has(target):
 		# ARMED FOR THE NEXT ORDINARY CLIP, every tick a scripted one is wanted,
 		# so the hold measures how long the ORDINARY target has persisted rather
@@ -1221,7 +1270,11 @@ func _target_animation() -> StringName:
 			# The slide carries on under the kick.
 			return _first_available([&"Slide", &"Kick", &"Crouch_Idle", &"idle"])
 		Move.MELEE_CROUCH:
-			# The original's crouch punch rises into it: UAL2's uppercut.
+			# The base stays in the crouch and the punch is an upper-body overlay
+			# (_drive_upper_overlay). A body with no punch clip for the overlay
+			# plays the original's rise into UAL2's uppercut full-body instead.
+			if player.upper_overlay_clip != &"":
+				return _first_available([&"Crouch_Idle", &"sneaking", &"idle"])
 			return _first_available([&"Melee_Uppercut", &"Crouch_Idle", &"sneaking", &"idle"])
 		Move.MELEE_VAULT:
 			# Unreachable in the original as here; a vault with a kick in it.

@@ -552,3 +552,18 @@ func test_a_spring_board_steps_on_step_up_and_rises_on_the_airborne_loop() -> vo
 	board.spring_board_state = 3
 	assert_eq(String(animator._target_animation()), "Jump",
 		"the rise asked for '%s'" % String(animator._target_animation()))
+
+func test_a_crouch_punch_keeps_the_crouch_below_and_punches_above() -> void:
+	var animator: CharacterAnimator = await _animator_with(
+		[&"Crouch_Idle", &"Melee_Uppercut", &"Idle"])
+	var player: Player = _world["player"]
+	assert_eq(player.upper_overlay_clip, &"Melee_Uppercut", "the overlay did not find the punch")
+	player.move_manager.start(Move.MELEE_CROUCH)
+	assert_eq(String(animator._target_animation()), "Crouch_Idle",
+		"the crouch punch's base asked for '%s'" % String(animator._target_animation()))
+	assert_true(Player._is_upper_body_bone("Spine") and Player._is_upper_body_bone("RightHand") \
+		and Player._is_upper_body_bone("LeftIndexProximal") and Player._is_upper_body_bone("Head"),
+		"the upper-body filter misses part of the spine-and-above chain")
+	assert_false(Player._is_upper_body_bone("Hips") or Player._is_upper_body_bone("LeftUpperLeg") \
+		or Player._is_upper_body_bone("RightFoot") or Player._is_upper_body_bone("LeftToes"),
+		"the upper-body filter reaches the hips or legs")
