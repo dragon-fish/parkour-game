@@ -411,6 +411,15 @@ const TRACE_SKIN := 0.05 * UU
 ## inside, a hit at time 0 as UE3 reports it; and a hit's time is taken back
 ## by the distance the skin delayed it. Sharp (margin 0) for the same reason
 ## the pawn's box is.
+##
+## A start overlapping the skinned box by no more than RECOVERY_TOLERANCE is
+## FLUSH, not inside: move_actor() leaves a body resting that deep in what it
+## slides along (it undoes Jolt's small depenetration pushes), where UE3's
+## MoveActor leaves it exactly on the face. Read as inside, every trace from a
+## body that slid along a wall -- the wall run's own jump height among them --
+## hit that wall at time 0, and a wall run entered from a run pressed against
+## its wall jumped off with no height at all. Such a start sweeps a box shrunk
+## by the tolerance instead, its hit time taken back by that larger skin.
 func box_trace(end: Vector3, start: Vector3, extent: Vector3) -> Dictionary:
 	if extent == Vector3.ZERO:
 		var line: Dictionary = line_trace(start, end)
@@ -428,8 +437,12 @@ func box_trace(end: Vector3, start: Vector3, extent: Vector3) -> Dictionary:
 	query.exclude = [pawn.get_rid()]
 	var inside: Dictionary = space.get_rest_info(query)
 	if not inside.is_empty():
-		return {"time": 0.0, "position": start, "normal": inside["normal"],
-			"collider": instance_from_id(inside["collider_id"])}
+		skin = (extent * 0.5).min(Vector3.ONE * RECOVERY_TOLERANCE)
+		box.size = (extent - skin) * 2.0
+		var deep: Dictionary = space.get_rest_info(query)
+		if not deep.is_empty():
+			return {"time": 0.0, "position": start, "normal": deep["normal"],
+				"collider": instance_from_id(deep["collider_id"])}
 	var motion: Vector3 = end - start
 	var length: float = motion.length()
 	if length == 0.0:

@@ -253,6 +253,15 @@ func test_an_extent_trace_meets_the_body_it_starts_against() -> void:
 	var up: Dictionary = player.phys.box_trace(flush + Vector3(0.0, 2.0, 0.0), flush, extent)
 	assert_eq(up["collider"], body, "the ceiling of the body the box touches was not met")
 	assert_gt(float(up["time"]), 0.0, "the ceiling was met at the start")
+	# Resting 2 mm into the face, as a body that slid along it is left by
+	# move_actor(): still flush. Along the face it meets only the ceiling;
+	# into the face, it is blocked at once.
+	var resting := flush - Vector3(0.0, 0.0, 0.002)
+	var along: Dictionary = player.phys.box_trace(resting + Vector3(0.0, 2.0, 0.0), resting, extent)
+	assert_gt(float(along["time"]), 0.0, "a box resting in the margin of a face it slides along was inside it")
+	var pressed: Dictionary = player.phys.box_trace(resting + Vector3(0.0, 0.0, -0.5), resting, extent)
+	assert_eq(pressed["collider"], body, "a box resting in a face's margin swept into it met nothing")
+	assert_almost_eq(float(pressed["time"]), 0.0, 0.01, "a box resting in a face's margin moved into it")
 	_free_ledge(world)
 
 ## [ME:CONFIRMED decompile N1 §2.1] physWalking clears bJustTeleported on
