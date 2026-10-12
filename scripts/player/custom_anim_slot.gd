@@ -1,10 +1,15 @@
 class_name CustomAnimSlot
 extends RefCounted
 
-# The pawn's full-body custom animation slot, as the move logic sees it: what
-# plays, how far through, at what blend weight, when it ends, and the root
+# The pawn's custom animation slots, as the move logic sees them: what plays
+# on each, how far through, at what blend weight, when it ends, and the root
 # motion it carries. [ME:CONFIRMED decompile TdMove.PlayMoveAnim, TdPawn.OnAnimEnd
 # / OnCeaseRelevantRootMotion, TdAnimNodeSequence.OnCeaseRelevant]
+#
+# One slot per TdPawn.CustomNodeType (CNT_FullBody, CNT_UpperBody, CNT_Canned,
+# ...): an animation started on one fades out only what plays on the same
+# one. Every move's PlayMoveAnim comes here; the move takes its ends and
+# cease-relevant events for the animation it last played, whichever slot.
 #
 # Timing is the original's first-person sequence (RootMotionTracks), never a
 # clip of this project's: the model is optional, and what it shows is
@@ -12,14 +17,22 @@ extends RefCounted
 # carry plays nothing.
 #
 # [ME:INFERRED] UE3's slot, not decompiled here: a new animation fades in
-# over its blend-in while the others fade out over the same time; a non-looping
+# over its blend-in while the others on its slot fade out over the same time; a non-looping
 # one starts its own blend-out that long before its end; a stopped one fades
 # out but keeps playing, so it can still reach its end. The end fires when a
 # playing animation reaches it with any weight left; "ceases relevant" fires
-# when a root-motion animation's weight reaches zero. Root motion is the track's
+# when the weight of one played with root motion or root rotation reaches zero
+# (180TurnInAir and Swing turn their root rotation off on it). Root motion is the track's
 # change over the frame, weighted by the blend.
 
+## TdPawn.CustomNodeType.
+const CNT_CANNED := 0
+const CNT_FULL_BODY := 2
+const CNT_UPPER_BODY := 4
+const CNT_WEAPON := 7
+
 class Channel:
+	var node: int = CNT_FULL_BODY
 	var name: StringName = &""
 	var key: StringName = &""
 	var length: float = 0.0
@@ -51,15 +64,18 @@ static func length_of(anim: StringName) -> float:
 	var key: StringName = StringName(String(anim).to_lower())
 	return float(RootMotionTracks.LENGTHS.get(key, -1.0))
 
-## Plays `anim`. Returns false when the original's sets have no such sequence.
+## Plays `anim` on slot `node`. Returns false when the original's sets have
+## no such sequence.
 func play(anim: StringName, rate: float, blend_in: float, blend_out: float, root_motion: bool,
-		root_rotation: bool, pawn_yaw: float) -> bool:
+		root_rotation: bool, pawn_yaw: float, node: int = CNT_FULL_BODY) -> bool:
 	var length: float = length_of(anim)
 	if length < 0.0:
 		return false
 	for c in channels:
-		_fade(c, blend_in)
+		if c.node == node:
+			_fade(c, blend_in)
 	var ch := Channel.new()
+	ch.node = node
 	ch.name = anim
 	ch.key = StringName(String(anim).to_lower())
 	ch.rate = rate
@@ -80,22 +96,33 @@ static func _fade(c: Channel, seconds: float) -> void:
 	c.auto_out = false
 	c.fade_rate = INF if seconds <= 0.0 else 1.0 / seconds
 
-## StopCustomAnim: the current animation fades out over `blend_out`.
-func stop(blend_out: float) -> void:
-	var c: Channel = current()
+## StopCustomAnim(Type, BlendOutTime): what plays on slot `node` fades out
+## over `blend_out`.
+func stop(blend_out: float, node: int = CNT_FULL_BODY) -> void:
+	var c: Channel = current(node)
 	if c != null:
 		_fade(c, blend_out)
 
-## The animation playing in front: the last one started that is not fading.
-func current() -> Channel:
+## The animation playing in front on slot `node`: the last one started there
+## that is not fading.
+func current(node: int = CNT_FULL_BODY) -> Channel:
 	for i in range(channels.size() - 1, -1, -1):
-		if not channels[i].fading:
+		if not channels[i].fading and channels[i].node == node:
 			return channels[i]
 	return null
 
-func current_name() -> StringName:
-	var c: Channel = current()
+func current_name(node: int = CNT_FULL_BODY) -> StringName:
+	var c: Channel = current(node)
 	return c.name if c != null else &""
+
+## Seconds into `anim`'s sequence at rate 1, or -1 when it is not playing.
+func position_of(anim: StringName) -> float:
+	var c: Channel = _find(anim)
+	return c.sequence_time() if c != null else -1.0
+
+## Whether `anim` is playing on any slot, fading or not.
+func is_playing(anim: StringName) -> bool:
+	return _find(anim) != null
 
 ## The current animation's SequenceLength, seconds, or 0.
 func current_length() -> float:
@@ -187,7 +214,7 @@ func advance(dt: float, pawn_yaw: float = NAN) -> Dictionary:
 			c.ended = true
 			ended.append(c.name)
 		if c.weight <= 0.0 and (c.ended or (c.fading and not c.auto_out)):
-			if c.root_motion:
+			if c.root_motion or c.root_rotation:
 				ceased.append(c.name)
 			channels.erase(c)
 	return {"ended": ended, "ceased": ceased, "delta": delta, "yaw": yaw, "rooted": rooted}

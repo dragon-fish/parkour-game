@@ -27,21 +27,8 @@ const PUMP := 3.0
 const SHIMMY_SPEED := 35.0 * UU
 ## The pull onto the arc ends within 2 uu.
 const INTERPOLATION_DONE := 2.0 * UU
-## SwingStrafe's blend-in: the shimmy step is scaled by the strafe node's
-## weight. [ME:INFERRED N5 §25.1] read as NodeTotalWeight, ramping over the
-## 0.2 s blend-in.
-const SHIMMY_BLEND_IN := 0.2
-
-## The original's 1P sequence lengths, seconds. [ME:CONFIRMED anims]
-const SWING_HARD_START_LENGTH := 0.467
-const SWING_STRAFE_LENGTH := 1.233
-const SWING_180_LENGTH := 2.033
-const SWING_JUMP_OFF_LENGTH := 0.833
-const SWING_END_LENGTH := 0.3
-## Swing180's root yaw: a wind-up to the left, then half a turn to the right.
-## [ME:CONFIRMED anims root_motion/Swing180, 1P] RootMotionClip.turn() grows
-## clockwise, as UE's yaw does.
-static var _swing_180: RootMotionClip = RootMotionClip.from_track(&"swing180")
+## The shimmy step is scaled by SwingStrafe's weight. [ME:INFERRED N5 §25.1]
+## read as NodeTotalWeight: the strafe's own, ramping over its 0.2 s blend-in.
 
 ## TdMove_Swing.Volume: the bar, set by the volume that asked.
 var volume: InterestLine = null
@@ -55,11 +42,6 @@ var is_shimmying: bool = false
 var is_turning: bool = false
 var shimmy_velocity: float = 0.0
 var shimmy_time: float = 0.0
-
-var _anim := MoveAnim.new()
-## Swing180's root rotation, while it plays: the yaw it has turned the body by.
-var _root_rotation: bool = false
-var _root_yaw_applied: float = 0.0
 
 func _init() -> void:
 	super._init()
@@ -165,12 +147,11 @@ func enter(_previous: StringName) -> void:
 	reset_camera_look(cfg.anim_blend_time)
 	player.velocity = Vector3.ZERO
 	player.acceleration = Vector3.ZERO
-	_anim.play(&"SwingHardStart", SWING_HARD_START_LENGTH)
+	player.anim_slot.stop(cfg.anim_blend_time)
+	play_slot_anim(&"SwingHardStart", 1.0, cfg.anim_blend_time, 0.2)
 	set_move_timer(cfg.anim_blend_time, false, _stop_interpolating)
 
 func exit() -> void:
-	_anim.stop()
-	_root_rotation = false
 	is_shimmying = false
 	is_turning = false
 	player.set_swing_pitch_target(0.0)
@@ -217,7 +198,8 @@ func pre_physics(delta: float) -> void:
 func _update_shimmy(delta: float) -> void:
 	if not is_shimmying:
 		return
-	var weight: float = minf(1.0, _anim.elapsed / SHIMMY_BLEND_IN) if _anim.is_playing(&"SwingStrafe") else 1.0
+	var weight: float = player.anim_slot.weight_of(&"SwingStrafe") \
+		if player.anim_slot.is_playing(&"SwingStrafe") else 1.0
 	var step: float = weight * shimmy_velocity * delta
 	if not can_shimmy(step):
 		abort_shimmy()
@@ -236,24 +218,13 @@ func can_shimmy(step: float) -> bool:
 	return on_line.distance_to(at) <= volume.reach_radius
 
 func abort_shimmy() -> void:
+	player.anim_slot.stop(0.25)
 	is_shimmying = false
 
-## TickMove: the base, then SetPawnRotation; then the anim layer.
+## TickMove: the base, then SetPawnRotation.
 func tick_move(delta: float) -> void:
 	super.tick_move(delta)
 	_set_pawn_rotation(swing_angle)
-	if _root_rotation:
-		var yaw_deg: float = _swing_180_yaw(_anim.elapsed + delta)
-		# UE's yaw grows clockwise, Godot's counter-clockwise.
-		var turn: float = -deg_to_rad(yaw_deg - _root_yaw_applied)
-		_root_yaw_applied = yaw_deg
-		player.rotation.y += turn
-	var ended: StringName = _anim.advance(delta)
-	if ended == &"Swing180":
-		on_cease_relevant_root_motion()
-
-static func _swing_180_yaw(t: float) -> float:
-	return rad_to_deg(_swing_180.turn(minf(t, SWING_180_LENGTH)))
 
 ## SetPawnRotation: the original rolls a SwingControl bone by the angle. Here
 ## the model leans by it, and the eye slides with a forward lean.
@@ -291,30 +262,32 @@ func handle_move_action(action: int) -> void:
 			if can_shimmy(dir * UU):
 				is_shimmying = true
 				shimmy_velocity = SHIMMY_SPEED * dir
-				_anim.play(&"SwingStrafe", SWING_STRAFE_LENGTH, dir)
-				shimmy_time = SWING_STRAFE_LENGTH
+				play_slot_anim(&"SwingStrafe", dir, 0.2, 0.2)
+				shimmy_time = absf(player.anim_slot.current_playback_length())
 
 ## OnTimer, raised natively at the zero crossing of a turn: Swing180 with root
-## rotation, the pawn squared to the swing, the pendulum stopped.
+## rotation -- which turns the PAWN, and the view's yaw with it
+## (Player.turn_by_root_rotation()) -- the pawn squared to the swing, the
+## pendulum stopped.
 func on_timer() -> void:
-	_root_rotation = true
-	_root_yaw_applied = 0.0
-	_anim.play(&"Swing180", SWING_180_LENGTH)
-	player.rotation.y = _yaw_of(swing_direction)
+	player.use_root_rotation(true)
+	play_slot_anim(&"Swing180", 1.0, 0.2, 0.3, false, true)
+	player.pawn_yaw = _yaw_of(swing_direction)
 	swing_velocity = 0.0
 	swing_angle = 0.0
 	_set_pawn_rotation(swing_angle)
 
 ## OnCeaseRelevantRootMotion: the turn is over; the swing's frame flips and
-## the view is squared to it, level.
+## the pawn and the view are squared to it, level.
 func on_cease_relevant_root_motion() -> void:
 	if not is_turning:
 		return
 	is_turning = false
-	_root_rotation = false
+	player.use_root_rotation(false)
 	swing_direction = -swing_direction
 	bar_direction = -bar_direction
-	player.rotation.y = _yaw_of(swing_direction)
+	player.pawn_yaw = _yaw_of(swing_direction)
+	player.rotation.y = player.pawn_yaw
 	if player.camera_rig != null:
 		player.camera_rig.set_pitch(0.0)
 	swing_velocity = 0.25
@@ -336,10 +309,12 @@ func _jump_off(jump_angle: float) -> void:
 		player.acceleration = player.velocity
 		player.gravity_modifier = cfg.exit_gravity_modifier
 		player.gravity_modifier_timer = cfg.exit_gravity_modifier_time
+		play_slot_anim(&"SwingJumpOff", 1.0, 0.2, 0.2)
 	player.move_manager.set_move(SWING_JUMP)
 
 ## LetGo: Falling, with the zero velocity the swing holds -- straight down.
 func _let_go() -> void:
+	play_slot_anim(&"SwingEnd", 1.0, 0.2, 0.2)
 	player.move_manager.set_move(FALLING)
 
 ## CheckForTargetVolume: another bar ahead, within

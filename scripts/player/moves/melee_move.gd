@@ -12,13 +12,12 @@ extends MeleeBaseMove
 # combo counters -- and is then counted down below zero, so of two presses in
 # one window only the first is ever thrown. The original's, kept.
 
-## The original's 1P sequence lengths, seconds. [ME:CONFIRMED anims]
-const START_LENGTH := 0.167
-const START_SHOVE_LENGTH := 0.133
-const MISSED_LENGTH := 0.567
-const HIT_SHOVE_LENGTH := 0.567
-## The punches play at 1.5x; the shove at 1.
+## [ME:CONFIRMED anims/moves_to_anims.md, ini] The punches play at 1.5x, the shove at 1;
+## a miss blends in over BlendInMissed and out over BlendOutMissed (0.6 with a
+## punch queued).
 const PUNCH_RATE := 1.5
+const BLEND_IN_MISSED := 0.08
+const BLEND_OUT_MISSED := 0.1
 
 ## TdMove_Melee.EMoveMeleeType: only the two with no target.
 const MT_NORMAL := 0
@@ -57,8 +56,11 @@ func enter(previous: StringName) -> void:
 		is_left = not is_left
 	_trigger_move()
 
+## TdMove_Melee.StopMove: both slots fade out over 0.3 s.
 func exit() -> void:
 	super.exit()
+	player.anim_slot.stop(0.3, CustomAnimSlot.CNT_UPPER_BODY)
+	player.anim_slot.stop(0.3)
 	_reset()
 
 ## A punch pressed inside the window is queued, at most two.
@@ -103,17 +105,19 @@ func _trigger_move() -> void:
 	_open_window(COMBO_WINDOW)
 	if combo_queued_actions == 0 and combo_counter == 2:
 		melee_type = MT_AT_COMBO_FINISHER
-		play_move_anim(&"MeleeStartShove", START_SHOVE_LENGTH)
+		play_move_anim(&"MeleeStartShove", 1.0, 0.1, -1.0, CustomAnimSlot.CNT_UPPER_BODY)
 		player.set_ignore_move_input(1.0)
 	else:
 		melee_type = MT_NORMAL
-		play_move_anim(&"MeleeStartLeft" if is_left else &"MeleeStartRight", START_LENGTH, PUNCH_RATE)
+		play_move_anim(&"MeleeStartLeft" if is_left else &"MeleeStartRight", PUNCH_RATE, 0.1, -1.0,
+			CustomAnimSlot.CNT_UPPER_BODY)
 
 func _trigger_miss() -> void:
 	match melee_type:
 		MT_NORMAL:
-			play_move_anim(&"MeleeMissedLeft" if is_left else &"MeleeMissedRight", MISSED_LENGTH, PUNCH_RATE)
+			play_move_anim(&"MeleeMissedLeft" if is_left else &"MeleeMissedRight", PUNCH_RATE, BLEND_IN_MISSED,
+				0.6 if combo_queued_actions > 0 else BLEND_OUT_MISSED, CustomAnimSlot.CNT_UPPER_BODY)
 		MT_AT_COMBO_FINISHER:
-			play_move_anim(&"MeleeHitShove", HIT_SHOVE_LENGTH)
+			play_move_anim(&"MeleeHitShove", 1.0, 0.0, 0.1, CustomAnimSlot.CNT_UPPER_BODY)
 			_reset()
 	melee_state = MS_MISS_NORMAL if melee_state == MS_ATTACK_NORMAL else MS_MISS_FINISHING

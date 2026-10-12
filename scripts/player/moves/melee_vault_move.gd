@@ -11,7 +11,6 @@ extends MeleeBaseMove
 # arrival the stored velocity handed back on walking physics.
 
 ## The original's 1P sequence length, seconds. [ME:CONFIRMED anims]
-const VAULT_OVER_LENGTH := 0.667
 
 var vault_end_position: Vector3 = Vector3.ZERO
 var vault_time_down: float = 0.0
@@ -52,7 +51,7 @@ func _set_stored_velocity() -> void:
 	player.acceleration = PawnPhysics.safe_normal(saved_velocity)
 
 func on_timer() -> void:
-	play_move_anim(&"MeleeVaultOver", VAULT_OVER_LENGTH)
+	play_move_anim(&"MeleeVaultOver", 1.0, 0.1, 0.1)
 	hit_detection = true
 
 func on_custom_anim_end(_anim_name: StringName) -> void:

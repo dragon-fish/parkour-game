@@ -415,15 +415,16 @@ func reached_wall() -> void:
 func failed_to_reach_precise_location() -> void:
 	pass
 
-## TdMove.PlayMoveAnim, into the pawn's full-body slot (Player.anim_slot): the
+## TdMove.PlayMoveAnim, into the pawn's custom slot `node` (Player.anim_slot): the
 ## original's first-person timing and, with `root_motion` / `root_rotation`,
 ## its root motion -- which moves the body only while the pawn uses root
 ## motion (UseRootMotion) or root rotation. A name the original's player sets
 ## do not have plays nothing.
 func play_slot_anim(anim: StringName, rate: float, blend_in: float, blend_out: float,
-		root_motion: bool = false, root_rotation: bool = false) -> void:
+		root_motion: bool = false, root_rotation: bool = false,
+		node: int = CustomAnimSlot.CNT_FULL_BODY) -> void:
 	current_custom_anim_name = anim
-	player.anim_slot.play(anim, rate, blend_in, blend_out, root_motion, root_rotation, player.pawn_yaw)
+	player.anim_slot.play(anim, rate, blend_in, blend_out, root_motion, root_rotation, player.pawn_yaw, node)
 
 ## Whether `anim` is this move's CurrentCustomAnimName (names compare without
 ## case, as the original's do).

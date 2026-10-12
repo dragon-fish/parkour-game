@@ -42,11 +42,16 @@ if (!existsSync(privateDir)) {
   throw new Error(`${privateDir} is missing: run git submodule update --init`);
 }
 
-// The moves whose animation lengths are read: the ledge family.
+// The moves whose animation lengths are read: the ledge family first.
 const MOVES = [
   "TdMove_SpeedVault", "TdMove_AutoStepUp", "TdMove_StepUp", "TdMove_IntoGrab",
   "TdMove_Grab", "TdMove_GrabPullUp", "TdMove_GrabJump", "TdMove_GrabTransfer",
   "TdMove_IntoClimb", "TdMove_Climb", "TdMove_LedgeWalk", "TdMove_Balance",
+  // The moves that time themselves on their animations through the same
+  // slot: the barges, the melee family, Interact, Swing and ZipLine.
+  "TdMove_Barge", "TdMove_AirBarge", "TdMove_Melee", "TdMove_MeleeAir", "TdMove_MeleeSlide",
+  "TdMove_MeleeCrouch", "TdMove_MeleeVault", "TdMove_MeleeWallrun", "TdMove_Interact",
+  "TdMove_Swing", "TdMove_ZipLine",
 ];
 
 // The sequences played with root motion or root rotation.

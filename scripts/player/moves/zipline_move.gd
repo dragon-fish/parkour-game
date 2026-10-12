@@ -18,9 +18,6 @@ extends PhysicsMove
 # SplineLocations (MovementSpline). The ride runs in the curve's own point
 # order, as the original's runs in its spline's.
 
-## The original's 1P sequence lengths. [ME:CONFIRMED anims]
-const ZIPLINE_HIT_WALL_LENGTH := 1.167
-
 enum Status { MOVING, CLOSE_TO_END, IMPACT }
 
 ## Look-ahead of the impact probe while moving, close to the end, and at the
@@ -40,7 +37,6 @@ var current_look_at_point: Vector3 = Vector3.ZERO
 var zip_line_look_assist: bool = false
 
 var _spline: MovementSpline = MovementSpline.new()
-var _anim := MoveAnim.new()
 
 func _init() -> void:
 	super._init()
@@ -91,7 +87,7 @@ func enter(_previous: StringName) -> void:
 		player.camera_rig.recentre_yaw_reference(player.pawn_yaw)
 
 func exit() -> void:
-	_anim.stop()
+	player.anim_slot.stop(0.3)
 	zip_line = null
 	zip_line_status = Status.MOVING
 	# [ME:CONFIRMED decompile] StopMove: PHYS_Falling, and the fall counted from
@@ -153,12 +149,14 @@ func pre_physics(delta: float) -> void:
 
 func prepare_for_forward_impact() -> void:
 	if zip_line_status == Status.MOVING:
-		_anim.play(&"ziplineintohitwall", 2.0)
+		player.anim_slot.stop(0.1)
+		play_slot_anim(&"ziplineintohitwall", 1.0, 0.3, 0.2)
 		zip_line_status = Status.CLOSE_TO_END
 
 ## The hands hit: input off for 0.8 s, and Falling when it runs out.
 func play_forward_impact() -> void:
-	_anim.play(&"ziplinehitwall", ZIPLINE_HIT_WALL_LENGTH)
+	player.anim_slot.stop(0.2)
+	play_slot_anim(&"ziplinehitwall", 1.0, 0.1, 0.2)
 	zip_line_status = Status.IMPACT
 	player.set_ignore_look_input(0.8)
 	player.set_ignore_move_input(0.8)
@@ -181,10 +179,6 @@ func hit_wall(normal: Vector3, _collider: Object) -> void:
 	elif Vector2(player.velocity.x, player.velocity.z).length() > 100.0 * UU:
 		player.velocity = Vector3.ZERO
 		player.acceleration = Vector3.ZERO
-
-func tick_move(delta: float) -> void:
-	super.tick_move(delta)
-	_anim.advance(delta)
 
 ## UpdateViewRotation: the base, then the look assist -- the view drawn down
 ## the cable 600 uu ahead until the first yaw input, which ends it for the

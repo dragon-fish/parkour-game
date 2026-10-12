@@ -176,6 +176,31 @@ func test_letting_go_drops_straight_down() -> void:
 	assert_eq(player.move_manager.current_name, Move.FALLING)
 	assert_eq(player.velocity, Vector3.ZERO)
 
+## [ME:CONFIRMED decompile TdMove_Swing.OnTimer / OnCeaseRelevantRootMotion]
+## The turn on the bar is Swing180's ROOT ROTATION: the flag goes up, the
+## pawn turns and the view's yaw follows it; when the animation lets go the
+## flag comes down and the swing's frame has flipped under a pawn facing it.
+func test_the_turn_on_the_bar_is_a_root_rotation_that_flips_the_swing() -> void:
+	var player: Player = await _start()
+	var swing: SwingMove = _hang(player, _far_bar(), -0.5)
+	await step(12)
+	var before: Vector3 = swing.swing_direction
+	swing.is_turning = true
+	swing.on_timer()
+	assert_true(player.using_root_rotation, "Swing180 did not turn the root rotation on")
+	await step(20)
+	assert_almost_eq(wrapf(player.rotation.y - player.pawn_yaw, -PI, PI), 0.0, 0.01,
+		"the view's yaw did not follow the root rotation")
+	for i in 150:
+		await step(1)
+		if not swing.is_turning:
+			break
+	assert_false(swing.is_turning, "the turn never ended")
+	assert_false(player.using_root_rotation, "the root rotation was left on")
+	assert_almost_eq(swing.swing_direction, -before, Vector3.ONE * 1e-5, "the swing's frame did not flip")
+	assert_almost_eq(wrapf(player.pawn_yaw - SwingMove._yaw_of(swing.swing_direction), -PI, PI), 0.0, 1e-5,
+		"the pawn does not face the flipped swing")
+
 ## [ME:CONFIRMED decompile TdSwingVolume] The volume offers the swing to a
 ## body moving toward the bar and facing it; once it takes the body the
 ## volume is spent until the body enters it again.

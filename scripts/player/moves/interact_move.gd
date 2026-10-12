@@ -17,8 +17,6 @@ extends PhysicsMove
 # trigger's Y. A valve (TIT_Valve) has no UseZone counterpart and is not
 # ported.
 
-## The original's 1P sequence length, seconds. [ME:CONFIRMED anims]
-const INTERACT_BUTTON_LENGTH := 1.4
 ## [ME:CONFIRMED decompile] UpdateEventDelay: 0.6 s for a button.
 const BUTTON_EVENT_DELAY := 0.6
 ## [ME:CONFIRMED decompile] StartInteract: the walk takes 0.2 s for a button,
@@ -34,7 +32,6 @@ var normal_from_trigger_2d: Vector3 = Vector3.ZERO
 var reached_trigger: bool = false
 var event_delay: float = 0.0
 var _distance_to_object: float = 0.0
-var _anim := MoveAnim.new()
 
 func _init() -> void:
 	super._init()
@@ -121,8 +118,9 @@ func reached_precise_location_and_rotation() -> void:
 	player.pawn_yaw = atan2(-face.x, -face.z)
 	player.rotation.y = player.pawn_yaw
 	player.set_physics(PHYS_WALKING)
-	_anim.play(&"interactbuttonhigh" if current_trigger.interact_type == UseZone.InteractType.BUTTON_HIGH \
-		else &"interactbutton", INTERACT_BUTTON_LENGTH)
+	# PlayInteractAnimation: on the canned slot. [ME:CONFIRMED anims]
+	play_slot_anim(&"interactbuttonhigh" if current_trigger.interact_type == UseZone.InteractType.BUTTON_HIGH \
+		else &"interactbutton", 1.0, 0.2, 0.45, false, false, CustomAnimSlot.CNT_CANNED)
 	player.set_ignore_look_input(-1.0)
 	set_timer(0.85)
 	set_move_timer(event_delay, false, _activate_first_output_link)
@@ -134,12 +132,10 @@ func _activate_first_output_link() -> void:
 func on_timer() -> void:
 	player.move_manager.set_move(WALKING)
 
-func tick_move(delta: float) -> void:
-	super.tick_move(delta)
-	if _anim.advance(delta) != &"":
-		player.move_manager.set_move(WALKING)
+## OnCustomAnimEnd: a button's animation over is Walking.
+func on_custom_anim_end(_anim_name: StringName) -> void:
+	player.move_manager.set_move(WALKING)
 
 func exit() -> void:
-	_anim.stop()
 	current_trigger = null
 	reached_trigger = false

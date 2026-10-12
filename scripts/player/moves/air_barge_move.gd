@@ -13,13 +13,6 @@ extends BargeMove
 # carries the body 115 cm on, and its end is Walking; an animation that ends in
 # the air is Falling.
 
-## The original's 1P sequence lengths, seconds. [ME:CONFIRMED anims]
-const AIR_BARGE_IDLE_LENGTH := 1.0
-const MELEE_IN_AIR_LENGTH := 0.567
-const AIR_BARGE_IMPACT_LENGTH := 1.0
-const AIR_BARGE_LAND_LENGTH := 0.5
-## AirBargeLand's root, forward. [ME:CONFIRMED anims root_motion/AirBargeLand, 1P]
-static var _land_root: RootMotionClip = RootMotionClip.from_track(&"airbargeland")
 ## The free-space test for the lift is made 30 uu above the centre.
 const LIFT_TEST_RAISE := 30.0 * UU
 
@@ -27,8 +20,6 @@ var height_boost_left: float = 0.0
 var pre_collision_velocity: Vector3 = Vector3.ZERO
 var use_air_barge_anim: bool = false
 var is_landing: bool = false
-## Metres of AirBargeLand's root already handed to the physics.
-var _root_applied: float = 0.0
 
 func _init() -> void:
 	super._init()
@@ -52,9 +43,9 @@ func start_bargin() -> void:
 	reset_camera_look(0.3)
 	use_air_barge_anim = false
 	if use_air_barge_anim:
-		_anim.play(&"AirBargeIdle", AIR_BARGE_IDLE_LENGTH)
+		play_slot_anim(&"AirBargeIdle", 1.0, 0.15, 0.15)
 	else:
-		_anim.play(&"MeleeInAir", MELEE_IN_AIR_LENGTH)
+		play_slot_anim(&"MeleeInAir", 1.0, 0.15, 0.15)
 
 ## Native PrePhysics.
 func pre_physics(delta: float) -> void:
@@ -70,19 +61,6 @@ func pre_physics(delta: float) -> void:
 	if pre_collision_velocity != Vector3.ZERO:
 		player.velocity = pre_collision_velocity * 0.5
 		pre_collision_velocity = Vector3.ZERO
-	if is_landing:
-		_apply_root_motion(delta)
-
-## AirBargeLand's root motion, handed to the physics as this frame's root
-## velocity (Player.use_root_motion(), PlayLanded's UseRootMotion(true)).
-func _apply_root_motion(delta: float) -> void:
-	if not player.root_motion_active or delta <= 0.0:
-		return
-	var t: float = minf(_anim.elapsed + delta, AIR_BARGE_LAND_LENGTH)
-	var forward: float = _land_root.displacement(t).x
-	var step: float = forward - _root_applied
-	_root_applied = forward
-	player.add_root_motion(player.facing() * step)
 
 ## TryGiveBargeDamage: the first thing hit (HitWall or Bump) deals the barge
 ## to every interactable the trace found -- at the location of what was hit,
@@ -96,17 +74,19 @@ func try_give_barge_damage(normal: Vector3, collider: Object) -> void:
 		if is_interactable(entry["collider"]):
 			hit_object(player, entry["collider"], at, normal)
 			pre_collision_velocity = player.velocity
+	player.anim_slot.stop(0.0)
 	if use_air_barge_anim:
-		_anim.play(&"AirBargeImpact", AIR_BARGE_IMPACT_LENGTH)
+		play_slot_anim(&"AirBargeImpact", 1.0, 0.0, 0.1)
 
 func landed(_normal: Vector3) -> void:
 	play_landed()
 
+## PlayLanded: AirBargeLand with root motion, which the slot hands the
+## physics.
 func play_landed() -> void:
 	is_landing = true
-	_root_applied = 0.0
 	player.use_root_motion(true)
-	_anim.play(&"AirBargeLand", AIR_BARGE_LAND_LENGTH)
+	play_slot_anim(&"AirBargeLand", 1.0, 0.1, 0.1, true)
 
 func on_custom_anim_end(anim_name: StringName) -> void:
 	if anim_name == &"AirBargeLand":
@@ -117,4 +97,5 @@ func on_custom_anim_end(anim_name: StringName) -> void:
 		player.move_manager.set_move(FALLING)
 
 func abort_barge() -> void:
+	player.anim_slot.stop(0.5, UPPER_BODY)
 	player.move_manager.set_move(FALLING)

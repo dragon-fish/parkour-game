@@ -23,18 +23,14 @@ const INTERACTABLE_GROUP := &"interactable"
 const BARGE_DAMAGE_META := &"barge_damage"
 ## MeleeKickObject's BargeHitNotify, seconds in. [ME:CONFIRMED anims]
 const KICK_HIT_NOTIFY_TIME := 0.33
-
-## The original's 1P sequence lengths, seconds. [ME:CONFIRMED anims]
-const BARGE_IN_LENGTH := 0.6
-const BARGE_OUT_LENGTH := 1.067
-const KICK_OBJECT_LENGTH := 0.867
+## The shoulder plays on the upper body, the kick on the full body.
+## [ME:CONFIRMED anims/moves_to_anims.md]
+const UPPER_BODY := CustomAnimSlot.CNT_UPPER_BODY
 
 var has_dealt_damage: bool = false
 var barge_with_hands: bool = false
 ## BargeActorList: what the trace found, [{collider, normal, position}].
 var barge_actor_list: Array = []
-
-var _anim := MoveAnim.new()
 
 func _init() -> void:
 	super._init()
@@ -122,10 +118,10 @@ func start_bargin() -> void:
 				var to: Vector3 = entry["position"] - player.global_position
 				var time_to_door: float = Vector2(to.x, to.z).length() / barge_speed
 				rate = clampf(cfg.anim_time / maxf(time_to_door, 1e-6), 0.7, 1.3)
-		_anim.play(&"BargeInLeft", BARGE_IN_LENGTH, rate)
+		play_slot_anim(&"BargeInLeft", rate, 0.2, 0.0, false, false, UPPER_BODY)
 	else:
 		reset_camera_look(0.2)
-		_anim.play(&"MeleeKickObject", KICK_OBJECT_LENGTH)
+		play_slot_anim(&"MeleeKickObject", 1.0, 0.1, 0.1)
 		player.set_ignore_move_input(0.6)
 
 ## Native PrePhysics: the base, then pulling back (hint Down) before the
@@ -136,6 +132,7 @@ func pre_physics(delta: float) -> void:
 		abort_barge()
 
 func abort_barge() -> void:
+	player.anim_slot.stop(0.5, UPPER_BODY)
 	player.move_manager.set_move(WALKING)
 
 func hit_wall(normal: Vector3, collider: Object) -> void:
@@ -154,7 +151,7 @@ func try_give_barge_damage(_normal: Vector3, collider: Object) -> void:
 	has_dealt_damage = true
 	set_precise_location(player.global_position, Vector2(player.velocity.x, player.velocity.z).length(), PLM_WALK)
 	hit_all(player, barge_actor_list)
-	_anim.play(&"BargeOutLeft", BARGE_OUT_LENGTH)
+	play_slot_anim(&"BargeOutLeft", 1.0, 0.0, 0.2, false, false, UPPER_BODY)
 
 ## BargeHitNotify, the kick's: once.
 func barge_hit_notify() -> void:
@@ -164,17 +161,18 @@ func barge_hit_notify() -> void:
 	hit_all(player, barge_actor_list)
 
 func on_custom_anim_end(_anim_name: StringName) -> void:
+	player.anim_slot.stop(0.2, UPPER_BODY)
 	player.move_manager.set_move(WALKING)
 
+## The kick's BargeHitNotify, when the slot carried MeleeKickObject past it
+## this frame.
 func tick_move(delta: float) -> void:
 	super.tick_move(delta)
-	if _anim.name == &"MeleeKickObject" and _anim.elapsed < KICK_HIT_NOTIFY_TIME \
-			and _anim.elapsed + delta >= KICK_HIT_NOTIFY_TIME:
-		barge_hit_notify()
-	var ended: StringName = _anim.advance(delta)
-	if ended != &"":
-		on_custom_anim_end(ended)
+	if is_current_custom_anim(&"MeleeKickObject"):
+		var at: float = player.anim_slot.position_of(&"MeleeKickObject")
+		if at >= KICK_HIT_NOTIFY_TIME and at - delta < KICK_HIT_NOTIFY_TIME:
+			barge_hit_notify()
 
 func exit() -> void:
-	_anim.stop()
+	player.anim_slot.stop(0.2, UPPER_BODY)
 	barge_actor_list.clear()

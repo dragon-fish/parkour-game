@@ -427,10 +427,12 @@ func _drive_upper_overlay(delta: float) -> void:
 	var path := "parameters/%s/blend_amount" % GRAPH_UPPER_OVERLAY
 	var current: float = float(anim_tree.get(path))
 	if wanted > 0.0:
-		var total: float = MeleeCrouchMove.START_LENGTH + MeleeCrouchMove.HIT_LENGTH
+		var total: float = CustomAnimSlot.length_of(&"MeleeCrouchStart") \
+			+ CustomAnimSlot.length_of(&"MeleeCrouchHit")
 		if melee.melee_state == MeleeBaseMove.MS_ATTACK_FINISHING \
 				or melee.melee_state == MeleeBaseMove.MS_MISS_FINISHING:
-			total = MeleeCrouchMove.START_UPPERCUT_LENGTH + MeleeCrouchMove.HIT_UPPERCUT_LENGTH
+			total = CustomAnimSlot.length_of(&"MeleeCrouchStartUpperCut") \
+				+ CustomAnimSlot.length_of(&"MeleeCrouchHitUppercut")
 		_upper_elapsed += delta
 		_upper_progress = clampf(_upper_elapsed / total, 0.0, 0.999)
 	else:

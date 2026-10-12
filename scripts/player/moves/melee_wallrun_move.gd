@@ -18,12 +18,7 @@ const CAN_DO_MOVE_TASER_LIMIT := 0.8
 const MS_MELEE_PENDING := 0
 const MS_MELEE_ATTACK_NORMAL := 1
 
-## The original's 1P sequence lengths, seconds. [ME:CONFIRMED anims]
-const KICK_LEFT_LENGTH := 0.833
-const KICK_RIGHT_LENGTH := 0.767
-
 var melee_state: int = MS_MELEE_PENDING
-var _anim := MoveAnim.new()
 ## Whether the kick left a wall on the left (OldMovementState ==
 ## WallRunningLeft).
 var left: bool = false
@@ -67,22 +62,13 @@ func trigger_move() -> void:
 	player.velocity *= c.speed_scale
 	reset_camera_look(0.1)
 	if left:
-		_anim.play(&"MeleeWallRunLeft", KICK_LEFT_LENGTH)
+		play_slot_anim(&"MeleeWallRunLeft", 1.0, 0.1, 0.2)
 	else:
-		_anim.play(&"MeleeWallRunRight", KICK_RIGHT_LENGTH)
+		play_slot_anim(&"MeleeWallRunRight", 1.0, 0.1, 0.2)
 
 ## TdMove_MeleeWallrun.OnCustomAnimEnd: Walking.
 func on_custom_anim_end(_anim_name: StringName) -> void:
 	player.move_manager.set_move(WALKING)
-
-func tick_move(delta: float) -> void:
-	super.tick_move(delta)
-	var ended: StringName = _anim.advance(delta)
-	if ended != &"":
-		on_custom_anim_end(ended)
-
-func exit() -> void:
-	_anim.stop()
 
 ## TdMove_MeleeWallrun.Landed: Walking only while still pending.
 func landed(_normal: Vector3) -> void:

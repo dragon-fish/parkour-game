@@ -24,12 +24,6 @@ const MAT_FROM_JUMP := 0
 const MAT_FROM_JUMP_STILL := 1
 const MAT_FROM_JUMP_HIGH := 2
 
-## The original's 1P sequence lengths, seconds. [ME:CONFIRMED anims]
-const IN_AIR_LENGTH := 0.567
-const IN_AIR_STILL_LENGTH := 0.733
-const IN_AIR_LAND_LENGTH := 0.667
-const IN_AIR_LAND_2_LENGTH := 0.7
-
 var melee_type: int = MAT_FROM_JUMP
 var has_received_landed_event: bool = false
 
@@ -64,10 +58,10 @@ func enter(previous: StringName) -> void:
 func _trigger_move() -> void:
 	if melee_type == MAT_FROM_JUMP:
 		set_look_at_target_angle(UE.pitch_units(cfg.look_at_pitch), UE.yaw_units(player.pawn_yaw), 0.2)
-		play_move_anim(&"MeleeInAir", IN_AIR_LENGTH)
+		play_move_anim(&"MeleeInAir", 1.0, 0.1, 0.2)
 		hit_detection = true
 	elif melee_type == MAT_FROM_JUMP_STILL:
-		play_move_anim(&"MeleeInAirStill", IN_AIR_STILL_LENGTH)
+		play_move_anim(&"MeleeInAirStill", 1.0, 0.1, 0.2)
 		set_timer(0.25)
 		player.velocity.y = 0.0
 
@@ -99,13 +93,13 @@ func landed(normal: Vector3) -> void:
 		manager.set_move(WALKING)
 		if walking != null:
 			walking.reset_camera_look(0.4)
-		play_move_anim(&"MeleeInAirLand2", IN_AIR_LAND_2_LENGTH)
+		play_move_anim(&"MeleeInAirLand2", 1.0, 0.3, 0.3)
 		hit_detection = false
 	elif hit_detection and fall_height >= config.pawn.hard_landing_height:
 		hit_detection = false
 		super.landed(normal)
 	else:
 		manager.set_move(WALKING)
-		play_move_anim(&"MeleeInAirLand", IN_AIR_LAND_LENGTH)
+		play_move_anim(&"MeleeInAirLand", 1.0, 0.1, 0.1)
 		if walking != null:
 			walking.reset_camera_look(0.2)

@@ -13,12 +13,6 @@ extends MeleeBaseMove
 # SetCameraPitchConstraints(-2000, 2000) is called on StartMove, but this move
 # has no bConstrainLook, so it constrains nothing. Not ported.
 
-## The original's 1P sequence lengths, seconds. [ME:CONFIRMED anims]
-const START_LENGTH := 0.1
-const START_UPPERCUT_LENGTH := 0.2
-const HIT_LENGTH := 0.467
-const HIT_UPPERCUT_LENGTH := 1.033
-
 func _init() -> void:
 	super._init()
 	# [ME:CONFIRMED decompile] bUseCustomCollision (Move.begin_move / end_move).
@@ -39,9 +33,9 @@ func enter(previous: StringName) -> void:
 
 func _trigger_move() -> void:
 	if melee_state == MS_ATTACK_FINISHING:
-		play_move_anim(&"MeleeCrouchStartUpperCut", START_UPPERCUT_LENGTH)
+		play_move_anim(&"MeleeCrouchStartUpperCut", 1.0, 0.1, 1.0)
 	else:
-		play_move_anim(&"MeleeCrouchStart", START_LENGTH)
+		play_move_anim(&"MeleeCrouchStart", 1.0, 0.1, -1.0, CustomAnimSlot.CNT_UPPER_BODY)
 
 func on_custom_anim_end(_anim_name: StringName) -> void:
 	match melee_state:
@@ -58,7 +52,11 @@ func on_custom_anim_end(_anim_name: StringName) -> void:
 
 func _trigger_miss() -> void:
 	if melee_state == MS_ATTACK_FINISHING:
-		play_move_anim(&"MeleeCrouchHitUppercut", HIT_UPPERCUT_LENGTH)
+		play_move_anim(&"MeleeCrouchHitUppercut", 1.0, 0.1, 0.1)
 	elif melee_state == MS_ATTACK_NORMAL:
-		play_move_anim(&"MeleeCrouchHit", HIT_LENGTH)
+		play_move_anim(&"MeleeCrouchHit", 1.0, 0.1, 0.2, CustomAnimSlot.CNT_UPPER_BODY)
 	melee_state = MS_MISS_FINISHING if melee_state == MS_ATTACK_FINISHING else MS_MISS_NORMAL
+
+## TdMove_MeleeCrouch.StopMove: the upper body fades out over 0.2 s.
+func exit() -> void:
+	player.anim_slot.stop(0.2, CustomAnimSlot.CNT_UPPER_BODY)

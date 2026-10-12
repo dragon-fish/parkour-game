@@ -28,8 +28,6 @@ var melee_state: int = MS_PENDING
 ## kept because the original's landing and vault branches test it.
 var hit_detection: bool = false
 
-var _anim := MoveAnim.new()
-
 func _init() -> void:
 	super._init()
 	movement_group = MG_NON_INTERACTIVE
@@ -50,24 +48,11 @@ func can_do_move() -> bool:
 func enter(_previous: StringName) -> void:
 	melee_state = MS_ATTACK_NORMAL
 
-## TdMove_MeleeBase.StopMove: the custom animations stop.
-func exit() -> void:
-	_anim.stop()
-
-## PlayMoveAnim, for the timing: see MoveAnim.
-func play_move_anim(anim: StringName, length_1p: float, rate: float = 1.0) -> void:
-	_anim.play(anim, length_1p, rate)
-
-## The base TickMove, then the animation: an end that this move is still
-## waiting for is OnCustomAnimEnd.
-func tick_move(delta: float) -> void:
-	super.tick_move(delta)
-	var ended: StringName = _anim.advance(delta)
-	if ended != &"":
-		on_custom_anim_end(ended)
-
-func on_custom_anim_end(_anim_name: StringName) -> void:
-	pass
+## PlayMoveAnim, on the pawn's slot `node` with the original's rate and
+## blends (Move.play_slot_anim()); its end comes back as OnCustomAnimEnd.
+func play_move_anim(anim: StringName, rate: float, blend_in: float, blend_out: float,
+		node: int = CustomAnimSlot.CNT_FULL_BODY) -> void:
+	play_slot_anim(anim, rate, blend_in, blend_out, false, false, node)
 
 ## Re-runs StartMove on the move already current, as the original's
 ## StartMove() called from inside the move does: the common half, then this

@@ -13,10 +13,6 @@ extends MeleeBaseMove
 # lead-in, but MeleeBase.StartMove has just set MS_AttackNormal, so that branch
 # never runs. The original's, kept.
 
-## The original's 1P sequence lengths, seconds. [ME:CONFIRMED anims]
-const CROUCH_SLIDE_TO_CROUCH_LENGTH := 0.5
-const MELEE_SLIDE_LENGTH := 0.667
-const MELEE_SLIDE_HARD_LENGTH := 0.733
 ## BargeTraceDistance. [ME:CONFIRMED decompile] 90 uu, a const of the class.
 const BARGE_TRACE_DISTANCE := 90.0 * UU
 
@@ -35,16 +31,16 @@ func enter(previous: StringName) -> void:
 	in_move = false
 	timer = 0.0
 	if melee_state == MS_ATTACK_FINISHING:
-		play_move_anim(&"CrouchSlideToCrouch", CROUCH_SLIDE_TO_CROUCH_LENGTH)
+		play_move_anim(&"CrouchSlideToCrouch", 1.0, 0.1, 0.1)
 		melee_state = MS_PENDING
 	else:
 		_trigger_move()
 
 func _trigger_move() -> void:
 	if melee_state == MS_ATTACK_FINISHING:
-		play_move_anim(&"MeleeSlideHard", MELEE_SLIDE_HARD_LENGTH)
+		play_move_anim(&"MeleeSlideHard", 1.0, 0.1, 0.1)
 	else:
-		play_move_anim(&"MeleeSlide", MELEE_SLIDE_LENGTH)
+		play_move_anim(&"MeleeSlide", 1.0, 0.1, 0.1)
 	in_move = true
 	set_timer(0.2542)
 	set_move_timer(0.33, false, _on_find_barge_target_timer)
