@@ -84,3 +84,17 @@ func _init() -> void:
 ## eye; DO NOT reach for head_follow_scale instead, which scales the head
 ## bone's own animated motion.
 @export var eye_off_wall: float = 0.7
+
+## THIRD PERSON, on a curved wall: how fast the look window's centre follows
+## the wall's own line, exponentially. The original's window is fixed in the
+## world when the run starts (and stays so in first person); seen from outside,
+## a window left behind polices a direction the wall stopped pointing in metres
+## ago. Eased rather than tracked exactly: a blockout curve is a row of
+## straight segments, and followed rigidly every seam is a tick in the view.
+@export var fan_track_speed: float = 6.0
+
+## THIRD PERSON, on a curved wall: how much of the wall's turn the VIEW is
+## carried through, 0 to 1, while the window travels the whole turn. An ASSIST
+## rather than a lock -- the run guides the eyes, it does not steer them -- so
+## deliberately short of 1.
+@export_range(0.0, 1.0) var view_assist: float = 0.6

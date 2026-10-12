@@ -372,6 +372,65 @@ func test_the_model_runs_along_the_wall_with_the_pawn() -> void:
 	assert_almost_eq(wrapf(player.visual_yaw() - player.pawn_yaw, -PI, PI), 0.0, deg_to_rad(3.0),
 		"the model followed the view off the wall instead of running along it")
 
+## A wall on the right of a run along -Z, its face at x = 0.6 where the run
+## starts, curving away to the right ahead: `count` segments of `segment`
+## metres on `radius`.
+func _curved_wall(count: int, radius: float, segment: float) -> void:
+	var centre := Vector3(0.6 + radius, 4.0, 0.0)
+	for i in count:
+		var theta: float = (float(i) + 0.5) * segment / radius - 0.15
+		var inward := Vector3(-cos(theta), 0.0, -sin(theta))
+		var piece: StaticBody3D = _box(Vector3(1.0, 8.0, segment * 1.15), centre + inward * (radius + 0.5))
+		piece.rotation = Vector3(0.0, -theta, 0.0)
+
+## On a curved wall the original's window stays where the run began, and so
+## does a first-person view left alone. In third person the window travels
+## with the wall and the view is carried PART of the way round (this
+## project's view_assist), never the whole turn.
+func test_the_third_person_view_is_assisted_round_a_curved_wall() -> void:
+	var carried: Array[float] = []
+	for third in [false, true]:
+		var player: Player = await _player()
+		player.camera_rig.third_person = third
+		_box(Vector3(1.0, 1.0, 2.0), Vector3(0.05, 2.5, 0.0))
+		_curved_wall(14, 10.0, 1.5)
+		player.global_position = Vector3(0.0, 3.05 + player.collision_half_height(), 0.0)
+		_face(player, deg_to_rad(-30.0))
+		await step(10)
+		var manager: MoveManager = player.move_manager
+		var wall_run: WallRunMove = manager.move_for(Move.WALL_RUN)
+		var jump: JumpMove = manager.move_for(Move.JUMP)
+		jump.delay_time_check_auto_moves = 100.0
+		var input: ScriptedInputSource = _world["input"]
+		_run_up(player)
+		input.press_jump()
+		await step(1)
+		assert_eq(manager.current_name, Move.WALL_RUN, "test setup: no run")
+		var view_start := NAN
+		var wall_start := NAN
+		var wall_turn := 0.0
+		for i in 60:
+			await step(1)
+			if manager.current_name != Move.WALL_RUN:
+				break
+			if wall_run.has_reached_wall and wall_run.move_active_time > 0.45:
+				var wall_yaw: float = atan2(-player.floor_normal.x, -player.floor_normal.z)
+				if is_nan(wall_start):
+					wall_start = wall_yaw
+					view_start = player.rotation.y
+				wall_turn = wrapf(wall_yaw - wall_start, -PI, PI)
+		assert_gt(absf(wall_turn), deg_to_rad(8.0), "test setup: the run did not follow the curve")
+		var view_turn: float = wrapf(player.rotation.y - view_start, -PI, PI)
+		carried.append(view_turn / wall_turn if absf(wall_turn) > 0.0 else 0.0)
+		TestWorld.teardown(_world)
+		_world = {}
+		for node in _extra:
+			node.queue_free()
+		_extra.clear()
+		await step(1)
+	assert_almost_eq(carried[0], 0.0, 0.1, "the first-person view was carried round the curve (%.2f)" % carried[0])
+	assert_between(carried[1], 0.2, 0.9, "the third-person view was not assisted part of the way (%.2f)" % carried[1])
+
 # --- the wall climb -------------------------------------------------------------------
 
 ## A tall wall straight ahead (face at z = -1.5, normal +Z).

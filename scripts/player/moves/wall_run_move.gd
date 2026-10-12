@@ -83,10 +83,10 @@ func live_friction_modifier() -> float:
 	return friction_modifier
 
 func get_min_look_constrain_yaw() -> int:
-	return min_contraint_world
+	return min_contraint_world + _tp_fan_shift
 
 func get_max_look_constrain_yaw() -> int:
-	return max_contraint_world
+	return max_contraint_world + _tp_fan_shift
 
 func _wall_cfg() -> WallRunConfig:
 	return cfg as WallRunConfig
@@ -326,6 +326,8 @@ func enter(_previous: StringName) -> void:
 	start_moving_into_wall = true
 	changed_constraints = false
 	turned_90_from_wall = false
+	_tp_fan_wall = NAN
+	_tp_fan_shift = 0
 	side = next_move
 	player.wall_side = 1 if side == SIDE_RIGHT else -1
 	var v: Vector3 = player.velocity
@@ -433,9 +435,55 @@ func handle_move_action(action: int) -> void:
 	look_at_from_input = true
 	turned_90_from_wall = true
 
+# --- this project's third-person presentation on a curved wall ----------------------
+#
+# The original's window is fixed in the world when the run starts, and first
+# person keeps it. In THIRD PERSON the window travels round a curved wall with
+# the wall's own line (WallRunConfig.fan_track_speed), and the view is carried
+# part of the way with it (WallRunConfig.view_assist).
+
+## Rotator units the window has travelled with the wall; 0 in first person.
+var _tp_fan_shift: int = 0
+## The wall's yaw the window is centred on, eased, and where it started;
+## NAN while not tracking.
+var _tp_fan_wall: float = NAN
+var _tp_fan_start: float = 0.0
+
+func _track_curve_in_third_person(delta: float) -> void:
+	if player.camera_rig == null or not player.camera_rig.in_third_person() or not has_reached_wall:
+		_tp_fan_wall = NAN
+		_tp_fan_shift = 0
+		return
+	var wall: float = float(UE.dir_yaw(player.floor_normal))
+	if is_nan(_tp_fan_wall):
+		_tp_fan_wall = wall
+		_tp_fan_start = wall
+		return
+	var difference: float = float(UE.normalize_axis(int(round(wall - _tp_fan_wall))))
+	# A DISCONTINUITY, not a curve: carrying the view through it would be a
+	# catastrophe rather than an assist. Re-seat and carry nothing.
+	if absf(difference) > 16384.0:
+		_tp_fan_wall = wall
+		_tp_fan_start = wall - float(_tp_fan_shift)
+		return
+	var c: WallRunConfig = _wall_cfg()
+	var moved: float = difference * clampf(c.fan_track_speed * delta, 0.0, 1.0)
+	_tp_fan_wall += moved
+	_tp_fan_shift = UE.normalize_axis(int(round(_tp_fan_wall - _tp_fan_start)))
+	if absf(moved) > 0.0:
+		player.rotation.y = UE.godot_yaw(float(UE.yaw_units(player.rotation.y)) + moved * c.view_assist)
+
+## After the physics, which has the wall's normal for this frame.
+func tick_move(delta: float) -> void:
+	super.tick_move(delta)
+	if player.move_manager.current_move() == self:
+		_track_curve_in_third_person(delta)
+
 ## TdMove_WallRun.StopMove: unless the view was turned off the wall, the pawn
 ## eases back to the view over 0.3 s.
 func exit() -> void:
+	_tp_fan_wall = NAN
+	_tp_fan_shift = 0
 	next_move = SIDE_NONE
 	if not turned_90_from_wall:
 		player.face_rotation_time_left = 0.3
