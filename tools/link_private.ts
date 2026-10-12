@@ -30,7 +30,7 @@
  */
 
 import { lstatSync, existsSync, readdirSync, readlinkSync, renameSync, mkdirSync, rmdirSync, unlinkSync, symlinkSync } from "node:fs";
-import { join, dirname, relative, basename } from "node:path";
+import { join, dirname, relative, basename, sep, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const ROOT = join(import.meta.dir, "..");
@@ -88,7 +88,8 @@ function prune(wanted: Set<string>): void {
           continue;
         }
         if (!target.includes(".private")) continue; // somebody else's link
-        const relativePath = relative(ROOT, path);
+        // links.txt uses forward slashes; relative() yields backslashes on Windows.
+        const relativePath = relative(ROOT, path).split(sep).join("/");
         if (wanted.has(relativePath) && existsSync(join(PRIVATE, relativePath))) continue;
         removeLink(path);
         console.log(`link_private: pruned ${relativePath} ` +
@@ -145,6 +146,17 @@ async function main(): Promise<number> {
       continue;
     }
     if (isLink(link)) {
+      // Already pointing at the right folder: leave it alone. readlink may
+      // report a Windows junction as an absolute path, so compare resolved.
+      try {
+        if (resolve(dirname(link), readlinkSync(link)) === resolve(target)) {
+          console.log(`link_private: up to date ${path}`);
+          done += 1;
+          continue;
+        }
+      } catch {
+        // unreadable link: replace it below
+      }
       removeLink(link);
     } else if (existsSync(link)) {
       // A real folder where a link belongs. Keep it, renamed, and say so --
