@@ -60,6 +60,13 @@ const KIND_REACH := {
 ## Seeded from KIND_REACH whenever `kind` is set; a value written after that
 ## (a scene file lists kind before this property) wins.
 @export var reach_radius: float = 0.6
+## The original's volume properties a kind reads. A LADDER: TdLadderVolume's
+## LadderType (a pipe climbs in 64 uu steps, two at a time, and has no way on
+## from the top) and bCanExitAtTop. A LEDGE_WALK: TdLedgeWalkVolume's
+## LedgeWalkType (a narrow space, walked with a 10 uu radius, no jump off).
+@export var pipe: bool = false
+@export var can_exit_at_top: bool = true
+@export var narrow_space: bool = false
 ## Lets a level forbid THIS line by name -- see Status.Effect.BLOCK_INTEREST_LINE.
 ## Empty means the line cannot be singled out; it still obeys a blanket ban on
 ## its whole kind.

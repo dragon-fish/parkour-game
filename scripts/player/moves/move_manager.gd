@@ -358,6 +358,11 @@ func _candidates(state: StringName, action: int) -> Array:
 			match action:
 				Move.MA_JUMP:
 					return [Move.GRAB_TRANSFER, Move.GRAB_PULL_UP, Move.GRAB_JUMP]
+				Move.MA_CROUCH:
+					# Not a candidate: the table calls the hang's RequestDropDown.
+					var grab: Move = _moves.get(Move.GRAB)
+					if grab != null and grab.has_method("request_drop_down"):
+						grab.request_drop_down()
 				Move.MA_CLIMB_UP_LONG:
 					return [Move.GRAB_PULL_UP]
 		Move.CLIMB:
@@ -452,6 +457,8 @@ func tick_special(delta: float) -> void:
 	player.tick_special_timers(delta)
 	if player.uncontrolled_slide and current_name != Move.RAMP_SLIDE:
 		set_move(Move.RAMP_SLIDE, true)
+	# The pawn's animation, with the mesh: its ends and its root motion.
+	player.tick_anim_slot(delta)
 	_current.tick_move(delta)
 	_push_look_constraint()
 

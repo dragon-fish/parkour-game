@@ -203,7 +203,7 @@ func _ready() -> void:
 ## and the level's answer sits on top of that one in the same corner.
 ##
 ## HIDDEN, NOT REMOVED. DebugHud's own _ready() is what CREATES CapsuleDebug,
-## ShimmyDebug and ScriptedPathDebug -- take the node out of the scene and the
+## and ScriptedPathDebug -- take the node out of the scene and the
 ## overlays go with it. So the HUD stays and its text is switched off. That is
 ## also why this runs deferred: those children are added deferred themselves and
 ## are not in the tree yet on the tick this node is ready.

@@ -12,11 +12,6 @@ func _init() -> void:
 	check_for_grab = true
 	check_for_vault_over = true
 	check_for_wall_climb = true
-	# The level's interest points, asked with the switches above (see
-	# PhysicsMove.check_auto_moves()).
-	check_for_ladder = true
-	check_for_ledge_walk = true
-	check_for_balance = true
 	# [ME:CONFIRMED decompile, ini] RedoMoveTime = 0: neither
 	# [TdGame.TdMove_Jump] nor TdMove_Jump's defaultproperties set it, so Jump
 	# keeps [TdGame.TdMove]'s 0 and a second jump is allowed the moment the

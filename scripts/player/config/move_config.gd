@@ -192,21 +192,6 @@ extends Resource
 @export var check_for_vault_over: bool = false
 @export var check_for_wall_climb: bool = false
 
-## Whether this move may hand off to Ladder inside a LADDER InterestLine's
-## FRONT volume. The airborne moves and the wall run set it: [ME:CONFIRMED 05]
-## a ladder is catchable while wall-running unconditionally (the frontal fan
-## is the only gate there). The ground entry does not read this flag; Walking
-## asks LadderMove.catch_gate() directly.
-@export var check_for_ladder: bool = false
-
-## Whether this move may hand off to Balance when the body is standing on a
-## BALANCE InterestLine. Airborne moves only -- the ground entry asks
-## BalanceMove's own static gate directly, the same split check_for_ladder
-## documents.
-@export var check_for_balance: bool = false
-
-## Whether this move may hand off to LedgeWalk. Same shape as check_for_balance.
-@export var check_for_ledge_walk: bool = false
 
 ## Whether Q may start a turn out of this move.
 ##

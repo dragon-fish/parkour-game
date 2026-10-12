@@ -1424,12 +1424,19 @@ func phys_flying(dt: float, _iterations: int) -> void:
 		else safe_normal(pawn.acceleration)
 	var force: bool = pawn.force_max_accel_one_frame
 	pawn.force_max_accel_one_frame = false
-	var r: Array = calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt, p.air_speed,
-		DEFAULT_FLUID_FRICTION * 0.5, false, pawn.mobility_multiplier() * speed_modifier,
-		p.accel_rate, p.braking_friction_strength, false,
-		move != null and move.use_precise_location, force, pawn.facing(), true)
-	pawn.velocity = r[0]
-	pawn.acceleration = r[1]
+	if pawn.root_motion_active:
+		# The root-motion branch of CalcVelocity, as the walking physics takes
+		# it; flying keeps the vertical too -- the climbs rise on it. [ME:UNKNOWN]
+		# APawn::CalcVelocity's root-motion path was not read.
+		pawn.velocity = pawn.root_motion_velocity
+		pawn.acceleration = Vector3.ZERO
+	else:
+		var r: Array = calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt, p.air_speed,
+			DEFAULT_FLUID_FRICTION * 0.5, false, pawn.mobility_multiplier() * speed_modifier,
+			p.accel_rate, p.braking_friction_strength, false,
+			move != null and move.use_precise_location, force, pawn.facing(), true)
+		pawn.velocity = r[0]
+		pawn.acceleration = r[1]
 	_just_teleported = false
 	var old_location: Vector3 = pawn.global_position
 	var adjusted: Vector3 = pawn.velocity * dt

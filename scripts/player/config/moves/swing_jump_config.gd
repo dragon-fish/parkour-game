@@ -9,10 +9,6 @@ func _init() -> void:
 	check_for_grab = true
 	check_for_vault_over = true
 	check_for_wall_climb = true
-	# The level's interest points a jump asks for.
-	check_for_ladder = true
-	check_for_ledge_walk = true
-	check_for_balance = true
 	# [ME:CONFIRMED decompile] bConstrainLook: pitch -11000 .. 16384, yaw and
 	# roll a full turn.
 	constrain_look = true

@@ -26,11 +26,6 @@ extends MoveConfig
 @export var landing_hold_time: float = 0.05
 
 func _init() -> void:
-	# The level's ledges and beams, this project's interest lines, are still
-	# caught: the original enters those through their volumes, not through
-	# the move's switches.
-	check_for_ledge_walk = true
-	check_for_balance = true
 	allows_turn = false
 	# [ME:CONFIRMED decompile] Pitch -5000..30000 (-27.5 .. +164.8 degrees),
 	# yaw free.

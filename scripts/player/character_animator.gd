@@ -375,8 +375,9 @@ func synchronize_to_current_move() -> void:
 func _drive_arm_overlay(delta: float) -> void:
 	if anim_tree == null or player == null or player.move_manager == null:
 		return
-	var grab = player.move_manager.move_for(Move.GRAB)
-	var wanted: float = 1.0 if grab != null and grab.is_climbing_low() else 0.0
+	var pull_up = player.move_manager.move_for(Move.GRAB_PULL_UP)
+	var wanted: float = 1.0 if pull_up != null and player.move_manager.current_name == Move.GRAB_PULL_UP \
+		and pull_up.is_into_crouch() else 0.0
 	var path := "parameters/%s/blend_amount" % GRAPH_ARM_OVERLAY
 	var current: float = float(anim_tree.get(path))
 	var rate: float = 1.0 - exp(-delta / maxf(_blend_time(), 0.001))
@@ -396,6 +397,18 @@ func _drive_arm_overlay(delta: float) -> void:
 		return
 	anim_tree.set("parameters/%s/seek_request" % GRAPH_ARM_OVERLAY_SEEK,
 		clampf(progress, 0.0, 1.0) * length)
+
+## The vaults and the step-ups.
+func _vault_clip() -> StringName:
+	# The original's two step-up rows (autostepuprightleg,
+	# stepuprightleg88) are the vaults with no hand on the top
+	# [ME:CONFIRMED 05 §5.7]: the pack's StepUp. Every other row plants
+	# a hand: SafetyVault. Both fitted to the vault's legs through
+	# scripted_duration().
+	var vault_move = player.move_manager.move_for(player.move_manager.current_name)
+	if vault_move != null and vault_move.has_method("is_step_up") and vault_move.is_step_up():
+		return _first_available([&"StepUp", &"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
+	return _first_available([&"SafetyVault", &"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
 
 func _route(target: StringName, delta: float) -> void:
 	_drive_arm_overlay(delta)
@@ -815,11 +828,9 @@ func _scripted_fit(clip: StringName) -> float:
 	if player.move_manager == null:
 		return 0.0
 	var move := player.move_manager.move_for(player.move_manager.current_name)
-	# Duck-typed rather than `is ScriptedMove`: a move that COMPOSES a
-	# scripted phase (LadderMove's top exit -- GDScript has no multiple
-	# inheritance) exposes the same scripted_duration(), returning 0 outside
-	# the phase. The clip is stretched to fill the move's hitstun window when
-	# the authored animation is shorter than it.
+	# Duck-typed rather than `is ScriptedMove`: a ported move (the pull-up,
+	# the vaults) exposes the same scripted_duration() from the original's
+	# timing, 0 when it has none. The clip is stretched to fill it.
 	if move == null or not move.has_method("scripted_duration"):
 		return 0.0
 	var duration: float = move.scripted_duration()
@@ -1221,24 +1232,18 @@ func _target_animation() -> StringName:
 		Move.INTERACT:
 			# A GENUINE MATCH: UAL1 ships an Interact.
 			return _first_available([&"Interact", &"Idle", &"idle"])
-		Move.LADDER:
-			# Per the spec (docs/superpowers/specs/2026-08-25-ladder-design.md
-			# §攀爬): the top exit uses the same clip GrabMove's mantle
-			# plays, ClimbUp_1m. SELECTION happens right here: is_top_exiting()
-			# picks the clip (mirroring GRAB's is_mantling() above), and
-			# _route() gates any SCRIPTED_MOVE_CLIPS member onto the scripted
-			# slot. Player.set_clip_lift_cancelled(), which
-			# LadderMove._begin_top_exit() also arms, plays NO part in clip
-			# choice -- it only stops the clip's own baked hip lift from
-			# stacking on the scripted vertical carry.
-			var ladder_move = player.move_manager.move_for(Move.LADDER)
-			if ladder_move != null and ladder_move.is_top_exiting():
+		Move.INTO_CLIMB:
+			# Getting onto the rungs: the hang the climb starts from.
+			return _first_available([&"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
+		Move.CLIMB:
+			# The exit off the top is the original's root-motion climb over;
+			# ClimbUp_1m is the pack's nearest, fitted to the exit's length
+			# through scripted_duration(). Otherwise the climb cycles by the
+			# step being taken (full tier; the free tier keeps the hang).
+			var ladder_move = player.move_manager.move_for(Move.CLIMB)
+			if ladder_move != null and ladder_move.is_exiting_top():
 				return _first_available([&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
 					&"Jump_Start", &"jump", &"idle"])
-			# Direction-aware: the FULL library carries Climb_Up/Climb_Down
-			# cycles; the free tier falls back to the hanging idle, which is
-			# the closest honest two-hands-in-front pose. Hand IK on the
-			# rungs is a known gap (spec 2026-08-25 §攀爬).
 			var dir: int = ladder_move.climb_direction() if ladder_move != null else 0
 			if dir > 0:
 				return _first_available([&"Climb_Up", &"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
@@ -1271,116 +1276,46 @@ func _target_animation() -> StringName:
 				return _first_available(AIRBORNE_LOOP)
 			return _first_available([&"StepUp", &"Jump_Start", &"Idle", &"idle"])
 		Move.SPEED_VAULT:
-			# TWO DIFFERENT MOVES BEHIND ONE STATE, told apart the way GRAB's
-			# two phases are -- by asking the move.
-			#
-			# The compensating vault and the one where the shin catches the
-			# edge both play StepUp: they are the vaults that were never set
-			# up -- no run-up, no plant, the player simply arrived and
-			# scrambled. [ME:CONFIRMED 05 §5.7] The original agrees from the
-			# other direction: of its six vault types, its two step-up rows
-			# (autostepuprightleg, stepuprightleg88) are precisely the two
-			# with no hand IK at all, because there is no hand in them.
-			var vault_move = player.move_manager.move_for(Move.SPEED_VAULT)
-			if vault_move != null and vault_move.is_scramble():
-				return _first_available([&"StepUp", &"ClimbUp_1m", &"Jump_Start", &"jump", &"idle"])
-			# SafetyVault is a one-handed plant over an obstacle, which is what
-			# a vault that WAS set up looks like. Behind it, the old reasoning:
-			# a vault is a short airborne burst, so the take-off half of a jump
-			# is the closest thing a body without the paid pack has.
-			return _first_available([&"SafetyVault", &"Jump_Start", &"NinjaJump_Start", &"jump", &"idle"])
+			return _vault_clip()
+		Move.VAULT_OVER:
+			return _vault_clip()
+		Move.STEP_UP:
+			return _vault_clip()
+		Move.AUTO_STEP_UP:
+			return _vault_clip()
 		Move.GRAB:
-			# Two phases share this one move (see GrabMove's own header
-			# comment): hanging (frozen, waiting on input) and mantling (a
-			# scripted climb onto the top). They are told apart here via
-			# GrabMove.is_mantling(), the same way test_arena.gd reads
-			# SlideMove.is_crawling() to see inside a move from the outside.
+			# Climb_Idle is UAL1's hang; the fox's `ladder_stillness` keeps
+			# second place for a body that has it. A shimmy, or the corner
+			# shimmy, plays the pack's hand-over-hand of its side. No `idle` at
+			# the end of the travel lists: standing up mid-shimmy would stand
+			# the player up in the air.
 			var grab_move = player.move_manager.move_for(Move.GRAB)
-			if grab_move != null and grab_move.is_climbing_low():
-				# A CLIMB INTO A DUCT IS NOT ANIMATED IN THIS PACK, so it is
-				# not animated as a climb.
-				#
-				# [ME:CONFIRMED] The original carries a SECOND climb for this.
-				# A pull-up there pushes the body up on both hands and then
-				# brings the feet through; going into a low opening puts the
-				# RIGHT FOOT up first and hooks the body in after it. Two
-				# actions, not one action trimmed. THE PROPER FIX IS THAT CLIP,
-				# and until the pack has one this is a stopgap, kept because a
-				# crouch that reads oddly beats a climb that puts the head
-				# through the ceiling.
-				#
-				# Every frame of ClimbUp_1m is a body
-				# hauling itself upright -- head high, feet off the floor --
-				# and there is no frame in it that is compact, so cutting the
-				# clip only chooses which tall pose to end on -- which is why
-				# the frame-count trim that used to live here is gone. In a space too
-				# low to stand in, that pose is inside the ceiling: the eye
-				# leaves the capsule in first person and the model clips in
-				# third.
-				#
-				# So the pose crouches for the whole crossing while the
-				# scripted path does the travelling. The capsule leads and the
-				# presentation follows -- docs/capsule-leads-presentation.md --
-				# and here that means arriving in the pose the body will be in
-				# rather than acting out a stand-up it has to undo.
-				# Crouch_Enter LEADS. It is a one-shot that folds the legs
-				# under the body, and _scripted_fit() stretches it across the
-				# whole crossing -- so they tuck over the climb rather than
-				# snapping in at the end, and its last frame is already the
-				# pose the body hands over into. A locomotion loop can do
-				# neither: it ends wherever the cycle happened to be, which is
-				# what made the feet twitch at the hand-off.
-				#
-				# NOT THE PACK'S Crawl_* SET, though it has one and it is a
-				# closer name. Crawl there is PRONE, on hands and knees, and
-				# this project has no prone state for it to hand over to.
-				return _first_available([&"Crouch_Enter", &"Crouch_Fwd",
-					&"Crouch_Idle", &"sneaking", &"sneak", &"idle"])
-			if grab_move != null and grab_move.is_mantling():
-				# ClimbUp_1m leads: the pelvis is pinned to the capsule and a
-				# bezier lifts it through the mantle, so what the clip needs
-				# to supply is the POSE, not the whole climb. ClimbUp_2m
-				# stays as the fallback -- at 1.300 s against ClimbUp_1m's
-				# 0.667 it is a slower haul that also reads as a pull-up, and
-				# it is what this line played before the capsule started
-				# carrying the rise itself. ClimbLedge (0.633 s), the other
-				# candidate from UAL1's hang set, is not preferred over
-				# either: it is over before the body has left the lip, which
-				# reads wrong for a pull-up regardless of how its duration is
-				# stretched. (Judged from the names and the company they
-				# keep, not from watching them -- the gallery shows all
-				# three.)
-				#
-				# The duration does not follow whichever clip is picked:
-				# _scripted_fit() stretches it into GrabConfig.mantle_duration
-				# (1.3 s, ClimbUp_2m's own measured length -- [ME:CONFIRMED]
-				# the original's TdMove_GrabPullUp carries no duration field
-				# of its own, so there the clip IS the duration). 0.667
-				# stretched into 1.3 is 0.51x, well inside the clamp, so
-				# ClimbUp_1m simply plays slower rather than ending early.
-				return _first_available([&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
-					&"Jump_Start", &"jump", &"idle"])
-			# Climb_Idle is UAL1's hang, and leads here since it is no longer
-			# behind a paid tier. The fox's `ladder_stillness` keeps second
-			# place: it was the genuine match while it was the only one, and
-			# it still is for a body that has it.
-			# TRAVELLING ALONG THE LEDGE gets its own pair, told apart from a
-			# still hang exactly the way the mantle above is told apart from
-			# both -- by asking the move, since nothing else can see the
-			# difference. Climb_Left and Climb_Right are UAL1's hand-over-hand
-			# and belong to the same hang set as Climb_Idle, so the three blend
-			# into each other without a re-plant.
-			#
-			# No `idle` at the end of these two: falling all the way back to a
-			# standing pose mid-shimmy would stand the player up in the air.
-			# Climb_Idle is the right floor to stop at -- a body that has the
-			# hang clip but not the travel clips should keep hanging.
 			var shimmy: float = grab_move.shimmy_direction() if grab_move != null else 0.0
 			if shimmy < 0.0:
 				return _first_available([&"Climb_Left", &"Climb_Idle", &"ladder_stillness"])
 			if shimmy > 0.0:
 				return _first_available([&"Climb_Right", &"Climb_Idle", &"ladder_stillness"])
 			return _first_available([&"Climb_Idle", &"ladder_stillness", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
+		Move.GRAB_PULL_UP:
+			# A pull-up INTO A CROUCH is not animated in this pack: the pose
+			# crouches for the whole crossing while the root motion does the
+			# travelling (docs/capsule-leads-presentation.md), with the climb's
+			# arms laid on top (_drive_arm_overlay). Crouch_Enter leads, so the
+			# legs tuck over the climb and its last frame is the pose handed on.
+			# Otherwise ClimbUp_1m, stretched to the original's sequence length
+			# through scripted_duration(); ClimbUp_2m is the slower fallback.
+			var pull_up = player.move_manager.move_for(Move.GRAB_PULL_UP)
+			if pull_up != null and pull_up.is_into_crouch():
+				return _first_available([&"Crouch_Enter", &"Crouch_Fwd",
+					&"Crouch_Idle", &"sneaking", &"sneak", &"idle"])
+			return _first_available([&"ClimbUp_1m", &"ClimbUp_2m", &"ClimbLedge",
+				&"Jump_Start", &"jump", &"idle"])
+		Move.GRAB_JUMP:
+			# Pushed off the wall: the airborne loop every other jump plays.
+			return _first_available(AIRBORNE_LOOP)
+		Move.GRAB_TRANSFER:
+			# Hands from one hold to the next: the hang, then the arrival's own.
+			return _first_available([&"Climb_Idle", &"ladder_stillness", &"Jump", &"jump", &"idle"])
 		Move.WALL_RUN:
 			# WallRun_L/R are the real thing. wall_side > 0 is a RIGHT-hand
 			# wall (WallRunMove.SIDE_RIGHT).
@@ -1582,10 +1517,9 @@ func _target_animation() -> StringName:
 			# (Jog_Fwd_LeanL/R): those are authored for leaning into a
 			# full-speed run, which this is not.
 			#
-			# STANDING STILL IS STILL STANDING. The beam's own wind keeps the
-			# lean moving whether or not the player is walking, so routing on
-			# the move being active alone leaves a walk cycle playing under a
-			# body that is going nowhere.
+			# STANDING STILL IS STILL STANDING: the lean runs whether or not
+			# the player walks, so routing on the move alone would play a walk
+			# cycle under a body that is going nowhere.
 			var beam = player.move_manager.move_for(Move.BALANCE)
 			if beam != null and not beam.travelling():
 				return _first_available([&"Idle", &"idle", &"Walk"])
@@ -1593,18 +1527,9 @@ func _target_animation() -> StringName:
 		Move.LEDGE_WALK:
 			# Direction-aware, off the Walk family's own _L/_R suffixes (see
 			# DIRECTION_SETS). UAL2's Walk_L / Walk_R are a walking-cadence
-			# sidestep, which is exactly what shuffling a ledge with your
-			# back to the wall is.
+			# sidestep, which is what shuffling a ledge with the back to the
+			# wall is.
 			var ledge = player.move_manager.move_for(Move.LEDGE_WALK)
-			# TURNING ROUND on a view change: the pack's own half turn, on the
-			# side the body pivots to, fitted to LedgeWalkConfig.turn_time
-			# through scripted_duration(). Both turn clips are in
-			# Player.SCRIPTED_MOVE_CLIPS, so _route() puts them on a scripted
-			# slot like any other one-shot.
-			if ledge != null and ledge.is_turning():
-				var wanted: StringName = ledge.turn_clip()
-				var other: StringName = &"Turn180_L" if wanted == &"Turn180_R" else &"Turn180_R"
-				return _first_available([wanted, other, &"Idle", &"idle"])
 			var dir: int = ledge.shuffle_direction() if ledge != null else 0
 			if dir < 0:
 				return _first_available([&"Walk_L", &"Walk", &"idle"])
