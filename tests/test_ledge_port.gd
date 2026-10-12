@@ -489,3 +489,35 @@ func test_a_jump_at_a_railing_vaults_it_without_a_climb() -> void:
 	assert_true(seen.has(Move.VAULT_OVER), "no vault in %s" % [seen])
 	assert_false(seen.has(Move.WALL_CLIMB), "the railing was climbed: %s" % [seen])
 	assert_almost_eq(top, 0.0, 0.01, "the vault drew the view off level")
+
+## An Area3D of `script_class` with a 1 m box at `at`, under `parent`.
+func _volume(area: Area3D, at: Vector3, parent: Node = null) -> Area3D:
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3.ONE
+	shape.shape = box
+	area.add_child(shape)
+	if parent == null:
+		get_tree().root.add_child(area)
+		_extra.append(area)
+	else:
+		parent.add_child(area)
+	area.global_position = at
+	return area
+
+## [ME:CONFIRMED decompile N5 §11] IntoGrab's last gate refuses a ledge point
+## inside ANY TdMovementVolume: the interest lines' volumes, a fall-height
+## volume, the barbed wire's. A volume of this project's own is none of them.
+func test_into_grab_refuses_a_ledge_in_any_movement_volume() -> void:
+	var player: Player = await _player()
+	_volume(FallHeightVolume.new(), Vector3(5.0, 1.0, 0.0))
+	var wire := BarbedWire.new()
+	get_tree().root.add_child(wire)
+	_extra.append(wire)
+	_volume(ModifierVolume.new(), Vector3(-5.0, 1.0, 0.0), wire)
+	_volume(ModifierVolume.new(), Vector3(0.0, 1.0, 5.0))
+	await step(2)
+	assert_true(player.in_movement_volume(Vector3(5.0, 1.0, 0.0)), "a fall-height volume was not found")
+	assert_true(player.in_movement_volume(Vector3(-5.0, 1.0, 0.0)), "the barbed wire was not found")
+	assert_false(player.in_movement_volume(Vector3(0.0, 1.0, 5.0)), "a modifier volume counted")
+	assert_false(player.in_movement_volume(Vector3(0.0, 1.0, -5.0)), "empty space counted")

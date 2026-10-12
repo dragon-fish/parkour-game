@@ -112,6 +112,12 @@ const RESET_ON_RESPAWN := &"reset_on_respawn"
 ## DO NOT widen this to include layer 1 for convenience. That is the bug.
 const PLAYER_LAYER := 2
 
+## The layer a volume sits on that nothing watches but a point query: a
+## FallHeightVolume, which the hand-plant's TdMovementVolume test
+## (Player.in_movement_volume()) must find. No area or body masks it, so it
+## costs no overlap tracking. DO NOT reuse it for anything a mask reads.
+const MOVEMENT_VOLUME_LAYER := 1 << 20
+
 ## Group of nodes still preparing the level over several frames (see
 ## me_lights.gd). The level is not ready while any is in it.
 const WARMING := &"warming"

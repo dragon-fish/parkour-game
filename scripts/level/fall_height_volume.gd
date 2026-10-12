@@ -31,13 +31,22 @@ extends Area3D
 
 func _init() -> void:
 	# Only the body, never the level it stands in -- see Arena.PLAYER_LAYER.
-	collision_layer = 0
+	# On a layer of its own so the hand-plant's volume test can find it.
+	collision_layer = Arena.MOVEMENT_VOLUME_LAYER
 	collision_mask = Arena.PLAYER_LAYER
 
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
+	# Levels built before the layer was given saved theirs as 0. Whatever
+	# Kismet has already switched keeps its switch; it only learns the layer
+	# to restore.
+	if has_meta(PackagePresence.BUILT_LAYERS_META):
+		var built: Array = get_meta(PackagePresence.BUILT_LAYERS_META)
+		built[0] = Arena.MOVEMENT_VOLUME_LAYER
+	else:
+		collision_layer = Arena.MOVEMENT_VOLUME_LAYER
 	body_entered.connect(_on_body_entered)
 
 

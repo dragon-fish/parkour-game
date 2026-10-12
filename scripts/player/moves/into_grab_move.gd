@@ -81,7 +81,7 @@ func can_do_move_native() -> bool:
 		return false
 	if v.y < 0.0 and ledge_z > here.y:
 		return false
-	return player.movement_volume_at(ledge) == null
+	return not player.in_movement_volume(ledge)
 
 ## UTdMove_IntoGrab's CheckAutoMoves (0x012063f0), replacing the base's: the
 ## search again, the native gate, and the re-aim.

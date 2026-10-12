@@ -4292,9 +4292,12 @@ func tick_anim_slot(delta: float) -> void:
 		if move != null and move.is_current_custom_anim(anim):
 			move.on_cease_relevant_root_motion()
 
-## TdMove's movement-volume point test (FUN_011f9ba0): the first
-## TdMovementVolume -- here, any InterestLine's area -- containing `point`.
-func movement_volume_at(point: Vector3) -> InterestLine:
+## TdMove's movement-volume point test (FUN_011f9ba0, [ME:CONFIRMED decompile
+## N5 §11]): whether `point` lies in any TdMovementVolume. Every subclass has a
+## counterpart here: an InterestLine's area (ladder, swing, zipline, balance,
+## ledge walk), a FallHeightVolume, and a BarbedWire's hazard. A volume Kismet
+## has switched off collides with nothing and is not found, as in the original.
+func in_movement_volume(point: Vector3) -> bool:
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	var query := PhysicsPointQueryParameters3D.new()
 	query.position = point
@@ -4302,9 +4305,11 @@ func movement_volume_at(point: Vector3) -> InterestLine:
 	query.collide_with_bodies = false
 	for hit in space.intersect_point(query):
 		var area: Object = hit["collider"]
-		if area is Area3D and area.get_parent() is InterestLine:
-			return area.get_parent()
-	return null
+		if not area is Area3D:
+			continue
+		if area is FallHeightVolume or area.get_parent() is InterestLine or area.get_parent() is BarbedWire:
+			return true
+	return false
 
 ## The volumes of `kind` a box of half-extent `extent` swept from `start` to
 ## `end` passes through, in the order met (GrabTransfer's ladder search).
