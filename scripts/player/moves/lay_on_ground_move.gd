@@ -101,6 +101,7 @@ func _get_up() -> void:
 	getting_up = true
 	_anim_time = 0.0
 	_anim_length = GET_UP_LENGTH
+	reset_camera_look(1.0)
 
 ## TdMove_LayOnGround.GetUpBack: EvadeRoll, a backward roll carried by its
 ## root motion.
@@ -114,6 +115,11 @@ func _get_up_back() -> void:
 	_anim_time = 0.0
 	_anim_length = _clip.length
 	player.use_root_motion(true)
+	reset_camera_look(1.0)
+	# The roll looks where it is going: 1000 uu ahead of the pawn, 300 down.
+	var look_at: Vector3 = player.global_position + player.facing() * 1000.0 * UU
+	look_at.y -= 300.0 * UU
+	set_look_at_target_location(look_at, 0.4)
 
 func pre_physics(delta: float) -> void:
 	super.pre_physics(delta)

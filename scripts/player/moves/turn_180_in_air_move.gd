@@ -43,6 +43,18 @@ func enter(_previous: StringName) -> void:
 	_anim_time = 0.0
 	_turn.begin(player.pawn_yaw)
 	player.use_root_rotation(true)
+	# [ME:CONFIRMED decompile] The view is drawn round to the take-off point
+	# (90 uu over the pawn's centre there) in 0.3 s, for at most 2 s.
+	set_look_at_target_location(player.last_jump_location + Vector3.UP * 90.0 * UU, 0.3, 2.0)
+
+## TdMove_180TurnInAir.UpdateViewRotation: the base; a yaw input of the
+## player's own ends the look-at.
+func update_view_rotation(view: Vector2i, dt: float, delta_rot: Vector2i, now: float) -> Array:
+	var result: Array = super.update_view_rotation(view, dt, delta_rot, now)
+	var through: Vector2i = result[1]
+	if through.y != 0:
+		abort_look_at_target()
+	return result
 
 ## TdMove_180TurnInAir PrePhysics (0x0120c120): the TdPhysicsMove exits, then
 ## the stuck test. The root rotation is advanced first, as the animation does.

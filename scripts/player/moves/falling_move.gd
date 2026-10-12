@@ -63,6 +63,10 @@ func enter(_previous: StringName) -> void:
 			if player.can_stand(below, true):
 				player.velocity.x = 0.0
 				player.velocity.z = 0.0
+	elif player.old_movement_state == WALL_CLIMB:
+		# Off a wall climb the view the climb drew up to the ledge comes back
+		# level. [ME:CONFIRMED decompile TdMove_Falling.StartMove]
+		reset_camera_look(0.5)
 	player.set_grounded(false)
 
 ## TdMove_Falling.TickMove: the base timer, then the close-to-ground probe --

@@ -137,11 +137,14 @@ func _end_landing() -> void:
 func _land_hard() -> void:
 	kind = Kind.HARD
 	_hold_body(cfg.lockout_time)
+	# Unarmed; the heavy weapon's is 0.1.
+	reset_camera_look(0.3)
 
 ## TdMove_Landing.LandOnSoftObject: the same hold, on a soft-landing surface.
 func _land_on_soft_object() -> void:
 	kind = Kind.SOFT_OBJECT
 	_hold_body(cfg.lockout_time)
+	reset_camera_look(0.3)
 
 ## TdMove_Landing.LandBackwards: onto the back.
 func _land_backwards(hard: bool) -> void:
@@ -153,6 +156,10 @@ func _land_backwards(hard: bool) -> void:
 	player.velocity = Vector3.ZERO
 	player.acceleration = Vector3.ZERO
 	player.move_manager.set_move(LAY_ON_GROUND)
+	# Asked of THIS move after it has stopped, as the original does: it does
+	# nothing now, and the next landing's first view update, finding the
+	# reset long expired, sets the pitch level at once.
+	reset_camera_look(0.3)
 
 func _hold_body(seconds: float) -> void:
 	_hold = seconds

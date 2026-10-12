@@ -444,3 +444,48 @@ func test_a_ladder_is_got_onto_and_climbed() -> void:
 	await step(30)
 	assert_gt(ladder.get_closest_step(player.global_position.y), step0, "holding forward did not climb")
 	assert_true(line != null)
+
+## [ME:CONFIRMED decompile] GrabPullUp.StartMove: ResetCameraLook(DisableLookTime),
+## a view pitched up on the hang is brought level over the pull-up's 0.2 s.
+func test_a_pull_up_brings_the_view_level() -> void:
+	var player: Player = await _player()
+	_box(Vector3(4.0, 3.0, 2.0), Vector3(0.0, 1.5, -1.0))
+	await step(1)
+	_hang(player, 3.0, 0.0)
+	await step(70)
+	player.camera_rig.set_pitch(deg_to_rad(30.0))
+	assert_true(player.move_manager.handle_move_action(Move.MA_JUMP), "jump did not leave the hang")
+	assert_eq(player.move_manager.current_name, Move.GRAB_PULL_UP, "the jump was not a pull-up")
+	await step(6)
+	var half: float = rad_to_deg(player.camera_rig.view_pitch())
+	assert_between(half, 1.0, 29.0, "the reset is not eased over its 0.2 s")
+	await step(8)
+	assert_almost_eq(player.camera_rig.view_pitch(), 0.0, 0.01, "the pull-up left the view pitched")
+
+## A railing of ordinary thickness at chest height is vaulted, not climbed:
+## the hand-plant search finds its top (result 2) under MinWallHeight, so
+## WallClimb refuses it and nothing draws the view up.
+func test_a_jump_at_a_railing_vaults_it_without_a_climb() -> void:
+	var player: Player = await _player()
+	_box(Vector3(4.0, 1.5, 0.1), Vector3(0.0, 0.75, -6.0))
+	await step(1)
+	_face(player, 0.0)
+	var input: ScriptedInputSource = _world["input"]
+	input.hold_move(0.0, 1.0)
+	var seen: Array[StringName] = []
+	var top := 0.0
+	var jumped := false
+	for i in 200:
+		if not jumped and player.global_position.z < -4.5:
+			input.press_jump()
+			jumped = true
+		await step(1)
+		input.release_jump()
+		if not seen.has(player.move_manager.current_name):
+			seen.append(player.move_manager.current_name)
+		top = maxf(top, absf(player.camera_rig.view_pitch()))
+		if player.global_position.z < -7.5:
+			break
+	assert_true(seen.has(Move.VAULT_OVER), "no vault in %s" % [seen])
+	assert_false(seen.has(Move.WALL_CLIMB), "the railing was climbed: %s" % [seen])
+	assert_almost_eq(top, 0.0, 0.01, "the vault drew the view off level")

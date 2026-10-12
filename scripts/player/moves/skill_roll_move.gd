@@ -49,6 +49,9 @@ func enter(_previous: StringName) -> void:
 	player.set_ignore_look_input(-1.0)
 	player.velocity = Vector3.ZERO
 	player.acceleration = Vector3.ZERO
+	# [ME:CONFIRMED decompile] The view brought back to the pawn, level, in
+	# 0.2 s: the yaw is where the run goes on from the roll.
+	reset_camera_look(0.2)
 	# The presentation: the gameplay pitch goes level at once, and the spin
 	# starts from the pitch the body landed with.
 	var pitch_at_start: float = 0.0

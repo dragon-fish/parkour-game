@@ -249,3 +249,34 @@ func test_walking_slowly_at_a_deep_drop_starts_vertigo() -> void:
 			break
 	assert_true(started, "walking at the drop never started Vertigo")
 	assert_gt(player.global_position.y, 14.5, "the body went over the edge")
+
+## [ME:CONFIRMED decompile] The view resets that decide where the run goes on
+## from: SkillRoll.StartMove ResetCameraLook(0.2); LayOnGround's GetUp and
+## GetUpBack ResetCameraLook(1.0), the back roll also looking 1000 uu ahead
+## and 300 down; 180TurnInAir.StartMove looks at the take-off point.
+func test_the_rolls_and_turns_reset_the_view_as_the_original_does() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var manager: MoveManager = player.move_manager
+	manager.start(Move.SKILL_ROLL)
+	var roll: Move = manager.current_move()
+	assert_true(roll.reset_camera_look_active, "the roll does not reset the view")
+	assert_almost_eq(roll.cancel_reset_camera_look_time - player.world_time, 0.2, 0.001)
+	manager.start(Move.LAY_ON_GROUND)
+	var lying: LayOnGroundMove = manager.current_move()
+	assert_false(lying.reset_camera_look_active, "test setup: lying already resets")
+	lying._get_up()
+	assert_true(lying.reset_camera_look_active, "the get-up does not reset the view")
+	assert_almost_eq(lying.cancel_reset_camera_look_time - player.world_time, 1.0, 0.001)
+	manager.start(Move.LAY_ON_GROUND)
+	lying._get_up_back()
+	assert_true(lying.reset_camera_look_active, "the back roll does not reset the view")
+	assert_true(lying.look_at_target_location_active, "the back roll does not look ahead")
+	var ahead: Vector3 = lying.look_at_target_location - player.global_position
+	assert_almost_eq(ahead.y, -3.0, 0.001, "the back roll's look-at is not 300 uu down")
+	assert_almost_eq(Vector2(ahead.x, ahead.z).length(), 10.0, 0.001, "nor 1000 uu ahead")
+	player.last_jump_location = player.global_position + Vector3(0.0, 0.0, 3.0)
+	manager.start(Move.TURN_180_IN_AIR)
+	var turn: Move = manager.current_move()
+	assert_true(turn.look_at_target_location_active, "the turn in the air does not look back")
+	assert_almost_eq(turn.look_at_target_location, player.last_jump_location + Vector3(0.0, 0.9, 0.0), Vector3.ONE * 0.001)

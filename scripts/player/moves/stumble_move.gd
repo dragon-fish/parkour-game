@@ -162,6 +162,7 @@ func _play_stumble_animation() -> void:
 				_anim_length = AIR_HIT_LENGTH
 			else:
 				player.use_root_motion(true)
+				reset_camera_look(0.2)
 				_clip = RootMotionClip.stumble_backward()
 				_anim_length = _clip.length
 				_ends_on_timer = true
