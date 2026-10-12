@@ -145,19 +145,19 @@
 
 ### Phase 4 — 踢腿类（无攻击判定）
 
-- [ ] Melee（17）、MeleeAir（32，含落地直接进 Walking）、MeleeSlide（48）、
-      MeleeCrouch（63）、MeleeVault（53）、MeleeAirAbove（82，需要目标，可先只保留移动）
-- [ ] Barge（19）/ AirBarge（85）：撞门
+- [x] Melee（17）、MeleeAir（32，落地先经 Landing 再 Walking，见 §5）、MeleeSlide（48）、
+      MeleeCrouch（63）、MeleeVault（53，原版不可达）、MeleeAirAbove（82，无目标时直接 Falling）（W2d）
+- [x] Barge（19）/ AirBarge（85）：撞门（W2d；可交互物 = `interactable` 组）
 
 ### Phase 5 — 其余跑酷动作
 
 - [ ] 逐项对照原版重写现有动作：Walking、Falling、Jump、Landing、SoftLanding、
       SkillRoll、Coil、Slide、Crouch、SpeedVault、VaultOver（9）、IntoGrab、Grab、
-      GrabPullUp（10）、180Turn、180TurnInAir、ZipLine、Swing、Ladder（IntoClimb/Climb）、
+      GrabPullUp（10）、180Turn、180TurnInAir、ZipLine（含 IntoZipLine，W2d 已完成）、Swing（W2d 已完成）、Ladder（IntoClimb/Climb）、
       Balance、LedgeWalk、SpringBoard、DodgeJump、FallingUncontrolled、LayOnGround
 - [ ] 新增：GrabJump（13）、GrabTransfer（31）、JumpIntoGrab（67）、SwingJump（73）、
       StepUp（37）、AutoStepUp（81）、RumpSlide（38）、Stumble（35）、StumbleHard（55）、
-      StumbleFalling（77）、Vertigo（47）、Interact（39）
+      StumbleFalling（77）、Vertigo（47）、Interact（39）（SwingJump、Interact：W2d 已完成；Interact 只有按钮）
 - [ ] WallKick（23）：原版 `CanDoMove()` 恒为 false，是死代码。保留同样的结论，不实现
 
 ### Phase 6 — 动画
@@ -182,7 +182,9 @@
   水平速度 = `法线 × (120 + 400p) + 沿墙速度 × (0.1 + 0.9(1 − p))`。`FMax` 的结果被丢弃。
 - `TdMove_WallRun.HandleMoveAction(MA_Turn)`：镜头 0.15 s 转到墙法线，`bTurned90FromWall`。
 - `TdMove_MeleeWallrun`（无目标时）：速度绕竖直轴旋转 ±6000（约 32.96°）离开墙面，再 ×1.2。
-- `TdMove_MeleeAir.Landed`：没有超过硬着陆高度就直接 `SetMove(Walking)`，跳过 Landing。
+- `TdMove_MeleeAir.Landed`（MAT_FromJump）：先调 `super(TdMove).Landed`（即进 Landing，SubtractLandingSpeed
+  照常生效），再 `SetMove(Walking)`；只有已经踢中过东西（bHitDetection 已清）才跳过 Landing。
+  MAT_FromJumpStill 的落地什么都不做，动画结束才进 Falling。（W2d 按 script_raw 核对）
 - `TdMove_WallKick.CanDoMove()` 恒为 false。
 - 墙跑中按跳：先问 WallRunDodgeJump，不行再问 WallRunJump。
   垂直蹬墙中按跳是 WallClimbDodgeJump，按转身是 WallClimb180TurnJump。
