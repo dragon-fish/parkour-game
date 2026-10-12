@@ -159,6 +159,10 @@
       StepUp（37）、AutoStepUp（81）、RumpSlide（38）、Stumble（35）、StumbleHard（55）、
       StumbleFalling（77）、Vertigo（47）、Interact（39）
 - [ ] WallKick（23）：原版 `CanDoMove()` 恒为 false，是死代码。保留同样的结论，不实现
+- [x] W2c 地面家族：Crouch、Slide、RumpSlide（38，本项目名 RampSlide）、Coil、SoftLanding、SkillRoll、
+      LayOnGround、180Turn、180TurnInAir、DodgeJump、SpringBoard、Vertigo（47）、Stumble（35）、
+      StumbleHard（55）、FallingUncontrolled；失控滑行材质；CheckForLedges / EdgeCheck / SlideOffLedge /
+      CheckValidFloor 与落地边缘检查。StumbleFalling（77）玩家的 MoveClasses 里是 none，不移植
 
 ### Phase 6 — 动画
 
