@@ -515,6 +515,27 @@ func test_a_jumps_landing_caps_the_speed_at_its_take_off_speed() -> void:
 	assert_almost_eq(float(at_landing[0]), jump.pre_jump_momentum - 0.65, 0.001, \
 		"the landing speed is not PreJumpMomentum - LandingSpeedReduction")
 
+## [ME:CONFIRMED decompile] Landing.StartMove sets SkillRoll without asking
+## its CanDoMove: a roll the move itself would refuse (here, cooling down)
+## still happens.
+func test_a_rolled_landing_does_not_ask_the_roll_first() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	player.global_position.y += 3.0
+	player.move_manager.start(Move.FALLING)
+	player.move_manager._redo_cooldowns[Move.SKILL_ROLL] = 10.0
+	assert_false(player.move_manager.can_do(Move.SKILL_ROLL), "test setup: the roll is not refused")
+	var pressed := false
+	for i in 120:
+		if not pressed and player.velocity.y < 0.0 and player.global_position.y < 1.6:
+			input.press_crouch()
+			pressed = true
+		await step(1)
+		if player.move_manager.current_name == Move.SKILL_ROLL:
+			break
+	assert_eq(player.move_manager.current_name, Move.SKILL_ROLL)
+
 ## [ME:CONFIRMED decompile 15.6] A hard landing holds the body with move and
 ## look input ignored until it ends, then sets Walking.
 func test_a_hard_landing_holds_the_body_with_input_ignored() -> void:

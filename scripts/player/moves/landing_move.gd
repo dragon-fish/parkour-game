@@ -64,7 +64,7 @@ func enter(previous: StringName) -> void:
 	var v_dir: Vector3 = player.velocity.normalized() if player.velocity.length_squared() > 0.0 else Vector3.ZERO
 	var heading_dot_velocity: float = player.facing().dot(v_dir)
 	var skill_roll: bool = not soft_surface and falling_height >= config.pawn.skill_roll_landing_height \
-		and player.can_skill_roll() and player.move_manager.can_do(SKILL_ROLL)
+		and player.can_skill_roll()
 	var soft_landing: Move = player.move_manager.move_for(SOFT_LANDING)
 	var moving_backwards: bool = (heading_dot_velocity < -0.3 \
 			and PawnPhysics.walking_state(player.horizontal_speed()) >= PawnPhysics.WAS_RUN) \
@@ -74,6 +74,8 @@ func enter(previous: StringName) -> void:
 	player.last_landing_rolled = skill_roll and not moving_backwards
 	if skill_roll and not moving_backwards:
 		kind = Kind.SKILL_ROLL
+		# SetMove(MOVE_SkillRoll) without bCheckCanDo [ME:CONFIRMED decompile]:
+		# SkillRoll's CanDoMove is not asked; only SetMove itself may refuse.
 		player.move_manager.set_move(SKILL_ROLL)
 	elif came_from_180_in_air or previous == LAY_ON_GROUND or (hard and moving_backwards) \
 			or (last_landing_was_on_soft_object and moving_backwards) or force_land_back:
