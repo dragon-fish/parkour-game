@@ -112,8 +112,6 @@ func _init() -> void:
 	# Falling hand-off at the apex: Stormdrain springs the player at a pipe
 	# with a grabbable beam behind it, and without these the rise reached the
 	# beam's ledge first and the pipe was never asked.
-	check_for_zipline = true
-	check_for_swing = true
 	check_for_ladder = true
 	check_for_ledge_walk = true
 	check_for_balance = true

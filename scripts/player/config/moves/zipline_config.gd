@@ -1,92 +1,30 @@
 class_name ZiplineConfig
 extends MoveConfig
 
-# The original's TdMove_ZipLine + TdMove_IntoZipLine. [ME:CONFIRMED 05 §5.5]
-# two LOWER bounds and no upper one -- a long enough cable runs to tens of
-# km/h, which the owner has seen exceed 80 km/h in the original.
+# The original's TdMove_ZipLine: CDO and DefaultPawnMovement.ini
+# [TdGame.TdMove_ZipLine]. Lengths in metres, speeds in m/s.
 
 func _init() -> void:
-	# A hazard's hit knocks the body off. See MoveConfig.hit_knocks_off.
+	# MG_TwoHandsBusy: both hands on the cable.
+	allows_turn = false
 	hit_knocks_off = true
-	# Rides a world-space InterestLine target. See MoveConfig.holds_world_path.
 	holds_world_path = true
-	allows_turn = false  # both hands on the cable
-	# The view may swing either way across the cable but the body keeps its
-	# heading (bDisableFaceRotation). Same machinery Grab uses.
+	# [ME:CONFIRMED decompile] bConstrainLook: pitch -3200 .. 32768, yaw
+	# -7000 .. 7000 about the pawn, which bDisableFaceRotation holds at the
+	# cable's heading -- so the fan is pinned to the cable, and the model does
+	# not turn with the view.
 	constrain_look = true
 	absolute_yaw_constraint = true
 	freeze_visual_yaw = true
-	min_look_constraint = Vector3(-deg_to_rad(80.0), -deg_to_rad(90.0), -PI)
-	max_look_constraint = Vector3(deg_to_rad(80.0), deg_to_rad(90.0), PI)
-	# NO move-name cooldown: [ME:INFERRED] the original chains rope to rope
-	# (owner-measured: release one, catch the next at once), so the re-catch
-	# guard is per CABLE -- see same_line_redo_time below and
-	# Player.note_line_left().
-	redo_move_time = 0.0
+	min_look_constraint = Vector3(-3200.0, -7000.0, -32768.0) * (TAU / 65536.0)
+	max_look_constraint = Vector3(32768.0, 7000.0, 32768.0) * (TAU / 65536.0)
 
-## [ME:CONFIRMED 05 §5.5] OWNER-MEASURED floor, repeatedly: 14.36 km/h =
-## 3.99 m/s -- which is 400 uu/s to within 0.3%, the SAME 400 the slope gain
-## fits. Two fitted constants landing on MinZipAcceleration's literal value
-## suggests the CDO pair (MinZipVelocity 300 / MinZipAcceleration 400) does
-## not mean what the field names say; whatever the truth, the measurement is
-## what ships. Boarding slower than this is raised to it.
-@export var min_velocity: float = 3.99
-## [ME:CONFIRMED 05 §5.5] OWNER-MEASURED, two reference segments:
-##
-##     61 m at ~19 deg (sin 0.326): 14 -> 63 km/h in ~5 s    a = 2.72
-##     97 m at ~8 deg  (sin 0.139): 14 -> 67 km/h in ~7.5 s  a = 1.96
-##
-## Linear in the slope: a = base + gain * sin(theta), fitting base 1.39 and
-## gain 4.07. [ME:DERIVED] gain (4.07) matches the CDO's MinZipAcceleration
-## (400 uu/s^2 -> 4.0 m/s^2) to within 2%, which is very likely that field's
-## real role: the slope coefficient, not a floor. A single-segment reading
-## reads as a constant ~10 km/h/s and cannot separate the two terms; the
-## second segment does.
-@export var base_acceleration: float = 1.4
-@export var slope_acceleration: float = 4.0
-## [ME:CONFIRMED 05 §5.5] HangOffset = (0, 0, -90): the body centre hangs
-## this far below the cable.
+## [ME:CONFIRMED decompile] HangOffset = (0, 0, -90): the hands are 90 uu
+## above the pawn's centre.
 @export var hang_offset: float = 0.9
-## [ME:CONFIRMED 05 §5.5] ZipFadeInTime = 0.1 s: how long the body takes to
-## reach the hang point from wherever it caught the cable.
-@export var fade_in_time: float = 0.1
-
-## Metres per second the body is pulled onto the line, once the catch is made
-## from further out than fade_in_time's worth.
-##
-## fade_in_time above is the FLOOR and stays the original's: a catch from
-## within arm's reach still lands in exactly that. This is what stops a wider
-## reach turning into a harder yank -- reaching further takes longer instead.
-## A dial, judged by eye; nothing in the original names it.
-@export var catch_speed: float = 10.0
-## Falling faster than this (m/s, positive) the hands cannot hold on.
-##
-## [ME:CONFIRMED 05 §5.5] TdMove_IntoZipLine.ZVelocityFallLimit = -600, which
-## read as uu/s the way every other length is would be 6.0.
-##
-## [ME:DERIVED] TWICE THAT, on the same grounds gravity is twice its ini value
-## (PawnConfig.gravity: the doubling lives in native C++, 22 measured jumps
-## pin it). A threshold in the ini's own units has to be read in the ini's own
-## gravity, and the game does not run at that gravity.
-##
-## The Mall settles it: the chapter hands the player from one cable to the
-## next, and at the handover the two are 2.2 m apart with the cable being left
-## already carrying about 2 m/s down its slope -- roughly 8.6 m/s on arrival,
-## which 6.0 refuses outright. DO NOT put 6.0 back; the jump's own 6.3 m/s
-## launch means a body falling back to the height it jumped from is already
-## past it.
-@export var fall_limit: float = 12.0
-
-## [ME:CONFIRMED 05 §5.5] SameZipLineRedoMoveTime = 3.0 -- and the owner's
-## rope-chaining measurement confirms the SAME-line reading: this guards
-## re-catching the cable just left, never the next one. Enforced per line by
-## Player.
-@export var same_line_redo_time: float = 3.0
-
-## PROJECT-DEFINED, no CDO source. Widest horizontal angle, in degrees,
-## between the approach velocity and the ride's travel direction that still
-## catches. DO NOT let a jump straight against the cable's direction trigger
-## a catch: 100 refuses only a clearly opposed approach -- a perpendicular
-## crossing under the cable still catches. Degrees, so the F1 panel reads
-## naturally. Tuned by feel.
-@export var catch_max_approach_angle: float = 100.0
+## [ME:CONFIRMED ini] MinZipVelocity = 300 uu/s: the floor of the step taken
+## along the cable each frame, and of the velocity written.
+@export var min_zip_velocity: float = 3.0
+## [ME:CONFIRMED ini] MinZipAcceleration = 400 uu/s^2: the floor of the
+## acceleration along the cable, against max(it, |GravityZ * slope|).
+@export var min_zip_acceleration: float = 4.0

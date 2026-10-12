@@ -397,8 +397,8 @@ func _scripted_line() -> String:
 		player.move_manager.current_name, shape, arc, lead,
 		float(path.get("progress", 0.0)) * 100.0]
 
-## The ride, or "-" when not on a cable: where along it, how fast (the owner
-## reads km/h off the original's HUD), and this tick's acceleration.
+## The ride, or "-" when not on a cable: where along the cable's points, how
+## fast (the owner reads km/h off the original's HUD), and the acceleration.
 func _zip_line() -> String:
 	if player == null or player.move_manager == null \
 			or player.move_manager.current_name != Move.ZIPLINE:
@@ -406,12 +406,12 @@ func _zip_line() -> String:
 	var zip: ZiplineMove = player.move_manager.move_for(Move.ZIPLINE)
 	if zip == null or zip.line() == null:
 		return "-"
-	return "%.1f / %.1f m   %.2f m/s (%.0f km/h)   a %.1f" % [
-		zip.ride_offset(), zip.line().length(),
-		zip.ride_speed(), zip.ride_speed() * 3.6, zip.ride_acceleration()]
+	return "point %.1f   %.2f m/s (%.0f km/h)   a %.1f" % [
+		zip.current_param_on_curve, zip.ride_speed(), zip.ride_speed() * 3.6,
+		player.acceleration.length()]
 
-## The pendulum, or "-" when not hanging: angle, angular velocity, tangential
-## speed, and whether the exit-jump window is open right now.
+## The pendulum, or "-" when not hanging: angle, angular velocity, and whether
+## a jump now would leave (JumpAngle above -pi/4).
 func _swing_line() -> String:
 	if player == null or player.move_manager == null \
 			or player.move_manager.current_name != Move.SWING:
@@ -419,15 +419,10 @@ func _swing_line() -> String:
 	var move: SwingMove = player.move_manager.move_for(Move.SWING)
 	if move == null:
 		return "-"
-	var pump := "-"
-	if move.pump_direction() > 0:
-		pump = "W"
-	elif move.pump_direction() < 0:
-		pump = "S"
-	return "th %+.0f deg  w %+.2f  v %.2f m/s  pump %s  %s" % [
-		rad_to_deg(move.swing_theta()), move.swing_omega(),
-		absf(move.tangential_speed()), pump,
-		"JUMP OPEN" if move.jump_window_open() else "closed"]
+	var jump_angle: float = minf(PI / 2.0, move.swing_angle - move.cfg.swing_angle_timing_offset)
+	return "a %+.0f deg  w %+.2f rad/s  %s" % [
+		rad_to_deg(move.swing_angle), move.swing_velocity,
+		"JUMP OPEN" if jump_angle > -PI / 4.0 else "closed"]
 
 ## The inverted pendulum, or "-" when not on the beam. THE ONLY WINDOW into
 ## an otherwise invisible number -- lean and its rate never touch a probe or

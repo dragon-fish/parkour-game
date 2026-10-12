@@ -53,7 +53,7 @@ func check_auto_moves() -> void:
 	if c == null:
 		return
 	var probes_anything: bool = c.check_for_grab or c.check_for_vault_over or c.check_for_wall_climb \
-		or c.check_for_zipline or c.check_for_swing or c.check_for_ladder \
+		or c.check_for_ladder \
 		or c.check_for_ledge_walk or c.check_for_balance
 	if not probes_anything:
 		return

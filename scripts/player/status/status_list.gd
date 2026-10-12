@@ -157,6 +157,7 @@ const MOVE_EFFECTS: Dictionary = {
 	Move.SPEED_VAULT: Status.Effect.BLOCK_SPEED_VAULT,
 	Move.LADDER: Status.Effect.BLOCK_LADDER,
 	Move.ZIPLINE: Status.Effect.BLOCK_ZIPLINE,
+	Move.INTO_ZIPLINE: Status.Effect.BLOCK_ZIPLINE,
 	Move.SWING: Status.Effect.BLOCK_SWING,
 	Move.TURN_180: Status.Effect.BLOCK_TURN_180,
 	Move.CROUCH: Status.Effect.BLOCK_CROUCH,
