@@ -45,6 +45,36 @@ func velocity(t: float, dt: float) -> Vector2:
 		return Vector2.ZERO
 	return (displacement(t + dt) - displacement(t)) / dt
 
+## Root rise at `t`, metres up.
+func rise(t: float) -> float:
+	if _rises.is_empty():
+		return 0.0
+	return float(_sample(_rises, t)[0])
+
+## [time, up m] rows: the climbs' vertical, which the ground moves' tracks do
+## not have.
+var _rises: Array = []
+
+## A track of the generated table (RootMotionTracks, every key of the
+## original's sequence at 1/30 s) as a clip: `key` is the lowercased sequence
+## name. Null when the table has no track for it.
+static func from_track(key: StringName) -> RootMotionClip:
+	var track: Array = RootMotionTracks.TRACKS.get(key, [])
+	if track.is_empty():
+		return null
+	var moves: Array = []
+	var turns: Array = []
+	var rises: Array = []
+	var keys: int = track.size() / 4
+	for i in keys:
+		var t: float = minf(i * RootMotionTracks.KEY_STEP, float(RootMotionTracks.LENGTHS.get(key, 0.0)))
+		moves.append([t, track[i * 4] * 0.01, track[i * 4 + 1] * 0.01])
+		rises.append([t, track[i * 4 + 2] * 0.01])
+		turns.append([t, deg_to_rad(track[i * 4 + 3])])
+	var clip := make(float(RootMotionTracks.LENGTHS.get(key, 0.0)), moves, turns)
+	clip._rises = rises
+	return clip
+
 ## The same, turned into world space against the pawn's facing at the start.
 func world_velocity(t: float, dt: float, facing: Vector3) -> Vector3:
 	var v: Vector2 = velocity(t, dt)
