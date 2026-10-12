@@ -61,7 +61,9 @@ func can_do(move_name: StringName) -> bool:
 ## TdPawn.CanDoMove: refused while move changes are off, and while a
 ## SetMove(..., bCheckCanDo) that failed has left PendingMovementState behind
 ## -- [ME:CONFIRMED decompile N4 §1.2] that refuses every move until the next
-## successful SetMove.
+## successful SetMove. The action table asks Moves[n].CanDoMove() directly
+## (can_do()); on the player's side the original asks this only for a level's
+## knock-down (TdPlayerPawn.OnTdFallOnBack) and its barbed wire's stumble.
 func pawn_can_do(move_name: StringName) -> bool:
 	if not allow_move_change:
 		return false
@@ -450,7 +452,12 @@ func _apply_level_hazards() -> bool:
 	if next == Move.KEEP:
 		return false
 	var serial: int = change_serial
-	if next == Move.LAY_ON_GROUND or can_enter(next):
+	if next == Move.LAY_ON_GROUND:
+		# The knock-down is SeqAct_TdFallOnBack's: TdPlayerPawn.OnTdFallOnBack
+		# sets LayOnGround only if TdPawn.CanDoMove(MOVE_LayOnGround).
+		if pawn_can_do(next):
+			set_move(next)
+	elif can_enter(next):
 		set_move(next)
 	if change_serial == serial:
 		return false

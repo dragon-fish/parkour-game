@@ -424,6 +424,27 @@ func test_a_refused_checked_set_move_leaves_pending_behind() -> void:
 	assert_eq(player.pending_movement_state, Move.JUMP)
 	falling.cfg.redo_move_time = 0.0
 
+## [ME:CONFIRMED decompile] A level's knock-down (TdPlayerPawn.OnTdFallOnBack)
+## asks TdPawn.CanDoMove, so a stale PendingMovementState refuses it.
+func test_a_stale_pending_refuses_a_knock_down() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var manager: MoveManager = player.move_manager
+	var falling: Move = manager.move_for(Move.FALLING)
+	falling.last_stop_move_time = player.world_time
+	falling.cfg.redo_move_time = 10.0
+	assert_false(manager.set_move(Move.FALLING, true), "test setup: a cooling-down Falling was set")
+	falling.cfg.redo_move_time = 0.0
+	var down := StatusSpec.new()
+	down.effect = Status.Effect.KNOCKDOWN
+	down.seconds = 0.5
+	player.apply_status(down, self, 0, true)
+	await step(1)
+	assert_eq(manager.current_name, Move.WALKING, "a knock-down went through a stale Pending")
+	manager.set_move(Move.JUMP)
+	await step(1)
+	assert_eq(manager.current_name, Move.LAY_ON_GROUND, "the knock-down was refused after a successful SetMove")
+
 ## [ME:CONFIRMED decompile N1 §2.1] No walkable floor: the walking physics sets
 ## Falling, then SetMove(Falling, check) -- and the fall height starts at the
 ## edge.
