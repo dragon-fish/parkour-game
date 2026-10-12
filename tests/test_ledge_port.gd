@@ -195,6 +195,44 @@ func test_grab_jump_drops_before_it_jumps() -> void:
 	await step(6)
 	assert_almost_eq(start_y - player.global_position.y, 0.08, 0.02, "the body did not drop 8 uu first")
 
+# --- the pull-up's room ------------------------------------------------------------------
+
+## The ledge's wall and what stands over it as ONE body, the way a level mesh
+## is: each part a box shape of `[size, centre]`.
+func _one_body(parts: Array) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	for part in parts:
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = part[0]
+		shape.shape = box
+		shape.position = part[1]
+		body.add_child(shape)
+	get_tree().root.add_child(body)
+	_extra.append(body)
+	return body
+
+## [ME:CONFIRMED decompile script TdMove_GrabPullUp.CanDoMove,
+## TdPhysicsMove.CanHeaveOverLedge] The pull-up asks for room: the body's box
+## raised from the hang to the ledge plus its height, then swept over the top.
+## A ceiling 30 cm over the ledge leaves room for neither the standing nor the
+## crouched body, so it is refused -- and the jump falls through to GrabJump,
+## which only goes with the view turned from the wall. The ceiling belongs to
+## the wall's own body: the hang starts every one of those sweeps touching it.
+func test_a_ceiling_over_the_ledge_refuses_the_pull_up() -> void:
+	var player: Player = await _player()
+	_one_body([[Vector3(4.0, 3.0, 2.0), Vector3(0.0, 1.5, -1.0)],
+		[Vector3(4.0, 0.5, 3.0), Vector3(0.0, 3.55, -1.0)]])
+	await step(1)
+	_hang(player, 3.0, 0.0)
+	await step(70)
+	assert_false(player.move_manager.can_do(Move.GRAB_PULL_UP), "a pull-up under a ceiling was allowed")
+	assert_false(player.move_manager.handle_move_action(Move.MA_JUMP), "jump did something facing the wall")
+	assert_eq(player.move_manager.current_name, Move.GRAB, "the hang was left facing the wall")
+	player.rotation.y = PI
+	assert_true(player.move_manager.handle_move_action(Move.MA_JUMP), "jump did not leave the hang")
+	assert_eq(player.move_manager.current_name, Move.GRAB_JUMP, "the refused pull-up did not fall through to GrabJump")
+
 # --- ladders -----------------------------------------------------------------------------
 
 ## [ME:CONFIRMED decompile TdMove_Climb.HasFloorBelow] THE QUIRK: the floor

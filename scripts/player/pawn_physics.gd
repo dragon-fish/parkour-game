@@ -347,10 +347,25 @@ func line_trace(from: Vector3, to: Vector3) -> Dictionary:
 	hit["time"] = (hit["position"] - from).length() / length if length > 0.0 else 0.0
 	return hit
 
+## How much smaller than asked the box an extent trace sweeps is, per side.
+## See box_trace().
+const TRACE_SKIN := 0.05 * UU
+
 ## An extent trace from `start` to `end` with a box of half-size `extent`, the
 ## shape TdMove's traces sweep. {time, position, normal, collider}; time 1 and
 ## no collider when nothing is hit; time 0 when the box starts inside
 ## something. `position` is the box centre where it stops.
+##
+## UE3's semantics, not Jolt's. DO NOT hand Jolt the box as asked: its
+## cast_motion IGNORES EVERY BODY the box starts touching or overlapping, even
+## 20 cm deep, and a level mesh is one body. A hang puts the box flush on the
+## wall, so every trace from it -- the heave checks, the transfer's fit, the
+## shimmy -- saw nothing of the whole level and the pull-up went up through a
+## ceiling. So the box swept is TRACE_SKIN smaller on every side, which a
+## touching start no longer touches; a start that overlaps even that is
+## inside, a hit at time 0 as UE3 reports it; and a hit's time is taken back
+## by the distance the skin delayed it. Sharp (margin 0) for the same reason
+## the pawn's box is.
 func box_trace(end: Vector3, start: Vector3, extent: Vector3) -> Dictionary:
 	if extent == Vector3.ZERO:
 		var line: Dictionary = line_trace(start, end)
@@ -359,26 +374,39 @@ func box_trace(end: Vector3, start: Vector3, extent: Vector3) -> Dictionary:
 		return line
 	var space: PhysicsDirectSpaceState3D = pawn.get_world_3d().direct_space_state
 	var box := BoxShape3D.new()
-	box.size = extent * 2.0
+	box.margin = 0.0
+	var skin: Vector3 = (extent * 0.5).min(Vector3.ONE * TRACE_SKIN)
+	box.size = (extent - skin) * 2.0
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = box
 	query.transform = Transform3D(Basis.IDENTITY, start)
-	query.motion = end - start
 	query.exclude = [pawn.get_rid()]
+	var inside: Dictionary = space.get_rest_info(query)
+	if not inside.is_empty():
+		return {"time": 0.0, "position": start, "normal": inside["normal"],
+			"collider": instance_from_id(inside["collider_id"])}
+	var motion: Vector3 = end - start
+	var length: float = motion.length()
+	if length == 0.0:
+		return {"time": 1.0, "position": end, "normal": Vector3.ZERO, "collider": null}
+	query.motion = motion
 	var fractions: PackedFloat32Array = space.cast_motion(query)
-	if fractions.is_empty():
-		return {"time": 0.0, "position": start, "normal": Vector3.ZERO, "collider": null}
+	if fractions.size() < 2:
+		return {"time": 1.0, "position": end, "normal": Vector3.ZERO, "collider": null}
 	var safe: float = fractions[0]
 	var unsafe: float = fractions[1]
 	if safe >= 1.0 and unsafe >= 1.0:
 		return {"time": 1.0, "position": end, "normal": Vector3.ZERO, "collider": null}
-	query.transform = Transform3D(Basis.IDENTITY, start + (end - start) * unsafe)
+	query.transform = Transform3D(Basis.IDENTITY, start + motion * unsafe)
 	query.motion = Vector3.ZERO
 	var rest: Dictionary = space.get_rest_info(query)
 	var normal: Vector3 = rest.get("normal", Vector3.ZERO)
 	var collider: Object = instance_from_id(rest["collider_id"]) if rest.has("collider_id") else null
-	return {"time": safe, "position": start + (end - start) * safe, "normal": normal,
-		"collider": collider}
+	# The full box met the face the skin's width earlier along the way.
+	var closing: float = absf(normal.dot(motion / length))
+	var early: float = normal.abs().dot(skin) / closing if closing > 1e-3 else 0.0
+	var time: float = maxf(safe * length - early, 0.0) / length
+	return {"time": time, "position": start + motion * time, "normal": normal, "collider": collider}
 
 ## TdMove.MovementTraceForBlocking: true when the box is blocked anywhere on
 ## the way, including at the start.

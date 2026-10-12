@@ -220,6 +220,41 @@ func test_a_walk_steps_up_any_lip_within_the_step_and_stops_at_a_taller_one() ->
 		_worlds.erase(world)
 		await step(1)
 
+## UE3's extent traces, whatever the box starts against: flush on a face and
+## moving into it, blocked at once; inside, a hit at time 0; flush on a face
+## and moving away, nothing -- and a face the box touches does not hide the
+## rest of that body further along.
+func test_an_extent_trace_meets_the_body_it_starts_against() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var body := StaticBody3D.new()
+	for part in [[Vector3(4.0, 3.0, 2.0), Vector3(0.0, 1.5, -1.0)],
+			[Vector3(4.0, 0.5, 3.0), Vector3(0.0, 3.55, -1.0)]]:
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = part[0]
+		shape.shape = box
+		shape.position = part[1]
+		body.add_child(shape)
+	get_tree().root.add_child(body)
+	world["ledge"] = body
+	await step(2)
+	var extent := Vector3(0.3, 0.9, 0.3)
+	# Flush on the wall's face at z = 0, 3 m up and clear of the floor.
+	var flush := Vector3(0.0, 2.0, 0.3)
+	var into: Dictionary = player.phys.box_trace(flush + Vector3(0.0, 0.0, -0.5), flush, extent)
+	assert_eq(into["collider"], body, "a box flush on a face swept into it met nothing")
+	assert_almost_eq(float(into["time"]), 0.0, 0.01, "a box flush on a face moved into it")
+	var inside: Dictionary = player.phys.box_trace(flush + Vector3(0.0, 0.0, -0.5), flush - Vector3(0.0, 0.0, 0.1),
+		extent)
+	assert_eq(float(inside["time"]), 0.0, "a box starting inside did not hit at time 0")
+	var away: Dictionary = player.phys.box_trace(flush + Vector3(0.0, 0.0, 0.5), flush, extent)
+	assert_null(away["collider"], "a box moving off the face it touches hit it")
+	var up: Dictionary = player.phys.box_trace(flush + Vector3(0.0, 2.0, 0.0), flush, extent)
+	assert_eq(up["collider"], body, "the ceiling of the body the box touches was not met")
+	assert_gt(float(up["time"]), 0.0, "the ceiling was met at the start")
+	_free_ledge(world)
+
 ## [ME:CONFIRMED decompile N1 §2.1] physWalking clears bJustTeleported on
 ## entry: whatever the fall before it in the same frame set, the walk rebuilds
 ## its velocity from the displacement -- here a wall the body ran into.
