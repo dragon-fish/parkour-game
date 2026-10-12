@@ -502,6 +502,10 @@ var fall_tracker: FallTracker
 ## outside StatusList interprets an entry.
 var statuses: StatusList
 
+## Where the SPEED_CAP scale has actually got to, as opposed to where the
+## status list says it should be. See ground_speed_for_physics().
+var _speed_scale: float = 1.0
+
 ## Seconds of stagger immunity still owed. Armed when a landing lockout lets
 ## go, so a level that keeps re-applying STAGGER cannot chain them.
 var _stagger_immunity: float = 0.0
@@ -1483,6 +1487,9 @@ func setup(cfg: MovementConfig, src: InputSource) -> void:
 ## life last declared: Arena.reset_player() teleports to spawn and then skips
 ## exactly one physics tick before the move manager resumes.
 func reset_state() -> void:
+	# A respawn is not a transition to watch: the ceiling starts where the new
+	# life's statuses put it, with no slide inherited from the old one.
+	_speed_scale = statuses.speed_scale() if statuses != null else 1.0
 	_step_grace_timer = 0.0
 	last_reset_time = world_time
 	_hazard_touch_pending = false
@@ -3662,6 +3669,7 @@ func _physics_process(delta: float) -> void:
 	# Aged alongside the other timers and BEFORE the moves run, so a status
 	# that expires this tick is already gone by the time anything reads it.
 	statuses.tick(delta)
+	_blend_speed_scale(delta)
 	# AHEAD OF EVERY READER OF in_third_person(), and immediately after the
 	# ageing above so it answers for this tick rather than the last one. Both
 	# _drive_body_yaw() below and the moves consult the rig for which view is
@@ -4648,6 +4656,38 @@ func _tick_ignore_timers(delta: float) -> void:
 ## [ME:CONFIRMED emulated N1 §5.1] This project has no taser, so it is 1.
 func mobility_multiplier() -> float:
 	return 1.0
+
+## The max_speed that walking CalcVelocity is given: GroundSpeed, with this
+## project's SPEED_CAP / SPEED_LIMIT statuses laid over it.
+##
+## PROJECT RULE layered over the original, which has no such feature: with no
+## status in force this returns `base` unchanged and the original's logic is
+## untouched. SPEED_CAP scales the ceiling (eased, see _blend_speed_scale());
+## SPEED_LIMIT is an absolute m/s bound on the body's speed and is not eased.
+## Only the ceiling moves: the acceleration cap (AccelRate * mobility) stays
+## the original's, so the body is steered down to a lowered ceiling by the same
+## CalcVelocity clamp and gains speed back at its usual rate. Ground only; the
+## falling and flying physics never read it.
+##
+## `mobility` is the factor CalcVelocity multiplies max_speed by
+## (GetMobilityMultiplier * the move's SpeedModifier), divided back out of an
+## absolute limit so the limit holds whatever the move.
+func ground_speed_for_physics(base: float, mobility: float) -> float:
+	var out: float = base * _speed_scale
+	var limit: float = statuses.speed_limit() if statuses != null else INF
+	if limit < INF and mobility > 0.0:
+		out = minf(out, limit / mobility)
+	return out
+
+## Slides the SPEED_CAP scale toward whatever the status list currently says.
+## move_toward on a 0..1 scale, so the dial is a time for the full range.
+func _blend_speed_scale(delta: float) -> void:
+	var wanted: float = statuses.speed_scale()
+	var seconds: float = config.pawn.speed_cap_blend_time
+	if seconds <= 0.0:
+		_speed_scale = wanted
+	else:
+		_speed_scale = move_toward(_speed_scale, wanted, delta / seconds)
 
 ## Vector(Pawn.Rotation), flat: the pawn never pitches. The PAWN's yaw, which
 ## is the view's except where something holds it (see pawn_yaw).

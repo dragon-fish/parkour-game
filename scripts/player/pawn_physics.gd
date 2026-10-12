@@ -496,6 +496,7 @@ func phys_walking(dt: float, iterations: int) -> void:
 	pawn.acceleration.y = 0.0
 	var accel_dir: Vector3 = Vector3.ZERO if pawn.acceleration == Vector3.ZERO \
 		else safe_normal(pawn.acceleration)
+	var mobility: float = pawn.mobility_multiplier() * speed_modifier
 	var force: bool = pawn.force_max_accel_one_frame
 	pawn.force_max_accel_one_frame = false
 	if pawn.root_motion_active:
@@ -506,8 +507,9 @@ func phys_walking(dt: float, iterations: int) -> void:
 		pawn.velocity.x = pawn.root_motion_velocity.x
 		pawn.velocity.z = pawn.root_motion_velocity.z
 	else:
-		var r: Array = calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt, p.ground_speed,
-			p.ground_friction * walk_fric, true, pawn.mobility_multiplier() * speed_modifier,
+		var r: Array = calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt,
+			pawn.ground_speed_for_physics(p.ground_speed, mobility),
+			p.ground_friction * walk_fric, true, mobility,
 			p.accel_rate, p.braking_friction_strength, false,
 			move != null and move.use_precise_location, force, pawn.facing())
 		pawn.velocity = r[0]

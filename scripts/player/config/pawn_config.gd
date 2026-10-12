@@ -11,6 +11,11 @@ extends Resource
 ## This is the CEILING of the speed curve (02 §2.1), not a direct target
 ## speed: the ported acceleration reads it (PawnAcceleration.Params).
 @export var ground_speed: float = 7.2
+## PROJECT RULE, not the original's: seconds for a SPEED_CAP status's scale to
+## travel the full 0..1 range. The ground speed ceiling slides to its new value
+## so entering or leaving a slow region reads as a slow-down rather than a cut;
+## a half-range change takes half of this. Zero is a cut.
+@export var speed_cap_blend_time: float = 0.3
 ## [ME:CONFIRMED 02 §2.3] AirSpeed = 2400 uu/s. Essentially uncapped (3.3x
 ## GroundSpeed) -- the defence against an air-control exploit is air_control
 ## being almost zero, not a low ceiling here.

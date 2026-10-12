@@ -182,3 +182,55 @@ func test_a_blocked_roll_lands_without_rolling() -> void:
 	assert_almost_eq(p.last_landing_fall_height, 2.5, 0.1, \
 		"test setup: the staged fall was not actually ~2.5 m")
 	assert_false(p.last_landing_rolled, "a blocked roll still rolled")
+
+# --- SPEED_CAP / SPEED_LIMIT reach the ported ground physics ------------------
+
+func _run_for(world: Dictionary, frames: int) -> void:
+	await step(1)
+	TestWorld.place(world)
+	await step(2)
+	world["input"].state.move = Vector2(0.0, 1.0)
+	for i in frames:
+		await step(1)
+
+func test_a_speed_cap_bounds_a_running_body_to_the_scaled_ceiling() -> void:
+	var world := _world()
+	var p: Player = world["player"]
+	p.statuses.apply(_cap_spec(0.5), p, 0)
+	await _run_for(world, 240)
+	var ceiling: float = p.config.pawn.ground_speed * 0.5
+	assert_true(p.horizontal_speed() <= ceiling + 0.01, \
+		"a body inside a SPEED_CAP exceeded the scaled ceiling")
+	assert_gt(p.horizontal_speed(), 0.5, "the capped body never ran at all")
+
+func test_a_speed_limit_bounds_a_running_body_absolutely() -> void:
+	var world := _world()
+	var p: Player = world["player"]
+	var s := StatusSpec.new()
+	s.effect = Status.Effect.SPEED_LIMIT
+	s.amount = 3.0
+	s.seconds = INF
+	p.statuses.apply(s, p, 0)
+	await _run_for(world, 240)
+	assert_true(p.horizontal_speed() <= 3.0 + 0.01, \
+		"a body inside a SPEED_LIMIT exceeded the limit")
+
+func test_without_a_status_the_ground_ceiling_is_the_originals() -> void:
+	var p := _player()
+	await step(1)
+	assert_eq(p.ground_speed_for_physics(7.2, 1.0), 7.2, "a status-free body was scaled")
+	assert_eq(p.ground_speed_for_physics(7.2, 0.4), 7.2, "a status-free body was limited")
+
+func test_the_cap_eases_in_and_lifts_cleanly() -> void:
+	var p := _player()
+	await step(1)
+	p.statuses.apply(_cap_spec(0.5), p, 0)
+	await step(2)
+	var part: float = p.ground_speed_for_physics(7.2, 1.0)
+	assert_lt(part, 7.2, "the cap had no effect after two ticks")
+	assert_gt(part, 3.6, "the cap was cut in rather than eased")
+	await step(60)
+	assert_almost_eq(p.ground_speed_for_physics(7.2, 1.0), 3.6, 0.0001, "the eased cap never arrived")
+	p.statuses.remove(Status.Effect.SPEED_CAP)
+	await step(60)
+	assert_eq(p.ground_speed_for_physics(7.2, 1.0), 7.2, "the ceiling did not come back")
