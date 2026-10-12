@@ -3781,7 +3781,14 @@ func _physics_process(delta: float) -> void:
 	# PlayerMove takes its axes from Pawn.Rotation before UpdateRotation turns
 	# anything this tick: the PAWN's yaw, which on a wall is not the view's.
 	_pre_look_basis = Basis(Vector3.UP, pawn_yaw)
-	var look: Vector2 = Vector2.ZERO if ignore_look_input else input.look
+	# THIRD PERSON KEEPS THE ORBIT. The original ignores look input to hold the
+	# first-person eye still through a scripted move -- a roll, a vault, a hard
+	# landing -- and has no third person; this project's orbit camera is the
+	# player's through every move. In third person the ignore leaves the orbit
+	# alone, inside the move's own look window (third_person_frees_look drops
+	# even that, as the roll does).
+	var look_ignored: bool = ignore_look_input and (camera_rig == null or not camera_rig.in_third_person())
+	var look: Vector2 = Vector2.ZERO if look_ignored else input.look
 	if camera_rig != null:
 		camera_rig.apply_look(look, self, delta)
 	turn_units = PawnAcceleration.turn_units(-look.x * config.camera.mouse_sensitivity)
