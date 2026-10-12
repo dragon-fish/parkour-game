@@ -30,6 +30,10 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## TdMove_IntoZipLine.HandleDeath: the catch survives with one point.
+func handle_death(_damage: float) -> float:
+	return player.health.hp - 1.0
+
 ## TdZiplineVolume.PawnUpdate. Returns whether the reach took the body.
 func volume_pawn_update(line: InterestLine) -> bool:
 	var state: StringName = player.move_manager.current_name

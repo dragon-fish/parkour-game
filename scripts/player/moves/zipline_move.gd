@@ -51,6 +51,11 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## TdMove_ZipLine.HandleDeath: Falling, and the death.
+func handle_death(damage: float) -> float:
+	player.move_manager.set_move(FALLING)
+	return damage
+
 func can_do_move() -> bool:
 	return td_can_do_move()
 

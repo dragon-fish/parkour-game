@@ -50,6 +50,13 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## TdMove_LayOnGround.HandleDeath: a body getting up survives with one
+## point.
+func handle_death(damage: float) -> float:
+	if getting_up:
+		return player.health.hp - 1.0
+	return damage
+
 ## Read by CharacterAnimator: the get-up is a different clip from lying.
 func is_rising() -> bool:
 	return getting_up

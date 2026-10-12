@@ -40,6 +40,14 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## TdMove_Climb.HandleDeath: the exit at the top survives with one point;
+## anything else lets go into Falling and dies.
+func handle_death(damage: float) -> float:
+	if climb_state == State.EXIT_AT_TOP:
+		return player.health.hp - 1.0
+	player.move_manager.set_move(FALLING)
+	return damage
+
 func uses_view_rotation() -> bool:
 	return true
 

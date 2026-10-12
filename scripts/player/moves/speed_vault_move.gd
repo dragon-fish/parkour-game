@@ -56,6 +56,13 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## TdMove_SpeedVault.HandleDeath: a vault with no room to stand where it
+## is survives with one point.
+func handle_death(damage: float) -> float:
+	if not player.can_stand(player.collision_center(), true):
+		return player.health.hp - 1.0
+	return damage
+
 func uses_view_rotation() -> bool:
 	return true
 

@@ -43,6 +43,14 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## TdMove_Jump.HandleDeath: a jump not colliding with the world survives
+## with one point; otherwise Falling, and the death.
+func handle_death(damage: float) -> float:
+	if not player.collide_world:
+		return player.health.hp - 1.0
+	player.move_manager.set_move(FALLING)
+	return damage
+
 ## TdMove_Jump.CanDoMove. [ME:CONFIRMED decompile] RedoMoveTime 1.0 s from
 ## DefaultPawnMovement.ini; refused on an uncontrolled slide unless that is
 ## what the body is doing, and below the taser mobility limit.

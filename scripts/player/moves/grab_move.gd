@@ -99,6 +99,14 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## TdMove_Grab.HandleDeath: a body going round a corner survives with one
+## point; any other hang lets go into Falling and dies.
+func handle_death(damage: float) -> float:
+	if current_shimmy_move == ShimmyType.AROUND_CORNER:
+		return player.health.hp - 1.0
+	player.move_manager.set_move(FALLING)
+	return damage
+
 func uses_view_rotation() -> bool:
 	return true
 

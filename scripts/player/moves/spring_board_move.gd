@@ -38,6 +38,14 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## TdMove_SpringBoard.HandleDeath: with no room to stand where it is, the
+## throw survives with one point; otherwise Falling, and the death.
+func handle_death(damage: float) -> float:
+	if not player.can_stand(player.collision_center(), true):
+		return player.health.hp - 1.0
+	player.move_manager.set_move(FALLING)
+	return damage
+
 ## TdMove_SpringBoard.CanDoMove.
 func can_do_move() -> bool:
 	if not td_can_do_move() or not player.found_ledge:

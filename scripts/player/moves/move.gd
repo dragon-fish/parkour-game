@@ -383,6 +383,13 @@ func landed(_normal: Vector3) -> void:
 func hit_wall(_normal: Vector3, _collider: Object) -> void:
 	pass
 
+## TdMove.HandleDeath: asked by TdPawn.TakeDamage when `damage` would kill,
+## and what it returns is dealt instead. The base deals it as it is; a move
+## that must not die mid-animation returns Health - 1, and one hanging on to
+## something lets go into Falling first.
+func handle_death(damage: float) -> float:
+	return damage
+
 ## TdMove.Bump, through TdPawn.Bump: the pawn's own move ran into something
 ## that is not the level's geometry (PawnPhysics.move_actor()). Empty in the
 ## original's base.

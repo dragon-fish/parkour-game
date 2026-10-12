@@ -42,6 +42,11 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## TdMove_WallClimb.HandleDeath: Falling, and the death.
+func handle_death(damage: float) -> float:
+	player.move_manager.set_move(FALLING)
+	return damage
+
 func uses_view_rotation() -> bool:
 	return true
 

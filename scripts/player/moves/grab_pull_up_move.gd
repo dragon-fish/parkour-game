@@ -30,6 +30,10 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## TdMove_GrabPullUp.HandleDeath: the pull-up survives with one point.
+func handle_death(_damage: float) -> float:
+	return player.health.hp - 1.0
+
 func uses_view_rotation() -> bool:
 	return true
 

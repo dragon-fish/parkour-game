@@ -682,3 +682,18 @@ func test_q_does_nothing_in_a_non_interactive_move() -> void:
 	var serial: int = player.move_manager.change_serial
 	assert_true(player._look_behind(), "a refused Q was left over for a move not yet ported")
 	assert_eq(player.move_manager.change_serial, serial, "Q changed a non-interactive move")
+
+## [ME:CONFIRMED decompile TdPawn.TakeDamage, TdMove_*.HandleDeath] A blow
+## that would kill is the current move's to answer: a pull-up survives it with
+## one point; a wall run lets go into Falling and dies.
+func test_a_killing_blow_asks_the_move_first() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	var pull_up: Move = player.move_manager.move_for(Move.GRAB_PULL_UP)
+	assert_almost_eq(pull_up.handle_death(500.0), player.health.hp - 1.0, 0.0001,
+		"the pull-up did not keep one point")
+	player.global_position.y += 3.0
+	player.move_manager.start(Move.WALL_RUN)
+	player.take_damage(player.health.hp + 50.0, Health.Cause.HAZARD)
+	assert_eq(player.move_manager.current_name, Move.FALLING, "the wall run did not let go")
+	assert_true(player.health.is_dead(), "the blow did not kill")

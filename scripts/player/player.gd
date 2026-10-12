@@ -211,7 +211,11 @@ var active_checkpoint: Checkpoint = null
 func die_in_volume() -> void:
 	if _dying or move_manager.current_name == Move.FALL_UNCONTROLLED:
 		return
-	take_damage(config.pawn.lethal_volume_damage, Health.Cause.VOLUME)
+	# Past take_damage(): [ME:CONFIRMED decompile TdKillVolume.KillActor] the
+	# original's is FellOutOfWorld, which kills without asking the move's
+	# HandleDeath.
+	if health != null:
+		health.damage(config.pawn.lethal_volume_damage, Health.Cause.VOLUME)
 
 ## Every blow goes through here. Returns true when this was the killing blow.
 ##
@@ -224,6 +228,10 @@ func die_in_volume() -> void:
 func take_damage(amount: float, cause: int) -> bool:
 	if health == null:
 		return false
+	# TdPawn.TakeDamage: a blow that would kill is first the current move's
+	# to answer (Move.handle_death()).
+	if health.hp - amount <= 0.0 and move_manager != null and move_manager.current_move() != null:
+		amount = move_manager.current_move().handle_death(amount)
 	return health.damage(amount, cause)
 
 ## How strong the alarm already is on the tick the band is entered, as a
