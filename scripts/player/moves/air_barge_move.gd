@@ -82,7 +82,7 @@ func _apply_root_motion(delta: float) -> void:
 	var forward: float = _land_root.displacement(t).x
 	var step: float = forward - _root_applied
 	_root_applied = forward
-	player.root_motion_velocity = player.facing() * (step / delta)
+	player.add_root_motion(player.facing() * step)
 
 ## TryGiveBargeDamage: the first thing hit (HitWall or Bump) deals the barge
 ## to every interactable the trace found -- at the location of what was hit,

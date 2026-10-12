@@ -341,3 +341,29 @@ func test_the_turn_in_the_air_is_done_in_17_frames() -> void:
 	var seventeen: float = absf(wrapf(player.pawn_yaw - from, -PI, PI))
 	assert_lt(sixteen, PI - 0.1, "the turn was done before its seventeenth frame")
 	assert_almost_eq(seventeen, PI, 0.001, "the turn was not done on its seventeenth frame")
+
+## [ME:CONFIRMED decompile 0x00efc460 / 0x00d235c0] Root motion is taken from
+## the frame AFTER UseRootMotion(true) (PreviousRMM), and an anim update with
+## no root-motion animation playing empties the delta rather than leaving the
+## last one for the physics.
+func test_root_motion_waits_a_frame_and_empties_without_an_animation() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	player.use_root_motion(true)
+	assert_false(player.root_motion_takes_velocity(), "the frame root motion was switched on took it")
+	player.add_root_motion(Vector3(0.5, 0.0, 0.0))
+	player.tick_anim_slot(1.0 / 60.0)
+	assert_true(player.root_motion_takes_velocity(), "the next frame does not take the root motion")
+	assert_eq(player.root_motion_delta, Vector3.ZERO, "an update with nothing playing left a delta")
+	player.use_root_motion(false)
+	assert_false(player.root_motion_takes_velocity(), "root motion off is not taken off at once")
+
+## [ME:CONFIRMED decompile 0x00d235c0] A root rotation sets the view's yaw to
+## the pawn's: whatever the view was turned by, it ends on the pawn.
+func test_a_root_rotation_brings_the_view_yaw_onto_the_pawn() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	player.rotation.y = player.pawn_yaw + 0.7
+	player.turn_by_root_rotation(UE.yaw_units(player.pawn_yaw) + 4096)
+	assert_almost_eq(wrapf(player.rotation.y - player.pawn_yaw, -PI, PI), 0.0, 1e-6,
+		"the view's yaw kept its offset from the turned pawn")

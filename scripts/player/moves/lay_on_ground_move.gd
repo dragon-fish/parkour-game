@@ -128,11 +128,6 @@ func _get_up_back() -> void:
 	look_at.y -= 300.0 * UU
 	set_look_at_target_location(look_at, 0.4)
 
-func pre_physics(delta: float) -> void:
-	super.pre_physics(delta)
-	if player.root_motion_active and _clip != null:
-		player.root_motion_velocity = _clip.world_velocity(_anim_time, delta, _facing)
-
 func tick_move(delta: float) -> void:
 	super.tick_move(delta)
 	_elapsed += delta
@@ -143,6 +138,9 @@ func tick_move(delta: float) -> void:
 		_drive_camera(1.0)
 		_drive_tint(1.0 - clampf(_elapsed / maxf(cfg.tint_fade_time, 0.0001), 0.0, 1.0))
 		return
+	# The root motion is the anim update's, for the next frame's physics.
+	if _clip != null:
+		player.add_root_motion(_clip.world_velocity(_anim_time, delta, _facing) * delta)
 	_anim_time += delta
 	_drive_camera(1.0 - clampf(_anim_time / maxf(_anim_length, 0.0001), 0.0, 1.0))
 	if _anim_time >= _anim_length:

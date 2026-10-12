@@ -183,13 +183,12 @@ func on_timer() -> void:
 func landed(_normal: Vector3) -> void:
 	pass
 
-func pre_physics(delta: float) -> void:
-	super.pre_physics(delta)
-	if player.root_motion_active and _clip != null:
-		player.root_motion_velocity = _clip.world_velocity(_anim_time, delta, _facing)
-
+## The root motion is the anim update's, after the physics: the next frame's
+## physics takes it (Player.add_root_motion()).
 func tick_move(delta: float) -> void:
 	super.tick_move(delta)
+	if _clip != null:
+		player.add_root_motion(_clip.world_velocity(_anim_time, delta, _facing) * delta)
 	_anim_time += delta
 	if _anim_length > 0.0 and _anim_time >= _anim_length \
 			and player.move_manager.current_move() == self:

@@ -197,6 +197,43 @@ static func calc_velocity(velocity: Vector3, acceleration: Vector3, accel_dir: V
 		v = safe_normal(v) * max_spd
 	return [v, a]
 
+## APawn::CalcVelocity's own velocity, the engine's rather than TdPawn's.
+## [ME:CONFIRMED decompile 0x00efc460, N7 §3.2] TdPawn hands over to it
+## whenever root motion is on, and it takes the root motion only from the
+## second frame (PreviousRMM): the frame root motion is switched on runs this.
+## No mobility, no SpeedModifier, no isotropic drag: UE3's directional friction
+## turning the velocity toward the acceleration, braking at 2 x Friction
+## without BrakingFrictionStrength, the cap at MaxSpeed (MaxSpeedModifier is 1
+## for the player). Returns [velocity, acceleration].
+static func engine_calc_velocity(velocity: Vector3, acceleration: Vector3, accel_dir: Vector3,
+		dt: float, max_speed: float, friction: float, brake: bool, accel_rate: float,
+		fluid: bool = false) -> Array:
+	var v: Vector3 = velocity
+	var a: Vector3 = acceleration
+	if not brake or a != Vector3.ZERO:
+		if a.length_squared() > accel_rate * accel_rate:
+			a = safe_normal(a) * accel_rate
+		v -= (v - accel_dir * v.length()) * dt * friction
+	else:
+		var old: Vector3 = v
+		var total := Vector3.ZERO
+		var rem: float = dt
+		while rem > 0.0:
+			var slice: float = minf(rem, BRAKING_SLICE)
+			rem -= slice
+			v -= v * 2.0 * slice * friction
+			if v.dot(old) > 0.0:
+				total += v * slice * (1.0 / dt)
+		v = total
+		if v.dot(old) < 0.0 or v.length_squared() < BRAKING_STOP_SPEED_SQUARED:
+			v = Vector3.ZERO
+	if fluid:
+		v = v * (1.0 - dt * friction)
+	v = v + a * dt
+	if v.length_squared() > max_speed * max_speed:
+		v = safe_normal(v) * max_speed
+	return [v, a]
+
 ## The acceleration bound at the top of ATdPlayerPawn::physFalling, with
 ## Acceleration.Z already zeroed. [ME:CONFIRMED emulated N2 §2] Returns the
 ## bounded acceleration.
@@ -500,12 +537,20 @@ func phys_walking(dt: float, iterations: int) -> void:
 	var force: bool = pawn.force_max_accel_one_frame
 	pawn.force_max_accel_one_frame = false
 	if pawn.root_motion_active:
-		# CalcVelocity's root-motion path hands over to the engine's own
-		# APawn::CalcVelocity and scales the result by the move's
-		# RootMotionScale. [ME:UNKNOWN] that engine path was not read (N1
-		# open question 7); the animation's own velocity is taken as it is.
-		pawn.velocity.x = pawn.root_motion_velocity.x
-		pawn.velocity.z = pawn.root_motion_velocity.z
+		# With root motion on, CalcVelocity is the engine's APawn::CalcVelocity:
+		# the root motion's delta over dt, in 3D, from the second frame on
+		# (the walk travels only its flat part), the engine's regular velocity
+		# on the first. TdPawn then scales it by the move's RootMotionScale,
+		# which only StepUp's unreachable branches change. [ME:CONFIRMED
+		# decompile 0x00efc460, N7 §3]
+		if pawn.root_motion_takes_velocity():
+			pawn.velocity = pawn.consume_root_motion() / dt if dt > 0.0 else Vector3.ZERO
+			pawn.acceleration = pawn.velocity / dt if dt > 0.0 else Vector3.ZERO
+		else:
+			var e: Array = engine_calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt,
+				p.ground_speed, p.ground_friction * walk_fric, true, p.accel_rate)
+			pawn.velocity = e[0]
+			pawn.acceleration = e[1]
 	else:
 		var r: Array = calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt,
 			pawn.ground_speed_for_physics(p.ground_speed, mobility),
@@ -1210,19 +1255,20 @@ func _carry_on_base(dt: float) -> void:
 
 ## ATdPlayerPawn::physFalling. [ME:CONFIRMED emulated N2 §2]
 ##
-## Not ported: water. Root motion is taken as the move hands it over
-## (Player.root_motion_velocity), not read off a mesh.
+## Not ported: water. Root motion is the pawn's root_motion_delta, from the
+## second frame of UseRootMotion on: its flat part over dt, the acceleration
+## dropped, the air-control bound skipped; its height is thrown away and
+## gravity goes on. [ME:CONFIRMED emulated N2 §2, decompile N7 §3]
 ## GPhysFallingDepth (0x0205684c): how many physFalling moves are under way.
 var _falling_depth: int = 0
 
 func phys_falling(dt: float, iterations: int) -> void:
 	var p: PawnConfig = pawn.config.pawn
-	var root_motion: bool = pawn.root_motion_active
+	var root_motion: bool = pawn.root_motion_takes_velocity()
 	if root_motion:
-		# RMM_Accel: the horizontal velocity is the animation's, the
-		# acceleration is dropped, and no bound applies to it.
-		pawn.velocity.x = pawn.root_motion_velocity.x
-		pawn.velocity.z = pawn.root_motion_velocity.z
+		var d: Vector3 = pawn.consume_root_motion()
+		pawn.velocity.x = d.x / dt if dt > 0.0 else 0.0
+		pawn.velocity.z = d.z / dt if dt > 0.0 else 0.0
 		pawn.acceleration = Vector3.ZERO
 	var old_accel: Vector3 = pawn.acceleration
 	var a: Vector3 = Vector3.ZERO if root_motion else falling_accel_bound(pawn.velocity,
@@ -1496,11 +1542,17 @@ func phys_flying(dt: float, _iterations: int) -> void:
 	var force: bool = pawn.force_max_accel_one_frame
 	pawn.force_max_accel_one_frame = false
 	if pawn.root_motion_active:
-		# The root-motion branch of CalcVelocity, as the walking physics takes
-		# it; flying keeps the vertical too -- the climbs rise on it. [ME:UNKNOWN]
-		# APawn::CalcVelocity's root-motion path was not read.
-		pawn.velocity = pawn.root_motion_velocity
-		pawn.acceleration = Vector3.ZERO
+		# APawn::CalcVelocity, as the walking physics takes it; flying travels
+		# the height too -- the climbs rise on it. [ME:CONFIRMED decompile
+		# 0x00efc460, N7 §3]
+		if pawn.root_motion_takes_velocity():
+			pawn.velocity = pawn.consume_root_motion() / dt if dt > 0.0 else Vector3.ZERO
+			pawn.acceleration = pawn.velocity / dt if dt > 0.0 else Vector3.ZERO
+		else:
+			var e: Array = engine_calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt,
+				p.air_speed, DEFAULT_FLUID_FRICTION * 0.5, false, p.accel_rate, true)
+			pawn.velocity = e[0]
+			pawn.acceleration = e[1]
 	else:
 		var r: Array = calc_velocity(pawn.velocity, pawn.acceleration, accel_dir, dt, p.air_speed,
 			DEFAULT_FLUID_FRICTION * 0.5, false, pawn.mobility_multiplier() * speed_modifier,

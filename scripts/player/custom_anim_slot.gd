@@ -142,7 +142,15 @@ func clear() -> void:
 ## "delta": root motion in the world (m), "yaw": root rotation (rotator units,
 ## turning right), "rooted": whether any root-motion animation is playing},
 ## the root motion summed over the root-motion animations (RootMotionClip).
-func advance(dt: float) -> Dictionary:
+##
+## The motion is put into the world through the mesh's frame NOW, `pawn_yaw`,
+## as the original transforms it by LocalToWorld at the update [ME:CONFIRMED
+## decompile 0x00d235c0]; with root rotation on, the clip's own turn so far is
+## taken off first, the translation being the root's relative to it.
+## [ME:INFERRED] that UE3 extracts the translation relative to the extracted
+## rotation; a pawn that turns only by the clip's own rotation travels the
+## same path either way.
+func advance(dt: float, pawn_yaw: float = NAN) -> Dictionary:
 	var ended: Array[StringName] = []
 	var ceased: Array[StringName] = []
 	var delta := Vector3.ZERO
@@ -164,7 +172,12 @@ func advance(dt: float) -> Dictionary:
 			var w: float = (w0 + c.weight) * 0.5
 			if c.root_motion:
 				rooted = true
-				var f: Vector3 = Vector3(-sin(c.start_yaw), 0.0, -cos(c.start_yaw))
+				var frame_yaw: float = c.start_yaw
+				if not is_nan(pawn_yaw):
+					frame_yaw = pawn_yaw
+					if c.root_rotation:
+						frame_yaw += c.clip.turn((t0 + t1) * 0.5)
+				var f: Vector3 = Vector3(-sin(frame_yaw), 0.0, -cos(frame_yaw))
 				var r: Vector3 = UE.cross(Vector3.UP, f)
 				var d: Vector2 = c.clip.displacement(t1) - c.clip.displacement(t0)
 				delta += (f * d.x + r * d.y + Vector3.UP * (c.clip.rise(t1) - c.clip.rise(t0))) * w

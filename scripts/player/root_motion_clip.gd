@@ -9,7 +9,7 @@ extends RefCounted
 # lengths are the tracks' own. from_track() is the generated table's.
 #
 # The moves that play these turn the clip into the pawn's root motion
-# (Player.root_motion_velocity) or root rotation (HalfTurn) themselves. The
+# (Player.add_root_motion()) or root rotation (HalfTurn) themselves. The
 # track is in the frame the pawn had when the animation STARTED.
 
 ## The sequence's own length, seconds: OnCustomAnimEnd comes here.

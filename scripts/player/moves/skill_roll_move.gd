@@ -71,14 +71,11 @@ func exit() -> void:
 func landed(_normal: Vector3) -> void:
 	pass
 
-## The root motion, before the physics.
-func pre_physics(delta: float) -> void:
-	super.pre_physics(delta)
-	if player.root_motion_active:
-		player.root_motion_velocity = _clip.world_velocity(_anim_time, delta, _facing)
-
+## The root motion is the anim update's, after the physics: the next frame's
+## physics takes it (Player.add_root_motion()).
 func tick_move(delta: float) -> void:
 	super.tick_move(delta)
+	player.add_root_motion(_clip.world_velocity(_anim_time, delta, _facing) * delta)
 	_anim_time += delta
 	_drive_camera()
 	if _anim_time >= _clip.length:

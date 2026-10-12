@@ -1528,7 +1528,8 @@ func reset_state() -> void:
 	_against_wall_state = AW_NONE
 	_stop_against_wall_timer = -1.0
 	root_motion_active = false
-	root_motion_velocity = Vector3.ZERO
+	previous_root_motion_active = false
+	root_motion_delta = Vector3.ZERO
 	uncontrolled_fall = false
 	_speed_samples.clear()
 	roll_trigger_time = -10.0
@@ -4233,18 +4234,23 @@ func set_collision_radius(radius: float) -> void:
 func set_acceleration_time(seconds: float) -> void:
 	_acceleration_time = seconds
 
-## The anim slot's frame: root rotation turns the pawn at once; the root
-## motion of an animation played with it becomes next frame's velocity
-## (root_motion_velocity, which the physics takes while root_motion_active);
-## the ends and cease-relevant events go to the current move when the
-## animation is the one it last played (TdPawn.OnAnimEnd /
-## OnCeaseRelevantRootMotion).
+## The anim slot's frame, USkeletalMeshComponent::UpdateSkelPose
+## [ME:CONFIRMED decompile 0x00d235c0, N7 §3.1]: with root motion on and a
+## root-motion animation playing, its motion in the mesh's current frame is
+## ADDED to root_motion_delta, which the next physics takes; otherwise the
+## delta is emptied. Root rotation turns the pawn, and the view's yaw with it
+## (turn_by_root_rotation()). Then PreviousRMM. The ends and cease-relevant
+## events go to the current move when the animation is the one it last played
+## (TdPawn.OnAnimEnd / OnCeaseRelevantRootMotion).
 func tick_anim_slot(delta: float) -> void:
-	var r: Dictionary = anim_slot.advance(delta)
-	if using_root_rotation:
-		pawn_yaw = UE.godot_yaw(UE.yaw_units(pawn_yaw) + int(r["yaw"]))
-	if r["rooted"]:
-		root_motion_velocity = r["delta"] / delta if delta > 0.0 else Vector3.ZERO
+	var r: Dictionary = anim_slot.advance(delta, pawn_yaw)
+	if r["rooted"] and root_motion_active:
+		root_motion_delta += r["delta"]
+	else:
+		root_motion_delta = Vector3.ZERO
+	if using_root_rotation and int(r["yaw"]) != 0:
+		turn_by_root_rotation(UE.yaw_units(pawn_yaw) + int(r["yaw"]))
+	previous_root_motion_active = root_motion_active
 	for anim in r["ended"]:
 		var move: Move = move_manager.current_move()
 		if move != null and move.is_current_custom_anim(anim):
@@ -4900,12 +4906,15 @@ var walkable_floor_z: float = 0.71
 ## The pawn's 'SlideOffLedge' Actor timer, seconds left, or < 0 when it is not
 ## set. Counted with the Actor timers, before the physics.
 var _slide_off_ledge_timer: float = -1.0
-## UseRootMotion: while set, the walking and falling physics take the
-## horizontal velocity from root_motion_velocity instead of computing it.
+## UseRootMotion: Mesh.RootMotionMode is RMM_Accel while set, RMM_Ignore
+## otherwise. [ME:CONFIRMED decompile N7 §3]
 var root_motion_active: bool = false
-## The root motion's velocity this tick, world space, m/s. Written by the move
-## that plays the animation.
-var root_motion_velocity: Vector3 = Vector3.ZERO
+## Mesh.PreviousRMM == RMM_Accel: the mode the last anim update ran in.
+var previous_root_motion_active: bool = false
+## Mesh.RootMotionDelta.Translation, world metres: what the anim updates have
+## added since a physics last took it. Zeroed by an update with no root-motion
+## animation playing or with root motion off.
+var root_motion_delta: Vector3 = Vector3.ZERO
 ## [world_time, |Velocity.xy|] pairs for get_average_speed().
 var _speed_samples: Array = []
 
@@ -5018,16 +5027,47 @@ func _uncontrolled_fall_landed() -> void:
 ## always taken.
 const TAKE_FALL_DAMAGE := true
 
-## TdPawn.UseRootMotion. Off clears the velocity it carried.
+## TdPawn.UseRootMotion.
 func use_root_motion(on: bool) -> void:
 	root_motion_active = on
-	if not on:
-		root_motion_velocity = Vector3.ZERO
+
+## Whether this frame's physics takes its velocity from the root motion:
+## RMM_Accel, and PreviousRMM not RMM_Ignore. [ME:CONFIRMED decompile
+## 0x00efc460] The frame root motion is switched on still runs the regular
+## velocity; the anim update that ends it starts filling the delta.
+func root_motion_takes_velocity() -> bool:
+	return root_motion_active and previous_root_motion_active
+
+## The physics' read of Mesh.RootMotionDelta.Translation, which empties it.
+func consume_root_motion() -> Vector3:
+	var d: Vector3 = root_motion_delta
+	root_motion_delta = Vector3.ZERO
+	return d
+
+## A root motion a move carries out from its own clip rather than the anim
+## slot's, added as the anim update adds the slot's: after the physics, for
+## the next frame's to take.
+func add_root_motion(world_delta: Vector3) -> void:
+	if root_motion_active:
+		root_motion_delta += world_delta
 
 ## TdPawn.UseRootRotation: sets bIsUsingRootRotation (using_root_rotation).
 ## The turn itself is the move's to make (HalfTurn, the wall climb's turn).
 func use_root_rotation(on: bool) -> void:
 	using_root_rotation = on
+
+## A root rotation turning the pawn to `yaw_units`. [ME:CONFIRMED decompile
+## 0x00d235c0, N7 §3.1] The anim update that moves the pawn round sets
+## Controller.Rotation.Yaw to the pawn's: the view's yaw follows the turn
+## exactly, whatever the view's offset from the pawn was, its pitch kept. The
+## eye trails it a little (CameraRig.absorb_body_yaw(), presentation).
+func turn_by_root_rotation(yaw_units: int) -> void:
+	var before: float = rotation.y
+	pawn_yaw = UE.godot_yaw(UE.normalize_axis(yaw_units))
+	rotation.y = pawn_yaw
+	if camera_rig != null:
+		camera_rig.absorb_body_yaw(wrapf(rotation.y - before, -PI, PI))
+	pin_visual_yaw(pawn_yaw)
 
 ## TdPawn.GetAverageSpeed(Time). [ME:UNKNOWN] the native was not read; this is
 ## the mean of |Velocity.xy| over the samples TickSpecial took in the last
