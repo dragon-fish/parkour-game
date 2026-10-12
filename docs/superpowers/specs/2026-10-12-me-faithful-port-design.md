@@ -233,3 +233,6 @@
 - [ ] 合并前跑一次全量测试
 - [ ] 其余章节（sp02_stdp、sp04、sp05、sp06、sp08、sp09）重建关卡以带上落差高度体积
 - [ ] 约 100 个带 PrePivot 偏移的体积（如 Boat 的 50 个 BlockingVolume、Escape 的 21 个）构建时未应用偏移，核实是否错位
+- [ ] **推送前**：提交 f94eba9、60e14df、15f1629、9a7a463 的历史里含原版动画的逐帧根运动数据（当前文件已移入 `.private`）。第一次推送 `feat/feel-pass` 前要改写这几笔提交或压缩分支——改写历史前先征得所有者同意
+- [ ] 排查全量套件里 `head_follow`、`lesson_loop` 的失败是否由移植引入
+- [ ] `tools/link_private.ts` 在 Windows 上用反斜杠路径比对 `links.txt` 的正斜杠条目，每次运行都删掉全部链接再重建
