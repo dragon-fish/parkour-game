@@ -205,6 +205,44 @@ func test_grab_jump_drops_before_it_jumps() -> void:
 	await step(6)
 	assert_almost_eq(start_y - player.global_position.y, 0.08, 0.02, "the body did not drop 8 uu first")
 
+## [ME:CONFIRMED decompile script TdPlayerController PlayerGrabbing,
+## SetInputHint] Entering PlayerGrabbing clears bLeftThumbStickPassedDeadZone,
+## and only a stick back inside 0.3 on both axes sets it again; until then
+## there is no hint, so forward held from before the catch never makes
+## ClimbUpLong (forward x10 past 8 WITH the hint Up). Let go and pushed again,
+## it does, on the frame of the push. Jump pulls up whatever the stick does.
+func test_forward_held_into_a_hang_climbs_only_once_pushed_again() -> void:
+	var player: Player = await _player()
+	_box(Vector3(4.0, 3.0, 2.0), Vector3(0.0, 1.5, -1.0))
+	await step(1)
+	var input: ScriptedInputSource = _world["input"]
+	input.hold_move(0.0, 1.0)
+	await step(3)
+	_hang(player, 3.0, 0.0)
+	await step(90)
+	assert_eq(player.move_manager.current_name, Move.GRAB, "forward held into the hang climbed")
+	assert_eq(player.move_action_hint, Move.MAH_NONE, "forward held into the hang gave a hint")
+	input.hold_move(0.0, 0.0)
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.GRAB, "letting go climbed")
+	input.hold_move(0.0, 1.0)
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.GRAB_PULL_UP, "pushing forward again did not climb")
+
+func test_jump_from_a_hang_pulls_up_whatever_the_stick_does() -> void:
+	var player: Player = await _player()
+	_box(Vector3(4.0, 3.0, 2.0), Vector3(0.0, 1.5, -1.0))
+	await step(1)
+	var input: ScriptedInputSource = _world["input"]
+	input.hold_move(0.0, 1.0)
+	await step(3)
+	_hang(player, 3.0, 0.0)
+	await step(90)
+	input.press_jump()
+	await step(1)
+	input.release_jump()
+	assert_eq(player.move_manager.current_name, Move.GRAB_PULL_UP, "jump from the hang did not pull up")
+
 # --- the pull-up's room ------------------------------------------------------------------
 
 ## The ledge's wall and what stands over it as ONE body, the way a level mesh
