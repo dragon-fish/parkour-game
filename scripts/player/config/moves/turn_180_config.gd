@@ -12,8 +12,7 @@ func _init() -> void:
 	redo_move_time = 0.5
 	allows_turn = false
 	# [ME:CONFIRMED decompile] Pitch -10000..10000, Yaw -16384..16384 about the
-	# pawn. Absolute, so the fan carries the root rotation round (HalfTurn).
+	# pawn, which the root rotation turns.
 	constrain_look = true
-	absolute_yaw_constraint = true
 	min_look_constraint = Vector3(-deg_to_rad(54.93), -deg_to_rad(90.0), -PI)
 	max_look_constraint = Vector3(deg_to_rad(54.93), deg_to_rad(90.0), PI)

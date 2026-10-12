@@ -7,10 +7,8 @@ extends MoveConfig
 func _init() -> void:
 	allows_turn = false
 	# [ME:CONFIRMED decompile] bConstrainLook, Pitch 0..32768 and Yaw
-	# -5000..5000 about the root-rotating pawn; bDisableFaceRotation. The fan
-	# is absolute so it carries the turn round (HalfTurn).
+	# -5000..5000 about the root-rotating pawn; bDisableFaceRotation.
 	constrain_look = true
-	absolute_yaw_constraint = true
 	freeze_visual_yaw = true
 	min_look_constraint = Vector3(0.0, -deg_to_rad(27.47), -PI)
 	max_look_constraint = Vector3(PI, deg_to_rad(27.47), PI)

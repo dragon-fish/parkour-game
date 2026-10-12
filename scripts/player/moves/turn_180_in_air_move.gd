@@ -29,6 +29,12 @@ func _init() -> void:
 func is_ported() -> bool:
 	return true
 
+## The view the original's way: the root rotation sets its yaw to the pawn's
+## while the pawn turns; the look-at and the +-5000 constraint about the pawn
+## do the rest.
+func uses_view_rotation() -> bool:
+	return true
+
 ## TdMove_180TurnInAir.CanDoMove: not out of a soft landing, only moving
 ## roughly the way the pawn faces (normalised, >= 0.2), then the base.
 func can_do_move() -> bool:

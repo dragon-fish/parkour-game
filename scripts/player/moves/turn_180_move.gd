@@ -13,14 +13,18 @@ extends Move
 # itself every 0.2 s until the animation ends. It shares Walking's row of the
 # action table: a jump, a slide, a crouch all leave it.
 #
-# The view turns with the pawn (HalfTurn carries the look fan round), which is
-# how this project presents a root rotation in first person.
+# The view turns the original's way (uses_view_rotation()): the root rotation
+# sets its yaw to the pawn's every frame it turns the pawn, and the move's
+# constraint, +-16384 about the pawn, holds it between.
 
 var _turn: HalfTurn = HalfTurn.new()
 var _clip: RootMotionClip = null
 var _anim_time: float = 0.0
 
 func is_ported() -> bool:
+	return true
+
+func uses_view_rotation() -> bool:
 	return true
 
 ## TdMove_180Turn.CanDoMove: from Walking only, then the base's RedoMoveTime.

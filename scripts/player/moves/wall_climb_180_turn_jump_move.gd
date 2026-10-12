@@ -55,10 +55,13 @@ func enter(_previous: StringName) -> void:
 	auto_checks_cleared = true
 	set_timer(c.jump_time_window)
 
-## The animation turns the pawn while the root rotation is on.
+## The animation turns the pawn while the root rotation is on, and the view's
+## yaw with it on every frame it turns (Player.turn_by_root_rotation()).
 func pre_physics(delta: float) -> void:
 	if player.using_root_rotation:
-		player.pawn_yaw = UE.godot_yaw(_root_start_yaw + root_yaw_units(move_active_time + delta))
+		var yaw: int = UE.normalize_axis(_root_start_yaw + root_yaw_units(move_active_time + delta))
+		if yaw != UE.normalize_axis(UE.yaw_units(player.pawn_yaw)):
+			player.turn_by_root_rotation(yaw)
 	super.pre_physics(delta)
 
 func handle_move_action(action: int) -> void:
