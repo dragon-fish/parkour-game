@@ -457,3 +457,40 @@ func test_player_wall_walking_raises_the_strafe_hint_to_0_8() -> void:
 	player._wall_walking_input_hint(0.9)
 	assert_eq(player.move_action_hint, Move.MAH_RIGHT, "a 0.9 strafe did not hint on a wall")
 	player.controller_state = Move.CS_PLAYER_WALKING
+
+## Climbs the course's wall and steps until the climb hands to Falling.
+## Returns the highest view pitch reached on the wall, degrees.
+func _climb_to_the_fall(player: Player) -> float:
+	await _start_climb(player)
+	assert_eq(player.move_manager.current_name, Move.WALL_CLIMB, "test setup: no climb")
+	var top := 0.0
+	for i in 120:
+		await step(1)
+		top = maxf(top, rad_to_deg(player.camera_rig.view_pitch()))
+		if player.move_manager.current_name != Move.WALL_CLIMB:
+			break
+	assert_eq(player.move_manager.current_name, Move.FALLING, "test setup: the climb did not end in a fall")
+	return top
+
+## [ME:CONFIRMED decompile] The climb draws the view up (LookAtLedge), and
+## Falling.StartMove after a WallClimb brings it back level in 0.5 s
+## (ResetCameraLook): the view does not stay looking up after a climb.
+func test_the_view_comes_back_level_after_a_climb() -> void:
+	var player: Player = await _climb_course()
+	var top: float = await _climb_to_the_fall(player)
+	assert_gt(top, 10.0, "test setup: the climb never drew the view up")
+	var start: float = rad_to_deg(player.camera_rig.view_pitch())
+	await step(15)
+	var half: float = rad_to_deg(player.camera_rig.view_pitch())
+	assert_between(half, 1.0, start - 1.0, "the reset is not eased over its 0.5 s")
+	await step(18)
+	assert_almost_eq(player.camera_rig.view_pitch(), 0.0, 0.01, "the view did not come back level")
+
+## The climb's look-at and the reset drive the first-person view only
+## (CameraRig.takes_forced_view()); in third person the climb runs the same
+## and leaves the camera alone.
+func test_a_climb_does_not_turn_the_third_person_camera() -> void:
+	var player: Player = await _climb_course()
+	player.camera_rig.third_person = true
+	var top: float = await _climb_to_the_fall(player)
+	assert_almost_eq(top, 0.0, 0.01, "the climb turned the third-person camera")

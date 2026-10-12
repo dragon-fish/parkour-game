@@ -303,6 +303,18 @@ func in_third_person() -> bool:
 		return true
 	return third_person
 
+## Whether a move's forced view changes -- its look-at targets and its camera
+## reset (Move.update_view_rotation()) -- turn this view. FIRST PERSON ONLY.
+## The original has no third-person camera; its look-ats are written for the
+## eye, to point it at the ledge a climb is heading for or bring it level
+## after one. Seen from outside, the same pulls swing a camera orbiting a body
+## that is doing nothing of the sort, which is disorienting and tells the
+## player nothing. The moves still run them to the end, so switching view
+## mid-move picks up nothing stale, and everything that reads the view (a
+## wall climb's entry angle, a wall-run jump's push) reads the view as it is.
+func takes_forced_view() -> bool:
+	return not in_third_person()
+
 ## Which side the third-person eye sits on, cycled with a middle click.
 enum Shoulder { RIGHT, LEFT, CENTRED }
 var _shoulder: int = Shoulder.RIGHT
