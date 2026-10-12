@@ -307,8 +307,24 @@ func _candidates(state: StringName, action: int) -> Array:
 				Move.MA_STUMBLE_HARD:
 					return [Move.STUMBLE_HARD]
 		Move.MELEE_CROUCH:
+			# Listed twice in the original's switch; the first case wins, and it
+			# has only the stumble.
 			if action == Move.MA_STUMBLE:
 				return [Move.STUMBLE]
+		Move.MELEE:
+			match action:
+				Move.MA_SNATCH:
+					return [Move.SNATCH]
+				Move.MA_STUMBLE:
+					return [Move.STUMBLE]
+				Move.MA_STUMBLE_HARD:
+					return [Move.STUMBLE_HARD]
+		Move.MELEE_AIR:
+			match action:
+				Move.MA_STUMBLE:
+					return [Move.STUMBLE]
+				Move.MA_STUMBLE_HARD:
+					return [Move.STUMBLE_HARD]
 		Move.GRAB:
 			match action:
 				Move.MA_JUMP:

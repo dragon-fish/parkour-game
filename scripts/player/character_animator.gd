@@ -1172,6 +1172,47 @@ func _target_animation() -> StringName:
 			# closest honest two-hands-overhead pose. A real swing clip and
 			# hands-on-bar IK are known gaps (spec 2026-08-25 §7).
 			return _first_available([&"Climb_Idle", &"NinjaJump_Idle", &"Jump", &"jump", &"idle"])
+		Move.SWING_JUMP:
+			# The flight off a bar is an airborne body like any jump's.
+			return _first_available(AIRBORNE_LOOP)
+		Move.INTO_ZIPLINE:
+			# The reach up onto the cable. No clip in the packs; the cable's
+			# own stand-in.
+			return _first_available([&"Jump", &"NinjaJump_Idle", &"jump", &"Idle", &"idle"])
+		Move.BARGE:
+			# Shield_Dash is UAL2's shoulder charge, which is the barge at a
+			# run; standing, the original kicks the door, and UAL1 has a Kick.
+			var barge = player.move_manager.move_for(Move.BARGE)
+			if barge != null and barge.barge_with_hands:
+				return _first_available([&"Shield_Dash", &"Sprint", &"run", &"idle"])
+			return _first_available([&"Kick", &"Idle", &"idle"])
+		Move.AIR_BARGE:
+			# A kick in the air, the same as the flying kick's.
+			return _first_available([&"Kick", &"Jump", &"jump", &"idle"])
+		Move.MELEE:
+			# The punches alternate sides: a jab and a cross.
+			var melee = player.move_manager.move_for(Move.MELEE)
+			var punch: StringName = &"Punch_Jab" if melee != null and melee.is_left else &"Punch_Cross"
+			return _first_available([punch, &"Punch_Jab", &"Punch_Cross", &"Melee_Hook", &"Idle", &"idle"])
+		Move.MELEE_AIR:
+			# No airborne kick in the packs; UAL1's standing Kick, then the
+			# airborne loop.
+			return _first_available([&"Kick", &"Jump", &"NinjaJump_Idle", &"jump", &"idle"])
+		Move.MELEE_SLIDE:
+			# The slide carries on under the kick.
+			return _first_available([&"Slide", &"Kick", &"Crouch_Idle", &"idle"])
+		Move.MELEE_CROUCH:
+			# The original's crouch punch rises into it: UAL2's uppercut.
+			return _first_available([&"Melee_Uppercut", &"Crouch_Idle", &"sneaking", &"idle"])
+		Move.MELEE_VAULT:
+			# Unreachable in the original as here; a vault with a kick in it.
+			return _first_available([&"SafetyVault", &"Kick", &"Jump_Start", &"idle"])
+		Move.MELEE_AIR_ABOVE:
+			# Hands straight to Falling: never on screen.
+			return _first_available(AIRBORNE_LOOP)
+		Move.INTERACT:
+			# A GENUINE MATCH: UAL1 ships an Interact.
+			return _first_available([&"Interact", &"Idle", &"idle"])
 		Move.LADDER:
 			# Per the spec (docs/superpowers/specs/2026-08-25-ladder-design.md
 			# §攀爬): the top exit uses the same clip GrabMove's mantle

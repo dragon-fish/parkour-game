@@ -17,6 +17,16 @@ signal used
 ## before the player was in it.
 @export var require_whole_body: bool = false
 
+## The original's TdTrigger types this zone can stand in for. NONE is a zone
+## that fires on its own; a button hands the dwell to the body's Interact move,
+## which walks to it, presses it, and fires `used` itself (InteractMove).
+enum InteractType { NONE, BUTTON, BUTTON_HIGH }
+@export var interact_type: InteractType = InteractType.NONE
+## TdTrigger.AngleLimit, degrees: how far off facing the button the body may
+## stand and still press it. The zone's +X axis is the trigger's Y: out from
+## the button, toward where the body stands to press it.
+@export var angle_limit: float = 175.0
+
 const WIRE_COLOR := Color(0.4, 0.85, 1.0, 0.35)
 
 var _inside: Node3D = null
@@ -64,6 +74,17 @@ func _physics_process(delta: float) -> void:
 	_held += delta
 	if _held < dwell:
 		prompt.fill(_held / dwell)
+		return
+	if interact_type != InteractType.NONE:
+		# A press the body could not act on does nothing; another dwell is
+		# another press.
+		if not (_inside.has_method("use_trigger") and _inside.use_trigger(self)):
+			_held = 0.0
+			prompt.fill(0.0)
+			return
+		_fired = true
+		set_physics_process(false)
+		prompt.complete()
 		return
 	_fired = true
 	set_physics_process(false)
