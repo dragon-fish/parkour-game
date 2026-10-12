@@ -73,10 +73,12 @@ func enter(_previous: StringName) -> void:
 	request_uncrouch = false
 	set_timer(0.5)
 
-## TdMove_Slide.StopMove: Velocity / 2, every time. The stand-up window the
-## presentation reads opens here too.
+## TdMove_Slide.StopMove: Velocity / 2, every time, and the pawn eased round
+## to the view over 0.4 s (FaceRotationTimeLeft) rather than snapped to it.
+## The stand-up window the presentation reads opens here too.
 func exit() -> void:
 	player.velocity = player.velocity / 2.0
+	player.face_rotation_time_left = 0.4
 	player.begin_slide_recovery()
 
 func on_timer() -> void:

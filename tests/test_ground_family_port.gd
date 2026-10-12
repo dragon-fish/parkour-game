@@ -314,3 +314,13 @@ func test_the_standing_size_comes_back_at_once_and_on_the_floor() -> void:
 	player.move_manager.start(Move.WALKING)
 	assert_almost_eq(player.current_capsule_height(), player.standing_height(), 0.0001,
 		"the standing size was held back for headroom")
+
+## [ME:CONFIRMED decompile TdMove_Slide.StopMove] FaceRotationTimeLeft = 0.4:
+## out of a slide the pawn eases round to the view instead of snapping to it.
+func test_the_slide_hands_the_facing_back_over_0_4_s() -> void:
+	var world: Dictionary = await _world()
+	var player: Player = world["player"]
+	player.move_manager.start(Move.SLIDE)
+	player.face_rotation_time_left = 0.0
+	player.move_manager.set_move(Move.CROUCH)
+	assert_almost_eq(player.face_rotation_time_left, 0.4, 0.0001, "the slide's stop set no facing ease")
