@@ -58,6 +58,8 @@ var start_looking_at_ledge_time: float = 0.0
 var stop_looking_at_ledge_time: float = 0.0
 ## bConstrainLook, which the hang turns off and on at runtime.
 var constrain_look_flag: bool = true
+## The action PlayerGrabbing sent this tick, for the animation only.
+var held_action: int = MA_NONE
 ## MinLookConstraint / MaxLookConstraint as UpdateViewConstraints sets them,
 ## (pitch, yaw) rotator units.
 var min_look: Vector2i = MIN_LOOK
@@ -171,6 +173,7 @@ func enter(_previous: StringName) -> void:
 	climb_up_folded_action_received = false
 	request_drop_down_flag = false
 	last_shimmy_time_seconds = player.world_time
+	held_action = MA_NONE
 	# bTakeFallDamage is the pawn's default: a catch after a long fall hurts
 	# as a landing would, and the fall counts again from the hands.
 	player.take_falling_damage()
@@ -327,6 +330,7 @@ static func _is_right(action: int) -> bool:
 
 ## TdMove_Grab.HandleMoveAction.
 func handle_move_action(action: int) -> void:
+	held_action = action
 	climb_up_folded_action_received = action == MA_CLIMB_UP
 	if current_shimmy_move == ShimmyType.SHIMMY and action == MA_NONE:
 		abort_shimmy()
@@ -576,9 +580,36 @@ func shimmy_report() -> String:
 		shimmy_time, GrabType.keys()[grab_type], current_grab_turn_type]
 
 ## For the animation: -1 travelling left, +1 right, 0 still.
+##
+## A held shimmy chains through one tick without one: the strafe animation's
+## end stops it after the physics, and the controller's action starts the next
+## on the tick after (a left one times out the same way, a little earlier).
+## That tick answers for the shimmy the held action starts next, so the
+## presentation does not drop the hand-over-hand to the hang and restart it at
+## every shimmy.
 func shimmy_direction() -> float:
 	if current_shimmy_move == ShimmyType.SHIMMY:
 		return signf(shimmy_velocity)
 	if current_shimmy_move == ShimmyType.AROUND_CORNER:
 		return -1.0 if String(pending_shimmy_corner_animation).ends_with("Left") else 1.0
+	if _would_start_shimmy(held_action):
+		return -1.0 if _is_left(held_action) else 1.0
 	return 0.0
+
+## Whether handle_move_action() would start a shimmy for `action` now: its
+## gates, in its order, and CanShimmy.
+func _would_start_shimmy(action: int) -> bool:
+	if not (_is_left(action) or _is_right(action)):
+		return false
+	if current_shimmy_move == ShimmyType.AROUND_CORNER or hang_free_vertigo_effect \
+			or current_folded_type == FoldedType.START:
+		return false
+	if move_active_time <= _grab_cfg().disable_shimmy_time:
+		return false
+	if sloped_ledge or request_drop_down_flag:
+		return false
+	if not is_within_forward_view and not is_hanging_free():
+		return false
+	if player.world_time - last_shimmy_time_seconds <= 0.5:
+		return false
+	return can_shimmy(action)

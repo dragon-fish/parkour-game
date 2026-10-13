@@ -709,6 +709,55 @@ func test_a_held_climb_chains_its_steps() -> void:
 		"the held climb fell behind one step every 0.35 s")
 	assert_eq(told_still, 0, "the animation was told the climb stopped on %d ticks" % told_still)
 
+## [ME:CONFIRMED decompile TdMove_Grab.StartShimmy / OnCustomAnimEnd, UpdateShimmy
+## 0x011f7d60] A held shimmy chains one strafe animation after another: its end
+## stops the body after the physics and the next starts on the tick after, its
+## speed growing again with the new animation's blend-in. One tick without a
+## shimmy, never two; and the animation is told a shimmy is going on
+## throughout.
+func test_a_held_shimmy_chains_its_strafes() -> void:
+	var player: Player = await _player()
+	_box(Vector3(12.0, 3.0, 2.0), Vector3(0.0, 1.5, -1.0))
+	await step(1)
+	var grab: GrabMove = _hang(player, 3.0, 0.0)
+	await step(70)
+	(_world["input"] as ScriptedInputSource).hold_move(1.0, 0.0)
+	for i in 10:
+		await step(1)
+		if grab.current_shimmy_move == GrabMove.ShimmyType.SHIMMY:
+			break
+	assert_eq(grab.current_shimmy_move, GrabMove.ShimmyType.SHIMMY, "the shimmy did not start")
+	var last_x: float = player.global_position.x
+	var idle_run: int = 0
+	var longest_idle: int = 0
+	var restarts: int = 0
+	var still_run: int = 0
+	var longest_still: int = 0
+	var told_still: int = 0
+	# Three strafe animations of 1.067 s.
+	for i in 200:
+		await step(1)
+		if grab.current_shimmy_move == GrabMove.ShimmyType.SHIMMY:
+			if idle_run > 0:
+				restarts += 1
+			idle_run = 0
+		else:
+			idle_run += 1
+			longest_idle = maxi(longest_idle, idle_run)
+		if absf(player.global_position.x - last_x) < 1e-5:
+			still_run += 1
+			longest_still = maxi(longest_still, still_run)
+		else:
+			still_run = 0
+		last_x = player.global_position.x
+		if grab.shimmy_direction() <= 0.0:
+			told_still += 1
+	assert_eq(player.move_manager.current_name, Move.GRAB, "the hang ended")
+	assert_gte(restarts, 2, "the held shimmy did not start again")
+	assert_eq(longest_idle, 1, "a shimmy waited %d ticks for the next" % longest_idle)
+	assert_eq(longest_still, 1, "the body stood still %d ticks between shimmies" % longest_still)
+	assert_eq(told_still, 0, "the animation was told the shimmy stopped on %d ticks" % told_still)
+
 ## [ME:CONFIRMED decompile] GrabPullUp.StartMove: ResetCameraLook(DisableLookTime),
 ## a view pitched up on the hang is brought level over the pull-up's 0.2 s.
 func test_a_pull_up_brings_the_view_level() -> void:

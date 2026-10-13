@@ -419,6 +419,49 @@ func test_a_held_climb_keeps_one_climb_cycle_across_its_steps() -> void:
 	assert_eq(off_clip, [] as Array[String], "the climb left its cycle between steps")
 	assert_eq(restarts, 0, "Climb_Up started over %d times" % restarts)
 
+## The same for the shimmy: one strafe animation per shimmy in the original,
+## chained through one tick without a shimmy; the pack's Climb_Right is a
+## cycle, and claiming a fresh slot for Climb_Idle and then for Climb_Right at
+## every chain restarted it from its first frame.
+func test_a_held_shimmy_keeps_one_hand_over_hand_cycle() -> void:
+	var animator: CharacterAnimator = await _animator_with(TRAVEL_CLIPS)
+	var player: Player = _world["player"]
+	var wall := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	shape.shape = BoxShape3D.new()
+	(shape.shape as BoxShape3D).size = Vector3(12.0, 3.0, 2.0)
+	wall.add_child(shape)
+	wall.position = Vector3(0.0, 1.5, -1.0)
+	add_child_autofree(wall)
+	await step(1)
+	player.rotation.y = 0.0
+	player.pawn_yaw = 0.0
+	player.move_ledge_location = Vector3(0.0, 3.0, 0.0)
+	player.move_ledge_normal = Vector3.UP
+	player.move_normal = Vector3(0.0, 0.0, 1.0)
+	var into := player.move_manager.move_for(Move.INTO_GRAB) as IntoGrabMove
+	player.global_position = into._hang_point()
+	player.velocity = Vector3.ZERO
+	player.move_manager.set_move(Move.INTO_GRAB)
+	into.reached_precise_location()
+	await step(70)
+	(_world["input"] as ScriptedInputSource).hold_move(1.0, 0.0)
+	for i in 20:
+		await step(1)
+		if animator.current_clip == &"Climb_Right":
+			break
+	assert_eq(animator.current_clip, &"Climb_Right", "the shimmy never played Climb_Right")
+	await step(2)
+	var slot: int = animator._slot
+	var off_clip: Array[String] = []
+	# Three strafe animations.
+	for i in 200:
+		await step(1)
+		if animator.current_clip != &"Climb_Right" or animator._slot != slot:
+			off_clip.append("%d:%s/%d" % [i, animator.current_clip, animator._slot])
+	assert_eq(player.move_manager.current_name, Move.GRAB, "the hang ended")
+	assert_eq(off_clip, [] as Array[String], "the shimmy left its cycle between strafes")
+
 # --- the two lists that have to agree -------------------------------------------
 
 ## Every state-name constant declared on Move, read from its own source.
