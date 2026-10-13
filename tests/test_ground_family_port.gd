@@ -193,6 +193,62 @@ func test_a_running_turn_brakes_on_the_frame_it_starts() -> void:
 	assert_lt(player.horizontal_speed(), before - 0.1,
 		"the turn's first frame still ran on the sprint's axes")
 
+## Q while running turns the view exactly half a turn clockwise from ANY
+## facing, never past it, in both views and with the shipped preset as well as
+## the class defaults. TdMove_180Turn's +-16384 window is about the pawn
+## (bUseAbsoluteYawConstraint false); read as a world window, it dragged the
+## view and then the pawn on round past the half turn from most facings --
+## up to 270 degrees and beyond. The yaws cover Godot's wrap (+-180) and the
+## original's (UE 0, +-16384, -32768).
+func test_q_while_running_turns_the_view_half_a_turn_from_every_facing() -> void:
+	var preset := load("res://presets/default.tres") as MovementConfig
+	for third in [false, true]:
+		for source in [MovementConfig.new(), preset]:
+			var label: String = "%s, %s" % ["preset" if source == preset else "class defaults",
+				"third person" if third else "first person"]
+			for yaw_deg in [0.0, 90.0, -90.0, 180.0, -180.0, 179.0, -179.0, -45.0, -135.0]:
+				await _check_running_half_turn((source as MovementConfig).duplicate(true), third,
+					yaw_deg, label)
+
+func _check_running_half_turn(cfg: MovementConfig, third: bool, yaw_deg: float, label: String) -> void:
+	var world := TestWorld.build(get_tree(), cfg)
+	await step(1)
+	TestWorld.place(world)
+	await step(20)
+	var player: Player = world["player"]
+	var input: ScriptedInputSource = world["input"]
+	player.camera_rig.third_person = third
+	player.rotation.y = deg_to_rad(yaw_deg)
+	player.pawn_yaw = player.rotation.y
+	input.hold_move(0.0, 1.0)
+	await step(60)
+	var what: String = "%s, from %.0f deg" % [label, yaw_deg]
+	var prev: float = player.rotation.y
+	var turned: float = 0.0
+	var furthest: float = 0.0
+	var backwards: float = 0.0
+	input.press_turn()
+	await step(1)
+	assert_eq(player.move_manager.current_name, Move.TURN_180, "test setup: Q did not turn (%s)" % what)
+	turned += wrapf(player.rotation.y - prev, -PI, PI)
+	prev = player.rotation.y
+	for i in 75:
+		await step(1)
+		turned += wrapf(player.rotation.y - prev, -PI, PI)
+		prev = player.rotation.y
+		furthest = minf(furthest, turned)
+		backwards = maxf(backwards, turned)
+	assert_eq(player.move_manager.current_name, Move.WALKING, "the turn did not end (%s)" % what)
+	assert_almost_eq(turned, -PI, deg_to_rad(0.5),
+		"the view did not end half a turn clockwise (%s): %.1f deg" % [what, rad_to_deg(turned)])
+	assert_gt(furthest, -PI - deg_to_rad(0.5),
+		"the view went past the half turn (%s): %.1f deg" % [what, rad_to_deg(furthest)])
+	assert_lt(backwards, deg_to_rad(0.5), "the view turned anticlockwise (%s)" % what)
+	assert_almost_eq(wrapf(player.pawn_yaw - player.rotation.y, -PI, PI), 0.0, deg_to_rad(0.5),
+		"the pawn did not come back onto the view (%s)" % what)
+	TestWorld.teardown(world)
+	await step(2)
+
 ## The UncontrolledFall state refuses every move but Landing and SoftLanding.
 func test_the_uncontrolled_fall_refuses_every_move_but_the_landings() -> void:
 	var world: Dictionary = await _world()

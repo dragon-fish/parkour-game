@@ -128,7 +128,6 @@ redo_move_time = 0.5
 min_look_constraint = Vector3(-0.9599311, -1.5707964, -3.1415927)
 max_look_constraint = Vector3(0.9599311, 1.5707964, 3.1415927)
 constrain_look = true
-absolute_yaw_constraint = true
 allows_turn = false
 
 [sub_resource type="Resource" id="Resource_rybd7"]
