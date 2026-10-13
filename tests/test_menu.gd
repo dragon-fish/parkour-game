@@ -530,8 +530,42 @@ func test_main_menu_builds_without_error_and_skip_entrance_settles_the_list() ->
 
 	assert_true(menu._menu_list.is_visible_in_tree(), \
 		"the menu list is not visible in tree once the entrance is skipped")
-	assert_eq(menu._menu_list._labels.size(), 4, \
-		"with no levels listed the main menu should have exactly 开始/角色/设置/退出")
+	assert_eq(menu._menu_list._labels.size(), 5, \
+		"with no levels listed the main menu should have exactly 开始/角色/设置/版权/退出")
+
+func test_the_credits_entry_sits_just_before_quit_and_opens_and_closes_the_credits() -> void:
+	var menu := MainMenu.new()
+	add_child_autofree(menu)
+	await step(3)
+	menu._skip_entrance()
+	var labels: Array = menu._menu_list._labels
+	var last := labels.size() - 1
+	assert_eq((labels[last - 1] as Label).text, "版权信息", "版权信息 is not just before 退出游戏")
+	assert_eq((labels[last] as Label).text, "退出游戏")
+
+	menu._menu_list.chosen.emit(last - 1)
+	assert_true(menu._credits_screen.is_visible_in_tree(), "choosing 版权信息 did not open the credits")
+	assert_false(menu._menu_list.is_visible_in_tree(), "the menu column stayed up under the credits")
+
+	var esc := InputEventKey.new()
+	esc.physical_keycode = KEY_ESCAPE
+	esc.pressed = true
+	menu._credits_screen._unhandled_input(esc)
+	assert_false(menu._credits_screen.is_visible_in_tree(), "Esc did not close the credits")
+	assert_true(menu._menu_list.is_visible_in_tree(), "closing the credits did not restore the menu")
+
+	menu._menu_list.chosen.emit(last - 1)
+	menu._credits_screen._back_button.pressed.emit()
+	assert_false(menu._credits_screen.is_visible_in_tree(), "返回 did not close the credits")
+	assert_true(menu._menu_list.is_visible_in_tree())
+
+func test_the_credits_text_covers_the_required_facts() -> void:
+	var all := ""
+	for section in MeCreditsScreen.SECTIONS:
+		all += "\n".join(section["lines"]) + "\n"
+	for needle in ["dragon-fish", "https://github.com/dragon-fish/parkour-game", "AGPL-3.0-only",
+			"beriul", "Quaternius", "Electronic Arts"]:
+		assert_true(all.contains(needle), "credits text is missing %s" % needle)
 
 func test_a_missing_level_starts_nothing() -> void:
 	var menu := MainMenu.new()
@@ -560,7 +594,7 @@ func test_level_select_loads_the_chosen_level_and_returns() -> void:
 	menu._change_scene = func(path): requested[0] = path
 
 	var labels := func() -> Array: return menu._menu_list._labels.map(func(l): return l.text)
-	assert_eq(labels.call(), ["新游戏", "选择章节", "角色展台", "参数设置", "退出游戏"])
+	assert_eq(labels.call(), ["新游戏", "选择章节", "角色展台", "参数设置", "版权信息", "退出游戏"])
 	menu._on_chosen(1)
 	assert_eq(labels.call(), ["one", "two", "返回"], "选择章节 did not list the levels")
 	menu._on_chosen(2)

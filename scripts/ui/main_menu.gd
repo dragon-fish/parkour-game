@@ -163,6 +163,7 @@ var _selecting_level := false
 ## The scene the threaded load is fetching. Set when a load starts.
 var _loading_scene := ""
 var _settings_menu: MeSettingsMenu
+var _credits_screen: MeCreditsScreen
 var _footer: Label
 var _metadata_labels: Array[Control] = []
 ## Integrated ground flow, in metres, and the pace it is integrated at. Kept
@@ -293,6 +294,7 @@ func _build_ui() -> void:
 	_build_mirror()
 	_build_menu_list()
 	_build_settings_menu()
+	_build_credits_screen()
 	_build_corner_metadata()
 	_build_footer()
 	_build_opening_plate()
@@ -784,8 +786,8 @@ func _show_main_entries() -> void:
 	if not levels.is_empty():
 		items.append("选择章节")
 		_menu_actions.append(_show_level_select)
-	items.append_array(["角色展台", "参数设置", "退出游戏"])
-	_menu_actions.append_array([_open_showcase, _show_settings, _show_quit_confirm])
+	items.append_array(["角色展台", "参数设置", "版权信息", "退出游戏"])
+	_menu_actions.append_array([_open_showcase, _show_settings, _show_credits, _show_quit_confirm])
 	_menu_list.set_items(items)
 
 func _on_chosen(index: int) -> void:
@@ -958,4 +960,17 @@ func _show_settings() -> void:
 
 func _on_settings_closed() -> void:
 	_settings_menu.visible = false
+	_menu_list.visible = true
+
+func _build_credits_screen() -> void:
+	_credits_screen = MeCreditsScreen.new()
+	_credits_screen.visible = false
+	add_child(_credits_screen)
+	_credits_screen.closed.connect(_on_credits_closed)
+
+func _show_credits() -> void:
+	_menu_list.visible = false
+	_credits_screen.open()
+
+func _on_credits_closed() -> void:
 	_menu_list.visible = true
