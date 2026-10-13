@@ -317,27 +317,65 @@ func move_actor(delta: Vector3) -> Dictionary:
 		return _miss()
 	pawn.align_collider()
 	var before: Vector3 = pawn.global_position
+	var before_center: Vector3 = pawn.collision_center()
 	var collision: KinematicCollision3D = pawn.move_and_collide(delta)
 	var length: float = delta.length()
 	var time: float = 1.0
-	if collision != null and length > 0.0:
-		# Along the asked motion only: the travel also carries whatever the
-		# recovery below pushed.
-		time = clampf(collision.get_travel().dot(delta) / (length * length), 0.0, 1.0)
+	var normal := Vector3.ZERO
+	var collider: Object = null
+	var position := Vector3.ZERO
+	if collision != null:
+		if length > 0.0:
+			# Along the asked motion only: the travel also carries whatever the
+			# recovery below pushed.
+			time = clampf(collision.get_travel().dot(delta) / (length * length), 0.0, 1.0)
+		normal = collision.get_normal()
+		collider = collision.get_collider()
+		position = collision.get_position()
 	_note_recovery(before, delta * time)
-	_note_relative_location()
 	if collision == null:
-		return _miss()
-	var collider: Object = collision.get_collider()
+		var missed: Dictionary = _unreported_block(before, before_center, delta)
+		if missed.is_empty():
+			_note_relative_location()
+			return _miss()
+		time = missed["time"]
+		normal = missed["normal"]
+		collider = missed["collider"]
+		position = missed["position"]
+	_note_relative_location()
 	# UWorld::MoveActor's bump: a blocking hit on anything but the level's own
 	# geometry, or the base the pawn stands on, is NotifyBump -- TdPawn.Bump,
 	# handed to the current move. HitWall, from the physics, comes as well.
 	if collider != null and not _is_world_geometry(collider) and collider != pawn.base:
 		var move = pawn.move_manager.current_move()
 		if move != null:
-			move.bump(collision.get_normal(), collider)
-	return {"time": time, "normal": collision.get_normal(),
-		"collider": collider, "position": collision.get_position()}
+			move.bump(normal, collider)
+	return {"time": time, "normal": normal, "collider": collider, "position": position}
+
+## A block Jolt's move_and_collide() did not report. {} when there was none.
+##
+## Jolt's motion search keeps only the body that blocks EARLIEST, brackets the
+## stop to about a millimetre, and reads the contact one bracket in as the
+## axis of least penetration -- then drops it if that axis does not oppose the
+## motion, and with it every other body the move would have hit. A body whose
+## edge is over the end of a door knob by less than the bracket, pushed past
+## the knob toward the wall behind it, gets the knob's END as the axis, sideways
+## to the push: the contact is dropped and the move goes the whole way, 37 uu
+## into the wall. The wall run's push found nothing there and fell off. UE3's
+## MoveActor stops at the knob or the wall. So a move reported free is swept
+## again with UE3's trace semantics (box_trace), and the body is put where that
+## stops. A start buried deep in something is Jolt's to push out, not this to
+## hold.
+func _unreported_block(before: Vector3, before_center: Vector3, delta: Vector3) -> Dictionary:
+	var hit: Dictionary = box_trace(before_center + delta, before_center, pawn.collision_extent(), pawn.collision_mask)
+	var time: float = hit["time"]
+	if hit["collider"] == null or time >= 1.0 or time <= 0.0:
+		return {}
+	pawn.global_position = before + delta * time
+	var normal: Vector3 = hit["normal"]
+	var extent: Vector3 = pawn.collision_extent()
+	var contact: Vector3 = (hit["position"] as Vector3) - normal * normal.abs().dot(extent)
+	return {"time": time, "normal": normal, "collider": hit["collider"], "position": contact}
 
 ## Godot's move_and_collide() first pushes a body out of anything it overlaps
 ## or sits within its safe margin of; UE3's MoveActor never moves a body it did
@@ -399,7 +437,8 @@ const TRACE_SKIN := 0.05 * UU
 ## An extent trace from `start` to `end` with a box of half-size `extent`, the
 ## shape TdMove's traces sweep. {time, position, normal, collider}; time 1 and
 ## no collider when nothing is hit; time 0 when the box starts inside
-## something. `position` is the box centre where it stops.
+## something. `position` is the box centre where it stops. `mask` is the
+## collision mask swept against: everything unless a caller narrows it.
 ##
 ## UE3's semantics, not Jolt's. DO NOT hand Jolt the box as asked: its
 ## cast_motion IGNORES EVERY BODY the box starts touching or overlapping, even
@@ -420,7 +459,7 @@ const TRACE_SKIN := 0.05 * UU
 ## hit that wall at time 0, and a wall run entered from a run pressed against
 ## its wall jumped off with no height at all. Such a start sweeps a box shrunk
 ## by the tolerance instead, its hit time taken back by that larger skin.
-func box_trace(end: Vector3, start: Vector3, extent: Vector3) -> Dictionary:
+func box_trace(end: Vector3, start: Vector3, extent: Vector3, mask: int = 0xFFFFFFFF) -> Dictionary:
 	if extent == Vector3.ZERO:
 		var line: Dictionary = line_trace(start, end)
 		if line.is_empty():
@@ -435,6 +474,7 @@ func box_trace(end: Vector3, start: Vector3, extent: Vector3) -> Dictionary:
 	query.shape = box
 	query.transform = Transform3D(Basis.IDENTITY, start)
 	query.exclude = [pawn.get_rid()]
+	query.collision_mask = mask
 	var inside: Dictionary = space.get_rest_info(query)
 	if not inside.is_empty():
 		skin = (extent * 0.5).min(Vector3.ONE * RECOVERY_TOLERANCE)

@@ -465,6 +465,80 @@ func test_the_third_person_view_is_assisted_round_a_curved_wall() -> void:
 	assert_almost_eq(carried[0], 0.0, 0.1, "the first-person view was carried round the curve (%.2f)" % carried[0])
 	assert_between(carried[1], 0.2, 0.9, "the third-person view was not assisted part of the way (%.2f)" % carried[1])
 
+# --- small things on the wall ---------------------------------------------------------
+
+## A box as sharp as the original's collision: Jolt rounds a box's edges by
+## its margin otherwise.
+func _sharp_box(size: Vector3, center: Vector3) -> StaticBody3D:
+	var body: StaticBody3D = _box(size, center)
+	((body.get_child(0) as CollisionShape3D).shape as BoxShape3D).margin = 0.0
+	return body
+
+## A knob on the run's wall, its front 8 cm out from the face, 1.1 m above the
+## platform.
+func _knob(z: float) -> void:
+	_sharp_box(Vector3(0.08, 0.10, 0.10), Vector3(-0.56, 4.1, z))
+
+## [ME:CONFIRMED emulated N3 §2.6] MoveActor stops at the first thing in the
+## way. A body on, or a millimetre or two off, a knob's front, its edge still
+## a fraction of a millimetre over the knob's end -- where a step round the
+## knob leaves it -- pushed toward the wall behind stops on the knob or on the
+## wall, and never ends up inside the wall.
+func test_move_actor_past_a_knobs_corner_stops_at_the_wall() -> void:
+	var player: Player = await _player()
+	_sharp_box(Vector3(1.0, 8.0, 60.0), Vector3(-1.1, 4.0, -28.0))
+	_knob(-1.0)
+	await step(1)
+	var r: float = player.collision_radius()
+	var wall_face := -0.6
+	for overlap in [0.0002, 0.0014, 0.003]:
+		for x_in in [0.0002, 0.0, -0.0005, -0.0012, -0.002]:
+			# The body's -X face `x_in` into the knob's front (a negative one
+			# is a gap), its +Z face `overlap` over the knob's -Z end.
+			player.global_position = Vector3(-0.52 + r - x_in, 4.5, -1.05 - r + overlap)
+			var hit: Dictionary = player.phys.move_actor(Vector3(-0.37, 0.0, 0.0))
+			var face_x: float = player.global_position.x - r
+			assert_gt(face_x, wall_face - 0.005,
+				"the push went %.1f cm into the wall (overlap %.4f, in %.4f)" % [(wall_face - face_x) * 100.0, overlap, x_in])
+			assert_lt(float(hit["time"]), 1.0, "a push into the wall was not blocked (overlap %.4f, in %.4f)" % [overlap, x_in])
+
+## [ME:CONFIRMED emulated N3 §2.6, §2.7] The blocked move steps round a
+## knob -- out 35 uu, the rest of the move, back in -- and the push into the
+## wall finds the wall again past it, so a run along a wall with a knob on it
+## lasts the same vertical arc as one along a bare wall. Several positions,
+## because whether the body ends a frame grazing one of the knob's ends
+## depends on where the knob is.
+func test_a_wall_run_carries_on_past_a_door_knob() -> void:
+	var lengths: Array[int] = []
+	for z in [NAN, -0.985, -1.429, -1.8, -2.206]:
+		var player: Player = await _wall_run_course()
+		if not is_nan(z):
+			_knob(z)
+			await step(1)
+		var jump: JumpMove = player.move_manager.move_for(Move.JUMP)
+		jump.delay_time_check_auto_moves = 100.0
+		var input: ScriptedInputSource = _world["input"]
+		_run_up(player)
+		input.press_jump()
+		await step(1)
+		assert_eq(player.move_manager.current_name, Move.WALL_RUN, "test setup: the jump did not become a run")
+		var frames := 0
+		for i in 200:
+			await step(1)
+			frames += 1
+			if player.move_manager.current_name != Move.WALL_RUN:
+				break
+		lengths.append(frames)
+		if not is_nan(z):
+			assert_true(absi(frames - lengths[0]) <= 1,
+				"the run past a knob at z = %.3f lasted %d frames, along the bare wall %d" % [z, frames, lengths[0]])
+		TestWorld.teardown(_world)
+		_world = {}
+		for node in _extra:
+			node.queue_free()
+		_extra.clear()
+		await step(1)
+
 # --- the wall climb -------------------------------------------------------------------
 
 ## A tall wall straight ahead (face at z = -1.5, normal +Z).
