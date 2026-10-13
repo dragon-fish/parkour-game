@@ -342,6 +342,36 @@ func test_a_body_without_it_falls_back_down_the_list() -> void:
 	assert_eq(animator._target_animation(), &"ClimbLedge",
 		"a body with no ClimbUp clip played '%s'" % String(animator._target_animation()))
 
+func _start_transfer(player: Player, hint: int) -> GrabTransferMove:
+	var transfer := player.move_manager.move_for(Move.GRAB_TRANSFER) as GrabTransferMove
+	transfer.transfer_hint = hint
+	transfer.transfer_location = player.global_position + Vector3(0.0, 0.8, 0.0)
+	transfer.transfer_look_at_location = transfer.transfer_location
+	player.move_manager.start(Move.GRAB_TRANSFER)
+	return transfer
+
+func test_a_transfer_up_to_a_hold_above_mantles_onto_it() -> void:
+	var animator: CharacterAnimator = await _animator_with(
+		[&"idle", &"Climb_Idle", &"ClimbLedge", &"ClimbUp_1m"])
+	var player: Player = _world["player"]
+	var transfer := _start_transfer(player, GrabTransferMove.Hint.UP)
+	assert_eq(animator._target_animation(), &"ClimbLedge",
+		"a transfer up played '%s'" % String(animator._target_animation()))
+	assert_gt(transfer.scripted_duration(), 0.0, "a transfer up gave the clip no flight to fit")
+	assert_almost_eq(animator._scripted_fit(&"ClimbLedge"),
+		clampf(1.0 / transfer.scripted_duration(), CharacterAnimator.SCRIPTED_FIT_MIN,
+			CharacterAnimator.SCRIPTED_FIT_MAX), 0.0001,
+		"the mantle is not fitted to end with the flight")
+
+func test_a_transfer_sideways_keeps_the_hang() -> void:
+	var animator: CharacterAnimator = await _animator_with(
+		[&"idle", &"Climb_Idle", &"ClimbLedge", &"ClimbUp_1m"])
+	var player: Player = _world["player"]
+	var transfer := _start_transfer(player, GrabTransferMove.Hint.LEFT)
+	assert_eq(animator._target_animation(), &"Climb_Idle",
+		"a transfer sideways played '%s'" % String(animator._target_animation()))
+	assert_eq(transfer.scripted_duration(), 0.0, "a sideways transfer fitted its clip")
+
 # --- the ladder's top exit is a climb over in every way that matters here -------
 
 func test_a_top_exit_plays_climb_up_instead_of_the_hang() -> void:

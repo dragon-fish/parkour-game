@@ -289,3 +289,16 @@ func failed_to_reach_precise_location() -> void:
 
 func hit_wall(_normal: Vector3, _collider: Object) -> void:
 	player.move_manager.set_move(FALLING)
+
+## For the animation: the hands going up to a hold above (hangtransferup in
+## the original), as opposed to a turn across to one beside.
+func is_transfer_up() -> bool:
+	return transfer_hint == Hint.UP
+
+## The scripted-fit hook (CharacterAnimator._scripted_fit): going up, the
+## flight's own length, so the clip lands the hands when the body arrives;
+## 0 for the sideways transfer, which plays its turn at its authored rate.
+func scripted_duration() -> float:
+	if transfer_hint != Hint.UP or transfer_speed <= 0.0:
+		return 0.0
+	return transfer_distance / transfer_speed

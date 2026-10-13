@@ -1369,7 +1369,15 @@ func _target_animation() -> StringName:
 			# Pushed off the wall: the airborne loop every other jump plays.
 			return _first_available(AIRBORNE_LOOP)
 		Move.GRAB_TRANSFER:
-			# Hands from one hold to the next: the hang, then the arrival's own.
+			# Up to a hold above (a low rail over the ledge): ClimbLedge is the
+			# pack's hands-over-the-lip mantle, and at 0.63 s it is the right
+			# length for the original's 0.53 s hangtransferup -- fitted to the
+			# flight through scripted_duration(). Sideways: the hang, then the
+			# arrival's own.
+			var transfer = player.move_manager.move_for(Move.GRAB_TRANSFER)
+			if transfer != null and transfer.is_transfer_up():
+				return _first_available([&"ClimbLedge", &"ClimbUp_1m", &"Climb_Idle",
+					&"ladder_stillness", &"Jump", &"jump", &"idle"])
 			return _first_available([&"Climb_Idle", &"ladder_stillness", &"Jump", &"jump", &"idle"])
 		Move.WALL_RUN:
 			# WallRun_L/R are the real thing. wall_side > 0 is a RIGHT-hand
