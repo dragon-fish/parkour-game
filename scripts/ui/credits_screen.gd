@@ -23,14 +23,14 @@ const AUTHOR := "dragon-fish"
 const SOURCE_URL := "https://github.com/dragon-fish/parkour-game"
 const LICENCE := "GNU AGPL v3（AGPL-3.0-only）"
 const LICENCE_SCOPE := "此协议仅涵盖本项目自身的代码，不延伸至下列第三方内容。"
-const MODEL_CREDIT := "角色模型：beriul（作者署名待补）"
+const MODEL_CREDIT := "角色模型：ベリウル / beriul，作者 アマノソラ（BOOTH：https://am23ti.booth.pm/items/4321056）"
 const ANIMATION_CREDIT := "Quaternius《Universal Animation Library》1 与 2（https://quaternius.com/）"
 const ADDONS_CREDIT := "内置插件（MIT）：GUT、godot-vrm、MToon shader，详见 NOTICE.md。"
 const ME_NOTICE := "部分关卡与素材提取自《镜之边缘》(Mirror's Edge)，版权归 Electronic Arts / DICE 所有。本项目与 EA、DICE 无任何关联。"
 const DISCLAIMER := "此构建版本仅供《镜之边缘》玩家圈子内交流学习使用，请勿用于商业用途或二次分发。"
 
 ## Section headings paired with their body lines, in display order. A body
-## entry of SOURCE_URL is rendered as a clickable link.
+## entry may contain http(s) URLs; every one is rendered as a clickable link.
 const SECTIONS := [
 	{"heading": "项目背景", "lines": [BACKGROUND]},
 	{"heading": "作者", "lines": [AUTHOR]},
@@ -140,12 +140,15 @@ func _compose_bbcode() -> String:
 	for section in SECTIONS:
 		out += "[b][color=#%s]%s[/color][/b]\n" % [MeTheme.BRAND_RED.to_html(false), section["heading"]]
 		for line: String in section["lines"]:
-			if line == SOURCE_URL:
-				out += "[url=%s]%s[/url]\n" % [SOURCE_URL, SOURCE_URL]
-			else:
-				out += line + "\n"
+			out += _link_urls(line) + "\n"
 		out += "\n"
 	return out.strip_edges()
+
+## Wraps each URL in a line in a [url] tag. A URL ends at whitespace or at a
+## full-width bracket or punctuation mark, so a trailing "）" stays outside it.
+func _link_urls(line: String) -> String:
+	var regex := RegEx.create_from_string("https?://[^\\s）)，。、]+")
+	return regex.sub(line, "[url]$0[/url]", true)
 
 func _on_meta_clicked(meta: Variant) -> void:
 	OS.shell_open(str(meta))

@@ -992,3 +992,11 @@ func test_the_held_opening_keeps_the_crouch_idle_loop_running() -> void:
 		return
 	assert_true(menu._anim_player.is_playing(),
 		"the main-menu crouch pose is frozen instead of looping")
+
+func test_every_url_in_the_credits_becomes_a_link_that_stops_before_a_fullwidth_bracket() -> void:
+	var screen := MeCreditsScreen.new()
+	autofree(screen)
+	assert_eq(screen._link_urls("x（BOOTH：https://a.b/c?d=1）"), "x（BOOTH：[url]https://a.b/c?d=1[/url]）")
+	var text: String = screen._compose_bbcode()
+	assert_true(text.contains("[url]https://am23ti.booth.pm/items/4321056[/url]"))
+	assert_true(text.contains("[url]https://github.com/dragon-fish/parkour-game[/url]"))
